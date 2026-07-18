@@ -11,6 +11,21 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 
 **阅读 `docs/architecture/product-architecture.md`**：了解 AdaiOS 五层产品架构（AI 问答 / 主动推送 / 数字身份 / 通用记录 / 外部信息 / 交易系统反哺），任何新功能必须明确归属哪个层级。
 
+## 工作焦点分离
+
+> 你是 monorepo，但 Claude 的工作焦点始终是你 cd 到的那个子项目。
+
+本项目按焦点分为三个独立子项目 + 一个全局层，**每个子目录有自己的 CLAUDE.md**。你在哪个目录启动 `claude`，它就只看哪个领域：
+
+| 焦点 | 目录 | 启动 | 负责 |
+|:----|:-----|:-----|:-----|
+| **后端** | `services/adai-core/` | `cd services/adai-core && claude` | Java/Spring Boot，Controller、Context Engine、AI 集成 |
+| **前端** | `apps/adai-app/` | `cd apps/adai-app && claude` | Flutter Material 3，卡片状态机、输入栏、主题 |
+| **交易知识** | `os/trading-os/` | `cd os/trading-os && claude` | 课程整理、规则提炼、术语融合 |
+| **全局** | 根目录 | `claude`（默认） | 架构讨论、文档更新、跨项目协调 |
+
+**在子目录工作时不处理后端/前端/交易知识以外的内容。** 当你在全局根目录更新架构文档时，需要同步检查三个子项目的 CLAUDE.md 和文件是否一致。
+
 ## 技术栈
 
 | 层面 | 选型 |
@@ -34,8 +49,8 @@ domains/               # Domain OS 领域定义文档
   trading-os/          #   金融交易
   life-os/             #   个人生活（预留）
   project-os/          #   项目管理（预留）
-os/                    # Domain OS 知识资产（每个独立 Git 生命周期）
-  trading-os/          #   交易系统知识库（File First，Git 独立，不依赖 adai-core）
+os/                    # Domain OS 知识资产（File First）
+  trading-os/          #   交易系统知识库（File First，有独立 CLAUDE.md 和工作流）
 data/                  # 个人数据资产（File First，Git 追踪）
   identity/            #   个人档案
   records/             #   原始记录（按年月组织）
@@ -129,7 +144,7 @@ AdaiOS 采用 **File First** 原则，但不同区域适用程度不同：
 
 | 区域 | 适用 | 说明 |
 |:----|:----:|:-----|
-| `os/`（Domain OS 知识资产） | **File First** | 知识以 Markdown 格式文件存在，Git 独立生命周期 |
+| `os/`（Domain OS 知识资产） | **File First** | 知识以 Markdown 格式文件存在，Git 统一管理，独立工作流 |
 | `data/`（个人数据资产） | **File First** | records / memory / identity 按年月组织为文件 |
 | `services/adai-core/` | **Code Only** | Java/Spring Boot 工程，非知识资产，不用文件存储知识 |
 | `apps/adai-app/` | **Code Only** | Flutter 前端工程，同样不适用 |
@@ -151,7 +166,12 @@ AdaiOS 采用 **File First** 原则，但不同区域适用程度不同：
 - **新能力必须明确所属 Domain** — 先回答：属于 Kernel 还是 Domain OS？找不到归属时先讨论架构。
 - **优先设计数据流** — 先明确：Record 文件格式 → Timeline 投影 → Context 组合 → Memory 沉淀，再写代码。
 - **提交前确认根包** — 所有 Java 代码在 `com.adaiadai.core` 下。
-- **os/ 目录下的项目保持完全独立** — 每个 `os/*/` 项目有独立的 `CLAUDE.md`、独立的工作流、独立的 Git 生命周期。AdaiOS mono repo 只是它们存放的地方，不干涉它们的内部运作。它们不依赖 adai-core 的代码，adai-core 通过文件读取它们产出的知识资产。
+- **os/ 目录下的项目保持独立工作流** — 每个 `os/*/` 项目有独立的 `CLAUDE.md`、独立的工作流和目录规则。AdaiOS mono repo 只是存放它们的地方，不干涉其内部流程。它们不依赖 adai-core 的代码，adai-core 通过文件系统只读读取它们产出的知识资产。**Git 统一管理，工作焦点各自独立**。| 区域 | 工作位置 | CLAUDE.md | Git |
+|:----|:---------|:----------|:---:|
+| `os/trading-os/` | `cd os/trading-os && claude` | 专注交易知识工程 | 统一在根仓库 |
+| `services/adai-core/` | `cd services/adai-core && claude` | 专注 Java 后端 | 统一在根仓库 |
+| `apps/adai-app/` | `cd apps/adai-app && claude` | 专注 Flutter 前端 | 统一在根仓库 |
+| 全局 | 根目录 | 全局架构原则 + 五层产品 | 根仓库 |
 - **入口统一，后台分流** — `POST /api/v1/records` 是所有输入的单一入口，通过 `IntentRecognizer` 自动分流到 log / question，App 不感知
 
 ## 开发工作流
