@@ -1,0 +1,33 @@
+.DS_Store
+.obsidian/workspace.json
+.obsidian/graph.json
+__pycache__/
+*.pyc
+node_modules/
+
+# Claude Code 内部目录（不应提交）
+.claude/worktrees/
+.claude/projects/
+.claude/settings.local.json
+
+# 00-temp 原始文稿（不提交到 git，各电脑独立）
+00-temp/
+
+# 原始媒体文件（不提交到 git）
+*.mp4
+*.aac
+*.wav
+*.mp3
+
+# 临时处理目录（CLAUDE.md 禁止在 temp 下创建）
+temp/_chunks/
+temp/_*/
+
+# 临时脚本残留
+temp/_merge.*
+temp/_do_merge.*
+
+# 监控运行时状态（不提交到git）
+.monitor/
+.monitor/**/*
+

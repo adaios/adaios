@@ -1,0 +1,33 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: adai-core
+
+  config:
+    import: optional:file:.env[.properties]
+
+  # ── Phase 2: 文件索引需要数据库时启用 ──
+  # datasource:
+  #   url: jdbc:mysql://localhost:3306/adaios?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+  #   username: root
+  #   password: root
+  #   driver-class-name: com.mysql.cj.jdbc.Driver
+  #
+  # jpa:
+  #   hibernate:
+  #     ddl-auto: validate
+  #   show-sql: false
+  #   open-in-view: false
+  #   properties:
+  #     hibernate:
+  #       format_sql: true
+  #       dialect: org.hibernate.dialect.MySQLDialect
+
+adai:
+  ai:
+    provider: deepseek
+    model: deepseek-chat
+  storage:
+    base-path: ${ADAI_DATA_DIR:../../data}

@@ -1,0 +1,12 @@
+# 2025-10-15 周三课程 处理完成
+
+- 处理日期：2026-06-28
+- 涵盖：Step 1→5 全流程
+
+| Step | 产出 | 状态 |
+|:----|:-----|:-----|
+| Step 1 raw | 01-raw/2025-10-15_周三课程.md | ✅ |
+| Step 2 cleaned | 02-cleaned/2025-10-15_周三课程.cleaned.md | ✅ |
+| Step 3 glossary | 03-glossary/2025-10-15_周三课程.glossary.md | ✅ |
+| Step 4 rules | 04-rules/2025-10-15_周三课程.rules.md | ✅ |
+| Step 5 system | 05-system/trading-system.md ✅ |

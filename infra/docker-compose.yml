@@ -1,0 +1,29 @@
+# AdaiOS 本地开发环境
+# 仅包含基础设施依赖，不包含应用本身。
+# 应用通过 Gradle bootRun 在主机上运行。
+
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: adaios-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: adaios
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # ★ 后续按需添加:
+  # redis:     缓存/会话管理
+  # minio:     对象存储（文件/附件）
+  # elasticsearch: 全文搜索/向量检索
+  # milvus:    向量数据库
+
+volumes:
+  mysql_data:

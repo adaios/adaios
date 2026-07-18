@@ -1,0 +1,80 @@
+# ── Java ──
+*.class
+*.jar
+*.war
+*.nar
+build/
+target/
+!gradle-wrapper.jar
+
+# ── Gradle ──
+.gradle/
+*/build/
+
+# ── IDE / Claude ──
+.idea/
+.claude/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+out/
+bin/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Logs ──
+*.log
+logs/
+
+# ── Env ──
+.env
+.env.local
+.env.*.local
+*.secret
+
+# ── Temp ──
+tmp/
+temp/
+
+# ── Spring Boot ──
+*.springBeans
+*.pid
+heapdump.*
+
+# ── AdaIOS 个人隐私数据 ──
+# 个人记忆、交易记录、持仓等隐私数据不提交
+data/records/
+data/memory/
+data/trading/
+
+# identity 的示例配置文件选择性提交（见 data/identity/profile.sample.md）
+# data/identity/profile.md 不提交（含真实用户偏好）
+data/identity/profile.md
+
+# ── 后端测试残留数据 ──
+services/adai-core/data/
+
+# ── Flutter / Dart ──
+.dart_tool/
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.flutter_plugins
+*.flutter_plugin_registrant
+.flutter-plugins-dependencies
+*.flutter_plugins
+*.flutter_plugin_registrant
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+*.apk
+*.aab
+*.ipa
+*.dSYM.zip
+*.dSYM

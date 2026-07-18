@@ -1,0 +1,15 @@
+# 2025-11-02 下一个比亚迪在哪里 — 处理完成
+
+## 处理记录
+
+- Step 1 ✅ raw → 01-raw/2025-11-02_下一个比亚迪在哪里.md
+- Step 2 ✅ 清洗 → 02-cleaned/2025-11-02_下一个比亚迪在哪里.cleaned.md
+- Step 3 ✅ 术语 → 03-glossary/2025-11-02_下一个比亚迪在哪里.glossary.md
+- Step 4 ✅ 规则 → 04-rules/2025-11-02_下一个比亚迪在哪里.rules.md
+- Step 5 ✅ 系统 → 05-system/trading-system.md 附录追加
+
+### 特殊说明
+本课为十五五框架补充课，同时更新了 12-research/01-fifteen-five.md 的行业方向框架（基于华西证券五年规划产业演变图谱）。
+
+### 未处理项
+manual/ 审核：本课无待确认术语，用户有修正意见请写入 07-manual/
