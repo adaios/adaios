@@ -1,6 +1,6 @@
 # AdaiOS 项目愿景与上下文
 
-Version: 0.3
+Version: 0.4
 
 ---
 
@@ -241,12 +241,12 @@ Record → Context → AI → Memory 闭环，持 Trading OS 基础能力。
 ## 当前阶段
 
 完善五层架构的核心能力：
-- Layer 1: 意图识别 + 今日会话上下文 ✅
+- Layer 1: 意图识别（AI+正则+会话感知三层兜底）✅，今日会话上下文 ✅
 - Layer 2: 今日简报 ✅（基础）
-- Layer 3: Identity / Record / Memory 文件存储 ✅
+- Layer 3: Identity / Record / Memory 文件存储 ✅，Knowledge 预留
 - Layer 4: 文字记录 + 意图路由 ✅，多模态 ❌
 - Layer 5: 未开始 ❌
-- Layer 6: 持仓管理 ✅，复盘沉淀 ❌，知识反哺 ❌
+- Layer 6: 持仓管理 ✅，记忆回读 ❌，知识召回 ❌，复盘沉淀 ❌，知识反哺 ❌
 
 ---
 
@@ -291,6 +291,6 @@ Record → Context → AI → Memory 闭环，持 Trading OS 基础能力。
 2. 是否沉淀长期资产？
 3. 是否帮助 AI 更理解用户？
 4. 是否符合五层产品架构定位？
-5. **是否尊重 os/ 目录的独立性？** — `os/` 下的项目是完全独立的，adai-core 只从中读取，不写入，不干涉其内部流程。
+5. **尊重 os/ 目录的独立性** — `os/` 下的项目有独立的 CLAUDE.md 和工作流，adai-core 只从中读取，不写入，不干涉其内部流程。Git 统一管理，工作焦点各自独立。
 
 不要只实现功能。要建设系统。

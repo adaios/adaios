@@ -56,6 +56,7 @@ data/                  # 个人数据资产（File First，Git 追踪）
   records/             #   原始记录（按年月组织）
   memory/              #   AI 理解沉淀
   trading/             #   持仓数据
+  knowledge/           #   知识体系（预留）
 ai/                    # AI 上下文模板
   context/             #   project / architecture / developer 上下文模板
   prompts/             #   提示词模板（预留）
@@ -78,9 +79,12 @@ com.adaiadai.core/
 │   ├── timeline/                 Record 的时间序列投影（TimelineEntry / TimelineProjection）
 │   ├── context/                  ★ Context Engine（核心能力）
 │   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION，正则 + AI 兜底）
-│   │   └── engine/                上下文引擎（ContextContributor 插件机制）
-│   │       └── ContextContributor  接口 → Domain OS 实现
-│   │       └── ContextPackage      上下文数据包
+│   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
+│   │   │   └── ContextContributor  接口 → Domain OS 实现
+│   │   │   └── ContextPackage      上下文数据包
+│   │   ├── prompt/                Prompt 模板管理（预留）
+│   │   ├── token/                 Token 管理（预留）
+│   │   └── policy/                策略管理（预留）
 │   ├── memory/                   个人记忆（Memory / MemoryService / MemorySummary）
 │   └── knowledge/                结构化知识资产（预留）
 │
@@ -133,7 +137,7 @@ com.adaiadai.core/
 
 1. **AdaiOS 不是 App → Service → Database** — 而是 Human → Record/File → Kernel (Context + Memory + Knowledge) → Domain OS → AI Model
 2. **Context 是内核能力，不是 AI 辅助模块** — Context Engine 在 Kernel 中，负责组合上下文 Package 提供给 AI
-3. **AI 不是业务层，是基础设施** — LLM 调用归 `infrastructure/ai`，Prompt 管理归 `kernel/context/prompt`
+3. **AI 不是业务层，是基础设施** — LLM 调用归 `infrastructure/ai`，Prompt 管理归 `kernel/context/prompt`（预留）
 4. **两类 Domain** — Kernel Domain (identity/record/timeline/context/memory/knowledge) 是所有 Domain OS 共享的系统域；Domain OS (trading/life/project) 是挂载其上的业务域
 
 ## 最高设计原则

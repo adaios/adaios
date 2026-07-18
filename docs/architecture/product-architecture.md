@@ -173,10 +173,11 @@ Layer 3 Identity + Memory + Knowledge 更新
 
 ## os/ 目录独立性
 
-`os/` 下的每个项目（如 `os/trading-os/`）是完全独立的：
+`os/` 下的每个项目（如 `os/trading-os/`）有独立的工作流：
 
-- 有自己的 `CLAUDE.md`、独立的工作流、独立的生命周期
+- 有自己的 `CLAUDE.md`、独立的工作流程和目录规则
 - AdaiOS mono repo 只是存放位置，不干涉内部运作
 - 不依赖 adai-core 任何代码
 - adai-core 通过文件系统单向读取其产出的知识资产（`11-context/`）
 - 从不反向写入：`os/` → `data/`，不反向
+- **Git 统一在根仓库管理，工作焦点各自独立**
