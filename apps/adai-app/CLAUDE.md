@@ -1,154 +1,105 @@
-# CLAUDE.md
+# CLAUDE.md — adai-app
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+AdaiOS Flutter 前端（Web / Android / iOS）。
 
-## Project Overview
+> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 CLAUDE.md 和 VISION.md。
+> **在本目录工作时，你的上下文限制在 Flutter 前端，不处理后端、交易知识等其他项目。**
 
-ADAI — Personal Context Platform. A Flutter mobile / web app (Material 3, dark mode) that serves as a personal digital entry point. No backend, no API calls, no state management — all hardcoded mock data.
+---
 
-**Core philosophy:** 记录今天。理解过去。帮助未来。
+## 技术栈
 
-**Single page product** — no BottomNavigation, no tabs, no multi-level pages. Just one scrollable feed.
+| 层面 | 选型 |
+|------|------|
+| 框架 | Flutter 3.44.6 / Dart 3.12.2 |
+| 主题 | Material 3，深色模式 |
+| 状态管理 | StatefulWidget + setState（无第三方状态库） |
+| 后端通讯 | HTTP REST → `services/adai-core`（Spring Boot） |
 
-## Build & Run
+## 构建与运行
 
 ```bash
-# Flutter SDK is at D:\Software\flutter\bin
+# Flutter SDK 路径
 export PATH="$PATH:/d/Software/flutter/bin"
 
-# Run (need Chrome for web)
+# 运行 Web
 flutter run -d chrome
 
-# Analyze
+# 构建
+flutter build web --release      # Web release
+flutter build apk --debug         # Android APK
+
+# 分析
 flutter analyze
 
-# Build web release
-flutter build web --release
-python -m http.server 8080 --bind 127.0.0.1  # serve from build/web
-
-# Build APK (requires Android SDK)
-flutter build apk --debug
+# 测试
+flutter test
 ```
 
-### 🚨 Build Troubleshooting
-
-**Flutter SDK version:** 3.29.2 (stable), engine revision `18b71d647a292a980abb405ac7d16fe1f0b20434`
-
-**Engine.version corruption** — If `flutter build web` fails with 404 on `flutter_gpu.zip`
-or "Unable to determine engine version", check:
-
-```bash
-cat /d/Software/flutter/bin/internal/engine.version
-```
-
-If empty, restore the revision hash (confirm from `/d/Software/flutter/bin/cache/flutter.version.json`):
-
-```bash
-echo "18b71d647a292a980abb405ac7d16fe1f0b20434" > /d/Software/flutter/bin/internal/engine.version
-```
-
-**Git detection** — From Windows bash, Flutter's `flutter.bat` (cmd) and the `flutter` (bash script)
-detect git differently. The bash script needs GIT_EXEC_PATH and GIT_TEMPLATE_DIR set.
-When `flutter` wrapper fails with "Unable to find git in your PATH", bypass it:
-
-```bash
-export FLUTTER_ROOT="/d/Software/flutter"
-export PATH="$FLUTTER_ROOT/bin/cache/dart-sdk/bin:$PATH"
-dart $FLUTTER_ROOT/bin/cache/flutter_tools.snapshot build web --release
-```
-
-This avoids the wrappers entirely and calls the Flutter tool directly via the Dart snapshot.
-
-**Force full rebuild** — If build/web has stale artifacts:
-```bash
-rm -rf build/web
-flutter build web --release
-```
-
-## Project Structure
+## 项目结构
 
 ```
 lib/
-├── main.dart                 # RootApp — MaterialApp with dark/light themes
-├── main_page.dart            # THE only page — TopBar + Feed + InputBar
+├── main.dart                    # App 入口
+├── main_page.dart               # 主页面 — TopBar + Feed + InputBar
+├── services/
+│   ├── api_config.dart          # API 配置（后端地址）
+│   └── api_service.dart         # HTTP 客户端（REST API 调用）
 ├── theme/
-│   ├── app_colors.dart       # 6-level warm grey palette (dark/light)
-│   └── app_theme.dart        # Material 3 ThemeData
-├── data/
-│   └── mock_data.dart        # ALL mock data — FeedItem[], TimelineEntry[]
+│   ├── app_colors.dart          # 调色板
+│   └── app_theme.dart           # Material 3 ThemeData
 └── widgets/
-    ├── feed_card.dart        # Unified card — left accent bar by role (user/AI/news)
-    ├── input_bar.dart        # One-row input — voice/text toggle + attachment menu
-    └── timeline_modal.dart   # BottomSheet timeline — date groups, rail on left
+    ├── feed_card.dart           # FeedCard — 4 态状态机：idle/waiting/chatting/ended
+    ├── input_bar.dart           # 输入栏 — 语音/文字切换 + 发送
+    └── timeline_modal.dart      # 时间线 BottomSheet
 ```
 
-## Architecture Rules
+## 当前测试状态
 
-- **No backend. No API. No database.**
-- **No state management** — only `StatefulWidget` + `setState`
-- **No BottomNavigationBar** — single page. Timeline is a modal, not a page.
-- **Mock data only** — everything in `lib/data/mock_data.dart`
-- **Dark mode first** — `ThemeMode.dark` by default
+前端测试在 `test/`，当前 **19 个测试，0 失败**。
+覆盖：DTO JSON 解析、FeedCardData 模型、FeedCard 渲染、App 启动。
 
-## Design Tokens (Dark Mode)
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| darkBg | `#0E0E0E` | Background |
-| darkSurface | `#1A1A1A` | Cards |
-| darkSurface2 | `#232326` | Buttons, input |
-| darkBorder | `#2C2C2E` | Dividers |
-| darkGrey1 | `#F0EDE9` | Primary text |
-| darkGrey3 | `#B5B0AA` | Body text |
-| darkGrey4 | `#908B85` | Secondary |
-| darkGrey5 | `#66615C` | Tertiary |
-| darkGrey6 | `#45423E` | Placeholder |
-
-Accent: `darkGreen` (`#2BC457`, AI analysis), `darkBlue` (`#5299FF`, news).
-
-## Three Card Roles
-
-| Role | Visual Signature | Text Weight |
-|------|-----------------|-------------|
-| User entry | No decoration, lightest | 16px, w500 |
-| AI analysis | Green 5px left bar + green dot + "分析" tag (9px, letter-spaced) | 15px, w400 |
-| News | Blue 5px left bar + blue dot + "资讯" tag (9px, letter-spaced) | 15px, w400 |
-
-All share same card container (`darkSurface`, 16px radius).
-
-## Input Bar Layout
-
-One row, three columns. WeChat-style:
+## FeedCard 状态机
 
 ```
-[🎤/⌨]  [input area (text or hold-to-voice)]  [⊕/↑]
+                用户输入（新记录）
+                      │
+               ┌──────┴──────┐
+               │             │
+           intent=log   intent=question
+               │             │
+               ▼             ▼
+            idle 态      chatting 态
+        底部 ──ask──     底部 [end]
+               │             │
+               │ 点 ask      │ 点 end
+               ▼             ▼
+           waiting 态      ended 态
+         输入自动聚焦     绿色边框 + 总结标签
+               │         底部 ──ask──
+               │ 输入        │ 点 ask → 回到 waiting
+               ▼             ▼
+           chatting 态      ...
 ```
 
-- **Left button** — toggles voice/keyboard mode
-- **Middle** — text field (keyboard mode) or "按住 说话" (voice mode, long press to record)
-- **Right** — always 40×40. ⊕ opens attachment menu when empty, ↑ sends when has text
-- **Attachment menu** — ⊕ opens BottomSheet: image / voice / file / link
+## API 依赖
 
-## Feed Layout
+前端需要后端 `services/adai-core` 运行中。API 契约见 `docs/architecture/api-spec.md`。
 
-- Time + tags on one row, top-left
-- Content below
-- For AI/news: left accent bar (5px) + role indicator dot + role label
-- For news: bottom source attribution with `↗` icon
-- Cards spaced at 6px vertical margin (12px between adjacent)
-- AI morning briefing entries are just the first items in the feed (07:00)
+| 前端操作 | API 调用 |
+|:---------|:---------|
+| 新输入 | `POST /api/v1/records` |
+| 点 [ask] → 用户输入 | `POST /api/v1/records` `intent: "question"` |
+| 点 [end] | `POST /api/v1/conversations/end` |
+| 加载 Feed | `GET /api/v1/feed` |
+| 加载简报 | `GET /api/v1/brief` |
+| 加载时间线 | `GET /api/v1/timeline` |
 
-## Timeline
+## 设计约定
 
-Not a page. Top-right icon → BottomSheet modal (75% height).
-Date-anchored vertical rail. "时间线" header.
-
-## Forbidden
-
-- No BottomNavigation / tabs
-- No chat bubbles (left/right)
-- No "Brain", "AI", "Knowledge", "Capture" as UI labels
-- No Dashboard KPI / statistics
-- No send / save buttons — Enter to send, typing is recording
-- No tech blue / gradients
-- No state management libraries
+- **单页** — 无 BottomNavigation，无 tabs，无多级页面
+- **深色模式优先**
+- **一个卡片一次对话** — idle → waiting → chatting → ended 在同一个卡片内完成
+- **激活卡片** — 左侧 3px 绿色竖线标识，底部无边框（直角的），移到最底部
+- **已结束卡片** — 绿色边框 + 总结 + 标签 + `── ask ──`
+- **设计 tokens** 在 `app_colors.dart` 中定义
