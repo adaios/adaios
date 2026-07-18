@@ -41,7 +41,7 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 
 ```
 services/
-  adai-core/           # ★ 唯一核心运行时（Java 17 + Spring Boot 3.2）
+  adai-core/           # ★ 唯一核心运行时（Java 17 + Spring Boot 3.3）
                         #   独立 Gradle 项目：gradlew / build.gradle.kts / gradle/ / settings.gradle.kts
 apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）

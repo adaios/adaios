@@ -14,6 +14,7 @@ target/
 # ── IDE / Claude ──
 .idea/
 .claude/
+.obsidian/
 *.iml
 *.iws
 *.ipr
@@ -41,6 +42,7 @@ logs/
 # ── Temp ──
 tmp/
 temp/
+*.bak
 
 # ── Spring Boot ──
 *.springBeans
