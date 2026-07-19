@@ -24,12 +24,14 @@ class ApiService {
 
   /// 提交记录。
   /// [intent] 可选，手动指定意图：log | question，不指定则由后端自动识别。
-  Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent}) async {
+  /// [cardId] 可选，会话卡片 ID，用于跟踪对话上下文。
+  Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
       'content': content,
       if (type != null) 'type': type,
       if (tags != null && tags.isNotEmpty) 'tags': tags,
       if (intent != null) 'intent': intent,
+      if (cardId != null) 'cardId': cardId,
     };
     final resp = await http.post(
       Uri.parse('$baseUrl/api/v1/records'),
@@ -53,11 +55,15 @@ class ApiService {
   }
 
   /// 结束会话（总结对话，存为记录）。
-  Future<EndConversationResponse> endConversation(List<String> turns) async {
+  Future<EndConversationResponse> endConversation(List<String> turns, {String? cardId}) async {
+    final body = {
+      'turns': turns,
+      if (cardId != null) 'cardId': cardId,
+    };
     final resp = await http.post(
       Uri.parse('$baseUrl/api/v1/conversations/end'),
       headers: _headers,
-      body: jsonEncode({'turns': turns}),
+      body: jsonEncode(body),
     );
     _check(resp);
     return EndConversationResponse.fromJson(jsonDecode(resp.body));
@@ -98,6 +104,8 @@ class FeedEntryResponse {
   final String content;
   final List<String> tags;
   final String time;  // HH:mm
+  final String? intent; // "question" | "log" | null
+  final String? summary; // AI-generated summary
 
   FeedEntryResponse({
     required this.type,
@@ -107,6 +115,8 @@ class FeedEntryResponse {
     required this.content,
     required this.tags,
     required this.time,
+    this.intent,
+    this.summary,
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -117,6 +127,8 @@ class FeedEntryResponse {
     content: json['content'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
     time: json['time'] as String? ?? json['timeString'] as String? ?? '',
+    intent: json['intent'] as String?,
+    summary: json['summary'] as String?,
   );
 }
 

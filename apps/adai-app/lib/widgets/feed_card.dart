@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
-import '../services/api_service.dart' show FeedEntryResponse;
 
 enum FeedCardType { userEntry, aiNote, dailyBrief, news, weather, image, link, file }
 
@@ -26,25 +25,32 @@ class FeedCardData {
   final String? summary;
   final List<ConversationTurn>? turns;
   final CardMode mode;
-  final bool ended; // true = idle after end (show green border)
-  final bool loading; // true = waiting for AI reply
+  final bool ended;
+  final bool loading;
+  final String? intent;
+  final bool expanded;
+  final DateTime updatedAt;
 
-  const FeedCardData({
+  FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
     this.tags, this.summary, this.turns, this.mode = CardMode.idle,
-    this.ended = false, this.loading = false,
-  });
+    this.ended = false, this.loading = false, this.intent, this.expanded = false,
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
     String? id, FeedCardType? type, String? time, String? content,
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
-    CardMode? mode, bool? ended, bool? loading,
+    CardMode? mode, bool? ended, bool? loading, String? intent, bool? expanded,
+    DateTime? updatedAt,
   }) {
     return FeedCardData(
       id: id ?? this.id, type: type ?? this.type, time: time ?? this.time,
       content: content ?? this.content, tags: tags ?? this.tags,
       summary: summary ?? this.summary, turns: turns ?? this.turns,
       mode: mode ?? this.mode, ended: ended ?? this.ended, loading: loading ?? this.loading,
+      intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
+      updatedAt: updatedAt ?? DateTime.now(),
     );
   }
 }
@@ -90,8 +96,11 @@ class FeedCard extends StatelessWidget {
   final FeedCardData data;
   final VoidCallback? onAsk;
   final VoidCallback? onEnd;
+  final VoidCallback? onActivate;
 
-  const FeedCard({super.key, required this.data, this.onAsk, this.onEnd});
+  const FeedCard({
+    super.key, required this.data, this.onAsk, this.onEnd, this.onActivate,
+  });
 
   bool get _isWaiting => data.mode == CardMode.waiting;
   bool get _isChatting => data.mode == CardMode.chatting;
@@ -99,12 +108,20 @@ class FeedCard extends StatelessWidget {
   bool get _isEnded => data.mode == CardMode.idle && data.ended;
   bool get _isIdle => data.mode == CardMode.idle && !data.ended;
   bool get _hasTurns => data.turns != null && data.turns!.isNotEmpty;
+  // log: intent is 'log', or null and no turns (feed-loaded records)
+  bool get _isLogStyle => !_isActive && !_isEnded
+      && (data.intent == 'log' || (data.intent == null && !_hasTurns));
+  // ask: anything that's not log, not active, not ended
+  bool get _isAskStyle => !_isActive && !_isEnded && !_isLogStyle;
 
   @override
   Widget build(BuildContext context) {
+    // Normal / expanded rendering (unchanged from current)
     final borderColor = _isEnded
         ? AppColors.darkGreen.withAlpha(180)
-        : AppColors.darkBorder.withAlpha(200);
+        : _isLogStyle
+            ? AppColors.darkBorder.withAlpha(100)
+            : AppColors.darkBorder.withAlpha(200);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -203,6 +220,28 @@ class FeedCard extends StatelessWidget {
   Widget _buildHeader() {
     return Row(
       children: [
+        if (_isLogStyle) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.darkGrey5.withAlpha(50),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text('log', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+          ),
+          const SizedBox(width: 6),
+        ],
+        if (_isAskStyle) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.darkGreen.withAlpha(50),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text('ask', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+          ),
+          const SizedBox(width: 6),
+        ],
         Text(data.time, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
         if (_isChatting) ...[
           const SizedBox(width: 6),
@@ -284,15 +323,9 @@ class FeedCard extends StatelessWidget {
 
   Widget _buildBottomLine(Color borderColor) {
     if (_isActive) {
-      // Active: end at right, no prompt text
       return _lineEnd(borderColor);
     }
-    if (_isEnded) {
-      // After end: ask in green
-      return _lineCentered('ask', AppColors.darkGreen, onAsk, borderColor);
-    }
-    // Idle record: ask in gray
-    return _lineCentered('ask', AppColors.darkGrey5, onAsk, borderColor);
+    return _lineCentered(borderColor);
   }
 
   Widget _lineEnd(Color borderColor) {
@@ -321,7 +354,6 @@ class FeedCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Push end to ~3/4 position
             const SizedBox(width: 48),
           ],
         ),
@@ -329,9 +361,11 @@ class FeedCard extends StatelessWidget {
     );
   }
 
-  Widget _lineCentered(String label, Color labelColor, VoidCallback? onTap, Color borderColor) {
+  Widget _lineCentered(Color borderColor) {
+    final labelColor = _isEnded ? AppColors.darkGreen : AppColors.darkGrey5;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: onAsk,
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 36,
@@ -341,7 +375,6 @@ class FeedCard extends StatelessWidget {
           ),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Expanded(child: Container(
               height: 1,
@@ -354,7 +387,7 @@ class FeedCard extends StatelessWidget {
             )),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: labelColor, letterSpacing: 0.5)),
+              child: Text('ask', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: labelColor, letterSpacing: 0.5)),
             ),
             Expanded(child: Container(
               height: 1,

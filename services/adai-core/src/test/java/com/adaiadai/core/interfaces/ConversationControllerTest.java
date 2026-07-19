@@ -1,8 +1,10 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,8 +32,9 @@ class ConversationControllerTest {
         mapper = new ObjectMapper();
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
         RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
+        CardFileRepository cardRepository = new CardFileRepository(fileStorage);
         ConversationController controller = new ConversationController(
-                new MockAiClient(), recordRepository
+                new MockAiClient(), recordRepository, cardRepository
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
@@ -81,7 +84,7 @@ class ConversationControllerTest {
     void endConversation_persistsRecord() throws Exception {
         InMemoryFileStorage storage = new InMemoryFileStorage();
         RecordFileRepository repo = new RecordFileRepository(storage);
-        ConversationController ctrl = new ConversationController(new MockAiClient(), repo);
+        ConversationController ctrl = new ConversationController(new MockAiClient(), repo, new CardFileRepository(storage));
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
 
         String body = mapper.writeValueAsString(Map.of(

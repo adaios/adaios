@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
@@ -37,10 +38,11 @@ class RecordControllerTest {
         mapper = new ObjectMapper();
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
         RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
+        CardFileRepository cardRepository = new CardFileRepository(fileStorage);
         IntentRecognizer intentRecognizer = new IntentRecognizer(new MockAiClient());
 
         QuestionAppService questionAppService = mock(QuestionAppService.class);
-        when(questionAppService.answer(any()))
+        when(questionAppService.answer(any(), any()))
                 .thenReturn(new QuestionAppService.AnswerResult(
                         "rec_test", "mock answer", List.of("test"), "raw"
                 ));
@@ -50,6 +52,7 @@ class RecordControllerTest {
                 intentRecognizer,
                 questionAppService,
                 recordRepository,
+                cardRepository,
                 aiClient
         );
 
@@ -69,7 +72,7 @@ class RecordControllerTest {
 
     @Test
     void createRecord_question() throws Exception {
-        String body = mapper.writeValueAsString(Map.of("content", "what about weather?"));
+        String body = mapper.writeValueAsString(Map.of("content", "天气如何"));
         mockMvc.perform(post("/api/v1/records")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))

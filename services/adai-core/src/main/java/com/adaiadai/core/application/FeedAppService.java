@@ -88,11 +88,14 @@ public class FeedAppService {
     // ── 内部方法 ──
 
     private FeedEntry toFeedEntry(ContentRecord r, Memory m) {
+        String intent = "conversation".equals(r.type()) ? "question" : "log";
         return new FeedEntry(
                 "record",
                 r.id(), null,
                 r.title(), r.content(), r.tags(),
-                r.createdAt().toLocalTime()
+                r.createdAt().toLocalTime(),
+                intent,
+                r.summary()
         );
     }
 
@@ -101,7 +104,9 @@ public class FeedAppService {
                 "ai_note",
                 m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
-                m.createdAt().toLocalTime()
+                m.createdAt().toLocalTime(),
+                null,
+                null
         );
     }
 
@@ -126,7 +131,9 @@ public class FeedAppService {
             String title,
             String content,
             List<String> tags,
-            LocalTime time
+            LocalTime time,
+            String intent,       // "question" | "log" | null
+            String summary      // AI-generated summary
     ) {
         public String timeString() {
             return time.format(DateTimeFormatter.ofPattern("HH:mm"));

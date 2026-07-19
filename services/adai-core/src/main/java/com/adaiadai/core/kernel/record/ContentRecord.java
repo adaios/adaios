@@ -24,8 +24,14 @@ public record ContentRecord(
         String title,
         String content,
         List<String> tags,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String intent,   // "question" | "log" | null
+        String summary   // AI-generated summary
 ) {
+    public ContentRecord(String id, String type, String source, String title,
+                         String content, List<String> tags, LocalDateTime createdAt) {
+        this(id, type, source, title, content, tags, createdAt, null, null);
+    }
 
     /**
      * 从文件系统路径推断记录所属的年份和月份（用于目录组织）。

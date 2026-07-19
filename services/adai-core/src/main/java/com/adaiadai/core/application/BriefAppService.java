@@ -54,7 +54,8 @@ public class BriefAppService {
                 .map(IdentityProfile::name)
                 .orElse("用户");
 
-        String prompt = buildBriefPrompt(identityName, recentRecords, recentMemories);
+        int hour = java.time.LocalDateTime.now().getHour();
+        String prompt = buildBriefPrompt(identityName, recentRecords, recentMemories, hour);
 
         // 用 Mock AI 时返回固定格式，用 DeepSeek 时真实生成
         try {
@@ -72,15 +73,17 @@ public class BriefAppService {
         }
     }
 
-    private String buildBriefPrompt(String name, List<ContentRecord> records, List<Memory> memories) {
+    private String buildBriefPrompt(String name, List<ContentRecord> records, List<Memory> memories, int hour) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一个个人 AI 助手。请根据以下信息，生成一段简短、温暖的今日问候（不超过200字）。\n\n");
+        String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+        sb.append("你是一个个人 AI 助手。请根据以下信息，生成一段简短、温暖的").append(greeting).append("问候。\n\n");
         sb.append("用户称呼：").append(name).append("\n\n");
 
         if (!records.isEmpty()) {
-            sb.append("近期记录：\n");
             for (ContentRecord r : records) {
-                sb.append("- [").append(r.createdAt().toLocalDate()).append("] ")
+                String time = r.createdAt().toLocalTime()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                sb.append("- [").append(time).append("] ")
                         .append(r.content()).append("\n");
             }
             sb.append("\n");
@@ -96,10 +99,16 @@ public class BriefAppService {
 
         sb.append("""
                 要求：
-                1. 用自然语言，像朋友一样问候
-                2. 提及 1-2 件最近发生的具体事情
+                1. 用自然语言，像朋友一样问候，使用指定的称呼
+                2. 提及 1-2 件最近发生的具体事情，每行用 emoji 开头
                 3. 给出 1 句简单提醒或建议
                 4. 语气温暖、简洁
+                5. 每行不超过 30 字
+                6. 不要输出 JSON，直接输出带 emoji 的纯文字列表。
+                   例如：
+                   ☕ 看你在下午喝了茶
+                   📝 记录了几条生活动态
+                   今天记得多喝水哦！
                 """);
         return sb.toString();
     }
@@ -108,13 +117,11 @@ public class BriefAppService {
         int todayCount = (int) records.stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(LocalDate.now()))
                 .count();
-        String recordSummary = todayCount > 0
-                ? "今天已有 " + todayCount + " 条记录"
-                : "今天还没有记录";
+        int hour = java.time.LocalDateTime.now().getHour();
+        String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
 
-        return "早上好，" + name + " ☀️\n\n"
-                + recordSummary + "。"
-                + (!records.isEmpty() ? "\n昨天有 " + records.size() + " 条动态。" : "")
-                + "\n有什么想记下来的吗？";
+        return "☀ " + greeting + "，" + name + "！\n"
+                + "📝 今天已有 " + todayCount + " 条记录\n"
+                + "💧 别忘了多喝水哦！";
     }
 }

@@ -82,6 +82,7 @@ public class RecordFileRepository implements RecordRepository {
                 source: %s
                 tags: [%s]
                 createdAt: %s
+                summary: %s
                 ---
                 %s
 
@@ -91,6 +92,7 @@ public class RecordFileRepository implements RecordRepository {
                 record.source(),
                 String.join(", ", record.tags()),
                 record.createdAt().toString(),
+                record.summary() != null ? record.summary() : "",
                 record.content()
         );
     }
@@ -115,7 +117,9 @@ public class RecordFileRepository implements RecordRepository {
         List<String> tags = parseTags(fields.getOrDefault("tags", ""));
         LocalDateTime createdAt = parseDateTime(fields.getOrDefault("createdAt", null));
 
-        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt);
+        String summary = fields.getOrDefault("summary", null);
+        if (summary != null && summary.isBlank()) summary = null;
+        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, null, summary);
     }
 
     private Map<String, String> parseFrontmatter(String frontmatter) {

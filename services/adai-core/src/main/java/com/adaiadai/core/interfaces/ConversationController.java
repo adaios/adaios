@@ -2,7 +2,9 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * ConversationController — conversation lifecycle endpoints.
@@ -27,17 +30,20 @@ public class ConversationController {
 
     private final AiClient aiClient;
     private final RecordRepository recordRepository;
+    private final CardFileRepository cardRepository;
 
-    public ConversationController(AiClient aiClient, RecordRepository recordRepository) {
+    public ConversationController(AiClient aiClient, RecordRepository recordRepository,
+                                  CardFileRepository cardRepository) {
         this.aiClient = aiClient;
         this.recordRepository = recordRepository;
+        this.cardRepository = cardRepository;
     }
 
     @PostMapping("/end")
     public ResponseEntity<EndConversationResponse> endConversation(
             @RequestBody EndConversationRequest request) {
 
-        log.info("Conversation end | turns={}", request.turns().size());
+        log.info("Conversation end | turns={} | cardId={}", request.turns().size(), request.cardId());
 
         // Build prompt from all turns
         String turnText = buildTurnText(request.turns());
@@ -77,7 +83,19 @@ public class ConversationController {
         );
         recordRepository.save(record);
 
-        log.info("Conversation summary saved | recordId={} | tags={}", id, tags);
+        // Update card file with summary and ended status
+        if (request.cardId() != null) {
+            Optional<CardRecord> existing = cardRepository.findById(request.cardId());
+            if (existing.isPresent()) {
+                CardRecord updated = existing.get()
+                        .withStatus("ended")
+                        .withSummary(summaryText);
+                cardRepository.save(updated);
+                log.info("Card updated | cardId={} | status=ended", request.cardId());
+            }
+        }
+
+        log.info("Conversation summary saved | recordId={} | tags={} | cardId={}", id, tags, request.cardId());
 
         return ResponseEntity.ok(new EndConversationResponse(id, summaryText, tags));
     }
@@ -92,8 +110,11 @@ public class ConversationController {
     }
 
     public record EndConversationRequest(
-            List<String> turns
-    ) {}
+            List<String> turns,
+            String cardId
+    ) {
+        public EndConversationRequest { turns = turns != null ? turns : List.of(); }
+    }
 
     public record EndConversationResponse(
             String recordId,
