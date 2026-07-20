@@ -59,6 +59,9 @@ data/trading/
 # data/identity/profile.md 不提交（含真实用户偏好）
 data/identity/profile.md
 
+# 索引文件可从 records 重建，不追踪
+data/index/
+
 # ── 后端测试残留数据 ──
 services/adai-core/data/
 
