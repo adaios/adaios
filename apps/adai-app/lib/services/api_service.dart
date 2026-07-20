@@ -42,10 +42,13 @@ class ApiService {
     return RecordResponse.fromJson(jsonDecode(resp.body));
   }
 
-  /// 获取时间线（按天分组）。
-  Future<List<TimelineEntryResponse>> getTimeline({String? date}) async {
+  /// 获取时间线。
+  /// [type] 可选，按类型筛选。
+  /// [limit] 可选，返回条数上限，默认 50。
+  Future<List<TimelineEntryResponse>> getTimeline({String? type, int limit = 50}) async {
     final params = <String, String>{};
-    if (date != null) params['date'] = date;
+    if (type != null) params['type'] = type;
+    if (limit != 50) params['limit'] = limit.toString();
 
     final uri = Uri.parse('$baseUrl/api/v1/timeline').replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await http.get(uri, headers: _headers);

@@ -27,7 +27,7 @@ spring:
 
 adai:
   ai:
-    provider: deepseek
+    provider: deepseek          # mock（默认，无需 API Key）| deepseek
     model: deepseek-chat
   storage:
     base-path: ${ADAI_DATA_DIR:../../data}

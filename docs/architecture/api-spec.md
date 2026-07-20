@@ -9,6 +9,7 @@
 ### `POST /api/v1/records` — 提交记录
 
 单一入口。所有用户输入统一走此接口，后端自动分流。
+支持会话卡片：当已有活跃聊天时，`cardId` 传当前卡片 ID，新输入作为对话延续。
 
 **Request Body**
 
@@ -17,8 +18,9 @@
   "content": "今天买了立昂微",      // required, 1-10000 字符
   "type": "note",                 // optional, 默认 "note"
   "tags": ["投资", "半导体"],       // optional
-  "intent": null                  // optional: "log" | "question" | null
+  "intent": null,                 // optional: "log" | "question" | null
                                   // null = 后端自动判断
+  "cardId": null                  // optional: 会话卡片 ID，有值则视为对话延续
 }
 ```
 
@@ -48,15 +50,15 @@
 }
 ```
 
-前端行为：→ 展示聊天卡片（一问一答，底部 `[end]`）
+前端行为：→ 展示聊天卡片，激活会话模式
 
 **意图识别逻辑**（后端决策链）
 
 ```
 1. 前端指定 intent → 直接使用（优先级最高）
-2. 5 分钟内有 QUESTION 记录 → 会话感知，当前视为 QUESTION
-3. 非会话 → DeepSeek 识别意图
-4. DeepSeek 失败 → 正则兜底
+2. cardId 存在且对应活跃卡片 → 直接视为 QUESTION（对话延续）
+3. AI 识别意图
+4. AI 失败 → 正则兜底
 5. 仍不明确 → STATEMENT
 ```
 
@@ -66,7 +68,7 @@
 
 ### `POST /api/v1/conversations/end` — 结束对话
 
-用户点击 `[end]` 时前端调用。后端总结整个对话，保存为记录。
+用户关闭聊天会话时前端调用。后端总结整个对话，保存为记录，更新卡片状态。
 
 **Request Body**
 
@@ -77,7 +79,8 @@
     "今天多云转晴，20-28℃…",
     "那明天呢",
     "明天预计有雨，建议带伞"
-  ]
+  ],
+  "cardId": "card_143000"          // optional: 会话卡片 ID（后端同步更新卡片状态）
 }
 ```
 
@@ -91,7 +94,7 @@
 }
 ```
 
-前端行为：→ 卡片切换到 ended 态（绿色边框 + 总结 + 标签 + `── ask ──`）
+前端行为：→ 卡片切换到 ended 态（显示总结 + 标签）
 
 ---
 
@@ -113,16 +116,18 @@
   "brief": "早上好，今天已有3条记录…",     // 今日简报（Daily Brief）
   "entries": [
     {
-      "type": "record",         // record | ai_note | push
+      "type": "record",           // record | ai_note | push
       "id": "rec_...",
       "sourceRecordId": null,
       "title": "标题",
       "content": "内容",
       "tags": ["标签"],
-      "time": "14:30"           // HH:mm
+      "time": "14:30",             // HH:mm
+      "intent": "log",             // "question" | "log" | null
+      "summary": "AI摘要"          // AI生成的摘要（如果有）
     }
   ],
-  "earlierCount": 5              // since 之前有多少条（已折叠）
+  "earlierCount": 5               // since 之前有多少条（已折叠）
 }
 ```
 
@@ -218,56 +223,48 @@
 
 ---
 
-## 前端 FeedCard 状态机
+## 前端卡片交互
+
+### 卡片核心状态
+
+卡片在 `FeedCardData` 中有两个核心状态字段：
+
+| 字段 | 值 | 含义 |
+|:----|:---|:------|
+| `mode` | `idle` | 非聊天态，显示记录内容或已结束的对话 |
+| `mode` | `chatting` | 聊天态，一问一答中 |
+| `ended` | `true` / `false` | 对话是否已结束 |
+| `intent` | `"question"` / `"log"` | 卡片类型，决定渲染样式 |
+
+### 交互流程
 
 ```
-                        ┌─────────────────────────────┐
-                        │         用户输入              │
-                        └─────────────┬───────────────┘
-                                      │
-                        ┌─────────────┴─────────────┐
-                        │      POST /api/v1/records  │
-                        └─────────────┬───────────────┘
-                                      │
-                    ┌─────────────────┴──────────────────┐
-                    │          后端返回 JSON               │
-                    │                                    │
-              intent="log"                         intent="question"
-                    │                                    │
-                    ▼                                    ▼
-        ┌──────────────────────┐           ┌──────────────────────────┐
-        │    idle 态            │           │   chatting 态            │
-        │  ── 内容 ──            │           │  ── 你/AI一问一答 ──      │
-        │  ✓ 摘要 (10字以内)    │           │  ... loading 跳动点      │
-        │  [标签]               │           │  底部 [end]              │
-        │  灰色边框             │           │  灰色边框 + 左侧绿线     │
-        │  底部 ──── ask ────   │           │  底部直角 无底部边框      │
-        └──────────┬───────────┘           └──────────┬───────────────┘
-                   │ 点 ask                            │ 点 end
-                   ▼                                    ▼
-        ┌──────────────────────┐           ┌──────────────────────────┐
-        │  waiting 态           │           │   ended 态               │
-        │  (瞬间过渡)            │  ──→     │  ✓ 对话总结               │
-        │  输入框 placeholder   │           │  [标签]                  │
-        │  = "ask your question"│           │  绿色边框 + 标签 + 总结   │
-        │  输入框自动聚焦        │           │  底部 ──── ask ────      │
-        └──────────────────────┘           └──────────┬───────────────┘
-                                                       │ 点 ask → 回到 waiting
+list 模式（无活跃聊天）
+  │
+  ├── 普通记录（intent="log"）
+  │     └── 点卡片 → 进入活跃聊天模式（chatting 态）
+  │
+  └── 已结束的对话（intent="question" + ended=true）
+        └── 点卡片 → 进入活跃聊天模式，可继续提问
+
+chat 模式（活跃聊天，全屏）
+  │
+  ├── 输入文字 → API 提问 → AI 回复 → 继续对话
+  │
+  └── 点 [end conversation] → POST /conversations/end → 回到 list 模式，卡片显示摘要
 ```
 
----
-
-## 前端 API 映射
+### 前端 API 映射
 
 | 前端操作 | API 调用 |
 |:---------|:---------|
-| 新输入（不指定意图） | `POST /api/v1/records` `intent: null` |
-| 点 [ask] → 用户输入 | `POST /api/v1/records` `intent: "question"` |
-| 点 [end] | `POST /api/v1/conversations/end` |
+| 新输入（不指定意图） | `POST /api/v1/records` `intent: null, cardId: null` |
+| 聊天输入 | `POST /api/v1/records` `cardId: "...", intent: "question"` |
+| 点 [end] | `POST /api/v1/conversations/end` `cardId: "..."` |
 | 加载 Feed | `GET /api/v1/feed` |
 | 加载简报 | `GET /api/v1/brief` |
 | 加载时间线 | `GET /api/v1/timeline` |
 
 ---
 
-**文档版本：v1.0 | 最后更新：2026-07-18**
+**文档版本：v2.0 | 最后更新：2026-07-20**

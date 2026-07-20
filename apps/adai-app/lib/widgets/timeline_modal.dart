@@ -38,14 +38,16 @@ class _TimelineModalState extends State<TimelineModal> {
 
   Future<void> _loadTimeline() async {
     try {
-      final entries = await widget.api.getTimeline(
-        date: '${_baseDate.year}-${_baseDate.month.toString().padLeft(2, '0')}',
-      );
+      // Backend doesn't filter by month, so fetch all and filter on client
+      final allEntries = await widget.api.getTimeline();
       final map = <int, List<String>>{};
-      for (final e in entries) {
+      for (final e in allEntries) {
         if (e.dateTime.length >= 10) {
           try {
-            final day = DateTime.parse(e.dateTime.substring(0, 10)).day;
+            final dt = DateTime.parse(e.dateTime.substring(0, 10));
+            // Filter to current month only
+            if (dt.month != _baseDate.month || dt.year != _baseDate.year) continue;
+            final day = dt.day;
             final time = e.dateTime.length >= 16 ? e.dateTime.substring(11, 16) : '';
             map.putIfAbsent(day, () => []);
             map[day]!.add('$time  ${e.title}');

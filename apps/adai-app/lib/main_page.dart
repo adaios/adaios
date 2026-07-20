@@ -347,7 +347,7 @@ class _MainPageState extends State<MainPage>
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_emojiForLine(line) + '  ', style: const TextStyle(fontSize: 16)),
+                  Text('•  ', style: TextStyle(fontSize: 16, color: AppColors.darkGreen.withAlpha(150))),
                   Expanded(child: Text(_stripEmoji(line), style: const TextStyle(fontSize: 14, height: 1.6, fontWeight: FontWeight.w400, color: AppColors.darkGrey1))),
                 ]),
               );
