@@ -1,4 +1,4 @@
-package com.example.adai_app
+package com.adaiadai.app
 
 import io.flutter.embedding.android.FlutterActivity
 

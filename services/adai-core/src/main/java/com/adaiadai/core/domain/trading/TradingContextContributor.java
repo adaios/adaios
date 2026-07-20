@@ -66,4 +66,30 @@ public class TradingContextContributor implements ContextContributor {
 
         return sb.toString();
     }
+
+    @Override
+    public String globalContext() {
+        List<Position> positions = positionRepository.findAll();
+        if (positions.isEmpty()) {
+            return "";
+        }
+
+        PortfolioSnapshot snapshot = PortfolioSnapshot.of(positions, positionRepository.cashBalance());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 交易系统状态\n\n");
+        sb.append("当前持有 ").append(positions.size()).append(" 个仓位，");
+        sb.append("总市值 ").append(snapshot.totalValue().setScale(2).toPlainString()).append("，");
+        sb.append("现金余额 ").append(snapshot.cashBalance().setScale(2).toPlainString());
+
+        if (!positions.isEmpty()) {
+            sb.append("\n持仓概览：");
+            for (Position p : positions) {
+                sb.append(p.symbol()).append("(")
+                        .append(p.pnlPercent().setScale(1).toPlainString()).append("%) ");
+            }
+        }
+
+        return sb.toString();
+    }
 }

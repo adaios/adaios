@@ -4,12 +4,13 @@ import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
+import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
-import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -27,9 +28,8 @@ import java.util.Optional;
 /**
  * RecordController — unified input entry.
  * <p>
- * Supports manual intent override via {@code intent} field in the request body.
- * For STATEMENT: saves record + returns AI-generated tags and a brief summary.
- * For QUESTION: saves record + AI answer, grouped into a session.
+ * For STATEMENT: saves record + ContextEngine (Identity + TagIndex + Memory + Date) → AI tags/summary.
+ * For QUESTION: saves record + full ContextEngine + AI answer.
  */
 @RestController
 @RequestMapping("/api/v1/records")
@@ -39,17 +39,20 @@ public class RecordController {
 
     private final IntentRecognizer intentRecognizer;
     private final QuestionAppService questionAppService;
+    private final ContextEngine contextEngine;
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final AiClient aiClient;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
+                            ContextEngine contextEngine,
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             AiClient aiClient) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
+        this.contextEngine = contextEngine;
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.aiClient = aiClient;
@@ -121,28 +124,15 @@ public class RecordController {
     }
 
     /**
-     * STATEMENT: save record, return AI-generated tags and summary for frontend feedback.
+     * STATEMENT: save record + ContextEngine (Identity + TagIndex + Memory + Date) → AI tags/summary.
      */
     private ResponseEntity<StatemResponse> handleStatem(ContentRecord record) {
         List<String> tags = Collections.emptyList();
         String summary = null;
 
         try {
-            String prompt = """
-                    用户记录了一条内容。请分析并总结。
-                    内容：%s
-                    输出 JSON：
-                    {
-                      "summary": "一句话确认摘要（10字以内）",
-                      "tags": ["标签1", "标签2"],
-                      "sentiment": "neutral",
-                      "actionable": false
-                    }
-                    """.formatted(record.content());
-            ContextPackage ctx = ContextPackage.simple(
-                    "note", "",
-                    record.title(), record.content(), record.tags(), prompt
-            );
+            // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
+            ContextPackage ctx = contextEngine.compose("note", record);
             AiUnderstanding understanding = aiClient.understand(ctx);
             tags = understanding.tags();
             summary = understanding.summary();

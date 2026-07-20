@@ -5,13 +5,13 @@ import '../theme/app_colors.dart';
 /// Supports ask placeholder mode (triggered from parent).
 class InputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
-  final bool isAskMode;          // true when card is waiting
+  final bool hasActiveChat;          // true when chatting with AI
   final VoidCallback? onAskActivated; // called when ask mode starts typing
 
   const InputBar({
     super.key,
     required this.onSend,
-    this.isAskMode = false,
+    this.hasActiveChat = false,
     this.onAskActivated,
   });
 
@@ -49,7 +49,7 @@ class _InputBarState extends State<InputBar> {
   @override
   void didUpdateWidget(InputBar old) {
     super.didUpdateWidget(old);
-    if (widget.isAskMode && !old.isAskMode) {
+    if (widget.hasActiveChat && !old.hasActiveChat) {
       // Ask mode just activated – focus input
       _focusNode.requestFocus();
     }
@@ -186,7 +186,7 @@ class _InputBarState extends State<InputBar> {
                   width: 40, height: 40,
                   decoration: BoxDecoration(
                     color: !_isVoice && _hasText
-                        ? (widget.isAskMode ? AppColors.darkGreen : AppColors.darkGrey1)
+                        ? (widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey1)
                         : AppColors.darkSurface2,
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -212,7 +212,7 @@ class _InputBarState extends State<InputBar> {
       decoration: BoxDecoration(
         color: AppColors.darkSurface2,
         borderRadius: BorderRadius.circular(14),
-        border: widget.isAskMode
+        border: widget.hasActiveChat
             ? Border.all(color: AppColors.darkGreen.withAlpha(100), width: 0.5)
             : null,
       ),
@@ -221,10 +221,10 @@ class _InputBarState extends State<InputBar> {
         focusNode: _focusNode,
         style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
         decoration: InputDecoration(
-          hintText: widget.isAskMode ? 'ask your question...' : _placeholder,
+          hintText: widget.hasActiveChat ? 'ask your question...' : _placeholder,
           hintStyle: TextStyle(
             fontSize: 15,
-            color: widget.isAskMode
+            color: widget.hasActiveChat
                 ? AppColors.darkGreen.withAlpha(180)
                 : AppColors.darkGrey6,
           ),

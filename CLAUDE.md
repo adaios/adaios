@@ -80,7 +80,8 @@ com.adaiadai.core/
 │   ├── context/                  ★ Context Engine（核心能力）
 │   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION，正则 + AI 兜底）
 │   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
-│   │   │   └── ContextContributor  接口 → Domain OS 实现
+│   │   │   ├── ContextContributor  接口 → Domain OS 实现（含 globalContext()）
+│   │   │   ├── DefaultContextContributor 通用场景回退
 │   │   │   └── ContextPackage      上下文数据包
 │   │   ├── prompt/                Prompt 模板管理（预留）
 │   │   ├── token/                 Token 管理（预留）
@@ -112,9 +113,11 @@ com.adaiadai.core/
 └── infrastructure/             出站适配层 — 依赖倒置
     ├── WebConfig                 CORS 跨域配置
     ├── storage/                  文件存储（FileStorage / LocalFileStorage / StorageException）
-    │   ├── RecordFileRepository   Record 文件读写
+    │   ├── RecordFileRepository   Record 文件读写（保存时自动触发标签索引）
     │   ├── IdentityFileRepository Identity 文件读写
-    │   └── PositionFileRepository 持仓文件读写
+    │   ├── PositionFileRepository 持仓文件读写
+    │   ├── TagIndexService        标签索引（data/index/tags.json，替代时间窗口）
+    │   └── CardFileRepository     卡片对话文件读写
     ├── database/                 数据库访问（预留，Phase 2）
     ├── search/                   搜索（预留）
     └── ai/                       ★ AI 模型接入（非业务层）
@@ -249,5 +252,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/VISION.md` — ⚡ 项目愿景与核心理念（必读）
 - `docs/architecture/product-architecture.md` — 五层产品架构（必读）
 - `docs/architecture/system-architecture.md` — 系统架构细节
+- `docs/architecture/frontend-glossary.md` — 前端 UI 中英术语对照
+- `docs/architecture/layout-reference.md` — 前端页面布局视觉参考
+- `docs/architecture/api-spec.md` — API 接口契约
 - `domains/*-os/` — 各 Domain 的职责、概念、工作流
 - `ai/context/` — AI Context 模板

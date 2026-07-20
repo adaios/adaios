@@ -83,6 +83,15 @@ class ApiService {
   }
 }
 
+// ── Feed entry type constants ──
+
+/// 后端 FeedEntryResponse.type 的值。
+class FeedEntryType {
+  static const String record = 'record';
+  static const String aiNote = 'ai_note';
+  static const String push = 'push';
+}
+
 // ── DTO ──
 
 class FeedResponse {

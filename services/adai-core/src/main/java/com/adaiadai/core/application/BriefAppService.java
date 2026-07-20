@@ -76,6 +76,12 @@ public class BriefAppService {
     private String buildBriefPrompt(String name, List<ContentRecord> records, List<Memory> memories, int hour) {
         StringBuilder sb = new StringBuilder();
         String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+
+        // 告诉 AI 当前日期和星期
+        String todayInfo = java.time.LocalDate.now().toString() + " "
+                + java.time.LocalDate.now().getDayOfWeek().getDisplayName(
+                        java.time.format.TextStyle.FULL, java.util.Locale.CHINESE);
+        sb.append("当前日期：").append(todayInfo).append("\n\n");
         sb.append("你是一个个人 AI 助手。请根据以下信息，生成一段简短、温暖的").append(greeting).append("问候。\n\n");
         sb.append("用户称呼：").append(name).append("\n\n");
 

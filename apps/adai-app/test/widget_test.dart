@@ -78,7 +78,7 @@ void main() {
 
   group('FeedCardData model', () {
     test('copyWith preserves unset fields', () {
-      final card = FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'hi');
+      final card = FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi');
       final updated = card.copyWith(mode: CardMode.waiting);
       expect(updated.id, '1');
       expect(updated.content, 'hi');
@@ -86,23 +86,22 @@ void main() {
     });
 
     test('copyWith changes mode', () {
-      final card = FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'hi');
+      final card = FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi');
       expect(card.mode, CardMode.idle);
       final chatting = card.copyWith(mode: CardMode.chatting);
       expect(chatting.mode, CardMode.chatting);
     });
 
-    test('copyWith changes ended and loading', () {
-      final card = FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'hi');
-      final ended = card.copyWith(ended: true, summary: 'done');
-      expect(ended.ended, true);
+    test('copyWith changes mode and loading', () {
+      final card = FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi');
+      final ended = card.copyWith(mode: CardMode.ended, summary: 'done');
+      expect(ended.mode, CardMode.ended);
       expect(ended.summary, 'done');
     });
 
     test('default values', () {
-      final card = FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'test');
+      final card = FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'test');
       expect(card.mode, CardMode.idle);
-      expect(card.ended, false);
       expect(card.loading, false);
       expect(card.tags, isNull);
       expect(card.turns, isNull);
@@ -110,7 +109,7 @@ void main() {
 
     test('turns round-trip', () {
       final turns = [ConversationTurn(isUser: true, text: 'hi', time: '14:00')];
-      final card = FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'hi', turns: turns);
+      final card = FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi', turns: turns);
       expect(card.turns!.length, 1);
       expect(card.turns![0].text, 'hi');
     });
@@ -124,7 +123,7 @@ void main() {
         home: Scaffold(
           body: SingleChildScrollView(
             child: FeedCard(
-              data: FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'buy stock'),
+              data: FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'buy stock'),
             ),
           ),
         ),
@@ -144,7 +143,7 @@ void main() {
           body: SingleChildScrollView(
             child: FeedCard(
               data: FeedCardData(
-                id: '1', type: FeedCardType.userEntry, time: '14:00',
+                id: '1', type: FeedCardType.record, time: '14:00',
                 content: 'weather?', turns: turns, mode: CardMode.chatting,
               ),
             ),
@@ -163,9 +162,9 @@ void main() {
           body: SingleChildScrollView(
             child: FeedCard(
               data: FeedCardData(
-                id: '1', type: FeedCardType.userEntry, time: '14:00',
+                id: '1', type: FeedCardType.record, time: '14:00',
                 content: 'weather?', summary: 'chat about weather',
-                tags: ['weather'], mode: CardMode.idle, ended: true,
+                tags: ['weather'], mode: CardMode.ended,
               ),
             ),
           ),
@@ -183,7 +182,7 @@ void main() {
           body: SingleChildScrollView(
             child: FeedCard(
               data: FeedCardData(
-                id: '1', type: FeedCardType.userEntry, time: '14:00',
+                id: '1', type: FeedCardType.record, time: '14:00',
                 content: 'buy stock', tags: ['invest', 'tech'],
               ),
             ),
@@ -201,7 +200,7 @@ void main() {
         home: Scaffold(
           body: SingleChildScrollView(
             child: FeedCard(
-              data: FeedCardData(id: '1', type: FeedCardType.userEntry, time: '14:00', content: 'hi'),
+              data: FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi'),
               onAsk: () => asked = true,
             ),
           ),
@@ -219,7 +218,7 @@ void main() {
           body: SingleChildScrollView(
             child: FeedCard(
               data: FeedCardData(
-                id: '1', type: FeedCardType.userEntry, time: '14:00',
+                id: '1', type: FeedCardType.record, time: '14:00',
                 content: 'hi', mode: CardMode.chatting,
               ),
               onEnd: () => ended = true,

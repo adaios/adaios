@@ -19,11 +19,14 @@ class RecordFileRepositoryTest {
 
     private InMemoryFileStorage fileStorage;
     private RecordFileRepository repository;
+    private TagIndexService tagIndexService;
 
     @BeforeEach
     void setUp() {
         fileStorage = new InMemoryFileStorage();
+        tagIndexService = new TagIndexService(fileStorage);
         repository = new RecordFileRepository(fileStorage);
+        repository.setTagIndexService(tagIndexService);
     }
 
     @Test

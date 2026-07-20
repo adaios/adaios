@@ -1,7 +1,21 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-enum FeedCardType { userEntry, aiNote, dailyBrief, news, weather, image, link, file }
+/// 后端 record.type 映射。
+enum FeedCardType { record, aiNote, push }
+
+/// 后端 intent：log → 记录，question → 提问。
+enum IntentType { log, question;
+
+  /// 从后端 API 返回的字符串解析（'log' / 'question'）。
+  static IntentType? parse(String? value) {
+    if (value == null) return null;
+    return IntentType.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => IntentType.log,
+    );
+  }
+}
 
 class ConversationTurn {
   final bool isUser;
@@ -11,9 +25,10 @@ class ConversationTurn {
 }
 
 enum CardMode {
-  idle,     // record card
+  idle,     // record card（含 log / ask 风格）
   waiting,  // just clicked ask
   chatting, // in conversation
+  ended,    // conversation ended
 }
 
 class FeedCardData {
@@ -25,30 +40,29 @@ class FeedCardData {
   final String? summary;
   final List<ConversationTurn>? turns;
   final CardMode mode;
-  final bool ended;
   final bool loading;
-  final String? intent;
+  final IntentType? intent;
   final bool expanded;
   final DateTime updatedAt;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
     this.tags, this.summary, this.turns, this.mode = CardMode.idle,
-    this.ended = false, this.loading = false, this.intent, this.expanded = false,
+    this.loading = false, this.intent, this.expanded = false,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
     String? id, FeedCardType? type, String? time, String? content,
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
-    CardMode? mode, bool? ended, bool? loading, String? intent, bool? expanded,
+    CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
       id: id ?? this.id, type: type ?? this.type, time: time ?? this.time,
       content: content ?? this.content, tags: tags ?? this.tags,
       summary: summary ?? this.summary, turns: turns ?? this.turns,
-      mode: mode ?? this.mode, ended: ended ?? this.ended, loading: loading ?? this.loading,
+      mode: mode ?? this.mode, loading: loading ?? this.loading,
       intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -105,12 +119,12 @@ class FeedCard extends StatelessWidget {
   bool get _isWaiting => data.mode == CardMode.waiting;
   bool get _isChatting => data.mode == CardMode.chatting;
   bool get _isActive => _isWaiting || _isChatting;
-  bool get _isEnded => data.mode == CardMode.idle && data.ended;
-  bool get _isIdle => data.mode == CardMode.idle && !data.ended;
+  bool get _isEnded => data.mode == CardMode.ended;
+  bool get _isIdle => data.mode == CardMode.idle;
   bool get _hasTurns => data.turns != null && data.turns!.isNotEmpty;
-  // log: intent is 'log', or null and no turns (feed-loaded records)
+  // log: intent is 'log'; or no turns and no intent (feed-loaded records)
   bool get _isLogStyle => !_isActive && !_isEnded
-      && (data.intent == 'log' || (data.intent == null && !_hasTurns));
+      && (data.intent == IntentType.log || (data.intent == null && !_hasTurns));
   // ask: anything that's not log, not active, not ended
   bool get _isAskStyle => !_isActive && !_isEnded && !_isLogStyle;
 

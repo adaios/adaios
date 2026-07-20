@@ -40,4 +40,14 @@ public interface ContextContributor {
     default boolean isDefault() {
         return false;
     }
+
+    /**
+     * 全局上下文 — 不管什么场景，都让 AI 知道这部分信息。
+     * <p>
+     * 所有 Domain OS 贡献一段简短摘要，ContextEngine 每次组装时统一收集。
+     * 例如 Trading OS 贡献当前持仓摘要，Life OS 贡献本周趋势。
+     */
+    default String globalContext() {
+        return "";
+    }
 }

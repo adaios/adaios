@@ -103,3 +103,9 @@ lib/
 - **激活卡片** — 左侧 3px 绿色竖线标识，底部无边框（直角的），移到最底部
 - **已结束卡片** — 绿色边框 + 总结 + 标签 + `── ask ──`
 - **设计 tokens** 在 `app_colors.dart` 中定义
+
+## 相关文档
+
+- `docs/architecture/frontend-glossary.md` — 前端中英术语对照（用中文提修改时参考）
+- `docs/architecture/layout-reference.md` — 页面布局视觉参考（各状态 ASCII 图）
+- `DESIGN.md` — 设计原则与核心哲学（本目录）

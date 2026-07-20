@@ -46,6 +46,9 @@ dependencies {
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
 
+    // Jackson JSR310（LocalDateTime 序列化）
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     // testRuntimeOnly("com.h2database:h2")

@@ -26,7 +26,7 @@ class _MainPageState extends State<MainPage>
   static const int _pageSize = 5;
 
   String? _activeCardId;
-  bool _isAskMode = false;
+  bool _hasActiveChat = false;
   int _chatEnterTurnCount = 0;
 
   late AnimationController _enterCtrl;
@@ -57,7 +57,7 @@ class _MainPageState extends State<MainPage>
         _brief = feed.brief;
         _earlierCount = feed.earlierCount;
         _cards = feed.entries
-            .where((e) => e.type != 'ai_note')
+            .where((e) => e.type != FeedEntryType.aiNote)
             .map((e) => e.toFeedData())
             .toList();
         _loading = false;
@@ -77,7 +77,7 @@ class _MainPageState extends State<MainPage>
     final card = _cards.where((c) => c.id == cardId).firstOrNull;
     setState(() {
       _activeCardId = cardId;
-      _isAskMode = true;
+      _hasActiveChat = true;
       _chatEnterTurnCount = card?.turns?.length ?? 0;
     });
     _scrollToBottom();
@@ -91,9 +91,9 @@ class _MainPageState extends State<MainPage>
     if (!hasNewTurns) {
       setState(() {
         _activeCardId = null;
-        _isAskMode = false;
+        _hasActiveChat = false;
         if (card.turns != null && card.turns!.isNotEmpty) {
-          _updateCard(cardId, (c) => c.copyWith(intent: 'question'));
+          _updateCard(cardId, (c) => c.copyWith(intent: IntentType.question));
         }
       });
       _scrollToBottom();
@@ -101,20 +101,20 @@ class _MainPageState extends State<MainPage>
     }
 
     _deactivateOtherCards(cardId);
-    setState(() { _activeCardId = null; _isAskMode = false; });
+    setState(() { _activeCardId = null; _hasActiveChat = false; });
 
     try {
       final turns = card.turns?.map((t) => t.text).toList() ?? [];
       final resp = await _api.endConversation(turns, cardId: cardId);
       if (!mounted) return;
       setState(() {
-        _updateCard(cardId, (c) => c.copyWith(summary: resp.summary, tags: resp.tags, mode: CardMode.idle, intent: 'question'));
+        _updateCard(cardId, (c) => c.copyWith(summary: resp.summary, tags: resp.tags, mode: CardMode.idle, intent: IntentType.question));
       });
       _scrollToBottom();
     } catch (_) {
       if (mounted) _showError('summary failed, saved locally');
       setState(() {
-        _updateCard(cardId, (c) => c.copyWith(summary: 'conversation ended', tags: ['conversation'], mode: CardMode.idle, intent: 'question'));
+        _updateCard(cardId, (c) => c.copyWith(summary: 'conversation ended', tags: ['conversation'], mode: CardMode.idle, intent: IntentType.question));
       });
       _scrollToBottom();
     }
@@ -124,38 +124,38 @@ class _MainPageState extends State<MainPage>
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     if (_activeCardId != null) {
-      setState(() => _isAskMode = false);
+      setState(() => _hasActiveChat = false);
       _appendToActiveCard(text, timeStr);
       return;
     }
-    setState(() => _isAskMode = false);
+    setState(() => _hasActiveChat = false);
     _createNewCard(text, timeStr, null);
   }
 
   void _createNewCard(String text, String timeStr, String? forcedIntent) async {
     final cardId = DateTime.now().millisecondsSinceEpoch.toString();
     setState(() => _cards.add(FeedCardData(
-      id: cardId, type: FeedCardType.userEntry, time: timeStr, content: text, mode: CardMode.idle,
+      id: cardId, type: FeedCardType.record, time: timeStr, content: text, mode: CardMode.idle,
     )));
     _scrollToBottom();
 
     try {
       final resp = await _api.createRecord(text, intent: forcedIntent, cardId: cardId);
       if (!mounted) return;
-      if (resp.intent == 'question') {
+      if (IntentType.parse(resp.intent) == IntentType.question) {
         final aiTime = TimeOfDay.now();
         final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
         setState(() {
           _activeCardId = cardId;
           _deactivateOtherCards(cardId);
-          _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false, intent: 'question',
+          _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
             turns: [ConversationTurn(isUser: true, text: text, time: timeStr),
               if (resp.summary != null) ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr)],
           ));
         });
       } else {
         setState(() {
-          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, mode: CardMode.idle, intent: 'log'));
+          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, mode: CardMode.idle, intent: IntentType.log));
         });
       }
     } catch (_) { if (mounted) _showError('saved locally, waiting for network'); }
@@ -180,7 +180,7 @@ class _MainPageState extends State<MainPage>
         setState(() {
           _updateCard(_activeCardId!, (c) {
             final existing = c.turns ?? [];
-            return c.copyWith(mode: CardMode.chatting, loading: false, intent: 'question',
+            return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
               turns: [...existing, ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr)]);
           });
         });
@@ -254,7 +254,7 @@ class _MainPageState extends State<MainPage>
       final feed = await _api.getFeed(date: dateStr);
       if (!mounted) return;
       setState(() {
-        _cards.insertAll(0, feed.entries.where((e) => e.type != 'ai_note').map((e) => e.toFeedData()).toList());
+        _cards.insertAll(0, feed.entries.where((e) => e.type != FeedEntryType.aiNote).map((e) => e.toFeedData()).toList());
         _earlierCount = feed.earlierCount;
         _totalShown = _cards.length;
       });
@@ -275,7 +275,7 @@ class _MainPageState extends State<MainPage>
               child: _loading ? const Center(child: CircularProgressIndicator())
                   : _activeCardId == null ? _buildNormalLayout() : _buildActiveLayout(activeCard!),
             ),
-            InputBar(onSend: _onSend, isAskMode: _isAskMode),
+            InputBar(onSend: _onSend, hasActiveChat: _hasActiveChat),
           ],
         ),
       ),
@@ -514,8 +514,8 @@ class _TopBar extends StatelessWidget {
 extension FeedEntryResponseX on FeedEntryResponse {
   FeedCardData toFeedData() {
     return FeedCardData(
-      id: id, type: FeedCardType.userEntry, time: time, content: content,
-      tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: intent,
+      id: id, type: FeedCardType.record, time: time, content: content,
+      tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
       summary: summary,
     );
   }

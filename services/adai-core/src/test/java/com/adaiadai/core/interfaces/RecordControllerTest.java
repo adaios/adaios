@@ -4,9 +4,13 @@ import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
+import com.adaiadai.core.kernel.context.engine.ContextEngine;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +41,9 @@ class RecordControllerTest {
     void setUp() {
         mapper = new ObjectMapper();
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
+        TagIndexService tagIndexService = new TagIndexService(fileStorage);
         RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
+        recordRepository.setTagIndexService(tagIndexService);
         CardFileRepository cardRepository = new CardFileRepository(fileStorage);
         IntentRecognizer intentRecognizer = new IntentRecognizer(new MockAiClient());
 
@@ -47,10 +53,19 @@ class RecordControllerTest {
                         "rec_test", "mock answer", List.of("test"), "raw"
                 ));
 
+        // ContextEngine with real dependencies
+        IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
+        MemoryService memoryService = new MemoryService(fileStorage);
+        ContextEngine contextEngine = new ContextEngine(
+                identityRepository, recordRepository, tagIndexService,
+                memoryService, cardRepository, List.of()
+        );
+
         AiClient aiClient = new MockAiClient();
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
+                contextEngine,
                 recordRepository,
                 cardRepository,
                 aiClient

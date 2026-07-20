@@ -29,9 +29,18 @@ public class RecordFileRepository implements RecordRepository {
             "^---\\n(.+?)\\n---\\n(.+)", Pattern.DOTALL);
 
     private final FileStorage fileStorage;
+    private TagIndexService tagIndexService;
 
     public RecordFileRepository(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
+        this.tagIndexService = null;
+    }
+
+    /**
+     * 设置 TagIndexService（用于避免循环依赖，启动时手动设置）。
+     */
+    public void setTagIndexService(TagIndexService tagIndexService) {
+        this.tagIndexService = tagIndexService;
     }
 
     @Override
@@ -39,6 +48,9 @@ public class RecordFileRepository implements RecordRepository {
         String path = filePath(record);
         String content = toMarkdown(record);
         fileStorage.write(path, content);
+        if (tagIndexService != null) {
+            tagIndexService.onRecordSaved(record);
+        }
     }
 
     @Override

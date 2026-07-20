@@ -4,6 +4,7 @@ import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
+import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -30,7 +31,9 @@ class BriefAppServiceTest {
     @BeforeEach
     void setUp() {
         fileStorage = new InMemoryFileStorage();
+        TagIndexService tagIndexService = new TagIndexService(fileStorage);
         recordRepository = new RecordFileRepository(fileStorage);
+        recordRepository.setTagIndexService(tagIndexService);
         identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
         briefAppService = new BriefAppService(

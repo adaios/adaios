@@ -141,6 +141,20 @@ end 失败时：报错提示 + 本地兜底摘要（方案 B）。
 | HTTP | `package:http` |
 | 构建 | `flutter build web` / `flutter build apk` |
 
+## 三端兼容约束
+
+本项目同时运行于 **Android / iOS / Web** 三端，引入任何依赖、工具、资源前需确认三端兼容。
+
+| 约束 | 说明 |
+|:----|:------|
+| **第三方依赖** | pub.dev 确认包含 Android / iOS / Web 三端 platform support 标签，缺一不可 |
+| **字体/资源** | 路径和格式三端一致，避免平台特定文件格式 |
+| **平台 API** | 禁止直接使用 `dart:io` 或 `dart:html`；平台差异用 `kIsWeb`（`import 'dart:io' show Platform;` 需做条件导入） |
+| **Web 无文件系统** | Web 端无 `dart:io` 的 File/Directory 访问，文件读写相关功能必须三端统一走 HTTP API |
+| **通信方式** | 统一走 HTTP/WebSocket，不引入平台特定 IPC |
+
+> 添加依赖前先确认三端支持。发现平台差异用 `if (kIsWeb)` 做条件分支。
+
 ## 当前状态
 
 已接入 adai-core HTTP API（非 Mock）。
