@@ -32,7 +32,7 @@ public class LlmResponseParser {
             return fallback("未收到 AI 回复");
         }
 
-        // 尝试从回复中提取 JSON（LLM 可能包裹在 markdown 代码块中）
+        // 尝试从回复中提取 JSON（LLM 可能包裹在 markdown 代码块中或放在文本末尾）
         String jsonStr = extractJson(rawResponse);
         if (jsonStr == null) {
             log.warn("LLM 回复中未找到 JSON，使用降级解析");
@@ -42,7 +42,16 @@ public class LlmResponseParser {
         try {
             JsonNode root = MAPPER.readTree(jsonStr);
 
-            String summary = getTextOrDefault(root, "summary", "无摘要");
+            // 优先取 JSON 中的 summary；如果没有（Question 模式），从自然文本中提取
+            String summary;
+            if (root.has("summary") && !root.get("summary").isNull()
+                    && !root.get("summary").asText().isBlank()
+                    && !"无摘要".equals(root.get("summary").asText())) {
+                summary = root.get("summary").asText();
+            } else {
+                summary = extractTextBeforeJson(rawResponse, jsonStr);
+            }
+
             List<String> tags = getTags(root, "tags");
             String sentiment = getTextOrDefault(root, "sentiment", "neutral");
             boolean actionable = root.has("actionable") && root.get("actionable").asBoolean(false);
@@ -61,12 +70,15 @@ public class LlmResponseParser {
     // ── 内部方法 ──
 
     private static String extractJson(String text) {
-        // 尝试直接解析
+        if (text == null || text.isBlank()) return null;
         String trimmed = text.strip();
+
+        // 1. 如果整段文本就是 JSON
         if (trimmed.startsWith("{")) {
             return trimmed;
         }
-        // 尝试从 ```json ... ``` 中提取
+
+        // 2. 从 ```json ... ``` 中提取
         int jsonStart = text.indexOf("```json");
         if (jsonStart >= 0) {
             int contentStart = jsonStart + 7;
@@ -75,7 +87,8 @@ public class LlmResponseParser {
                 return text.substring(contentStart, jsonEnd).strip();
             }
         }
-        // 尝试从 ``` ... ``` 中提取
+
+        // 3. 从 ``` ... ``` 中提取
         int codeStart = text.indexOf("```");
         if (codeStart >= 0) {
             int contentStart = text.indexOf('\n', codeStart) + 1;
@@ -87,7 +100,39 @@ public class LlmResponseParser {
                 }
             }
         }
+
+        // 4. 查找末尾 JSON 块：自然语言 + JSON 混合输出
+        int lastBrace = trimmed.lastIndexOf("{\n");
+        if (lastBrace < 0) lastBrace = trimmed.lastIndexOf("{");
+        if (lastBrace >= 0) {
+            String candidate = trimmed.substring(lastBrace).strip();
+            // 粗略校验：以 } 结尾且包含 tags 字段
+            if (candidate.endsWith("}") && candidate.contains("\"tags\"")) {
+                try {
+                    MAPPER.readTree(candidate);
+                    return candidate;
+                } catch (Exception ignored) {
+                    // 解析失败，不是有效 JSON
+                }
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * 从自然文本 + JSON 的混合回复中提取文本部分。
+     */
+    private static String extractTextBeforeJson(String fullText, String jsonStr) {
+        int idx = fullText.indexOf(jsonStr);
+        if (idx <= 0) {
+            return fullText.strip();
+        }
+        String before = fullText.substring(0, idx).strip();
+        if (before.isBlank()) {
+            return fullText.strip();
+        }
+        return before.length() > 500 ? before.substring(0, 500) + "…" : before;
     }
 
     private static AiUnderstanding parseAsPlainText(String text) {

@@ -1,6 +1,6 @@
 # AdaiOS 系统架构
 
-Version: 0.3
+Version: 0.4
 
 ---
 
@@ -46,6 +46,7 @@ graph TB
         TagIndex["TagIndexService<br/>标签索引"]
         CardRepo["CardFileRepository<br/>卡片对话"]
         AiClient["AiClient<br/>LLM 接入"]
+        DeepSeekClient["DeepSeekAiClient<br/>双模式:<br/>ANALYSIS(CHAT)"]
     end
 
     subgraph External["外部知识资产"]
@@ -70,6 +71,10 @@ graph TB
     ContextEngine --> LifeContributor
     ContextEngine --> ProjectContributor
 
+    AiClient --> DeepSeekClient
+    DeepSeekClient -->|ANALYSIS 模式<br/>单段 Prompt, 0.3 temp| DS["DeepSeek API"]
+    DeepSeekClient -->|CHAT 模式<br/>多轮 messages, 0.7 temp| DS
+
     TradingContributor --> FileStorage
     Record --> FileStorage
     Memory --> FileStorage
@@ -88,44 +93,60 @@ graph TB
 
 ## 二、数据写入流
 
-一次记录提交从 API 到落盘的全路径：
+一条记录提交从 API 到落盘的全路径。两种模式由 ConversationHistory 自动分流：
 
 ```mermaid
 flowchart TD
     Start(["用户提交内容"]) --> API["POST /api/v1/records"]
     API --> Controller["RecordController.createRecord()"]
-    Controller --> Intent{"IntentRecognizer<br/>STATEMENT / QUESTION?"}
+    Controller --> CardCheck{"有 cardId 且存在?"}
 
-    Intent -->|STATEMENT| SaveRecord["RecordFileRepository.save()"]
-    Intent -->|QUESTION| QAService["QuestionAppService.answer()"]
-    QAService --> Context["ContextEngine.compose()"]
-    Context --> QAAI["AiClient.understand()<br/>AI 回答"]
-    QAAI --> SaveRecord
+    CardCheck -->|续对话| HandleQ["RecordController.handleQuestion()"]
+    CardCheck -->|新记录| Intent{"IntentRecognizer<br/>STATEMENT / QUESTION?"}
+
+    Intent -->|STATEMENT| Context["ContextEngine.compose('note', record)<br/>→ ANALYSIS 模式"]
+    Context --> AiAnalysis["DeepSeekAiClient<br/>buildAnalysisRequestBody()<br/>0.3 temp / JSON 输出"]
+    AiAnalysis --> SaveRecord["RecordFileRepository.save()"]
+
+    Intent -->|QUESTION| HandleQ
+    HandleQ --> CardCreate{"Card 文件存在?"}
+    CardCreate -->|首次| NewCard["创建 CardRecord 文件<br/>data/cards/card_xxx.md"]
+    CardCreate -->|已有| AppendCard["追加 user turn<br/>data/cards/card_xxx.md"]
+
+    NewCard --> QContext["ContextEngine.compose('question', record, cardId)<br/>→ CHAT 模式"]
+    AppendCard --> QContext
+    QContext --> ChatAI["DeepSeekAiClient<br/>buildChatRequestBody()<br/>0.7 temp / 多轮 messages"]
+    QContext --> MessageFlow["messages 数组结构:<br/>system(背景知识)<br/>user(历史轮次)<br/>assistant(历史轮次)<br/>user(当前输入)"]
+    ChatAI --> SaveCard["保存 AI reply turn<br/>到 Card 文件"]
+    SaveCard --> SaveRecord
 
     SaveRecord --> WriteFile["写入 Markdown 文件<br/>data/records/YYYY/MM/rec_xxx.md"]
     WriteFile --> TagIndex["TagIndexService.onRecordSaved()<br/>更新 data/index/tags.json"]
+    TagIndex --> Done["返回响应给 App"]
     TagIndex --> Enrich{"有 AI 理解结果?"}
-
     Enrich -->|有| Memory["MemoryService.persist()<br/>写入 data/memory/YYYY/MM.md"]
-    Enrich -->|无| Done["返回响应给 App"]
-
+    Enrich -->|无| Done
     Memory --> Done
 
     %% 文件格式标注
     WriteFile -.-> FileDetail["frontmatter: id / type / tags / createdAt<br/>body: 正文内容"]
     TagIndex -.-> IndexDetail["按标签聚合记录 ID<br/>count / recordIds / firstAt / lastAt"]
-    Memory -.-> MemDetail["记录 AI 理解的摘要 / 标签 / 情感"]
+    NewCard -.-> CardDetail["CardRecord 文件结构<br/>turns: [{role, content, time}]"]
+    MessageFlow -.-> MsgDetail["真正的 user/assistant 轮次<br/>非文本拼接"]
 
     style Start fill:#4caf50,color:#fff
     style Done fill:#2196f3,color:#fff
     style WriteFile fill:#fff9c4
     style TagIndex fill:#fff9c4
-    style Memory fill:#fff9c4
+    style NewCard fill:#fff9c4
+    style MessageFlow fill:#e1f5fe,stroke:#0288d1
+    style ChatAI fill:#ff5722,color:#fff
+    style AiAnalysis fill:#ff5722,color:#fff
 ```
 
 ## 三、Context Engine 组装流
 
-用户提问后，Context Engine 背后拉取的信息源：
+用户提问后，Context Engine 背后拉取的信息源。QUESTION 场景输出多轮 messages，STATEMENT 场景输出 Prompt：
 
 ```mermaid
 flowchart TD
@@ -152,7 +173,7 @@ flowchart TD
     GlobalCtx -->|有持仓| FormatGlobal["格式化: 交易系统状态<br/>持仓数量 + 市值 + 盈亏概览"]
     GlobalCtx -->|无| SkipGlobal["跳过"]
 
-    FormatRelated --> Merge["buildPrompt()<br/>合并所有上下文块"]
+    FormatRelated --> Merge["融合所有上下文块"]
     FormatMem --> Merge
     TradingCtx --> Merge
     FormatGlobal --> Merge
@@ -162,13 +183,24 @@ flowchart TD
     SkipMem --> Merge
     SkipGlobal --> Merge
 
-    Merge --> Prompt["最终 Prompt 结构:<br/>1. Identity 身份<br/>2. 日期/星期<br/>3. 场景<br/>4. 卡片对话历史<br/>5. 相关历史记录(标签)<br/>6. AI 近期理解<br/>7. 全局领域上下文<br/>8. 当前记录<br/>9. 场景指令"]
-    Prompt --> AI["AiClient.understand()<br/>→ DeepSeek"]
+    Merge --> SceneSplit{"场景?"}
+    SceneSplit -->|STATEMENT| Analysis["buildPrompt()<br/>合成单段 Prompt<br/>→ DeepSeek 分析模式"]
+    SceneSplit -->|QUESTION + 有 cardId| BuildChat["buildConversationHistory()<br/>从 Card 提取 {role, content} 轮次<br/>→ DeepSeek 对话模式"]
+    SceneSplit -->|QUESTION 无 cardId| Analysis
+
+    Analysis --> AnalysisResult["最终 Prompt:<br/>1. 身份 + 日期<br/>2. 标签关联记录<br/>3. 记忆回读<br/>4. 全局上下文<br/>5. 当前记录<br/>6. JSON 输出指令"]
+    BuildChat --> ChatResult["System Prompt(背景知识):<br/>身份 + 场景 + 标签关联 + 记忆回读<br/>Messages 数组:<br/>user / assistant 历史轮次<br/>（最后一条 = 当前用户输入）"]
+
+    AnalysisResult --> AI["AiClient.understand()<br/>→ DeepSeek ANALYSIS(0.3 temp)"]
+    ChatResult --> AI2["AiClient.understand()<br/>→ DeepSeek CHAT(0.7 temp, 2048 tokens)"]
 
     style Start fill:#4caf50,color:#fff
     style AI fill:#ff5722,color:#fff
-    style Prompt fill:#e1f5fe,stroke:#0288d1
-    style Merge fill:#fff3e0,stroke:#f57c00
+    style AI2 fill:#ff5722,color:#fff
+    style AnalysisResult fill:#e1f5fe,stroke:#0288d1
+    style ChatResult fill:#e1f5fe,stroke:#0288d1
+    style BuildChat fill:#fff3e0,stroke:#f57c00
+    style Merge fill:#e8f5e9
 ```
 
 ## 四、数据流水线闭环
@@ -277,6 +309,8 @@ flowchart LR
 - Memory 回读（按标签聚合，喂回 Prompt）✅
 - 全局领域上下文（ContextContributor.globalContext()）✅
 - Trading OS 持仓贡献（场景 + 全局）✅
+- 多轮对话支持（ChatMessage + conversationHistory）✅
+- 双模式 AI 调用（ANALYSIS 0.3 temp / CHAT 0.7 temp + 2048 tokens）✅
 
 ### 未实现
 

@@ -63,10 +63,9 @@ public class RecordController {
         ContentRecord record = buildRecord(request);
         recordRepository.save(record);
 
-        // cardId present AND card file exists → continuation of chat, skip intent
+        // cardId present AND card file exists → continuation of chat, directly handle question
         if (request.cardId() != null && cardRepository.findById(request.cardId()).isPresent()) {
-            appendToCard(request.cardId(), record);
-            log.info("Card append | cardId={} | content=\"{}\"", request.cardId(), truncate(request.content(), 40));
+            log.info("Card continuation | cardId={} | content=\"{}\"", request.cardId(), truncate(request.content(), 40));
             return handleQuestion(record, request.cardId());
         }
 
@@ -80,28 +79,6 @@ public class RecordController {
             return handleQuestion(record, request.cardId());
         }
         return handleStatem(record);
-    }
-
-    /**
-     * Append a record turn to an existing card file.
-     */
-    private void appendToCard(String cardId, ContentRecord record) {
-        java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
-        String timeStr = record.createdAt().format(timeFmt);
-
-        Optional<CardRecord> existing = cardRepository.findById(cardId);
-        if (existing.isPresent()) {
-            CardRecord updated = existing.get()
-                    .withTurn(true, record.content(), timeStr);
-            cardRepository.save(updated);
-        } else {
-            CardRecord card = new CardRecord(
-                    cardId, "conversation", "active",
-                    List.of(), List.of(new CardRecord.Turn(true, record.content(), timeStr)),
-                    null, record.createdAt(), record.createdAt()
-            );
-            cardRepository.save(card);
-        }
     }
 
     /**
@@ -156,9 +133,31 @@ public class RecordController {
     }
 
     /**
-     * QUESTION: save record + AI answer.
+     * QUESTION: save record + AI answer. Create card if first turn.
      */
     private ResponseEntity<QuestionResponse> handleQuestion(ContentRecord record, String cardId) {
+        // Ensure card exists: create if this is the first turn
+        if (cardId != null) {
+            java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+            String timeStr = record.createdAt().format(timeFmt);
+            Optional<CardRecord> existing = cardRepository.findById(cardId);
+            if (existing.isEmpty()) {
+                CardRecord card = new CardRecord(
+                        cardId, "conversation", "active",
+                        List.of(), List.of(new CardRecord.Turn(true, record.content(), timeStr)),
+                        null, record.createdAt(), record.createdAt()
+                );
+                cardRepository.save(card);
+                log.info("Card created (first turn) | cardId={}", cardId);
+            } else {
+                // Append user turn to existing card
+                CardRecord updated = existing.get()
+                        .withTurn(true, record.content(), timeStr);
+                cardRepository.save(updated);
+                log.info("Card append | cardId={} | content=\"{}\"", cardId, truncate(record.content(), 40));
+            }
+        }
+
         QuestionAppService.AnswerResult result = questionAppService.answer(record, cardId);
         log.info("Answer completed | recordId={} | cardId={}", result.recordId(), cardId);
 

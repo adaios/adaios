@@ -64,7 +64,8 @@ public class BriefAppService {
                     new com.adaiadai.core.kernel.context.engine.ContextPackage(
                             "brief", "",
                             "今日简报", prompt, List.of(),
-                            List.of(), prompt, java.time.LocalDateTime.now()
+                            List.of(), prompt, java.time.LocalDateTime.now(),
+                            List.of()
                     ));
             return understanding.summary();
         } catch (Exception e) {

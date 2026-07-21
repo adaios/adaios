@@ -2,6 +2,7 @@ package com.adaiadai.core.kernel.context.engine;
 
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.memory.Memory;
@@ -87,11 +88,19 @@ public class ContextEngine {
         String memorySummary = loadMemorySummary();
         String domainContext = enrichFromContributors(scene, identityRef, record);
         String globalContext = loadGlobalContext();
+
+        // CHAT 模式：构建多轮对话历史
+        List<ChatMessage> chatHistory = "question".equals(scene) && cardId != null
+                ? buildConversationHistory(cardId)
+                : List.of();
+
+        // ANALYSIS 模式：仍然使用合成 Prompt
         String prompt = buildPrompt(scene, identityRef, record,
                 cardContext, relatedRecords, memorySummary, domainContext, globalContext);
 
-        log.info("ContextPackage 组装完成 | scene={} | record={} | 标签关联={}条 | 预估 tokens={}",
+        log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 预估 tokens={}",
                 scene, record.id(),
+                chatHistory.isEmpty() ? "ANALYSIS" : "CHAT(" + chatHistory.size() + "轮)",
                 relatedRecords.isBlank() ? 0 : relatedRecords.split("\n").length,
                 (prompt.length() / 2));
 
@@ -100,7 +109,8 @@ public class ContextEngine {
                 record.title(), record.content(), record.tags(),
                 List.of(cardContext, relatedRecords, memorySummary),
                 prompt,
-                LocalDateTime.now());
+                LocalDateTime.now(),
+                chatHistory);
     }
 
     // ── 内部方法 ──
@@ -140,6 +150,31 @@ public class ContextEngine {
 
         log.info("卡片上下文已加载 | cardId={} | turns={}", cardId, turns.size());
         return sb.toString();
+    }
+
+    /**
+     * 构建多轮对话消息列表（供 DeepSeekAiClient chat 模式使用）。
+     * <p>
+     * 将 Card 文件中的对话轮次转换为 {role, content} 结构。
+     * isUser=true → "user", isUser=false → "assistant"
+     */
+    private List<ChatMessage> buildConversationHistory(String cardId) {
+        if (cardId == null) return List.of();
+
+        Optional<CardRecord> card = cardFileRepository.findById(cardId);
+        if (card.isEmpty()) return List.of();
+
+        List<CardRecord.Turn> turns = card.get().turns();
+        if (turns.isEmpty()) return List.of();
+
+        List<ChatMessage> messages = new ArrayList<>();
+        for (CardRecord.Turn turn : turns) {
+            String role = turn.isUser() ? "user" : "assistant";
+            messages.add(new ChatMessage(role, turn.text()));
+        }
+
+        log.info("对话历史已构建 | cardId={} | messages={}", cardId, messages.size());
+        return messages;
     }
 
     /**
@@ -328,15 +363,16 @@ public class ContextEngine {
         if ("question".equals(scene)) {
             prompt.append("""
 
-                    请回答用户的问题，同时输出 JSON 格式（不要包裹 markdown 代码块）：
-                    {
-                      "summary": "你的回答",
-                      "tags": ["标签1", "标签2"],
-                      "sentiment": "neutral",
-                      "actionable": false,
-                      "actionSuggestion": null
-                    }
-                    """);
+                    请你直接回答用户的问题，用自然、简洁的中文。
+
+回答结束后，在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：
+{
+  "tags": ["标签1", "标签2"],
+  "sentiment": "positive 或 negative 或 neutral",
+  "actionable": true 或 false,
+  "actionSuggestion": "需要后续操作写建议，否则写 null"
+}
+""");
         } else {
             prompt.append("""
 

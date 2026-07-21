@@ -1,8 +1,11 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
+import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,10 +22,11 @@ import java.util.List;
 /**
  * DeepSeekAiClient — DeepSeek API 实现的 AI 客户端。
  * <p>
- * 通过 DeepSeek 兼容的 OpenAI API 格式调用模型。
- * API Key 从环境变量 {@code DEEPSEEK_API_KEY} 读取。
- * <p>
- * 当 {@code adai.ai.provider=deepseek} 时激活。
+ * 双模式：
+ * <ul>
+ *   <li>STATEMENT（conversationHistory 为空）: 分析模式，0.3 temp，JSON 输出</li>
+ *   <li>QUESTION（conversationHistory 非空）: 对话模式，0.7 temp，多轮 messages</li>
+ * </ul>
  */
 @Component
 @ConditionalOnProperty(name = "adai.ai.provider", havingValue = "deepseek")
@@ -63,9 +67,16 @@ public class DeepSeekAiClient implements AiClient {
             return new AiUnderstanding("AI 未配置：缺少 API Key", List.of(), "unknown", false, null, "");
         }
 
+        List<ChatMessage> history = contextPackage.conversationHistory();
+        boolean isChat = history != null && !history.isEmpty();
+
         try {
-            String requestBody = buildRequestBody(contextPackage.prompt());
-            log.info("[DeepSeek] 请求 model={} | tokens 预估={}", model, contextPackage.estimateTokens());
+            String requestBody = isChat
+                    ? buildChatRequestBody(contextPackage)
+                    : buildAnalysisRequestBody(contextPackage);
+
+            log.info("[DeepSeek] 请求 model={} | 模式={} | tokens 预估={}",
+                    model, isChat ? "CHAT" : "ANALYSIS", contextPackage.estimateTokens());
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(apiUrl))
@@ -78,7 +89,8 @@ public class DeepSeekAiClient implements AiClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             String rawResponse = parseChatCompletion(response.body());
 
-            log.info("[DeepSeek] 响应 received | status={}", response.statusCode());
+            log.info("[DeepSeek] 响应 received | status={} | 长度={}",
+                    response.statusCode(), rawResponse.length());
             return LlmResponseParser.parse(rawResponse);
 
         } catch (java.net.http.HttpConnectTimeoutException e) {
@@ -101,7 +113,7 @@ public class DeepSeekAiClient implements AiClient {
                     分析以下用户输入的意图，只需返回一个词：log（纯记录）、question（提问）、decision（决策求助）。
                     输入：%s
                     意图：""".formatted(content);
-            String body = buildRequestBody(prompt, 50);
+            String body = buildSimpleBody(prompt, 50, 0.3);
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(apiUrl))
                     .header("Content-Type", "application/json")
@@ -120,31 +132,117 @@ public class DeepSeekAiClient implements AiClient {
         }
     }
 
-    private String buildRequestBody(String prompt) throws Exception {
-        return buildRequestBody(prompt, 1024);
+    // ── Body 构建 ──
+
+    /**
+     * ANALYSIS 模式（STATEMENT 场景）：
+     * 单条 user message + JSON 输出指令，0.3 temperature。
+     */
+    private String buildAnalysisRequestBody(ContextPackage ctx) throws Exception {
+        return buildSimpleBody(ctx.prompt(), 1024, 0.3);
     }
 
-    private String buildRequestBody(String prompt, int maxTokens) throws Exception {
-        var requestBody = MAPPER.createObjectNode();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", maxTokens);
-        requestBody.put("temperature", 0.3);
+    /**
+     * CHAT 模式（QUESTION 场景）：
+     * 多轮 messages（system + 对话历史），0.7 temperature，2048 tokens。
+     * <p>
+     * System message 包含身份摘要、日期、相关记录、记忆回读等背景信息。
+     * 对话历史已经是完整的 user/assistant 轮次（包含当前用户输入），
+     * 直接使用，不再额外追加 recordContent。
+     */
+    private String buildChatRequestBody(ContextPackage ctx) throws Exception {
+        var root = MAPPER.createObjectNode();
+        root.put("model", model);
+        root.put("max_tokens", 2048);
+        root.put("temperature", 0.7);
 
         var messages = MAPPER.createArrayNode();
+
+        // System prompt：背景知识（不包含 JSON 输出指令）
+        String systemContent = buildChatSystemPrompt(ctx);
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
+        systemMsg.put("content", systemContent);
+        messages.add(systemMsg);
 
-        // 场景感知：如果 prompt 要求直接回答问题，不强制 JSON 输出
-        boolean isQuestion = prompt.startsWith("你是一个个人 AI 助手。请直接回答");
-        if (isQuestion) {
-            systemMsg.put("content", "你是一个个人 AI 助手。请直接回答用户的问题，用自然语言，简洁准确。");
-            requestBody.put("max_tokens", 512);
+        // 对话历史：完整的 user/assistant 轮次（已从 card 文件拉取，包含当前用户输入）
+        List<ChatMessage> history = ctx.conversationHistory();
+        if (history.isEmpty()) {
+            // 保险：如果没有历史记录，回退到 ANALYSIS 模式的 prompt
+            log.warn("chat 模式但没有历史记录，回退到普通 prompt");
+            var fallbackMsg = MAPPER.createObjectNode();
+            fallbackMsg.put("role", "user");
+            fallbackMsg.put("content", ctx.recordContent());
+            messages.add(fallbackMsg);
         } else {
-            systemMsg.put("content", """
-                    你是一个个人 AI 助手。用户输入一条记录，你需要分析它并输出 JSON。
-                    只输出 JSON，不要包裹在 markdown 代码块中。
-                    """.strip());
+            for (ChatMessage msg : history) {
+                var histMsg = MAPPER.createObjectNode();
+                histMsg.put("role", msg.role());
+                histMsg.put("content", msg.content());
+                messages.add(histMsg);
+            }
         }
+
+        root.set("messages", messages);
+        return MAPPER.writeValueAsString(root);
+    }
+
+    /**
+     * 构建对话模式的 System Prompt。
+     * 包含身份摘要、日期、标签关联记录和记忆回读，但不包含 JSON 输出指令。
+     * 让 AI 在末尾自然附带 JSON 标签。
+     */
+    private String buildChatSystemPrompt(ContextPackage ctx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("你是用户的个人 AI 助手阿呆。请用自然、简洁的中文与用户对话。\n\n");
+
+        // 身份摘要
+        if (ctx.identityRef() != null && !ctx.identityRef().isBlank()
+                && !ctx.identityRef().contains("未配置")) {
+            sb.append(ctx.identityRef()).append("\n");
+        }
+
+        // 当前场景
+        sb.append("当前场景：").append(ctx.scene()).append("\n");
+
+        // 相关历史记录（标签关联 + 记忆回读）
+        if (ctx.relatedRefs() != null && !ctx.relatedRefs().isEmpty()) {
+            for (String ref : ctx.relatedRefs()) {
+                if (ref != null && !ref.isBlank()) {
+                    sb.append("\n").append(ref.strip()).append("\n");
+                }
+            }
+        }
+
+        // 对话末尾附 JSON 标签
+        sb.append("\n回答结束后，在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n")
+                .append("{\n")
+                .append("  \"tags\": [\"标签1\", \"标签2\"],\n")
+                .append("  \"sentiment\": \"positive 或 negative 或 neutral\",\n")
+                .append("  \"actionable\": true 或 false,\n")
+                .append("  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n")
+                .append("}\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * 简单的单条 prompt 请求体（用于 STATEMENT 分析和意图识别）。
+     */
+    private String buildSimpleBody(String prompt, int maxTokens, double temperature) throws Exception {
+        var root = MAPPER.createObjectNode();
+        root.put("model", model);
+        root.put("max_tokens", maxTokens);
+        root.put("temperature", temperature);
+
+        var messages = MAPPER.createArrayNode();
+
+        var systemMsg = MAPPER.createObjectNode();
+        systemMsg.put("role", "system");
+        systemMsg.put("content", """
+                你是一个记录分析助手。用户输入一条记录，你需要分析它并输出 JSON。
+                只输出 JSON，不要包裹在 markdown 代码块中。
+                """.strip());
         messages.add(systemMsg);
 
         var userMsg = MAPPER.createObjectNode();
@@ -152,8 +250,8 @@ public class DeepSeekAiClient implements AiClient {
         userMsg.put("content", prompt);
         messages.add(userMsg);
 
-        requestBody.set("messages", messages);
-        return MAPPER.writeValueAsString(requestBody);
+        root.set("messages", messages);
+        return MAPPER.writeValueAsString(root);
     }
 
     private String parseChatCompletion(String responseBody) throws Exception {

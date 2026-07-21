@@ -23,7 +23,8 @@ class ContextPackageTest {
                 List.of("投资", "半导体"),
                 List.of("昨天讨论过半导体行业前景"),
                 "组装后的完整 Prompt",
-                LocalDateTime.of(2026, 7, 18, 10, 0)
+                LocalDateTime.of(2026, 7, 18, 10, 0),
+                List.of()
         );
 
         assertEquals("trading", ctx.scene());
@@ -96,7 +97,8 @@ class ContextPackageTest {
                 null, "用户",
                 "标题", "内容", List.of(),
                 List.of(), "Prompt",
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                List.of()
         );
         assertNull(ctx.scene());
     }
@@ -108,7 +110,8 @@ class ContextPackageTest {
                 "调研", "内容", List.of(),
                 List.of("参考1", "参考2", "参考3"),
                 "Prompt",
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                List.of()
         );
         assertEquals(3, ctx.relatedRefs().size());
     }
