@@ -194,36 +194,37 @@ public class DeepSeekAiClient implements AiClient {
      */
     private String buildChatSystemPrompt(ContextPackage ctx) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是用户的个人 AI 助手阿呆。请用自然、简洁的中文与用户对话。\n\n");
+        sb.append("你是阿呆的个人 AI 助手，请用自然、简洁的中文和用户聊天。\n");
+        sb.append("直接回答，不要以第三人称描述用户。\n\n");
 
-        // 身份摘要
-        if (ctx.identityRef() != null && !ctx.identityRef().isBlank()
-                && !ctx.identityRef().contains("未配置")) {
-            sb.append(ctx.identityRef()).append("\n");
+        // 称呼
+        String name = extractName(ctx.identityRef());
+        if (name != null) {
+            sb.append("用户称呼：").append(name).append("\n\n");
         }
 
-        // 当前场景
-        sb.append("当前场景：").append(ctx.scene()).append("\n");
-
-        // 相关历史记录（标签关联 + 记忆回读）
+        // 背景知识（不要复述）
         if (ctx.relatedRefs() != null && !ctx.relatedRefs().isEmpty()) {
             for (String ref : ctx.relatedRefs()) {
                 if (ref != null && !ref.isBlank()) {
-                    sb.append("\n").append(ref.strip()).append("\n");
+                    sb.append(ref.strip()).append("\n");
                 }
             }
+            sb.append("（以上是背景信息，了解即可，不用向用户复述。）");
         }
 
-        // 对话末尾附 JSON 标签
-        sb.append("\n回答结束后，在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n")
-                .append("{\n")
-                .append("  \"tags\": [\"标签1\", \"标签2\"],\n")
-                .append("  \"sentiment\": \"positive 或 negative 或 neutral\",\n")
-                .append("  \"actionable\": true 或 false,\n")
-                .append("  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n")
-                .append("}\n");
-
         return sb.toString();
+    }
+
+    /**
+     * 从 identityRef 文本中提取用户称呼。
+     */
+    private String extractName(String identityRef) {
+        if (identityRef == null || identityRef.isBlank()) return null;
+        // 匹配 "- 称呼：xxx" 或 "用户身份摘要：xxx" 后面的名字
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("称呼[：:]\\s*(\\S+)").matcher(identityRef);
+        if (m.find()) return m.group(1);
+        return null;
     }
 
     /**
@@ -240,8 +241,8 @@ public class DeepSeekAiClient implements AiClient {
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", """
-                你是一个记录分析助手。用户输入一条记录，你需要分析它并输出 JSON。
-                只输出 JSON，不要包裹在 markdown 代码块中。
+                分析一条个人记录，输出JSON。摘要用简洁的事实描述，不加主语（不要用"用户"或"你"）。
+                只输出JSON，不要包裹markdown。
                 """.strip());
         messages.add(systemMsg);
 

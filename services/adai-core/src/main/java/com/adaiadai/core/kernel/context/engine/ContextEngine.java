@@ -321,7 +321,7 @@ public class ContextEngine {
         );
 
         StringBuilder prompt = new StringBuilder();
-        prompt.append("你是一个个人 AI 助手，正在处理用户的一条新记录。\n\n");
+        prompt.append("处理一条新记录。\n\n");
         prompt.append(identityRef).append("\n");
         prompt.append("当前日期：").append(todayInfo).append("\n");
         prompt.append("场景：").append(scene).append("\n");
