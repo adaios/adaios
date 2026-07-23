@@ -164,22 +164,20 @@ systemctl stop adai-core
 
 ## 5. 部署更新流程
 
-当代码更新后，按以下步骤部署新版本：
+当代码更新后，一键部署：
 
 ```bash
 # 1. 开发机：重新构建
-cd D:\Projects\adaios\services\adai-core
-.\gradlew bootJar
+cd services/adai-core
+./gradlew bootJar
 
-# 2. 开发机：上传新 JAR
-scp build/libs/adai-core-0.0.1-SNAPSHOT.jar root@<服务器IP>:/opt/adaios/backend/adai-core.jar
-
-# 3. 服务器：重启服务
-ssh root@<服务器IP> "systemctl restart adai-core"
-
-# 4. 服务器：查看日志确认启动成功
-ssh root@<服务器IP> "journalctl -u adai-core -n 20 --no-pager"
+# 2. 开发机：一键部署（自动上传 + 重启 + 重建记忆）
+./deploy.sh <服务器IP> build/libs/adai-core-0.0.1-SNAPSHOT.jar
+# 示例: ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
+
+> 脚本自动完成：上传 JAR → 停服务 → 补全 data 目录 → 修权限 → 启服务 → 重建记忆。
+> 不再需要手动检查 data 文件完整性。
 
 ## 6. 配置说明
 

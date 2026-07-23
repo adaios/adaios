@@ -32,13 +32,11 @@ public class IdentityController {
     }
 
     /**
-     * 读取个人档案。
+     * 读取个人档案。文件不存在时返回默认档案，不会 404。
      */
     @GetMapping
     public ResponseEntity<IdentityProfile> getIdentity() {
-        return identityRepository.load()
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(identityRepository.load().orElse(null));
     }
 
     /**

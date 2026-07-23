@@ -34,9 +34,11 @@ public class IdentityFileRepository implements IdentityRepository {
             "^(\\w[\\w\\-]*):\\s*(.*)", Pattern.MULTILINE);
 
     private static final Pattern LIST_PATTERN = Pattern.compile(
-            "^-\\s+(.*)", Pattern.MULTILINE);
+            "^\\s*-\\s+(.*)", Pattern.MULTILINE);
 
     private static final String BODY_TEMPLATE = "# 个人档案\n\n阿呆的个人 AI 协作档案。\n";
+
+    private static final Pattern SUBMAP_PATTERN = Pattern.compile("^\\s*([^:]+):\\s*(.*)", Pattern.MULTILINE);
 
     private final FileStorage fileStorage;
 
@@ -48,10 +50,22 @@ public class IdentityFileRepository implements IdentityRepository {
     public Optional<IdentityProfile> load() {
         String content = fileStorage.read(PROFILE_PATH);
         if (content == null || content.isBlank()) {
-            log.warn("个人档案文件不存在: {}", PROFILE_PATH);
-            return Optional.empty();
+            log.warn("个人档案文件不存在: {}，使用默认档案", PROFILE_PATH);
+            return Optional.of(defaultProfile());
         }
-        return Optional.ofNullable(parseProfile(content));
+        IdentityProfile parsed = parseProfile(content);
+        if (parsed == null) {
+            log.warn("个人档案解析失败: {}，使用默认档案", PROFILE_PATH);
+            return Optional.of(defaultProfile());
+        }
+        return Optional.of(parsed);
+    }
+
+    /**
+     * 文件不存在或解析失败时的默认降级档案。
+     */
+    private IdentityProfile defaultProfile() {
+        return new IdentityProfile("阿呆", Map.of(), Map.of(), List.of());
     }
 
     @Override
@@ -70,25 +84,62 @@ public class IdentityFileRepository implements IdentityRepository {
         String frontmatter = matcher.group(1);
         String body = matcher.group(2).strip();
 
+        log.debug("parseProfile frontmatter:\n{}", frontmatter);
         Map<String, String> fields = parseFrontmatter(frontmatter);
+        log.debug("parseProfile fields: {}", fields);
 
         String name = fields.getOrDefault("name", "用户");
         Map<String, String> preferences = parseSubMap(fields.get("preferences"));
         Map<String, String> rules = parseSubMap(fields.get("rules"));
         List<String> tags = parseList(fields.get("tags"));
 
+        log.debug("parsed: name={}, prefs={}, rules={}, tags={}", name, preferences, rules, tags);
         return new IdentityProfile(name, preferences, rules, tags);
     }
 
+    /**
+     * 逐行解析 YAML frontmatter，识别顶层 key、缩进子 map、缩进 list。
+     * 不引入 SnakeYAML，纯文本解析。
+     */
     private Map<String, String> parseFrontmatter(String frontmatter) {
         Map<String, String> fields = new LinkedHashMap<>();
-        Matcher matcher = KV_PATTERN.matcher(frontmatter);
-        while (matcher.find()) {
-            String key = matcher.group(1).trim();
-            String value = matcher.group(2).strip();
-            if (!value.isEmpty()) {
-                fields.put(key, value);
+        String[] lines = frontmatter.split("\n");
+        StringBuilder nested = new StringBuilder();
+        String currentKey = null;
+        boolean inNested = false;
+
+        for (String line : lines) {
+            // 缩进行（以空格或 tab 开头）
+            if (line.matches("^[ \t].*")) {
+                if (inNested && currentKey != null) {
+                    nested.append(line).append('\n');
+                }
+                continue;
             }
+            // 提交上一个嵌套块
+            if (inNested && currentKey != null) {
+                fields.put(currentKey, nested.toString().strip());
+            }
+
+            Matcher m = KV_PATTERN.matcher(line);
+            if (m.matches()) {
+                String key = m.group(1).trim();
+                String value = m.group(2).strip();
+                if (value.isEmpty()) {
+                    // 后面可能会跟嵌套内容
+                    currentKey = key;
+                    nested = new StringBuilder();
+                    inNested = true;
+                } else {
+                    fields.put(key, value);
+                    currentKey = null;
+                    inNested = false;
+                }
+            }
+        }
+        // 最后一块
+        if (inNested && currentKey != null) {
+            fields.put(currentKey, nested.toString().strip());
         }
         return fields;
     }
@@ -96,10 +147,11 @@ public class IdentityFileRepository implements IdentityRepository {
     private Map<String, String> parseSubMap(String value) {
         if (value == null || value.isBlank()) return Collections.emptyMap();
         Map<String, String> map = new LinkedHashMap<>();
-        // 查找多行缩进的 key: value
-        Matcher matcher = Pattern.compile("^\\s+(\\w[\\w\\-]*):\\s*(.*)", Pattern.MULTILINE).matcher(value);
+        Matcher matcher = SUBMAP_PATTERN.matcher(value);
         while (matcher.find()) {
-            map.put(matcher.group(1).trim(), matcher.group(2).strip());
+            String k = matcher.group(1).trim();
+            String v = matcher.group(2).strip();
+            if (!k.isEmpty() && !k.isBlank()) map.put(k, v);
         }
         return map;
     }
