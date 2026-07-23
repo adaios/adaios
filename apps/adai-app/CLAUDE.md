@@ -56,8 +56,13 @@ lib/
 
 ## 当前测试状态
 
-前端测试在 `test/`，当前 **19 个测试，0 失败**。
-覆盖：DTO JSON 解析、FeedCardData 模型、FeedCard 渲染、App 启动。
+前端测试在 `test/widget_test.dart`，当前 **19 个测试，0 失败**。
+覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（7，含 idle/chatting/ended 态）。
+
+```bash
+cd apps/adai-app && flutter test
+```
+> Flutter widget test 默认 HTTP 返回 400，ApiService 调用未覆盖——留给集成测试或 mock HTTP client。
 
 ## FeedCard 状态机
 
@@ -97,6 +102,7 @@ lib/
 
 ## 设计约定
 
+- **三端兼容** — 必须同时支持 Android / iOS / Web。引入依赖前确认 pub.dev 三端支持。Web 无 `dart:io`，平台差异用 `kIsWeb` 或 `Platform.*`。
 - **单页** — 无 BottomNavigation，无 tabs，无多级页面
 - **深色模式优先**
 - **一个卡片一次对话** — idle → waiting → chatting → ended 在同一个卡片内完成
