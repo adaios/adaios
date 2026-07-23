@@ -34,6 +34,10 @@ AdaiOS 核心运行时（Java 17 + Spring Boot 3.3.x）。
 
 # DeepSeek 模式（需先配置 .env）：
 # DEEPSEEK_API_KEY=sk-xxx ./gradlew bootRun
+
+# ── 部署（生产服务器 49.235.37.220） ──
+./gradlew bootJar
+./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
 
 ## 包结构（根包 `com.adaiadai.core`）

@@ -234,6 +234,12 @@ cd services/adai-core && ./gradlew test                   # 运行全部测试
 cd services/adai-core && ./gradlew test --tests "*ClassName*"   # 单个测试类
 cd services/adai-core && ./gradlew test --tests "*ClassName.methodName"  # 单个方法
 
+# ── 部署 ───────────────────────────────────────
+cd services/adai-core && ./gradlew bootJar
+./deploy.sh <服务器IP> build/libs/adai-core-0.0.1-SNAPSHOT.jar
+# 示例: ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+# 脚本自动完成：上传 JAR → 停服务 → 补全 data 目录 → 修权限 → 重启 → 重建记忆
+
 # ── 运行 ───────────────────────────────────────
 # DeepSeek 模式（默认，需配置 DEEPSEEK_API_KEY）：
 cd services/adai-core && ./gradlew bootRun

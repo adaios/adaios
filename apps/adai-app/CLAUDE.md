@@ -27,7 +27,7 @@ flutter run -d chrome
 
 # 构建
 flutter build web --release      # Web release
-flutter build apk --debug         # Android APK
+flutter build apk --release --dart-define=API_BASE_URL=http://49.235.37.220:8080  # Android APK（生产）
 
 # 分析
 flutter analyze
