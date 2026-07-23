@@ -4,6 +4,8 @@ import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
+import com.adaiadai.core.kernel.memory.Memory;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -31,14 +33,17 @@ public class QuestionAppService {
     private final ContextEngine contextEngine;
     private final CardFileRepository cardRepository;
     private final RecordRepository recordRepository;
+    private final MemoryService memoryService;
     private final AiClient aiClient;
 
     public QuestionAppService(ContextEngine contextEngine, CardFileRepository cardRepository,
                               RecordRepository recordRepository,
+                              MemoryService memoryService,
                               AiClient aiClient) {
         this.contextEngine = contextEngine;
         this.cardRepository = cardRepository;
         this.recordRepository = recordRepository;
+        this.memoryService = memoryService;
         this.aiClient = aiClient;
     }
 
@@ -86,6 +91,20 @@ public class QuestionAppService {
                         .withTurn(false, understanding.summary(), timeStr);
                 cardRepository.save(updated);
                 log.info("AI turn saved to card | cardId={}", cardId);
+            }
+        }
+
+        // Persist AI understanding as memory
+        if (understanding.summary() != null || (understanding.tags() != null && !understanding.tags().isEmpty())) {
+            try {
+                Memory memory = Memory.fromUnderstanding(record.id(), understanding);
+                memoryService.persist(memory);
+                log.info("Memory persisted for question | recordId={} | summary=\"{}\"", record.id(),
+                        understanding.summary() != null && understanding.summary().length() > 40
+                                ? understanding.summary().substring(0, 40) + "..."
+                                : understanding.summary());
+            } catch (Exception e) {
+                log.debug("Memory persist skipped: {}", e.getMessage());
             }
         }
 

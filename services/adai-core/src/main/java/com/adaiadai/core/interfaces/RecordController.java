@@ -9,6 +9,8 @@ import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
+import com.adaiadai.core.kernel.memory.Memory;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -43,19 +45,22 @@ public class RecordController {
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final AiClient aiClient;
+    private final MemoryService memoryService;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
                             ContextEngine contextEngine,
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
-                            AiClient aiClient) {
+                            AiClient aiClient,
+                            MemoryService memoryService) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
         this.contextEngine = contextEngine;
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.aiClient = aiClient;
+        this.memoryService = memoryService;
     }
 
     @PostMapping
@@ -126,6 +131,19 @@ public class RecordController {
                 tags != null ? tags : List.of(), record.createdAt(), "log", summary
         );
         recordRepository.save(enriched);
+
+        // Persist AI understanding as memory
+        if (summary != null || (tags != null && !tags.isEmpty())) {
+            try {
+                Memory memory = Memory.fromUnderstanding(record.id(),
+                        new AiUnderstanding(summary != null ? summary : "recorded",
+                                tags != null ? tags : List.of(), "neutral", false, null, ""));
+                memoryService.persist(memory);
+                log.info("Memory persisted for statement | recordId={} | summary=\"{}\"", record.id(), truncate(summary, 40));
+            } catch (Exception e) {
+                log.debug("Memory persist skipped for statement: {}", e.getMessage());
+            }
+        }
 
         return ResponseEntity.ok(new StatemResponse(
                 "log", record.id(), record.content(), tags, summary
