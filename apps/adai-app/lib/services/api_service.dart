@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
+import 'models/identity_models.dart';
+import 'models/tag_models.dart';
 
 /// AdaiOS API 客户端。
 /// 封装所有后端调用，App 其他部分不直接调 HTTP。
@@ -10,7 +12,6 @@ class ApiService {
   ApiService({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   /// 获取 Feed 流。
-  /// [since] 可选，此时间之后的条目为"当前会话"。
   Future<FeedResponse> getFeed({String? date, String? since}) async {
     final params = <String, String>{};
     if (date != null) params['date'] = date;
@@ -23,8 +24,6 @@ class ApiService {
   }
 
   /// 提交记录。
-  /// [intent] 可选，手动指定意图：log | question，不指定则由后端自动识别。
-  /// [cardId] 可选，会话卡片 ID，用于跟踪对话上下文。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
       'content': content,
@@ -43,8 +42,6 @@ class ApiService {
   }
 
   /// 获取时间线。
-  /// [type] 可选，按类型筛选。
-  /// [limit] 可选，返回条数上限，默认 50。
   Future<List<TimelineEntryResponse>> getTimeline({String? type, int limit = 50}) async {
     final params = <String, String>{};
     if (type != null) params['type'] = type;
@@ -57,7 +54,7 @@ class ApiService {
     return raw.map((e) => TimelineEntryResponse.fromJson(e)).toList();
   }
 
-  /// 结束会话（总结对话，存为记录）。
+  /// 结束会话。
   Future<EndConversationResponse> endConversation(List<String> turns, {String? cardId}) async {
     final body = {
       'turns': turns,
@@ -70,6 +67,58 @@ class ApiService {
     );
     _check(resp);
     return EndConversationResponse.fromJson(jsonDecode(resp.body));
+  }
+
+  /// 读取个人档案。
+  Future<IdentityResponse> getIdentity() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/v1/identity'),
+      headers: _headers,
+    );
+    _check(resp);
+    return IdentityResponse.fromJson(jsonDecode(resp.body));
+  }
+
+  /// 更新个人档案。
+  Future<IdentityResponse> updateIdentity(IdentityRequest request) async {
+    final resp = await http.put(
+      Uri.parse('$baseUrl/api/v1/identity'),
+      headers: _headers,
+      body: jsonEncode(request.toJson()),
+    );
+    _check(resp);
+    return IdentityResponse.fromJson(jsonDecode(resp.body));
+  }
+
+  /// 获取所有标签统计。
+  Future<TagsResponse> getTags() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/v1/tags'),
+      headers: _headers,
+    );
+    _check(resp);
+    return TagsResponse.fromJson(jsonDecode(resp.body));
+  }
+
+  /// 获取某日的记忆列表。
+  Future<List<MemoryEntryResponse>> getMemory({String? date}) async {
+    final params = <String, String>{};
+    if (date != null) params['date'] = date;
+    final uri = Uri.parse('$baseUrl/api/v1/memory').replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await http.get(uri, headers: _headers);
+    _check(resp);
+    final List raw = jsonDecode(resp.body);
+    return raw.map((e) => MemoryEntryResponse.fromJson(e)).toList();
+  }
+
+  /// 全文搜索。
+  Future<SearchResponse> search(String query) async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/v1/search?q=$query'),
+      headers: _headers,
+    );
+    _check(resp);
+    return SearchResponse.fromJson(jsonDecode(resp.body));
   }
 
   Map<String, String> get _headers => {
@@ -85,7 +134,6 @@ class ApiService {
 
 // ── Feed entry type constants ──
 
-/// 后端 FeedEntryResponse.type 的值。
 class FeedEntryType {
   static const String record = 'record';
   static const String aiNote = 'ai_note';
@@ -109,15 +157,15 @@ class FeedResponse {
 }
 
 class FeedEntryResponse {
-  final String type;  // record | ai_note | push
+  final String type;
   final String id;
   final String? sourceRecordId;
   final String title;
   final String content;
   final List<String> tags;
-  final String time;  // HH:mm
-  final String? intent; // "question" | "log" | null
-  final String? summary; // AI-generated summary
+  final String time;
+  final String? intent;
+  final String? summary;
 
   FeedEntryResponse({
     required this.type,
@@ -145,11 +193,11 @@ class FeedEntryResponse {
 }
 
 class RecordResponse {
-  final String intent;  // log | question
+  final String intent;
   final String? recordId;
-  final String? summary;  // question: AI answer; log: brief confirmation
+  final String? summary;
   final List<String>? tags;
-  final String? content;  // log: original content echoed back
+  final String? content;
 
   RecordResponse({required this.intent, this.recordId, this.summary, this.tags, this.content});
 
@@ -218,5 +266,73 @@ class EndConversationResponse {
     recordId: json['recordId'] as String? ?? '',
     summary: json['summary'] as String? ?? '',
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
+  );
+}
+
+/// 记忆条目 DTO
+class MemoryEntryResponse {
+  final String id;
+  final String recordId;
+  final String summary;
+  final List<String> tags;
+  final String sentiment;
+  final String createdAt;
+
+  MemoryEntryResponse({
+    required this.id,
+    required this.recordId,
+    required this.summary,
+    required this.tags,
+    required this.sentiment,
+    required this.createdAt,
+  });
+
+  factory MemoryEntryResponse.fromJson(Map<String, dynamic> json) => MemoryEntryResponse(
+    id: json['id'] as String? ?? '',
+    recordId: json['recordId'] as String? ?? '',
+    summary: json['summary'] as String? ?? '',
+    tags: (json['tags'] as List?)?.cast<String>() ?? [],
+    sentiment: json['sentiment'] as String? ?? 'neutral',
+    createdAt: json['createdAt'] as String? ?? '',
+  );
+}
+
+/// 搜索结果 DTO
+class SearchResponse {
+  final List<SearchResultItem> results;
+  final int total;
+
+  SearchResponse({required this.results, required this.total});
+
+  factory SearchResponse.fromJson(Map<String, dynamic> json) => SearchResponse(
+    results: (json['results'] as List?)?.map((e) => SearchResultItem.fromJson(e)).toList() ?? [],
+    total: json['total'] as int? ?? 0,
+  );
+}
+
+class SearchResultItem {
+  final String id;
+  final String type;
+  final String title;
+  final String content;
+  final List<String> tags;
+  final String dateTime;
+
+  SearchResultItem({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.content,
+    required this.tags,
+    required this.dateTime,
+  });
+
+  factory SearchResultItem.fromJson(Map<String, dynamic> json) => SearchResultItem(
+    id: json['id'] as String? ?? '',
+    type: json['type'] as String? ?? 'note',
+    title: json['title'] as String? ?? '',
+    content: json['content'] as String? ?? '',
+    tags: (json['tags'] as List?)?.cast<String>() ?? [],
+    dateTime: json['dateTime'] as String? ?? '',
   );
 }

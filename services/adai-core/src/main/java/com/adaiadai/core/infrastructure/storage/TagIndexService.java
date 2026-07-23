@@ -183,6 +183,23 @@ public class TagIndexService {
         }
     }
 
+    // ── 对外暴露 ──
+
+    /**
+     * 获取所有标签的简要信息（供 Launcher 标签云使用）。
+     */
+    public List<TagSummary> getAllTags() {
+        TagIndex index = load();
+        return index.tags().entrySet().stream()
+                .map(entry -> new TagSummary(
+                        entry.getKey(),
+                        entry.getValue().count(),
+                        entry.getValue().lastAt()
+                ))
+                .sorted(Comparator.comparing(TagSummary::name))
+                .toList();
+    }
+
     // ── 内部数据模型 ──
 
     public record TagEntry(
@@ -195,5 +212,11 @@ public class TagIndexService {
     public record TagIndex(
             Map<String, TagEntry> tags,
             LocalDateTime updatedAt
+    ) {}
+
+    public record TagSummary(
+            String name,
+            int count,
+            LocalDateTime lastAt
     ) {}
 }

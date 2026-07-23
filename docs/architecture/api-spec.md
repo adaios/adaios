@@ -223,7 +223,138 @@
 
 ---
 
-## 前端卡片交互
+## 8. 用户身份（Identity）
+
+### `GET /api/v1/identity` — 读取个人档案
+
+前端身份页加载时调用。返回当前个人档案的完整数据。
+
+**Response**
+
+```json
+{
+  "name": "阿呆",
+  "preferences": {
+    "language": "中文",
+    "style": "简洁、直接",
+    "focus": "半导体、国产替代、成长股投资"
+  },
+  "rules": {
+    "confirmation": "交易类操作需确认",
+    "auto": "日常记录可自动处理"
+  },
+  "tags": ["投资", "半导体", "科技", "个人成长"]
+}
+```
+
+### `PUT /api/v1/identity` — 更新个人档案
+
+用户编辑身份页点击保存时调用。全量覆盖（前端传完整对象）。
+
+**Request Body**
+
+```json
+{
+  "name": "阿呆",
+  "preferences": {
+    "language": "中文",
+    "style": "简洁、直接",
+    "focus": "半导体、国产替代、成长股投资"
+  },
+  "rules": {
+    "confirmation": "交易类操作需确认",
+    "auto": "日常记录可自动处理"
+  },
+  "tags": ["投资", "半导体", "科技", "个人成长"]
+}
+```
+
+**Response**
+
+返回更新后的完整 identity（同 GET Response，200 OK）。
+
+**错误响应**
+
+| 状态码 | 场景 |
+|:------|:-----|
+| 400 | name 为空、tags 为空列表 |
+| 500 | 文件写入失败 |
+
+---
+
+## 9. 标签（Tags）
+
+### `GET /api/v1/tags` — 获取所有标签统计
+
+Launcher 页标签云 + 功能行右侧预览使用。
+
+**Response**
+
+```json
+{
+  "tags": [
+    {"name": "半导体", "count": 12, "lastAt": "2026-07-22T10:00:00"},
+    {"name": "投资", "count": 8, "lastAt": "2026-07-21T14:30:00"},
+    {"name": "天气", "count": 5, "lastAt": "2026-07-22T09:15:00"}
+  ],
+  "total": 12,
+  "updatedAt": "2026-07-22T12:00:00"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `tags[].name` | String | 标签名 |
+| `tags[].count` | int | 命中记录数 |
+| `tags[].lastAt` | String (ISO) | 最后一次使用时间 |
+| `total` | int | 标签总数 |
+| `updatedAt` | String (ISO) | 索引最后更新时间 |
+
+---
+
+## 10. 搜索（Search）
+
+### `GET /api/v1/search?q=xxx` — 全文搜索
+
+全文搜索个人记录。线性扫描所有 records 文件，匹配标题、正文、标签。
+
+**Request Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `q` | String | 是 | 搜索关键词 |
+
+**Response**
+
+```json
+{
+  "results": [
+    {
+      "id": "rec_20260722_143000",
+      "type": "note",
+      "title": "今天买了立昂微",
+      "content": "...买了立昂微，25块建仓半导体龙头...",
+      "tags": ["投资", "半导体"],
+      "dateTime": "2026-07-22T14:30:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `results[].id` | String | 记录 ID |
+| `results[].type` | String | 记录类型 |
+| `results[].title` | String | 标题 |
+| `results[].content` | String | 匹配片段（前后 30 字） |
+| `results[].tags` | String[] | 标签 |
+| `results[].dateTime` | String (ISO) | 记录时间 |
+| `total` | int | 总结果数 |
+
+---
+
+## 11. 前端卡片交互
 
 ### 卡片核心状态
 

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:characters/characters.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
 import 'widgets/feed_card.dart';
@@ -7,7 +6,12 @@ import 'widgets/input_bar.dart';
 import 'widgets/timeline_modal.dart';
 
 class MainPage extends StatefulWidget {
-  const MainPage({super.key});
+  final VoidCallback? onPullUp;
+  final VoidCallback? onProfileTap;
+  final String? filterTag;
+  final VoidCallback? onClearFilter;
+
+  const MainPage({super.key, this.onPullUp, this.onProfileTap, this.filterTag, this.onClearFilter});
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -18,6 +22,7 @@ class _MainPageState extends State<MainPage>
   final ScrollController _scrollController = ScrollController();
   final ApiService _api = ApiService();
 
+  List<FeedCardData> _allCards = [];
   List<FeedCardData> _cards = [];
   int _earlierCount = 0;
   String _brief = '';
@@ -53,19 +58,37 @@ class _MainPageState extends State<MainPage>
   Future<void> _loadFeed({String? date}) async {
     try {
       final feed = await _api.getFeed(date: date);
+      final allCards = feed.entries
+          .where((e) => e.type != FeedEntryType.aiNote)
+          .map((e) => e.toFeedData())
+          .toList();
       setState(() {
         _brief = feed.brief;
         _earlierCount = feed.earlierCount;
-        _cards = feed.entries
-            .where((e) => e.type != FeedEntryType.aiNote)
-            .map((e) => e.toFeedData())
-            .toList();
+        _allCards = allCards;
+        _cards = _applyFilter(allCards);
         _loading = false;
         _totalShown = _pageSize;
       });
       _scrollToBottom();
     } catch (e) {
       setState(() => _loading = false);
+    }
+  }
+
+  List<FeedCardData> _applyFilter(List<FeedCardData> cards) {
+    if (widget.filterTag == null) return cards;
+    return cards.where((c) => c.tags?.contains(widget.filterTag) ?? false).toList();
+  }
+
+  @override
+  void didUpdateWidget(MainPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.filterTag != oldWidget.filterTag) {
+      setState(() {
+        _cards = _applyFilter(_allCards);
+        _totalShown = _pageSize;
+      });
     }
   }
 
@@ -264,20 +287,54 @@ class _MainPageState extends State<MainPage>
   @override
   Widget build(BuildContext context) {
     final activeCard = _activeCardId != null ? _cards.where((c) => c.id == _activeCardId).firstOrNull : null;
-    return Scaffold(
-      backgroundColor: AppColors.darkBg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(isActive: _activeCardId != null, onTimelineTap: () => TimelineModal.show(context, api: _api)),
-            if (_activeCardId == null && _brief.isNotEmpty && !_loading) _buildBriefCard(),
-            Expanded(
-              child: _loading ? const Center(child: CircularProgressIndicator())
-                  : _activeCardId == null ? _buildNormalLayout() : _buildActiveLayout(activeCard!),
+    return SafeArea(
+      child: Column(
+        children: [
+          GestureDetector(
+            onVerticalDragEnd: (d) {
+              if (d.primaryVelocity != null && d.primaryVelocity! > 200) {
+                widget.onPullUp?.call();
+              }
+            },
+            child: _TopBar(isActive: _activeCardId != null, onTimelineTap: () => TimelineModal.show(context, api: _api), onProfileTap: widget.onProfileTap),
+          ),
+          if (widget.filterTag != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: GestureDetector(
+                onTap: widget.onClearFilter,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.darkGreen.withAlpha(60)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('🏷️ ${widget.filterTag}', style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+                      const SizedBox(width: 6),
+                      Icon(Icons.close, size: 14, color: AppColors.darkGreen.withAlpha(150)),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            InputBar(onSend: _onSend, hasActiveChat: _hasActiveChat),
-          ],
-        ),
+          if (_activeCardId == null && _brief.isNotEmpty && !_loading) _buildBriefCard(),
+          Expanded(
+            child: _loading ? const Center(child: CircularProgressIndicator())
+                : _activeCardId == null ? _buildNormalLayout() : _buildActiveLayout(activeCard!),
+          ),
+          GestureDetector(
+            onVerticalDragEnd: (d) {
+              if (d.primaryVelocity != null && d.primaryVelocity! < -200) {
+                widget.onPullUp?.call();
+              }
+            },
+            child: InputBar(onSend: _onSend, hasActiveChat: _hasActiveChat),
+          ),
+        ],
       ),
     );
   }
@@ -348,7 +405,7 @@ class _MainPageState extends State<MainPage>
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('•  ', style: TextStyle(fontSize: 16, color: AppColors.darkGreen.withAlpha(150))),
-                  Expanded(child: Text(_stripEmoji(line), style: const TextStyle(fontSize: 14, height: 1.6, fontWeight: FontWeight.w400, color: AppColors.darkGrey1))),
+                  Expanded(child: Text(line, style: const TextStyle(fontSize: 14, height: 1.6, fontWeight: FontWeight.w400, color: AppColors.darkGrey1))),
                 ]),
               );
             }),
@@ -356,20 +413,6 @@ class _MainPageState extends State<MainPage>
         ),
       ),
     );
-  }
-
-  String _emojiForLine(String line) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) return '•';
-    return trimmed.characters.first;
-  }
-
-  String _stripEmoji(String line) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) return '';
-    final first = trimmed.characters.first;
-    if (first.codeUnitAt(0) > 0x2000) return trimmed.substring(first.length).trim();
-    return trimmed;
   }
 
   Widget _buildActiveLayout(FeedCardData activeCard) {
@@ -476,7 +519,8 @@ class _MainPageState extends State<MainPage>
 class _TopBar extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTimelineTap;
-  const _TopBar({required this.isActive, required this.onTimelineTap});
+  final VoidCallback? onProfileTap;
+  const _TopBar({required this.isActive, required this.onTimelineTap, this.onProfileTap});
 
   String get _dateLabel {
     final now = DateTime.now();
@@ -505,6 +549,14 @@ class _TopBar extends StatelessWidget {
             Container(width: 5, height: 5, decoration: BoxDecoration(color: AppColors.darkGreen, shape: BoxShape.circle)),
           ],
           const Spacer(),
+          if (onProfileTap != null)
+            GestureDetector(
+              onTap: onProfileTap,
+              child: const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(Icons.person_outline, size: 20, color: AppColors.darkGrey5),
+              ),
+            ),
         ],
       ),
     );

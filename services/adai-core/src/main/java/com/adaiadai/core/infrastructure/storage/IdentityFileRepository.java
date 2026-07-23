@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * IdentityFileRepository — 基于文件系统的 Identity 存储实现。
@@ -35,6 +36,8 @@ public class IdentityFileRepository implements IdentityRepository {
     private static final Pattern LIST_PATTERN = Pattern.compile(
             "^-\\s+(.*)", Pattern.MULTILINE);
 
+    private static final String BODY_TEMPLATE = "# 个人档案\n\n阿呆的个人 AI 协作档案。\n";
+
     private final FileStorage fileStorage;
 
     public IdentityFileRepository(FileStorage fileStorage) {
@@ -49,6 +52,13 @@ public class IdentityFileRepository implements IdentityRepository {
             return Optional.empty();
         }
         return Optional.ofNullable(parseProfile(content));
+    }
+
+    @Override
+    public IdentityProfile save(IdentityProfile profile) {
+        String frontmatter = serializeProfile(profile);
+        fileStorage.write(PROFILE_PATH, "---\n" + frontmatter + "\n---\n\n" + BODY_TEMPLATE);
+        return profile;
     }
 
     private IdentityProfile parseProfile(String content) {
@@ -102,5 +112,27 @@ public class IdentityFileRepository implements IdentityRepository {
             items.add(matcher.group(1).strip());
         }
         return items;
+    }
+
+    private String serializeProfile(IdentityProfile profile) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("name: ").append(profile.name()).append('\n');
+
+        sb.append("preferences:\n");
+        for (var entry : profile.preferences().entrySet()) {
+            sb.append("  ").append(entry.getKey()).append(": ").append(entry.getValue()).append('\n');
+        }
+
+        sb.append("rules:\n");
+        for (var entry : profile.rules().entrySet()) {
+            sb.append("  ").append(entry.getKey()).append(": ").append(entry.getValue()).append('\n');
+        }
+
+        sb.append("tags:\n");
+        for (String tag : profile.tags()) {
+            sb.append("  - ").append(tag).append('\n');
+        }
+
+        return sb.toString();
     }
 }

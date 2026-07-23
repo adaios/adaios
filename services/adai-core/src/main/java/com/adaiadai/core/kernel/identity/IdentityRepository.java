@@ -16,4 +16,12 @@ public interface IdentityRepository {
      * @return 个人档案
      */
     Optional<IdentityProfile> load();
+
+    /**
+     * 保存（全量覆盖）个人档案。
+     *
+     * @param profile 个人档案
+     * @return 保存后的个人档案
+     */
+    IdentityProfile save(IdentityProfile profile);
 }
