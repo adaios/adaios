@@ -1,11 +1,11 @@
 {
-    "name": "阿呆",
-    "short_name": "阿呆",
+    "name": "阿呆阿呆",
+    "short_name": "阿呆阿呆",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0d0d0d",
     "theme_color": "#0d0d0d",
-    "description": "阿呆 — Personal AI Operating System",
+    "description": "阿呆阿呆 — Personal AI Operating System",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
