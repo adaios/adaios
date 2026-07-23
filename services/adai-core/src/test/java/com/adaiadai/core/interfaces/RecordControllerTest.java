@@ -68,7 +68,8 @@ class RecordControllerTest {
                 contextEngine,
                 recordRepository,
                 cardRepository,
-                aiClient
+                aiClient,
+                memoryService
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

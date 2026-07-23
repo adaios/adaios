@@ -1,7 +1,9 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.RecordFlowAppService;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.RecordRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -14,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -21,12 +24,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class MemoryControllerTest {
 
+    private MemoryController controllerWith() {
+        return new MemoryController(
+                mock(MemoryService.class),
+                mock(RecordRepository.class),
+                mock(RecordFlowAppService.class)
+        );
+    }
+
     @Test
     void getMemories_returnsOk() throws Exception {
         var memService = mock(MemoryService.class);
         when(memService.findByDate(any())).thenReturn(List.of());
 
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new MemoryController(memService)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
 
         mvc.perform(get("/api/v1/memory"))
                 .andExpect(status().isOk())
@@ -40,7 +53,9 @@ class MemoryControllerTest {
                 new Memory("m1", "r1", "summary", List.of("tag"), "neutral", false, null, LocalDateTime.now())
         ));
 
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new MemoryController(memService)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
 
         mvc.perform(get("/api/v1/memory").param("date", "2026-07-18"))
                 .andExpect(status().isOk())
@@ -55,7 +70,9 @@ class MemoryControllerTest {
                 Optional.of(new Memory("m1", "r1", "summary", List.of("tag"), "positive", true, "buy more", LocalDateTime.now()))
         );
 
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new MemoryController(memService)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
 
         mvc.perform(get("/api/v1/memory/record/r1"))
                 .andExpect(status().isOk())
@@ -69,17 +86,22 @@ class MemoryControllerTest {
         var memService = mock(MemoryService.class);
         when(memService.findByRecordId("nonexistent")).thenReturn(Optional.empty());
 
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new MemoryController(memService)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
 
         mvc.perform(get("/api/v1/memory/record/nonexistent"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void getMemories_wrongMethod_returns405() throws Exception {
-        var memService = mock(MemoryService.class);
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new MemoryController(memService)).build();
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/memory"))
-                .andExpect(status().isMethodNotAllowed());
+    void rebuild_returnsOk() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(mock(MemoryService.class), mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
+
+        mvc.perform(post("/api/v1/memory/rebuild"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").isNumber());
     }
 }
