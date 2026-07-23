@@ -189,7 +189,7 @@ data/memory/YYYY/MM.md
 ### 当前状态
 
 ✅ 后端接口已实现  
-❌ 前端尚未对接  
+✅ 前端已对接  
 ⚠️ 交易知识（os/trading-os/）还未接入 AI 对话  
 
 ---
@@ -222,19 +222,20 @@ AI 对用户基础信息的认知。
 |:-----|:----:|:----:|:----:|:---------|
 | 统一输入 | ✅ | ✅ | ✅ | `POST /api/v1/records` |
 | AI 对话-分析模式 | ✅ | ✅ | ✅ | `POST /api/v1/records` |
-| AI 对话-聊天模式 | ✅ | ✅ | ⚠️ 新加 | `POST /api/v1/records` |
+| AI 对话-聊天模式 | ✅ | ✅ | ✅ | `POST /api/v1/records` |
 | 结束对话总结 | ✅ | ✅ | ✅ | `POST /api/v1/conversations/end` |
 | Feed 流 | ✅ | ✅ | ✅ | `GET /api/v1/feed` |
 | 今日简报 | ✅ | ✅ | ✅ | `GET /api/v1/brief` |
 | 时间线 | ✅ | ✅ | ✅ | `GET /api/v1/timeline` |
-| 记忆查询 | ✅ | ❌ | ✅ | `GET /api/v1/memory` |
-| 标签索引 | ✅ | ❌ | ✅ | 无独立 API |
+| 记忆查询 | ✅ | ✅ | ✅ | `GET /api/v1/memory` |
+| 记忆重建 | ✅ | ❌ | ✅ | `POST /api/v1/memory/rebuild` |
+| 标签索引 | ✅ | ✅ | ✅ | `GET /api/v1/tags` |
+| 身份读取/更新 | ✅ | ✅ | ✅ | `GET|PUT /api/v1/identity` |
+| 全文搜索 | ✅ | ✅ | ✅ | `GET /api/v1/search` |
 | 持仓查询 | ✅ | ❌ | ✅ | `GET /api/v1/trading/positions` |
 | 组合概览 | ✅ | ❌ | ✅ | `GET /api/v1/trading/portfolio` |
 | 记录交易 | ✅ | ❌ | ✅ | `POST /api/v1/trading/trades` |
-| 用户身份 | ✅ | ❌ | ✅ | 无独立 API |
 | 交易知识召回 | ❌ | ❌ | ❌ | 未实现 |
-| 全文搜索 | ❌ | ❌ | ❌ | 未实现 |
 
 ---
 

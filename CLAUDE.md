@@ -115,7 +115,7 @@ com.adaiadai.core/
 │   ├── FeedController           GET  /api/v1/feed（时间线 Feed）
 │   ├── TimelineController       GET  /api/v1/timeline
 │   ├── BriefController          GET  /api/v1/brief（今日概览）
-│   ├── MemoryController         GET  /api/v1/memory
+│   ├── MemoryController         GET  /api/v1/memory + POST /api/v1/memory/rebuild（重建）
 │   ├── IdentityController       GET|PUT  /api/v1/identity（个人档案读写）
 │   ├── SearchController         GET  /api/v1/search?q=（全文搜索）
 │   ├── TagIndexController       GET  /api/v1/tags（标签统计）
