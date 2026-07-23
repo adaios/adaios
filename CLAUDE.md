@@ -9,6 +9,10 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 
 **阅读 VISION.md（必读）**：在做任何决策或写任何代码前，先阅读 `docs/VISION.md`——它定义了 AdaiOS 的核心理念、五层产品架构和工程原则。CLAUDE.md 只记录技术细节，VISION.md 记录"为什么"。
 
+**核心理念完整阐述**：[`docs/architecture/adaios-personal-os.md`](docs/architecture/adaios-personal-os.md) — Everything is Content、Knowledge Evolves、Reasoning is Service。
+
+**文档入口**：[`docs/README.md`](docs/README.md) — 所有文档的索引入口，按"必读 → 架构 → 功能 → API → 决策 → 部署"分层组织。
+
 **阅读 `docs/architecture/product-architecture.md`**：了解 AdaiOS 五层产品架构（AI 问答 / 主动推送 / 数字身份 / 通用记录 / 外部信息 / 交易系统反哺），任何新功能必须明确归属哪个层级。
 
 ## 工作焦点分离
