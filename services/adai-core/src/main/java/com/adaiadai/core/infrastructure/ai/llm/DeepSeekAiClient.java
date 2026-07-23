@@ -158,17 +158,25 @@ public class DeepSeekAiClient implements AiClient {
 
         var messages = MAPPER.createArrayNode();
 
-        // System prompt：背景知识（不包含 JSON 输出指令）
-        String systemContent = buildChatSystemPrompt(ctx);
+        // System prompt：仅身份声明（一行）
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
-        systemMsg.put("content", systemContent);
+        systemMsg.put("content", "你是阿呆的个人 AI 助手。");
         messages.add(systemMsg);
 
-        // 对话历史：完整的 user/assistant 轮次（已从 card 文件拉取，包含当前用户输入）
+        // 背景知识：作为单独的 system 消息（model 在 system prompt 之后读取，
+        // 但不会把背景知识当成"自己要说的内容"）
+        String background = buildBackground(ctx);
+        if (background != null) {
+            var bgMsg = MAPPER.createObjectNode();
+            bgMsg.put("role", "system");
+            bgMsg.put("content", background);
+            messages.add(bgMsg);
+        }
+
+        // 对话历史：完整的 user/assistant 轮次
         List<ChatMessage> history = ctx.conversationHistory();
         if (history.isEmpty()) {
-            // 保险：如果没有历史记录，回退到 ANALYSIS 模式的 prompt
             log.warn("chat 模式但没有历史记录，回退到普通 prompt");
             var fallbackMsg = MAPPER.createObjectNode();
             fallbackMsg.put("role", "user");
@@ -188,14 +196,10 @@ public class DeepSeekAiClient implements AiClient {
     }
 
     /**
-     * 构建对话模式的 System Prompt。
-     * 包含身份摘要、日期、标签关联记录和记忆回读，但不包含 JSON 输出指令。
-     * 让 AI 在末尾自然附带 JSON 标签。
+     * 构建背景知识文本（单独作为一条 system 消息，不含 AI 角色指令）。
      */
-    private String buildChatSystemPrompt(ContextPackage ctx) {
+    private String buildBackground(ContextPackage ctx) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是阿呆的个人 AI 助手，请用自然、简洁的中文和用户聊天。\n");
-        sb.append("直接回答，不要以第三人称描述用户。\n\n");
 
         // 称呼
         String name = extractName(ctx.identityRef());
@@ -203,17 +207,16 @@ public class DeepSeekAiClient implements AiClient {
             sb.append("用户称呼：").append(name).append("\n\n");
         }
 
-        // 背景知识（不要复述）
+        // 相关历史记录 + 记忆回读
         if (ctx.relatedRefs() != null && !ctx.relatedRefs().isEmpty()) {
             for (String ref : ctx.relatedRefs()) {
                 if (ref != null && !ref.isBlank()) {
                     sb.append(ref.strip()).append("\n");
                 }
             }
-            sb.append("（以上是背景信息，了解即可，不用向用户复述。）");
         }
 
-        return sb.toString();
+        return sb.isEmpty() ? null : sb.toString();
     }
 
     /**
