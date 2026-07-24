@@ -25,4 +25,4 @@ flutter_launcher_icons:
   ios: true
   web:
     generate: true
-  image_path: "assets/icon/adaios-icon.png"
+  image_path: "assets/icon/adaioa-icon-white.png"
