@@ -66,13 +66,15 @@ public class RecordController {
     @PostMapping
     public ResponseEntity<?> createRecord(@Valid @RequestBody CreateRecordRequest request) {
         ContentRecord record = buildRecord(request);
-        recordRepository.save(record);
 
-        // cardId present AND card file exists → continuation of chat, directly handle question
+        // cardId present AND card file exists → continuation of chat, append turn to card only
         if (request.cardId() != null && cardRepository.findById(request.cardId()).isPresent()) {
             log.info("Card continuation | cardId={} | content=\"{}\"", request.cardId(), truncate(request.content(), 40));
             return handleQuestion(record, request.cardId());
         }
+
+        // New record: save content record first
+        recordRepository.save(record);
 
         // New card or first request with cardId: resolve intent once
         Intent intent = resolveIntent(request, record);

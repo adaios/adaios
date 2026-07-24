@@ -66,12 +66,23 @@ public class CardFileRepository {
 
     /**
      * 根据 ID 查找卡片。
+     * 兼容旧版数字 ID：如 "1784872873886" 也会匹配 "card_1784872873886"。
      */
     public Optional<CardRecord> findById(String id) {
-        // 需要遍历所有日期的目录查找
-        return findAll().stream()
+        // 精确匹配
+        Optional<CardRecord> exact = findAll().stream()
                 .filter(c -> c.id().equals(id))
                 .findFirst();
+        if (exact.isPresent()) return exact;
+
+        // 兼容旧版数字 ID：尝试补 card_ 前缀
+        if (!id.startsWith("card_")) {
+            String withPrefix = "card_" + id;
+            return findAll().stream()
+                    .filter(c -> c.id().equals(withPrefix))
+                    .findFirst();
+        }
+        return Optional.empty();
     }
 
     /**

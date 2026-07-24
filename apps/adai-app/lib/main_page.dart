@@ -216,8 +216,6 @@ class _MainPageState extends State<MainPage>
     final idx = _cards.indexWhere((c) => c.id == id);
     if (idx >= 0) {
       _cards[idx] = updater(_cards[idx]);
-      final now = TimeOfDay.now();
-      _cards[idx] = _cards[idx].copyWith(time: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
     }
     _cards.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
   }
