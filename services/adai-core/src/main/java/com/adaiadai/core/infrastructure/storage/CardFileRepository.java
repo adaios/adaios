@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 @Repository
 public class CardFileRepository {
 
-    private static final String CARDS_DIR = "records";
+    private static final String CARDS_DIR = "records/cards";
     private static final DateTimeFormatter ID_FORMATTER = DateTimeFormatter.ofPattern("'card_'HHmmssSSS");
     private static final DateTimeFormatter DIR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
@@ -90,7 +90,7 @@ public class CardFileRepository {
         String prefix = CARDS_DIR + "/" + date.format(DIR_DATE_FORMAT);
         List<String> files = fileStorage.listFiles(prefix);
         return files.stream()
-                .filter(f -> f.startsWith(prefix) && f.endsWith(".md") && f.contains("card_"))
+                .filter(f -> f.startsWith(prefix) && f.endsWith(".md"))
                 .map(this::parseFromFile)
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(CardRecord::createdAt))
@@ -100,7 +100,7 @@ public class CardFileRepository {
     public List<CardRecord> findAll() {
         List<String> files = fileStorage.listFiles(CARDS_DIR);
         return files.stream()
-                .filter(f -> f.endsWith(".md") && f.contains("card_"))
+                .filter(f -> f.endsWith(".md"))
                 .map(this::parseFromFile)
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(CardRecord::createdAt).reversed())

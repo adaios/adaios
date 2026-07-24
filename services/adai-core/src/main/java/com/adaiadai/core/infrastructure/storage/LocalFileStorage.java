@@ -86,6 +86,16 @@ public class LocalFileStorage implements FileStorage {
         return Files.exists(resolve(path));
     }
 
+    @Override
+    public void delete(String path) {
+        try {
+            Files.deleteIfExists(resolve(path));
+            log.debug("文件删除成功: {}", resolve(path));
+        } catch (IOException e) {
+            throw new StorageException("删除文件失败: " + path, e);
+        }
+    }
+
     private Path resolve(String path) {
         // 防止路径遍历攻击
         Path resolved = basePath.resolve(path).normalize();

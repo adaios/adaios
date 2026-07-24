@@ -156,7 +156,7 @@ class _MainPageState extends State<MainPage>
   }
 
   void _createNewCard(String text, String timeStr, String? forcedIntent) async {
-    final cardId = DateTime.now().millisecondsSinceEpoch.toString();
+    final cardId = 'card_${DateTime.now().millisecondsSinceEpoch}';
     setState(() => _cards.add(FeedCardData(
       id: cardId, type: FeedCardType.record, time: timeStr, content: text, mode: CardMode.idle,
     )));

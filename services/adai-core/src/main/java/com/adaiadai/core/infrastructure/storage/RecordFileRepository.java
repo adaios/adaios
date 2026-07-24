@@ -66,6 +66,11 @@ public class RecordFileRepository implements RecordRepository {
         List<String> files = fileStorage.listFiles("");
         return files.stream()
                 .filter(f -> f.startsWith(RECORDS_DIR + "/") && f.endsWith(".md"))
+                .filter(f -> !f.startsWith(RECORDS_DIR + "/cards/"))
+                .filter(f -> {
+                    String fileName = f.substring(f.lastIndexOf('/') + 1);
+                    return fileName.startsWith("rec_");
+                })
                 .map(this::parseFromFile)
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(ContentRecord::createdAt).reversed())

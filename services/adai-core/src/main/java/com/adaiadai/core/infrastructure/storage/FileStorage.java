@@ -40,4 +40,11 @@ public interface FileStorage {
      * @return 是否存在
      */
     boolean exists(String path);
+
+    /**
+     * 删除文件。
+     *
+     * @param path 相对路径
+     */
+    void delete(String path);
 }
