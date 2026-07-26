@@ -41,6 +41,16 @@ class ApiService {
     return feed;
   }
 
+  /// 更新记录的 domain。
+  Future<void> updateRecordDomain(String id, String domain) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/api/v1/records/$id/domain'),
+      headers: _headers,
+      body: jsonEncode({'domain': domain}),
+    );
+    _check(resp);
+  }
+
   /// 删除记录。
   Future<void> deleteRecord(String id) async {
     final resp = await http.delete(
@@ -404,8 +414,9 @@ class RecordResponse {
   final String? summary;
   final List<String>? tags;
   final String? content;
+  final String domain;
 
-  RecordResponse({required this.intent, this.recordId, this.summary, this.tags, this.content});
+  RecordResponse({required this.intent, this.recordId, this.summary, this.tags, this.content, this.domain = 'life'});
 
   factory RecordResponse.fromJson(Map<String, dynamic> json) {
     final intent = json['intent'] as String? ?? 'log';
@@ -415,6 +426,7 @@ class RecordResponse {
       summary: json['summary'] as String?,
       tags: (json['tags'] as List?)?.cast<String>(),
       content: json['content'] as String?,
+      domain: json['domain'] as String? ?? 'life',
     );
   }
 }

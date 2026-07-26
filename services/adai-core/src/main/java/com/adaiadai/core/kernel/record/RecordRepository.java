@@ -39,4 +39,12 @@ public interface RecordRepository {
      * @param id 记录唯一标识
      */
     void deleteById(String id);
+
+    /**
+     * 更新记录的 domain 字段。
+     *
+     * @param id     记录 ID
+     * @param domain 新域名值（life / trading / project）
+     */
+    void updateDomain(String id, String domain);
 }

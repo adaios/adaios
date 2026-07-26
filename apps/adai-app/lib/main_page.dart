@@ -179,11 +179,12 @@ class _MainPageState extends State<MainPage>
           _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
             turns: [ConversationTurn(isUser: true, text: text, time: timeStr),
               if (resp.summary != null) ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr)],
+            domain: resp.domain,
           ));
         });
       } else {
         setState(() {
-          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, mode: CardMode.idle, intent: IntentType.log));
+          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain));
         });
       }
     } catch (_) { if (mounted) _showError('saved locally, waiting for network'); }
@@ -235,13 +236,18 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _changeDomain(String id, String domain) {
+  void _changeDomain(String id, String domain) async {
     setState(() {
       final idx = _cards.indexWhere((c) => c.id == id);
       if (idx >= 0) {
         _cards[idx] = _cards[idx].copyWith(domain: domain);
       }
     });
+    try {
+      await _api.updateRecordDomain(id, domain);
+    } catch (e) {
+      if (mounted) _showError('更新 OS 标记失败');
+    }
   }
 
   void _deactivateOtherCards(String keepId) {

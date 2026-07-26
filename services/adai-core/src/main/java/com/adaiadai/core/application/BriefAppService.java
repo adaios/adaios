@@ -44,10 +44,22 @@ public class BriefAppService {
         this.tradingReviewAppService = tradingReviewAppService;
     }
 
-    public String generateBrief() {
-        // 2 minutes cache
+    /**
+     * 返回缓存的 Brief，不触发 AI 调用。
+     * Feed 使用此方法避免阻塞主页加载。
+     */
+    public String getCachedBrief() {
         if (cachedBrief != null && cachedBriefAt != null
-                && java.time.Duration.between(cachedBriefAt, LocalDateTime.now()).toMinutes() < 2) {
+                && java.time.Duration.between(cachedBriefAt, LocalDateTime.now()).toMinutes() < 5) {
+            return cachedBrief;
+        }
+        return "";
+    }
+
+    public String generateBrief() {
+        // 5 minutes cache
+        if (cachedBrief != null && cachedBriefAt != null
+                && java.time.Duration.between(cachedBriefAt, LocalDateTime.now()).toMinutes() < 5) {
             return cachedBrief;
         }
 

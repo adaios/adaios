@@ -169,6 +169,7 @@ class _InputBarState extends State<InputBar> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               // Input
               Expanded(
                 child: AnimatedSwitcher(

@@ -51,11 +51,11 @@ class RecordControllerTest {
         QuestionAppService questionAppService = mock(QuestionAppService.class);
         when(questionAppService.answer(any(), any()))
                 .thenReturn(new QuestionAppService.AnswerResult(
-                        "rec_test", "mock answer", List.of("test"), "raw"
+                        "rec_test", "mock answer", List.of("test"), "raw", "life"
                 ));
         when(questionAppService.answer(any(), any(), any()))
                 .thenReturn(new QuestionAppService.AnswerResult(
-                        "rec_dec", "decision analysis", List.of("trading"), "raw"
+                        "rec_dec", "decision analysis", List.of("trading"), "raw", "life"
                 ));
 
         // ContextEngine with real dependencies

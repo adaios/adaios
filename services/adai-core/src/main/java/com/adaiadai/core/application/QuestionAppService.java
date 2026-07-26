@@ -82,13 +82,15 @@ public class QuestionAppService {
 
         log.info("=== 问答流程完成 | 标签={} ===", understanding.tags());
 
+        String domain = understanding.domain() != null ? understanding.domain() : "life";
+
         // 将 AI 返回的标签写回 Record，触发 TagIndexService 更新索引
         // 只有非卡片续接（无 cardId）时才存记录，避免重复拆分
         if (cardId == null && understanding.tags() != null && !understanding.tags().isEmpty()) {
             ContentRecord enriched = new ContentRecord(
                     record.id(), record.type(), record.source(), record.title(), record.content(),
                     understanding.tags(), record.createdAt(), "question", understanding.summary(),
-                    understanding.domain() != null ? understanding.domain() : "life"
+                    domain
             );
             recordRepository.save(enriched);
             log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), understanding.tags());
@@ -129,7 +131,8 @@ public class QuestionAppService {
                 record.id(),
                 understanding.summary(),
                 understanding.tags(),
-                understanding.rawResponse()
+                understanding.rawResponse(),
+                domain
         );
     }
 
@@ -137,6 +140,7 @@ public class QuestionAppService {
             String recordId,
             String summary,
             List<String> tags,
-            String rawResponse
+            String rawResponse,
+            String domain
     ) {}
 }

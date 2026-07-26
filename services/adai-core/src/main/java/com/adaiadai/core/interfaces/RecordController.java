@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -120,6 +121,7 @@ public class RecordController {
     private ResponseEntity<StatemResponse> handleStatem(ContentRecord record) {
         List<String> tags = Collections.emptyList();
         String summary = null;
+        String domain = "life";
 
         try {
             // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
@@ -127,6 +129,7 @@ public class RecordController {
             AiUnderstanding understanding = aiClient.understand(ctx);
             tags = understanding.tags();
             summary = understanding.summary();
+            domain = understanding.domain() != null ? understanding.domain() : "life";
             if (summary == null || summary.isBlank() || summary.length() > 50) {
                 summary = "recorded";
             }
@@ -134,10 +137,10 @@ public class RecordController {
             log.debug("AI tagging skipped for statement: {}", e.getMessage());
         }
 
-        // Re-save with summary+tags persisted to file
+        // Re-save with summary+tags+domain persisted to file
         ContentRecord enriched = new ContentRecord(
                 record.id(), record.type(), record.source(), record.title(), record.content(),
-                tags != null ? tags : List.of(), record.createdAt(), "log", summary, record.domain()
+                tags != null ? tags : List.of(), record.createdAt(), "log", summary, domain
         );
         recordRepository.save(enriched);
 
@@ -146,7 +149,7 @@ public class RecordController {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(),
                         new AiUnderstanding(summary != null ? summary : "recorded",
-                                tags != null ? tags : List.of(), "neutral", "life", false, null, ""));
+                                tags != null ? tags : List.of(), "neutral", domain, false, null, ""));
                 memoryService.persist(memory);
                 log.info("Memory persisted for statement | recordId={} | summary=\"{}\"", record.id(), truncate(summary, 40));
             } catch (Exception e) {
@@ -155,7 +158,7 @@ public class RecordController {
         }
 
         return ResponseEntity.ok(new StatemResponse(
-                "log", record.id(), record.content(), tags, summary
+                "log", record.id(), record.content(), tags, summary, domain
         ));
     }
 
@@ -193,7 +196,8 @@ public class RecordController {
                 result.recordId(),
                 result.summary(),
                 result.tags(),
-                result.rawResponse()
+                result.rawResponse(),
+                result.domain()
         ));
     }
 
@@ -231,7 +235,8 @@ public class RecordController {
                 result.recordId(),
                 result.summary(),
                 result.tags(),
-                result.rawResponse()
+                result.rawResponse(),
+                result.domain()
         ));
     }
 
@@ -265,7 +270,8 @@ public class RecordController {
             String recordId,
             String content,
             List<String> tags,
-            String summary
+            String summary,
+            String domain
     ) {}
 
     public record QuestionResponse(
@@ -273,7 +279,8 @@ public class RecordController {
             String recordId,
             String summary,
             List<String> tags,
-            String rawResponse
+            String rawResponse,
+            String domain
     ) {}
 
     public record DecisionResponse(
@@ -281,13 +288,25 @@ public class RecordController {
             String recordId,
             String summary,
             List<String> tags,
-            String rawResponse
+            String rawResponse,
+            String domain
     ) {}
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRecord(@PathVariable String id) {
         log.info("Delete record | id={}", id);
         recordRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/domain")
+    public ResponseEntity<Void> updateDomain(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String domain = body.get("domain");
+        if (domain == null || !List.of("life", "trading", "project").contains(domain)) {
+            return ResponseEntity.badRequest().build();
+        }
+        log.info("Update domain | id={} | domain={}", id, domain);
+        recordRepository.updateDomain(id, domain);
         return ResponseEntity.noContent().build();
     }
 

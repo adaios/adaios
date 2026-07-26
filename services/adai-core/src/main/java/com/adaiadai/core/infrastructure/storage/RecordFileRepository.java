@@ -106,6 +106,22 @@ public class RecordFileRepository implements RecordRepository {
         return LocalDateTime.now().format(ID_FORMATTER);
     }
 
+    @Override
+    public void updateDomain(String id, String domain) {
+        Optional<ContentRecord> existing = findById(id);
+        if (existing.isEmpty()) {
+            log.warn("Cannot update domain: record not found | id={}", id);
+            return;
+        }
+        ContentRecord r = existing.get();
+        ContentRecord updated = new ContentRecord(
+                r.id(), r.type(), r.source(), r.title(), r.content(),
+                r.tags(), r.createdAt(), r.intent(), r.summary(), domain
+        );
+        save(updated);
+        log.info("Record domain updated | id={} | domain={}", id, domain);
+    }
+
     // ── 内部方法 ──
 
     private String filePath(ContentRecord record) {
