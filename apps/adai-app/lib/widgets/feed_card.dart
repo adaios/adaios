@@ -330,40 +330,35 @@ class FeedCard extends StatelessWidget {
   }
 
   Widget _buildMoreMenu() {
+    final selected = data.domain;
     final menuItems = <PopupMenuEntry<String>>[
       PopupMenuItem<String>(
         enabled: false,
-        height: 24,
+        height: 22,
         padding: EdgeInsets.zero,
-        child: Text('  标记为', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 10),
+          child: Text('标记为', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
+        ),
       ),
       ...['life', 'trading', 'project'].map((d) => PopupMenuItem<String>(
         value: 'domain:$d',
-        height: 28,
-        padding: EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            Text('${_domainEmoji[d] ?? '🌿'}  ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey1)),
-            if (data.domain == d) ...[
-              const Spacer(),
-              Icon(Icons.check, size: 12, color: AppColors.darkGreen),
-            ],
-          ],
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Text('${_domainEmoji[d] ?? '🌿'}  ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: d == selected ? FontWeight.w700 : FontWeight.w400,
+            color: d == selected ? AppColors.darkGrey1 : AppColors.darkGrey3,
+          ),
         ),
       )),
       const PopupMenuDivider(),
       PopupMenuItem<String>(
         value: 'delete',
-        height: 28,
-        padding: EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            Icon(Icons.delete_outline_rounded, size: 12, color: AppColors.darkGrey4),
-            const SizedBox(width: 6),
-            Text('删除', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-          ],
-        ),
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Text('删除', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
       ),
     ];
 
@@ -376,7 +371,7 @@ class FeedCard extends StatelessWidget {
         }
       },
       itemBuilder: (_) => menuItems,
-      offset: const Offset(-100, 20),
+      offset: const Offset(-20, 16),
       color: AppColors.darkSurface2,
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
