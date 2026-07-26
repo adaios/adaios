@@ -6,10 +6,10 @@ class AppColors {
   AppColors._();
 
   // -- Dark mode --
-  static const Color darkBg = Color(0xFF0E0E0E);
-  static const Color darkSurface = Color(0xFF1A1A1A);
-  static const Color darkSurface2 = Color(0xFF232326);
-  static const Color darkBorder = Color(0xFF2C2C2E);
+  static const Color darkBg = Color(0xFF131211);
+  static const Color darkSurface = Color(0xFF1D1B1A);
+  static const Color darkSurface2 = Color(0xFF252220);
+  static const Color darkBorder = Color(0xFF2D2926);
 
   // 6-level warm grey scale (was: darkTextPrimary/Secondary/Tertiary)
   static const Color darkGrey1 = Color(0xFFF0EDE9); // highest emphasis
@@ -25,7 +25,7 @@ class AppColors {
   static Color get darkTextTertiary => darkGrey5;
 
   // Accents — muted
-  static const Color darkGreen = Color(0xFF2BC457);
+  static const Color darkGreen = Color(0xFF3AB75A);
   static const Color darkOrange = Color(0xFFE8963A);
   static const Color darkBlue = Color(0xFF5299FF);
 

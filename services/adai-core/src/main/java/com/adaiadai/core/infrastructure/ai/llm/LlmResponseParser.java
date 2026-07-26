@@ -108,7 +108,7 @@ public class LlmResponseParser {
         if (lastBrace >= 0) {
             String candidate = trimmed.substring(lastBrace).strip();
             // 粗略校验：以 } 结尾且包含 tags 字段
-            if (candidate.endsWith("}") && candidate.contains("\"tags\"")) {
+            if (candidate.endsWith("}") && (candidate.contains("\"tags\"") || candidate.contains("\"domain\""))) {
                 try {
                     MAPPER.readTree(candidate);
                     return candidate;

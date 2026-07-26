@@ -28,6 +28,8 @@ public class BriefAppService {
     private final MemoryService memoryService;
     private final AiClient aiClient;
     private final TradingReviewAppService tradingReviewAppService;
+    private final DomainActivityService domainActivityService;
+    private final TagRecommendationService tagRecommendationService;
 
     private String cachedBrief;
     private LocalDateTime cachedBriefAt;
@@ -36,12 +38,16 @@ public class BriefAppService {
                            RecordRepository recordRepository,
                            MemoryService memoryService,
                            AiClient aiClient,
-                           TradingReviewAppService tradingReviewAppService) {
+                           TradingReviewAppService tradingReviewAppService,
+                           DomainActivityService domainActivityService,
+                           TagRecommendationService tagRecommendationService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.aiClient = aiClient;
         this.tradingReviewAppService = tradingReviewAppService;
+        this.domainActivityService = domainActivityService;
+        this.tagRecommendationService = tagRecommendationService;
     }
 
     /**
@@ -81,7 +87,7 @@ public class BriefAppService {
         try {
             AiUnderstanding understanding = aiClient.understand(
                     new com.adaiadai.core.kernel.context.engine.ContextPackage(
-                            "brief", "",
+                            "brief", identityName,
                             "brief", prompt, List.of(),
                             List.of(), prompt, java.time.LocalDateTime.now(),
                             List.of()
@@ -90,8 +96,9 @@ public class BriefAppService {
             cachedBriefAt = LocalDateTime.now();
             return cachedBrief;
         } catch (Exception e) {
-            log.warn("Brief AI failed, using default: {}", e.getMessage());
-            cachedBrief = defaultBrief(identityName, todayRecords, recentRecords);
+            log.warn("Brief AI failed: {}", e.getMessage());
+            String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+            cachedBrief = "☀️ " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？";
             cachedBriefAt = LocalDateTime.now();
             return cachedBrief;
         }
@@ -149,6 +156,42 @@ public class BriefAppService {
             sb.append("User had trading activity today. Suggest generating a review note.\n\n");
         }
 
+        // ── Domain activity signals ──
+        try {
+            DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+            sb.append("Domain activity (last 7 days):\n");
+            for (var item : activity.domains()) {
+                String note = switch (item.trend()) {
+                    case "inactive" -> "no activity this week";
+                    case "quiet" -> "activity dropped this week compared to last";
+                    case "up" -> "activity increased this week";
+                    case "stable" -> "activity level consistent";
+                    default -> "activity level consistent";
+                };
+                sb.append("- ").append(item.domain()).append(": ")
+                        .append(item.weekCount()).append(" records this week (")
+                        .append(item.todayCount()).append(" today) — ").append(note).append("\n");
+            }
+            sb.append("\n");
+        } catch (Exception e) {
+            log.debug("Domain activity signal skipped: {}", e.getMessage());
+        }
+
+        // ── Tag signals ──
+        try {
+            TagRecommendationService.TagRecommendations tags = tagRecommendationService.getRecommendations();
+            sb.append("Tag signals:\n");
+            if (!tags.hot().isEmpty()) {
+                sb.append("- Hot tags (recent 3 days): ").append(String.join(", ", tags.hot())).append("\n");
+            }
+            if (!tags.cold().isEmpty()) {
+                sb.append("- Cold tags (not used >14 days, used to be frequent): ").append(String.join(", ", tags.cold())).append("\n");
+            }
+            sb.append("\n");
+        } catch (Exception e) {
+            log.debug("Tag recommendation signal skipped: {}", e.getMessage());
+        }
+
         sb.append("Rules:\n");
         sb.append("1. First line: \"").append(name).append(" ").append(greeting).append("!\"\n");
         sb.append("2. Use emoji at the start of each line\n");
@@ -159,12 +202,4 @@ public class BriefAppService {
         return sb.toString();
     }
 
-    private String defaultBrief(String name, List<ContentRecord> todayRecords, List<ContentRecord> allRecent) {
-        int todayCount = todayRecords.size();
-        int hour = java.time.LocalDateTime.now().getHour();
-        String greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-        return "Hello " + greeting + ", " + name + "!\n"
-                + todayCount + " records today\n"
-                + "Stay hydrated!";
-    }
 }

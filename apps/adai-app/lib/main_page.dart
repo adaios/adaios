@@ -22,6 +22,7 @@ class _MainPageState extends State<MainPage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final ApiService _api = ApiService();
+  final GlobalKey<InputBarState> _inputBarKey = GlobalKey<InputBarState>();
 
   List<FeedCardData> _allCards = [];
   List<FeedCardData> _cards = [];
@@ -32,6 +33,8 @@ class _MainPageState extends State<MainPage>
   bool _loading = true;
   bool _loadingMore = false;     // load more 进度
   int _totalShown = 0;
+  bool _scrollAtTop = true;
+  bool _scrollAtBottom = true;
   static const int _pageSize = 5;
 
   String? _activeCardId;
@@ -45,6 +48,7 @@ class _MainPageState extends State<MainPage>
   void initState() {
     super.initState();
     _loadFeed();
+    _scrollController.addListener(_onScroll);
     _enterCtrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 600),
     );
@@ -75,8 +79,8 @@ class _MainPageState extends State<MainPage>
         _loading = false;
         _totalShown = _pageSize;
       });
-      _scrollToBottom();
     } catch (e) {
+      if (mounted) _showError('加载失败');
       setState(() => _loading = false);
     }
   }
@@ -223,14 +227,16 @@ class _MainPageState extends State<MainPage>
     if (idx >= 0) {
       _cards[idx] = updater(_cards[idx]);
     }
-    _cards.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
   }
 
   void _deleteCard(String id) async {
     try {
       await _api.deleteRecord(id);
       if (!mounted) return;
-      setState(() => _cards.removeWhere((c) => c.id == id));
+      setState(() {
+        _cards.removeWhere((c) => c.id == id);
+        _allCards.removeWhere((c) => c.id == id);
+      });
     } catch (e) {
       if (mounted) _showError('删除失败');
     }
@@ -279,10 +285,31 @@ class _MainPageState extends State<MainPage>
   }
 
   void _doScroll() {
-    if (_activeCardId != null && _scrollController.hasClients) {
+    if (_scrollController.hasClients) {
       _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    } else if (_scrollController.hasClients) {
-      _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
+  void _jumpToBottom([int retries = 3]) {
+    if (!_scrollController.hasClients || retries <= 0) return;
+    if (_scrollController.position.pixels > 5) {
+      _scrollController.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom(retries - 1));
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position.pixels;
+    final max = _scrollController.position.maxScrollExtent;
+    // reverse: true → pos=0 是视觉最底部（最新内容）
+    final atBottom = pos <= 20;
+    final atTop = pos >= max - 20;
+    if (atTop != _scrollAtTop || atBottom != _scrollAtBottom) {
+      setState(() {
+        _scrollAtTop = atTop;
+        _scrollAtBottom = atBottom;
+      });
     }
   }
 
@@ -330,12 +357,18 @@ class _MainPageState extends State<MainPage>
         }
       }
       setState(() => _hasOlder = false);
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) _showError('加载更多失败');
+      _hasOlder = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final activeCard = _activeCardId != null ? _cards.where((c) => c.id == _activeCardId).firstOrNull : null;
+    final endIdx = _cards.length;
+    final startIdx = (endIdx - _totalShown).clamp(0, endIdx);
+    final hasMore = startIdx > 0 || _hasOlder || _earlierCount > 0;
     return SafeArea(
       child: Column(
         children: [
@@ -371,17 +404,20 @@ class _MainPageState extends State<MainPage>
               ),
             ),
           if (_activeCardId == null && _brief.isNotEmpty && !_loading) _buildBriefCard(),
+          if (_activeCardId == null && !_loading) _buildMoreBanner(hasMore: hasMore),
           Expanded(
             child: _loading ? const Center(child: CircularProgressIndicator())
                 : _activeCardId == null ? _buildNormalLayout() : _buildActiveLayout(activeCard!),
           ),
+          if (!_scrollAtBottom) _buildLatestBar(),
+          if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),
           GestureDetector(
             onVerticalDragEnd: (d) {
               if (d.primaryVelocity != null && d.primaryVelocity! < -200) {
                 widget.onPullUp?.call();
               }
             },
-            child: InputBar(onSend: _onSend, hasActiveChat: _hasActiveChat),
+            child: InputBar(key: _inputBarKey, onSend: _onSend, hasActiveChat: _hasActiveChat),
           ),
         ],
       ),
@@ -392,50 +428,198 @@ class _MainPageState extends State<MainPage>
     final endIdx = _cards.length;
     final startIdx = (endIdx - _totalShown).clamp(0, endIdx);
     final visibleCards = _cards.sublist(startIdx, endIdx);
-    final hasMore = startIdx > 0 || _hasOlder || _earlierCount > 0;
 
     return FadeTransition(
       opacity: _contentAnim,
       child: SlideTransition(
         position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_contentAnim),
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.only(top: 20, bottom: 12),
-          children: [
-            if (hasMore) _buildMoreBanner(),
-            ...visibleCards.map((card) => FeedCard(
+        child: visibleCards.isEmpty ? _buildEmptyState() : _buildFeedList(visibleCards),
+      ),
+    );
+  }
+
+  Widget _buildFeedList(List<FeedCardData> cards) {
+    return ListView(
+      reverse: true,
+      controller: _scrollController,
+      padding: const EdgeInsets.only(top: 0, bottom: 12),
+      children: [
+        ...cards.reversed.toList().asMap().entries.map((entry) {
+          final card = entry.value;
+          return TweenAnimationBuilder<double>(
+            key: ValueKey('card_${card.id}'),
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 20 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: FeedCard(
               key: ValueKey(card.id),
               data: card.copyWith(mode: CardMode.idle),
               onActivate: () => _onCardActivate(card.id),
               onAsk: () => _onCardActivate(card.id),
               onEnd: null,
               onDelete: () => _deleteCard(card.id),
+              onToggleExpand: () {
+                final idx = _cards.indexWhere((c) => c.id == card.id);
+                if (idx >= 0) {
+                  setState(() => _cards[idx] = _cards[idx].copyWith(expanded: !_cards[idx].expanded));
+                }
+              },
               onDomainChanged: (domain) => _changeDomain(card.id, domain),
-            )),
-            const SizedBox(height: 24),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('✦ ✦ ✦', style: TextStyle(fontSize: 24, color: AppColors.darkGrey6)),
+            const SizedBox(height: 20),
+            Text('还没有记录', style: TextStyle(fontSize: 18, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            Text('在下方输入你的第一条记录\n或语音、或文字，随你', textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.darkGrey6, height: 1.6)),
+            const SizedBox(height: 32),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              _emptyChip('📝 记录心情', () => _inputBarKey.currentState?.prefillText('今天心情')),
+              const SizedBox(width: 12),
+              _emptyChip('🤔 问个问题', () => _inputBarKey.currentState?.prefillText('')),
+            ]),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMoreBanner() {
+  Widget _emptyChip(String label, VoidCallback onTap) {
     return GestureDetector(
-      onTap: _loadingMore ? null : _loadMore,
+      onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(color: AppColors.darkSurface2.withAlpha(128), borderRadius: BorderRadius.circular(12)),
-        child: Center(
-          child: _loadingMore
-              ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4)),
-                  const SizedBox(width: 10),
-                  Text('loading...', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
-                ])
-              : Text('load more', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.darkBorder.withAlpha(150)),
+          borderRadius: BorderRadius.circular(12),
         ),
+        child: Text(label, style: TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
       ),
+    );
+  }
+
+  Widget _buildMoreBanner({required bool hasMore}) {
+    final showLoadMore = _scrollAtTop && hasMore;
+    final showTop = !_scrollAtTop;
+
+    if (!showLoadMore && !showTop) return const SizedBox.shrink();
+
+    final label = showLoadMore ? 'load more' : '↑ top';
+    final color = showLoadMore ? AppColors.darkGrey4 : AppColors.darkGreen;
+
+    return GestureDetector(
+      onTap: showLoadMore
+          ? (_loadingMore ? null : _loadMore)
+          : () {
+              _scrollController.animateTo(0,
+                duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+            },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        child: _loadingMore
+            ? Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4)),
+                const SizedBox(width: 6),
+                Text('loading...', style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+              ]))
+            : Row(children: [
+                Expanded(child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.centerLeft, end: Alignment.centerRight,
+                    colors: [Colors.transparent, color.withAlpha(150)]),
+                  ),
+                )),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(label,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color, letterSpacing: 0.5)),
+                ),
+                Expanded(child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(gradient: LinearGradient(
+                    begin: Alignment.centerLeft, end: Alignment.centerRight,
+                    colors: [color.withAlpha(150), Colors.transparent]),
+                  ),
+                )),
+              ]),
+      ),
+    );
+  }
+
+  Widget _buildLatestBar() {
+    return GestureDetector(
+      onTap: () {
+        _scrollController.animateTo(0,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(children: [
+          Expanded(child: Container(
+            height: 1,
+            decoration: BoxDecoration(gradient: LinearGradient(
+              begin: Alignment.centerLeft, end: Alignment.centerRight,
+              colors: [Colors.transparent, AppColors.darkGreen.withAlpha(150)]),
+            ),
+          )),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text('↓ latest',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
+          ),
+          Expanded(child: Container(
+            height: 1,
+            decoration: BoxDecoration(gradient: LinearGradient(
+              begin: Alignment.centerLeft, end: Alignment.centerRight,
+              colors: [AppColors.darkGreen.withAlpha(150), Colors.transparent]),
+            ),
+          )),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildLastRecordBar() {
+    if (_cards.isEmpty) return const SizedBox.shrink();
+    final newest = _cards.last;
+    final minutesAgo = DateTime.now().difference(newest.updatedAt).inMinutes;
+    final label = minutesAgo < 1 ? 'just now'
+        : minutesAgo < 60 ? '$minutesAgo min ago'
+        : newest.time;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(children: [
+        Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(label, style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
+        ),
+        Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
+      ]),
     );
   }
 
@@ -452,7 +636,7 @@ class _MainPageState extends State<MainPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('today', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.darkGrey4, letterSpacing: 1.5)),
+            Text('今天', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey3)),
             const SizedBox(height: 14),
             ...lines.asMap().entries.map((entry) {
               final i = entry.key; final line = entry.value.trim();
@@ -521,12 +705,12 @@ class _MainPageState extends State<MainPage>
                     ),
                   if (activeCard.turns != null && activeCard.turns!.isNotEmpty)
                     ...activeCard.turns!.reversed.map((turn) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: _buildChatBubble(turn.text, turn.isUser, turn.time),
                     ))
                   else if (activeCard.content.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: _buildChatBubble(activeCard.content, true, activeCard.time),
                     ),
                 ],
@@ -552,7 +736,18 @@ class _MainPageState extends State<MainPage>
     );
   }
 
+  /// 去除 AI 回复末尾的 {"domain":"..."} JSON 残留。
+  static String stripDomainJson(String text) {
+    final int idx = text.indexOf('{"domain"');
+    if (idx < 0) return text;
+    // 找到匹配的 }
+    final int end = text.indexOf('}', idx);
+    if (end < 0) return text;
+    return text.substring(0, idx).trim();
+  }
+
   Widget _buildChatBubble(String text, bool isUser, String time) {
+    final displayText = isUser ? text : stripDomainJson(text);
     return Column(
       crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
@@ -565,20 +760,20 @@ class _MainPageState extends State<MainPage>
               bottomLeft: const Radius.circular(16), bottomRight: const Radius.circular(16),
             ),
           ),
-          constraints: BoxConstraints(maxWidth: 320),
+          constraints: const BoxConstraints(maxWidth: 320),
           child: isUser
-              ? Text(text, style: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1))
+              ? Text(displayText, style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1))
               : MarkdownBody(
-                  data: text,
+                  data: displayText,
                   selectable: true,
                   styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
-                    textTheme: TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
+                    textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
                   )).copyWith(
-                    strong: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+                    strong: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
                     code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkSurface2),
                     codeblockDecoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(8)),
-                    p: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1),
-                    a: TextStyle(fontSize: 14, color: AppColors.darkBlue),
+                    p: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1),
+                    a: const TextStyle(fontSize: 14, color: AppColors.darkBlue),
                   )),
         ),
         const SizedBox(height: 4),
@@ -597,7 +792,7 @@ class _TopBar extends StatelessWidget {
   String get _dateLabel {
     final now = DateTime.now();
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return '${now.month}/${now.day}·${weekdays[now.weekday - 1]}';
+    return '${now.month}月${now.day}日 ${weekdays[now.weekday - 1]}';
   }
 
   @override
@@ -610,9 +805,7 @@ class _TopBar extends StatelessWidget {
             onTap: onTimelineTap,
             child: Row(
               children: [
-                Text(_dateLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.darkGrey5, letterSpacing: 0.3)),
-                const SizedBox(width: 4),
-                Icon(Icons.keyboard_arrow_down, size: 14, color: AppColors.darkGrey5.withValues(alpha: 0.5)),
+                Text(_dateLabel, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.darkGrey1, letterSpacing: -0.3)),
               ],
             ),
           ),

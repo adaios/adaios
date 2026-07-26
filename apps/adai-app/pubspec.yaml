@@ -12,6 +12,7 @@ dependencies:
   http: ^1.2.0
   cupertino_icons: ^1.0.8
   flutter_markdown: ^0.7.7
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:

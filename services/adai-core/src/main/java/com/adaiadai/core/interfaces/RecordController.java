@@ -86,33 +86,23 @@ public class RecordController {
         if (intent == Intent.QUESTION) {
             return handleQuestion(record, request.cardId());
         }
-        if (intent == Intent.DECISION) {
-            return handleDecision(record, request.cardId());
-        }
         return handleStatem(record);
     }
 
     /**
-     * Resolve intent: manual > AI > regex. No session-aware for new cards.
+     * Resolve intent: manual override > AI. No regex fallback, no silent log.
      */
     private Intent resolveIntent(CreateRecordRequest request, ContentRecord record) {
         // 1. Manual override
         if (request.intent() != null) {
             return switch (request.intent()) {
                 case "question" -> Intent.QUESTION;
-                case "decision" -> Intent.DECISION;
                 default -> Intent.STATEMENT;
             };
         }
 
-        // 2. AI-based (always run, not gated by session)
-        Intent aiIntent = intentRecognizer.recognizeWithAi(record.content());
-        if (aiIntent != null) {
-            return aiIntent;
-        }
-
-        // 3. Regex fallback (no session-aware)
-        return intentRecognizer.recognize(record.content(), false, false);
+        // 2. AI-based — throws on failure, never silently returns STATEMENT
+        return intentRecognizer.recognizeWithAi(record.content());
     }
 
     /**

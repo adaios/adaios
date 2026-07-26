@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
+import 'hoverable.dart';
 
 /// 后端 record.type 映射。
 enum FeedCardType { record, aiNote, push, dateSeparator }
@@ -116,12 +118,14 @@ class FeedCard extends StatelessWidget {
   final VoidCallback? onEnd;
   final VoidCallback? onActivate;
   final VoidCallback? onDelete;
+  final VoidCallback? onToggleExpand;
   final void Function(String domain)? onDomainChanged;
 
   const FeedCard({
     super.key, required this.data,
     this.onAsk, this.onEnd, this.onActivate,
-    this.onDelete, this.onDomainChanged,
+    this.onDelete, this.onToggleExpand,
+    this.onDomainChanged,
   });
 
   bool get _isWaiting => data.mode == CardMode.waiting;
@@ -169,98 +173,99 @@ class FeedCard extends StatelessWidget {
             ? AppColors.darkBorder.withAlpha(100)
             : AppColors.darkBorder.withAlpha(200);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Left accent indicator (active cards only)
-            if (_isActive)
-              Container(
-                width: 3,
-                margin: const EdgeInsets.only(right: 0),
-                decoration: BoxDecoration(
-                  color: AppColors.darkGreen.withAlpha(150),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                  ),
-                ),
+    return Hoverable(
+      builder: (context, isHovered) => Transform.translate(
+        offset: isHovered ? const Offset(0, -2) : Offset.zero,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                left: _isActive ? BorderSide.none : BorderSide(color: borderColor, width: 1),
+                top: BorderSide(color: borderColor, width: 1),
+                right: BorderSide(color: borderColor, width: 1),
+                bottom: _isActive
+                    ? BorderSide.none
+                    : BorderSide(color: borderColor, width: 1),
               ),
-            // Card body
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: borderColor, width: 1),
-                    right: BorderSide(color: borderColor, width: 1),
-                    left: _isActive ? BorderSide.none : BorderSide(color: borderColor, width: 1),
-                    bottom: _isActive
-                        ? BorderSide.none
-                        : BorderSide(color: borderColor, width: 1),
-                  ),
-                  borderRadius: _isActive
-                      ? const BorderRadius.only(
-                          topRight: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        )
-                      : BorderRadius.circular(16),
+              borderRadius: _isActive
+                  ? const BorderRadius.only(
+                      topRight: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    )
+                  : BorderRadius.circular(16),
+        ),
+        child: ClipRRect(
+          borderRadius: _isActive
+              ? const BorderRadius.only(
+                  topRight: Radius.circular(15),
+                  bottomRight: Radius.circular(15),
+                )
+              : BorderRadius.circular(15),
+          child: Container(
+            color: _isActive || _isEnded
+                ? AppColors.darkSurface
+                : AppColors.darkSurface.withAlpha(200),
+            child: Stack(
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(),
+                          const SizedBox(height: 6),
+                          if (!_hasTurns) _buildBody(),
+                          if (_hasTurns) ...[
+                            const SizedBox(height: 3),
+                            _buildTurns(),
+                          ],
+                          if (data.summary != null && _isEnded) ...[
+                            const SizedBox(height: 6),
+                            _buildSummaryBanner(),
+                          ],
+                          if (_isIdle && data.summary != null) ...[
+                            const SizedBox(height: 6),
+                            _buildSummaryBanner(),
+                          ],
+                          if (data.tags != null && data.tags!.isNotEmpty && !_isActive) ...[
+                            const SizedBox(height: 6),
+                            _buildTags(),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _buildBottomLine(borderColor),
+                  ],
                 ),
-                child: ClipRRect(
-                  borderRadius: _isActive
-                      ? const BorderRadius.only(
-                          topRight: Radius.circular(15),
-                          bottomRight: Radius.circular(15),
-                        )
-                      : BorderRadius.circular(15),
-                  child: Container(
-                    color: _isActive || _isEnded
-                        ? AppColors.darkSurface
-                        : AppColors.darkSurface.withAlpha(200),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildHeader(),
-                              const SizedBox(height: 10),
-                              if (!_hasTurns) _buildBody(),
-                              if (_hasTurns) ...[
-                                const SizedBox(height: 4),
-                                _buildTurns(),
-                              ],
-                              if (data.summary != null && _isEnded) ...[
-                                const SizedBox(height: 8),
-                                _buildSummaryBanner(),
-                              ],
-                              if (_isIdle && data.summary != null) ...[
-                                const SizedBox(height: 8),
-                                _buildSummaryBanner(),
-                              ],
-                              if (data.tags != null && data.tags!.isNotEmpty && !_isActive) ...[
-                                const SizedBox(height: 8),
-                                _buildTags(),
-                              ],
-                            ],
-                          ),
+                // Left accent indicator for active cards — overlay to avoid multi-color border issue
+                if (_isActive)
+                  PositionedDirectional(
+                    start: 0, top: 0, bottom: 0,
+                    child: Container(
+                      width: 3,
+                      decoration: BoxDecoration(
+                        color: AppColors.darkGreen.withAlpha(150),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          bottomLeft: Radius.circular(16),
                         ),
-                        const SizedBox(height: 6),
-                        _buildBottomLine(borderColor),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+              ],  // Stack children
+            ),    // Stack
+          ),      // Container(color)
+        ),        // ClipRRect
+      ),          // Container(decoration)
+    ),            // Padding
+      ),          // Transform.translate
+    );            // Hoverable
   }
 
   Widget _buildHeader() {
@@ -273,7 +278,14 @@ class FeedCard extends StatelessWidget {
               color: AppColors.darkGrey5.withAlpha(50),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text('log', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.edit_note, size: 11, color: AppColors.darkGrey5),
+                const SizedBox(width: 2),
+                Text('log', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+              ],
+            ),
           ),
           const SizedBox(width: 6),
         ],
@@ -284,7 +296,14 @@ class FeedCard extends StatelessWidget {
               color: AppColors.darkGreen.withAlpha(50),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text('ask', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.help_outline, size: 11, color: AppColors.darkGreen),
+                const SizedBox(width: 2),
+                Text('ask', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+              ],
+            ),
           ),
           const SizedBox(width: 6),
         ],
@@ -306,13 +325,13 @@ class FeedCard extends StatelessWidget {
   }
 
   static const Map<String, String> _domainEmoji = {
-    'life': '🌿',
-    'trading': '📊',
-    'project': '📋',
+    'life': '📝',
+    'trading': '📈',
+    'project': '📑',
   };
 
   Widget _buildDomainBadge() {
-    final emoji = _domainEmoji[data.domain] ?? '🌿';
+    final emoji = _domainEmoji[data.domain] ?? '📝';
     final name = data.domain == 'life' ? '生活'
         : data.domain == 'trading' ? '交易'
         : data.domain == 'project' ? '项目'
@@ -345,11 +364,21 @@ class FeedCard extends StatelessWidget {
         value: 'domain:$d',
         height: 24,
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Text('${_domainEmoji[d] ?? '🌿'}  ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: d == selected ? FontWeight.w700 : FontWeight.w400,
-            color: d == selected ? AppColors.darkGrey1 : AppColors.darkGrey3,
+        child: Container(
+          width: 90,
+          decoration: d == selected
+              ? BoxDecoration(
+                  color: AppColors.darkGreen.withAlpha(25),
+                  borderRadius: BorderRadius.circular(4),
+                )
+              : null,
+          padding: EdgeInsets.symmetric(horizontal: 4, vertical: d == selected ? 2 : 0),
+          child: Text('${_domainEmoji[d] ?? '📝'}  ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: d == selected ? FontWeight.w600 : FontWeight.w400,
+              color: d == selected ? AppColors.darkGrey1 : AppColors.darkGrey3,
+            ),
           ),
         ),
       )),
@@ -358,7 +387,10 @@ class FeedCard extends StatelessWidget {
         value: 'delete',
         height: 24,
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Text('删除', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        child: SizedBox(
+          width: 90,
+          child: Text('删除', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        ),
       ),
     ];
 
@@ -371,14 +403,14 @@ class FeedCard extends StatelessWidget {
         }
       },
       itemBuilder: (_) => menuItems,
-      offset: const Offset(-20, 16),
+      offset: const Offset(-16, 16),
       color: AppColors.darkSurface2,
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Container(
-        width: 24, height: 24,
+        width: 20, height: 20,
         alignment: Alignment.center,
-        child: Icon(Icons.more_vert_rounded, size: 16, color: AppColors.darkGrey4),
+        child: Icon(Icons.more_vert_rounded, size: 14, color: AppColors.darkGrey4),
       ),
     );
   }
@@ -389,36 +421,86 @@ class FeedCard extends StatelessWidget {
 
   Widget _buildTurns() {
     final turns = data.turns!;
+    final bool collapsed = !data.expanded && turns.length > 4;
+    final displayTurns = collapsed ? _truncateTurns(turns) : turns;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...turns.map((turn) => Padding(
+        ...displayTurns.map((turn) => Padding(
           padding: const EdgeInsets.only(bottom: 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 2, right: 8),
-                child: Text(
-                  turn.isUser ? 'you' : 'ai',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                    color: turn.isUser ? AppColors.darkGrey5 : AppColors.darkGreen.withAlpha(178)),
-                ),
-              ),
-              Expanded(
-                child: Text(turn.text, style: TextStyle(fontSize: 14, height: 1.5,
-                  fontWeight: turn.isUser ? FontWeight.w500 : FontWeight.w400,
-                  color: AppColors.darkGrey1)),
-              ),
-            ],
-          ),
+          child: turn.isUser
+              ? Text(turn.text, style: TextStyle(fontSize: 15, height: 1.6,
+                  fontWeight: FontWeight.w500, color: AppColors.darkGrey1))
+              : _buildAiMessage(turn.text),
         )),
+        if (collapsed)
+          GestureDetector(
+            onTap: onToggleExpand,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 5),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurface2,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.darkBorder.withAlpha(76)),
+                    ),
+                    child: Text('展开全部 ${turns.length} 条对话',
+                      style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.expand_more, size: 14, color: AppColors.darkGrey5),
+                ],
+              ),
+            ),
+          ),
         // Loading dots while waiting for AI
         if (data.loading)
           const Padding(
             padding: EdgeInsets.only(left: 28, bottom: 5),
             child: _LoadingDots(),
           ),
+      ],
+    );
+  }
+
+  /// 折叠长对话：显示首条 + 末 2 条。
+  List<ConversationTurn> _truncateTurns(List<ConversationTurn> turns) {
+    if (turns.length <= 4) return turns;
+    return [turns.first, turns[turns.length - 2], turns.last];
+  }
+
+  Widget _buildAiMessage(String text) {
+    final cleanText = _stripDomainJson(text);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 2,
+          margin: const EdgeInsets.only(top: 4, right: 10),
+          decoration: BoxDecoration(
+            color: AppColors.darkGreen.withAlpha(100),
+            borderRadius: BorderRadius.circular(1),
+          ),
+        ),
+        Expanded(
+          child: MarkdownBody(
+            data: cleanText,
+            selectable: true,
+            styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+              textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1)),
+            )).copyWith(
+              strong: const TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkSurface2),
+              codeblockDecoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(8)),
+              p: const TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1),
+              a: const TextStyle(fontSize: 15, color: AppColors.darkBlue),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -463,7 +545,7 @@ class FeedCard extends StatelessWidget {
       onTap: onEnd,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 36,
+        height: 28,
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(color: borderColor.withAlpha(128), width: 0.5),
@@ -492,13 +574,13 @@ class FeedCard extends StatelessWidget {
   }
 
   Widget _lineCentered(Color borderColor) {
-    final labelColor = _isEnded ? AppColors.darkGreen : AppColors.darkGrey5;
+    final labelColor = _isEnded ? AppColors.darkGreen : AppColors.darkGreen.withAlpha(178);
 
     return GestureDetector(
       onTap: onAsk,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 36,
+        height: 28,
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(color: borderColor.withAlpha(128), width: 0.5),
@@ -544,5 +626,14 @@ class FeedCard extends StatelessWidget {
       ),
       child: Text(label, style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
     );
+  }
+
+  /// 去除 AI 回复末尾的 {"domain":"..."} JSON 残留。
+  static String _stripDomainJson(String text) {
+    final int idx = text.indexOf('{"domain"');
+    if (idx < 0) return text;
+    final int end = text.indexOf('}', idx);
+    if (end < 0) return text;
+    return text.substring(0, idx).trim();
   }
 }

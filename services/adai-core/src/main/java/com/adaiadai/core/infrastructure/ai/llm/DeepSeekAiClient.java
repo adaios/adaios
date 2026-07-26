@@ -65,7 +65,7 @@ public class DeepSeekAiClient implements AiClient {
     public AiUnderstanding understand(ContextPackage contextPackage) {
         if (apiKey == null || apiKey.isBlank()) {
             log.error("DEEPSEEK_API_KEY 未配置，无法调用 DeepSeek API");
-            return new AiUnderstanding("AI 未配置：缺少 API Key", List.of(), "unknown", "life", false, null, "");
+            throw new RuntimeException("AI 未配置：缺少 API Key");
         }
 
         List<ChatMessage> history = contextPackage.conversationHistory();
@@ -96,24 +96,29 @@ public class DeepSeekAiClient implements AiClient {
 
         } catch (java.net.http.HttpConnectTimeoutException e) {
             log.error("DeepSeek API 连接超时", e);
-            return new AiUnderstanding("AI 连接超时，请稍后重试", List.of(), "unknown", "life", false, null, "");
+            throw new RuntimeException("AI 连接超时，请稍后重试", e);
         } catch (java.net.http.HttpTimeoutException e) {
             log.error("DeepSeek API 请求超时", e);
-            return new AiUnderstanding("AI 请求超时，请稍后重试", List.of(), "unknown", "life", false, null, "");
+            throw new RuntimeException("AI 请求超时，请稍后重试", e);
         } catch (Exception e) {
             log.error("DeepSeek API 调用失败: {}", e.getMessage(), e);
-            return new AiUnderstanding("AI 调用失败: " + e.getMessage(), List.of(), "unknown", "life", false, null, "");
+            throw new RuntimeException("AI 调用失败: " + e.getMessage(), e);
         }
     }
 
     @Override
     public String recognizeIntent(String content) {
-        if (apiKey == null || apiKey.isBlank()) return "log";
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new RuntimeException("AI 未配置：缺少 API Key");
+        }
         try {
             String prompt = """
-                    分析以下用户输入的意图，只需返回一个词：log（纯记录）、question（提问）、decision（决策求助）。
+                    判断以下用户输入是否需要 AI 回复。
+                    需要回复（提问、命令、要求等） → 返回 ask
+                    不需要回复（纯记录、日记、随想） → 返回 log
+                    只需返回一个词：ask 或 log。
                     输入：%s
-                    意图：""".formatted(content);
+                    结果：""".formatted(content);
             String body = buildSimpleBody(prompt, 50, 0.3);
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(apiUrl))
@@ -124,12 +129,10 @@ public class DeepSeekAiClient implements AiClient {
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             String result = parseChatCompletion(resp.body()).strip().toLowerCase();
-            if (result.contains("question")) return "question";
-            if (result.contains("decision")) return "decision";
+            if (result.contains("ask")) return "ask";
             return "log";
         } catch (Exception e) {
-            log.warn("意图识别 AI 兜底失败: {}", e.getMessage());
-            return "log";
+            throw new RuntimeException("AI 意图识别失败: " + e.getMessage(), e);
         }
     }
 
@@ -138,8 +141,14 @@ public class DeepSeekAiClient implements AiClient {
     /**
      * ANALYSIS 模式（STATEMENT 场景）：
      * 单条 user message + JSON 输出指令，0.3 temperature。
+     * <p>
+     * brief 场景例外：使用中文温暖问候的系统 prompt，0.7 temperature。
      */
     private String buildAnalysisRequestBody(ContextPackage ctx) throws Exception {
+        if ("brief".equals(ctx.scene())) {
+            return buildSimpleBody(ctx.prompt(), 1024, 0.7,
+                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用 emoji。生成温暖的问候语。不要输出 JSON。");
+        }
         return buildSimpleBody(ctx.prompt(), 1024, 0.3);
     }
 
@@ -159,10 +168,10 @@ public class DeepSeekAiClient implements AiClient {
 
         var messages = MAPPER.createArrayNode();
 
-        // System prompt：仅身份声明（一行）
+        // System prompt：身份 + 风格 + domain 标注
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
-        systemMsg.put("content", "你是阿呆的个人 AI 助手。");
+        systemMsg.put("content", "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用 emoji。回复结束后另起一行，附上 JSON 标注领域：{\"domain\":\"life|trading|project\"}");
         messages.add(systemMsg);
 
         // 背景知识：作为单独的 system 消息（model 在 system prompt 之后读取，
@@ -235,6 +244,13 @@ public class DeepSeekAiClient implements AiClient {
      * 简单的单条 prompt 请求体（用于 STATEMENT 分析和意图识别）。
      */
     private String buildSimpleBody(String prompt, int maxTokens, double temperature) throws Exception {
+        return buildSimpleBody(prompt, maxTokens, temperature, null);
+    }
+
+    /**
+     * 带自定义 system prompt 的单条请求体。
+     */
+    private String buildSimpleBody(String prompt, int maxTokens, double temperature, String systemContent) throws Exception {
         var root = MAPPER.createObjectNode();
         root.put("model", model);
         root.put("max_tokens", maxTokens);
@@ -244,7 +260,7 @@ public class DeepSeekAiClient implements AiClient {
 
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
-        systemMsg.put("content", """
+        systemMsg.put("content", systemContent != null ? systemContent : """
                 分析一条个人记录，输出JSON。摘要用简洁的事实描述，不加主语（不要用"用户"或"你"）。
                 只输出JSON，不要包裹markdown。
                 """.strip());

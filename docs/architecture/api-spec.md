@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v2.5 | 最后更新：2026-07-26**
+**文档版本：v2.6 | 最后更新：2026-07-27**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-07-27 | v2.6 | **移除 DECISION 意图**；意图识别改为纯 AI（无正则兜底，AI 失败抛异常）；新增 `POST /api/v1/cards/cleanup` |
 | 2026-07-26 | v2.5 | 任务系统 (5 个 API) + RFC tracking，ProjectStatus.rfcCount→rfcItems[]，前端任务页 |
 | 2026-07-25 | v2.3 | 新增交易复盘 API（生成/查询/列表），知识反哺 API（promote/conflicts），简报集成交易检测 |
 | 2026-07-25 | v2.2 | 新增 DECISION 意图，Knowledge 集成到 Context Engine |
@@ -31,8 +32,8 @@
   "content": "今天买了立昂微",      // required, 1-10000 字符
   "type": "note",                 // optional, 默认 "note"
   "tags": ["投资", "半导体"],       // optional
-  "intent": null,                 // optional: "log" | "question" | "decision" | null
-                                  // null = 后端自动判断
+  "intent": null,                 // optional: "log" | "question" | null
+                                  // null = 后端 AI 自动判断
   "cardId": null                  // optional: 会话卡片 ID，有值则视为对话延续
 }
 ```
@@ -65,37 +66,13 @@
 
 前端行为：→ 展示聊天卡片，激活会话模式
 
-**Response — 决策句（intent="decision"）**
-
-```json
-{
-  "intent": "decision",
-  "recordId": "rec_20260725_150000",
-  "summary": "当前空头区间不建议加仓 | 按R4空头只卖不买",
-  "tags": ["交易决策", "立昂微"],
-  "rawResponse": "{...}"
-}
-```
-
-前端行为：→ 展示聊天卡片（复用 ask 样式），激活会话模式
-
-**DECISION vs QUESTION 的区别：**
-
-| | QUESTION | DECISION |
-|:----|:---------|:---------|
-| 意图特征 | 信息查询 | 行动决策 |
-| ContextEngine scene | `"question"` | `"decision"` |
-| Knowledge 注入 | ~2KB identity | ~50KB 完整交易规则 |
-| AI 引导 | "回答用户问题" | "基于交易系统规则分析决策" |
-
 **意图识别逻辑**
 
 ```
-1. 前端指定 intent → 直接使用（优先级最高）—— 支持 "log" / "question" / "decision"
-2. cardId 存在且对应卡片 → 直接视为 QUESTION（对话延续）
-3. AI 识别意图（question / decision / log）
-4. AI 失败 → 正则兜底（决策句 → DECISION，疑问句 → QUESTION）
-5. 仍不明确 → STATEMENT
+1. 前端指定 intent → 直接使用 — 支持 "log" / "question"
+2. AI 识别意图（ask → QUESTION，其余 → STATEMENT）
+3. AI 失败 → 抛异常，不静默降级
+```
 ```
 
 ---
@@ -197,6 +174,18 @@
   "migrated": 25,
   "failed": 0,
   "migratedFiles": ["旧路径 → 新路径"]
+}
+```
+
+### `POST /api/v1/cards/cleanup` — 清理卡片冗余记录
+
+删除卡片对话对应的冗余 ContentRecord（卡片内容已存储在 `records/cards/` 下，无需单独保留）。
+
+**Response**
+
+```json
+{
+  "deleted": 15
 }
 ```
 
@@ -509,7 +498,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 | `mode` | `idle` | 非聊天态 |
 | `mode` | `chatting` | 聊天态 |
 | `ended` | `true` / `false` | 对话是否已结束 |
-| `intent` | `"question"` / `"decision"` / `"log"` | 卡片类型 |
+| `intent` | `"question"` / `"log"` | 卡片类型 |
 
 ### 交互流程
 
@@ -532,7 +521,6 @@ chat 模式（全屏）
 |:---------|:---------|
 | 新输入（自动意图） | `POST /api/v1/records` `intent: null, cardId: null` |
 | 聊天输入 | `POST /api/v1/records` `cardId: "...", intent: "question"` |
-| 决策求助 | `POST /api/v1/records` `intent: null` — 后端自动识别为 `decision` |
 | 结束对话 | `POST /api/v1/conversations/end` `cardId: "..."` |
 | 加载 Feed | `GET /api/v1/feed` |
 | 加载简报 | `GET /api/v1/brief` |
@@ -548,6 +536,7 @@ chat 模式（全屏）
 | 删除任务 | `DELETE /api/v1/project/tasks/{id}` |
 | 任务统计 | `GET /api/v1/project/tasks/stats` |
 | 卡片迁移 | `POST /api/v1/cards/migrate` |
+| 卡片清理 | `POST /api/v1/cards/cleanup` |
 
 ---
 

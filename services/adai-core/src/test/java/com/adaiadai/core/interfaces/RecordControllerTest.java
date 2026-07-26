@@ -192,18 +192,18 @@ class RecordControllerTest {
 
     @Test
     void createRecord_decisionByContent() throws Exception {
+        // "该不该" is no longer a DECISION intent; MockAiClient returns "log" for this
         String body = mapper.writeValueAsString(Map.of("content", "该不该加仓立昂微"));
         mockMvc.perform(post("/api/v1/records")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.intent").value("decision"))
-                .andExpect(jsonPath("$.recordId").isString())
-                .andExpect(jsonPath("$.tags[0]").value("trading"));
+                .andExpect(jsonPath("$.intent").value("log"));
     }
 
     @Test
     void createRecord_decisionByManualIntent() throws Exception {
+        // manual "decision" now maps to log since only question/log exist
         String body = mapper.writeValueAsString(Map.of(
                 "content", "我该不该卖掉京东方",
                 "intent", "decision"
@@ -212,6 +212,6 @@ class RecordControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.intent").value("decision"));
+                .andExpect(jsonPath("$.intent").value("log"));
     }
 }

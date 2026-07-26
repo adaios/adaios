@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
 
 /// Input bar — with voice/text toggle + text input + [+] menu.
@@ -16,15 +18,22 @@ class InputBar extends StatefulWidget {
   });
 
   @override
-  State<InputBar> createState() => _InputBarState();
+  State<InputBar> createState() => InputBarState();
 }
 
-class _InputBarState extends State<InputBar> {
+class InputBarState extends State<InputBar> {
   final TextEditingController _textCtrl = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _isVoice = false;
   bool _hasText = false;
   bool _recording = false;
+
+  /// 从外部预设输入框文本并聚焦。
+  void prefillText(String text) {
+    _textCtrl.text = text;
+    _textCtrl.selection = TextSelection.collapsed(offset: text.length);
+    _focusNode.requestFocus();
+  }
 
   static const _placeholders = [
     'record something...',
@@ -78,6 +87,26 @@ class _InputBarState extends State<InputBar> {
     _textCtrl.clear();
   }
 
+  void _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      if (file.bytes != null) {
+        final b64 = base64Encode(file.bytes!);
+        widget.onSend('📷 [image:${file.extension ?? 'png'};base64,$b64]');
+        if (context.mounted) Navigator.pop(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('图片选择失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+          backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
   void _showAttach(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -104,7 +133,7 @@ class _InputBarState extends State<InputBar> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _attachItem(Icons.image_outlined, 'image'),
+                _attachItem(Icons.image_outlined, 'image', onTap: _pickImage),
                 _attachItem(Icons.mic_outlined, 'voice'),
                 _attachItem(Icons.description_outlined, 'file'),
                 _attachItem(Icons.link_outlined, 'link'),
@@ -116,9 +145,9 @@ class _InputBarState extends State<InputBar> {
     );
   }
 
-  Widget _attachItem(IconData icon, String label) {
+  Widget _attachItem(IconData icon, String label, {VoidCallback? onTap}) {
     return GestureDetector(
-      onTap: () => Navigator.pop(context),
+      onTap: onTap ?? () => Navigator.pop(context),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

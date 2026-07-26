@@ -5,16 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.regex.Pattern;
-
 /**
- * IntentRecognizer — intent recognition with fallback chain.
+ * IntentRecognizer — intent recognition.
  *
- * Priority:
- * 1. Session-aware: if the previous record was a QUESTION within 5 min,
- *    treat follow-up inputs (short/non-declarative) as QUESTION too.
- * 2. AI-based: call LLM for content with ambiguous patterns.
- * 3. Regex fallback: pattern matching for known question forms.
+ * Rules:
+ * 1. LLM 判定是否需要回复（ask/log）。
+ * 2. LLM 失败时直接抛异常，不静默降级到 log。
  */
 @Component
 public class IntentRecognizer {
@@ -27,87 +23,21 @@ public class IntentRecognizer {
         this.aiClient = aiClient;
     }
 
-    private static final Pattern Q_END = Pattern.compile("[？？?]|\\s*[吗呢吧啊]$");
-
-    private static final Pattern Q_WORD = Pattern.compile(
-            "如何|怎么|怎样|怎么样|哪些|什么|为什么|何时|哪里|谁|有没有|是否|能不能|"
-                    + "要不要|该不该|可不可以|会不会|行不行|对不对|"
-                    + "为啥|为何|何必|何不|"
-                    + "几[时天日]|多[大长高重多少久远]|"
-                    + "(?:星期|周|月|年)几");
-
-    private static final Pattern Q_ABAB = Pattern.compile("(.)不\\1");
-
-    private static final Pattern Q_REQUEST = Pattern.compile(
-            "看看|帮我|帮我看看|分析[一下]?|评估[一下]?|建议[一下]?|推荐[一下]?|"
-                    + "你觉得|你认为|你看|你说|"
-                    + "详细说说|展开说说|展开讲讲|继续说|继续|还有呢|然后呢|讲讲|说说|"
-                    + "解释[一下]?|说明[一下]?");
-
-    // 决策句：行动决策 → DECISION
-    private static final Pattern DECISION_PATTERN = Pattern.compile(
-            "该不该|要不要|能不能|应不应该|是否[该应]|该[卖买进抛出割清扔]|"
-                    + "可以[加减买卖抛出补].*吗|"
-                    + "是不是该|得不得|"
-                    + ".*该[卖买加补清].*[吗了]|"
-                    + ".*要不要.*[卖买].*");
-
-    private static final Pattern SESSION_ENDER = Pattern.compile(
-            ".*(?:结束|不说了|不问了|没了|就这些|停|暂停|停止|谢谢|就这样).*");
-
     /**
-     * Recognize intent with session context.
-     */
-    public Intent recognize(String content, boolean previousWasQuestion, boolean sessionActive) {
-        if (content == null || content.isBlank()) return Intent.STATEMENT;
-        String trimmed = content.trim();
-
-        // Session-aware: if in a conversation and prev was question,
-        // treat follow-ups as QUESTION (unless explicit end)
-        if ((previousWasQuestion || sessionActive) && !SESSION_ENDER.matcher(trimmed).matches()) {
-            if (trimmed.length() < 30) {
-                return Intent.QUESTION;
-            }
-        }
-
-        if (DECISION_PATTERN.matcher(trimmed).find()) return Intent.DECISION;
-        if (Q_END.matcher(trimmed).find()) return Intent.QUESTION;
-        if (Q_WORD.matcher(trimmed).find()) return Intent.QUESTION;
-        if (Q_ABAB.matcher(trimmed).find()) return Intent.QUESTION;
-        if (Q_REQUEST.matcher(trimmed).find()) return Intent.QUESTION;
-
-        return Intent.STATEMENT;
-    }
-
-    /**
-     * AI-based recognition fallback.
+     * AI-based recognition: call LLM to decide ask or log.
+     * Throws on LLM failure — never silently returns log.
      */
     public Intent recognizeWithAi(String content) {
-        if (content == null || content.isBlank()) return null;
-        try {
-            String result = aiClient.recognizeIntent(content);
-            if ("decision".equals(result)) {
-                return Intent.DECISION;
-            }
-            if ("question".equals(result)) {
-                return Intent.QUESTION;
-            }
-            // "log" → 让给正则 fallback 处理
-            return null;
-        } catch (Exception e) {
-            log.warn("AI intent recognition failed: {}", e.getMessage());
-            return null;
+        if (content == null || content.isBlank()) return Intent.STATEMENT;
+        String result = aiClient.recognizeIntent(content);
+        if ("ask".equals(result)) {
+            return Intent.QUESTION;
         }
-    }
-
-    public boolean isSessionEnder(String content) {
-        if (content == null || content.isBlank()) return false;
-        return SESSION_ENDER.matcher(content.trim()).matches();
+        return Intent.STATEMENT;
     }
 
     public enum Intent {
         STATEMENT,
-        QUESTION,
-        DECISION
+        QUESTION
     }
 }

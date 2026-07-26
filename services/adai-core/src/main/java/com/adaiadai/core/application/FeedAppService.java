@@ -39,7 +39,7 @@ public class FeedAppService {
     }
 
     public Feed getFeed(LocalDate date, LocalDateTime since) {
-        String brief = briefAppService.getCachedBrief();
+        String brief = briefAppService.generateBrief();
 
         // 计算更早天数的条目数
         long earlierCount = recordRepository.findAll().stream()

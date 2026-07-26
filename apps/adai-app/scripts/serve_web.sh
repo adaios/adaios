@@ -1,6 +1,10 @@
 #!/bin/bash
-# Build Flutter Web + apply local CanvasKit + font patches + serve
+# Build Flutter Web + apply local Font patches + serve via Python
 # Usage: sh scripts/serve_web.sh
+# Note: Flutter 3.44+ no longer supports --web-renderer flag.
+#       CanvasKit is built-in; the bootstrap.js patch below
+#       sets canvasKitBaseUrl so WASM loads from local dir
+#       instead of from CDN (blocked in China).
 
 set -e
 
@@ -10,33 +14,15 @@ echo "=== Building Flutter Web ==="
 flutter build web --no-tree-shake-icons
 
 echo "=== Applying local patches ==="
-# Copy CanvasKit
-cp -r web/canvaskit build/web/canvaskit
+# Copy Chinese font (NotoSansSC is the only available local font)
+cp web/fonts/NotoSansSC.ttf build/web/fonts/NotoSansSC.ttf
 
-# Copy Chinese font
-cp "web/fonts/Hiragino Sans GB.ttc" build/web/fonts/HiraginoSans.ttc
-rm -f build/web/fonts/Hiragino\ Sans\ GB.ttc build/web/fonts/NotoSansSC.woff2 build/web/fonts/Roboto.woff2
+# Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
+perl -i -pe 's/(_flutter\.loader\.load\(\{)/$1\n  config: {\n    canvasKitBaseUrl: "canvaskit\/"\n  },/' build/web/flutter_bootstrap.js
 
-# Patch flutter_bootstrap.js: add canvasKitBaseUrl
-sed -i '' 's/_flutter.loader.load({/_flutter.loader.load({\
-  config: {\
-    canvasKitBaseUrl: "canvaskit\/"\
-  },/' build/web/flutter_bootstrap.js
-
-# Patch index.html: add fetch interceptor for blocked domains
+# Patch index.html: add fetch interceptor for blocked font CDN
 INDEX="build/web/index.html"
-# Insert interceptor script before flutter_bootstrap.js
-sed -i '' 's/<script src="flutter_bootstrap.js" async><\/script>/<script>\
-    var origFetch=window.fetch.bind(window);\
-    window.fetch=function(url,opts){\
-      if(typeof url==="string"){\
-        if(url.includes("fonts.gstatic.com"))return origFetch("\/fonts\/HiraginoSans.ttc");\
-        if(url.includes("www.gstatic.com\/flutter-canvaskit"))return origFetch("\/canvaskit\/"+url.split("\x2f").pop());\
-      }\
-      return origFetch(url,opts);\
-    };\
-  <\/script>\
-  <script src="flutter_bootstrap.js" async><\/script>/' "$INDEX"
+perl -i -pe 's|<script src="flutter_bootstrap.js" async></script>|<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"){if(url.includes("fonts.gstatic.com"))return origFetch("\/fonts\/NotoSansSC.ttf");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>|' "$INDEX"
 
 echo "=== Starting server at http://localhost:8081 ==="
-cd build/web && python3 -m http.server 8081
+cd build/web && python -m http.server 8081

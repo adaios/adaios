@@ -257,7 +257,7 @@ cd services/adai-core && ./gradlew bootRun
 
 # ── Flutter ────────────────────────────────────
 cd apps/adai-app && flutter run -d chrome          # Web
-cd apps/adai-app && sh scripts/serve_web.sh        # Web（带本地 CanvasKit 补丁）
+cd apps/adai-app && sh scripts/serve_web.sh        # Web（本地补丁 + Python 服务器）
 cd apps/adai-app && flutter run -d android         # Android
 
 # ── 依赖分析 ───────────────────────────────────

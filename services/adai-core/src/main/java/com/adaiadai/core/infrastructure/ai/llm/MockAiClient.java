@@ -73,11 +73,9 @@ public class MockAiClient implements AiClient {
     @Override
     public String recognizeIntent(String content) {
         // Mock: 简单规则模拟
-        if (content.contains("天气") || content.contains("吗") || content.contains("？")) {
-            return "question";
-        }
-        if (content.contains("买入") || content.contains("卖出") || content.contains("开仓")) {
-            return "decision";
+        if (content.contains("天气") || content.contains("吗") || content.contains("？")
+                || content.contains("总结") || content.contains("分析")) {
+            return "ask";
         }
         return "log";
     }

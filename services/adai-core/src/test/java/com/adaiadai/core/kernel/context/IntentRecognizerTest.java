@@ -16,93 +16,38 @@ class IntentRecognizerTest {
         recognizer = new IntentRecognizer(new MockAiClient());
     }
 
-    private Intent r(String content) { return recognizer.recognize(content, false, false); }
-    private Intent rSession(String content) { return recognizer.recognize(content, true, true); }
+    // MockAiClient returns "ask" for: 天气, 吗, ？, 总结, 分析
+    // MockAiClient returns "log" for everything else
 
-    // ── STATEMENT ──
-
-    @Test void statem_pureDescription() { assertEquals(Intent.STATEMENT, r("今天买了立昂微")); }
-    @Test void statem_lifeLog() { assertEquals(Intent.STATEMENT, r("下午喝了一杯咖啡")); }
-    @Test void statem_shortLog() { assertEquals(Intent.STATEMENT, r("刚开完会，累")); }
-    @Test void statem_empty() { assertEquals(Intent.STATEMENT, r("")); }
-    @Test void statem_null() { assertEquals(Intent.STATEMENT, recognizer.recognize(null, false, false)); }
-
-    // ── QUESTION (no session) ──
-
-    @Test void question_weather() { assertEquals(Intent.QUESTION, r("今天天气如何")); }
-    @Test void question_weekday() { assertEquals(Intent.QUESTION, r("今天星期几")); }
-    @Test void question_withQuestionMark() { assertEquals(Intent.QUESTION, r("今天会下雨吗？")); }
-    @Test void question_simpleMao() { assertEquals(Intent.QUESTION, r("今天天气好吗")); }
-    @Test void question_neMood() { assertEquals(Intent.QUESTION, r("今天天气好吗")); }
-    @Test void question_abab() { assertEquals(Intent.QUESTION, r("买不买")); }
-    @Test void question_request() { assertEquals(Intent.QUESTION, r("分析一下今天的大盘")); }
-    @Test void question_niJuede() { assertEquals(Intent.QUESTION, r("你觉得立昂微怎么样")); }
-
-    // ── DECISION ──
-
-    @Test void decision_gaibugai_add() { assertEquals(Intent.DECISION, r("立昂微现在该不该加仓")); }
-    @Test void decision_yaobuyao_sell() { assertEquals(Intent.DECISION, r("要不要卖掉")); }
-    @Test void decision_nengbuneng_buy() { assertEquals(Intent.DECISION, r("这个位置能不能买呢")); }
-    @Test void decision_yingbugai_stop() { assertEquals(Intent.DECISION, r("应不应该止损")); }
-    @Test void decision_shifou_add() { assertEquals(Intent.DECISION, r("是否该加仓")); }
-    @Test void decision_keiyi_sell() { assertEquals(Intent.DECISION, r("可以卖了吗")); }
-    @Test void decision_gai_throw() { assertEquals(Intent.DECISION, r("科技股该抛了")); }
-    @Test void decision_gen() { assertEquals(Intent.DECISION, r("今天要不要补仓")); }
-
-    // ── Session-aware: short follow-ups in conversation should be QUESTION ──
-
-    @Test void session_shortFollowUp_isQuestion() {
-        assertEquals(Intent.QUESTION, rSession("详细说说"));
+    @Test void recognizeWithAi_question_weather() {
+        assertEquals(Intent.QUESTION, recognizer.recognizeWithAi("今天天气如何"));
     }
 
-    @Test void session_anotherFollowUp() {
-        assertEquals(Intent.QUESTION, rSession("继续说"));
+    @Test void recognizeWithAi_question_withMa() {
+        assertEquals(Intent.QUESTION, recognizer.recognizeWithAi("今天会下雨吗"));
     }
 
-    @Test void session_detailRequest() {
-        assertEquals(Intent.QUESTION, rSession("展开讲讲"));
+    @Test void recognizeWithAi_question_summary() {
+        assertEquals(Intent.QUESTION, recognizer.recognizeWithAi("总结下今天的项目问题"));
     }
 
-    @Test void session_longInput_withoutQMark_inSession_isQuestion() {
-        // In session context, long inputs are still treated as QUESTION
-        assertEquals(Intent.QUESTION, rSession("我想知道更多关于这个话题的信息"));
+    @Test void recognizeWithAi_question_analysis() {
+        assertEquals(Intent.QUESTION, recognizer.recognizeWithAi("分析下今天的大盘"));
     }
 
-    @Test void session_shortInput_withoutPattern_inSession_isQuestion() {
-        // Short input without patterns still QUESTION because of session context
-        assertEquals(Intent.QUESTION, rSession("然后呢"));
+    @Test void recognizeWithAi_log_description() {
+        assertEquals(Intent.STATEMENT, recognizer.recognizeWithAi("今天买了立昂微"));
     }
 
-    // ── Session ender ──
-    @Test void session_ender_stopsConversation() {
-        assertTrue(recognizer.isSessionEnder("不说了"));
-        assertTrue(recognizer.isSessionEnder("就这些"));
-        assertTrue(recognizer.isSessionEnder("结束"));
+    @Test void recognizeWithAi_log_life() {
+        assertEquals(Intent.STATEMENT, recognizer.recognizeWithAi("下午喝了一杯咖啡"));
     }
 
-    // ── Recognize with AI fallback ──
-    @Test void recognizeWithAi_logContent_returnsNullForRegexFallback() {
-        Intent result = recognizer.recognizeWithAi("今天买了立昂微");
-        assertNull(result);
+    @Test void recognizeWithAi_empty() {
+        assertEquals(Intent.STATEMENT, recognizer.recognizeWithAi(""));
     }
 
-    // ── Edge cases ──
-    @Test void boundary_implicitRequest() {
-        assertEquals(Intent.QUESTION, r("帮我看看立昂微"));
-    }
-
-    @Test void session_notActive_normalBehavior() {
-        // Without session context, content that is neither a question nor a session follow-up
-        assertEquals(Intent.STATEMENT, r("知道了"));
-    }
-
-    @Test void session_active_shortAck() {
-        // In session, even a short acknowledgment becomes a question follow-up
-        assertEquals(Intent.QUESTION, rSession("知道了"));
-    }
-
-    @Test void session_notActive_stillMatchesQ() {
-        // Even without session context, explicit Q patterns still work
-        assertEquals(Intent.QUESTION, r("今天天气怎么样"));
+    @Test void recognizeWithAi_null() {
+        assertEquals(Intent.STATEMENT, recognizer.recognizeWithAi(null));
     }
 }
