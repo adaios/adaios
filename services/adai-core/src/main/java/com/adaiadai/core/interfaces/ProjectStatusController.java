@@ -1,0 +1,106 @@
+package com.adaiadai.core.interfaces;
+
+import com.adaiadai.core.application.ProjectStatusAppService;
+import com.adaiadai.core.application.ProjectTaskAppService;
+import com.adaiadai.core.domain.project.Task;
+import com.adaiadai.core.domain.project.TaskRepository;
+import com.adaiadai.core.domain.project.TaskStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * ProjectStatusController — 项目状态查询 + 任务管理 API。
+ * <p>
+ * 项目状态：返回 AdaiOS 项目的元信息（Kernel 组件状态、Domain OS 进度等）。
+ * 任务管理：CRUD 操作使用轻量任务系统，File First 存储。
+ */
+@RestController
+@RequestMapping("/api/v1/project")
+public class ProjectStatusController {
+
+    private final ProjectStatusAppService statusService;
+    private final ProjectTaskAppService taskService;
+
+    public ProjectStatusController(ProjectStatusAppService statusService,
+                                   ProjectTaskAppService taskService) {
+        this.statusService = statusService;
+        this.taskService = taskService;
+    }
+
+    /**
+     * 获取项目状态摘要。
+     */
+    @GetMapping("/status")
+    public ResponseEntity<ProjectStatusAppService.StatusResult> getStatus() {
+        return ResponseEntity.ok(statusService.getStatus());
+    }
+
+    // ── 任务管理 API ──
+
+    /**
+     * 获取任务列表。
+     */
+    @GetMapping("/tasks")
+    public ResponseEntity<List<Task>> listTasks(
+            @RequestParam(required = false) TaskStatus status,
+            @RequestParam(required = false) String tag) {
+        return ResponseEntity.ok(taskService.listTasks(status, tag));
+    }
+
+    /**
+     * 创建任务。
+     */
+    @PostMapping("/tasks")
+    public ResponseEntity<Task> createTask(@RequestBody TaskRequest request) {
+        Task task = taskService.createTask(
+                request.title(), request.description(),
+                request.priority(), request.tags(), request.rfcRef()
+        );
+        return ResponseEntity.ok(task);
+    }
+
+    /**
+     * 更新任务。
+     */
+    @PutMapping("/tasks/{id}")
+    public ResponseEntity<Task> updateTask(
+            @PathVariable String id,
+            @RequestBody TaskRequest request) {
+        Task task = taskService.updateTask(
+                id, request.title(), request.description(),
+                request.status(), request.priority(),
+                request.tags(), request.rfcRef()
+        );
+        return ResponseEntity.ok(task);
+    }
+
+    /**
+     * 删除任务。
+     */
+    @DeleteMapping("/tasks/{id}")
+    public ResponseEntity<Void> deleteTask(@PathVariable String id) {
+        taskService.deleteTask(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 获取任务统计。
+     */
+    @GetMapping("/tasks/stats")
+    public ResponseEntity<TaskRepository.TaskStats> getTaskStats() {
+        return ResponseEntity.ok(taskService.getStats());
+    }
+
+    // ── DTO ──
+
+    public record TaskRequest(
+            String title,
+            String description,
+            String priority,
+            List<String> tags,
+            String rfcRef,
+            TaskStatus status
+    ) {}
+}

@@ -55,16 +55,27 @@ public class QuestionAppService {
     }
 
     /**
-     * 回答用户提问。
+     * 回答用户提问（默认 QUESTION 场景）。
      *
      * @param record 当前记录
      * @param cardId 可选卡片 ID，提供完整对话上下文
      */
     public AnswerResult answer(ContentRecord record, String cardId) {
-        log.info("=== 问答流程开始 | recordId={} | cardId={} ===", record.id(), cardId);
+        return answer(record, cardId, "question");
+    }
 
-        // ContextEngine 负责组装：Identity + 会话历史 + 卡片上下文 + 记忆回读 + 领域上下文
-        ContextPackage contextPackage = contextEngine.compose("question", record, cardId);
+    /**
+     * 回答用户提问（指定场景）。
+     *
+     * @param record 当前记录
+     * @param cardId 可选卡片 ID，提供完整对话上下文
+     * @param scene  场景标识："question" / "decision"
+     */
+    public AnswerResult answer(ContentRecord record, String cardId, String scene) {
+        log.info("=== 问答流程开始 | recordId={} | cardId={} | scene={} ===", record.id(), cardId, scene);
+
+        // ContextEngine 负责组装：Identity + 会话历史 + 卡片上下文 + 记忆回读 + Knowledge + 领域上下文
+        ContextPackage contextPackage = contextEngine.compose(scene, record, cardId);
 
         // AI 理解（回答问题 + 生成标签）
         AiUnderstanding understanding = aiClient.understand(contextPackage);
@@ -72,7 +83,8 @@ public class QuestionAppService {
         log.info("=== 问答流程完成 | 标签={} ===", understanding.tags());
 
         // 将 AI 返回的标签写回 Record，触发 TagIndexService 更新索引
-        if (understanding.tags() != null && !understanding.tags().isEmpty()) {
+        // 只有非卡片续接（无 cardId）时才存记录，避免重复拆分
+        if (cardId == null && understanding.tags() != null && !understanding.tags().isEmpty()) {
             ContentRecord enriched = new ContentRecord(
                     record.id(), record.type(), record.source(), record.title(), record.content(),
                     understanding.tags(), record.createdAt(), "question", understanding.summary()

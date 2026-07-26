@@ -46,9 +46,19 @@ public class MemoryService {
     }
 
     /**
-     * 沉淀一条记忆。
+     * 沉淀一条记忆（去重：同 recordId 同日期不重复写入）。
      */
     public void persist(Memory memory) {
+        // 去重：检查该 recordId 所在日期的记忆中是否已存在
+        LocalDate memDate = memory.createdAt().toLocalDate();
+        List<Memory> existingByDate = findByDate(memDate);
+        boolean exists = existingByDate.stream()
+                .anyMatch(m -> m.recordId().equals(memory.recordId()));
+        if (exists) {
+            log.debug("Memory skipped (duplicate recordId): {}", memory.recordId());
+            return;
+        }
+
         String path = memoryFilePath(memory);
         String entry = formatMemoryEntry(memory);
 
@@ -107,6 +117,32 @@ public class MemoryService {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * 返回所有有记忆数据的日期列表（从新到旧）。
+     */
+    public List<LocalDate> findAllDates() {
+        List<LocalDate> dates = new ArrayList<>();
+        for (int i = 0; i < 365; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            if (!findByDate(date).isEmpty()) {
+                dates.add(date);
+            }
+        }
+        return dates;
+    }
+
+    /**
+     * 返回记忆总条数。
+     */
+    public long count() {
+        long total = 0;
+        for (int i = 0; i < 365; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            total += findByDate(date).size();
+        }
+        return total;
     }
 
     // ── 内部方法 ──

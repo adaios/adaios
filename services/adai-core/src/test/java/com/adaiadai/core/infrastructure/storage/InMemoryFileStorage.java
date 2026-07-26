@@ -36,6 +36,11 @@ public class InMemoryFileStorage implements FileStorage {
         return store.containsKey(normalize(path));
     }
 
+    @Override
+    public void delete(String path) {
+        store.remove(normalize(path));
+    }
+
     public void clear() {
         store.clear();
     }

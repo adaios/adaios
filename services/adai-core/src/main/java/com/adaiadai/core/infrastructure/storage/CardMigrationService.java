@@ -12,6 +12,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * CardMigrationService — 卡片数据迁移服务。
@@ -178,6 +179,82 @@ public class CardMigrationService {
             return LocalDateTime.now();
         }
     }
+
+    /**
+     * 清理旧的数据：找到卡片对话对应的重复 ContentRecord 并删除。
+     * 卡片 turns 里的每一轮对话，之前在旧代码中都被存成了独立的 rec_*.md 文件。
+     * 卡片迁移到 records/cards/ 后，这些独立的记录就是冗余的，应该被清理。
+     *
+     * @return 清理结果统计
+     */
+    public CleanupResult cleanupDuplicateRecords() {
+        List<CardRecord> allCards = cardRepository.findAll();
+        List<String> deleted = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        int totalRecords = 0;
+
+        for (CardRecord card : allCards) {
+            if (card.turns() == null || card.turns().isEmpty()) continue;
+
+            // 收集卡片中所有 user turn 的文本（去重）
+            Set<String> turnTexts = card.turns().stream()
+                    .filter(t -> t.isUser())
+                    .map(t -> t.text().strip())
+                    .filter(t -> !t.isBlank())
+                    .collect(Collectors.toSet());
+
+            if (turnTexts.isEmpty()) continue;
+
+            String cardDate = card.createdAt().toLocalDate().toString();
+
+            // 扫描 records/ 下匹配的内容
+            List<String> allFiles = fileStorage.listFiles("records");
+            for (String f : allFiles) {
+                if (!f.startsWith("records/") || f.startsWith("records/cards/")) continue;
+                if (!f.endsWith(".md")) continue;
+                String fileName = f.substring(f.lastIndexOf('/') + 1);
+                if (!fileName.startsWith("rec_")) continue;
+
+                String content = fileStorage.read(f);
+                if (content == null || content.isBlank()) continue;
+
+                // 解析 frontmatter 获取 brief content
+                String briefContent = extractBriefContent(content);
+                if (briefContent == null) continue;
+
+                // 匹配卡片中的用户消息文本
+                if (turnTexts.contains(briefContent)) {
+                    fileStorage.delete(f);
+                    deleted.add(f);
+                    totalRecords++;
+                }
+            }
+        }
+
+        log.info("清理完成 | 删除冗余记录={}条", deleted.size());
+        return new CleanupResult(deleted.size(), deleted, skipped);
+    }
+
+    /**
+     * 从文件内容中提取简短的正文（用于匹配卡片 turn）。
+     */
+    private String extractBriefContent(String fileContent) {
+        Matcher matcher = FRONTMATTER_PATTERN.matcher(fileContent);
+        if (!matcher.find()) return null;
+        String body = matcher.group(2).strip();
+        // 取第一行作为简略内容
+        String firstLine = body.lines().findFirst().orElse("").strip();
+        // 去掉 markdown 标题标记
+        firstLine = firstLine.replaceAll("^#+\\s*", "").strip();
+        if (firstLine.length() > 100) firstLine = firstLine.substring(0, 100);
+        return firstLine;
+    }
+
+    public record CleanupResult(
+            int deleted,
+            List<String> deletedFiles,
+            List<String> skippedFiles
+    ) {}
 
     public record MigrationResult(
             int totalScanned,

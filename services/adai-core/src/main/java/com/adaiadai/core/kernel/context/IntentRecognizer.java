@@ -44,6 +44,14 @@ public class IntentRecognizer {
                     + "详细说说|展开说说|展开讲讲|继续说|继续|还有呢|然后呢|讲讲|说说|"
                     + "解释[一下]?|说明[一下]?");
 
+    // 决策句：行动决策 → DECISION
+    private static final Pattern DECISION_PATTERN = Pattern.compile(
+            "该不该|要不要|能不能|应不应该|是否[该应]|该[卖买进抛出割清扔]|"
+                    + "可以[加减买卖抛出补].*吗|"
+                    + "是不是该|得不得|"
+                    + ".*该[卖买加补清].*[吗了]|"
+                    + ".*要不要.*[卖买].*");
+
     private static final Pattern SESSION_ENDER = Pattern.compile(
             ".*(?:结束|不说了|不问了|没了|就这些|停|暂停|停止|谢谢|就这样).*");
 
@@ -62,6 +70,7 @@ public class IntentRecognizer {
             }
         }
 
+        if (DECISION_PATTERN.matcher(trimmed).find()) return Intent.DECISION;
         if (Q_END.matcher(trimmed).find()) return Intent.QUESTION;
         if (Q_WORD.matcher(trimmed).find()) return Intent.QUESTION;
         if (Q_ABAB.matcher(trimmed).find()) return Intent.QUESTION;
@@ -74,13 +83,17 @@ public class IntentRecognizer {
      * AI-based recognition fallback.
      */
     public Intent recognizeWithAi(String content) {
-        if (content == null || content.isBlank()) return Intent.STATEMENT;
+        if (content == null || content.isBlank()) return null;
         try {
             String result = aiClient.recognizeIntent(content);
-            if ("question".equals(result) || "decision".equals(result)) {
+            if ("decision".equals(result)) {
+                return Intent.DECISION;
+            }
+            if ("question".equals(result)) {
                 return Intent.QUESTION;
             }
-            return Intent.STATEMENT;
+            // "log" → 让给正则 fallback 处理
+            return null;
         } catch (Exception e) {
             log.warn("AI intent recognition failed: {}", e.getMessage());
             return null;
@@ -94,6 +107,7 @@ public class IntentRecognizer {
 
     public enum Intent {
         STATEMENT,
-        QUESTION
+        QUESTION,
+        DECISION
     }
 }

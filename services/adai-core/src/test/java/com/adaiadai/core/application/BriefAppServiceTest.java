@@ -5,6 +5,7 @@ import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -36,8 +37,11 @@ class BriefAppServiceTest {
         recordRepository.setTagIndexService(tagIndexService);
         identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
+        TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
         briefAppService = new BriefAppService(
-                identityRepository, recordRepository, memoryService, new MockAiClient()
+                identityRepository, recordRepository, memoryService,
+                new MockAiClient(), new TradingReviewAppService(
+                        recordRepository, null, null, null, reviewRepo)
         );
     }
 

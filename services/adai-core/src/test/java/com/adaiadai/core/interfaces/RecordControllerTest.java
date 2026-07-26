@@ -52,13 +52,17 @@ class RecordControllerTest {
                 .thenReturn(new QuestionAppService.AnswerResult(
                         "rec_test", "mock answer", List.of("test"), "raw"
                 ));
+        when(questionAppService.answer(any(), any(), any()))
+                .thenReturn(new QuestionAppService.AnswerResult(
+                        "rec_dec", "decision analysis", List.of("trading"), "raw"
+                ));
 
         // ContextEngine with real dependencies
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
-                memoryService, cardRepository, List.of()
+                memoryService, cardRepository, List.of(), List.of()
         );
 
         AiClient aiClient = new MockAiClient();
@@ -182,5 +186,30 @@ class RecordControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void createRecord_decisionByContent() throws Exception {
+        String body = mapper.writeValueAsString(Map.of("content", "该不该加仓立昂微"));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("decision"))
+                .andExpect(jsonPath("$.recordId").isString())
+                .andExpect(jsonPath("$.tags[0]").value("trading"));
+    }
+
+    @Test
+    void createRecord_decisionByManualIntent() throws Exception {
+        String body = mapper.writeValueAsString(Map.of(
+                "content", "我该不该卖掉京东方",
+                "intent", "decision"
+        ));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("decision"));
     }
 }

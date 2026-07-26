@@ -52,24 +52,5 @@ public class RecordFlowAppService {
         return new FlowResult(record.id(), memory.id(), understanding, contextPackage.estimateTokens());
     }
 
-    /**
-     * 处理 DECISION 意图：Record → Context(含会话历史+持仓) → AI 分析 → Memory。
-     * 与 process 的区别：AI 被引导给出决策建议，而非仅理解。
-     */
-    public DecisionResult processDecision(ContentRecord record) {
-        log.info("=== 决策流程开始 | recordId={} | type={} ===", record.id(), record.type());
-
-        ContextPackage contextPackage = contextEngine.compose(record.type(), record);
-        AiUnderstanding understanding = aiClient.understand(contextPackage);
-        Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-        memoryService.persist(memory);
-
-        log.info("=== 决策流程完成 | 建议={} ===", understanding.actionSuggestion());
-
-        return new DecisionResult(
-                record.id(), memory.id(), understanding, contextPackage.estimateTokens());
-    }
-
     public record FlowResult(String recordId, String memoryId, AiUnderstanding understanding, int tokensEstimate) {}
-    public record DecisionResult(String recordId, String memoryId, AiUnderstanding understanding, int tokensEstimate) {}
 }

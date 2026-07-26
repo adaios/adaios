@@ -47,6 +47,22 @@ public class MemoryController {
     }
 
     /**
+     * 返回所有有记忆数据的日期列表。
+     */
+    @GetMapping("/dates")
+    public ResponseEntity<List<LocalDate>> getDates() {
+        return ResponseEntity.ok(memoryService.findAllDates());
+    }
+
+    /**
+     * 返回记忆总条数。
+     */
+    @GetMapping("/count")
+    public ResponseEntity<Map<String, Object>> getCount() {
+        return ResponseEntity.ok(Map.of("count", memoryService.count()));
+    }
+
+    /**
      * 根据记录 ID 查询 AI 理解。
      */
     @GetMapping("/record/{recordId}")

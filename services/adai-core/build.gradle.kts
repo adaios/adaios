@@ -57,3 +57,7 @@ dependencies {
 tasks.named<Jar>("jar") {
     enabled = false
 }
+
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    jvmArgs = listOf("-Djava.net.useSystemProxies=false")
+}

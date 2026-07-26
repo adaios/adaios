@@ -1,7 +1,9 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -12,131 +14,157 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
-/**
- * FeedAppService — Feed 流组合服务。
- * <p>
- * 支持"每次打开 App 是一个会话"模式。
- * 调用时传入 {@code since} 时间戳，只返回该时间之后的条目，
- * 之前的条目计数为 {@code earlierCount}，App 可展示"展开查看更早记录"。
- */
 @Service
 public class FeedAppService {
 
     private static final Logger log = LoggerFactory.getLogger(FeedAppService.class);
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
     private final BriefAppService briefAppService;
+    private final CardFileRepository cardRepository;
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
-                          BriefAppService briefAppService) {
+                          BriefAppService briefAppService,
+                          CardFileRepository cardRepository) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.briefAppService = briefAppService;
+        this.cardRepository = cardRepository;
     }
 
-    /**
-     * 获取 Feed，支持会话隔离。
-     *
-     * @param date      日期
-     * @param since     可选，此时间之后的条目作为"当前会话"内容
-     * @return Feed
-     */
     public Feed getFeed(LocalDate date, LocalDateTime since) {
         String brief = briefAppService.generateBrief();
+
+        // 计算更早天数的条目数
+        long earlierCount = recordRepository.findAll().stream()
+                .filter(r -> r.createdAt().toLocalDate().isBefore(date))
+                .count();
+
         List<ContentRecord> allRecords = recordRepository.findAll().stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(date))
                 .toList();
         List<Memory> allMemories = memoryService.findByDate(date);
 
-        List<FeedEntry> currentEntries = new ArrayList<>();
-        int earlierCount = 0;
+        List<CardRecord> todayCards = cardRepository.findTodayCards(date);
+        Map<String, CardRecord> turnToCard = buildTurnCardMap(todayCards);
 
+        Set<String> skipRecordIds = new HashSet<>();
         for (ContentRecord r : allRecords) {
-            boolean isCurrent = since == null || r.createdAt().isAfter(since);
-
-            if (isCurrent) {
-                currentEntries.add(toFeedEntry(r, null));
-                memoriesFor(allMemories, r.id()).ifPresent(m ->
-                        currentEntries.add(toAiEntry(m)));
-            } else {
-                earlierCount++;
-                // AI note 也计入 earlier（如果有的话）
-                if (memoriesFor(allMemories, r.id()).isPresent()) {
-                    earlierCount++;
-                }
+            if (r.content() == null || r.content().isBlank()) continue;
+            String matchKey = r.content().strip();
+            if (matchKey.length() > 60) matchKey = matchKey.substring(0, 60);
+            if (turnToCard.containsKey(matchKey)) {
+                skipRecordIds.add(r.id());
             }
         }
 
-        currentEntries.sort(Comparator.comparing(FeedEntry::time));
+        List<FeedEntry> currentEntries = new ArrayList<>();
 
-        log.info("Feed 组合 | date={} | 当前会话={}条 | 已收起={}条",
-                date, currentEntries.size(), earlierCount);
+        for (CardRecord card : todayCards) {
+            currentEntries.add(toCardFeedEntry(card));
+        }
 
-        return new Feed(brief, currentEntries, earlierCount);
+        for (ContentRecord r : allRecords) {
+            if (skipRecordIds.contains(r.id())) continue;
+            if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
+            currentEntries.add(toFeedEntry(r));
+            memoriesFor(allMemories, r.id()).ifPresent(m -> currentEntries.add(toAiEntry(m)));
+        }
+
+        currentEntries.sort(Comparator.comparing(e -> e.time));
+
+        log.info("Feed 组合 | date={} | 当前会话={}条 | 卡片={}张",
+                date, currentEntries.size(), todayCards.size());
+        return new Feed(brief, currentEntries, (int) earlierCount);
     }
 
     public Feed getFeed(LocalDate date) {
         return getFeed(date, null);
     }
 
-    // ── 内部方法 ──
+    private Map<String, CardRecord> buildTurnCardMap(List<CardRecord> cards) {
+        Map<String, CardRecord> map = new HashMap<>();
+        for (CardRecord card : cards) {
+            if (card.turns() == null) continue;
+            for (var turn : card.turns()) {
+                if (!turn.isUser() || turn.text() == null || turn.text().isBlank()) continue;
+                String key = turn.text().strip();
+                if (key.length() > 60) key = key.substring(0, 60);
+                map.put(key, card);
+            }
+        }
+        return map;
+    }
 
-    private FeedEntry toFeedEntry(ContentRecord r, Memory m) {
+    private FeedEntry toFeedEntry(ContentRecord r) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
         return new FeedEntry(
-                "record",
-                r.id(), null,
+                "record", r.id(), null,
                 r.title(), r.content(), r.tags(),
-                r.createdAt().toLocalTime(),
-                intent,
-                r.summary()
+                r.createdAt().toLocalTime().format(TIME_FMT),
+                intent, r.summary(), null
+        );
+    }
+
+    private FeedEntry toCardFeedEntry(CardRecord card) {
+        List<TurnDto> turns = card.turns() != null
+                ? card.turns().stream()
+                    .map(t -> new TurnDto(t.isUser(), t.text(), t.time()))
+                    .collect(Collectors.toList())
+                : List.of();
+
+        String timeStr = card.turns() != null
+                ? card.turns().stream()
+                    .filter(t -> t.isUser())
+                    .findFirst()
+                    .map(t -> t.time())
+                    .orElse(card.createdAt().toLocalTime().format(TIME_FMT))
+                : card.createdAt().toLocalTime().format(TIME_FMT);
+
+        String firstUserMsg = card.turns() != null
+                ? card.turns().stream()
+                    .filter(t -> t.isUser())
+                    .findFirst()
+                    .map(t -> t.text())
+                    .orElse("")
+                : "";
+
+        return new FeedEntry(
+                "card", card.id(), null,
+                firstUserMsg, firstUserMsg, card.tags(),
+                timeStr, "question", card.summary(), turns
         );
     }
 
     private FeedEntry toAiEntry(Memory m) {
         return new FeedEntry(
-                "ai_note",
-                m.id(), m.recordId(),
+                "ai_note", m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
-                m.createdAt().toLocalTime(),
-                null,
-                null
+                m.createdAt().toLocalTime().format(TIME_FMT),
+                null, null, null
         );
     }
 
-    private java.util.Optional<Memory> memoriesFor(List<Memory> memories, String recordId) {
+    private Optional<Memory> memoriesFor(List<Memory> memories, String recordId) {
         return memories.stream()
                 .filter(m -> m.recordId().equals(recordId))
                 .findFirst();
     }
 
-    // ── DTO ──
-
-    public record Feed(
-            String brief,
-            List<FeedEntry> entries,
-            int earlierCount
-    ) {}
+    public record Feed(String brief, List<FeedEntry> entries, int earlierCount) {}
 
     public record FeedEntry(
-            String type,        // record | ai_note | push
-            String id,
-            String sourceRecordId,
-            String title,
-            String content,
-            List<String> tags,
-            LocalTime time,
-            String intent,       // "question" | "log" | null
-            String summary      // AI-generated summary
-    ) {
-        public String timeString() {
-            return time.format(DateTimeFormatter.ofPattern("HH:mm"));
-        }
-    }
+            String type, String id, String sourceRecordId,
+            String title, String content, List<String> tags,
+            String time, String intent, String summary,
+            List<TurnDto> turns
+    ) {}
+
+    public record TurnDto(boolean isUser, String text, String time) {}
 }

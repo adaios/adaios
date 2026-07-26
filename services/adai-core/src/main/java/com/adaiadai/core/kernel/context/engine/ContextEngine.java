@@ -5,6 +5,7 @@ import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
+import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
@@ -47,19 +48,22 @@ public class ContextEngine {
     private final MemoryService memoryService;
     private final CardFileRepository cardFileRepository;
     private final List<ContextContributor> contributors;
+    private final List<KnowledgeSource> knowledgeSources;
 
     public ContextEngine(IdentityRepository identityRepository,
                          RecordRepository recordRepository,
                          TagIndexService tagIndexService,
                          MemoryService memoryService,
                          CardFileRepository cardFileRepository,
-                         List<ContextContributor> contributors) {
+                         List<ContextContributor> contributors,
+                         List<KnowledgeSource> knowledgeSources) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.tagIndexService = tagIndexService;
         this.memoryService = memoryService;
         this.cardFileRepository = cardFileRepository;
         this.contributors = contributors;
+        this.knowledgeSources = knowledgeSources;
     }
 
     /**
@@ -86,6 +90,7 @@ public class ContextEngine {
         String cardContext = loadCardContext(cardId);
         String relatedRecords = loadRelatedRecords(record);
         String memorySummary = loadMemorySummary();
+        String knowledgeContext = loadKnowledgeContext(scene);
         String domainContext = enrichFromContributors(scene, identityRef, record);
         String globalContext = loadGlobalContext();
 
@@ -96,7 +101,8 @@ public class ContextEngine {
 
         // ANALYSIS 模式：仍然使用合成 Prompt
         String prompt = buildPrompt(scene, identityRef, record,
-                cardContext, relatedRecords, memorySummary, domainContext, globalContext);
+                cardContext, relatedRecords, memorySummary,
+                knowledgeContext, domainContext, globalContext);
 
         log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 预估 tokens={}",
                 scene, record.id(),
@@ -292,6 +298,35 @@ public class ContextEngine {
     }
 
     /**
+     * 加载所有 Knowledge 源的知识上下文。
+     * <p>
+     * 调用每个 {@link KnowledgeSource} 的 globalContext() + enrich(scene)。
+     * 位置在 memory 和 domain context 之间。
+     */
+    private String loadKnowledgeContext(String scene) {
+        StringBuilder sb = new StringBuilder();
+        for (KnowledgeSource source : knowledgeSources) {
+            try {
+                String global = source.globalContext();
+                if (global != null && !global.isBlank()) {
+                    if (!sb.isEmpty()) sb.append("\n\n");
+                    sb.append(global);
+                    log.debug("Knowledge 全局上下文已加载: {}", source.name());
+                }
+                String enriched = source.enrich(scene);
+                if (enriched != null && !enriched.isBlank() && !enriched.equals(global)) {
+                    if (!sb.isEmpty()) sb.append("\n\n");
+                    sb.append(enriched);
+                    log.debug("Knowledge 场景上下文已加载: {} | scene={}", source.name(), scene);
+                }
+            } catch (Exception e) {
+                log.warn("Knowledge 上下文加载失败: {} | {}", source.name(), e.getMessage());
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * 加载所有 Domain OS 的全局上下文（GlobalContext）。
      */
     private String loadGlobalContext() {
@@ -314,7 +349,8 @@ public class ContextEngine {
 
     private String buildPrompt(String scene, String identityRef, ContentRecord record,
                                String cardContext, String relatedRecords,
-                               String memorySummary, String domainContext, String globalContext) {
+                               String memorySummary, String knowledgeContext,
+                               String domainContext, String globalContext) {
         String todayInfo = "%s %s".formatted(
                 LocalDate.now().toString(),
                 LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINESE)
@@ -339,6 +375,11 @@ public class ContextEngine {
         // 记忆摘要
         if (!memorySummary.isBlank()) {
             prompt.append("\n").append(memorySummary).append("\n");
+        }
+
+        // Knowledge 知识源（结构化知识：规则、战法、知识体系）
+        if (knowledgeContext != null && !knowledgeContext.isBlank()) {
+            prompt.append("\n").append(knowledgeContext).append("\n");
         }
 
         // 全局领域上下文（所有 Domain）

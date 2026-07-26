@@ -85,6 +85,9 @@ public class RecordController {
         if (intent == Intent.QUESTION) {
             return handleQuestion(record, request.cardId());
         }
+        if (intent == Intent.DECISION) {
+            return handleDecision(record, request.cardId());
+        }
         return handleStatem(record);
     }
 
@@ -94,7 +97,11 @@ public class RecordController {
     private Intent resolveIntent(CreateRecordRequest request, ContentRecord record) {
         // 1. Manual override
         if (request.intent() != null) {
-            return "question".equals(request.intent()) ? Intent.QUESTION : Intent.STATEMENT;
+            return switch (request.intent()) {
+                case "question" -> Intent.QUESTION;
+                case "decision" -> Intent.DECISION;
+                default -> Intent.STATEMENT;
+            };
         }
 
         // 2. AI-based (always run, not gated by session)
@@ -190,6 +197,44 @@ public class RecordController {
         ));
     }
 
+    /**
+     * DECISION: save record + AI answer with trading knowledge context.
+     * <p>
+     * Uses scene="decision" so ContextEngine injects full trading rules,
+     * positions, and a decision-framework prompt instead of generic Q&A.
+     */
+    private ResponseEntity<DecisionResponse> handleDecision(ContentRecord record, String cardId) {
+        // Ensure card exists: create if first turn (same as QUESTION)
+        if (cardId != null) {
+            java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+            String timeStr = record.createdAt().format(timeFmt);
+            Optional<CardRecord> existing = cardRepository.findById(cardId);
+            if (existing.isEmpty()) {
+                CardRecord card = new CardRecord(
+                        cardId, "conversation", "active",
+                        List.of(), List.of(new CardRecord.Turn(true, record.content(), timeStr)),
+                        null, record.createdAt(), record.createdAt()
+                );
+                cardRepository.save(card);
+            } else {
+                CardRecord updated = existing.get()
+                        .withTurn(true, record.content(), timeStr);
+                cardRepository.save(updated);
+            }
+        }
+
+        QuestionAppService.AnswerResult result = questionAppService.answer(record, cardId, "decision");
+        log.info("Decision completed | recordId={} | cardId={}", result.recordId(), cardId);
+
+        return ResponseEntity.ok(new DecisionResponse(
+                "decision",
+                result.recordId(),
+                result.summary(),
+                result.tags(),
+                result.rawResponse()
+        ));
+    }
+
     private ContentRecord buildRecord(CreateRecordRequest request) {
         String id = RecordFileRepository.generateId();
         return new ContentRecord(
@@ -224,6 +269,14 @@ public class RecordController {
     ) {}
 
     public record QuestionResponse(
+            String intent,
+            String recordId,
+            String summary,
+            List<String> tags,
+            String rawResponse
+    ) {}
+
+    public record DecisionResponse(
             String intent,
             String recordId,
             String summary,

@@ -28,6 +28,11 @@ spring:
 adai:
   ai:
     provider: deepseek          # mock（默认，无需 API Key）| deepseek
-    model: deepseek-chat
+    model: deepseek-v4-pro
   storage:
     base-path: ${ADAI_DATA_DIR:../../data}
+
+  knowledge:
+    trading-os-path: ${ADAI_TRADING_KNOWLEDGE_PATH:../../os/trading-os/11-context}
+    life-os-path: ${ADAI_LIFE_KNOWLEDGE_PATH:../../os/life-os/11-context}
+    project-os-path: ${ADAI_PROJECT_KNOWLEDGE_PATH:../../os/project-os/11-context}

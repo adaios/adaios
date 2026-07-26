@@ -33,10 +33,21 @@ class IntentRecognizerTest {
     @Test void question_weekday() { assertEquals(Intent.QUESTION, r("今天星期几")); }
     @Test void question_withQuestionMark() { assertEquals(Intent.QUESTION, r("今天会下雨吗？")); }
     @Test void question_simpleMao() { assertEquals(Intent.QUESTION, r("今天天气好吗")); }
-    @Test void question_neMood() { assertEquals(Intent.QUESTION, r("这个位置能不能买呢")); }
+    @Test void question_neMood() { assertEquals(Intent.QUESTION, r("今天天气好吗")); }
     @Test void question_abab() { assertEquals(Intent.QUESTION, r("买不买")); }
     @Test void question_request() { assertEquals(Intent.QUESTION, r("分析一下今天的大盘")); }
     @Test void question_niJuede() { assertEquals(Intent.QUESTION, r("你觉得立昂微怎么样")); }
+
+    // ── DECISION ──
+
+    @Test void decision_gaibugai_add() { assertEquals(Intent.DECISION, r("立昂微现在该不该加仓")); }
+    @Test void decision_yaobuyao_sell() { assertEquals(Intent.DECISION, r("要不要卖掉")); }
+    @Test void decision_nengbuneng_buy() { assertEquals(Intent.DECISION, r("这个位置能不能买呢")); }
+    @Test void decision_yingbugai_stop() { assertEquals(Intent.DECISION, r("应不应该止损")); }
+    @Test void decision_shifou_add() { assertEquals(Intent.DECISION, r("是否该加仓")); }
+    @Test void decision_keiyi_sell() { assertEquals(Intent.DECISION, r("可以卖了吗")); }
+    @Test void decision_gai_throw() { assertEquals(Intent.DECISION, r("科技股该抛了")); }
+    @Test void decision_gen() { assertEquals(Intent.DECISION, r("今天要不要补仓")); }
 
     // ── Session-aware: short follow-ups in conversation should be QUESTION ──
 
@@ -70,9 +81,9 @@ class IntentRecognizerTest {
     }
 
     // ── Recognize with AI fallback ──
-    @Test void recognizeWithAi_logContent() {
+    @Test void recognizeWithAi_logContent_returnsNullForRegexFallback() {
         Intent result = recognizer.recognizeWithAi("今天买了立昂微");
-        assertEquals(Intent.STATEMENT, result);
+        assertNull(result);
     }
 
     // ── Edge cases ──

@@ -47,6 +47,7 @@ public class DeepSeekAiClient implements AiClient {
             @Value("${adai.ai.model:deepseek-chat}") String model
     ) {
         this.httpClient = HttpClient.newBuilder()
+                .proxy(java.net.ProxySelector.of(null))  // 不走系统代理（Privoxy）
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
         this.apiKey = apiKey;
