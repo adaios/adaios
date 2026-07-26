@@ -7,18 +7,18 @@ import 'profile_page.dart';
 import 'memory_page.dart';
 import 'timeline_page.dart';
 import 'search_page.dart';
+import 'project_status_page.dart';
+import 'trading_page.dart';
 
 /// World B — Launcher。
 class LauncherPage extends StatefulWidget {
   final ApiService api;
   final VoidCallback onNavigateBack;
-  final void Function(String tag) onTagTap;
 
   const LauncherPage({
     super.key,
     required this.api,
     required this.onNavigateBack,
-    required this.onTagTap,
   });
 
   @override
@@ -65,14 +65,14 @@ class _LauncherPageState extends State<LauncherPage>
         widget.api.getIdentity(),
         widget.api.getTags(),
         widget.api.getTimeline(limit: 999),
-        widget.api.getMemory(),
+        widget.api.getMemoryCount(),
       ]);
       if (!mounted) return;
 
       final identity = results[0] as dynamic;
       final tagsResp = results[1] as TagsResponse;
       final timeline = results[2] as List;
-      final memory = results[3] as List;
+      final memCount = results[3] as int;
 
       setState(() {
         _myName = identity.name;
@@ -80,7 +80,7 @@ class _LauncherPageState extends State<LauncherPage>
         _tagTotal = tagsResp.total;
         _allTags = tagsResp.tags;
         _timelineCount = timeline.length;
-        _memoryCount = memory.length;
+        _memoryCount = memCount;
         _loading = false;
       });
       _graphAnim.forward();
@@ -98,77 +98,118 @@ class _LauncherPageState extends State<LauncherPage>
     }
   }
 
+  void _onTagTap(String tag) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => Scaffold(
+        backgroundColor: AppColors.darkBg,
+        body: SearchPage(api: widget.api, initialQuery: tag),
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+    return Column(
       children: [
-        _buildDragHandle(),
-        _buildSearchBar(),
+        // Fixed top: drag handle + search bar (not scrolled)
+        GestureDetector(
+          onVerticalDragEnd: (d) {
+            if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
+              widget.onNavigateBack();
+            }
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Column(children: [
+              _buildDragHandle(),
+              _buildSearchBar(),
+            ]),
+          ),
+        ),
         const SizedBox(height: 28),
-
-        _buildRow('👤', '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => Scaffold(
-              backgroundColor: AppColors.darkBg,
-              body: ProfilePage(api: widget.api),
-            ),
-          ));
-        }),
-        _divider(),
-        _buildRow('🧠', '脑瓜子正在装...', '已存 $_memoryCount 条理解', AppColors.darkGreen, () {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => Scaffold(
-              backgroundColor: AppColors.darkBg,
-              body: MemoryPage(api: widget.api),
-            ),
-          ));
-        }),
-        _divider(),
-        _buildRow('📅', '时间都去哪了', '已记 $_timelineCount 条记录', AppColors.darkGreen, () {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => Scaffold(
-              backgroundColor: AppColors.darkBg,
-              body: TimelinePage(api: widget.api),
-            ),
-          ));
-        }),
-        _divider(),
-        const SizedBox(height: 28),
-
-        // 标签宇宙 header + toggle
-        Row(
-          children: [
-            Text('🏷️', style: TextStyle(fontSize: 16)),
-            const SizedBox(width: 6),
-            Text('标签宇宙', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
-            const SizedBox(width: 6),
-            Text('$_tagTotal个', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            const Spacer(),
-            GestureDetector(
-              onTap: _toggleView,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurface2,
-                  borderRadius: BorderRadius.circular(6),
+        // Scrollable content
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+            children: [
+              _buildRow('👤', '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  backgroundColor: AppColors.darkBg,
+                  body: ProfilePage(api: widget.api),
                 ),
-                child: Text(
-                  _graphView ? '☰ 列表' : '✦ 图谱',
-                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+              ));
+            }),
+            _divider(),
+            _buildRow('🧠', '脑瓜子正在装...', '已存 $_memoryCount 条理解', AppColors.darkGreen, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  backgroundColor: AppColors.darkBg,
+                  body: MemoryPage(api: widget.api),
                 ),
-              ),
+              ));
+            }),
+            _divider(),
+            _buildRow('📅', '时间都去哪了', '已记 $_timelineCount 条记录', AppColors.darkGreen, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  backgroundColor: AppColors.darkBg,
+                  body: TimelinePage(api: widget.api),
+                ),
+              ));
+            }),
+            _divider(),
+            _buildRow('📊', '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => ProjectStatusPage(api: widget.api),
+              ));
+            }),
+            _divider(),
+            _buildRow('📈', '交易', '持仓 · 记录', AppColors.darkOrange, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => TradingPage(api: widget.api),
+              ));
+            }),
+            _divider(),
+            const SizedBox(height: 28),
+
+            // 标签宇宙 header + toggle
+            Row(
+              children: [
+                Text('🏷️', style: TextStyle(fontSize: 16)),
+                const SizedBox(width: 6),
+                Text('标签宇宙', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+                const SizedBox(width: 6),
+                Text('$_tagTotal个', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: _toggleView,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurface2,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _graphView ? '☰ 列表' : '✦ 图谱',
+                      style: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
+
+            _graphView ? _buildGraphView() : _buildListView(),
           ],
         ),
-        const SizedBox(height: 16),
-
-        _graphView ? _buildGraphView() : _buildListView(),
-      ],
+      ),
+    ],
     );
   }
 
@@ -196,27 +237,18 @@ class _LauncherPageState extends State<LauncherPage>
                       : constraints.maxHeight) *
                   0.38;
               final maxCount = tags.first.count.toDouble();
-
-              // 中心标签
               final center = tags.first;
-
-              // 外围标签：围绕中心散开
               final outer = tags.skip(1).toList();
 
               return Stack(
                 children: [
-                  // 中心到外围的连线
                   CustomPaint(
                     size: Size(constraints.maxWidth, constraints.maxHeight),
                     painter: _GraphLinePainter(
-                      cx: cx,
-                      cy: cy,
-                      outerCount: outer.length,
-                      outerR: maxR,
+                      cx: cx, cy: cy, outerCount: outer.length, outerR: maxR,
                       color: AppColors.darkGreen.withValues(alpha: 0.15 * _graphAlpha.value),
                     ),
                   ),
-                  // 中心大标签
                   Positioned(
                     left: cx - 28,
                     top: cy - 28,
@@ -225,7 +257,6 @@ class _LauncherPageState extends State<LauncherPage>
                       child: _graphBubble(center, 56, 28, AppColors.darkGreen),
                     ),
                   ),
-                  // 外围标签
                   ...List.generate(outer.length, (i) {
                     final angle = (2 * 3.14159 * i / outer.length) - 3.14159 / 2;
                     final r = maxR * (0.6 + 0.4 * (outer[i].count.toDouble() / maxCount));
@@ -234,16 +265,13 @@ class _LauncherPageState extends State<LauncherPage>
                     final ratio = outer[i].count.toDouble() / maxCount;
                     final size = 28.0 + ratio * 16.0;
                     final color = outer[i].count > maxCount * 0.5
-                        ? AppColors.darkGreen
-                        : AppColors.darkGrey3;
+                        ? AppColors.darkGreen : AppColors.darkGrey3;
 
                     return Positioned(
-                      left: x,
-                      top: y,
+                      left: x, top: y,
                       child: Opacity(
                         opacity: _graphAlpha.value * (0.6 + ratio * 0.4),
-                        child: _graphBubble(
-                          outer[i], size, size / 2 + 2 + ratio * 4, color),
+                        child: _graphBubble(outer[i], size, size / 2 + 2 + ratio * 4, color),
                       ),
                     );
                   }),
@@ -256,7 +284,6 @@ class _LauncherPageState extends State<LauncherPage>
     );
   }
 
-  // 避免 dx 和 dy 在重绘时跳动
   double _stableCos(double a) => _cosTable[a.toString()] ??= _cos(a);
   double _stableSin(double a) => _sinTable[a.toString()] ??= _sin(a);
   final Map<String, double> _cosTable = {};
@@ -267,11 +294,9 @@ class _LauncherPageState extends State<LauncherPage>
 
   Widget _graphBubble(TagSummary tag, double size, double fontSize, Color color) {
     return GestureDetector(
-      onTap: () => widget.onTagTap(tag.name),
+      onTap: () => _onTagTap(tag.name),
       child: Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
+        width: size, height: size, alignment: Alignment.center,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.15),
           shape: BoxShape.circle,
@@ -281,17 +306,14 @@ class _LauncherPageState extends State<LauncherPage>
           fit: BoxFit.scaleDown,
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Text(
-              tag.name,
-              style: TextStyle(fontSize: fontSize * 0.28, color: color, fontWeight: FontWeight.w500),
-            ),
+            child: Text(tag.name, style: TextStyle(fontSize: fontSize * 0.28, color: color, fontWeight: FontWeight.w500)),
           ),
         ),
       ),
     );
   }
 
-  // ── 列表视图（原有 Wrap） ──
+  // ── 列表视图 ──
 
   Widget _buildListView() {
     final sorted = List<TagSummary>.from(_allTags)
@@ -304,41 +326,26 @@ class _LauncherPageState extends State<LauncherPage>
     }
 
     return Wrap(
-      spacing: 10,
-      runSpacing: 14,
+      spacing: 10, runSpacing: 14,
       children: tags.map((t) {
         final ratio = t.count.toDouble() / maxCount;
         final fontSize = 14.0 + ratio * 8.0;
         final opacity = 0.5 + ratio * 0.5;
         final color = t.count > maxCount * 0.6
             ? AppColors.darkGreen
-            : t.count > maxCount * 0.3
-                ? AppColors.darkGrey3
-                : AppColors.darkGrey5;
+            : t.count > maxCount * 0.3 ? AppColors.darkGrey3 : AppColors.darkGrey5;
 
         return GestureDetector(
-          onTap: () => widget.onTagTap(t.name),
+          onTap: () => _onTagTap(t.name),
           child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: 10.0 + ratio * 6.0,
-              vertical: 6.0 + ratio * 3.0,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 10.0 + ratio * 6.0, vertical: 6.0 + ratio * 3.0),
             decoration: BoxDecoration(
               color: AppColors.darkSurface2.withValues(alpha: opacity * 0.3),
               borderRadius: BorderRadius.circular(8.0 + ratio * 4.0),
-              border: Border.all(
-                color: color.withValues(alpha: opacity * 0.3),
-                width: 0.5,
-              ),
+              border: Border.all(color: color.withValues(alpha: opacity * 0.3), width: 0.5),
             ),
-            child: Text(
-              t.name,
-              style: TextStyle(
-                fontSize: fontSize,
-                color: color.withValues(alpha: opacity),
-                fontWeight: ratio > 0.5 ? FontWeight.w600 : FontWeight.w500,
-              ),
-            ),
+            child: Text(t.name, style: TextStyle(fontSize: fontSize, color: color.withValues(alpha: opacity),
+                fontWeight: ratio > 0.5 ? FontWeight.w600 : FontWeight.w500)),
           ),
         );
       }).toList(),
@@ -348,37 +355,36 @@ class _LauncherPageState extends State<LauncherPage>
   // ── UI 组件 ──
 
   Widget _buildDragHandle() {
-    return GestureDetector(
-      onVerticalDragEnd: (d) {
-        if (d.primaryVelocity != null && d.primaryVelocity! > 200) {
-          widget.onNavigateBack();
-        }
-      },
-      behavior: HitTestBehavior.opaque,
+    return Container(
+      height: 24,
+      alignment: Alignment.center,
       child: Container(
-        height: 30,
-        alignment: Alignment.center,
-        child: Container(
-          width: 30,
-          height: 3,
-          decoration: BoxDecoration(
-            color: AppColors.darkGrey5.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(2),
-          ),
+        width: 30, height: 3,
+        decoration: BoxDecoration(
+          color: AppColors.darkGrey5.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(2),
         ),
       ),
     );
   }
 
   Widget _buildSearchBar() {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface2,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => Scaffold(
+            backgroundColor: AppColors.darkBg,
+            body: SearchPage(api: widget.api),
+          ),
+        ));
+      },
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(children: [
           GestureDetector(
             onTap: widget.onNavigateBack,
             child: Padding(
@@ -387,40 +393,14 @@ class _LauncherPageState extends State<LauncherPage>
             ),
           ),
           Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    backgroundColor: AppColors.darkBg,
-                    body: SearchPage(api: widget.api),
-                  ),
-                ));
-              },
-              child: Container(
-                height: 40,
-                alignment: Alignment.centerLeft,
-                child: Text('搜索记录、标签、记忆…',
-                    style: TextStyle(fontSize: 15, color: AppColors.darkGrey6)),
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  backgroundColor: AppColors.darkBg,
-                  body: SearchPage(api: widget.api),
-                ),
-              ));
-            },
             child: Container(
-              width: 40,
               height: 40,
-              alignment: Alignment.center,
-              child: Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.darkGrey5),
+              alignment: Alignment.centerLeft,
+              child: Text('搜索记录、标签、记忆…',
+                  style: TextStyle(fontSize: 15, color: AppColors.darkGrey6)),
             ),
           ),
-        ],
+        ]),
       ),
     );
   }
@@ -429,16 +409,21 @@ class _LauncherPageState extends State<LauncherPage>
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
             Text(emoji, style: const TextStyle(fontSize: 20)),
             const SizedBox(width: 10),
-            Text(title,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
-            const Spacer(),
-            Text(preview, style: TextStyle(fontSize: 12, color: accentColor)),
-            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
+                  const SizedBox(height: 2),
+                  Text(preview, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+                ],
+              ),
+            ),
             Icon(Icons.chevron_right, size: 16, color: AppColors.darkGrey6),
           ],
         ),
@@ -459,10 +444,8 @@ class _GraphLinePainter extends CustomPainter {
   final Color color;
 
   _GraphLinePainter({
-    required this.cx,
-    required this.cy,
-    required this.outerCount,
-    required this.outerR,
+    required this.cx, required this.cy,
+    required this.outerCount, required this.outerR,
     required this.color,
   });
 
@@ -476,9 +459,11 @@ class _GraphLinePainter extends CustomPainter {
 
     for (int i = 0; i < outerCount; i++) {
       final angle = (2 * 3.14159 * i / outerCount) - 3.14159 / 2;
-      final x = cx + outerR * cos(angle);
-      final y = cy + outerR * sin(angle);
-      canvas.drawLine(Offset(cx, cy), Offset(x, y), paint);
+      canvas.drawLine(
+        Offset(cx, cy),
+        Offset(cx + outerR * cos(angle), cy + outerR * sin(angle)),
+        paint,
+      );
     }
   }
 

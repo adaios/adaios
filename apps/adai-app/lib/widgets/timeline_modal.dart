@@ -23,7 +23,7 @@ class TimelineModal extends StatefulWidget {
 }
 
 class _TimelineModalState extends State<TimelineModal> {
-  final DateTime _baseDate = DateTime(2026, 7);
+  final DateTime _baseDate = DateTime(DateTime.now().year, DateTime.now().month);
   final Map<int, List<String>> _entryMap = {};
   int? _selectedDay;
   bool _loading = true;
@@ -56,9 +56,10 @@ class _TimelineModalState extends State<TimelineModal> {
       }
       setState(() {
         _entryMap..clear()..addAll(map);
-        if (_entryMap.isNotEmpty) {
-          _selectedDay = _entryMap.keys.last;
-        }
+        // 优先级：今天有数据 → 最近一天 → null
+        final today = DateTime.now().day;
+        _selectedDay = _entryMap.containsKey(today) ? today
+            : (_entryMap.isNotEmpty ? _entryMap.keys.last : null);
         _loading = false;
       });
     } catch (_) {

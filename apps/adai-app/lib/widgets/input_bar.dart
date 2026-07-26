@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../pages/life_quick_entry.dart';
 
 /// Input bar — with voice/text toggle + text input + [+] menu.
 /// Supports ask placeholder mode (triggered from parent).
@@ -169,7 +170,16 @@ class _InputBarState extends State<InputBar> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              // Life quick entry
+              GestureDetector(
+                onTap: () => showLifeQuickEntry(context, widget.onSend),
+                child: Container(
+                  width: 32, height: 40,
+                  alignment: Alignment.center,
+                  child: Text('🌿', style: TextStyle(fontSize: 16)),
+                ),
+              ),
+              const SizedBox(width: 2),
               // Input
               Expanded(
                 child: AnimatedSwitcher(

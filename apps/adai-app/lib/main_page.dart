@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
 import 'widgets/feed_card.dart';
@@ -25,8 +26,11 @@ class _MainPageState extends State<MainPage>
   List<FeedCardData> _allCards = [];
   List<FeedCardData> _cards = [];
   int _earlierCount = 0;
+  DateTime _oldestDate = DateTime.now();
+  bool _hasOlder = true;
   String _brief = '';
   bool _loading = true;
+  bool _loadingMore = false;     // load more 进度
   int _totalShown = 0;
   static const int _pageSize = 5;
 
@@ -57,6 +61,7 @@ class _MainPageState extends State<MainPage>
 
   Future<void> _loadFeed({String? date}) async {
     try {
+      // ApiService 内部缓存当天 feed，跨 Widget 重建不丢
       final feed = await _api.getFeed(date: date);
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
@@ -256,12 +261,18 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _loadMore() {
+  Future<void> _loadMore() async {
     if (_totalShown < _cards.length) {
       setState(() => _totalShown = (_totalShown + _pageSize).clamp(0, _cards.length));
-    } else if (_earlierCount > 0) {
-      _loadOlder();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      });
+      return;
     }
+    if (!_hasOlder) return;
+    setState(() => _loadingMore = true);
+    await _loadOlder();
+    setState(() => _loadingMore = false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     });
@@ -269,16 +280,31 @@ class _MainPageState extends State<MainPage>
 
   Future<void> _loadOlder() async {
     try {
-      final today = DateTime.now();
-      final prevDate = today.subtract(const Duration(days: 1));
-      final dateStr = '${prevDate.year}-${prevDate.month.toString().padLeft(2, '0')}-${prevDate.day.toString().padLeft(2, '0')}';
-      final feed = await _api.getFeed(date: dateStr);
-      if (!mounted) return;
-      setState(() {
-        _cards.insertAll(0, feed.entries.where((e) => e.type != FeedEntryType.aiNote).map((e) => e.toFeedData()).toList());
-        _earlierCount = feed.earlierCount;
-        _totalShown = _cards.length;
-      });
+      for (int i = 0; i < 30; i++) {
+        _oldestDate = _oldestDate.subtract(const Duration(days: 1));
+        final dateStr = '${_oldestDate.year}-${_oldestDate.month.toString().padLeft(2, '0')}-${_oldestDate.day.toString().padLeft(2, '0')}';
+        final feed = await _api.getFeed(date: dateStr);
+        if (!mounted) return;
+        final olderCards = feed.entries.where((e) => e.type != FeedEntryType.aiNote).map((e) => e.toFeedData()).toList();
+        if (olderCards.isNotEmpty) {
+          final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          final d = _oldestDate;
+          final label = '${d.month}/${d.day} · ${weekdays[d.weekday - 1]}';
+          final separator = FeedCardData(
+            id: 'sep_${dateStr}',
+            type: FeedCardType.dateSeparator,
+            time: '',
+            content: label,
+          );
+          setState(() {
+            _cards.insertAll(0, [separator, ...olderCards]);
+            _earlierCount = feed.earlierCount;
+            _totalShown = _cards.length;
+          });
+          return;
+        }
+      }
+      setState(() => _hasOlder = false);
     } catch (_) {}
   }
 
@@ -341,7 +367,7 @@ class _MainPageState extends State<MainPage>
     final endIdx = _cards.length;
     final startIdx = (endIdx - _totalShown).clamp(0, endIdx);
     final visibleCards = _cards.sublist(startIdx, endIdx);
-    final hasMore = startIdx > 0 || _earlierCount > 0;
+    final hasMore = startIdx > 0 || _hasOlder || _earlierCount > 0;
 
     return FadeTransition(
       opacity: _contentAnim,
@@ -368,12 +394,20 @@ class _MainPageState extends State<MainPage>
 
   Widget _buildMoreBanner() {
     return GestureDetector(
-      onTap: _loadMore,
+      onTap: _loadingMore ? null : _loadMore,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(color: AppColors.darkSurface2.withAlpha(128), borderRadius: BorderRadius.circular(12)),
-        child: Center(child: Text('load more', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4))),
+        child: Center(
+          child: _loadingMore
+              ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4)),
+                  const SizedBox(width: 10),
+                  Text('loading...', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+                ])
+              : Text('load more', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+        ),
       ),
     );
   }
@@ -505,7 +539,20 @@ class _MainPageState extends State<MainPage>
             ),
           ),
           constraints: BoxConstraints(maxWidth: 320),
-          child: Text(text, style: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
+          child: isUser
+              ? Text(text, style: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1))
+              : MarkdownBody(
+                  data: text,
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+                    textTheme: TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
+                  )).copyWith(
+                    strong: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+                    code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkSurface2),
+                    codeblockDecoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(8)),
+                    p: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1),
+                    a: TextStyle(fontSize: 14, color: AppColors.darkBlue),
+                  )),
         ),
         const SizedBox(height: 4),
         Text(time, style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
@@ -563,10 +610,18 @@ class _TopBar extends StatelessWidget {
 
 extension FeedEntryResponseX on FeedEntryResponse {
   FeedCardData toFeedData() {
+    List<ConversationTurn>? cardTurns;
+    if (turns != null && turns!.isNotEmpty) {
+      cardTurns = turns!.map((t) => ConversationTurn(
+        isUser: t['isUser'] as bool? ?? true,
+        text: t['text'] as String? ?? '',
+        time: t['time'] as String? ?? '',
+      )).toList();
+    }
     return FeedCardData(
       id: id, type: FeedCardType.record, time: time, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
-      summary: summary,
+      summary: summary, turns: cardTurns,
     );
   }
 }

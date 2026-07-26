@@ -46,7 +46,9 @@ class _TimelinePageState extends State<TimelinePage> {
       }
       setState(() {
         _entryMap = map;
-        if (map.isNotEmpty) _selectedDay = map.keys.last;
+        final today = DateTime.now().day;
+        _selectedDay = map.containsKey(today) ? today
+            : (map.isNotEmpty ? map.keys.last : null);
         _loading = false;
       });
     } catch (_) {

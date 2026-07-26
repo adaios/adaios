@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
 /// 后端 record.type 映射。
-enum FeedCardType { record, aiNote, push }
+enum FeedCardType { record, aiNote, push, dateSeparator }
 
 /// 后端 intent：log → 记录，question → 提问。
 enum IntentType { log, question;
@@ -130,6 +130,30 @@ class FeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Date separator — no card styling
+    if (data.type == FeedCardType.dateSeparator) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(data.content,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Container(height: 1, color: AppColors.darkBorder.withAlpha(80)),
+            ),
+          ],
+        ),
+      );
+    }
+
     // Normal / expanded rendering (unchanged from current)
     final borderColor = _isEnded
         ? AppColors.darkGreen.withAlpha(180)

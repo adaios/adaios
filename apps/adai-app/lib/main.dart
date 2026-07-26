@@ -44,13 +44,6 @@ class _DualWorldShellState extends State<DualWorldShell> {
     setState(() => _showWorldB = !_showWorldB);
   }
 
-  void _onTagTap(String tag) {
-    setState(() {
-      _filterTag = tag;
-      _showWorldB = false;
-    });
-  }
-
   void _clearFilter() {
     setState(() => _filterTag = null);
   }
@@ -80,7 +73,6 @@ class _DualWorldShellState extends State<DualWorldShell> {
                 key: const ValueKey('worldB'),
                 api: _api,
                 onNavigateBack: _toggleWorld,
-                onTagTap: _onTagTap,
               )
             : MainPage(
                 key: ValueKey('worldA-${_filterTag ?? ''}'),
