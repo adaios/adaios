@@ -367,6 +367,7 @@ class FeedEntryResponse {
   final String? intent;
   final String? summary;
   final List<Map<String, dynamic>>? turns;
+  final String domain;
 
   FeedEntryResponse({
     required this.type,
@@ -379,6 +380,7 @@ class FeedEntryResponse {
     this.intent,
     this.summary,
     this.turns,
+    this.domain = 'life',
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -392,6 +394,7 @@ class FeedEntryResponse {
     intent: json['intent'] as String?,
     summary: json['summary'] as String?,
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
+    domain: json['domain'] as String? ?? 'life',
   );
 }
 

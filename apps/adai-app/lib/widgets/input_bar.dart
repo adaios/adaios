@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
-import '../pages/life_quick_entry.dart';
 
 /// Input bar — with voice/text toggle + text input + [+] menu.
 /// Supports ask placeholder mode (triggered from parent).

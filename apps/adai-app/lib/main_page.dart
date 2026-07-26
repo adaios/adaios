@@ -642,7 +642,7 @@ extension FeedEntryResponseX on FeedEntryResponse {
     return FeedCardData(
       id: id, type: FeedCardType.record, time: time, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
-      summary: summary, turns: cardTurns,
+      summary: summary, turns: cardTurns, domain: domain,
     );
   }
 }
