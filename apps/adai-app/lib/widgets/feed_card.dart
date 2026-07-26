@@ -333,20 +333,21 @@ class FeedCard extends StatelessWidget {
     final menuItems = <PopupMenuEntry<String>>[
       PopupMenuItem<String>(
         enabled: false,
-        height: 32,
-        child: Text('标记为：', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
+        height: 24,
+        padding: EdgeInsets.zero,
+        child: Text('  标记为', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
       ),
       ...['life', 'trading', 'project'].map((d) => PopupMenuItem<String>(
         value: 'domain:$d',
-        height: 36,
+        height: 28,
+        padding: EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
-            Text('${_domainEmoji[d] ?? '🌿'}  '
-                '${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
-              style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+            Text('${_domainEmoji[d] ?? '🌿'}  ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey1)),
             if (data.domain == d) ...[
               const Spacer(),
-              Icon(Icons.check, size: 14, color: AppColors.darkGreen),
+              Icon(Icons.check, size: 12, color: AppColors.darkGreen),
             ],
           ],
         ),
@@ -354,12 +355,13 @@ class FeedCard extends StatelessWidget {
       const PopupMenuDivider(),
       PopupMenuItem<String>(
         value: 'delete',
-        height: 36,
+        height: 28,
+        padding: EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
-            Icon(Icons.delete_outline_rounded, size: 14, color: AppColors.darkGrey4),
-            const SizedBox(width: 8),
-            Text('删除', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+            Icon(Icons.delete_outline_rounded, size: 12, color: AppColors.darkGrey4),
+            const SizedBox(width: 6),
+            Text('删除', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
           ],
         ),
       ),
@@ -374,9 +376,10 @@ class FeedCard extends StatelessWidget {
         }
       },
       itemBuilder: (_) => menuItems,
-      offset: const Offset(-140, 20),
+      offset: const Offset(-100, 20),
       color: AppColors.darkSurface2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Container(
         width: 24, height: 24,
         alignment: Alignment.center,
