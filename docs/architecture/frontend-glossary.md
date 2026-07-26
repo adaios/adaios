@@ -8,15 +8,57 @@
 
 ## 页面结构
 
+### 双 World 架构
+
 | 中文 | 代码/设计名 | 说明 |
 |:----|:-----------|:-----|
-| 主页面 | `MainPage` / `main_page.dart` | 唯一页面，无 Tab 无多级 |
-| 顶栏 | `TopBar` / `_TopBar` | 日期（左）+ 时间线入口（右） |
+| App 壳 | `DualWorldShell` / `main.dart` | 双 World 容器，250ms AnimatedSwitcher 切换 |
+| World A | 主页面（Feed） | 默认视图，TopBar + Feed 流 + InputBar |
+| World B | 启动器 / `LauncherPage` | 上滑进入，导航面板 + 标签宇宙 |
+| 切换手势 | 上滑 > 400 → World B，下滑 > 400 → World A | 第 58-64 行 |
+
+### World A 组件
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 主页面 | `MainPage` / `main_page.dart` | Feed 流主页面 |
+| 顶栏 | `TopBar` / `_TopBar` | 日期（左）+ 右箭头进入 World B（右） |
 | Feed 流 | Feed / Today Feed | 统一卡片列表，从简报开始到一天所有记录 |
 | 输入栏 | `InputBar` / `input_bar.dart` | 底部三列：语音/文字切换 + 输入框 + 发送/⊕ |
-| 时间线弹窗 | `TimelineModal` / `timeline_modal.dart` | Timeline BottomSheet，75% 高度 |
-| 项目仪表盘 | `ProjectStatusPage` / `project_status_page.dart` | Kernel 组件状态、Domain OS 进度、RFC 状态列表、任务统计 |
-| 任务管理页 | `ProjectTaskPage` / `project_task_page.dart` | 任务列表 + 创建/编辑/状态推进（TODO→DOING→DONE） |
+| 激活卡片态 | active card | 左侧 3px 绿色竖线，底部无边（直角） |
+
+### World B 组件
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 启动器 | `LauncherPage` / `launcher_page.dart` | World B 主视图 |
+| 拖拽条 | drag handle | 顶部横线，下滑 > 300 → 回 World A |
+| 搜索栏 | search bar | 伪 TextField（GestureDetector），点按 → SearchPage |
+| 导航列表 | nav list | 5 条目：👤🧠📅📊📈，每项「emoji + 标题 + 预览 + ›」 |
+| 标签宇宙 | tag universe | 底部标签区，切换图谱/列表两种视图 |
+| 图谱视图 | graph view / `_buildGraphView` | CustomPaint 连线图，最多 15 个气泡 |
+| 列表视图 | list view / `_buildListView` | Wrap 布局，大小随权重变化，最多 20 个 |
+| 标签气泡 | tag bubble | 圆形 GestureDetector，点按 → SearchPage(tag) |
+
+### 子页面（从 World B 导航进入）
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 个人档案 | `ProfilePage` / `profile_page.dart` | 查看/编辑个人档案、沟通风格、规则开关 |
+| 记忆浏览 | `MemoryPage` / `memory_page.dart` | 按日浏览记忆，标签筛选 |
+| 时间线页 | `TimelinePage` / `timeline_page.dart` | 日历网格 + 当日记录列表（全页，非弹窗） |
+| 项目仪表盘 | `ProjectStatusPage` / `project_status_page.dart` | Kernel 组件状态、Domain OS 进度、RFC 状态、任务统计 |
+| 任务管理 | `ProjectTaskPage` / `project_task_page.dart` | 任务列表 + 创建/编辑/状态推进 |
+| 交易管理 | `TradingPage` / `trading_page.dart` | 持仓列表 + 组合概览 + 记录交易表单 |
+| 搜索 | `SearchPage` / `search_page.dart` | 关键词搜索 + 结果高亮 |
+
+### 弹窗/底部面板
+
+| 中文 | 代码/设计名 | 说明 |
+|:----|:-----------|:-----|
+| 时间线弹窗 | `TimelineModal` / `timeline_modal.dart` | BottomSheet，75% 高度，日历 + 记录 |
+| 生活快速记录 | `LifeQuickEntry` / `life_quick_entry.dart` | BottomSheet，四类模板（心情/运动/饮食/睡眠） |
+| 附件菜单 | `_showAttach` / `input_bar.dart` | ⊕ 点按弹出，image/voice/file/link 四选项 |
 
 ---
 
@@ -135,13 +177,23 @@
 | 提交记录 | POST | `/api/v1/records` | `RecordResponse` |
 | 结束对话 | POST | `/api/v1/conversations/end` | `EndConversationResponse` |
 | 获取 Feed | GET | `/api/v1/feed` | `FeedResponse` |
+| 今日简报 | GET | `/api/v1/brief` | `BriefResponse` |
 | 获取时间线 | GET | `/api/v1/timeline` | `List<TimelineEntryResponse>` |
+| 记忆查询 | GET | `/api/v1/memory` | `List<MemoryResponse>` |
+| 重建记忆 | POST | `/api/v1/memory/rebuild` | — |
+| 个人档案 | GET / PUT | `/api/v1/identity` | `IdentityResponse` |
+| 全文搜索 | GET | `/api/v1/search?q=` | `List<SearchResult>` |
+| 标签统计 | GET | `/api/v1/tags` | `TagIndexResponse` |
 | 项目状态 | GET | `/api/v1/project/status` | `ProjectStatusResponse` |
 | 任务列表 | GET | `/api/v1/project/tasks` | `List<TaskResponse>` |
 | 创建任务 | POST | `/api/v1/project/tasks` | `TaskRequest` → `TaskResponse` |
 | 更新任务 | PUT | `/api/v1/project/tasks/{id}` | `TaskRequest` → `TaskResponse` |
 | 删除任务 | DELETE | `/api/v1/project/tasks/{id}` | — |
 | 任务统计 | GET | `/api/v1/project/tasks/stats` | `TaskStatsResponse` |
+| 持仓查询 | GET | `/api/v1/trading/positions` | `List<PositionResponse>` |
+| 组合快照 | GET | `/api/v1/trading/portfolio` | `PortfolioSnapshotResponse` |
+| 交易复盘 | GET / POST | `/api/v1/trading/review` | `TradingReviewResponse` |
+| 卡片迁移 | POST | `/api/v1/cards/migrate` | — |
 
 ---
 
