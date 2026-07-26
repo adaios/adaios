@@ -87,7 +87,8 @@ public class QuestionAppService {
         if (cardId == null && understanding.tags() != null && !understanding.tags().isEmpty()) {
             ContentRecord enriched = new ContentRecord(
                     record.id(), record.type(), record.source(), record.title(), record.content(),
-                    understanding.tags(), record.createdAt(), "question", understanding.summary()
+                    understanding.tags(), record.createdAt(), "question", understanding.summary(),
+                    understanding.domain() != null ? understanding.domain() : "life"
             );
             recordRepository.save(enriched);
             log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), understanding.tags());

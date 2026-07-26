@@ -122,6 +122,7 @@ public class RecordFileRepository implements RecordRepository {
                 tags: [%s]
                 createdAt: %s
                 summary: %s
+                domain: %s
                 ---
                 %s
 
@@ -132,6 +133,7 @@ public class RecordFileRepository implements RecordRepository {
                 String.join(", ", record.tags()),
                 record.createdAt().toString(),
                 record.summary() != null ? record.summary() : "",
+                record.domain() != null ? record.domain() : "life",
                 record.content()
         );
     }
@@ -158,7 +160,9 @@ public class RecordFileRepository implements RecordRepository {
 
         String summary = fields.getOrDefault("summary", null);
         if (summary != null && summary.isBlank()) summary = null;
-        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, null, summary);
+        String domain = fields.getOrDefault("domain", "life");
+        if (domain != null && domain.isBlank()) domain = "life";
+        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, null, summary, domain);
     }
 
     private Map<String, String> parseFrontmatter(String frontmatter) {

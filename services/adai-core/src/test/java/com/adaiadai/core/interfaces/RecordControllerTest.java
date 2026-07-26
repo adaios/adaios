@@ -11,6 +11,7 @@ import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.search.SearchService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,9 +61,10 @@ class RecordControllerTest {
         // ContextEngine with real dependencies
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
+        SearchService searchService = new SearchService(recordRepository);
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
-                memoryService, cardRepository, List.of(), List.of()
+                memoryService, cardRepository, List.of(), List.of(), searchService
         );
 
         AiClient aiClient = new MockAiClient();

@@ -10,6 +10,7 @@ import java.util.List;
  *   <li>摘要 — 一句话概括发生了什么</li>
  *   <li>标签 — AI 推断的相关标签</li>
  *   <li>情感 — 情感倾向分析</li>
+ *   <li>领域 — 记录所属 OS（life / trading / project）</li>
  *   <li>行动建议 — 是否需要后续操作</li>
  *   <li>原始回复 — LLM 的完整回复文本（用于调试和扩展）</li>
  * </ul>
@@ -19,6 +20,7 @@ import java.util.List;
  * @param summary     一句话摘要
  * @param tags        AI 推断的标签列表
  * @param sentiment   情感倾向（positive / negative / neutral）
+ * @param domain      记录所属领域（life / trading / project，默认 life）
  * @param actionable  是否需要后续操作
  * @param actionSuggestion 行动建议（当 actionable 为 true 时）
  * @param rawResponse 原始 LLM 回复
@@ -27,6 +29,7 @@ public record AiUnderstanding(
         String summary,
         List<String> tags,
         String sentiment,
+        String domain,
         boolean actionable,
         String actionSuggestion,
         String rawResponse

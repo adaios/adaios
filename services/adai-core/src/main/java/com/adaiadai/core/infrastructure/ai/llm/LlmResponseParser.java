@@ -52,6 +52,7 @@ public class LlmResponseParser {
                 summary = extractTextBeforeJson(rawResponse, jsonStr);
             }
 
+            String domain = getTextOrDefault(root, "domain", "life");
             List<String> tags = getTags(root, "tags");
             String sentiment = getTextOrDefault(root, "sentiment", "neutral");
             boolean actionable = root.has("actionable") && root.get("actionable").asBoolean(false);
@@ -59,7 +60,7 @@ public class LlmResponseParser {
                     ? root.get("actionSuggestion").asText()
                     : null;
 
-            return new AiUnderstanding(summary, tags, sentiment, actionable, suggestion, rawResponse);
+            return new AiUnderstanding(summary, tags, sentiment, domain, actionable, suggestion, rawResponse);
 
         } catch (Exception e) {
             log.warn("JSON 解析失败: {}", e.getMessage());
@@ -142,6 +143,7 @@ public class LlmResponseParser {
                 summary.strip(),
                 List.of(),
                 "neutral",
+                "life",
                 false,
                 null,
                 text
@@ -168,6 +170,6 @@ public class LlmResponseParser {
     }
 
     private static AiUnderstanding fallback(String message) {
-        return new AiUnderstanding(message, List.of(), "unknown", false, null, message);
+        return new AiUnderstanding(message, List.of(), "unknown", "life", false, null, message);
     }
 }

@@ -137,7 +137,7 @@ public class RecordController {
         // Re-save with summary+tags persisted to file
         ContentRecord enriched = new ContentRecord(
                 record.id(), record.type(), record.source(), record.title(), record.content(),
-                tags != null ? tags : List.of(), record.createdAt(), "log", summary
+                tags != null ? tags : List.of(), record.createdAt(), "log", summary, record.domain()
         );
         recordRepository.save(enriched);
 
@@ -146,7 +146,7 @@ public class RecordController {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(),
                         new AiUnderstanding(summary != null ? summary : "recorded",
-                                tags != null ? tags : List.of(), "neutral", false, null, ""));
+                                tags != null ? tags : List.of(), "neutral", "life", false, null, ""));
                 memoryService.persist(memory);
                 log.info("Memory persisted for statement | recordId={} | summary=\"{}\"", record.id(), truncate(summary, 40));
             } catch (Exception e) {

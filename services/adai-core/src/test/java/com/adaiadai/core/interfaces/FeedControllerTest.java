@@ -69,7 +69,7 @@ class FeedControllerTest {
         when(feedService.getFeed(any(), any()))
                 .thenReturn(new FeedAppService.Feed(
                         "brief",
-                        List.of(new FeedAppService.FeedEntry("record", "r1", null, "title", "content", List.of("tag"), "14:30", null, null, null)),
+                        List.of(new FeedAppService.FeedEntry("record", "r1", null, "title", "content", List.of("tag"), "14:30", null, null, null, "life")),
                         0
                 ));
 

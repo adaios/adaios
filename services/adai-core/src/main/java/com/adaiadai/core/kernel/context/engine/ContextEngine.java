@@ -3,6 +3,8 @@ package com.adaiadai.core.kernel.context.engine;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
+import com.adaiadai.core.kernel.search.SearchResult;
+import com.adaiadai.core.kernel.search.SearchService;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
@@ -49,6 +51,7 @@ public class ContextEngine {
     private final CardFileRepository cardFileRepository;
     private final List<ContextContributor> contributors;
     private final List<KnowledgeSource> knowledgeSources;
+    private final SearchService searchService;
 
     public ContextEngine(IdentityRepository identityRepository,
                          RecordRepository recordRepository,
@@ -56,7 +59,8 @@ public class ContextEngine {
                          MemoryService memoryService,
                          CardFileRepository cardFileRepository,
                          List<ContextContributor> contributors,
-                         List<KnowledgeSource> knowledgeSources) {
+                         List<KnowledgeSource> knowledgeSources,
+                         SearchService searchService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.tagIndexService = tagIndexService;
@@ -64,6 +68,7 @@ public class ContextEngine {
         this.cardFileRepository = cardFileRepository;
         this.contributors = contributors;
         this.knowledgeSources = knowledgeSources;
+        this.searchService = searchService;
     }
 
     /**
@@ -89,6 +94,7 @@ public class ContextEngine {
         String identityRef = loadIdentitySummary();
         String cardContext = loadCardContext(cardId);
         String relatedRecords = loadRelatedRecords(record);
+        String searchResults = loadSearchResults(record);
         String memorySummary = loadMemorySummary();
         String knowledgeContext = loadKnowledgeContext(scene);
         String domainContext = enrichFromContributors(scene, identityRef, record);
@@ -101,13 +107,14 @@ public class ContextEngine {
 
         // ANALYSIS 模式：仍然使用合成 Prompt
         String prompt = buildPrompt(scene, identityRef, record,
-                cardContext, relatedRecords, memorySummary,
+                cardContext, relatedRecords, searchResults, memorySummary,
                 knowledgeContext, domainContext, globalContext);
 
-        log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 预估 tokens={}",
+        log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 搜索={}条 | 预估 tokens={}",
                 scene, record.id(),
                 chatHistory.isEmpty() ? "ANALYSIS" : "CHAT(" + chatHistory.size() + "轮)",
                 relatedRecords.isBlank() ? 0 : relatedRecords.split("\n").length,
+                searchResults.isBlank() ? 0 : searchResults.split("\n").length,
                 (prompt.length() / 2));
 
         return new ContextPackage(
@@ -244,6 +251,46 @@ public class ContextEngine {
     }
 
     /**
+     * 通过全文搜索查找与当前记录内容相关的历史记录。
+     * <p>
+     * 对用户输入做关键词搜索，找到标题/正文/标签/摘要中匹配的历史记录。
+     * 与 loadRelatedRecords() 互补：tag 关联找到"同类"，搜索找到"同主题"。
+     */
+    private String loadSearchResults(ContentRecord currentRecord) {
+        String query = currentRecord.content();
+        if (query == null || query.isBlank()) return "";
+
+        // 取关键词前 50 字作为搜索查询
+        if (query.length() > 50) query = query.substring(0, 50);
+
+        List<SearchResult> results = searchService.search(query);
+        if (results.isEmpty()) return "";
+
+        // 排除当前记录本身，最多取 10 条
+        List<SearchResult> filtered = results.stream()
+                .filter(r -> !r.id().equals(currentRecord.id()))
+                .limit(10)
+                .toList();
+
+        if (filtered.isEmpty()) return "";
+
+        StringBuilder sb = new StringBuilder("## 搜索相关历史记录\n\n");
+        sb.append("（基于内容关键词匹配）\n\n");
+        for (SearchResult r : filtered) {
+            String time = r.dateTime().toLocalTime()
+                    .format(DateTimeFormatter.ofPattern("HH:mm"));
+            String date = r.dateTime().toLocalDate().toString();
+            String summary = r.title() != null && !r.title().isBlank()
+                    ? r.title()
+                    : r.content().length() > 60 ? r.content().substring(0, 60) + "..." : r.content();
+            sb.append("- [").append(date).append(" ").append(time).append("] ")
+                    .append("(").append(r.type()).append(") ")
+                    .append(summary).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
      * 加载近期的记忆摘要（按标签聚合）。
      */
     private String loadMemorySummary() {
@@ -349,8 +396,8 @@ public class ContextEngine {
 
     private String buildPrompt(String scene, String identityRef, ContentRecord record,
                                String cardContext, String relatedRecords,
-                               String memorySummary, String knowledgeContext,
-                               String domainContext, String globalContext) {
+                               String searchResults, String memorySummary,
+                               String knowledgeContext, String domainContext, String globalContext) {
         String todayInfo = "%s %s".formatted(
                 LocalDate.now().toString(),
                 LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINESE)
@@ -370,6 +417,11 @@ public class ContextEngine {
         // 标签关联历史记录
         if (!relatedRecords.isBlank()) {
             prompt.append("\n").append(relatedRecords).append("\n");
+        }
+
+        // 全文搜索结果（内容匹配的相关历史）
+        if (!searchResults.isBlank()) {
+            prompt.append("\n").append(searchResults).append("\n");
         }
 
         // 记忆摘要
@@ -410,6 +462,7 @@ public class ContextEngine {
 {
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
+  "domain": "所属领域：life(生活)/trading(交易)/project(项目)",
   "actionable": true 或 false,
   "actionSuggestion": "需要后续操作写建议，否则写 null"
 }
@@ -422,6 +475,7 @@ public class ContextEngine {
                       "summary": "一句话摘要",
                       "tags": ["标签1", "标签2", "标签3"],
                       "sentiment": "positive 或 negative 或 neutral",
+                      "domain": "所属领域：life(生活)/trading(交易)/project(项目)",
                       "actionable": true 或 false,
                       "actionSuggestion": "如果需要后续操作，写建议；否则写 null"
                     }

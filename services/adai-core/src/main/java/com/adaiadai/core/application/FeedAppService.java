@@ -108,7 +108,7 @@ public class FeedAppService {
                 "record", r.id(), null,
                 r.title(), r.content(), r.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
-                intent, r.summary(), null
+                intent, r.summary(), null, r.domain()
         );
     }
 
@@ -138,7 +138,7 @@ public class FeedAppService {
         return new FeedEntry(
                 "card", card.id(), null,
                 firstUserMsg, firstUserMsg, card.tags(),
-                timeStr, "question", card.summary(), turns
+                timeStr, "question", card.summary(), turns, "life"
         );
     }
 
@@ -147,7 +147,7 @@ public class FeedAppService {
                 "ai_note", m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
                 m.createdAt().toLocalTime().format(TIME_FMT),
-                null, null, null
+                null, null, null, "life"
         );
     }
 
@@ -163,7 +163,7 @@ public class FeedAppService {
             String type, String id, String sourceRecordId,
             String title, String content, List<String> tags,
             String time, String intent, String summary,
-            List<TurnDto> turns
+            List<TurnDto> turns, String domain
     ) {}
 
     public record TurnDto(boolean isUser, String text, String time) {}

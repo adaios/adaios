@@ -39,6 +39,7 @@ public class MockAiClient implements AiClient {
                 "交易记录: " + ctx.recordTitle(),
                 List.of("投资", "交易", "半导体"),
                 "neutral",
+                "trading",
                 true,
                 "建议跟踪该标的的后续走势，设置止盈止损提醒。",
                 "[Mock] 这是交易场景的模拟回复。实际部署后由 LLM 生成。"
@@ -50,6 +51,7 @@ public class MockAiClient implements AiClient {
                 "生活记录: " + ctx.recordTitle(),
                 List.of("生活", "日常", "记录"),
                 "positive",
+                "life",
                 false,
                 null,
                 "[Mock] 这是生活场景的模拟回复。"
@@ -61,6 +63,7 @@ public class MockAiClient implements AiClient {
                 "研究笔记: " + ctx.recordTitle(),
                 List.of("研究", "分析", "笔记"),
                 "neutral",
+                "life",
                 false,
                 null,
                 "[Mock] 这是研究场景的模拟回复。"
@@ -84,6 +87,7 @@ public class MockAiClient implements AiClient {
                 "记录: " + ctx.recordTitle(),
                 ctx.recordTags(),
                 "neutral",
+                "life",
                 false,
                 null,
                 "[Mock] 通用场景模拟回复。"

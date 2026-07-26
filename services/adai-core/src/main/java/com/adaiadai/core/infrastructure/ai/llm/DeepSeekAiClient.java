@@ -65,7 +65,7 @@ public class DeepSeekAiClient implements AiClient {
     public AiUnderstanding understand(ContextPackage contextPackage) {
         if (apiKey == null || apiKey.isBlank()) {
             log.error("DEEPSEEK_API_KEY 未配置，无法调用 DeepSeek API");
-            return new AiUnderstanding("AI 未配置：缺少 API Key", List.of(), "unknown", false, null, "");
+            return new AiUnderstanding("AI 未配置：缺少 API Key", List.of(), "unknown", "life", false, null, "");
         }
 
         List<ChatMessage> history = contextPackage.conversationHistory();
@@ -96,13 +96,13 @@ public class DeepSeekAiClient implements AiClient {
 
         } catch (java.net.http.HttpConnectTimeoutException e) {
             log.error("DeepSeek API 连接超时", e);
-            return new AiUnderstanding("AI 连接超时，请稍后重试", List.of(), "unknown", false, null, "");
+            return new AiUnderstanding("AI 连接超时，请稍后重试", List.of(), "unknown", "life", false, null, "");
         } catch (java.net.http.HttpTimeoutException e) {
             log.error("DeepSeek API 请求超时", e);
-            return new AiUnderstanding("AI 请求超时，请稍后重试", List.of(), "unknown", false, null, "");
+            return new AiUnderstanding("AI 请求超时，请稍后重试", List.of(), "unknown", "life", false, null, "");
         } catch (Exception e) {
             log.error("DeepSeek API 调用失败: {}", e.getMessage(), e);
-            return new AiUnderstanding("AI 调用失败: " + e.getMessage(), List.of(), "unknown", false, null, "");
+            return new AiUnderstanding("AI 调用失败: " + e.getMessage(), List.of(), "unknown", "life", false, null, "");
         }
     }
 

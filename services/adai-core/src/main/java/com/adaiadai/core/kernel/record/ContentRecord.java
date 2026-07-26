@@ -16,6 +16,9 @@ import java.util.List;
  * @param content    正文内容（Markdown 格式）
  * @param tags       标签列表
  * @param createdAt  记录产生时间
+ * @param intent     "question" | "log" | null
+ * @param summary    AI 生成的摘要
+ * @param domain     所属领域（life / trading / project）
  */
 public record ContentRecord(
         String id,
@@ -26,11 +29,12 @@ public record ContentRecord(
         List<String> tags,
         LocalDateTime createdAt,
         String intent,   // "question" | "log" | null
-        String summary   // AI-generated summary
+        String summary,  // AI-generated summary
+        String domain    // "life" | "trading" | "project"
 ) {
     public ContentRecord(String id, String type, String source, String title,
                          String content, List<String> tags, LocalDateTime createdAt) {
-        this(id, type, source, title, content, tags, createdAt, null, null);
+        this(id, type, source, title, content, tags, createdAt, null, null, "life");
     }
 
     /**
