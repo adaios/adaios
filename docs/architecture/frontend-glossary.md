@@ -11,10 +11,12 @@
 | 中文 | 代码/设计名 | 说明 |
 |:----|:-----------|:-----|
 | 主页面 | `MainPage` / `main_page.dart` | 唯一页面，无 Tab 无多级 |
-| 顶栏 | `TopBar` / `_TopBar` | 日期（左）+ Timeline 入口（右） |
+| 顶栏 | `TopBar` / `_TopBar` | 日期（左）+ 时间线入口（右） |
 | Feed 流 | Feed / Today Feed | 统一卡片列表，从简报开始到一天所有记录 |
 | 输入栏 | `InputBar` / `input_bar.dart` | 底部三列：语音/文字切换 + 输入框 + 发送/⊕ |
 | 时间线弹窗 | `TimelineModal` / `timeline_modal.dart` | Timeline BottomSheet，75% 高度 |
+| 项目仪表盘 | `ProjectStatusPage` / `project_status_page.dart` | Kernel 组件状态、Domain OS 进度、RFC 状态列表、任务统计 |
+| 任务管理页 | `ProjectTaskPage` / `project_task_page.dart` | 任务列表 + 创建/编辑/状态推进（TODO→DOING→DONE） |
 
 ---
 
@@ -134,6 +136,12 @@
 | 结束对话 | POST | `/api/v1/conversations/end` | `EndConversationResponse` |
 | 获取 Feed | GET | `/api/v1/feed` | `FeedResponse` |
 | 获取时间线 | GET | `/api/v1/timeline` | `List<TimelineEntryResponse>` |
+| 项目状态 | GET | `/api/v1/project/status` | `ProjectStatusResponse` |
+| 任务列表 | GET | `/api/v1/project/tasks` | `List<TaskResponse>` |
+| 创建任务 | POST | `/api/v1/project/tasks` | `TaskRequest` → `TaskResponse` |
+| 更新任务 | PUT | `/api/v1/project/tasks/{id}` | `TaskRequest` → `TaskResponse` |
+| 删除任务 | DELETE | `/api/v1/project/tasks/{id}` | — |
+| 任务统计 | GET | `/api/v1/project/tasks/stats` | `TaskStatsResponse` |
 
 ---
 

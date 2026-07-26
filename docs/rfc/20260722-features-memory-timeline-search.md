@@ -1,8 +1,8 @@
-# RFC: 记忆页 + 时间线页 + 搜索
-
-> 日期：2026-07-22
-> 涉及：前端 Flutter + 后端 Spring Boot
-> 状态：草案
+---
+title: 记忆页 + 时间线页 + 搜索
+date: 2026-07-22
+status: implemented
+---
 
 ---
 

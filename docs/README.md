@@ -26,6 +26,14 @@
 |:-----|:------|
 | [backend-capabilities.md](architecture/backend-capabilities.md) | 后端功能产品说明书：输入、对话、Feed、记忆、搜索、交易 |
 
+## 🎨 前端参考
+
+| 文档 | 说明 |
+|:-----|:------|
+| [frontend-glossary.md](architecture/frontend-glossary.md) | 前端 UI 中英术语对照 |
+| [layout-reference.md](architecture/layout-reference.md) | 页面布局视觉参考（ASCII 图） |
+| [frontend-ui-reference.md](../apps/adai-app/UI_REFERENCE.md) | 📌 UI 元素精确对照：每个按钮→代码行 |
+
 ## 📋 API 契约
 
 | 文档 | 说明 |
@@ -44,6 +52,10 @@
 | [20260722-identity-page.md](rfc/20260722-identity-page.md) | 2026-07-22 | 身份页设计 |
 | [20260723-launcher-polish.md](rfc/20260723-launcher-polish.md) | 2026-07-23 | 启动器打磨 |
 | [20260723-tagcloud-gesture.md](rfc/20260723-tagcloud-gesture.md) | 2026-07-23 | 标签云手势交互 |
+| [20260725-frontend-project-trading-pages.md](rfc/20260725-frontend-project-trading-pages.md) | 2026-07-25 | 前端项目状态页 + 交易页 |
+| [20260725-layer6-knowledge-feedback-loop.md](rfc/20260725-layer6-knowledge-feedback-loop.md) | 2026-07-25 | Layer 6 知识反哺闭环 |
+| [20260725-life-project-os-skeleton.md](rfc/20260725-life-project-os-skeleton.md) | 2026-07-25 | Life OS + Project OS 骨架 |
+| [20260726-project-status-and-roadmap.md](rfc/20260726-project-status-and-roadmap.md) | 2026-07-26 | 项目状态与路线 |
 
 ## 🚀 部署
 
@@ -53,4 +65,4 @@
 
 ---
 
-**文档版本：v1.0 | 最后更新：2026-07-22**
+**文档版本：v1.1 | 最后更新：2026-07-26**

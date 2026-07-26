@@ -55,9 +55,9 @@ com.adaiadai.core/
 │   └── knowledge/                结构化知识（预留）
 │
 ├── domain/                     ★ Domain OS
-│   ├── trading/                  金融交易
-│   ├── life/                     个人生活（预留）
-│   └── project/                  项目管理（预留）
+│   ├── trading/                  金融交易（含 ContextContributor、复盘）
+│   ├── life/                     个人生活（LifeContextContributor + LifeKnowledgeSource）
+│   └── project/                  项目管理（ProjectContextContributor + Task 实体 + TaskRepository）
 │
 ├── application/                应用层 — 用例编排
 │   ├── RecordFlowAppService      记录流程
@@ -65,7 +65,9 @@ com.adaiadai.core/
 │   ├── FeedAppService            Feed 构造
 │   ├── TimelineAppService        时间线查询
 │   ├── BriefAppService           今日简报
-│   └── TradingAppService         交易领域用例
+│   ├── TradingAppService         交易领域用例
+│   ├── ProjectStatusAppService   项目状态聚合（Git + RFC + Kernel 组件）
+│   └── ProjectTaskAppService     任务 CRUD 编排
 │
 ├── interfaces/                 入站适配层（Controller）
 ├── infrastructure/             出站适配层
@@ -96,13 +98,16 @@ com.adaiadai.core/
 
 | 方法 | 路径 | 用途 |
 |:----|:-----|:-----|
-| POST | `/api/v1/records` | 统一入口（自动分流 STATEMENT / QUESTION） |
+| POST | `/api/v1/records` | 统一入口（自动分流 STATEMENT / QUESTION / DECISION） |
 | POST | `/api/v1/conversations/end` | 结束对话，AI 总结 |
 | GET | `/api/v1/feed` | Feed 流 |
 | GET | `/api/v1/brief` | 今日简报 |
 | GET | `/api/v1/timeline` | 时间线 |
 | GET | `/api/v1/memory` | 记忆查询 |
-| GET | `/api/v1/trading/*` | 交易查询 |
+| GET / POST | `/api/v1/trading/*` | 交易查询、复盘、知识反哺 |
+| GET | `/api/v1/project/status` | 项目状态（Kernel + Domain OS + RFC + Git） |
+| GET / POST / PUT / DELETE | `/api/v1/project/tasks` | 任务 CRUD |
+| GET | `/api/v1/project/tasks/stats` | 任务统计 |
 
 ## 当前测试状态
 
@@ -113,3 +118,13 @@ com.adaiadai.core/
 
 - **交易知识库：** `os/trading-os/`（monorepo 兄弟目录，adai-core **只读**，不写入）
 - **个人数据：** `data/`（monorepo 根目录，File First）
+
+## 相关文档
+
+| 文档（根目录的需 CLI read 查看） | 位置 | 说明 |
+|:-------------------------------|:----|:------|
+| `api-spec.md` | `../../docs/architecture/` | API 接口契约（全局唯一真相源） |
+| `backend-capabilities.md` | `../../docs/architecture/` | 后端功能产品说明书 |
+| `system-architecture.md` | `../../docs/architecture/` | 系统架构、Kernel/Domain 分层 |
+| `product-architecture.md` | `../../docs/architecture/` | 五层产品架构详解 |
+| `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

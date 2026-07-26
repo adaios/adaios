@@ -48,9 +48,13 @@ lib/
 ├── theme/
 │   ├── app_colors.dart          # 调色板
 │   └── app_theme.dart           # Material 3 ThemeData
+├── pages/
+│   ├── project_status_page.dart # 项目仪表盘 + RFC 状态
+│   ├── project_task_page.dart   # 任务列表 + CRUD
+│   └── life_quick_entry.dart    # 生活快速记录模板
 └── widgets/
     ├── feed_card.dart           # FeedCard — 4 态状态机：idle/waiting/chatting/ended
-    ├── input_bar.dart           # 输入栏 — 语音/文字切换 + 发送
+    ├── input_bar.dart           # 输入栏 — 语音/文字切换 + 发送 + 生活快速记录
     └── timeline_modal.dart      # 时间线 BottomSheet
 ```
 
@@ -99,6 +103,12 @@ cd apps/adai-app && flutter test
 | 加载 Feed | `GET /api/v1/feed` |
 | 加载简报 | `GET /api/v1/brief` |
 | 加载时间线 | `GET /api/v1/timeline` |
+| 加载项目状态 | `GET /api/v1/project/status` |
+| 加载任务列表 | `GET /api/v1/project/tasks?status=...` |
+| 创建任务 | `POST /api/v1/project/tasks` |
+| 更新任务 | `PUT /api/v1/project/tasks/{id}` |
+| 删除任务 | `DELETE /api/v1/project/tasks/{id}` |
+| 任务统计 | `GET /api/v1/project/tasks/stats` |
 
 ## 设计约定
 
@@ -112,6 +122,11 @@ cd apps/adai-app && flutter test
 
 ## 相关文档
 
-- `docs/architecture/frontend-glossary.md` — 前端中英术语对照（用中文提修改时参考）
-- `docs/architecture/layout-reference.md` — 页面布局视觉参考（各状态 ASCII 图）
-- `DESIGN.md` — 设计原则与核心哲学（本目录）
+| 文档（根目录的需 CLI read 查看） | 位置 | 说明 |
+|:-------------------------------|:----|:------|
+| UI_REFERENCE.md | 本目录 | 📌 每个按钮→代码行精确对照 |
+| DESIGN.md | 本目录 | 设计原则与核心哲学 |
+| `frontend-glossary.md` | `../../docs/architecture/` | 前端中英术语对照 |
+| `layout-reference.md` | `../../docs/architecture/` | 页面布局 ASCII 参考 |
+| `api-spec.md` | `../../docs/architecture/` | API 接口契约（全局唯一真相源） |
+| `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

@@ -1,8 +1,8 @@
-# RFC: 身份页（Identity Page）
-
-> 日期：2026-07-22
-> 状态：草案
-> 涉及：前端（Flutter）+ 后端（Spring Boot）
+---
+title: 身份页（Identity Page）
+date: 2026-07-22
+status: implemented
+---
 
 ---
 

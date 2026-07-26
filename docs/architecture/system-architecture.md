@@ -17,6 +17,7 @@ graph TB
         FeedController["FeedController"]
         TimelineController["TimelineController"]
         IntentRecognizer["IntentRecognizer<br/>STATEMENT / QUESTION"]
+        ProjectStatusController["ProjectStatusController<br/>状态 + 任务 CRUD"]
     end
 
     subgraph Application["用例编排层 — application"]
@@ -24,6 +25,8 @@ graph TB
         BriefAppService["BriefAppService<br/>今日简报"]
         FeedAppService["FeedAppService<br/>Feed 流"]
         TradingAppService["TradingAppService<br/>交易用例"]
+        ProjectTaskService["ProjectTaskAppService<br/>任务管理"]
+        ProjectStatusService["ProjectStatusAppService<br/>项目状态"]
     end
 
     subgraph Kernel["内核层 — kernel"]
@@ -37,20 +40,22 @@ graph TB
 
     subgraph Domain["领域层 — domain"]
         TradingContributor["TradingContextContributor<br/>持仓 + 全局摘要"]
-        LifeContributor["LifeContextContributor<br/>(预留)"]
-        ProjectContributor["ProjectContextContributor<br/>(预留)"]
+        LifeContributor["LifeContextContributor<br/>生活记忆回读"]
+        ProjectContributor["ProjectContextContributor<br/>Git + RFC + 任务摘要"]
     end
 
     subgraph Infra["基础设施层 — infrastructure"]
         FileStorage["FileStorage<br/>文件读写"]
         TagIndex["TagIndexService<br/>标签索引"]
         CardRepo["CardFileRepository<br/>卡片对话"]
+        ProjectFileRepo["ProjectFileRepository<br/>项目任务文件"]
         AiClient["AiClient<br/>LLM 接入"]
         DeepSeekClient["DeepSeekAiClient<br/>双模式:<br/>ANALYSIS(CHAT)"]
     end
 
     subgraph External["外部知识资产"]
         TradingOS["os/trading-os/<br/>交易知识库"]
+        ProjectOS["os/project-os/<br/>项目管理知识"]
     end
 
     %% 连接线
@@ -58,6 +63,8 @@ graph TB
     RecordController --> IntentRecognizer
     IntentRecognizer --> QuestionAppService
     IntentRecognizer --> Record
+    ProjectStatusController --> ProjectTaskService
+    ProjectStatusController --> ProjectStatusService
 
     QuestionAppService --> ContextEngine
     QuestionAppService --> AiClient
@@ -78,17 +85,21 @@ graph TB
     TradingContributor --> FileStorage
     Record --> FileStorage
     Memory --> FileStorage
+    ProjectTaskService --> ProjectFileRepo
     FileStorage --> TagIndex
 
     TradingContributor -.->|只读| TradingOS
+    ProjectContributor -.->|只读| ProjectOS
 
     %% 样式
     classDef kernel fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
     classDef domain fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
     classDef infra fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
     class ContextEngine kernel;
+    class ProjectTaskService,ProjectStatusService application;
+    class ProjectStatusController application;
     class TradingContributor,LifeContributor,ProjectContributor domain;
-    class FileStorage,TagIndex,CardRepo,AiClient infra;
+    class FileStorage,TagIndex,CardRepo,ProjectFileRepo,AiClient infra;
 ```
 
 ## 二、数据写入流
@@ -167,6 +178,8 @@ flowchart TD
 
     LoadDomain --> DomainDetail{"有场景贡献者?"}
     DomainDetail -->|trading| TradingCtx["TradingContextContributor<br/>全量持仓表"]
+    DomainDetail -->|project| ProjectCtx["ProjectContextContributor<br/>Git + RFC + 任务"]
+    DomainDetail -->|life| LifeCtx["LifeContextContributor<br/>生活记忆回读"]
     DomainDetail -->|其他| DefaultCtx["DefaultContextContributor<br/>不贡献"]
 
     LoadGlobal --> GlobalCtx{"Trading globalContext()"}
@@ -176,6 +189,8 @@ flowchart TD
     FormatRelated --> Merge["融合所有上下文块"]
     FormatMem --> Merge
     TradingCtx --> Merge
+    ProjectCtx --> Merge
+    LifeCtx --> Merge
     FormatGlobal --> Merge
     LoadIdentity --> Merge
     LoadCard --> Merge
@@ -291,9 +306,9 @@ flowchart LR
 
 | Domain | 职责 |
 |--------|------|
-| trading | 金融交易（含研究） |
-| life | 个人生活管理（预留） |
-| project | 项目管理（预留） |
+| trading | 金融交易（含研究、复盘、知识反哺） |
+| life | 个人生活管理（记忆回读、标签模板） |
+| project | 项目管理（状态仪表盘、任务系统、RFC 跟踪） |
 
 ## 七、当前阶段
 
@@ -311,13 +326,19 @@ flowchart LR
 - Trading OS 持仓贡献（场景 + 全局）✅
 - 多轮对话支持（ChatMessage + conversationHistory）✅
 - 双模式 AI 调用（ANALYSIS 0.3 temp / CHAT 0.7 temp + 2048 tokens）✅
+- Project OS ContextContributor + KnowledgeSource ✅
+- Life OS ContextContributor + KnowledgeSource ✅
+- 任务系统（Task CRUD + File First 存储）✅
+- RFC 状态跟踪（11 个 RFC frontmatter 统一 + 前端展示）✅
+- ProjectContextContributor 增强（Git 日志 + RFC 状态 + 任务摘要）✅
 
 ### 未实现
 
 - 晋升检测（自动发现高频主题 → 建议毕业为 Domain OS）
 - `data/knowledge/` 目录
-- Life OS / Project OS 的 ContextContributor
-- Domain OS 从 `os/*/` 读取知识资产
+- Life OS 习惯分析/情绪趋势（数据不足）
+- Layer 5 外部信息接入（Market Kernel）
+- Domain OS 从 `os/*/` 读取知识资产（TradingOS 已接入，ProjectOS 待补充）
 
 ### 技术约束
 

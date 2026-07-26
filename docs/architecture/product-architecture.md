@@ -77,7 +77,7 @@ AdaiOS 的用户体验从下到上分为五层，每一层回答不同的用户�
 |------|------|------|
 | Identity | 你是谁（偏好、规则、标签） | `data/identity/profile.md` |
 | Memory | 你的历史（AI 理解的沉淀） | `data/memory/YYYY/MM.md` |
-| Knowledge | 你的知识体系（逐步构建） | `data/knowledge/`（预留） |
+| Knowledge | 你的知识体系（Trading/Project/Life 三源注入） | `os/*/11-context/` |
 
 **核心能力：** 跨会话、跨模型的身份恢复。新模型接入时，通过 Context Engine 读取 Identity + Memory + Knowledge，快速还原对你的理解。
 
@@ -158,9 +158,9 @@ Layer 3 Identity + Memory + Knowledge 更新
                      ↓ Context Engine
 核心层 ──────── kernel/（Identity / Record / Context / Memory / Knowledge）
 领域层 ──────── domain/（Trading OS / Life OS / Project OS）
-基础设施层 ──── infrastructure/（FileStorage / AI LLM / DB）
+基础设施层 ──── infrastructure/（FileStorage / AI LLM / DB / ProjectFileRepo）
                   ↑
-外部 ───────── os/trading-os/（知识资产，File First）
+外部 ───────── os/trading-os/（交易知识），os/project-os/（项目知识）
 ```
 
 ## 设计原则
@@ -173,8 +173,14 @@ Layer 3 Identity + Memory + Knowledge 更新
 
 ## os/ 目录独立性
 
-`os/` 下的每个项目（如 `os/trading-os/`）有独立的工作流：
+`os/` 下的每个项目有独立的工作流：
 
+| 项目 | 启动方式 | 职责 |
+|:-----|:---------|:-----|
+| `os/trading-os/` | `cd os/trading-os && claude` | 交易知识工程（已成熟） |
+| `os/project-os/` | `cd os/project-os && claude` | 项目管理知识（自举中） |
+
+共同规则：
 - 有自己的 `CLAUDE.md`、独立的工作流程和目录规则
 - AdaiOS mono repo 只是存放位置，不干涉内部运作
 - 不依赖 adai-core 任何代码

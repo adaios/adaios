@@ -1,8 +1,8 @@
-# RFC: Context 闭环 — 记忆回读 + 知识召回
-
-> 日期：2026-07-18
-> 状态：草案
-> 领域：Kernel / Context Engine
+---
+title: Context 闭环 — 记忆回读 + 知识召回
+date: 2026-07-18
+status: implemented
+---
 
 ---
 

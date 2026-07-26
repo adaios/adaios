@@ -82,8 +82,11 @@ data/index/tags.json                               data/index/tags.json
 | AI 记忆 | `data/memory/YYYY/MM.md` | MemoryService |
 | 用户身份 | `data/identity/profile.md` | IdentityRepository |
 | 标签索引 | `data/index/tags.json` | TagIndexService |
-| 交易知识 | `os/trading-os/11-context/` | adai-core 不读取（仍隔离） |
+| 交易知识 | `os/trading-os/11-context/` | TradingKnowledgeSource（读取） |
+| 项目管理知识 | `os/project-os/11-context/` | ProjectKnowledgeSource（读取） |
 | 持仓数据 | `data/trading/positions.md` | PositionFileRepository |
+| 项目任务 | `data/project/tasks/YYYY/MM.md` | ProjectFileRepository |
+| 复盘笔记 | `data/trading/reviews/` | TradingReviewFileRepository |
 
 ---
 

@@ -1,8 +1,8 @@
-# RFC: 双主页（Dual World）
-
-> 日期：2026-07-22
-> 涉及：前端 Flutter + 后端 Spring Boot
-> 状态：草案
+---
+title: 双主页（Dual World）
+date: 2026-07-22
+status: implemented
+---
 
 ---
 

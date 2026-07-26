@@ -194,7 +194,60 @@ data/memory/YYYY/MM.md
 
 ---
 
-## 8. 用户身份（Identity）
+## 8. 项目仪表盘（Project Status）
+
+查看 AdaiOS 项目自身的发展状态。**不调用 AI，纯数据聚合。**
+
+### 能力
+
+| 接口 | 说明 |
+|:-----|:------|
+| `GET /api/v1/project/status` | 项目状态总览（Kernel 组件、Domain OS、RFC 状态列表） |
+
+项目状态页展示：
+- **系统概览**：项目名、架构类型
+- **Kernel 组件**：6 个内核组件完成状态（绿/橙色标记）
+- **Domain OS**：3 个领域系统进度（完整/骨架/未开始）
+- **RFC 状态**：所有 RFC 文档的 title/date/status 列表，前端按日期倒序排列，彩色状态标签
+- **Git 提交数**、API 端点计数
+
+### 当前状态
+
+✅ 后端接口已实现  
+✅ 前端已对接（`project_status_page.dart` 仪表盘 + RFC 状态）  
+
+---
+
+## 9. 任务管理（Project Tasks）
+
+轻量任务系统，File First 存储。AdaiOS 用 Project OS 管理自身开发。
+
+### 能力
+
+| 接口 | 说明 |
+|:-----|:------|
+| `GET /api/v1/project/tasks` | 任务列表（支持按 status / tag 筛选） |
+| `POST /api/v1/project/tasks` | 创建新任务 |
+| `PUT /api/v1/project/tasks/{id}` | 更新任务（状态、标题、描述、优先级、标签） |
+| `DELETE /api/v1/project/tasks/{id}` | 删除任务 |
+| `GET /api/v1/project/tasks/stats` | 任务统计（各状态计数） |
+
+### 数据模型
+
+- **存储**：`data/project/tasks/YYYY/MM.md`，按月组织
+- **状态机**：`TODO → DOING → DONE` 单向推进，或 `CANCELLED` 终止
+- **优先级**：P0 / P1 / P2（默认）/ P3
+- **关联 RFC**：通过 `rfcRef` 字段关联 RFC 文档
+
+### 当前状态
+
+✅ 后端 CRUD 已实现  
+✅ 前端已对接（`project_task_page.dart` 任务列表 + 创建表单 + 状态筛选）  
+✅ ContextContributor 注入进行中任务 + 任务统计  
+
+---
+
+## 10. 用户身份（Identity）
 
 AI 对用户基础信息的认知。
 
@@ -235,8 +288,13 @@ AI 对用户基础信息的认知。
 | 持仓查询 | ✅ | ❌ | ✅ | `GET /api/v1/trading/positions` |
 | 组合概览 | ✅ | ❌ | ✅ | `GET /api/v1/trading/portfolio` |
 | 记录交易 | ✅ | ❌ | ✅ | `POST /api/v1/trading/trades` |
+| 交易复盘生成 | ✅ | ❌ | ✅ | `POST /api/v1/trading/review` |
+| 知识反哺入库 | ✅ | ❌ | ✅ | `POST /api/v1/trading/reviews/{date}/promote` |
+| 规则冲突检测 | ✅ | ❌ | ✅ | `GET /api/v1/trading/knowledge/conflicts` |
 | 交易知识召回 | ❌ | ❌ | ❌ | 未实现 |
+| 项目状态 | ✅ | ✅ | ✅ | `GET /api/v1/project/status` |
+| 任务管理 | ✅ | ✅ | ✅ | `GET|POST|PUT|DELETE /api/v1/project/tasks` |
 
 ---
 
-**版本：v1.0 | 最后更新：2026-07-22**
+**版本：v1.1 | 最后更新：2026-07-26**

@@ -1,7 +1,7 @@
 ---
 title: AI 对话质量修复：从分析模式到对话模式
 date: 2026-07-21
-status: draft
+status: implemented
 ---
 
 # AI 对话质量修复

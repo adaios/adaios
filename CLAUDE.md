@@ -51,8 +51,8 @@ apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
 domains/               # Domain OS 领域定义文档
   trading-os/          #   金融交易
-  life-os/             #   个人生活（预留）
-  project-os/          #   项目管理（预留）
+  life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪）
+  project-os/          #   项目管理（骨架已建立，含 git log 自举 + Status API）
 os/                    # Domain OS 知识资产（File First）
   trading-os/          #   交易系统知识库（File First，有独立 CLAUDE.md 和工作流）
 data/                  # 个人数据资产（File First，Git 追踪）
@@ -60,7 +60,7 @@ data/                  # 个人数据资产（File First，Git 追踪）
   records/             #   原始记录（按年月组织）
   memory/              #   AI 理解沉淀
   trading/             #   持仓数据
-  knowledge/           #   知识体系（预留）
+  knowledge/           #   知识体系（File First，通过 KnowledgeSource 注入 Context Engine）
 ai/                    # AI 上下文模板
   context/             #   project / architecture / developer 上下文模板
   prompts/             #   提示词模板（预留）
@@ -82,10 +82,10 @@ apps/
 com.adaiadai.core/
 ├── kernel/                     ★ Kernel — 操作系统内核层
 │   ├── identity/                 个人档案（静态偏好、AI 协作规则）
-│   ├── record/                   最小个人事件单元（ContentRecord / RecordRepository）
+│   ├── record/                   最小个人事件单元（ContentRecord / CardRecord / RecordRepository）
 │   ├── timeline/                 Record 的时间序列投影（TimelineEntry / TimelineProjection）
 │   ├── context/                  ★ Context Engine（核心能力）
-│   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION，正则 + AI 兜底）
+│   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION / DECISION，正则 + AI 兜底）
 │   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
 │   │   │   ├── ContextContributor  接口 → Domain OS 实现（isDefault / supports / enrich / globalContext）
 │   │   │   ├── DefaultContextContributor 通用场景回退
@@ -94,23 +94,26 @@ com.adaiadai.core/
 │   │   ├── token/                 Token 管理（预留）
 │   │   └── policy/                策略管理（预留）
 │   ├── memory/                   个人记忆（Memory / MemoryService / MemorySummary）
-│   └── knowledge/                结构化知识资产（预留）
+│   ├── knowledge/                KnowledgeSource 接口 + Trading/Life/Project 三个实现
+│   └── search/                   全文搜索（SearchService / SearchResult）
 │
 ├── domain/                     ★ Domain OS — 领域能力层
 │   ├── trading/                  金融交易 ✓（TradeRecord / Position / PortfolioSnapshot / TradingContextContributor）
-│   ├── life/                     个人生活管理（预留）
-│   └── project/                  项目管理（预留）
+│   ├── life/                     个人生活管理（LifeContextContributor + LifeKnowledgeSource）
+│   └── project/                  项目管理（ProjectContextContributor + ProjectKnowledgeSource + Status API）
 │
 ├── application/                应用层 — 用例编排、意图分流
-│   ├── RecordFlowAppService     MVP 原闭环（当前未使用，STATEMENT 不走 AI 后降为存档）
-│   ├── QuestionAppService        问句处理：ContextEngine → AI 回答 + 摘要 + 标签
-│   ├── FeedAppService            时间线 Feed 构造（日志 + 问答 + 推送）
+│   ├── RecordFlowAppService     MVP 原闭环（Memory 重建使用）
+│   ├── QuestionAppService        问句处理：ContextEngine → AI 回答 + 摘要 + 标签（支持 QUESTION/DECISION 双场景）
+│   ├── FeedAppService            时间线 Feed 构造（日志 + 问答 + 推送，earlierCount 实际统计）
 │   ├── TimelineAppService        时间线查询
-│   ├── BriefAppService           今日概览摘要
-│   └── TradingAppService         交易领域用例（持仓查询等）
+│   ├── BriefAppService           今日概览摘要（含交易活动检测）
+│   ├── TradingAppService         交易领域用例（持仓查询、交易记录）
+│   ├── TradingReviewAppService   复盘生成（数据聚合 → AI → 文件写入）
+│   └── ProjectStatusAppService   项目状态聚合（git log + RFC + Kernel/Domain 状态）
 │
 ├── interfaces/                 入站适配层 — Controller
-│   ├── RecordController         POST /api/v1/records（统一入口，自动分流 STATEMENT / QUESTION）
+│   ├── RecordController         POST /api/v1/records（统一入口，自动分流 STATEMENT / QUESTION / DECISION）
 │   ├── ConversationController   POST /api/v1/conversations/end（结束对话总结）
 │   ├── FeedController           GET  /api/v1/feed（时间线 Feed）
 │   ├── TimelineController       GET  /api/v1/timeline
@@ -119,7 +122,9 @@ com.adaiadai.core/
 │   ├── IdentityController       GET|PUT  /api/v1/identity（个人档案读写）
 │   ├── SearchController         GET  /api/v1/search?q=（全文搜索）
 │   ├── TagIndexController       GET  /api/v1/tags（标签统计）
-│   └── TradingController        GET  /api/v1/trading/*
+│   ├── TradingController        GET|POST /api/v1/trading/*（持仓+复盘+反哺）
+│   ├── CardController           POST /api/v1/cards/migrate（卡片迁移）
+│   └── ProjectStatusController  GET  /api/v1/project/status（项目状态）
 │
 └── infrastructure/             出站适配层 — 依赖倒置
     ├── WebConfig                 CORS 跨域配置
@@ -127,12 +132,13 @@ com.adaiadai.core/
     │   ├── RecordFileRepository   Record 文件读写（保存时自动触发标签索引）
     │   ├── IdentityFileRepository Identity 文件读写
     │   ├── PositionFileRepository 持仓文件读写
-    │   ├── TagIndexService        标签索引（data/index/tags.json，替代时间窗口）
-    │   └── CardFileRepository     卡片对话文件读写
+    │   ├── CardFileRepository     卡片对话文件读写
+    │   ├── TradingReviewFileRepository 复盘文件读写（data/trading/reviews/）
+    │   ├── CardMigrationService   卡片文件迁移
+    │   ├── TagIndexService        标签索引（data/index/tags.json）
+    │   └── TagIndexConfig         标签索引初始化配置
     ├── database/                 数据库访问（预留，Phase 2）
-    ├── search/                   搜索（SearchService 线性扫描 records 文件，关键词模糊匹配）
-│   ├── SearchResult            搜索结果 DTO
-│   └── SearchService           全文搜索服务（MVP 不做索引，直接线性扫描）
+    ├── search/                   搜索（SearchService 在 kernel/search/，全文搜索 + 搜索结果 DTO）
     └── ai/                       ★ AI 模型接入（非业务层）
         ├── llm/                   LLM 客户端
         │   ├── AiClient           接口（@ConditionalOnProperty 切换）
@@ -196,31 +202,33 @@ AdaiOS 采用 **File First** 原则，但不同区域适用程度不同：
 
 ## 开发工作流
 
-采用 **"文档先行，确认后再写代码"** 的开发流程，减少往返、提高确定性。
+单人开发，按改动量级区分流程，不强制"先写文档"。
 
 ### 流程
 
 ```
-1. RFC / API Spec / UI Flow  →  写文档（描述做什么、为什么、长什么样）
-2. 确认                        →  用户审阅文档，点头了再继续
-3. 实现                        →  写代码（后端测试 + 前端构建）
-4. 验证                        →  跑测试 + 构建通过即完成
+量级         → 流程
+──────────────────────────
+新增 Domain   → RFC（3-5 句确认方向）→ 实现
+新 API       → 直接改代码，api-spec.md 事后保持一致
+复杂 UI 交互  → UI Flow（半页）→ 实现
+字段增删/重构 → 直接改代码
+Bug 修复     → 直接改
 ```
 
-### 三种文档类型
+### 文档规则
 
-| 类型 | 文件名 | 长度 | 适用场景 | 位置 |
-|:----|:------|:----:|:---------|:----|
-| **API Spec** | `docs/architecture/api-spec.md` | 1页 | 前后端接口对接 | 追加到 `api-spec.md` |
-| **UI Flow** | `rfc/YYYYMMDD-topic.md` | 半页-1页 | 新交互/新页面 | `docs/rfc/` 目录 |
-| **RFC** | `rfc/YYYYMMDD-topic.md` | 3-5句 | 新功能、架构选型 | `docs/rfc/` 目录 |
+| 类型 | 位置 | 何时写 | 说明 |
+|:----|:------|:-------|:-----|
+| **RFC** | `docs/rfc/` | 新功能/架构选型时 | 3-5 句到 1 页，确认方向 |
+| **API Spec** | `docs/architecture/api-spec.md` | 事后同步 | 记录最终接口，不要求在写代码前写 |
+| **UI Flow** | `docs/rfc/` | 复杂交互时 | 半页-1 页 ASCII/流程图 |
 
-### 规则
+### 底线
 
-- 后端新 API → 先写 API Spec（URL、入参、出参）→ 确认 → 写测试 → 实现
-- 前端新 UI → 先画 UI Flow（卡片状态流转、低配文字图）→ 确认 → 写 Flutter
-- Bug 修复 → 不需要文档，直接修
-- 纯逻辑改动（加测试、重构）→ 不需要文档，直接修
+- **api-spec.md** 必须与代码保持一致（唯一真相源，将来多人协作时就是契约）
+- 修改 API 后确认 api-spec.md 已同步
+- 重大方向变化走 RFC（因为需要你看一眼确认）
 
 ## 构建与常用命令
 
