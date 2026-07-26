@@ -99,10 +99,14 @@ public class QuestionAppService {
 
             Optional<CardRecord> existing = cardRepository.findById(cardId);
             if (existing.isPresent()) {
+                String aiText = understanding.rawResponse();
+                if (aiText == null || aiText.isBlank()) {
+                    aiText = understanding.summary();
+                }
                 CardRecord updated = existing.get()
-                        .withTurn(false, understanding.summary(), timeStr);
+                        .withTurn(false, aiText, timeStr);
                 cardRepository.save(updated);
-                log.info("AI turn saved to card | cardId={}", cardId);
+                log.info("AI turn saved to card | cardId={} | len={}", cardId, aiText.length());
             }
         }
 

@@ -154,7 +154,7 @@ public class DeepSeekAiClient implements AiClient {
     private String buildChatRequestBody(ContextPackage ctx) throws Exception {
         var root = MAPPER.createObjectNode();
         root.put("model", model);
-        root.put("max_tokens", 2048);
+        root.put("max_tokens", 4096);
         root.put("temperature", 0.7);
 
         var messages = MAPPER.createArrayNode();

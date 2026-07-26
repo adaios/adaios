@@ -380,7 +380,7 @@ class FeedCard extends StatelessWidget {
       child: Container(
         width: 24, height: 24,
         alignment: Alignment.center,
-        child: Icon(Icons.more_horiz_rounded, size: 16, color: AppColors.darkGrey4),
+        child: Icon(Icons.more_vert_rounded, size: 16, color: AppColors.darkGrey4),
       ),
     );
   }

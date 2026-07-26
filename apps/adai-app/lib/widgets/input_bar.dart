@@ -170,16 +170,6 @@ class _InputBarState extends State<InputBar> {
                   ),
                 ),
               ),
-              // Life quick entry
-              GestureDetector(
-                onTap: () => showLifeQuickEntry(context, widget.onSend),
-                child: Container(
-                  width: 32, height: 40,
-                  alignment: Alignment.center,
-                  child: Text('🌿', style: TextStyle(fontSize: 16)),
-                ),
-              ),
-              const SizedBox(width: 2),
               // Input
               Expanded(
                 child: AnimatedSwitcher(
