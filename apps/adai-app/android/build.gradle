@@ -5,6 +5,15 @@ allprojects {
     }
 }
 
+// Override compileSdk for all subprojects (required for Android 16 / API 36)
+subprojects {
+    afterEvaluate { subproject ->
+        if (subproject.hasProperty('android')) {
+            subproject.android.compileSdk = 36
+        }
+    }
+}
+
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
