@@ -225,6 +225,25 @@ class _MainPageState extends State<MainPage>
     _cards.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
   }
 
+  void _deleteCard(String id) async {
+    try {
+      await _api.deleteRecord(id);
+      if (!mounted) return;
+      setState(() => _cards.removeWhere((c) => c.id == id));
+    } catch (e) {
+      if (mounted) _showError('删除失败');
+    }
+  }
+
+  void _changeDomain(String id, String domain) {
+    setState(() {
+      final idx = _cards.indexWhere((c) => c.id == id);
+      if (idx >= 0) {
+        _cards[idx] = _cards[idx].copyWith(domain: domain);
+      }
+    });
+  }
+
   void _deactivateOtherCards(String keepId) {
     for (int i = 0; i < _cards.length; i++) {
       if (_cards[i].id != keepId && (_cards[i].mode == CardMode.waiting || _cards[i].mode == CardMode.chatting)) {
@@ -384,6 +403,8 @@ class _MainPageState extends State<MainPage>
               onActivate: () => _onCardActivate(card.id),
               onAsk: () => _onCardActivate(card.id),
               onEnd: null,
+              onDelete: () => _deleteCard(card.id),
+              onDomainChanged: (domain) => _changeDomain(card.id, domain),
             )),
             const SizedBox(height: 24),
           ],

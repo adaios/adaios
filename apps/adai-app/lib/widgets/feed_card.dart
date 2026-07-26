@@ -43,12 +43,14 @@ class FeedCardData {
   final bool loading;
   final IntentType? intent;
   final bool expanded;
+  final String domain;  // "life" | "trading" | "project"
   final DateTime updatedAt;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
     this.tags, this.summary, this.turns, this.mode = CardMode.idle,
     this.loading = false, this.intent, this.expanded = false,
+    this.domain = 'life',
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -56,6 +58,7 @@ class FeedCardData {
     String? id, FeedCardType? type, String? time, String? content,
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
+    String? domain,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
@@ -64,6 +67,7 @@ class FeedCardData {
       summary: summary ?? this.summary, turns: turns ?? this.turns,
       mode: mode ?? this.mode, loading: loading ?? this.loading,
       intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
+      domain: domain ?? this.domain,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
@@ -111,9 +115,13 @@ class FeedCard extends StatelessWidget {
   final VoidCallback? onAsk;
   final VoidCallback? onEnd;
   final VoidCallback? onActivate;
+  final VoidCallback? onDelete;
+  final void Function(String domain)? onDomainChanged;
 
   const FeedCard({
-    super.key, required this.data, this.onAsk, this.onEnd, this.onActivate,
+    super.key, required this.data,
+    this.onAsk, this.onEnd, this.onActivate,
+    this.onDelete, this.onDomainChanged,
   });
 
   bool get _isWaiting => data.mode == CardMode.waiting;
@@ -287,7 +295,93 @@ class FeedCard extends StatelessWidget {
             decoration: BoxDecoration(color: AppColors.darkGreen, shape: BoxShape.circle),
           ),
         ],
+        const Spacer(),
+        // OS domain badge
+        _buildDomainBadge(),
+        const SizedBox(width: 4),
+        // More menu
+        _buildMoreMenu(),
       ],
+    );
+  }
+
+  static const Map<String, String> _domainEmoji = {
+    'life': '🌿',
+    'trading': '📊',
+    'project': '📋',
+  };
+
+  Widget _buildDomainBadge() {
+    final emoji = _domainEmoji[data.domain] ?? '🌿';
+    final name = data.domain == 'life' ? '生活'
+        : data.domain == 'trading' ? '交易'
+        : data.domain == 'project' ? '项目'
+        : data.domain;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2.withAlpha(50),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.darkBorder.withAlpha(80), width: 0.5),
+      ),
+      child: Text('$emoji $name',
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
+    );
+  }
+
+  Widget _buildMoreMenu() {
+    final menuItems = <PopupMenuEntry<String>>[
+      PopupMenuItem<String>(
+        enabled: false,
+        height: 32,
+        child: Text('标记为：', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
+      ),
+      ...['life', 'trading', 'project'].map((d) => PopupMenuItem<String>(
+        value: 'domain:$d',
+        height: 36,
+        child: Row(
+          children: [
+            Text('${_domainEmoji[d] ?? '🌿'}  '
+                '${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
+              style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+            if (data.domain == d) ...[
+              const Spacer(),
+              Icon(Icons.check, size: 14, color: AppColors.darkGreen),
+            ],
+          ],
+        ),
+      )),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'delete',
+        height: 36,
+        child: Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, size: 14, color: AppColors.darkGrey4),
+            const SizedBox(width: 8),
+            Text('删除', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          ],
+        ),
+      ),
+    ];
+
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value.startsWith('domain:')) {
+          onDomainChanged?.call(value.substring(7));
+        } else if (value == 'delete') {
+          onDelete?.call();
+        }
+      },
+      itemBuilder: (_) => menuItems,
+      offset: const Offset(-140, 20),
+      color: AppColors.darkSurface2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        width: 24, height: 24,
+        alignment: Alignment.center,
+        child: Icon(Icons.more_horiz_rounded, size: 16, color: AppColors.darkGrey4),
+      ),
     );
   }
 

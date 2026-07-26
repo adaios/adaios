@@ -41,6 +41,16 @@ class ApiService {
     return feed;
   }
 
+  /// 删除记录。
+  Future<void> deleteRecord(String id) async {
+    final resp = await http.delete(
+      Uri.parse('$baseUrl/api/v1/records/$id'),
+      headers: _headers,
+    );
+    _check(resp);
+    _feedCache = null;
+  }
+
   /// 使缓存失效（发送新消息后调用）。
   void invalidateFeedCache() {
     _feedCache = null;

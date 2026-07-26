@@ -284,6 +284,13 @@ public class RecordController {
             String rawResponse
     ) {}
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteRecord(@PathVariable String id) {
+        log.info("Delete record | id={}", id);
+        recordRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
     private String truncate(String s, int max) {
         return s != null && s.length() > max ? s.substring(0, max) + "..." : s;
     }

@@ -32,4 +32,11 @@ public interface RecordRepository {
      * @return 所有记录列表（最近的在最前）
      */
     List<ContentRecord> findAll();
+
+    /**
+     * 根据 ID 删除一条记录。
+     *
+     * @param id 记录唯一标识
+     */
+    void deleteById(String id);
 }
