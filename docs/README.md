@@ -19,6 +19,7 @@
 | [system-architecture.md](architecture/system-architecture.md) | 系统架构、Kernel/Domain 分层、Context Engine |
 | [data-flow.md](architecture/data-flow.md) | 当前数据流图（代码实现对应） |
 | [ai-context-design.md](architecture/ai-context-design.md) | AI Context 分层设计（Profile/Records/Chat/Memory/Pattern） |
+| [memory-os-design.md](architecture/memory-os-design.md) | Memory OS 设计规约：职责、数据模型与 Context Engine / Domain OS 的关系 |
 
 ## 🔧 功能手册
 
@@ -56,6 +57,8 @@
 | [20260725-layer6-knowledge-feedback-loop.md](rfc/20260725-layer6-knowledge-feedback-loop.md) | 2026-07-25 | Layer 6 知识反哺闭环 |
 | [20260725-life-project-os-skeleton.md](rfc/20260725-life-project-os-skeleton.md) | 2026-07-25 | Life OS + Project OS 骨架 |
 | [20260726-project-status-and-roadmap.md](rfc/20260726-project-status-and-roadmap.md) | 2026-07-26 | 项目状态与路线 |
+| [20260727-memory-upgrade.md](rfc/20260727-memory-upgrade.md) | 2026-07-27 | Memory 升级路线：Phase 0-4，从复读机到真记忆 |
+| [20260728-project-development-suggestions.md](rfc/20260728-project-development-suggestions.md) | 2026-07-28 | 项目发展建议：产品/前端/UI 三方视角 |
 
 ## 🚀 部署
 
@@ -65,4 +68,4 @@
 
 ---
 
-**文档版本：v1.1 | 最后更新：2026-07-26**
+**文档版本：v1.3 | 最后更新：2026-07-28**

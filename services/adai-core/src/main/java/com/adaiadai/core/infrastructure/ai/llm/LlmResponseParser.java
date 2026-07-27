@@ -1,5 +1,8 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
+import com.adaiadai.core.kernel.memory.MemoryPattern;
+import com.adaiadai.core.kernel.memory.MemoryPreference;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -11,7 +14,7 @@ import java.util.List;
 /**
  * LlmResponseParser — 从 LLM 回复中解析出 AiUnderstanding。
  * <p>
- * LLM 回复应该是 JSON 格式，包含 summary、tags、sentiment、actionable、actionSuggestion 字段。
+ * LLM 回复应该是 JSON 格式，包含 summary、insight、tags、sentiment、actionable、actionSuggestion 字段。
  * 即使回复格式有偏差也能降级处理。
  */
 public class LlmResponseParser {
@@ -60,7 +63,15 @@ public class LlmResponseParser {
                     ? root.get("actionSuggestion").asText()
                     : null;
 
-            return new AiUnderstanding(summary, tags, sentiment, domain, actionable, suggestion, rawResponse);
+            // insight：可选字段，QUESTION 场景可能没有
+            String insight = getTextOrNull(root, "insight");
+
+            // patterns / preferences：可选字段，STATEMENT 场景可能提炼出
+            List<MemoryPattern> patterns = parsePatternArray(root, "patterns");
+            List<MemoryPreference> preferences = parsePreferenceArray(root, "preferences");
+
+            return new AiUnderstanding(summary, insight, patterns, preferences,
+                    tags, sentiment, domain, actionable, suggestion, rawResponse);
 
         } catch (Exception e) {
             log.warn("JSON 解析失败: {}", e.getMessage());
@@ -137,10 +148,12 @@ public class LlmResponseParser {
     }
 
     private static AiUnderstanding parseAsPlainText(String text) {
-        // 非 JSON 回复：截取前 200 字符作为摘要
-        String summary = text.length() > 200 ? text.substring(0, 200) + "…" : text;
+        // 非 JSON 回复：截取前 200 字符作为摘要，并解码 \\uXXXX 转义序列
+        String decoded = decodeUnicodeEscapes(text);
+        String summary = decoded.length() > 200 ? decoded.substring(0, 200) + "…" : decoded;
         return new AiUnderstanding(
                 summary.strip(),
+                null, null, null,
                 List.of(),
                 "neutral",
                 "life",
@@ -148,6 +161,33 @@ public class LlmResponseParser {
                 null,
                 text
         );
+    }
+
+    /**
+     * Decode escaped unicode sequences like backslash-u-4-hex-digits into actual characters.
+     * Handles both single codes and surrogate pairs (e.g. emoji).
+     */
+    private static String decodeUnicodeEscapes(String text) {
+        if (text == null || !text.contains("\\u")) return text;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\\\u([0-9a-fA-F]{4})").matcher(text);
+        StringBuilder sb = new StringBuilder(text.length());
+        int last = 0;
+        while (m.find()) {
+            sb.append(text, last, m.start());
+            int code = Integer.parseInt(m.group(1), 16);
+            sb.append((char) code);
+            last = m.end();
+        }
+        sb.append(text.substring(last));
+        return sb.toString();
+    }
+
+    private static String getTextOrNull(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull() || value.asText().isBlank()) {
+            return null;
+        }
+        return value.asText();
     }
 
     private static String getTextOrDefault(JsonNode node, String field, String defaultValue) {
@@ -169,7 +209,29 @@ public class LlmResponseParser {
         return result;
     }
 
+    private static List<MemoryPattern> parsePatternArray(JsonNode root, String field) {
+        JsonNode arr = root.get(field);
+        if (arr == null || !arr.isArray() || arr.isEmpty()) return null;
+        try {
+            return MAPPER.readValue(arr.traverse(), new TypeReference<List<MemoryPattern>>() {});
+        } catch (Exception e) {
+            log.warn("解析 patterns 数组失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private static List<MemoryPreference> parsePreferenceArray(JsonNode root, String field) {
+        JsonNode arr = root.get(field);
+        if (arr == null || !arr.isArray() || arr.isEmpty()) return null;
+        try {
+            return MAPPER.readValue(arr.traverse(), new TypeReference<List<MemoryPreference>>() {});
+        } catch (Exception e) {
+            log.warn("解析 preferences 数组失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private static AiUnderstanding fallback(String message) {
-        return new AiUnderstanding(message, List.of(), "unknown", "life", false, null, message);
+        return new AiUnderstanding(message, null, null, null, List.of(), "unknown", "life", false, null, message);
     }
 }

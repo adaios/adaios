@@ -92,7 +92,7 @@ public class BriefAppService {
                             List.of(), prompt, java.time.LocalDateTime.now(),
                             List.of()
                     ));
-            cachedBrief = understanding.summary();
+            cachedBrief = truncateLines(understanding.summary(), 3);
             cachedBriefAt = LocalDateTime.now();
             return cachedBrief;
         } catch (Exception e) {
@@ -102,6 +102,19 @@ public class BriefAppService {
             cachedBriefAt = LocalDateTime.now();
             return cachedBrief;
         }
+    }
+
+    /** Limit string to at most {@code maxLines} lines. */
+    private String truncateLines(String text, int maxLines) {
+        if (text == null || text.isBlank()) return text;
+        String[] lines = text.split("\n", -1);
+        if (lines.length <= maxLines) return text;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < maxLines; i++) {
+            if (i > 0) sb.append("\n");
+            sb.append(lines[i]);
+        }
+        return sb.toString();
     }
 
     private String buildBriefPrompt(String name, List<ContentRecord> records,
@@ -196,8 +209,9 @@ public class BriefAppService {
         sb.append("1. First line: \"").append(name).append(" ").append(greeting).append("!\"\n");
         sb.append("2. Use emoji at the start of each line\n");
         sb.append("3. Warm, concise, Chinese\n");
-        sb.append("4. Max 30 chars per line\n");
+        sb.append("4. Max 30 chars per line, max 3 lines total\n");
         sb.append("5. No JSON output\n");
+        sb.append("6. Use actual emoji characters (NOT \\uXXXX escape codes)\n");
 
         return sb.toString();
     }

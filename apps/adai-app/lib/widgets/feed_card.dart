@@ -224,11 +224,11 @@ class FeedCard extends StatelessWidget {
                             const SizedBox(height: 3),
                             _buildTurns(),
                           ],
-                          if (data.summary != null && _isEnded) ...[
+                          if (data.summary != null && !_isActive && !_isEnded) ...[
                             const SizedBox(height: 6),
-                            _buildSummaryBanner(),
+                            _buildCleanSummary(),
                           ],
-                          if (_isIdle && data.summary != null) ...[
+                          if (data.summary != null && _isEnded) ...[
                             const SizedBox(height: 6),
                             _buildSummaryBanner(),
                           ],
@@ -315,8 +315,14 @@ class FeedCard extends StatelessWidget {
           ),
         ],
         const Spacer(),
-        // OS domain badge
-        _buildDomainBadge(),
+        // OS domain badge (or loading spinner during end-conversation processing)
+        if (data.loading && data.mode == CardMode.idle)
+          SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen.withAlpha(150)),
+          )
+        else
+          _buildDomainBadge(),
         const SizedBox(width: 4),
         // More menu
         _buildMoreMenu(),
@@ -539,6 +545,12 @@ class FeedCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 干净 summary 行 — 无图标无背景，纯文本。
+  Widget _buildCleanSummary() {
+    return Text(data.summary!,
+      style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4));
   }
 
   Widget _buildTags() {

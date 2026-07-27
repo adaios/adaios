@@ -60,8 +60,8 @@ lib/
 
 ## 当前测试状态
 
-前端测试在 `test/widget_test.dart`，当前 **19 个测试，0 失败**。
-覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（7，含 idle/chatting/ended 态）。
+前端测试在 `test/widget_test.dart`，当前 **23 个测试，0 失败**。
+覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（11，含 idle/chatting/ended/折叠/loading/对话态）。
 
 ```bash
 cd apps/adai-app && flutter test

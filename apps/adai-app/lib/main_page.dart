@@ -115,6 +115,60 @@ class _MainPageState extends State<MainPage>
     _scrollToBottom();
   }
 
+  void _onAskCard(String cardId) {
+    final card = _cards.where((c) => c.id == cardId).firstOrNull;
+    if (card == null) return;
+
+    // Card already has conversation — just reopen, don't re-ask
+    if (card.turns != null && card.turns!.isNotEmpty) {
+      setState(() {
+        _activeCardId = cardId;
+        _hasActiveChat = true;
+        _chatEnterTurnCount = card.turns!.length;
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    final now = TimeOfDay.now();
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    setState(() {
+      _activeCardId = cardId;
+      _hasActiveChat = true;
+      _chatEnterTurnCount = 0;
+      _updateCard(cardId, (c) => c.copyWith(mode: CardMode.waiting, loading: true, intent: IntentType.question));
+    });
+    _scrollToBottom();
+
+    _doAskRequest(cardId, card.content, timeStr);
+  }
+
+  void _doAskRequest(String cardId, String content, String timeStr) async {
+    try {
+      final resp = await _api.createRecord(content, intent: 'question', cardId: cardId);
+      if (!mounted) return;
+      final aiTime = TimeOfDay.now();
+      final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
+      setState(() {
+        _deactivateOtherCards(cardId);
+        _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false,
+            turns: [
+              ConversationTurn(isUser: true, text: content, time: timeStr),
+              if (resp.summary != null) ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr),
+            ],
+            domain: resp.domain,
+        ));
+      });
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _updateCard(cardId, (c) => c.copyWith(mode: CardMode.idle, loading: false)));
+        _showError('network error');
+      }
+    }
+  }
+
   void _closeChat(String cardId) async {
     final card = _cards.firstWhere((c) => c.id == cardId);
     final currentTurns = card.turns?.length ?? 0;
@@ -132,22 +186,32 @@ class _MainPageState extends State<MainPage>
       return;
     }
 
-    _deactivateOtherCards(cardId);
-    setState(() { _activeCardId = null; _hasActiveChat = false; });
+    // Close active view, show card in feed with loading spinner at domain badge
+    setState(() {
+      _activeCardId = null;
+      _hasActiveChat = false;
+      _updateCard(cardId, (c) => c.copyWith(loading: true, mode: CardMode.idle));
+    });
 
     try {
       final turns = card.turns?.map((t) => t.text).toList() ?? [];
       final resp = await _api.endConversation(turns, cardId: cardId);
       if (!mounted) return;
       setState(() {
-        _updateCard(cardId, (c) => c.copyWith(summary: resp.summary, tags: resp.tags, mode: CardMode.idle, intent: IntentType.question));
+        _updateCard(cardId, (c) => c.copyWith(
+            summary: resp.summary, tags: resp.tags,
+            loading: false, mode: CardMode.idle,
+            intent: IntentType.question));
       });
       _scrollToBottom();
     } catch (_) {
-      if (mounted) _showError('summary failed, saved locally');
-      setState(() {
-        _updateCard(cardId, (c) => c.copyWith(summary: 'conversation ended', tags: ['conversation'], mode: CardMode.idle, intent: IntentType.question));
-      });
+      if (mounted) {
+        _showError('生成总结失败，稍后重试');
+        setState(() {
+          _updateCard(cardId, (c) => c.copyWith(
+              loading: false, mode: CardMode.idle));
+        });
+      }
       _scrollToBottom();
     }
   }
@@ -339,6 +403,16 @@ class _MainPageState extends State<MainPage>
             _earlierCount = feed.earlierCount;
             _totalShown = _cards.length;
           });
+          // Auto-scroll to visual top to show newly loaded content
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          });
           return;
         }
       }
@@ -446,9 +520,9 @@ class _MainPageState extends State<MainPage>
             ),
             child: FeedCard(
               key: ValueKey(card.id),
-              data: card.copyWith(mode: CardMode.idle),
+              data: card,
               onActivate: () => _onCardActivate(card.id),
-              onAsk: () => _onCardActivate(card.id),
+              onAsk: () => _onAskCard(card.id),
               onEnd: null,
               onDelete: () => _deleteCard(card.id),
               onToggleExpand: () {

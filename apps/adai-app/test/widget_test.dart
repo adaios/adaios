@@ -211,6 +211,99 @@ void main() {
       expect(asked, true);
     });
 
+    testWidgets('idle card with 5+ turns shows fold', (tester) async {
+      final turns = List.generate(6, (i) => ConversationTurn(
+        isUser: i.isEven, text: 'turn $i', time: '14:0$i',
+      ));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'hi', turns: turns, mode: CardMode.idle,
+                intent: IntentType.question,
+              ),
+            ),
+          ),
+        ),
+      ));
+      // Shows first and last turns, plus expand button
+      expect(find.text('turn 0'), findsOneWidget);
+      expect(find.text('turn 5'), findsOneWidget);
+      expect(find.textContaining('展开全部'), findsOneWidget);
+      // Middle turns not shown (turn 2, 3)
+      expect(find.text('turn 2'), findsNothing);
+    });
+
+    testWidgets('idle card with 3 turns shows all (no fold)', (tester) async {
+      final turns = List.generate(3, (i) => ConversationTurn(
+        isUser: i.isEven, text: 'turn $i', time: '14:0$i',
+      ));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'hi', turns: turns, mode: CardMode.idle,
+                intent: IntentType.question,
+              ),
+            ),
+          ),
+        ),
+      ));
+      expect(find.text('turn 0'), findsOneWidget);
+      expect(find.text('turn 2'), findsOneWidget);
+      expect(find.textContaining('展开全部'), findsNothing);
+    });
+
+    testWidgets('idle card loading shows spinner at domain badge', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'hi', loading: true, mode: CardMode.idle,
+              ),
+            ),
+          ),
+        ),
+      ));
+      // CircularProgressIndicator should be present (loading spinner)
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('ask style card with turns shows summary and tags', (tester) async {
+      final turns = [
+        ConversationTurn(isUser: true, text: 'weather?', time: '14:00'),
+        ConversationTurn(isUser: false, text: 'sunny', time: '14:01'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'weather?', turns: turns, summary: 'chat about weather',
+                tags: ['weather'], mode: CardMode.idle, intent: IntentType.question,
+              ),
+            ),
+          ),
+        ),
+      ));
+      // Show turns, summary (clean text), tags, and ask button
+      expect(find.text('weather?'), findsOneWidget);
+      expect(find.text('sunny'), findsOneWidget);
+      expect(find.text('chat about weather'), findsOneWidget);
+      expect(find.text('weather'), findsOneWidget);
+      // "ask" appears as badge + bottom button (2 instances)
+      expect(find.text('ask'), findsNWidgets(2));
+      // No "end" button (not chatting/waiting)
+      expect(find.text('end'), findsNothing);
+    });
+
     testWidgets('onEnd callback fires on tap', (tester) async {
       bool ended = false;
       await tester.pumpWidget(MaterialApp(

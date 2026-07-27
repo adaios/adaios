@@ -460,6 +460,7 @@ public class ContextEngine {
 
 回答结束后，在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：
 {
+  "summary": "3-5个词概括本次问答主题，避免人称代词，像标签一样简洁",
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
   "domain": "life(生活)/trading(交易)/project(项目)",
@@ -477,7 +478,10 @@ domain判定规则（按优先级）：
 
                     请分析这条记录，输出 JSON 格式（不要包裹 markdown 代码块）：
                     {
-                      "summary": "一句话摘要",
+                      "summary": "3-5个词客观概括，不要人称代词（不用你/我/用户），像标签一样简洁",
+                      "insight": "一句话客观理解，不要复述原文，避免人称代词",
+                      "patterns": "（可选）如果这条记录揭示了用户的长期行为模式，输出数组，每项包含 content(模式描述) 和 confidence(0-1置信度)；否则不输出此字段",
+                      "preferences": "（可选）如果这条记录揭示了用户的明确偏好，输出数组，每项包含 content(偏好描述) 和 confidence(0-1置信度)；否则不输出此字段",
                       "tags": ["标签1", "标签2", "标签3"],
                       "sentiment": "positive 或 negative 或 neutral",
                       "domain": "life(生活)/trading(交易)/project(项目)",

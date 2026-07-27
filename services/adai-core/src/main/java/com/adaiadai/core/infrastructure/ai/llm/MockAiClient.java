@@ -37,6 +37,8 @@ public class MockAiClient implements AiClient {
     private AiUnderstanding mockTrading(ContextPackage ctx) {
         return new AiUnderstanding(
                 "交易记录: " + ctx.recordTitle(),
+                "交易洞察: " + ctx.recordTitle(),
+                null, null,
                 List.of("投资", "交易", "半导体"),
                 "neutral",
                 "trading",
@@ -49,6 +51,8 @@ public class MockAiClient implements AiClient {
     private AiUnderstanding mockLife(ContextPackage ctx) {
         return new AiUnderstanding(
                 "生活记录: " + ctx.recordTitle(),
+                "生活洞察: " + ctx.recordTitle(),
+                null, null,
                 List.of("生活", "日常", "记录"),
                 "positive",
                 "life",
@@ -61,6 +65,8 @@ public class MockAiClient implements AiClient {
     private AiUnderstanding mockResearch(ContextPackage ctx) {
         return new AiUnderstanding(
                 "研究笔记: " + ctx.recordTitle(),
+                "研究洞察: " + ctx.recordTitle(),
+                null, null,
                 List.of("研究", "分析", "笔记"),
                 "neutral",
                 "life",
@@ -83,6 +89,8 @@ public class MockAiClient implements AiClient {
     private AiUnderstanding mockDefault(ContextPackage ctx) {
         return new AiUnderstanding(
                 "记录: " + ctx.recordTitle(),
+                "洞察: " + ctx.recordTitle(),
+                null, null,
                 ctx.recordTags(),
                 "neutral",
                 "life",

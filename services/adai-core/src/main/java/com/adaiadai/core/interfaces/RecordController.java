@@ -112,11 +112,12 @@ public class RecordController {
         List<String> tags = Collections.emptyList();
         String summary = null;
         String domain = "life";
+        AiUnderstanding understanding = null;
 
         try {
             // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
             ContextPackage ctx = contextEngine.compose("note", record);
-            AiUnderstanding understanding = aiClient.understand(ctx);
+            understanding = aiClient.understand(ctx);
             tags = understanding.tags();
             summary = understanding.summary();
             domain = understanding.domain() != null ? understanding.domain() : "life";
@@ -134,14 +135,15 @@ public class RecordController {
         );
         recordRepository.save(enriched);
 
-        // Persist AI understanding as memory
-        if (summary != null || (tags != null && !tags.isEmpty())) {
+        // Persist AI understanding as memory (use full understanding with insight/patterns/preferences)
+        if (understanding != null) {
             try {
-                Memory memory = Memory.fromUnderstanding(record.id(),
-                        new AiUnderstanding(summary != null ? summary : "recorded",
-                                tags != null ? tags : List.of(), "neutral", domain, false, null, ""));
+                Memory memory = Memory.fromUnderstanding(record.id(), understanding);
                 memoryService.persist(memory);
-                log.info("Memory persisted for statement | recordId={} | summary=\"{}\"", record.id(), truncate(summary, 40));
+                log.info("Memory persisted for statement | recordId={} | insight=\"{}\" | patterns={} | preferences={}",
+                        record.id(), truncate(understanding.insight() != null ? understanding.insight() : summary, 40),
+                        understanding.patterns() != null ? understanding.patterns().size() : 0,
+                        understanding.preferences() != null ? understanding.preferences().size() : 0);
             } catch (Exception e) {
                 log.debug("Memory persist skipped for statement: {}", e.getMessage());
             }

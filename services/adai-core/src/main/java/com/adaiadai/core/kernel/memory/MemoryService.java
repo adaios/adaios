@@ -1,6 +1,8 @@
 package com.adaiadai.core.kernel.memory;
 
 import com.adaiadai.core.infrastructure.storage.FileStorage;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,25 +20,22 @@ import java.util.stream.Collectors;
  * <p>
  * 负责将 AI 理解结果沉淀为长期记忆，并提供查询能力。
  * 采用 File First：记忆按月组织到 {@code data/memory/YYYY/MM.md}。
+ * <p>
+ * Phase 1：支持 pattern（行为模式）和 preference（用户偏好）的类型化读写。
  */
 @Service
 public class MemoryService {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryService.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String MEMORY_DIR = "memory";
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private static final Pattern ENTRY_PATTERN = Pattern.compile(
-            "---\\n" +
-                    "id:\\s*(\\S+)\\n" +
-                    "recordId:\\s*(\\S+)\\n" +
-                    "tags:\\s*\\[([^\\]]*)\\]\\n" +
-                    "sentiment:\\s*(\\S+)\\n" +
-                    "actionable:\\s*(true|false)\\n" +
-                    "createdAt:\\s*(\\S+?)\\n" +
-                    "---\\n" +
-                    "(.+?)(?=\\n---|\\z)",
+
+    // 解析条目：--- 分隔的前置元信息 + 正文
+    private static final Pattern ENTRY_SPLIT = Pattern.compile(
+            "---\\n(.+?)\\n---\\n(.+?)(?=\\n---|\\z)",
             Pattern.DOTALL);
 
     private final FileStorage fileStorage;
@@ -74,7 +73,12 @@ public class MemoryService {
                     """.formatted(memory.createdAt().toLocalDate().toString(), entry);
         }
         fileStorage.write(path, content);
-        log.info("记忆已沉淀 | recordId={} | summary={}", memory.recordId(), memory.summary());
+        if (memory.patterns() != null && !memory.patterns().isEmpty()) {
+            log.info("记忆已沉淀 | recordId={} | summary={} | patterns={}",
+                    memory.recordId(), truncate(memory.summary(), 40), memory.patterns().size());
+        } else {
+            log.info("记忆已沉淀 | recordId={} | summary={}", memory.recordId(), truncate(memory.summary(), 40));
+        }
     }
 
     /**
@@ -145,6 +149,49 @@ public class MemoryService {
         return total;
     }
 
+    /**
+     * 查询所有 memory 中出现的 patterns（去重，按置信度降序）。
+     */
+    public List<MemoryPattern> findAllPatterns() {
+        Map<String, MemoryPattern> merged = new LinkedHashMap<>();
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                if (m.patterns() != null) {
+                    for (MemoryPattern p : m.patterns()) {
+                        // 同内容取最高置信度
+                        merged.merge(p.content(), p,
+                                (a, b) -> a.confidence() >= b.confidence() ? a : b);
+                    }
+                }
+            }
+        }
+        return merged.values().stream()
+                .sorted((a, b) -> Double.compare(b.confidence(), a.confidence()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 查询所有 memory 中出现的 preferences（去重，按置信度降序）。
+     */
+    public List<MemoryPreference> findAllPreferences() {
+        Map<String, MemoryPreference> merged = new LinkedHashMap<>();
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                if (m.preferences() != null) {
+                    for (MemoryPreference p : m.preferences()) {
+                        merged.merge(p.content(), p,
+                                (a, b) -> a.confidence() >= b.confidence() ? a : b);
+                    }
+                }
+            }
+        }
+        return merged.values().stream()
+                .sorted((a, b) -> Double.compare(b.confidence(), a.confidence()))
+                .collect(Collectors.toList());
+    }
+
     // ── 内部方法 ──
 
     private String memoryFilePath(Memory memory) {
@@ -153,6 +200,19 @@ public class MemoryService {
     }
 
     private String formatMemoryEntry(Memory memory) {
+        String patternsJson = "[]";
+        String preferencesJson = "[]";
+        try {
+            if (memory.patterns() != null && !memory.patterns().isEmpty()) {
+                patternsJson = MAPPER.writeValueAsString(memory.patterns());
+            }
+            if (memory.preferences() != null && !memory.preferences().isEmpty()) {
+                preferencesJson = MAPPER.writeValueAsString(memory.preferences());
+            }
+        } catch (Exception e) {
+            log.warn("序列化 patterns/preferences 失败: {}", e.getMessage());
+        }
+
         return """
                 ---
                 id: %s
@@ -160,6 +220,8 @@ public class MemoryService {
                 tags: [%s]
                 sentiment: %s
                 actionable: %b
+                patterns: %s
+                preferences: %s
                 createdAt: %s
                 ---
                 %s
@@ -169,6 +231,8 @@ public class MemoryService {
                 String.join(", ", memory.tags()),
                 memory.sentiment(),
                 memory.actionable(),
+                patternsJson,
+                preferencesJson,
                 memory.createdAt().toString(),
                 memory.summary()
         );
@@ -176,18 +240,38 @@ public class MemoryService {
 
     private List<Memory> parseEntries(String content) {
         List<Memory> result = new ArrayList<>();
-        Matcher matcher = ENTRY_PATTERN.matcher(content);
+        Matcher matcher = ENTRY_SPLIT.matcher(content);
         while (matcher.find()) {
             try {
-                String id = matcher.group(1);
-                String recordId = matcher.group(2);
-                List<String> tags = parseTags(matcher.group(3));
-                String sentiment = matcher.group(4);
-                boolean actionable = Boolean.parseBoolean(matcher.group(5));
-                LocalDateTime createdAt = LocalDateTime.parse(matcher.group(6));
-                String summary = matcher.group(7).strip();
+                String frontmatter = matcher.group(1);
+                String body = matcher.group(2).strip();
 
-                result.add(new Memory(id, recordId, summary, tags, sentiment, actionable, null, createdAt));
+                // 逐行解析 frontmatter
+                Map<String, String> fields = new LinkedHashMap<>();
+                for (String line : frontmatter.split("\n")) {
+                    int colonIdx = line.indexOf(':');
+                    if (colonIdx > 0) {
+                        String key = line.substring(0, colonIdx).strip();
+                        String value = line.substring(colonIdx + 1).strip();
+                        fields.put(key, value);
+                    }
+                }
+
+                String id = fields.getOrDefault("id", "");
+                String recordId = fields.getOrDefault("recordId", "");
+                String sentiment = fields.getOrDefault("sentiment", "neutral");
+                boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
+                String createdAtStr = fields.getOrDefault("createdAt", "");
+                LocalDateTime createdAt = createdAtStr.isBlank()
+                        ? LocalDateTime.now()
+                        : LocalDateTime.parse(createdAtStr);
+
+                List<String> tags = parseTags(fields.getOrDefault("tags", "[]"));
+                List<MemoryPattern> patterns = parsePatterns(fields.getOrDefault("patterns", "[]"));
+                List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
+
+                result.add(new Memory(id, recordId, body, patterns, preferences,
+                        tags, sentiment, actionable, null, createdAt));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());
             }
@@ -202,5 +286,30 @@ public class MemoryService {
                 .filter(s -> !s.isBlank())
                 .map(String::strip)
                 .toList();
+    }
+
+    private List<MemoryPattern> parsePatterns(String json) {
+        try {
+            if (json == null || json.isBlank() || "[]".equals(json)) return List.of();
+            return MAPPER.readValue(json, new TypeReference<List<MemoryPattern>>() {});
+        } catch (Exception e) {
+            log.warn("解析 patterns JSON 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<MemoryPreference> parsePreferences(String json) {
+        try {
+            if (json == null || json.isBlank() || "[]".equals(json)) return List.of();
+            return MAPPER.readValue(json, new TypeReference<List<MemoryPreference>>() {});
+        } catch (Exception e) {
+            log.warn("解析 preferences JSON 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return null;
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";
     }
 }

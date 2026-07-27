@@ -106,6 +106,23 @@ class ConversationControllerTest {
     }
 
     @Test
+    void endConversation_withCardId() throws Exception {
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("今天天气如何", "今天多云转晴"),
+                "cardId", "card_test_123"
+        ));
+
+        mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").isString())
+                .andExpect(jsonPath("$.tags").isArray())
+                .andExpect(jsonPath("$.recordId").isString())
+                .andExpect(jsonPath("$.recordId").isNotEmpty());
+    }
+
+    @Test
     void endConversation_wrongMethod_returns405() throws Exception {
         var req = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/conversations/end");
         mockMvc.perform(req)

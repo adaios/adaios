@@ -249,11 +249,11 @@ cd services/adai-core && ./gradlew bootJar
 # 脚本自动完成：上传 JAR → 停服务 → 补全 data 目录 → 修权限 → 重启 → 重建记忆
 
 # ── 运行 ───────────────────────────────────────
-# DeepSeek 模式（默认，需配置 DEEPSEEK_API_KEY）：
+# DeepSeek 模式（默认，需在 .env 配置 DEEPSEEK_API_KEY）：
 cd services/adai-core && ./gradlew bootRun
 
-# Mock 模式（无需 API Key，在 application.yml 改 provider=mock）：
-# cd services/adai-core && ./gradlew bootRun
+# Mock 模式（无需 API Key，临时测试用）：
+# cd services/adai-core && ADAI_AI_PROVIDER=mock ./gradlew bootRun
 
 # ── Flutter ────────────────────────────────────
 cd apps/adai-app && flutter run -d chrome          # Web
@@ -284,4 +284,33 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/architecture/layout-reference.md` — 前端页面布局视觉参考
 - `docs/architecture/api-spec.md` — API 接口契约
 - `domains/*-os/` — 各 Domain 的职责、概念、工作流
+- `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
+
+## 当前焦点（2026-07-28）
+
+### 正在做的
+- **Memory 升级 Phase 0-1** ✅ 已完成：summary/insight 拆分 + pattern/preference 多类型化
+- **FeedCard 状态机修复** ✅ 已完成：ask 直接回复、close 不显示 end、load more 自动滚动
+- **Chat 关闭流程修复** ✅ 已完成：ConversationController prompt（去第一人称）、前端改为只弹窗不兜底
+
+### 待修复（下一轮）
+| Pri | 问题 | 涉及 |
+|:---:|:-----|:-----|
+| P0 | AI 回复色彩背景深色看不清 | `feed_card.dart` Markdown 样式 |
+| P1 | ask 时 tags 被丢弃（end 后才出现） | `_doAskRequest` 未保存 tags |
+| P1 | ask 报错不弹详情（通用 "network error"） | `_doAskRequest` catch 不提取 body |
+| P2 | 折叠标准从条数改为大小 | `_buildTurns` 逻辑 |
+
+### 测试状态（2026-07-28）
+- **后端** 100+ 测试，0 失败（含 ConversationController + RecordController 字段断言）
+- **前端** 23 测试，0 失败（新增：折叠/loading/对话态展示）
+
+### 运行环境
+- 后端：`localhost:8080`（DeepSeek 模式）
+- 前端：`localhost:8081`（Flutter Web + CanvasKit 补丁）
+- 生产服务器：49.235.37.220
+
+### 关键文档（本轮新增）
+- `docs/rfc/20260727-memory-upgrade.md` — Memory 升级路线图（Phase 0-4）
+- `docs/rfc/20260728-project-development-suggestions.md` — 三方视角项目建议

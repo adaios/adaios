@@ -147,7 +147,7 @@ public class DeepSeekAiClient implements AiClient {
     private String buildAnalysisRequestBody(ContextPackage ctx) throws Exception {
         if ("brief".equals(ctx.scene())) {
             return buildSimpleBody(ctx.prompt(), 1024, 0.7,
-                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用 emoji。生成温暖的问候语。不要输出 JSON。");
+                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用实际 emoji 字符。生成温暖的问候语。不要输出 JSON。不要用 \\uXXXX 转义码。");
         }
         return buildSimpleBody(ctx.prompt(), 1024, 0.3);
     }
@@ -261,7 +261,8 @@ public class DeepSeekAiClient implements AiClient {
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", systemContent != null ? systemContent : """
-                分析一条个人记录，输出JSON。摘要用3-5个词概括，不要写成完整句子。
+                分析一条个人记录，输出JSON。summary用3-5个词简短概括，不要完整句子；insight用一句话表达你对用户的理解，有信息增量，不要复述原文。
+                如果记录揭示了用户的长期行为模式或明确偏好，请在patterns/preferences数组中输出，每项包含content和confidence(0-1)。
                 只输出JSON，不要包裹markdown。
                 """.strip());
         messages.add(systemMsg);

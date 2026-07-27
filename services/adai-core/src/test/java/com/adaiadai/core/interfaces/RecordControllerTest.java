@@ -89,7 +89,10 @@ class RecordControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intent").value("log"))
-                .andExpect(jsonPath("$.recordId").isString());
+                .andExpect(jsonPath("$.recordId").isString())
+                .andExpect(jsonPath("$.summary").isString())
+                .andExpect(jsonPath("$.tags").isArray())
+                .andExpect(jsonPath("$.domain").isString());
     }
 
     @Test
