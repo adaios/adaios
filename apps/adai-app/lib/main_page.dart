@@ -792,7 +792,7 @@ class _TopBar extends StatelessWidget {
   String get _dateLabel {
     final now = DateTime.now();
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return '${now.month}月${now.day}日 ${weekdays[now.weekday - 1]}';
+    return '${now.month}/${now.day}·${weekdays[now.weekday - 1]}';
   }
 
   @override
@@ -805,7 +805,9 @@ class _TopBar extends StatelessWidget {
             onTap: onTimelineTap,
             child: Row(
               children: [
-                Text(_dateLabel, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.darkGrey1, letterSpacing: -0.3)),
+                Text(_dateLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.darkGrey5, letterSpacing: 0.3)),
+                const SizedBox(width: 4),
+                Icon(Icons.keyboard_arrow_down, size: 14, color: AppColors.darkGrey5.withAlpha(128)),
               ],
             ),
           ),

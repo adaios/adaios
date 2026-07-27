@@ -27,7 +27,7 @@ spring:
 
 adai:
   ai:
-    provider: deepseek          # mock（默认，无需 API Key）| deepseek
+    provider: ${ADAI_AI_PROVIDER:mock}  # 默认 mock（无需 Key），生产 .env 设 ADAI_AI_PROVIDER=deepseek
     model: deepseek-v4-pro
   storage:
     base-path: ${ADAI_DATA_DIR:../../data}

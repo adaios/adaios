@@ -68,6 +68,9 @@ echo "  3/5  配置环境变量..."
 if [ ! -f /opt/adaios/backend/.env ]; then
     echo "  → 创建 .env 模板（请编辑填入 DEEPSEEK_API_KEY）..."
     cat > /opt/adaios/backend/.env << 'EOF'
+# AI Provider（deepseek 或 mock）
+ADAI_AI_PROVIDER=deepseek
+
 # DeepSeek API（必填，生产模式使用 deepseek provider）
 DEEPSEEK_API_KEY=sk-your-key-here
 
