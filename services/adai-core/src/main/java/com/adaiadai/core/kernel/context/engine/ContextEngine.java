@@ -462,10 +462,15 @@ public class ContextEngine {
 {
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
-  "domain": "所属领域：life(生活)/trading(交易)/project(项目)",
+  "domain": "life(生活)/trading(交易)/project(项目)",
   "actionable": true 或 false,
   "actionSuggestion": "需要后续操作写建议，否则写 null"
 }
+
+domain判定规则（按优先级）：
+- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading
+- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project
+- 其他日常、想法、记录、心情、问题 → life
 """);
         } else {
             prompt.append("""
@@ -475,9 +480,14 @@ public class ContextEngine {
                       "summary": "一句话摘要",
                       "tags": ["标签1", "标签2", "标签3"],
                       "sentiment": "positive 或 negative 或 neutral",
-                      "domain": "所属领域：life(生活)/trading(交易)/project(项目)",
+                      "domain": "life(生活)/trading(交易)/project(项目)",
                       "actionable": true 或 false,
                       "actionSuggestion": "如果需要后续操作，写建议；否则写 null"
+
+domain判定规则（按优先级）：
+- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading
+- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project
+- 其他日常、想法、记录、心情 → life
                     }
                     """);
         }

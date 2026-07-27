@@ -261,7 +261,7 @@ public class DeepSeekAiClient implements AiClient {
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", systemContent != null ? systemContent : """
-                分析一条个人记录，输出JSON。摘要用简洁的事实描述，不加主语（不要用"用户"或"你"）。
+                分析一条个人记录，输出JSON。摘要用第一人称"我"的视角，简洁描述，不超过20字。
                 只输出JSON，不要包裹markdown。
                 """.strip());
         messages.add(systemMsg);

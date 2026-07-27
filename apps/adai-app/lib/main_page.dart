@@ -290,14 +290,6 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _jumpToBottom([int retries = 3]) {
-    if (!_scrollController.hasClients || retries <= 0) return;
-    if (_scrollController.position.pixels > 5) {
-      _scrollController.jumpTo(0);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom(retries - 1));
-    }
-  }
-
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position.pixels;
@@ -316,18 +308,12 @@ class _MainPageState extends State<MainPage>
   Future<void> _loadMore() async {
     if (_totalShown < _cards.length) {
       setState(() => _totalShown = (_totalShown + _pageSize).clamp(0, _cards.length));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-      });
       return;
     }
     if (!_hasOlder) return;
     setState(() => _loadingMore = true);
     await _loadOlder();
     setState(() => _loadingMore = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    });
   }
 
   Future<void> _loadOlder() async {
@@ -531,7 +517,7 @@ class _MainPageState extends State<MainPage>
       onTap: showLoadMore
           ? (_loadingMore ? null : _loadMore)
           : () {
-              _scrollController.animateTo(0,
+              _scrollController.animateTo(_scrollController.position.maxScrollExtent,
                 duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
             },
       child: Container(

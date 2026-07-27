@@ -505,23 +505,38 @@ class FeedCard extends StatelessWidget {
     );
   }
 
+  static const int _maxSummaryLen = 40;
+
   Widget _buildSummaryBanner() {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface2.withAlpha(128),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.check_circle_rounded, size: 14, color: AppColors.darkGreen.withAlpha(178)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(data.summary!,
-              style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4)),
-          ),
-        ],
+    final text = data.summary!;
+    final bool long = text.length > _maxSummaryLen;
+    final bool showFull = data.expanded || !long;
+    final displayText = showFull ? text : '${text.substring(0, _maxSummaryLen)}...';
+
+    return GestureDetector(
+      onTap: long ? onToggleExpand : null,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2.withAlpha(128),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.check_circle_rounded, size: 14, color: AppColors.darkGreen.withAlpha(178)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(displayText,
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4)),
+            ),
+            if (!showFull && long)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.expand_more, size: 14, color: AppColors.darkGrey5),
+              ),
+          ],
+        ),
       ),
     );
   }

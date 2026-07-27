@@ -48,7 +48,7 @@ public class ConversationController {
         // Build prompt from all turns
         String turnText = buildTurnText(request.turns());
         String prompt = """
-                以下是一段对话记录，请总结这段对话的核心内容（不超过100字），并给出相关标签。
+                总结这段对话（不超过40字），用第一人称直接对用户说。
                 输出 JSON（不要包裹 markdown 代码块）：
                 {
                   "summary": "对话总结",
@@ -103,7 +103,7 @@ public class ConversationController {
     private String buildTurnText(List<String> turns) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < turns.size(); i++) {
-            String prefix = (i % 2 == 0) ? "用户" : "AI";
+            String prefix = (i % 2 == 0) ? "我" : "你";
             sb.append(prefix).append("：").append(turns.get(i)).append("\n");
         }
         return sb.toString();

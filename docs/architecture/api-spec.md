@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v2.6 | 最后更新：2026-07-27**
+**文档版本：v2.7 | 最后更新：2026-07-27**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-07-27 | v2.7 | **总结优化**：对话总结 ≤40 字 + 第一人称；ANALYSIS 摘要 ≤20 字 + 第一人称；domain 追加关键词规则；前端 load more/↑ top 滚动修复 |
 | 2026-07-27 | v2.6 | **移除 DECISION 意图**；意图识别改为纯 AI（无正则兜底，AI 失败抛异常）；新增 `POST /api/v1/cards/cleanup` |
 | 2026-07-26 | v2.5 | 任务系统 (5 个 API) + RFC tracking，ProjectStatus.rfcCount→rfcItems[]，前端任务页 |
 | 2026-07-25 | v2.3 | 新增交易复盘 API（生成/查询/列表），知识反哺 API（promote/conflicts），简报集成交易检测 |
@@ -46,7 +47,7 @@
   "recordId": "rec_20260718_143000",
   "content": "今天买了立昂微",
   "tags": ["投资", "半导体"],
-  "summary": "25块建仓半导体龙头"
+  "summary": "建仓了半导体"
 }
 ```
 
@@ -73,8 +74,13 @@
 2. AI 识别意图（ask → QUESTION，其余 → STATEMENT）
 3. AI 失败 → 抛异常，不静默降级
 ```
-```
 
+**domain 判定规则（AI 输出）**
+
+按优先级匹配关键词：
+- 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`
+- 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`
+- 日常、想法、记录、心情、问题 → `life`
 ---
 
 ## 2. 对话总结（Conversations）
@@ -95,7 +101,7 @@
 ```json
 {
   "recordId": "rec_20260718_143200",
-  "summary": "咨询了最近两天天气",
+  "summary": "讨论了天气，建议带伞出门",
   "tags": ["天气", "出行"]
 }
 ```
@@ -127,7 +133,7 @@
       "content": "现在饿了，吃点什么呢",
       "tags": [],
       "intent": "question",
-      "summary": "用户在家感到饥饿，AI提供多种饮食建议",
+      "summary": "饿了推荐了夜宵选择",
       "turns": [
         {"isUser": true,  "text": "现在饿了，吃点什么呢", "time": "22:12"},
         {"isUser": false, "text": "哈哈饿了呀，那得看你想吃啥", "time": "22:12"}
@@ -152,8 +158,9 @@
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|
 | `type` | String | `record` / `card` / `ai_note` / `push` |
-| `time` | String | `HH:mm` 格式，卡片取首条用户消息时间 |
+| `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
+| `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
 | `earlierCount` | int | 更早天数的条目数 |
 
 > **`type: "card"`**：会话卡片，完整对话在 `turns` 中，前端直接渲染无需额外调用。
