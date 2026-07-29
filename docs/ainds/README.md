@@ -1,4 +1,4 @@
-# AI Native Development Specification
+# AI Native Engineering Framework
 
 版本：v1.0
 
@@ -6,246 +6,298 @@
 
 # 1. 文档目的
 
-AI Native Development Specification 是一套面向现代软件工程的 AI
-原生研发规范。
+AI Native Engineering Framework 定义 AI
+参与软件工程过程中的组织方式、协作方式和工程规范。
 
-它定义：
+它解决的问题：
 
--   如何让 AI 理解软件项目
--   如何让 AI 参与软件开发流程
--   如何让 AI 在团队环境中协作
--   如何让项目知识持续积累和演进
-
-该规范不依赖具体 AI 模型、IDE 工具、Agent 平台或编程语言。
-
-它关注的问题是：
-
-> 在 AI 参与软件研发的时代，软件工程体系应该如何重新设计。
-
-------------------------------------------------------------------------
-
-# 2. AI Native Development 核心理念
-
-传统软件工程主要围绕人类开发者构建。
-
-AI Native Development 将软件工程扩展为：
-
--   Context（上下文）
--   Workflow（工作流程）
--   Collaboration（协作体系）
+> 当 AI 从代码辅助工具逐渐成为研发流程参与者时，团队应该如何组织
+> Context、Workflow、Agent、Knowledge 和 Engineering Standard。
 
 目标：
 
-> 构建一个 AI
-> 可以理解项目、参与研发、积累知识，并持续进化的软件工程系统。
+-   让 AI 理解项目
+-   让 AI 参与研发流程
+-   让 AI 具备工程角色能力
+-   让 AI 持续积累项目经验
+-   保证 AI 生成代码的工程质量
 
 ------------------------------------------------------------------------
 
-# 3. 三层模型
+# 2. Framework 总览
 
-## Context Layer
+    AI Native Engineering Framework
 
-对应：
 
-`01_AI_CONTEXT_STRUCTURE.md`
+    01 Context Structure
+
+            ↓
+
+    02 Project Workflow
+
+            ↓
+
+    03 Team Framework
+
+            ↓
+
+    04 Agent Framework
+
+            ↓
+
+    05 Knowledge System
+
+            ↓
+
+    06 Engineering Standard
+
+
+            ↑
+
+            └──── Continuous Improvement ────┘
+
+------------------------------------------------------------------------
+
+# 3. 核心组成
+
+## 01_AI_CONTEXT_STRUCTURE.md
 
 解决：
 
-> AI 应该知道什么？
+> AI 如何理解项目？
 
-负责：
+定义：
 
 -   项目背景
--   系统架构
+-   架构信息
+-   Domain 模型
+-   数据流
 -   技术约束
--   设计决策
--   工程规范
+-   历史决策
+
+它是 AI 工作的基础上下文。
 
 ------------------------------------------------------------------------
 
-## Workflow Layer
-
-对应：
-
-`02_AI_NATIVE_PROJECT_WORKFLOW.md`
+## 02_AI_NATIVE_PROJECT_WORKFLOW.md
 
 解决：
 
-> AI 应该如何工作？
+> AI 如何参与研发流程？
 
-负责：
+定义：
 
 -   需求分析
 -   方案设计
--   编码实现
--   Review
--   测试
--   知识沉淀
+-   开发实现
+-   测试验证
+-   发布维护
+
+明确 AI 在软件生命周期中的参与方式。
 
 ------------------------------------------------------------------------
 
-## Collaboration Layer
-
-对应：
-
-`03_AI_NATIVE_TEAM_FRAMEWORK.md`
+## 03_AI_NATIVE_TEAM_FRAMEWORK.md
 
 解决：
 
-> 多人、多项目、多 AI 如何协作？
+> 人与 AI 如何协作？
 
-负责：
+定义：
 
--   Context 共享
+-   人类角色
 -   AI 角色
+-   Agent 协作方式
+-   信息传递规范
+
+建立 AI Native 团队组织模型。
+
+------------------------------------------------------------------------
+
+## 04_AI_NATIVE_AGENT_FRAMEWORK.md
+
+解决：
+
+> AI 能力如何工程化？
+
+定义：
+
 -   Agent
 -   Skill
--   协作机制
+-   Tool
+-   MCP
+-   Memory
+
+让 AI 从聊天助手成为工程执行角色。
 
 ------------------------------------------------------------------------
 
-# 4. 文档结构
+## 05_AI_NATIVE_KNOWLEDGE_SYSTEM.md
 
-``` text
-docs/
+解决：
 
-└── ai-native/
+> AI 如何积累经验？
 
-    ├── README.md
+定义：
 
-    ├── 01_AI_CONTEXT_STRUCTURE.md
+-   信息
+-   知识
+-   模式
+-   规则
+-   Memory
 
-    ├── 02_AI_NATIVE_PROJECT_WORKFLOW.md
-
-    └── 03_AI_NATIVE_TEAM_FRAMEWORK.md
-```
+让项目经验能够持续沉淀和复用。
 
 ------------------------------------------------------------------------
 
-# 5. 核心原则
+## 06_AI_NATIVE_ENGINEERING_STANDARD.md
 
-## Context First
+解决：
 
-AI 行动之前：
+> 如何保证 AI 开发质量？
 
-    Context Loading
+定义：
+
+-   修改规范
+-   Review 标准
+-   验证流程
+-   Context 更新规范
+-   Knowledge 更新规范
+
+保证 AI 提升效率，而不是降低工程质量。
+
+------------------------------------------------------------------------
+
+# 4. 六层关系
+
+    Context
+
+    负责：
+    理解项目是什么
+
 
     ↓
 
-    Understanding
+    Workflow
+
+    负责：
+    定义什么时候参与
+
 
     ↓
 
-    Reasoning
+    Team
+
+    负责：
+    定义谁负责什么
+
 
     ↓
 
-    Action
+    Agent
 
-------------------------------------------------------------------------
+    负责：
+    执行具体工作
 
-## Knowledge Continuity
-
-工程经验持续沉淀：
-
-    问题
 
     ↓
 
-    解决方案
+    Knowledge
+
+    负责：
+    沉淀经验
+
 
     ↓
 
-    工程决策
+    Standard
+
+    负责：
+    约束质量
+
+------------------------------------------------------------------------
+
+# 5. 使用方式
+
+新项目接入 AI Native Engineering Framework：
+
+    Step 1:
+
+    建立 Context Structure
 
     ↓
 
-    项目知识
+    Step 2:
+
+    定义 Project Workflow
 
     ↓
 
-    未来 AI Context
+    Step 3:
+
+    配置 Team Framework
+
+    ↓
+
+    Step 4:
+
+    设计 Agent 能力
+
+    ↓
+
+    Step 5:
+
+    建立 Knowledge 沉淀机制
+
+    ↓
+
+    Step 6:
+
+    执行 Engineering Standard
 
 ------------------------------------------------------------------------
 
-## Explicit Over Implicit
+# 6. 核心原则
 
-重要规则必须显式表达。
+## 1. Context First
 
-不要依赖：
-
--   个人经验
--   口头约定
--   隐含规则
-
-应该形成：
-
--   文档
--   决策记录
--   工程规范
+AI 工作必须建立在项目上下文之上。
 
 ------------------------------------------------------------------------
 
-# 6. 实施路径
+## 2. Workflow Driven
 
-## Phase 1：建立 Context
-
-让 AI 理解项目。
-
-示例：
-
-``` text
-.ai/
-
-├── README.md
-├── architecture.md
-├── conventions.md
-├── decisions.md
-├── modules/
-└── workspace/
-```
+AI 不应该只响应任务，而应该参与工程流程。
 
 ------------------------------------------------------------------------
 
-## Phase 2：建立 Workflow
+## 3. Agent Engineering
 
-让 AI 按工程流程参与研发。
-
-包括：
-
--   需求流程
--   开发流程
--   Review 流程
--   知识更新流程
+Agent 是工程角色，不是简单聊天机器人。
 
 ------------------------------------------------------------------------
 
-## Phase 3：建立 Team Framework
+## 4. Knowledge Accumulation
 
-让 AI 支持团队规模化协作。
-
-包括：
-
--   Context 共享
--   AI 角色体系
--   Agent 协作机制
+每一次重要实践都应该转化为可复用知识。
 
 ------------------------------------------------------------------------
 
-# 7. 总结
+## 5. Standard Guarantees Quality
 
-AI Native Development 的目标不是让 AI 替代开发者。
-
-而是：
-
-> 构建一个能够被 AI 理解、参与、维护，并持续进化的软件工程体系。
-
-未来的软件项目不仅拥有代码，还拥有：
-
--   知识体系
--   工作流程
--   协作机制
+效率提升必须建立在工程质量之上。
 
 ------------------------------------------------------------------------
 
-End of README.md
+# 7. Framework 定位
+
+AI Native Engineering Framework 不是替代传统软件工程。
+
+它是在传统软件工程基础上，引入：
+
+-   AI Context
+-   AI Agent
+-   AI Knowledge
+-   AI Collaboration
+
+形成适用于 AI 时代的软件研发体系。
