@@ -124,6 +124,54 @@ public class MemoryService {
     }
 
     /**
+     * 按 recordId 删除记忆条目。
+     * 遍历所有记忆文件，找到匹配的记录并移除该条目。
+     *
+     * @param recordId 要删除的记录 ID
+     * @return 是否找到并删除了记忆
+     */
+    public boolean deleteByRecordId(String recordId) {
+        if (recordId == null || recordId.isBlank()) return false;
+        // 搜索最近 365 天的记忆文件
+        for (int i = 0; i < 365; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            String ym = date.format(DateTimeFormatter.ofPattern("yyyy/MM"));
+            String path = MEMORY_DIR + "/" + ym + ".md";
+            String content = fileStorage.read(path);
+            if (content == null || content.isBlank()) continue;
+
+            // 查找并移除匹配的记录
+            String recordIdMarker = "recordId: " + recordId;
+            if (!content.contains(recordIdMarker)) continue;
+
+            StringBuilder sb = new StringBuilder();
+            Matcher matcher = ENTRY_SPLIT.matcher(content);
+            boolean removed = false;
+            while (matcher.find()) {
+                String entry = matcher.group();
+                if (entry.contains(recordIdMarker)) {
+                    removed = true;
+                } else {
+                    sb.append(entry).append("\n");
+                }
+            }
+            if (removed) {
+                String result = sb.toString().strip();
+                if (result.isBlank()) {
+                    // 文件清空则删除文件
+                    fileStorage.delete(path);
+                } else {
+                    fileStorage.write(path, result);
+                }
+                log.info("Memory deleted | recordId={}", recordId);
+                return true;
+            }
+        }
+        log.warn("Memory not found for deletion | recordId={}", recordId);
+        return false;
+    }
+
+    /**
      * 返回所有有记忆数据的日期列表（从新到旧）。
      */
     public List<LocalDate> findAllDates() {

@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -29,7 +28,6 @@ import java.util.List;
  * </ul>
  */
 @Component
-@ConditionalOnProperty(name = "adai.ai.provider", havingValue = "deepseek")
 public class DeepSeekAiClient implements AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(DeepSeekAiClient.class);
@@ -147,7 +145,7 @@ public class DeepSeekAiClient implements AiClient {
     private String buildAnalysisRequestBody(ContextPackage ctx) throws Exception {
         if ("brief".equals(ctx.scene())) {
             return buildSimpleBody(ctx.prompt(), 1024, 0.7,
-                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用实际 emoji 字符。生成温暖的问候语。不要输出 JSON。不要用 \\uXXXX 转义码。");
+                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖。生成温暖的问候语。不要输出 JSON。不要使用 emoji 和 unicode 转义码。");
         }
         return buildSimpleBody(ctx.prompt(), 1024, 0.3);
     }
@@ -171,7 +169,16 @@ public class DeepSeekAiClient implements AiClient {
         // System prompt：身份 + 风格 + domain 标注
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
-        systemMsg.put("content", "你是阿呆的个人 AI 助手。用中文回复，语气温暖，适当使用 emoji。回复结束后另起一行，附上 JSON 标注领域：{\"domain\":\"life|trading|project\"}");
+        systemMsg.put("content", "你是阿呆的个人 AI 助手。用中文回复，语气温暖。回复结束后在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n"
+            + "{\n"
+            + "  \"summary\": \"3-5个词概括本次问答主题，避免人称代词，像标签一样简洁\",\n"
+            + "  \"tags\": [\"标签1\", \"标签2\"],\n"
+            + "  \"sentiment\": \"positive 或 negative 或 neutral\",\n"
+            + "  \"domain\": \"life(生活)/trading(交易)/project(项目)\",\n"
+            + "  \"actionable\": true 或 false,\n"
+            + "  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n"
+            + "}\n"
+            + "不要使用 emoji 和 unicode 转义码。");
         messages.add(systemMsg);
 
         // 背景知识：作为单独的 system 消息（model 在 system prompt 之后读取，
@@ -210,12 +217,6 @@ public class DeepSeekAiClient implements AiClient {
      */
     private String buildBackground(ContextPackage ctx) {
         StringBuilder sb = new StringBuilder();
-
-        // 称呼
-        String name = extractName(ctx.identityRef());
-        if (name != null) {
-            sb.append("用户称呼：").append(name).append("\n\n");
-        }
 
         // 相关历史记录 + 记忆回读
         if (ctx.relatedRefs() != null && !ctx.relatedRefs().isEmpty()) {
@@ -261,7 +262,7 @@ public class DeepSeekAiClient implements AiClient {
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", systemContent != null ? systemContent : """
-                分析一条个人记录，输出JSON。summary用3-5个词简短概括，不要完整句子；insight用一句话表达你对用户的理解，有信息增量，不要复述原文。
+                分析一条个人记录，输出JSON。summary用3-5个词简短概括，不要完整句子；insight用一句话客观概括，有信息增量，不要复述原文，避免人称代词。用tags数组标注关键词标签；用domain字段判定所属领域(life/trading/project之一)。
                 如果记录揭示了用户的长期行为模式或明确偏好，请在patterns/preferences数组中输出，每项包含content和confidence(0-1)。
                 只输出JSON，不要包裹markdown。
                 """.strip());

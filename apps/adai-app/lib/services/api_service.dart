@@ -10,35 +10,35 @@ class ApiService {
   final String baseUrl;
 
   // 内存缓存：跨页面切换不丢
-  FeedResponse? _feedCache;
   TagsResponse? _tagsCache;
   List<TimelineEntryResponse>? _timelineCache;
   List<MemoryEntryResponse>? _memoryCache;
 
   ApiService({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
-  /// 获取 Feed 流（当天自动缓存）。
-  Future<FeedResponse> getFeed({String? date, String? since}) async {
-    final key = date ?? 'today';
-    // 当天命中缓存直接返回
-    if (key == 'today' && _feedCache != null) {
-      return _feedCache!;
-    }
+  /// 获取今日 Brief（摘要），独立接口。
+  Future<String> getBrief() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/v1/brief'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(resp.body);
+    return data['content'] as String? ?? '';
+  }
 
-    final params = <String, String>{};
+  /// 获取 Feed 流（分页，只返回今天的数据）。
+  Future<FeedResponse> getFeed({String? date, int page = 0, int size = 5}) async {
+    final params = <String, String>{
+      'page': page.toString(),
+      'size': size.toString(),
+    };
     if (date != null) params['date'] = date;
-    if (since != null) params['since'] = since;
 
-    final uri = Uri.parse('$baseUrl/api/v1/feed').replace(queryParameters: params.isNotEmpty ? params : null);
+    final uri = Uri.parse('$baseUrl/api/v1/feed').replace(queryParameters: params);
     final resp = await http.get(uri, headers: _headers);
     _check(resp);
-    final feed = FeedResponse.fromJson(jsonDecode(resp.body));
-
-    // 缓存当天结果
-    if (key == 'today') {
-      _feedCache = feed;
-    }
-    return feed;
+    return FeedResponse.fromJson(jsonDecode(resp.body));
   }
 
   /// 更新记录的 domain。
@@ -58,12 +58,10 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    _feedCache = null;
   }
 
   /// 使缓存失效（发送新消息后调用）。
   void invalidateFeedCache() {
-    _feedCache = null;
   }
 
   /// 提交记录。
@@ -82,7 +80,6 @@ class ApiService {
     );
     _check(resp);
     // 发送内容后缓存失效
-    _feedCache = null;
     _tagsCache = null;
     _timelineCache = null;
     _memoryCache = null;
@@ -353,16 +350,14 @@ class FeedEntryType {
 // ── DTO ──
 
 class FeedResponse {
-  final String brief;
   final List<FeedEntryResponse> entries;
-  final int earlierCount;
+  final int totalToday;
 
-  FeedResponse({required this.brief, required this.entries, required this.earlierCount});
+  FeedResponse({required this.entries, required this.totalToday});
 
   factory FeedResponse.fromJson(Map<String, dynamic> json) => FeedResponse(
-    brief: json['brief'] as String,
     entries: (json['entries'] as List).map((e) => FeedEntryResponse.fromJson(e)).toList(),
-    earlierCount: json['earlierCount'] as int? ?? 0,
+    totalToday: json['totalToday'] as int? ?? 0,
   );
 }
 
@@ -414,9 +409,10 @@ class RecordResponse {
   final String? summary;
   final List<String>? tags;
   final String? content;
+  final String? rawResponse;
   final String domain;
 
-  RecordResponse({required this.intent, this.recordId, this.summary, this.tags, this.content, this.domain = 'life'});
+  RecordResponse({required this.intent, this.recordId, this.summary, this.tags, this.content, this.rawResponse, this.domain = 'life'});
 
   factory RecordResponse.fromJson(Map<String, dynamic> json) {
     final intent = json['intent'] as String? ?? 'log';
@@ -426,6 +422,7 @@ class RecordResponse {
       summary: json['summary'] as String?,
       tags: (json['tags'] as List?)?.cast<String>(),
       content: json['content'] as String?,
+      rawResponse: json['rawResponse'] as String?,
       domain: json['domain'] as String? ?? 'life',
     );
   }

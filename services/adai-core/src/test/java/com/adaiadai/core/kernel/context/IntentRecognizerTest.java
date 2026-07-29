@@ -1,6 +1,6 @@
 package com.adaiadai.core.kernel.context;
 
-import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,11 +13,11 @@ class IntentRecognizerTest {
 
     @BeforeEach
     void setUp() {
-        recognizer = new IntentRecognizer(new MockAiClient());
+        recognizer = new IntentRecognizer(new TestAiClient());
     }
 
-    // MockAiClient returns "ask" for: 天气, 吗, ？, 总结, 分析
-    // MockAiClient returns "log" for everything else
+    // TestAiClient returns "ask" for: 天气, 吗, ？, 总结, 分析
+    // TestAiClient returns "log" for everything else
 
     @Test void recognizeWithAi_question_weather() {
         assertEquals(Intent.QUESTION, recognizer.recognizeWithAi("今天天气如何"));

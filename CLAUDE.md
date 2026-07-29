@@ -142,8 +142,7 @@ com.adaiadai.core/
     └── ai/                       ★ AI 模型接入（非业务层）
         ├── llm/                   LLM 客户端
         │   ├── AiClient           接口（@ConditionalOnProperty 切换）
-        │   ├── MockAiClient       模拟（adai.ai.provider=mock）
-        │   ├── DeepSeekAiClient   DeepSeek（adai.ai.provider=deepseek）
+        │   └── DeepSeekAiClient   DeepSeek（唯一实现）
         │   └── LlmResponseParser  LLM 回复解析
         ├── router/                 模型路由（预留）
         └── provider/               供应商适配（预留）
@@ -253,7 +252,7 @@ cd services/adai-core && ./gradlew bootJar
 cd services/adai-core && ./gradlew bootRun
 
 # Mock 模式（无需 API Key，临时测试用）：
-# cd services/adai-core && ADAI_AI_PROVIDER=mock ./gradlew bootRun
+# cd services/adai-core && ./gradlew bootRun
 
 # ── Flutter ────────────────────────────────────
 cd apps/adai-app && flutter run -d chrome          # Web
@@ -287,24 +286,37 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 
-## 当前焦点（2026-07-28）
+## 当前焦点（2026-07-29）
 
 ### 正在做的
-- **Memory 升级 Phase 0-1** ✅ 已完成：summary/insight 拆分 + pattern/preference 多类型化
-- **FeedCard 状态机修复** ✅ 已完成：ask 直接回复、close 不显示 end、load more 自动滚动
-- **Chat 关闭流程修复** ✅ 已完成：ConversationController prompt（去第一人称）、前端改为只弹窗不兜底
+- **Feed 流稳定性** ✅ 已完成：分页方向修复（page 0 = 最新条目）、独立 Brief API、今天仅今天
+- **删除流程加固** ✅ 已完成：双仓删除、跨日文件遍历、Memory 联动
+- **AI 称呼问题** ✅ 已完成：移除 context 中用户称呼注入
 
-### 待修复（下一轮）
-| Pri | 问题 | 涉及 |
+### 待关注
+- 回顾复盘文档 `docs/rfc/20260729-development-retrospective.md` 中提出的改进措施
+- 后续修 Bug 前先写验收条件、改后跑场景验证
+
+### 已修复（2026-07-29 轮）
+| Pri | 问题 | 方案 |
 |:---:|:-----|:-----|
-| P0 | AI 回复色彩背景深色看不清 | `feed_card.dart` Markdown 样式 |
-| P1 | ask 时 tags 被丢弃（end 后才出现） | `_doAskRequest` 未保存 tags |
-| P1 | ask 报错不弹详情（通用 "network error"） | `_doAskRequest` catch 不提取 body |
-| P2 | 折叠标准从条数改为大小 | `_buildTurns` 逻辑 |
+| P0 | 页面卡顿（blockquote 导致） | ✅ 移除无用 blockquote 样式 |
+| P0 | Markdown 代码块深色看不清 | ✅ 边框 + `#2A2826` 背景 |
+| P1 | 删除记录刷新又出现（双仓问题） | ✅ 两个仓库都删 + 遍历所有文件 |
+| P1 | AI 回复称呼用户名字 | ✅ profile 改名 + 删除 context 中称呼注入 |
+| P1 | 分页后刷新最新记录"丢失" | ✅ 分页方向改为从后往前（page 0 = 最新） |
+| P1 | ↑ top 不触发 load more | ✅ `animateTo` → `jumpTo` |
+| P1 | 回复截断 + emoji 显示 | ✅ `LlmResponseParser` 4000 上限 + unicode 全覆盖 |
+| P1 | ask tags 不被丢弃 | ✅ `_doAskRequest` 保存 `resp.tags` |
+| P1 | 报错弹详情 | ✅ `_extractApiError` 提取状态码+body |
+| P1 | log 加载 domain/tags | ✅ STATEMENT prompt 增加 tags/domain |
+| P1 | 删除记录清理 Memory | ✅ `MemoryService.deleteByRecordId` |
+| P2 | 折叠固定高度 250px | ✅ `ConstrainedBox + ClipRect + Stack` 渐隐 |
+| P2 | 关闭后折叠 | ✅ close 时重置 `expanded=false` |
 
-### 测试状态（2026-07-28）
-- **后端** 100+ 测试，0 失败（含 ConversationController + RecordController 字段断言）
-- **前端** 23 测试，0 失败（新增：折叠/loading/对话态展示）
+### 测试状态（2026-07-29）
+- **后端** 100+ 测试，0 失败
+- **前端** 23 测试，0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式）
@@ -312,5 +324,4 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - 生产服务器：49.235.37.220
 
 ### 关键文档（本轮新增）
-- `docs/rfc/20260727-memory-upgrade.md` — Memory 升级路线图（Phase 0-4）
-- `docs/rfc/20260728-project-development-suggestions.md` — 三方视角项目建议
+- `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘与改进建议

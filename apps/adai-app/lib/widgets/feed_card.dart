@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
@@ -46,13 +47,14 @@ class FeedCardData {
   final IntentType? intent;
   final bool expanded;
   final String domain;  // "life" | "trading" | "project"
+  final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
   final DateTime updatedAt;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
     this.tags, this.summary, this.turns, this.mode = CardMode.idle,
     this.loading = false, this.intent, this.expanded = false,
-    this.domain = 'life',
+    this.domain = 'life', this.error,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -60,7 +62,7 @@ class FeedCardData {
     String? id, FeedCardType? type, String? time, String? content,
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
-    String? domain,
+    String? domain, String? error, bool clearError = false,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
@@ -70,6 +72,7 @@ class FeedCardData {
       mode: mode ?? this.mode, loading: loading ?? this.loading,
       intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
       domain: domain ?? this.domain,
+      error: clearError ? null : error ?? this.error,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
@@ -120,12 +123,13 @@ class FeedCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onToggleExpand;
   final void Function(String domain)? onDomainChanged;
+  final VoidCallback? onRetry;
 
   const FeedCard({
     super.key, required this.data,
     this.onAsk, this.onEnd, this.onActivate,
     this.onDelete, this.onToggleExpand,
-    this.onDomainChanged,
+    this.onDomainChanged, this.onRetry,
   });
 
   bool get _isWaiting => data.mode == CardMode.waiting;
@@ -425,22 +429,53 @@ class FeedCard extends StatelessWidget {
     return Text(data.content, style: TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1));
   }
 
+  /// 折叠时最大内容高度（超过此高度渐隐 + 展开按钮）。
+  static const double _maxFoldHeight = 250;
+
   Widget _buildTurns() {
     final turns = data.turns!;
-    final bool collapsed = !data.expanded && turns.length > 4;
+    // 用内容长度做快速预判（>200 字符才可能溢出 250px 高度）
+    final totalChars = turns.fold<int>(0, (sum, t) => sum + t.text.length);
+    final bool tooBig = totalChars > 200;
+    final bool collapsed = !data.expanded && tooBig;
+    // 折叠时截短 widget 数量减少布局压力
     final displayTurns = collapsed ? _truncateTurns(turns) : turns;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...displayTurns.map((turn) => Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: turn.isUser
-              ? Text(turn.text, style: TextStyle(fontSize: 15, height: 1.6,
-                  fontWeight: FontWeight.w500, color: AppColors.darkGrey1))
-              : _buildAiMessage(turn.text),
-        )),
+        // ── 折叠态：ConstrainedBox 限高 + ClipRect + 渐隐 ──
         if (collapsed)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: _maxFoldHeight),
+            child: ClipRect(
+              child: Stack(
+                children: [
+                  _buildTurnList(displayTurns),
+                  // 底部渐隐
+                  Positioned(bottom: 0, left: 0, right: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, AppColors.darkSurface],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          _buildTurnList(displayTurns),
+
+        // ── 展开 / 收起按钮 ──
+        if (tooBig)
           GestureDetector(
             onTap: onToggleExpand,
             child: Padding(
@@ -454,16 +489,20 @@ class FeedCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: AppColors.darkBorder.withAlpha(76)),
                     ),
-                    child: Text('展开全部 ${turns.length} 条对话',
+                    child: Text(collapsed ? '展开全部' : '收起',
                       style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
                   ),
                   const SizedBox(width: 6),
-                  Icon(Icons.expand_more, size: 14, color: AppColors.darkGrey5),
+                  Icon(collapsed ? Icons.expand_more : Icons.expand_less, size: 14, color: AppColors.darkGrey5),
+                  const SizedBox(width: 6),
+                  Text('${turns.length} 条',
+                    style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
                 ],
               ),
             ),
           ),
-        // Loading dots while waiting for AI
+
+        // ── Loading dots ──
         if (data.loading)
           const Padding(
             padding: EdgeInsets.only(left: 28, bottom: 5),
@@ -473,7 +512,21 @@ class FeedCard extends StatelessWidget {
     );
   }
 
-  /// 折叠长对话：显示首条 + 末 2 条。
+  /// 渲染对话条目列表。
+  Widget _buildTurnList(List<ConversationTurn> turns) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: turns.map((turn) => Padding(
+        padding: const EdgeInsets.only(bottom: 5),
+        child: turn.isUser
+            ? Text(turn.text, style: TextStyle(fontSize: 15, height: 1.6,
+                fontWeight: FontWeight.w500, color: AppColors.darkGrey1))
+            : _buildAiMessage(turn.text),
+      )).toList(),
+    );
+  }
+
+  /// 折叠时截断：显示首条 + 末 2 条（减少实际渲染的 widget 数量）。
   List<ConversationTurn> _truncateTurns(List<ConversationTurn> turns) {
     if (turns.length <= 4) return turns;
     return [turns.first, turns[turns.length - 2], turns.last];
@@ -500,8 +553,16 @@ class FeedCard extends StatelessWidget {
               textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1)),
             )).copyWith(
               strong: const TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
-              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkSurface2),
-              codeblockDecoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(8)),
+              h1: const TextStyle(fontSize: 17, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+              h2: const TextStyle(fontSize: 16, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+              h3: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+              h4: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: const Color(0xFF2A2826)),
+              codeblockDecoration: BoxDecoration(
+                color: const Color(0xFF2A2826),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkGreen.withAlpha(50)),
+              ),
               p: const TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1),
               a: const TextStyle(fontSize: 15, color: AppColors.darkBlue),
             ),
@@ -561,6 +622,9 @@ class FeedCard extends StatelessWidget {
   // ── Bottom line ──
 
   Widget _buildBottomLine(Color borderColor) {
+    if (data.error != null) {
+      return _lineRetry(borderColor);
+    }
     if (_isActive) {
       return _lineEnd(borderColor);
     }
@@ -594,6 +658,52 @@ class FeedCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 48),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 错误态底部栏：显示错误信息 + 重试按钮。
+  Widget _lineRetry(Color borderColor) {
+    return GestureDetector(
+      onTap: onRetry,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 28,
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: borderColor.withAlpha(128), width: 0.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 8),
+            Icon(Icons.error_outline, size: 12, color: AppColors.darkOrange),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                data.error!,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10, color: AppColors.darkOrange),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.darkGreen.withAlpha(120)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '重试',
+                style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w500,
+                  color: AppColors.darkGreen, letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
           ],
         ),
       ),
@@ -643,6 +753,7 @@ class FeedCard extends StatelessWidget {
     );
   }
 
+
   Widget _chip(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -655,12 +766,62 @@ class FeedCard extends StatelessWidget {
     );
   }
 
-  /// 去除 AI 回复末尾的 {"domain":"..."} JSON 残留。
+  /// 去除 AI 回复末尾的 JSON 残留：兼容 `{"domain":"..."}`（旧）和多行完整 JSON（新）。
+  /// 同时解码 \\uXXXX 转义。
   static String _stripDomainJson(String text) {
-    final int idx = text.indexOf('{"domain"');
-    if (idx < 0) return text;
-    final int end = text.indexOf('}', idx);
-    if (end < 0) return text;
-    return text.substring(0, idx).trim();
+    final clean = _removeTrailingJson(text);
+    return decodeUnicodeEscapes(clean);
+  }
+
+  /// 移除 AI 回复末尾可能附着的 JSON 块。
+  /// 查找最后一个 "\n{"，校验其后内容是否为有效 JSON，是则剥离。
+  static String _removeTrailingJson(String text) {
+    final idx = text.lastIndexOf('\n{');
+    if (idx < 0) {
+      // 兼容旧格式 `{"domain"` 在行首的情况
+      final oldIdx = text.indexOf('{"domain"');
+      if (oldIdx < 0) return text;
+      final end = text.indexOf('}', oldIdx);
+      if (end < 0) return text;
+      return text.substring(0, oldIdx).trim();
+    }
+    final candidate = text.substring(idx + 1);
+    if (candidate.startsWith('{') && candidate.endsWith('}')) {
+      try {
+        // 校验是否为合法 JSON
+        // ignore: unused_local_variable
+        final decoded = jsonDecode(candidate);
+        return text.substring(0, idx).trim();
+      } catch (_) {}
+    }
+    return text;
+  }
+
+  /// 解码 \\uXXXX 转义序列为实际字符（前端兜底）。
+  /// 解码 \\uXXXX 转义序列，正确处理代理对（surrogate pair）。
+  /// 例如 \\uD83C\\uDF3F → 🌿 (U+1F33F)。
+  static String decodeUnicodeEscapes(String text) {
+    if (text == null || text.isEmpty) return text ?? '';
+    return text.replaceAllMapped(
+      RegExp(r'\\u([0-9a-fA-F]{4})'),
+      (match) {
+        final code = int.parse(match.group(1)!, radix: 16);
+        // 检测高代理（0xD800-0xDBFF），与后续的低代理（0xDC00-0xDFFF）合并
+        if (code >= 0xD800 && code <= 0xDBFF) {
+          // 下一个 \\uXXXX 应该是低代理
+          final rest = match.input.substring(match.end);
+          final lowMatch = RegExp(r'^\\u([0-9a-fA-F]{4})').firstMatch(rest);
+          if (lowMatch != null) {
+            final low = int.parse(lowMatch.group(1)!, radix: 16);
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+              final codepoint = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+              return String.fromCharCode(codepoint);
+            }
+          }
+          // 不是合法代理对，降级为单字符
+        }
+        return String.fromCharCode(code);
+      },
+    );
   }
 }

@@ -1,8 +1,9 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
+import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
@@ -26,27 +27,30 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * RecordController integration tests.
- * Uses MockMvc + real dependencies (InMemoryFileStorage + MockAiClient).
+ * Uses MockMvc + real dependencies (InMemoryFileStorage + TestAiClient).
  * No Spring context loading.
  */
 class RecordControllerTest {
 
     private MockMvc mockMvc;
     private ObjectMapper mapper;
+    private RecordFileRepository recordRepository;
+    private CardFileRepository cardRepository;
 
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
         TagIndexService tagIndexService = new TagIndexService(fileStorage);
-        RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
+        recordRepository = new RecordFileRepository(fileStorage);
         recordRepository.setTagIndexService(tagIndexService);
-        CardFileRepository cardRepository = new CardFileRepository(fileStorage);
-        IntentRecognizer intentRecognizer = new IntentRecognizer(new MockAiClient());
+        cardRepository = new CardFileRepository(fileStorage);
+        IntentRecognizer intentRecognizer = new IntentRecognizer(new TestAiClient());
 
         QuestionAppService questionAppService = mock(QuestionAppService.class);
         when(questionAppService.answer(any(), any()))
@@ -67,7 +71,8 @@ class RecordControllerTest {
                 memoryService, cardRepository, List.of(), List.of(), searchService
         );
 
-        AiClient aiClient = new MockAiClient();
+        AiClient aiClient = new TestAiClient();
+        RecordRetryService retryService = mock(RecordRetryService.class);
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
@@ -75,7 +80,8 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 aiClient,
-                memoryService
+                memoryService,
+                retryService
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
@@ -195,7 +201,7 @@ class RecordControllerTest {
 
     @Test
     void createRecord_decisionByContent() throws Exception {
-        // "该不该" is no longer a DECISION intent; MockAiClient returns "log" for this
+        // "该不该" is no longer a DECISION intent; TestAiClient returns "log" for this
         String body = mapper.writeValueAsString(Map.of("content", "该不该加仓立昂微"));
         mockMvc.perform(post("/api/v1/records")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -216,5 +222,51 @@ class RecordControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intent").value("log"));
+    }
+
+    @Test
+    void deleteRecord_existing_returns204() throws Exception {
+        // First create a record
+        String createBody = mapper.writeValueAsString(Map.of("content", "delete me"));
+        String createResp = mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String recordId = mapper.readTree(createResp).get("recordId").asText();
+
+        // Then delete it — should return 204 AND actually remove the record
+        mockMvc.perform(delete("/api/v1/records/" + recordId))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteRecord_removesFromAllRepos() throws Exception {
+        // Create a record
+        String createBody = mapper.writeValueAsString(Map.of("content", "买股票赚了钱"));
+        String createResp = mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String recordId = mapper.readTree(createResp).get("recordId").asText();
+
+        // Delete it
+        mockMvc.perform(delete("/api/v1/records/" + recordId))
+                .andExpect(status().isNoContent());
+
+        // Verify it's gone from RecordRepository
+        org.junit.jupiter.api.Assertions.assertFalse(recordRepository.findById(recordId).isPresent());
+        // Verify card file also cleaned (no card files match the recordId)
+        org.junit.jupiter.api.Assertions.assertFalse(cardRepository.findById(recordId).isPresent());
+    }
+
+    @Test
+    void deleteRecord_nonexistent_returns204() throws Exception {
+        // Deleting non-existent record should not throw
+        mockMvc.perform(delete("/api/v1/records/nonexistent_id"))
+                .andExpect(status().isNoContent());
     }
 }

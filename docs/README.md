@@ -60,6 +60,12 @@
 | [20260727-memory-upgrade.md](rfc/20260727-memory-upgrade.md) | 2026-07-27 | Memory 升级路线：Phase 0-4，从复读机到真记忆 |
 | [20260728-project-development-suggestions.md](rfc/20260728-project-development-suggestions.md) | 2026-07-28 | 项目发展建议：产品/前端/UI 三方视角 |
 
+## 🐛 问题跟踪
+
+| 文档 | 说明 |
+|:-----|:------|
+| [issue-log.md](issue-log.md) | 项目级问题清单，按状态分组（待确认/已修复），流水编号 |
+
 ## 🚀 部署
 
 | 文档 | 说明 |

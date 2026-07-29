@@ -2,6 +2,8 @@ package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.CardRecord.Turn;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -38,6 +40,7 @@ import java.util.stream.Collectors;
 @Repository
 public class CardFileRepository {
 
+    private static final Logger log = LoggerFactory.getLogger(CardFileRepository.class);
     private static final String CARDS_DIR = "records/cards";
     private static final DateTimeFormatter ID_FORMATTER = DateTimeFormatter.ofPattern("'card_'HHmmssSSS");
     private static final DateTimeFormatter DIR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -116,6 +119,25 @@ public class CardFileRepository {
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(CardRecord::createdAt).reversed())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 按 ID 删除卡片文件。
+     */
+    public void deleteById(String id) {
+        List<String> files = fileStorage.listFiles(CARDS_DIR);
+        boolean found = false;
+        for (String file : files) {
+            if (file.contains(id)) {
+                fileStorage.delete(file);
+                log.info("Card deleted | id={} | path={}", id, file);
+                found = true;
+                // 继续遍历，同一个 ID 可能在不同日期目录下都有文件
+            }
+        }
+        if (!found) {
+            log.warn("Card not found for deletion | id={}", id);
+        }
     }
 
     // ── 内部方法 ──

@@ -195,4 +195,33 @@ class RecordFileRepositoryTest {
         String path = "records/2026/01/rec_20260115_100000.md";
         assertTrue(fileStorage.exists(path));
     }
+
+    @Test
+    void deleteById_removesFile() {
+        ContentRecord record = new ContentRecord(
+                "rec_20260718_120000",
+                "note", "user_input", "待删", "这条会被删除",
+                List.of("测试"),
+                LocalDateTime.of(2026, 7, 18, 12, 0)
+        );
+        repository.save(record);
+
+        // 确认保存成功
+        assertTrue(repository.findById("rec_20260718_120000").isPresent());
+
+        // 删除
+        repository.deleteById("rec_20260718_120000");
+
+        // 验证文件已删除
+        assertFalse(repository.findById("rec_20260718_120000").isPresent());
+        String path = "records/2026/07/rec_20260718_120000.md";
+        assertFalse(fileStorage.exists(path));
+    }
+
+    @Test
+    void deleteById_wrongFormat_doesNothing() {
+        // card_ 前缀不应被 RecordFileRepository 处理
+        repository.deleteById("card_12345");
+        // 没有异常就是成功
+    }
 }

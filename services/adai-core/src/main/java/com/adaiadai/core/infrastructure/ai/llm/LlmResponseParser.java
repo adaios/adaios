@@ -46,16 +46,17 @@ public class LlmResponseParser {
             JsonNode root = MAPPER.readTree(jsonStr);
 
             // 优先取 JSON 中的 summary；如果没有（Question 模式），从自然文本中提取
+            // 两种路径都执行 decodeUnicodeEscapes，处理 AI 回复中可能夹带的 unicode 转义码
             String summary;
             if (root.has("summary") && !root.get("summary").isNull()
                     && !root.get("summary").asText().isBlank()
                     && !"无摘要".equals(root.get("summary").asText())) {
-                summary = root.get("summary").asText();
+                summary = decodeUnicodeEscapes(root.get("summary").asText());
             } else {
                 summary = extractTextBeforeJson(rawResponse, jsonStr);
             }
 
-            String domain = getTextOrDefault(root, "domain", "life");
+            String domain = decodeUnicodeEscapes(getTextOrDefault(root, "domain", "life"));
             List<String> tags = getTags(root, "tags");
             String sentiment = getTextOrDefault(root, "sentiment", "neutral");
             boolean actionable = root.has("actionable") && root.get("actionable").asBoolean(false);
@@ -134,17 +135,21 @@ public class LlmResponseParser {
 
     /**
      * 从自然文本 + JSON 的混合回复中提取文本部分。
+     * AI 回复最大 4096 tokens（~3000 汉字），此处用 4000 字符作为安全上限，
+     * 防止 LLM 输出意外过长（几乎不可能超过）。
      */
     private static String extractTextBeforeJson(String fullText, String jsonStr) {
         int idx = fullText.indexOf(jsonStr);
         if (idx <= 0) {
-            return fullText.strip();
+            return decodeUnicodeEscapes(fullText.strip());
         }
         String before = fullText.substring(0, idx).strip();
         if (before.isBlank()) {
-            return fullText.strip();
+            return decodeUnicodeEscapes(fullText.strip());
         }
-        return before.length() > 500 ? before.substring(0, 500) + "…" : before;
+        // 4000 字符安全上限（对应 max_tokens=4096）
+        String text = before.length() > 4000 ? before.substring(0, 4000) + "…" : before;
+        return decodeUnicodeEscapes(text);
     }
 
     private static AiUnderstanding parseAsPlainText(String text) {
@@ -167,14 +172,33 @@ public class LlmResponseParser {
      * Decode escaped unicode sequences like backslash-u-4-hex-digits into actual characters.
      * Handles both single codes and surrogate pairs (e.g. emoji).
      */
+    /**
+     * Decode \\uXXXX escape sequences, handling surrogate pairs correctly.
+     * e.g. \\uD83C\\uDF3F → 🌿 (U+1F33F).
+     */
     private static String decodeUnicodeEscapes(String text) {
         if (text == null || !text.contains("\\u")) return text;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\\\u([0-9a-fA-F]{4})").matcher(text);
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\\\u([0-9a-fA-F]{4})");
+        java.util.regex.Matcher m = pattern.matcher(text);
         StringBuilder sb = new StringBuilder(text.length());
         int last = 0;
         while (m.find()) {
             sb.append(text, last, m.start());
             int code = Integer.parseInt(m.group(1), 16);
+            if (code >= 0xD800 && code <= 0xDBFF) {
+                // High surrogate: look ahead for a low surrogate \\uXXXX
+                java.util.regex.Matcher next = pattern.matcher(text);
+                next.region(m.end(), text.length());
+                if (next.find() && next.start() == m.end()) {
+                    int low = Integer.parseInt(next.group(1), 16);
+                    if (low >= 0xDC00 && low <= 0xDFFF) {
+                        int codepoint = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                        sb.append(Character.toChars(codepoint));
+                        last = next.end();
+                        continue;
+                    }
+                }
+            }
             sb.append((char) code);
             last = m.end();
         }

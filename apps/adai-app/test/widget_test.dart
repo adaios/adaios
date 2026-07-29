@@ -11,29 +11,27 @@ void main() {
   group('DTO JSON parsing', () {
     test('FeedResponse parses correctly', () {
       final json = jsonDecode('''
-        {"brief": "morning", "entries": [], "earlierCount": 0}
+        {"entries": [], "totalToday": 0}
       ''');
       final feed = FeedResponse.fromJson(json);
-      expect(feed.brief, 'morning');
       expect(feed.entries, isEmpty);
-      expect(feed.earlierCount, 0);
+      expect(feed.totalToday, 0);
     });
 
     test('FeedResponse parses entries', () {
       final json = jsonDecode('''
         {
-          "brief": "hello",
           "entries": [
             {"type": "record", "id": "r1", "title": "t", "content": "buy stock", "tags": ["invest"], "time": "14:30"}
           ],
-          "earlierCount": 2
+          "totalToday": 2
         }
       ''');
       final feed = FeedResponse.fromJson(json);
       expect(feed.entries.length, 1);
       expect(feed.entries[0].content, 'buy stock');
       expect(feed.entries[0].tags, ['invest']);
-      expect(feed.earlierCount, 2);
+      expect(feed.totalToday, 2);
     });
 
     test('FeedEntryResponse defaults', () {
@@ -212,8 +210,12 @@ void main() {
     });
 
     testWidgets('idle card with 5+ turns shows fold', (tester) async {
+      // Each turn ~120 chars, 6 turns = ~720 chars > 400 threshold
+      final long = '这是一段足够长的测试对话内容需要确保字符总数明显超过折叠阈值。';
       final turns = List.generate(6, (i) => ConversationTurn(
-        isUser: i.isEven, text: 'turn $i', time: '14:0$i',
+        isUser: i.isEven,
+        text: '第${i + 1}轮: $long$long',
+        time: '14:0$i',
       ));
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -229,11 +231,11 @@ void main() {
         ),
       ));
       // Shows first and last turns, plus expand button
-      expect(find.text('turn 0'), findsOneWidget);
-      expect(find.text('turn 5'), findsOneWidget);
+      expect(find.textContaining('第1轮'), findsOneWidget);
+      expect(find.textContaining('第6轮'), findsOneWidget);
       expect(find.textContaining('展开全部'), findsOneWidget);
-      // Middle turns not shown (turn 2, 3)
-      expect(find.text('turn 2'), findsNothing);
+      // Middle turns not shown (turn indexed 2 = 第3轮)
+      expect(find.textContaining('第3轮'), findsNothing);
     });
 
     testWidgets('idle card with 3 turns shows all (no fold)', (tester) async {

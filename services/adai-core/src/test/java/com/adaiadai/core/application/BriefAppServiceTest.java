@@ -1,6 +1,6 @@
 package com.adaiadai.core.application;
 
-import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
@@ -40,7 +40,7 @@ class BriefAppServiceTest {
         TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
         briefAppService = new BriefAppService(
                 identityRepository, recordRepository, memoryService,
-                new MockAiClient(), new TradingReviewAppService(
+                new TestAiClient(), new TradingReviewAppService(
                         recordRepository, null, null, null, reviewRepo),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService)

@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
+import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
@@ -47,6 +48,7 @@ public class RecordController {
     private final CardFileRepository cardRepository;
     private final AiClient aiClient;
     private final MemoryService memoryService;
+    private final RecordRetryService recordRetryService;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
@@ -54,7 +56,8 @@ public class RecordController {
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             AiClient aiClient,
-                            MemoryService memoryService) {
+                            MemoryService memoryService,
+                            RecordRetryService recordRetryService) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
         this.contextEngine = contextEngine;
@@ -62,6 +65,7 @@ public class RecordController {
         this.cardRepository = cardRepository;
         this.aiClient = aiClient;
         this.memoryService = memoryService;
+        this.recordRetryService = recordRetryService;
     }
 
     @PostMapping
@@ -77,16 +81,23 @@ public class RecordController {
         // New record: save content record first
         recordRepository.save(record);
 
-        // New card or first request with cardId: resolve intent once
-        Intent intent = resolveIntent(request, record);
+        try {
+            // New card or first request with cardId: resolve intent once
+            Intent intent = resolveIntent(request, record);
 
-        log.info("Intent | intent={} | recordId={} | cardId={} | content=\"{}\" | manual={}",
-                intent, record.id(), request.cardId(), truncate(request.content(), 40), request.intent() != null);
+            log.info("Intent | intent={} | recordId={} | cardId={} | content=\"{}\" | manual={}",
+                    intent, record.id(), request.cardId(), truncate(request.content(), 40), request.intent() != null);
 
-        if (intent == Intent.QUESTION) {
-            return handleQuestion(record, request.cardId());
+            if (intent == Intent.QUESTION) {
+                return handleQuestion(record, request.cardId());
+            }
+            return handleStatem(record);
+        } catch (Exception e) {
+            // AI 处理失败 → 删除已保存的记录，避免残留"空数据"
+            log.warn("AI processing failed, deleting record | id={} | error={}", record.id(), e.getMessage());
+            recordRepository.deleteById(record.id());
+            throw e;
         }
-        return handleStatem(record);
     }
 
     /**
@@ -193,45 +204,6 @@ public class RecordController {
         ));
     }
 
-    /**
-     * DECISION: save record + AI answer with trading knowledge context.
-     * <p>
-     * Uses scene="decision" so ContextEngine injects full trading rules,
-     * positions, and a decision-framework prompt instead of generic Q&A.
-     */
-    private ResponseEntity<DecisionResponse> handleDecision(ContentRecord record, String cardId) {
-        // Ensure card exists: create if first turn (same as QUESTION)
-        if (cardId != null) {
-            java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
-            String timeStr = record.createdAt().format(timeFmt);
-            Optional<CardRecord> existing = cardRepository.findById(cardId);
-            if (existing.isEmpty()) {
-                CardRecord card = new CardRecord(
-                        cardId, "conversation", "active",
-                        List.of(), List.of(new CardRecord.Turn(true, record.content(), timeStr)),
-                        null, record.createdAt(), record.createdAt()
-                );
-                cardRepository.save(card);
-            } else {
-                CardRecord updated = existing.get()
-                        .withTurn(true, record.content(), timeStr);
-                cardRepository.save(updated);
-            }
-        }
-
-        QuestionAppService.AnswerResult result = questionAppService.answer(record, cardId, "decision");
-        log.info("Decision completed | recordId={} | cardId={}", result.recordId(), cardId);
-
-        return ResponseEntity.ok(new DecisionResponse(
-                "decision",
-                result.recordId(),
-                result.summary(),
-                result.tags(),
-                result.rawResponse(),
-                result.domain()
-        ));
-    }
-
     private ContentRecord buildRecord(CreateRecordRequest request) {
         String id = RecordFileRepository.generateId();
         return new ContentRecord(
@@ -275,19 +247,15 @@ public class RecordController {
             String domain
     ) {}
 
-    public record DecisionResponse(
-            String intent,
-            String recordId,
-            String summary,
-            List<String> tags,
-            String rawResponse,
-            String domain
-    ) {}
-
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteRecord(@PathVariable String id) {
         log.info("Delete record | id={}", id);
+        // 不管 rec_ 还是 card_ 前缀，两个仓库都清理：
+        // - rec_ 文件可能也在 cards/ 目录（旧版前端经 endConversation 存过去的）
+        // - card_ 文件可能也有对应的 ContentRecord
         recordRepository.deleteById(id);
+        cardRepository.deleteById(id);
+        memoryService.deleteByRecordId(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -300,6 +268,21 @@ public class RecordController {
         log.info("Update domain | id={} | domain={}", id, domain);
         recordRepository.updateDomain(id, domain);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/retry")
+    public ResponseEntity<Map<String, Object>> triggerRetry() {
+        long before = memoryService.count();
+        recordRetryService.retryUnprocessed();
+        long after = memoryService.count();
+        long newMemories = after - before;
+        log.info("手动触发重补完成 | 记忆: {} → {} ({})", before, after, newMemories);
+        return ResponseEntity.ok(Map.of(
+                "status", "ok",
+                "memoriesBefore", before,
+                "memoriesAfter", after,
+                "newMemories", newMemories
+        ));
     }
 
     private String truncate(String s, int max) {

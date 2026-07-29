@@ -179,4 +179,45 @@ class LlmResponseParserTest {
         AiUnderstanding r = LlmResponseParser.parse(raw);
         assertEquals(raw, r.rawResponse());
     }
+
+    // -- Unicode escape decoding --
+
+    @Test
+    void parse_jsonSummaryDecodesUnicode() {
+        // JSON with unicode escapes in summary value (simulates AI returning escaped text).
+        // Backslash-u is constructed via char concat to avoid Java source unicode processing.
+        String esc = "\\u0041\\u0042"; // = "AB" after decoding
+        String json = "{\"summary\": \"hello " + esc + " world\", \"tags\": [], \"sentiment\": \"neutral\", \"actionable\": false}";
+        AiUnderstanding r = LlmResponseParser.parse(json);
+        assertTrue(r.summary().contains("AB"), "summary should contain decoded unicode: " + r.summary());
+    }
+
+    @Test
+    void parse_textBeforeJsonDecodesUnicode() {
+        // Mixed response simulating chat: AI text with escapes + domain-only JSON at end.
+        String esc = "\\u0041\\u0042";
+        String response = "hello " + esc + " world\n\n{\"domain\":\"life\"}";
+        AiUnderstanding r = LlmResponseParser.parse(response);
+        assertTrue(r.summary().contains("AB"), "text before json should decode unicode: " + r.summary());
+        assertEquals("life", r.domain());
+    }
+
+    @Test
+    void parse_textBeforeJsonOver500_notTruncated() {
+        // Mixed response with text longer than 500 chars — should NOT truncate at old 500 limit.
+        String longText = "A test sentence for checking truncation behavior. ".repeat(20);
+        assertTrue(longText.length() > 600, "test text should be over 600 chars");
+        String response = longText + "\n\n{\"domain\":\"life\"}";
+        AiUnderstanding r = LlmResponseParser.parse(response);
+        assertTrue(r.summary().length() > 500, "should not truncate text under 4000 chars");
+    }
+
+    @Test
+    void parse_domainAlsoDecodesUnicode() {
+        // domain field with unicode escape for letter 'i'
+        String esc = "\\u0069"; // = "i"
+        String json = "{\"summary\": \"test\", \"domain\": \"l" + esc + "fe\", \"tags\": [], \"sentiment\": \"neutral\", \"actionable\": false}";
+        AiUnderstanding r = LlmResponseParser.parse(json);
+        assertEquals("life", r.domain(), "domain should decode unicode escapes");
+    }
 }

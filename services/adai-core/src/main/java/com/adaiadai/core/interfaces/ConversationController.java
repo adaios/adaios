@@ -4,6 +4,8 @@ import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.kernel.memory.Memory;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -31,12 +33,15 @@ public class ConversationController {
     private final AiClient aiClient;
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
+    private final MemoryService memoryService;
 
     public ConversationController(AiClient aiClient, RecordRepository recordRepository,
-                                  CardFileRepository cardRepository) {
+                                  CardFileRepository cardRepository,
+                                  MemoryService memoryService) {
         this.aiClient = aiClient;
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
+        this.memoryService = memoryService;
     }
 
     @PostMapping("/end")
@@ -93,6 +98,12 @@ public class ConversationController {
                 cardRepository.save(updated);
                 log.info("Card updated | cardId={} | status=ended", request.cardId());
             }
+        }
+
+        // 沉淀记忆
+        if (summaryText != null || (!tags.isEmpty())) {
+            Memory memory = Memory.fromUnderstanding(record.id(), understanding);
+            memoryService.persist(memory);
         }
 
         log.info("Conversation summary saved | recordId={} | tags={} | cardId={}", id, tags, request.cardId());

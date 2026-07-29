@@ -84,18 +84,14 @@ public class RecordFileRepository implements RecordRepository {
     @Override
     public void deleteById(String id) {
         // ID 格式 rec_yyyyMMdd_HHmmss → 推导文件路径 records/yyyy/MM/rec_yyyyMMdd_HHmmss.md
-        try {
-            if (id.startsWith("rec_") && id.length() >= 17) {
-                String yyyy = id.substring(4, 8);
-                String MM = id.substring(8, 10);
-                String filePath = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + id + ".md";
-                fileStorage.delete(filePath);
-                log.info("Record deleted | id={} | path={}", id, filePath);
-            } else {
-                log.warn("Cannot delete record with unexpected id format | id={}", id);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to delete record | id={} | error={}", id, e.getMessage());
+        if (id.startsWith("rec_") && id.length() >= 17) {
+            String yyyy = id.substring(4, 8);
+            String MM = id.substring(8, 10);
+            String filePath = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + id + ".md";
+            fileStorage.delete(filePath);
+            log.info("Record deleted | id={} | path={}", id, filePath);
+        } else {
+            log.warn("Cannot delete record with unexpected id format | id={}", id);
         }
     }
 

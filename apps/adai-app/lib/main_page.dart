@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'theme/app_colors.dart';
@@ -24,15 +25,12 @@ class _MainPageState extends State<MainPage>
   final ApiService _api = ApiService();
   final GlobalKey<InputBarState> _inputBarKey = GlobalKey<InputBarState>();
 
-  List<FeedCardData> _allCards = [];
   List<FeedCardData> _cards = [];
-  int _earlierCount = 0;
-  DateTime _oldestDate = DateTime.now();
-  bool _hasOlder = true;
+  int _totalToday = 0;
+  int _currentPage = 0;
   String _brief = '';
   bool _loading = true;
   bool _loadingMore = false;     // load more 进度
-  int _totalShown = 0;
   bool _scrollAtTop = true;
   bool _scrollAtBottom = true;
   static const int _pageSize = 5;
@@ -63,21 +61,40 @@ class _MainPageState extends State<MainPage>
     super.dispose();
   }
 
+  Future<void> _refreshFeed() async {
+    // 下拉刷新：不清 active 状态，只重新拉取数据
+    _currentPage = 0;
+    try {
+      final brief = await _api.getBrief();
+      final feed = await _api.getFeed(page: 0, size: _pageSize);
+      if (!mounted) return;
+      setState(() {
+        _brief = brief;
+        _totalToday = feed.totalToday;
+        _cards = feed.entries
+            .where((e) => e.type != FeedEntryType.aiNote)
+            .map((e) => e.toFeedData())
+            .toList();
+      });
+    } catch (e) {
+      if (mounted) _showError('刷新失败');
+    }
+  }
+
   Future<void> _loadFeed({String? date}) async {
     try {
-      // ApiService 内部缓存当天 feed，跨 Widget 重建不丢
-      final feed = await _api.getFeed(date: date);
+      final brief = await _api.getBrief();
+      final feed = await _api.getFeed(page: 0, size: _pageSize);
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData())
           .toList();
       setState(() {
-        _brief = feed.brief;
-        _earlierCount = feed.earlierCount;
-        _allCards = allCards;
-        _cards = _applyFilter(allCards);
+        _brief = brief;
+        _totalToday = feed.totalToday;
+        _currentPage = 0;
+        _cards = allCards;
         _loading = false;
-        _totalShown = _pageSize;
       });
     } catch (e) {
       if (mounted) _showError('加载失败');
@@ -85,18 +102,12 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  List<FeedCardData> _applyFilter(List<FeedCardData> cards) {
-    if (widget.filterTag == null) return cards;
-    return cards.where((c) => c.tags?.contains(widget.filterTag) ?? false).toList();
-  }
-
   @override
   void didUpdateWidget(MainPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.filterTag != oldWidget.filterTag) {
       setState(() {
-        _cards = _applyFilter(_allCards);
-        _totalShown = _pageSize;
+        _cards = _cards.where((c) => c.tags?.contains(widget.filterTag) ?? false).toList();
       });
     }
   }
@@ -155,16 +166,18 @@ class _MainPageState extends State<MainPage>
         _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false,
             turns: [
               ConversationTurn(isUser: true, text: content, time: timeStr),
-              if (resp.summary != null) ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr),
+              if (resp.rawResponse != null || resp.summary != null)
+                ConversationTurn(isUser: false, text: resp.rawResponse ?? resp.summary!, time: aiTimeStr),
             ],
+            tags: resp.tags,
             domain: resp.domain,
         ));
       });
       _scrollToBottom();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() => _updateCard(cardId, (c) => c.copyWith(mode: CardMode.idle, loading: false)));
-        _showError('network error');
+        _showError(_extractApiError(e));
       }
     }
   }
@@ -190,7 +203,7 @@ class _MainPageState extends State<MainPage>
     setState(() {
       _activeCardId = null;
       _hasActiveChat = false;
-      _updateCard(cardId, (c) => c.copyWith(loading: true, mode: CardMode.idle));
+      _updateCard(cardId, (c) => c.copyWith(loading: true, mode: CardMode.idle, expanded: false));
     });
 
     try {
@@ -200,13 +213,13 @@ class _MainPageState extends State<MainPage>
       setState(() {
         _updateCard(cardId, (c) => c.copyWith(
             summary: resp.summary, tags: resp.tags,
-            loading: false, mode: CardMode.idle,
+            loading: false, mode: CardMode.ended,
             intent: IntentType.question));
       });
       _scrollToBottom();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        _showError('生成总结失败，稍后重试');
+        _showError('生成总结失败: ${_extractApiError(e)}');
         setState(() {
           _updateCard(cardId, (c) => c.copyWith(
               loading: false, mode: CardMode.idle));
@@ -231,7 +244,7 @@ class _MainPageState extends State<MainPage>
   void _createNewCard(String text, String timeStr, String? forcedIntent) async {
     final cardId = 'card_${DateTime.now().millisecondsSinceEpoch}';
     setState(() => _cards.add(FeedCardData(
-      id: cardId, type: FeedCardType.record, time: timeStr, content: text, mode: CardMode.idle,
+      id: cardId, type: FeedCardType.record, time: timeStr, content: text, mode: CardMode.idle, loading: true,
     )));
     _scrollToBottom();
 
@@ -246,16 +259,33 @@ class _MainPageState extends State<MainPage>
           _deactivateOtherCards(cardId);
           _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
             turns: [ConversationTurn(isUser: true, text: text, time: timeStr),
-              if (resp.summary != null) ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr)],
+              if (resp.rawResponse != null || resp.summary != null) ConversationTurn(isUser: false, text: resp.rawResponse ?? resp.summary!, time: aiTimeStr)],
             domain: resp.domain,
           ));
         });
       } else {
         setState(() {
-          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain));
+          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain));
         });
       }
-    } catch (_) { if (mounted) _showError('saved locally, waiting for network'); }
+    } catch (e) {
+        if (mounted) {
+          setState(() => _updateCard(cardId, (c) => c.copyWith(
+              loading: false, error: _extractApiError(e))));
+          _scrollToBottom();
+        }
+      }
+  }
+
+  /// 重试发送失败的新卡片：删除旧卡片，重新创建。
+  void _onRetryCard(String cardId) {
+    final idx = _cards.indexWhere((c) => c.id == cardId);
+    if (idx < 0) return;
+    final card = _cards[idx];
+    setState(() => _cards.removeAt(idx));
+    final now = TimeOfDay.now();
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    _createNewCard(card.content, timeStr, null);
   }
 
   void _appendToActiveCard(String text, String timeStr) async {
@@ -273,17 +303,18 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final aiTime = TimeOfDay.now();
       final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
-      if (resp.summary != null) {
+      final aiReply = resp.rawResponse ?? resp.summary;
+      if (aiReply != null) {
         setState(() {
           _updateCard(_activeCardId!, (c) {
             final existing = c.turns ?? [];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
-              turns: [...existing, ConversationTurn(isUser: false, text: resp.summary!, time: aiTimeStr)]);
+              turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: aiTimeStr)]);
           });
         });
         _scrollToBottom();
       }
-    } catch (_) { if (mounted) { setState(() => _updateCard(_activeCardId!, (c) => c.copyWith(loading: false))); _showError('network error, please try again'); } }
+    } catch (e) { if (mounted) { setState(() => _updateCard(_activeCardId!, (c) => c.copyWith(loading: false))); _showError(_extractApiError(e)); } }
   }
 
   void _updateCard(String id, FeedCardData Function(FeedCardData) updater) {
@@ -299,7 +330,6 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       setState(() {
         _cards.removeWhere((c) => c.id == id);
-        _allCards.removeWhere((c) => c.id == id);
       });
     } catch (e) {
       if (mounted) _showError('删除失败');
@@ -338,6 +368,33 @@ class _MainPageState extends State<MainPage>
     ));
   }
 
+  /// 从 API 异常中提取人类可读的错误消息。
+  /// API service 抛出的格式：Exception: API 错误 {status}: {body}
+  String _extractApiError(dynamic e) {
+    final str = e.toString();
+    if (str.contains('API 错误')) {
+      // 提取状态码和 body 中的 error 字段
+      final codeMatch = RegExp(r'API 错误 (\d+)').firstMatch(str);
+      final code = codeMatch?.group(1) ?? '?';
+      // 尝试从 JSON body 提取 error 字段
+      try {
+        final jsonStr = str.split(': ').skip(1).join(': ');
+        final json = jsonDecode(jsonStr);
+        if (json is Map && json['error'] != null) {
+          return '请求失败 ($code): ${json['error']}';
+        }
+      } catch (_) {}
+      return '请求失败 ($code)';
+    }
+    if (str.contains('TimeoutException') || str.contains('timed out')) {
+      return '请求超时，请检查网络';
+    }
+    if (str.contains('Connection refused') || str.contains('SocketException')) {
+      return '无法连接服务器，请确认后端已启动';
+    }
+    return 'network error';
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) {
@@ -370,65 +427,31 @@ class _MainPageState extends State<MainPage>
   }
 
   Future<void> _loadMore() async {
-    if (_totalShown < _cards.length) {
-      setState(() => _totalShown = (_totalShown + _pageSize).clamp(0, _cards.length));
-      return;
-    }
-    if (!_hasOlder) return;
+    if (_cards.length >= _totalToday) return;
     setState(() => _loadingMore = true);
-    await _loadOlder();
-    setState(() => _loadingMore = false);
-  }
-
-  Future<void> _loadOlder() async {
+    _currentPage++;
     try {
-      for (int i = 0; i < 30; i++) {
-        _oldestDate = _oldestDate.subtract(const Duration(days: 1));
-        final dateStr = '${_oldestDate.year}-${_oldestDate.month.toString().padLeft(2, '0')}-${_oldestDate.day.toString().padLeft(2, '0')}';
-        final feed = await _api.getFeed(date: dateStr);
-        if (!mounted) return;
-        final olderCards = feed.entries.where((e) => e.type != FeedEntryType.aiNote).map((e) => e.toFeedData()).toList();
-        if (olderCards.isNotEmpty) {
-          final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-          final d = _oldestDate;
-          final label = '${d.month}/${d.day} · ${weekdays[d.weekday - 1]}';
-          final separator = FeedCardData(
-            id: 'sep_${dateStr}',
-            type: FeedCardType.dateSeparator,
-            time: '',
-            content: label,
-          );
-          setState(() {
-            _cards.insertAll(0, [separator, ...olderCards]);
-            _earlierCount = feed.earlierCount;
-            _totalShown = _cards.length;
-          });
-          // Auto-scroll to visual top to show newly loaded content
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
-          return;
-        }
-      }
-      setState(() => _hasOlder = false);
-    } catch (_) {
+      final feed = await _api.getFeed(page: _currentPage, size: _pageSize);
+      if (!mounted) return;
+      final moreCards = feed.entries
+          .where((e) => e.type != FeedEntryType.aiNote)
+          .map((e) => e.toFeedData())
+          .toList();
+      setState(() {
+        _cards = [...moreCards, ..._cards]; // 更早的条目插在前面，reverse 后出现在视觉顶部
+        _loadingMore = false;
+      });
+    } catch (e) {
       if (mounted) _showError('加载更多失败');
-      _hasOlder = false;
+      setState(() => _loadingMore = false);
+      _currentPage--;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final activeCard = _activeCardId != null ? _cards.where((c) => c.id == _activeCardId).firstOrNull : null;
-    final endIdx = _cards.length;
-    final startIdx = (endIdx - _totalShown).clamp(0, endIdx);
-    final hasMore = startIdx > 0 || _hasOlder || _earlierCount > 0;
+    final hasMore = _cards.length < _totalToday;
     return SafeArea(
       child: Column(
         children: [
@@ -485,57 +508,60 @@ class _MainPageState extends State<MainPage>
   }
 
   Widget _buildNormalLayout() {
-    final endIdx = _cards.length;
-    final startIdx = (endIdx - _totalShown).clamp(0, endIdx);
-    final visibleCards = _cards.sublist(startIdx, endIdx);
-
     return FadeTransition(
       opacity: _contentAnim,
       child: SlideTransition(
         position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_contentAnim),
-        child: visibleCards.isEmpty ? _buildEmptyState() : _buildFeedList(visibleCards),
+        child: _cards.isEmpty ? _buildEmptyState() : _buildFeedList(_cards),
       ),
     );
   }
 
   Widget _buildFeedList(List<FeedCardData> cards) {
-    return ListView(
-      reverse: true,
-      controller: _scrollController,
-      padding: const EdgeInsets.only(top: 0, bottom: 12),
-      children: [
-        ...cards.reversed.toList().asMap().entries.map((entry) {
-          final card = entry.value;
-          return TweenAnimationBuilder<double>(
-            key: ValueKey('card_${card.id}'),
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOutCubic,
-            builder: (context, value, child) => Opacity(
-              opacity: value,
-              child: Transform.translate(
-                offset: Offset(0, 20 * (1 - value)),
-                child: child,
+    return RefreshIndicator(
+      color: AppColors.darkGreen,
+      onRefresh: () async {
+        await _refreshFeed();
+      },
+      child: ListView(
+        reverse: true,
+        controller: _scrollController,
+        padding: const EdgeInsets.only(top: 0, bottom: 12),
+        children: [
+          ...cards.reversed.toList().asMap().entries.map((entry) {
+            final card = entry.value;
+            return TweenAnimationBuilder<double>(
+              key: ValueKey('card_${card.id}'),
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) => Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, 20 * (1 - value)),
+                  child: child,
+                ),
               ),
-            ),
-            child: FeedCard(
-              key: ValueKey(card.id),
-              data: card,
-              onActivate: () => _onCardActivate(card.id),
-              onAsk: () => _onAskCard(card.id),
-              onEnd: null,
-              onDelete: () => _deleteCard(card.id),
-              onToggleExpand: () {
-                final idx = _cards.indexWhere((c) => c.id == card.id);
-                if (idx >= 0) {
-                  setState(() => _cards[idx] = _cards[idx].copyWith(expanded: !_cards[idx].expanded));
-                }
-              },
-              onDomainChanged: (domain) => _changeDomain(card.id, domain),
-            ),
-          );
-        }),
-      ],
+              child: FeedCard(
+                key: ValueKey(card.id),
+                data: card,
+                onActivate: () => _onCardActivate(card.id),
+                onAsk: () => _onAskCard(card.id),
+                onEnd: null,
+                onDelete: () => _deleteCard(card.id),
+                onToggleExpand: () {
+                  final idx = _cards.indexWhere((c) => c.id == card.id);
+                  if (idx >= 0) {
+                    setState(() => _cards[idx] = _cards[idx].copyWith(expanded: !_cards[idx].expanded));
+                  }
+                },
+                onDomainChanged: (domain) => _changeDomain(card.id, domain),
+                onRetry: card.error != null ? () => _onRetryCard(card.id) : null,
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 
@@ -591,8 +617,7 @@ class _MainPageState extends State<MainPage>
       onTap: showLoadMore
           ? (_loadingMore ? null : _loadMore)
           : () {
-              _scrollController.animateTo(_scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+              _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
             },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -796,14 +821,44 @@ class _MainPageState extends State<MainPage>
     );
   }
 
-  /// 去除 AI 回复末尾的 {"domain":"..."} JSON 残留。
+  /// 去除 AI 回复末尾的 JSON 残留并解码 \\uXXXX 转义。
+  /// 兼容 `{"domain":"..."}`（旧）和多行完整 JSON（新）。
   static String stripDomainJson(String text) {
-    final int idx = text.indexOf('{"domain"');
-    if (idx < 0) return text;
-    // 找到匹配的 }
-    final int end = text.indexOf('}', idx);
-    if (end < 0) return text;
-    return text.substring(0, idx).trim();
+    final clean = _removeTrailingJson(text);
+    return decodeUnicodeEscapes(clean);
+  }
+
+  /// 移除 AI 回复末尾可能附着的 JSON 块。
+  static String _removeTrailingJson(String text) {
+    final idx = text.lastIndexOf('\n{');
+    if (idx < 0) {
+      // 兼容旧格式 `{"domain"` 在行首的情况
+      final oldIdx = text.indexOf('{"domain"');
+      if (oldIdx < 0) return text;
+      final end = text.indexOf('}', oldIdx);
+      if (end < 0) return text;
+      return text.substring(0, oldIdx).trim();
+    }
+    final candidate = text.substring(idx + 1);
+    if (candidate.startsWith('{') && candidate.endsWith('}')) {
+      try {
+        jsonDecode(candidate);
+        return text.substring(0, idx).trim();
+      } catch (_) {}
+    }
+    return text;
+  }
+
+  /// 解码 \\uXXXX 转义序列为实际字符（前端兜底）。
+  static String decodeUnicodeEscapes(String text) {
+    if (text == null || text.isEmpty) return text ?? '';
+    return text.replaceAllMapped(
+      RegExp(r'\\u([0-9a-fA-F]{4})'),
+      (match) {
+        final code = int.parse(match.group(1)!, radix: 16);
+        return String.fromCharCode(code);
+      },
+    );
   }
 
   Widget _buildChatBubble(String text, bool isUser, String time) {
@@ -830,8 +885,16 @@ class _MainPageState extends State<MainPage>
                     textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
                   )).copyWith(
                     strong: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
-                    code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkSurface2),
-                    codeblockDecoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(8)),
+                    h1: const TextStyle(fontSize: 16, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+                    h2: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+                    h3: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+                    h4: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
+                    code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: const Color(0xFF2A2826)),
+                    codeblockDecoration: BoxDecoration(
+                      color: const Color(0xFF2A2826),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.darkGreen.withAlpha(50)),
+                    ),
                     p: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1),
                     a: const TextStyle(fontSize: 14, color: AppColors.darkBlue),
                   )),

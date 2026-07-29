@@ -1,10 +1,11 @@
 package com.adaiadai.core.interfaces;
 
-import com.adaiadai.core.infrastructure.ai.llm.MockAiClient;
+import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,8 +37,9 @@ class ConversationControllerTest {
         RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
         recordRepository.setTagIndexService(tagIndexService);
         CardFileRepository cardRepository = new CardFileRepository(fileStorage);
+        MemoryService memoryService = new MemoryService(fileStorage);
         ConversationController controller = new ConversationController(
-                new MockAiClient(), recordRepository, cardRepository
+                new TestAiClient(), recordRepository, cardRepository, memoryService
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
@@ -89,7 +91,7 @@ class ConversationControllerTest {
         TagIndexService tis = new TagIndexService(storage);
         RecordFileRepository repo = new RecordFileRepository(storage);
         repo.setTagIndexService(tis);
-        ConversationController ctrl = new ConversationController(new MockAiClient(), repo, new CardFileRepository(storage));
+        ConversationController ctrl = new ConversationController(new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage));
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
 
         String body = mapper.writeValueAsString(Map.of(

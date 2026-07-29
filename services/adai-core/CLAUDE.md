@@ -74,7 +74,7 @@ com.adaiadai.core/
 │   ├── storage/                  文件存储（File First）
 │   ├── database/                 数据库（预留）
 │   └── ai/                       AI 模型接入
-│       └── llm/                    LLM 客户端（MockAiClient / DeepSeekAiClient）
+│       └── llm/                    LLM 客户端（DeepSeekAiClient）
 ```
 
 ## 架构原则

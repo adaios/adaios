@@ -22,6 +22,10 @@ class RootApp extends StatelessWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
+      builder: (context, child) => DefaultTextStyle(
+        style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
+        child: child!,
+      ),
       home: const DualWorldShell(),
     );
   }

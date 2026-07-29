@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v2.7 | 最后更新：2026-07-27**
+**文档版本：v2.9 | 最后更新：2026-07-29**
 
 ---
 
@@ -10,7 +10,8 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
-| 2026-07-27 | v2.7 | **总结优化**：对话总结 ≤40 字 + 第一人称；ANALYSIS 摘要 ≤20 字 + 第一人称；domain 追加关键词规则；前端 load more/↑ top 滚动修复 |
+| 2026-07-29 | v2.9 | **Feed 分页方向修复**：page 0 从最早条目改为最新条目，优化刷新后新数据可见性 |
+| 2026-07-29 | v2.8 | **Feed 分页**：`GET /api/v1/feed` 加 `page`/`size` 参数，移除 `brief`/`earlierCount`，新增 `totalToday`；Brief 独立接口 |
 | 2026-07-27 | v2.6 | **移除 DECISION 意图**；意图识别改为纯 AI（无正则兜底，AI 失败抛异常）；新增 `POST /api/v1/cards/cleanup` |
 | 2026-07-26 | v2.5 | 任务系统 (5 个 API) + RFC tracking，ProjectStatus.rfcCount→rfcItems[]，前端任务页 |
 | 2026-07-25 | v2.3 | 新增交易复盘 API（生成/查询/列表），知识反哺 API（promote/conflicts），简报集成交易检测 |
@@ -110,20 +111,20 @@
 
 ## 3. Feed 流
 
-### `GET /api/v1/feed` — 获取 Feed
+### `GET /api/v1/feed` — 获取今日 Feed（分页）
 
 **Query Parameters**
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|:----:|------|
-| `date` | String | 否 | 日期 `yyyy-MM-dd`，默认当天 |
-| `since` | String | 否 | ISO 时间戳 |
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|:----:|:----:|------|
+| `date` | String | 否 | 当天 | 日期 `yyyy-MM-dd` |
+| `page` | int | 否 | 0 | 页码，从 0 开始，page 0 = 最新条目 |
+| `size` | int | 否 | 5 | 每页条数 |
 
 **Response**
 
 ```json
 {
-  "brief": "阿呆晚上好！\n🍜 刚聊过饿了想吃啥\n💧 睡前记得喝水哦",
   "entries": [
     {
       "type": "card",
@@ -151,9 +152,12 @@
       "turns": null
     }
   ],
-  "earlierCount": 0
+  "totalToday": 28
 }
 ```
+
+> feed 只返回今天的数据，历史数据走时间线（`GET /api/v1/timeline`）。
+> 每日摘要单独调用 `GET /api/v1/brief`。
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|
@@ -161,9 +165,7 @@
 | `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
-| `earlierCount` | int | 更早天数的条目数 |
-
-> **`type: "card"`**：会话卡片，完整对话在 `turns` 中，前端直接渲染无需额外调用。
+| `totalToday` | int | 今天一共多少条记录（不分页的总数） |
 
 ---
 
@@ -305,7 +307,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 
 ```json
 {
-  "content": "阿呆晚上好！\n🍜 刚聊过饿了想吃啥\n💧 睡前记得喝水哦"
+  "content": "小王晚上好！\n🍜 刚聊过饿了想吃啥\n💧 睡前记得喝水哦"
 }
 ```
 
@@ -396,7 +398,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 
 ```json
 {
-  "name": "阿呆",
+  "name": "小王",
   "preferences": {"style": "简洁、直接"},
   "rules": {"confirmation": "交易类操作需确认"},
   "tags": ["投资", "半导体"]

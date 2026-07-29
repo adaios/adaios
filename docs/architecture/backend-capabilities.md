@@ -90,17 +90,19 @@ AI 知道这些信息，但不会把它们读出来——只用它们来回答�
 |:---------|:-----|
 | 用户记录 | 你今天输入的每条记录 |
 | AI 理解 | AI 对每条记录生成的摘要（紧跟在对应记录下方） |
-| 简报 | AI 生成的今日问候（包含近期回顾 + 提醒） |
+| 卡片对话 | Ask 发起的 AI 对话卡片（含 turns） |
 
-### 会话隔离
+> 简报（Brief）已从 Feed 拆分独立，见 §4. 每日简报。
 
-每次打开 App，前端记录时间戳 `_openTime`。Feed 后端支持传入 `since` 参数：
-- `since` 之后的内容 → 作为"当前会话"显示
-- `since` 之前的内容 → 计数为 `earlierCount`，用户可点"展开"查看
+### Feed 分页
+
+支持 `page`/`size` 分页，每页默认 5 条。页码从 0 开始递增，只返回当天数据。
+历史数据通过 TopBar 日期 → 时间线弹窗查看，不走 Feed。
 
 ### 产出
 
-前端调用 `GET /api/v1/feed?date=...&since=...`，后端返回 `{brief, entries, earlierCount}`。
+前端调用 `GET /api/v1/feed?date=...&page=0&size=5`，后端返回 `{entries: [...], totalToday: N}`。
+`totalToday` 为今天总条目数（不分页），供前端判断是否还有更多页。
 
 ---
 
