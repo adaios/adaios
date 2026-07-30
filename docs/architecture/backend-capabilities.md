@@ -249,6 +249,48 @@ data/memory/YYYY/MM.md
 
 ---
 
+## 11. 行情数据（Market Data）
+
+实时 A 股行情，注入 AI 上下文让 AI 感知当前市场状态和持仓盈亏。
+
+### 能力
+
+| 能力 | 说明 |
+|:-----|:------|
+| **大盘指数** | 上证、深证、创业板实时行情（涨跌、涨幅） |
+| **持仓实时价** | 持仓个股实时价格，替换静态 `currentPrice` |
+| **实时盈亏** | 按实时价格计算持仓浮动盈亏 |
+| **自动注入** | 问"我持仓怎么样"时，ContextEngine 自动拉行情注入 AI 上下文 |
+
+### 数据来源
+
+腾讯行情 API `qt.gtimg.cn`，免费、无需 API Key、支持批量查询。
+60 秒内存缓存，网络异常时不阻塞。
+
+### 架构位置
+
+```
+kernel/market/           ← Kernel 组件
+  MarketDataSource.java    ← 接口
+  MarketData.java          ← DTO
+  TencentMarketDataSource.java  ← 腾讯 API 实现
+```
+
+### 不做什么
+
+- ❌ 不做 K 线图（需 K 线数据源）
+- ❌ 不做技术指标（KDJ/MACD/BBI — 后续考虑）
+- ❌ 不做新闻推送（无稳定 API）
+- ❌ 不做实时 WebSocket（HTTP 轮询够用）
+
+### 当前状态
+
+✅ 行情数据源已实现  
+✅ ContextContributor 注入持仓行情 + 大盘指数  
+⚠️ 主动推送（持仓异动通知）未实现  
+
+---
+
 ## 10. 用户身份（Identity）
 
 AI 对用户基础信息的认知。
@@ -294,9 +336,11 @@ AI 对用户基础信息的认知。
 | 知识反哺入库 | ✅ | ❌ | ✅ | `POST /api/v1/trading/reviews/{date}/promote` |
 | 规则冲突检测 | ✅ | ❌ | ✅ | `GET /api/v1/trading/knowledge/conflicts` |
 | 交易知识召回 | ❌ | ❌ | ❌ | 未实现 |
+| **行情数据（大盘+持仓）** | ✅ | ❌ | ✅ | ContextContributor |
+| **行情数据（主动推送）** | ❌ | ❌ | ⚠️ 已规划 | Phase 2 |
 | 项目状态 | ✅ | ✅ | ✅ | `GET /api/v1/project/status` |
 | 任务管理 | ✅ | ✅ | ✅ | `GET|POST|PUT|DELETE /api/v1/project/tasks` |
 
 ---
 
-**版本：v1.1 | 最后更新：2026-07-26**
+**版本：v1.2 | 最后更新：2026-07-31**

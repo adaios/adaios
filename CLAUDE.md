@@ -286,23 +286,23 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 
-## 当前焦点（2026-07-30）
+## 当前焦点（2026-07-31）
 
-### 正在做的
-- **任务系统修复完成** ✅：Task ID 加毫秒防冲突、`save()` 加 `synchronized` 防并发写、中文标题支持
-- **任务数据重建完成** ✅：清除损坏文件（65MB），重建 10 条中文任务（7 DONE + 3 TODO）
-- **Project OS 使用指南** ✅：`docs/guides/project-os-usage.md` 编写完成
+### 已完成
+- **任务系统修复** ✅：ID 加毫秒防冲突、save() 加 synchronized、中文支持、清除 65MB 损坏文件
+- **Project OS 使用指南** ✅：`docs/guides/project-os-usage.md`
+- **方向 A Phase 1** ✅：行情接入（kernel/market + MarketContextContributor）
+  - 腾讯行情 API 拉大盘指数 + 持仓实时价
+  - CHAT 模式上下文注入修复（之前全局上下文未发给 DeepSeek）
 
-### B Phase 2+3 完成内容
-| 阶段 | 完成项 |
-|:-----|:-------|
-| B Phase 2 | RFC frontmatter 解析 + 前端状态色 + identity 同步 |
-| B Phase 3 | Context 注入最近 7 天完成 + git log 摘要 + RFC 状态 |
-
-### 待做（按优先级）
-- **B Phase 4**：前端任务面板（P0—已有 API，缺 UI）
-- **A Phase 1**：行情数据接入（P1—填补 Layer 5 空白）
-- **文档对齐**：同步 api-spec.md（P2）
+### 方向进展
+| 方向 | Phase | 状态 |
+|:-----|:------|:----:|
+| B Project OS | Phase 2-3 (RFC跟踪+自举) | ✅ 完成 |
+| B Project OS | Phase 4 (前端任务面板) | 📋 待做 |
+| A 行情接入 | Phase 1 (上下文注入) | ✅ 完成 |
+| A 行情接入 | Phase 2 (主动推送) | 📋 待做 |
+| C Life OS | Phase 0-3 | ⏸ 等数据积累 |
 
 ### 测试状态
 - **后端** 100+ 测试，0 失败
@@ -314,5 +314,6 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - 生产服务器：49.235.37.220
 
 ### 关键文档
-- `docs/guides/project-os-usage.md` — Project OS 使用指南（新增）
+- `docs/guides/project-os-usage.md` — Project OS 使用指南
+- `docs/rfc/20260730-market-data-and-push.md` — 行情接入 RFC
 - `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘
