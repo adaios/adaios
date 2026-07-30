@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -253,6 +254,22 @@ public class ProjectContextContributor implements ContextContributor {
                     sb.append("\n");
                 }
             }
+
+            // 最近 7 天完成的任务
+            LocalDate weekAgo = LocalDate.now().minusDays(7);
+            List<Task> recentDone = taskRepository.findAll().stream()
+                    .filter(t -> t.status() == TaskStatus.DONE)
+                    .filter(t -> t.updatedAt() != null && !t.updatedAt().isBefore(weekAgo))
+                    .sorted(Comparator.comparing(Task::updatedAt).reversed())
+                    .limit(10)
+                    .toList();
+            if (!recentDone.isEmpty()) {
+                sb.append("**最近 7 天完成：**\n");
+                for (Task t : recentDone) {
+                    sb.append("- ").append(t.title()).append("\n");
+                }
+            }
+
             return sb.toString();
         } catch (Exception e) {
             log.debug("任务摘要加载失败: {}", e.getMessage());
