@@ -191,6 +191,15 @@ public class DeepSeekAiClient implements AiClient {
             messages.add(bgMsg);
         }
 
+        // 组装上下文（全局领域、知识源、记忆等）：从 prompt 中提取不包含当前记录的上下文部分
+        String context = buildContextFromPrompt(ctx);
+        if (context != null) {
+            var ctxMsg = MAPPER.createObjectNode();
+            ctxMsg.put("role", "system");
+            ctxMsg.put("content", context);
+            messages.add(ctxMsg);
+        }
+
         // 对话历史：完整的 user/assistant 轮次
         List<ChatMessage> history = ctx.conversationHistory();
         if (history.isEmpty()) {
@@ -228,6 +237,22 @@ public class DeepSeekAiClient implements AiClient {
         }
 
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    /**
+     * 从 prompt 中提取上下文部分（身份、日期、全局领域、知识、记忆等），
+     * 排除"当前记录"和最终指令，作为 system 消息供 CHAT 模式使用。
+     */
+    private String buildContextFromPrompt(ContextPackage ctx) {
+        if (ctx.prompt() == null || ctx.prompt().isBlank()) return null;
+
+        String prompt = ctx.prompt();
+        // 截取到"当前记录："之前的部分，因为后面是本次用户输入和指令
+        int cutoff = prompt.indexOf("\n当前记录：");
+        if (cutoff < 0) return null;
+
+        String contextPart = prompt.substring(0, cutoff).strip();
+        return contextPart.isEmpty() ? null : contextPart;
     }
 
     /**
