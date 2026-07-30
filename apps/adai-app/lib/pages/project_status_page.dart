@@ -301,7 +301,10 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
       case 'implemented': return AppColors.darkGreen;
       case 'approved': return AppColors.darkBlue;
       case 'proposed': return AppColors.darkOrange;
-      case 'deprecated': return AppColors.darkGrey5;
+      case 'deprecated':
+      case 'completed': return AppColors.darkGrey5;
+      case 'revised': return AppColors.darkPurple;
+      case 'draft': return AppColors.darkYellow;
       default: return AppColors.darkGrey5;
     }
   }
@@ -312,6 +315,9 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
       case 'approved': return '已批准';
       case 'proposed': return '提案';
       case 'deprecated': return '废弃';
+      case 'completed': return '已完成';
+      case 'revised': return '已修订';
+      case 'draft': return '草稿';
       default: return status;
     }
   }
