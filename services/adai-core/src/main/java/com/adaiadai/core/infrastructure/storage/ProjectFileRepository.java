@@ -94,7 +94,7 @@ public class ProjectFileRepository implements TaskRepository {
     }
 
     @Override
-    public void save(Task task) {
+    public synchronized void save(Task task) {
         String path = taskFilePath(task.createdAt());
         String entry = formatTaskEntry(task);
 

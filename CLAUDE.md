@@ -286,35 +286,25 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 
-## 当前焦点（2026-07-29）
+## 当前焦点（2026-07-30）
 
 ### 正在做的
-- **Feed 流稳定性** ✅ 已完成：分页方向修复（page 0 = 最新条目）、独立 Brief API、今天仅今天
-- **删除流程加固** ✅ 已完成：双仓删除、跨日文件遍历、Memory 联动
-- **AI 称呼问题** ✅ 已完成：移除 context 中用户称呼注入
+- **任务系统修复完成** ✅：Task ID 加毫秒防冲突、`save()` 加 `synchronized` 防并发写、中文标题支持
+- **任务数据重建完成** ✅：清除损坏文件（65MB），重建 10 条中文任务（7 DONE + 3 TODO）
+- **Project OS 使用指南** ✅：`docs/guides/project-os-usage.md` 编写完成
 
-### 待关注
-- 回顾复盘文档 `docs/rfc/20260729-development-retrospective.md` 中提出的改进措施
-- 后续修 Bug 前先写验收条件、改后跑场景验证
+### B Phase 2+3 完成内容
+| 阶段 | 完成项 |
+|:-----|:-------|
+| B Phase 2 | RFC frontmatter 解析 + 前端状态色 + identity 同步 |
+| B Phase 3 | Context 注入最近 7 天完成 + git log 摘要 + RFC 状态 |
 
-### 已修复（2026-07-29 轮）
-| Pri | 问题 | 方案 |
-|:---:|:-----|:-----|
-| P0 | 页面卡顿（blockquote 导致） | ✅ 移除无用 blockquote 样式 |
-| P0 | Markdown 代码块深色看不清 | ✅ 边框 + `#2A2826` 背景 |
-| P1 | 删除记录刷新又出现（双仓问题） | ✅ 两个仓库都删 + 遍历所有文件 |
-| P1 | AI 回复称呼用户名字 | ✅ profile 改名 + 删除 context 中称呼注入 |
-| P1 | 分页后刷新最新记录"丢失" | ✅ 分页方向改为从后往前（page 0 = 最新） |
-| P1 | ↑ top 不触发 load more | ✅ `animateTo` → `jumpTo` |
-| P1 | 回复截断 + emoji 显示 | ✅ `LlmResponseParser` 4000 上限 + unicode 全覆盖 |
-| P1 | ask tags 不被丢弃 | ✅ `_doAskRequest` 保存 `resp.tags` |
-| P1 | 报错弹详情 | ✅ `_extractApiError` 提取状态码+body |
-| P1 | log 加载 domain/tags | ✅ STATEMENT prompt 增加 tags/domain |
-| P1 | 删除记录清理 Memory | ✅ `MemoryService.deleteByRecordId` |
-| P2 | 折叠固定高度 250px | ✅ `ConstrainedBox + ClipRect + Stack` 渐隐 |
-| P2 | 关闭后折叠 | ✅ close 时重置 `expanded=false` |
+### 待做（按优先级）
+- **B Phase 4**：前端任务面板（P0—已有 API，缺 UI）
+- **A Phase 1**：行情数据接入（P1—填补 Layer 5 空白）
+- **文档对齐**：同步 api-spec.md（P2）
 
-### 测试状态（2026-07-29）
+### 测试状态
 - **后端** 100+ 测试，0 失败
 - **前端** 23 测试，0 失败
 
@@ -323,5 +313,6 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - 前端：`localhost:8081`（Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
 
-### 关键文档（本轮新增）
-- `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘与改进建议
+### 关键文档
+- `docs/guides/project-os-usage.md` — Project OS 使用指南（新增）
+- `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘

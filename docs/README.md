@@ -26,6 +26,7 @@
 | 文档 | 说明 |
 |:-----|:------|
 | [backend-capabilities.md](architecture/backend-capabilities.md) | 后端功能产品说明书：输入、对话、Feed、记忆、搜索、交易 |
+| [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
 
 ## 🎨 前端参考
 

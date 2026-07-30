@@ -34,7 +34,7 @@ public record Task(
      * 生成任务 ID。
      */
     public static String generateId() {
-        return "task_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+        return "task_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
                 .format(java.time.LocalDateTime.now());
     }
 }
