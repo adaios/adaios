@@ -31,7 +31,8 @@ public class ProjectStatusAppService {
             "^---\\n" +
                     "title:\\s*(.+)\\n" +
                     "date:\\s*(\\S+)\\n" +
-                    "status:\\s*(\\S+)\\n" +
+                    "status:\\s*(\\S+).*\\n" +
+                    "(?:.*\\n)*?" +
                     "---",
             Pattern.MULTILINE);
 
