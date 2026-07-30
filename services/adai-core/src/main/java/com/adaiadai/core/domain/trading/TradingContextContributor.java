@@ -1,17 +1,24 @@
 package com.adaiadai.core.domain.trading;
 
 import com.adaiadai.core.kernel.context.engine.ContextContributor;
+import com.adaiadai.core.kernel.market.MarketData;
+import com.adaiadai.core.kernel.market.MarketDataSource;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.Map;
 
 /**
  * TradingContextContributor — 交易场景的上下文贡献者。
  * <p>
- * 为 trading 场景注入当前持仓摘要，使 AI 拥有持仓感知能力。
+ * 为 trading 场景注入交易系统状态摘要。
+ * 实时行情由 {@link MarketContextContributor} 提供，本类专注交易系统状态。
+ * <p>
  * 实现 {@link ContextContributor} 接口，被 ContextEngine 自动发现。
  */
 @Component
@@ -20,51 +27,23 @@ public class TradingContextContributor implements ContextContributor {
     private static final Logger log = LoggerFactory.getLogger(TradingContextContributor.class);
 
     private final PositionRepository positionRepository;
+    private final MarketDataSource marketDataSource;
 
-    public TradingContextContributor(PositionRepository positionRepository) {
+    public TradingContextContributor(PositionRepository positionRepository,
+                                     MarketDataSource marketDataSource) {
         this.positionRepository = positionRepository;
+        this.marketDataSource = marketDataSource;
     }
 
     @Override
     public boolean supports(String scene) {
-        return "trading".equals(scene);
+        // 行情相关由 MarketContextContributor 处理，本类不重复输出
+        return false;
     }
 
     @Override
     public String enrich(String identityRef, ContentRecord record) {
-        List<Position> positions = positionRepository.findAll();
-        if (positions.isEmpty()) {
-            log.info("Trading 场景：当前无持仓");
-            return "";
-        }
-
-        PortfolioSnapshot snapshot = PortfolioSnapshot.of(positions, positionRepository.cashBalance());
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("## 当前持仓\n\n");
-        sb.append("| 代码 | 名称 | 数量 | 成本价 | 现价 | 市值 | 盈亏 | 盈亏% |\n");
-        sb.append("|------|------|------|--------|------|------|------|-------|\n");
-
-        for (Position p : positions) {
-            sb.append("| ").append(p.symbol())
-                    .append(" | ").append(p.name())
-                    .append(" | ").append(p.quantity())
-                    .append(" | ").append(p.avgCost().stripTrailingZeros().toPlainString())
-                    .append(" | ").append(p.currentPrice().stripTrailingZeros().toPlainString())
-                    .append(" | ").append(p.marketValue().stripTrailingZeros().toPlainString())
-                    .append(" | ").append(p.pnl().setScale(2).toPlainString())
-                    .append(" | ").append(p.pnlPercent().setScale(2).toPlainString()).append("%")
-                    .append(" |\n");
-        }
-
-        sb.append("\n**汇总**：总市值=")
-                .append(snapshot.totalValue().setScale(2).toPlainString())
-                .append("，总盈亏=")
-                .append(snapshot.totalPnl().setScale(2).toPlainString())
-                .append("，现金余额=")
-                .append(snapshot.cashBalance().setScale(2).toPlainString());
-
-        return sb.toString();
+        return "";
     }
 
     @Override
@@ -74,21 +53,41 @@ public class TradingContextContributor implements ContextContributor {
             return "";
         }
 
-        PortfolioSnapshot snapshot = PortfolioSnapshot.of(positions, positionRepository.cashBalance());
+        List<String> codes = positions.stream().map(Position::symbol).toList();
+        Map<String, MarketData> quotes = marketDataSource.quote(codes);
+
+        BigDecimal totalValue = BigDecimal.ZERO;
+        BigDecimal totalPnl = BigDecimal.ZERO;
 
         StringBuilder sb = new StringBuilder();
         sb.append("## 交易系统状态\n\n");
-        sb.append("当前持有 ").append(positions.size()).append(" 个仓位，");
-        sb.append("总市值 ").append(snapshot.totalValue().setScale(2).toPlainString()).append("，");
-        sb.append("现金余额 ").append(snapshot.cashBalance().setScale(2).toPlainString());
+        sb.append("当前持有 ").append(positions.size()).append(" 个仓位：\n");
 
-        if (!positions.isEmpty()) {
-            sb.append("\n持仓概览：");
-            for (Position p : positions) {
-                sb.append(p.symbol()).append("(")
-                        .append(p.pnlPercent().setScale(1).toPlainString()).append("%) ");
-            }
+        for (Position p : positions) {
+            MarketData md = quotes.get(p.symbol());
+            BigDecimal realPrice = md != null ? md.price() : p.currentPrice();
+            BigDecimal value = realPrice.multiply(BigDecimal.valueOf(p.quantity()));
+            BigDecimal cost = p.avgCost().multiply(BigDecimal.valueOf(p.quantity()));
+            BigDecimal pnl = value.subtract(cost);
+            BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
+                    ? realPrice.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                    : BigDecimal.ZERO;
+
+            totalValue = totalValue.add(value);
+            totalPnl = totalPnl.add(pnl);
+
+            sb.append("- ").append(p.name()).append("(").append(p.symbol()).append(")")
+                    .append(" 现价").append(realPrice.stripTrailingZeros().toPlainString())
+                    .append(" 成本").append(p.avgCost().stripTrailingZeros().toPlainString())
+                    .append(" ").append(pnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                    .append(pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString()).append("%")
+                    .append("\n");
         }
+
+        sb.append("\n总市值 ").append(totalValue.setScale(2).toPlainString())
+                .append("，浮动盈亏 ").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
+                .append("，现金余额 ").append(positionRepository.cashBalance().setScale(2).toPlainString());
 
         return sb.toString();
     }
