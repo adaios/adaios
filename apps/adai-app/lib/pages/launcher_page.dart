@@ -8,6 +8,7 @@ import 'memory_page.dart';
 import 'timeline_page.dart';
 import 'search_page.dart';
 import 'project_status_page.dart';
+import 'project_task_page.dart';
 import 'trading_page.dart';
 
 /// World B — Launcher。
@@ -167,6 +168,11 @@ class _LauncherPageState extends State<LauncherPage>
             _buildRow('📊', '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ProjectStatusPage(api: widget.api),
+              ));
+            }),
+            _buildRow('📋', '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => ProjectTaskPage(api: widget.api),
               ));
             }),
             _divider(),
