@@ -88,15 +88,14 @@ public class FeedAppService {
         allEntries.sort(Comparator.comparing(e -> e.time));
         int totalToday = allEntries.size();
 
-        // 分页：从后往前翻，page 0 = 最新条目（tail），page 1 = 更早
-        int totalPages = (totalToday + querySize - 1) / querySize;
-        int idxFromEnd = totalPages - 1 - queryPage;
+        // 分页：page 0 = 最新 size 条，page N = 更早，从尾部切块。
+        // 页内保持时间升序（最新在页末），前端 prepend 更早页时视觉连续。
+        int end = totalToday - queryPage * querySize;
+        int start = Math.max(0, end - querySize);
         List<FeedEntry> pageEntries;
-        if (idxFromEnd < 0) {
+        if (end <= 0) {
             pageEntries = List.of();
         } else {
-            int start = idxFromEnd * querySize;
-            int end = Math.min(start + querySize, totalToday);
             pageEntries = allEntries.subList(start, end);
         }
 

@@ -41,6 +41,7 @@ class RecordControllerTest {
     private ObjectMapper mapper;
     private RecordFileRepository recordRepository;
     private CardFileRepository cardRepository;
+    private MemoryService memoryService;
 
     @BeforeEach
     void setUp() {
@@ -64,7 +65,7 @@ class RecordControllerTest {
 
         // ContextEngine with real dependencies
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
-        MemoryService memoryService = new MemoryService(fileStorage);
+        memoryService = new MemoryService(fileStorage);
         SearchService searchService = new SearchService(recordRepository);
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
@@ -268,5 +269,36 @@ class RecordControllerTest {
         // Deleting non-existent record should not throw
         mockMvc.perform(delete("/api/v1/records/nonexistent_id"))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteRecord_cleansMemory() throws Exception {
+        // Create a statement record → memory persisted with recordId
+        String createBody = mapper.writeValueAsString(Map.of("content", "今天健身了一小时"));
+        String createResp = mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String recordId = mapper.readTree(createResp).get("recordId").asText();
+
+        // Statement → AI understanding → memory persisted
+        org.junit.jupiter.api.Assertions.assertTrue(
+                memoryService.findByRecordId(recordId).isPresent(),
+                "删除前 memory 应存在");
+
+        // Delete it → memory entry with this recordId must also be gone
+        mockMvc.perform(delete("/api/v1/records/" + recordId))
+                .andExpect(status().isNoContent());
+
+        // Record gone
+        org.junit.jupiter.api.Assertions.assertFalse(recordRepository.findById(recordId).isPresent());
+        // Card gone
+        org.junit.jupiter.api.Assertions.assertFalse(cardRepository.findById(recordId).isPresent());
+        // Memory gone（联动清理）
+        org.junit.jupiter.api.Assertions.assertFalse(
+                memoryService.findByRecordId(recordId).isPresent(),
+                "删除记录后关联 Memory 应一并清理");
     }
 }

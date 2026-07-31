@@ -45,16 +45,16 @@ public class ProjectFileRepository implements TaskRepository {
     private static final Pattern ENTRY_PATTERN = Pattern.compile(
             "---\\n" +
                     "id:\\s*(\\S+)\\n" +
-                    "title:\\s*(.+)\\n" +
-                    "description:\\s*(.*)\\n" +
+                    "title:\\s*([^\\n]+)\\n" +
+                    "description:\\s*([^\\n]*)\\n" +
                     "status:\\s*(\\S+)\\n" +
                     "priority:\\s*(\\S+)\\n" +
                     "tags:\\s*\\[([^\\]]*)\\]\\n" +
-                    "rfcRef:\\s*(.*)\\n" +
+                    "rfcRef:\\s*([^\\n]*)\\n" +
                     "createdAt:\\s*(\\S+)\\n" +
                     "updatedAt:\\s*(\\S+)\\n" +
                     "---\\n" +
-                    ".+?(?=\\n---|\\z)",
+                    "([\\s\\S]*?)(?=\\n---|\\z)",
             Pattern.DOTALL);
 
     private final FileStorage fileStorage;
