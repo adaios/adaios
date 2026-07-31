@@ -73,6 +73,8 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
                   _kv('架构', _status!.architecture),
                 ]),
                 const SizedBox(height: 16),
+                _buildDirectionProgress(),
+                const SizedBox(height: 16),
                 _sectionTitle('Kernel 组件'),
                 _componentGrid(_status!.kernelComponents),
                 const SizedBox(height: 16),
@@ -193,6 +195,95 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
             ]),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDirectionProgress() {
+    final directions = [
+      _Direction('A', 'Layer 5 — 行情接入', AppColors.darkBlue, 50, [
+        _Phase('Phase 1', '上下文注入', true),
+        _Phase('Phase 2', '主动推送', false),
+        _Phase('Phase 3', 'Feed 嵌入', false),
+      ]),
+      _Direction('B', 'Project OS — 项目管理', AppColors.darkGreen, 75, [
+        _Phase('Phase 1', '轻量任务系统', true),
+        _Phase('Phase 2', 'RFC 跟踪', true),
+        _Phase('Phase 3', '自举增强', true),
+        _Phase('Phase 4', '前端任务面板', true),
+      ]),
+      _Direction('C', 'Life OS — 个人生活', AppColors.darkOrange, 25, [
+        _Phase('Phase 0', '数据喂养', true),
+        _Phase('Phase 1', '情绪趋势', false),
+        _Phase('Phase 2', '习惯模式', false),
+        _Phase('Phase 3', '生活周报', false),
+      ]),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('方向进展', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey5)),
+          const SizedBox(height: 12),
+          ...directions.map((d) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(
+                    color: d.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Center(child: Text(d.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: d.color))),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text(d.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey2))),
+                Text('${d.progress}%', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+              ]),
+              const SizedBox(height: 6),
+              // 进度条
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 6,
+                  child: Row(children: [
+                    // 已完成
+                    Expanded(flex: d.progress, child: Container(color: d.color)),
+                    // 未完成
+                    if (d.progress < 100) Expanded(flex: 100 - d.progress, child: Container(color: AppColors.darkBorder.withValues(alpha: 0.3))),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 6),
+              // 阶段列表
+              Wrap(spacing: 6, runSpacing: 4, children: d.phases.map((p) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: p.done ? d.color.withValues(alpha: 0.1) : AppColors.darkBg,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: p.done ? d.color.withValues(alpha: 0.25) : AppColors.darkBorder,
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(p.done ? '✅' : '○', style: TextStyle(fontSize: 8)),
+                  const SizedBox(width: 3),
+                  Text('${p.label}: ${p.title}',
+                      style: TextStyle(fontSize: 10, color: p.done ? d.color : AppColors.darkGrey5)),
+                ]),
+              )).toList()),
+            ]),
+          )),
+        ],
       ),
     );
   }
@@ -321,4 +412,21 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
       default: return status;
     }
   }
+}
+
+/// 方向进展辅助类。
+class _Direction {
+  final String label;
+  final String title;
+  final Color color;
+  final int progress; // 0-100
+  final List<_Phase> phases;
+  _Direction(this.label, this.title, this.color, this.progress, this.phases);
+}
+
+class _Phase {
+  final String label;
+  final String title;
+  final bool done;
+  _Phase(this.label, this.title, this.done);
 }
