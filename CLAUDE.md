@@ -84,6 +84,7 @@ com.adaiadai.core/
 │   ├── identity/                 个人档案（静态偏好、AI 协作规则）
 │   ├── record/                   最小个人事件单元（ContentRecord / CardRecord / RecordRepository）
 │   ├── timeline/                 Record 的时间序列投影（TimelineEntry / TimelineProjection）
+│   ├── market/                   行情数据源（MarketDataSource / TencentMarketDataSource / MarketData）
 │   ├── context/                  ★ Context Engine（核心能力）
 │   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION / DECISION，正则 + AI 兜底）
 │   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
@@ -98,7 +99,7 @@ com.adaiadai.core/
 │   └── search/                   全文搜索（SearchService / SearchResult）
 │
 ├── domain/                     ★ Domain OS — 领域能力层
-│   ├── trading/                  金融交易 ✓（TradeRecord / Position / PortfolioSnapshot / TradingContextContributor）
+│   ├── trading/                  金融交易 ✓（TradeRecord / Position / PortfolioSnapshot / TradingContextContributor / MarketContextContributor）
 │   ├── life/                     个人生活管理（LifeContextContributor + LifeKnowledgeSource）
 │   └── project/                  项目管理（ProjectContextContributor + ProjectKnowledgeSource + Status API）
 │

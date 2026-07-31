@@ -48,6 +48,7 @@ com.adaiadai.core/
 │   ├── identity/                 个人档案
 │   ├── record/                   最小个人事件单元
 │   ├── timeline/                 时间序列投影
+│   ├── market/                   行情数据源（TencentMarketDataSource）
 │   ├── context/                  ★ Context Engine（核心）
 │   │   ├── IntentRecognizer       意图识别
 │   │   └── engine/                上下文引擎（ContextContributor 插件机制）
@@ -55,7 +56,7 @@ com.adaiadai.core/
 │   └── knowledge/                结构化知识（预留）
 │
 ├── domain/                     ★ Domain OS
-│   ├── trading/                  金融交易（含 ContextContributor、复盘）
+│   ├── trading/                  金融交易（TradingContextContributor + MarketContextContributor + 复盘）
 │   ├── life/                     个人生活（LifeContextContributor + LifeKnowledgeSource）
 │   └── project/                  项目管理（ProjectContextContributor + Task 实体 + TaskRepository）
 │
