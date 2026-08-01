@@ -32,7 +32,7 @@ git diff --stat HEAD
 ### 3. API 契约同步
 
 ```bash
-grep -rn "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" services/adai-core/src/main/java/interfaces
+grep -rn "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" services/adai-core/src/main/java/com/adaiadai/core/interfaces
 ```
 
 - 有**新增/修改端点** → 更新 `docs/architecture/api-spec.md`，保持契约与代码一致

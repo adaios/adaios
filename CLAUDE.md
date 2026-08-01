@@ -51,9 +51,9 @@ apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
 os/                    # Domain OS（File First：知识资产 + 领域定义）
   trading-os/          #   交易系统知识库（有独立 CLAUDE.md 和工作流；definition/ 为领域定义）
-  life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪）
-  project-os/          #   项目管理（骨架已建立，含 git log 自举 + Status API）
-data/                  # 个人数据资产（File First，Git 追踪）
+  life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪；definition/ 为领域定义）
+  project-os/          #   项目管理（骨架已建立，含 git log 自举 + Status API；definition/ 为领域定义）
+data/                  # 个人数据资产（File First；除 project/ 与 identity sample 外均 gitignore 保护隐私）
   identity/            #   个人档案
   records/             #   原始记录（按年月组织）
   memory/              #   AI 理解沉淀
@@ -294,9 +294,12 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 
-## 当前焦点（2026-07-31）
+## 当前焦点（2026-08-01）
 
 ### 已完成
+- **审核/交付流程基建** ✅：/review 三档（light 守护+快扫 / --deep / --full）+ 5 角色 + guard.sh 守护脚本化（一条命令跑 G1-G7）+ /ship 收尾闭环（测试→api-spec→文档→提交）
+- **docs/ideas 想法归档区** ✅：未定型想法/方案的正式位置，成熟升级 RFC
+- **os/ 目录统一** ✅：domains/ 合并入 os/*-os/definition/，消除顶层重复
 - **任务系统修复** ✅：ID 加毫秒防冲突、save() 加 synchronized、中文支持、清除 65MB 损坏文件
 - **Project OS 使用指南** ✅：`docs/guides/project-os-usage.md`
 - **方向 A Phase 1** ✅：行情接入（kernel/market + MarketContextContributor）

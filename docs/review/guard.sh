@@ -28,17 +28,22 @@ echo "── 数据安全 ──"
 
 # G1 所有 ID 生成必须含毫秒（SSS）。
 # 只查 ID 生成点：① ID_FORMATTER 常量 ② generateId() 方法体内的 ofPattern。
-# 排除显示格式化（HH:mm 等非 ID 用途）。
-G1_BAD=$(awk '
-  /ID_FORMATTER.*ofPattern/ { if ($0 !~ /SSS/) print FILENAME": 常量 ID_FORMATTER 缺毫秒" }
-  /generateId/ { in_gen=1 }
-  /^[[:space:]]*}/ { if (in_gen) in_gen=0 }
-  in_gen && /ofPattern/ && $0 !~ /SSS/ { print FILENAME": generateId 内 ofPattern 缺毫秒" }
-' $(grep -rl "ID_FORMATTER\|generateId" "$SRC" --include="*.java" 2>/dev/null))
-if [ -z "$G1_BAD" ]; then
-  ok G1 "所有 ID 生成含毫秒 SSS（常量 + generateId()）"
+# 排除显示格式化（HH:mm 等非 ID 用途）。空匹配走 note 不阻塞（awk 无文件参数会读 stdin 挂起）。
+G1_FILES=$(grep -rl "ID_FORMATTER\|generateId" "$SRC" --include="*.java" 2>/dev/null || true)
+if [ -z "$G1_FILES" ]; then
+  note G1 "未找到 ID_FORMATTER/generateId（源文件可能变动，检查点无法验证）"
 else
-  hit G1 "$G1_BAD"
+  G1_BAD=$(awk '
+    /ID_FORMATTER.*ofPattern/ { if ($0 !~ /SSS/) print FILENAME": 常量 ID_FORMATTER 缺毫秒" }
+    /generateId/ { in_gen=1 }
+    /^[[:space:]]*}/ { if (in_gen) in_gen=0 }
+    in_gen && /ofPattern/ && $0 !~ /SSS/ { print FILENAME": generateId 内 ofPattern 缺毫秒" }
+  ' $G1_FILES)
+  if [ -z "$G1_BAD" ]; then
+    ok G1 "所有 ID 生成含毫秒 SSS（常量 + generateId()）"
+  else
+    hit G1 "$G1_BAD"
+  fi
 fi
 
 # G2 持久化路径不得用 now()，必须从实体 createdAt 推导（跨日复制丢轮次）

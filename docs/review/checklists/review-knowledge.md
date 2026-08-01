@@ -18,6 +18,9 @@
 | K5 | `data/` 各子目录：损坏文件、孤儿文件、测试残留、重复堆积 | records 混入 10+ 测试文件（P2，已修）|
 | K6 | 文件格式 ↔ Repository 解析器一致（如 `project/tasks/` ↔ `ProjectFileRepository.ENTRY_PATTERN`）| 任务多行 title 写坏 07.md（P0，已修）|
 | K7 | `data/identity/`、`data/trading/` 等目录存在；sample 文件（git 追踪）与真实文件格式一致 | 缺 identity/trading 目录（P2，已修）|
+| K12 | `data/records/` 下"非 `rec_` 前缀且非 `cards/` 子目录"的 .md 视为孤儿 → 标记待迁移（对齐 CardMigrationService 扫描），迁移而非手动删除 | 3 个卡片孤立在 records/2026/07/22/，两份仓库读不到（P1 #16a）|
+| K13 | `os/*-os/definition/` 声称能力 ↔ `domain.*` 包实际类逐项对照，防架构愿景文档与代码长期漂移 | trading/life definition 过度描述（P2 #39）|
+| K14 | `os/` 目录 rename/重组后逐文件核对同级文档目录表是否同步（`git log --name-status` R 项 × 引用文件 grep）| trading-os/README 漏 definition/（P2 #40）|
 
 ## 隐私红线
 

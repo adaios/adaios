@@ -1,7 +1,7 @@
 ---
 title: 审核流程 Skill 化（Review Skill）
 date: 2026-08-01
-status: draft
+status: implemented
 ---
 
 ## 一、背景
@@ -11,7 +11,7 @@ status: draft
 1. **方法没有沉淀**：10 个审查维度埋在 `docs/review/20260801-project-review.md` 里，下次得重新读报告、重新设计
 2. **状态不滚动**：32 项跟踪表是死文档，已修复 / 未修复无法自动衔接下一次审查
 
-**目标**：把"审查能力"变成项目资产——一个 `/review` 命令 + 4 个角色 + 可积累的检查点清单，每次审核自动带上一次状态。
+**目标**：把"审查能力"变成项目资产——一个 `/review` 命令 + 5 个角色 + 可积累的检查点清单，每次审核自动带上一次状态。
 
 ## 二、设计决策（已确认）
 
@@ -49,7 +49,8 @@ docs/review/checklists/review-docs.md   ← 检查点清单（活文档，每次
 docs/review/checklists/review-backend.md
 docs/review/checklists/review-frontend.md
 docs/review/checklists/review-product.md
-docs/review/YYYYMMDD-review.md          ← 输出报告（带滚动状态表）
+docs/review/checklists/review-knowledge.md
+docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增量，报告不新建）
 ```
 
 **角色与检查点分离**：Agent 定义只写"你是谁、怎么审"，检查点清单单独存文件由 Agent 读取。这样换角色/换模型清单不丢，清单本身可独立演进。

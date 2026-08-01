@@ -6,7 +6,7 @@
 
 | 目录 | 内容 | 说明 |
 |:-----|:-----|:-----|
-| [ai-native/](ai-native/) | AI Native Engineering Framework（v1.0）| 7 篇：Context / Workflow / Team / Agent / Knowledge / Engineering Standard |
+| [ai-native/](ai-native/) | AI Native Engineering Framework（v1.0）| 6 主题 + 1 索引：Context / Workflow / Team / Agent / Knowledge / Engineering Standard |
 | [ai-terms/](ai-terms/) | AI 技术名词文稿 | 术语收集稿 |
 
 ## 规则

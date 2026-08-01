@@ -22,14 +22,14 @@
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| G5 | `grep -rn "@JsonGetter\|@JsonIgnore" services/adai-core/src/main/java/domain` — 计算字段（PnL/市值等）必须序列化，前端 fromJson 才能读到 | Position 计算字段不序列化 → PnL 恒 0（P1，已修）|
+| G5 | `grep -rn "@JsonGetter\|@JsonProperty" services/adai-core/src/main/java/domain/trading` — 计算字段（PnL/市值等）必须序列化，前端 fromJson 才能读到 | Position 计算字段不序列化 → PnL 恒 0（P1，已修）|
 | G6 | `grep -rn "setState" apps/adai-app/lib --include=*.dart` — 异步回调 setState 前必须有 `mounted` 守卫 | `_loadFeed`/`_loadMore` 漏守卫（P1，已修）|
 
 ## 场景路由
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| G7 | `grep -rn "compose(\|enrichFromContributors" services/adai-core/src/main/java/kernel/context` — 确认 scene 实际传入 Contributor 的 `supports()`，而非死参数 | `"trading"` scene 从未传入 → 知识注入全失效（战略缺口，已修）|
+| G7 | `grep -rn "contextEngine.compose\|engine.compose" services/adai-core/src/main/java/application` — 确认 scene 实际传入 Contributor 的 `supports()`，而非死参数（允许固定字面量如 retry 的 `compose("note", record)`，但须存在传变量的调用）| `"trading"` scene 从未传入 → 知识注入全失效（战略缺口，已修）|
 
 ---
 **追加方式**：发现新的 P0 级风险模式 → 在对应分组下追加一行，注明日期。
