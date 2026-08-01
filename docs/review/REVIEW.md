@@ -22,9 +22,6 @@ mode: --full 全量（v0.1.0 发布前）
 
 | # | 优先级 | 问题 | 位置 | 状态 |
 |:-:|:------:|:-----|:-----|:----:|
-| 60 | P1 | Feed `type=action` 无前端消费（待办闭环 UI 不可达，PATCH done 未调用）| `apps/adai-app/` | 📋 v0.2.0 |
-| 61 | P1 | Feed 分页终止条件失效（totalToday 含前端过滤的 ai_note/action，load more 不收敛 + 空态误判）| `main_page.dart` | 📋 v0.2.0 |
-| 62 | P2 | memory 页未展示 kind/topic/superseded/actionable/doneAt 新字段 | `memory_page.dart` | 📋 v0.2.0 |
 | 19 | P2 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办（数据量小）|
 | 22 | P2 | kernel 反向依赖 infrastructure 类型 | `IntentRecognizer`/`ContextEngine`/`MemoryService` | 📋 待办（有意跳过，高风险）|
 
@@ -32,6 +29,7 @@ mode: --full 全量（v0.1.0 发布前）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 60/61/62 | v0.2.0 前端 actionable UI 消费：action 待办卡+完成按钮（`ca2d4a8`）、Feed 分页终止修复（totalToday 只计核心，`ca2d4a8`）、memory 页 kind/superseded/待办展示（`7d9b607`）| ✅ 2026-08-02 |
 | 后端 P1 ×4 | actionable 筛选豁免（P1-1）+ 无限重补修复（重补筛选改已处理判定）+ ID 单调统一 IdGenerator（P1-2）+ rebuild 幂等（P1-3）+ 跨日升级（P1-4，findByRecordId 365 天）（`c41c2b7`）| ✅ 2026-08-02 |
 | 13 | interfaces 层编排重复三处 → RecordUnderstandingService 统一 compose→understand（`bdb83da`）| ✅ 2026-08-02 |
 | 33/38/39/41/21/23 | 第三批 6 项：review 路由表补 `.claude/**`（自审盲区闭合）；docs/README 索引登记 reference/decisions；os definition 加架构愿景声明+修正"os 实现接口"表述；data-flow 更新卡片路径/组装流程/断裂点；ProjectFileRepository save/delete 保留手写注释；TradingController conflicts 改解析真实 rules.md（空仓→R119、单吊→R96）| ✅ 2026-08-01 |

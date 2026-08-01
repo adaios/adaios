@@ -300,6 +300,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **v0.2.0 前端 actionable 闭环 + 行情嵌入** ✅：action 待办卡 + 完成按钮（PATCH done）、memory 页 kind/superseded/待办标记、Feed 分页终止修复（totalToday 只计核心）、L5 大盘行情条 type=market（`a4c584b`/`ca2d4a8`/`7d9b607`）
 - **记忆系统进化 Phase 1-5** ✅：kind 类型（`135f671`）+ 主题级合并 superseded（`7e98555`）+ actionable 闭环 + PATCH /memory/{id}/done（`8ef3739`）+ 时效淘汰（`c96e83b`）+ 筛选降噪（`b6a169c`）
 - **文档体系精简** ✅：产品路线 v1 文档（`docs/architecture/product-roadmap.md`，唯一蓝图 + 路线驱动开发）+ 文档结构精简（inbox 归位 17 个重复/未定型文件 + frontend-reference 合并 + data-flow 并入 system-architecture + 引用统一，`26f130d`/`ad3f58a`）
 - **产品发布版本机制 RFC** ✅：版本号规则 + 发布流程 + Release Notes 模板 + v0.1.0 规划（`docs/rfc/20260801-release-versioning.md`，draft 待确认）
@@ -324,6 +325,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | A 行情接入 | Phase 2 (主动推送) | 📋 待做 |
 | C Life OS | Phase 0-3 | ⏸ 等数据积累 |
 | 记忆系统进化 | Phase 1-5 (kind/主题合并/actionable/时效/降噪) | ✅ 完成 |
+| v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
 
 ### 测试状态
 - **后端** 100+ 测试，0 失败

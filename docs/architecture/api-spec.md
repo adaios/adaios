@@ -204,11 +204,11 @@
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|
-| `type` | String | `record` / `card` / `ai_note` / `action`（未完成行动提醒，记忆进化 Phase 3）|
+| `type` | String | `record` / `card` / `ai_note` / `action`（未完成行动提醒，Phase 3）/ `market`（大盘行情，v0.2.0）|
 | `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
-| `totalToday` | int | 今天一共多少条记录（不分页的总数） |
+| `totalToday` | int | **核心输入条数**（record/card，不含 ai_note/action/market 附加）；分页终止基准 |
 
 ---
 
