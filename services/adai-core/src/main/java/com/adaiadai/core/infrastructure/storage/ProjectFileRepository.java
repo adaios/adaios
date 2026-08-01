@@ -45,12 +45,12 @@ public class ProjectFileRepository implements TaskRepository {
     private static final Pattern ENTRY_PATTERN = Pattern.compile(
             "---\\n" +
                     "id:\\s*(\\S+)\\n" +
-                    "title:\\s*(.+)\\n" +
-                    "description:\\s*(.*)\\n" +
+                    "title:\\s*([^\\n]*)\\n" +
+                    "description:\\s*([^\\n]*)\\n" +
                     "status:\\s*(\\S+)\\n" +
                     "priority:\\s*(\\S+)\\n" +
                     "tags:\\s*\\[([^\\]]*)\\]\\n" +
-                    "rfcRef:\\s*(.*)\\n" +
+                    "rfcRef:\\s*([^\\n]*)\\n" +
                     "createdAt:\\s*(\\S+)\\n" +
                     "updatedAt:\\s*(\\S+)\\n" +
                     "---\\n" +
@@ -177,6 +177,8 @@ public class ProjectFileRepository implements TaskRepository {
     }
 
     private String formatTaskEntry(Task task) {
+        String title = singleLine(task.title());
+        String description = singleLine(task.description());
         return """
                 ---
                 id: %s
@@ -192,16 +194,25 @@ public class ProjectFileRepository implements TaskRepository {
                 %s
                 """.strip().formatted(
                 task.id(),
-                task.title(),
-                task.description() != null ? task.description() : "",
+                title,
+                description,
                 task.status().name(),
                 task.priority(),
                 String.join(", ", task.tags()),
                 task.rfcRef() != null ? task.rfcRef() : "",
                 task.createdAt().toString(),
                 task.updatedAt().toString(),
-                task.title()
+                title
         );
+    }
+
+    /**
+     * 字段值单行化：换行/回车替换为空格，连续空格压缩。
+     * 防止多行 title/description 破坏条目格式（history: 7-30 多行 title 写坏 07.md，6146 行重复堆积）。
+     */
+    private String singleLine(String s) {
+        if (s == null || s.isBlank()) return "";
+        return s.replace('\r', ' ').replace('\n', ' ').replaceAll(" +", " ").strip();
     }
 
     private List<Task> parseEntries(String content) {

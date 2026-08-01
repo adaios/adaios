@@ -61,7 +61,8 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
   }
 
   Future<void> _createTask() async {
-    final title = _titleCtrl.text.trim();
+    // 标题单行化：换行/tab/连续空格压成单个空格，防止多行标题破坏后端条目格式
+    final title = _titleCtrl.text.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('请输入任务标题', style: TextStyle(color: AppColors.darkGrey1)),

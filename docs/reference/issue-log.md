@@ -13,7 +13,7 @@
 > - **性能问题** — 卡顿、渲染阻塞
 > - **死代码** — 定义的逻辑从未被使用
 >
-> **文档版本：** v5.0 | **最后更新：** 2026-07-29
+> **文档版本：** v5.0 | **最后更新：** 2026-08-01
 
 ---
 
@@ -79,6 +79,22 @@
 **代码改动：** `RecordController.java` — `handleDecision()` 方法（80 行）和 `DecisionResponse` record 已删除。
 
 **当前代码：** 已不存在。
+
+---
+
+### #5 — 任务解析正则跨行 bug + 任务文件数据损坏（Project OS）
+
+**代码改动：**
+- `ProjectFileRepository.java` — `ENTRY_PATTERN` 的字段匹配 `.+`/`.*` 在 `Pattern.DOTALL` 下贪婪跨行，`findAll()` 只能解析出 1 条任务。改为 `[^\n]*` 强制单行字段值。
+- 同文件 `formatTaskEntry()` 新增 `singleLine()` — title/description 换行转空格，防止多行标题再次写坏条目。
+- `project_task_page.dart` — 创建任务时 title 换行/连续空白压成单空格（源头拦截）。
+- 新增 `ProjectFileRepositoryTest`（10 个测试）覆盖多条目解析、单行化、CRUD、统计。
+
+**根因（本质类型：逻辑设计）：** 正则开启 `DOTALL` 后 `.` 匹配换行，`title:\s*(.+)\n` 的 `.+` 贪婪吞掉整个文件，多条目文件只解析出第一条。7-30 某次多行 title 写入 `data/project/tasks/2026/07.md`，文件膨胀到 6146 行/219KB（10 个任务重复 512 次）。
+
+**数据处理：** `07.md` 已按 id 去重重建（6146 → 122 行），10 个任务字段完整保留。
+
+**待你判断：** `findAll()` 现在返回全部任务。07.md 中 10 个任务全为 TODO，但对应提交均已存在（实际已完成），是否需要批量标记 DONE。
 
 ---
 
