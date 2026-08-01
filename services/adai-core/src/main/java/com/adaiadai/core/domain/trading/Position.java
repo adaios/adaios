@@ -1,5 +1,7 @@
 package com.adaiadai.core.domain.trading;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -29,6 +31,7 @@ public record Position(
     /**
      * 持仓市值。
      */
+    @JsonGetter
     public BigDecimal marketValue() {
         return currentPrice.multiply(BigDecimal.valueOf(quantity));
     }
@@ -36,6 +39,7 @@ public record Position(
     /**
      * 持仓成本。
      */
+    @JsonGetter
     public BigDecimal costValue() {
         return avgCost.multiply(BigDecimal.valueOf(quantity));
     }
@@ -43,6 +47,7 @@ public record Position(
     /**
      * 浮动盈亏金额。
      */
+    @JsonGetter
     public BigDecimal pnl() {
         return marketValue().subtract(costValue());
     }
@@ -50,6 +55,7 @@ public record Position(
     /**
      * 浮动盈亏百分比。
      */
+    @JsonGetter
     public BigDecimal pnlPercent() {
         if (avgCost.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
@@ -62,6 +68,7 @@ public record Position(
     /**
      * 以当前市价平仓全部持仓的金额。
      */
+    @JsonGetter
     public BigDecimal liquidationValue() {
         return marketValue();
     }

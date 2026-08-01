@@ -85,6 +85,7 @@ class _MainPageState extends State<MainPage>
     try {
       final brief = await _api.getBrief();
       final feed = await _api.getFeed(page: 0, size: _pageSize);
+      if (!mounted) return;
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData())
@@ -97,7 +98,8 @@ class _MainPageState extends State<MainPage>
         _loading = false;
       });
     } catch (e) {
-      if (mounted) _showError('加载失败');
+      if (!mounted) return;
+      _showError('加载失败');
       setState(() => _loading = false);
     }
   }
@@ -442,7 +444,8 @@ class _MainPageState extends State<MainPage>
         _loadingMore = false;
       });
     } catch (e) {
-      if (mounted) _showError('加载更多失败');
+      if (!mounted) return;
+      _showError('加载更多失败');
       setState(() => _loadingMore = false);
       _currentPage--;
     }

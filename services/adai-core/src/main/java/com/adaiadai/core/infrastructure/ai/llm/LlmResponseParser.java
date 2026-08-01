@@ -195,6 +195,8 @@ public class LlmResponseParser {
                         int codepoint = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
                         sb.append(Character.toChars(codepoint));
                         last = next.end();
+                        // 跳过低代理，防止外层 matcher 从 m.end() 重复命中导致越界
+                        m.region(next.end(), text.length());
                         continue;
                     }
                 }

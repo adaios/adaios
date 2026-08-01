@@ -60,12 +60,12 @@ method: 3 路并行审查 Agent（后端、前端、架构知识打通）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| 7 | LlmResponseParser 遇 emoji 代理对抛异常 → 整段降级丢字段 | `LlmResponseParser.java:185` | 📋 待办 |
-| 8 | 腾讯行情缓存键不一致 → 缓存永久 miss | `TencentMarketDataSource.java:62` | 📋 待办 |
-| 9 | AI 失败时删除刚保存的用户记录 | `RecordController.java:95` | 📋 待办 |
-| 10 | 前端 `_loadFeed`/`_loadMore` 无 mounted 守卫 | `main_page.dart:92,101,446` | 📋 待办 |
-| 11 | 持仓 PnL 恒 0（后端计算字段不序列化）| `Position.java` + `api_service.dart:642` | 📋 待办 |
-| 12 | 复盘绕过 ContextEngine 手拼 prompt，规则从不进 prompt | `TradingReviewAppService.java` | 📋 待办（任务 #9）|
+| 7 | LlmResponseParser 遇 emoji 代理对抛异常 → 整段降级丢字段 | `LlmResponseParser.java:185` | ✅ 已修（region 跳过代理对 + 单测）|
+| 8 | 腾讯行情缓存键不一致 → 缓存永久 miss | `TencentMarketDataSource.java:62` | ✅ 已修（解析用行前缀提取带前缀键 + 4 单测）|
+| 9 | AI 失败时删除刚保存的用户记录 | `RecordController.java:95` | ✅ 已修（保留记录返回降级，RetryService 补齐）|
+| 10 | 前端 `_loadFeed`/`_loadMore` 无 mounted 守卫 | `main_page.dart:92,101,446` | ✅ 已修（补 `!mounted` 守卫）|
+| 11 | 持仓 PnL 恒 0（后端计算字段不序列化）| `Position.java` + `api_service.dart:642` | ✅ 已修（`@JsonGetter` + 序列化单测）|
+| 12 | 复盘绕过 ContextEngine 手拼 prompt，规则从不进 prompt | `TradingReviewAppService.java` | 📋 待办 |
 
 ### 🟡 P2 — 架构/工程
 

@@ -47,9 +47,13 @@ public class TencentMarketDataSource implements MarketDataSource {
     );
 
     public TencentMarketDataSource() {
-        this.httpClient = HttpClient.newBuilder()
+        this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
-                .build();
+                .build());
+    }
+
+    TencentMarketDataSource(HttpClient httpClient) {
+        this.httpClient = httpClient;
         log.info("TencentMarketDataSource 初始化 | API={}", String.format(API_URL, "sh000001"));
     }
 
@@ -57,11 +61,14 @@ public class TencentMarketDataSource implements MarketDataSource {
     public Map<String, MarketData> quote(List<String> codes) {
         if (codes == null || codes.isEmpty()) return Map.of();
 
-        // 检查缓存
+        // 缓存键统一用规范化 API 代码（toApiCode），避免带前缀/6位混用导致永久 miss
         Map<String, MarketData> result = new LinkedHashMap<>();
         List<String> uncached = new ArrayList<>();
+        Map<String, String> requestKeyByApiCode = new HashMap<>();
         for (String code : codes) {
-            CacheEntry entry = cache.get(code);
+            String apiCode = toApiCode(code);
+            requestKeyByApiCode.put(apiCode, code);
+            CacheEntry entry = cache.get(apiCode);
             if (entry != null && !entry.isExpired()) {
                 result.put(code, entry.data);
             } else {
@@ -93,14 +100,18 @@ public class TencentMarketDataSource implements MarketDataSource {
 
             Map<String, MarketData> fetched = parseResponse(body);
             for (var entry : fetched.entrySet()) {
-                cache.put(entry.getKey(), new CacheEntry(entry.getValue()));
-                result.put(entry.getKey(), entry.getValue());
+                // 缓存用规范化 API 键存储（响应键是 6 位代码）
+                String apiCode = toApiCode(entry.getKey());
+                cache.put(apiCode, new CacheEntry(entry.getValue()));
+                // 返回键与调用方请求一致
+                String requestKey = requestKeyByApiCode.get(apiCode);
+                result.put(requestKey != null ? requestKey : entry.getKey(), entry.getValue());
             }
         } catch (Exception e) {
             log.warn("Tencent行情请求失败: {}", e.getMessage());
             // 返回已有缓存数据（哪怕已过期也比没有好）
             for (String code : uncached) {
-                CacheEntry entry = cache.get(code);
+                CacheEntry entry = cache.get(toApiCode(code));
                 if (entry != null) {
                     result.put(code, entry.data);
                 }
@@ -147,8 +158,10 @@ public class TencentMarketDataSource implements MarketDataSource {
             line = line.trim();
             if (line.isEmpty() || !line.contains("=")) continue;
 
-            // 提取 = 号后面的引号内容
+            // 从行前缀 v_sh000001 提取带交易所前缀的 API 代码
             int eqIdx = line.indexOf('=');
+            String varName = line.substring(0, eqIdx).trim();
+            String apiCode = varName.startsWith("v_") ? varName.substring(2) : varName;
             String valuePart = line.substring(eqIdx + 1);
             // 去掉首尾引号和分号
             valuePart = valuePart.replaceAll("^\"|\";?$", "");
@@ -157,7 +170,6 @@ public class TencentMarketDataSource implements MarketDataSource {
             if (fields.length < 33) continue;
 
             try {
-                String code = fields[2].trim();
                 String name = fields[1].trim();
                 BigDecimal price = parseBigDecimal(fields[3]);
                 BigDecimal yesterdayClose = parseBigDecimal(fields[4]);
@@ -169,8 +181,8 @@ public class TencentMarketDataSource implements MarketDataSource {
                 BigDecimal low = fields.length > 44 ? parseBigDecimal(fields[44]) : BigDecimal.ZERO;
                 long volume = parseLong(fields[6]);
 
-                MarketData md = new MarketData(code, name, price, yesterdayClose, open, high, low, changePercent, volume);
-                result.put(code, md);
+                MarketData md = new MarketData(apiCode, name, price, yesterdayClose, open, high, low, changePercent, volume);
+                result.put(apiCode, md);
             } catch (Exception e) {
                 log.warn("解析行情行失败: {}", e.getMessage());
             }

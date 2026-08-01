@@ -93,10 +93,18 @@ public class RecordController {
             }
             return handleStatem(record);
         } catch (Exception e) {
-            // AI 处理失败 → 删除已保存的记录，避免残留"空数据"
-            log.warn("AI processing failed, deleting record | id={} | error={}", record.id(), e.getMessage());
-            recordRepository.deleteById(record.id());
-            throw e;
+            // AI 处理失败 → 保留用户记录（不删除，数据不丢），AI 增强留空，
+            // 由 RecordRetryService 每 15 分钟自动补齐 summary/tags
+            log.warn("AI processing failed, record kept for retry | id={} | error={}",
+                    record.id(), e.getMessage());
+            ContentRecord kept = new ContentRecord(
+                    record.id(), record.type(), record.source(), record.title(), record.content(),
+                    List.of(), record.createdAt(), "log", "recorded", "life"
+            );
+            recordRepository.save(kept);
+            return ResponseEntity.ok(new StatemResponse(
+                    "log", record.id(), record.content(), List.of(), "recorded", "life"
+            ));
         }
     }
 

@@ -220,4 +220,25 @@ class LlmResponseParserTest {
         AiUnderstanding r = LlmResponseParser.parse(json);
         assertEquals("life", r.domain(), "domain should decode unicode escapes");
     }
+
+    @Test
+    void parse_unicodeSurrogatePair_emoji_decodesWithoutCrash() {
+        // 回归：代理对（emoji）此前导致外层 matcher 重复命中低代理 → StringIndexOutOfBoundsException，
+        // 整段回复降级纯文本并丢失 summary/tags。此用例验证不再崩溃且正确解码。
+        String emoji = "\\uD83C\\uDF3F"; // 🌿 (U+1F33F) surrogate pair
+        String raw = emoji + " 今天收获不错，继续保持";
+        AiUnderstanding r = LlmResponseParser.parse(raw);
+        assertNotNull(r);
+        assertTrue(r.summary().contains("🌿"), "emoji 代理对应正确解码: " + r.summary());
+        assertTrue(r.summary().contains("今天收获不错"), "代理对后的中文不应丢失: " + r.summary());
+    }
+
+    @Test
+    void parse_mixedTextWithEmojiAndJson_doesNotCrash() {
+        // 自然语言 + emoji 代理对 + JSON 混合输出
+        String raw = "好的，" + "\\uD83C\\uDF3F" + " 已记录。\n```json\n{\"summary\": \"记录完成\", \"tags\": [\"日常\"], \"sentiment\": \"neutral\"}\n```";
+        AiUnderstanding r = LlmResponseParser.parse(raw);
+        assertNotNull(r);
+        assertEquals("记录完成", r.summary(), "混合输出应提取到 JSON 的 summary");
+    }
 }
