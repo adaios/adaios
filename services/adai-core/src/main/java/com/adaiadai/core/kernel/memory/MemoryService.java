@@ -65,8 +65,21 @@ public class MemoryService {
             return;
         }
 
-        String path = memoryFilePath(memory);
-        String entry = formatMemoryEntry(memory);
+        // Phase 2：主题合并——新记忆与近 30 天记忆 tags 重叠，旧版本标 superseded 建立演变链
+        Memory toPersist = memory;
+        if (!isDegraded) {
+            Optional<Memory> match = findTopicMatch(memory);
+            if (match.isPresent()) {
+                Memory prev = match.get();
+                String topicId = (prev.topic() != null && !prev.topic().isBlank()) ? prev.topic() : prev.id();
+                markSuperseded(prev, memory.id());
+                toPersist = withTopic(memory, topicId);
+                log.info("记忆主题进化：{} superseded → {} | topic={}", prev.id(), memory.id(), topicId);
+            }
+        }
+
+        String path = memoryFilePath(toPersist);
+        String entry = formatMemoryEntry(toPersist);
 
         String existing = fileStorage.read(path);
         String content;
@@ -77,14 +90,14 @@ public class MemoryService {
                     # 记忆 - %s
 
                     %s
-                    """.formatted(memory.createdAt().toLocalDate().toString(), entry);
+                    """.formatted(toPersist.createdAt().toLocalDate().toString(), entry);
         }
         fileStorage.write(path, content);
-        if (memory.patterns() != null && !memory.patterns().isEmpty()) {
+        if (toPersist.patterns() != null && !toPersist.patterns().isEmpty()) {
             log.info("记忆已沉淀 | recordId={} | summary={} | patterns={}",
-                    memory.recordId(), truncate(memory.summary(), 40), memory.patterns().size());
+                    toPersist.recordId(), truncate(toPersist.summary(), 40), toPersist.patterns().size());
         } else {
-            log.info("记忆已沉淀 | recordId={} | summary={}", memory.recordId(), truncate(memory.summary(), 40));
+            log.info("记忆已沉淀 | recordId={} | summary={}", toPersist.recordId(), truncate(toPersist.summary(), 40));
         }
     }
 
@@ -274,6 +287,87 @@ public class MemoryService {
         return result;
     }
 
+    /**
+     * 获取最近指定天数的活跃记忆（排除 superseded，记忆进化 Phase 2）。
+     * <p>
+     * Context Engine 回读用它，只取各主题最新未取代版本（演变链保留在文件中）。
+     */
+    public List<Memory> recentActive(int days) {
+        return recent(days).stream()
+                .filter(m -> !m.superseded())
+                .collect(Collectors.toList());
+    }
+
+    // ── 记忆进化 Phase 2：主题级合并 ──
+
+    /**
+     * 主题匹配（MVP）：新记忆与近 30 天记忆做 tags 重叠匹配（≥1 重叠标签 → 候选），
+     * 取创建时间最新的未 superseded 候选作为当前主题版本。
+     */
+    private Optional<Memory> findTopicMatch(Memory memory) {
+        if (memory.tags() == null || memory.tags().isEmpty()) return Optional.empty();
+        Memory latest = null;
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                // 新记忆尚未写入文件；用 recordId 区分同记录（id 毫秒精度可能碰撞，不作为匹配依据）
+                if (m.superseded()) continue;
+                if (m.recordId().equals(memory.recordId())) continue;
+                if (m.tags() != null && hasOverlap(m.tags(), memory.tags())) {
+                    if (latest == null || m.createdAt().isAfter(latest.createdAt())) {
+                        latest = m;
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(latest);
+    }
+
+    /**
+     * 标记旧版本记忆为 superseded，evolvedTo 指向新版本（建立演变链）。
+     */
+    private void markSuperseded(Memory prev, String evolvedTo) {
+        String path = MEMORY_DIR + "/" + prev.createdAt().format(MONTH_FORMATTER) + ".md";
+        String content = fileStorage.read(path);
+        if (content == null || content.isBlank()) return;
+
+        Memory updated = new Memory(prev.id(), prev.recordId(), prev.kind(), prev.summary(),
+                prev.patterns(), prev.preferences(), prev.tags(), prev.sentiment(),
+                prev.actionable(), prev.suggestion(), prev.createdAt(),
+                prev.topic(), true, evolvedTo);
+
+        String newEntry = formatMemoryEntry(updated);
+        Matcher matcher = ENTRY_SPLIT.matcher(content);
+        StringBuilder sb = new StringBuilder();
+        boolean replaced = false;
+        while (matcher.find()) {
+            String entry = matcher.group();
+            if (entry.contains("recordId: " + prev.recordId())) {
+                sb.append(newEntry).append("\n");
+                replaced = true;
+            } else {
+                sb.append(entry).append("\n");
+            }
+        }
+        if (replaced) {
+            fileStorage.write(path, sb.toString().strip());
+        }
+    }
+
+    private Memory withTopic(Memory memory, String topicId) {
+        return new Memory(memory.id(), memory.recordId(), memory.kind(), memory.summary(),
+                memory.patterns(), memory.preferences(), memory.tags(), memory.sentiment(),
+                memory.actionable(), memory.suggestion(), memory.createdAt(),
+                topicId, false, null);
+    }
+
+    private boolean hasOverlap(List<String> a, List<String> b) {
+        for (String s : a) {
+            if (b.contains(s)) return true;
+        }
+        return false;
+    }
+
     // ── 内部方法 ──
 
     private String memoryFilePath(Memory memory) {
@@ -330,6 +424,9 @@ public class MemoryService {
                 id: %s
                 recordId: %s
                 kind: %s
+                topic: %s
+                superseded: %b
+                evolvedTo: %s
                 tags: [%s]
                 sentiment: %s
                 actionable: %b
@@ -343,6 +440,9 @@ public class MemoryService {
                 memory.id(),
                 memory.recordId(),
                 memory.kind(),
+                memory.topic() != null ? memory.topic() : "",
+                memory.superseded(),
+                memory.evolvedTo() != null ? memory.evolvedTo() : "",
                 String.join(", ", memory.tags()),
                 memory.sentiment(),
                 memory.actionable(),
@@ -378,6 +478,12 @@ public class MemoryService {
                 // 旧条目无 kind 字段 → 默认 insight（记忆进化 Phase 1 向后兼容）
                 String kind = fields.getOrDefault("kind", Memory.KIND_INSIGHT);
                 String sentiment = fields.getOrDefault("sentiment", "neutral");
+                // Phase 2：topic/superseded/evolvedTo（旧条目默认无主题、未取代）
+                String topic = fields.getOrDefault("topic", null);
+                if ("".equals(topic) || "null".equals(topic)) topic = null;
+                boolean superseded = Boolean.parseBoolean(fields.getOrDefault("superseded", "false"));
+                String evolvedTo = fields.getOrDefault("evolvedTo", null);
+                if ("".equals(evolvedTo) || "null".equals(evolvedTo)) evolvedTo = null;
                 boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
                 String suggestion = fields.getOrDefault("suggestion", null);
                 if ("null".equals(suggestion)) suggestion = null;
@@ -391,7 +497,7 @@ public class MemoryService {
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
                 result.add(new Memory(id, recordId, kind, body, patterns, preferences,
-                        tags, sentiment, actionable, suggestion, createdAt));
+                        tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());
             }

@@ -26,6 +26,9 @@ import java.util.List;
  * @param actionable  是否需要行动
  * @param suggestion  行动建议
  * @param createdAt   记忆创建时间
+ * @param topic       所属主题 id（记忆进化 Phase 2：同话题记忆归为一主题）
+ * @param superseded  是否已被新版本取代（Phase 2：新记忆成为主题最新版本，旧版本标 true）
+ * @param evolvedTo   指向新版本记忆 id（Phase 2：superseded 时的演变链指针）
  */
 public record Memory(
         String id,
@@ -38,7 +41,10 @@ public record Memory(
         String sentiment,
         boolean actionable,
         String suggestion,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String topic,
+        boolean superseded,
+        String evolvedTo
 ) {
 
     public static final String KIND_FACT = "fact";
@@ -71,7 +77,8 @@ public record Memory(
                 understanding.sentiment(),
                 understanding.actionable(),
                 understanding.actionSuggestion(),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                null, false, null
         );
     }
 
@@ -89,7 +96,8 @@ public record Memory(
         return new Memory(
                 generateId(), recordId, KIND_FACT, fallback,
                 List.of(), List.of(), List.of(),
-                "neutral", false, "DEGRADED", LocalDateTime.now()
+                "neutral", false, "DEGRADED", LocalDateTime.now(),
+                null, false, null
         );
     }
 

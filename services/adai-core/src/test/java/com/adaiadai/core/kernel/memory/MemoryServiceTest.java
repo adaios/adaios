@@ -171,4 +171,50 @@ class MemoryServiceTest {
         assertTrue(memoryService.findByKind(Memory.KIND_PATTERN).stream().anyMatch(m -> m.recordId().equals("rec_k5")));
         assertTrue(memoryService.findByKind(Memory.KIND_FACT).stream().noneMatch(m -> m.recordId().equals("rec_k5")));
     }
+
+    // ── 记忆进化 Phase 2：主题级合并 ──
+
+    private AiUnderstanding insightWithTags(String summary, String insight, List<String> tags) {
+        return new AiUnderstanding(summary, insight, null, null, tags, "neutral", "life", false, null, null);
+    }
+
+    @Test
+    void persist_topicMerge_marksOldSuperseded() {
+        Memory first = Memory.fromUnderstanding("rec_t1", insightWithTags("喝茶", "用户喜欢茉莉花茶", List.of("茶")));
+        memoryService.persist(first);
+        Memory second = Memory.fromUnderstanding("rec_t2", insightWithTags("品茶", "品茶偏好乌龙", List.of("茶", "饮品")));
+        memoryService.persist(second);
+
+        List<Memory> all = memoryService.findByDate(first.createdAt().toLocalDate());
+        assertEquals(2, all.size());
+        Memory old = all.get(0);
+        Memory fresh = all.get(1);
+        assertTrue(old.superseded(), "旧版本应标 superseded");
+        assertEquals(second.id(), old.evolvedTo(), "evolvedTo 指向新版本");
+        assertFalse(fresh.superseded(), "新版本不应 superseded");
+        assertEquals(old.id(), fresh.topic(), "新版本 topic 锚定旧版本 id");
+    }
+
+    @Test
+    void persist_noTagOverlap_noMerge() {
+        Memory a = Memory.fromUnderstanding("rec_t3", insightWithTags("喝茶", "茶", List.of("茶")));
+        Memory b = Memory.fromUnderstanding("rec_t4", insightWithTags("买股", "股票", List.of("股票")));
+        memoryService.persist(a);
+        memoryService.persist(b);
+
+        List<Memory> all = memoryService.findByDate(a.createdAt().toLocalDate());
+        assertEquals(2, all.size());
+        assertTrue(all.stream().noneMatch(Memory::superseded), "无重叠标签不应合并");
+        assertTrue(all.stream().noneMatch(m -> m.topic() != null), "无重叠标签不应有主题");
+    }
+
+    @Test
+    void recentActive_excludesSuperseded() {
+        memoryService.persist(Memory.fromUnderstanding("rec_t5", insightWithTags("喝茶", "茶", List.of("茶"))));
+        memoryService.persist(Memory.fromUnderstanding("rec_t6", insightWithTags("品茶", "乌龙", List.of("茶", "饮品"))));
+
+        List<Memory> active = memoryService.recentActive(7);
+        assertTrue(active.stream().noneMatch(m -> m.recordId().equals("rec_t5")), "superseded 版本不应参与回读");
+        assertTrue(active.stream().anyMatch(m -> m.recordId().equals("rec_t6")));
+    }
 }

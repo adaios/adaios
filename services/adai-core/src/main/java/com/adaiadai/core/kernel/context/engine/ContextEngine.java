@@ -321,7 +321,7 @@ public class ContextEngine {
      * 加载近期的记忆摘要（按标签聚合）。
      */
     private String loadMemorySummary() {
-        List<Memory> recentMemories = memoryService.recent(MEMORY_DAYS);
+        List<Memory> recentMemories = memoryService.recentActive(MEMORY_DAYS);
         if (recentMemories.isEmpty()) {
             return "";
         }
