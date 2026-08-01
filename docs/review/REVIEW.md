@@ -21,7 +21,6 @@ mode: --deep 增量（a4a7c12..cd1231b）
 
 | # | 优先级 | 问题 | 位置 | 状态 |
 |:-:|:------:|:-----|:-----|:----:|
-| 13 | P2 | interfaces 层编排重复三处（compose→understand→persist）| `RecordController`/`RecordFlowAppService`/`RecordRetryService` | 📋 待办（高风险重构，保留长期）|
 | 19 | P2 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办（数据量小）|
 | 22 | P2 | kernel 反向依赖 infrastructure 类型 | `IntentRecognizer`/`ContextEngine`/`MemoryService` | 📋 待办（有意跳过，高风险）|
 
@@ -29,6 +28,7 @@ mode: --deep 增量（a4a7c12..cd1231b）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 13 | interfaces 层编排重复三处 → RecordUnderstandingService 统一 compose→understand（`bdb83da`）| ✅ 2026-08-02 |
 | 33/38/39/41/21/23 | 第三批 6 项：review 路由表补 `.claude/**`（自审盲区闭合）；docs/README 索引登记 reference/decisions；os definition 加架构愿景声明+修正"os 实现接口"表述；data-flow 更新卡片路径/组装流程/断裂点；ProjectFileRepository save/delete 保留手写注释；TradingController conflicts 改解析真实 rules.md（空仓→R119、单吊→R96）| ✅ 2026-08-01 |
 | 12/24/14 | 第二批代码修复 3 项：记忆沉淀断裂（AI 失败降级原文入记忆标 DEGRADED + persist 升级语义洞察覆盖 + 重补过滤防阻塞 + summary 兜底移出 try）、复盘改走 ContextEngine（trading 场景注入规则/知识/行情 + 复盘模板）、测试缺口（新增 Memory/复盘/场景路由 9 个测试；行情/Feed分页/ContextEngine 原已有覆盖，REVIEW 描述过时）| ✅ 2026-08-01 |
 | 16a/34/35/36/37/40/42/43 | 第一批快修 8 项：孤儿卡片迁移 `records/cards/`+清空目录；ship grep 路径修正（api-spec 不再静默跳过）；RFC 滚动 implemented/5 角色/REVIEW.md；guard.md G5/G7 对齐 guard.sh；trading README 补 definition；CLAUDE.md 焦点更新+目录图/data 表述修正；guard.sh G1 空匹配防挂起；零碎拼写/篇数/术语格式 | ✅ 2026-08-01 |
