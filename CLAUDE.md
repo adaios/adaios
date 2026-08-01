@@ -224,6 +224,11 @@ Bug 修复     → 直接改
 | **API Spec** | `docs/architecture/api-spec.md` | 事后同步 | 记录最终接口，不要求在写代码前写 |
 | **UI Flow** | `docs/rfc/` | 复杂交互时 | 半页-1 页 ASCII/流程图 |
 
+### 功能落地（/ship）
+
+- `/ship` 开发收尾闭环：测试 → api-spec 同步 → CLAUDE.md 当前焦点更新 → 新文档登记 → 规范提交
+- 与 `/review` 配套：ship 保证产出完整（上游），review 检查遗漏（下游）
+
 ### 定期审核
 
 - `/review` 触发项目审核（增量默认审 git diff，`--full` 全量）：5 角色（文档/后端/前端/产品UI/知识数据）+ 守护检查，滚动更新 `docs/review/REVIEW.md`
