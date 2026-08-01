@@ -51,7 +51,7 @@ class MemoryControllerTest {
     void getMemories_withDateFilter() throws Exception {
         var memService = mock(MemoryService.class);
         when(memService.findByDate(any())).thenReturn(List.of(
-                new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "neutral", false, null, LocalDateTime.now(), null, false, null, null)
+                new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "neutral", false, null, LocalDateTime.now(), null, false, null, null, null)
         ));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
@@ -68,7 +68,7 @@ class MemoryControllerTest {
     void getByRecordId_returnsMemory() throws Exception {
         var memService = mock(MemoryService.class);
         when(memService.findByRecordId("r1")).thenReturn(
-                Optional.of(new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "positive", true, "buy more", LocalDateTime.now(), null, false, null, null))
+                Optional.of(new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "positive", true, "buy more", LocalDateTime.now(), null, false, null, null, null))
         );
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(

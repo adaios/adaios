@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -222,20 +223,27 @@ public class MemoryService {
      */
     public List<MemoryPattern> findAllPatterns() {
         Map<String, MemoryPattern> merged = new LinkedHashMap<>();
+        Map<String, Double> bestScore = new HashMap<>();
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             for (Memory m : findByDate(date)) {
+                double decay = timeDecay(m);
                 if (m.patterns() != null) {
                     for (MemoryPattern p : m.patterns()) {
-                        // 同内容取最高置信度
-                        merged.merge(p.content(), p,
-                                (a, b) -> a.confidence() >= b.confidence() ? a : b);
+                        // 时效衰减：置信度 × 时间衰减，旧记忆不再平权参与
+                        double score = p.confidence() * decay;
+                        if (score > bestScore.getOrDefault(p.content(), 0.0)) {
+                            bestScore.put(p.content(), score);
+                            merged.put(p.content(), p);
+                        }
                     }
                 }
             }
         }
         return merged.values().stream()
-                .sorted((a, b) -> Double.compare(b.confidence(), a.confidence()))
+                .sorted((a, b) -> Double.compare(
+                        bestScore.getOrDefault(b.content(), 0.0),
+                        bestScore.getOrDefault(a.content(), 0.0)))
                 .collect(Collectors.toList());
     }
 
@@ -244,19 +252,27 @@ public class MemoryService {
      */
     public List<MemoryPreference> findAllPreferences() {
         Map<String, MemoryPreference> merged = new LinkedHashMap<>();
+        Map<String, Double> bestScore = new HashMap<>();
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             for (Memory m : findByDate(date)) {
+                double decay = timeDecay(m);
                 if (m.preferences() != null) {
                     for (MemoryPreference p : m.preferences()) {
-                        merged.merge(p.content(), p,
-                                (a, b) -> a.confidence() >= b.confidence() ? a : b);
+                        // 时效衰减：置信度 × 时间衰减，旧偏好不再平权误导当前决策
+                        double score = p.confidence() * decay;
+                        if (score > bestScore.getOrDefault(p.content(), 0.0)) {
+                            bestScore.put(p.content(), score);
+                            merged.put(p.content(), p);
+                        }
                     }
                 }
             }
         }
         return merged.values().stream()
-                .sorted((a, b) -> Double.compare(b.confidence(), a.confidence()))
+                .sorted((a, b) -> Double.compare(
+                        bestScore.getOrDefault(b.content(), 0.0),
+                        bestScore.getOrDefault(a.content(), 0.0)))
                 .collect(Collectors.toList());
     }
 
@@ -330,7 +346,7 @@ public class MemoryService {
         Memory updated = new Memory(prev.id(), prev.recordId(), prev.kind(), prev.summary(),
                 prev.patterns(), prev.preferences(), prev.tags(), prev.sentiment(),
                 prev.actionable(), prev.suggestion(), prev.createdAt(),
-                prev.topic(), true, evolvedTo, prev.doneAt());
+                prev.topic(), true, evolvedTo, prev.doneAt(), prev.lastConfirmed());
         replaceEntry(prev.createdAt().toLocalDate(), prev.recordId(), updated);
     }
 
@@ -338,7 +354,7 @@ public class MemoryService {
         return new Memory(memory.id(), memory.recordId(), memory.kind(), memory.summary(),
                 memory.patterns(), memory.preferences(), memory.tags(), memory.sentiment(),
                 memory.actionable(), memory.suggestion(), memory.createdAt(),
-                topicId, false, null, memory.doneAt());
+                topicId, false, null, memory.doneAt(), memory.lastConfirmed());
     }
 
     /**
@@ -381,7 +397,7 @@ public class MemoryService {
                     Memory updated = new Memory(m.id(), m.recordId(), m.kind(), m.summary(),
                             m.patterns(), m.preferences(), m.tags(), m.sentiment(),
                             false, m.suggestion(), m.createdAt(),
-                            m.topic(), m.superseded(), m.evolvedTo(), LocalDateTime.now());
+                            m.topic(), m.superseded(), m.evolvedTo(), LocalDateTime.now(), m.lastConfirmed());
                     replaceEntry(date, m.recordId(), updated);
                     log.info("行动标记完成 | memoryId={} | summary={}", memoryId, truncate(m.summary(), 40));
                     return true;
@@ -401,6 +417,59 @@ public class MemoryService {
         return recentActive(30).stream()
                 .filter(m -> m.actionable() && m.doneAt() == null)
                 .collect(Collectors.toList());
+    }
+
+    // ── 记忆进化 Phase 4：时效与淘汰 ──
+
+    /**
+     * 回读确认：更新近期记忆的 lastConfirmed 为当前时间（每天每记忆最多 touch 一次）。
+     * <p>
+     * Context Engine 回读时调用，让"经常回读的记忆"保持时效权重。
+     */
+    public void touchActive() {
+        LocalDateTime now = LocalDateTime.now();
+        for (Memory m : recentActive(30)) {
+            LocalDateTime ref = m.lastConfirmed() != null ? m.lastConfirmed() : m.createdAt();
+            if (Duration.between(ref, now).toDays() < 1) continue;
+            Memory updated = new Memory(m.id(), m.recordId(), m.kind(), m.summary(),
+                    m.patterns(), m.preferences(), m.tags(), m.sentiment(),
+                    m.actionable(), m.suggestion(), m.createdAt(),
+                    m.topic(), m.superseded(), m.evolvedTo(), m.doneAt(), now);
+            replaceEntry(m.createdAt().toLocalDate(), m.recordId(), updated);
+        }
+    }
+
+    /**
+     * 清理过期条目（随 rebuild 触发）：superseded 超 60 天、actionable 完成超 30 天。
+     */
+    public void cleanup() {
+        LocalDateTime now = LocalDateTime.now();
+        int removed = 0;
+        for (int i = 0; i < 365; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                boolean supersededOld = m.superseded()
+                        && Duration.between(m.createdAt(), now).toDays() > 60;
+                boolean doneOld = m.doneAt() != null
+                        && Duration.between(m.doneAt(), now).toDays() > 30;
+                if (supersededOld || doneOld) {
+                    removeFromFile(date, m.recordId());
+                    removed++;
+                }
+            }
+        }
+        if (removed > 0) {
+            log.info("记忆清理完成 | 移除过期条目 {} 条", removed);
+        }
+    }
+
+    /**
+     * 时效衰减因子：0.95^天数（基于 lastConfirmed，未确认时回退 createdAt）。
+     */
+    private double timeDecay(Memory m) {
+        LocalDateTime ref = m.lastConfirmed() != null ? m.lastConfirmed() : m.createdAt();
+        long days = Math.max(0, Duration.between(ref, LocalDateTime.now()).toDays());
+        return Math.pow(0.95, days);
     }
 
     private boolean hasOverlap(List<String> a, List<String> b) {
@@ -470,6 +539,7 @@ public class MemoryService {
                 superseded: %b
                 evolvedTo: %s
                 doneAt: %s
+                lastConfirmed: %s
                 tags: [%s]
                 sentiment: %s
                 actionable: %b
@@ -487,6 +557,7 @@ public class MemoryService {
                 memory.superseded(),
                 memory.evolvedTo() != null ? memory.evolvedTo() : "",
                 memory.doneAt() != null ? memory.doneAt().toString() : "",
+                memory.lastConfirmed() != null ? memory.lastConfirmed().toString() : "",
                 String.join(", ", memory.tags()),
                 memory.sentiment(),
                 memory.actionable(),
@@ -538,6 +609,16 @@ public class MemoryService {
                         doneAt = null;
                     }
                 }
+                // Phase 4：lastConfirmed（最近回读/确认时间，默认 null → 衰减回退 createdAt）
+                LocalDateTime lastConfirmed = null;
+                String lcStr = fields.getOrDefault("lastConfirmed", null);
+                if (lcStr != null && !lcStr.isBlank() && !"null".equals(lcStr)) {
+                    try {
+                        lastConfirmed = LocalDateTime.parse(lcStr);
+                    } catch (Exception e) {
+                        lastConfirmed = null;
+                    }
+                }
                 boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
                 String suggestion = fields.getOrDefault("suggestion", null);
                 if ("null".equals(suggestion)) suggestion = null;
@@ -551,7 +632,7 @@ public class MemoryService {
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
                 result.add(new Memory(id, recordId, kind, body, patterns, preferences,
-                        tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo, doneAt));
+                        tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo, doneAt, lastConfirmed));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());
             }

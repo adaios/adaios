@@ -30,6 +30,7 @@ import java.util.List;
  * @param superseded  是否已被新版本取代（Phase 2：新记忆成为主题最新版本，旧版本标 true）
  * @param evolvedTo   指向新版本记忆 id（Phase 2：superseded 时的演变链指针）
  * @param doneAt      行动完成时间（Phase 3：actionable 记忆标记完成时记录，null=未完成）
+ * @param lastConfirmed 最近一次被回读/确认的时间（Phase 4：时效衰减依据，null 时回退 createdAt）
  */
 public record Memory(
         String id,
@@ -46,7 +47,8 @@ public record Memory(
         String topic,
         boolean superseded,
         String evolvedTo,
-        LocalDateTime doneAt
+        LocalDateTime doneAt,
+        LocalDateTime lastConfirmed
 ) {
 
     public static final String KIND_FACT = "fact";
@@ -80,7 +82,7 @@ public record Memory(
                 understanding.actionable(),
                 understanding.actionSuggestion(),
                 LocalDateTime.now(),
-                null, false, null, null
+                null, false, null, null, null
         );
     }
 
@@ -99,7 +101,7 @@ public record Memory(
                 generateId(), recordId, KIND_FACT, fallback,
                 List.of(), List.of(), List.of(),
                 "neutral", false, "DEGRADED", LocalDateTime.now(),
-                null, false, null, null
+                null, false, null, null, null
         );
     }
 

@@ -125,6 +125,9 @@ public class MemoryController {
 
         log.info("记忆重建完成 | 成功={} | 失败={}", success, failed);
 
+        // 记忆进化 Phase 4：随 rebuild 清理过期条目（superseded 超 60 天 / actionable 完成超 30 天）
+        memoryService.cleanup();
+
         return ResponseEntity.ok(Map.of(
                 "success", success,
                 "failed", failed,

@@ -321,6 +321,8 @@ public class ContextEngine {
      * 加载近期的记忆摘要（按标签聚合）。
      */
     private String loadMemorySummary() {
+        // 记忆进化 Phase 4：回读确认——更新近期记忆 lastConfirmed，让常回读的记忆保持时效权重
+        memoryService.touchActive();
         List<Memory> recentMemories = memoryService.recentActive(MEMORY_DAYS);
         if (recentMemories.isEmpty()) {
             return "";

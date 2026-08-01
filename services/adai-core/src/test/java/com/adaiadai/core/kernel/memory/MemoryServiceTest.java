@@ -5,6 +5,8 @@ import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -254,5 +256,50 @@ class MemoryServiceTest {
     @Test
     void markDone_notFound_returnsFalse() {
         assertFalse(memoryService.markDone("mem_nonexistent"));
+    }
+
+    // ── 记忆进化 Phase 4：时效与淘汰 ──
+
+    @Test
+    void findAllPatterns_decaysOldMemories() {
+        // 旧记忆（20 天前，高置信度 0.9）vs 新记忆（今天，0.8）——衰减后新记忆权重更高
+        Memory old = new Memory("mem_old", "rec_p1", Memory.KIND_PATTERN, "旧模式",
+                List.of(new MemoryPattern("旧模式", 0.9)), null, List.of("t1"), "neutral", false, null,
+                LocalDateTime.now().minusDays(20), null, false, null, null, null);
+        Memory fresh = new Memory("mem_fresh", "rec_p2", Memory.KIND_PATTERN, "新模式",
+                List.of(new MemoryPattern("新模式", 0.8)), null, List.of("t2"), "neutral", false, null,
+                LocalDateTime.now(), null, false, null, null, null);
+        memoryService.persist(old);
+        memoryService.persist(fresh);
+
+        List<MemoryPattern> patterns = memoryService.findAllPatterns();
+        assertEquals("新模式", patterns.get(0).content(), "时效衰减后新记忆应优先");
+    }
+
+    @Test
+    void cleanup_removesSupersededOver60Days() {
+        Memory oldSuperseded = new Memory("mem_old2", "rec_p3", Memory.KIND_FACT, "旧",
+                List.of(), null, List.of("x"), "neutral", false, null,
+                LocalDateTime.now().minusDays(61), "topic_x", true, "mem_next", null, null);
+        memoryService.persist(oldSuperseded);
+        LocalDate date = oldSuperseded.createdAt().toLocalDate();
+        assertEquals(1, memoryService.findByDate(date).size());
+
+        memoryService.cleanup();
+        assertEquals(0, memoryService.findByDate(date).size(), "超 60 天 superseded 应被清理");
+    }
+
+    @Test
+    void touchActive_updatesLastConfirmed() {
+        LocalDateTime twoDaysAgo = LocalDateTime.now().minusDays(2);
+        Memory m = new Memory("mem_t", "rec_p4", Memory.KIND_FACT, "内容",
+                List.of(), null, List.of("y"), "neutral", false, null,
+                twoDaysAgo, null, false, null, null, twoDaysAgo);
+        memoryService.persist(m);
+
+        memoryService.touchActive();
+        Memory loaded = memoryService.findByRecordId("rec_p4").orElseThrow();
+        assertNotNull(loaded.lastConfirmed(), "回读确认应写入 lastConfirmed");
+        assertTrue(loaded.lastConfirmed().isAfter(twoDaysAgo), "lastConfirmed 应更新到当前");
     }
 }
