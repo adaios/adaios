@@ -285,6 +285,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 ## 相关文档
 
 - `docs/VISION.md` — ⚡ 项目愿景与核心理念（必读）
+- `docs/architecture/product-roadmap.md` — 🚩 产品路线 v1.0.0（唯一蓝图，路线驱动开发，从这里拆任务/确认目标）
 - `docs/architecture/product-architecture.md` — 五层产品架构（必读）
 - `docs/architecture/system-architecture.md` — 系统架构细节
 - `docs/architecture/frontend-glossary.md` — 前端 UI 中英术语对照
@@ -295,6 +296,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `ai/context/` — AI Context 模板
 
 ## 当前焦点（2026-08-01）
+
+> 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
 - **产品发布版本机制 RFC** ✅：版本号规则 + 发布流程 + Release Notes 模板 + v0.1.0 规划（`docs/rfc/20260801-release-versioning.md`，draft 待确认）

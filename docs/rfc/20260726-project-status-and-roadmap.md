@@ -1,8 +1,12 @@
 ---
 title: AdaiOS 项目现状与三大方向规划
 date: 2026-07-26
-status: draft
+status: superseded
+supersededBy: ../architecture/product-roadmap.md
 ---
+
+> **已迁移**：本文件的规划内容已并入 [`docs/architecture/product-roadmap.md`](../architecture/product-roadmap.md)（产品路线 v1.0.0，唯一蓝图）。
+> 保留为历史决策记录（2026-07-26 的三大方向规划）。任务拆分与目标确认以产品路线文档为准。
 
 ---
 
