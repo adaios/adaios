@@ -74,10 +74,10 @@ public class ProjectFileRepository implements TaskRepository {
     @Override
     public List<Task> findAll() {
         List<Task> all = new ArrayList<>();
-        // 遍历最近 12 个月的任务文件
-        for (int i = 0; i < 12; i++) {
-            LocalDate month = LocalDate.now().minusMonths(i);
-            String path = TASKS_DIR + "/" + month.format(MONTH_FORMATTER) + ".md";
+        // 扫描全部月份文件（不限 12 个月，任务生命周期可能更长）
+        List<String> files = fileStorage.listFiles(TASKS_DIR);
+        for (String path : files) {
+            if (!path.endsWith(".md")) continue;
             String content = fileStorage.read(path);
             if (content != null && !content.isBlank()) {
                 all.addAll(parseEntries(content));

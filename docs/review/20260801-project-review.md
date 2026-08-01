@@ -53,7 +53,7 @@ method: 3 路并行审查 Agent（后端、前端、架构知识打通）
 |:-:|:-----|:-----|:----:|
 | 3 | `os/trading-os` 73KB 知识（规则/教训/策略）从不注入 | `ContextEngine.compose()` 无 `"trading"` scene 调用 | ✅ 已修（内容关键词路由 domainScene）|
 | 4 | 场景化 Contributor 全失效（trading/project/life）| 各 `*ContextContributor.supports()` | ✅ 已修（随 #3 路由触发）|
-| 5 | Life OS 知识资产在但代码不消费（`life-os-path` 死配置）| `LifeKnowledgeSource.java` | 📋 待办 |
+| 5 | Life OS 知识资产在但代码不消费（`life-os-path` 死配置）| `LifeKnowledgeSource.java` | ✅ 已修（读取 identity.md + Memory 聚合）|
 | 6 | 行情注入实际为空（`positions.md` 不存在 + globalContext 空持仓返回空）| `MarketContextContributor.java` | ✅ 已修（globalContext 大盘始终注入）|
 
 ### 🟠 P1 — 功能性 bug
@@ -73,12 +73,12 @@ method: 3 路并行审查 Agent（后端、前端、架构知识打通）
 |:-:|:-----|:-----|:----:|
 | 13 | interfaces 层编排重复三处（compose→understand→persist）| `RecordController`/`RecordFlowAppService`/`RecordRetryService` | 📋 待办 |
 | 14 | 测试缺口：行情/Memory/Feed分页/ContextEngine/Phase4 页面零测试 | `src/test` | 📋 待办 |
-| 15 | `data/identity/`、`data/trading/` 目录不存在 | `data/` | 📋 待办 |
-| 16 | `data/records` 混入 10+ 孤儿/测试文件 | `data/records/2026/07/` | 📋 待办 |
+| 15 | `data/identity/`、`data/trading/` 目录不存在 | `data/` | ✅ 已修（建目录 + sample 文件）|
+| 16 | `data/records` 混入 10+ 孤儿/测试文件 | `data/records/2026/07/` | ✅ 已修（删 8 孤儿，3 个历史对话卡片保留待迁移）|
 | 17 | api-spec 缺 7 个端点 | `docs/architecture/api-spec.md` | ✅ 已修（v3.1 补全）|
 | 18 | 根 CLAUDE.md 描述过期（DECISION/正则兜底/B Phase 4 待做）| `CLAUDE.md`/`data-flow.md` | ✅ 已修 |
 | 19 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办 |
-| 20 | 任务只扫最近 12 个月 | `ProjectFileRepository.java:78` | 📋 待办 |
+| 20 | 任务只扫最近 12 个月 | `ProjectFileRepository.java:78` | ✅ 已修（listFiles 扫描全部月份）|
 | 21 | save/delete 重建文件丢弃手写注释 | `ProjectFileRepository`/`MemoryService` | 📋 待办 |
 | 22 | kernel 反向依赖 infrastructure 类型 | `IntentRecognizer`/`ContextEngine`/`MemoryService` | 📋 待办 |
 | 23 | Layer 6 反馈闭环从未运转（conflicts 硬编码）| `TradingController.java` | 📋 待办 |
@@ -88,14 +88,14 @@ method: 3 路并行审查 Agent（后端、前端、架构知识打通）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| 25 | 前端 search query 未 URL 编码 | `api_service.dart:191` | 📋 待办 |
-| 26 | AI 回复 JSON 解码逻辑两处重复且 emoji 处理不一致 | `main_page.dart`/`feed_card.dart` | 📋 待办 |
-| 27 | 时间线弹窗硬编码"7月" | `timeline_modal.dart:141` | 📋 待办 |
-| 28 | Memory 页"昨天"判断跨月出错 | `memory_page.dart:42` | 📋 待办 |
-| 29 | 任务/交易页每次操作闪整页 Spinner | `project_task_page.dart`/`trading_page.dart` | 📋 待办 |
-| 30 | 项目状态页方向进展图硬编码 | `project_status_page.dart:202` | 📋 待办 |
-| 31 | `invalidateFeedCache()` 空方法死代码 | `api_service.dart:63` | 📋 待办 |
-| 32 | light 主题死代码、InputBar 语音 stub | `app_theme.dart`/`input_bar.dart` | 📋 待办 |
+| 25 | 前端 search query 未 URL 编码 | `api_service.dart:191` | ✅ 已修（queryParameters）|
+| 26 | AI 回复 JSON 解码逻辑两处重复且 emoji 处理不一致 | `main_page.dart`/`feed_card.dart` | ✅ 已修（提取 `utils/text_cleaner.dart` 统一代理对版本）|
+| 27 | 时间线弹窗硬编码"7月" | `timeline_modal.dart:141` | ✅ 已修（`_baseDate.month`）|
+| 28 | Memory 页"昨天"判断跨月出错 | `memory_page.dart:42` | ✅ 已修（日期整体比较）|
+| 29 | 任务/交易页每次操作闪整页 Spinner | `project_task_page.dart`/`trading_page.dart` | ✅ 已修（拆 `_refresh` 静默刷新）|
+| 30 | 项目状态页方向进展图硬编码 | `project_status_page.dart:202` | ✅ 已修（提为常量并注明来源）|
+| 31 | `invalidateFeedCache()` 空方法死代码 | `api_service.dart:63` | ✅ 已删 |
+| 32 | light 主题死代码、InputBar 语音 stub | `app_theme.dart`/`input_bar.dart` | ✅ 已修（删 light 主题；stub 灰置提示）|
 
 ## 四、改进优先级（本次执行）
 
