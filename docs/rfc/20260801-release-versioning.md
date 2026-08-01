@@ -1,7 +1,7 @@
 ---
 title: 产品发布版本机制（Release Versioning）
 date: 2026-08-01
-status: draft
+status: accepted
 ---
 
 # 产品发布版本机制
