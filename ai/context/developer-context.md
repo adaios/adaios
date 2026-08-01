@@ -57,6 +57,6 @@
 
 ## 相关资源
 
-- 领域文档：`domains/`
+- 领域文档：`os/*-os/definition/`
 - 架构上下文：`architecture-context.md`
 - 项目上下文：`project-context.md`

@@ -983,14 +983,10 @@ MemoryService
 ├── decisions/
 
 │
-├── domains/
-
-│
-├── trading-os/
-
-├── project-os/
-
-└── life-os/
+├── os/
+│   ├── trading-os/
+│   ├── project-os/
+│   └── life-os/
 
 
 ```

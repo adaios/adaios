@@ -49,12 +49,10 @@ services/
                         #   独立 Gradle 项目：gradlew / build.gradle.kts / gradle/ / settings.gradle.kts
 apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
-domains/               # Domain OS 领域定义文档
-  trading-os/          #   金融交易
+os/                    # Domain OS（File First：知识资产 + 领域定义）
+  trading-os/          #   交易系统知识库（有独立 CLAUDE.md 和工作流；definition/ 为领域定义）
   life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪）
   project-os/          #   项目管理（骨架已建立，含 git log 自举 + Status API）
-os/                    # Domain OS 知识资产（File First）
-  trading-os/          #   交易系统知识库（File First，有独立 CLAUDE.md 和工作流）
 data/                  # 个人数据资产（File First，Git 追踪）
   identity/            #   个人档案
   records/             #   原始记录（按年月组织）
@@ -292,7 +290,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/architecture/frontend-glossary.md` — 前端 UI 中英术语对照
 - `docs/architecture/layout-reference.md` — 前端页面布局视觉参考
 - `docs/architecture/api-spec.md` — API 接口契约
-- `domains/*-os/` — 各 Domain 的职责、概念、工作流
+- `os/*-os/definition/` — 各 Domain 的职责、概念、工作流
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 

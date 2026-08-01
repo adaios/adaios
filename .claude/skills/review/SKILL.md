@@ -42,7 +42,7 @@ git log --oneline -20          # 找上次 review 的 commit 作为增量基线
 | `apps/adai-app/**` | `review-frontend` |
 | `docs/**`、`*.md`、`ai/**` | `review-docs` |
 | 前端视觉/交互/文案 | `review-product` |
-| `os/**`、`domains/**`、`data/**` | `review-knowledge` |
+| `os/**`、`data/**` | `review-knowledge` |
 
 跨多目录则派多个角色并行。`docs/**` 与前端改动同时出现时，`review-product` 与 `review-docs` 可并派。`data/**` 改动可能同时影响存储层（`review-backend`），可并派两者。
 - **full**：5 个角色全派。

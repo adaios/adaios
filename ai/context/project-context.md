@@ -19,7 +19,7 @@
 
 ## 架构摘要
 
-- **Monorepo**：`apps/` `services/` `domains/` `data/` `ai/` `infra/` `docs/`
+- **Monorepo**：`apps/` `services/` `os/` `data/` `ai/` `infra/` `docs/`
 - **核心模块**：`services/adai-core`（根包 `com.adaiadai.core`）
 - **架构模式**：Modular Monolith（不提前微服务化）
 - **最高设计原则**：**File First, Database Second, Context Always**（详见 VISION.md §3.5）

@@ -27,6 +27,7 @@
 | `07-manual/` | 人工修正记录 | 任何时候不修改 |
 | `11-context/` | 生活系统对 AI 暴露的认知接口层 | 系统收敛时同步更新 |
 | `99-inbox/` | 临时存放区 | 等待用户指示 |
+| `definition/` | 领域定义（concepts/workflow/README） | 原 `domains/` 合并，只读参考 |
 
 ---
 

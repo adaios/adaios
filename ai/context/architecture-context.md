@@ -69,9 +69,9 @@ com.adaiadai.core/
 
 | 包 | 领域 | 概念文档 |
 |----|------|---------|
-| trading | Trading OS（含研究） | `domains/trading-os/` |
-| life | Life OS | `domains/life-os/` |
-| project | Project OS | `domains/project-os/` |
+| trading | Trading OS（含研究） | `os/trading-os/definition/` |
+| life | Life OS | `os/life-os/definition/` |
+| project | Project OS | `os/project-os/definition/` |
 
 ## Context Engine
 
@@ -124,4 +124,4 @@ Identity（风险偏好、投资风格）
 ## 相关文档
 
 - [system-architecture.md](../../docs/architecture/system-architecture.md) — 完整架构文档
-- `domains/*-os/` — 各 Domain 定义文档
+- `os/*-os/definition/` — 各 Domain 定义文档

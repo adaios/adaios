@@ -9,7 +9,7 @@ AdaiOS 不是传统 CRUD 应用。它是围绕人、记忆、上下文、知识�
 | 目录 | 用途 |
 |------|------|
 | `services/adai-core` | 核心运行时（★ 唯一已实现的模块） |
-| `domains` | Domain OS 领域定义文档 |
+| `os` | Domain OS（知识资产 + 领域定义，File First） |
 | `apps` | 应用入口（预留） |
 | `data` | 个人知识资产（File First） |
 | `ai` | AI 上下文模板 |

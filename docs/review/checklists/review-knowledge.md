@@ -9,7 +9,7 @@
 | K1 | `os/trading-os/` 有内容的文件 ↔ `TradingKnowledgeSource` 读取路径是否有效、内容真正进 context | 交易知识 73KB 从不注入（战略缺口，已修）|
 | K2 | `os/life-os/11-context/identity.md` ↔ `LifeKnowledgeSource`（`adai.knowledge.life-os-path` 配置）| life-os-path 死配置（战略缺口，已修）|
 | K3 | 每个 `os/*/` 是否被至少一个 `KnowledgeSource` 消费；新增 os 知识无消费方 = 战略缺口 | — |
-| K4 | `domains/*-os/` 定义文档 ↔ `adai-core` 对应实现一致（概念/术语/工作流）| — |
+| K4 | `os/*-os/definition/` 定义文档 ↔ `adai-core` 对应实现一致（概念/术语/工作流）| — |
 
 ## 数据资产健康（data/）
 

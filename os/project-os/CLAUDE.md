@@ -26,6 +26,7 @@
 | `07-manual/` | 人工修正记录 | 任何时候不修改 |
 | `11-context/` | 项目管理系统对 AI 暴露的认知接口层 | 按需更新 |
 | `99-inbox/` | 临时存放区 | 等待用户指示 |
+| `definition/` | 领域定义（concepts/workflow/README） | 原 `domains/` 合并，只读参考 |
 
 ## 数据源融合
 

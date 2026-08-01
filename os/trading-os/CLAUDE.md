@@ -34,6 +34,7 @@
 | `11-context/` | 交易系统对 AI 暴露的认知接口层（identity/strategy/rules/mistakes/current） | 不新增知识，仅重组 05-system+04-rules+03-glossary；系统收敛时同步更新 |
 | `12-research/` | 市场生态认知（IPO、行业结构、资本关系、宏观框架） | 用户自主维护，不走 Step 1→5 流水线；与交易系统互补的平行视角 |
 | `99-inbox/` | 临时存放区 | 用户不确定放哪里的内容先放此处，由 AI 决定后续归入哪个目录。**AI 不主动处理该目录下的文件**，等待用户指示 |
+| `definition/` | 领域定义（concepts/workflow/README，架构层） | 原 `domains/` 合并而来，只读参考 |
 
 ### 目录修改权限
 
