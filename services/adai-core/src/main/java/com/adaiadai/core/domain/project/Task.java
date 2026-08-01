@@ -1,5 +1,7 @@
 package com.adaiadai.core.domain.project;
 
+import com.adaiadai.core.kernel.IdGenerator;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -34,7 +36,6 @@ public record Task(
      * 生成任务 ID。
      */
     public static String generateId() {
-        return "task_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
-                .format(java.time.LocalDateTime.now());
+        return IdGenerator.monotonic("task_");
     }
 }

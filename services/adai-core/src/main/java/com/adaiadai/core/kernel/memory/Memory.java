@@ -1,6 +1,7 @@
 package com.adaiadai.core.kernel.memory;
 
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.IdGenerator;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -112,6 +113,13 @@ public record Memory(
      * 无任何增量为 fact。decision 类型随 actionable 闭环（Phase 3）演进，暂不单独推导。
      */
     public static String deriveKind(AiUnderstanding understanding) {
+        // actionable 行动建议是最强信号（QUESTION/对话/卡片路径 insight 常为 null，
+        // 若仅按 insight 推导会判 fact 而被 Phase 5 筛选丢弃，闭环断裂）
+        if (understanding.actionable()
+                && understanding.actionSuggestion() != null
+                && !understanding.actionSuggestion().isBlank()) {
+            return KIND_DECISION;
+        }
         if (understanding.preferences() != null && !understanding.preferences().isEmpty()) {
             return KIND_PREFERENCE;
         }
@@ -131,15 +139,7 @@ public record Memory(
         return memory != null && "DEGRADED".equals(memory.suggestion());
     }
 
-    /** 进程内单调递增的时间戳，保证同一毫秒内多条记忆 id 不碰撞（毫秒精度碰撞会破坏按 id 定位） */
-    private static final java.util.concurrent.atomic.AtomicLong LAST_ID_TS = new java.util.concurrent.atomic.AtomicLong(0);
-
     static String generateId() {
-        long now = System.currentTimeMillis();
-        long idTs = LAST_ID_TS.accumulateAndGet(now, (prev, cur) -> Math.max(cur, prev + 1));
-        return "mem_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
-                .format(java.time.LocalDateTime.ofInstant(
-                        java.time.Instant.ofEpochMilli(idTs),
-                        java.time.ZoneId.systemDefault()));
+        return IdGenerator.monotonic("mem_");
     }
 }

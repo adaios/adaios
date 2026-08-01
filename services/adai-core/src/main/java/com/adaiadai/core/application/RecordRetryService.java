@@ -71,8 +71,10 @@ public class RecordRetryService {
 
         List<ContentRecord> candidates = allRecords.stream()
                 .filter(r -> r.createdAt().isBefore(cutoff))
-                // 无 AI 洞察记忆才重补（降级原文不阻塞重补，AI 恢复后可升级覆盖）
-                .filter(r -> !memoryService.hasRealMemory(r.id()))
+                // 未成功理解才重补：AI 失败时 record.summary 为 "recorded"（兜底），成功为真实摘要。
+                // 用记录级判定而非记忆存在性——Phase 5 会跳过无增量记忆（fact），
+                // 若用 hasRealMemory 会把"已成功理解但无增量"误判为未处理 → 无限重补烧 AI（P1-1 修复）
+                .filter(r -> !alreadyProcessed(r))
                 .limit(BATCH_LIMIT)
                 .toList();
 
@@ -95,6 +97,13 @@ public class RecordRetryService {
             }
         }
         log.info("重补记录结束 | 成功={} 失败={}", success, failed);
+    }
+
+    /**
+     * 记录是否已成功理解（AI 失败时 summary 兜底为 "recorded"）。
+     */
+    private boolean alreadyProcessed(ContentRecord r) {
+        return r.summary() != null && !r.summary().isBlank() && !"recorded".equals(r.summary());
     }
 
     private void processRecord(ContentRecord record) {

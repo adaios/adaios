@@ -52,26 +52,28 @@ public class MemoryService {
         boolean isDegraded = Memory.isDegraded(memory);
 
         // Phase 5：筛选降噪——kind=fact（无洞察/模式/偏好）无信息增量，跳过沉淀。
-        // records 已保留原文 + AI 摘要，fact 记忆会膨胀成 records 副本；降级记忆豁免（AI 失败保底）
-        if (!isDegraded && Memory.KIND_FACT.equals(memory.kind())) {
+        // actionable 豁免：行动建议本身是信息增量，且 QUESTION/对话路径 insight 常为 null
+        // （P1-1 修复：否则用户在问答里产生的 actionable 记忆被丢弃，闭环断裂）
+        if (!isDegraded && !memory.actionable() && Memory.KIND_FACT.equals(memory.kind())) {
             log.debug("Memory skipped (no information gain): {}", memory.recordId());
             return;
         }
 
-        // 去重 + 升级：同 recordId 已有记忆时——AI 洞察覆盖降级条目；其余重复跳过
-        LocalDate memDate = memory.createdAt().toLocalDate();
-        List<Memory> existingByDate = findByDate(memDate);
-
-        for (Memory existing : existingByDate) {
-            if (!existing.recordId().equals(memory.recordId())) continue;
+        // 去重 + 升级：同 recordId 已有记忆（跨日全生命周期，P1-4 修复）——
+        // AI 洞察覆盖降级条目（重补可能数天后，createdAt 为新日期）；其余重复跳过
+        Optional<Memory> existingOpt = memory.recordId() != null
+                ? findByRecordId(memory.recordId())
+                : Optional.empty();
+        if (existingOpt.isPresent()) {
+            Memory existing = existingOpt.get();
             if (!isDegraded && Memory.isDegraded(existing)) {
-                // AI 洞察升级降级记忆：移除降级条目后写入洞察
+                // AI 洞察升级降级记忆：移除降级条目后写入洞察（按降级条目所在日期定位）
                 log.info("记忆升级：降级原文 → AI 洞察 | recordId={}", memory.recordId());
-                removeFromFile(memDate, memory.recordId());
-                break;
+                removeFromFile(existing.createdAt().toLocalDate(), memory.recordId());
+            } else {
+                log.debug("Memory skipped (duplicate recordId): {}", memory.recordId());
+                return;
             }
-            log.debug("Memory skipped (duplicate recordId): {}", memory.recordId());
-            return;
         }
 
         // Phase 2：主题合并——新记忆与近 30 天记忆 tags 重叠，旧版本标 superseded 建立演变链
@@ -137,10 +139,12 @@ public class MemoryService {
 
     /**
      * 获取某条记录对应的 AI 理解。
+     * <p>
+     * 遍历最近 365 天（记录全生命周期，P1-4 修复：降级当天沉淀、重补数天后升级，
+     * 若只查近 30 天跨日升级/去重会失效，同 recordId 并存多条记忆）。
      */
     public Optional<Memory> findByRecordId(String recordId) {
-        // 遍历最近 30 天的记忆文件查找
-        for (int i = 0; i < 30; i++) {
+        for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             List<Memory> dayMemories = findByDate(date);
             for (Memory m : dayMemories) {

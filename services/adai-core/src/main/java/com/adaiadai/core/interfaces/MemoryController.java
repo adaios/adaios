@@ -103,6 +103,8 @@ public class MemoryController {
         List<ContentRecord> targetRecords = allRecords.stream()
                 .filter(r -> filterDate == null || r.createdAt().toLocalDate().equals(filterDate))
                 .filter(r -> r.intent() == null || "log".equals(r.intent()))
+                // P1-3 修复：已有真实记忆的记录跳过，rebuild 幂等（避免每次重跑重复沉淀）
+                .filter(r -> !memoryService.hasRealMemory(r.id()))
                 .toList();
 
         log.info("记忆重建开始 | 目标日期={} | 待处理记录={}条", date != null ? date : "全部", targetRecords.size());

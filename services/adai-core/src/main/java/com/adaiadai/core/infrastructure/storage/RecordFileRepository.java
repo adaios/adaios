@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -99,7 +100,7 @@ public class RecordFileRepository implements RecordRepository {
      * 生成当前时间的最新 ID。
      */
     public static String generateId() {
-        return LocalDateTime.now().format(ID_FORMATTER);
+        return IdGenerator.monotonic("rec_");
     }
 
     @Override

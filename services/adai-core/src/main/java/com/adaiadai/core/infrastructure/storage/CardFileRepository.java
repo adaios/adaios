@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.CardRecord.Turn;
 import org.slf4j.Logger;
@@ -55,7 +56,7 @@ public class CardFileRepository {
      * 生成卡片 ID。
      */
     public String generateId() {
-        return LocalDateTime.now().format(ID_FORMATTER);
+        return IdGenerator.monotonic("card_");
     }
 
     /**

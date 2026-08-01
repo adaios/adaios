@@ -324,4 +324,19 @@ class MemoryServiceTest {
         assertTrue(memoryService.hasRealMemory("rec_n2") == false, "降级记忆存在但不算 AI 记忆");
         assertFalse(memoryService.findByDate(LocalDate.now()).isEmpty(), "降级保底应保留");
     }
+
+    @Test
+    void persist_questionActionable_insightNull_isKept() {
+        // QUESTION/对话/卡片路径：AI 输出 actionable=true + actionSuggestion 但 insight=null
+        // （真实生产形状——P1-1 修复：此类记忆不得被 Phase 5 筛选丢弃）
+        AiUnderstanding u = new AiUnderstanding("s", null, null, null,
+                List.of("交易"), "neutral", "trading", true, "周五前交报告", null);
+        Memory m = Memory.fromUnderstanding("rec_a4", u);
+        assertEquals(Memory.KIND_DECISION, m.kind(), "actionable 行动建议应判 decision");
+
+        memoryService.persist(m);
+        assertTrue(memoryService.hasRealMemory("rec_a4"), "actionable 记忆不应被筛选丢弃");
+        assertTrue(memoryService.findPendingActions().stream().anyMatch(x -> x.recordId().equals("rec_a4")),
+                "待办应包含 actionable 记忆");
+    }
 }
