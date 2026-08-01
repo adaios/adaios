@@ -199,26 +199,30 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
     );
   }
 
+  /// 方向进展数据（手动维护：随开发推进更新 phase done 标志与进度百分比；
+  /// 理想来源：后端 GET /api/v1/project/status 返回）。
+  static final List<_Direction> _kDirections = [
+    _Direction('A', 'Layer 5 — 行情接入', AppColors.darkBlue, 50, [
+      _Phase('Phase 1', '上下文注入', true),
+      _Phase('Phase 2', '主动推送', false),
+      _Phase('Phase 3', 'Feed 嵌入', false),
+    ]),
+    _Direction('B', 'Project OS — 项目管理', AppColors.darkGreen, 75, [
+      _Phase('Phase 1', '轻量任务系统', true),
+      _Phase('Phase 2', 'RFC 跟踪', true),
+      _Phase('Phase 3', '自举增强', true),
+      _Phase('Phase 4', '前端任务面板', true),
+    ]),
+    _Direction('C', 'Life OS — 个人生活', AppColors.darkOrange, 25, [
+      _Phase('Phase 0', '数据喂养', true),
+      _Phase('Phase 1', '情绪趋势', false),
+      _Phase('Phase 2', '习惯模式', false),
+      _Phase('Phase 3', '生活周报', false),
+    ]),
+  ];
+
   Widget _buildDirectionProgress() {
-    final directions = [
-      _Direction('A', 'Layer 5 — 行情接入', AppColors.darkBlue, 50, [
-        _Phase('Phase 1', '上下文注入', true),
-        _Phase('Phase 2', '主动推送', false),
-        _Phase('Phase 3', 'Feed 嵌入', false),
-      ]),
-      _Direction('B', 'Project OS — 项目管理', AppColors.darkGreen, 75, [
-        _Phase('Phase 1', '轻量任务系统', true),
-        _Phase('Phase 2', 'RFC 跟踪', true),
-        _Phase('Phase 3', '自举增强', true),
-        _Phase('Phase 4', '前端任务面板', true),
-      ]),
-      _Direction('C', 'Life OS — 个人生活', AppColors.darkOrange, 25, [
-        _Phase('Phase 0', '数据喂养', true),
-        _Phase('Phase 1', '情绪趋势', false),
-        _Phase('Phase 2', '习惯模式', false),
-        _Phase('Phase 3', '生活周报', false),
-      ]),
-    ];
+    final directions = _kDirections;
 
     return Container(
       width: double.infinity,

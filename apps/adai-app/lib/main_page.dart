@@ -6,6 +6,7 @@ import 'services/api_service.dart';
 import 'widgets/feed_card.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/timeline_modal.dart';
+import 'utils/text_cleaner.dart';
 
 class MainPage extends StatefulWidget {
   final VoidCallback? onPullUp;
@@ -824,48 +825,9 @@ class _MainPageState extends State<MainPage>
     );
   }
 
-  /// 去除 AI 回复末尾的 JSON 残留并解码 \\uXXXX 转义。
-  /// 兼容 `{"domain":"..."}`（旧）和多行完整 JSON（新）。
-  static String stripDomainJson(String text) {
-    final clean = _removeTrailingJson(text);
-    return decodeUnicodeEscapes(clean);
-  }
-
-  /// 移除 AI 回复末尾可能附着的 JSON 块。
-  static String _removeTrailingJson(String text) {
-    final idx = text.lastIndexOf('\n{');
-    if (idx < 0) {
-      // 兼容旧格式 `{"domain"` 在行首的情况
-      final oldIdx = text.indexOf('{"domain"');
-      if (oldIdx < 0) return text;
-      final end = text.indexOf('}', oldIdx);
-      if (end < 0) return text;
-      return text.substring(0, oldIdx).trim();
-    }
-    final candidate = text.substring(idx + 1);
-    if (candidate.startsWith('{') && candidate.endsWith('}')) {
-      try {
-        jsonDecode(candidate);
-        return text.substring(0, idx).trim();
-      } catch (_) {}
-    }
-    return text;
-  }
-
-  /// 解码 \\uXXXX 转义序列为实际字符（前端兜底）。
-  static String decodeUnicodeEscapes(String text) {
-    if (text == null || text.isEmpty) return text ?? '';
-    return text.replaceAllMapped(
-      RegExp(r'\\u([0-9a-fA-F]{4})'),
-      (match) {
-        final code = int.parse(match.group(1)!, radix: 16);
-        return String.fromCharCode(code);
-      },
-    );
-  }
 
   Widget _buildChatBubble(String text, bool isUser, String time) {
-    final displayText = isUser ? text : stripDomainJson(text);
+    final displayText = isUser ? text : TextCleaner.stripDomainJson(text);
     return Column(
       crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [

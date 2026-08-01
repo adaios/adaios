@@ -41,9 +41,20 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
     super.dispose();
   }
 
+  /// 首次加载 / 下拉刷新：显示整页加载指示。
   Future<void> _loadAll() async {
+    setState(() { _loading = true; _error = null; });
+    await _loadData();
+  }
+
+  /// 操作成功后静默刷新：不置 _loading，避免每次操作整页闪 Spinner。
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    await _loadData();
+  }
+
+  Future<void> _loadData() async {
     try {
-      setState(() { _loading = true; _error = null; });
       final results = await Future.wait([
         widget.api.getTasks(status: _filterStatus),
         widget.api.getTaskStats(),
@@ -84,7 +95,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
       if (!mounted) return;
       _titleCtrl.clear(); _descCtrl.clear(); _tagCtrl.clear();
       setState(() { _showCreate = false; _submitting = false; });
-      _loadAll();
+      _refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
@@ -98,7 +109,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
   Future<void> _updateStatus(String id, String newStatus) async {
     try {
       await widget.api.updateTask(id, status: newStatus);
-      _loadAll();
+      _refresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +135,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
     if (confirm == true) {
       try {
         await widget.api.deleteTask(id);
-        _loadAll();
+        _refresh();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

@@ -60,10 +60,6 @@ class ApiService {
     _check(resp);
   }
 
-  /// 使缓存失效（发送新消息后调用）。
-  void invalidateFeedCache() {
-  }
-
   /// 提交记录。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
@@ -188,7 +184,7 @@ class ApiService {
   /// 全文搜索。
   Future<SearchResponse> search(String query) async {
     final resp = await http.get(
-      Uri.parse('$baseUrl/api/v1/search?q=$query'),
+      Uri.parse('$baseUrl/api/v1/search').replace(queryParameters: {'q': query}),
       headers: _headers,
     );
     _check(resp);

@@ -107,6 +107,14 @@ class InputBarState extends State<InputBar> {
     }
   }
 
+  /// 未实现功能的占位提示（语音/文件/链接）。
+  void _showNotImplemented(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$feature 功能开发中', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+    ));
+  }
+
   void _showAttach(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -134,9 +142,9 @@ class InputBarState extends State<InputBar> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _attachItem(Icons.image_outlined, 'image', onTap: _pickImage),
-                _attachItem(Icons.mic_outlined, 'voice'),
-                _attachItem(Icons.description_outlined, 'file'),
-                _attachItem(Icons.link_outlined, 'link'),
+                _attachItem(Icons.mic_outlined, 'voice', onTap: () => _showNotImplemented('语音输入')),
+                _attachItem(Icons.description_outlined, 'file', onTap: () => _showNotImplemented('文件上传')),
+                _attachItem(Icons.link_outlined, 'link', onTap: () => _showNotImplemented('链接')),
               ],
             ),
           ],
@@ -273,7 +281,7 @@ class InputBarState extends State<InputBar> {
       onLongPressStart: (_) => setState(() => _recording = true),
       onLongPressEnd: (_) {
         setState(() => _recording = false);
-        widget.onSend('voice message');
+        _showNotImplemented('语音输入');
       },
       child: Container(
         height: 40,

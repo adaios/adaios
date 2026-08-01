@@ -38,8 +38,11 @@ class _MemoryPageState extends State<MemoryPage> {
 
   String _dateDisplay(DateTime d) {
     final now = DateTime.now();
-    if (d.year == now.year && d.month == now.month && d.day == now.day) return 'today';
-    if (d.year == now.year && d.month == now.month && d.day == now.day - 1) return 'yesterday';
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final date = DateTime(d.year, d.month, d.day);
+    if (date == today) return 'today';
+    if (date == yesterday) return 'yesterday';
     return '${d.month}/${d.day}';
   }
 

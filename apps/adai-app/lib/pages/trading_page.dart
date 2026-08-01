@@ -42,9 +42,20 @@ class _TradingPageState extends State<TradingPage> {
     super.dispose();
   }
 
+  /// 首次加载 / 下拉刷新：显示整页加载指示。
   Future<void> _loadAll() async {
+    setState(() { _loading = true; _error = null; });
+    await _loadData();
+  }
+
+  /// 操作成功后静默刷新：不置 _loading，避免每次操作整页闪 Spinner。
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    await _loadData();
+  }
+
+  Future<void> _loadData() async {
     try {
-      setState(() { _loading = true; _error = null; });
       final positionsResp = await widget.api.getPositions();
       final snapshotResp = await widget.api.getPortfolio();
       if (!mounted) return;
@@ -82,7 +93,7 @@ class _TradingPageState extends State<TradingPage> {
       );
       _symbolCtrl.clear(); _nameCtrl.clear(); _priceCtrl.clear(); _volumeCtrl.clear();
       setState(() { _showForm = false; _submitting = false; });
-      _loadAll();
+      _refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);

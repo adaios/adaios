@@ -19,7 +19,7 @@ class RootApp extends StatelessWidget {
     return MaterialApp(
       title: '阿呆阿呆',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
+      theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
       builder: (context, child) => DefaultTextStyle(

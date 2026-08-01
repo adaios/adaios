@@ -138,7 +138,7 @@ class _TimelineModalState extends State<TimelineModal> {
           else if (_selectedDay != null && entries != null) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-              child: Text('7月$_selectedDay日',
+              child: Text('${_baseDate.month}月$_selectedDay日',
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
             ),
             Expanded(
