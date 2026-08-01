@@ -450,12 +450,18 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 {
   "id": "mem_20260718_143000",
   "recordId": "rec_20260718_143000",
+  "kind": "insight",
   "summary": "AI摘要",
   "tags": ["标签"],
   "sentiment": "positive",
   "actionable": false,
   "suggestion": null,
-  "createdAt": "2026-07-18T14:30:00"
+  "createdAt": "2026-07-18T14:30:00",
+  "topic": null,
+  "superseded": false,
+  "evolvedTo": null,
+  "doneAt": null,
+  "lastConfirmed": null
 }
 ```
 

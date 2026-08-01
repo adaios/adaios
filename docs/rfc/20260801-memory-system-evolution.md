@@ -1,7 +1,8 @@
 ---
 title: 记忆系统进化 — 元记忆对比与落地方案
 date: 2026-08-01
-status: accepted
+status: implemented
+implementedIn: 135f671 / 7e98555 / 8ef3739 / c96e83b / b6a169c
 ---
 
 # 记忆系统进化（Memory System Evolution）
