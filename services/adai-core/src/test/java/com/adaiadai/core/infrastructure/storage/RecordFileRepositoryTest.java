@@ -124,7 +124,7 @@ class RecordFileRepositoryTest {
     @Test
     void generateId_format() {
         String id = RecordFileRepository.generateId();
-        assertTrue(id.matches("rec_\\d{8}_\\d{6}"));
+        assertTrue(id.matches("rec_\\d{8}_\\d{9}"), "ID 应含毫秒精度: " + id);
     }
 
     @Test

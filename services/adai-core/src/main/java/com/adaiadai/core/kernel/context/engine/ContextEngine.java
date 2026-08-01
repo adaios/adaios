@@ -96,8 +96,10 @@ public class ContextEngine {
         String relatedRecords = loadRelatedRecords(record);
         String searchResults = loadSearchResults(record);
         String memorySummary = loadMemorySummary();
-        String knowledgeContext = loadKnowledgeContext(scene);
-        String domainContext = enrichFromContributors(scene, identityRef, record);
+        // 领域场景按记录内容推导（trading/project/life），让领域知识源与场景贡献者真正触发
+        String domainScene = detectDomainScene(record);
+        String knowledgeContext = loadKnowledgeContext(domainScene);
+        String domainContext = enrichFromContributors(domainScene, identityRef, record);
         String globalContext = loadGlobalContext();
 
         // CHAT 模式：构建多轮对话历史
@@ -127,6 +129,31 @@ public class ContextEngine {
     }
 
     // ── 内部方法 ──
+
+    /**
+     * 根据记录内容关键词推导领域场景（trading / project / life）。
+     * <p>
+     * 调用方传给 compose() 的 scene 是模式场景（"note"/"question"），
+     * 领域知识源和场景贡献者需要内容驱动的领域场景才能被触发
+     * （规则与 api-spec「domain 判定规则」一致）。
+     */
+    private String detectDomainScene(ContentRecord record) {
+        String content = record.content() == null ? "" : record.content();
+        if (content.isBlank()) return "life";
+
+        if (content.contains("指标") || content.contains("K线") || content.contains("持仓")
+                || content.contains("走势") || content.contains("复盘") || content.contains("买入")
+                || content.contains("卖出") || content.contains("仓位") || content.contains("股票")
+                || content.contains("大盘") || content.contains("行情") || content.contains("买卖")) {
+            return "trading";
+        }
+        if (content.contains("任务") || content.contains("进度") || content.contains("bug")
+                || content.contains("需求") || content.contains("RFC") || content.contains("项目")
+                || content.contains("待办") || content.contains("计划") || content.contains("开发")) {
+            return "project";
+        }
+        return "life";
+    }
 
     private String loadIdentitySummary() {
         Optional<IdentityProfile> profile = identityRepository.load();

@@ -62,7 +62,7 @@ public class CardFileRepository {
      * 保存卡片。
      */
     public void save(CardRecord card) {
-        String path = filePath(card.id());
+        String path = filePath(card);
         String content = toMarkdown(card);
         fileStorage.write(path, content);
     }
@@ -142,9 +142,10 @@ public class CardFileRepository {
 
     // ── 内部方法 ──
 
-    private String filePath(String cardId) {
-        LocalDate today = LocalDate.now();
-        return CARDS_DIR + "/" + today.format(DIR_DATE_FORMAT) + "/" + cardId + ".md";
+    private String filePath(CardRecord card) {
+        // 按卡片创建日期推导目录，跨日续接对话时写回原文件，避免重复副本
+        LocalDate date = card.createdAt().toLocalDate();
+        return CARDS_DIR + "/" + date.format(DIR_DATE_FORMAT) + "/" + card.id() + ".md";
     }
 
     private String toMarkdown(CardRecord card) {

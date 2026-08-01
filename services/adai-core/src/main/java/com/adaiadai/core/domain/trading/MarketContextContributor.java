@@ -55,33 +55,36 @@ public class MarketContextContributor implements ContextContributor {
 
     @Override
     public String globalContext() {
-        // 所有场景都注入持仓概览（短版）
-        List<Position> positions = positionRepository.findAll();
-        if (positions.isEmpty()) return "";
-
-        List<String> codes = positions.stream().map(Position::symbol).toList();
-        Map<String, MarketData> quotes = marketDataSource.quote(codes);
-
+        // 所有场景都注入交易系统状态（短版）：大盘指数始终注入，持仓按需
         StringBuilder sb = new StringBuilder();
         sb.append("## 交易系统状态\n\n");
-        sb.append("当前持有 ").append(positions.size()).append(" 个仓位。");
 
-        for (Position p : positions) {
-            MarketData md = quotes.get(p.symbol());
-            BigDecimal price = md != null ? md.price() : p.currentPrice();
-            BigDecimal pnl = price.subtract(p.avgCost())
-                    .multiply(BigDecimal.valueOf(p.quantity()));
-            BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
-                    ? price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-                    : BigDecimal.ZERO;
+        List<Position> positions = positionRepository.findAll();
+        if (positions.isEmpty()) {
+            sb.append("当前无持仓记录。\n");
+        } else {
+            sb.append("当前持有 ").append(positions.size()).append(" 个仓位。");
 
-            sb.append("\n- ").append(p.name()).append("(").append(p.symbol()).append(")")
-                    .append(" 现价").append(price.stripTrailingZeros().toPlainString())
-                    .append(" ").append(pnlPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    .append(pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString()).append("%");
+            List<String> codes = positions.stream().map(Position::symbol).toList();
+            Map<String, MarketData> quotes = marketDataSource.quote(codes);
+
+            for (Position p : positions) {
+                MarketData md = quotes.get(p.symbol());
+                BigDecimal price = md != null ? md.price() : p.currentPrice();
+                BigDecimal pnl = price.subtract(p.avgCost())
+                        .multiply(BigDecimal.valueOf(p.quantity()));
+                BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
+                        ? price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+
+                sb.append("\n- ").append(p.name()).append("(").append(p.symbol()).append(")")
+                        .append(" 现价").append(price.stripTrailingZeros().toPlainString())
+                        .append(" ").append(pnlPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                        .append(pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString()).append("%");
+            }
         }
 
-        // 大盘概览（简短一行）
+        // 大盘概览（始终注入，不依赖持仓存在）
         Map<String, MarketData> indices = marketDataSource.indices();
         if (!indices.isEmpty()) {
             sb.append("\n\n大盘：");
@@ -93,7 +96,8 @@ public class MarketContextContributor implements ContextContributor {
             }
         }
 
-        return sb.toString();
+        String result = sb.toString().strip();
+        return result.isBlank() ? "" : result;
     }
 
     // ── 内部方法 ──

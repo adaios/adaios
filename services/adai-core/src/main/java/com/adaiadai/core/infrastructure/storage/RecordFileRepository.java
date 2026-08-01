@@ -25,7 +25,7 @@ public class RecordFileRepository implements RecordRepository {
 
     private static final String RECORDS_DIR = "records";
 
-    private static final DateTimeFormatter ID_FORMATTER = DateTimeFormatter.ofPattern("'rec_'yyyyMMdd'_'HHmmss");
+    private static final DateTimeFormatter ID_FORMATTER = DateTimeFormatter.ofPattern("'rec_'yyyyMMdd'_'HHmmssSSS");
     private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile(
             "^---\\n(.+?)\\n---\\n(.+)", Pattern.DOTALL);

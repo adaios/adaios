@@ -66,7 +66,7 @@ public record Memory(
     }
 
     static String generateId() {
-        return "mem_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+        return "mem_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
                 .format(LocalDateTime.now());
     }
 }
