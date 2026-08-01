@@ -21,10 +21,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  fonts:
-    - family: Noto Color Emoji
-      fonts:
-        - asset: web/fonts/NotoColorEmoji.ttf
 
 flutter_launcher_icons:
   android: true
