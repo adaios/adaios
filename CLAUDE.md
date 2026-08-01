@@ -226,7 +226,7 @@ Bug 修复     → 直接改
 
 ### 定期审核
 
-- `/review` 触发项目审核（增量默认审 git diff，`--full` 全量）：4 角色（文档/后端/前端/产品UI）+ 守护检查，滚动更新 `docs/review/REVIEW.md`
+- `/review` 触发项目审核（增量默认审 git diff，`--full` 全量）：5 角色（文档/后端/前端/产品UI/知识数据）+ 守护检查，滚动更新 `docs/review/REVIEW.md`
 - 检查点清单在 `docs/review/checklists/`（活文档），每次审核沉淀新检查模式
 - 审核只报告不直接修（P0 数据丢失可与用户确认后修）
 
