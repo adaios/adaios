@@ -202,42 +202,86 @@ class _MemoryPageState extends State<MemoryPage> {
         : entry.sentiment == 'negative' ? Colors.orange : AppColors.darkGrey5;
 
     final time = entry.createdAt.length >= 16 ? entry.createdAt.substring(11, 16) : '';
+    final isSuperseded = entry.superseded;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface.withAlpha(180),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.darkBorder.withAlpha(80)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(entry.summary, style: TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.4)),
-        if (entry.tags.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Wrap(spacing: 4, runSpacing: 4,
-            children: entry.tags.map((t) => GestureDetector(
-              onTap: () => setState(() => _activeTag = t),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _activeTag == t ? AppColors.darkGreen.withValues(alpha: 0.15) : AppColors.darkSurface2,
-                  borderRadius: BorderRadius.circular(4),
+    return Opacity(
+      opacity: isSuperseded ? 0.45 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface.withAlpha(180),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isSuperseded ? AppColors.darkBorder.withAlpha(40) : AppColors.darkBorder.withAlpha(80)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 记忆进化：kind 徽标 + 已取代/待办标记
+          Row(children: [
+            _buildKindBadge(entry.kind),
+            if (isSuperseded) ...[
+              const SizedBox(width: 6),
+              _buildMetaTag('已取代', AppColors.darkGrey5),
+            ],
+            if (entry.actionable) ...[
+              const SizedBox(width: 6),
+              _buildMetaTag(entry.doneAt == null ? '待办' : '已完成', AppColors.darkOrange),
+            ],
+          ]),
+          const SizedBox(height: 8),
+          Text(entry.summary, style: TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.4,
+              decoration: isSuperseded ? TextDecoration.lineThrough : null,
+              decorationColor: AppColors.darkGrey5)),
+          if (entry.tags.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(spacing: 4, runSpacing: 4,
+              children: entry.tags.map((t) => GestureDetector(
+                onTap: () => setState(() => _activeTag = t),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _activeTag == t ? AppColors.darkGreen.withValues(alpha: 0.15) : AppColors.darkSurface2,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(t, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+                      color: _activeTag == t ? AppColors.darkGreen : AppColors.darkGrey5)),
                 ),
-                child: Text(t, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-                    color: _activeTag == t ? AppColors.darkGreen : AppColors.darkGrey5)),
-              ),
-            )).toList(),
-          ),
-        ],
-        const SizedBox(height: 4),
-        Row(children: [
-          Icon(icon, size: 12, color: iconColor),
-          const SizedBox(width: 4),
-          Text('$time  ${_dateDisplay(_currentDate)}',
-              style: TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+              )).toList(),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Row(children: [
+            Icon(icon, size: 12, color: iconColor),
+            const SizedBox(width: 4),
+            Text('$time  ${_dateDisplay(_currentDate)}',
+                style: TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+          ]),
         ]),
-      ]),
+      ),
+    );
+  }
+
+  /// kind 徽标（fact/insight/preference/pattern/decision → 中文标签）
+  Widget _buildKindBadge(String kind) {
+    final (label, color) = switch (kind) {
+      'preference' => ('偏好', AppColors.darkOrange),
+      'pattern' => ('模式', AppColors.darkBlue),
+      'decision' => ('决策', AppColors.darkGreen),
+      'fact' => ('事实', AppColors.darkGrey5),
+      _ => ('洞察', AppColors.darkGrey4),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
+      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  /// 元信息小标签（已取代 / 待办）
+  Widget _buildMetaTag(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
+      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color)),
     );
   }
 }
