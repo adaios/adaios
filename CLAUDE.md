@@ -60,16 +60,16 @@ data/                  # 个人数据资产（File First，Git 追踪）
   records/             #   原始记录（按年月组织）
   memory/              #   AI 理解沉淀
   trading/             #   持仓数据
-  knowledge/           #   知识体系（File First，通过 KnowledgeSource 注入 Context Engine）
+  project/             #   项目任务数据
+  index/               #   标签索引
 ai/                    # AI 上下文模板
   context/             #   project / architecture / developer 上下文模板
-  prompts/             #   提示词模板（预留）
-  workflows/           #   AI 工作流定义（预留）
 infra/                 # 基础设施
   docker-compose.yml
 docs/                  # 项目文档
   VISION.md            #   项目愿景与核心理念（必读）
   architecture/        #   架构文档
+  ideas/               #   想法/方案归档区（未定型但有价值，正式入口）
 apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
     scripts/             # 构建/部署脚本
@@ -255,9 +255,7 @@ cd services/adai-core && ./gradlew test --tests "*ClassName.methodName"  # 单�
 
 # ── 部署 ───────────────────────────────────────
 cd services/adai-core && ./gradlew bootJar
-./deploy.sh <服务器IP> build/libs/adai-core-0.0.1-SNAPSHOT.jar
-# 示例: ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
-# 脚本自动完成：上传 JAR → 停服务 → 补全 data 目录 → 修权限 → 重启 → 重建记忆
+# ⚠️ deploy.sh 尚未建立（历史遗留引用），部署流程随"产品发布版本机制"一并规范化
 
 # ── 运行 ───────────────────────────────────────
 # DeepSeek 模式（默认，需在 .env 配置 DEEPSEEK_API_KEY）：

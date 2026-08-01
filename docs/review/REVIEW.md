@@ -27,7 +27,7 @@ mode: 初始建立（迁移自 20260801-project-review.md）
 | 21 | P2 | save/delete 重建文件丢弃手写注释 | `ProjectFileRepository`/`MemoryService` | 📋 待办 |
 | 22 | P2 | kernel 反向依赖 infrastructure 类型 | `IntentRecognizer`/`ContextEngine`/`MemoryService` | 📋 待办（有意跳过，高风险）|
 | 23 | P2 | Layer 6 反馈闭环从未运转（conflicts 硬编码）| `TradingController.java` | 📋 待办 |
-| 24 | P2 | 记忆沉淀稀疏（54 记录仅 2 Memory）| `data/memory/` | 📋 待办（建议 `memory/rebuild`）|
+| 24 | P2 | **记忆沉淀断裂**（records 46 文件 vs memory 1 文件）。① `handleStatem` AI 失败时 `understanding=null` → 记忆跳过不降级沉淀 ② `handleQuestion→QuestionAppService.answer()` 从不 persist Memory | `RecordController.handleStatem` / `QuestionAppService` | 📋 待办（程序修复：AI 失败降级沉淀 + QUESTION 也沉淀）|
 | 16a | P3 | 迁移 3 个历史对话卡片到 `records/cards/` | 卡片 `1784699856587`/`1784700029268`/`1784700598749` | 📋 待办 |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
