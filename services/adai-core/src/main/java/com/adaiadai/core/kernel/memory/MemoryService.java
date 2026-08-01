@@ -255,6 +255,25 @@ public class MemoryService {
         return memory.isPresent() && !Memory.isDegraded(memory.get());
     }
 
+    /**
+     * 按记忆类型查询（记忆进化 Phase 1）。
+     * <p>
+     * 遍历最近 30 天记忆，过滤 kind 匹配的条目。
+     * 供分类召回使用（如偏好类偏好、模式类模式）。
+     */
+    public List<Memory> findByKind(String kind) {
+        List<Memory> result = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                if (kind.equals(m.kind())) {
+                    result.add(m);
+                }
+            }
+        }
+        return result;
+    }
+
     // ── 内部方法 ──
 
     private String memoryFilePath(Memory memory) {
@@ -310,6 +329,7 @@ public class MemoryService {
                 ---
                 id: %s
                 recordId: %s
+                kind: %s
                 tags: [%s]
                 sentiment: %s
                 actionable: %b
@@ -322,6 +342,7 @@ public class MemoryService {
                 """.strip().formatted(
                 memory.id(),
                 memory.recordId(),
+                memory.kind(),
                 String.join(", ", memory.tags()),
                 memory.sentiment(),
                 memory.actionable(),
@@ -354,6 +375,8 @@ public class MemoryService {
 
                 String id = fields.getOrDefault("id", "");
                 String recordId = fields.getOrDefault("recordId", "");
+                // 旧条目无 kind 字段 → 默认 insight（记忆进化 Phase 1 向后兼容）
+                String kind = fields.getOrDefault("kind", Memory.KIND_INSIGHT);
                 String sentiment = fields.getOrDefault("sentiment", "neutral");
                 boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
                 String suggestion = fields.getOrDefault("suggestion", null);
@@ -367,7 +390,7 @@ public class MemoryService {
                 List<MemoryPattern> patterns = parsePatterns(fields.getOrDefault("patterns", "[]"));
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
-                result.add(new Memory(id, recordId, body, patterns, preferences,
+                result.add(new Memory(id, recordId, kind, body, patterns, preferences,
                         tags, sentiment, actionable, suggestion, createdAt));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());

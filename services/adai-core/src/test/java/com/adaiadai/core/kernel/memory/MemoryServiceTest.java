@@ -101,4 +101,74 @@ class MemoryServiceTest {
         memoryService.persist(Memory.fromUnderstanding("rec_5", insight("洞察", "AI 洞察")));
         assertTrue(memoryService.hasRealMemory("rec_5"), "升级后应算 AI 记忆，重补跳过");
     }
+
+    // ── 记忆进化 Phase 1：kind 类型 ──
+
+    @Test
+    void deriveKind_preferencePrioritized() {
+        AiUnderstanding u = new AiUnderstanding("s", "i",
+                List.of(new MemoryPattern("p", 0.8)),
+                List.of(new MemoryPreference("pref", 0.9)),
+                List.of(), "neutral", "life", false, null, null);
+        assertEquals(Memory.KIND_PREFERENCE, Memory.deriveKind(u), "有偏好时偏好优先");
+    }
+
+    @Test
+    void deriveKind_patternWhenNoPreference() {
+        AiUnderstanding u = new AiUnderstanding("s", "i",
+                List.of(new MemoryPattern("p", 0.8)),
+                null,
+                List.of(), "neutral", "life", false, null, null);
+        assertEquals(Memory.KIND_PATTERN, Memory.deriveKind(u));
+    }
+
+    @Test
+    void deriveKind_insightWhenNoPattern() {
+        AiUnderstanding u = new AiUnderstanding("s", "洞察内容", null, null,
+                List.of(), "neutral", "life", false, null, null);
+        assertEquals(Memory.KIND_INSIGHT, Memory.deriveKind(u));
+    }
+
+    @Test
+    void deriveKind_factWhenNoGain() {
+        AiUnderstanding u = new AiUnderstanding("s", null, null, null,
+                List.of(), "neutral", "life", false, null, null);
+        assertEquals(Memory.KIND_FACT, Memory.deriveKind(u));
+    }
+
+    @Test
+    void fromUnderstanding_setsDerivedKind() {
+        Memory m = Memory.fromUnderstanding("rec_k1",
+                new AiUnderstanding("s", "i",
+                        List.of(new MemoryPattern("p", 0.8)), null,
+                        List.of(), "neutral", "life", false, null, null));
+        assertEquals(Memory.KIND_PATTERN, m.kind());
+    }
+
+    @Test
+    void fromContentFallback_kindIsFact() {
+        assertEquals(Memory.KIND_FACT, Memory.fromContentFallback("rec_k2", "原文").kind());
+    }
+
+    @Test
+    void persist_roundTrip_keepsKind() {
+        Memory m = Memory.fromContentFallback("rec_k3", "用户喜欢喝茶");
+        memoryService.persist(m);
+        List<Memory> loaded = memoryService.findByDate(m.createdAt().toLocalDate());
+        assertEquals(1, loaded.size());
+        assertEquals(Memory.KIND_FACT, loaded.get(0).kind(), "kind 应随 frontmatter 写读");
+    }
+
+    @Test
+    void findByKind_filtersByKind() {
+        memoryService.persist(Memory.fromContentFallback("rec_k4", "原文fact"));
+        memoryService.persist(Memory.fromUnderstanding("rec_k5",
+                new AiUnderstanding("s", "i",
+                        List.of(new MemoryPattern("p", 0.8)), null,
+                        List.of("t"), "neutral", "life", false, null, null)));
+
+        assertTrue(memoryService.findByKind(Memory.KIND_FACT).stream().anyMatch(m -> m.recordId().equals("rec_k4")));
+        assertTrue(memoryService.findByKind(Memory.KIND_PATTERN).stream().anyMatch(m -> m.recordId().equals("rec_k5")));
+        assertTrue(memoryService.findByKind(Memory.KIND_FACT).stream().noneMatch(m -> m.recordId().equals("rec_k5")));
+    }
 }

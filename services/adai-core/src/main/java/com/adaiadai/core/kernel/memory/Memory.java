@@ -17,6 +17,7 @@ import java.util.List;
  *
  * @param id          记忆标识 {@code mem_yyyyMMdd_HHmmss}
  * @param recordId    来源记录的 ID
+ * @param kind        记忆类型：fact / insight / preference / pattern / decision（记忆进化 Phase 1）
  * @param summary     AI 洞察（insight），有信息增量的理解沉淀，非原文复述
  * @param patterns    行为模式列表（可选），从该记录中提炼的模式
  * @param preferences 用户偏好列表（可选），从该记录中提炼的偏好
@@ -29,6 +30,7 @@ import java.util.List;
 public record Memory(
         String id,
         String recordId,
+        String kind,
         String summary,
         List<MemoryPattern> patterns,
         List<MemoryPreference> preferences,
@@ -39,12 +41,19 @@ public record Memory(
         LocalDateTime createdAt
 ) {
 
+    public static final String KIND_FACT = "fact";
+    public static final String KIND_INSIGHT = "insight";
+    public static final String KIND_PREFERENCE = "preference";
+    public static final String KIND_PATTERN = "pattern";
+    public static final String KIND_DECISION = "decision";
+
     /**
      * 从 AI 理解结果创建记忆。
      * <p>
      * summary 使用 understanding.insight()（有信息增量的洞察），
      * 如果 insight 为空（如 QUESTION 场景），回退到 understanding.summary()。
      * patterns/preferences 直接从 understanding 传递。
+     * kind 由 {@link #deriveKind(AiUnderstanding)} 推导。
      */
     public static Memory fromUnderstanding(String recordId, AiUnderstanding understanding) {
         // insight 优先：有洞察用洞察，没有（QUESTION 场景）用 summary 兜底
@@ -54,6 +63,7 @@ public record Memory(
         return new Memory(
                 generateId(),
                 recordId,
+                deriveKind(understanding),
                 memorySummary,
                 understanding.patterns(),
                 understanding.preferences(),
@@ -77,10 +87,29 @@ public record Memory(
             fallback = fallback.substring(0, 100) + "…";
         }
         return new Memory(
-                generateId(), recordId, fallback,
+                generateId(), recordId, KIND_FACT, fallback,
                 List.of(), List.of(), List.of(),
                 "neutral", false, "DEGRADED", LocalDateTime.now()
         );
+    }
+
+    /**
+     * 从 AI 理解结果推导记忆类型（记忆进化 Phase 1）。
+     * <p>
+     * 偏好优先（可被修正）、模式其次（行为规律）、洞察兜底（有信息增量），
+     * 无任何增量为 fact。decision 类型随 actionable 闭环（Phase 3）演进，暂不单独推导。
+     */
+    public static String deriveKind(AiUnderstanding understanding) {
+        if (understanding.preferences() != null && !understanding.preferences().isEmpty()) {
+            return KIND_PREFERENCE;
+        }
+        if (understanding.patterns() != null && !understanding.patterns().isEmpty()) {
+            return KIND_PATTERN;
+        }
+        if (understanding.insight() != null && !understanding.insight().isBlank()) {
+            return KIND_INSIGHT;
+        }
+        return KIND_FACT;
     }
 
     /**
