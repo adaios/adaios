@@ -61,6 +61,14 @@
 | [20260727-memory-upgrade.md](rfc/20260727-memory-upgrade.md) | 2026-07-27 | Memory 升级路线：Phase 0-4，从复读机到真记忆 |
 | [20260728-project-development-suggestions.md](rfc/20260728-project-development-suggestions.md) | 2026-07-28 | 项目发展建议：产品/前端/UI 三方视角 |
 | [20260730-market-data-and-push.md](rfc/20260730-market-data-and-push.md) | 2026-07-30 | Layer 5 行情接入 + 主动推送 MVP 设计 |
+| [20260801-review-skill.md](rfc/20260801-review-skill.md) | 2026-08-01 | 审核流程 Skill 化：/review + 4 角色 + 检查点清单 |
+
+## 🔍 审核
+
+| 文档 | 说明 |
+|:-----|:------|
+| [REVIEW.md](review/REVIEW.md) | 📌 审核全量状态报告（常驻，`/review` 更新）。未修复项滚动保留 |
+| [checklists/](review/checklists/) | 检查点清单（活文档）：guard 守护 + docs/backend/frontend/product 四角色 |
 
 ## 🐛 问题跟踪
 
@@ -76,4 +84,4 @@
 
 ---
 
-**文档版本：v1.3 | 最后更新：2026-07-28**
+**文档版本：v1.4 | 最后更新：2026-08-01**

@@ -13,7 +13,15 @@ target/
 
 # ── IDE / Claude ──
 .idea/
-.claude/
+# .claude 排除本地设置，但共享可演进资产（skills/agents/commands）
+# `**/` 前缀让规则匹配所有层级的 .claude（根 + 子项目）
+**/.claude/*
+!**/.claude/skills/
+!**/.claude/skills/**
+!**/.claude/agents/
+!**/.claude/agents/**
+!**/.claude/commands/
+!**/.claude/commands/**
 .obsidian/
 *.iml
 *.iws
