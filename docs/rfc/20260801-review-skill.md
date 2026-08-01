@@ -79,7 +79,7 @@ docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增�
 - `review-docs`：api-spec ↔ Controller ↔ 前端调用三方对齐；CLAUDE.md 架构图与代码一致；RFC 是否有遗留方向
 - `review-backend`：`generateId()` 是否含毫秒；`filePath()` 是否从实体字段推导而非 `now()`；DOTALL 正则是否 `[^\n]*` 而非 `.+`；缓存键是否同规范；scene 路由是否真正触发 Contributor
 - `review-frontend`：`setState` 前 `mounted` 守卫；fromJson 期望键 vs 后端序列化；死代码/主题残留；URL 编码
-- `review-product`：页面视觉一致性（主题/间距/字体）；交互是否有 stub 占位；产品文案与 `frontend-glossary.md` 术语一致
+- `review-product`：页面视觉一致性（主题/间距/字体）；交互是否有 stub 占位；产品文案与 `frontend-reference.md` 术语一致
 - `review-knowledge`：os/ 每个知识资产是否被 KnowledgeSource 消费；data/ 目录健康与隐私红线；文件格式 ↔ Repository 解析一致；闭环（反哺/记忆）有无真实产物
 
 ## 七、如何"不断更新优化"

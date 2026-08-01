@@ -34,7 +34,7 @@
 | **看路线** | 本文件 | 目的地、版本蓝图 | 每次会话/每次拆任务前 |
 | **拆任务** | `reference/task-log.md` | 从路线拆出可执行任务（模块化、P0-P3）| 版本开始前 |
 | **确认目标** | 本文件 + task-log | 对照路线确认"本批做哪些、达成什么" | 每批任务前 |
-| **做决策** | `rfc/` + `decisions/` | 方向性决策记录（proposed→approved→implemented）| 有决策时 |
+| **做决策** | `rfc/` | 方向性决策记录（proposed→approved→implemented）| 有决策时 |
 | **记问题** | `reference/issue-log.md` | 问题/缺陷记录（模块化）| 有问题时 |
 | **审质量** | `review/REVIEW.md` | 审核状态报告 + 守护检查 | /review 时 |
 

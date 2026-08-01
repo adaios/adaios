@@ -9,7 +9,7 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 
 **阅读 VISION.md（必读）**：在做任何决策或写任何代码前，先阅读 `docs/VISION.md`——它定义了 AdaiOS 的核心理念、五层产品架构和工程原则。CLAUDE.md 只记录技术细节，VISION.md 记录"为什么"。
 
-**核心理念完整阐述**：[`docs/architecture/adaios-personal-os.md`](docs/architecture/adaios-personal-os.md) — Everything is Content、Knowledge Evolves、Reasoning is Service。
+**核心理念**：[`docs/VISION.md`](docs/VISION.md) — 项目愿景、核心理念、五层产品架构（唯一理念真相源）。
 
 **文档入口**：[`docs/README.md`](docs/README.md) — 所有文档的索引入口，按"必读 → 架构 → 功能 → API → 决策 → 部署"分层组织。
 
@@ -288,8 +288,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/architecture/product-roadmap.md` — 🚩 产品路线 v1.0.0（唯一蓝图，路线驱动开发，从这里拆任务/确认目标）
 - `docs/architecture/product-architecture.md` — 五层产品架构（必读）
 - `docs/architecture/system-architecture.md` — 系统架构细节
-- `docs/architecture/frontend-glossary.md` — 前端 UI 中英术语对照
-- `docs/architecture/layout-reference.md` — 前端页面布局视觉参考
+- `docs/architecture/frontend-reference.md` — 前端统一参考（UI 术语对照 + 布局视觉参考）
 - `docs/architecture/api-spec.md` — API 接口契约
 - `os/*-os/definition/` — 各 Domain 的职责、概念、工作流
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）

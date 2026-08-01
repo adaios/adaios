@@ -26,14 +26,14 @@ AdaiOS 围绕人、记忆、上下文、知识、决策、AI 协作构建个人�
 
 # 3. 核心理念
 
-AdaiOS 建立在一套统一的理念基础之上。核心理念的完整阐述见 **[adaios-personal-os.md](architecture/adaios-personal-os.md)**，本文只列出纲领：
+AdaiOS 建立在一套统一的理念基础之上。本文列出核心理念纲领：
 
 - **Everything is Content** — 所有输入（文字、图片、交易、课程）统一抽象为 Content
 - **Knowledge Evolves** — 知识不是一次生成，而是不断演化：新闻 → 主题 → 行业 → 策略
 - **Reasoning is Service** — Trading OS 不是 CRUD API，是推理服务
 - **Reality → Knowledge → Action → Reality** — 必须形成反馈闭环
 
-最高设计原则：**File First, Database Second, Context Always**（详见 `adaios-personal-os.md §3`）。
+最高设计原则：**File First, Database Second, Context Always**。
 
 ---
 
@@ -232,7 +232,7 @@ Record → Context → AI → Memory 闭环，持 Trading OS 基础能力。
 
 ### File First, Database Second, Context Always
 
-最高设计原则。详见 [`adaios-personal-os.md`](architecture/adaios-personal-os.md)。
+最高设计原则。详见 `docs/architecture/system-architecture.md` §五「数据原则」。
 
 ---
 

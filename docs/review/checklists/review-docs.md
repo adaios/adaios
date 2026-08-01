@@ -26,7 +26,7 @@
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/issue-log.md` 是否持续更新 | issue-log 变归档 stub、真实在 reference/（P2 #38）|
+| D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/reference/issue-log.md` 是否持续更新 | issue-log 唯一在 reference/（P2 #38）|
 | D7 | `data/identity/profile.sample.md` 等 git 追踪的 sample 与真实文件格式是否一致（隐私文件不进 git）| 缺 identity/trading 目录（P2，已修）|
 | D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
 | D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 review-docs 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|

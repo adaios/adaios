@@ -346,3 +346,35 @@ flowchart LR
 - 不提前微服务化
 - 模块边界优先
 - 数据资产优先
+
+## 八、数据存储位置（File First）
+
+| 数据 | 存储位置 | 读写方 |
+|:----|:---------|:-------|
+| 原始记录 | `data/records/YYYY/MM/rec_xxx.md` | RecordFileRepository |
+| 对话轮次 | `data/records/cards/YYYY/MM/DD/card_xxx.md` | CardFileRepository |
+| AI 记忆 | `data/memory/YYYY/MM.md` | MemoryService |
+| 用户身份 | `data/identity/profile.md` | IdentityRepository |
+| 标签索引 | `data/index/tags.json` | TagIndexService |
+| 交易知识 | `os/trading-os/11-context/` | TradingKnowledgeSource（读取） |
+| 项目管理知识 | `os/project-os/11-context/` | ProjectKnowledgeSource（读取） |
+| 持仓数据 | `data/trading/positions.md` | PositionFileRepository |
+| 项目任务 | `data/project/tasks/YYYY/MM.md` | ProjectFileRepository |
+| 复盘笔记 | `data/trading/reviews/` | TradingReviewFileRepository |
+
+## 九、STATEMENT 与 QUESTION 对比
+
+| 阶段 | STATEMENT（记录） | QUESTION（提问） |
+|:----|:-----------------|:-----------------|
+| **入口** | `POST /api/v1/records` | 同上 |
+| **意图识别** | 纯 AI（失败抛异常） | 手动指定或 cardId 延续 |
+| **Context** | 简版（Identity + 今日历史） | 完整版（Identity + 历史 + 对话记录 + Domain） |
+| **AI 模式** | ANALYSIS（0.3 temp，JSON 输出） | CHAT（0.7 temp，自然对话） |
+| **存储** | `data/records/` + `data/memory/` + `data/index/` | `data/records/` + `data/memory/` + card 文件 + `data/index/` |
+| **前端表现** | 普通记录卡片（摘要 + 标签） | 聊天气泡（一问一答） |
+
+## 十、已知待办（历史断裂点）
+
+历史数据流断裂点已修复（详见 git 历史），当前待办：
+
+1. **Layer 6 反馈闭环不完整** 📋 — 反哺依赖真实 conflicts 数据（见 `docs/review/REVIEW.md` #23）

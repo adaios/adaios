@@ -10,7 +10,6 @@
 |:-----|:------|
 | [VISION.md](VISION.md) | 项目愿景、五层产品架构、工程原则。**每个 AI 会话首先阅读。** |
 | [product-roadmap.md](architecture/product-roadmap.md) | 🚩 **产品路线 v1.0.0**——唯一蓝图，路线驱动开发：从这里拆任务、确认目标 |
-| [adaios-personal-os.md](architecture/adaios-personal-os.md) | 核心理念完整阐述：Everything is Content、Knowledge Evolves、Reasoning is Service |
 
 ## 🏗 架构
 
@@ -18,23 +17,19 @@
 |:-----|:------|
 | [product-architecture.md](architecture/product-architecture.md) | 五层产品架构详解（Layer 1-6） |
 | [system-architecture.md](architecture/system-architecture.md) | 系统架构、Kernel/Domain 分层、Context Engine |
-| [data-flow.md](architecture/data-flow.md) | 当前数据流图（代码实现对应） |
-| [ai-context-design.md](architecture/ai-context-design.md) | AI Context 分层设计（Profile/Records/Chat/Memory/Pattern） |
 | [memory-os-design.md](architecture/memory-os-design.md) | Memory OS 设计规约：职责、数据模型与 Context Engine / Domain OS 的关系 |
 
 ## 🔧 功能手册
 
 | 文档 | 说明 |
 |:-----|:------|
-| [backend-capabilities.md](architecture/backend-capabilities.md) | 后端功能产品说明书：输入、对话、Feed、记忆、搜索、交易 |
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
 
 ## 🎨 前端参考
 
 | 文档 | 说明 |
 |:-----|:------|
-| [frontend-glossary.md](architecture/frontend-glossary.md) | 前端 UI 中英术语对照 |
-| [layout-reference.md](architecture/layout-reference.md) | 页面布局视觉参考（ASCII 图） |
+| [frontend-reference.md](architecture/frontend-reference.md) | 前端统一参考：UI 术语对照 + 布局视觉参考（ASCII 图） |
 | [frontend-ui-reference.md](../apps/adai-app/UI_REFERENCE.md) | 📌 UI 元素精确对照：每个按钮→代码行 |
 
 ## 📋 API 契约
@@ -66,13 +61,13 @@
 | [20260801-memory-system-evolution.md](rfc/20260801-memory-system-evolution.md) | 2026-08-01 | 记忆系统进化：元记忆对比 + 主题合并/actionable 闭环落地方案 |
 | [20260801-release-versioning.md](rfc/20260801-release-versioning.md) | 2026-08-01 | 产品发布版本机制：版本号规则、发布流程、Release Notes、v0.1.0 规划 |
 
-> 早期独立决策文档见 `docs/decisions/`：[20260726-next-phase-direction.md](decisions/20260726-next-phase-direction.md)
+> 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 
 ## 💡 想法归档
 
 | 文档 | 说明 |
 |:-----|:------|
-| [ideas/](ideas/) | 未定型但有价值的想法/方案（ai-native 框架、ai-terms 文稿，含归档规则）|
+| [ideas/](ideas/) | 未定型但有价值的想法/方案（ai-terms 文稿等，含归档规则）|
 
 ## 🔍 审核
 
@@ -85,15 +80,14 @@
 
 | 文档 | 说明 |
 |:-----|:------|
-| [issue-log.md](reference/issue-log.md) | 项目级问题清单（旧 `docs/issue-log.md` 已迁移，原处为归档 stub）|
+| [issue-log.md](reference/issue-log.md) | 项目级问题清单（唯一问题记录）|
 
 ## 📚 参考文档
 
 | 文档 | 说明 |
 |:-----|:------|
-| [feature-reference.md](reference/feature-reference.md) | 功能参考文档 |
-| [task-log.md](reference/task-log.md) | 任务开发文档 |
-| [fix-record-20260729.md](reference/fix-record-20260729.md) | 修复记录（2026-07-29）|
+| [feature-reference.md](reference/feature-reference.md) | 功能参考文档（唯一功能真相源） |
+| [task-log.md](reference/task-log.md) | 任务开发文档（从产品路线拆任务）|
 
 ## 🚀 部署
 
@@ -101,6 +95,12 @@
 |:-----|:------|
 | [backend-deployment.md](deployment/backend-deployment.md) | 后端部署指南 |
 
+## 📥 收件箱（inbox）
+
+| 文档 | 说明 |
+|:-----|:------|
+| [inbox/](inbox/) | 待处理/待归档文档：影响结构或与主文档重复的文件，保留可追溯，定期清理 |
+
 ---
 
-**文档版本：v1.5 | 最后更新：2026-08-01**
+**文档版本：v2.0 | 最后更新：2026-08-02**
