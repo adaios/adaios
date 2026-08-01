@@ -1,9 +1,9 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-01
-last-review: 2026-08-01
+updated: 2026-08-02
+last-review: 2026-08-02
 baseline: cd1231b
-mode: --deep 增量（a4a7c12..cd1231b）
+mode: --full 全量（v0.1.0 发布前）
 ---
 
 # 项目审核状态报告
@@ -14,6 +14,7 @@ mode: --deep 增量（a4a7c12..cd1231b）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-02 | full 全量（v0.1.0 发布前）| — | backend/frontend/docs/product/knowledge ×5 | 前端 3 项 + 后端 P1 4 项 + 文档 | 后端 P1 4 项 + 文档契约 |
 | 2026-08-01 | 全量（初始） | — | backend / frontend / arch ×3 | 32 | 23 |
 | 2026-08-01 | deep 增量 | a4a7c12..cd1231b | docs / knowledge | 11 新 / 1 升级 | 0 |
 
@@ -21,6 +22,9 @@ mode: --deep 增量（a4a7c12..cd1231b）
 
 | # | 优先级 | 问题 | 位置 | 状态 |
 |:-:|:------:|:-----|:-----|:----:|
+| 60 | P1 | Feed `type=action` 无前端消费（待办闭环 UI 不可达，PATCH done 未调用）| `apps/adai-app/` | 📋 v0.2.0 |
+| 61 | P1 | Feed 分页终止条件失效（totalToday 含前端过滤的 ai_note/action，load more 不收敛 + 空态误判）| `main_page.dart` | 📋 v0.2.0 |
+| 62 | P2 | memory 页未展示 kind/topic/superseded/actionable/doneAt 新字段 | `memory_page.dart` | 📋 v0.2.0 |
 | 19 | P2 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办（数据量小）|
 | 22 | P2 | kernel 反向依赖 infrastructure 类型 | `IntentRecognizer`/`ContextEngine`/`MemoryService` | 📋 待办（有意跳过，高风险）|
 
@@ -28,6 +32,7 @@ mode: --deep 增量（a4a7c12..cd1231b）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 后端 P1 ×4 | actionable 筛选豁免（P1-1）+ 无限重补修复（重补筛选改已处理判定）+ ID 单调统一 IdGenerator（P1-2）+ rebuild 幂等（P1-3）+ 跨日升级（P1-4，findByRecordId 365 天）（`c41c2b7`）| ✅ 2026-08-02 |
 | 13 | interfaces 层编排重复三处 → RecordUnderstandingService 统一 compose→understand（`bdb83da`）| ✅ 2026-08-02 |
 | 33/38/39/41/21/23 | 第三批 6 项：review 路由表补 `.claude/**`（自审盲区闭合）；docs/README 索引登记 reference/decisions；os definition 加架构愿景声明+修正"os 实现接口"表述；data-flow 更新卡片路径/组装流程/断裂点；ProjectFileRepository save/delete 保留手写注释；TradingController conflicts 改解析真实 rules.md（空仓→R119、单吊→R96）| ✅ 2026-08-01 |
 | 12/24/14 | 第二批代码修复 3 项：记忆沉淀断裂（AI 失败降级原文入记忆标 DEGRADED + persist 升级语义洞察覆盖 + 重补过滤防阻塞 + summary 兜底移出 try）、复盘改走 ContextEngine（trading 场景注入规则/知识/行情 + 复盘模板）、测试缺口（新增 Memory/复盘/场景路由 9 个测试；行情/Feed分页/ContextEngine 原已有覆盖，REVIEW 描述过时）| ✅ 2026-08-01 |
@@ -45,5 +50,6 @@ mode: --deep 增量（a4a7c12..cd1231b）
 | 2026-08-01 | 全量 | backend/frontend/arch | 3 | ~2h | 32 | 23 |
 | 2026-08-01 | deep 增量 | docs/knowledge | 2 | ~25min | 11+1升级 | 0 |
 | 2026-08-02 | light 增量 | — | 0 | ~2min | 0 新 | 0 |
+| 2026-08-02 | full 全量（v0.1.0）| backend/frontend/docs/product/knowledge | 5 | ~25min | 前端 3 项 + 后端 P1 4 项 + 文档若干 | 后端 P1 4 项 + 文档契约 |
 
 > 跑几轮后用成本数据决定全量审核频率（目前建议：增量随时，全量 1-2 周一次）。

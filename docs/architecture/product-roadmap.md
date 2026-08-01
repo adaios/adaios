@@ -48,7 +48,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 
 | 版本 | 定位 | 内容概要 | 状态 |
 |:-----|:-----|:---------|:----:|
-| **v0.1.0** | 首个可发布基线 | 记忆进化 Phase 1-3 + 审核修复三批 + #13 消重复 + deploy.sh | 📋 推进中 |
+| **v0.1.0** | 首个可发布基线 | 记忆进化 Phase 1-5 + 审核修复三批 + #13 消重复 + deploy.sh | ✅ 已实现，待发布（tag 后冻结）|
 | **v0.2.0** | 能力补全 | Layer 5 外部信息深化 + Layer 2 主动推送（待定）| ⬜ 候选 |
 | **v0.3.0** | 多模态 | Layer 4 多模态记录（待定）| ⬜ 候选 |
 | **…** | 版本演进 | 见「版本历史」，每版从功能全景中取项 | ⬜ 待定 |
@@ -71,7 +71,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | | **多模态记录（图片/音频）** | ❌ | **最大空白，候选 v0.3.0** |
 | **L5 外部信息** | 行情接入（腾讯）Phase 1 上下文注入 | ✅ | 已落地 |
 | | 行情主动推送 / Feed 行情嵌入 | ⬜ | 推送机制待设计；新闻无稳定源暂不做 |
-| **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ DECISION 路由 | ✅ | 完整 |
+| **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ 意图识别（STATEMENT/QUESTION）| ✅ | 完整 |
 
 ### 3.2 Domain OS
 
@@ -86,20 +86,20 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | 能力 | 状态 | 说明 |
 |:-----|:----:|:-----|
 | 记忆沉淀/去重/降级 | ✅ | #24 已落地（DEGRADED + 升级语义）|
-| 记忆类型 kind | 📋 | 进化 Phase 1（本次 v0.1.0）|
-| 主题级合并 superseded | 📋 | 进化 Phase 2（本次 v0.1.0）|
-| actionable 闭环 | 📋 | 进化 Phase 3（本次 v0.1.0）|
-| 时效与淘汰 | 📋 | 进化 Phase 4（本次）|
-| 筛选降噪 | 📋 | 进化 Phase 5（本次）|
+| 记忆类型 kind | ✅ | 进化 Phase 1（已实现）|
+| 主题级合并 superseded | ✅ | 进化 Phase 2（已实现）|
+| actionable 闭环 | ✅ | 进化 Phase 3（已实现）|
+| 时效与淘汰 | ✅ | 进化 Phase 4（已实现）|
+| 筛选降噪 | ✅ | 进化 Phase 5（已实现）|
 
 ### 3.4 工程基建
 
 | 能力 | 状态 | 说明 |
 |:-----|:----:|:-----|
-| 版本机制 | 📋 | RFC 已写，待 accepted（本次）|
+| 版本机制 | ✅ | RFC 已 accepted（2026-08-02）|
 | 审核流程 | ✅ | /review 三档 + 5 角色 + guard.sh |
 | 发布流程 | 📋 | v0.1.0 首次跑通（本次）|
-| deploy.sh | 📋 | 待规范化（本次）|
+| deploy.sh | ✅ | 已规范化（scp + 重启 + 验证）|
 | adai-admin 管理后台 | ⬜ | 规划中，范围待定 |
 
 ---

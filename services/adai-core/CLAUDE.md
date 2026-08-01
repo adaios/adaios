@@ -125,7 +125,7 @@ com.adaiadai.core/
 | 文档（根目录的需 CLI read 查看） | 位置 | 说明 |
 |:-------------------------------|:----|:------|
 | `api-spec.md` | `../../docs/architecture/` | API 接口契约（全局唯一真相源） |
-| `backend-capabilities.md` | `../../docs/architecture/` | 后端功能产品说明书 |
+| `feature-reference.md` | `../../docs/reference/` | 功能参考（含后端能力，唯一功能真相源） |
 | `system-architecture.md` | `../../docs/architecture/` | 系统架构、Kernel/Domain 分层 |
 | `product-architecture.md` | `../../docs/architecture/` | 五层产品架构详解 |
 | `VISION.md` | `../../docs/` | 项目愿景与核心理念 |

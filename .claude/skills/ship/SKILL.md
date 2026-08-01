@@ -32,7 +32,7 @@ git diff --stat HEAD
 ### 3. API 契约同步
 
 ```bash
-grep -rn "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" services/adai-core/src/main/java/com/adaiadai/core/interfaces
+grep -rn "@GetMapping\|@PostMapping\|@PutMapping\|@PatchMapping\|@DeleteMapping" services/adai-core/src/main/java/com/adaiadai/core/interfaces
 ```
 
 - 有**新增/修改端点** → 更新 `docs/architecture/api-spec.md`，保持契约与代码一致
@@ -42,7 +42,7 @@ grep -rn "@GetMapping\|@PostMapping\|@PutMapping\|@DeleteMapping" services/adai-
 
 - 新功能/完成项 → 更新根 `CLAUDE.md`「当前焦点」状态表（方向进展/已完成/待做）
 - 新文档、新 RFC → 登记 `docs/README.md` 索引
-- 架构决策变化 → 确认 `docs/architecture/` 相关文档（如 `data-flow.md`）未过期
+- 架构决策变化 → 确认 `docs/architecture/` 相关文档（如 `system-architecture.md`）未过期
 
 ### 5. 规范提交
 

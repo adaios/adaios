@@ -3,7 +3,7 @@
 > 与 Claude 对话时使用的精确 UI 元素 → 代码引用。
 > 每个按钮、输入框、交互元素都能在本文件找到对应的 widget 和行号。
 >
-> 配套文档：[frontend-glossary.md](../../docs/architecture/frontend-glossary.md) | [layout-reference.md](../../docs/architecture/layout-reference.md) | [DESIGN.md](DESIGN.md)
+> 配套文档：[frontend-reference.md](../../docs/architecture/frontend-reference.md) | [DESIGN.md](DESIGN.md)
 
 **最后更新：2026-07-26**
 

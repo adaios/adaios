@@ -97,6 +97,19 @@
 - `204 No Content` — 删除成功（清理 record + card + memory 关联）
 - `404` — 不存在也返回 204（幂等）
 
+### `PATCH /api/v1/records/{id}/domain` — 修改记录所属领域
+
+**Request Body**
+
+```json
+{ "domain": "trading" }
+```
+
+**Response**
+
+- `204 No Content` — 修改成功
+- `400` — domain 非法（仅 `life` / `trading` / `project`）
+
 ### `POST /api/v1/records/retry` — 手动触发重补
 
 调用 `RecordRetryService`，为没有 Memory 的历史记录补齐 AI 摘要与标签。
@@ -191,7 +204,7 @@
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|
-| `type` | String | `record` / `card` / `ai_note` / `push` |
+| `type` | String | `record` / `card` / `ai_note` / `action`（未完成行动提醒，记忆进化 Phase 3）|
 | `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |

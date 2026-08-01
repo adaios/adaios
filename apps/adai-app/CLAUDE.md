@@ -126,7 +126,6 @@ cd apps/adai-app && flutter test
 |:-------------------------------|:----|:------|
 | UI_REFERENCE.md | 本目录 | 📌 每个按钮→代码行精确对照 |
 | DESIGN.md | 本目录 | 设计原则与核心哲学 |
-| `frontend-glossary.md` | `../../docs/architecture/` | 前端中英术语对照 |
-| `layout-reference.md` | `../../docs/architecture/` | 页面布局 ASCII 参考 |
+| `frontend-reference.md` | `../../docs/architecture/` | 前端统一参考（术语对照 + 布局视觉） |
 | `api-spec.md` | `../../docs/architecture/` | API 接口契约（全局唯一真相源） |
 | `VISION.md` | `../../docs/` | 项目愿景与核心理念 |
