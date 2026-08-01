@@ -73,6 +73,21 @@ public class MemoryController {
     }
 
     /**
+     * 标记行动类记忆为已完成（记忆进化 Phase 3：Reality→Knowledge→Action→Reality 闭环）。
+     * <p>
+     * PATCH /api/v1/memory/{id}/done — actionable=false + doneAt=now，
+     * 完成后的记忆不再出现在"待行动事项"与 Feed 待办提醒。
+     */
+    @PatchMapping("/{id}/done")
+    public ResponseEntity<Map<String, Object>> markDone(@PathVariable String id) {
+        boolean done = memoryService.markDone(id);
+        if (!done) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    /**
      * 重建记忆：遍历没有记忆的历史记录，逐个生成 AI 摘要+标签并沉淀为记忆。
      * <p>
      * POST /api/v1/memory/rebuild?date=2026-07-21

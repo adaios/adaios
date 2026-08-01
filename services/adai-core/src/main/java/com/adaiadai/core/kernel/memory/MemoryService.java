@@ -327,14 +327,27 @@ public class MemoryService {
      * 标记旧版本记忆为 superseded，evolvedTo 指向新版本（建立演变链）。
      */
     private void markSuperseded(Memory prev, String evolvedTo) {
-        String path = MEMORY_DIR + "/" + prev.createdAt().format(MONTH_FORMATTER) + ".md";
-        String content = fileStorage.read(path);
-        if (content == null || content.isBlank()) return;
-
         Memory updated = new Memory(prev.id(), prev.recordId(), prev.kind(), prev.summary(),
                 prev.patterns(), prev.preferences(), prev.tags(), prev.sentiment(),
                 prev.actionable(), prev.suggestion(), prev.createdAt(),
-                prev.topic(), true, evolvedTo);
+                prev.topic(), true, evolvedTo, prev.doneAt());
+        replaceEntry(prev.createdAt().toLocalDate(), prev.recordId(), updated);
+    }
+
+    private Memory withTopic(Memory memory, String topicId) {
+        return new Memory(memory.id(), memory.recordId(), memory.kind(), memory.summary(),
+                memory.patterns(), memory.preferences(), memory.tags(), memory.sentiment(),
+                memory.actionable(), memory.suggestion(), memory.createdAt(),
+                topicId, false, null, memory.doneAt());
+    }
+
+    /**
+     * 重写指定 recordId 的记忆条目（用于 superseded 标记 / 行动完成标记）。
+     */
+    private void replaceEntry(LocalDate date, String recordId, Memory updated) {
+        String path = MEMORY_DIR + "/" + date.format(DateTimeFormatter.ofPattern("yyyy/MM")) + ".md";
+        String content = fileStorage.read(path);
+        if (content == null || content.isBlank()) return;
 
         String newEntry = formatMemoryEntry(updated);
         Matcher matcher = ENTRY_SPLIT.matcher(content);
@@ -342,7 +355,7 @@ public class MemoryService {
         boolean replaced = false;
         while (matcher.find()) {
             String entry = matcher.group();
-            if (entry.contains("recordId: " + prev.recordId())) {
+            if (entry.contains("recordId: " + recordId)) {
                 sb.append(newEntry).append("\n");
                 replaced = true;
             } else {
@@ -354,11 +367,40 @@ public class MemoryService {
         }
     }
 
-    private Memory withTopic(Memory memory, String topicId) {
-        return new Memory(memory.id(), memory.recordId(), memory.kind(), memory.summary(),
-                memory.patterns(), memory.preferences(), memory.tags(), memory.sentiment(),
-                memory.actionable(), memory.suggestion(), memory.createdAt(),
-                topicId, false, null);
+    /**
+     * 标记行动类记忆为已完成（记忆进化 Phase 3）。
+     * <p>
+     * actionable=false + doneAt=now，保留 suggestion（行动记录可追溯）。
+     * 完成后的记忆不再出现在"待行动事项"/Feed 待办提醒。
+     */
+    public boolean markDone(String memoryId) {
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(date)) {
+                if (m.id().equals(memoryId)) {
+                    Memory updated = new Memory(m.id(), m.recordId(), m.kind(), m.summary(),
+                            m.patterns(), m.preferences(), m.tags(), m.sentiment(),
+                            false, m.suggestion(), m.createdAt(),
+                            m.topic(), m.superseded(), m.evolvedTo(), LocalDateTime.now());
+                    replaceEntry(date, m.recordId(), updated);
+                    log.info("行动标记完成 | memoryId={} | summary={}", memoryId, truncate(m.summary(), 40));
+                    return true;
+                }
+            }
+        }
+        log.warn("行动记忆未找到 | memoryId={}", memoryId);
+        return false;
+    }
+
+    /**
+     * 查询未完成的行动记忆（actionable=true 且 doneAt=null，近 30 天）。
+     * <p>
+     * Feed 待办提醒 + Context 待行动事项共用（记忆进化 Phase 3）。
+     */
+    public List<Memory> findPendingActions() {
+        return recentActive(30).stream()
+                .filter(m -> m.actionable() && m.doneAt() == null)
+                .collect(Collectors.toList());
     }
 
     private boolean hasOverlap(List<String> a, List<String> b) {
@@ -427,6 +469,7 @@ public class MemoryService {
                 topic: %s
                 superseded: %b
                 evolvedTo: %s
+                doneAt: %s
                 tags: [%s]
                 sentiment: %s
                 actionable: %b
@@ -443,6 +486,7 @@ public class MemoryService {
                 memory.topic() != null ? memory.topic() : "",
                 memory.superseded(),
                 memory.evolvedTo() != null ? memory.evolvedTo() : "",
+                memory.doneAt() != null ? memory.doneAt().toString() : "",
                 String.join(", ", memory.tags()),
                 memory.sentiment(),
                 memory.actionable(),
@@ -484,6 +528,16 @@ public class MemoryService {
                 boolean superseded = Boolean.parseBoolean(fields.getOrDefault("superseded", "false"));
                 String evolvedTo = fields.getOrDefault("evolvedTo", null);
                 if ("".equals(evolvedTo) || "null".equals(evolvedTo)) evolvedTo = null;
+                // Phase 3：doneAt（行动完成时间，默认 null）
+                LocalDateTime doneAt = null;
+                String doneAtStr = fields.getOrDefault("doneAt", null);
+                if (doneAtStr != null && !doneAtStr.isBlank() && !"null".equals(doneAtStr)) {
+                    try {
+                        doneAt = LocalDateTime.parse(doneAtStr);
+                    } catch (Exception e) {
+                        doneAt = null;
+                    }
+                }
                 boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
                 String suggestion = fields.getOrDefault("suggestion", null);
                 if ("null".equals(suggestion)) suggestion = null;
@@ -497,7 +551,7 @@ public class MemoryService {
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
                 result.add(new Memory(id, recordId, kind, body, patterns, preferences,
-                        tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo));
+                        tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo, doneAt));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());
             }

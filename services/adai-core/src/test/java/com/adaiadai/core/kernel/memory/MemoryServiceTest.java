@@ -217,4 +217,42 @@ class MemoryServiceTest {
         assertTrue(active.stream().noneMatch(m -> m.recordId().equals("rec_t5")), "superseded 版本不应参与回读");
         assertTrue(active.stream().anyMatch(m -> m.recordId().equals("rec_t6")));
     }
+
+    // ── 记忆进化 Phase 3：actionable 闭环 ──
+
+    private AiUnderstanding actionMemo(String summary, String suggestion, List<String> tags) {
+        return new AiUnderstanding(summary, summary, null, null, tags, "neutral", "trading", true, suggestion, null);
+    }
+
+    @Test
+    void markDone_completesActionableMemory() {
+        Memory m = Memory.fromUnderstanding("rec_a1", actionMemo("建议减仓", "建议减仓", List.of("交易")));
+        memoryService.persist(m);
+        assertTrue(m.actionable());
+
+        assertTrue(memoryService.markDone(m.id()));
+        List<Memory> loaded = memoryService.findByDate(m.createdAt().toLocalDate());
+        assertEquals(1, loaded.size());
+        assertFalse(loaded.get(0).actionable(), "完成后 actionable 应为 false");
+        assertNotNull(loaded.get(0).doneAt(), "完成后应记录完成时间");
+    }
+
+    @Test
+    void findPendingActions_excludesDone() {
+        // 两个行动记忆 tags 不重叠，避免主题合并干扰
+        Memory pending = Memory.fromUnderstanding("rec_a2", actionMemo("买入机会", "关注半导体", List.of("交易")));
+        Memory done = Memory.fromUnderstanding("rec_a3", actionMemo("已处理", "卖出一批", List.of("生活")));
+        memoryService.persist(pending);
+        memoryService.persist(done);
+        memoryService.markDone(done.id());
+
+        List<Memory> pendingActions = memoryService.findPendingActions();
+        assertTrue(pendingActions.stream().anyMatch(m -> m.recordId().equals("rec_a2")), "未完成行动应保留");
+        assertTrue(pendingActions.stream().noneMatch(m -> m.recordId().equals("rec_a3")), "已完成行动不应出现");
+    }
+
+    @Test
+    void markDone_notFound_returnsFalse() {
+        assertFalse(memoryService.markDone("mem_nonexistent"));
+    }
 }

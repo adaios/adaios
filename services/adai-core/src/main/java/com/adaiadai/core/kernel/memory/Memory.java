@@ -29,6 +29,7 @@ import java.util.List;
  * @param topic       所属主题 id（记忆进化 Phase 2：同话题记忆归为一主题）
  * @param superseded  是否已被新版本取代（Phase 2：新记忆成为主题最新版本，旧版本标 true）
  * @param evolvedTo   指向新版本记忆 id（Phase 2：superseded 时的演变链指针）
+ * @param doneAt      行动完成时间（Phase 3：actionable 记忆标记完成时记录，null=未完成）
  */
 public record Memory(
         String id,
@@ -44,7 +45,8 @@ public record Memory(
         LocalDateTime createdAt,
         String topic,
         boolean superseded,
-        String evolvedTo
+        String evolvedTo,
+        LocalDateTime doneAt
 ) {
 
     public static final String KIND_FACT = "fact";
@@ -78,7 +80,7 @@ public record Memory(
                 understanding.actionable(),
                 understanding.actionSuggestion(),
                 LocalDateTime.now(),
-                null, false, null
+                null, false, null, null
         );
     }
 
@@ -97,7 +99,7 @@ public record Memory(
                 generateId(), recordId, KIND_FACT, fallback,
                 List.of(), List.of(), List.of(),
                 "neutral", false, "DEGRADED", LocalDateTime.now(),
-                null, false, null
+                null, false, null, null
         );
     }
 
@@ -127,8 +129,15 @@ public record Memory(
         return memory != null && "DEGRADED".equals(memory.suggestion());
     }
 
+    /** 进程内单调递增的时间戳，保证同一毫秒内多条记忆 id 不碰撞（毫秒精度碰撞会破坏按 id 定位） */
+    private static final java.util.concurrent.atomic.AtomicLong LAST_ID_TS = new java.util.concurrent.atomic.AtomicLong(0);
+
     static String generateId() {
+        long now = System.currentTimeMillis();
+        long idTs = LAST_ID_TS.accumulateAndGet(now, (prev, cur) -> Math.max(cur, prev + 1));
         return "mem_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
-                .format(LocalDateTime.now());
+                .format(java.time.LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(idTs),
+                        java.time.ZoneId.systemDefault()));
     }
 }

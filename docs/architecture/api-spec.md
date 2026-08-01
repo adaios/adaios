@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.0 | 最后更新：2026-07-31**
+**文档版本：v3.2 | 最后更新：2026-08-02**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
 | 2026-07-29 | v2.9 | **Feed 分页方向修复**：page 0 从最早条目改为最新条目，优化刷新后新数据可见性 |
@@ -492,6 +493,24 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 ```json
 { "count": 15 }
 ```
+
+### `PATCH /api/v1/memory/{id}/done` — 标记行动类记忆为已完成
+
+记忆进化 Phase 3（Reality→Knowledge→Action→Reality 闭环）：将 actionable 记忆标记为已完成（`actionable=false` + 记录完成时间）。完成后不再出现在"待行动事项"与 Feed 待办提醒。
+
+**Path Parameters**
+
+| 参数 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `id` | String | 记忆 id（`mem_xxx`）|
+
+**Response**
+
+```json
+{ "success": true }
+```
+
+- `404 Not Found` — 记忆不存在
 
 ---
 

@@ -348,6 +348,19 @@ public class ContextEngine {
                         .append("\n");
             }
         }
+
+        // 待行动事项：actionable 且未完成的记忆单独注入（记忆进化 Phase 3）
+        List<Memory> pendingActions = recentMemories.stream()
+                .filter(m -> m.actionable() && m.doneAt() == null)
+                .toList();
+        if (!pendingActions.isEmpty()) {
+            sb.append("\n## 待行动事项\n");
+            for (Memory m : pendingActions) {
+                String s = (m.suggestion() != null && !m.suggestion().isBlank())
+                        ? m.suggestion() : m.summary();
+                sb.append("- ").append(s).append("\n");
+            }
+        }
         return sb.toString();
     }
 

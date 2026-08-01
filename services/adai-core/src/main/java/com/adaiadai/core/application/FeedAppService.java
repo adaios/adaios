@@ -85,6 +85,11 @@ public class FeedAppService {
             memoriesFor(allMemories, r.id()).ifPresent(m -> allEntries.add(toAiEntry(m)));
         }
 
+        // 记忆进化 Phase 3：未完成行动提醒（actionable 记忆）——按记忆创建时间参与排序
+        for (Memory m : memoryService.findPendingActions()) {
+            allEntries.add(toActionEntry(m));
+        }
+
         allEntries.sort(Comparator.comparing(e -> e.time));
         int totalToday = allEntries.size();
 
@@ -169,6 +174,17 @@ public class FeedAppService {
         return new FeedEntry(
                 "ai_note", m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
+                m.createdAt().toLocalTime().format(TIME_FMT),
+                null, null, null, "life"
+        );
+    }
+
+    private FeedEntry toActionEntry(Memory m) {
+        String text = (m.suggestion() != null && !m.suggestion().isBlank())
+                ? m.suggestion() : m.summary();
+        return new FeedEntry(
+                "action", m.id(), m.recordId(),
+                text, text, m.tags(),
                 m.createdAt().toLocalTime().format(TIME_FMT),
                 null, null, null, "life"
         );

@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -50,7 +51,7 @@ class MemoryControllerTest {
     void getMemories_withDateFilter() throws Exception {
         var memService = mock(MemoryService.class);
         when(memService.findByDate(any())).thenReturn(List.of(
-                new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "neutral", false, null, LocalDateTime.now(), null, false, null)
+                new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "neutral", false, null, LocalDateTime.now(), null, false, null, null)
         ));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
@@ -67,7 +68,7 @@ class MemoryControllerTest {
     void getByRecordId_returnsMemory() throws Exception {
         var memService = mock(MemoryService.class);
         when(memService.findByRecordId("r1")).thenReturn(
-                Optional.of(new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "positive", true, "buy more", LocalDateTime.now(), null, false, null))
+                Optional.of(new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "positive", true, "buy more", LocalDateTime.now(), null, false, null, null))
         );
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
@@ -103,5 +104,30 @@ class MemoryControllerTest {
         mvc.perform(post("/api/v1/memory/rebuild"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").isNumber());
+    }
+
+    @Test
+    void markDone_returnsOk() throws Exception {
+        var memService = mock(MemoryService.class);
+        when(memService.markDone("m1")).thenReturn(true);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
+
+        mvc.perform(patch("/api/v1/memory/m1/done"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void markDone_notFound_returns404() throws Exception {
+        var memService = mock(MemoryService.class);
+        when(memService.markDone("nonexistent")).thenReturn(false);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
+        ).build();
+
+        mvc.perform(patch("/api/v1/memory/nonexistent/done"))
+                .andExpect(status().isNotFound());
     }
 }
