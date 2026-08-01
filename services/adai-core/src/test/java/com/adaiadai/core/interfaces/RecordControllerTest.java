@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
+import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
@@ -11,6 +12,8 @@ import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
+import com.adaiadai.core.kernel.context.engine.ContextPackage;
+import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.search.SearchService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +25,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -41,10 +48,12 @@ class RecordControllerTest {
     private ObjectMapper mapper;
     private RecordFileRepository recordRepository;
     private CardFileRepository cardRepository;
+    private MemoryService memoryService;
 
-    @BeforeEach
-    void setUp() {
-        mapper = new ObjectMapper();
+    /**
+     * 构造 MockMvc（可注入任意 AiClient，用于模拟 AI 失败降级路径）。
+     */
+    private MockMvc buildMockMvc(AiClient aiClient) {
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
         TagIndexService tagIndexService = new TagIndexService(fileStorage);
         recordRepository = new RecordFileRepository(fileStorage);
@@ -64,14 +73,13 @@ class RecordControllerTest {
 
         // ContextEngine with real dependencies
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
-        MemoryService memoryService = new MemoryService(fileStorage);
+        memoryService = new MemoryService(fileStorage);
         SearchService searchService = new SearchService(recordRepository);
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
                 memoryService, cardRepository, List.of(), List.of(), searchService
         );
 
-        AiClient aiClient = new TestAiClient();
         RecordRetryService retryService = mock(RecordRetryService.class);
         RecordController controller = new RecordController(
                 intentRecognizer,
@@ -84,7 +92,13 @@ class RecordControllerTest {
                 retryService
         );
 
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+        return MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @BeforeEach
+    void setUp() {
+        mapper = new ObjectMapper();
+        mockMvc = buildMockMvc(new TestAiClient());
     }
 
     @Test
@@ -268,5 +282,40 @@ class RecordControllerTest {
         // Deleting non-existent record should not throw
         mockMvc.perform(delete("/api/v1/records/nonexistent_id"))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void createRecord_aiFailure_degradedMemoryPersisted() throws Exception {
+        // 模拟 DeepSeek 不可用：understand 抛异常
+        AiClient failingAi = new AiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                throw new IllegalStateException("AI 服务不可用");
+            }
+
+            @Override
+            public String recognizeIntent(String content) {
+                return "log";
+            }
+        };
+        MockMvc failingMvc = buildMockMvc(failingAi);
+
+        String body = mapper.writeValueAsString(Map.of("content", "今天加仓了立昂微"));
+        String resp = failingMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("log"))
+                .andExpect(jsonPath("$.summary").value("recorded"))
+                .andReturn().getResponse().getContentAsString();
+
+        String recordId = mapper.readTree(resp).get("recordId").asText();
+
+        // AI 失败 → 记录不丢 + 降级记忆已沉淀（标 DEGRADED，供重补升级）
+        assertTrue(recordRepository.findById(recordId).isPresent(), "记录不应因 AI 失败丢失");
+        Optional<Memory> degraded = memoryService.findByRecordId(recordId);
+        assertTrue(degraded.isPresent(), "AI 失败也应降级沉淀记忆");
+        assertTrue(Memory.isDegraded(degraded.get()), "降级记忆应标 DEGRADED");
+        assertEquals("今天加仓了立昂微", degraded.get().summary());
     }
 }

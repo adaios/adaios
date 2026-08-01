@@ -48,12 +48,19 @@ public class MemoryService {
      * 沉淀一条记忆（去重：同 recordId 同日期不重复写入）。
      */
     public void persist(Memory memory) {
-        // 去重：检查该 recordId 所在日期的记忆中是否已存在
+        // 去重 + 升级：同 recordId 已有记忆时——AI 洞察覆盖降级条目；其余重复跳过
         LocalDate memDate = memory.createdAt().toLocalDate();
         List<Memory> existingByDate = findByDate(memDate);
-        boolean exists = existingByDate.stream()
-                .anyMatch(m -> m.recordId().equals(memory.recordId()));
-        if (exists) {
+        boolean isDegraded = Memory.isDegraded(memory);
+
+        for (Memory existing : existingByDate) {
+            if (!existing.recordId().equals(memory.recordId())) continue;
+            if (!isDegraded && Memory.isDegraded(existing)) {
+                // AI 洞察升级降级记忆：移除降级条目后写入洞察
+                log.info("记忆升级：降级原文 → AI 洞察 | recordId={}", memory.recordId());
+                removeFromFile(memDate, memory.recordId());
+                break;
+            }
             log.debug("Memory skipped (duplicate recordId): {}", memory.recordId());
             return;
         }
@@ -240,11 +247,48 @@ public class MemoryService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 是否已有 AI 洞察记忆（非降级原文）。重补逻辑用它判断是否需重新理解。
+     */
+    public boolean hasRealMemory(String recordId) {
+        Optional<Memory> memory = findByRecordId(recordId);
+        return memory.isPresent() && !Memory.isDegraded(memory.get());
+    }
+
     // ── 内部方法 ──
 
     private String memoryFilePath(Memory memory) {
         String ym = memory.createdAt().format(MONTH_FORMATTER);
         return MEMORY_DIR + "/" + ym + ".md";
+    }
+
+    /**
+     * 移除某天文件中指定 recordId 的记忆条目（用于降级记忆被 AI 洞察升级时清理）。
+     */
+    private void removeFromFile(LocalDate date, String recordId) {
+        String path = MEMORY_DIR + "/" + date.format(DateTimeFormatter.ofPattern("yyyy/MM")) + ".md";
+        String content = fileStorage.read(path);
+        if (content == null || content.isBlank()) return;
+
+        StringBuilder sb = new StringBuilder();
+        Matcher matcher = ENTRY_SPLIT.matcher(content);
+        boolean removed = false;
+        while (matcher.find()) {
+            String entry = matcher.group();
+            if (entry.contains("recordId: " + recordId)) {
+                removed = true;
+            } else {
+                sb.append(entry).append("\n");
+            }
+        }
+        if (removed) {
+            String result = sb.toString().strip();
+            if (result.isBlank()) {
+                fileStorage.delete(path);
+            } else {
+                fileStorage.write(path, result);
+            }
+        }
     }
 
     private String formatMemoryEntry(Memory memory) {
@@ -261,6 +305,7 @@ public class MemoryService {
             log.warn("序列化 patterns/preferences 失败: {}", e.getMessage());
         }
 
+        String suggestion = memory.suggestion() != null ? memory.suggestion() : "";
         return """
                 ---
                 id: %s
@@ -270,6 +315,7 @@ public class MemoryService {
                 actionable: %b
                 patterns: %s
                 preferences: %s
+                suggestion: %s
                 createdAt: %s
                 ---
                 %s
@@ -281,6 +327,7 @@ public class MemoryService {
                 memory.actionable(),
                 patternsJson,
                 preferencesJson,
+                suggestion,
                 memory.createdAt().toString(),
                 memory.summary()
         );
@@ -309,6 +356,8 @@ public class MemoryService {
                 String recordId = fields.getOrDefault("recordId", "");
                 String sentiment = fields.getOrDefault("sentiment", "neutral");
                 boolean actionable = Boolean.parseBoolean(fields.getOrDefault("actionable", "false"));
+                String suggestion = fields.getOrDefault("suggestion", null);
+                if ("null".equals(suggestion)) suggestion = null;
                 String createdAtStr = fields.getOrDefault("createdAt", "");
                 LocalDateTime createdAt = createdAtStr.isBlank()
                         ? LocalDateTime.now()
@@ -319,7 +368,7 @@ public class MemoryService {
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
                 result.add(new Memory(id, recordId, body, patterns, preferences,
-                        tags, sentiment, actionable, null, createdAt));
+                        tags, sentiment, actionable, suggestion, createdAt));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());
             }

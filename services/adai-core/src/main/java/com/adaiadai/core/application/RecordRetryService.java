@@ -72,7 +72,8 @@ public class RecordRetryService {
 
         List<ContentRecord> candidates = allRecords.stream()
                 .filter(r -> r.createdAt().isBefore(cutoff))
-                .filter(r -> memoryService.findByRecordId(r.id()).isEmpty())
+                // 无 AI 洞察记忆才重补（降级原文不阻塞重补，AI 恢复后可升级覆盖）
+                .filter(r -> !memoryService.hasRealMemory(r.id()))
                 .limit(BATCH_LIMIT)
                 .toList();
 

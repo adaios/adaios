@@ -99,4 +99,18 @@ class ContextEngineTest {
 
         assertEquals("project", knowledge.receivedScene);
     }
+
+    @Test
+    void reviewContent_routesToTradingScene_triggeringKnowledge() {
+        // #12：TradingReviewAppService 的合成复盘记录（含"复盘/持仓/买入"关键词）
+        // 必须路由到 trading 场景，让交易规则/知识真正进入复盘 prompt。
+        RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();
+        RecordingContributor contributor = new RecordingContributor();
+        ContextEngine engine = newEngine(knowledge, contributor);
+
+        engine.compose("trading", record("复盘日期：2026-08-01\n## 当日记录\n- 买入立昂微\n## 当前持仓\n持仓 200 股"), null);
+
+        assertEquals("trading", knowledge.receivedScene, "复盘内容应路由到 trading 场景");
+        assertEquals(true, contributor.enriched, "trading 贡献者应被触发（复盘注入交易知识）");
+    }
 }

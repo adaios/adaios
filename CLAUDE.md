@@ -297,6 +297,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 ## 当前焦点（2026-08-01）
 
 ### 已完成
+- **第二批审核修复（代码）** ✅：#24 记忆沉淀断裂（AI 失败降级原文入记忆 + 洞察升级覆盖 + 重补防阻塞）、#12 复盘改走 ContextEngine（trading 场景注入规则/知识/行情）、#14 测试缺口（新增 9 测试，110+ 全绿）
 - **审核/交付流程基建** ✅：/review 三档（light 守护+快扫 / --deep / --full）+ 5 角色 + guard.sh 守护脚本化（一条命令跑 G1-G7）+ /ship 收尾闭环（测试→api-spec→文档→提交）
 - **docs/ideas 想法归档区** ✅：未定型想法/方案的正式位置，成熟升级 RFC
 - **os/ 目录统一** ✅：domains/ 合并入 os/*-os/definition/，消除顶层重复

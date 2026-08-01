@@ -65,6 +65,31 @@ public record Memory(
         );
     }
 
+    /**
+     * 从记录内容构造降级记忆（AI 理解失败时的保底沉淀）。
+     * <p>
+     * 不经过 AI 提炼，仅把原文（截断）作为事实沉淀，标 {@code suggestion=DEGRADED} 区分于洞察记忆。
+     * AI 恢复后由 RecordRetryService 重补，MemoryService.persist 的升级语义会用洞察覆盖降级条目。
+     */
+    public static Memory fromContentFallback(String recordId, String content) {
+        String fallback = content == null ? "" : content.strip();
+        if (fallback.length() > 100) {
+            fallback = fallback.substring(0, 100) + "…";
+        }
+        return new Memory(
+                generateId(), recordId, fallback,
+                List.of(), List.of(), List.of(),
+                "neutral", false, "DEGRADED", LocalDateTime.now()
+        );
+    }
+
+    /**
+     * 是否降级记忆（AI 失败时由原文保底沉淀）。
+     */
+    public static boolean isDegraded(Memory memory) {
+        return memory != null && "DEGRADED".equals(memory.suggestion());
+    }
+
     static String generateId() {
         return "mem_" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")
                 .format(LocalDateTime.now());

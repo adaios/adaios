@@ -102,6 +102,16 @@ public class RecordController {
                     List.of(), record.createdAt(), "log", "recorded", "life"
             );
             recordRepository.save(kept);
+
+            // 降级沉淀：AI 失败也入记忆（原文标 DEGRADED），AI 恢复后由重补升级为洞察
+            try {
+                Memory degraded = Memory.fromContentFallback(record.id(), record.content());
+                memoryService.persist(degraded);
+                log.info("Memory degraded-persisted (AI failed) | recordId={}", record.id());
+            } catch (Exception memEx) {
+                log.debug("Degraded memory persist skipped: {}", memEx.getMessage());
+            }
+
             return ResponseEntity.ok(new StatemResponse(
                     "log", record.id(), record.content(), List.of(), "recorded", "life"
             ));
@@ -140,11 +150,13 @@ public class RecordController {
             tags = understanding.tags();
             summary = understanding.summary();
             domain = understanding.domain() != null ? understanding.domain() : "life";
-            if (summary == null || summary.isBlank() || summary.length() > 50) {
-                summary = "recorded";
-            }
         } catch (Exception e) {
             log.debug("AI tagging skipped for statement: {}", e.getMessage());
+        }
+
+        // summary 兜底在 try 外：AI 失败时也回退 "recorded"（与 controller 顶层降级路径一致）
+        if (summary == null || summary.isBlank() || summary.length() > 50) {
+            summary = "recorded";
         }
 
         // Re-save with summary+tags+domain persisted to file
@@ -165,6 +177,15 @@ public class RecordController {
                         understanding.preferences() != null ? understanding.preferences().size() : 0);
             } catch (Exception e) {
                 log.debug("Memory persist skipped for statement: {}", e.getMessage());
+            }
+        } else {
+            // AI 理解失败 → 降级沉淀：原文入记忆（标 DEGRADED），AI 恢复后由重补升级为洞察
+            try {
+                Memory degraded = Memory.fromContentFallback(record.id(), record.content());
+                memoryService.persist(degraded);
+                log.info("Memory degraded-persisted (AI failed) | recordId={}", record.id());
+            } catch (Exception e) {
+                log.debug("Degraded memory persist skipped for statement: {}", e.getMessage());
             }
         }
 
