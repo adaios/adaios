@@ -49,10 +49,18 @@ public class MemoryService {
      * 沉淀一条记忆（去重：同 recordId 同日期不重复写入）。
      */
     public void persist(Memory memory) {
+        boolean isDegraded = Memory.isDegraded(memory);
+
+        // Phase 5：筛选降噪——kind=fact（无洞察/模式/偏好）无信息增量，跳过沉淀。
+        // records 已保留原文 + AI 摘要，fact 记忆会膨胀成 records 副本；降级记忆豁免（AI 失败保底）
+        if (!isDegraded && Memory.KIND_FACT.equals(memory.kind())) {
+            log.debug("Memory skipped (no information gain): {}", memory.recordId());
+            return;
+        }
+
         // 去重 + 升级：同 recordId 已有记忆时——AI 洞察覆盖降级条目；其余重复跳过
         LocalDate memDate = memory.createdAt().toLocalDate();
         List<Memory> existingByDate = findByDate(memDate);
-        boolean isDegraded = Memory.isDegraded(memory);
 
         for (Memory existing : existingByDate) {
             if (!existing.recordId().equals(memory.recordId())) continue;

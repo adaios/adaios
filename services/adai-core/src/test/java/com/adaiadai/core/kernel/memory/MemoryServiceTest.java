@@ -278,7 +278,7 @@ class MemoryServiceTest {
 
     @Test
     void cleanup_removesSupersededOver60Days() {
-        Memory oldSuperseded = new Memory("mem_old2", "rec_p3", Memory.KIND_FACT, "旧",
+        Memory oldSuperseded = new Memory("mem_old2", "rec_p3", Memory.KIND_INSIGHT, "旧洞察",
                 List.of(), null, List.of("x"), "neutral", false, null,
                 LocalDateTime.now().minusDays(61), "topic_x", true, "mem_next", null, null);
         memoryService.persist(oldSuperseded);
@@ -292,7 +292,7 @@ class MemoryServiceTest {
     @Test
     void touchActive_updatesLastConfirmed() {
         LocalDateTime twoDaysAgo = LocalDateTime.now().minusDays(2);
-        Memory m = new Memory("mem_t", "rec_p4", Memory.KIND_FACT, "内容",
+        Memory m = new Memory("mem_t", "rec_p4", Memory.KIND_INSIGHT, "内容洞察",
                 List.of(), null, List.of("y"), "neutral", false, null,
                 twoDaysAgo, null, false, null, null, twoDaysAgo);
         memoryService.persist(m);
@@ -301,5 +301,27 @@ class MemoryServiceTest {
         Memory loaded = memoryService.findByRecordId("rec_p4").orElseThrow();
         assertNotNull(loaded.lastConfirmed(), "回读确认应写入 lastConfirmed");
         assertTrue(loaded.lastConfirmed().isAfter(twoDaysAgo), "lastConfirmed 应更新到当前");
+    }
+
+    // ── 记忆进化 Phase 5：筛选降噪 ──
+
+    @Test
+    void persist_factWithoutGain_skips() {
+        // fact 类（无洞察/模式/偏好）记忆无信息增量，不沉淀（records 已覆盖原文+摘要）
+        Memory fact = new Memory("mem_n1", "rec_n1", Memory.KIND_FACT, "简短摘要",
+                List.of(), null, List.of("t"), "neutral", false, null,
+                LocalDateTime.now(), null, false, null, null, null);
+        memoryService.persist(fact);
+
+        assertTrue(memoryService.findByDate(LocalDate.now()).isEmpty(), "无增量 fact 不应沉淀");
+        assertFalse(memoryService.hasRealMemory("rec_n1"), "无增量记忆不算 AI 记忆");
+    }
+
+    @Test
+    void persist_degradedFact_exemptFromScreening() {
+        // 降级记忆（DEGRADED，AI 失败保底）豁免筛选，仍应沉淀
+        memoryService.persist(Memory.fromContentFallback("rec_n2", "原文"));
+        assertTrue(memoryService.hasRealMemory("rec_n2") == false, "降级记忆存在但不算 AI 记忆");
+        assertFalse(memoryService.findByDate(LocalDate.now()).isEmpty(), "降级保底应保留");
     }
 }
