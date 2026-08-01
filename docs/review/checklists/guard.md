@@ -1,6 +1,6 @@
 # 守护检查清单（每次 /review 必跑）
 
-防 P0 复发（数据丢失/契约破坏）。grep 级成本。**命中即报告，即使上次已知**——它是复发信号。
+防 P0 复发（数据丢失/契约破坏）。**执行器：`docs/review/guard.sh`**（一条命令跑完 G1-G7，输出 PASS/HIT，内部自动 cd 到仓库根，免疫 cwd 漂移）。本清单是"查什么 + 上次发现"的说明文档，实际执行以脚本为准。任何模式都不跳过。
 
 > 格式：`[命令]` 检查什么。`上次发现` 记录历史命中，用于判断复发。
 
@@ -8,15 +8,15 @@
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| G1 | `grep -rn "ID_FORMATTER\|generateId" services/adai-core/src/main/java` — 确认所有 ID 生成含毫秒 `SSS`（`yyyyMMdd'_'HHmmssSSS` 形态）| Record/Memory 秒级精度 → 同秒覆盖（P0，已修）|
-| G2 | `grep -rn "LocalDate.now()\|Instant.now()" services/adai-core/src/main/java/infrastructure/storage` — filePath/持久化不得用 `now()`，必须从实体 `createdAt` 推导 | Card 路径固定今天 → 跨日复制丢轮次（P0，已修）|
-| G3 | `grep -rn "deleteById\|delete(" services/adai-core/src/main/java/interfaces services/adai-core/src/main/java/application` — 确认 AI 失败等降级路径**不删除**刚保存的用户数据 | RecordController AI 失败时删用户记录（P1，已修）|
+| G1 | 所有 ID 生成含毫秒 `SSS`（`yyyyMMdd'_'HHmmssSSS` 形态）— 脚本查 `ID_FORMATTER` 常量 + `generateId()` 方法内的 `ofPattern`，排除显示格式化（`HH:mm` 等非 ID 用途）| Record/Memory 秒级精度 → 同秒覆盖（P0，已修）|
+| G2 | storage 层不得用 `LocalDate.now()/Instant.now()` 推 filePath，必须从实体 `createdAt` 推导 | Card 路径固定今天 → 跨日复制丢轮次（P0，已修）|
+| G3 | 删除调用发生在 **catch 降级路径内** → 危险；脚本用 awk 追踪 catch 块，正常业务删除（REST `@Mapping` 方法、`deleteTask` 等业务方法）豁免 | RecordController AI 失败时删用户记录（P1，已修）|
 
 ## 正则健壮性
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| G4 | `grep -rn "Pattern.DOTALL" services/adai-core/src/main/java` — 配合 DOTALL 时字段匹配用 `[^\n]*` 而非 `.+`/`.*`（跨行贪婪）| ENTRY_PATTERN 吞文件只解析 1 条（P0，已修）|
+| G4 | DOTALL 下**字段级捕获**用 `[^\n]*` 而非贪婪 `.+`/`.*`（跨行吞内容）— 脚本查 `field:\s*(.` 形态；frontmatter 的 `^---\n(.+?)\n---\n(.+)` 是抓整体正文的有意跨行（无冒号前缀），豁免 | ENTRY_PATTERN 吞文件只解析 1 条（P0，已修）|
 
 ## 契约一致性
 

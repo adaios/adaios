@@ -27,9 +27,13 @@ git log --oneline -20          # 找上次 review 的 commit 作为增量基线
 - **deep（`--deep`）**：同增量 diff。
 - **full（`--full`）**：扫全仓库，不设 diff 边界。
 
-### 2. 守护检查（每次必跑，grep 级）
+### 2. 守护检查（每次必跑，一条命令）
 
-读取 `docs/review/checklists/guard.md`，逐条执行其中的检查命令。这层防 P0 复发（数据丢失/契约破坏），成本极低，任何模式都不跳过。发现命中即记录为问题。
+```bash
+bash docs/review/guard.sh
+```
+
+脚本自动 cd 到仓库根，逐项输出 G1-G7 的 PASS/HIT（无需手动拼 grep）。这层防 P0 复发（数据丢失/契约破坏），成本极低，任何模式都不跳过。**有 HIT（退出码非 0）即记录为问题**，即使上次已知——它是复发信号。清单说明文档在 `docs/review/checklists/guard.md`，新检查点追加到该文档 + 脚本 G8+。
 
 ### 3. 按模式派发
 
