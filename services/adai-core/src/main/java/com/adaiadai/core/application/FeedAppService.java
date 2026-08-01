@@ -100,10 +100,18 @@ public class FeedAppService {
         allEntries.addAll(buildMarketEntries());
 
         allEntries.sort(Comparator.comparing(e -> e.time));
-        int totalToday = allEntries.size();
+        // 核心条目（record/card）分页；附加条目（ai_note/action/market）只在最新页返回。
+        // totalToday = 核心输入数（前端过滤 aiNote 渲染，若含附加条目 → load more 永不收敛 + 空态误判，REVIEW #61）
+        List<FeedEntry> coreEntries = allEntries.stream()
+                .filter(e -> "record".equals(e.type()) || "card".equals(e.type()))
+                .toList();
+        List<FeedEntry> attachEntries = allEntries.stream()
+                .filter(e -> !("record".equals(e.type()) || "card".equals(e.type())))
+                .toList();
+        int totalToday = coreEntries.size();
 
-        // 分页：从后往前翻，page 0 = 最新条目（tail），page 1 = 更早
-        int totalPages = (totalToday + querySize - 1) / querySize;
+        // 分页：从后往前翻，page 0 = 最新条目（tail），page 1 = 更早；当天仅附加条目时也能翻到
+        int totalPages = Math.max(1, (totalToday + querySize - 1) / querySize);
         int idxFromEnd = totalPages - 1 - queryPage;
         List<FeedEntry> pageEntries;
         if (idxFromEnd < 0) {
@@ -111,7 +119,10 @@ public class FeedAppService {
         } else {
             int start = idxFromEnd * querySize;
             int end = Math.min(start + querySize, totalToday);
-            pageEntries = allEntries.subList(start, end);
+            pageEntries = new ArrayList<>(coreEntries.subList(start, end));
+            if (queryPage == 0) {
+                pageEntries.addAll(attachEntries); // 附加条目（待办提醒/行情）只在最新页
+            }
         }
 
         log.info("Feed 分页 | date={} | 总记录={} | 总条目={} | page={} | size={} | 返回={}条",

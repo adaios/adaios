@@ -5,7 +5,7 @@ import '../utils/text_cleaner.dart';
 import 'hoverable.dart';
 
 /// 后端 record.type 映射。
-enum FeedCardType { record, aiNote, push, dateSeparator }
+enum FeedCardType { record, aiNote, push, dateSeparator, action, market }
 
 /// 后端 intent：log → 记录，question → 提问。
 enum IntentType { log, question;
@@ -48,13 +48,14 @@ class FeedCardData {
   final bool expanded;
   final String domain;  // "life" | "trading" | "project"
   final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
+  final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
   final DateTime updatedAt;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
     this.tags, this.summary, this.turns, this.mode = CardMode.idle,
     this.loading = false, this.intent, this.expanded = false,
-    this.domain = 'life', this.error,
+    this.domain = 'life', this.error, this.onMarkDone,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -170,6 +171,23 @@ class FeedCard extends StatelessWidget {
       );
     }
 
+    // Action todo card — 未完成行动提醒（记忆进化 Phase 3）
+    if (data.type == FeedCardType.action) {
+      return _buildSimpleCard(
+        badgeText: '待办',
+        badgeColor: AppColors.darkOrange,
+        showDoneButton: true,
+      );
+    }
+    // Market quote card — 大盘行情条（v0.2.0 L5）
+    if (data.type == FeedCardType.market) {
+      return _buildSimpleCard(
+        badgeText: '行情',
+        badgeColor: AppColors.darkBlue,
+        showDoneButton: false,
+      );
+    }
+
     // Normal / expanded rendering (unchanged from current)
     final borderColor = _isEnded
         ? AppColors.darkGreen.withAlpha(180)
@@ -270,6 +288,51 @@ class FeedCard extends StatelessWidget {
     ),            // Padding
       ),          // Transform.translate
     );            // Hoverable
+  }
+
+  /// 简单信息卡（待办提醒 / 大盘行情），无对话状态机。
+  Widget _buildSimpleCard({required String badgeText, required Color badgeColor, required bool showDoneButton}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface.withAlpha(200),
+          border: Border.all(color: AppColors.darkBorder.withAlpha(120), width: 1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: badgeColor.withAlpha(40), borderRadius: BorderRadius.circular(6)),
+              child: Text(badgeText,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(data.content,
+                style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+            ),
+            if (showDoneButton) ...[
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: data.onMarkDone,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withAlpha(30),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('完成',
+                    style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildHeader() {

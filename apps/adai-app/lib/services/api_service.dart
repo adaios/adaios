@@ -51,6 +51,15 @@ class ApiService {
     _check(resp);
   }
 
+  /// 标记行动类记忆为已完成（PATCH /api/v1/memory/{id}/done）。
+  Future<void> markMemoryDone(String memoryId) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/api/v1/memory/$memoryId/done'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
   /// 删除记录。
   Future<void> deleteRecord(String id) async {
     final resp = await http.delete(
@@ -341,6 +350,8 @@ class FeedEntryType {
   static const String card = 'card';
   static const String aiNote = 'ai_note';
   static const String push = 'push';
+  static const String action = 'action'; // 未完成行动提醒（记忆进化 Phase 3）
+  static const String market = 'market'; // 大盘行情条（v0.2.0 L5）
 }
 
 // ── DTO ──
@@ -480,14 +491,21 @@ class EndConversationResponse {
   );
 }
 
-/// 记忆条目 DTO
+/// 记忆条目 DTO（记忆进化 Phase 1-5 全字段）
 class MemoryEntryResponse {
   final String id;
   final String recordId;
+  final String kind;
   final String summary;
   final List<String> tags;
   final String sentiment;
   final String createdAt;
+  final String? topic;
+  final bool superseded;
+  final String? evolvedTo;
+  final bool actionable;
+  final String? suggestion;
+  final String? doneAt;
 
   MemoryEntryResponse({
     required this.id,
@@ -496,15 +514,29 @@ class MemoryEntryResponse {
     required this.tags,
     required this.sentiment,
     required this.createdAt,
+    this.kind = 'insight',
+    this.topic,
+    this.superseded = false,
+    this.evolvedTo,
+    this.actionable = false,
+    this.suggestion,
+    this.doneAt,
   });
 
   factory MemoryEntryResponse.fromJson(Map<String, dynamic> json) => MemoryEntryResponse(
     id: json['id'] as String? ?? '',
     recordId: json['recordId'] as String? ?? '',
+    kind: json['kind'] as String? ?? 'insight',
     summary: json['summary'] as String? ?? '',
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
     sentiment: json['sentiment'] as String? ?? 'neutral',
     createdAt: json['createdAt'] as String? ?? '',
+    topic: json['topic'] as String?,
+    superseded: json['superseded'] as bool? ?? false,
+    evolvedTo: json['evolvedTo'] as String?,
+    actionable: json['actionable'] as bool? ?? false,
+    suggestion: json['suggestion'] as String?,
+    doneAt: json['doneAt'] as String?,
   );
 }
 

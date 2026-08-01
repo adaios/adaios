@@ -74,7 +74,7 @@ class _MainPageState extends State<MainPage>
         _totalToday = feed.totalToday;
         _cards = feed.entries
             .where((e) => e.type != FeedEntryType.aiNote)
-            .map((e) => e.toFeedData())
+            .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
             .toList();
       });
     } catch (e) {
@@ -89,7 +89,7 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData())
+          .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
           .toList();
       setState(() {
         _brief = brief;
@@ -339,6 +339,17 @@ class _MainPageState extends State<MainPage>
     }
   }
 
+  /// 标记 action 待办为已完成（PATCH /memory/{id}/done），完成后从 Feed 移除。
+  Future<void> _markActionDone(String memoryId) async {
+    try {
+      await _api.markMemoryDone(memoryId);
+      if (!mounted) return;
+      setState(() => _cards.removeWhere((c) => c.id == memoryId));
+    } catch (e) {
+      if (mounted) _showError('标记完成失败');
+    }
+  }
+
   void _changeDomain(String id, String domain) async {
     setState(() {
       final idx = _cards.indexWhere((c) => c.id == id);
@@ -438,7 +449,7 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final moreCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData())
+          .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
           .toList();
       setState(() {
         _cards = [...moreCards, ..._cards]; // 更早的条目插在前面，reverse 后出现在视觉顶部
@@ -919,7 +930,7 @@ class _TopBar extends StatelessWidget {
 }
 
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData() {
+  FeedCardData toFeedData({VoidCallback? onMarkDone}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
       cardTurns = turns!.map((t) => ConversationTurn(
@@ -929,9 +940,19 @@ extension FeedEntryResponseX on FeedEntryResponse {
       )).toList();
     }
     return FeedCardData(
-      id: id, type: FeedCardType.record, time: time, content: content,
+      id: id, type: _toCardType(type), time: time, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
-      summary: summary, turns: cardTurns, domain: domain,
+      summary: summary, turns: cardTurns, domain: domain, onMarkDone: onMarkDone,
     );
+  }
+
+  /// 后端 Feed type → 前端卡片类型（v0.2.0：action/market 有专属渲染，其余归 record）。
+  FeedCardType _toCardType(String type) {
+    switch (type) {
+      case FeedEntryType.aiNote: return FeedCardType.aiNote;
+      case FeedEntryType.action: return FeedCardType.action;
+      case FeedEntryType.market: return FeedCardType.market;
+      default: return FeedCardType.record;
+    }
   }
 }
