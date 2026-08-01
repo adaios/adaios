@@ -1,6 +1,8 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.kernel.market.MarketData;
+import com.adaiadai.core.kernel.market.MarketDataSource;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
@@ -11,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,14 +33,17 @@ public class FeedAppService {
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
     private final CardFileRepository cardRepository;
+    private final MarketDataSource marketDataSource;
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
                           BriefAppService briefAppService,
-                          CardFileRepository cardRepository) {
+                          CardFileRepository cardRepository,
+                          MarketDataSource marketDataSource) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
+        this.marketDataSource = marketDataSource;
     }
 
     /**
@@ -89,6 +95,9 @@ public class FeedAppService {
         for (Memory m : memoryService.findPendingActions()) {
             allEntries.add(toActionEntry(m));
         }
+
+        // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
+        allEntries.addAll(buildMarketEntries());
 
         allEntries.sort(Comparator.comparing(e -> e.time));
         int totalToday = allEntries.size();
@@ -188,6 +197,28 @@ public class FeedAppService {
                 m.createdAt().toLocalTime().format(TIME_FMT),
                 null, null, null, "life"
         );
+    }
+
+    /**
+     * 大盘指数行情条（v0.2.0 L5 行情嵌入）。按 code 排序稳定输出。
+     */
+    private List<FeedEntry> buildMarketEntries() {
+        Map<String, MarketData> indices = marketDataSource.indices();
+        if (indices.isEmpty()) return List.of();
+
+        String content = indices.values().stream()
+                .sorted(Comparator.comparing(MarketData::code))
+                .map(m -> m.name() + " " + m.price()
+                        + (m.changePercent() != null && m.changePercent().signum() >= 0 ? " +" : " ")
+                        + m.changePercent() + "%")
+                .collect(Collectors.joining(" · "));
+
+        FeedEntry entry = new FeedEntry(
+                "market", "market_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss")), null,
+                "大盘行情", content, List.of("行情"),
+                LocalDateTime.now().format(TIME_FMT), null, null, null, "trading"
+        );
+        return List.of(entry);
     }
 
     private Optional<Memory> memoriesFor(List<Memory> memories, String recordId) {
