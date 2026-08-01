@@ -297,6 +297,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 ## 当前焦点（2026-08-01）
 
 ### 已完成
+- **产品发布版本机制 RFC** ✅：版本号规则 + 发布流程 + Release Notes 模板 + v0.1.0 规划（`docs/rfc/20260801-release-versioning.md`，draft 待确认）
+- **记忆系统进化 RFC** ✅：元记忆对比 + 主题合并/actionable 闭环落地方案（`docs/rfc/20260801-memory-system-evolution.md`，draft 待确认）
 - **第三批审核修复** ✅：#33 审核路由表补 .claude/**（自审盲区）、#38/#39/#41 文档同步（README 索引 / definition 愿景声明 / data-flow 对齐代码）、#21 ProjectFileRepository 保留手写注释、#23 TradingController conflicts 改解析真实 rules.md（R119/R96）
 - **第二批审核修复（代码）** ✅：#24 记忆沉淀断裂（AI 失败降级原文入记忆 + 洞察升级覆盖 + 重补防阻塞）、#12 复盘改走 ContextEngine（trading 场景注入规则/知识/行情）、#14 测试缺口（新增 9 测试，110+ 全绿）
 - **审核/交付流程基建** ✅：/review 三档（light 守护+快扫 / --deep / --full）+ 5 角色 + guard.sh 守护脚本化（一条命令跑 G1-G7）+ /ship 收尾闭环（测试→api-spec→文档→提交）
