@@ -112,8 +112,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 
 ```
 v0.1.0 — 首个可发布基线
-├── 功能：记忆进化 Phase 1-3（类型 + 主题合并 + actionable 闭环）
-│        + Phase 4/5（时效淘汰 + 筛选降噪）
+├── 功能：记忆进化 Phase 1-5（类型 / 主题合并 / actionable 闭环 / 时效淘汰 / 筛选降噪）
 ├── 质量：审核修复三批（已提交 cce0b1a/af530f0/c37e251）
 ├── 重构：#13 interfaces 编排消重复
 ├── 部署：deploy.sh 规范化
@@ -123,7 +122,7 @@ v0.1.0 — 首个可发布基线
 **发布标准**：
 1. 全量验证通过（守护 G1-G7 + 后端全测试 + /review --full）
 2. REVIEW.md 无未解决的 P0/P1（#13/#19/#22 明确"发布前处理 or 记录为已知问题"）
-3. 数据格式变更已写迁移说明（记忆进化新增 kind/topic/superseded 字段：向后兼容，无需手动迁移）
+3. 数据格式变更已写迁移说明（记忆进化新增 kind/topic/superseded/evolvedTo/doneAt/lastConfirmed 字段：向后兼容，无需手动迁移）
 4. `git tag v0.1.0`（annotated）+ `docs/releases/v0.1.0.md` Release Notes
 
 ### 后续版本（候选，待确认）
