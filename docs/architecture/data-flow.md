@@ -16,7 +16,7 @@ POST /api/v1/records   ──── 统一入口
 IntentRecognizer
     ├── 手动指定（intent 字段）
     ├── AI 识别（DeepSeek）
-    └── 正则兜底
+    └── AI 失败 → 抛异常（不静默降级）
     │
     ├── Intent.STATEMENT ────────────────────────────── Intent.QUESTION
     │                                                      │
@@ -65,7 +65,7 @@ data/index/tags.json                               data/index/tags.json
 | 阶段 | STATEMENT（记录） | QUESTION（提问） |
 |:----|:-----------------|:-----------------|
 | **入口** | `POST /api/v1/records` | 同上 |
-| **意图识别** | 正则/AI 兜底 | 手动指定或 cardId 延续 |
+| **意图识别** | 纯 AI（失败抛异常） | 手动指定或 cardId 延续 |
 | **Context** | 简版（Identity + 今日历史） | 完整版（Identity + 历史 + 对话记录 + Domain） |
 | **AI 模式** | ANALYSIS（0.3 temp，JSON 输出） | CHAT（0.7 temp，自然对话） |
 | **存储** | `data/records/` + `data/memory/` + `data/index/` | `data/records/` + `data/memory/` + card 文件 + `data/index/` |

@@ -86,7 +86,7 @@ com.adaiadai.core/
 │   ├── timeline/                 Record 的时间序列投影（TimelineEntry / TimelineProjection）
 │   ├── market/                   行情数据源（MarketDataSource / TencentMarketDataSource / MarketData）
 │   ├── context/                  ★ Context Engine（核心能力）
-│   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION / DECISION，正则 + AI 兜底）
+│   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION，纯 AI，失败抛异常）
 │   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
 │   │   │   ├── ContextContributor  接口 → Domain OS 实现（isDefault / supports / enrich / globalContext）
 │   │   │   ├── DefaultContextContributor 通用场景回退
@@ -105,7 +105,7 @@ com.adaiadai.core/
 │
 ├── application/                应用层 — 用例编排、意图分流
 │   ├── RecordFlowAppService     MVP 原闭环（Memory 重建使用）
-│   ├── QuestionAppService        问句处理：ContextEngine → AI 回答 + 摘要 + 标签（支持 QUESTION/DECISION 双场景）
+│   ├── QuestionAppService        问句处理：ContextEngine → AI 回答 + 摘要 + 标签（QUESTION 场景）
 │   ├── FeedAppService            时间线 Feed 构造（日志 + 问答 + 推送，earlierCount 实际统计）
 │   ├── TimelineAppService        时间线查询
 │   ├── BriefAppService           今日概览摘要（含交易活动检测）
@@ -114,7 +114,7 @@ com.adaiadai.core/
 │   └── ProjectStatusAppService   项目状态聚合（git log + RFC + Kernel/Domain 状态）
 │
 ├── interfaces/                 入站适配层 — Controller
-│   ├── RecordController         POST /api/v1/records（统一入口，自动分流 STATEMENT / QUESTION / DECISION）
+│   ├── RecordController         POST /api/v1/records（统一入口，自动分流 STATEMENT / QUESTION）
 │   ├── ConversationController   POST /api/v1/conversations/end（结束对话总结）
 │   ├── FeedController           GET  /api/v1/feed（时间线 Feed）
 │   ├── TimelineController       GET  /api/v1/timeline
@@ -300,7 +300,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | 方向 | Phase | 状态 |
 |:-----|:------|:----:|
 | B Project OS | Phase 2-3 (RFC跟踪+自举) | ✅ 完成 |
-| B Project OS | Phase 4 (前端任务面板) | 📋 待做 |
+| B Project OS | Phase 4 (前端任务面板) | ✅ 完成 |
 | A 行情接入 | Phase 1 (上下文注入) | ✅ 完成 |
 | A 行情接入 | Phase 2 (主动推送) | 📋 待做 |
 | C Life OS | Phase 0-3 | ⏸ 等数据积累 |

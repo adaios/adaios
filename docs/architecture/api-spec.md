@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
 | 2026-07-29 | v2.9 | **Feed 分页方向修复**：page 0 从最早条目改为最新条目，优化刷新后新数据可见性 |
 | 2026-07-29 | v2.8 | **Feed 分页**：`GET /api/v1/feed` 加 `page`/`size` 参数，移除 `brief`/`earlierCount`，新增 `totalToday`；Brief 独立接口 |
@@ -83,6 +84,33 @@
 - 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`
 - 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`
 - 日常、想法、记录、心情、问题 → `life`
+
+---
+
+### `DELETE /api/v1/records/{id}` — 删除记录
+
+同时清理两个仓库（`rec_` 文件可能在 `records/` 或 `cards/` 目录）+ 关联 Memory。
+
+**Response**
+
+- `204 No Content` — 删除成功（清理 record + card + memory 关联）
+- `404` — 不存在也返回 204（幂等）
+
+### `POST /api/v1/records/retry` — 手动触发重补
+
+调用 `RecordRetryService`，为没有 Memory 的历史记录补齐 AI 摘要与标签。
+
+**Response**
+
+```json
+{
+  "status": "ok",
+  "memoriesBefore": 2,
+  "memoriesAfter": 15,
+  "newMemories": 13
+}
+```
+
 ---
 
 ## 2. 对话总结（Conversations）
@@ -201,7 +229,60 @@
 
 ---
 
-## 5. 交易复盘
+## 5. 交易
+
+### `GET /api/v1/trading/positions` — 查询持仓
+
+返回当前持仓列表。价格为实时行情（MarketDataSource 注入）。
+
+**Response**
+
+```json
+[
+  {
+    "symbol": "600123",
+    "name": "立昂微",
+    "quantity": 200,
+    "avgCost": 25.30,
+    "currentPrice": 25.30,
+    "lastUpdated": "2026-08-01"
+  }
+]
+```
+
+### `GET /api/v1/trading/portfolio` — 查询投资组合快照
+
+返回总市值、总盈亏、今日盈亏等汇总。
+
+**Response**
+
+```json
+{
+  "totalMarketValue": 5060.00,
+  "totalCost": 5060.00,
+  "totalPnl": 0,
+  "totalPnlPercent": 0.0,
+  "positions": []
+}
+```
+
+### `POST /api/v1/trading/trades` — 记录一笔交易
+
+**Request Body**
+
+```json
+{
+  "symbol": "600123",
+  "name": "立昂微",
+  "direction": "BUY",
+  "price": 25.30,
+  "volume": 100
+}
+```
+
+**Response**：`Position[]` — 更新后的全部持仓
+
+---
 
 ### `POST /api/v1/trading/review` — 生成交易复盘
 
@@ -387,6 +468,22 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
   "total": 63,
   "errors": []
 }
+```
+
+### `GET /api/v1/memory/dates` — 查询所有有记忆的日期
+
+**Response**
+
+```json
+["2026-07-18", "2026-07-20", "2026-07-23"]
+```
+
+### `GET /api/v1/memory/count` — 记忆总数
+
+**Response**
+
+```json
+{ "count": 15 }
 ```
 
 ---
