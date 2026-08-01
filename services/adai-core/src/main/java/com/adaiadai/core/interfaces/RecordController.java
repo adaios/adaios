@@ -2,14 +2,12 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
+import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
-import com.adaiadai.core.kernel.context.engine.ContextEngine;
-import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
@@ -43,27 +41,24 @@ public class RecordController {
 
     private final IntentRecognizer intentRecognizer;
     private final QuestionAppService questionAppService;
-    private final ContextEngine contextEngine;
+    private final RecordUnderstandingService understandingService;
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
-    private final AiClient aiClient;
     private final MemoryService memoryService;
     private final RecordRetryService recordRetryService;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
-                            ContextEngine contextEngine,
+                            RecordUnderstandingService understandingService,
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
-                            AiClient aiClient,
                             MemoryService memoryService,
                             RecordRetryService recordRetryService) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
-        this.contextEngine = contextEngine;
+        this.understandingService = understandingService;
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
-        this.aiClient = aiClient;
         this.memoryService = memoryService;
         this.recordRetryService = recordRetryService;
     }
@@ -145,8 +140,7 @@ public class RecordController {
 
         try {
             // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
-            ContextPackage ctx = contextEngine.compose("note", record);
-            understanding = aiClient.understand(ctx);
+            understanding = understandingService.composeAndUnderstand("note", record).understanding();
             tags = understanding.tags();
             summary = understanding.summary();
             domain = understanding.domain() != null ? understanding.domain() : "life";

@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
+import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
@@ -79,15 +80,15 @@ class RecordControllerTest {
                 identityRepository, recordRepository, tagIndexService,
                 memoryService, cardRepository, List.of(), List.of(), searchService
         );
+        RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
 
         RecordRetryService retryService = mock(RecordRetryService.class);
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
-                contextEngine,
+                understandingService,
                 recordRepository,
                 cardRepository,
-                aiClient,
                 memoryService,
                 retryService
         );

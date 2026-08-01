@@ -1,9 +1,6 @@
 package com.adaiadai.core.application;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
-import com.adaiadai.core.kernel.context.engine.ContextEngine;
-import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -20,19 +17,19 @@ import org.springframework.stereotype.Service;
  *   <li>DECISION → 存 Record → Context Engine → AI 分析(含建议) → Memory 沉淀</li>
  * </ul>
  * QUESTION 意图由 {@link QuestionAppService} 处理。
+ * <p>
+ * compose→understand 统一走 {@link RecordUnderstandingService}（REVIEW #13 消重复）。
  */
 @Service
 public class RecordFlowAppService {
 
     private static final Logger log = LoggerFactory.getLogger(RecordFlowAppService.class);
 
-    private final ContextEngine contextEngine;
-    private final AiClient aiClient;
+    private final RecordUnderstandingService understandingService;
     private final MemoryService memoryService;
 
-    public RecordFlowAppService(ContextEngine contextEngine, AiClient aiClient, MemoryService memoryService) {
-        this.contextEngine = contextEngine;
-        this.aiClient = aiClient;
+    public RecordFlowAppService(RecordUnderstandingService understandingService, MemoryService memoryService) {
+        this.understandingService = understandingService;
         this.memoryService = memoryService;
     }
 
@@ -42,14 +39,14 @@ public class RecordFlowAppService {
     public FlowResult process(ContentRecord record) {
         log.info("=== 记录流程开始 | recordId={} | type={} ===", record.id(), record.type());
 
-        ContextPackage contextPackage = contextEngine.compose(record.type(), record);
-        AiUnderstanding understanding = aiClient.understand(contextPackage);
+        var result = understandingService.composeAndUnderstand(record.type(), record);
+        AiUnderstanding understanding = result.understanding();
         Memory memory = Memory.fromUnderstanding(record.id(), understanding);
         memoryService.persist(memory);
 
         log.info("=== 记录流程完成 | 摘要={} | 情感={} ===", understanding.summary(), understanding.sentiment());
 
-        return new FlowResult(record.id(), memory.id(), understanding, contextPackage.estimateTokens());
+        return new FlowResult(record.id(), memory.id(), understanding, result.contextPackage().estimateTokens());
     }
 
     public record FlowResult(String recordId, String memoryId, AiUnderstanding understanding, int tokensEstimate) {}

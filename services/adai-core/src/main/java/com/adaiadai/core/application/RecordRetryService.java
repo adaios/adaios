@@ -4,7 +4,6 @@ import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
-import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -38,18 +37,18 @@ public class RecordRetryService {
     private static final long DELAY_MS = 3000;
 
     private final RecordRepository recordRepository;
-    private final ContextEngine contextEngine;
+    private final RecordUnderstandingService understandingService;
     private final AiClient aiClient;
     private final MemoryService memoryService;
     private final CardFileRepository cardRepository;
 
     public RecordRetryService(RecordRepository recordRepository,
-                              ContextEngine contextEngine,
+                              RecordUnderstandingService understandingService,
                               AiClient aiClient,
                               MemoryService memoryService,
                               CardFileRepository cardRepository) {
         this.recordRepository = recordRepository;
-        this.contextEngine = contextEngine;
+        this.understandingService = understandingService;
         this.aiClient = aiClient;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
@@ -99,8 +98,7 @@ public class RecordRetryService {
     }
 
     private void processRecord(ContentRecord record) {
-        var ctx = contextEngine.compose("note", record);
-        AiUnderstanding understanding = aiClient.understand(ctx);
+        AiUnderstanding understanding = understandingService.composeAndUnderstand("note", record).understanding();
 
         String domain = understanding.domain() != null ? understanding.domain() : "life";
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
