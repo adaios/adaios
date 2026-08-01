@@ -1,5 +1,7 @@
 # Trading OS — 金融交易领域
 
+> **架构愿景声明**：本文件描述 Trading OS 的完整领域愿景。当前 `adai-core` 仅落地部分能力（持仓/交易记录/复盘生成/行情注入），订单执行、策略引擎、回测等为远期目标。os/trading-os 提供领域知识资产（11-context/ 等），**不实现 Java 代码**。
+
 ## 职责
 
 Trading OS 负责金融交易全生命周期管理，包括行情接入、策略执行、订单管理、风控与回测。作为 AdaiOS 的金融交易大脑，连接个人交易策略与市场。
@@ -54,11 +56,11 @@ data/trading/
 ## 与 adai-core 的关系
 
 - **依赖方向**：`kernel` → `domain.trading`（通过 domain 接口调用）
-- **协作方式**：trading-os 实现 `com.adaiadai.core.domain.trading` 包中定义的接口；`application` 层编排跨域用例；`infrastructure` 层提供行情源和交易所适配
+- **协作方式**：adai-core 的 `domain.trading` 包实现领域能力（TradeRecord/Position/PortfolioSnapshot/Contributor）；os/trading-os 提供领域知识资产（11-context/ 等），不实现 Java 接口；`application` 层编排跨域用例；`infrastructure` 层提供行情源和交易所适配
 - **上下文**：Context Engine 读取 identity + timeline + memory + trading 状态，组合为 Trading Context Package 提供给 AI
 - **AI 不直连**：AI 通过 Context Engine 获取交易相关数据，trading-os 不直接暴露数据库或文件
 
 ## 边界范围
 
-- **包含**：行情接入、策略引擎、订单执行、风控规则、回测框架、绩效分析
+- **包含**（愿景；✅=已落地，📋=未落地）：行情接入 ✅、策略引擎 📋、订单执行 📋、风控规则 📋、回测框架 📋、绩效分析 📋
 - **不包含**：行情原始存储（归 data/）、UI 渲染（归 apps/）

@@ -20,7 +20,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * TradingController — 交易相关的 REST API。
@@ -150,28 +154,44 @@ public class TradingController {
     /**
      * 检测交易规则与当前持仓操作的潜在矛盾。
      * <p>
-     * 读取 {@code os/trading-os/11-context/rules.md} 中与择时/仓位相关的规则，
+     * 读取 {@code os/trading-os/11-context/rules.md} 中的真实规则（#23 修复：不再硬编码规则名），
      * 与当前持仓状态对比，标记可能违反的规则。
+     * <ul>
+     *   <li>无持仓 → 引用真实规则 R119 空仓也是交易策略 / R4 空头区间只卖不买</li>
+     *   <li>仅持 1 个标的 → 引用真实规则 R96 四不原则（单吊风险）</li>
+     * </ul>
      */
     @GetMapping("/knowledge/conflicts")
     public ResponseEntity<ConflictsResponse> detectConflicts() {
         List<Position> positions = tradingAppService.getPositions();
-        String rulesContent = readRulesFile();
+        List<RuleInfo> rules = parseRules(readRulesFile());
 
-        var conflicts = new java.util.ArrayList<ConflictItem>();
-        if (positions.isEmpty() && rulesContent != null) {
-            conflicts.add(new ConflictItem(
-                    "R4 空头区间只卖不买",
-                    "当前无持仓，系统规则建议空头区间空仓等待。确认是否在空仓等待 OAMV +4% 转多信号。",
-                    "择时"
-            ));
+        var conflicts = new ArrayList<ConflictItem>();
+
+        if (rules.isEmpty()) {
+            // rules.md 不可读/无规则：不硬编码，返回空（诚实优于写死字符串）
+            log.warn("detectConflicts: rules.md 不可读或为空，跳过规则对照");
+            return ResponseEntity.ok(new ConflictsResponse(conflicts));
         }
-        if (!positions.isEmpty() && rulesContent != null) {
-            conflicts.add(new ConflictItem(
-                    "R96 不单吊原则",
-                    "当前持有 " + positions.size() + " 个标的。若只有一个，违反四不原则中的不单吊。",
+
+        // 空仓检查 → 引用真实规则（优先 R119 空仓也是交易策略，回退 R4 空头区间只卖不买）
+        if (positions.isEmpty()) {
+            findRule(rules, "空仓也是交易策略")
+                    .or(() -> findRule(rules, "只卖不买"))
+                    .ifPresent(rule -> conflicts.add(new ConflictItem(
+                            "R" + rule.number() + " " + rule.title(),
+                            "当前无持仓。规则：" + rule.detail() + "。确认当前空仓是否符合择时信号（活跃市值绿柱下降期空仓 = 正确执行 R4）。",
+                            "择时"
+                    )));
+        }
+
+        // 单吊检查（仅持 1 个标的）→ 引用真实规则 R96 四不原则
+        if (positions.size() == 1) {
+            findRule(rules, "四不原则").ifPresent(rule -> conflicts.add(new ConflictItem(
+                    "R" + rule.number() + " " + rule.title(),
+                    "当前仅持有 1 个标的（" + positions.get(0).name() + "）。规则：" + rule.detail() + "。若未分仓，检查是否违反四不原则。",
                     "仓位"
-            ));
+            )));
         }
 
         return ResponseEntity.ok(new ConflictsResponse(conflicts));
@@ -212,6 +232,36 @@ public class TradingController {
         return null;
     }
 
+    /**
+     * 解析 rules.md 规则条目：{@code **R{n} 标题** + > 描述}。
+     * 标题与描述取自真实规则内容，供 conflict 检测引用（不再硬编码）。
+     */
+    private List<RuleInfo> parseRules(String content) {
+        if (content == null || content.isBlank()) return List.of();
+        Pattern pattern = Pattern.compile(
+                "\\*\\*R(\\d+)\\s+([^*\\n]+?)\\s*\\*\\*(?:\\n>\\s*([^\\n]+))?");
+        Matcher matcher = pattern.matcher(content);
+
+        List<RuleInfo> rules = new ArrayList<>();
+        while (matcher.find()) {
+            rules.add(new RuleInfo(
+                    Integer.parseInt(matcher.group(1)),
+                    matcher.group(2).strip(),
+                    matcher.group(3) != null ? matcher.group(3).strip() : ""
+            ));
+        }
+        return rules;
+    }
+
+    /**
+     * 按关键词在规则列表中查找第一条匹配规则（标题 + 描述）。
+     */
+    private Optional<RuleInfo> findRule(List<RuleInfo> rules, String keyword) {
+        return rules.stream()
+                .filter(r -> (r.title() + " " + r.detail()).contains(keyword))
+                .findFirst();
+    }
+
     // ── DTO ──
 
     public record TradeRequest(
@@ -233,4 +283,7 @@ public class TradingController {
     public record ConflictItem(String rule, String description, String category) {}
 
     public record ConflictsResponse(List<ConflictItem> conflicts) {}
+
+    /** 从 rules.md 解析出的真实规则条目。 */
+    private record RuleInfo(int number, String title, String detail) {}
 }

@@ -104,9 +104,8 @@ public class ProjectFileRepository implements TaskRepository {
             List<Task> tasks = parseEntries(existing);
             boolean replaced = false;
             StringBuilder sb = new StringBuilder();
-            // 保留文件头（第一行 # 标题）
-            String[] lines = existing.split("\n", 2);
-            sb.append(lines[0]).append("\n\n");
+            // 保留文件头（第一行 # 标题 + 手写注释，到第一个条目前）
+            sb.append(extractHeader(existing)).append("\n\n");
 
             for (Task t : tasks) {
                 if (t.id().equals(task.id())) {
@@ -145,8 +144,8 @@ public class ProjectFileRepository implements TaskRepository {
 
         List<Task> tasks = parseEntries(existing);
         StringBuilder sb = new StringBuilder();
-        String[] lines = existing.split("\n", 2);
-        sb.append(lines[0]).append("\n\n");
+        // 保留文件头（第一行 # 标题 + 手写注释，到第一个条目前）
+        sb.append(extractHeader(existing)).append("\n\n");
 
         for (Task t : tasks) {
             if (!t.id().equals(id)) {
@@ -213,6 +212,19 @@ public class ProjectFileRepository implements TaskRepository {
     private String singleLine(String s) {
         if (s == null || s.isBlank()) return "";
         return s.replace('\r', ' ').replace('\n', ' ').replaceAll(" +", " ").strip();
+    }
+
+    /**
+     * 提取文件头：第一行 # 标题 + 其后到第一个条目（---）之间的手写注释。
+     * 防止 save/delete 重建文件时丢弃用户手动添加的说明文字（REVIEW #21）。
+     */
+    private String extractHeader(String content) {
+        int idx = content.indexOf("\n---");
+        if (idx <= 0) {
+            // 无条目或格式异常：退回第一行
+            return content.lines().findFirst().orElse("");
+        }
+        return content.substring(0, idx).strip();
     }
 
     private List<Task> parseEntries(String content) {

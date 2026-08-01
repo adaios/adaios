@@ -42,6 +42,7 @@ bash docs/review/guard.sh
 
 | 改动位置 | 派发角色 |
 |:---------|:---------|
+| `.claude/**`（skills/agents/commands 定义自身）| `review-docs`（复核引用的路径/命令/清单真实可执行）|
 | `services/adai-core/**` | `review-backend` |
 | `apps/adai-app/**` | `review-frontend` |
 | `docs/**`、`*.md`、`ai/**` | `review-docs` |

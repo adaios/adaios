@@ -111,6 +111,32 @@ class ProjectFileRepositoryTest {
     }
 
     @Test
+    void saveAndDelete_preservesManualComments() {
+        // 用户手写注释（标题与条目之间）在 save 更新 / delete 重建时不应被丢弃（REVIEW #21）
+        repository.save(task("task_c1", "任务一", "描述一", TaskStatus.TODO));
+
+        String path = taskPath(LocalDate.now());
+        String content = fileStorage.read(path);
+        String withComment = content.replace(
+                "# 任务 - " + LocalDate.now(),
+                "# 任务 - " + LocalDate.now() + "\n\n手动说明：本周重点做 A 方向。");
+        fileStorage.write(path, withComment);
+
+        // save 更新同一任务 → 重建文件应保留注释
+        repository.save(task("task_c1", "任务一更新", "描述一", TaskStatus.DOING));
+        String afterSave = fileStorage.read(path);
+        assertTrue(afterSave.contains("手动说明：本周重点做 A 方向。"), "save 后手写注释应保留");
+        assertEquals(1, repository.findAll().size());
+        assertEquals("任务一更新", repository.findById("task_c1").orElseThrow().title());
+
+        // delete 另一任务 → 重建文件也应保留注释
+        repository.save(task("task_c2", "任务二", "描述二", TaskStatus.TODO));
+        repository.delete("task_c2");
+        String afterDelete = fileStorage.read(path);
+        assertTrue(afterDelete.contains("手动说明：本周重点做 A 方向。"), "delete 后手写注释应保留");
+    }
+
+    @Test
     void stats_countsByStatus() {
         repository.save(task("task_s1", "a", "1", TaskStatus.TODO));
         repository.save(task("task_s2", "b", "2", TaskStatus.DOING));

@@ -78,7 +78,7 @@ data/index/tags.json                               data/index/tags.json
 | 数据 | 存储位置 | 读写方 |
 |:----|:---------|:-------|
 | 原始记录 | `data/records/YYYY/MM/rec_xxx.md` | RecordFileRepository |
-| 对话轮次 | `data/records/YYYY/MM/card_xxx.md` | CardFileRepository |
+| 对话轮次 | `data/records/cards/YYYY/MM/DD/card_xxx.md` | CardFileRepository |
 | AI 记忆 | `data/memory/YYYY/MM.md` | MemoryService |
 | 用户身份 | `data/identity/profile.md` | IdentityRepository |
 | 标签索引 | `data/index/tags.json` | TagIndexService |
@@ -93,32 +93,45 @@ data/index/tags.json                               data/index/tags.json
 ## Context Engine 组装流程
 
 ```
-ContextEngine.compose(scene, record)
+ContextEngine.compose(scene, record, cardId)
     │
     ├── loadIdentitySummary()
     │       → IdentityRepository.load() → IdentityProfile
     │
-    ├── loadSessionHistory(record)
-    │       → RecordRepository.findAll()
-    │       → 过滤当天、排除当前、取最近 5 条
-    │       → "## 今日会话历史"
+    ├── loadCardContext(cardId)        （QUESTION + cardId 时加载全部对话轮次）
+    │       → CardFileRepository.findById(cardId) → 轮次列表
     │
-    ├── enrichFromContributors(scene, identityRef, record)
-    │       → 遍历 ContextContributor 列表
-    │       → contributor.supports(scene) → contributor.enrich()
-    │       → 当前只有 TradingContextContributor（持仓数据）
+    ├── loadRelatedRecords(record)     （标签关联历史；无标签回退最近记录）
+    │       → TagIndexService.findRelatedIds(tags, 20) / findAll()
+    │
+    ├── loadSearchResults(record)      （全文搜索，内容关键词匹配）
+    │       → SearchService.search(前50字) → 最多 10 条
+    │
+    ├── loadMemorySummary()            （近 7 天记忆按标签聚合）
+    │       → MemoryService.recent(7)
+    │
+    ├── detectDomainScene(record)      （内容关键词 → trading/project/life）
+    │
+    ├── loadKnowledgeContext(domainScene)
+    │       → 遍历 KnowledgeSource（Trading/Life/Project）globalContext() + enrich(scene)
+    │
+    ├── enrichFromContributors(domainScene, identityRef, record)
+    │       → contributor.supports(scene) → enrich()
+    │       → Trading/Life/Project ContextContributor
+    │
+    ├── loadGlobalContext()            （所有非 default Contributor 的 globalContext，含行情）
     │
     └── buildPrompt(...)
-            → 组合 identity + sessionHistory + 当前记录 + domainContext
-            → 场景相关指令（JSON 输出 / 自然对话）
-            → ContextPackage {scene, prompt, recordTitle, recordContent, ...}
+            → 组合 identity + 卡片 + 历史 + 搜索 + 记忆 + 知识 + 领域 + 全局 + 当前记录
+            → 场景指令（QUESTION: 自然对话 + 末尾 JSON；其他: JSON 输出）
+            → ContextPackage {scene, prompt, recordTitle, recordContent, relatedRefs, ...}
 ```
 
 ---
 
-## 当前断裂点
+## 历史断裂点（均已修复 / 待办标注）
 
-1. **adai-core 不读 `os/trading-os/`** — 16 课的交易知识（87 条规则、678 行术语）存在但不可用
-2. **Feedback Loop 不存在** — AI 给建议 → 用户执行 → 结果不回系统
-3. **Search 不存在** — 标签索引已有，但没有搜索接口
-4. **Knowledge 是空占位** — `kernel/knowledge/` 只有 package-info.java
+1. ~~adai-core 不读 `os/trading-os/`~~ ✅ 已修复 — TradingKnowledgeSource 读取 11-context/，交易知识进 Context
+2. **Layer 6 反馈闭环不完整** 📋 — 反哺依赖真实 conflicts 数据（见 REVIEW.md #23）
+3. ~~Search 不存在~~ ✅ 已修复 — `kernel/search/SearchService` 全文搜索已实现
+4. ~~Knowledge 是空占位~~ ✅ 已修复 — Trading/Life/Project KnowledgeSource 均已实现

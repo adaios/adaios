@@ -63,6 +63,8 @@
 | [20260730-market-data-and-push.md](rfc/20260730-market-data-and-push.md) | 2026-07-30 | Layer 5 行情接入 + 主动推送 MVP 设计 |
 | [20260801-review-skill.md](rfc/20260801-review-skill.md) | 2026-08-01 | 审核流程 Skill 化：/review + 5 角色 + 检查点清单 |
 
+> 早期独立决策文档见 `docs/decisions/`：[20260726-next-phase-direction.md](decisions/20260726-next-phase-direction.md)
+
 ## 💡 想法归档
 
 | 文档 | 说明 |
@@ -80,7 +82,15 @@
 
 | 文档 | 说明 |
 |:-----|:------|
-| [issue-log.md](issue-log.md) | 项目级问题清单，按状态分组（待确认/已修复），流水编号 |
+| [issue-log.md](reference/issue-log.md) | 项目级问题清单（旧 `docs/issue-log.md` 已迁移，原处为归档 stub）|
+
+## 📚 参考文档
+
+| 文档 | 说明 |
+|:-----|:------|
+| [feature-reference.md](reference/feature-reference.md) | 功能参考文档 |
+| [task-log.md](reference/task-log.md) | 任务开发文档 |
+| [fix-record-20260729.md](reference/fix-record-20260729.md) | 修复记录（2026-07-29）|
 
 ## 🚀 部署
 

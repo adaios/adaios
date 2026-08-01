@@ -1,5 +1,7 @@
 # Life OS — 生活管理领域
 
+> **架构愿景声明**：本文件描述 Life OS 的完整领域愿景。当前 `adai-core` 的 `domain.life` 仅落地 LifeContextContributor + LifeKnowledgeSource，日记/习惯/健康/财务等实体为远期目标。os/life-os 提供领域知识资产，**不实现 Java 代码**。
+
 ## 职责
 
 Life OS 负责个人生活的系统化管理，涵盖日记、情绪、习惯追踪、健康数据、财务管理（非交易）等。作为 AdaiOS 的个人生活助手，帮助用户在 AI 的协助下管理日常生活的各个方面。
@@ -53,11 +55,11 @@ data/life/
 ## 与 adai-core 的关系
 
 - **依赖方向**：`kernel` → `domain.life`（通过 domain 接口调用）
-- **协作方式**：life-os 实现 `com.adaiadai.core.domain.life` 包中定义的接口；`application` 层编排跨域用例
+- **协作方式**：adai-core 的 `domain.life` 包实现领域能力（LifeContextContributor + LifeKnowledgeSource）；os/life-os 提供领域知识资产，不实现 Java 接口；`application` 层编排跨域用例
 - **上下文**：Context Engine 读取 identity + timeline + memory + life 状态，组合为 Life Context Package 提供给 AI
 - **AI 不直连**：AI 通过 Context Engine 获取生活相关数据，life-os 不直接暴露数据库或文件
 
 ## 边界范围
 
-- **包含**：日记管理、情绪记录、习惯追踪、健康数据管理、个人财务管理（非交易）
+- **包含**（愿景，均未落地）：日记管理、情绪记录、习惯追踪、健康数据管理、个人财务管理（非交易）
 - **不包含**：交易相关金融功能（归 trading-os）、项目相关功能（归 project-os）
