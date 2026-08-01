@@ -24,6 +24,7 @@ status: draft
 | 报告形态 | **常驻 REVIEW.md 全量状态表** | 报告全量与扫描增量解耦：报告永远全量视角，扫描按需增量 |
 | 角色调度 | **增量按 git diff 路由 + 守护检查** | 只派被改动触动的角色，守护检查 grep 级每次必跑防 P0 复发 |
 | 成本记录 | **记录** | REVIEW.md 末尾成本表，跑几轮后用数据定全量频率 |
+| 默认模式 | **light 轻量增量** | 日常 `/review` 守护检查 + 快扫 diff（秒级）不派 agent；`--deep`/`--full` 才深扫 |
 
 ## 三、角色定义
 
@@ -56,15 +57,18 @@ docs/review/YYYYMMDD-review.md          ← 输出报告（带滚动状态表）
 ## 五、执行流程
 
 ```
-/review [--full]
-  1. 确定范围：增量 = 上次 review 之后的所有 git diff；--full = 全仓库
+/review            轻量：守护检查 + 快扫 diff（秒级，不派 agent）
+/review --deep     深度：按 diff 路由派角色 agent 深扫改动
+/review --full     全量：5 角色全派深扫全仓库
+
+  1. 确定范围：light/deep = 上次 review 基线之后的 git diff；--full = 全仓库
   2. 读 docs/review/checklists/*.md 作为各角色检查基线
-  3. 读上一份 review 报告 → 提取"未修复项"作为本次必须回查的清单
-  4. 并行派 4 个角色 Agent（各自带检查点清单 + 审核范围）
+  3. 读 REVIEW.md → 提取"未修复项"作为本次必须回查的清单
+  4. 派发：light 不派 agent；deep 按 diff 路由；full 5 角色全派
   5. 汇总：按 P0（数据丢失）→ 战略缺口 → P1 → P2/P3 排序
-  6. 状态滚动：新问题追加 / 已修复落 ✅ / 未修复延续，逐项更新跟踪表
-  7. 写 docs/review/YYYYMMDD-review.md
-  8. 沉淀：各 Agent 汇报"本次新增检查点建议"，确认后补进对应 checklists
+  6. 状态滚动：deep/full 完整滚动，light 仅新 P0/P1 追加
+  7. 更新 docs/review/REVIEW.md（单一常驻报告，不新建）
+  8. 沉淀：新检查点补进对应 checklists
 ```
 
 ## 六、检查点清单初始内容（从上次审查提炼）
