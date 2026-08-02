@@ -14,19 +14,16 @@ echo "=== Building Flutter Web ==="
 flutter build web --no-tree-shake-icons
 
 echo "=== Applying local patches ==="
-# Copy fonts (Chinese + emoji)
-cp web/fonts/NotoSansSC.ttf build/web/fonts/NotoSansSC.ttf
-cp web/fonts/NotoColorEmoji.ttf build/web/fonts/NotoColorEmoji.ttf
+# 字体补丁：Flutter 构建自带 NotoSansSC.woff2（web/fonts/），无需显式复制
+# （NotoColorEmoji 本仓库未提供，emoji 走系统 fallback）
 
 # Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
 perl -i -pe 's/(_flutter\.loader\.load\(\{)/$1\n  config: {\n    canvasKitBaseUrl: "canvaskit\/"\n  },/' build/web/flutter_bootstrap.js
 
 # Patch index.html: add fetch interceptor for blocked font CDN
-# Routes fonts.gstatic.com requests to local copies:
-#   NotoColorEmoji → local emoji font
-#   everything else → NotoSansSC (Chinese)
+# Routes fonts.gstatic.com requests to local NotoSansSC.woff2
 INDEX="build/web/index.html"
-perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("NotoColorEmoji")||url.includes("notoemoji"))return origFetch("\/fonts\/NotoColorEmoji.ttf");return origFetch("\/fonts\/NotoSansSC.ttf");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
+perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){return origFetch("\/fonts\/NotoSansSC.woff2");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
 
 echo "=== Starting server at http://localhost:8081 ==="
 cd build/web && python -m http.server 8081
