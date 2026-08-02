@@ -189,8 +189,11 @@ class _MainPageState extends State<MainPage>
     final card = _cards.firstWhere((c) => c.id == cardId);
     final currentTurns = card.turns?.length ?? 0;
     final hasNewTurns = currentTurns > _chatEnterTurnCount;
+    // 卡片有对话但从未成功总结过（summary 为 null）→ 点 end 仍需调接口。
+    // 防止 end 失败（如 AI 超时/空内容）后重开卡片再点 end 时被 hasNewTurns 短路，总结永远生成不了。
+    final needsSummary = card.summary == null && (card.turns?.isNotEmpty ?? false);
 
-    if (!hasNewTurns) {
+    if (!hasNewTurns && !needsSummary) {
       setState(() {
         _activeCardId = null;
         _hasActiveChat = false;

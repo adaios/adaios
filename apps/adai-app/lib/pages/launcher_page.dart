@@ -138,7 +138,7 @@ class _LauncherPageState extends State<LauncherPage>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
             children: [
-              _buildRow('👤', '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
+              _buildRow(Icons.person_outline, '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,
@@ -147,7 +147,7 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow('🧠', '脑瓜子正在装...', '已存 $_memoryCount 条理解', AppColors.darkGreen, () {
+            _buildRow(Icons.psychology_outlined, '脑瓜子正在装...', '已存 $_memoryCount 条理解', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,
@@ -156,7 +156,7 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow('📅', '时间都去哪了', '已记 $_timelineCount 条记录', AppColors.darkGreen, () {
+            _buildRow(Icons.calendar_today_outlined, '时间都去哪了', '已记 $_timelineCount 条记录', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,
@@ -165,18 +165,18 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow('📊', '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
+            _buildRow(Icons.query_stats, '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ProjectStatusPage(api: widget.api),
               ));
             }),
-            _buildRow('📋', '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
+            _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ProjectTaskPage(api: widget.api),
               ));
             }),
             _divider(),
-            _buildRow('📈', '交易', '持仓 · 记录', AppColors.darkOrange, () {
+            _buildRow(Icons.show_chart, '交易', '持仓 · 记录', AppColors.darkOrange, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => TradingPage(api: widget.api),
               ));
@@ -187,7 +187,7 @@ class _LauncherPageState extends State<LauncherPage>
             // 标签宇宙 header + toggle
             Row(
               children: [
-                Text('🏷️', style: TextStyle(fontSize: 16)),
+                Icon(Icons.tag, size: 16, color: AppColors.darkGreen),
                 const SizedBox(width: 6),
                 Text('标签宇宙', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
                 const SizedBox(width: 6),
@@ -411,14 +411,15 @@ class _LauncherPageState extends State<LauncherPage>
     );
   }
 
-  Widget _buildRow(String emoji, String title, String preview, Color accentColor, VoidCallback onTap) {
+  // 行图标用 Material Icons（CanvasKit Web 无 NotoColorEmoji，emoji 渲染会崩 Picture._cullRect，#12）
+  Widget _buildRow(IconData icon, String title, String preview, Color accentColor, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 20)),
+            Icon(icon, size: 20, color: accentColor),
             const SizedBox(width: 10),
             Expanded(
               child: Column(

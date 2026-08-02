@@ -11,7 +11,8 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "=== Building Flutter Web ==="
-flutter build web --no-tree-shake-icons
+# --source-maps: 生成 main.dart.js.map，浏览器报错堆栈映射回 Dart 源码行号（release minify 后也能定位）
+flutter build web --no-tree-shake-icons --source-maps
 
 echo "=== Applying local patches ==="
 # 字体补丁：Flutter 构建自带 NotoSansSC.woff2（web/fonts/），无需显式复制

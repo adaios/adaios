@@ -13,7 +13,7 @@
 > - **性能问题** — 卡顿、渲染阻塞
 > - **死代码** — 定义的逻辑从未被使用
 >
-> **文档版本：** v5.0 | **最后更新：** 2026-08-01
+> **文档版本：** v8.0 | **最后更新：** 2026-08-02
 
 ---
 
@@ -203,12 +203,79 @@ ID = card_xxx → 只删 CardFileRepository → 不对，已是最全
 
 **状态：** ✅ 已修（需重启后生效）
 
+---
+
+### #10 — endConversation 500（DeepSeek 空内容）+ 前端结束失败无法重试（M3/M4）
+
+**现象：** 点 [end] 结束对话 → `POST /api/v1/conversations/end` 返回 500（DeepSeek 返回空内容）。且卡片关闭后无法再次触发总结——重开卡片再点 end，总结永远生成不了。前端控制台伴随 `Another exception was thrown: Instance of 'minified:hf<void>'`（release 构建兜底打印，无实质信息）。
+
+**根因（本质类型：实现遗漏 + 逻辑设计）：**
+1. **后端无降级**：`ConversationController.endConversation` 直接调 `aiClient.understand()`，DeepSeek 返回空内容即抛 `RuntimeException` → 500。且 `summary` 为 null 时 `substring` 会 NPE（第二个 500 隐患）。— **实现遗漏**
+2. **前端无法重试**：`main_page.dart._closeChat` 用 `hasNewTurns`（会话内新增轮数）决定是否调 end 接口。end 失败后重开卡片，`_chatEnterTurnCount` 被重置为当前 turns 数 → 再点 end 被短路为"无新对话"，只关闭不调接口，总结永远生成不了。— **逻辑设计**
+
+**修法：**
+1. 后端 `ConversationController.java`：AI 调用 try-catch 降级——失败用对话原文兜底 summary（`fallbackSummary` 截断 50 字）、tags 空、card 仍标记 `ended`、记忆降级沉淀（`Memory.fromContentFallback` 标 DEGRADED，AI 恢复后由重补升级）。summary null 也走兜底。end 永不 500。
+2. 前端 `main_page.dart`：`_closeChat` 加 `needsSummary = card.summary == null && turns 非空`——有对话但从未总结成功 → 点 end 一定调接口，不再被 `hasNewTurns` 短路。
+3. 测试：`ConversationControllerTest` 新增 `endConversation_aiFailure_degradesToOriginalText`（AI 抛异常 → 200 + 原文兜底 + card 标记 ended）。
+
+**涉及文件：** `ConversationController.java`、`main_page.dart`、`ConversationControllerTest.java`
+
+**数据处理：** 失败时数据未丢——card 文件 6 轮对话完好（`status: active`），总结失败仅 card 未标 ended、无 summary record。修复后刷新页面重开卡片点 [end] 即可恢复。
+
+**状态：** ✅ 已修（前后端已重启生效）
+
+---
+
+### #11 — 对话内容刷新后显示"减少"（M3/M4）
+
+**现象：** 首次聊天 active chat 视图显示全部对话；刷新后通过 ask 进入 chat 模式，发现对话内容明显减少/不对劲。
+
+**根因排查：** 数据完整——`data/records/cards/2026/08/02/card_1785637891768.md` 6 轮对话齐全，后端 `GET /api/v1/feed` 返回 card turns 也是全量 6 条。问题在**前端显示**：
+1. `feed_card.dart:593` `_truncateTurns`：对话 >4 轮且内容 >200 字符时折叠，只显示**第一轮 + 倒数第二轮 + 最后一轮**（3 条）+ 底部渐隐遮罩 + "展开"按钮。6 轮对话折叠后看起来"大减"。
+2. 折叠判定以内容总长度为准，折叠态需用户点"展开"才显示全部。
+
+**根因（已确认，本质类型：实现遗漏）：** 与 #13 同源——AI 的 QUESTION/CHAT 回复是**自然语言 + JSON 混合**（LlmResponseParser 靠 `extractJson` 从混合中提取字段）。实时对话时前端 `_doAskRequest` 用 `resp.rawResponse` 显示 AI 气泡 → 用户看到"自然语言 + JSON"；刷新后 card 从文件 `parseTurns` 解析，AI turn 只保留 `AI：` 后第一行自然语言，JSON 被忽略 → 对话内容"减少"。另有次要因素：`feed_card.dart:593` `_truncateTurns` 折叠（>4 轮且 >200 字符只显示 3 条 + 渐隐，可点展开）。
+
+**修法：** 后端写 card 与返回给前端时剥离 JSON（`LlmResponseParser` 提取自然语言部分），实时显示与刷新后一致。
+
+**状态：** 📋 待修复（方案已定，等 #13 一起改）
+
+---
+
+### #12 — 切换背面主页（LauncherPage）大量异常 + CanvasKit 崩溃（M-Launcher）
+
+**现象：** 切换背面主页（MainPage ↔ LauncherPage 的 AnimatedSwitcher 250ms 动画）期间控制台刷 100+ `Another exception was thrown: Instance of 'minified:hf<void>'`，堆栈为 AnimationController/Ticker/framework 每帧 build 重复；最终 `core_patch.dart:293 Uncaught Error at canvaskit.wasm:0x30185 at Picture._cullRect`——CanvasKit 渲染层崩溃。
+
+**根因（疑似，本质类型：展示问题）：** `launcher_page.dart` 用大量 **emoji 做行图标**（👤 🧠 📅 📊 📋 📈 🏷️ 等，`_buildRow('📋', '任务', ...)`）。Flutter Web + CanvasKit 渲染 emoji 需要 emoji 彩色字体（NotoColorEmoji），仓库未提供（serve_web.sh 注释明确"emoji 走系统 fallback"），CanvasKit WASM 不认系统字体 → 渲染 emoji 的 Picture 时崩溃（`Picture._cullRect`）。切换动画触发 launcher 重建 → 每帧崩一次 → 100+ 异常。与既知 N4（Web 端部分 emoji 不显示）同源。
+
+**修法（候选）：** launcher_page 的 emoji 行图标全部换成 Material Icons（`_buildRow(String emoji)` → `_buildRow(IconData icon)`，`Text(emoji)` → `Icon(icon)`），顺带解决 N4。
+
+**修法（已实施）：** `launcher_page.dart` — 7 处行图标 + 标签宇宙 🏷️ 全部换 Material Icons（👤→person_outline / 🧠→psychology_outlined / 📅→calendar_today_outlined / 📊→query_stats / 📋→task_alt / 📈→show_chart / 🏷️→tag），`_buildRow` 签名改 `IconData icon`，`Icon` 用 accentColor 着色。遗留 `☰/✦` 为单色文本符号（非彩色 emoji）暂保留。
+
+**状态：** ✅ 已修（2026-08-02，前端需重建生效）
+
+---
+
+### #13 — card 文件混入 AI 原始 JSON 块（数据卫生，M3）
+
+**现象：** `card_1785637891768.md` 对话正文末尾混入一段游离 JSON：`{"summary":"星期天天气查询","tags":[...],"sentiment":...,"domain":...,"actionable":...}`（AI 的原始 JSON 回复），不属于任何 `## 时间 + 用户：/AI：` turn，也无 `## ` 前缀。
+
+**影响：** `CardFileRepository.parseTurns` 只认 `## + 用户：/AI：` 前缀行，JSON 块**不会被解析成 turn**（不影响 turns 读取），但污染文件格式，且说明某个写入路径把 AI 原始响应直接 append 进 card 文件。
+
+**根因（已确认，本质类型：实现遗漏）：** `QuestionAppService.answer` 第 105 行 `String aiText = understanding.rawResponse()` — 把 AI 完整原始回复（自然语言 + 末尾 JSON）作为 AI turn 写入 card 文件。`CardFileRepository.format` 直接 `AI：` + turn.text() 落盘 → JSON 结构混进文件。`parseTurns` 只认 `AI：` 第一行，JSON 被忽略（不影响 turns 读取，但污染文件 + 与实时显示不一致）。
+
+**修法：** 写 card 前用 `LlmResponseParser` 提取自然语言部分（剥离 JSON），`rawResponse` 为空时回退 `summary`。
+
+**状态：** 📋 待修复
+
 
 
 ## 文档版本记录
 
 | 版本 | 日期 | 改动 |
 |:-----|:-----|:------|
+| v8.0 | 08-02 | 新增 #11 对话折叠显示减少 + #12 切换 LauncherPage CanvasKit 崩溃（emoji）+ #13 card 混入 AI 原始 JSON |
+| v7.0 | 08-02 | 新增 #10 endConversation 500（AI 空内容无降级）+ 前端结束失败无法重试 |
 | v1.0 | 07-28 | 初始问题跟踪 |
 | v2.0 | 07-28 | 两轮修复 + 所有问题 P0/P1 解决 |
 | v3.0 | 07-29 | 本质分类 + prompt 冲突发现 |
