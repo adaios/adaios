@@ -72,6 +72,7 @@ apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
     scripts/             # 构建/部署脚本
       serve_web.sh       #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动
+  adai-admin/          #   Flutter 管理端（独立入口，v1.0.0：账号/数据/系统/知识管理，复用 adai-app 设计系统）
 ```
 
 ## adai-core 架构（根包 `com.adaiadai.core`）
@@ -329,6 +330,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
 | 多账号预留 | 全链路 userId 分层（v1.0.0 前置） | ✅ 完成（架构预留，功能层 v1.0.0）|
 | adai-admin | 规划 RFC 转正（`20260802-adai-admin`，approved）| ✅ 方向确认：v1.0.0 与多账号合并（账号管理载体 + 数据/系统/知识管理）|
+| adai-admin 前端 | 骨架 + 账号管理 UI（MD13 前端，mock 数据）| ✅ 独立工程 `apps/adai-admin`（analyze 0 / 5 测试过）；后端 MD11 联调待 v1.0.0 |
 
 ### 测试状态
 - **后端** 169 测试，0 失败（含多用户隔离 5 测试）
