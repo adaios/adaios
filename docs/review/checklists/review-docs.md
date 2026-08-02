@@ -31,6 +31,8 @@
 | D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
 | D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 review-docs 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
+| D11 | 新增子项目 CLAUDE.md 的运行参数（端口/构建命令）与 `scripts/serve_web.sh` 跨文档对齐 | adai-web CLAUDE.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
+| D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。

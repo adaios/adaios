@@ -30,6 +30,10 @@
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
 | F9 | AI 回复 JSON 解码逻辑是否收敛到 `utils/text_cleaner.dart`（不散落多份）| main_page/feed_card 重复实现（P3，已修）|
+| F10 | 异步 await 后使用共享可变单例（`_activeCardId` 等）必须重新判空——await 前后的 `!` 解引用是竞态崩溃来源 | adai-web `_appendToActiveCard` `_activeCardId!` 崩溃（P0，待修）|
+| F11 | 保活页（IndexedStack/lazy）initState-only 加载需检查刷新路径——数据可变页面保活即陈旧 | adai-web Timeline/Memory 保活陈旧无刷新（战略，待修）|
+| F12 | 列表变更操作（delete/done/markDone）应同步清空相关全局引用（`_activeCardId`）与 API 缓存 Map | adai-web 删 active 卡残留 + markMemoryDone 不清 `_memoryCache`（P1，待修）|
+| F13 | UI 可达性推演：布局差异会让移动端不可达的路径在桌面内联布局下变可达（如内联卡删除），需重新评估 | adai-web 删除 active 卡路径新暴露（P1，待修）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。
