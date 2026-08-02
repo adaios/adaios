@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.2 | 最后更新：2026-08-02**
+**文档版本：v3.3 | 最后更新：2026-08-02**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
@@ -20,6 +21,20 @@
 | 2026-07-25 | v2.3 | 新增交易复盘 API（生成/查询/列表），知识反哺 API（promote/conflicts），简报集成交易检测 |
 | 2026-07-25 | v2.2 | 新增 DECISION 意图，Knowledge 集成到 Context Engine |
 | 2026-07-24 | v2.1 | Feed 新增 `type: "card"` 带 turns，卡片文件隔离到 `records/cards/`，新增迁移 API |
+
+---
+
+## 0. 通用请求头（多账号预留）
+
+> v3.3 起，**所有** API 支持可选请求头 `X-User-Id`，按用户隔离数据。
+
+| Header | 类型 | 必填 | 默认 | 说明 |
+|:-------|:-----|:----:|:----:|:-----|
+| `X-User-Id` | String | 否 | `default` | 用户标识，数据路径按 `data/{userId}/` 分层隔离。当前单用户使用可省略（默认 `default`）；多账号接入时前端随请求携带即可，无需改后端代码 |
+
+**约束**：`userId` 仅允许 `[a-zA-Z0-9_-]+`（后端校验，防路径注入）。不合法的 userId 返回 400。
+
+> 本期仅**架构预留**：不做登录/注册/账号管理，账号由后台管理系统维护（v1.0.0 功能层）。
 
 ---
 

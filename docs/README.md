@@ -61,6 +61,7 @@
 | [20260801-memory-system-evolution.md](rfc/20260801-memory-system-evolution.md) | 2026-08-01 | 记忆系统进化：元记忆对比 + 主题合并/actionable 闭环落地方案 |
 | [20260801-release-versioning.md](rfc/20260801-release-versioning.md) | 2026-08-01 | 产品发布版本机制：版本号规则、发布流程、Release Notes、v0.1.0 规划 |
 | [20260802-adai-admin.md](rfc/20260802-adai-admin.md) | 2026-08-02 | adai-admin 管理后台规划（草案）：数据/系统/知识管理范围 + 技术选型候选 |
+| [20260802-multi-account-prep.md](rfc/20260802-multi-account-prep.md) | 2026-08-02 | 多账号架构预留：数据路径 userId 分层 + 全链路透传 + 数据迁移 |
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 

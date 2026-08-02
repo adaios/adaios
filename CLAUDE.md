@@ -295,11 +295,12 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
 
-## 当前焦点（2026-08-01）
+## 当前焦点（2026-08-02）
 
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **多账号架构预留（v1.0.0 前置）** ✅：全链路 userId 分层（`data/{userId}/`，Controller `X-User-Id` header → AppService → FileStorage 显式透传）+ 数据迁移脚本（`data/` → `data/default/`）+ .gitignore 通配防隐私裸露 + 多用户隔离测试（FileStorage/Record/TagIndex/Memory 四维）。RFC：`docs/rfc/20260802-multi-account-prep.md`
 - **v0.2.0 前端 actionable 闭环 + 行情嵌入** ✅：action 待办卡 + 完成按钮（PATCH done）、memory 页 kind/superseded/待办标记、Feed 分页终止修复（totalToday 只计核心）、L5 大盘行情条 type=market（`a4c584b`/`ca2d4a8`/`7d9b607`）
 - **记忆系统进化 Phase 1-5** ✅：kind 类型（`135f671`）+ 主题级合并 superseded（`7e98555`）+ actionable 闭环 + PATCH /memory/{id}/done（`8ef3739`）+ 时效淘汰（`c96e83b`）+ 筛选降噪（`b6a169c`）
 - **文档体系精简** ✅：产品路线 v1 文档（`docs/architecture/product-roadmap.md`，唯一蓝图 + 路线驱动开发）+ 文档结构精简（inbox 归位 17 个重复/未定型文件 + frontend-reference 合并 + data-flow 并入 system-architecture + 引用统一，`26f130d`/`ad3f58a`）
@@ -326,19 +327,22 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | C Life OS | Phase 0-3 | ⏸ 等数据积累 |
 | 记忆系统进化 | Phase 1-5 (kind/主题合并/actionable/时效/降噪) | ✅ 完成 |
 | v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
+| 多账号预留 | 全链路 userId 分层（v1.0.0 前置） | ✅ 完成（架构预留，功能层 v1.0.0）|
 
 ### 测试状态
-- **后端** 100+ 测试，0 失败
+- **后端** 169 测试，0 失败（含多用户隔离 5 测试）
 - **前端** 23 测试，0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式）
 - 前端：`localhost:8081`（Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
+- 数据路径：`data/{userId}/...`（单用户 = `data/default/`，多账号预留）
 
 ### 关键文档
 - `docs/architecture/product-roadmap.md` — 🚩 产品路线 v1.0.0（唯一蓝图，路线驱动开发）
 - `docs/architecture/frontend-reference.md` — 前端统一参考（术语对照 + 布局视觉）
 - `docs/guides/project-os-usage.md` — Project OS 使用指南
+- `docs/rfc/20260802-multi-account-prep.md` — 多账号架构预留 RFC
 - `docs/rfc/20260730-market-data-and-push.md` — 行情接入 RFC
 - `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘
