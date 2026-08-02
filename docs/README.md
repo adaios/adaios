@@ -29,8 +29,9 @@
 
 | 文档 | 说明 |
 |:-----|:------|
-| [frontend-reference.md](architecture/frontend-reference.md) | 前端统一参考：UI 术语对照 + 布局视觉参考（ASCII 图） |
+| [frontend-reference.md](architecture/frontend-reference.md) | 前端统一参考：UI 术语对照 + 布局视觉（含 adai-web 桌面端章节） |
 | [frontend-ui-reference.md](../apps/adai-app/UI_REFERENCE.md) | 📌 UI 元素精确对照：每个按钮→代码行 |
+| `apps/adai-web/CLAUDE.md` | 📐 adai-web 桌面端子项目（两栏壳 + 8 模块桌面形态） |
 
 ## 📋 API 契约
 
