@@ -16,6 +16,7 @@ import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,9 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -318,5 +321,59 @@ class RecordControllerTest {
         assertTrue(degraded.isPresent(), "AI 失败也应降级沉淀记忆");
         assertTrue(Memory.isDegraded(degraded.get()), "降级记忆应标 DEGRADED");
         assertEquals("今天加仓了立昂微", degraded.get().summary());
+    }
+
+    // ── domain 切换 + retry（adai-admin 系统操作台依赖，纯 mock 独立构造）──
+
+    private MockMvc mockRecordMvc(RecordRepository repo, MemoryService mem, RecordRetryService retry) {
+        RecordController controller = new RecordController(
+                mock(IntentRecognizer.class),
+                mock(QuestionAppService.class),
+                mock(RecordUnderstandingService.class),
+                repo,
+                mock(CardFileRepository.class),
+                mem,
+                retry);
+        return MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @Test
+    void updateDomain_valid_returns204() throws Exception {
+        RecordRepository repo = mock(RecordRepository.class);
+        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class), mock(RecordRetryService.class));
+
+        mvc.perform(patch("/api/v1/records/rec_1/domain")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\":\"trading\"}"))
+                .andExpect(status().isNoContent());
+        verify(repo).updateDomain("default", "rec_1", "trading");
+    }
+
+    @Test
+    void updateDomain_invalid_returns400() throws Exception {
+        RecordRepository repo = mock(RecordRepository.class);
+        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class), mock(RecordRetryService.class));
+
+        mvc.perform(patch("/api/v1/records/rec_1/domain")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\":\"unknown\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void triggerRetry_returnsCountDelta() throws Exception {
+        RecordRepository repo = mock(RecordRepository.class);
+        MemoryService mem = mock(MemoryService.class);
+        when(mem.count(any())).thenReturn(2L, 5L);
+        RecordRetryService retry = mock(RecordRetryService.class);
+        MockMvc mvc = mockRecordMvc(repo, mem, retry);
+
+        mvc.perform(post("/api/v1/records/retry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.memoriesBefore").value(2))
+                .andExpect(jsonPath("$.memoriesAfter").value(5))
+                .andExpect(jsonPath("$.newMemories").value(3));
+        verify(retry).retryUnprocessed("default");
     }
 }

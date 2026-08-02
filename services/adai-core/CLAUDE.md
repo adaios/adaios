@@ -112,7 +112,7 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **100+ 个测试，0 失败**（含 ConversationController、RecordController 字段断言）。
+后端测试在 `src/test/java/`，当前 **236 个测试，0 失败**（14 Controller 44 端点接口测试全覆盖）。
 新增功能必须配套测试。
 
 ## 外部依赖

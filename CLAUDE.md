@@ -326,6 +326,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **方向 A Phase 1** ✅：行情接入（kernel/market + MarketContextContributor）
   - 腾讯行情 API 拉大盘指数 + 持仓实时价
   - CHAT 模式上下文注入修复（之前全局上下文未发给 DeepSeek）
+- **后端接口测试全覆盖** ✅：14 Controller 44 端点全部有接口测试——TradingControllerTest 重写（补 positions/portfolio/trades/复盘/promote 8 端点）+ 新增 ProjectStatus/Card/Search/TagIndex 测试类 + Memory/Record 扩展（dates/count/修正/domain/retry），203→236 测试全绿
 
 ### 方向进展
 | 方向 | Phase | 状态 |
@@ -344,7 +345,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 25 测试绿 · web 构建通过）|
 
 ### 测试状态
-- **后端** 169 测试，0 失败（含多用户隔离 5 测试）
+- **后端** 236 测试，0 失败（含多用户隔离 5 测试；**14 Controller 44 端点接口测试全覆盖**）
 - **前端** adai-app 26 · adai-admin 31 · adai-web 25，全部 0 失败
 
 ### 运行环境
