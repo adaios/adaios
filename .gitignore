@@ -59,16 +59,20 @@ heapdump.*
 
 # ── AdaIOS 个人隐私数据 ──
 # 个人记忆、交易记录、持仓等隐私数据不提交
-data/records/
-data/memory/
-data/trading/
+# 多用户架构预留（2026-08-02）：数据按用户分层 data/{userId}/，用通配忽略所有用户层
+data/*/records/
+data/*/memory/
+data/*/trading/
 
 # identity 的示例配置文件选择性提交（见 data/identity/profile.sample.md）
 # data/identity/profile.md 不提交（含真实用户偏好）
-data/identity/profile.md
+data/*/identity/profile.md
 
 # 索引文件可从 records 重建，不追踪
-data/index/
+data/*/index/
+
+# 数据迁移自动备份（data-backup-*.tar.gz，确认后可删）
+data-backup-*.tar.gz
 
 # ── 后端测试残留数据 ──
 services/adai-core/data/
