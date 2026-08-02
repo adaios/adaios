@@ -328,6 +328,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | 记忆系统进化 | Phase 1-5 (kind/主题合并/actionable/时效/降噪) | ✅ 完成 |
 | v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
 | 多账号预留 | 全链路 userId 分层（v1.0.0 前置） | ✅ 完成（架构预留，功能层 v1.0.0）|
+| adai-admin | 规划 RFC 转正（`20260802-adai-admin`，approved）| ✅ 方向确认：v1.0.0 与多账号合并（账号管理载体 + 数据/系统/知识管理）|
 
 ### 测试状态
 - **后端** 169 测试，0 失败（含多用户隔离 5 测试）
