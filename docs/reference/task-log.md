@@ -169,34 +169,35 @@
 
 ### M14 — 账号体系（多账号功能层，v1.0.0）
 
-#### MD11：Account 存储 + 登录端点（P0）
+#### MD11：Account 存储 + 账号列表端点（P0）
 
 | 字段 | 值 |
 |:-----|:----|
-| **描述** | 账号存储（File First，`data/accounts/`，含 disabled 状态）+ 登录端点（按 userId 校验存在 → 返回身份）。**不做注册**，账号由 admin 创建；**seed 账号 `adai`**（首个管理员，文件预置，2026-08-02 定）|
-| **鉴权** | ⏸ 后补（2026-08-02 定）：v1 先做纯 userId 隔离（`X-User-Id` 全链路已就绪），不校验口令/token；app + 后端鉴权统一后补 |
+| **描述** | 账号存储（File First，`data/accounts/`，含 disabled + 角色 admin/user）+ `GET /api/v1/accounts`（列表，供 adai-app 选号进入）。**无口令/登录校验**（现阶段：选择即进入，不校验）；账号由 adai-admin 创建（不做注册）|
+| **seed** | `adai`（admin 角色，文件预置，2026-08-02 定）|
+| **鉴权** | ⏸ 后补：v1 纯 userId 隔离 + 选择进入；口令/token 鉴权 app+后端统一后补 |
 | **前置** | 多账号架构预留 ✅（userId 全链路透传，`f4efc5c`）|
-| **涉及文件** | 新 `AccountRepository`、`AuthController`、api-spec §auth |
+| **涉及文件** | 新 `AccountRepository`、`AccountController`、api-spec §auth |
 | **来源** | RFC `20260802-multi-account-prep.md` §六 |
 
-#### MD12：前端登录页 + 登录态（P0）
+#### MD12：adai-app 选号进入（P0）
 
 | 字段 | 值 |
 |:-----|:----|
-| **描述** | 登录 UI（选账号，无口令）+ 本地存储身份 + 所有 API 请求带 `X-User-Id` 头 + 未登录重定向登录页 |
-| **鉴权** | ⏸ 后补：先纯身份选择（不校验口令）；口令/token 鉴权与后端统一后补（2026-08-02 定）|
-| **前置** | MD11（后端登录端点）|
-| **涉及文件** | adai-app：`api_service.dart`、新登录页、入口路由 |
+| **描述** | adai-app 首屏：加载账号列表（`GET /accounts`）→ 用户选一个 → 本地存 userId → 所有请求带 `X-User-Id` → 进入主界面。**无口令**（选择即进入）|
+| **鉴权** | ⏸ 后补：纯选择进入；口令/token 鉴权与后端统一后补（2026-08-02 定）|
+| **前置** | MD11（账号列表端点）|
+| **涉及文件** | adai-app：`api_service.dart`、新选号页、入口路由 |
 
 ### M15 — adai-admin 管理后台（v1.0.0）
 
-#### MD13：账号管理界面（Phase 0，P0）
+#### MD13：adai-admin 账号管理（Phase 0，P0）
 
 | 字段 | 值 |
 |:-----|:----|
-| **描述** | 管理员界面：账号列表 / 建号（无注册）/ 禁用 / 删除 + admin 端点（复用 MD11 存储）|
+| **描述** | 后台建号工具：账号列表 / 建号（无注册，管理员建）/ 禁用 / 删除。**后台直接进入**（本机管理工具，无口令）|
 | **形态** | ✅ 独立前端入口（2026-08-02 定）：adai-admin 独立于 adai-app 的构建/路由，复用其设计系统/组件 |
-| **前置** | MD11（账号存储）；seed `adai` 文件预置 |
+| **前置** | MD11（Account 存储）；seed `adai` 文件预置 |
 | **来源** | RFC `20260802-adai-admin.md` §3.0 |
 
 #### MD14：数据管理基础（Phase 1，P1）
