@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'api_config.dart';
 import 'models/identity_models.dart';
 import 'models/tag_models.dart';
@@ -71,6 +72,32 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
+  }
+
+  /// 上传图片记录（多模态 L4）：multipart → VLM 理解 → 记录 + 记忆沉淀。
+  Future<MediaRecordResponse> uploadImage({
+    required List<int> bytes,
+    required String filename,
+    required String mimeType,
+    String? caption,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/records/media'))
+      ..headers['X-User-Id'] = userId
+      ..fields['caption'] = caption ?? ''
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: MediaType('image', mimeType.split('/').last),
+      ));
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    // 上传后缓存失效（Feed/Timeline/Memory 都会有新图片记录）
+    _tagsCache = null;
+    _timelineCache = null;
+    _memoryCache = null;
+    return MediaRecordResponse.fromJson(jsonDecode(resp.body));
   }
 
   /// 提交记录。
@@ -347,6 +374,32 @@ class ApiService {
       throw Exception('API 错误 ${resp.statusCode}: ${resp.body}');
     }
   }
+}
+
+/// 图片记录响应 DTO（多模态 L4）。
+class MediaRecordResponse {
+  final String recordId;
+  final String intent;
+  final String summary;
+  final List<String> tags;
+  final String mediaPath;
+
+  MediaRecordResponse({
+    required this.recordId,
+    required this.intent,
+    required this.summary,
+    required this.tags,
+    required this.mediaPath,
+  });
+
+  factory MediaRecordResponse.fromJson(Map<String, dynamic> json) =>
+      MediaRecordResponse(
+        recordId: json['recordId'] as String? ?? '',
+        intent: json['intent'] as String? ?? 'log',
+        summary: json['summary'] as String? ?? '',
+        tags: (json['tags'] as List?)?.cast<String>() ?? [],
+        mediaPath: json['mediaPath'] as String? ?? '',
+      );
 }
 
 // ── Feed entry type constants ──

@@ -327,6 +327,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
   - 腾讯行情 API 拉大盘指数 + 持仓实时价
   - CHAT 模式上下文注入修复（之前全局上下文未发给 DeepSeek）
 - **后端接口测试全覆盖** ✅：14 Controller 44 端点全部有接口测试——TradingControllerTest 重写（补 positions/portfolio/trades/复盘/promote 8 端点）+ 新增 ProjectStatus/Card/Search/TagIndex 测试类 + Memory/Record 扩展（dates/count/修正/domain/retry），203→236 测试全绿
+- **多模态图片记录（L4）** ✅：图片 → GLM-4.6V-Flash 视觉理解 → 文本化进现有闭环（Timeline/Memory/Search 零改动）——`VisualAiClient` 端口（infrastructure/ai/vision/）+ `GlmVisualAiClient` + `POST/GET /api/v1/records/media`（multipart，File First 落 `records/.../media/`）+ FileStorage 字节读写 + 记忆 KIND_INSIGHT（Phase 5 筛选适配）+ VLM 失败降级不丢数据；前端 adai-app/adai-web 输入栏图片上传（`a4c...` 待提交，254 测试绿 · 26/25 前端测试绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |
@@ -343,13 +344,14 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-admin 全栈 | MD11-16：账号体系 + admin 端点 + 数据/系统/知识页 + memory 修正 | ✅ 后端 `1337b62` + 前端 `f9cf6bf`（31 测试过，真实 API）|
 | adai-app 即入口 | 砍掉 adai-entry，app 直接作为产品入口（交流 + 页面操作一体）| ✅ 已执行（删除 `apps/adai-entry`，根 CLAUDE.md 同步）|
 | adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 25 测试绿 · web 构建通过）|
+| 多模态图片记录 | L4 图片 → GLM-VLM 文本化 → 现有闭环（v0.3.0 目标）| ✅ 前后端完成（254 测试绿 · 26/25 前端绿 · 待 live 验收）|
 
 ### 测试状态
-- **后端** 236 测试，0 失败（含多用户隔离 5 测试；**14 Controller 44 端点接口测试全覆盖**）
+- **后端** 254 测试，0 失败（含多用户隔离 5 测试；**14 Controller 44 端点接口测试全覆盖** + 多模态 18 测试）
 - **前端** adai-app 26 · adai-admin 31 · adai-web 25，全部 0 失败
 
 ### 运行环境
-- 后端：`localhost:8080`（DeepSeek 模式）
+- 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）
 - 前端：adai-app `localhost:8081`（移动端入口，Web 形态）· adai-web `localhost:8082`（桌面端入口）· adai-admin `localhost:8083`（产品后台）（均 Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
 - 数据路径：`data/{userId}/...`（单用户 = `data/default/`，多账号预留）
@@ -359,5 +361,6 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/architecture/frontend-reference.md` — 前端统一参考（术语对照 + 布局视觉）
 - `docs/guides/project-os-usage.md` — Project OS 使用指南
 - `docs/rfc/20260802-multi-account-prep.md` — 多账号架构预留 RFC
+- `docs/rfc/20260802-multimodal-image-glm.md` — 多模态图片记录 RFC（implemented）
 - `docs/rfc/20260730-market-data-and-push.md` — 行情接入 RFC
 - `docs/rfc/20260729-development-retrospective.md` — 近期 Bug 复盘

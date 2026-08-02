@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 public class RecordFileRepository implements RecordRepository {
 
     private static final String RECORDS_DIR = "records";
+    private static final String MEDIA_DIR = "media";
 
     private static final DateTimeFormatter ID_FORMATTER = DateTimeFormatter.ofPattern("'rec_'yyyyMMdd'_'HHmmssSSS");
     private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
@@ -90,10 +91,55 @@ public class RecordFileRepository implements RecordRepository {
             String MM = id.substring(8, 10);
             String filePath = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + id + ".md";
             fileStorage.delete(userId, filePath);
+            // 多模态：同步清理关联媒体文件（records/yyyy/MM/media/{id}.*）
+            deleteMediaFiles(userId, id, yyyy, MM);
             log.info("Record deleted | id={} | path={}", id, filePath);
         } else {
             log.warn("Cannot delete record with unexpected id format | id={}", id);
         }
+    }
+
+    /**
+     * 保存图片二进制文件：{@code records/{yyyy}/{MM}/media/{id}.{ext}}（多模态记录资产）。
+     *
+     * @return 相对用户层的媒体文件路径
+     */
+    public String saveMedia(String userId, String id, byte[] bytes, String ext) {
+        String mediaPath = mediaPath(id, ext);
+        fileStorage.writeBytes(userId, mediaPath, bytes);
+        log.info("Media saved | id={} | path={}", id, mediaPath);
+        return mediaPath;
+    }
+
+    /**
+     * 查找记录对应的媒体文件相对路径（records/{yyyy}/{MM}/media/{id}.*）。
+     */
+    public Optional<String> findMediaPath(String userId, String id) {
+        if (id == null || !id.startsWith("rec_") || id.length() < 17) {
+            return Optional.empty();
+        }
+        String dir = RECORDS_DIR + "/" + id.substring(4, 8) + "/" + id.substring(8, 10) + "/" + MEDIA_DIR;
+        return fileStorage.listFiles(userId, dir).stream()
+                .filter(p -> fileNameOf(p).startsWith(id + "."))
+                .findFirst();
+    }
+
+    private void deleteMediaFiles(String userId, String id, String yyyy, String MM) {
+        String dir = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + MEDIA_DIR;
+        fileStorage.listFiles(userId, dir).stream()
+                .filter(p -> fileNameOf(p).startsWith(id + "."))
+                .forEach(p -> fileStorage.delete(userId, p));
+    }
+
+    private String fileNameOf(String path) {
+        int idx = path.lastIndexOf('/');
+        return path.substring(idx + 1);
+    }
+
+    private String mediaPath(String id, String ext) {
+        String yyyy = id.substring(4, 8);
+        String MM = id.substring(8, 10);
+        return RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + MEDIA_DIR + "/" + id + "." + ext;
     }
 
     /**

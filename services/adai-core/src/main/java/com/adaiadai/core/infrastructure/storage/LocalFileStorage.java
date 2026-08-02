@@ -88,6 +88,31 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
+    public void writeBytes(String userId, String path, byte[] content) {
+        try {
+            Path target = resolve(userId, path);
+            Files.createDirectories(target.getParent());
+            Files.write(target, content);
+            log.debug("二进制文件写入成功: {}", target);
+        } catch (IOException e) {
+            throw new StorageException("写入文件失败: " + path, e);
+        }
+    }
+
+    @Override
+    public byte[] readBytes(String userId, String path) {
+        try {
+            Path target = resolve(userId, path);
+            if (!Files.exists(target)) {
+                return null;
+            }
+            return Files.readAllBytes(target);
+        } catch (IOException e) {
+            throw new StorageException("读取文件失败: " + path, e);
+        }
+    }
+
+    @Override
     public void delete(String userId, String path) {
         try {
             Files.deleteIfExists(resolve(userId, path));

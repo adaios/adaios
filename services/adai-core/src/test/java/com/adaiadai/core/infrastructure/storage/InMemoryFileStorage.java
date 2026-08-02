@@ -12,9 +12,26 @@ public class InMemoryFileStorage implements FileStorage {
 
     private final Map<String, String> store = new LinkedHashMap<>();
 
+    private static final java.util.Base64.Encoder B64 = java.util.Base64.getEncoder();
+    private static final java.util.Base64.Decoder B64D = java.util.Base64.getDecoder();
+    private static final String BYTES_PREFIX = "b64:";
+
     @Override
     public void write(String userId, String path, String content) {
         store.put(key(userId, path), content);
+    }
+
+    @Override
+    public void writeBytes(String userId, String path, byte[] content) {
+        store.put(key(userId, path), BYTES_PREFIX + B64.encodeToString(content));
+    }
+
+    @Override
+    public byte[] readBytes(String userId, String path) {
+        String v = store.get(key(userId, path));
+        if (v == null) return null;
+        if (v.startsWith(BYTES_PREFIX)) return B64D.decode(v.substring(BYTES_PREFIX.length()));
+        return null;
     }
 
     @Override

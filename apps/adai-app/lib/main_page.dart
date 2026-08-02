@@ -257,6 +257,38 @@ class _MainPageState extends State<MainPage>
     _createNewCard(text, timeStr, null);
   }
 
+  /// 多模态 L4：图片上传 → VLM 理解记录 → 刷新 Feed + 轻提示。
+  Future<void> _onImage(PickedImage image) async {
+    try {
+      final res = await _api.uploadImage(
+        bytes: image.bytes,
+        filename: image.name,
+        mimeType: _mimeTypeOf(image.extension),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('📷 已记录：${res.summary}', style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+      ));
+      await _loadFeed();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('图片上传失败: $e', style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  String _mimeTypeOf(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'webp': return 'image/webp';
+      case 'gif': return 'image/gif';
+      default: return 'image/png';
+    }
+  }
+
   void _createNewCard(String text, String timeStr, String? forcedIntent) async {
     final cardId = 'card_${DateTime.now().millisecondsSinceEpoch}';
     setState(() => _cards.add(FeedCardData(
@@ -528,7 +560,7 @@ class _MainPageState extends State<MainPage>
                 widget.onPullUp?.call();
               }
             },
-            child: InputBar(key: _inputBarKey, onSend: _onSend, hasActiveChat: _hasActiveChat),
+            child: InputBar(key: _inputBarKey, onSend: _onSend, onImage: _onImage, hasActiveChat: _hasActiveChat),
           ),
         ],
       ),

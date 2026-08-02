@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.4 | 最后更新：2026-08-02**
+**文档版本：v3.5 | 最后更新：2026-08-02**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-02 | v3.5 | **多模态图片记录（L4）**：新增 `POST /records/media`（multipart 上传 → GLM 视觉理解 → 记录+记忆）、`GET /records/media/{id}`（原图预览）|
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
@@ -140,6 +141,38 @@
   "newMemories": 13
 }
 ```
+
+### `POST /api/v1/records/media` — 上传图片记录（多模态 L4）
+
+`multipart/form-data`：图片 → 存原图（`records/{yyyy}/{MM}/media/{id}.{ext}`）→ GLM 视觉模型理解 → 沉淀 ContentRecord（type=image）+ Memory。
+
+**Request（multipart）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `file` | 二进制 | ✅ | 图片（jpeg/png/webp/gif，≤5MB）|
+| `caption` | String | 否 | 用户备注（VLM 理解失败时降级为记录内容）|
+| Header `X-User-Id` | String | 否 | 用户 ID（默认 `default`）|
+
+**Response 200**
+
+```json
+{
+  "recordId": "rec_20260802_143200123",
+  "intent": "log",
+  "summary": "持仓截图：浦发银行",
+  "tags": ["交易", "持仓"],
+  "mediaPath": "records/2026/08/02/media/rec_20260802_143200123.png"
+}
+```
+
+- `400` — 非图片或超 5MB
+
+### `GET /api/v1/records/media/{id}` — 取回原图（预览）
+
+**Response 200** — 图片字节流（Content-Type 按扩展名：jpeg/png/webp/gif）
+
+- `404` — 无此媒体文件
 
 ---
 

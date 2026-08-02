@@ -1,7 +1,15 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
+
+/// 用户选择的图片（多模态 L4，交给宿主上传）。
+class PickedImage {
+  final List<int> bytes;
+  final String name;
+  final String? extension;
+
+  const PickedImage(this.bytes, this.name, this.extension);
+}
 
 /// Input bar — with voice/text toggle + text input + [+] menu.
 /// Supports ask placeholder mode (triggered from parent).
@@ -9,12 +17,14 @@ class InputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool hasActiveChat;          // true when chatting with AI
   final VoidCallback? onAskActivated; // called when ask mode starts typing
+  final ValueChanged<PickedImage>? onImage; // 多模态：图片上传（null 则不显示图片入口）
 
   const InputBar({
     super.key,
     required this.onSend,
     this.hasActiveChat = false,
     this.onAskActivated,
+    this.onImage,
   });
 
   @override
@@ -92,11 +102,11 @@ class InputBarState extends State<InputBar> {
       final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
       if (result == null || result.files.isEmpty) return;
       final file = result.files.first;
-      if (file.bytes != null) {
-        final b64 = base64Encode(file.bytes!);
-        widget.onSend('📷 [image:${file.extension ?? 'png'};base64,$b64]');
-        if (context.mounted) Navigator.pop(context);
-      }
+      if (file.bytes == null) return;
+      // 关闭附件底部弹层
+      if (context.mounted) Navigator.pop(context);
+      // 交给宿主上传（真实 multipart 到 POST /api/v1/records/media）
+      widget.onImage?.call(PickedImage(file.bytes!, file.name, file.extension));
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

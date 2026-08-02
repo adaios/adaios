@@ -107,6 +107,23 @@ public record Memory(
     }
 
     /**
+     * 从图片理解结果创建记忆（多模态记录，L4）。
+     * <p>
+     * VLM 对图片的概括（如"持仓截图：浦发银行"）是信息增量，归 insight。
+     * 必须用 insight 而非 fact——Phase 5 筛选降噪会丢弃纯 fact（无洞察/模式/偏好/action）记忆。
+     */
+    public static Memory fromImageRecord(String recordId, String summary, List<String> tags) {
+        return new Memory(
+                generateId(), recordId, KIND_INSIGHT,
+                summary != null ? summary : "图片记录",
+                List.of(), List.of(),
+                tags != null ? tags : List.of(),
+                "neutral", false, null, LocalDateTime.now(),
+                null, false, null, null, null
+        );
+    }
+
+    /**
      * 从 AI 理解结果推导记忆类型（记忆进化 Phase 1）。
      * <p>
      * 偏好优先（可被修正）、模式其次（行为规律）、洞察兜底（有信息增量），

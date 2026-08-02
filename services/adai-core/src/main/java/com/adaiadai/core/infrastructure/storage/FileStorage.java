@@ -49,6 +49,25 @@ public interface FileStorage {
     boolean exists(String userId, String path);
 
     /**
+     * 将二进制内容写入文件（如图片/音频），父目录不存在则自动创建。
+     * 多模态记录（L4）的原始资产通过此接口落盘。
+     *
+     * @param userId  用户 ID（单用户传 "default"）
+     * @param path    相对用户层的路径（如 {@code records/2026/08/media/rec_x.png}）
+     * @param content 文件字节内容
+     */
+    void writeBytes(String userId, String path, byte[] content);
+
+    /**
+     * 读取二进制文件内容；文件不存在返回 null。
+     *
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param path   相对用户层的路径
+     * @return 文件字节内容，文件不存在返回 null
+     */
+    byte[] readBytes(String userId, String path);
+
+    /**
      * 删除文件。
      *
      * @param userId 用户 ID（单用户传 "default"）

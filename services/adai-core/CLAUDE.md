@@ -100,6 +100,8 @@ com.adaiadai.core/
 | 方法 | 路径 | 用途 |
 |:----|:-----|:-----|
 | POST | `/api/v1/records` | 统一入口（自动分流 STATEMENT / QUESTION / DECISION） |
+| POST | `/api/v1/records/media` | 图片记录（multipart，GLM-VLM 理解文本化） |
+| GET | `/api/v1/records/media/{id}` | 图片文件（原图访问） |
 | POST | `/api/v1/conversations/end` | 结束对话，AI 总结 |
 | GET | `/api/v1/feed` | Feed 流 |
 | GET | `/api/v1/brief` | 今日简报 |
@@ -112,7 +114,7 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **236 个测试，0 失败**（14 Controller 44 端点接口测试全覆盖）。
+后端测试在 `src/test/java/`，当前 **254 个测试，0 失败**（14 Controller 44 端点接口测试全覆盖 + 多模态 18 测试）。
 新增功能必须配套测试。
 
 ## 外部依赖

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/models/tag_models.dart';
@@ -97,6 +98,41 @@ class _FeedPageState extends State<FeedPage> {
     }
     setState(() => _hasActiveChat = false);
     _createNewCard(text, timeStr);
+  }
+
+  /// 多模态 L4：图片上传 → VLM 理解记录 → 刷新 Feed + 轻提示。
+  Future<void> _onImage(PickedImage image) async {
+    try {
+      final res = await widget.api.uploadImage(
+        bytes: image.bytes,
+        filename: image.name,
+        mimeType: _mimeTypeOf(image.extension),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('📷 已记录：${res.summary}', style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.darkSurface2,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      ));
+      await _loadFeed();
+    } catch (e) {
+      _showError('图片上传失败: $e');
+    }
+  }
+
+  String _mimeTypeOf(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      default:
+        return 'image/png';
+    }
   }
 
   Future<void> _createNewCard(String text, String timeStr) async {
@@ -444,7 +480,7 @@ class _FeedPageState extends State<FeedPage> {
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-      child: _DesktopInputBar(onSend: _onSend, hasActiveChat: _hasActiveChat),
+      child: _DesktopInputBar(onSend: _onSend, onImage: _onImage, hasActiveChat: _hasActiveChat),
     );
   }
 
@@ -554,12 +590,22 @@ class _FeedPageState extends State<FeedPage> {
   }
 }
 
-/// 桌面输入栏 — 文本输入 + 发送（无语音，桌面形态）。
+/// 用户选择的图片（多模态 L4，交给宿主上传）。
+class PickedImage {
+  final List<int> bytes;
+  final String name;
+  final String? extension;
+
+  const PickedImage(this.bytes, this.name, this.extension);
+}
+
+/// 桌面输入栏 — 文本输入 + 图片上传 + 发送（无语音，桌面形态）。
 class _DesktopInputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool hasActiveChat;
+  final ValueChanged<PickedImage>? onImage; // 多模态：图片上传
 
-  const _DesktopInputBar({required this.onSend, required this.hasActiveChat});
+  const _DesktopInputBar({required this.onSend, required this.hasActiveChat, this.onImage});
 
   @override
   State<_DesktopInputBar> createState() => _DesktopInputBarState();
@@ -579,6 +625,23 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
     if (text.isEmpty) return;
     _controller.clear();
     widget.onSend(text);
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      if (file.bytes == null) return;
+      widget.onImage?.call(PickedImage(file.bytes!, file.name, file.extension));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('图片选择失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+        backgroundColor: AppColors.darkSurface2,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   @override
@@ -607,6 +670,14 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
           ),
         ),
         const SizedBox(width: 4),
+        IconButton(
+          onPressed: _pickImage,
+          icon: const Icon(Icons.image_outlined, size: 18),
+          color: AppColors.darkGrey4,
+          tooltip: '上传图片记录',
+          style: IconButton.styleFrom(minimumSize: const Size(34, 34)),
+        ),
+        const SizedBox(width: 2),
         IconButton(
           onPressed: _send,
           icon: const Icon(Icons.arrow_upward, size: 18),

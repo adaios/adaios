@@ -8,6 +8,12 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+  # ── 多模态图片上传（L4）──
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   # ── Phase 2: 文件索引需要数据库时启用 ──
   # datasource:
   #   url: jdbc:mysql://localhost:3306/adaios?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
@@ -29,6 +35,9 @@ adai:
   ai:
     provider: deepseek  # 唯一实现，API Key 在 .env 中配置
     model: deepseek-v4-pro
+    vision:
+      provider: glm          # 图片理解（多模态 L4），API Key 在 .env 中配置 GLM_API_KEY
+      model: glm-4.6v-flash  # 免费模型，支持 base64（旧 glm-4v-flash 免费档仅 URL）
   storage:
     base-path: ${ADAI_DATA_DIR:../../data}
 
