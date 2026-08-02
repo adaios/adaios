@@ -1,6 +1,7 @@
 # 20260802 多模态图片记录（GLM-VLM）— RFC
 
-> status: **implemented**（2026-08-02：Phase 1 后端 + Phase 2 前端 app/web 全部落地；GLM-4.6V-Flash · 图片=记录 · v0.3.0）
+> status: **implemented**（2026-08-02：Phase 1 后端 + Phase 2 前端 app/web 全部落地；v0.3.0）
+> 模型修正（2026-08-03）：账号资源包无 GLM-4.6V-Flash，实际可用 **GLM-4.1V-Thinking-Flash**（免费 Flash 档，实测支持 base64 传图）——Thinking 输出带 `<think>/<answer>` 壳，`GlmResponseParser` 已剥壳适配
 > 落地记录：后端 `VisualAiClient`+`GlmVisualAiClient`+`POST/GET /records/media`（254 测试绿）· 前端 adai-app/adai-web 输入栏图片上传 · api-spec 同步
 > 关联：`product-roadmap.md` §3.1（L4 多模态 ❌ 最大空白）｜`VISION.md` Layer 4 / Everything is Content
 
@@ -10,7 +11,7 @@ L4 通用记录的最大空白：**多模态（图片）**。当前 `POST /api/v
 
 ## 决策
 
-1. **模型**：智谱 **GLM-4.6V-Flash**（图片理解**免费**、国内直连、持仓截图/白板/发票识别够用）。不够强可切 GLM-4.5V-Plus / Qwen3-VL-Plus（`VisualAiClient` 接口天然可切换，不碰业务层）。
+1. **模型**：智谱 **GLM-4.1V-Thinking-Flash**（图片理解**免费**、国内直连、持仓截图/白板/发票识别够用；实测支持 base64 传图，输出带 think/answer 壳已适配）。不够强可切 GLM-4.6V / GLM-5V / Qwen3-VL（`VisualAiClient` 接口天然可切换，不碰业务层）。
 2. **定位**：roadmap L4 多模态从 ❌ → 📋，目标 **v0.3.0**（先落后端闭环 + 测试，前端上传 Phase 2）。
 3. **Everything is Content**：图片 → VLM 文本理解 → 进 `ContentRecord`，Timeline / Memory / Search **全部走现有文本闭环，流水线零改动**。
 
@@ -28,7 +29,7 @@ L4 通用记录的最大空白：**多模态（图片）**。当前 `POST /api/v
 - 新增 `infrastructure/ai/vision/`：
   - `VisualAiClient` 接口 — `ImageUnderstanding understand(ImageRequest)`（镜像 `AiClient` 端口模式）
   - `GlmVisualAiClient` — `@Component` + `@Value("${GLM_API_KEY:}")`，GLM OpenAI 兼容端点 `/api/paas/v4/chat/completions`，JSON 模式输出
-- 配置：`adai.ai.vision.provider: glm` + `model: glm-4.6v-flash`（.env 配 `GLM_API_KEY`）
+- 配置：`adai.ai.vision.provider: glm` + `model: glm-4.1v-thinking-flash`（.env 配 `GLM_API_KEY`）
 - 意图：图片记录固定为 **STATEMENT（记录）**，问图（"这张 K 线说明什么"）后续再说
 
 ## 接口设计（草案）
@@ -49,7 +50,7 @@ L4 通用记录的最大空白：**多模态（图片）**。当前 `POST /api/v
 |:---|:-----|
 | **Phase 1（本次）** | 后端：VisualAiClient + GLM 实现 + media 上传端点 + 测试（接口 + 解析） |
 | **Phase 2** | 前端：adai-app（拍照/相册）+ adai-web 上传入口 + api-spec 同步 |
-| **成本** | 0（GLM-4.6V-Flash 图片理解免费）；图片压缩限 5MB 控风险 |
+| **成本** | 0（GLM-4.1V-Thinking-Flash 图片理解免费）；图片压缩限 5MB 控风险 |
 | **风险** | GLM key 需申请；Flash 对复杂图表可能不准（升 Plus 兜底）|
 
 ## 待确认

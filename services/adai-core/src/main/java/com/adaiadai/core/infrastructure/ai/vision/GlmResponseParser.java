@@ -19,6 +19,12 @@ public class GlmResponseParser {
     private static final Logger log = LoggerFactory.getLogger(GlmResponseParser.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** GLM-4.1V-Thinking 自动输出 <think>…</think><answer>…</answer> 壳，解析前剥掉。 */
+    private static final java.util.regex.Pattern THINK_BLOCK =
+            java.util.regex.Pattern.compile("(?s)<think>.*?</think>");
+    private static final java.util.regex.Pattern ANSWER_BLOCK =
+            java.util.regex.Pattern.compile("(?s)<answer>([\\s\\S]*?)</answer>");
+
     private GlmResponseParser() {}
 
     /**
@@ -57,19 +63,20 @@ public class GlmResponseParser {
     }
 
     /**
-     * 从 LLM 回复中提取 JSON（支持整段 JSON / ```json 代码块 / 末尾 JSON 混合）。
+     * 从 LLM 回复中提取 JSON（支持整段 JSON / ```json 代码块 / 末尾 JSON 混合 / think-answer 壳）。
      */
     private static String extractJson(String text) {
-        String trimmed = text.strip();
+        String cleaned = stripThinkAnswer(text);
+        String trimmed = cleaned.strip();
         if (trimmed.startsWith("{")) {
             return trimmed;
         }
-        int codeStart = text.indexOf("```");
+        int codeStart = cleaned.indexOf("```");
         if (codeStart >= 0) {
-            int contentStart = text.indexOf('\n', codeStart) + 1;
-            int codeEnd = text.indexOf("```", contentStart);
+            int contentStart = cleaned.indexOf('\n', codeStart) + 1;
+            int codeEnd = cleaned.indexOf("```", contentStart);
             if (codeEnd > contentStart) {
-                String candidate = text.substring(contentStart, codeEnd).strip();
+                String candidate = cleaned.substring(contentStart, codeEnd).strip();
                 if (candidate.startsWith("{")) {
                     return candidate;
                 }
@@ -88,6 +95,19 @@ public class GlmResponseParser {
             }
         }
         return null;
+    }
+
+    /**
+     * 剥掉 Thinking 模型的 <think>/<answer> 壳：优先取 answer 内容；
+     * 无 answer 标签则移除 think 块，保留其余文本。
+     */
+    private static String stripThinkAnswer(String text) {
+        if (text == null || text.isBlank()) return text;
+        java.util.regex.Matcher answer = ANSWER_BLOCK.matcher(text);
+        if (answer.find()) {
+            return answer.group(1).strip();
+        }
+        return THINK_BLOCK.matcher(text).replaceAll("").strip();
     }
 
     private static String textOr(JsonNode node, String field, String defaultValue) {

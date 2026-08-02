@@ -37,7 +37,7 @@ adai:
     model: deepseek-v4-pro
     vision:
       provider: glm          # 图片理解（多模态 L4），API Key 在 .env 中配置 GLM_API_KEY
-      model: glm-4.6v-flash  # 免费模型，支持 base64（旧 glm-4v-flash 免费档仅 URL）
+      model: glm-4.1v-thinking-flash  # 免费视觉模型（用户资源包），Thinking 输出 <think>/<answer> 解析器已剥壳
   storage:
     base-path: ${ADAI_DATA_DIR:../../data}
 

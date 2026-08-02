@@ -327,7 +327,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
   - 腾讯行情 API 拉大盘指数 + 持仓实时价
   - CHAT 模式上下文注入修复（之前全局上下文未发给 DeepSeek）
 - **后端接口测试全覆盖** ✅：14 Controller 44 端点全部有接口测试——TradingControllerTest 重写（补 positions/portfolio/trades/复盘/promote 8 端点）+ 新增 ProjectStatus/Card/Search/TagIndex 测试类 + Memory/Record 扩展（dates/count/修正/domain/retry），203→236 测试全绿
-- **多模态图片记录（L4）** ✅：图片 → GLM-4.6V-Flash 视觉理解 → 文本化进现有闭环（Timeline/Memory/Search 零改动）——`VisualAiClient` 端口（infrastructure/ai/vision/）+ `GlmVisualAiClient` + `POST/GET /api/v1/records/media`（multipart，File First 落 `records/.../media/`）+ FileStorage 字节读写 + 记忆 KIND_INSIGHT（Phase 5 筛选适配）+ VLM 失败降级不丢数据；前端 adai-app/adai-web 输入栏图片上传（`a4c...` 待提交，254 测试绿 · 26/25 前端测试绿）
+- **多模态图片记录（L4）** ✅：图片 → GLM-4.1V-Thinking-Flash 视觉理解 → 文本化进现有闭环（Timeline/Memory/Search 零改动）——`VisualAiClient` 端口（infrastructure/ai/vision/）+ `GlmVisualAiClient` + `POST/GET /api/v1/records/media`（multipart，File First 落 `records/.../media/`）+ FileStorage 字节读写 + 记忆 KIND_INSIGHT（Phase 5 筛选适配）+ VLM 失败降级不丢数据；前端 adai-app/adai-web 输入栏图片上传（254 测试绿 · 26/25 前端测试绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |

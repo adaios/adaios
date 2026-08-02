@@ -36,6 +36,29 @@ class GlmResponseParserTest {
     }
 
     @Test
+    void parseThinkAnswerWrappedJson() {
+        // GLM-4.1V-Thinking 实际输出：think 块里含大括号也不应干扰提取
+        ImageUnderstanding u = GlmResponseParser.parse("""
+                <think>用户发的持仓截图，需要按 JSON 格式概括（{"summary":...}）。</think>
+                <answer>{"summary":"持仓截图","category":"trading","extractedText":"浦发银行","tags":["交易","持仓"]}</answer>""");
+
+        assertEquals("持仓截图", u.summary());
+        assertEquals("trading", u.category());
+        assertEquals("浦发银行", u.extractedText());
+        assertEquals(List.of("交易", "持仓"), u.tags());
+    }
+
+    @Test
+    void parseThinkOnly_removesBlock() {
+        ImageUnderstanding u = GlmResponseParser.parse("""
+                <think>分析中</think>
+                {"summary":"白板笔记","category":"whiteboard","extractedText":"Q3","tags":[]}""");
+
+        assertEquals("白板笔记", u.summary());
+        assertEquals("whiteboard", u.category());
+    }
+
+    @Test
     void parseMixedTextAndJson() {
         ImageUnderstanding u = GlmResponseParser.parse("""
                 这是一张图片的分析结果：

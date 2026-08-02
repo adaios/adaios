@@ -22,7 +22,7 @@ import java.time.Duration;
  * OpenAI 兼容端点 {@code /chat/completions}，图片以 base64 data URL 传入，
  * 文本指令要求返回 JSON（summary/category/extractedText/tags）。
  * <p>
- * 免费模型：GLM-4.6V-Flash（支持 base64；旧版 glm-4v-flash 免费档仅支持在线 URL，不可用）。
+ * 免费模型：GLM-4.1V-Thinking-Flash（支持 base64；Thinking 输出 <think>/<answer> 壳，GlmResponseParser 已剥壳）。
  * API Key 在 .env 配置 {@code GLM_API_KEY}。
  */
 @Component
@@ -50,7 +50,7 @@ public class GlmVisualAiClient implements VisualAiClient {
     public GlmVisualAiClient(
             @Value("${GLM_API_KEY:}") String apiKey,
             @Value("${GLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}") String baseUrl,
-            @Value("${adai.ai.vision.model:glm-4.6v-flash}") String model
+            @Value("${adai.ai.vision.model:glm-4.1v-thinking-flash}") String model
     ) {
         this.httpClient = HttpClient.newBuilder()
                 .proxy(ProxySelector.of(null))  // 不走系统代理（Privoxy）
