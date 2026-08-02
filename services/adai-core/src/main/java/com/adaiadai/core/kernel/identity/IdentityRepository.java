@@ -13,15 +13,17 @@ public interface IdentityRepository {
     /**
      * 加载个人档案。
      *
+     * @param userId 用户 ID（单用户传 "default"）
      * @return 个人档案
      */
-    Optional<IdentityProfile> load();
+    Optional<IdentityProfile> load(String userId);
 
     /**
      * 保存（全量覆盖）个人档案。
      *
+     * @param userId  用户 ID（单用户传 "default"）
      * @param profile 个人档案
      * @return 保存后的个人档案
      */
-    IdentityProfile save(IdentityProfile profile);
+    IdentityProfile save(String userId, IdentityProfile profile);
 }

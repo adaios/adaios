@@ -36,7 +36,7 @@ class MemoryControllerTest {
     @Test
     void getMemories_returnsOk() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.findByDate(any())).thenReturn(List.of());
+        when(memService.findByDate(any(), any())).thenReturn(List.of());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
@@ -50,7 +50,7 @@ class MemoryControllerTest {
     @Test
     void getMemories_withDateFilter() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.findByDate(any())).thenReturn(List.of(
+        when(memService.findByDate(any(), any())).thenReturn(List.of(
                 new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "neutral", false, null, LocalDateTime.now(), null, false, null, null, null)
         ));
 
@@ -67,7 +67,7 @@ class MemoryControllerTest {
     @Test
     void getByRecordId_returnsMemory() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.findByRecordId("r1")).thenReturn(
+        when(memService.findByRecordId(any(),any())).thenReturn(
                 Optional.of(new Memory("m1", "r1", Memory.KIND_INSIGHT, "summary", null, null, List.of("tag"), "positive", true, "buy more", LocalDateTime.now(), null, false, null, null, null))
         );
 
@@ -85,7 +85,7 @@ class MemoryControllerTest {
     @Test
     void getByRecordId_notFound_returns404() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.findByRecordId("nonexistent")).thenReturn(Optional.empty());
+        when(memService.findByRecordId(any(),any())).thenReturn(Optional.empty());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
@@ -109,7 +109,7 @@ class MemoryControllerTest {
     @Test
     void markDone_returnsOk() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.markDone("m1")).thenReturn(true);
+        when(memService.markDone(any(),any())).thenReturn(true);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
         ).build();
@@ -122,7 +122,7 @@ class MemoryControllerTest {
     @Test
     void markDone_notFound_returns404() throws Exception {
         var memService = mock(MemoryService.class);
-        when(memService.markDone("nonexistent")).thenReturn(false);
+        when(memService.markDone(any(),any())).thenReturn(false);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new MemoryController(memService, mock(RecordRepository.class), mock(RecordFlowAppService.class))
         ).build();

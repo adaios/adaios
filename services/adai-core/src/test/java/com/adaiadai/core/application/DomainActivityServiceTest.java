@@ -29,7 +29,7 @@ class DomainActivityServiceTest {
 
     @Test
     void getActivity_emptyRecords_returnsAllDomainsWithZero() {
-        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity("default");
 
         assertEquals(3, activity.domains().size());
         for (var item : activity.domains()) {
@@ -41,13 +41,13 @@ class DomainActivityServiceTest {
 
     @Test
     void getActivity_withRecentRecord_showsCounts() {
-        recordRepository.save(new ContentRecord(
+        recordRepository.save("default",new ContentRecord(
                 "rec_" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")),
                 "note", "user_input", "test", "测试记录",
                 List.of("test"), LocalDateTime.now(), null, null, "trading"
         ));
 
-        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity("default");
 
         var trading = activity.domains().stream()
                 .filter(d -> d.domain().equals("trading"))
@@ -58,18 +58,18 @@ class DomainActivityServiceTest {
 
     @Test
     void getActivity_multipleDomains() {
-        recordRepository.save(new ContentRecord(
+        recordRepository.save("default",new ContentRecord(
                 "rec_" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + "_1",
                 "note", "user_input", "life", "记录了生活",
                 List.of(), LocalDateTime.now(), null, null, "life"
         ));
-        recordRepository.save(new ContentRecord(
+        recordRepository.save("default",new ContentRecord(
                 "rec_" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + "_2",
                 "note", "user_input", "trading", "买了股票",
                 List.of(), LocalDateTime.now(), null, null, "trading"
         ));
 
-        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity("default");
 
         assertTrue(activity.domains().stream().anyMatch(d -> d.domain().equals("life") && d.todayCount() >= 1));
         assertTrue(activity.domains().stream().anyMatch(d -> d.domain().equals("trading") && d.todayCount() >= 1));
@@ -77,13 +77,13 @@ class DomainActivityServiceTest {
 
     @Test
     void getActivity_oldRecord_notCountedInWeek() {
-        recordRepository.save(new ContentRecord(
+        recordRepository.save("default",new ContentRecord(
                 "rec_20250601_100000",
                 "note", "user_input", "old", "旧记录",
                 List.of(), LocalDateTime.of(2025, 6, 1, 10, 0), null, null, "life"
         ));
 
-        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+        DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity("default");
 
         var life = activity.domains().stream()
                 .filter(d -> d.domain().equals("life"))

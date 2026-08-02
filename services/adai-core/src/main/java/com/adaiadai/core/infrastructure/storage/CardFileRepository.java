@@ -62,19 +62,19 @@ public class CardFileRepository {
     /**
      * 保存卡片。
      */
-    public void save(CardRecord card) {
+    public void save(String userId, CardRecord card) {
         String path = filePath(card);
         String content = toMarkdown(card);
-        fileStorage.write(path, content);
+        fileStorage.write(userId, path, content);
     }
 
     /**
      * 根据 ID 查找卡片。
      * 兼容旧版数字 ID：如 "1784872873886" 也会匹配 "card_1784872873886"。
      */
-    public Optional<CardRecord> findById(String id) {
+    public Optional<CardRecord> findById(String userId, String id) {
         // 精确匹配
-        Optional<CardRecord> exact = findAll().stream()
+        Optional<CardRecord> exact = findAll(userId).stream()
                 .filter(c -> c.id().equals(id))
                 .findFirst();
         if (exact.isPresent()) return exact;
@@ -82,7 +82,7 @@ public class CardFileRepository {
         // 兼容旧版数字 ID：尝试补 card_ 前缀
         if (!id.startsWith("card_")) {
             String withPrefix = "card_" + id;
-            return findAll().stream()
+            return findAll(userId).stream()
                     .filter(c -> c.id().equals(withPrefix))
                     .findFirst();
         }
@@ -92,8 +92,8 @@ public class CardFileRepository {
     /**
      * 查找最近的活跃卡片（status=active）。
      */
-    public Optional<CardRecord> findActiveCard() {
-        return findAll().stream()
+    public Optional<CardRecord> findActiveCard(String userId) {
+        return findAll(userId).stream()
                 .filter(c -> "active".equals(c.status()))
                 .findFirst();
     }
@@ -101,22 +101,22 @@ public class CardFileRepository {
     /**
      * 获取今天的卡片列表。
      */
-    public List<CardRecord> findTodayCards(LocalDate date) {
+    public List<CardRecord> findTodayCards(String userId, LocalDate date) {
         String prefix = CARDS_DIR + "/" + date.format(DIR_DATE_FORMAT);
-        List<String> files = fileStorage.listFiles(prefix);
+        List<String> files = fileStorage.listFiles(userId, prefix);
         return files.stream()
                 .filter(f -> f.startsWith(prefix) && f.endsWith(".md"))
-                .map(this::parseFromFile)
+                .map(f -> parseFromFile(userId, f))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(CardRecord::createdAt))
                 .collect(Collectors.toList());
     }
 
-    public List<CardRecord> findAll() {
-        List<String> files = fileStorage.listFiles(CARDS_DIR);
+    public List<CardRecord> findAll(String userId) {
+        List<String> files = fileStorage.listFiles(userId, CARDS_DIR);
         return files.stream()
                 .filter(f -> f.endsWith(".md"))
-                .map(this::parseFromFile)
+                .map(f -> parseFromFile(userId, f))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(CardRecord::createdAt).reversed())
                 .collect(Collectors.toList());
@@ -125,12 +125,12 @@ public class CardFileRepository {
     /**
      * 按 ID 删除卡片文件。
      */
-    public void deleteById(String id) {
-        List<String> files = fileStorage.listFiles(CARDS_DIR);
+    public void deleteById(String userId, String id) {
+        List<String> files = fileStorage.listFiles(userId, CARDS_DIR);
         boolean found = false;
         for (String file : files) {
             if (file.contains(id)) {
-                fileStorage.delete(file);
+                fileStorage.delete(userId, file);
                 log.info("Card deleted | id={} | path={}", id, file);
                 found = true;
                 // 继续遍历，同一个 ID 可能在不同日期目录下都有文件
@@ -172,8 +172,8 @@ public class CardFileRepository {
         return sb.toString();
     }
 
-    private CardRecord parseFromFile(String path) {
-        String content = fileStorage.read(path);
+    private CardRecord parseFromFile(String userId, String path) {
+        String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) return null;
 
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(

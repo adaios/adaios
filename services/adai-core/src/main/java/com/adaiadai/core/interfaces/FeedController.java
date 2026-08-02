@@ -25,10 +25,11 @@ public class FeedController {
 
     @GetMapping
     public ResponseEntity<FeedResponse> getFeed(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(required = false) String date,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "5") int size) {
         LocalDate queryDate = date != null ? LocalDate.parse(date) : LocalDate.now();
-        return ResponseEntity.ok(feedAppService.getFeed(queryDate, page, size));
+        return ResponseEntity.ok(feedAppService.getFeed(userId, queryDate, page, size));
     }
 }

@@ -31,8 +31,9 @@ public class BriefAppService {
     private final DomainActivityService domainActivityService;
     private final TagRecommendationService tagRecommendationService;
 
-    private String cachedBrief;
-    private LocalDateTime cachedBriefAt;
+    // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
+    private final java.util.Map<String, String> cachedBriefByUser = new java.util.HashMap<>();
+    private final java.util.Map<String, LocalDateTime> cachedBriefAtByUser = new java.util.HashMap<>();
 
     public BriefAppService(IdentityRepository identityRepository,
                            RecordRepository recordRepository,
@@ -54,35 +55,39 @@ public class BriefAppService {
      * 返回缓存的 Brief，不触发 AI 调用。
      * Feed 使用此方法避免阻塞主页加载。
      */
-    public String getCachedBrief() {
-        if (cachedBrief != null && cachedBriefAt != null
-                && java.time.Duration.between(cachedBriefAt, LocalDateTime.now()).toMinutes() < 5) {
-            return cachedBrief;
+    public String getCachedBrief(String userId) {
+        String cached = cachedBriefByUser.get(userId);
+        LocalDateTime at = cachedBriefAtByUser.get(userId);
+        if (cached != null && at != null
+                && java.time.Duration.between(at, LocalDateTime.now()).toMinutes() < 5) {
+            return cached;
         }
         return "";
     }
 
-    public String generateBrief() {
-        // 5 minutes cache
-        if (cachedBrief != null && cachedBriefAt != null
-                && java.time.Duration.between(cachedBriefAt, LocalDateTime.now()).toMinutes() < 5) {
-            return cachedBrief;
+    public String generateBrief(String userId) {
+        // 5 minutes cache（按 userId 隔离）
+        String cached = cachedBriefByUser.get(userId);
+        LocalDateTime cachedAt = cachedBriefAtByUser.get(userId);
+        if (cached != null && cachedAt != null
+                && java.time.Duration.between(cachedAt, LocalDateTime.now()).toMinutes() < 5) {
+            return cached;
         }
 
-        List<ContentRecord> todayRecords = recordRepository.findAll().stream()
+        List<ContentRecord> todayRecords = recordRepository.findAll(userId).stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(LocalDate.now()))
                 .toList();
-        List<ContentRecord> recentRecords = recordRepository.findAll().stream()
+        List<ContentRecord> recentRecords = recordRepository.findAll(userId).stream()
                 .filter(r -> r.createdAt().toLocalDate().isAfter(LocalDate.now().minusDays(2)))
                 .toList();
-        List<Memory> recentMemories = memoryService.recent(7);
-        String identityName = identityRepository.load()
+        List<Memory> recentMemories = memoryService.recent(userId, 7);
+        String identityName = identityRepository.load(userId)
                 .map(IdentityProfile::name)
                 .orElse("user");
 
         int hour = java.time.LocalDateTime.now().getHour();
         boolean hasTodayRecords = !todayRecords.isEmpty();
-        String prompt = buildBriefPrompt(identityName, recentRecords, recentMemories, hour, hasTodayRecords);
+        String prompt = buildBriefPrompt(userId, identityName, recentRecords, recentMemories, hour, hasTodayRecords);
 
         try {
             AiUnderstanding understanding = aiClient.understand(
@@ -92,15 +97,15 @@ public class BriefAppService {
                             List.of(), prompt, java.time.LocalDateTime.now(),
                             List.of()
                     ));
-            cachedBrief = truncateLines(understanding.summary(), 3);
-            cachedBriefAt = LocalDateTime.now();
-            return cachedBrief;
+            cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 3));
+            cachedBriefAtByUser.put(userId, LocalDateTime.now());
+            return cachedBriefByUser.get(userId);
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
             String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
-            cachedBrief = "☀️ " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？";
-            cachedBriefAt = LocalDateTime.now();
-            return cachedBrief;
+            cachedBriefByUser.put(userId, "☀️ " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？");
+            cachedBriefAtByUser.put(userId, LocalDateTime.now());
+            return cachedBriefByUser.get(userId);
         }
     }
 
@@ -117,7 +122,7 @@ public class BriefAppService {
         return sb.toString();
     }
 
-    private String buildBriefPrompt(String name, List<ContentRecord> records,
+    private String buildBriefPrompt(String userId, String name, List<ContentRecord> records,
                                      List<Memory> memories, int hour,
                                      boolean hasTodayRecords) {
         StringBuilder sb = new StringBuilder();
@@ -164,14 +169,14 @@ public class BriefAppService {
             sb.append("If you notice a pattern or habit from the user's history (e.g. they exercise on certain days, they often talk about certain topics), mention it naturally.\n\n");
         }
 
-        boolean hasTrades = tradingReviewAppService.hasTradingActivity(LocalDate.now());
+        boolean hasTrades = tradingReviewAppService.hasTradingActivity(userId, LocalDate.now());
         if (hasTrades) {
             sb.append("User had trading activity today. Suggest generating a review note.\n\n");
         }
 
         // ── Domain activity signals ──
         try {
-            DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity();
+            DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity(userId);
             sb.append("Domain activity (last 7 days):\n");
             for (var item : activity.domains()) {
                 String note = switch (item.trend()) {
@@ -192,7 +197,7 @@ public class BriefAppService {
 
         // ── Tag signals ──
         try {
-            TagRecommendationService.TagRecommendations tags = tagRecommendationService.getRecommendations();
+            TagRecommendationService.TagRecommendations tags = tagRecommendationService.getRecommendations(userId);
             sb.append("Tag signals:\n");
             if (!tags.hot().isEmpty()) {
                 sb.append("- Hot tags (recent 3 days): ").append(String.join(", ", tags.hot())).append("\n");

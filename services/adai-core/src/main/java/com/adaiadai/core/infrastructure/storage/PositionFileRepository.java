@@ -42,8 +42,8 @@ public class PositionFileRepository implements PositionRepository {
     }
 
     @Override
-    public List<Position> findAll() {
-        String content = fileStorage.read(POSITIONS_PATH);
+    public List<Position> findAll(String userId) {
+        String content = fileStorage.read(userId, POSITIONS_PATH);
         if (content == null || content.isBlank()) return Collections.emptyList();
 
         List<Position> positions = new ArrayList<>();
@@ -69,22 +69,22 @@ public class PositionFileRepository implements PositionRepository {
     }
 
     @Override
-    public Optional<Position> findBySymbol(String symbol) {
-        return findAll().stream()
+    public Optional<Position> findBySymbol(String userId, String symbol) {
+        return findAll(userId).stream()
                 .filter(p -> p.symbol().equals(symbol))
                 .findFirst();
     }
 
     @Override
-    public void saveAll(List<Position> positions) {
+    public void saveAll(String userId, List<Position> positions) {
         String content = toMarkdown(positions);
-        fileStorage.write(POSITIONS_PATH, content);
+        fileStorage.write(userId, POSITIONS_PATH, content);
         log.info("持仓已更新 | 数量={}", positions.size());
     }
 
     @Override
-    public BigDecimal cashBalance() {
-        String content = fileStorage.read(POSITIONS_PATH);
+    public BigDecimal cashBalance(String userId) {
+        String content = fileStorage.read(userId, POSITIONS_PATH);
         if (content == null || content.isBlank()) return BigDecimal.ZERO;
         return Arrays.stream(content.split("\n"))
                 .filter(l -> l.trim().startsWith("cashBalance:"))

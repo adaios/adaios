@@ -28,8 +28,10 @@ public interface KnowledgeSource {
      * <p>
      * 在每次请求时都会注入 AI prompt，让 AI 在任何场景下都知道该系统存在。
      * 例如：交易系统的身份声明（"我是波段交易者，不做长线"）。
+     *
+     * @param userId 用户 ID（多用户架构预留；纯静态知识源忽略，Life 用其读用户记忆）
      */
-    String globalContext();
+    String globalContext(String userId);
 
     /**
      * 按场景注入的知识块。
@@ -37,8 +39,9 @@ public interface KnowledgeSource {
      * 当 ContextEngine 在特定场景下组装 prompt 时调用。
      * 例如 scene="trading" 时注入完整交易规则，scene="life" 时注入生活习惯知识。
      *
-     * @param scene 场景标识（"trading"、"life"、"decision" 等）
+     * @param userId 用户 ID（多用户架构预留；纯静态知识源忽略）
+     * @param scene  场景标识（"trading"、"life"、"decision" 等）
      * @return 知识块文本，可能为空字符串（无相关知识时）
      */
-    String enrich(String scene);
+    String enrich(String userId, String scene);
 }

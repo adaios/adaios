@@ -4,6 +4,7 @@ import com.adaiadai.core.kernel.search.SearchResult;
 import com.adaiadai.core.kernel.search.SearchService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,8 +28,10 @@ public class SearchController {
     }
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> search(@RequestParam("q") String query) {
-        List<SearchResult> results = searchService.search(query);
+    public ResponseEntity<Map<String, Object>> search(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("q") String query) {
+        List<SearchResult> results = searchService.search(userId, query);
         return ResponseEntity.ok(Map.of(
                 "results", results,
                 "total", results.size()

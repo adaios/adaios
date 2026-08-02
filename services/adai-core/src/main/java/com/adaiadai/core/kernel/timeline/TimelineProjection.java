@@ -22,12 +22,13 @@ public class TimelineProjection {
     }
 
     /**
-     * 获取完整时间线（按时间倒序）。
+     * 获取该用户完整时间线（按时间倒序）。
      *
+     * @param userId 用户 ID（单用户传 "default"）
      * @return 时间线条目列表
      */
-    public List<TimelineEntry> fullTimeline() {
-        return recordRepository.findAll().stream()
+    public List<TimelineEntry> fullTimeline(String userId) {
+        return recordRepository.findAll(userId).stream()
                 .map(this::toEntry)
                 .sorted((a, b) -> b.dateTime().compareTo(a.dateTime()))
                 .toList();
@@ -36,23 +37,25 @@ public class TimelineProjection {
     /**
      * 获取指定类型的时间线。
      *
-     * @param type 记录类型
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param type   记录类型
      * @return 过滤后的时间线
      */
-    public List<TimelineEntry> timelineByType(String type) {
-        return fullTimeline().stream()
+    public List<TimelineEntry> timelineByType(String userId, String type) {
+        return fullTimeline(userId).stream()
                 .filter(e -> type.equals(e.type()))
                 .toList();
     }
 
     /**
-     * 获取最近 N 条时间线条目。
+     * 获取该用户最近 N 条时间线条目。
      *
-     * @param limit 数量上限
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param limit  数量上限
      * @return 最近的 N 条
      */
-    public List<TimelineEntry> recent(int limit) {
-        return fullTimeline().stream()
+    public List<TimelineEntry> recent(String userId, int limit) {
+        return fullTimeline(userId).stream()
                 .limit(limit)
                 .toList();
     }

@@ -30,14 +30,14 @@ public class ProjectTaskAppService {
     /**
      * 获取任务列表（可筛选）。
      */
-    public List<Task> listTasks(TaskStatus status, String tag) {
-        return taskRepository.findAll(status, tag);
+    public List<Task> listTasks(String userId, TaskStatus status, String tag) {
+        return taskRepository.findAll(status, tag, userId);
     }
 
     /**
      * 创建新任务。
      */
-    public Task createTask(String title, String description,
+    public Task createTask(String userId, String title, String description,
                            String priority, List<String> tags,
                            String rfcRef) {
         LocalDate now = LocalDate.now();
@@ -52,7 +52,7 @@ public class ProjectTaskAppService {
                 now,
                 now
         );
-        taskRepository.save(task);
+        taskRepository.save(userId, task);
         log.info("任务已创建 | id={} | title={}", task.id(), task.title());
         return task;
     }
@@ -60,10 +60,10 @@ public class ProjectTaskAppService {
     /**
      * 更新任务。
      */
-    public Task updateTask(String id, String title, String description,
+    public Task updateTask(String userId, String id, String title, String description,
                            TaskStatus status, String priority,
                            List<String> tags, String rfcRef) {
-        Task existing = taskRepository.findById(id)
+        Task existing = taskRepository.findById(userId, id)
                 .orElseThrow(() -> new IllegalArgumentException("任务不存在: " + id));
 
         Task updated = new Task(
@@ -77,7 +77,7 @@ public class ProjectTaskAppService {
                 existing.createdAt(),
                 LocalDate.now()
         );
-        taskRepository.save(updated);
+        taskRepository.save(userId, updated);
         log.info("任务已更新 | id={} | status={}", id, updated.status());
         return updated;
     }
@@ -85,14 +85,14 @@ public class ProjectTaskAppService {
     /**
      * 删除任务。
      */
-    public void deleteTask(String id) {
-        taskRepository.delete(id);
+    public void deleteTask(String userId, String id) {
+        taskRepository.delete(userId, id);
     }
 
     /**
      * 获取任务统计。
      */
-    public TaskRepository.TaskStats getStats() {
-        return taskRepository.stats();
+    public TaskRepository.TaskStats getStats(String userId) {
+        return taskRepository.stats(userId);
     }
 }

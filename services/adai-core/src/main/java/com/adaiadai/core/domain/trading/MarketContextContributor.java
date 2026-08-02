@@ -40,7 +40,7 @@ public class MarketContextContributor implements ContextContributor {
     }
 
     @Override
-    public String enrich(String identityRef, ContentRecord record) {
+    public String enrich(String userId, String identityRef, ContentRecord record) {
         StringBuilder sb = new StringBuilder();
         sb.append("## 当前行情\n\n");
 
@@ -48,18 +48,18 @@ public class MarketContextContributor implements ContextContributor {
         appendIndices(sb);
 
         // 2. 持仓行情（实时价格）
-        appendPortfolio(sb);
+        appendPortfolio(userId, sb);
 
         return sb.toString();
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         // 所有场景都注入交易系统状态（短版）：大盘指数始终注入，持仓按需
         StringBuilder sb = new StringBuilder();
         sb.append("## 交易系统状态\n\n");
 
-        List<Position> positions = positionRepository.findAll();
+        List<Position> positions = positionRepository.findAll(userId);
         if (positions.isEmpty()) {
             sb.append("当前无持仓记录。\n");
         } else {
@@ -122,8 +122,8 @@ public class MarketContextContributor implements ContextContributor {
         sb.append("\n");
     }
 
-    private void appendPortfolio(StringBuilder sb) {
-        List<Position> positions = positionRepository.findAll();
+    private void appendPortfolio(String userId, StringBuilder sb) {
+        List<Position> positions = positionRepository.findAll(userId);
         if (positions.isEmpty()) {
             sb.append("**当前持仓：** 空仓\n");
             return;
@@ -171,7 +171,7 @@ public class MarketContextContributor implements ContextContributor {
         sb.append("\n**汇总：** 总市值=").append(totalValue.setScale(2).toPlainString())
                 .append("，浮动盈亏=").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
                 .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                .append("，现金余额=").append(positionRepository.cashBalance().setScale(2).toPlainString())
+                .append("，现金余额=").append(positionRepository.cashBalance(userId).setScale(2).toPlainString())
                 .append("\n");
     }
 

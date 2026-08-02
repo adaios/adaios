@@ -35,15 +35,18 @@ public class IdentityController {
      * 读取个人档案。文件不存在时返回默认档案，不会 404。
      */
     @GetMapping
-    public ResponseEntity<IdentityProfile> getIdentity() {
-        return ResponseEntity.ok(identityRepository.load().orElse(null));
+    public ResponseEntity<IdentityProfile> getIdentity(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        return ResponseEntity.ok(identityRepository.load(userId).orElse(null));
     }
 
     /**
      * 更新（全量覆盖）个人档案。
      */
     @PutMapping
-    public ResponseEntity<?> updateIdentity(@Valid @RequestBody IdentityRequest request) {
+    public ResponseEntity<?> updateIdentity(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody IdentityRequest request) {
         if (request.name() == null || request.name().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "name 不能为空"));
         }
@@ -59,7 +62,7 @@ public class IdentityController {
         );
 
         try {
-            IdentityProfile saved = identityRepository.save(profile);
+            IdentityProfile saved = identityRepository.save(userId, profile);
             return ResponseEntity.ok(saved);
         } catch (Exception e) {
             log.error("身份保存失败", e);

@@ -30,8 +30,8 @@ public class TagRecommendationService {
     /**
      * 计算标签推荐信号。
      */
-    public TagRecommendations getRecommendations() {
-        List<TagSummary> allTags = tagIndexService.getAllTags();
+    public TagRecommendations getRecommendations(String userId) {
+        List<TagSummary> allTags = tagIndexService.getAllTags(userId);
         LocalDateTime now = LocalDateTime.now();
 
         // Hot: 近 3 天出现过，按出现次数降序

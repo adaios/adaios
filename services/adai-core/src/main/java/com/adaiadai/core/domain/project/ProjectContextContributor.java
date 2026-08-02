@@ -92,18 +92,18 @@ public class ProjectContextContributor implements ContextContributor {
     }
 
     @Override
-    public String enrich(String identityRef, ContentRecord record) {
+    public String enrich(String userId, String identityRef, ContentRecord record) {
         StringBuilder sb = new StringBuilder();
         sb.append("## 项目当前状态\n\n");
         sb.append(loadGitSummary());
         sb.append(loadDocsIndex());
         sb.append(loadRfcStatus());
-        sb.append(loadTaskSummary());
+        sb.append(loadTaskSummary(userId));
         return sb.toString();
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         return loadGitSummary();
     }
 
@@ -233,10 +233,10 @@ public class ProjectContextContributor implements ContextContributor {
 
     // ── 任务摘要 ──
 
-    private String loadTaskSummary() {
+    private String loadTaskSummary(String userId) {
         try {
-            var stats = taskRepository.stats();
-            List<Task> doingTasks = taskRepository.findAll(TaskStatus.DOING, null);
+            var stats = taskRepository.stats(userId);
+            List<Task> doingTasks = taskRepository.findAll(TaskStatus.DOING, null, userId);
 
             StringBuilder sb = new StringBuilder();
             sb.append("\n**任务状态：** ")
@@ -258,7 +258,7 @@ public class ProjectContextContributor implements ContextContributor {
 
             // 最近 7 天完成的任务
             LocalDate weekAgo = LocalDate.now().minusDays(7);
-            List<Task> recentDone = taskRepository.findAll().stream()
+            List<Task> recentDone = taskRepository.findAll(userId).stream()
                     .filter(t -> t.status() == TaskStatus.DONE)
                     .filter(t -> t.updatedAt() != null && !t.updatedAt().isBefore(weekAgo))
                     .sorted(Comparator.comparing(Task::updatedAt).reversed())

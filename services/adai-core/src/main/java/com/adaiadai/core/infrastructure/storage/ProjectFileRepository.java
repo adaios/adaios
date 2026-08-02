@@ -64,21 +64,21 @@ public class ProjectFileRepository implements TaskRepository {
     }
 
     @Override
-    public List<Task> findAll(TaskStatus status, String tag) {
-        return findAll().stream()
+    public List<Task> findAll(TaskStatus status, String tag, String userId) {
+        return findAll(userId).stream()
                 .filter(t -> status == null || t.status() == status)
                 .filter(t -> tag == null || tag.isBlank() || t.tags().contains(tag))
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<Task> findAll() {
+    public List<Task> findAll(String userId) {
         List<Task> all = new ArrayList<>();
         // 扫描全部月份文件（不限 12 个月，任务生命周期可能更长）
-        List<String> files = fileStorage.listFiles(TASKS_DIR);
+        List<String> files = fileStorage.listFiles(userId, TASKS_DIR);
         for (String path : files) {
             if (!path.endsWith(".md")) continue;
-            String content = fileStorage.read(path);
+            String content = fileStorage.read(userId, path);
             if (content != null && !content.isBlank()) {
                 all.addAll(parseEntries(content));
             }
@@ -87,18 +87,18 @@ public class ProjectFileRepository implements TaskRepository {
     }
 
     @Override
-    public Optional<Task> findById(String id) {
-        return findAll().stream()
+    public Optional<Task> findById(String userId, String id) {
+        return findAll(userId).stream()
                 .filter(t -> t.id().equals(id))
                 .findFirst();
     }
 
     @Override
-    public synchronized void save(Task task) {
+    public synchronized void save(String userId, Task task) {
         String path = taskFilePath(task.createdAt());
         String entry = formatTaskEntry(task);
 
-        String existing = fileStorage.read(path);
+        String existing = fileStorage.read(userId, path);
         // 尝试更新已存在的条目
         if (existing != null && !existing.isBlank()) {
             List<Task> tasks = parseEntries(existing);
@@ -118,28 +118,28 @@ public class ProjectFileRepository implements TaskRepository {
             if (!replaced) {
                 sb.append(entry).append("\n");
             }
-            fileStorage.write(path, sb.toString());
+            fileStorage.write(userId, path, sb.toString());
         } else {
             String content = """
                     # 任务 - %s
 
                     %s
                     """.formatted(task.createdAt().toString(), entry);
-            fileStorage.write(path, content);
+            fileStorage.write(userId, path, content);
         }
         log.info("任务已保存 | id={} | title={} | status={}", task.id(), task.title(), task.status());
     }
 
     @Override
-    public void delete(String id) {
-        Task task = findById(id).orElse(null);
+    public void delete(String userId, String id) {
+        Task task = findById(userId, id).orElse(null);
         if (task == null) {
             log.warn("任务删除失败：未找到 | id={}", id);
             return;
         }
 
         String path = taskFilePath(task.createdAt());
-        String existing = fileStorage.read(path);
+        String existing = fileStorage.read(userId, path);
         if (existing == null || existing.isBlank()) return;
 
         List<Task> tasks = parseEntries(existing);
@@ -152,13 +152,13 @@ public class ProjectFileRepository implements TaskRepository {
                 sb.append(formatTaskEntry(t)).append("\n");
             }
         }
-        fileStorage.write(path, sb.toString());
+        fileStorage.write(userId, path, sb.toString());
         log.info("任务已删除 | id={}", id);
     }
 
     @Override
-    public TaskStats stats() {
-        List<Task> all = findAll();
+    public TaskStats stats(String userId) {
+        List<Task> all = findAll(userId);
         return new TaskStats(
                 all.size(),
                 (int) all.stream().filter(t -> t.status() == TaskStatus.TODO).count(),

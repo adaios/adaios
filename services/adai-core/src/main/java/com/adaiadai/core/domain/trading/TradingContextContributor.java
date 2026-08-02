@@ -42,13 +42,13 @@ public class TradingContextContributor implements ContextContributor {
     }
 
     @Override
-    public String enrich(String identityRef, ContentRecord record) {
+    public String enrich(String userId, String identityRef, ContentRecord record) {
         return "";
     }
 
     @Override
-    public String globalContext() {
-        List<Position> positions = positionRepository.findAll();
+    public String globalContext(String userId) {
+        List<Position> positions = positionRepository.findAll(userId);
         if (positions.isEmpty()) {
             return "";
         }
@@ -87,7 +87,7 @@ public class TradingContextContributor implements ContextContributor {
         sb.append("\n总市值 ").append(totalValue.setScale(2).toPlainString())
                 .append("，浮动盈亏 ").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
                 .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                .append("，现金余额 ").append(positionRepository.cashBalance().setScale(2).toPlainString());
+                .append("，现金余额 ").append(positionRepository.cashBalance(userId).setScale(2).toPlainString());
 
         return sb.toString();
     }

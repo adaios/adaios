@@ -37,9 +37,9 @@ class RecordFileRepositoryTest {
                 List.of("投资", "半导体"),
                 LocalDateTime.of(2026, 7, 18, 12, 0)
         );
-        repository.save(record);
+        repository.save("default",record);
 
-        Optional<ContentRecord> found = repository.findById("rec_20260718_120000");
+        Optional<ContentRecord> found = repository.findById("default","rec_20260718_120000");
         assertTrue(found.isPresent());
         assertEquals("今天买了立昂微", found.get().content());
         assertEquals(List.of("投资", "半导体"), found.get().tags());
@@ -47,7 +47,7 @@ class RecordFileRepositoryTest {
 
     @Test
     void findById_notFound_returnsEmpty() {
-        Optional<ContentRecord> found = repository.findById("rec_nonexistent");
+        Optional<ContentRecord> found = repository.findById("default","rec_nonexistent");
         assertFalse(found.isPresent());
     }
 
@@ -65,10 +65,10 @@ class RecordFileRepositoryTest {
                 List.of("投资"),
                 LocalDateTime.of(2026, 7, 18, 11, 0)
         );
-        repository.save(r1);
-        repository.save(r2);
+        repository.save("default",r1);
+        repository.save("default",r2);
 
-        List<ContentRecord> all = repository.findAll();
+        List<ContentRecord> all = repository.findAll("default");
         assertEquals(2, all.size());
         // 默认按时间倒序
         assertEquals("rec_20260718_110000", all.get(0).id());
@@ -77,7 +77,7 @@ class RecordFileRepositoryTest {
 
     @Test
     void findAll_empty() {
-        assertTrue(repository.findAll().isEmpty());
+        assertTrue(repository.findAll("default").isEmpty());
     }
 
     @Test
@@ -89,13 +89,13 @@ class RecordFileRepositoryTest {
                 List.of("投资", "半导体", "立昂微"),
                 now
         );
-        repository.save(record);
+        repository.save("default",record);
 
         // 验证文件路径和内容格式
         String path = "records/2026/07/rec_20260718_153000.md";
-        assertTrue(fileStorage.exists(path));
+        assertTrue(fileStorage.exists("default",path));
 
-        String content = fileStorage.read(path);
+        String content = fileStorage.read("default",path);
         assertNotNull(content);
         assertTrue(content.contains("id: rec_20260718_153000"));
         assertTrue(content.contains("type: trade"));
@@ -114,9 +114,9 @@ class RecordFileRepositoryTest {
                 List.of("生活"),
                 LocalDateTime.of(2026, 7, 18, 14, 0)
         );
-        repository.save(record);
+        repository.save("default",record);
 
-        ContentRecord loaded = repository.findById("rec_20260718_140000").orElseThrow();
+        ContentRecord loaded = repository.findById("default","rec_20260718_140000").orElseThrow();
         // 标题从第一行非空内容提取
         assertNotNull(loaded.title());
     }
@@ -135,9 +135,9 @@ class RecordFileRepositoryTest {
                 List.of("研究", "半导体", "行业分析"),
                 LocalDateTime.of(2026, 7, 18, 16, 0)
         );
-        repository.save(record);
+        repository.save("default",record);
 
-        ContentRecord loaded = repository.findById("rec_20260718_160000").orElseThrow();
+        ContentRecord loaded = repository.findById("default","rec_20260718_160000").orElseThrow();
         assertEquals(List.of("研究", "半导体", "行业分析"), loaded.tags());
         assertEquals("research", loaded.type());
         assertEquals("user_input", loaded.source());
@@ -157,10 +157,10 @@ class RecordFileRepositoryTest {
                 List.of(),
                 LocalDateTime.of(2026, 7, 18, 17, 0)
         );
-        repository.save(r1);
-        repository.save(r2);
+        repository.save("default",r1);
+        repository.save("default",r2);
 
-        Optional<ContentRecord> found = repository.findById("rec_20260718_170000");
+        Optional<ContentRecord> found = repository.findById("default","rec_20260718_170000");
         assertTrue(found.isPresent());
         assertEquals("覆盖内容", found.get().content());
     }
@@ -174,9 +174,9 @@ class RecordFileRepositoryTest {
                 List.of("tag,with,comma", "normal"),
                 LocalDateTime.of(2026, 7, 18, 18, 0)
         );
-        repository.save(record);
+        repository.save("default",record);
 
-        ContentRecord loaded = repository.findById("rec_20260718_180000").orElseThrow();
+        ContentRecord loaded = repository.findById("default","rec_20260718_180000").orElseThrow();
         // tags 字段经过 parseTags 处理，逗号分隔
         assertNotNull(loaded.tags());
     }
@@ -190,10 +190,10 @@ class RecordFileRepositoryTest {
                 List.of(),
                 jan
         );
-        repository.save(record);
+        repository.save("default",record);
 
         String path = "records/2026/01/rec_20260115_100000.md";
-        assertTrue(fileStorage.exists(path));
+        assertTrue(fileStorage.exists("default",path));
     }
 
     @Test
@@ -204,24 +204,24 @@ class RecordFileRepositoryTest {
                 List.of("测试"),
                 LocalDateTime.of(2026, 7, 18, 12, 0)
         );
-        repository.save(record);
+        repository.save("default",record);
 
         // 确认保存成功
-        assertTrue(repository.findById("rec_20260718_120000").isPresent());
+        assertTrue(repository.findById("default","rec_20260718_120000").isPresent());
 
         // 删除
-        repository.deleteById("rec_20260718_120000");
+        repository.deleteById("default","rec_20260718_120000");
 
         // 验证文件已删除
-        assertFalse(repository.findById("rec_20260718_120000").isPresent());
+        assertFalse(repository.findById("default","rec_20260718_120000").isPresent());
         String path = "records/2026/07/rec_20260718_120000.md";
-        assertFalse(fileStorage.exists(path));
+        assertFalse(fileStorage.exists("default",path));
     }
 
     @Test
     void deleteById_wrongFormat_doesNothing() {
         // card_ 前缀不应被 RecordFileRepository 处理
-        repository.deleteById("card_12345");
+        repository.deleteById("default","card_12345");
         // 没有异常就是成功
     }
 }

@@ -14,37 +14,42 @@ public interface RecordRepository {
     /**
      * 保存一条 Record（写入文件系统）。
      *
+     * @param userId 用户 ID（单用户传 "default"）
      * @param record 要保存的记录
      */
-    void save(ContentRecord record);
+    void save(String userId, ContentRecord record);
 
     /**
      * 根据 ID 查找一条 Record。
      *
-     * @param id 记录唯一标识
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param id     记录唯一标识
      * @return 匹配的记录
      */
-    Optional<ContentRecord> findById(String id);
+    Optional<ContentRecord> findById(String userId, String id);
 
     /**
-     * 按时间倒序返回所有记录。
+     * 按时间倒序返回该用户的所有记录。
      *
+     * @param userId 用户 ID（单用户传 "default"）
      * @return 所有记录列表（最近的在最前）
      */
-    List<ContentRecord> findAll();
+    List<ContentRecord> findAll(String userId);
 
     /**
      * 根据 ID 删除一条记录。
      *
-     * @param id 记录唯一标识
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param id     记录唯一标识
      */
-    void deleteById(String id);
+    void deleteById(String userId, String id);
 
     /**
      * 更新记录的 domain 字段。
      *
+     * @param userId 用户 ID（单用户传 "default"）
      * @param id     记录 ID
      * @param domain 新域名值（life / trading / project）
      */
-    void updateDomain(String id, String domain);
+    void updateDomain(String userId, String id, String domain);
 }

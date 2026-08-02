@@ -48,25 +48,29 @@ public class TradingController {
      * 查询当前持仓。
      */
     @GetMapping("/positions")
-    public ResponseEntity<List<Position>> getPositions() {
-        return ResponseEntity.ok(tradingAppService.getPositions());
+    public ResponseEntity<List<Position>> getPositions(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        return ResponseEntity.ok(tradingAppService.getPositions(userId));
     }
 
     /**
      * 查询投资组合快照。
      */
     @GetMapping("/portfolio")
-    public ResponseEntity<PortfolioSnapshot> getPortfolio() {
-        return ResponseEntity.ok(tradingAppService.getPortfolioSnapshot());
+    public ResponseEntity<PortfolioSnapshot> getPortfolio(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        return ResponseEntity.ok(tradingAppService.getPortfolioSnapshot(userId));
     }
 
     /**
      * 记录一笔交易（买入/卖出）。
      */
     @PostMapping("/trades")
-    public ResponseEntity<List<Position>> recordTrade(@Valid @RequestBody TradeRequest request) {
+    public ResponseEntity<List<Position>> recordTrade(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody TradeRequest request) {
         List<Position> updated = tradingAppService.recordTrade(
-                request.symbol(), request.name(),
+                userId, request.symbol(), request.name(),
                 request.direction(), request.price(), request.volume()
         );
         return ResponseEntity.ok(updated);
@@ -81,8 +85,10 @@ public class TradingController {
      * 输出写入 {@code data/trading/reviews/YYYY-MM-DD_review.md}。
      */
     @PostMapping("/review")
-    public ResponseEntity<ReviewResponse> generateReview(@RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
-        String content = reviewAppService.generateReview(date);
+    public ResponseEntity<ReviewResponse> generateReview(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
+        String content = reviewAppService.generateReview(userId, date);
         return ResponseEntity.ok(new ReviewResponse(date.toString(), content));
     }
 
@@ -90,8 +96,10 @@ public class TradingController {
      * 获取指定日期的复盘笔记。
      */
     @GetMapping("/review")
-    public ResponseEntity<ReviewResponse> getReview(@RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
-        String content = reviewAppService.getReview(date);
+    public ResponseEntity<ReviewResponse> getReview(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
+        String content = reviewAppService.getReview(userId, date);
         if (content == null || content.isBlank()) {
             return ResponseEntity.notFound().build();
         }
@@ -102,8 +110,9 @@ public class TradingController {
      * 列出所有复盘日期。
      */
     @GetMapping("/reviews")
-    public ResponseEntity<List<LocalDate>> listReviews() {
-        return ResponseEntity.ok(reviewAppService.listReviews());
+    public ResponseEntity<List<LocalDate>> listReviews(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        return ResponseEntity.ok(reviewAppService.listReviews(userId));
     }
 
     /**
@@ -111,8 +120,9 @@ public class TradingController {
      */
     @GetMapping("/has-activity")
     public ResponseEntity<ActivityCheckResponse> hasTradingActivity(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
-        boolean hasActivity = reviewAppService.hasTradingActivity(date);
+        boolean hasActivity = reviewAppService.hasTradingActivity(userId, date);
         return ResponseEntity.ok(new ActivityCheckResponse(date.toString(), hasActivity));
     }
 
@@ -126,9 +136,10 @@ public class TradingController {
      */
     @PostMapping("/reviews/{date}/promote")
     public ResponseEntity<PromoteResponse> promoteToInbox(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable LocalDate date,
             @RequestBody PromoteRequest request) {
-        String reviewContent = reviewAppService.getReview(date);
+        String reviewContent = reviewAppService.getReview(userId, date);
         if (reviewContent == null || reviewContent.isBlank()) {
             return ResponseEntity.notFound().build();
         }
@@ -162,8 +173,9 @@ public class TradingController {
      * </ul>
      */
     @GetMapping("/knowledge/conflicts")
-    public ResponseEntity<ConflictsResponse> detectConflicts() {
-        List<Position> positions = tradingAppService.getPositions();
+    public ResponseEntity<ConflictsResponse> detectConflicts(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        List<Position> positions = tradingAppService.getPositions(userId);
         List<RuleInfo> rules = parseRules(readRulesFile());
 
         var conflicts = new ArrayList<ConflictItem>();

@@ -48,7 +48,7 @@ public class MemoryService {
     /**
      * 沉淀一条记忆（去重：同 recordId 同日期不重复写入）。
      */
-    public void persist(Memory memory) {
+    public void persist(String userId, Memory memory) {
         boolean isDegraded = Memory.isDegraded(memory);
 
         // Phase 5：筛选降噪——kind=fact（无洞察/模式/偏好）无信息增量，跳过沉淀。
@@ -62,14 +62,14 @@ public class MemoryService {
         // 去重 + 升级：同 recordId 已有记忆（跨日全生命周期，P1-4 修复）——
         // AI 洞察覆盖降级条目（重补可能数天后，createdAt 为新日期）；其余重复跳过
         Optional<Memory> existingOpt = memory.recordId() != null
-                ? findByRecordId(memory.recordId())
+                ? findByRecordId(userId, memory.recordId())
                 : Optional.empty();
         if (existingOpt.isPresent()) {
             Memory existing = existingOpt.get();
             if (!isDegraded && Memory.isDegraded(existing)) {
                 // AI 洞察升级降级记忆：移除降级条目后写入洞察（按降级条目所在日期定位）
                 log.info("记忆升级：降级原文 → AI 洞察 | recordId={}", memory.recordId());
-                removeFromFile(existing.createdAt().toLocalDate(), memory.recordId());
+                removeFromFile(userId, existing.createdAt().toLocalDate(), memory.recordId());
             } else {
                 log.debug("Memory skipped (duplicate recordId): {}", memory.recordId());
                 return;
@@ -79,11 +79,11 @@ public class MemoryService {
         // Phase 2：主题合并——新记忆与近 30 天记忆 tags 重叠，旧版本标 superseded 建立演变链
         Memory toPersist = memory;
         if (!isDegraded) {
-            Optional<Memory> match = findTopicMatch(memory);
+            Optional<Memory> match = findTopicMatch(userId, memory);
             if (match.isPresent()) {
                 Memory prev = match.get();
                 String topicId = (prev.topic() != null && !prev.topic().isBlank()) ? prev.topic() : prev.id();
-                markSuperseded(prev, memory.id());
+                markSuperseded(userId, prev, memory.id());
                 toPersist = withTopic(memory, topicId);
                 log.info("记忆主题进化：{} superseded → {} | topic={}", prev.id(), memory.id(), topicId);
             }
@@ -92,7 +92,7 @@ public class MemoryService {
         String path = memoryFilePath(toPersist);
         String entry = formatMemoryEntry(toPersist);
 
-        String existing = fileStorage.read(path);
+        String existing = fileStorage.read(userId, path);
         String content;
         if (existing != null && !existing.isBlank()) {
             content = existing + "\n" + entry;
@@ -103,7 +103,7 @@ public class MemoryService {
                     %s
                     """.formatted(toPersist.createdAt().toLocalDate().toString(), entry);
         }
-        fileStorage.write(path, content);
+        fileStorage.write(userId, path, content);
         if (toPersist.patterns() != null && !toPersist.patterns().isEmpty()) {
             log.info("记忆已沉淀 | recordId={} | summary={} | patterns={}",
                     toPersist.recordId(), truncate(toPersist.summary(), 40), toPersist.patterns().size());
@@ -115,9 +115,9 @@ public class MemoryService {
     /**
      * 按日期查询记忆条目。
      */
-    public List<Memory> findByDate(LocalDate date) {
+    public List<Memory> findByDate(String userId, LocalDate date) {
         String path = MEMORY_DIR + "/" + date.format(DateTimeFormatter.ofPattern("yyyy/MM")) + ".md";
-        String content = fileStorage.read(path);
+        String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) return List.of();
 
         return parseEntries(content).stream()
@@ -128,11 +128,11 @@ public class MemoryService {
     /**
      * 获取最近指定天数的记忆条目。
      */
-    public List<Memory> recent(int days) {
+    public List<Memory> recent(String userId, int days) {
         List<Memory> all = new ArrayList<>();
         for (int i = 0; i < days; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            all.addAll(findByDate(date));
+            all.addAll(findByDate(userId, date));
         }
         return all;
     }
@@ -143,10 +143,10 @@ public class MemoryService {
      * 遍历最近 365 天（记录全生命周期，P1-4 修复：降级当天沉淀、重补数天后升级，
      * 若只查近 30 天跨日升级/去重会失效，同 recordId 并存多条记忆）。
      */
-    public Optional<Memory> findByRecordId(String recordId) {
+    public Optional<Memory> findByRecordId(String userId, String recordId) {
         for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            List<Memory> dayMemories = findByDate(date);
+            List<Memory> dayMemories = findByDate(userId, date);
             for (Memory m : dayMemories) {
                 if (m.recordId().equals(recordId)) {
                     return Optional.of(m);
@@ -163,14 +163,14 @@ public class MemoryService {
      * @param recordId 要删除的记录 ID
      * @return 是否找到并删除了记忆
      */
-    public boolean deleteByRecordId(String recordId) {
+    public boolean deleteByRecordId(String userId, String recordId) {
         if (recordId == null || recordId.isBlank()) return false;
         // 搜索最近 365 天的记忆文件
         for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             String ym = date.format(DateTimeFormatter.ofPattern("yyyy/MM"));
             String path = MEMORY_DIR + "/" + ym + ".md";
-            String content = fileStorage.read(path);
+            String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) continue;
 
             // 查找并移除匹配的记录
@@ -192,9 +192,9 @@ public class MemoryService {
                 String result = sb.toString().strip();
                 if (result.isBlank()) {
                     // 文件清空则删除文件
-                    fileStorage.delete(path);
+                    fileStorage.delete(userId, path);
                 } else {
-                    fileStorage.write(path, result);
+                    fileStorage.write(userId, path, result);
                 }
                 log.info("Memory deleted | recordId={}", recordId);
                 return true;
@@ -205,13 +205,13 @@ public class MemoryService {
     }
 
     /**
-     * 返回所有有记忆数据的日期列表（从新到旧）。
+     * 返回该用户所有有记忆数据的日期列表（从新到旧）。
      */
-    public List<LocalDate> findAllDates() {
+    public List<LocalDate> findAllDates(String userId) {
         List<LocalDate> dates = new ArrayList<>();
         for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            if (!findByDate(date).isEmpty()) {
+            if (!findByDate(userId, date).isEmpty()) {
                 dates.add(date);
             }
         }
@@ -219,26 +219,26 @@ public class MemoryService {
     }
 
     /**
-     * 返回记忆总条数。
+     * 返回该用户记忆总条数。
      */
-    public long count() {
+    public long count(String userId) {
         long total = 0;
         for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            total += findByDate(date).size();
+            total += findByDate(userId, date).size();
         }
         return total;
     }
 
     /**
-     * 查询所有 memory 中出现的 patterns（去重，按置信度降序）。
+     * 查询该用户所有 memory 中出现的 patterns（去重，按置信度降序）。
      */
-    public List<MemoryPattern> findAllPatterns() {
+    public List<MemoryPattern> findAllPatterns(String userId) {
         Map<String, MemoryPattern> merged = new LinkedHashMap<>();
         Map<String, Double> bestScore = new HashMap<>();
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 double decay = timeDecay(m);
                 if (m.patterns() != null) {
                     for (MemoryPattern p : m.patterns()) {
@@ -260,14 +260,14 @@ public class MemoryService {
     }
 
     /**
-     * 查询所有 memory 中出现的 preferences（去重，按置信度降序）。
+     * 查询该用户所有 memory 中出现的 preferences（去重，按置信度降序）。
      */
-    public List<MemoryPreference> findAllPreferences() {
+    public List<MemoryPreference> findAllPreferences(String userId) {
         Map<String, MemoryPreference> merged = new LinkedHashMap<>();
         Map<String, Double> bestScore = new HashMap<>();
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 double decay = timeDecay(m);
                 if (m.preferences() != null) {
                     for (MemoryPreference p : m.preferences()) {
@@ -291,8 +291,8 @@ public class MemoryService {
     /**
      * 是否已有 AI 洞察记忆（非降级原文）。重补逻辑用它判断是否需重新理解。
      */
-    public boolean hasRealMemory(String recordId) {
-        Optional<Memory> memory = findByRecordId(recordId);
+    public boolean hasRealMemory(String userId, String recordId) {
+        Optional<Memory> memory = findByRecordId(userId, recordId);
         return memory.isPresent() && !Memory.isDegraded(memory.get());
     }
 
@@ -302,11 +302,11 @@ public class MemoryService {
      * 遍历最近 30 天记忆，过滤 kind 匹配的条目。
      * 供分类召回使用（如偏好类偏好、模式类模式）。
      */
-    public List<Memory> findByKind(String kind) {
+    public List<Memory> findByKind(String userId, String kind) {
         List<Memory> result = new ArrayList<>();
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 if (kind.equals(m.kind())) {
                     result.add(m);
                 }
@@ -320,8 +320,8 @@ public class MemoryService {
      * <p>
      * Context Engine 回读用它，只取各主题最新未取代版本（演变链保留在文件中）。
      */
-    public List<Memory> recentActive(int days) {
-        return recent(days).stream()
+    public List<Memory> recentActive(String userId, int days) {
+        return recent(userId, days).stream()
                 .filter(m -> !m.superseded())
                 .collect(Collectors.toList());
     }
@@ -332,12 +332,12 @@ public class MemoryService {
      * 主题匹配（MVP）：新记忆与近 30 天记忆做 tags 重叠匹配（≥1 重叠标签 → 候选），
      * 取创建时间最新的未 superseded 候选作为当前主题版本。
      */
-    private Optional<Memory> findTopicMatch(Memory memory) {
+    private Optional<Memory> findTopicMatch(String userId, Memory memory) {
         if (memory.tags() == null || memory.tags().isEmpty()) return Optional.empty();
         Memory latest = null;
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 // 新记忆尚未写入文件；用 recordId 区分同记录（id 毫秒精度可能碰撞，不作为匹配依据）
                 if (m.superseded()) continue;
                 if (m.recordId().equals(memory.recordId())) continue;
@@ -354,12 +354,12 @@ public class MemoryService {
     /**
      * 标记旧版本记忆为 superseded，evolvedTo 指向新版本（建立演变链）。
      */
-    private void markSuperseded(Memory prev, String evolvedTo) {
+    private void markSuperseded(String userId, Memory prev, String evolvedTo) {
         Memory updated = new Memory(prev.id(), prev.recordId(), prev.kind(), prev.summary(),
                 prev.patterns(), prev.preferences(), prev.tags(), prev.sentiment(),
                 prev.actionable(), prev.suggestion(), prev.createdAt(),
                 prev.topic(), true, evolvedTo, prev.doneAt(), prev.lastConfirmed());
-        replaceEntry(prev.createdAt().toLocalDate(), prev.recordId(), updated);
+        replaceEntry(userId, prev.createdAt().toLocalDate(), prev.recordId(), updated);
     }
 
     private Memory withTopic(Memory memory, String topicId) {
@@ -372,9 +372,9 @@ public class MemoryService {
     /**
      * 重写指定 recordId 的记忆条目（用于 superseded 标记 / 行动完成标记）。
      */
-    private void replaceEntry(LocalDate date, String recordId, Memory updated) {
+    private void replaceEntry(String userId, LocalDate date, String recordId, Memory updated) {
         String path = MEMORY_DIR + "/" + date.format(DateTimeFormatter.ofPattern("yyyy/MM")) + ".md";
-        String content = fileStorage.read(path);
+        String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) return;
 
         String newEntry = formatMemoryEntry(updated);
@@ -391,7 +391,7 @@ public class MemoryService {
             }
         }
         if (replaced) {
-            fileStorage.write(path, sb.toString().strip());
+            fileStorage.write(userId, path, sb.toString().strip());
         }
     }
 
@@ -401,16 +401,16 @@ public class MemoryService {
      * actionable=false + doneAt=now，保留 suggestion（行动记录可追溯）。
      * 完成后的记忆不再出现在"待行动事项"/Feed 待办提醒。
      */
-    public boolean markDone(String memoryId) {
+    public boolean markDone(String userId, String memoryId) {
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 if (m.id().equals(memoryId)) {
                     Memory updated = new Memory(m.id(), m.recordId(), m.kind(), m.summary(),
                             m.patterns(), m.preferences(), m.tags(), m.sentiment(),
                             false, m.suggestion(), m.createdAt(),
                             m.topic(), m.superseded(), m.evolvedTo(), LocalDateTime.now(), m.lastConfirmed());
-                    replaceEntry(date, m.recordId(), updated);
+                    replaceEntry(userId, date, m.recordId(), updated);
                     log.info("行动标记完成 | memoryId={} | summary={}", memoryId, truncate(m.summary(), 40));
                     return true;
                 }
@@ -421,12 +421,12 @@ public class MemoryService {
     }
 
     /**
-     * 查询未完成的行动记忆（actionable=true 且 doneAt=null，近 30 天）。
+     * 查询该用户未完成的行动记忆（actionable=true 且 doneAt=null，近 30 天）。
      * <p>
      * Feed 待办提醒 + Context 待行动事项共用（记忆进化 Phase 3）。
      */
-    public List<Memory> findPendingActions() {
-        return recentActive(30).stream()
+    public List<Memory> findPendingActions(String userId) {
+        return recentActive(userId, 30).stream()
                 .filter(m -> m.actionable() && m.doneAt() == null)
                 .collect(Collectors.toList());
     }
@@ -438,34 +438,34 @@ public class MemoryService {
      * <p>
      * Context Engine 回读时调用，让"经常回读的记忆"保持时效权重。
      */
-    public void touchActive() {
+    public void touchActive(String userId) {
         LocalDateTime now = LocalDateTime.now();
-        for (Memory m : recentActive(30)) {
+        for (Memory m : recentActive(userId, 30)) {
             LocalDateTime ref = m.lastConfirmed() != null ? m.lastConfirmed() : m.createdAt();
             if (Duration.between(ref, now).toDays() < 1) continue;
             Memory updated = new Memory(m.id(), m.recordId(), m.kind(), m.summary(),
                     m.patterns(), m.preferences(), m.tags(), m.sentiment(),
                     m.actionable(), m.suggestion(), m.createdAt(),
                     m.topic(), m.superseded(), m.evolvedTo(), m.doneAt(), now);
-            replaceEntry(m.createdAt().toLocalDate(), m.recordId(), updated);
+            replaceEntry(userId, m.createdAt().toLocalDate(), m.recordId(), updated);
         }
     }
 
     /**
-     * 清理过期条目（随 rebuild 触发）：superseded 超 60 天、actionable 完成超 30 天。
+     * 清理该用户过期条目（随 rebuild 触发）：superseded 超 60 天、actionable 完成超 30 天。
      */
-    public void cleanup() {
+    public void cleanup(String userId) {
         LocalDateTime now = LocalDateTime.now();
         int removed = 0;
         for (int i = 0; i < 365; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(date)) {
+            for (Memory m : findByDate(userId, date)) {
                 boolean supersededOld = m.superseded()
                         && Duration.between(m.createdAt(), now).toDays() > 60;
                 boolean doneOld = m.doneAt() != null
                         && Duration.between(m.doneAt(), now).toDays() > 30;
                 if (supersededOld || doneOld) {
-                    removeFromFile(date, m.recordId());
+                    removeFromFile(userId, date, m.recordId());
                     removed++;
                 }
             }
@@ -501,9 +501,9 @@ public class MemoryService {
     /**
      * 移除某天文件中指定 recordId 的记忆条目（用于降级记忆被 AI 洞察升级时清理）。
      */
-    private void removeFromFile(LocalDate date, String recordId) {
+    private void removeFromFile(String userId, LocalDate date, String recordId) {
         String path = MEMORY_DIR + "/" + date.format(DateTimeFormatter.ofPattern("yyyy/MM")) + ".md";
-        String content = fileStorage.read(path);
+        String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) return;
 
         StringBuilder sb = new StringBuilder();
@@ -520,9 +520,9 @@ public class MemoryService {
         if (removed) {
             String result = sb.toString().strip();
             if (result.isBlank()) {
-                fileStorage.delete(path);
+                fileStorage.delete(userId, path);
             } else {
-                fileStorage.write(path, result);
+                fileStorage.write(userId, path, result);
             }
         }
     }

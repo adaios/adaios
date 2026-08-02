@@ -28,7 +28,7 @@ class IdentityFileRepositoryTest {
     @Test
     void load_whenFileMissing_returnsDefault() {
         // 文件不存在时返回默认档案，不抛异常
-        Optional<IdentityProfile> result = repository.load();
+        Optional<IdentityProfile> result = repository.load("default");
         assertTrue(result.isPresent());
         assertEquals("阿呆", result.get().name());
     }
@@ -42,8 +42,8 @@ class IdentityFileRepositoryTest {
                 List.of("投资", "科技")
         );
 
-        repository.save(profile);
-        Optional<IdentityProfile> loaded = repository.load();
+        repository.save("default",profile);
+        Optional<IdentityProfile> loaded = repository.load("default");
 
         assertTrue(loaded.isPresent());
         assertEquals("测试用户", loaded.get().name());
@@ -56,12 +56,12 @@ class IdentityFileRepositoryTest {
     @Test
     void saveOverwrite() {
         IdentityProfile p1 = new IdentityProfile("用户A", Map.of(), Map.of(), List.of());
-        repository.save(p1);
+        repository.save("default",p1);
 
         IdentityProfile p2 = new IdentityProfile("用户B", Map.of(), Map.of(), List.of("标签"));
-        repository.save(p2);
+        repository.save("default",p2);
 
-        Optional<IdentityProfile> loaded = repository.load();
+        Optional<IdentityProfile> loaded = repository.load("default");
         assertTrue(loaded.isPresent());
         assertEquals("用户B", loaded.get().name());
         assertEquals(1, loaded.get().tags().size());
@@ -70,8 +70,8 @@ class IdentityFileRepositoryTest {
     @Test
     void load_malformedFrontmatter_returnsDefault() {
         // 写入无效内容
-        fileStorage.write("identity/profile.md", "这不是有效的 frontmatter 格式");
-        Optional<IdentityProfile> result = repository.load();
+        fileStorage.write("default", "identity/profile.md", "这不是有效的 frontmatter 格式");
+        Optional<IdentityProfile> result = repository.load("default");
         assertTrue(result.isPresent());
         assertEquals("阿呆", result.get().name());
     }

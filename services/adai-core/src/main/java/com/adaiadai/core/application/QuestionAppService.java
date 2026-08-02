@@ -50,8 +50,8 @@ public class QuestionAppService {
     /**
      * 回答用户提问（带 cardId 上下文）。
      */
-    public AnswerResult answer(ContentRecord record) {
-        return answer(record, null);
+    public AnswerResult answer(String userId, ContentRecord record) {
+        return answer(userId, record, null);
     }
 
     /**
@@ -60,8 +60,8 @@ public class QuestionAppService {
      * @param record 当前记录
      * @param cardId 可选卡片 ID，提供完整对话上下文
      */
-    public AnswerResult answer(ContentRecord record, String cardId) {
-        return answer(record, cardId, "question");
+    public AnswerResult answer(String userId, ContentRecord record, String cardId) {
+        return answer(userId, record, cardId, "question");
     }
 
     /**
@@ -71,11 +71,12 @@ public class QuestionAppService {
      * @param cardId 可选卡片 ID，提供完整对话上下文
      * @param scene  场景标识："question" / "decision"
      */
-    public AnswerResult answer(ContentRecord record, String cardId, String scene) {
-        log.info("=== 问答流程开始 | recordId={} | cardId={} | scene={} ===", record.id(), cardId, scene);
+    public AnswerResult answer(String userId, ContentRecord record, String cardId, String scene) {
+        log.info("=== 问答流程开始 | userId={} | recordId={} | cardId={} | scene={} ===",
+                userId, record.id(), cardId, scene);
 
         // ContextEngine 负责组装：Identity + 会话历史 + 卡片上下文 + 记忆回读 + Knowledge + 领域上下文
-        ContextPackage contextPackage = contextEngine.compose(scene, record, cardId);
+        ContextPackage contextPackage = contextEngine.compose(userId, scene, record, cardId);
 
         // AI 理解（回答问题 + 生成标签）
         AiUnderstanding understanding = aiClient.understand(contextPackage);
@@ -92,7 +93,7 @@ public class QuestionAppService {
                     understanding.tags(), record.createdAt(), "question", understanding.summary(),
                     domain
             );
-            recordRepository.save(enriched);
+            recordRepository.save(userId, enriched);
             log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), understanding.tags());
         }
 
@@ -100,7 +101,7 @@ public class QuestionAppService {
         if (cardId != null) {
             String timeStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
-            Optional<CardRecord> existing = cardRepository.findById(cardId);
+            Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
             if (existing.isPresent()) {
                 String aiText = understanding.rawResponse();
                 if (aiText == null || aiText.isBlank()) {
@@ -108,7 +109,7 @@ public class QuestionAppService {
                 }
                 CardRecord updated = existing.get()
                         .withTurn(false, aiText, timeStr);
-                cardRepository.save(updated);
+                cardRepository.save(userId, updated);
                 log.info("AI turn saved to card | cardId={} | len={}", cardId, aiText.length());
             }
         }
@@ -117,7 +118,7 @@ public class QuestionAppService {
         if (understanding.summary() != null || (understanding.tags() != null && !understanding.tags().isEmpty())) {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-                memoryService.persist(memory);
+                memoryService.persist(userId, memory);
                 log.info("Memory persisted for question | recordId={} | summary=\"{}\"", record.id(),
                         understanding.summary() != null && understanding.summary().length() > 40
                                 ? understanding.summary().substring(0, 40) + "..."

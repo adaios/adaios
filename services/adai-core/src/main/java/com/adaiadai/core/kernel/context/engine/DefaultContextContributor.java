@@ -20,7 +20,7 @@ public class DefaultContextContributor implements ContextContributor {
     }
 
     @Override
-    public String enrich(String identityRef, ContentRecord record) {
+    public String enrich(String userId, String identityRef, ContentRecord record) {
         return ""; // 通用场景不贡献额外上下文
     }
 

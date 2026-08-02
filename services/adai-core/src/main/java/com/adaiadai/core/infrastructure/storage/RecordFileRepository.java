@@ -49,26 +49,26 @@ public class RecordFileRepository implements RecordRepository {
     }
 
     @Override
-    public void save(ContentRecord record) {
+    public void save(String userId, ContentRecord record) {
         String path = filePath(record);
         String content = toMarkdown(record);
-        fileStorage.write(path, content);
+        fileStorage.write(userId, path, content);
         if (tagIndexService != null) {
-            tagIndexService.onRecordSaved(record);
+            tagIndexService.onRecordSaved(userId, record);
         }
     }
 
     @Override
-    public Optional<ContentRecord> findById(String id) {
-        // 遍历所有 records 目录查找匹配的文件
-        return findAll().stream()
+    public Optional<ContentRecord> findById(String userId, String id) {
+        // 遍历该用户所有 records 目录查找匹配的文件
+        return findAll(userId).stream()
                 .filter(r -> r.id().equals(id))
                 .findFirst();
     }
 
     @Override
-    public List<ContentRecord> findAll() {
-        List<String> files = fileStorage.listFiles("");
+    public List<ContentRecord> findAll(String userId) {
+        List<String> files = fileStorage.listFiles(userId, "");
         return files.stream()
                 .filter(f -> f.startsWith(RECORDS_DIR + "/") && f.endsWith(".md"))
                 .filter(f -> !f.startsWith(RECORDS_DIR + "/cards/"))
@@ -76,20 +76,20 @@ public class RecordFileRepository implements RecordRepository {
                     String fileName = f.substring(f.lastIndexOf('/') + 1);
                     return fileName.startsWith("rec_");
                 })
-                .map(this::parseFromFile)
+                .map(f -> parseFromFile(userId, f))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(ContentRecord::createdAt).reversed())
                 .toList();
     }
 
     @Override
-    public void deleteById(String id) {
+    public void deleteById(String userId, String id) {
         // ID 格式 rec_yyyyMMdd_HHmmss → 推导文件路径 records/yyyy/MM/rec_yyyyMMdd_HHmmss.md
         if (id.startsWith("rec_") && id.length() >= 17) {
             String yyyy = id.substring(4, 8);
             String MM = id.substring(8, 10);
             String filePath = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + id + ".md";
-            fileStorage.delete(filePath);
+            fileStorage.delete(userId, filePath);
             log.info("Record deleted | id={} | path={}", id, filePath);
         } else {
             log.warn("Cannot delete record with unexpected id format | id={}", id);
@@ -104,8 +104,8 @@ public class RecordFileRepository implements RecordRepository {
     }
 
     @Override
-    public void updateDomain(String id, String domain) {
-        Optional<ContentRecord> existing = findById(id);
+    public void updateDomain(String userId, String id, String domain) {
+        Optional<ContentRecord> existing = findById(userId, id);
         if (existing.isEmpty()) {
             log.warn("Cannot update domain: record not found | id={}", id);
             return;
@@ -115,7 +115,7 @@ public class RecordFileRepository implements RecordRepository {
                 r.id(), r.type(), r.source(), r.title(), r.content(),
                 r.tags(), r.createdAt(), r.intent(), r.summary(), domain
         );
-        save(updated);
+        save(userId, updated);
         log.info("Record domain updated | id={} | domain={}", id, domain);
     }
 
@@ -151,8 +151,8 @@ public class RecordFileRepository implements RecordRepository {
         );
     }
 
-    private ContentRecord parseFromFile(String path) {
-        String content = fileStorage.read(path);
+    private ContentRecord parseFromFile(String userId, String path) {
+        String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) {
             return null;
         }

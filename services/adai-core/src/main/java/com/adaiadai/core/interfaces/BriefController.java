@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.BriefAppService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,8 +25,9 @@ public class BriefController {
     }
 
     @GetMapping
-    public ResponseEntity<Map<String, String>> getBrief() {
-        String brief = briefAppService.generateBrief();
+    public ResponseEntity<Map<String, String>> getBrief(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        String brief = briefAppService.generateBrief(userId);
         return ResponseEntity.ok(Map.of("content", brief));
     }
 }

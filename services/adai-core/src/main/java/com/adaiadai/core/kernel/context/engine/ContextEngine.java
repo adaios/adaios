@@ -74,8 +74,8 @@ public class ContextEngine {
     /**
      * 为指定记录组装上下文包（无卡片上下文）。
      */
-    public ContextPackage compose(String scene, ContentRecord record) {
-        return compose(scene, record, null);
+    public ContextPackage compose(String userId, String scene, ContentRecord record) {
+        return compose(userId, scene, record, null);
     }
 
     /**
@@ -89,22 +89,24 @@ public class ContextEngine {
      *   <li>记忆摘要 — AI 对你的近期理解（按标签聚合）</li>
      *   <li>领域上下文 — 场景特定 + 所有 Domain 全局摘要</li>
      * </ol>
+     *
+     * @param userId 用户 ID（多用户架构预留，单用户传 "default"）
      */
-    public ContextPackage compose(String scene, ContentRecord record, String cardId) {
-        String identityRef = loadIdentitySummary();
-        String cardContext = loadCardContext(cardId);
-        String relatedRecords = loadRelatedRecords(record);
-        String searchResults = loadSearchResults(record);
-        String memorySummary = loadMemorySummary();
+    public ContextPackage compose(String userId, String scene, ContentRecord record, String cardId) {
+        String identityRef = loadIdentitySummary(userId);
+        String cardContext = loadCardContext(userId, cardId);
+        String relatedRecords = loadRelatedRecords(userId, record);
+        String searchResults = loadSearchResults(userId, record);
+        String memorySummary = loadMemorySummary(userId);
         // 领域场景按记录内容推导（trading/project/life），让领域知识源与场景贡献者真正触发
         String domainScene = detectDomainScene(record);
-        String knowledgeContext = loadKnowledgeContext(domainScene);
-        String domainContext = enrichFromContributors(domainScene, identityRef, record);
-        String globalContext = loadGlobalContext();
+        String knowledgeContext = loadKnowledgeContext(userId, domainScene);
+        String domainContext = enrichFromContributors(userId, domainScene, identityRef, record);
+        String globalContext = loadGlobalContext(userId);
 
         // CHAT 模式：构建多轮对话历史
         List<ChatMessage> chatHistory = "question".equals(scene) && cardId != null
-                ? buildConversationHistory(cardId)
+                ? buildConversationHistory(userId, cardId)
                 : List.of();
 
         // ANALYSIS 模式：仍然使用合成 Prompt
@@ -155,8 +157,8 @@ public class ContextEngine {
         return "life";
     }
 
-    private String loadIdentitySummary() {
-        Optional<IdentityProfile> profile = identityRepository.load();
+    private String loadIdentitySummary(String userId) {
+        Optional<IdentityProfile> profile = identityRepository.load(userId);
         return profile.map(p -> """
                 用户身份摘要：
                 - 称呼：%s
@@ -172,10 +174,10 @@ public class ContextEngine {
     /**
      * 加载当前卡片对话上下文（全部轮次）。
      */
-    private String loadCardContext(String cardId) {
+    private String loadCardContext(String userId, String cardId) {
         if (cardId == null) return "";
 
-        Optional<CardRecord> card = cardFileRepository.findById(cardId);
+        Optional<CardRecord> card = cardFileRepository.findById(userId, cardId);
         if (card.isEmpty()) return "";
 
         List<CardRecord.Turn> turns = card.get().turns();
@@ -198,10 +200,10 @@ public class ContextEngine {
      * 将 Card 文件中的对话轮次转换为 {role, content} 结构。
      * isUser=true → "user", isUser=false → "assistant"
      */
-    private List<ChatMessage> buildConversationHistory(String cardId) {
+    private List<ChatMessage> buildConversationHistory(String userId, String cardId) {
         if (cardId == null) return List.of();
 
-        Optional<CardRecord> card = cardFileRepository.findById(cardId);
+        Optional<CardRecord> card = cardFileRepository.findById(userId, cardId);
         if (card.isEmpty()) return List.of();
 
         List<CardRecord.Turn> turns = card.get().turns();
@@ -222,11 +224,11 @@ public class ContextEngine {
      * <p>
      * 如果当前记录还没有标签（新记录，AI 尚未处理），回退到最近记录。
      */
-    private String loadRelatedRecords(ContentRecord currentRecord) {
+    private String loadRelatedRecords(String userId, ContentRecord currentRecord) {
         List<String> tags = currentRecord.tags();
         if (tags == null || tags.isEmpty()) {
             // 回退：没有标签时取最近记录
-            List<ContentRecord> allRecords = recordRepository.findAll();
+            List<ContentRecord> allRecords = recordRepository.findAll(userId);
             List<ContentRecord> recent = allRecords.stream()
                     .filter(r -> !r.id().equals(currentRecord.id()))
                     .limit(MAX_RELATED_RECORDS)
@@ -248,11 +250,11 @@ public class ContextEngine {
             return sb.toString();
         }
 
-        List<String> relatedIds = tagIndexService.findRelatedIds(tags, MAX_RELATED_RECORDS);
+        List<String> relatedIds = tagIndexService.findRelatedIds(userId, tags, MAX_RELATED_RECORDS);
 
         // 加载实际记录
         List<ContentRecord> related = relatedIds.stream()
-                .map(id -> recordRepository.findById(id).orElse(null))
+                .map(id -> recordRepository.findById(userId, id).orElse(null))
                 .filter(Objects::nonNull)
                 .filter(r -> !r.id().equals(currentRecord.id()))
                 .collect(Collectors.toList());
@@ -283,14 +285,14 @@ public class ContextEngine {
      * 对用户输入做关键词搜索，找到标题/正文/标签/摘要中匹配的历史记录。
      * 与 loadRelatedRecords() 互补：tag 关联找到"同类"，搜索找到"同主题"。
      */
-    private String loadSearchResults(ContentRecord currentRecord) {
+    private String loadSearchResults(String userId, ContentRecord currentRecord) {
         String query = currentRecord.content();
         if (query == null || query.isBlank()) return "";
 
         // 取关键词前 50 字作为搜索查询
         if (query.length() > 50) query = query.substring(0, 50);
 
-        List<SearchResult> results = searchService.search(query);
+        List<SearchResult> results = searchService.search(userId, query);
         if (results.isEmpty()) return "";
 
         // 排除当前记录本身，最多取 10 条
@@ -320,10 +322,10 @@ public class ContextEngine {
     /**
      * 加载近期的记忆摘要（按标签聚合）。
      */
-    private String loadMemorySummary() {
+    private String loadMemorySummary(String userId) {
         // 记忆进化 Phase 4：回读确认——更新近期记忆 lastConfirmed，让常回读的记忆保持时效权重
-        memoryService.touchActive();
-        List<Memory> recentMemories = memoryService.recentActive(MEMORY_DAYS);
+        memoryService.touchActive(userId);
+        List<Memory> recentMemories = memoryService.recentActive(userId, MEMORY_DAYS);
         if (recentMemories.isEmpty()) {
             return "";
         }
@@ -369,13 +371,13 @@ public class ContextEngine {
     /**
      * 收集场景特定贡献 + 所有全局上下文。
      */
-    private String enrichFromContributors(String scene, String identityRef, ContentRecord record) {
+    private String enrichFromContributors(String userId, String scene, String identityRef, ContentRecord record) {
         StringBuilder sceneContext = new StringBuilder();
 
         // 1. 找场景特定贡献者
         for (ContextContributor contributor : contributors) {
             if (!contributor.isDefault() && contributor.supports(scene)) {
-                String context = contributor.enrich(identityRef, record);
+                String context = contributor.enrich(userId, identityRef, record);
                 if (context != null && !context.isBlank()) {
                     sceneContext.append(context).append("\n\n");
                     log.info("使用场景贡献者: {} | scene={}", contributor.getClass().getSimpleName(), scene);
@@ -392,17 +394,17 @@ public class ContextEngine {
      * 调用每个 {@link KnowledgeSource} 的 globalContext() + enrich(scene)。
      * 位置在 memory 和 domain context 之间。
      */
-    private String loadKnowledgeContext(String scene) {
+    private String loadKnowledgeContext(String userId, String scene) {
         StringBuilder sb = new StringBuilder();
         for (KnowledgeSource source : knowledgeSources) {
             try {
-                String global = source.globalContext();
+                String global = source.globalContext(userId);
                 if (global != null && !global.isBlank()) {
                     if (!sb.isEmpty()) sb.append("\n\n");
                     sb.append(global);
                     log.debug("Knowledge 全局上下文已加载: {}", source.name());
                 }
-                String enriched = source.enrich(scene);
+                String enriched = source.enrich(userId, scene);
                 if (enriched != null && !enriched.isBlank() && !enriched.equals(global)) {
                     if (!sb.isEmpty()) sb.append("\n\n");
                     sb.append(enriched);
@@ -418,12 +420,12 @@ public class ContextEngine {
     /**
      * 加载所有 Domain OS 的全局上下文（GlobalContext）。
      */
-    private String loadGlobalContext() {
+    private String loadGlobalContext(String userId) {
         StringBuilder sb = new StringBuilder();
         for (ContextContributor contributor : contributors) {
             if (contributor.isDefault()) continue;
             try {
-                String globalCtx = contributor.globalContext();
+                String globalCtx = contributor.globalContext(userId);
                 if (globalCtx != null && !globalCtx.isBlank()) {
                     if (!sb.isEmpty()) sb.append("\n\n");
                     sb.append(globalCtx);

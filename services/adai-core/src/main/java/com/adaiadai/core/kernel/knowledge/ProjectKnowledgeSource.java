@@ -52,13 +52,13 @@ public class ProjectKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         refreshIfChanged();
         return cachedIdentity != null ? cachedIdentity : "";
     }
 
     @Override
-    public String enrich(String scene) {
+    public String enrich(String userId, String scene) {
         if (!"project".equals(scene)) return "";
         refreshIfChanged();
         StringBuilder sb = new StringBuilder();

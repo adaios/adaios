@@ -13,31 +13,31 @@ import java.util.Optional;
 public interface PositionRepository {
 
     /**
-     * 获取所有持仓。
+     * 获取该用户所有持仓。
      */
-    List<Position> findAll();
+    List<Position> findAll(String userId);
 
     /**
      * 根据代码查找持仓。
      */
-    Optional<Position> findBySymbol(String symbol);
+    Optional<Position> findBySymbol(String userId, String symbol);
 
     /**
      * 保存或更新持仓列表（全量替换）。
      */
-    void saveAll(List<Position> positions);
+    void saveAll(String userId, List<Position> positions);
 
     /**
      * 获取现金余额。
      */
-    default BigDecimal cashBalance() {
+    default BigDecimal cashBalance(String userId) {
         return BigDecimal.ZERO;
     }
 
     /**
      * 获取当前投资组合快照。
      */
-    default PortfolioSnapshot snapshot() {
-        return PortfolioSnapshot.of(findAll(), cashBalance());
+    default PortfolioSnapshot snapshot(String userId) {
+        return PortfolioSnapshot.of(findAll(userId), cashBalance(userId));
     }
 }

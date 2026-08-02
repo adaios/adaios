@@ -60,16 +60,16 @@ public class TradingReviewAppService {
      * @param date 复盘日期
      * @return 生成的复盘笔记内容
      */
-    public String generateReview(LocalDate date) {
-        log.info("=== 复盘生成开始 | date={} ===", date);
+    public String generateReview(String userId, LocalDate date) {
+        log.info("=== 复盘生成开始 | userId={} | date={} ===", userId, date);
 
         // 1. 收集当日数据
-        List<ContentRecord> todayRecords = recordRepository.findAll().stream()
+        List<ContentRecord> todayRecords = recordRepository.findAll(userId).stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(date))
                 .toList();
 
-        List<Position> positions = positionRepository.findAll();
-        PortfolioSnapshot snapshot = positionRepository.snapshot();
+        List<Position> positions = positionRepository.findAll(userId);
+        PortfolioSnapshot snapshot = positionRepository.snapshot(userId);
 
         // 2. 复盘正文：当日记录 + 持仓（作为合成记录的 content，含交易关键词触发 trading 场景）
         String reviewBody = buildReviewBody(date, todayRecords, positions, snapshot);
@@ -80,7 +80,7 @@ public class TradingReviewAppService {
                 date + " 交易复盘", reviewBody,
                 List.of("trading", "复盘"), LocalDateTime.now()
         );
-        ContextPackage ctx = contextEngine.compose("trading", reviewRecord);
+        ContextPackage ctx = contextEngine.compose(userId, "trading", reviewRecord);
         log.info("复盘上下文组装完成 | 注入交易知识+行情 | prompt={}字",
                 ctx.prompt() != null ? ctx.prompt().length() : 0);
 
@@ -99,31 +99,31 @@ public class TradingReviewAppService {
                 : understanding.rawResponse();
 
         // 6. 持久化
-        reviewRepository.save(date, reviewContent);
+        reviewRepository.save(userId, date, reviewContent);
 
-        log.info("=== 复盘生成完成 | date={} | length={} ===", date, reviewContent.length());
+        log.info("=== 复盘生成完成 | userId={} | date={} | length={} ===", userId, date, reviewContent.length());
         return reviewContent;
     }
 
     /**
      * 获取指定日期的复盘笔记。
      */
-    public String getReview(LocalDate date) {
-        return reviewRepository.read(date);
+    public String getReview(String userId, LocalDate date) {
+        return reviewRepository.read(userId, date);
     }
 
     /**
      * 列出所有复盘日期。
      */
-    public List<LocalDate> listReviews() {
-        return reviewRepository.listAll();
+    public List<LocalDate> listReviews(String userId) {
+        return reviewRepository.listAll(userId);
     }
 
     /**
      * 检测指定日期是否有交易活动（交易相关记录）。
      */
-    public boolean hasTradingActivity(LocalDate date) {
-        return recordRepository.findAll().stream()
+    public boolean hasTradingActivity(String userId, LocalDate date) {
+        return recordRepository.findAll(userId).stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(date))
                 .anyMatch(r -> {
                     String content = (r.content() != null ? r.content().toLowerCase() : "")

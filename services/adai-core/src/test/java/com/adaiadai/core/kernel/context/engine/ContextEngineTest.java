@@ -37,8 +37,8 @@ class ContextEngineTest {
     static class RecordingKnowledgeSource implements KnowledgeSource {
         String receivedScene;
         @Override public String name() { return "test"; }
-        @Override public String globalContext() { return "## 全局知识\n"; }
-        @Override public String enrich(String scene) { this.receivedScene = scene; return "## 场景知识\n"; }
+        @Override public String globalContext(String userId) { return "## 全局知识\n"; }
+        @Override public String enrich(String userId, String scene) { this.receivedScene = scene; return "## 场景知识\n"; }
     }
 
     /** supports("trading") 的场景贡献者，记录是否被触发。 */
@@ -46,15 +46,15 @@ class ContextEngineTest {
         String supportsScene;
         boolean enriched;
         @Override public boolean supports(String scene) { this.supportsScene = scene; return "trading".equals(scene); }
-        @Override public String enrich(String identityRef, ContentRecord record) { this.enriched = true; return "## 交易场景上下文\n"; }
+        @Override public String enrich(String userId, String identityRef, ContentRecord record) { this.enriched = true; return "## 交易场景上下文\n"; }
     }
 
     private ContextEngine newEngine(RecordingKnowledgeSource knowledge, RecordingContributor contributor) {
-        when(identity.load()).thenReturn(Optional.empty());
-        when(records.findAll()).thenReturn(List.of());
-        when(tagIndex.findRelatedIds(any(), anyInt())).thenReturn(List.of());
-        when(memory.recent(anyInt())).thenReturn(List.of());
-        when(search.search(anyString())).thenReturn(List.of());
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
         return new ContextEngine(identity, records, tagIndex, memory, cards,
                 List.of(contributor), List.of(knowledge), search);
     }
@@ -70,7 +70,7 @@ class ContextEngineTest {
         RecordingContributor contributor = new RecordingContributor();
         ContextEngine engine = newEngine(knowledge, contributor);
 
-        engine.compose("note", record("今天买了立昂微，持仓 200 股"), null);
+        engine.compose("default", "note", record("今天买了立昂微，持仓 200 股"), null);
 
         assertEquals("trading", knowledge.receivedScene, "交易内容应路由到 trading 场景");
         assertEquals("trading", contributor.supportsScene);
@@ -83,7 +83,7 @@ class ContextEngineTest {
         RecordingContributor contributor = new RecordingContributor();
         ContextEngine engine = newEngine(knowledge, contributor);
 
-        engine.compose("note", record("今天天气不错，出去散步了"), null);
+        engine.compose("default", "note", record("今天天气不错，出去散步了"), null);
 
         assertEquals("life", knowledge.receivedScene);
         assertEquals(false, contributor.enriched, "life 内容不应触发 trading 贡献者");
@@ -95,7 +95,7 @@ class ContextEngineTest {
         RecordingContributor contributor = new RecordingContributor();
         ContextEngine engine = newEngine(knowledge, contributor);
 
-        engine.compose("question", record("B 方向 Phase 4 的任务进度怎么样"), null);
+        engine.compose("default", "question", record("B 方向 Phase 4 的任务进度怎么样"), null);
 
         assertEquals("project", knowledge.receivedScene);
     }
@@ -108,7 +108,7 @@ class ContextEngineTest {
         RecordingContributor contributor = new RecordingContributor();
         ContextEngine engine = newEngine(knowledge, contributor);
 
-        engine.compose("trading", record("复盘日期：2026-08-01\n## 当日记录\n- 买入立昂微\n## 当前持仓\n持仓 200 股"), null);
+        engine.compose("default", "trading", record("复盘日期：2026-08-01\n## 当日记录\n- 买入立昂微\n## 当前持仓\n持仓 200 股"), null);
 
         assertEquals("trading", knowledge.receivedScene, "复盘内容应路由到 trading 场景");
         assertEquals(true, contributor.enriched, "trading 贡献者应被触发（复盘注入交易知识）");

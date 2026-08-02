@@ -50,7 +50,7 @@ class BriefAppServiceTest {
     @Test
     void generateBrief_withIdentity() {
         // 先保存用户身份
-        fileStorage.write("identity/profile.md", """
+        fileStorage.write("default", "identity/profile.md", """
                 ---
                 name: 张三
                 preferences:
@@ -60,7 +60,7 @@ class BriefAppServiceTest {
                 ---
                 """);
 
-        String brief = briefAppService.generateBrief();
+        String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
         // Mock AI 模式下应该包含"记录: 今日简报"
         assertTrue(brief.contains("记录:"));
@@ -68,28 +68,28 @@ class BriefAppServiceTest {
 
     @Test
     void generateBrief_withRecentRecords() {
-        recordRepository.save(new ContentRecord(
+        recordRepository.save("default",new ContentRecord(
                 "rec_20260718_100000",
                 "note", "user_input", "测试", "今天买了立昂微",
                 List.of("投资"),
                 LocalDateTime.now().minusDays(1)
         ));
 
-        String brief = briefAppService.generateBrief();
+        String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
     }
 
     @Test
     void generateBrief_emptyIdentity() {
         // 不设身份
-        String brief = briefAppService.generateBrief();
+        String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
     }
 
     @Test
     void generateBrief_neverFails() {
         // 极端情况：空的存储
-        String brief = briefAppService.generateBrief();
+        String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
         assertFalse(brief.isBlank());
     }

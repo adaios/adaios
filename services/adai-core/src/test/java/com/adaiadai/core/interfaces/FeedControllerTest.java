@@ -23,7 +23,7 @@ class FeedControllerTest {
     @Test
     void getFeed_returnsOk() throws Exception {
         var feedService = mock(FeedAppService.class);
-        when(feedService.getFeed(any(), anyInt(), anyInt()))
+        when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FeedAppService.FeedResponse(List.of(), 0));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
@@ -37,7 +37,7 @@ class FeedControllerTest {
     @Test
     void getFeed_withDateParam() throws Exception {
         var feedService = mock(FeedAppService.class);
-        when(feedService.getFeed(any(), anyInt(), anyInt()))
+        when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FeedAppService.FeedResponse(List.of(), 2));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
@@ -50,7 +50,7 @@ class FeedControllerTest {
     @Test
     void getFeed_withPaginationParams() throws Exception {
         var feedService = mock(FeedAppService.class);
-        when(feedService.getFeed(any(), anyInt(), anyInt()))
+        when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FeedAppService.FeedResponse(List.of(), 10));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
@@ -65,7 +65,7 @@ class FeedControllerTest {
     @Test
     void getFeed_returnsEntries() throws Exception {
         var feedService = mock(FeedAppService.class);
-        when(feedService.getFeed(any(), anyInt(), anyInt()))
+        when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
                 .thenReturn(new FeedAppService.FeedResponse(
                         List.of(new FeedAppService.FeedEntry("record", "r1", null, "title", "content",
                                 List.of("tag"), "14:30", null, null, null, "life")),

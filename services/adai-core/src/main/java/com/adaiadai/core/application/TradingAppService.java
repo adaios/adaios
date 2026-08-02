@@ -37,10 +37,10 @@ public class TradingAppService {
      * @param volume    成交数量
      * @return 更新后的持仓列表
      */
-    public List<Position> recordTrade(String symbol, String name,
+    public List<Position> recordTrade(String userId, String symbol, String name,
                                       TradeDirection direction,
                                       BigDecimal price, int volume) {
-        List<Position> currentPositions = new ArrayList<>(positionRepository.findAll());
+        List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
         boolean found = false;
 
         for (int i = 0; i < currentPositions.size(); i++) {
@@ -59,7 +59,7 @@ public class TradingAppService {
             currentPositions.add(newPos);
         }
 
-        positionRepository.saveAll(currentPositions);
+        positionRepository.saveAll(userId, currentPositions);
 
         log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={}",
                 direction, symbol, volume, price, currentPositions.size());
@@ -70,15 +70,15 @@ public class TradingAppService {
     /**
      * 获取当前投资组合快照。
      */
-    public PortfolioSnapshot getPortfolioSnapshot() {
-        return positionRepository.snapshot();
+    public PortfolioSnapshot getPortfolioSnapshot(String userId) {
+        return positionRepository.snapshot(userId);
     }
 
     /**
      * 获取所有持仓。
      */
-    public List<Position> getPositions() {
-        return positionRepository.findAll();
+    public List<Position> getPositions(String userId) {
+        return positionRepository.findAll(userId);
     }
 
     // ── 内部方法 ──

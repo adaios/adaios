@@ -34,7 +34,8 @@ public class TagIndexService {
     private final FileStorage fileStorage;
     private final ObjectMapper objectMapper;
 
-    private TagIndex cachedIndex;
+    // 多用户预留：索引缓存按 userId 隔离（2026-08-02）
+    private final Map<String, TagIndex> cacheByUser = new HashMap<>();
 
     public TagIndexService(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
@@ -42,17 +43,16 @@ public class TagIndexService {
                 .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
                 .enable(SerializationFeature.INDENT_OUTPUT)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        this.cachedIndex = null;
     }
 
     /**
      * 记录保存后调用：更新标签索引。
      */
-    public void onRecordSaved(ContentRecord record) {
+    public void onRecordSaved(String userId, ContentRecord record) {
         if (record.tags() == null || record.tags().isEmpty()) {
             return;
         }
-        TagIndex index = load();
+        TagIndex index = load(userId);
         boolean changed = false;
 
         for (String tag : record.tags()) {
@@ -86,8 +86,8 @@ public class TagIndexService {
         }
 
         if (changed) {
-            save(new TagIndex(index.tags(), LocalDateTime.now()));
-            cachedIndex = null;
+            save(userId, new TagIndex(index.tags(), LocalDateTime.now()));
+            cacheByUser.remove(userId);
             log.debug("标签索引已更新 | tags={}", record.tags());
         }
     }
@@ -95,12 +95,12 @@ public class TagIndexService {
     /**
      * 根据标签列表查找关联记录 ID（并集，保持标签索引中的顺序）。
      */
-    public List<String> findRelatedIds(List<String> tags, int maxResults) {
+    public List<String> findRelatedIds(String userId, List<String> tags, int maxResults) {
         if (tags == null || tags.isEmpty()) {
             return List.of();
         }
 
-        TagIndex index = load();
+        TagIndex index = load(userId);
 
         // 取所有匹配标签的 recordId 并集
         Set<String> matchedIds = new LinkedHashSet<>();
@@ -123,8 +123,8 @@ public class TagIndexService {
     /**
      * 从所有记录 ID 列表重建索引（在应用启动时调用）。
      */
-    public void rebuild(List<ContentRecord> allRecords) {
-        log.info("开始全量重建标签索引...");
+    public void rebuild(String userId, List<ContentRecord> allRecords) {
+        log.info("开始全量重建标签索引... | userId={}", userId);
 
         Map<String, TagEntry> tags = new LinkedHashMap<>();
         for (ContentRecord record : allRecords) {
@@ -146,38 +146,42 @@ public class TagIndexService {
             }
         }
 
-        save(new TagIndex(tags, LocalDateTime.now()));
-        cachedIndex = null;
+        save(userId, new TagIndex(tags, LocalDateTime.now()));
+        cacheByUser.remove(userId);
         log.info("标签索引重建完成 | tags={}", tags.size());
     }
 
     // ── 内部 ──
 
-    private TagIndex load() {
-        if (cachedIndex != null) {
-            return cachedIndex;
+    private TagIndex load(String userId) {
+        TagIndex cached = cacheByUser.get(userId);
+        if (cached != null) {
+            return cached;
         }
 
-        String content = fileStorage.read(INDEX_PATH);
+        String content = fileStorage.read(userId, INDEX_PATH);
         if (content == null || content.isBlank()) {
-            cachedIndex = new TagIndex(new LinkedHashMap<>(), LocalDateTime.now());
-            return cachedIndex;
+            TagIndex empty = new TagIndex(new LinkedHashMap<>(), LocalDateTime.now());
+            cacheByUser.put(userId, empty);
+            return empty;
         }
 
         try {
-            cachedIndex = objectMapper.readValue(content, TagIndex.class);
-            return cachedIndex;
+            TagIndex parsed = objectMapper.readValue(content, TagIndex.class);
+            cacheByUser.put(userId, parsed);
+            return parsed;
         } catch (IOException e) {
             log.warn("标签索引文件解析失败: {}", e.getMessage());
-            cachedIndex = new TagIndex(new LinkedHashMap<>(), LocalDateTime.now());
-            return cachedIndex;
+            TagIndex empty = new TagIndex(new LinkedHashMap<>(), LocalDateTime.now());
+            cacheByUser.put(userId, empty);
+            return empty;
         }
     }
 
-    private void save(TagIndex index) {
+    private void save(String userId, TagIndex index) {
         try {
             String content = objectMapper.writeValueAsString(index);
-            fileStorage.write(INDEX_PATH, content);
+            fileStorage.write(userId, INDEX_PATH, content);
         } catch (IOException e) {
             throw new UncheckedIOException("标签索引写入失败", e);
         }
@@ -186,10 +190,10 @@ public class TagIndexService {
     // ── 对外暴露 ──
 
     /**
-     * 获取所有标签的简要信息（供 Launcher 标签云使用）。
+     * 获取该用户所有标签的简要信息（供 Launcher 标签云使用）。
      */
-    public List<TagSummary> getAllTags() {
-        TagIndex index = load();
+    public List<TagSummary> getAllTags(String userId) {
+        TagIndex index = load(userId);
         return index.tags().entrySet().stream()
                 .map(entry -> new TagSummary(
                         entry.getKey(),

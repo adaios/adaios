@@ -56,17 +56,25 @@ public class RecordRetryService {
 
     /**
      * 每 15 分钟执行一次：先补记录，再补卡片。
+     * 定时任务无 userId → 只处理 default 用户（单用户阶段；多用户启用后定时任务需遍历用户列表）。
      */
     @Scheduled(fixedDelayString = "PT15M")
     public void retryUnprocessed() {
-        retryRecords();
-        retryCards();
+        retryUnprocessed("default");
+    }
+
+    /**
+     * 手动触发重补（Controller 传 userId，多用户架构预留）。
+     */
+    public void retryUnprocessed(String userId) {
+        retryRecords(userId);
+        retryCards(userId);
     }
 
     // ── ContentRecord 补完 ──
 
-    private void retryRecords() {
-        List<ContentRecord> allRecords = recordRepository.findAll();
+    private void retryRecords(String userId) {
+        List<ContentRecord> allRecords = recordRepository.findAll(userId);
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(5);
 
         List<ContentRecord> candidates = allRecords.stream()
@@ -85,7 +93,7 @@ public class RecordRetryService {
         int success = 0, failed = 0;
         for (ContentRecord record : candidates) {
             try {
-                processRecord(record);
+                processRecord(userId, record);
                 success++;
                 Thread.sleep(DELAY_MS);
             } catch (InterruptedException e) {
@@ -106,8 +114,8 @@ public class RecordRetryService {
         return r.summary() != null && !r.summary().isBlank() && !"recorded".equals(r.summary());
     }
 
-    private void processRecord(ContentRecord record) {
-        AiUnderstanding understanding = understandingService.composeAndUnderstand("note", record).understanding();
+    private void processRecord(String userId, ContentRecord record) {
+        AiUnderstanding understanding = understandingService.composeAndUnderstand(userId, "note", record).understanding();
 
         String domain = understanding.domain() != null ? understanding.domain() : "life";
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
@@ -117,11 +125,11 @@ public class RecordRetryService {
                 record.id(), record.type(), record.source(), record.title(), record.content(),
                 tags, record.createdAt(), record.intent(), summary, domain
         );
-        recordRepository.save(enriched);
+        recordRepository.save(userId, enriched);
 
         if (summary != null || (!tags.isEmpty())) {
             Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-            memoryService.persist(memory);
+            memoryService.persist(userId, memory);
         }
 
         log.info("重补记录完成 | recordId={} | summary=\"{}\" | tags={} | domain={}",
@@ -130,8 +138,8 @@ public class RecordRetryService {
 
     // ── CardRecord 补完 ──
 
-    private void retryCards() {
-        List<CardRecord> allCards = cardRepository.findAll();
+    private void retryCards(String userId) {
+        List<CardRecord> allCards = cardRepository.findAll(userId);
 
         List<CardRecord> candidates = allCards.stream()
                 .filter(c -> c.turns() != null && !c.turns().isEmpty())
@@ -146,7 +154,7 @@ public class RecordRetryService {
         int success = 0, failed = 0;
         for (CardRecord card : candidates) {
             try {
-                processCard(card);
+                processCard(userId, card);
                 success++;
                 Thread.sleep(DELAY_MS);
             } catch (InterruptedException e) {
@@ -160,7 +168,7 @@ public class RecordRetryService {
         log.info("重补卡片结束 | 成功={} 失败={}", success, failed);
     }
 
-    private void processCard(CardRecord card) {
+    private void processCard(String userId, CardRecord card) {
         // 构建对话摘要 prompt（同 ConversationController 一致）
         String turnText = buildTurnText(card.turns());
         String prompt = """
@@ -193,7 +201,7 @@ public class RecordRetryService {
                 tags, card.turns(), summary,
                 card.createdAt(), LocalDateTime.now()
         );
-        cardRepository.save(updated);
+        cardRepository.save(userId, updated);
 
         // 新建一条记录沉淀对话摘要
         String recordId = RecordFileRepository.generateId();
@@ -202,12 +210,12 @@ public class RecordRetryService {
                 truncate(summary, 50), summary,
                 tags, LocalDateTime.now()
         );
-        recordRepository.save(record);
+        recordRepository.save(userId, record);
 
         // 沉淀记忆
         if (summary != null || (!tags.isEmpty())) {
             Memory memory = Memory.fromUnderstanding(recordId, understanding);
-            memoryService.persist(memory);
+            memoryService.persist(userId, memory);
         }
 
         log.info("重补卡片完成 | cardId={} | summary=\"{}\" | tags={}",

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,9 +34,10 @@ public class CardController {
      * POST /api/v1/cards/migrate
      */
     @PostMapping("/migrate")
-    public ResponseEntity<Map<String, Object>> migrateCards() {
+    public ResponseEntity<Map<String, Object>> migrateCards(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         log.info("卡片迁移开始...");
-        MigrationResult result = migrationService.migrate();
+        MigrationResult result = migrationService.migrate(userId);
 
         log.info("卡片迁移完成 | 扫描={} | 迁移={} | 失败={}",
                 result.totalScanned(), result.migrated(), result.failed());
@@ -55,9 +57,10 @@ public class CardController {
      * POST /api/v1/cards/cleanup
      */
     @PostMapping("/cleanup")
-    public ResponseEntity<Map<String, Object>> cleanupRecords() {
+    public ResponseEntity<Map<String, Object>> cleanupRecords(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         log.info("清理重复记录开始...");
-        CleanupResult result = migrationService.cleanupDuplicateRecords();
+        CleanupResult result = migrationService.cleanupDuplicateRecords(userId);
 
         log.info("清理完成 | 删除={}条", result.deleted());
 

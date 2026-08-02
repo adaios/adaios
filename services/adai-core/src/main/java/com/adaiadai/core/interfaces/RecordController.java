@@ -64,17 +64,19 @@ public class RecordController {
     }
 
     @PostMapping
-    public ResponseEntity<?> createRecord(@Valid @RequestBody CreateRecordRequest request) {
+    public ResponseEntity<?> createRecord(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody CreateRecordRequest request) {
         ContentRecord record = buildRecord(request);
 
         // cardId present AND card file exists → continuation of chat, append turn to card only
-        if (request.cardId() != null && cardRepository.findById(request.cardId()).isPresent()) {
+        if (request.cardId() != null && cardRepository.findById(userId, request.cardId()).isPresent()) {
             log.info("Card continuation | cardId={} | content=\"{}\"", request.cardId(), truncate(request.content(), 40));
-            return handleQuestion(record, request.cardId());
+            return handleQuestion(userId, record, request.cardId());
         }
 
         // New record: save content record first
-        recordRepository.save(record);
+        recordRepository.save(userId, record);
 
         try {
             // New card or first request with cardId: resolve intent once
@@ -84,9 +86,9 @@ public class RecordController {
                     intent, record.id(), request.cardId(), truncate(request.content(), 40), request.intent() != null);
 
             if (intent == Intent.QUESTION) {
-                return handleQuestion(record, request.cardId());
+                return handleQuestion(userId, record, request.cardId());
             }
-            return handleStatem(record);
+            return handleStatem(userId, record);
         } catch (Exception e) {
             // AI 处理失败 → 保留用户记录（不删除，数据不丢），AI 增强留空，
             // 由 RecordRetryService 每 15 分钟自动补齐 summary/tags
@@ -96,12 +98,12 @@ public class RecordController {
                     record.id(), record.type(), record.source(), record.title(), record.content(),
                     List.of(), record.createdAt(), "log", "recorded", "life"
             );
-            recordRepository.save(kept);
+            recordRepository.save(userId, kept);
 
             // 降级沉淀：AI 失败也入记忆（原文标 DEGRADED），AI 恢复后由重补升级为洞察
             try {
                 Memory degraded = Memory.fromContentFallback(record.id(), record.content());
-                memoryService.persist(degraded);
+                memoryService.persist(userId, degraded);
                 log.info("Memory degraded-persisted (AI failed) | recordId={}", record.id());
             } catch (Exception memEx) {
                 log.debug("Degraded memory persist skipped: {}", memEx.getMessage());
@@ -132,7 +134,7 @@ public class RecordController {
     /**
      * STATEMENT: save record + ContextEngine (Identity + TagIndex + Memory + Date) → AI tags/summary.
      */
-    private ResponseEntity<StatemResponse> handleStatem(ContentRecord record) {
+    private ResponseEntity<StatemResponse> handleStatem(String userId, ContentRecord record) {
         List<String> tags = Collections.emptyList();
         String summary = null;
         String domain = "life";
@@ -140,7 +142,7 @@ public class RecordController {
 
         try {
             // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
-            understanding = understandingService.composeAndUnderstand("note", record).understanding();
+            understanding = understandingService.composeAndUnderstand(userId, "note", record).understanding();
             tags = understanding.tags();
             summary = understanding.summary();
             domain = understanding.domain() != null ? understanding.domain() : "life";
@@ -158,13 +160,13 @@ public class RecordController {
                 record.id(), record.type(), record.source(), record.title(), record.content(),
                 tags != null ? tags : List.of(), record.createdAt(), "log", summary, domain
         );
-        recordRepository.save(enriched);
+        recordRepository.save(userId, enriched);
 
         // Persist AI understanding as memory (use full understanding with insight/patterns/preferences)
         if (understanding != null) {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-                memoryService.persist(memory);
+                memoryService.persist(userId, memory);
                 log.info("Memory persisted for statement | recordId={} | insight=\"{}\" | patterns={} | preferences={}",
                         record.id(), truncate(understanding.insight() != null ? understanding.insight() : summary, 40),
                         understanding.patterns() != null ? understanding.patterns().size() : 0,
@@ -176,7 +178,7 @@ public class RecordController {
             // AI 理解失败 → 降级沉淀：原文入记忆（标 DEGRADED），AI 恢复后由重补升级为洞察
             try {
                 Memory degraded = Memory.fromContentFallback(record.id(), record.content());
-                memoryService.persist(degraded);
+                memoryService.persist(userId, degraded);
                 log.info("Memory degraded-persisted (AI failed) | recordId={}", record.id());
             } catch (Exception e) {
                 log.debug("Degraded memory persist skipped for statement: {}", e.getMessage());
@@ -191,30 +193,30 @@ public class RecordController {
     /**
      * QUESTION: save record + AI answer. Create card if first turn.
      */
-    private ResponseEntity<QuestionResponse> handleQuestion(ContentRecord record, String cardId) {
+    private ResponseEntity<QuestionResponse> handleQuestion(String userId, ContentRecord record, String cardId) {
         // Ensure card exists: create if this is the first turn
         if (cardId != null) {
             java.time.format.DateTimeFormatter timeFmt = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
             String timeStr = record.createdAt().format(timeFmt);
-            Optional<CardRecord> existing = cardRepository.findById(cardId);
+            Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
             if (existing.isEmpty()) {
                 CardRecord card = new CardRecord(
                         cardId, "conversation", "active",
                         List.of(), List.of(new CardRecord.Turn(true, record.content(), timeStr)),
                         null, record.createdAt(), record.createdAt()
                 );
-                cardRepository.save(card);
+                cardRepository.save(userId, card);
                 log.info("Card created (first turn) | cardId={}", cardId);
             } else {
                 // Append user turn to existing card
                 CardRecord updated = existing.get()
                         .withTurn(true, record.content(), timeStr);
-                cardRepository.save(updated);
+                cardRepository.save(userId, updated);
                 log.info("Card append | cardId={} | content=\"{}\"", cardId, truncate(record.content(), 40));
             }
         }
 
-        QuestionAppService.AnswerResult result = questionAppService.answer(record, cardId);
+        QuestionAppService.AnswerResult result = questionAppService.answer(userId, record, cardId);
         log.info("Answer completed | recordId={} | cardId={}", result.recordId(), cardId);
 
         return ResponseEntity.ok(new QuestionResponse(
@@ -271,33 +273,38 @@ public class RecordController {
     ) {}
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteRecord(@PathVariable String id) {
+    public ResponseEntity<Void> deleteRecord(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id) {
         log.info("Delete record | id={}", id);
         // 不管 rec_ 还是 card_ 前缀，两个仓库都清理：
         // - rec_ 文件可能也在 cards/ 目录（旧版前端经 endConversation 存过去的）
         // - card_ 文件可能也有对应的 ContentRecord
-        recordRepository.deleteById(id);
-        cardRepository.deleteById(id);
-        memoryService.deleteByRecordId(id);
+        recordRepository.deleteById(userId, id);
+        cardRepository.deleteById(userId, id);
+        memoryService.deleteByRecordId(userId, id);
         return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{id}/domain")
-    public ResponseEntity<Void> updateDomain(@PathVariable String id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<Void> updateDomain(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id, @RequestBody Map<String, String> body) {
         String domain = body.get("domain");
         if (domain == null || !List.of("life", "trading", "project").contains(domain)) {
             return ResponseEntity.badRequest().build();
         }
         log.info("Update domain | id={} | domain={}", id, domain);
-        recordRepository.updateDomain(id, domain);
+        recordRepository.updateDomain(userId, id, domain);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/retry")
-    public ResponseEntity<Map<String, Object>> triggerRetry() {
-        long before = memoryService.count();
-        recordRetryService.retryUnprocessed();
-        long after = memoryService.count();
+    public ResponseEntity<Map<String, Object>> triggerRetry(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        long before = memoryService.count(userId);
+        recordRetryService.retryUnprocessed(userId);
+        long after = memoryService.count(userId);
         long newMemories = after - before;
         log.info("手动触发重补完成 | 记忆: {} → {} ({})", before, after, newMemories);
         return ResponseEntity.ok(Map.of(

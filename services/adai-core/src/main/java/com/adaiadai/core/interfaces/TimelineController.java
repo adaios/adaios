@@ -22,14 +22,15 @@ public class TimelineController {
 
     @GetMapping
     public ResponseEntity<List<TimelineEntry>> getTimeline(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "50") int limit) {
 
         List<TimelineEntry> entries;
         if (type != null && !type.isBlank()) {
-            entries = timelineAppService.getTimelineByType(type);
+            entries = timelineAppService.getTimelineByType(userId, type);
         } else {
-            entries = timelineAppService.getRecent(limit);
+            entries = timelineAppService.getRecent(userId, limit);
         }
         return ResponseEntity.ok(entries);
     }

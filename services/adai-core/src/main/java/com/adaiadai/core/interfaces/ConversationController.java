@@ -46,9 +46,11 @@ public class ConversationController {
 
     @PostMapping("/end")
     public ResponseEntity<EndConversationResponse> endConversation(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestBody EndConversationRequest request) {
 
-        log.info("Conversation end | turns={} | cardId={}", request.turns().size(), request.cardId());
+        log.info("Conversation end | userId={} | turns={} | cardId={}",
+                userId, request.turns().size(), request.cardId());
 
         // Build prompt from all turns
         String turnText = buildTurnText(request.turns());
@@ -72,43 +74,73 @@ public class ConversationController {
                 "对话总结", turnText, List.of(), prompt
         );
 
-        AiUnderstanding understanding = aiClient.understand(contextPackage);
+        // AI 理解失败降级：不 500，用对话原文兜底（与 RecordController 降级模式一致）
+        AiUnderstanding understanding;
+        try {
+            understanding = aiClient.understand(contextPackage);
+        } catch (Exception e) {
+            log.warn("Conversation end AI 总结失败，降级处理 | cardId={} | err={}",
+                    request.cardId(), e.getMessage());
+            understanding = null;
+        }
 
-        // Save as a record
+        // Save as a record（summary 兜底：AI 成功但 summary 为空也走原文）
         String id = RecordFileRepository.generateId();
-        String summaryText = understanding.summary();
-        List<String> tags = understanding.tags();
+        String summaryText;
+        List<String> tags;
+        if (understanding != null && understanding.summary() != null && !understanding.summary().isBlank()) {
+            summaryText = understanding.summary();
+            tags = understanding.tags() != null ? understanding.tags() : List.of();
+        } else {
+            summaryText = fallbackSummary(turnText);
+            tags = List.of();
+        }
 
         ContentRecord record = new ContentRecord(
                 id, "conversation", "ai_summary",
                 summaryText.length() > 50 ? summaryText.substring(0, 50) : summaryText,
                 summaryText,
-                tags != null ? tags : List.of(),
+                tags,
                 LocalDateTime.now()
         );
-        recordRepository.save(record);
+        recordRepository.save(userId, record);
 
         // Update card file with summary and ended status
         if (request.cardId() != null) {
-            Optional<CardRecord> existing = cardRepository.findById(request.cardId());
+            Optional<CardRecord> existing = cardRepository.findById(userId, request.cardId());
             if (existing.isPresent()) {
                 CardRecord updated = existing.get()
                         .withStatus("ended")
                         .withSummary(summaryText);
-                cardRepository.save(updated);
+                cardRepository.save(userId, updated);
                 log.info("Card updated | cardId={} | status=ended", request.cardId());
             }
         }
 
-        // 沉淀记忆
-        if (summaryText != null || (!tags.isEmpty())) {
+        // 沉淀记忆：AI 成功 → 洞察记忆；失败 → 原文降级（标 DEGRADED，AI 恢复后由重补升级）
+        if (understanding != null) {
             Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-            memoryService.persist(memory);
+            memoryService.persist(userId, memory);
+        } else {
+            try {
+                Memory degraded = Memory.fromContentFallback(record.id(), turnText);
+                memoryService.persist(userId, degraded);
+                log.info("Memory degraded-persisted (AI failed) | recordId={}", id);
+            } catch (Exception e) {
+                log.debug("Degraded memory persist skipped: {}", e.getMessage());
+            }
         }
 
         log.info("Conversation summary saved | recordId={} | tags={} | cardId={}", id, tags, request.cardId());
 
         return ResponseEntity.ok(new EndConversationResponse(id, summaryText, tags));
+    }
+
+    /** AI 总结失败时的兜底 summary：对话原文（截断 50 字），保证 end 永不因 AI 异常返回 500。 */
+    private String fallbackSummary(String turnText) {
+        if (turnText == null || turnText.isBlank()) return "对话已结束";
+        String clean = turnText.strip();
+        return clean.length() > 50 ? clean.substring(0, 50) + "…" : clean;
     }
 
     private String buildTurnText(List<String> turns) {

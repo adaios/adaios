@@ -34,7 +34,7 @@ class TradingControllerTest {
     @Test
     void detectConflicts_noPositions_citesRealRule() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.getPositions()).thenReturn(List.of());
+        when(trading.getPositions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(get("/api/v1/trading/knowledge/conflicts"))
@@ -49,7 +49,7 @@ class TradingControllerTest {
         Position single = new Position("600000", "浦发银行", 1000,
                 new BigDecimal("10.00"), new BigDecimal("10.50"), LocalDateTime.now());
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.getPositions()).thenReturn(List.of(single));
+        when(trading.getPositions(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(single));
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(get("/api/v1/trading/knowledge/conflicts"))

@@ -44,18 +44,21 @@ public class ProjectStatusController {
      */
     @GetMapping("/tasks")
     public ResponseEntity<List<Task>> listTasks(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) String tag) {
-        return ResponseEntity.ok(taskService.listTasks(status, tag));
+        return ResponseEntity.ok(taskService.listTasks(userId, status, tag));
     }
 
     /**
      * 创建任务。
      */
     @PostMapping("/tasks")
-    public ResponseEntity<Task> createTask(@RequestBody TaskRequest request) {
+    public ResponseEntity<Task> createTask(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody TaskRequest request) {
         Task task = taskService.createTask(
-                request.title(), request.description(),
+                userId, request.title(), request.description(),
                 request.priority(), request.tags(), request.rfcRef()
         );
         return ResponseEntity.ok(task);
@@ -66,10 +69,11 @@ public class ProjectStatusController {
      */
     @PutMapping("/tasks/{id}")
     public ResponseEntity<Task> updateTask(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable String id,
             @RequestBody TaskRequest request) {
         Task task = taskService.updateTask(
-                id, request.title(), request.description(),
+                userId, id, request.title(), request.description(),
                 request.status(), request.priority(),
                 request.tags(), request.rfcRef()
         );
@@ -80,8 +84,10 @@ public class ProjectStatusController {
      * 删除任务。
      */
     @DeleteMapping("/tasks/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable String id) {
-        taskService.deleteTask(id);
+    public ResponseEntity<Void> deleteTask(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id) {
+        taskService.deleteTask(userId, id);
         return ResponseEntity.noContent().build();
     }
 
@@ -89,8 +95,9 @@ public class ProjectStatusController {
      * 获取任务统计。
      */
     @GetMapping("/tasks/stats")
-    public ResponseEntity<TaskRepository.TaskStats> getTaskStats() {
-        return ResponseEntity.ok(taskService.getStats());
+    public ResponseEntity<TaskRepository.TaskStats> getTaskStats(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        return ResponseEntity.ok(taskService.getStats(userId));
     }
 
     // ── DTO ──

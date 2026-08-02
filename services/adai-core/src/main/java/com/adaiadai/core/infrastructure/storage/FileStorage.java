@@ -6,45 +6,53 @@ import java.util.List;
  * FileStorage — 文件存储抽象。
  * <p>
  * 支撑 File First 原则的核心接口。所有个人资产通过此接口读写文件系统。
+ * <p>
+ * 多用户架构预留（2026-08-02）：所有方法带 {@code userId}，实际存储路径按用户分层
+ * {@code data/{userId}/...}。单用户时传 {@code "default"}。
  */
 public interface FileStorage {
 
     /**
      * 将内容写入文件（如果父目录不存在则自动创建）。
      *
-     * @param path    相对路径（如 {@code records/2026/07/rec_20260712_143000.md}）
+     * @param userId  用户 ID（单用户传 "default"），路径将落在 {@code data/{userId}/} 下
+     * @param path    相对用户层的路径（如 {@code records/2026/07/rec_20260712_143000.md}）
      * @param content 文件内容
      */
-    void write(String path, String content);
+    void write(String userId, String path, String content);
 
     /**
      * 读取文件内容。
      *
-     * @param path 相对路径
-     * @return 文件内容，文件不存在则返回空
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param path   相对用户层的路径
+     * @return 文件内容，文件不存在则返回 null
      */
-    String read(String path);
+    String read(String userId, String path);
 
     /**
-     * 列出指定目录下的所有文件路径（递归）。
+     * 列出指定目录下的所有文件路径（递归，限定在该用户层内）。
      *
-     * @param dir 相对目录路径
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param dir    相对用户层的目录路径
      * @return 文件相对路径列表
      */
-    List<String> listFiles(String dir);
+    List<String> listFiles(String userId, String dir);
 
     /**
      * 判断文件或目录是否存在。
      *
-     * @param path 相对路径
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param path   相对用户层的路径
      * @return 是否存在
      */
-    boolean exists(String path);
+    boolean exists(String userId, String path);
 
     /**
      * 删除文件。
      *
-     * @param path 相对路径
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param path   相对用户层的路径
      */
-    void delete(String path);
+    void delete(String userId, String path);
 }

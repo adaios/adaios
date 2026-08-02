@@ -44,8 +44,8 @@ public class CardMigrationService {
      *
      * @return 迁移结果统计
      */
-    public MigrationResult migrate() {
-        List<String> allFiles = fileStorage.listFiles("records");
+    public MigrationResult migrate(String userId) {
+        List<String> allFiles = fileStorage.listFiles(userId, "records");
         List<String> cardFiles = new ArrayList<>();
         List<String> migrated = new ArrayList<>();
         List<String> failed = new ArrayList<>();
@@ -65,7 +65,7 @@ public class CardMigrationService {
         // Step 2: 逐个解析并迁移
         for (String oldPath : cardFiles) {
             try {
-                String content = fileStorage.read(oldPath);
+                String content = fileStorage.read(userId, oldPath);
                 if (content == null || content.isBlank()) {
                     failed.add(oldPath + " (empty)");
                     continue;
@@ -78,7 +78,7 @@ public class CardMigrationService {
                 }
 
                 // 写入新位置
-                fileStorage.write(pathInCardsDir(card), content);
+                fileStorage.write(userId, pathInCardsDir(card), content);
                 migrated.add(oldPath + " → " + pathInCardsDir(card));
                 log.info("卡片迁移成功 | old={} | new={}", oldPath, pathInCardsDir(card));
             } catch (Exception e) {
@@ -187,8 +187,8 @@ public class CardMigrationService {
      *
      * @return 清理结果统计
      */
-    public CleanupResult cleanupDuplicateRecords() {
-        List<CardRecord> allCards = cardRepository.findAll();
+    public CleanupResult cleanupDuplicateRecords(String userId) {
+        List<CardRecord> allCards = cardRepository.findAll(userId);
         List<String> deleted = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         int totalRecords = 0;
@@ -208,14 +208,14 @@ public class CardMigrationService {
             String cardDate = card.createdAt().toLocalDate().toString();
 
             // 扫描 records/ 下匹配的内容
-            List<String> allFiles = fileStorage.listFiles("records");
+            List<String> allFiles = fileStorage.listFiles(userId, "records");
             for (String f : allFiles) {
                 if (!f.startsWith("records/") || f.startsWith("records/cards/")) continue;
                 if (!f.endsWith(".md")) continue;
                 String fileName = f.substring(f.lastIndexOf('/') + 1);
                 if (!fileName.startsWith("rec_")) continue;
 
-                String content = fileStorage.read(f);
+                String content = fileStorage.read(userId, f);
                 if (content == null || content.isBlank()) continue;
 
                 // 解析 frontmatter 获取 brief content
@@ -224,7 +224,7 @@ public class CardMigrationService {
 
                 // 匹配卡片中的用户消息文本
                 if (turnTexts.contains(briefContent)) {
-                    fileStorage.delete(f);
+                    fileStorage.delete(userId, f);
                     deleted.add(f);
                     totalRecords++;
                 }

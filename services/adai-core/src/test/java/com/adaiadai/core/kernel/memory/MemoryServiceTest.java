@@ -55,9 +55,9 @@ class MemoryServiceTest {
     @Test
     void persist_degraded_roundTripKeepsMarker() {
         Memory degraded = Memory.fromContentFallback("rec_2", "用户喜欢读科幻小说");
-        memoryService.persist(degraded);
+        memoryService.persist("default",degraded);
 
-        List<Memory> memories = memoryService.findByDate(degraded.createdAt().toLocalDate());
+        List<Memory> memories = memoryService.findByDate("default",degraded.createdAt().toLocalDate());
         assertEquals(1, memories.size());
         assertEquals("rec_2", memories.get(0).recordId());
         assertEquals("DEGRADED", memories.get(0).suggestion());
@@ -67,13 +67,13 @@ class MemoryServiceTest {
     @Test
     void persist_aiInsight_upgradesDegraded() {
         Memory degraded = Memory.fromContentFallback("rec_3", "用户喜欢读科幻小说");
-        memoryService.persist(degraded);
+        memoryService.persist("default",degraded);
 
         // AI 恢复后重补，同 recordId 写入洞察 → 应覆盖降级条目
         Memory insight = Memory.fromUnderstanding("rec_3", insight("读科幻", "用户偏好科幻题材"));
-        memoryService.persist(insight);
+        memoryService.persist("default",insight);
 
-        List<Memory> memories = memoryService.findByDate(insight.createdAt().toLocalDate());
+        List<Memory> memories = memoryService.findByDate("default",insight.createdAt().toLocalDate());
         assertEquals(1, memories.size(), "升级后应只剩 AI 洞察一条");
         assertEquals("rec_3", memories.get(0).recordId());
         assertFalse(Memory.isDegraded(memories.get(0)), "降级标记应被升级清除");
@@ -84,12 +84,12 @@ class MemoryServiceTest {
     @Test
     void persist_degraded_doesNotOverwriteAiInsight() {
         Memory insight = Memory.fromUnderstanding("rec_4", insight("洞察", "AI 洞察"));
-        memoryService.persist(insight);
+        memoryService.persist("default",insight);
 
         // 后到的降级不应覆盖已有 AI 洞察
-        memoryService.persist(Memory.fromContentFallback("rec_4", "原文"));
+        memoryService.persist("default",Memory.fromContentFallback("rec_4", "原文"));
 
-        List<Memory> memories = memoryService.findByDate(insight.createdAt().toLocalDate());
+        List<Memory> memories = memoryService.findByDate("default",insight.createdAt().toLocalDate());
         assertEquals(1, memories.size());
         assertFalse(Memory.isDegraded(memories.get(0)));
         assertEquals("AI 洞察", memories.get(0).summary());
@@ -97,11 +97,11 @@ class MemoryServiceTest {
 
     @Test
     void hasRealMemory_distinguishesDegraded() {
-        memoryService.persist(Memory.fromContentFallback("rec_5", "内容"));
-        assertFalse(memoryService.hasRealMemory("rec_5"), "仅降级记忆不算 AI 记忆，应可重补");
+        memoryService.persist("default",Memory.fromContentFallback("rec_5", "内容"));
+        assertFalse(memoryService.hasRealMemory("default","rec_5"), "仅降级记忆不算 AI 记忆，应可重补");
 
-        memoryService.persist(Memory.fromUnderstanding("rec_5", insight("洞察", "AI 洞察")));
-        assertTrue(memoryService.hasRealMemory("rec_5"), "升级后应算 AI 记忆，重补跳过");
+        memoryService.persist("default",Memory.fromUnderstanding("rec_5", insight("洞察", "AI 洞察")));
+        assertTrue(memoryService.hasRealMemory("default","rec_5"), "升级后应算 AI 记忆，重补跳过");
     }
 
     // ── 记忆进化 Phase 1：kind 类型 ──
@@ -155,23 +155,23 @@ class MemoryServiceTest {
     @Test
     void persist_roundTrip_keepsKind() {
         Memory m = Memory.fromContentFallback("rec_k3", "用户喜欢喝茶");
-        memoryService.persist(m);
-        List<Memory> loaded = memoryService.findByDate(m.createdAt().toLocalDate());
+        memoryService.persist("default",m);
+        List<Memory> loaded = memoryService.findByDate("default",m.createdAt().toLocalDate());
         assertEquals(1, loaded.size());
         assertEquals(Memory.KIND_FACT, loaded.get(0).kind(), "kind 应随 frontmatter 写读");
     }
 
     @Test
     void findByKind_filtersByKind() {
-        memoryService.persist(Memory.fromContentFallback("rec_k4", "原文fact"));
-        memoryService.persist(Memory.fromUnderstanding("rec_k5",
+        memoryService.persist("default",Memory.fromContentFallback("rec_k4", "原文fact"));
+        memoryService.persist("default",Memory.fromUnderstanding("rec_k5",
                 new AiUnderstanding("s", "i",
                         List.of(new MemoryPattern("p", 0.8)), null,
                         List.of("t"), "neutral", "life", false, null, null)));
 
-        assertTrue(memoryService.findByKind(Memory.KIND_FACT).stream().anyMatch(m -> m.recordId().equals("rec_k4")));
-        assertTrue(memoryService.findByKind(Memory.KIND_PATTERN).stream().anyMatch(m -> m.recordId().equals("rec_k5")));
-        assertTrue(memoryService.findByKind(Memory.KIND_FACT).stream().noneMatch(m -> m.recordId().equals("rec_k5")));
+        assertTrue(memoryService.findByKind("default",Memory.KIND_FACT).stream().anyMatch(m -> m.recordId().equals("rec_k4")));
+        assertTrue(memoryService.findByKind("default",Memory.KIND_PATTERN).stream().anyMatch(m -> m.recordId().equals("rec_k5")));
+        assertTrue(memoryService.findByKind("default",Memory.KIND_FACT).stream().noneMatch(m -> m.recordId().equals("rec_k5")));
     }
 
     // ── 记忆进化 Phase 2：主题级合并 ──
@@ -183,11 +183,11 @@ class MemoryServiceTest {
     @Test
     void persist_topicMerge_marksOldSuperseded() {
         Memory first = Memory.fromUnderstanding("rec_t1", insightWithTags("喝茶", "用户喜欢茉莉花茶", List.of("茶")));
-        memoryService.persist(first);
+        memoryService.persist("default",first);
         Memory second = Memory.fromUnderstanding("rec_t2", insightWithTags("品茶", "品茶偏好乌龙", List.of("茶", "饮品")));
-        memoryService.persist(second);
+        memoryService.persist("default",second);
 
-        List<Memory> all = memoryService.findByDate(first.createdAt().toLocalDate());
+        List<Memory> all = memoryService.findByDate("default",first.createdAt().toLocalDate());
         assertEquals(2, all.size());
         Memory old = all.get(0);
         Memory fresh = all.get(1);
@@ -201,10 +201,10 @@ class MemoryServiceTest {
     void persist_noTagOverlap_noMerge() {
         Memory a = Memory.fromUnderstanding("rec_t3", insightWithTags("喝茶", "茶", List.of("茶")));
         Memory b = Memory.fromUnderstanding("rec_t4", insightWithTags("买股", "股票", List.of("股票")));
-        memoryService.persist(a);
-        memoryService.persist(b);
+        memoryService.persist("default",a);
+        memoryService.persist("default",b);
 
-        List<Memory> all = memoryService.findByDate(a.createdAt().toLocalDate());
+        List<Memory> all = memoryService.findByDate("default",a.createdAt().toLocalDate());
         assertEquals(2, all.size());
         assertTrue(all.stream().noneMatch(Memory::superseded), "无重叠标签不应合并");
         assertTrue(all.stream().noneMatch(m -> m.topic() != null), "无重叠标签不应有主题");
@@ -212,10 +212,10 @@ class MemoryServiceTest {
 
     @Test
     void recentActive_excludesSuperseded() {
-        memoryService.persist(Memory.fromUnderstanding("rec_t5", insightWithTags("喝茶", "茶", List.of("茶"))));
-        memoryService.persist(Memory.fromUnderstanding("rec_t6", insightWithTags("品茶", "乌龙", List.of("茶", "饮品"))));
+        memoryService.persist("default",Memory.fromUnderstanding("rec_t5", insightWithTags("喝茶", "茶", List.of("茶"))));
+        memoryService.persist("default",Memory.fromUnderstanding("rec_t6", insightWithTags("品茶", "乌龙", List.of("茶", "饮品"))));
 
-        List<Memory> active = memoryService.recentActive(7);
+        List<Memory> active = memoryService.recentActive("default",7);
         assertTrue(active.stream().noneMatch(m -> m.recordId().equals("rec_t5")), "superseded 版本不应参与回读");
         assertTrue(active.stream().anyMatch(m -> m.recordId().equals("rec_t6")));
     }
@@ -229,11 +229,11 @@ class MemoryServiceTest {
     @Test
     void markDone_completesActionableMemory() {
         Memory m = Memory.fromUnderstanding("rec_a1", actionMemo("建议减仓", "建议减仓", List.of("交易")));
-        memoryService.persist(m);
+        memoryService.persist("default",m);
         assertTrue(m.actionable());
 
-        assertTrue(memoryService.markDone(m.id()));
-        List<Memory> loaded = memoryService.findByDate(m.createdAt().toLocalDate());
+        assertTrue(memoryService.markDone("default",m.id()));
+        List<Memory> loaded = memoryService.findByDate("default",m.createdAt().toLocalDate());
         assertEquals(1, loaded.size());
         assertFalse(loaded.get(0).actionable(), "完成后 actionable 应为 false");
         assertNotNull(loaded.get(0).doneAt(), "完成后应记录完成时间");
@@ -244,18 +244,18 @@ class MemoryServiceTest {
         // 两个行动记忆 tags 不重叠，避免主题合并干扰
         Memory pending = Memory.fromUnderstanding("rec_a2", actionMemo("买入机会", "关注半导体", List.of("交易")));
         Memory done = Memory.fromUnderstanding("rec_a3", actionMemo("已处理", "卖出一批", List.of("生活")));
-        memoryService.persist(pending);
-        memoryService.persist(done);
-        memoryService.markDone(done.id());
+        memoryService.persist("default",pending);
+        memoryService.persist("default",done);
+        memoryService.markDone("default",done.id());
 
-        List<Memory> pendingActions = memoryService.findPendingActions();
+        List<Memory> pendingActions = memoryService.findPendingActions("default");
         assertTrue(pendingActions.stream().anyMatch(m -> m.recordId().equals("rec_a2")), "未完成行动应保留");
         assertTrue(pendingActions.stream().noneMatch(m -> m.recordId().equals("rec_a3")), "已完成行动不应出现");
     }
 
     @Test
     void markDone_notFound_returnsFalse() {
-        assertFalse(memoryService.markDone("mem_nonexistent"));
+        assertFalse(memoryService.markDone("default","mem_nonexistent"));
     }
 
     // ── 记忆进化 Phase 4：时效与淘汰 ──
@@ -269,10 +269,10 @@ class MemoryServiceTest {
         Memory fresh = new Memory("mem_fresh", "rec_p2", Memory.KIND_PATTERN, "新模式",
                 List.of(new MemoryPattern("新模式", 0.8)), null, List.of("t2"), "neutral", false, null,
                 LocalDateTime.now(), null, false, null, null, null);
-        memoryService.persist(old);
-        memoryService.persist(fresh);
+        memoryService.persist("default",old);
+        memoryService.persist("default",fresh);
 
-        List<MemoryPattern> patterns = memoryService.findAllPatterns();
+        List<MemoryPattern> patterns = memoryService.findAllPatterns("default");
         assertEquals("新模式", patterns.get(0).content(), "时效衰减后新记忆应优先");
     }
 
@@ -281,12 +281,12 @@ class MemoryServiceTest {
         Memory oldSuperseded = new Memory("mem_old2", "rec_p3", Memory.KIND_INSIGHT, "旧洞察",
                 List.of(), null, List.of("x"), "neutral", false, null,
                 LocalDateTime.now().minusDays(61), "topic_x", true, "mem_next", null, null);
-        memoryService.persist(oldSuperseded);
+        memoryService.persist("default",oldSuperseded);
         LocalDate date = oldSuperseded.createdAt().toLocalDate();
-        assertEquals(1, memoryService.findByDate(date).size());
+        assertEquals(1, memoryService.findByDate("default",date).size());
 
-        memoryService.cleanup();
-        assertEquals(0, memoryService.findByDate(date).size(), "超 60 天 superseded 应被清理");
+        memoryService.cleanup("default");
+        assertEquals(0, memoryService.findByDate("default",date).size(), "超 60 天 superseded 应被清理");
     }
 
     @Test
@@ -295,10 +295,10 @@ class MemoryServiceTest {
         Memory m = new Memory("mem_t", "rec_p4", Memory.KIND_INSIGHT, "内容洞察",
                 List.of(), null, List.of("y"), "neutral", false, null,
                 twoDaysAgo, null, false, null, null, twoDaysAgo);
-        memoryService.persist(m);
+        memoryService.persist("default",m);
 
-        memoryService.touchActive();
-        Memory loaded = memoryService.findByRecordId("rec_p4").orElseThrow();
+        memoryService.touchActive("default");
+        Memory loaded = memoryService.findByRecordId("default","rec_p4").orElseThrow();
         assertNotNull(loaded.lastConfirmed(), "回读确认应写入 lastConfirmed");
         assertTrue(loaded.lastConfirmed().isAfter(twoDaysAgo), "lastConfirmed 应更新到当前");
     }
@@ -311,18 +311,18 @@ class MemoryServiceTest {
         Memory fact = new Memory("mem_n1", "rec_n1", Memory.KIND_FACT, "简短摘要",
                 List.of(), null, List.of("t"), "neutral", false, null,
                 LocalDateTime.now(), null, false, null, null, null);
-        memoryService.persist(fact);
+        memoryService.persist("default",fact);
 
-        assertTrue(memoryService.findByDate(LocalDate.now()).isEmpty(), "无增量 fact 不应沉淀");
-        assertFalse(memoryService.hasRealMemory("rec_n1"), "无增量记忆不算 AI 记忆");
+        assertTrue(memoryService.findByDate("default",LocalDate.now()).isEmpty(), "无增量 fact 不应沉淀");
+        assertFalse(memoryService.hasRealMemory("default","rec_n1"), "无增量记忆不算 AI 记忆");
     }
 
     @Test
     void persist_degradedFact_exemptFromScreening() {
         // 降级记忆（DEGRADED，AI 失败保底）豁免筛选，仍应沉淀
-        memoryService.persist(Memory.fromContentFallback("rec_n2", "原文"));
-        assertTrue(memoryService.hasRealMemory("rec_n2") == false, "降级记忆存在但不算 AI 记忆");
-        assertFalse(memoryService.findByDate(LocalDate.now()).isEmpty(), "降级保底应保留");
+        memoryService.persist("default",Memory.fromContentFallback("rec_n2", "原文"));
+        assertTrue(memoryService.hasRealMemory("default","rec_n2") == false, "降级记忆存在但不算 AI 记忆");
+        assertFalse(memoryService.findByDate("default",LocalDate.now()).isEmpty(), "降级保底应保留");
     }
 
     @Test
@@ -334,9 +334,9 @@ class MemoryServiceTest {
         Memory m = Memory.fromUnderstanding("rec_a4", u);
         assertEquals(Memory.KIND_DECISION, m.kind(), "actionable 行动建议应判 decision");
 
-        memoryService.persist(m);
-        assertTrue(memoryService.hasRealMemory("rec_a4"), "actionable 记忆不应被筛选丢弃");
-        assertTrue(memoryService.findPendingActions().stream().anyMatch(x -> x.recordId().equals("rec_a4")),
+        memoryService.persist("default",m);
+        assertTrue(memoryService.hasRealMemory("default","rec_a4"), "actionable 记忆不应被筛选丢弃");
+        assertTrue(memoryService.findPendingActions("default").stream().anyMatch(x -> x.recordId().equals("rec_a4")),
                 "待办应包含 actionable 记忆");
     }
 }

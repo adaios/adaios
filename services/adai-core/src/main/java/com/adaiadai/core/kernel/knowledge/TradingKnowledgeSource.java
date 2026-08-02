@@ -65,16 +65,16 @@ public class TradingKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         refreshIfChanged();
         return cachedIdentity != null ? cachedIdentity : "";
     }
 
     @Override
-    public String enrich(String scene) {
+    public String enrich(String userId, String scene) {
         if (!"trading".equals(scene) && !"decision".equals(scene)) {
             // 非交易场景只注入 identity 摘要，让 AI 知道交易系统存在
-            return globalContext();
+            return globalContext(userId);
         }
 
         refreshIfChanged();

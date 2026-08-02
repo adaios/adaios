@@ -26,18 +26,19 @@ public class SearchService {
     }
 
     /**
-     * 全文搜索。
+     * 全文搜索（限定该用户记录）。
      *
-     * @param query 搜索关键词
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param query  搜索关键词
      * @return 匹配的记录列表
      */
-    public List<SearchResult> search(String query) {
+    public List<SearchResult> search(String userId, String query) {
         if (query == null || query.isBlank()) {
             return List.of();
         }
 
         String q = query.trim().toLowerCase();
-        List<ContentRecord> all = recordRepository.findAll();
+        List<ContentRecord> all = recordRepository.findAll(userId);
 
         return all.stream()
                 .filter(r -> matches(r, q))

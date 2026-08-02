@@ -28,24 +28,24 @@ public class TradingReviewFileRepository {
     /**
      * 保存复盘笔记。
      */
-    public void save(LocalDate date, String content) {
+    public void save(String userId, LocalDate date, String content) {
         String path = filePath(date);
-        fileStorage.write(path, content);
+        fileStorage.write(userId, path, content);
     }
 
     /**
      * 读取指定日期的复盘笔记。
      */
-    public String read(LocalDate date) {
+    public String read(String userId, LocalDate date) {
         String path = filePath(date);
-        return fileStorage.read(path);
+        return fileStorage.read(userId, path);
     }
 
     /**
-     * 列出所有复盘文件。
+     * 列出该用户所有复盘文件。
      */
-    public List<LocalDate> listAll() {
-        return fileStorage.listFiles(REVIEWS_DIR).stream()
+    public List<LocalDate> listAll(String userId) {
+        return fileStorage.listFiles(userId, REVIEWS_DIR).stream()
                 .map(p -> p.replaceFirst("^" + REVIEWS_DIR + "/?", ""))
                 .filter(name -> name.endsWith("_review.md"))
                 .map(name -> name.replace("_review.md", ""))
@@ -57,8 +57,8 @@ public class TradingReviewFileRepository {
     /**
      * 判断指定日期复盘是否存在。
      */
-    public boolean exists(LocalDate date) {
-        return fileStorage.exists(filePath(date));
+    public boolean exists(String userId, LocalDate date) {
+        return fileStorage.exists(userId, filePath(date));
     }
 
     private String filePath(LocalDate date) {

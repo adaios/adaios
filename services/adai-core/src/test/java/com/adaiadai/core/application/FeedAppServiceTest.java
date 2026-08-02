@@ -24,12 +24,12 @@ class FeedAppServiceTest {
 
     private FeedAppService serviceWith(MarketDataSource market) {
         RecordRepository recordRepository = mock(RecordRepository.class);
-        when(recordRepository.findAll()).thenReturn(List.of());
+        when(recordRepository.findAll(any())).thenReturn(List.of());
         MemoryService memoryService = mock(MemoryService.class);
-        when(memoryService.findByDate(any())).thenReturn(List.of());
-        when(memoryService.findPendingActions()).thenReturn(List.of());
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
-        when(cardRepository.findTodayCards(any())).thenReturn(List.of());
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         return new FeedAppService(recordRepository, memoryService, null, cardRepository, market);
     }
 
@@ -44,7 +44,7 @@ class FeedAppServiceTest {
         ));
 
         FeedAppService service = serviceWith(market);
-        FeedAppService.FeedResponse resp = service.getFeed(LocalDate.now(), 0, 10);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.now(), 0, 10);
 
         assertTrue(resp.entries().stream().anyMatch(e -> "market".equals(e.type())),
                 "有行情时应输出 type=market 条目");
@@ -58,7 +58,7 @@ class FeedAppServiceTest {
         when(market.indices()).thenReturn(Map.of());
 
         FeedAppService service = serviceWith(market);
-        FeedAppService.FeedResponse resp = service.getFeed(LocalDate.now(), 0, 10);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.now(), 0, 10);
 
         assertTrue(resp.entries().stream().noneMatch(e -> "market".equals(e.type())),
                 "行情为空（网络失败）时不输出 market 条目");

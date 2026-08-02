@@ -273,9 +273,9 @@ class RecordControllerTest {
                 .andExpect(status().isNoContent());
 
         // Verify it's gone from RecordRepository
-        org.junit.jupiter.api.Assertions.assertFalse(recordRepository.findById(recordId).isPresent());
+        org.junit.jupiter.api.Assertions.assertFalse(recordRepository.findById("default",recordId).isPresent());
         // Verify card file also cleaned (no card files match the recordId)
-        org.junit.jupiter.api.Assertions.assertFalse(cardRepository.findById(recordId).isPresent());
+        org.junit.jupiter.api.Assertions.assertFalse(cardRepository.findById("default",recordId).isPresent());
     }
 
     @Test
@@ -313,8 +313,8 @@ class RecordControllerTest {
         String recordId = mapper.readTree(resp).get("recordId").asText();
 
         // AI 失败 → 记录不丢 + 降级记忆已沉淀（标 DEGRADED，供重补升级）
-        assertTrue(recordRepository.findById(recordId).isPresent(), "记录不应因 AI 失败丢失");
-        Optional<Memory> degraded = memoryService.findByRecordId(recordId);
+        assertTrue(recordRepository.findById("default",recordId).isPresent(), "记录不应因 AI 失败丢失");
+        Optional<Memory> degraded = memoryService.findByRecordId("default",recordId);
         assertTrue(degraded.isPresent(), "AI 失败也应降级沉淀记忆");
         assertTrue(Memory.isDegraded(degraded.get()), "降级记忆应标 DEGRADED");
         assertEquals("今天加仓了立昂微", degraded.get().summary());

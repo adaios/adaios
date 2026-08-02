@@ -13,34 +13,34 @@ import java.util.Optional;
 public interface TaskRepository {
 
     /**
-     * 查找所有任务（可选的按状态和标签筛选）。
+     * 查找该用户所有任务（可选的按状态和标签筛选）。
      */
-    List<Task> findAll(TaskStatus status, String tag);
+    List<Task> findAll(TaskStatus status, String tag, String userId);
 
     /**
-     * 查找所有任务（无筛选）。
+     * 查找该用户所有任务（无筛选）。
      */
-    List<Task> findAll();
+    List<Task> findAll(String userId);
 
     /**
      * 按 ID 查找任务。
      */
-    Optional<Task> findById(String id);
+    Optional<Task> findById(String userId, String id);
 
     /**
      * 保存任务（新增或更新）。
      */
-    void save(Task task);
+    void save(String userId, Task task);
 
     /**
      * 删除任务。
      */
-    void delete(String id);
+    void delete(String userId, String id);
 
     /**
      * 获取任务统计。
      */
-    TaskStats stats();
+    TaskStats stats(String userId);
 
     /**
      * TaskStats — 任务统计。

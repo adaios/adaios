@@ -49,21 +49,22 @@ public class FeedAppService {
     /**
      * 获取指定日期的 Feed，分页返回。
      *
-     * @param date 日期，null 则默认今天
-     * @param page 页码，从 0 开始
-     * @param size 每页条数，默认 5
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param date   日期，null 则默认今天
+     * @param page   页码，从 0 开始
+     * @param size   每页条数，默认 5
      */
-    public FeedResponse getFeed(LocalDate date, int page, int size) {
+    public FeedResponse getFeed(String userId, LocalDate date, int page, int size) {
         final LocalDate queryDate = date != null ? date : LocalDate.now();
         final int querySize = size <= 0 ? 5 : size;
         final int queryPage = Math.max(page, 0);
 
-        List<ContentRecord> allRecords = recordRepository.findAll().stream()
+        List<ContentRecord> allRecords = recordRepository.findAll(userId).stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(queryDate))
                 .toList();
-        List<Memory> allMemories = memoryService.findByDate(queryDate);
+        List<Memory> allMemories = memoryService.findByDate(userId, queryDate);
 
-        List<CardRecord> todayCards = cardRepository.findTodayCards(queryDate);
+        List<CardRecord> todayCards = cardRepository.findTodayCards(userId, queryDate);
         Map<String, CardRecord> turnToCard = buildTurnCardMap(todayCards);
 
         Set<String> skipRecordIds = new HashSet<>();
@@ -92,7 +93,7 @@ public class FeedAppService {
         }
 
         // 记忆进化 Phase 3：未完成行动提醒（actionable 记忆）——按记忆创建时间参与排序
-        for (Memory m : memoryService.findPendingActions()) {
+        for (Memory m : memoryService.findPendingActions(userId)) {
             allEntries.add(toActionEntry(m));
         }
 
@@ -130,8 +131,8 @@ public class FeedAppService {
         return new FeedResponse(pageEntries, totalToday);
     }
 
-    public FeedResponse getFeed(LocalDate date) {
-        return getFeed(date, 0, 5);
+    public FeedResponse getFeed(String userId, LocalDate date) {
+        return getFeed(userId, date, 0, 5);
     }
 
     // ── 内部方法 ──

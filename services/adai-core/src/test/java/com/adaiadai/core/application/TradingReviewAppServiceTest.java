@@ -32,11 +32,11 @@ class TradingReviewAppServiceTest {
     void generateReview_usesContextEngine_tradingScene() {
         // ── 依赖 ──
         RecordRepository recordRepository = mock(RecordRepository.class);
-        when(recordRepository.findAll()).thenReturn(List.of());
+        when(recordRepository.findAll(any())).thenReturn(List.of());
 
         PositionRepository positionRepository = mock(PositionRepository.class);
-        when(positionRepository.findAll()).thenReturn(List.of());
-        when(positionRepository.snapshot())
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        when(positionRepository.snapshot(any()))
                 .thenReturn(PortfolioSnapshot.of(List.of(), BigDecimal.ZERO));
 
         // ContextEngine 注入交易知识 + 行情（模拟 Contributor/KnowledgeSource 生效后的 prompt）
@@ -48,7 +48,7 @@ class TradingReviewAppServiceTest {
                 "【交易系统规则】只输一根K线；止损三级别。\n【行情】上证 3400，持仓实时价已更新。\n\n请分析这条记录，输出 JSON 格式",
                 LocalDateTime.now(), List.of()
         );
-        when(contextEngine.compose(eq("trading"), any())).thenReturn(baseCtx);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(baseCtx);
 
         AiClient aiClient = mock(AiClient.class);
         when(aiClient.understand(any())).thenReturn(new AiUnderstanding(
@@ -63,11 +63,11 @@ class TradingReviewAppServiceTest {
 
         // ── 执行 ──
         LocalDate date = LocalDate.of(2026, 8, 1);
-        String result = service.generateReview(date);
+        String result = service.generateReview("default", date);
 
         // ── 验证 compose 走 trading 场景 + 合成记录含交易关键词 ──
         ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
-        verify(contextEngine).compose(eq("trading"), recordCaptor.capture());
+        verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
         ContentRecord reviewRecord = recordCaptor.getValue();
         assertTrue(reviewRecord.content().contains("复盘"), "复盘记录内容应含复盘关键词");
         assertTrue(reviewRecord.tags().contains("trading"), "复盘记录应带 trading 标签");
@@ -82,7 +82,7 @@ class TradingReviewAppServiceTest {
         assertTrue(prompt.contains("与系统规则对照"), "复盘模板应含规则对照节");
 
         // ── 验证持久化 ──
-        verify(reviewRepository).save(eq(date), anyString());
+        verify(reviewRepository).save(any(), eq(date), anyString());
         assertEquals("今日执行纪律良好，明日关注 3400 关键位", result);
     }
 }

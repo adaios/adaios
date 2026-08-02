@@ -27,11 +27,12 @@ public interface ContextContributor {
      * <p>
      * 返回的字符串将被插入到 Prompt 中，让 AI 拥有更多领域感知。
      *
+     * @param userId      用户 ID（多用户架构预留，单用户传 "default"）
      * @param identityRef 用户身份摘要
      * @param record      当前记录
      * @return 额外的上下文内容（Markdown 格式），空字符串表示无额外内容
      */
-    String enrich(String identityRef, ContentRecord record);
+    String enrich(String userId, String identityRef, ContentRecord record);
 
     /**
      * 是否为默认兜底贡献者。
@@ -46,8 +47,10 @@ public interface ContextContributor {
      * <p>
      * 所有 Domain OS 贡献一段简短摘要，ContextEngine 每次组装时统一收集。
      * 例如 Trading OS 贡献当前持仓摘要，Life OS 贡献本周趋势。
+     *
+     * @param userId 用户 ID（多用户架构预留，单用户传 "default"）
      */
-    default String globalContext() {
+    default String globalContext(String userId) {
         return "";
     }
 }

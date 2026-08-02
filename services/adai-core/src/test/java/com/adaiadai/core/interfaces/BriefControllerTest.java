@@ -21,7 +21,7 @@ class BriefControllerTest {
     @Test
     void getBrief_returnsContent() throws Exception {
         var briefService = mock(BriefAppService.class);
-        when(briefService.generateBrief()).thenReturn("Hello, today is a good day");
+        when(briefService.generateBrief(org.mockito.ArgumentMatchers.any())).thenReturn("Hello, today is a good day");
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new BriefController(briefService)).build();
 
@@ -33,7 +33,7 @@ class BriefControllerTest {
     @Test
     void getBrief_returnsValidJson() throws Exception {
         var briefService = mock(BriefAppService.class);
-        when(briefService.generateBrief()).thenReturn("Morning brief");
+        when(briefService.generateBrief(org.mockito.ArgumentMatchers.any())).thenReturn("Morning brief");
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new BriefController(briefService)).build();
 

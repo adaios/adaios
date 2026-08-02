@@ -39,8 +39,8 @@ public class LifeContextContributor implements ContextContributor {
     }
 
     @Override
-    public String enrich(String identityRef, ContentRecord record) {
-        List<Memory> lifeMemories = collectLifeMemories(7);
+    public String enrich(String userId, String identityRef, ContentRecord record) {
+        List<Memory> lifeMemories = collectLifeMemories(userId, 7);
         if (lifeMemories.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder();
@@ -54,13 +54,13 @@ public class LifeContextContributor implements ContextContributor {
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         return "";
         // Life global context is provided by LifeKnowledgeSource
     }
 
-    private List<Memory> collectLifeMemories(int days) {
-        return memoryService.recent(days).stream()
+    private List<Memory> collectLifeMemories(String userId, int days) {
+        return memoryService.recent(userId, days).stream()
                 .filter(m -> m.tags().stream().anyMatch(LIFE_TAGS::contains))
                 .sorted(Comparator.comparing(Memory::createdAt).reversed())
                 .toList();

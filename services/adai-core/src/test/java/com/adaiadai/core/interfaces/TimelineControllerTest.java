@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -23,7 +24,7 @@ class TimelineControllerTest {
     @Test
     void getTimeline_returnsOk() throws Exception {
         var timelineService = mock(TimelineAppService.class);
-        when(timelineService.getRecent(anyInt())).thenReturn(List.of());
+        when(timelineService.getRecent(any(), anyInt())).thenReturn(List.of());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new TimelineController(timelineService)).build();
 
@@ -35,7 +36,7 @@ class TimelineControllerTest {
     @Test
     void getTimeline_withTypeFilter() throws Exception {
         var timelineService = mock(TimelineAppService.class);
-        when(timelineService.getTimelineByType("note")).thenReturn(List.of());
+        when(timelineService.getTimelineByType(any(), any())).thenReturn(List.of());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new TimelineController(timelineService)).build();
 
@@ -47,7 +48,7 @@ class TimelineControllerTest {
     @Test
     void getTimeline_returnsEntries() throws Exception {
         var timelineService = mock(TimelineAppService.class);
-        when(timelineService.getRecent(anyInt())).thenReturn(List.of(
+        when(timelineService.getRecent(any(), anyInt())).thenReturn(List.of(
                 new TimelineEntry("r1", "note", "title", List.of("tag"), LocalDateTime.of(2026, 7, 18, 14, 30))
         ));
 

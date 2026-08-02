@@ -47,8 +47,8 @@ public class IdentityFileRepository implements IdentityRepository {
     }
 
     @Override
-    public Optional<IdentityProfile> load() {
-        String content = fileStorage.read(PROFILE_PATH);
+    public Optional<IdentityProfile> load(String userId) {
+        String content = fileStorage.read(userId, PROFILE_PATH);
         if (content == null || content.isBlank()) {
             log.warn("个人档案文件不存在: {}，使用默认档案", PROFILE_PATH);
             return Optional.of(defaultProfile());
@@ -69,9 +69,9 @@ public class IdentityFileRepository implements IdentityRepository {
     }
 
     @Override
-    public IdentityProfile save(IdentityProfile profile) {
+    public IdentityProfile save(String userId, IdentityProfile profile) {
         String frontmatter = serializeProfile(profile);
-        fileStorage.write(PROFILE_PATH, "---\n" + frontmatter + "\n---\n\n" + BODY_TEMPLATE);
+        fileStorage.write(userId, PROFILE_PATH, "---\n" + frontmatter + "\n---\n\n" + BODY_TEMPLATE);
         return profile;
     }
 

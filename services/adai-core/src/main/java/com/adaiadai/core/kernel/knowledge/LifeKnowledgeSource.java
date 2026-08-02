@@ -59,12 +59,12 @@ public class LifeKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String globalContext() {
+    public String globalContext(String userId) {
         StringBuilder sb = new StringBuilder();
         sb.append("## 生活系统\n\n");
 
         String identity = loadIdentity();
-        String memoryAgg = buildMemoryContext();
+        String memoryAgg = buildMemoryContext(userId);
 
         if (!identity.isBlank()) {
             sb.append(identity).append("\n\n");
@@ -78,8 +78,8 @@ public class LifeKnowledgeSource implements KnowledgeSource {
     }
 
     @Override
-    public String enrich(String scene) {
-        return "life".equals(scene) ? globalContext() : "";
+    public String enrich(String userId, String scene) {
+        return "life".equals(scene) ? globalContext(userId) : "";
     }
 
     // ── 身份声明（文件读取 + 时间戳缓存）──
@@ -107,8 +107,8 @@ public class LifeKnowledgeSource implements KnowledgeSource {
 
     // ── 记忆聚合 ──
 
-    private String buildMemoryContext() {
-        List<Memory> lifeMemories = collectLifeMemories(WINDOW_DAYS);
+    private String buildMemoryContext(String userId) {
+        List<Memory> lifeMemories = collectLifeMemories(userId, WINDOW_DAYS);
         if (lifeMemories.isEmpty()) return "";
 
         Map<String, List<String>> byTag = groupByTag(lifeMemories);
@@ -126,8 +126,8 @@ public class LifeKnowledgeSource implements KnowledgeSource {
         return sb.toString();
     }
 
-    private List<Memory> collectLifeMemories(int days) {
-        List<Memory> all = memoryService.recent(days);
+    private List<Memory> collectLifeMemories(String userId, int days) {
+        List<Memory> all = memoryService.recent(userId, days);
         return all.stream()
                 .filter(m -> m.tags().stream().anyMatch(LIFE_TAGS::contains))
                 .sorted(Comparator.comparing(Memory::createdAt).reversed())

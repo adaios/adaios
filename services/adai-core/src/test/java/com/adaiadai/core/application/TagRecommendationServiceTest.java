@@ -27,7 +27,7 @@ class TagRecommendationServiceTest {
 
     @Test
     void getRecommendations_emptyIndex_returnsEmpty() {
-        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations();
+        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations("default");
 
         assertTrue(recs.hot().isEmpty());
         assertTrue(recs.cold().isEmpty());
@@ -49,9 +49,9 @@ class TagRecommendationServiceTest {
                   "updatedAt": "2025-07-01T10:00:00"
                 }
                 """;
-        fileStorage.write("index/tags.json", oldJson);
+        fileStorage.write("default", "index/tags.json", oldJson);
 
-        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations();
+        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations("default");
 
         assertTrue(recs.cold().contains("读书"));
     }
@@ -72,9 +72,9 @@ class TagRecommendationServiceTest {
                   "updatedAt": "%s"
                 }
                 """, now, now, now);
-        fileStorage.write("index/tags.json", json);
+        fileStorage.write("default", "index/tags.json", json);
 
-        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations();
+        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations("default");
 
         assertTrue(recs.hot().contains("健身"));
     }
@@ -95,9 +95,9 @@ class TagRecommendationServiceTest {
                   "updatedAt": "2025-06-01T10:00:00"
                 }
                 """;
-        fileStorage.write("index/tags.json", oldJson);
+        fileStorage.write("default", "index/tags.json", oldJson);
 
-        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations();
+        TagRecommendationService.TagRecommendations recs = tagRecommendationService.getRecommendations("default");
 
         assertFalse(recs.cold().contains("偶尔话题"),
                 "只记过 1 次的标签不应该被标记为 cold");

@@ -20,15 +20,15 @@ public class TimelineAppService {
         this.timelineProjection = timelineProjection;
     }
 
-    public List<TimelineEntry> getFullTimeline() {
-        return timelineProjection.fullTimeline();
+    public List<TimelineEntry> getFullTimeline(String userId) {
+        return timelineProjection.fullTimeline(userId);
     }
 
-    public List<TimelineEntry> getTimelineByType(String type) {
-        return timelineProjection.timelineByType(type);
+    public List<TimelineEntry> getTimelineByType(String userId, String type) {
+        return timelineProjection.timelineByType(userId, type);
     }
 
-    public List<TimelineEntry> getRecent(int limit) {
-        return timelineProjection.recent(limit);
+    public List<TimelineEntry> getRecent(String userId, int limit) {
+        return timelineProjection.recent(userId, limit);
     }
 }

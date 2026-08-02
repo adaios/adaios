@@ -38,9 +38,9 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
-    public void write(String path, String content) {
+    public void write(String userId, String path, String content) {
         try {
-            Path target = resolve(path);
+            Path target = resolve(userId, path);
             Files.createDirectories(target.getParent());
             Files.writeString(target, content, StandardCharsets.UTF_8);
             log.debug("文件写入成功: {}", target);
@@ -50,9 +50,9 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
-    public String read(String path) {
+    public String read(String userId, String path) {
         try {
-            Path target = resolve(path);
+            Path target = resolve(userId, path);
             if (!Files.exists(target)) {
                 return null;
             }
@@ -63,9 +63,9 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
-    public List<String> listFiles(String dir) {
+    public List<String> listFiles(String userId, String dir) {
         try {
-            Path target = basePath.resolve(dir);
+            Path target = resolve(userId, dir);
             if (!Files.exists(target) || !Files.isDirectory(target)) {
                 return Collections.emptyList();
             }
@@ -73,6 +73,7 @@ public class LocalFileStorage implements FileStorage {
                 return walk
                         .filter(Files::isRegularFile)
                         .map(p -> basePath.relativize(p).normalize().toString().replace('\\', '/'))
+                        .map(p -> stripUserPrefix(p, userId))
                         .sorted()
                         .collect(Collectors.toList());
             }
@@ -82,26 +83,44 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
-    public boolean exists(String path) {
-        return Files.exists(resolve(path));
+    public boolean exists(String userId, String path) {
+        return Files.exists(resolve(userId, path));
     }
 
     @Override
-    public void delete(String path) {
+    public void delete(String userId, String path) {
         try {
-            Files.deleteIfExists(resolve(path));
-            log.debug("文件删除成功: {}", resolve(path));
+            Files.deleteIfExists(resolve(userId, path));
+            log.debug("文件删除成功: {}", resolve(userId, path));
         } catch (IOException e) {
             throw new StorageException("删除文件失败: " + path, e);
         }
     }
 
-    private Path resolve(String path) {
+    /**
+     * 解析实际路径：{@code basePath/{userId}/{path}}，统一加用户层（多用户架构预留）。
+     * userId 归一化校验（仅 {@code [a-zA-Z0-9_-]}），防止路径注入。
+     */
+    private Path resolve(String userId, String path) {
+        String uid = (userId == null || userId.isBlank()) ? "default" : userId;
+        if (!uid.matches("[a-zA-Z0-9_-]+")) {
+            throw new StorageException("非法用户 ID: " + userId);
+        }
         // 防止路径遍历攻击
-        Path resolved = basePath.resolve(path).normalize();
-        if (!resolved.startsWith(basePath)) {
+        Path resolved = basePath.resolve(uid).resolve(path).normalize();
+        Path userRoot = basePath.resolve(uid).normalize();
+        if (!resolved.startsWith(userRoot)) {
             throw new StorageException("非法路径访问: " + path);
         }
         return resolved;
+    }
+
+    /**
+     * 去掉返回路径中的用户层前缀，保持与传入时一致（相对用户层）。
+     * 如 {@code default/records/2026/07/a.md} → {@code records/2026/07/a.md}。
+     */
+    private String stripUserPrefix(String fullPath, String userId) {
+        String prefix = userId + "/";
+        return fullPath.startsWith(prefix) ? fullPath.substring(prefix.length()) : fullPath;
     }
 }

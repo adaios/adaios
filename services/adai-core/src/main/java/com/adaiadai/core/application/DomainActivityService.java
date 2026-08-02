@@ -25,8 +25,8 @@ public class DomainActivityService {
     /**
      * 计算所有 domain 的活跃度信号。
      */
-    public DomainBriefActivity getActivity() {
-        List<ContentRecord> allRecords = recordRepository.findAll();
+    public DomainBriefActivity getActivity(String userId) {
+        List<ContentRecord> allRecords = recordRepository.findAll(userId);
         LocalDate today = LocalDate.now();
         LocalDate weekAgo = today.minusDays(7);
         LocalDate prevWeekEnd = weekAgo;

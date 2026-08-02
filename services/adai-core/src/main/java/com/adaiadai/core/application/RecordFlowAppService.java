@@ -36,13 +36,13 @@ public class RecordFlowAppService {
     /**
      * 处理 LOG 意图：Record → Context → AI → Memory。
      */
-    public FlowResult process(ContentRecord record) {
-        log.info("=== 记录流程开始 | recordId={} | type={} ===", record.id(), record.type());
+    public FlowResult process(String userId, ContentRecord record) {
+        log.info("=== 记录流程开始 | userId={} | recordId={} | type={} ===", userId, record.id(), record.type());
 
-        var result = understandingService.composeAndUnderstand(record.type(), record);
+        var result = understandingService.composeAndUnderstand(userId, record.type(), record);
         AiUnderstanding understanding = result.understanding();
         Memory memory = Memory.fromUnderstanding(record.id(), understanding);
-        memoryService.persist(memory);
+        memoryService.persist(userId, memory);
 
         log.info("=== 记录流程完成 | 摘要={} | 情感={} ===", understanding.summary(), understanding.sentiment());
 
