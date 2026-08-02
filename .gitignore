@@ -74,6 +74,9 @@ data/*/index/
 # 数据迁移自动备份（data-backup-*.tar.gz，确认后可删）
 data-backup-*.tar.gz
 
+# 账号列表（系统级敏感配置，不提交；AccountFileRepository 首次启动自动 seed adai）
+data/accounts/
+
 # ── 后端测试残留数据 ──
 services/adai-core/data/
 

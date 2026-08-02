@@ -421,6 +421,36 @@ public class MemoryService {
     }
 
     /**
+     * 手动修正记忆（adai-admin 数据管理）：更新 kind/summary/tags/actionable/suggestion。
+     * <p>
+     * 任一字段为 null 表示保持原值。找不到记忆返回 false（404）。
+     */
+    public boolean update(String userId, String memoryId, String kind, String summary,
+                          List<String> tags, Boolean actionable, String suggestion) {
+        for (int i = 0; i < 30; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(userId, date)) {
+                if (m.id().equals(memoryId)) {
+                    Memory updated = new Memory(m.id(), m.recordId(),
+                            kind != null ? kind : m.kind(),
+                            summary != null ? summary : m.summary(),
+                            m.patterns(), m.preferences(),
+                            tags != null ? tags : m.tags(),
+                            m.sentiment(),
+                            actionable != null ? actionable : m.actionable(),
+                            suggestion != null ? suggestion : m.suggestion(),
+                            m.createdAt(), m.topic(), m.superseded(), m.evolvedTo(), m.doneAt(), m.lastConfirmed());
+                    replaceEntry(userId, date, m.recordId(), updated);
+                    log.info("记忆手动修正 | memoryId={} | summary={}", memoryId, truncate(summary != null ? summary : m.summary(), 40));
+                    return true;
+                }
+            }
+        }
+        log.warn("记忆未找到，无法修正 | memoryId={}", memoryId);
+        return false;
+    }
+
+    /**
      * 查询该用户未完成的行动记忆（actionable=true 且 doneAt=null，近 30 天）。
      * <p>
      * Feed 待办提醒 + Context 待行动事项共用（记忆进化 Phase 3）。

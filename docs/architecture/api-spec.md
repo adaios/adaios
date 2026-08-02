@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.3 | 最后更新：2026-08-02**
+**文档版本：v3.4 | 最后更新：2026-08-02**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
@@ -546,6 +547,30 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 
 - `404 Not Found` — 记忆不存在
 
+### `PATCH /api/v1/memory/{id}` — 手动修正记忆（adai-admin）
+
+adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestion。任一字段缺省表示保持原值。
+
+**Request Body**
+
+```json
+{
+  "kind": "insight",
+  "summary": "修正后的摘要",
+  "tags": ["半导体", "交易"],
+  "actionable": false,
+  "suggestion": null
+}
+```
+
+**Response**
+
+```json
+{ "success": true }
+```
+
+- `404 Not Found` — 记忆不存在
+
 ---
 
 ## 10. 用户身份（Identity）
@@ -799,3 +824,102 @@ chat 模式（全屏）
   "cancelled": 1
 }
 ```
+
+---
+
+## 16. 账号（多账号功能层）
+
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app 首屏从账号列表选择进入。现阶段无口令/鉴权（后补），seed 管理员 `adai` 由后端首次启动自动预置。
+
+### `GET /api/v1/accounts` — 账号列表
+
+**Response**
+
+```json
+[
+  {
+    "userId": "adai",
+    "role": "admin",
+    "enabled": true,
+    "createdAt": "2026-08-02"
+  }
+]
+```
+
+### `POST /api/v1/accounts` — 建号（adai-admin 后台）
+
+**Request Body**
+
+```json
+{ "userId": "alice", "role": "user" }
+```
+
+- `role` 可选，默认 `user`（`admin` / `user`）
+- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法
+
+### `PATCH /api/v1/accounts/{userId}` — 更新账号
+
+**Request Body**
+
+```json
+{ "enabled": false }
+```
+
+- `enabled` / `role` 均可选，缺省保持原值
+- **内置管理员 `adai` 不可禁用、不可降级**（400）
+- `404` — 账号不存在
+
+### `DELETE /api/v1/accounts/{userId}` — 删除账号
+
+- **内置管理员 `adai` 不可删除**（400）
+- `204` — 删除成功；`404` — 账号不存在
+
+---
+
+## 17. 管理端（adai-admin）
+
+> 系统级浏览端点（读取 `data/` 全部用户层 + `os/` 知识库），**不走 `X-User-Id` 用户层**，仅供 adai-admin 使用。路径一律防目录遍历（`normalize + startsWith` 校验）。
+
+### `GET /api/v1/admin/files?path=` — data/ 目录浏览
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|:-----|:-----|:----:|:----:|:-----|
+| `path` | String | 否 | 空（data/ 根）| 相对 data/ 的目录路径，如 `default/records` |
+
+**Response** — 目录条目数组
+
+```json
+[
+  { "name": "records", "path": "records", "isDir": true },
+  { "name": "notes.md", "path": "notes.md", "isDir": false, "size": 123 }
+]
+```
+
+- `404` — 目录不存在
+
+### `GET /api/v1/admin/files/content?path=` — data/ 文件内容
+
+**Response**
+
+```json
+{ "path": "notes.md", "size": 123, "content": "文件内容" }
+```
+
+- `404` — 文件不存在；`400` — 文件 >512KB 或路径非法
+
+### `GET /api/v1/admin/knowledge?domain=&path=` — os/ 知识资产浏览
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `domain` | String | 是 | `trading-os` / `life-os` / `project-os`（白名单校验）|
+| `path` | String | 否 | 相对 os/ 的目录路径，如 `trading-os/11-context` |
+
+**Response** — 同 `/admin/files` 条目数组
+
+### `GET /api/v1/admin/knowledge/content?path=` — os/ 文件内容
+
+**Response** — 同 `/admin/files/content`

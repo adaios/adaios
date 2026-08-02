@@ -95,6 +95,29 @@ public class MemoryController {
     }
 
     /**
+     * 手动修正记忆（adai-admin 数据管理）：更新 kind/summary/tags/actionable/suggestion。
+     * <p>
+     * PATCH /api/v1/memory/{id} — 任一字段缺省表示保持原值；找不到返回 404。
+     */
+    @PatchMapping("/{id}")
+    public ResponseEntity<?> updateMemory(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id,
+            @RequestBody MemoryUpdateRequest request) {
+        boolean updated = memoryService.update(userId, id,
+                request.kind(), request.summary(), request.tags(),
+                request.actionable(), request.suggestion());
+        if (!updated) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    public record MemoryUpdateRequest(
+            String kind, String summary, List<String> tags,
+            Boolean actionable, String suggestion) {}
+
+    /**
      * 重建记忆：遍历没有记忆的历史记录，逐个生成 AI 摘要+标签并沉淀为记忆。
      * <p>
      * POST /api/v1/memory/rebuild?date=2026-07-21
