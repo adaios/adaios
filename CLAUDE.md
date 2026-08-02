@@ -24,11 +24,12 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 | 焦点 | 目录 | 启动 | 负责 |
 |:----|:-----|:-----|:-----|
 | **后端** | `services/adai-core/` | `cd services/adai-core && claude` | Java/Spring Boot，Controller、Context Engine、AI 集成 |
-| **前端** | `apps/adai-app/` | `cd apps/adai-app && claude` | Flutter Material 3，卡片状态机、输入栏、主题 |
+| **前端（移动）** | `apps/adai-app/` | `cd apps/adai-app && claude` | Flutter Material 3，卡片状态机、输入栏、主题 |
+| **前端（桌面）** | `apps/adai-web/` | `cd apps/adai-web && claude` | Flutter Web 独立桌面端，两栏壳 + 8 模块桌面形态 |
 | **交易知识** | `os/trading-os/` | `cd os/trading-os && claude` | 课程整理、规则提炼、术语融合 |
 | **全局** | 根目录 | `claude`（默认） | 架构讨论、文档更新、跨项目协调 |
 
-**在子目录工作时不处理后端/前端/交易知识以外的内容。** 当你在全局根目录更新架构文档时，需要同步检查三个子项目的 CLAUDE.md 和文件是否一致。
+**在子目录工作时不处理后端/前端/交易知识以外的内容。** 当你在全局根目录更新架构文档时，需要同步检查各子项目的 CLAUDE.md 和文件是否一致。
 
 ## 技术栈
 
@@ -72,6 +73,9 @@ apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
     scripts/             # 构建/部署脚本
       serve_web.sh       #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动
+  adai-web/            #   Flutter 桌面端（Web 独立工程，两套 UI 非适配，参考元宝电脑端）
+    scripts/
+      serve_web.sh     #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动（:8082）
   adai-admin/          #   Flutter 管理端（产品后台：账号/内容/数据/系统/知识管理，类企业管理系统，独立体系）
     scripts/
       serve_web.sh     #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动（:8083）
@@ -303,6 +307,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **adai-web 独立桌面端（两套 UI 非适配）** ✅：拆独立工程 `apps/adai-web`（Web，:8082）——两栏壳（左导航 200 + lazy IndexedStack 保活）+ 8 模块桌面原生形态（Feed 对话流 880 + 右上下文栏 / 交易 DataTable / 记忆 master-detail / 时间线月历 / 任务看板 / 项目仪表盘 / 搜索高亮 / 档案两栏）；API 层值复制 + 3 项改进（utf8 解码 / 缓存参数感知 / ApiException）（adai-app 保持 8081 移动端，两套 UI 各做各的）
 - **adai-app 即产品入口（砍掉 adai-entry）** ✅：adai-entry 账号选择前门移除——app 直接作为产品入口（交流 + 页面操作一体），adai-admin 定位拨正为独立产品后台（账号/内容/数据/系统/知识，类企业管理系统）；多账号分流仍保留 `?userId=` query 注入 X-User-Id 能力
 - **adai-admin 全栈（MD11-16）** ✅：后端账号体系（seed adai + CRUD + 内置保护）+ admin 端点（memory 修正 / data 文件树 / os 知识浏览）+ 前端四模块（账号/数据/系统/知识）接真实 API（`1337b62`/`f9cf6bf`）
 - **多账号架构预留（v1.0.0 前置）** ✅：全链路 userId 分层（`data/{userId}/`，Controller `X-User-Id` header → AppService → FileStorage 显式透传）+ 数据迁移脚本（`data/` → `data/default/`）+ .gitignore 通配防隐私裸露 + 多用户隔离测试（FileStorage/Record/TagIndex/Memory 四维）。RFC：`docs/rfc/20260802-multi-account-prep.md`
@@ -336,14 +341,15 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-admin | 规划 RFC 转正（`20260802-adai-admin`，approved）| ✅ 方向确认：v1.0.0 与多账号合并（独立产品后台：账号/内容/数据/系统/知识管理，类企业管理系统）|
 | adai-admin 全栈 | MD11-16：账号体系 + admin 端点 + 数据/系统/知识页 + memory 修正 | ✅ 后端 `1337b62` + 前端 `f9cf6bf`（31 测试过，真实 API）|
 | adai-app 即入口 | 砍掉 adai-entry，app 直接作为产品入口（交流 + 页面操作一体）| ✅ 已执行（删除 `apps/adai-entry`，根 CLAUDE.md 同步）|
+| adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 25 测试绿 · web 构建通过）|
 
 ### 测试状态
 - **后端** 169 测试，0 失败（含多用户隔离 5 测试）
-- **前端** adai-app 26 · adai-admin 31，全部 0 失败
+- **前端** adai-app 26 · adai-admin 31 · adai-web 25，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式）
-- 前端：adai-app `localhost:8081`（产品入口）· adai-admin `localhost:8083`（产品后台）（均 Flutter Web + CanvasKit 补丁）
+- 前端：adai-app `localhost:8081`（移动端入口，Web 形态）· adai-web `localhost:8082`（桌面端入口）· adai-admin `localhost:8083`（产品后台）（均 Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
 - 数据路径：`data/{userId}/...`（单用户 = `data/default/`，多账号预留）
 
