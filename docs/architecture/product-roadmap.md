@@ -50,7 +50,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 |:-----|:-----|:---------|:----:|
 | **v0.1.0** | 首个可发布基线 | 记忆进化 Phase 1-5 + 审核修复三批 + #13 消重复 + deploy.sh | 📋 已实现，待用户验收后 tag |
 | **v0.2.0** | 能力补全 | 前端 actionable UI 闭环（#60/#61/#62）+ L5 Feed 行情嵌入 | 📋 开发中 |
-| **v0.3.0** | 多模态 | Layer 4 多模态记录（待定）| ⬜ 候选 |
+| **v0.3.0** | 多模态 | Layer 4 图片记录（GLM-VLM 文本化，音频待定）| 📋 已实现，待 live 验收后 tag |
 | **…** | 版本演进 | 见「版本历史」，每版从功能全景中取项 | ⬜ 待定 |
 | **v1.0.0** | **正式版** | 核心闭环稳定 + 数据格式冻结（见 §五）| 🎯 目的地 |
 
@@ -68,7 +68,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | **L2 主动推送** | 今日简报 | 🟡 | 基础；深化方向（异动/提醒）待定 |
 | **L3 身份+记忆** | Identity / Record / Timeline / Context / Memory / Knowledge | ✅ | Kernel 六大组件完整 |
 | **L4 通用记录** | 文字记录 + 意图路由 | ✅ | — |
-| | **多模态记录（图片/音频）** | ❌ | **最大空白，候选 v0.3.0** |
+| | **多模态记录（图片/音频）** | 📋 | 图片 ✅ 已落地（`POST/GET /records/media` · GLM-4.6V-Flash · 记忆 KIND_INSIGHT，`20260802-multimodal-image-glm`）；音频 ⬜ 待定 |
 | **L5 外部信息** | 行情接入（腾讯）Phase 1 上下文注入 | ✅ | 已落地 |
 | | 行情主动推送 / Feed 行情嵌入 | ⬜ | 推送机制待设计；新闻无稳定源暂不做 |
 | **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ 意图识别（STATEMENT/QUESTION）| ✅ | 完整 |
@@ -135,7 +135,7 @@ v0.1.0 — 首个可发布基线
 | 前端 actionable UI 消费（#60/#61/#62）| v0.2.0 ✅已定 | 后端已就绪（type=action + done 接口）|
 | L5 Feed 行情嵌入 | v0.2.0 ✅已定 | 行情数据已接入，FeedEntry 加 market 类型 |
 | L2 主动推送深化（异动/提醒）| v0.3.0 | 推送机制设计（无渠道，需定轮询/定时方案）|
-| L4 多模态记录 | v0.3.0 | 记录格式设计 + AI 视觉能力确认 |
+| L4 多模态记录 | v0.3.0 ✅已落地 | 图片：`POST/GET /records/media` + GLM-VLM + 记忆沉淀（`20260802-multimodal-image-glm`，待 live 验收）；音频：录音/转写方案待定 |
 | Life OS 情绪/习惯/周报 | 数据积累后 | 10+ 条生活数据 |
 | **多账号 + adai-admin** | **v1.0.0** ✅已定 | 数据层 userId 预留 ✅（`20260802-multi-account-prep`）；adai-admin RFC approved `20260802-adai-admin`：Phase 0 账号管理（登录载体）→ 数据/系统/知识管理 |
 
