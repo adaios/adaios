@@ -8,11 +8,27 @@ import 'pages/profile_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const RootApp());
+  runApp(RootApp(userId: resolveUserId()));
+}
+
+/// 从入口跳转的 query 参数解析当前用户 ID（`?userId=xxx`）。
+String resolveUserId() => resolveUserIdFrom(Uri.base);
+
+/// 可测实现：[uri] 的 query 参数提取 userId。
+/// 非法（含路径注入字符）/缺失 → 'default'（兼容直接打开 URL 与移动端）。
+@visibleForTesting
+String resolveUserIdFrom(Uri uri) {
+  const fallback = 'default';
+  final q = uri.queryParameters['userId'];
+  if (q == null) return fallback;
+  return RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(q) ? q : fallback;
 }
 
 class RootApp extends StatelessWidget {
-  const RootApp({super.key});
+  const RootApp({super.key, required this.userId});
+
+  /// 当前用户 ID（入口选择后通过 query 传入）。
+  final String userId;
 
   @override
   Widget build(BuildContext context) {
@@ -26,21 +42,24 @@ class RootApp extends StatelessWidget {
         style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
         child: child!,
       ),
-      home: const DualWorldShell(),
+      home: DualWorldShell(userId: userId),
     );
   }
 }
 
 /// 双主页壳 — World A (Feed) 与 World B (Launcher) 无缝切换。
 class DualWorldShell extends StatefulWidget {
-  const DualWorldShell({super.key});
+  const DualWorldShell({super.key, this.userId = 'default'});
+
+  /// 当前用户 ID（透传给 ApiService 与 MainPage）。
+  final String userId;
 
   @override
   State<DualWorldShell> createState() => _DualWorldShellState();
 }
 
 class _DualWorldShellState extends State<DualWorldShell> {
-  final ApiService _api = ApiService();
+  late final ApiService _api = ApiService(userId: widget.userId);
   bool _showWorldB = false;
   String? _filterTag;
 
@@ -80,6 +99,7 @@ class _DualWorldShellState extends State<DualWorldShell> {
               )
             : MainPage(
                 key: ValueKey('worldA-${_filterTag ?? ''}'),
+                userId: widget.userId,
                 onPullUp: _toggleWorld,
                 filterTag: _filterTag,
                 onClearFilter: _clearFilter,

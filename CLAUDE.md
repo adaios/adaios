@@ -73,6 +73,11 @@ apps/
     scripts/             # 构建/部署脚本
       serve_web.sh       #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动
   adai-admin/          #   Flutter 管理端（独立入口，v1.0.0：账号/数据/系统/知识管理，复用 adai-app 设计系统）
+    scripts/
+      serve_web.sh     #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动（:8083）
+  adai-entry/          #   Flutter 入口（产品前门：登录=选择，按角色分流到 app / admin）
+    scripts/
+      serve_web.sh     #   Flutter Web 构建 + 本地 CanvasKit 补丁 + 启动（:8082）
 ```
 
 ## adai-core 架构（根包 `com.adaiadai.core`）
@@ -301,6 +306,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **adai-entry 账号选择入口（产品前门）** ✅：「登录=选择」落地——独立工程 `apps/adai-entry`（Flutter Web，:8082）拉 `GET /api/v1/accounts` 列 enabled 账号，点选按角色分流（admin→adai-admin，user→adai-app，query 传 `?userId=`）+ adai-app/adai-admin 配套读参数注入 `X-User-Id`（adai-app 26 / admin 31 / entry 4 测试全绿，web build 过）
+- **adai-admin 全栈（MD11-16）** ✅：后端账号体系（seed adai + CRUD + 内置保护）+ admin 端点（memory 修正 / data 文件树 / os 知识浏览）+ 前端四模块（账号/数据/系统/知识）接真实 API（`1337b62`/`f9cf6bf`）
 - **多账号架构预留（v1.0.0 前置）** ✅：全链路 userId 分层（`data/{userId}/`，Controller `X-User-Id` header → AppService → FileStorage 显式透传）+ 数据迁移脚本（`data/` → `data/default/`）+ .gitignore 通配防隐私裸露 + 多用户隔离测试（FileStorage/Record/TagIndex/Memory 四维）。RFC：`docs/rfc/20260802-multi-account-prep.md`
 - **v0.2.0 前端 actionable 闭环 + 行情嵌入** ✅：action 待办卡 + 完成按钮（PATCH done）、memory 页 kind/superseded/待办标记、Feed 分页终止修复（totalToday 只计核心）、L5 大盘行情条 type=market（`a4c584b`/`ca2d4a8`/`7d9b607`）
 - **记忆系统进化 Phase 1-5** ✅：kind 类型（`135f671`）+ 主题级合并 superseded（`7e98555`）+ actionable 闭环 + PATCH /memory/{id}/done（`8ef3739`）+ 时效淘汰（`c96e83b`）+ 筛选降噪（`b6a169c`）
@@ -330,15 +337,16 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
 | 多账号预留 | 全链路 userId 分层（v1.0.0 前置） | ✅ 完成（架构预留，功能层 v1.0.0）|
 | adai-admin | 规划 RFC 转正（`20260802-adai-admin`，approved）| ✅ 方向确认：v1.0.0 与多账号合并（账号管理载体 + 数据/系统/知识管理）|
-| adai-admin 前端 | 骨架 + 账号管理 UI（MD13 前端，mock 数据）| ✅ 独立工程 `apps/adai-admin`（analyze 0 / 5 测试过）；后端 MD11 联调待 v1.0.0 |
+| adai-admin 全栈 | MD11-16：账号体系 + admin 端点 + 数据/系统/知识页 + memory 修正 | ✅ 后端 `1337b62` + 前端 `f9cf6bf`（31 测试过，真实 API）|
+| adai-entry | 账号选择入口（产品前门：登录=选择，按角色分流）| ✅ 独立工程 `apps/adai-entry`（:8082，analyze 0 / 4 测试过 / web build 过）|
 
 ### 测试状态
 - **后端** 169 测试，0 失败（含多用户隔离 5 测试）
-- **前端** 23 测试，0 失败
+- **前端** adai-app 26 · adai-admin 31 · adai-entry 4，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式）
-- 前端：`localhost:8081`（Flutter Web + CanvasKit 补丁）
+- 前端：adai-app `localhost:8081` · adai-entry `localhost:8082` · adai-admin `localhost:8083`（均 Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
 - 数据路径：`data/{userId}/...`（单用户 = `data/default/`，多账号预留）
 

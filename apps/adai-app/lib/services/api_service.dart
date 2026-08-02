@@ -9,12 +9,16 @@ import 'models/tag_models.dart';
 class ApiService {
   final String baseUrl;
 
+  /// 当前用户 ID（入口 `?userId=` 传入，默认 'default'）。
+  final String userId;
+
   // 内存缓存：跨页面切换不丢
   TagsResponse? _tagsCache;
   List<TimelineEntryResponse>? _timelineCache;
   List<MemoryEntryResponse>? _memoryCache;
 
-  ApiService({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
+  ApiService({String? baseUrl, this.userId = 'default'})
+      : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   /// 获取今日 Brief（摘要），独立接口。
   Future<String> getBrief() async {
@@ -334,6 +338,8 @@ class ApiService {
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
+    // 多账号：所有请求带当前用户（后端 FileStorage 按 userId 隔离）
+    'X-User-Id': userId,
   };
 
   void _check(http.Response resp) {

@@ -330,7 +330,7 @@ void main() {
   // ─── App Launches ───
 
   testWidgets('App launches without crash', (tester) async {
-    await tester.pumpWidget(const RootApp());
+    await tester.pumpWidget(RootApp(userId: 'default'));
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

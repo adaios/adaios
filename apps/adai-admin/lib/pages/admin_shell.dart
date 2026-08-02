@@ -37,13 +37,23 @@ class AdminShell extends StatefulWidget {
   State<AdminShell> createState() => _AdminShellState();
 }
 
+/// 从前门入口 query 参数解析初始用户 ID（`?userId=xxx`），
+/// 非法/缺失 → 'default'（与 adai-app 行为一致）。
+String _initialUserId() {
+  const fallback = 'default';
+  final q = Uri.base.queryParameters['userId'];
+  if (q == null) return fallback;
+  return RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(q) ? q : fallback;
+}
+
 class _AdminShellState extends State<AdminShell> {
   late final AccountStore _accountStore = widget.accountStore ?? AccountApiStore();
 
   int _index = 0;
 
   /// 当前选中的用户 ID（per-user 请求的 X-User-Id）。
-  String _userId = 'default';
+  /// 从前门入口 `?userId=xxx` 预选，缺省 default（下拉仍可切）。
+  String _userId = _initialUserId();
 
   /// 可选账号列表（含 default）。
   List<Account> _accounts = [];

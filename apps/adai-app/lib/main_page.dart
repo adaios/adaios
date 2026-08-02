@@ -14,7 +14,17 @@ class MainPage extends StatefulWidget {
   final String? filterTag;
   final VoidCallback? onClearFilter;
 
-  const MainPage({super.key, this.onPullUp, this.onProfileTap, this.filterTag, this.onClearFilter});
+  /// 当前用户 ID（入口传入，用于 ApiService 的 X-User-Id）。
+  final String userId;
+
+  const MainPage({
+    super.key,
+    this.onPullUp,
+    this.onProfileTap,
+    this.filterTag,
+    this.onClearFilter,
+    this.userId = 'default',
+  });
 
   @override
   State<MainPage> createState() => _MainPageState();
@@ -23,7 +33,7 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
-  final ApiService _api = ApiService();
+  late final ApiService _api = ApiService(userId: widget.userId);
   final GlobalKey<InputBarState> _inputBarKey = GlobalKey<InputBarState>();
 
   List<FeedCardData> _cards = [];

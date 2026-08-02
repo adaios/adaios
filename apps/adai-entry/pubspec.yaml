@@ -1,0 +1,25 @@
+name: adai_entry
+description: "AdaiOS 入口 — 账号选择前门（登录=选择，按角色分流到 app / admin）。"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP 客户端（调后端 GET /api/v1/accounts）
+  http: ^1.2.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
