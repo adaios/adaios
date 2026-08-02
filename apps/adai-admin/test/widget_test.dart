@@ -1,14 +1,19 @@
-// AdaiOS 管理端 — 账号管理 Widget 测试。
+// AdaiOS 管理端 — 账号管理 Widget 测试（注入 FakeAccountStore，不依赖后端）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:adai_admin/main.dart';
+import 'package:adai_admin/pages/accounts/accounts_page.dart';
+
+import 'fakes.dart';
+
+Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
   testWidgets('管理端渲染账号列表（预置账号 + 保护标记）',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminApp());
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
 
     // 预置账号：adai / alice / bob
     expect(find.text('adai'), findsOneWidget);
@@ -21,7 +26,8 @@ void main() {
   });
 
   testWidgets('新建账号后列表实时反映', (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminApp());
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
 
     // 展开新建表单
     await tester.tap(find.text('+ 新建'));
@@ -36,7 +42,8 @@ void main() {
   });
 
   testWidgets('重复 userId 建号被拒绝', (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminApp());
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('+ 新建'));
     await tester.pumpAndSettle();
@@ -49,7 +56,8 @@ void main() {
   });
 
   testWidgets('禁用普通账号后状态更新为「禁用」', (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminApp());
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
 
     // 找到 alice 账号卡片的 Switch（内置 adai 无 Switch）
     final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
@@ -57,7 +65,7 @@ void main() {
 
     // 点击第一个 Switch（alice）
     await tester.tap(find.byType(Switch).first);
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     // 现在应有 2 个「禁用」标签（alice 禁用 + bob 本就禁用）
     expect(find.text('禁用'), findsNWidgets(2));
@@ -65,7 +73,8 @@ void main() {
   });
 
   testWidgets('删除账号需确认，取消则保留', (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminApp());
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
 
     // 删除 alice（第一个删除按钮）
     await tester.tap(find.byIcon(Icons.delete_outline).first);

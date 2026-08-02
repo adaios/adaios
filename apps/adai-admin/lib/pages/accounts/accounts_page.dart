@@ -1,23 +1,36 @@
 import 'package:flutter/material.dart';
-import '../../data/mock_account_store.dart';
 import '../../models/account.dart';
+import '../../services/account_api_store.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/badge.dart';
 
-/// 账号管理页 — 列表 + 建号表单 + 禁用/启用 + 删除（mock 数据）。
+/// 账号管理页 — 列表 + 建号表单 + 禁用/启用 + 删除（真实后端 /api/v1/accounts）。
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key});
+  const AccountsPage({super.key, this.store});
+
+  /// 可注入 store（测试用 Fake）；默认真实 [AccountApiStore]。
+  final AccountStore? store;
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();
 }
 
 class _AccountsPageState extends State<AccountsPage> {
-  final MockAccountStore _store = MockAccountStore();
+  late final AccountStore _store = widget.store ?? AccountApiStore();
+
+  List<Account>? _accounts;
+  String? _error;
+  bool _loading = true;
 
   bool _showCreate = false;
   final _userIdCtrl = TextEditingController();
   String _role = 'user';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   @override
   void dispose() {
@@ -25,10 +38,31 @@ class _AccountsPageState extends State<AccountsPage> {
     super.dispose();
   }
 
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final accounts = await _store.loadAccounts();
+      if (!mounted) return;
+      setState(() {
+        _accounts = accounts;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
   // ── 操作 ──
 
-  void _createAccount() {
-    final error = _store.create(userId: _userIdCtrl.text, role: _role);
+  Future<void> _createAccount() async {
+    final error = await _store.create(userId: _userIdCtrl.text, role: _role);
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -41,16 +75,19 @@ class _AccountsPageState extends State<AccountsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已创建账号', AppColors.darkGreen),
     );
+    await _load();
   }
 
-  void _toggleEnabled(Account account, bool enabled) {
-    if (!_store.setEnabled(account.userId, enabled)) {
+  Future<void> _toggleEnabled(Account account, bool enabled) async {
+    final error = await _store.setEnabled(account.userId, enabled);
+    if (!mounted) return;
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        _snack('内置管理员不可禁用', AppColors.darkOrange),
+        _snack(error, AppColors.darkOrange),
       );
       return;
     }
-    setState(() {});
+    await _load();
   }
 
   Future<void> _deleteAccount(Account account) async {
@@ -80,65 +117,102 @@ class _AccountsPageState extends State<AccountsPage> {
     );
     if (confirm != true || !mounted) return;
 
-    if (!_store.delete(account.userId)) {
+    final error = await _store.delete(account.userId);
+    if (!mounted) return;
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        _snack('内置管理员不可删除', AppColors.darkOrange),
+        _snack(error, AppColors.darkOrange),
       );
       return;
     }
-    setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已删除账号 ${account.userId}', AppColors.darkGreen),
     );
+    await _load();
   }
 
   SnackBar _snack(String text, Color color) {
     return SnackBar(
       backgroundColor: AppColors.darkSurface2,
       behavior: SnackBarBehavior.floating,
-      content: Text(text,
-          style: TextStyle(color: color, fontSize: 13)),
+      content: Text(text, style: TextStyle(color: color, fontSize: 13)),
     );
   }
 
   // ── 统计 ──
 
-  int get _adminCount => _store.accounts.where((a) => a.isAdmin).length;
-  int get _userCount => _store.accounts.where((a) => !a.isAdmin).length;
-  int get _disabledCount =>
-      _store.accounts.where((a) => !a.enabled).length;
+  List<Account> get _accountsOrEmpty => _accounts ?? const [];
+  int get _adminCount => _accountsOrEmpty.where((a) => a.isAdmin).length;
+  int get _userCount => _accountsOrEmpty.where((a) => !a.isAdmin).length;
+  int get _disabledCount => _accountsOrEmpty.where((a) => !a.enabled).length;
 
   // ── 构建 ──
 
   @override
   Widget build(BuildContext context) {
-    final accounts = _store.accounts;
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 16),
-          _buildStatsRow(),
-          const SizedBox(height: 12),
-          _buildCreateToggle(),
-          if (_showCreate) ...[
-            const SizedBox(height: 8),
-            _buildCreateForm(),
-          ],
-          const SizedBox(height: 12),
-          if (accounts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 40),
-              child: Center(
-                child: Text('暂无账号',
-                    style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-              ),
+      child: _loading
+          ? const Center(
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.darkGreen),
             )
-          else
-            ...accounts.map(_buildAccountCard),
-        ],
+          : _error != null
+              ? _buildError()
+              : _buildList(),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                size: 30, color: AppColors.darkOrange),
+            const SizedBox(height: 10),
+            Text('加载账号失败：$_error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _load,
+              child: const Text('重试',
+                  style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildList() {
+    final accounts = _accountsOrEmpty;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 16),
+        _buildStatsRow(),
+        const SizedBox(height: 12),
+        _buildCreateToggle(),
+        if (_showCreate) ...[
+          const SizedBox(height: 8),
+          _buildCreateForm(),
+        ],
+        const SizedBox(height: 12),
+        if (accounts.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 40),
+            child: Center(
+              child: Text('暂无账号',
+                  style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+            ),
+          )
+        else
+          ...accounts.map(_buildAccountCard),
+      ],
     );
   }
 
@@ -166,7 +240,6 @@ class _AccountsPageState extends State<AccountsPage> {
             ],
           ),
         ),
-        const AppBadge(label: 'MOCK', color: AppColors.darkYellow, icon: Icons.science_outlined),
       ],
     );
   }
@@ -181,7 +254,7 @@ class _AccountsPageState extends State<AccountsPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem('全部', _store.accounts.length, AppColors.darkGrey1),
+          _statItem('全部', _accountsOrEmpty.length, AppColors.darkGrey1),
           _statItem('管理员', _adminCount, AppColors.darkPurple),
           _statItem('普通用户', _userCount, AppColors.darkBlue),
           _statItem('已禁用', _disabledCount, AppColors.darkOrange),
@@ -353,7 +426,7 @@ class _AccountsPageState extends State<AccountsPage> {
   // ── 账号卡片 ──
 
   Widget _buildAccountCard(Account account) {
-    final isProtected = account.userId == MockAccountStore.protectedAdminId;
+    final isProtected = account.userId == AccountStore.protectedAdminId;
     final statusColor = account.enabled ? AppColors.darkGreen : AppColors.darkOrange;
     final roleColor = account.isAdmin ? AppColors.darkPurple : AppColors.darkBlue;
 
