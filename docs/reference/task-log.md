@@ -26,6 +26,8 @@
 | M11 | 搜索模块 | [§11](feature-reference.md#11-搜索模块) |
 | M12 | 身份资料模块 | [§12](feature-reference.md#12-身份资料模块) |
 | M13 | 标签模块 | [§13](feature-reference.md#13-标签模块) |
+| M14 | 账号体系（多账号功能层）| RFC `20260802-multi-account-prep` |
+| M15 | adai-admin 管理后台 | RFC `20260802-adai-admin` |
 | M-AI | AI 提示词/解析 | — |
 
 ---
@@ -165,6 +167,63 @@
 
 ---
 
+### M14 — 账号体系（多账号功能层，v1.0.0）
+
+#### MD11：Account 存储 + 登录端点（P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 账号存储（File First，`data/accounts/`，含 disabled 状态）+ `POST /api/v1/auth/login`（校验 userId + 简单口令 → 返回身份）。不做注册，账号由 admin 创建 |
+| **前置** | 多账号架构预留 ✅（userId 全链路透传，`f4efc5c`）|
+| **涉及文件** | 新 `AccountRepository`、`AuthController`、api-spec §auth |
+| **来源** | RFC `20260802-multi-account-prep.md` §六 |
+
+#### MD12：前端登录页 + 登录态（P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 登录 UI + 本地存储身份 + 所有 API 请求带 `X-User-Id` 头 + 未登录重定向登录页 |
+| **前置** | MD11（后端登录端点）|
+| **涉及文件** | adai-app：`api_service.dart`、新登录页、入口路由 |
+| **待定** | 鉴权强度：本机/单管理员用简单 token；复杂登录（JWT）不在 v1 范围 |
+
+### M15 — adai-admin 管理后台（v1.0.0）
+
+#### MD13：账号管理界面（Phase 0，P0）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | 管理员界面：账号列表 / 建号（无注册）/ 禁用 / 删除 + admin 端点（复用 MD11 存储）|
+| **前置** | MD11（账号存储）；adai-admin 前端形态定案 |
+| **待定** | ① admin 前端形态：adai-app 内 admin 模式 vs 独立入口 ② bootstrap 管理员怎么建（首个账号）|
+| **来源** | RFC `20260802-adai-admin.md` §3.0 |
+
+#### MD14：数据管理基础（Phase 1，P1）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | records 浏览/编辑/删除/批量 · memory 视图（kind/superseded/待办）+ 手动修正 · identity/tasks/positions 管理 · `data/` 文件树浏览 |
+| **前置** | MD13（admin 框架就位）|
+| **来源** | RFC `20260802-adai-admin.md` §3.1 |
+
+#### MD15：系统操作台（Phase 2，P2）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | Feed 预览（含 action/market）· 行情快照/复盘/知识反哺操作 · 记忆重建/重补/清理触发（`/memory/rebuild` 等）|
+| **前置** | MD14 |
+| **来源** | RFC `20260802-adai-admin.md` §3.2 |
+
+#### MD16：知识浏览（Phase 3，P3）
+
+| 字段 | 值 |
+|:-----|:----|
+| **描述** | `os/` 知识资产浏览（trading/life/project）+ 术语/规则查看 |
+| **前置** | MD15 |
+| **来源** | RFC `20260802-adai-admin.md` §3.3 |
+
+---
+
 ## 已完成任务
 
 ### M7 — 记忆模块
@@ -220,6 +279,14 @@ Memory Phase 4           —   —   —   MD5
 简报 prompt 统一          —   —   MD10 —
 记忆重建刷新 Feed         —   MD1 —   —
 Chat 关闭保留历史         —   —   MD2 —
+────────────────────────────────────────
+v1.0.0（adai-admin + 多账号）：
+  账号存储+登录           MD11 —   —   —
+  前端登录页+登录态       MD12 —   —   —
+  admin 账号管理          MD13 —   —   —
+  admin 数据管理基础      —   MD14 —   —
+  admin 系统操作台        —   —   MD15 —
+  admin 知识浏览          —   —   —   MD16
 ────────────────────────────────────────
 本轮完成（07-29）：
   #1 人称代词 ✓  ND1 prompt 统一 ✓  ND2 死代码 ✓  #3/#4 ended ✓
