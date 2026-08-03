@@ -38,6 +38,7 @@ class FeedCardData {
   final String id;
   final FeedCardType type;
   final String time;
+  final String date; // MM-dd，每张卡片都带（批2 每卡日期）
   final String content;
   final List<String>? tags;
   final String? summary;
@@ -49,31 +50,37 @@ class FeedCardData {
   final String domain;  // "life" | "trading" | "project"
   final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
+  final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   final DateTime updatedAt;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
-    this.tags, this.summary, this.turns, this.mode = CardMode.idle,
+    this.date = '', this.tags, this.summary, this.turns, this.mode = CardMode.idle,
     this.loading = false, this.intent, this.expanded = false,
     this.domain = 'life', this.error, this.onMarkDone,
+    this.mediaUrl, this.mediaHeaders,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
-    String? id, FeedCardType? type, String? time, String? content,
+    String? id, FeedCardType? type, String? time, String? date, String? content,
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
     String? domain, String? error, bool clearError = false,
+    String? mediaUrl, Map<String, String>? mediaHeaders,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
       id: id ?? this.id, type: type ?? this.type, time: time ?? this.time,
-      content: content ?? this.content, tags: tags ?? this.tags,
+      date: date ?? this.date, content: content ?? this.content, tags: tags ?? this.tags,
       summary: summary ?? this.summary, turns: turns ?? this.turns,
       mode: mode ?? this.mode, loading: loading ?? this.loading,
       intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
       domain: domain ?? this.domain,
       error: clearError ? null : error ?? this.error,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
@@ -246,6 +253,10 @@ class FeedCard extends StatelessWidget {
                             const SizedBox(height: 3),
                             _buildTurns(),
                           ],
+                          if (data.mediaUrl != null) ...[
+                            const SizedBox(height: 8),
+                            _buildMediaThumb(context),
+                          ],
                           if (data.summary != null && !_isActive && !_isEnded) ...[
                             const SizedBox(height: 6),
                             _buildCleanSummary(),
@@ -304,7 +315,7 @@ class FeedCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 顶行：类型在前、时间紧随其后，一起左上角
+            // 顶行：类型在前、日期+时间紧随其后，一起左上角
             Row(children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -313,7 +324,8 @@ class FeedCard extends StatelessWidget {
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
               ),
               const SizedBox(width: 8),
-              Text(data.time, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             ]),
             const SizedBox(height: 8),
             Row(
@@ -382,6 +394,58 @@ class FeedCard extends StatelessWidget {
     return TextSpan(children: children);
   }
 
+  /// 图片记录缩略图（批2 原图可见）——点击弹全图。
+  Widget _buildMediaThumb(BuildContext context) {
+    final url = data.mediaUrl;
+    if (url == null) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () => _showFullImage(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          headers: data.mediaHeaders,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            width: 96, height: 96,
+            color: AppColors.darkSurface2,
+            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+          ),
+          loadingBuilder: (_, child, progress) => progress == null
+              ? child
+              : Container(
+                  width: 96, height: 96,
+                  color: AppColors.darkSurface2,
+                  child: const Center(child: SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
+                ),
+        ),
+      ),
+    );
+  }
+
+  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
+  void _showFullImage(BuildContext context) {
+    final url = data.mediaUrl;
+    if (url == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(url, headers: data.mediaHeaders, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Row(
       children: [
@@ -421,7 +485,8 @@ class FeedCard extends StatelessWidget {
           ),
           const SizedBox(width: 6),
         ],
-        Text(data.time, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+        Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
         if (_isChatting) ...[
           const SizedBox(width: 6),
           Container(width: 4, height: 4,

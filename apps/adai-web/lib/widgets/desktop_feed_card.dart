@@ -78,6 +78,11 @@ class DesktopFeedCard extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (data.date.isNotEmpty) ...[
+                      Text(data.date,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+                      const SizedBox(height: 2),
+                    ],
                     Text(data.time,
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey4)),
                     const SizedBox(height: 6),
@@ -102,6 +107,10 @@ class DesktopFeedCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       if (!_hasTurns) _buildBody(),
                       if (_hasTurns) _buildTurns(),
+                      if (data.mediaUrl != null) ...[
+                        const SizedBox(height: 8),
+                        _buildMediaThumb(context),
+                      ],
                       if (_isWaiting) _buildThinking(),
                       if (data.summary != null && _isEnded) ...[
                         const SizedBox(height: 6),
@@ -137,7 +146,7 @@ class DesktopFeedCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 顶行：类型在前、时间紧随其后，一起左上角（日期批 2 后端 date 字段再补）
+            // 顶行：类型在前、日期+时间紧随其后，一起左上角
             Row(children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -146,7 +155,8 @@ class DesktopFeedCard extends StatelessWidget {
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
               ),
               const SizedBox(width: 8),
-              Text(data.time, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             ]),
             const SizedBox(height: 8),
             Row(
@@ -213,6 +223,61 @@ class DesktopFeedCard extends StatelessWidget {
     }
     if (children.isNotEmpty && children.last.text == '  ·  ') children.removeLast();
     return TextSpan(children: children);
+  }
+
+  /// 图片记录缩略图（批2 原图可见）——点击弹全图。
+  Widget _buildMediaThumb(BuildContext context) {
+    final url = data.mediaUrl;
+    if (url == null) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: () => _showFullImage(context),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            url,
+            headers: data.mediaHeaders,
+            width: 120,
+            height: 90,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 120, height: 90,
+              color: AppColors.darkSurface2,
+              child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+            ),
+            loadingBuilder: (_, child, progress) => progress == null
+                ? child
+                : Container(
+                    width: 120, height: 90,
+                    color: AppColors.darkSurface2,
+                    child: const Center(child: SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
+  void _showFullImage(BuildContext context) {
+    final url = data.mediaUrl;
+    if (url == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(url, headers: data.mediaHeaders, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
   }
 
   static const Map<String, String> _domainEmoji = {'life': '📝', 'trading': '📈', 'project': '📑'};

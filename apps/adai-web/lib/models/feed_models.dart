@@ -37,6 +37,7 @@ class FeedCardData {
   final String id;
   final FeedCardType type;
   final String time;
+  final String date; // MM-dd，每张卡片都带（批2 每卡日期）
   final String content;
   final List<String>? tags;
   final String? summary;
@@ -48,6 +49,8 @@ class FeedCardData {
   final String domain; // "life" | "trading" | "project"
   final String? error; // API 调用失败时的错误信息，非 null 时卡片进入错误态
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
+  final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   final DateTime updatedAt;
 
   FeedCardData({
@@ -55,6 +58,7 @@ class FeedCardData {
     required this.type,
     required this.time,
     required this.content,
+    this.date = '',
     this.tags,
     this.summary,
     this.turns,
@@ -65,6 +69,8 @@ class FeedCardData {
     this.domain = 'life',
     this.error,
     this.onMarkDone,
+    this.mediaUrl,
+    this.mediaHeaders,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -72,6 +78,7 @@ class FeedCardData {
     String? id,
     FeedCardType? type,
     String? time,
+    String? date,
     String? content,
     List<String>? tags,
     String? summary,
@@ -83,12 +90,15 @@ class FeedCardData {
     String? domain,
     String? error,
     bool clearError = false,
+    String? mediaUrl,
+    Map<String, String>? mediaHeaders,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
       id: id ?? this.id,
       type: type ?? this.type,
       time: time ?? this.time,
+      date: date ?? this.date,
       content: content ?? this.content,
       tags: tags ?? this.tags,
       summary: summary ?? this.summary,
@@ -99,6 +109,8 @@ class FeedCardData {
       expanded: expanded ?? this.expanded,
       domain: domain ?? this.domain,
       error: clearError ? null : error ?? this.error,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
@@ -106,7 +118,7 @@ class FeedCardData {
 
 /// Feed 条目 → 卡片数据（值复制自 adai-app main_page）。
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData({VoidCallback? onMarkDone}) {
+  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
       cardTurns = turns!.map((t) => ConversationTurn(
@@ -119,6 +131,7 @@ extension FeedEntryResponseX on FeedEntryResponse {
       id: id,
       type: _toCardType(type),
       time: time,
+      date: date,
       content: content,
       tags: tags.isNotEmpty ? tags : null,
       mode: CardMode.idle,
@@ -127,6 +140,8 @@ extension FeedEntryResponseX on FeedEntryResponse {
       turns: cardTurns,
       domain: domain,
       onMarkDone: onMarkDone,
+      mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
+      mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
     );
   }
 

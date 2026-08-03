@@ -375,6 +375,12 @@ class ApiService {
     'X-User-Id': userId,
   };
 
+  /// 图片记录原图 URL（供 Image.network 渲染缩略图/点击看原图）。
+  String mediaUrl(String recordId) => '$baseUrl/api/v1/records/media/$recordId';
+
+  /// 媒体请求鉴权头（与 _headers 一致，Image.network 需要显式传入）。
+  Map<String, String> get mediaHeaders => {'X-User-Id': userId};
+
   void _check(http.Response resp) {
     if (resp.statusCode >= 400) {
       throw Exception('API 错误 ${resp.statusCode}: ${utf8.decode(resp.bodyBytes)}');
@@ -441,6 +447,8 @@ class FeedEntryResponse {
   final String content;
   final List<String> tags;
   final String time;
+  final String date; // MM-dd，每张卡片都带（批2 每卡日期）
+  final String? mediaPath; // 图片记录才有（批2 原图可见）
   final String? intent;
   final String? summary;
   final List<Map<String, dynamic>>? turns;
@@ -454,6 +462,8 @@ class FeedEntryResponse {
     required this.content,
     required this.tags,
     required this.time,
+    this.date = '',
+    this.mediaPath,
     this.intent,
     this.summary,
     this.turns,
@@ -468,6 +478,8 @@ class FeedEntryResponse {
     content: json['content'] as String,
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
     time: json['time'] as String? ?? json['timeString'] as String? ?? '',
+    date: json['date'] as String? ?? '',
+    mediaPath: json['mediaPath'] as String?,
     intent: json['intent'] as String?,
     summary: json['summary'] as String?,
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
@@ -530,8 +542,9 @@ class TimelineEntryResponse {
   final String title;
   final List<String> tags;
   final String dateTime;
+  final String? mediaPath; // 图片记录才有（批2 原图可见）
 
-  TimelineEntryResponse({required this.id, required this.type, required this.title, required this.tags, required this.dateTime});
+  TimelineEntryResponse({required this.id, required this.type, required this.title, required this.tags, required this.dateTime, this.mediaPath});
 
   factory TimelineEntryResponse.fromJson(Map<String, dynamic> json) => TimelineEntryResponse(
     id: json['id'] as String,
@@ -539,6 +552,7 @@ class TimelineEntryResponse {
     title: json['title'] as String? ?? '',
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
     dateTime: json['dateTime'] as String? ?? '',
+    mediaPath: json['mediaPath'] as String?,
   );
 }
 

@@ -336,6 +336,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **多模态图片记录（L4）** ✅：图片 → GLM-4.1V-Thinking-Flash 视觉理解 → 文本化进现有闭环（Timeline/Memory/Search 零改动）——`VisualAiClient` 端口（infrastructure/ai/vision/）+ `GlmVisualAiClient` + `POST/GET /api/v1/records/media`（multipart，File First 落 `records/.../media/`）+ FileStorage 字节读写 + 记忆 KIND_INSIGHT（Phase 5 筛选适配）+ VLM 失败降级不丢数据；前端 adai-app/adai-web 输入栏图片上传（256 测试绿 · 26/25 前端测试绿）
 - **adai-web 验收交互修复（批1）** ✅：live 验收反馈迭代——图片上传改**输入栏内联多图 + 可选文字**（选多张→横向预览逐张移除→发送逐张上传每张一条记录+记忆、caption 共享；发送按钮变绿提示有图）；ask 卡 waiting 态反馈（spinner +「正在思考…」占位）；简单卡时间戳（badge 类型在前+时间随后左上角）+ 行情红涨绿跌着色（`feed_page.dart` / `desktop_feed_card.dart`，analyze 0 · 25 测试绿）
 - **adai-app 同步批1 交互改进** ✅：验收三项同步到移动端——输入栏内联多图+可选文字（`onSendMedia` 逐张上传 caption 共享）、ask waiting「正在思考…」占位、简单卡时间戳+行情红涨绿跌（`input_bar.dart` / `feed_card.dart` / `main_page.dart`，analyze 0 error · 29 测试绿）
+- **adai-web 验收批2（每卡日期 + 原图可见）** ✅：后端 `FeedEntry.date`（MM-dd 各构建点）+ `mediaPath`（仅图片记录，`RecordRepository.findMediaPath`）+ `TimelineEntry.mediaPath`；前端双端——普通卡/简单卡显示日期、adai-web 时间竖列两行、图片记录 FeedCard 缩略图 + 点击看原图 Dialog、时间线页（modal/page）缩略图；api-spec 同步（后端 258 测试 · 双端 analyze 0 error · adai-app 31 / adai-web 27 测试绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |
@@ -352,7 +353,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-admin 全栈 | MD11-16：账号体系 + admin 端点 + 数据/系统/知识页 + memory 修正 | ✅ 后端 `1337b62` + 前端 `f9cf6bf`（31 测试过，真实 API）|
 | adai-app 即入口 | 砍掉 adai-entry，app 直接作为产品入口（交流 + 页面操作一体）| ✅ 已执行（删除 `apps/adai-entry`，根 CLAUDE.md 同步）|
 | adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 25 测试绿 · web 构建通过）|
-| 多模态图片记录 | L4 图片 → GLM-VLM 文本化 → 现有闭环（v0.3.0 目标）| ✅ 前后端完成 · live 验收迭代中（批1 图片内联多图+caption 双端已落地，原图可见/每卡日期批2 待做）|
+| 多模态图片记录 | L4 图片 → GLM-VLM 文本化 → 现有闭环（v0.3.0 目标）| ✅ 前后端完成 · 验收批1/批2 双端已落地（图片内联多图+caption + 每卡日期 + 原图可见）|
 
 ### 测试状态
 - **后端** 256 测试，0 失败（含多用户隔离 5 测试；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）

@@ -49,7 +49,7 @@ class TimelineControllerTest {
     void getTimeline_returnsEntries() throws Exception {
         var timelineService = mock(TimelineAppService.class);
         when(timelineService.getRecent(any(), anyInt())).thenReturn(List.of(
-                new TimelineEntry("r1", "note", "title", List.of("tag"), LocalDateTime.of(2026, 7, 18, 14, 30))
+                new TimelineEntry("r1", "note", "title", List.of("tag"), LocalDateTime.of(2026, 7, 18, 14, 30), null)
         ));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new TimelineController(timelineService)).build();

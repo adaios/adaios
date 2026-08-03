@@ -118,6 +118,7 @@ public class RecordFileRepository implements RecordRepository {
     /**
      * 查找记录对应的媒体文件相对路径（records/{yyyy}/{MM}/media/{id}.*）。
      */
+    @Override
     public Optional<String> findMediaPath(String userId, String id) {
         if (id == null || !id.startsWith("rec_")) {
             return Optional.empty();

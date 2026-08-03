@@ -29,6 +29,7 @@ public class FeedAppService {
 
     private static final Logger log = LoggerFactory.getLogger(FeedAppService.class);
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM-dd");
 
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
@@ -88,7 +89,7 @@ public class FeedAppService {
         for (ContentRecord r : allRecords) {
             if (skipRecordIds.contains(r.id())) continue;
             if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
-            allEntries.add(toFeedEntry(r));
+            allEntries.add(toFeedEntry(userId, r));
             memoriesFor(allMemories, r.id()).ifPresent(m -> allEntries.add(toAiEntry(m)));
         }
 
@@ -151,13 +152,17 @@ public class FeedAppService {
         return map;
     }
 
-    private FeedEntry toFeedEntry(ContentRecord r) {
+    private FeedEntry toFeedEntry(String userId, ContentRecord r) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
+        String mediaPath = "image".equals(r.type())
+                ? recordRepository.findMediaPath(userId, r.id()).orElse(null)
+                : null;
         return new FeedEntry(
                 "record", r.id(), null,
                 r.title(), r.content(), r.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
-                intent, r.summary(), null, r.domain()
+                intent, r.summary(), null, r.domain(),
+                r.createdAt().format(DATE_FMT), mediaPath
         );
     }
 
@@ -187,7 +192,8 @@ public class FeedAppService {
         return new FeedEntry(
                 "card", card.id(), null,
                 firstUserMsg, firstUserMsg, card.tags(),
-                timeStr, "question", card.summary(), turns, "life"
+                timeStr, "question", card.summary(), turns, "life",
+                card.createdAt().format(DATE_FMT), null
         );
     }
 
@@ -196,7 +202,8 @@ public class FeedAppService {
                 "ai_note", m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
                 m.createdAt().toLocalTime().format(TIME_FMT),
-                null, null, null, "life"
+                null, null, null, "life",
+                m.createdAt().format(DATE_FMT), null
         );
     }
 
@@ -207,7 +214,8 @@ public class FeedAppService {
                 "action", m.id(), m.recordId(),
                 text, text, m.tags(),
                 m.createdAt().toLocalTime().format(TIME_FMT),
-                null, null, null, "life"
+                null, null, null, "life",
+                m.createdAt().format(DATE_FMT), null
         );
     }
 
@@ -228,7 +236,8 @@ public class FeedAppService {
         FeedEntry entry = new FeedEntry(
                 "market", "market_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss")), null,
                 "大盘行情", content, List.of("行情"),
-                LocalDateTime.now().format(TIME_FMT), null, null, null, "trading"
+                LocalDateTime.now().format(TIME_FMT), null, null, null, "trading",
+                LocalDate.now().format(DATE_FMT), null
         );
         return List.of(entry);
     }
@@ -248,7 +257,8 @@ public class FeedAppService {
             String type, String id, String sourceRecordId,
             String title, String content, List<String> tags,
             String time, String intent, String summary,
-            List<TurnDto> turns, String domain
+            List<TurnDto> turns, String domain,
+            String date, String mediaPath
     ) {}
 
     public record TurnDto(boolean isUser, String text, String time) {}

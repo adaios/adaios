@@ -63,6 +63,7 @@ class _FeedPageState extends State<FeedPage> {
         _cards = feed.entries
             .where((e) => e.type != FeedEntryType.aiNote)
             .map((e) => e.toFeedData(
+              api: widget.api,
               onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
             ))
             .toList();

@@ -84,4 +84,19 @@ void main() {
     expect(find.text('行情'), findsOneWidget);
     expect(find.text('上证指数 3200 +0.5%'), findsOneWidget);
   });
+
+  testWidgets('普通卡时间竖列显示 date + time', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: '1', type: FeedCardType.record, time: '14:00', date: '08-03', content: 'buy stock',
+    ));
+    expect(find.text('08-03'), findsOneWidget);
+    expect(find.text('14:00'), findsOneWidget);
+  });
+
+  testWidgets('action 卡显示 date + time', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'a1', type: FeedCardType.action, time: '09:05', date: '08-03', content: '交房租',
+    ));
+    expect(find.text('08-03  09:05'), findsOneWidget);
+  });
 }

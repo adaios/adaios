@@ -52,4 +52,13 @@ public interface RecordRepository {
      * @param domain 新域名值（life / trading / project）
      */
     void updateDomain(String userId, String id, String domain);
+
+    /**
+     * 查找记录对应的媒体文件相对路径（图片记录才有，用于原图访问/缩略图）。
+     *
+     * @param userId 用户 ID（单用户传 "default"）
+     * @param id     记录 ID
+     * @return 媒体文件相对路径（无媒体则为空）
+     */
+    Optional<String> findMediaPath(String userId, String id);
 }

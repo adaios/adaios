@@ -13,12 +13,14 @@ import java.util.List;
  * @param title     标题
  * @param tags      标签
  * @param dateTime  时间戳
+ * @param mediaPath 媒体文件相对路径（图片记录才有，前端据此渲染原图）
  */
 public record TimelineEntry(
         String id,
         String type,
         String title,
         List<String> tags,
-        LocalDateTime dateTime
+        LocalDateTime dateTime,
+        String mediaPath
 ) {
 }

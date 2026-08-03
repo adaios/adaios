@@ -29,7 +29,7 @@ public class TimelineProjection {
      */
     public List<TimelineEntry> fullTimeline(String userId) {
         return recordRepository.findAll(userId).stream()
-                .map(this::toEntry)
+                .map(r -> toEntry(userId, r))
                 .sorted((a, b) -> b.dateTime().compareTo(a.dateTime()))
                 .toList();
     }
@@ -60,13 +60,17 @@ public class TimelineProjection {
                 .toList();
     }
 
-    private TimelineEntry toEntry(ContentRecord record) {
+    private TimelineEntry toEntry(String userId, ContentRecord record) {
+        String mediaPath = "image".equals(record.type())
+                ? recordRepository.findMediaPath(userId, record.id()).orElse(null)
+                : null;
         return new TimelineEntry(
                 record.id(),
                 record.type(),
                 record.title(),
                 record.tags(),
-                record.createdAt()
+                record.createdAt(),
+                mediaPath
         );
     }
 }

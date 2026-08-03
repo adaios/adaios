@@ -209,6 +209,30 @@ class _TimelinePageState extends State<TimelinePage> {
               ]),
               const SizedBox(height: 8),
               Text(e.title, style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1)),
+              if (e.mediaPath != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: () => _showFullImage(e.id),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        widget.api.mediaUrl(e.id),
+                        headers: widget.api.mediaHeaders,
+                        width: 120,
+                        height: 90,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          width: 120, height: 90,
+                          color: AppColors.darkSurface2,
+                          child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (e.tags.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Wrap(
@@ -228,5 +252,23 @@ class _TimelinePageState extends State<TimelinePage> {
   String _timeOf(String dateTime) {
     if (dateTime.length < 16) return '';
     return dateTime.substring(11, 16);
+  }
+
+  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
+  void _showFullImage(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(widget.api.mediaUrl(id), headers: widget.api.mediaHeaders, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
   }
 }

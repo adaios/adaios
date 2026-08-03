@@ -24,7 +24,7 @@ class TimelineModal extends StatefulWidget {
 
 class _TimelineModalState extends State<TimelineModal> {
   final DateTime _baseDate = DateTime(DateTime.now().year, DateTime.now().month);
-  final Map<int, List<String>> _entryMap = {};
+  final Map<int, List<TimelineEntryResponse>> _entryMap = {};
   int? _selectedDay;
   bool _loading = true;
 
@@ -40,7 +40,7 @@ class _TimelineModalState extends State<TimelineModal> {
     try {
       // Backend doesn't filter by month, so fetch all and filter on client
       final allEntries = await widget.api.getTimeline();
-      final map = <int, List<String>>{};
+      final map = <int, List<TimelineEntryResponse>>{};
       for (final e in allEntries) {
         if (e.dateTime.length >= 10) {
           try {
@@ -48,9 +48,8 @@ class _TimelineModalState extends State<TimelineModal> {
             // Filter to current month only
             if (dt.month != _baseDate.month || dt.year != _baseDate.year) continue;
             final day = dt.day;
-            final time = e.dateTime.length >= 16 ? e.dateTime.substring(11, 16) : '';
             map.putIfAbsent(day, () => []);
-            map[day]!.add('$time  ${e.title}');
+            map[day]!.add(e);
           } catch (_) {}
         }
       }
@@ -145,32 +144,81 @@ class _TimelineModalState extends State<TimelineModal> {
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 itemCount: entries.length,
-                itemBuilder: (context, i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 5, height: 5,
-                        margin: const EdgeInsets.only(top: 7, right: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.darkGrey5.withValues(alpha: 0.5),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(entries[i], style: const TextStyle(
-                            fontSize: 14, height: 1.6, color: AppColors.darkGrey1)),
-                      ),
-                    ],
-                  ),
-                ),
+                itemBuilder: (context, i) => _buildRow(entries[i]),
               ),
             ),
           ] else
             const Expanded(child: Center(child: Text('这天没有记录',
                 style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)))),
         ],
+      ),
+    );
+  }
+
+  /// 时间线条目行：时间+标题，图片条目附加缩略图（批2 原图可见）。
+  Widget _buildRow(TimelineEntryResponse e) {
+    final time = e.dateTime.length >= 16 ? e.dateTime.substring(11, 16) : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 5, height: 5,
+            margin: const EdgeInsets.only(top: 7, right: 10),
+            decoration: BoxDecoration(
+              color: AppColors.darkGrey5.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$time  ${e.title}',
+                    style: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1)),
+                if (e.mediaPath != null) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => _showFullImage(e.id),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        widget.api.mediaUrl(e.id),
+                        headers: widget.api.mediaHeaders,
+                        width: 72, height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          width: 72, height: 72,
+                          color: AppColors.darkSurface2,
+                          child: const Icon(Icons.broken_image_outlined, size: 18, color: AppColors.darkGrey5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
+  void _showFullImage(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(widget.api.mediaUrl(id), headers: widget.api.mediaHeaders, fit: BoxFit.contain),
+          ),
+        ),
       ),
     );
   }

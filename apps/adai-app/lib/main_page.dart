@@ -84,7 +84,7 @@ class _MainPageState extends State<MainPage>
         _totalToday = feed.totalToday;
         _cards = feed.entries
             .where((e) => e.type != FeedEntryType.aiNote)
-            .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+            .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
             .toList();
       });
     } catch (e) {
@@ -99,7 +99,7 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
           .toList();
       setState(() {
         _brief = brief;
@@ -504,7 +504,7 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final moreCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData(onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
           .toList();
       setState(() {
         _cards = [...moreCards, ..._cards]; // 更早的条目插在前面，reverse 后出现在视觉顶部
@@ -992,7 +992,7 @@ class _TopBar extends StatelessWidget {
 }
 
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData({VoidCallback? onMarkDone}) {
+  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
       cardTurns = turns!.map((t) => ConversationTurn(
@@ -1002,9 +1002,11 @@ extension FeedEntryResponseX on FeedEntryResponse {
       )).toList();
     }
     return FeedCardData(
-      id: id, type: _toCardType(type), time: time, content: content,
+      id: id, type: _toCardType(type), time: time, date: date, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
       summary: summary, turns: cardTurns, domain: domain, onMarkDone: onMarkDone,
+      mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
+      mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
     );
   }
 

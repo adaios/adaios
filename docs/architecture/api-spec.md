@@ -162,7 +162,7 @@
   "intent": "log",
   "summary": "持仓截图：浦发银行",
   "tags": ["交易", "持仓"],
-  "mediaPath": "records/2026/08/02/media/rec_20260802_143200123.png"
+  "mediaPath": "records/2026/08/media/rec_20260802_143200123.png"
 }
 ```
 
@@ -222,6 +222,8 @@
       "type": "card",
       "id": "card_1784902336974",
       "time": "22:12",
+      "date": "08-03",
+      "mediaPath": null,
       "title": "现在饿了，吃点什么呢",
       "content": "现在饿了，吃点什么呢",
       "tags": [],
@@ -236,6 +238,8 @@
       "type": "record",
       "id": "rec_...",
       "time": "14:30",
+      "date": "08-03",
+      "mediaPath": "records/2026/08/media/rec_20260803_143200123.jpg",
       "title": "标题",
       "content": "内容",
       "tags": ["标签"],
@@ -255,6 +259,8 @@
 |:-----|:-----|:------|
 | `type` | String | `record` / `card` / `ai_note` / `action`（未完成行动提醒，Phase 3）/ `market`（大盘行情，v0.2.0）|
 | `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
+| `date` | String | `MM-dd` 格式，条目所属日期（每张卡片都带日期，前端展示）|
+| `mediaPath` | String? | 图片记录才有：媒体文件相对路径（前端据此渲染原图/缩略图，GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null` |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
 | `totalToday` | int | **核心输入条数**（record/card，不含 ai_note/action/market 附加）；分页终止基准 |
@@ -485,10 +491,21 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
     "type": "note",
     "title": "今天买了立昂微",
     "tags": ["投资", "半导体"],
-    "dateTime": "2026-07-18T14:30:00"
+    "dateTime": "2026-07-18T14:30:00",
+    "mediaPath": null
+  },
+  {
+    "id": "rec_...",
+    "type": "image",
+    "title": "图片摘要",
+    "tags": ["photo"],
+    "dateTime": "2026-08-03T09:15:00",
+    "mediaPath": "records/2026/08/media/rec_20260803_091500123.jpg"
   }
 ]
 ```
+
+> `mediaPath`：图片记录（`type=image`）才有，指向媒体文件相对路径（GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null`。
 
 ---
 
