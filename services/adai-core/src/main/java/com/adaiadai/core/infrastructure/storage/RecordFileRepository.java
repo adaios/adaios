@@ -196,10 +196,18 @@ public class RecordFileRepository implements RecordRepository {
                 record.source(),
                 String.join(", ", record.tags()),
                 record.createdAt().toString(),
-                record.summary() != null ? record.summary() : "",
+                singleLine(record.summary()),
                 record.domain() != null ? record.domain() : "life",
                 record.content()
         );
+    }
+
+    /**
+     * frontmatter 值单行化：换行/回车压成空格，防多行 AI 内容泄漏破坏行式解析（#135）。
+     */
+    private static String singleLine(String s) {
+        if (s == null) return "";
+        return s.replace('\n', ' ').replace('\r', ' ').strip();
     }
 
     private ContentRecord parseFromFile(String userId, String path) {

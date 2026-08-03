@@ -99,7 +99,7 @@ com.adaiadai.core/
 
 | 方法 | 路径 | 用途 |
 |:----|:-----|:-----|
-| POST | `/api/v1/records` | 统一入口（自动分流 STATEMENT / QUESTION / DECISION） |
+| POST | `/api/v1/records` | 统一入口（自动分流 STATEMENT / QUESTION） |
 | POST | `/api/v1/records/media` | 图片记录（multipart，GLM-VLM 理解文本化） |
 | GET | `/api/v1/records/media/{id}` | 图片文件（原图访问） |
 | POST | `/api/v1/conversations/end` | 结束对话，AI 总结 |
@@ -111,10 +111,16 @@ com.adaiadai.core/
 | GET | `/api/v1/project/status` | 项目状态（Kernel + Domain OS + RFC + Git） |
 | GET / POST / PUT / DELETE | `/api/v1/project/tasks` | 任务 CRUD |
 | GET | `/api/v1/project/tasks/stats` | 任务统计 |
+| GET / PUT | `/api/v1/identity` | 个人档案读写 |
+| GET | `/api/v1/search?q=` | 全文搜索 |
+| GET | `/api/v1/tags` | 标签统计 |
+| POST | `/api/v1/cards/migrate` | 卡片迁移 |
+| GET / POST | `/api/v1/accounts` | 账号查询/创建（admin） |
+| GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin） |
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **254 个测试，0 失败**（14 Controller 44 端点接口测试全覆盖 + 多模态 18 测试）。
+后端测试在 `src/test/java/`，当前 **256 个测试，0 失败**（15 Controller 46 端点接口测试全覆盖 + 多模态 18 测试）。
 新增功能必须配套测试。
 
 ## 外部依赖

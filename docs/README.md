@@ -57,12 +57,15 @@
 | [20260726-project-status-and-roadmap.md](rfc/20260726-project-status-and-roadmap.md) | 2026-07-26 | 项目状态与路线 |
 | [20260727-memory-upgrade.md](rfc/20260727-memory-upgrade.md) | 2026-07-27 | Memory 升级路线：Phase 0-4，从复读机到真记忆 |
 | [20260728-project-development-suggestions.md](rfc/20260728-project-development-suggestions.md) | 2026-07-28 | 项目发展建议：产品/前端/UI 三方视角 |
+| [20260729-development-retrospective.md](rfc/20260729-development-retrospective.md) | 2026-07-29 | 近期 Bug 复盘与开发回顾 |
+| [20260730-health-management-scenario.md](rfc/20260730-health-management-scenario.md) | 2026-07-30 | 健康管理场景（Life OS 数据积累） |
 | [20260730-market-data-and-push.md](rfc/20260730-market-data-and-push.md) | 2026-07-30 | Layer 5 行情接入 + 主动推送 MVP 设计 |
 | [20260801-review-skill.md](rfc/20260801-review-skill.md) | 2026-08-01 | 审核流程 Skill 化：/review + 5 角色 + 检查点清单 |
 | [20260801-memory-system-evolution.md](rfc/20260801-memory-system-evolution.md) | 2026-08-01 | 记忆系统进化：元记忆对比 + 主题合并/actionable 闭环落地方案 |
 | [20260801-release-versioning.md](rfc/20260801-release-versioning.md) | 2026-08-01 | 产品发布版本机制：版本号规则、发布流程、Release Notes、v0.1.0 规划 |
 | [20260802-adai-admin.md](rfc/20260802-adai-admin.md) | 2026-08-02 | adai-admin 管理后台规划（草案）：数据/系统/知识管理范围 + 技术选型候选 |
 | [20260802-multi-account-prep.md](rfc/20260802-multi-account-prep.md) | 2026-08-02 | 多账号架构预留：数据路径 userId 分层 + 全链路透传 + 数据迁移 |
+| [20260802-multimodal-image-glm.md](rfc/20260802-multimodal-image-glm.md) | 2026-08-02 | 多模态图片记录：图片 → GLM-VLM → 现有文本闭环（L4） |
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 

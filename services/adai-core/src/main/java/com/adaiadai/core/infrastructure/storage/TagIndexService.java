@@ -75,7 +75,7 @@ public class TagIndexService {
                 }
 
                 entry = new TagEntry(
-                        entry.count() + 1,
+                        ids.size(), // count 与 recordIds 一致，防截断/重复累加漂移（#152）
                         ids,
                         entry.firstAt(),
                         record.createdAt()
@@ -108,7 +108,7 @@ public class TagIndexService {
                 index.tags().remove(tag);
             } else {
                 index.tags().put(tag, new TagEntry(
-                        Math.max(0, entry.count() - 1),
+                        ids.size(), // 与 recordIds 一致（#152）
                         ids, entry.firstAt(), entry.lastAt()));
             }
             changed = true;
@@ -166,7 +166,7 @@ public class TagIndexService {
                     ids.add(record.id());
                 }
                 tags.put(tag, new TagEntry(
-                        existing != null ? existing.count() + 1 : 1,
+                        ids.size(), // 与 recordIds 一致（#152）
                         ids,
                         existing != null ? existing.firstAt() : record.createdAt(),
                         record.createdAt()

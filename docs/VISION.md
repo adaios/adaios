@@ -205,9 +205,9 @@ Record → Context → AI → Memory 闭环，持 Trading OS 基础能力。
 - Layer 1: 意图识别 ✅，标签索引上下文 ✅，卡片对话分组 ✅，Memory 回读 ✅，全局领域上下文 ✅，Knowledge 注入 ✅
 - Layer 2: 今日简报 ✅（基础）
 - Layer 3: Identity / Record / Memory 文件存储 ✅，标签索引（tags.json）✅，Knowledge ✅（KnowledgeSource + 3 实现）
-- Layer 4: 文字记录 + 意图路由 ✅，多模态 ❌
-- Layer 5: 未开始 ❌
-- Layer 6: 持仓管理 ✅，记忆回读 ✅，知识召回 ✅，DECISION 意图 ✅，复盘沉淀 ✅，知识反哺 ✅（promote/conflicts）
+- Layer 4: 文字记录 + 意图路由 ✅，多模态 ⚠️（图片 ✅ 已落地 GLM-VLM；音频 ⬜ 待定）
+- Layer 5: 行情接入（腾讯）Phase 1 上下文注入 ✅；主动推送 ⬜ 待设计
+- Layer 6: 持仓管理 ✅，记忆回读 ✅，知识召回 ✅，复盘沉淀 ✅，知识反哺 ✅（promote/conflicts）
 - Domain OS: Trading OS ✅（完整闭环），Life OS 🏗（骨架），Project OS 🏗（骨架+自举）
 
 ---

@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.0 | **最后更新：** 2026-07-29
+> **文档版本：** v1.1 | **最后更新：** 2026-08-03
 
 ---
 
@@ -949,6 +949,12 @@ POST /api/v1/records/retry
 
 ---
 
+## 15. 多模态 / 多账号 / adai-admin
+
+- **多模态图片记录（L4）**：`POST/GET /api/v1/records/media`（multipart，图片 → GLM-4.1V-Thinking-Flash VLM 理解 → 文本化进现有闭环：Timeline/Memory/Search 零改动）。图片落 `data/{userId}/records/YYYY/MM/media/`。详见 RFC `20260802-multimodal-image-glm`。
+- **多账号（v1.0.0 预留）**：全链路 `X-User-Id` header → `data/{userId}/` 分层。账号由 adai-admin 管理（seed `adai`），无注册/口令（鉴权后补，REVIEW #127）。
+- **adai-admin 产品后台**：账号/内容/数据/系统/知识五模块，接真实 API（`/api/v1/accounts`、`/api/v1/admin/**`）。定位：独立产品后台（类企业管理系统），非产品入口。
+
 ## 附录：API 全集
 
 | # | 方法 | 路径 | 用途 | AI |
@@ -987,3 +993,8 @@ POST /api/v1/records/retry
 | 31 | GET | `/api/v1/trading/knowledge/conflicts` | 规则矛盾检测 | ✅ |
 | 32 | POST | `/api/v1/cards/migrate` | 卡片迁移 | ❌ |
 | 33 | POST | `/api/v1/cards/cleanup` | 卡片清理 | ❌ |
+| 34 | POST | `/api/v1/records/media` | 图片记录（multipart → VLM 理解） | ✅ |
+| 35 | GET | `/api/v1/records/media/{id}` | 取回原图 | ✅ |
+| 36 | GET / POST | `/api/v1/accounts` | 账号查询/创建（adai-admin） | ✅ |
+| 37 | DELETE | `/api/v1/accounts/{userId}` | 删除账号（adai-admin） | ✅ |
+| 38 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（adai-admin） | ✅ |

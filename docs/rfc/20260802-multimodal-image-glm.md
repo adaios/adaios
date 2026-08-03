@@ -1,3 +1,10 @@
+---
+title: 多模态图片记录（GLM-VLM）— 图片 → 文本闭环（L4）
+date: 2026-08-02
+status: implemented
+implementedIn: 2026-08-02（Phase 1 后端 + Phase 2 前端 app/web 全部落地）；2026-08-03 模型修正 GLM-4.1V-Thinking-Flash + 解析器剥壳
+---
+
 # 20260802 多模态图片记录（GLM-VLM）— RFC
 
 > status: **implemented**（2026-08-02：Phase 1 后端 + Phase 2 前端 app/web 全部落地；v0.3.0）
