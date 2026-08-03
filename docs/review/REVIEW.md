@@ -72,11 +72,9 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | 123 | 中英混排：Feed 导航 / quick add / commits·APIs / network error / 时间线 type 英文 | 三页文案 |
 | 124 | adai-web/CLAUDE.md 端口写 `:8081`（实际 `:8082`）| `apps/adai-web/CLAUDE.md:32` |
 | 125 | 打磨：README 默认模板 / aiNote 死代码 / hover 无手型 / 圆角 token 散落 / 记忆页日期无年份 | 多处 |
-| 160 | api-spec mediaPath 示例含日级 `/08/02/media/`，实际月级（契约失真）| `api-spec.md:165` |
 | 161 | 时间线 type 徽标直接显示后端英文原文 | `timeline_page.dart:203` |
 | 162 | Feed push 类型未映射：`FeedEntryType.push` 落默认 `record`（L5 推送上线会渲染成普通卡）| `feed_models.dart:134-145` |
 | 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` |
-| 164 | adai-app 语音入口误导性 stub：可切语音态+长按录音 → 松手才弹「开发中」| `input_bar.dart:84-91` |
 | 165 | adai-web `FeedEntryResponse.type` 硬转换 `as String`（无兜底，新 type 整页挂）| `api_service.dart:473` |
 | 166 | MediaController 上传超限走 500（应 413）、title 50 字符 substring 拆断 emoji、market id 同秒碰撞 | 多处 |
 | 168 | 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 |
@@ -85,6 +83,8 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 164 | adai-app 语音误导性 stub 移除（语音移入 v2 方向，砍可切态+长按录音入口，`input_bar.dart`）| ✅ 2026-08-03 |
+| 160 | api-spec mediaPath 示例日级→月级（批2 契约修正）| ✅ 2026-08-03 |
 | 批 A-D | **2026-08-03 连续修复 22 项**：批 A 数据安全（#126 Memory 并发写锁+原子写 / #136 删除路径 createdAt / #137 TagIndex 删除钩子 / #138 cashBalance 保留 / #128 重补遍历用户）；批 B 前端状态机（#100 竞态崩溃 / #104 删卡残留 / #105 双卡互踩 / #107 缓存失效 / #109 删除确认 / #110 retry 幂等 / #111 mode 同步 / #119 计数）；批 C 契约编码（#133 kind 三端 / #134 错误态人话 / #140 优先级透传 / #145 utf8 解码 / #146 HEIC）；批 D 数据+文档（#135 frontmatter 单行化 + 存量 5 条 / #139 卡片双副本 / #151 悬空核实保留 / #152 count 校正 / #130 VISION 状态表 / #141 README 索引 / #142 roadmap 模型名 / #143 RFC frontmatter / #154-157 CLAUDE.md 树计数 / #167 feature-reference）| ✅ 2026-08-03 |
 | 60/61/62 | v0.2.0 前端 actionable UI 消费：action 待办卡+完成按钮（`ca2d4a8`）、Feed 分页终止修复、memory 页 kind/superseded/待办展示（`7d9b607`）| ✅ 2026-08-02 |
 | 后端 P1 ×4 | actionable 筛选豁免 + 无限重补修复 + ID 单调统一 IdGenerator + rebuild 幂等 + 跨日升级（`c41c2b7`）| ✅ 2026-08-02 |

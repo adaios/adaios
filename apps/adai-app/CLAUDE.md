@@ -54,7 +54,7 @@ lib/
 │   └── life_quick_entry.dart    # 生活快速记录模板
 └── widgets/
     ├── feed_card.dart           # FeedCard — 4 态状态机：idle/waiting/chatting/ended
-    ├── input_bar.dart           # 输入栏 — 语音/文字切换 + 发送 + 生活快速记录
+    ├── input_bar.dart           # 输入栏 — 文字输入 + [+]附件（图片内联多图/文件/链接；语音 v2 方向）
     └── timeline_modal.dart      # 时间线 BottomSheet
 ```
 

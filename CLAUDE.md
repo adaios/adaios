@@ -337,6 +337,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-web 验收交互修复（批1）** ✅：live 验收反馈迭代——图片上传改**输入栏内联多图 + 可选文字**（选多张→横向预览逐张移除→发送逐张上传每张一条记录+记忆、caption 共享；发送按钮变绿提示有图）；ask 卡 waiting 态反馈（spinner +「正在思考…」占位）；简单卡时间戳（badge 类型在前+时间随后左上角）+ 行情红涨绿跌着色（`feed_page.dart` / `desktop_feed_card.dart`，analyze 0 · 25 测试绿）
 - **adai-app 同步批1 交互改进** ✅：验收三项同步到移动端——输入栏内联多图+可选文字（`onSendMedia` 逐张上传 caption 共享）、ask waiting「正在思考…」占位、简单卡时间戳+行情红涨绿跌（`input_bar.dart` / `feed_card.dart` / `main_page.dart`，analyze 0 error · 29 测试绿）
 - **adai-web 验收批2（每卡日期 + 原图可见）** ✅：后端 `FeedEntry.date`（MM-dd 各构建点）+ `mediaPath`（仅图片记录，`RecordRepository.findMediaPath`）+ `TimelineEntry.mediaPath`；前端双端——普通卡/简单卡显示日期、adai-web 时间竖列两行、图片记录 FeedCard 缩略图 + 点击看原图 Dialog、时间线页（modal/page）缩略图；api-spec 同步（后端 258 测试 · 双端 analyze 0 error · adai-app 31 / adai-web 27 测试绿）
+- **adai-app 语音 stub 移除（REVIEW #164）** ✅：砍掉误导性语音入口（可切语音态+长按录音→弹「开发中」），输入栏简化为文字输入 + [+]附件（图片/文件/链接）；**语音移入 v2 方向**（`input_bar.dart`，analyze 0 error · 31 测试绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |

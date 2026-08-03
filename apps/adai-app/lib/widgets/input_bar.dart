@@ -12,8 +12,9 @@ class PickedImage {
   const PickedImage(this.bytes, this.name, this.extension);
 }
 
-/// Input bar — with voice/text toggle + text input + [+] menu.
+/// Input bar — text input + [+] menu（图片/文件/链接）。
 /// Supports ask placeholder mode (triggered from parent).
+/// 语音：v2 方向，已移除误导性 stub（2026-08-03，原 REVIEW #164）。
 class InputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool hasActiveChat;          // true when chatting with AI
@@ -37,9 +38,7 @@ class InputBar extends StatefulWidget {
 class InputBarState extends State<InputBar> {
   final TextEditingController _textCtrl = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  bool _isVoice = false;
   bool _hasText = false;
-  bool _recording = false;
   final List<PickedImage> _pendingImages = []; // 输入栏内联附件：选图后待发送，非立即上传
 
   bool get _hasPending => _pendingImages.isNotEmpty;
@@ -85,15 +84,6 @@ class InputBarState extends State<InputBar> {
     _textCtrl.dispose();
     _focusNode.dispose();
     super.dispose();
-  }
-
-  void _toggleVoice() {
-    setState(() => _isVoice = !_isVoice);
-    if (!_isVoice) {
-      _focusNode.requestFocus();
-    } else {
-      _focusNode.unfocus();
-    }
   }
 
   void _send() {
@@ -204,7 +194,7 @@ class InputBarState extends State<InputBar> {
     );
   }
 
-  /// 未实现功能的占位提示（语音/文件/链接）。
+  /// 未实现功能的占位提示（文件/链接）。
   void _showNotImplemented(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('$feature 功能开发中', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
@@ -239,7 +229,6 @@ class InputBarState extends State<InputBar> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _attachItem(Icons.image_outlined, 'image', onTap: _pickImage),
-                _attachItem(Icons.mic_outlined, 'voice', onTap: () => _showNotImplemented('语音输入')),
                 _attachItem(Icons.description_outlined, 'file', onTap: () => _showNotImplemented('文件上传')),
                 _attachItem(Icons.link_outlined, 'link', onTap: () => _showNotImplemented('链接')),
               ],
@@ -291,50 +280,27 @@ class InputBarState extends State<InputBar> {
               height: 40,
               child: Row(
                 children: [
-                  // Voice/text toggle
-                  GestureDetector(
-                    onTap: _toggleVoice,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: 40, height: 40,
-                      decoration: BoxDecoration(
-                        color: _isVoice ? AppColors.darkGrey1 : AppColors.darkSurface2,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        _isVoice ? Icons.keyboard_outlined : Icons.mic_outlined,
-                        size: 20,
-                        color: _isVoice ? AppColors.darkBg : AppColors.darkGrey4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   // Input
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: _isVoice ? _buildVoice() : _buildText(),
-                    ),
-                  ),
+                  Expanded(child: _buildText()),
                   const SizedBox(width: 8),
                   // Right button（有图或文字时绿色发送，否则附件菜单）
                   GestureDetector(
-                    onTap: _hasPending || (!_isVoice && _hasText) ? _send : () => _showAttach(context),
+                    onTap: _hasPending || _hasText ? _send : () => _showAttach(context),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       width: 40, height: 40,
                       decoration: BoxDecoration(
                         color: _hasPending
                             ? AppColors.darkGreen
-                            : (!_isVoice && _hasText)
+                            : _hasText
                                 ? (widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey1)
                                 : AppColors.darkSurface2,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        (_hasPending || (!_isVoice && _hasText)) ? Icons.arrow_upward_rounded : Icons.add_rounded,
+                        (_hasPending || _hasText) ? Icons.arrow_upward_rounded : Icons.add_rounded,
                         size: 20,
-                        color: (_hasPending || (!_isVoice && _hasText)) ? AppColors.darkBg : AppColors.darkGrey5,
+                        color: (_hasPending || _hasText) ? AppColors.darkBg : AppColors.darkGrey5,
                       ),
                     ),
                   ),
@@ -349,7 +315,6 @@ class InputBarState extends State<InputBar> {
 
   Widget _buildText() {
     return Container(
-      key: const ValueKey('text'),
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -379,40 +344,6 @@ class InputBarState extends State<InputBar> {
           isDense: true,
         ),
         onSubmitted: (_) => _send(),
-      ),
-    );
-  }
-
-  Widget _buildVoice() {
-    return GestureDetector(
-      key: const ValueKey('voice'),
-      onLongPressStart: (_) => setState(() => _recording = true),
-      onLongPressEnd: (_) {
-        setState(() => _recording = false);
-        _showNotImplemented('语音输入');
-      },
-      child: Container(
-        height: 40,
-        decoration: BoxDecoration(
-          color: _recording ? AppColors.darkGreen.withAlpha(20) : AppColors.darkSurface2,
-          borderRadius: BorderRadius.circular(14),
-          border: _recording ? Border.all(color: AppColors.darkGreen.withAlpha(51), width: 0.5) : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _recording ? Icons.mic : Icons.mic_none_outlined,
-              size: 18,
-              color: _recording ? AppColors.darkGreen : AppColors.darkGrey5,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _recording ? 'release to send' : 'hold to talk',
-              style: TextStyle(fontSize: 14, color: _recording ? AppColors.darkGreen : AppColors.darkGrey5),
-            ),
-          ],
-        ),
       ),
     );
   }
