@@ -38,6 +38,14 @@
 |:-:|:---------|:---------|
 | B11 | `LlmResponseParser` 处理 surrogate pair（emoji）是否正确推进 matcher region | emoji 代理对抛异常 → 降级丢字段（P1，已修）|
 | B12 | AI 调用失败时数据不丢失、有降级路径 | AI 失败删记录（P1，已修）|
+| B13 | FileStorage.write/writeBytes 必须「临时文件 + ATOMIC_MOVE」原子写，禁止直接截断写 | 崩溃/断电写坏单文件存储（P0 #126，待修）|
+| B14 | 「整文件重写」类仓库（Memory/TagIndex/Position/Account/任务月文件）save 必须 synchronized / per-user 锁 | 并发 RMW 静默丢更新（P0 #126，待修）|
+| B15 | 删除/媒体路径必须从持久化 createdAt 推导，禁止从 ID 内嵌时间戳推导 | 月边界静默删除失败（P1 #136，待修）|
+| B16 | 索引类服务必须有 onRecordDeleted 清理钩子 | 删除不清理索引 → 幽灵计数（P1 #137，待修）|
+| B17 | rebuild/重补幂等判定须覆盖「Phase5 fact 跳过」场景，不能用 hasRealMemory 作为未处理判据 | rebuild 幂等被筛选逻辑架空（P1 #144，待修）|
+| B18 | 全字段序列化 round-trip 核对：实体字段是否都写 frontmatter 且读回一致 | intent 不落盘导致 rebuild 过滤失效（P1 #144，待修）|
+| B19 | 新端点/新功能启用时检查鉴权：多账号下所有「读任意用户/写任意用户」入口必须校验 | 多账号零鉴权裸奔（战略 #127，待修）|
+| B20 | 图片上传 content-type 白名单：未知类型不得默认 png | HEIC 落 png 预览坏（P2 #146，待修）|
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。

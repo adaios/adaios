@@ -35,6 +35,11 @@
 |:-:|:---------|:---------|
 | K10 | 知识反哺（复盘→promote→入库）是否有真实产物 | Layer 6 从未运转（P2 #23 待办）|
 | K11 | 记忆沉淀是否随使用增长（`data/memory/` 有内容而非空壳）| 记忆稀疏（P2 #24 待办）|
+| K15 | records 的 `summary:` 字段 JSON/多行泄漏（活跃 bug 复发检测）：扫描 `^summary: *\{` 或值含换行 | record summary 写 AI JSON（P1 #135，待修）|
+| K16 | `records/cards/` 下同 id 双副本（raw + `card_` 前缀并存）| 3 对双副本读成 6 张卡（P1 #139，待修）|
+| K17 | memory recordId ↔ records 文件交叉验证（悬空引用）| 唯一悬空 recordId（P2 #151，待修）|
+| K18 | tags.json `count` vs `recordIds.length` 一致性（截断/通胀漂移）| 三体 count=64 vs 50（P2 #152，待修）|
+| K19 | `os/*-os/11-context/README` 引用的目录存在性（防复制模板漂移）| life-os 引用不存在的 05-system/04-rules（P3，待修）|
 
 ---
 **追加方式**：新发现知识/数据问题 → 追加一行，注明日期。

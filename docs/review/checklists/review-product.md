@@ -34,6 +34,10 @@
 | P11 | 主入口功能对位检查：新增产品主入口时逐模块对照移动端——分页/加载更多、删除确认、复盘/反哺入口等核心交互是否齐平，不因「桌面重绘」丢功能 | adai-web Feed 无分页 + 交易无复盘 + 删除无确认（战略/P1，待修）|
 | P12 | 新工程文档自洽：CLAUDE.md 的端口/构建命令与实际 `scripts/serve_web.sh` 对拍 | adai-web CLAUDE.md :8081 vs 脚本 :8082（P3，待修）|
 | P13 | 色板单一真相：frontend-reference 颜色表与三端 `app_colors.dart` 值对拍（值复制策略下文档易过期）| frontend-reference 旧色值 `#0E0E0E`/`#2BC457`（P3，待修）|
+| P14 | 记忆 kind/actionable 三端对拍：kind 映射表与筛选值对照后端 `Memory.java` 常量集（fact/insight/preference/pattern/decision），凡出现后端不存在的值即命中 | 三端 kind 徽标/筛选失真（P1 #133，待修）|
+| P15 | 错误态技术串 grep 化：检查 `: $e`/`toString()` 直拼是否绕过统一 `_extractApiError` | 错误态技术串蔓延 6+ 处（P1 #134，待修）|
+| P16 | 涨跌/盈亏颜色语义单一真相：frontend-reference 颜色表补语义行，三端 app_colors 对拍含 darkRed，杜绝橙/红混用 | 三套涨跌色语义并存（战略 #132，待修）|
+| P17 | 三端核心词页面标题对拍：记忆/时间线/交易/任务/档案五页标题中英对照，混用即命中 | 移动端 memory 英文 vs 桌面「记忆」（战略 #131，待修）|
 
 ---
 **追加方式**：新发现产品/UI 问题 → 追加一行，注明日期。

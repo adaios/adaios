@@ -44,7 +44,7 @@ bash docs/review/guard.sh
 |:---------|:---------|
 | `.claude/**`（skills/agents/commands 定义自身）| `review-docs`（复核引用的路径/命令/清单真实可执行）|
 | `services/adai-core/**` | `review-backend` |
-| `apps/adai-app/**` | `review-frontend` |
+| `apps/adai-app/**`、`apps/adai-web/**`、`apps/adai-admin/**`（Flutter 前端工程）| `review-frontend` |
 | `docs/**`、`*.md`、`ai/**` | `review-docs` |
 | 前端视觉/交互/文案 | `review-product` |
 | `os/**`、`data/**` | `review-knowledge` |

@@ -34,6 +34,10 @@
 | F11 | 保活页（IndexedStack/lazy）initState-only 加载需检查刷新路径——数据可变页面保活即陈旧 | adai-web Timeline/Memory 保活陈旧无刷新（战略，待修）|
 | F12 | 列表变更操作（delete/done/markDone）应同步清空相关全局引用（`_activeCardId`）与 API 缓存 Map | adai-web 删 active 卡残留 + markMemoryDone 不清 `_memoryCache`（P1，待修）|
 | F13 | UI 可达性推演：布局差异会让移动端不可达的路径在桌面内联布局下变可达（如内联卡删除），需重新评估 | adai-web 删除 active 卡路径新暴露（P1，待修）|
+| F14 | 值复制跨工程时枚举/常量字段（Memory kind、priority、task status）必须对照后端真实常量，不凭 UI 语义自造 | adai-web/adai-admin kind 失真（P1 #133，待修）|
+| F15 | 前端枚举 ↔ 后端枚举双向映射须 round-trip 无损（正反映射不丢区分度）| admin 任务 P0/P1 都映射 high、high 只回 P0（P1 #140，待修）|
+| F16 | 管理后台数据源若为「当天 Feed」需评估历史可达性（管理端应覆盖历史，Feed 契约只今天会隐性截断）| adai-admin 记录页只看今天（P3 #163，待修）|
+| F17 | 交互式入口不应指向未实现功能：stub 应禁用或进入即提示，而非先模拟交互再弹「开发中」| adai-app 语音 stub 误导（P3 #164，待修）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。

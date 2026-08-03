@@ -33,6 +33,10 @@
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
 | D11 | 新增子项目 CLAUDE.md 的运行参数（端口/构建命令）与 `scripts/serve_web.sh` 跨文档对齐 | adai-web CLAUDE.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
 | D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
+| D13 | RFC frontmatter 一致性：`docs/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
+| D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/CLAUDE.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
+| D15 | README 索引完整性脚本化：`for f in docs/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
+| D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 CLAUDE.md 已完成清单同步 | 五层状态表过期（战略 #130，待修）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
