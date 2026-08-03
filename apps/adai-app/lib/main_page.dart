@@ -257,17 +257,23 @@ class _MainPageState extends State<MainPage>
     _createNewCard(text, timeStr, null);
   }
 
-  /// 多模态 L4：图片上传 → VLM 理解记录 → 刷新 Feed + 轻提示。
-  Future<void> _onImage(PickedImage image) async {
+  /// 多模态 L4：多图 + 可选文字 → 逐张上传（caption 共享）→ 刷新 Feed + 轻提示。
+  Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     try {
-      final res = await _api.uploadImage(
-        bytes: image.bytes,
-        filename: image.name,
-        mimeType: _mimeTypeOf(image.extension),
-      );
+      int ok = 0;
+      for (final image in images) {
+        await _api.uploadImage(
+          bytes: image.bytes,
+          filename: image.name,
+          mimeType: _mimeTypeOf(image.extension),
+          caption: caption,
+        );
+        ok++;
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('📷 已记录：${res.summary}', style: const TextStyle(fontSize: 13)),
+        content: Text('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}',
+          style: const TextStyle(fontSize: 13)),
         backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
       ));
       await _loadFeed();
@@ -564,7 +570,7 @@ class _MainPageState extends State<MainPage>
                 widget.onPullUp?.call();
               }
             },
-            child: InputBar(key: _inputBarKey, onSend: _onSend, onImage: _onImage, hasActiveChat: _hasActiveChat),
+            child: InputBar(key: _inputBarKey, onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
           ),
         ],
       ),
@@ -847,9 +853,16 @@ class _MainPageState extends State<MainPage>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Row(children: [
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(color: AppColors.darkSurface2, borderRadius: BorderRadius.circular(16)),
-                          child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen.withAlpha(150)))),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const SizedBox(width: 12, height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+                            const SizedBox(width: 8),
+                            const Text('正在思考…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                          ]),
+                        ),
                       ]),
                     ),
                   if (activeCard.turns != null && activeCard.turns!.isNotEmpty)

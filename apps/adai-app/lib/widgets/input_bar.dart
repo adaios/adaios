@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
@@ -17,7 +18,8 @@ class InputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool hasActiveChat;          // true when chatting with AI
   final VoidCallback? onAskActivated; // called when ask mode starts typing
-  final ValueChanged<PickedImage>? onImage; // 多模态：图片上传（null 则不显示图片入口）
+  final ValueChanged<PickedImage>? onImage; // 多模态：单图立即上传（兼容旧调用）
+  final void Function(List<PickedImage> images, String caption)? onSendMedia; // 多图 + 可选文字一起提交，逐张上传
 
   const InputBar({
     super.key,
@@ -25,6 +27,7 @@ class InputBar extends StatefulWidget {
     this.hasActiveChat = false,
     this.onAskActivated,
     this.onImage,
+    this.onSendMedia,
   });
 
   @override
@@ -37,6 +40,9 @@ class InputBarState extends State<InputBar> {
   bool _isVoice = false;
   bool _hasText = false;
   bool _recording = false;
+  final List<PickedImage> _pendingImages = []; // 输入栏内联附件：选图后待发送，非立即上传
+
+  bool get _hasPending => _pendingImages.isNotEmpty;
 
   /// 从外部预设输入框文本并聚焦。
   void prefillText(String text) {
@@ -92,21 +98,41 @@ class InputBarState extends State<InputBar> {
 
   void _send() {
     final text = _textCtrl.text.trim();
-    if (text.isEmpty) return;
-    widget.onSend(text);
+    final images = List<PickedImage>.of(_pendingImages);
+    if (images.isEmpty && text.isEmpty) return;
     _textCtrl.clear();
+    setState(() => _pendingImages.clear());
+    if (images.isNotEmpty) {
+      // 图 + 文字（可空，caption 共享）一起提交，逐张上传
+      if (widget.onSendMedia != null) {
+        widget.onSendMedia!(images, text);
+        return;
+      }
+      // 无 onSendMedia 时回退：逐张交给单图上传回调
+      for (final img in images) {
+        widget.onImage?.call(img);
+      }
+      return;
+    }
+    widget.onSend(text);
   }
 
   void _pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+        allowMultiple: true, // 多选，逐张上传
+      );
       if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
-      if (file.bytes == null) return;
       // 关闭附件底部弹层
       if (context.mounted) Navigator.pop(context);
-      // 交给宿主上传（真实 multipart 到 POST /api/v1/records/media）
-      widget.onImage?.call(PickedImage(file.bytes!, file.name, file.extension));
+      // 选图后先挂到输入栏（内联预览），发送时才真正上传
+      setState(() {
+        _pendingImages.addAll(result.files
+            .where((f) => f.bytes != null)
+            .map((f) => PickedImage(f.bytes!, f.name, f.extension)));
+      });
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -115,6 +141,67 @@ class InputBarState extends State<InputBar> {
         ));
       }
     }
+  }
+
+  /// 输入栏上方的图片附件预览（横向缩略图列表，每张可单独移除）。
+  Widget _buildImagePreview() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface.withAlpha(90),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkBorder.withAlpha(120)),
+      ),
+      child: SizedBox(
+        height: 56,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _pendingImages.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (_, i) => _buildThumb(_pendingImages[i], i),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumb(PickedImage image, int index) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.memory(
+            Uint8List.fromList(image.bytes),
+            width: 56,
+            height: 56,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 56,
+              height: 56,
+              color: AppColors.darkSurface,
+              child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: GestureDetector(
+            onTap: () => setState(() => _pendingImages.removeAt(index)),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.darkBorder),
+              ),
+              child: const Icon(Icons.close, size: 12, color: AppColors.darkGrey4),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   /// 未实现功能的占位提示（语音/文件/链接）。
@@ -195,57 +282,66 @@ class InputBarState extends State<InputBar> {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 40,
-          child: Row(
-            children: [
-              // Voice/text toggle
-              GestureDetector(
-                onTap: _toggleVoice,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: _isVoice ? AppColors.darkGrey1 : AppColors.darkSurface2,
-                    borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 内联图片附件预览（多图横向缩略图，每张可移除）
+            if (_pendingImages.isNotEmpty) _buildImagePreview(),
+            SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  // Voice/text toggle
+                  GestureDetector(
+                    onTap: _toggleVoice,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: _isVoice ? AppColors.darkGrey1 : AppColors.darkSurface2,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _isVoice ? Icons.keyboard_outlined : Icons.mic_outlined,
+                        size: 20,
+                        color: _isVoice ? AppColors.darkBg : AppColors.darkGrey4,
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    _isVoice ? Icons.keyboard_outlined : Icons.mic_outlined,
-                    size: 20,
-                    color: _isVoice ? AppColors.darkBg : AppColors.darkGrey4,
+                  const SizedBox(width: 8),
+                  // Input
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: _isVoice ? _buildVoice() : _buildText(),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  // Right button（有图或文字时绿色发送，否则附件菜单）
+                  GestureDetector(
+                    onTap: _hasPending || (!_isVoice && _hasText) ? _send : () => _showAttach(context),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: _hasPending
+                            ? AppColors.darkGreen
+                            : (!_isVoice && _hasText)
+                                ? (widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey1)
+                                : AppColors.darkSurface2,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        (_hasPending || (!_isVoice && _hasText)) ? Icons.arrow_upward_rounded : Icons.add_rounded,
+                        size: 20,
+                        color: (_hasPending || (!_isVoice && _hasText)) ? AppColors.darkBg : AppColors.darkGrey5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              // Input
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: _isVoice ? _buildVoice() : _buildText(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Right button
-              GestureDetector(
-                onTap: _hasText && !_isVoice ? _send : () => _showAttach(context),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: !_isVoice && _hasText
-                        ? (widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey1)
-                        : AppColors.darkSurface2,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    !_isVoice && _hasText ? Icons.arrow_upward_rounded : Icons.add_rounded,
-                    size: 20,
-                    color: !_isVoice && _hasText ? AppColors.darkBg : AppColors.darkGrey5,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -268,12 +364,14 @@ class InputBarState extends State<InputBar> {
         focusNode: _focusNode,
         style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
         decoration: InputDecoration(
-          hintText: widget.hasActiveChat ? 'ask your question...' : _placeholder,
+          hintText: _hasPending ? '添加说明（可空）…' : (widget.hasActiveChat ? 'ask your question...' : _placeholder),
           hintStyle: TextStyle(
             fontSize: 15,
-            color: widget.hasActiveChat
+            color: _hasPending
                 ? AppColors.darkGreen.withAlpha(180)
-                : AppColors.darkGrey6,
+                : (widget.hasActiveChat
+                    ? AppColors.darkGreen.withAlpha(180)
+                    : AppColors.darkGrey6),
           ),
           border: InputBorder.none,
           filled: false,

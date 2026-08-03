@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:adai_app/main.dart';
 import 'package:adai_app/widgets/feed_card.dart';
 import 'package:adai_app/services/api_service.dart';
+import 'package:adai_app/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 // ─── DTO Parsing Tests (unit, no widget tree needed) ───
@@ -324,6 +325,79 @@ void main() {
 
       await tester.tap(find.text('end'));
       expect(ended, true);
+    });
+
+    testWidgets('action todo card shows badge and time', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.action, time: '14:00',
+                content: 'buy milk',
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('14:00'), findsOneWidget);
+      expect(find.text('buy milk'), findsOneWidget);
+      expect(find.text('完成'), findsOneWidget);
+    });
+
+    testWidgets('market card colors red/green and shows time', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.market, time: '14:00',
+                content: '上证指数 3809.66 -0.59% · 深证成指 12345.67 +0.23%',
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      expect(find.text('行情'), findsOneWidget);
+      expect(find.text('14:00'), findsOneWidget);
+
+      // 涨段红、跌段绿（A 股红涨绿跌）——遍历全部 RichText（Text 内部也用 RichText）
+      bool hasRed = false, hasGreen = false;
+      void visit(InlineSpan span) {
+        if (span is TextSpan) {
+          if (span.style?.color == AppColors.darkRed) hasRed = true;
+          if (span.style?.color == AppColors.darkGreen) hasGreen = true;
+          for (final child in span.children ?? []) {
+            visit(child);
+          }
+        }
+      }
+      for (final rt in tester.widgetList<RichText>(find.byType(RichText))) {
+        visit(rt.text);
+      }
+      expect(hasRed, isTrue);
+      expect(hasGreen, isTrue);
+    });
+
+    testWidgets('waiting card loading shows spinner (not only idle)', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'weather?', mode: CardMode.waiting, loading: true,
+                intent: IntentType.question,
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
   });
 

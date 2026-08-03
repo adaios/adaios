@@ -30,6 +30,7 @@ class AppColors {
   static const Color darkBlue = Color(0xFF5299FF);
   static const Color darkPurple = Color(0xFF9B7FD4);
   static const Color darkYellow = Color(0xFFD4A043);
+  static const Color darkRed = Color(0xFFD95757); // 行情涨/负面（A 股红涨绿跌）
 
   // -- Light mode --
   static const Color lightBg = Color(0xFFF5F4F2);

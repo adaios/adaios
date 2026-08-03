@@ -295,44 +295,91 @@ class FeedCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: BoxDecoration(
           color: AppColors.darkSurface.withAlpha(200),
           border: Border.all(color: AppColors.darkBorder.withAlpha(120), width: 1),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: badgeColor.withAlpha(40), borderRadius: BorderRadius.circular(6)),
-              child: Text(badgeText,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(data.content,
-                style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
-            ),
-            if (showDoneButton) ...[
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: data.onMarkDone,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkGreen.withAlpha(30),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('完成',
-                    style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
-                ),
+            // 顶行：类型在前、时间紧随其后，一起左上角
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: badgeColor.withAlpha(40), borderRadius: BorderRadius.circular(6)),
+                child: Text(badgeText,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
               ),
-            ],
+              const SizedBox(width: 8),
+              Text(data.time, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ]),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildSimpleContent()),
+                if (showDoneButton) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: data.onMarkDone,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkGreen.withAlpha(30),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('完成',
+                        style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// 简单卡内容：行情卡红涨绿跌着色，其余普通文本。
+  Widget _buildSimpleContent() {
+    const style = TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.4);
+    if (data.type != FeedCardType.market) {
+      return Text(data.content, style: style);
+    }
+    return Text.rich(_buildMarketSpans(), style: style);
+  }
+
+  /// 行情内容「名称 指数 ±涨跌幅」段着色（A 股：红涨绿跌）。
+  TextSpan _buildMarketSpans() {
+    final children = <TextSpan>[];
+    for (final seg in data.content.split(' · ')) {
+      final trimmed = seg.trim();
+      if (trimmed.isEmpty) continue;
+      final pctMatch = RegExp(r'([+-]?\d+\.\d+)%$').firstMatch(trimmed);
+      if (pctMatch == null) {
+        children.add(TextSpan(text: trimmed));
+      } else {
+        final nameAndValue = trimmed.substring(0, pctMatch.start).trim();
+        final pct = pctMatch.group(1)!;
+        final value = double.tryParse(pct);
+        final Color color;
+        if (pct.startsWith('-')) {
+          color = AppColors.darkGreen; // 跌 → 绿
+        } else if (value == null || value == 0) {
+          color = AppColors.darkGrey5; // 平 → 灰
+        } else {
+          color = AppColors.darkRed; // 涨 → 红
+        }
+        children.add(TextSpan(text: '$nameAndValue '));
+        children.add(TextSpan(text: '$pct%', style: TextStyle(color: color, fontWeight: FontWeight.w600)));
+      }
+      children.add(const TextSpan(text: '  ·  '));
+    }
+    if (children.isNotEmpty && children.last.text == '  ·  ') children.removeLast();
+    return TextSpan(children: children);
   }
 
   Widget _buildHeader() {
@@ -382,8 +429,8 @@ class FeedCard extends StatelessWidget {
           ),
         ],
         const Spacer(),
-        // OS domain badge (or loading spinner during end-conversation processing)
-        if (data.loading && data.mode == CardMode.idle)
+        // OS domain badge (or loading spinner during end-conversation / waiting / chatting processing)
+        if (data.loading)
           SizedBox(
             width: 16, height: 16,
             child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen.withAlpha(150)),
