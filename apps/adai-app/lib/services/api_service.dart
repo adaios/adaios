@@ -63,6 +63,8 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
+    // doneAt 变化 → 记忆缓存失效（#107）
+    _memoryCache = null;
   }
 
   /// 删除记录。
@@ -72,6 +74,10 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
+    // 删除影响 tags/timeline/memory，全清（#107）
+    _tagsCache = null;
+    _timelineCache = null;
+    _memoryCache = null;
   }
 
   /// 上传图片记录（多模态 L4）：multipart → VLM 理解 → 记录 + 记忆沉淀。

@@ -63,6 +63,8 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
+    // doneAt 变化 → 记忆缓存失效，防记忆页「待办」陈旧（#107）
+    _memoryCache.clear();
   }
 
   /// 删除记录。
@@ -72,6 +74,10 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
+    // 删除影响 tags/timeline/memory，全清（#107）
+    _tagsCache = null;
+    _timelineCache.clear();
+    _memoryCache.clear();
   }
 
   /// 提交记录。

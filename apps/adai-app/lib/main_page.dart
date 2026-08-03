@@ -337,8 +337,12 @@ class _MainPageState extends State<MainPage>
   }
 
   void _appendToActiveCard(String text, String timeStr) async {
+    // 先捕获 cardId 到局部变量：await 期间 _closeChat 可能置 _activeCardId=null，
+    // 后续 `!` 解引用会空值断言崩溃 + 回复丢失（#100 P0，adai-web 同步修复）。
+    final cardId = _activeCardId;
+    if (cardId == null) return;
     setState(() {
-      _updateCard(_activeCardId!, (c) {
+      _updateCard(cardId, (c) {
         final existing = c.turns ?? [];
         return c.copyWith(mode: CardMode.chatting, loading: true, turns: existing.isEmpty
             ? [ConversationTurn(isUser: true, text: c.content, time: c.time), ConversationTurn(isUser: true, text: text, time: timeStr)]
@@ -347,14 +351,14 @@ class _MainPageState extends State<MainPage>
     });
     _scrollToBottom();
     try {
-      final resp = await _api.createRecord(text, cardId: _activeCardId);
+      final resp = await _api.createRecord(text, cardId: cardId);
       if (!mounted) return;
       final aiTime = TimeOfDay.now();
       final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
       final aiReply = resp.rawResponse ?? resp.summary;
       if (aiReply != null) {
         setState(() {
-          _updateCard(_activeCardId!, (c) {
+          _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
               turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: aiTimeStr)]);
@@ -362,7 +366,7 @@ class _MainPageState extends State<MainPage>
         });
         _scrollToBottom();
       }
-    } catch (e) { if (mounted) { setState(() => _updateCard(_activeCardId!, (c) => c.copyWith(loading: false))); _showError(_extractApiError(e)); } }
+    } catch (e) { if (mounted) { setState(() => _updateCard(cardId, (c) => c.copyWith(loading: false))); _showError(_extractApiError(e)); } }
   }
 
   void _updateCard(String id, FeedCardData Function(FeedCardData) updater) {

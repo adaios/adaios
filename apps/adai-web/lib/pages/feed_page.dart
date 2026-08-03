@@ -164,6 +164,7 @@ class _FeedPageState extends State<FeedPage> {
         });
       } else {
         setState(() {
+          _totalToday += 1; // 本地计数跟随（#119）
           _updateCard(cardId, (c) => c.copyWith(
             summary: resp.summary ?? 'recorded', tags: resp.tags,
             loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
@@ -179,8 +180,12 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _appendToActiveCard(String text, String timeStr) async {
+    // 先捕获 cardId 到局部变量：await 期间 _closeChat 可能置 _activeCardId=null，
+    // 后续用 `!` 解引用会空值断言崩溃 + 回复丢失（#100 P0）。
+    final cardId = _activeCardId;
+    if (cardId == null) return;
     setState(() {
-      _updateCard(_activeCardId!, (c) {
+      _updateCard(cardId, (c) {
         final existing = c.turns ?? [];
         return c.copyWith(mode: CardMode.chatting, loading: true, turns: existing.isEmpty
             ? [ConversationTurn(isUser: true, text: c.content, time: c.time), ConversationTurn(isUser: true, text: text, time: timeStr)]
@@ -189,12 +194,13 @@ class _FeedPageState extends State<FeedPage> {
     });
     _scrollToBottom();
     try {
-      final resp = await widget.api.createRecord(text, cardId: _activeCardId);
+      final resp = await widget.api.createRecord(text, cardId: cardId);
       if (!mounted) return;
       final aiReply = resp.rawResponse ?? resp.summary;
       if (aiReply != null) {
+        // await 后卡片可能已关闭/删除：_updateCard 按 id 定位，不存在则安全跳过
         setState(() {
-          _updateCard(_activeCardId!, (c) {
+          _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
                 turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: _now())]);
@@ -204,7 +210,7 @@ class _FeedPageState extends State<FeedPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _updateCard(_activeCardId!, (c) => c.copyWith(loading: false)));
+      setState(() => _updateCard(cardId, (c) => c.copyWith(loading: false)));
       _showError(_extractApiError(e));
     }
   }
@@ -218,6 +224,9 @@ class _FeedPageState extends State<FeedPage> {
         _activeCardId = cardId;
         _hasActiveChat = true;
         _chatEnterTurnCount = card.turns!.length;
+        // 重开已有 turns 卡：其他卡置 idle 防互踩（#105）+ 本卡进入 chatting 与底部 end 按钮同步（#111）
+        _deactivateOtherCards(cardId);
+        _updateCard(cardId, (c) => c.copyWith(mode: CardMode.chatting));
       });
       _scrollToBottom();
       return;
@@ -227,6 +236,7 @@ class _FeedPageState extends State<FeedPage> {
       _activeCardId = cardId;
       _hasActiveChat = true;
       _chatEnterTurnCount = 0;
+      _deactivateOtherCards(cardId);
       _updateCard(cardId, (c) => c.copyWith(mode: CardMode.waiting, loading: true, intent: IntentType.question));
     });
     _scrollToBottom();
@@ -300,12 +310,66 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _deleteCard(String id) async {
+    // 删除确认（#109）：DELETE 连带清理 record+card+memory，不可逆
+    final confirmed = await _confirmDelete();
+    if (!confirmed) return;
     try {
       await widget.api.deleteRecord(id);
       if (!mounted) return;
-      setState(() => _cards.removeWhere((c) => c.id == id));
+      setState(() {
+        _cards.removeWhere((c) => c.id == id);
+        // 删除 active 卡 → 清理全局引用，防后续输入 append 到已删卡（#104）
+        if (_activeCardId == id) {
+          _activeCardId = null;
+          _hasActiveChat = false;
+        }
+        // 本地计数跟随（#119）
+        if (_totalToday > 0) _totalToday -= 1;
+      });
     } catch (_) {
       if (mounted) _showError('删除失败');
+    }
+  }
+
+  Future<bool> _confirmDelete() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('删除记录', style: TextStyle(fontSize: 16)),
+        content: const Text('将同时删除该记录及其对话、记忆，此操作不可恢复。确定删除？', style: TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(color: AppColors.darkRed)),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  /// 失败重试：复用原 cardId 重新 POST（后端按 cardId 幂等去重，避免半失败重复入账，#110）。
+  Future<void> _retryCard(String id) async {
+    final idx = _cards.indexWhere((c) => c.id == id);
+    if (idx < 0) return;
+    final content = _cards[idx].content;
+    setState(() => _cards[idx] = _cards[idx].copyWith(loading: true, clearError: true));
+    try {
+      final resp = await widget.api.createRecord(content, cardId: id);
+      if (!mounted) return;
+      setState(() {
+        _updateCard(id, (c) => c.copyWith(
+          summary: resp.summary ?? 'recorded', tags: resp.tags,
+          loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
+        ));
+      });
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updateCard(id, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+      _scrollToBottom();
     }
   }
 
@@ -442,13 +506,7 @@ class _FeedPageState extends State<FeedPage> {
           onAsk: () => _onAskCard(card.id),
           onEnd: () => _closeChat(card.id),
           onDelete: () => _deleteCard(card.id),
-          onRetry: card.error != null ? () {
-            final idx = _cards.indexWhere((c) => c.id == card.id);
-            if (idx < 0) return;
-            final c = _cards[idx];
-            setState(() => _cards.removeAt(idx));
-            _createNewCard(c.content, _now());
-          } : null,
+          onRetry: card.error != null ? () => _retryCard(card.id) : null,
           onToggleExpand: () {
             final idx = _cards.indexWhere((c) => c.id == card.id);
             if (idx >= 0) {
