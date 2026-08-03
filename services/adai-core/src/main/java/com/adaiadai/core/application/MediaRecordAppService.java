@@ -56,7 +56,8 @@ public class MediaRecordAppService {
         }
 
         String id = RecordFileRepository.generateId();
-        String mediaPath = recordFileRepository.saveMedia(userId, id, imageBytes, extensionOf(contentType));
+        LocalDateTime now = LocalDateTime.now();
+        String mediaPath = recordFileRepository.saveMedia(userId, id, imageBytes, extensionOf(contentType), now);
 
         // VLM 理解（失败不丢数据：降级用备注/占位）
         ImageUnderstanding understanding;
@@ -76,7 +77,7 @@ public class MediaRecordAppService {
         ContentRecord record = new ContentRecord(
                 id, "image", "user_input",
                 summary.length() > 50 ? summary.substring(0, 50) : summary,
-                content, tags, LocalDateTime.now(),
+                content, tags, now,
                 "log", summary, ImageUnderstanding.domainOf(understanding.category())
         );
         recordFileRepository.save(userId, record);

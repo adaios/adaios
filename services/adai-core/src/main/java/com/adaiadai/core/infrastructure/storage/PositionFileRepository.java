@@ -77,9 +77,11 @@ public class PositionFileRepository implements PositionRepository {
 
     @Override
     public void saveAll(String userId, List<Position> positions) {
-        String content = toMarkdown(positions);
+        // 保留手工维护的现金余额（#138：toMarkdown 原硬编码 0，任一笔交易后现金被清）
+        BigDecimal cash = cashBalance(userId);
+        String content = toMarkdown(positions, cash);
         fileStorage.write(userId, POSITIONS_PATH, content);
-        log.info("持仓已更新 | 数量={}", positions.size());
+        log.info("持仓已更新 | 数量={} | cashBalance={}", positions.size(), cash);
     }
 
     @Override
@@ -116,7 +118,7 @@ public class PositionFileRepository implements PositionRepository {
         return null;
     }
 
-    private String toMarkdown(List<Position> positions) {
+    private String toMarkdown(List<Position> positions, BigDecimal cashBalance) {
         StringBuilder sb = new StringBuilder();
         sb.append("# 当前持仓\n\n");
         sb.append("| symbol | name | quantity | avgCost | currentPrice |\n");
@@ -129,7 +131,7 @@ public class PositionFileRepository implements PositionRepository {
                     .append(p.avgCost().stripTrailingZeros().toPlainString()).append(" | ")
                     .append(p.currentPrice().stripTrailingZeros().toPlainString()).append(" |\n");
         }
-        sb.append("\ncashBalance: 0\n");
+        sb.append("\ncashBalance: ").append(cashBalance).append("\n");
         sb.append("lastUpdated: ").append(LocalDateTime.now().format(DTF)).append("\n");
         return sb.toString();
     }

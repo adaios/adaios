@@ -85,18 +85,22 @@ public class RecordFileRepository implements RecordRepository {
 
     @Override
     public void deleteById(String userId, String id) {
-        // ID 格式 rec_yyyyMMdd_HHmmss → 推导文件路径 records/yyyy/MM/rec_yyyyMMdd_HHmmss.md
-        if (id.startsWith("rec_") && id.length() >= 17) {
-            String yyyy = id.substring(4, 8);
-            String MM = id.substring(8, 10);
-            String filePath = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + id + ".md";
-            fileStorage.delete(userId, filePath);
-            // 多模态：同步清理关联媒体文件（records/yyyy/MM/media/{id}.*）
-            deleteMediaFiles(userId, id, yyyy, MM);
-            log.info("Record deleted | id={} | path={}", id, filePath);
-        } else {
-            log.warn("Cannot delete record with unexpected id format | id={}", id);
+        // 以持久化 createdAt 推导路径（与 save 一致，防月边界 ID 月份 ≠ createdAt 月份静默删不掉，P0 #136）
+        Optional<ContentRecord> existing = findById(userId, id);
+        if (existing.isEmpty()) {
+            log.warn("Record not found for deletion | id={}", id);
+            return;
         }
+        ContentRecord r = existing.get();
+        String filePath = RECORDS_DIR + "/" + r.yearMonth() + "/" + id + ".md";
+        fileStorage.delete(userId, filePath);
+        // 多模态：同步清理关联媒体文件（records/{yyyy}/{MM}/media/{id}.*）
+        deleteMediaFiles(userId, id, r.createdAt());
+        // 标签索引清理（#137：删除不清理 → 幽灵计数/已删 ID 关联）
+        if (tagIndexService != null && r.tags() != null && !r.tags().isEmpty()) {
+            tagIndexService.onRecordDeleted(userId, r.tags(), id);
+        }
+        log.info("Record deleted | id={} | path={}", id, filePath);
     }
 
     /**
@@ -104,8 +108,8 @@ public class RecordFileRepository implements RecordRepository {
      *
      * @return 相对用户层的媒体文件路径
      */
-    public String saveMedia(String userId, String id, byte[] bytes, String ext) {
-        String mediaPath = mediaPath(id, ext);
+    public String saveMedia(String userId, String id, byte[] bytes, String ext, LocalDateTime createdAt) {
+        String mediaPath = mediaPath(id, ext, createdAt);
         fileStorage.writeBytes(userId, mediaPath, bytes);
         log.info("Media saved | id={} | path={}", id, mediaPath);
         return mediaPath;
@@ -115,17 +119,19 @@ public class RecordFileRepository implements RecordRepository {
      * 查找记录对应的媒体文件相对路径（records/{yyyy}/{MM}/media/{id}.*）。
      */
     public Optional<String> findMediaPath(String userId, String id) {
-        if (id == null || !id.startsWith("rec_") || id.length() < 17) {
+        if (id == null || !id.startsWith("rec_")) {
             return Optional.empty();
         }
-        String dir = RECORDS_DIR + "/" + id.substring(4, 8) + "/" + id.substring(8, 10) + "/" + MEDIA_DIR;
-        return fileStorage.listFiles(userId, dir).stream()
-                .filter(p -> fileNameOf(p).startsWith(id + "."))
-                .findFirst();
+        // 以持久化 createdAt 推导目录（与 save 一致，防 ID 月份 ≠ createdAt 月份）
+        return findById(userId, id)
+                .map(r -> RECORDS_DIR + "/" + r.yearMonth() + "/" + MEDIA_DIR)
+                .flatMap(dir -> fileStorage.listFiles(userId, dir).stream()
+                        .filter(p -> fileNameOf(p).startsWith(id + "."))
+                        .findFirst());
     }
 
-    private void deleteMediaFiles(String userId, String id, String yyyy, String MM) {
-        String dir = RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + MEDIA_DIR;
+    private void deleteMediaFiles(String userId, String id, LocalDateTime createdAt) {
+        String dir = RECORDS_DIR + "/" + createdAt.format(DateTimeFormatter.ofPattern("yyyy/MM")) + "/" + MEDIA_DIR;
         fileStorage.listFiles(userId, dir).stream()
                 .filter(p -> fileNameOf(p).startsWith(id + "."))
                 .forEach(p -> fileStorage.delete(userId, p));
@@ -136,10 +142,9 @@ public class RecordFileRepository implements RecordRepository {
         return path.substring(idx + 1);
     }
 
-    private String mediaPath(String id, String ext) {
-        String yyyy = id.substring(4, 8);
-        String MM = id.substring(8, 10);
-        return RECORDS_DIR + "/" + yyyy + "/" + MM + "/" + MEDIA_DIR + "/" + id + "." + ext;
+    private String mediaPath(String id, String ext, LocalDateTime createdAt) {
+        return RECORDS_DIR + "/" + createdAt.format(DateTimeFormatter.ofPattern("yyyy/MM"))
+                + "/" + MEDIA_DIR + "/" + id + "." + ext;
     }
 
     /**

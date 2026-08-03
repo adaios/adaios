@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -41,8 +42,7 @@ public class LocalFileStorage implements FileStorage {
     public void write(String userId, String path, String content) {
         try {
             Path target = resolve(userId, path);
-            Files.createDirectories(target.getParent());
-            Files.writeString(target, content, StandardCharsets.UTF_8);
+            atomicWrite(target, content.getBytes(StandardCharsets.UTF_8));
             log.debug("文件写入成功: {}", target);
         } catch (IOException e) {
             throw new StorageException("写入文件失败: " + path, e);
@@ -91,11 +91,26 @@ public class LocalFileStorage implements FileStorage {
     public void writeBytes(String userId, String path, byte[] content) {
         try {
             Path target = resolve(userId, path);
-            Files.createDirectories(target.getParent());
-            Files.write(target, content);
+            atomicWrite(target, content);
             log.debug("二进制文件写入成功: {}", target);
         } catch (IOException e) {
             throw new StorageException("写入文件失败: " + path, e);
+        }
+    }
+
+    /**
+     * 原子写入：临时文件 + ATOMIC_MOVE，避免崩溃/断电中途写坏单文件存储（P0 #126）。
+     * 同目录 rename 在 POSIX 下原子，替换前旧内容始终完整可读；失败抛异常保留原文件。
+     */
+    private void atomicWrite(Path target, byte[] content) throws IOException {
+        Files.createDirectories(target.getParent());
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+        Files.write(tmp, content);
+        try {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            // 文件系统不支持原子 rename 时降级普通替换（极端文件系统，保留原有行为）
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

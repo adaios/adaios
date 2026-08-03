@@ -93,6 +93,34 @@ public class TagIndexService {
     }
 
     /**
+     * 记录删除后调用：从标签索引移除该记录并减计数（#137，防幽灵计数/已删 ID 关联）。
+     */
+    public void onRecordDeleted(String userId, List<String> tags, String recordId) {
+        if (tags == null || tags.isEmpty()) return;
+        TagIndex index = load(userId);
+        boolean changed = false;
+        for (String tag : tags) {
+            TagEntry entry = index.tags().get(tag);
+            if (entry == null) continue;
+            List<String> ids = new ArrayList<>(entry.recordIds());
+            ids.remove(recordId);
+            if (ids.isEmpty()) {
+                index.tags().remove(tag);
+            } else {
+                index.tags().put(tag, new TagEntry(
+                        Math.max(0, entry.count() - 1),
+                        ids, entry.firstAt(), entry.lastAt()));
+            }
+            changed = true;
+        }
+        if (changed) {
+            save(userId, new TagIndex(index.tags(), LocalDateTime.now()));
+            cacheByUser.remove(userId);
+            log.debug("标签索引已删除 | recordId={}", recordId);
+        }
+    }
+
+    /**
      * 根据标签列表查找关联记录 ID（并集，保持标签索引中的顺序）。
      */
     public List<String> findRelatedIds(String userId, List<String> tags, int maxResults) {

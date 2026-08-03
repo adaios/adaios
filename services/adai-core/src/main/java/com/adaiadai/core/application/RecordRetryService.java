@@ -4,6 +4,8 @@ import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -41,26 +43,40 @@ public class RecordRetryService {
     private final AiClient aiClient;
     private final MemoryService memoryService;
     private final CardFileRepository cardRepository;
+    private final AccountRepository accountRepository;
 
     public RecordRetryService(RecordRepository recordRepository,
                               RecordUnderstandingService understandingService,
                               AiClient aiClient,
                               MemoryService memoryService,
-                              CardFileRepository cardRepository) {
+                              CardFileRepository cardRepository,
+                              AccountRepository accountRepository) {
         this.recordRepository = recordRepository;
         this.understandingService = understandingService;
         this.aiClient = aiClient;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
+        this.accountRepository = accountRepository;
     }
 
     /**
      * 每 15 分钟执行一次：先补记录，再补卡片。
-     * 定时任务无 userId → 只处理 default 用户（单用户阶段；多用户启用后定时任务需遍历用户列表）。
+     * 遍历全部账号逐用户重补（P0 #128：不再硬编码 default，多账号功能层启用后全员覆盖）。
      */
     @Scheduled(fixedDelayString = "PT15M")
     public void retryUnprocessed() {
-        retryUnprocessed("default");
+        List<String> userIds = accountRepository.findAll().stream()
+                .map(Account::userId)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            retryUnprocessed("default");
+            return;
+        }
+        for (String userId : userIds) {
+            log.info("定时重补 | userId={}", userId);
+            retryUnprocessed(userId);
+        }
     }
 
     /**

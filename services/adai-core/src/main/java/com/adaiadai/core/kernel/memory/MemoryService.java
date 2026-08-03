@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -41,14 +42,27 @@ public class MemoryService {
 
     private final FileStorage fileStorage;
 
+    /** 每用户写锁：同一 userId 的 memory 读-改-写全串行，防并发覆盖丢记忆（P0 #126）。 */
+    private final ConcurrentHashMap<String, Object> userWriteLocks = new ConcurrentHashMap<>();
+
     public MemoryService(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
+    }
+
+    private Object writeLock(String userId) {
+        return userWriteLocks.computeIfAbsent(userId != null ? userId : "default", k -> new Object());
     }
 
     /**
      * 沉淀一条记忆（去重：同 recordId 同日期不重复写入）。
      */
     public void persist(String userId, Memory memory) {
+        synchronized (writeLock(userId)) {
+            doPersist(userId, memory);
+        }
+    }
+
+    private void doPersist(String userId, Memory memory) {
         boolean isDegraded = Memory.isDegraded(memory);
 
         // Phase 5：筛选降噪——kind=fact（无洞察/模式/偏好）无信息增量，跳过沉淀。
@@ -164,6 +178,12 @@ public class MemoryService {
      * @return 是否找到并删除了记忆
      */
     public boolean deleteByRecordId(String userId, String recordId) {
+        synchronized (writeLock(userId)) {
+            return doDeleteByRecordId(userId, recordId);
+        }
+    }
+
+    private boolean doDeleteByRecordId(String userId, String recordId) {
         if (recordId == null || recordId.isBlank()) return false;
         // 搜索最近 365 天的记忆文件
         for (int i = 0; i < 365; i++) {
@@ -402,6 +422,12 @@ public class MemoryService {
      * 完成后的记忆不再出现在"待行动事项"/Feed 待办提醒。
      */
     public boolean markDone(String userId, String memoryId) {
+        synchronized (writeLock(userId)) {
+            return doMarkDone(userId, memoryId);
+        }
+    }
+
+    private boolean doMarkDone(String userId, String memoryId) {
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
             for (Memory m : findByDate(userId, date)) {
@@ -426,6 +452,13 @@ public class MemoryService {
      * 任一字段为 null 表示保持原值。找不到记忆返回 false（404）。
      */
     public boolean update(String userId, String memoryId, String kind, String summary,
+                          List<String> tags, Boolean actionable, String suggestion) {
+        synchronized (writeLock(userId)) {
+            return doUpdate(userId, memoryId, kind, summary, tags, actionable, suggestion);
+        }
+    }
+
+    private boolean doUpdate(String userId, String memoryId, String kind, String summary,
                           List<String> tags, Boolean actionable, String suggestion) {
         for (int i = 0; i < 30; i++) {
             LocalDate date = LocalDate.now().minusDays(i);
@@ -469,6 +502,12 @@ public class MemoryService {
      * Context Engine 回读时调用，让"经常回读的记忆"保持时效权重。
      */
     public void touchActive(String userId) {
+        synchronized (writeLock(userId)) {
+            doTouchActive(userId);
+        }
+    }
+
+    private void doTouchActive(String userId) {
         LocalDateTime now = LocalDateTime.now();
         for (Memory m : recentActive(userId, 30)) {
             LocalDateTime ref = m.lastConfirmed() != null ? m.lastConfirmed() : m.createdAt();
@@ -485,6 +524,12 @@ public class MemoryService {
      * 清理该用户过期条目（随 rebuild 触发）：superseded 超 60 天、actionable 完成超 30 天。
      */
     public void cleanup(String userId) {
+        synchronized (writeLock(userId)) {
+            doCleanup(userId);
+        }
+    }
+
+    private void doCleanup(String userId) {
         LocalDateTime now = LocalDateTime.now();
         int removed = 0;
         for (int i = 0; i < 365; i++) {
