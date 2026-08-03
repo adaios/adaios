@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:adai_app/main.dart';
+import 'package:adai_app/main_page.dart';
 import 'package:adai_app/widgets/feed_card.dart';
 import 'package:adai_app/services/api_service.dart';
 import 'package:adai_app/theme/app_colors.dart';
@@ -70,6 +71,20 @@ void main() {
       expect(resp.recordId, 'r1');
       expect(resp.summary, 'done');
       expect(resp.tags, ['chat']);
+    });
+
+    test('FeedEntryResponse push type maps to push card (not record)', () {
+      final json = jsonDecode('{"type": "push", "id": "p1", "content": "推送", "time": "10:00"}');
+      final entry = FeedEntryResponse.fromJson(json);
+      final card = entry.toFeedData(api: ApiService());
+      expect(card.type, FeedCardType.push);
+    });
+
+    test('ReviewResponse parses', () {
+      final json = jsonDecode('{"date": "2026-08-03", "content": "# 复盘\\n内容"}');
+      final resp = ReviewResponse.fromJson(json);
+      expect(resp.date, '2026-08-03');
+      expect(resp.content, contains('复盘'));
     });
   });
 

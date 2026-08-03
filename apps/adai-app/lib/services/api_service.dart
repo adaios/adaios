@@ -293,6 +293,37 @@ class ApiService {
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 生成交易复盘（POST /api/v1/trading/review，AI 生成 → 写入 data/trading/reviews/）。
+  Future<ReviewResponse> generateReview({String? date}) async {
+    final params = <String, String>{};
+    if (date != null) params['date'] = date;
+    final uri = Uri.parse('$baseUrl/api/v1/trading/review')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await http.post(uri, headers: _headers);
+    _check(resp);
+    return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 获取指定日期复盘（无复盘返回 null，GET 404）。
+  Future<ReviewResponse?> getReview({String? date}) async {
+    final params = <String, String>{};
+    if (date != null) params['date'] = date;
+    final uri = Uri.parse('$baseUrl/api/v1/trading/review')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await http.get(uri, headers: _headers);
+    if (resp.statusCode == 404) return null;
+    _check(resp);
+    return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 列出所有复盘日期（GET /api/v1/trading/reviews）。
+  Future<List<String>> getReviewDates() async {
+    final resp = await http.get(Uri.parse('$baseUrl/api/v1/trading/reviews'), headers: _headers);
+    _check(resp);
+    final raw = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
+    return raw.map((e) => e.toString()).toList();
+  }
+
   // ── 任务 API ──
 
   /// 获取任务列表。
@@ -778,6 +809,19 @@ class PortfolioSnapshotResponse {
         cashBalance: (json['cashBalance'] as num?)?.toDouble() ?? 0,
         positionCount: json['positionCount'] as int? ?? 0,
       );
+}
+
+/// 复盘响应 DTO（GET/POST /api/v1/trading/review）。
+class ReviewResponse {
+  final String date; // yyyy-MM-dd
+  final String content; // markdown 复盘内容
+
+  ReviewResponse({required this.date, required this.content});
+
+  factory ReviewResponse.fromJson(Map<String, dynamic> json) => ReviewResponse(
+    date: json['date'] as String? ?? '',
+    content: json['content'] as String? ?? '',
+  );
 }
 
 // ── 任务 DTO ──

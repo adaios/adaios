@@ -154,6 +154,9 @@ extension FeedEntryResponseX on FeedEntryResponse {
         return FeedCardType.action;
       case FeedEntryType.market:
         return FeedCardType.market;
+      // #162：push 类型不再落默认 record（L5 推送上线时渲染成普通卡）
+      case FeedEntryType.push:
+        return FeedCardType.push;
       default:
         return FeedCardType.record;
     }

@@ -15,6 +15,7 @@ class _MemoryPageState extends State<MemoryPage> {
   DateTime _currentDate = DateTime.now();
   List<MemoryEntryResponse> _entries = [];
   bool _loading = true;
+  String? _error; // 后端故障时的人话错误（#108 区分「故障」vs「无数据」）
   List<String> _allDates = [];
   String? _activeTag;
 
@@ -41,8 +42,8 @@ class _MemoryPageState extends State<MemoryPage> {
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = DateTime(now.year, now.month, now.day - 1);
     final date = DateTime(d.year, d.month, d.day);
-    if (date == today) return 'today';
-    if (date == yesterday) return 'yesterday';
+    if (date == today) return '今天';
+    if (date == yesterday) return '昨天';
     return '${d.month}/${d.day}';
   }
 
@@ -61,10 +62,41 @@ class _MemoryPageState extends State<MemoryPage> {
     try {
       final entries = await widget.api.getMemory(date: _dateLabel);
       if (!mounted) return;
-      setState(() { _entries = entries; _loading = false; _activeTag = null; });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      setState(() { _entries = entries; _loading = false; _error = null; _activeTag = null; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = _errText(e); });
     }
+  }
+
+  /// 后端故障提取人话（#108：故障不再伪装成「无数据」）。
+  String _errText(dynamic e) {
+    final str = e.toString();
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    return '加载失败，请重试';
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
+        const SizedBox(height: 10),
+        Text(_error ?? '加载失败', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
+        const SizedBox(height: 14),
+        GestureDetector(
+          onTap: _load,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface2,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+            ),
+            child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+          ),
+        ),
+      ]),
+    );
   }
 
   Map<String, int> get _tagCounts {
@@ -89,17 +121,19 @@ class _MemoryPageState extends State<MemoryPage> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _entries.isEmpty
-                    ? Center(child: Text('no memories today',
-                        style: TextStyle(fontSize: 14, color: AppColors.darkGrey6)))
-                    : _filtered.isEmpty
-                        ? Center(child: Text('no matches for "$_activeTag"',
+                : _error != null
+                    ? _buildError()
+                    : _entries.isEmpty
+                        ? Center(child: Text('今天暂无记忆',
                             style: TextStyle(fontSize: 14, color: AppColors.darkGrey6)))
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: _filtered.length,
-                            itemBuilder: (_, i) => _buildCard(_filtered[i]),
-                          ),
+                        : _filtered.isEmpty
+                            ? Center(child: Text('没有匹配「$_activeTag」的记忆',
+                                style: TextStyle(fontSize: 14, color: AppColors.darkGrey6)))
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 20),
+                                itemCount: _filtered.length,
+                                itemBuilder: (_, i) => _buildCard(_filtered[i]),
+                              ),
           ),
         ]),
       ),
@@ -119,7 +153,7 @@ class _MemoryPageState extends State<MemoryPage> {
         ),
         Icon(Icons.psychology_outlined, size: 20, color: AppColors.darkGrey3),
         const SizedBox(width: 8),
-        Text('memory', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        Text('记忆', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         if (_activeTag != null) ...[
           const SizedBox(width: 6),
           Container(

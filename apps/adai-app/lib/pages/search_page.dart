@@ -21,6 +21,7 @@ class _SearchPageState extends State<SearchPage> {
   bool _loading = false;
   bool _hasSearched = false;
   String _query = '';
+  String? _error; // 后端故障人话（#108）
 
   @override
   void initState() {
@@ -54,10 +55,43 @@ class _SearchPageState extends State<SearchPage> {
       setState(() {
         _results = resp.results;
         _loading = false;
+        _error = null;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = _errText(e); });
     }
+  }
+
+  String _errText(dynamic e) {
+    final str = e.toString();
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    return '搜索失败，请重试';
+  }
+
+  Widget _buildError() {
+    return Expanded(
+      child: Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
+          const SizedBox(height: 10),
+          Text(_error ?? '搜索失败', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: _search,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+              ),
+              child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 
   List<InlineSpan> _buildHighlightedText(String text, String query) {
@@ -95,6 +129,8 @@ class _SearchPageState extends State<SearchPage> {
             const SizedBox(height: 8),
             if (_loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_error != null)
+              _buildError()
             else if (!_hasSearched)
               const Expanded(
                 child: Center(child: Text('输入关键词搜索记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey6))),

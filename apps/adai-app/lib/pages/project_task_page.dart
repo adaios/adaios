@@ -64,11 +64,43 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
         _tasks = results[0] as List<TaskResponse>;
         _stats = results[1] as TaskStatsResponse;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() { _error = _errText(e); _loading = false; });
     }
+  }
+
+  /// 后端故障人话（#108 + #113 错误态不再暴露技术串）。
+  String _errText(dynamic e) {
+    final str = e.toString();
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    return '加载失败，请重试';
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
+        const SizedBox(height: 10),
+        Text(_error ?? '加载失败', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
+        const SizedBox(height: 14),
+        GestureDetector(
+          onTap: _loadAll,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface2,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+            ),
+            child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+          ),
+        ),
+      ]),
+    );
   }
 
   Future<void> _createTask() async {
@@ -184,7 +216,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text('加载失败\n$_error', style: TextStyle(color: AppColors.darkGrey5)))
+              ? _buildError()
               : ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   children: [

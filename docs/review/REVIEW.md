@@ -26,19 +26,18 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 101 | Feed 无「加载更早」分页：只拉 `size:20`，更早记录不可达 | `feed_page.dart:55-56` | 📋 待办 |
-| 102 | 交易页无复盘入口（升级：adai-app 移动端同样——两个产品主入口的「交易系统反哺」都不可达）| `trading_page.dart`（web+app）| 📋 待办 |
+| 102 | 交易页无复盘入口（✅ adai-app 已加复盘弹窗 `trading_page.dart`；adai-web 桌面端残留）| `trading_page.dart`（web）| 📋 部分 |
 | 103 | Timeline/Memory 保活数据陈旧：initState 只拉一次 + IndexedStack 保活，无刷新入口 | `timeline_page.dart` / `memory_page.dart` | 📋 待办 |
 | 127 | **多账号零鉴权**：`X-User-Id` 纯客户端头 + admin/accounts 裸奔 + CORS `*`（生产公网 IP）| `AdminController`/`WebConfig.java` | 📋 待办（v1.0.0 前硬缺口）|
 | 129 | 知识反哺闭环零产物：复盘→promote→99-inbox 代码完整但从未产出真实文件 | `os/trading-os/08-review/` | 📋 待办 |
-| 131 | 三端文案语言策略不一致（移动端英文微文案 vs 桌面中文）| 三端 | 📋 待办 |
-| 132 | 涨跌/盈亏颜色三套语义并存（桌面红=亏 vs 移动橙=亏 vs 行情卡红涨绿跌）| 三端 trading_page | 📋 待办 |
+| 131 | 三端文案语言策略不一致（✅ adai-app 主要微文案已中文化：Feed 导航/placeholder/network error/记忆页；全量三端统一待后续）| 三端 | 📋 部分 |
+| 132 | 涨跌/盈亏颜色三套语义并存（✅ adai-app 交易页改红涨绿跌，与行情卡一致；adai-web 桌面「红=亏」残留）| adai-web trading_page | 📋 部分 |
 
 ## 🔴 P1（未修复）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 106 | api-spec portfolio 契约失真：示例 `totalMarketValue/totalPnlPercent` 后端不存在；adai-web `positionCount` 后端无此字段 → 「持仓数」恒 0 | `api-spec.md:322-329` / `api_service.dart:769-775` | 📋 待办 |
-| 108 | 后端故障与「无数据」混淆（memory/timeline/task/search 四页）+ 保活下无重试按钮（档案页是第五页）| 四页 catch 分支 | 📋 待办 |
 | 112 | CANCELLED 任务在看板不可见（`_statusOrder` 只含 TODO/DOING/DONE）| `task_page.dart:21` | 📋 待办 |
 | 144 | intent 字段不落盘 + fact 记忆被 Phase5 跳过 → rebuild 对 fact-only 记录永不幂等，每次全量重跑烧 AI | `RecordFileRepository.java:224` / `MemoryController.java` | 📋 待办 |
 
@@ -48,10 +47,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 |:-:|:-----|:-----|:----:|
 | 19 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办（数据量小）|
 | 22 | kernel 反向依赖 infrastructure（现 4 处：IntentRecognizer/ContextEngine/MemoryService/Memory.java）| 多处 | 📋 待办 |
-| 113 | 交易页错误态暴露原始技术串（#134 已治蔓延，此处残留）| `trading_page.dart:47,111` | 📋 待办 |
-| 114 | 记忆页切日期先清空列表 → 闪烁「该日暂无记忆」| `memory_page.dart:43-51` | 📋 待办 |
 | 115 | Feed 右栏（简报/标签云/任务快照）不随操作/刷新更新，数据陈旧 | `feed_page.dart:76-88` | 📋 待办 |
-| 116 | 记录交易成功无反馈（静默重载）| `trading_page.dart:53-67` | 📋 待办 |
 | 117 | 测试覆盖缺口：Feed 状态机零覆盖；缓存 key 分桶未测；6 页面无 widget 测试 | `test/` | 📋 待办 |
 | 118 | adai-web `_check` 用 `resp.body`（非 utf8）构造 ApiException body（#145 已治 adai-app 整层）| `api_service.dart:377` | 📋 待办 |
 | 147 | SELL 未持有 symbol 静默 no-op；positions saveAll 写无锁 | `TradingAppService.java:40-66` | 📋 待办 |
@@ -69,11 +65,10 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | 120 | 行情卡无红涨绿跌着色；action/market 简单卡无时间戳 | `desktop_feed_card.dart` |
 | 121 | 无最小宽度/响应式保护：窄窗下 nav200+侧栏300 挤压主区 | `desktop_shell.dart` |
 | 122 | frontend-reference 颜色表旧色值 + API 速查表缺 adai-web 消费的 8 端点 | `frontend-reference.md` |
-| 123 | 中英混排：Feed 导航 / quick add / commits·APIs / network error / 时间线 type 英文 | 三页文案 |
+| 123 | 中英混排（✅ adai-app 主要已中文化：placeholder / Feed 导航 / network error / 记忆页；桌面+时间线 type 残留）| 三页文案 |
 | 124 | adai-web/CLAUDE.md 端口写 `:8081`（实际 `:8082`）| `apps/adai-web/CLAUDE.md:32` |
 | 125 | 打磨：README 默认模板 / aiNote 死代码 / hover 无手型 / 圆角 token 散落 / 记忆页日期无年份 | 多处 |
 | 161 | 时间线 type 徽标直接显示后端英文原文 | `timeline_page.dart:203` |
-| 162 | Feed push 类型未映射：`FeedEntryType.push` 落默认 `record`（L5 推送上线会渲染成普通卡）| `feed_models.dart:134-145` |
 | 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` |
 | 165 | adai-web `FeedEntryResponse.type` 硬转换 `as String`（无兜底，新 type 整页挂）| `api_service.dart:473` |
 | 166 | MediaController 上传超限走 500（应 413）、title 50 字符 substring 拆断 emoji、market id 同秒碰撞 | 多处 |
@@ -83,6 +78,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 批 E | **2026-08-04 adai-app 主轴修复 5 项**：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试，profile 已好）/ #113 错误态人话（trading+task）/ #114 确认切日期已有 spinner 覆盖 / #116 确认交易提交已有 SnackBar 反馈 / #162 Feed push 类型双端映射 | ✅ 2026-08-04 |
 | 164 | adai-app 语音误导性 stub 移除（语音移入 v2 方向，砍可切态+长按录音入口，`input_bar.dart`）| ✅ 2026-08-03 |
 | 160 | api-spec mediaPath 示例日级→月级（批2 契约修正）| ✅ 2026-08-03 |
 | 批 A-D | **2026-08-03 连续修复 22 项**：批 A 数据安全（#126 Memory 并发写锁+原子写 / #136 删除路径 createdAt / #137 TagIndex 删除钩子 / #138 cashBalance 保留 / #128 重补遍历用户）；批 B 前端状态机（#100 竞态崩溃 / #104 删卡残留 / #105 双卡互踩 / #107 缓存失效 / #109 删除确认 / #110 retry 幂等 / #111 mode 同步 / #119 计数）；批 C 契约编码（#133 kind 三端 / #134 错误态人话 / #140 优先级透传 / #145 utf8 解码 / #146 HEIC）；批 D 数据+文档（#135 frontmatter 单行化 + 存量 5 条 / #139 卡片双副本 / #151 悬空核实保留 / #152 count 校正 / #130 VISION 状态表 / #141 README 索引 / #142 roadmap 模型名 / #143 RFC frontmatter / #154-157 CLAUDE.md 树计数 / #167 feature-reference）| ✅ 2026-08-03 |

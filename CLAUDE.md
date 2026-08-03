@@ -338,6 +338,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-app 同步批1 交互改进** ✅：验收三项同步到移动端——输入栏内联多图+可选文字（`onSendMedia` 逐张上传 caption 共享）、ask waiting「正在思考…」占位、简单卡时间戳+行情红涨绿跌（`input_bar.dart` / `feed_card.dart` / `main_page.dart`，analyze 0 error · 29 测试绿）
 - **adai-web 验收批2（每卡日期 + 原图可见）** ✅：后端 `FeedEntry.date`（MM-dd 各构建点）+ `mediaPath`（仅图片记录，`RecordRepository.findMediaPath`）+ `TimelineEntry.mediaPath`；前端双端——普通卡/简单卡显示日期、adai-web 时间竖列两行、图片记录 FeedCard 缩略图 + 点击看原图 Dialog、时间线页（modal/page）缩略图；api-spec 同步（后端 258 测试 · 双端 analyze 0 error · adai-app 31 / adai-web 27 测试绿）
 - **adai-app 语音 stub 移除（REVIEW #164）** ✅：砍掉误导性语音入口（可切语音态+长按录音→弹「开发中」），输入栏简化为文字输入 + [+]附件（图片/文件/链接）；**语音移入 v2 方向**（`input_bar.dart`，analyze 0 error · 31 测试绿）
+- **adai-app 主轴问题批量修复（批 E）** ✅：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试按钮）；#113 错误态人话（trading+task）；#102 交易页复盘入口（api_service review 方法 + markdown 复盘弹窗）；#162 Feed push 类型双端映射；#132 移动端交易页红涨绿跌统一；#131/#123 移动端微文案中文化（placeholder / Feed 导航 / 记忆页）（analyze 0 error · adai-app 33 / adai-web 27 测试绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |

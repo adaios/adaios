@@ -51,12 +51,12 @@ class InputBarState extends State<InputBar> {
   }
 
   static const _placeholders = [
-    'record something...',
-    'thinking about...',
-    'jot something down...',
-    'what is on your mind?',
-    'any thoughts to record?',
-    'what happened just now?',
+    '记录点什么…',
+    '在想什么…',
+    '随手记一笔…',
+    '此刻在想什么？',
+    '有什么想记录的吗？',
+    '刚才发生了什么？',
   ];
   late final String _placeholder;
 
@@ -329,7 +329,7 @@ class InputBarState extends State<InputBar> {
         focusNode: _focusNode,
         style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
         decoration: InputDecoration(
-          hintText: _hasPending ? '添加说明（可空）…' : (widget.hasActiveChat ? 'ask your question...' : _placeholder),
+          hintText: _hasPending ? '添加说明（可空）…' : (widget.hasActiveChat ? '问点什么…' : _placeholder),
           hintStyle: TextStyle(
             fontSize: 15,
             color: _hasPending

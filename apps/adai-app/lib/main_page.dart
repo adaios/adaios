@@ -461,7 +461,7 @@ class _MainPageState extends State<MainPage>
     if (str.contains('Connection refused') || str.contains('SocketException')) {
       return '无法连接服务器，请确认后端已启动';
     }
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   void _scrollToBottom() {
@@ -680,7 +680,7 @@ class _MainPageState extends State<MainPage>
 
     if (!showLoadMore && !showTop) return const SizedBox.shrink();
 
-    final label = showLoadMore ? 'load more' : '↑ top';
+    final label = showLoadMore ? '加载更多' : '↑ 顶部';
     final color = showLoadMore ? AppColors.darkGrey4 : AppColors.darkGreen;
 
     return GestureDetector(
@@ -696,7 +696,7 @@ class _MainPageState extends State<MainPage>
             ? Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
                 SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4)),
                 const SizedBox(width: 6),
-                Text('loading...', style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                Text('加载中…', style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
               ]))
             : Row(children: [
                 Expanded(child: Container(
@@ -742,7 +742,7 @@ class _MainPageState extends State<MainPage>
           )),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text('↓ latest',
+            child: Text('↓ 最新',
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
           ),
           Expanded(child: Container(
@@ -761,8 +761,8 @@ class _MainPageState extends State<MainPage>
     if (_cards.isEmpty) return const SizedBox.shrink();
     final newest = _cards.last;
     final minutesAgo = DateTime.now().difference(newest.updatedAt).inMinutes;
-    final label = minutesAgo < 1 ? 'just now'
-        : minutesAgo < 60 ? '$minutesAgo min ago'
+    final label = minutesAgo < 1 ? '刚刚'
+        : minutesAgo < 60 ? '$minutesAgo 分钟前'
         : newest.time;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1016,6 +1016,8 @@ extension FeedEntryResponseX on FeedEntryResponse {
       case FeedEntryType.aiNote: return FeedCardType.aiNote;
       case FeedEntryType.action: return FeedCardType.action;
       case FeedEntryType.market: return FeedCardType.market;
+      // #162：push 类型不再落默认 record（L5 推送上线时渲染成普通卡）
+      case FeedEntryType.push: return FeedCardType.push;
       default: return FeedCardType.record;
     }
   }
