@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
@@ -100,24 +102,37 @@ class _FeedPageState extends State<FeedPage> {
     _createNewCard(text, timeStr);
   }
 
-  /// 多模态 L4：图片上传 → VLM 理解记录 → 刷新 Feed + 轻提示。
-  Future<void> _onImage(PickedImage image) async {
-    try {
-      final res = await widget.api.uploadImage(
-        bytes: image.bytes,
-        filename: image.name,
-        mimeType: _mimeTypeOf(image.extension),
-      );
-      if (!mounted) return;
+  /// 多模态 L4：多图逐张上传（每张一条记录+记忆，caption 共享）→ 一次刷新 Feed + 汇总轻提示。
+  Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
+    var ok = 0;
+    String? firstErr;
+    for (final image in images) {
+      try {
+        await widget.api.uploadImage(
+          bytes: image.bytes,
+          filename: image.name,
+          mimeType: _mimeTypeOf(image.extension),
+          caption: caption.isEmpty ? null : caption,
+        );
+        ok++;
+      } catch (e) {
+        firstErr ??= _extractApiError(e);
+      }
+    }
+    if (!mounted) return;
+    if (ok > 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('📷 已记录：${res.summary}', style: const TextStyle(fontSize: 13)),
+        content: Text(
+          ok == images.length ? '📷 已记录 $ok 张' : '📷 已记录 $ok 张，${images.length - ok} 张失败',
+          style: const TextStyle(fontSize: 13),
+        ),
         backgroundColor: AppColors.darkSurface2,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       ));
       await _loadFeed();
-    } catch (e) {
-      _showError('图片上传失败: ${_extractApiError(e)}');
+    } else {
+      _showError('图片上传失败: $firstErr');
     }
   }
 
@@ -538,7 +553,7 @@ class _FeedPageState extends State<FeedPage> {
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-      child: _DesktopInputBar(onSend: _onSend, onImage: _onImage, hasActiveChat: _hasActiveChat),
+      child: _DesktopInputBar(onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
     );
   }
 
@@ -661,9 +676,9 @@ class PickedImage {
 class _DesktopInputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool hasActiveChat;
-  final ValueChanged<PickedImage>? onImage; // 多模态：图片上传
+  final void Function(List<PickedImage> images, String caption)? onSendMedia; // 多图 + 可选文字一起提交
 
-  const _DesktopInputBar({required this.onSend, required this.hasActiveChat, this.onImage});
+  const _DesktopInputBar({required this.onSend, required this.hasActiveChat, this.onSendMedia});
 
   @override
   State<_DesktopInputBar> createState() => _DesktopInputBarState();
@@ -671,6 +686,7 @@ class _DesktopInputBar extends StatefulWidget {
 
 class _DesktopInputBarState extends State<_DesktopInputBar> {
   final TextEditingController _controller = TextEditingController();
+  final List<PickedImage> _pendingImages = []; // 输入栏内联附件：选图后待发送，非立即上传
 
   @override
   void dispose() {
@@ -680,18 +696,32 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    final images = List<PickedImage>.of(_pendingImages);
+    if (images.isEmpty && text.isEmpty) return;
     _controller.clear();
-    widget.onSend(text);
+    setState(() => _pendingImages.clear());
+    if (images.isNotEmpty) {
+      // 图 + 文字（可空，caption 共享）一起提交，逐张上传
+      widget.onSendMedia?.call(images, text);
+    } else {
+      widget.onSend(text);
+    }
   }
 
   Future<void> _pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+        allowMultiple: true, // 多选，逐张上传
+      );
       if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
-      if (file.bytes == null) return;
-      widget.onImage?.call(PickedImage(file.bytes!, file.name, file.extension));
+      // 选图后先挂到输入栏（内联预览），发送时才真正上传
+      setState(() {
+        _pendingImages.addAll(result.files
+            .where((f) => f.bytes != null)
+            .map((f) => PickedImage(f.bytes!, f.name, f.extension)));
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -700,6 +730,67 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
         behavior: SnackBarBehavior.floating,
       ));
     }
+  }
+
+  /// 输入栏上方的图片附件预览（横向缩略图列表，每张可单独移除）。
+  Widget _buildImagePreview() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: SizedBox(
+        height: 56,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _pendingImages.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (_, i) => _buildThumb(_pendingImages[i], i),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumb(PickedImage image, int index) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.memory(
+            Uint8List.fromList(image.bytes),
+            width: 56,
+            height: 56,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              width: 56,
+              height: 56,
+              color: AppColors.darkSurface,
+              child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: InkWell(
+            onTap: () => setState(() => _pendingImages.removeAt(index)),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.darkBorder),
+              ),
+              child: const Icon(Icons.close, size: 12, color: AppColors.darkGrey4),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -711,41 +802,46 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.darkBorder),
       ),
-      child: Row(children: [
-        Expanded(
-          child: TextField(
-            controller: _controller,
-            maxLines: 1,
-            onSubmitted: (_) => _send(),
-            style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
-            decoration: InputDecoration(
-              hintText: widget.hasActiveChat ? '继续对话…' : '记录或提问…',
-              hintStyle: const TextStyle(fontSize: 13, color: AppColors.darkGrey5),
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_pendingImages.isNotEmpty) _buildImagePreview(),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              maxLines: 1,
+              onSubmitted: (_) => _send(),
+              style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
+              decoration: InputDecoration(
+                hintText: _pendingImages.isNotEmpty
+                    ? '添加说明（可空）…'
+                    : (widget.hasActiveChat ? '继续对话…' : '记录或提问…'),
+                hintStyle: const TextStyle(fontSize: 13, color: AppColors.darkGrey5),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 4),
-        IconButton(
-          onPressed: _pickImage,
-          icon: const Icon(Icons.image_outlined, size: 18),
-          color: AppColors.darkGrey4,
-          tooltip: '上传图片记录',
-          style: IconButton.styleFrom(minimumSize: const Size(34, 34)),
-        ),
-        const SizedBox(width: 2),
-        IconButton(
-          onPressed: _send,
-          icon: const Icon(Icons.arrow_upward, size: 18),
-          color: AppColors.darkBg,
-          style: IconButton.styleFrom(
-            backgroundColor: AppColors.darkGreen,
-            minimumSize: const Size(34, 34),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+          const SizedBox(width: 4),
+          IconButton(
+            onPressed: _pickImage,
+            icon: const Icon(Icons.image_outlined, size: 18),
+            color: _pendingImages.isNotEmpty ? AppColors.darkGreen : AppColors.darkGrey4,
+            tooltip: _pendingImages.isNotEmpty ? '更换图片' : '选择图片',
+            style: IconButton.styleFrom(minimumSize: const Size(34, 34)),
           ),
-        ),
+          const SizedBox(width: 2),
+          IconButton(
+            onPressed: _send,
+            icon: const Icon(Icons.arrow_upward, size: 18),
+            color: AppColors.darkBg,
+            style: IconButton.styleFrom(
+              backgroundColor: _pendingImages.isNotEmpty ? AppColors.darkGreen : AppColors.darkGreen.withValues(alpha: 0.6),
+              minimumSize: const Size(34, 34),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+            ),
+          ),
+        ]),
       ]),
     );
   }

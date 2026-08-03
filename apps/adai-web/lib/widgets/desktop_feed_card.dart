@@ -102,6 +102,7 @@ class DesktopFeedCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       if (!_hasTurns) _buildBody(),
                       if (_hasTurns) _buildTurns(),
+                      if (_isWaiting) _buildThinking(),
                       if (data.summary != null && _isEnded) ...[
                         const SizedBox(height: 6),
                         _buildSummaryBanner(),
@@ -127,41 +128,91 @@ class DesktopFeedCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
         decoration: BoxDecoration(
           color: AppColors.darkSurface.withValues(alpha: 0.7),
           border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-              child: Text(badgeText,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(data.content, style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1))),
-            if (showDoneButton) ...[
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: data.onMarkDone,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkGreen.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('完成',
-                      style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
-                ),
+            // 顶行：类型在前、时间紧随其后，一起左上角（日期批 2 后端 date 字段再补）
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                child: Text(badgeText,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
               ),
-            ],
+              const SizedBox(width: 8),
+              Text(data.time, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ]),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildSimpleContent()),
+                if (showDoneButton) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: data.onMarkDone,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkGreen.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('完成',
+                          style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// 简单卡内容：行情卡红涨绿跌着色，其余普通文本。
+  Widget _buildSimpleContent() {
+    const style = TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.4);
+    if (data.type != FeedCardType.market) {
+      return Text(data.content, style: style);
+    }
+    return Text.rich(_buildMarketSpans(), style: style);
+  }
+
+  /// 行情内容「名称 指数 ±涨跌幅」段着色（A 股：红涨绿跌）。
+  TextSpan _buildMarketSpans() {
+    final children = <TextSpan>[];
+    for (final seg in data.content.split(' · ')) {
+      final trimmed = seg.trim();
+      if (trimmed.isEmpty) continue;
+      final pctMatch = RegExp(r'([+-]?\d+\.\d+)%$').firstMatch(trimmed);
+      if (pctMatch == null) {
+        children.add(TextSpan(text: trimmed));
+      } else {
+        final nameAndValue = trimmed.substring(0, pctMatch.start).trim();
+        final pct = pctMatch.group(1)!;
+        final value = double.tryParse(pct);
+        final Color color;
+        if (pct.startsWith('-')) {
+          color = AppColors.darkGreen; // 跌 → 绿
+        } else if (value == null || value == 0) {
+          color = AppColors.darkGrey5; // 平 → 灰
+        } else {
+          color = AppColors.darkRed; // 涨 → 红
+        }
+        children.add(TextSpan(text: '$nameAndValue '));
+        children.add(TextSpan(text: '$pct%', style: TextStyle(color: color, fontWeight: FontWeight.w600)));
+      }
+      children.add(const TextSpan(text: '  ·  '));
+    }
+    if (children.isNotEmpty && children.last.text == '  ·  ') children.removeLast();
+    return TextSpan(children: children);
   }
 
   static const Map<String, String> _domainEmoji = {'life': '📝', 'trading': '📈', 'project': '📑'};
@@ -177,7 +228,7 @@ class DesktopFeedCard extends StatelessWidget {
           _badge('ask', Icons.help_outline, AppColors.darkGreen),
           const SizedBox(width: 6),
         ],
-        if (data.loading && data.mode == CardMode.idle)
+        if (data.loading)
           const SizedBox(width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
         const Spacer(),
@@ -254,6 +305,18 @@ class DesktopFeedCard extends StatelessWidget {
         alignment: Alignment.center,
         child: const Icon(Icons.more_vert_rounded, size: 14, color: AppColors.darkGrey4),
       ),
+    );
+  }
+
+  Widget _buildThinking() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(children: [
+        const SizedBox(width: 12, height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+        const SizedBox(width: 8),
+        const Text('正在思考…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+      ]),
     );
   }
 
