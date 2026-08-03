@@ -183,12 +183,24 @@ class _MemoryPageState extends State<MemoryPage> {
   }
 
   Widget _kindBadge(MemoryEntryResponse m) {
-    final (label, color) = switch ((m.kind, m.doneAt != null)) {
-      ('action', true) => ('已完成', AppColors.darkGrey5),
-      ('action', false) => ('待办', AppColors.darkOrange),
-      ('question', _) => ('问题', AppColors.darkBlue),
-      ('insight', _) => ('洞察', AppColors.darkPurple),
-      _ => (m.kind, AppColors.darkGrey4),
+    // 待办/已完成：actionable 是独立布尔位（actionable && doneAt），不占用 kind 分支（#133）
+    if (m.actionable) {
+      final (label, color) = m.doneAt != null
+          ? ('已完成', AppColors.darkGrey5)
+          : ('待办', AppColors.darkOrange);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
+        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+      );
+    }
+    // 后端真实 kind（Memory.java：fact/insight/preference/pattern/decision）
+    final (label, color) = switch (m.kind) {
+      'preference' => ('偏好', AppColors.darkOrange),
+      'pattern' => ('模式', AppColors.darkBlue),
+      'decision' => ('决策', AppColors.darkGreen),
+      'fact' => ('事实', AppColors.darkGrey5),
+      _ => ('洞察', AppColors.darkGrey4),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

@@ -28,7 +28,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    final data = jsonDecode(resp.body);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
     return data['content'] as String? ?? '';
   }
 
@@ -43,7 +43,7 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/api/v1/feed').replace(queryParameters: params);
     final resp = await http.get(uri, headers: _headers);
     _check(resp);
-    return FeedResponse.fromJson(jsonDecode(resp.body));
+    return FeedResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 更新记录的 domain。
@@ -103,7 +103,7 @@ class ApiService {
     _tagsCache = null;
     _timelineCache = null;
     _memoryCache = null;
-    return MediaRecordResponse.fromJson(jsonDecode(resp.body));
+    return MediaRecordResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 提交记录。
@@ -125,7 +125,7 @@ class ApiService {
     _tagsCache = null;
     _timelineCache = null;
     _memoryCache = null;
-    return RecordResponse.fromJson(jsonDecode(resp.body));
+    return RecordResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 获取时间线（自动缓存）。
@@ -138,7 +138,7 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/api/v1/timeline').replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await http.get(uri, headers: _headers);
     _check(resp);
-    final List raw = jsonDecode(resp.body);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
     _timelineCache = raw.map((e) => TimelineEntryResponse.fromJson(e)).toList();
     return _timelineCache!;
   }
@@ -155,7 +155,7 @@ class ApiService {
       body: jsonEncode(body),
     );
     _check(resp);
-    return EndConversationResponse.fromJson(jsonDecode(resp.body));
+    return EndConversationResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 读取个人档案。
@@ -165,7 +165,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return IdentityResponse.fromJson(jsonDecode(resp.body));
+    return IdentityResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 更新个人档案。
@@ -176,7 +176,7 @@ class ApiService {
       body: jsonEncode(request.toJson()),
     );
     _check(resp);
-    return IdentityResponse.fromJson(jsonDecode(resp.body));
+    return IdentityResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 获取所有标签统计（自动缓存）。
@@ -187,7 +187,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    _tagsCache = TagsResponse.fromJson(jsonDecode(resp.body));
+    _tagsCache = TagsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
     return _tagsCache!;
   }
 
@@ -199,7 +199,7 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/api/v1/memory').replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await http.get(uri, headers: _headers);
     _check(resp);
-    final List raw = jsonDecode(resp.body);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
     final result = raw.map((e) => MemoryEntryResponse.fromJson(e)).toList();
     if (date == null) _memoryCache = result;
     return result;
@@ -212,7 +212,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    final data = jsonDecode(resp.body);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
     return data['count'] as int;
   }
 
@@ -223,7 +223,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    final List raw = jsonDecode(resp.body);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
     return raw.map((e) => e as String).toList();
   }
 
@@ -234,7 +234,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return SearchResponse.fromJson(jsonDecode(resp.body));
+    return SearchResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 获取项目状态。
@@ -244,7 +244,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return ProjectStatusResponse.fromJson(jsonDecode(resp.body));
+    return ProjectStatusResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   // ── 交易 API ──
@@ -256,7 +256,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return PositionsResponse.fromJson(jsonDecode(resp.body));
+    return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 查询投资组合快照。
@@ -266,7 +266,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return PortfolioSnapshotResponse.fromJson(jsonDecode(resp.body));
+    return PortfolioSnapshotResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 记录一笔交易。
@@ -290,7 +290,7 @@ class ApiService {
       body: jsonEncode(body),
     );
     _check(resp);
-    return PositionsResponse.fromJson(jsonDecode(resp.body));
+    return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   // ── 任务 API ──
@@ -304,7 +304,7 @@ class ApiService {
         .replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await http.get(uri, headers: _headers);
     _check(resp);
-    final list = jsonDecode(resp.body) as List;
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
     return list.map((e) => TaskResponse.fromJson(e)).toList();
   }
 
@@ -329,7 +329,7 @@ class ApiService {
       body: jsonEncode(body),
     );
     _check(resp);
-    return TaskResponse.fromJson(jsonDecode(resp.body));
+    return TaskResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 更新任务。
@@ -347,7 +347,7 @@ class ApiService {
       body: jsonEncode(body),
     );
     _check(resp);
-    return TaskResponse.fromJson(jsonDecode(resp.body));
+    return TaskResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 删除任务。
@@ -366,7 +366,7 @@ class ApiService {
       headers: _headers,
     );
     _check(resp);
-    return TaskStatsResponse.fromJson(jsonDecode(resp.body));
+    return TaskStatsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   Map<String, String> get _headers => {
@@ -377,7 +377,7 @@ class ApiService {
 
   void _check(http.Response resp) {
     if (resp.statusCode >= 400) {
-      throw Exception('API 错误 ${resp.statusCode}: ${resp.body}');
+      throw Exception('API 错误 ${resp.statusCode}: ${utf8.decode(resp.bodyBytes)}');
     }
   }
 }

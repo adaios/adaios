@@ -74,6 +74,10 @@ public class MediaController {
         if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return MediaType.IMAGE_JPEG;
         if (path.endsWith(".webp")) return MediaType.parseMediaType("image/webp");
         if (path.endsWith(".gif")) return MediaType.IMAGE_GIF;
-        return MediaType.IMAGE_PNG;
+        if (path.endsWith(".png")) return MediaType.IMAGE_PNG;
+        // 未知 image/ 类型（heic/heif 等）：按实际扩展名映射，不假装 png（#146）
+        if (path.endsWith(".heic")) return MediaType.parseMediaType("image/heic");
+        if (path.endsWith(".heif")) return MediaType.parseMediaType("image/heif");
+        return MediaType.APPLICATION_OCTET_STREAM;
     }
 }

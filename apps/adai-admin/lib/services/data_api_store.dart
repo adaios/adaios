@@ -139,10 +139,10 @@ class DataApiStore implements DataStore {
   }
 
   @override
-  Future<TaskItem> addTask(String title, {String priority = 'medium'}) async {
+  Future<TaskItem> addTask(String title, {String priority = 'P2'}) async {
     final dto = await _api.createTask(
       title: title.trim(),
-      priority: _frontendPriorityToBackend(priority),
+      priority: priority, // 直接透传后端 P0-P3，避免 round-trip 降级（#140）
     );
     return _toTask(dto);
   }
@@ -212,7 +212,7 @@ class DataApiStore implements DataStore {
         id: dto.id,
         title: dto.title,
         done: dto.isDone,
-        priority: _backendPriorityToFrontend(dto.priority),
+        priority: dto.priority, // 透传后端 P0-P3（#140）
         createdAt: DateTime.tryParse(dto.createdAt) ?? DateTime(1970),
       );
 
@@ -223,19 +223,6 @@ class DataApiStore implements DataStore {
         children: const [],
         meta: dto.isDir ? null : _sizeLabel(dto.size),
       );
-
-  static String _backendPriorityToFrontend(String p) => switch (p) {
-        'P0' => 'high',
-        'P1' => 'high',
-        'P3' => 'low',
-        _ => 'medium',
-      };
-
-  static String _frontendPriorityToBackend(String p) => switch (p) {
-        'high' => 'P0',
-        'low' => 'P3',
-        _ => 'P2',
-      };
 
   static String _nameOf(String path) {
     final parts = path.split('/');

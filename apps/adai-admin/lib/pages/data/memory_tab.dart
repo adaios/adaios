@@ -31,9 +31,9 @@ class _MemoryTabState extends State<MemoryTab> {
   static const List<(String, String)> _kinds = [
     ('insight', '洞察'),
     ('preference', '偏好'),
-    ('actionable', '待办'),
-    ('summary', '摘要'),
-    ('meta', '元'),
+    ('pattern', '模式'),
+    ('decision', '决策'),
+    ('fact', '事实'),
   ];
 
   @override
@@ -64,12 +64,11 @@ class _MemoryTabState extends State<MemoryTab> {
   }
 
   Color _kindColor(String kind) => switch (kind) {
-        'insight' => AppColors.darkPurple,
-        'preference' => AppColors.darkBlue,
-        'actionable' => AppColors.darkOrange,
-        'summary' => AppColors.darkGreen,
-        'meta' => AppColors.darkYellow,
-        _ => AppColors.darkGrey5,
+        'preference' => AppColors.darkOrange,
+        'pattern' => AppColors.darkBlue,
+        'decision' => AppColors.darkGreen,
+        'fact' => AppColors.darkGrey5,
+        _ => AppColors.darkPurple,
       };
 
   Future<void> _edit(MemoryItem m) async {

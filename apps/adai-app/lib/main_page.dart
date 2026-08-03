@@ -274,7 +274,7 @@ class _MainPageState extends State<MainPage>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('图片上传失败: $e', style: const TextStyle(fontSize: 13)),
+        content: Text('图片上传失败: ${_extractApiError(e)}', style: const TextStyle(fontSize: 13)),
         backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
       ));
     }

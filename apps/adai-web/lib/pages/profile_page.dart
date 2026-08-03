@@ -77,7 +77,7 @@ class _ProfilePageState extends State<ProfilePage> {
         duration: Duration(seconds: 2),
       ));
     } catch (e) {
-      if (mounted) _showError('保存失败: $e');
+      if (mounted) _showError('保存失败: ${_extractApiError(e)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -88,6 +88,18 @@ class _ProfilePageState extends State<ProfilePage> {
       content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
       backgroundColor: AppColors.darkSurface2,
     ));
+  }
+
+  String _extractApiError(dynamic e) {
+    final str = e.toString();
+    if (str.contains('API 请求失败')) {
+      final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
+      final code = codeMatch?.group(1) ?? '?';
+      return '请求失败 ($code)';
+    }
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
+    return 'network error';
   }
 
   @override

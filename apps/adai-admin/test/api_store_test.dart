@@ -95,7 +95,7 @@ void main() {
       expect(memories.single.superseded, isTrue);
     });
 
-    test('loadTasks 映射后端 P0/DONE → high/done', () async {
+    test('loadTasks 透传后端 P0/DONE → P0/done', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/v1/project/tasks');
         return _json([
@@ -115,7 +115,7 @@ void main() {
       final task = (await store.loadTasks()).single;
 
       expect(task.done, isTrue);
-      expect(task.priority, 'high');
+      expect(task.priority, 'P0'); // #140：优先级透传后端 P0-P3，不再 high/medium/low 映射
     });
 
     test('loadPositions 映射 Position', () async {

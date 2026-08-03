@@ -117,11 +117,18 @@ public class MediaRecordAppService {
     }
 
     private String extensionOf(String contentType) {
-        return switch (contentType) {
-            case "image/jpeg" -> "jpg";
-            case "image/webp" -> "webp";
-            case "image/gif" -> "gif";
-            default -> "png";
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("仅支持图片文件: " + contentType);
+        }
+        String subtype = contentType.substring("image/".length()).toLowerCase();
+        if (!subtype.matches("[a-z0-9]+")) {
+            throw new IllegalArgumentException("不支持的图片格式: " + contentType);
+        }
+        // 已知类型映射规范扩展名；未知 image/ 类型（如 heic/heif）按 subtype 原样落盘，
+        // 避免字节是原格式却落 .png → GET 返回错误 MIME 预览坏 + VLM 收到错误 content-type（#146）
+        return switch (subtype) {
+            case "jpeg" -> "jpg";
+            default -> subtype;
         };
     }
 

@@ -26,7 +26,7 @@ class _TasksTabState extends State<TasksTab> {
 
   bool _showCreate = false;
   final _titleCtrl = TextEditingController();
-  String _priority = 'medium';
+  String _priority = 'P2';
 
   @override
   void initState() {
@@ -256,11 +256,13 @@ class _TasksTabState extends State<TasksTab> {
           const Text('优先级',
               style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           const SizedBox(width: 8),
-          _priorityChip('high', '高'),
+          _priorityChip('P0', 'P0'),
           const SizedBox(width: 4),
-          _priorityChip('medium', '中'),
+          _priorityChip('P1', 'P1'),
           const SizedBox(width: 4),
-          _priorityChip('low', '低'),
+          _priorityChip('P2', 'P2'),
+          const SizedBox(width: 4),
+          _priorityChip('P3', 'P3'),
         ]),
         const SizedBox(height: 12),
         SizedBox(
@@ -312,6 +314,9 @@ class _TasksTabState extends State<TasksTab> {
 
   Widget _buildTaskCard(TaskItem task) {
     final priorityColor = switch (task.priority) {
+      'P0' => AppColors.darkOrange,
+      'P1' => AppColors.darkYellow,
+      'P3' => AppColors.darkGrey5,
       'high' => AppColors.darkOrange,
       'low' => AppColors.darkGrey5,
       _ => AppColors.darkBlue,
@@ -342,9 +347,9 @@ class _TasksTabState extends State<TasksTab> {
           AppBadge(
             label: task.priorityLabel,
             color: priorityColor,
-            icon: task.priority == 'high'
+            icon: task.priority == 'P0' || task.priority == 'high'
                 ? Icons.priority_high
-                : task.priority == 'low'
+                : task.priority == 'P3' || task.priority == 'low'
                     ? Icons.low_priority
                     : null,
           ),

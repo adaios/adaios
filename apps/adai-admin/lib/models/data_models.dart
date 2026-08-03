@@ -63,9 +63,9 @@ class MemoryItem {
   String get kindLabel => switch (kind) {
         'insight' => '洞察',
         'preference' => '偏好',
-        'actionable' => '待办',
-        'summary' => '摘要',
-        'meta' => '元',
+        'pattern' => '模式',
+        'decision' => '决策',
+        'fact' => '事实',
         _ => kind,
       };
 }
@@ -120,6 +120,10 @@ class TaskItem {
   String get statusLabel => done ? '已完成' : '待办';
 
   String get priorityLabel => switch (priority) {
+        'P0' => 'P0',
+        'P1' => 'P1',
+        'P2' => 'P2',
+        'P3' => 'P3',
         'high' => '高',
         'medium' => '中',
         'low' => '低',

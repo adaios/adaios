@@ -64,7 +64,7 @@ class _TaskPageState extends State<TaskPage> {
       await widget.api.createTask(title: title);
       await _load();
     } catch (e) {
-      if (mounted) _showError('创建失败: $e');
+      if (mounted) _showError('创建失败: ${_extractApiError(e)}');
     }
   }
 
@@ -76,7 +76,7 @@ class _TaskPageState extends State<TaskPage> {
       await widget.api.updateTask(task.id, status: _statusOrder[next]);
       await _load();
     } catch (e) {
-      if (mounted) _showError('更新失败: $e');
+      if (mounted) _showError('更新失败: ${_extractApiError(e)}');
     }
   }
 
@@ -85,7 +85,7 @@ class _TaskPageState extends State<TaskPage> {
       await widget.api.deleteTask(task.id);
       await _load();
     } catch (e) {
-      if (mounted) _showError('删除失败: $e');
+      if (mounted) _showError('删除失败: ${_extractApiError(e)}');
     }
   }
 
@@ -94,6 +94,18 @@ class _TaskPageState extends State<TaskPage> {
       content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
       backgroundColor: AppColors.darkSurface2,
     ));
+  }
+
+  String _extractApiError(dynamic e) {
+    final str = e.toString();
+    if (str.contains('API 请求失败')) {
+      final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
+      final code = codeMatch?.group(1) ?? '?';
+      return '请求失败 ($code)';
+    }
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
+    return 'network error';
   }
 
   @override

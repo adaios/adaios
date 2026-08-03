@@ -117,7 +117,7 @@ class _FeedPageState extends State<FeedPage> {
       ));
       await _loadFeed();
     } catch (e) {
-      _showError('图片上传失败: $e');
+      _showError('图片上传失败: ${_extractApiError(e)}');
     }
   }
 

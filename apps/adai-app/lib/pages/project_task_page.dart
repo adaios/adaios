@@ -100,7 +100,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建失败: $e', style: TextStyle(color: AppColors.darkOrange)),
+        SnackBar(content: Text('创建失败: ${_extractApiError(e)}', style: TextStyle(color: AppColors.darkOrange)),
             backgroundColor: AppColors.darkSurface2),
       );
     }
@@ -113,10 +113,22 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('更新失败: $e', style: TextStyle(color: AppColors.darkOrange)),
+        SnackBar(content: Text('更新失败: ${_extractApiError(e)}', style: TextStyle(color: AppColors.darkOrange)),
             backgroundColor: AppColors.darkSurface2),
       );
     }
+  }
+
+  String _extractApiError(dynamic e) {
+    final str = e.toString();
+    if (str.contains('API 请求失败')) {
+      final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
+      final code = codeMatch?.group(1) ?? '?';
+      return '请求失败 ($code)';
+    }
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
+    return 'network error';
   }
 
   Future<void> _deleteTask(String id) async {
