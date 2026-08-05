@@ -340,6 +340,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-app 语音 stub 移除（REVIEW #164）** ✅：砍掉误导性语音入口（可切语音态+长按录音→弹「开发中」），输入栏简化为文字输入 + [+]附件（图片/文件/链接）；**语音移入 v2 方向**（`input_bar.dart`，analyze 0 error · 31 测试绿）
 - **adai-app 主轴问题批量修复（批 E）** ✅：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试按钮）；#113 错误态人话（trading+task）；#102 交易页复盘入口（api_service review 方法 + markdown 复盘弹窗）；#162 Feed push 类型双端映射；#132 移动端交易页红涨绿跌统一；#131/#123 移动端微文案中文化（placeholder / Feed 导航 / 记忆页）（analyze 0 error · adai-app 33 / adai-web 27 测试绿）
 - **adai-app 质量锁定批（批 F）** ✅：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart` 锁住 ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）；#123 状态机文案全量中文化（ask·log·end·chat·结束对话，adai-app 零英文 UI 残留）（analyze 0 error · adai-app 45 测试全绿）
+- **adai-app 6 页面测试（批 G，#117 剩余）** ✅：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用 MockClient 基建）（analyze 0 error · adai-app 59 测试全绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |

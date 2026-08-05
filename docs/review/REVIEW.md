@@ -48,7 +48,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | 19 | Feed/Context/Memory 每次全量遍历 data 目录 | `RecordFileRepository.findAll` | 📋 待办（数据量小）|
 | 22 | kernel 反向依赖 infrastructure（现 4 处：IntentRecognizer/ContextEngine/MemoryService/Memory.java）| 多处 | 📋 待办 |
 | 115 | Feed 右栏（简报/标签云/任务快照）不随操作/刷新更新，数据陈旧 | `feed_page.dart:76-88` | 📋 待办 |
-| 117 | 测试覆盖缺口：✅ Feed 状态机已补 12 个 widget 测试（`feed_state_machine_test.dart`，ApiService 注入 MockClient）；缓存 key 分桶未测；6 页面无 widget 测试 | `test/` | 📋 部分 |
+| 117 | 测试覆盖缺口：✅ Feed 状态机 12 测试（`feed_state_machine_test.dart`）+ 6 页面 widget 测试（`pages_widget_test.dart`：memory/timeline/search/trading/task/profile 数据渲染 + 错误态 + 重试）；缓存 key 分桶未测（价值低，留待多账号批）| `test/` | ✅ 主体 |
 | 118 | adai-web `_check` 用 `resp.body`（非 utf8）构造 ApiException body（#145 已治 adai-app 整层）| `api_service.dart:377` | 📋 待办 |
 | 147 | SELL 未持有 symbol 静默 no-op；positions saveAll 写无锁 | `TradingAppService.java:40-66` | 📋 待办 |
 | 148 | Feed ai_note 按记忆沉淀日期展示：重补/升级跨日后归属错日 | `FeedAppService.java:65,92` | 📋 待办 |
@@ -78,6 +78,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 批 G | **2026-08-05 adai-app 6 页面 widget 测试（#117 剩余）**：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用批 F MockClient 基建）| ✅ 2026-08-05 |
 | 批 F | **2026-08-05 adai-app 质量锁定**：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart`：ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）/ #123 状态机文案全量中文化（ask·log·end·chat·结束对话，adai-app 零英文残留）| ✅ 2026-08-05 |
 | 批 E | **2026-08-04 adai-app 主轴修复 5 项**：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试，profile 已好）/ #113 错误态人话（trading+task）/ #114 确认切日期已有 spinner 覆盖 / #116 确认交易提交已有 SnackBar 反馈 / #162 Feed push 类型双端映射 | ✅ 2026-08-04 |
 | 164 | adai-app 语音误导性 stub 移除（语音移入 v2 方向，砍可切态+长按录音入口，`input_bar.dart`）| ✅ 2026-08-03 |
