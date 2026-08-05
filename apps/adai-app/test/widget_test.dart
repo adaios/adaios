@@ -144,7 +144,7 @@ void main() {
       ));
 
       expect(find.text('buy stock'), findsOneWidget);
-      expect(find.text('ask'), findsOneWidget);
+      expect(find.text('提问'), findsOneWidget);
     });
 
     testWidgets('chatting card shows end and turns', (tester) async {
@@ -187,7 +187,7 @@ void main() {
 
       expect(find.text('chat about weather'), findsOneWidget);
       expect(find.text('weather'), findsOneWidget);
-      expect(find.text('ask'), findsOneWidget);
+      expect(find.text('提问'), findsOneWidget);
     });
 
     testWidgets('idle card with tags renders them', (tester) async {
@@ -221,7 +221,7 @@ void main() {
         ),
       ));
 
-      await tester.tap(find.text('ask'));
+      await tester.tap(find.text('提问'));
       expect(asked, true);
     });
 
@@ -316,8 +316,8 @@ void main() {
       expect(find.text('sunny'), findsOneWidget);
       expect(find.text('chat about weather'), findsOneWidget);
       expect(find.text('weather'), findsOneWidget);
-      // "ask" appears as badge + bottom button (2 instances)
-      expect(find.text('ask'), findsNWidgets(2));
+      // "提问" appears as badge + bottom button (2 instances)
+      expect(find.text('提问'), findsNWidgets(2));
       // No "end" button (not chatting/waiting)
       expect(find.text('end'), findsNothing);
     });

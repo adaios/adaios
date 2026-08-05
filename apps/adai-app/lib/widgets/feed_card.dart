@@ -461,7 +461,7 @@ class FeedCard extends StatelessWidget {
               children: [
                 Icon(Icons.edit_note, size: 11, color: AppColors.darkGrey5),
                 const SizedBox(width: 2),
-                Text('log', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+                Text('记录', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
               ],
             ),
           ),
@@ -479,7 +479,7 @@ class FeedCard extends StatelessWidget {
               children: [
                 Icon(Icons.help_outline, size: 11, color: AppColors.darkGreen),
                 const SizedBox(width: 2),
-                Text('ask', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+                Text('提问', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
               ],
             ),
           ),
@@ -911,7 +911,7 @@ class FeedCard extends StatelessWidget {
             )),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('ask', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: labelColor, letterSpacing: 0.5)),
+              child: Text('提问', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: labelColor, letterSpacing: 0.5)),
             ),
             Expanded(child: Container(
               height: 1,

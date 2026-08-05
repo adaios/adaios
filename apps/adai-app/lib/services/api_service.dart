@@ -13,17 +13,21 @@ class ApiService {
   /// 当前用户 ID（入口 `?userId=` 传入，默认 'default'）。
   final String userId;
 
+  /// 底层 HTTP 客户端（可注入 mock，测试用；默认真实 client）。
+  final http.Client _client;
+
   // 内存缓存：跨页面切换不丢
   TagsResponse? _tagsCache;
   List<TimelineEntryResponse>? _timelineCache;
   List<MemoryEntryResponse>? _memoryCache;
 
-  ApiService({String? baseUrl, this.userId = 'default'})
-      : baseUrl = baseUrl ?? ApiConfig.baseUrl;
+  ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
+      : baseUrl = baseUrl ?? ApiConfig.baseUrl,
+        _client = client ?? http.Client();
 
   /// 获取今日 Brief（摘要），独立接口。
   Future<String> getBrief() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/brief'),
       headers: _headers,
     );
@@ -41,14 +45,14 @@ class ApiService {
     if (date != null) params['date'] = date;
 
     final uri = Uri.parse('$baseUrl/api/v1/feed').replace(queryParameters: params);
-    final resp = await http.get(uri, headers: _headers);
+    final resp = await _client.get(uri, headers: _headers);
     _check(resp);
     return FeedResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 更新记录的 domain。
   Future<void> updateRecordDomain(String id, String domain) async {
-    final resp = await http.patch(
+    final resp = await _client.patch(
       Uri.parse('$baseUrl/api/v1/records/$id/domain'),
       headers: _headers,
       body: jsonEncode({'domain': domain}),
@@ -58,7 +62,7 @@ class ApiService {
 
   /// 标记行动类记忆为已完成（PATCH /api/v1/memory/{id}/done）。
   Future<void> markMemoryDone(String memoryId) async {
-    final resp = await http.patch(
+    final resp = await _client.patch(
       Uri.parse('$baseUrl/api/v1/memory/$memoryId/done'),
       headers: _headers,
     );
@@ -69,7 +73,7 @@ class ApiService {
 
   /// 删除记录。
   Future<void> deleteRecord(String id) async {
-    final resp = await http.delete(
+    final resp = await _client.delete(
       Uri.parse('$baseUrl/api/v1/records/$id'),
       headers: _headers,
     );
@@ -96,7 +100,7 @@ class ApiService {
         filename: filename,
         contentType: MediaType('image', mimeType.split('/').last),
       ));
-    final streamed = await req.send();
+    final streamed = await _client.send(req);
     final resp = await http.Response.fromStream(streamed);
     _check(resp);
     // 上传后缓存失效（Feed/Timeline/Memory 都会有新图片记录）
@@ -115,7 +119,7 @@ class ApiService {
       if (intent != null) 'intent': intent,
       if (cardId != null) 'cardId': cardId,
     };
-    final resp = await http.post(
+    final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/records'),
       headers: _headers,
       body: jsonEncode(body),
@@ -136,7 +140,7 @@ class ApiService {
     if (limit != 50) params['limit'] = limit.toString();
 
     final uri = Uri.parse('$baseUrl/api/v1/timeline').replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await http.get(uri, headers: _headers);
+    final resp = await _client.get(uri, headers: _headers);
     _check(resp);
     final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
     _timelineCache = raw.map((e) => TimelineEntryResponse.fromJson(e)).toList();
@@ -149,7 +153,7 @@ class ApiService {
       'turns': turns,
       if (cardId != null) 'cardId': cardId,
     };
-    final resp = await http.post(
+    final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/conversations/end'),
       headers: _headers,
       body: jsonEncode(body),
@@ -160,7 +164,7 @@ class ApiService {
 
   /// 读取个人档案。
   Future<IdentityResponse> getIdentity() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/identity'),
       headers: _headers,
     );
@@ -170,7 +174,7 @@ class ApiService {
 
   /// 更新个人档案。
   Future<IdentityResponse> updateIdentity(IdentityRequest request) async {
-    final resp = await http.put(
+    final resp = await _client.put(
       Uri.parse('$baseUrl/api/v1/identity'),
       headers: _headers,
       body: jsonEncode(request.toJson()),
@@ -182,7 +186,7 @@ class ApiService {
   /// 获取所有标签统计（自动缓存）。
   Future<TagsResponse> getTags() async {
     if (_tagsCache != null) return _tagsCache!;
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/tags'),
       headers: _headers,
     );
@@ -197,7 +201,7 @@ class ApiService {
     final params = <String, String>{};
     if (date != null) params['date'] = date;
     final uri = Uri.parse('$baseUrl/api/v1/memory').replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await http.get(uri, headers: _headers);
+    final resp = await _client.get(uri, headers: _headers);
     _check(resp);
     final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
     final result = raw.map((e) => MemoryEntryResponse.fromJson(e)).toList();
@@ -207,7 +211,7 @@ class ApiService {
 
   /// 获取记忆总条数。
   Future<int> getMemoryCount() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/memory/count'),
       headers: _headers,
     );
@@ -218,7 +222,7 @@ class ApiService {
 
   /// 获取有记忆的所有日期。
   Future<List<String>> getMemoryDates() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/memory/dates'),
       headers: _headers,
     );
@@ -229,7 +233,7 @@ class ApiService {
 
   /// 全文搜索。
   Future<SearchResponse> search(String query) async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/search').replace(queryParameters: {'q': query}),
       headers: _headers,
     );
@@ -239,7 +243,7 @@ class ApiService {
 
   /// 获取项目状态。
   Future<ProjectStatusResponse> getProjectStatus() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/project/status'),
       headers: _headers,
     );
@@ -251,7 +255,7 @@ class ApiService {
 
   /// 查询当前持仓。
   Future<PositionsResponse> getPositions() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/trading/positions'),
       headers: _headers,
     );
@@ -261,7 +265,7 @@ class ApiService {
 
   /// 查询投资组合快照。
   Future<PortfolioSnapshotResponse> getPortfolio() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/trading/portfolio'),
       headers: _headers,
     );
@@ -284,7 +288,7 @@ class ApiService {
       'price': price,
       'volume': volume,
     };
-    final resp = await http.post(
+    final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trades'),
       headers: _headers,
       body: jsonEncode(body),
@@ -299,7 +303,7 @@ class ApiService {
     if (date != null) params['date'] = date;
     final uri = Uri.parse('$baseUrl/api/v1/trading/review')
         .replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await http.post(uri, headers: _headers);
+    final resp = await _client.post(uri, headers: _headers);
     _check(resp);
     return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
@@ -310,7 +314,7 @@ class ApiService {
     if (date != null) params['date'] = date;
     final uri = Uri.parse('$baseUrl/api/v1/trading/review')
         .replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await http.get(uri, headers: _headers);
+    final resp = await _client.get(uri, headers: _headers);
     if (resp.statusCode == 404) return null;
     _check(resp);
     return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
@@ -318,7 +322,7 @@ class ApiService {
 
   /// 列出所有复盘日期（GET /api/v1/trading/reviews）。
   Future<List<String>> getReviewDates() async {
-    final resp = await http.get(Uri.parse('$baseUrl/api/v1/trading/reviews'), headers: _headers);
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/reviews'), headers: _headers);
     _check(resp);
     final raw = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
     return raw.map((e) => e.toString()).toList();
@@ -333,7 +337,7 @@ class ApiService {
     if (tag != null) params['tag'] = tag;
     final uri = Uri.parse('$baseUrl/api/v1/project/tasks')
         .replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await http.get(uri, headers: _headers);
+    final resp = await _client.get(uri, headers: _headers);
     _check(resp);
     final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
     return list.map((e) => TaskResponse.fromJson(e)).toList();
@@ -354,7 +358,7 @@ class ApiService {
       if (tags != null) 'tags': tags,
       if (rfcRef != null) 'rfcRef': rfcRef,
     };
-    final resp = await http.post(
+    final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/project/tasks'),
       headers: _headers,
       body: jsonEncode(body),
@@ -372,7 +376,7 @@ class ApiService {
     if (priority != null) body['priority'] = priority;
     if (tags != null) body['tags'] = tags;
     if (rfcRef != null) body['rfcRef'] = rfcRef;
-    final resp = await http.put(
+    final resp = await _client.put(
       Uri.parse('$baseUrl/api/v1/project/tasks/$id'),
       headers: _headers,
       body: jsonEncode(body),
@@ -383,7 +387,7 @@ class ApiService {
 
   /// 删除任务。
   Future<void> deleteTask(String id) async {
-    final resp = await http.delete(
+    final resp = await _client.delete(
       Uri.parse('$baseUrl/api/v1/project/tasks/$id'),
       headers: _headers,
     );
@@ -392,7 +396,7 @@ class ApiService {
 
   /// 获取任务统计。
   Future<TaskStatsResponse> getTaskStats() async {
-    final resp = await http.get(
+    final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/project/tasks/stats'),
       headers: _headers,
     );

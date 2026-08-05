@@ -17,6 +17,9 @@ class MainPage extends StatefulWidget {
   /// 当前用户 ID（入口传入，用于 ApiService 的 X-User-Id）。
   final String userId;
 
+  /// 注入的 ApiService（测试用 mock；为空时按 userId 自建）。
+  final ApiService? api;
+
   const MainPage({
     super.key,
     this.onPullUp,
@@ -24,6 +27,7 @@ class MainPage extends StatefulWidget {
     this.filterTag,
     this.onClearFilter,
     this.userId = 'default',
+    this.api,
   });
 
   @override
@@ -33,7 +37,7 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
-  late final ApiService _api = ApiService(userId: widget.userId);
+  late final ApiService _api = widget.api ?? ApiService(userId: widget.userId);
   final GlobalKey<InputBarState> _inputBarKey = GlobalKey<InputBarState>();
 
   List<FeedCardData> _cards = [];

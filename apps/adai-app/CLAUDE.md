@@ -60,8 +60,9 @@ lib/
 
 ## 当前测试状态
 
-前端测试在 `test/widget_test.dart` + `test/user_id_test.dart`，当前 **26 个测试，0 失败**。
-覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（11，含 idle/chatting/ended/折叠/loading/对话态）、userId query 解析（3）。
+前端测试在 `test/widget_test.dart` + `test/user_id_test.dart` + `test/feed_state_machine_test.dart`，当前 **45 个测试，0 失败**。
+覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（11，含 idle/chatting/ended/折叠/loading/对话态）、userId query 解析（3）、Feed 状态机（12，ask→waiting→chatting→ended/追加/错误重试/删除/加载更多/#100 竞态）。
+> ApiService 支持注入 `http.Client`（MockClient），Feed 状态机测试不依赖真实后端。
 
 ```bash
 cd apps/adai-app && flutter test
