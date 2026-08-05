@@ -196,13 +196,13 @@ void main() {
       await tester.pumpAndSettle(); // chatting
 
       // active 布局外层有 onDoubleTap，tap 需等 double-tap 超时（300ms）才触发
-      await tester.tap(find.text('end conversation'));
+      await tester.tap(find.text('结束对话'));
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
       // 回到 feed：ended 卡显示总结，底部提问按钮仍在，无结束按钮
       expect(find.text('对话总结'), findsOneWidget);
-      expect(find.text('end conversation'), findsNothing);
+      expect(find.text('结束对话'), findsNothing);
       expect(find.text('提问'), findsWidgets);
     });
 
@@ -335,7 +335,7 @@ void main() {
 
       // 追加未返回时结束对话（endConversation 立即完成）
       // 注：active 布局外层 onDoubleTap，需等 double-tap 超时 tap 才触发
-      await tester.tap(find.text('end conversation'));
+      await tester.tap(find.text('结束对话'));
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump(const Duration(milliseconds: 100));
 

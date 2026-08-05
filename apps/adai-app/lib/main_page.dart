@@ -835,7 +835,7 @@ class _MainPageState extends State<MainPage>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(color: AppColors.darkGreen.withAlpha(50), borderRadius: BorderRadius.circular(4)),
-                    child: Text('chat', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+                    child: Text('对话', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
                   ),
                   const Spacer(),
                   GestureDetector(
@@ -891,7 +891,7 @@ class _MainPageState extends State<MainPage>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                       decoration: BoxDecoration(border: Border.all(color: AppColors.darkGreen.withAlpha(100)), borderRadius: BorderRadius.circular(20)),
-                      child: Text('end conversation', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
+                      child: Text('结束对话', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
                     ),
                   ),
                 ),

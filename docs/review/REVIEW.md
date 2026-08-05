@@ -65,7 +65,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | 120 | 行情卡无红涨绿跌着色；action/market 简单卡无时间戳 | `desktop_feed_card.dart` |
 | 121 | 无最小宽度/响应式保护：窄窗下 nav200+侧栏300 挤压主区 | `desktop_shell.dart` |
 | 122 | frontend-reference 颜色表旧色值 + API 速查表缺 adai-web 消费的 8 端点 | `frontend-reference.md` |
-| 123 | 中英混排（✅ adai-app 主要已中文化：placeholder / Feed 导航 / network error / 记忆页 / ask·log 徽标按钮；残留状态机 'end'/'chat'/'end conversation' 待定；桌面+时间线 type 残留）| 三页文案 |
+| 123 | 中英混排（✅ adai-app 全量已中文化：placeholder / Feed 导航 / 网络错误态 / 记忆页 / 状态机 ask·log·end·chat 徽标按钮 / 结束对话——零英文 UI 残留；剩余：adai-web 桌面端文案 + 时间线 type 徽标）| 三端 |
 | 124 | adai-web/CLAUDE.md 端口写 `:8081`（实际 `:8082`）| `apps/adai-web/CLAUDE.md:32` |
 | 125 | 打磨：README 默认模板 / aiNote 死代码 / hover 无手型 / 圆角 token 散落 / 记忆页日期无年份 | 多处 |
 | 161 | 时间线 type 徽标直接显示后端英文原文 | `timeline_page.dart:203` |
@@ -78,7 +78,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
-| 批 F | **2026-08-05 adai-app 质量锁定**：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart`：ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）/ #123 ask·log 微文案中文化 | ✅ 2026-08-05 |
+| 批 F | **2026-08-05 adai-app 质量锁定**：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart`：ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）/ #123 状态机文案全量中文化（ask·log·end·chat·结束对话，adai-app 零英文残留）| ✅ 2026-08-05 |
 | 批 E | **2026-08-04 adai-app 主轴修复 5 项**：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试，profile 已好）/ #113 错误态人话（trading+task）/ #114 确认切日期已有 spinner 覆盖 / #116 确认交易提交已有 SnackBar 反馈 / #162 Feed push 类型双端映射 | ✅ 2026-08-04 |
 | 164 | adai-app 语音误导性 stub 移除（语音移入 v2 方向，砍可切态+长按录音入口，`input_bar.dart`）| ✅ 2026-08-03 |
 | 160 | api-spec mediaPath 示例日级→月级（批2 契约修正）| ✅ 2026-08-03 |

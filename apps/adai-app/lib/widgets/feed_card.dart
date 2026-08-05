@@ -823,7 +823,7 @@ class FeedCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Text(
-                'end',
+                '结束',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,

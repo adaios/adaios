@@ -167,7 +167,7 @@ void main() {
 
       expect(find.text('weather?'), findsOneWidget);
       expect(find.text('sunny'), findsOneWidget);
-      expect(find.text('end'), findsOneWidget);
+      expect(find.text('结束'), findsOneWidget);
     });
 
     testWidgets('ended card shows summary and tags', (tester) async {
@@ -319,7 +319,7 @@ void main() {
       // "提问" appears as badge + bottom button (2 instances)
       expect(find.text('提问'), findsNWidgets(2));
       // No "end" button (not chatting/waiting)
-      expect(find.text('end'), findsNothing);
+      expect(find.text('结束'), findsNothing);
     });
 
     testWidgets('onEnd callback fires on tap', (tester) async {
@@ -338,7 +338,7 @@ void main() {
         ),
       ));
 
-      await tester.tap(find.text('end'));
+      await tester.tap(find.text('结束'));
       expect(ended, true);
     });
 
