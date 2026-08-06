@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../widgets/page_header.dart';
 
-/// 交易桌面形态 — 快照 stat 卡 + 真 DataTable 持仓（红绿盈亏 / 数字右对齐）+ 记录交易 Dialog。
+/// 交易桌面形态 — 快照 stat 卡 + 真 DataTable 持仓（红涨绿亏 / 数字右对齐）+ 记录交易 Dialog + 复盘。
 class TradingPage extends StatefulWidget {
   final ApiService api;
 
@@ -18,6 +19,7 @@ class _TradingPageState extends State<TradingPage> {
   List<PositionItem> _positions = [];
   bool _loading = true;
   String? _error;
+  bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
 
   @override
   void initState() {
@@ -84,7 +86,7 @@ class _TradingPageState extends State<TradingPage> {
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   @override
@@ -94,6 +96,16 @@ class _TradingPageState extends State<TradingPage> {
         title: '交易',
         subtitle: '持仓与组合快照',
         actions: [
+          // #102 交易系统反哺入口：生成复盘（AI 基于当日交易记录 + 持仓）
+          IconButton(
+            onPressed: _reviewing ? null : _showReview,
+            icon: _reviewing
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
+                : const Icon(Icons.article_outlined, size: 18, color: AppColors.darkGreen),
+            color: AppColors.darkGreen,
+            tooltip: '复盘',
+          ),
           IconButton(
             onPressed: _loadAll,
             icon: const Icon(Icons.refresh, size: 18),
@@ -138,7 +150,8 @@ class _TradingPageState extends State<TradingPage> {
     return Row(children: [
       _statCard('总市值', p?.totalValue ?? 0.0, format: '\$', color: AppColors.darkBlue),
       const SizedBox(width: 12),
-      _statCard('总盈亏', p?.totalPnl ?? 0.0, color: (p?.totalPnl ?? 0.0) >= 0 ? AppColors.darkGreen : AppColors.darkRed),
+      // #132 红涨绿亏（A股）：盈=红、亏=绿，与行情卡一致
+      _statCard('总盈亏', p?.totalPnl ?? 0.0, color: (p?.totalPnl ?? 0.0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       _statCard('现金', p?.cashBalance ?? 0.0, format: '\$', color: AppColors.darkGrey3),
       const SizedBox(width: 12),
@@ -205,7 +218,8 @@ class _TradingPageState extends State<TradingPage> {
             DataColumn(label: Text('盈亏%'), numeric: true),
           ],
           rows: _positions.map((p) {
-            final pnlColor = p.pnl >= 0 ? AppColors.darkGreen : AppColors.darkRed;
+            // #132 红涨绿亏（A股）：盈=红、亏=绿
+            final pnlColor = p.pnl >= 0 ? AppColors.darkRed : AppColors.darkGreen;
             return DataRow(cells: [
               DataCell(Text(p.symbol, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600))),
               DataCell(Text(p.name, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
@@ -218,6 +232,68 @@ class _TradingPageState extends State<TradingPage> {
             ]);
           }).toList(),
         ),
+      ),
+    );
+  }
+
+  /// #102 复盘入口：生成今日复盘 → 弹窗展示（交易系统反哺可达）。
+  Future<void> _showReview() async {
+    setState(() => _reviewing = true);
+    try {
+      final review = await widget.api.generateReview();
+      if (!mounted) return;
+      setState(() => _reviewing = false);
+      showDialog(
+        context: context,
+        builder: (_) => _buildReviewDialog(review),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _reviewing = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('复盘生成失败: ${_extractApiError(e)}',
+            style: const TextStyle(fontSize: 13, color: AppColors.darkOrange)),
+        backgroundColor: AppColors.darkSurface2,
+      ));
+    }
+  }
+
+  Widget _buildReviewDialog(ReviewResponse review) {
+    return Dialog(
+      backgroundColor: AppColors.darkSurface,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.article_outlined, size: 18, color: AppColors.darkGreen),
+            const SizedBox(width: 8),
+            Text('${review.date} 复盘',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Flexible(
+            child: SingleChildScrollView(
+              child: MarkdownBody(
+                data: review.content.isEmpty ? '今天暂无复盘内容' : review.content,
+                selectable: true,
+                styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+                  textTheme: const TextTheme(
+                      bodyMedium: TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1)),
+                )).copyWith(
+                  strong: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+                  p: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1),
+                ),
+              ),
+            ),
+          ),
+        ]),
       ),
     );
   }

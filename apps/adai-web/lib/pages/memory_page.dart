@@ -52,6 +52,27 @@ class _MemoryPageState extends State<MemoryPage> {
     } catch (_) {}
   }
 
+  /// #158 桌面记忆页：待办记忆项完成操作（PATCH /memory/{id}/done → 刷新当前日）。
+  Future<void> _markDone(MemoryEntryResponse m) async {
+    try {
+      await widget.api.markMemoryDone(m.id);
+      final date = _selectedDate;
+      if (!mounted || date == null) return;
+      final entries = await widget.api.getMemory(date: date);
+      if (!mounted || _selectedDate != date) return;
+      setState(() => _entries = entries);
+    } catch (_) {
+      if (mounted) _showError('标记完成失败');
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(children: [
@@ -142,6 +163,22 @@ class _MemoryPageState extends State<MemoryPage> {
           Row(children: [
             _kindBadge(m),
             const Spacer(),
+            // #158 待办项完成操作（未完成才显示按钮，完成后 badge 变「已完成」）
+            if (m.actionable && m.doneAt == null) ...[
+              GestureDetector(
+                onTap: () => _markDone(m),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('完成',
+                      style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             if (m.superseded)
               Text('已合并', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5.withValues(alpha: 0.7))),
           ]),

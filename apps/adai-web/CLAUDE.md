@@ -29,7 +29,7 @@ adai-web 是 **产品入口的桌面形态**（参考元宝电脑端：横版、
 ## 构建与运行
 
 ```bash
-# 构建 + 本地服务（:8081，CanvasKit + 字体本地补丁）
+# 构建 + 本地服务（:8082，CanvasKit + 字体本地补丁）
 sh scripts/serve_web.sh
 
 # 分析
@@ -83,10 +83,10 @@ lib/
 
 ```bash
 flutter analyze   # 0 issues
-flutter test      # 25 个测试，0 失败
+flutter test      # 27 个测试，0 失败
 ```
 
-覆盖：DTO JSON 解析（8）、ApiException（1）、缓存参数感知（1）、userId query 解析（3）、桌面壳（5，导航/懒加载/保活）、桌面 FeedCard 渲染（7，idle/chatting/ended/回调/action/market）。
+覆盖：DTO JSON 解析（8）、ApiException（1）、缓存参数感知（1）、userId query 解析（3）、桌面壳（5，导航/懒加载/保活）、桌面 FeedCard 渲染（7，idle/chatting/ended/回调/action/market，含中文化文案断言）。
 
 ## 桌面壳设计
 

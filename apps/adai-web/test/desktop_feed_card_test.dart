@@ -20,7 +20,7 @@ void main() {
       intent: IntentType.log,
     ));
     expect(find.text('buy stock'), findsOneWidget);
-    expect(find.text('ask'), findsOneWidget);
+    expect(find.text('提问'), findsOneWidget);
   });
 
   testWidgets('chatting 卡渲染对话 + end', (tester) async {
@@ -34,7 +34,7 @@ void main() {
     ));
     expect(find.text('weather?'), findsOneWidget);
     expect(find.text('sunny'), findsOneWidget);
-    expect(find.text('end'), findsOneWidget);
+    expect(find.text('结束'), findsOneWidget);
   });
 
   testWidgets('ended 卡渲染总结 + 标签', (tester) async {
@@ -52,7 +52,7 @@ void main() {
     await pumpCard(tester,
         FeedCardData(id: '1', type: FeedCardType.record, time: '14:00', content: 'hi'),
         onAsk: () => asked = true);
-    await tester.tap(find.text('ask'));
+    await tester.tap(find.text('提问'));
     expect(asked, true);
   });
 
@@ -65,7 +65,7 @@ void main() {
           mode: CardMode.chatting, intent: IntentType.question,
         ),
         onEnd: () => ended = true);
-    await tester.tap(find.text('end'));
+    await tester.tap(find.text('结束'));
     expect(ended, true);
   });
 

@@ -20,7 +20,7 @@ void main() {
     await pumpShell(tester);
 
     final navRail = find.byKey(const ValueKey('nav-rail'));
-    for (final label in ['Feed', '记忆', '时间线', '项目', '任务', '交易', '搜索', '档案']) {
+    for (final label in ['对话流', '记忆', '时间线', '项目', '任务', '交易', '搜索', '档案']) {
       expect(
         find.descendant(of: navRail, matching: find.text(label)),
         findsOneWidget,

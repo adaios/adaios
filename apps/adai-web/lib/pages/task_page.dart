@@ -105,7 +105,7 @@ class _TaskPageState extends State<TaskPage> {
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   @override
@@ -133,7 +133,7 @@ class _TaskPageState extends State<TaskPage> {
           onSubmitted: (_) => _quickAdd(),
           style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
           decoration: InputDecoration(
-            hintText: 'quick add 任务…',
+            hintText: '快速添加任务…',
             hintStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey5),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

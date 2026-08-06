@@ -99,7 +99,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   @override
@@ -250,7 +250,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: TextField(
             controller: row.key,
             style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
-            decoration: _inputDecoration('key'),
+            decoration: _inputDecoration('键'),
           ),
         ),
         const SizedBox(width: 8),
@@ -259,7 +259,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: TextField(
             controller: row.value,
             style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
-            decoration: _inputDecoration('value'),
+            decoration: _inputDecoration('值'),
           ),
         ),
         IconButton(

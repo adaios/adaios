@@ -24,6 +24,7 @@ class FeedPage extends StatefulWidget {
 
 class _FeedPageState extends State<FeedPage> {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey<_DesktopInputBarState> _inputBarKey = GlobalKey();
 
   List<FeedCardData> _cards = [];
   int _totalToday = 0;
@@ -182,7 +183,7 @@ class _FeedPageState extends State<FeedPage> {
         setState(() {
           _totalToday += 1; // 本地计数跟随（#119）
           _updateCard(cardId, (c) => c.copyWith(
-            summary: resp.summary ?? 'recorded', tags: resp.tags,
+            summary: resp.summary ?? '已记录', tags: resp.tags,
             loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
           ));
         });
@@ -377,7 +378,7 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
       setState(() {
         _updateCard(id, (c) => c.copyWith(
-          summary: resp.summary ?? 'recorded', tags: resp.tags,
+          summary: resp.summary ?? '已记录', tags: resp.tags,
           loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
         ));
       });
@@ -458,7 +459,7 @@ class _FeedPageState extends State<FeedPage> {
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   // ── 布局 ──
@@ -546,7 +547,28 @@ class _FeedPageState extends State<FeedPage> {
               style: TextStyle(fontSize: 16, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           const Text('在下方输入你的第一条记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6)),
+          const SizedBox(height: 32),
+          // #159 快速开始引导 chips：点击填入输入框并聚焦
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            _emptyChip('📝 记录心情', () => _inputBarKey.currentState?.prefillText('今天心情')),
+            const SizedBox(width: 12),
+            _emptyChip('🤔 问个问题', () => _inputBarKey.currentState?.prefillText('')),
+          ]),
         ],
+      ),
+    );
+  }
+
+  Widget _emptyChip(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.darkBorder),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
       ),
     );
   }
@@ -554,7 +576,7 @@ class _FeedPageState extends State<FeedPage> {
   Widget _buildInputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-      child: _DesktopInputBar(onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
+      child: _DesktopInputBar(key: _inputBarKey, onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
     );
   }
 
@@ -679,7 +701,7 @@ class _DesktopInputBar extends StatefulWidget {
   final bool hasActiveChat;
   final void Function(List<PickedImage> images, String caption)? onSendMedia; // 多图 + 可选文字一起提交
 
-  const _DesktopInputBar({required this.onSend, required this.hasActiveChat, this.onSendMedia});
+  const _DesktopInputBar({super.key, required this.onSend, required this.hasActiveChat, this.onSendMedia});
 
   @override
   State<_DesktopInputBar> createState() => _DesktopInputBarState();
@@ -687,11 +709,20 @@ class _DesktopInputBar extends StatefulWidget {
 
 class _DesktopInputBarState extends State<_DesktopInputBar> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
   final List<PickedImage> _pendingImages = []; // 输入栏内联附件：选图后待发送，非立即上传
+
+  /// 从外部预设输入框文本并聚焦（空态快速开始 chips，#159）。
+  void prefillText(String text) {
+    _controller.text = text;
+    _controller.selection = TextSelection.collapsed(offset: text.length);
+    _focusNode.requestFocus();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -809,6 +840,7 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
           Expanded(
             child: TextField(
               controller: _controller,
+              focusNode: _focusNode,
               maxLines: 1,
               onSubmitted: (_) => _send(),
               style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),

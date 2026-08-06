@@ -32,7 +32,7 @@ class _NavItem {
 
 class _DesktopShellState extends State<DesktopShell> {
   static const List<_NavItem> _items = [
-    _NavItem('Feed', Icons.chat_bubble_outline),
+    _NavItem('对话流', Icons.chat_bubble_outline),
     _NavItem('记忆', Icons.psychology_outlined),
     _NavItem('时间线', Icons.calendar_month_outlined),
     _NavItem('项目', Icons.dashboard_outlined),

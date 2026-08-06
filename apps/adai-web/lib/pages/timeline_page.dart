@@ -200,7 +200,7 @@ class _TimelinePageState extends State<TimelinePage> {
                     color: AppColors.darkGreen.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(5),
                   ),
-                  child: Text(e.type,
+                  child: Text(_typeLabel(e.type),
                       style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
                 ),
                 const Spacer(),
@@ -253,6 +253,26 @@ class _TimelinePageState extends State<TimelinePage> {
     if (dateTime.length < 16) return '';
     return dateTime.substring(11, 16);
   }
+
+  /// #161 后端 type 徽标中文化；未知 type 兜底显示原值（后端 record.type()：
+  /// note/conversation/record/card/image/review/push/market/action 等）。
+  static const Map<String, String> _typeLabels = {
+    'note': '记录',
+    'record': '记录',
+    'log': '记录',
+    'conversation': '对话',
+    'question': '提问',
+    'card': '对话',
+    'image': '图片',
+    'media': '图片',
+    'push': '推送',
+    'review': '复盘',
+    'market': '行情',
+    'action': '待办',
+    'ai_note': 'AI',
+  };
+
+  String _typeLabel(String type) => _typeLabels[type] ?? type;
 
   /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
   void _showFullImage(String id) {

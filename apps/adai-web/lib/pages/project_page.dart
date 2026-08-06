@@ -44,7 +44,7 @@ class _ProjectPageState extends State<ProjectPage> {
     return Column(children: [
       PageHeader(
         title: '项目',
-        subtitle: s == null ? null : '${s.commitCount} commits · ${s.apiEndpoints} APIs',
+        subtitle: s == null ? null : '${s.commitCount} 提交 · ${s.apiEndpoints} 个 API',
         actions: [
           IconButton(
             onPressed: _load,

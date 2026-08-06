@@ -286,11 +286,11 @@ class DesktopFeedCard extends StatelessWidget {
     return Row(
       children: [
         if (_isLogStyle) ...[
-          _badge('log', Icons.edit_note, AppColors.darkGrey5),
+          _badge('记录', Icons.edit_note, AppColors.darkGrey5),
           const SizedBox(width: 6),
         ],
         if (_isAskStyle) ...[
-          _badge('ask', Icons.help_outline, AppColors.darkGreen),
+          _badge('提问', Icons.help_outline, AppColors.darkGreen),
           const SizedBox(width: 6),
         ],
         if (data.loading)
@@ -488,7 +488,7 @@ class DesktopFeedCard extends StatelessWidget {
         height: 26,
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 8),
-        child: Text('end',
+        child: Text('结束',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
       ),
     );
@@ -536,7 +536,7 @@ class DesktopFeedCard extends StatelessWidget {
           Expanded(child: Container(height: 1, color: color.withValues(alpha: 0.25))),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text('ask',
+            child: Text('提问',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color, letterSpacing: 0.5)),
           ),
           Expanded(child: Container(height: 1, color: color.withValues(alpha: 0.25))),
