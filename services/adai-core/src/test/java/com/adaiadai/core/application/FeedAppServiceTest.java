@@ -1,6 +1,8 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.MarketPushEvent;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
+import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -27,7 +29,7 @@ import static org.mockito.Mockito.when;
  */
 class FeedAppServiceTest {
 
-    private FeedAppService serviceWith(MarketDataSource market) {
+    private FeedAppService serviceWith(MarketDataSource market, MarketPushRepository push) {
         RecordRepository recordRepository = mock(RecordRepository.class);
         when(recordRepository.findAll(any())).thenReturn(List.of());
         MemoryService memoryService = mock(MemoryService.class);
@@ -35,7 +37,13 @@ class FeedAppServiceTest {
         when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
-        return new FeedAppService(recordRepository, memoryService, null, cardRepository, market);
+        return new FeedAppService(recordRepository, memoryService, null, cardRepository, market, push);
+    }
+
+    private MarketPushRepository emptyPush() {
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of());
+        return push;
     }
 
     @Test
@@ -48,7 +56,7 @@ class FeedAppServiceTest {
                         new BigDecimal("0.85"), 1000000L)
         ));
 
-        FeedAppService service = serviceWith(market);
+        FeedAppService service = serviceWith(market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.now(), 0, 10);
 
         assertTrue(resp.entries().stream().anyMatch(e -> "market".equals(e.type())),
@@ -62,11 +70,33 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = serviceWith(market);
+        FeedAppService service = serviceWith(market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.now(), 0, 10);
 
         assertTrue(resp.entries().stream().noneMatch(e -> "market".equals(e.type())),
                 "行情为空（网络失败）时不输出 market 条目");
+    }
+
+    @Test
+    void getFeed_includesPushEntry_whenPushExists() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_1", "600519", "贵州茅台",
+                        "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321，触发止损预警",
+                        "loss", "14:05")
+        ));
+
+        FeedAppService service = serviceWith(market, push);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 6), 0, 10);
+
+        FeedAppService.FeedEntry pushEntry = resp.entries().stream()
+                .filter(e -> "push".equals(e.type())).findFirst().orElseThrow();
+        assertEquals("push_1", pushEntry.id());
+        assertEquals("trading", pushEntry.domain());
+        assertEquals("08-06", pushEntry.date());
+        assertTrue(pushEntry.content().contains("止损预警"));
     }
 
     @Test
@@ -88,7 +118,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market);
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry imgEntry = resp.entries().stream()
@@ -114,7 +144,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market);
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry textEntry = resp.entries().stream()

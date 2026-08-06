@@ -67,6 +67,7 @@ com.adaiadai.core/
 │   ├── TimelineAppService        时间线查询
 │   ├── BriefAppService           今日简报
 │   ├── TradingAppService         交易领域用例
+│   ├── MarketAlertService        行情异动主动推送（Phase 2：交易时段轮询 → type=push 入 Feed）
 │   ├── ProjectStatusAppService   项目状态聚合（Git + RFC + Kernel 组件）
 │   └── ProjectTaskAppService     任务 CRUD 编排
 │
@@ -122,7 +123,7 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **262 个测试，0 失败**（15 Controller 46 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试）。
+后端测试在 `src/test/java/`，当前 **276 个测试，0 失败**（15 Controller 46 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试 + 行情推送 14 测试）。
 新增功能必须配套测试。
 
 ## 外部依赖

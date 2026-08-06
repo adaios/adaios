@@ -70,7 +70,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | **L4 通用记录** | 文字记录 + 意图路由 | ✅ | — |
 | | **多模态记录（图片/音频）** | 📋 | 图片 ✅ 已落地（`POST/GET /records/media` · GLM-4.1V-Thinking-Flash · 记忆 KIND_INSIGHT，`20260802-multimodal-image-glm`）；音频 ⬜ 待定 |
 | **L5 外部信息** | 行情接入（腾讯）Phase 1 上下文注入 | ✅ | 已落地 |
-| | 行情主动推送 / Feed 行情嵌入 | ⬜ | 推送机制待设计；新闻无稳定源暂不做 |
+| | 行情主动推送 / Feed 行情嵌入 | ✅ | Feed 行情嵌入 v0.2.0 ✅；主动推送 Phase 2 ✅（`MarketAlertService` 交易时段轮询：止损/放飞/跌破成本线 → `type=push` 入 Feed，2026-08-06）；新闻 ⬜ 无稳定源暂不做 |
 | **L6 交易闭环** | 持仓 / 复盘 / 知识反哺（promote/conflicts）/ 意图识别（STATEMENT/QUESTION）| ✅ | 完整 |
 
 ### 3.2 Domain OS
@@ -134,7 +134,7 @@ v0.1.0 — 首个可发布基线
 |:-----|:-----|:---------|
 | 前端 actionable UI 消费（#60/#61/#62）| v0.2.0 ✅已定 | 后端已就绪（type=action + done 接口）|
 | L5 Feed 行情嵌入 | v0.2.0 ✅已定 | 行情数据已接入，FeedEntry 加 market 类型 |
-| L2 主动推送深化（异动/提醒）| v0.3.0 | 推送机制设计（无渠道，需定轮询/定时方案）|
+| L2 主动推送深化（异动/提醒）| v0.3.0 ✅ 已落地（通用阈值 MVP）| 持仓异动 → `type=push` 入 Feed（`MarketAlertService` 30min 轮询）；规则依赖推送（-2.3% 离场 / +4% 转多）待 rules.md 解析 |
 | L4 多模态记录 | v0.3.0 ✅已落地 | 图片：`POST/GET /records/media` + GLM-VLM + 记忆沉淀（`20260802-multimodal-image-glm`，待 live 验收）；音频：录音/转写方案待定 |
 | Life OS 情绪/习惯/周报 | 数据积累后 | 10+ 条生活数据 |
 | **多账号 + adai-admin** | **v1.0.0** ✅已定 | 数据层 userId 预留 ✅（`20260802-multi-account-prep`）；adai-admin RFC approved `20260802-adai-admin`：Phase 0 账号管理（登录载体）→ 数据/系统/知识管理 |

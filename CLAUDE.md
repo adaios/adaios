@@ -343,6 +343,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-app 6 页面测试（批 G，#117 剩余）** ✅：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用 MockClient 基建）（analyze 0 error · adai-app 59 测试全绿）
 - **#127 最小封闭鉴权** ✅：admin/accounts 端点 `X-Admin-Token` 拦截（常量时间比较 · 未配置 fail-closed 503）+ CORS `*`→配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）；adai-admin `--dart-define=ADMIN_TOKEN` 注入；4 鉴权测试 + api-spec v3.6（后端 262 · adai-admin 31 全绿）
 - **adai-web 桌面残留清理（批 H）** ✅：#102 复盘入口（markdown 弹窗）/ #132 红涨绿亏（A股）/ #161 时间线 type 中文化（13 类映射+兜底）/ #131 桌面文案全量中文化 / #124 CLAUDE.md 端口 8082 / #158 记忆待办完成按钮 / #159 Feed 空态引导 chips / #118 `_check` utf8 / #165 type 硬转换兜底（analyze 0 error · adai-web 27 测试全绿）
+- **方向 A Phase 2 行情主动推送** ✅：`MarketAlertService` 交易时段轮询（30min cron，工作日 9-11/13-15）——单日跌≥3% 止损预警 / 涨≥5% 放飞提示 / 跌破成本线风控（阈值配置化 `adai.market.alert.*`）；`MarketSnapshotRepository` 当日签名去重（`market_snapshot.json`，跨日自动重置）+ `MarketPushRepository` 落盘 `trading/pushes/{date}.json`；FeedAppService 按日注入 `type=push` 条目（前端 push 卡片 #162 已支持，零前端改动）；轮询遍历 `default ∪ 启用账号`（防漏当前单用户）；14 新测试（276 全绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |
@@ -350,7 +351,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | B Project OS | Phase 2-3 (RFC跟踪+自举) | ✅ 完成 |
 | B Project OS | Phase 4 (前端任务面板) | ✅ 完成 |
 | A 行情接入 | Phase 1 (上下文注入) | ✅ 完成 |
-| A 行情接入 | Phase 2 (主动推送) | 📋 待做 |
+| A 行情接入 | Phase 2 (主动推送) | ✅ 完成（2026-08-06）|
 | C Life OS | Phase 0-3 | ⏸ 等数据积累 |
 | 记忆系统进化 | Phase 1-5 (kind/主题合并/actionable/时效/降噪) | ✅ 完成 |
 | v0.2.0 | 前端 actionable 闭环 + L5 行情嵌入 | ✅ 完成（待验收）|
@@ -364,7 +365,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 262 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
+- **后端** 276 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
 - **前端** adai-app 59 · adai-admin 31 · adai-web 27，全部 0 失败
 
 ### 运行环境

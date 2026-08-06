@@ -1,7 +1,7 @@
 ---
 title: Layer 5 行情接入与主动推送 MVP
 date: 2026-07-30
-status: draft
+status: implemented（Phase 1 ✅ / Phase 2 ✅ 2026-08-06）
 ---
 
 ## 一、背景
@@ -144,6 +144,14 @@ MarketAlertService
 ---
 
 ## 四、Phase 2：主动推送（持仓异动）
+
+> **已实现（2026-08-06）**，与初稿差异：
+> - 检测规则收敛为**通用阈值**（单日跌 ≥3% 止损 / 涨 ≥5% 放飞 / 跌破成本线），不解析 rules.md（`-2.3% 离场`/`+4% 转多` 留待后续）；
+> - 推送类型用 **`type=push`**（`market` 已被大盘行情条占用），前端 push 卡片 #162 已支持；
+> - **落盘持久**：事件写 `data/{userId}/trading/pushes/{date}.json`，去重快照 `data/{userId}/trading/market_snapshot.json`（按日签名，跨日自动重置）；
+> - 轮询 **30 分钟**（cron 可配 `adai.market.alert.poll-cron`），交易时段 + 工作日；
+> - 新增 `MarketAlertService` / `MarketSnapshotRepository` / `MarketPushRepository`；阈值配置 `adai.market.alert.loss-threshold` / `gain-threshold` / `break-cost-enabled`。
+> - 落盘文件均 gitignore 保护（data/ 个人数据）。
 
 ### 设计
 

@@ -39,6 +39,14 @@ adai:
     # CORS 来源白名单（逗号分隔 origin pattern）。默认 localhost/127.0.0.1 任意端口；
     # 生产前端若在服务器上，追加其域名（.env 配 ADAI_ALLOWED_ORIGIN_PATTERNS）。
     allowed-origin-patterns: ${ADAI_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+  market:
+    # Phase 2 行情异动主动推送（MarketAlertService）：交易时段轮询持仓，命中阈值写推送事件入 Feed。
+    # cron 默认工作日 9-11/13-15 点每 30 分钟；阈值单位=百分比。
+    alert:
+      loss-threshold: 3.0     # 单日跌幅 ≥3% → 止损预警
+      gain-threshold: 5.0     # 单日涨幅 ≥5% → 放飞提示
+      break-cost-enabled: true # 现价跌破成本线 → 风控提醒
+      poll-cron: 0 */30 9-11,13-15 * * MON-FRI
   ai:
     provider: deepseek  # 唯一实现，API Key 在 .env 中配置
     model: deepseek-v4-pro
