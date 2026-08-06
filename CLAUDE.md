@@ -341,6 +341,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-app 主轴问题批量修复（批 E）** ✅：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试按钮）；#113 错误态人话（trading+task）；#102 交易页复盘入口（api_service review 方法 + markdown 复盘弹窗）；#162 Feed push 类型双端映射；#132 移动端交易页红涨绿跌统一；#131/#123 移动端微文案中文化（placeholder / Feed 导航 / 记忆页）（analyze 0 error · adai-app 33 / adai-web 27 测试绿）
 - **adai-app 质量锁定批（批 F）** ✅：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart` 锁住 ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）；#123 状态机文案全量中文化（ask·log·end·chat·结束对话，adai-app 零英文 UI 残留）（analyze 0 error · adai-app 45 测试全绿）
 - **adai-app 6 页面测试（批 G，#117 剩余）** ✅：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用 MockClient 基建）（analyze 0 error · adai-app 59 测试全绿）
+- **#127 最小封闭鉴权** ✅：admin/accounts 端点 `X-Admin-Token` 拦截（常量时间比较 · 未配置 fail-closed 503）+ CORS `*`→配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）；adai-admin `--dart-define=ADMIN_TOKEN` 注入；4 鉴权测试 + api-spec v3.6（后端 262 · adai-admin 31 全绿）
+- **adai-web 桌面残留清理（批 H）** ✅：#102 复盘入口（markdown 弹窗）/ #132 红涨绿亏（A股）/ #161 时间线 type 中文化（13 类映射+兜底）/ #131 桌面文案全量中文化 / #124 CLAUDE.md 端口 8082 / #158 记忆待办完成按钮 / #159 Feed 空态引导 chips / #118 `_check` utf8 / #165 type 硬转换兜底（analyze 0 error · adai-web 27 测试全绿）
 
 ### 方向进展
 | 方向 | Phase | 状态 |
@@ -356,12 +358,14 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-admin | 规划 RFC 转正（`20260802-adai-admin`，approved）| ✅ 方向确认：v1.0.0 与多账号合并（独立产品后台：账号/内容/数据/系统/知识管理，类企业管理系统）|
 | adai-admin 全栈 | MD11-16：账号体系 + admin 端点 + 数据/系统/知识页 + memory 修正 | ✅ 后端 `1337b62` + 前端 `f9cf6bf`（31 测试过，真实 API）|
 | adai-app 即入口 | 砍掉 adai-entry，app 直接作为产品入口（交流 + 页面操作一体）| ✅ 已执行（删除 `apps/adai-entry`，根 CLAUDE.md 同步）|
-| adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 25 测试绿 · web 构建通过）|
+| adai-web 桌面端 | 独立工程两套 UI：两栏壳 + 8 模块桌面形态（Feed/交易/记忆/时间线/任务/项目/搜索/档案）| ✅ 已完成（analyze 0 · 27 测试绿 · web 构建通过）|
 | 多模态图片记录 | L4 图片 → GLM-VLM 文本化 → 现有闭环（v0.3.0 目标）| ✅ 前后端完成 · 验收批1/批2 双端已落地（图片内联多图+caption + 每卡日期 + 原图可见）|
+| 安全基线 | #127 最小封闭鉴权：admin/accounts 令牌 + CORS 收窄（v1.0.0 前置）| ✅ 完成（用户层 X-User-Id 鉴权留待 v1.0.0 多账号正式开放）|
+| adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 256 测试，0 失败（含多用户隔离 5 测试；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
-- **前端** adai-app 26 · adai-admin 31 · adai-web 25，全部 0 失败
+- **后端** 262 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
+- **前端** adai-app 59 · adai-admin 31 · adai-web 27，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）

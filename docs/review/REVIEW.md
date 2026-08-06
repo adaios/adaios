@@ -1,9 +1,9 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-03
-last-review: 2026-08-03
+updated: 2026-08-06
+last-review: 2026-08-06
 baseline: ce3f19f
-mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
+mode: 批 H（adai-web 残留 9 项）+ #127 最小封闭鉴权修复
 ---
 
 # 项目审核状态报告
@@ -14,6 +14,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-06 | 双轨修复（批 H + #127）| 89feaf1..HEAD | subagent(adai-web) + 主会话(后端) | 0 | 13（adai-web 9 项 + #127 4 项）|
 | 2026-08-03 | full 全量（v0.3.0 前）| — | backend/frontend/docs/product/knowledge ×5 | P0×1 + 战略×7 + P1×13 + P2/P3×30 | 0 |
 | 2026-08-03 | 修复批 A-D | — | — | 0 | 22（数据安全/状态机/契约/数据+文档）|
 | 2026-08-02 | deep 增量（adai-web）| cc537db..HEAD | frontend/product/docs ×3 | P0×1 + 战略×3 + P1×9 + P2×8 + P3 打磨若干 | 0 |
@@ -26,12 +27,8 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 101 | Feed 无「加载更早」分页：只拉 `size:20`，更早记录不可达 | `feed_page.dart:55-56` | 📋 待办 |
-| 102 | 交易页无复盘入口（✅ adai-app 已加复盘弹窗 `trading_page.dart`；adai-web 桌面端残留）| `trading_page.dart`（web）| 📋 部分 |
 | 103 | Timeline/Memory 保活数据陈旧：initState 只拉一次 + IndexedStack 保活，无刷新入口 | `timeline_page.dart` / `memory_page.dart` | 📋 待办 |
-| 127 | **多账号零鉴权**：`X-User-Id` 纯客户端头 + admin/accounts 裸奔 + CORS `*`（生产公网 IP）| `AdminController`/`WebConfig.java` | 📋 待办（v1.0.0 前硬缺口）|
 | 129 | 知识反哺闭环零产物：复盘→promote→99-inbox 代码完整但从未产出真实文件 | `os/trading-os/08-review/` | 📋 待办 |
-| 131 | 三端文案语言策略不一致（✅ adai-app 主要微文案已中文化：Feed 导航/placeholder/network error/记忆页；全量三端统一待后续）| 三端 | 📋 部分 |
-| 132 | 涨跌/盈亏颜色三套语义并存（✅ adai-app 交易页改红涨绿跌，与行情卡一致；adai-web 桌面「红=亏」残留）| adai-web trading_page | 📋 部分 |
 
 ## 🔴 P1（未修复）
 
@@ -49,28 +46,20 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 | 22 | kernel 反向依赖 infrastructure（现 4 处：IntentRecognizer/ContextEngine/MemoryService/Memory.java）| 多处 | 📋 待办 |
 | 115 | Feed 右栏（简报/标签云/任务快照）不随操作/刷新更新，数据陈旧 | `feed_page.dart:76-88` | 📋 待办 |
 | 117 | 测试覆盖缺口：✅ Feed 状态机 12 测试（`feed_state_machine_test.dart`）+ 6 页面 widget 测试（`pages_widget_test.dart`：memory/timeline/search/trading/task/profile 数据渲染 + 错误态 + 重试）；缓存 key 分桶未测（价值低，留待多账号批）| `test/` | ✅ 主体 |
-| 118 | adai-web `_check` 用 `resp.body`（非 utf8）构造 ApiException body（#145 已治 adai-app 整层）| `api_service.dart:377` | 📋 待办 |
 | 147 | SELL 未持有 symbol 静默 no-op；positions saveAll 写无锁 | `TradingAppService.java:40-66` | 📋 待办 |
 | 148 | Feed ai_note 按记忆沉淀日期展示：重补/升级跨日后归属错日 | `FeedAppService.java:65,92` | 📋 待办 |
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | 📋 待办 |
 | 150 | `/project/status` 的 `apiEndpoints=21` 硬编码（实际 46）；FeedAppService 死依赖 | `ProjectStatusAppService.java` / `FeedAppService.java` | 📋 待办 |
 | 153 | 数据形态失衡：08 月 131/133 条为对话摘要，原始 note <2% | `data/default/records/2026/08/` | 📋 观察 |
-| 158 | 桌面记忆页「待办」无完成操作（完成动作只在 Feed action 卡）| `adai-web/memory_page.dart` | 📋 待办 |
-| 159 | 桌面 Feed 空态缺移动端的快速开始引导 chips | `feed_page.dart:464-478` | 📋 待办 |
 
 ## 🔴 P3（未修复，打磨）
 
 | # | 问题 | 位置 |
 |:-:|:-----|:-----|
-| 120 | 行情卡无红涨绿跌着色；action/market 简单卡无时间戳 | `desktop_feed_card.dart` |
-| 121 | 无最小宽度/响应式保护：窄窗下 nav200+侧栏300 挤压主区 | `desktop_shell.dart` |
+| 121 | 无最小宽度/响应式保护：窄窗下 nav200+侧栏300 挤压主区（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` |
 | 122 | frontend-reference 颜色表旧色值 + API 速查表缺 adai-web 消费的 8 端点 | `frontend-reference.md` |
-| 123 | 中英混排（✅ adai-app 全量已中文化：placeholder / Feed 导航 / 网络错误态 / 记忆页 / 状态机 ask·log·end·chat 徽标按钮 / 结束对话——零英文 UI 残留；剩余：adai-web 桌面端文案 + 时间线 type 徽标）| 三端 |
-| 124 | adai-web/CLAUDE.md 端口写 `:8081`（实际 `:8082`）| `apps/adai-web/CLAUDE.md:32` |
 | 125 | 打磨：README 默认模板 / aiNote 死代码 / hover 无手型 / 圆角 token 散落 / 记忆页日期无年份 | 多处 |
-| 161 | 时间线 type 徽标直接显示后端英文原文 | `timeline_page.dart:203` |
 | 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` |
-| 165 | adai-web `FeedEntryResponse.type` 硬转换 `as String`（无兜底，新 type 整页挂）| `api_service.dart:473` |
 | 166 | MediaController 上传超限走 500（应 413）、title 50 字符 substring 拆断 emoji、market id 同秒碰撞 | 多处 |
 | 168 | 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 |
 
@@ -78,6 +67,8 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 批 H | **2026-08-06 adai-web 桌面残留清理 9 项**：#102 交易页复盘入口（markdown 复盘弹窗）/ #132 红涨绿亏（A股语义，快照+DataTable）/ #161 时间线 type 徽标中文化（13 类映射+未知兜底）/ #131 桌面文案全量中文化（shell/feed_card/task/feed/profile/project/网络错误）/ #124 CLAUDE.md 端口 8082 / #158 记忆页待办完成按钮 / #159 Feed 空态快速引导 chips（prefill 聚焦）/ #118 `_check` utf8 解码 / #165 type 硬转换兜底；#120 确认已实现未重复、#121 评估低优先级不修 | ✅ 2026-08-06 |
+| 127 | **2026-08-06 最小封闭鉴权**：admin/accounts 端点 `X-Admin-Token` 拦截（常量时间比较、未配置 fail-closed 503）+ CORS `*`→配置化 origin 白名单（默认 localhost:*）；adai-admin 前端 `ADMIN_TOKEN` dart-define 注入；4 鉴权测试 + api-spec v3.6 | ✅ 2026-08-06 |
 | 批 G | **2026-08-05 adai-app 6 页面 widget 测试（#117 剩余）**：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用批 F MockClient 基建）| ✅ 2026-08-05 |
 | 批 F | **2026-08-05 adai-app 质量锁定**：#117 Feed 状态机 12 个 widget 测试（`feed_state_machine_test.dart`：ask→waiting→chatting→ended / 追加 / 错误重试 / 删除 / 加载更多 / #100 竞态，ApiService 注入 MockClient 测试性改造）/ #123 状态机文案全量中文化（ask·log·end·chat·结束对话，adai-app 零英文残留）| ✅ 2026-08-05 |
 | 批 E | **2026-08-04 adai-app 主轴修复 5 项**：#108 故障 vs 无数据（memory/timeline/search/task 4 页错误态+重试，profile 已好）/ #113 错误态人话（trading+task）/ #114 确认切日期已有 spinner 覆盖 / #116 确认交易提交已有 SnackBar 反馈 / #162 Feed push 类型双端映射 | ✅ 2026-08-04 |
@@ -98,6 +89,7 @@ mode: --full 全量（v0.3.0 前）+ 批 A-D 修复（9771a24/02c9b9d/1f715c9）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-06 | 双轨修复（批 H + #127）| general-purpose（adai-web）| 1 | ~15min | 0 新 | 13 |
 | 2026-08-06 | light 增量（批F/#123/批G 快扫）| — | 0 | ~3min | 0 新 | 0 |
 | 2026-08-03 | full 全量（v0.3.0 前）| backend/frontend/docs/product/knowledge | 5 | ~30min | P0×1+战略×7+P1×13+P2/P3×30 | 0 |
 | 2026-08-03 | 修复批 A-D | — | 0 | 4 批 | 0 | 22 |
