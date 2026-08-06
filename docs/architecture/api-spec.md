@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.5 | 最后更新：2026-08-02**
+**文档版本：v3.6 | 最后更新：2026-08-06**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-06 | v3.6 | **管理端点鉴权（REVIEW #127）**：§账号、§管理端全部端点要求 `X-Admin-Token` 请求头（配置 `ADAI_ADMIN_TOKEN`，缺失 401 / 未配置 503 fail-closed）；CORS 由 `*` 收窄为配置化 origin 白名单（默认 localhost）|
 | 2026-08-02 | v3.5 | **多模态图片记录（L4）**：新增 `POST /records/media`（multipart 上传 → GLM 视觉理解 → 记录+记忆）、`GET /records/media/{id}`（原图预览）|
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
@@ -879,7 +880,9 @@ chat 模式（全屏）
 
 ## 16. 账号（多账号功能层）
 
-> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app 首屏从账号列表选择进入。现阶段无口令/鉴权（后补），seed 管理员 `adai` 由后端首次启动自动预置。
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app 首屏从账号列表选择进入。seed 管理员 `adai` 由后端首次启动自动预置。
+>
+> **管理鉴权（REVIEW #127）**：本节与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
 
 ### `GET /api/v1/accounts` — 账号列表
 
@@ -929,6 +932,8 @@ chat 模式（全屏）
 ## 17. 管理端（adai-admin）
 
 > 系统级浏览端点（读取 `data/` 全部用户层 + `os/` 知识库），**不走 `X-User-Id` 用户层**，仅供 adai-admin 使用。路径一律防目录遍历（`normalize + startsWith` 校验）。
+>
+> **鉴权**：全部端点要求 `X-Admin-Token` 请求头（同 §16，REVIEW #127）。
 
 ### `GET /api/v1/admin/files?path=` — data/ 目录浏览
 

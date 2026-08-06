@@ -115,12 +115,14 @@ com.adaiadai.core/
 | GET | `/api/v1/search?q=` | 全文搜索 |
 | GET | `/api/v1/tags` | 标签统计 |
 | POST | `/api/v1/cards/migrate` | 卡片迁移 |
-| GET / POST | `/api/v1/accounts` | 账号查询/创建（admin） |
-| GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin） |
+| GET / POST | `/api/v1/accounts` | 账号查询/创建（admin，**需 `X-Admin-Token`**）|
+| GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin，**需 `X-Admin-Token`**）|
+
+> **管理鉴权（REVIEW #127）**：`/api/v1/admin/**` 与 `/api/v1/accounts/**` 由 `AdminAuthInterceptor` 保护（`infrastructure/security/`），要求 `X-Admin-Token` = 配置 `adai.security.admin-token`（env `ADAI_ADMIN_TOKEN`）。未配置令牌时 fail-closed 返回 503；CORS 由 `WebConfig` 收窄为配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）。
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **256 个测试，0 失败**（15 Controller 46 端点接口测试全覆盖 + 多模态 18 测试）。
+后端测试在 `src/test/java/`，当前 **262 个测试，0 失败**（15 Controller 46 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试）。
 新增功能必须配套测试。
 
 ## 外部依赖

@@ -11,24 +11,28 @@ import 'api_exception.dart';
 ///
 /// - 构造器可注入 [http.Client]（测试用 `MockClient`）与 [baseUrl]。
 /// - [userId] 用于 per-user 请求的 `X-User-Id` header（默认 'default'）。
+/// - [adminToken]（REVIEW #127）随系统级请求带 `X-Admin-Token`，默认取 [ApiConfig.adminToken]。
 /// - 方法返回解析后的 DTO / 模型，失败抛 [ApiException]。
 class ApiService {
   ApiService({
     http.Client? client,
     String? baseUrl,
     this.userId = 'default',
+    this.adminToken = ApiConfig.adminToken,
   })  : _client = client ?? http.Client(),
         baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   final http.Client _client;
   final String baseUrl;
   final String userId;
+  final String adminToken;
 
   // ── 通用请求 ──
 
-  /// 系统级请求头（无 X-User-Id）。
-  Map<String, String> get systemHeaders => const {
+  /// 系统级请求头（无 X-User-Id；带管理令牌）。
+  Map<String, String> get systemHeaders => {
         'Content-Type': 'application/json',
+        if (adminToken.isNotEmpty) 'X-Admin-Token': adminToken,
       };
 
   /// per-user 请求头（带 X-User-Id）。

@@ -74,6 +74,14 @@ ADAI_AI_PROVIDER=deepseek
 # DeepSeek API（必填，生产模式使用 deepseek provider）
 DEEPSEEK_API_KEY=sk-your-key-here
 
+# REVIEW #127 管理端点令牌（必填，保护 /api/v1/admin/** 与 /api/v1/accounts/**；
+# 未配置时管理端点 fail-closed 返回 503）。adai-admin 前端须 --dart-define=ADMIN_TOKEN=<同值>
+ADAI_ADMIN_TOKEN=change-me-admin-token
+
+# REVIEW #127 CORS 来源白名单（逗号分隔 origin pattern；默认 localhost）。
+# 生产前端若在服务器上，追加：http://49.235.37.220:*,http://<前端域名>:*
+ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://49.235.37.220:*
+
 # 数据目录（保持默认即可）
 ADAI_DATA_DIR=/opt/adaios/data
 

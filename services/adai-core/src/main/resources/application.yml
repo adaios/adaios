@@ -32,6 +32,13 @@ spring:
   #       dialect: org.hibernate.dialect.MySQLDialect
 
 adai:
+  security:
+    # 管理端点令牌（REVIEW #127）：保护 /api/v1/admin/** 与 /api/v1/accounts/**。
+    # 生产环境必须设置（.env 配 ADAI_ADMIN_TOKEN），未配置时管理端点 fail-closed 返回 503。
+    admin-token: ${ADAI_ADMIN_TOKEN:}
+    # CORS 来源白名单（逗号分隔 origin pattern）。默认 localhost/127.0.0.1 任意端口；
+    # 生产前端若在服务器上，追加其域名（.env 配 ADAI_ALLOWED_ORIGIN_PATTERNS）。
+    allowed-origin-patterns: ${ADAI_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   ai:
     provider: deepseek  # 唯一实现，API Key 在 .env 中配置
     model: deepseek-v4-pro

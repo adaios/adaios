@@ -15,4 +15,11 @@ class ApiConfig {
     'API_BASE_URL',
     defaultValue: 'http://localhost:8080',
   );
+
+  /// 管理端令牌（REVIEW #127）：随请求带 `X-Admin-Token` header。
+  /// 需与后端 `ADAI_ADMIN_TOKEN` 一致；为空则不发送（后端未配置时管理端点会 503）。
+  static const String adminToken = String.fromEnvironment(
+    'ADMIN_TOKEN',
+    defaultValue: '',
+  );
 }
