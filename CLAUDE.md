@@ -304,6 +304,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - `docs/architecture/system-architecture.md` — 系统架构细节
 - `docs/architecture/frontend-reference.md` — 前端统一参考（UI 术语对照 + 布局视觉参考）
 - `docs/architecture/api-spec.md` — API 接口契约
+- `docs/architecture/data-format-freeze.md` — 📦 v1.0.0 数据格式冻结（data/ 文件格式契约 + 变更规则）
 - `os/*-os/definition/` — 各 Domain 的职责、概念、工作流
 - `docs/rfc/20260728-project-development-suggestions.md` — 项目发展建议（产品/前端/UI 三方）
 - `ai/context/` — AI Context 模板
@@ -344,6 +345,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **#127 最小封闭鉴权** ✅：admin/accounts 端点 `X-Admin-Token` 拦截（常量时间比较 · 未配置 fail-closed 503）+ CORS `*`→配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）；adai-admin `--dart-define=ADMIN_TOKEN` 注入；4 鉴权测试 + api-spec v3.6（后端 262 · adai-admin 31 全绿）
 - **adai-web 桌面残留清理（批 H）** ✅：#102 复盘入口（markdown 弹窗）/ #132 红涨绿亏（A股）/ #161 时间线 type 中文化（13 类映射+兜底）/ #131 桌面文案全量中文化 / #124 CLAUDE.md 端口 8082 / #158 记忆待办完成按钮 / #159 Feed 空态引导 chips / #118 `_check` utf8 / #165 type 硬转换兜底（analyze 0 error · adai-web 27 测试全绿）
 - **adai-app 对话体验收尾（批 I）** ✅：#13+#11 card 写入剥离 AI 原始 JSON（`LlmResponseParser.extractNaturalText` 剥离 JSON+代码块围栏，`QuestionAppService` 写卡与返回均用自然语言、空白回退 summary，实时显示=刷新后）/ #148 Feed ai_note 按记录日期归属（`MemoryService.findByRecordIds` 跨日补齐 + `toAiEntry` 用记录时间，重补/升级跨日不错日不丢失）/ MD1 世界切回 Feed 自动刷新（`DualWorldShell` ValueNotifier → `MainPage.refreshTick`，覆盖 admin 记忆重建后 Feed 陈旧，不清 active 态）（后端 287 · 前端 60 测试全绿）
+- **v1.0.0 定调 + 发布准备** ✅：**版本定调**——v0.1.0-0.3.0 是内部里程碑，**第一版 = v1.0.0**（首个正式发布）；**数据格式冻结**（`docs/architecture/data-format-freeze.md`：data/ 全部文件格式契约 + 变更规则 + 发布前差异核对项）；**路线图同步 v1.0.0-first**（§二 定调 / §四 里程碑与 v1.0.0 缺口 / §五 标准调整——去掉"跑通≥2版本"前提、Life OS 不设硬门槛、用户体系后端✅前端选号顺延 v1.0.1）；**v1.0.0 Release Notes**（`docs/releases/v1.0.0.md`，覆盖全能力；删 v0.1.0.md 占位）。tag + 部署待用户确认触发
 - **方向 A Phase 2 行情主动推送** ✅：`MarketAlertService` 交易时段轮询（30min cron，工作日 9-11/13-15）——单日跌≥3% 止损预警 / 涨≥5% 放飞提示 / 跌破成本线风控（阈值配置化 `adai.market.alert.*`）；`MarketSnapshotRepository` 当日签名去重（`market_snapshot.json`，跨日自动重置）+ `MarketPushRepository` 落盘 `trading/pushes/{date}.json`；FeedAppService 按日注入 `type=push` 条目（前端 push 卡片 #162 已支持，零前端改动）；轮询遍历 `default ∪ 启用账号`（防漏当前单用户）；14 新测试（276 全绿）
 
 ### 方向进展

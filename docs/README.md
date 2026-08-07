@@ -18,6 +18,7 @@
 | [product-architecture.md](architecture/product-architecture.md) | 五层产品架构详解（Layer 1-6） |
 | [system-architecture.md](architecture/system-architecture.md) | 系统架构、Kernel/Domain 分层、Context Engine |
 | [memory-os-design.md](architecture/memory-os-design.md) | Memory OS 设计规约：职责、数据模型与 Context Engine / Domain OS 的关系 |
+| [data-format-freeze.md](architecture/data-format-freeze.md) | 📦 **v1.0.0 数据格式冻结**——data/ 全部文件格式契约 + 变更规则 |
 
 ## 🔧 功能手册
 
