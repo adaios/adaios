@@ -7,6 +7,7 @@
 | 目录 | 内容 | 说明 |
 |:-----|:-----|:-----|
 | [ai-terms/](ai-terms/) | AI 技术名词文稿 | 术语收集稿 |
+| [domain-os-growth-model/](domain-os-growth-model/) | Domain OS 生长模型（草稿） | 通道协议 + 阶段机 + 压缩三形式 + OS/子模块判据，未定型 |
 
 > 原 `ai-native/` 框架系列已归档至 `docs/inbox/ai-native/`（影响结构的重复内容，待处理）。
 
