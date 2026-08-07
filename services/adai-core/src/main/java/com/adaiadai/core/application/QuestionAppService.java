@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.memory.Memory;
@@ -97,20 +98,24 @@ public class QuestionAppService {
             log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), understanding.tags());
         }
 
+        // 剥离 AI 原始回复末尾的 JSON 元数据，只保留自然语言（REVIEW #13/#11）：
+        // 实时显示与刷新后 parseTurns 一致，card 文件不再混入游离 JSON 块
+        String aiText = LlmResponseParser.extractNaturalText(understanding.rawResponse());
+        if (aiText == null || aiText.isBlank()) {
+            aiText = understanding.summary();
+        }
+
         // Save AI turn to card if cardId present
         if (cardId != null) {
             String timeStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
 
             Optional<CardRecord> existing = cardRepository.findById(userId, cardId);
             if (existing.isPresent()) {
-                String aiText = understanding.rawResponse();
-                if (aiText == null || aiText.isBlank()) {
-                    aiText = understanding.summary();
-                }
                 CardRecord updated = existing.get()
                         .withTurn(false, aiText, timeStr);
                 cardRepository.save(userId, updated);
-                log.info("AI turn saved to card | cardId={} | len={}", cardId, aiText.length());
+                log.info("AI turn saved to card | cardId={} | len={}", cardId,
+                        aiText != null ? aiText.length() : 0);
             }
         }
 
@@ -132,7 +137,7 @@ public class QuestionAppService {
                 record.id(),
                 understanding.summary(),
                 understanding.tags(),
-                understanding.rawResponse(),
+                aiText,
                 domain
         );
     }

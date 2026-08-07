@@ -241,4 +241,40 @@ class LlmResponseParserTest {
         assertNotNull(r);
         assertEquals("记录完成", r.summary(), "混合输出应提取到 JSON 的 summary");
     }
+
+    // -- extractNaturalText（REVIEW #13/#11：写 card 与实时显示剥离 JSON，刷新后一致） --
+
+    @Test
+    void extractNaturalText_mixedTextAndJson_returnsNaturalText() {
+        String response = "这是自然语言回复内容\n\n{\"summary\":\"摘要\",\"tags\":[\"日常\"],\"sentiment\":\"neutral\"}";
+        assertEquals("这是自然语言回复内容", LlmResponseParser.extractNaturalText(response),
+                "混合输出应剥离末尾 JSON，只留自然语言");
+    }
+
+    @Test
+    void extractNaturalText_markdownJson_returnsNaturalText() {
+        String response = "好的，已记录。\n```json\n{\"summary\":\"记录完成\"}\n```";
+        assertEquals("好的，已记录。", LlmResponseParser.extractNaturalText(response),
+                "markdown 包裹的 JSON 也应被剥离");
+    }
+
+    @Test
+    void extractNaturalText_noJson_returnsStrippedText() {
+        assertEquals("纯文本回复，无 JSON", LlmResponseParser.extractNaturalText("  纯文本回复，无 JSON  "),
+                "无 JSON 时原样返回（trim）");
+    }
+
+    @Test
+    void extractNaturalText_pureJson_returnsEmpty() {
+        String json = "{\"summary\":\"摘要\",\"tags\":[],\"sentiment\":\"neutral\"}";
+        assertEquals("", LlmResponseParser.extractNaturalText(json),
+                "整段都是 JSON（无自然语言）返回空串，由调用方回退 summary");
+    }
+
+    @Test
+    void extractNaturalText_nullOrBlank_returnsAsIs() {
+        assertNull(LlmResponseParser.extractNaturalText(null));
+        assertEquals("", LlmResponseParser.extractNaturalText(""));
+        assertEquals("   ", LlmResponseParser.extractNaturalText("   "));
+    }
 }

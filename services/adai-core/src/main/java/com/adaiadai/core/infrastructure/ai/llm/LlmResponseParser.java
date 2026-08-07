@@ -152,6 +152,26 @@ public class LlmResponseParser {
         return decodeUnicodeEscapes(text);
     }
 
+    /**
+     * 从 LLM 回复中提取自然语言部分（剥离末尾 JSON 元数据）。
+     * <p>
+     * 用于写 card 对话 turn 与返回前端实时显示——与刷新后 parseTurns 只读 AI：第一行保持一致
+     * （REVIEW #13/#11：card 文件混入 AI 原始 JSON 块 + 刷新后对话内容"减少"）。
+     * 整段都是 JSON（无自然语言）时返回空串，由调用方回退 summary。
+     */
+    public static String extractNaturalText(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) return rawResponse;
+        String jsonStr = extractJson(rawResponse);
+        if (jsonStr == null) return rawResponse.strip();
+        int idx = rawResponse.indexOf(jsonStr);
+        if (idx <= 0) return ""; // 整段 JSON（含代码块围栏内），无自然语言
+        String before = rawResponse.substring(0, idx)
+                // 剥离 markdown 代码块围栏开标记（```json / ```），它属于元数据而非对话内容
+                .replaceFirst("```(?:json)?\\s*$", "")
+                .strip();
+        return before.length() > 4000 ? before.substring(0, 4000) + "…" : before;
+    }
+
     private static AiUnderstanding parseAsPlainText(String text) {
         // 非 JSON 回复：截取前 200 字符作为摘要，并解码 \\uXXXX 转义序列
         String decoded = decodeUnicodeEscapes(text);

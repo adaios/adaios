@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'theme/app_colors.dart';
@@ -20,6 +21,10 @@ class MainPage extends StatefulWidget {
   /// 注入的 ApiService（测试用 mock；为空时按 userId 自建）。
   final ApiService? api;
 
+  /// 壳层世界切回 Feed 时的刷新信号（MD1：返回 Feed 页重新加载，
+  /// 覆盖 adai-admin 记忆重建后 Feed 陈旧）。
+  final ValueListenable<int>? refreshTick;
+
   const MainPage({
     super.key,
     this.onPullUp,
@@ -28,6 +33,7 @@ class MainPage extends StatefulWidget {
     this.onClearFilter,
     this.userId = 'default',
     this.api,
+    this.refreshTick,
   });
 
   @override
@@ -67,13 +73,20 @@ class _MainPageState extends State<MainPage>
     );
     _contentAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic);
     _enterCtrl.forward();
+    widget.refreshTick?.addListener(_onRefreshTick);
   }
 
   @override
   void dispose() {
+    widget.refreshTick?.removeListener(_onRefreshTick);
     _scrollController.dispose();
     _enterCtrl.dispose();
     super.dispose();
+  }
+
+  void _onRefreshTick() {
+    // MD1：世界切回 Feed 时重载（不清 active 状态，保持对话现场）
+    _refreshFeed();
   }
 
   Future<void> _refreshFeed() async {

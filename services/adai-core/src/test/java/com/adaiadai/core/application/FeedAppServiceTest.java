@@ -5,6 +5,7 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
+import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -151,5 +152,68 @@ class FeedAppServiceTest {
                 .filter(e -> "rec_txt1".equals(e.id())).findFirst().orElseThrow();
         assertNull(textEntry.mediaPath(), "文本记录不应带 mediaPath");
         assertEquals("08-03", textEntry.date());
+    }
+
+    @Test
+    void getFeed_crossDayMemory_aiNoteBelongsToRecordDate() {
+        // REVIEW #148：记录在 8-03，记忆因重补/升级沉淀在 8-06（Memory.createdAt=处理当天）。
+        // 同日 findByDate 查不到 → findByRecordIds 补齐，ai_note 归属记录日期而非沉淀日期。
+        ContentRecord rec = new ContentRecord(
+                "rec_cross1", "note", "user_input",
+                "标题", "正文", List.of("日常"),
+                LocalDateTime.of(2026, 8, 3, 9, 30),
+                "log", null, "life");
+        Memory crossDay = new Memory(
+                "mem_cross1", "rec_cross1", Memory.KIND_INSIGHT, "跨日重补的洞察",
+                List.of(), List.of(), List.of("日常"), "neutral", false, null,
+                LocalDateTime.of(2026, 8, 6, 14, 0),  // 沉淀在 8-06（处理当天）
+                null, false, null, null, null);
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of(rec));
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of()); // 同日无记忆
+        when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of("rec_cross1", crossDay));
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
+
+        FeedAppService.FeedEntry aiNote = resp.entries().stream()
+                .filter(e -> "ai_note".equals(e.type())).findFirst().orElseThrow();
+        assertEquals("跨日重补的洞察", aiNote.content());
+        assertEquals("09:30", aiNote.time(), "ai_note 归属记录时间，而非记忆沉淀 14:00");
+        assertEquals("08-03", aiNote.date(), "ai_note 归属记录日期，而非记忆沉淀 08-06");
+    }
+
+    @Test
+    void getFeed_noCrossDayMemory_noAiNote() {
+        // 记录无任何记忆（含跨日）时不渲染 ai_note，不报错
+        ContentRecord rec = new ContentRecord(
+                "rec_nomem", "note", "user_input",
+                "标题", "正文", List.of("日常"),
+                LocalDateTime.of(2026, 8, 3, 9, 30),
+                "log", null, "life");
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of(rec));
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
+
+        assertTrue(resp.entries().stream().noneMatch(e -> "ai_note".equals(e.type())),
+                "无记忆的记录不渲染 ai_note");
     }
 }

@@ -47,16 +47,15 @@
 
 ### M2 — 记录提交流
 
-#### MD1：记忆重建后刷新 Feed（P1，待确认）
+#### MD1：记忆重建后刷新 Feed（P1，✅ 已修 2026-08-07）
 
 | 字段 | 值 |
 |:-----|:----|
-| **描述** | `POST /api/v1/memory/rebuild` 后 Feed 中 `ai_note` 未更新，需要手动刷新页面 |
-| **现状** | `createRecord` 会失效缓存但 `rebuild` 不会 |
-| **方案** | `MemoryController.rebuild()` 失效 Feed 缓存，或前端 rebuild 后手动调 `_loadFeed()` |
-| **涉及文件** | `MemoryController.java`, `main_page.dart` |
-| **关联 RFC** | `20260727-memory-upgrade.md` P0 |
-| **来源** | CLAUDE.md 已修复列表 |
+| **描述** | `POST /api/v1/memory/rebuild`（adai-admin 触发）后 Feed 中 `ai_note` 未更新，需手动下拉刷新 |
+| **现状** | rebuild 在 adai-admin（独立 app），adai-app 无从感知 → Feed 内存态陈旧 |
+| **方案（已实施）** | `DualWorldShell._toggleWorld` 世界切回 Feed 时递增 `ValueNotifier` → `MainPage.refreshTick` 监听重载 `_refreshFeed()`（不清 active 态，保持对话现场） |
+| **涉及文件** | `main.dart`（壳层）、`main_page.dart`（refreshTick 监听） |
+| **测试** | `feed_state_machine_test.dart` 新增「MD1 世界切回 Feed 刷新」用例 |
 
 ---
 

@@ -343,6 +343,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-app 6 页面测试（批 G，#117 剩余）** ✅：`pages_widget_test.dart` 14 测试——memory/timeline/search/trading/task/profile 六页数据渲染 + #108 错误态人话 + 重试按钮（复用 MockClient 基建）（analyze 0 error · adai-app 59 测试全绿）
 - **#127 最小封闭鉴权** ✅：admin/accounts 端点 `X-Admin-Token` 拦截（常量时间比较 · 未配置 fail-closed 503）+ CORS `*`→配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）；adai-admin `--dart-define=ADMIN_TOKEN` 注入；4 鉴权测试 + api-spec v3.6（后端 262 · adai-admin 31 全绿）
 - **adai-web 桌面残留清理（批 H）** ✅：#102 复盘入口（markdown 弹窗）/ #132 红涨绿亏（A股）/ #161 时间线 type 中文化（13 类映射+兜底）/ #131 桌面文案全量中文化 / #124 CLAUDE.md 端口 8082 / #158 记忆待办完成按钮 / #159 Feed 空态引导 chips / #118 `_check` utf8 / #165 type 硬转换兜底（analyze 0 error · adai-web 27 测试全绿）
+- **adai-app 对话体验收尾（批 I）** ✅：#13+#11 card 写入剥离 AI 原始 JSON（`LlmResponseParser.extractNaturalText` 剥离 JSON+代码块围栏，`QuestionAppService` 写卡与返回均用自然语言、空白回退 summary，实时显示=刷新后）/ #148 Feed ai_note 按记录日期归属（`MemoryService.findByRecordIds` 跨日补齐 + `toAiEntry` 用记录时间，重补/升级跨日不错日不丢失）/ MD1 世界切回 Feed 自动刷新（`DualWorldShell` ValueNotifier → `MainPage.refreshTick`，覆盖 admin 记忆重建后 Feed 陈旧，不清 active 态）（后端 287 · 前端 60 测试全绿）
 - **方向 A Phase 2 行情主动推送** ✅：`MarketAlertService` 交易时段轮询（30min cron，工作日 9-11/13-15）——单日跌≥3% 止损预警 / 涨≥5% 放飞提示 / 跌破成本线风控（阈值配置化 `adai.market.alert.*`）；`MarketSnapshotRepository` 当日签名去重（`market_snapshot.json`，跨日自动重置）+ `MarketPushRepository` 落盘 `trading/pushes/{date}.json`；FeedAppService 按日注入 `type=push` 条目（前端 push 卡片 #162 已支持，零前端改动）；轮询遍历 `default ∪ 启用账号`（防漏当前单用户）；14 新测试（276 全绿）
 
 ### 方向进展
@@ -365,8 +366,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 276 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
-- **前端** adai-app 59 · adai-admin 31 · adai-web 27，全部 0 失败
+- **后端** 287 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
+- **前端** adai-app 60 · adai-admin 31 · adai-web 27，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）

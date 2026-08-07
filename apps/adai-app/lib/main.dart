@@ -63,8 +63,16 @@ class _DualWorldShellState extends State<DualWorldShell> {
   bool _showWorldB = false;
   String? _filterTag;
 
+  /// Feed 刷新信号（MD1）：世界切回 Feed 时递增，MainPage 监听后重载。
+  final ValueNotifier<int> _feedRefreshTick = ValueNotifier<int>(0);
+
   void _toggleWorld() {
+    final wasWorldB = _showWorldB;
     setState(() => _showWorldB = !_showWorldB);
+    // 返回 Feed（World A）时触发刷新——覆盖 adai-admin 记忆重建后 Feed 陈旧（MD1）
+    if (wasWorldB) {
+      _feedRefreshTick.value++;
+    }
   }
 
   void _clearFilter() {
@@ -102,6 +110,7 @@ class _DualWorldShellState extends State<DualWorldShell> {
                 userId: widget.userId,
                 onPullUp: _toggleWorld,
                 filterTag: _filterTag,
+                refreshTick: _feedRefreshTick,
                 onClearFilter: _clearFilter,
                 onProfileTap: () {
                   Navigator.push(context, MaterialPageRoute(

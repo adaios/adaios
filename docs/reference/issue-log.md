@@ -238,7 +238,7 @@ ID = card_xxx → 只删 CardFileRepository → 不对，已是最全
 
 **修法：** 后端写 card 与返回给前端时剥离 JSON（`LlmResponseParser` 提取自然语言部分），实时显示与刷新后一致。
 
-**状态：** 📋 待修复（方案已定，等 #13 一起改）
+**状态：** ✅ 已修（2026-08-07，与 #13 一起）——`LlmResponseParser.extractNaturalText` 剥离 JSON（含 ```json 代码块围栏），`QuestionAppService` 写 card turn 与 `AnswerResult.rawResponse` 均用剥离后自然语言（空白回退 summary），实时显示与刷新后一致。
 
 ---
 
@@ -266,7 +266,7 @@ ID = card_xxx → 只删 CardFileRepository → 不对，已是最全
 
 **修法：** 写 card 前用 `LlmResponseParser` 提取自然语言部分（剥离 JSON），`rawResponse` 为空时回退 `summary`。
 
-**状态：** 📋 待修复
+**状态：** ✅ 已修（2026-08-07，与 #11 一起）——`QuestionAppService.answer` 计算 `aiText = extractNaturalText(rawResponse)`（空白回退 summary），card turn 与返回前端均用剥离后文本，文件不再混入游离 JSON。
 
 
 

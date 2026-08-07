@@ -353,4 +353,30 @@ void main() {
       expect(find.textContaining('补充回答', findRichText: true), findsOneWidget);
     });
   });
+
+  group('MD1 世界切回 Feed 刷新', () {
+    testWidgets('refreshTick 递增后重载 Feed（覆盖 admin 记忆重建后陈旧）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '重建前的内容')]
+        ..feedTotalToday = 1;
+      final tick = ValueNotifier<int>(0);
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient(b.handle),
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: MainPage(api: api, refreshTick: tick)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('重建前的内容'), findsOneWidget);
+
+      // 模拟 adai-admin 记忆重建后：后端数据变化 → 壳层递增信号 → Feed 重载
+      b.feedPage0 = [_record('r2', '重建后的新内容')];
+      tick.value++;
+      await tester.pumpAndSettle();
+
+      expect(find.text('重建后的新内容'), findsOneWidget);
+      expect(find.text('重建前的内容'), findsNothing);
+    });
+  });
 }

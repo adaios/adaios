@@ -171,6 +171,27 @@ public class MemoryService {
     }
 
     /**
+     * 按 recordId 集合批量查询记忆（跨日重补/升级场景，REVIEW #148）。
+     * <p>
+     * 一次扫描近 365 天记忆文件建索引；每条 recordId 取最近一条（从新到旧，先到先得）。
+     * Feed 用它补齐同日查询漏掉的跨日记忆——重补/升级会把记忆沉淀到处理当天的文件
+     * （Memory.createdAt=now），ai_note 需归属到记录本身的日期而非记忆沉淀日期。
+     */
+    public Map<String, Memory> findByRecordIds(String userId, Set<String> recordIds) {
+        Map<String, Memory> result = new HashMap<>();
+        if (recordIds == null || recordIds.isEmpty()) return result;
+        for (int i = 0; i < 365; i++) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            for (Memory m : findByDate(userId, date)) {
+                if (recordIds.contains(m.recordId()) && !result.containsKey(m.recordId())) {
+                    result.put(m.recordId(), m);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * 按 recordId 删除记忆条目。
      * 遍历所有记忆文件，找到匹配的记录并移除该条目。
      *

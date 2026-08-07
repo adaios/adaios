@@ -83,6 +83,10 @@ public class FeedAppService {
             }
         }
 
+        // 跨日记忆补齐（REVIEW #148）：重补/升级会把记忆沉淀到处理当天的文件（Memory.createdAt=now），
+        // 同日 findByDate 查不到 → ai_note 归属错日/丢失。按记录补一次批量查询。
+        Map<String, Memory> crossDayMemories = findCrossDayMemories(userId, allRecords, skipRecordIds, allMemories);
+
         List<FeedEntry> allEntries = new ArrayList<>();
 
         for (CardRecord card : todayCards) {
@@ -95,7 +99,11 @@ public class FeedAppService {
             if (skipRecordIds.contains(r.id())) continue;
             if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
             allEntries.add(toFeedEntry(userId, r));
-            memoriesFor(allMemories, r.id()).ifPresent(m -> allEntries.add(toAiEntry(m)));
+            Memory memory = memoriesFor(allMemories, r.id())
+                    .orElseGet(() -> crossDayMemories.get(r.id()));
+            if (memory != null) {
+                allEntries.add(toAiEntry(memory, r));
+            }
         }
 
         // 记忆进化 Phase 3：未完成行动提醒（actionable 记忆）——按记忆创建时间参与排序
@@ -205,14 +213,35 @@ public class FeedAppService {
         );
     }
 
-    private FeedEntry toAiEntry(Memory m) {
+    private FeedEntry toAiEntry(Memory m, ContentRecord r) {
+        // ai_note 归属记录本身日期/时间，而非记忆沉淀日期（REVIEW #148：
+        // 重补/升级跨日后 createdAt=处理当天，按沉淀日期展示会错日/丢失）
         return new FeedEntry(
                 "ai_note", m.id(), m.recordId(),
                 m.summary(), m.summary(), m.tags(),
-                m.createdAt().toLocalTime().format(TIME_FMT),
+                r.createdAt().toLocalTime().format(TIME_FMT),
                 null, null, null, "life",
-                m.createdAt().format(DATE_FMT), null
+                r.createdAt().format(DATE_FMT), null
         );
+    }
+
+    /**
+     * 找出当天记录中缺同日记忆的 recordId，批量做一次跨日查询（REVIEW #148）。
+     * 无缺漏时返回空 Map，不触发 365 天扫描。
+     */
+    private Map<String, Memory> findCrossDayMemories(String userId, List<ContentRecord> allRecords,
+            Set<String> skipRecordIds, List<Memory> sameDayMemories) {
+        Set<String> missing = new HashSet<>();
+        for (ContentRecord r : allRecords) {
+            if (skipRecordIds.contains(r.id())) continue;
+            if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
+            if (memoriesFor(sameDayMemories, r.id()).isEmpty()) {
+                missing.add(r.id());
+            }
+        }
+        if (missing.isEmpty()) return Map.of();
+        Map<String, Memory> result = memoryService.findByRecordIds(userId, missing);
+        return result != null ? result : Map.of();
     }
 
     private FeedEntry toActionEntry(Memory m) {
