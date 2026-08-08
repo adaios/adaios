@@ -130,6 +130,13 @@ tags:
 阿呆的个人 AI 协作档案。
 ```
 
+- body 为固定模板 `BODY_TEMPLATE`（freeze #2：磁盘手写「如何填写 frontmatter」说明已挪入本文档，下次 `save()` 归一化为模板）
+- **手动维护指引**（原 profile.md body 手写内容）：
+  - `preferences`：静态偏好（缩进子键值对）
+  - `rules`：AI 协作规则（缩进子键值对，如 `AI称呼: 直接回答问题，不要称呼名字`）
+  - `tags`：标签列表（`- 标签`）
+  - AI 每次对话都会读取此档案注入上下文
+
 ### 2.6 持仓 `trading/positions.md`
 
 | 项 | 值 |
@@ -151,6 +158,10 @@ lastUpdated: 2026-08-07T09:00:00
 
 - 数值用 `stripTrailingZeros().toPlainString()`（`25.3` 而非 `25.30`）
 - `cashBalance`/`lastUpdated` 为文件尾部键值行
+- **手动维护**（freeze #1：原文件内 `<!-- -->` 注释已挪入本文档，代码 `toMarkdown()` 不写注释，下次写入自动归一化）：
+  - 表格由系统维护（`POST /api/v1/trading/trades` 记录交易后自动更新）
+  - 手动编辑格式：`| symbol | name | quantity | avgCost | currentPrice |`
+  - 示例：`| 600123 | 立昂微 | 200 | 25.30 | 26.10 |`
 
 ### 2.7 标签索引 `index/tags.json`
 
@@ -260,13 +271,13 @@ updatedAt: 2026-08-07
 
 以下为「代码 writer 输出」与「磁盘现状」的差异，发布前需确认处理：
 
-| # | 差异 | 影响 | 建议 |
+| # | 差异 | 影响 | 处理 |
 |:--|:--|:--|:--|
-| 1 | `positions.md` 磁盘含手写 `<!-- -->` 注释块（代码 `toMarkdown` 不写）| `saveAll()` 下一次写入会抹掉注释 | 发布前人工确认注释内容价值；无价值则接受归一化 |
-| 2 | `identity/profile.md` 磁盘 body 与 `BODY_TEMPLATE` 不同（手写说明）| 下一次 `save()` 会覆盖为模板 body | 发布前人工确认 body 内容；有保留价值则并入 frontmatter 字段 |
-| 3 | 账号 `createdAt` 序列化为 `[2026,8,2]` 数组（LocalDate）| 与其他 JSON 的 ISO 字符串风格不一致 | 低风险，格式已定；如要统一需走 MAJOR 迁移（v1.0.0 前可改）|
+| 1 | `positions.md` 磁盘含手写 `<!-- -->` 注释块（代码 `toMarkdown` 不写）| `saveAll()` 下一次写入会抹掉注释 | ✅ 2026-08-09 已处理：注释挪入 §2.6 手动维护，接受归一化 |
+| 2 | `identity/profile.md` 磁盘 body 与 `BODY_TEMPLATE` 不同（手写说明）| 下一次 `save()` 会覆盖为模板 body | ✅ 2026-08-09 已处理：说明挪入 §2.5 手动维护，接受归一化 |
+| 3 | 账号 `createdAt` 序列化为 `[2026,8,2]` 数组（LocalDate）| 与其他 JSON 的 ISO 字符串风格不一致 | ✅ 2026-08-09 已处理：`AccountFileRepository` 禁用 `WRITE_DATES_AS_TIMESTAMPS`，统一 ISO 字符串；读取兼容旧数组格式 |
 
-> 处理决策：上述 3 项不阻塞 v1.0.0 数据冻结——冻结以代码 writer 格式为准，磁盘手写内容在下次写入时归一化。如需发布前人工确认，见 CLAUDE.md 当前焦点待办。
+> 处理决策：3 项均已在 v1.0.0 前解决——freeze #1/#2 内容挪入本文档并接受代码归一化，freeze #3 代码配置统一 + 磁盘迁移。发布时磁盘与契约一致。
 
 ---
 

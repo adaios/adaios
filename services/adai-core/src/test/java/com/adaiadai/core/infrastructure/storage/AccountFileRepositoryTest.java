@@ -4,7 +4,9 @@ import com.adaiadai.core.kernel.account.Account;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -76,5 +78,17 @@ class AccountFileRepositoryTest {
         var repo = repo();
         repo.init();
         assertTrue(repo.findById("ghost").isEmpty());
+    }
+
+    @Test
+    void createdAt_serializesAsIsoString_notArray() throws Exception {
+        // freeze #3：LocalDate 序列化为 ISO 字符串，与其他 JSON 风格一致（曾为 [年,月,日] 数组）
+        var repo = repo();
+        repo.init();
+
+        String json = Files.readString(tempDir.resolve("accounts/accounts.json"), StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"createdAt\" : \"2026-08-02\""),
+                "createdAt 应为 ISO 字符串，实际: " + json);
+        assertFalse(json.contains("[ 2026, 8, 2 ]"), "不应再序列化为数组: " + json);
     }
 }

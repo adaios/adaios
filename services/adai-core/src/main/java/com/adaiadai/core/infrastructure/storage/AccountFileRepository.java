@@ -4,6 +4,7 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -40,7 +41,11 @@ public class AccountFileRepository implements AccountRepository {
 
     public AccountFileRepository(@Value("${adai.storage.base-path:data}") String basePath) {
         this.basePath = Paths.get(basePath).toAbsolutePath().normalize();
-        this.objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        // freeze #3：LocalDate 统一序列化为 ISO 字符串（"2026-08-02"），
+        // 与其余 JSON（memory/tags）风格一致；读取兼容旧数组格式 [年,月,日]
+        this.objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     @PostConstruct
