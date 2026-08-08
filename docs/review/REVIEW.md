@@ -55,6 +55,8 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 | 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` |
 | 166 | MediaController 上传超限走 500（应 413）、title 50 字符 substring 拆断 emoji、market id 同秒碰撞 | 多处 |
 | 168 | 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 |
+| 169 | 问候语机械：按小时硬编码切分（`hour < 12 → morning`），凌晨也算 morning，不感知人类作息；建议按作息智能化（深夜/凌晨单独问候）| `BriefAppService.java:129` / `:105` |
+| 170 | 待办建议第三人称：action 待办卡文案（`Memory.suggestion`，如「提醒用户休息」）用第三人称，应直接面向用户（「该休息了」）| `FeedAppService.toActionEntry` → 记忆生成 prompt |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
 
