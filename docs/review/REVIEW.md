@@ -59,6 +59,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 | 170 | 待办建议第三人称：action 待办卡文案（`Memory.suggestion`，如「提醒用户休息」）用第三人称，应直接面向用户（「该休息了」）| `FeedAppService.toActionEntry` → 记忆生成 prompt |
 | 171 | 优化方向（非问题）：项目分类记录无聚合——domain=project 记录散在 Feed/时间线，项目页只有状态+任务；用户以"日志记录问题/优化建议"为入口，建议项目页增加「项目记录」聚合视图 + 记录可标记类型（问题/建议），并可流转为任务 | `adai-app` 项目页 + domain 体系 |
 | 172 | 记忆页 superseded 记忆仍显示「待办/已完成」标记（语义矛盾：被取代的历史版本不是当前待办）+「已取代」仅靠卡片变浅、区分度低含义不明；建议 superseded 记忆隐藏 actionable 标记，已取代状态加明确灰角标说明（如「已被新记忆取代」）| `memory_page.dart:239-261` |
+| 173 | 优化方向（L4 演进）：带图提问——图片上传固定 intent=log（`MediaRecordAppService.recordImage` 硬编码），不支持"发图+问句→AI 基于图回答"；建议加 intent=question 通道 + AI 对话带图上下文 | `MediaController.uploadImage` / `MediaRecordAppService.recordImage` |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
 
