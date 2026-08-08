@@ -13,6 +13,7 @@ import java.util.List;
  * @param totalValue   总市值
  * @param cashBalance  现金余额
  * @param snapshotTime 快照时间
+ * @param positionCount 持仓数（派生，REVIEW #106：adai-web「持仓数」卡依赖，此前后端无此字段恒 0）
  */
 public record PortfolioSnapshot(
         List<Position> positions,
@@ -20,7 +21,8 @@ public record PortfolioSnapshot(
         BigDecimal totalCost,
         BigDecimal totalValue,
         BigDecimal cashBalance,
-        LocalDateTime snapshotTime
+        LocalDateTime snapshotTime,
+        int positionCount
 ) {
 
     public static PortfolioSnapshot of(List<Position> positions, BigDecimal cashBalance) {
@@ -35,7 +37,8 @@ public record PortfolioSnapshot(
         return new PortfolioSnapshot(
                 List.copyOf(positions),
                 totalPnl, totalCost, totalValue,
-                cashBalance, LocalDateTime.now()
+                cashBalance, LocalDateTime.now(),
+                positions.size()
         );
     }
 }

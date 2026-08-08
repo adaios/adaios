@@ -18,16 +18,19 @@ class _TaskPageState extends State<TaskPage> {
   List<TaskResponse> _tasks = [];
   bool _loading = true;
 
-  static const _statusOrder = ['TODO', 'DOING', 'DONE'];
+  // #112：补 CANCELLED——此前看板只列 TODO/DOING/DONE，已取消任务不可见
+  static const _statusOrder = ['TODO', 'DOING', 'DONE', 'CANCELLED'];
   static const _statusColor = {
     'TODO': AppColors.darkOrange,
     'DOING': AppColors.darkBlue,
     'DONE': AppColors.darkGreen,
+    'CANCELLED': AppColors.darkGrey5,
   };
   static const _statusLabel = {
     'TODO': '待做',
     'DOING': '进行中',
     'DONE': '已完成',
+    'CANCELLED': '已取消',
   };
 
   @override

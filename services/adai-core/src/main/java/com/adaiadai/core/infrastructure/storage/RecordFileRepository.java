@@ -188,6 +188,7 @@ public class RecordFileRepository implements RecordRepository {
                 createdAt: %s
                 summary: %s
                 domain: %s
+                intent: %s
                 ---
                 %s
 
@@ -199,6 +200,7 @@ public class RecordFileRepository implements RecordRepository {
                 record.createdAt().toString(),
                 singleLine(record.summary()),
                 record.domain() != null ? record.domain() : "life",
+                record.intent() != null ? record.intent() : "",
                 record.content()
         );
     }
@@ -235,7 +237,10 @@ public class RecordFileRepository implements RecordRepository {
         if (summary != null && summary.isBlank()) summary = null;
         String domain = fields.getOrDefault("domain", "life");
         if (domain != null && domain.isBlank()) domain = "life";
-        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, null, summary, domain);
+        // #144：intent 落盘——rebuild 借此区分 question 记录，避免重跑烧 AI
+        String intent = fields.getOrDefault("intent", null);
+        if (intent != null && intent.isBlank()) intent = null;
+        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, intent, summary, domain);
     }
 
     private Map<String, String> parseFrontmatter(String frontmatter) {

@@ -38,7 +38,7 @@ class FeedAppServiceTest {
         when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
-        return new FeedAppService(recordRepository, memoryService, null, cardRepository, market, push);
+        return new FeedAppService(recordRepository, memoryService, cardRepository, market, push);
     }
 
     private MarketPushRepository emptyPush() {
@@ -119,7 +119,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry imgEntry = resp.entries().stream()
@@ -145,7 +145,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry textEntry = resp.entries().stream()
@@ -180,7 +180,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry aiNote = resp.entries().stream()
@@ -210,7 +210,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, null, cardRepository, market, emptyPush());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         assertTrue(resp.entries().stream().noneMatch(e -> "ai_note".equals(e.type())),

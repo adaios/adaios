@@ -134,9 +134,33 @@ public class ProjectStatusAppService {
     }
 
     private int countApiEndpoints() {
-        // 静态计数：Record(1) + Conversation(1) + Feed(1) + Brief(1) + Timeline(1)
-        //   + Memory(3) + Identity(2) + Tags(1) + Search(1) + Trading(8) + Cards(1) = 21
-        return 21;
+        // #150：动态统计 interfaces 包下的 *Mapping 注解数，不再硬编码（曾 21，实际 46）
+        try {
+            Path interfacesDir = projectRoot.resolve(
+                    "services/adai-core/src/main/java/com/adaiadai/core/interfaces");
+            if (!Files.isDirectory(interfacesDir)) return 0;
+            long count = 0;
+            try (var stream = Files.walk(interfacesDir)) {
+                for (Path p : stream.filter(Files::isRegularFile)
+                        .filter(f -> f.getFileName().toString().endsWith(".java"))
+                        .toList()) {
+                    count += countMappingAnnotations(Files.readString(p, StandardCharsets.UTF_8));
+                }
+            }
+            return (int) count;
+        } catch (Exception e) {
+            log.debug("API 端点计数失败: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    private long countMappingAnnotations(String content) {
+        long count = 0;
+        for (String ann : List.of("@GetMapping", "@PostMapping", "@PutMapping",
+                "@PatchMapping", "@DeleteMapping")) {
+            count += content.split(java.util.regex.Pattern.quote(ann), -1).length - 1;
+        }
+        return count;
     }
 
     // ── 根目录解析（与 ProjectContextContributor 逻辑一致）──

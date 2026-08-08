@@ -3,11 +3,13 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.RecordFlowAppService;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,8 +20,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -110,6 +117,44 @@ class MemoryControllerTest {
         mvc.perform(post("/api/v1/memory/rebuild"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").isNumber());
+    }
+
+    @Test
+    void rebuild_skipsProcessedFactOnly_degradedAndBlankReprocessed() throws Exception {
+        // #144 幂等：已处理（summary 非空白）且无降级记忆 → 不重跑；
+        // 降级记忆 → 重跑升级；未处理（summary 空白）→ 重跑；question → 排除
+        ContentRecord processed = new ContentRecord("rec_proc", "note", "user_input", "t", "已处理内容",
+                List.of(), LocalDateTime.of(2026, 8, 1, 9, 0), "log", "已处理", "life");
+        ContentRecord degraded = new ContentRecord("rec_degraded", "note", "user_input", "t", "降级内容",
+                List.of(), LocalDateTime.of(2026, 8, 1, 9, 1), "log", "recorded", "life");
+        ContentRecord unprocessed = new ContentRecord("rec_new", "note", "user_input", "t", "未处理内容",
+                List.of(), LocalDateTime.of(2026, 8, 1, 9, 2), null, null, "life");
+        ContentRecord question = new ContentRecord("rec_q", "note", "user_input", "t", "问句",
+                List.of(), LocalDateTime.of(2026, 8, 1, 9, 3), "question", null, "life");
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of(processed, degraded, unprocessed, question));
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.hasDegradedMemory(any(), eq("rec_degraded"))).thenReturn(true);
+        RecordFlowAppService flow = mock(RecordFlowAppService.class);
+        when(flow.process(any(), any())).thenAnswer(inv -> {
+            ContentRecord r = inv.getArgument(1);
+            return new RecordFlowAppService.FlowResult(r.id(), "mem_" + r.id(), null, 0);
+        });
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new MemoryController(memoryService, recordRepository, flow)
+        ).build();
+        mvc.perform(post("/api/v1/memory/rebuild"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<ContentRecord> captor = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(flow, times(2)).process(any(), captor.capture());
+        List<String> processedIds = captor.getAllValues().stream().map(ContentRecord::id).toList();
+        assertTrue(processedIds.contains("rec_degraded"), "降级记忆应重跑以升级");
+        assertTrue(processedIds.contains("rec_new"), "未处理记录应重建");
+        assertFalse(processedIds.contains("rec_proc"), "已处理 fact-only 记录不应重跑烧 AI");
+        assertFalse(processedIds.contains("rec_q"), "question 记录不应进入 rebuild");
     }
 
     @Test

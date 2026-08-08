@@ -346,6 +346,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - **adai-web 桌面残留清理（批 H）** ✅：#102 复盘入口（markdown 弹窗）/ #132 红涨绿亏（A股）/ #161 时间线 type 中文化（13 类映射+兜底）/ #131 桌面文案全量中文化 / #124 CLAUDE.md 端口 8082 / #158 记忆待办完成按钮 / #159 Feed 空态引导 chips / #118 `_check` utf8 / #165 type 硬转换兜底（analyze 0 error · adai-web 27 测试全绿）
 - **adai-app 对话体验收尾（批 I）** ✅：#13+#11 card 写入剥离 AI 原始 JSON（`LlmResponseParser.extractNaturalText` 剥离 JSON+代码块围栏，`QuestionAppService` 写卡与返回均用自然语言、空白回退 summary，实时显示=刷新后）/ #148 Feed ai_note 按记录日期归属（`MemoryService.findByRecordIds` 跨日补齐 + `toAiEntry` 用记录时间，重补/升级跨日不错日不丢失）/ MD1 世界切回 Feed 自动刷新（`DualWorldShell` ValueNotifier → `MainPage.refreshTick`，覆盖 admin 记忆重建后 Feed 陈旧，不清 active 态）（后端 287 · 前端 60 测试全绿）
 - **v1.0.0 定调 + 发布准备** ✅：**版本定调**——v0.1.0-0.3.0 是内部里程碑，**第一版 = v1.0.0**（首个正式发布）；**数据格式冻结**（`docs/architecture/data-format-freeze.md`：data/ 全部文件格式契约 + 变更规则 + 发布前差异核对项）；**路线图同步 v1.0.0-first**（§二 定调 / §四 里程碑与 v1.0.0 缺口 / §五 标准调整——去掉"跑通≥2版本"前提、Life OS 不设硬门槛、用户体系后端✅前端选号顺延 v1.0.1）；**v1.0.0 Release Notes**（`docs/releases/v1.0.0.md`，覆盖全能力；删 v0.1.0.md 占位）。tag + 部署待用户确认触发
+- **P1 清理批（批 J，v1.0.0 核心闭环）** ✅：#144 rebuild 幂等（intent 落盘 `RecordFileRepository` + QuestionAppService 无条件落盘 intent=question + MemoryController 用"summary 已处理 + 降级记忆重跑"过滤 + 处理后落盘标记）/ #147 SELL 未持有与超额报错（`TradingException` + `GlobalExceptionHandler` 400）+ 持仓读改写每用户锁 + 清仓 0 行不落盘 / #106 api-spec portfolio 契约对齐（后端 `PortfolioSnapshot.positionCount` 派生，adai-web 持仓数不再恒 0）/ #112 CANCELLED 任务看板可见（adai-web 第四列）/ #150 apiEndpoints 动态统计（硬编码 21 → 实际 46）+ FeedAppService 移除 BriefAppService 死依赖（后端 293 · adai-web 27 全绿）
 - **方向 A Phase 2 行情主动推送** ✅：`MarketAlertService` 交易时段轮询（30min cron，工作日 9-11/13-15）——单日跌≥3% 止损预警 / 涨≥5% 放飞提示 / 跌破成本线风控（阈值配置化 `adai.market.alert.*`）；`MarketSnapshotRepository` 当日签名去重（`market_snapshot.json`，跨日自动重置）+ `MarketPushRepository` 落盘 `trading/pushes/{date}.json`；FeedAppService 按日注入 `type=push` 条目（前端 push 卡片 #162 已支持，零前端改动）；轮询遍历 `default ∪ 启用账号`（防漏当前单用户）；14 新测试（276 全绿）
 
 ### 方向进展
@@ -368,7 +369,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 287 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
+- **后端** 293 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试**；**15 Controller 46 端点接口测试全覆盖** + 多模态 18 测试）
 - **前端** adai-app 60 · adai-admin 31 · adai-web 27，全部 0 失败
 
 ### 运行环境

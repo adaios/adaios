@@ -41,7 +41,6 @@ public class FeedAppService {
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
-                          BriefAppService briefAppService,
                           CardFileRepository cardRepository,
                           MarketDataSource marketDataSource,
                           MarketPushRepository pushRepository) {

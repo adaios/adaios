@@ -338,6 +338,15 @@ public class MemoryService {
     }
 
     /**
+     * 是否仅有降级记忆（原文保底）。rebuild 用它区分"降级待升级"（重跑）与
+     * "已处理但 fact 被 Phase 5 跳过"（不重跑，REVIEW #144）。
+     */
+    public boolean hasDegradedMemory(String userId, String recordId) {
+        Optional<Memory> memory = findByRecordId(userId, recordId);
+        return memory.isPresent() && Memory.isDegraded(memory.get());
+    }
+
+    /**
      * 按记忆类型查询（记忆进化 Phase 1）。
      * <p>
      * 遍历最近 30 天记忆，过滤 kind 匹配的条目。

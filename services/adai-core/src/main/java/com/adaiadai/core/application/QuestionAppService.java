@@ -88,10 +88,12 @@ public class QuestionAppService {
 
         // 将 AI 返回的标签写回 Record，触发 TagIndexService 更新索引
         // 只有非卡片续接（无 cardId）时才存记录，避免重复拆分
-        if (cardId == null && understanding.tags() != null && !understanding.tags().isEmpty()) {
+        // #144：无条件持久化 intent=question + summary——rebuild 借此排除 question 记录，避免重跑烧 AI
+        if (cardId == null) {
             ContentRecord enriched = new ContentRecord(
                     record.id(), record.type(), record.source(), record.title(), record.content(),
-                    understanding.tags(), record.createdAt(), "question", understanding.summary(),
+                    understanding.tags() != null ? understanding.tags() : List.of(),
+                    record.createdAt(), "question", understanding.summary(),
                     domain
             );
             recordRepository.save(userId, enriched);

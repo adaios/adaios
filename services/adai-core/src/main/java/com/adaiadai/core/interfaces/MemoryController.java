@@ -134,8 +134,11 @@ public class MemoryController {
         List<ContentRecord> targetRecords = allRecords.stream()
                 .filter(r -> filterDate == null || r.createdAt().toLocalDate().equals(filterDate))
                 .filter(r -> r.intent() == null || "log".equals(r.intent()))
-                // P1-3 修复：已有真实记忆的记录跳过，rebuild 幂等（避免每次重跑重复沉淀）
-                .filter(r -> !memoryService.hasRealMemory(userId, r.id()))
+                // #144 幂等：已处理（有持久化 summary）且无降级记忆的记录跳过——
+                //   fact-only 记忆被 Phase 5 跳过时无真实记忆痕迹，但也不该重跑烧 AI；
+                //   降级记忆（DEGRADED）仍需重跑以升级为洞察；未处理（summary 空白）仍重建
+                .filter(r -> r.summary() == null || r.summary().isBlank()
+                        || memoryService.hasDegradedMemory(userId, r.id()))
                 .toList();
 
         log.info("记忆重建开始 | 目标日期={} | 待处理记录={}条", date != null ? date : "全部", targetRecords.size());
@@ -146,7 +149,23 @@ public class MemoryController {
 
         for (ContentRecord record : targetRecords) {
             try {
-                recordFlowAppService.process(userId, record);
+                var result = recordFlowAppService.process(userId, record);
+                // #144 幂等：未处理记录（summary 空白）处理后落盘 summary 标记，
+                // 下次 rebuild 靠 summary 判断已处理，不再重跑
+                if (record.summary() == null || record.summary().isBlank()) {
+                    String marker = "recorded";
+                    if (result.understanding() != null && result.understanding().summary() != null
+                            && !result.understanding().summary().isBlank()
+                            && result.understanding().summary().length() <= 50) {
+                        marker = result.understanding().summary();
+                    }
+                    recordRepository.save(userId, new ContentRecord(
+                            record.id(), record.type(), record.source(), record.title(), record.content(),
+                            record.tags(), record.createdAt(),
+                            record.intent() != null ? record.intent() : "log",
+                            marker, record.domain()
+                    ));
+                }
                 success++;
                 log.info("记忆重建成功 | recordId={} | ({}/{})", record.id(), success + failed, targetRecords.size());
             } catch (Exception e) {

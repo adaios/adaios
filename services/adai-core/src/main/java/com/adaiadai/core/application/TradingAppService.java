@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * TradingAppService — 交易领域应用服务。
@@ -21,10 +22,17 @@ public class TradingAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingAppService.class);
 
+    /** 每用户读写锁：同一 userId 的持仓读-改-写全串行，防并发交易互相覆盖（REVIEW #147）。 */
+    private final ConcurrentHashMap<String, Object> userTradeLocks = new ConcurrentHashMap<>();
+
     private final PositionRepository positionRepository;
 
     public TradingAppService(PositionRepository positionRepository) {
         this.positionRepository = positionRepository;
+    }
+
+    private Object tradeLock(String userId) {
+        return userTradeLocks.computeIfAbsent(userId != null ? userId : "default", k -> new Object());
     }
 
     /**
@@ -40,31 +48,47 @@ public class TradingAppService {
     public List<Position> recordTrade(String userId, String symbol, String name,
                                       TradeDirection direction,
                                       BigDecimal price, int volume) {
-        List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
-        boolean found = false;
+        // #147：读-改-写加每用户锁，防并发交易互相覆盖丢持仓
+        synchronized (tradeLock(userId)) {
+            List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
+            boolean found = false;
 
-        for (int i = 0; i < currentPositions.size(); i++) {
-            Position p = currentPositions.get(i);
-            if (p.symbol().equals(symbol)) {
-                Position updated = updatePosition(p, direction, price, volume);
-                currentPositions.set(i, updated);
-                found = true;
-                break;
+            for (int i = 0; i < currentPositions.size(); i++) {
+                Position p = currentPositions.get(i);
+                if (p.symbol().equals(symbol)) {
+                    // #147：卖出数量超过持仓 → 明确报错，防静默清仓失真
+                    if (direction == TradeDirection.SELL && volume > p.quantity()) {
+                        throw new TradingException(
+                                "卖出数量超过持仓: " + symbol + "（持有 " + p.quantity() + " 股）");
+                    }
+                    Position updated = updatePosition(p, direction, price, volume);
+                    currentPositions.set(i, updated);
+                    found = true;
+                    break;
+                }
             }
+
+            // #147：SELL 未持有 symbol 不再是静默 no-op，明确报错防数据静默丢失
+            if (!found && direction == TradeDirection.SELL) {
+                throw new TradingException("未持有 " + symbol + "，无法卖出");
+            }
+
+            if (!found && direction == TradeDirection.BUY) {
+                // 首次买入：新建持仓
+                Position newPos = new Position(symbol, name, volume, price, price, LocalDateTime.now());
+                currentPositions.add(newPos);
+            }
+
+            // 清仓后的 0 持仓行不落盘（findAll 读取时本就过滤，保持文件干净）
+            currentPositions.removeIf(p -> p.quantity() <= 0);
+
+            positionRepository.saveAll(userId, currentPositions);
+
+            log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={}",
+                    direction, symbol, volume, price, currentPositions.size());
+
+            return currentPositions;
         }
-
-        if (!found && direction == TradeDirection.BUY) {
-            // 首次买入：新建持仓
-            Position newPos = new Position(symbol, name, volume, price, price, LocalDateTime.now());
-            currentPositions.add(newPos);
-        }
-
-        positionRepository.saveAll(userId, currentPositions);
-
-        log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={}",
-                direction, symbol, volume, price, currentPositions.size());
-
-        return currentPositions;
     }
 
     /**

@@ -96,7 +96,8 @@ class TradingControllerTest {
         PortfolioSnapshot snapshot = new PortfolioSnapshot(
                 List.of(position("600000")),
                 new BigDecimal("500.00"), new BigDecimal("10000.00"),
-                new BigDecimal("10500.00"), new BigDecimal("2000.00"), LocalDateTime.now());
+                new BigDecimal("10500.00"), new BigDecimal("2000.00"), LocalDateTime.now(),
+                1);
         when(trading.getPortfolioSnapshot(any())).thenReturn(snapshot);
         MockMvc mvc = buildMvc(trading);
 
@@ -105,7 +106,8 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.totalPnl").value(500.00))
                 .andExpect(jsonPath("$.totalCost").value(10000.00))
                 .andExpect(jsonPath("$.totalValue").value(10500.00))
-                .andExpect(jsonPath("$.cashBalance").value(2000.00));
+                .andExpect(jsonPath("$.cashBalance").value(2000.00))
+                .andExpect(jsonPath("$.positionCount").value(1));
     }
 
     @Test
@@ -132,6 +134,26 @@ class TradingControllerTest {
                         .content("""
                                 {"symbol":"","name":"浦发银行","direction":"BUY","price":10.5,"volume":100}"""))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void recordTrade_sellUnheld_tradingExceptionMapsTo400() throws Exception {
+        // #147：SELL 未持有 → TradingException → GlobalExceptionHandler 映射 400 + 人话消息
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
+        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class));
+        ObjectMapper om = new ObjectMapper();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","direction":"SELL","price":10.5,"volume":100}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("无法卖出")));
     }
 
     // ── 复盘 ──

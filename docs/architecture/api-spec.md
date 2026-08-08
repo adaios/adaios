@@ -325,17 +325,31 @@
 
 ### `GET /api/v1/trading/portfolio` — 查询投资组合快照
 
-返回总市值、总盈亏、今日盈亏等汇总。
+返回持仓列表 + 汇总（总市值/总成本/总盈亏/现金/持仓数）。字段与 `PortfolioSnapshot` 对齐（REVIEW #106：原示例含不存在的 `totalMarketValue`/`totalPnlPercent`，已修正）。
 
 **Response**
 
 ```json
 {
-  "totalMarketValue": 5060.00,
+  "positions": [
+    {
+      "symbol": "600123",
+      "name": "立昂微",
+      "quantity": 200,
+      "avgCost": 25.30,
+      "currentPrice": 26.10,
+      "marketValue": 5220.00,
+      "pnl": 160.00,
+      "pnlPercent": 3.16,
+      "lastUpdated": "2026-08-07T09:00:00"
+    }
+  ],
+  "totalPnl": 160.00,
   "totalCost": 5060.00,
-  "totalPnl": 0,
-  "totalPnlPercent": 0.0,
-  "positions": []
+  "totalValue": 5220.00,
+  "cashBalance": 2000.00,
+  "snapshotTime": "2026-08-07T09:00:00",
+  "positionCount": 1
 }
 ```
 
