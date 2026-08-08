@@ -60,6 +60,8 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 | 171 | 优化方向（非问题）：项目分类记录无聚合——domain=project 记录散在 Feed/时间线，项目页只有状态+任务；用户以"日志记录问题/优化建议"为入口，建议项目页增加「项目记录」聚合视图 + 记录可标记类型（问题/建议），并可流转为任务 | `adai-app` 项目页 + domain 体系 |
 | 172 | 记忆页 superseded 记忆仍显示「待办/已完成」标记（语义矛盾：被取代的历史版本不是当前待办）+「已取代」仅靠卡片变浅、区分度低含义不明；建议 superseded 记忆隐藏 actionable 标记，已取代状态加明确灰角标说明（如「已被新记忆取代」）| `memory_page.dart:239-261` |
 | 173 | 优化方向（L4 演进）：带图提问——图片上传固定 intent=log（`MediaRecordAppService.recordImage` 硬编码），不支持"发图+问句→AI 基于图回答"；建议加 intent=question 通道 + AI 对话带图上下文 | `MediaController.uploadImage` / `MediaRecordAppService.recordImage` |
+| 174 | 图片上传无进度反馈：`_onSendMedia` 逐张 `await uploadImage`，期间无 loading/进度条/占位卡，多图干等只盯接口；建议上传中显示逐张进度 | `main_page.dart:278-304` |
+| 175 | Feed 分页首屏体验：核心记录 > size 时（从后往前翻）page 0 只返回余数核心（7 条 size=5 时仅 2 条），且全部 ai_note 附加条目堆首屏喧宾夺主；数据覆盖正确但首屏可读性差 | `FeedAppService.getFeed` 分页 / `main_page.dart:57` |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
 
