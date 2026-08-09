@@ -517,11 +517,26 @@ public class MemoryService {
      * 查询该用户未完成的行动记忆（actionable=true 且 doneAt=null，近 30 天）。
      * <p>
      * Feed 待办提醒 + Context 待行动事项共用（记忆进化 Phase 3）。
+     * <p>
+     * 防空待办（2026-08-10 生产修复）：过滤 suggestion 为空的 action——
+     * 无行动建议的 actionable 记忆是异常产物（如 AI 沉淀碎记录），
+     * 显示为待办只会污染 Feed/Context，不构成有效行动。
      */
     public List<Memory> findPendingActions(String userId) {
         return recentActive(userId, 30).stream()
                 .filter(m -> m.actionable() && m.doneAt() == null)
+                .filter(m -> hasActionContent(m))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 判断记忆是否具备可展示的行动内容（suggestion 或 summary 至少其一非空）。
+     */
+    private boolean hasActionContent(Memory m) {
+        String suggestion = m.suggestion();
+        String summary = m.summary();
+        return (suggestion != null && !suggestion.isBlank())
+                || (summary != null && !summary.isBlank());
     }
 
     // ── 记忆进化 Phase 4：时效与淘汰 ──

@@ -258,6 +258,19 @@ class MemoryServiceTest {
         assertFalse(memoryService.markDone("default","mem_nonexistent"));
     }
 
+    @Test
+    void findPendingActions_excludesEmptySuggestion() {
+        // 2026-08-10 生产修复：actionable=true 但 suggestion 为空 → 过滤（异常产物，非有效待办）
+        Memory emptyAction = Memory.fromUnderstanding("rec_a4", actionMemo("", "", List.of("交易")));
+        Memory validAction = Memory.fromUnderstanding("rec_a5", actionMemo("有效建议", "关注持仓", List.of("生活")));
+        memoryService.persist("default",emptyAction);
+        memoryService.persist("default",validAction);
+
+        List<Memory> pendingActions = memoryService.findPendingActions("default");
+        assertTrue(pendingActions.stream().anyMatch(m -> m.recordId().equals("rec_a5")), "有建议的行动应保留");
+        assertTrue(pendingActions.stream().noneMatch(m -> m.recordId().equals("rec_a4")), "无建议的空行动应过滤");
+    }
+
     // ── 记忆进化 Phase 4：时效与淘汰 ──
 
     @Test
