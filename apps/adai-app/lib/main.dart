@@ -48,9 +48,19 @@ class _RootAppState extends State<RootApp> {
   late String _userId = widget.userId;
   late bool _needsSelect = widget.needsSelect;
 
+  /// MaterialApp 的 Navigator key：切换账号的 push/pop 必须走它。
+  /// State 的 context 在 MaterialApp 之外，`Navigator.of(context)` 会返回 null 崩溃
+  /// （v1.0.0 切换账号必现，`Null check operator used on a null value`）。
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   /// 选定账号：持久化 + 重建整树（换 ValueKey → DualWorldShell/ApiService 重建，缓存清空）。
-  void _selectAccount(String userId) {
-    UserStore.saveUserId(userId);
+  Future<void> _selectAccount(String userId) async {
+    try {
+      await UserStore.saveUserId(userId);
+    } catch (_) {
+      // 持久化失败不阻塞切换（记住功能降级）
+    }
+    if (!mounted) return;
     setState(() {
       _userId = userId;
       _needsSelect = false;
@@ -59,12 +69,14 @@ class _RootAppState extends State<RootApp> {
 
   /// 切换账号：push 选号页，选择后回传重建。
   void _openAccountSelect() {
-    Navigator.push(context, MaterialPageRoute(
+    final nav = _navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
       builder: (_) => AccountSelectPage(
         api: ApiService(userId: _userId),
         currentUserId: _userId,
         onSelect: (uid) {
-          Navigator.pop(context);
+          nav.pop();
           _selectAccount(uid);
         },
       ),
@@ -79,6 +91,7 @@ class _RootAppState extends State<RootApp> {
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
+      navigatorKey: _navigatorKey,
       builder: (context, child) => DefaultTextStyle(
         style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
         child: child!,

@@ -898,7 +898,7 @@ chat 模式（全屏）
 
 ## 16. 账号（多账号功能层）
 
-> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端从可用账号列表选择进入（`GET /api/v1/accounts/available`，**无鉴权**，仅返回 enabled 账号）；前端记住上次账号（shared_preferences）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端从可用账号列表选择进入（`GET /api/v1/accounts/available`，**无鉴权**，仅返回 enabled 账号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
 >
 > **管理鉴权（REVIEW #127）**：本节除 `GET /api/v1/accounts/available`（产品端选号，无鉴权）外，其余端点与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
 

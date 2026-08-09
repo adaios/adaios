@@ -314,7 +314,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
-- **多账号前端选号/切换（v1.0.0 提前）** ✅：产品前端选号进入——后端新增无鉴权 `GET /api/v1/accounts/available`（仅 enabled，`WebConfig` exclude 拦截）+ adai-app World B「切换账号」+ adai-web 底部 `@userId` 点击切换 + shared_preferences 记住上次账号（URL `?userId=` 优先 > 持久化 > 首屏选号）+ 切换重建整树（ValueKey 换 ApiService，缓存清空）；api-spec §16 + Release Notes 同步
+- **多账号前端选号/切换（v1.0.0 提前）** ✅：产品前端选号进入——后端新增无鉴权 `GET /api/v1/accounts/available`（仅 enabled，`WebConfig` exclude 拦截）+ adai-app World B「切换账号」+ adai-web 底部 `@userId` 点击切换 + 记住上次账号（URL `?userId=` 优先 > 持久化 > 首屏选号）+ 切换重建整树（ValueKey 换 ApiService，缓存清空）；**wasm 白屏修复**：dart2wasm 下 shared_preferences web 插件不注册（`MissingPluginException` 启动白屏）→ `UserStore` 条件导出改 `package:web` localStorage 直读（`user_store_web.dart`，io 端仍 shared_preferences）+ **切换账号崩溃修复**：State context 在 MaterialApp 外 `Navigator.of` 返回 null → `GlobalKey<NavigatorState>` + `navigatorKey` push/pop；api-spec §16 + Release Notes 同步
 - **阿呆系统页 CanvasKit 必现崩溃修复** ✅：点击「阿呆系统」release minify 必现 `PictureRecorder` wasm 崩溃（该页首帧 + 路由动画并发 + spinner 无限重绘触发 CanvasKit 绘制密集不稳定，非项目 bug，其他入口同路由动画正常）→ 入口改无动画跳转 + 加载 spinner 换静态占位（`launcher_page.dart` / `project_status_page.dart`，adai-app 60 测试绿）
 - **v1.0.0 验证修复（updatedAt 时间基准 + #175 分页 + 复盘生成）** ✅：卡片时间/日期按最后更新 `updatedAt`——跨日续接对话归最后活跃日（`CardFileRepository.findTodayCards` 由按创建目录查改为全量扫 + 按 updatedAt 过滤；`FeedAppService.toCardFeedEntry` 卡片 time/date 用 updatedAt）/ #175 分页 page 0 返回完整 `size` 条最新核心、余数放末页（`FeedAppService.getFeed` 分页改新在前切片，前端 `_loadMore` 顺序自洽零改动）/ 复盘生成走新增 `AiClient.generate` 生成语义（不再复用 understand 的 JSON 摘要 → AI 只回一句话），产出 5 节结构化复盘引用真实规则；World B 时间线页补齐图片缩略图 + 原图（批 2 漏了 TimelinePage）；api-spec + REVIEW + Release Notes 同步（后端 298 · 前端 60 全绿）
 - **adai-web 独立桌面端（两套 UI 非适配）** ✅：拆独立工程 `apps/adai-web`（Web，:8082）——两栏壳（左导航 200 + lazy IndexedStack 保活）+ 8 模块桌面原生形态（Feed 对话流 880 + 右上下文栏 / 交易 DataTable / 记忆 master-detail / 时间线月历 / 任务看板 / 项目仪表盘 / 搜索高亮 / 档案两栏）；API 层值复制 + 3 项改进（utf8 解码 / 缓存参数感知 / ApiException）（adai-app 保持 8081 移动端，两套 UI 各做各的）
@@ -380,7 +380,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 - 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）
 - 前端：adai-app `localhost:8081`（移动端入口，Web 形态）· adai-web `localhost:8082`（桌面端入口）· adai-admin `localhost:8083`（产品后台）（均 Flutter Web + CanvasKit 补丁）
 - 生产服务器：49.235.37.220
-- 数据路径：`data/{userId}/...`（单用户 = `data/default/`，多账号预留）
+- 数据路径：`data/{userId}/...`（本机账号 = `data/adai/`，default 已迁移移除；测试可用 `data/default/`）
 
 ### 关键文档
 - `docs/architecture/product-roadmap.md` — 🚩 产品路线 v1.0.0（唯一蓝图，路线驱动开发）
