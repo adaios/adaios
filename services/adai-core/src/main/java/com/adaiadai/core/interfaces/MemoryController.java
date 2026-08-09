@@ -136,7 +136,9 @@ public class MemoryController {
                 .filter(r -> r.intent() == null || "log".equals(r.intent()))
                 // #144 幂等：已处理（有持久化 summary）且无降级记忆的记录跳过——
                 //   fact-only 记忆被 Phase 5 跳过时无真实记忆痕迹，但也不该重跑烧 AI；
-                //   降级记忆（DEGRADED）仍需重跑以升级为洞察；未处理（summary 空白）仍重建
+                //   降级记忆（DEGRADED）仍需重跑以升级为洞察；未处理（summary 空白）仍重建。
+                //   #189 在写入层修复：persist 失败时 summary 留空（handleStatem），
+                //   这里"summary 空白"自然触发重跑，无需额外判据。
                 .filter(r -> r.summary() == null || r.summary().isBlank()
                         || memoryService.hasDegradedMemory(userId, r.id()))
                 .toList();

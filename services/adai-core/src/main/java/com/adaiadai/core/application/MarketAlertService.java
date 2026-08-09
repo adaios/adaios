@@ -77,18 +77,21 @@ public class MarketAlertService {
     }
 
     /**
-     * 定时轮询：遍历 {@code default} + 全部启用账号逐用户检测。
-     * 当前单用户数据在 {@code data/default/}（多账号架构预留后仍是 single-user 默认层），
-     * 必须显式包含 default，否则轮询漏掉真实用户数据（accounts.json 的 adai/alice 是功能层账号）。
+     * 定时轮询：遍历全部启用账号逐用户检测（REVIEW #183：移除硬编码 {@code default}——
+     * default 账号已随数据迁移移除，轮询真实数据层=账号表内 enabled 用户，如 adai/alice）。
      * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置（默认工作日 9-11/13-15 点每 30 分钟）。
      */
     @Scheduled(cron = "${adai.market.alert.poll-cron:0 */30 9-11,13-15 * * MON-FRI}")
     public void poll() {
-        Set<String> userIds = new LinkedHashSet<>(List.of("default"));
+        Set<String> userIds = new LinkedHashSet<>();
         accountRepository.findAll().stream()
                 .filter(Account::enabled)
                 .map(Account::userId)
                 .forEach(userIds::add);
+        if (userIds.isEmpty()) {
+            log.warn("行情轮询：无启用账号，跳过（预期外，账号表应至少含 seed adai）");
+            return;
+        }
         for (String userId : userIds) {
             try {
                 poll(userId);

@@ -89,15 +89,19 @@ public class QuestionAppService {
         // 将 AI 返回的标签写回 Record，触发 TagIndexService 更新索引
         // 只有非卡片续接（无 cardId）时才存记录，避免重复拆分
         // #144：无条件持久化 intent=question + summary——rebuild 借此排除 question 记录，避免重跑烧 AI
+        // #188：AI 空 tags 时保留用户提交标签（record.tags()），不抹空
         if (cardId == null) {
+            List<String> effectiveTags = (understanding.tags() != null && !understanding.tags().isEmpty())
+                    ? understanding.tags()
+                    : record.tags();
             ContentRecord enriched = new ContentRecord(
                     record.id(), record.type(), record.source(), record.title(), record.content(),
-                    understanding.tags() != null ? understanding.tags() : List.of(),
+                    effectiveTags,
                     record.createdAt(), "question", understanding.summary(),
                     domain
             );
             recordRepository.save(userId, enriched);
-            log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), understanding.tags());
+            log.info("Record 标签已更新 | recordId={} | tags={}", record.id(), effectiveTags);
         }
 
         // 剥离 AI 原始回复末尾的 JSON 元数据，只保留自然语言（REVIEW #13/#11）：

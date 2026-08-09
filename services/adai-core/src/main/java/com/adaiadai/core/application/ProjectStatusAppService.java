@@ -134,7 +134,13 @@ public class ProjectStatusAppService {
     }
 
     private int countApiEndpoints() {
-        // #150：动态统计 interfaces 包下的 *Mapping 注解数，不再硬编码（曾 21，实际 46）
+        // REVIEW #187：生产为 jar-only（无源码树）→ 优先读 Gradle 生成的 classpath 资源
+        // META-INF/endpoints.txt；开发环境无该资源时回退扫源码目录。
+        Integer fromResource = countEndpointsFromResource();
+        if (fromResource != null) {
+            return fromResource;
+        }
+        // dev 回退：#150 动态统计 interfaces 包下的 *Mapping 注解数（曾硬编码 21，实际 46）
         try {
             Path interfacesDir = projectRoot.resolve(
                     "services/adai-core/src/main/java/com/adaiadai/core/interfaces");
@@ -151,6 +157,21 @@ public class ProjectStatusAppService {
         } catch (Exception e) {
             log.debug("API 端点计数失败: {}", e.getMessage());
             return 0;
+        }
+    }
+
+    /** 读 classpath 资源 {@code META-INF/endpoints.txt}（Gradle 生成）；缺失/异常返回 null 触发源码回退。 */
+    private Integer countEndpointsFromResource() {
+        try (var in = getClass().getClassLoader().getResourceAsStream("META-INF/endpoints.txt")) {
+            if (in == null) return null;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                String line = reader.readLine();
+                return line != null ? Integer.parseInt(line.trim()) : 0;
+            }
+        } catch (Exception e) {
+            log.debug("API 端点资源读取失败，回退扫源码: {}", e.getMessage());
+            return null;
         }
     }
 

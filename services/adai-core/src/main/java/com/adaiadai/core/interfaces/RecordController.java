@@ -86,6 +86,16 @@ public class RecordController {
                     intent, record.id(), request.cardId(), truncate(request.content(), 40), request.intent() != null);
 
             if (intent == Intent.QUESTION) {
+                // #181 rebuild 幂等：首问带新 cardId 时 record 已在上方落盘（intent=null），
+                // 补写 intent=question——rebuild 借此排除 question 记录，避免当 log 重跑烧 AI
+                // （answer() 因 cardId != null 不落盘，此标记必须在 controller 补）
+                if (request.cardId() != null) {
+                    ContentRecord questionMarked = new ContentRecord(
+                            record.id(), record.type(), record.source(), record.title(), record.content(),
+                            record.tags(), record.createdAt(), "question", null, record.domain()
+                    );
+                    recordRepository.save(userId, questionMarked);
+                }
                 return handleQuestion(userId, record, request.cardId());
             }
             return handleStatem(userId, record);
@@ -155,18 +165,17 @@ public class RecordController {
             summary = "recorded";
         }
 
-        // Re-save with summary+tags+domain persisted to file
-        ContentRecord enriched = new ContentRecord(
-                record.id(), record.type(), record.source(), record.title(), record.content(),
-                tags != null ? tags : List.of(), record.createdAt(), "log", summary, domain
-        );
-        recordRepository.save(userId, enriched);
-
+        // #189 顺序调整：先 persist 记忆，成功后才把 summary 落盘——
+        // 原顺序先写 summary 后 persist，persist 失败时记录"有 summary 无记忆"，
+        // rebuild 幂等过滤（summary 非空即跳过）永久丢失该记录的重跑机会。
+        // 现在 persist 失败时 record 保持 summary 空白，rebuild 靠"summary 空白"重跑。
+        boolean memoryPersisted = false;
         // Persist AI understanding as memory (use full understanding with insight/patterns/preferences)
         if (understanding != null) {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(), understanding);
                 memoryService.persist(userId, memory);
+                memoryPersisted = true;
                 log.info("Memory persisted for statement | recordId={} | insight=\"{}\" | patterns={} | preferences={}",
                         record.id(), truncate(understanding.insight() != null ? understanding.insight() : summary, 40),
                         understanding.patterns() != null ? understanding.patterns().size() : 0,
@@ -179,11 +188,21 @@ public class RecordController {
             try {
                 Memory degraded = Memory.fromContentFallback(record.id(), record.content());
                 memoryService.persist(userId, degraded);
+                memoryPersisted = true;
                 log.info("Memory degraded-persisted (AI failed) | recordId={}", record.id());
             } catch (Exception e) {
                 log.debug("Degraded memory persist skipped for statement: {}", e.getMessage());
             }
         }
+
+        // Re-save with summary+tags+domain persisted to file
+        // #188：AI 空 tags 时保留用户提交标签（record.tags()），不抹空
+        ContentRecord enriched = new ContentRecord(
+                record.id(), record.type(), record.source(), record.title(), record.content(),
+                tags != null && !tags.isEmpty() ? tags : record.tags(),
+                record.createdAt(), "log", memoryPersisted ? summary : null, domain
+        );
+        recordRepository.save(userId, enriched);
 
         return ResponseEntity.ok(new StatemResponse(
                 "log", record.id(), record.content(), tags, summary, domain

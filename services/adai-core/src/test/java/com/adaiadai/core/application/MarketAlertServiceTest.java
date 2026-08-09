@@ -159,13 +159,14 @@ class MarketAlertServiceTest {
     }
 
     @Test
-    void poll_noArg_includesDefaultEvenWhenAccountsExist() {
-        // accounts = [adai, alice]（无 default）；真实数据在 default → poll() 仍须处理 default
+    void poll_noArg_coversAllEnabledAccounts_only() {
+        // REVIEW #183：accounts = [adai, alice]（无 default，default 已随数据迁移移除）；
+        // 真实数据在 adai → poll() 遍历全部启用账号，不再硬编码 default
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of("600519", quote("600519", "-3.50")));
         PositionRepository positions = mock(PositionRepository.class);
-        when(positions.findAll(anyString())).thenReturn(List.of()); // adai/alice 无持仓
-        when(positions.findAll("default")).thenReturn(List.of(pos("600519", "贵州茅台", "8.00", "9.00")));
+        when(positions.findAll(anyString())).thenReturn(List.of()); // alice 无持仓
+        when(positions.findAll("adai")).thenReturn(List.of(pos("600519", "贵州茅台", "8.00", "9.00")));
 
         AccountRepository accounts = mock(AccountRepository.class);
         when(accounts.findAll()).thenReturn(List.of(
@@ -184,8 +185,8 @@ class MarketAlertServiceTest {
 
         new MarketAlertService(market, positions, accounts, snapshot, push, 3.0, 5.0, true).poll();
 
-        verify(push, times(1)).append(eq("default"), any(), any(MarketPushEvent.class));
-        verify(push, never()).append(eq("adai"), any(), any());
+        verify(push, times(1)).append(eq("adai"), any(), any(MarketPushEvent.class));
+        verify(push, never()).append(eq("default"), any(), any());
         verify(push, never()).append(eq("alice"), any(), any());
     }
 

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -127,6 +128,29 @@ class RecordControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intent").value("question"));
+    }
+
+    @Test
+    void createRecord_firstQuestionWithNewCardId_persistsIntentQuestion() throws Exception {
+        // REVIEW #181：前端新聊天首问带新 cardId（card 文件不存在）→
+        // record 已落盘后走 QUESTION 分支，须补写 intent=question，
+        // rebuild 借此排除 question 记录，避免当 log 重跑烧 AI。
+        String cardId = "card_test_181";
+        String body = mapper.writeValueAsString(Map.of(
+                "content", "今天适合买入吗",
+                "cardId", cardId
+        ));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        // 该 record 应以 intent=question 落盘
+        var records = recordRepository.findAll("default");
+        assertFalse(records.isEmpty());
+        boolean markedQuestion = records.stream()
+                .anyMatch(r -> cardId != null && r.intent() != null && "question".equals(r.intent()));
+        assertTrue(markedQuestion, "首问带新 cardId 的 record 应落盘 intent=question，rebuild 才能跳过");
     }
 
     @Test
