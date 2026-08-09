@@ -7,6 +7,7 @@ import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -215,5 +217,78 @@ class FeedAppServiceTest {
 
         assertTrue(resp.entries().stream().noneMatch(e -> "ai_note".equals(e.type())),
                 "无记忆的记录不渲染 ai_note");
+    }
+
+    @Test
+    void getFeed_card_timeAndDate_useUpdatedAt_lastActiveDay() {
+        // REVIEW updatedAt 时间基准：卡片 8-07 创建、8-09 最后活跃（跨日续接）→
+        // 8-09 Feed 应含该卡，时间/日期按 updatedAt 而非 createdAt/首条消息。
+        CardRecord card = new CardRecord(
+                "card_x", "conversation", "active", List.of("对话"),
+                List.of(new CardRecord.Turn(true, "跨日续接的问题", "02:06")),
+                null,
+                LocalDateTime.of(2026, 8, 7, 22, 0),
+                LocalDateTime.of(2026, 8, 9, 2, 14));
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of(card));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 9), 0, 10);
+
+        FeedAppService.FeedEntry cardEntry = resp.entries().stream()
+                .filter(e -> "card".equals(e.type())).findFirst().orElseThrow();
+        assertEquals("02:14", cardEntry.time(), "卡片时间按 updatedAt（最后活跃），而非首条消息 02:06");
+        assertEquals("08-09", cardEntry.date(), "卡片归最后活跃日 8-09，而非创建日 8-07");
+    }
+
+    @Test
+    void getFeed_page0_returnsFullSizeNewestCore_remainderOnLastPage() {
+        // REVIEW #175：9 条核心（8-03 当天）size=5 → page 0 = 最新完整 5 条，page 1 = 最早 4 条余数
+        List<ContentRecord> records = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            records.add(new ContentRecord(
+                    "rec_" + i, "note", "user_input",
+                    "标题" + i, "正文" + i, List.of("日常"),
+                    LocalDateTime.of(2026, 8, 3, 9, i + 1),
+                    "log", null, "life"));
+        }
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(records);
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush());
+
+        FeedAppService.FeedResponse page0 = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 5);
+        List<FeedAppService.FeedEntry> core0 = page0.entries().stream()
+                .filter(e -> "record".equals(e.type())).toList();
+        assertEquals(5, core0.size(), "page 0 应返回完整 size 核心（最新 5 条）");
+        assertEquals("rec_4", core0.get(0).id(), "page 0 最早一条 = 最新 5 条的最早（rec_4）");
+        assertEquals("rec_8", core0.get(4).id(), "page 0 最新一条 = rec_8");
+        assertEquals(9, page0.totalToday(), "totalToday = 核心总数，不随页收缩");
+
+        FeedAppService.FeedResponse page1 = service.getFeed("default", LocalDate.of(2026, 8, 3), 1, 5);
+        List<FeedAppService.FeedEntry> core1 = page1.entries().stream()
+                .filter(e -> "record".equals(e.type())).toList();
+        assertEquals(4, core1.size(), "余数 4 条放末页");
+        assertEquals("rec_0", core1.get(0).id(), "page 1 最早一条 = rec_0");
+        assertEquals("rec_3", core1.get(3).id(), "page 1 最新一条 = rec_3");
+
+        FeedAppService.FeedResponse page2 = service.getFeed("default", LocalDate.of(2026, 8, 3), 2, 5);
+        assertTrue(page2.entries().isEmpty(), "超范围页返回空");
     }
 }

@@ -214,7 +214,7 @@
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |------|------|:----:|:----:|------|
 | `date` | String | 否 | 当天 | 日期 `yyyy-MM-dd` |
-| `page` | int | 否 | 0 | 页码，从 0 开始，page 0 = 最新条目 |
+| `page` | int | 否 | 0 | 页码，从 0 开始，page 0 = 最新条目（REVIEW #175：返回完整 `size` 条核心，余数放末页）|
 | `size` | int | 否 | 5 | 每页条数 |
 
 **Response**
@@ -258,6 +258,7 @@
 
 > feed 只返回今天的数据，历史数据走时间线（`GET /api/v1/timeline`）。
 > 每日摘要单独调用 `GET /api/v1/brief`。
+> **时间基准（updatedAt）**：卡片（`type=card`）的 `time`/`date` 按最后更新时间 `updatedAt`，跨日续接的对话归最后活跃日；`findTodayCards` 按 `updatedAt` 过滤。分页（REVIEW #175）：核心条目（record/card）按时间从新到旧切块，page 0 返回完整 `size` 条最新核心，余数放末页；附加条目（ai_note/action/market/push）只在 page 0 末尾附加。
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|

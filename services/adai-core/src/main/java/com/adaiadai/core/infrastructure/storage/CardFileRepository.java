@@ -99,15 +99,15 @@ public class CardFileRepository {
     }
 
     /**
-     * 获取今天的卡片列表。
+     * 获取指定日期"最后活跃"的卡片列表（REVIEW updatedAt 时间基准）。
+     * <p>
+     * 卡片目录按 createdAt 组织，但对话可能跨日续接（updatedAt 落到最后活跃日），
+     * 因此按 updatedAt 过滤而非目录。文件量小（单用户会话级），全量扫成本可接受
+     * （全量遍历为已知待办 REVIEW #19）。
      */
     public List<CardRecord> findTodayCards(String userId, LocalDate date) {
-        String prefix = CARDS_DIR + "/" + date.format(DIR_DATE_FORMAT);
-        List<String> files = fileStorage.listFiles(userId, prefix);
-        return files.stream()
-                .filter(f -> f.startsWith(prefix) && f.endsWith(".md"))
-                .map(f -> parseFromFile(userId, f))
-                .filter(Objects::nonNull)
+        return findAll(userId).stream()
+                .filter(c -> c.updatedAt() != null && c.updatedAt().toLocalDate().equals(date))
                 .sorted(Comparator.comparing(CardRecord::createdAt))
                 .collect(Collectors.toList());
     }

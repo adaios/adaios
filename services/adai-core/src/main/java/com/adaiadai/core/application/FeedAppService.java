@@ -89,8 +89,7 @@ public class FeedAppService {
         List<FeedEntry> allEntries = new ArrayList<>();
 
         for (CardRecord card : todayCards) {
-            // 只显示当天创建的卡片，跨日卡片跳过
-            if (!card.createdAt().toLocalDate().equals(queryDate)) continue;
+            // findTodayCards 已按 updatedAt（最后活跃日）过滤，此处直接输出
             allEntries.add(toCardFeedEntry(card));
         }
 
@@ -127,15 +126,16 @@ public class FeedAppService {
                 .toList();
         int totalToday = coreEntries.size();
 
-        // 分页：从后往前翻，page 0 = 最新条目（tail），page 1 = 更早；当天仅附加条目时也能翻到
+        // 分页（REVIEW #175）：核心从新到旧切块，page 0 = 最新完整 size 条核心 + 附加条目，
+        // 余数放末页（旧分页 page 0 只给尾部余数，首屏核心不足）。每页内保持时间升序。
+        // 前端 _loadMore 把更早页插在列表前（`[...moreCards, ..._cards]`），顺序自洽。
         int totalPages = Math.max(1, (totalToday + querySize - 1) / querySize);
-        int idxFromEnd = totalPages - 1 - queryPage;
         List<FeedEntry> pageEntries;
-        if (idxFromEnd < 0) {
+        if (queryPage >= totalPages) {
             pageEntries = List.of();
         } else {
-            int start = idxFromEnd * querySize;
-            int end = Math.min(start + querySize, totalToday);
+            int end = totalToday - queryPage * querySize;
+            int start = Math.max(0, end - querySize);
             pageEntries = new ArrayList<>(coreEntries.subList(start, end));
             if (queryPage == 0) {
                 pageEntries.addAll(attachEntries); // 附加条目（待办提醒/行情）只在最新页
@@ -188,12 +188,9 @@ public class FeedAppService {
                     .collect(Collectors.toList())
                 : List.of();
 
-        String timeStr = card.turns() != null
-                ? card.turns().stream()
-                    .filter(t -> t.isUser())
-                    .findFirst()
-                    .map(t -> t.time())
-                    .orElse(card.createdAt().toLocalTime().format(TIME_FMT))
+        // 时间/日期按 updatedAt（最后活跃时间）为准，跨日续接卡片归最后活跃日（REVIEW updatedAt 时间基准）
+        String timeStr = card.updatedAt() != null
+                ? card.updatedAt().toLocalTime().format(TIME_FMT)
                 : card.createdAt().toLocalTime().format(TIME_FMT);
 
         String firstUserMsg = card.turns() != null
@@ -208,7 +205,10 @@ public class FeedAppService {
                 "card", card.id(), null,
                 firstUserMsg, firstUserMsg, card.tags(),
                 timeStr, "question", card.summary(), turns, "life",
-                card.createdAt().format(DATE_FMT), null
+                card.updatedAt() != null
+                        ? card.updatedAt().format(DATE_FMT)
+                        : card.createdAt().format(DATE_FMT),
+                null
         );
     }
 

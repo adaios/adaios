@@ -14,6 +14,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-09 | 验证修复（updatedAt 时间基准 + #175 分页）| b657f21..HEAD | 主会话（后端）| 0 | 2（updatedAt 归日 + #175 分页首屏）|
 | 2026-08-06 | 双轨修复（批 H + #127）| 89feaf1..HEAD | subagent(adai-web) + 主会话(后端) | 0 | 13（adai-web 9 项 + #127 4 项）|
 | 2026-08-03 | full 全量（v0.3.0 前）| — | backend/frontend/docs/product/knowledge ×5 | P0×1 + 战略×7 + P1×13 + P2/P3×30 | 0 |
 | 2026-08-03 | 修复批 A-D | — | — | 0 | 22（数据安全/状态机/契约/数据+文档）|
@@ -61,12 +62,12 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 | 172 | 记忆页 superseded 记忆仍显示「待办/已完成」标记（语义矛盾：被取代的历史版本不是当前待办）+「已取代」仅靠卡片变浅、区分度低含义不明；建议 superseded 记忆隐藏 actionable 标记，已取代状态加明确灰角标说明（如「已被新记忆取代」）| `memory_page.dart:239-261` |
 | 173 | 优化方向（L4 演进）：带图提问——图片上传固定 intent=log（`MediaRecordAppService.recordImage` 硬编码），不支持"发图+问句→AI 基于图回答"；建议加 intent=question 通道 + AI 对话带图上下文 | `MediaController.uploadImage` / `MediaRecordAppService.recordImage` |
 | 174 | 图片上传无进度反馈：`_onSendMedia` 逐张 `await uploadImage`，期间无 loading/进度条/占位卡，多图干等只盯接口；建议上传中显示逐张进度 | `main_page.dart:278-304` |
-| 175 | Feed 分页首屏体验：核心记录 > size 时（从后往前翻）page 0 只返回余数核心（7 条 size=5 时仅 2 条），且全部 ai_note 附加条目堆首屏喧宾夺主；数据覆盖正确但首屏可读性差 | `FeedAppService.getFeed` 分页 / `main_page.dart:57` |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| updatedAt + #175 | **2026-08-09 v1.0.0 验证修复（Feed 首屏 + 时间基准）**：卡片时间基准改 updatedAt——跨日续接对话归最后活跃日（`CardFileRepository.findTodayCards` 由按目录查创建日改为全量扫 + 按 updatedAt 过滤；`FeedAppService.toCardFeedEntry` 卡片 time/date 用 updatedAt）/ #175 分页 page 0 返回完整 size 条核心、余数放末页（`FeedAppService.getFeed` 分页改新在前切片）；api-spec 分页/时间基准说明同步；新增 CardFileRepositoryTest 2 + FeedAppServiceTest 2（后端 298 全绿）；前端 `_loadMore` 顺序自洽零改动 | ✅ 2026-08-09 |
 | 批 J | **2026-08-09 P1 清理（v1.0.0 核心闭环）**：#144 rebuild 幂等（intent 落盘 + summary 处理标记 + 降级记录仍重跑升级，`RecordFileRepository`/`MemoryController`/`QuestionAppService`）/ #147 SELL 未持有与超额报错（`TradingException` + GlobalExceptionHandler 400）+ 持仓读改写加锁 + 清仓 0 行不落盘 / #106 api-spec portfolio 契约对齐（补后端 `positionCount` 派生字段，adai-web 持仓数不再恒 0）/ #112 CANCELLED 任务看板可见（adai-web 补第四列）/ #150 apiEndpoints 动态统计（硬编码 21 → 实际 46）+ FeedAppService 死依赖移除；后端 302 · adai-web 27 测试全绿 | ✅ 2026-08-09 |
 | 批 I | **2026-08-07 adai-app 对话体验收尾**：#13+#11 card 写入剥离 AI 原始 JSON（`LlmResponseParser.extractNaturalText` + `QuestionAppService` 写卡与返回均剥 JSON，实时=刷新，card 文件不再混入游离 JSON）/ #148 Feed ai_note 按记录日期归属（`MemoryService.findByRecordIds` 跨日补齐 + `toAiEntry` 用记录时间，重补/升级跨日不错日不丢失）/ MD1 世界切回 Feed 刷新（`DualWorldShell` ValueNotifier → `MainPage.refreshTick` 重载，覆盖 admin 记忆重建后 Feed 陈旧）；后端 286 测试 · 前端 60 测试 | ✅ 2026-08-07 |
 | 批 H | **2026-08-06 adai-web 桌面残留清理 9 项**：#102 交易页复盘入口（markdown 复盘弹窗）/ #132 红涨绿亏（A股语义，快照+DataTable）/ #161 时间线 type 徽标中文化（13 类映射+未知兜底）/ #131 桌面文案全量中文化（shell/feed_card/task/feed/profile/project/网络错误）/ #124 CLAUDE.md 端口 8082 / #158 记忆页待办完成按钮 / #159 Feed 空态快速引导 chips（prefill 聚焦）/ #118 `_check` utf8 解码 / #165 type 硬转换兜底；#120 确认已实现未重复、#121 评估低优先级不修 | ✅ 2026-08-06 |
@@ -91,6 +92,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-09 | 验证修复（updatedAt + #175）| — | 0 | ~20min | 0 新 | 2 |
 | 2026-08-09 | 批 J（P1 清理 v1.0.0 核心闭环）| — | 0 | ~40min | 0 新 | 5（#144/#147/#106/#112/#150）|
 | 2026-08-07 | light 增量（批 I 对话体验收尾 + ideas）| — | 0 | ~5min | 0 新（P3 观察×3）| 4（#13/#11/#148/MD1）|
 | 2026-08-06 | light 增量（Phase 2 行情推送快扫）| — | 0 | ~5min | 0 新 | 0 |
