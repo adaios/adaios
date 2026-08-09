@@ -96,6 +96,24 @@ class _TimelinePageState extends State<TimelinePage> {
     return wd - 1;
   }
 
+  /// 点击缩略图 → 全图 Dialog（点任意处关闭，批2 原图可见）。
+  void _showFullImage(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Image.network(
+            widget.api.mediaUrl(id),
+            headers: widget.api.mediaHeaders,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _prevMonth() {
     setState(() {
       _baseDate = DateTime(_baseDate.year, _baseDate.month - 1);
@@ -291,6 +309,26 @@ class _TimelinePageState extends State<TimelinePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(e.title, style: TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+                if (e.mediaPath != null) ...[
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => _showFullImage(e.id),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        widget.api.mediaUrl(e.id),
+                        headers: widget.api.mediaHeaders,
+                        width: 96, height: 96,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          width: 96, height: 96,
+                          color: AppColors.darkSurface2,
+                          child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 if (e.tags.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Wrap(
