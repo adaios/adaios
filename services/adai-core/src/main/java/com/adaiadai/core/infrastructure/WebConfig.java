@@ -42,7 +42,9 @@ public class WebConfig {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
                 registry.addInterceptor(new AdminAuthInterceptor(adminToken))
-                        .addPathPatterns("/api/v1/admin/**", "/api/v1/accounts/**");
+                        .addPathPatterns("/api/v1/admin/**", "/api/v1/accounts/**")
+                        // 产品端选号端点（仅 enabled 账号），需无鉴权可访问（v1.0.0 多账号前端选号提前）
+                        .excludePathPatterns("/api/v1/accounts/available");
             }
         };
     }

@@ -327,6 +327,19 @@ class ApiService {
     return raw.map((e) => e.toString()).toList();
   }
 
+  // ── 账号 API ──
+
+  /// 可用账号列表（v1.0.0 多账号选号；无鉴权端点，仅返回 enabled 账号）。
+  Future<List<AccountModel>> getAvailableAccounts() async {
+    final resp = await http.get(
+      Uri.parse('$baseUrl/api/v1/accounts/available'),
+      headers: _headers,
+    );
+    _check(resp);
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
+    return list.map((e) => AccountModel.fromJson(e)).toList();
+  }
+
   // ── 任务 API ──
 
   /// 获取任务列表。
@@ -900,4 +913,28 @@ class TaskStatsResponse {
     done: json['done'] as int? ?? 0,
     cancelled: json['cancelled'] as int? ?? 0,
   );
+}
+
+/// 账号 DTO（GET /api/v1/accounts/available 返回，产品端选号用）。
+class AccountModel {
+  final String userId;
+  final String role;
+  final bool enabled;
+  final DateTime? createdAt;
+
+  const AccountModel({
+    required this.userId,
+    required this.role,
+    required this.enabled,
+    this.createdAt,
+  });
+
+  bool get isAdmin => role == 'admin';
+
+  factory AccountModel.fromJson(Map<String, dynamic> json) => AccountModel(
+        userId: json['userId'] as String? ?? '',
+        role: json['role'] as String? ?? 'user',
+        enabled: json['enabled'] as bool? ?? false,
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
+      );
 }

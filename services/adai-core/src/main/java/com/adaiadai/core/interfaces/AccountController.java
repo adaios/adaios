@@ -17,7 +17,8 @@ import java.util.Optional;
 /**
  * AccountController — 账号管理端点（v1.0.0 多账号功能层）。
  * <p>
- * GET    /api/v1/accounts              → 账号列表（adai-app 选号 + adai-admin 管理）
+ * GET    /api/v1/accounts              → 账号列表（adai-admin 管理，需 X-Admin-Token）
+ * GET    /api/v1/accounts/available    → 可用账号列表（仅 enabled，**无鉴权**，产品端选号）
  * POST   /api/v1/accounts              → 建号（无注册，adai-admin 后台建）
  * PATCH  /api/v1/accounts/{userId}     → 更新（启用/禁用、角色）
  * DELETE /api/v1/accounts/{userId}     → 删除
@@ -42,6 +43,18 @@ public class AccountController {
     @GetMapping
     public List<Account> listAccounts() {
         return accountRepository.findAll();
+    }
+
+    /**
+     * 可用账号列表（产品端选号，**无鉴权**——v1.0.0 多账号前端选号提前）。
+     * <p>仅返回 {@code enabled=true} 的账号；账号由 adai-admin 后台创建，产品端不做注册。
+     * 由 WebConfig 将该路径从 AdminAuthInterceptor 拦截范围 exclude（不暴露管理端点）。
+     */
+    @GetMapping("/available")
+    public List<Account> listAvailableAccounts() {
+        return accountRepository.findAll().stream()
+                .filter(Account::enabled)
+                .toList();
     }
 
     /** 建号（无注册，adai-admin 后台建）。 */

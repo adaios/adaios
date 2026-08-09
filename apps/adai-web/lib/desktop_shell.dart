@@ -18,7 +18,10 @@ class DesktopShell extends StatefulWidget {
   /// 当前用户 ID（透传给各页面 ApiService）。
   final String userId;
 
-  const DesktopShell({super.key, required this.userId});
+  /// 切换账号回调（AdaiWebApp 提供：push 选号页 → 选定后重建整树）。
+  final VoidCallback? onSwitchAccount;
+
+  const DesktopShell({super.key, required this.userId, this.onSwitchAccount});
 
   @override
   State<DesktopShell> createState() => _DesktopShellState();
@@ -132,15 +135,23 @@ class _DesktopShellState extends State<DesktopShell> {
           // 导航项
           for (var i = 0; i < _items.length; i++) _buildNavItem(i),
           const Spacer(),
-          // 底部 userId
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
-            ),
-            child: Text(
-              '@${widget.userId}',
-              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+          // 底部 userId（v1.0.0 多账号：点击切换账号）
+          GestureDetector(
+            onTap: widget.onSwitchAccount,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
+              ),
+              child: Row(children: [
+                Icon(Icons.swap_horiz, size: 13, color: AppColors.darkGrey5),
+                const SizedBox(width: 6),
+                Text(
+                  '@${widget.userId}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                ),
+              ]),
             ),
           ),
         ],

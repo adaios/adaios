@@ -173,4 +173,33 @@ class AccountControllerTest {
         mvcWith(repo).perform(delete("/api/v1/accounts/ghost"))
                 .andExpect(status().isNotFound());
     }
+
+    // ── 可用账号列表（产品端选号，仅 enabled）──
+
+    @Test
+    void availableAccounts_returnsOnlyEnabled() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findAll()).thenReturn(List.of(
+                seedAdmin(), // enabled admin
+                new Account("bob", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2)),
+                new Account("carol", Account.ROLE_USER, false, LocalDate.of(2026, 8, 2)) // disabled，应被过滤
+        ));
+
+        mvcWith(repo).perform(get("/api/v1/accounts/available"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].userId").value("adai"))
+                .andExpect(jsonPath("$[1].userId").value("bob"))
+                .andExpect(jsonPath("$[1].enabled").value(true));
+    }
+
+    @Test
+    void availableAccounts_empty() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findAll()).thenReturn(List.of());
+
+        mvcWith(repo).perform(get("/api/v1/accounts/available"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
 }

@@ -15,11 +15,13 @@ import 'trading_page.dart';
 class LauncherPage extends StatefulWidget {
   final ApiService api;
   final VoidCallback onNavigateBack;
+  final VoidCallback? onSwitchAccount;
 
   const LauncherPage({
     super.key,
     required this.api,
     required this.onNavigateBack,
+    this.onSwitchAccount,
   });
 
   @override
@@ -138,6 +140,10 @@ class _LauncherPageState extends State<LauncherPage>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
             children: [
+              _buildRow(Icons.swap_horiz, '切换账号', '@${widget.api.userId}', AppColors.darkPurple, () {
+                widget.onSwitchAccount?.call();
+              }),
+              _divider(),
               _buildRow(Icons.person_outline, '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(

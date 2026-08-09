@@ -898,9 +898,9 @@ chat 模式（全屏）
 
 ## 16. 账号（多账号功能层）
 
-> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app 首屏从账号列表选择进入。seed 管理员 `adai` 由后端首次启动自动预置。
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端从可用账号列表选择进入（`GET /api/v1/accounts/available`，**无鉴权**，仅返回 enabled 账号）；前端记住上次账号（shared_preferences）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
 >
-> **管理鉴权（REVIEW #127）**：本节与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
+> **管理鉴权（REVIEW #127）**：本节除 `GET /api/v1/accounts/available`（产品端选号，无鉴权）外，其余端点与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
 
 ### `GET /api/v1/accounts` — 账号列表
 
@@ -916,6 +916,20 @@ chat 模式（全屏）
   }
 ]
 ```
+
+### `GET /api/v1/accounts/available` — 可用账号列表（产品端选号）
+
+> **无鉴权**（WebConfig 从 AdminAuthInterceptor 拦截范围 exclude）——adai-app / adai-web 首屏选号与切换调用。仅返回 `enabled=true` 的账号。
+
+**Response**
+
+```json
+[
+  { "userId": "adai", "role": "admin", "enabled": true, "createdAt": "2026-08-02" }
+]
+```
+
+- 空列表 → `200 []`（前端展示「去 adai-admin 创建账号」空态）
 
 ### `POST /api/v1/accounts` — 建号（adai-admin 后台）
 

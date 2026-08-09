@@ -2,13 +2,20 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
+import 'services/user_store.dart';
 import 'main_page.dart';
+import 'pages/account_select_page.dart';
 import 'pages/launcher_page.dart';
 import 'pages/profile_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(RootApp(userId: resolveUserId()));
+  // v1.0.0 多账号：URL ?userId= 优先 > 持久化上次账号 > 无记录（首屏选号）
+  final urlUserId = resolveUserId();
+  final savedUserId = await UserStore.loadUserId();
+  final hasUrlUserId = urlUserId != 'default';
+  final userId = hasUrlUserId ? urlUserId : (savedUserId ?? 'default');
+  runApp(RootApp(userId: userId, needsSelect: !hasUrlUserId && savedUserId == null));
 }
 
 /// 从入口跳转的 query 参数解析当前用户 ID（`?userId=xxx`）。
@@ -24,11 +31,45 @@ String resolveUserIdFrom(Uri uri) {
   return RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(q) ? q : fallback;
 }
 
-class RootApp extends StatelessWidget {
-  const RootApp({super.key, required this.userId});
+class RootApp extends StatefulWidget {
+  const RootApp({super.key, this.userId = 'default', this.needsSelect = false});
 
-  /// 当前用户 ID（入口选择后通过 query 传入）。
+  /// 初始用户 ID（URL query / 持久化解析结果）。
   final String userId;
+
+  /// 首次进入无账号记录 → 显示首屏选号页。
+  final bool needsSelect;
+
+  @override
+  State<RootApp> createState() => _RootAppState();
+}
+
+class _RootAppState extends State<RootApp> {
+  late String _userId = widget.userId;
+  late bool _needsSelect = widget.needsSelect;
+
+  /// 选定账号：持久化 + 重建整树（换 ValueKey → DualWorldShell/ApiService 重建，缓存清空）。
+  void _selectAccount(String userId) {
+    UserStore.saveUserId(userId);
+    setState(() {
+      _userId = userId;
+      _needsSelect = false;
+    });
+  }
+
+  /// 切换账号：push 选号页，选择后回传重建。
+  void _openAccountSelect() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => AccountSelectPage(
+        api: ApiService(userId: _userId),
+        currentUserId: _userId,
+        onSelect: (uid) {
+          Navigator.pop(context);
+          _selectAccount(uid);
+        },
+      ),
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,17 +83,29 @@ class RootApp extends StatelessWidget {
         style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
         child: child!,
       ),
-      home: DualWorldShell(userId: userId),
+      home: _needsSelect
+          ? AccountSelectPage(
+              api: ApiService(userId: _userId),
+              onSelect: _selectAccount,
+            )
+          : DualWorldShell(
+              key: ValueKey(_userId),
+              userId: _userId,
+              onSwitchAccount: _openAccountSelect,
+            ),
     );
   }
 }
 
 /// 双主页壳 — World A (Feed) 与 World B (Launcher) 无缝切换。
 class DualWorldShell extends StatefulWidget {
-  const DualWorldShell({super.key, this.userId = 'default'});
+  const DualWorldShell({super.key, this.userId = 'default', this.onSwitchAccount});
 
   /// 当前用户 ID（透传给 ApiService 与 MainPage）。
   final String userId;
+
+  /// 切换账号回调（RootApp 提供：push 选号页 → 选定后重建整树）。
+  final VoidCallback? onSwitchAccount;
 
   @override
   State<DualWorldShell> createState() => _DualWorldShellState();
@@ -104,6 +157,7 @@ class _DualWorldShellState extends State<DualWorldShell> {
                 key: const ValueKey('worldB'),
                 api: _api,
                 onNavigateBack: _toggleWorld,
+                onSwitchAccount: widget.onSwitchAccount,
               )
             : MainPage(
                 key: ValueKey('worldA-${_filterTag ?? ''}'),
