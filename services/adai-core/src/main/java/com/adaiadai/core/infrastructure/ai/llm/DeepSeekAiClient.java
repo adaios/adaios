@@ -105,6 +105,39 @@ public class DeepSeekAiClient implements AiClient {
     }
 
     @Override
+    public String generate(ContextPackage contextPackage, String systemPrompt) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("DEEPSEEK_API_KEY 未配置，无法调用 DeepSeek API");
+            throw new RuntimeException("AI 未配置：缺少 API Key");
+        }
+        try {
+            // 生成语义：自定义 system 引导正文格式，无 JSON 摘要指令；0.7 temp + 2048 tokens 适合结构化正文
+            String body = buildSimpleBody(contextPackage.prompt(), 2048, 0.7, systemPrompt);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(apiUrl))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .timeout(TIMEOUT)
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            String content = parseChatCompletion(response.body());
+            log.info("[DeepSeek] generate 响应 | 长度={}", content.length());
+            return content;
+        } catch (java.net.http.HttpConnectTimeoutException e) {
+            log.error("DeepSeek API 连接超时", e);
+            throw new RuntimeException("AI 连接超时，请稍后重试", e);
+        } catch (java.net.http.HttpTimeoutException e) {
+            log.error("DeepSeek API 请求超时", e);
+            throw new RuntimeException("AI 请求超时，请稍后重试", e);
+        } catch (Exception e) {
+            log.error("DeepSeek API 调用失败: {}", e.getMessage(), e);
+            throw new RuntimeException("AI 调用失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public String recognizeIntent(String content) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new RuntimeException("AI 未配置：缺少 API Key");

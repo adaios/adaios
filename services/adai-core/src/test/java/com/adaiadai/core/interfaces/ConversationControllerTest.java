@@ -159,6 +159,10 @@ class ConversationControllerTest {
                 throw new RuntimeException("DeepSeek API 返回空内容");
             }
             @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) {
+                throw new RuntimeException("DeepSeek API 返回空内容");
+            }
+            @Override
             public String recognizeIntent(String content) { return "log"; }
         };
         ConversationController ctrl = new ConversationController(failingClient, repo, cardRepo, memoryService);

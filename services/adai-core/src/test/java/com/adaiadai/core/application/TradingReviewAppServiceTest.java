@@ -3,7 +3,6 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
@@ -51,10 +50,8 @@ class TradingReviewAppServiceTest {
         when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(baseCtx);
 
         AiClient aiClient = mock(AiClient.class);
-        when(aiClient.understand(any())).thenReturn(new AiUnderstanding(
-                "今日执行纪律良好，明日关注 3400 关键位", "复盘洞察", null, null,
-                List.of("trading"), "neutral", "trading", false, null, null
-        ));
+        when(aiClient.generate(any(), any()))
+                .thenReturn("今日执行纪律良好，明日关注 3400 关键位");
 
         TradingReviewFileRepository reviewRepository = mock(TradingReviewFileRepository.class);
 
@@ -72,9 +69,9 @@ class TradingReviewAppServiceTest {
         assertTrue(reviewRecord.content().contains("复盘"), "复盘记录内容应含复盘关键词");
         assertTrue(reviewRecord.tags().contains("trading"), "复盘记录应带 trading 标签");
 
-        // ── 验证 understand 收到的 prompt：去掉分析指令 + 追加复盘模板 ──
+        // ── 验证 generate 收到的 prompt：去掉分析指令 + 追加复盘模板 + 生成 system 指令 ──
         ArgumentCaptor<ContextPackage> ctxCaptor = ArgumentCaptor.forClass(ContextPackage.class);
-        verify(aiClient).understand(ctxCaptor.capture());
+        verify(aiClient).generate(ctxCaptor.capture(), any());
         String prompt = ctxCaptor.getValue().prompt();
         assertTrue(prompt.contains("交易系统规则"), "注入的交易规则应保留在 prompt");
         assertFalse(prompt.contains("请分析这条记录"), "应去掉 compose 的 JSON 分析指令");

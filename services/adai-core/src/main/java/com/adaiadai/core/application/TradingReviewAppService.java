@@ -4,7 +4,6 @@ import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
@@ -35,6 +34,15 @@ public class TradingReviewAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingReviewAppService.class);
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+
+    /**
+     * 复盘生成 system 指令（生成语义）。必须用 generate() 而非 understand()：
+     * understand 的默认 system 会引导"输出 JSON summary（3-5 词）"，压制复盘 5 节正文模板。
+     */
+    private static final String REVIEW_SYSTEM_PROMPT = """
+            你是一个个人交易复盘助手。基于用户消息中的上下文（交易系统规则、知识、行情、身份、历史记录）与复盘模板，生成结构化的交易复盘笔记正文。
+            严格遵循模板的五个小节（今日交易执行/持仓变化与关注/与系统规则对照/今日教训与心得/明日关注要点）输出正文本身；不要输出 JSON，不要输出 summary，不要用 markdown 代码块包裹，不要使用 emoji。
+            """.strip();
 
     private final RecordRepository recordRepository;
     private final PositionRepository positionRepository;
@@ -92,11 +100,8 @@ public class TradingReviewAppService {
                 ctx.conversationHistory()
         );
 
-        // 5. AI 生成复盘
-        AiUnderstanding understanding = aiClient.understand(reviewCtx);
-        String reviewContent = understanding.summary() != null
-                ? understanding.summary()
-                : understanding.rawResponse();
+        // 5. AI 生成复盘（生成语义：无 JSON 摘要指令，按复盘模板输出正文）
+        String reviewContent = aiClient.generate(reviewCtx, REVIEW_SYSTEM_PROMPT);
 
         // 6. 持久化
         reviewRepository.save(userId, date, reviewContent);

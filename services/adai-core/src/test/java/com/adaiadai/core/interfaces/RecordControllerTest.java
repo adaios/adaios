@@ -298,6 +298,11 @@ class RecordControllerTest {
             }
 
             @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) {
+                throw new IllegalStateException("AI 服务不可用");
+            }
+
+            @Override
             public String recognizeIntent(String content) {
                 return "log";
             }

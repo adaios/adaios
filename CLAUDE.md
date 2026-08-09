@@ -314,7 +314,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
-- **v1.0.0 验证修复（updatedAt 时间基准 + #175 分页）** ✅：卡片时间/日期按最后更新 `updatedAt`——跨日续接对话归最后活跃日（`CardFileRepository.findTodayCards` 由按创建目录查改为全量扫 + 按 updatedAt 过滤；`FeedAppService.toCardFeedEntry` 卡片 time/date 用 updatedAt）/ #175 分页 page 0 返回完整 `size` 条最新核心、余数放末页（`FeedAppService.getFeed` 分页改新在前切片，前端 `_loadMore` 顺序自洽零改动）；api-spec 分页/时间基准 + REVIEW + Release Notes 同步（后端 298 全绿）
+- **v1.0.0 验证修复（updatedAt 时间基准 + #175 分页 + 复盘生成）** ✅：卡片时间/日期按最后更新 `updatedAt`——跨日续接对话归最后活跃日（`CardFileRepository.findTodayCards` 由按创建目录查改为全量扫 + 按 updatedAt 过滤；`FeedAppService.toCardFeedEntry` 卡片 time/date 用 updatedAt）/ #175 分页 page 0 返回完整 `size` 条最新核心、余数放末页（`FeedAppService.getFeed` 分页改新在前切片，前端 `_loadMore` 顺序自洽零改动）/ 复盘生成走新增 `AiClient.generate` 生成语义（不再复用 understand 的 JSON 摘要 → AI 只回一句话），产出 5 节结构化复盘引用真实规则；api-spec + REVIEW + Release Notes 同步（后端 298 全绿）
 - **adai-web 独立桌面端（两套 UI 非适配）** ✅：拆独立工程 `apps/adai-web`（Web，:8082）——两栏壳（左导航 200 + lazy IndexedStack 保活）+ 8 模块桌面原生形态（Feed 对话流 880 + 右上下文栏 / 交易 DataTable / 记忆 master-detail / 时间线月历 / 任务看板 / 项目仪表盘 / 搜索高亮 / 档案两栏）；API 层值复制 + 3 项改进（utf8 解码 / 缓存参数感知 / ApiException）（adai-app 保持 8081 移动端，两套 UI 各做各的）
 - **adai-app 即产品入口（砍掉 adai-entry）** ✅：adai-entry 账号选择前门移除——app 直接作为产品入口（交流 + 页面操作一体），adai-admin 定位拨正为独立产品后台（账号/内容/数据/系统/知识，类企业管理系统）；多账号分流仍保留 `?userId=` query 注入 X-User-Id 能力
 - **adai-admin 全栈（MD11-16）** ✅：后端账号体系（seed adai + CRUD + 内置保护）+ admin 端点（memory 修正 / data 文件树 / os 知识浏览）+ 前端四模块（账号/数据/系统/知识）接真实 API（`1337b62`/`f9cf6bf`）

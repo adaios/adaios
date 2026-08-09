@@ -43,6 +43,11 @@ public class TestAiClient implements AiClient {
     }
 
     @Override
+    public String generate(ContextPackage contextPackage, String systemPrompt) {
+        return "[Test] 生成正文：" + contextPackage.recordTitle();
+    }
+
+    @Override
     public String recognizeIntent(String content) {
         if (content == null || content.isBlank()) return "log";
         if (content.contains("天气") || content.contains("吗") || content.contains("？")

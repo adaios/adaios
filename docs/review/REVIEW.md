@@ -67,6 +67,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| 复盘生成 | **2026-08-09 v1.0.0 验证修复（复盘生成语义）**：复盘走 `understand`（JSON 摘要语义）——默认 system"输出 JSON summary 3-5 词"压制复盘 5 节正文模板 → AI 只回"交易复盘，持仓不变"一句话；根因复盘是生成型任务却复用理解型接口。修复：AiClient 新增 `generate(ContextPackage, systemPrompt)` 生成语义（自定义 system 引导正文格式 + 0.7 temp/2048 tokens），`TradingReviewAppService` 改走 generate；验证产出完整 5 节复盘且引用真实规则（R4/R117/R119/E20/R1）。适配 DeepSeekAiClient + TestAiClient + 2 匿名实现 + TradingReviewAppServiceTest（后端 298 全绿）| ✅ 2026-08-09 |
 | updatedAt + #175 | **2026-08-09 v1.0.0 验证修复（Feed 首屏 + 时间基准）**：卡片时间基准改 updatedAt——跨日续接对话归最后活跃日（`CardFileRepository.findTodayCards` 由按目录查创建日改为全量扫 + 按 updatedAt 过滤；`FeedAppService.toCardFeedEntry` 卡片 time/date 用 updatedAt）/ #175 分页 page 0 返回完整 size 条核心、余数放末页（`FeedAppService.getFeed` 分页改新在前切片）；api-spec 分页/时间基准说明同步；新增 CardFileRepositoryTest 2 + FeedAppServiceTest 2（后端 298 全绿）；前端 `_loadMore` 顺序自洽零改动 | ✅ 2026-08-09 |
 | 批 J | **2026-08-09 P1 清理（v1.0.0 核心闭环）**：#144 rebuild 幂等（intent 落盘 + summary 处理标记 + 降级记录仍重跑升级，`RecordFileRepository`/`MemoryController`/`QuestionAppService`）/ #147 SELL 未持有与超额报错（`TradingException` + GlobalExceptionHandler 400）+ 持仓读改写加锁 + 清仓 0 行不落盘 / #106 api-spec portfolio 契约对齐（补后端 `positionCount` 派生字段，adai-web 持仓数不再恒 0）/ #112 CANCELLED 任务看板可见（adai-web 补第四列）/ #150 apiEndpoints 动态统计（硬编码 21 → 实际 46）+ FeedAppService 死依赖移除；后端 302 · adai-web 27 测试全绿 | ✅ 2026-08-09 |
 | 批 I | **2026-08-07 adai-app 对话体验收尾**：#13+#11 card 写入剥离 AI 原始 JSON（`LlmResponseParser.extractNaturalText` + `QuestionAppService` 写卡与返回均剥 JSON，实时=刷新，card 文件不再混入游离 JSON）/ #148 Feed ai_note 按记录日期归属（`MemoryService.findByRecordIds` 跨日补齐 + `toAiEntry` 用记录时间，重补/升级跨日不错日不丢失）/ MD1 世界切回 Feed 刷新（`DualWorldShell` ValueNotifier → `MainPage.refreshTick` 重载，覆盖 admin 记忆重建后 Feed 陈旧）；后端 286 测试 · 前端 60 测试 | ✅ 2026-08-07 |
@@ -92,7 +93,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
-| 2026-08-09 | 验证修复（updatedAt + #175）| — | 0 | ~20min | 0 新 | 2 |
+| 2026-08-09 | 验证修复（updatedAt + #175 + 复盘生成）| — | 0 | ~50min | 0 新 | 3 |
 | 2026-08-09 | 批 J（P1 清理 v1.0.0 核心闭环）| — | 0 | ~40min | 0 新 | 5（#144/#147/#106/#112/#150）|
 | 2026-08-07 | light 增量（批 I 对话体验收尾 + ideas）| — | 0 | ~5min | 0 新（P3 观察×3）| 4（#13/#11/#148/MD1）|
 | 2026-08-06 | light 增量（Phase 2 行情推送快扫）| — | 0 | ~5min | 0 新 | 0 |
