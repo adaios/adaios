@@ -24,11 +24,7 @@ class UserStore {
     }
   }
 
-  /// 清除记录（切换回首次选号用）。
-  static Future<void> clearUserId() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_keyUserId);
-    } catch (_) {}
-  }
+  /// 清除 URL 中的 `?userId=`（REVIEW #186，与 web 实现签名一致）。
+  /// 原生无 URL 概念，空实现。
+  static Future<void> clearUrlUserId() async {}
 }

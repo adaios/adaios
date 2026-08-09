@@ -14,8 +14,11 @@ Future<void> main() async {
   final urlUserId = resolveUserId();
   final savedUserId = await UserStore.loadUserId();
   final hasUrlUserId = urlUserId != 'default';
-  final userId = hasUrlUserId ? urlUserId : (savedUserId ?? 'default');
-  runApp(RootApp(userId: userId, needsSelect: !hasUrlUserId && savedUserId == null));
+  // REVIEW #182：持久化 'default' 视为无效（default 账号已随数据迁移移除），
+  // 避免绕过选号流程的请求落到空 data/default/ 分支静默分裂数据
+  final effectiveSaved = (savedUserId != null && savedUserId != 'default') ? savedUserId : null;
+  final userId = hasUrlUserId ? urlUserId : (effectiveSaved ?? 'default');
+  runApp(RootApp(userId: userId, needsSelect: !hasUrlUserId && effectiveSaved == null));
 }
 
 /// 从入口跳转的 query 参数解析当前用户 ID（`?userId=xxx`）。
@@ -53,19 +56,32 @@ class _RootAppState extends State<RootApp> {
   /// （v1.0.0 切换账号必现，`Null check operator used on a null value`）。
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  /// 选定账号：持久化 + 重建整树（换 ValueKey → DualWorldShell/ApiService 重建，缓存清空）。
+  /// 选定账号：持久化 + 清 URL userId + 重建整树（换 ValueKey → DualWorldShell/ApiService 重建，缓存清空）。
   Future<void> _selectAccount(String userId) async {
+    if (_handlingSelect) return; // REVIEW #185：防快速双击重复 pop/push
+    _handlingSelect = true;
     try {
-      await UserStore.saveUserId(userId);
-    } catch (_) {
-      // 持久化失败不阻塞切换（记住功能降级）
+      try {
+        await UserStore.saveUserId(userId);
+      } catch (_) {
+        // 持久化失败不阻塞切换（记住功能降级）
+      }
+      // REVIEW #186：切换后清 URL ?userId=，刷新后持久化成为唯一决定源
+      try {
+        await UserStore.clearUrlUserId();
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _userId = userId;
+        _needsSelect = false;
+      });
+    } finally {
+      _handlingSelect = false;
     }
-    if (!mounted) return;
-    setState(() {
-      _userId = userId;
-      _needsSelect = false;
-    });
   }
+
+  /// REVIEW #185：选号回调防重入（双击在 pop 动画期间重复触发）。
+  bool _handlingSelect = false;
 
   /// 切换账号：push 选号页，选择后回传重建。
   void _openAccountSelect() {
@@ -76,8 +92,8 @@ class _RootAppState extends State<RootApp> {
         api: ApiService(userId: _userId),
         currentUserId: _userId,
         onSelect: (uid) {
-          nav.pop();
           _selectAccount(uid);
+          nav.pop();
         },
       ),
     ));

@@ -108,13 +108,28 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
     }
     final accounts = _accounts ?? [];
     if (accounts.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('暂无可用账号\n请在管理后台（adai-admin）创建账号后刷新',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: AppColors.darkGrey5, height: 1.6)),
-        ),
+      // REVIEW #190：空态提供可执行重试（"刷新"动作必须真实存在，否则首屏无可退出层级只能硬刷新）
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(32, 0, 32, 16),
+            child: Text('暂无可用账号，请先在后台创建账号',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: AppColors.darkGrey5, height: 1.6)),
+          ),
+          GestureDetector(
+            onTap: _load,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+              ),
+              child: const Text('重新加载', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ),
+        ]),
       );
     }
     return ListView.separated(
@@ -135,9 +150,10 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
           color: AppColors.darkSurface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
+            // REVIEW #196：withValues(alpha:) 取值 0-1，100 越界（实际 ~74% 透明）；非当前行用不透明 darkBorder
             color: isCurrent
                 ? AppColors.darkGreen.withValues(alpha: 0.5)
-                : AppColors.darkBorder.withValues(alpha: 100),
+                : AppColors.darkBorder,
           ),
         ),
         child: Row(children: [

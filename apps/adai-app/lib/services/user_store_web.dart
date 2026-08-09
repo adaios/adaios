@@ -30,13 +30,20 @@ class UserStore {
     }
   }
 
-  /// 清除记录（切换回首次选号用）。
-  static Future<void> clearUserId() async {
+  /// 清除 URL 中的 `?userId=`（REVIEW #186）：
+  /// 切换账号后调用，让持久化的上次账号成为刷新后的唯一决定源，
+  /// 避免"带 ?userId=X 进入 → 切换至 Y → 刷新又回 X"的覆盖。
+  static Future<void> clearUrlUserId() async {
     try {
-      web.window.localStorage.removeItem(_keyUserId);
+      final uri = Uri.base;
+      final params = Map<String, String>.from(uri.queryParameters);
+      if (!params.containsKey('userId')) return;
+      params.remove('userId');
+      final newUri = uri.replace(queryParameters: params);
+      web.window.history.replaceState(null, '', newUri.toString());
     } catch (e) {
       // ignore: avoid_print
-      print('UserStore clearUserId localStorage failed: $e');
+      print('UserStore clearUrlUserId failed: $e');
     }
   }
 }
