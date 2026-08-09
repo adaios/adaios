@@ -62,7 +62,7 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
           ),
         ],
       ),
-      body: _loading ? const Center(child: CircularProgressIndicator())
+      body: _loading ? const Center(child: Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)))
           : _error != null ? Center(child: Text('加载失败\n$_error', style: TextStyle(color: AppColors.darkGrey5)))
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),

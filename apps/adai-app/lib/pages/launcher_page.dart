@@ -166,8 +166,12 @@ class _LauncherPageState extends State<LauncherPage>
             }),
             _divider(),
             _buildRow(Icons.query_stats, '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
-              Navigator.push(context, MaterialPageRoute(
-                builder: (_) => ProjectStatusPage(api: widget.api),
+              // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
+              // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
+              Navigator.push(context, PageRouteBuilder(
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+                pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
               ));
             }),
             _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
