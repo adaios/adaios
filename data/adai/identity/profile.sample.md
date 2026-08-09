@@ -12,7 +12,7 @@ tags:
 
 # 个人档案
 
-**此文件为格式示例（git 提交），真实档案是 `data/identity/profile.md`（隐私，不提交）。**
+**此文件为格式示例（git 提交），真实档案是 `data/{userId}/identity/profile.md`（本机 `data/adai/identity/profile.md`，隐私，不提交）。**
 
 在 frontmatter 中填写：
 - `preferences`：静态偏好（缩进子键值对，如 `称呼: ...`）

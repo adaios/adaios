@@ -9,7 +9,7 @@
 ## 一、定位与原则
 
 1. **代码 writer 是格式真相源**。冻结的是「代码定义并写入的格式」，不是「磁盘现状」——磁盘上存在的手写/旧版内容，在对应文件下一次被写入时归一化为代码格式（见 §四差异项）。
-2. **路径分层**：除账号外，所有数据在 `data/{userId}/...`（单用户 = `data/default/`）。`data/accounts/accounts.json` 是**唯一系统级例外**（无 userId 层，全局共享）。
+2. **路径分层**：除账号外，所有数据在 `data/{userId}/...`（本机账号 = `data/adai/`，default 已随多账号迁移移除）。`data/accounts/accounts.json` 是**唯一系统级例外**（无 userId 层，全局共享）。
 3. **ID 规范**：所有实体 ID 由 `IdGenerator.monotonic()` 生成，格式 `{前缀}_yyyyMMdd_HHmmssSSS`（**含毫秒**，13 位时间戳段）。
 4. **写入机制**：所有文本/二进制写走 `FileStorage`（`LocalFileStorage`，UTF-8，tmp + ATOMIC_MOVE 原子写）。JSON 类文件按各仓库的 ObjectMapper 序列化。
 
@@ -38,9 +38,9 @@ domain: life
 正文内容（Markdown）
 ```
 
-- 字段：`id` / `type`（note/image/conversation…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）
+- 字段：`id` / `type`（note/image/conversation…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）/ `intent`（`question`/`log`/空，可空）
 - 正文 = `content`；解析端取首行 <100 字符作 title
-- **注意**：`intent` 字段**不落盘**（save 不写，parse 置 null）——REVIEW #144 关联
+- `intent` **落盘**（REVIEW #144）：question 记录写 `question`，rebuild 借此排除避免重跑烧 AI；log 写 `log`，未处理写空。旧文件无该字段 = 空（向后兼容）。
 
 ### 2.2 图片媒体 `records/.../media/`
 
@@ -260,7 +260,7 @@ updatedAt: 2026-08-07
 | 类型 | 定义 | 要求 |
 |:--|:--|:--|
 | **MINOR（向后兼容）** | 新增可选字段、新增文件、新增实体 | 直接改，旧文件仍可解析 |
-| **MAJOR（破坏性）** | 字段改名/删除、语义变更、重命名文件 | **必须**写迁移说明 + 迁移脚本（如 `data/` → `data/default/` 的先例），并在 api-spec / 本文件登记 |
+| **MAJOR（破坏性）** | 字段改名/删除、语义变更、重命名文件 | **必须**写迁移说明 + 迁移脚本（先例：2026-08-02 `data/` → `data/default/` 多用户分层；2026-08-09 `data/default/` → `data/adai/` 账号迁移），并在 api-spec / 本文件登记 |
 | **格式冻结期** | v1.0.0 发布 → v1.1.0 | 除 Bug 修复（如字段缺失兜底）外不做 MAJOR 变更 |
 
 **解析兜底原则**：读取端必须对缺失字段提供默认值（已普遍遵循：`unknown`/`life`/空列表等），确保旧文件不因字段缺失而崩溃。
