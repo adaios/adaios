@@ -40,6 +40,9 @@
 | K17 | memory recordId ↔ records 文件交叉验证（悬空引用）| 唯一悬空 recordId（P2 #151，待修）|
 | K18 | tags.json `count` vs `recordIds.length` 一致性（截断/通胀漂移）| 三体 count=64 vs 50（P2 #152，待修）|
 | K19 | `os/*-os/11-context/README` 引用的目录存在性（防复制模板漂移）| life-os 引用不存在的 05-system/04-rules（P3，待修）|
+| K20 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）| default→adai 后契约/注释/默认 userId 全漂移（P1 #180）|
+| K21 | 知识反哺入库候选抽检：引用的 R/E 编号真实存在于 11-context/rules.md|mistakes.md + 内容与 positions.md 一致 | review-2026-08-09 9 条规则引用全部真实验证（战略 #178）|
+| K22 | 自动生成入库候选的隐私一致性：含真实持仓/财务数据进 git 时与 `data/*/trading/` gitignore 策略对照 | 候选真实持仓进 git（P2 #184）|
 
 ---
 **追加方式**：新发现知识/数据问题 → 追加一行，注明日期。

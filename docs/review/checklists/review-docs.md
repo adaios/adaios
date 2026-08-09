@@ -37,6 +37,10 @@
 | D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/CLAUDE.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
 | D15 | README 索引完整性脚本化：`for f in docs/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
 | D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 CLAUDE.md 已完成清单同步 | 五层状态表过期（战略 #130，待修）|
+| D17 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）：冻结契约/代码注释/迁移脚本/前端默认 userId/CLAUDE.md 五处 | default→adai 迁移后 freeze/MarketAlert/前端默认值全残留（P1 #180）|
+| D18 | api-spec 版本/变更记录强同步：diff 触及任一 § 内容必须升版 + 追加变更记录行 | 3 处改动未升版 v3.7（P3 #191）|
+| D19 | Release Notes 发布日期门禁：只在用户确认 tag/部署后定稿，「验证通过」≠「已发布」| v1.0.0.md 过早定稿 2026-08-09（P3 #192）|
+| D20 | 测试数三方对拍：REVIEW 已修复区行内测试数 vs CLAUDE.md 测试状态 vs 实测 @Test 计数 | 批 J 行 302 vs 实测 300（P3 #193）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
