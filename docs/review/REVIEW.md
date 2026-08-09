@@ -29,7 +29,7 @@ mode: 批 J（P1 清理：v1.0.0 核心闭环）
 |:-:|:-----|:-----|:----:|
 | 101 | Feed 无「加载更早」分页：只拉 `size:20`，更早记录不可达 | `feed_page.dart:55-56` | 📋 待办 |
 | 103 | Timeline/Memory 保活数据陈旧：initState 只拉一次 + IndexedStack 保活，无刷新入口 | `timeline_page.dart` / `memory_page.dart` | 📋 待办 |
-| 129 | 知识反哺闭环零产物：复盘→promote→99-inbox 代码完整但从未产出真实文件 | `os/trading-os/08-review/` | 📋 待办 |
+| 129 | 知识反哺闭环缺前端入口：promote 后端闭环 ✅（v1.0.0 验证走通，已产出 `99-inbox/review-2026-08-09.md` 真实复盘），但交易页无「反哺入库」按钮，UI 无法操作 promote | `os/trading-os/99-inbox/` | 📋 待办 |
 
 ## 🔴 P1（未修复）
 

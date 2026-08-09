@@ -2,17 +2,18 @@
 # Build Flutter Web + apply local Font patches + serve via Python
 # Usage: sh scripts/serve_web.sh
 # Note: Flutter 3.44+ no longer supports --web-renderer flag.
-#       CanvasKit is built-in; the bootstrap.js patch below
-#       sets canvasKitBaseUrl so WASM loads from local dir
-#       instead of from CDN (blocked in China).
+#       --wasm 双模式：skwasm 主渲染（根治 CanvasKit wasm 偶发崩溃 PictureRecorder OOM）
+#       + canvaskit 自动回退（不支持 WasmGC 的浏览器）；入口按浏览器能力选渲染器。
+#       --optimization-level=1 --no-strip-wasm：默认 O2 wasm-opt 会 OOM（SIGKILL exit -9）。
+#       下方 bootstrap.js 补丁注入 canvasKitBaseUrl 让 canvaskit/skwasm 从本地加载
+#       （CDN gstatic 在中国被墙）。
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-echo "=== Building Flutter Web ==="
-# --source-maps: 生成 main.dart.js.map，浏览器报错堆栈映射回 Dart 源码行号（release minify 后也能定位）
-flutter build web --no-tree-shake-icons --source-maps
+echo "=== Building Flutter Web (wasm dual-mode) ==="
+flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm
 
 echo "=== Applying local patches ==="
 # 字体补丁：Flutter 构建自带 NotoSansSC.woff2（web/fonts/），无需显式复制
