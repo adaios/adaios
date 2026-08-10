@@ -121,7 +121,7 @@ class _AdminShellState extends State<AdminShell> {
           children: [
             Icon(Icons.adb, size: 20, color: AppColors.darkGreen),
             SizedBox(width: 8),
-            Text('AdaiOS 管理端',
+            Text('阿呆控制台',
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

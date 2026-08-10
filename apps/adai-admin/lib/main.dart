@@ -8,14 +8,14 @@ void main() {
   runApp(const AdminApp());
 }
 
-/// AdaiOS 管理端 — 独立 Flutter 工程（面向本人，深色 Material 3）。
+/// 阿呆控制台 — 独立 Flutter 工程（面向本人，深色 Material 3）。
 class AdminApp extends StatelessWidget {
   const AdminApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AdaiOS 管理端',
+      title: '阿呆控制台',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
