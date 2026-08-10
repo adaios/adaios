@@ -31,6 +31,12 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
+        // CORS 预检（OPTIONS）不带鉴权头，必须放行交给 CORS 处理器——
+        // 否则预检 401 → 浏览器报 "Response to preflight ... does not have HTTP ok status"，
+        // 前端 8082/8083 调 accounts/admin 端点全部被 CORS 拦死（生产事故，2026-08-11）。
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         if (adminToken.isEmpty()) {
             writeError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "管理令牌未配置（ADAI_ADMIN_TOKEN），管理端点已禁用");
