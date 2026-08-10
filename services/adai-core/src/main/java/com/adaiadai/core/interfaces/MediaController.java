@@ -17,6 +17,7 @@ import java.util.Optional;
  * <p>
  * POST /api/v1/records/media — 上传图片，VLM 理解后沉淀为记录 + 记忆。
  * GET  /api/v1/records/media/{id} — 取回原图（前端预览）。
+ * POST /api/v1/records/media/{id}/ask — 图片追问（L4 图片问答），VLM 回答并沉淀记录。
  */
 @RestController
 @RequestMapping("/api/v1/records")
@@ -49,6 +50,26 @@ public class MediaController {
         } catch (Exception e) {
             log.error("图片记录失败 | userId={} | {}", userId, e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", "图片记录失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 图片追问（L4 图片问答）：就一张已记录的图片提问，返回 VLM 自然语言回答。
+     */
+    @PostMapping("/media/{id}/ask")
+    public ResponseEntity<?> askImage(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id,
+            @RequestBody Map<String, String> body) {
+        try {
+            MediaRecordAppService.AskResult result = mediaRecordAppService.askImage(
+                    userId, id, body != null ? body.get("question") : null);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("图片追问失败 | userId={} | id={} | {}", userId, id, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "图片追问失败: " + e.getMessage()));
         }
     }
 

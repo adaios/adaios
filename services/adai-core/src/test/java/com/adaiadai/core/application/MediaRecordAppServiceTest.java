@@ -37,7 +37,7 @@ class MediaRecordAppServiceTest {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行 1000股", List.of("交易", "持仓")));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs);
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", "加仓");
 
@@ -68,7 +68,7 @@ class MediaRecordAppServiceTest {
     void recordImage_vlmFailure_degradedWithCaption() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenThrow(new RuntimeException("GLM 服务不可用"));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs);
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", "会议白板");
 
@@ -82,7 +82,7 @@ class MediaRecordAppServiceTest {
     void recordImage_vlmFailure_noCaption_fallbackText() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenThrow(new RuntimeException("down"));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs);
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/jpeg", null);
 
@@ -93,7 +93,7 @@ class MediaRecordAppServiceTest {
     @Test
     void recordImage_notImage_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs);
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.recordImage("default", png(), "text/plain", null));
@@ -104,7 +104,7 @@ class MediaRecordAppServiceTest {
     @Test
     void recordImage_tooLarge_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs);
         byte[] huge = new byte[5 * 1024 * 1024 + 1];
 
         assertThrows(IllegalArgumentException.class,
@@ -112,10 +112,53 @@ class MediaRecordAppServiceTest {
     }
 
     @Test
+    void askImage_success_persistsQaRecordAndReturnsAnswer() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "持仓截图", "trading", "浦发银行", List.of("交易")));
+        when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs);
+
+        MediaRecordAppService.MediaRecordResult img = service.recordImage("default", png(), "image/png", null);
+
+        MediaRecordAppService.AskResult result = service.askImage("default", img.recordId(), "这是什么股票？");
+
+        assertEquals("这是浦发银行，持仓约 1000 股。", result.answer());
+        assertEquals(img.recordId(), result.imageRecordId());
+
+        // 问答已沉淀为 image_qa 记录（content 含问题/回答/图片溯源）
+        Optional<ContentRecord> qa = recordRepository.findById("default", result.recordId());
+        assertTrue(qa.isPresent());
+        assertEquals("image_qa", qa.get().type());
+        assertEquals("question", qa.get().intent());
+        assertTrue(qa.get().content().contains("这是什么股票？"));
+        assertTrue(qa.get().content().contains("浦发银行"));
+        assertTrue(qa.get().content().contains(img.recordId()));
+    }
+
+    @Test
+    void askImage_blankQuestion_throws() {
+        MediaRecordAppService service = new MediaRecordAppService(
+                mock(VisualAiClient.class), recordRepository, memoryService, fs);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImage("default", "rec_x", "   "));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImage("default", "rec_x", null));
+    }
+
+    @Test
+    void askImage_unknownImage_throws() {
+        MediaRecordAppService service = new MediaRecordAppService(
+                mock(VisualAiClient.class), recordRepository, memoryService, fs);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImage("default", "rec_unknown", "这是什么？"));
+    }
+
+    @Test
     void mediaPathFor_returnsSavedPath() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs);
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", null);
 

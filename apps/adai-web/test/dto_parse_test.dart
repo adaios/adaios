@@ -66,6 +66,22 @@ void main() {
       expect(resp.intent, 'log');
     });
 
+    test('AskMediaResponse parses answer + imageRecordId', () {
+      final json = jsonDecode(
+          '{"recordId": "qa1", "answer": "这是浦发银行，持仓约 1000 股。", "imageRecordId": "img1"}');
+      final resp = AskMediaResponse.fromJson(json);
+      expect(resp.recordId, 'qa1');
+      expect(resp.answer, '这是浦发银行，持仓约 1000 股。');
+      expect(resp.imageRecordId, 'img1');
+    });
+
+    test('AskMediaResponse empty answer defaults', () {
+      final json = jsonDecode('{}');
+      final resp = AskMediaResponse.fromJson(json);
+      expect(resp.answer, '');
+      expect(resp.imageRecordId, '');
+    });
+
     test('EndConversationResponse parses', () {
       final json = jsonDecode('{"recordId": "r1", "summary": "done", "tags": ["chat"]}');
       final resp = EndConversationResponse.fromJson(json);

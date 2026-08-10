@@ -22,6 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,8 +41,9 @@ class MediaControllerTest {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
+        when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
         MediaRecordAppService service = new MediaRecordAppService(
-                glm, new RecordFileRepository(fs), new MemoryService(fs));
+                glm, new RecordFileRepository(fs), new MemoryService(fs), fs);
         mvc = MockMvcBuilders.standaloneSetup(new MediaController(service, fs)).build();
     }
 
@@ -70,6 +72,46 @@ class MediaControllerTest {
         mvc.perform(multipart("/api/v1/records/media").file(text))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("仅支持图片文件"));
+    }
+
+    @Test
+    void askImage_returnsAnswerAndPersists() throws Exception {
+        // 先上传一张图
+        String resp = mvc.perform(multipart("/api/v1/records/media")
+                        .file(png())
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String id = ((ObjectNode) new ObjectMapper().readTree(resp)).get("recordId").asText();
+
+        // 追问
+        String body = "{\"question\": \"这是什么股票？\"}";
+        mvc.perform(post("/api/v1/records/media/" + id + "/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("这是浦发银行，持仓约 1000 股。"))
+                .andExpect(jsonPath("$.imageRecordId").value(id))
+                .andExpect(jsonPath("$.recordId").isString());
+    }
+
+    @Test
+    void askImage_blankQuestion_400() throws Exception {
+        mvc.perform(post("/api/v1/records/media/rec_x/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void askImage_unknownImage_400() throws Exception {
+        mvc.perform(post("/api/v1/records/media/rec_unknown/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"这是什么？\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

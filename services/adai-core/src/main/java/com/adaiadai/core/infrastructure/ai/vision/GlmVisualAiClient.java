@@ -42,6 +42,12 @@ public class GlmVisualAiClient implements VisualAiClient {
             }
             """;
 
+    /** 图片追问 prompt（L4 图片问答）：自然语言回答，不要求 JSON。 */
+    private static final String ASK_PROMPT = """
+            你是阿呆的个人 AI 助手。用户就这张图片提问，请直接简洁准确地回答。
+            不要输出 JSON，不要加多余前缀，直接给答案。
+            """;
+
     private final HttpClient httpClient;
     private final String apiKey;
     private final String apiUrl;
@@ -74,24 +80,13 @@ public class GlmVisualAiClient implements VisualAiClient {
             throw new RuntimeException("视觉 AI 未配置：缺少 GLM_API_KEY");
         }
         try {
-            String requestBody = buildRequestBody(request);
+            String textPrompt = PROMPT;
+            if (request.caption() != null && !request.caption().isBlank()) {
+                textPrompt = textPrompt + "\n用户备注：" + request.caption();
+            }
             log.info("[GLM-Vision] 请求 model={} | caption={}",
                     model, request.caption() != null ? request.caption() : "");
-
-            HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(apiUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(TIMEOUT)
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("GLM API 返回 " + response.statusCode() + ": "
-                        + truncate(response.body()));
-            }
-            String answer = parseAnswer(response.body());
+            String answer = sendAndParse(buildRequestBody(request, textPrompt));
             return GlmResponseParser.parse(answer);
         } catch (Exception e) {
             log.error("GLM 视觉理解失败: {}", e.getMessage(), e);
@@ -99,9 +94,28 @@ public class GlmVisualAiClient implements VisualAiClient {
         }
     }
 
+    @Override
+    public String ask(ImageRequest request, String question) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("GLM_API_KEY 未配置，无法调用视觉模型");
+            throw new RuntimeException("视觉 AI 未配置：缺少 GLM_API_KEY");
+        }
+        try {
+            String textPrompt = ASK_PROMPT + "\n用户问题：" + (question == null ? "" : question);
+            log.info("[GLM-Vision-Ask] 请求 model={} | question={}",
+                    model, truncate(question));
+            String answer = sendAndParse(buildRequestBody(request, textPrompt));
+            String cleaned = GlmResponseParser.extractAnswer(answer);
+            return (cleaned == null || cleaned.isBlank()) ? "（图片问答未获得有效回复）" : cleaned.strip();
+        } catch (Exception e) {
+            log.error("GLM 视觉追问失败: {}", e.getMessage(), e);
+            throw new RuntimeException("图片追问失败: " + e.getMessage(), e);
+        }
+    }
+
     // ── 请求/响应 ──
 
-    private String buildRequestBody(ImageRequest request) throws Exception {
+    private String buildRequestBody(ImageRequest request, String textPrompt) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("model", model);
         root.put("max_tokens", 1024);
@@ -118,18 +132,27 @@ public class GlmVisualAiClient implements VisualAiClient {
         String dataUrl = "data:" + request.contentType() + ";base64," + request.base64Image();
         image.putObject("image_url").put("url", dataUrl);
 
-        // 文本指令 + 可选用户备注
-        String textPrompt = PROMPT;
-        if (request.caption() != null && !request.caption().isBlank()) {
-            textPrompt = textPrompt + "\n用户备注：" + request.caption();
-        }
+        // 文本指令（理解 prompt 或追问 prompt）
         content.addObject().put("type", "text").put("text", textPrompt);
 
         return MAPPER.writeValueAsString(root);
     }
 
-    private String parseAnswer(String responseBody) throws Exception {
-        JsonNode root = MAPPER.readTree(responseBody);
+    private String sendAndParse(String requestBody) throws Exception {
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(apiUrl))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .timeout(TIMEOUT)
+                .build();
+
+        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("GLM API 返回 " + response.statusCode() + ": "
+                    + truncate(response.body()));
+        }
+        JsonNode root = MAPPER.readTree(response.body());
         return root.path("choices").path(0).path("message").path("content").asText();
     }
 

@@ -201,16 +201,34 @@ class _FeedPageState extends State<FeedPage> {
     // 后续用 `!` 解引用会空值断言崩溃 + 回复丢失（#100 P0）。
     final cardId = _activeCardId;
     if (cardId == null) return;
+    final activeCard = _cards.firstWhere((c) => c.id == cardId);
+    final isImageAsk = activeCard.mediaUrl != null;
+
     setState(() {
       _updateCard(cardId, (c) {
         final existing = c.turns ?? [];
         return c.copyWith(mode: CardMode.chatting, loading: true, turns: existing.isEmpty
-            ? [ConversationTurn(isUser: true, text: c.content, time: c.time), ConversationTurn(isUser: true, text: text, time: timeStr)]
+            // 图片追问：图即上下文（缩略图已在上方），不重复塞图片摘要作为首轮
+            ? [ConversationTurn(isUser: true, text: text, time: timeStr)]
             : [...existing, ConversationTurn(isUser: true, text: text, time: timeStr)]);
       });
     });
     _scrollToBottom();
     try {
+      if (isImageAsk) {
+        // 图片追问：VLM 看图回答（L4 图片问答），沉淀为 image_qa 记录
+        final resp = await widget.api.askMedia(imageRecordId: cardId, question: text);
+        if (!mounted) return;
+        setState(() {
+          _updateCard(cardId, (c) {
+            final existing = c.turns ?? [];
+            return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
+                turns: [...existing, ConversationTurn(isUser: false, text: resp.answer, time: _now())]);
+          });
+        });
+        _scrollToBottom();
+        return;
+      }
       final resp = await widget.api.createRecord(text, cardId: cardId);
       if (!mounted) return;
       final aiReply = resp.rawResponse ?? resp.summary;
@@ -235,6 +253,24 @@ class _FeedPageState extends State<FeedPage> {
   void _onAskCard(String cardId) {
     final card = _cards.where((c) => c.id == cardId).firstOrNull;
     if (card == null) return;
+
+    // 图片追问（L4 图片问答）：图即上下文，点提问后等用户输入问题，
+    // 不走文本 _doAskRequest（那个会把图片摘要文本当问题发给文本 LLM）。
+    if (card.mediaUrl != null) {
+      final hasTurns = card.turns != null && card.turns!.isNotEmpty;
+      setState(() {
+        _activeCardId = cardId;
+        _hasActiveChat = true;
+        _chatEnterTurnCount = card.turns?.length ?? 0;
+        _deactivateOtherCards(cardId);
+        _updateCard(cardId, (c) => c.copyWith(
+            mode: hasTurns ? CardMode.chatting : CardMode.waiting,
+            loading: false,
+            intent: IntentType.question));
+      });
+      _scrollToBottom();
+      return;
+    }
 
     if (card.turns != null && card.turns!.isNotEmpty) {
       setState(() {

@@ -28,6 +28,16 @@ public class GlmResponseParser {
     private GlmResponseParser() {}
 
     /**
+     * 提取 GLM 回复的自然语言回答（图片追问，L4）。
+     * <p>
+     * 剥掉 Thinking 模型的 {@code <think>/<answer>} 壳；无壳时原样返回。
+     */
+    public static String extractAnswer(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) return "";
+        return stripThinkAnswer(rawResponse);
+    }
+
+    /**
      * 从 GLM 视觉回复解析结构化理解。
      *
      * @param rawResponse 模型回复全文（JSON 或自然语言混合）

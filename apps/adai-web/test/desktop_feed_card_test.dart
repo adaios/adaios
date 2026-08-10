@@ -23,6 +23,17 @@ void main() {
     expect(find.text('提问'), findsOneWidget);
   });
 
+  testWidgets('image 卡渲染内容 + 提问按钮（L4 图片可追问）', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'img1', type: FeedCardType.record, time: '14:00', content: '持仓截图',
+      summary: '持仓截图：浦发银行', intent: IntentType.log,
+      mediaUrl: 'http://test/api/v1/records/media/img1',
+    ));
+    // 图片卡（log）显示内容 + 提问按钮（追问入口，与普通记录一致）
+    expect(find.text('持仓截图'), findsOneWidget);
+    expect(find.text('提问'), findsOneWidget);
+  });
+
   testWidgets('chatting 卡渲染对话 + end', (tester) async {
     await pumpCard(tester, FeedCardData(
       id: '1', type: FeedCardType.record, time: '14:00', content: 'weather?',

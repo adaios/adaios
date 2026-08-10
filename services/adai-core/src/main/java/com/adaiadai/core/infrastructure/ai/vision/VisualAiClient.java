@@ -16,4 +16,16 @@ public interface VisualAiClient {
      * @return 结构化图片理解（summary / category / extractedText / tags）
      */
     ImageUnderstanding understand(ImageRequest request);
+
+    /**
+     * 就一张图片追问（多模态对话，L4 图片问答）。
+     * <p>
+     * 把图片重新发给视觉模型 + 用户问题，返回自然语言回答
+     * （区别于 {@link #understand} 的结构化 JSON 理解）。
+     *
+     * @param request  图片请求（base64 + content type）
+     * @param question 用户对图片的追问
+     * @return 自然语言回答（已剥 think/answer 壳）
+     */
+    String ask(ImageRequest request, String question);
 }

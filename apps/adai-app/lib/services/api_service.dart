@@ -110,6 +110,22 @@ class ApiService {
     return MediaRecordResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 图片追问（L4 图片问答）：就一张图片提问，返回 VLM 自然语言回答。
+  Future<AskMediaResponse> askMedia({
+    required String imageRecordId,
+    required String question,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/records/media/$imageRecordId/ask'),
+      headers: _headers,
+      body: jsonEncode({'question': question}),
+    );
+    _check(resp);
+    _timelineCache = null;
+    _memoryCache = null;
+    return AskMediaResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 提交记录。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
@@ -459,6 +475,26 @@ class MediaRecordResponse {
         summary: json['summary'] as String? ?? '',
         tags: (json['tags'] as List?)?.cast<String>() ?? [],
         mediaPath: json['mediaPath'] as String? ?? '',
+      );
+}
+
+/// 图片追问响应 DTO（L4 图片问答）。
+class AskMediaResponse {
+  final String recordId;
+  final String answer;
+  final String imageRecordId;
+
+  AskMediaResponse({
+    required this.recordId,
+    required this.answer,
+    required this.imageRecordId,
+  });
+
+  factory AskMediaResponse.fromJson(Map<String, dynamic> json) =>
+      AskMediaResponse(
+        recordId: json['recordId'] as String? ?? '',
+        answer: json['answer'] as String? ?? '',
+        imageRecordId: json['imageRecordId'] as String? ?? '',
       );
 }
 

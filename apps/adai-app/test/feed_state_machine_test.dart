@@ -93,6 +93,14 @@ Map<String, dynamic> _cardWithTurns(String id, String content,
       'domain': 'life', 'mediaPath': null,
     };
 
+/// 图片记录卡条目 JSON（L4：mediaPath 非空 → 卡带缩略图 + 可追问）。
+Map<String, dynamic> _imageRecord(String id, String summary) => {
+  'type': 'record', 'id': id, 'title': '', 'content': summary,
+  'tags': <String>[], 'time': '14:00', 'date': '08-04',
+  'intent': 'log', 'summary': summary, 'turns': null,
+  'domain': 'life', 'mediaPath': 'media/$id.png',
+};
+
 /// 注入 mock 后端渲染 MainPage。
 Future<_Backend> _pump(WidgetTester tester, _Backend backend) async {
   final api = ApiService(
@@ -167,6 +175,37 @@ void main() {
       }));
       await tester.pumpAndSettle();
       expect(find.textContaining('AI 回答内容', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('图片卡 ask：点提问 → 输入问题 → VLM 回答显示 + 走 ask 端点', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_imageRecord('img1', '持仓截图：浦发银行')]
+        ..feedTotalToday = 1;
+      b.handlers['/api/v1/records/media/img1/ask'] = (_) => Future.value(_json(
+          {'recordId': 'qa1', 'answer': '这是浦发银行，持仓约 1000 股。', 'imageRecordId': 'img1'}));
+      await _pump(tester, b);
+
+      // 图片卡：log 徽标 + 提问按钮（summary 同时渲染于 body 与干净摘要行）
+      expect(find.text('持仓截图：浦发银行'), findsWidgets);
+      expect(find.text('提问'), findsOneWidget);
+
+      // 点提问 → 进入追问态，但不触发文本 createRecord
+      await tester.tap(find.text('提问'));
+      await tester.pump();
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records'), isEmpty,
+          reason: '图片 ask 不应走文本 createRecord');
+
+      // 输入问题并发送
+      await tester.enterText(find.byType(TextField), '这是什么股票？');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // VLM 回答显示在图片卡下
+      expect(find.textContaining('这是浦发银行，持仓约 1000 股。', findRichText: true), findsOneWidget);
+      // 请求走了 ask 端点，body 带问题
+      final askReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/img1/ask');
+      expect(askReqs.length, 1);
+      expect(jsonDecode(askReqs.first.body)['question'], '这是什么股票？');
     });
 
     testWidgets('点提问：已有对话的卡重开，不重复 POST', (tester) async {

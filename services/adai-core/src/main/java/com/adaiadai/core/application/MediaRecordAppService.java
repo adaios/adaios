@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.infrastructure.ai.vision.ImageRequest;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
+import com.adaiadai.core.infrastructure.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -33,13 +34,16 @@ public class MediaRecordAppService {
     private final VisualAiClient visualAiClient;
     private final RecordFileRepository recordFileRepository;
     private final MemoryService memoryService;
+    private final FileStorage fileStorage;
 
     public MediaRecordAppService(VisualAiClient visualAiClient,
                                  RecordFileRepository recordFileRepository,
-                                 MemoryService memoryService) {
+                                 MemoryService memoryService,
+                                 FileStorage fileStorage) {
         this.visualAiClient = visualAiClient;
         this.recordFileRepository = recordFileRepository;
         this.memoryService = memoryService;
+        this.fileStorage = fileStorage;
     }
 
     /**
@@ -101,6 +105,72 @@ public class MediaRecordAppService {
         return recordFileRepository.findMediaPath(userId, id);
     }
 
+    /**
+     * 图片追问（L4 图片问答）：重新取原图 → VLM 回答 → 沉淀问答记录。
+     * <p>
+     * 每次追问独立沉淀为 {@code image_qa} 记录（File First，时间线/搜索可见），
+     * content 中保留图片记录 ID 用于溯源。回答本身即信息，进个人资产闭环。
+     *
+     * @param userId   用户
+     * @param recordId 图片记录 ID（rec_xxx）
+     * @param question 用户对图片的追问
+     * @return 回答 + 问答记录 ID
+     */
+    public AskResult askImage(String userId, String recordId, String question) {
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("问题不能为空");
+        }
+        Optional<String> mediaPathOpt = recordFileRepository.findMediaPath(userId, recordId);
+        if (mediaPathOpt.isEmpty()) {
+            throw new IllegalArgumentException("未找到图片记录: " + recordId);
+        }
+        String mediaPath = mediaPathOpt.get();
+        byte[] bytes = fileStorage.readBytes(userId, mediaPath);
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("图片文件缺失: " + recordId);
+        }
+
+        String base64 = Base64.getEncoder().encodeToString(bytes);
+        String answer = visualAiClient.ask(
+                new ImageRequest(base64, contentTypeOf(mediaPath), null), question);
+
+        String qaId = RecordFileRepository.generateId();
+        LocalDateTime now = LocalDateTime.now();
+        String content = """
+                【图片问答】
+                图片记录：%s
+                问：%s
+                答：%s
+                """.formatted(recordId, question.strip(), answer == null ? "" : answer.strip());
+        ContentRecord record = new ContentRecord(
+                qaId, "image_qa", "ai_answer",
+                truncate(answer, 50),
+                content, List.of(), now,
+                "question", answer, "life"
+        );
+        recordFileRepository.save(userId, record);
+
+        log.info("图片追问完成 | imageId={} | qaId={} | question=\"{}\" | answer=\"{}\"",
+                recordId, qaId, truncate(question, 40), truncate(answer, 60));
+        return new AskResult(qaId, answer, recordId);
+    }
+
+    private String contentTypeOf(String path) {
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".heic")) return "image/heic";
+        if (lower.endsWith(".heif")) return "image/heif";
+        return "image/jpeg";
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "…";
+    }
+
     // ── 辅助 ──
 
     private String buildContent(ImageUnderstanding u, String caption) {
@@ -134,4 +204,7 @@ public class MediaRecordAppService {
 
     public record MediaRecordResult(
             String recordId, String intent, String summary, List<String> tags, String mediaPath) {}
+
+    /** 图片追问结果。 */
+    public record AskResult(String recordId, String answer, String imageRecordId) {}
 }
