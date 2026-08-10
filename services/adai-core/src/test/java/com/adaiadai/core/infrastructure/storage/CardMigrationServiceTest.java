@@ -1,0 +1,78 @@
+package com.adaiadai.core.infrastructure.storage;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * CardMigrationService — 迁移逻辑测试。
+ * <p>
+ * 生产死循环回归（2026-08-10）：迁移把旧卡复制到 records/cards/.../card_{id}.md
+ * 但内容 id 未改写为 card_ 前缀、也不删旧文件 → 同 id 双文件 → retryCards 死循环。
+ * 修复：迁移时重写 frontmatter id + 成功后删旧文件（move 语义）。
+ */
+class CardMigrationServiceTest {
+
+    private InMemoryFileStorage storage;
+    private CardFileRepository cardRepository;
+    private CardMigrationService service;
+
+    @BeforeEach
+    void setUp() {
+        storage = new InMemoryFileStorage();
+        cardRepository = new CardFileRepository(storage);
+        service = new CardMigrationService(storage, cardRepository);
+    }
+
+    private String cardContent(String id, String tags) {
+        return """
+                ---
+                id: %s
+                type: conversation
+                status: active
+                tags: [%s]
+                createdAt: 2026-07-23T14:43:02.933953697
+                updatedAt: 2026-07-23T14:43:02.933953697
+                ---
+
+                ## 14:43
+                用户：我帅么
+                """.formatted(id, tags);
+    }
+
+    @Test
+    void migrate_writesPrefixedIdAndDeletesOldFile() {
+        // 旧格式卡片位于 records/ 根目录（无 card_ 前缀）
+        storage.write("default", "records/1784788982678.md", cardContent("1784788982678", "外貌"));
+
+        CardMigrationService.MigrationResult result = service.migrate("default");
+
+        assertEquals(1, result.migrated(), "应成功迁移 1 张");
+        assertTrue(result.migratedFiles().get(0).contains("records/cards/2026/07/23/card_1784788982678.md"),
+                "新文件应落在 cards 目录且带 card_ 前缀");
+        // 旧文件应被删除（move 语义，避免同 id 双文件）
+        assertFalse(storage.exists("default", "records/1784788982678.md"), "旧文件应删除");
+        // 新文件 frontmatter id 应带 card_ 前缀
+        String newContent = storage.read("default", "records/cards/2026/07/23/card_1784788982678.md");
+        assertTrue(newContent.contains("id: card_1784788982678"), "frontmatter id 应改写为 card_ 前缀");
+        // findAll 去重后应为一条完整卡片
+        var cards = cardRepository.findAll("default");
+        assertEquals(1, cards.size(), "迁移后应只有一条卡片");
+        assertEquals("card_1784788982678", cards.get(0).id(), "卡片 id 应带 card_ 前缀");
+    }
+
+    @Test
+    void migrate_skipsCardsAlreadyInCardsDir() {
+        // cards 目录下的文件不应被迁移扫描到（避免重复迁移）
+        storage.write("default", "records/cards/2026/07/23/card_1784788982678.md",
+                cardContent("card_1784788982678", "外貌"));
+
+        CardMigrationService.MigrationResult result = service.migrate("default");
+
+        assertEquals(0, result.migrated(), "cards 目录内文件不应被重复迁移");
+        assertTrue(storage.exists("default", "records/cards/2026/07/23/card_1784788982678.md"), "原文件应保留");
+    }
+}

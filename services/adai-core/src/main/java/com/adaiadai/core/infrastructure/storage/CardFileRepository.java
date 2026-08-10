@@ -114,12 +114,40 @@ public class CardFileRepository {
 
     public List<CardRecord> findAll(String userId) {
         List<String> files = fileStorage.listFiles(userId, CARDS_DIR);
-        return files.stream()
-                .filter(f -> f.endsWith(".md"))
-                .map(f -> parseFromFile(userId, f))
-                .filter(Objects::nonNull)
+        // 按 id 去重：卡片迁移（CardMigrationService）曾复制出"同 id 多文件"，
+        // 且新文件 frontmatter id 不带 card_ 前缀，导致 findAll 返回重复卡片。
+        // 重复卡片会让 retryCards 永远选中"空摘要副本"并写回另一文件 → 死循环。
+        // 这里保留信息最完整的一份（有 summary > 有 tags > updatedAt 最新）。
+        Map<String, CardRecord> byId = new LinkedHashMap<>();
+        for (String f : files) {
+            if (!f.endsWith(".md")) continue;
+            CardRecord card = parseFromFile(userId, f);
+            if (card == null) continue;
+            byId.merge(card.id(), card, this::keepMoreComplete);
+        }
+        return byId.values().stream()
                 .sorted(Comparator.comparing(CardRecord::createdAt).reversed())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 同 id 多文件时保留信息更完整者：有 summary &gt; 有 tags &gt; updatedAt 最新。
+     */
+    private CardRecord keepMoreComplete(CardRecord a, CardRecord b) {
+        int scoreA = completenessScore(a);
+        int scoreB = completenessScore(b);
+        if (scoreA != scoreB) return scoreA > scoreB ? a : b;
+        if (a.updatedAt() != null && b.updatedAt() != null) {
+            return a.updatedAt().isAfter(b.updatedAt()) ? a : b;
+        }
+        return a;
+    }
+
+    private int completenessScore(CardRecord c) {
+        int score = 0;
+        if (c.summary() != null && !c.summary().isBlank()) score += 2;
+        if (c.tags() != null && !c.tags().isEmpty()) score += 1;
+        return score;
     }
 
     /**

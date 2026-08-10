@@ -65,4 +65,67 @@ class CardFileRepositoryTest {
 
         assertTrue(none.isEmpty(), "无 8-09 活跃卡片时应返回空");
     }
+
+    /**
+     * 生产死循环回归（2026-08-10）：迁移复制出"同 id 双文件"（一个 frontmatter id 无前缀、
+     * tags 空、summary 空；一个完整），findAll 此前返回两条同 id 记录，retryCards 永远选中
+     * 空副本写回另一文件 → 每 15 分钟无限重补。
+     * 修复：findAll 按 id 去重，保留信息最完整者。
+     */
+    @Test
+    void findAll_deduplicatesSameId_keepsComplete() {
+        // 模拟迁移产物：同 id 双文件
+        String oldFmt = """
+                ---
+                id: 1784788982678
+                type: conversation
+                status: active
+                tags: []
+                createdAt: 2026-07-23T14:43:02.933953697
+                updatedAt: 2026-07-23T14:43:02.933953697
+                ---
+
+                ## 14:43
+                用户：我帅么
+                """;
+        String completeFmt = """
+                ---
+                id: 1784788982678
+                type: conversation
+                status: active
+                tags: [外貌, 自我评价]
+                createdAt: 2026-07-23T14:43:02.933953697
+                updatedAt: 2026-07-23T14:43:02.933953697
+                summary: 询问外貌评价
+                ---
+
+                ## 14:43
+                用户：我帅么
+                """;
+        storage.write("default", "records/cards/2026/07/23/card_1784788982678.md", oldFmt);
+        storage.write("default", "records/cards/2026/07/23/1784788982678.md", completeFmt);
+
+        List<CardRecord> all = repository.findAll("default");
+
+        assertEquals(1, all.size(), "同 id 双文件应去重为一条");
+        assertEquals("询问外貌评价", all.get(0).summary(), "应保留有 summary 的完整版本");
+        assertTrue(all.get(0).tags().contains("外貌"), "应保留有 tags 的完整版本");
+    }
+
+    /**
+     * 两张不同 id 的卡片不受去重影响。
+     */
+    @Test
+    void findAll_keepsDistinctIds() {
+        repository.save("default", card("card_a",
+                LocalDateTime.of(2026, 8, 1, 10, 0),
+                LocalDateTime.of(2026, 8, 1, 11, 0)));
+        repository.save("default", card("card_b",
+                LocalDateTime.of(2026, 8, 2, 10, 0),
+                LocalDateTime.of(2026, 8, 2, 11, 0)));
+
+        List<CardRecord> all = repository.findAll("default");
+
+        assertEquals(2, all.size(), "不同 id 的卡片应全部保留");
+    }
 }

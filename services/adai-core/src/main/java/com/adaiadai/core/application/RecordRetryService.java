@@ -159,7 +159,9 @@ public class RecordRetryService {
 
         List<CardRecord> candidates = allCards.stream()
                 .filter(c -> c.turns() != null && !c.turns().isEmpty())
-                .filter(c -> c.summary() == null || c.summary().isBlank() || c.tags() == null || c.tags().isEmpty())
+                // 只补 summary 空白的卡片。tags 空不代表未处理（AI 可合法返回空标签），
+                // 若把 tags 空也算待补，会与"processCard 写回后仍空 tags"构成死循环。
+                .filter(c -> c.summary() == null || c.summary().isBlank())
                 .limit(BATCH_LIMIT)
                 .toList();
 
@@ -211,11 +213,12 @@ public class RecordRetryService {
         String summary = understanding.summary();
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
 
-        // 更新卡片 summary + tags
+        // 更新卡片 summary + tags。保留原 updatedAt —— 重补是后台修复，不是用户活跃，
+        // 若置为 now 会把历史卡片重新归到"今天"（Feed 日期按 updatedAt 归日）。
         CardRecord updated = new CardRecord(
                 card.id(), card.type(), card.status(),
                 tags, card.turns(), summary,
-                card.createdAt(), LocalDateTime.now()
+                card.createdAt(), card.updatedAt() != null ? card.updatedAt() : card.createdAt()
         );
         cardRepository.save(userId, updated);
 

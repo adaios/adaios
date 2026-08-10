@@ -77,10 +77,17 @@ public class CardMigrationService {
                     continue;
                 }
 
-                // 写入新位置
-                fileStorage.write(userId, pathInCardsDir(card), content);
-                migrated.add(oldPath + " → " + pathInCardsDir(card));
-                log.info("卡片迁移成功 | old={} | new={}", oldPath, pathInCardsDir(card));
+                // 写入新位置（frontmatter id 同步改写为 card_ 前缀，避免与新文件名不一致
+                // → 否则 findAll 解析出的 id 无前缀，save() 按 id 写回时落到旧路径，产生同 id 双文件）
+                String migratedContent = rewriteIdInFrontmatter(content, card.id());
+                String newPath = pathInCardsDir(card);
+                fileStorage.write(userId, newPath, migratedContent);
+                // 迁移即移动：成功后删除旧文件，防止同 id 双文件（findAll 去重的根源数据）
+                if (!oldPath.equals(newPath)) {
+                    fileStorage.delete(userId, oldPath);
+                }
+                migrated.add(oldPath + " → " + newPath);
+                log.info("卡片迁移成功 | old={} | new={}", oldPath, newPath);
             } catch (Exception e) {
                 failed.add(oldPath + " (" + e.getMessage() + ")");
                 log.warn("卡片迁移失败 | old={} | error={}", oldPath, e.getMessage());
@@ -132,6 +139,21 @@ public class CardMigrationService {
     private String pathInCardsDir(CardRecord card) {
         String datePath = card.createdAt().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
         return "records/cards/" + datePath + "/" + card.id() + ".md";
+    }
+
+    /**
+     * 将 frontmatter 中的 id 字段改写为新 id（card_ 前缀），保持内容与新文件名一致。
+     * 旧代码迁移时原样复制内容（id 仍无前缀），导致 findAll 解析出的 id 与文件名不符，
+     * save() 按 id 写回时落到旧路径 → 同 id 双文件（死循环数据根源）。
+     */
+    private String rewriteIdInFrontmatter(String content, String newId) {
+        Matcher idMatcher = Pattern.compile("(?m)^id:\\s*.+$").matcher(content);
+        if (idMatcher.find()) {
+            return content.substring(0, idMatcher.start())
+                    + "id: " + newId
+                    + content.substring(idMatcher.end());
+        }
+        return content;
     }
 
     private List<Turn> parseTurns(String body) {
