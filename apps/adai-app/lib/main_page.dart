@@ -388,8 +388,12 @@ class _MainPageState extends State<MainPage>
       _updateCard(cardId, (c) {
         final existing = c.turns ?? [];
         return c.copyWith(mode: CardMode.chatting, loading: true, turns: existing.isEmpty
-            // 图片追问：图即上下文（缩略图已在上方），不重复塞图片摘要作为首轮
-            ? [ConversationTurn(isUser: true, text: text, time: timeStr)]
+            // 图片追问：图即上下文（缩略图已在上方），不重复塞图片摘要作为首轮；
+            // 文本卡保持原行为：首轮 = 卡片原内容 + 用户新消息（点卡激活后直接输入的场景）
+            ? (isImageAsk
+                ? [ConversationTurn(isUser: true, text: text, time: timeStr)]
+                : [ConversationTurn(isUser: true, text: c.content, time: c.time),
+                   ConversationTurn(isUser: true, text: text, time: timeStr)])
             : [...existing, ConversationTurn(isUser: true, text: text, time: timeStr)]);
       });
     });

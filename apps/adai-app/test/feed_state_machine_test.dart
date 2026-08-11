@@ -208,6 +208,40 @@ void main() {
       expect(jsonDecode(askReqs.first.body)['question'], '这是什么股票？');
     });
 
+    testWidgets('文本卡 ask 竞态：首轮保持「卡片原内容 + 新消息」（P2 回归）', (tester) async {
+      // 文本卡点提问后 ask 请求挂起期间直接输入 → _appendToActiveCard 走空 turns 分支。
+      // 该分支必须保留原行为：首轮 = 卡片原内容（作上下文）+ 用户新消息。
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '今天买了立昂微')]
+        ..feedTotalToday = 1;
+      final askGate = Completer<http.Response>();
+      b.handlers['/api/v1/records'] = (req) {
+        final intent = jsonDecode(req.body)['intent'];
+        if (intent == 'question') return askGate.future;
+        return Future.value(_json(
+            {'intent': 'log', 'recordId': 'r-l', 'summary': '记录完成', 'tags': [], 'domain': 'life'}));
+      };
+      await _pump(tester, b);
+
+      // 点提问（ask 挂起）→ 直接输入发送
+      await tester.tap(find.text('提问'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '再问一句');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      // 空 turns 分支：卡片原内容作为首轮 + 新消息（restore 后行为）
+      expect(find.text('今天买了立昂微'), findsWidgets);
+      expect(find.text('再问一句'), findsOneWidget);
+
+      // 释放 ask，避免悬挂
+      askGate.complete(_json({
+        'intent': 'question', 'recordId': 'r-q',
+        'rawResponse': 'AI 回答内容', 'summary': 'AI 回答内容', 'tags': [], 'domain': 'life',
+      }));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('点提问：已有对话的卡重开，不重复 POST', (tester) async {
       final b = _Backend()
         ..feedPage0 = [_cardWithTurns('r1', '今天的天气如何')]
