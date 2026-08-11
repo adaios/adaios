@@ -49,6 +49,7 @@
 | B21 | Repository `toMarkdown`/serialize 改动后 grep `data-format-freeze.md` 对应小节确认同步（格式契约漂移检测）| intent 落盘漏同步 freeze §2.1（P1 #180）|
 | B22 | 「扫源码/扫文件系统」型统计/聚合必须评估 jar-only 生产形态退化 | countApiEndpoints 生产恒 0（P2 #187）|
 | B23 | 幂等/处理标记类修复必须枚举所有入口路径验证（不能只测 cardId==null）| #144 漏聊天首问带 cardId 主路径（P1 #181）|
+| B24 | 外部 AI 服务依赖（GLM/DeepSeek 等 key + base URL）部署后必须跑真实功能 E2E（不只是 HTTP 200），验证 key 已配齐 | 生产缺 GLM_API_KEY → 图片理解/追问一直静默降级（2026-08-11 生产事故）|
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。
