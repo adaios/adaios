@@ -49,6 +49,8 @@ com.adaiadai.core/
 │   ├── record/                   最小个人事件单元
 │   ├── timeline/                 时间序列投影
 │   ├── market/                   行情数据源（TencentMarketDataSource）
+│   ├── ai/                       端口（REVIEW #22 依赖倒置：AiClient/AiUnderstanding 在 kernel，实现归 infra）
+│   ├── storage/                  端口（REVIEW #22 依赖倒置：FileStorage 在 kernel，实现归 infra/storage）
 │   ├── context/                  ★ Context Engine（核心）
 │   │   ├── IntentRecognizer       意图识别
 │   │   └── engine/                上下文引擎（ContextContributor 插件机制）
@@ -72,11 +74,12 @@ com.adaiadai.core/
 │   └── ProjectTaskAppService     任务 CRUD 编排
 │
 ├── interfaces/                 入站适配层（Controller）
-├── infrastructure/             出站适配层
-│   ├── storage/                  文件存储（File First）
-│   ├── database/                 数据库（预留）
-│   └── ai/                       AI 模型接入
-│       └── llm/                    LLM 客户端（DeepSeekAiClient）
+└── infrastructure/             出站适配层（实现 kernel/domain 端口，依赖倒置）
+    ├── storage/                  文件存储实现（LocalFileStorage 等，端口在 kernel/storage）
+    ├── database/                 数据库（预留）
+    └── ai/                       AI 模型接入
+        ├── llm/                    LLM 客户端（DeepSeekAiClient，端口在 kernel/ai）
+        └── vision/                视觉理解（VisualAiClient / GlmVisualAiClient，多模态 L4）
 ```
 
 ## 架构原则

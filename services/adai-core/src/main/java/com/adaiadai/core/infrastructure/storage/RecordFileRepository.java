@@ -32,6 +32,9 @@ public class RecordFileRepository implements RecordRepository {
     private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
     private static final Pattern FRONTMATTER_PATTERN = Pattern.compile(
             "^---\\n(.+?)\\n---\\n(.+)", Pattern.DOTALL);
+    // #19 优化：rec_ 前缀 + 标准格式 id 可直接推导年月路径直读，避免全量扫。
+    // REVIEW #249：预编译复用，避免每次 findById 调用重编译正则（理解/重补/删除/Feed 热路径）。
+    private static final Pattern REC_ID_PATTERN = Pattern.compile("rec_\\d{8}_\\d{9}");
 
     private static final Logger log = LoggerFactory.getLogger(RecordFileRepository.class);
 
@@ -63,7 +66,7 @@ public class RecordFileRepository implements RecordRepository {
     @Override
     public Optional<ContentRecord> findById(String userId, String id) {
         // #19 优化：rec_ 前缀 + 标准格式的 id 可直接从 id 推导年月路径直读，避免全量扫。
-        if (id != null && id.matches("rec_\\d{8}_\\d{9}")) {
+        if (id != null && REC_ID_PATTERN.matcher(id).matches()) {
             String path = RECORDS_DIR + "/" + id.substring(4, 8) + "/" + id.substring(8, 10) + "/" + id + ".md";
             ContentRecord record = parseFromFile(userId, path);
             if (record != null && id.equals(record.id())) {
@@ -227,10 +230,14 @@ public class RecordFileRepository implements RecordRepository {
     private ContentRecord parseFromFile(String userId, String path) {
         String content = fileStorage.read(userId, path);
         if (content == null || content.isBlank()) {
+            // REVIEW #248：损坏/空文件不再静默——#19 直读路径下单个文件 frontmatter 损坏
+            // 会让该记录在 Feed/时间线/搜索无声消失（磁盘文件仍在），打日志便于定位。
+            log.warn("Record 文件为空或不可读，userId={} path={}", userId, path);
             return null;
         }
         Matcher matcher = FRONTMATTER_PATTERN.matcher(content);
         if (!matcher.find()) {
+            log.warn("Record 文件缺少 frontmatter（损坏），userId={} path={}", userId, path);
             return null;
         }
         String frontmatter = matcher.group(1);

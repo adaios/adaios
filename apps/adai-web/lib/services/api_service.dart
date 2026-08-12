@@ -198,7 +198,8 @@ class ApiService {
 
   /// 更新个人档案。
   Future<IdentityResponse> updateIdentity(IdentityRequest request) async {
-    final resp = await http.put(
+    // #243：走注入的 _client（MockClient 可拦截），不用全局 http.put（widget 测试真实 HTTP 恒 400）
+    final resp = await _client.put(
       Uri.parse('$baseUrl/api/v1/identity'),
       headers: _headers,
       body: jsonEncode(request.toJson()),
@@ -426,7 +427,8 @@ class ApiService {
     if (priority != null) body['priority'] = priority;
     if (tags != null) body['tags'] = tags;
     if (rfcRef != null) body['rfcRef'] = rfcRef;
-    final resp = await http.put(
+    // #243：走注入的 _client（MockClient 可拦截），不用全局 http.put（widget 测试真实 HTTP 恒 400）
+    final resp = await _client.put(
       Uri.parse('$baseUrl/api/v1/project/tasks/$id'),
       headers: _headers,
       body: jsonEncode(body),
@@ -786,7 +788,9 @@ class ProjectStatusResponse {
   final Map<String, String> domainStatus;
   final List<RfcItemResponse> rfcItems;
   final int commitCount;
-  final int apiEndpoints;
+  // REVIEW #247：Integer 可空——endpoints.txt 资源缺失时后端返回 null，
+  // 前端据此显示「未知」，不与「真 0 个端点」混淆。
+  final int? apiEndpoints;
 
   ProjectStatusResponse({
     required this.project,
@@ -810,7 +814,7 @@ class ProjectStatusResponse {
             ?.map((e) => RfcItemResponse.fromJson(e))
             .toList() ?? [],
         commitCount: json['commitCount'] as int? ?? 0,
-        apiEndpoints: json['apiEndpoints'] as int? ?? 0,
+        apiEndpoints: json['apiEndpoints'] as int?,
       );
 }
 

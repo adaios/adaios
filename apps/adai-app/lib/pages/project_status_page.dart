@@ -85,7 +85,7 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
                 _card([
                   _kv('Git 提交', '${_status!.commitCount}'),
                   _kv('RFC 文档', '${_status!.rfcItems.length}'),
-                  _kv('API 端点', '${_status!.apiEndpoints}'),
+                  _kv('API 端点', '${_status!.apiEndpoints?.toString() ?? '未知'}'),
                 ]),
                 const SizedBox(height: 16),
                 _buildRfcSection(_status!.rfcItems),

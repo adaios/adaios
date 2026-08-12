@@ -34,6 +34,7 @@ graph TB
         Record["Record<br/>最小事件单元"]
         Timeline["Timeline<br/>Record 时间线投影"]
         ContextEngine["Context Engine<br/>上下文引擎 ★"]
+        TagIndexReader["TagIndexReader<br/>标签索引只读端口 ★"]
         Memory["Memory<br/>长期记忆"]
         Knowledge["Knowledge<br/>结构化知识"]
     end
@@ -71,7 +72,7 @@ graph TB
 
     ContextEngine --> Identity
     ContextEngine --> Record
-    ContextEngine --> TagIndex
+    ContextEngine --> TagIndexReader
     ContextEngine --> CardRepo
     ContextEngine --> Memory
     ContextEngine --> TradingContributor
@@ -81,6 +82,7 @@ graph TB
     AiClient --> DeepSeekClient
     DeepSeekClient -->|ANALYSIS 模式<br/>单段 Prompt, 0.3 temp| DS["DeepSeek API"]
     DeepSeekClient -->|CHAT 模式<br/>多轮 messages, 0.7 temp| DS
+    TagIndexReader --> TagIndex
 
     TradingContributor --> FileStorage
     Record --> FileStorage
@@ -100,7 +102,7 @@ graph TB
     class ProjectStatusController application;
     class TradingContributor,LifeContributor,ProjectContributor domain;
     class TagIndex,ProjectFileRepo infra;
-    class FileStorage,AiClient,CardRepo kernel;
+    class FileStorage,AiClient,CardRepo,TagIndexReader kernel;
 ```
 
 ## 二、数据写入流

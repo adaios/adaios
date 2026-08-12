@@ -133,7 +133,7 @@ public class ProjectStatusAppService {
         }
     }
 
-    private int countApiEndpoints() {
+    private Integer countApiEndpoints() {
         // REVIEW #228 统一口径：单一来源 = Gradle 生成的 META-INF/endpoints.txt。
         // build.gradle.kts 的 processResources 依赖 generateEndpointsFile（bootJar/bootRun 均触发），
         // 生产 jar-only 与开发环境读到同一份生成数据，dev/生产数字必然一致。
@@ -142,8 +142,9 @@ public class ProjectStatusAppService {
         if (fromResource != null) {
             return fromResource;
         }
+        // REVIEW #247：返回 null 而非 0——前端据此显示「未知」，不与「真 0 个端点」混淆。
         log.warn("API 端点计数资源缺失（META-INF/endpoints.txt），请确认 processResources 已执行");
-        return 0;
+        return null;
     }
 
     /** 读 classpath 资源 {@code META-INF/endpoints.txt}（Gradle 生成，唯一口径来源）。 */
@@ -191,7 +192,9 @@ public class ProjectStatusAppService {
             Map<String, String> domainStatus,
             List<RfcItem> rfcItems,
             int commitCount,
-            int apiEndpoints
+            // REVIEW #247：Integer 可空——endpoints.txt 资源缺失时返回 null
+            // 而非 0（0 与「未知」语义混淆），前端可显示「未知」。
+            Integer apiEndpoints
     ) {}
 
     public record RfcItem(

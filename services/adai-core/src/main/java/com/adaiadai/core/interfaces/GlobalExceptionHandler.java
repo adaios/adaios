@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.domain.trading.TradingException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,6 +20,11 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // REVIEW #250：上传上限从配置读（spring.servlet.multipart.max-file-size），
+    // 避免 413 提示与 application.yml 漂移失真。
+    @Value("${spring.servlet.multipart.max-file-size:5MB}")
+    private String maxFileSize;
+
     @ExceptionHandler(TradingException.class)
     public ResponseEntity<Map<String, String>> handleTradingException(TradingException e) {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -27,6 +33,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, String>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(Map.of("error", "文件超过大小限制（图片最大 5MB）"));
+                .body(Map.of("error", "文件超过大小限制（图片最大 " + maxFileSize + "）"));
     }
 }

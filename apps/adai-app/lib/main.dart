@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'root_keys.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
@@ -134,6 +135,9 @@ class _RootAppState extends State<RootApp> {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
       navigatorKey: _navigatorKey,
+      // REVIEW #246：根 messenger 挂在 MaterialApp 层——MainPage 切 World B 被 dispose
+      // 后，上传失败/成功提示仍能弹出，不静默丢。
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       builder: (context, child) => DefaultTextStyle(
         style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
         child: child!,

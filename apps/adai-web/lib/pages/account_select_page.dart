@@ -23,6 +23,7 @@ class AccountSelectPage extends StatefulWidget {
 class _AccountSelectPageState extends State<AccountSelectPage> {
   List<String>? _accounts;
   bool _loading = true;
+  bool _selecting = false; // #258：防双击 SnackBar 连发
   String? _error;
 
   @override
@@ -83,9 +84,11 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
   Widget _buildBody() {
     if (_loading) {
       // #198：loading 态给明确进度反馈（原仅灰字）
+      // #253：显式固定 spinner 尺寸 24×24（裸 spinner 默认 ~36px 过大）
       return const Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen),
+          SizedBox(width: 24, height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
           SizedBox(height: 12),
           Text('加载中…', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
         ]),
@@ -193,7 +196,11 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
 
   /// #230：选择账号 → 确认 SnackBar + 回调切换。
   /// SnackBar 挂在根 ScaffoldMessenger，切换场景 pop 后仍显示在切换后的界面上。
+  /// #258：本地 _selecting 防重入——父级 _handlingSelect 只挡第二次回调，
+  /// 不挡第一次的 SnackBar 连弹；时长统一 2s（与 adai-app 一致）。
   void _selectAccount(String userId) {
+    if (_selecting) return;
+    _selecting = true;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('已切换至 @$userId',
           style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),

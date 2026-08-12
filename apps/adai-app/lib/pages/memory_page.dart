@@ -44,9 +44,11 @@ class _MemoryPageState extends State<MemoryPage> {
     final date = DateTime(d.year, d.month, d.day);
     if (date == today) return '今天';
     if (date == yesterday) return '昨天';
-    // 今年内 M/d；跨年记忆补年份（REVIEW #125，防 12/31 vs 1/1 难区分）
-    if (d.year == now.year) return '${d.month}/${d.day}';
-    return '${d.year}/${d.month}/${d.day}';
+    // REVIEW #254：与 adai-web 统一 MM-dd（补零）；跨年记忆补年份
+    // （REVIEW #125，防 12/31 vs 1/1 难区分）——今年内 MM-dd，跨年 yyyy-MM-dd。
+    final mmdd = '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    if (d.year == now.year) return mmdd;
+    return '${d.year}-$mmdd';
   }
 
   void _prevDay() {

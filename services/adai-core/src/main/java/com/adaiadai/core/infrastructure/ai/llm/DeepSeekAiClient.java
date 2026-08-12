@@ -44,7 +44,7 @@ public class DeepSeekAiClient implements AiClient {
     public DeepSeekAiClient(
             @Value("${DEEPSEEK_API_KEY:}") String apiKey,
             @Value("${DEEPSEEK_BASE_URL:https://api.deepseek.com}") String baseUrl,
-            @Value("${adai.ai.model:deepseek-chat}") String model
+            @Value("${adai.ai.model:deepseek-v4-pro}") String model
     ) {
         this.httpClient = HttpClient.newBuilder()
                 .proxy(java.net.ProxySelector.of(null))  // 不走系统代理（Privoxy）

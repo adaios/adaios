@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'root_keys.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
 import 'widgets/feed_card.dart';
+import 'widgets/full_image_dialog.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/timeline_modal.dart';
 import 'utils/text_cleaner.dart';
@@ -55,6 +57,12 @@ class _MainPageState extends State<MainPage>
   bool _scrollAtTop = true;
   bool _scrollAtBottom = true;
   static const int _pageSize = 5;
+
+  /// REVIEW #234：已加载的核心条目数（type=record/card，前端统一映射为 FeedCardType.record）。
+  /// 分页终止口径：`_totalToday` 只计核心，附加条目（action/market/push）仅 page 0 附带，
+  /// 不能计入分页进度——否则附加条目多时 page 0 即误判「无更多」，「加载更早」消失。
+  int get _loadedCoreCount =>
+      _cards.where((c) => c.type == FeedCardType.record).length;
 
   String? _activeCardId;
   bool _hasActiveChat = false;
@@ -311,6 +319,9 @@ class _MainPageState extends State<MainPage>
           id: pid, type: FeedCardType.record, time: timeStr,
           content: caption.isEmpty ? image.name : caption,
           mode: CardMode.idle, loading: true,
+          // REVIEW #235：占位卡保留原始图片字节/文件名/扩展名/共享 caption——
+          // 失败重试时重走 uploadImage 原路径，不再把文件名当文本记录重发。
+          mediaBytes: image.bytes, mediaName: image.name, mediaExt: image.extension, mediaCaption: caption,
         ));
       }
     });
@@ -329,47 +340,58 @@ class _MainPageState extends State<MainPage>
         ok++;
         if (!mounted) return;
         // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
+        // REVIEW #245：content 保留用户 caption 作为记录内容，summary 单独放 AI 理解文本——
+        // 不再 content/summary 同源导致同一 AI 文本渲染两遍、用户 caption 被覆盖。
         setState(() {
           final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
           if (idx >= 0) {
-            final fallback = caption.isEmpty ? image.name : caption;
-            _cards[idx] = FeedCardData(
-              id: resp.recordId.isEmpty ? placeholderIds[i] : resp.recordId,
-              type: FeedCardType.record,
-              time: timeStr,
-              content: resp.summary.isEmpty ? fallback : resp.summary,
-              summary: resp.summary.isEmpty ? null : resp.summary,
-              tags: resp.tags.isNotEmpty ? resp.tags : null,
-              mode: CardMode.idle,
-              intent: IntentType.log,
-              domain: 'life',
-              mediaUrl: resp.recordId.isEmpty ? null : _api.mediaUrl(resp.recordId),
-              mediaHeaders: resp.recordId.isEmpty ? null : _api.mediaHeaders,
+            _cards[idx] = _buildMediaSuccessCard(
+              id: placeholderIds[i], resp: resp, time: timeStr,
+              fallback: caption.isEmpty ? image.name : caption,
             );
           }
         });
       }
+      // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
+      _showSnackBar('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}',
-          style: const TextStyle(fontSize: 13)),
-        backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-      ));
       await _loadFeed();
     } catch (e) {
-      if (!mounted) return;
-      // 失败后未上传的占位卡置 error（可重试），已上传完成的不动
-      setState(() {
-        for (var i = ok; i < placeholderIds.length; i++) {
-          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
-          if (idx >= 0) _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('图片上传失败: ${_extractApiError(e)}', style: const TextStyle(fontSize: 13)),
-        backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-      ));
+      // REVIEW #246：失败反馈挂根 ScaffoldMessenger，不静默丢；
+      // 占位卡置 error（可重试）需 MainPage 存活才更新（被 dispose 时占位卡已随 State 销毁）。
+      if (mounted) {
+        setState(() {
+          for (var i = ok; i < placeholderIds.length; i++) {
+            final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
+            if (idx >= 0) _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
+          }
+        });
+      }
+      _showSnackBar('图片上传失败: ${_extractApiError(e)}');
     }
+  }
+
+  /// 图片上传成功后的真实记录卡（#235/#245 共用：占位卡替换 / 失败重试替换）。
+  /// content 保留用户 caption（fallback）作为记录内容，summary 单独放 AI 理解文本，不同源重复渲染。
+  FeedCardData _buildMediaSuccessCard({
+    required String id,
+    required MediaRecordResponse resp,
+    required String time,
+    required String fallback,
+  }) {
+    return FeedCardData(
+      id: resp.recordId.isEmpty ? id : resp.recordId,
+      type: FeedCardType.record,
+      time: time,
+      content: fallback,
+      summary: resp.summary.isEmpty ? null : resp.summary,
+      tags: resp.tags.isNotEmpty ? resp.tags : null,
+      mode: CardMode.idle,
+      intent: IntentType.log,
+      domain: 'life',
+      mediaUrl: resp.recordId.isEmpty ? null : _api.mediaUrl(resp.recordId),
+      mediaHeaders: resp.recordId.isEmpty ? null : _api.mediaHeaders,
+    );
   }
 
   String _mimeTypeOf(String? ext) {
@@ -417,15 +439,58 @@ class _MainPageState extends State<MainPage>
       }
   }
 
-  /// 重试发送失败的新卡片：删除旧卡片，重新创建。
+  /// 重试发送失败的新卡片：
+  /// - 图片占位卡（REVIEW #235）：保留原始字节重走 uploadImage 原路径，不把文件名当文本重发；
+  /// - 文本卡：删除旧卡片，重新创建。
   void _onRetryCard(String cardId) {
     final idx = _cards.indexWhere((c) => c.id == cardId);
     if (idx < 0) return;
     final card = _cards[idx];
+    if (card.mediaBytes != null && card.mediaName != null) {
+      _retryMediaUpload(card);
+      return;
+    }
     setState(() => _cards.removeAt(idx));
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     _createNewCard(card.content, timeStr, null);
+  }
+
+  /// 图片上传失败重试：原位恢复 loading → 用原始字节重走 uploadImage → 替换为真实记录卡。
+  /// REVIEW #235：占位卡创建时已保留 mediaBytes/mediaName/mediaExt/mediaCaption。
+  Future<void> _retryMediaUpload(FeedCardData card) async {
+    final pid = card.id;
+    if (mounted) {
+      setState(() => _updateCard(pid, (c) => c.copyWith(loading: true, clearError: true)));
+    }
+    try {
+      final resp = await _api.uploadImage(
+        bytes: card.mediaBytes!,
+        filename: card.mediaName!,
+        mimeType: _mimeTypeOf(card.mediaExt),
+        caption: card.mediaCaption,
+      );
+      if (mounted) {
+        setState(() {
+          final idx = _cards.indexWhere((c) => c.id == pid);
+          if (idx >= 0) {
+            _cards[idx] = _buildMediaSuccessCard(
+              id: pid, resp: resp, time: card.time,
+              fallback: (card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : card.mediaName!,
+            );
+          }
+        });
+      }
+      // REVIEW #246：反馈挂根 ScaffoldMessenger，MainPage 被 dispose 也能弹。
+      _showSnackBar('📷 图片已重新记录');
+      if (!mounted) return;
+      await _loadFeed();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+      }
+      _showSnackBar('图片上传失败: ${_extractApiError(e)}');
+    }
   }
 
   void _appendToActiveCard(String text, String timeStr) async {
@@ -541,15 +606,27 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _showError(String message) {
+  /// REVIEW #246：统一 SnackBar 入口——优先用根 ScaffoldMessengerKey（MaterialApp 层，
+  /// 不依赖 MainPage State 存活）。MainPage 被 dispose（切 World B）后失败/成功提示仍能弹出，
+  /// 不再 `if (!mounted) return` 静默吞掉。
+  void _showSnackBar(String message) {
+    final root = rootScaffoldMessengerKey.currentState;
+    if (root != null) {
+      root.showSnackBar(_snackBar(message));
+      return;
+    }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-      backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(_snackBar(message));
   }
+
+  SnackBar _snackBar(String message) => SnackBar(
+    content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+    backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+    margin: const EdgeInsets.fromLTRB(20, 0, 20, 12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), duration: const Duration(seconds: 3),
+  );
+
+  void _showError(String message) => _showSnackBar(message);
 
   /// 从 API 异常中提取人类可读的错误消息。
   /// API service 抛出的格式：Exception: API 错误 {status}: {body}
@@ -610,7 +687,8 @@ class _MainPageState extends State<MainPage>
   }
 
   Future<void> _loadMore() async {
-    if (_cards.length >= _totalToday) return;
+    // REVIEW #234：终止口径按核心条目数（record/card），附加条目不占分页进度。
+    if (_loadedCoreCount >= _totalToday) return;
     setState(() => _loadingMore = true);
     _currentPage++;
     try {
@@ -626,7 +704,7 @@ class _MainPageState extends State<MainPage>
       });
     } catch (e) {
       if (!mounted) return;
-      _showError('加载更多失败');
+      _showError('加载更早失败');
       setState(() => _loadingMore = false);
       _currentPage--;
     }
@@ -635,7 +713,8 @@ class _MainPageState extends State<MainPage>
   @override
   Widget build(BuildContext context) {
     final activeCard = _activeCardId != null ? _cards.where((c) => c.id == _activeCardId).firstOrNull : null;
-    final hasMore = _cards.length < _totalToday;
+    // REVIEW #234：终止判定按核心条目数（record/card），附加条目不占分页进度。
+    final hasMore = _loadedCoreCount < _totalToday;
     return SafeArea(
       child: Column(
         children: [
@@ -789,7 +868,8 @@ class _MainPageState extends State<MainPage>
 
     if (!showLoadMore && !showTop) return const SizedBox.shrink();
 
-    final label = showLoadMore ? '加载更多' : '↑ 顶部';
+    // REVIEW #255：与 adai-web 统一文案——向上翻加载旧记录 →「加载更早」。
+    final label = showLoadMore ? '加载更早' : '↑ 顶部';
     final color = showLoadMore ? AppColors.darkGrey4 : AppColors.darkGreen;
 
     return GestureDetector(
@@ -1049,23 +1129,12 @@ class _MainPageState extends State<MainPage>
   }
 
   /// 点击 active 缩略图 → 全图 Dialog（点任意处关闭）。
+  /// REVIEW #244：复用公共全图 Dialog——Image.network 带 errorBuilder/loadingBuilder，
+  /// 图片 404 显示友好占位而非空白 Dialog。
   void _showActiveFullImage(FeedCardData card) {
     final url = card.mediaUrl;
     if (url == null) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(20),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(url, headers: card.mediaHeaders, fit: BoxFit.contain),
-          ),
-        ),
-      ),
-    );
+    showFullImageDialog(context, url: url, headers: card.mediaHeaders);
   }
 
   Widget _buildChatBubble(String text, bool isUser, String time) {

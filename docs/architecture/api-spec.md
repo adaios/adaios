@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.14 | 最后更新：2026-08-12**
+**文档版本：v3.15 | 最后更新：2026-08-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
 | 2026-08-12 | v3.14 | **收官批 O（#166/#170/#202/#231/#122 等）**：AI 交互日志响应新增 `systemPrompt` 字段（generate 的复盘模板指令，understand/intent 为 null，#231）；上传超限改 413（`MaxUploadSizeExceededException` → PAYLOAD_TOO_LARGE，原 500，#166）；`/accounts/available` 契约补充无鉴权说明（#215 已最小集，此条再确认）；待办建议 prompt 改第二人称（#170）；复盘生成剥代码块围栏（#202）|
 | 2026-08-12 | v3.13 | **REVIEW #129/#218/#222**：promote 前端入口说明（交易页复盘弹窗「反哺入库」按钮，`POST` body 传 `{}`）；AI 交互日志视觉调用补真实耗时（`LoggingVisualAiClient.durationMs`）；Brief 问候加中午段（11-13 → 中午好，#222）|
 | 2026-08-12 | v3.12 | **REVIEW #214/#215/#221**：`POST /records/media/{id}/ask` 的 `question` 加长度上界（500 字符，超限 400）；`GET /accounts/available` 响应由账号对象改为 **userId 最小集**（`List<String>`，不暴露 role/enabled/createdAt）；Brief 降级问候 emoji 按时段（#221） |
@@ -177,7 +178,8 @@
 }
 ```
 
-- `400` — 非图片或超 5MB
+- `400` — 非图片（非 jpeg/png/webp/gif）
+- `413` — 超过大小上限（`spring.servlet.multipart.max-file-size`，默认 5MB；REVIEW #166/#238 由 400 拆分，v3.14 同步）
 
 ### `GET /api/v1/records/media/{id}` — 取回原图（预览）
 
@@ -210,7 +212,7 @@
 }
 ```
 
-- `400` — 问题为空 / 图片记录不存在 / 图片文件缺失
+- `400` — 问题为空 / 问题超过 500 字符（REVIEW #214，防超大 prompt/记录/日志行）/ 图片记录不存在 / 图片文件缺失
 
 ---
 
@@ -787,6 +789,7 @@ adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestio
 |:-----|:-----|:------|
 | `rfcItems` | RfcItem[] | RFC 状态列表，每项含 title / date / status |
 | `rfcItems[].status` | String | `proposed` / `approved` / `implemented` / `deprecated` / `unknown` |
+| `apiEndpoints` | Integer? | API 端点总数；`null` = endpoints.txt 资源缺失（REVIEW #247，与「真 0 个」区分），前端显示「未知」 |
 ```
 
 ---

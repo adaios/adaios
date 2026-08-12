@@ -44,7 +44,9 @@ class _ProjectPageState extends State<ProjectPage> {
     return Column(children: [
       PageHeader(
         title: '项目',
-        subtitle: s == null ? null : '${s.commitCount} 提交 · ${s.apiEndpoints} 个 API',
+        subtitle: s == null
+            ? null
+            : '${s.commitCount} 提交 · ${s.apiEndpoints?.toString() ?? '未知'} 个 API',
         actions: [
           IconButton(
             onPressed: _load,
@@ -83,7 +85,7 @@ class _ProjectPageState extends State<ProjectPage> {
       const SizedBox(width: 12),
       _overviewCell('RFC 文档', '${s.rfcItems.length}', AppColors.darkPurple),
       const SizedBox(width: 12),
-      _overviewCell('API 端点', '${s.apiEndpoints}', AppColors.darkGreen),
+      _overviewCell('API 端点', s.apiEndpoints?.toString() ?? '未知', AppColors.darkGreen),
     ]);
   }
 

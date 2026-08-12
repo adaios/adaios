@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../utils/text_cleaner.dart';
+import 'full_image_dialog.dart';
 import 'hoverable.dart';
 
 /// 后端 record.type 映射。
@@ -52,6 +53,12 @@ class FeedCardData {
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
   final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
+  // REVIEW #235：上传占位卡保留原始图片字节/文件名/扩展名/共享 caption——
+  // 失败重试重走 uploadImage 原路径（原实现把文件名当文本记录重发，字节永不重传）。
+  final List<int>? mediaBytes;
+  final String? mediaName;
+  final String? mediaExt;
+  final String? mediaCaption;
   final DateTime updatedAt;
 
   FeedCardData({
@@ -60,6 +67,7 @@ class FeedCardData {
     this.loading = false, this.intent, this.expanded = false,
     this.domain = 'life', this.error, this.onMarkDone,
     this.mediaUrl, this.mediaHeaders,
+    this.mediaBytes, this.mediaName, this.mediaExt, this.mediaCaption,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -69,6 +77,7 @@ class FeedCardData {
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
     String? domain, String? error, bool clearError = false,
     String? mediaUrl, Map<String, String>? mediaHeaders,
+    List<int>? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
@@ -81,6 +90,10 @@ class FeedCardData {
       error: clearError ? null : error ?? this.error,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
+      mediaBytes: mediaBytes ?? this.mediaBytes,
+      mediaName: mediaName ?? this.mediaName,
+      mediaExt: mediaExt ?? this.mediaExt,
+      mediaCaption: mediaCaption ?? this.mediaCaption,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
@@ -427,23 +440,11 @@ class FeedCard extends StatelessWidget {
   }
 
   /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
+  /// REVIEW #244：复用公共全图 Dialog（带 errorBuilder，404 显示占位）。
   void _showFullImage(BuildContext context) {
     final url = data.mediaUrl;
     if (url == null) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(20),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(url, headers: data.mediaHeaders, fit: BoxFit.contain),
-          ),
-        ),
-      ),
-    );
+    showFullImageDialog(context, url: url, headers: data.mediaHeaders);
   }
 
   Widget _buildHeader() {

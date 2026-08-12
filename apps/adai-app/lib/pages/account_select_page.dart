@@ -23,6 +23,7 @@ class AccountSelectPage extends StatefulWidget {
 class _AccountSelectPageState extends State<AccountSelectPage> {
   List<String>? _accounts;
   bool _loading = true;
+  bool _selecting = false; // #258：防双击 SnackBar 连弹
   String? _error;
 
   @override
@@ -83,8 +84,9 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
   Widget _buildBody() {
     if (_loading) {
       // REVIEW #198/#230：loading 态加 CircularProgressIndicator（与全项目基线一致）
+      // REVIEW #253：与 adai-web 统一显式尺寸（SizedBox 固定 24×24）。
       return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        SizedBox(width: 28, height: 28,
+        SizedBox(width: 24, height: 24,
             child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
         SizedBox(height: 12),
         Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)),
@@ -166,9 +168,13 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
           onTap: () {
             // REVIEW #198：切换账号后确认反馈。ScaffoldMessenger 挂在 MaterialApp 层，
             // pop/重建后 SnackBar 仍在目标页显示，不会因本页销毁而消失。
+            // #258：本地 _selecting 防重入（父级守卫只挡回调不挡 SnackBar 连弹），时长统一 2s。
+            if (_selecting) return;
+            _selecting = true;
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text('已切换至 @$userId', style: const TextStyle(fontSize: 13)),
               backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
             ));
             widget.onSelect(userId);
           },

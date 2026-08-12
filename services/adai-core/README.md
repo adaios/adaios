@@ -30,7 +30,7 @@ ADAI_AI_PROVIDER=deepseek DEEPSEEK_API_KEY=sk-xxx ./gradlew bootRun
 | 框架 | Spring Boot 3.3.x |
 | 构建 | Gradle (Kotlin DSL) |
 | 数据库 | MySQL 8.0 (dev) / H2 (test) |
-| AI | DeepSeek API (deepseek-chat) / Mock |
+| AI | DeepSeek API (deepseek-v4-pro) / Mock |
 | 存储 | 文件系统（File First） |
 
 ## 核心架构

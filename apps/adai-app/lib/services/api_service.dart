@@ -764,7 +764,9 @@ class ProjectStatusResponse {
   final Map<String, String> domainStatus;
   final List<RfcItemResponse> rfcItems;
   final int commitCount;
-  final int apiEndpoints;
+  // REVIEW #247：Integer 可空——endpoints.txt 资源缺失时后端返回 null，
+  // 前端据此显示「未知」，不与「真 0 个端点」混淆。
+  final int? apiEndpoints;
 
   ProjectStatusResponse({
     required this.project,
@@ -788,7 +790,7 @@ class ProjectStatusResponse {
             ?.map((e) => RfcItemResponse.fromJson(e))
             .toList() ?? [],
         commitCount: json['commitCount'] as int? ?? 0,
-        apiEndpoints: json['apiEndpoints'] as int? ?? 0,
+        apiEndpoints: json['apiEndpoints'] as int?,
       );
 }
 

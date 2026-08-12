@@ -107,6 +107,13 @@ class InputBarState extends State<InputBar> {
     widget.onSend(text);
   }
 
+  /// REVIEW #257 测试钩子：测试注入待发送图片（等价用户选图挂到输入栏），
+  /// 不触发 FilePicker（widget 测试环境无平台通道）。随后点发送键即走 onSendMedia。
+  @visibleForTesting
+  void debugInjectImages(List<PickedImage> images) {
+    setState(() => _pendingImages.addAll(images));
+  }
+
   void _pickImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(

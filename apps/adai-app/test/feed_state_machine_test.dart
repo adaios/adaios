@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:adai_app/main_page.dart';
 import 'package:adai_app/services/api_service.dart';
+import 'package:adai_app/widgets/input_bar.dart';
 
 // ────────────────────────────────────────────────────────────────
 // Feed 状态机 widget 测试（#117）
@@ -70,12 +71,13 @@ class _Backend {
 
 /// Feed 记录条目 JSON。
 Map<String, dynamic> _record(String id, String content,
-        {String intent = 'log', String time = '14:00', String date = '08-04'}) =>
+        {String intent = 'log', String time = '14:00', String date = '08-04',
+        String? summary, String? mediaPath}) =>
     {
       'type': 'record', 'id': id, 'title': '', 'content': content,
       'tags': <String>[], 'time': time, 'date': date,
-      'intent': intent, 'summary': null, 'turns': null,
-      'domain': 'life', 'mediaPath': null,
+      'intent': intent, 'summary': summary, 'turns': null,
+      'domain': 'life', 'mediaPath': mediaPath,
     };
 
 /// 有对话记录的卡条目 JSON。
@@ -99,6 +101,14 @@ Map<String, dynamic> _imageRecord(String id, String summary) => {
   'tags': <String>[], 'time': '14:00', 'date': '08-04',
   'intent': 'log', 'summary': summary, 'turns': null,
   'domain': 'life', 'mediaPath': 'media/$id.png',
+};
+
+/// 附加条目 JSON（action 待办 / market 行情 / push 推送——仅 page 0 附带，不占分页进度）。
+Map<String, dynamic> _attached(String type, String id, String content) => {
+  'type': type, 'id': id, 'title': '', 'content': content,
+  'tags': <String>[], 'time': '14:00', 'date': '08-04',
+  'intent': null, 'summary': null, 'turns': null,
+  'domain': 'life', 'mediaPath': null,
 };
 
 /// 注入 mock 后端渲染 MainPage。
@@ -359,7 +369,7 @@ void main() {
       expect(b.requests.where((r) => r.method == 'DELETE').length, 1);
     });
 
-    testWidgets('加载更多：page1 追加更早记录，横幅消失', (tester) async {
+    testWidgets('加载更早：page1 追加更早记录，横幅消失', (tester) async {
       // 3 卡保证初始在视口内不滚动（atTop=true 横幅可见）；totalToday=5 触发加载
       final b = _Backend()
         ..feedPage0 = [
@@ -369,13 +379,36 @@ void main() {
         ..feedTotalToday = 5;
       await _pump(tester, b);
 
-      expect(find.text('加载更多'), findsOneWidget);
-      await tester.tap(find.text('加载更多'));
+      expect(find.text('加载更早'), findsOneWidget);
+      await tester.tap(find.text('加载更早'));
       await tester.pumpAndSettle();
 
       expect(find.text('昨日2'), findsOneWidget);
       expect(find.text('昨日1'), findsOneWidget);
-      expect(find.text('加载更多'), findsNothing);
+      expect(find.text('加载更早'), findsNothing);
+    });
+
+    testWidgets('REVIEW #234：附加条目不占分页进度，核心未加载完仍显示「加载更早」', (tester) async {
+      // page 0 带 2 条附加条目（action/market）+ 1 条核心记录；totalToday=3（只计核心）。
+      // 旧逻辑 _cards.length(3) >= totalToday(3) → 误判「无更多」，「加载更早」消失、最旧核心不可达；
+      // 修复后按已加载核心数 1 < 3 → 仍显示「加载更早」，追加后按核心数 3 >= 3 隐藏。
+      final b = _Backend()
+        ..feedPage0 = [
+          _record('r1', '今日核心记录'),
+          _attached('action', 'a1', '提醒：完成复盘'),
+          _attached('market', 'm1', '上证指数 3456.78 +0.12%'),
+        ]
+        ..feedPage1 = [_record('o2', '昨日2'), _record('o1', '昨日1')]
+        ..feedTotalToday = 3;
+      await _pump(tester, b);
+
+      expect(find.text('加载更早'), findsOneWidget);
+      await tester.tap(find.text('加载更早'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('昨日2'), findsOneWidget);
+      expect(find.text('昨日1'), findsOneWidget);
+      expect(find.text('加载更早'), findsNothing);
     });
 
     testWidgets('竞态 #100：追加挂起时结束对话，回复不丢不崩', (tester) async {
@@ -450,6 +483,90 @@ void main() {
 
       expect(find.text('重建后的新内容'), findsOneWidget);
       expect(find.text('重建前的内容'), findsNothing);
+    });
+  });
+
+  group('REVIEW #235/#245 图片上传占位卡', () {
+    testWidgets('上传失败 → 占位卡 error → 重试走 media 接口重传成功（非降级文本记录）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      // 首次 /records/media 失败，重试成功
+      var mediaCalls = 0;
+      final mediaRequests = <http.Request>[];
+      b.handlers['/api/v1/records/media'] = (req) {
+        mediaCalls++;
+        mediaRequests.add(req);
+        if (mediaCalls == 1) {
+          return Future.value(http.Response('{"error":"模拟超时"}', 500,
+              headers: {'content-type': 'application/json'}));
+        }
+        // 上传成功 → Feed 里出现该媒体记录（重试后 _loadFeed 能读到）
+        b.feedPage0 = [_record('rec_media_001', '我的截图',
+            summary: '图片内容理解', mediaPath: 'records/2026/08/media/x.png')];
+        b.feedTotalToday = 1;
+        return Future.value(_json({
+          'recordId': 'rec_media_001', 'intent': 'log',
+          'summary': '图片内容理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/x.png',
+        }));
+      };
+      await _pump(tester, b);
+
+      // 注入一张待发送图片并发送
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_001.jpg', 'jpg')]);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // 首次失败 → 占位卡 error 态（含重试按钮）
+      expect(mediaCalls, 1);
+      expect(find.text('重试'), findsWidgets);
+      // 关键断言：失败后没有把图片文件名写成文本记录（未走 /records 文本接口）
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records').length, 0);
+
+      // 点重试 → 重走 media 接口（不降级文本）
+      await tester.tap(find.text('重试').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      expect(mediaCalls, 2);
+      // 成功卡替换占位卡，显示 AI 理解文本，不再显示重试
+      expect(find.text('图片内容理解'), findsOneWidget);
+      expect(find.text('重试'), findsNothing);
+    });
+
+    testWidgets('上传成功：content 保留 caption（fallback），summary 单独放 AI 文本，不同源不重复渲染', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) {
+        b.feedPage0 = [_record('rec_media_002', '我的截图',
+            summary: 'AI 图片理解', mediaPath: 'records/2026/08/media/y.png')];
+        b.feedTotalToday = 1;
+        return Future.value(_json({
+          'recordId': 'rec_media_002', 'intent': 'log',
+          'summary': 'AI 图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/y.png',
+        }));
+      };
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([4, 5, 6], 'IMG_002.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '我的截图');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // caption「我的截图」保留为记录内容（卡 content 或成功 SnackBar 至少一处）；
+      // AI 理解文本作为 summary 展示且只渲染一次（#245 核心：content 与 summary 不同源，不重复）
+      expect(find.textContaining('我的截图', findRichText: true), findsWidgets);
+      expect(find.textContaining('AI 图片理解', findRichText: true), findsOneWidget);
     });
   });
 }

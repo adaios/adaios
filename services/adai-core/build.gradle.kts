@@ -62,10 +62,14 @@ tasks.named<Jar>("jar") {
 // 单一口径来源（dev/生产都读这份生成数据）：逐行扫，跳过注释行（javadoc/块注释/行注释），
 // 防把注释里出现的注解名计入。ProjectStatusAppService 不再有第二个扫源码实现。
 val generateEndpointsFile = tasks.register("generateEndpointsFile") {
+    val srcDir = file("src/main/java/com/adaiadai/core/interfaces")
+    // REVIEW #240：声明 inputs.dir —— 源目录变化时增量构建才会失效重扫，
+    // 否则只声明 outputs.dir 会因 up-to-date 判定恒判最新，新增/删除端点后端点数陈旧。
+    inputs.dir(srcDir)
     val outDir = layout.buildDirectory.dir("resources/main/META-INF")
     outputs.dir(outDir)
     doLast {
-        val dir = file("src/main/java/com/adaiadai/core/interfaces")
+        val dir = srcDir
         val anns = listOf("GetMapping", "PostMapping", "PutMapping", "PatchMapping", "DeleteMapping")
         var count = 0L
         if (dir.isDirectory) {

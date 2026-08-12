@@ -33,7 +33,13 @@ class _MemoryPageState extends State<MemoryPage> {
         _dates = dates;
         _loading = false;
       });
-      if (dates.isNotEmpty) _selectDate(dates.first, force: force);
+      if (dates.isNotEmpty) {
+        // #236：刷新保留当前选中日期（若仍在日期列表内则保持，否则回退最新日期），不跳回顶部丢位置
+        final keep = (_selectedDate != null && dates.contains(_selectedDate))
+            ? _selectedDate!
+            : dates.first;
+        _selectDate(keep, force: force);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -43,7 +49,7 @@ class _MemoryPageState extends State<MemoryPage> {
   Future<void> _selectDate(String date, {bool force = false}) async {
     setState(() {
       _selectedDate = date;
-      _entries = [];
+      // #236：不清空 _entries，加载完成后整体替换，避免右侧闪空
     });
     try {
       // #103：保活页刷新时 force 绕过缓存，否则记忆列表陈旧

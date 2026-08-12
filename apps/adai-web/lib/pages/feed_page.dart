@@ -37,9 +37,14 @@ class _FeedPageState extends State<FeedPage> {
   bool _loadingMore = false;
   bool _hasMore = false;
 
+  /// #234：已加载核心条目数（后端 type=record/card 都映射为 FeedCardType.record）。
+  /// _totalToday 只计核心记录，附加条目（action/market/push）不计入分页终止判定。
+  int get _coreCardCount => _cards.where((c) => c.type == FeedCardType.record).length;
+
   // 右上下文栏数据
   TagsResponse? _tags;
   TaskStatsResponse? _taskStats;
+  bool _loadingSidebar = false; // #242：右栏加载去重守卫（getTaskStats 无缓存每次网络请求）
 
   // 对话状态
   String? _activeCardId;
@@ -74,7 +79,8 @@ class _FeedPageState extends State<FeedPage> {
               onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
             ))
             .toList();
-        _hasMore = _cards.length < _totalToday;
+        // #234：终止判定按核心条目数（record/card），附加条目不计入——否则 page 0 附加条目多时误判无更多
+        _hasMore = _coreCardCount < _totalToday;
         _loading = false;
       });
       // #115：右栏（标签云/任务快照）随 Feed 刷新联动更新
@@ -89,7 +95,8 @@ class _FeedPageState extends State<FeedPage> {
   /// #101：Feed「加载更早」分页——更早记录（第 page+1 页）追加到列表底部。
   /// 后端 /feed 分页：page 从 0 起，核心记录新→旧切片。
   Future<void> _loadMore() async {
-    if (_loadingMore || _cards.length >= _totalToday) return;
+    // #234：终止判定按核心条目数（record/card），附加条目不计入
+    if (_loadingMore || _coreCardCount >= _totalToday) return;
     setState(() => _loadingMore = true);
     try {
       final feed = await widget.api.getFeed(page: _currentPage + 1, size: _pageSize);
@@ -104,7 +111,8 @@ class _FeedPageState extends State<FeedPage> {
       setState(() {
         _currentPage += 1;
         _cards = [..._cards, ...moreCards];
-        if (moreCards.isEmpty) _hasMore = false;
+        // #234：终止判定按已加载核心条目数；页面无更多数据（moreCards 空）同样终止
+        _hasMore = moreCards.isNotEmpty && _coreCardCount < _totalToday;
         _loadingMore = false;
       });
     } catch (_) {
@@ -115,6 +123,9 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _loadSidebar() async {
+    // #242：去重守卫——正在加载则跳过新请求，防连续聊天并发弱竞态（后到旧响应覆盖新）
+    if (_loadingSidebar) return;
+    _loadingSidebar = true;
     try {
       final tags = await widget.api.getTags();
       final stats = await widget.api.getTaskStats();
@@ -125,6 +136,8 @@ class _FeedPageState extends State<FeedPage> {
       });
     } catch (_) {
       // 右栏加载失败不阻塞主对话流
+    } finally {
+      _loadingSidebar = false;
     }
   }
 
@@ -141,21 +154,70 @@ class _FeedPageState extends State<FeedPage> {
     _createNewCard(text, timeStr);
   }
 
-  /// 多模态 L4：多图逐张上传（每张一条记录+记忆，caption 共享）→ 一次刷新 Feed + 汇总轻提示。
+  /// 多模态 L4：多图逐张上传（每张一条记录+记忆，caption 共享）。
+  /// REVIEW #255（对齐 #174）：逐张上传进度占位——每张图先插入 loading 占位卡（立即视觉反馈，
+  /// 不再多图干等），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
+    if (images.isEmpty) return;
+    final timeStr = _now();
+    final placeholderIds = <String>[];
+    setState(() {
+      for (final image in images) {
+        final pid = 'media_${DateTime.now().microsecondsSinceEpoch}_${placeholderIds.length}';
+        placeholderIds.add(pid);
+        _cards.add(FeedCardData(
+          id: pid, type: FeedCardType.record, time: timeStr,
+          content: caption.isEmpty ? image.name : caption,
+          mode: CardMode.idle, loading: true,
+        ));
+      }
+    });
+    _scrollToBottom();
+
     var ok = 0;
     String? firstErr;
-    for (final image in images) {
+    for (var i = 0; i < images.length; i++) {
+      final image = images[i];
       try {
-        await widget.api.uploadImage(
+        final resp = await widget.api.uploadImage(
           bytes: image.bytes,
           filename: image.name,
           mimeType: _mimeTypeOf(image.extension),
           caption: caption.isEmpty ? null : caption,
         );
         ok++;
+        if (!mounted) return;
+        // 单张完成 → 占位卡原位替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
+        setState(() {
+          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
+          if (idx >= 0) {
+            final fallback = caption.isEmpty ? image.name : caption;
+            _cards[idx] = FeedCardData(
+              id: resp.recordId.isEmpty ? placeholderIds[i] : resp.recordId,
+              type: FeedCardType.record,
+              time: timeStr,
+              content: resp.summary.isEmpty ? fallback : resp.summary,
+              summary: resp.summary.isEmpty ? null : resp.summary,
+              tags: resp.tags.isNotEmpty ? resp.tags : null,
+              mode: CardMode.idle,
+              intent: IntentType.log,
+              domain: 'life',
+              mediaUrl: resp.recordId.isEmpty ? null : widget.api.mediaUrl(resp.recordId),
+              mediaHeaders: resp.recordId.isEmpty ? null : widget.api.mediaHeaders,
+            );
+          }
+        });
+        _scrollToBottom();
       } catch (e) {
         firstErr ??= _extractApiError(e);
+        if (!mounted) return;
+        // 单张失败 → 占位卡置 error（底部可重试）
+        setState(() {
+          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
+          if (idx >= 0) {
+            _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
+          }
+        });
       }
     }
     if (!mounted) return;
@@ -169,7 +231,9 @@ class _FeedPageState extends State<FeedPage> {
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       ));
-      await _loadFeed();
+      // 占位卡已原位替换为真实记录，不再整体 _loadFeed；本地计数 + 右栏联动刷新（#115）
+      _totalToday += ok;
+      _loadSidebar();
     } else {
       _showError('图片上传失败: $firstErr');
     }
@@ -608,7 +672,8 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Widget _buildFeedList() {
-    final hasMore = _hasMore && _cards.length < _totalToday;
+    // #234：终止判定按核心条目数（record/card），附加条目不计入
+    final hasMore = _hasMore && _coreCardCount < _totalToday;
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 12),

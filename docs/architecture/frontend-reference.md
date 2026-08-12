@@ -232,7 +232,7 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 组合快照 | GET | `/api/v1/trading/portfolio` | `PortfolioSnapshotResponse` |
 | 交易复盘 | GET / POST | `/api/v1/trading/review` | `TradingReviewResponse` |
 | 反哺入库 | POST | `/api/v1/trading/reviews/{date}/promote` | `PromoteResponse`（双端交易页「反哺入库」按钮，#129）|
-| 交易记录 | GET | `/api/v1/trading/trades` | `List<TradeResponse>` |
+| 记录交易 | POST | `/api/v1/trading/trades` | `TradeRequest` → `Position[]`（更新后持仓）|
 | 卡片迁移 | POST | `/api/v1/cards/migrate` | — |
 | 卡片清理 | POST | `/api/v1/cards/cleanup` | `CleanupResponse` |
 | 图片记录 | POST | `/api/v1/records/media` | `MediaRecordResponse`（multipart）|
