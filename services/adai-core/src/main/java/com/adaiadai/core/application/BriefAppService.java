@@ -102,11 +102,32 @@ public class BriefAppService {
             return cachedBriefByUser.get(userId);
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
-            String greeting = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+            String greeting = greetingForHour(hour);
             cachedBriefByUser.put(userId, "☀️ " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？");
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         }
+    }
+
+    /**
+     * 中文时段问候。凌晨 0-5 → 深夜好；6-11 → 早上好；12-17 → 下午好；18-23 → 晚上好。
+     * #14 修复（2026-08-12）：凌晨不再归入「早上好」。
+     */
+    static String greetingForHour(int hour) {
+        if (hour < 6) return "深夜好";
+        if (hour < 12) return "早上好";
+        if (hour < 18) return "下午好";
+        return "晚上好";
+    }
+
+    /**
+     * 英文时段问候（供 AI prompt 首行）。与 {@link #greetingForHour} 同步。
+     */
+    static String greetingEnForHour(int hour) {
+        if (hour < 6) return "late night";
+        if (hour < 12) return "morning";
+        if (hour < 18) return "afternoon";
+        return "evening";
     }
 
     /** Limit string to at most {@code maxLines} lines. */
@@ -126,7 +147,7 @@ public class BriefAppService {
                                      List<Memory> memories, int hour,
                                      boolean hasTodayRecords) {
         StringBuilder sb = new StringBuilder();
-        String greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+        String greeting = greetingEnForHour(hour);
 
         LocalDate today = LocalDate.now();
         DayOfWeek dow = today.getDayOfWeek();

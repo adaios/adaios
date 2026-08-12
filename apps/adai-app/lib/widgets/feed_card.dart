@@ -612,7 +612,9 @@ class FeedCard extends StatelessWidget {
     // 用内容长度做快速预判（>200 字符才可能溢出 250px 高度）
     final totalChars = turns.fold<int>(0, (sum, t) => sum + t.text.length);
     final bool tooBig = totalChars > 200;
-    final bool collapsed = !data.expanded && tooBig;
+    // #15：active（chatting/waiting）时不折叠——用户正在继续聊天，必须看到完整上下文；
+    // 折叠只用于浏览态（idle/ended）。
+    final bool collapsed = !data.expanded && tooBig && !_isActive;
     // 折叠时截短 widget 数量减少布局压力
     final displayTurns = collapsed ? _truncateTurns(turns) : turns;
 
@@ -649,8 +651,8 @@ class FeedCard extends StatelessWidget {
         else
           _buildTurnList(displayTurns),
 
-        // ── 展开 / 收起按钮 ──
-        if (tooBig)
+        // ── 展开 / 收起按钮 ──（active 态不折叠，也无需按钮）
+        if (tooBig && !_isActive)
           GestureDetector(
             onTap: onToggleExpand,
             child: Padding(

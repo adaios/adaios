@@ -93,4 +93,28 @@ class BriefAppServiceTest {
         assertNotNull(brief);
         assertFalse(brief.isBlank());
     }
+
+    @Test
+    void greetingForHour_boundaries() {
+        // 凌晨 0-5 → 深夜好（#14：之前误归「早上好/morning」）
+        assertEquals("深夜好", BriefAppService.greetingForHour(0));
+        assertEquals("深夜好", BriefAppService.greetingForHour(5));
+        assertEquals("late night", BriefAppService.greetingEnForHour(0));
+        assertEquals("late night", BriefAppService.greetingEnForHour(5));
+        // 早上 6-11
+        assertEquals("早上好", BriefAppService.greetingForHour(6));
+        assertEquals("早上好", BriefAppService.greetingForHour(11));
+        assertEquals("morning", BriefAppService.greetingEnForHour(6));
+        assertEquals("morning", BriefAppService.greetingEnForHour(11));
+        // 下午 12-17
+        assertEquals("下午好", BriefAppService.greetingForHour(12));
+        assertEquals("下午好", BriefAppService.greetingForHour(17));
+        assertEquals("afternoon", BriefAppService.greetingEnForHour(12));
+        assertEquals("afternoon", BriefAppService.greetingEnForHour(17));
+        // 晚上 18-23
+        assertEquals("晚上好", BriefAppService.greetingForHour(18));
+        assertEquals("晚上好", BriefAppService.greetingForHour(23));
+        assertEquals("evening", BriefAppService.greetingEnForHour(18));
+        assertEquals("evening", BriefAppService.greetingEnForHour(23));
+    }
 }

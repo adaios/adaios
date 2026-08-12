@@ -148,6 +148,9 @@ class _DualWorldShellState extends State<DualWorldShell> {
   /// Feed 刷新信号（MD1）：世界切回 Feed 时递增，MainPage 监听后重载。
   final ValueNotifier<int> _feedRefreshTick = ValueNotifier<int>(0);
 
+  /// 切世界拖拽的起点 Y（#16：用于排除底部输入框区域）。
+  double? _dragStartY;
+
   void _toggleWorld() {
     final wasWorldB = _showWorldB;
     setState(() => _showWorldB = !_showWorldB);
@@ -166,7 +169,11 @@ class _DualWorldShellState extends State<DualWorldShell> {
     return Scaffold(
       backgroundColor: AppColors.darkBg,
       body: GestureDetector(
+        onVerticalDragStart: (d) => _dragStartY = d.localPosition.dy,
         onVerticalDragEnd: (d) {
+          // #16：输入框区域（屏幕底部约 140px，输入栏 + 附件预览）不响应切世界——
+          // 否则打字上滑误触切走 World，MainPage 重建导致输入草稿丢失。
+          if ((_dragStartY ?? 0) >= (MediaQuery.of(context).size.height - 140)) return;
           // 全局空白快速拖拽：高速度阈值避免干扰正常滚动
           if (d.primaryVelocity != null) {
             if (d.primaryVelocity! < -400 && !_showWorldB) {

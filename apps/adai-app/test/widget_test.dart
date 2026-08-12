@@ -276,6 +276,33 @@ void main() {
       expect(find.textContaining('展开全部'), findsNothing);
     });
 
+    testWidgets('chatting card with 5+ turns does NOT fold (#15 regression)', (tester) async {
+      // #15：点卡片进入 chat 继续聊天时，必须显示完整对话，不折叠中间轮
+      final long = '这是一段足够长的测试对话内容需要确保字符总数明显超过折叠阈值。';
+      final turns = List.generate(6, (i) => ConversationTurn(
+        isUser: i.isEven,
+        text: '第${i + 1}轮: $long$long',
+        time: '14:0$i',
+      ));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'hi', turns: turns, mode: CardMode.chatting,
+                intent: IntentType.question,
+              ),
+            ),
+          ),
+        ),
+      ));
+      // All 6 turns visible (middle 第3轮 must show) + no fold button
+      expect(find.textContaining('第3轮'), findsOneWidget);
+      expect(find.textContaining('第6轮'), findsOneWidget);
+      expect(find.textContaining('展开全部'), findsNothing);
+    });
+
     testWidgets('idle card loading shows spinner at domain badge', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(

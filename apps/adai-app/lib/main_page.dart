@@ -622,14 +622,9 @@ class _MainPageState extends State<MainPage>
           ),
           if (!_scrollAtBottom) _buildLatestBar(),
           if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),
-          GestureDetector(
-            onVerticalDragEnd: (d) {
-              if (d.primaryVelocity != null && d.primaryVelocity! < -200) {
-                widget.onPullUp?.call();
-              }
-            },
-            child: InputBar(key: _inputBarKey, onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
-          ),
+          // #16：输入框不再挂「上滑切世界」手势——打字上滑会误触切走 World，
+          // MainPage 重建导致输入草稿丢失。切世界改由 Feed 区/壳层手势（带起点排除）负责。
+          InputBar(key: _inputBarKey, onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
         ],
       ),
     );
