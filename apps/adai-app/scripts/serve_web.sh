@@ -22,6 +22,19 @@ echo "=== Applying local patches ==="
 # Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
 perl -i -pe 's/(_flutter\.loader\.load\(\{)/$1\n  config: {\n    canvasKitBaseUrl: "canvaskit\/"\n  },/' build/web/flutter_bootstrap.js
 
+# #200 回归校验：canvasKitBaseUrl 必须唯一。
+# Flutter 升级若改变 bootstrap 模板（load 调用已带 config 键）→ 注入会与之重复，
+# 浏览器可能从 CDN 拉 CanvasKit（被墙白屏）。重复则报错终止，避免静默事故。
+BOOTSTRAP="build/web/flutter_bootstrap.js"
+CANVAS_COUNT=$(grep -o 'canvasKitBaseUrl' "$BOOTSTRAP" | wc -l | tr -d ' ')
+if [ "$CANVAS_COUNT" != "1" ]; then
+  echo "ERROR: flutter_bootstrap.js 中 canvasKitBaseUrl 出现 $CANVAS_COUNT 次（期望恰好 1 次）。"
+  echo "Flutter 版本可能已改变 bootstrap 模板，导致补丁重复注入 → 将从 CDN 拉 CanvasKit（被墙白屏）。"
+  echo "请检查 scripts/serve_web.sh 的 perl 注入逻辑后重试。"
+  exit 1
+fi
+echo "OK: canvasKitBaseUrl 注入唯一（$CANVAS_COUNT 次）"
+
 # Patch index.html: add fetch interceptor for blocked font CDN
 # Routes fonts.gstatic.com requests to local VALID fonts（web/fonts/NotoSansSC.woff2 是 109B 坏文件，不可用）：
 #   Roboto → Roboto.woff2（拉丁）；中文（Noto Sans SC 等）→ Hiragino Sans GB.ttc

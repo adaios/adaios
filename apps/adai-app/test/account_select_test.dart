@@ -41,7 +41,7 @@ Widget _wrap(ApiService api, {String? currentUserId, required void Function(Stri
 }
 
 void main() {
-  testWidgets('loading 态显示加载中（请求挂起时不退出 loading）', (tester) async {
+  testWidgets('loading 态显示加载中 + spinner（#198/#230：灰字之外加 CircularProgressIndicator）', (tester) async {
     // 永不 resolve 的 future：锁定 loading 帧，验证 loading 文字渲染
     final never = Completer<http.Response>().future;
     final api = ApiService(baseUrl: 'http://test', client: MockClient((req) => never));
@@ -49,6 +49,7 @@ void main() {
     await tester.pump(); // 只渲染一帧，不等 settle（请求挂起）
 
     expect(find.text('加载中…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     // 清理：卸载 widget 树，避免遗留挂起状态
     await tester.pumpWidget(const SizedBox.shrink());
@@ -69,7 +70,7 @@ void main() {
     expect(find.text('当前'), findsOneWidget);     // 当前账号标绿
   });
 
-  testWidgets('点击账号行 → 触发 onSelect 回调', (tester) async {
+  testWidgets('点击账号行 → InkWell 按压 + SnackBar「已切换至 @xxx」+ 触发 onSelect（#198）', (tester) async {
     final api = ApiService(baseUrl: 'http://test', client: MockClient(
       _availableHandler(['adai']),
     ));
@@ -77,22 +78,34 @@ void main() {
     await tester.pumpWidget(_wrap(api, onSelect: (u) => selected = u));
     await tester.pumpAndSettle();
 
+    // 账号行由 InkWell 包裹（#198 按压反馈），不再是裸 GestureDetector
+    expect(
+      find.ancestor(of: find.text('adai'), matching: find.byType(InkWell)),
+      findsOneWidget,
+    );
+
     await tester.tap(find.text('adai'));
+    await tester.pump(); // SnackBar 入场动画
+    expect(find.text('已切换至 @adai'), findsOneWidget);
     expect(selected, 'adai');
+
+    // 收尾：推进 SnackBar 展示时长，避免遗留 pending timer
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('空账号 → 空态文案 + 「重新加载」可点击（P18 可执行）', (tester) async {
+  testWidgets('空账号 → 空态文案「请先在阿呆控制台创建账号」+ 「重新加载」可点击（#230）', (tester) async {
     final api = ApiService(baseUrl: 'http://test', client: MockClient(
       _availableHandler([]),
     ));
     await tester.pumpWidget(_wrap(api, onSelect: (_) {}));
     await tester.pumpAndSettle();
 
-    expect(find.text('暂无可用账号，请先在后台创建账号'), findsOneWidget);
+    expect(find.text('请先在阿呆控制台创建账号'), findsOneWidget);
     // 空态提供可执行重试动作：点击重载不抛异常，仍回空态
     await tester.tap(find.text('重新加载'));
     await tester.pumpAndSettle();
-    expect(find.text('暂无可用账号，请先在后台创建账号'), findsOneWidget);
+    expect(find.text('请先在阿呆控制台创建账号'), findsOneWidget);
   });
 
   testWidgets('错误态 → 人话错误文案 + 重试回调重新加载成功', (tester) async {
@@ -109,5 +122,22 @@ void main() {
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
     expect(find.text('adai'), findsOneWidget); // 重试后加载成功
+  });
+
+  group('#177 available DTO（List<String>）', () {
+    test('getAvailableAccounts 解析纯 userId 数组（#215 最小集）', () async {
+      final api = ApiService(baseUrl: 'http://test', client: MockClient(
+        _availableHandler(['adai', 'alice']),
+      ));
+      final accounts = await api.getAvailableAccounts();
+      expect(accounts, ['adai', 'alice']);
+    });
+
+    test('available 空数组 → 空列表（不抛异常）', () async {
+      final api = ApiService(baseUrl: 'http://test', client: MockClient(
+        _availableHandler([]),
+      ));
+      expect(await api.getAvailableAccounts(), isEmpty);
+    });
   });
 }

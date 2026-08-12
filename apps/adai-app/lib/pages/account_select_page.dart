@@ -82,7 +82,13 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)));
+      // REVIEW #198/#230：loading 态加 CircularProgressIndicator（与全项目基线一致）
+      return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 28, height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+        SizedBox(height: 12),
+        Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)),
+      ]));
     }
     if (_error != null) {
       return Center(
@@ -113,7 +119,7 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(32, 0, 32, 16),
-            child: Text('暂无可用账号，请先在后台创建账号',
+            child: Text('请先在阿呆控制台创建账号',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: AppColors.darkGrey5, height: 1.6)),
           ),
@@ -142,10 +148,9 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
 
   Widget _buildRow(String userId) {
     final isCurrent = userId == widget.currentUserId;
-    return GestureDetector(
-      onTap: () => widget.onSelect(userId),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
         decoration: BoxDecoration(
           color: AppColors.darkSurface,
           borderRadius: BorderRadius.circular(12),
@@ -156,25 +161,40 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
                 : AppColors.darkBorder,
           ),
         ),
-        // #215：available 最小集只返回 userId，选号页不再渲染 admin/普通用户角色标记
-        child: Row(children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.darkBlue.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.person, size: 18, color: AppColors.darkBlue),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            // REVIEW #198：切换账号后确认反馈。ScaffoldMessenger 挂在 MaterialApp 层，
+            // pop/重建后 SnackBar 仍在目标页显示，不会因本页销毁而消失。
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('已切换至 @$userId', style: const TextStyle(fontSize: 13)),
+              backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+            ));
+            widget.onSelect(userId);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            // #215：available 最小集只返回 userId，选号页不再渲染 admin/普通用户角色标记
+            child: Row(children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.darkBlue.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.person, size: 18, color: AppColors.darkBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(userId,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+              ),
+              if (isCurrent)
+                Text('当前', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+            ]),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(userId,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-          ),
-          if (isCurrent)
-            Text('当前', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),
-        ]),
+        ),
       ),
     );
   }

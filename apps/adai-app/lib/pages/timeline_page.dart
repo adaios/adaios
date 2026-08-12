@@ -97,17 +97,41 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   /// 点击缩略图 → 全图 Dialog（点任意处关闭，批2 原图可见）。
+  /// REVIEW #199：全图加载补 errorBuilder/loadingBuilder——后端 404 或慢加载时
+  /// 显示占位（broken image + 失败文案 / 居中 spinner），而非空白 Dialog。
   void _showFullImage(String id) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
-          child: Image.network(
-            widget.api.mediaUrl(id),
-            headers: widget.api.mediaHeaders,
-            fit: BoxFit.contain,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              widget.api.mediaUrl(id),
+              headers: widget.api.mediaHeaders,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => Container(
+                constraints: const BoxConstraints(maxWidth: 300),
+                padding: const EdgeInsets.all(28),
+                color: AppColors.darkSurface2,
+                child: const Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.broken_image_outlined, size: 36, color: AppColors.darkGrey5),
+                  SizedBox(height: 10),
+                  Text('图片加载失败', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+                ]),
+              ),
+              loadingBuilder: (_, child, progress) => progress == null
+                  ? child
+                  : Container(
+                      width: 140, height: 140,
+                      color: AppColors.darkSurface2,
+                      child: const Center(child: SizedBox(width: 24, height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
+                    ),
+            ),
           ),
         ),
       ),

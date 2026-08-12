@@ -44,7 +44,9 @@ class _MemoryPageState extends State<MemoryPage> {
     final date = DateTime(d.year, d.month, d.day);
     if (date == today) return '今天';
     if (date == yesterday) return '昨天';
-    return '${d.month}/${d.day}';
+    // 今年内 M/d；跨年记忆补年份（REVIEW #125，防 12/31 vs 1/1 难区分）
+    if (d.year == now.year) return '${d.month}/${d.day}';
+    return '${d.year}/${d.month}/${d.day}';
   }
 
   void _prevDay() {

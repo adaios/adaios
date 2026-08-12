@@ -296,17 +296,58 @@ class _MainPageState extends State<MainPage>
   }
 
   /// 多模态 L4：多图 + 可选文字 → 逐张上传（caption 共享）→ 刷新 Feed + 轻提示。
+  /// REVIEW #174：逐张上传进度反馈——每张图先插入 loading 占位卡（立即视觉反馈，
+  /// 不再多图干等只盯接口），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
-    try {
-      int ok = 0;
+    if (images.isEmpty) return;
+    final now = TimeOfDay.now();
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final placeholderIds = <String>[];
+    setState(() {
       for (final image in images) {
-        await _api.uploadImage(
+        final pid = 'media_${DateTime.now().microsecondsSinceEpoch}_${placeholderIds.length}';
+        placeholderIds.add(pid);
+        _cards.add(FeedCardData(
+          id: pid, type: FeedCardType.record, time: timeStr,
+          content: caption.isEmpty ? image.name : caption,
+          mode: CardMode.idle, loading: true,
+        ));
+      }
+    });
+    _scrollToBottom();
+
+    int ok = 0;
+    try {
+      for (var i = 0; i < images.length; i++) {
+        final image = images[i];
+        final resp = await _api.uploadImage(
           bytes: image.bytes,
           filename: image.name,
           mimeType: _mimeTypeOf(image.extension),
           caption: caption,
         );
         ok++;
+        if (!mounted) return;
+        // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
+        setState(() {
+          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
+          if (idx >= 0) {
+            final fallback = caption.isEmpty ? image.name : caption;
+            _cards[idx] = FeedCardData(
+              id: resp.recordId.isEmpty ? placeholderIds[i] : resp.recordId,
+              type: FeedCardType.record,
+              time: timeStr,
+              content: resp.summary.isEmpty ? fallback : resp.summary,
+              summary: resp.summary.isEmpty ? null : resp.summary,
+              tags: resp.tags.isNotEmpty ? resp.tags : null,
+              mode: CardMode.idle,
+              intent: IntentType.log,
+              domain: 'life',
+              mediaUrl: resp.recordId.isEmpty ? null : _api.mediaUrl(resp.recordId),
+              mediaHeaders: resp.recordId.isEmpty ? null : _api.mediaHeaders,
+            );
+          }
+        });
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -317,6 +358,13 @@ class _MainPageState extends State<MainPage>
       await _loadFeed();
     } catch (e) {
       if (!mounted) return;
+      // 失败后未上传的占位卡置 error（可重试），已上传完成的不动
+      setState(() {
+        for (var i = ok; i < placeholderIds.length; i++) {
+          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
+          if (idx >= 0) _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('图片上传失败: ${_extractApiError(e)}', style: const TextStyle(fontSize: 13)),
         backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,

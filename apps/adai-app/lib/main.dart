@@ -13,12 +13,26 @@ Future<void> main() async {
   // v1.0.0 多账号：URL ?userId= 优先 > 持久化上次账号 > 无记录（首屏选号）
   final urlUserId = resolveUserId();
   final savedUserId = await UserStore.loadUserId();
+  final selection = resolveUserSelection(urlUserId: urlUserId, savedUserId: savedUserId);
+  runApp(RootApp(userId: selection.userId, needsSelect: selection.needsSelect));
+}
+
+/// 解析最终生效 userId 与是否强制首屏选号（v1.0.0 多账号）。
+/// 规则：URL `?userId=` 优先 > 持久化上次账号 > 无记录（首屏选号）。
+/// REVIEW #182：持久化 'default' 视为无效（default 账号已随数据迁移移除），
+/// 避免绕过选号流程的请求落到空 data/default/ 分支静默分裂数据。
+/// REVIEW #177：抽成纯函数，让「持久化降级」可单测。
+@visibleForTesting
+({String userId, bool needsSelect}) resolveUserSelection({
+  required String urlUserId,
+  String? savedUserId,
+}) {
   final hasUrlUserId = urlUserId != 'default';
-  // REVIEW #182：持久化 'default' 视为无效（default 账号已随数据迁移移除），
-  // 避免绕过选号流程的请求落到空 data/default/ 分支静默分裂数据
   final effectiveSaved = (savedUserId != null && savedUserId != 'default') ? savedUserId : null;
-  final userId = hasUrlUserId ? urlUserId : (effectiveSaved ?? 'default');
-  runApp(RootApp(userId: userId, needsSelect: !hasUrlUserId && effectiveSaved == null));
+  return (
+    userId: hasUrlUserId ? urlUserId : (effectiveSaved ?? 'default'),
+    needsSelect: !hasUrlUserId && effectiveSaved == null,
+  );
 }
 
 /// 从入口跳转的 query 参数解析当前用户 ID（`?userId=xxx`）。
@@ -35,13 +49,18 @@ String resolveUserIdFrom(Uri uri) {
 }
 
 class RootApp extends StatefulWidget {
-  const RootApp({super.key, this.userId = 'default', this.needsSelect = false});
+  const RootApp({super.key, this.userId = 'default', this.needsSelect = false, this.apiFactory});
 
   /// 初始用户 ID（URL query / 持久化解析结果）。
   final String userId;
 
   /// 首次进入无账号记录 → 显示首屏选号页。
   final bool needsSelect;
+
+  /// 测试注入：按 userId 构造 ApiService（默认真实实现）。
+  /// REVIEW #177：注入 factory 让「切换账号重建整树 / 双击防重入」链路可测
+  /// （复用 MockClient 基建，RootApp/DualWorldShell 不再硬编码真实 ApiService）。
+  final ApiService Function(String userId)? apiFactory;
 
   @override
   State<RootApp> createState() => _RootAppState();
@@ -83,13 +102,17 @@ class _RootAppState extends State<RootApp> {
   /// REVIEW #185：选号回调防重入（双击在 pop 动画期间重复触发）。
   bool _handlingSelect = false;
 
+  /// 按 userId 构造 ApiService（优先测试注入的 factory）。
+  ApiService _apiFor(String userId) =>
+      widget.apiFactory?.call(userId) ?? ApiService(userId: userId);
+
   /// 切换账号：push 选号页，选择后回传重建。
   void _openAccountSelect() {
     final nav = _navigatorKey.currentState;
     if (nav == null) return;
     nav.push(MaterialPageRoute(
       builder: (_) => AccountSelectPage(
-        api: ApiService(userId: _userId),
+        api: _apiFor(_userId),
         currentUserId: _userId,
         onSelect: (uid) {
           // #204：守卫包住闭包整体（含 nav.pop()），快速双击不把 home 也 pop 掉。
@@ -117,12 +140,13 @@ class _RootAppState extends State<RootApp> {
       ),
       home: _needsSelect
           ? AccountSelectPage(
-              api: ApiService(userId: _userId),
+              api: _apiFor(_userId),
               onSelect: _selectAccount,
             )
           : DualWorldShell(
               key: ValueKey(_userId),
               userId: _userId,
+              apiFactory: widget.apiFactory,
               onSwitchAccount: _openAccountSelect,
             ),
     );
@@ -131,7 +155,7 @@ class _RootAppState extends State<RootApp> {
 
 /// 双主页壳 — World A (Feed) 与 World B (Launcher) 无缝切换。
 class DualWorldShell extends StatefulWidget {
-  const DualWorldShell({super.key, this.userId = 'default', this.onSwitchAccount});
+  const DualWorldShell({super.key, this.userId = 'default', this.onSwitchAccount, this.apiFactory});
 
   /// 当前用户 ID（透传给 ApiService 与 MainPage）。
   final String userId;
@@ -139,12 +163,17 @@ class DualWorldShell extends StatefulWidget {
   /// 切换账号回调（RootApp 提供：push 选号页 → 选定后重建整树）。
   final VoidCallback? onSwitchAccount;
 
+  /// 测试注入：按 userId 构造 ApiService（默认真实实现）。
+  final ApiService Function(String userId)? apiFactory;
+
   @override
   State<DualWorldShell> createState() => _DualWorldShellState();
 }
 
 class _DualWorldShellState extends State<DualWorldShell> {
-  late final ApiService _api = ApiService(userId: widget.userId);
+  // REVIEW #177：切换账号重建整树（ValueKey 换 userId）→ 新 State 新建 ApiService，
+  // 缓存（tags/timeline/memory）随之清空，不跨账号串数据。
+  late final ApiService _api = widget.apiFactory?.call(widget.userId) ?? ApiService(userId: widget.userId);
   bool _showWorldB = false;
   String? _filterTag;
 
@@ -201,6 +230,9 @@ class _DualWorldShellState extends State<DualWorldShell> {
             : MainPage(
                 key: ValueKey('worldA-${_filterTag ?? ''}'),
                 userId: widget.userId,
+                // REVIEW #177：传入壳层共享 _api（测试注入 factory 时 MainPage 也走 MockClient；
+                // 生产与 LauncherPage 共享同一 ApiService 实例与缓存，避免双实例缓存分裂）
+                api: _api,
                 onPullUp: _toggleWorld,
                 filterTag: _filterTag,
                 refreshTick: _feedRefreshTick,
