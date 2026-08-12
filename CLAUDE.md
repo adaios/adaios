@@ -87,13 +87,16 @@ apps/
 com.adaiadai.core/
 ├── kernel/                     ★ Kernel — 操作系统内核层
 │   ├── identity/                 个人档案（静态偏好、AI 协作规则）
-│   ├── record/                   最小个人事件单元（ContentRecord / CardRecord / RecordRepository）
+│   ├── record/                   最小个人事件单元（ContentRecord / CardRecord / RecordRepository / CardRepository 端口）
 │   ├── timeline/                 Record 的时间序列投影（TimelineEntry / TimelineProjection）
 │   ├── market/                   行情数据源（MarketDataSource / TencentMarketDataSource / MarketData）
+│   ├── ai/                       AI 端口（AiClient / AiUnderstanding——实现在 infrastructure/ai，#22 依赖倒置）
+│   ├── storage/                  存储端口（FileStorage——实现 LocalFileStorage 归 infrastructure/storage）
 │   ├── context/                  ★ Context Engine（核心能力）
 │   │   ├── IntentRecognizer       中文意图识别（STATEMENT / QUESTION，纯 AI，失败抛异常）
 │   │   ├── engine/                上下文引擎（ContextContributor 插件机制）
 │   │   │   ├── ContextContributor  接口 → Domain OS 实现（isDefault / supports / enrich / globalContext）
+│   │   │   ├── TagIndexReader      标签索引只读端口（实现 TagIndexService，#22）
 │   │   │   ├── DefaultContextContributor 通用场景回退
 │   │   │   └── ContextPackage      上下文数据包
 │   │   ├── prompt/                Prompt 模板管理（预留）
@@ -137,7 +140,7 @@ com.adaiadai.core/
 │
 └── infrastructure/             出站适配层 — 依赖倒置
     ├── WebConfig                 CORS 跨域配置
-    ├── storage/                  文件存储（FileStorage / LocalFileStorage / StorageException）
+    ├── storage/                  文件存储实现（LocalFileStorage / StorageException；FileStorage 端口在 kernel/storage）
     │   ├── RecordFileRepository   Record 文件读写（保存时自动触发标签索引）
     │   ├── IdentityFileRepository Identity 文件读写
     │   ├── PositionFileRepository 持仓文件读写
@@ -149,9 +152,8 @@ com.adaiadai.core/
     ├── database/                 数据库访问（预留，Phase 2）
     ├── search/                   搜索（SearchService 在 kernel/search/，全文搜索 + 搜索结果 DTO）
     └── ai/                       ★ AI 模型接入（非业务层）
-        ├── llm/                   LLM 客户端
-        │   ├── AiClient           接口（@ConditionalOnProperty 切换）
-        │   └── DeepSeekAiClient   DeepSeek（唯一实现）
+        ├── llm/                   LLM 客户端实现（AiClient 端口在 kernel/ai，#22）
+        │   ├── DeepSeekAiClient   DeepSeek（唯一实现）
         │   └── LlmResponseParser  LLM 回复解析
         ├── vision/                视觉理解（多模态 L4）
         │   ├── VisualAiClient      接口

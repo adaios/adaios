@@ -99,7 +99,8 @@ graph TB
     class ProjectTaskService,ProjectStatusService application;
     class ProjectStatusController application;
     class TradingContributor,LifeContributor,ProjectContributor domain;
-    class FileStorage,TagIndex,CardRepo,ProjectFileRepo,AiClient infra;
+    class TagIndex,ProjectFileRepo infra;
+    class FileStorage,AiClient,CardRepo kernel;
 ```
 
 ## 二、数据写入流
