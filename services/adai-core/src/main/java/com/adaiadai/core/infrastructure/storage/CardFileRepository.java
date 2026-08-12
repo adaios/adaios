@@ -1,8 +1,10 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.IdGenerator;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.CardRecord.Turn;
+import com.adaiadai.core.kernel.record.CardRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
@@ -39,7 +41,7 @@ import java.util.stream.Collectors;
  * </pre>
  */
 @Repository
-public class CardFileRepository {
+public class CardFileRepository implements CardRepository {
 
     private static final Logger log = LoggerFactory.getLogger(CardFileRepository.class);
     private static final String CARDS_DIR = "records/cards";

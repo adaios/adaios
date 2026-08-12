@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
 import com.adaiadai.core.kernel.memory.MemoryPattern;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.kernel.memory.MemoryPreference;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * LlmResponseParser — 从 LLM 回复中解析出 AiUnderstanding。
@@ -23,6 +25,30 @@ public class LlmResponseParser {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private LlmResponseParser() {}
+
+    /** 代码块围栏开标记（``` 或 ```markdown/```json 等语言标识）。 */
+    private static final Pattern CODE_FENCE_OPEN = Pattern.compile("^```[a-zA-Z0-9]*\\s*\\r?\\n");
+
+    /**
+     * 剥离 markdown 代码块围栏（REVIEW #202）。
+     * <p>
+     * 生成型任务（如交易复盘 generate 正文）AI 有时用 {@code ```} / {@code ```markdown}
+     * 包裹纯文本正文，围栏属元数据，渲染复盘时会被原样显示破坏格式。
+     * 与 {@link #extractNaturalText} 不同：generate 正文不是 JSON，extractJson 找不到 JSON
+     * 会原样返回含围栏的文本，这里专门处理首尾围栏。
+     */
+    public static String stripCodeFences(String text) {
+        if (text == null) return null;
+        String stripped = text.strip();
+        var m = CODE_FENCE_OPEN.matcher(stripped);
+        if (m.find()) {
+            stripped = stripped.substring(m.end()).strip();
+            if (stripped.endsWith("```")) {
+                stripped = stripped.substring(0, stripped.length() - 3).strip();
+            }
+        }
+        return stripped;
+    }
 
     /**
      * 从 LLM 回复文本解析出 AiUnderstanding。

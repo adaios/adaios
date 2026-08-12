@@ -1,6 +1,6 @@
 package com.adaiadai.core.kernel.memory;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

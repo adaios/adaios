@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

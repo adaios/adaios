@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
+import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
@@ -31,7 +32,7 @@ class BriefAppServiceTest {
     private RecordFileRepository recordRepository;
     private IdentityFileRepository identityRepository;
     private BriefAppService briefAppService;
-    private com.adaiadai.core.infrastructure.ai.llm.AiClient aiClient;
+    private AiClient aiClient;
 
     @BeforeEach
     void setUp() {
@@ -108,7 +109,7 @@ class BriefAppServiceTest {
     @Test
     void generateBrief_degradesToEmojiPrefixedLines_noBullet() {
         // 降级路径：AI 调用失败时产出 emoji 前缀行，不再用绿点「• 」（顶部摘要前缀冲突修复）
-        aiClient = mock(com.adaiadai.core.infrastructure.ai.llm.AiClient.class);
+        aiClient = mock(AiClient.class);
         when(aiClient.understand(any())).thenThrow(new RuntimeException("mock down"));
         TagIndexService tagIndexService = new TagIndexService(fileStorage);
         briefAppService = buildService(tagIndexService);

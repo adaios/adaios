@@ -1,6 +1,6 @@
 package com.adaiadai.core.infrastructure.ai.interaction;
 
-import com.adaiadai.core.infrastructure.storage.FileStorage;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

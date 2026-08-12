@@ -147,6 +147,8 @@ public class TradingController {
         try {
             // 构建入库候选内容
             String content = buildPromoteContent(date, request, reviewContent);
+            // #203：候选文件尾保证换行（markdown 文件约定 EOF newline）
+            if (!content.endsWith("\n")) content += "\n";
             // 写入 os/trading-os/99-inbox/
             Path inboxPath = Paths.get("../../os/trading-os/99-inbox")
                     .toAbsolutePath().normalize();

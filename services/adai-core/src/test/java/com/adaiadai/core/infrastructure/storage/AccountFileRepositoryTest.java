@@ -91,4 +91,24 @@ class AccountFileRepositoryTest {
                 "createdAt 应为 ISO 字符串，实际: " + json);
         assertFalse(json.contains("[ 2026, 8, 2 ]"), "不应再序列化为数组: " + json);
     }
+
+    @Test
+    void findAll_readsLegacyArrayCreatedAt() throws Exception {
+        // REVIEW #202 回归：旧版 accounts.json 用 [年,月,日] 数组存 createdAt，
+        // JavaTimeModule 的 LocalDate 反序列化应兼容数组格式（_fromArray），账号不因格式迁移丢失。
+        String legacy = """
+                [ { "userId" : "olduser", "role" : "user", "enabled" : true, "createdAt" : [ 2026, 7, 15 ] } ]
+                """;
+        Files.createDirectories(tempDir.resolve("accounts"));
+        Files.writeString(tempDir.resolve("accounts/accounts.json"), legacy, StandardCharsets.UTF_8);
+
+        var repo = repo();
+        repo.init();
+
+        List<Account> accounts = repo.findAll();
+        assertEquals(1, accounts.size(), "旧数组格式应被解析，不丢账号");
+        assertEquals("olduser", accounts.get(0).userId());
+        assertEquals(LocalDate.of(2026, 7, 15), accounts.get(0).createdAt(),
+                "旧数组 [2026,7,15] 应解析为 LocalDate 2026-07-15");
+    }
 }

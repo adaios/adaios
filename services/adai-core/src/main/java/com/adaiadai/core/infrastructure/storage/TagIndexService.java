@@ -1,5 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.kernel.context.engine.TagIndexReader;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -24,7 +26,7 @@ import java.util.stream.Collectors;
  * 只依赖 FileStorage，不依赖 RecordRepository（避免循环依赖）。
  */
 @Service
-public class TagIndexService {
+public class TagIndexService implements TagIndexReader {
 
     private static final Logger log = LoggerFactory.getLogger(TagIndexService.class);
 

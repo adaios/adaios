@@ -1,6 +1,8 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiClient;
 
 import java.util.List;
 

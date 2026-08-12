@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.IdGenerator;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -61,7 +62,15 @@ public class RecordFileRepository implements RecordRepository {
 
     @Override
     public Optional<ContentRecord> findById(String userId, String id) {
-        // 遍历该用户所有 records 目录查找匹配的文件
+        // #19 优化：rec_ 前缀 + 标准格式的 id 可直接从 id 推导年月路径直读，避免全量扫。
+        if (id != null && id.matches("rec_\\d{8}_\\d{9}")) {
+            String path = RECORDS_DIR + "/" + id.substring(4, 8) + "/" + id.substring(8, 10) + "/" + id + ".md";
+            ContentRecord record = parseFromFile(userId, path);
+            if (record != null && id.equals(record.id())) {
+                return Optional.of(record);
+            }
+        }
+        // 兼容回退：id 月份 ≠ createdAt 月份（月边界迁移）/ 不规则历史 id → 全量扫兜底
         return findAll(userId).stream()
                 .filter(r -> r.id().equals(id))
                 .findFirst();
@@ -69,9 +78,11 @@ public class RecordFileRepository implements RecordRepository {
 
     @Override
     public List<ContentRecord> findAll(String userId) {
-        List<String> files = fileStorage.listFiles(userId, "");
+        // #19 优化：限定 records/ 目录扫描（原 listFiles("") 全盘扫用户目录，
+        // 会遍历 memory/index/ai-logs 等无关目录；records/ 下还有 cards/、media/ 靠 filter 排除）
+        List<String> files = fileStorage.listFiles(userId, RECORDS_DIR);
         return files.stream()
-                .filter(f -> f.startsWith(RECORDS_DIR + "/") && f.endsWith(".md"))
+                .filter(f -> f.endsWith(".md"))
                 .filter(f -> !f.startsWith(RECORDS_DIR + "/cards/"))
                 .filter(f -> {
                     String fileName = f.substring(f.lastIndexOf('/') + 1);

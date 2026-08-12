@@ -1,6 +1,6 @@
 package com.adaiadai.core.kernel.context;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
+import com.adaiadai.core.kernel.ai.AiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

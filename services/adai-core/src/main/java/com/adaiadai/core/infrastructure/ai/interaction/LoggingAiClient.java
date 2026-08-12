@@ -1,7 +1,7 @@
 package com.adaiadai.core.infrastructure.ai.interaction;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.DeepSeekAiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import org.slf4j.Logger;
@@ -45,7 +45,7 @@ public class LoggingAiClient implements AiClient {
         return around(() -> delegate.understand(ctx), (trace, status, dur, result, error) -> {
             AiUnderstanding r = result;
             return base(trace, "understand", "deepseek", ctx.scene(),
-                    ctx.prompt(), ctx.estimateTokens(),
+                    ctx.prompt(), null, ctx.estimateTokens(),
                     status, dur, error,
                     r != null && r.rawResponse() != null ? r.rawResponse().length() : 0,
                     r != null ? summarizeUnderstanding(r) : null);
@@ -57,7 +57,7 @@ public class LoggingAiClient implements AiClient {
         return around(() -> delegate.generate(contextPackage, systemPrompt),
                 (trace, status, dur, result, error) -> base(
                         trace, "generate", "deepseek", contextPackage.scene(),
-                        contextPackage.prompt(), contextPackage.estimateTokens(),
+                        contextPackage.prompt(), systemPrompt, contextPackage.estimateTokens(),
                         status, dur, error,
                         result != null ? result.length() : 0,
                         result != null ? truncate(result, 500) : null));
@@ -68,7 +68,7 @@ public class LoggingAiClient implements AiClient {
         return around(() -> delegate.recognizeIntent(content),
                 (trace, status, dur, result, error) -> base(
                         trace, "recognizeIntent", "deepseek", "intent",
-                        content, content != null ? content.length() / 2 : 0,
+                        content, null, content != null ? content.length() / 2 : 0,
                         status, dur, error,
                         result != null ? result.length() : 0,
                         result != null ? truncate(result, 100) : null));
@@ -111,7 +111,7 @@ public class LoggingAiClient implements AiClient {
 
     /** 组装基础字段（trace 上的关联锚点可为 null，此时靠 scene/prompt 追溯）。 */
     private AiInteractionLog base(AiTraceContext.Trace trace, String kind, String model, String scene,
-                                  String prompt, Integer estimatedTokens,
+                                  String prompt, String systemPrompt, Integer estimatedTokens,
                                   String status, long durationMs, String error,
                                   Integer responseLength, String responseSummary) {
         return new AiInteractionLog(
@@ -123,7 +123,7 @@ public class LoggingAiClient implements AiClient {
                 trace != null ? trace.recordId() : null,
                 trace != null ? trace.cardId() : null,
                 trace != null ? trace.source() : null,
-                model, prompt, estimatedTokens,
+                model, prompt, systemPrompt, estimatedTokens,
                 status, error, responseLength, responseSummary);
     }
 

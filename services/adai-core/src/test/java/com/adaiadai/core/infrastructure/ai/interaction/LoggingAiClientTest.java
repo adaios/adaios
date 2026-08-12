@@ -1,6 +1,6 @@
 package com.adaiadai.core.infrastructure.ai.interaction;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.DeepSeekAiClient;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
@@ -91,6 +91,9 @@ class LoggingAiClientTest {
         assertEquals("generate", log.kind());
         assertEquals("trading_review", log.source());
         assertTrue(log.responseSummary().contains("生成的复盘正文"));
+        // #231：generate 记录自定义 system 指令（复盘模板），understand/intent 为 null
+        assertEquals("复盘模板", log.systemPrompt());
+        assertNotNull(log.systemPrompt());
     }
 
     @Test

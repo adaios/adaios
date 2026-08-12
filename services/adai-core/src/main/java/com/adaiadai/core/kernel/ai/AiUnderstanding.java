@@ -1,4 +1,4 @@
-package com.adaiadai.core.infrastructure.ai.llm;
+package com.adaiadai.core.kernel.ai;
 
 import com.adaiadai.core.kernel.memory.MemoryPattern;
 import com.adaiadai.core.kernel.memory.MemoryPreference;

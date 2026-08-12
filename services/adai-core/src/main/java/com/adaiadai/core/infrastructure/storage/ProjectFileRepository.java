@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.project.Task;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.domain.project.TaskRepository;
 import com.adaiadai.core.domain.project.TaskStatus;
 import org.slf4j.Logger;

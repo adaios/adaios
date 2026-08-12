@@ -2,7 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.PositionRepository;
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
+import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;

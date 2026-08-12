@@ -1,7 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.MediaRecordAppService;
-import com.adaiadai.core.infrastructure.storage.FileStorage;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;

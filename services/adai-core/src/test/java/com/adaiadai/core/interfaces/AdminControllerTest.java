@@ -136,11 +136,11 @@ class AdminControllerTest {
         logger.log("adai", new AiInteractionLog(
                 "trace-1", "2026-08-12T10:00:00", 120L, "adai",
                 "understand", "note", "rec_1", null, "record", "deepseek",
-                "处理一条新记录。", 50, "ok", null, 200, "summary=测试"));
+                "处理一条新记录。", null, 50, "ok", null, 200, "summary=测试"));
         logger.log("adai", new AiInteractionLog(
                 "trace-2", "2026-08-12T10:01:00", 80L, "adai",
                 "generate", "trading", "rec_2", null, "trading_review", "deepseek",
-                "复盘模板...", 100, "ok", null, 300, "复盘正文..."));
+                "复盘模板...", "复盘 system 指令", 100, "ok", null, 300, "复盘正文..."));
 
         mvc.perform(get("/api/v1/admin/ai-logs")
                         .param("userId", "adai")
@@ -184,7 +184,7 @@ class AdminControllerTest {
             logger.log("adai", new AiInteractionLog(
                     "trace-" + i, "2026-08-12T10:00:00", 100L, "adai",
                     "understand", "note", "rec_" + i, null, "record", "deepseek",
-                    "prompt-" + i, 50, "ok", null, 200, "summary=" + i));
+                    "prompt-" + i, null, 50, "ok", null, 200, "summary=" + i));
         }
 
         mvc.perform(get("/api/v1/admin/ai-logs")

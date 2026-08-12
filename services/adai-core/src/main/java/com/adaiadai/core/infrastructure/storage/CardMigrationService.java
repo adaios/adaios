@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.record.CardRecord;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.record.CardRecord.Turn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

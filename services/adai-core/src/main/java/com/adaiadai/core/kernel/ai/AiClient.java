@@ -1,4 +1,4 @@
-package com.adaiadai.core.infrastructure.ai.llm;
+package com.adaiadai.core.kernel.ai;
 
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 
@@ -8,8 +8,9 @@ import com.adaiadai.core.kernel.context.engine.ContextPackage;
  * 接收 Context Engine 输出的 ContextPackage，返回 AI 理解结果。
  * 同时提供轻量意图识别兜底能力。
  * <p>
- * AI 在 AdaiOS 架构中属于基础设施层（非业务层），
- * 因此此接口位于 infrastructure/ai/llm，而非 kernel 或 domain。
+ * 端口定义归 kernel（REVIEW #22 依赖倒置：kernel 只依赖接口，不反向依赖基础设施）；
+ * 具体实现（DeepSeekAiClient 等）与装饰器归 infrastructure/ai/llm。
+ * AI 在 AdaiOS 架构中仍属基础设施层，只是「端口在 kernel、实现在 infra」。
  */
 public interface AiClient {
 

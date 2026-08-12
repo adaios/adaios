@@ -1,4 +1,4 @@
-package com.adaiadai.core.infrastructure.storage;
+package com.adaiadai.core.kernel.storage;
 
 import java.util.List;
 

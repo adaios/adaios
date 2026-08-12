@@ -1,7 +1,7 @@
 package com.adaiadai.core.interfaces;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;

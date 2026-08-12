@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
 import org.junit.jupiter.api.Test;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 
 import java.util.List;
 
@@ -276,5 +277,23 @@ class LlmResponseParserTest {
         assertNull(LlmResponseParser.extractNaturalText(null));
         assertEquals("", LlmResponseParser.extractNaturalText(""));
         assertEquals("   ", LlmResponseParser.extractNaturalText("   "));
+    }
+
+    // ── #202：generate 正文代码块围栏剥离 ──
+
+    @Test
+    void stripCodeFences_removesMarkdownFence() {
+        String fenced = "```markdown\n一、今日复盘\n二、操作回顾\n```";
+        assertEquals("一、今日复盘\n二、操作回顾", LlmResponseParser.stripCodeFences(fenced),
+                "应剥离 ```markdown 围栏，保留正文");
+    }
+
+    @Test
+    void stripCodeFences_plainFenceAndNoFence() {
+        assertEquals("正文内容", LlmResponseParser.stripCodeFences("```\n正文内容\n```"),
+                "裸 ``` 围栏同样剥离");
+        assertEquals("无围栏正文", LlmResponseParser.stripCodeFences("无围栏正文"),
+                "无围栏时原样返回");
+        assertNull(LlmResponseParser.stripCodeFences(null));
     }
 }

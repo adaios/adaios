@@ -1,6 +1,6 @@
 package com.adaiadai.core.kernel.memory;
 
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.kernel.IdGenerator;
 
 import java.time.LocalDateTime;

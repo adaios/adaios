@@ -5,7 +5,7 @@ import com.adaiadai.core.infrastructure.ai.vision.ImageRequest;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
-import com.adaiadai.core.infrastructure.storage.FileStorage;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -91,7 +91,8 @@ public class MediaRecordAppService {
 
         ContentRecord record = new ContentRecord(
                 id, "image", "user_input",
-                summary.length() > 50 ? summary.substring(0, 50) : summary,
+                // #166：按 code point 截断（substring 按 UTF-16 char 会拆断 emoji/surrogate pair）
+                truncateByCodePoints(summary, 50),
                 content, tags, now,
                 "log", summary, ImageUnderstanding.domainOf(understanding.category())
         );
@@ -221,7 +222,18 @@ public class MediaRecordAppService {
 
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
-        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "…";
+        return truncateByCodePoints(s, maxLen);
+    }
+
+    /**
+     * 按 code point 截断到 maxLen 个字符（#166）——UTF-16 {@code substring} 按 char 截断
+     * 会拆断 emoji/surrogate pair（如 title 中间出现半个 emoji）。
+     */
+    private static String truncateByCodePoints(String s, int maxLen) {
+        if (s == null) return null;
+        if (s.codePointCount(0, s.length()) <= maxLen) return s;
+        int end = s.offsetByCodePoints(0, maxLen);
+        return s.substring(0, end) + "…";
     }
 
     // ── 辅助 ──

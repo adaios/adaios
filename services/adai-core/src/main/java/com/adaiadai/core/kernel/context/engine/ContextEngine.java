@@ -1,7 +1,5 @@
 package com.adaiadai.core.kernel.context.engine;
 
-import com.adaiadai.core.infrastructure.storage.CardFileRepository;
-import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
 import com.adaiadai.core.kernel.search.SearchResult;
 import com.adaiadai.core.kernel.search.SearchService;
@@ -11,6 +9,7 @@ import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
+import com.adaiadai.core.kernel.record.CardRepository;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -46,26 +45,26 @@ public class ContextEngine {
 
     private final IdentityRepository identityRepository;
     private final RecordRepository recordRepository;
-    private final TagIndexService tagIndexService;
+    private final TagIndexReader tagIndexReader;
     private final MemoryService memoryService;
-    private final CardFileRepository cardFileRepository;
+    private final CardRepository cardRepository;
     private final List<ContextContributor> contributors;
     private final List<KnowledgeSource> knowledgeSources;
     private final SearchService searchService;
 
     public ContextEngine(IdentityRepository identityRepository,
                          RecordRepository recordRepository,
-                         TagIndexService tagIndexService,
+                         TagIndexReader tagIndexReader,
                          MemoryService memoryService,
-                         CardFileRepository cardFileRepository,
+                         CardRepository cardRepository,
                          List<ContextContributor> contributors,
                          List<KnowledgeSource> knowledgeSources,
                          SearchService searchService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
-        this.tagIndexService = tagIndexService;
+        this.tagIndexReader = tagIndexReader;
         this.memoryService = memoryService;
-        this.cardFileRepository = cardFileRepository;
+        this.cardRepository = cardRepository;
         this.contributors = contributors;
         this.knowledgeSources = knowledgeSources;
         this.searchService = searchService;
@@ -177,7 +176,7 @@ public class ContextEngine {
     private String loadCardContext(String userId, String cardId) {
         if (cardId == null) return "";
 
-        Optional<CardRecord> card = cardFileRepository.findById(userId, cardId);
+        Optional<CardRecord> card = cardRepository.findById(userId, cardId);
         if (card.isEmpty()) return "";
 
         List<CardRecord.Turn> turns = card.get().turns();
@@ -203,7 +202,7 @@ public class ContextEngine {
     private List<ChatMessage> buildConversationHistory(String userId, String cardId) {
         if (cardId == null) return List.of();
 
-        Optional<CardRecord> card = cardFileRepository.findById(userId, cardId);
+        Optional<CardRecord> card = cardRepository.findById(userId, cardId);
         if (card.isEmpty()) return List.of();
 
         List<CardRecord.Turn> turns = card.get().turns();
@@ -250,7 +249,7 @@ public class ContextEngine {
             return sb.toString();
         }
 
-        List<String> relatedIds = tagIndexService.findRelatedIds(userId, tags, MAX_RELATED_RECORDS);
+        List<String> relatedIds = tagIndexReader.findRelatedIds(userId, tags, MAX_RELATED_RECORDS);
 
         // 加载实际记录
         List<ContentRecord> related = relatedIds.stream()
@@ -509,7 +508,7 @@ public class ContextEngine {
   "sentiment": "positive 或 negative 或 neutral",
   "domain": "life(生活)/trading(交易)/project(项目)",
   "actionable": true 或 false,
-  "actionSuggestion": "需要后续操作写建议，否则写 null"
+  "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null"
 }
 
 domain判定规则（按优先级）：
@@ -530,7 +529,7 @@ domain判定规则（按优先级）：
                       "sentiment": "positive 或 negative 或 neutral",
                       "domain": "life(生活)/trading(交易)/project(项目)",
                       "actionable": true 或 false,
-                      "actionSuggestion": "如果需要后续操作，写建议；否则写 null"
+                      "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null"
 
 domain判定规则（按优先级）：
 - 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading

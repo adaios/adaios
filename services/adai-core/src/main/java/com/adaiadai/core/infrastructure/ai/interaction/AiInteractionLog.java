@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param source          调用来源（question / log / retry / brief / trading_review / conversation / media / intent 等）
  * @param model           模型族标识：deepseek / glm
  * @param prompt          发给模型的完整 prompt 全文（understand/generate 为 ContextPackage.prompt()，intent 为用户原文）
+ * @param systemPrompt    自定义 system 指令（仅 generate 有，如复盘模板；understand/intent 为 null，REVIEW #231）
  * @param estimatedTokens 预估输入 tokens（ContextPackage.estimateTokens()）
  * @param status          调用结果：ok / error
  * @param error           错误信息（status=error 时）
@@ -40,6 +41,7 @@ public record AiInteractionLog(
         String source,
         String model,
         String prompt,
+        String systemPrompt,
         Integer estimatedTokens,
         String status,
         String error,

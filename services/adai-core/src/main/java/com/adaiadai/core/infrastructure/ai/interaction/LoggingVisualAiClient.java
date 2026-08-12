@@ -85,7 +85,8 @@ public class LoggingVisualAiClient implements VisualAiClient {
                     trace != null ? trace.source() : null,
                     model,
                     prompt != null && !prompt.isBlank() ? prompt : "（图片理解，无备注）",
-                    null,
+                    null, // 视觉调用无自定义 system 指令（#231：仅 generate 有）
+                    null, // 图片无 token 预估
                     status, error,
                     responseSummary != null ? responseSummary.length() : 0,
                     responseSummary);

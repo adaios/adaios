@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import java.util.*;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import java.util.stream.Collectors;
 
 /**

@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import org.springframework.stereotype.Repository;
+import com.adaiadai.core.kernel.storage.FileStorage;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;

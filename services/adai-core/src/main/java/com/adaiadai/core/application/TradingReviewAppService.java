@@ -4,7 +4,8 @@ import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
+import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
+import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
@@ -105,6 +106,8 @@ public class TradingReviewAppService {
         // R1 AI 交互日志：挂载复盘记录锚点
         AiTraceContext.set(userId, reviewRecord.id(), null, "trading_review");
         String reviewContent = aiClient.generate(reviewCtx, REVIEW_SYSTEM_PROMPT);
+        // #202：AI 偶发用 ```markdown 围栏包裹复盘正文，剥离围栏防渲染破坏
+        reviewContent = LlmResponseParser.stripCodeFences(reviewContent);
 
         // 6. 持久化
         reviewRepository.save(userId, date, reviewContent);

@@ -1,8 +1,8 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
-import com.adaiadai.core.infrastructure.ai.llm.AiClient;
-import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
+import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.record.ContentRecord;

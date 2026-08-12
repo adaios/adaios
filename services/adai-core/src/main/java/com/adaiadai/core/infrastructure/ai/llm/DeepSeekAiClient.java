@@ -1,6 +1,8 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
+import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

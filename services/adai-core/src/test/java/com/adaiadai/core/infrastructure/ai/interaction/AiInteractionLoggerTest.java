@@ -23,7 +23,7 @@ class AiInteractionLoggerTest {
         return new AiInteractionLog(
                 traceId, "2026-08-12T10:00:00", 100L, "adai",
                 kind, "note", "rec_" + traceId, null, "record", "deepseek",
-                "prompt-" + traceId, 50, "ok", null, 200, "summary=" + traceId);
+                "prompt-" + traceId, null, 50, "ok", null, 200, "summary=" + traceId);
     }
 
     @Test
@@ -64,7 +64,7 @@ class AiInteractionLoggerTest {
         AiInteractionLog original = new AiInteractionLog(
                 "tx", "2026-08-12T09:30:00", 500L, "adai",
                 "understand", "trading", "rec_9", "card_1", "question", "deepseek",
-                "完整 prompt 文本", 123, "ok", null, 456, "summary=买入 | tags=[trading]");
+                "完整 prompt 文本", "复盘模板指令", 123, "ok", null, 456, "summary=买入 | tags=[trading]");
         logger.log("adai", original);
 
         AiInteractionLog read = logger.readDay("adai", LocalDate.now()).get(0);

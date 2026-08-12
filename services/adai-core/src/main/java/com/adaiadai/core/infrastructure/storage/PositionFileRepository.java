@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

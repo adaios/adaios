@@ -134,33 +134,19 @@ public class ProjectStatusAppService {
     }
 
     private int countApiEndpoints() {
-        // REVIEW #187：生产为 jar-only（无源码树）→ 优先读 Gradle 生成的 classpath 资源
-        // META-INF/endpoints.txt；开发环境无该资源时回退扫源码目录。
+        // REVIEW #228 统一口径：单一来源 = Gradle 生成的 META-INF/endpoints.txt。
+        // build.gradle.kts 的 processResources 依赖 generateEndpointsFile（bootJar/bootRun 均触发），
+        // 生产 jar-only 与开发环境读到同一份生成数据，dev/生产数字必然一致。
+        // 已移除旧 dev 回退扫源码（双实现口径不同：Java 侧 split 会数到注释/字符串里的注解名）。
         Integer fromResource = countEndpointsFromResource();
         if (fromResource != null) {
             return fromResource;
         }
-        // dev 回退：#150 动态统计 interfaces 包下的 *Mapping 注解数（曾硬编码 21，实际 46）
-        try {
-            Path interfacesDir = projectRoot.resolve(
-                    "services/adai-core/src/main/java/com/adaiadai/core/interfaces");
-            if (!Files.isDirectory(interfacesDir)) return 0;
-            long count = 0;
-            try (var stream = Files.walk(interfacesDir)) {
-                for (Path p : stream.filter(Files::isRegularFile)
-                        .filter(f -> f.getFileName().toString().endsWith(".java"))
-                        .toList()) {
-                    count += countMappingAnnotations(Files.readString(p, StandardCharsets.UTF_8));
-                }
-            }
-            return (int) count;
-        } catch (Exception e) {
-            log.debug("API 端点计数失败: {}", e.getMessage());
-            return 0;
-        }
+        log.warn("API 端点计数资源缺失（META-INF/endpoints.txt），请确认 processResources 已执行");
+        return 0;
     }
 
-    /** 读 classpath 资源 {@code META-INF/endpoints.txt}（Gradle 生成）；缺失/异常返回 null 触发源码回退。 */
+    /** 读 classpath 资源 {@code META-INF/endpoints.txt}（Gradle 生成，唯一口径来源）。 */
     private Integer countEndpointsFromResource() {
         try (var in = getClass().getClassLoader().getResourceAsStream("META-INF/endpoints.txt")) {
             if (in == null) return null;
@@ -170,18 +156,9 @@ public class ProjectStatusAppService {
                 return line != null ? Integer.parseInt(line.trim()) : 0;
             }
         } catch (Exception e) {
-            log.debug("API 端点资源读取失败，回退扫源码: {}", e.getMessage());
+            log.debug("API 端点资源读取失败: {}", e.getMessage());
             return null;
         }
-    }
-
-    private long countMappingAnnotations(String content) {
-        long count = 0;
-        for (String ann : List.of("@GetMapping", "@PostMapping", "@PutMapping",
-                "@PatchMapping", "@DeleteMapping")) {
-            count += content.split(java.util.regex.Pattern.quote(ann), -1).length - 1;
-        }
-        return count;
     }
 
     // ── 根目录解析（与 ProjectContextContributor 逻辑一致）──

@@ -58,8 +58,9 @@ tasks.named<Jar>("jar") {
     enabled = false
 }
 
-// REVIEW #187：部署为 jar-only（生产无源码树）→ 端点计数需打进 classpath 资源，
-// ProjectStatusAppService 生产读 endpoints.txt，开发环境回退扫源码。
+// REVIEW #187/#228：部署为 jar-only（生产无源码树）→ 端点计数打进 classpath 资源。
+// 单一口径来源（dev/生产都读这份生成数据）：逐行扫，跳过注释行（javadoc/块注释/行注释），
+// 防把注释里出现的注解名计入。ProjectStatusAppService 不再有第二个扫源码实现。
 val generateEndpointsFile = tasks.register("generateEndpointsFile") {
     val outDir = layout.buildDirectory.dir("resources/main/META-INF")
     outputs.dir(outDir)
@@ -69,9 +70,12 @@ val generateEndpointsFile = tasks.register("generateEndpointsFile") {
         var count = 0L
         if (dir.isDirectory) {
             dir.walkTopDown().filter { it.isFile && it.extension == "java" }.forEach { f ->
-                val text = f.readText()
-                for (a in anns) {
-                    count += Regex("@${a}\\b").findAll(text).count()
+                f.readLines().forEach { raw ->
+                    val t = raw.trim()
+                    if (t.startsWith("*") || t.startsWith("//") || t.startsWith("/*")) return@forEach
+                    for (a in anns) {
+                        if (Regex("@${a}\\b").containsMatchIn(raw)) count++
+                    }
                 }
             }
         }
