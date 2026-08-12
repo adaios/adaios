@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.9 | 最后更新：2026-08-11**
+**文档版本：v3.10 | 最后更新：2026-08-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-12 | v3.10 | **R1 AI 交互日志契约登记**：新增 §17 `GET /admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权，读 `data/{userId}/ai-logs/YYYY/MM/ai-log-{date}.jsonl`）；图片追问持久化（`POST /records/media/{id}/ask` 追问 Q/A 追加进图片卡 card 文件，Feed 图片记录 entry 带 turns）|
 | 2026-08-11 | v3.9 | **图片追问（L4 图片问答）**：新增 `POST /records/media/{id}/ask`（图+问题 → GLM 自然语言回答 → 沉淀 `image_qa` 记录）；管理端点 CORS 预检修复（`OPTIONS` 放行，8082/8083 可正常访问 admin/accounts）|
 | 2026-08-09 | v3.8 | **多账号前端选号 + 契约对齐**：新增 §16 `GET /accounts/available`（无鉴权选号）/ portfolio `positionCount` 派生字段（#106）/ Feed 分页 page0 完整核心 + 卡片时间基准 `updatedAt`（#175）/ `X-User-Id` 默认说明更新（v1.0.0 起前端必须携带所选账号）|
 | 2026-08-06 | v3.7 | **行情异动主动推送（Phase 2）**：FeedEntry 新增 `type=push`（止损预警/放飞提示/跌破成本线，`MarketAlertService` 交易时段轮询落盘 `data/{userId}/trading/pushes/{date}.json`，阈值可配 `adai.market.alert.*`）|

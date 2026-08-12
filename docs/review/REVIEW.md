@@ -34,9 +34,9 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 |:-:|:-----|:-----|:----:|
 | 101 | Feed 无「加载更早」分页：只拉 `size:20`，更早记录不可达 | `feed_page.dart:55-56` | 📋 待办 |
 | 103 | Timeline/Memory 保活数据陈旧：initState 只拉一次 + IndexedStack 保活，无刷新入口 | `timeline_page.dart` / `memory_page.dart` | 📋 待办 |
-| 129 | 知识反哺闭环缺前端入口：promote 后端闭环 ✅（v1.0.0 验证走通，已产出 `99-inbox/review-2026-08-09.md` 真实复盘），但交易页无「反哺入库」按钮，UI 无法操作 promote | `os/trading-os/99-inbox/` | 📋 待办 |
+| 129 | 知识反哺闭环缺前端入口：promote 后端闭环 ✅（v1.0.0 验证走通，已产出 `99-inbox/2026-08-09_交易复盘.md` 真实复盘），但交易页无「反哺入库」按钮，UI 无法操作 promote | `os/trading-os/99-inbox/` | 📋 待办 |
 | 177 | 多账号前端全链路零测试覆盖：v1.0.0 提前的核心功能（首屏选号 / 切换重建 ValueKey / UserStore 条件导出双实现 / available DTO / 持久化降级 / 双击防重入）全部无 widget 测试。本次 deep 前端/产品双角色确认仍为 0——而 P1-204 双 pop 崩溃恰好藏在无测试的选号回调里 | `apps/adai-app/test/` / `apps/adai-web/test/` | 📋 待办 |
-| 178 | 反哺闭环最后一公里未走：promote→inbox ✅，但入库→融合（rules/mistakes）→ 11-context 重建未完成，`TradingKnowledgeSource` 只读 `11-context/`，本次洞察（满仓单票违反 R81/E1）不会进 AI context | `os/trading-os/99-inbox/review-2026-08-09.md` | 📋 待办 |
+| 178 | 反哺闭环最后一公里未走：promote→inbox ✅，但入库→融合（rules/mistakes）→ 11-context 重建未完成，`TradingKnowledgeSource` 只读 `11-context/`，本次洞察（满仓单票违反 R81/E1）不会进 AI context | `os/trading-os/99-inbox/2026-08-09_交易复盘.md` | 📋 待办 |
 | 179 | `/accounts/available` 无鉴权暴露账号枚举面：返回全部启用账号 `userId/role/createdAt`（含 admin `role` 标记，本次再确认 P3-215），与用户层 X-User-Id 零鉴权（#127 延迟项）组合成目录键枚举面；设计上知情（选号提前），多账号正式开放时须随用户层鉴权收紧 | `AccountController.java:52-60` / `WebConfig.java:46` | 📋 待办 |
 | 210 | AI 交互日志缺生命周期/隐私面治理：prompt 全文（档案/记忆/持仓）逐行明文落盘，无 retention/轮转/脱敏开关，日志无限增长（重补/rebuild 场景叠加）；配合 P0-226 的 gitignore 漏洞 = prompt 隐私双缺口 | `LoggingAiClient.java:53-67` + `AiInteractionLogger` | 📋 待办 |
 
@@ -44,21 +44,13 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| 184 | **复盘入库候选含真实持仓且已被 git 追踪（红线绕开确认）**：`99-inbox/review-2026-08-09.md`（commit `f3ca035`）含真实持仓「贵州茅台 100 股/市值 14 万/成本 1400/现金余额为零」（:18-34），与 `data/adai/trading/positions.md` 交叉验证一致——隐私数据被复制进 git，违反 K8 红线（`data/*/trading/` 明明被 gitignore 保护）。根因：`TradingController.buildPromoteContent` 将复盘全文原样搬运。**需用户决策**：promote 时脱敏（标的名/价格/市值→占位符，知识价值在 R/E 编号）或接受 os/ 复盘知识 git 追踪（CLAUDE.md 注明）| `os/trading-os/99-inbox/review-2026-08-09.md:18-34` / `TradingController.java:214-229` | 🤔 待决策 |
 | 226 | **`.gitignore` 未覆盖 `data/*/ai-logs/`——prompt 全文（个人隐私）可被 `git add -A` 提交进仓库历史**：AiInteractionLogger 落盘 `data/{userId}/ai-logs/.../ai-log-{date}.jsonl`，每行含完整 prompt（档案/记忆/持仓/内容）。隐私段 `data/*/records/`、`data/*/memory/`、`data/*/trading/`、`data/*/index/` 均在，唯独缺 ai-logs。已实测 `git check-ignore` 确认未忽略。本地/生产跑真实 AI 后 `/ship` 的 `git add -A` 会把整份明文个人上下文提交进 git 历史且无法抹除。**修复路径明确（补一行通配），确认后立即修** | `.gitignore` 隐私段 | ✅ 2026-08-12（已补 `data/*/ai-logs/` + identity 白名单加固，见已修复区）|
+
+> 2026-08-12 修复批：#184（promote 脱敏）+ #204-#209/#211/#212（P1 全）+ #219/#220 + #206/#207 已修复出表，见已修复区。P1 未修复当前清零。
 
 ## 🔴 P1（未修复）
 
-| # | 问题 | 位置 | 状态 |
-|:-:|:-----|:-----|:----:|
-| 204 | **切换账号防重入守卫只包住 `_selectAccount`，`nav.pop()` 在守卫外——快速双击账号行会把 home 也 pop 掉**（双端同病）：onSelect 闭包是 `_selectAccount(uid); nav.pop();`，第一次 tap 置 `_handlingSelect=true` + `nav.pop()`（退场动画 ~300ms 内行仍可命中），第二次 tap 守卫短路 return 但 `nav.pop()` 无条件再执行——选号路由已出栈，第二次 pop 落到 DualWorldShell → Navigator 栈空黑屏。REVIEW #185 只堵了 push 侧，pop 侧没堵 | `apps/adai-app/lib/main.dart:94-97` / `apps/adai-web/lib/main.dart:92-93` | 📋 待办 |
-| 205 | **`_appendToActiveCard` 新增 `_cards.firstWhere` 无缺省**——卡片不在列表时同步抛 StateError（由原先安全的 `_updateCard` 退化）：`firstWhere` 找不到即抛，调用在 try 之外、`_onSend` 也包不到 → 同步崩溃。触发：`_activeCardId` 指向的卡在 `_cards` 中被替换后不在新列表（跨零点 Feed 只返回今天 / MD1 切回刷新后本地新建卡未回灌）| `apps/adai-app/lib/main_page.dart:384` / `apps/adai-web/lib/pages/feed_page.dart:204` | 📋 待办 |
-| 206 | **`parseDateTime` 缺失/非法 updatedAt 回退 `LocalDateTime.now()`，配合按 updatedAt 过滤 → 缺该字段的旧卡永久归入"今天" Feed**：`findTodayCards` 从按 createdAt 目录改为按 updatedAt 日期过滤，缺/损坏 updatedAt 的卡被解析成"最后活跃=今天"，永久出现在今日 Feed 且日期显示今天（G2 守卫只 grep `LocalDate.now()|Instant.now()`，漏 `LocalDateTime.now()`）| `CardFileRepository.java:269-274` / `:108-110` | 📋 待办 |
-| 207 | **rebuild/retry 幂等用 "recorded" 文本哨兵判"未处理"，两处边界漏判 → 记录被无限重补烧 AI**：① AI 成功但摘要 >50 字 → 持久化 `summary="recorded"`（记忆为真实非降级）→ `alreadyProcessed` 返回 false → 每 15 分钟永久重跑（BATCH_LIMIT 只限批次不限次数），R1 日志还放大落盘量；② rebuild 升级降级记忆后 record.summary 仍为 "recorded" → retry 再补跑 | `RecordRetryService.java:130-131` / `RecordController.java:167-168` / `MemoryController.java:156-169` | 📋 待办 |
-| 208 | **移动端图片追问对话态下原图不可见——用户对着不存在的图提问**：`_buildActiveLayout` 仅渲染 turns 气泡/activeCard.content，无 mediaUrl 分支；点「提问」后整个 Feed 被 active 布局替换，缩略图不渲染。桌面端 `DesktopFeedCard` 卡片常驻流中缩略图始终可见，移动端成了唯一断图端。且新增测试只断言气泡文本，未覆盖 active 态图可见性 | `apps/adai-app/lib/main_page.dart:869-952` | 📋 待办 |
-| 209 | **图片追问气泡归属是本地临时态——刷新即丢，问答以独立记录另起卡片，归属断裂**：`askMedia` 回答只 append 本地 `_cards` 内存 turns，后端 `askImage` 只落一条独立 `image_qa` 记录不更新原图片卡 card 文件。刷新后图片卡恢复普通卡、追问历史消失，Feed 里却多出「【图片问答】」文本卡——气泡归属断裂。对比文本卡对话走 cardId → CardFileRepository 持久化（刷新仍在原卡）| `apps/adai-app/lib/main_page.dart:402-416` / `MediaRecordAppService.java:123-162` | 📋 待办 |
-| 211 | 入库候选文件名不符 trading-os 约定（#203 根因在代码）：`TradingController.java:154` 硬编码 `"review-" + date + ".md"`，全流水线约定为 `YYYY-MM-DD_主题.md`；候选文件无尾换行（根因 `TradingReviewAppService` 生成时未补）+ 全角/半角括号混排（「（R35)」）| `TradingController.java:154` / `os/trading-os/99-inbox/review-2026-08-09.md` | 📋 待办 |
-| 212 | `migrate-data-to-user-layer.sh` 仍指向 `data/default/`（K20）：脚本仍是 data→data/default（多用户预留版），而 default 已被 data/adai 取代；新机器跑此脚本会创建 `data/default/` 孤儿账号静默分裂数据 | `scripts/migrate-data-to-user-layer.sh:3-72` | 📋 待办 |
+> 2026-08-12 修复批（批 A-D + #184）已全部修复出表：#204（双 pop）/ #205（firstWhere）/ #206（updatedAt 回退）/ #207（recorded 哨兵）/ #208（原图可见）/ #209（气泡持久化）/ #211（文件名约定）/ #212（迁移脚本）。P1 当前清零。
 
 ## 🔴 P2（未修复）
 
@@ -77,8 +69,8 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 216 | **CardMigrationService 从"复制"改"移动"（写新+删旧）**：误判即删原文件（`parseAsCard` 判定"有 frontmatter 且 body 含 `## `"即视为卡片），且旧文件无 `id` 时并入 `card_unknown`（findAll 去重后合并为一条，数据淹没）| `CardMigrationService.java:84-88` | 📋 待办 |
 | 217 | `rewriteIdInFrontmatter` 正则未锚定 frontmatter（`(?m)^id:\s*.+$` 全文件首处匹配），可能改写 body 中的 `id:` 行 → frontmatter 保留旧无前缀 id → save() 按旧 id 写回旧路径 → 双文件复发 | `CardMigrationService.java:149-157` | 📋 待办 |
 | 218 | `LoggingVisualAiClient` 视觉调用 durationMs 恒为 null（与文本调用不一致）；ai-log 落盘日期用 `LocalDate.now()`（写入时刻）而非调用开始时刻（跨午夜长调用落错天文件）；`getAiLogs` 无日期上界校验可扫任意历史 | `LoggingVisualAiClient.java:74` / `AiInteractionLogger.java:37` / `AdminController` | 📋 待办 |
-| 219 | **图片卡「提问」后不输入直接关闭 → 卡片永久卡在 waiting 态**（双端）：`_onAskCard` 置 waiting 后不发起任何异步请求（等用户输入），若用户改主意通过「结束对话」关闭，`_closeChat` 走 `!hasNewTurns && !needsSummary` 早退分支不复位 mode → 回到 Feed 卡片以 active 样式常驻，只能真发一个问题才能跳出 | `apps/adai-app/lib/main_page.dart:165-178` / `:240-250`；adai-web `feed_page.dart:263-344` | 📋 待办 |
-| 220 | **adai-app 图片 `_onAskCard` 分支缺 `_deactivateOtherCards`**（与 adai-web 不一致，双端模型漂移）：已有一个 chatting/waiting 卡时再点另一张图片卡提问，旧卡留在聊天态，关闭新卡后 Feed 出现两张 active 样式卡 | `apps/adai-app/lib/main_page.dart:167-175` vs adai-web `feed_page.dart:269` | 📋 待办 |
+| 219 | **图片卡「提问」后不输入直接关闭 → 卡片永久卡在 waiting 态**（双端）：`_onAskCard` 置 waiting 后不发起任何异步请求（等用户输入），若用户改主意通过「结束对话」关闭，`_closeChat` 走 `!hasNewTurns && !needsSummary` 早退分支不复位 mode → 回到 Feed 卡片以 active 样式常驻，只能真发一个问题才能跳出 | `apps/adai-app/lib/main_page.dart:165-178` / `:240-250`；adai-web `feed_page.dart:263-344` | ✅ 2026-08-12（早退分支无条件复位 waiting→idle，双端）|
+| 220 | **adai-app 图片 `_onAskCard` 分支缺 `_deactivateOtherCards`**（与 adai-web 不一致，双端模型漂移）：已有一个 chatting/waiting 卡时再点另一张图片卡提问，旧卡留在聊天态，关闭新卡后 Feed 出现两张 active 样式卡 | `apps/adai-app/lib/main_page.dart:167-175` vs adai-web `feed_page.dart:269` | ✅ 2026-08-12（adai-app 图片分支补 `_deactivateOtherCards`，与 adai-web 对齐）|
 | 221 | 凌晨问候「深夜好」仍配固定 ☀️ emoji（语义矛盾）：失败降级行 `"☀️ " + identityName + " " + greeting`，0-5 点降级时用户看到「☀️ 阿呆 深夜好！」——正是 #14 想修的机械感。建议按时段选 emoji（凌晨 🌙 / 早上 ☀️ / 下午 🌤 / 晚上 ✨）| `BriefAppService.java:110` | 📋 待办 |
 | 222 | 问候语机械切分（#169 具体化）：午间 12 归"下午好"（`hour < 18`）、5:59 深夜 / 6:00 突然早上硬切；降级路径机械感强于 AI 成功路径 | `BriefAppService.java:120-125` | 📋 待办 |
 | 223 | adai-core CLAUDE.md 声称 os/ 只读与实际 promote 写入矛盾（K4/K13 漂移）：`TradingController.promoteToInbox` 实际写 `os/trading-os/99-inbox/`，但 CLAUDE.md:131 声明"只读，不写入"未记录该例外；`.gitignore:69` 只保护 `profile.md` 单文件，identity 下新非 sample 文件会进 git | `adai-core/CLAUDE.md:131` / `.gitignore:69` | 📋 待办 |
@@ -119,6 +111,8 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| #184 | **2026-08-12 P0 隐私修复（promote 内容脱敏）**：复盘入库候选含真实持仓（茅台 100 股/14 万/1400）且已被 git 追踪（commit f3ca035），违反 K8 红线。用户决策「promote 脱敏」→ `TradingController.sanitizeReviewContent` 生成源替换股数/市值/成本/现价/现金→占位符（标的名保留公开信息+规则引用需要，不误伤大盘指数）；旧候选文件改名 `2026-08-09_交易复盘.md` + 内容重写脱敏版；2 新测试（脱敏 + null 边界）。已 grep 验证无持仓数字残留、9 规则引用 + 标的名完整。git 历史旧版仍含数据（单人不重写历史，未来不再暴露）| ✅ 2026-08-12 |
+| P1 批 A-D | **2026-08-12 P1 修复批（A-D 四批）**：**批 A 前端** #204 双 pop（守卫包住闭包 nav.pop，双端）+ #205 firstWhere→indexWhere（双端）+ 选号页 widget 测试 5 个（#177 战略落地）；**批 B 后端** #206 updatedAt 缺失回退 createdAt（损坏卡跳过）+ #207 recorded 哨兵（长摘要截断、rebuild 回写真实摘要）+ 3 测试；**批 C 图片追问** #208 active 态原图可见（缩略图+全图 Dialog）+ #209 Q/A 持久化到图片卡 card 文件 + FeedAppService 合并 turns + #219 waiting 卡死复位（双端）+ #220 双端对齐；**批 D** #211 候选文件名 `YYYY-MM-DD_主题.md` + 已入库候选改名 + #212 迁移脚本 default→adai 参数化。后端 338 · adai-app 68 · adai-web 30 全绿 | ✅ 2026-08-12 |
 | #226 + #223 | **2026-08-12 P0 隐私加固（.gitignore）**：#226 ai-logs 落盘目录未进 .gitignore（prompt 全文含档案/记忆/持仓可被 `git add -A` 提交进历史）→ 补 `data/*/ai-logs/`；#223 identity 只保护 profile.md 单文件 → 改 `data/*/identity/*` + `!*.sample.md` 白名单。已实测 `git check-ignore` 命中、sample 仍被追踪、git status 无泄漏 | ✅ 2026-08-12 |
 | 阿呆系统必现崩溃 | **2026-08-09 v1.0.0 验证修复（阿呆系统页 CanvasKit 必现崩溃）**：点击「阿呆系统」release minify **必现** `PictureRecorder` wasm 崩溃（`canvaskit.wasm` 内存分配失败，`core_patch.dart:293 Uncaught Error`）且控制台持续输出——该页首帧绘制 + 路由过渡动画并发 + 加载 spinner 无限重绘，触发 CanvasKit 绘制密集不稳定（**非项目 bug**，同路由动画的记忆/时间线/任务/交易页均正常，仅该页绘制密度触发）。修复：阿呆系统入口改无动画跳转（`PageRouteBuilder` duration zero，去并发动画帧）+ 加载 spinner 换静态「加载中…」（去持续重绘源）；adai-app analyze 0 · 60 测试全绿 | ✅ 2026-08-09 |
 | TimelinePage 缩略图 | **2026-08-09 v1.0.0 验证修复（World B 时间线缩略图）**：批 2"时间线页缩略图"只做了 TopBar TimelineModal，World B `TimelinePage`（launcher 入口"时间都去哪了"）漏了缩略图 → 补 `_buildDayEntries` mediaPath 缩略图（96px）+ `_showFullImage` 原图 Dialog（复用 TimelineModal 模式）；adai-app analyze 0 · 60 测试全绿 | ✅ 2026-08-09 |
@@ -136,6 +130,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
 | 2026-08-12 | deep 增量（R1 AI 日志 + 图片追问 + 多账号 + CORS + 三连修）| backend/frontend/docs/product/knowledge | 5 | ~20min | P0×2 + 战略×1 + P1×8 + P2×15 + P3×5 | 0 |
+| 2026-08-12 | P1 修复批 A-D + #184 promote 脱敏 | — | 0 | ~90min | 0 新 | 13（#184 P0 + #204/205/206/207/208/209/211/212 P1×8 + #219/220 P2×2 + #177 测试）|
 | 2026-08-12 | P0 隐私加固（.gitignore：#226 ai-logs + #223 identity 白名单）| — | 0 | ~3min | 0 新 | 2（#226 P0 + #223 部分）|
 | 2026-08-09 | deep 审核修复（批 K）| — | 0 | ~60min | 0 新 | 16（#180/#181 P1 + #182-190 P2 9 项 + #191-197 P3 7 项）|
 | 2026-08-09 | deep 增量（多账号 + wasm + 数据迁移）| backend/frontend/docs/product/knowledge | 5 | ~20min | 战略×3 + P1×2 + P2×10 + P3×14 | 0 |

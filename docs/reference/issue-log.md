@@ -330,7 +330,7 @@ ID = card_xxx → 只删 CardFileRepository → 不对，已是最全
 
 **定位：** AI 基础设施日志能力（`infrastructure/ai`），非业务功能。详见 `docs/ideas/20260812-ai-interaction-log.md`。
 
-**状态：** ⏳ 需求登记（未立项）
+**状态：** ✅ 已实现（2026-08-12，P1+P2 后端一步到位；管理端可视化页顺延）。详见 ideas 档「已实现」节。
 
 ## 文档版本记录
 

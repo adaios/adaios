@@ -107,7 +107,11 @@ public class CardFileRepository {
      */
     public List<CardRecord> findTodayCards(String userId, LocalDate date) {
         return findAll(userId).stream()
-                .filter(c -> c.updatedAt() != null && c.updatedAt().toLocalDate().equals(date))
+                // #206：按最后活跃日归属；缺 updatedAt（旧版卡片）回退 createdAt，不再误归"今天"
+                .filter(c -> {
+                    LocalDateTime active = c.updatedAt() != null ? c.updatedAt() : c.createdAt();
+                    return active.toLocalDate().equals(date);
+                })
                 .sorted(Comparator.comparing(CardRecord::createdAt))
                 .collect(Collectors.toList());
     }
@@ -220,6 +224,8 @@ public class CardFileRepository {
         List<String> tags = parseTags(fields.getOrDefault("tags", ""));
         LocalDateTime createdAt = parseDateTime(fields.get("createdAt"));
         LocalDateTime updatedAt = parseDateTime(fields.get("updatedAt"));
+        // #206：createdAt 缺失/损坏 = 数据损坏卡，跳过不进内存（避免 null 参与排序/日期过滤）
+        if (createdAt == null) return null;
         String summary = fields.getOrDefault("summary", null);
 
         // Parse turns from body
@@ -266,12 +272,17 @@ public class CardFileRepository {
                 .toList();
     }
 
+    /**
+     * 解析 frontmatter 时间字段。#206：缺失/非法值返回 null（不再回退 now()）——
+     * 否则缺 updatedAt 的旧卡会被解析成"最后活跃=今天"，永久出现在今日 Feed。
+     * createdAt 缺失属数据损坏，调用方（parseFromFile）据此跳过整卡。
+     */
     private LocalDateTime parseDateTime(String value) {
-        if (value == null || value.isBlank()) return LocalDateTime.now();
+        if (value == null || value.isBlank()) return null;
         try {
             return LocalDateTime.parse(value);
         } catch (Exception e) {
-            return LocalDateTime.now();
+            return null;
         }
     }
 }

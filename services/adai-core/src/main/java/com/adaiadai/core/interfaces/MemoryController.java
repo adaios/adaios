@@ -152,14 +152,19 @@ public class MemoryController {
         for (ContentRecord record : targetRecords) {
             try {
                 var result = recordFlowAppService.process(userId, record);
-                // #144 幂等：未处理记录（summary 空白）处理后落盘 summary 标记，
-                // 下次 rebuild 靠 summary 判断已处理，不再重跑
-                if (record.summary() == null || record.summary().isBlank()) {
-                    String marker = "recorded";
-                    if (result.understanding() != null && result.understanding().summary() != null
-                            && !result.understanding().summary().isBlank()
-                            && result.understanding().summary().length() <= 50) {
-                        marker = result.understanding().summary();
+                // #207：未处理（summary 空白）或降级（"recorded"）记录处理后回写真实摘要——
+                // 原逻辑只在 summary 空白时回写，降级记录升级后仍留 "recorded"，retry 会再补跑一次；
+                // 且长摘要 >50 不得落 "recorded" 哨兵（RetryService 判 !"recorded" 会无限重补），截断保存。
+                String oldSummary = record.summary();
+                if (oldSummary == null || oldSummary.isBlank() || "recorded".equals(oldSummary)) {
+                    String s = result.understanding() != null ? result.understanding().summary() : null;
+                    String marker;
+                    if (s == null || s.isBlank()) {
+                        marker = "recorded";
+                    } else if (s.length() > 50) {
+                        marker = s.substring(0, 50);
+                    } else {
+                        marker = s;
                     }
                     recordRepository.save(userId, new ContentRecord(
                             record.id(), record.type(), record.source(), record.title(), record.content(),

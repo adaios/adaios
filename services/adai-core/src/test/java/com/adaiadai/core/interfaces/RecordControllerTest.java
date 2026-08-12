@@ -16,6 +16,7 @@ import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +32,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -350,6 +353,56 @@ class RecordControllerTest {
         assertTrue(degraded.isPresent(), "AI 失败也应降级沉淀记忆");
         assertTrue(Memory.isDegraded(degraded.get()), "降级记忆应标 DEGRADED");
         assertEquals("今天加仓了立昂微", degraded.get().summary());
+    }
+
+    /**
+     * #207：AI 成功但摘要 >50 字 → 落盘截断后的真实摘要，不得用 "recorded" 哨兵——
+     * 否则 RecordRetryService.alreadyProcessed（判 !"recorded".equals）把它当未处理，
+     * 每 15 分钟无限重补烧 AI。修复后"recorded"仅表示真正失败降级。
+     */
+    @Test
+    void createRecord_aiLongSummary_truncatedNotRecordedSentinel() throws Exception {
+        // 自定义 AiClient：摘要固定超长（>50 字，模拟 AI 返回长洞察）
+        AiClient longSummaryAi = new AiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                return new AiUnderstanding(
+                        "这是一条超过五十个字符的长摘要用于验证记录不会因为摘要过长而回退为recorded哨兵导致无限重补循环造成算力浪费",
+                        "洞察", null, null,
+                        List.of("测试"), "neutral", "life", false, null, "raw");
+            }
+
+            @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) {
+                return "raw";
+            }
+
+            @Override
+            public String recognizeIntent(String content) {
+                return "log";
+            }
+        };
+        MockMvc mvc = buildMockMvc(longSummaryAi);
+
+        String body = mapper.writeValueAsString(Map.of("content", "测试长摘要"));
+        String resp = mvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("log"))
+                .andReturn().getResponse().getContentAsString();
+
+        String recordId = mapper.readTree(resp).get("recordId").asText();
+        Optional<ContentRecord> saved = recordRepository.findById("default", recordId);
+        assertTrue(saved.isPresent(), "记录应保存");
+        String persistedSummary = saved.get().summary();
+        assertNotNull(persistedSummary, "长摘要不应为 null");
+        assertNotEquals("recorded", persistedSummary,
+                "AI 成功但长摘要不得落 recorded 哨兵（否则 RetryService 无限重补）");
+        assertTrue(persistedSummary.length() <= 50,
+                "长摘要应截断到 50 字，实际 " + persistedSummary.length() + " 字");
+        assertTrue(persistedSummary.startsWith("这是一条超过五十个字符的长摘要"),
+                "截断后应保留真实摘要前缀而非哨兵");
     }
 
     // ── domain 切换 + retry（adai-admin 系统操作台依赖，纯 mock 独立构造）──

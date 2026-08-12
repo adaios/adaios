@@ -163,9 +163,12 @@ public class RecordController {
             log.debug("AI tagging skipped for statement: {}", e.getMessage());
         }
 
-        // summary 兜底在 try 外：AI 失败时也回退 "recorded"（与 controller 顶层降级路径一致）
-        if (summary == null || summary.isBlank() || summary.length() > 50) {
-            summary = "recorded";
+        // #207：AI 成功但摘要 >50 字不得落 "recorded" 哨兵——否则 RetryService.alreadyProcessed
+        // 判 !"recorded".equals(summary) 把它当未处理，每 15 分钟无限重补烧 AI。真实摘要截断保存。
+        if (summary == null || summary.isBlank()) {
+            summary = "recorded"; // 真正失败兜底（降级语义，重补可重跑）
+        } else if (summary.length() > 50) {
+            summary = summary.substring(0, 50);
         }
 
         // #189 顺序调整：先 persist 记忆，成功后才把 summary 落盘——

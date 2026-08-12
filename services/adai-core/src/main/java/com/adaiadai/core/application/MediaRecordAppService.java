@@ -4,10 +4,12 @@ import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.vision.ImageRequest;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,15 +38,18 @@ public class MediaRecordAppService {
     private final RecordFileRepository recordFileRepository;
     private final MemoryService memoryService;
     private final FileStorage fileStorage;
+    private final CardFileRepository cardRepository;
 
     public MediaRecordAppService(VisualAiClient visualAiClient,
                                  RecordFileRepository recordFileRepository,
                                  MemoryService memoryService,
-                                 FileStorage fileStorage) {
+                                 FileStorage fileStorage,
+                                 CardFileRepository cardRepository) {
         this.visualAiClient = visualAiClient;
         this.recordFileRepository = recordFileRepository;
         this.memoryService = memoryService;
         this.fileStorage = fileStorage;
+        this.cardRepository = cardRepository;
     }
 
     /**
@@ -156,9 +161,45 @@ public class MediaRecordAppService {
         );
         recordFileRepository.save(userId, record);
 
+        // #209：图片追问气泡持久化——Q/A 追加进图片卡关联的 card 文件（id=图片记录 id），
+        // 刷新后追问历史仍挂在图片卡下。image_qa 独立记录保留（时间线/搜索资产沉淀），两者不冲突。
+        appendQaToImageCard(userId, recordId, question, answer, now);
+
         log.info("图片追问完成 | imageId={} | qaId={} | question=\"{}\" | answer=\"{}\"",
                 recordId, qaId, truncate(question, 40), truncate(answer, 60));
         return new AskResult(qaId, answer, recordId);
+    }
+
+    /**
+     * 图片追问持久化：把本轮 Q/A 追加进图片卡 card 文件。
+     * <p>
+     * 图片卡在前端是 {@code ContentRecord(type=image)}，追问历史此前只存前端内存（刷新即丢）。
+     * 这里用图片记录 id 作为 card id，追加 turns——FeedAppService 读取时把该 card 的 turns
+     * 合并进图片记录 entry，刷新后图片卡下对话历史完整可见。
+     */
+    private void appendQaToImageCard(String userId, String imageRecordId, String question, String answer, LocalDateTime now) {
+        String time = now.toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        String cleanAnswer = answer == null ? "" : answer.strip();
+        CardRecord existing = cardRepository.findById(userId, imageRecordId).orElse(null);
+        CardRecord updated;
+        if (existing != null) {
+            // 已有追问历史 → 追加本轮的 Q + A（withTurn 会刷新 updatedAt）
+            updated = existing.withTurn(true, question.strip(), time)
+                    .withTurn(false, cleanAnswer, time);
+        } else {
+            updated = new CardRecord(
+                    imageRecordId, "conversation", "active",
+                    List.of(),
+                    List.of(
+                            new CardRecord.Turn(true, question.strip(), time),
+                            new CardRecord.Turn(false, cleanAnswer, time)
+                    ),
+                    null, now, now
+            );
+        }
+        cardRepository.save(userId, updated);
+        log.info("图片追问已持久化到卡片 | imageId={} | turns={}", imageRecordId,
+                updated.turns() != null ? updated.turns().size() : 0);
     }
 
     private String contentTypeOf(String path) {

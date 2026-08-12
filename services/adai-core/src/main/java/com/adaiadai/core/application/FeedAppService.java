@@ -71,6 +71,12 @@ public class FeedAppService {
 
         List<CardRecord> todayCards = cardRepository.findTodayCards(userId, queryDate);
         Map<String, CardRecord> turnToCard = buildTurnCardMap(todayCards);
+        // #209：图片卡追问历史（card id == 图片记录 id）→ 合并进图片记录 entry，
+        // 避免追问卡片被当作独立对话卡重复输出。
+        Set<String> imageQaCardIds = todayCards.stream()
+                .filter(c -> c.id().startsWith("rec_"))
+                .map(CardRecord::id)
+                .collect(Collectors.toSet());
 
         Set<String> skipRecordIds = new HashSet<>();
         for (ContentRecord r : allRecords) {
@@ -89,6 +95,8 @@ public class FeedAppService {
         List<FeedEntry> allEntries = new ArrayList<>();
 
         for (CardRecord card : todayCards) {
+            // #209：图片卡追问历史已合并进对应 image 记录 entry，此处跳过避免重复输出
+            if (imageQaCardIds.contains(card.id())) continue;
             // findTodayCards 已按 updatedAt（最后活跃日）过滤，此处直接输出
             allEntries.add(toCardFeedEntry(card));
         }
@@ -96,7 +104,7 @@ public class FeedAppService {
         for (ContentRecord r : allRecords) {
             if (skipRecordIds.contains(r.id())) continue;
             if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
-            allEntries.add(toFeedEntry(userId, r));
+            allEntries.add(toFeedEntry(userId, r, imageQaCardIds));
             Memory memory = memoriesFor(allMemories, r.id())
                     .orElseGet(() -> crossDayMemories.get(r.id()));
             if (memory != null) {
@@ -167,16 +175,26 @@ public class FeedAppService {
         return map;
     }
 
-    private FeedEntry toFeedEntry(String userId, ContentRecord r) {
+    private FeedEntry toFeedEntry(String userId, ContentRecord r, Set<String> imageQaCardIds) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
         String mediaPath = "image".equals(r.type())
                 ? recordRepository.findMediaPath(userId, r.id()).orElse(null)
                 : null;
+        // #209：图片记录若有关联追问 card（id==图片记录 id），合并 turns——刷新后图片卡下对话历史完整
+        List<TurnDto> turns = null;
+        if ("image".equals(r.type()) && imageQaCardIds.contains(r.id())) {
+            turns = cardRepository.findById(userId, r.id())
+                    .filter(c -> c.turns() != null)
+                    .map(c -> c.turns().stream()
+                            .map(t -> new TurnDto(t.isUser(), t.text(), t.time()))
+                            .collect(Collectors.toList()))
+                    .orElse(null);
+        }
         return new FeedEntry(
                 "record", r.id(), null,
                 r.title(), r.content(), r.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
-                intent, r.summary(), null, r.domain(),
+                intent, r.summary(), turns, r.domain(),
                 r.createdAt().format(DATE_FMT), mediaPath
         );
     }

@@ -41,9 +41,9 @@
 | K18 | tags.json `count` vs `recordIds.length` 一致性（截断/通胀漂移）| 三体 count=64 vs 50（P2 #152，待修）|
 | K19 | `os/*-os/11-context/README` 引用的目录存在性（防复制模板漂移）| life-os 引用不存在的 05-system/04-rules（P3，待修）|
 | K20 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）| default→adai 后契约/注释/默认 userId 全漂移（P1 #180）|
-| K21 | 知识反哺入库候选抽检：引用的 R/E 编号真实存在于 11-context/rules.md|mistakes.md + 内容与 positions.md 一致 | review-2026-08-09 9 条规则引用全部真实验证（战略 #178）|
-| K22 | 自动生成入库候选的隐私一致性：含真实持仓/财务数据进 git 时与 `data/*/trading/` gitignore 策略对照 | 候选真实持仓进 git（P2 #184）|
-| K23 | 自动生成入库候选脱敏抽检：grep 真实持仓特征（`市值|现金余额|成本\d+|股`）命中且 git 追踪 = K8 红线复发；修复应落在生成源（TradingController.buildPromoteContent）而非事后改文件 | review-2026-08-09 真实持仓进 git（P0 #184，2026-08-12）|
+| K21 | 知识反哺入库候选抽检：引用的 R/E 编号真实存在于 11-context/rules.md|mistakes.md + 内容与 positions.md 一致 | 2026-08-09 9 条规则引用全部真实验证（战略 #178）|
+| K22 | 自动生成入库候选的隐私一致性：含真实持仓/财务数据进 git 时与 `data/*/trading/` gitignore 策略对照 | 候选真实持仓进 git（P0 #184，2026-08-12 已修复：promote 脱敏）|
+| K23 | 自动生成入库候选脱敏抽检：grep 真实持仓特征（`市值|现金余额|成本\d+|股`）命中且 git 追踪 = K8 红线复发；修复应落在生成源（TradingController.buildPromoteContent）而非事后改文件 | 2026-08-09 真实持仓进 git（P0 #184，2026-08-12 已修：sanitizeReviewContent 生成源脱敏）|
 | K24 | os/ 自动生成文件名约定一致性：`99-inbox/` 下文件名匹配 `YYYY-MM-DD_主题.md`（根因在 adai-core 生成代码 `TradingController.java:154` 硬编码 review- 前缀）| 候选文件名不符约定（P1 #211，2026-08-12）|
 | K25 | 子项目 CLAUDE.md 对 os/ 的只读声明 vs adai-core 实际写路径（promote→99-inbox）逐项对照，防「声明只读、实际写入」漂移 | adai-core CLAUDE.md:131 声称只读但 promote 写入（P2 #223，2026-08-12）|
 

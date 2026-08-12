@@ -92,6 +92,9 @@ class _RootAppState extends State<RootApp> {
         api: ApiService(userId: _userId),
         currentUserId: _userId,
         onSelect: (uid) {
+          // #204：守卫包住闭包整体（含 nav.pop()），快速双击不把 home 也 pop 掉。
+          // 原 #185 守卫只在 _selectAccount 内，双击第二次短路后 pop 落到栈空黑屏。
+          if (_handlingSelect) return;
           _selectAccount(uid);
           nav.pop();
         },

@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.MediaRecordAppService;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
+import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -43,7 +44,8 @@ class MediaControllerTest {
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
         MediaRecordAppService service = new MediaRecordAppService(
-                glm, new RecordFileRepository(fs), new MemoryService(fs), fs);
+                glm, new RecordFileRepository(fs), new MemoryService(fs), fs,
+                new CardFileRepository(fs));
         mvc = MockMvcBuilders.standaloneSetup(new MediaController(service, fs)).build();
     }
 

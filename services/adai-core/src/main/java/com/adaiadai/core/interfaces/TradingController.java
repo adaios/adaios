@@ -151,7 +151,9 @@ public class TradingController {
             Path inboxPath = Paths.get("../../os/trading-os/99-inbox")
                     .toAbsolutePath().normalize();
             Files.createDirectories(inboxPath);
-            String fileName = "review-" + date.toString() + ".md";
+            // #211：文件名符合 trading-os 全流水线约定 `YYYY-MM-DD_主题.md`
+            // （原硬编码 `review-{date}.md` 不符，已入库的候选文件一并按此改名）
+            String fileName = date.toString() + "_交易复盘.md";
             Files.writeString(inboxPath.resolve(fileName), content, StandardCharsets.UTF_8);
 
             log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
@@ -227,8 +229,32 @@ public class TradingController {
             sb.append("\n");
         }
         sb.append("## 完整复盘内容\n\n");
-        sb.append(reviewContent);
+        // #184：promote 内容脱敏——复盘含真实持仓（股数/市值/成本/现价/现金），
+        // 入库候选进 git 追踪的 os/ 目录，必须替换为占位符。
+        // 知识价值在 R/E 规则引用与仓位结构讨论，不在具体持仓数字。
+        // 标的名保留（公开信息 + 规则引用需要标的语境）；大盘指数等公开行情不误伤。
+        sb.append(sanitizeReviewContent(reviewContent));
         return sb.toString();
+    }
+
+    /**
+     * #184：复盘内容脱敏——替换真实持仓数字为占位符。
+     * <p>
+     * 关键词引导的正则（持有/市值/成本/现价/现金余额），只命中持仓数字，
+     * 不误伤大盘指数等公开行情（不含这些关键词）。标的名保留（公开信息）。
+     */
+    static String sanitizeReviewContent(String content) {
+        if (content == null || content.isBlank()) return content;
+        String s = content;
+        // 持仓数量：持有100股 → 持有N股
+        s = s.replaceAll("持有\\s*\\d+(?:\\.\\d+)?\\s*股", "持有N股");
+        // 市值：市值14万 → 市值（已脱敏）
+        s = s.replaceAll("市值\\s*[\\d.]+\\s*(?:万|千|亿)?", "市值（已脱敏）");
+        // 现金余额：现金余额为零 → 现金余额（已脱敏）
+        s = s.replaceAll("现金余额[^，。；\\n]*", "现金余额（已脱敏）");
+        // 成本/现价/止损价：成本1400现价1400 → 成本（已脱敏）现价（已脱敏）
+        s = s.replaceAll("(成本|现价|止损位|止损价)\\s*[\\d.]+", "$1（已脱敏）");
+        return s;
     }
 
     private String readRulesFile() {

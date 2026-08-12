@@ -128,4 +128,52 @@ class CardFileRepositoryTest {
 
         assertEquals(2, all.size(), "不同 id 的卡片应全部保留");
     }
+
+    /**
+     * #206：缺 updatedAt 的旧版卡片按 createdAt 归属其创建日，不再被误判为"今天最后活跃"。
+     * 修复前 parseDateTime 对缺失值回退 now()，findTodayCards 会把这类旧卡永久归入今日 Feed。
+     */
+    @Test
+    void findTodayCards_missingUpdatedAt_fallsBackToCreatedAt() {
+        // 直接写 frontmatter 缺 updatedAt 的旧格式卡（无 updatedAt 字段）
+        String oldFmt = """
+                ---
+                id: card_legacy
+                type: conversation
+                status: active
+                createdAt: 2026-08-05T10:00:00
+                ---
+
+                ## 10:00
+                用户：旧卡对话
+                """;
+        storage.write("default", "records/cards/2026/08/05/card_legacy.md", oldFmt);
+
+        // 该卡应按 createdAt 归属 8-05，不出现在 8-12（今天）
+        assertTrue(repository.findTodayCards("default", LocalDate.of(2026, 8, 12)).isEmpty(),
+                "缺 updatedAt 的旧卡不应永久归入今天");
+        assertEquals(1, repository.findTodayCards("default", LocalDate.of(2026, 8, 5)).size(),
+                "缺 updatedAt 的旧卡按 createdAt 归属其创建日");
+    }
+
+    /**
+     * #206：createdAt 缺失/损坏的卡（数据损坏）解析时跳过，不进内存——避免 null 参与排序/日期过滤。
+     */
+    @Test
+    void findAll_skipsCardWithCorruptedCreatedAt() {
+        String corrupted = """
+                ---
+                id: card_broken
+                type: conversation
+                status: active
+                ---
+
+                ## 10:00
+                用户：无 createdAt 的损坏卡
+                """;
+        storage.write("default", "records/cards/2026/08/05/card_broken.md", corrupted);
+
+        assertTrue(repository.findAll("default").isEmpty(),
+                "createdAt 缺失的损坏卡应被跳过而非解析为 now()");
+    }
 }

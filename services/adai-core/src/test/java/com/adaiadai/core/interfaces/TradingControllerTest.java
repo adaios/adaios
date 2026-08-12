@@ -37,12 +37,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * detectConflicts 基于真实规则解析（#23 修复：不再硬编码规则名），
  * 依赖 gradle test 运行时 cwd（services/adai-core）下可读的 os/trading-os/11-context/rules.md。
- * promote 测试写入 os/trading-os/99-inbox/review-2099-01-01.md，测试后清理。
+ * promote 测试写入 os/trading-os/99-inbox/2099-01-01_交易复盘.md（#211 文件名约定），测试后清理。
  */
 class TradingControllerTest {
 
     private static final String PROMOTE_TEST_DATE = "2099-01-01";
-    private static final Path PROMOTE_TEST_FILE = Paths.get("../../os/trading-os/99-inbox/review-" + PROMOTE_TEST_DATE + ".md")
+    private static final Path PROMOTE_TEST_FILE = Paths.get("../../os/trading-os/99-inbox/" + PROMOTE_TEST_DATE + "_交易复盘.md")
             .toAbsolutePath().normalize();
 
     private MockMvc buildMvc(TradingAppService tradingAppService,
@@ -250,6 +250,43 @@ class TradingControllerTest {
         } finally {
             Files.deleteIfExists(PROMOTE_TEST_FILE);
         }
+    }
+
+    /**
+     * #184：promote 内容脱敏——复盘含真实持仓数字，入库候选（进 git 追踪的 os/）必须替换为占位符。
+     */
+    @Test
+    void sanitizeReviewContent_masksPositionNumbers() {
+        String review = """
+                今日无交易。持仓贵州茅台未动，成本1400现价1400。
+                贵州茅台持有100股，市值14万，占用全部资金，现金余额为零。
+                大盘三大指数收红（上证+1.02%、深证+1.42%）。
+                """;
+        String sanitized = TradingController.sanitizeReviewContent(review);
+
+        // 持仓数字全部脱敏
+        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("100股"), "股数应脱敏");
+        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("14万"), "市值应脱敏");
+        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("1400"), "成本/现价应脱敏");
+        org.junit.jupiter.api.Assertions.assertFalse(sanitized.contains("现金余额为零"), "现金余额应脱敏");
+
+        // 占位符已替换
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("持有N股"));
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("市值（已脱敏）"));
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("成本（已脱敏）现价（已脱敏）"));
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("现金余额（已脱敏）"));
+
+        // 标的名保留（公开信息 + 规则引用需要标的语境）
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("贵州茅台"));
+        // 大盘指数等公开行情不误伤
+        org.junit.jupiter.api.Assertions.assertTrue(sanitized.contains("上证+1.02%"));
+    }
+
+    @Test
+    void sanitizeReviewContent_nullOrBlank_returnsAsIs() {
+        org.junit.jupiter.api.Assertions.assertNull(TradingController.sanitizeReviewContent(null));
+        org.junit.jupiter.api.Assertions.assertEquals("", TradingController.sanitizeReviewContent(""));
+        org.junit.jupiter.api.Assertions.assertEquals("  ", TradingController.sanitizeReviewContent("  "));
     }
 
     // ── 规则冲突检测（保留原覆盖） ──

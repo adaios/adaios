@@ -201,7 +201,11 @@ class _FeedPageState extends State<FeedPage> {
     // 后续用 `!` 解引用会空值断言崩溃 + 回复丢失（#100 P0）。
     final cardId = _activeCardId;
     if (cardId == null) return;
-    final activeCard = _cards.firstWhere((c) => c.id == cardId);
+    // #205：indexWhere 安全跳过（firstWhere 找不到同步抛 StateError）。
+    // 卡片被替换/刷新后不在 _cards 时静默返回，与 _updateCard 语义一致。
+    final activeIdx = _cards.indexWhere((c) => c.id == cardId);
+    if (activeIdx < 0) return;
+    final activeCard = _cards[activeIdx];
     final isImageAsk = activeCard.mediaUrl != null;
 
     setState(() {
@@ -336,9 +340,11 @@ class _FeedPageState extends State<FeedPage> {
       setState(() {
         _activeCardId = null;
         _hasActiveChat = false;
-        if (card.turns != null && card.turns!.isNotEmpty) {
-          _updateCard(cardId, (c) => c.copyWith(intent: IntentType.question));
-        }
+        // #219：图片卡点「提问」后不输入直接关闭 → mode 仍 waiting 残留（且无法复位）。
+        // 早退分支无条件复位 waiting 卡为 idle，与文本分支语义一致。
+        _updateCard(cardId, (c) => c.copyWith(
+            mode: c.mode == CardMode.waiting ? CardMode.idle : c.mode,
+            intent: IntentType.question));
       });
       return;
     }

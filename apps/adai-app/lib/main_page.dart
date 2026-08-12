@@ -165,6 +165,8 @@ class _MainPageState extends State<MainPage>
     if (card.mediaUrl != null) {
       final hasTurns = card.turns != null && card.turns!.isNotEmpty;
       setState(() {
+        // #220：与文本分支/adai-web 对齐——先置 idle 其他卡，避免两张 active 样式卡并存
+        _deactivateOtherCards(cardId);
         _activeCardId = cardId;
         _hasActiveChat = true;
         _chatEnterTurnCount = card.turns?.length ?? 0;
@@ -241,9 +243,11 @@ class _MainPageState extends State<MainPage>
       setState(() {
         _activeCardId = null;
         _hasActiveChat = false;
-        if (card.turns != null && card.turns!.isNotEmpty) {
-          _updateCard(cardId, (c) => c.copyWith(intent: IntentType.question));
-        }
+        // #219：图片卡点「提问」后不输入直接关闭 → mode 仍 waiting 残留（且无法复位）。
+        // 早退分支无条件复位 waiting 卡为 idle，与文本分支语义一致。
+        _updateCard(cardId, (c) => c.copyWith(
+            mode: c.mode == CardMode.waiting ? CardMode.idle : c.mode,
+            intent: IntentType.question));
       });
       _scrollToBottom();
       return;
@@ -381,7 +385,11 @@ class _MainPageState extends State<MainPage>
     // 后续 `!` 解引用会空值断言崩溃 + 回复丢失（#100 P0，adai-web 同步修复）。
     final cardId = _activeCardId;
     if (cardId == null) return;
-    final activeCard = _cards.firstWhere((c) => c.id == cardId);
+    // #205：indexWhere 安全跳过（firstWhere 找不到同步抛 StateError）。
+    // 卡片被替换/刷新后不在 _cards 时静默返回，与 _updateCard 语义一致。
+    final activeIdx = _cards.indexWhere((c) => c.id == cardId);
+    if (activeIdx < 0) return;
+    final activeCard = _cards[activeIdx];
     final isImageAsk = activeCard.mediaUrl != null;
 
     setState(() {
@@ -902,6 +910,15 @@ class _MainPageState extends State<MainPage>
                 controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                 children: [
+                  // #208：图片追问对话态下原图持续可见——图即上下文，用户追问时能看着图问。
+                  // 修复前 _buildActiveLayout 只渲染气泡，移动端进追问后缩略图消失（桌面端常驻无此问题）。
+                  if (activeCard.mediaUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Center(
+                        child: _buildActiveMediaThumb(activeCard),
+                      ),
+                    ),
                   if (activeCard.loading)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -951,6 +968,59 @@ class _MainPageState extends State<MainPage>
     );
   }
 
+
+  /// 图片追问对话态缩略图（#208）——图即上下文，追问时原图持续可见；点击弹全图。
+  /// 与 feed_card 的 _buildMediaThumb 同模式（96px 缩略图 + 全图 Dialog）。
+  Widget _buildActiveMediaThumb(FeedCardData card) {
+    final url = card.mediaUrl;
+    if (url == null) return const SizedBox.shrink();
+    return GestureDetector(
+      onTap: () => _showActiveFullImage(card),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          headers: card.mediaHeaders,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            width: 96, height: 96,
+            color: AppColors.darkSurface2,
+            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+          ),
+          loadingBuilder: (_, child, progress) => progress == null
+              ? child
+              : Container(
+                  width: 96, height: 96,
+                  color: AppColors.darkSurface2,
+                  child: const Center(child: SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
+                ),
+        ),
+      ),
+    );
+  }
+
+  /// 点击 active 缩略图 → 全图 Dialog（点任意处关闭）。
+  void _showActiveFullImage(FeedCardData card) {
+    final url = card.mediaUrl;
+    if (url == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(url, headers: card.mediaHeaders, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildChatBubble(String text, bool isUser, String time) {
     final displayText = isUser ? text : TextCleaner.stripDomainJson(text);
