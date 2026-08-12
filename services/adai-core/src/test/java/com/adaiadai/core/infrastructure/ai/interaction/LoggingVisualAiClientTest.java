@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 class LoggingVisualAiClientTest {
 
     private final InMemoryFileStorage storage = new InMemoryFileStorage();
-    private final AiInteractionLogger logger = new AiInteractionLogger(storage);
+    private final AiInteractionLogger logger = new AiInteractionLogger(storage, 30);
     private final GlmVisualAiClient delegate = mock(GlmVisualAiClient.class);
     private final LoggingVisualAiClient client = new LoggingVisualAiClient(delegate, logger);
 

@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 class LoggingAiClientTest {
 
     private final InMemoryFileStorage storage = new InMemoryFileStorage();
-    private final AiInteractionLogger logger = new AiInteractionLogger(storage);
+    private final AiInteractionLogger logger = new AiInteractionLogger(storage, 30);
     private final DeepSeekAiClient delegate = mock(DeepSeekAiClient.class);
     private final LoggingAiClient client = new LoggingAiClient(delegate, logger);
 

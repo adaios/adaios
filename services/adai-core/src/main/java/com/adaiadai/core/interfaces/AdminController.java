@@ -40,6 +40,9 @@ public class AdminController {
     /** 文件内容预览上限 512KB，避免一次加载大文件。 */
     private static final long MAX_FILE_SIZE = 512 * 1024;
 
+    /** AI 日志单页条数上限（REVIEW #210：防单次拉全量明文历史）。 */
+    private static final int MAX_LOG_PAGE_SIZE = 500;
+
     private static final Set<String> KNOWN_DOMAINS = Set.of("trading-os", "life-os", "project-os");
 
     private final Path dataRoot;
@@ -121,15 +124,22 @@ public class AdminController {
      * 供 adai-admin 管理端查看"提示词怎么组装的"；数据源 {@code data/{userId}/ai-logs/}。
      *
      * <pre>
-     * GET /api/v1/admin/ai-logs?userId=adai&date=2026-08-12  → 当日日志条目列表
+     * GET /api/v1/admin/ai-logs?userId=adai&date=2026-08-12&page=1&size=200  → 当日日志条目列表
      * </pre>
+     *
+     * REVIEW #210 读取治理：日期早于保留期（{@code adai.ai-log.retention-days}，默认 30 天）
+     * 拒绝查询（日志已清理，防扫任意历史）；分页 + size 上限防单次拉全量。
      *
      * @param userId 用户 ID（默认 adai，多账号下可指定）
      * @param date   日期 YYYY-MM-DD（默认今天）
+     * @param page   页码（从 1 起，默认 1）
+     * @param size   每页条数（默认 200，上限 500）
      */
     @GetMapping("/ai-logs")
     public ResponseEntity<?> getAiLogs(@RequestParam(defaultValue = "adai") String userId,
-                                       @RequestParam(defaultValue = "") String date) {
+                                       @RequestParam(defaultValue = "") String date,
+                                       @RequestParam(defaultValue = "1") int page,
+                                       @RequestParam(defaultValue = "200") int size) {
         if (!userId.matches("[a-zA-Z0-9_-]+")) {
             return ResponseEntity.badRequest().body(Map.of("error", "非法 userId: " + userId));
         }
@@ -143,10 +153,22 @@ public class AdminController {
                 return ResponseEntity.badRequest().body(Map.of("error", "date 需为 YYYY-MM-DD"));
             }
         }
-        List<AiInteractionLog> logs = aiInteractionLogger.readDay(userId, day);
+        // #210：拒绝查询已过保留期的日志（早于 oldestRetainableDate 的已被清理）
+        if (day.isBefore(aiInteractionLogger.oldestRetainableDate())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "date 早于日志保留期（" + aiInteractionLogger.retentionDays() + " 天），已清理不可查"));
+        }
+        int p = Math.max(page, 1);
+        int s = Math.min(Math.max(size, 1), MAX_LOG_PAGE_SIZE);
+        int offset = (p - 1) * s;
+        List<AiInteractionLog> logs = aiInteractionLogger.readDay(userId, day, offset, s);
+        int total = aiInteractionLogger.countDay(userId, day);
         return ResponseEntity.ok(Map.of(
                 "userId", userId,
                 "date", day.toString(),
+                "page", p,
+                "size", s,
+                "total", total,
                 "count", logs.size(),
                 "logs", logs));
     }

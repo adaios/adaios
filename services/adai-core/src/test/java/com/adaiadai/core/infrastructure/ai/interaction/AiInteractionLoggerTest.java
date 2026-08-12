@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AiInteractionLoggerTest {
 
     private final InMemoryFileStorage storage = new InMemoryFileStorage();
-    private final AiInteractionLogger logger = new AiInteractionLogger(storage);
+    private final AiInteractionLogger logger = new AiInteractionLogger(storage, 30);
 
     private AiInteractionLog entry(String traceId, String kind) {
         return new AiInteractionLog(
@@ -76,5 +77,63 @@ class AiInteractionLoggerTest {
         assertEquals(123, read.estimatedTokens());
         assertEquals("完整 prompt 文本", read.prompt());
         assertNotNull(read.ts());
+    }
+
+    // ── #210 retention 过期清理 ──
+
+    @Test
+    void cleanupExpired_removesOldFiles_keepsRecent() {
+        AiInteractionLogger logger2 = new AiInteractionLogger(storage, 2);
+        storage.append("adai", "ai-logs/2026/01/ai-log-2026-01-01.jsonl", "old\n");
+        storage.append("adai", "ai-logs/2026/01/ai-log-2026-01-31.jsonl", "recent\n");
+
+        logger2.cleanupExpired("adai", LocalDate.of(2026, 2, 2)); // cutoff = 2026-01-31
+
+        List<String> remaining = storage.listFiles("adai", "ai-logs");
+        assertFalse(remaining.stream().anyMatch(p -> p.contains("2026-01-01")), "过期日志应被清理");
+        assertTrue(remaining.stream().anyMatch(p -> p.contains("2026-01-31")), "保留期内日志应保留");
+    }
+
+    @Test
+    void log_cleansExpiredFilesOnFirstWrite() {
+        AiInteractionLogger logger2 = new AiInteractionLogger(storage, 2);
+        storage.append("adai", "ai-logs/2020/01/ai-log-2020-01-01.jsonl", "very-old\n");
+
+        logger2.log("adai", entry("t-new", "understand"));
+
+        List<String> remaining = storage.listFiles("adai", "ai-logs");
+        assertFalse(remaining.stream().anyMatch(p -> p.contains("2020-01-01")), "首次写入应触发过期清理");
+        assertTrue(remaining.stream().anyMatch(p -> p.contains("ai-log-" + LocalDate.now())), "今日日志保留");
+    }
+
+    @Test
+    void retentionDays_nonPositive_disablesCleanup() {
+        AiInteractionLogger logger2 = new AiInteractionLogger(storage, 0);
+        storage.append("adai", "ai-logs/2020/01/ai-log-2020-01-01.jsonl", "old\n");
+
+        logger2.cleanupExpired("adai", LocalDate.now());
+
+        assertTrue(storage.listFiles("adai", "ai-logs").stream()
+                        .anyMatch(p -> p.contains("2020-01-01")),
+                "retentionDays<=0 应保留全部日志");
+    }
+
+    // ── #210 分页读取 ──
+
+    @Test
+    void readDay_pagination_slicesByOffsetAndLimit() {
+        logger.log("adai", entry("t1", "understand"));
+        logger.log("adai", entry("t2", "understand"));
+        logger.log("adai", entry("t3", "understand"));
+
+        List<AiInteractionLog> page1 = logger.readDay("adai", LocalDate.now(), 0, 2);
+        List<AiInteractionLog> page2 = logger.readDay("adai", LocalDate.now(), 2, 2);
+
+        assertEquals(2, page1.size());
+        assertEquals("t1", page1.get(0).traceId());
+        assertEquals("t2", page1.get(1).traceId());
+        assertEquals(1, page2.size());
+        assertEquals("t3", page2.get(0).traceId());
+        assertEquals(3, logger.countDay("adai", LocalDate.now()));
     }
 }

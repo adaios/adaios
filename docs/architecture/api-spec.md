@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-12 | v3.11 | **AI 日志隐私治理（REVIEW #210）**：`GET /admin/ai-logs` 新增 `page`/`size`（上限 500，响应带 `total`）；`date` 早于保留期（`adai.ai-log.retention-days` 默认 30 天）返回 400（已清理不可查）|
 | 2026-08-12 | v3.10 | **R1 AI 交互日志契约登记**：新增 §17 `GET /admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权，读 `data/{userId}/ai-logs/YYYY/MM/ai-log-{date}.jsonl`）；图片追问持久化（`POST /records/media/{id}/ask` 追问 Q/A 追加进图片卡 card 文件，Feed 图片记录 entry 带 turns）|
 | 2026-08-11 | v3.9 | **图片追问（L4 图片问答）**：新增 `POST /records/media/{id}/ask`（图+问题 → GLM 自然语言回答 → 沉淀 `image_qa` 记录）；管理端点 CORS 预检修复（`OPTIONS` 放行，8082/8083 可正常访问 admin/accounts）|
 | 2026-08-09 | v3.8 | **多账号前端选号 + 契约对齐**：新增 §16 `GET /accounts/available`（无鉴权选号）/ portfolio `positionCount` 派生字段（#106）/ Feed 分页 page0 完整核心 + 卡片时间基准 `updatedAt`（#175）/ `X-User-Id` 默认说明更新（v1.0.0 起前端必须携带所选账号）|
@@ -1052,13 +1053,18 @@ chat 模式（全屏）
 |:-----|:-----|:----:|:----:|:-----|
 | `userId` | String | 否 | `adai` | 用户 ID（多账号下指定；非法字符 400）|
 | `date` | String | 否 | 今天 | 日期 `YYYY-MM-DD`（格式错误 400）|
+| `page` | int | 否 | 1 | 页码（从 1 起，<1 归 1）|
+| `size` | int | 否 | 200 | 每页条数（上限 500，超出截断）|
 
-**Response** — 当日 AI 交互日志条目列表（JSONL 解析后，按写入顺序）
+**Response** — 当日 AI 交互日志条目列表（JSONL 解析后，按写入顺序，分页切片）
 
 ```json
 {
   "userId": "adai",
   "date": "2026-08-12",
+  "page": 1,
+  "size": 200,
+  "total": 3,
   "count": 2,
   "logs": [
     {
@@ -1087,3 +1093,4 @@ chat 模式（全屏）
 - **kind**：`understand` / `generate` / `recognizeIntent` / `visual.understand` / `visual.ask`
 - **关联**：`recordId`/`cardId`/`source` 由调用点在 AI 调用前通过 `AiTraceContext` 挂载（无关联时靠 `scene`+`prompt` 追溯）
 - **落盘失败不影响业务**：日志 best-effort，AI 调用结果正常返回
+- **REVIEW #210 隐私治理（2026-08-12）**：日志保留 `adai.ai-log.retention-days`（默认 30 天）——写入时惰性清理过期文件；`date` 早于保留期返回 **400**（已清理不可查，防扫任意历史明文）；`size` 上限 500 防单次拉全量

@@ -35,7 +35,7 @@ class AdminAuthInterceptorTest {
         Files.createDirectories(dataDir.resolve("default"));
         return MockMvcBuilders
                 .standaloneSetup(new AdminController(dataDir.toString(), dataDir.toString(),
-                        new AiInteractionLogger(new InMemoryFileStorage())))
+                        new AiInteractionLogger(new InMemoryFileStorage(), 30)))
                 .addInterceptors(new AdminAuthInterceptor(token))
                 .build();
     }

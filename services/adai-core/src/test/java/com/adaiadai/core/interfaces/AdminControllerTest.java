@@ -46,7 +46,7 @@ class AdminControllerTest {
         Files.writeString(osDir.resolve("trading-os").resolve("11-context").resolve("rules.md"), "R1 空仓也是策略");
 
         storage = new InMemoryFileStorage();
-        AiInteractionLogger aiLogger = new AiInteractionLogger(storage);
+        AiInteractionLogger aiLogger = new AiInteractionLogger(storage, 30);
         mvc = MockMvcBuilders.standaloneSetup(
                 new AdminController(dataDir.toString(), osDir.toString(), aiLogger)).build();
     }
@@ -132,7 +132,7 @@ class AdminControllerTest {
 
     @Test
     void aiLogs_readsLoggedEntries() throws Exception {
-        AiInteractionLogger logger = new AiInteractionLogger(storage);
+        AiInteractionLogger logger = new AiInteractionLogger(storage, 30);
         logger.log("adai", new AiInteractionLog(
                 "trace-1", "2026-08-12T10:00:00", 120L, "adai",
                 "understand", "note", "rec_1", null, "record", "deepseek",
@@ -164,5 +164,57 @@ class AdminControllerTest {
         mvc.perform(get("/api/v1/admin/ai-logs").param("userId", "adai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.count").value(0));
+    }
+
+    // ── #210 读取治理：日期上界 + 分页 + size 上限 ──
+
+    @Test
+    void aiLogs_expiredDate_400() throws Exception {
+        // 早于保留期（30 天）的日志已被清理，拒绝查询（防扫任意历史）
+        mvc.perform(get("/api/v1/admin/ai-logs")
+                        .param("userId", "adai")
+                        .param("date", LocalDate.now().minusDays(31).toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aiLogs_pagination_returnsPageAndTotal() throws Exception {
+        AiInteractionLogger logger = new AiInteractionLogger(storage, 30);
+        for (int i = 1; i <= 3; i++) {
+            logger.log("adai", new AiInteractionLog(
+                    "trace-" + i, "2026-08-12T10:00:00", 100L, "adai",
+                    "understand", "note", "rec_" + i, null, "record", "deepseek",
+                    "prompt-" + i, 50, "ok", null, 200, "summary=" + i));
+        }
+
+        mvc.perform(get("/api/v1/admin/ai-logs")
+                        .param("userId", "adai")
+                        .param("date", LocalDate.now().toString())
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.count").value(2))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.logs.length()").value(2));
+
+        mvc.perform(get("/api/v1/admin/ai-logs")
+                        .param("userId", "adai")
+                        .param("date", LocalDate.now().toString())
+                        .param("page", "2")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.logs[0].traceId").value("trace-3"));
+    }
+
+    @Test
+    void aiLogs_sizeAboveMax_clampedTo500() throws Exception {
+        mvc.perform(get("/api/v1/admin/ai-logs")
+                        .param("userId", "adai")
+                        .param("date", LocalDate.now().toString())
+                        .param("size", "9999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(500));
     }
 }
