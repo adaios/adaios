@@ -647,12 +647,10 @@ class _FeedPageState extends State<FeedPage> {
           ? const Text('暂无摘要', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              // 去绿点：AI 每行自带 emoji（prompt 要求）直接展示，双前缀冲突消除
               children: lines.map((line) => Padding(
                 padding: const EdgeInsets.only(bottom: 5),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('• ', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
-                  Expanded(child: Text(line, style: const TextStyle(fontSize: 12, height: 1.5, color: AppColors.darkGrey3))),
-                ]),
+                child: Text(line, style: const TextStyle(fontSize: 12, height: 1.5, color: AppColors.darkGrey3)),
               )).toList(),
             ),
     );

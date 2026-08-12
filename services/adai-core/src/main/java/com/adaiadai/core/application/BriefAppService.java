@@ -101,15 +101,16 @@ public class BriefAppService {
                             List.of(), prompt, java.time.LocalDateTime.now(),
                             List.of()
                     ));
-            cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 3));
+            cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 5));
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
             String greeting = greetingForHour(hour);
-            // #221：降级问候 emoji 按时段（凌晨 🌙 / 早上 ☀️ / 下午 🌤 / 晚上 ✨），不再固定 ☀️
+            // #221/#222：降级问候 emoji 按时段（凌晨 🌙 / 早上 ☀️ / 中午 🌤️ / 下午 🌇 / 晚上 ✨），不再固定 ☀️
+            // 去绿点：第二行也带 emoji（💬），与 AI 成功路径前缀风格统一
             cachedBriefByUser.put(userId,
-                    emojiForHour(hour) + " " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？");
+                    emojiForHour(hour) + " " + identityName + " " + greeting + "！\n💬 今天有什么想记录的吗？");
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         }
@@ -256,7 +257,7 @@ public class BriefAppService {
         sb.append("1. First line: \"").append(name).append(" ").append(greeting).append("!\"\n");
         sb.append("2. Use emoji at the start of each line\n");
         sb.append("3. Warm, concise, Chinese\n");
-        sb.append("4. Max 30 chars per line, max 3 lines total\n");
+        sb.append("4. Max 30 chars per line, max 5 lines total\n");
         sb.append("5. No JSON output\n");
         sb.append("6. Use actual emoji characters (NOT \\uXXXX escape codes)\n");
 

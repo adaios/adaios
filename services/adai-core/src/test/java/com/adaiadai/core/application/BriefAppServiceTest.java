@@ -17,6 +17,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * BriefAppService 单元测试。
@@ -28,6 +31,7 @@ class BriefAppServiceTest {
     private RecordFileRepository recordRepository;
     private IdentityFileRepository identityRepository;
     private BriefAppService briefAppService;
+    private com.adaiadai.core.infrastructure.ai.llm.AiClient aiClient;
 
     @BeforeEach
     void setUp() {
@@ -38,9 +42,16 @@ class BriefAppServiceTest {
         identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
         TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
-        briefAppService = new BriefAppService(
+        aiClient = new TestAiClient();
+        briefAppService = buildService(tagIndexService);
+    }
+
+    private BriefAppService buildService(TagIndexService tagIndexService) {
+        MemoryService memoryService = new MemoryService(fileStorage);
+        TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
+        return new BriefAppService(
                 identityRepository, recordRepository, memoryService,
-                new TestAiClient(), new TradingReviewAppService(
+                aiClient, new TradingReviewAppService(
                         recordRepository, null, null, null, reviewRepo),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService)
@@ -92,6 +103,20 @@ class BriefAppServiceTest {
         String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
         assertFalse(brief.isBlank());
+    }
+
+    @Test
+    void generateBrief_degradesToEmojiPrefixedLines_noBullet() {
+        // 降级路径：AI 调用失败时产出 emoji 前缀行，不再用绿点「• 」（顶部摘要前缀冲突修复）
+        aiClient = mock(com.adaiadai.core.infrastructure.ai.llm.AiClient.class);
+        when(aiClient.understand(any())).thenThrow(new RuntimeException("mock down"));
+        TagIndexService tagIndexService = new TagIndexService(fileStorage);
+        briefAppService = buildService(tagIndexService);
+
+        String brief = briefAppService.generateBrief("default");
+        assertNotNull(brief);
+        assertFalse(brief.contains("• "), "降级 brief 不应含绿点前缀");
+        assertTrue(brief.contains("💬"), "降级 brief 第二行应带 💬 emoji");
     }
 
     @Test

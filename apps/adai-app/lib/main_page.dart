@@ -860,12 +860,10 @@ class _MainPageState extends State<MainPage>
               if (i == 0) {
                 return Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(line, style: const TextStyle(fontSize: 16, height: 1.75, fontWeight: FontWeight.w400, color: AppColors.darkGrey1)));
               }
+              // 去掉绿点前缀：AI 每行自带 emoji（prompt 要求）直接展示，双前缀冲突消除
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('•  ', style: TextStyle(fontSize: 16, color: AppColors.darkGreen.withAlpha(150))),
-                  Expanded(child: Text(line, style: const TextStyle(fontSize: 14, height: 1.6, fontWeight: FontWeight.w400, color: AppColors.darkGrey1))),
-                ]),
+                child: Text(line, style: const TextStyle(fontSize: 14, height: 1.6, fontWeight: FontWeight.w400, color: AppColors.darkGrey1)),
               );
             }),
           ],
