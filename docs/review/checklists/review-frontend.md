@@ -42,6 +42,10 @@
 | F19 | `Color.withValues(alpha:)` 越界审查：alpha 必须 ∈[0,1]，搜 `alpha: [>1 的字面量]`（多为 `alpha: 100` 百分比误写）| 选号页 alpha:100 → 实际 74% 透明（P3 #196）|
 | F20 | 路由 push/pop 回调幂等保护：`onSelect`/`onConfirm` 先 pop 再异步 setState 需防快速双击重复 pop/push | 双击切换账号可叠两层选号页（P2 #185）|
 | F21 | 条件导出双实现新增方法若无调用方，两侧都成死代码 | `clearUserId()` 双实现无调用（P3 #197）|
+| F22 | 回调闭包幂等守卫必须覆盖全部副作用：onSelect/onConfirm 内若同时调 async 函数与 `nav.pop()/push()`，守卫须包住闭包整体，不能只包异步函数本身 | 双击切换账号守卫只包 `_selectAccount`、漏了闭包 `nav.pop()` → 第二次 pop 弹掉 home（P1 #204，2026-08-12）|
+| F23 | 给既有安全路径（`_updateCard`/`indexWhere`）升级为 `firstWhere` 时必须确认调用时机下列表恒含目标 id，否则同步抛 StateError 且无 try 兜底 | `_appendToActiveCard` firstWhere 无缺省 → 卡不在列表同步崩（P1 #205，2026-08-12）|
+| F24 | 置 `mode=waiting` 但不伴随异步任务的入口必须有复位路径：close/取消分支须无条件复位 mode | 图片卡提问后不输入直接关闭 → 永久卡 waiting 态（P2 #219，2026-08-12）|
+| F25 | 双端（adai-app/adai-web）新交互逐项对拍：不止文案，行为分支（_deactivateOtherCards/loading 态/图可见性）必须一致 | 图片追问 adai-app 缺 _deactivateOtherCards（P2 #220，2026-08-12）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。

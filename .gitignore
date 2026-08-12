@@ -64,9 +64,15 @@ data/*/records/
 data/*/memory/
 data/*/trading/
 
+# AI 交互日志含完整 prompt 全文（档案/记忆/持仓/用户原文），不提交
+# 2026-08-12 deep 审核 P0 #226：新增落盘目录必须同步 .gitignore（B25 检查点）
+data/*/ai-logs/
+
 # identity 的示例配置文件选择性提交（见 data/identity/profile.sample.md）
-# data/identity/profile.md 不提交（含真实用户偏好）
-data/*/identity/profile.md
+# data/identity/ 下除 *.sample.md 外全部不提交（含真实用户偏好/头像等）
+# 2026-08-12 deep 审核 #223：原只保护 profile.md 单文件，identity 下新非 sample 文件会进 git（K9）
+data/*/identity/*
+!data/*/identity/*.sample.md
 
 # 索引文件可从 records 重建，不追踪
 data/*/index/

@@ -50,6 +50,11 @@
 | B22 | 「扫源码/扫文件系统」型统计/聚合必须评估 jar-only 生产形态退化 | countApiEndpoints 生产恒 0（P2 #187）|
 | B23 | 幂等/处理标记类修复必须枚举所有入口路径验证（不能只测 cardId==null）| #144 漏聊天首问带 cardId 主路径（P1 #181）|
 | B24 | 外部 AI 服务依赖（GLM/DeepSeek 等 key + base URL）部署后必须跑真实功能 E2E（不只是 HTTP 200），验证 key 已配齐 | 生产缺 GLM_API_KEY → 图片理解/追问一直静默降级（2026-08-11 生产事故）|
+| B25 | 新增 File First 落盘目录必须同步 .gitignore（`git check-ignore` 验证），防隐私数据进 git 历史 | ai-logs 落盘新目录但漏 ignore → prompt 全文可被 git add -A 提交（P0 #226，2026-08-12）|
+| B26 | 幂等/处理标记不得用「内容文本」兼任哨兵：`"recorded"` 同时被 retry/rebuild/兜底三处消费，AI 成功但长摘要也会被误判未处理 | summary="recorded" 哨兵导致记录每 15 分钟无限重补（P1 #207，2026-08-12）|
+| B27 | 引入 ThreadLocal 追踪上下文（AiTraceContext 类）必须配请求级清理钩子（HandlerInterceptor.afterCompletion remove）| AiTraceContext 跨请求残留 → 漏 set trace 路径落错用户目录（P2 #213，2026-08-12）|
+| B28 | 装饰器/代理新增接口方法必须同步实现（AiClient 加 generate 后 LoggingAiClient/TestAiClient 均需同步）| 本次已同步 ✓；`LoggingAiClient.generate` 未记录 systemPrompt（P3 #231，2026-08-12）|
+| B29 | 防御性回退禁止用 `LocalDateTime.now()` 推导持久化字段（G2 只 grep `LocalDate.now()|Instant.now()` 漏了它）| `parseDateTime` 缺 updatedAt 回退 now() → 旧卡永久归"今天" Feed（P1 #206，2026-08-12）|
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。
