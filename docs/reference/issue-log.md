@@ -13,7 +13,7 @@
 > - **性能问题** — 卡顿、渲染阻塞
 > - **死代码** — 定义的逻辑从未被使用
 >
-> **文档版本：** v8.0 | **最后更新：** 2026-08-02
+> **文档版本：** v9.0 | **最后更新：** 2026-08-12
 
 ---
 
@@ -270,10 +270,73 @@ ID = card_xxx → 只删 CardFileRepository → 不对，已是最全
 
 
 
+---
+
+## 新增未修问题（2026-08-12，用户「阿呆」生产反馈）
+
+> 来源：2026-08-12 凌晨生产记录（`data/adai/records/2026/08/`），阿呆在 App 输入反馈。状态均为待修。
+
+### #14 — 凌晨问候语显示 "morning"（M5 Brief）
+
+**现象：** 阿呆 00:33 反馈「怎么还是现实morning 明明是凌晨了」。凌晨 0 点后简报问候语仍显示英文 morning / 早上好。
+
+**根因（本质类型：逻辑设计）：** `BriefAppService.java` 时段判断把深夜归入早上——
+- `:105` 降级路径中文问候：`hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好"`（凌晨 0-6 → 早上好）
+- `:129` AI prompt 英文时段：`hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"` → prompt 要求 `First line: "{name} {greeting}!"`，AI 凌晨直接输出 "morning"
+
+`hour` 为本地小时（0-23），凌晨 0-5 均命中 `hour < 12`。用户期望凌晨（0-6）有独立深夜问候，或至少不显示 "morning"。
+
+**修法（候选）：** 时段细分——凌晨 `hour < 6` → 「深夜好」，或至少不再归入 morning；`buildBriefPrompt` 的英文 greeting 同步细分（late-night/morning）。
+
+**涉及文件：** `BriefAppService.java:105,129`
+
+**状态：** ✅ 已修（2026-08-12）——时段判断提取为 `greetingForHour`/`greetingEnForHour`（package-private 静态方法），凌晨 0-5 → 「深夜好/late night」；6-11 → 早上好/morning；12-17 → 下午好/afternoon；18-23 → 晚上好/evening。两处调用（降级路径 + AI prompt）改用方法。新增 `greetingForHour_boundaries` 边界测试。后端测试全绿。
+
+---
+
+### #15 — 已结束聊天继续时内容被简化（M3/M4）
+
+**现象：** 阿呆 00:43 反馈「针对已经结束的聊天内容 想要继续聊天的时候 点进去发现聊天过程被简化 外表看着很全」——已结束的卡片点击继续聊天，对话过程显示不全，但卡片外表（折叠态）看起来内容完整。
+
+**根因（疑似，本质类型：待确认）：** 与 #11 同源的 `_truncateTurns` 折叠（`feed_card.dart:593` 对话 >4 轮且 >200 字符只显示首/倒数第二/末轮 + 渐隐遮罩）——折叠态"外表看着很全"正是渐隐遮罩的误导；点进去继续时对话被折叠显示 → 用户感知"过程被简化"。需复现确认是折叠残留还是 card 文件 turns 确实丢失（对比 `data/records/cards/` 原始文件）。
+
+**修法（候选）：** 待复现——若 turns 完整则优化折叠交互（默认展开 / 折叠态明确提示）；若文件缺失则查 `endConversation` 写入路径。
+
+**涉及文件：** `feed_card.dart:593`（`_truncateTurns`）、`CardFileRepository`（待查）
+
+**状态：** ✅ 已修（2026-08-12）——复现确认根因：`feed_card.dart` 对所有 `_hasTurns` 卡片统一走 `_buildTurns()`，**点卡片进入 chat 模式时对话仍被 `_truncateTurns` 折叠**（>4 轮且 >200 字符只显示首/末 2 条 + 渐隐遮罩"外表看着很全"）。修复：折叠条件加 `!_isActive`（chatting/waiting 态始终显示全部对话）+ 折叠按钮同条件隐藏。仅影响 adai-app（adai-web 桌面端不折叠）。新增 `chatting card with 5+ turns does NOT fold` 回归测试。
+
+---
+
+### #16 — 输入框上滑手势误触丢内容（M2）
+
+**现象：** 阿呆 00:44 反馈「这个输入框上滑切换 很容易误触 写了半天 切回来还得重写」——输入栏上滑切换的手势与打字/换行冲突，误触发后离开输入态，写的内容丢失需重写。
+
+**根因（疑似，本质类型：待确认）：** 输入栏（`input_bar.dart`）的上滑切换手势判定过宽，编辑长文本时误触发；且切换后输入草稿未保留。需确认手势监听范围与草稿缓存逻辑。
+
+**修法（候选）：** 收紧上滑切换触发条件（起始点/位移阈值）+ 切换离开时保留草稿（下次回来恢复）。
+
+**涉及文件：** `apps/adai-app/lib/main_page.dart`（InputBar 手势）、`apps/adai-app/lib/main.dart`（壳层手势）
+
+**状态：** ✅ 已修（2026-08-12）——复现确认根因：InputBar 外层直接挂 `onVerticalDragEnd` 上滑手势（`main_page.dart`，阈值 `-200`），且壳层 `main.dart` 用 `HitTestBehavior.translucent` 全局手势覆盖输入框——打字上滑触发切 World B，MainPage 被 ValueKey 重建 → 草稿丢失。修复：移除 InputBar 外手势 + 壳层手势记录 `_dragStartY`，起点落在屏幕底部 140px（输入栏+附件预览）不响应切世界。adai-web 无触摸手势不受影响。analyze 0 · 63 测试全绿。
+
+---
+
+## 功能需求登记（2026-08-12，非 bug）
+
+### R1 — 记录每次 AI 交互的入参和响应（M-AI）
+
+**需求：** 阿呆 00:33/00:34 两次反馈「记录每次和大模型交流的入参和响应，包括什么情况下，我想要了解提示词的构建」——希望系统记录每次 AI 请求的入参（prompt/context/tokens 预估）与响应（耗时/长度/内容），用于复盘提示词构建。
+
+**定位：** AI 基础设施日志能力（`infrastructure/ai`），非业务功能。详见 `docs/ideas/20260812-ai-interaction-log.md`。
+
+**状态：** ⏳ 需求登记（未立项）
+
 ## 文档版本记录
 
 | 版本 | 日期 | 改动 |
 |:-----|:-----|:------|
+| v9.0 | 08-12 | 新增 #14 凌晨问候语显示 morning + #15 已结束聊天继续内容被简化 + #16 输入框上滑误触丢内容 + R1 提示词日志需求（阿呆生产反馈）|
 | v8.0 | 08-02 | 新增 #11 对话折叠显示减少 + #12 切换 LauncherPage CanvasKit 崩溃（emoji）+ #13 card 混入 AI 原始 JSON |
 | v7.0 | 08-02 | 新增 #10 endConversation 500（AI 空内容无降级）+ 前端结束失败无法重试 |
 | v1.0 | 07-28 | 初始问题跟踪 |
