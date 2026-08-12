@@ -161,17 +161,22 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 
 | 中文 | 代码 token | 色值 | 用途 |
 |:----|:----------|:-----|:------|
-| 背景色 | `darkBg` | `#0E0E0E` | 页面背景 |
-| 表面色 | `darkSurface` | `#1A1A1A` | 卡片底色 |
-| 表面色2 | `darkSurface2` | `#232326` | 输入栏、按钮 |
-| 边框色 | `darkBorder` | `#2C2C2E` | 分割线 |
+| 背景色 | `darkBg` | `#131211` | 页面背景 |
+| 表面色 | `darkSurface` | `#1D1B1A` | 卡片底色 |
+| 表面色2 | `darkSurface2` | `#252220` | 输入栏、按钮 |
+| 边框色 | `darkBorder` | `#2D2926` | 分割线 |
 | 灰1（最高） | `darkGrey1` | `#F0EDE9` | 正文文字 |
+| 灰2 | `darkGrey2` | `#D4D0CB` | 高强调 |
+| 灰3 | `darkGrey3` | `#B5B0AA` | 正文 body |
 | 灰4（次要） | `darkGrey4` | `#908B85` | 标签、时间 |
 | 灰5（三级） | `darkGrey5` | `#66615C` | 占位符、log 标签 |
 | 灰6 | `darkGrey6` | `#45423E` | placeholder |
-| 绿色 | `darkGreen` | `#2BC457` | AI、激活、ask 标签 |
+| 绿色 | `darkGreen` | `#3AB75A` | AI、激活、ask 标签 |
 | 橙色 | `darkOrange` | `#E8963A` | 预留 |
 | 蓝色 | `darkBlue` | `#5299FF` | 资讯推送（仅此用途） |
+| 紫色 | `darkPurple` | `#9B7FD4` | 预留 |
+| 黄色 | `darkYellow` | `#D4A043` | 预留 |
+| 红色 | `darkRed` | `#D95757` | 行情涨/负面（A 股红涨绿跌） |
 
 ---
 
@@ -226,7 +231,15 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 持仓查询 | GET | `/api/v1/trading/positions` | `List<PositionResponse>` |
 | 组合快照 | GET | `/api/v1/trading/portfolio` | `PortfolioSnapshotResponse` |
 | 交易复盘 | GET / POST | `/api/v1/trading/review` | `TradingReviewResponse` |
+| 反哺入库 | POST | `/api/v1/trading/reviews/{date}/promote` | `PromoteResponse`（双端交易页「反哺入库」按钮，#129）|
+| 交易记录 | GET | `/api/v1/trading/trades` | `List<TradeResponse>` |
 | 卡片迁移 | POST | `/api/v1/cards/migrate` | — |
+| 卡片清理 | POST | `/api/v1/cards/cleanup` | `CleanupResponse` |
+| 图片记录 | POST | `/api/v1/records/media` | `MediaRecordResponse`（multipart）|
+| 图片原图 | GET | `/api/v1/records/media/{id}` | 二进制 |
+| 图片追问 | POST | `/api/v1/records/media/{id}/ask` | `AskResponse`（图片卡 ── 提问 ── 追问）|
+| 待办完成 | PATCH | `/api/v1/memory/{id}/done` | — |
+| 启用账号 | GET | `/api/v1/accounts/available` | `List<String>`（无鉴权，仅 userId 最小集，#215）|
 
 ---
 

@@ -196,7 +196,7 @@ cd services/adai-core
 | `server.port` | 服务端口 | 8080 | 8080 |
 | `adai.storage.base-path` | 数据文件存储路径 | `../../data` | `/opt/adaios/data` |
 | `adai.ai.provider` | AI 提供商 | `deepseek` | `deepseek` |
-| `adai.ai.model` | AI 模型 | `deepseek-chat` | `deepseek-chat` |
+| `adai.ai.model` | AI 模型 | `deepseek-v4-pro` | `deepseek-v4-pro` |
 | `adai.security.admin-token` | 管理端点令牌 | 空（503 fail-closed）| `ADAI_ADMIN_TOKEN` |
 | CORS 白名单 | 允许来源 | localhost | `ADAI_ALLOWED_ORIGIN_PATTERNS` |
 

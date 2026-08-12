@@ -269,14 +269,15 @@ updatedAt: 2026-08-07
 |:--|:--|:--|
 | `traceId` | String | 调用 ID（UUID）|
 | `ts` | String | 调用结束时间（ISO-8601）|
-| `durationMs` | Long | 耗时毫秒（视觉为 null）|
+| `durationMs` | Long | 耗时毫秒（#218 视觉 understand/ask 已测真实耗时）|
 | `userId` | String | 用户 ID |
 | `kind` | String | `understand` / `generate` / `recognizeIntent` / `visual.understand` / `visual.ask` |
 | `scene` | String | 场景（trading/project/life/note/question/brief/conversation/intent/media）|
 | `recordId` / `cardId` | String | 关联记录/卡片 ID（可为 null）|
 | `source` | String | 调用来源（question/log/retry/brief/trading_review/conversation/media/intent）|
 | `model` | String | `deepseek` / `glm` |
-| `prompt` | String | 发给模型的完整 prompt 全文（understand/generate 为 `ContextPackage.prompt()`）|
+| `prompt` | String | 发给模型的完整 prompt 全文——understand/generate 为 `ContextPackage.prompt()`；`recognizeIntent` 为用户输入原文；`visual.*` 无备注时为占位符「（图片理解，无备注）」（#233 说明）|
+| `systemPrompt` | String | 自定义 system 指令（仅 `generate` 有，如复盘模板；understand/intent/visual 为 null，REVIEW #231）|
 | `estimatedTokens` | Integer | 预估输入 tokens |
 | `status` | String | `ok` / `error` |
 | `error` | String | 错误信息（status=error 时）|
