@@ -346,15 +346,15 @@ class ApiService {
 
   // ── 账号 API ──
 
-  /// 可用账号列表（v1.0.0 多账号选号；无鉴权端点，仅返回 enabled 账号）。
-  Future<List<AccountModel>> getAvailableAccounts() async {
+  /// 可用账号列表（v1.0.0 多账号选号；无鉴权端点，仅返回 enabled 账号的 userId 最小集）。
+  Future<List<String>> getAvailableAccounts() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/accounts/available'),
       headers: _headers,
     );
     _check(resp);
     final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
-    return list.map((e) => AccountModel.fromJson(e)).toList();
+    return list.map((e) => e.toString()).toList();
   }
 
   // ── 任务 API ──
@@ -939,26 +939,3 @@ class TaskStatsResponse {
   );
 }
 
-/// 账号 DTO（GET /api/v1/accounts/available 返回，产品端选号用）。
-class AccountModel {
-  final String userId;
-  final String role;
-  final bool enabled;
-  final DateTime? createdAt;
-
-  const AccountModel({
-    required this.userId,
-    required this.role,
-    required this.enabled,
-    this.createdAt,
-  });
-
-  bool get isAdmin => role == 'admin';
-
-  factory AccountModel.fromJson(Map<String, dynamic> json) => AccountModel(
-        userId: json['userId'] as String? ?? '',
-        role: json['role'] as String? ?? 'user',
-        enabled: json['enabled'] as bool? ?? false,
-        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
-      );
-}

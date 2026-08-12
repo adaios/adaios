@@ -107,7 +107,9 @@ public class BriefAppService {
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
             String greeting = greetingForHour(hour);
-            cachedBriefByUser.put(userId, "☀️ " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？");
+            // #221：降级问候 emoji 按时段（凌晨 🌙 / 早上 ☀️ / 下午 🌤 / 晚上 ✨），不再固定 ☀️
+            cachedBriefByUser.put(userId,
+                    emojiForHour(hour) + " " + identityName + " " + greeting + "！\n• 今天有什么想记录的吗？");
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         }
@@ -132,6 +134,17 @@ public class BriefAppService {
         if (hour < 12) return "morning";
         if (hour < 18) return "afternoon";
         return "evening";
+    }
+
+    /**
+     * 时段 emoji（#221：降级问候按时段，不再固定 ☀️——凌晨配 ☀️ 语义矛盾）。
+     * 与 {@link #greetingForHour} 时段一致。
+     */
+    static String emojiForHour(int hour) {
+        if (hour < 6) return "🌙";
+        if (hour < 12) return "☀️";
+        if (hour < 18) return "🌤️";
+        return "✨";
     }
 
     /** Limit string to at most {@code maxLines} lines. */

@@ -174,10 +174,10 @@ class AccountControllerTest {
                 .andExpect(status().isNotFound());
     }
 
-    // ── 可用账号列表（产品端选号，仅 enabled）──
+    // ── 可用账号列表（产品端选号，仅 enabled，最小集只返回 userId）──
 
     @Test
-    void availableAccounts_returnsOnlyEnabled() throws Exception {
+    void availableAccounts_returnsOnlyEnabled_Ids() throws Exception {
         var repo = mock(AccountRepository.class);
         when(repo.findAll()).thenReturn(List.of(
                 seedAdmin(), // enabled admin
@@ -188,9 +188,22 @@ class AccountControllerTest {
         mvcWith(repo).perform(get("/api/v1/accounts/available"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].userId").value("adai"))
-                .andExpect(jsonPath("$[1].userId").value("bob"))
-                .andExpect(jsonPath("$[1].enabled").value(true));
+                .andExpect(jsonPath("$[0]").value("adai"))
+                .andExpect(jsonPath("$[1]").value("bob"));
+    }
+
+    @Test
+    void availableAccounts_minimalFields_noRoleExposure() throws Exception {
+        // #215：无鉴权端点只返回 userId 字符串，不泄露 role/enabled/createdAt
+        var repo = mock(AccountRepository.class);
+        when(repo.findAll()).thenReturn(List.of(seedAdmin()));
+
+        mvcWith(repo).perform(get("/api/v1/accounts/available"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0]").value("adai"))
+                .andExpect(jsonPath("$[0].role").doesNotExist())
+                .andExpect(jsonPath("$[0].enabled").doesNotExist())
+                .andExpect(jsonPath("$[0].createdAt").doesNotExist());
     }
 
     @Test

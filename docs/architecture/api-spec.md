@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.10 | 最后更新：2026-08-12**
+**文档版本：v3.12 | 最后更新：2026-08-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-12 | v3.12 | **REVIEW #214/#215/#221**：`POST /records/media/{id}/ask` 的 `question` 加长度上界（500 字符，超限 400）；`GET /accounts/available` 响应由账号对象改为 **userId 最小集**（`List<String>`，不暴露 role/enabled/createdAt）；Brief 降级问候 emoji 按时段（#221） |
 | 2026-08-12 | v3.11 | **AI 日志隐私治理（REVIEW #210）**：`GET /admin/ai-logs` 新增 `page`/`size`（上限 500，响应带 `total`）；`date` 早于保留期（`adai.ai-log.retention-days` 默认 30 天）返回 400（已清理不可查）|
 | 2026-08-12 | v3.10 | **R1 AI 交互日志契约登记**：新增 §17 `GET /admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权，读 `data/{userId}/ai-logs/YYYY/MM/ai-log-{date}.jsonl`）；图片追问持久化（`POST /records/media/{id}/ask` 追问 Q/A 追加进图片卡 card 文件，Feed 图片记录 entry 带 turns）|
 | 2026-08-11 | v3.9 | **图片追问（L4 图片问答）**：新增 `POST /records/media/{id}/ask`（图+问题 → GLM 自然语言回答 → 沉淀 `image_qa` 记录）；管理端点 CORS 预检修复（`OPTIONS` 放行，8082/8083 可正常访问 admin/accounts）|
@@ -953,14 +954,12 @@ chat 模式（全屏）
 
 ### `GET /api/v1/accounts/available` — 可用账号列表（产品端选号）
 
-> **无鉴权**（WebConfig 从 AdminAuthInterceptor 拦截范围 exclude）——adai-app / adai-web 首屏选号与切换调用。仅返回 `enabled=true` 的账号。
+> **无鉴权**（WebConfig 从 AdminAuthInterceptor 拦截范围 exclude）——adai-app / adai-web 首屏选号与切换调用。仅返回 `enabled=true` 账号的 **userId 最小集**（REVIEW #215：无鉴权端点不暴露 role/enabled/createdAt，避免 admin 标记等枚举面）。
 
-**Response**
+**Response**（`List<String>`，纯 userId）
 
 ```json
-[
-  { "userId": "adai", "role": "admin", "enabled": true, "createdAt": "2026-08-02" }
-]
+[ "adai", "alice" ]
 ```
 
 - 空列表 → `200 []`（前端展示「去 adai-admin 创建账号」空态）

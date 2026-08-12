@@ -21,7 +21,7 @@ class AccountSelectPage extends StatefulWidget {
 }
 
 class _AccountSelectPageState extends State<AccountSelectPage> {
-  List<AccountModel>? _accounts;
+  List<String>? _accounts;
   bool _loading = true;
   String? _error;
 
@@ -140,10 +140,10 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
     );
   }
 
-  Widget _buildRow(AccountModel a) {
-    final isCurrent = a.userId == widget.currentUserId;
+  Widget _buildRow(String userId) {
+    final isCurrent = userId == widget.currentUserId;
     return GestureDetector(
-      onTap: () => widget.onSelect(a.userId),
+      onTap: () => widget.onSelect(userId),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -156,26 +156,21 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
                 : AppColors.darkBorder,
           ),
         ),
+        // #215：available 最小集只返回 userId，选号页不再渲染 admin/普通用户角色标记
         child: Row(children: [
           Container(
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: (a.isAdmin ? AppColors.darkGreen : AppColors.darkBlue).withValues(alpha: 0.15),
+              color: AppColors.darkBlue.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(a.isAdmin ? Icons.admin_panel_settings : Icons.person,
-                size: 18, color: a.isAdmin ? AppColors.darkGreen : AppColors.darkBlue),
+            child: Icon(Icons.person, size: 18, color: AppColors.darkBlue),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(a.userId,
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-              const SizedBox(height: 2),
-              Text(a.isAdmin ? '管理员' : '普通用户',
-                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            ]),
+            child: Text(userId,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
           ),
           if (isCurrent)
             Text('当前', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),

@@ -47,13 +47,15 @@ public class AccountController {
 
     /**
      * 可用账号列表（产品端选号，**无鉴权**——v1.0.0 多账号前端选号提前）。
-     * <p>仅返回 {@code enabled=true} 的账号；账号由 adai-admin 后台创建，产品端不做注册。
-     * 由 WebConfig 将该路径从 AdminAuthInterceptor 拦截范围 exclude（不暴露管理端点）。
+     * <p>仅返回 {@code enabled=true} 账号的 **userId 最小集**（#215：无鉴权端点不暴露
+     * role/enabled/createdAt，避免 admin 标记等枚举面）；账号由 adai-admin 后台创建，
+     * 产品端不做注册。由 WebConfig 将该路径从 AdminAuthInterceptor 拦截范围 exclude。
      */
     @GetMapping("/available")
-    public List<Account> listAvailableAccounts() {
+    public List<String> listAvailableAccounts() {
         return accountRepository.findAll().stream()
                 .filter(Account::enabled)
+                .map(Account::userId)
                 .toList();
     }
 

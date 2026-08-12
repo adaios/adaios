@@ -314,6 +314,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **REVIEW P2 修复批 L（#214/#215/#221，2026-08-12）** ✅：**#214 图片追问长度上界**（`MediaRecordAppService.askImage` question 超 500 字符 → 400，防超大 prompt/记录/日志行）+ **#215 available 最小集**（`GET /accounts/available` 改返回 `List<String>` 纯 userId，不再暴露 role/enabled/createdAt——无鉴权端点去 admin 标记枚举面；双端选号页去角色渲染 + 删 `AccountModel` 死代码）+ **#221 问候语降级 emoji 按时段**（`emojiForHour` 凌晨 🌙/早上 ☀️/下午 🌤️/晚上 ✨，不再固定 ☀️ 配深夜好）；api-spec v3.12；后端 355 · adai-app 68 · adai-web 30 全绿
 - **AI 日志隐私治理（#210，2026-08-12）** ✅：prompt 全文明文落盘的配套治理（R1 遗留）——**retention** `AiInteractionLogger` 默认保留 30 天（`adai.ai-log.retention-days`），写入时惰性清理（每用户每日一次）过期日志文件，防无限明文堆积（`retentionDays<=0` 关闭）；**读取治理** `GET /admin/ai-logs` 加 `page`/`size`（上限 500，响应带 `total`）+ `date` 早于保留期返回 400（已清理不可查，防扫任意历史明文）；api-spec v3.11；后端 351 全绿
 - **数据/隐私加固 + 反哺提示（#227/#213/#178，2026-08-12）** ✅：**#227** 定时重补过滤禁用账号（`RecordRetryService` 加 `.filter(Account::enabled)`，与 MarketAlertService 口径一致；无启用账号不再 fallback "default"——#212 后 default 已迁移移除）+ **#213** `AiTraceCleanupInterceptor` 请求级清理（每个 HTTP 请求 `afterCompletion` 无条件清空 `AiTraceContext` ThreadLocal，消灭 Tomcat 线程池复用下的跨请求残留——漏 set trace 的调用不再把日志落进上一个请求的用户目录）+ **#178 A 档** promote 响应加 `message` 提示「入库候选不自动融入 AI context，需在 trading-os 工作流融合后重建 11-context」（融合本身属 os/ 能力边界，不自动化）；后端 344 测试全绿
 - **deep 审核 P1 修复批（A-D + #184，2026-08-12）** ✅：**#184 promote 脱敏**（`sanitizeReviewContent` 生成源替换股数/市值/成本/现价/现金→占位符，标的名保留 + 不误伤大盘指数；候选文件改名 `YYYY-MM-DD_主题.md` + 重写脱敏版；git 历史旧版保留不重写，`78df9f9`）+ **批 A 前端** #204 双 pop（守卫包住闭包 nav.pop）+ #205 firstWhere→indexWhere + 选号 widget 测试 5 个（#177 战略落地）+ **批 B 后端** #206 updatedAt 缺失回退 createdAt + #207 recorded 哨兵（长摘要截断消灭无限重补）+ **批 C 图片追问** #208 active 态原图可见 + #209 Q/A 持久化到图片卡 card 文件 + FeedAppService 合并 turns + #219 waiting 卡死复位 + #220 双端对齐 + **批 D** #211 候选文件名约定 + #212 迁移脚本 default→adai；**相机拍照/视频→动作分析想法登记**（`docs/ideas/20260812-camera-sports-analysis.md`，复用 L4 图片通道，视频留 v2）；后端 340 · adai-app 68 · adai-web 30 全绿
@@ -380,8 +381,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 351 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 2 测试** + **图片追问 ask 接口 6 测试** + **CORS 预检回归 1 测试** + **#14 问候语时段边界 1 测试** + **R1 AI 交互日志 20 测试** + **#206/#207 幂等与时间基准 3 测试** + **#209 图片追问持久化 1 测试** + **#184 promote 脱敏 2 测试** + **#227 定时重补过滤禁用账号 2 测试** + **#213 追踪上下文请求级清理 2 测试** + **#210 AI 日志保留期/分页治理 7 测试**；**15 Controller 49 端点接口测试全覆盖** + 多模态 18 测试）
-- **前端** adai-app 63 · adai-admin 31 · adai-web 30，全部 0 失败
+- **后端** 355 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 3 测试** + **图片追问 ask 接口 8 测试** + **CORS 预检回归 1 测试** + **#14 问候语时段边界 1 测试** + **#221 问候语降级 emoji 1 测试** + **R1 AI 交互日志 20 测试** + **#206/#207 幂等与时间基准 3 测试** + **#209 图片追问持久化 1 测试** + **#184 promote 脱敏 2 测试** + **#227 定时重补过滤禁用账号 2 测试** + **#213 追踪上下文请求级清理 2 测试** + **#210 AI 日志保留期/分页治理 7 测试**；**15 Controller 49 端点接口测试全覆盖** + 多模态 18 测试）
+- **前端** adai-app 68 · adai-admin 31 · adai-web 30，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）

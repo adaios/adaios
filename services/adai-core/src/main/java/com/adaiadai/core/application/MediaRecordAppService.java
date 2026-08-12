@@ -33,6 +33,8 @@ public class MediaRecordAppService {
 
     private static final Logger log = LoggerFactory.getLogger(MediaRecordAppService.class);
     private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+    /** #214：图片追问 question 上界（超长会原样进 image_qa 记录 + ai-log prompt）。 */
+    private static final int MAX_QUESTION_LENGTH = 500;
 
     private final VisualAiClient visualAiClient;
     private final RecordFileRepository recordFileRepository;
@@ -128,6 +130,10 @@ public class MediaRecordAppService {
     public AskResult askImage(String userId, String recordId, String question) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("问题不能为空");
+        }
+        // #214：question 无上界会原样进 image_qa 记录 content 与 ai-log prompt（超大 prompt/文件/日志行）
+        if (question.length() > MAX_QUESTION_LENGTH) {
+            throw new IllegalArgumentException("问题过长（最多 " + MAX_QUESTION_LENGTH + " 字符）");
         }
         Optional<String> mediaPathOpt = recordFileRepository.findMediaPath(userId, recordId);
         if (mediaPathOpt.isEmpty()) {

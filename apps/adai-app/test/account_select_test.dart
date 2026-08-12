@@ -20,11 +20,11 @@ http.Response _json(Object data, {int status = 200}) => http.Response.bytes(
       headers: {'content-type': 'application/json'},
     );
 
-/// 假后端：/api/v1/accounts/available 返回可配置账号列表。
-MockClientHandler _availableHandler(List<Map<String, dynamic>> accounts) {
+/// 假后端：/api/v1/accounts/available 返回可配置账号 userId 列表（#215 最小集）。
+MockClientHandler _availableHandler(List<String> userIds) {
   return (req) async {
     if (req.url.path.endsWith('/accounts/available')) {
-      return _json(accounts);
+      return _json(userIds);
     }
     return _json({'error': 'not found'}, status: 404);
   };
@@ -54,28 +54,24 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('有账号 → 显示账号行 + 管理员/普通用户标记 + 当前标记', (tester) async {
+  testWidgets('有账号 → 显示账号行 + 当前标记（#215 无角色标记）', (tester) async {
     final api = ApiService(baseUrl: 'http://test', client: MockClient(
-      _availableHandler([
-        {'userId': 'adai', 'role': 'admin', 'enabled': true},
-        {'userId': 'alice', 'role': 'user', 'enabled': true},
-      ]),
+      _availableHandler(['adai', 'alice']),
     ));
     await tester.pumpWidget(_wrap(api, currentUserId: 'adai', onSelect: (_) {}));
     await tester.pumpAndSettle();
 
     expect(find.text('adai'), findsOneWidget);
     expect(find.text('alice'), findsOneWidget);
-    expect(find.text('管理员'), findsOneWidget);   // adai 为 admin
-    expect(find.text('普通用户'), findsOneWidget); // alice 为 user
+    // #215：available 最小集只返回 userId，无 admin/普通用户角色标记
+    expect(find.text('管理员'), findsNothing);
+    expect(find.text('普通用户'), findsNothing);
     expect(find.text('当前'), findsOneWidget);     // 当前账号标绿
   });
 
   testWidgets('点击账号行 → 触发 onSelect 回调', (tester) async {
     final api = ApiService(baseUrl: 'http://test', client: MockClient(
-      _availableHandler([
-        {'userId': 'adai', 'role': 'admin', 'enabled': true},
-      ]),
+      _availableHandler(['adai']),
     ));
     String? selected;
     await tester.pumpWidget(_wrap(api, onSelect: (u) => selected = u));
@@ -104,9 +100,7 @@ void main() {
     final api = ApiService(baseUrl: 'http://test', client: MockClient((req) async {
       calls++;
       if (calls == 1) return _json({'error': 'boom'}, status: 500);
-      return _json([
-        {'userId': 'adai', 'role': 'admin', 'enabled': true},
-      ]);
+      return _json(['adai']);
     }));
     await tester.pumpWidget(_wrap(api, onSelect: (_) {}));
     await tester.pumpAndSettle();

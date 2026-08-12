@@ -117,6 +117,36 @@ class MediaControllerTest {
     }
 
     @Test
+    void askImage_overlongQuestion_400() throws Exception {
+        // #214：question 无上界会原样进记录 content + ai-log prompt → 超长拒绝
+        String overlong = "问".repeat(501);
+        mvc.perform(post("/api/v1/records/media/rec_unknown/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"" + overlong + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void askImage_boundaryQuestion_500ok() throws Exception {
+        // #214：恰好 500 字符边界应放行（真实图片记录 + 边界长度 → 正常回答）
+        String resp = mvc.perform(multipart("/api/v1/records/media")
+                        .file(png())
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String id = ((ObjectNode) new ObjectMapper().readTree(resp)).get("recordId").asText();
+
+        String boundary = "问".repeat(500);
+        mvc.perform(post("/api/v1/records/media/" + id + "/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"" + boundary + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("这是浦发银行，持仓约 1000 股。"));
+    }
+
+    @Test
     void getMedia_returnsImageBytes() throws Exception {
         String resp = mvc.perform(multipart("/api/v1/records/media")
                         .file(png()))

@@ -117,4 +117,17 @@ class BriefAppServiceTest {
         assertEquals("evening", BriefAppService.greetingEnForHour(18));
         assertEquals("evening", BriefAppService.greetingEnForHour(23));
     }
+
+    @Test
+    void emojiForHour_matchesGreetingPeriods() {
+        // #221：降级问候 emoji 按时段——凌晨不再配 ☀️（语义矛盾）
+        assertEquals("🌙", BriefAppService.emojiForHour(0));
+        assertEquals("🌙", BriefAppService.emojiForHour(5));
+        assertEquals("☀️", BriefAppService.emojiForHour(6));
+        assertEquals("☀️", BriefAppService.emojiForHour(11));
+        assertEquals("🌤️", BriefAppService.emojiForHour(12));
+        assertEquals("🌤️", BriefAppService.emojiForHour(17));
+        assertEquals("✨", BriefAppService.emojiForHour(18));
+        assertEquals("✨", BriefAppService.emojiForHour(23));
+    }
 }
