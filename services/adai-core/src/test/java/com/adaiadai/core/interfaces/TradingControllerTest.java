@@ -239,7 +239,9 @@ class TradingControllerTest {
                             .content("{\"note\":\"测试\",\"sections\":[\"持仓\"]}"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("ok"))
-                    .andExpect(jsonPath("$.path").isString());
+                    .andExpect(jsonPath("$.path").isString())
+                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-os 工作流融合后重建 11-context）
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("11-context")));
 
             // 文件真实写入 os/trading-os/99-inbox/
             org.junit.jupiter.api.Assertions.assertTrue(Files.exists(PROMOTE_TEST_FILE),

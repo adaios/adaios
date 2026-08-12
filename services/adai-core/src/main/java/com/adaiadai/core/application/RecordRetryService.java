@@ -62,16 +62,20 @@ public class RecordRetryService {
 
     /**
      * 每 15 分钟执行一次：先补记录，再补卡片。
-     * 遍历全部账号逐用户重补（P0 #128：不再硬编码 default，多账号功能层启用后全员覆盖）。
+     * 遍历全部启用账号逐用户重补（P0 #128：不再硬编码 default）。
+     * REVIEW #227：过滤禁用账号——与 MarketAlertService 口径一致，禁用账号重补无意义却烧 AI。
      */
     @Scheduled(fixedDelayString = "PT15M")
     public void retryUnprocessed() {
         List<String> userIds = accountRepository.findAll().stream()
+                .filter(Account::enabled)
                 .map(Account::userId)
                 .distinct()
                 .toList();
         if (userIds.isEmpty()) {
-            retryUnprocessed("default");
+            // #227：default 已随数据迁移移除（#212），无启用账号时与行情轮询一致 warn + 跳过，
+            // 不再 fallback "default"（那会给不存在/禁用账号烧 AI）
+            log.warn("定时重补：无启用账号，跳过（预期外，账号表应至少含 seed adai）");
             return;
         }
         for (String userId : userIds) {

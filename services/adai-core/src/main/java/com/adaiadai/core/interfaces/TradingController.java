@@ -157,7 +157,9 @@ public class TradingController {
             Files.writeString(inboxPath.resolve(fileName), content, StandardCharsets.UTF_8);
 
             log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
-            return ResponseEntity.ok(new PromoteResponse("ok", inboxPath.resolve(fileName).toString()));
+            // #178：提示入库候选不会自动融入 AI context——需在 trading-os 工作流审核融合后重建 11-context
+            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-os）审核后归入正式目录，并在收敛时重建 11-context。";
+            return ResponseEntity.ok(new PromoteResponse("ok", inboxPath.resolve(fileName).toString(), message));
         } catch (Exception e) {
             log.error("入库候选写入失败 | date={} | {}", date, e.getMessage());
             throw new StorageException("入库候选写入失败: " + e.getMessage(), e);
@@ -316,7 +318,7 @@ public class TradingController {
 
     public record PromoteRequest(String note, List<String> sections) {}
 
-    public record PromoteResponse(String status, String path) {}
+    public record PromoteResponse(String status, String path, String message) {}
 
     public record ConflictItem(String rule, String description, String category) {}
 

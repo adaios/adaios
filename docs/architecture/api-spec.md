@@ -473,9 +473,12 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 ```json
 {
   "status": "ok",
-  "path": "/path/to/os/trading-os/99-inbox/review-2026-07-25.md"
+  "path": "/path/to/os/trading-os/99-inbox/2026-07-25_交易复盘.md",
+  "message": "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-os）审核后归入正式目录，并在收敛时重建 11-context。"
 }
 ```
+
+> **#178（2026-08-12）**：`message` 字段提示入库候选不会自动融入 AI context——promote 只写入 `99-inbox/`，融合需在 trading-os 工作流收敛重建 `11-context/` 后由 `TradingKnowledgeSource` 注入。`path` 文件名遵循 #211 约定 `YYYY-MM-DD_主题.md`。
 
 ### `GET /api/v1/trading/knowledge/conflicts` — 检测规则矛盾
 

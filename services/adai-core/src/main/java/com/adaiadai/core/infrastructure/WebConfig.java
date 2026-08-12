@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceCleanupInterceptor;
 import com.adaiadai.core.infrastructure.security.AdminAuthInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -41,6 +42,10 @@ public class WebConfig {
 
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
+                // REVIEW #213：每个 HTTP 请求完成后清空 AiTraceContext（防 ThreadLocal
+                // 跨请求残留 → 漏 set trace 的调用把日志落进上一个请求的用户目录）。
+                registry.addInterceptor(new AiTraceCleanupInterceptor())
+                        .addPathPatterns("/api/**");
                 registry.addInterceptor(new AdminAuthInterceptor(adminToken))
                         .addPathPatterns("/api/v1/admin/**", "/api/v1/accounts/**")
                         // 产品端选号端点（仅 enabled 账号），需无鉴权可访问（v1.0.0 多账号前端选号提前）

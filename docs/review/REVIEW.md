@@ -36,7 +36,6 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 103 | Timeline/Memory 保活数据陈旧：initState 只拉一次 + IndexedStack 保活，无刷新入口 | `timeline_page.dart` / `memory_page.dart` | 📋 待办 |
 | 129 | 知识反哺闭环缺前端入口：promote 后端闭环 ✅（v1.0.0 验证走通，已产出 `99-inbox/2026-08-09_交易复盘.md` 真实复盘），但交易页无「反哺入库」按钮，UI 无法操作 promote | `os/trading-os/99-inbox/` | 📋 待办 |
 | 177 | 多账号前端全链路零测试覆盖：v1.0.0 提前的核心功能（首屏选号 / 切换重建 ValueKey / UserStore 条件导出双实现 / available DTO / 持久化降级 / 双击防重入）全部无 widget 测试。本次 deep 前端/产品双角色确认仍为 0——而 P1-204 双 pop 崩溃恰好藏在无测试的选号回调里 | `apps/adai-app/test/` / `apps/adai-web/test/` | 📋 待办 |
-| 178 | 反哺闭环最后一公里未走：promote→inbox ✅，但入库→融合（rules/mistakes）→ 11-context 重建未完成，`TradingKnowledgeSource` 只读 `11-context/`，本次洞察（满仓单票违反 R81/E1）不会进 AI context | `os/trading-os/99-inbox/2026-08-09_交易复盘.md` | 📋 待办 |
 | 179 | `/accounts/available` 无鉴权暴露账号枚举面：返回全部启用账号 `userId/role/createdAt`（含 admin `role` 标记，本次再确认 P3-215），与用户层 X-User-Id 零鉴权（#127 延迟项）组合成目录键枚举面；设计上知情（选号提前），多账号正式开放时须随用户层鉴权收紧 | `AccountController.java:52-60` / `WebConfig.java:46` | 📋 待办 |
 | 210 | AI 交互日志缺生命周期/隐私面治理：prompt 全文（档案/记忆/持仓）逐行明文落盘，无 retention/轮转/脱敏开关，日志无限增长（重补/rebuild 场景叠加）；配合 P0-226 的 gitignore 漏洞 = prompt 隐私双缺口 | `LoggingAiClient.java:53-67` + `AiInteractionLogger` | 📋 待办 |
 
@@ -63,7 +62,6 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | 📋 待办（v1.0.1）|
 | 153 | 数据形态失衡：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 📋 观察 |
 | 176 | 交易录入无严格校验：`TradeRequest` 仅 `@NotBlank`/`@Positive`，可录入错误代码（如 000300 当贵州茅台）→ 行情/持仓/复盘/反哺全污染；建议三层校验（格式 6 位数字+市场前缀 / `quote` 存在性 / 名称匹配模糊比对）；用户指出**输入校验 + 持仓分析 + 反哺流程**整体待打磨（v1.0.0 后批次）| `TradeRequest` / `TradingAppService.recordTrade` / 交易表单 | 📋 待办 |
-| 213 | **AiTraceContext ThreadLocal 跨请求残留，无请求级清理**（潜在跨用户错属）：快照-恢复语义刻意保留调用点 set 的 trace，HTTP 请求结束后 ThreadLocal 不清理；Tomcat 线程池复用下，任何"漏 set trace 就调 AI"的路径（历史已发生两次：brief/intent 漏挂 `e0a1461`）都会把日志落错用户目录。当前 9 处调用点均 set，故为潜伏 | `AiTraceContext.java:44-48` / `WebConfig` | 📋 待办 |
 | 214 | **图片追问 question 无长度上界** → 超大 prompt + 超大记录文件 + 超大日志行：`body.get("question")` 无 `@Size` 上限，整段 question + answer 原样进 image_qa 记录 content 和 ai-log | `MediaController.java:59-74` / `MediaRecordAppService.java:123-162` | 📋 待办 |
 | 215 | `AccountController.listAvailableAccounts` 无鉴权暴露 `role` 字段（admin 标记），建议只返回 `userId` 最小集（叠加战略 #179）| `AccountController.java:52-60` | 📋 待办 |
 | 216 | **CardMigrationService 从"复制"改"移动"（写新+删旧）**：误判即删原文件（`parseAsCard` 判定"有 frontmatter 且 body 含 `## `"即视为卡片），且旧文件无 `id` 时并入 `card_unknown`（findAll 去重后合并为一条，数据淹没）| `CardMigrationService.java:84-88` | 📋 待办 |
@@ -76,7 +74,6 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 223 | adai-core CLAUDE.md 声称 os/ 只读与实际 promote 写入矛盾（K4/K13 漂移）：`TradingController.promoteToInbox` 实际写 `os/trading-os/99-inbox/`，但 CLAUDE.md:131 声明"只读，不写入"未记录该例外；`.gitignore:69` 只保护 `profile.md` 单文件，identity 下新非 sample 文件会进 git | `adai-core/CLAUDE.md:131` / `.gitignore:69` | 📋 待办 |
 | 224 | **端点数双文档过期：实际 49，文档写 47**（本次新增 3 端点 available/ai-logs/ask，两处文档只更新到 47 漏 2）：`CLAUDE.md:380` + `services/adai-core/CLAUDE.md:126`；Release Notes 测试数过期（`v1.0.0.md:32` 写后端 300，实际 334）；api-spec 新增 §17 ai-logs 未升版（v3.9 changelog 未提 R1，最后更新停 08-11）| `CLAUDE.md:380` / `adai-core/CLAUDE.md:126` / `v1.0.0.md:32` / `api-spec.md:5,1043` | 📋 待办 |
 | 225 | issue-log.md R1 状态过期：`issue-log.md:333` 仍「⏳ 需求登记（未立项）」，而 ideas/CLAUDE.md 已「✅ 已实现」——三处联动失真；ideas R1 调用点数 6 vs CLAUDE.md 8 不一致 | `docs/reference/issue-log.md:333` / `docs/ideas/20260812-ai-interaction-log.md:35` | 📋 待办 |
-| 227 | **RecordRetryService 定时遍历全部账号（含 disabled），与 MarketAlertService 的 enabled 过滤不一致**：`accountRepository.findAll()` 未 `.filter(Account::enabled)`，禁用账号数据仍每 15 分钟被重补烧 AI（数据修复服务跑禁用账号通常无意义）| `RecordRetryService.java:69-72` | 📋 待办 |
 | 228 | 端点计数双实现（Java 扫源码 `split("@GetMapping",-1)` + Gradle 生成 `endpoints.txt`）口径不同：Java 侧会数注释/字符串中的注解名，dev 与生产显示数字可能不一致（#187 修复未完全收敛）| `ProjectStatusAppService.java:139-190` / `build.gradle.kts:61-86` | 📋 待办 |
 
 ## 🔴 P3（未修复，打磨）
@@ -111,6 +108,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| #227 + #213 + #178 | **2026-08-12 数据/隐私 + 反哺闭环加固**：**#227** RecordRetryService 过滤禁用账号（`accountRepository.findAll()` 加 `.filter(Account::enabled)`，与 MarketAlertService 口径一致；无启用账号不再 fallback "default"——#212 后 default 已迁移移除）+ 2 测试；**#213** 新增 `AiTraceCleanupInterceptor` 请求级清理（每个 HTTP 请求 `afterCompletion` 无条件 `AiTraceContext.restore(null)`，消灭 Tomcat 线程复用下的 ThreadLocal 跨请求残留——漏 set trace 的调用不再把日志落进上一个请求的用户目录）+ 2 测试；**#178 A 档** promote 响应加 `message` 字段提示「入库候选不自动融入 AI context，需在 trading-os 工作流融合后重建 11-context」（api-spec 同步；融合本身属 trading-os 收敛流程，能力边界内不自动化）。后端 344 全绿 | ✅ 2026-08-12 |
 | #184 | **2026-08-12 P0 隐私修复（promote 内容脱敏）**：复盘入库候选含真实持仓（茅台 100 股/14 万/1400）且已被 git 追踪（commit f3ca035），违反 K8 红线。用户决策「promote 脱敏」→ `TradingController.sanitizeReviewContent` 生成源替换股数/市值/成本/现价/现金→占位符（标的名保留公开信息+规则引用需要，不误伤大盘指数）；旧候选文件改名 `2026-08-09_交易复盘.md` + 内容重写脱敏版；2 新测试（脱敏 + null 边界）。已 grep 验证无持仓数字残留、9 规则引用 + 标的名完整。git 历史旧版仍含数据（单人不重写历史，未来不再暴露）| ✅ 2026-08-12 |
 | P1 批 A-D | **2026-08-12 P1 修复批（A-D 四批）**：**批 A 前端** #204 双 pop（守卫包住闭包 nav.pop，双端）+ #205 firstWhere→indexWhere（双端）+ 选号页 widget 测试 5 个（#177 战略落地）；**批 B 后端** #206 updatedAt 缺失回退 createdAt（损坏卡跳过）+ #207 recorded 哨兵（长摘要截断、rebuild 回写真实摘要）+ 3 测试；**批 C 图片追问** #208 active 态原图可见（缩略图+全图 Dialog）+ #209 Q/A 持久化到图片卡 card 文件 + FeedAppService 合并 turns + #219 waiting 卡死复位（双端）+ #220 双端对齐；**批 D** #211 候选文件名 `YYYY-MM-DD_主题.md` + 已入库候选改名 + #212 迁移脚本 default→adai 参数化。后端 338 · adai-app 68 · adai-web 30 全绿 | ✅ 2026-08-12 |
 | #226 + #223 | **2026-08-12 P0 隐私加固（.gitignore）**：#226 ai-logs 落盘目录未进 .gitignore（prompt 全文含档案/记忆/持仓可被 `git add -A` 提交进历史）→ 补 `data/*/ai-logs/`；#223 identity 只保护 profile.md 单文件 → 改 `data/*/identity/*` + `!*.sample.md` 白名单。已实测 `git check-ignore` 命中、sample 仍被追踪、git status 无泄漏 | ✅ 2026-08-12 |
@@ -129,6 +127,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-12 | 数据/隐私 + 反哺加固（#227/#213/#178 A 档）| — | 0 | ~20min | 0 新 | 3（#227 P2 + #213 P2 + #178 战略 A 档）|
 | 2026-08-12 | deep 增量（R1 AI 日志 + 图片追问 + 多账号 + CORS + 三连修）| backend/frontend/docs/product/knowledge | 5 | ~20min | P0×2 + 战略×1 + P1×8 + P2×15 + P3×5 | 0 |
 | 2026-08-12 | P1 修复批 A-D + #184 promote 脱敏 | — | 0 | ~90min | 0 新 | 13（#184 P0 + #204/205/206/207/208/209/211/212 P1×8 + #219/220 P2×2 + #177 测试）|
 | 2026-08-12 | P0 隐私加固（.gitignore：#226 ai-logs + #223 identity 白名单）| — | 0 | ~3min | 0 新 | 2（#226 P0 + #223 部分）|
