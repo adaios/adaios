@@ -314,6 +314,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **阿呆 08-12 生产反馈修复批（#14/#15/#16）** ✅：**#14 凌晨问候语显示 morning**（`BriefAppService` 时段判断提取 `greetingForHour`/`greetingEnForHour`——凌晨 0-5 → 深夜好/late night，原误归早上好/morning，阿呆 00:33 反馈）+ **#15 继续聊天内容被简化**（`feed_card` 折叠条件加 `!_isActive`——chatting/waiting 态始终显示完整对话，原 active 也被 `_truncateTurns` 折叠成首+末2条且渐隐遮罩误导"外表看着很全"，阿呆 00:43 反馈；adai-web 桌面端不折叠不受影响）+ **#16 输入框上滑误触丢草稿**（移除 InputBar 上滑切世界手势 + 壳层手势记录 `_dragStartY`、起点落在底部 140px 不响应，根治打字上滑误触切 World 丢内容，阿呆 00:44 反馈）；后端 314 · adai-app 63 全绿 · analyze 0 error（`22b5da5`/`c495554`，issue-log v9.0 已登记 + R1 AI 交互日志 / R2 记录↔任务想法入 ideas）
 - **生产验收批（CORS 事故修复 + 图片追问 + 改名，2026-08-11）** ✅：**8083 CORS 修复**（`AdminAuthInterceptor` 放行 OPTIONS 预检——8082/8083 调 accounts/admin 端点被 CORS 拦死根因，`70338a2` 已热部署生产验证）+ **图片追问（L4 图片问答）**（`POST /api/v1/records/media/{id}/ask` 重新取图 → GLM-4.1V 看图自然语言回答 → 沉淀 `image_qa` 记录进时间线/搜索；`VisualAiClient.ask` 新方法区别于 understand 的结构化 JSON；adai-app/adai-web 图片卡 ── 提问 ── 追问，回答以气泡追加在卡下，`6a26208`）+ **adai-admin 改名「阿呆控制台」**（顶栏 + title + index.html 三处，`d020700`）；api-spec v3.9（后端 313 · adai-app 61 · adai-web 30 · adai-admin 31 全绿；**生产部署待用户确认批次**）
 - **多账号 deep 审核修复（批 K，v1.0.0 发布前）** ✅：REVIEW deep 审核 16 项修复——**P1** #180 freeze 契约同步（intent 落盘声明 + 单用户路径 adai）+ #181 rebuild 幂等漏聊天首问（RecordController 首问带新 cardId 补写 intent=question + 回归测试）；**P2** #182 前端 default userId 无效化强制选号 + #183 MarketAlert 轮询去硬编码 default（enabled 账号）+ #185 切换防重入 + #186 切换后清 URL ?userId（刷新不再回退）+ #187 端点计数生产恒 0（Gradle 生成 `META-INF/endpoints.txt` 资源 + dev 回退扫源码）+ #188 回写保留用户 tags + #189 persist 先于 summary 落盘 + #190 空态可执行重试；**P3** api-spec 升版 v3.8 / Release Notes 日期待定 / 302→300 / alpha 越界 / 死代码等 7 项；后端 300 · adai-app 60 · adai-web 27 全绿
 - **多账号前端选号/切换（v1.0.0 提前）** ✅：产品前端选号进入——后端新增无鉴权 `GET /api/v1/accounts/available`（仅 enabled，`WebConfig` exclude 拦截）+ adai-app World B「切换账号」+ adai-web 底部 `@userId` 点击切换 + 记住上次账号（URL `?userId=` 优先 > 持久化 > 首屏选号）+ 切换重建整树（ValueKey 换 ApiService，缓存清空）；**wasm 白屏修复**：dart2wasm 下 shared_preferences web 插件不注册（`MissingPluginException` 启动白屏）→ `UserStore` 条件导出改 `package:web` localStorage 直读（`user_store_web.dart`，io 端仍 shared_preferences）+ **切换账号崩溃修复**：State context 在 MaterialApp 外 `Navigator.of` 返回 null → `GlobalKey<NavigatorState>` + `navigatorKey` push/pop；api-spec §16 + Release Notes 同步
@@ -375,8 +376,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 313 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 2 测试** + **图片追问 ask 接口 6 测试** + **CORS 预检回归 1 测试**；**15 Controller 47 端点接口测试全覆盖** + 多模态 18 测试）
-- **前端** adai-app 61 · adai-admin 31 · adai-web 30，全部 0 失败
+- **后端** 314 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 2 测试** + **图片追问 ask 接口 6 测试** + **CORS 预检回归 1 测试** + **#14 问候语时段边界 1 测试**；**15 Controller 47 端点接口测试全覆盖** + 多模态 18 测试）
+- **前端** adai-app 63 · adai-admin 31 · adai-web 30，全部 0 失败
 
 ### 运行环境
 - 后端：`localhost:8080`（DeepSeek 模式 + GLM 视觉——`.env` 需配 `GLM_API_KEY` 才有真 VLM 理解，无 key 时上传降级不丢数据）
