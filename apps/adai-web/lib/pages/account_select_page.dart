@@ -82,7 +82,14 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)));
+      // #198：loading 态给明确进度反馈（原仅灰字）
+      return const Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen),
+          SizedBox(height: 12),
+          Text('加载中…', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+        ]),
+      );
     }
     if (_error != null) {
       return Center(
@@ -113,7 +120,7 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(32, 0, 32, 16),
-            child: Text('暂无可用账号，请先在后台创建账号',
+            child: Text('请先在阿呆控制台创建账号',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: AppColors.darkGrey5, height: 1.6)),
           ),
@@ -142,40 +149,59 @@ class _AccountSelectPageState extends State<AccountSelectPage> {
 
   Widget _buildRow(String userId) {
     final isCurrent = userId == widget.currentUserId;
-    return GestureDetector(
-      onTap: () => widget.onSelect(userId),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.darkSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            // REVIEW #196：withValues(alpha:) 取值 0-1，100 越界（实际 ~74% 透明）；非当前行用不透明 darkBorder
-            color: isCurrent
-                ? AppColors.darkGreen.withValues(alpha: 0.5)
-                : AppColors.darkBorder,
-          ),
-        ),
-        // #215：available 最小集只返回 userId，选号页不再渲染 admin/普通用户角色标记
-        child: Row(children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.darkBlue.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+    return Material(
+      color: AppColors.darkSurface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        // #230：按压反馈（InkWell ripple）+ 切换确认 SnackBar
+        onTap: () => _selectAccount(userId),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              // REVIEW #196：withValues(alpha:) 取值 0-1，100 越界（实际 ~74% 透明）；非当前行用不透明 darkBorder
+              color: isCurrent
+                  ? AppColors.darkGreen.withValues(alpha: 0.5)
+                  : AppColors.darkBorder,
             ),
-            child: Icon(Icons.person, size: 18, color: AppColors.darkBlue),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(userId,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-          ),
-          if (isCurrent)
-            Text('当前', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),
-        ]),
+          // #215：available 最小集只返回 userId，选号页不再渲染 admin/普通用户角色标记
+          child: Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: AppColors.darkBlue.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.person, size: 18, color: AppColors.darkBlue),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(userId,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+            ),
+            if (isCurrent)
+              Text('当前', style: TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+          ]),
+        ),
       ),
     );
+  }
+
+  /// #230：选择账号 → 确认 SnackBar + 回调切换。
+  /// SnackBar 挂在根 ScaffoldMessenger，切换场景 pop 后仍显示在切换后的界面上。
+  void _selectAccount(String userId) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('已切换至 @$userId',
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      duration: const Duration(seconds: 2),
+    ));
+    widget.onSelect(userId);
   }
 }

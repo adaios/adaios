@@ -25,7 +25,7 @@ class _MemoryPageState extends State<MemoryPage> {
     _loadDates();
   }
 
-  Future<void> _loadDates() async {
+  Future<void> _loadDates({bool force = false}) async {
     try {
       final dates = await widget.api.getMemoryDates();
       if (!mounted) return;
@@ -33,20 +33,21 @@ class _MemoryPageState extends State<MemoryPage> {
         _dates = dates;
         _loading = false;
       });
-      if (dates.isNotEmpty) _selectDate(dates.first);
+      if (dates.isNotEmpty) _selectDate(dates.first, force: force);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _selectDate(String date) async {
+  Future<void> _selectDate(String date, {bool force = false}) async {
     setState(() {
       _selectedDate = date;
       _entries = [];
     });
     try {
-      final entries = await widget.api.getMemory(date: date);
+      // #103：保活页刷新时 force 绕过缓存，否则记忆列表陈旧
+      final entries = await widget.api.getMemory(date: date, force: force);
       if (!mounted || _selectedDate != date) return;
       setState(() => _entries = entries);
     } catch (_) {}
@@ -76,7 +77,19 @@ class _MemoryPageState extends State<MemoryPage> {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      const PageHeader(title: '记忆', subtitle: 'AI 理解沉淀'),
+      PageHeader(
+        title: '记忆',
+        subtitle: 'AI 理解沉淀',
+        // #103：IndexedStack 保活下 initState 只拉一次，补刷新入口
+        actions: [
+          IconButton(
+            onPressed: () => _loadDates(force: true),
+            icon: const Icon(Icons.refresh, size: 16),
+            color: AppColors.darkGrey4,
+            tooltip: '刷新',
+          ),
+        ],
+      ),
       Expanded(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -126,8 +139,12 @@ class _MemoryPageState extends State<MemoryPage> {
   }
 
   String _formatDate(String date) {
-    // 后端 date 形如 2026-08-02 → 显示 08-02
-    if (date.length >= 10) return date.substring(5);
+    // 后端 date 形如 2026-08-02 → 今年内显示 08-02，跨年记忆补年份（REVIEW #125）
+    if (date.length >= 10) {
+      var y = int.tryParse(date.substring(0, 4));
+      if (y != null && y == DateTime.now().year) return date.substring(5);
+      return date;
+    }
     return date;
   }
 

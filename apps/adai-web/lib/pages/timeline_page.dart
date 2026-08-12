@@ -30,7 +30,7 @@ class _TimelinePageState extends State<TimelinePage> {
 
   Future<void> _load() async {
     try {
-      final entries = await widget.api.getTimeline(limit: 500);
+      final entries = await widget.api.getTimeline(limit: 500, force: true);
       if (!mounted) return;
       setState(() {
         _entries = entries;
@@ -58,7 +58,19 @@ class _TimelinePageState extends State<TimelinePage> {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      const PageHeader(title: '时间线', subtitle: '记录的时间序列'),
+      PageHeader(
+        title: '时间线',
+        subtitle: '记录的时间序列',
+        // #103：IndexedStack 保活下 initState 只拉一次，补刷新入口
+        actions: [
+          IconButton(
+            onPressed: _load,
+            icon: const Icon(Icons.refresh, size: 16),
+            color: AppColors.darkGrey4,
+            tooltip: '刷新',
+          ),
+        ],
+      ),
       Expanded(
         child: _loading
             ? const Center(child: CircularProgressIndicator())

@@ -31,6 +31,12 @@ class _FeedPageState extends State<FeedPage> {
   String _brief = '';
   bool _loading = true;
 
+  // #101 Feed 分页：固定页大小 + 当前页，列表底部「加载更早」追加
+  static const int _pageSize = 20;
+  int _currentPage = 0;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+
   // 右上下文栏数据
   TagsResponse? _tags;
   TaskStatsResponse? _taskStats;
@@ -43,8 +49,7 @@ class _FeedPageState extends State<FeedPage> {
   @override
   void initState() {
     super.initState();
-    _loadFeed();
-    _loadSidebar();
+    _loadFeed(); // 内部联动 _loadSidebar（#115：右栏随 Feed 刷新更新）
   }
 
   @override
@@ -56,11 +61,12 @@ class _FeedPageState extends State<FeedPage> {
   Future<void> _loadFeed() async {
     try {
       final brief = await widget.api.getBrief();
-      final feed = await widget.api.getFeed(page: 0, size: 20);
+      final feed = await widget.api.getFeed(page: 0, size: _pageSize);
       if (!mounted) return;
       setState(() {
         _brief = brief;
         _totalToday = feed.totalToday;
+        _currentPage = 0;
         _cards = feed.entries
             .where((e) => e.type != FeedEntryType.aiNote)
             .map((e) => e.toFeedData(
@@ -68,12 +74,43 @@ class _FeedPageState extends State<FeedPage> {
               onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
             ))
             .toList();
+        _hasMore = _cards.length < _totalToday;
         _loading = false;
       });
+      // #115：右栏（标签云/任务快照）随 Feed 刷新联动更新
+      _loadSidebar();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
       _showError('加载失败，请确认后端已启动');
+    }
+  }
+
+  /// #101：Feed「加载更早」分页——更早记录（第 page+1 页）追加到列表底部。
+  /// 后端 /feed 分页：page 从 0 起，核心记录新→旧切片。
+  Future<void> _loadMore() async {
+    if (_loadingMore || _cards.length >= _totalToday) return;
+    setState(() => _loadingMore = true);
+    try {
+      final feed = await widget.api.getFeed(page: _currentPage + 1, size: _pageSize);
+      if (!mounted) return;
+      final moreCards = feed.entries
+          .where((e) => e.type != FeedEntryType.aiNote)
+          .map((e) => e.toFeedData(
+            api: widget.api,
+            onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
+          ))
+          .toList();
+      setState(() {
+        _currentPage += 1;
+        _cards = [..._cards, ...moreCards];
+        if (moreCards.isEmpty) _hasMore = false;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+      _showError('加载更早失败');
     }
   }
 
@@ -188,6 +225,8 @@ class _FeedPageState extends State<FeedPage> {
           ));
         });
       }
+      // #115：新记录落盘 → 右栏标签云/任务快照联动刷新
+      _loadSidebar();
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -234,6 +273,8 @@ class _FeedPageState extends State<FeedPage> {
                 turns: [...existing, ConversationTurn(isUser: false, text: resp.answer, time: _now())]);
           });
         });
+        // #115/#229：图片追问沉淀 image_qa 带 tags → 右栏标签云联动刷新
+        _loadSidebar();
         _scrollToBottom();
         return;
       }
@@ -249,6 +290,8 @@ class _FeedPageState extends State<FeedPage> {
                 turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: _now())]);
           });
         });
+        // #115：AI 回复带标签 → 右栏标签云联动刷新
+        _loadSidebar();
         _scrollToBottom();
       }
     } catch (e) {
@@ -365,6 +408,8 @@ class _FeedPageState extends State<FeedPage> {
           loading: false, mode: CardMode.ended, intent: IntentType.question,
         ));
       });
+      // #115：结束对话生成总结/标签 → 右栏标签云联动刷新
+      _loadSidebar();
     } catch (e) {
       if (!mounted) return;
       _showError('生成总结失败: ${_extractApiError(e)}');
@@ -389,6 +434,8 @@ class _FeedPageState extends State<FeedPage> {
         // 本地计数跟随（#119）
         if (_totalToday > 0) _totalToday -= 1;
       });
+      // #115：删除记录 → 标签/任务统计变化，右栏联动刷新
+      _loadSidebar();
     } catch (_) {
       if (mounted) _showError('删除失败');
     }
@@ -428,6 +475,8 @@ class _FeedPageState extends State<FeedPage> {
           loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
         ));
       });
+      // #115：重试落盘 → 右栏标签云联动刷新
+      _loadSidebar();
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -441,6 +490,8 @@ class _FeedPageState extends State<FeedPage> {
       await widget.api.markMemoryDone(memoryId);
       if (!mounted) return;
       setState(() => _cards.removeWhere((c) => c.id == memoryId));
+      // #115：待办完成 → 任务快照统计变化，右栏联动刷新
+      _loadSidebar();
     } catch (_) {
       if (mounted) _showError('标记完成失败');
     }
@@ -557,11 +608,13 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Widget _buildFeedList() {
+    final hasMore = _hasMore && _cards.length < _totalToday;
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 12),
-      itemCount: _cards.length,
+      itemCount: _cards.length + (hasMore ? 1 : 0),
       itemBuilder: (_, i) {
+        if (i >= _cards.length) return _buildLoadMoreBanner();
         final card = _cards[i];
         return DesktopFeedCard(
           key: ValueKey(card.id),
@@ -579,6 +632,27 @@ class _FeedPageState extends State<FeedPage> {
           onDomainChanged: (domain) => _changeDomain(card.id, domain),
         );
       },
+    );
+  }
+
+  /// #101：Feed 底部「加载更早」入口（桌面端按钮形态，加载中转 spinner）。
+  Widget _buildLoadMoreBanner() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: _loadingMore
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4),
+              )
+            : TextButton.icon(
+                onPressed: _loadMore,
+                icon: const Icon(Icons.expand_more, size: 16),
+                label: const Text('加载更早'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.darkGrey4),
+              ),
+      ),
     );
   }
 

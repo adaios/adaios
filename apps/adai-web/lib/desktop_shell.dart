@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
+import 'widgets/hoverable.dart';
 import 'pages/feed_page.dart';
 import 'pages/memory_page.dart';
 import 'pages/timeline_page.dart';
@@ -136,22 +137,34 @@ class _DesktopShellState extends State<DesktopShell> {
           for (var i = 0; i < _items.length; i++) _buildNavItem(i),
           const Spacer(),
           // 底部 userId（v1.0.0 多账号：点击切换账号）
-          GestureDetector(
-            onTap: widget.onSwitchAccount,
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
-              ),
-              child: Row(children: [
-                Icon(Icons.swap_horiz, size: 13, color: AppColors.darkGrey5),
-                const SizedBox(width: 6),
-                Text(
-                  '@${widget.userId}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+          // #229：Tooltip 提示切换 + hover 高亮；#201：超长 userId Expanded+ellipsis 防横向溢出
+          Tooltip(
+            message: '切换账号（@${widget.userId}）',
+            waitDuration: const Duration(milliseconds: 400),
+            child: Hoverable(
+              builder: (context, isHovered) => GestureDetector(
+                onTap: widget.onSwitchAccount,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isHovered ? AppColors.darkSurface2.withValues(alpha: 0.5) : Colors.transparent,
+                    border: const Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.swap_horiz, size: 13, color: AppColors.darkGrey5),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '@${widget.userId}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ]),
                 ),
-              ]),
+              ),
             ),
           ),
         ],
