@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.application.RecordUnderstandingService;
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
@@ -80,7 +81,7 @@ public class RecordController {
 
         try {
             // New card or first request with cardId: resolve intent once
-            Intent intent = resolveIntent(request, record);
+            Intent intent = resolveIntent(userId, request, record);
 
             log.info("Intent | intent={} | recordId={} | cardId={} | content=\"{}\" | manual={}",
                     intent, record.id(), request.cardId(), truncate(request.content(), 40), request.intent() != null);
@@ -128,7 +129,7 @@ public class RecordController {
     /**
      * Resolve intent: manual override > AI. No regex fallback, no silent log.
      */
-    private Intent resolveIntent(CreateRecordRequest request, ContentRecord record) {
+    private Intent resolveIntent(String userId, CreateRecordRequest request, ContentRecord record) {
         // 1. Manual override
         if (request.intent() != null) {
             return switch (request.intent()) {
@@ -138,6 +139,8 @@ public class RecordController {
         }
 
         // 2. AI-based — throws on failure, never silently returns STATEMENT
+        // R1 AI 交互日志：意图识别无 record，挂 userId + source 让日志正确落 data/{userId}/ai-logs
+        AiTraceContext.set(userId, null, null, "intent");
         return intentRecognizer.recognizeWithAi(record.content());
     }
 

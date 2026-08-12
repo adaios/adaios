@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
@@ -88,6 +89,9 @@ public class BriefAppService {
         int hour = java.time.LocalDateTime.now().getHour();
         boolean hasTodayRecords = !todayRecords.isEmpty();
         String prompt = buildBriefPrompt(userId, identityName, recentRecords, recentMemories, hour, hasTodayRecords);
+
+        // R1 AI 交互日志：简报无 record，挂 userId + source 让日志正确落 data/{userId}/ai-logs
+        AiTraceContext.set(userId, null, null, "brief");
 
         try {
             AiUnderstanding understanding = aiClient.understand(
