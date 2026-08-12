@@ -113,16 +113,22 @@ public class CardMigrationService {
 
         String type = fields.getOrDefault("type", "");
 
-        // 只有 conversation 类型或 body 含 ## 时间标记的才视为卡片
+        // #216 判定收紧：conversation 类型，或 body 含「用户：」对话标记（卡片必有对话轮）才视为卡片。
+        // 原逻辑「body 含 ## 时间标记即视为卡片」太宽——普通带 markdown 标题的笔记会被误当卡片
+        // 迁移并删原文件（误判即删）。「用户：」是卡片 turns 的必要结构，比 ## 更可靠。
         if (!"conversation".equals(type)) {
-            // 尝试从 body 判断：包含 ## HH:mm 格式的视为卡片
-            if (!body.contains("\n## ") && !body.startsWith("## ")) {
+            if (!body.contains("用户：")) {
                 return null;
             }
         }
 
-        // 生成新 ID：从文件名提取旧 ID，加上 card_ 前缀
-        String oldId = fields.getOrDefault("id", "unknown");
+        // #216：无 id 字段的文件跳过（原并入 card_unknown → findAll 去重合并为一条，数据淹没）。
+        // 缺 id 说明文件格式不完整，不迁移（保留原文件，人工处理）。
+        String oldId = fields.get("id");
+        if (oldId == null || oldId.isBlank()) {
+            log.warn("卡片迁移跳过：缺 id 字段 | file={}", oldPath);
+            return null;
+        }
         String cardId = oldId.startsWith("card_") ? oldId : "card_" + oldId;
 
         String status = fields.getOrDefault("status", "idle");
@@ -145,15 +151,22 @@ public class CardMigrationService {
      * 将 frontmatter 中的 id 字段改写为新 id（card_ 前缀），保持内容与新文件名一致。
      * 旧代码迁移时原样复制内容（id 仍无前缀），导致 findAll 解析出的 id 与文件名不符，
      * save() 按 id 写回时落到旧路径 → 同 id 双文件（死循环数据根源）。
+     * <p>#217：只在 frontmatter 段（首对 {@code ---} 之间）替换 id 行，不再用全文件
+     * {@code ^id:} 正则——body 中出现 {@code id:} 行会被误改（frontmatter 保留旧 id → 双文件复发）。
      */
     private String rewriteIdInFrontmatter(String content, String newId) {
-        Matcher idMatcher = Pattern.compile("(?m)^id:\\s*.+$").matcher(content);
-        if (idMatcher.find()) {
-            return content.substring(0, idMatcher.start())
-                    + "id: " + newId
-                    + content.substring(idMatcher.end());
+        Matcher matcher = FRONTMATTER_PATTERN.matcher(content);
+        if (!matcher.find()) {
+            return content;
         }
-        return content;
+        String frontmatter = matcher.group(1);
+        String newFrontmatter = frontmatter.replaceAll("(?m)^id:\\s*.*$", "id: " + newId);
+        if (newFrontmatter.equals(frontmatter)) {
+            // frontmatter 无 id 行：追加（与 parseAsCard 的 id 兜底保持一致）
+            newFrontmatter = frontmatter + "\nid: " + newId;
+        }
+        // 重拼：---\n{frontmatter}\n---\n{body}（body 从 group(2) 取，避免 end(1) 起点的分隔符错位）
+        return "---\n" + newFrontmatter + "\n---\n" + matcher.group(2);
     }
 
     private List<Turn> parseTurns(String body) {

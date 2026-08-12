@@ -314,6 +314,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 已完成
+- **REVIEW 修复批 N（#216/#217/#223，2026-08-12）** ✅：**#216 CardMigration 误判即删/数据淹没**——`parseAsCard` 判定收紧（`type: conversation` 或 body 含「用户：」对话标记，原「含 `## ` 即视为卡片」太宽）；缺 `id` 字段的文件跳过（不再并入 `card_unknown` 被 findAll 合并淹没）+ 3 测试；**#217 rewriteId 锚定 frontmatter**——改写只在首对 `---` 之间（`group(1)` 替换重拼），body 中的 `id:` 行不再被误改 → 双文件复发根除；**#223 adai-core CLAUDE.md os/ 只读例外登记**——补 promote 写 `99-inbox/` 唯一例外说明（K4/K13 漂移修复）；后端 359 全绿
 - **顶部摘要优化（阿呆 08-12 反馈，2026-08-12）** ✅：今日概览卡**去绿点前缀**（adai-app/adai-web）——AI 每行 emoji（prompt 已要求）直接展示，消除「• 🌟」双重前缀；行数 3→5（`truncateLines(…,5)` + prompt「max 5 lines」）；降级路径第二行改 💬（去 `• `）；+1 降级测试；api-spec §7 说明同步；后端 356 · adai-app 68 · adai-web 30 全绿
 - **REVIEW 修复批 M（#129/#218/#222，2026-08-12）** ✅：**#129 promote 前端入口（战略闭环）**——双端交易页复盘弹窗加「反哺入库」按钮（`promoteReview` API 传 `{}`，成功后展示 #178 message 提示），知识反哺闭环前后端打通（此前只有 adai-admin 手动）；**#218 visual durationMs**——`LoggingVisualAiClient` understand/ask 测真实耗时，不再恒 null（对齐 `LoggingAiClient`）；**#222 问候加中午段**——`greetingForHour` 加 11-13 → 中午好（`greetingEnForHour` midday、`emojiForHour` 🌤️/下午 🌇），12 点不再机械归「下午好」（用户选定方案）；api-spec v3.13；后端 355 · adai-app 68 · adai-web 30 全绿
 - **REVIEW P2 修复批 L（#214/#215/#221，2026-08-12）** ✅：**#214 图片追问长度上界**（`MediaRecordAppService.askImage` question 超 500 字符 → 400，防超大 prompt/记录/日志行）+ **#215 available 最小集**（`GET /accounts/available` 改返回 `List<String>` 纯 userId，不再暴露 role/enabled/createdAt——无鉴权端点去 admin 标记枚举面；双端选号页去角色渲染 + 删 `AccountModel` 死代码）+ **#221 问候语降级 emoji 按时段**（`emojiForHour` 凌晨 🌙/早上 ☀️/下午 🌤️/晚上 ✨，不再固定 ☀️ 配深夜好）；api-spec v3.12；后端 355 · adai-app 68 · adai-web 30 全绿
@@ -383,7 +384,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 | adai-web 残留 | 桌面端 REVIEW 残留清理（批 H：#102/#132/#161/#131/#124/#158/#159/#118/#165）| ✅ 完成（analyze 0 · 27 测试绿）|
 
 ### 测试状态
-- **后端** 356 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 3 测试** + **图片追问 ask 接口 8 测试** + **CORS 预检回归 1 测试** + **#14 问候语时段边界 1 测试** + **#221 问候语降级 emoji 1 测试** + **#222 问候加中午段 1 测试** + **Brief 降级 emoji 无绿点 1 测试** + **R1 AI 交互日志 20 测试** + **#206/#207 幂等与时间基准 3 测试** + **#209 图片追问持久化 1 测试** + **#184 promote 脱敏 2 测试** + **#227 定时重补过滤禁用账号 2 测试** + **#213 追踪上下文请求级清理 2 测试** + **#210 AI 日志保留期/分页治理 7 测试**；**15 Controller 49 端点接口测试全覆盖** + 多模态 18 测试）
+- **后端** 359 测试，0 失败（含多用户隔离 5 测试 + **#127 鉴权 4 测试** + **行情推送 14 测试** + **#13/#11 剥离 JSON + #148 跨日记忆 10 测试** + **#144/#147/#106 交易与幂等 6 测试** + **freeze #3 账号 ISO 序列化 1 测试** + **updatedAt 归日 + #175 分页 4 测试** + **多账号选号 available 3 测试** + **图片追问 ask 接口 8 测试** + **CORS 预检回归 1 测试** + **#14 问候语时段边界 1 测试** + **#221 问候语降级 emoji 1 测试** + **#222 问候加中午段 1 测试** + **Brief 降级 emoji 无绿点 1 测试** + **#216 CardMigration 判定收紧 + 缺 id 跳过 3 测试** + **R1 AI 交互日志 20 测试** + **#206/#207 幂等与时间基准 3 测试** + **#209 图片追问持久化 1 测试** + **#184 promote 脱敏 2 测试** + **#227 定时重补过滤禁用账号 2 测试** + **#213 追踪上下文请求级清理 2 测试** + **#210 AI 日志保留期/分页治理 7 测试**；**15 Controller 49 端点接口测试全覆盖** + 多模态 18 测试）
 - **前端** adai-app 68 · adai-admin 31 · adai-web 30，全部 0 失败
 
 ### 运行环境

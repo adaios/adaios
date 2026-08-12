@@ -75,4 +75,69 @@ class CardMigrationServiceTest {
         assertEquals(0, result.migrated(), "cards 目录内文件不应被重复迁移");
         assertTrue(storage.exists("default", "records/cards/2026/07/23/card_1784788982678.md"), "原文件应保留");
     }
+
+    // ── #216：判定收紧 + 无 id 跳过（误判即删 / 数据淹没防护）──
+
+    @Test
+    void migrate_skipsNoteWithHeadingsButNoConversationMarker() {
+        // 普通带 ## 标题的笔记（无「用户：」对话标记）不应被当卡片迁移并删原文件
+        storage.write("default", "records/123456.md", """
+                ---
+                title: 生活笔记
+                type: note
+                ---
+
+                ## 今天想记录的事情
+                买了个新键盘
+                """);
+
+        CardMigrationService.MigrationResult result = service.migrate("default");
+
+        assertEquals(0, result.migrated(), "非对话笔记不应被迁移");
+        assertTrue(storage.exists("default", "records/123456.md"), "原文件应保留（不误删）");
+    }
+
+    @Test
+    void migrate_skipsCardWithoutIdField() {
+        // 缺 id 字段的卡片跳过（原并入 card_unknown → findAll 合并为一条，数据淹没）
+        storage.write("default", "records/999999.md", """
+                ---
+                type: conversation
+                status: active
+                ---
+
+                ## 14:43
+                用户：你好
+                """);
+
+        CardMigrationService.MigrationResult result = service.migrate("default");
+
+        assertEquals(0, result.migrated(), "缺 id 的卡片不应迁移");
+        assertTrue(storage.exists("default", "records/999999.md"), "原文件应保留（不并入 card_unknown）");
+    }
+
+    // ── #217：rewriteIdInFrontmatter 只改 frontmatter，不误改 body 中的 id: 行 ──
+
+    @Test
+    void migrate_doesNotRewriteIdInBody() {
+        // body 含 id: 行（如 markdown 引用/列表），frontmatter 的 id 应仍被正确改写
+        storage.write("default", "records/555555.md", """
+                ---
+                id: 555555
+                type: conversation
+                ---
+
+                ## 14:00
+                用户：帮我看看 id: 12345 对不对
+                """);
+
+        CardMigrationService.MigrationResult result = service.migrate("default");
+
+        assertEquals(1, result.migrated(), "有效卡片应迁移");
+        // 缺 createdAt → parseAsCard 回退 now()，路径按当天
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+        String newContent = storage.read("default", "records/cards/" + today + "/card_555555.md");
+        assertTrue(newContent.contains("id: card_555555"), "frontmatter id 应改写为 card_ 前缀");
+        assertTrue(newContent.contains("id: 12345"), "body 中的 id: 12345 不应被误改");
+    }
 }

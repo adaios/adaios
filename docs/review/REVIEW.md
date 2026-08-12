@@ -52,7 +52,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 ## 🔴 P2（未修复）
 
-> 2026-08-12 修复批 L 已出表：#214（图片追问长度上界）/ #215（available 最小集）/ #221（降级 emoji 按时段）；文档项 #224（端点数/测试数/api-spec 升版）/ #225（issue-log R1 状态与调用点数）同步收敛。修复批 M 已出表：#129（promote 前端入口，战略）/ #218（visual durationMs）/ #222（问候加中午段）。剩余见下表。
+> 2026-08-12 修复批 L 已出表：#214（图片追问长度上界）/ #215（available 最小集）/ #221（降级 emoji 按时段）；文档项 #224（端点数/测试数/api-spec 升版）/ #225（issue-log R1 状态与调用点数）同步收敛。修复批 M 已出表：#129（promote 前端入口，战略）/ #218（visual durationMs）/ #222（问候加中午段）。修复批 N 已出表：#216（判定收紧 + 缺 id 跳过）/ #217（rewriteId 锚定 frontmatter）/ #223（CLAUDE.md os/ 只读例外登记）。剩余见下表。
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
@@ -63,12 +63,12 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | 📋 待办（v1.0.1）|
 | 153 | 数据形态失衡：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 📋 观察 |
 | 176 | 交易录入无严格校验：`TradeRequest` 仅 `@NotBlank`/`@Positive`，可录入错误代码（如 000300 当贵州茅台）→ 行情/持仓/复盘/反哺全污染；建议三层校验（格式 6 位数字+市场前缀 / `quote` 存在性 / 名称匹配模糊比对）；用户指出**输入校验 + 持仓分析 + 反哺流程**整体待打磨（v1.0.0 后批次）| `TradeRequest` / `TradingAppService.recordTrade` / 交易表单 | 📋 待办 |
-| 216 | **CardMigrationService 从"复制"改"移动"（写新+删旧）**：误判即删原文件（`parseAsCard` 判定"有 frontmatter 且 body 含 `## `"即视为卡片），且旧文件无 `id` 时并入 `card_unknown`（findAll 去重后合并为一条，数据淹没）| `CardMigrationService.java:84-88` | 📋 待办 |
-| 217 | `rewriteIdInFrontmatter` 正则未锚定 frontmatter（`(?m)^id:\s*.+$` 全文件首处匹配），可能改写 body 中的 `id:` 行 → frontmatter 保留旧无前缀 id → save() 按旧 id 写回旧路径 → 双文件复发 | `CardMigrationService.java:149-157` | 📋 待办 |
+| 216 | **CardMigrationService 从"复制"改"移动"（写新+删旧）**：误判即删原文件（`parseAsCard` 判定"有 frontmatter 且 body 含 `## `"即视为卡片），且旧文件无 `id` 时并入 `card_unknown`（findAll 去重后合并为一条，数据淹没）| `CardMigrationService.java:84-88` | ✅ 2026-08-12（判定收紧：conversation 类型或含「用户：」对话标记；缺 id 跳过不并入 card_unknown）|
+| 217 | `rewriteIdInFrontmatter` 正则未锚定 frontmatter（`(?m)^id:\s*.+$` 全文件首处匹配），可能改写 body 中的 `id:` 行 → frontmatter 保留旧无前缀 id → save() 按旧 id 写回旧路径 → 双文件复发 | `CardMigrationService.java:149-157` | ✅ 2026-08-12（改写只在 frontmatter 段内，body 的 `id:` 行不受影响）|
 | 218 | `LoggingVisualAiClient` 视觉调用 durationMs 恒为 null（与文本调用不一致）；ai-log 落盘日期用 `LocalDate.now()`（写入时刻）而非调用开始时刻（跨午夜长调用落错天文件）；`getAiLogs` 无日期上界校验可扫任意历史（后两项 #210 已修）| `LoggingVisualAiClient.java:74` / `AiInteractionLogger.java:37` / `AdminController` | ✅ 2026-08-12（understand/ask 测真实耗时传 durationMs，对齐 LoggingAiClient）|
 | 219 | **图片卡「提问」后不输入直接关闭 → 卡片永久卡在 waiting 态**（双端）：`_onAskCard` 置 waiting 后不发起任何异步请求（等用户输入），若用户改主意通过「结束对话」关闭，`_closeChat` 走 `!hasNewTurns && !needsSummary` 早退分支不复位 mode → 回到 Feed 卡片以 active 样式常驻，只能真发一个问题才能跳出 | `apps/adai-app/lib/main_page.dart:165-178` / `:240-250`；adai-web `feed_page.dart:263-344` | ✅ 2026-08-12（早退分支无条件复位 waiting→idle，双端）|
 | 220 | **adai-app 图片 `_onAskCard` 分支缺 `_deactivateOtherCards`**（与 adai-web 不一致，双端模型漂移）：已有一个 chatting/waiting 卡时再点另一张图片卡提问，旧卡留在聊天态，关闭新卡后 Feed 出现两张 active 样式卡 | `apps/adai-app/lib/main_page.dart:167-175` vs adai-web `feed_page.dart:269` | ✅ 2026-08-12（adai-app 图片分支补 `_deactivateOtherCards`，与 adai-web 对齐）|
-| 223 | adai-core CLAUDE.md 声称 os/ 只读与实际 promote 写入矛盾（K4/K13 漂移）：`TradingController.promoteToInbox` 实际写 `os/trading-os/99-inbox/`，但 CLAUDE.md:131 声明"只读，不写入"未记录该例外；`.gitignore:69` 只保护 `profile.md` 单文件，identity 下新非 sample 文件会进 git（后半已随 #226 改白名单）| `adai-core/CLAUDE.md:131` / `.gitignore:69` | 📋 待办（剩 CLAUDE.md 例外登记）|
+| 223 | adai-core CLAUDE.md 声称 os/ 只读与实际 promote 写入矛盾（K4/K13 漂移）：`TradingController.promoteToInbox` 实际写 `os/trading-os/99-inbox/`，但 CLAUDE.md:131 声明"只读，不写入"未记录该例外；`.gitignore:69` 只保护 `profile.md` 单文件，identity 下新非 sample 文件会进 git（后半已随 #226 改白名单）| `adai-core/CLAUDE.md:131` / `.gitignore:69` | ✅ 2026-08-12（CLAUDE.md 登记 promote 写 99-inbox/ 唯一例外）|
 | 228 | 端点计数双实现（Java 扫源码 `split("@GetMapping",-1)` + Gradle 生成 `endpoints.txt`）口径不同：Java 侧会数注释/字符串中的注解名，dev 与生产显示数字可能不一致（#187 修复未完全收敛）| `ProjectStatusAppService.java:139-190` / `build.gradle.kts:61-86` | 📋 待办 |
 
 ## 🔴 P3（未修复，打磨）
@@ -103,6 +103,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| #216 + #217 + #223 | **2026-08-12 修复批 N（数据安全 + 契约）**：**#216 CardMigration 误判即删/数据淹没**——`parseAsCard` 判定收紧（`type: conversation` 或 body 含「用户：」对话标记，原「含 `## ` 即视为卡片」太宽）；缺 `id` 字段的文件跳过（不再并入 `card_unknown` 被 findAll 合并淹没），+3 测试；**#217 rewriteId 锚定 frontmatter**——改写只在首对 `---` 之间的 frontmatter 段（`group(1)` 替换重拼），body 中的 `id:` 行不再被误改 → 双文件复发根除；**#223 CLAUDE.md os/ 只读例外登记**——adai-core 声明只读补 promote 写 `99-inbox/` 唯一例外说明。后端 359 全绿 | ✅ 2026-08-12 |
 | #129 + #218 + #222 | **2026-08-12 修复批 M**：**#129 promote 前端入口（战略闭环）**——双端交易页复盘弹窗加「反哺入库」按钮（`promoteReview` API 传 `{}`，成功后展示 #178 message 提示），知识反哺闭环前后端打通；**#218 visual durationMs**——`LoggingVisualAiClient` understand/ask 测真实耗时（对齐 `LoggingAiClient`），不再恒 null；**#222 问候加中午段**——`greetingForHour` 加 11-13 → 中午好（`greetingEnForHour` midday、`emojiForHour` 🌤️），12 点不再机械归下午。api-spec v3.13；后端 355 · adai-app 68 · adai-web 30 全绿 | ✅ 2026-08-12 |
 | #214 + #215 + #221 | **2026-08-12 P2 修复批 L**：**#214 图片追问长度上界**（`MediaRecordAppService.askImage` question 超 500 字符 → 400，防超大 prompt/记录/日志行）+ 2 测试；**#215 available 最小集**（`GET /accounts/available` 改返回 `List<String>` 纯 userId，不再暴露 role/enabled/createdAt——无鉴权端点去 admin 标记枚举面；双端选号页去角色渲染 + 删 `AccountModel` 死代码）+ 1 测试；**#221 问候语降级 emoji 按时段**（`emojiForHour` 凌晨 🌙/早上 ☀️/下午 🌤️/晚上 ✨，不再固定 ☀️ 配深夜好）+ 1 测试 | ✅ 2026-08-12 |
 | #210 | **2026-08-12 AI 日志隐私治理（R1 遗留）**：prompt 全文明文落盘缺生命周期/隐私面治理（无限明文堆积 + 读取面扫任意历史）→ **retention** `AiInteractionLogger` 默认保留 30 天（`adai.ai-log.retention-days`，`<=0` 关闭），写入时惰性清理（每用户每日一次）过期日志文件；**读取治理** `GET /admin/ai-logs` 加 `page`/`size`（上限 500，响应带 `total`）+ `date` 早于保留期返回 400；api-spec v3.11；7 测试（AiInteractionLogger 4 + AdminController 3）。保留全文记录能力（R1 目标），未做 prompt 脱敏开关 | ✅ 2026-08-12 |
@@ -125,6 +126,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-12 | 修复批 N（#216/#217 CardMigration 数据安全 + #223 契约）| — | 0 | ~35min | 0 新 | 3（#216 P2 + #217 P2 + #223 P2）|
 | 2026-08-12 | 顶部摘要优化（阿呆反馈：去绿点 + 行数 3→5）| — | 0 | ~25min | 0 新 | 1（今日概览卡前缀冲突 + 行数）|
 | 2026-08-12 | 修复批 M（#129 promote 入口 + #218 durationMs + #222 中午段）| — | 0 | ~40min | 0 新 | 3（#129 战略 + #218 P2 + #222 P2）|
 | 2026-08-12 | P2 修复批 L（#214/#215/#221 + #224/#225 文档）| — | 0 | ~30min | 0 新 | 5（#214 P2 + #215 P2 + #221 P2 + #224 P3 + #225 P3）|
