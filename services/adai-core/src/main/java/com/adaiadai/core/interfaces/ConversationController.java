@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
@@ -73,6 +74,9 @@ public class ConversationController {
                 "conversation", "",
                 "对话总结", turnText, List.of(), prompt
         );
+
+        // R1 AI 交互日志：挂载卡片锚点
+        AiTraceContext.set(userId, null, request.cardId(), "conversation");
 
         // AI 理解失败降级：不 500，用对话原文兜底（与 RecordController 降级模式一致）
         AiUnderstanding understanding;

@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
@@ -207,6 +208,9 @@ public class RecordRetryService {
         ContextPackage ctx = ContextPackage.simple(
                 "conversation", "", "对话总结", turnText, List.of(), prompt
         );
+
+        // R1 AI 交互日志：挂载卡片锚点
+        AiTraceContext.set(userId, null, card.id(), "retry");
 
         AiUnderstanding understanding = aiClient.understand(ctx);
 

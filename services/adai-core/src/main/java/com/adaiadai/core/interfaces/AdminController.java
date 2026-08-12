@@ -1,5 +1,7 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLog;
+import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -41,11 +44,14 @@ public class AdminController {
 
     private final Path dataRoot;
     private final Path osRoot;
+    private final AiInteractionLogger aiInteractionLogger;
 
     public AdminController(@Value("${adai.storage.base-path:../../data}") String dataBasePath,
-                           @Value("${adai.os-base-path:../../os}") String osBasePath) {
+                           @Value("${adai.os-base-path:../../os}") String osBasePath,
+                           AiInteractionLogger aiInteractionLogger) {
         this.dataRoot = Paths.get(dataBasePath).toAbsolutePath().normalize();
         this.osRoot = Paths.get(osBasePath).toAbsolutePath().normalize();
+        this.aiInteractionLogger = aiInteractionLogger;
     }
 
     // ── data/ 文件树浏览 ──
@@ -105,6 +111,44 @@ public class AdminController {
     @GetMapping("/knowledge/content")
     public ResponseEntity<?> getKnowledgeContent(@RequestParam String path) {
         return readContent(osRoot, path);
+    }
+
+    // ── AI 交互日志（R1）──
+
+    /**
+     * 读取某天的 AI 交互日志（JSONL 解析后的结构化条目）。
+     * <p>
+     * 供 adai-admin 管理端查看"提示词怎么组装的"；数据源 {@code data/{userId}/ai-logs/}。
+     *
+     * <pre>
+     * GET /api/v1/admin/ai-logs?userId=adai&date=2026-08-12  → 当日日志条目列表
+     * </pre>
+     *
+     * @param userId 用户 ID（默认 adai，多账号下可指定）
+     * @param date   日期 YYYY-MM-DD（默认今天）
+     */
+    @GetMapping("/ai-logs")
+    public ResponseEntity<?> getAiLogs(@RequestParam(defaultValue = "adai") String userId,
+                                       @RequestParam(defaultValue = "") String date) {
+        if (!userId.matches("[a-zA-Z0-9_-]+")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "非法 userId: " + userId));
+        }
+        LocalDate day;
+        if (date.isBlank()) {
+            day = LocalDate.now();
+        } else {
+            try {
+                day = LocalDate.parse(date);
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "date 需为 YYYY-MM-DD"));
+            }
+        }
+        List<AiInteractionLog> logs = aiInteractionLogger.readDay(userId, day);
+        return ResponseEntity.ok(Map.of(
+                "userId", userId,
+                "date", day.toString(),
+                "count", logs.size(),
+                "logs", logs));
     }
 
     // ── helpers ──

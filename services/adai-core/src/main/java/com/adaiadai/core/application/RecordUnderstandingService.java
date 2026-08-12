@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
@@ -37,6 +38,8 @@ public class RecordUnderstandingService {
      * @return 理解结果 + 上下文包（调用方按需取 estimateTokens）
      */
     public UnderstandingResult composeAndUnderstand(String userId, String scene, ContentRecord record) {
+        // R1 AI 交互日志：挂载关联锚点（记录 ID），LoggingAiClient 装饰器读取
+        AiTraceContext.set(userId, record.id(), null, "record");
         ContextPackage ctx = contextEngine.compose(userId, scene, record);
         AiUnderstanding understanding = aiClient.understand(ctx);
         return new UnderstandingResult(understanding, ctx);

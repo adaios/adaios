@@ -253,6 +253,38 @@ updatedAt: 2026-08-07
 | 格式 | 纯 Markdown 文本（无 frontmatter，无固定 schema）|
 | 真相源 | `TradingReviewFileRepository`（内容由 AI 复盘生成）|
 
+### 2.13 AI 交互日志 `ai-logs/`（R1，2026-08-12 新增）
+
+> 记录每次 AI 调用（DeepSeek 文本 + GLM 视觉）的入参/响应，回答"提示词怎么组装的"。日志型数据，可滚动清理（非长期资产）。
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `ai-logs/{yyyy}/{MM}/ai-log-{yyyy-MM-dd}.jsonl` |
+| 格式 | JSONL（每行一条 `AiInteractionLog`，见下）；字段为 null 时省略 |
+| 真相源 | `AiInteractionLogger`（`FileStorage.append` 追加写，装饰器 `LoggingAiClient`/`LoggingVisualAiClient` 打点）|
+
+**字段契约**：
+
+| 字段 | 类型 | 说明 |
+|:--|:--|:--|
+| `traceId` | String | 调用 ID（UUID）|
+| `ts` | String | 调用结束时间（ISO-8601）|
+| `durationMs` | Long | 耗时毫秒（视觉为 null）|
+| `userId` | String | 用户 ID |
+| `kind` | String | `understand` / `generate` / `recognizeIntent` / `visual.understand` / `visual.ask` |
+| `scene` | String | 场景（trading/project/life/note/question/brief/conversation/intent/media）|
+| `recordId` / `cardId` | String | 关联记录/卡片 ID（可为 null）|
+| `source` | String | 调用来源（question/log/retry/brief/trading_review/conversation/media/intent）|
+| `model` | String | `deepseek` / `glm` |
+| `prompt` | String | 发给模型的完整 prompt 全文（understand/generate 为 `ContextPackage.prompt()`）|
+| `estimatedTokens` | Integer | 预估输入 tokens |
+| `status` | String | `ok` / `error` |
+| `error` | String | 错误信息（status=error 时）|
+| `responseLength` | Integer | 响应字符数 |
+| `responseSummary` | String | 响应摘要（截断）|
+
+> **隐私注意**：`prompt` 含用户输入原文，属个人数据，按 `data/{userId}/` 分层隔离；不做对外接口暴露（仅管理端 `X-Admin-Token` 可读，见 api-spec §17）。
+
 ---
 
 ## 三、变更规则（v1.0.0 发布后）

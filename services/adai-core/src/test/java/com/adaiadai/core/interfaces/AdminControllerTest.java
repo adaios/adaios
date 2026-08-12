@@ -1,5 +1,8 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLog;
+import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLogger;
+import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,6 +11,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
@@ -27,6 +31,8 @@ class AdminControllerTest {
 
     private MockMvc mvc;
 
+    private InMemoryFileStorage storage;
+
     @BeforeEach
     void setUp() throws Exception {
         // data/ 结构：records/、identity/profile.md、notes.md
@@ -39,8 +45,10 @@ class AdminControllerTest {
         Files.createDirectories(osDir.resolve("trading-os").resolve("11-context"));
         Files.writeString(osDir.resolve("trading-os").resolve("11-context").resolve("rules.md"), "R1 空仓也是策略");
 
+        storage = new InMemoryFileStorage();
+        AiInteractionLogger aiLogger = new AiInteractionLogger(storage);
         mvc = MockMvcBuilders.standaloneSetup(
-                new AdminController(dataDir.toString(), osDir.toString())).build();
+                new AdminController(dataDir.toString(), osDir.toString(), aiLogger)).build();
     }
 
     @Test
@@ -120,5 +128,41 @@ class AdminControllerTest {
     void getKnowledgeContent_traversal_400() throws Exception {
         mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "../secret.txt"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aiLogs_readsLoggedEntries() throws Exception {
+        AiInteractionLogger logger = new AiInteractionLogger(storage);
+        logger.log("adai", new AiInteractionLog(
+                "trace-1", "2026-08-12T10:00:00", 120L, "adai",
+                "understand", "note", "rec_1", null, "record", "deepseek",
+                "处理一条新记录。", 50, "ok", null, 200, "summary=测试"));
+        logger.log("adai", new AiInteractionLog(
+                "trace-2", "2026-08-12T10:01:00", 80L, "adai",
+                "generate", "trading", "rec_2", null, "trading_review", "deepseek",
+                "复盘模板...", 100, "ok", null, 300, "复盘正文..."));
+
+        mvc.perform(get("/api/v1/admin/ai-logs")
+                        .param("userId", "adai")
+                        .param("date", LocalDate.now().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(2))
+                .andExpect(jsonPath("$.logs[0].traceId").value("trace-1"))
+                .andExpect(jsonPath("$.logs[0].recordId").value("rec_1"))
+                .andExpect(jsonPath("$.logs[0].prompt").value("处理一条新记录。"))
+                .andExpect(jsonPath("$.logs[1].kind").value("generate"));
+    }
+
+    @Test
+    void aiLogs_invalidDate_400() throws Exception {
+        mvc.perform(get("/api/v1/admin/ai-logs").param("date", "not-a-date"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aiLogs_noLogs_returnsEmpty() throws Exception {
+        mvc.perform(get("/api/v1/admin/ai-logs").param("userId", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(0));
     }
 }

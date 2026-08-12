@@ -8,7 +8,7 @@
 |:-----|:-----|:-----|
 | [ai-terms/](ai-terms/) | AI 技术名词文稿 | 术语收集稿 |
 | [domain-os-growth-model/](domain-os-growth-model/) | Domain OS 生长模型（草稿） | 通道协议 + 阶段机 + 压缩三形式 + OS/子模块判据，未定型 |
-| [20260812-ai-interaction-log.md](20260812-ai-interaction-log.md) | AI 交互日志需求（R1） | 记录每次 AI 交互入参/响应，阿呆 08-12 反馈，未立项 |
+| [20260812-ai-interaction-log.md](20260812-ai-interaction-log.md) | AI 交互日志需求（R1） | 记录每次 AI 交互入参/响应，阿呆 08-12 反馈，✅ 已实现（后端一步到位，管理端查看页顺延） |
 | [20260812-record-task-association.md](20260812-record-task-association.md) | 记录↔任务模块关联（R2） | 项目类型记录自动关联任务看板，阿呆 08-12 补充，未立项 |
 
 > 原 `ai-native/` 框架系列已归档至 `docs/inbox/ai-native/`（影响结构的重复内容，待处理）。

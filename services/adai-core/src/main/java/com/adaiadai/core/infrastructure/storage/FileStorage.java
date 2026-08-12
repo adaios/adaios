@@ -74,4 +74,16 @@ public interface FileStorage {
      * @param path   相对用户层的路径
      */
     void delete(String userId, String path);
+
+    /**
+     * 追加内容到文件末尾（文件不存在则创建）。
+     * <p>
+     * 用于追加型日志（如 {@code ai-logs/**} JSONL）：与 {@link #write} 的覆盖语义不同，
+     * 追加不读取-拼接整文件，避免日志文件随条目增长出现 O(N²) 读写。
+     *
+     * @param userId  用户 ID（单用户传 "default"），路径将落在 {@code data/{userId}/} 下
+     * @param path    相对用户层的路径
+     * @param content 追加的内容（调用方保证以换行结尾）
+     */
+    void append(String userId, String path, String content);
 }

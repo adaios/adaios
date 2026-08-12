@@ -1039,3 +1039,47 @@ chat 模式（全屏）
 ### `GET /api/v1/admin/knowledge/content?path=` — os/ 文件内容
 
 **Response** — 同 `/admin/files/content`
+
+### `GET /api/v1/admin/ai-logs?userId=&date=` — AI 交互日志（R1）
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|:-----|:-----|:----:|:----:|:-----|
+| `userId` | String | 否 | `adai` | 用户 ID（多账号下指定；非法字符 400）|
+| `date` | String | 否 | 今天 | 日期 `YYYY-MM-DD`（格式错误 400）|
+
+**Response** — 当日 AI 交互日志条目列表（JSONL 解析后，按写入顺序）
+
+```json
+{
+  "userId": "adai",
+  "date": "2026-08-12",
+  "count": 2,
+  "logs": [
+    {
+      "traceId": "uuid",
+      "ts": "2026-08-12T10:00:00.123",
+      "durationMs": 856,
+      "userId": "adai",
+      "kind": "understand",
+      "scene": "trading",
+      "recordId": "rec_xxx",
+      "cardId": null,
+      "source": "question",
+      "model": "deepseek",
+      "prompt": "完整组装 prompt 全文",
+      "estimatedTokens": 1200,
+      "status": "ok",
+      "error": null,
+      "responseLength": 240,
+      "responseSummary": "summary=买入 | tags=[trading]"
+    }
+  ]
+}
+```
+
+- **数据源**：`data/{userId}/ai-logs/YYYY/MM/ai-log-YYYY-MM-DD.jsonl`（File First，见 `data-format-freeze.md`）
+- **kind**：`understand` / `generate` / `recognizeIntent` / `visual.understand` / `visual.ask`
+- **关联**：`recordId`/`cardId`/`source` 由调用点在 AI 调用前通过 `AiTraceContext` 挂载（无关联时靠 `scene`+`prompt` 追溯）
+- **落盘失败不影响业务**：日志 best-effort，AI 调用结果正常返回

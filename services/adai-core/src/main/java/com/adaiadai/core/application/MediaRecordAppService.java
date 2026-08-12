@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.vision.ImageRequest;
 import com.adaiadai.core.infrastructure.ai.vision.ImageUnderstanding;
 import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
@@ -62,6 +63,9 @@ public class MediaRecordAppService {
         String id = RecordFileRepository.generateId();
         LocalDateTime now = LocalDateTime.now();
         String mediaPath = recordFileRepository.saveMedia(userId, id, imageBytes, extensionOf(contentType), now);
+
+        // R1 AI 交互日志：挂载图片记录锚点，LoggingVisualAiClient 装饰器读取
+        AiTraceContext.set(userId, id, null, "media");
 
         // VLM 理解（失败不丢数据：降级用备注/占位）
         ImageUnderstanding understanding;
@@ -131,6 +135,8 @@ public class MediaRecordAppService {
         }
 
         String base64 = Base64.getEncoder().encodeToString(bytes);
+        // R1 AI 交互日志：挂载图片记录锚点（追问同样可溯源）
+        AiTraceContext.set(userId, recordId, null, "media");
         String answer = visualAiClient.ask(
                 new ImageRequest(base64, contentTypeOf(mediaPath), null), question);
 

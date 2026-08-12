@@ -1,7 +1,7 @@
 # AI 交互日志需求（R1，2026-08-12 登记）
 
 > 来源：阿呆 2026-08-12 凌晨生产反馈（`rec_20260812_003303368` / `rec_20260812_003400325`，两次提及）。
-> 状态：需求登记（未立项）。成熟后升级 `docs/rfc/`。
+> 状态：✅ **已实现**（2026-08-12，Phase 1+Phase 2 后端一步到位；管理端查看页顺延）。登记时状态为需求登记（未立项）。
 
 ## 需求原文
 
@@ -27,6 +27,14 @@
 1. **结构化交互日志落盘**：`infrastructure/ai` 增加 `AiInteractionLogger`，每次调用落盘 `data/{userId}/ai-logs/{date}.jsonl`（或 md）——场景 / 入参 prompt 全文 / 响应摘要 / 耗时 / 关联 recordId
 2. **保留 Context 组装快照**：记录 ContextEngine 组装出的 package（标签、搜索命中、tokens），与最终 prompt 关联
 3. **前端可视化（后续）**：阿呆的原意是"了解提示词的构建"，可能需要一个查看入口（管理端/调试页）
+
+## 已实现（2026-08-12）
+
+- **装饰器方案**：`LoggingAiClient`/`LoggingVisualAiClient` 包装 DeepSeek/GLM 客户端（`@Primary`），全部 9 处 AI 调用点零改动自动记录
+- **落盘**：`data/{userId}/ai-logs/YYYY/MM/ai-log-YYYY-MM-DD.jsonl`（`AiInteractionLogger` + `FileStorage.append`，同步锁防并发丢行）
+- **记录内容**：kind/scene/prompt 全文/预估 tokens/耗时/状态/响应摘要 + `AiTraceContext` 挂载 recordId/cardId/source（Question/Record/Media/TradingReview/Conversation/Retry 6 处调用点）
+- **读取端点**：`GET /api/v1/admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权）
+- **顺延**：管理端可视化页（等日志积累真实数据后做）；Context 组装快照细粒度（装饰器已含 prompt/预估 tokens，标签关联等见 `ContextEngine` 日志）
 
 ## 归属
 

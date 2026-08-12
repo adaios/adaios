@@ -61,6 +61,12 @@ public class InMemoryFileStorage implements FileStorage {
         store.remove(key(userId, path));
     }
 
+    @Override
+    public void append(String userId, String path, String content) {
+        String key = key(userId, path);
+        store.merge(key, content, (a, b) -> a + b);
+    }
+
     public void clear() {
         store.clear();
     }

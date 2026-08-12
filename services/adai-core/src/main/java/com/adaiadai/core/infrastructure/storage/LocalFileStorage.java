@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -134,6 +135,20 @@ public class LocalFileStorage implements FileStorage {
             log.debug("文件删除成功: {}", resolve(userId, path));
         } catch (IOException e) {
             throw new StorageException("删除文件失败: " + path, e);
+        }
+    }
+
+    @Override
+    public void append(String userId, String path, String content) {
+        try {
+            Path target = resolve(userId, path);
+            Files.createDirectories(target.getParent());
+            // O_APPEND：单次 write 追加，并发交错由调用方同步（AiInteractionLogger 内部已加锁）
+            Files.writeString(target, content, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            log.debug("文件追加成功: {}", target);
+        } catch (IOException e) {
+            throw new StorageException("追加写入文件失败: " + path, e);
         }
     }
 

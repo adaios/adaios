@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.ai.llm.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
@@ -75,6 +76,9 @@ public class QuestionAppService {
     public AnswerResult answer(String userId, ContentRecord record, String cardId, String scene) {
         log.info("=== 问答流程开始 | userId={} | recordId={} | cardId={} | scene={} ===",
                 userId, record.id(), cardId, scene);
+
+        // R1 AI 交互日志：挂载关联锚点（记录 + 卡片），LoggingAiClient 装饰器读取
+        AiTraceContext.set(userId, record.id(), cardId, "question");
 
         // ContextEngine 负责组装：Identity + 会话历史 + 卡片上下文 + 记忆回读 + Knowledge + 领域上下文
         ContextPackage contextPackage = contextEngine.compose(userId, scene, record, cardId);

@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.AiClient;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingReviewFileRepository;
@@ -101,6 +102,8 @@ public class TradingReviewAppService {
         );
 
         // 5. AI 生成复盘（生成语义：无 JSON 摘要指令，按复盘模板输出正文）
+        // R1 AI 交互日志：挂载复盘记录锚点
+        AiTraceContext.set(userId, reviewRecord.id(), null, "trading_review");
         String reviewContent = aiClient.generate(reviewCtx, REVIEW_SYSTEM_PROMPT);
 
         // 6. 持久化

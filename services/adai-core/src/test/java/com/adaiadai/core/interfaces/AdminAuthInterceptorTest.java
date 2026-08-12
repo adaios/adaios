@@ -1,6 +1,8 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLogger;
 import com.adaiadai.core.infrastructure.security.AdminAuthInterceptor;
+import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,7 +34,8 @@ class AdminAuthInterceptorTest {
     private MockMvc adminMvc(String token) throws Exception {
         Files.createDirectories(dataDir.resolve("default"));
         return MockMvcBuilders
-                .standaloneSetup(new AdminController(dataDir.toString(), dataDir.toString()))
+                .standaloneSetup(new AdminController(dataDir.toString(), dataDir.toString(),
+                        new AiInteractionLogger(new InMemoryFileStorage())))
                 .addInterceptors(new AdminAuthInterceptor(token))
                 .build();
     }
