@@ -344,6 +344,18 @@ class ApiService {
     return raw.map((e) => e.toString()).toList();
   }
 
+  /// 复盘内容提升为入库候选（POST /api/v1/trading/reviews/{date}/promote，#129 前端入口）。
+  /// 写入 os/trading-os/99-inbox/，返回带 message 提示（#178：不自动融入 AI context）。
+  Future<PromoteResponse> promoteReview({required String date}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/reviews/$date/promote'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({}),
+    );
+    _check(resp);
+    return PromoteResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   // ── 账号 API ──
 
   /// 可用账号列表（v1.0.0 多账号选号；无鉴权端点，仅返回 enabled 账号的 userId 最小集）。
@@ -874,6 +886,21 @@ class ReviewResponse {
   factory ReviewResponse.fromJson(Map<String, dynamic> json) => ReviewResponse(
     date: json['date'] as String? ?? '',
     content: json['content'] as String? ?? '',
+  );
+}
+
+/// 反哺入库候选响应（POST /api/v1/trading/reviews/{date}/promote，#129）。
+class PromoteResponse {
+  final String status;
+  final String path; // 99-inbox/ 候选文件路径
+  final String message; // #178 融合提示
+
+  PromoteResponse({required this.status, required this.path, required this.message});
+
+  factory PromoteResponse.fromJson(Map<String, dynamic> json) => PromoteResponse(
+    status: json['status'] as String? ?? '',
+    path: json['path'] as String? ?? '',
+    message: json['message'] as String? ?? '',
   );
 }
 

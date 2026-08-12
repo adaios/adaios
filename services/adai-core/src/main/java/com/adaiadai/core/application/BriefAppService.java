@@ -116,12 +116,14 @@ public class BriefAppService {
     }
 
     /**
-     * 中文时段问候。凌晨 0-5 → 深夜好；6-11 → 早上好；12-17 → 下午好；18-23 → 晚上好。
+     * 中文时段问候。凌晨 0-5 → 深夜好；6-10 → 早上好；11-13 → 中午好；14-17 → 下午好；18-23 → 晚上好。
      * #14 修复（2026-08-12）：凌晨不再归入「早上好」。
+     * #222（2026-08-12）：加中午段（11-13），12 点不再机械归「下午好」。
      */
     static String greetingForHour(int hour) {
         if (hour < 6) return "深夜好";
-        if (hour < 12) return "早上好";
+        if (hour < 11) return "早上好";
+        if (hour < 14) return "中午好";
         if (hour < 18) return "下午好";
         return "晚上好";
     }
@@ -131,19 +133,21 @@ public class BriefAppService {
      */
     static String greetingEnForHour(int hour) {
         if (hour < 6) return "late night";
-        if (hour < 12) return "morning";
+        if (hour < 11) return "morning";
+        if (hour < 14) return "midday";
         if (hour < 18) return "afternoon";
         return "evening";
     }
 
     /**
      * 时段 emoji（#221：降级问候按时段，不再固定 ☀️——凌晨配 ☀️ 语义矛盾）。
-     * 与 {@link #greetingForHour} 时段一致。
+     * 与 {@link #greetingForHour} 时段一致（#222 加中午 🌤️ / 下午 🌇）。
      */
     static String emojiForHour(int hour) {
         if (hour < 6) return "🌙";
-        if (hour < 12) return "☀️";
-        if (hour < 18) return "🌤️";
+        if (hour < 11) return "☀️";
+        if (hour < 14) return "🌤️";
+        if (hour < 18) return "🌇";
         return "✨";
     }
 

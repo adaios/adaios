@@ -293,9 +293,51 @@ class _TradingPageState extends State<TradingPage> {
               ),
             ),
           ),
+          const SizedBox(height: 14),
+          // #129：知识反哺闭环前端入口——复盘内容提升为入库候选（写 os/trading-os/99-inbox/）
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: () => _promote(review.date),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.darkGreen.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.4)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.inbox_outlined, size: 14, color: AppColors.darkGreen),
+                  const SizedBox(width: 6),
+                  Text('反哺入库', style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+                ]),
+              ),
+            ),
+          ),
         ]),
       ),
     );
+  }
+
+  /// #129：反哺入库——复盘内容提升为候选，展示 #178 融合提示。
+  Future<void> _promote(String date) async {
+    try {
+      final result = await widget.api.promoteReview(date: date);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message.isEmpty ? '已写入入库候选' : result.message,
+                style: const TextStyle(fontSize: 12)),
+            backgroundColor: AppColors.darkSurface2,
+            duration: const Duration(seconds: 4)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('反哺入库失败: ${_extractApiError(e)}',
+                style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+            backgroundColor: AppColors.darkSurface2),
+      );
+    }
   }
 }
 

@@ -101,15 +101,20 @@ class BriefAppServiceTest {
         assertEquals("深夜好", BriefAppService.greetingForHour(5));
         assertEquals("late night", BriefAppService.greetingEnForHour(0));
         assertEquals("late night", BriefAppService.greetingEnForHour(5));
-        // 早上 6-11
+        // 早上 6-10（#222：原 6-11，11 归中午段）
         assertEquals("早上好", BriefAppService.greetingForHour(6));
-        assertEquals("早上好", BriefAppService.greetingForHour(11));
+        assertEquals("早上好", BriefAppService.greetingForHour(10));
         assertEquals("morning", BriefAppService.greetingEnForHour(6));
-        assertEquals("morning", BriefAppService.greetingEnForHour(11));
-        // 下午 12-17
-        assertEquals("下午好", BriefAppService.greetingForHour(12));
+        assertEquals("morning", BriefAppService.greetingEnForHour(10));
+        // 中午 11-13（#222：12 点不再机械归「下午好」）
+        assertEquals("中午好", BriefAppService.greetingForHour(11));
+        assertEquals("中午好", BriefAppService.greetingForHour(13));
+        assertEquals("midday", BriefAppService.greetingEnForHour(11));
+        assertEquals("midday", BriefAppService.greetingEnForHour(13));
+        // 下午 14-17（#222：原 12-17）
+        assertEquals("下午好", BriefAppService.greetingForHour(14));
         assertEquals("下午好", BriefAppService.greetingForHour(17));
-        assertEquals("afternoon", BriefAppService.greetingEnForHour(12));
+        assertEquals("afternoon", BriefAppService.greetingEnForHour(14));
         assertEquals("afternoon", BriefAppService.greetingEnForHour(17));
         // 晚上 18-23
         assertEquals("晚上好", BriefAppService.greetingForHour(18));
@@ -120,13 +125,15 @@ class BriefAppServiceTest {
 
     @Test
     void emojiForHour_matchesGreetingPeriods() {
-        // #221：降级问候 emoji 按时段——凌晨不再配 ☀️（语义矛盾）
+        // #221/#222：降级问候 emoji 按时段——凌晨不再配 ☀️（语义矛盾），中午/下午独立 emoji
         assertEquals("🌙", BriefAppService.emojiForHour(0));
         assertEquals("🌙", BriefAppService.emojiForHour(5));
         assertEquals("☀️", BriefAppService.emojiForHour(6));
-        assertEquals("☀️", BriefAppService.emojiForHour(11));
-        assertEquals("🌤️", BriefAppService.emojiForHour(12));
-        assertEquals("🌤️", BriefAppService.emojiForHour(17));
+        assertEquals("☀️", BriefAppService.emojiForHour(10));
+        assertEquals("🌤️", BriefAppService.emojiForHour(11));
+        assertEquals("🌤️", BriefAppService.emojiForHour(13));
+        assertEquals("🌇", BriefAppService.emojiForHour(14));
+        assertEquals("🌇", BriefAppService.emojiForHour(17));
         assertEquals("✨", BriefAppService.emojiForHour(18));
         assertEquals("✨", BriefAppService.emojiForHour(23));
     }

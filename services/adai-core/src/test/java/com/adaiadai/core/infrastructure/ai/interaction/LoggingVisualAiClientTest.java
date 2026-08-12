@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -49,6 +50,7 @@ class LoggingVisualAiClientTest {
         assertEquals("media", log.source());
         assertEquals("ok", log.status());
         assertEquals("summary=持仓截图 | category=trading | tags=[持仓]", log.responseSummary());
+        assertNotNull(log.durationMs(), "#218：视觉调用应记录真实耗时");
     }
 
     @Test

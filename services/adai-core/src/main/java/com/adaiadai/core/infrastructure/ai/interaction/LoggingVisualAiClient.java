@@ -37,12 +37,15 @@ public class LoggingVisualAiClient implements VisualAiClient {
     @Override
     public ImageUnderstanding understand(ImageRequest request) {
         AiTraceContext.Trace prev = AiTraceContext.get();
+        long start = System.currentTimeMillis();
         try {
             ImageUnderstanding r = delegate.understand(request);
-            logEntry(prev, "visual.understand", "glm", request.caption(), "ok", null, summarize(r));
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.understand", "glm", request.caption(), "ok", null, summarize(r), duration);
             return r;
         } catch (RuntimeException e) {
-            logEntry(prev, "visual.understand", "glm", request.caption(), "error", e.getMessage(), null);
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.understand", "glm", request.caption(), "error", e.getMessage(), null, duration);
             throw e;
         } finally {
             AiTraceContext.restore(prev);
@@ -52,13 +55,16 @@ public class LoggingVisualAiClient implements VisualAiClient {
     @Override
     public String ask(ImageRequest request, String question) {
         AiTraceContext.Trace prev = AiTraceContext.get();
+        long start = System.currentTimeMillis();
         try {
             String answer = delegate.ask(request, question);
+            long duration = System.currentTimeMillis() - start;
             logEntry(prev, "visual.ask", "glm", question, "ok", null,
-                    answer != null ? truncate(answer, 300) : null);
+                    answer != null ? truncate(answer, 300) : null, duration);
             return answer;
         } catch (RuntimeException e) {
-            logEntry(prev, "visual.ask", "glm", question, "error", e.getMessage(), null);
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.ask", "glm", question, "error", e.getMessage(), null, duration);
             throw e;
         } finally {
             AiTraceContext.restore(prev);
@@ -66,12 +72,12 @@ public class LoggingVisualAiClient implements VisualAiClient {
     }
 
     private void logEntry(AiTraceContext.Trace trace, String kind, String model, String prompt,
-                          String status, String error, String responseSummary) {
+                          String status, String error, String responseSummary, long durationMs) {
         try {
             AiInteractionLog entry = new AiInteractionLog(
                     UUID.randomUUID().toString(),
                     LocalDateTime.now().toString(),
-                    null, // 视觉耗时由 GLM 内部日志覆盖，这里不额外统计
+                    durationMs, // #218：视觉调用与文本调用一致，统计真实耗时
                     userIdOf(trace),
                     kind, "media",
                     trace != null ? trace.recordId() : null,
