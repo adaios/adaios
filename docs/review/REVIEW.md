@@ -2,13 +2,13 @@
 title: 项目审核全量状态报告
 updated: 2026-08-12
 last-review: 2026-08-12
-baseline: 7aecf9d
-mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12 三连修）
+baseline: 7b0a527
+mode: deep 增量（收官批 O：战略+P2+P3 一次清完 + #22 依赖倒置 + 文档同步）
 ---
 
-> 2026-08-12 deep 审核（范围 `7aecf9d..HEAD`，128 文件）：**P0×2（隐私红线）+ 战略×1 + P1×8 + P2×15 + P3 若干**。review 约定只报告不修复；其中 P0-2（ai-logs 补 .gitignore）修复路径明确可确认后立即修。
-> 2026-08-12 收官批 O（一次清完剩余该做项）：战略 #101/#103/#177 出表 + #179 登记 v1.0.1；P2 #19/#22/#115/#228 出表；P3 顺手项 14 出表（详见已修复区）。剩余：#179（v1.0.1 登录立项）+ P2 3（#149 v1.0.1 / #153 观察 / #176 待办）+ P3 方向项 8 + 打磨 4。
-> 2026-08-09 修复批（批 K）：#180/#181（P1）+ #182/#183/#185/#186/#187/#188/#189/#190（P2）+ #191-197（P3）已修复，见已修复区。
+> 2026-08-12 deep 审核（范围 `7b0a527..HEAD`，81 文件，收官批 O）：**战略×1 + P1×5 + P2×7 + P3×18**（本批自伤：候选文件括号未闭合 / frontend-reference 虚构端点 / api-spec 正文与 changelog 不同步）。P0 无；#22 反向依赖清零验证通过。见下方各优先级区 + 成本表。
+> 2026-08-12 收官批 O（一次清完剩余该做项）：战略 #101/#103/#177 出表 + #179 登记 v1.0.1；P2 #19/#22/#115/#228 出表；P3 顺手项 14 出表（详见已修复区）。
+> 2026-08-12 之前批（K/L/M/N 等）见已修复区。
 
 # 项目审核状态报告
 
@@ -31,11 +31,12 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 ## 🔴 战略缺口（未修复）
 
-> 2026-08-12 修复批 O（收官批，见已修复区）：#101（Feed 加载更早分页）/ #103（Timeline/Memory 保活刷新入口）/ #177（多账号切换链路测试，含修复切换链路缓存分裂 bug）已修复出表；#129 已在批 M 修复。剩余 #179（用户决策：保持现状，登录体系 v1.0.1 单独立项）。
+> 2026-08-12 修复批 O 已出表 #101/#103/#177（#129 批 M 已修）；deep 审核新发现 #234（分页终止口径，双端同模式）。剩余 #179 + #234。
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）+ 无鉴权选号面：`/accounts/available` 已最小化（#215 改返回 `List<String>` 纯 userId，去 role/createdAt 枚举面），但数据访问仍靠 header 注入无认证。真正收紧需引入登录体系（账号+密码+token），用户决策保持现状 | `AccountController` / `WebConfig` | 📋 v1.0.1 立项（登录体系随多账号正式开放单独做）|
+| 234 | **Feed 分页终止判定口径错误（双端同模式）**：`_hasMore = _cards.length < _totalToday`——`_cards.length` 含附加条目（action/market/push，仅 page 0 附加），`totalToday` 只计核心（record/card）。一日附加条目数 ≥ totalToday − size 时 page 0 即判定无更多 → 「加载更早」消失，但最旧核心记录仍在后续页**永不可达**。交易活跃日易触发（adai-app size=5 更易命中） | `apps/adai-web/lib/pages/feed_page.dart:77,92,611` / `apps/adai-app/lib/main_page.dart:613,638` | 📋 待办（应改为按已加载核心条目数判定）|
 
 ## 🔴 P0（隐私红线 / 数据安全）
 
@@ -47,7 +48,15 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 ## 🔴 P1（未修复）
 
-> 2026-08-12 修复批（批 A-D + #184）已全部修复出表：#204（双 pop）/ #205（firstWhere）/ #206（updatedAt 回退）/ #207（recorded 哨兵）/ #208（原图可见）/ #209（气泡持久化）/ #211（文件名约定）/ #212（迁移脚本）。P1 当前清零。
+> 2026-08-12 修复批（批 A-D + #184）已出表。deep 审核新发现 5 项（含本批自伤 2 项 + 历史接受 1 项），见下表。
+
+| # | 问题 | 位置 | 状态 |
+|:-:|:-----|:-----|:----:|
+| 235 | **图片上传失败占位卡「重试」是假重试（本批 #174 引入）**：`_onRetryCard` 对任何 error 卡走 `_createNewCard(content)` 文本接口——占位卡 content 是 caption 或**图片文件名**，重试把「IMG_xxx.jpg」当文本记录写进 Feed/记忆/搜索，图片字节未保留永不重传；且服务端若已建孤儿图片记录则与真实卡并存 | `apps/adai-app/lib/main_page.dart:359-372,421-429` | 📋 待办（应携带原始字节重走 uploadImage，或失败卡不渲染重试）|
+| 236 | **记忆页刷新跳回最新日期 + 刷新瞬间闪空（本批 #103 引入）**：`_loadDates(force)` 恒 `_selectDate(dates.first)`，浏览旧记忆点刷新跳回顶部丢位置；`_selectDate` 先清 `_entries` 致右侧闪空 | `apps/adai-web/lib/pages/memory_page.dart:28-47,86` | 📋 待办（刷新保留当前选中日期 + 不清空等新数据替换）|
+| 237 | **frontend-reference 速查表虚构端点（本批 #122 引入）**：新增「`GET /api/v1/trading/trades | List<TradeResponse>`」三项全假——后端仅 `POST /trading/trades`（TradingController.java:68，返回 PositionsResponse），无 GET、无 TradeResponse 类型；契约三方对拍 D1 命中 | `docs/architecture/frontend-reference.md:238` | 📋 待办（改 `POST /trading/trades | TradeRequest → PositionsResponse` 或删行）|
+| 238 | **api-spec changelog 与正文不同步（本批 #166 升版引入）**：v3.14 声明上传超限改 413，但 § `POST /records/media` 错误列表仍写「400 — 非图片或超 5MB」；ask 段也未列「问题过长 > 500 → 400」（v3.12 已改但正文未同步）| `docs/architecture/api-spec.md:180` vs `:13` | 📋 待办（正文改「400 非图片 / 413 超 5MB」，ask 补 400）|
+| 239 | **git 历史 f3ca035 残留真实持仓**（#184 脱敏只保护当前树）：旧版 `review-2026-08-09.md` 含「成本1400现价1400、持有100股市值14万」，已接受「不重写历史」决定；若仓库推送过远端（生产/GitHub）则历史中永久可读 | `f3ca035`（git 历史）| ⚠️ 需确认是否推送过远端；若推送过登记 rewrite 决策 |
 
 ## 🔴 P2（未修复）
 
@@ -59,6 +68,13 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | 📋 待办（v1.0.1）|
 | 153 | 数据形态失衡：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 📋 观察 |
 | 176 | 交易录入无严格校验：`TradeRequest` 仅 `@NotBlank`/`@Positive`，可录入错误代码（如 000300 当贵州茅台）→ 行情/持仓/复盘/反哺全污染；建议三层校验（格式 6 位数字+市场前缀 / `quote` 存在性 / 名称匹配模糊比对）；用户指出**输入校验 + 持仓分析 + 反哺流程**整体待打磨（v1.0.0 后批次）| `TradeRequest` / `TradingAppService.recordTrade` / 交易表单 | 📋 待办 |
+| 240 | **generateEndpointsFile 缺 `inputs.dir` 声明**：增量构建 up-to-date 判定在源无变化时恒判 UP-TO-DATE（实测）→ 新增/删除端点后 bootJar/bootRun 不重扫，endpoints.txt 保持旧值，#228 单一口径在「数字新鲜」上失效（#187 同族变体）| `build.gradle.kts:64-86` | 📋 待办（任务体加 `inputs.dir(dir)`）|
+| 241 | **候选文件括号未闭合（本批 #203 引入回归）**：`R35)` 修正为 `R35 ` 后，全角 `（` 无闭合——「三天原则（R35 需留意」，应为 `R35）`（规则 R35 = B1三天原则）| `os/trading-os/99-inbox/2026-08-09_交易复盘.md:28` | 📋 待办（改 `（R35）需留意`，K24 括号配对检查）|
+| 242 | 右栏 `_loadSidebar` 无去重守卫：getTaskStats 无缓存每次网络请求，一次对话（发送→AI 回复→结束）≈3 次，连续聊天产生并发请求弱竞态（后到旧响应覆盖新）| `apps/adai-web/lib/pages/feed_page.dart:117-129` | 📋 待办（加 `_loadingSidebar` 守卫或请求序号）|
+| 243 | adai-web `updateIdentity`/`updateTask` 仍用全局 `http.put`（绕过 `_client`）：#177 MockClient 注入无法拦截这两方法，widget 测试下真实 HTTP 恒 400 会莫名失败；与 adai-app 已全 `_client` 不一致 | `apps/adai-web/lib/services/api_service.dart:201,429` | 📋 待办（改 `_client.put` + grep 确认 `http\.` 零残留）|
+| 244 | 图片追问 active 态全图 Dialog 无 errorBuilder（#199 只补了 timeline 页路径）：404 时空白 Dialog | `apps/adai-app/lib/main_page.dart:1052-1069` | 📋 待办（抽公共全图 Dialog 复用）|
+| 245 | 图片上传成功卡 content 与 summary 同源重复渲染 + caption 丢失（本批 #174）：替换卡同设 `content: resp.summary` 与 `summary: resp.summary`，FeedCard 渲染两遍同一 AI 文本；用户 caption 被覆盖 | `apps/adai-app/lib/main_page.dart:336-347` / `feed_card.dart:251-263` | 📋 待办（content 保留 fallback，summary 单独放 AI 文本）|
+| 246 | 上传占位卡挂 MainPage State，切 World B 被 AnimatedSwitcher dispose → 进度与失败反馈丢失（`if(!mounted) return` 吞掉错误 SnackBar），失败静默 | `apps/adai-app/lib/main.dart:219-249` / `main_page.dart:359-372` | 📋 待办（失败提示挂根 ScaffoldMessenger 或 MainPage 保活）|
 
 ## 🔴 P3（未修复，打磨）
 
@@ -77,6 +93,23 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 | 173 | 优化方向（L4 演进）：带图提问——图片上传固定 intent=log（`MediaRecordAppService.recordImage` 硬编码），不支持"发图+问句→AI 基于图回答"；建议加 intent=question 通道 + AI 对话带图上下文 | `MediaController.uploadImage` / `MediaRecordAppService.recordImage` |
 | 202 | 后端 P3 打磨（generate 剥代码块 + 旧数组账号日期回归测试已修）：`userTradeLocks` 按 userId 无界累积 / `AiClient.generate(ctx, null)` 默认 system 仍是 JSON 分析指令与生成语义矛盾 | 后端多处 |
 | 229 | 图片追问打磨（_tagsCache 清理 + @userId tooltip/hover 已修）：首轮把「图片摘要文本」渲染成用户气泡（应居中「图片上下文」提示而非冒充用户消息）/ 折叠渐隐遮罩色与半透明卡背景不一致 / #15 折叠对超长 active 卡不设上限（几十轮全量渲染，桌面端布局压力）/ `main()` runApp 前 await `UserStore.loadUserId()` 首帧延迟 | `main_page.dart:926-930` / `feed_card.dart:633-646,617` / `main.dart:11-22` |
+| 247 | `ProjectStatusAppService` 端点资源缺失返回 0（被前端呈现「0 个端点」），0 与「未知」语义混淆 | `ProjectStatusAppService.java:145-146` |
+| 248 | `RecordFileRepository.parseFromFile` 损坏文件静默返回 null（#19 直读路径放大：单文件 frontmatter 损坏 → 该记录在 Feed/时间线/搜索无声消失，磁盘文件仍在）| `RecordFileRepository.java:227-255` |
+| 249 | `findById` 的 `id.matches("rec_\\d{8}_\\d{9}")` 每次调用重编译正则（理解/重补/删除/Feed 热路径）| `RecordFileRepository.java:66` |
+| 250 | GlobalExceptionHandler 413 消息硬编码「图片最大 5MB」，与 application.yml `max-file-size` 配置漂移时失真 | `GlobalExceptionHandler.java:26-30` |
+| 251 | adai-core CLAUDE.md 包结构树未登记 `kernel/ai` 与 `kernel/storage` 端口包（新读者误以为 AiClient/FileStorage 仍在 infra）| `services/adai-core/CLAUDE.md` 树 |
+| 252 | `DeepSeekAiClient` `@Value` 默认值仍 `deepseek-chat`（application.yml 为 deepseek-v4-pro，#232 只改了部署文档）| `DeepSeekAiClient.java:47` |
+| 253 | 选号页 loading spinner 尺寸双端不一致（adai-app SizedBox 28×28 vs adai-web 裸 spinner 默认 ~36px）| 双端 `account_select_page.dart` |
+| 254 | 记忆日期格式双端不一致（adai-app `M/d` vs adai-web `MM-dd`，跨年同）——#125 只补了年份逻辑未对齐格式 | 双端 `memory_page.dart` |
+| 255 | 「加载更早/加载更多」文案双端不一致；桌面端多图上传无进度占位（#174 仅移动端）| `adai-web feed_page.dart:635-657` / `adai-app main_page.dart:629` |
+| 256 | serve_web 校验假阴性：未来 Flutter 模板 load 自带 `config:` 键（无 canvasKitBaseUrl）时 perl 注入产生重复 config → JS last-wins 模板覆盖注入块，`grep -o canvasKitBaseUrl` 计数仍 1 → 校验通过却仍从 CDN 拉白屏 | 三端 `serve_web.sh:22-33` |
+| 257 | 测试覆盖缺口：#234 分页终止口径无测试锁（mock 全 type:record 未混附加条目）；#174 占位卡→重试→替换状态机无 widget 测试（#235 漏网原因）| `adai-web review_fixes_test.dart` / adai-app 无 #174 测试 |
+| 258 | 选号 SnackBar 双端时长不一致（移动默认 4s / 桌面 2s）+ 快速双击连弹两条（`_handlingSelect` 不挡 SnackBar）| 双端 `account_select_page.dart` |
+| 259 | REVIEW 统计口径差一：成本表「21（战略 3+1+P2 4+P3 14）」分解=22；头部「P3 方向项 8+打磨 4」=12 vs 实际表 11 | `REVIEW.md:109,10` |
+| 260 | adai-core README.md 仍写「DeepSeek API (deepseek-chat)」（application.yml 实际 deepseek-v4-pro）| `services/adai-core/README.md:33` |
+| 261 | system-architecture UML 图未补 kernel 新端口 `TagIndexReader`（只有 TagIndex 标 infra）| `docs/architecture/system-architecture.md` class 图 |
+| 262 | stripCodeFences 边界（可接受记录）：仅尾围栏不剥 / 正文天然以 ``` 结尾时误剥 3 字符 / 无头围栏整体包裹——复盘正文罕见含代码块，无需修 | `LlmResponseParser.java:40-53` |
+| 263 | 99-inbox 预存在项（非本批）：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行 | `os/trading-os/99-inbox/` |
 
 ## ✅ 已修复区（最近 10 条，旧条目随滚动删除）
 
@@ -106,6 +139,7 @@ mode: deep 增量（R1 AI 日志 + 图片追问 + 多账号选号 + CORS + 08-12
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-12 | deep 增量（收官批 O 深度审核）| backend/frontend/docs/product/knowledge ×5 | 5 | ~20min | 战略×1 + P1×5 + P2×7 + P3×18（含本批自伤 4）| 0 |
 | 2026-08-12 | 收官批 O（战略+P2+P3 一次清完）| subagent×2（adai-app/adai-web）+ 主会话（后端/文档）| 2 | ~4h | 0 新 | 21（战略 3 修+1 登记 + P2 4 + P3 14 部分修）|
 | 2026-08-12 | light 增量（批 L/M/N + 顶部摘要快扫）| — | 0 | ~5min | 0 新 | 0（守护 7 PASS / 0 HIT）|
 | 2026-08-12 | 修复批 N（#216/#217 CardMigration 数据安全 + #223 契约）| — | 0 | ~35min | 0 新 | 3（#216 P2 + #217 P2 + #223 P2）|

@@ -55,6 +55,7 @@
 | B27 | 引入 ThreadLocal 追踪上下文（AiTraceContext 类）必须配请求级清理钩子（HandlerInterceptor.afterCompletion remove）| AiTraceContext 跨请求残留 → 漏 set trace 路径落错用户目录（P2 #213，2026-08-12）|
 | B28 | 装饰器/代理新增接口方法必须同步实现（AiClient 加 generate 后 LoggingAiClient/TestAiClient 均需同步）| 本次已同步 ✓；`LoggingAiClient.generate` 未记录 systemPrompt（P3 #231，2026-08-12）|
 | B29 | 防御性回退禁止用 `LocalDateTime.now()` 推导持久化字段（G2 只 grep `LocalDate.now()|Instant.now()` 漏了它）| `parseDateTime` 缺 updatedAt 回退 now() → 旧卡永久归"今天" Feed（P1 #206，2026-08-12）|
+| B30 | 「生成/统计资源」类 Gradle 任务必须声明 `inputs.dir`（只声明 outputs.dir 时增量构建 up-to-date 判定不因源变化失效、生成物陈旧）| generateEndpointsFile 缺 inputs.dir → 增量构建端点数陈旧（P2 #240，2026-08-12）|
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。

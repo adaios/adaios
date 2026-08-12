@@ -46,6 +46,8 @@
 | K23 | 自动生成入库候选脱敏抽检：grep 真实持仓特征（`市值|现金余额|成本\d+|股`）命中且 git 追踪 = K8 红线复发；修复应落在生成源（TradingController.buildPromoteContent）而非事后改文件 | 2026-08-09 真实持仓进 git（P0 #184，2026-08-12 已修：sanitizeReviewContent 生成源脱敏）|
 | K24 | os/ 自动生成文件名约定一致性：`99-inbox/` 下文件名匹配 `YYYY-MM-DD_主题.md`（根因在 adai-core 生成代码 `TradingController.java:154` 硬编码 review- 前缀）| 候选文件名不符约定（P1 #211，2026-08-12）|
 | K25 | 子项目 CLAUDE.md 对 os/ 的只读声明 vs adai-core 实际写路径（promote→99-inbox）逐项对照，防「声明只读、实际写入」漂移 | adai-core CLAUDE.md:131 声称只读但 promote 写入（P2 #223，2026-08-12）|
+| K26 | promote 脱敏后复查历史版本残留真实持仓（`git log --all --name-only -- "os/trading-os/99-inbox/*.md"` 逐版本 grep 持仓特征）；仓库若推送过远端需登记 rewrite 决策而非静默接受 | f3ca035 历史残留真实持仓（P1 #239，2026-08-12）|
+| K27 | 自动生成候选改写标点后加全角括号配对检查（每行 `（` 与 `）` 计数相等），防半修引入未闭合括号 | R35) → R35 引入未闭合 `（`（P2 #241，2026-08-12）|
 
 ---
 **追加方式**：新发现知识/数据问题 → 追加一行，注明日期。

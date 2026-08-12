@@ -46,6 +46,9 @@
 | F23 | 给既有安全路径（`_updateCard`/`indexWhere`）升级为 `firstWhere` 时必须确认调用时机下列表恒含目标 id，否则同步抛 StateError 且无 try 兜底 | `_appendToActiveCard` firstWhere 无缺省 → 卡不在列表同步崩（P1 #205，2026-08-12）|
 | F24 | 置 `mode=waiting` 但不伴随异步任务的入口必须有复位路径：close/取消分支须无条件复位 mode | 图片卡提问后不输入直接关闭 → 永久卡 waiting 态（P2 #219，2026-08-12）|
 | F25 | 双端（adai-app/adai-web）新交互逐项对拍：不止文案，行为分支（_deactivateOtherCards/loading 态/图可见性）必须一致 | 图片追问 adai-app 缺 _deactivateOtherCards（P2 #220，2026-08-12）|
+| F26 | 分页「是否还有更多」判定必须与后端 totalToday 核心计数口径一致：用已加载 record/card 数比较，附加条目（action/market/push）不得参与终止判定 | Feed 分页附加条目通胀 → 加载更早消失、最旧核心不可达（战略 #234，2026-08-12）|
+| F27 | error/占位卡重试路径必须与原始创建路径同构：图片卡重试必须重走 uploadImage 并携带原始字节，禁止回退文本 _createNewCard 降级 | 上传失败占位卡重试降级为文本记录（P1 #235，2026-08-12）|
+| F28 | `_client` vs 全局 `http.*` 注入收敛后 grep `http\.(get|post|put|patch|delete)` 全文件确认零残留，否则 MockClient 注入在未收敛方法静默失效 | adai-web updateIdentity/updateTask 仍 http.put（P2 #243，2026-08-12）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。
