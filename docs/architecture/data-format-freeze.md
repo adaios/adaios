@@ -239,6 +239,7 @@ status: DOING              # TODO | DOING | DONE | CANCELLED
 priority: P0
 tags: [后端, 架构]
 rfcRef: 20260725-layer6
+sourceRecordId: rec_20260813_...   # R2（2026-08-13 新增，MINOR 可空）：domain=project 记录自动转任务时关联源记录；旧文件无此行 → 解析 null，向后兼容
 createdAt: 2026-08-07
 updatedAt: 2026-08-07
 ---

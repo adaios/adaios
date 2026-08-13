@@ -166,6 +166,49 @@ class ProjectFileRepositoryTest {
         assertEquals("task_f2", byTag.get(0).id());
     }
 
+    @Test
+    void saveAndFindAll_preservesSourceRecordId() {
+        // R2：记录自动转任务时带 sourceRecordId，round-trip 应保留
+        LocalDate now = LocalDate.now();
+        repository.save("default", new Task(
+                "task_src", "修复问候语", "凌晨问候语显示 morning", TaskStatus.TODO,
+                "P2", List.of("bug"), null, "rec_20260813_000000001", now, now));
+
+        Task loaded = repository.findById("default", "task_src").orElseThrow();
+        assertEquals("rec_20260813_000000001", loaded.sourceRecordId());
+        // 文件应含 sourceRecordId 行
+        String content = fileStorage.read("default", taskPath(now));
+        assertTrue(content.contains("sourceRecordId: rec_20260813_000000001"),
+                "任务文件应含 sourceRecordId 行: " + content);
+    }
+
+    @Test
+    void parse_legacyEntryWithoutSourceRecordId_returnsNull() {
+        // 向后兼容：v1.0.0 前任务文件无 sourceRecordId 行，解析应为 null 而非抛错/破坏
+        LocalDate now = LocalDate.now();
+        String legacy = """
+                # 任务 - %s
+
+                ---
+                id: task_legacy
+                title: 旧任务
+                description: 旧格式无 sourceRecordId
+                status: TODO
+                priority: P2
+                tags: [测试]
+                rfcRef:
+                createdAt: %s
+                updatedAt: %s
+                ---
+                旧任务
+                """.formatted(now, now, now);
+        fileStorage.write("default", taskPath(now), legacy);
+
+        Task loaded = repository.findById("default", "task_legacy").orElseThrow();
+        assertNull(loaded.sourceRecordId(), "旧文件无该行应解析 null");
+        assertEquals("旧任务", loaded.title());
+    }
+
     private String taskPath(LocalDate date) {
         String ym = date.format(DateTimeFormatter.ofPattern("yyyy/MM"));
         return "project/tasks/" + ym + ".md";

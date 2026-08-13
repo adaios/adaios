@@ -59,7 +59,8 @@ public class ProjectStatusController {
             @RequestBody TaskRequest request) {
         Task task = taskService.createTask(
                 userId, request.title(), request.description(),
-                request.priority(), request.tags(), request.rfcRef()
+                request.priority(), request.tags(), request.rfcRef(),
+                null // R2：前端手动建任务无源记录
         );
         return ResponseEntity.ok(task);
     }

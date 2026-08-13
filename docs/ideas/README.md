@@ -9,8 +9,8 @@
 | [ai-terms/](ai-terms/) | AI 技术名词文稿 | 术语收集稿 |
 | [domain-os-growth-model/](domain-os-growth-model/) | Domain OS 生长模型（草稿） | 通道协议 + 阶段机 + 压缩三形式 + OS/子模块判据，未定型 |
 | [20260812-ai-interaction-log.md](20260812-ai-interaction-log.md) | AI 交互日志需求（R1） | 记录每次 AI 交互入参/响应，阿呆 08-12 反馈，✅ 已实现（后端一步到位，管理端查看页顺延） |
-| [20260812-record-task-association.md](20260812-record-task-association.md) | 记录↔任务模块关联（R2） | 项目类型记录自动关联任务看板，阿呆 08-12 补充，未立项 |
-| [20260812-camera-sports-analysis.md](20260812-camera-sports-analysis.md) | 相机拍照/视频 → 运动动作分析 | 投篮姿势等动作学习，拍照 → AI 分析给意见（复用 L4 图片通道）；视频抽帧分析留 v2，阿呆 08-12 补充，未立项 |
+| [20260812-record-task-association.md](20260812-record-task-association.md) | 记录↔任务模块关联（R2） | ✅ 已实现（2026-08-13，RFC `20260813-record-task-and-sports-analysis`）：domain=project 记录自动转任务（方案 B：默认转 + AI actionable 挡 + #备忘/#想法 排除标签），任务带 sourceRecordId 溯源 |
+| [20260812-camera-sports-analysis.md](20260812-camera-sports-analysis.md) | 相机拍照/视频 → 运动动作分析 | ✅ Phase 1 已实现（2026-08-13）：图片卡「分析动作」按钮复用图片追问通道发预设问题；Phase 2 专用 type + 视频抽帧留 v2 |
 
 > 原 `ai-native/` 框架系列已归档至 `docs/inbox/ai-native/`（影响结构的重复内容，待处理）。
 

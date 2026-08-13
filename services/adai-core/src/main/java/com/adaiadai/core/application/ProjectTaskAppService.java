@@ -36,10 +36,12 @@ public class ProjectTaskAppService {
 
     /**
      * 创建新任务。
+     *
+     * @param sourceRecordId 源记录 ID（R2：domain=project 记录自动转任务时关联，前端手动建任务传 null）
      */
     public Task createTask(String userId, String title, String description,
                            String priority, List<String> tags,
-                           String rfcRef) {
+                           String rfcRef, String sourceRecordId) {
         LocalDate now = LocalDate.now();
         Task task = new Task(
                 Task.generateId(),
@@ -49,11 +51,13 @@ public class ProjectTaskAppService {
                 priority != null ? priority : "P2",
                 tags != null ? tags : List.of(),
                 rfcRef,
+                sourceRecordId,
                 now,
                 now
         );
         taskRepository.save(userId, task);
-        log.info("任务已创建 | id={} | title={}", task.id(), task.title());
+        log.info("任务已创建 | id={} | title={} | source={}", task.id(), task.title(),
+                sourceRecordId != null ? sourceRecordId : "-");
         return task;
     }
 
@@ -74,6 +78,7 @@ public class ProjectTaskAppService {
                 priority != null ? priority : existing.priority(),
                 tags != null ? tags : existing.tags(),
                 rfcRef != null ? rfcRef : existing.rfcRef(),
+                existing.sourceRecordId(), // R2：更新保留源记录关联
                 existing.createdAt(),
                 LocalDate.now()
         );

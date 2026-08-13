@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
+import com.adaiadai.core.application.RecordToTaskLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -47,6 +48,7 @@ public class RecordController {
     private final CardFileRepository cardRepository;
     private final MemoryService memoryService;
     private final RecordRetryService recordRetryService;
+    private final RecordToTaskLinker recordToTaskLinker;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
@@ -54,7 +56,8 @@ public class RecordController {
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
-                            RecordRetryService recordRetryService) {
+                            RecordRetryService recordRetryService,
+                            RecordToTaskLinker recordToTaskLinker) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
         this.understandingService = understandingService;
@@ -62,6 +65,7 @@ public class RecordController {
         this.cardRepository = cardRepository;
         this.memoryService = memoryService;
         this.recordRetryService = recordRetryService;
+        this.recordToTaskLinker = recordToTaskLinker;
     }
 
     @PostMapping
@@ -209,6 +213,13 @@ public class RecordController {
                 record.createdAt(), "log", memoryPersisted ? summary : null, domain
         );
         recordRepository.save(userId, enriched);
+
+        // R2：domain=project 记录自动转任务（方案 B：默认转 + AI actionable 挡 + 排除标签手动挡）。
+        // best-effort：失败不阻塞记录返回。
+        String taskTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
+        recordToTaskLinker.link(userId, record.id(), domain, "log", enriched.tags(),
+                taskTitle, enriched.content(),
+                understanding != null && understanding.actionable());
 
         return ResponseEntity.ok(new StatemResponse(
                 "log", record.id(), record.content(), tags, summary, domain

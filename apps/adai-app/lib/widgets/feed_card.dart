@@ -144,13 +144,14 @@ class FeedCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onToggleExpand;
   final void Function(String domain)? onDomainChanged;
+  final VoidCallback? onAnalyzeAction; // A2 Phase 1：图片卡「分析动作」快捷入口（复用图片追问通道）
   final VoidCallback? onRetry;
 
   const FeedCard({
     super.key, required this.data,
     this.onAsk, this.onEnd, this.onActivate,
     this.onDelete, this.onToggleExpand,
-    this.onDomainChanged, this.onRetry,
+    this.onDomainChanged, this.onAnalyzeAction, this.onRetry,
   });
 
   bool get _isWaiting => data.mode == CardMode.waiting;
@@ -269,6 +270,10 @@ class FeedCard extends StatelessWidget {
                           if (data.mediaUrl != null) ...[
                             const SizedBox(height: 8),
                             _buildMediaThumb(context),
+                            if (onAnalyzeAction != null) ...[
+                              const SizedBox(height: 6),
+                              _buildAnalyzeLine(),
+                            ],
                           ],
                           if (data.summary != null && !_isActive && !_isEnded) ...[
                             const SizedBox(height: 6),
@@ -405,6 +410,34 @@ class FeedCard extends StatelessWidget {
     }
     if (children.isNotEmpty && children.last.text == '  ·  ') children.removeLast();
     return TextSpan(children: children);
+  }
+
+  /// A2 Phase 1：图片卡「分析动作」快捷入口（缩略图下方 chip）——
+  /// 直接复用图片追问通道（onAnalyzeAction → 预设问题走 askMedia），零后端改动。
+  Widget _buildAnalyzeLine() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        onTap: onAnalyzeAction,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.darkGreen.withAlpha(28),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.accessibility_new, size: 12, color: AppColors.darkGreen),
+              const SizedBox(width: 4),
+              Text('分析动作',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 图片记录缩略图（批2 原图可见）——点击弹全图。

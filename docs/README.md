@@ -67,6 +67,7 @@
 | [20260802-adai-admin.md](rfc/20260802-adai-admin.md) | 2026-08-02 | adai-admin 管理后台规划（草案）：数据/系统/知识管理范围 + 技术选型候选 |
 | [20260802-multi-account-prep.md](rfc/20260802-multi-account-prep.md) | 2026-08-02 | 多账号架构预留：数据路径 userId 分层 + 全链路透传 + 数据迁移 |
 | [20260802-multimodal-image-glm.md](rfc/20260802-multimodal-image-glm.md) | 2026-08-02 | 多模态图片记录：图片 → GLM-VLM → 现有文本闭环（L4） |
+| [20260813-record-task-and-sports-analysis.md](rfc/20260813-record-task-and-sports-analysis.md) | 2026-08-13 | 记录↔任务关联（R2）+ 相机动作分析（A2）：结构影响分析 + 方案 B 触发规则 |
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 

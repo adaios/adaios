@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.15 | 最后更新：2026-08-12**
+**文档版本：v3.16 | 最后更新：2026-08-13**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-13 | v3.16 | **R2 记录↔任务关联**：任务模型新增可选 `sourceRecordId`（domain=project 记录自动转任务时关联源记录 `rec_xxx`）；非破坏性字段新增，前端手动建任务为 null |
 | 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
 | 2026-08-12 | v3.14 | **收官批 O（#166/#170/#202/#231/#122 等）**：AI 交互日志响应新增 `systemPrompt` 字段（generate 的复盘模板指令，understand/intent 为 null，#231）；上传超限改 413（`MaxUploadSizeExceededException` → PAYLOAD_TOO_LARGE，原 500，#166）；`/accounts/available` 契约补充无鉴权说明（#215 已最小集，此条再确认）；待办建议 prompt 改第二人称（#170）；复盘生成剥代码块围栏（#202）|
 | 2026-08-12 | v3.13 | **REVIEW #129/#218/#222**：promote 前端入口说明（交易页复盘弹窗「反哺入库」按钮，`POST` body 传 `{}`）；AI 交互日志视觉调用补真实耗时（`LoggingVisualAiClient.durationMs`）；Brief 问候加中午段（11-13 → 中午好，#222）|
@@ -860,6 +861,7 @@ chat 模式（全屏）
 | `priority` | String | `P0` / `P1` / `P2` / `P3` (默认 P2) |
 | `tags` | String[] | 标签列表（可选） |
 | `rfcRef` | String | 关联 RFC 文件名（可选，如 `20260725-layer6`） |
+| `sourceRecordId` | String | 源记录 ID（R2，可选）：domain=project 记录自动转任务时关联的 `rec_xxx`；前端手动建任务为 null |
 | `createdAt` | String | 创建日期 `yyyy-MM-dd` |
 | `updatedAt` | String | 更新日期 `yyyy-MM-dd` |
 

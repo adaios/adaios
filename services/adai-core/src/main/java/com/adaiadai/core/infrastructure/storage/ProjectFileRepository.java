@@ -45,15 +45,19 @@ public class ProjectFileRepository implements TaskRepository {
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
     private static final Pattern ENTRY_PATTERN = Pattern.compile(
             "---\\n" +
-                    "id:\\s*(\\S+)\\n" +
-                    "title:\\s*([^\\n]*)\\n" +
-                    "description:\\s*([^\\n]*)\\n" +
-                    "status:\\s*(\\S+)\\n" +
-                    "priority:\\s*(\\S+)\\n" +
-                    "tags:\\s*\\[([^\\]]*)\\]\\n" +
-                    "rfcRef:\\s*([^\\n]*)\\n" +
-                    "createdAt:\\s*(\\S+)\\n" +
-                    "updatedAt:\\s*(\\S+)\\n" +
+                    // 注意：冒号后空白用 [ \t]* 而非 \\s*——\\s 含换行，字段为空时（如 rfcRef 空）
+                    // 会贪婪吞掉下一行导致字段错位（R2 实测：rfcRef: 空行吞掉 sourceRecordId 行）
+                    "id:[ \\t]*(\\S+)\\n" +
+                    "title:[ \\t]*([^\\n]*)\\n" +
+                    "description:[ \\t]*([^\\n]*)\\n" +
+                    "status:[ \\t]*(\\S+)\\n" +
+                    "priority:[ \\t]*(\\S+)\\n" +
+                    "tags:[ \\t]*\\[([^\\]]*)\\]\\n" +
+                    "rfcRef:[ \\t]*([^\\n]*)\\n" +
+                    // R2：sourceRecordId 为可选行（旧任务文件无此行 → group(8) 为 null，向后兼容）
+                    "(?:sourceRecordId:[ \\t]*([^\\n]*)\\n)?" +
+                    "createdAt:[ \\t]*(\\S+)\\n" +
+                    "updatedAt:[ \\t]*(\\S+)\\n" +
                     "---\\n" +
                     ".+?(?=\\n---|\\z)",
             Pattern.DOTALL);
@@ -188,6 +192,7 @@ public class ProjectFileRepository implements TaskRepository {
                 priority: %s
                 tags: [%s]
                 rfcRef: %s
+                sourceRecordId: %s
                 createdAt: %s
                 updatedAt: %s
                 ---
@@ -200,6 +205,7 @@ public class ProjectFileRepository implements TaskRepository {
                 task.priority(),
                 String.join(", ", task.tags()),
                 task.rfcRef() != null ? task.rfcRef() : "",
+                task.sourceRecordId() != null ? task.sourceRecordId() : "",
                 task.createdAt().toString(),
                 task.updatedAt().toString(),
                 title
@@ -240,8 +246,10 @@ public class ProjectFileRepository implements TaskRepository {
                 String priority = matcher.group(5);
                 List<String> tags = parseTags(matcher.group(6));
                 String rfcRef = matcher.group(7).strip();
-                LocalDate createdAt = LocalDate.parse(matcher.group(8));
-                LocalDate updatedAt = LocalDate.parse(matcher.group(9));
+                // group(8) 可选：旧任务文件无 sourceRecordId 行时为 null
+                String sourceRecordId = matcher.group(8);
+                LocalDate createdAt = LocalDate.parse(matcher.group(9));
+                LocalDate updatedAt = LocalDate.parse(matcher.group(10));
 
                 TaskStatus status;
                 try {
@@ -252,7 +260,9 @@ public class ProjectFileRepository implements TaskRepository {
                 }
 
                 result.add(new Task(id, title, description, status, priority, tags,
-                        rfcRef.isEmpty() ? null : rfcRef, createdAt, updatedAt));
+                        rfcRef.isEmpty() ? null : rfcRef,
+                        sourceRecordId != null ? sourceRecordId.strip() : null,
+                        createdAt, updatedAt));
             } catch (Exception e) {
                 log.warn("解析任务条目失败: {}", e.getMessage());
             }

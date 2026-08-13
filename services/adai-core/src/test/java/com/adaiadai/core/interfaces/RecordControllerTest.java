@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordRetryService;
+import com.adaiadai.core.application.RecordToTaskLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -97,7 +98,8 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 memoryService,
-                retryService
+                retryService,
+                mock(RecordToTaskLinker.class)
         );
 
         return MockMvcBuilders.standaloneSetup(controller).build();
@@ -415,7 +417,8 @@ class RecordControllerTest {
                 repo,
                 mock(CardFileRepository.class),
                 mem,
-                retry);
+                retry,
+                mock(RecordToTaskLinker.class));
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 
