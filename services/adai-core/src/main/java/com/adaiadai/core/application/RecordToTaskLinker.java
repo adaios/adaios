@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.project.Task;
 import com.adaiadai.core.domain.project.TaskRepository;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,10 +29,13 @@ public class RecordToTaskLinker {
 
     private final TaskRepository taskRepository;
     private final ProjectTaskAppService taskService;
+    private final MemoryService memoryService;
 
-    public RecordToTaskLinker(TaskRepository taskRepository, ProjectTaskAppService taskService) {
+    public RecordToTaskLinker(TaskRepository taskRepository, ProjectTaskAppService taskService,
+                              MemoryService memoryService) {
         this.taskRepository = taskRepository;
         this.taskService = taskService;
+        this.memoryService = memoryService;
     }
 
     /**
@@ -61,6 +65,8 @@ public class RecordToTaskLinker {
                 return null;
             }
             Task task = taskService.createTask(userId, title, content, "P2", tags, null, recordId);
+            // 方案 A：转任务后清记忆待办（任务即跟踪载体，记忆只留回顾），避免双份跟踪
+            memoryService.clearActionable(userId, recordId);
             log.info("R2 记录自动转任务 | recordId={} → taskId={} | title=\"{}\"", recordId, task.id(), title);
             return task.id();
         } catch (Exception e) {

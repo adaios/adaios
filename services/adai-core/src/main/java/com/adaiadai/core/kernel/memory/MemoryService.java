@@ -477,6 +477,29 @@ public class MemoryService {
     }
 
     /**
+     * 清除记忆的待办标记（R2 记录↔任务关联：记录转任务后调用）。
+     * <p>
+     * 与 {@link #markDone} 不同：**不设 doneAt**——问题未解决，只是跟踪点从记忆转移到任务看板，
+     * 记忆只留事实回顾（避免同一条问题在记忆待办 + 任务看板双份跟踪、状态不一致）。
+     * 非 actionable 记忆不动（无待办可清）。
+     *
+     * @param recordId 源记录 ID（记忆按 recordId 关联）
+     */
+    public void clearActionable(String userId, String recordId) {
+        findByRecordId(userId, recordId).ifPresent(mem -> {
+            if (mem.actionable()) {
+                Memory cleared = new Memory(mem.id(), mem.recordId(), mem.kind(), mem.summary(),
+                        mem.patterns(), mem.preferences(), mem.tags(), mem.sentiment(),
+                        false, mem.suggestion(), mem.createdAt(),
+                        mem.topic(), mem.superseded(), mem.evolvedTo(), null, mem.lastConfirmed());
+                replaceEntry(userId, mem.createdAt().toLocalDate(), recordId, cleared);
+                log.info("R2 记忆清除待办（跟踪归任务） | memoryId={} | recordId={} | summary={}",
+                        mem.id(), recordId, truncate(mem.summary(), 40));
+            }
+        });
+    }
+
+    /**
      * 手动修正记忆（adai-admin 数据管理）：更新 kind/summary/tags/actionable/suggestion。
      * <p>
      * 任一字段为 null 表示保持原值。找不到记忆返回 false（404）。

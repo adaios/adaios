@@ -240,6 +240,33 @@ class MemoryServiceTest {
     }
 
     @Test
+    void clearActionable_clearsActionableKeepsDoneAtNull() {
+        // R2 方案 A：记录转任务后清记忆待办——actionable=false 但**不设 doneAt**（问题未解决，跟踪归任务）
+        Memory m = Memory.fromUnderstanding("rec_ca1", actionMemo("建议减仓", "建议减仓", List.of("交易")));
+        memoryService.persist("default", m);
+        assertTrue(m.actionable());
+
+        memoryService.clearActionable("default", "rec_ca1");
+        List<Memory> loaded = memoryService.findByDate("default", m.createdAt().toLocalDate());
+        assertEquals(1, loaded.size());
+        assertFalse(loaded.get(0).actionable(), "清除后 actionable 应为 false");
+        assertNull(loaded.get(0).doneAt(), "清除待办≠完成：不应设 doneAt（区别于 markDone）");
+    }
+
+    @Test
+    void clearActionable_nonActionable_doesNothing() {
+        Memory m = Memory.fromContentFallback("rec_ca2", "普通记录");
+        memoryService.persist("default", m);
+        assertFalse(m.actionable());
+
+        memoryService.clearActionable("default", "rec_ca2");
+        List<Memory> loaded = memoryService.findByDate("default", m.createdAt().toLocalDate());
+        assertEquals(1, loaded.size());
+        assertFalse(loaded.get(0).actionable());
+        assertNull(loaded.get(0).doneAt(), "非 actionable 记忆不受影响");
+    }
+
+    @Test
     void findPendingActions_excludesDone() {
         // 两个行动记忆 tags 不重叠，避免主题合并干扰
         Memory pending = Memory.fromUnderstanding("rec_a2", actionMemo("买入机会", "关注半导体", List.of("交易")));
