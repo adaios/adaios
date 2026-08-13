@@ -60,8 +60,8 @@ lib/
 
 ## 当前测试状态
 
-前端测试在 `test/widget_test.dart` + `test/user_id_test.dart` + `test/feed_state_machine_test.dart` + `test/pages_widget_test.dart`，当前 **81 个测试，0 失败**。
-覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（12，含 idle/chatting/ended/折叠/loading/对话态 + #15 chatting 不折叠回归）、userId query 解析（3）、Feed 状态机（16，ask→waiting→chatting→ended/追加/错误重试/删除/加载更多/#100 竞态 + #234 分页终止口径 + #235/#245 图片上传占位卡重试/成功卡）、6 页面（14，memory/timeline/search/trading/task/profile 数据渲染 + 错误态 + 重试）。
+前端测试在 `test/widget_test.dart` + `test/user_id_test.dart` + `test/feed_state_machine_test.dart` + `test/pages_widget_test.dart` + `test/input_bar_keyboard_test.dart`，当前 **83 个测试，0 失败**。
+覆盖：DTO JSON 解析（7）、FeedCardData 模型（5）、FeedCard 渲染（12，含 idle/chatting/ended/折叠/loading/对话态 + #15 chatting 不折叠回归）、userId query 解析（3）、Feed 状态机（16，ask→waiting→chatting→ended/追加/错误重试/删除/加载更多/#100 竞态 + #234 分页终止口径 + #235/#245 图片上传占位卡重试/成功卡）、6 页面（14，memory/timeline/search/trading/task/profile 数据渲染 + 错误态 + 重试）、输入栏键盘（2，发送后收起/点空白收起——阿呆 08-13 反馈，`tester.testTextInput.hasAnyClients` 判定）。
 > ApiService 支持注入 `http.Client`（MockClient），所有 widget 测试不依赖真实后端。
 
 ```bash

@@ -219,6 +219,9 @@ class _DualWorldShellState extends State<DualWorldShell> {
             }
           }
         },
+        // 点击空白处收起键盘（阿呆 08-13 反馈）：命中无子级 onTap 的区域时释放焦点；
+        // 子级自带 onTap（FeedCard 按钮/卡片等）在手势竞技场中优先，不受影响。
+        onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),

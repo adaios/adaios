@@ -92,6 +92,8 @@ class InputBarState extends State<InputBar> {
     if (images.isEmpty && text.isEmpty) return;
     _textCtrl.clear();
     setState(() => _pendingImages.clear());
+    // 发送后收起键盘（阿呆 08-13 反馈）：记录/提问发出后不再霸屏遮挡 Feed。
+    _focusNode.unfocus();
     if (images.isNotEmpty) {
       // 图 + 文字（可空，caption 共享）一起提交，逐张上传
       if (widget.onSendMedia != null) {
