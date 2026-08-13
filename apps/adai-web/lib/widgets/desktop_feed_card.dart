@@ -15,7 +15,6 @@ class DesktopFeedCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onToggleExpand;
   final VoidCallback? onRetry;
-  final VoidCallback? onAnalyzeAction; // A2 Phase 1：图片卡「分析动作」快捷入口（复用图片追问通道）
   final void Function(String domain)? onDomainChanged;
 
   const DesktopFeedCard({
@@ -26,7 +25,6 @@ class DesktopFeedCard extends StatelessWidget {
     this.onDelete,
     this.onToggleExpand,
     this.onRetry,
-    this.onAnalyzeAction,
     this.onDomainChanged,
   });
 
@@ -112,10 +110,6 @@ class DesktopFeedCard extends StatelessWidget {
                       if (data.mediaUrl != null) ...[
                         const SizedBox(height: 8),
                         _buildMediaThumb(context),
-                        if (onAnalyzeAction != null) ...[
-                          const SizedBox(height: 6),
-                          _buildAnalyzeLine(),
-                        ],
                       ],
                       if (_isWaiting) _buildThinking(),
                       if (data.summary != null && _isEnded) ...[
@@ -232,34 +226,6 @@ class DesktopFeedCard extends StatelessWidget {
   }
 
   /// 图片记录缩略图（批2 原图可见）——点击弹全图。
-  /// A2 Phase 1：图片卡「分析动作」快捷入口（缩略图下方 chip）——
-  /// 直接复用图片追问通道（onAnalyzeAction → 预设问题走 askMedia），零后端改动。
-  Widget _buildAnalyzeLine() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        onTap: onAnalyzeAction,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.darkGreen.withValues(alpha: 0.28),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.accessibility_new, size: 12, color: AppColors.darkGreen),
-              const SizedBox(width: 4),
-              Text('分析动作',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMediaThumb(BuildContext context) {
     final url = data.mediaUrl;
     if (url == null) return const SizedBox.shrink();

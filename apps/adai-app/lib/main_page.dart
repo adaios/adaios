@@ -291,26 +291,6 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  /// A2 Phase 1：图片卡「分析动作」——预设问题直接走图片追问通道（复用 _appendToActiveCard）。
-  /// 点击即分析（不等用户输入），卡片进入 chatting 态展示 Q/A 气泡，与手动提问一致。
-  Future<void> _analyzeActionCard(String cardId) async {
-    final card = _cards.where((c) => c.id == cardId).firstOrNull;
-    if (card == null || card.mediaUrl == null) return;
-    setState(() {
-      _deactivateOtherCards(cardId);
-      _activeCardId = cardId;
-      _hasActiveChat = true;
-      _chatEnterTurnCount = card.turns?.length ?? 0;
-    });
-    _scrollToBottom();
-    final now = TimeOfDay.now();
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    // _appendToActiveCard 是 async void（fire-and-forget），不可 await（与 _onSend 一致）
-    _appendToActiveCard(
-        '请分析这张照片中的动作/姿势：指出动作存在的问题（如手肘外翻、发力点偏低），并给出具体改进建议。',
-        timeStr);
-  }
-
   void _onSend(String text) async {
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -834,7 +814,6 @@ class _MainPageState extends State<MainPage>
                   }
                 },
                 onDomainChanged: (domain) => _changeDomain(card.id, domain),
-                onAnalyzeAction: card.mediaUrl != null ? () => _analyzeActionCard(card.id) : null,
                 onRetry: card.error != null ? () => _onRetryCard(card.id) : null,
               ),
             );
