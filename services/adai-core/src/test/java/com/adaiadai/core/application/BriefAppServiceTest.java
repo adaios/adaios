@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.project.TaskRepository;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
@@ -55,7 +56,8 @@ class BriefAppServiceTest {
                 aiClient, new TradingReviewAppService(
                         recordRepository, null, null, null, reviewRepo),
                 new DomainActivityService(recordRepository),
-                new TagRecommendationService(tagIndexService)
+                new TagRecommendationService(tagIndexService),
+                mock(TaskRepository.class)
         );
     }
 
@@ -117,7 +119,8 @@ class BriefAppServiceTest {
         String brief = briefAppService.generateBrief("default");
         assertNotNull(brief);
         assertFalse(brief.contains("• "), "降级 brief 不应含绿点前缀");
-        assertTrue(brief.contains("💬"), "降级 brief 第二行应带 💬 emoji");
+        assertTrue(brief.contains("📋"), "降级 brief 应含记录统计行（📋，08-14 降级增强）");
+        assertTrue(brief.contains("☕"), "降级 brief 应含收尾行（☕）");
     }
 
     @Test

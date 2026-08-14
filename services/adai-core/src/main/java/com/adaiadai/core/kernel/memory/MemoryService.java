@@ -214,16 +214,18 @@ public class MemoryService {
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) continue;
 
-            // 查找并移除匹配的记录
+            // 查找并移除匹配的记录（recordId 或 cardId 双匹配——08-14 修复：对话卡删除
+            // 时 cardId=卡片 id，旧卡 card_xxx 与记录 rec_xxx 分离导致记忆残留）
             String recordIdMarker = "recordId: " + recordId;
-            if (!content.contains(recordIdMarker)) continue;
+            String cardIdMarker = "cardId: " + recordId;
+            if (!content.contains(recordIdMarker) && !content.contains(cardIdMarker)) continue;
 
             StringBuilder sb = new StringBuilder();
             Matcher matcher = ENTRY_SPLIT.matcher(content);
             boolean removed = false;
             while (matcher.find()) {
                 String entry = matcher.group();
-                if (entry.contains(recordIdMarker)) {
+                if (entry.contains(recordIdMarker) || entry.contains(cardIdMarker)) {
                     removed = true;
                 } else {
                     sb.append(entry).append("\n");
@@ -689,6 +691,7 @@ public class MemoryService {
                 ---
                 id: %s
                 recordId: %s
+                cardId: %s
                 kind: %s
                 topic: %s
                 superseded: %b
@@ -707,6 +710,7 @@ public class MemoryService {
                 """.strip().formatted(
                 memory.id(),
                 memory.recordId(),
+                memory.cardId() != null ? memory.cardId() : "",
                 memory.kind(),
                 memory.topic() != null ? memory.topic() : "",
                 memory.superseded(),
@@ -745,6 +749,9 @@ public class MemoryService {
 
                 String id = fields.getOrDefault("id", "");
                 String recordId = fields.getOrDefault("recordId", "");
+                // 08-14：cardId（关联对话卡，删除双匹配；旧条目无 → null）
+                String cardId = fields.getOrDefault("cardId", null);
+                if ("".equals(cardId) || "null".equals(cardId)) cardId = null;
                 // 旧条目无 kind 字段 → 默认 insight（记忆进化 Phase 1 向后兼容）
                 String kind = fields.getOrDefault("kind", Memory.KIND_INSIGHT);
                 String sentiment = fields.getOrDefault("sentiment", "neutral");
@@ -786,7 +793,7 @@ public class MemoryService {
                 List<MemoryPattern> patterns = parsePatterns(fields.getOrDefault("patterns", "[]"));
                 List<MemoryPreference> preferences = parsePreferences(fields.getOrDefault("preferences", "[]"));
 
-                result.add(new Memory(id, recordId, kind, body, patterns, preferences,
+                result.add(new Memory(id, recordId, cardId, kind, body, patterns, preferences,
                         tags, sentiment, actionable, suggestion, createdAt, topic, superseded, evolvedTo, doneAt, lastConfirmed));
             } catch (Exception e) {
                 log.warn("解析记忆条目失败: {}", e.getMessage());

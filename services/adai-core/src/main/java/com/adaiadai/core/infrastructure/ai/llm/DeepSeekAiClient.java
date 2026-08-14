@@ -35,6 +35,8 @@ public class DeepSeekAiClient implements AiClient {
     private static final Logger log = LoggerFactory.getLogger(DeepSeekAiClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
+    private static final int MAX_ATTEMPTS = 2;    // DeepSeek 偶发返回空内容/超时，重试 1 次（生产 08-14 反馈 brief 降级 2 行）
+    private static final long RETRY_DELAY_MS = 600;
 
     private final HttpClient httpClient;
     private final String apiKey;
@@ -79,19 +81,7 @@ public class DeepSeekAiClient implements AiClient {
             log.info("[DeepSeek] 请求 model={} | 模式={} | tokens 预估={}",
                     model, isChat ? "CHAT" : "ANALYSIS", contextPackage.estimateTokens());
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(apiUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(TIMEOUT)
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            String rawResponse = parseChatCompletion(response.body());
-
-            log.info("[DeepSeek] 响应 received | status={} | 长度={}",
-                    response.statusCode(), rawResponse.length());
+            String rawResponse = sendAndParse(requestBody, TIMEOUT);
             return LlmResponseParser.parse(rawResponse);
 
         } catch (java.net.http.HttpConnectTimeoutException e) {
@@ -115,16 +105,7 @@ public class DeepSeekAiClient implements AiClient {
         try {
             // 生成语义：自定义 system 引导正文格式，无 JSON 摘要指令；0.7 temp + 2048 tokens 适合结构化正文
             String body = buildSimpleBody(contextPackage.prompt(), 2048, 0.7, systemPrompt);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(apiUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .timeout(TIMEOUT)
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            String content = parseChatCompletion(response.body());
+            String content = sendAndParse(body, TIMEOUT);
             log.info("[DeepSeek] generate 响应 | 长度={}", content.length());
             return content;
         } catch (java.net.http.HttpConnectTimeoutException e) {
@@ -153,20 +134,49 @@ public class DeepSeekAiClient implements AiClient {
                     输入：%s
                     结果：""".formatted(content);
             String body = buildSimpleBody(prompt, 50, 0.3);
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(apiUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .timeout(Duration.ofSeconds(15))
-                    .build();
-            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-            String result = parseChatCompletion(resp.body()).strip().toLowerCase();
+            String result = sendAndParse(body, Duration.ofSeconds(15)).strip().toLowerCase();
             if (result.contains("ask")) return "ask";
             return "log";
         } catch (Exception e) {
             throw new RuntimeException("AI 意图识别失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 发送请求 + 解析内容，对可重试错误（空内容/连接超时/请求超时）自动重试一次。
+     * 根因：DeepSeek 偶发返回空内容（生产 08-14 反馈，brief 直接降级成 2 行），
+     * 瞬时问题重试即可恢复；非瞬时错误（业务/格式）不重试直接抛。
+     */
+    private String sendAndParse(String requestBody, Duration timeout) throws Exception {
+        Exception last = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(apiUrl))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + apiKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .timeout(timeout)
+                        .build();
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                String raw = parseChatCompletion(response.body());
+                log.info("[DeepSeek] 响应 received | status={} | 长度={}", response.statusCode(), raw.length());
+                return raw;
+            } catch (Exception e) {
+                boolean retryable = e instanceof java.net.http.HttpConnectTimeoutException
+                        || e instanceof java.net.http.HttpTimeoutException
+                        || (e.getMessage() != null && e.getMessage().contains("返回空内容"));
+                if (attempt < MAX_ATTEMPTS && retryable) {
+                    log.warn("[DeepSeek] 第 {} 次调用失败（{}），{}ms 后重试", attempt, e.getMessage(), RETRY_DELAY_MS);
+                    Thread.sleep(RETRY_DELAY_MS);
+                    continue;
+                }
+                last = e;
+                if (!retryable) break;
+            }
+        }
+        if (last instanceof RuntimeException re) throw re;
+        throw new RuntimeException("AI 调用失败: " + (last != null ? last.getMessage() : "unknown"), last);
     }
 
     // ── Body 构建 ──

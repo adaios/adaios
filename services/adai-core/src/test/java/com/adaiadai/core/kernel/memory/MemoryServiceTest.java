@@ -174,6 +174,41 @@ class MemoryServiceTest {
         assertTrue(memoryService.findByKind("default",Memory.KIND_FACT).stream().noneMatch(m -> m.recordId().equals("rec_k5")));
     }
 
+    // ── 08-14 删除残留修复：cardId 关联 + 双匹配删除 ──
+
+    @Test
+    void persist_withCardId_roundTripKeepsCardId() {
+        Memory m = Memory.fromUnderstanding("rec_c1", "card_123", insight("洞察", "AI 洞察"));
+        memoryService.persist("default", m);
+
+        List<Memory> loaded = memoryService.findByDate("default", m.createdAt().toLocalDate());
+        assertEquals(1, loaded.size());
+        assertEquals("card_123", loaded.get(0).cardId(), "cardId 应随 frontmatter 写读（08-14）");
+        assertEquals("rec_c1", loaded.get(0).recordId(), "recordId 应保留");
+    }
+
+    @Test
+    void deleteByRecordId_matchesCardId() {
+        // 旧卡删除场景：卡片 id（card_xxx）与来源记录 id（rec_xxx）分离，
+        // 记忆 cardId 记录卡片 id，删除卡片时按 cardId 也能匹配删除（08-14 残留根因）
+        Memory m = Memory.fromUnderstanding("rec_c2", "card_456", insight("洞察", "AI 洞察"));
+        memoryService.persist("default", m);
+
+        boolean deleted = memoryService.deleteByRecordId("default", "card_456");
+        assertTrue(deleted, "按 cardId 应能删除记忆");
+        assertTrue(memoryService.findByDate("default", m.createdAt().toLocalDate()).isEmpty(), "删除后记忆应清空");
+    }
+
+    @Test
+    void deleteByRecordId_matchesRecordId_stillWorks() {
+        // 非卡片记忆：recordId 匹配路径不受影响
+        Memory m = Memory.fromContentFallback("rec_c3", "普通记录");
+        memoryService.persist("default", m);
+
+        assertTrue(memoryService.deleteByRecordId("default", "rec_c3"));
+        assertTrue(memoryService.findByDate("default", m.createdAt().toLocalDate()).isEmpty());
+    }
+
     // ── 记忆进化 Phase 2：主题级合并 ──
 
     private AiUnderstanding insightWithTags(String summary, String insight, List<String> tags) {

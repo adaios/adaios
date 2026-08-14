@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 
 /// 用户选择的图片（多模态 L4，交给宿主上传）。
@@ -110,7 +110,7 @@ class InputBarState extends State<InputBar> {
   }
 
   /// REVIEW #257 测试钩子：测试注入待发送图片（等价用户选图挂到输入栏），
-  /// 不触发 FilePicker（widget 测试环境无平台通道）。随后点发送键即走 onSendMedia。
+  /// 不触发 ImagePicker（widget 测试环境无平台通道）。随后点发送键即走 onSendMedia。
   @visibleForTesting
   void debugInjectImages(List<PickedImage> images) {
     setState(() => _pendingImages.addAll(images));
@@ -118,24 +118,59 @@ class InputBarState extends State<InputBar> {
 
   void _pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        withData: true,
-        allowMultiple: true, // 多选，逐张上传
+      // 相册多选用 image_picker（与拍照同组件，交互统一；阿呆 08-13 反馈割裂感）
+      final files = await ImagePicker().pickMultiImage(
+        maxWidth: 1920, // 限制长边，避免超大字节压栈
+        imageQuality: 85, // 压缩，上传更快
       );
-      if (result == null || result.files.isEmpty) return;
+      if (files.isEmpty) return;
       // 关闭附件底部弹层
       if (context.mounted) Navigator.pop(context);
+      final picked = <PickedImage>[];
+      for (final f in files) {
+        final bytes = await f.readAsBytes();
+        picked.add(PickedImage(
+          bytes,
+          f.name,
+          f.name.contains('.') ? f.name.split('.').last : 'jpg',
+        ));
+      }
       // 选图后先挂到输入栏（内联预览），发送时才真正上传
-      setState(() {
-        _pendingImages.addAll(result.files
-            .where((f) => f.bytes != null)
-            .map((f) => PickedImage(f.bytes!, f.name, f.extension)));
-      });
+      setState(() => _pendingImages.addAll(picked));
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('图片选择失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+          backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  /// 拍照（阿呆 08-13：相机拍摄入口，image_picker）。拍到的图挂到输入栏内联预览，随发送上传。
+  Future<void> _pickCamera() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920, // 限制长边，避免超大字节压栈
+        imageQuality: 85, // 压缩，上传更快（与选图统一）
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final name = picked.name;
+      // 关闭附件底部弹层
+      if (context.mounted) Navigator.pop(context);
+      setState(() {
+        _pendingImages.add(PickedImage(
+          bytes,
+          name,
+          name.contains('.') ? name.split('.').last : 'jpg',
+        ));
+      });
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('拍照失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
           backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
         ));
       }
@@ -237,9 +272,11 @@ class InputBarState extends State<InputBar> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _attachItem(Icons.image_outlined, 'image', onTap: _pickImage),
-                _attachItem(Icons.description_outlined, 'file', onTap: () => _showNotImplemented('文件上传')),
-                _attachItem(Icons.link_outlined, 'link', onTap: () => _showNotImplemented('链接')),
+                // 拍照（阿呆 08-13：相册之外需相机拍摄入口，image_picker camera）
+                _attachItem(Icons.photo_camera_outlined, '拍照', onTap: _pickCamera),
+                _attachItem(Icons.image_outlined, '图片', onTap: _pickImage),
+                _attachItem(Icons.description_outlined, '文件', onTap: () => _showNotImplemented('文件上传')),
+                _attachItem(Icons.link_outlined, '链接', onTap: () => _showNotImplemented('链接')),
               ],
             ),
           ],

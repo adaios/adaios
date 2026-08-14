@@ -132,7 +132,7 @@ public class QuestionAppService {
         // Persist AI understanding as memory
         if (understanding.summary() != null || (understanding.tags() != null && !understanding.tags().isEmpty())) {
             try {
-                Memory memory = Memory.fromUnderstanding(record.id(), understanding);
+                Memory memory = Memory.fromUnderstanding(record.id(), cardId, understanding); // cardId=对话卡，删除双匹配（08-14）
                 memoryService.persist(userId, memory);
                 log.info("Memory persisted for question | recordId={} | summary=\"{}\"", record.id(),
                         understanding.summary() != null && understanding.summary().length() > 40

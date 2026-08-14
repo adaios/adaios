@@ -56,6 +56,8 @@ class _MainPageState extends State<MainPage>
   bool _loadingMore = false;     // load more 进度
   bool _scrollAtTop = true;
   bool _scrollAtBottom = true;
+  int _uploadTotal = 0;          // 图片上传进度（阿呆 08-13：逐张反馈不足）
+  int _uploadDone = 0;
   static const int _pageSize = 5;
 
   /// REVIEW #234：已加载的核心条目数（type=record/card，前端统一映射为 FeedCardType.record）。
@@ -308,6 +310,10 @@ class _MainPageState extends State<MainPage>
   /// 不再多图干等只盯接口），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     if (images.isEmpty) return;
+    setState(() {
+      _uploadTotal = images.length; // 上传进度：输入栏上方显示 n/m（阿呆 08-13 反馈）
+      _uploadDone = 0;
+    });
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     final placeholderIds = <String>[];
@@ -338,6 +344,7 @@ class _MainPageState extends State<MainPage>
           caption: caption,
         );
         ok++;
+        if (mounted) setState(() => _uploadDone = ok); // 逐张进度（阿呆 08-13）
         if (!mounted) return;
         // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
         // REVIEW #245：content 保留用户 caption 作为记录内容，summary 单独放 AI 理解文本——
@@ -353,6 +360,7 @@ class _MainPageState extends State<MainPage>
         });
       }
       // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
+      setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
       _showSnackBar('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}');
       if (!mounted) return;
       await _loadFeed();
@@ -361,6 +369,8 @@ class _MainPageState extends State<MainPage>
       // 占位卡置 error（可重试）需 MainPage 存活才更新（被 dispose 时占位卡已随 State 销毁）。
       if (mounted) {
         setState(() {
+          _uploadTotal = 0; // 失败也隐藏进度条
+          _uploadDone = 0;
           for (var i = ok; i < placeholderIds.length; i++) {
             final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
             if (idx >= 0) _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
@@ -759,6 +769,27 @@ class _MainPageState extends State<MainPage>
           if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),
           // #16：输入框不再挂「上滑切世界」手势——打字上滑会误触切走 World，
           // MainPage 重建导致输入草稿丢失。切世界改由 Feed 区/壳层手势（带起点排除）负责。
+          // 图片上传进度（阿呆 08-13：逐张反馈不足）——输入栏上方进度条 + n/m 计数。
+          if (_uploadTotal > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: _uploadDone / _uploadTotal,
+                      backgroundColor: AppColors.darkSurface2,
+                      color: AppColors.darkGreen,
+                      minHeight: 4,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text('📤 上传中 $_uploadDone/$_uploadTotal',
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                ],
+              ),
+            ),
           InputBar(key: _inputBarKey, onSend: _onSend, onSendMedia: _onSendMedia, hasActiveChat: _hasActiveChat),
         ],
       ),
@@ -968,10 +999,12 @@ class _MainPageState extends State<MainPage>
   }
 
   Widget _buildBriefCard() {
-    final lines = _brief.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    // 1+3 层次（阿呆 08-13）：首行问候突出 + 最多 3 行内容；后端已 truncate 4，前端再兜底
+    final lines = _brief.split('\n').where((l) => l.trim().isNotEmpty).take(4).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
       child: Container(
+        width: double.infinity, // 铺满顶部宽度（Column 默认 center 会 shrink-wrap 成内容宽居中，阿呆 08-13 反馈）
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
         decoration: BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.darkSurface, AppColors.darkSurface2.withAlpha(153)]),
@@ -986,7 +1019,11 @@ class _MainPageState extends State<MainPage>
               final i = entry.key; final line = entry.value.trim();
               if (line.isEmpty) return const SizedBox.shrink();
               if (i == 0) {
-                return Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(line, style: const TextStyle(fontSize: 16, height: 1.75, fontWeight: FontWeight.w400, color: AppColors.darkGrey1)));
+                // 1 主行：问候/概述，标题感（字号大 + 加粗 + 与内容留白）
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(line, style: const TextStyle(fontSize: 18, height: 1.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                );
               }
               // 去掉绿点前缀：AI 每行自带 emoji（prompt 要求）直接展示，双前缀冲突消除
               return Padding(

@@ -36,6 +36,7 @@ import java.util.List;
 public record Memory(
         String id,
         String recordId,
+        String cardId,
         String kind,
         String summary,
         List<MemoryPattern> patterns,
@@ -52,6 +53,21 @@ public record Memory(
         LocalDateTime lastConfirmed
 ) {
 
+    /**
+     * 旧签名便捷构造（cardId=null）：兼容对话/图片/降级等非卡片来源的既有调用。
+     * 卡片对话记忆用 canonical 构造显式传 cardId（删除时按 cardId 匹配，REVIEW 08-14）。
+     */
+    public Memory(String id, String recordId, String kind, String summary,
+                  List<MemoryPattern> patterns, List<MemoryPreference> preferences,
+                  List<String> tags, String sentiment, boolean actionable,
+                  String suggestion, LocalDateTime createdAt, String topic,
+                  boolean superseded, String evolvedTo, LocalDateTime doneAt,
+                  LocalDateTime lastConfirmed) {
+        this(id, recordId, null, kind, summary, patterns, preferences, tags,
+                sentiment, actionable, suggestion, createdAt, topic,
+                superseded, evolvedTo, doneAt, lastConfirmed);
+    }
+
     public static final String KIND_FACT = "fact";
     public static final String KIND_INSIGHT = "insight";
     public static final String KIND_PREFERENCE = "preference";
@@ -67,6 +83,14 @@ public record Memory(
      * kind 由 {@link #deriveKind(AiUnderstanding)} 推导。
      */
     public static Memory fromUnderstanding(String recordId, AiUnderstanding understanding) {
+        return fromUnderstanding(recordId, null, understanding);
+    }
+
+    /**
+     * 从 AI 理解结果创建记忆（带卡片关联）。
+     * cardId 为对话卡 id：卡片对话产生的记忆记录卡片 id，删除对话卡时按 cardId 匹配删除（08-14 删除残留修复）。
+     */
+    public static Memory fromUnderstanding(String recordId, String cardId, AiUnderstanding understanding) {
         // insight 优先：有洞察用洞察，没有（QUESTION 场景）用 summary 兜底
         String memorySummary = understanding.insight() != null
                 ? understanding.insight()
@@ -74,6 +98,7 @@ public record Memory(
         return new Memory(
                 generateId(),
                 recordId,
+                cardId,
                 deriveKind(understanding),
                 memorySummary,
                 understanding.patterns(),

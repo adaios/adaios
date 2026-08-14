@@ -9,8 +9,17 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>拍摄照片用于记录到阿呆阿呆</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>选择照片用于记录到阿呆阿呆</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>阿呆阿呆</string>
 	<key>CFBundleExecutable</key>

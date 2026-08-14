@@ -207,9 +207,11 @@ class _DualWorldShellState extends State<DualWorldShell> {
       body: GestureDetector(
         onVerticalDragStart: (d) => _dragStartY = d.localPosition.dy,
         onVerticalDragEnd: (d) {
-          // #16：输入框区域（屏幕底部约 140px，输入栏 + 附件预览）不响应切世界——
-          // 否则打字上滑误触切走 World，MainPage 重建导致输入草稿丢失。
-          if ((_dragStartY ?? 0) >= (MediaQuery.of(context).size.height - 140)) return;
+          // 底部输入框区域（约 140px：输入栏 + 附件预览）仅在键盘弹起时排除切世界——
+          // 打字上滑误触会切走 World 丢草稿（#16），但浏览时（键盘收起）保留输入栏
+          // 上滑切 World 的旧入口（阿呆 08-13 反馈：无法按之前方式到背面主页）。
+          final keyboardUp = MediaQuery.of(context).viewInsets.bottom > 0;
+          if (keyboardUp && (_dragStartY ?? 0) >= (MediaQuery.of(context).size.height - 140)) return;
           // 全局空白快速拖拽：高速度阈值避免干扰正常滚动
           if (d.primaryVelocity != null) {
             if (d.primaryVelocity! < -400 && !_showWorldB) {

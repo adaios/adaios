@@ -1,5 +1,8 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.project.Task;
+import com.adaiadai.core.domain.project.TaskRepository;
+import com.adaiadai.core.domain.project.TaskStatus;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -31,6 +34,7 @@ public class BriefAppService {
     private final TradingReviewAppService tradingReviewAppService;
     private final DomainActivityService domainActivityService;
     private final TagRecommendationService tagRecommendationService;
+    private final TaskRepository taskRepository;
 
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
     private final java.util.Map<String, String> cachedBriefByUser = new java.util.HashMap<>();
@@ -42,7 +46,8 @@ public class BriefAppService {
                            AiClient aiClient,
                            TradingReviewAppService tradingReviewAppService,
                            DomainActivityService domainActivityService,
-                           TagRecommendationService tagRecommendationService) {
+                           TagRecommendationService tagRecommendationService,
+                           TaskRepository taskRepository) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
@@ -50,6 +55,7 @@ public class BriefAppService {
         this.tradingReviewAppService = tradingReviewAppService;
         this.domainActivityService = domainActivityService;
         this.tagRecommendationService = tagRecommendationService;
+        this.taskRepository = taskRepository;
     }
 
     /**
@@ -101,16 +107,31 @@ public class BriefAppService {
                             List.of(), prompt, java.time.LocalDateTime.now(),
                             List.of()
                     ));
-            cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 5));
+            cachedBriefByUser.put(userId, truncateLines(understanding.summary(), 4)); // 1+3：首行问候 + 3 行内容（阿呆 08-13 层次反馈）
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         } catch (Exception e) {
             log.warn("Brief AI failed: {}", e.getMessage());
             String greeting = greetingForHour(hour);
-            // #221/#222：降级问候 emoji 按时段（凌晨 🌙 / 早上 ☀️ / 中午 🌤️ / 下午 🌇 / 晚上 ✨），不再固定 ☀️
-            // 去绿点：第二行也带 emoji（💬），与 AI 成功路径前缀风格统一
-            cachedBriefByUser.put(userId,
-                    emojiForHour(hour) + " " + identityName + " " + greeting + "！\n💬 今天有什么想记录的吗？");
+            // 降级增强（阿呆 08-14 反馈「就两条」）：AI 失败时用本地数据拼内容，不再干巴巴 2 行
+            StringBuilder fallback = new StringBuilder();
+            fallback.append(emojiForHour(hour)).append(" ").append(identityName).append(" ").append(greeting).append("！");
+            if (!todayRecords.isEmpty()) {
+                fallback.append("\n📋 今日已有 ").append(todayRecords.size()).append(" 条记录");
+            } else if (!recentRecords.isEmpty()) {
+                fallback.append("\n📋 最近两天有 ").append(recentRecords.size()).append(" 条记录");
+            } else {
+                fallback.append("\n📋 今天还没有记录");
+            }
+            if (!recentMemories.isEmpty()) {
+                String mem = recentMemories.get(0).summary();
+                if (mem != null && !mem.isBlank()) {
+                    if (mem.length() > 28) mem = mem.substring(0, 28) + "…";
+                    fallback.append("\n🧠 ").append(mem.trim());
+                }
+            }
+            fallback.append("\n☕ 慢慢来，一件件来");
+            cachedBriefByUser.put(userId, truncateLines(fallback.toString(), 4));
             cachedBriefAtByUser.put(userId, LocalDateTime.now());
             return cachedBriefByUser.get(userId);
         }
@@ -253,13 +274,31 @@ public class BriefAppService {
             log.debug("Tag recommendation signal skipped: {}", e.getMessage());
         }
 
+        // ── Task signals（08-14：概览卡主动提示待办，阿呆 10:25 反馈「重要信息不提示我」）──
+        try {
+            List<Task> openTasks = taskRepository.findAll(userId).stream()
+                    .filter(t -> t.status() == TaskStatus.TODO || t.status() == TaskStatus.DOING)
+                    .limit(3)
+                    .toList();
+            if (!openTasks.isEmpty()) {
+                sb.append("Open tasks (not done, should be surfaced to user):\n");
+                for (Task t : openTasks) {
+                    sb.append("- ").append(t.title()).append(" (").append(t.status()).append(")\n");
+                }
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            log.debug("Task signal skipped: {}", e.getMessage());
+        }
+
         sb.append("Rules:\n");
         sb.append("1. First line: \"").append(name).append(" ").append(greeting).append("!\"\n");
         sb.append("2. Use emoji at the start of each line\n");
         sb.append("3. Warm, concise, Chinese\n");
-        sb.append("4. Max 30 chars per line, max 5 lines total\n");
+        sb.append("4. Max 30 chars per line, 4 lines total: line 1 = greeting (concise overview), lines 2-4 = max 3 content items\n");
         sb.append("5. No JSON output\n");
         sb.append("6. Use actual emoji characters (NOT \\uXXXX escape codes)\n");
+        sb.append("7. If there are open tasks, proactively remind 1-2 most important ones (e.g. \"你还有 N 件待办\")\n");
 
         return sb.toString();
     }
