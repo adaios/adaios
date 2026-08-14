@@ -79,6 +79,23 @@ class AccountFileRepositoryTest {
     }
 
     @Test
+    void init_patchClearedPlugins_notOverriddenByMigration() throws Exception {
+        // REVIEW P1-4：「删了又出现」K28 镜像——PATCH 显式清空（"plugins":[]）后，启动迁移不得再补默认。
+        // 区分「老文件无字段」与「字段存在但为空」：只迁移前者。
+        String json = """
+                [ { "userId" : "adai", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02", "plugins" : [ ] } ]
+                """;
+        Files.createDirectories(tempDir.resolve("accounts"));
+        Files.writeString(tempDir.resolve("accounts/accounts.json"), json, StandardCharsets.UTF_8);
+
+        var repo = repo();
+        repo.init();
+
+        assertTrue(repo.findById(Account.SEED_ADMIN_ID).get().plugins().isEmpty(),
+                "PATCH 显式清空的 plugins 不应被启动迁移补回默认（管理端清空 = 用户决策）");
+    }
+
+    @Test
     void save_roundtrip_preservesPlugins() {
         var repo = repo();
         repo.init();

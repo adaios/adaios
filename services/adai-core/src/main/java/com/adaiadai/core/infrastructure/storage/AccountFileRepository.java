@@ -5,6 +5,7 @@ import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -21,7 +22,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -64,16 +67,21 @@ public class AccountFileRepository implements AccountRepository {
             writeAll(seed);
             return;
         }
-        // 老文件迁移（RFC 20260814）：seed admin 若 plugins 为空 → 补默认（owner 必持有受控插件）。
+        // 老文件迁移（RFC 20260814 + REVIEW P1-4）：读**原始字段存在性**而非 isEmpty——
+        // PATCH 显式清空（"plugins":[]）不应被下次启动迁移推翻（「删了又出现」K28 镜像）。
         // 幂等：正常后 findById 即非空，后续启动不再改动。
+        Map<String, Boolean> rawPresence = rawPluginsFieldPresence();
         List<Account> accounts = findAll();
         boolean changed = false;
         List<Account> normalized = new ArrayList<>();
         for (Account a : accounts) {
-            if (Account.SEED_ADMIN_ID.equals(a.userId()) && a.plugins().isEmpty()) {
+            // 仅当 seed admin 的原始 JSON 确实缺 plugins 字段（老文件）才补默认；
+            // 字段存在（哪怕为空数组 = PATCH 显式清空）一律不碰。
+            if (Account.SEED_ADMIN_ID.equals(a.userId())
+                    && !rawPresence.getOrDefault(a.userId(), false)) {
                 normalized.add(new Account(a.userId(), a.role(), a.enabled(), a.createdAt(), SEED_OWNER_PLUGINS));
                 changed = true;
-                log.info("迁移：seed admin adai 补默认插件 {}", SEED_OWNER_PLUGINS);
+                log.info("迁移：seed admin adai 老文件无 plugins 字段 → 补默认 {}", SEED_OWNER_PLUGINS);
             } else {
                 normalized.add(a);
             }
@@ -81,6 +89,28 @@ public class AccountFileRepository implements AccountRepository {
         if (changed) {
             writeAll(normalized);
         }
+    }
+
+    /**
+     * 读取原始 JSON 中各账号是否显式携带 plugins 字段（P1-4：区分「老文件无字段」与「PATCH 清空为空数组」）。
+     */
+    private Map<String, Boolean> rawPluginsFieldPresence() {
+        Map<String, Boolean> presence = new HashMap<>();
+        try {
+            String json = Files.readString(accountsPath(), StandardCharsets.UTF_8);
+            JsonNode array = objectMapper.readTree(json);
+            if (array != null && array.isArray()) {
+                for (JsonNode node : array) {
+                    if (node.has("userId")) {
+                        presence.put(node.get("userId").asText(), node.has("plugins"));
+                    }
+                }
+            }
+        } catch (IOException e) {
+            // 与 findAll 同口径：文件损坏 → 抛 StorageException（fail-fast，调用方兜底）
+            throw new StorageException("读取账号文件失败: " + accountsPath(), e);
+        }
+        return presence;
     }
 
     private Path accountsPath() {

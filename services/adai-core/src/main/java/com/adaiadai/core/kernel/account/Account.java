@@ -2,6 +2,7 @@ package com.adaiadai.core.kernel.account;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Account — 账号实体（系统级，不属于用户数据层）。
@@ -21,9 +22,10 @@ import java.util.List;
  */
 public record Account(String userId, String role, boolean enabled, LocalDate createdAt, List<String> plugins) {
 
-    /** 紧凑构造器：归一 null/可变列表（老 JSON 无 plugins 字段时 Jackson 传 null）。 */
+    /** 紧凑构造器：归一 null/可变列表（老 JSON 无 plugins 字段时 Jackson 传 null）；过滤 null 元素（REVIEW P2-3：脏 JSON 的 "plugins":[null] 不 NPE）。 */
     public Account {
-        plugins = plugins == null ? List.of() : List.copyOf(plugins);
+        plugins = plugins == null ? List.of()
+                : plugins.stream().filter(Objects::nonNull).toList();
     }
 
     /** 旧签名兼容（无插件 = 只有基础服务）。 */

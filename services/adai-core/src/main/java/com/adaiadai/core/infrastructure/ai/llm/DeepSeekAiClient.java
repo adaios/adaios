@@ -213,7 +213,7 @@ public class DeepSeekAiClient implements AiClient {
 
         var messages = MAPPER.createArrayNode();
 
-        // System prompt：身份 + 风格 + domain 标注
+        // System prompt：身份 + 风格 + domain 标注（REVIEW P2-4：枚举按插件收敛，随 ContextPackage 下发）
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", "你是阿呆的个人 AI 助手。用中文回复，语气温暖。回复结束后在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n"
@@ -221,7 +221,7 @@ public class DeepSeekAiClient implements AiClient {
             + "  \"summary\": \"3-5个词概括本次问答主题，避免人称代词，像标签一样简洁\",\n"
             + "  \"tags\": [\"标签1\", \"标签2\"],\n"
             + "  \"sentiment\": \"positive 或 negative 或 neutral\",\n"
-            + "  \"domain\": \"life(生活)/trading(交易)/project(项目)\",\n"
+            + "  \"domain\": \"" + ctx.domainEnum() + "\",\n"
             + "  \"actionable\": true 或 false,\n"
             + "  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n"
             + "}\n"

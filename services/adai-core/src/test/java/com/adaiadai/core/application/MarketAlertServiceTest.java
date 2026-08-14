@@ -9,6 +9,8 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -63,7 +65,8 @@ class MarketAlertServiceTest {
             return null;
         }).when(snapshot).saveSignatures(anyString(), any(), any());
 
-        return new MarketAlertService(market, positions, accounts, snapshot, push, 3.0, 5.0, breakCostEnabled);
+        return new MarketAlertService(market, positions, accounts, snapshot, push,
+                mock(PluginService.class), 3.0, 5.0, breakCostEnabled);
     }
 
     @Test
@@ -170,7 +173,7 @@ class MarketAlertServiceTest {
 
         AccountRepository accounts = mock(AccountRepository.class);
         when(accounts.findAll()).thenReturn(List.of(
-                new Account("adai", "admin", true, null),
+                new Account("adai", "admin", true, null, List.of(PluginRegistry.PLUGIN_TRADING)),
                 new Account("alice", "user", true, null)));
 
         Set<String> stored = new HashSet<>();
@@ -183,11 +186,50 @@ class MarketAlertServiceTest {
         }).when(snapshot).saveSignatures(anyString(), any(), any());
         MarketPushRepository push = mock(MarketPushRepository.class);
 
-        new MarketAlertService(market, positions, accounts, snapshot, push, 3.0, 5.0, true).poll();
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+
+        new MarketAlertService(market, positions, accounts, snapshot, push,
+                pluginService, 3.0, 5.0, true).poll();
 
         verify(push, times(1)).append(eq("adai"), any(), any(MarketPushEvent.class));
         verify(push, never()).append(eq("default"), any(), any());
         verify(push, never()).append(eq("alice"), any(), any());
+    }
+
+    @Test
+    void poll_noArg_skipsNonTradingPluginUsers() {
+        // REVIEW S-4：写侧门控——无 trading 插件的启用账号不被轮询（不累积看不见的 push 残留）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600519", quote("600519", "-3.50")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600519", "贵州茅台", "8.00", "9.00")));
+
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(
+                new Account("adai", "admin", true, null, List.of(PluginRegistry.PLUGIN_TRADING)),
+                new Account("alice", "user", true, null))); // alice enabled 但无 trading 插件
+
+        Set<String> stored = new HashSet<>();
+        MarketSnapshotRepository snapshot = mock(MarketSnapshotRepository.class);
+        when(snapshot.alertedSignatures(anyString(), any())).thenAnswer(i -> new HashSet<>(stored));
+        doAnswer(i -> {
+            stored.clear();
+            stored.addAll(i.getArgument(2));
+            return null;
+        }).when(snapshot).saveSignatures(anyString(), any(), any());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
+
+        new MarketAlertService(market, positions, accounts, snapshot, push,
+                pluginService, 3.0, 5.0, true).poll();
+
+        verify(push, times(1)).append(eq("adai"), any(), any(MarketPushEvent.class));
+        verify(push, never()).append(eq("alice"), any(), any(MarketPushEvent.class));
+        verify(positions, never()).findAll("alice"); // 无插件用户不做无谓的行情轮询
     }
 
     @Test

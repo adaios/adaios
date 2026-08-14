@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,6 +53,7 @@ class PluginIsolationTest {
         when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
+        when(cards.findById(any(), any())).thenReturn(Optional.empty());
 
         // 真实知识源：trading/project 为插件域，life 为基础服务
         List<KnowledgeSource> sources = List.of(
@@ -99,6 +101,38 @@ class PluginIsolationTest {
         assertFalse(alicePrompt.contains("trading(交易)"), "无插件用户 domain 枚举不应含 trading");
         assertFalse(alicePrompt.contains("→ trading"), "无插件用户 domain 判定规则不应含 trading");
         assertTrue(adaiPrompt.contains("trading(交易)"), "adai 保留 trading domain 判定");
+    }
+
+    @Test
+    void d5_domainRules_builtFromKeywordConstants_singleSourceOfTruth() {
+        // REVIEW P2-2：规则由 TRADING_KEYWORDS/PROJECT_KEYWORDS 常量拼接——
+        // 此前硬编码 8 词漏 股票/大盘/行情/买卖/开发，导致确定性路由判 trading 但 prompt 规则无该词。
+        ContextEngine engine = engine();
+
+        String adaiPrompt = engine.compose("adai", "note", record("今天买入立昂微，持仓 200 股"), null).prompt();
+
+        // trading 规则行应含全部 12 个常量关键词（此前漏的 4 词：股票/大盘/行情/买卖）
+        assertTrue(adaiPrompt.contains("股票"), "trading 规则应含关键词「股票」（单一真相源）");
+        assertTrue(adaiPrompt.contains("大盘"), "trading 规则应含关键词「大盘」");
+        assertTrue(adaiPrompt.contains("行情"), "trading 规则应含关键词「行情」");
+        assertTrue(adaiPrompt.contains("买卖"), "trading 规则应含关键词「买卖」");
+        // project 规则行应含此前漏掉的「开发」
+        String projectPrompt = engine.compose("adai", "note", record("开发任务进度如何"), null).prompt();
+        assertTrue(projectPrompt.contains("开发"), "project 规则应含关键词「开发」（单一真相源）");
+    }
+
+    @Test
+    void d5_contextPackage_carriesConvergedDomainEnum() {
+        // REVIEW P2-4：CHAT 模式 system prompt 的 domain 枚举随 ContextPackage 下发且按插件收敛
+        ContextEngine engine = engine();
+
+        var alicePkg = engine.compose("alice", "question", record("今天买入立昂微，持仓 200 股"), "card_x");
+        var adaiPkg = engine.compose("adai", "question", record("今天买入立昂微，持仓 200 股"), "card_y");
+
+        assertEquals("\"life(生活)\"", alicePkg.domainEnum(), "无插件用户 domainEnum 只剩 life");
+        assertFalse(alicePkg.domainEnum().contains("trading"), "无插件用户 domainEnum 不应含 trading");
+        assertEquals("\"life(生活)/trading(交易)/project(项目)\"", adaiPkg.domainEnum(),
+                "adai 持有 trading+project 插件 → 全量枚举");
     }
 
     @Test

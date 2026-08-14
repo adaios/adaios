@@ -10,6 +10,8 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,6 +55,7 @@ public class MarketAlertService {
     private final AccountRepository accountRepository;
     private final MarketSnapshotRepository snapshotRepository;
     private final MarketPushRepository pushRepository;
+    private final PluginService pluginService;
 
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
@@ -63,6 +66,7 @@ public class MarketAlertService {
                               AccountRepository accountRepository,
                               MarketSnapshotRepository snapshotRepository,
                               MarketPushRepository pushRepository,
+                              PluginService pluginService,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
                               @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled) {
@@ -71,14 +75,15 @@ public class MarketAlertService {
         this.accountRepository = accountRepository;
         this.snapshotRepository = snapshotRepository;
         this.pushRepository = pushRepository;
+        this.pluginService = pluginService;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
     }
 
     /**
-     * 定时轮询：遍历全部启用账号逐用户检测（REVIEW #183：移除硬编码 {@code default}——
-     * default 账号已随数据迁移移除，轮询真实数据层=账号表内 enabled 用户，如 adai/alice）。
+     * 定时轮询：遍历启用账号中**启用了 trading 插件**的用户逐用户检测（REVIEW S-4：写侧与 Feed 读侧
+     * 门控对称——无插件用户磁盘不累积看不见的 push 残留、不做无谓行情轮询）。
      * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置（默认工作日 9-11/13-15 点每 30 分钟）。
      */
     @Scheduled(cron = "${adai.market.alert.poll-cron:0 */30 9-11,13-15 * * MON-FRI}")
@@ -86,6 +91,8 @@ public class MarketAlertService {
         Set<String> userIds = new LinkedHashSet<>();
         accountRepository.findAll().stream()
                 .filter(Account::enabled)
+                // S-4：行情推送是 trading 插件能力，只轮询启用该插件的账号（与 Feed 门控口径一致）
+                .filter(a -> pluginService.hasPlugin(a.userId(), PluginRegistry.PLUGIN_TRADING))
                 .map(Account::userId)
                 .forEach(userIds::add);
         if (userIds.isEmpty()) {

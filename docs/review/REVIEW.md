@@ -33,31 +33,28 @@ mode: deep 增量（Domain=插件模型 + step-1）
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）；/accounts/available 已最小化（#215），但数据访问仍靠 header 注入无认证。真正收紧需登录体系 | `AccountController` / `WebConfig` | 📋 v1.0.1 立项（登录体系随多账号正式开放单独做）|
 | S-2 | 附图文本写 4 份记录（caption×3 张图 + image_qa 问句）语义重复 | `MediaRecordAppService.askImages` + `_onSendMedia` | 📋 需产品确认 caption 归属策略 |
-| S-3 | **D5 domain 收敛未铺满所有持久化入口**：`RecordRetryService.processRecord` 重补路径直接取 `understanding.domain()`（`:141`）未走 `pluginService.gateDomain`——无插件用户重补可能落盘 trading/project 标注，违反 RFC D5 核心不变量 | `RecordRetryService.java:141` | 🔴 未修（与 RecordController 口径统一即可）|
-| S-4 | **插件门控读写侧不对称**：`MarketAlertService` 写侧只 `filter(Account::enabled)`（`:88`）未滤 trading 插件——无插件用户磁盘累积看不见的 push 残留 + 无谓行情轮询 | `MarketAlertService.java:88` | 🔴 未修（加 `hasPlugin(trading)` 与 Feed 口径对称）|
+
+> S-3（重补路径 domain 收敛）/ S-4（行情推送写侧门控）已修复出表（2026-08-15 修复批 Q，见已修复区）。
 
 ## 🔴 P1（未修复）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| P1-4 | **迁移补默认 vs PATCH 显式清空冲突（「删了又出现」K28 镜像）**：`AccountFileRepository.init()` 用 `plugins().isEmpty()` 补默认，但 `PATCH /accounts/{id}` 允许显式清空 → 管理端清空被下次启动迁移推翻 | `AccountFileRepository.java:73` | 🔴 未修（PATCH 禁清 owner 插件 或 迁移读字段存在性）|
 | P1-5 | **adai-web 桌面壳插件加载后位置索引漂移，当前页静默跳模块**：`_loadPlugins` 异步，插件返回后中部插入 → `_current` 索引错位 | `desktop_shell.dart:62-83` | 🔴 未修（按稳定标识 label 重解析索引）|
 | P1-6 | **adai-app Launcher `getMyPlugins` 并入致命 `Future.wait`**：插件接口失败 → 身份/标签/计数全降级 | `launcher_page.dart:70-98` | 🔴 未修（拆出单独 try/catch）|
 | P1-7 | **api-spec 正文与代码契约漂移（D1 通用化未同步）**：任务 `sourceRecordId` 说明仍写「domain=project 转任务」，实现已去掉 domain 门槛；v3.18 changelog 漏 D1 | `api-spec.md:909,13` | 🔴 未修 |
-| P1-8 | **README 索引未登记两个新增文档**：`20260814-domain-plugin-model` + `task-plugin-model` 未进 `docs/README.md` | `docs/README.md` | ✅ 2026-08-15（文档治理批修）|
+
+> P1-4（迁移读原始字段存在性）与 P1-8（README 登记）已修复出表（2026-08-15，见已修复区）。
 
 ## 🔴 P2（未修复）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| P2-2 | domain 关键词双源漂移：`detectDomainScene` 12 词 vs prompt 规则 8 词（丢 股票/大盘/行情/买卖/开发）→ 确定性路由与 AI 判定矛盾。修：`buildDomainRules` 由关键词常量拼接（单一真相源）| `ContextEngine.java:48-51 vs 587-590` | 🔴 未修 |
-| P2-3 | `Account` 紧凑构造器 `List.copyOf(plugins)` 遇 null 元素 NPE：脏 `accounts.json` 的 `"plugins":[null]` → 账号/插件端点全挂 + 启动 fail-fast。修：构造器过滤 null 元素 | `Account.java:24-28` | 🔴 未修 |
-| P2-4 | Chat 模式 system prompt domain 枚举未按插件收敛（`buildChatRequestBody` 硬编码 life/trading/project）——无插件用户空烧思维链 token | `DeepSeekAiClient.java:224` | 🔴 未修 |
 | P2-5 | adai-web 插件拉取失败静默吞错无重试/无反馈：`catch (_) {}` → 有插件用户本次会话永久丢失模块入口 | `desktop_shell.dart:84-86` | 🔴 未修 |
 | P2-6 | adai-admin `_togglePlugin` 快速连点 PATCH 全量覆盖竞态（后完成覆盖先完成）| `accounts_page.dart:94-110` | 🔴 未修（toggle 前从最新重取或禁点）|
 | P2-8 | feature-reference（唯一功能真相源）零登记插件模型 | `docs/reference/feature-reference.md` | 🔴 未修 |
 
-> P2 区历史观察项（#117 缓存分桶 / #149 账号细节 / #153 数据形态 / #176 交易校验）已迁移 `docs/reference/task-log.md`（2026-08-15 文档治理批）。P2-7 端点计数已由 status.md 单源化修复（CLAUDE.md 不再维护数字）。
+> P2 区历史观察项（#117 缓存分桶 / #149 账号细节 / #153 数据形态 / #176 交易校验）已迁移 `docs/reference/task-log.md`（2026-08-15 文档治理批）。P2-7 端点计数已由 status.md 单源化修复（CLAUDE.md 不再维护数字）。P2-2（关键词单一真相源）/ P2-3（Account null 过滤）/ P2-4（Chat domain 枚举收敛）已修复出表（2026-08-15 修复批 Q，见已修复区）。
 
 ## 🔴 P0 / P3
 
@@ -68,6 +65,7 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 批 Q（S-3/S-4/P1-4/P2-2/P2-3/P2-4）| 后端插件门控/健壮性六连修：重补路径 gateDomain（D5 铺满）+ MarketAlert 写侧 trading 门控 + 账号迁移读字段存在性（PATCH 清空不被推翻）+ domain 规则关键词单一真相源 + Account null 过滤 + ContextPackage 收敛 domainEnum（CHAT 不硬编码）；后端 429（+7）| ✅ 2026-08-15 |
 | P1-3 | **`data/*/project/` 隐私面补齐**：gitignore 加 `data/*/project/`（用户决策：data/ 数据层全部不提交），`git rm --cached` 移除误跟踪的 `data/adai/project/tasks/2026/07.md`（工作区文件保留），CLAUDE.md 目录注释同步 | ✅ 2026-08-15 |
 | S-1 | adai-web 多图 ask 同步（askBatch + 上限 3 + `_syncActiveCard`）| ✅ 2026-08-14 |
 | P0-1 + P1-1 + P1-2 | 对话态发媒体崩溃/残留错乱/部分失败问句丢（`_syncActiveCard` + `_pendingAsk`）| ✅ 2026-08-14 |

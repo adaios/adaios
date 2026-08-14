@@ -10,6 +10,7 @@ import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -45,19 +46,22 @@ public class RecordRetryService {
     private final MemoryService memoryService;
     private final CardFileRepository cardRepository;
     private final AccountRepository accountRepository;
+    private final PluginService pluginService;
 
     public RecordRetryService(RecordRepository recordRepository,
                               RecordUnderstandingService understandingService,
                               AiClient aiClient,
                               MemoryService memoryService,
                               CardFileRepository cardRepository,
-                              AccountRepository accountRepository) {
+                              AccountRepository accountRepository,
+                              PluginService pluginService) {
         this.recordRepository = recordRepository;
         this.understandingService = understandingService;
         this.aiClient = aiClient;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
         this.accountRepository = accountRepository;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -138,7 +142,9 @@ public class RecordRetryService {
     private void processRecord(String userId, ContentRecord record) {
         AiUnderstanding understanding = understandingService.composeAndUnderstand(userId, "note", record).understanding();
 
-        String domain = understanding.domain() != null ? understanding.domain() : "life";
+        // REVIEW S-3：重补路径与 RecordController/QuestionAppService 同口径走 gateDomain——
+        // 无插件用户重补成功不得落盘 trading/project 标注（D5 核心不变量铺满所有持久化入口）。
+        String domain = pluginService.gateDomain(userId, understanding.domain());
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
         String summary = understanding.summary();
 

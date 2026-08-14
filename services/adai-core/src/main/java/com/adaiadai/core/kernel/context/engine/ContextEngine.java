@@ -140,7 +140,9 @@ public class ContextEngine {
                 List.of(cardContext, relatedRecords, memorySummary),
                 prompt,
                 LocalDateTime.now(),
-                chatHistory);
+                chatHistory,
+                // REVIEW P2-4：插件收敛后的 domain 枚举随包下发，CHAT 模式 system prompt 不再硬编码全量
+                buildDomainEnum(enabledPlugins));
     }
 
     // ── 内部方法 ──
@@ -579,15 +581,16 @@ public class ContextEngine {
     }
 
     /**
-     * D5：domain 判定规则只在启用插件间给出（与 detectDomainScene 同一套关键词）。
+     * D5：domain 判定规则由关键词常量拼接（REVIEW P2-2：单一真相源——
+     * 与 detectDomainScene 的 TRADING_KEYWORDS/PROJECT_KEYWORDS 同源，杜绝确定性路由与 AI 判定矛盾）。
      */
     private String buildDomainRules(Set<String> enabledPlugins) {
         StringBuilder sb = new StringBuilder("domain判定规则（按优先级，只在本用户启用的插件间判定）：\n");
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) {
-            sb.append("- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading\n");
+            sb.append("- 内容涉及 ").append(String.join("、", TRADING_KEYWORDS)).append(" → trading\n");
         }
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) {
-            sb.append("- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project\n");
+            sb.append("- 内容涉及 ").append(String.join("、", PROJECT_KEYWORDS)).append(" → project\n");
         }
         sb.append("- 其他日常、想法、记录、心情、问题 → life\n");
         return sb.toString();

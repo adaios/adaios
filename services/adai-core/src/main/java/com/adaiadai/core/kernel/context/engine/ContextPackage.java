@@ -13,6 +13,7 @@ import java.util.List;
  *   <li>场景标识 —— AI 理解"当前在哪个领域"</li>
  *   <li>组装后的 Prompt —— 可直接发送给 LLM</li>
  *   <li>conversationHistory —— 多轮对话历史（QUESTON 场景）</li>
+ *   <li>domainEnum —— 插件收敛后的 domain 枚举（REVIEW P2-4：CHAT 模式 system prompt 按插件收敛）</li>
  * </ul>
  * <p>
  * 这是 AdaiOS 的核心数据模型：Context Always —— 所有模块通过 ContextPackage 暴露能力。
@@ -26,6 +27,7 @@ import java.util.List;
  * @param prompt              AI 组装提示词（结合 identity + record 后的完整 Prompt）
  * @param assembledAt         组装时间
  * @param conversationHistory 多轮对话历史（QUESTION 场景，Statement 场景为空）
+ * @param domainEnum          插件收敛后的 domain 枚举文本（如 "life(生活)/trading(交易)"；无插件用户只剩 life）
  */
 public record ContextPackage(
         String scene,
@@ -36,11 +38,25 @@ public record ContextPackage(
         List<String> relatedRefs,
         String prompt,
         LocalDateTime assembledAt,
-        List<ChatMessage> conversationHistory
+        List<ChatMessage> conversationHistory,
+        String domainEnum
 ) {
+
+    /** 默认 domain 枚举（全量）——ContextEngine 组装时按插件收敛后传入；非插件门控路径（simple/旧签名）保持原行为。 */
+    private static final String DEFAULT_DOMAIN_ENUM = "life(生活)/trading(交易)/project(项目)";
 
     public ContextPackage {
         if (conversationHistory == null) conversationHistory = List.of();
+        if (domainEnum == null || domainEnum.isBlank()) domainEnum = DEFAULT_DOMAIN_ENUM;
+    }
+
+    /** 旧签名兼容（无 domainEnum → 默认全量枚举，行为不变）。 */
+    public ContextPackage(String scene, String identityRef,
+                          String recordTitle, String recordContent, List<String> recordTags,
+                          List<String> relatedRefs, String prompt, LocalDateTime assembledAt,
+                          List<ChatMessage> conversationHistory) {
+        this(scene, identityRef, recordTitle, recordContent, recordTags,
+                relatedRefs, prompt, assembledAt, conversationHistory, null);
     }
 
     /**
