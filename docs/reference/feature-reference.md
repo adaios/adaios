@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.1 | **最后更新：** 2026-08-03
+> **文档版本：** v1.2 | **最后更新：** 2026-08-15
 
 ---
 
@@ -22,6 +22,9 @@
 11. [搜索模块](#11-搜索模块)
 12. [身份资料模块](#12-身份资料模块)
 13. [标签模块](#13-标签模块)
+14. [定时补完服务（RecordRetryService）](#14-定时补完服务recordretryservice)
+15. [多模态 / 多账号 / adai-admin](#15-多模态--多账号--adai-admin)
+16. [Domain=插件模型（RFC 20260814）](#16-domain插件模型rfc-20260814)
 
 ---
 
@@ -955,6 +958,22 @@ POST /api/v1/records/retry
 - **多账号（v1.0.0 预留）**：全链路 `X-User-Id` header → `data/{userId}/` 分层。账号由 adai-admin 管理（seed `adai`），无注册/口令（鉴权后补，REVIEW #127）。
 - **adai-admin 产品后台**：账号/内容/数据/系统/知识五模块，接真实 API（`/api/v1/accounts`、`/api/v1/admin/**`）。定位：独立产品后台（类企业管理系统），非产品入口。
 
+---
+
+## 16. Domain=插件模型（RFC 20260814）
+
+> 详见 RFC `20260814-domain-plugin-model` + `docs/reference/task-plugin-model.md`。
+
+- **插件定义**：插件 = adai 拥有并受控开放的 Domain（`trading` / `project`）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
+- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，PATCH 全量）。新账号默认空 = 只有基础服务；seed `adai` = `[trading, project]`（owner）。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
+- **查询**：`GET /api/v1/me/plugins`（无鉴权，当前用户启用插件 → 前端模块显隐）。
+- **门控面**（读写侧对称，REVIEW S-3/S-4）：
+  - 读侧：ContextEngine 知识源/贡献者按 `enabledPlugins` 过滤注入；Feed 行情条/异动推送仅 trading 插件用户；promote 反哺仅 trading 插件用户（否则 403）
+  - 写侧：`RecordRetryService` 重补路径 domain 走 `gateDomain`（无插件用户不落盘 trading/project 标注）；`MarketAlertService` 定时轮询仅 trading 插件用户
+  - D5 domain 收敛：AI 判定 domain 属未启用插件 → 收敛 `life`；prompt 的 domain 枚举/判定规则按启用插件生成（单一真相源，关键词与 `detectDomainScene` 常量一致，REVIEW P2-2）；CHAT 模式 system prompt 枚举随 ContextPackage 下发（REVIEW P2-4）
+- **前端显隐**：adai-app World B Launcher（交易/阿呆系统按插件显隐）、adai-web 桌面壳（导航/IndexedStack/页面同一可见列表，按 label 重解析索引防错位，REVIEW P1-5）、adai-admin 账号卡插件开关。
+- **账号迁移**：老文件无 `plugins` 字段 → 启动补默认（仅 seed adai）；PATCH 显式清空（字段存在）不被迁移推翻（REVIEW P1-4）。
+
 ## 附录：API 全集
 
 | # | 方法 | 路径 | 用途 | AI |
@@ -998,3 +1017,6 @@ POST /api/v1/records/retry
 | 36 | GET / POST | `/api/v1/accounts` | 账号查询/创建（adai-admin） | ✅ |
 | 37 | DELETE | `/api/v1/accounts/{userId}` | 删除账号（adai-admin） | ✅ |
 | 38 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（adai-admin） | ✅ |
+| 39 | GET | `/api/v1/accounts/available` | 启用账号列表（无鉴权，最小集 userId） | ✅ |
+| 40 | GET | `/api/v1/me/plugins` | 当前用户启用插件（无鉴权，前端模块显隐） | ✅ |
+| 41 | POST | `/api/v1/records/media/ask-batch` | 多图问答（Phase 1 带图 ask，1-3 张一次提问） | ✅ |

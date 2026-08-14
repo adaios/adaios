@@ -59,8 +59,16 @@ class _DesktopShellState extends State<DesktopShell> {
   List<_NavEntry> get _items =>
       _allEntries.where((e) => e.plugin == null || _plugins.contains(e.plugin)).toList();
 
-  int _current = 0;
-  final Set<int> _visited = {0}; // Feed 默认已访问
+  /// 当前页按稳定标识（label）跟踪（REVIEW P1-5）——插件异步加载后中部插入不会让位置索引错位。
+  String _currentLabel = _allEntries.first.label;
+  final Set<String> _visited = {_allEntries.first.label}; // Feed 默认已访问
+
+  /// 当前页在可见列表中的索引（label 不在列表（理论上不发生的防御）→ 回落 0）。
+  int get _currentIndex {
+    final i = _items.indexWhere((e) => e.label == _currentLabel);
+    return i >= 0 ? i : 0;
+  }
+
   late final ApiService _api = widget.api ?? ApiService(userId: widget.userId);
 
   @override
@@ -76,20 +84,28 @@ class _DesktopShellState extends State<DesktopShell> {
       if (!mounted) return;
       setState(() {
         _plugins = plugins.toSet();
-        if (_current >= _items.length) {
-          _current = 0;
-          _visited.add(0);
+        // P1-5：插件加载后当前页按 label 重解析；若当前页被隐藏（仅插件移除场景）回落首个可见项
+        if (_items.indexWhere((e) => e.label == _currentLabel) < 0) {
+          _currentLabel = _items.first.label;
+          _visited.add(_currentLabel);
         }
       });
     } catch (_) {
-      // 插件拉取失败：保持空列表（仅基础服务），不阻塞壳渲染
+      // REVIEW P2-5：失败不再静默吞错——给反馈 + 重试入口（仅显基础服务，不阻塞壳渲染）
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('插件加载失败，仅显示基础服务'),
+        action: SnackBarAction(label: '重试', onPressed: _loadPlugins),
+        duration: const Duration(seconds: 4),
+      ));
     }
   }
 
   void _select(int i) {
     setState(() {
-      _visited.add(i);
-      _current = i;
+      final item = _items[i];
+      _visited.add(item.label);
+      _currentLabel = item.label;
     });
   }
 
@@ -105,10 +121,10 @@ class _DesktopShellState extends State<DesktopShell> {
           const VerticalDivider(width: 1, color: AppColors.darkBorder),
           Expanded(
             child: IndexedStack(
-              index: _current,
+              index: _currentIndex,
               children: List.generate(
                 _items.length,
-                (i) => _visited.contains(i) ? _buildPage(i) : const SizedBox.shrink(),
+                (i) => _visited.contains(_items[i].label) ? _buildPage(i) : const SizedBox.shrink(),
               ),
             ),
           ),
@@ -191,7 +207,7 @@ class _DesktopShellState extends State<DesktopShell> {
 
   Widget _buildNavItem(int i) {
     final item = _items[i];
-    final selected = _current == i;
+    final selected = item.label == _currentLabel;
     return GestureDetector(
       onTap: () => _select(i),
       behavior: HitTestBehavior.opaque,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,8 @@ import 'package:http/testing.dart';
 import 'package:adai_web/desktop_shell.dart';
 import 'package:adai_web/pages/feed_page.dart';
 import 'package:adai_web/pages/memory_page.dart';
+import 'package:adai_web/pages/project_page.dart';
+import 'package:adai_web/pages/task_page.dart';
 import 'package:adai_web/pages/timeline_page.dart';
 import 'package:adai_web/pages/trading_page.dart';
 import 'package:adai_web/services/api_service.dart';
@@ -129,5 +132,53 @@ void main() {
     final navRail = find.byKey(const ValueKey('nav-rail'));
     expect(find.descendant(of: navRail, matching: find.text('交易')), findsNothing);
     expect(find.descendant(of: navRail, matching: find.text('对话流')), findsOneWidget);
+
+    // REVIEW P2-5：失败给出 SnackBar 反馈 + 重试入口；flush 其自动关闭计时器
+    expect(find.text('插件加载失败，仅显示基础服务'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('P1-5 插件加载前已导航：加载后当前页按 label 重解析，不错位跳模块', (tester) async {
+    // 场景：插件接口慢（异步返回）。用户先导航到「任务」（基础服务列表索引 3），
+    // 插件返回后 项目/交易 中部插入（任务后移到索引 4）——当前页必须仍是「任务」，
+    // 而非旧实现按位置索引错位显示成「项目」。
+    final completer = Completer<http.Response>();
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: DesktopShell(
+        userId: 'default',
+        api: ApiService(
+          baseUrl: 'http://test',
+          userId: 'default',
+          client: MockClient((req) async {
+            if (req.url.path.endsWith('/api/v1/me/plugins')) return completer.future;
+            return _json({'error': 'not mocked'}, status: 404);
+          }),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    // 插件未返回：交易/项目不可见；先导航到「任务」
+    final navRail = find.byKey(const ValueKey('nav-rail'));
+    expect(find.descendant(of: navRail, matching: find.text('交易')), findsNothing);
+    await tester.tap(find.text('任务'));
+    await tester.pump();
+    expect(find.byType(TaskPage), findsOneWidget);
+
+    // 插件返回：项目/交易插入，当前页必须仍为「任务」（label 解析），不得错位到「项目」
+    completer.complete(_json(['trading', 'project']));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.descendant(of: navRail, matching: find.text('交易')), findsOneWidget);
+    expect(find.byType(TaskPage), findsOneWidget,
+        reason: 'P1-5：插件插入后当前页按 label 重解析，仍为任务页');
+    expect(find.byType(ProjectPage, skipOffstage: false), findsNothing,
+        reason: 'P1-5：不得错位到项目页');
+    // 已访问页面保活
+    expect(find.byType(FeedPage, skipOffstage: false), findsOneWidget);
   });
 }

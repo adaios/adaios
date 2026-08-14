@@ -92,13 +92,26 @@ class _AccountsPageState extends State<AccountsPage> {
 
   /// 插件开关（RFC 20260814）：trading/project 勾选 → PATCH 全量 plugins。
   Future<void> _togglePlugin(Account account, String plugin, bool on) async {
-    final plugins = [...account.plugins];
+    // REVIEW P2-6：从最新 _accounts 重取账号——闭包捕获旧 Account 对象时，
+    // 快速连点两个开关各带旧快照全量覆盖，后完成覆盖先完成 → 用户以为都开了实际只剩一项。
+    Account? latest;
+    for (final a in _accounts ?? const <Account>[]) {
+      if (a.userId == account.userId) {
+        latest = a;
+        break;
+      }
+    }
+    if (latest == null) {
+      await _load();
+      return;
+    }
+    final plugins = [...latest.plugins];
     if (on && !plugins.contains(plugin)) {
       plugins.add(plugin);
     } else if (!on) {
       plugins.remove(plugin);
     }
-    final error = await _store.setPlugins(account.userId, plugins);
+    final error = await _store.setPlugins(latest.userId, plugins);
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(

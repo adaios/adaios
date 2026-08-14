@@ -38,23 +38,11 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 ## 🔴 P1（未修复）
 
-| # | 问题 | 位置 | 状态 |
-|:-:|:-----|:-----|:----:|
-| P1-5 | **adai-web 桌面壳插件加载后位置索引漂移，当前页静默跳模块**：`_loadPlugins` 异步，插件返回后中部插入 → `_current` 索引错位 | `desktop_shell.dart:62-83` | 🔴 未修（按稳定标识 label 重解析索引）|
-| P1-6 | **adai-app Launcher `getMyPlugins` 并入致命 `Future.wait`**：插件接口失败 → 身份/标签/计数全降级 | `launcher_page.dart:70-98` | 🔴 未修（拆出单独 try/catch）|
-| P1-7 | **api-spec 正文与代码契约漂移（D1 通用化未同步）**：任务 `sourceRecordId` 说明仍写「domain=project 转任务」，实现已去掉 domain 门槛；v3.18 changelog 漏 D1 | `api-spec.md:909,13` | 🔴 未修 |
-
-> P1-4（迁移读原始字段存在性）与 P1-8（README 登记）已修复出表（2026-08-15，见已修复区）。
+> P1-5（web 壳 label 重解析）/ P1-6（Launcher 拆独立 try/catch）/ P1-7（api-spec D1 同步）/ P1-8（README 登记）已修复出表（2026-08-15 修复批 R + 文档治理批，见已修复区）。**P1 当前清零。**
 
 ## 🔴 P2（未修复）
 
-| # | 问题 | 位置 | 状态 |
-|:-:|:-----|:-----|:----:|
-| P2-5 | adai-web 插件拉取失败静默吞错无重试/无反馈：`catch (_) {}` → 有插件用户本次会话永久丢失模块入口 | `desktop_shell.dart:84-86` | 🔴 未修 |
-| P2-6 | adai-admin `_togglePlugin` 快速连点 PATCH 全量覆盖竞态（后完成覆盖先完成）| `accounts_page.dart:94-110` | 🔴 未修（toggle 前从最新重取或禁点）|
-| P2-8 | feature-reference（唯一功能真相源）零登记插件模型 | `docs/reference/feature-reference.md` | 🔴 未修 |
-
-> P2 区历史观察项（#117 缓存分桶 / #149 账号细节 / #153 数据形态 / #176 交易校验）已迁移 `docs/reference/task-log.md`（2026-08-15 文档治理批）。P2-7 端点计数已由 status.md 单源化修复（CLAUDE.md 不再维护数字）。P2-2（关键词单一真相源）/ P2-3（Account null 过滤）/ P2-4（Chat domain 枚举收敛）已修复出表（2026-08-15 修复批 Q，见已修复区）。
+> 2026-08-15 修复批 Q（P2-2/P2-3/P2-4）+ 批 R（P2-5 web 插件重试 / P2-6 admin toggle 竞态 / P2-8 feature-reference 补插件模型）已全部修复出表，见已修复区。**P2 当前清零**（历史观察项已迁移 task-log；P2-7 由 status.md 单源化）。
 
 ## 🔴 P0 / P3
 
@@ -65,6 +53,7 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 批 R（P1-5/P1-6/P2-5/P2-6/P1-7/P2-8）| 前端+文档：adai-web 壳 label 重解析防索引错位 + 插件失败 SnackBar 重试；adai-app Launcher 插件接口拆独立 try/catch；adai-admin toggle 前重取最新账号；api-spec D1 通用化同步；feature-reference 补插件模型章节；web 47（+1）| ✅ 2026-08-15 |
 | 批 Q（S-3/S-4/P1-4/P2-2/P2-3/P2-4）| 后端插件门控/健壮性六连修：重补路径 gateDomain（D5 铺满）+ MarketAlert 写侧 trading 门控 + 账号迁移读字段存在性（PATCH 清空不被推翻）+ domain 规则关键词单一真相源 + Account null 过滤 + ContextPackage 收敛 domainEnum（CHAT 不硬编码）；后端 429（+7）| ✅ 2026-08-15 |
 | P1-3 | **`data/*/project/` 隐私面补齐**：gitignore 加 `data/*/project/`（用户决策：data/ 数据层全部不提交），`git rm --cached` 移除误跟踪的 `data/adai/project/tasks/2026/07.md`（工作区文件保留），CLAUDE.md 目录注释同步 | ✅ 2026-08-15 |
 | S-1 | adai-web 多图 ask 同步（askBatch + 上限 3 + `_syncActiveCard`）| ✅ 2026-08-14 |

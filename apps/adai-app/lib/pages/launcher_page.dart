@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' show cos, sin;
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
@@ -66,13 +67,15 @@ class _LauncherPageState extends State<LauncherPage>
   }
 
   Future<void> _loadAll() async {
+    // REVIEW P1-6：插件接口拆出独立 _loadPlugins——新失败面不与核心数据（身份/标签/时间线/记忆）耦合，
+    // 插件失败只影响模块显隐（默认只显基础服务），不再拖垮整页降级。
+    unawaited(_loadPlugins());
     try {
       final results = await Future.wait([
         widget.api.getIdentity(),
         widget.api.getTags(),
         widget.api.getTimeline(limit: 999),
         widget.api.getMemoryCount(),
-        widget.api.getMyPlugins(),
       ]);
       if (!mounted) return;
 
@@ -80,7 +83,6 @@ class _LauncherPageState extends State<LauncherPage>
       final tagsResp = results[1] as TagsResponse;
       final timeline = results[2] as List;
       final memCount = results[3] as int;
-      final plugins = results[4] as List<String>;
 
       setState(() {
         _myName = identity.name;
@@ -89,12 +91,22 @@ class _LauncherPageState extends State<LauncherPage>
         _allTags = tagsResp.tags;
         _timelineCount = timeline.length;
         _memoryCount = memCount;
-        _plugins = plugins.toSet();
         _loading = false;
       });
       _graphAnim.forward();
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// 插件拉取（独立失败面）：失败默认只显基础服务，不影响核心数据渲染。
+  Future<void> _loadPlugins() async {
+    try {
+      final plugins = await widget.api.getMyPlugins();
+      if (!mounted) return;
+      setState(() => _plugins = plugins.toSet());
+    } catch (_) {
+      // 插件拉取失败：保持空集合（仅基础服务），核心功能不受影响
     }
   }
 

@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | REVIEW 修复批 R（前端 + 文档）| P1-5 adai-web 桌面壳当前页按 label 重解析（插件加载后索引不错位）+ P2-5 插件拉取失败 SnackBar 反馈/重试；P1-6 adai-app Launcher 插件接口拆独立 try/catch（不再拖垮核心数据）；P2-6 adai-admin 插件开关 toggle 前从最新列表重取（快速连点不再覆盖丢开关）；P1-7 api-spec D1 通用化同步；P2-8 feature-reference 补插件模型章节 + 端点表补 3 端点 | web 47（+1）· app 92 · admin 32 |
 | 2026-08-15 | REVIEW 修复批 Q（后端插件门控/健壮性）| S-3 重补路径走 gateDomain（D5 收敛铺满持久化入口）+ S-4 MarketAlert 写侧 trading 插件门控 + P1-4 账号迁移读原始字段存在性（PATCH 清空不被推翻）+ P2-2 domain 规则由关键词常量拼接（单一真相源）+ P2-3 Account 过滤 null 插件元素 + P2-4 ContextPackage 携带收敛 domainEnum（CHAT 模式不硬编码）| 后端 429（+7）|
 | 2026-08-15 | research 目录整合 | 按「个人/公司、新/旧、单仓多项目/单项目单库」前提：方法论两篇合并为《项目级 AI 上下文体系方法论》+ 公司侧研究（AI4SE/Workspace 架构/ai-native 系列等）全部移出仓库至同级独立目录 `ai-context-research/`；阿呆早期设计 `ai-context-design.md` 归位 `docs/inbox/`；3 文件初判失误复核后从 git 恢复（哈希校验一致）；CLAUDE.md 移除 research/ 说明 | 不变 |
 | 2026-08-15 | 文档治理 | RFC `20260815-docs-governance`：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负 / P3 迁移 task-log）；v1.0.0 发布顺延 | 不变 |
