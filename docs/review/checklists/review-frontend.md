@@ -49,6 +49,7 @@
 | F26 | 分页「是否还有更多」判定必须与后端 totalToday 核心计数口径一致：用已加载 record/card 数比较，附加条目（action/market/push）不得参与终止判定 | Feed 分页附加条目通胀 → 加载更早消失、最旧核心不可达（战略 #234，2026-08-12）|
 | F27 | error/占位卡重试路径必须与原始创建路径同构：图片卡重试必须重走 uploadImage 并携带原始字节，禁止回退文本 _createNewCard 降级 | 上传失败占位卡重试降级为文本记录（P1 #235，2026-08-12）|
 | F28 | `_client` vs 全局 `http.*` 注入收敛后 grep `http\.(get|post|put|patch|delete)` 全文件确认零残留，否则 MockClient 注入在未收敛方法静默失效 | adai-web updateIdentity/updateTask 仍 http.put（P2 #243，2026-08-12）|
+| F29 | 列表整体重建路径（`_loadFeed`/`_refreshFeed`/`_loadMore` 覆盖替换 `_cards`）必须校验 `_activeCardId` 仍在新列表中、不在则静默退出对话态——活动卡被挤出后残留引用是 build `activeCard!` 空值崩溃源；build 侧另需 null 兜底（双保险）| 对话态发媒体 `_loadFeed` 挤出活动卡 → `_buildActiveLayout(activeCard!)` 崩溃（P0-1，2026-08-14）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。

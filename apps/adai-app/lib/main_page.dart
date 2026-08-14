@@ -70,6 +70,11 @@ class _MainPageState extends State<MainPage>
   bool _hasActiveChat = false;
   int _chatEnterTurnCount = 0;
 
+  // P1-2：pending 的带图 ask——上传部分失败/重试后仍补跑，不静默丢问句。
+  // _pendingAskRecordIds 收集已成功上传的图片记录 id，_pendingAskQuestion 为问句文本。
+  List<String>? _pendingAskRecordIds;
+  String? _pendingAskQuestion;
+
   late AnimationController _enterCtrl;
   late Animation<double> _contentAnim;
 
@@ -106,13 +111,16 @@ class _MainPageState extends State<MainPage>
       final brief = await _api.getBrief();
       final feed = await _api.getFeed(page: 0, size: _pageSize);
       if (!mounted) return;
+      final newCards = feed.entries
+          .where((e) => e.type != FeedEntryType.aiNote)
+          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .toList();
       setState(() {
         _brief = brief;
         _totalToday = feed.totalToday;
-        _cards = feed.entries
-            .where((e) => e.type != FeedEntryType.aiNote)
-            .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
-            .toList();
+        _cards = newCards;
+        // P0-1：活动卡被刷新挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
+        _syncActiveCard(newCards);
       });
     } catch (e) {
       if (mounted) _showError('刷新失败');
@@ -133,6 +141,8 @@ class _MainPageState extends State<MainPage>
         _totalToday = feed.totalToday;
         _currentPage = 0;
         _cards = allCards;
+        // P0-1：活动卡被新记录挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
+        _syncActiveCard(allCards);
         _loading = false;
       });
     } catch (e) {
@@ -310,6 +320,23 @@ class _MainPageState extends State<MainPage>
   /// 不再多图干等只盯接口），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     if (images.isEmpty) return;
+    // P1-1：对话态发媒体 → 先静默退出对话视图（waiting 卡复位 idle，chatting 保留 turns 不触发总结——
+    // 发图片是独立动作）。修复前对话态残留 + _loadFeed 挤出活动卡 → 错乱视图/activeCard! 崩溃。
+    if (_activeCardId != null) {
+      final closedId = _activeCardId!;
+      setState(() {
+        _activeCardId = null;
+        _hasActiveChat = false;
+        _updateCard(closedId, (c) => c.copyWith(
+            mode: c.mode == CardMode.waiting ? CardMode.idle : c.mode));
+      });
+    }
+    // P1-2：注册 pending 带图 ask（caption 非空才有问句）——上传可能部分失败，
+    // 重试完成后统一补跑（见 _flushPendingAsk / _retryMediaUpload）。
+    if (caption.trim().isNotEmpty) {
+      _pendingAskRecordIds = [];
+      _pendingAskQuestion = caption.trim();
+    }
     setState(() {
       _uploadTotal = images.length; // 上传进度：输入栏上方显示 n/m（阿呆 08-13 反馈）
       _uploadDone = 0;
@@ -334,7 +361,7 @@ class _MainPageState extends State<MainPage>
     _scrollToBottom();
 
     int ok = 0;
-    final uploadedIds = <String>[]; // Phase 1 带图 ask：成功上传的 recordId 集合
+    // Phase 1 带图 ask 的图片 id 由 _pendingAskRecordIds 统一收集（含重试补跑，见 _flushPendingAsk）
     try {
       for (var i = 0; i < images.length; i++) {
         final image = images[i];
@@ -359,26 +386,18 @@ class _MainPageState extends State<MainPage>
             );
           }
         });
-        if (resp.recordId.isNotEmpty) uploadedIds.add(resp.recordId);
+        // P1-2：成功图 id 进 pending（问句补跑时一并覆盖）
+        if (resp.recordId.isNotEmpty && _pendingAskRecordIds != null) {
+          _pendingAskRecordIds!.add(resp.recordId);
+        }
       }
       // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
       setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
 
-      // Phase 1 带图 ask：附了文本 → 后端按 intent 分流（问句 → VLM 多图回答；陈述 → 纯记录）
-      if (caption.trim().isNotEmpty && uploadedIds.isNotEmpty) {
-        String feedback;
-        try {
-          final qa = await _api.askBatch(
-            imageRecordIds: uploadedIds, question: caption.trim());
-          feedback = qa.intent == 'question' && qa.answer.isNotEmpty
-              ? '💬 ${_truncateForSnack(qa.answer)}'
-              : '📷 已记录 $ok 张图片';
-        } catch (e) {
-          feedback = '📷 已记录 $ok 张图片（问答失败: ${_extractApiError(e)}）';
-        }
-        _showSnackBar(feedback);
-        if (!mounted) return;
-        await _loadFeed(); // 刷新：问句 → 首图卡显示 Q/A 气泡（后端已合并 turns）
+      // Phase 1 带图 ask：有问句且已有成功图 → 统一走 _flushPendingAsk
+      // （成功路径全成功直接补跑；部分失败路径 pending 留给重试完成后补跑，见 _retryMediaUpload）
+      if (_pendingAskQuestion != null && (_pendingAskRecordIds?.isNotEmpty ?? false)) {
+        await _flushPendingAsk();
         return;
       }
 
@@ -512,9 +531,22 @@ class _MainPageState extends State<MainPage>
           }
         });
       }
+      // P1-2：重试成功 → 图片 id 并入 pending 问句（去重），全部失败媒体卡清完后补跑 ask
+      if (resp.recordId.isNotEmpty && _pendingAskQuestion != null) {
+        _pendingAskRecordIds ??= [];
+        if (!_pendingAskRecordIds!.contains(resp.recordId)) {
+          _pendingAskRecordIds!.add(resp.recordId);
+        }
+      }
       // REVIEW #246：反馈挂根 ScaffoldMessenger，MainPage 被 dispose 也能弹。
       _showSnackBar('📷 图片已重新记录');
       if (!mounted) return;
+      // P1-2：还有失败媒体卡未重试 → 等最后一并补跑；全部完成 → 立即补跑问句
+      final hasRemainingErrorMedia = _cards.any((c) => c.mediaBytes != null && c.error != null);
+      if (_pendingAskQuestion != null && !hasRemainingErrorMedia) {
+        await _flushPendingAsk();
+        return;
+      }
       await _loadFeed();
     } catch (e) {
       if (mounted) {
@@ -522,6 +554,28 @@ class _MainPageState extends State<MainPage>
       }
       _showSnackBar('图片上传失败: ${_extractApiError(e)}');
     }
+  }
+
+  /// P1-2：补跑带图 ask。问句 + 图片 id 存在 _pendingAsk*，执行后清空（一次性）。
+  /// best-effort：失败只提示不静默丢——图片本身已逐张落盘，问句可后续在首图卡手动追问。
+  Future<void> _flushPendingAsk() async {
+    final ids = _pendingAskRecordIds;
+    final question = _pendingAskQuestion;
+    _pendingAskRecordIds = null;
+    _pendingAskQuestion = null;
+    if (ids == null || question == null || ids.isEmpty) return;
+    String feedback;
+    try {
+      final qa = await _api.askBatch(imageRecordIds: ids, question: question);
+      feedback = qa.intent == 'question' && qa.answer.isNotEmpty
+          ? '💬 ${_truncateForSnack(qa.answer)}'
+          : '📷 已记录 ${ids.length} 张图片';
+    } catch (e) {
+      feedback = '📷 已记录 ${ids.length} 张图片（问答失败: ${_extractApiError(e)}）';
+    }
+    _showSnackBar(feedback);
+    if (!mounted) return;
+    await _loadFeed(); // 刷新：问句 → 首图卡显示 Q/A 气泡（后端已合并 turns）
   }
 
   void _appendToActiveCard(String text, String timeStr) async {
@@ -626,6 +680,16 @@ class _MainPageState extends State<MainPage>
       await _api.updateRecordDomain(id, domain);
     } catch (e) {
       if (mounted) _showError('更新 OS 标记失败');
+    }
+  }
+
+  /// P0-1：卡片列表重建后校验活动卡仍在列表中——被新记录挤出 page0 时静默退出对话态，
+  /// 防止 build 里 `_buildActiveLayout(activeCard!)` 空值断言崩溃。
+  /// 语义：对话现场若被刷新冲掉，不再强留"看是对话、实是普通卡"的错乱视图。
+  void _syncActiveCard(List<FeedCardData> cards) {
+    if (_activeCardId != null && !cards.any((c) => c.id == _activeCardId)) {
+      _activeCardId = null;
+      _hasActiveChat = false;
     }
   }
 
@@ -790,7 +854,10 @@ class _MainPageState extends State<MainPage>
           if (_activeCardId == null && !_loading) _buildMoreBanner(hasMore: hasMore),
           Expanded(
             child: _loading ? const Center(child: CircularProgressIndicator())
-                : _activeCardId == null ? _buildNormalLayout() : _buildActiveLayout(activeCard!),
+                // P0-1：activeCard 为空（活动卡被挤出后状态残留）→ 兜底渲染普通列表，不空值崩溃
+                : (_activeCardId == null || activeCard == null)
+                    ? _buildNormalLayout()
+                    : _buildActiveLayout(activeCard),
           ),
           if (!_scrollAtBottom) _buildLatestBar(),
           if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),

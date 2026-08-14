@@ -640,4 +640,130 @@ void main() {
       expect(find.textContaining('已记录', findRichText: true), findsOneWidget);
     });
   });
+
+  group('P0-1/P1-1/P1-2 deep 审核修复回归', () {
+    testWidgets('P0-1/P1-1：对话态发媒体 → 静默退出对话视图，图片正常记录，不崩溃', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '今天买了立昂微')]
+        ..feedTotalToday = 1;
+      b.handlers['/api/v1/records/media'] = (req) {
+        b.feedPage0 = [_record('rec_media_exit', '我的截图',
+            summary: 'AI 图片理解', mediaPath: 'records/2026/08/media/exit.png')];
+        b.feedTotalToday = 1;
+        return Future.value(_json({
+          'recordId': 'rec_media_exit', 'intent': 'log',
+          'summary': 'AI 图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/exit.png',
+        }));
+      };
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json(
+          {'intent': 'log', 'answer': '', 'recordId': '', 'imageRecordIds': []}));
+      await _pump(tester, b);
+
+      // 进入对话态（chatting）
+      await tester.tap(find.text('提问'));
+      await tester.pumpAndSettle();
+      expect(find.text('结束对话'), findsOneWidget); // 对话视图已打开
+
+      // 对话态直接发媒体（带 caption）→ 不应崩溃（P0-1 触发链：_loadFeed 挤出活动卡）
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_EXIT.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这是一张截图');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // P1-1：对话视图已退出（无「结束对话」按钮），回到普通 Feed；图片已记录
+      expect(find.text('结束对话'), findsNothing);
+      expect(find.text('AI 图片理解'), findsOneWidget);
+    });
+
+    testWidgets('P0-1：对话态 refreshTick 刷新挤出活动卡 → 静默退出对话，不崩溃', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '今天买了立昂微')]
+        ..feedTotalToday = 1;
+      final tick = ValueNotifier<int>(0);
+      final api = ApiService(baseUrl: 'http://test', client: MockClient(b.handle));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: MainPage(api: api, refreshTick: tick)),
+      ));
+      await tester.pumpAndSettle();
+
+      // 进入对话态（activeCardId = r1）
+      await tester.tap(find.text('提问'));
+      await tester.pumpAndSettle();
+      expect(find.text('结束对话'), findsOneWidget);
+
+      // 刷新后活动卡 r1 被挤出 page0（新记录替换）→ 不崩溃，静默退出对话态
+      b.feedPage0 = [_record('r2', '新记录把对话挤出')];
+      b.feedTotalToday = 1;
+      tick.value++;
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull); // 无 activeCard! 空值崩溃
+      expect(find.text('结束对话'), findsNothing); // 对话态已退出
+      expect(find.text('新记录把对话挤出'), findsOneWidget);
+    });
+
+    testWidgets('P1-2：部分上传失败 → 重试全部成功后补跑 ask-batch（问句不静默丢失）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      var mediaCalls = 0;
+      b.handlers['/api/v1/records/media'] = (req) {
+        mediaCalls++;
+        if (mediaCalls == 2) {
+          return Future.value(http.Response('{"error":"模拟超时"}', 500,
+              headers: {'content-type': 'application/json'}));
+        }
+        final id = mediaCalls == 1 ? 'rec_A' : 'rec_B';
+        return Future.value(_json({
+          'recordId': id, 'intent': 'log',
+          'summary': '图片 $id', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/$id.png',
+        }));
+      };
+      var askBatchCalls = 0;
+      List<dynamic>? askBatchIds;
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) {
+        askBatchCalls++;
+        final body = jsonDecode(req.body);
+        askBatchIds = body['imageRecordIds'];
+        return Future.value(_json({
+          'intent': 'question', 'answer': '两张图已看懂。',
+          'recordId': 'qa', 'imageRecordIds': askBatchIds,
+        }));
+      };
+      await _pump(tester, b);
+
+      // 发 2 张图 + 问句：第一张成功、第二张失败
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([
+        PickedImage([1, 2, 3], 'IMG_C1.jpg', 'jpg'),
+        PickedImage([4, 5, 6], 'IMG_C2.jpg', 'jpg'),
+      ]);
+      await tester.enterText(find.byType(TextField), '这两张是什么？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // 部分失败：第二张占位卡 error，ask-batch 尚未补跑（问句 pending 保留）
+      expect(mediaCalls, 2);
+      expect(askBatchCalls, 0, reason: '还有失败卡未重试，问句应等全部完成后一并补跑');
+
+      // 重试第二张成功 → 无剩余失败卡 → ask-batch 补跑且携带全部图片 id
+      await tester.tap(find.text('重试').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      expect(mediaCalls, 3);
+      expect(askBatchCalls, 1, reason: '重试完成后问句补跑，不静默丢失');
+      expect(askBatchIds, ['rec_A', 'rec_B']);
+      // 回答进 SnackBar 的渲染机制已在既有 ask-batch 测试验证（本测试聚焦补跑触发 + 全 id 覆盖，
+      // 避免被重试后连续 SnackBar 排队的时序干扰）
+    });
+  });
 }
