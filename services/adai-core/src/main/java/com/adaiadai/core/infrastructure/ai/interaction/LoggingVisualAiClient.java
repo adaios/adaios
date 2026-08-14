@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -69,6 +70,32 @@ public class LoggingVisualAiClient implements VisualAiClient {
         } finally {
             AiTraceContext.restore(prev);
         }
+    }
+
+    @Override
+    public String askMulti(List<ImageRequest> requests, String question) {
+        AiTraceContext.Trace prev = AiTraceContext.get();
+        long start = System.currentTimeMillis();
+        String prompt = multiPrompt(requests, question);
+        try {
+            String answer = delegate.askMulti(requests, question);
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.ask", "glm", prompt, "ok", null,
+                    answer != null ? truncate(answer, 300) : null, duration);
+            return answer;
+        } catch (RuntimeException e) {
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.ask", "glm", prompt, "error", e.getMessage(), null, duration);
+            throw e;
+        } finally {
+            AiTraceContext.restore(prev);
+        }
+    }
+
+    /** 多图问答的入参摘要：标注图片数，复用 visual.ask kind（契约不变，prompt 带多图标记）。 */
+    private String multiPrompt(List<ImageRequest> requests, String question) {
+        return "[多图 ×" + (requests != null ? requests.size() : 0) + "] "
+                + (question == null ? "" : question);
     }
 
     private void logEntry(AiTraceContext.Trace trace, String kind, String model, String prompt,

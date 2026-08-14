@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.16 | 最后更新：2026-08-13**
+**文档版本：v3.17 | 最后更新：2026-08-14**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-14 | v3.17 | **Phase 1 带图 ask（多图问答）**：新增 `POST /records/media/ask-batch`（已上传 1-3 张图片一次提问 → VLM 综合多图回答 → `image_qa` 记录引用全部图片 ID + Q/A 追加首图卡）；intent 分流与文本记录一致（`IntentRecognizer` 判定，问句 → VLM 多图回答 / 陈述 → 纯记录；AI 失败降级问号启发式）；图片数量上限 3 张 |
 | 2026-08-13 | v3.16 | **R2 记录↔任务关联**：任务模型新增可选 `sourceRecordId`（domain=project 记录自动转任务时关联源记录 `rec_xxx`）；非破坏性字段新增，前端手动建任务为 null |
 | 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
 | 2026-08-12 | v3.14 | **收官批 O（#166/#170/#202/#231/#122 等）**：AI 交互日志响应新增 `systemPrompt` 字段（generate 的复盘模板指令，understand/intent 为 null，#231）；上传超限改 413（`MaxUploadSizeExceededException` → PAYLOAD_TOO_LARGE，原 500，#166）；`/accounts/available` 契约补充无鉴权说明（#215 已最小集，此条再确认）；待办建议 prompt 改第二人称（#170）；复盘生成剥代码块围栏（#202）|
@@ -214,6 +215,44 @@
 ```
 
 - `400` — 问题为空 / 问题超过 500 字符（REVIEW #214，防超大 prompt/记录/日志行）/ 图片记录不存在 / 图片文件缺失
+
+### `POST /api/v1/records/media/ask-batch` — 多图问答（Phase 1 带图 ask，2026-08-14）
+
+对已上传的 1-3 张图片一次提问：VLM 综合多图回答（一次请求看全部图）→ 沉淀 `image_qa` 记录（content 引用全部图片 ID）+ Q/A 追加到首图卡 card 文件（Feed 刷新后首图卡显示问答气泡）。前端输入栏附图 + 文本，逐张上传完成后调用。
+
+**intent 分流（与文本记录「入口统一，后台分流」一致）**：Controller 用 `IntentRecognizer` 判定附带的文本——问句（`question`）→ VLM 多图回答；陈述（`log`）→ 图片已在逐张上传时以 caption 记录，直接返回不调 VLM。AI 判定失败降级问号启发式（文本以 ？/? 结尾）。
+
+**Request Body**
+
+```json
+{ "imageRecordIds": ["rec_..", "rec_.."], "question": "这两张图分别是什么？" }
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `imageRecordIds` | String[] | ✅ | 已上传的图片记录 ID（1-3 张，上限 Phase 1 拍板）|
+| `question` | String | ✅ | 附图文本（后端按此判定 question/log 分流）|
+| Header `X-User-Id` | String | 否 | 用户 ID（默认 `default`）|
+
+**Response 200（question 分支）**
+
+```json
+{
+  "intent": "question",
+  "answer": "左图是持仓截图，右图是分时走势。",
+  "recordId": "rec_20260814_143200456",
+  "imageRecordIds": ["rec_..", "rec_.."]
+}
+```
+
+**Response 200（log 分支）**
+
+```json
+{ "intent": "log", "imageRecordIds": ["rec_..", "rec_.."] }
+```
+
+- `400` — 图片为空 / 超过 3 张 / 问题为空 / 问题超过 500 字符 / 图片记录不存在
+- 注：多图问答 `image_qa` 记录 content 格式 `【多图问答】图片记录：a, b … / 问：… / 答：…`（单图追问为 `【图片问答】`）
 
 ---
 

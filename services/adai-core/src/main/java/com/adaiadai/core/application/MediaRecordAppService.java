@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +36,8 @@ public class MediaRecordAppService {
     private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024;
     /** #214：图片追问 question 上界（超长会原样进 image_qa 记录 + ai-log prompt）。 */
     private static final int MAX_QUESTION_LENGTH = 500;
+    /** Phase 1 带图 ask：多图问答一次上限（用户 08-14 拍板：数量限制 3 张）。 */
+    private static final int MAX_BATCH_IMAGES = 3;
 
     private final VisualAiClient visualAiClient;
     private final RecordFileRepository recordFileRepository;
@@ -178,6 +181,78 @@ public class MediaRecordAppService {
     }
 
     /**
+     * 多图问答（Phase 1 带图 ask）：对已上传的 1-3 张图片一次提问，VLM 综合看图回答。
+     * <p>
+     * 与单图追问同链：沉淀 {@code image_qa} 记录（content 引用全部图片 id）+ Q/A 追加到首图卡
+     * （Feed 刷新后首图卡显示问答气泡，复用 {@link #appendQaToImageCard} 与 FeedAppService 的 turns 合并）。
+     * intent 分流由 Controller 判定（与文本记录「入口统一，后台分流」一致），本方法只执行 QUESTION 分支。
+     *
+     * @param userId    用户
+     * @param recordIds 已上传的图片记录 ID（1..MAX_BATCH_IMAGES）
+     * @param question  用户对多图的提问
+     * @return 回答 + 问答记录 ID + 涉及图片
+     */
+    public AskBatchResult askImages(String userId, List<String> recordIds, String question) {
+        if (recordIds == null || recordIds.isEmpty()) {
+            throw new IllegalArgumentException("图片不能为空");
+        }
+        if (recordIds.size() > MAX_BATCH_IMAGES) {
+            throw new IllegalArgumentException("一次最多 " + MAX_BATCH_IMAGES + " 张图片");
+        }
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("问题不能为空");
+        }
+        // #214：question 无上界会原样进 image_qa 记录 content 与 ai-log prompt（与单图 ask 同口径）
+        if (question.length() > MAX_QUESTION_LENGTH) {
+            throw new IllegalArgumentException("问题过长（最多 " + MAX_QUESTION_LENGTH + " 字符）");
+        }
+
+        // 取 N 张原图（任一张缺失 → 400，不落半截问答记录）
+        List<ImageRequest> requests = new ArrayList<>(recordIds.size());
+        for (String recordId : recordIds) {
+            Optional<String> mediaPathOpt = recordFileRepository.findMediaPath(userId, recordId);
+            if (mediaPathOpt.isEmpty()) {
+                throw new IllegalArgumentException("未找到图片记录: " + recordId);
+            }
+            byte[] bytes = fileStorage.readBytes(userId, mediaPathOpt.get());
+            if (bytes == null || bytes.length == 0) {
+                throw new IllegalArgumentException("图片文件缺失: " + recordId);
+            }
+            requests.add(new ImageRequest(
+                    Base64.getEncoder().encodeToString(bytes),
+                    contentTypeOf(mediaPathOpt.get()), null));
+        }
+
+        // R1 AI 交互日志：挂载首个图片记录锚点（多图问答同样可溯源）
+        AiTraceContext.set(userId, recordIds.get(0), null, "media");
+
+        String answer = visualAiClient.askMulti(requests, question);
+
+        String qaId = RecordFileRepository.generateId();
+        LocalDateTime now = LocalDateTime.now();
+        String content = """
+                【多图问答】
+                图片记录：%s
+                问：%s
+                答：%s
+                """.formatted(String.join(", ", recordIds), question.strip(), answer == null ? "" : answer.strip());
+        ContentRecord record = new ContentRecord(
+                qaId, "image_qa", "ai_answer",
+                truncate(answer, 50),
+                content, List.of(), now,
+                "question", answer, "life"
+        );
+        recordFileRepository.save(userId, record);
+
+        // Q/A 持久化到首图卡 card 文件（刷新后首图卡显示多图问答气泡，复用 #209 合并链路）
+        appendQaToImageCard(userId, recordIds.get(0), question, answer, now);
+
+        log.info("多图问答完成 | images={} | qaId={} | question=\"{}\" | answer=\"{}\"",
+                recordIds.size(), qaId, truncate(question, 40), truncate(answer, 60));
+        return new AskBatchResult("question", answer, qaId, List.copyOf(recordIds));
+    }
+
+    /**
      * 图片追问持久化：把本轮 Q/A 追加进图片卡 card 文件。
      * <p>
      * 图片卡在前端是 {@code ContentRecord(type=image)}，追问历史此前只存前端内存（刷新即丢）。
@@ -272,4 +347,7 @@ public class MediaRecordAppService {
 
     /** 图片追问结果。 */
     public record AskResult(String recordId, String answer, String imageRecordId) {}
+
+    /** 多图问答结果。 */
+    public record AskBatchResult(String intent, String answer, String recordId, List<String> imageRecordIds) {}
 }

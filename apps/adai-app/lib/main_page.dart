@@ -334,6 +334,7 @@ class _MainPageState extends State<MainPage>
     _scrollToBottom();
 
     int ok = 0;
+    final uploadedIds = <String>[]; // Phase 1 带图 ask：成功上传的 recordId 集合
     try {
       for (var i = 0; i < images.length; i++) {
         final image = images[i];
@@ -358,9 +359,29 @@ class _MainPageState extends State<MainPage>
             );
           }
         });
+        if (resp.recordId.isNotEmpty) uploadedIds.add(resp.recordId);
       }
       // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
       setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
+
+      // Phase 1 带图 ask：附了文本 → 后端按 intent 分流（问句 → VLM 多图回答；陈述 → 纯记录）
+      if (caption.trim().isNotEmpty && uploadedIds.isNotEmpty) {
+        String feedback;
+        try {
+          final qa = await _api.askBatch(
+            imageRecordIds: uploadedIds, question: caption.trim());
+          feedback = qa.intent == 'question' && qa.answer.isNotEmpty
+              ? '💬 ${_truncateForSnack(qa.answer)}'
+              : '📷 已记录 $ok 张图片';
+        } catch (e) {
+          feedback = '📷 已记录 $ok 张图片（问答失败: ${_extractApiError(e)}）';
+        }
+        _showSnackBar(feedback);
+        if (!mounted) return;
+        await _loadFeed(); // 刷新：问句 → 首图卡显示 Q/A 气泡（后端已合并 turns）
+        return;
+      }
+
       _showSnackBar('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}');
       if (!mounted) return;
       await _loadFeed();
@@ -637,6 +658,12 @@ class _MainPageState extends State<MainPage>
   );
 
   void _showError(String message) => _showSnackBar(message);
+
+  /// SnackBar 展示文本截断（多图问答回答较长，避免整条撑爆提示条）。
+  String _truncateForSnack(String s, [int max = 60]) {
+    if (s.length <= max) return s;
+    return s.substring(0, max) + '…';
+  }
 
   /// 从 API 异常中提取人类可读的错误消息。
   /// API service 抛出的格式：Exception: API 错误 {status}: {body}

@@ -6,6 +6,7 @@ import com.adaiadai.core.infrastructure.ai.vision.VisualAiClient;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,9 +18,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -36,6 +40,7 @@ class MediaControllerTest {
 
     private final InMemoryFileStorage fs = new InMemoryFileStorage();
     private MockMvc mvc;
+    private IntentRecognizer intentRecognizer;
 
     @BeforeEach
     void setUp() {
@@ -43,10 +48,33 @@ class MediaControllerTest {
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
+        when(glm.askMulti(any(), any())).thenReturn("左图是持仓截图，右图是分时走势。");
         MediaRecordAppService service = new MediaRecordAppService(
                 glm, new RecordFileRepository(fs), new MemoryService(fs), fs,
                 new CardFileRepository(fs));
-        mvc = MockMvcBuilders.standaloneSetup(new MediaController(service, fs)).build();
+        intentRecognizer = mock(IntentRecognizer.class);
+        mvc = MockMvcBuilders.standaloneSetup(
+                new MediaController(service, fs, intentRecognizer)).build();
+    }
+
+    /** 先上传 N 张图，返回 recordId 列表（供 ask-batch 引用）。 */
+    private List<String> uploadN(int n) throws Exception {
+        String resp = mvc.perform(multipart("/api/v1/records/media")
+                        .file(png())
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String id = ((ObjectNode) new ObjectMapper().readTree(resp)).get("recordId").asText();
+        java.util.ArrayList<String> ids = new java.util.ArrayList<>(List.of(id));
+        for (int i = 1; i < n; i++) {
+            resp = mvc.perform(multipart("/api/v1/records/media")
+                            .file(png())
+                            .header("X-User-Id", "default"))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            ids.add(((ObjectNode) new ObjectMapper().readTree(resp)).get("recordId").asText());
+        }
+        return ids;
     }
 
     private MockMultipartFile png() {
@@ -165,5 +193,101 @@ class MediaControllerTest {
     void getMedia_notFound_404() throws Exception {
         mvc.perform(get("/api/v1/records/media/rec_unknown"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ── ask-batch（Phase 1 带图 ask：多图一次问答 + intent 分流）──
+
+    @Test
+    void askBatch_question_returnsAnswerAndPersists() throws Exception {
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenReturn(IntentRecognizer.Intent.QUESTION);
+        List<String> ids = uploadN(2);
+
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", ids, "question", "这两张图分别是什么？"));
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("question"))
+                .andExpect(jsonPath("$.answer").value("左图是持仓截图，右图是分时走势。"))
+                .andExpect(jsonPath("$.recordId").isString())
+                .andExpect(jsonPath("$.imageRecordIds[0]").value(ids.get(0)))
+                .andExpect(jsonPath("$.imageRecordIds[1]").value(ids.get(1)));
+    }
+
+    @Test
+    void askBatch_statement_returnsLogWithoutVlm() throws Exception {
+        // 陈述文本（非问句）→ 图片已逐张记录，直接返回 log，不调 VLM 多图问答
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenReturn(IntentRecognizer.Intent.STATEMENT);
+        List<String> ids = uploadN(1);
+
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", ids, "question", "这是今天的持仓截图"));
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("log"))
+                .andExpect(jsonPath("$.imageRecordIds[0]").value(ids.get(0)));
+    }
+
+    @Test
+    void askBatch_intentAiFailure_degradesToQuestionMark() throws Exception {
+        // intent 判定 AI 失败 → 降级问号启发式：文本以 ？结尾 → question 分支
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenThrow(new RuntimeException("DeepSeek down"));
+        List<String> ids = uploadN(1);
+
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", ids, "question", "这是什么股票？"));
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("question"));
+    }
+
+    @Test
+    void askBatch_overMaxImages_400() throws Exception {
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenReturn(IntentRecognizer.Intent.QUESTION);
+        List<String> ids = uploadN(3);
+
+        // 4 张超上限 → 400
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", List.of(ids.get(0), ids.get(0), ids.get(0), ids.get(0)),
+                "question", "这是什么？"));
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void askBatch_blankQuestion_400() throws Exception {
+        List<String> ids = uploadN(1);
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", ids, "question", "  "));
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void askBatch_emptyImages_400() throws Exception {
+        String body = "{\"imageRecordIds\": [], \"question\": \"这是什么？\"}";
+        mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
     }
 }

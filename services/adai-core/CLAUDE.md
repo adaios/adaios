@@ -108,6 +108,7 @@ com.adaiadai.core/
 | POST | `/api/v1/records/media` | 图片记录（multipart，GLM-VLM 理解文本化） |
 | GET | `/api/v1/records/media/{id}` | 图片文件（原图访问） |
 | POST | `/api/v1/records/media/{id}/ask` | 图片追问（L4 图片问答，VLM 看图回答） |
+| POST | `/api/v1/records/media/ask-batch` | 多图问答（Phase 1 带图 ask：1-3 张一次提问，IntentRecognizer 分流问句/陈述）|
 | POST | `/api/v1/conversations/end` | 结束对话，AI 总结 |
 | GET | `/api/v1/feed` | Feed 流 |
 | GET | `/api/v1/brief` | 今日简报 |
@@ -130,7 +131,7 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **377 个测试，0 失败**（15 Controller 49 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试 + 行情推送 14 测试 + #14 问候语时段边界 1 测试 + #221 问候语降级 emoji 1 测试 + #222 问候加中午段 1 测试 + Brief 降级增强 📋/🧠/☕ 1 测试 + #216 CardMigration 判定收紧 + 缺 id 跳过 3 测试 + R1 AI 交互日志 20 测试 + #184 promote 脱敏 2 测试 + #206/#207 幂等与时间基准 3 测试 + #209 图片追问持久化 1 测试 + #227 定时重补过滤禁用账号 2 测试 + #213 追踪上下文请求级清理 2 测试 + #210 AI 日志保留期/分页治理 7 测试 + #214 图片追问长度上界 2 测试 + #215 available 最小集 1 测试 + #202 复盘剥代码块围栏 2 测试 + 旧数组账号日期回归 1 测试 + **R2 记录↔任务：sourceRecordId round-trip + 旧文件兼容 2 测试 + Linker 触发/排除标签/幂等/清待办 8 测试 + MemoryService.clearActionable 2 测试** + **08-14 删除残留：Memory cardId round-trip + 按 cardId 删除 + recordId 路径回归 3 测试**）。
+后端测试在 `src/test/java/`，当前 **387 个测试，0 失败**（15 Controller 49 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试 + 行情推送 14 测试 + #14 问候语时段边界 1 测试 + #221 问候语降级 emoji 1 测试 + #222 问候加中午段 1 测试 + Brief 降级增强 📋/🧠/☕ 1 测试 + #216 CardMigration 判定收紧 + 缺 id 跳过 3 测试 + R1 AI 交互日志 20 测试 + #184 promote 脱敏 2 测试 + #206/#207 幂等与时间基准 3 测试 + #209 图片追问持久化 1 测试 + #227 定时重补过滤禁用账号 2 测试 + #213 追踪上下文请求级清理 2 测试 + #210 AI 日志保留期/分页治理 7 测试 + #214 图片追问长度上界 2 测试 + #215 available 最小集 1 测试 + #202 复盘剥代码块围栏 2 测试 + 旧数组账号日期回归 1 测试 + **R2 记录↔任务：sourceRecordId round-trip + 旧文件兼容 2 测试 + Linker 触发/排除标签/幂等/清待办 8 测试 + MemoryService.clearActionable 2 测试** + **08-14 删除残留：Memory cardId round-trip + 按 cardId 删除 + recordId 路径回归 3 测试**）。
 新增功能必须配套测试。
 
 ## 外部依赖

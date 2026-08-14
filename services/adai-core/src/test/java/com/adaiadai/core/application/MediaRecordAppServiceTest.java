@@ -198,4 +198,85 @@ class MediaRecordAppServiceTest {
                 service.mediaPathFor("default", result.recordId()));
         assertTrue(service.mediaPathFor("default", "rec_unknown").isEmpty());
     }
+
+    // ── askImages（Phase 1 带图 ask：多图一次问答）──
+
+    private MediaRecordAppService.MediaRecordResult[] uploadN(MediaRecordAppService service, int n) {
+        MediaRecordAppService.MediaRecordResult[] arr = new MediaRecordAppService.MediaRecordResult[n];
+        for (int i = 0; i < n; i++) {
+            arr[i] = service.recordImage("default", png(), "image/png", null);
+        }
+        return arr;
+    }
+
+    @Test
+    void askImages_success_persistsQaRecordAndFirstCardTurns() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "持仓截图", "trading", "浦发银行", List.of("交易")));
+        when(glm.askMulti(any(), any())).thenReturn("左图是持仓，右图是走势。");
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+
+        MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 2);
+
+        MediaRecordAppService.AskBatchResult result = service.askImages("default",
+                List.of(imgs[0].recordId(), imgs[1].recordId()), "这两张图分别是什么？");
+
+        assertEquals("question", result.intent());
+        assertEquals("左图是持仓，右图是走势。", result.answer());
+        assertEquals(2, result.imageRecordIds().size());
+
+        // 多图问答沉淀为 image_qa 记录（content 引用全部图片 id）
+        Optional<ContentRecord> qa = recordRepository.findById("default", result.recordId());
+        assertTrue(qa.isPresent());
+        assertEquals("image_qa", qa.get().type());
+        assertTrue(qa.get().content().contains(imgs[0].recordId()));
+        assertTrue(qa.get().content().contains(imgs[1].recordId()));
+        assertTrue(qa.get().content().contains("这两张图分别是什么？"));
+
+        // Q/A 追加到首图卡（刷新后首图卡显示问答气泡）
+        Optional<com.adaiadai.core.kernel.record.CardRecord> card =
+                cardRepository.findById("default", imgs[0].recordId());
+        assertTrue(card.isPresent(), "多图问答应追加到首图卡 card 文件");
+        assertEquals(2, card.get().turns().size());
+        assertTrue(card.get().turns().get(0).isUser());
+        assertEquals("这两张图分别是什么？", card.get().turns().get(0).text());
+        assertFalse(card.get().turns().get(1).isUser());
+    }
+
+    @Test
+    void askImages_overMaxImages_throws() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+
+        MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 4);
+        List<String> ids = java.util.Arrays.stream(imgs).map(MediaRecordAppService.MediaRecordResult::recordId).toList();
+
+        // 4 张超上限 3 → 抛异常，不调 VLM
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImages("default", ids, "这是什么？"));
+    }
+
+    @Test
+    void askImages_blankQuestion_throws() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImages("default", List.of("rec_x"), "   "));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImages("default", List.of("rec_x"), null));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImages("default", null, "问题"));
+    }
+
+    @Test
+    void askImages_unknownImage_throws() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.askImages("default", List.of("rec_unknown"), "这是什么？"));
+    }
 }

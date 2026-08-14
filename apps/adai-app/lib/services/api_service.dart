@@ -126,6 +126,23 @@ class ApiService {
     return AskMediaResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// Phase 1 带图 ask（多图问答）：对已上传的 1-3 张图片一次提问。
+  /// 后端按文本 intent 分流——问句 → VLM 多图回答（intent=question）；陈述 → 纯记录（intent=log）。
+  Future<AskBatchResponse> askBatch({
+    required List<String> imageRecordIds,
+    required String question,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/records/media/ask-batch'),
+      headers: _headers,
+      body: jsonEncode({'imageRecordIds': imageRecordIds, 'question': question}),
+    );
+    _check(resp);
+    _timelineCache = null;
+    _memoryCache = null;
+    return AskBatchResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 提交记录。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
@@ -507,6 +524,29 @@ class AskMediaResponse {
         recordId: json['recordId'] as String? ?? '',
         answer: json['answer'] as String? ?? '',
         imageRecordId: json['imageRecordId'] as String? ?? '',
+      );
+}
+
+/// 多图问答响应 DTO（Phase 1 带图 ask）。
+class AskBatchResponse {
+  final String intent; // question（VLM 回答） | log（纯记录，无需问答）
+  final String answer; // intent=question 时非空
+  final String recordId; // intent=question 时非空（image_qa 记录 id）
+  final List<String> imageRecordIds;
+
+  AskBatchResponse({
+    this.intent = 'log',
+    this.answer = '',
+    this.recordId = '',
+    this.imageRecordIds = const [],
+  });
+
+  factory AskBatchResponse.fromJson(Map<String, dynamic> json) =>
+      AskBatchResponse(
+        intent: json['intent'] as String? ?? 'log',
+        answer: json['answer'] as String? ?? '',
+        recordId: json['recordId'] as String? ?? '',
+        imageRecordIds: (json['imageRecordIds'] as List?)?.cast<String>() ?? [],
       );
 }
 

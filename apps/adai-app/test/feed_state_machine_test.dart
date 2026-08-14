@@ -568,5 +568,76 @@ void main() {
       expect(find.textContaining('我的截图', findRichText: true), findsWidgets);
       expect(find.textContaining('AI 图片理解', findRichText: true), findsOneWidget);
     });
+
+    testWidgets('Phase 1 带图 ask：附图 + 问句 → ask-batch 触发多图问答，回答进 SnackBar', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) {
+        return Future.value(_json({
+          'recordId': 'rec_media_ask', 'intent': 'log',
+          'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/ask.png',
+        }));
+      };
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) {
+        final body = jsonDecode(req.body);
+        return Future.value(_json({
+          'intent': 'question', 'answer': '左图是持仓，右图是走势。',
+          'recordId': 'qa1', 'imageRecordIds': body['imageRecordIds'],
+        }));
+      };
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_A.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这两张图分别是什么？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // ask-batch 已调用且携带图片 id 与问题原文
+      final askReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch');
+      expect(askReqs.length, 1);
+      final body = jsonDecode(askReqs.first.body);
+      expect(body['imageRecordIds'], ['rec_media_ask']);
+      expect(body['question'], '这两张图分别是什么？');
+      // 回答进 SnackBar（💬 前缀 + 回答摘要）
+      expect(find.textContaining('左图是持仓，右图是走势。', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('Phase 1 带图 ask：附图 + 陈述文本 → ask-batch 返回 log，纯记录无回答', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) {
+        return Future.value(_json({
+          'recordId': 'rec_media_log', 'intent': 'log',
+          'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/log.png',
+        }));
+      };
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) {
+        return Future.value(_json({
+          'intent': 'log', 'answer': '',
+          'recordId': '', 'imageRecordIds': ['rec_media_log'],
+        }));
+      };
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_B.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这是今天的持仓截图');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // ask-batch 调用但返回 log → 反馈为「已记录」，无 💬 回答
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 1);
+      expect(find.textContaining('💬', findRichText: true), findsNothing);
+      expect(find.textContaining('已记录', findRichText: true), findsOneWidget);
+    });
   });
 }

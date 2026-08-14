@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 
 /**
  * GlmVisualAiClient — 智谱 GLM 视觉模型实现。
@@ -113,6 +114,36 @@ public class GlmVisualAiClient implements VisualAiClient {
         }
     }
 
+    @Override
+    public String askMulti(List<ImageRequest> requests, String question) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("GLM_API_KEY 未配置，无法调用视觉模型");
+            throw new RuntimeException("视觉 AI 未配置：缺少 GLM_API_KEY");
+        }
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("图片不能为空");
+        }
+        try {
+            String textPrompt = ASK_PROMPT + "\n用户问题：" + (question == null ? "" : question);
+            log.info("[GLM-Vision-AskMulti] 请求 model={} | images={} | question={}",
+                    model, requests.size(), truncate(question));
+            String answer = sendAndParse(buildMultiRequestBody(requests, textPrompt));
+            String cleaned = GlmResponseParser.extractAnswer(answer);
+            return (cleaned == null || cleaned.isBlank()) ? "（图片问答未获得有效回复）" : cleaned.strip();
+        } catch (Exception e) {
+            // 多图请求失败（如模型多图兼容问题）→ 降级单图首张问答，不阻塞功能
+            log.warn("GLM 多图问答失败，降级单图首张 | images={} | {}", requests.size(), e.getMessage());
+            if (requests.size() > 1) {
+                try {
+                    return ask(requests.get(0), question);
+                } catch (Exception e2) {
+                    throw new RuntimeException("图片追问失败: " + e2.getMessage(), e2);
+                }
+            }
+            throw new RuntimeException("图片追问失败: " + e.getMessage(), e);
+        }
+    }
+
     // ── 请求/响应 ──
 
     private String buildRequestBody(ImageRequest request, String textPrompt) throws Exception {
@@ -133,6 +164,35 @@ public class GlmVisualAiClient implements VisualAiClient {
         image.putObject("image_url").put("url", dataUrl);
 
         // 文本指令（理解 prompt 或追问 prompt）
+        content.addObject().put("type", "text").put("text", textPrompt);
+
+        return MAPPER.writeValueAsString(root);
+    }
+
+    /**
+     * 多图请求体：一个 content 数组多个 {@code image_url} + 文本指令（Phase 1 带图 ask）。
+     * OpenAI 兼容格式，GLM-4V 系列支持同消息多图。
+     */
+    private String buildMultiRequestBody(List<ImageRequest> requests, String textPrompt) throws Exception {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.put("model", model);
+        root.put("max_tokens", 1024);
+        root.put("temperature", 0.3);
+
+        ArrayNode messages = root.putArray("messages");
+        ObjectNode user = messages.addObject();
+        user.put("role", "user");
+        ArrayNode content = user.putArray("content");
+
+        // 多张图片（base64 data URL，一次请求全部传入）
+        for (ImageRequest r : requests) {
+            ObjectNode image = content.addObject();
+            image.put("type", "image_url");
+            String dataUrl = "data:" + r.contentType() + ";base64," + r.base64Image();
+            image.putObject("image_url").put("url", dataUrl);
+        }
+
+        // 文本指令（追问 prompt）
         content.addObject().put("type", "text").put("text", textPrompt);
 
         return MAPPER.writeValueAsString(root);

@@ -66,4 +66,33 @@ void main() {
           reason: '点击空白处应收起键盘（壳层 onTap unfocus）');
     });
   });
+
+  group('InputBar 图片数量上限（Phase 1 带图 ask）', () {
+    testWidgets('注入 2 张 → 角标 2/3；再注入 2 张只进 1 张 → 3/3 封顶，发送最多 3 张', (tester) async {
+      List<PickedImage>? sent;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: InputBar(
+            onSend: (_) {},
+            onSendMedia: (imgs, _) => sent = imgs,
+          ),
+        ),
+      ));
+
+      final state = tester.state<InputBarState>(find.byType(InputBar));
+      state.debugInjectImages([PickedImage([1], 'a.jpg', 'jpg'), PickedImage([2], 'b.jpg', 'jpg')]);
+      await tester.pump();
+      expect(find.text('2/3'), findsOneWidget, reason: '预览条应显示 2/3 角标');
+
+      // 再注入 2 张 → 只剩 1 个名额 → 只进 1 张，角标 3/3 封顶
+      state.debugInjectImages([PickedImage([3], 'c.jpg', 'jpg'), PickedImage([4], 'd.jpg', 'jpg')]);
+      await tester.pump();
+      expect(find.text('3/3'), findsOneWidget, reason: '数量上限 3，预览条角标封顶 3/3');
+
+      // 发送 → 只带 3 张（上限截断生效）
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      expect(sent!.length, 3, reason: '发送最多 3 张');
+    });
+  });
 }

@@ -111,17 +111,39 @@ class InputBarState extends State<InputBar> {
 
   /// REVIEW #257 测试钩子：测试注入待发送图片（等价用户选图挂到输入栏），
   /// 不触发 ImagePicker（widget 测试环境无平台通道）。随后点发送键即走 onSendMedia。
+  /// Phase 1：与真实选图路径一致，尊重数量上限（超出截断），防测试绕过上限。
   @visibleForTesting
   void debugInjectImages(List<PickedImage> images) {
-    setState(() => _pendingImages.addAll(images));
+    setState(() {
+      final room = _maxImages - _pendingImages.length;
+      _pendingImages.addAll(room >= images.length ? images : images.take(room));
+    });
+  }
+
+  /// Phase 1 图片数量上限（阿呆 08-14 拍板：带图最多 3 张）。
+  static const int _maxImages = 3;
+
+  /// 超限提示（选图/拍照共用）。
+  void _showImageLimitToast() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('最多选择 3 张图片', style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
+    ));
   }
 
   void _pickImage() async {
     try {
+      // 数量上限 3：剩余额度才可选（Phase 1 带图 ask 配套，防无限堆叠）
+      final remaining = _maxImages - _pendingImages.length;
+      if (remaining <= 0) {
+        _showImageLimitToast();
+        return;
+      }
       // 相册多选用 image_picker（与拍照同组件，交互统一；阿呆 08-13 反馈割裂感）
       final files = await ImagePicker().pickMultiImage(
         maxWidth: 1920, // 限制长边，避免超大字节压栈
         imageQuality: 85, // 压缩，上传更快
+        limit: remaining,
       );
       if (files.isEmpty) return;
       // 关闭附件底部弹层
@@ -136,7 +158,12 @@ class InputBarState extends State<InputBar> {
         ));
       }
       // 选图后先挂到输入栏（内联预览），发送时才真正上传
-      setState(() => _pendingImages.addAll(picked));
+      // 保险：limit 已控剩余额度，合并后仍可能越界（如竞态）→ 截断 + 提示
+      setState(() {
+        final room = _maxImages - _pendingImages.length;
+        _pendingImages.addAll(room >= picked.length ? picked : picked.take(room));
+        if (room < picked.length) _showImageLimitToast();
+      });
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -149,6 +176,11 @@ class InputBarState extends State<InputBar> {
 
   /// 拍照（阿呆 08-13：相机拍摄入口，image_picker）。拍到的图挂到输入栏内联预览，随发送上传。
   Future<void> _pickCamera() async {
+    // Phase 1 数量上限 3：已满则拦截
+    if (_pendingImages.length >= _maxImages) {
+      _showImageLimitToast();
+      return;
+    }
     try {
       final picked = await ImagePicker().pickImage(
         source: ImageSource.camera,
@@ -187,14 +219,31 @@ class InputBarState extends State<InputBar> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.darkBorder.withAlpha(120)),
       ),
-      child: SizedBox(
-        height: 56,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: _pendingImages.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (_, i) => _buildThumb(_pendingImages[i], i),
-        ),
+      child: Stack(
+        children: [
+          SizedBox(
+            height: 56,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _pendingImages.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (_, i) => _buildThumb(_pendingImages[i], i),
+            ),
+          ),
+          // Phase 1 数量角标（n/3，与上限呼应，元宝/ChatGPT 同款位置）
+          Positioned(
+            top: 0, right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('${_pendingImages.length}/$_maxImages',
+                  style: const TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+            ),
+          ),
+        ],
       ),
     );
   }

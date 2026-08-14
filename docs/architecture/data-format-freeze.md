@@ -38,9 +38,12 @@ domain: life
 正文内容（Markdown）
 ```
 
-- 字段：`id` / `type`（note/image/conversation…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）/ `intent`（`question`/`log`/空，可空）
+- 字段：`id` / `type`（note/image/conversation/image_qa…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）/ `intent`（`question`/`log`/空，可空）
 - 正文 = `content`；解析端取首行 <100 字符作 title
 - `intent` **落盘**（REVIEW #144）：question 记录写 `question`，rebuild 借此排除避免重跑烧 AI；log 写 `log`，未处理写空。旧文件无该字段 = 空（向后兼容）。
+- **`image_qa` 问答记录 content 格式**（MINOR，2026-08-14 登记；单图追问 v3.9 已存在，多图带图 ask 同日补充）：
+  - 单图：`【图片问答】\n图片记录：{recordId}\n问：{question}\n答：{answer}`
+  - 多图（`POST /records/media/ask-batch`）：`【多图问答】\n图片记录：{id1}, {id2}\n问：{question}\n答：{answer}`（引用全部图片 ID，逗号+空格分隔）
 
 ### 2.2 图片媒体 `records/.../media/`
 
