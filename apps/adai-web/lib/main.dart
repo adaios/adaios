@@ -14,7 +14,9 @@ Future<void> main() async {
   // REVIEW #182：持久化 'default' 视为无效（default 账号已随数据迁移移除），
   // 避免绕过选号流程的请求落到空 data/default/ 分支静默分裂数据
   final effectiveSaved = (savedUserId != null && savedUserId != 'default') ? savedUserId : null;
-  final userId = hasUrlUserId ? urlUserId : (effectiveSaved ?? 'default');
+  // T1.4（RFC 20260814）：无有效 userId 时返回空串（尚无活动用户），不再回退 'default'，
+  // 防止选号前请求携带已迁移移除的 default 账号；needsSelect 强制首屏选号。
+  final userId = hasUrlUserId ? urlUserId : (effectiveSaved ?? '');
   runApp(AdaiWebApp(userId: userId, needsSelect: !hasUrlUserId && effectiveSaved == null));
 }
 

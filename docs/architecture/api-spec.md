@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.17 | 最后更新：2026-08-14**
+**文档版本：v3.18 | 最后更新：2026-08-15**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-15 | v3.18 | **Domain=插件模型（RFC 20260814 第二步，插件门控）**：新增 `GET /me/plugins`（当前用户启用插件，前端模块显隐）；Account 新增 `plugins` 字段（`POST` 建号可选 / `PATCH` 可改，仅 `trading`/`project`，非法 400）；domain 判定规则按用户启用插件收敛（D5：无插件用户只判 `life`，AI 判定若属未启用插件 → 收敛 `life`）；`POST /trading/reviews/{date}/promote` 仅启用 trading 插件用户可用（否则 403）；Feed 行情条/异动推送仅注入启用 trading 插件用户 |
 | 2026-08-14 | v3.17 | **Phase 1 带图 ask（多图问答）**：新增 `POST /records/media/ask-batch`（已上传 1-3 张图片一次提问 → VLM 综合多图回答 → `image_qa` 记录引用全部图片 ID + Q/A 追加首图卡）；intent 分流与文本记录一致（`IntentRecognizer` 判定，问句 → VLM 多图回答 / 陈述 → 纯记录；AI 失败降级问号启发式）；图片数量上限 3 张 |
 | 2026-08-13 | v3.16 | **R2 记录↔任务关联**：任务模型新增可选 `sourceRecordId`（domain=project 记录自动转任务时关联源记录 `rec_xxx`）；非破坏性字段新增，前端手动建任务为 null |
 | 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
@@ -110,12 +111,14 @@
 3. AI 失败 → 抛异常，不静默降级
 ```
 
-**domain 判定规则（AI 输出）**
+**domain 判定规则（AI 输出，RFC 20260814 D5）**
 
-按优先级匹配关键词：
-- 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`
-- 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`
+按优先级匹配关键词，**只在用户已启用插件间判定**（无对应插件 → 该关键词不判该域）：
+- 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`（需启用 trading 插件）
+- 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`（需启用 project 插件）
 - 日常、想法、记录、心情、问题 → `life`
+
+> 无插件用户一律 `life`（单一 domain）。即使 AI 输出 `trading`/`project`，若该用户未启用对应插件，后端也会收敛为 `life`（`PluginService.gateDomain`）。插件名见 §16 `GET /me/plugins`。
 
 ---
 
@@ -335,6 +338,7 @@
 > feed 只返回今天的数据，历史数据走时间线（`GET /api/v1/timeline`）。
 > 每日摘要单独调用 `GET /api/v1/brief`。
 > **时间基准（updatedAt）**：卡片（`type=card`）的 `time`/`date` 按最后更新时间 `updatedAt`，跨日续接的对话归最后活跃日；`findTodayCards` 按 `updatedAt` 过滤。分页（REVIEW #175）：核心条目（record/card）按时间从新到旧切块，page 0 返回完整 `size` 条最新核心，余数放末页；附加条目（ai_note/action/market/push）只在 page 0 末尾附加。
+> **插件门控（RFC 20260814）**：`market`（行情条）与 `push`（异动推送）条目仅注入启用 **trading 插件** 的用户；无插件用户 Feed 无行情卡。
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:------|
@@ -527,6 +531,8 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 > **#178（2026-08-12）**：`message` 字段提示入库候选不会自动融入 AI context——promote 只写入 `99-inbox/`，融合需在 trading-os 工作流收敛重建 `11-context/` 后由 `TradingKnowledgeSource` 注入。`path` 文件名遵循 #211 约定 `YYYY-MM-DD_主题.md`。
 >
 > **#129（2026-08-12）**：前端入口已补——adai-app / adai-web 交易页复盘弹窗新增「反哺入库」按钮（`POST` body 传 `{}`，note/sections 可空），成功后展示 `message` 提示。知识反哺闭环前后端打通。
+>
+> **插件门控（RFC 20260814，v3.18）**：promote 写入共享 os/ 知识库 → 仅启用 trading 插件的用户可用；未启用 → `403`（`{"error":"trading 插件未启用，无法反哺知识"}`）。
 
 ### `GET /api/v1/trading/knowledge/conflicts` — 检测规则矛盾
 
@@ -985,7 +991,25 @@ chat 模式（全屏）
 
 > v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端从可用账号列表选择进入（`GET /api/v1/accounts/available`，**无鉴权**，仅返回 enabled 账号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
 >
-> **管理鉴权（REVIEW #127）**：本节除 `GET /api/v1/accounts/available`（产品端选号，无鉴权）外，其余端点与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
+> **管理鉴权（REVIEW #127）**：本节除 `GET /api/v1/accounts/available` 与 `GET /api/v1/me/plugins`（产品端，无鉴权）外，其余端点与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
+>
+> **插件模型（RFC 20260814）**：Account 带 `plugins`（`["trading","project"]`）。`trading`/`project` 是 adai 拥有并受控开放的插件（Domain），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `adai` 默认 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限。
+
+### `GET /api/v1/me/plugins` — 当前用户启用插件（前端模块显隐）
+
+**无鉴权**（凭 `X-User-Id` 头）。返回当前用户启用的插件名列表；账号不存在 → 空列表。adai-app / adai-web 据此显隐插件模块（交易页 / 阿呆系统 / 项目仪表盘），基础服务模块不依赖此端点。
+
+**Request Headers**
+
+- `X-User-Id` — 当前用户 ID
+
+**Response**（`List<String>`）
+
+```json
+[ "project", "trading" ]
+```
+
+- 新用户（无插件）→ `[]`
 
 ### `GET /api/v1/accounts` — 账号列表
 
@@ -997,7 +1021,8 @@ chat 模式（全屏）
     "userId": "adai",
     "role": "admin",
     "enabled": true,
-    "createdAt": "2026-08-02"
+    "createdAt": "2026-08-02",
+    "plugins": ["trading", "project"]
   }
 ]
 ```
@@ -1023,7 +1048,8 @@ chat 模式（全屏）
 ```
 
 - `role` 可选，默认 `user`（`admin` / `user`）
-- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法
+- `plugins` 可选，默认 `[]`（新用户只有基础服务）；仅允许 `trading` / `project`，非法 → 400
+- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法 / plugins 非法
 
 ### `PATCH /api/v1/accounts/{userId}` — 更新账号
 
@@ -1033,7 +1059,8 @@ chat 模式（全屏）
 { "enabled": false }
 ```
 
-- `enabled` / `role` 均可选，缺省保持原值
+- `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）
+- `plugins` 传全量列表（如 `["trading"]`），仅允许 `trading` / `project`，非法 → 400
 - **内置管理员 `adai` 不可禁用、不可降级**（400）
 - `404` — 账号不存在
 

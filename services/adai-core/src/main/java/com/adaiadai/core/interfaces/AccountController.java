@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
@@ -34,9 +35,11 @@ public class AccountController {
     private static final String USER_ID_PATTERN = "[a-zA-Z0-9_-]+";
 
     private final AccountRepository accountRepository;
+    private final PluginRegistry pluginRegistry;
 
-    public AccountController(AccountRepository accountRepository) {
+    public AccountController(AccountRepository accountRepository, PluginRegistry pluginRegistry) {
         this.accountRepository = accountRepository;
+        this.pluginRegistry = pluginRegistry;
     }
 
     /** 账号列表（返回全部，前端按 enabled 过滤选号）。 */
@@ -73,8 +76,12 @@ public class AccountController {
         if (!isValidRole(role)) {
             return ResponseEntity.badRequest().body(Map.of("error", "role 仅允许 admin/user"));
         }
-        Account account = accountRepository.save(new Account(userId, role, true, LocalDate.now()));
-        log.info("创建账号: {} role={}", userId, role);
+        List<String> plugins = request.plugins() != null ? request.plugins() : List.of();
+        if (!isValidPlugins(plugins)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "plugins 仅允许 " + pluginRegistry.all()));
+        }
+        Account account = accountRepository.save(new Account(userId, role, true, LocalDate.now(), plugins));
+        log.info("创建账号: {} role={} plugins={}", userId, role, plugins);
         return ResponseEntity.ok(account);
     }
 
@@ -88,8 +95,12 @@ public class AccountController {
         }
         boolean enabled = request.enabled() == null ? existing.get().enabled() : request.enabled();
         String role = request.role() == null ? existing.get().role() : request.role();
+        List<String> plugins = request.plugins() != null ? request.plugins() : existing.get().plugins();
         if (!isValidRole(role)) {
             return ResponseEntity.badRequest().body(Map.of("error", "role 仅允许 admin/user"));
+        }
+        if (!isValidPlugins(plugins)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "plugins 仅允许 " + pluginRegistry.all()));
         }
         if (isSeedAdmin(userId)) {
             if (!enabled) {
@@ -100,7 +111,7 @@ public class AccountController {
             }
         }
         Account updated = accountRepository.save(
-                new Account(userId, role, enabled, existing.get().createdAt()));
+                new Account(userId, role, enabled, existing.get().createdAt(), plugins));
         return ResponseEntity.ok(updated);
     }
 
@@ -118,13 +129,17 @@ public class AccountController {
         return Account.ROLE_ADMIN.equals(role) || Account.ROLE_USER.equals(role);
     }
 
+    private boolean isValidPlugins(List<String> plugins) {
+        return plugins.stream().allMatch(pluginRegistry::isValid);
+    }
+
     private boolean isSeedAdmin(String userId) {
         return Account.SEED_ADMIN_ID.equals(userId);
     }
 
     // ── Request DTOs ──
 
-    public record CreateAccountRequest(@NotBlank String userId, String role) {}
+    public record CreateAccountRequest(@NotBlank String userId, String role, List<String> plugins) {}
 
-    public record UpdateAccountRequest(Boolean enabled, String role) {}
+    public record UpdateAccountRequest(Boolean enabled, String role, List<String> plugins) {}
 }

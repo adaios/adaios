@@ -31,7 +31,9 @@ Future<void> main() async {
   final hasUrlUserId = urlUserId != 'default';
   final effectiveSaved = (savedUserId != null && savedUserId != 'default') ? savedUserId : null;
   return (
-    userId: hasUrlUserId ? urlUserId : (effectiveSaved ?? 'default'),
+    // T1.4（RFC 20260814）：无有效 userId 时返回空串（尚无活动用户），不再回退 'default'——
+    // 防止选号前任何请求携带已迁移移除的 default 账号；needsSelect 强制首屏选号。
+    userId: hasUrlUserId ? urlUserId : (effectiveSaved ?? ''),
     needsSelect: !hasUrlUserId && effectiveSaved == null,
   );
 }

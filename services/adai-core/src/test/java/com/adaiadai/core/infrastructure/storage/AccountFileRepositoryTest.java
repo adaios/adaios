@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,6 +36,57 @@ class AccountFileRepositoryTest {
         assertEquals(Account.SEED_ADMIN_ID, all.get(0).userId());
         assertEquals(Account.ROLE_ADMIN, all.get(0).role());
         assertTrue(all.get(0).enabled());
+        // RFC 20260814：seed admin 默认持有受控插件 trading/project（owner）
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT), all.get(0).plugins());
+    }
+
+    @Test
+    void init_migratesExistingSeedAdmin_missingPluginsGetsDefaults() throws Exception {
+        // RFC 20260814 迁移：老 accounts.json 的 seed admin 无 plugins 字段 → 启动补默认（幂等）
+        String legacy = """
+                [ { "userId" : "adai", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02" } ]
+                """;
+        Files.createDirectories(tempDir.resolve("accounts"));
+        Files.writeString(tempDir.resolve("accounts/accounts.json"), legacy, StandardCharsets.UTF_8);
+
+        var repo = repo();
+        repo.init();
+
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT),
+                repo.findById(Account.SEED_ADMIN_ID).get().plugins(),
+                "seed admin 老文件无 plugins → 迁移补默认");
+
+        // 幂等：再 init 不重复写
+        repo.init();
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT),
+                repo.findById(Account.SEED_ADMIN_ID).get().plugins());
+    }
+
+    @Test
+    void init_doesNotGrantPluginsToNonSeedUsers() throws Exception {
+        // 迁移只补 seed admin；普通用户老文件无 plugins → 保持空（新用户只有基础服务）
+        String legacy = """
+                [ { "userId" : "alice", "role" : "user", "enabled" : true, "createdAt" : "2026-08-02" } ]
+                """;
+        Files.createDirectories(tempDir.resolve("accounts"));
+        Files.writeString(tempDir.resolve("accounts/accounts.json"), legacy, StandardCharsets.UTF_8);
+
+        var repo = repo();
+        repo.init();
+
+        assertTrue(repo.findById("alice").get().plugins().isEmpty(),
+                "普通用户老文件无 plugins → 保持空，不误授予插件");
+    }
+
+    @Test
+    void save_roundtrip_preservesPlugins() {
+        var repo = repo();
+        repo.init();
+        repo.save(new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
+                List.of(PluginRegistry.PLUGIN_TRADING)));
+
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING), repo.findById("alice").get().plugins(),
+                "plugins 应序列化后 round-trip 保留");
     }
 
     @Test

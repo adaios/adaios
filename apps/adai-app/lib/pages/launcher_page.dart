@@ -39,6 +39,9 @@ class _LauncherPageState extends State<LauncherPage>
   bool _loading = true;
   bool _graphView = true;
 
+  /// 启用插件（RFC 20260814 Domain=插件模型）：trading/project 显隐对应模块，基础服务常驻。
+  Set<String> _plugins = {};
+
   late AnimationController _graphAnim;
   late Animation<double> _graphAlpha;
 
@@ -69,6 +72,7 @@ class _LauncherPageState extends State<LauncherPage>
         widget.api.getTags(),
         widget.api.getTimeline(limit: 999),
         widget.api.getMemoryCount(),
+        widget.api.getMyPlugins(),
       ]);
       if (!mounted) return;
 
@@ -76,6 +80,7 @@ class _LauncherPageState extends State<LauncherPage>
       final tagsResp = results[1] as TagsResponse;
       final timeline = results[2] as List;
       final memCount = results[3] as int;
+      final plugins = results[4] as List<String>;
 
       setState(() {
         _myName = identity.name;
@@ -84,6 +89,7 @@ class _LauncherPageState extends State<LauncherPage>
         _allTags = tagsResp.tags;
         _timelineCount = timeline.length;
         _memoryCount = memCount;
+        _plugins = plugins.toSet();
         _loading = false;
       });
       _graphAnim.forward();
@@ -171,26 +177,33 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow(Icons.query_stats, '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
-              // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
-              // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
-              Navigator.push(context, PageRouteBuilder(
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
-                pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
-              ));
-            }),
+            // 插件门控（RFC 20260814）：阿呆系统 = project 插件，仅启用项目插件的用户可见
+            if (_plugins.contains('project')) ...[
+              _buildRow(Icons.query_stats, '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
+                // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
+                // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
+                Navigator.push(context, PageRouteBuilder(
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                  pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
+                ));
+              }),
+            ],
+            // 任务 = Kernel 基础服务（待办人人都有），不按插件门控
             _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ProjectTaskPage(api: widget.api),
               ));
             }),
             _divider(),
-            _buildRow(Icons.show_chart, '交易', '持仓 · 记录', AppColors.darkOrange, () {
-              Navigator.push(context, MaterialPageRoute(
-                builder: (_) => TradingPage(api: widget.api),
-              ));
-            }),
+            // 交易 = trading 插件，仅启用交易插件的用户可见
+            if (_plugins.contains('trading')) ...[
+              _buildRow(Icons.show_chart, '交易', '持仓 · 记录', AppColors.darkOrange, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => TradingPage(api: widget.api),
+                ));
+              }),
+            ],
             _divider(),
             const SizedBox(height: 28),
 

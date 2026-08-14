@@ -12,6 +12,8 @@ import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.CardRepository;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,11 @@ public class ContextEngine {
     private static final int MAX_RELATED_RECORDS = 20;
     private static final int MEMORY_DAYS = 7;
 
+    private static final List<String> TRADING_KEYWORDS =
+            List.of("指标", "K线", "持仓", "走势", "复盘", "买入", "卖出", "仓位", "股票", "大盘", "行情", "买卖");
+    private static final List<String> PROJECT_KEYWORDS =
+            List.of("任务", "进度", "bug", "需求", "RFC", "项目", "待办", "计划", "开发");
+
     private final IdentityRepository identityRepository;
     private final RecordRepository recordRepository;
     private final TagIndexReader tagIndexReader;
@@ -52,6 +59,9 @@ public class ContextEngine {
     private final List<KnowledgeSource> knowledgeSources;
     private final SearchService searchService;
 
+    /** 插件门控（RFC 20260814 第二步）：按账号 enabledPlugins 过滤知识源/贡献者 + D5 domain 判定。 */
+    private final PluginService pluginService;
+
     public ContextEngine(IdentityRepository identityRepository,
                          RecordRepository recordRepository,
                          TagIndexReader tagIndexReader,
@@ -59,7 +69,8 @@ public class ContextEngine {
                          CardRepository cardRepository,
                          List<ContextContributor> contributors,
                          List<KnowledgeSource> knowledgeSources,
-                         SearchService searchService) {
+                         SearchService searchService,
+                         PluginService pluginService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.tagIndexReader = tagIndexReader;
@@ -68,6 +79,7 @@ public class ContextEngine {
         this.contributors = contributors;
         this.knowledgeSources = knowledgeSources;
         this.searchService = searchService;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -92,16 +104,18 @@ public class ContextEngine {
      * @param userId 用户 ID（多用户架构预留，单用户传 "default"）
      */
     public ContextPackage compose(String userId, String scene, ContentRecord record, String cardId) {
+        // RFC 20260814 第二步：按账号 enabledPlugins 门控知识/贡献者注入 + D5 domain 判定
+        Set<String> enabledPlugins = pluginService.enabledPlugins(userId);
         String identityRef = loadIdentitySummary(userId);
         String cardContext = loadCardContext(userId, cardId);
         String relatedRecords = loadRelatedRecords(userId, record);
         String searchResults = loadSearchResults(userId, record);
         String memorySummary = loadMemorySummary(userId);
-        // 领域场景按记录内容推导（trading/project/life），让领域知识源与场景贡献者真正触发
-        String domainScene = detectDomainScene(record);
-        String knowledgeContext = loadKnowledgeContext(userId, domainScene);
-        String domainContext = enrichFromContributors(userId, domainScene, identityRef, record);
-        String globalContext = loadGlobalContext(userId);
+        // 领域场景按记录内容推导（trading/project/life），只在启用插件间判定（D5）
+        String domainScene = detectDomainScene(record, enabledPlugins);
+        String knowledgeContext = loadKnowledgeContext(userId, domainScene, enabledPlugins);
+        String domainContext = enrichFromContributors(userId, domainScene, identityRef, record, enabledPlugins);
+        String globalContext = loadGlobalContext(userId, enabledPlugins);
 
         // CHAT 模式：构建多轮对话历史
         List<ChatMessage> chatHistory = "question".equals(scene) && cardId != null
@@ -111,7 +125,7 @@ public class ContextEngine {
         // ANALYSIS 模式：仍然使用合成 Prompt
         String prompt = buildPrompt(scene, identityRef, record,
                 cardContext, relatedRecords, searchResults, memorySummary,
-                knowledgeContext, domainContext, globalContext);
+                knowledgeContext, domainContext, globalContext, enabledPlugins);
 
         log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 搜索={}条 | 预估 tokens={}",
                 scene, record.id(),
@@ -137,20 +151,20 @@ public class ContextEngine {
      * 调用方传给 compose() 的 scene 是模式场景（"note"/"question"），
      * 领域知识源和场景贡献者需要内容驱动的领域场景才能被触发
      * （规则与 api-spec「domain 判定规则」一致）。
+     * <p>
+     * D5（RFC 20260814）：只在用户启用的插件间判定——无 trading 插件 → 交易词不判 trading；
+     * 无 project 插件 → 项目词不判 project；无插件用户一律 life（单一 domain，无需判定）。
      */
-    private String detectDomainScene(ContentRecord record) {
+    private String detectDomainScene(ContentRecord record, Set<String> enabledPlugins) {
         String content = record.content() == null ? "" : record.content();
         if (content.isBlank()) return "life";
 
-        if (content.contains("指标") || content.contains("K线") || content.contains("持仓")
-                || content.contains("走势") || content.contains("复盘") || content.contains("买入")
-                || content.contains("卖出") || content.contains("仓位") || content.contains("股票")
-                || content.contains("大盘") || content.contains("行情") || content.contains("买卖")) {
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)
+                && TRADING_KEYWORDS.stream().anyMatch(content::contains)) {
             return "trading";
         }
-        if (content.contains("任务") || content.contains("进度") || content.contains("bug")
-                || content.contains("需求") || content.contains("RFC") || content.contains("项目")
-                || content.contains("待办") || content.contains("计划") || content.contains("开发")) {
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)
+                && PROJECT_KEYWORDS.stream().anyMatch(content::contains)) {
             return "project";
         }
         return "life";
@@ -370,11 +384,13 @@ public class ContextEngine {
     /**
      * 收集场景特定贡献 + 所有全局上下文。
      */
-    private String enrichFromContributors(String userId, String scene, String identityRef, ContentRecord record) {
+    private String enrichFromContributors(String userId, String scene, String identityRef,
+                                          ContentRecord record, Set<String> enabledPlugins) {
         StringBuilder sceneContext = new StringBuilder();
 
-        // 1. 找场景特定贡献者
+        // 1. 找场景特定贡献者（插件贡献者按 enabledPlugins 门控）
         for (ContextContributor contributor : contributors) {
+            if (!contributorAllowed(userId, contributor, enabledPlugins)) continue;
             if (!contributor.isDefault() && contributor.supports(scene)) {
                 String context = contributor.enrich(userId, identityRef, record);
                 if (context != null && !context.isBlank()) {
@@ -393,9 +409,15 @@ public class ContextEngine {
      * 调用每个 {@link KnowledgeSource} 的 globalContext() + enrich(scene)。
      * 位置在 memory 和 domain context 之间。
      */
-    private String loadKnowledgeContext(String userId, String scene) {
+    private String loadKnowledgeContext(String userId, String scene, Set<String> enabledPlugins) {
         StringBuilder sb = new StringBuilder();
         for (KnowledgeSource source : knowledgeSources) {
+            // 插件知识源（trading/project）只注入启用该插件的用户（RFC 20260814 第二步门控）
+            String plugin = pluginService.pluginForKnowledge(source.name());
+            if (plugin != null && !enabledPlugins.contains(plugin)) {
+                log.debug("Knowledge 跳过（插件未启用）: {} | userId={}", source.name(), userId);
+                continue;
+            }
             try {
                 String global = source.globalContext(userId);
                 if (global != null && !global.isBlank()) {
@@ -417,12 +439,21 @@ public class ContextEngine {
     }
 
     /**
+     * 贡献者门控（RFC 20260814 第二步）：插件贡献者只注入启用该插件的用户；基础服务（life/默认）放行。
+     */
+    private boolean contributorAllowed(String userId, ContextContributor contributor, Set<String> enabledPlugins) {
+        String plugin = pluginService.pluginForContributor(contributor);
+        return plugin == null || enabledPlugins.contains(plugin);
+    }
+
+    /**
      * 加载所有 Domain OS 的全局上下文（GlobalContext）。
      */
-    private String loadGlobalContext(String userId) {
+    private String loadGlobalContext(String userId, Set<String> enabledPlugins) {
         StringBuilder sb = new StringBuilder();
         for (ContextContributor contributor : contributors) {
             if (contributor.isDefault()) continue;
+            if (!contributorAllowed(userId, contributor, enabledPlugins)) continue;
             try {
                 String globalCtx = contributor.globalContext(userId);
                 if (globalCtx != null && !globalCtx.isBlank()) {
@@ -440,7 +471,8 @@ public class ContextEngine {
     private String buildPrompt(String scene, String identityRef, ContentRecord record,
                                String cardContext, String relatedRecords,
                                String searchResults, String memorySummary,
-                               String knowledgeContext, String domainContext, String globalContext) {
+                               String knowledgeContext, String domainContext, String globalContext,
+                               Set<String> enabledPlugins) {
         String todayInfo = "%s %s".formatted(
                 LocalDate.now().toString(),
                 LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINESE)
@@ -506,16 +538,13 @@ public class ContextEngine {
   "summary": "3-5个词概括本次问答主题，避免人称代词，像标签一样简洁",
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
-  "domain": "life(生活)/trading(交易)/project(项目)",
+  "domain": %s,
   "actionable": true 或 false,
   "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null"
 }
 
-domain判定规则（按优先级）：
-- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading
-- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project
-- 其他日常、想法、记录、心情、问题 → life
-""");
+%s
+""".formatted(buildDomainEnum(enabledPlugins), buildDomainRules(enabledPlugins)));
         } else {
             prompt.append("""
 
@@ -527,18 +556,40 @@ domain判定规则（按优先级）：
                       "preferences": "（可选）如果这条记录揭示了用户的明确偏好，输出数组，每项包含 content(偏好描述) 和 confidence(0-1置信度)；否则不输出此字段",
                       "tags": ["标签1", "标签2", "标签3"],
                       "sentiment": "positive 或 negative 或 neutral",
-                      "domain": "life(生活)/trading(交易)/project(项目)",
+                      "domain": %s,
                       "actionable": true 或 false,
-                      "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null"
+                      "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null
 
-domain判定规则（按优先级）：
-- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading
-- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project
-- 其他日常、想法、记录、心情 → life
+%s
                     }
-                    """);
+                    """.formatted(buildDomainEnum(enabledPlugins), buildDomainRules(enabledPlugins)));
         }
 
         return prompt.toString();
+    }
+
+    /**
+     * D5：按启用插件收敛 domain 枚举（无插件用户 → 只 life）。
+     */
+    private String buildDomainEnum(Set<String> enabledPlugins) {
+        StringBuilder sb = new StringBuilder("\"life(生活)");
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) sb.append("/trading(交易)");
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) sb.append("/project(项目)");
+        return sb.append("\"").toString();
+    }
+
+    /**
+     * D5：domain 判定规则只在启用插件间给出（与 detectDomainScene 同一套关键词）。
+     */
+    private String buildDomainRules(Set<String> enabledPlugins) {
+        StringBuilder sb = new StringBuilder("domain判定规则（按优先级，只在本用户启用的插件间判定）：\n");
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) {
+            sb.append("- 内容涉及 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → trading\n");
+        }
+        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) {
+            sb.append("- 内容涉及 任务、进度、bug、需求、RFC、项目、待办、计划 → project\n");
+        }
+        sb.append("- 其他日常、想法、记录、心情、问题 → life\n");
+        return sb.toString();
     }
 }

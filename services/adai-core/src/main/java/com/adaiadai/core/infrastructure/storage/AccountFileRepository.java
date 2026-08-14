@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -49,13 +50,36 @@ public class AccountFileRepository implements AccountRepository {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
+    /** seed 管理员默认插件（RFC 20260814：owner 拥有受控插件 trading/project）。 */
+    private static final List<String> SEED_OWNER_PLUGINS =
+            List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
+
     @PostConstruct
     public void init() {
         if (!Files.exists(accountsPath())) {
-            log.info("账号文件不存在，预置 seed 管理员 adai");
+            log.info("账号文件不存在，预置 seed 管理员 adai（plugins={}）", SEED_OWNER_PLUGINS);
             List<Account> seed = new ArrayList<>();
-            seed.add(new Account(Account.SEED_ADMIN_ID, Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2)));
+            seed.add(new Account(Account.SEED_ADMIN_ID, Account.ROLE_ADMIN, true,
+                    LocalDate.of(2026, 8, 2), SEED_OWNER_PLUGINS));
             writeAll(seed);
+            return;
+        }
+        // 老文件迁移（RFC 20260814）：seed admin 若 plugins 为空 → 补默认（owner 必持有受控插件）。
+        // 幂等：正常后 findById 即非空，后续启动不再改动。
+        List<Account> accounts = findAll();
+        boolean changed = false;
+        List<Account> normalized = new ArrayList<>();
+        for (Account a : accounts) {
+            if (Account.SEED_ADMIN_ID.equals(a.userId()) && a.plugins().isEmpty()) {
+                normalized.add(new Account(a.userId(), a.role(), a.enabled(), a.createdAt(), SEED_OWNER_PLUGINS));
+                changed = true;
+                log.info("迁移：seed admin adai 补默认插件 {}", SEED_OWNER_PLUGINS);
+            } else {
+                normalized.add(a);
+            }
+        }
+        if (changed) {
+            writeAll(normalized);
         }
     }
 

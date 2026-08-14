@@ -10,12 +10,12 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * RecordToTaskLinker — R2：domain=project 记录自动转任务联动。
+ * RecordToTaskLinker — R2：记录自动转待办联动（通用化，不限 domain）。
  * <p>
  * {@code RecordController.handleStatem} 保存记录后 best-effort 调用（失败不阻塞记录保存，
- * 同 memory persist 降级原则）。触发条件（方案 B，阿呆 2026-08-13 选型）：
+ * 同 memory persist 降级原则）。触发条件（方案 B 通用化，RFC 20260814 D1）：
  * <pre>
- *   记录转任务 ⇔ domain=project AND intent=log AND 无排除标签(#备忘/#想法) AND actionable=true
+ *   记录转待办 ⇔ intent=log AND actionable=true AND 非空摘要 AND 无排除标签(#备忘/#想法)
  * </pre>
  * 幂等：同 {@code sourceRecordId} 已有任务则跳过（防重补/重复输入刷屏看板）。
  */
@@ -39,17 +39,21 @@ public class RecordToTaskLinker {
     }
 
     /**
-     * 尝试把记录转为任务。
+     * 尝试把记录转为待办（通用化：任何 domain 的可执行记录都转）。
      *
      * @return 生成的 taskId；不满足触发条件或已存在（幂等）时返回 null
      */
-    public String link(String userId, String recordId, String domain, String intent,
+    public String link(String userId, String recordId, String intent,
                        List<String> tags, String title, String content, boolean actionable) {
         try {
-            if (!"project".equals(domain)) return null;
             if (!"log".equals(intent)) return null;
             if (!actionable) {
                 log.info("R2 跳过：非 actionable（陈述/备忘） | recordId={}", recordId);
+                return null;
+            }
+            // 误转保护（RFC D1）：AI 未产出有效摘要（title 空）→ 不转，防垃圾待办
+            if (title == null || title.isBlank()) {
+                log.info("R2 跳过：记录无有效摘要（title 空） | recordId={}", recordId);
                 return null;
             }
             // 手动挡：排除标签（tags 可能带/不带 #，content 原文兜底）

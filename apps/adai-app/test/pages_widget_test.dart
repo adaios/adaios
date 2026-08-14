@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:adai_app/services/api_service.dart';
+import 'package:adai_app/pages/launcher_page.dart';
 import 'package:adai_app/pages/memory_page.dart';
 import 'package:adai_app/pages/timeline_page.dart';
 import 'package:adai_app/pages/search_page.dart';
@@ -359,6 +360,47 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('阿呆'), findsOneWidget);
       expect(find.textContaining('无法加载个人档案'), findsNothing);
+    });
+  });
+
+  group('LauncherPage 插件门控（RFC 20260814 T2.9）', () {
+    Future<void> pumpLauncher(WidgetTester tester, List<String> plugins) async {
+      final b = _Backend();
+      b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
+      b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
+      b.handlers['/api/v1/timeline'] = (_) async => _json([]);
+      b.handlers['/api/v1/memory/count'] = (_) async => _json({'count': 0});
+      b.handlers['/api/v1/me/plugins'] = (_) async => _json(plugins);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: LauncherPage(api: _apiFor(b), onNavigateBack: () {})),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('无插件用户：隐藏交易/阿呆系统，基础服务常驻', (tester) async {
+      await pumpLauncher(tester, []);
+
+      expect(find.text('交易'), findsNothing, reason: '无 trading 插件 → 隐藏交易入口');
+      expect(find.text('阿呆系统'), findsNothing, reason: '无 project 插件 → 隐藏阿呆系统入口');
+      expect(find.text('任务'), findsOneWidget, reason: '任务=待办=基础服务，人人都有');
+      expect(find.text('关于我'), findsOneWidget);
+      expect(find.text('脑瓜子正在装...'), findsOneWidget);
+      expect(find.text('时间都去哪了'), findsOneWidget);
+    });
+
+    testWidgets('adai 全插件用户：显示交易与阿呆系统', (tester) async {
+      await pumpLauncher(tester, ['trading', 'project']);
+
+      expect(find.text('交易'), findsOneWidget);
+      expect(find.text('阿呆系统'), findsOneWidget);
+      expect(find.text('任务'), findsOneWidget);
+    });
+
+    testWidgets('只开 project 插件：有阿呆系统无交易', (tester) async {
+      await pumpLauncher(tester, ['project']);
+
+      expect(find.text('阿呆系统'), findsOneWidget);
+      expect(find.text('交易'), findsNothing);
     });
   });
 }

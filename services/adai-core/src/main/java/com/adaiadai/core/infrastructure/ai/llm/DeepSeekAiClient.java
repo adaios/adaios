@@ -104,7 +104,7 @@ public class DeepSeekAiClient implements AiClient {
         }
         try {
             // 生成语义：自定义 system 引导正文格式，无 JSON 摘要指令；0.7 temp + 2048 tokens 适合结构化正文
-            String body = buildSimpleBody(contextPackage.prompt(), 2048, 0.7, systemPrompt);
+            String body = buildSimpleBody(contextPackage.prompt(), 8192, 0.7, systemPrompt);
             String content = sendAndParse(body, TIMEOUT);
             log.info("[DeepSeek] generate 响应 | 长度={}", content.length());
             return content;
@@ -133,7 +133,8 @@ public class DeepSeekAiClient implements AiClient {
                     只需返回一个词：ask 或 log。
                     输入：%s
                     结果：""".formatted(content);
-            String body = buildSimpleBody(prompt, 50, 0.3);
+            // v4-pro 推理模型：50 tokens 会被思维链吃满→content 空（08-14 连调实锤）→ 提到 512
+            String body = buildSimpleBody(prompt, 512, 0.3);
             String result = sendAndParse(body, Duration.ofSeconds(15)).strip().toLowerCase();
             if (result.contains("ask")) return "ask";
             return "log";
@@ -189,10 +190,11 @@ public class DeepSeekAiClient implements AiClient {
      */
     private String buildAnalysisRequestBody(ContextPackage ctx) throws Exception {
         if ("brief".equals(ctx.scene())) {
-            return buildSimpleBody(ctx.prompt(), 1024, 0.7,
+            return buildSimpleBody(ctx.prompt(), 4096, 0.7,
                     "你是阿呆的个人 AI 助手。用中文回复，语气温暖。生成温暖的问候语。不要输出 JSON。不要使用 emoji 和 unicode 转义码。");
         }
-        return buildSimpleBody(ctx.prompt(), 1024, 0.3);
+        // v4-pro 推理模型思维链长：1024 会吃满致 content 空（08-15 连调实锤理解降级）→ 8192
+        return buildSimpleBody(ctx.prompt(), 8192, 0.3);
     }
 
     /**
@@ -206,7 +208,7 @@ public class DeepSeekAiClient implements AiClient {
     private String buildChatRequestBody(ContextPackage ctx) throws Exception {
         var root = MAPPER.createObjectNode();
         root.put("model", model);
-        root.put("max_tokens", 4096);
+        root.put("max_tokens", 8192);
         root.put("temperature", 0.7);
 
         var messages = MAPPER.createArrayNode();
@@ -347,7 +349,8 @@ public class DeepSeekAiClient implements AiClient {
         return MAPPER.writeValueAsString(root);
     }
 
-    private String parseChatCompletion(String responseBody) throws Exception {
+    /** 包级可见：供 DeepSeekAiClientTest 直接测解析（reasoning_content 兜底回归）。 */
+    String parseChatCompletion(String responseBody) throws Exception {
         JsonNode root = MAPPER.readTree(responseBody);
 
         // 检查 API 错误
@@ -365,6 +368,12 @@ public class DeepSeekAiClient implements AiClient {
 
         String content = choices.get(0).path("message").path("content").asText("");
         if (content.isBlank()) {
+            // deepseek-v4-pro 是推理模型：先写 reasoning_content（思维链）再写 content（最终答案）。
+            // max_tokens 被思维链吃满时 content 空、finish_reason=length（08-14/15 连调实锤）。
+            // 注意：reasoning_content 是思考过程不是答案，不能回退当结果——喂给 JSON 解析器会污染。
+            // 正解是提高各路径 max_tokens 让思维链 + 答案都落盘；此处仍报"空内容"走 sendAndParse 重试。
+            String reasoning = choices.get(0).path("message").path("reasoning_content").asText("");
+            log.warn("[DeepSeek] content 为空（reasoning={} 字符）——疑似 max_tokens 被思维链吃满", reasoning.length());
             throw new RuntimeException("DeepSeek API 返回空内容");
         }
 

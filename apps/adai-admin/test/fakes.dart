@@ -67,6 +67,14 @@ class FakeAccountStore implements AccountStore {
   }
 
   @override
+  Future<String?> setPlugins(String userId, List<String> plugins) async {
+    final idx = _accounts.indexWhere((a) => a.userId == userId);
+    if (idx < 0) return '账号不存在：$userId';
+    _accounts[idx].plugins = List.of(plugins);
+    return null;
+  }
+
+  @override
   Future<String?> delete(String userId) async {
     if (userId == AccountStore.protectedAdminId) return '内置管理员不可删除';
     _accounts.removeWhere((a) => a.userId == userId);

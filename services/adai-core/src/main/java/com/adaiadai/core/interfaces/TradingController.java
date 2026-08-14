@@ -6,6 +6,8 @@ import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.infrastructure.storage.StorageException;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
@@ -22,6 +24,7 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,11 +40,14 @@ public class TradingController {
 
     private final TradingAppService tradingAppService;
     private final TradingReviewAppService reviewAppService;
+    private final PluginService pluginService;
 
     public TradingController(TradingAppService tradingAppService,
-                             TradingReviewAppService reviewAppService) {
+                             TradingReviewAppService reviewAppService,
+                             PluginService pluginService) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -135,10 +141,14 @@ public class TradingController {
      * 尊重 os/ 目录独立性：adai-core 只写入 99-inbox/，不做自动入库。
      */
     @PostMapping("/reviews/{date}/promote")
-    public ResponseEntity<PromoteResponse> promoteToInbox(
+    public ResponseEntity<?> promoteToInbox(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable LocalDate date,
             @RequestBody PromoteRequest request) {
+        // RFC 20260814：promote 写入 os/trading-os/99-inbox（共享知识库）→ 仅启用 trading 插件用户可用
+        if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法反哺知识"));
+        }
         String reviewContent = reviewAppService.getReview(userId, date);
         if (reviewContent == null || reviewContent.isBlank()) {
             return ResponseEntity.notFound().build();

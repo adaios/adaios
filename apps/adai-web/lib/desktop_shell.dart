@@ -22,33 +22,69 @@ class DesktopShell extends StatefulWidget {
   /// 切换账号回调（AdaiWebApp 提供：push 选号页 → 选定后重建整树）。
   final VoidCallback? onSwitchAccount;
 
-  const DesktopShell({super.key, required this.userId, this.onSwitchAccount});
+  /// 测试注入：覆盖内部 ApiService（默认按 userId 创建）。
+  final ApiService? api;
+
+  const DesktopShell({super.key, required this.userId, this.onSwitchAccount, this.api});
 
   @override
   State<DesktopShell> createState() => _DesktopShellState();
 }
 
-class _NavItem {
+/// 导航项：plugin 为空 = 基础服务常驻；trading/project = 需启用对应插件才可见（RFC 20260814）。
+class _NavEntry {
   final String label;
   final IconData icon;
-  const _NavItem(this.label, this.icon);
+  final String? plugin;
+  final Widget Function(ApiService api) pageBuilder;
+  const _NavEntry(this.label, this.icon, this.plugin, this.pageBuilder);
 }
 
 class _DesktopShellState extends State<DesktopShell> {
-  static const List<_NavItem> _items = [
-    _NavItem('对话流', Icons.chat_bubble_outline),
-    _NavItem('记忆', Icons.psychology_outlined),
-    _NavItem('时间线', Icons.calendar_month_outlined),
-    _NavItem('项目', Icons.dashboard_outlined),
-    _NavItem('任务', Icons.checklist_outlined),
-    _NavItem('交易', Icons.trending_up),
-    _NavItem('搜索', Icons.search),
-    _NavItem('档案', Icons.person_outline),
+  /// 全量模块表：项目/交易为插件域，其余为 Kernel 基础服务（对话流/记忆/时间线/任务/搜索/档案）。
+  static final List<_NavEntry> _allEntries = [
+    _NavEntry('对话流', Icons.chat_bubble_outline, null, (api) => FeedPage(api: api)),
+    _NavEntry('记忆', Icons.psychology_outlined, null, (api) => MemoryPage(api: api)),
+    _NavEntry('时间线', Icons.calendar_month_outlined, null, (api) => TimelinePage(api: api)),
+    _NavEntry('项目', Icons.dashboard_outlined, 'project', (api) => ProjectPage(api: api)),
+    _NavEntry('任务', Icons.checklist_outlined, null, (api) => TaskPage(api: api)),
+    _NavEntry('交易', Icons.trending_up, 'trading', (api) => TradingPage(api: api)),
+    _NavEntry('搜索', Icons.search, null, (api) => SearchPage(api: api)),
+    _NavEntry('档案', Icons.person_outline, null, (api) => ProfilePage(api: api)),
   ];
+
+  /// 启用插件（RFC 20260814）：导航渲染 / IndexedStack / _buildPage 共用同一可见列表。
+  Set<String> _plugins = {};
+
+  List<_NavEntry> get _items =>
+      _allEntries.where((e) => e.plugin == null || _plugins.contains(e.plugin)).toList();
 
   int _current = 0;
   final Set<int> _visited = {0}; // Feed 默认已访问
-  late final ApiService _api = ApiService(userId: widget.userId);
+  late final ApiService _api = widget.api ?? ApiService(userId: widget.userId);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlugins();
+  }
+
+  /// 拉取当前用户启用插件；失败保守只显基础服务（无插件默认），核心功能仍可用。
+  Future<void> _loadPlugins() async {
+    try {
+      final plugins = await _api.getMyPlugins();
+      if (!mounted) return;
+      setState(() {
+        _plugins = plugins.toSet();
+        if (_current >= _items.length) {
+          _current = 0;
+          _visited.add(0);
+        }
+      });
+    } catch (_) {
+      // 插件拉取失败：保持空列表（仅基础服务），不阻塞壳渲染
+    }
+  }
 
   void _select(int i) {
     setState(() {
@@ -57,26 +93,7 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
-  Widget _buildPage(int i) {
-    switch (i) {
-      case 0:
-        return FeedPage(api: _api);
-      case 1:
-        return MemoryPage(api: _api);
-      case 2:
-        return TimelinePage(api: _api);
-      case 3:
-        return ProjectPage(api: _api);
-      case 4:
-        return TaskPage(api: _api);
-      case 5:
-        return TradingPage(api: _api);
-      case 6:
-        return SearchPage(api: _api);
-      default:
-        return ProfilePage(api: _api);
-    }
-  }
+  Widget _buildPage(int i) => _items[i].pageBuilder(_api);
 
   @override
   Widget build(BuildContext context) {

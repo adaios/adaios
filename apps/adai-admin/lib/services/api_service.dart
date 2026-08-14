@@ -114,12 +114,13 @@ class ApiService {
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  /// `PATCH /api/v1/accounts/{userId}` body `{enabled?, role?}` → 200 / 400 / 404。
+  /// `PATCH /api/v1/accounts/{userId}` body `{enabled?, role?, plugins?}` → 200 / 400 / 404。
   Future<Account> updateAccount(String userId,
-      {bool? enabled, String? role}) async {
+      {bool? enabled, String? role, List<String>? plugins}) async {
     final body = <String, dynamic>{
       'enabled': ?enabled,
       'role': ?role,
+      'plugins': ?plugins,
     };
     final resp = await _send('PATCH', '/api/v1/accounts/$userId', body: body);
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);

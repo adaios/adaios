@@ -90,6 +90,25 @@ class _AccountsPageState extends State<AccountsPage> {
     await _load();
   }
 
+  /// 插件开关（RFC 20260814）：trading/project 勾选 → PATCH 全量 plugins。
+  Future<void> _togglePlugin(Account account, String plugin, bool on) async {
+    final plugins = [...account.plugins];
+    if (on && !plugins.contains(plugin)) {
+      plugins.add(plugin);
+    } else if (!on) {
+      plugins.remove(plugin);
+    }
+    final error = await _store.setPlugins(account.userId, plugins);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        _snack(error, AppColors.darkOrange),
+      );
+      return;
+    }
+    await _load();
+  }
+
   Future<void> _deleteAccount(Account account) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -235,7 +254,7 @@ class _AccountsPageState extends State<AccountsPage> {
                     color: AppColors.darkGrey1,
                   )),
               SizedBox(height: 2),
-              Text('账号列表 · 建号（无口令）· 启用/禁用 · 删除',
+              Text('账号列表 · 建号（无口令）· 启用/禁用 · 插件开关 · 删除',
                   style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
             ],
           ),
@@ -468,6 +487,7 @@ class _AccountsPageState extends State<AccountsPage> {
             ),
           if (!isProtected)
             Switch(
+              key: ValueKey('enabled-${account.userId}'),
               value: account.enabled,
               activeTrackColor: AppColors.darkGreen.withValues(alpha: 0.4),
               activeThumbColor: AppColors.darkGreen,
@@ -500,8 +520,35 @@ class _AccountsPageState extends State<AccountsPage> {
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6),
           ),
         ]),
+        // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/project
+        const SizedBox(height: 10),
+        Row(children: [
+          const Text('插件',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          const SizedBox(width: 8),
+          _pluginSwitch(account, 'trading', '交易'),
+          const SizedBox(width: 12),
+          _pluginSwitch(account, 'project', '项目'),
+        ]),
       ]),
     );
+  }
+
+  Widget _pluginSwitch(Account account, String plugin, String label) {
+    final enabled = account.plugins.contains(plugin);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(label,
+          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+      const SizedBox(width: 4),
+      Switch(
+        key: ValueKey('plugin-${account.userId}-$plugin'),
+        value: enabled,
+        activeTrackColor: AppColors.darkOrange.withValues(alpha: 0.4),
+        activeThumbColor: AppColors.darkOrange,
+        inactiveThumbColor: AppColors.darkGrey5,
+        onChanged: (v) => _togglePlugin(account, plugin, v),
+      ),
+    ]);
   }
 
   String _formatDate(DateTime dt) {

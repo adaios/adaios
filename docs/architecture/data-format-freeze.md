@@ -217,11 +217,13 @@ lastUpdated: 2026-08-07T09:00:00
   "userId" : "adai",
   "role" : "admin",
   "enabled" : true,
-  "createdAt" : [ 2026, 8, 2 ]
+  "createdAt" : "2026-08-02",
+  "plugins" : [ "trading", "project" ]
 } ]
 ```
 
-- `createdAt` 为 `LocalDate`，**序列化为 `[年, 月, 日]` 数组**（未禁用 WRITE_DATES_AS_TIMESTAMPS）
+- `createdAt` 为 `LocalDate`，序列化为 **ISO 字符串**（freeze #3：禁用 `WRITE_DATES_AS_TIMESTAMPS`，读取兼容旧 `[年, 月, 日]` 数组）
+- `plugins`（RFC 20260814 Domain=插件模型，v3.18）：启用插件名列表，仅 `trading`/`project`；老账号无该字段 → 空（只有基础服务）；seed admin `adai` 老文件无 plugins → 启动迁移补 `["trading","project"]`（幂等）
 - 首次启动 seed 管理员 `adai`
 
 ### 2.11 任务 `project/tasks/`

@@ -12,11 +12,15 @@ import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
@@ -27,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -84,9 +89,15 @@ class RecordControllerTest {
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
         memoryService = new MemoryService(fileStorage);
         SearchService searchService = new SearchService(recordRepository);
+        // 插件服务：默认授予全插件（保持既有行为；D5 domain 收敛在 gateDomain 单测覆盖）
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findById(any())).thenReturn(Optional.of(
+                new Account("default", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
+                        List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT))));
+        PluginService pluginService = new PluginService(accounts, new PluginRegistry());
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
-                memoryService, cardRepository, List.of(), List.of(), searchService
+                memoryService, cardRepository, List.of(), List.of(), searchService, pluginService
         );
         RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
 
@@ -99,7 +110,8 @@ class RecordControllerTest {
                 cardRepository,
                 memoryService,
                 retryService,
-                mock(RecordToTaskLinker.class)
+                mock(RecordToTaskLinker.class),
+                pluginService
         );
 
         return MockMvcBuilders.standaloneSetup(controller).build();
@@ -418,7 +430,8 @@ class RecordControllerTest {
                 mock(CardFileRepository.class),
                 mem,
                 retry,
-                mock(RecordToTaskLinker.class));
+                mock(RecordToTaskLinker.class),
+                mock(PluginService.class));
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 

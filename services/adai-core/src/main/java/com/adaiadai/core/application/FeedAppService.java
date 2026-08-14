@@ -6,6 +6,8 @@ import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.kernel.market.MarketData;
 import com.adaiadai.core.kernel.market.MarketDataSource;
 import com.adaiadai.core.kernel.memory.Memory;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -38,17 +40,20 @@ public class FeedAppService {
     private final CardFileRepository cardRepository;
     private final MarketDataSource marketDataSource;
     private final MarketPushRepository pushRepository;
+    private final PluginService pluginService;
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
                           CardFileRepository cardRepository,
                           MarketDataSource marketDataSource,
-                          MarketPushRepository pushRepository) {
+                          MarketPushRepository pushRepository,
+                          PluginService pluginService) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
         this.marketDataSource = marketDataSource;
         this.pushRepository = pushRepository;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -117,11 +122,14 @@ public class FeedAppService {
             allEntries.add(toActionEntry(m));
         }
 
-        // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
-        allEntries.addAll(buildMarketEntries());
-
-        // Phase 2 主动推送：当日持仓异动推送（MarketAlertService 定时落盘，按日读取）
-        allEntries.addAll(buildPushEntries(userId, queryDate));
+        // 行情相关条目（market 行情条 / push 异动推送）只注入启用 trading 插件的用户
+        // （RFC 20260814 T2.6：无 trading 插件的用户 Feed 不出现行情卡）
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
+            allEntries.addAll(buildMarketEntries());
+            // Phase 2 主动推送：当日持仓异动推送（MarketAlertService 定时落盘，按日读取）
+            allEntries.addAll(buildPushEntries(userId, queryDate));
+        }
 
         allEntries.sort(Comparator.comparing(e -> e.time));
         // 核心条目（record/card）分页；附加条目（ai_note/action/market）只在最新页返回。

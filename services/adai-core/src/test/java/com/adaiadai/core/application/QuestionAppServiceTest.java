@@ -6,6 +6,7 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -47,7 +48,11 @@ class QuestionAppServiceTest {
         recordRepository = mock(RecordRepository.class);
         memoryService = mock(MemoryService.class);
         aiClient = mock(AiClient.class);
-        service = new QuestionAppService(contextEngine, cardRepository, recordRepository, memoryService, aiClient);
+        PluginService pluginService = mock(PluginService.class);
+        // D5 gateDomain 透传原值（本测试不覆盖 domain 收敛）
+        when(pluginService.gateDomain(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        service = new QuestionAppService(contextEngine, cardRepository, recordRepository, memoryService, aiClient,
+                pluginService);
 
         when(contextEngine.compose(any(), any(), any(), any())).thenReturn(mock(ContextPackage.class));
         CardRecord existing = new CardRecord(

@@ -386,6 +386,18 @@ class ApiService {
     return list.map((e) => e.toString()).toList();
   }
 
+  /// 当前用户启用插件列表（RFC 20260814 Domain=插件模型；返回如 ["trading","project"]，
+  /// 新用户为空 → 前端按此显隐插件模块：交易/阿呆系统）。基础服务模块不依赖此列表。
+  Future<List<String>> getMyPlugins() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/me/plugins'),
+      headers: _headers,
+    );
+    _check(resp);
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
+    return list.map((e) => e.toString()).toList();
+  }
+
   // ── 任务 API ──
 
   /// 获取任务列表。

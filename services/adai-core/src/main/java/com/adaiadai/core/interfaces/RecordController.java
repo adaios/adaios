@@ -12,6 +12,7 @@ import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -49,6 +50,7 @@ public class RecordController {
     private final MemoryService memoryService;
     private final RecordRetryService recordRetryService;
     private final RecordToTaskLinker recordToTaskLinker;
+    private final PluginService pluginService;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
@@ -57,7 +59,8 @@ public class RecordController {
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
                             RecordRetryService recordRetryService,
-                            RecordToTaskLinker recordToTaskLinker) {
+                            RecordToTaskLinker recordToTaskLinker,
+                            PluginService pluginService) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
         this.understandingService = understandingService;
@@ -66,6 +69,7 @@ public class RecordController {
         this.memoryService = memoryService;
         this.recordRetryService = recordRetryService;
         this.recordToTaskLinker = recordToTaskLinker;
+        this.pluginService = pluginService;
     }
 
     @PostMapping
@@ -162,7 +166,8 @@ public class RecordController {
             understanding = understandingService.composeAndUnderstand(userId, "note", record).understanding();
             tags = understanding.tags();
             summary = understanding.summary();
-            domain = understanding.domain() != null ? understanding.domain() : "life";
+            // D5（RFC 20260814）：AI 判定的 domain 若属未启用插件 → 收敛 life（无插件用户不标交易/项目）
+            domain = pluginService.gateDomain(userId, understanding.domain());
         } catch (Exception e) {
             log.debug("AI tagging skipped for statement: {}", e.getMessage());
         }
@@ -214,10 +219,10 @@ public class RecordController {
         );
         recordRepository.save(userId, enriched);
 
-        // R2：domain=project 记录自动转任务（方案 B：默认转 + AI actionable 挡 + 排除标签手动挡）。
+        // R2：记录自动转待办（通用化，RFC 20260814 D1——任何 domain 的可执行记录都转）。
         // best-effort：失败不阻塞记录返回。
         String taskTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
-        recordToTaskLinker.link(userId, record.id(), domain, "log", enriched.tags(),
+        recordToTaskLinker.link(userId, record.id(), "log", enriched.tags(),
                 taskTitle, enriched.content(),
                 understanding != null && understanding.actionable());
 

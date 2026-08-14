@@ -18,6 +18,10 @@ abstract class AccountStore {
   /// 返回 null 表示成功；返回字符串为失败原因。
   Future<String?> setEnabled(String userId, bool enabled);
 
+  /// 设置账号插件（RFC 20260814：trading/project 开关）。
+  /// 返回 null 表示成功；返回字符串为失败原因。
+  Future<String?> setPlugins(String userId, List<String> plugins);
+
   /// 删除账号。内置管理员不可删除。
   /// 返回 null 表示成功；返回字符串为失败原因。
   Future<String?> delete(String userId);
@@ -52,6 +56,16 @@ class AccountApiStore implements AccountStore {
   Future<String?> setEnabled(String userId, bool enabled) async {
     try {
       await _api.updateAccount(userId, enabled: enabled);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    }
+  }
+
+  @override
+  Future<String?> setPlugins(String userId, List<String> plugins) async {
+    try {
+      await _api.updateAccount(userId, plugins: plugins);
       return null;
     } on ApiException catch (e) {
       return e.message;

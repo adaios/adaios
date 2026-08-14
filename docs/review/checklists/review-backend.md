@@ -56,6 +56,9 @@
 | B28 | 装饰器/代理新增接口方法必须同步实现（AiClient 加 generate 后 LoggingAiClient/TestAiClient 均需同步）| 本次已同步 ✓；`LoggingAiClient.generate` 未记录 systemPrompt（P3 #231，2026-08-12）|
 | B29 | 防御性回退禁止用 `LocalDateTime.now()` 推导持久化字段（G2 只 grep `LocalDate.now()|Instant.now()` 漏了它）| `parseDateTime` 缺 updatedAt 回退 now() → 旧卡永久归"今天" Feed（P1 #206，2026-08-12）|
 | B30 | 「生成/统计资源」类 Gradle 任务必须声明 `inputs.dir`（只声明 outputs.dir 时增量构建 up-to-date 判定不因源变化失效、生成物陈旧）| generateEndpointsFile 缺 inputs.dir → 增量构建端点数陈旧（P2 #240，2026-08-12）|
+| B31 | 启动迁移/补全字段的逻辑必须枚举「管理端写路径能否把该字段显式置空」——若 PATCH 允许空值，迁移不得用 `isEmpty()` 判定补全（需读原始字段存在性），否则构成「删了又出现」（K28 删除残留镜像）| 迁移补默认 vs PATCH 显式清空 adai 插件冲突（P1-4，2026-08-15）|
+| B32 | 收敛/门控类改动必须 grep 出所有持久化目标字段的写入口逐一验证，不能只测主入口（B23 扩展）——方法：`grep -rn "domain =.*understanding.domain()"` 枚举未收敛点 | D5 收敛漏 `RecordRetryService.processRecord` 重补路径（S-3，2026-08-15）|
+| B33 | 新增功能使「私人记录内容」以派生形态（任务/摘要/标签）进入**已跟踪**目录时，需评估该目录 gitignore 覆盖是否仍成立 + `git status --short data/` 看新 `data/{userId}/` 目录是否裸露 | R2 通用化后生活待办流入 git 跟踪的 project/tasks，非 owner 用户目录裸露（P1-3，2026-08-15）|
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。

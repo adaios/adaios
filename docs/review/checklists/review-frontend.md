@@ -50,6 +50,9 @@
 | F27 | error/占位卡重试路径必须与原始创建路径同构：图片卡重试必须重走 uploadImage 并携带原始字节，禁止回退文本 _createNewCard 降级 | 上传失败占位卡重试降级为文本记录（P1 #235，2026-08-12）|
 | F28 | `_client` vs 全局 `http.*` 注入收敛后 grep `http\.(get|post|put|patch|delete)` 全文件确认零残留，否则 MockClient 注入在未收敛方法静默失效 | adai-web updateIdentity/updateTask 仍 http.put（P2 #243，2026-08-12）|
 | F29 | 列表整体重建路径（`_loadFeed`/`_refreshFeed`/`_loadMore` 覆盖替换 `_cards`）必须校验 `_activeCardId` 仍在新列表中、不在则静默退出对话态——活动卡被挤出后残留引用是 build `activeCard!` 空值崩溃源；build 侧另需 null 兜底（双保险）| 对话态发媒体 `_loadFeed` 挤出活动卡 → `_buildActiveLayout(activeCard!)` 崩溃（P0-1，2026-08-14）|
+| F30 | 动态过滤列表（按异步结果增删项）不得用裸位置索引驱动选中态/已访问集——`_items` 从 6 变 8 且中部插入时，`_current`/`_visited`/`selectedIndex` 必须按稳定标识（label/key）重解析，只加越界守卫不够 | adai-web 插件加载后 `_current` 索引漂移 → 当前页静默跳模块（P1-5，2026-08-15）|
+| F31 | 门控/元数据类请求（如 `/me/plugins`）不得与内容数据请求合并进同一致命 `Future.wait`——门控失败应保守降级（默认基础服务）且不拖垮身份/标签/Feed 等无关展示 | launcher `getMyPlugins` 并入 Future.wait → 插件接口失败整页降级空数据（P1-6，2026-08-15）|
+| F32 | 插件/模块显隐 widget 测试必须覆盖「失败降级」与「单一插件」两个分支（只测 `[]`/全量/单 project 不够）| launcher 门控测试缺 `['trading']` 与 500 降级（P3，2026-08-15）|
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。

@@ -2,19 +2,24 @@ package com.adaiadai.core.kernel.context.engine;
 
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -23,6 +28,9 @@ import static org.mockito.Mockito.when;
  * ContextEngine 单元测试。
  * 覆盖：领域场景路由（内容关键词 → trading/project/life），
  * 保证交易知识源在交易内容时被触发（回归：之前 scene 恒为 note/question，知识从不注入）。
+ * <p>
+ * 插件门控（RFC 20260814 第二步）：知识源/贡献者按账号 enabledPlugins 注入；
+ * D5 domain 判定只在启用插件间进行——无插件用户含交易词 → 一律 life。
  */
 class ContextEngineTest {
 
@@ -32,6 +40,7 @@ class ContextEngineTest {
     private final MemoryService memory = mock(MemoryService.class);
     private final CardFileRepository cards = mock(CardFileRepository.class);
     private final SearchService search = mock(SearchService.class);
+    private final AccountRepository accounts = mock(AccountRepository.class);
 
     /** 记录 KnowledgeSource.enrich() 收到的 scene，验证领域路由。 */
     static class RecordingKnowledgeSource implements KnowledgeSource {
@@ -49,14 +58,26 @@ class ContextEngineTest {
         @Override public String enrich(String userId, String identityRef, ContentRecord record) { this.enriched = true; return "## 交易场景上下文\n"; }
     }
 
+    private PluginService pluginService() {
+        return new PluginService(accounts, new PluginRegistry());
+    }
+
+    /** 授权某用户启用插件（默认空 = 只有基础服务）。 */
+    private void grantPlugins(String userId, String... plugins) {
+        when(accounts.findById(userId)).thenReturn(Optional.of(
+                new Account(userId, Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of(plugins))));
+    }
+
     private ContextEngine newEngine(RecordingKnowledgeSource knowledge, RecordingContributor contributor) {
         when(identity.load(any())).thenReturn(Optional.empty());
         when(records.findAll(any())).thenReturn(List.of());
         when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
+        // 路由测试默认给全插件（保持"交易词→trading"既有行为）
+        grantPlugins("default", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
         return new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(contributor), List.of(knowledge), search);
+                List.of(contributor), List.of(knowledge), search, pluginService());
     }
 
     private ContentRecord record(String content) {
@@ -112,5 +133,85 @@ class ContextEngineTest {
 
         assertEquals("trading", knowledge.receivedScene, "复盘内容应路由到 trading 场景");
         assertEquals(true, contributor.enriched, "trading 贡献者应被触发（复盘注入交易知识）");
+    }
+
+    // ── 插件门控（RFC 20260814 第二步）──
+
+    @Test
+    void tradingKnowledge_pluginGated_onlyEnabledUserInjected() {
+        // 插件门控取代第一步 owner 过滤：无 trading 插件用户不注入交易知识；启用后注入。
+        KnowledgeSource tradingKnowledge = new KnowledgeSource() {
+            @Override public String name() { return "trading"; }
+            @Override public String globalContext(String userId) { return "## 交易系统知识\n"; }
+            @Override public String enrich(String userId, String scene) { return "## 交易场景知识\n"; }
+        };
+        grantPlugins("alice"); // 无插件
+        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(tradingKnowledge), search, pluginService());
+
+        String nonOwnerCtx = engine.compose("alice", "note", record("今天买了立昂微，持仓 200 股"), null).prompt();
+        assertFalse(nonOwnerCtx.contains("交易系统知识"), "无 trading 插件用户不应注入交易知识");
+        assertFalse(nonOwnerCtx.contains("交易场景知识"), "无插件用户场景知识也不注入");
+
+        String ownerCtx = engine.compose("adai", "note", record("今天买了立昂微，持仓 200 股"), null).prompt();
+        assertTrue(ownerCtx.contains("交易系统知识"), "启用 trading 插件用户应注入交易知识");
+    }
+
+    @Test
+    void lifeKnowledge_notGated() {
+        // life 知识常驻不门控——无插件用户也注入（无 adai 私有所知内容）
+        KnowledgeSource lifeKnowledge = new KnowledgeSource() {
+            @Override public String name() { return "life"; }
+            @Override public String globalContext(String userId) { return "## 生活系统\n"; }
+            @Override public String enrich(String userId, String scene) { return ""; }
+        };
+        grantPlugins("alice");
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(lifeKnowledge), search, pluginService());
+
+        String ctx = engine.compose("alice", "note", record("今天去公园散步了"), null).prompt();
+        assertTrue(ctx.contains("生活系统"), "life 知识非门控，任何用户可注入");
+    }
+
+    @Test
+    void noPluginUser_tradingContent_judgedAsLife_noKnowledgeNoContributor() {
+        // D5：无插件用户 → 交易词不判 trading，一律 life；知识/贡献者不注入，prompt 不含 trading domain
+        RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();
+        RecordingContributor contributor = new RecordingContributor();
+        grantPlugins("alice"); // 无插件
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(contributor), List.of(knowledge), search, pluginService());
+
+        String prompt = engine.compose("alice", "note", record("今天买了立昂微，持仓 200 股"), null).prompt();
+
+        assertEquals("life", knowledge.receivedScene, "无 trading 插件 → 交易词不判 trading");
+        assertFalse(contributor.enriched, "trading 贡献者不应被触发（无插件用户）");
+        assertFalse(prompt.contains("trading(交易)"), "domain 枚举不应含 trading");
+        assertFalse(prompt.contains("→ trading"), "domain 判定规则不应含 trading");
+        assertTrue(prompt.contains("life(生活)"), "domain 枚举应含 life");
+    }
+
+    @Test
+    void tradingOnlyUser_projectContent_judgedAsLife() {
+        // D5：用户只有 trading 插件 → 项目词不判 project（只在自己插件间判定）
+        RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();
+        grantPlugins("bob", PluginRegistry.PLUGIN_TRADING);
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(knowledge), search, pluginService());
+
+        engine.compose("bob", "note", record("项目 B 方向 Phase 4 的任务进度怎么样"), null);
+
+        assertEquals("life", knowledge.receivedScene, "无 project 插件 → 项目词不判 project");
     }
 }

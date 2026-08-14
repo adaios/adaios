@@ -34,6 +34,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'zhangsan');
+    // 账号卡片含插件开关后整体变高，创建按钮可能滚出可视区 → 先滚动到可见
+    await tester.ensureVisible(find.text('创建账号'));
     await tester.tap(find.text('创建账号'));
     await tester.pumpAndSettle();
 
@@ -49,6 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'alice');
+    await tester.ensureVisible(find.text('创建账号'));
     await tester.tap(find.text('创建账号'));
     await tester.pumpAndSettle();
 
@@ -59,17 +62,43 @@ void main() {
     await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
     await tester.pumpAndSettle();
 
-    // 找到 alice 账号卡片的 Switch（内置 adai 无 Switch）
-    final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-    expect(switches.length, 2); // alice / bob 各有 1 个 Switch
+    // 内置 adai 无启用开关（受保护）；alice / bob 各有 1 个启用开关 + 2 个插件开关
+    expect(find.byKey(const ValueKey('enabled-adai')), findsNothing);
+    expect(find.byKey(const ValueKey('enabled-alice')), findsOneWidget);
+    expect(find.byKey(const ValueKey('enabled-bob')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plugin-alice-trading')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plugin-alice-project')), findsOneWidget);
 
-    // 点击第一个 Switch（alice）
-    await tester.tap(find.byType(Switch).first);
+    // 点击 alice 的启用开关
+    await tester.tap(find.byKey(const ValueKey('enabled-alice')));
     await tester.pumpAndSettle();
 
     // 现在应有 2 个「禁用」标签（alice 禁用 + bob 本就禁用）
     expect(find.text('禁用'), findsNWidgets(2));
     expect(find.text('启用'), findsOneWidget); // adai 仍启用
+  });
+
+  testWidgets('插件开关：给 alice 开 trading → 状态反映（RFC 20260814）', (WidgetTester tester) async {
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
+
+    // alice 初始无插件
+    final switchWidget = tester.widget<Switch>(
+        find.byKey(const ValueKey('plugin-alice-trading')));
+    expect(switchWidget.value, isFalse);
+
+    await tester.tap(find.byKey(const ValueKey('plugin-alice-trading')));
+    await tester.pumpAndSettle();
+
+    final after = tester.widget<Switch>(
+        find.byKey(const ValueKey('plugin-alice-trading')));
+    expect(after.value, isTrue, reason: '点开关后 alice 应启用 trading 插件');
+
+    // project 开关不受影响
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
+      isFalse,
+    );
   });
 
   testWidgets('删除账号需确认，取消则保留', (WidgetTester tester) async {

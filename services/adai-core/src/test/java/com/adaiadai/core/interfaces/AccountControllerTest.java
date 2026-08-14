@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -22,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccountControllerTest {
 
     private MockMvc mvcWith(AccountRepository repo) {
-        return MockMvcBuilders.standaloneSetup(new AccountController(repo)).build();
+        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry())).build();
     }
 
     private Account seedAdmin() {
@@ -172,6 +173,90 @@ class AccountControllerTest {
 
         mvcWith(repo).perform(delete("/api/v1/accounts/ghost"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ── 插件（RFC 20260814：Account.plugins 载体 + PATCH/CREATE 控制）──
+
+    @Test
+    void createAccount_defaultPluginsEmpty() throws Exception {
+        // 新用户默认空 = 只有基础服务（无交易/项目插件）
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        mvcWith(repo).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"alice\",\"role\":\"user\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plugins.length()").value(0));
+    }
+
+    @Test
+    void createAccount_withPlugins() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        mvcWith(repo).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"alice\",\"plugins\":[\"trading\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plugins[0]").value("trading"));
+    }
+
+    @Test
+    void createAccount_invalidPlugin_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.empty());
+
+        mvcWith(repo).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"alice\",\"plugins\":[\"hacking\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchAccount_plugins() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2))));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice")
+                        .contentType("application/json")
+                        .content("{\"plugins\":[\"trading\",\"project\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plugins[0]").value("trading"))
+                .andExpect(jsonPath("$.plugins[1]").value("project"));
+    }
+
+    @Test
+    void patchAccount_pluginsUnchanged_whenNotProvided() throws Exception {
+        // PATCH 只改 enabled 时 plugins 保留原值（不清空）
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
+                        List.of("trading"))));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice")
+                        .contentType("application/json")
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.plugins[0]").value("trading"));
+    }
+
+    @Test
+    void patchAccount_invalidPlugin_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2))));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice")
+                        .contentType("application/json")
+                        .content("{\"plugins\":[\"nope\"]}"))
+                .andExpect(status().isBadRequest());
     }
 
     // ── 可用账号列表（产品端选号，仅 enabled，最小集只返回 userId）──

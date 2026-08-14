@@ -116,13 +116,13 @@ void main() {
 
     test('无 URL：saved 为 default（迁移后移除）→ 视为无效 → 强制首屏选号', () {
       final s = resolveUserSelection(urlUserId: 'default', savedUserId: 'default');
-      expect(s.userId, 'default');
+      expect(s.userId, '', reason: '无有效 userId 不再回退 default（T1.4）');
       expect(s.needsSelect, isTrue);
     });
 
     test('无 URL：无 saved → 强制首屏选号', () {
       final s = resolveUserSelection(urlUserId: 'default', savedUserId: null);
-      expect(s.userId, 'default');
+      expect(s.userId, '', reason: '无有效 userId 不再回退 default（T1.4）');
       expect(s.needsSelect, isTrue);
     });
   });

@@ -4,6 +4,10 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -20,6 +24,7 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -47,7 +52,23 @@ class TradingControllerTest {
 
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService) {
-        TradingController controller = new TradingController(tradingAppService, reviewAppService);
+        return buildMvc(tradingAppService, reviewAppService, "trading");
+    }
+
+    /** "default"用户启用插件服务的 mock（promote 门控测试用：无 trading 插件 → 403）。 */
+    private PluginService pluginService(String... plugins) {
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findById("default")).thenReturn(Optional.of(
+                new Account("default", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of(plugins))));
+        return new PluginService(accounts, new PluginRegistry());
+    }
+
+    /** 指定"default"用户的插件（promote 门控测试用：无 trading 插件 → 403）。 */
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradingReviewAppService reviewAppService,
+                             String... defaultPlugins) {
+        TradingController controller = new TradingController(tradingAppService, reviewAppService,
+                pluginService(defaultPlugins));
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -142,7 +163,8 @@ class TradingControllerTest {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
-        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class));
+        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
+                pluginService("trading"));
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -225,6 +247,21 @@ class TradingControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"note\":\"测试\",\"sections\":[\"持仓\"]}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void promoteToInbox_noTradingPlugin_403() throws Exception {
+        // RFC 20260814：promote 写入 os/trading-os/99-inbox（共享知识库）→ 无 trading 插件用户 403
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.getReview(any(), any())).thenReturn("当日复盘内容");
+        // 显式空插件（buildMvc 2 参重载默认给 trading，不能用）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review, new String[0]);
+
+        mvc.perform(post("/api/v1/trading/reviews/" + PROMOTE_TEST_DATE + "/promote")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"测试\",\"sections\":[\"持仓\"]}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value(containsString("插件未启用")));
     }
 
     @Test

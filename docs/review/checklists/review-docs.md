@@ -43,6 +43,10 @@
 | D20 | 测试数三方对拍：REVIEW 已修复区行内测试数 vs CLAUDE.md 测试状态 vs 实测 @Test 计数 | 批 J 行 302 vs 实测 300（P3 #193）|
 | D21 | 速查表反造假：前端参考 API 速查表每行——方法动词（GET/POST…）在后端 annotation 实测存在 + 返回类型在 api-spec/代码真实定义 + 前端 api_service 有对应调用 | frontend-reference 虚构 `GET /trading/trades` + TradeResponse（P1 #237，2026-08-12）|
 | D22 | api-spec changelog 声称的每个行为变化必须反向 grep 对应 § 正文（状态码/字段表）确认已同步，升版不只记 changelog | v3.14 声明 413 但 § records/media 正文仍写 400（P1 #238，2026-08-12）|
+| D23 | 新增 Controller/端点后必须同步根 + 子项目 CLAUDE.md 的「X Controller Y 端点」计数——读 `build/resources/main/META-INF/endpoints.txt` 与两处对拍（D20 扩展）| MeController 新增后 15/50 未更新为 16/51（P2-7，2026-08-15）|
+| D24 | README 索引完整性脚本须扫 `docs/reference/` 与 `docs/rfc/` 两个目录（D15 只扫 rfc/ 有盲区）| `task-plugin-model.md` 未登记即因 D15 漏扫 reference/（P1-8，2026-08-15）|
+| D25 | RFC 修订新增决策时，frontmatter 的「X 决策」计数须与正文决策表行数一致 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5（P3，2026-08-15）|
+| D26 | 重大新能力落地只同步 api-spec + freeze 不算完整闭环——feature-reference（唯一功能真相源）须补对应章节 | 插件模型全文 feature-reference 零登记（P2-8，2026-08-15）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。

@@ -8,6 +8,7 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -37,16 +38,19 @@ public class QuestionAppService {
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
     private final AiClient aiClient;
+    private final PluginService pluginService;
 
     public QuestionAppService(ContextEngine contextEngine, CardFileRepository cardRepository,
                               RecordRepository recordRepository,
                               MemoryService memoryService,
-                              AiClient aiClient) {
+                              AiClient aiClient,
+                              PluginService pluginService) {
         this.contextEngine = contextEngine;
         this.cardRepository = cardRepository;
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.aiClient = aiClient;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -88,7 +92,8 @@ public class QuestionAppService {
 
         log.info("=== 问答流程完成 | 标签={} ===", understanding.tags());
 
-        String domain = understanding.domain() != null ? understanding.domain() : "life";
+        // D5（RFC 20260814）：AI 判定的 domain 若属未启用插件 → 收敛 life
+        String domain = pluginService.gateDomain(userId, understanding.domain());
 
         // 将 AI 返回的标签写回 Record，触发 TagIndexService 更新索引
         // 只有非卡片续接（无 cardId）时才存记录，避免重复拆分
