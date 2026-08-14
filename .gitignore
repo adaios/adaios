@@ -64,6 +64,10 @@ data/*/records/
 data/*/memory/
 data/*/trading/
 
+# 任务数据（R2 记录↔任务派生，含私人待办，不提交）
+# 2026-08-15 文档治理批：P1-3 补齐（此前 data/*/project/ 漏忽略，data/adai/project 曾误提交）
+data/*/project/
+
 # AI 交互日志含完整 prompt 全文（档案/记忆/持仓/用户原文），不提交
 # 2026-08-12 deep 审核 P0 #226：新增落盘目录必须同步 .gitignore（B25 检查点）
 data/*/ai-logs/

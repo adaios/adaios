@@ -40,7 +40,6 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
-| P1-3 | **`data/*/project/` 未 gitignore + R2 通用化扩大隐私面**：`git check-ignore data/alice/project/tasks/2026/08.md` 实测未忽略（records/memory/ai-logs 均有保护、唯独 project/ 暴露）——任意私人记录派生为任务落入 git 跟踪目录 | `.gitignore` + `RecordToTaskLinker.java` | 🔴 未修（确认 project/ 是否应仅跟踪 owner + 清理 data/alice 联调残留）|
 | P1-4 | **迁移补默认 vs PATCH 显式清空冲突（「删了又出现」K28 镜像）**：`AccountFileRepository.init()` 用 `plugins().isEmpty()` 补默认，但 `PATCH /accounts/{id}` 允许显式清空 → 管理端清空被下次启动迁移推翻 | `AccountFileRepository.java:73` | 🔴 未修（PATCH 禁清 owner 插件 或 迁移读字段存在性）|
 | P1-5 | **adai-web 桌面壳插件加载后位置索引漂移，当前页静默跳模块**：`_loadPlugins` 异步，插件返回后中部插入 → `_current` 索引错位 | `desktop_shell.dart:62-83` | 🔴 未修（按稳定标识 label 重解析索引）|
 | P1-6 | **adai-app Launcher `getMyPlugins` 并入致命 `Future.wait`**：插件接口失败 → 身份/标签/计数全降级 | `launcher_page.dart:70-98` | 🔴 未修（拆出单独 try/catch）|
@@ -69,6 +68,7 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| P1-3 | **`data/*/project/` 隐私面补齐**：gitignore 加 `data/*/project/`（用户决策：data/ 数据层全部不提交），`git rm --cached` 移除误跟踪的 `data/adai/project/tasks/2026/07.md`（工作区文件保留），CLAUDE.md 目录注释同步 | ✅ 2026-08-15 |
 | S-1 | adai-web 多图 ask 同步（askBatch + 上限 3 + `_syncActiveCard`）| ✅ 2026-08-14 |
 | P0-1 + P1-1 + P1-2 | 对话态发媒体崩溃/残留错乱/部分失败问句丢（`_syncActiveCard` + `_pendingAsk`）| ✅ 2026-08-14 |
 | #169 + #257 | 问候语机械 + 测试覆盖确认出表（#14/#221/#222 已修；#234/#235 双端回归）| ✅ 2026-08-13 |

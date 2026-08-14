@@ -54,7 +54,7 @@ os/                    # Domain OS（File First：知识资产 + 领域定义）
   trading-os/          #   交易系统知识库（有独立 CLAUDE.md 和工作流；definition/ 为领域定义）
   life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪；definition/ 为领域定义）
   project-os/          #   项目管理（骨架已建立，含 git log 自举 + Status API；definition/ 为领域定义）
-data/                  # 个人数据资产（File First；除 project/ 与 identity sample 外均 gitignore 保护隐私）
+data/                  # 个人数据资产（File First；除 identity *.sample.md 模板外全部 gitignore，不提交）
   identity/            #   个人档案
   records/             #   原始记录（按年月组织）
   memory/              #   AI 理解沉淀
