@@ -48,6 +48,7 @@
 | K25 | 子项目 CLAUDE.md 对 os/ 的只读声明 vs adai-core 实际写路径（promote→99-inbox）逐项对照，防「声明只读、实际写入」漂移 | adai-core CLAUDE.md:131 声称只读但 promote 写入（P2 #223，2026-08-12）|
 | K26 | promote 脱敏后复查历史版本残留真实持仓（`git log --all --name-only -- "os/trading-os/99-inbox/*.md"` 逐版本 grep 持仓特征）；仓库若推送过远端需登记 rewrite 决策而非静默接受 | f3ca035 历史残留真实持仓（P1 #239，2026-08-12）|
 | K27 | 自动生成候选改写标点后加全角括号配对检查（每行 `（` 与 `）` 计数相等），防半修引入未闭合括号 | R35) → R35 引入未闭合 `（`（P2 #241，2026-08-12）|
+| K28 | 删除某主题记录后复查残留 + rebuild 复发：grep `data/{userId}/records/` + `memory/` 该主题关键词，确认 ①源记录全删（note/question/conversation 派生三类）②派生记忆已删 ③部署触发 rebuild 后不复发；删除操作自身也可能被沉淀为 actionable 待办（需一并清） | 2026-08-14 岗位调整残留——漏删源记录 rec_20260813_201151636 → memory rebuild 反复重新派生岗位记忆（"删了又出现"根因）+ 清理动作自身沉淀 actionable 待办 mem_20260814_102636776「删除岗位调整记录仍残留」出现在 Feed 顶部（已清）|
 
 ---
 **追加方式**：新发现知识/数据问题 → 追加一行，注明日期。
