@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | research 目录整合 | 按「个人/公司、新/旧、单仓多项目/单项目单库」前提：方法论两篇合并为《项目级 AI 上下文体系方法论》+ 公司侧研究（AI4SE/Workspace 架构/ai-native 系列等）全部移出仓库至同级独立目录 `ai-context-research/`；阿呆早期设计 `ai-context-design.md` 归位 `docs/inbox/`；3 文件初判失误复核后从 git 恢复（哈希校验一致）；CLAUDE.md 移除 research/ 说明 | 不变 |
 | 2026-08-15 | 文档治理 | RFC `20260815-docs-governance`：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负 / P3 迁移 task-log）；v1.0.0 发布顺延 | 不变 |
 | 2026-08-15 | Domain=插件模型第二步 | 插件门控全通道：Account.plugins + PluginRegistry/PluginService + ContextEngine 全量门控 + D5 domain 收敛 + `/me/plugins` + Feed/promote 门控 + 三端显隐（RFC `20260814-domain-plugin-model`）| 后端 422（+28）· app 92（+3）· web 46（+2）· admin 32（+1）|
 | 2026-08-14 | 带图 ask（多图问答）| 输入栏附图可 log/ask + 上限 3 + `POST /records/media/ask-batch` 多图一次问答 + intent 分流 + GLM 多图降级兜底；adai-web 同步（S-1）| 后端 387（+10）· app 86（+3）· web 44（+2）|

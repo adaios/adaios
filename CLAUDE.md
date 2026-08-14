@@ -240,6 +240,7 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 
 ### 当前焦点批
 - **文档治理（RFC [`20260815-docs-governance`](docs/rfc/20260815-docs-governance.md)，approved，2026-08-15）** 🔄：瘦身 + 单一事实源——新增 `docs/reference/status.md`（测试数/端点唯一真相）与 `docs/reference/change-log.md`（历史批次归档），本文件与 REVIEW 减负、P3 迁移 task-log；**v1.0.0 发布顺延**（用户决策：先治理流程，不着急功能开发）
+- **research 目录整合（2026-08-15）** ✅：方法论合并 + 公司侧研究移出仓库至同级独立目录 `ai-context-research/`（按「个人/公司、新/旧、单仓多项目/单项目单库」前提）；阿呆早期设计归位 `docs/inbox/`；仓库不再有研究目录（详见 change-log）
 - **Domain=插件模型第二步（RFC [`20260814-domain-plugin-model`](docs/rfc/20260814-domain-plugin-model.md)，2026-08-15）** ✅：插件门控全通道——Account.plugins + PluginService + ContextEngine 全量门控 + D5 domain 收敛 + `/me/plugins` + Feed/promote 门控 + 三端显隐；连调待真实第二账号验证（详情见 change-log）
 
 > **历史批次**（2026-07-18 起 50+ 批）已归档至 `docs/reference/change-log.md`；**测试数/端点数/运行环境**唯一真相见 `docs/reference/status.md`；**未修项**见 `docs/review/REVIEW.md`。
