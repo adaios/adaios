@@ -6,7 +6,7 @@ baseline: 7b0a527
 mode: deep 增量（带图 ask + 删除残留 + 图片交互批）
 ---
 
-> 2026-08-14 deep 审核（范围 `7b0a527..HEAD`，18 commits，带图 ask / 删除残留 / 图片交互批）：**P0×1 + 战略×2 + P1×2 + P2×2 + P3×14**。P0-1（对话态发媒体 `activeCard!` 空值崩溃）+ P1-1（对话态发媒体残留错乱视图）+ P1-2（部分上传失败问句静默丢）+ P2-1（端点计数 49→50）已修复出表，见已修复区；战略 S-1/S-2 与 P3 打磨项保留。
+> 2026-08-14 deep 审核（范围 `7b0a527..HEAD`，18 commits，带图 ask / 删除残留 / 图片交互批）：**P0×1 + 战略×2 + P1×2 + P2×2 + P3×14**。P0-1（对话态发媒体 `activeCard!` 空值崩溃）+ P1-1（对话态发媒体残留错乱视图）+ P1-2（部分上传失败问句静默丢）+ P2-1（端点计数 49→50）+ S-1（adai-web 多图 ask 同步）已修复出表，见已修复区；战略 S-2 与 P3 打磨项保留。
 > 2026-08-12 deep 审核（范围 `7b0a527..HEAD`，81 文件，收官批 O）：**战略×1 + P1×5 + P2×7 + P3×18**（本批自伤：候选文件括号未闭合 / frontend-reference 虚构端点 / api-spec 正文与 changelog 不同步）。P0 无；#22 反向依赖清零验证通过。
 > 2026-08-12 修复批 P：deep 新发现 31 项已清 22（战略 #234 + P1 #235-238 + P2 #240-246 + P3 14 项），#239 确认未推送远端，见已修复区。P1 当前清零。
 > 2026-08-12 收官批 O（一次清完剩余该做项）：战略 #101/#103/#177 出表 + #179 登记 v1.0.1；P2 #19/#22/#115/#228 出表；P3 顺手项 14 出表（详见已修复区）。
@@ -20,7 +20,7 @@ mode: deep 增量（带图 ask + 删除残留 + 图片交互批）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
-| 2026-08-14 | deep 增量（带图 ask + 删除残留 + 图片交互批）| 7b0a527..HEAD | 主会话（前端）+ docs/frontend agent×2（backend 卡死改人工核）| P0×1 + 战略×2 + P1×2 + P2×2 + P3×14 | 4（P0-1 + P1-1 + P1-2 + P2-1）|
+| 2026-08-14 | deep 增量（带图 ask + 删除残留 + 图片交互批）| 7b0a527..HEAD | 主会话（前端）+ docs/frontend agent×2（backend 卡死改人工核）| P0×1 + 战略×2 + P1×2 + P2×2 + P3×14 | 5（P0-1 + P1-1 + P1-2 + P2-1 + S-1）|
 | 2026-08-12 | 修复批 P（deep 新发现清理）| 7b0a527..HEAD | 主会话 + subagent×2（adai-app/adai-web）| 0 新 | 22（战略 #234 + P1 #235-238 + P2 #240-246 + P3 14 项；#239 确认未推送远端）|
 | 2026-08-12 | deep 增量（R1 AI 日志 + 图片追问 + 多账号 + CORS + 三连修）| 7aecf9d..HEAD | backend/frontend/docs/product/knowledge ×5 | P0×2 + 战略×1 + P1×8 + P2×15 + P3 若干 | 0 |
 | 2026-08-09 | deep 增量（多账号 + wasm + 数据迁移）| 7aecf9d..HEAD | backend/frontend/docs/product/knowledge ×5 | 战略×3 + P1×2 + P2×10 + P3×14 | 0 |
@@ -35,12 +35,11 @@ mode: deep 增量（带图 ask + 删除残留 + 图片交互批）
 
 ## 🔴 战略缺口（未修复）
 
-> 2026-08-12 修复批 O 已出表 #101/#103/#177（#129 批 M 已修）；deep 审核新发现 #234 已修复出表（2026-08-12 修复批 P，双端同口径）。剩余 #179。
+> 2026-08-12 修复批 O 已出表 #101/#103/#177（#129 批 M 已修）；deep 审核新发现 #234 已修复出表（2026-08-12 修复批 P，双端同口径）。2026-08-14 deep 新发现 S-1 已修复出表（adai-web 多图 ask 同步）。剩余 #179 + S-2。
 
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）+ 无鉴权选号面：`/accounts/available` 已最小化（#215 改返回 `List<String>` 纯 userId，去 role/createdAt 枚举面），但数据访问仍靠 header 注入无认证。真正收紧需引入登录体系（账号+密码+token），用户决策保持现状 | `AccountController` / `WebConfig` | 📋 v1.0.1 立项（登录体系随多账号正式开放单独做）|
-| S-1 | adai-web 无 ask-batch 对拍（契约共享 api-spec v3.17，桌面端附图文本仍纯记录，`POST /records/media/ask-batch` 能力空置）| `adai-web` | 📋 建议同步或登记 v1.0.1 差异 |
 | S-2 | 附图文本写 4 份记录（caption×3 张图 + image_qa 问句）语义重复——3 图各带 caption 会沉淀 3 条相同文本记录 + 1 条问答 | `MediaRecordAppService.askImages` + `_onSendMedia` | 📋 需产品确认 caption 归属策略 |
 
 ## 🔴 P0（隐私红线 / 数据安全）
@@ -98,6 +97,7 @@ mode: deep 增量（带图 ask + 删除残留 + 图片交互批）
 
 | # | 问题 | 修复 |
 |:-:|:-----|:-----|
+| S-1 | **2026-08-14 adai-web 多图 ask 同步（战略缺口出表）**：桌面端接入 `POST /records/media/ask-batch`——api_service 加 `askBatch` + `AskBatchResponse`（intent/answer/recordId/imageRecordIds）；`_onSendMedia` 上传成功图 id 收集 + caption 非空 → askBatch 按 intent 分流（问句 → 💬 回答 SnackBar + `_loadFeed` 让首图卡显示 Q/A 气泡；陈述 → 纯记录）；图片上限 3（选图截断 + SnackBar 提示，对齐 adai-app）；`_loadFeed` 加 `_syncActiveCard`（F29 对齐：活动卡被刷新挤出 → 静默退出对话态）。+2 测试（askBatch 请求契约 + AskBatchResponse 兜底）。adai-web **44** 全绿 · analyze 0 | ✅ 2026-08-14 |
 | P0-1 + P1-1 + P1-2 | **2026-08-14 deep 审核修复批（带图 ask 前端三连修）**：**P0-1 对话态发媒体 `activeCard!` 空值崩溃**——`_onSendMedia` 上传完 `_loadFeed` 重建 `_cards` 挤出活动卡但 `_activeCardId` 残留 → build `_buildActiveLayout(activeCard!)` 空值崩溃；`_refreshFeed`（下拉/refreshTick）在对话态同隐患。修：新增 `_syncActiveCard(cards)` 在 `_loadFeed`/`_refreshFeed` 重建后校验活动卡仍在列表、不在则静默退出对话态 + build 兜底（`activeCard==null` 渲染普通列表，双保险）；**P1-1 对话态发媒体残留错乱**——`_onSendMedia` 开头静默退出对话视图（waiting 卡复位 idle、chatting 保留 turns 不触发总结——发图是独立动作，不强制结束对话）；**P1-2 部分上传失败问句静默丢**——引入 `_pendingAskRecordIds/_pendingAskQuestion` + `_flushPendingAsk()`：上传成功图片 id 同步进 pending，成功路径 + 失败重试完成路径统一补跑 ask-batch（补跑判定：无剩余 error 媒体卡），问句不再因部分失败而丢失。+3 回归测试（`feed_state_machine_test.dart`：对话态发媒体退出+不崩 / refreshTick 挤出活动卡不崩 / 部分失败重试后补跑携带全 id）。adai-app **89** 全绿 · analyze 0 error | ✅ 2026-08-14 |
 | #169 + #257 | **2026-08-13 REVIEW 文档滞后确认（非新修复，此前批次已做，本次出表）**：#169 问候语机械——凌晨 0-5 → 深夜好/late night（#14）、降级 emoji 按时段 凌晨🌙/早上☀️/中午🌤️/下午🌇/晚上✨（#221）、中午段 11-13（#222），`BriefAppService.java:125` 五段齐全；#257 测试覆盖——#234 分页终止口径双端回归（adai-web `review_fixes_test.dart:143` + adai-app `feed_state_machine_test.dart:391`）+ #235/#245 占位卡重试测试（`feed_state_machine_test.dart:490`）。REVIEW.md 未修复表移除两行 | ✅ 2026-08-13 |
 | 批 P | **2026-08-12 deep 审核修复批 P（清掉 deep 新发现 31 项中的该做项 + 本批自伤回归）**：**战略** #234 Feed 分页终止口径（双端——附加条目 action/market/push 不再计入 `_hasMore`，改按已加载核心 record/card 数比较；adai-web `_coreCardCount` + adai-app `_loadedCoreCount`，+2 回归测试锁）；**P1** #235 上传失败重试真重试（占位卡保留原始字节 + `_retryMediaUpload` 重走 uploadImage，不再降级文本写文件名）+ #236 记忆页刷新保留当前日期 + 不清空闪空（adai-web）+ #237 frontend-reference 虚构 `GET /trading/trades` 改真实 `POST → Position[]` + #238 api-spec 正文 400/413 拆分 + ask 补 500 上限 400 + #239 确认 **f3ca035 未推送远端**（origin/main 无此 commit，无需 rewrite）；**P2** #240 generateEndpointsFile 补 `inputs.dir`（增量构建端点数不再陈旧）+ #241 候选文件 `（R35）` 闭合（K24 括号配对扫描 0 残留）+ #242 右栏 `_loadingSidebar` 守卫 + #243 `http.put` 收敛 `_client.put`（grep `http\.` 零残留）+ #244 抽公共全图 Dialog 带 errorBuilder（双端复用）+ #245 content 保留 caption fallback、summary 单独放 AI 文本 + #246 失败提示挂根 `scaffoldMessengerKey`（切 World 不丢）；**P3** #247 apiEndpoints 可空（缺失返回 null，前端显示「未知」）+ #248 parseFromFile 损坏文件打 warn 日志 + #249 REC_ID_PATTERN 预编译 + #250 413 消息从配置读 + #251 adai-core CLAUDE.md 包树补 kernel/ai + kernel/storage + #252 DeepSeek 默认模型 deepseek-v4-pro + #253 选号 spinner 双端统一 24 + #254 记忆日期双端统一 MM-dd + #255 「加载更早」文案双端统一 + 桌面多图上传进度占位 + #256 serve_web 三端顶层 config 唯一校验（防模板自带 config 时 last-wins 假阴性）+ #258 SnackBar 时长双端统一 2s + `_selecting` 防双击连弹 + #259 REVIEW 成本表 21→22 口径 + #260 adai-core README 模型名 + #261 UML 补 TagIndexReader（端口→实现）。后端 **362** · adai-app **79** · adai-web **42** 全绿 | ✅ 2026-08-12 |
@@ -115,7 +115,7 @@ mode: deep 增量（带图 ask + 删除残留 + 图片交互批）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
-| 2026-08-14 | deep 增量（带图 ask + 删除残留 + 图片交互批）| docs/frontend agent×2（backend 卡死改人工核）+ 主会话（前端修复/文档）| 3 | ~40min | P0×1 + 战略×2 + P1×2 + P2×2 + P3×14 | 4（P0-1 + P1-1 + P1-2 + P2-1）|
+| 2026-08-14 | deep 增量（带图 ask + 删除残留 + 图片交互批）| docs/frontend agent×2（backend 卡死改人工核）+ 主会话（前端修复/文档）| 3 | ~40min | P0×1 + 战略×2 + P1×2 + P2×2 + P3×14 | 5（P0-1 + P1-1 + P1-2 + P2-1 + S-1）|
 | 2026-08-12 | 修复批 P（deep 新发现清理）| subagent×2（adai-app/adai-web）+ 主会话（后端/文档）| 2 | ~2h | 0 新 | 22（战略 1 + P1 4 + P2 7 + P3 14；#239 确认）|
 | 2026-08-12 | deep 增量（收官批 O 深度审核）| backend/frontend/docs/product/knowledge ×5 | 5 | ~20min | 战略×1 + P1×5 + P2×7 + P3×18（含本批自伤 4）| 0 |
 | 2026-08-12 | 收官批 O（战略+P2+P3 一次清完）| subagent×2（adai-app/adai-web）+ 主会话（后端/文档）| 2 | ~4h | 0 新 | 22（战略 3 修+1 登记 + P2 4 + P3 14 部分修）|

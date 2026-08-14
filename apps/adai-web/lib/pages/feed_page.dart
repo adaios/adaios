@@ -68,17 +68,20 @@ class _FeedPageState extends State<FeedPage> {
       final brief = await widget.api.getBrief();
       final feed = await widget.api.getFeed(page: 0, size: _pageSize);
       if (!mounted) return;
+      final newCards = feed.entries
+          .where((e) => e.type != FeedEntryType.aiNote)
+          .map((e) => e.toFeedData(
+            api: widget.api,
+            onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
+          ))
+          .toList();
       setState(() {
         _brief = brief;
         _totalToday = feed.totalToday;
         _currentPage = 0;
-        _cards = feed.entries
-            .where((e) => e.type != FeedEntryType.aiNote)
-            .map((e) => e.toFeedData(
-              api: widget.api,
-              onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
-            ))
-            .toList();
+        _cards = newCards;
+        // F29（对齐 adai-app P0-1）：活动卡被刷新挤出 page0 → 静默退出对话态，防 hasActiveChat 与内容错乱
+        _syncActiveCard(newCards);
         // #234：终止判定按核心条目数（record/card），附加条目不计入——否则 page 0 附加条目多时误判无更多
         _hasMore = _coreCardCount < _totalToday;
         _loading = false;
@@ -175,6 +178,7 @@ class _FeedPageState extends State<FeedPage> {
     _scrollToBottom();
 
     var ok = 0;
+    final uploadedIds = <String>[]; // S-1 带图 ask：成功上传的 recordId 集合（上传后统一问）
     String? firstErr;
     for (var i = 0; i < images.length; i++) {
       final image = images[i];
@@ -186,6 +190,7 @@ class _FeedPageState extends State<FeedPage> {
           caption: caption.isEmpty ? null : caption,
         );
         ok++;
+        if (resp.recordId.isNotEmpty) uploadedIds.add(resp.recordId);
         if (!mounted) return;
         // 单张完成 → 占位卡原位替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
         setState(() {
@@ -222,21 +227,42 @@ class _FeedPageState extends State<FeedPage> {
     }
     if (!mounted) return;
     if (ok > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          ok == images.length ? '📷 已记录 $ok 张' : '📷 已记录 $ok 张，${images.length - ok} 张失败',
-          style: const TextStyle(fontSize: 13),
-        ),
-        backgroundColor: AppColors.darkSurface2,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      ));
+      // S-1 带图 ask：附了文本 + 有成功图 → 后端按 intent 分流（问句 → VLM 多图回答；陈述 → 纯记录）
+      final question = caption.trim();
+      if (question.isNotEmpty && uploadedIds.isNotEmpty) {
+        String feedback;
+        try {
+          final qa = await widget.api.askBatch(
+              imageRecordIds: uploadedIds, question: question);
+          feedback = qa.intent == 'question' && qa.answer.isNotEmpty
+              ? '💬 ${_truncateForSnack(qa.answer)}'
+              : '📷 已记录 $ok 张';
+        } catch (e) {
+          feedback = '📷 已记录 $ok 张（问答失败: ${_extractApiError(e)}）';
+        }
+        _showSnackBar(feedback);
+        _totalToday += ok;
+        _loadSidebar();
+        if (!mounted) return;
+        // 刷新 Feed：问句 → 首图卡显示 Q/A 气泡（后端已把 turns 合并到首图卡）
+        await _loadFeed();
+        return;
+      }
+      _showSnackBar(
+        ok == images.length ? '📷 已记录 $ok 张' : '📷 已记录 $ok 张，${images.length - ok} 张失败',
+      );
       // 占位卡已原位替换为真实记录，不再整体 _loadFeed；本地计数 + 右栏联动刷新（#115）
       _totalToday += ok;
       _loadSidebar();
     } else {
       _showError('图片上传失败: $firstErr');
     }
+  }
+
+  /// SnackBar 展示文本截断（多图问答回答较长，避免整条撑爆提示条）。
+  String _truncateForSnack(String s, [int max = 60]) {
+    if (s.length <= max) return s;
+    return '${s.substring(0, max)}…';
   }
 
   String _mimeTypeOf(String? ext) {
@@ -576,6 +602,15 @@ class _FeedPageState extends State<FeedPage> {
     if (idx >= 0) _cards[idx] = updater(_cards[idx]);
   }
 
+  /// F29（对齐 adai-app P0-1）：卡片列表重建后校验活动卡仍在列表中——被刷新挤出时
+  /// 静默退出对话态，防输入栏 hasActiveChat 状态与 Feed 实际内容错乱。
+  void _syncActiveCard(List<FeedCardData> cards) {
+    if (_activeCardId != null && !cards.any((c) => c.id == _activeCardId)) {
+      _activeCardId = null;
+      _hasActiveChat = false;
+    }
+  }
+
   void _deactivateOtherCards(String keepId) {
     for (int i = 0; i < _cards.length; i++) {
       if (_cards[i].id != keepId && (_cards[i].mode == CardMode.waiting || _cards[i].mode == CardMode.chatting)) {
@@ -598,6 +633,18 @@ class _FeedPageState extends State<FeedPage> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  /// 通用 SnackBar 提示（对齐 adai-app _showSnackBar）。
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   void _showError(String message) {
@@ -931,20 +978,39 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
         allowMultiple: true, // 多选，逐张上传
       );
       if (result == null || result.files.isEmpty) return;
-      // 选图后先挂到输入栏（内联预览），发送时才真正上传
-      setState(() {
-        _pendingImages.addAll(result.files
-            .where((f) => f.bytes != null)
-            .map((f) => PickedImage(f.bytes!, f.name, f.extension)));
-      });
+      final picked = result.files
+          .where((f) => f.bytes != null)
+          .map((f) => PickedImage(f.bytes!, f.name, f.extension))
+          .toList();
+      // S-1 带图 ask 图片上限 3（后端 ask-batch 强校验；前端选图即限，多余截断 + 提示）
+      final remaining = 3 - _pendingImages.length;
+      if (remaining <= 0) {
+        _showSnackBar('最多 3 张图片');
+        return;
+      }
+      if (picked.length > remaining) {
+        setState(() => _pendingImages.addAll(picked.take(remaining)));
+        _showSnackBar('最多 3 张图片，已保留前 $remaining 张');
+      } else {
+        // 选图后先挂到输入栏（内联预览），发送时才真正上传
+        setState(() => _pendingImages.addAll(picked));
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('图片选择失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-        backgroundColor: AppColors.darkSurface2,
-        behavior: SnackBarBehavior.floating,
-      ));
+      _showSnackBar('图片选择失败: $e');
     }
+  }
+
+  /// 桌面输入栏 SnackBar 提示（选图/上限反馈）。
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+      backgroundColor: AppColors.darkSurface2,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   /// 输入栏上方的图片附件预览（横向缩略图列表，每张可单独移除）。

@@ -150,6 +150,26 @@ class ApiService {
     return AskMediaResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 多图问答（Phase 1 带图 ask，S-1 桌面端同步）：1-3 张已上传图片一次提问，
+  /// VLM 综合多图回答，沉淀 image_qa 记录（引用全部图片 id，Q/A 合并到首图卡）。
+  /// intent=question → answer 为回答；intent=log → 陈述句纯记录，不烧 VLM。
+  Future<AskBatchResponse> askBatch({
+    required List<String> imageRecordIds,
+    required String question,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/records/media/ask-batch'),
+      headers: _headers,
+      body: jsonEncode({'imageRecordIds': imageRecordIds, 'question': question}),
+    );
+    _check(resp);
+    // image_qa 记录带 tags → 标签云缓存也需失效（对齐 askMedia #229）
+    _tagsCache = null;
+    _timelineCache.clear();
+    _memoryCache.clear();
+    return AskBatchResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 获取时间线（按参数 key 缓存；[force] 绕过缓存强制刷新，#103 保活页刷新用）。
   Future<List<TimelineEntryResponse>> getTimeline({String? type, int limit = 50, bool force = false}) async {
     final key = 'type=$type&limit=$limit';
@@ -544,6 +564,30 @@ class AskMediaResponse {
         recordId: json['recordId'] as String? ?? '',
         answer: json['answer'] as String? ?? '',
         imageRecordId: json['imageRecordId'] as String? ?? '',
+      );
+}
+
+/// 多图问答响应 DTO（Phase 1 带图 ask，S-1 桌面端同步）。
+/// intent=question → answer 为 VLM 综合回答；intent=log → 陈述句纯记录。
+class AskBatchResponse {
+  final String intent;
+  final String answer;
+  final String recordId;
+  final List<String> imageRecordIds;
+
+  AskBatchResponse({
+    required this.intent,
+    required this.answer,
+    required this.recordId,
+    required this.imageRecordIds,
+  });
+
+  factory AskBatchResponse.fromJson(Map<String, dynamic> json) =>
+      AskBatchResponse(
+        intent: json['intent'] as String? ?? 'log',
+        answer: json['answer'] as String? ?? '',
+        recordId: json['recordId'] as String? ?? '',
+        imageRecordIds: (json['imageRecordIds'] as List?)?.cast<String>() ?? [],
       );
 }
 

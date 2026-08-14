@@ -107,6 +107,60 @@ void main() {
       await api.getTags();
       expect(tagCalls, 2);
     });
+
+    test('askBatch 请求 /ask-batch 带 imageRecordIds/question + 清标签云缓存 (S-1)', () async {
+      var tagCalls = 0;
+      List<String>? sentIds;
+      String? sentQuestion;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/tags')) {
+          tagCalls++;
+          return _json({'tags': [], 'total': 0, 'updatedAt': ''});
+        }
+        if (path.endsWith('/ask-batch')) {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          sentIds = (body['imageRecordIds'] as List).cast<String>();
+          sentQuestion = body['question'] as String;
+          return _json({
+            'intent': 'question', 'answer': '左图是持仓，右图是走势。',
+            'recordId': 'qa1', 'imageRecordIds': sentIds,
+          });
+        }
+        return _json({});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await api.getTags();
+      final qa = await api.askBatch(
+          imageRecordIds: ['rec_1', 'rec_2'], question: '这两张分别是什么？');
+      await api.getTags();
+      // 请求契约
+      expect(sentIds, ['rec_1', 'rec_2']);
+      expect(sentQuestion, '这两张分别是什么？');
+      // 响应解析
+      expect(qa.intent, 'question');
+      expect(qa.answer, '左图是持仓，右图是走势。');
+      expect(qa.recordId, 'qa1');
+      expect(qa.imageRecordIds, ['rec_1', 'rec_2']);
+      // image_qa 带 tags → 标签云缓存已清，下一次 getTags 应重新请求
+      expect(tagCalls, 2);
+    });
+
+    test('AskBatchResponse 解析：log 陈述 intent 时 answer 空 + 缺字段兜底 (S-1)', () async {
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/ask-batch')) {
+          return _json({'intent': 'log'});
+        }
+        return _json({});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      final qa = await api.askBatch(
+          imageRecordIds: ['rec_1'], question: '这是今天的持仓截图');
+      expect(qa.intent, 'log');
+      expect(qa.answer, '');
+      expect(qa.recordId, '');
+      expect(qa.imageRecordIds, isEmpty);
+    });
   });
 
   group('Feed #101 加载更早分页', () {
