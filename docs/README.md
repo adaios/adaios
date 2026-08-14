@@ -68,6 +68,8 @@
 | [20260802-multi-account-prep.md](rfc/20260802-multi-account-prep.md) | 2026-08-02 | 多账号架构预留：数据路径 userId 分层 + 全链路透传 + 数据迁移 |
 | [20260802-multimodal-image-glm.md](rfc/20260802-multimodal-image-glm.md) | 2026-08-02 | 多模态图片记录：图片 → GLM-VLM → 现有文本闭环（L4） |
 | [20260813-record-task-and-sports-analysis.md](rfc/20260813-record-task-and-sports-analysis.md) | 2026-08-13 | 记录↔任务关联（R2）+ 相机动作分析（A2）：结构影响分析 + 方案 B 触发规则 |
+| [20260814-domain-plugin-model.md](rfc/20260814-domain-plugin-model.md) | 2026-08-14 | Domain=插件模型：Kernel 基础服务 / Domain 受控插件（插件门控全通道 + D5 domain 收敛）|
+| [20260815-docs-governance.md](rfc/20260815-docs-governance.md) | 2026-08-15 | 文档治理：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负）|
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 
@@ -94,8 +96,11 @@
 
 | 文档 | 说明 |
 |:-----|:------|
+| [status.md](reference/status.md) | 📌 测试数/端点数/运行环境唯一真相源（RFC `20260815-docs-governance`，/ship 时更新）|
+| [change-log.md](reference/change-log.md) | 批次变更日志（历史归档，根 CLAUDE.md「已完成」来源）|
 | [feature-reference.md](reference/feature-reference.md) | 功能参考文档（唯一功能真相源） |
-| [task-log.md](reference/task-log.md) | 任务开发文档（从产品路线拆任务）|
+| [task-log.md](reference/task-log.md) | 任务开发文档（从产品路线拆任务 + REVIEW P3/观察项待办）|
+| [task-plugin-model.md](reference/task-plugin-model.md) | 任务插件模型（RFC `20260814-domain-plugin-model` 关联）|
 
 ## 🚀 部署
 
@@ -111,4 +116,4 @@
 
 ---
 
-**文档版本：v2.0 | 最后更新：2026-08-02**
+**文档版本：v2.1 | 最后更新：2026-08-15**

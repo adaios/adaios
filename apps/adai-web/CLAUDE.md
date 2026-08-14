@@ -81,12 +81,14 @@ lib/
 
 ## 当前测试状态
 
+- **测试数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
+
 ```bash
 flutter analyze   # 0 issues
-flutter test      # 44 个测试，0 失败
+flutter test      # 见 docs/reference/status.md
 ```
 
-覆盖：DTO JSON 解析（8）、ApiException（1）、缓存参数感知（1）、userId query 解析（3）、桌面壳（5，导航/懒加载/保活）、桌面 FeedCard 渲染（7，idle/chatting/ended/回调/action/market，含中文化文案断言）、REVIEW 修复批回归（14：选号/上传/图片追问 + #234 分页终止口径 + #236 记忆页刷新保位 + #201/#229 溢出/tooltip）、S-1 多图 ask（2：askBatch 请求契约 imageRecordIds/question + 清标签缓存、AskBatchResponse log 兜底解析）。
+覆盖：DTO JSON 解析、ApiException、缓存参数感知、userId query 解析、桌面壳（导航/懒加载/保活）、桌面 FeedCard 渲染（idle/chatting/ended/回调/action/market，含中文化文案断言）、REVIEW 修复批回归（选号/上传/图片追问 + #234 分页终止口径 + #236 记忆页刷新保位 + #201/#229 溢出/tooltip）、S-1 多图 ask（askBatch 请求契约 imageRecordIds/question + 清标签缓存、AskBatchResponse log 兜底解析）。
 
 ## 桌面壳设计
 

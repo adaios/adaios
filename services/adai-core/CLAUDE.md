@@ -55,6 +55,7 @@ com.adaiadai.core/
 │   │   ├── IntentRecognizer       意图识别
 │   │   └── engine/                上下文引擎（ContextContributor 插件机制）
 │   ├── memory/                   个人记忆
+│   ├── plugin/                   插件注册（RFC 20260814 Domain=插件模型：PluginRegistry 映射 + PluginService 按账号 enabledPlugins）
 │   └── knowledge/                结构化知识（预留）
 │
 ├── domain/                     ★ Domain OS
@@ -124,6 +125,7 @@ com.adaiadai.core/
 | POST | `/api/v1/cards/migrate` | 卡片迁移 |
 | POST | `/api/v1/cards/cleanup` | 卡片冗余记录清理（迁移后去除重复 rec_*） |
 | GET | `/api/v1/accounts/available` | 启用账号列表（**无鉴权**，仅返回 userId 最小集，REVIEW #215）|
+| GET | `/api/v1/me/plugins` | 当前用户启用插件（**无鉴权**，前端模块显隐，RFC 20260814）|
 | GET / POST | `/api/v1/accounts` | 账号查询/创建（admin，**需 `X-Admin-Token`**）|
 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin，**需 `X-Admin-Token`**）|
 
@@ -131,8 +133,9 @@ com.adaiadai.core/
 
 ## 当前测试状态
 
-后端测试在 `src/test/java/`，当前 **387 个测试，0 失败**（15 Controller 50 端点接口测试全覆盖 + 多模态 18 测试 + #127 鉴权 4 测试 + 行情推送 14 测试 + #14 问候语时段边界 1 测试 + #221 问候语降级 emoji 1 测试 + #222 问候加中午段 1 测试 + Brief 降级增强 📋/🧠/☕ 1 测试 + #216 CardMigration 判定收紧 + 缺 id 跳过 3 测试 + R1 AI 交互日志 20 测试 + #184 promote 脱敏 2 测试 + #206/#207 幂等与时间基准 3 测试 + #209 图片追问持久化 1 测试 + #227 定时重补过滤禁用账号 2 测试 + #213 追踪上下文请求级清理 2 测试 + #210 AI 日志保留期/分页治理 7 测试 + #214 图片追问长度上界 2 测试 + #215 available 最小集 1 测试 + #202 复盘剥代码块围栏 2 测试 + 旧数组账号日期回归 1 测试 + **R2 记录↔任务：sourceRecordId round-trip + 旧文件兼容 2 测试 + Linker 触发/排除标签/幂等/清待办 8 测试 + MemoryService.clearActionable 2 测试** + **08-14 删除残留：Memory cardId round-trip + 按 cardId 删除 + recordId 路径回归 3 测试**）。
-新增功能必须配套测试。
+- **测试数/端点数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
+- 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + #127 鉴权 + 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔任务 + 插件门控等
+- **新增功能必须配套测试。**
 
 ## 外部依赖
 

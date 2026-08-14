@@ -3,7 +3,7 @@
 > **定位：** 新功能开发和系统改进的追踪文档。按模块组织，标注优先级、状态、关联 RFC。
 > **对照：** `feature-reference.md` 定义"现在有什么"，此文档定义"接下来要做什么"。
 >
-> **文档版本：** v1.0 | **最后更新：** 2026-07-29
+> **文档版本：** v1.1 | **最后更新：** 2026-08-15（v1.1：REVIEW P3/观察项迁移入列，RFC `20260815-docs-governance`）
 
 ---
 
@@ -292,3 +292,57 @@ v1.0.0（adai-admin + 多账号）：
 本轮完成（07-29）：
   #1 人称代词 ✓  ND1 prompt 统一 ✓  ND2 死代码 ✓  #3/#4 ended ✓
 ```
+
+---
+
+## 待办迁移（2026-08-15 自 REVIEW P3/观察项）
+
+> RFC `20260815-docs-governance`：REVIEW.md 只留「战略 + P0-P2 未修复」；可排期项入此区，纯记录/已实现项删除。来源编号保持 REVIEW 原编号可追溯。
+
+### 可排期待办
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+| 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
+| 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
+| 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
+| 08-15 后端×6 | `AccountController.isValidPlugins` 不查重（`["trading","trading"]` 合法落盘；消费端 Set 去重故行为正确）| `AccountController.java:132-134` | P3 |
+| 08-15 后端×6 | `gateDomain` 对未知 domain 原样放行（AI 返回越界值保留，非本批引入）| `PluginService.java:46-55` | P3 |
+| 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
+| 08-15 后端×6 | intent max_tokens 50→512 输出预算升 10 倍成本（可考虑关闭推理模式）| `DeepSeekAiClient.java:137` | P3 |
+| 08-15 后端×6 | 迁移走 `writeAll` 非原子（#126 预存债）| `AccountFileRepository.java:139-149` | P3 |
+| 08-15 docs×7 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5 五条（D25）| `docs/rfc/20260814-domain-plugin-model.md:5` | P3 |
+| 08-15 docs×7 | 根 CLAUDE.md 架构树缺 MeController + kernel/plugin（adai-core CLAUDE.md 已补、根未同步）| 根 `CLAUDE.md` | P3 |
+| 08-15 docs×7 | api-spec domain 判定关键词与代码不一致（trading 缺 股票/大盘/行情/买卖、project 缺 开发，与 P2-2 同源）| `docs/architecture/api-spec.md` | P3 |
+| 08-15 docs×7 | task-plugin-model T1.3 行仍写 owner 过滤、实现已被插件门控取代，未标 superseded | `docs/reference/task-plugin-model.md:19` | P3 |
+| 08-14 前端×8 | ImagePicker `limit` Web 静默失效（选图上限依赖截断兜底）| `input_bar.dart` | P3 |
+| 08-14 前端×8 | `_truncateForSnack` UTF-16 substring 可能劈开 emoji（SnackBar 半字符）| `main_page.dart` | P3 |
+| 08-14 前端×8 | `_mimeTypeOf` HEIC 默认误标 `image/png` | `input_bar.dart` | P3 |
+| 08-14 前端×8 | `Navigator.pop` 盲弹未守卫 | `main_page.dart:428` | P3 |
+| 08-14 前端×8 | `_showImageLimitToast` 在 setState 内副作用 | `main_page.dart:663` | P3 |
+| 08-14 前端×8 | askBatch 无「正在看图…」占位 | `main_page.dart` | P3 |
+| 08-14 前端×8 | 多图问答完整回答只在首图卡气泡需手动点开 | `main_page.dart` | P3 |
+| 08-14 前端×8 | 并发上传进度条互相覆盖 | `input_bar.dart` | P3 |
+| 08-14 docs×6 | api-spec v3.15 changelog 漏 #247 | `docs/architecture/api-spec.md` | P3 |
+| 08-14 docs×6 | `apiEndpoints: 21` 示例陈旧（实 51）| `docs/architecture/api-spec.md` | P3 |
+| 08-14 docs×6 | ask-batch 错误列表未限问句分支 | `docs/architecture/api-spec.md` | P3 |
+| 08-14 docs×6 | frontend-reference `AskResponse` 命名应为 `AskBatchResponse` | `docs/architecture/frontend-reference.md` | P3 |
+| 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
+| 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
+| 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|
+| 117 | 缓存 key 分桶未测（价值低，留待多账号批）| `test/` | P3 |
+| 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` | P2 |
+| 166 剩余 | MediaController 上传 413 + emoji 截断已修；剩余 market id 同秒碰撞 | 后端多处 | P3 |
+| 168 | os/ 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 | P3 |
+| 171 | 优化方向（非问题）：项目页「项目记录」聚合视图 + 记录可标记类型（问题/建议）并流转为任务 | adai-app 项目页 + domain 体系 | 产品方向 |
+| 172 | 记忆页 superseded 记忆仍显示「待办/已完成」标记（语义矛盾）；建议隐藏 actionable 标记 + 灰角标说明 | `memory_page.dart:239-261` | P3 |
+| 202 剩余 | `userTradeLocks` 按 userId 无界累积 / `AiClient.generate(ctx, null)` 默认 system 仍是 JSON 分析指令与生成语义矛盾 | 后端多处 | P3 |
+| 229 剩余 | 首轮把「图片摘要文本」渲染成用户气泡（应居中提示）/ 折叠渐隐遮罩色不一致 / #15 折叠对超长 active 卡不设上限 / `main()` 首帧 await 延迟 | `main_page.dart:926-930` / `feed_card.dart` / `main.dart:11-22` | P3 |
+| 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
+| 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
+| 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-os/99-inbox/` | P3 |
+
+### 已删除（纯记录/已实现，2026-08-15 出表）
+
+- **#173 带图提问 intent=question** → 已被 Phase 1 带图 ask（`ask-batch` 问句分流）实现
+- **#262 stripCodeFences 边界** → 标注"可接受记录"（复盘正文罕见含代码块，无需修）
