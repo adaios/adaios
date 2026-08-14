@@ -12,8 +12,8 @@
 
 | 文件/目录 | 处理 | 去向 |
 |:-----|:-----|:-----|
-| `ai-native/` + `ai-native-team-framework.md` + `AI_CONTEXT_STRUCTURE.md` + `ai-context-design.md` | 2026-08-15 移出 | `research/`（外部/历史理念研究区，与 docs/ 同级）|
-| `AI4SE 项目级知识库建设方案.md` + `AI_Native_Software_Workspace_Architecture_v0.1.md` + `项目级 AI 上下文建设哲学与体系原理.md` + `当前 AI Context 体系下一步建议.md` + `context-reviewer.md` | 2026-08-15 移出 | `research/`（外部项目研究）|
+| `ai-native/` + `ai-native-team-framework.md` + `AI_CONTEXT_STRUCTURE.md` + `AI4SE 项目级知识库建设方案.md` + `AI_Native_Software_Workspace_Architecture_v0.1.md` + `项目级 AI 上下文建设哲学与体系原理.md` + `当前 AI Context 体系下一步建议.md` + `context-reviewer.md` | 2026-08-15 移出 → 整合 → **移出仓库** | `ai-context-research/`（adaios 同级独立目录，公司/多项目侧研究）。方法论两篇合并为《项目级 AI 上下文体系方法论》；`ai-native/` 复核保留（Context 生命周期、知识五级生命周期等独有价值）；**`AI_CONTEXT_STRUCTURE.md` / `ai-native-team-framework.md` / `context-reviewer.md` 复核发现初判失误（未做内容比对），已从 git 历史恢复至同级目录**，全部文件哈希校验与 git HEAD 一致。adaios git 历史保留全部原文件可追溯 |
+| `ai-context-design.md` | 2026-08-15 移出 → **归位** | `docs/inbox/20260722-ai-context-design.md`（阿呆 App 早期 AI Context 设计，属项目自身历史，保留可追溯）|
 | `issue-log.md`（stub）/ `backend-capabilities.md`（被 feature-reference 覆盖）/ `fix-record-20260729.md`（一次性）/ `20260801-project-review.md`（一次性）/ `adaios-personal-os.md`（被 VISION 覆盖）/ `20260726-next-phase-direction.md`（决策已归 rfc/）| 2026-08-15 删除 | 过期归档，git 历史可追溯 |
 
-> 2026-08-15 清理后 inbox 为空。`research/` 承接理念研究，`docs/` 承接 AdaiOS 自身文档。
+> 2026-08-15 整合后 inbox 仅存 `20260722-ai-context-design.md`（阿呆早期设计历史保留）。仓库内不再有研究目录——公司/多项目侧研究独立于 `ai-context-research/`（adaios 同级），`docs/` 只承接 AdaiOS 自身文档。
