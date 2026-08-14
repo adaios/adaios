@@ -8,17 +8,12 @@
 - 处理方式：定期清理——确认无用则删，有价值则归位或升级
 - 从 inbox 取回文档时，记得补 README 登记
 
-## 当前归档内容
+## 归档记录
 
-| 文件/目录 | 来源 | 归档原因 |
-|:-----|:-----|:---------|
-| `ai-native/` | `docs/ideas/` | AI Native 框架系列（未定型想法，与 architecture 重复）|
-| `ai-native-team-framework.md` | `docs/architecture/` | AI Native 框架 Draft 副本（与 ai-native/03 v1.0 重复）|
-| `AI_CONTEXT_STRUCTURE.md` | `docs/architecture/` | AI Context 体系（未定型，未登记）|
-| `ai-context-design.md` | `docs/architecture/` | AI Context 体系（与 AI_CONTEXT_STRUCTURE 同源）|
-| `issue-log.md` | `docs/`（顶层）| 迁移遗留 stub（正文在 `reference/issue-log.md`）|
-| `20260726-next-phase-direction.md` | `docs/decisions/` | 决策记录（decisions/ 与 rfc/ 并存，决策统一归 rfc/）|
-| `20260801-project-review.md` | `docs/review/` | 一次性审核报告（常驻区只保留 REVIEW.md）|
-| `fix-record-20260729.md` | `docs/reference/` | 一次性修复记录 |
-| `adaios-personal-os.md` | `docs/architecture/` | 理念文档（VISION.md 为唯一理念真相源，覆盖）|
-| `backend-capabilities.md` | `docs/architecture/` | 后端功能说明书（feature-reference.md 覆盖）|
+| 文件/目录 | 处理 | 去向 |
+|:-----|:-----|:-----|
+| `ai-native/` + `ai-native-team-framework.md` + `AI_CONTEXT_STRUCTURE.md` + `ai-context-design.md` | 2026-08-15 移出 | `research/`（外部/历史理念研究区，与 docs/ 同级）|
+| `AI4SE 项目级知识库建设方案.md` + `AI_Native_Software_Workspace_Architecture_v0.1.md` + `项目级 AI 上下文建设哲学与体系原理.md` + `当前 AI Context 体系下一步建议.md` + `context-reviewer.md` | 2026-08-15 移出 | `research/`（外部项目研究）|
+| `issue-log.md`（stub）/ `backend-capabilities.md`（被 feature-reference 覆盖）/ `fix-record-20260729.md`（一次性）/ `20260801-project-review.md`（一次性）/ `adaios-personal-os.md`（被 VISION 覆盖）/ `20260726-next-phase-direction.md`（决策已归 rfc/）| 2026-08-15 删除 | 过期归档，git 历史可追溯 |
+
+> 2026-08-15 清理后 inbox 为空。`research/` 承接理念研究，`docs/` 承接 AdaiOS 自身文档。

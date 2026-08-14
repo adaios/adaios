@@ -69,6 +69,7 @@ docs/                  # 项目文档
   VISION.md            #   项目愿景与核心理念（必读）
   architecture/        #   架构文档
   ideas/               #   想法/方案归档区（未定型但有价值，正式入口）
+research/              # 外部/历史理念研究区（AI Context 方法论等，仅供借鉴，不参与主流程；与 docs/ 同级）
 apps/
   adai-app/            #   Flutter 前端（Web / Android / iOS）
     scripts/             # 构建/部署脚本
