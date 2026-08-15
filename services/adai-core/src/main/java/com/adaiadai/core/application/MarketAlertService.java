@@ -91,8 +91,10 @@ public class MarketAlertService {
         Set<String> userIds = new LinkedHashSet<>();
         accountRepository.findAll().stream()
                 .filter(Account::enabled)
-                // S-4：行情推送是 trading 插件能力，只轮询启用该插件的账号（与 Feed 门控口径一致）
-                .filter(a -> pluginService.hasPlugin(a.userId(), PluginRegistry.PLUGIN_TRADING))
+                // S-4：行情推送是 trading 插件能力，只轮询启用该插件的账号（与 Feed 门控口径一致）；
+                // P2-B2：userId null 防护（Account 构造器已拒绝，双保险防脏文件历史残留）
+                .filter(a -> a.userId() != null
+                        && pluginService.hasPlugin(a.userId(), PluginRegistry.PLUGIN_TRADING))
                 .map(Account::userId)
                 .forEach(userIds::add);
         if (userIds.isEmpty()) {

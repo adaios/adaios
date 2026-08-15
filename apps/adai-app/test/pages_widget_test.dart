@@ -402,5 +402,31 @@ void main() {
       expect(find.text('阿呆系统'), findsOneWidget);
       expect(find.text('交易'), findsNothing);
     });
+
+    testWidgets('只开 trading 插件：有交易无阿呆系统（P2-R2 分支补齐）', (tester) async {
+      await pumpLauncher(tester, ['trading']);
+
+      expect(find.text('交易'), findsOneWidget);
+      expect(find.text('阿呆系统'), findsNothing, reason: '无 project 插件 → 隐藏阿呆系统入口');
+    });
+
+    testWidgets('插件拉取失败（500）：核心数据正常渲染，交易/阿呆系统隐藏（P2-R2 降级分支）',
+        (WidgetTester tester) async {
+      final b = _Backend();
+      b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
+      b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
+      b.handlers['/api/v1/timeline'] = (_) async => _json([]);
+      b.handlers['/api/v1/memory/count'] = (_) async => _json({'count': 0});
+      b.handlers['/api/v1/me/plugins'] = (_) async => _json({'error': 'boom'}, status: 500);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: LauncherPage(api: _apiFor(b), onNavigateBack: () {})),
+      ));
+      await tester.pumpAndSettle();
+
+      // P1-6 拆独立 try/catch 后：插件失败不影响核心数据渲染
+      expect(find.text('关于我'), findsOneWidget, reason: '核心数据（身份）正常渲染');
+      expect(find.text('交易'), findsNothing, reason: '插件失败默认只显基础服务');
+      expect(find.text('阿呆系统'), findsNothing);
+    });
   });
 }

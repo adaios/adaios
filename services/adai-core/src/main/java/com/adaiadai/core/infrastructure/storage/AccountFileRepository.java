@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -134,7 +135,7 @@ public class AccountFileRepository implements AccountRepository {
 
     @Override
     public Optional<Account> findById(String userId) {
-        return findAll().stream().filter(a -> a.userId().equals(userId)).findFirst();
+        return findAll().stream().filter(a -> Objects.equals(a.userId(), userId)).findFirst();
     }
 
     @Override

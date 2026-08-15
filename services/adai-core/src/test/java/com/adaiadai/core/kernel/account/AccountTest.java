@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -28,5 +29,12 @@ class AccountTest {
     void compactConstructor_normalizesNullList() {
         Account account = new Account("alice", "user", true, LocalDate.of(2026, 8, 2), null);
         assertTrue(account.plugins().isEmpty(), "null plugins 列表应归一为空列表");
+    }
+
+    @Test
+    void compactConstructor_rejectsNullUserId() {
+        // REVIEW P2-B2：脏 accounts.json 缺 userId → 构造拒绝（防遍历时 NPE 全局中断）
+        assertThrows(IllegalArgumentException.class,
+                () -> new Account(null, "user", true, LocalDate.of(2026, 8, 2), List.of()));
     }
 }

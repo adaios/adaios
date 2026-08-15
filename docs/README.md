@@ -70,7 +70,7 @@
 | [20260813-record-task-and-sports-analysis.md](rfc/20260813-record-task-and-sports-analysis.md) | 2026-08-13 | 记录↔任务关联（R2）+ 相机动作分析（A2）：结构影响分析 + 方案 B 触发规则 |
 | [20260814-domain-plugin-model.md](rfc/20260814-domain-plugin-model.md) | 2026-08-14 | Domain=插件模型：Kernel 基础服务 / Domain 受控插件（插件门控全通道 + D5 domain 收敛）|
 | [20260815-docs-governance.md](rfc/20260815-docs-governance.md) | 2026-08-15 | 文档治理：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负）|
-| [20260815-media-event-unification.md](rfc/20260815-media-event-unification.md) | 2026-08-15 | 图文一体：媒体事件数据层统一（一次输入 = 一条记录，draft 待确认）|
+| [20260815-media-event-unification.md](rfc/20260815-media-event-unification.md) | 2026-08-15 | 图文一体：媒体事件数据层统一（approved：层 1 展示层聚合已落地，层 2 数据层整体化排 v1.0.1）|
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 

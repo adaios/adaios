@@ -22,8 +22,11 @@ import java.util.Objects;
  */
 public record Account(String userId, String role, boolean enabled, LocalDate createdAt, List<String> plugins) {
 
-    /** 紧凑构造器：归一 null/可变列表（老 JSON 无 plugins 字段时 Jackson 传 null）；过滤 null 元素（REVIEW P2-3：脏 JSON 的 "plugins":[null] 不 NPE）。 */
+    /** 紧凑构造器：归一 null/可变列表（老 JSON 无 plugins 字段时 Jackson 传 null）；过滤 null 元素（REVIEW P2-3：脏 JSON 的 "plugins":[null] 不 NPE）；userId 必须非空（REVIEW P2-B2：脏 JSON 缺 userId 会导致遍历时 NPE 全局中断）。 */
     public Account {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("账号 userId 不能为空");
+        }
         plugins = plugins == null ? List.of()
                 : plugins.stream().filter(Objects::nonNull).toList();
     }

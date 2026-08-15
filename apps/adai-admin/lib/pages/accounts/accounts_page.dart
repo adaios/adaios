@@ -558,17 +558,24 @@ class _AccountsPageState extends State<AccountsPage> {
 
   Widget _pluginSwitch(Account account, String plugin, String label) {
     final enabled = account.plugins.contains(plugin);
+    // REVIEW P2-R3：内置 admin（owner）插件开关受 isProtected 保护——禁用 + Tooltip，
+    // 与 enabled/删除按钮同保护口径（防误关 owner 插件）
+    final isProtected = account.userId == AccountStore.protectedAdminId;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Text(label,
           style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
       const SizedBox(width: 4),
-      Switch(
-        key: ValueKey('plugin-${account.userId}-$plugin'),
-        value: enabled,
-        activeTrackColor: AppColors.darkOrange.withValues(alpha: 0.4),
-        activeThumbColor: AppColors.darkOrange,
-        inactiveThumbColor: AppColors.darkGrey5,
-        onChanged: (v) => _togglePlugin(account, plugin, v),
+      Tooltip(
+        message: isProtected ? '内置管理员插件受保护，不可修改' : '切换插件',
+        waitDuration: const Duration(milliseconds: 400),
+        child: Switch(
+          key: ValueKey('plugin-${account.userId}-$plugin'),
+          value: enabled,
+          activeTrackColor: AppColors.darkOrange.withValues(alpha: 0.4),
+          activeThumbColor: AppColors.darkOrange,
+          inactiveThumbColor: AppColors.darkGrey5,
+          onChanged: isProtected ? null : (v) => _togglePlugin(account, plugin, v),
+        ),
       ),
     ]);
   }

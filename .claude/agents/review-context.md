@@ -44,5 +44,5 @@ tools: Read, Grep, Glob, Bash
 
 ## 参考
 
-- 原始框架：`research/context-reviewer.md`（外部研究，本角色为其 AdaiOS 化收编）
-- 方法论来源：`research/项目级 AI 上下文建设哲学与体系原理.md`（决策/事实分离 + L1/L2/L3）
+- 原始框架：`../ai-context-research/context-reviewer.md`（仓库外同级独立目录，2026-08-15 随 research 整合移出；本角色为其 AdaiOS 化收编）
+- 方法论来源：`../ai-context-research/项目级 AI 上下文体系方法论.md`（仓库外同级独立目录——原《哲学与体系原理》+《下一步建议》合并稿；决策/事实分离 + L1/L2/L3）
