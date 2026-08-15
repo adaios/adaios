@@ -1,3 +1,16 @@
+---
+title: 知识数据审查检查清单
+description: knowledge-reviewer 逐条检查项（人也能用）——os/ 消费链路/data/ 健康/隐私红线/闭环
+version: 1
+created: 2026-08-15
+updated: 2026-08-15
+status: active
+lines: 71
+depends-on: []
+related: [../roles/knowledge-reviewer.md]
+tags: [review, checklist, knowledge]
+---
+
 # 知识/数据审核检查点清单
 
 > 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。对应 agent：`review-knowledge`。

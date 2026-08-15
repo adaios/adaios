@@ -5,9 +5,10 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 34
+lines: 35
 depends-on:
   - ../frontmatter-spec.md
+  - ../checklists/review-context.md
 related:
   - ../../../ai/context/
 tags: [review, context]

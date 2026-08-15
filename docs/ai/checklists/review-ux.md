@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 30
+lines: 39
 depends-on: []
 related: [../roles/ux-reviewer.md]
 tags: [review, checklist, ux]
@@ -33,3 +33,7 @@ tags: [review, checklist, ux]
 | U15 | 分页合并按 id 去重（Set seen）| 分页重复（走查 P2，2026-08-15）|
 | U16 | 删除操作（记录/任务/复盘）统一确认弹窗双端一致 | app 删除无确认（走查 P1-W8，2026-08-15）|
 | U17 | 错误态统一组件（错误文案+重试），禁止 catch 后静默 loading=false 落入空态 | 失败伪装空态（走查 P1-W5，2026-08-15）|
+
+| U3-2 | 每个可点击元素有响应（点击有反馈，不"点了没反应"）；stub 应禁用或进入即提示，不先模拟交互再弹「开发中」| 语音 stub 误导（旧 P3/P5，2026-08-15）|
+| U6-2 | 账号/切换类「记住上次选择」不得被 URL query 在刷新后覆盖，或覆盖需一次性语义并同步 URL | `?userId=` 刷新回退（P2 #186）|
+| U21 | 「图即上下文」类功能进入对话态后原图必须持续可见：active/对话布局顶部固定渲染缩略图（可点开全图）| 图片追问移动端 active 态原图不可见（P1 #208，2026-08-12）|

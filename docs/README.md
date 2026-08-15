@@ -87,7 +87,7 @@
 | 文档 | 说明 |
 |:-----|:------|
 | [REVIEW.md](review/REVIEW.md) | 📌 审核全量状态报告（常驻，`/review` 更新）。未修复项滚动保留 |
-| [checklists/](review/checklists/) | 检查点清单（活文档）：guard 守护 + docs/backend/frontend/product/knowledge 五角色 |
+| [checklists/](ai/checklists/) | 检查点清单（活文档）：guard 守护 + 8 官各自清单（`docs/ai/checklists/`）|
 
 ## 🐛 问题跟踪
 

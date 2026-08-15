@@ -45,11 +45,11 @@ status: implemented
 .claude/agents/review-frontend.md       ← 角色：前端 Flutter 代码审核
 .claude/agents/review-product.md        ← 角色：UI 设计 + 产品表达审核
 .claude/agents/review-knowledge.md      ← 角色：知识资产 + 数据资产审核
-docs/review/checklists/review-docs.md   ← 检查点清单（活文档，每次审核可追加）
-docs/review/checklists/review-backend.md
-docs/review/checklists/review-frontend.md
-docs/review/checklists/review-product.md
-docs/review/checklists/review-knowledge.md
+docs/ai/checklists/review-docs.md   ← 检查点清单（活文档，每次审核可追加）
+docs/ai/checklists/review-backend.md
+docs/ai/checklists/review-frontend.md
+docs/ai/checklists/review-product.md
+docs/ai/checklists/review-knowledge.md
 docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增量，报告不新建）
 ```
 
@@ -63,7 +63,7 @@ docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增�
 /review --full     全量：5 角色全派深扫全仓库
 
   1. 确定范围：light/deep = 上次 review 基线之后的 git diff；--full = 全仓库
-  2. 读 docs/review/checklists/*.md 作为各角色检查基线
+  2. 读 docs/ai/checklists/*.md 作为各角色检查基线
   3. 读 REVIEW.md → 提取"未修复项"作为本次必须回查的清单
   4. 派发：light 不派 agent；deep 按 diff 路由；full 5 角色全派
   5. 汇总：按 P0（数据丢失）→ 战略缺口 → P1 → P2/P3 排序

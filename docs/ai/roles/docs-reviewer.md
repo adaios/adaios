@@ -5,10 +5,10 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 32
+lines: 31
 depends-on:
   - ../frontmatter-spec.md
-  - ../../../review/checklists/review-docs.md
+  - ../checklists/review-docs.md
 related: []
 tags: [review, docs]
 ---
@@ -28,4 +28,4 @@ tags: [review, docs]
 
 ## 输出格式
 
-同 backend-reviewer。检查清单见 `../../../review/checklists/review-docs.md`。
+同 backend-reviewer。检查清单见 `../checklists/review-docs.md`。

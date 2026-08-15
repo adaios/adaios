@@ -1,3 +1,16 @@
+---
+title: 守护检查清单
+description: 每次 /review 必跑的 G1-G7 防 P0 复发清单（数据丢失/契约破坏），执行器为 docs/review/guard.sh
+version: 1
+created: 2026-08-15
+updated: 2026-08-15
+status: active
+lines: 48
+depends-on: []
+related: []
+tags: [review, checklist, guard]
+---
+
 # 守护检查清单（每次 /review 必跑）
 
 防 P0 复发（数据丢失/契约破坏）。**执行器：`docs/review/guard.sh`**（一条命令跑完 G1-G7，输出 PASS/HIT，内部自动 cd 到仓库根，免疫 cwd 漂移）。本清单是"查什么 + 上次发现"的说明文档，实际执行以脚本为准。任何模式都不跳过。

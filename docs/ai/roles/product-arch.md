@@ -5,9 +5,10 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 35
+lines: 34
 depends-on:
   - ../frontmatter-spec.md
+  - ../checklists/review-product.md
 related:
   - ../roles/ux-reviewer.md
   - ../roles/ui-reviewer.md

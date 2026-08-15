@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 55
+lines: 71
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -30,10 +30,10 @@ git log --oneline -20          # 找上次审查 commit 作为基线（REVIEW.md
 ## 2. 守护检查（每次必跑）
 
 ```bash
-bash docs/review/guard.sh
+bash docs/review/guard.sh        # G1-G7 代码级守护
 ```
 
-G1-G7，有 HIT 即记录为问题（复发信号）。清单见 `docs/review/checklists/guard.md`。
+G1-G7，有 HIT 即记录为问题（复发信号）。清单见 `docs/ai/checklists/guard.md`。
 
 ## 3. 按模式派官
 

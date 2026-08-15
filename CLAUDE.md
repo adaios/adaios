@@ -168,7 +168,7 @@ Bug 修复     → 直接改
 ### 定期审核
 
 - `/review` 触发项目审核（增量默认审 git diff，`--full` 全量）：5 角色（文档/后端/前端/产品UI/知识数据）+ 守护检查，滚动更新 `docs/review/REVIEW.md`
-- 守护检查已脚本化：`bash docs/review/guard.sh` 一条命令跑 G1-G7（自动 cd 到仓库根，输出 PASS/HIT），检查点清单 `docs/review/checklists/` 是活文档，每次审核沉淀新检查模式（补清单 + 脚本同步）
+- 守护检查已脚本化：`bash docs/review/guard.sh` 一条命令跑 G1-G7（自动 cd 到仓库根，输出 PASS/HIT），检查点清单 `docs/ai/checklists/` 是活文档，每次审核沉淀新检查模式（补清单 + 脚本同步）
 - 审核只报告不直接修（P0 数据丢失可与用户确认后修）
 
 ### 底线

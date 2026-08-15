@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 30
+lines: 48
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -33,6 +33,13 @@ tags: [ai, meta, index]
 | process/review.md | 增量深审流程 | active |
 | checklists/review-ux.md | 交互检查清单 | active |
 | checklists/review-ui.md | 界面检查清单 | active |
+| checklists/review-product.md | 产品架构检查清单 | active |
+| checklists/review-context.md | AI Context 检查清单 | active |
+| checklists/review-backend.md | 后端代码检查清单 | active |
+| checklists/review-frontend.md | 前端代码检查清单 | active |
+| checklists/review-docs.md | 文档契约检查清单 | active |
+| checklists/review-knowledge.md | 知识数据检查清单 | active |
+| checklists/guard.md | 守护检查清单（G1-G7）| active |
 
 ## 过期判断
 

@@ -1,3 +1,16 @@
+---
+title: 后端代码审查检查清单
+description: backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
+version: 1
+created: 2026-08-15
+updated: 2026-08-15
+status: active
+lines: 90
+depends-on: []
+related: [../roles/backend-reviewer.md]
+tags: [review, checklist, backend]
+---
+
 # 后端审核检查点清单
 
 > 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。守护项（G#）见 `guard.md`，不重复。

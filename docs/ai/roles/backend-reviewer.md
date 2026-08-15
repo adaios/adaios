@@ -5,10 +5,10 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 32
+lines: 31
 depends-on:
   - ../frontmatter-spec.md
-  - ../../../review/checklists/review-backend.md
+  - ../checklists/review-backend.md
 related: []
 tags: [review, backend]
 ---
@@ -28,4 +28,4 @@ tags: [review, backend]
 
 ## 输出格式
 
-P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。检查清单见 `../../../review/checklists/review-backend.md`。
+P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。检查清单见 `../checklists/review-backend.md`。

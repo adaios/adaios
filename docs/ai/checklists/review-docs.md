@@ -1,3 +1,16 @@
+---
+title: 文档契约审查检查清单
+description: docs-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
+version: 1
+created: 2026-08-15
+updated: 2026-08-15
+status: active
+lines: 78
+depends-on: []
+related: [../roles/docs-reviewer.md]
+tags: [review, checklist, docs]
+---
+
 # 文档审核检查点清单
 
 > 格式：`[检查方法]` — 检查什么。`上次发现` 记录历史命中。新发现模式追加到底部。
