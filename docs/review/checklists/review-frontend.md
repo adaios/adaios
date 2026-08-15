@@ -63,3 +63,12 @@
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。
+
+| F37 | 图片上传失败占位卡重试必须重走 uploadImage 并携带原始字节（grep 双端 mediaBytes 字段）| web 图片重试降级文本（走查 P1-W1，2026-08-15）|
+| F38 | 半失败重试幂等语义双端对拍：app 生成新 cardId 即 HIT | app 重试重复入账（走查 P1-W2，2026-08-15）|
+| F39 | 日期导航异步加载须带目标标识失效守卫 | 记忆页连点乱序（走查 P2，2026-08-15）|
+| F40 | `_queue = _queue.then(...)` 串行队列必须 catchError 恢复 | admin 队列单点故障（走查 P2，2026-08-15）|
+| F41 | 保活 IndexedStack children 按稳定标识 ValueKey + tap 传 label（F36 闭环）+ 保活测试 | F36 未闭环（走查 P3，2026-08-15）|
+| F42 | 网络缩略图（Image.network）与本地预览同策略：cacheWidth 降采样 | Feed 缩略图全分辨率解码（走查 P2，2026-08-15）|
+| F43 | 失败重试 SnackBar 双端逐项对拍（show 前 clear + 成功后 hide）| F35 半闭环（走查 P3，2026-08-15）|
+| F44 | 上传成功卡 content/summary 同源策略双端对拍 | web caption 丢失（走查 P2，2026-08-15）|

@@ -23,3 +23,8 @@ tags: [review, checklist, ui]
 | V6 | 空态/加载态/错误态都有设计（非白屏）| PASS/FAIL |
 | V7 | 文本截断/溢出安全（emoji 不劈开、超长不横向溢出）| PASS/FAIL |
 | V8 | 图标/文案语义正确，无中英混杂 | PASS/FAIL |
+
+| V1-3 | 移动端全屏页（无 AppBar）必须包 SafeArea；顶部交互区不得进入状态栏 | LauncherPage 误触（走查 P1-W10，2026-08-15）|
+| V5-2 | 空态/引导文案禁用 darkGrey6（对比度 <2.1:1）；小字号元信息不用 darkGrey5 | 对比度不达标（走查 P1-W11，2026-08-15）|
+| V7-3 | 所有文本截断按 grapheme/rune 边界（禁止对含 emoji 文本 substring）| emoji 劈开（走查 P2，2026-08-15）|
+| V8-2 | 「真实后端」页面不得残留 MOCK/占位标记 | admin MOCK 徽标（走查 P1，2026-08-15）|

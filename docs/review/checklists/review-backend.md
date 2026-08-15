@@ -68,3 +68,10 @@
 
 ---
 **追加方式**：新发现后端问题 → 追加一行，注明日期。
+
+| B37 | frontmatter 时间字段解析**禁止 now() 回退**——缺失返回 null + 调用方跳过/拒删（RecordFileRepository/CardMigrationService/MemoryService 3 处仍违规，CardFileRepository #206 为正确范式）| parseDateTime 回退 B29 复发（走查 P1-W12，2026-08-15）|
+| B38 | 展示自然化**全路径枚举**——grep `r.content()`/`highlight(` 定位所有直接透传 content 的展示点（Search 已漏），逐路径应用 ImageQaFormatter | 搜索未自然化（走查 P1-W3，2026-08-15）|
+| B39 | 卡片类多行字段 round-trip 必须配「写→读→写→读」断言测试（turns/summary/suggestion 含 \n）| 多行 turn 截断 P0（走查 P0-W1，2026-08-15）|
+| B40 | 插件门控**对称性检查**——trading 与 project 两插件写端点逐对枚举（project tasks 未门控已命中）| 门控旁路（走查 P1-W13，2026-08-15）|
+| B41 | 手动/管理写入口（PATCH /records/{id}/domain、cards/migrate、cards/cleanup）纳入 D5/B32 枚举 | domain 旁路（走查 P1-W13，2026-08-15）|
+| B42 | Feed 与 Timeline 聚合逻辑**同源**——intent 过滤/歧义保守口径两端一致 | Feed 去重无 intent 过滤（走查 P1-W4 同族，2026-08-15）|

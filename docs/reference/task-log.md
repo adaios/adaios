@@ -363,3 +363,58 @@ v1.0.0（adai-admin + 多账号）：
 
 - **#173 带图提问 intent=question** → 已被 Phase 1 带图 ask（`ask-batch` 问句分流）实现
 - **#262 stripCodeFences 边界** → 标注"可接受记录"（复盘正文罕见含代码块，无需修）
+
+## 全维度走查（2026-08-15 首轮，7 官）
+
+> docs/ai/process/audit.md 首轮走查。P0/战略/P1 在 REVIEW.md 走查区；以下为 P2/P3 待办。
+
+### P2 待办
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+| W-P2-1 | 双端对拍修复：图片重试字节（web F27）、删除确认（app U16）、全图 Dialog 接入（3 处）、搜索错误态（web）| 多文件 | P2 |
+| W-P2-2 | 记忆页日期连点异步乱序守卫（web 有 app 无）| `memory_page.dart:54-73` | P2 |
+| W-P2-3 | admin 插件 toggle 串行队列 catchError 恢复（非 ApiException 永久 error）| `accounts_page.dart:96-117` | P2 |
+| W-P2-4 | Feed 缩略图 cacheWidth 降采样（app/web Image.network 全分辨率解码）| `feed_card.dart:418` / `desktop_feed_card.dart:238` | P2 |
+| W-P2-5 | web 图片成功卡 content=用户 caption（#245 同步）| `feed_page.dart:200-212` | P2 |
+| W-P2-6 | project tasks 写端点加 project 插件门控（B40 对称）| `ProjectStatusController.java` | P2 |
+| W-P2-7 | accounts.json 原子写（writeAll 截断写 → 损坏全系统起不来）| `AccountFileRepository.java:191` | P2 |
+| W-P2-8 | TagIndex 并发 RMW 锁（cacheByUser 非线程安全）| `TagIndexService.java:53-95` | P2 |
+| W-P2-9 | 交易落 Record 流水线（recordTrade 只改 positions.md，不进 Timeline/Search/Memory）| `TradingAppService.java:48-92` | P2 |
+| W-P2-10 | MemoryService 序列化三缺陷：suggestion 未单行化 / createdAt now() 回退 / contains 哨兵匹配 | `MemoryService.java:689-803` | P2 |
+| W-P2-11 | 数据卫生：alice 越界 domain 标注 + 连调残留 / positions symbol-name 错配 / os/ 空文件+PNG+重复 JSON | data/alice + positions.md + os/ | P2 |
+| W-P2-12 | roadmap 状态漂移：数据冻结标「待做」实为定稿、#144/#106/#112 已修仍列待清；§3.2 补插件模型（S-W1）| `product-roadmap.md` | P2 |
+| W-P2-13 | feature-reference 附录 API 全集补 7 端点 + §16 PATCH 全量→合并语义 | `feature-reference.md` | P2 |
+| W-P2-14 | api-spec §5 trades/review 补 403 插件门控契约 | `api-spec.md:439-474` | P2 |
+
+### P3 打磨（选录）
+
+| # | 任务 | 位置/说明 | 优先级 |
+|:-:|:-----|:---------|:------:|
+| W-P3-1 | IndexedStack children 按 label ValueKey + tap 传 label（F36 闭环）| `desktop_shell.dart:125-129` | P3 |
+| W-P3-2 | 失败 SnackBar 双端统一 clear/hide（F35 补全）| 双端 | P3 |
+| W-P3-3 | 「最后记录」恒显「刚刚」（updatedAt 未传值）| `main_page.dart:1074-1093` | P3 |
+| W-P3-4 | `_closeChat` 裸 firstWhere → indexWhere（#205 口径）| `main_page.dart:255` | P3 |
+| W-P3-5 | admin setPlugins 死接口清理（页面已全走 mergePlugins）| `account_api_store.dart:23` | P3 |
+| W-P3-6 | DTO 契约小漂移：PromoteResultDto.message / sourceRecordId / lastConfirmed / totalCost | 三端 api_dto | P3 |
+| W-P3-7 | promoteReview 重复 Content-Type header | 双端 api_service | P3 |
+| W-P3-8 | web 全图 Dialog errorBuilder（404 白框）| `desktop_feed_card.dart:267-280` | P3 |
+| W-P3-9 | web FilePicker 无压缩（全量字节内存 + 上传）| `feed_page.dart:976-1005` | P3 |
+| W-P3-10 | web 对话态发媒体不退出 active chat（F25 对拍残留）| `feed_page.dart:163-227` | P3 |
+| W-P3-11 | 时间线第三人称 ai_summary 自然化（P1-W4 细化）| `TimelineProjection.java` | P3 |
+| W-P3-12 | 卡片删除 substring 误删（card_123 命中 card_1230）| `CardFileRepository.java:162-176` | P3 |
+| W-P3-13 | surrogate pair 拆断（Memory.fromContentFallback/GlmResponseParser substring(0,100)）| 2 文件 | P3 |
+| W-P3-14 | ImageQaFormatter 问句含「答：」误切 | `ImageQaFormatter.java:24-34` | P3 |
+| W-P3-15 | image_qa Feed intent 错位（持久化 question 输出 log）| `FeedAppService.java:215` | P3 |
+| W-P3-16 | ContextEngine.loadMemorySummary → touchActive 读路径写文件 | `ContextEngine.java:342` | P3 |
+| W-P3-17 | LocalFileStorage stripUserPrefix 与 resolve 默认值不一致（null vs default）| `LocalFileStorage.java:160-181` | P3 |
+| W-P3-18 | rebuild 幂等死角 + retryCards 空白 summary 累积 | 2 文件 | P3 |
+| W-P3-19 | AccountRepository.save/delete 无锁 RMW（mergePlugins 已锁）| `AccountFileRepository.java:142-189` | P3 |
+| W-P3-20 | promote 脱敏漏洞（[\d.]+ 不匹配 1,400 带逗号）| `TradingController.java:272-284` | P3 |
+| W-P3-21 | 记忆噪声 decision 127/172 误标（#153 复发）+ 3 条悬空 recordId | data/adai/memory | P3 |
+| W-P3-22 | docs/ai roles frontmatter 断链 14 处 + context-reviewer 外部路径 + frontmatter-spec related（自伤）| `docs/ai/roles/*` | P3 |
+| W-P3-23 | 审查官计数 7 vs 8 同步 + lines 字段校准 16/17 | docs/ai + _index | P3 |
+| W-P3-24 | status.md 端点 51→52 + 「15 Controller」→16 + v1.0.0.md/task-plugin-model 数字快照 | status/releases | P3 |
+| W-P3-25 | implemented RFC 残留「待确认」（multimodal/record-task）+ review-skill RFC 引用旧 .claude 路径 | 3 RFC | P3 |
+| W-P3-26 | api-spec feed 示例缺 domain + docs/_index 漏 memory-os-design | 2 文档 | P3 |
+| W-P3-27 | os/ 各 README 引用漂移（life-os K19/project-os 漏 rules/PROJECT_SUMMARY 过期）| os/ | P3 |

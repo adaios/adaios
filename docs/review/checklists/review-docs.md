@@ -56,3 +56,10 @@
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
+
+| D30 | frontmatter 出边可解析性脚本化：解析 depends-on/related 相对路径断言目标存在（roles/ 首次实现 16 处断链）| docs/ai 断链（走查 P1-W16，2026-08-15）|
+| D31 | 审查官数量单一声明：新增角色同步 README/audit/review 路由表「N 官」计数 | 7 vs 8（走查 P1-W16，2026-08-15）|
+| D32 | RFC 正文禁止测试数/端点数数字快照（引用写「见 status.md」）| RFC 硬编码数字（走查 P2，2026-08-15）|
+| D33 | README 索引扫描扩为 rfc/ + reference/ + releases/ | releases 未登记（走查 P2，2026-08-15）|
+| D34 | frontmatter `lines` 字段 /ship 回写门禁（按 wc -l 校准）| lines 未校准（走查 P3，2026-08-15）|
+| D35 | status.md 内部交叉校验：端点数 vs endpoints.txt、Controller 计数 vs 测试覆盖描述 | status 失真（走查 P1-W16，2026-08-15）|
