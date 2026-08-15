@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -93,6 +95,10 @@ public class FeedAppService {
             }
         }
 
+        // S-2 展示层聚合（图文一体）：image_qa 引用的 image 记录不单独成条——合并进图文事件
+        Set<String> qaReferencedImageIds = collectQaReferencedImages(allRecords);
+        log.debug("带图 ask 聚合 | 引用图 {} 条", qaReferencedImageIds.size());
+
         // 跨日记忆补齐（REVIEW #148）：重补/升级会把记忆沉淀到处理当天的文件（Memory.createdAt=now），
         // 同日 findByDate 查不到 → ai_note 归属错日/丢失。按记录补一次批量查询。
         Map<String, Memory> crossDayMemories = findCrossDayMemories(userId, allRecords, skipRecordIds, allMemories);
@@ -109,6 +115,8 @@ public class FeedAppService {
         for (ContentRecord r : allRecords) {
             if (skipRecordIds.contains(r.id())) continue;
             if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
+            // S-2：被 image_qa 引用的图片记录聚合进图文事件，不单独成条
+            if ("image".equals(r.type()) && qaReferencedImageIds.contains(r.id())) continue;
             allEntries.add(toFeedEntry(userId, r, imageQaCardIds));
             Memory memory = memoriesFor(allMemories, r.id())
                     .orElseGet(() -> crossDayMemories.get(r.id()));
@@ -183,11 +191,38 @@ public class FeedAppService {
         return map;
     }
 
+    /** image_qa content 中的图片引用（freeze §2.1：`图片记录：{id1}, {id2}`，逗号+空格分隔）。 */
+    private static final Pattern IMAGE_REF = Pattern.compile("图片记录[：:]([^\\n]+)");
+
+    /** 收集所有 image_qa 记录引用的图片 id（这些 image 记录聚合进图文事件，不单独成条）。 */
+    private Set<String> collectQaReferencedImages(List<ContentRecord> records) {
+        Set<String> ids = new HashSet<>();
+        for (ContentRecord r : records) {
+            if (!"image_qa".equals(r.type()) || r.content() == null) continue;
+            Matcher m = IMAGE_REF.matcher(r.content());
+            if (m.find()) {
+                for (String id : m.group(1).split(",")) {
+                    String t = id.strip();
+                    if (!t.isEmpty()) ids.add(t);
+                }
+            }
+        }
+        return ids;
+    }
+
     private FeedEntry toFeedEntry(String userId, ContentRecord r, Set<String> imageQaCardIds) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
-        String mediaPath = "image".equals(r.type())
-                ? recordRepository.findMediaPath(userId, r.id()).orElse(null)
-                : null;
+        String mediaPath = null;
+        if ("image".equals(r.type())) {
+            mediaPath = recordRepository.findMediaPath(userId, r.id()).orElse(null);
+        } else if ("image_qa".equals(r.type()) && r.content() != null) {
+            // S-2 图文一体：带图 ask 聚合为图文事件，缩略图取引用首图（原图可点开）
+            Matcher m = IMAGE_REF.matcher(r.content());
+            if (m.find()) {
+                String firstId = m.group(1).split(",")[0].strip();
+                mediaPath = recordRepository.findMediaPath(userId, firstId).orElse(null);
+            }
+        }
         // #209：图片记录若有关联追问 card（id==图片记录 id），合并 turns——刷新后图片卡下对话历史完整
         List<TurnDto> turns = null;
         if ("image".equals(r.type()) && imageQaCardIds.contains(r.id())) {

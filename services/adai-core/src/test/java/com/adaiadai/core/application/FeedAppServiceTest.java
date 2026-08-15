@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -333,5 +334,48 @@ class FeedAppServiceTest {
 
         FeedAppService.FeedResponse page2 = service.getFeed("default", LocalDate.of(2026, 8, 3), 2, 5);
         assertTrue(page2.entries().isEmpty(), "超范围页返回空");
+    }
+
+    @Test
+    void getFeed_aggregatesImageQa_referencedImagesNotSeparate() {
+        // S-2 图文一体：3 图 + 1 条 image_qa（引用 3 图）→ Feed 只 1 条图文事件，图不单独成条
+        LocalDateTime t0 = LocalDateTime.of(2026, 8, 15, 10, 0);
+        List<ContentRecord> all = List.of(
+                record("img1", "image", "图1", "【图片文字】K线", "log", t0),
+                record("img2", "image", "图2", "【图片文字】成交量", "log", t0),
+                record("img3", "image", "图3", "【图片文字】MACD", "log", t0),
+                record("qa1", "image_qa", "顶背离判断",
+                        "【多图问答】\n图片记录：img1, img2, img3\n问：看看是不是顶背离\n答：是",
+                        "question", t0.plusSeconds(30)));
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(all);
+        when(recordRepository.findMediaPath(eq("default"), eq("img1")))
+                .thenReturn(Optional.of("records/2026/08/media/img1.png"));
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository,
+                market, emptyPush(), pluginService("default", "trading"));
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 15), 0, 10);
+
+        List<FeedAppService.FeedEntry> recordEntries = resp.entries().stream()
+                .filter(e -> "record".equals(e.type())).toList();
+        assertEquals(1, recordEntries.size(), "3 图 + 1 问答 → 聚合为 1 条图文事件");
+        assertEquals("qa1", recordEntries.get(0).id(), "保留 image_qa 记录");
+        assertEquals("records/2026/08/media/img1.png", recordEntries.get(0).mediaPath(),
+                "图文事件缩略图取引用首图");
+    }
+
+    private static ContentRecord record(String id, String type, String title, String content, String intent,
+                                        LocalDateTime time) {
+        return new ContentRecord(id, type, "user_input", title, content, List.of(), time, intent, title, "life");
     }
 }

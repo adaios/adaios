@@ -32,9 +32,8 @@ mode: deep 增量（Domain=插件模型 + step-1）
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）；/accounts/available 已最小化（#215），但数据访问仍靠 header 注入无认证。真正收紧需登录体系 | `AccountController` / `WebConfig` | 📋 v1.0.1 立项（登录体系随多账号正式开放单独做）|
-| S-2 | 附图文本写 4 份记录（caption×3 张图 + image_qa 问句）语义重复 | `MediaRecordAppService.askImages` + `_onSendMedia` | 📋 需产品确认 caption 归属策略 |
 
-> S-3（重补路径 domain 收敛）/ S-4（行情推送写侧门控）已修复出表（2026-08-15 修复批 Q，见已修复区）。
+> S-2（附图文本语义重复）已按产品决策「一次输入 = 一个事件」**展示层聚合出表**（时间线/Feed 图文一体 + 多轮 chat 单条，2026-08-15）；数据层整体化（一次输入落盘一条，动 freeze §2.1）另立 RFC 入 v1.0.1。S-3/S-4 已修复出表（批 Q）。
 
 ## 🔴 P1（未修复）
 
@@ -53,6 +52,7 @@ mode: deep 增量（Domain=插件模型 + step-1）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| S-2（展示层）| 「一次输入 = 一个事件」：时间线多轮 chat 每会话单条 + 带图 ask image_qa 聚合为图文事件（引用图不单独成条，缩略图取首图）；Feed 同口径；前端零改动；数据层整体化另立 v1.0.1；后端 433（+4）| ✅ 2026-08-15（层 2 另立）|
 | 批 R（P1-5/P1-6/P2-5/P2-6/P1-7/P2-8）| 前端+文档：adai-web 壳 label 重解析防索引错位 + 插件失败 SnackBar 重试；adai-app Launcher 插件接口拆独立 try/catch；adai-admin toggle 前重取最新账号；api-spec D1 通用化同步；feature-reference 补插件模型章节；web 47（+1）| ✅ 2026-08-15 |
 | 批 Q（S-3/S-4/P1-4/P2-2/P2-3/P2-4）| 后端插件门控/健壮性六连修：重补路径 gateDomain（D5 铺满）+ MarketAlert 写侧 trading 门控 + 账号迁移读字段存在性（PATCH 清空不被推翻）+ domain 规则关键词单一真相源 + Account null 过滤 + ContextPackage 收敛 domainEnum（CHAT 不硬编码）；后端 429（+7）| ✅ 2026-08-15 |
 | P1-3 | **`data/*/project/` 隐私面补齐**：gitignore 加 `data/*/project/`（用户决策：data/ 数据层全部不提交），`git rm --cached` 移除误跟踪的 `data/adai/project/tasks/2026/07.md`（工作区文件保留），CLAUDE.md 目录注释同步 | ✅ 2026-08-15 |
