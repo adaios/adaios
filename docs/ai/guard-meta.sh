@@ -84,8 +84,11 @@ for f in files:
             if not target.exists():
                 fails.append(f'M1 {rel}: {key} 断链 {ref}')
 
-# --fix: 回写 lines（只改 frontmatter 内 lines: N 行，保留正文）
+# --fix: 回写 lines（按 wc -l 校准）+ updated（今日）；仅当内容实际变更时写文件（幂等）
 if FIX:
+    import datetime
+    today = datetime.date.today().isoformat()
+    changed = []
     for f in files:
         whole = f.read_text(encoding='utf-8')
         lines = whole.split('\n')
@@ -95,12 +98,23 @@ if FIX:
             if lines[i] == '---': end = i; break
         if end is None: continue
         actual = whole.count('\n') + (0 if whole.endswith('\n') else 1)
+        lines_fixed = False
         for i in range(1, end):
-            if lines[i].startswith('lines:'):
+            if lines[i].startswith('lines:') and lines[i] != 'lines: %d' % actual:
                 lines[i] = 'lines: %d' % actual
-                break
-        f.write_text('\n'.join(lines), encoding='utf-8')
-    print('--fix: lines 字段已回写，重新校验…')
+                lines_fixed = True
+        # updated 只在 lines 实际漂移（内容变更）时刷新，避免无改动也写盘
+        if lines_fixed:
+            for i in range(1, end):
+                if lines[i].startswith('updated:'):
+                    lines[i] = 'updated: %s' % today
+            f.write_text('\n'.join(lines), encoding='utf-8')
+            changed.append(f.relative_to(ROOT))
+    if changed:
+        print('--fix: %d 文件回写 lines/updated' % len(changed))
+        for c in changed: print('   ', c)
+    else:
+        print('--fix: 无漂移，无需回写')
     sys.exit(0)
 
 # M3 orphans: 收集边引用 + 所有 _index.md 文件清单引用
