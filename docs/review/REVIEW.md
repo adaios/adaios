@@ -78,6 +78,12 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 
 > 7 审查官独立并行全量走查，交叉印证（同一问题多官命中 = ⭐ 优先级高）。走查日期 + 摘要滚动保留。
 
+> 2026-08-15 自伤自查（8 官全量，审查 AI 工程层自身）
+
+> 📄 完整发现清单见 `docs/review/audits/2026-08-15-ai-engineering-self.md`。
+
+> 守护：META-GUARD PASS（45 文件）。**P0 无。战略×7 + P1×14 + P2×26 + P3×24**。**核心**：①docs/ai→ai-engineering 迁移清理未闭环（6 官 ⭐⭐⭐⭐⭐⭐）——ship/audit/review 门禁命令 `bash docs/ai/guard-meta.sh` 按文档执行必失败；②guard-meta M1 只校验 frontmatter 边、不查正文路径（盲区）——迁移残留全绿 PASS。**战略 S-A1..A7 + P1-A1..A14** 见存档。检查点沉淀建议 11 条（M4 正文路径扫描 / 迁移三件套 / RFC 验收核验 等）。
+
 ### 2026-08-15 首轮（7 官全量）
 
 > 📄 完整按角色发现清单见 `docs/review/audits/2026-08-15.md`（含修复状态标注）。
