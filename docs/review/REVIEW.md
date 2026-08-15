@@ -74,7 +74,7 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 | 批 O 收官 | #101/#103/#177 战略 + #19/#22/#115/#228 P2 + P3 顺手 14 项 | ✅ 2026-08-12 |
 | #216 + #217 + #223 | CardMigration 判定收紧 + rewriteId 锚定 frontmatter + os/ 只读例外 | ✅ 2026-08-12 |
 
-## 🔍 全维度走查（docs/ai/process/audit.md）
+## 🔍 全维度走查（ai-engineering/process/audit.md）
 
 > 7 审查官独立并行全量走查，交叉印证（同一问题多官命中 = ⭐ 优先级高）。走查日期 + 摘要滚动保留。
 
@@ -117,7 +117,7 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 | P1-W13 | **门控旁路 3 处**：PATCH /records/{id}/domain 绕 gateDomain、project tasks 写端点未门控、cards/cleanup 文本匹配误删 | `RecordController` / `ProjectStatusController` / `CardMigrationService` | — |
 | P1-W14 | **STATEMENT prompt 缺闭合引号**——AI 照模板输出非法 JSON → 主流水线解析降级 | `ContextEngine.java:563` | — |
 | P1-W15 | **tags.json 索引陈旧**——rebuild() 无调用者，仅覆盖 17/201 记录 → Context 标签关联注入失效 | `TagIndexService.java:156` | — |
-| P1-W16 | **docs/ai 基建自伤**：roles frontmatter depends-on 14 处断链 + 审查官计数 7 vs 8 + status.md 端点 51 实为 52 | `docs/ai/roles/*` / `status.md` | — |
+| P1-W16 | **docs/ai 基建自伤**：roles frontmatter depends-on 14 处断链 + 审查官计数 7 vs 8 + status.md 端点 51 实为 52 | `ai-engineering/roles/*` / `status.md` | — |
 
 **🔴 P2（11 项，详见 task-log）**：双端重试/删除/文案/色值对拍（多官）、记忆页日期连点乱序、admin 队列无错误恢复、Feed 缩略图无降采样、web caption 丢失、项目写端点门控、accounts.json 非原子、TagIndex 并发 RMW、交易不落 Record 流水线、记忆序列化三缺陷、alice 越界 domain/残留、positions 错配、os/ 知识杂项、roadmap 状态漂移、feature-reference 过期等。
 

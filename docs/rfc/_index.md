@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 55
+lines: 56
 depends-on: []
 related:
   - ../_index.md
@@ -46,6 +46,7 @@ tags: [meta, index, rfc]
 | 20260813-record-task-and-sports-analysis.md | 记录↔任务关联 + 相机动作分析（想法升级 RFC） | implemented |
 | 20260814-domain-plugin-model.md | Domain=插件模型（Kernel 基础服务 / Domain 受控插件） | approved |
 | 20260815-docs-governance.md | 文档治理——瘦身 + 单一事实源（先于功能开发） | approved |
+| 20260815-ai-engineering-layer.md | AI 工程层——从「文档子目录」到「一等公民」（草案）| draft |
 | 20260815-media-event-unification.md | 图文一体——媒体事件数据层统一（一次输入 = 一条记录） | approved |
 
 ## 过期判断

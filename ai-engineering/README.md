@@ -9,8 +9,8 @@ lines: 40
 depends-on:
   - frontmatter-spec.md
 related:
-  - ../../AGENTS.md
-  - ../review/REVIEW.md
+  - ../AGENTS.md
+  - ../docs/review/REVIEW.md
 tags: [ai, meta]
 ---
 

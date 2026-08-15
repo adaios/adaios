@@ -12,7 +12,7 @@ depends-on:
 related:
   - ../roles/ux-reviewer.md
   - ../roles/ui-reviewer.md
-  - ../../../docs/architecture/product-architecture.md
+  - ../../docs/architecture/product-architecture.md
 tags: [review, product]
 ---
 

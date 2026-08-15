@@ -5,7 +5,7 @@
 # 用法:  bash docs/review/guard.sh
 # 说明:  脚本内部自动 cd 到仓库根，免疫 cwd 漂移；
 #         用引号规避 zsh glob 坑（--include=*.dart 之类）。
-# 配套:  检查清单文档见 docs/ai/checklists/guard.md
+# 配套:  检查清单文档见 ai-engineering/checklists/guard.md
 #         （清单说明"查什么/上次发现"，本脚本是执行器）
 # 退出码: 0 = 全部 PASS；1 = 有 HIT（存在复发/契约破坏风险）
 # ─────────────────────────────────────────────────────────────

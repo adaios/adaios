@@ -10,7 +10,7 @@ depends-on:
   - ../frontmatter-spec.md
 related:
   - review.md
-  - ../../review/REVIEW.md
+  - ../../docs/review/REVIEW.md
 tags: [ai, process]
 ---
 

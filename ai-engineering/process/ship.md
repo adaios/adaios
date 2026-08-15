@@ -12,7 +12,7 @@ depends-on:
 related:
   - review.md
   - audit.md
-  - ../../reference/status.md
+  - ../../docs/reference/status.md
 tags: [ai, process, ship]
 ---
 

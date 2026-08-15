@@ -11,7 +11,7 @@ depends-on:
   - ../checklists/review-ui.md
 related:
   - ../roles/ux-reviewer.md
-  - ../../../docs/architecture/frontend-reference.md
+  - ../../docs/architecture/frontend-reference.md
 tags: [review, ui]
 ---
 

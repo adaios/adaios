@@ -162,13 +162,13 @@ Bug 修复     → 直接改
 
 ### 功能落地（/ship）
 
-- `/ship` 开发收尾闭环：完整流程见 `docs/ai/process/ship.md`——测试 → 契约同步（api-spec/freeze/feature-reference）→ 文档登记（_index.md）→ **元治理校验（`bash docs/ai/guard-meta.sh`，必须 PASS）** → 规范提交
+- `/ship` 开发收尾闭环：完整流程见 `ai-engineering/process/ship.md`——测试 → 契约同步（api-spec/freeze/feature-reference）→ 文档登记（_index.md）→ **元治理校验（`bash ai-engineering/guard-meta.sh`，必须 PASS）** → 规范提交
 - 与 `/review` 配套：ship 保证产出完整（上游），review 检查遗漏（下游）
 
 ### 定期审核
 
 - `/review` 触发项目审核（增量默认审 git diff，`--full` 全量）：5 角色（文档/后端/前端/产品UI/知识数据）+ 守护检查，滚动更新 `docs/review/REVIEW.md`
-- 守护检查已脚本化：`bash docs/review/guard.sh` 一条命令跑 G1-G7（自动 cd 到仓库根，输出 PASS/HIT），检查点清单 `docs/ai/checklists/` 是活文档，每次审核沉淀新检查模式（补清单 + 脚本同步）
+- 守护检查已脚本化：`bash docs/review/guard.sh` 一条命令跑 G1-G7（自动 cd 到仓库根，输出 PASS/HIT），检查点清单 `ai-engineering/checklists/` 是活文档，每次审核沉淀新检查模式（补清单 + 脚本同步）
 - 审核只报告不直接修（P0 数据丢失可与用户确认后修）
 
 ### 底线

@@ -10,7 +10,7 @@ depends-on:
   - ../frontmatter-spec.md
   - ../checklists/review-context.md
 related:
-  - ../../../ai/context/
+  - ../../ai/context/
 tags: [review, context]
 ---
 

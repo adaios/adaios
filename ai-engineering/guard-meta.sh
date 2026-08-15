@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 元治理守护检查 — docs/ai/ + AGENTS.md 的 frontmatter 契约自检
+# 元治理守护检查 — ai-engineering/ + AGENTS.md 的 frontmatter 契约自检
 #
-# 用法:  bash docs/ai/guard-meta.sh           # 检查
-#        bash docs/ai/guard-meta.sh --fix     # 检查 + 回写 lines 字段（D34 校准）
+# 用法:  bash ai-engineering/guard-meta.sh       # 检查
+#        bash ai-engineering/guard-meta.sh --fix # 检查 + 回写 lines 字段（D34 校准）
 # 说明:  脚本内部自动 cd 到仓库根，免疫 cwd 漂移；
 #        检查三件事（对应 D30/D34/M2）：
 #          M1 图谱边：depends-on/related 相对路径必须解析到存在的文件
@@ -16,7 +16,7 @@ set -u
 
 FIX="${1:-}"
 
-cd "$(dirname "$0")/../.."   # docs/ai → 仓库根
+cd "$(dirname "$0")/.."   # ai-engineering → 仓库根
 ROOT="$(pwd)"
 
 python3 - "$ROOT" "$FIX" <<'PYEOF'
@@ -25,9 +25,9 @@ import re, sys, pathlib
 ROOT = pathlib.Path(sys.argv[1])
 FIX = (sys.argv[2] == '--fix')
 DOCS = ROOT / 'docs'
-AI = DOCS / 'ai'
+AI = ROOT / 'ai-engineering'
 
-# 强制范围（frontmatter-spec §四）：AGENTS.md + docs/_index.md + 各目录 _index.md + docs/ai/**
+# 强制范围（frontmatter-spec §四）：AGENTS.md + docs/_index.md + 各目录 _index.md + ai-engineering/**
 files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
 files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录治理）
 files += sorted((AI/'roles').glob('*.md'))
@@ -130,7 +130,7 @@ for f in files:
             t = (f.parent / refp).resolve()
             if t.exists(): referenced.add(str(t))
 # _index.md 文件清单（| path | 职责 | 状态 |）也算引用（全部子目录索引）
-for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')):
+for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md']:
     if not idx.exists(): continue
     for line in idx.read_text(encoding='utf-8').splitlines():
         m = re.match(r'^\|\s*([\w./-]+\.md)\s*\|', line)

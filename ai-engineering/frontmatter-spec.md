@@ -9,7 +9,7 @@ lines: 59
 depends-on: []
 related:
   - process/audit.md
-  - ../../docs/VISION.md
+  - ../docs/VISION.md
 tags: [ai, meta, governance]
 ---
 
