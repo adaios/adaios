@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 48
+lines: 49
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -31,6 +31,7 @@ tags: [ai, meta, index]
 | roles/context-reviewer.md | AI Context 审查官 | active |
 | process/audit.md | 全维度走查流程 | active |
 | process/review.md | 增量深审流程 | active |
+| process/ship.md | 收尾闭环流程（guard-meta 门禁）| active |
 | checklists/review-ux.md | 交互检查清单 | active |
 | checklists/review-ui.md | 界面检查清单 | active |
 | checklists/review-product.md | 产品架构检查清单 | active |

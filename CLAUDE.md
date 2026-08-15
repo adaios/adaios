@@ -162,7 +162,7 @@ Bug 修复     → 直接改
 
 ### 功能落地（/ship）
 
-- `/ship` 开发收尾闭环：测试 → api-spec 同步 → CLAUDE.md 当前焦点更新 → 新文档登记 → 规范提交
+- `/ship` 开发收尾闭环：完整流程见 `docs/ai/process/ship.md`——测试 → 契约同步（api-spec/freeze/feature-reference）→ 文档登记（_index.md）→ **元治理校验（`bash docs/ai/guard-meta.sh`，必须 PASS）** → 规范提交
 - 与 `/review` 配套：ship 保证产出完整（上游），review 检查遗漏（下游）
 
 ### 定期审核

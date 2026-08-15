@@ -25,7 +25,7 @@ tags: [ai, meta, governance]
 | `description` | 人 | 一句话：解决什么问题、AI 何时读、读了干嘛（对应方法论 Purpose/Trigger）|
 | `version` | 人（重大变更 +1）| 语义版本，便于引用 |
 | `created` | 人（创建一次）| `YYYY-MM-DD` |
-| `updated` | **工具/流程**（/ship 自动）| `YYYY-MM-DD`——手写必漂移，机器维护 |
+| `updated` | **工具/流程**（/ship 自动，见 `process/ship.md`）| `YYYY-MM-DD`——手写必漂移，机器维护 |
 | `status` | 人 | `draft` / `active` / `superseded` / `archived`（生命周期，归档机制基础）|
 | `lines` | **工具**（/ship 自动）| 行数——治理：>300 提示拆分、>500 必须拆分 |
 | `depends-on` | 人 | 我依赖谁（图谱出边）；反查「谁依赖我」由工具合成 |
