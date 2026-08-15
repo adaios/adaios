@@ -76,7 +76,9 @@
 | P-be-01 | **P0 安全** | admin 的 6 个维护端点（records/retry、memory/rebuild、memory/{id} PATCH、cards/cleanup、trading/has-activity、trading/knowledge/conflicts）**不在管理鉴权路径下**，任何伪造 X-User-Id 可操作任意用户 | 移到 /admin/** 或加管理鉴权 |
 | P-be-02 | P1 | admin 复用 POST /records + DELETE /records 做数据管理，无管理鉴权 | 同上 |
 | P-be-03 | P1 | admin 混入个人内容编辑（档案 PUT /identity、记忆 PATCH /memory、任务增删）——admin 应有治理视角而非编辑个人数据 | admin 收敛为只读 + 治理操作 |
-| P-be-04 | P3 | 3 个死端点：admin/ai-logs（已实现未接线）、cards/migrate、memory/record/{id} | 接线或删除 |
+| P-be-04 | P3 | 3 个死端点：admin/ai-logs（**已实现但 admin 无「AI 日志」页面，未接线**）、cards/migrate（历史迁移已废弃）、memory/record/{id} | ai-logs 接线到 admin；其余删除 |
+| P-be-05 | ✓ | app 未越界：仅调 accounts/available + me/plugins，未调账号创建/删除/数据清理/系统配置 | 确认健康 |
+| P-be-06 | P2 | 鉴权总前提：全部 per-user 端点仅靠 X-User-Id header 隔离（无身份认证），admin 维护端点亦不在令牌保护内 | 随 P-be-01 一并治理（管理端点入 /admin/** 或加管理鉴权）|
 
 ### admin 职责错位细化（P-role 系列，与 P-be 互补）
 
