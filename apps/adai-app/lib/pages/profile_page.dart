@@ -239,7 +239,7 @@ class _ProfilePageState extends State<ProfilePage> {
             )
           else
             Text('暂无标签',
-                style: TextStyle(fontSize: 13, color: AppColors.darkGrey6)),
+                style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
         ]),
         const SizedBox(height: 28),
 

@@ -273,7 +273,15 @@ class DesktopFeedCard extends StatelessWidget {
           onTap: () => Navigator.pop(context),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(url, headers: data.mediaHeaders, fit: BoxFit.contain),
+            child: Image.network(
+              url,
+              headers: data.mediaHeaders,
+              fit: BoxFit.contain,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : const Center(child: CircularProgressIndicator()),
+              errorBuilder: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38)),
+            ),
           ),
         ),
       ),

@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | 走查修复批 W2 前端续 | P1-W5 失败伪装空态五处修复（web search/memory/timeline + app timeline_modal/launcher——错误态+重试，失败不再显示「无数据」）；P1-W7 切 World 不中断上传（dispose 后继续传，UI 由 mounted 守卫）；P1-W9 全图 Dialog 3 处加 errorBuilder/loadingBuilder（防 404 白框）；P1-W11 空态/元信息文案对比度提亮 17 处（darkGrey6→4）| app 94 · web 47 |
 | 2026-08-15 | 走查修复批 W2 前端 | P1-W6 三端请求超时 15s（_TimeoutClient 包装，waiting 不再无限转圈）；P1-W8 app 删除确认弹窗（与 web 对拍，DELETE 不可逆）；测试适配 | app 94 · web 47 · admin 33 |
 | 2026-08-15 | 走查修复批 W2 后端 | P1-W14 STATEMENT prompt 闭合引号；P1-W12 parseDateTime 不再回退 now()（脏 createdAt 跳过）；P1-W13 门控旁路三修（PATCH domain gateDomain + project tasks 403 + cards/cleanup intent/日期收紧）；P1-W15 启动时全量重建标签索引（TagIndexBootstrap）；+403/round-trip 测试 | 后端 454（+1）|
 | 2026-08-15 | 全维度走查修复批 W1 | P0-W1 卡片多行 turn 单行化（对话丢失根治 + round-trip 测试）；P1-W10 LauncherPage SafeArea（误触）；P1-W1 web 图片重试重走 uploadImage（F37）+ P1-W2 app 文本重试复用 cardId（幂等）；P1-W3/W4 搜索+时间线自然化（第一原则漏面）；P1-W16 基建自伤（docs/ai frontmatter 断链 + 审查官 8 + status 端点 52）| 后端 453（+3）· app 94 · web 47 |

@@ -218,7 +218,7 @@ class _TimelinePageState extends State<TimelinePage> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text('本月 ${_entryMap.length} 天有记录',
-                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
             ),
         ],
       ),
@@ -310,7 +310,7 @@ class _TimelinePageState extends State<TimelinePage> {
   Widget _buildDayEntries() {
     if (_selectedDay == null || !_entryMap.containsKey(_selectedDay)) {
       return const Expanded(
-        child: Center(child: Text('选择日期查看记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6))),
+        child: Center(child: Text('选择日期查看记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4))),
       );
     }
     final entries = _entryMap[_selectedDay]!;
@@ -368,7 +368,7 @@ class _TimelinePageState extends State<TimelinePage> {
                   ),
                 ],
                 const SizedBox(height: 4),
-                Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+                Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
               ],
             ),
           );

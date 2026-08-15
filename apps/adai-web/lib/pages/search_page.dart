@@ -19,6 +19,7 @@ class _SearchPageState extends State<SearchPage> {
   int _total = 0;
   bool _searching = false;
   bool _hasSearched = false;
+  String? _error; // REVIEW P1-W5：失败不伪装空态
   String _lastQuery = '';
 
   @override
@@ -54,6 +55,7 @@ class _SearchPageState extends State<SearchPage> {
       setState(() {
         _searching = false;
         _hasSearched = true;
+        _error = '搜索失败，请重试';
         _results = [];
       });
     }
@@ -109,6 +111,18 @@ class _SearchPageState extends State<SearchPage> {
     if (!_hasSearched) {
       return const Center(
         child: Text('输入关键词搜索记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+      );
+    }
+    if (_error != null) {
+      // REVIEW P1-W5：失败不伪装「未找到」
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, size: 32, color: AppColors.darkOrange),
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _search, child: const Text('重试')),
+        ]),
       );
     }
     if (_results.isEmpty) {

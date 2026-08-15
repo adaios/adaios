@@ -18,6 +18,7 @@ class _MemoryPageState extends State<MemoryPage> {
   String? _selectedDate;
   List<MemoryEntryResponse> _entries = [];
   bool _loading = true;
+  String? _error; // REVIEW P1-W5
 
   @override
   void initState() {
@@ -42,7 +43,10 @@ class _MemoryPageState extends State<MemoryPage> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = '记忆加载失败，请重试';
+      });
     }
   }
 
@@ -56,7 +60,9 @@ class _MemoryPageState extends State<MemoryPage> {
       final entries = await widget.api.getMemory(date: date, force: force);
       if (!mounted || _selectedDate != date) return;
       setState(() => _entries = entries);
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _error = '记忆加载失败，请重试');
+    }
   }
 
   /// #158 桌面记忆页：待办记忆项完成操作（PATCH /memory/{id}/done → 刷新当前日）。
@@ -155,6 +161,18 @@ class _MemoryPageState extends State<MemoryPage> {
   }
 
   Widget _buildEntryList() {
+    if (_error != null) {
+      // REVIEW P1-W5：失败不伪装「暂无」
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, size: 32, color: AppColors.darkOrange),
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          const SizedBox(height: 8),
+          TextButton(onPressed: () => _loadDates(force: true), child: const Text('重试')),
+        ]),
+      );
+    }
     if (_entries.isEmpty) {
       return const Center(child: Text('该日暂无记忆', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)));
     }

@@ -27,6 +27,7 @@ class _TimelineModalState extends State<TimelineModal> {
   final Map<int, List<TimelineEntryResponse>> _entryMap = {};
   int? _selectedDay;
   bool _loading = true;
+  String? _error; // REVIEW P1-W5
 
   static const List<String> _weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -62,7 +63,10 @@ class _TimelineModalState extends State<TimelineModal> {
         _loading = false;
       });
     } catch (_) {
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = '加载失败，请重试'; // REVIEW P1-W5：失败不伪装「无记录」
+      });
     }
   }
 
@@ -148,7 +152,17 @@ class _TimelineModalState extends State<TimelineModal> {
               ),
             ),
           ] else
-            const Expanded(child: Center(child: Text('这天没有记录',
+            Expanded(
+              child: _error != null
+                  // REVIEW P1-W5：失败不伪装「无记录」
+                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.error_outline, size: 32, color: AppColors.darkOrange),
+                      const SizedBox(height: 8),
+                      Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+                      const SizedBox(height: 8),
+                      TextButton(onPressed: _loadTimeline, child: const Text('重试')),
+                    ]))
+                  : const Center(child: Text('这天没有记录',
                 style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)))),
         ],
       ),
@@ -216,7 +230,15 @@ class _TimelineModalState extends State<TimelineModal> {
           onTap: () => Navigator.pop(context),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(widget.api.mediaUrl(id), headers: widget.api.mediaHeaders, fit: BoxFit.contain),
+            child: Image.network(
+              widget.api.mediaUrl(id),
+              headers: widget.api.mediaHeaders,
+              fit: BoxFit.contain,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : const Center(child: CircularProgressIndicator()),
+              errorBuilder: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38)),
+            ),
           ),
         ),
       ),

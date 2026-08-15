@@ -129,10 +129,10 @@ class _MemoryPageState extends State<MemoryPage> {
                     ? _buildError()
                     : _entries.isEmpty
                         ? Center(child: Text('今天暂无记忆',
-                            style: TextStyle(fontSize: 14, color: AppColors.darkGrey6)))
+                            style: TextStyle(fontSize: 14, color: AppColors.darkGrey4)))
                         : _filtered.isEmpty
                             ? Center(child: Text('没有匹配「$_activeTag」的记忆',
-                                style: TextStyle(fontSize: 14, color: AppColors.darkGrey6)))
+                                style: TextStyle(fontSize: 14, color: AppColors.darkGrey4)))
                             : ListView.builder(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
                                 itemCount: _filtered.length,
@@ -291,7 +291,7 @@ class _MemoryPageState extends State<MemoryPage> {
             Icon(icon, size: 12, color: iconColor),
             const SizedBox(width: 4),
             Text('$time  ${_dateDisplay(_currentDate)}',
-                style: TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+                style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
           ]),
         ]),
       ),

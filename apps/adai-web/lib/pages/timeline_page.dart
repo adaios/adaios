@@ -18,6 +18,7 @@ class _TimelinePageState extends State<TimelinePage> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   String? _selectedDay;
   bool _loading = true;
+  String? _error; // REVIEW P1-W5
 
   /// 有记录的日期集合（yyyy-MM-dd）。
   late final Set<String> _daysWithEntries = {};
@@ -41,7 +42,10 @@ class _TimelinePageState extends State<TimelinePage> {
       _selectedDay ??= _today();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = '时间线加载失败，请重试';
+      });
     }
   }
 
@@ -186,6 +190,18 @@ class _TimelinePageState extends State<TimelinePage> {
     final dayEntries = _selectedDay == null
         ? <TimelineEntryResponse>[]
         : _entries.where((e) => _dateOf(e.dateTime) == _selectedDay).toList();
+    if (_error != null) {
+      // REVIEW P1-W5：失败不伪装「暂无」
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, size: 32, color: AppColors.darkOrange),
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          const SizedBox(height: 8),
+          TextButton(onPressed: _load, child: const Text('重试')),
+        ]),
+      );
+    }
     if (dayEntries.isEmpty) {
       return const Center(child: Text('该日暂无记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)));
     }
@@ -297,7 +313,15 @@ class _TimelinePageState extends State<TimelinePage> {
           onTap: () => Navigator.pop(context),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(widget.api.mediaUrl(id), headers: widget.api.mediaHeaders, fit: BoxFit.contain),
+            child: Image.network(
+              widget.api.mediaUrl(id),
+              headers: widget.api.mediaHeaders,
+              fit: BoxFit.contain,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : const Center(child: CircularProgressIndicator()),
+              errorBuilder: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38)),
+            ),
           ),
         ),
       ),

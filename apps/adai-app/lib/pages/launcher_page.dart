@@ -31,6 +31,7 @@ class LauncherPage extends StatefulWidget {
 
 class _LauncherPageState extends State<LauncherPage>
     with SingleTickerProviderStateMixin {
+  String? _coreError; // REVIEW P1-W5：核心数据失败提示
   String? _myName;
   int _tagTotal = 0;
   int _memoryCount = 0;
@@ -95,7 +96,10 @@ class _LauncherPageState extends State<LauncherPage>
       });
       _graphAnim.forward();
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() {
+        _loading = false;
+        _coreError = '核心数据加载失败，显示可能不完整'; // REVIEW P1-W5
+      });
     }
   }
 
@@ -149,6 +153,19 @@ class _LauncherPageState extends State<LauncherPage>
     return SafeArea(
       child: Column(
         children: [
+          // REVIEW P1-W5：核心数据加载失败提示条（不静默全 0）
+          if (_coreError != null)
+            Container(
+              width: double.infinity,
+              color: AppColors.darkOrange.withValues(alpha: 0.12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(children: [
+                const Icon(Icons.error_outline, size: 14, color: AppColors.darkOrange),
+                const SizedBox(width: 6),
+                Expanded(child: Text(_coreError!, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                GestureDetector(onTap: _loadAll, child: const Text('重试', style: TextStyle(fontSize: 12, color: AppColors.darkGreen))),
+              ]),
+            ),
           // Fixed top: drag handle + search bar (not scrolled)
           GestureDetector(
             onVerticalDragEnd: (d) {
@@ -274,7 +291,7 @@ class _LauncherPageState extends State<LauncherPage>
       ..sort((a, b) => b.count.compareTo(a.count));
     final tags = sorted.take(15).toList();
     if (tags.isEmpty) {
-      return Text('暂无标签', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6));
+      return Text('暂无标签', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4));
     }
 
     return AnimatedBuilder(
@@ -376,7 +393,7 @@ class _LauncherPageState extends State<LauncherPage>
     final maxCount = tags.isNotEmpty ? tags.first.count.toDouble() : 1.0;
 
     if (tags.isEmpty) {
-      return Text('暂无标签', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6));
+      return Text('暂无标签', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4));
     }
 
     return Wrap(
@@ -451,7 +468,7 @@ class _LauncherPageState extends State<LauncherPage>
               height: 40,
               alignment: Alignment.centerLeft,
               child: Text('搜索记录、标签、记忆…',
-                  style: TextStyle(fontSize: 15, color: AppColors.darkGrey6)),
+                  style: TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
             ),
           ),
         ]),

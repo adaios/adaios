@@ -372,12 +372,12 @@ class _MainPageState extends State<MainPage>
           caption: caption,
         );
         ok++;
-        if (mounted) setState(() => _uploadDone = ok); // 逐张进度（阿呆 08-13）
-        if (!mounted) return;
-        // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
-        // REVIEW #245：content 保留用户 caption 作为记录内容，summary 单独放 AI 理解文本——
-        // 不再 content/summary 同源导致同一 AI 文本渲染两遍、用户 caption 被覆盖。
-        setState(() {
+        // REVIEW P1-W7（U13）：切 World（MainPage dispose）不中断剩余上传——图片继续传完，
+        // UI 更新由 mounted 守卫跳过（防 dispose 后 setState 崩溃）；占位卡随 State 销毁。
+        if (mounted) {
+          setState(() => _uploadDone = ok); // 逐张进度（阿呆 08-13）
+          // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
+          // REVIEW #245：content 保留用户 caption 作为记录内容，summary 单独放 AI 理解文本
           final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
           if (idx >= 0) {
             _cards[idx] = _buildMediaSuccessCard(
@@ -385,7 +385,7 @@ class _MainPageState extends State<MainPage>
               fallback: caption.isEmpty ? image.name : caption,
             );
           }
-        });
+        }
         // P1-2：成功图 id 进 pending（问句补跑时一并覆盖）
         if (resp.recordId.isNotEmpty && _pendingAskRecordIds != null) {
           _pendingAskRecordIds!.add(resp.recordId);
@@ -987,12 +987,12 @@ class _MainPageState extends State<MainPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('✦ ✦ ✦', style: TextStyle(fontSize: 24, color: AppColors.darkGrey6)),
+            Text('✦ ✦ ✦', style: TextStyle(fontSize: 24, color: AppColors.darkGrey4)),
             const SizedBox(height: 20),
             Text('还没有记录', style: TextStyle(fontSize: 18, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text('在下方输入你的第一条记录\n或语音、或文字，随你', textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: AppColors.darkGrey6, height: 1.6)),
+              style: TextStyle(fontSize: 14, color: AppColors.darkGrey4, height: 1.6)),
             const SizedBox(height: 32),
             Row(mainAxisSize: MainAxisSize.min, children: [
               _emptyChip('📝 记录心情', () => _inputBarKey.currentState?.prefillText('今天心情')),
@@ -1117,7 +1117,7 @@ class _MainPageState extends State<MainPage>
         Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(label, style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
+          child: Text(label, style: TextStyle(fontSize: 9, color: AppColors.darkGrey4)),
         ),
         Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
       ]),
@@ -1339,7 +1339,7 @@ class _MainPageState extends State<MainPage>
                   )),
         ),
         const SizedBox(height: 4),
-        Text(time, style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
+        Text(time, style: TextStyle(fontSize: 9, color: AppColors.darkGrey4)),
       ],
     );
   }

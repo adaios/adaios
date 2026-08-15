@@ -133,11 +133,11 @@ class _SearchPageState extends State<SearchPage> {
               _buildError()
             else if (!_hasSearched)
               const Expanded(
-                child: Center(child: Text('输入关键词搜索记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey6))),
+                child: Center(child: Text('输入关键词搜索记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey4))),
               )
             else if (_results.isEmpty)
               Expanded(
-                child: Center(child: Text('未找到相关记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey6))),
+                child: Center(child: Text('未找到相关记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey4))),
               )
             else
               Expanded(
@@ -254,7 +254,7 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ],
           const SizedBox(height: 4),
-          Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+          Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
         ],
       ),
     );
