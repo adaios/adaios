@@ -291,4 +291,79 @@ class MediaControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest());
     }
+
+    // ── S-2 聚合卡身份断裂修复：image_qa id 的 GET 预览 / 追问（原 404 / 400）──
+
+    /** 上传 2 图 + ask-batch（question）→ 返回 image_qa 记录 id（S-2 聚合事件）。 */
+    private String askBatchToImageQa(List<String> ids) throws Exception {
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenReturn(IntentRecognizer.Intent.QUESTION);
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "imageRecordIds", ids, "question", "这两张图分别是什么？"));
+        String resp = mvc.perform(post("/api/v1/records/media/ask-batch")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((ObjectNode) new ObjectMapper().readTree(resp)).get("recordId").asText();
+    }
+
+    @Test
+    void getMedia_imageQaId_returnsFirstImageBytes() throws Exception {
+        // 修复缩略图 404：GET /records/media/{image_qa_id} → 回退解析引用首图返回原图字节
+        List<String> ids = uploadN(2);
+        String qaId = askBatchToImageQa(ids);
+
+        mvc.perform(get("/api/v1/records/media/" + qaId)
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+    }
+
+    @Test
+    void askImage_imageQaId_routesToMultiImageAsk() throws Exception {
+        // 修复聚合卡追问 400：POST /media/{image_qa_id}/ask → 解析引用图 → 转多图问答（askImages）
+        List<String> ids = uploadN(2);
+        String qaId = askBatchToImageQa(ids);
+
+        mvc.perform(post("/api/v1/records/media/" + qaId + "/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"再帮我看看这两张图\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("左图是持仓截图，右图是分时走势。"))
+                .andExpect(jsonPath("$.recordId").isString())
+                .andExpect(jsonPath("$.imageRecordIds[0]").value(ids.get(0)))
+                .andExpect(jsonPath("$.imageRecordIds[1]").value(ids.get(1)));
+    }
+
+    @Test
+    void askImage_imageQaId_blankQuestion_400() throws Exception {
+        // image_qa 追问路由仍校验问题非空
+        List<String> ids = uploadN(1);
+        String qaId = askBatchToImageQa(ids);
+
+        mvc.perform(post("/api/v1/records/media/" + qaId + "/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void askImage_normalImageId_keepsSingleImageAsk() throws Exception {
+        // 普通 image 记录追问语义不变（单图 AskResult 响应：imageRecordId 回指原图）
+        when(intentRecognizer.recognizeWithAi(any()))
+                .thenReturn(IntentRecognizer.Intent.STATEMENT);
+        List<String> ids = uploadN(1);
+
+        mvc.perform(post("/api/v1/records/media/" + ids.get(0) + "/ask")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\": \"这是什么股票？\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.answer").value("这是浦发银行，持仓约 1000 股。"))
+                .andExpect(jsonPath("$.imageRecordId").value(ids.get(0)));
+    }
 }

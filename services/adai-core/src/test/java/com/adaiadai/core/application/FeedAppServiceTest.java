@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -382,6 +383,52 @@ class FeedAppServiceTest {
                 "正文不得出现内部图片引用（第三视角）");
         assertFalse(recordEntries.get(0).content().contains("问："),
                 "正文不得出现「问：」标签");
+
+        // S-2 聚合卡对话历史：image_qa 条目附带 turns（问句 + 回答，从 content 解析）——
+        // 刷新后聚合卡以"图文对话卡"形态呈现，前端进对话态可显示历史
+        assertNotNull(recordEntries.get(0).turns(), "image_qa 聚合条目应附对话 turns");
+        assertEquals(2, recordEntries.get(0).turns().size(), "turns = 问句 + 回答 两条");
+        assertTrue(recordEntries.get(0).turns().get(0).isUser());
+        assertEquals("看看是不是顶背离", recordEntries.get(0).turns().get(0).text());
+        assertEquals("10:00", recordEntries.get(0).turns().get(0).time(),
+                "turns 时间取 image_qa 记录 createdAt 的 HH:mm");
+        assertFalse(recordEntries.get(0).turns().get(1).isUser());
+        assertEquals("是", recordEntries.get(0).turns().get(1).text());
+    }
+
+    @Test
+    void getFeed_imageQa_singleImageFormat_carriesTurns() {
+        // 单图追问（【图片问答】格式）聚合条目同样附带 turns
+        LocalDateTime t0 = LocalDateTime.of(2026, 8, 15, 9, 30);
+        List<ContentRecord> all = List.of(
+                record("img1", "image", "图1", "【图片文字】K线", "log", t0),
+                record("qa1", "image_qa", "这是什么股票",
+                        "【图片问答】\n图片记录：img1\n问：这是什么股票\n答：浦发银行", "question", t0.plusSeconds(30)));
+
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(all);
+        when(recordRepository.findMediaPath(eq("default"), eq("img1")))
+                .thenReturn(Optional.of("records/2026/08/media/img1.png"));
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository,
+                market, emptyPush(), pluginService("default", "trading"));
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 15), 0, 10);
+
+        FeedAppService.FeedEntry qaEntry = resp.entries().stream()
+                .filter(e -> "record".equals(e.type())).findFirst().orElseThrow();
+        assertEquals(2, qaEntry.turns().size());
+        assertEquals("这是什么股票", qaEntry.turns().get(0).text());
+        assertEquals("浦发银行", qaEntry.turns().get(1).text());
+        assertEquals("09:30", qaEntry.turns().get(0).time());
     }
 
     private static ContentRecord record(String id, String type, String title, String content, String intent,

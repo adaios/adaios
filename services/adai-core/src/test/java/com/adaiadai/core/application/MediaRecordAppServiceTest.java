@@ -306,4 +306,73 @@ class MediaRecordAppServiceTest {
         assertEquals("life", all.get(0).domain(), "无插件用户图片记录不得落盘 trading 标注");
         verify(pluginService).gateDomain("alice", "trading");
     }
+
+    // ── S-2 聚合卡身份断裂修复：image_qa 记录解析（mediaPathFor / referencedImageIdsOf）──
+
+    @Test
+    void mediaPathFor_imageQa_resolvesFirstImage() {
+        // S-2：image_qa 聚合记录本身无媒体文件（{id}.{ext} 不存在）→ 回退解析引用首图
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "持仓截图", "trading", "浦发银行", List.of("交易")));
+        when(glm.askMulti(any(), any())).thenReturn("左图是持仓，右图是走势。");
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
+
+        MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 2);
+        MediaRecordAppService.AskBatchResult qa = service.askImages("default",
+                List.of(imgs[0].recordId(), imgs[1].recordId()), "这两张图分别是什么？");
+
+        // image_qa id 本身找不到 {id}.{ext} 文件，但 mediaPathFor 应回退返回首图路径（修复缩略图 404）
+        assertTrue(service.mediaPathFor("default", imgs[0].recordId()).isPresent(),
+                "image 记录原语义：直读媒体文件");
+        Optional<String> qaPath = service.mediaPathFor("default", qa.recordId());
+        assertTrue(qaPath.isPresent(), "image_qa 记录应回退解析到首图 mediaPath（修复 404）");
+        assertEquals(imgs[0].mediaPath(), qaPath.get(), "image_qa 缩略图 = 引用首图的媒体文件");
+    }
+
+    @Test
+    void mediaPathFor_imageQa_missingFirstImage_returnsEmpty() {
+        // 引用的图片记录不存在（数据损坏/被删）→ 回退解析不到 → 空（404，不误指）
+        VisualAiClient glm = mock(VisualAiClient.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
+
+        ContentRecord qa = new ContentRecord(
+                "rec_20260815_000000001", "image_qa", "ai_answer",
+                "问", "【多图问答】\n图片记录：rec_missing\n问：这是什么\n答：是", List.of(),
+                java.time.LocalDateTime.of(2026, 8, 15, 10, 0), "question", "是", "life");
+        recordRepository.save("default", qa);
+
+        assertTrue(service.mediaPathFor("default", qa.id()).isEmpty(),
+                "引用图无媒体文件 → image_qa 也返回空");
+    }
+
+    @Test
+    void referencedImageIdsOf_imageQa_returnsAllReferencedIds() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
+        when(glm.askMulti(any(), any())).thenReturn("综合回答");
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
+
+        MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 3);
+        MediaRecordAppService.AskBatchResult qa = service.askImages("default",
+                List.of(imgs[0].recordId(), imgs[1].recordId(), imgs[2].recordId()), "三张分别是什么？");
+
+        List<String> refs = service.referencedImageIdsOf("default", qa.recordId());
+        assertEquals(List.of(imgs[0].recordId(), imgs[1].recordId(), imgs[2].recordId()), refs,
+                "image_qa 聚合记录 → 解析出全部引用图 id（追问路由/多图上下文用）");
+    }
+
+    @Test
+    void referencedImageIdsOf_nonImageQa_returnsEmpty() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
+
+        MediaRecordAppService.MediaRecordResult img = service.recordImage("default", png(), "image/png", null);
+
+        assertTrue(service.referencedImageIdsOf("default", img.recordId()).isEmpty(),
+                "普通 image 记录无引用 → 空（走单图追问）");
+        assertTrue(service.referencedImageIdsOf("default", "rec_unknown").isEmpty(),
+                "未知 id → 空");
+    }
 }

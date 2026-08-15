@@ -1,5 +1,7 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.TradingAdviceAppService;
+import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
@@ -29,6 +31,7 @@ import java.util.Optional;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * TradingController — 全部 9 端点接口测试。
+ * TradingController — 全部 10 端点接口测试。
  * <p>
  * detectConflicts 基于真实规则解析（#23 修复：不再硬编码规则名），
  * 依赖 gradle test 运行时 cwd（services/adai-core）下可读的 os/trading-os/11-context/rules.md。
@@ -67,8 +70,16 @@ class TradingControllerTest {
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
                              String... defaultPlugins) {
+        return buildMvc(tradingAppService, reviewAppService,
+                mock(TradingAdviceAppService.class), defaultPlugins);
+    }
+
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradingReviewAppService reviewAppService,
+                             TradingAdviceAppService adviceAppService,
+                             String... defaultPlugins) {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
-                pluginService(defaultPlugins));
+                adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins));
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -161,10 +172,10 @@ class TradingControllerTest {
     void recordTrade_sellUnheld_tradingExceptionMapsTo400() throws Exception {
         // #147：SELL 未持有 → TradingException → GlobalExceptionHandler 映射 400 + 人话消息
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.recordTrade(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt()))
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
-                pluginService("trading"));
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"));
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -176,6 +187,66 @@ class TradingControllerTest {
                                 {"symbol":"600000","name":"浦发银行","direction":"SELL","price":10.5,"volume":100}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(containsString("无法卖出")));
+    }
+
+    // ── 持仓建议（RFC 20260815：建议引擎） ──
+
+    @Test
+    void generateAdvice_returnsStructuredAdvice() throws Exception {
+        TradingAdviceAppService advice = mock(TradingAdviceAppService.class);
+        when(advice.generateAdvice(any())).thenReturn(new TradingAdviceAppService.TradingAdviceResponse(
+                List.of(new TradingAdviceAppService.TradingAdviceItem(
+                        "000725", "京东方A", new BigDecimal("30.0"),
+                        "reduce", "仓位占比 30% 超 R81 单票上限，建议减仓至 20%", List.of("R81"))),
+                "持仓 1 只，京东方仓位偏高需调整"));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), advice, "trading");
+
+        mvc.perform(post("/api/v1/trading/advice").header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.advice[0].symbol").value("000725"))
+                .andExpect(jsonPath("$.advice[0].name").value("京东方A"))
+                .andExpect(jsonPath("$.advice[0].position_percent").value(30.0))
+                .andExpect(jsonPath("$.advice[0].suggestion").value("reduce"))
+                .andExpect(jsonPath("$.advice[0].reason").value(containsString("R81")))
+                .andExpect(jsonPath("$.advice[0].rules[0]").value("R81"))
+                .andExpect(jsonPath("$.summary").value(containsString("京东方")));
+        verify(advice).generateAdvice("default");
+    }
+
+    @Test
+    void generateAdvice_withoutTradingPlugin_403() throws Exception {
+        // RFC 20260814：无 trading 插件用户不得生成建议（与 promote/recordTrade 403 同口径）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), new String[0]);
+
+        mvc.perform(post("/api/v1/trading/advice").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void recordTrade_nameOptional_ok() throws Exception {
+        // RFC 20260815：name 可空（web 标注"名称（可选）"），缺名请求应 200（后端以 symbol 兜底）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of(position("600000")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600000\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void recordTrade_nameTooLong_400() throws Exception {
+        // @Size(max=32)：超长名称 400（防脏数据进持仓/时间线）
+        String longName = "很".repeat(33);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600000\",\"name\":\"" + longName + "\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100}"))
+                .andExpect(status().isBadRequest());
     }
 
     // ── 复盘 ──

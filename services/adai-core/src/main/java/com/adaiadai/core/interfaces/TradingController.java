@@ -1,5 +1,7 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.TradingAdviceAppService;
+import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
@@ -11,6 +13,7 @@ import com.adaiadai.core.kernel.plugin.PluginService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -40,13 +43,19 @@ public class TradingController {
 
     private final TradingAppService tradingAppService;
     private final TradingReviewAppService reviewAppService;
+    private final TradingAdviceAppService adviceAppService;
+    private final TradingParseAppService parseAppService;
     private final PluginService pluginService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
+                             TradingAdviceAppService adviceAppService,
+                             TradingParseAppService parseAppService,
                              PluginService pluginService) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
+        this.adviceAppService = adviceAppService;
+        this.parseAppService = parseAppService;
         this.pluginService = pluginService;
     }
 
@@ -82,6 +91,39 @@ public class TradingController {
                 request.direction(), request.price(), request.volume()
         );
         return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * 解析一句话交易（RFC 20260815 通道 A）：把自然语言「买了 1000 股京东方 @5.2」
+     * 结构化为 symbol/name/direction/price/volume，供前端确认卡回显。
+     * LLM 结构化优先，失败降级正则兜底；仍无法解析 → matched=false（前端转精确表单）。
+     * 只解析不落库——写入仍走 {@code POST /trades}（正确性由确认步拦截）。
+     */
+    @PostMapping("/trades/parse")
+    public ResponseEntity<?> parseTrade(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String text = body == null ? null : body.get("text");
+        return ResponseEntity.ok(parseAppService.parse(userId, text));
+    }
+
+    /**
+     * 生成持仓建议（交易模块核心定位：建议引擎）。
+     * <p>
+     * 读用户持仓 + 实时行情 + 只读 {@code os/trading-os/11-context/rules.md} 与 {@code strategy.md}，
+     * 将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议
+     * （suggestion / reason / rules 必须引用规则号）。建议是输出不是指令，本端点不做任何执行动作。
+     * <p>
+     * 兜底：LLM 失败时降级返回基础数据（symbol / name / position_percent，无建议字段），不抛错。
+     */
+    @PostMapping("/advice")
+    public ResponseEntity<?> generateAdvice(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(adviceAppService.generateAdvice(userId));
     }
 
     /** REVIEW P2-B1：trading 写入口门控（与 promote 403 同口径）——无 trading 插件用户不得写入持仓/复盘残留。 */
@@ -328,9 +370,14 @@ public class TradingController {
 
     // ── DTO ──
 
+    /**
+     * TradeRequest — 记录交易请求。
+     * <p>
+     * RFC 20260815：name 改可空（web 标注"名称（可选）"），缺失时由 TradingAppService 以 symbol 兜底。
+     */
     public record TradeRequest(
             @NotBlank String symbol,
-            @NotBlank String name,
+            @Size(max = 32) String name,
             TradeDirection direction,
             @Positive BigDecimal price,
             @Positive int volume

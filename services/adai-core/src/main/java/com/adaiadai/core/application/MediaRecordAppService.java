@@ -12,6 +12,7 @@ import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ImageQaFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -121,9 +122,33 @@ public class MediaRecordAppService {
 
     /**
      * 查找记录对应的媒体文件相对路径（供 GET 预览）。
+     * <p>
+     * S-2 聚合卡身份断裂修复：入参为 {@code image_qa} 聚合记录 id 时，该记录本身没有媒体文件
+     * （{@code {id}.{ext}} 不存在）——回退解析 content 引用的首张图片记录（freeze §2.1：
+     * {@code 图片记录：{id1}, {id2}}）→ 返回首图 mediaPath。普通 image 记录原语义不变。
      */
     public Optional<String> mediaPathFor(String userId, String id) {
-        return recordFileRepository.findMediaPath(userId, id);
+        Optional<String> direct = recordFileRepository.findMediaPath(userId, id);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        return referencedImageIdsOf(userId, id).stream()
+                .findFirst()
+                .flatMap(firstId -> recordFileRepository.findMediaPath(userId, firstId));
+    }
+
+    /**
+     * 解析 image_qa 聚合记录引用的图片记录 id 列表（可能是多张）。
+     * <p>
+     * 供 MediaController 追问路由与 {@link #mediaPathFor} 缩略图回退共用：
+     * 非 image_qa 记录 / 未知 id / 无引用 → 返回空列表（调用方走原单图路径）。
+     */
+    public List<String> referencedImageIdsOf(String userId, String id) {
+        Optional<ContentRecord> record = recordFileRepository.findById(userId, id);
+        if (record.isEmpty() || !"image_qa".equals(record.get().type())) {
+            return List.of();
+        }
+        return ImageQaFormatter.imageRecordIds(record.get().content());
     }
 
     /**

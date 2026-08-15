@@ -61,6 +61,10 @@ public class MediaController {
 
     /**
      * 图片追问（L4 图片问答）：就一张已记录的图片提问，返回 VLM 自然语言回答。
+     * <p>
+     * S-2 聚合卡身份断裂修复：{@code {id}} 为 {@code image_qa} 聚合记录时（带图 ask 聚合后的图文事件，
+     * 本身无媒体文件），解析其引用的图片记录 id（可能多张）→ 转多图问答（{@link #askBatchImages} 同链
+     * 的 {@code askImages}）而非按单图找 {@code {id}.{ext}} 文件（必然 400）。普通 image 记录原语义不变。
      */
     @PostMapping("/media/{id}/ask")
     public ResponseEntity<?> askImage(
@@ -68,8 +72,15 @@ public class MediaController {
             @PathVariable String id,
             @RequestBody Map<String, String> body) {
         try {
+            String question = body != null ? body.get("question") : null;
+            List<String> referencedImageIds = mediaRecordAppService.referencedImageIdsOf(userId, id);
+            if (!referencedImageIds.isEmpty()) {
+                MediaRecordAppService.AskBatchResult result = mediaRecordAppService.askImages(
+                        userId, referencedImageIds, question);
+                return ResponseEntity.ok(result);
+            }
             MediaRecordAppService.AskResult result = mediaRecordAppService.askImage(
-                    userId, id, body != null ? body.get("question") : null);
+                    userId, id, question);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

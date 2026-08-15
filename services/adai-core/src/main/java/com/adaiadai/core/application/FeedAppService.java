@@ -21,8 +21,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -192,21 +190,13 @@ public class FeedAppService {
         return map;
     }
 
-    /** image_qa content 中的图片引用（freeze §2.1：`图片记录：{id1}, {id2}`，逗号+空格分隔）。 */
-    private static final Pattern IMAGE_REF = Pattern.compile("图片记录[：:]([^\\n]+)");
-
     /** 收集所有 image_qa 记录引用的图片 id（这些 image 记录聚合进图文事件，不单独成条）。 */
     private Set<String> collectQaReferencedImages(List<ContentRecord> records) {
         Set<String> ids = new HashSet<>();
         for (ContentRecord r : records) {
             if (!"image_qa".equals(r.type()) || r.content() == null) continue;
-            Matcher m = IMAGE_REF.matcher(r.content());
-            if (m.find()) {
-                for (String id : m.group(1).split(",")) {
-                    String t = id.strip();
-                    if (!t.isEmpty()) ids.add(t);
-                }
-            }
+            // 引用解析单一事实源：ImageQaFormatter（freeze §2.1：图片记录：{id1}, {id2}）
+            ids.addAll(ImageQaFormatter.imageRecordIds(r.content()));
         }
         return ids;
     }
@@ -228,10 +218,9 @@ public class FeedAppService {
             }
         } else if ("image_qa".equals(r.type()) && r.content() != null) {
             // S-2 图文一体：带图 ask 聚合为图文事件，缩略图取引用首图（原图可点开）
-            Matcher m = IMAGE_REF.matcher(r.content());
-            if (m.find()) {
-                String firstId = m.group(1).split(",")[0].strip();
-                mediaPath = recordRepository.findMediaPath(userId, firstId).orElse(null);
+            List<String> refIds = ImageQaFormatter.imageRecordIds(r.content());
+            if (!refIds.isEmpty()) {
+                mediaPath = recordRepository.findMediaPath(userId, refIds.get(0)).orElse(null);
             }
             // 第一原则（无第三视角）：结构化 content 转自然对话——标题=用户问句，
             // 正文=问/答两行（去「问：/答：/图片记录：/【多图问答】」标签），图片由缩略图表达
@@ -250,6 +239,16 @@ public class FeedAppService {
                             .map(t -> new TurnDto(t.isUser(), t.text(), t.time()))
                             .collect(Collectors.toList()))
                     .orElse(null);
+        } else if ("image_qa".equals(r.type()) && r.content() != null) {
+            // S-2 聚合卡对话历史：image_qa 条目附带 turns（问句 + 回答，从 content 解析），
+            // 刷新后聚合卡以"图文对话卡"形态呈现，前端进对话态可显示 Q/A 历史
+            List<CardRecord.Turn> parsed = ImageQaFormatter.parseTurns(
+                    r.content(), r.createdAt().toLocalTime().format(TIME_FMT));
+            if (parsed != null) {
+                turns = parsed.stream()
+                        .map(t -> new TurnDto(t.isUser(), t.text(), t.time()))
+                        .collect(Collectors.toList());
+            }
         }
         return new FeedEntry(
                 "record", r.id(), null,
