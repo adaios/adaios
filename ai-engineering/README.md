@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 53
+lines: 55
 depends-on:
   - frontmatter-spec.md
 related:
@@ -51,3 +51,5 @@ tags: [ai, meta, engineering]
 5. 沉淀：决策入 `assets/adr/`，坑入 `assets/pitfalls.md`，结果更新 `state/`
 
 > 工具侧入口（Claude/Qoder/DSH 的一行配置）在工具自己的配置里，**不在本项目**——换工具零迁移。
+
+> **跨项目方法论**：本层是可复制的实例；通用骨架在仓库外 `ai-engineering-method/`（同级目录）——复制的是「如何建」，不是「建好的」。
