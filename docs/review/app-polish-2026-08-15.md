@@ -78,6 +78,21 @@
 | P-be-03 | P1 | admin 混入个人内容编辑（档案 PUT /identity、记忆 PATCH /memory、任务增删）——admin 应有治理视角而非编辑个人数据 | admin 收敛为只读 + 治理操作 |
 | P-be-04 | P3 | 3 个死端点：admin/ai-logs（已实现未接线）、cards/migrate、memory/record/{id} | 接线或删除 |
 
+### admin 职责错位细化（P-role 系列，与 P-be 互补）
+
+| # | 级别 | 发现 | 建议 |
+|:-:|:----:|:-----|:-----|
+| P-role-01 | P1 | 档案编辑（PUT /identity）admin + web 重复 | 只属用户端，admin 移除 |
+| P-role-02 | P2 | 记忆手动修正（PATCH /memory/{id}）admin 独有 | 应属用户端——web/app 补上「修正记忆」能力，admin 移除 |
+| P-role-03 | P1 | 记录删除 admin + web 重复 | 用户端已有，admin 应只读 |
+| P-role-04 | P1 | 任务 CRUD admin + web 重复 | 只属用户端，admin 移除 |
+| P-role-08 | P2 | 复盘生成+反哺三端重复 | 生成属用户业务；入库后治理属 admin |
+| P-role-09 | P1 | web/app 直接 promote 写 os/99-inbox 缺治理环节 | promote 后需 admin 确认入库（治理环节）|
+| P-role-10 | P2 | admin api_service 保留 POST /records 无调用（休眠越权面）| 删除死代码 |
+| P-role-11 | P2 | admin 顶栏可切任意 userId 操作其个人数据 | 单 owner 成立；多用户化时是隐私越权面，需角色约束 |
+
+**边界原则（定稿）**：个人数据写只属用户端（app/web）；系统级写（账号/插件门控/重建/清理/知识正式入库）只属 admin；读同一数据源不算重复，同样的写操作多端实现才算。
+
 ## 六、以 app 为焦点的打磨优先级（建议执行顺序）
 
 **第一批（P0，必须修）**：
