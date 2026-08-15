@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 38
+lines: 33
 depends-on:
   - ../frontmatter-spec.md
   - ../checklists/review-ux.md
