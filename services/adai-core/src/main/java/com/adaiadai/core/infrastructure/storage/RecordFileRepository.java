@@ -250,6 +250,8 @@ public class RecordFileRepository implements RecordRepository {
         String source = fields.getOrDefault("source", "user_input");
         List<String> tags = parseTags(fields.getOrDefault("tags", ""));
         LocalDateTime createdAt = parseDateTime(fields.getOrDefault("createdAt", null));
+        // P1-W12：createdAt 缺失/损坏 = 数据损坏记录，跳过不进内存（防 null 参与排序/日期过滤/误删）
+        if (createdAt == null) return null;
 
         String summary = fields.getOrDefault("summary", null);
         if (summary != null && summary.isBlank()) summary = null;
@@ -282,12 +284,16 @@ public class RecordFileRepository implements RecordRepository {
                 .toList();
     }
 
+    /**
+     * 解析 createdAt（REVIEW P1-W12 / B37）：缺失/损坏 → 返回 null，调用方跳过/拒删——
+     * 禁止回退 now()（会把脏记录误归"今天"，导致月边界删除失败 + Feed 错计）。
+     */
     private LocalDateTime parseDateTime(String value) {
-        if (value == null || value.isBlank()) return LocalDateTime.now();
+        if (value == null || value.isBlank()) return null;
         try {
             return LocalDateTime.parse(value);
         } catch (Exception e) {
-            return LocalDateTime.now();
+            return null;
         }
     }
 

@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | 走查修复批 W2 后端 | P1-W14 STATEMENT prompt 闭合引号；P1-W12 parseDateTime 不再回退 now()（脏 createdAt 跳过）；P1-W13 门控旁路三修（PATCH domain gateDomain + project tasks 403 + cards/cleanup intent/日期收紧）；P1-W15 启动时全量重建标签索引（TagIndexBootstrap）；+403/round-trip 测试 | 后端 454（+1）|
 | 2026-08-15 | 全维度走查修复批 W1 | P0-W1 卡片多行 turn 单行化（对话丢失根治 + round-trip 测试）；P1-W10 LauncherPage SafeArea（误触）；P1-W1 web 图片重试重走 uploadImage（F37）+ P1-W2 app 文本重试复用 cardId（幂等）；P1-W3/W4 搜索+时间线自然化（第一原则漏面）；P1-W16 基建自伤（docs/ai frontmatter 断链 + 审查官 8 + status 端点 52）| 后端 453（+3）· app 94 · web 47 |
 | 2026-08-15 | image 记录展示自然化 | 第一原则覆盖 image 记录：标题=VLM 总结、正文逐行去【备注】/【图片文字】标签（用户看到的是自己的话+自然内容，无第三视角）；生产验证 image_qa 自然化生效 | 后端 450（+1）|
 | 2026-08-15 | image_qa 展示自然化 + 图片预览修复 | 第一原则「无第三视角」落地：Feed/时间线 image_qa 转自然对话（标题=问句、正文=问/答两行、去问：/答：/图片记录：标签）；输入栏图片预览缓存 Uint8List + cacheWidth 降采样 + gaplessPlayback（打字 rebuild 不再闪烁/大图解码失败）；VISION 沉淀原则 | 后端 449（+3）|

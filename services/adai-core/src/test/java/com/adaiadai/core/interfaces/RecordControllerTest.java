@@ -43,7 +43,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -422,6 +424,9 @@ class RecordControllerTest {
     // ── domain 切换 + retry（adai-admin 系统操作台依赖，纯 mock 独立构造）──
 
     private MockMvc mockRecordMvc(RecordRepository repo, MemoryService mem, RecordRetryService retry) {
+        // P1-W13：gateDomain 透传（测试默认有插件，domain 原样保留）
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.gateDomain(anyString(), anyString())).thenAnswer(inv -> inv.getArgument(1));
         RecordController controller = new RecordController(
                 mock(IntentRecognizer.class),
                 mock(QuestionAppService.class),
@@ -431,7 +436,7 @@ class RecordControllerTest {
                 mem,
                 retry,
                 mock(RecordToTaskLinker.class),
-                mock(PluginService.class));
+                pluginService);
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 

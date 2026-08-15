@@ -560,7 +560,7 @@ public class ContextEngine {
                       "sentiment": "positive 或 negative 或 neutral",
                       "domain": "%s",
                       "actionable": true 或 false,
-                      "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null
+                      "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null",
 
 %s
                     }

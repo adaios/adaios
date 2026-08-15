@@ -335,8 +335,11 @@ public class RecordController {
         if (domain == null || !List.of("life", "trading", "project").contains(domain)) {
             return ResponseEntity.badRequest().build();
         }
-        log.info("Update domain | id={} | domain={}", id, domain);
-        recordRepository.updateDomain(userId, id, domain);
+        // REVIEW P1-W13（B41）：手动写入口与 AI 判定同口径走 gateDomain——
+        // 无插件用户不得手动把记录标为 trading/project
+        String gated = pluginService.gateDomain(userId, domain);
+        log.info("Update domain | id={} | domain={} → {} | userId={}", id, domain, gated, userId);
+        recordRepository.updateDomain(userId, id, gated);
         return ResponseEntity.noContent().build();
     }
 

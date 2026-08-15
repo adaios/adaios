@@ -254,12 +254,15 @@ public class CardMigrationService {
                 String content = fileStorage.read(userId, f);
                 if (content == null || content.isBlank()) continue;
 
-                // 解析 frontmatter 获取 brief content
-                String briefContent = extractBriefContent(content);
-                if (briefContent == null) continue;
+                // REVIEW P1-W13（B34 宁缺勿误删）：只清理「对话轮次冗余记录」——
+                // ① intent=question（旧代码每轮问答独立落盘）；② 记录日期 == 卡片日期（同会话）。
+                // 此前纯文本匹配会误删独立 log 记录（首行恰与某轮次文本相同）。
+                RecordFileInfo info = parseRecordInfo(content);
+                if (info == null || !"question".equals(info.intent)) continue;
+                if (info.createdAt == null || !info.createdAt.toLocalDate().toString().equals(cardDate)) continue;
 
                 // 匹配卡片中的用户消息文本
-                if (turnTexts.contains(briefContent)) {
+                if (turnTexts.contains(info.briefContent)) {
                     fileStorage.delete(userId, f);
                     deleted.add(f);
                     totalRecords++;
@@ -269,6 +272,37 @@ public class CardMigrationService {
 
         log.info("清理完成 | 删除冗余记录={}条", deleted.size());
         return new CleanupResult(deleted.size(), deleted, skipped);
+    }
+
+    /** 记录文件关键信息（cleanup 收紧用：intent + createdAt + 首行正文）。 */
+    private record RecordFileInfo(String intent, java.time.LocalDateTime createdAt, String briefContent) {}
+
+    /**
+     * 解析记录文件：frontmatter 的 intent/createdAt + 正文首行（P1-W13：cleanup 不再纯文本匹配）。
+     */
+    private RecordFileInfo parseRecordInfo(String fileContent) {
+        Matcher matcher = FRONTMATTER_PATTERN.matcher(fileContent);
+        if (!matcher.find()) return null;
+        String frontmatter = matcher.group(1);
+        String body = matcher.group(2).strip();
+        String intent = null;
+        java.time.LocalDateTime createdAt = null;
+        for (String line : frontmatter.split("\n")) {
+            if (line.startsWith("intent:")) {
+                String v = line.substring("intent:".length()).strip();
+                if (!v.isBlank() && !"null".equals(v)) intent = v;
+            } else if (line.startsWith("createdAt:")) {
+                String v = line.substring("createdAt:".length()).strip();
+                try {
+                    createdAt = java.time.LocalDateTime.parse(v);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        String firstLine = body.lines().findFirst().orElse("").strip()
+                .replaceAll("^#+\s*", "").strip();
+        if (firstLine.length() > 100) firstLine = firstLine.substring(0, 100);
+        return new RecordFileInfo(intent, createdAt, firstLine);
     }
 
     /**

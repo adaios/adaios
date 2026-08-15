@@ -5,6 +5,7 @@ import com.adaiadai.core.application.ProjectTaskAppService;
 import com.adaiadai.core.domain.project.Task;
 import com.adaiadai.core.domain.project.TaskRepository;
 import com.adaiadai.core.domain.project.TaskStatus;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -19,7 +20,10 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -34,9 +38,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ProjectStatusControllerTest {
 
+    /** 无 project 插件的构造（P1-W13 403 测试用）。 */
+    private MockMvc buildMvcNoPlugin(ProjectStatusAppService statusService,
+                                     ProjectTaskAppService taskService) {
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(anyString(), eq("project"))).thenReturn(false);
+        ProjectStatusController controller = new ProjectStatusController(statusService, taskService, pluginService);
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
     private MockMvc buildMvc(ProjectStatusAppService statusService,
                              ProjectTaskAppService taskService) {
-        ProjectStatusController controller = new ProjectStatusController(statusService, taskService);
+        // P1-W13：任务写端点需 project 插件（测试默认给插件）
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(anyString(), eq("project"))).thenReturn(true);
+        ProjectStatusController controller = new ProjectStatusController(statusService, taskService, pluginService);
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -154,5 +175,16 @@ class ProjectStatusControllerTest {
                 .andExpect(jsonPath("$.doing").value(1))
                 .andExpect(jsonPath("$.done").value(2))
                 .andExpect(jsonPath("$.cancelled").value(1));
+    }
+
+    @Test
+    void createTask_withoutProjectPlugin_403() throws Exception {
+        // REVIEW P1-W13：无 project 插件用户不得写任务（与 trading 侧对称）
+        MockMvc mvc = buildMvcNoPlugin(mock(ProjectStatusAppService.class), mock(ProjectTaskAppService.class));
+        mvc.perform(post("/api/v1/project/tasks")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"测试任务\"}"))
+                .andExpect(status().isForbidden());
     }
 }
