@@ -572,7 +572,7 @@ void main() {
       expect(find.textContaining('AI 图片理解', findRichText: true), findsOneWidget);
     });
 
-    testWidgets('Phase 1 带图 ask：附图 + 问句 → ask-batch 触发多图问答，回答进 SnackBar', (tester) async {
+    testWidgets('RFC 20260815 发图带问句：ask-batch 返回 question → 直进对话态（不刷新 Feed）', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
@@ -590,6 +590,7 @@ void main() {
         }));
       };
       await _pump(tester, b);
+      final feedCallsBefore = b.requests.where((r) => r.url.path == '/api/v1/feed').length;
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
       inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_A.jpg', 'jpg')]);
@@ -606,26 +607,108 @@ void main() {
       final body = jsonDecode(askReqs.first.body);
       expect(body['imageRecordIds'], ['rec_media_ask']);
       expect(body['question'], '这两张图分别是什么？');
-      // 回答进 SnackBar（💬 前缀 + 回答摘要）
-      expect(find.textContaining('左图是持仓，右图是走势。', findRichText: true), findsOneWidget);
+
+      // P0 核心：不再只是 SnackBar——直进对话态（对话 badge + 问句/回答气泡 + 结束对话）
+      expect(find.text('结束对话'), findsOneWidget);
+      expect(find.text('对话'), findsOneWidget); // 对话 badge
+      expect(find.text('这两张图分别是什么？'), findsOneWidget); // 用户问句气泡
+      expect(find.textContaining('左图是持仓，右图是走势。', findRichText: true), findsOneWidget); // 阿呆回答气泡
+      expect(find.textContaining('💬', findRichText: true), findsNothing); // 不再 SnackBar 截断回答
+
+      // 不刷新 Feed（宿主卡身份稳定：本地首图卡 id=真实图片记录 id，S-2 聚合 id 漂移前端先避开）
+      expect(b.requests.where((r) => r.url.path == '/api/v1/feed').length, feedCallsBefore);
     });
 
-    testWidgets('Phase 1 带图 ask：附图 + 陈述文本 → ask-batch 返回 log，纯记录无回答', (tester) async {
+    testWidgets('RFC 20260815 发图带问句：判定中「🔍 阿呆正在看图…」状态条 → 返回后直进对话态', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      final uploadGate = Completer<http.Response>();
+      final askGate = Completer<http.Response>();
+      b.handlers['/api/v1/records/media'] = (req) => uploadGate.future;
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) => askGate.future;
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_J.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这是什么？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+
+      // 上传中：占位卡本地预览（内存图，非空白/文件名）+ 上传进度 n/m
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('📤 上传中 0/1'), findsOneWidget);
+
+      // 上传完成 → 判定中状态条（上传进度条槽位复用，「🔍 阿呆正在看图…」）
+      // 注：判定条为不定进度动画，此阶段只用显式 pump，不用 pumpAndSettle
+      uploadGate.complete(_json({
+        'recordId': 'rec_media_judge', 'intent': 'log',
+        'summary': '一张截图', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/judge.png',
+      }));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('🔍 阿呆正在看图…'), findsOneWidget);
+      expect(find.text('📤 上传中 0/1'), findsNothing);
+
+      // ask-batch 返回 question → 直进对话态（判定条消失，回答成为气泡）
+      askGate.complete(_json({
+        'intent': 'question', 'answer': '这是一张截图。',
+        'recordId': 'qa', 'imageRecordIds': ['rec_media_judge'],
+      }));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+      expect(find.text('🔍 阿呆正在看图…'), findsNothing);
+      expect(find.text('结束对话'), findsOneWidget);
+      expect(find.text('这是什么？'), findsOneWidget);
+      expect(find.textContaining('这是一张截图。', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('RFC 20260815 发图纯图（无 caption）：log 落卡 + 阿呆自然回执（VLM summary，无系统文案）', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
       b.handlers['/api/v1/records/media'] = (req) {
+        b.feedPage0 = [_record('rec_media_pure', 'IMG_P.jpg',
+            summary: '傍晚的江边 🌇', mediaPath: 'records/2026/08/media/pure.png')];
+        b.feedTotalToday = 1;
         return Future.value(_json({
-          'recordId': 'rec_media_log', 'intent': 'log',
-          'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/log.png',
+          'recordId': 'rec_media_pure', 'intent': 'log',
+          'summary': '傍晚的江边 🌇', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/pure.png',
         }));
       };
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) {
-        return Future.value(_json({
-          'intent': 'log', 'answer': '',
-          'recordId': '', 'imageRecordIds': ['rec_media_log'],
-        }));
-      };
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_P.jpg', 'jpg')]);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // 纯图无文字 → 不触发 ask-batch（拍下即记录，直接 log）
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 0);
+      // 阿呆自然回执：VLM summary 拼「看到你…，已记下」（无第三视角，非「已记录 N 张」系统文案）
+      expect(find.textContaining('看到你傍晚的江边 🌇，已记下', findRichText: true), findsOneWidget);
+      expect(find.textContaining('已记录', findRichText: true), findsNothing);
+      // log 落卡：刷新后记录卡可见（summary 行）
+      expect(find.text('傍晚的江边 🌇'), findsWidgets);
+    });
+
+    testWidgets('RFC 20260815 附图 + 陈述文本：ask-batch 返回 log → 自然回执落卡，无回答气泡', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
+        'recordId': 'rec_media_log', 'intent': 'log',
+        'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/log.png',
+      }));
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json({
+        'intent': 'log', 'answer': '',
+        'recordId': '', 'imageRecordIds': ['rec_media_log'],
+      }));
       await _pump(tester, b);
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
@@ -637,10 +720,88 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      // ask-batch 调用但返回 log → 反馈为「已记录」，无 💬 回答
+      // ask-batch 调用但返回 log → 阿呆自然回执「看到你…，已记下」，不直进对话态、无 💬 回答
       expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 1);
+      expect(find.text('结束对话'), findsNothing, reason: 'log 不进入对话态');
       expect(find.textContaining('💬', findRichText: true), findsNothing);
-      expect(find.textContaining('已记录', findRichText: true), findsOneWidget);
+      expect(find.textContaining('看到你图片理解，已记下', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('RFC 20260815 ask-batch 失败：判定条复位 + 阿呆提示，卡片保持记录卡形态，不崩', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
+        'recordId': 'rec_media_fail', 'intent': 'log',
+        'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/fail.png',
+      }));
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) =>
+          Future.value(_json({'error': 'AI 超时'}, status: 500));
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_F.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这图什么情况？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // 判定条复位（不再「正在看图」），不进对话态；阿呆自然提示（B10）
+      expect(find.text('🔍 阿呆正在看图…'), findsNothing);
+      expect(find.text('结束对话'), findsNothing);
+      expect(find.textContaining('阿呆没看懂这张图，再试一次？', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('RFC 20260815 发图带问句 → 对话态连续追问（askMedia）→ 结束沉淀为带图总结卡', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
+        'recordId': 'rec_media_chat', 'intent': 'log',
+        'summary': '一张 K 线图', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/chat.png',
+      }));
+      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json({
+        'intent': 'question', 'answer': '这是一张 K 线图，近期震荡。',
+        'recordId': 'qa1', 'imageRecordIds': ['rec_media_chat'],
+      }));
+      b.handlers['/api/v1/records/media/rec_media_chat/ask'] = (_) => Future.value(_json({
+        'recordId': 'qa2', 'answer': '压力位在 3500 附近。', 'imageRecordId': 'rec_media_chat',
+      }));
+      await _pump(tester, b);
+
+      // 发图 + 问句 → 直进对话态
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_C.jpg', 'jpg')]);
+      await tester.enterText(find.byType(TextField), '这图怎么看？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('结束对话'), findsOneWidget);
+      expect(find.text('这图怎么看？'), findsOneWidget);
+
+      // 连续追问 → 走单图 ask（图即上下文，VLM 看图回答），气泡追加
+      await tester.enterText(find.byType(TextField), '压力位在哪？');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.text('压力位在哪？'), findsOneWidget);
+      expect(find.textContaining('压力位在 3500 附近。', findRichText: true), findsOneWidget);
+      final askReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/rec_media_chat/ask');
+      expect(askReqs.length, 1);
+      expect(jsonDecode(askReqs.first.body)['question'], '压力位在哪？');
+
+      // 结束对话 → ended 带图总结卡（✓总结 banner + 提问入口，无「结束对话」按钮）
+      // 注：active 布局外层 onDoubleTap，tap 需等 double-tap 超时（300ms）才触发
+      await tester.tap(find.text('结束对话'));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('对话总结'), findsOneWidget);
+      expect(find.text('结束对话'), findsNothing);
+      expect(find.text('提问'), findsWidgets);
     });
   });
 

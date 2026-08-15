@@ -319,16 +319,17 @@ class ApiService {
   }
 
   /// 记录一笔交易。
+  /// name 可空（RFC 20260815：代码即标的，名称由后端补全/以代码兜底）。
   Future<PositionsResponse> recordTrade({
     required String symbol,
-    required String name,
+    String? name,
     required String direction,
     required double price,
     required int volume,
   }) async {
     final body = {
       'symbol': symbol,
-      'name': name,
+      if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
       'direction': direction,
       'price': price,
       'volume': volume,
@@ -340,6 +341,43 @@ class ApiService {
     );
     _check(resp);
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 解析一句话交易（RFC 20260815 通道 A）：POST /api/v1/trading/trades/parse。
+  /// 后端 LLM 结构化 + 正则兜底，返回 matched 与结构化字段；matched=false 前端落精确表单。
+  Future<ParseTradeResponse> parseTrade(String text) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/trades/parse'),
+      headers: _headers,
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return ParseTradeResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 持仓建议（RFC 20260815）：POST /api/v1/trading/advice。
+  /// 后端读 os/trading-os/11-context/rules.md（R66/R68/R71/R81-R95）+ 持仓 + 行情，
+  /// 输出逐票建议（买入/持有/减仓/清仓 + 阿呆自然对话理由 + 依据规则号）。
+  Future<AdviceResponse> getAdvice() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/advice'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({}),
+    );
+    _check(resp);
+    return AdviceResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 检测某日是否有交易活动（GET /api/v1/trading/has-activity）。
+  Future<bool> hasTradingActivity({String? date}) async {
+    final params = <String, String>{};
+    if (date != null) params['date'] = date;
+    final uri = Uri.parse('$baseUrl/api/v1/trading/has-activity')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return data['hasActivity'] as bool? ?? false;
   }
 
   /// 生成交易复盘（POST /api/v1/trading/review，AI 生成 → 写入 data/trading/reviews/）。
@@ -940,6 +978,101 @@ class PortfolioSnapshotResponse {
         cashBalance: (json['cashBalance'] as num?)?.toDouble() ?? 0,
         positionCount: json['positionCount'] as int? ?? 0,
       );
+}
+
+/// 一句话解析结果 DTO（POST /api/v1/trading/trades/parse，RFC 20260815）。
+/// 宽容解析：matched=false 时其余字段可缺省（前端落精确表单）。
+class ParseTradeResponse {
+  final bool matched;
+  final String symbol;
+  final String name;
+  final String direction; // BUY / SELL
+  final double? price;
+  final int? volume;
+
+  ParseTradeResponse({
+    this.matched = false,
+    this.symbol = '',
+    this.name = '',
+    this.direction = 'BUY',
+    this.price,
+    this.volume,
+  });
+
+  factory ParseTradeResponse.fromJson(Map<String, dynamic> json) =>
+      ParseTradeResponse(
+        matched: json['matched'] as bool? ?? false,
+        symbol: json['symbol'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        direction: (json['direction'] as String? ?? 'BUY').toUpperCase(),
+        price: (json['price'] as num?)?.toDouble(),
+        volume: (json['volume'] as num?)?.toInt(),
+      );
+}
+
+/// 单票建议 DTO（POST /api/v1/trading/advice，RFC 20260815）。
+/// action ∈ 买入/持有/减仓/清仓；advice 为阿呆自然对话；rules 为依据规则号（R81…）。
+class AdviceItem {
+  final String symbol;
+  final String name;
+  final String action;
+  final String advice;
+  final List<String> rules;
+
+  AdviceItem({
+    this.symbol = '',
+    this.name = '',
+    this.action = '',
+    this.advice = '',
+    this.rules = const [],
+  });
+
+  factory AdviceItem.fromJson(Map<String, dynamic> json) {
+    // rules 字段宽容：List<String> | String（逗号分隔）| 单条 rule 字段
+    List<String> rules = [];
+    final rawRules = json['rules'];
+    if (rawRules is List) {
+      rules = rawRules.map((e) => e.toString()).toList();
+    } else if (rawRules is String && rawRules.trim().isNotEmpty) {
+      rules = rawRules.split(RegExp(r'[,，\s]+')).where((e) => e.isNotEmpty).toList();
+    } else if (json['rule'] is String) {
+      rules = [json['rule'] as String];
+    }
+    return AdviceItem(
+      symbol: json['symbol'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      action: json['action'] as String? ?? '',
+      advice: (json['advice'] as String? ??
+              json['reason'] as String? ??
+              json['content'] as String? ??
+              '')
+          .toString(),
+      rules: rules,
+    );
+  }
+}
+
+/// 持仓建议响应 DTO（POST /api/v1/trading/advice）。
+/// 兼容 {items:[...]} 或裸数组两种形态。
+class AdviceResponse {
+  final List<AdviceItem> items;
+  final String summary; // 可选：阿呆整体口径
+
+  AdviceResponse({this.items = const [], this.summary = ''});
+
+  factory AdviceResponse.fromJson(dynamic json) {
+    if (json is List) {
+      return AdviceResponse(items: json.map((e) => AdviceItem.fromJson(e)).toList());
+    }
+    final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return AdviceResponse(
+      items: (map['items'] as List?)
+              ?.map((e) => AdviceItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      summary: map['summary'] as String? ?? '',
+    );
+  }
 }
 
 /// 复盘响应 DTO（GET/POST /api/v1/trading/review）。

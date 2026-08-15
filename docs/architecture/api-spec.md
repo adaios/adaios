@@ -450,7 +450,64 @@
 }
 ```
 
+> `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。recordTrade 成功后**同步写一条 domain=trading 记录**（标题「买入 名称 N股@价格」，5 分钟窗口去重）——交易进 timeline/记忆 + `has-activity` 复盘提醒闭环。
+
 **Response**：`Position[]` — 更新后的全部持仓
+
+---
+
+### `POST /api/v1/trading/trades/parse` — 解析一句话交易（RFC 20260815 通道 A）
+
+把自然语言（「买了 1000 股京东方 @5.2」）结构化为交易入参，供前端确认卡回显。**只解析不落库**——写入仍走 `POST /trades`（正确性由确认步拦截）。
+
+**Request Body**
+
+```json
+{ "text": "买了 1000 股京东方 @5.2" }
+```
+
+**Response**
+
+```json
+{
+  "matched": true,
+  "symbol": "000725",
+  "name": "京东方A",
+  "direction": "BUY",
+  "price": 5.2,
+  "volume": 1000
+}
+```
+
+> `matched=false` 时其余字段为 null（前端转精确表单）。LLM 结构化优先，失败降级正则兜底。需 trading 插件（403）。
+
+---
+
+### `POST /api/v1/trading/advice` — 生成持仓建议（交易模块核心：建议引擎）
+
+读用户持仓 + 实时行情 + 只读 `os/trading-os/11-context/rules.md` 与 `strategy.md`，将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议（suggestion/reason/rules 必须引用规则号）。**建议是输出不是指令**，本端点不做任何执行动作。
+
+**Request**：仅 `X-User-Id` header（body 空）
+
+**Response**
+
+```json
+{
+  "advice": [
+    {
+      "symbol": "000725",
+      "name": "京东方A",
+      "position_percent": 3.70,
+      "suggestion": "reduce",
+      "reason": "自然语言理由，必须引用规则号（如 R81）",
+      "rules": ["R81", "R66"]
+    }
+  ],
+  "summary": "持仓总览一句话"
+}
+```
+
+> `suggestion` 取值：buy / hold / reduce / clear。`position_percent` 后端按市值占比计算（确定性）。LLM 失败时降级返回基础数据（无建议字段），不抛错。需 trading 插件（403）。空仓返回空 advice。
 
 ---
 

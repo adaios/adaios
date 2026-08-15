@@ -214,6 +214,27 @@ void main() {
   });
 
   group('TradingPage', () {
+    // 按 hint 定位输入框（表单字段无外部 label finder，hint 唯一）
+    Finder fieldByHint(String hint) => find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == hint);
+
+    Future<void> pumpTrading(WidgetTester tester, _Backend b) async {
+      await tester.pumpWidget(MaterialApp(home: TradingPage(api: _apiFor(b))));
+      await tester.pumpAndSettle();
+    }
+
+    // 通用基础 handler（positions/portfolio/has-activity）
+    void mockBase(_Backend b, {List<Map<String, dynamic>> positions = const []}) {
+      b.handlers['/api/v1/trading/positions'] = (_) async =>
+          _json({'positions': positions});
+      b.handlers['/api/v1/trading/portfolio'] = (_) async => _json({
+            'totalValue': 0.0, 'totalPnl': 0.0, 'cashBalance': 100000.0,
+            'positionCount': positions.length,
+          });
+      b.handlers['/api/v1/trading/has-activity'] = (_) async =>
+          _json({'date': '2026-08-15', 'hasActivity': false});
+    }
+
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
       final b = _Backend();
       b.handlers['/api/v1/trading/positions'] = (_) async => _json({
@@ -268,6 +289,211 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('贵州茅台'), findsOneWidget);
       expect(find.text('重试'), findsNothing);
+    });
+
+    testWidgets('NL 解析 → 确认卡回显 → 确认记录（AI 错误在确认步拦截）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/trades/parse'] = (_) async => _json({
+            'matched': true, 'symbol': '000725', 'name': '京东方A',
+            'direction': 'BUY', 'price': 5.2, 'volume': 1000,
+          });
+      var traded = false;
+      Map<String, dynamic>? tradeBody;
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        traded = true;
+        tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      // 输入一句话 → 解析
+      await tester.enterText(find.byType(TextField).first, '买了 1000 股京东方 @5.2');
+      await tester.tap(find.text('解析'));
+      await tester.pumpAndSettle();
+
+      // 确认卡回显：名称+代码只读行、方向徽标、数量/价格可编辑
+      expect(find.text('京东方A (000725)'), findsOneWidget);
+      expect(find.text('买入'), findsOneWidget); // 方向徽标
+      expect(find.text('确认记录'), findsOneWidget);
+      expect(tester.widget<TextField>(fieldByHint('股数')).controller?.text, '1000');
+      expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.20');
+
+      // 确认 → POST /trading/trades（写真实交易）
+      await tester.tap(find.text('确认记录'));
+      await tester.pumpAndSettle();
+
+      expect(traded, isTrue);
+      expect(tradeBody!['symbol'], '000725');
+      expect(tradeBody!['name'], '京东方A');
+      expect(tradeBody!['direction'], 'BUY');
+      expect(tradeBody!['price'], 5.2);
+      expect(tradeBody!['volume'], 1000);
+      expect(find.textContaining('已买入'), findsOneWidget); // 人话 SnackBar
+      expect(find.text('确认记录'), findsNothing); // 确认卡已收起
+    });
+
+    testWidgets('NL 解析失败（matched=false）：提示 + 自动展开精确表单', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/trades/parse'] = (_) async =>
+          _json({'matched': false});
+      await pumpTrading(tester, b);
+
+      await tester.enterText(find.byType(TextField).first, '帮我看看行情');
+      await tester.tap(find.text('解析'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('没听懂这句交易'), findsOneWidget);
+      expect(find.text('标的（代码或名称）'), findsOneWidget); // 精确表单自动展开
+      expect(find.text('买入'), findsOneWidget); // 底部双按钮
+      expect(find.text('卖出'), findsOneWidget);
+    });
+
+    testWidgets('校验拦截：价格 ≤ 0 → 人话提示，不提交', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var traded = false;
+      b.handlers['/api/v1/trading/trades'] = (_) async {
+        traded = true;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('精确填写'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '600519');
+      await tester.enterText(fieldByHint('成交单价'), '0');
+      await tester.enterText(fieldByHint('股数'), '100');
+      await tester.tap(find.text('买入'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('价格必须大于 0'), findsOneWidget);
+      expect(traded, isFalse); // 校验拦截，未发请求
+    });
+
+    testWidgets('SELL 预检：超过持仓 → 人话拦截', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 5.46,
+          'marketValue': 5460.0, 'pnl': 260.0, 'pnlPercent': 5.0,
+        },
+      ]);
+      var traded = false;
+      b.handlers['/api/v1/trading/trades'] = (_) async {
+        traded = true;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('精确填写'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
+      await tester.enterText(fieldByHint('成交单价'), '5.2');
+      await tester.enterText(fieldByHint('股数'), '2000');
+      await tester.tap(find.text('卖出'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('卖出 2000 股超过持仓 1000 股'), findsOneWidget);
+      expect(traded, isFalse);
+    });
+
+    testWidgets('持仓卡渲染：名称/代码 + 盈亏大字 + 盈亏%', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 5.46,
+          'marketValue': 5460.0, 'pnl': 260.0, 'pnlPercent': 5.0,
+        },
+        {
+          'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+          'avgCost': 1500.0, 'currentPrice': 1490.0,
+          'marketValue': 149000.0, 'pnl': -1000.0, 'pnlPercent': -0.7,
+        },
+      ]);
+      await pumpTrading(tester, b);
+
+      expect(find.text('京东方A'), findsOneWidget);
+      expect(find.text('000725'), findsOneWidget);
+      expect(find.text('+260'), findsOneWidget); // 盈=红大字
+      expect(find.text('+5.0%'), findsOneWidget);
+      expect(find.text('贵州茅台'), findsOneWidget);
+      expect(find.text('-1000'), findsOneWidget); // 亏=绿大字
+      expect(find.text('-0.7%'), findsOneWidget);
+      expect(find.text('共 2 只'), findsOneWidget);
+    });
+
+    testWidgets('点按持仓卡 → 阿呆建议弹层（advice 端点 + 依据规则号）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 5.46,
+          'marketValue': 5460.0, 'pnl': 260.0, 'pnlPercent': 5.0,
+        },
+      ]);
+      b.handlers['/api/v1/trading/advice'] = (_) async => _json({
+            'summary': '今天整体还行',
+            'items': [
+              {
+                'symbol': '000725', 'name': '京东方A', 'action': '减仓',
+                'advice': '京东方仓位 30% 超 R81 单仓上限，建议减到 20%',
+                'rules': ['R81', 'R66'],
+              },
+            ],
+          });
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('京东方A'));
+      await tester.pumpAndSettle();
+
+      // 阿呆建议弹层：自然对话 + 动作徽标 + 依据 + 去 web
+      expect(find.text('阿呆说 · 京东方A'), findsOneWidget);
+      expect(find.textContaining('建议减到 20%'), findsOneWidget);
+      expect(find.text('减仓'), findsOneWidget); // 动作徽标
+      expect(find.text('查看建议依据'), findsOneWidget);
+      expect(find.text('管理持仓（去 web）'), findsOneWidget);
+
+      await tester.tap(find.text('查看建议依据'));
+      await tester.pumpAndSettle();
+      expect(find.text('R81'), findsOneWidget);
+      expect(find.text('R66'), findsOneWidget);
+    });
+
+    testWidgets('复盘横幅：has-activity → 生成复盘 → dialog', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/has-activity'] = (_) async =>
+          _json({'date': '2026-08-15', 'hasActivity': true});
+      b.handlers['/api/v1/trading/review'] = (_) async =>
+          _json({'date': '2026-08-15', 'content': '## 今日复盘\n执行了纪律'});
+      await pumpTrading(tester, b);
+
+      expect(find.text('今日有交易 · 生成今日复盘？'), findsOneWidget);
+
+      await tester.tap(find.text('生成复盘'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2026-08-15 复盘'), findsOneWidget); // dialog
+      expect(find.text('反哺入库'), findsOneWidget);
+    });
+
+    testWidgets('空态：暂无持仓 + 引导去电脑端导入', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      await pumpTrading(tester, b);
+
+      expect(find.text('暂无持仓'), findsOneWidget);
+      expect(find.text('有历史持仓？到电脑端导入'), findsOneWidget);
+
+      await tester.tap(find.text('有历史持仓？到电脑端导入'));
+      await tester.pumpAndSettle();
+      expect(find.text('详细管理去电脑端'), findsOneWidget); // web 引导弹层
     });
   });
 

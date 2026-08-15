@@ -10,14 +10,14 @@
 | 端 | 测试数 | 失败 | 备注 |
 |:---|:------:|:----:|:-----|
 | 后端 adai-core | **454** | 0 | 16 Controller 接口测试全覆盖 + 多模态 18 + 鉴权 4 + 行情推送 15 + AI 日志 20 + 插件门控/隔离 + 展示层聚合（S-2 图文一体 + 多轮 chat 单条，+4）|
-| 前端 adai-app | **94** | 0 | Feed 状态机 12 + 6 页面 + 选号/切换链路 + 插件门控 |
+| 前端 adai-app | **110** | 0 | Feed 状态机 12 + 6 页面 + 选号/切换链路 + 插件门控 + 带图发图即对话 + 交易建议 UI |
 | 前端 adai-web | **47** | 0 | 桌面壳（导航/懒加载/保活）+ P1-5 插件加载 label 重解析回归 |
 | 前端 adai-admin | **33** | 0 | 账号/数据/系统/知识页 + 插件开关 |
 
 ## 端点/控制器计数（Gradle `endpoints.txt` 单一口径，REVIEW #228）
 
 - Controller：**16**（`interfaces/*Controller.java`，含 MeController；GlobalExceptionHandler 非 Controller）
-- 端点：**52**（`build/resources/main/META-INF/endpoints.txt` 实测）
+- 端点：**54**（`build/resources/main/META-INF/endpoints.txt` 实测；+`/trading/trades/parse` +`/trading/advice`）
 - 端点计数规则：以 Gradle 生成的 `endpoints.txt` 为准，禁止扫源码回退（REVIEW #228/#187）
 
 ## 运行环境

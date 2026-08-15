@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
@@ -55,7 +56,9 @@ class FeedCardData {
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   // REVIEW #235：上传占位卡保留原始图片字节/文件名/扩展名/共享 caption——
   // 失败重试重走 uploadImage 原路径（原实现把文件名当文本记录重发，字节永不重传）。
-  final List<int>? mediaBytes;
+  // RFC 20260815：占位卡用 mediaBytes 内存图做本地预览（Image.memory 需要 Uint8List，
+  // 复用 PickedImage.bytesU8 的缓存实例，避免每次 build 新建字节导致解码缓存 miss 闪烁）。
+  final Uint8List? mediaBytes;
   final String? mediaName;
   final String? mediaExt;
   final String? mediaCaption;
@@ -77,7 +80,7 @@ class FeedCardData {
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
     String? domain, String? error, bool clearError = false,
     String? mediaUrl, Map<String, String>? mediaHeaders,
-    List<int>? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
+    Uint8List? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
@@ -266,7 +269,9 @@ class FeedCard extends StatelessWidget {
                             const SizedBox(height: 3),
                             _buildTurns(),
                           ],
-                          if (data.mediaUrl != null) ...[
+                          // RFC 20260815：占位卡（mediaBytes 非空、mediaUrl 未就绪）也渲染缩略图——
+                          // 上传中显示本地内存图预览，替代空白/文件名
+                          if (data.mediaUrl != null || data.mediaBytes != null) ...[
                             const SizedBox(height: 8),
                             _buildMediaThumb(context),
                           ],
@@ -407,8 +412,30 @@ class FeedCard extends StatelessWidget {
     return TextSpan(children: children);
   }
 
-  /// 图片记录缩略图（批2 原图可见）——点击弹全图。
+  /// 图片缩略图（批2 原图可见；RFC 20260815 占位卡本地预览）——点击弹全图。
   Widget _buildMediaThumb(BuildContext context) {
+    // 上传占位卡（mediaUrl 未就绪）：mediaBytes 内存图本地预览。
+    // 复用 input_bar 的降采样模式（cacheWidth + gaplessPlayback），占位卡显示用户选的图而非空白；
+    // 原图尚未落盘 → 不提供弹全图（成功后由 mediaUrl 分支接管）。
+    final bytes = data.mediaBytes;
+    if (bytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          bytes,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+          cacheWidth: 288, // 降采样解码（96px @3x，Web 大图解码慢/易失败，与 input_bar 同模式）
+          gaplessPlayback: true, // 解码期间保留旧帧，进度刷新 rebuild 不闪烁
+          errorBuilder: (_, _, _) => Container(
+            width: 96, height: 96,
+            color: AppColors.darkSurface2,
+            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+          ),
+        ),
+      );
+    }
     final url = data.mediaUrl;
     if (url == null) return const SizedBox.shrink();
     return GestureDetector(

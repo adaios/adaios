@@ -86,6 +86,48 @@ void main() {
       expect(resp.date, '2026-08-03');
       expect(resp.content, contains('复盘'));
     });
+
+    test('ParseTradeResponse parses matched trade', () {
+      final json = jsonDecode('{"matched": true, "symbol": "000725", "name": "京东方A", '
+          '"direction": "buy", "price": 5.2, "volume": 1000}');
+      final resp = ParseTradeResponse.fromJson(json);
+      expect(resp.matched, isTrue);
+      expect(resp.symbol, '000725');
+      expect(resp.name, '京东方A');
+      expect(resp.direction, 'BUY'); // 后端小写也归一为大写
+      expect(resp.price, 5.2);
+      expect(resp.volume, 1000);
+    });
+
+    test('ParseTradeResponse unmatched defaults to matched=false', () {
+      final json = jsonDecode('{"matched": false}');
+      final resp = ParseTradeResponse.fromJson(json);
+      expect(resp.matched, isFalse);
+      expect(resp.symbol, '');
+      expect(resp.price, isNull);
+    });
+
+    test('AdviceResponse parses items with rules (list form)', () {
+      final json = jsonDecode('{"summary": "今天整体还行", "items": ['
+          '{"symbol": "000725", "name": "京东方A", "action": "减仓", '
+          '"advice": "仓位超 R81 上限，建议减到 20%", "rules": ["R81", "R66"]}]}');
+      final resp = AdviceResponse.fromJson(json);
+      expect(resp.summary, '今天整体还行');
+      expect(resp.items, hasLength(1));
+      expect(resp.items.first.action, '减仓');
+      expect(resp.items.first.advice, contains('R81'));
+      expect(resp.items.first.rules, ['R81', 'R66']);
+    });
+
+    test('AdviceResponse tolerates bare array + string rules', () {
+      final json = jsonDecode('[{"symbol": "600519", "action": "持有", '
+          '"reason": "基本面稳", "rules": "R71,R95"}]');
+      final resp = AdviceResponse.fromJson(json);
+      expect(resp.items, hasLength(1));
+      expect(resp.items.first.rules, ['R71', 'R95']); // 逗号分隔字符串 → 列表
+      expect(resp.items.first.advice, '基本面稳'); // reason 兜底
+      expect(resp.summary, '');
+    });
   });
 
   // ─── FeedCardData model tests ───

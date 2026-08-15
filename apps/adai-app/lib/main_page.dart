@@ -75,6 +75,12 @@ class _MainPageState extends State<MainPage>
   List<String>? _pendingAskRecordIds;
   String? _pendingAskQuestion;
 
+  // RFC 20260815 发图即对话：
+  // _mediaJudging —— 判定中瞬时布尔（阿呆看图判定 log/ask），与 _uploadTotal 共用渲染槽位，不进 CardMode；
+  // _uploadSummaries —— 本批上传成功图片的 VLM summary，供阿呆自然回执「看到你…，已记下」拼装（无第三视角）。
+  bool _mediaJudging = false;
+  List<String> _uploadSummaries = [];
+
   late AnimationController _enterCtrl;
   late Animation<double> _contentAnim;
 
@@ -337,6 +343,7 @@ class _MainPageState extends State<MainPage>
       _pendingAskRecordIds = [];
       _pendingAskQuestion = caption.trim();
     }
+    _uploadSummaries = []; // RFC 20260815：本批自然回执的 VLM summary 收集
     setState(() {
       _uploadTotal = images.length; // 上传进度：输入栏上方显示 n/m（阿呆 08-13 反馈）
       _uploadDone = 0;
@@ -354,7 +361,8 @@ class _MainPageState extends State<MainPage>
           mode: CardMode.idle, loading: true,
           // REVIEW #235：占位卡保留原始图片字节/文件名/扩展名/共享 caption——
           // 失败重试时重走 uploadImage 原路径，不再把文件名当文本记录重发。
-          mediaBytes: image.bytes, mediaName: image.name, mediaExt: image.extension, mediaCaption: caption,
+          // RFC 20260815：mediaBytes 用 PickedImage 缓存的 Uint8List（Image.memory 本地预览）。
+          mediaBytes: image.bytesU8, mediaName: image.name, mediaExt: image.extension, mediaCaption: caption,
         ));
       }
     });
@@ -390,18 +398,26 @@ class _MainPageState extends State<MainPage>
         if (resp.recordId.isNotEmpty && _pendingAskRecordIds != null) {
           _pendingAskRecordIds!.add(resp.recordId);
         }
+        // RFC 20260815：收集 VLM summary（自然回执「看到你…，已记下」用）
+        if (resp.summary.isNotEmpty) {
+          _uploadSummaries.add(resp.summary);
+        }
       }
       // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
-      setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
+      if (mounted) setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
 
-      // Phase 1 带图 ask：有问句且已有成功图 → 统一走 _flushPendingAsk
-      // （成功路径全成功直接补跑；部分失败路径 pending 留给重试完成后补跑，见 _retryMediaUpload）
+      // RFC 20260815 发图即对话：caption 非空且全部成功 → 判定中 → ask-batch 分流
+      // （前端不判、后端判；intent=question → _enterImageChat 直进对话态，intent=log → 自然回执落卡）。
+      // 部分失败路径 pending 留给重试完成后补跑，见 _retryMediaUpload。
       if (_pendingAskQuestion != null && (_pendingAskRecordIds?.isNotEmpty ?? false)) {
         await _flushPendingAsk();
         return;
       }
 
-      _showSnackBar('📷 已记录 $ok 张图片${caption.isNotEmpty ? '：$caption' : ''}');
+      // 纯图（caption 空）→ log 落卡：阿呆自然回执（VLM summary 拼「看到你…，已记下」，
+      // 无第三视角，替代「📷 已记录 N 张图片」系统文案）
+      _showSnackBar(_naturalMediaReceipt(summaries: _uploadSummaries, count: ok));
+      _uploadSummaries = [];
       if (!mounted) return;
       await _loadFeed();
     } catch (e) {
@@ -551,8 +567,16 @@ class _MainPageState extends State<MainPage>
           _pendingAskRecordIds!.add(resp.recordId);
         }
       }
+      // RFC 20260815：收集 summary（pending 问句补跑的自然回执用）
+      if (resp.summary.isNotEmpty) {
+        _uploadSummaries.add(resp.summary);
+      }
       // REVIEW #246：反馈挂根 ScaffoldMessenger，MainPage 被 dispose 也能弹。
-      _showSnackBar('📷 图片已重新记录');
+      // RFC 20260815：无第三视角——重试成功也走阿呆自然回执；
+      // 有 pending 问句时交给补跑统一反馈（避免「重新记录」+ 回执连弹两条）。
+      if (_pendingAskQuestion == null) {
+        _showSnackBar(_naturalMediaReceipt(summaries: [resp.summary], count: 1));
+      }
       if (!mounted) return;
       // P1-2：还有失败媒体卡未重试 → 等最后一并补跑；全部完成 → 立即补跑问句
       final hasRemainingErrorMedia = _cards.any((c) => c.mediaBytes != null && c.error != null);
@@ -569,26 +593,72 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  /// P1-2：补跑带图 ask。问句 + 图片 id 存在 _pendingAsk*，执行后清空（一次性）。
+  /// RFC 20260815 发图即对话：带图 ask 补跑 + intent 分流（前端不判、后端判）。
+  /// 问句 + 图片 id 存在 _pendingAsk*，执行后清空（一次性）。
+  /// - intent=question → [_enterImageChat] 直进对话态（**不刷新 Feed**，避免 S-2 聚合 id 漂移）；
+  /// - intent=log → 阿呆自然回执 + `_loadFeed()` 落卡；
+  /// - 判定/回答期间 [_mediaJudging] 状态条「🔍 阿呆正在看图…」（上传进度条槽位复用）。
   /// best-effort：失败只提示不静默丢——图片本身已逐张落盘，问句可后续在首图卡手动追问。
-  Future<void> _flushPendingAsk() async {
+  Future<AskBatchResponse?> _flushPendingAsk() async {
     final ids = _pendingAskRecordIds;
     final question = _pendingAskQuestion;
     _pendingAskRecordIds = null;
     _pendingAskQuestion = null;
-    if (ids == null || question == null || ids.isEmpty) return;
-    String feedback;
+    if (ids == null || question == null || ids.isEmpty) return null;
+    final summaries = List<String>.of(_uploadSummaries);
+    _uploadSummaries = [];
+    if (mounted) setState(() => _mediaJudging = true);
     try {
       final qa = await _api.askBatch(imageRecordIds: ids, question: question);
-      feedback = qa.intent == 'question' && qa.answer.isNotEmpty
-          ? '💬 ${_truncateForSnack(qa.answer)}'
-          : '📷 已记录 ${ids.length} 张图片';
+      if (!mounted) return qa;
+      setState(() => _mediaJudging = false);
+      if (qa.intent == 'question' && qa.answer.isNotEmpty) {
+        // ask 直进对话态：本地首图卡手拼 turns=[用户问句, 阿呆回答]，图即上下文（#208）
+        final now = TimeOfDay.now();
+        final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        _enterImageChat(cardId: ids.first, turns: [
+          ConversationTurn(isUser: true, text: question, time: timeStr),
+          ConversationTurn(isUser: false, text: qa.answer, time: timeStr),
+        ]);
+      } else {
+        // log 落卡：阿呆自然回执（无第三视角，不用「已记录 N 张图片」系统文案）
+        _showSnackBar(_naturalMediaReceipt(summaries: summaries, count: ids.length));
+        await _loadFeed();
+      }
+      return qa;
     } catch (e) {
-      feedback = '📷 已记录 ${ids.length} 张图片（问答失败: ${_extractApiError(e)}）';
+      if (mounted) setState(() => _mediaJudging = false);
+      _showSnackBar('阿呆没看懂这张图，再试一次？');
+      return null;
     }
-    _showSnackBar(feedback);
-    if (!mounted) return;
-    await _loadFeed(); // 刷新：问句 → 首图卡显示 Q/A 气泡（后端已合并 turns）
+  }
+
+  /// RFC 20260815：ask-batch 返回 question → 用**本地首图卡**直进对话态。
+  /// 手拼 turns=[问句, 阿呆回答]、mode=chatting、mediaUrl 保留（图即上下文，_buildActiveLayout 顶部缩略图）。
+  /// 关键：**不刷新 Feed**——刷新后 S-2 聚合会把首图卡聚合成 image_qa 条目、id 漂移（后端修复中，
+  /// B1/B2），本地卡身份（id=真实图片记录 id，askMedia 可解析原图）保持稳定。
+  /// 对话中追问走现有 [_appendToActiveCard] → askMedia；结束走 [_closeChat] → endConversation。
+  void _enterImageChat({required String cardId, required List<ConversationTurn> turns}) {
+    final idx = _cards.indexWhere((c) => c.id == cardId);
+    if (idx < 0) return; // 宿主卡已被刷新/删除 → 放弃进对话态（防 activeCard! 空值崩溃）
+    setState(() {
+      _deactivateOtherCards(cardId);
+      _activeCardId = cardId;
+      _hasActiveChat = true;
+      _chatEnterTurnCount = turns.length; // 立即结束也需 endConversation 总结（needsSummary 兜底）
+      _updateCard(cardId, (c) => c.copyWith(
+          mode: CardMode.chatting, loading: false, intent: IntentType.question, turns: turns));
+    });
+    _scrollToBottom(); // 输入框聚焦由 InputBar didUpdateWidget（hasActiveChat false→true）负责
+  }
+
+  /// 阿呆自然回执（无第三视角）：用 VLM summary 拼自然对话句，替代「已记录 N 张图片」系统文案。
+  /// 单图「看到你{summary}，已记下」；多图「看到你{summary}等 N 张，已记下」；无内容兜底「随手一拍，已记下」。
+  String _naturalMediaReceipt({required List<String> summaries, String? caption, int count = 1}) {
+    final first = summaries.isNotEmpty ? summaries.first.trim() : '';
+    final body = first.isNotEmpty ? first : (caption?.trim() ?? '');
+    if (body.isEmpty) return '随手一拍，已记下';
+    return '看到你$body${count > 1 ? '等 $count 张' : ''}，已记下';
   }
 
   void _appendToActiveCard(String text, String timeStr) async {
@@ -755,12 +825,6 @@ class _MainPageState extends State<MainPage>
 
   void _showError(String message) => _showSnackBar(message);
 
-  /// SnackBar 展示文本截断（多图问答回答较长，避免整条撑爆提示条）。
-  String _truncateForSnack(String s, [int max = 60]) {
-    if (s.length <= max) return s;
-    return s.substring(0, max) + '…';
-  }
-
   /// 从 API 异常中提取人类可读的错误消息。
   /// API service 抛出的格式：Exception: API 错误 {status}: {body}
   String _extractApiError(dynamic e) {
@@ -895,15 +959,16 @@ class _MainPageState extends State<MainPage>
           if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),
           // #16：输入框不再挂「上滑切世界」手势——打字上滑会误触切走 World，
           // MainPage 重建导致输入草稿丢失。切世界改由 Feed 区/壳层手势（带起点排除）负责。
-          // 图片上传进度（阿呆 08-13：逐张反馈不足）——输入栏上方进度条 + n/m 计数。
-          if (_uploadTotal > 0)
+          // 图片上传进度 / 判定中（RFC 20260815）：同一槽位二态——
+          // 「📤 上传中 n/m」→「🔍 阿呆正在看图…」（_mediaJudging 瞬时布尔，不进 CardMode）
+          if (_uploadTotal > 0 || _mediaJudging)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
               child: Row(
                 children: [
                   Expanded(
                     child: LinearProgressIndicator(
-                      value: _uploadDone / _uploadTotal,
+                      value: _mediaJudging ? null : _uploadDone / _uploadTotal,
                       backgroundColor: AppColors.darkSurface2,
                       color: AppColors.darkGreen,
                       minHeight: 4,
@@ -911,7 +976,7 @@ class _MainPageState extends State<MainPage>
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text('📤 上传中 $_uploadDone/$_uploadTotal',
+                  Text(_mediaJudging ? '🔍 阿呆正在看图…' : '📤 上传中 $_uploadDone/$_uploadTotal',
                       style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
                 ],
               ),
