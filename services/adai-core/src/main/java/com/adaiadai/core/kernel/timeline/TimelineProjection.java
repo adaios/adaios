@@ -171,6 +171,10 @@ public class TimelineProjection {
         String title = record.title();
         if ("image".equals(record.type())) {
             mediaPath = recordRepository.findMediaPath(userId, record.id()).orElse(null);
+            // 第一原则：标题=VLM 总结（自然），无【备注】标签
+            if (record.summary() != null && !record.summary().isBlank()) {
+                title = record.summary();
+            }
         } else if ("image_qa".equals(record.type()) && record.content() != null) {
             // 带图 ask 聚合：缩略图取引用首图（一次输入 = 一个图文事件）
             Matcher m = IMAGE_REF.matcher(record.content());

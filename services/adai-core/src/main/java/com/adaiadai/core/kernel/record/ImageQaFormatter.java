@@ -32,4 +32,23 @@ public final class ImageQaFormatter {
         String body = answer.isEmpty() ? question : question + "\n" + answer;
         return new String[]{question, body};
     }
+
+    /** 逐行去「【xxx】」标签（【备注】/【图片文字】…），保留内容本身——第一原则同样适用于 image 记录。 */
+    public static String naturalizeImage(String content) {
+        if (content == null) return null;
+        StringBuilder sb = new StringBuilder();
+        for (String line : content.split("\n")) {
+            String stripped = line.strip();
+            while (stripped.startsWith("【")) {
+                int close = stripped.indexOf("】");
+                if (close < 0) break;
+                stripped = stripped.substring(close + 1).strip();
+            }
+            if (!stripped.isEmpty()) {
+                if (!sb.isEmpty()) sb.append("\n");
+                sb.append(stripped);
+            }
+        }
+        return sb.toString().strip();
+    }
 }

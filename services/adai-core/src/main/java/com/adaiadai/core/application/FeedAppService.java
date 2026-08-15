@@ -218,6 +218,14 @@ public class FeedAppService {
         String content = r.content();
         if ("image".equals(r.type())) {
             mediaPath = recordRepository.findMediaPath(userId, r.id()).orElse(null);
+            // 第一原则：标题=VLM 总结（自然），正文去【备注】等标签（用户自己的话，无第三视角）
+            if (r.summary() != null && !r.summary().isBlank()) {
+                title = r.summary();
+            }
+            String natural = ImageQaFormatter.naturalizeImage(r.content());
+            if (natural != null && !natural.isBlank()) {
+                content = natural;
+            }
         } else if ("image_qa".equals(r.type()) && r.content() != null) {
             // S-2 图文一体：带图 ask 聚合为图文事件，缩略图取引用首图（原图可点开）
             Matcher m = IMAGE_REF.matcher(r.content());

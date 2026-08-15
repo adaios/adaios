@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | image 记录展示自然化 | 第一原则覆盖 image 记录：标题=VLM 总结、正文逐行去【备注】/【图片文字】标签（用户看到的是自己的话+自然内容，无第三视角）；生产验证 image_qa 自然化生效 | 后端 450（+1）|
 | 2026-08-15 | image_qa 展示自然化 + 图片预览修复 | 第一原则「无第三视角」落地：Feed/时间线 image_qa 转自然对话（标题=问句、正文=问/答两行、去问：/答：/图片记录：标签）；输入栏图片预览缓存 Uint8List + cacheWidth 降采样 + gaplessPlayback（打字 rebuild 不再闪烁/大图解码失败）；VISION 沉淀原则 | 后端 449（+3）|
 | 2026-08-15 | S-R1/S-R2（deep 战略项）| S-R1 adai-app launcher 插件失败 SnackBar 反馈 + 重试（双端对拍 web）；S-R2 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 前端改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20 | 后端 446（+6）|
 | 2026-08-15 | deep 审核修复批 S2 | P2-B2 Account 拒绝 null userId（脏 JSON 全局中断）+ findById Objects.equals + MarketAlert filter 防护；P2-R3 admin 内置插件开关 isProtected 门控（禁用 + Tooltip）；P2-R2 launcher 测试补「仅 trading」+「500 降级」分支；P1-D1 review-context 断链引用更新；P2-D1/D2 RFC/docs 状态同步 | 后端 440（+1）· app 94（+2）|
