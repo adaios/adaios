@@ -33,6 +33,10 @@ files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录�
 files += sorted((AI/'roles').glob('*.md'))
 files += sorted((AI/'process').glob('*.md'))
 files += sorted((AI/'checklists').glob('*.md'))
+files += sorted((AI/'assets').glob('*.md'))      # 资产层
+files += sorted((AI/'assets/adr').glob('*.md'))  # ADR
+files += sorted((AI/'workflow').glob('*.md'))    # 工作流层
+files += sorted((AI/'state').glob('*.md'))       # 状态层
 files = [f for f in files if f.exists()]
 
 def parse_fm(path):
@@ -130,7 +134,7 @@ for f in files:
             t = (f.parent / refp).resolve()
             if t.exists(): referenced.add(str(t))
 # _index.md 文件清单（| path | 职责 | 状态 |）也算引用（全部子目录索引）
-for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md']:
+for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md'] + sorted((AI/'assets').glob('_index.md')) + sorted((AI/'workflow').glob('_index.md')) + sorted((AI/'state').glob('_index.md')):
     if not idx.exists(): continue
     for line in idx.read_text(encoding='utf-8').splitlines():
         m = re.match(r'^\|\s*([\w./-]+\.md)\s*\|', line)

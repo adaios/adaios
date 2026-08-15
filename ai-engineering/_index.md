@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 49
+lines: 55
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -41,6 +41,12 @@ tags: [ai, meta, index]
 | checklists/review-docs.md | 文档契约检查清单 | active |
 | checklists/review-knowledge.md | 知识数据检查清单 | active |
 | checklists/guard.md | 守护检查清单（G1-G7）| active |
+| assets/_index.md | 资产层索引（规范/边界/ADR/坑）| active |
+| workflow/_index.md | 工作流层索引（讨论→方案→开发→审核→验收）| active |
+| state/_index.md | 状态层索引（指针化真相源）| active |
+| assets/adr/ADR-001.md | AI 工程层为一等公民 | accepted |
+| assets/adr/ADR-002.md | 单一事实源 | accepted |
+| assets/adr/ADR-003.md | Domain=插件模型 | accepted |
 
 ## 过期判断
 
