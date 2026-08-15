@@ -12,8 +12,15 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# 可选参数：API_BASE_URL（连生产后端时传入，如 http://49.235.37.220:8080）
+API_BASE_URL="${1:-}"
+
 echo "=== Building Flutter Web (wasm dual-mode) ==="
-flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm
+if [ -n "$API_BASE_URL" ]; then
+  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=$API_BASE_URL
+else
+  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm
+fi
 
 echo "=== Applying local patches ==="
 # Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
@@ -47,4 +54,4 @@ INDEX="build/web/index.html"
 perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/fonts\/Roboto.woff2");return origFetch("\/fonts\/Hiragino%20Sans%20GB.ttc");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
 
 echo "=== Starting server at http://localhost:8083 ==="
-cd build/web && python -m http.server 8083
+cd build/web && python3 -m http.server 8083

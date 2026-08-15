@@ -3,6 +3,7 @@ package com.adaiadai.core.kernel.timeline;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ImageQaFormatter;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,6 +168,7 @@ public class TimelineProjection {
 
     private TimelineEntry toEntry(String userId, ContentRecord record) {
         String mediaPath = null;
+        String title = record.title();
         if ("image".equals(record.type())) {
             mediaPath = recordRepository.findMediaPath(userId, record.id()).orElse(null);
         } else if ("image_qa".equals(record.type()) && record.content() != null) {
@@ -176,11 +178,16 @@ public class TimelineProjection {
                 String firstId = m.group(1).split(",")[0].strip();
                 mediaPath = recordRepository.findMediaPath(userId, firstId).orElse(null);
             }
+            // 第一原则（无第三视角）：标题=用户问句（去掉【多图问答】技术标题）
+            String[] natural = ImageQaFormatter.naturalize(record.content());
+            if (natural != null) {
+                title = natural[0];
+            }
         }
         return new TimelineEntry(
                 record.id(),
                 record.type(),
-                record.title(),
+                title,
                 record.tags(),
                 record.createdAt(),
                 mediaPath

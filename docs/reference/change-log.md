@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | image_qa 展示自然化 + 图片预览修复 | 第一原则「无第三视角」落地：Feed/时间线 image_qa 转自然对话（标题=问句、正文=问/答两行、去问：/答：/图片记录：标签）；输入栏图片预览缓存 Uint8List + cacheWidth 降采样 + gaplessPlayback（打字 rebuild 不再闪烁/大图解码失败）；VISION 沉淀原则 | 后端 449（+3）|
 | 2026-08-15 | S-R1/S-R2（deep 战略项）| S-R1 adai-app launcher 插件失败 SnackBar 反馈 + 重试（双端对拍 web）；S-R2 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 前端改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20 | 后端 446（+6）|
 | 2026-08-15 | deep 审核修复批 S2 | P2-B2 Account 拒绝 null userId（脏 JSON 全局中断）+ findById Objects.equals + MarketAlert filter 防护；P2-R3 admin 内置插件开关 isProtected 门控（禁用 + Tooltip）；P2-R2 launcher 测试补「仅 trading」+「500 降级」分支；P1-D1 review-context 断链引用更新；P2-D1/D2 RFC/docs 状态同步 | 后端 440（+1）· app 94（+2）|
 | 2026-08-15 | deep 审核修复批 S | P1-B1 domainEnum 去引号语义（CHAT 双重引号修复）+ P1-B2/B3 时间线聚合跨天/intent/歧义边界 + P1-B4 图片 domain 走 gateDomain + P2-B1 trading 写入口门控（/trades、/review 403）+ P2-R1 admin 插件 toggle 串行队列（双连点竞态）+ 边界测试 | 后端 439（+6）· admin 33（+1）|

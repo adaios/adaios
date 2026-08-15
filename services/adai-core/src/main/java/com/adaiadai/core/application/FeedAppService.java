@@ -11,6 +11,7 @@ import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ImageQaFormatter;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -213,6 +214,8 @@ public class FeedAppService {
     private FeedEntry toFeedEntry(String userId, ContentRecord r, Set<String> imageQaCardIds) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
         String mediaPath = null;
+        String title = r.title();
+        String content = r.content();
         if ("image".equals(r.type())) {
             mediaPath = recordRepository.findMediaPath(userId, r.id()).orElse(null);
         } else if ("image_qa".equals(r.type()) && r.content() != null) {
@@ -221,6 +224,13 @@ public class FeedAppService {
             if (m.find()) {
                 String firstId = m.group(1).split(",")[0].strip();
                 mediaPath = recordRepository.findMediaPath(userId, firstId).orElse(null);
+            }
+            // 第一原则（无第三视角）：结构化 content 转自然对话——标题=用户问句，
+            // 正文=问/答两行（去「问：/答：/图片记录：/【多图问答】」标签），图片由缩略图表达
+            String[] natural = ImageQaFormatter.naturalize(r.content());
+            if (natural != null) {
+                title = natural[0];
+                content = natural[1];
             }
         }
         // #209：图片记录若有关联追问 card（id==图片记录 id），合并 turns——刷新后图片卡下对话历史完整
@@ -235,7 +245,7 @@ public class FeedAppService {
         }
         return new FeedEntry(
                 "record", r.id(), null,
-                r.title(), r.content(), r.tags(),
+                title, content, r.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
                 intent, r.summary(), turns, r.domain(),
                 r.createdAt().format(DATE_FMT), mediaPath

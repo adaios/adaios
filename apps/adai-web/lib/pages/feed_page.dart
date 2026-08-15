@@ -922,7 +922,10 @@ class PickedImage {
   final String name;
   final String? extension;
 
-  const PickedImage(this.bytes, this.name, this.extension);
+  PickedImage(this.bytes, this.name, this.extension);
+
+  /// 缓存的 Uint8List（避免每次 build 新建导致 Image.memory 缓存 miss 重新解码 → 预览闪烁）
+  late final Uint8List bytesU8 = Uint8List.fromList(bytes);
 }
 
 /// 桌面输入栏 — 文本输入 + 图片上传 + 发送（无语音，桌面形态）。
@@ -1042,10 +1045,13 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: Image.memory(
-            Uint8List.fromList(image.bytes),
+            image.bytesU8,
             width: 56,
             height: 56,
             fit: BoxFit.cover,
+            // 图片预览闪烁/加载失败修复：cacheWidth 降采样解码 + gaplessPlayback 保留旧帧
+            cacheWidth: 168,
+            gaplessPlayback: true,
             errorBuilder: (_, _, _) => Container(
               width: 56,
               height: 56,

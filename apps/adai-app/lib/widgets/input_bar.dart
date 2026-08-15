@@ -9,7 +9,10 @@ class PickedImage {
   final String name;
   final String? extension;
 
-  const PickedImage(this.bytes, this.name, this.extension);
+  PickedImage(this.bytes, this.name, this.extension);
+
+  /// 缓存的 Uint8List（避免每次 build 新建导致 Image.memory 缓存 miss 重新解码 → 预览闪烁）
+  late final Uint8List bytesU8 = Uint8List.fromList(bytes);
 }
 
 /// Input bar — text input + [+] menu（图片/文件/链接）。
@@ -255,10 +258,14 @@ class InputBarState extends State<InputBar> {
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: Image.memory(
-            Uint8List.fromList(image.bytes),
+            image.bytesU8,
             width: 56,
             height: 56,
             fit: BoxFit.cover,
+            // 图片预览闪烁/加载失败修复：cacheWidth 降采样解码（Web 大图解码慢/易失败）
+            // + gaplessPlayback 解码期间保留旧帧（打字触发 rebuild 不闪烁）
+            cacheWidth: 168,
+            gaplessPlayback: true,
             errorBuilder: (_, _, _) => Container(
               width: 56,
               height: 56,

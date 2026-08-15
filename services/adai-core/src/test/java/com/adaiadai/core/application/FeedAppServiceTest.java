@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -372,6 +373,15 @@ class FeedAppServiceTest {
         assertEquals("qa1", recordEntries.get(0).id(), "保留 image_qa 记录");
         assertEquals("records/2026/08/media/img1.png", recordEntries.get(0).mediaPath(),
                 "图文事件缩略图取引用首图");
+        // 第一原则（无第三视角）：标题=用户问句、正文自然对话（无 问：/答：/图片记录：/【多图问答】标签）
+        assertEquals("看看是不是顶背离", recordEntries.get(0).title(),
+                "image_qa 标题应为用户问句（自然语言）");
+        assertEquals("看看是不是顶背离\n是", recordEntries.get(0).content(),
+                "image_qa 正文应为 问/答 两行（去标签）");
+        assertFalse(recordEntries.get(0).content().contains("图片记录"),
+                "正文不得出现内部图片引用（第三视角）");
+        assertFalse(recordEntries.get(0).content().contains("问："),
+                "正文不得出现「问：」标签");
     }
 
     private static ContentRecord record(String id, String type, String title, String content, String intent,
