@@ -540,7 +540,7 @@ public class ContextEngine {
   "summary": "3-5个词概括本次问答主题，避免人称代词，像标签一样简洁",
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
-  "domain": %s,
+  "domain": "%s",
   "actionable": true 或 false,
   "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null"
 }
@@ -558,7 +558,7 @@ public class ContextEngine {
                       "preferences": "（可选）如果这条记录揭示了用户的明确偏好，输出数组，每项包含 content(偏好描述) 和 confidence(0-1置信度)；否则不输出此字段",
                       "tags": ["标签1", "标签2", "标签3"],
                       "sentiment": "positive 或 negative 或 neutral",
-                      "domain": %s,
+                      "domain": "%s",
                       "actionable": true 或 false,
                       "actionSuggestion": "需要后续操作时，用第二人称直接面向用户写建议（如「该休息了」）；否则写 null
 
@@ -572,12 +572,16 @@ public class ContextEngine {
 
     /**
      * D5：按启用插件收敛 domain 枚举（无插件用户 → 只 life）。
+     * <p>
+     * REVIEW P1-B1：返回**不带引号**的纯枚举（`life(生活)/trading(交易)`）——
+     * 消费方各自显式包引号（buildPrompt 的 `"domain": "%s"`、DeepSeekAiClient 手拼），
+     * 避免双重引号产生非法 JSON 模板。
      */
     private String buildDomainEnum(Set<String> enabledPlugins) {
-        StringBuilder sb = new StringBuilder("\"life(生活)");
+        StringBuilder sb = new StringBuilder("life(生活)");
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) sb.append("/trading(交易)");
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) sb.append("/project(项目)");
-        return sb.append("\"").toString();
+        return sb.toString();
     }
 
     /**

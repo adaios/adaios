@@ -7,6 +7,7 @@ import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +16,10 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -39,7 +43,10 @@ class MediaRecordAppServiceTest {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行 1000股", List.of("交易", "持仓")));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        PluginService pluginService = mock(PluginService.class);
+        // 有 trading 插件用户：gateDomain 透传（"default" 测试账号 = 插件用户）
+        when(pluginService.gateDomain(anyString(), any())).thenAnswer(inv -> inv.getArgument(1));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, pluginService);
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", "加仓");
 
@@ -70,7 +77,7 @@ class MediaRecordAppServiceTest {
     void recordImage_vlmFailure_degradedWithCaption() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenThrow(new RuntimeException("GLM 服务不可用"));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", "会议白板");
 
@@ -84,7 +91,7 @@ class MediaRecordAppServiceTest {
     void recordImage_vlmFailure_noCaption_fallbackText() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenThrow(new RuntimeException("down"));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/jpeg", null);
 
@@ -95,7 +102,7 @@ class MediaRecordAppServiceTest {
     @Test
     void recordImage_notImage_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.recordImage("default", png(), "text/plain", null));
@@ -106,7 +113,7 @@ class MediaRecordAppServiceTest {
     @Test
     void recordImage_tooLarge_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
         byte[] huge = new byte[5 * 1024 * 1024 + 1];
 
         assertThrows(IllegalArgumentException.class,
@@ -119,7 +126,7 @@ class MediaRecordAppServiceTest {
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult img = service.recordImage("default", png(), "image/png", null);
 
@@ -153,7 +160,7 @@ class MediaRecordAppServiceTest {
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.ask(any(), any())).thenReturn("这是浦发银行。");
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult img = service.recordImage("default", png(), "image/png", null);
 
@@ -171,7 +178,7 @@ class MediaRecordAppServiceTest {
     @Test
     void askImage_blankQuestion_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
         assertThrows(IllegalArgumentException.class,
                 () -> service.askImage("default", "rec_x", "   "));
         assertThrows(IllegalArgumentException.class,
@@ -181,7 +188,7 @@ class MediaRecordAppServiceTest {
     @Test
     void askImage_unknownImage_throws() {
         MediaRecordAppService service = new MediaRecordAppService(
-                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository);
+                mock(VisualAiClient.class), recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
         assertThrows(IllegalArgumentException.class,
                 () -> service.askImage("default", "rec_unknown", "这是什么？"));
     }
@@ -190,7 +197,7 @@ class MediaRecordAppServiceTest {
     void mediaPathFor_returnsSavedPath() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult result = service.recordImage("default", png(), "image/png", null);
 
@@ -215,7 +222,7 @@ class MediaRecordAppServiceTest {
         when(glm.understand(any())).thenReturn(new ImageUnderstanding(
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.askMulti(any(), any())).thenReturn("左图是持仓，右图是走势。");
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 2);
 
@@ -248,7 +255,7 @@ class MediaRecordAppServiceTest {
     void askImages_overMaxImages_throws() {
         VisualAiClient glm = mock(VisualAiClient.class);
         when(glm.understand(any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         MediaRecordAppService.MediaRecordResult[] imgs = uploadN(service, 4);
         List<String> ids = java.util.Arrays.stream(imgs).map(MediaRecordAppService.MediaRecordResult::recordId).toList();
@@ -261,7 +268,7 @@ class MediaRecordAppServiceTest {
     @Test
     void askImages_blankQuestion_throws() {
         VisualAiClient glm = mock(VisualAiClient.class);
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.askImages("default", List.of("rec_x"), "   "));
@@ -274,9 +281,29 @@ class MediaRecordAppServiceTest {
     @Test
     void askImages_unknownImage_throws() {
         VisualAiClient glm = mock(VisualAiClient.class);
-        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService, fs, cardRepository, mock(PluginService.class));
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.askImages("default", List.of("rec_unknown"), "这是什么？"));
+    }
+
+    @Test
+    void recordImage_domainGatedByPluginService() {
+        // REVIEW P1-B4：VLM 判 category=trading，但用户无 trading 插件 → 落盘 domain 收敛 life
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "持仓截图", "trading", "浦发银行 1000股", List.of("交易", "持仓")));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.gateDomain(eq("alice"), eq("trading"))).thenReturn("life");
+
+        MediaRecordAppService service = new MediaRecordAppService(
+                glm, recordRepository, memoryService, fs, cardRepository, pluginService);
+        service.recordImage("alice", png(), "image/png", "加仓");
+
+        // 从真实存储读回记录，验证 domain 已收敛（不得落盘 trading 标注）
+        List<ContentRecord> all = recordRepository.findAll("alice");
+        assertEquals(1, all.size());
+        assertEquals("life", all.get(0).domain(), "无插件用户图片记录不得落盘 trading 标注");
+        verify(pluginService).gateDomain("alice", "trading");
     }
 }

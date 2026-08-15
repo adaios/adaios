@@ -42,7 +42,7 @@ public record ContextPackage(
         String domainEnum
 ) {
 
-    /** 默认 domain 枚举（全量）——ContextEngine 组装时按插件收敛后传入；非插件门控路径（simple/旧签名）保持原行为。 */
+    /** 默认 domain 枚举（全量，**不带引号**——REVIEW P1-B1：消费方各自显式包引号，避免双重引号）。 */
     private static final String DEFAULT_DOMAIN_ENUM = "life(生活)/trading(交易)/project(项目)";
 
     public ContextPackage {

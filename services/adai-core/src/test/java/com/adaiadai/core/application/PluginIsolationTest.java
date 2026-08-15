@@ -129,10 +129,14 @@ class PluginIsolationTest {
         var alicePkg = engine.compose("alice", "question", record("今天买入立昂微，持仓 200 股"), "card_x");
         var adaiPkg = engine.compose("adai", "question", record("今天买入立昂微，持仓 200 股"), "card_y");
 
-        assertEquals("\"life(生活)\"", alicePkg.domainEnum(), "无插件用户 domainEnum 只剩 life");
+        assertEquals("life(生活)", alicePkg.domainEnum(), "无插件用户 domainEnum 只剩 life（不带引号语义）");
         assertFalse(alicePkg.domainEnum().contains("trading"), "无插件用户 domainEnum 不应含 trading");
-        assertEquals("\"life(生活)/trading(交易)/project(项目)\"", adaiPkg.domainEnum(),
+        assertEquals("life(生活)/trading(交易)/project(项目)", adaiPkg.domainEnum(),
                 "adai 持有 trading+project 插件 → 全量枚举");
+        // REVIEW P1-B1：最终拼接必须单层引号（"domain": "life(生活)"），不得双重引号
+        assertTrue(alicePkg.prompt().contains("\"domain\": \"life(生活)\""),
+                "prompt 中 domain 占位应被单层引号包裹");
+        assertFalse(alicePkg.prompt().contains("\"\"life"), "不得出现双重引号（非法 JSON 模板）");
     }
 
     @Test

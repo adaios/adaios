@@ -8,7 +8,7 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
-> 2026-08-15 deep 审核（范围 `7b0a527..HEAD`，33 commits / 181 文件——批 Q/R + 展示层聚合 + 插件模型 + 文档治理）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**P0 无。战略×2 + P1×5 + P2×7 + P3×21（P3 迁移 task-log）**。核心：P1-B1（CHAT domain 枚举双重引号，每轮必触发）+ P1-B2/B3（时间线聚合跨天/跨会话误删）+ P1-B4（图片记录 domain 未 gateDomain）+ P1-D1（review-context 断链）；**P2-R1 reopen：P2-6 竞态实际未修复（「P2 清零」误报，已回滚）**；已沉淀检查点 B34-36 / F33-36 / D27-29。
+> 2026-08-15 deep 审核（范围 `7b0a527..HEAD`，33 commits / 181 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**P0 无。战略×2 + P1×5 + P2×7 + P3×21（P3 迁移 task-log）**。**修复批 S 已出表 6 项**（P1-B1-B4 + P2-B1 + P2-R1，后端 439）；剩余：战略 S-R1/S-R2（双端对拍/服务端合并语义，需决策）+ P1-D1（断链）+ P2-B2/R2/R3/D1/D2；已沉淀检查点 B34-36 / F33-36 / D27-29。
 > 2026-08-15 上午 deep 审核（范围：工作树未提交改动——第二步插件系统 T2.1-T2.10 + 第一步遗留，47 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**战略×2 + P1×6 + P2×7 + P3×15**。P0 无。战略 S-3（重补路径 domain 未收敛）+ S-4（行情推送写侧未门控）；P1 六项；已沉淀检查点 B31-33 / F30-32 / D23-26。S-3/S-4/P1 全部出表（批 Q/R）。
 > 2026-08-14 deep 审核（范围 `7b0a527..HEAD`，18 commits，带图 ask / 删除残留 / 图片交互批）：**P0×1 + 战略×2 + P1×2 + P2×2 + P3×14**。P0-1 + P1-1 + P1-2 + P2-1 + S-1 已修复出表；S-2 展示层已修（层 2 数据层另立 v1.0.1）。
 
@@ -40,19 +40,17 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| P1-B1 | **CHAT 模式 system prompt domain 枚举双重引号（P2-4 实现缺陷，每轮必触发）**：`buildDomainEnum()` 返回带首尾引号的枚举（供 `"domain": %s` 嵌入），`DeepSeekAiClient` 手拼 `"domain": \"" + ctx.domainEnum() + "\""` 又包一层 → `"domain": ""life(生活)/trading(交易)"",` 非法 JSON 模板——LLM 照模板输出即解析失败降级（summary 截断/tags 丢失/domain 恒 life）；`PluginIsolationTest` 只断言中间值未覆盖消费方拼接 | `DeepSeekAiClient.java:224` + `ContextEngine.java:576` | 统一 `domainEnum` 为不带引号纯枚举，两处消费方各自显式包引号，补最终拼接文本测试 |
-| P1-B2 | **时间线聚合跨天误删**：`fullTimeline` 全量收集 image_qa 引用图，8/14 传图 8/15 追问（跨天常态）→ 8/14 历史图片事件被过滤消失（Feed 只查当天无此问题，口径不同步）——违背「一次输入=一个事件」（跨天传图与追问是两个输入） | `TimelineProjection.java:60,146` | 聚合限定同日期：image 记录仅当与引用它的 image_qa 同天才合并；补跨天测试 |
-| P1-B3 | **时间线聚合跨会话/跨类型误匹配**：按「用户轮次文本前 60 字符」匹配无卡片身份限定——① 跨会话同文本（都问"帮我总结"）记录归并错误桶被全 drop、该会话时间线整体消失；② 匹配不要求 `intent=question`，普通 log 记录内容恰与轮次文本相同也被误 drop | `TimelineProjection.java:102-136` | 匹配加 `intent=question` 过滤 + 卡片身份/就近限定（宁缺勿误删）；补跨会话同文本测试 |
-| P1-B4 | **图片记录 domain 未走 gateDomain（S-3 持久化入口漏网）**：`recordImage` 落盘 `ImageUnderstanding.domainOf(category)` 直接写（VLM 判 category=trading → 无插件用户落盘 `domain=trading` image 记录），违反 D5「无插件用户不落盘 trading 标注」；`askImage/askImages` 硬编码 life 安全 | `MediaRecordAppService.java:100` | 落盘前 `pluginService.gateDomain(userId, ...)`；补 PluginIsolationTest 图片路径用例 |
 | P1-D1 | **`.claude/agents/review-context.md` 引用已移出路径断链**：引用 `research/context-reviewer.md` + `research/项目级 AI 上下文建设哲学与体系原理.md`，research/ 已移出仓库（57e7193）且方法论已合并改名——agent 加载即失效 | `.claude/agents/review-context.md:47-48` | 改指 `../ai-context-research/`（仓库外）或改写说明 |
+
+> P1-B1（CHAT domain 双重引号）/ P1-B2（时间线跨天）/ P1-B3（跨会话歧义）/ P1-B4（图片 domain gateDomain）已修复出表（2026-08-15 修复批 S，见已修复区）。
 
 ## 🔴 P2（未修复）
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| P2-R1 | **P2-6 竞态修复未达成目标（reopen，回滚「P2 清零」）**：重取 `_accounts` 与旧闭包在全部可达场景等价（`_accounts` 变更必伴随 setState+rebuild）；真实时序 t0 点 trading→PATCH 在飞、t1 点 project→`_accounts` 仍旧→PATCH 互覆仍丢一个开关——新代码仅修复亚帧窗口；当前 32 测试无一覆盖双连点 | `accounts_page.dart:94-123` | per-account 并发守卫/串行队列或服务端合并语义（S-R2）；补「延迟 store + 双开关连点 → 两个都开」widget 测试 |
-| P2-B1 | **trading 写入口未门控（S-4 写侧不完整）**：`POST /trades`（录持仓）、`POST /review`（存复盘）未加 `hasPlugin(trading)`——无插件用户可直接写持仓/复盘残留（与 promote 403 不对称） | `TradingController.java:74,93` | 与 promote 同口径门控（403）或明确「读放行、写需插件」决策并 api-spec 注明 |
 | P2-B2 | **S-4 脏数据 NPE 全局中断**：`hasPlugin(a.userId())` 遇 userId=null 账号在 filter 阶段（try-catch 外）NPE → 整个定时轮询中断（S-4 前该 NPE 在 poll(userId) 内被 catch 单用户跳过，行为回归）；`Account` 紧凑构造器只防 plugins null 未防 userId null | `MarketAlertService.java:95` + `Account.java:26-29` | Account 拒绝/归一 null userId；`findById` 改 `Objects.equals`；filter 阶段 null 防护 |
+
+> P2-R1（admin toggle 串行队列，双连点测试 +1）与 P2-B1（trading 写入口门控 403）已修复出表（2026-08-15 修复批 S，见已修复区）。
 | P2-R2 | **adai-app launcher 插件失败降级无测试、无反馈（F32 未闭环）**：测试缺 `['trading']` 单独分支与 500 降级分支；失败路径无任何用户反馈（与 web P2-5 不一致，见 S-R1） | `pages_widget_test.dart:366-415` + `launcher_page.dart:102-111` | 补两测试并同步 task-log 出表 |
 | P2-R3 | **内置 admin 插件开关未按 isProtected 门控**：enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件 | `accounts_page.dart:536-545` | 插件开关加 `isProtected` 门控（禁用态 + Tooltip）+ 断言测试 |
 | P2-D1 | **docs/README RFC 状态过期**：`20260815-media-event-unification` 说明仍写「draft 待确认」，实际已 approved | `docs/README.md:73` | 改 approved 说明 |
@@ -69,6 +67,7 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 修复批 S（P1-B1-B4 + P2-B1 + P2-R1）| deep 审核后端/前端修复：domainEnum 去引号语义（CHAT 双重引号根治，补最终拼接断言）+ 时间线聚合跨天/intent/歧义边界 + 图片 domain gateDomain + trading 写入口门控（403）+ admin 插件 toggle 串行队列；后端 439（+6）· admin 33（+1）| ✅ 2026-08-15 |
 | S-2（展示层）| 「一次输入 = 一个事件」：时间线多轮 chat 每会话单条 + 带图 ask image_qa 聚合为图文事件（引用图不单独成条，缩略图取首图）；Feed 同口径；前端零改动；数据层整体化另立 v1.0.1；后端 433（+4）| ✅ 2026-08-15（层 2 另立）|
 | 批 R（P1-5/P1-6/P2-5/P1-7/P2-8）| 前端+文档：adai-web 壳 label 重解析防索引错位 + 插件失败 SnackBar 重试；adai-app Launcher 插件接口拆独立 try/catch；api-spec D1 通用化同步；feature-reference 补插件模型章节；web 47（+1）| ✅ 2026-08-15（**P2-6 除外，reopen 见 P2-R1**）|
 | 批 Q（S-3/S-4/P1-4/P2-2/P2-3/P2-4）| 后端插件门控/健壮性六连修：重补路径 gateDomain + MarketAlert 写侧 trading 门控 + 账号迁移读字段存在性 + domain 规则关键词单一真相源 + Account null 过滤 + ContextPackage 收敛 domainEnum；后端 429（+7）| ✅ 2026-08-15（边界漏网见 P1-B1/B4/P2-B1/B2）|

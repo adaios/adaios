@@ -90,10 +90,19 @@ class _AccountsPageState extends State<AccountsPage> {
     await _load();
   }
 
+  /// 插件 toggle 串行队列（REVIEW P2-R1）：PATCH 全量替换（read-modify-write）并发互覆——
+  /// 快速连点两个开关若同时从旧快照出发，后完成的全量覆盖先完成的 → 丢一个开关。
+  /// 串行化后，后一个 toggle 等前一个完成（其 _load 已刷新 _accounts），重取到最新快照。
+  Future<void> _toggleQueue = Future.value();
+
   /// 插件开关（RFC 20260814）：trading/project 勾选 → PATCH 全量 plugins。
-  Future<void> _togglePlugin(Account account, String plugin, bool on) async {
-    // REVIEW P2-6：从最新 _accounts 重取账号——闭包捕获旧 Account 对象时，
-    // 快速连点两个开关各带旧快照全量覆盖，后完成覆盖先完成 → 用户以为都开了实际只剩一项。
+  Future<void> _togglePlugin(Account account, String plugin, bool on) {
+    _toggleQueue = _toggleQueue.then((_) => _doTogglePlugin(account, plugin, on));
+    return _toggleQueue;
+  }
+
+  Future<void> _doTogglePlugin(Account account, String plugin, bool on) async {
+    // 从最新 _accounts 重取账号——闭包捕获旧 Account 对象时快照过期（配合串行队列保证最新）
     Account? latest;
     for (final a in _accounts ?? const <Account>[]) {
       if (a.userId == account.userId) {

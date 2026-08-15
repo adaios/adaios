@@ -355,4 +355,29 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.conflicts.length()").value(greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.conflicts[0].rule").value(containsString("R96")));
     }
+
+    @Test
+    void recordTrade_withoutTradingPlugin_403() throws Exception {
+        // REVIEW P2-B1：无 trading 插件用户不得写持仓（与 promote 403 同口径）
+        // 显式空插件（buildMvc 2 参重载默认给 trading，不能用）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .header("X-User-Id", "default")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600000\",\"name\":\"浦发银行\",\"direction\":\"BUY\",\"price\":10.0,\"volume\":100}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void generateReview_withoutTradingPlugin_403() throws Exception {
+        // REVIEW P2-B1：无 trading 插件用户不得生成复盘（与 promote 403 同口径）
+        // 显式空插件（buildMvc 2 参重载默认给 trading，不能用）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+
+        mvc.perform(post("/api/v1/trading/review")
+                        .header("X-User-Id", "default")
+                        .param("date", "2099-01-01"))
+                .andExpect(status().isForbidden());
+    }
 }

@@ -8,6 +8,7 @@ import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +52,7 @@ class MediaControllerTest {
         when(glm.askMulti(any(), any())).thenReturn("左图是持仓截图，右图是分时走势。");
         MediaRecordAppService service = new MediaRecordAppService(
                 glm, new RecordFileRepository(fs), new MemoryService(fs), fs,
-                new CardFileRepository(fs));
+                new CardFileRepository(fs), mock(PluginService.class));
         intentRecognizer = mock(IntentRecognizer.class);
         mvc = MockMvcBuilders.standaloneSetup(
                 new MediaController(service, fs, intentRecognizer)).build();

@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -102,5 +103,80 @@ class TimelineProjectionTest {
 
         assertEquals(3, timeline.size(), "无聚合场景：全部记录原样输出");
         assertNull(timeline.get(0).mediaPath(), "普通记录无媒体路径");
+    }
+
+    @Test
+    void fullTimeline_crossDayImageQa_notAggregated_imageKept() {
+        // REVIEW P1-B2：昨天（8/14）传图、今天（8/15）追问——跨天是两个输入，
+        // 历史图片事件必须保留（不得被今天的 image_qa 聚合吞掉）
+        LocalDateTime imgTime = LocalDateTime.of(2026, 8, 14, 10, 0);
+        LocalDateTime qaTime = LocalDateTime.of(2026, 8, 15, 9, 0);
+        when(records.findAll(any())).thenReturn(List.of(
+                record("img1", "image", "图1", "【图片文字】K线", "log", imgTime),
+                record("qa1", "image_qa", "顶背离判断",
+                        "【多图问答】\n图片记录：img1\n问：看看是不是顶背离\n答：是",
+                        "question", qaTime)
+        ));
+
+        TimelineProjection projection = new TimelineProjection(records, cards);
+        List<TimelineEntry> timeline = projection.fullTimeline("adai");
+
+        assertEquals(2, timeline.size(), "跨天引用：图与问答各自独立成条（跨天是两个输入）");
+        assertTrue(timeline.stream().anyMatch(e -> "image".equals(e.type())),
+                "跨天时历史图片事件不得被过滤消失");
+    }
+
+    @Test
+    void fullTimeline_crossSessionSameText_ambiguousNotDropped() {
+        // REVIEW P1-B3：两个会话都有相同轮次文本（"帮我总结一下"）→ 歧义保守不聚合，
+        // 两个会话的记录都保留（不得归并错误桶导致某个会话整体消失）
+        CardRecord cardA = new CardRecord("card_a", "conversation", "active",
+                List.of(), List.of(
+                        new CardRecord.Turn(true, "帮我总结一下", "10:00"),
+                        new CardRecord.Turn(false, "好的", "10:00")),
+                null, LocalDateTime.of(2026, 8, 15, 10, 0), null);
+        CardRecord cardB = new CardRecord("card_b", "conversation", "active",
+                List.of(), List.of(
+                        new CardRecord.Turn(true, "帮我总结一下", "14:00"),
+                        new CardRecord.Turn(false, "好的", "14:00")),
+                null, LocalDateTime.of(2026, 8, 15, 14, 0), null);
+        when(cards.findAll(any())).thenReturn(List.of(cardA, cardB));
+
+        LocalDateTime t0 = LocalDateTime.of(2026, 8, 15, 10, 0);
+        when(records.findAll(any())).thenReturn(List.of(
+                record("qa", "note", "帮我总结一下", "帮我总结一下", "question", t0),
+                record("qb", "note", "帮我总结一下", "帮我总结一下", "question", t0.plusHours(4))
+        ));
+
+        TimelineProjection projection = new TimelineProjection(records, cards);
+        List<TimelineEntry> timeline = projection.fullTimeline("adai");
+
+        assertEquals(2, timeline.size(),
+                "跨会话同文本 → 歧义保守不聚合，两条记录都保留（宁缺勿误删）");
+    }
+
+    @Test
+    void fullTimeline_logRecordMatchingTurnText_notDropped() {
+        // REVIEW P1-B3：普通 log 记录内容恰与某卡片轮次文本相同 → 不参与 chat 聚合，不被误 drop
+        CardRecord card = new CardRecord("card_1", "conversation", "active",
+                List.of(), List.of(
+                        new CardRecord.Turn(true, "今天天气怎么样", "09:00"),
+                        new CardRecord.Turn(false, "晴天", "09:00")),
+                null, LocalDateTime.of(2026, 8, 15, 9, 0), null);
+        when(cards.findAll(any())).thenReturn(List.of(card));
+
+        LocalDateTime t0 = LocalDateTime.of(2026, 8, 15, 9, 0);
+        when(records.findAll(any())).thenReturn(List.of(
+                record("q1", "note", "今天天气怎么样", "今天天气怎么样", "question", t0),
+                record("n1", "note", "今天天气怎么样", "今天天气怎么样", "log", t0.plusMinutes(1))
+        ));
+
+        TimelineProjection projection = new TimelineProjection(records, cards);
+        List<TimelineEntry> timeline = projection.fullTimeline("adai");
+
+        assertEquals(2, timeline.size(),
+                "log 记录即使文本与轮次相同也不参与 chat 聚合（intent 过滤）");
+        assertTrue(timeline.stream().anyMatch(e -> e.id().equals("n1")),
+                "普通 log 记录不得被误 drop");
     }
 }

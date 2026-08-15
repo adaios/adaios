@@ -9,6 +9,7 @@ import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.slf4j.Logger;
@@ -44,17 +45,20 @@ public class MediaRecordAppService {
     private final MemoryService memoryService;
     private final FileStorage fileStorage;
     private final CardFileRepository cardRepository;
+    private final PluginService pluginService;
 
     public MediaRecordAppService(VisualAiClient visualAiClient,
                                  RecordFileRepository recordFileRepository,
                                  MemoryService memoryService,
                                  FileStorage fileStorage,
-                                 CardFileRepository cardRepository) {
+                                 CardFileRepository cardRepository,
+                                 PluginService pluginService) {
         this.visualAiClient = visualAiClient;
         this.recordFileRepository = recordFileRepository;
         this.memoryService = memoryService;
         this.fileStorage = fileStorage;
         this.cardRepository = cardRepository;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -91,13 +95,15 @@ public class MediaRecordAppService {
         String summary = understanding.summary() != null ? understanding.summary() : "图片记录";
         List<String> tags = understanding.tags() != null ? understanding.tags() : List.of();
         String content = buildContent(understanding, caption);
+        // REVIEW P1-B4：图片记录 domain 与文本路径同口径走 gateDomain（D5 不变量——
+        // VLM 判 category=trading 时，无 trading 插件用户不得落盘 trading 标注）
 
         ContentRecord record = new ContentRecord(
                 id, "image", "user_input",
                 // #166：按 code point 截断（substring 按 UTF-16 char 会拆断 emoji/surrogate pair）
                 truncateByCodePoints(summary, 50),
                 content, tags, now,
-                "log", summary, ImageUnderstanding.domainOf(understanding.category())
+                "log", summary, pluginService.gateDomain(userId, ImageUnderstanding.domainOf(understanding.category()))
         );
         recordFileRepository.save(userId, record);
 

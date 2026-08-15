@@ -1,3 +1,5 @@
+import 'dart:async';
+
 // 测试 Fake 存储 — 实现各 store 抽象接口，返回固定数据。
 // 供 widget 测试注入页面，避免测试依赖真实后端。
 
@@ -406,4 +408,40 @@ class FakeKnowledgeStore implements KnowledgeStore {
             category: '规则',
             source: 'trading-os'),
       ];
+}
+
+
+/// 可控延迟账号 store（REVIEW P2-R1 竞态测试）：setPlugins 挂起直到 gate 放行，
+/// 记录每次调用参数；loadAccounts 返回当前列表快照。
+class GatedAccountStore implements AccountStore {
+  GatedAccountStore({required this.gate}) {
+    _accounts = [
+      Account(userId: 'alice', role: 'user', enabled: true, createdAt: DateTime(2026, 8, 2)),
+    ];
+  }
+
+  final Completer<void> gate;
+  final List<List<String>> setPluginsCalls = [];
+  late final List<Account> _accounts;
+
+  @override
+  Future<List<Account>> loadAccounts() async => List.of(_accounts);
+
+  @override
+  Future<String?> create({required String userId, required String role}) async => null;
+
+  @override
+  Future<String?> setEnabled(String userId, bool enabled) async => null;
+
+  @override
+  Future<String?> setPlugins(String userId, List<String> plugins) async {
+    setPluginsCalls.add(List.of(plugins));
+    await gate.future; // 挂起直到测试放行
+    final idx = _accounts.indexWhere((a) => a.userId == userId);
+    if (idx >= 0) _accounts[idx].plugins = List.of(plugins);
+    return null;
+  }
+
+  @override
+  Future<String?> delete(String userId) async => null;
 }

@@ -1,5 +1,7 @@
 // AdaiOS 管理端 — 账号管理 Widget 测试（注入 FakeAccountStore，不依赖后端）。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -122,5 +124,40 @@ void main() {
 
     expect(find.text('alice'), findsNothing);
     expect(find.text('已删除账号 alice'), findsOneWidget);
+  });
+
+  testWidgets('P2-R1 双开关快速连点：串行队列保证两个都开（竞态修复）',
+      (WidgetTester tester) async {
+    // 可控延迟 store：第一个 setPlugins 挂起，模拟两个 PATCH 在飞的竞态窗口
+    final gate = Completer<void>();
+    final store = GatedAccountStore(gate: gate);
+    await tester.pumpWidget(_wrap(AccountsPage(store: store)));
+    await tester.pumpAndSettle();
+
+    // 快速连点 alice 的 trading + project 两个开关
+    await tester.tap(find.byKey(const ValueKey('plugin-alice-trading')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('plugin-alice-project')));
+    await tester.pump();
+
+    // 串行队列：第一个 setPlugins 已发起（挂起中），第二个仍在队列等待
+    expect(store.setPluginsCalls.length, 1, reason: '串行队列：第二个 toggle 等第一个完成');
+
+    // 放行第一个 → 队列继续执行第二个（此时已重取到含 trading 的最新快照）
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(store.setPluginsCalls.length, 2, reason: '两个 toggle 都应执行');
+    expect(store.setPluginsCalls.last.toSet(), containsAll(['trading', 'project']),
+        reason: '后执行的全量 PATCH 基于最新快照（含前一开关），两个都保留');
+    // UI 最终两个开关都开
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-trading'))).value,
+      isTrue,
+    );
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
+      isTrue,
+    );
   });
 }

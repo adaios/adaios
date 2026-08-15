@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,15 +58,17 @@ public class TimelineProjection {
      */
     public List<TimelineEntry> fullTimeline(String userId) {
         List<ContentRecord> all = recordRepository.findAll(userId);
-        Map<String, CardRecord> turnToCard = buildTurnCardMap(cardRepository.findAll(userId));
-        Set<String> qaReferencedImageIds = collectQaReferencedImages(all);
+        List<CardRecord> cards = cardRepository.findAll(userId);
         // 多轮 chat：同一会话只保留首问记录，其余轮次记录过滤（时间线单条，详情在卡片）
-        Set<String> chatDropIds = collectChatTurnDropIds(all, turnToCard);
+        Set<String> chatDropIds = collectChatTurnDropIds(all, cards);
+        // 带图 ask：image_qa 引用的 image 记录仅当**同一天**才聚合（P1-B2：跨天传图与追问是两个输入）
+        Map<String, LocalDate> qaReferencedImageDates = collectQaReferencedImageDates(all);
 
         return all.stream()
                 .filter(r -> !chatDropIds.contains(r.id()))
-                // 带图 ask：被 image_qa 引用的 image 记录不单独成条（合并进图文事件）
-                .filter(r -> !("image".equals(r.type()) && qaReferencedImageIds.contains(r.id())))
+                .filter(r -> !("image".equals(r.type())
+                        && qaReferencedImageDates.containsKey(r.id())
+                        && qaReferencedImageDates.get(r.id()).equals(r.createdAt().toLocalDate())))
                 .map(r -> toEntry(userId, r))
                 .sorted((a, b) -> b.dateTime().compareTo(a.dateTime()))
                 .toList();
@@ -98,31 +102,31 @@ public class TimelineProjection {
 
     // ── 聚合辅助 ──
 
-    /** 卡片用户 turn 文本 → 卡片（多轮 chat 匹配用，口径与 FeedAppService.buildTurnCardMap 一致）。 */
-    private Map<String, CardRecord> buildTurnCardMap(List<CardRecord> cards) {
-        Map<String, CardRecord> map = new java.util.HashMap<>();
+    /**
+     * 多轮 chat 聚合：同一会话的轮次记录只保留首问（时间最早），其余过滤——时间线单条。
+     * <p>
+     * REVIEW P1-B3 边界：
+     * <ul>
+     *   <li>只聚合 {@code intent=question} 的问答轮次记录（普通 log 记录即使文本相同也不误 drop）</li>
+     *   <li>同一文本映射到多个卡片（跨会话同文本）→ 歧义保守**不聚合**（宁缺勿误删，避免会话整体消失）</li>
+     * </ul>
+     */
+    private Set<String> collectChatTurnDropIds(List<ContentRecord> records, List<CardRecord> cards) {
+        // 轮次文本 → 命中的卡片 id 集合（多卡片命中 = 歧义）
+        Map<String, Set<String>> textToCards = new java.util.HashMap<>();
         for (CardRecord card : cards) {
             if (card.turns() == null) continue;
             for (CardRecord.Turn turn : card.turns()) {
                 if (!turn.isUser() || turn.text() == null || turn.text().isBlank()) continue;
-                String key = turn.text().strip();
-                if (key.length() > MAX_TURN_KEY) key = key.substring(0, MAX_TURN_KEY);
-                map.put(key, card);
+                textToCards.computeIfAbsent(turnKey(turn.text()), k -> new HashSet<>()).add(card.id());
             }
         }
-        return map;
-    }
-
-    /**
-     * 多轮 chat 聚合：同一会话（同一卡片）的轮次记录只保留首问（时间最早），
-     * 其余轮次记录过滤——时间线单条，完整对话在卡片 turns 里。
-     */
-    private Set<String> collectChatTurnDropIds(List<ContentRecord> records, Map<String, CardRecord> turnToCard) {
         Map<String, List<ContentRecord>> byCard = new java.util.LinkedHashMap<>();
         for (ContentRecord r : records) {
-            CardRecord card = turnToCard.get(turnKey(r.content()));
-            if (card == null) continue;
-            byCard.computeIfAbsent(card.id(), k -> new java.util.ArrayList<>()).add(r);
+            if (!"question".equals(r.intent())) continue; // P1-B3：仅问答轮次参与聚合
+            Set<String> cardIds = textToCards.get(turnKey(r.content()));
+            if (cardIds == null || cardIds.isEmpty() || cardIds.size() > 1) continue; // 无匹配/歧义 → 不聚合
+            byCard.computeIfAbsent(cardIds.iterator().next(), k -> new java.util.ArrayList<>()).add(r);
         }
         Set<String> drop = new HashSet<>();
         for (List<ContentRecord> turns : byCard.values()) {
@@ -142,20 +146,21 @@ public class TimelineProjection {
         return key;
     }
 
-    /** 收集所有 image_qa 记录引用的图片 id（这些 image 记录聚合进图文事件，不单独成条）。 */
-    private Set<String> collectQaReferencedImages(List<ContentRecord> records) {
-        Set<String> ids = new HashSet<>();
+    /** 收集 image_qa 引用的图片 id → 引用它的 image_qa 的日期（P1-B2：跨天不聚合）。 */
+    private Map<String, LocalDate> collectQaReferencedImageDates(List<ContentRecord> records) {
+        Map<String, LocalDate> map = new HashMap<>();
         for (ContentRecord r : records) {
             if (!"image_qa".equals(r.type()) || r.content() == null) continue;
             Matcher m = IMAGE_REF.matcher(r.content());
             if (m.find()) {
+                LocalDate qaDate = r.createdAt().toLocalDate();
                 for (String id : m.group(1).split(",")) {
                     String t = id.strip();
-                    if (!t.isEmpty()) ids.add(t);
+                    if (!t.isEmpty()) map.putIfAbsent(t, qaDate);
                 }
             }
         }
-        return ids;
+        return map;
     }
 
     // ── 条目构建 ──

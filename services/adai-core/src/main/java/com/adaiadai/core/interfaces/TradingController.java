@@ -72,14 +72,24 @@ public class TradingController {
      * 记录一笔交易（买入/卖出）。
      */
     @PostMapping("/trades")
-    public ResponseEntity<List<Position>> recordTrade(
+    public ResponseEntity<?> recordTrade(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @Valid @RequestBody TradeRequest request) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         List<Position> updated = tradingAppService.recordTrade(
                 userId, request.symbol(), request.name(),
                 request.direction(), request.price(), request.volume()
         );
         return ResponseEntity.ok(updated);
+    }
+
+    /** REVIEW P2-B1：trading 写入口门控（与 promote 403 同口径）——无 trading 插件用户不得写入持仓/复盘残留。 */
+    private ResponseEntity<?> requireTradingPlugin(String userId) {
+        if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法使用交易功能"));
+        }
+        return null;
     }
 
     // ── 复盘 API ──
@@ -91,9 +101,11 @@ public class TradingController {
      * 输出写入 {@code data/trading/reviews/YYYY-MM-DD_review.md}。
      */
     @PostMapping("/review")
-    public ResponseEntity<ReviewResponse> generateReview(
+    public ResponseEntity<?> generateReview(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         String content = reviewAppService.generateReview(userId, date);
         return ResponseEntity.ok(new ReviewResponse(date.toString(), content));
     }

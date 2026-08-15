@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | deep 审核修复批 S | P1-B1 domainEnum 去引号语义（CHAT 双重引号修复）+ P1-B2/B3 时间线聚合跨天/intent/歧义边界 + P1-B4 图片 domain 走 gateDomain + P2-B1 trading 写入口门控（/trades、/review 403）+ P2-R1 admin 插件 toggle 串行队列（双连点竞态）+ 边界测试 | 后端 439（+6）· admin 33（+1）|
 | 2026-08-15 | 展示层聚合（S-2 + 时间线 bug）| 产品决策「一次输入 = 一个事件」：TimelineProjection 多轮 chat 每会话只保留首问（时间线单条）+ 带图 ask image_qa 引用图不单独成条（图文事件，缩略图取首图）；FeedAppService 同口径聚合；前端零改动；数据层不变（freeze 不破坏，层 2 另立 v1.0.1）| 后端 433（+4）|
 | 2026-08-15 | REVIEW 修复批 R（前端 + 文档）| P1-5 adai-web 桌面壳当前页按 label 重解析（插件加载后索引不错位）+ P2-5 插件拉取失败 SnackBar 反馈/重试；P1-6 adai-app Launcher 插件接口拆独立 try/catch（不再拖垮核心数据）；P2-6 adai-admin 插件开关 toggle 前从最新列表重取（快速连点不再覆盖丢开关）；P1-7 api-spec D1 通用化同步；P2-8 feature-reference 补插件模型章节 + 端点表补 3 端点 | web 47（+1）· app 92 · admin 32 |
 | 2026-08-15 | REVIEW 修复批 Q（后端插件门控/健壮性）| S-3 重补路径走 gateDomain（D5 收敛铺满持久化入口）+ S-4 MarketAlert 写侧 trading 插件门控 + P1-4 账号迁移读原始字段存在性（PATCH 清空不被推翻）+ P2-2 domain 规则由关键词常量拼接（单一真相源）+ P2-3 Account 过滤 null 插件元素 + P2-4 ContextPackage 携带收敛 domainEnum（CHAT 模式不硬编码）| 后端 429（+7）|
