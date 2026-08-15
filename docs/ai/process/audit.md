@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 60
+lines: 63
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -26,7 +26,8 @@ tags: [ai, process]
 ## 2. 守护检查
 
 ```bash
-bash docs/review/guard.sh
+bash docs/review/guard.sh        # G1-G7 代码级守护
+bash docs/ai/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
 ## 3. 8 官独立并行
@@ -42,6 +43,7 @@ bash docs/review/guard.sh
 | frontend-reviewer | 代码 | 状态管理、生命周期、契约、测试 |
 | docs-reviewer | 契约 | 文档-代码一致、断链、数字漂移 |
 | knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
+| context-reviewer | Context | ai/context/ 模板与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
 
 ## 4. 汇总与交叉印证
 

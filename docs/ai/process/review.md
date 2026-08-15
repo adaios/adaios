@@ -31,9 +31,11 @@ git log --oneline -20          # 找上次审查 commit 作为基线（REVIEW.md
 
 ```bash
 bash docs/review/guard.sh        # G1-G7 代码级守护
+bash docs/ai/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
-G1-G7，有 HIT 即记录为问题（复发信号）。清单见 `docs/ai/checklists/guard.md`。
+- G1-G7 有 HIT 即记录为问题（复发信号）。清单见 `docs/ai/checklists/guard.md`。
+- guard-meta 有 FAIL 时先 `bash docs/ai/guard-meta.sh --fix` 回写 lines，再人工处理断链/孤儿（D34 回写门禁）。
 
 ## 3. 按模式派官
 

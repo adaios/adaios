@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 40
+lines: 39
 depends-on:
   - frontmatter-spec.md
 related:
@@ -23,10 +23,11 @@ tags: [ai, meta]
 | 文件 | 说明 |
 |:-----|:-----|
 | `frontmatter-spec.md` | 文档元数据契约（图谱/治理/归档基础）|
-| `roles/` | 8 个审查官定义（产品架构/交互体验/界面设计/后端/前端/文档/知识数据）|
+| `roles/` | 8 个审查官定义（产品架构/交互体验/界面设计/后端/前端/文档/知识数据/Context）|
 | `process/audit.md` | 全维度走查流程（8 官独立并行 + 交叉印证）|
 | `process/review.md` | 增量深审流程（按改动派官）|
-| `checklists/` | 检查清单（执行细节，人也能用）|
+| `checklists/` | 检查清单（执行细节，人也能用：8 官清单 + guard 守护）|
+| `guard-meta.sh` | 元治理自检：frontmatter 图谱/lines/孤儿，`--fix` 回写 lines |
 
 ## 任何 AI 工具如何接入
 
