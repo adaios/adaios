@@ -68,6 +68,13 @@
 | P-app-06 | P2 | 信息重复：任务统计（状态页 vs 任务页）、身份（launcher vs profile）| 两页 | 收敛单一入口 |
 | P-app-07 | P2 | profile 与 launcher「关于我」双入口 | main_page + launcher | 统一 |
 | P-app-09 | P2 | 附件菜单「文件/链接」是未实现占位（点击仅提示「未实现」）| `input_bar.dart:297,333` | 实现或移除入口 |
+| P-app-10 | P2 | 阿呆系统「方向进展」前端硬编码（`_kDirections` 静态），与后端 project/status 双源并行，刷新不更新 | `project_status_page.dart:202-222` | 后端提供或移 admin |
+| P-app-11 | P2 | 交易价格未校验 `price<=0`（可录 0/负价）；无平仓/删持仓入口；getReviewDates 预留未用 | `trading_page.dart:80` | 校验 + 补平仓 |
+| P-app-12 | P2 | Profile 保存成功无反馈（直接退出编辑态）| `profile_page.dart:103-115` | 加成功 SnackBar |
+| P-app-13 | P2 | 错误处理碎片化：`_errText`/`_extractApiError` 6+ 页面各自复制；task 页正则匹配不上 ApiService 实际错误格式 → 落到错误文案 | `api_service.dart:503` | 收敛统一错误组件 |
+| P-app-14 | P3 | project_status 错误态暴露原始异常串（`e.toString()`）| `project_status_page.dart:66` | 人话化 |
+| P-app-15 | P3 | 切世界销毁 MainPage：对话现场/草稿/上传进度丢失 | `main.dart:230-260` | 草稿提升壳层或保活 |
+| P-app-16 | P3 | 任务 API 属 project domain 但 launcher 标「Kernel 基础服务」不门控——与后端门控策略一致性待验证 | `launcher_page.dart:235` | 验证后端是否按插件门控 |
 
 ## 五、职责边界发现（后端视角，影响 app 打磨）
 
