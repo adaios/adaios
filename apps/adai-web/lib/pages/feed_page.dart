@@ -172,6 +172,9 @@ class _FeedPageState extends State<FeedPage> {
           id: pid, type: FeedCardType.record, time: timeStr,
           content: caption.isEmpty ? image.name : caption,
           mode: CardMode.idle, loading: true,
+          // REVIEW F37：保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
+          mediaBytes: image.bytes, mediaName: image.name, mediaExt: image.extension,
+          mediaCaption: caption.isEmpty ? null : caption,
         ));
       }
     });
@@ -550,10 +553,16 @@ class _FeedPageState extends State<FeedPage> {
     return result ?? false;
   }
 
-  /// 失败重试：复用原 cardId 重新 POST（后端按 cardId 幂等去重，避免半失败重复入账，#110）。
+  /// 失败重试：图片占位卡重走 uploadImage（保留字节，REVIEW F37）；文本卡复用原 cardId
+  /// 重新 POST（后端按 cardId 幂等去重，避免半失败重复入账，#110）。
   Future<void> _retryCard(String id) async {
     final idx = _cards.indexWhere((c) => c.id == id);
     if (idx < 0) return;
+    final card = _cards[idx];
+    if (card.mediaBytes != null && card.mediaName != null) {
+      await _retryMediaUpload(card);
+      return;
+    }
     final content = _cards[idx].content;
     setState(() => _cards[idx] = _cards[idx].copyWith(loading: true, clearError: true));
     try {
@@ -571,6 +580,45 @@ class _FeedPageState extends State<FeedPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _updateCard(id, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+      _scrollToBottom();
+    }
+  }
+
+  /// 图片上传失败重试：原位恢复 loading → 用原始字节重走 uploadImage → 替换为真实记录卡。
+  /// REVIEW F37（对齐 adai-app #235）：不把文件名当文本记录重发。
+  Future<void> _retryMediaUpload(FeedCardData card) async {
+    final pid = card.id;
+    if (mounted) {
+      setState(() => _updateCard(pid, (c) => c.copyWith(loading: true, clearError: true)));
+    }
+    try {
+      final resp = await widget.api.uploadImage(
+        bytes: card.mediaBytes!,
+        filename: card.mediaName!,
+        mimeType: _mimeTypeOf(card.mediaExt),
+        caption: card.mediaCaption,
+      );
+      if (!mounted) return;
+      setState(() {
+        _updateCard(pid, (c) => c.copyWith(
+          content: resp.summary.isEmpty
+              ? (card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : card.mediaName!
+              : resp.summary,
+          summary: resp.summary.isEmpty ? null : resp.summary,
+          tags: resp.tags.isNotEmpty ? resp.tags : null,
+          loading: false,
+          mode: CardMode.idle,
+          intent: IntentType.log,
+          domain: 'life',
+          mediaUrl: resp.recordId.isEmpty ? null : widget.api.mediaUrl(resp.recordId),
+          mediaHeaders: resp.recordId.isEmpty ? null : widget.api.mediaHeaders,
+        ));
+      });
+      _loadSidebar();
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
       _scrollToBottom();
     }
   }

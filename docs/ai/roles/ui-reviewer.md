@@ -7,8 +7,8 @@ updated: 2026-08-15
 status: active
 lines: 38
 depends-on:
-  - ../../frontmatter-spec.md
-  - ../../checklists/review-ui.md
+  - ../frontmatter-spec.md
+  - ../checklists/review-ui.md
 related:
   - ../roles/ux-reviewer.md
   - ../../../docs/architecture/frontend-reference.md
@@ -31,4 +31,4 @@ tags: [review, ui]
 
 ## 输出格式
 
-同 product-arch。检查清单见 `../../checklists/review-ui.md`。
+同 product-arch。检查清单见 `../checklists/review-ui.md`。

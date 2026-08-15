@@ -177,6 +177,12 @@ public class CardFileRepository implements CardRepository {
 
     // ── 内部方法 ──
 
+    /** 单行化：换行/回车替换为空格（与 RecordFileRepository.singleLine 同口径）。 */
+    private static String singleLine(String text) {
+        if (text == null) return "";
+        return text.replace("\n", " ").replace("\r", " ").replaceAll(" +", " ").strip();
+    }
+
     private String filePath(CardRecord card) {
         // 按卡片创建日期推导目录，跨日续接对话时写回原文件，避免重复副本
         LocalDate date = card.createdAt().toLocalDate();
@@ -200,7 +206,9 @@ public class CardFileRepository implements CardRepository {
         for (Turn turn : card.turns()) {
             sb.append("## ").append(turn.time()).append("\n");
             sb.append(turn.isUser() ? "用户：" : "AI：");
-            sb.append(turn.text()).append("\n\n");
+            // REVIEW P0-W1：turn 文本单行化（换行→空格）——与 Record/Project 同口径，
+            // 保证写读对称（parseTurns 只按前缀行解析，多行内容会截断覆盖丢失）
+            sb.append(singleLine(turn.text())).append("\n\n");
         }
 
         return sb.toString();
@@ -236,18 +244,28 @@ public class CardFileRepository implements CardRepository {
         return new CardRecord(id, type, status, tags, turns, summary, createdAt, updatedAt);
     }
 
+    /**
+     * 解析对话轮次（REVIEW P0-W1：支持多行 turn——此前只取「用户：/AI：」所在行，
+     * AI 多段回答的后继行被静默丢弃，下次保存时截断覆盖原文件 → 对话历史永久丢失）。
+     * 无前缀的非空行追加到当前 turn（保留换行），与 toMarkdown 写多行对称。
+     */
     private List<Turn> parseTurns(String body) {
         List<Turn> turns = new ArrayList<>();
         String[] lines = body.split("\n");
         String currentTime = "";
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
+        for (String raw : lines) {
+            String line = raw.trim();
             if (line.startsWith("## ")) {
                 currentTime = line.substring(3).trim();
             } else if (line.startsWith("用户：")) {
                 turns.add(new Turn(true, line.substring(3).trim(), currentTime));
             } else if (line.startsWith("AI：")) {
                 turns.add(new Turn(false, line.substring(3).trim(), currentTime));
+            } else if (!line.isEmpty() && !turns.isEmpty()) {
+                // 多行内容：追加到当前 turn（保留换行），而非丢弃
+                Turn current = turns.get(turns.size() - 1);
+                Turn merged = new Turn(current.isUser(), current.text() + "\n" + line, current.time());
+                turns.set(turns.size() - 1, merged);
             }
         }
         return turns;

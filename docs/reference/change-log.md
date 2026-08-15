@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-15 | 全维度走查修复批 W1 | P0-W1 卡片多行 turn 单行化（对话丢失根治 + round-trip 测试）；P1-W10 LauncherPage SafeArea（误触）；P1-W1 web 图片重试重走 uploadImage（F37）+ P1-W2 app 文本重试复用 cardId（幂等）；P1-W3/W4 搜索+时间线自然化（第一原则漏面）；P1-W16 基建自伤（docs/ai frontmatter 断链 + 审查官 8 + status 端点 52）| 后端 453（+3）· app 94 · web 47 |
 | 2026-08-15 | image 记录展示自然化 | 第一原则覆盖 image 记录：标题=VLM 总结、正文逐行去【备注】/【图片文字】标签（用户看到的是自己的话+自然内容，无第三视角）；生产验证 image_qa 自然化生效 | 后端 450（+1）|
 | 2026-08-15 | image_qa 展示自然化 + 图片预览修复 | 第一原则「无第三视角」落地：Feed/时间线 image_qa 转自然对话（标题=问句、正文=问/答两行、去问：/答：/图片记录：标签）；输入栏图片预览缓存 Uint8List + cacheWidth 降采样 + gaplessPlayback（打字 rebuild 不再闪烁/大图解码失败）；VISION 沉淀原则 | 后端 449（+3）|
 | 2026-08-15 | S-R1/S-R2（deep 战略项）| S-R1 adai-app launcher 插件失败 SnackBar 反馈 + 重试（双端对拍 web）；S-R2 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 前端改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20 | 后端 446（+6）|

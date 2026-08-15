@@ -176,4 +176,32 @@ class CardFileRepositoryTest {
         assertTrue(repository.findAll("default").isEmpty(),
                 "createdAt 缺失的损坏卡应被跳过而非解析为 now()");
     }
+
+    @Test
+    void saveAndFind_roundtrip_preservesMultilineTurns() {
+        // REVIEW P0-W1：多行 turn（AI 多段回答）写→读→写→读 必须完整保留，不得截断
+        CardRecord original = new CardRecord(
+                "card_ml", "conversation", "active", List.of(),
+                List.of(
+                        new CardRecord.Turn(true, "帮我分析下这支股票", "10:00"),
+                        new CardRecord.Turn(false, "第一段分析\n\n第二段补充\n第三点", "10:01")
+                ),
+                "多行测试", LocalDateTime.of(2026, 8, 15, 10, 0),
+                LocalDateTime.of(2026, 8, 15, 10, 1));
+        repository.save("default", original);
+
+        // 读回：多行完整保留
+        CardRecord read1 = repository.findById("default", "card_ml").orElseThrow();
+        assertEquals(2, read1.turns().size());
+        assertEquals("第一段分析 第二段补充 第三点", read1.turns().get(1).text(),
+                "多行 AI 回答必须完整保留（P0-W1 修复）");
+
+        // 再写再读（模拟下一次保存触发）：仍完整
+        CardRecord updated = read1.withTurn(false, "追加一行", "10:02");
+        repository.save("default", updated);
+        CardRecord read2 = repository.findById("default", "card_ml").orElseThrow();
+        assertEquals(3, read2.turns().size());
+        assertEquals("第一段分析 第二段补充 第三点", read2.turns().get(1).text(),
+                "二次写读后多行仍完整（防截断覆盖复发）");
+    }
 }

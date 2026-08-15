@@ -103,6 +103,9 @@ class TimelineProjectionTest {
 
         assertEquals(3, timeline.size(), "无聚合场景：全部记录原样输出");
         assertNull(timeline.get(0).mediaPath(), "普通记录无媒体路径");
+        // REVIEW P1-W4：conversation 记录标题=summary（简洁标签），不展示第三人称正文
+        assertEquals("对话摘要", timeline.stream().filter(e -> e.id().equals("c1")).findFirst().get().title(),
+                "conversation 时间线标题应为 summary，非第三人称正文");
     }
 
     @Test

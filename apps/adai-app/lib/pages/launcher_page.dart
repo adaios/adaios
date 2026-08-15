@@ -143,18 +143,22 @@ class _LauncherPageState extends State<LauncherPage>
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Column(
-      children: [
-        // Fixed top: drag handle + search bar (not scrolled)
-        GestureDetector(
-          onVerticalDragEnd: (d) {
-            if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
-              widget.onNavigateBack();
-            }
-          },
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+    // REVIEW P1-W10（全维度走查）：全 app 唯一无 SafeArea 的页面——拖拽条/搜索栏
+    // 从 y=0 侵入状态栏/刘海区，且下滑返回手势与手机顶部系统手势冲突（误触）。
+    // 包 SafeArea 把顶部交互区下移到安全区之下。
+    return SafeArea(
+      child: Column(
+        children: [
+          // Fixed top: drag handle + search bar (not scrolled)
+          GestureDetector(
+            onVerticalDragEnd: (d) {
+              if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
+                widget.onNavigateBack();
+              }
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Column(children: [
               _buildDragHandle(),
               _buildSearchBar(),
@@ -259,8 +263,8 @@ class _LauncherPageState extends State<LauncherPage>
           ],
         ),
       ),
-    ],
-    );
+      ],
+    ));
   }
 
   // ── 图谱视图 ──

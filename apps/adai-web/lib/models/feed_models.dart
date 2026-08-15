@@ -51,6 +51,11 @@ class FeedCardData {
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
   final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
+  // REVIEW F37（全维度走查 P1-W1）：图片占位卡保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
+  final List<int>? mediaBytes;
+  final String? mediaName;
+  final String? mediaExt;
+  final String? mediaCaption;
   final DateTime updatedAt;
 
   FeedCardData({
@@ -71,6 +76,10 @@ class FeedCardData {
     this.onMarkDone,
     this.mediaUrl,
     this.mediaHeaders,
+    this.mediaBytes,
+    this.mediaName,
+    this.mediaExt,
+    this.mediaCaption,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -92,6 +101,10 @@ class FeedCardData {
     bool clearError = false,
     String? mediaUrl,
     Map<String, String>? mediaHeaders,
+    List<int>? mediaBytes,
+    String? mediaName,
+    String? mediaExt,
+    String? mediaCaption,
     DateTime? updatedAt,
   }) {
     return FeedCardData(
@@ -111,6 +124,10 @@ class FeedCardData {
       error: clearError ? null : error ?? this.error,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
+      mediaBytes: mediaBytes ?? this.mediaBytes,
+      mediaName: mediaName ?? this.mediaName,
+      mediaExt: mediaExt ?? this.mediaExt,
+      mediaCaption: mediaCaption ?? this.mediaCaption,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }

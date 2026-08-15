@@ -175,6 +175,10 @@ public class TimelineProjection {
             if (record.summary() != null && !record.summary().isBlank()) {
                 title = record.summary();
             }
+        } else if ("conversation".equals(record.type()) && record.summary() != null && !record.summary().isBlank()) {
+            // REVIEW P1-W4（第一原则）：对话摘要记录不得展示第三人称正文
+            // （「用户询问当前星期几，AI确认…」），用 AI 生成的简洁标签式 summary（无称代词）
+            title = record.summary();
         } else if ("image_qa".equals(record.type()) && record.content() != null) {
             // 带图 ask 聚合：缩略图取引用首图（一次输入 = 一个图文事件）
             Matcher m = IMAGE_REF.matcher(record.content());

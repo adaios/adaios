@@ -7,7 +7,7 @@ updated: 2026-08-15
 status: active
 lines: 34
 depends-on:
-  - ../../frontmatter-spec.md
+  - ../frontmatter-spec.md
 related:
   - ../../../ai/context/
 tags: [review, context]
@@ -26,8 +26,8 @@ tags: [review, context]
 
 ## 参考
 
-- 方法论：`../ai-context-research/项目级 AI 上下文体系方法论.md`（仓库外同级目录——决策/事实分离 + L1/L2/L3）
-- 原始框架：`../ai-context-research/context-reviewer.md`（仓库外同级目录）
+- 方法论：`../../../ai-context-research/项目级 AI 上下文体系方法论.md`（仓库外同级目录——决策/事实分离 + L1/L2/L3）
+- 原始框架：`../../../ai-context-research/context-reviewer.md`（仓库外同级目录）
 
 ## 输出格式
 

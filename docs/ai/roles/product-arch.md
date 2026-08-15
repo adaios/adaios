@@ -7,7 +7,7 @@ updated: 2026-08-15
 status: active
 lines: 35
 depends-on:
-  - ../../frontmatter-spec.md
+  - ../frontmatter-spec.md
 related:
   - ../roles/ux-reviewer.md
   - ../roles/ui-reviewer.md

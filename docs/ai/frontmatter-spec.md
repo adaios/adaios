@@ -8,8 +8,8 @@ status: active
 lines: 90
 depends-on: []
 related:
-  - ../process/audit.md
-  - ../../VISION.md
+  - process/audit.md
+  - ../../docs/VISION.md
 tags: [ai, meta, governance]
 ---
 

@@ -1,6 +1,7 @@
 package com.adaiadai.core.kernel.search;
 
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ImageQaFormatter;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,8 +46,8 @@ public class SearchService {
                 .map(r -> new SearchResult(
                         r.id(),
                         r.type(),
-                        r.title() != null ? r.title() : "",
-                        highlight(r.content(), q),
+                        naturalTitle(r),
+                        highlight(naturalContent(r), q),
                         r.tags(),
                         r.createdAt()
                 ))
@@ -68,6 +69,35 @@ public class SearchService {
             }
         }
         return record.summary() != null && record.summary().toLowerCase().contains(query);
+    }
+
+    /**
+     * 展示自然化（第一原则，REVIEW P1-W3）：image_qa → 用户问句；image → VLM 总结。
+     * 搜索与 Feed/Timeline 同口径，杜绝【多图问答】【备注】问：/答： 标签暴露。
+     */
+    private String naturalTitle(ContentRecord r) {
+        if ("image_qa".equals(r.type()) && r.content() != null) {
+            String[] natural = ImageQaFormatter.naturalize(r.content());
+            if (natural != null) return natural[0];
+        }
+        if ("image".equals(r.type()) && r.summary() != null && !r.summary().isBlank()) {
+            return r.summary();
+        }
+        return r.title() != null ? r.title() : "";
+    }
+
+    /** 展示自然化正文：image/image_qa 去标签后截取片段。 */
+    private String naturalContent(ContentRecord r) {
+        String content = r.content();
+        if (content == null) return "";
+        if ("image".equals(r.type())) {
+            String natural = ImageQaFormatter.naturalizeImage(content);
+            if (natural != null && !natural.isBlank()) return natural;
+        } else if ("image_qa".equals(r.type())) {
+            String[] natural = ImageQaFormatter.naturalize(content);
+            if (natural != null) return natural[1];
+        }
+        return content;
     }
 
     /**

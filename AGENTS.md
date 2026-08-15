@@ -36,9 +36,9 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 | 命令/操作 | 文件 | 说明 |
 |:---------|:-----|:-----|
-| 全维度走查 | `docs/ai/process/audit.md` | 7 审查官独立并行全量走查 + 交叉印证 |
+| 全维度走查 | `docs/ai/process/audit.md` | 8 审查官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `docs/ai/process/review.md` | 按改动派对应审查官 |
-| 审查角色 | `docs/ai/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据 7 官 |
+| 审查角色 | `docs/ai/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据 8 官 |
 | 检查清单 | `docs/ai/checklists/` | 逐条可执行（人也能用）|
 | 元数据规范 | `docs/ai/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 

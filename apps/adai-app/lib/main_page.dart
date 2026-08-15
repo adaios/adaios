@@ -491,8 +491,9 @@ class _MainPageState extends State<MainPage>
 
   /// 重试发送失败的新卡片：
   /// - 图片占位卡（REVIEW #235）：保留原始字节重走 uploadImage 原路径，不把文件名当文本重发；
-  /// - 文本卡：删除旧卡片，重新创建。
-  void _onRetryCard(String cardId) {
+  /// - 文本卡（REVIEW P1-W2）：复用原 cardId 重新 POST（后端按 cardId 幂等去重，对齐 web）——
+  ///   不再删旧建新（半失败场景：服务端已落库、响应超时 → 新建 cardId 会重复入账）。
+  Future<void> _onRetryCard(String cardId) async {
     final idx = _cards.indexWhere((c) => c.id == cardId);
     if (idx < 0) return;
     final card = _cards[idx];
@@ -500,10 +501,22 @@ class _MainPageState extends State<MainPage>
       _retryMediaUpload(card);
       return;
     }
-    setState(() => _cards.removeAt(idx));
-    final now = TimeOfDay.now();
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    _createNewCard(card.content, timeStr, null);
+    setState(() => _updateCard(cardId, (c) => c.copyWith(loading: true, clearError: true)));
+    try {
+      final resp = await _api.createRecord(card.content, cardId: cardId);
+      if (!mounted) return;
+      setState(() {
+        _updateCard(cardId, (c) => c.copyWith(
+          summary: resp.summary ?? '已记录', tags: resp.tags, loading: false,
+          mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
+        ));
+      });
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _updateCard(cardId, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+      _scrollToBottom();
+    }
   }
 
   /// 图片上传失败重试：原位恢复 loading → 用原始字节重走 uploadImage → 替换为真实记录卡。

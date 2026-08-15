@@ -7,8 +7,8 @@ updated: 2026-08-15
 status: active
 lines: 32
 depends-on:
-  - ../../frontmatter-spec.md
-  - ../../checklists/review-knowledge.md
+  - ../frontmatter-spec.md
+  - ../../../review/checklists/review-knowledge.md
 related: []
 tags: [review, knowledge]
 ---
@@ -27,4 +27,4 @@ tags: [review, knowledge]
 
 ## 输出格式
 
-同 backend-reviewer。检查清单见 `../../checklists/review-knowledge.md`。
+同 backend-reviewer。检查清单见 `../../../review/checklists/review-knowledge.md`。
