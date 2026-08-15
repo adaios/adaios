@@ -156,6 +156,31 @@ for f in files:
     if str(f.resolve()) not in referenced:
         fails.append(f'M3 {f.relative_to(ROOT)}: 孤儿（无引用且不在 _index 清单）')
 
+# M4 正文路径引用扫描：强制区文档正文中的仓库内路径（`docs/...`、`ai-engineering/...`、`bash <script>`）
+# 断言目标存在——堵 M1 盲区（frontmatter 边之外，正文路径引用断链）
+M4_SKIP = ('docs/rfc/', 'docs/review/audits/')  # 历史记录/存档不查正文
+for f in files:
+    rel = str(f.relative_to(ROOT))
+    if rel.startswith(M4_SKIP): continue
+    text = f.read_text(encoding='utf-8')
+    # 代码块中的 bash 命令路径：```bash 块内 bash <path> 行
+    for block in re.findall(r'```bash\n(.*?)\n```', text, re.S):
+        for line in block.splitlines():
+            m = re.match(r'^\s*bash\s+([\w./-]+)', line)
+            if not m: continue
+            cmd = m.group(1)
+            target = (ROOT / cmd).resolve()
+            if not target.exists():
+                fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
+    # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md、CLAUDE.md）
+    for m in re.finditer(r'`((?:docs|ai-engineering|AGENTS|CLAUDE)[\w./-]*(?:\.md|\.sh|/))`', text):
+        ref = m.group(1).rstrip('/')
+        if ref.endswith('/'): continue  # 目录引用跳过
+        if ref in ('ai-engineering-method', 'ai-context-research'): continue  # 仓库外兄弟目录（同级）
+        target = (ROOT / ref).resolve()
+        if not target.exists():
+            fails.append(f'M4 {rel}: 正文路径引用不存在 {ref}')
+
 if fails:
     print('META-GUARD: %d FAIL' % len(fails))
     for x in sorted(set(fails)): print('  ', x)
