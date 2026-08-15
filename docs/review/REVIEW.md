@@ -104,26 +104,9 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 | S-W2 | 双端「值复制」修复漂移成常态（图片重试/删除确认/全图 Dialog/状态机各落一端）——建议固定对拍项或抽共享 package | ⭐⭐ |
 | S-W3 | 请求层无超时/无取消/无响应归属校验——所有等待态卡死防御靠 UI 补丁 | ⭐ |
 
-**🔴 P1（合并同族后 13 项）**
+**🔴 P1（首轮走查 16 项已全部出表 ✅）**
 
-| # | 问题 | 位置 | ⭐ |
-|:-:|:-----|:-----|:--:|
-| P1-W1 | **web 图片上传失败重试降级为文本记录**（占位卡无字节，重试走 createRecord 文本）——app 已修 web 漏 | `feed_page.dart:171-176,554-576` | ⭐⭐ |
-| P1-W2 | **app 文本重试新建 cardId**——半失败（服务端已落库响应超时）重试重复入账；web 复用原 id 幂等 | `main_page.dart:495-507` | ⭐⭐ |
-| P1-W3 | **搜索展示未自然化（第一原则）**——SearchService.highlight 原样返回【图片文字】【备注】问：/答：标签；web 搜索还暴露 type 徽标 | `SearchService.java` + `search_page.dart` | ⭐⭐ |
-| P1-W4 | **时间线第三人称对话总结**——conversation/ai_summary（"用户…AI…"）原样进时间线，Feed 跳过而 Timeline 展示（口径不一致）| `TimelineProjection.java` + `timeline_page.dart` | ⭐ |
-| P1-W5 | **失败伪装空态/静默吞错**（5 处：timeline_modal/web search/memory/timeline/launcher）——失败显示「无记录/全 0」误导 | 多文件 | ⭐⭐ |
-| P1-W6 | **请求无超时 → waiting 无限转圈**；结束 vs 在途回复竞态复活 chatting；`TimeoutException` 分支是死代码 | `api_service.dart` + `main_page.dart` | ⭐ |
-| P1-W7 | **多图上传中途切 World 丢剩余图**（!mounted 中断循环，无反馈）| `main_page.dart:376` | — |
-| P1-W8 | **删除无确认（app）**——web 有确认 app 无，双端不一致 | `main_page.dart:649-659` | — |
-| P1-W9 | **全图 Dialog 3 处裸 Image.network**（404=白框）——已修 4 处，3 处未接入公共 Dialog | 3 文件 | — |
-| P1-W10 | **LauncherPage 无 SafeArea**——拖拽条 y=12 侵入状态栏 + 下滑返回与系统手势冲突（校准案例「背面主页误触」根因）| `launcher_page.dart` | ⭐ |
-| P1-W11 | **darkGrey6 系统性对比度不足**（~2.1:1）当引导文案用（8 文件空态文案）| 多文件 | — |
-| P1-W12 | **parseDateTime now() 回退复发（B29）**——脏 createdAt → 月边界删除失败 + Feed 错计 | `RecordFileRepository.java:285` | — |
-| P1-W13 | **门控旁路 3 处**：PATCH /records/{id}/domain 绕 gateDomain、project tasks 写端点未门控、cards/cleanup 文本匹配误删 | `RecordController` / `ProjectStatusController` / `CardMigrationService` | — |
-| P1-W14 | **STATEMENT prompt 缺闭合引号**——AI 照模板输出非法 JSON → 主流水线解析降级 | `ContextEngine.java:563` | — |
-| P1-W15 | **tags.json 索引陈旧**——rebuild() 无调用者，仅覆盖 17/201 记录 → Context 标签关联注入失效 | `TagIndexService.java:156` | — |
-| P1-W16 | **docs/ai 基建自伤**：roles frontmatter depends-on 14 处断链 + 审查官计数 7 vs 8 + status.md 端点 51 实为 52 | `ai-engineering/roles/*` / `status.md` | — |
+> 走查 P1-W1..W16 全部修复（W1/W2 批），详情见 `docs/reference/change-log.md`（W1 批：P0-W1/W1-W4/W10/W16；W2 批：W5-W9/W11-W15）。P1 区当前无未修复项。
 
 **🔴 P2（11 项，详见 task-log）**：双端重试/删除/文案/色值对拍（多官）、记忆页日期连点乱序、admin 队列无错误恢复、Feed 缩略图无降采样、web caption 丢失、项目写端点门控、accounts.json 非原子、TagIndex 并发 RMW、交易不落 Record 流水线、记忆序列化三缺陷、alice 越界 domain/残留、positions 错配、os/ 知识杂项、roadmap 状态漂移、feature-reference 过期等。
 

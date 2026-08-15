@@ -1,3 +1,18 @@
+---
+title: 全维度走查：AI 工程层自伤自查（8 官）
+description: 8 审查官独立并行自伤自查 ai-engineering/ 层完整发现清单——含交叉印证、修复状态
+version: 1
+created: 2026-08-15
+updated: 2026-08-15
+status: active
+lines: 128
+depends-on:
+  - ../../../ai-engineering/process/audit.md
+related:
+  - ../REVIEW.md
+tags: [review, audit, ai-engineering]
+---
+
 # 全维度走查：AI 工程层自伤自查（8 官）
 
 > 走查日期：2026-08-15（AI 工程层建成当日）

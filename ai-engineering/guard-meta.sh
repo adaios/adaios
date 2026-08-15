@@ -37,6 +37,8 @@ files += sorted((AI/'assets').glob('*.md'))      # 资产层
 files += sorted((AI/'assets/adr').glob('*.md'))  # ADR
 files += sorted((AI/'workflow').glob('*.md'))    # 工作流层
 files += sorted((AI/'state').glob('*.md'))       # 状态层
+files += sorted((DOCS/'review/audits').glob('*.md'))  # 走查存档（带 frontmatter）
+files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
 files = [f for f in files if f.exists()]
 
 def parse_fm(path):
@@ -64,20 +66,27 @@ fails = []
 def is_entry(f):
     return f.name == '_index.md' or f == ROOT/'AGENTS.md'
 
-# M1 + M2 per file
+def is_light(f):
+    # 轻量档：RFC 用自有 frontmatter（title/date/status/decided-by），audits 为历史存档
+    r = str(f.relative_to(ROOT))
+    return r.startswith('docs/rfc/') or r.startswith('docs/review/audits/')
+
+# M1 + M2 per file（轻量档只查 有 frontmatter + lines 准确 + 边可解析）
 for f in files:
     meta = parse_fm(f)
     rel = str(f.relative_to(ROOT))
     if meta is None:
         fails.append(f'M1 {rel}: 无 frontmatter'); continue
-    missing = [k for k in REQUIRED if k not in meta]
-    if missing:
-        fails.append(f'M1 {rel}: 缺字段 {",".join(missing)}')
-    # M2 lines
-    whole = f.read_text(encoding='utf-8')
-    actual = whole.count('\n') + (0 if whole.endswith('\n') else 1)
-    if str(meta.get('lines')) != str(actual):
-        fails.append(f'M2 {rel}: lines 声明 {meta.get("lines")} != 实际 {actual}')
+    if not is_light(f):
+        missing = [k for k in REQUIRED if k not in meta]
+        if missing:
+            fails.append(f'M1 {rel}: 缺字段 {",".join(missing)}')
+    # M2 lines（轻量档 RFC 无 lines 字段，跳过）
+    if not is_light(f):
+        whole = f.read_text(encoding='utf-8')
+        actual = whole.count('\n') + (0 if whole.endswith('\n') else 1)
+        if str(meta.get('lines')) != str(actual):
+            fails.append(f'M2 {rel}: lines 声明 {meta.get("lines")} != 实际 {actual}')
     # M1 edges
     for key in ('depends-on','related'):
         for ref in (meta.get(key) or []):

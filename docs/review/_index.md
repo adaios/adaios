@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 29
+lines: 31
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,8 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-08-15.md | 首轮全维度走查存档（7 官） | active |
+| audits/2026-08-15-ai-engineering-self.md | AI 工程层自伤自查存档（8 官） | active |
 
 ## 过期判断
 

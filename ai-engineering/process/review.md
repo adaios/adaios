@@ -31,11 +31,11 @@ git log --oneline -20          # 找上次审查 commit 作为基线（REVIEW.md
 
 ```bash
 bash docs/review/guard.sh        # G1-G7 代码级守护
-bash docs/ai/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
+bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
-- G1-G7 有 HIT 即记录为问题（复发信号）。清单见 `docs/ai/checklists/guard.md`。
-- guard-meta 有 FAIL 时先 `bash docs/ai/guard-meta.sh --fix` 回写 lines，再人工处理断链/孤儿（D34 回写门禁）。
+- G1-G7 有 HIT 即记录为问题（复发信号）。清单见 `ai-engineering/checklists/guard.md`。
+- guard-meta 有 FAIL 时先 `bash ai-engineering/guard-meta.sh --fix` 回写 lines，再人工处理断链/孤儿（D34 回写门禁）。
 
 ## 3. 按模式派官
 
@@ -49,7 +49,7 @@ bash docs/ai/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿�
 | apps/**（Flutter）| frontend-reviewer（+ ui-reviewer 若涉视觉、+ ux-reviewer 若涉流程）|
 | docs/**、*.md | docs-reviewer |
 | os/**、data/** | knowledge-reviewer |
-| ai/**、docs/ai/** | context-reviewer |
+| ai/**、ai-engineering/** | context-reviewer |
 | 跨多目录 | 多官并行 |
 
 ## 4. 汇总排序

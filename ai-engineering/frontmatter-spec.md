@@ -46,7 +46,7 @@ tags: [ai, meta, governance]
 
 ## 四、适用范围
 
-- **强制**：`docs/ai/**`（roles/process/checklists）、`AGENTS.md`、`docs/_index.md`、各目录 `_index.md`
+- **强制**：`ai-engineering/**`（roles/process/checklists/assets/workflow/state）、`AGENTS.md`、`docs/_index.md`、各目录 `_index.md`
 - **渐进**：存量 `docs/**` 文档下次编辑时顺手补（不 retroactive 全量，避免一次性迁移成本）
 - **异常**：`data/` 个人数据（非协作文档）、`os/*/` 知识资产（有自己工作流，不强加）
 
@@ -56,4 +56,4 @@ tags: [ai, meta, governance]
 
 ## 六、工具接入
 
-任何 AI 工具读 `docs/ai/README.md`（或 AGENTS.md）即可执行全流程；工具专属入口配置在工具侧，不进项目。
+任何 AI 工具读 `ai-engineering/README.md`（或 AGENTS.md）即可执行全流程；工具专属入口配置在工具侧，不进项目。

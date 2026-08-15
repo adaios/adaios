@@ -21,7 +21,7 @@ tags: [review, docs]
 
 1. **单一真相源**：数字（测试数/端点数）只在 status.md；api-spec 与代码一致；feature-reference 与实现一致
 2. **断链检查**：grep 全库对旧路径/已移出文件引用（含 .claude/、子项目 CLAUDE.md——D27 扩展）
-3. **frontmatter 合规**：docs/ai/**、AGENTS.md、_index.md 必须带完整 frontmatter（D28 新检查）
+3. **frontmatter 合规**：ai-engineering/**、AGENTS.md、docs/_index.md、各目录 _index.md 必须带完整 frontmatter（D30/D34 新检查）
 4. **状态一致性**：RFC status 与正文决策点一致（approved 后无"等你拍板"残留——D28）
 5. **索引完整**：docs/README + 各 _index.md 覆盖全部文档
 6. **数字漂移**：grep「422」「15 Controller」类硬编码数字，除 status.md 外零出现

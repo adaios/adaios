@@ -412,8 +412,8 @@ v1.0.0（adai-admin + 多账号）：
 | W-P3-19 | AccountRepository.save/delete 无锁 RMW（mergePlugins 已锁）| `AccountFileRepository.java:142-189` | P3 |
 | W-P3-20 | promote 脱敏漏洞（[\d.]+ 不匹配 1,400 带逗号）| `TradingController.java:272-284` | P3 |
 | W-P3-21 | 记忆噪声 decision 127/172 误标（#153 复发）+ 3 条悬空 recordId | data/adai/memory | P3 |
-| W-P3-22 | docs/ai roles frontmatter 断链 14 处 + context-reviewer 外部路径 + frontmatter-spec related（自伤）| `docs/ai/roles/*` | P3 |
-| W-P3-23 | 审查官计数 7 vs 8 同步 + lines 字段校准 16/17 | docs/ai + _index | P3 |
+| W-P3-22 | docs/ai roles frontmatter 断链 14 处 + context-reviewer 外部路径 + frontmatter-spec related（自伤）| `ai-engineering/roles/*` | P3 ✅ 已修（W1 批）|
+| W-P3-23 | 审查官计数 7 vs 8 同步 + lines 字段校准 16/17 | ai-engineering + _index | P3 ✅ 已修（W1 批）|
 | W-P3-24 | status.md 端点 51→52 + 「15 Controller」→16 + v1.0.0.md/task-plugin-model 数字快照 | status/releases | P3 |
 | W-P3-25 | implemented RFC 残留「待确认」（multimodal/record-task）+ review-skill RFC 引用旧 .claude 路径 | 3 RFC | P3 |
 | W-P3-26 | api-spec feed 示例缺 domain + docs/_index 漏 memory-os-design | 2 文档 | P3 |

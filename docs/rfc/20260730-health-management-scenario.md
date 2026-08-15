@@ -1,3 +1,9 @@
+---
+title: 健康管理场景（Health Management Scenario）
+date: 2026-07-30
+status: draft
+---
+
 # ADAIOS 个人健康管理场景设计
 
 版本：v1.0

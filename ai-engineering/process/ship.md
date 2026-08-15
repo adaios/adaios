@@ -32,7 +32,7 @@ tags: [ai, process, ship]
 
 - 新增/修改 API → 同步 `docs/architecture/api-spec.md`（含版本 + 变更记录）
 - data/ 文件格式变更 → 同步 `docs/architecture/data-format-freeze.md`
-- 新功能落地 → 同步 `docs/architecture/feature-reference.md`（功能真相源）
+- 新功能落地 → 同步 `docs/reference/feature-reference.md`（功能真相源）
 
 ### 3. 文档登记
 
@@ -43,13 +43,13 @@ tags: [ai, process, ship]
 ### 4. 元治理校验（提交前门禁）
 
 ```bash
-bash docs/ai/guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
-bash docs/ai/guard-meta.sh          # 必须 PASS 才可提交
+bash ai-engineering/guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
+bash ai-engineering/guard-meta.sh          # 必须 PASS 才可提交
 ```
 
 - `--fix` 自动回写 frontmatter `lines`（按 wc -l 校准）与 `updated`（今日日期）
 - 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 → **人工处理后再提交**，禁止带着 FAIL 提交
-- 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + docs/ai/**（frontmatter-spec §四 强制区）
+- 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + ai-engineering/**（frontmatter-spec §四 强制区）
 
 ### 5. 规范提交
 

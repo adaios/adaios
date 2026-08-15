@@ -1,6 +1,6 @@
 ---
 title: 规范归集（Conventions）
-description: 代码/文档/协作三组规范集中声明——从 CLAUDE.md 与 docs/ai 归集；单一事实源，不复制到子项目文档
+description: 代码/文档/协作三组规范集中声明——从 CLAUDE.md 与 AI 工程层（原 docs/ai）归集；单一事实源，不复制到子项目文档
 version: 1
 created: 2026-08-15
 updated: 2026-08-15

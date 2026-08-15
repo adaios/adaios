@@ -1,6 +1,6 @@
 ---
-title: docs/ai 目录索引
-description: AI 协作协议区目录治理——职责、文件清单、过期判断（文件自理机制）
+title: ai-engineering 目录索引
+description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
 updated: 2026-08-15
@@ -11,9 +11,9 @@ related: [frontmatter-spec.md]
 tags: [ai, meta, index]
 ---
 
-# docs/ai 目录索引
+# ai-engineering 目录索引
 
-**职责**：AdaiOS 开发期 AI 协作标准（工具无关）。新增协作类标准文档放此区。
+**职责**：AdaiOS AI 工程层（工具无关）——资产 + 工作流 + 状态三层。新增 AI 工程类文档放此区。
 
 ## 文件清单
 

@@ -27,7 +27,7 @@ tags: [ai, process]
 
 ```bash
 bash docs/review/guard.sh        # G1-G7 代码级守护
-bash docs/ai/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
+bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
 ## 3. 8 官独立并行
