@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 48
+lines: 49
 depends-on: []
 related: []
 tags: [review, checklist, guard]
@@ -43,6 +43,7 @@ tags: [review, checklist, guard]
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
 | G7 | `grep -rn "contextEngine.compose\|engine.compose" services/adai-core/src/main/java/application` — 确认 scene 实际传入 Contributor 的 `supports()`，而非死参数（允许固定字面量如 retry 的 `compose("note", record)`，但须存在传变量的调用）| `"trading"` scene 从未传入 → 知识注入全失效（战略缺口，已修）|
+| M4 | `bash ai-engineering/guard-meta.sh`（M4 项）— 扫描强制区文档正文中的仓库内路径引用 + bash 命令路径，断言目标存在（防 docs/ai 类迁移残留复发）| docs/ai→ai-engineering 迁移 16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
 
 ---
 **追加方式**：发现新的 P0 级风险模式 → 在对应分组下追加一行，注明日期。

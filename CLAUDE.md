@@ -214,12 +214,10 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 
 ## 代码约定
 
-- **Java 17 特性**：优先使用 Record、Sealed Class、Pattern Matching、Text Block
-- **注入方式**：禁止 `@Autowired` 字段注入，统一 Constructor Injection
-- **日志**：SLF4J + Lombok `@Slf4j`
-- **异常**：继承 `RuntimeException` 的业务异常，在 Domain 内定义
-- **Module 命名**：小写 kebab-case
-- **Package 根**：`com.adaiadai.core`
+> 代码/文档/协作规范**唯一真相源**：`ai-engineering/assets/conventions.md`（本处只留指针，不复制全文——避免双源漂移）。
+
+- Java 17 / 注入 / 日志 / 异常 / Module 命名 / Package 根 → 见 conventions.md C1-C8
+- 项目特有：Package 根 `com.adaiadai.core`
 
 ## 相关文档
 

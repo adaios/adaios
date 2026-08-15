@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 78
+lines: 87
 depends-on: []
 related: [../roles/docs-reviewer.md]
 tags: [review, checklist, docs]
@@ -76,3 +76,12 @@ tags: [review, checklist, docs]
 | D33 | README 索引扫描扩为 rfc/ + reference/ + releases/ | releases 未登记（走查 P2，2026-08-15）|
 | D34 | frontmatter `lines` 字段 /ship 回写门禁（按 wc -l 校准）| lines 未校准（走查 P3，2026-08-15）|
 | D35 | status.md 内部交叉校验：端点数 vs endpoints.txt、Controller 计数 vs 测试覆盖描述 | status 失真（走查 P1-W16，2026-08-15）|
+
+| D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 docs/architecture/feature-reference.md（自伤自查 8 官，2026-08-15）|
+| D37 | RFC 索引状态对拍：docs/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
+| D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 CLAUDE.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
+| D39 | RFC 验收标准核验：approved RFC 的「验收标准」在 ship 时逐条 PASS/FAIL 并留痕（写回 RFC 或 change-log）| AI 工程层 RFC #1-#5 无人核验（自伤自查 3 官，2026-08-15）|
+| D40 | 状态真相源三方对拍：REVIEW 未修项 vs 审核摘要 vs change-log 出表记录三方一致 | P1-W16 已修/未修矛盾 + P2 计数 11 vs 14 vs 15（自伤自查，2026-08-15）|
+| D41 | 规范单一事实源对拍：conventions.md 声称单一的条目在 CLAUDE.md 全库只允许指针引用、无全文副本 | 代码规范三处副本表述微漂移（自伤自查 2 官，2026-08-15）|
+| D42 | 审查官计数四对拍：roles/*.md 文件数 ↔ AGENTS.md 名单（含名字枚举）↔ README「N 官」↔ audit 路由表 | AGENTS.md 7 名称 8 官（自伤自查 2 官，2026-08-15）|
+| D43 | 工作流段完整性：宣称的「N 段闭环」必须与具名段、定义文件一一对应（每段有文件、无空段、计数一致）| 六段只具名 5 段、develop 无文件（自伤自查 3 官，2026-08-15）|

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 55
+lines: 57
 depends-on:
   - frontmatter-spec.md
 related:
@@ -39,16 +39,18 @@ tags: [ai, meta, engineering]
 | `checklists/` | 检查清单（执行细节，人也能用：8 官清单 + guard 守护）|
 | `guard-meta.sh` | 元治理自检：frontmatter 图谱/lines/孤儿，`--fix` 回写 |
 | `assets/` | 资产层：ADR 决策索引 / 已知坑 / 边界 / 规范 |
-| `workflow/` | 工作流层：讨论→方案→开发→审核→验收 六段闭环 |
+| `workflow/` | 工作流层：discuss/design/develop 前置段（review/audit/ship 在 process/）|
 | `state/` | 状态层：完成度 / 测试数 / 未修项（指针化）|
 
 ## 任何 AI 工具如何接入
 
+0. **先读现状**：`state/_index.md`（做到哪了）
 1. 读本 `README.md`（定位 + 三层结构）→ `frontmatter-spec.md`（元数据契约）
-2. 开发：读 `workflow/`（讨论→方案→开发）→ 产出进代码工程
-3. 收尾：`process/ship.md`（guard-meta 门禁）
-4. 审查：`process/audit.md`（全维度）或 `process/review.md`（增量），按 `roles/` 派官
-5. 沉淀：决策入 `assets/adr/`，坑入 `assets/pitfalls.md`，结果更新 `state/`
+2. **动工前查资产**：`assets/boundaries.md`（边界）+ `assets/pitfalls.md`（坑）+ `assets/conventions.md`（规范）
+3. 开发：`workflow/`（讨论→方案→开发）→ 产出进代码工程
+4. 收尾：`process/ship.md`（guard-meta 门禁）
+5. 审查：`process/audit.md`（全维度）或 `process/review.md`（增量），按 `roles/` 派官
+6. 沉淀：决策入 `assets/adr/`，坑入 `assets/pitfalls.md`，结果更新 `state/`
 
 > 工具侧入口（Claude/Qoder/DSH 的一行配置）在工具自己的配置里，**不在本项目**——换工具零迁移。
 

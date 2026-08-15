@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 38
+lines: 41
 depends-on: []
 related:
   - ../README.md
@@ -22,15 +22,18 @@ tags: [ai, meta, index, workflow]
 |:-----|:-----|:----:|
 | discuss.md | 讨论登记 + 沉淀过滤器（AI 主动发现，人确认）| active |
 | design.md | RFC 骨架标准化 + 决策沉淀规则 | active |
+| develop.md | 开发执行（动工前查边界/坑/规范 + 沉淀触发）| active |
 
-## 完整闭环（六段）
+## 完整闭环（五段 + 双审核 = 六节点）
 
 ```
 discuss（讨论）→ design（方案/RFC）→ develop（开发，直接改代码）
-     → review（增量深审）/ audit（全维度走查）→ ship（收尾 + guard-meta 门禁）
-        ↓ 验收时                                        ↓
-    决策入 assets/adr/                            坑入 checklists + pitfalls
+     → ship（收尾 + guard-meta 门禁）→ review（增量深审）/ audit（全维度走查）
+        ↓ ship 时                                        ↓ 审查后
+    决策入 assets/adr/  + 坑入 checklists+pitfalls    未修项入 state/ 指针
 ```
+
+物理路径：discuss/design/develop 在 `workflow/`；ship/review/audit 在 `process/`（workflow 前置段 → process 后置段）。
 
 ## 过期判断
 

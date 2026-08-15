@@ -95,11 +95,10 @@ com.adaiadai.core/
 
 ## 代码约定
 
-- **Java 17 特性：** Record、Sealed Class、Pattern Matching、Text Block
-- **注入：** Constructor Injection，禁止 `@Autowired` 字段注入
-- **日志：** SLF4J + Lombok `@Slf4j`
-- **异常：** 继承 `RuntimeException` 的业务异常
-- **测试：** Controller 层用 `@WebMvcTest` + MockBean，Service 层用纯单元测试
+> 代码/文档/协作规范**唯一真相源**：`ai-engineering/assets/conventions.md`（本处只留指针）。
+
+- Java 17 / 注入 / 日志 / 异常 → 见 conventions.md C1-C8
+- **测试（adai-core 特有）**：Controller 层用 `@WebMvcTest` + MockBean，Service 层用纯单元测试
 
 ## API 端点
 

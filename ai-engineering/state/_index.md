@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 33
+lines: 45
 depends-on: []
 related:
   - ../README.md
@@ -25,6 +25,18 @@ tags: [ai, meta, index, state]
 | 批次历史 | `docs/reference/change-log.md` | 每批落地后追加 |
 | 产品蓝图 | `docs/architecture/product-roadmap.md` | 路线变更时 |
 | 待办（P2/P3）| `docs/reference/task-log.md` | 走查后迁移 |
+
+## 本层自身验收状态（RFC 20260815 投影）
+
+| RFC 验收标准 | 状态 |
+|:-------------|:----:|
+| #1 ai-engineering/ 存在且 guard-meta 覆盖 PASS | ✅ |
+| #2 工作流六段都有定义文件（discuss/design/develop + ship/review/audit）| ✅（develop 已补）|
+| #3 pitfalls 覆盖 checklists 上次发现 + adr 首批 5-10 条 | 🔄（pitfalls 部分 + adr 3 条）|
+| #4 跨项目方法论边界明确 | ✅ |
+| #5 任一功能从想法到验收可循完整工作流且有决策痕迹 | ✅ |
+
+> 未过项（#3）→ 后续批次继续补 ADR。本表是 state 层"做到哪了"的自投影。
 
 ## 过期判断
 

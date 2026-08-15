@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 48
+lines: 50
 depends-on: []
 related:
   - ../../docs/VISION.md
@@ -28,6 +28,8 @@ tags: [ai, assets, boundaries]
 | B5 | **不混合代码和知识**：代码仓库只放代码/配置/构建；Prompt 模板归 `kernel/context/prompt` | CLAUDE.md 开发规则 |
 | B6 | **Domain 间不直接依赖**：跨域协作经 application 层编排 | CLAUDE.md 分层规则 |
 | B7 | **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）| AGENTS.md 规则 6 |
+| B8 | **外向动作默认不做**：部署/推送/外发网络请求须人确认（见 CLAUDE.md 部署说明 + deploy.sh 头部）| CLAUDE.md |
+| B9 | **仓库外兄弟目录只读**：ai-engineering-method/、ai-context-research/ 是设计来源参考，不编辑 | 本层约定 |
 
 ## 二、功能级边界（当前不做，解除须 RFC）
 

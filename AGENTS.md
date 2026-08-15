@@ -39,7 +39,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 全维度走查 | `ai-engineering/process/audit.md` | 8 审查官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `ai-engineering/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `ai-engineering/process/ship.md` | /ship：测试→契约→登记→guard-meta 门禁→提交 |
-| 审查角色 | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据 8 官 |
+| 审查角色 | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 官 |
 | 检查清单 | `ai-engineering/checklists/` | 逐条可执行（人也能用）：8 官清单 + guard 守护 |
 | 元数据规范 | `ai-engineering/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
