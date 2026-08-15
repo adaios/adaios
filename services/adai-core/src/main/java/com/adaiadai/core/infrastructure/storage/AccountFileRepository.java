@@ -158,6 +158,27 @@ public class AccountFileRepository implements AccountRepository {
     }
 
     @Override
+    public Account mergePlugins(String userId, List<String> add, List<String> remove) {
+        // REVIEW S-R2：账号级锁——合并与写回同一临界区，并发 toggle 顺序执行各自合并最新状态
+        synchronized ((userId != null ? userId : "").intern()) {
+            Account existing = findById(userId)
+                    .orElseThrow(() -> new StorageException("账号不存在: " + userId));
+            List<String> merged = new ArrayList<>(existing.plugins());
+            if (add != null) {
+                for (String p : add) {
+                    if (p != null && !merged.contains(p)) merged.add(p);
+                }
+            }
+            if (remove != null) {
+                merged.removeAll(remove);
+            }
+            Account updated = new Account(existing.userId(), existing.role(),
+                    existing.enabled(), existing.createdAt(), merged);
+            return save(updated);
+        }
+    }
+
+    @Override
     public boolean delete(String userId) {
         List<Account> accounts = new ArrayList<>(findAll());
         boolean removed = accounts.removeIf(a -> a.userId().equals(userId));

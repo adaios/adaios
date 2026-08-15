@@ -100,13 +100,22 @@ class _LauncherPageState extends State<LauncherPage>
   }
 
   /// 插件拉取（独立失败面）：失败默认只显基础服务，不影响核心数据渲染。
+  /// REVIEW S-R1：失败不再静默——SnackBar 反馈 + 重试入口（与 adai-web 桌面壳对拍），
+  /// 插件接口瞬时失败后用户可一键重试恢复模块入口，无需重启。
   Future<void> _loadPlugins() async {
     try {
       final plugins = await widget.api.getMyPlugins();
       if (!mounted) return;
       setState(() => _plugins = plugins.toSet());
     } catch (_) {
-      // 插件拉取失败：保持空集合（仅基础服务），核心功能不受影响
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars() // F35：防连续失败 SnackBar 队列堆积
+        ..showSnackBar(SnackBar(
+          content: const Text('插件加载失败，仅显示基础服务'),
+          action: SnackBarAction(label: '重试', onPressed: _loadPlugins),
+          duration: const Duration(seconds: 4),
+        ));
     }
   }
 

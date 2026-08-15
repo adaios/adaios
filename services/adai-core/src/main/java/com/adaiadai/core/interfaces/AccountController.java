@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import java.util.Optional;
 
 /**
@@ -115,6 +116,29 @@ public class AccountController {
         return ResponseEntity.ok(updated);
     }
 
+    /**
+     * 合并插件（REVIEW S-R2）：服务端原子 add/remove——根治前端全量 PATCH read-modify-write
+     * 并发互覆（快速连点两个开关不再丢）。内置管理员插件受保护（与前端 isProtected 同口径）。
+     */
+    @PatchMapping("/{userId}/plugins")
+    public ResponseEntity<?> mergePlugins(@PathVariable String userId,
+                                          @RequestBody MergePluginsRequest request) {
+        if (isSeedAdmin(userId)) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "内置管理员 " + Account.SEED_ADMIN_ID + " 插件受保护，不可修改"));
+        }
+        List<String> add = request.add() != null ? request.add() : List.of();
+        List<String> remove = request.remove() != null ? request.remove() : List.of();
+        if (!isValidPlugins(Stream.concat(add.stream(), remove.stream()).toList())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "plugins 仅允许 " + pluginRegistry.all()));
+        }
+        if (accountRepository.findById(userId).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        Account updated = accountRepository.mergePlugins(userId, add, remove);
+        return ResponseEntity.ok(updated);
+    }
+
     /** 删除账号。内置管理员不可删。 */
     @DeleteMapping("/{userId}")
     public ResponseEntity<?> deleteAccount(@PathVariable String userId) {
@@ -142,4 +166,6 @@ public class AccountController {
     public record CreateAccountRequest(@NotBlank String userId, String role, List<String> plugins) {}
 
     public record UpdateAccountRequest(Boolean enabled, String role, List<String> plugins) {}
+
+    public record MergePluginsRequest(List<String> add, List<String> remove) {}
 }

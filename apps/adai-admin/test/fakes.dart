@@ -77,6 +77,20 @@ class FakeAccountStore implements AccountStore {
   }
 
   @override
+  Future<String?> mergePlugins(String userId,
+      {required List<String> add, required List<String> remove}) async {
+    final idx = _accounts.indexWhere((a) => a.userId == userId);
+    if (idx < 0) return '账号不存在：$userId';
+    final merged = [..._accounts[idx].plugins];
+    for (final p in add) {
+      if (!merged.contains(p)) merged.add(p);
+    }
+    merged.removeWhere(remove.contains);
+    _accounts[idx].plugins = merged;
+    return null;
+  }
+
+  @override
   Future<String?> delete(String userId) async {
     if (userId == AccountStore.protectedAdminId) return '内置管理员不可删除';
     _accounts.removeWhere((a) => a.userId == userId);
@@ -439,6 +453,23 @@ class GatedAccountStore implements AccountStore {
     await gate.future; // 挂起直到测试放行
     final idx = _accounts.indexWhere((a) => a.userId == userId);
     if (idx >= 0) _accounts[idx].plugins = List.of(plugins);
+    return null;
+  }
+
+  @override
+  Future<String?> mergePlugins(String userId,
+      {required List<String> add, required List<String> remove}) async {
+    setPluginsCalls.add([...add, ...remove]);
+    await gate.future;
+    final idx = _accounts.indexWhere((a) => a.userId == userId);
+    if (idx >= 0) {
+      final merged = [..._accounts[idx].plugins];
+      for (final p in add) {
+        if (!merged.contains(p)) merged.add(p);
+      }
+      merged.removeWhere(remove.contains);
+      _accounts[idx].plugins = merged;
+    }
     return null;
   }
 

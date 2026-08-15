@@ -140,16 +140,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('plugin-alice-project')));
     await tester.pump();
 
-    // 串行队列：第一个 setPlugins 已发起（挂起中），第二个仍在队列等待
+    // 串行队列：第一个 merge 已发起（挂起中），第二个仍在队列等待
     expect(store.setPluginsCalls.length, 1, reason: '串行队列：第二个 toggle 等第一个完成');
 
-    // 放行第一个 → 队列继续执行第二个（此时已重取到含 trading 的最新快照）
+    // 放行第一个 → 队列继续执行第二个（服务端合并语义：各自 add 单插件）
     gate.complete();
     await tester.pumpAndSettle();
 
     expect(store.setPluginsCalls.length, 2, reason: '两个 toggle 都应执行');
-    expect(store.setPluginsCalls.last.toSet(), containsAll(['trading', 'project']),
-        reason: '后执行的全量 PATCH 基于最新快照（含前一开关），两个都保留');
+    expect(store.setPluginsCalls.first, contains('trading'), reason: '第一次 toggle 只 add trading');
+    expect(store.setPluginsCalls.last, contains('project'), reason: '第二次 toggle 只 add project（服务端合并）');
     // UI 最终两个开关都开
     expect(
       tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-trading'))).value,

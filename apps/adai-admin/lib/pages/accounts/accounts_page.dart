@@ -102,25 +102,10 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _doTogglePlugin(Account account, String plugin, bool on) async {
-    // 从最新 _accounts 重取账号——闭包捕获旧 Account 对象时快照过期（配合串行队列保证最新）
-    Account? latest;
-    for (final a in _accounts ?? const <Account>[]) {
-      if (a.userId == account.userId) {
-        latest = a;
-        break;
-      }
-    }
-    if (latest == null) {
-      await _load();
-      return;
-    }
-    final plugins = [...latest.plugins];
-    if (on && !plugins.contains(plugin)) {
-      plugins.add(plugin);
-    } else if (!on) {
-      plugins.remove(plugin);
-    }
-    final error = await _store.setPlugins(latest.userId, plugins);
+    // REVIEW S-R2：改走服务端合并语义（add/remove）——不再本地拼全量 PATCH，
+    // 服务端账号级锁保证并发 toggle 顺序合并，快速连点不再互覆丢开关
+    final error = await _store.mergePlugins(account.userId,
+        add: on ? [plugin] : [], remove: on ? [] : [plugin]);
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(

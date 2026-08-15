@@ -126,6 +126,14 @@ class ApiService {
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
+  /// `PATCH /api/v1/accounts/{userId}/plugins` body `{add[], remove[]}` → 200 / 400 / 404（S-R2 合并语义）。
+  Future<Account> mergeAccountPlugins(String userId,
+      {required List<String> add, required List<String> remove}) async {
+    final resp = await _send('PATCH', '/api/v1/accounts/$userId/plugins',
+        body: {'add': add, 'remove': remove});
+    return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
+  }
+
   /// `DELETE /api/v1/accounts/{userId}` → 204 / 400 / 404。
   Future<void> deleteAccount(String userId) async {
     await _send('DELETE', '/api/v1/accounts/$userId');

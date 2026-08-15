@@ -180,4 +180,30 @@ class AccountFileRepositoryTest {
         assertEquals(LocalDate.of(2026, 7, 15), accounts.get(0).createdAt(),
                 "旧数组 [2026,7,15] 应解析为 LocalDate 2026-07-15");
     }
+
+    @Test
+    void mergePlugins_addAndRemove_atomic() {
+        // REVIEW S-R2：服务端合并——基于当前存储状态 add/remove（读改写在同一临界区）
+        var repo = repo();
+        repo.init();
+        repo.save(new Account("alice", "user", true, LocalDate.of(2026, 8, 2),
+                List.of("trading")));
+
+        Account afterAdd = repo.mergePlugins("alice", List.of("project"), List.of());
+        assertEquals(List.of("trading", "project"), afterAdd.plugins(), "add 应追加");
+
+        Account afterRemove = repo.mergePlugins("alice", List.of(), List.of("trading"));
+        assertEquals(List.of("project"), afterRemove.plugins(), "remove 应移除");
+    }
+
+    @Test
+    void mergePlugins_addDuplicate_idempotent() {
+        var repo = repo();
+        repo.init();
+        repo.save(new Account("alice", "user", true, LocalDate.of(2026, 8, 2),
+                List.of("trading")));
+
+        Account merged = repo.mergePlugins("alice", List.of("trading"), List.of());
+        assertEquals(List.of("trading"), merged.plugins(), "重复 add 幂等（不重复追加）");
+    }
 }

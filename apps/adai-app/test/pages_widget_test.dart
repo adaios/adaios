@@ -427,6 +427,10 @@ void main() {
       expect(find.text('关于我'), findsOneWidget, reason: '核心数据（身份）正常渲染');
       expect(find.text('交易'), findsNothing, reason: '插件失败默认只显基础服务');
       expect(find.text('阿呆系统'), findsNothing);
+      // REVIEW S-R1：失败给 SnackBar 反馈 + 重试入口（与 web 对拍）；flush 自动关闭计时器
+      expect(find.text('插件加载失败，仅显示基础服务'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
     });
   });
 }

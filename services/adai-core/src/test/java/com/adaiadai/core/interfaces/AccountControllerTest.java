@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -299,5 +300,54 @@ class AccountControllerTest {
         mvcWith(repo).perform(get("/api/v1/accounts/available"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void mergePlugins_addAndRemove_returnsMerged() throws Exception {
+        // REVIEW S-R2：服务端合并语义（快速连点两个开关不再互覆）
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("trading"))));
+        when(repo.mergePlugins(eq("alice"), eq(List.of("project")), eq(List.of("trading"))))
+                .thenReturn(new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("project")));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice/plugins")
+                        .contentType("application/json")
+                        .content("{\"add\":[\"project\"],\"remove\":[\"trading\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plugins[0]").value("project"));
+    }
+
+    @Test
+    void mergePlugins_invalidPlugin_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", "user", true, LocalDate.of(2026, 8, 2))));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice/plugins")
+                        .contentType("application/json")
+                        .content("{\"add\":[\"hack\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void mergePlugins_seedAdmin_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/adai/plugins")
+                        .contentType("application/json")
+                        .content("{\"add\":[\"trading\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void mergePlugins_missingAccount_404() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("ghost")).thenReturn(Optional.empty());
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/ghost/plugins")
+                        .contentType("application/json")
+                        .content("{\"add\":[\"trading\"]}"))
+                .andExpect(status().isNotFound());
     }
 }

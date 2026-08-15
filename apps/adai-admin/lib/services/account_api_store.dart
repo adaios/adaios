@@ -22,6 +22,9 @@ abstract class AccountStore {
   /// 返回 null 表示成功；返回字符串为失败原因。
   Future<String?> setPlugins(String userId, List<String> plugins);
 
+  /// 合并插件（REVIEW S-R2）：服务端原子 add/remove——根治全量 PATCH read-modify-write 并发互覆。
+  Future<String?> mergePlugins(String userId, {required List<String> add, required List<String> remove});
+
   /// 删除账号。内置管理员不可删除。
   /// 返回 null 表示成功；返回字符串为失败原因。
   Future<String?> delete(String userId);
@@ -66,6 +69,17 @@ class AccountApiStore implements AccountStore {
   Future<String?> setPlugins(String userId, List<String> plugins) async {
     try {
       await _api.updateAccount(userId, plugins: plugins);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    }
+  }
+
+  @override
+  Future<String?> mergePlugins(String userId,
+      {required List<String> add, required List<String> remove}) async {
+    try {
+      await _api.mergeAccountPlugins(userId, add: add, remove: remove);
       return null;
     } on ApiException catch (e) {
       return e.message;

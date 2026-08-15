@@ -19,4 +19,10 @@ public interface AccountRepository {
     Account save(Account account);
 
     boolean delete(String userId);
+
+    /**
+     * 原子合并插件（REVIEW S-R2）：add/remove 在服务端同一临界区读改写——根治前端
+     * read-modify-write 全量 PATCH 并发互覆（快速连点两个开关不再丢）。
+     */
+    Account mergePlugins(String userId, List<String> add, List<String> remove);
 }
