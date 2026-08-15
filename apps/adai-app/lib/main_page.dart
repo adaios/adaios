@@ -659,7 +659,26 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _deleteCard(String id) async {
+  /// 删除记录（REVIEW P1-W8：加确认弹窗，与 web 对拍——DELETE 连带清理 card+memory 不可逆）。
+  Future<void> _deleteCard(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('删除记录', style: TextStyle(fontSize: 16)),
+        content: const Text('将同时删除该记录及其对话、记忆，此操作不可恢复。确定删除？',
+            style: TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(color: AppColors.darkRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
     try {
       await _api.deleteRecord(id);
       if (!mounted) return;

@@ -13,13 +13,25 @@ import 'api_exception.dart';
 /// - [userId] 用于 per-user 请求的 `X-User-Id` header（默认 'default'）。
 /// - [adminToken]（REVIEW #127）随系统级请求带 `X-Admin-Token`，默认取 [ApiConfig.adminToken]。
 /// - 方法返回解析后的 DTO / 模型，失败抛 [ApiException]。
+/// 带超时的 http.Client 包装（REVIEW P1-W6：请求无超时 → waiting/loading 无限转圈）。
+class _TimeoutClient extends http.BaseClient {
+  _TimeoutClient(this._inner, this._timeout);
+
+  final http.Client _inner;
+  final Duration _timeout;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _inner.send(request).timeout(_timeout);
+}
+
 class ApiService {
   ApiService({
     http.Client? client,
     String? baseUrl,
     this.userId = 'default',
     this.adminToken = ApiConfig.adminToken,
-  })  : _client = client ?? http.Client(),
+  })  : _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
         baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   final http.Client _client;

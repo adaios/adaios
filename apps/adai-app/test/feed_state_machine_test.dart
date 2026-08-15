@@ -361,7 +361,10 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.more_vert_rounded));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('删除'));
+      await tester.tap(find.text('删除')); // 菜单项
+      await tester.pumpAndSettle();
+      // REVIEW P1-W8：确认弹窗
+      await tester.tap(find.text('删除').last); // 弹窗确认按钮
       await tester.pumpAndSettle();
 
       expect(find.text('待删除记录'), findsNothing);

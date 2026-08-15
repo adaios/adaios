@@ -7,6 +7,18 @@ import 'models/tag_models.dart';
 
 /// AdaiOS API 客户端。
 /// 封装所有后端调用，App 其他部分不直接调 HTTP。
+/// 带超时的 http.Client 包装（REVIEW P1-W6：请求无超时 → waiting/loading 无限转圈）。
+class _TimeoutClient extends http.BaseClient {
+  _TimeoutClient(this._inner, this._timeout);
+
+  final http.Client _inner;
+  final Duration _timeout;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _inner.send(request).timeout(_timeout);
+}
+
 class ApiService {
   final String baseUrl;
 
@@ -23,7 +35,7 @@ class ApiService {
 
   ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
-        _client = client ?? http.Client();
+        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15));
 
   /// 获取今日 Brief（摘要），独立接口。
   Future<String> getBrief() async {
