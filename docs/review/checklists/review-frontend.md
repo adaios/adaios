@@ -56,3 +56,10 @@
 
 ---
 **追加方式**：新发现前端问题 → 追加一行，注明日期。
+| F33 | 全量替换 PATCH 的配置 toggle 并发必须串行化或走服务端合并语义——「重取最新列表」不等于修复（两次请求从同一快照出发仍互覆）；验证：双开关连点 + 延迟 store 的 widget 测试 | admin 插件 toggle 竞态「P2-6 清零」误报（P2-R1，2026-08-15）|
+| F34 | 门控/元数据类请求（/me/plugins）双端失败降级行为必须对拍，且降级后必须有恢复路径（重试/刷新），否则入口重启前不可达 | web 有 SnackBar+重试、app 静默无重试（S-R1，2026-08-15）|
+| F35 | 异步失败 SnackBar 的重试入口需防队列堆积（show 前 `clearSnackBars()`）且成功后主动收起（`hideCurrentSnackBar()`） | 插件重试 SnackBar 堆积/残留（P3-R1/R2，2026-08-15）|
+| F36 | 稳定标识（label）驱动动态列表时：IndexedStack/ListView children 需按 label 加 `ValueKey`（槽位移保活 state，防页面状态重置），tap 回调传标识而非位置索引（build↔tap 间列表变更窗口） | 插件插入后 TaskPage state 重置 + tap 索引亚帧窗口（P3-R5/R6，2026-08-15）|
+
+---
+**追加方式**：新发现前端问题 → 追加一行，注明日期。

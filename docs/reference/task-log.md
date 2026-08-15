@@ -341,6 +341,23 @@ v1.0.0（adai-admin + 多账号）：
 | 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-os/99-inbox/` | P3 |
+| 08-15 deep 后端 | 存量越界 domain 标注不清理（S-3 只防新增；插件上线前无插件用户已落盘的 trading/project 标注不纠正，可一次性迁移清理）| `data/*/records/` | P3 |
+| 08-15 deep 后端 | PATCH plugins 契约语义（传 `null` 保留旧值、传 `[]` 清空）需在 api-spec 明确「清空须传空数组」| `docs/architecture/api-spec.md` | P3 |
+| 08-15 deep 后端 | ANALYSIS 模式 system 指令硬编码全量 domain（`life/trading/project之一` 与收敛后 prompt 矛盾，落盘有 gateDomain 兜底仅判定质量受影响）| `DeepSeekAiClient.java:337` | P3 |
+| 08-15 deep 后端 | Timeline 显示 conversation 记录 vs Feed 排除的口径差异（若为有意设计请注释说明）| `TimelineProjection.java:64` vs `FeedAppService.java:117` | P3 |
+| 08-15 deep 前端 | web 插件重试失败 SnackBar 队列堆积（连续失败多条依次播放，show 前 `clearSnackBars()`）| `desktop_shell.dart:96-100` | P3 |
+| 08-15 deep 前端 | web 插件重试成功后失败 SnackBar 残留（成功路径 `hideCurrentSnackBar()`）| `desktop_shell.dart:93-101` | P3 |
+| 08-15 deep 前端 | `_currentLabel`/`_visited` 硬编码 `_allEntries.first.label` 与条目顺序隐式耦合（抽常量或按首个 plugin==null 动态解析）| `desktop_shell.dart:63-64` | P3 |
+| 08-15 deep 前端 | web fallback `_items.first` 无空列表防御（当前 6 基础服务恒非空，全门控化会 RangeError）| `desktop_shell.dart:88-91` | P3 |
+| 08-15 deep 前端 | 插件中部插入导致已访问页 widget 槽位移 → 页面 state 重置（IndexedStack children 按 label 加 `ValueKey` 保活；P1-5 测试测不出状态重置）| `desktop_shell.dart:123-129` | P3 |
+| 08-15 deep 前端 | `_select(int i)` tap 时重解析 `_items[i]`（build↔tap 间列表变更亚帧窗口；tap 直接传 label/条目）| `desktop_shell.dart:104-110` | P3 |
+| 08-15 deep 前端 | admin 插件 toggle 触发全页 spinner 闪烁（`_load()` 置 `_loading=true`；改 `_load(silent: true)` 静默刷新，F4 同类）| `accounts_page.dart:41-45,186-190` | P3 |
+| 08-15 deep 前端 | admin `latest == null` 防御分支静默丢操作且实际不可达（删分支或给一次性反馈）| `accounts_page.dart:104-107` | P3 |
+| 08-15 deep docs | CLAUDE.md 目录树 `apps/` 重复两次（51-52 与 73-82 行，瘦身引入）| `CLAUDE.md:47-83` | P3 |
+| 08-15 deep docs | CLAUDE.md:131 表格头与正文段落同在一行（Markdown 渲染异常，拆行）| `CLAUDE.md:131` | P3 |
+| 08-15 deep docs | docs/README:75 引用 `20260726-next-phase-direction.md`「已归档至 inbox/」——该文件 08-15 已删（断链，改指 rfc 去向或删除）| `docs/README.md:75` | P3 |
+| 08-15 deep docs | `docs/rfc/20260730-health-management-scenario.md` 无 YAML frontmatter（D13：污染 /project/status rfcItems status=unknown）| `docs/rfc/20260730-health-management-scenario.md` | P3 |
+| 08-15 deep docs | 根 CLAUDE.md 当前焦点批缺「展示层聚合（S-2）」登记（REVIEW/change-log 已出表，可接受）| `CLAUDE.md:242-244` | P3 |
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 

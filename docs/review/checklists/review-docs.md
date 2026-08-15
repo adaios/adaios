@@ -50,3 +50,9 @@
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
+| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 CLAUDE.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | review-context.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
+| D28 | RFC frontmatter 转 approved（含 decided-by）后，正文「等你拍板/待确认」等未决策措辞必须同步清理，否则后续会话误读为未决策 | media-event-unification §七决策点遗留（P2-D2，2026-08-15）|
+| D29 | CLAUDE.md 目录树瘦身/拼接后核对排版：目录重复出现（apps/ ×2）、表格头与正文段落粘连同行 | CLAUDE.md apps 重复 + 131 行表格头粘连（P3，2026-08-15）|
+
+---
+**追加方式**：新发现文档类问题 → 追加一行，注明日期。
