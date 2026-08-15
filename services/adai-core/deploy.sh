@@ -29,7 +29,7 @@ echo "  1/5  停止服务..."
 systemctl stop adai-core || true
 
 echo "  2/5  检查数据目录完整性..."
-mkdir -p /opt/adaios/data/identity
+mkdir -p /opt/adaios/data/adai/identity
 mkdir -p /opt/adaios/data/records
 mkdir -p /opt/adaios/data/records/cards
 mkdir -p /opt/adaios/data/memory
@@ -37,10 +37,10 @@ mkdir -p /opt/adaios/data/index
 mkdir -p /opt/adaios/data/trading
 mkdir -p /opt/adaios/data/project
 
-# ── 默认个人档案 ──
-if [ ! -f /opt/adaios/data/identity/profile.md ]; then
-    echo "  → 创建默认个人档案..."
-    cat > /opt/adaios/data/identity/profile.md << 'EOF'
+# ── 默认个人档案（多账号分层：data/{userId}/identity/，seed 账号 adai）──
+if [ ! -f /opt/adaios/data/adai/identity/profile.md ]; then
+    echo "  → 创建默认个人档案（data/adai/identity/）..."
+    cat > /opt/adaios/data/adai/identity/profile.md << 'EOF'
 ---
 name: 阿呆
 preferences:
