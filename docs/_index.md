@@ -5,10 +5,19 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-15
 status: active
-lines: 46
+lines: 55
 depends-on: []
 related:
   - ai/_index.md
+  - architecture/_index.md
+  - deployment/_index.md
+  - guides/_index.md
+  - ideas/_index.md
+  - inbox/_index.md
+  - reference/_index.md
+  - releases/_index.md
+  - review/_index.md
+  - rfc/_index.md
   - README.md
 tags: [meta, index]
 ---
@@ -23,16 +32,16 @@ tags: [meta, index]
 |:-----|:-----|
 | `VISION.md` | 项目愿景与理念（唯一理念真相源）|
 | `README.md` | 文档总索引（分层：必读→架构→功能→API→决策→部署）|
-| `ai/` | ★ AI 协作协议区（工具无关标准，见 `ai/_index.md`）|
-| `architecture/` | 架构文档（roadmap 唯一蓝图 / product-architecture / api-spec / data-format-freeze / system-architecture / frontend-reference）|
-| `reference/` | 状态与历史（status.md 数字真相源 / change-log.md 批次 / feature-reference 功能真相源 / task-log 待办 / task-plugin-model）|
-| `review/` | 审核（REVIEW.md 未修项滚动区 / checklists 检查清单）|
-| `rfc/` | 决策记录（RFC，status: draft/approved/implemented）|
-| `releases/` | 发布记录（Release Notes）|
-| `ideas/` | 想法归档区（未定型但有价值）|
-| `inbox/` | 待处理/待归档区 |
-| `guides/` | 使用指南 |
-| `deployment/` | 部署文档 |
+| `ai/_index.md` | ★ AI 协作协议区（工具无关标准，目录治理索引）|
+| `architecture/_index.md` | 架构文档（roadmap 唯一蓝图 / product-architecture / api-spec / data-format-freeze / system-architecture / frontend-reference）|
+| `reference/_index.md` | 状态与历史（status.md 数字真相源 / change-log.md 批次 / feature-reference 功能真相源 / task-log 待办 / task-plugin-model）|
+| `review/_index.md` | 审核（REVIEW.md 未修项滚动区 + audits/ 走查存档）|
+| `rfc/_index.md` | 决策记录（RFC，status: draft/approved/implemented）|
+| `releases/_index.md` | 发布记录（Release Notes）|
+| `ideas/_index.md` | 想法归档区（未定型但有价值）|
+| `inbox/_index.md` | 待处理/待归档区 |
+| `guides/_index.md` | 使用指南 |
+| `deployment/_index.md` | 部署文档 |
 
 ## 过期判断
 
