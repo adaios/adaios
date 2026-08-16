@@ -1,66 +1,56 @@
-# Trading OS — 金融交易领域
+# Trading Engine — 交易领域引擎
 
-> **架构愿景声明**：本文件描述 Trading OS 的完整领域愿景。当前 `adai-core` 仅落地部分能力（持仓/交易记录/复盘生成/行情注入），订单执行、策略引擎、回测等为远期目标。os/trading-os 提供领域知识资产（11-context/ 等），**不实现 Java 代码**。
+> **定位**：一套成熟的**纪律交易系统**，以"引擎"形态存在——知识（规则/策略/教训）+ 能力（规则执行/建议/复盘）自洽，**不依赖任何宿主应用**。
+> 输出形态可切换：① 插件（被 AdaiOS 集成）② 独立 Agent/Skill ③ REST/MCP 服务——**一个内核，多种出口**。
+> 构建与依赖分离：**构建**（课程 → 规则 → 收敛，见 `pipeline/build-course.md`）是引擎内部工作流；**依赖**（读规则 → 生成建议/复盘）是外部消费。
 
 ## 职责
 
-Trading OS 负责金融交易全生命周期管理，包括行情接入、策略执行、订单管理、风控与回测。作为 AdaiOS 的金融交易大脑，连接个人交易策略与市场。
+Trading Engine 负责**纪律交易全生命周期**：择时 → 选股 → 买入（设止损）→ 持仓应对（止盈/减仓）→ 止损离场 → 复盘。核心是**用规则约束决策、执行纪律、管理情绪**——不是程序化下单，是人的交易方法论的规则化。
+
+## 领域边界
+
+- **包含**（✅=已落地，📋=待建）：
+  - 纪律交易规则体系 R1-R120 ✅（择时/选股/买入/应对/止损/仓位/纪律）
+  - 交易策略体系（六步法）✅
+  - 建议生成（持仓 × 规则 → 建议）✅
+  - 复盘生成 ✅
+  - 止损判定（R66 真止损）✅（2026-08-16 数据模型后）
+  - 规则查询引擎（场景 → 匹配规则）📋
+  - 独立输出形态（REST/Skill/Agent）📋
+- **不包含**：程序化下单/订单执行、回测框架、行情原始存储（远期扩展方向）、UI 渲染
 
 ## 输入
 
 | 来源 | 数据 | 说明 |
 |------|------|------|
-| Kernel (interfaces) | 交易指令 | 用户或 AI 发起的买卖指令 |
-| Kernel (identity) | 用户画像 | 风险偏好、投资风格、长期目标 |
-| Kernel (timeline) | 近期交易事件 | 最近买卖记录、市场行为 |
-| Kernel (memory) | 历史交易记忆 | 过去决策复盘、经验教训 |
-| 外部 | 实时行情 | 通过 infrastructure 层接入的行情源 |
-| 外部 | 账户信息 | 券商/交易所的账户与持仓 |
+| 宿主（如 AdaiOS）| 持仓 / 交易记录 | 引擎分析的数据输入 |
+| 外部 | 实时行情 | 通过宿主基础设施接入 |
+| 引擎自身 | 规则 / 策略 / 教训 | knowledge/ 层（真相源）|
 
 ## 输出
 
 | 目标 | 数据 | 说明 |
 |------|------|------|
-| Kernel (record) | 交易事件 | 每个买卖指令作为 Record 文件沉淀 |
-| Kernel (timeline) | 时间线投影 | Record 自动投影为 Timeline 事件 |
-| Kernel (context) | 交易上下文 | 供 Context Engine 组合为 Trading Context Package |
-| 外部 | 订单指令 | 发往券商/交易所的下单请求 |
+| 宿主 | 建议（买入/持有/减仓/清仓 + 规则依据）| 规则引擎产物 |
+| 宿主 | 复盘（计划 vs 实际对错判定）| 复盘引擎产物 |
+| 外部 | 规则查询 / 止损判定 | 独立形态（REST/Skill）|
 
-## Trading Context Package
-
-当用户询问交易相关问题时，Context Engine 自动组合：
+## 与宿主的关系（插件模式）
 
 ```
-Identity（风险偏好、投资风格）
-  + Timeline（近期交易记录）
-  + Memory（历史复盘记忆）
-  + Knowledge（交易规则、策略）
-  + Trading OS（当前持仓、盈亏）
-  = Trading Context Package → AI
+宿主（如 AdaiOS）──依赖──► Trading Engine
+  ├─ 宿主传：持仓/行情/交易记录
+  ├─ 引擎回：建议/复盘/规则判定
+  └─ 引擎不持有个人数据（隐私安全，独立暴露无风险）
 ```
 
 ## 存储策略
 
-采用 **File First**：
+File First：`knowledge/`（规则/策略/教训）+ 宿主侧 `data/trading/`（持仓/交易流水）。引擎知识层是文件真相源，能力层读它执行。
 
-```
-data/trading/
-├── trades/          # 交易记录（Record 文件）
-├── strategies/      # 策略定义
-├── reviews/         # 复盘文档
-└── research/        # 交易研究笔记
-```
+## 工作流导航
 
-数据库为运行态查询服务，不替代文件存储。
-
-## 与 adai-core 的关系
-
-- **依赖方向**：`kernel` → `domain.trading`（通过 domain 接口调用）
-- **协作方式**：adai-core 的 `domain.trading` 包实现领域能力（TradeRecord/Position/PortfolioSnapshot/Contributor）；os/trading-os 提供领域知识资产（11-context/ 等），不实现 Java 接口；`application` 层编排跨域用例；`infrastructure` 层提供行情源和交易所适配
-- **上下文**：Context Engine 读取 identity + timeline + memory + trading 状态，组合为 Trading Context Package 提供给 AI
-- **AI 不直连**：AI 通过 Context Engine 获取交易相关数据，trading-os 不直接暴露数据库或文件
-
-## 边界范围
-
-- **包含**（愿景；✅=已落地，📋=未落地）：行情接入 ✅、策略引擎 📋、订单执行 📋、风控规则 📋、回测框架 📋、绩效分析 📋
-- **不包含**：行情原始存储（归 data/）、UI 渲染（归 apps/）
+- **构建流程**（课程 → 规则）：见 `pipeline/build-course.md`（权威在 `CLAUDE.md`）
+- **产出流程**（知识 → 输出形态）：见 `pipeline/build-engine.md`
+- **AI 消费入口**：`knowledge/context/`（rules/strategy/mistakes/current/identity）
