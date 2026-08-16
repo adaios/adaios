@@ -447,11 +447,17 @@
   "name": "立昂微",
   "direction": "BUY",
   "price": 25.30,
-  "volume": 100
+  "volume": 100,
+  "entryDate": "2026-08-16",
+  "stopLossPrice": 24.50,
+  "buyPoint": "B1",
+  "targetPrice": 30.00,
+  "reason": "回踩支撑买入"
 }
 ```
 
-> `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。recordTrade 成功后**同步写一条 domain=trading 记录**（标题「买入 名称 N股@价格」，5 分钟窗口去重）——交易进 timeline/记忆 + `has-activity` 复盘提醒闭环。
+> `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。
+> **RFC 20260816（数据分层）**：`entryDate` 可空缺省今天；**BUY 必填 `stopLossPrice` + `buyPoint`**（缺失 → 400 人话消息）；`targetPrice`/`reason` 可选（SELL 时止损/买点可空）。recordTrade 成功后**同步写逐笔流水**（`data/{userId}/trading/trades/{yyyy-MM}.json`）+ **写一条 domain=trading 记录**（5 分钟窗口去重）——交易进 timeline/记忆 + 复盘提醒闭环。
 
 **Response**：`Position[]` — 更新后的全部持仓
 
@@ -476,7 +482,11 @@
   "name": "京东方A",
   "direction": "BUY",
   "price": 5.2,
-  "volume": 1000
+  "volume": 1000,
+  "stopLossPrice": 4.9,
+  "buyPoint": "B1",
+  "targetPrice": null,
+  "reason": null
 }
 ```
 

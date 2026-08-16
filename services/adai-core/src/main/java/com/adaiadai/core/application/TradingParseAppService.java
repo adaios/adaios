@@ -44,8 +44,17 @@ public class TradingParseAppService {
             String name,
             String direction, // "BUY" / "SELL"
             BigDecimal price,
-            Integer volume
-    ) {}
+            Integer volume,
+            BigDecimal stopLossPrice,
+            String buyPoint,
+            BigDecimal targetPrice,
+            String reason
+    ) {
+        /** 未匹配结果（matched=false，其余字段全 null）。 */
+        public static ParseResult unmatched() {
+            return new ParseResult(false, null, null, null, null, null, null, null, null, null);
+        }
+    }
 
     private static final Pattern TRADE_PATTERN = Pattern.compile(
             "(买(?:入|了|进)?|卖(?:出|了|掉)?)"                         // 1 动词
@@ -55,13 +64,17 @@ public class TradingParseAppService {
                     + "\\s*[@＠]?\\s*(\\d+(?:\\.\\d+)?)",        // 5 价格
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("\\d{6}");
+    /** 正则兜底：止损位（RFC 20260816 §4.3：「止损 Z」→ stopLossPrice）。 */
+    private static final Pattern STOP_LOSS_PATTERN = Pattern.compile("止损\\s*([\\d.]+)");
+    /** 正则兜底：买点（RFC 20260816 §4.3：「，B1/B2/B3/SB1」→ buyPoint）。 */
+    private static final Pattern BUY_POINT_PATTERN = Pattern.compile("[，,]\\s*(B1|B2|B3|SB1)(?![A-Za-z0-9])");
 
     /**
      * 解析一句话交易。
      */
     public ParseResult parse(String userId, String text) {
         if (text == null || text.isBlank()) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         String trimmed = text.trim();
 
@@ -89,13 +102,17 @@ public class TradingParseAppService {
                 - price 是每股价格（数字）
                 - volume 是数量（整数，股数）
                 - symbol 是 6 位代码（若有）；name 是股票名称（若有）；都没有则 null
+                - stopLossPrice 是止损位（数字，若有；买入通常必填）
+                - buyPoint 是买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他，若有）
+                - targetPrice 是目标价（数字，若有）
+                - reason 是交易原因/预期（文本，若有）
                 - 无法确定 direction 或缺少关键数字时 matched=false，其余字段 null
                 - 必须包含 matched 字段
 
                 用户输入：%s
 
                 输出 JSON 格式：
-                {"matched": true, "symbol": "000725", "name": "京东方A", "direction": "BUY", "price": 5.2, "volume": 1000}
+                {"matched": true, "symbol": "000725", "name": "京东方A", "direction": "BUY", "price": 5.2, "volume": 1000, "stopLossPrice": 4.9, "buyPoint": "B1", "targetPrice": 6.0, "reason": "突破买入"}
                 """.formatted(text);
 
         ContextPackage ctx = ContextPackage.simple(
@@ -108,29 +125,36 @@ public class TradingParseAppService {
             node = objectMapper.readTree(LlmResponseParser.stripCodeFences(raw));
         } catch (Exception e) {
             log.warn("一句话交易 LLM 输出不可解析 | {}", e.getMessage());
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         if (node == null || !node.has("matched") || !node.get("matched").asBoolean(false)) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         String direction = node.hasNonNull("direction") ? node.get("direction").asText().trim().toUpperCase(Locale.ROOT) : null;
         if (!"BUY".equals(direction) && !"SELL".equals(direction)) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         BigDecimal price = node.hasNonNull("price") ? node.get("price").decimalValue() : null;
         Integer volume = node.hasNonNull("volume") ? node.get("volume").asInt() : null;
         if (price == null || price.compareTo(BigDecimal.ZERO) <= 0 || volume == null || volume <= 0) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         String symbol = node.hasNonNull("symbol") && !node.get("symbol").asText().isBlank() ? node.get("symbol").asText().trim() : null;
         String name = node.hasNonNull("name") && !node.get("name").asText().isBlank() ? node.get("name").asText().trim() : null;
-        return new ParseResult(true, symbol, name, direction, price, volume);
+        BigDecimal stopLossPrice = node.hasNonNull("stopLossPrice") ? node.get("stopLossPrice").decimalValue() : null;
+        String buyPoint = node.hasNonNull("buyPoint") && !node.get("buyPoint").asText().isBlank()
+                ? node.get("buyPoint").asText().trim() : null;
+        BigDecimal targetPrice = node.hasNonNull("targetPrice") ? node.get("targetPrice").decimalValue() : null;
+        String reason = node.hasNonNull("reason") && !node.get("reason").asText().isBlank()
+                ? node.get("reason").asText().trim() : null;
+        return new ParseResult(true, symbol, name, direction, price, volume,
+                stopLossPrice, buyPoint, targetPrice, reason);
     }
 
     private ParseResult parseWithRegex(String text) {
         Matcher m = TRADE_PATTERN.matcher(text);
         if (!m.find()) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         String verb = m.group(1);
         String position1 = m.group(2);
@@ -153,17 +177,35 @@ public class TradingParseAppService {
         try {
             volume = Integer.parseInt(m.group(3));
         } catch (NumberFormatException e) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         BigDecimal price;
         try {
             price = new BigDecimal(m.group(5));
         } catch (NumberFormatException e) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
         if (price.compareTo(BigDecimal.ZERO) <= 0 || volume <= 0) {
-            return new ParseResult(false, null, null, null, null, null);
+            return ParseResult.unmatched();
         }
-        return new ParseResult(true, symbol, name, direction, price, volume);
+
+        // 正则兜底：止损/买点（RFC 20260816 §4.3）
+        BigDecimal stopLossPrice = null;
+        Matcher stopLossMatcher = STOP_LOSS_PATTERN.matcher(text);
+        if (stopLossMatcher.find()) {
+            try {
+                stopLossPrice = new BigDecimal(stopLossMatcher.group(1));
+            } catch (NumberFormatException e) {
+                stopLossPrice = null;
+            }
+        }
+        String buyPoint = null;
+        Matcher buyPointMatcher = BUY_POINT_PATTERN.matcher(text);
+        if (buyPointMatcher.find()) {
+            buyPoint = buyPointMatcher.group(1);
+        }
+
+        return new ParseResult(true, symbol, name, direction, price, volume,
+                stopLossPrice, buyPoint, null, null);
     }
 }

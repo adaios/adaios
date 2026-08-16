@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,13 @@ class TradingAdviceAppServiceTest {
     private Position pos(String symbol, String name, int qty, String avgCost, String currentPrice) {
         return new Position(symbol, name, qty, new BigDecimal(avgCost), new BigDecimal(currentPrice),
                 LocalDateTime.now());
+    }
+
+    /** 带止损/入场/买点计划的持仓（RFC 20260816：建议引擎判定所需的用户提供数据）。 */
+    private Position posWithPlan(String symbol, String name, int qty, String avgCost, String currentPrice,
+                                 String entryDate, String stopLoss, String buyPoint) {
+        return new Position(symbol, name, qty, new BigDecimal(avgCost), new BigDecimal(currentPrice),
+                LocalDateTime.now(), LocalDate.parse(entryDate), new BigDecimal(stopLoss), buyPoint, null);
     }
 
     private MarketData quote(String code, String name, String price, String changePercent) {
@@ -245,5 +253,97 @@ class TradingAdviceAppServiceTest {
 
         assertEquals("clear", res.advice().get(0).suggestion(), "sell 应归一为 clear");
         assertEquals("hold", res.advice().get(1).suggestion(), "持有应归一为 hold");
+    }
+
+    // ── RFC 20260816 §3.1：止损/入场/买点注入 → clear 判定有数据可判 ──
+
+    @Test
+    void generateAdvice_promptContainsStopLossEntryAndBuyPoint() {
+        // 用户提供的止损位/入场日期（第几天）/买点必须注入 prompt，LLM 才有数据判 R66
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", 1000, "5.20", "5.46", "2026-08-01", "5.00", "B1")));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quote("000725", "京东方A", "5.46", "0.5")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("{\"advice\": [], \"summary\": \"无建议\"}");
+        TradingAdviceAppService svc = service(repo, market, ai);
+
+        svc.generateAdvice("default");
+
+        ArgumentCaptor<ContextPackage> ctxCaptor = ArgumentCaptor.forClass(ContextPackage.class);
+        verify(ai).generate(ctxCaptor.capture(), any());
+        String prompt = ctxCaptor.getValue().prompt();
+        // 现价/止损位以 stripTrailingZeros 呈现：5.00 → 5，4.90 → 4.9
+        assertTrue(prompt.contains("止损位 5"), "prompt 应注入止损位，实际: " + prompt);
+        assertTrue(prompt.contains("入场"), "prompt 应注入入场信息（入场第几天）");
+        assertTrue(prompt.contains("2026-08-01"), "prompt 应注入入场日期");
+        assertTrue(prompt.contains("买点 B1"), "prompt 应注入买点");
+        assertTrue(prompt.contains("已跌破止损位"), "prompt 应含止损硬判定（R66 clear）");
+        assertTrue(prompt.contains("R53"), "prompt 应含入场未涨 R53 候选口径");
+    }
+
+    @Test
+    void generateAdvice_currentPriceBelowStop_llmClear_accepted() {
+        // 现价 < 止损位 → prompt 注入两价 + 硬判定；LLM 依数据判 clear（R66）→ 原样输出
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", 1000, "5.20", "5.46", "2026-08-01", "6.00", "B1")));
+        MarketDataSource market = mock(MarketDataSource.class);
+        // 行情现价 4.90 < 止损位 6.00 → 已跌破止损位
+        when(market.quote(any())).thenReturn(Map.of("000725", quote("000725", "京东方A", "4.90", "-8.0")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("""
+                {
+                  "advice": [
+                    {
+                      "symbol": "000725",
+                      "suggestion": "clear",
+                      "reason": "现价 4.90 已跌破止损位 6.00，按 R66 止损纪律建议清仓",
+                      "rules": ["R66"]
+                    }
+                  ],
+                  "summary": "京东方已跌破止损位"
+                }
+                """);
+        TradingAdviceAppService svc = service(repo, market, ai);
+
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        assertEquals(1, res.advice().size());
+        TradingAdviceAppService.TradingAdviceItem item = res.advice().get(0);
+        assertEquals("000725", item.symbol());
+        assertEquals("clear", item.suggestion(), "跌破止损位 → clear");
+        assertTrue(item.reason().contains("R66"), "reason 应引用 R66");
+        assertTrue(item.rules().contains("R66"));
+
+        // 硬判定数据确实进 prompt（现价/止损位两价同现，LLM 才能判；4.90→4.9、6.00→6 剥尾零呈现）
+        ArgumentCaptor<ContextPackage> ctxCaptor = ArgumentCaptor.forClass(ContextPackage.class);
+        verify(ai).generate(ctxCaptor.capture(), any());
+        String prompt = ctxCaptor.getValue().prompt();
+        assertTrue(prompt.contains("现价 4.9"), "prompt 应含跌破止损位的现价");
+        assertTrue(prompt.contains("止损位 6"), "prompt 应含止损位");
+    }
+
+    @Test
+    void generateAdvice_noStopLossPlan_stillWorksWithUnknownMarker() {
+        // 旧数据无止损/入场（null）→ prompt 以「未设置/入场日期未知」呈现，不 NPE、不编造
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                pos("000725", "京东方A", 1000, "5.20", "5.46")));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quote("000725", "京东方A", "5.46", "0.5")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("{\"advice\": [], \"summary\": \"无建议\"}");
+        TradingAdviceAppService svc = service(repo, market, ai);
+
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        ArgumentCaptor<ContextPackage> ctxCaptor = ArgumentCaptor.forClass(ContextPackage.class);
+        verify(ai).generate(ctxCaptor.capture(), any());
+        String prompt = ctxCaptor.getValue().prompt();
+        assertTrue(prompt.contains("止损位 未设置"), "无止损位应显式标注未设置");
+        assertTrue(prompt.contains("入场日期未知"), "无入场日期应显式标注未知");
+        assertEquals(1, res.advice().size(), "无计划数据不影响建议流程");
     }
 }

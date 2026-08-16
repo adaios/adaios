@@ -331,13 +331,17 @@ class ApiService {
     return PortfolioSnapshotResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
-  /// 记录一笔交易。
+  /// 记录一笔交易（RFC 20260816：BUY 必填止损位/买点，targetPrice/reason 可选）。
   Future<PositionsResponse> recordTrade({
     required String symbol,
     required String name,
     required String direction,
     required double price,
     required int volume,
+    double? stopLossPrice,
+    String? buyPoint,
+    double? targetPrice,
+    String? reason,
   }) async {
     final body = {
       'symbol': symbol,
@@ -345,6 +349,10 @@ class ApiService {
       'direction': direction,
       'price': price,
       'volume': volume,
+      'stopLossPrice': ?stopLossPrice,
+      'buyPoint': ?(buyPoint == null || buyPoint.isEmpty ? null : buyPoint),
+      'targetPrice': ?targetPrice,
+      'reason': ?(reason == null || reason.isEmpty ? null : reason),
     };
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trades'),
@@ -353,6 +361,60 @@ class ApiService {
     );
     _check(resp);
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 更新持仓（web 独有详细管理，RFC 20260816 §4.2）：role/止损位/目标价。
+  /// PUT /api/v1/trading/positions/{symbol}，body 只带非空字段 → 返回更新后持仓。
+  Future<PositionItem> updatePosition(
+    String symbol, {
+    String? role,
+    double? stopLossPrice,
+    double? targetPrice,
+  }) async {
+    final body = <String, dynamic>{
+      'role': ?(role == null || role.isEmpty ? null : role),
+      'stopLossPrice': ?stopLossPrice,
+      'targetPrice': ?targetPrice,
+    };
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/positions/$symbol'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    // 契约：返回更新后持仓对象；兼容返回数组（取首条）的宽松解析。
+    if (data is List) {
+      return PositionItem.fromJson(data.first as Map<String, dynamic>);
+    }
+    return PositionItem.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// 批量导入交易（web 独有，RFC 20260816 §4.2）。
+  /// POST /api/v1/trading/trades/batch，body {"trades": [...]} → 逐条成功/失败结果。
+  Future<BatchImportResponse> importTrades(List<Map<String, dynamic>> trades) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/trades/batch'),
+      headers: _headers,
+      body: jsonEncode({'trades': trades}),
+    );
+    _check(resp);
+    return BatchImportResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 交易历史逐笔流水（web 独有，RFC 20260816 §4.2）。
+  /// GET /api/v1/trading/trades?from&to（yyyy-MM-dd，可选）→ TradeRecord 列表。
+  Future<List<TradeRecordItem>> getTrades({String? from, String? to}) async {
+    final params = <String, String>{};
+    if (from != null) params['from'] = from;
+    if (to != null) params['to'] = to;
+    final uri = Uri.parse('$baseUrl/api/v1/trading/trades')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    final list = (data is List) ? data : (data['trades'] as List?) ?? [];
+    return list.map((e) => TradeRecordItem.fromJson(e)).toList();
   }
 
   /// 生成交易复盘（POST /api/v1/trading/review，AI 生成 → 写入 data/trading/reviews/）。
@@ -924,6 +986,12 @@ class PositionItem {
   final double marketValue;
   final double pnl;
   final double pnlPercent;
+  // RFC 20260816：持仓详细管理字段（后端 P0 落盘，web P1 编辑；旧数据缺失 → null 兜底）
+  final String? entryDate; // 首买日 yyyy-MM-dd
+  final double? stopLossPrice; // 止损位
+  final String? buyPoint; // 买点类型（B1/B2/...）
+  final String? role; // 防守/前锋/中场/机动 + 主仓/副仓
+  final double? targetPrice; // 目标价
 
   PositionItem({
     required this.symbol,
@@ -934,6 +1002,11 @@ class PositionItem {
     required this.marketValue,
     required this.pnl,
     required this.pnlPercent,
+    this.entryDate,
+    this.stopLossPrice,
+    this.buyPoint,
+    this.role,
+    this.targetPrice,
   });
 
   factory PositionItem.fromJson(Map<String, dynamic> json) => PositionItem(
@@ -945,6 +1018,11 @@ class PositionItem {
     marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
     pnlPercent: (json['pnlPercent'] as num?)?.toDouble() ?? 0,
+    entryDate: json['entryDate'] as String?,
+    stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
+    buyPoint: json['buyPoint'] as String?,
+    role: json['role'] as String?,
+    targetPrice: (json['targetPrice'] as num?)?.toDouble(),
   );
 }
 
@@ -981,6 +1059,117 @@ class ReviewResponse {
     date: json['date'] as String? ?? '',
     content: json['content'] as String? ?? '',
   );
+}
+
+/// 交易历史逐笔流水 DTO（RFC 20260816 §2.1 TradeRecord，GET /api/v1/trading/trades）。
+class TradeRecordItem {
+  final String id;
+  final String symbol;
+  final String name;
+  final String direction; // BUY/SELL
+  final double price;
+  final int volume;
+  final double amount; // price × volume
+  final String entryDate; // yyyy-MM-dd
+  final double? stopLossPrice; // BUY 必填，SELL 可空
+  final String? buyPoint;
+  final double? targetPrice;
+  final String? reason;
+
+  TradeRecordItem({
+    required this.id,
+    required this.symbol,
+    required this.name,
+    required this.direction,
+    required this.price,
+    required this.volume,
+    required this.amount,
+    required this.entryDate,
+    this.stopLossPrice,
+    this.buyPoint,
+    this.targetPrice,
+    this.reason,
+  });
+
+  bool get isBuy => direction.toUpperCase() == 'BUY';
+
+  factory TradeRecordItem.fromJson(dynamic json) {
+    final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    // 日期字段宽松解析：entryDate / date / timestamp（timestamp 取日期部分）
+    final rawDate = map['entryDate'] as String? ??
+        map['date'] as String? ??
+        map['timestamp'] as String? ??
+        '';
+    return TradeRecordItem(
+      id: map['id'] as String? ?? '',
+      symbol: map['symbol'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      direction: (map['direction'] as String? ?? '').toUpperCase(),
+      price: (map['price'] as num?)?.toDouble() ?? 0,
+      volume: map['volume'] as int? ?? 0,
+      amount: (map['amount'] as num?)?.toDouble() ??
+          ((map['price'] as num?)?.toDouble() ?? 0) * (map['volume'] as int? ?? 0),
+      entryDate: rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate,
+      stopLossPrice: (map['stopLossPrice'] as num?)?.toDouble(),
+      buyPoint: map['buyPoint'] as String?,
+      targetPrice: (map['targetPrice'] as num?)?.toDouble(),
+      reason: map['reason'] as String?,
+    );
+  }
+}
+
+/// 批量导入结果 DTO（POST /api/v1/trading/trades/batch）。
+/// 契约：逐条成功/失败结果；失败项带原始行号 + 人话原因。
+class BatchImportResponse {
+  final int success; // 成功条数
+  final List<BatchImportFailure> failures;
+
+  BatchImportResponse({required this.success, required this.failures});
+
+  bool get hasFailures => failures.isNotEmpty;
+
+  factory BatchImportResponse.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return BatchImportResponse(success: 0, failures: []);
+    }
+    // 宽松解析：success / successCount / ok 均可；失败项 failures / errors 均可。
+    final success = (json['success'] as num?)?.toInt() ??
+        (json['successCount'] as num?)?.toInt() ??
+        (json['ok'] as num?)?.toInt() ??
+        0;
+    final rawFailures = (json['failures'] as List?) ?? (json['errors'] as List?) ?? [];
+    return BatchImportResponse(
+      success: success,
+      failures: rawFailures
+          .map((e) => BatchImportFailure.fromJson(e))
+          .where((f) => f.message.isNotEmpty)
+          .toList(),
+    );
+  }
+}
+
+/// 批量导入失败项：行号（从 1 起）+ 人话原因。
+class BatchImportFailure {
+  final int row; // 原始行号（1-based）；未知为 0
+  final String symbol;
+  final String message;
+
+  BatchImportFailure({this.row = 0, this.symbol = '', required this.message});
+
+  factory BatchImportFailure.fromJson(dynamic json) {
+    final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return BatchImportFailure(
+      row: (map['row'] as num?)?.toInt() ??
+          (map['line'] as num?)?.toInt() ??
+          (map['index'] as num?)?.toInt() ??
+          0,
+      symbol: map['symbol'] as String? ?? '',
+      message: map['message'] as String? ??
+          map['error'] as String? ??
+          map['reason'] as String? ??
+          '',
+    );
+  }
 }
 
 /// 反哺入库候选响应（POST /api/v1/trading/reviews/{date}/promote，#129）。

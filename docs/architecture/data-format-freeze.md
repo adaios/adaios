@@ -146,15 +146,16 @@ tags:
 | 项 | 值 |
 |:--|:--|
 | 路径 | `trading/positions.md` |
+| 变更 | **MINOR（2026-08-16，RFC 20260816）**：加 entryDate/stopLossPrice/buyPoint/role 四列（可选，旧文件解析兜底 null）|
 | 格式 | Markdown 表格 + 尾部键值 |
 | 真相源 | `PositionFileRepository.toMarkdown()` |
 
 ```
 # 当前持仓
 
-| symbol | name | quantity | avgCost | currentPrice |
-|--------|------|----------|---------|--------------|
-| 600519 | 贵州茅台 | 100 | 25.3 | 26.1 |
+| symbol | name | quantity | avgCost | currentPrice | entryDate | stopLossPrice | buyPoint | role |
+|--------|------|----------|---------|--------------|-----------|---------------|----------|------|
+| 600519 | 贵州茅台 | 100 | 25.3 | 26.1 | 2026-08-07 | 24.50 | B1 | 前锋·主仓 |
 
 cashBalance: 100000
 lastUpdated: 2026-08-07T09:00:00
@@ -329,3 +330,23 @@ updatedAt: 2026-08-07
 | `docs/rfc/20260802-multi-account-prep.md` | 多账号路径分层（userId 预留）|
 | `docs/rfc/20260801-release-versioning.md` | 版本机制 + 数据格式变更流程 |
 | `docs/architecture/system-architecture.md` | File First 存储原则 |
+
+### 2.13 交易逐笔流水 `trading/trades/{yyyy-MM}.json`
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/trades/{yyyy-MM}.json`（每月一个）|
+| 格式 | JSON 数组（美化），读-改-写追加 |
+| 真相源 | `TradingHistoryFileRepository` |
+| 变更 | **MINOR（2026-08-16，RFC 20260816）**：新增目录 |
+
+```
+[{
+  "id": "trade_1723700000000",
+  "symbol": "000725", "name": "京东方A",
+  "direction": "BUY", "price": 5.2, "volume": 1000, "amount": 5200.0,
+  "entryDate": "2026-08-16", "stopLossPrice": 4.9, "buyPoint": "B1",
+  "targetPrice": null, "reason": "回踩支撑买入", "fee": null,
+  "timestamp": "2026-08-16T09:30:00", "sourceRecordId": "rec_..."
+}]
+```

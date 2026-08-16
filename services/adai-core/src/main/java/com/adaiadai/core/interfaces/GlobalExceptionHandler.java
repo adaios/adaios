@@ -4,6 +4,9 @@ import com.adaiadai.core.domain.trading.TradingException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -28,6 +31,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TradingException.class)
     public ResponseEntity<Map<String, String>> handleTradingException(TradingException e) {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
+    /**
+     * 参数校验失败 → 400 + 人话消息（RFC 20260816：BUY 缺止损/买点等必填项校验）。
+     * 优先取字段错误（@NotBlank/@Positive…），再取类级错误（自定义 BuyFieldsRequired），
+     * 两者皆无时给通用提示——不让裸的校验异常堆栈直出。
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(FieldError::getDefaultMessage)
+                .orElseGet(() -> e.getBindingResult().getGlobalErrors().stream()
+                        .findFirst()
+                        .map(ObjectError::getDefaultMessage)
+                        .orElse("请求参数校验失败"));
+        return ResponseEntity.badRequest().body(Map.of("error", message));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

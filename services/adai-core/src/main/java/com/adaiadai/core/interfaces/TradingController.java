@@ -10,6 +10,10 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import jakarta.validation.Constraint;
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+import jakarta.validation.Payload;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
@@ -19,6 +23,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -84,7 +92,9 @@ public class TradingController {
         if (denied != null) return denied;
         List<Position> updated = tradingAppService.recordTrade(
                 userId, request.symbol(), request.name(),
-                request.direction(), request.price(), request.volume()
+                request.direction(), request.price(), request.volume(),
+                request.entryDate(), request.stopLossPrice(), request.buyPoint(),
+                request.targetPrice(), request.reason()
         );
         return ResponseEntity.ok(updated);
     }
@@ -280,14 +290,59 @@ public class TradingController {
      * TradeRequest — 记录交易请求。
      * <p>
      * RFC 20260815：name 改可空（web 标注"名称（可选）"），缺失时由 TradingAppService 以 symbol 兜底。
+     * <p>
+     * RFC 20260816：BUY 必填止损位/买点（缺失 → 400 + 人话消息，由 {@link BuyFieldsRequired} 校验）；
+     * entryDate 可空缺省今天；SELL 时 stopLossPrice/buyPoint 可空。
      */
+    @BuyFieldsRequired
     public record TradeRequest(
             @NotBlank String symbol,
             @Size(max = 32) String name,
             TradeDirection direction,
             @Positive BigDecimal price,
-            @Positive int volume
+            @Positive int volume,
+            LocalDate entryDate,
+            BigDecimal stopLossPrice,
+            String buyPoint,
+            BigDecimal targetPrice,
+            String reason
     ) {}
+
+    /**
+     * BUY 必填止损/买点（RFC 20260816 §4.1）：direction=BUY 时 stopLossPrice/buyPoint 必填，
+     * 缺失 → 400 + 人话消息；SELL 及 null 请求直接放行。
+     */
+    @Target({ElementType.TYPE})
+    @Retention(RetentionPolicy.RUNTIME)
+    @Constraint(validatedBy = TradingController.BuyFieldsValidator.class)
+    public @interface BuyFieldsRequired {
+        String message() default "买入交易必须填写止损位（stopLossPrice）与买点类型（buyPoint）";
+        Class<?>[] groups() default {};
+        Class<? extends Payload>[] payload() default {};
+    }
+
+    /** {@link BuyFieldsRequired} 校验器：只对 BUY 强制，SELL 可空。 */
+    public static class BuyFieldsValidator implements ConstraintValidator<BuyFieldsRequired, TradeRequest> {
+
+        @Override
+        public boolean isValid(TradeRequest request, ConstraintValidatorContext context) {
+            if (request == null || request.direction() != TradeDirection.BUY) {
+                return true;
+            }
+            boolean missingStopLoss = request.stopLossPrice() == null;
+            boolean missingBuyPoint = request.buyPoint() == null || request.buyPoint().isBlank();
+            if (!missingStopLoss && !missingBuyPoint) {
+                return true;
+            }
+            StringBuilder message = new StringBuilder("买入交易缺少必填项：");
+            if (missingStopLoss) message.append("止损位 stopLossPrice");
+            if (missingStopLoss && missingBuyPoint) message.append("、");
+            if (missingBuyPoint) message.append("买点 buyPoint");
+            context.disableDefaultConstraintViolation();
+            context.buildConstraintViolationWithTemplate(message.toString()).addConstraintViolation();
+            return false;
+        }
+    }
 
     public record ReviewResponse(String date, String content) {}
 

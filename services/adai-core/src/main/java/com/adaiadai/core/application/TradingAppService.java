@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.*;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,10 +36,14 @@ public class TradingAppService {
 
     private final PositionRepository positionRepository;
     private final RecordRepository recordRepository;
+    private final TradingHistoryRepository tradingHistoryRepository;
 
-    public TradingAppService(PositionRepository positionRepository, RecordRepository recordRepository) {
+    public TradingAppService(PositionRepository positionRepository,
+                             RecordRepository recordRepository,
+                             TradingHistoryRepository tradingHistoryRepository) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
+        this.tradingHistoryRepository = tradingHistoryRepository;
     }
 
     private Object tradeLock(String userId) {
@@ -45,22 +51,31 @@ public class TradingAppService {
     }
 
     /**
-     * 记录一笔交易并更新持仓。
+     * 记录一笔交易并更新持仓（RFC 20260816：逐笔流水 + 持仓新字段）。
      *
-     * @param symbol    股票代码
-     * @param name      股票名称
-     * @param direction 交易方向
-     * @param price     成交单价
-     * @param volume    成交数量
+     * @param symbol        股票代码
+     * @param name          股票名称
+     * @param direction     交易方向
+     * @param price         成交单价
+     * @param volume        成交数量
+     * @param entryDate     交易日期（可空，缺省今天；首买日持久化，加仓不覆盖）
+     * @param stopLossPrice 止损位（BUY 必填；SELL 可空）
+     * @param buyPoint      买点类型（BUY 必填；SELL 可空）
+     * @param targetPrice   目标价（可空）
+     * @param reason        交易原因/预期（可空）
      * @return 更新后的持仓列表
      */
     public List<Position> recordTrade(String userId, String symbol, String name,
                                       TradeDirection direction,
-                                      BigDecimal price, int volume) {
+                                      BigDecimal price, int volume,
+                                      LocalDate entryDate, BigDecimal stopLossPrice, String buyPoint,
+                                      BigDecimal targetPrice, String reason) {
         // #147：读-改-写加每用户锁，防并发交易互相覆盖丢持仓
         synchronized (tradeLock(userId)) {
             // RFC 20260815：name 可空（web 标注"可选"），缺名时以 symbol 兜底（简单方案：symbol 即名）
             String effectiveName = (name == null || name.isBlank()) ? symbol : name;
+            // RFC 20260816：入场日期缺省今天（用户可补录）
+            LocalDate effectiveEntryDate = entryDate != null ? entryDate : LocalDate.now();
 
             List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
             boolean found = false;
@@ -73,7 +88,8 @@ public class TradingAppService {
                         throw new TradingException(
                                 "卖出数量超过持仓: " + symbol + "（持有 " + p.quantity() + " 股）");
                     }
-                    Position updated = updatePosition(p, direction, price, volume);
+                    Position updated = updatePosition(p, direction, price, volume,
+                            effectiveEntryDate, stopLossPrice, buyPoint);
                     currentPositions.set(i, updated);
                     found = true;
                     break;
@@ -86,8 +102,9 @@ public class TradingAppService {
             }
 
             if (!found && direction == TradeDirection.BUY) {
-                // 首次买入：新建持仓
-                Position newPos = new Position(symbol, effectiveName, volume, price, price, LocalDateTime.now());
+                // 首次买入：新建持仓（首买日 + 止损/买点落盘；role 由 web 编辑，初始 null）
+                Position newPos = new Position(symbol, effectiveName, volume, price, price, LocalDateTime.now(),
+                        effectiveEntryDate, stopLossPrice, buyPoint, null);
                 currentPositions.add(newPos);
             }
 
@@ -98,11 +115,17 @@ public class TradingAppService {
 
             // RFC 20260815 §6：交易成功后同步写一条 domain=trading 记录（复盘提醒 + 时间线闭环）。
             // 位置在 saveAll 成功之后：recordTrade 失败（校验/存储异常）路径不会留下记录；
-            // 窗口内同标题（重试）不重复写（幂等）。
-            writeTradingRecord(userId, direction, effectiveName, symbol, price, volume);
+            // 窗口内同标题（重试）不重复写（幂等）。返回时间线 Record ID 作为流水 sourceRecordId。
+            String recordId = writeTradingRecord(userId, direction, effectiveName, symbol, price, volume);
 
-            log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={}",
-                    direction, symbol, volume, price, currentPositions.size());
+            // RFC 20260816 §2.1：逐笔流水真相源（BUY/SELL 都写）。best-effort：
+            // 持仓已落库，流水写入失败不阻塞交易本身（与 writeTradingRecord 同口径），只告警。
+            appendTradeRecord(userId, symbol, effectiveName, direction, price, volume,
+                    effectiveEntryDate, stopLossPrice, buyPoint, targetPrice, reason, recordId);
+
+            log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={} | entryDate={} | 止损={}",
+                    direction, symbol, volume, price, currentPositions.size(),
+                    effectiveEntryDate, stopLossPrice);
 
             return currentPositions;
         }
@@ -114,10 +137,12 @@ public class TradingAppService {
      * 目的：交易进 timeline/记忆 + {@code hasTradingActivity} 关键词（买/卖/股/交易…）命中，闭环复盘提醒。
      * 附加动作 best-effort：记录写入失败不阻塞交易本身（持仓已落库），只告警。
      * 幂等：5 分钟窗口内存在同标题记录（重试）→ 跳过，防重复进时间线。
+     *
+     * @return 时间线 Record ID（写入成功）；重复/失败返回 null
      */
-    private void writeTradingRecord(String userId, TradeDirection direction,
-                                    String name, String symbol,
-                                    BigDecimal price, int volume) {
+    private String writeTradingRecord(String userId, TradeDirection direction,
+                                      String name, String symbol,
+                                      BigDecimal price, int volume) {
         try {
             String directionLabel = direction == TradeDirection.BUY ? "买入" : "卖出";
             String title = "%s %s %d股@%s".formatted(directionLabel, name, volume, price.toPlainString());
@@ -129,7 +154,7 @@ public class TradingAppService {
                             && r.createdAt() != null && r.createdAt().isAfter(cutoff));
             if (duplicated) {
                 log.debug("交易记录已存在（窗口内重试），跳过写记录 | title={}", title);
-                return;
+                return null;
             }
 
             String content = "%s %s（%s）%d股@%s，成交金额 %s 元".formatted(
@@ -141,8 +166,31 @@ public class TradingAppService {
                     null, null, "trading");
             recordRepository.save(userId, record);
             log.info("交易记录已写入时间线 | id={} | title={}", record.id(), title);
+            return record.id();
         } catch (Exception e) {
             log.warn("交易记录写入失败（不影响交易落库）| symbol={} | {}", symbol, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 逐笔流水落盘（RFC 20260816 §2.1）：BUY/SELL 都写 {@code data/{userId}/trading/trades/{yyyy-MM}.json}。
+     * <p>
+     * best-effort：流水写入失败不阻塞交易本身（持仓已落库），只告警——与 writeTradingRecord 同口径。
+     */
+    private void appendTradeRecord(String userId, String symbol, String name, TradeDirection direction,
+                                   BigDecimal price, int volume, LocalDate entryDate,
+                                   BigDecimal stopLossPrice, String buyPoint,
+                                   BigDecimal targetPrice, String reason, String sourceRecordId) {
+        try {
+            TradeRecord trade = TradeRecord.of(
+                    IdGenerator.monotonic("trade_"),
+                    symbol, name, direction, price, volume,
+                    entryDate, stopLossPrice, buyPoint, targetPrice, reason,
+                    null, LocalDateTime.now(), sourceRecordId);
+            tradingHistoryRepository.append(userId, trade);
+        } catch (Exception e) {
+            log.warn("交易流水写入失败（不影响交易落库）| symbol={} | {}", symbol, e.getMessage());
         }
     }
 
@@ -162,7 +210,15 @@ public class TradingAppService {
 
     // ── 内部方法 ──
 
-    private Position updatePosition(Position current, TradeDirection direction, BigDecimal price, int volume) {
+    /**
+     * 更新持仓（RFC 20260816 §2.2）：
+     * <ul>
+     *   <li>BUY（加仓）：摊平成本；entryDate 保留首买日（不覆盖）；stopLossPrice/buyPoint 更新为最近一次 BUY</li>
+     *   <li>SELL：保留 entryDate/stopLossPrice/buyPoint/role</li>
+     * </ul>
+     */
+    private Position updatePosition(Position current, TradeDirection direction, BigDecimal price, int volume,
+                                    LocalDate entryDate, BigDecimal stopLossPrice, String buyPoint) {
         switch (direction) {
             case BUY -> {
                 // 摊平成本
@@ -170,15 +226,20 @@ public class TradingAppService {
                 BigDecimal newCost = current.costValue()
                         .add(price.multiply(BigDecimal.valueOf(volume)))
                         .divide(BigDecimal.valueOf(newQty), 4, java.math.RoundingMode.HALF_UP);
-                return new Position(current.symbol(), current.name(), newQty, newCost, price, LocalDateTime.now());
+                // 加仓不覆盖首买日：已有 entryDate 保留，缺失时以本次入场日期落盘
+                LocalDate effectiveEntryDate = current.entryDate() != null ? current.entryDate() : entryDate;
+                return new Position(current.symbol(), current.name(), newQty, newCost, price, LocalDateTime.now(),
+                        effectiveEntryDate, stopLossPrice, buyPoint, current.role());
             }
             case SELL -> {
                 int newQty = current.quantity() - volume;
                 if (newQty <= 0) {
-                    // 清仓：返回数量为 0 的持仓，上层应该过滤
-                    return new Position(current.symbol(), current.name(), 0, BigDecimal.ZERO, price, LocalDateTime.now());
+                    // 清仓：返回数量为 0 的持仓，上层应该过滤（止损/买点/入场保留在流水里可回溯）
+                    return new Position(current.symbol(), current.name(), 0, BigDecimal.ZERO, price, LocalDateTime.now(),
+                            current.entryDate(), current.stopLossPrice(), current.buyPoint(), current.role());
                 }
-                return new Position(current.symbol(), current.name(), newQty, current.avgCost(), price, LocalDateTime.now());
+                return new Position(current.symbol(), current.name(), newQty, current.avgCost(), price, LocalDateTime.now(),
+                        current.entryDate(), current.stopLossPrice(), current.buyPoint(), current.role());
             }
             default -> throw new IllegalArgumentException("未知交易方向: " + direction);
         }

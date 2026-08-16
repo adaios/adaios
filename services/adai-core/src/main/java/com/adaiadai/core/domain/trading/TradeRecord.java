@@ -1,49 +1,68 @@
 package com.adaiadai.core.domain.trading;
 
-import com.adaiadai.core.kernel.record.ContentRecord;
-
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * TradeRecord — 单笔交易记录。
+ * TradeRecord — 单笔交易记录（逐笔流水真相源，RFC 20260816 §2.1）。
  * <p>
- * 从 ContentRecord 中解析出的交易结构化数据。
- * 交易记录源文件为 {@code data/records/}，此模型为内存中的结构化表示。
+ * 每笔 BUY/SELL 交易在 {@code recordTrade} 成功后落盘为一条流水，
+ * 存储于 {@code data/{userId}/trading/trades/{yyyy-MM}.json}（每月一个 JSON 数组）。
+ * 与 positions.md（聚合快照）互补：本模型保留每笔交易的完整细节，可回溯首买日/止损/买点/原因。
+ * <p>
+ * 数据分层（RFC 20260816 §1）：
+ * <ul>
+ *   <li>系统字段：id / amount（price×volume 派生）/ entryDate（默认当天，可补录）/ timestamp / sourceRecordId</li>
+ *   <li>用户提供：symbol / direction / price / volume / stopLossPrice / buyPoint / targetPrice / reason / fee</li>
+ *   <li>行情补全：name（缺省 symbol）</li>
+ * </ul>
  *
- * @param symbol    股票/资产代码（如 "600123"）
- * @param name      资产名称（如 "立昂微"）
- * @param direction 交易方向
- * @param price     成交单价
- * @param volume    成交数量
- * @param amount    成交金额（price × volume）
- * @param timestamp   交易时间
- * @param sourceRecordId 关联的原始 Record ID
+ * @param id            流水 ID（{@code trade_yyyyMMdd_HHmmssSSS}，IdGenerator 生成）
+ * @param symbol        股票/资产代码（如 "600000"）
+ * @param name          资产名称（行情补全，缺省 symbol）
+ * @param direction     交易方向
+ * @param price         成交单价
+ * @param volume        成交数量
+ * @param amount        成交金额（price × volume，派生）
+ * @param entryDate     交易日期（用户可改/可补录，缺省当天）
+ * @param stopLossPrice 止损位（BUY 必填；SELL 可空）
+ * @param buyPoint      买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他；BUY 必填；SELL 可空）
+ * @param targetPrice   目标价（可空，盈亏比 R38 复盘锚点）
+ * @param reason        交易原因/预期（可空，复盘锚点）
+ * @param fee           手续费（可空，P2 可全局费率）
+ * @param timestamp     落盘时间
+ * @param sourceRecordId 关联的时间线 Record ID（可空）
  */
 public record TradeRecord(
+        String id,
         String symbol,
         String name,
         TradeDirection direction,
         BigDecimal price,
         int volume,
         BigDecimal amount,
+        LocalDate entryDate,
+        BigDecimal stopLossPrice,
+        String buyPoint,
+        BigDecimal targetPrice,
+        String reason,
+        BigDecimal fee,
         LocalDateTime timestamp,
         String sourceRecordId
 ) {
 
     /**
-     * 从 ContentRecord 解析出 TradeRecord 的简化工厂。
-     * <p>
-     * 实际场景需配合交易数据完整解析，此处提供基础能力。
+     * 构造逐笔流水：amount 由 price × volume 派生。
      */
-    public static TradeRecord fromContent(String symbol, String name,
-                                          TradeDirection direction,
-                                          BigDecimal price, int volume,
-                                          ContentRecord source) {
+    public static TradeRecord of(String id, String symbol, String name, TradeDirection direction,
+                                 BigDecimal price, int volume, LocalDate entryDate,
+                                 BigDecimal stopLossPrice, String buyPoint,
+                                 BigDecimal targetPrice, String reason, BigDecimal fee,
+                                 LocalDateTime timestamp, String sourceRecordId) {
         return new TradeRecord(
-                symbol, name, direction, price, volume,
+                id, symbol, name, direction, price, volume,
                 price.multiply(BigDecimal.valueOf(volume)),
-                source.createdAt(), source.id()
-        );
+                entryDate, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId);
     }
 }

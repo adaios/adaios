@@ -82,7 +82,9 @@ class TradingControllerTest {
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // GlobalExceptionHandler：TradingException/校验失败（RFC 20260816 BUY 缺止损）→ 400 + 人话消息
         return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
                 .build();
     }
@@ -144,16 +146,79 @@ class TradingControllerTest {
     @Test
     void recordTrade_valid_returnsUpdatedPositions() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.recordTrade(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/trades")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100}"""))
+                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100,
+                                "stopLossPrice":9.5,"buyPoint":"B1"}"""))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].symbol").value("600000"));
+    }
+
+    @Test
+    void recordTrade_buyMissingStopLoss_400() throws Exception {
+        // RFC 20260816：BUY 缺止损位/买点 → 400 + 人话消息（不再放行无止损的买入）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("止损位")));
+    }
+
+    @Test
+    void recordTrade_buyMissingBuyPoint_400() throws Exception {
+        // BUY 只填止损缺买点 → 400（买点同样必填）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100,
+                                "stopLossPrice":9.5}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("买点")));
+    }
+
+    @Test
+    void recordTrade_buyWithAllFields_200() throws Exception {
+        // 全字段（含 entryDate/止损/买点/目标价/原因）→ 200
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
+                .thenReturn(List.of(position("600000")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100,
+                                "entryDate":"2026-08-16","stopLossPrice":9.5,"buyPoint":"B1",
+                                "targetPrice":12.0,"reason":"突破买入"}"""))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void recordTrade_sellWithoutStopLoss_200() throws Exception {
+        // SELL：止损/买点可空 → 200（SELL 流水不写止损）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
+                .thenReturn(List.of(position("600000")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","direction":"SELL","price":10.5,"volume":100}"""))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -163,7 +228,8 @@ class TradingControllerTest {
         mvc.perform(post("/api/v1/trading/trades")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"symbol":"","name":"浦发银行","direction":"BUY","price":10.5,"volume":100}"""))
+                                {"symbol":"","name":"浦发银行","direction":"BUY","price":10.5,"volume":100,
+                                "stopLossPrice":9.5,"buyPoint":"B1"}"""))
                 .andExpect(status().isBadRequest());
     }
 
@@ -171,7 +237,8 @@ class TradingControllerTest {
     void recordTrade_sellUnheld_tradingExceptionMapsTo400() throws Exception {
         // #147：SELL 未持有 → TradingException → GlobalExceptionHandler 映射 400 + 人话消息
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt()))
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"));
@@ -226,13 +293,14 @@ class TradingControllerTest {
     void recordTrade_nameOptional_ok() throws Exception {
         // RFC 20260815：name 可空（web 标注"名称（可选）"），缺名请求应 200（后端以 symbol 兜底）
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt()))
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/trades")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"symbol\":\"600000\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100}"))
+                        .content("{\"symbol\":\"600000\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100,\"stopLossPrice\":9.5,\"buyPoint\":\"B1\"}"))
                 .andExpect(status().isOk());
     }
 
@@ -244,7 +312,7 @@ class TradingControllerTest {
 
         mvc.perform(post("/api/v1/trading/trades")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"symbol\":\"600000\",\"name\":\"" + longName + "\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100}"))
+                        .content("{\"symbol\":\"600000\",\"name\":\"" + longName + "\",\"direction\":\"BUY\",\"price\":10.5,\"volume\":100,\"stopLossPrice\":9.5,\"buyPoint\":\"B1\"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -407,7 +475,7 @@ class TradingControllerTest {
         mvc.perform(post("/api/v1/trading/trades")
                         .header("X-User-Id", "default")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"symbol\":\"600000\",\"name\":\"浦发银行\",\"direction\":\"BUY\",\"price\":10.0,\"volume\":100}"))
+                        .content("{\"symbol\":\"600000\",\"name\":\"浦发银行\",\"direction\":\"BUY\",\"price\":10.0,\"volume\":100,\"stopLossPrice\":9.0,\"buyPoint\":\"B1\"}"))
                 .andExpect(status().isForbidden());
     }
 

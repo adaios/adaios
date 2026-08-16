@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -273,7 +275,8 @@ public class TradingAdviceAppService {
                     : price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(100));
             views.add(new PositionView(p.symbol(), name, p.quantity(), marketValue, positionPercent,
-                    p.avgCost(), price, changePercent, pnl, pnlPercent));
+                    p.avgCost(), price, changePercent, pnl, pnlPercent,
+                    p.stopLossPrice(), p.entryDate(), p.buyPoint()));
         }
         return views;
     }
@@ -338,7 +341,7 @@ public class TradingAdviceAppService {
         }
     }
 
-    /** 组装 user prompt：规则硬约束 + 体系总纲 + 持仓/行情 + 输出契约。 */
+    /** 组装 user prompt：规则硬约束 + 止损硬判定 + 体系总纲 + 持仓/行情（含止损/入场/买点）+ 输出契约。 */
     private String buildPrompt(List<PositionView> views, List<RuleInfo> constraintRules, String strategyOverview) {
         StringBuilder sb = new StringBuilder();
         sb.append("【决策约束——止损规则 R66-R80】\n");
@@ -349,6 +352,11 @@ public class TradingAdviceAppService {
         for (RuleInfo rule : constraintRules) {
             if (rule.number() > 80) appendRule(sb, rule);
         }
+        // RFC 20260816 §3.1：止损位/入场日期/买点已注入下方持仓数据，以下为可执行的硬判定口径
+        sb.append("\n【止损硬判定（数据已注入，必须按此判定）】\n");
+        sb.append("- 现价 < stopLossPrice（止损位）→ 判定已跌破止损位，suggestion=clear（R66）\n");
+        sb.append("- 入场后 N 天未涨/持续亏损 → R53 候选（reduce/clear 参考）\n");
+        sb.append("- 买点关联应对：B1→持股/白线持有；B2/B3/SB1→S1 就走（R120）\n");
         if (strategyOverview != null) {
             sb.append("\n【交易体系总纲（strategy.md v87）】\n").append(strategyOverview).append("\n");
         }
@@ -363,10 +371,23 @@ public class TradingAdviceAppService {
                 sb.append(" | 当日涨跌 ").append(v.changePercent().setScale(2, RoundingMode.HALF_UP)).append("%");
             }
             sb.append(" | 盈亏 ").append(v.pnl().setScale(2, RoundingMode.HALF_UP)).append(" 元（")
-                    .append(v.pnlPercent().setScale(2, RoundingMode.HALF_UP)).append("%）\n");
+                    .append(v.pnlPercent().setScale(2, RoundingMode.HALF_UP)).append("%）");
+            // RFC 20260816：注入用户提供的止损位/入场日期（入场第几天）/买点 → clear 判定有数据可判
+            sb.append(" | 止损位 ").append(v.stopLossPrice() != null
+                    ? v.stopLossPrice().stripTrailingZeros().toPlainString() : "未设置");
+            sb.append(" | 入场 ").append(entryLabel(v));
+            sb.append(" | 买点 ").append(v.buyPoint() != null ? v.buyPoint() : "未知");
+            sb.append("\n");
         }
         sb.append("\n").append(OUTPUT_CONTRACT);
         return sb.toString();
+    }
+
+    /** 入场标签：有入场日期 → 「yyyy-MM-dd（入场第 N 天）」；无 → 「入场日期未知」。 */
+    private String entryLabel(PositionView v) {
+        if (v.entryDate() == null) return "入场日期未知";
+        long days = Math.max(ChronoUnit.DAYS.between(v.entryDate(), LocalDate.now()), 0);
+        return v.entryDate() + "（入场第 " + days + " 天）";
     }
 
     // ── DTO ──
@@ -387,7 +408,7 @@ public class TradingAdviceAppService {
             String summary
     ) {}
 
-    /** 建议引擎内部持仓视图（行情价 + 派生指标，供 prompt 与输出共用）。 */
+    /** 建议引擎内部持仓视图（行情价 + 派生指标 + 用户提供的止损/入场/买点，供 prompt 与输出共用）。 */
     private record PositionView(
             String symbol,
             String name,
@@ -398,7 +419,10 @@ public class TradingAdviceAppService {
             BigDecimal currentPrice,
             BigDecimal changePercent,
             BigDecimal pnl,
-            BigDecimal pnlPercent
+            BigDecimal pnlPercent,
+            BigDecimal stopLossPrice,
+            LocalDate entryDate,
+            String buyPoint
     ) {}
 
     /** 从 rules.md 解析出的真实规则条目。 */
