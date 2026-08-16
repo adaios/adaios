@@ -212,6 +212,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 
 > **零数据库启动**：MVP 阶段不需要 MySQL。所有数据通过 File First 存储到 `data/` 目录。
 
+> **git hooks（换机 clone 后执行一次）**：`sh scripts/setup-hooks.sh` —— 启用 pre-commit 自动检查（文档对齐 + frontmatter 结构 + G1-G7 防复发）。
+
 ## 代码约定
 
 > 代码/文档/协作规范**唯一真相源**：`ai-engineering/assets/conventions.md`（本处只留指针，不复制全文——避免双源漂移）。
