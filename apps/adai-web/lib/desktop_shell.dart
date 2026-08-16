@@ -109,7 +109,14 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
-  Widget _buildPage(int i) => _items[i].pageBuilder(_api);
+  Widget _buildPage(int i) {
+    final entry = _items[i];
+    // 交易页：传入当前可见页 label → 每次切到交易页自动刷新（行情/盈亏实时）
+    if (entry.label == 'trading') {
+      return TradingPage(api: _api, currentPage: _currentLabel);
+    }
+    return entry.pageBuilder(_api);
+  }
 
   @override
   Widget build(BuildContext context) {

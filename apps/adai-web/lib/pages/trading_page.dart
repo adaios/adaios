@@ -11,8 +11,10 @@ import '../widgets/page_header.dart';
 /// 与 app（保持简单）分化：详细管理都在 web 端。
 class TradingPage extends StatefulWidget {
   final ApiService api;
+  /// 当前可见页 label（桌面壳传入）——切到交易页时自动刷新（行情/盈亏实时，2026-08-16）。
+  final String currentPage;
 
-  const TradingPage({super.key, required this.api});
+  const TradingPage({super.key, required this.api, this.currentPage = 'trading'});
 
   @override
   State<TradingPage> createState() => _TradingPageState();
@@ -29,6 +31,15 @@ class _TradingPageState extends State<TradingPage> {
   void initState() {
     super.initState();
     _loadAll();
+  }
+
+  @override
+  void didUpdateWidget(TradingPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 每次切到交易页 → 自动刷新（保活缓存不显示旧数据）
+    if (oldWidget.currentPage != widget.currentPage && widget.currentPage == 'trading') {
+      _loadAll();
+    }
   }
 
   Future<void> _loadAll() async {
@@ -59,6 +70,9 @@ class _TradingPageState extends State<TradingPage> {
   // ── 记录交易（扩展：止损位/买点/目标价/原因，RFC 20260816） ──
 
   Future<void> _recordTrade() async {
+    // 点击记录交易：先刷新（持仓/盈亏最新再录入，2026-08-16）
+    await _loadAll();
+    if (!mounted) return;
     final form = await showDialog<_TradeFormResult>(
       context: context,
       builder: (_) => _TradeDialog(api: widget.api),
