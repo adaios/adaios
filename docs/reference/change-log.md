@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 交易时段节奏推送（RFC 两阶段全做）| `PushChannel` 渠道插件化（kernel/push 接口 + Feed 默认 + 微信 Server酱，未配置 key 自动禁用）；`TradingSessionPushService` 三节点（早盘计划 9:15 / 午间跟踪 12:00 / 尾盘建议 14:50，cron 可配）+ 内容两阶段（LLM 自然语言生成，失败降级模板）；`MarketAlertService` 异动改走渠道（Feed+微信同发，真止损/早盘/午间/尾盘全链路）；择时状态读 `current.md`；feature-reference 补主动推送章节 | 后端 568（+8）|
 | 2026-08-16 | 真止损预警（A 最小闭环）| `MarketAlertService` 新增 `stop-loss` 检测：现价跌破用户预设止损位 → R66 硬判定（复用 G-3 引擎口径，与建议引擎一致）→ 主动推送 Feed「已跌破你的止损位 X，按纪律该清仓了」；未设止损持仓跳过（R68）；当日去重沿用；文案无第三视角；api-spec 补 push 类型说明 | 后端 560（+4）|
 | 2026-08-16 | 框架+插件审查 P2 清尾批 | FP-P2a~i：parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce）；R81 100万前提（超 100 万不强制，参考 R82-R95）；测试补断言；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录；编号对拍（R1-R120/E1-E30，K39）| 后端 556（+1）|
 | 2026-08-16 | 框架+插件审查修复批 | 三官 deep 审查（backend/knowledge/docs）后发现修复：yml 路径 11-context→knowledge/context（运行时断链，FP-P1）；R81 占比分母改总资产（现金纳入，FP-P2 + 测试）；update-current.sh 幂等 + 时间戳语义 + 声明修正（FP-P3/S4）；R66 现价口径注明（FP-P4）；总纲 §五 刷新全 ✅（FP-S1）；引擎口径契约测试 RuleKnowledgeContractTest（FP-S2/B44）；rules-api.md §2/§3 同步（FP-S3）| 后端 555（+4）|

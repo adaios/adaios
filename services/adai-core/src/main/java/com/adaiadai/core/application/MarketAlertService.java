@@ -1,19 +1,17 @@
 package com.adaiadai.core.application;
 
-import com.adaiadai.core.domain.trading.MarketPushEvent;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
-import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
-import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.kernel.push.PushChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,7 +22,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -44,20 +41,20 @@ import java.util.Set;
  *   <li><b>break-cost</b>：现价跌破成本线（默认开启）→ 风控提醒</li>
  * </ul>
  * 同一持仓同类异动当日只推一次（{@link MarketSnapshotRepository} 签名去重），
- * 避免每轮询刷屏。FeedAppService 按日读取推送事件注入 {@code type=push} 条目。
- * 推送载体 = Feed 内展示（无系统通知渠道），"你不问，App 也告诉你今天需要知道的"。
+ * 避免每轮询刷屏。RFC 20260816：推送走 {@link PushChannel} 渠道插件化——
+ * Feed 默认（App 内）+ 微信（Server酱，不打开也收到），外部渠道随账号配置。
+ * 推送载体 = Feed 内展示 + 外部渠道，"你不问，App 也告诉你今天需要知道的"。
  */
 @Service
 public class MarketAlertService {
 
     private static final Logger log = LoggerFactory.getLogger(MarketAlertService.class);
-    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final MarketDataSource marketDataSource;
     private final PositionRepository positionRepository;
     private final AccountRepository accountRepository;
     private final MarketSnapshotRepository snapshotRepository;
-    private final MarketPushRepository pushRepository;
+    private final List<PushChannel> pushChannels;
     private final PluginService pluginService;
     /** G-3 规则引擎：stop-loss 判定口径与建议引擎一致（R66，现价口径）。 */
     private final TradingRuleEngine ruleEngine;
@@ -70,7 +67,7 @@ public class MarketAlertService {
                               PositionRepository positionRepository,
                               AccountRepository accountRepository,
                               MarketSnapshotRepository snapshotRepository,
-                              MarketPushRepository pushRepository,
+                              List<PushChannel> pushChannels,
                               PluginService pluginService,
                               TradingRuleEngine ruleEngine,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
@@ -80,7 +77,7 @@ public class MarketAlertService {
         this.positionRepository = positionRepository;
         this.accountRepository = accountRepository;
         this.snapshotRepository = snapshotRepository;
-        this.pushRepository = pushRepository;
+        this.pushChannels = pushChannels;
         this.pluginService = pluginService;
         this.ruleEngine = ruleEngine;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
@@ -125,7 +122,7 @@ public class MarketAlertService {
         LocalDate today = LocalDate.now();
         Set<String> existing = snapshotRepository.alertedSignatures(userId, today);
         Set<String> newSignatures = new HashSet<>(existing);
-        List<MarketPushEvent> alerts = new ArrayList<>();
+        List<PushChannel.PushMessage> alerts = new ArrayList<>();
 
         Map<String, MarketData> quotes = marketDataSource.quote(positions.stream().map(Position::symbol).toList());
         if (quotes.isEmpty()) return; // 网络/接口失败：保留快照，不误推
@@ -159,25 +156,30 @@ public class MarketAlertService {
         }
 
         if (!alerts.isEmpty()) {
-            for (MarketPushEvent e : alerts) {
-                pushRepository.append(userId, today, e);
+            // RFC 20260816：推送走渠道插件化——Feed（默认落盘）+ 微信（外部）等所有 enabled 渠道
+            for (PushChannel.PushMessage m : alerts) {
+                for (PushChannel channel : pushChannels) {
+                    if (channel.enabled()) {
+                        channel.push(userId, m);
+                    }
+                }
             }
             snapshotRepository.saveSignatures(userId, today, newSignatures);
-            log.info("行情异动推送 | userId={} | {} 条 | {}", userId, alerts.size(), alerts.stream().map(MarketPushEvent::type).toList());
+            log.info("行情异动推送 | userId={} | {} 条 | {}", userId, alerts.size(),
+                    alerts.stream().map(PushChannel.PushMessage::type).toList());
         }
     }
 
     // ── 内部方法 ──
 
     private void addIfNew(Position p, MarketData md, BigDecimal change, String type,
-                          Set<String> existing, Set<String> newSignatures, List<MarketPushEvent> alerts) {
+                          Set<String> existing, Set<String> newSignatures, List<PushChannel.PushMessage> alerts) {
         String sig = signature(p.symbol(), LocalDate.now(), type);
         if (existing.contains(sig)) return;
         newSignatures.add(sig);
-        alerts.add(new MarketPushEvent(
-                IdGenerator.monotonic("push_"),
-                p.symbol(), p.name(), message(p, md, change, type), type,
-                LocalTime.now().format(TIME_FMT)));
+        alerts.add(new PushChannel.PushMessage(
+                p.name() + " 行情提醒", message(p, md, change, type), type,
+                p.symbol(), p.name(), LocalTime.now()));
     }
 
     private String signature(String symbol, LocalDate date, String type) {
