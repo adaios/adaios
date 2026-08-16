@@ -4,8 +4,10 @@ import com.adaiadai.core.application.TradingAdviceAppService;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
+import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.TransferRecord;
@@ -53,19 +55,22 @@ public class TradingController {
     private final TradingParseAppService parseAppService;
     private final PluginService pluginService;
     private final WatchlistBuyPointService buyPointService;
+    private final SoldScoreService soldScoreService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
                              TradingAdviceAppService adviceAppService,
                              TradingParseAppService parseAppService,
                              PluginService pluginService,
-                             WatchlistBuyPointService buyPointService) {
+                             WatchlistBuyPointService buyPointService,
+                             SoldScoreService soldScoreService) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
         this.adviceAppService = adviceAppService;
         this.parseAppService = parseAppService;
         this.pluginService = pluginService;
         this.buyPointService = buyPointService;
+        this.soldScoreService = soldScoreService;
     }
 
     /**
@@ -255,6 +260,16 @@ public class TradingController {
                 userId, symbol, psychology != null ? psychology : "");
         return ok ? ResponseEntity.ok(Map.of("updated", true))
                 : ResponseEntity.notFound().build();
+    }
+
+    /** 清仓复盘三维打分（D3，GET /api/v1/trading/sold/score：买点/执行/选股，分数是参考不是指令）。 */
+    @GetMapping("/sold/score")
+    public ResponseEntity<?> soldScore(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<SoldTrade> trades = tradingAppService.soldList(userId);
+        return ResponseEntity.ok(soldScoreService.score(trades));
     }
 
     /** 银证转账（转入/转出，净投入跟踪，POST /api/v1/trading/transfer）。 */

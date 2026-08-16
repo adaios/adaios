@@ -505,6 +505,14 @@ class ApiService {
     _check(resp);
   }
 
+  /// 清仓复盘三维打分（GET /api/v1/trading/sold/score，D3）。
+  Future<List<SoldScoreDto>> getSoldScore() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/sold/score'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldScoreDto.fromJson(e)).toList();
+  }
+
   /// 资金股份查询导入（POST /api/v1/trading/imports/cash：现金 + 精确成本）。
   Future<CashImportResult> importCash(String content) async {
     final resp = await _client.post(
@@ -1343,6 +1351,32 @@ class SoldTradeDto {
       holdPnlPct: (m['holdPnlPct'] as num?)?.toDouble() ?? 0,
       verdict: m['verdict']?.toString() ?? '',
       psychology: m['psychology']?.toString() ?? '',
+    );
+  }
+}
+
+/// 清仓复盘三维打分（D3：买点/执行/选股，分数是参考不是指令）。
+class SoldScoreDto {
+  final String symbol, name, buyPointSignal, buyPointExplain, executionExplain, verdict;
+  final int? buyPointScore, executionScore;
+  final double? totalScore;
+
+  SoldScoreDto({required this.symbol, required this.name, required this.buyPointSignal,
+      required this.buyPointExplain, required this.executionExplain, required this.verdict,
+      required this.buyPointScore, required this.executionScore, required this.totalScore});
+
+  factory SoldScoreDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldScoreDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyPointSignal: m['buyPointSignal']?.toString() ?? '',
+      buyPointExplain: m['buyPointExplain']?.toString() ?? '',
+      executionExplain: m['executionExplain']?.toString() ?? '',
+      verdict: m['verdict']?.toString() ?? '',
+      buyPointScore: (m['buyPointScore'] as num?)?.toInt(),
+      executionScore: (m['executionScore'] as num?)?.toInt(),
+      totalScore: (m['totalScore'] as num?)?.toDouble(),
     );
   }
 }

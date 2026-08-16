@@ -52,6 +52,7 @@ MockClient _tradingMock() {
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/trades') return _json([]);
     if (path == '/api/v1/trading/reviews') return _json([]);
@@ -375,10 +376,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades') {
           sent = jsonDecode(request.body) as Map<String, dynamic>;
@@ -419,10 +422,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades') {
           sent = jsonDecode(request.body) as Map<String, dynamic>;
@@ -464,6 +469,7 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
         if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/positions' && request.method == 'GET') {
           return _json([current]);
@@ -515,10 +521,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (request.method == 'PUT') putCalls++;
         return http.Response('not found', 404);
@@ -549,10 +557,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades/batch') {
           sentBody = jsonDecode(request.body) as Map<String, dynamic>;
@@ -596,10 +606,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades/batch') {
           batchCalls++;
@@ -632,10 +644,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades') {
           return _json([
@@ -696,10 +710,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/trades') return _json([]);
         return http.Response('not found', 404);
@@ -724,10 +740,12 @@ void main() {
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
 
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
     if (path == '/api/v1/trading/buy-points') return _json([]);
+    if (path == '/api/v1/trading/sold/score') return _json([]);
 
         if (path == '/api/v1/trading/reviews') return _json(['2026-08-12', '2026-08-11']);
         if (path == '/api/v1/trading/review') {
@@ -832,6 +850,7 @@ void main() {
           ]);
         }
         if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
         if (path == '/api/v1/trading/buy-points') {
           return _json([
             {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 0.8,
@@ -851,6 +870,43 @@ void main() {
       expect(find.text('B1 80%'), findsOneWidget);
       // 未命中：—
       expect(find.text('—'), findsOneWidget);
+    });
+  });
+
+  group('清仓复盘三维打分（D3）', () {
+    testWidgets('清仓表显示买点/执行/总分', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold/score') {
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyPointScore': 88, 'buyPointSignal': 'B1',
+             'buyPointExplain': '回调 52%', 'executionScore': 90, 'executionExplain': '盈利了结，执行到位',
+             'totalScore': 89, 'verdict': '盈利了结'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      // 三维打分列渲染（分数是参考不是指令）
+      expect(find.text('88'), findsOneWidget); // 买点分
+      expect(find.text('90'), findsOneWidget); // 执行分
+      expect(find.text('89'), findsOneWidget); // 总分
     });
   });
 

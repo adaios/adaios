@@ -27,6 +27,7 @@ class _TradingPageState extends State<TradingPage> {
   List<PositionItem> _positions = [];
   List<WatchlistItemDto> _watchlist = [];
   List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
+  List<SoldScoreDto> _soldScores = []; // D3 清仓复盘三维打分
   List<SoldTradeDto> _sold = [];
   AccountSnapshotDto? _account;
   double? _cash;
@@ -77,6 +78,7 @@ class _TradingPageState extends State<TradingPage> {
         widget.api.getSold(),
         widget.api.getAccount(),
         widget.api.getBuyPoints(),
+        widget.api.getSoldScore(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -86,6 +88,7 @@ class _TradingPageState extends State<TradingPage> {
         _sold = results[3] as List<SoldTradeDto>;
         _account = results[4] as AccountSnapshotDto;
         _buyPoints = results[5] as List<BuyPointDto>;
+        _soldScores = results[6] as List<SoldScoreDto>;
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
         _assets = _account?.assets;
@@ -719,26 +722,44 @@ class _TradingPageState extends State<TradingPage> {
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
               DataColumn(label: Text('介入→清仓')), DataColumn(label: Text('天数')),
               DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('规则对照')),
+              DataColumn(label: Text('买点分')), DataColumn(label: Text('执行分')), DataColumn(label: Text('总分')),
               DataColumn(label: Text('心理标注')),
             ],
-            rows: _sold.map((s) => DataRow(cells: [
-              DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
-              DataCell(Text(s.name, style: const TextStyle(fontSize: 12))),
-              DataCell(Text('${s.buyDate ?? '?'}→${s.sellDate ?? '?'}',
-                  style: const TextStyle(fontSize: 12))),
-              DataCell(Text('${s.holdDays}天', style: const TextStyle(fontSize: 12))),
-              DataCell(Text('${s.holdPnlPct.toStringAsFixed(2)}%', style: TextStyle(fontSize: 12,
-                  color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen))),
-              DataCell(Text(s.verdict, style: TextStyle(fontSize: 11,
-                  color: s.verdict.contains('R66') ? AppColors.darkOrange
-                      : s.verdict.contains('盈利') ? AppColors.darkGrey4 : AppColors.darkGrey5))),
-              DataCell(InkWell(
-                onTap: () => _markPsychology(s),
-                child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
+            rows: _sold.map((s) {
+              // D3 三维打分：按 symbol 匹配（分数是参考不是指令）
+              final sc = _soldScores.where((x) => x.symbol == s.symbol).toList();
+              final score = sc.isEmpty ? null : sc.first;
+              return DataRow(cells: [
+                DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
+                DataCell(Text(s.name, style: const TextStyle(fontSize: 12))),
+                DataCell(Text('${s.buyDate ?? '?'}→${s.sellDate ?? '?'}',
+                    style: const TextStyle(fontSize: 12))),
+                DataCell(Text('${s.holdDays}天', style: const TextStyle(fontSize: 12))),
+                DataCell(Text('${s.holdPnlPct.toStringAsFixed(2)}%', style: TextStyle(fontSize: 12,
+                    color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen))),
+                DataCell(Text(s.verdict, style: TextStyle(fontSize: 11,
+                    color: s.verdict.contains('R66') ? AppColors.darkOrange
+                        : s.verdict.contains('盈利') ? AppColors.darkGrey4 : AppColors.darkGrey5))),
+                DataCell(Text(score?.buyPointScore?.toString() ?? '—',
                     style: TextStyle(fontSize: 12,
-                        color: s.psychology.isEmpty ? AppColors.darkGrey5 : AppColors.darkOrange)),
-              )),
-            ])).toList(),
+                        color: (score?.buyPointScore ?? 0) >= 70 ? AppColors.darkGreen
+                            : (score?.buyPointScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                DataCell(Text(score?.executionScore?.toString() ?? '—',
+                    style: TextStyle(fontSize: 12,
+                        color: (score?.executionScore ?? 0) >= 70 ? AppColors.darkGreen
+                            : (score?.executionScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                DataCell(Text(score?.totalScore?.toStringAsFixed(0) ?? '—',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                        color: (score?.totalScore ?? 0) >= 70 ? AppColors.darkGreen
+                            : (score?.totalScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                DataCell(InkWell(
+                  onTap: () => _markPsychology(s),
+                  child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
+                      style: TextStyle(fontSize: 12,
+                          color: s.psychology.isEmpty ? AppColors.darkGrey5 : AppColors.darkOrange)),
+                )),
+              ]);
+            }).toList(),
           ),
         ),
     ]);

@@ -532,6 +532,22 @@
 
 **body**：`{"psychology":"追高后恐慌割肉"}`（用户复盘素材，个人数据隐私保护）。
 
+### `GET /api/v1/trading/sold/score` — 清仓复盘三维打分（D3，2026-08-16）
+
+对全部清仓交易复盘打分（**分数是参考不是指令**，复盘用，买不买永远人决定）。三维：买点（买入日回溯 K 线 → B1/B2 完美图匹配度）/ 执行（verdict 纪律对照）/ 选股（关注后表现，数据积累后返回 null）。
+
+**响应**：
+```json
+[{"symbol":"600519","name":"贵州茅台","buyPointScore":88,"buyPointSignal":"B1",
+  "buyPointExplain":"回调 52%、缩量 0.6x、KDJ.J=12",
+  "executionScore":90,"executionExplain":"盈利了结，执行到位",
+  "totalScore":89,"verdict":"盈利了结"}]
+```
+
+- 买点维度：B2 突破 85-100 / B1 低吸 70-100 / B1? 候选 50 / 无形态（追高）25；买入日超出 K 线回溯范围 → `buyPointScore=null`（总分为 null 不糊弄）
+- 执行维度：盈利了结 90 / 其他亏损按纪律 65 / 违反 R53 45 / 违反 R66 15
+- 需 trading 插件（403）。
+
 ### `POST /api/v1/trading/transfer` — 银证转账（转入/转出，净投入跟踪，2026-08-16）
 
 **body**：`{"type":"IN|OUT","amount":10000,"date":"2026-08-17","note":"补仓"}`
