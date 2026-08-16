@@ -63,7 +63,8 @@ def count_tests(glob_pattern, is_dart=False):
         if is_dart:
             n += len(re.findall(r'testWidgets\(', t)) + len(re.findall(r'^\s*test\(', t, re.M))
         else:
-            n += len(re.findall(r'@Test\b', t))
+            # 兼容简写 @Test 与全限定 @org.junit.jupiter.api.Test（2026-08-16：全限定写法触发漏数）
+            n += len(re.findall(r'@(?:org\.junit\.jupiter\.api\.)?Test\b', t))
     return n
 
 backend_tests = count_tests('services/adai-core/src/test/java/**/*.java')

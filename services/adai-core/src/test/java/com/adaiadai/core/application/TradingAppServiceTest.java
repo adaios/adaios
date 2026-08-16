@@ -6,7 +6,9 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
+import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
+import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
@@ -30,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -493,5 +496,94 @@ class TradingAppServiceTest {
         assertEquals(0, positions.get(0).currentPrice().compareTo(new BigDecimal("10.5")),
                 "行情失败用存储价，不报错");
     }
+
+    // ── 自选/清仓/资金（RFC 20260816 交易数据智能）──
+
+@org.junit.jupiter.api.Test
+void watchlistImport_upsertsBySymbol() {
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(MarketDataSource.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
+            + "601066\t中信建投\t证券\t金融-证券\t2\t10\t1\tKDJ死叉\n";
+    var r = service.watchlistImport("default", content);
+
+    assertEquals(2, r.imported());
+    ArgumentCaptor<java.util.List<WatchlistItem>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(wl).saveAll(eq("default"), cap.capture());
+    assertEquals(2, cap.getValue().size());
+    assertEquals("000725", cap.getValue().get(0).symbol());
+    assertEquals("KDJ死叉", cap.getValue().get(0).signal());
+    assertEquals(6, cap.getValue().get(0).longForm());
 }
 
+@org.junit.jupiter.api.Test
+void soldImport_preservesExistingPsychology() {
+    PositionRepository repo = mock(PositionRepository.class);
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", "追高后恐慌割肉"))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
+            mock(MarketDataSource.class));
+
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n";
+    service.soldImport("default", content);
+
+    ArgumentCaptor<java.util.List<SoldTrade>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(sold).saveAll(eq("default"), cap.capture());
+    assertEquals("追高后恐慌割肉", cap.getValue().get(0).psychology(),
+            "重新导入应保留已有心理标注");
+    assertEquals("2026-07-31", cap.getValue().get(0).buyDate().toString());
+}
+
+@org.junit.jupiter.api.Test
+void importCashQuery_updatesCashAndPreciseCost() {
+    PositionRepository repo = mock(PositionRepository.class);
+    when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new Position("000725", "京东方A", 5300, new BigDecimal("6.042"), new BigDecimal("6.042"),
+                    LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+            mock(SoldTradeRepository.class), mock(MarketDataSource.class));
+
+    String content = "人民币: 余额:292.88  可用:292.88  资产:110504.88\n"
+            + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
+            + "1 000725 京东方Ａ 5300.00 6.0421 5.8100 30793.00 -1229.57\n";
+    var r = service.importCashQuery("default", content);
+
+    assertEquals(0, r.cash().compareTo(new BigDecimal("292.88")));
+    assertEquals(0, r.assets().compareTo(new BigDecimal("110504.88")));
+    assertEquals(1, r.updatedCost(), "精确成本（4 位）应更新 1 只");
+    verify(repo).saveCashBalance(eq("default"), org.mockito.ArgumentMatchers.argThat(
+            c -> c.compareTo(new BigDecimal("292.88")) == 0));
+    // 成本更新为 6.0421
+    ArgumentCaptor<java.util.List<Position>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(repo).saveAll(eq("default"), cap.capture());
+    assertEquals(0, cap.getValue().get(0).avgCost().compareTo(new BigDecimal("6.0421")));
+}
+
+@org.junit.jupiter.api.Test
+void soldUpdatePsychology_marksTrade() {
+    PositionRepository repo = mock(PositionRepository.class);
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", ""))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
+            mock(MarketDataSource.class));
+
+    boolean ok = service.soldUpdatePsychology("default", "600206", "套牢死扛");
+
+    assertTrue(ok);
+    ArgumentCaptor<java.util.List<SoldTrade>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(sold).saveAll(eq("default"), cap.capture());
+    assertEquals("套牢死扛", cap.getValue().get(0).psychology());
+}
+}
