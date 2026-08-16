@@ -1,0 +1,79 @@
+%% AdaiOS 功能生命周期时序图（Mermaid sequenceDiagram）
+%% 一个功能从「任务」到「上线」的完整交互顺序
+%% 渲染：Obsidian / GitHub / VS Code Mermaid 插件
+
+sequenceDiagram
+    autonumber
+    actor User as 👤 人（指方向/审核/决策）
+    participant AI as 🤖 AI（生产内容/执行流程）
+    participant CTX as 📥 guard-context<br/>(任务上下文)
+    participant CODE as 💻 代码工程<br/>(services/apps/os)
+    participant HOOK as 🛡 pre-commit<br/>(四层门禁)
+    participant SED as 📦 guard-sediment<br/>(沉淀检查)
+    participant GATE as 🚢 deploy-gate<br/>(部署门禁+smoke)
+    participant WEEK as 📅 weekly-audit<br/>(每周审查)
+    participant STATE as 📊 状态层<br/>(status/REVIEW/change-log)
+
+    %% ① 任务规划（进攻侧）
+    User->>AI: 指方向：做「X」功能
+    AI->>CTX: 开工前生成上下文清单
+    CTX-->>AI: C1状态/C2未修项/C3边界/C4坑/C5规范/C6待办
+    Note over AI: 带上下文开始写代码
+
+    %% ② 开发
+    AI->>CODE: 编写代码（功能 X）
+
+    %% ③ 提交门禁（防守侧）
+    AI->>HOOK: git commit
+    HOOK->>HOOK: 隐私闸门（data/ 禁止）
+    HOOK->>HOOK: 内容对齐（端点↔api-spec / 测试数↔status）
+    HOOK->>HOOK: 结构门禁（frontmatter M1-M4）
+    HOOK->>HOOK: 防复发（G1-G7）
+    alt 任一 FAIL
+        HOOK-->>AI: ❌ 阻止提交 + 修复指引
+        AI->>CODE: 修复后重提
+    else 全部 PASS
+        HOOK-->>AI: ✅ 提交通过
+    end
+
+    %% ④ 沉淀检查（进攻侧②③）
+    AI->>SED: ship 时沉淀检查
+    SED-->>AI: S1 坑/ADR 提示
+    SED-->>AI: S2 REVIEW 出表检查
+    alt S3 change-log 未登记
+        SED-->>AI: ❌ FAIL 补登记
+        AI->>STATE: 补 change-log 条目
+    end
+    AI->>STATE: 更新 status.md / REVIEW.md / change-log.md
+
+    %% ⑤ 部署门禁（触发侧·最硬）
+    AI->>GATE: 部署请求（用户确认）
+    User-->>AI: ✅ 确认部署
+    GATE->>GATE: GATE-BEFORE（guard-meta + align + guard.sh）
+    alt 三关不过
+        GATE-->>AI: ❌ 拒绝部署
+    else 三关通过
+        GATE->>GATE: 执行 deploy.sh（上传+重启）
+        GATE->>GATE: GATE-AFTER（smoke 六端点）
+        alt smoke 失败
+            GATE-->>AI: ❌ 部署后验证失败，查日志
+        else smoke 通过
+            GATE-->>User: ✅ 部署完成，生产可用
+        end
+    end
+
+    %% ⑥ 生产运行
+    User->>CODE: 使用功能 X（app/web/admin）
+
+    %% ⑦ 每周审查（旁路·防休眠）
+    WEEK->>WEEK: cron 每周一自动跑
+    WEEK->>WEEK: W1守护 W2结构+对齐 W3沉淀 W4失真 W5未修项
+    WEEK-->>AI: 报告（发现 → 修复 → 沉淀）
+    WEEK-->>User: 报告（人审核内容/做决策）
+    User->>AI: 审核结论：修/留/做
+
+    %% 状态层贯穿
+    STATE-->>CTX: 提供上下文（C2未修项/C6待办）
+    STATE-->>HOOK: 提供对拍基准（status/api-spec）
+    STATE-->>SED: 提供出表/登记状态
+    STATE-->>WEEK: 提供失真扫描基准
