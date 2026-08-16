@@ -181,4 +181,11 @@ public class PositionFileRepository implements PositionRepository {
         sb.append("lastUpdated: ").append(LocalDateTime.now().format(DTF)).append("\n");
         return sb.toString();
     }
+
+    /** 保存导入文件（上传留存，2026-08-16）。 */
+    @Override
+    public void saveImportFile(String userId, String path, String content) {
+        fileStorage.write(userId, path, content);
+    }
+
 }

@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 导入文件上传留存 + 交易页自动刷新 | 后端 `POST /trading/imports/save`（multipart 留存 data/imports/ + GBK 自动转 UTF-8）；web 导入 Dialog 加「选择文件」（上传→转码→自动解析导入，免复制粘贴）；交易页切入/点记录交易自动刷新（保活缓存不再显示旧数据）；盈亏实时注入（getPositions 行情） | 后端 576（+2）· web 82 |
 | 2026-08-16 | 通达信持仓导入 + 代码带名称 | `POST /trading/positions/import` 持仓初始化导入（通达信导出快照，按 symbol upsert，name 缺失行情补全，返回未设止损列表 R68 提示补设）+ `GET /trading/lookup` 代码查名；web 批量导入自动识别通达信格式（表头定位列，制表符/空格）+ 记录交易输入 6 位代码自动带出名称（二次确认可改）；api-spec 登记 2 端点 | 后端 572（+4）· web 81（+4）|
 | 2026-08-16 | 生产部署（时段推送 + 知识层上线）| deploy-gate 全过（三关 + smoke 6 端点）；os/trading-engine/knowledge/ 上传生产 + .env 配 `ADAI_TRADING_KNOWLEDGE_PATH`（G-4 路径生产生效）+ `ADAI_PUSH_WECHAT_SENDKEY`（微信渠道生产就绪）；生产实测：京东方建议引擎引用 R81 真实规则（占比 100% 超 25% 上限 → reduce），知识加载 rules=11KB 全通 | — |
 | 2026-08-16 | 交易时段节奏推送（RFC 两阶段全做）| `PushChannel` 渠道插件化（kernel/push 接口 + Feed 默认 + 微信 Server酱，未配置 key 自动禁用）；`TradingSessionPushService` 三节点（早盘计划 9:15 / 午间跟踪 12:00 / 尾盘建议 14:50，cron 可配）+ 内容两阶段（LLM 自然语言生成，失败降级模板）；`MarketAlertService` 异动改走渠道（Feed+微信同发，真止损/早盘/午间/尾盘全链路）；择时状态读 `current.md`；feature-reference 补主动推送章节 | 后端 568（+8）|

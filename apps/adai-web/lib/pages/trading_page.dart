@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../utils/trade_import_parser.dart';
 import '../widgets/page_header.dart';
+import 'package:file_picker/file_picker.dart';
 
 /// 交易桌面形态 — web = 详细管理（RFC 20260816 §4.2）：
 /// 快照 stat 卡 + DataTable 持仓（红涨绿亏 / 数字右对齐 + 逐行「编辑」）
@@ -863,6 +864,38 @@ class _ImportDialogState extends State<_ImportDialog> {
     super.dispose();
   }
 
+  bool _uploading = false;
+
+  /// 选择本地文件（通达信导出 txt）→ 上传留存 → 转码填充 → 自动导入。
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.first;
+      if (f.bytes == null) return;
+      setState(() => _uploading = true);
+      final saved = await widget.api.saveImportFile(f.name, f.bytes!);
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _text.text = saved.content;
+        _successCount = null;
+        _errors.clear();
+      });
+      // 自动解析导入（通达信持仓 / 交易 CSV 自动识别）
+      await _import();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _errors.add('文件上传失败，请重试');
+      });
+    }
+  }
+
   Future<void> _import() async {
     // 通达信导出（持仓快照）自动识别 → 持仓初始化导入；否则按交易 CSV 批量导入
     if (isTdxExport(_text.text)) {
@@ -978,6 +1011,27 @@ class _ImportDialogState extends State<_ImportDialog> {
             const SizedBox(height: 4),
             const Text('例（交易）：600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(height: 8),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : _pickFile,
+                icon: _uploading
+                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.upload_file, size: 16),
+                label: Text(_uploading ? '上传中…' : '选择文件（通达信导出 txt）',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.darkGrey1,
+                  side: const BorderSide(color: AppColors.darkGrey4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('或直接粘贴文本（两种格式自动识别）',
+                    style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ),
+            ]),
             const SizedBox(height: 8),
             TextField(
               controller: _text,

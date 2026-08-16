@@ -33,7 +33,8 @@ for ctrl in sorted(interfaces.glob('*Controller.java')):
     cls_m = re.search(r'@RequestMapping\(\s*"?(/api/v1/[^")\s]+)', text)
     base = cls_m.group(1) if cls_m else ''
     # 方法级 Mapping（裸注解 + 带引号 + 类级 base 拼接）
-    for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\(\s*"?([^")\s]+)', text):
+    # 兼容命名参数写法 @PostMapping(value = "/path")（2026-08-16：imports/save 触发盲区）
+    for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\(\s*(?:value\s*=\s*)?"?([^")\s]+)', text):
         method = m.group(1).upper()
         path = m.group(2)
         full = path if path.startswith('/api') else (base + path)

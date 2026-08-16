@@ -9,7 +9,7 @@
 
 | 端 | 测试数 | 失败 | 备注 |
 |:---|:------:|:----:|:-----|
-| 后端 adai-core | **574** | 0 | 16 Controller 接口测试全覆盖 + 多模态 + 鉴权 + 交易建议引擎（止损硬判定）+ 一句话交易解析 + 交易数据模型（逐笔流水/止损/买点）+ 带图 S-2 聚合修复 + G-1~G-6 框架+插件 + 真止损预警 + 时段节奏推送 + 通达信持仓导入/代码查名 + 持仓行情注入（getPositions 实时盈亏）|
+| 后端 adai-core | **576** | 0 | 16 Controller 接口测试全覆盖 + 多模态 + 鉴权 + 交易建议引擎（止损硬判定）+ 一句话交易解析 + 交易数据模型（逐笔流水/止损/买点）+ 带图 S-2 聚合修复 + G-1~G-6 框架+插件 + 真止损预警 + 时段节奏推送 + 通达信持仓导入/代码查名 + 持仓行情注入 + 导入文件上传留存（GBK 转码）|
 | 前端 adai-app | **116** | 0 | Feed 状态机 12 + 6 页面 + 选号/切换链路 + 插件门控 + 带图发图即对话 + 交易建议 UI + 交易止损/买点 P0 |
 | 前端 adai-web | **82** | 0 | 桌面壳 + 交易管理端（持仓编辑/批量导入/交易历史/复盘历史）+ 通达信导入解析 + P1-5 回归 |
 | 前端 adai-admin | **34** | 0 | 账号/数据/系统/知识页（治理只读收敛）+ 插件开关 |
@@ -17,7 +17,7 @@
 ## 端点/控制器计数（Gradle `endpoints.txt` 单一口径，REVIEW #228）
 
 - Controller：**16**（`interfaces/*Controller.java`，含 MeController；GlobalExceptionHandler 非 Controller）
-- 端点：**58**（`build/resources/main/META-INF/endpoints.txt` 实测；含 /trading/advice、/trading/trades/parse、GET /trading/trades 流水、/admin/** 维护端点迁移、/trading/lookup 代码查名、/trading/positions/import 持仓导入）
+- 端点：**59**（`build/resources/main/META-INF/endpoints.txt` 实测；含 /trading/advice、/trading/trades/parse、GET /trading/trades 流水、/admin/** 维护端点迁移、/trading/lookup 代码查名、/trading/positions/import 持仓导入、/trading/imports/save 文件留存）
 - 端点计数规则：以 Gradle 生成的 `endpoints.txt` 为准，禁止扫源码回退（REVIEW #228/#187）
 
 ## 运行环境

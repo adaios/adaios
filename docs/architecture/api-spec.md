@@ -494,6 +494,15 @@
 
 **响应**：`{"symbol":"000725","name":"京东方A"}`（name 查询失败为空串，前端可手填）。需 trading 插件（403）。
 
+### `POST /api/v1/trading/imports/save` — 导入文件上传留存（通达信导出，2026-08-16）
+
+**multipart**：`file`（通达信导出 txt，GBK/UTF-8 均可）
+
+- **留存**：原始文件存 `data/{userId}/trading/imports/{yyyy-MM}/{ts}_{filename}`（可追溯）
+- **转码**：GBK 自动转 UTF-8（UTF-8 严格解码失败按 GBK）
+- **响应**：`{"path":"trading/imports/...","content":"转码后的 UTF-8 文本"}`——前端填充解析导入
+- 需 trading 插件（403）。
+
 ### `POST /api/v1/trading/positions/import` — 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）
 
 **body**（数组，可空）：

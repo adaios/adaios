@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -346,6 +348,41 @@ public class TradingAppService {
 
     /** 导入结果：导入数量 + 未设止损列表（R68 提示）。 */
     public record PositionImportResult(int imported, List<String> missingStopLoss) {}
+
+    /**
+     * 保存导入文件（上传留存 + 编码转码，2026-08-16）。
+     * <p>
+     * 留存：原始文件存 {@code data/{userId}/trading/imports/{yyyy-MM}/{ts}_{filename}}（UTF-8 转码后可追溯）。
+     * 编码：通达信导出为 GBK——UTF-8 严格解码失败则按 GBK 转码，前端/解析器拿到 UTF-8 文本。
+     *
+     * @return {path, content}——content 为转码后的 UTF-8 文本（前端填充解析）
+     */
+    public ImportFileResult saveImportFile(String userId, String filename, byte[] bytes) {
+        String safeName = filename != null ? filename.replaceAll("[^a-zA-Z0-9._\\-\\u4e00-\\u9fa5]", "_") : "import.txt";
+        String content = decodeText(bytes);
+        String monthDir = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+        String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String path = "trading/imports/" + monthDir + "/" + ts + "_" + safeName;
+        positionRepository.saveImportFile(userId, path, content);
+        log.info("导入文件已留存 | userId={} | path={} | {} 字节", userId, path, bytes.length);
+        return new ImportFileResult(path, content);
+    }
+
+    /** 编码识别 + 转码：UTF-8 严格解码优先，失败按 GBK（通达信导出默认编码）。 */
+    private String decodeText(byte[] bytes) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return new String(bytes, java.nio.charset.Charset.forName("GBK"));
+        }
+    }
+
+    /** 导入文件留存结果。 */
+    public record ImportFileResult(String path, String content) {}
 
     // ── 内部方法 ──
 

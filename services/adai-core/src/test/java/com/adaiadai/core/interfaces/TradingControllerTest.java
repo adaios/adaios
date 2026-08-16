@@ -18,6 +18,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -599,4 +600,31 @@ class TradingControllerTest {
                         .content("[]"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void saveImportFile_returnsTranscodedContent() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.saveImportFile(any(), any(), any())).thenReturn(
+                new TradingAppService.ImportFileResult(
+                        "trading/imports/2026-08/1_x.txt", "代码\t名称\n000725\t京东方A\n"));
+        MockMvc mvc = buildMvc(trading);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "持仓股.txt", "text/plain", "GBK bytes".getBytes());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/v1/trading/imports/save").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.path").value(org.hamcrest.Matchers.containsString("imports/")))
+                .andExpect(jsonPath("$.content").value(org.hamcrest.Matchers.containsString("000725")));
+    }
+
+    @Test
+    void saveImportFile_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        MockMultipartFile file = new MockMultipartFile("file", "a.txt", "text/plain", "x".getBytes());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/v1/trading/imports/save").file(file))
+                .andExpect(status().isForbidden());
+    }
 }
+

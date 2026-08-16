@@ -155,6 +155,30 @@ public class TradingController {
     }
 
     /**
+     * 导入文件上传留存（通达信导出，2026-08-16）。
+     * POST /api/v1/trading/imports/save（multipart file）
+     * → 留存 data/{userId}/trading/imports/{yyyy-MM}/ + GBK 自动转 UTF-8
+     * → 返回 {path, content}（content 供前端填充解析导入）
+     */
+    @PostMapping(value = "/imports/save", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> saveImportFile(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        try {
+            TradingAppService.ImportFileResult result = tradingAppService.saveImportFile(
+                    userId, file.getOriginalFilename(), file.getBytes());
+            return ResponseEntity.ok(Map.of(
+                    "path", result.path(),
+                    "content", result.content()));
+        } catch (Exception e) {
+            log.warn("导入文件留存失败 | {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", "文件处理失败: " + e.getMessage()));
+        }
+    }
+
+    /**
      * 解析一句话交易（RFC 20260815 通道 A）：把自然语言「买了 1000 股京东方 @5.2」
      * 结构化为 symbol/name/direction/price/volume，供前端确认卡回显。
      * LLM 结构化优先，失败降级正则兜底；仍无法解析 → matched=false（前端转精确表单）。

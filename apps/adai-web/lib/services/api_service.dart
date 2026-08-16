@@ -430,6 +430,18 @@ class ApiService {
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return PositionImportResult.fromJson(data);
   }
+  /// 导入文件上传留存（通达信导出，2026-08-16）。
+  /// POST /api/v1/trading/imports/save（multipart file）→ {path, content}（GBK 已转 UTF-8）。
+  Future<ImportFileSaveResult> saveImportFile(String filename, List<int> bytes) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/trading/imports/save'))
+      ..headers.addAll(_headers)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await _client.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return ImportFileSaveResult.fromJson(data);
+  }
 
   /// 交易历史逐笔流水（web 独有，RFC 20260816 §4.2）。
   /// GET /api/v1/trading/trades?from&to（yyyy-MM-dd，可选）→ TradeRecord 列表。
@@ -1143,6 +1155,24 @@ class TradeRecordItem {
       buyPoint: map['buyPoint'] as String?,
       targetPrice: (map['targetPrice'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+    );
+  }
+}
+
+/// 导入文件留存结果（POST /api/v1/trading/imports/save）。
+class ImportFileSaveResult {
+  final String path;
+  final String content;
+
+  ImportFileSaveResult({required this.path, required this.content});
+
+  factory ImportFileSaveResult.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return ImportFileSaveResult(path: '', content: '');
+    }
+    return ImportFileSaveResult(
+      path: json['path']?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
     );
   }
 }

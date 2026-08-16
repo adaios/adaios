@@ -40,4 +40,12 @@ public interface PositionRepository {
     default PortfolioSnapshot snapshot(String userId) {
         return PortfolioSnapshot.of(findAll(userId), cashBalance(userId));
     }
+
+    /**
+     * 保存导入文件（上传留存，2026-08-16）：写入 {@code data/{userId}/{path}}（UTF-8 文本）。
+     */
+    default void saveImportFile(String userId, String path, String content) {
+        // 默认实现：不可用（由文件存储实现覆盖）
+    }
+
 }
