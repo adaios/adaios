@@ -1,7 +1,7 @@
 import zipfile, re, os, glob
 
-path = "D:/Projects/adai-trading-os/00-temp/股探报告文章/"
-outdir = "D:/Projects/adai-trading-os/99-inbox/"
+path = "D:/Projects/adai-trading-engine/00-temp/股探报告文章/"
+outdir = "D:/Projects/adai-trading-engine/99-inbox/"
 files = sorted(glob.glob(path + "*.docx"))
 
 for f in files:

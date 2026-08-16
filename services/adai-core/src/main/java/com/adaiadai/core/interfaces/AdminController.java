@@ -44,7 +44,7 @@ import java.util.stream.Stream;
  * <pre>
  * GET    /api/v1/admin/files?path=                     → data/ 目录条目列表
  * GET    /api/v1/admin/files/content?path=             → data/ 文件内容
- * GET    /api/v1/admin/knowledge?domain=trading-os&path=  → os/{domain}/ 目录条目列表
+ * GET    /api/v1/admin/knowledge?domain=trading-engine&path=  → os/{domain}/ 目录条目列表
  * GET    /api/v1/admin/knowledge/content?path=         → os/ 文件内容
  * POST   /api/v1/admin/records/retry                   → 手动触发记忆重补
  * POST   /api/v1/admin/memory/rebuild?date=            → 重建记忆（重跑 AI）
@@ -65,7 +65,7 @@ public class AdminController {
     /** AI 日志单页条数上限（REVIEW #210：防单次拉全量明文历史）。 */
     private static final int MAX_LOG_PAGE_SIZE = 500;
 
-    private static final Set<String> KNOWN_DOMAINS = Set.of("trading-os", "life-os", "project-os");
+    private static final Set<String> KNOWN_DOMAINS = Set.of("trading-engine", "life-os", "project-os");
 
     private final Path dataRoot;
     private final Path osRoot;
@@ -132,7 +132,7 @@ public class AdminController {
         if (!KNOWN_DOMAINS.contains(domain)) {
             return ResponseEntity.badRequest().body(Map.of("error", "domain 仅允许 " + KNOWN_DOMAINS));
         }
-        // domain 仅做白名单校验；path 决定浏览位置（相对 os/ 根，浏览 os/trading-os/ 传 path=trading-os）
+        // domain 仅做白名单校验；path 决定浏览位置（相对 os/ 根，浏览 os/trading-engine/ 传 path=trading-engine）
         try {
             Path dir = safeResolve(osRoot, path);
             if (!Files.exists(dir) || !Files.isDirectory(dir)) {
@@ -366,7 +366,7 @@ public class AdminController {
     /**
      * 检测交易规则与当前持仓操作的潜在矛盾（admin 维护）。
      * <p>
-     * 读取 {@code os/trading-os/11-context/rules.md} 中的真实规则（#23 修复：不再硬编码规则名），
+     * 读取 {@code os/trading-engine/11-context/rules.md} 中的真实规则（#23 修复：不再硬编码规则名），
      * 与当前持仓状态对比，标记可能违反的规则。
      * <ul>
      *   <li>无持仓 → 引用真实规则 R119 空仓也是交易策略 / R4 空头区间只卖不买</li>
@@ -420,7 +420,7 @@ public class AdminController {
 
     private String readRulesFile() {
         try {
-            Path rulesPath = Paths.get("../../os/trading-os/11-context/rules.md")
+            Path rulesPath = Paths.get("../../os/trading-engine/11-context/rules.md")
                     .toAbsolutePath().normalize();
             if (Files.isReadable(rulesPath)) {
                 return Files.readString(rulesPath, StandardCharsets.UTF_8);

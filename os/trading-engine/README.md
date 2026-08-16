@@ -1,4 +1,4 @@
-# adai-trading-os
+# adai-trading-engine
 
 **交易课程整理 · 交易系统提炼 · 行为复盘** — AI 知识工程项目
 

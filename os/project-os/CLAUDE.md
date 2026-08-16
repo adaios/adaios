@@ -1,7 +1,7 @@
 # CLAUDE.md — project-os
 
 > 这是 AdaiOS monorepo 的子项目（`os/project-os/`），于 2026-07-25 创建。
-> 工作方式与 trading-os 一致：在本目录工作时，Claude 只看项目管理知识，不涉足后端或前端。
+> 工作方式与 trading-engine 一致：在本目录工作时，Claude 只看项目管理知识，不涉足后端或前端。
 
 个人项目管理知识工程。**当前管理的项目就是 AdaiOS 开发本身。**
 

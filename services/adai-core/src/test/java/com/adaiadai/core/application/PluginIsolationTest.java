@@ -57,7 +57,7 @@ class PluginIsolationTest {
 
         // 真实知识源：trading/project 为插件域，life 为基础服务
         List<KnowledgeSource> sources = List.of(
-                new TradingKnowledgeSource("../../os/trading-os/11-context"),
+                new TradingKnowledgeSource("../../os/trading-engine/11-context"),
                 new ProjectKnowledgeSource("../../os/project-os/11-context"),
                 new LifeKnowledgeSource(memory, "../../os/life-os/11-context"));
 

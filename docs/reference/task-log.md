@@ -340,7 +340,7 @@ v1.0.0（adai-admin + 多账号）：
 | 229 剩余 | 首轮把「图片摘要文本」渲染成用户气泡（应居中提示）/ 折叠渐隐遮罩色不一致 / #15 折叠对超长 active 卡不设上限 / `main()` 首帧 await 延迟 | `main_page.dart:926-930` / `feed_card.dart` / `main.dart:11-22` | P3 |
 | 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
-| 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-os/99-inbox/` | P3 |
+| 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
 | 08-15 deep 后端 | 存量越界 domain 标注不清理（S-3 只防新增；插件上线前无插件用户已落盘的 trading/project 标注不纠正，可一次性迁移清理）| `data/*/records/` | P3 |
 | 08-15 deep 后端 | PATCH plugins 契约语义（传 `null` 保留旧值、传 `[]` 清空）需在 api-spec 明确「清空须传空数组」| `docs/architecture/api-spec.md` | P3 |
 | 08-15 deep 后端 | ANALYSIS 模式 system 指令硬编码全量 domain（`life/trading/project之一` 与收敛后 prompt 矛盾，落盘有 gateDomain 兜底仅判定质量受影响）| `DeepSeekAiClient.java:337` | P3 |

@@ -1,12 +1,14 @@
 ---
-title: trading-os 领域引擎化——从阿呆插件到独立可复用的交易引擎
+title: trading-os 领域引擎化——从插件到独立可复用的交易引擎（实施时改名 trading-engine）
 date: 2026-08-16
 status: draft
 ---
 
-# trading-os 领域引擎化
+> **改名记录（2026-08-16 实施）**：本 RFC 实施时 `os/trading-os/` 正式改名 `os/trading-engine/`（交易引擎独立身份）。正文已同步新名；历史 RFC 中 trading-os 为当时记录不改。
 
-> **方向 RFC**：把 trading-os 从"阿呆项目内的交易知识插件"抬高为**独立的交易领域引擎（Domain Engine）**——知识 + 能力自洽，可作插件被阿呆集成，也可独立暴露为 Agent/Skill/服务供其他用户/项目使用。交易是这套"领域引擎"模式的**第一个样板**，跑通后可复制到其他领域（SLG 引擎等）。
+# trading-engine 领域引擎化
+
+> **方向 RFC**：把 trading-engine 从"阿呆项目内的交易知识插件"抬高为**独立的交易领域引擎（Domain Engine）**——知识 + 能力自洽，可作插件被阿呆集成，也可独立暴露为 Agent/Skill/服务供其他用户/项目使用。交易是这套"领域引擎"模式的**第一个样板**，跑通后可复制到其他领域（SLG 引擎等）。
 
 ---
 
@@ -14,16 +16,16 @@ status: draft
 
 | # | 现状 | 问题 |
 |:-:|:-----|:-----|
-| A | trading-os 415 文件 / 14 目录，01-04 每层 87 个（课程管道中间产物）| 90%+ 是"构建过程"中间层，AI 实际只消费 11-context/ 6 个文件——**知识仓库混入大量 AI 不该读的** |
+| A | trading-engine 415 文件 / 14 目录，01-04 每层 87 个（课程管道中间产物）| 90%+ 是"构建过程"中间层，AI 实际只消费 11-context/ 6 个文件——**知识仓库混入大量 AI 不该读的** |
 | B | `definition/`（concepts/workflow）写的是**量化交易系统**（订单状态机/回测/夏普比），rules/strategy 是**纪律交易**（择时→选股→B1→止损→止盈→收队）| **定义与实际错位**——AI 读 definition 以为这是量化系统，读 rules 发现是纪律交易，前后矛盾 |
-| C | 能力（建议引擎/复盘/规则判定）**焊死在 adai-core 代码里** | trading-os 只有知识没有能力，**无法独立暴露**——只有阿呆能用 |
+| C | 能力（建议引擎/复盘/规则判定）**焊死在 adai-core 代码里** | trading-engine 只有知识没有能力，**无法独立暴露**——只有阿呆能用 |
 | D | current.md（择时状态 OAMV）2026-07-11 后停更 | R1-R20 择时规则无法执行 |
 | E | 06-processed / 08-review / 10-prompts 空目录 | 构建工作流没走完，管道遗留 |
 
 ## 二、目标（用户确认的方向）
 
 ```
-trading-os = 交易领域引擎（Domain Engine）
+trading-engine = 交易领域引擎（Domain Engine）
   ├─ 知识层：领域定义 + 规则/策略/教训（真相源）
   ├─ 能力层：规则执行 / 建议生成 / 复盘（引擎内核）
   └─ 输出形态：可切换，一个内核多种出口
@@ -35,7 +37,7 @@ trading-os = 交易领域引擎（Domain Engine）
 **两个都要达成**：插件模式（阿呆依赖引擎）+ 独立模式（引擎单独可用）。
 
 **核心原则**：构建与依赖分离——
-- **构建**（trading-os 内部）：课程 → 规则提炼 → 收敛（它是怎么把课变成规则的）
+- **构建**（trading-engine 内部）：课程 → 规则提炼 → 收敛（它是怎么把课变成规则的）
 - **依赖**（外部消费）：读规则 → 生成建议/复盘（别人怎么用规则）
 
 ## 三、方案：三区重组 + 能力抽离
@@ -43,7 +45,7 @@ trading-os = 交易领域引擎（Domain Engine）
 ### 3.1 目录重组（按"领域引擎"三区）
 
 ```
-os/trading-os/
+os/trading-engine/
 ├── definition/        领域定义（概念/工作流/边界）——重写对齐纪律交易+引擎定位
 ├── knowledge/         知识层（AI 消费的真相源，唯一入口）
 │   ├── context/         rules/strategy/mistakes/current/identity（11-context 迁入）
@@ -66,7 +68,7 @@ os/trading-os/
 
 ```
 现在：建议引擎在 adai-core（TradingAdviceAppService 读 rules.md + LLM）
-目标：规则引擎能力进 engine/（trading-os 内），adai-core 改为调用方
+目标：规则引擎能力进 engine/（trading-engine 内），adai-core 改为调用方
 
 engine/rules 接口设计（第一版）：
   matchRules(scene, position, market) → List<RuleHit>   # 场景→匹配规则

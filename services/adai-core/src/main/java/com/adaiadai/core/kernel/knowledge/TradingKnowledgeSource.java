@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * TradingKnowledgeSource — 交易系统知识源。
  * <p>
- * 读取 {@code os/trading-os/11-context/} 下的五份交付文件：
+ * 读取 {@code os/trading-engine/11-context/} 下的五份交付文件：
  * <ul>
  *   <li>identity.md — 系统身份声明</li>
  *   <li>strategy.md — 交易体系结构体</li>
@@ -47,7 +47,7 @@ public class TradingKnowledgeSource implements KnowledgeSource {
     private Instant lastLoadTime;
 
     public TradingKnowledgeSource(
-            @Value("${adai.knowledge.trading-os-path:../../os/trading-os/11-context}") String contextPath) {
+            @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/11-context}") String contextPath) {
         this.contextDir = Paths.get(contextPath).toAbsolutePath().normalize();
     }
 

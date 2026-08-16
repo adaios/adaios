@@ -88,9 +88,9 @@ class AdminControllerTest {
         Files.createDirectories(dataDir.resolve("default").resolve("identity"));
         Files.writeString(dataDir.resolve("notes.md"), "测试文件内容");
         Files.writeString(dataDir.resolve("default").resolve("identity").resolve("profile.md"), "name: 阿呆");
-        // os/ 结构：trading-os/11-context/rules.md
-        Files.createDirectories(osDir.resolve("trading-os").resolve("11-context"));
-        Files.writeString(osDir.resolve("trading-os").resolve("11-context").resolve("rules.md"), "R1 空仓也是策略");
+        // os/ 结构：trading-engine/11-context/rules.md
+        Files.createDirectories(osDir.resolve("trading-engine").resolve("11-context"));
+        Files.writeString(osDir.resolve("trading-engine").resolve("11-context").resolve("rules.md"), "R1 空仓也是策略");
 
         storage = new InMemoryFileStorage();
         mvc = MockMvcBuilders.standaloneSetup(adminController()).build();
@@ -148,8 +148,8 @@ class AdminControllerTest {
     @Test
     void listKnowledge_validDomain_returnsEntries() throws Exception {
         mvc.perform(get("/api/v1/admin/knowledge")
-                        .param("domain", "trading-os")
-                        .param("path", "trading-os"))
+                        .param("domain", "trading-engine")
+                        .param("path", "trading-engine"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].name", hasItem("11-context")));
     }
@@ -157,14 +157,14 @@ class AdminControllerTest {
     @Test
     void listKnowledge_domainOnly_listsRoot() throws Exception {
         // 不传 path 时列出 os/ 根（含各 domain 目录）
-        mvc.perform(get("/api/v1/admin/knowledge").param("domain", "trading-os"))
+        mvc.perform(get("/api/v1/admin/knowledge").param("domain", "trading-engine"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", hasItem("trading-os")));
+                .andExpect(jsonPath("$[*].name", hasItem("trading-engine")));
     }
 
     @Test
     void getKnowledgeContent_returnsContent() throws Exception {
-        mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "trading-os/11-context/rules.md"))
+        mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "trading-engine/11-context/rules.md"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").value("R1 空仓也是策略"));
     }

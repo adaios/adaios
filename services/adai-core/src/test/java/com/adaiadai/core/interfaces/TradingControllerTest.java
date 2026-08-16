@@ -44,14 +44,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * TradingController — 全部 10 端点接口测试。
  * <p>
- * promote 测试写入 os/trading-os/99-inbox/2099-01-01_交易复盘.md（#211 文件名约定），测试后清理。
+ * promote 测试写入 os/trading-engine/99-inbox/2099-01-01_交易复盘.md（#211 文件名约定），测试后清理。
  * 规则冲突检测端点（/trading/knowledge/conflicts）已迁至 AdminController（REVIEW P-be-01），
  * 对应测试移至 AdminControllerTest（仍依赖真实 rules.md）。
  */
 class TradingControllerTest {
 
     private static final String PROMOTE_TEST_DATE = "2099-01-01";
-    private static final Path PROMOTE_TEST_FILE = Paths.get("../../os/trading-os/99-inbox/" + PROMOTE_TEST_DATE + "_交易复盘.md")
+    private static final Path PROMOTE_TEST_FILE = Paths.get("../../os/trading-engine/99-inbox/" + PROMOTE_TEST_DATE + "_交易复盘.md")
             .toAbsolutePath().normalize();
 
     private MockMvc buildMvc(TradingAppService tradingAppService,
@@ -391,7 +391,7 @@ class TradingControllerTest {
 
     @Test
     void promoteToInbox_noTradingPlugin_403() throws Exception {
-        // RFC 20260814：promote 写入 os/trading-os/99-inbox（共享知识库）→ 无 trading 插件用户 403
+        // RFC 20260814：promote 写入 os/trading-engine/99-inbox（共享知识库）→ 无 trading 插件用户 403
         TradingReviewAppService review = mock(TradingReviewAppService.class);
         when(review.getReview(any(), any())).thenReturn("当日复盘内容");
         // 显式空插件（buildMvc 2 参重载默认给 trading，不能用）
@@ -417,10 +417,10 @@ class TradingControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("ok"))
                     .andExpect(jsonPath("$.path").isString())
-                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-os 工作流融合后重建 11-context）
+                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-engine 工作流融合后重建 11-context）
                     .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("11-context")));
 
-            // 文件真实写入 os/trading-os/99-inbox/
+            // 文件真实写入 os/trading-engine/99-inbox/
             org.junit.jupiter.api.Assertions.assertTrue(Files.exists(PROMOTE_TEST_FILE),
                     "promote 应写入入库候选文件");
             String content = Files.readString(PROMOTE_TEST_FILE);

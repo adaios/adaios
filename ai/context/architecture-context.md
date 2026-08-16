@@ -69,7 +69,7 @@ com.adaiadai.core/
 
 | 包 | 领域 | 概念文档 |
 |----|------|---------|
-| trading | Trading OS（含研究） | `os/trading-os/definition/` |
+| trading | Trading OS（含研究） | `os/trading-engine/definition/` |
 | life | Life OS | `os/life-os/definition/` |
 | project | Project OS | `os/project-os/definition/` |
 

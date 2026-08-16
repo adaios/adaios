@@ -63,7 +63,7 @@ tags: [ai, assets, project, admin, user-view]
 
 | Tab | 管理员能做什么 | 备注 |
 |:----|:--------------|:-----|
-| os 资产树 | 浏览 os/trading-os 等知识文件 | 只读治理 |
+| os 资产树 | 浏览 os/trading-engine 等知识文件 | 只读治理 |
 | 术语规则 | 看术语/规则 | 只读 |
 
 ## 三、职责边界（admin 属权）

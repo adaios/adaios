@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
 /**
  * TradingAdviceAppService — 持仓建议应用服务（交易模块核心定位：建议引擎）。
  * <p>
- * 编排建议流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-os/11-context/rules.md} 与
+ * 编排建议流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/11-context/rules.md} 与
  * {@code strategy.md} → 把止损规则（R66-R80）与仓位规则（R81-R95）作为 LLM 决策硬约束注入
  * prompt → LLM 结构化生成逐票建议（suggestion / reason / rules 必须引用规则号）。
  * <p>
@@ -43,17 +43,17 @@ import java.util.regex.Pattern;
  * 兜底：LLM 失败/输出不可解析时降级返回基础数据（symbol / name / position_percent 后端计算，
  * 无建议字段），不抛错——建议引擎永远返回 200，诚实优于编造。
  * <p>
- * os/trading-os 只读：adai-core 对该目录只读（唯一例外是 promote 写 99-inbox/）。
+ * os/trading-engine 只读：adai-core 对该目录只读（唯一例外是 promote 写 99-inbox/）。
  */
 @Service
 public class TradingAdviceAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingAdviceAppService.class);
 
-    /** os/trading-os 11-context 只读路径（相对 gradle 运行 cwd services/adai-core）。 */
-    static final Path RULES_PATH = Paths.get("../../os/trading-os/11-context/rules.md")
+    /** os/trading-engine 11-context 只读路径（相对 gradle 运行 cwd services/adai-core）。 */
+    static final Path RULES_PATH = Paths.get("../../os/trading-engine/11-context/rules.md")
             .toAbsolutePath().normalize();
-    static final Path STRATEGY_PATH = Paths.get("../../os/trading-os/11-context/strategy.md")
+    static final Path STRATEGY_PATH = Paths.get("../../os/trading-engine/11-context/strategy.md")
             .toAbsolutePath().normalize();
 
     /** 决策硬约束规则区间：止损 R66-R80 + 仓位 R81-R95（与 RFC 20260815 §0 建议类型对齐）。 */
@@ -130,7 +130,7 @@ public class TradingAdviceAppService {
 
         List<PositionView> views = buildPositionViews(positions, quotes);
 
-        // 2. 只读 os/trading-os 规则与策略，抽取 R66-R95 作为决策硬约束
+        // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束
         String rulesText = readKnowledgeFile(RULES_PATH);
         String strategyText = readKnowledgeFile(STRATEGY_PATH);
         List<RuleInfo> constraintRules = parseRules(rulesText).stream()
@@ -292,16 +292,16 @@ public class TradingAdviceAppService {
         return views.stream().filter(v -> v.symbol().equals(symbol)).findFirst().orElse(null);
     }
 
-    // ── os/trading-os 只读 ──
+    // ── os/trading-engine 只读 ──
 
     private String readKnowledgeFile(Path path) {
         try {
             if (Files.isReadable(path)) {
                 return Files.readString(path, StandardCharsets.UTF_8);
             }
-            log.warn("建议引擎：os/trading-os 知识文件不可读 | path={}", path);
+            log.warn("建议引擎：os/trading-engine 知识文件不可读 | path={}", path);
         } catch (Exception e) {
-            log.warn("建议引擎：读取 os/trading-os 知识文件失败 | path={} | {}", path, e.getMessage());
+            log.warn("建议引擎：读取 os/trading-engine 知识文件失败 | path={} | {}", path, e.getMessage());
         }
         return null;
     }

@@ -55,7 +55,7 @@ graph TB
     end
 
     subgraph External["外部知识资产"]
-        TradingOS["os/trading-os/<br/>交易知识库"]
+        TradingOS["os/trading-engine/<br/>交易知识库"]
         ProjectOS["os/project-os/<br/>项目管理知识"]
     end
 
@@ -237,7 +237,7 @@ flowchart LR
 
     Memory -.->|"⏳ 晋升检测<br/>高频主题持续 3 周"| Graduation{"晋升建议"}
     Graduation -->|你确认| Knowledge["data/knowledge/trading/<br/>结构化摘要"]
-    Knowledge --> DomainOS["os/trading-os/<br/>你审核后入库"]
+    Knowledge --> DomainOS["os/trading-engine/<br/>你审核后入库"]
     DomainOS --> Context
 
     %% 反哺闭环
@@ -359,7 +359,7 @@ flowchart LR
 | AI 记忆 | `data/memory/YYYY/MM.md` | MemoryService |
 | 用户身份 | `data/identity/profile.md` | IdentityRepository |
 | 标签索引 | `data/index/tags.json` | TagIndexService |
-| 交易知识 | `os/trading-os/11-context/` | TradingKnowledgeSource（读取） |
+| 交易知识 | `os/trading-engine/11-context/` | TradingKnowledgeSource（读取） |
 | 项目管理知识 | `os/project-os/11-context/` | ProjectKnowledgeSource（读取） |
 | 持仓数据 | `data/trading/positions.md` | PositionFileRepository |
 | 项目任务 | `data/project/tasks/YYYY/MM.md` | ProjectFileRepository |

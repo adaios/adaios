@@ -128,7 +128,7 @@ Layer 1 AI 理解
     ↓
 data/trading/reviews/（复盘自动沉淀）   ← 自动
     ↓
-你审核 → os/trading-os/（知识入库）     ← 手动
+你审核 → os/trading-engine/（知识入库）     ← 手动
     ↓
 Layer 3 Identity + Memory + Knowledge 更新
     ↓
@@ -143,7 +143,7 @@ Layer 3 Identity + Memory + Knowledge 更新
 | 持仓更新 | App 交易 | `data/trading/positions.md` | 自动 |
 | AI 理解 | DeepSeek | `data/memory/` | 自动 |
 | 复盘沉淀 | AI 分析 | `data/trading/reviews/` | 自动 |
-| 知识入库 | 你审核 | `os/trading-os/` | 手动 |
+| 知识入库 | 你审核 | `os/trading-engine/` | 手动 |
 
 ---
 
@@ -160,7 +160,7 @@ Layer 3 Identity + Memory + Knowledge 更新
 领域层 ──────── domain/（Trading OS / Life OS / Project OS）
 基础设施层 ──── infrastructure/（FileStorage / AI LLM / DB / ProjectFileRepo）
                   ↑
-外部 ───────── os/trading-os/（交易知识），os/project-os/（项目知识）
+外部 ───────── os/trading-engine/（交易知识），os/project-os/（项目知识）
 ```
 
 ## 设计原则
@@ -177,7 +177,7 @@ Layer 3 Identity + Memory + Knowledge 更新
 
 | 项目 | 启动方式 | 职责 |
 |:-----|:---------|:-----|
-| `os/trading-os/` | `cd os/trading-os && claude` | 交易知识工程（已成熟） |
+| `os/trading-engine/` | `cd os/trading-engine && claude` | 交易知识工程（已成熟） |
 | `os/project-os/` | `cd os/project-os && claude` | 项目管理知识（自举中） |
 
 共同规则：

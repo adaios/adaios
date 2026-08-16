@@ -984,7 +984,7 @@ MemoryService
 
 │
 ├── os/
-│   ├── trading-os/
+│   ├── trading-engine/
 │   ├── project-os/
 │   └── life-os/
 

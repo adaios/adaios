@@ -125,7 +125,7 @@ AdaiOS 的用户体验从下到上分为五层，每一层回答不同的用户�
 | 持仓更新 | App 交易 | data/trading/positions.md | 自动 |
 | AI 理解 | LLM | data/memory/ | 自动 |
 | 复盘沉淀 | AI 分析 | data/trading/reviews/ | 自动 |
-| 知识入库 | 你审核 | os/trading-os/ | 手动 |
+| 知识入库 | 你审核 | os/trading-engine/ | 手动 |
 
 ---
 

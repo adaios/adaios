@@ -138,7 +138,7 @@ com.adaiadai.core/
 
 ## 外部依赖
 
-- **交易知识库：** `os/trading-os/`（monorepo 兄弟目录，adai-core **只读**，不写入；**唯一例外**：`POST /trading/reviews/{date}/promote` 写 `os/trading-os/99-inbox/` 入库候选，见 `TradingController.promoteToInbox`，融合归正式目录需在 trading-os 工作流手动完成）
+- **交易知识库：** `os/trading-engine/`（monorepo 兄弟目录，adai-core **只读**，不写入；**唯一例外**：`POST /trading/reviews/{date}/promote` 写 `os/trading-engine/99-inbox/` 入库候选，见 `TradingController.promoteToInbox`，融合归正式目录需在 trading-engine 工作流手动完成）
 - **个人数据：** `data/`（monorepo 根目录，File First）
 
 ## 相关文档

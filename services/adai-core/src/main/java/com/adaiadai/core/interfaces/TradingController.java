@@ -133,7 +133,7 @@ public class TradingController {
     /**
      * 生成持仓建议（交易模块核心定位：建议引擎）。
      * <p>
-     * 读用户持仓 + 实时行情 + 只读 {@code os/trading-os/11-context/rules.md} 与 {@code strategy.md}，
+     * 读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/11-context/rules.md} 与 {@code strategy.md}，
      * 将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议
      * （suggestion / reason / rules 必须引用规则号）。建议是输出不是指令，本端点不做任何执行动作。
      * <p>
@@ -212,7 +212,7 @@ public class TradingController {
     /**
      * 将复盘笔记中的内容提升为入库候选。
      * <p>
-     * 写入 {@code os/trading-os/99-inbox/}，供用户在 trading-os 工作焦点下审核。
+     * 写入 {@code os/trading-engine/99-inbox/}，供用户在 trading-engine 工作焦点下审核。
      * 尊重 os/ 目录独立性：adai-core 只写入 99-inbox/，不做自动入库。
      */
     @PostMapping("/reviews/{date}/promote")
@@ -220,7 +220,7 @@ public class TradingController {
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable LocalDate date,
             @RequestBody PromoteRequest request) {
-        // RFC 20260814：promote 写入 os/trading-os/99-inbox（共享知识库）→ 仅启用 trading 插件用户可用
+        // RFC 20260814：promote 写入 os/trading-engine/99-inbox（共享知识库）→ 仅启用 trading 插件用户可用
         if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法反哺知识"));
         }
@@ -234,18 +234,18 @@ public class TradingController {
             String content = buildPromoteContent(date, request, reviewContent);
             // #203：候选文件尾保证换行（markdown 文件约定 EOF newline）
             if (!content.endsWith("\n")) content += "\n";
-            // 写入 os/trading-os/99-inbox/
-            Path inboxPath = Paths.get("../../os/trading-os/99-inbox")
+            // 写入 os/trading-engine/99-inbox/
+            Path inboxPath = Paths.get("../../os/trading-engine/99-inbox")
                     .toAbsolutePath().normalize();
             Files.createDirectories(inboxPath);
-            // #211：文件名符合 trading-os 全流水线约定 `YYYY-MM-DD_主题.md`
+            // #211：文件名符合 trading-engine 全流水线约定 `YYYY-MM-DD_主题.md`
             // （原硬编码 `review-{date}.md` 不符，已入库的候选文件一并按此改名）
             String fileName = date.toString() + "_交易复盘.md";
             Files.writeString(inboxPath.resolve(fileName), content, StandardCharsets.UTF_8);
 
             log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
-            // #178：提示入库候选不会自动融入 AI context——需在 trading-os 工作流审核融合后重建 11-context
-            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-os）审核后归入正式目录，并在收敛时重建 11-context。";
+            // #178：提示入库候选不会自动融入 AI context——需在 trading-engine 工作流审核融合后重建 11-context
+            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-engine）审核后归入正式目录，并在收敛时重建 11-context。";
             return ResponseEntity.ok(new PromoteResponse("ok", inboxPath.resolve(fileName).toString(), message));
         } catch (Exception e) {
             log.error("入库候选写入失败 | date={} | {}", date, e.getMessage());
