@@ -50,6 +50,13 @@ class MarketAlertServiceTest {
                 new BigDecimal(changePercent), 1000L);
     }
 
+    /** 指定现价的行情（真止损预警测试用——判定用 md.price() vs stopLossPrice）。 */
+    private MarketData quoteAt(String code, String price, String changePercent) {
+        return new MarketData(code, "名称" + code, new BigDecimal(price), new BigDecimal(price),
+                new BigDecimal(price), new BigDecimal("11.00"), new BigDecimal("9.50"),
+                new BigDecimal(changePercent), 1000L);
+    }
+
     /** 构造依赖：snapshot 带「内存快照」语义（save 后下一次 alerted 可见）；push 由调用方 mock 传入。 */
     private MarketAlertService build(MarketDataSource market, PositionRepository positions,
                                      boolean breakCostEnabled, MarketPushRepository push) {
@@ -66,7 +73,15 @@ class MarketAlertServiceTest {
         }).when(snapshot).saveSignatures(anyString(), any(), any());
 
         return new MarketAlertService(market, positions, accounts, snapshot, push,
-                mock(PluginService.class), 3.0, 5.0, breakCostEnabled);
+                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                3.0, 5.0, breakCostEnabled);
+    }
+
+    /** 带止损位/买点的持仓（真止损预警测试用，RFC 20260816 用户提供数据）。 */
+    private Position posWithStopLoss(String symbol, String name, String avgCost, String stopLoss) {
+        return new Position(symbol, name, 200, new BigDecimal(avgCost), new BigDecimal("10.00"),
+                LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal(stopLoss), "B1", null);
     }
 
     @Test
@@ -143,7 +158,7 @@ class MarketAlertServiceTest {
         when(positions.findAll(anyString())).thenReturn(List.of());
         MarketPushRepository push = mock(MarketPushRepository.class);
 
-        build(market, positions, true, push).poll("default");
+        build(market, positions, false, push).poll("default");
 
         verify(market, never()).quote(any());
     }
@@ -156,7 +171,7 @@ class MarketAlertServiceTest {
         when(positions.findAll(anyString())).thenReturn(List.of(pos("600519", "贵州茅台", "1321", "1300")));
         MarketPushRepository push = mock(MarketPushRepository.class);
 
-        build(market, positions, true, push).poll("default");
+        build(market, positions, false, push).poll("default");
 
         verify(push, never()).append(anyString(), any(), any(MarketPushEvent.class));
     }
@@ -190,7 +205,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
         new MarketAlertService(market, positions, accounts, snapshot, push,
-                pluginService, 3.0, 5.0, true).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), 3.0, 5.0, true).poll();
 
         verify(push, times(1)).append(eq("adai"), any(), any(MarketPushEvent.class));
         verify(push, never()).append(eq("default"), any(), any());
@@ -225,7 +240,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
         new MarketAlertService(market, positions, accounts, snapshot, push,
-                pluginService, 3.0, 5.0, true).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), 3.0, 5.0, true).poll();
 
         verify(push, times(1)).append(eq("adai"), any(), any(MarketPushEvent.class));
         verify(push, never()).append(eq("alice"), any(), any(MarketPushEvent.class));
@@ -243,5 +258,70 @@ class MarketAlertServiceTest {
         build(market, positions, false, push).poll("default");
 
         verify(push, never()).append(anyString(), any(), any(MarketPushEvent.class));
+    }
+    // ── 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定 ──
+
+    @Test
+    void stopLoss_breached_createsPush() {
+        // 现价 4.80 < 止损位 4.90 → 真止损推送（当日无涨跌，隔离其他信号）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        MarketPushRepository push = mock(MarketPushRepository.class);
+
+        build(market, positions, false, push).poll("default");
+
+        ArgumentCaptor<MarketPushEvent> captor = ArgumentCaptor.forClass(MarketPushEvent.class);
+        verify(push, times(1)).append(eq("default"), any(), captor.capture());
+        MarketPushEvent e = captor.getValue();
+        assertEquals("stop-loss", e.type());
+        assertEquals("000725", e.symbol());
+        assertTrue(e.message().contains("跌破你的止损位 4.9"), "文案应含止损位，实际: " + e.message());
+        assertTrue(e.message().contains("R66"), "文案应引用纪律规则 R66");
+    }
+
+    @Test
+    void stopLoss_notBreached_noPush() {
+        // 现价 5.00 > 止损位 4.90 → 不触发真止损
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "5.00", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        MarketPushRepository push = mock(MarketPushRepository.class);
+
+        build(market, positions, false, push).poll("default");
+
+        verify(push, never()).append(anyString(), any(), any(MarketPushEvent.class));
+    }
+
+    @Test
+    void stopLoss_missingStopLoss_noPush() {
+        // 旧数据无止损位（null）→ R68 不硬判，跳过（买入时已强制填写，仅历史数据可能缺失）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("000725", "京东方A", "5.20", "4.80")));
+        MarketPushRepository push = mock(MarketPushRepository.class);
+
+        build(market, positions, false, push).poll("default");
+
+        verify(push, never()).append(anyString(), any(), any(MarketPushEvent.class));
+    }
+
+    @Test
+    void stopLoss_sameDayDeduplicated() {
+        // 当日已推过 stop-loss → 第二轮轮询不再重复推（signature 去重）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(posWithStopLoss("000725", "京东方A", "5.20", "4.90")));
+        MarketPushRepository push = mock(MarketPushRepository.class);
+
+        MarketAlertService svc = build(market, positions, false, push); // 隔离 break-cost，专测 stop-loss 去重
+        svc.poll("default");
+        svc.poll("default"); // 第二轮：快照已签名，不再推
+
+        verify(push, times(1)).append(eq("default"), any(), any(MarketPushEvent.class));
     }
 }

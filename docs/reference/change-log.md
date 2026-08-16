@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 真止损预警（A 最小闭环）| `MarketAlertService` 新增 `stop-loss` 检测：现价跌破用户预设止损位 → R66 硬判定（复用 G-3 引擎口径，与建议引擎一致）→ 主动推送 Feed「已跌破你的止损位 X，按纪律该清仓了」；未设止损持仓跳过（R68）；当日去重沿用；文案无第三视角；api-spec 补 push 类型说明 | 后端 560（+4）|
 | 2026-08-16 | 框架+插件审查 P2 清尾批 | FP-P2a~i：parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce）；R81 100万前提（超 100 万不强制，参考 R82-R95）；测试补断言；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录；编号对拍（R1-R120/E1-E30，K39）| 后端 556（+1）|
 | 2026-08-16 | 框架+插件审查修复批 | 三官 deep 审查（backend/knowledge/docs）后发现修复：yml 路径 11-context→knowledge/context（运行时断链，FP-P1）；R81 占比分母改总资产（现金纳入，FP-P2 + 测试）；update-current.sh 幂等 + 时间戳语义 + 声明修正（FP-P3/S4）；R66 现价口径注明（FP-P4）；总纲 §五 刷新全 ✅（FP-S1）；引擎口径契约测试 RuleKnowledgeContractTest（FP-S2/B44）；rules-api.md §2/§3 同步（FP-S3）| 后端 555（+4）|
 | 2026-08-16 | 框架+插件形态（G-1~G-6 全落地）| 总纲提位正式架构文档（`architecture/framework-plus-plugin-model.md`）+ 交易 Agent 三阶段 RFC + gap 对账；G-1 行情载体归 trading 插件域（git mv）；G-2 交易读端点门控 + Brief 门控；G-3 `domain/trading/engine/` 规则引擎（R66 止损/R81 仓位/matchRules，规格 `os/trading-engine/engine/rules-api.md`）；G-4 `11-context`→`knowledge/context` + `update-current.sh` 半自动刷新；G-5 形态样板（Skill 包 + MCP 映射）；G-6 组合验证测试（读端点 403×5 + 行情注入门控）| 后端 551（+14）|

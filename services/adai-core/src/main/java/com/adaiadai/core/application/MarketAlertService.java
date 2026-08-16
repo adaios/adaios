@@ -3,6 +3,8 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.MarketPushEvent;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
+import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
 import com.adaiadai.core.kernel.IdGenerator;
@@ -34,8 +36,9 @@ import java.util.Set;
  * MarketAlertService — 行情异动主动推送（Layer 2/5 主动推送，Phase 2）。
  * <p>
  * 交易时段（工作日 9:30-11:30 / 13:00-15:00，cron 可配）每 30 分钟轮询持仓行情，
- * 检测三类异动并写入当日推送事件（{@code data/{userId}/trading/pushes/{date}.json}）：
+ * 检测四类异动并写入当日推送事件（{@code data/{userId}/trading/pushes/{date}.json}）：
  * <ul>
+ *   <li><b>stop-loss</b>：现价跌破用户预设止损位（R66 硬判定，G-3 引擎口径）→ 真止损预警（2026-08-16 新增）</li>
  *   <li><b>loss</b>：单日跌幅 ≥ {@code loss-threshold}（默认 3%）→ 止损预警</li>
  *   <li><b>gain</b>：单日涨幅 ≥ {@code gain-threshold}（默认 5%）→ 放飞提示</li>
  *   <li><b>break-cost</b>：现价跌破成本线（默认开启）→ 风控提醒</li>
@@ -56,6 +59,8 @@ public class MarketAlertService {
     private final MarketSnapshotRepository snapshotRepository;
     private final MarketPushRepository pushRepository;
     private final PluginService pluginService;
+    /** G-3 规则引擎：stop-loss 判定口径与建议引擎一致（R66，现价口径）。 */
+    private final TradingRuleEngine ruleEngine;
 
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
@@ -67,6 +72,7 @@ public class MarketAlertService {
                               MarketSnapshotRepository snapshotRepository,
                               MarketPushRepository pushRepository,
                               PluginService pluginService,
+                              TradingRuleEngine ruleEngine,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
                               @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled) {
@@ -76,6 +82,7 @@ public class MarketAlertService {
         this.snapshotRepository = snapshotRepository;
         this.pushRepository = pushRepository;
         this.pluginService = pluginService;
+        this.ruleEngine = ruleEngine;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
@@ -129,6 +136,13 @@ public class MarketAlertService {
 
             BigDecimal change = md.changePercent();
 
+            // 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定（引擎口径，与建议引擎一致）
+            // 止损位未设置（旧数据）不判——R68 入场即设止损，买入时已强制填写
+            if (p.stopLossPrice() != null && md.price() != null
+                    && ruleEngine.evaluateStopLoss(md.price(), p.stopLossPrice()).verdict()
+                    == StopLossVerdict.BREACHED) {
+                addIfNew(p, md, change, "stop-loss", existing, newSignatures, alerts);
+            }
             // 止损预警：单日跌幅 ≥ 阈值
             if (change.compareTo(lossThreshold.negate()) <= 0) {
                 addIfNew(p, md, change, "loss", existing, newSignatures, alerts);
@@ -172,6 +186,9 @@ public class MarketAlertService {
 
     private String message(Position p, MarketData md, BigDecimal change, String type) {
         return switch (type) {
+            case "stop-loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
+                    + " 已跌破你的止损位 " + fmt(p.stopLossPrice())
+                    + "——按纪律（R66）该清仓了，要我给出建议吗？";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
                     + fmt(md.price()) + "，触发止损预警，注意风控";
             case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "
