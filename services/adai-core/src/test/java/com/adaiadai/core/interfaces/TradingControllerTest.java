@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.TradingAdviceAppService;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
+import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.TradeDirection;
@@ -83,7 +84,8 @@ class TradingControllerTest {
                              TradingAdviceAppService adviceAppService,
                              String... defaultPlugins) {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
-                adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins));
+                adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
+                mock(WatchlistBuyPointService.class));
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -246,7 +248,8 @@ class TradingControllerTest {
                 any(), any(), any(), any(), any()))
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
-                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"));
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class));
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -542,7 +545,8 @@ class TradingControllerTest {
                         java.time.LocalDate.of(2026, 8, 16), new java.math.BigDecimal("4.9"), "B1",
                         null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null)));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
-                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"));
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class));
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

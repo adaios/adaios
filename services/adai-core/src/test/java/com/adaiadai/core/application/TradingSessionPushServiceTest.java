@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
@@ -73,7 +74,8 @@ class TradingSessionPushServiceTest {
 
         return new TradingSessionPushService(positions, market, accounts, pluginService,
                 new DefaultTradingRuleEngine(), ai, List.of(channel),
-                mock(AccountSnapshotRepository.class));
+                mock(AccountSnapshotRepository.class),
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class));
     }
 
     private static String eq(String s) { return org.mockito.ArgumentMatchers.eq(s); }
@@ -166,7 +168,8 @@ class TradingSessionPushServiceTest {
 
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(channel),
-                mock(AccountSnapshotRepository.class));
+                mock(AccountSnapshotRepository.class),
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class));
 
         svc.closeAdvice();
 

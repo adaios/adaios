@@ -3,9 +3,11 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.TradingAdviceAppService;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
+import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -50,17 +52,20 @@ public class TradingController {
     private final TradingAdviceAppService adviceAppService;
     private final TradingParseAppService parseAppService;
     private final PluginService pluginService;
+    private final WatchlistBuyPointService buyPointService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
                              TradingAdviceAppService adviceAppService,
                              TradingParseAppService parseAppService,
-                             PluginService pluginService) {
+                             PluginService pluginService,
+                             WatchlistBuyPointService buyPointService) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
         this.adviceAppService = adviceAppService;
         this.parseAppService = parseAppService;
         this.pluginService = pluginService;
+        this.buyPointService = buyPointService;
     }
 
     /**
@@ -297,6 +302,16 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(tradingAppService.transferList(userId));
+    }
+
+    /** 自选股买点信号（C2，GET /api/v1/trading/buy-points：B1/B2 命中列表）。 */
+    @GetMapping("/buy-points")
+    public ResponseEntity<?> buyPoints(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<WatchlistItem> watchlist = tradingAppService.watchlistList(userId);
+        return ResponseEntity.ok(buyPointService.scanWatchlist(watchlist));
     }
 
     /** 账户总体快照（资产/可用/可取/参考市值/盈亏/当日盈亏，GET /api/v1/trading/account）。 */

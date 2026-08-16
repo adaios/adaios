@@ -4,6 +4,8 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.WatchlistItem;
+import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
@@ -76,6 +78,8 @@ public class TradingSessionPushService {
     private final AiClient aiClient;
     private final List<PushChannel> pushChannels;
     private final AccountSnapshotRepository accountSnapshotRepository;
+    private final WatchlistBuyPointService buyPointService;
+    private final WatchlistRepository watchlistRepository;
 
     public TradingSessionPushService(PositionRepository positionRepository,
                                      MarketDataSource marketDataSource,
@@ -84,7 +88,9 @@ public class TradingSessionPushService {
                                      TradingRuleEngine ruleEngine,
                                      AiClient aiClient,
                                      List<PushChannel> pushChannels,
-                                     AccountSnapshotRepository accountSnapshotRepository) {
+                                     AccountSnapshotRepository accountSnapshotRepository,
+                                     WatchlistBuyPointService buyPointService,
+                                     WatchlistRepository watchlistRepository) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.accountRepository = accountRepository;
@@ -93,6 +99,8 @@ public class TradingSessionPushService {
         this.aiClient = aiClient;
         this.pushChannels = pushChannels;
         this.accountSnapshotRepository = accountSnapshotRepository;
+        this.buyPointService = buyPointService;
+        this.watchlistRepository = watchlistRepository;
     }
 
     // ── 三节点 cron ──
@@ -164,6 +172,25 @@ public class TradingSessionPushService {
                 log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
                         userId, fMarket, fToday, fFloat);
             });
+        });
+    }
+
+    /** 收盘 15:10 自选股买点扫描推送（C2）：命中 B1/B2 → 「到买点了」。 */
+    @Scheduled(cron = "${adai.trading.session.buy-point-cron:0 10 15 * * MON-FRI}")
+    public void buyPointScan() {
+        forEachTradingUser(userId -> {
+            List<WatchlistItem> watchlist = watchlistRepository.findAll(userId);
+            if (watchlist.isEmpty()) return;
+            List<WatchlistBuyPointService.WatchBuyPoint> hits =
+                    buyPointService.scanWatchlist(watchlist);
+            for (WatchlistBuyPointService.WatchBuyPoint h : hits) {
+                String content = h.buyPoint().startsWith("B1")
+                        ? "📌 " + h.name() + "（" + h.symbol() + "）到 B1 买点区了：" + String.join("、", h.signals())
+                        + "——按纪律设好止损再进（R68）"
+                        : "🚀 " + h.name() + "（" + h.symbol() + "）放量突破，B2 右侧信号：" + String.join("、", h.signals());
+                pushToAll(userId, "买点提醒", content, "buy-point", h.symbol(), h.name());
+            }
+            log.info("自选买点推送 | userId={} | {} 命中", userId, hits.size());
         });
     }
 

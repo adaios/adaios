@@ -504,6 +504,22 @@
 
 ### `DELETE /api/v1/trading/watchlist/{symbol}` — 删除自选股
 
+### `GET /api/v1/trading/buy-points` — 自选股买点信号（C2 盯盘买点，2026-08-16）
+
+对全部自选股拉 K 线（东财主源 → 腾讯降级）→ `BuyPointDetector` 判定 → 命中返回信号列表（**判定是提示不是指令**，买不买人决策）。
+
+**响应**：
+```json
+[{"symbol":"000725","name":"京东方A","buyPoint":"B1","score":0.8,
+  "signals":["回调 52% ≥ 50%","3 日量 0.6×5 日量 ≤ 0.7","KDJ.J 12.3 < 20"]}]
+```
+
+- **B1 回调买点**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 20
+- **B2 突破买点**：放量（5 日均量 × 1.5）+ 收盘破前 20 日高点
+- **参数可配**（默认建议值：回调 0.5 / 缩量 0.7 / KDJ 20 / 放量 1.5 / 前高 20 日，待用户确认）
+- 收盘 15:10 定时任务自动扫描 + 命中推送「到买点了」（`TradingSessionPushService.buyPointScan`）；web 自选 Tab 显示信号列
+- 需 trading 插件（403）。
+
 ### `GET /api/v1/trading/sold` — 清仓股列表（复盘闭环）
 
 返回已了结交易（symbol/name/buyDate/sellDate/holdDays/tradeCount/holdPnlPct/verdict/psychology）。
