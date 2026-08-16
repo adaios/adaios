@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 84
+lines: 94
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -65,7 +65,17 @@ bash ai-engineering/guard-align.sh         # 代码↔文档内容对齐：必�
 - **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 guard-align，FAIL 阻止提交——**无需人工提醒**
 - 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + ai-engineering/**（frontmatter-spec §四 强制区）
 
-### 6. 规范提交
+### 6. 部署（触发侧：deploy-gate 门禁 + smoke）
+
+```bash
+bash ai-engineering/deploy-gate.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+```
+
+- 部署前自动强制：guard-meta + guard-align + guard.sh（不过关拒绝部署）
+- 部署后自动 smoke：feed/memory/advice/parse/timeline/tags 六端点验证
+- 部署是用户确认的动作 → 最不可绕过的一道闸门
+
+### 7. 规范提交
 
 - 提交信息按批次主题（如 `feat:` / `fix:` / `docs:`），含批次要点
 - 一个批次一个提交，不混合无关改动
