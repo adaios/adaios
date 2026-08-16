@@ -910,4 +910,41 @@ void main() {
     });
   });
 
+  group('清仓行为模式统计（D2）', () {
+    testWidgets('心理标注按关键词归类显示', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '000725', 'name': '京东方A', 'buyDate': '2026-07-01', 'sellDate': '2026-07-05',
+             'holdDays': 4, 'tradeCount': '1+1', 'holdPnlPct': -8.0, 'verdict': 'R53', 'psychology': '追高后恐慌割肉'},
+            {'symbol': '601066', 'name': '中信建投', 'buyDate': '2026-06-01', 'sellDate': '2026-06-20',
+             'holdDays': 19, 'tradeCount': '1+1', 'holdPnlPct': -12.0, 'verdict': 'R66', 'psychology': '套牢死扛'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      // 行为模式归类：追高 1 笔 + 恐慌 1 笔（同一笔命中两个词）+ 死扛 1 笔
+      expect(find.textContaining('你的行为模式'), findsOneWidget);
+      expect(find.textContaining('已标 2 笔'), findsOneWidget);
+      expect(find.text('追高 1 笔'), findsOneWidget);
+      expect(find.text('恐慌割肉 1 笔'), findsOneWidget);
+      expect(find.text('套牢死扛 1 笔'), findsOneWidget);
+    });
+  });
+
 }

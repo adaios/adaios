@@ -648,13 +648,31 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
-  /// D2 纪律统计（2026-08-16）：清仓交易按结果/纪律聚合。
+  /// D2 纪律统计 + 行为模式（2026-08-16）：清仓按结果/纪律聚合 + 心理标注归类。
   Widget _buildSoldStats() {
     final total = _sold.length;
     final profit = _sold.where((s) => s.holdPnlPct >= 0).length;
     final loss = total - profit;
     final r66 = _sold.where((s) => s.verdict.contains('R66')).length;
     final r53 = _sold.where((s) => s.verdict.contains('R53')).length;
+    // D2 行为模式：心理标注按关键词归类（数据积累后越准）
+    const patterns = <String, String>{
+      '追高': '追高',
+      '恐慌': '恐慌割肉',
+      '贪': '贪心没走',
+      '死扛': '套牢死扛',
+      '犹豫': '犹豫错过',
+      '急': '急躁操作',
+    };
+    final marked = _sold.where((s) => s.psychology.isNotEmpty).toList();
+    final patternCounts = <String, int>{};
+    for (final s in marked) {
+      for (final e in patterns.entries) {
+        if (s.psychology.contains(e.key)) {
+          patternCounts[e.value] = (patternCounts[e.value] ?? 0) + 1;
+        }
+      }
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -662,23 +680,38 @@ class _TradingPageState extends State<TradingPage> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
-      child: Row(children: [
-        Text('$total 笔 · 盈 $profit / 亏 $loss',
-            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
-        const SizedBox(width: 12),
-        if (r66 > 0)
-          Text('扛单超10%（R66）$r66 笔',
-              style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
-        if (r53 > 0) ...[
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('$total 笔 · 盈 $profit / 亏 $loss',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
           const SizedBox(width: 12),
-          Text('短持仓亏损（R53）$r53 笔',
-              style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
-        ],
-        if (total > 0) ...[
-          const Spacer(),
-          Text('纪律遵守率 ${((profit / total) * 100).toStringAsFixed(0)}%',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                  color: profit / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
+          if (r66 > 0)
+            Text('扛单超10%（R66）$r66 笔',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+          if (r53 > 0) ...[
+            const SizedBox(width: 12),
+            Text('短持仓亏损（R53）$r53 笔',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+          ],
+          if (total > 0) ...[
+            const Spacer(),
+            Text('纪律遵守率 ${((profit / total) * 100).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                    color: profit / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
+          ],
+        ]),
+        // D2 行为模式（心理标注聚合，标注后自动归类）
+        if (marked.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Text('你的行为模式 · 已标 ${marked.length} 笔：',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ...patternCounts.entries.map((e) => Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text('${e.key} ${e.value} 笔',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+                )),
+          ]),
         ],
       ]),
     );
