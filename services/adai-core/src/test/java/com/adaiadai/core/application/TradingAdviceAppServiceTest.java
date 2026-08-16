@@ -54,7 +54,8 @@ class TradingAdviceAppServiceTest {
     private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai) {
         // G-3：注入真实规则引擎（判定口径统一，测试即验证引擎行为）
         return new TradingAdviceAppService(positions, market, ai,
-                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine());
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                "../../os/trading-engine/knowledge/context");
     }
 
     private TradingAdviceAppService serviceWithTwoPositions(MarketDataSource market, AiClient ai) {

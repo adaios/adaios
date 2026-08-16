@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -54,11 +55,12 @@ public class TradingAdviceAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingAdviceAppService.class);
 
-    /** os/trading-engine knowledge/context 只读路径（相对 gradle 运行 cwd services/adai-core）。 */
-    static final Path RULES_PATH = Paths.get("../../os/trading-engine/knowledge/context/rules.md")
-            .toAbsolutePath().normalize();
-    static final Path STRATEGY_PATH = Paths.get("../../os/trading-engine/knowledge/context/strategy.md")
-            .toAbsolutePath().normalize();
+    /**
+     * os/trading-engine knowledge/context 只读路径（2026-08-16 修复：硬编码相对路径生产解析错
+     * /opt/os/... 缺 adaios 级——改 @Value 注入 yml 配置，本地相对/生产绝对由 spring.config.import 统一）。
+     */
+    private final Path rulesPath;
+    private final Path strategyPath;
 
     /** 决策硬约束规则区间：止损 R66-R80 + 仓位 R81-R95（与 RFC 20260815 §0 建议类型对齐）。 */
     private static final int CONSTRAINT_RULE_MIN = 66;
@@ -103,11 +105,14 @@ public class TradingAdviceAppService {
     public TradingAdviceAppService(PositionRepository positionRepository,
                                    MarketDataSource marketDataSource,
                                    AiClient aiClient,
-                                   TradingRuleEngine ruleEngine) {
+                                   TradingRuleEngine ruleEngine,
+                                   @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.aiClient = aiClient;
         this.ruleEngine = ruleEngine;
+        this.rulesPath = Paths.get(knowledgeDir, "rules.md").toAbsolutePath().normalize();
+        this.strategyPath = Paths.get(knowledgeDir, "strategy.md").toAbsolutePath().normalize();
     }
 
     /**
@@ -135,8 +140,8 @@ public class TradingAdviceAppService {
         List<PositionView> views = buildPositionViews(userId, positions, quotes);
 
         // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束（G-3：解析归引擎）
-        String rulesText = readKnowledgeFile(RULES_PATH);
-        String strategyText = readKnowledgeFile(STRATEGY_PATH);
+        String rulesText = readKnowledgeFile(rulesPath);
+        String strategyText = readKnowledgeFile(strategyPath);
         List<TradingRuleEngine.RuleEntry> constraintRules = ruleEngine.parseRules(rulesText).stream()
                 .filter(r -> r.number() >= CONSTRAINT_RULE_MIN && r.number() <= CONSTRAINT_RULE_MAX)
                 .sorted(Comparator.comparingInt(TradingRuleEngine.RuleEntry::number))
