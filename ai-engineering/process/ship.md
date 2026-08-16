@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 94
+lines: 106
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -19,6 +19,18 @@ tags: [ai, process, ship]
 # 功能落地收尾流程（ship）
 
 > 对应原 `/ship` skill，工具无关化。与 `/review` 配套：**ship 保证产出完整（上游），review 检查遗漏（下游）**。本流程是开发批次的收尾闭环——提交前必须全部通过。
+
+## 完成标准（2026-08-16 反思沉淀，防"功能跑通就当完成"）
+
+**一次功能改动 = 五件套同批完成，缺一不算 ship 完成：**
+
+1. **功能代码** —— 改完只算"进行中"，不算完成
+2. **测试同批** —— 服务层业务逻辑 + 端点测试与功能同批写（不后置）；解析/upsert/状态保留/写回等**关键分支必须测**
+3. **契约同步** —— 新端点 → api-spec；新功能 → feature-reference；data 格式 → freeze
+4. **门禁主动跑** —— 交付前主动跑三件套（guard-meta + guard-align + guard.sh），**不依赖 pre-commit 兜底**；`gradle test 绿 ≠ 项目绿`（guard-align 的 A1/A2/A4 对拍、guard.sh 的 G1-G7 防复发是 gradle 覆盖不到的）
+5. **写代码前对照检查清单** —— 存储层 → 查 G2（不取 now()）；新端点 → 查 B43（api-spec/配置）；文档/目录迁移 → 查 D38（全库 grep）；新格式/正则 → 查 B44/K38（口径对拍）
+
+**反模式（已踩，勿重演）**：功能跑通 + 部署成功 = 完成；测试后置；gradle 绿 = 安全；不翻检查清单凭感觉写。
 
 ## 步骤
 
