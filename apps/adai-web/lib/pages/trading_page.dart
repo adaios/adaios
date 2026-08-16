@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../utils/trade_import_parser.dart';
 import '../widgets/page_header.dart';
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 
 /// 交易桌面形态 — web = 详细管理（RFC 20260816 §4.2）：
@@ -34,10 +35,22 @@ class _TradingPageState extends State<TradingPage> {
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
 
+  Timer? _autoRefresh;
+
   @override
   void initState() {
     super.initState();
     _loadAll();
+    // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
+    _autoRefresh = Timer.periodic(const Duration(minutes: 30), (_) {
+      if (mounted) _loadAll();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefresh?.cancel();
+    super.dispose();
   }
 
   @override
@@ -50,8 +63,9 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   Future<void> _loadAll() async {
+    // E2（2026-08-16）静默刷新：已有数据时刷新不闪整页 loading（首次加载才转圈）
     setState(() {
-      _loading = true;
+      _loading = _positions.isEmpty && _portfolio == null;
       _error = null;
     });
     try {
@@ -620,6 +634,42 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
+  /// D2 纪律统计（2026-08-16）：清仓交易按结果/纪律聚合。
+  Widget _buildSoldStats() {
+    final total = _sold.length;
+    final profit = _sold.where((s) => s.holdPnlPct >= 0).length;
+    final loss = total - profit;
+    final r66 = _sold.where((s) => s.verdict.contains('R66')).length;
+    final r53 = _sold.where((s) => s.verdict.contains('R53')).length;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Row(children: [
+        Text('$total 笔 · 盈 $profit / 亏 $loss',
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+        const SizedBox(width: 12),
+        if (r66 > 0)
+          Text('扛单超10%（R66）$r66 笔',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+        if (r53 > 0) ...[
+          const SizedBox(width: 12),
+          Text('短持仓亏损（R53）$r53 笔',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+        ],
+        if (total > 0) ...[
+          const Spacer(),
+          Text('纪律遵守率 ${((profit / total) * 100).toStringAsFixed(0)}%',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                  color: profit / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
+        ],
+      ]),
+    );
+  }
+
   Widget _buildSoldSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -643,6 +693,8 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
+      const SizedBox(height: 8),
+      if (_sold.isNotEmpty) _buildSoldStats(),
       const SizedBox(height: 8),
       if (_sold.isEmpty)
         const Text('暂无清仓记录——导入通达信清仓导出，阿呆对照规则给你判对错',
