@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 框架+插件审查修复批 | 三官 deep 审查（backend/knowledge/docs）后发现修复：yml 路径 11-context→knowledge/context（运行时断链，FP-P1）；R81 占比分母改总资产（现金纳入，FP-P2 + 测试）；update-current.sh 幂等 + 时间戳语义 + 声明修正（FP-P3/S4）；R66 现价口径注明（FP-P4）；总纲 §五 刷新全 ✅（FP-S1）；引擎口径契约测试 RuleKnowledgeContractTest（FP-S2/B44）；rules-api.md §2/§3 同步（FP-S3）| 后端 555（+4）|
 | 2026-08-16 | 框架+插件形态（G-1~G-6 全落地）| 总纲提位正式架构文档（`architecture/framework-plus-plugin-model.md`）+ 交易 Agent 三阶段 RFC + gap 对账；G-1 行情载体归 trading 插件域（git mv）；G-2 交易读端点门控 + Brief 门控；G-3 `domain/trading/engine/` 规则引擎（R66 止损/R81 仓位/matchRules，规格 `os/trading-engine/engine/rules-api.md`）；G-4 `11-context`→`knowledge/context` + `update-current.sh` 半自动刷新；G-5 形态样板（Skill 包 + MCP 映射）；G-6 组合验证测试（读端点 403×5 + 行情注入门控）| 后端 551（+14）|
 | 2026-08-16 | 带图发图即对话 + 交易建议引擎 | 带图：发图即分流（ask 直进对话/log 自然回执）+ S-2 聚合卡修复；交易：/trading/advice 建议引擎（R66-R95 硬约束）+ /trades/parse 一句话解析 + 资产卡+建议展示（无执行按钮）| 后端 499（+12）· app 112（+18）· admin 34（+1）|
 | 2026-08-16 | P-be-01 安全 + admin 收敛 | 5 维护端点迁 /admin/** 鉴权（X-Admin-Token）+ 用户端恢复 PATCH /memory/{id}；admin 移除个人内容编辑（P-role 系列）；app 补记忆修正/待办完成 | 端点 55 · admin 34 |

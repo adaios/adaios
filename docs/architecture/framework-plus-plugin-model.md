@@ -95,17 +95,20 @@ tags: [architecture, model, plugin, framework]
 
 ## 五、现状对照（详见 `../reference/framework-plugin-gap.md`）
 
+> 快照 2026-08-16（G-1~G-6 全部落地后刷新，FP-S1 修复——此前与 gap 矛盾）。
+
 | 层面 | 现状 | 判定 |
 |:-----|:-----|:----:|
 | 插件门控（Account.plugins / PluginService / ContextEngine）| 已全通道 | ✅ 就位 |
 | trading-engine 引擎化（知识/能力/形态分离）| 已改名 + definition 重写 | ✅ 就位 |
-| 行情数据源独立接口（TencentMarketDataSource）| 已抽象 + 归 trading 插件域（2026-08-16 G-1 拨正）| ✅ 就位 |
-| 行情服务跟插件走 | 数据源全局 bean，注入已按插件过滤 | ⚠️ 缺口 |
-| 插件隔离补漏（数据消费/知识读取全通道）| MarketAlert/Feed 已门控 | ⚠️ 部分 |
-| 交易插件 jar 边界（engine/ 能力层抽离）| 规则焊在 adai-core | ⚠️ 缺口 |
-| Agent 独立形态（Skill/MCP/Coze）| 未实现（trading-engine build-engine 已定义）| ⬜ 未做 |
+| 行情数据源独立接口（TencentMarketDataSource）| 已抽象 + 归 trading 插件域（G-1 拨正）| ✅ 就位 |
+| 行情服务跟插件走 | 行情载体归 `domain/trading/market/`，注入/预警/Feed 全门控（G-1）| ✅ 完成 |
+| 插件隔离补漏（数据消费/知识读取全通道）| 交易读/写端点全门控 + Brief 门控（G-2）| ✅ 完成 |
+| 交易插件 jar 边界（engine/ 能力层抽离）| `domain/trading/engine/` 规则引擎 + 规格 `os/trading-engine/engine/rules-api.md`（G-3）| ✅ 完成 |
+| Agent 独立形态（Skill/MCP/Coze）| 样板就绪：`os/trading-engine/output/`（agent-skill/mcp-server）（G-5）| ✅ 样板 |
+| 多用户组合验证 | 无插件 403 / 行情门控 / 知识注入隔离测试全绿（G-6）| ✅ 完成 |
 
-**结论**：不是打击式重构——**大部分已就位，动刀点有限且明确**（见 gap 文档）。
+**结论**：不是打击式重构——8 项就位 + 6 个动刀点全部完成（2026-08-16，见 gap 文档 §二）。
 
 ## 六、边界与非目标
 

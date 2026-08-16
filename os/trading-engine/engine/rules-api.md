@@ -26,9 +26,12 @@
 | `currentPrice < stopLossPrice` | **BREACHED** → suggestion 必须 clear | R66 只输一根K线 |
 | 其余 | OK | R66 |
 
+> **口径注明（2026-08-16 审查 FP-P4）**：规则原文是「收盘跌破就走」（rules.md），引擎用**现价**判定（盘中插针即触发，更保守）——这是有意的近似口径，message 统一标注「现价口径」。如需严格收盘判定，接入收盘价数据源后升级。
+
 ## 3. evaluatePosition — 仓位硬判定
 
-**输入**：`positionPercent`（单票持仓占比 0-100，后端按市值/总市值确定性计算）
+**输入**：`positionPercent`（单票持仓占比 0-100）
+**分母口径（2026-08-16 审查 FP-P2 修复）**：**总资产 = 持仓市值 + 现金余额**（`PositionRepository.cashBalance`）；现金不可用时按 0 兜底（退化为总持仓市值口径）。R81 语义是单票占总资金 1/4~1/5。
 **输出**：`{verdict: OK | OVER_WEIGHT, ruleRef, message}`
 
 | 条件 | verdict | 规则 |

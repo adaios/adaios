@@ -8,7 +8,7 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
-> 2026-08-16 deep 增量（范围 `7734d99..HEAD`，2 commits / 63 文件）：守护 7 PASS / 0 HIT；派 backend/knowledge/docs ×3。**P0 无。战略×4 + P1×4 + P2×9（合并去重后）**。核心：application.yml:60 残留 11-context（三官交叉印证，G-4 声称"全引用同步"的缺口，P1）、总纲 §五 现状表自相矛盾（S1）、R81 占比分母不含现金（P1）、update-current.sh 非幂等（P1）。审查只报告未修；新增检查点 B43-B46 / K36-K39 / D44-D46。
+> 2026-08-16 deep 增量（范围 `7734d99..HEAD`，2 commits / 63 文件）：守护 7 PASS / 0 HIT；派 backend/knowledge/docs ×3。**P0 无。战略×4 + P1×4 + P2×9（合并去重后）**。核心：application.yml:60 残留 11-context（三官交叉印证，G-4 声称"全引用同步"的缺口，P1）、总纲 §五 现状表自相矛盾（S1）、R81 占比分母不含现金（P1）、update-current.sh 非幂等（P1）。**审查后修复批（2026-08-16）：FP-S1/S2/S3/S4 + FP-P1/P2/P3/P4 全部出表**（后端 555 · 见已修复区）；新增检查点 B43-B46 / K36-K39 / D44-D46。
 > 2026-08-16 修复批（app-polish 审查落地）：**P-be-01 维护端点迁入 /admin/** 鉴权（安全）+ admin 收敛为纯治理（P-role 系列）+ app 补记忆修正/待办完成（P-role-02/P-app-03）+ 带图发图即对话 + 交易建议引擎**。后端 499 · app 112 · admin 34，全部出表。
 > 2026-08-15 deep 审核（范围 `7b0a527..HEAD`，33 commits / 181 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**P0 无。战略×2 + P1×5 + P2×7 + P3×21（P3 迁移 task-log）**。**修复批 S + S2 共 12 项已出表**（P1-B1-B4/D1 + P2-B1/B2/R1/R2/R3/D1/D2，后端 440 · app 94 · admin 33）；**战略剩余仅 #179（v1.0.1 登录体系）**；已沉淀检查点 B34-36 / F33-36 / D27-29。
 > 2026-08-15 上午 deep 审核（范围：工作树未提交改动——第二步插件系统 T2.1-T2.10 + 第一步遗留，47 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**战略×2 + P1×6 + P2×7 + P3×15**。P0 无。战略 S-3（重补路径 domain 未收敛）+ S-4（行情推送写侧未门控）；P1 六项；已沉淀检查点 B31-33 / F30-32 / D23-26。S-3/S-4/P1 全部出表（批 Q/R）。
@@ -34,20 +34,14 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）；数据访问靠 header 注入无认证。真正收紧需登录体系 | `AccountController` / `WebConfig` | 📋 v1.0.1 立项 |
-| FP-S1 | **总纲 §五「现状对照」与同批 gap 文档矛盾且表内自相矛盾**：正式文档（active）仍标 4 项缺口（行情跟插件 ⚠️/隔离 ⚠️/jar 边界 ⚠️/Agent ⬜），而 gap 已全 ✅；第 3 行标「G-1 拨正 ✅」第 4 行却标「行情服务跟插件走 ⚠️ 缺口」——G-1 恰是该项 | `docs/architecture/framework-plus-plugin-model.md:103-106` | 按 gap 刷新全 ✅ 或标注快照日期（D46）|
-| FP-S2 | **确定性引擎口径与知识真相源无联动校验**：TradingRuleEngine 自述「knowledge 为真相源」，os 侧改 R66/R81 语义引擎不感知 | `TradingRuleEngine` / `os/trading-engine/engine/rules-api.md` | 契约测试读 rules.md 断言关键判定词（B44）|
-| FP-S3 | **R81 判定口径被规格固化**：rules-api.md §3 把「positionPercent=市值/总市值」写进规格，分母偏差制度化（见 FP-P2）| `os/trading-engine/engine/rules-api.md` §3 | 修分母口径后同步规格 |
-| FP-S4 | **update-current.sh 名不副实**：头注释声明"重组信号区块"，实际只注入 2 条来源注记+时间戳（SIGNAL_LINES 抽取后未写入）；且非幂等 | `os/trading-engine/09-scripts/update-current.sh` | 实现真重组或改声明；幂等化（K37）|
+> **FP-S1/S2/S3/S4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：总纲 §五 现状表刷新全 ✅（S1）；引擎口径契约测试 `RuleKnowledgeContractTest`（S2，B44）；R81 分母规格同步总资产（S3）；update-current.sh 声明修正为注记刷新器（S4）。
 > S-R1（app 插件失败 SnackBar+重试，双端对拍）与 S-R2（服务端合并插件端点，竞态根治）已出表（2026-08-15，见已修复区）。S-2（展示层聚合）已出表；数据层整体化 RFC `20260815-media-event-unification` approved 排 v1.0.1；S-3/S-4 已出表（批 Q）。
 
 ## 🔴 P1（未修复）
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| FP-P1 | **application.yml 默认路径残留 11-context → 交易知识注入静默断链**：`trading-engine-path: ${ADAI_TRADING_KNOWLEDGE_PATH:../../os/trading-engine/11-context}`（yml 覆盖 @Value 默认，目录已 git mv）→ TradingKnowledgeSource 读不存在目录 → trading 插件用户问答知识注入静默为空。G-4 声称"全引用同步"的缺口，三官交叉印证（B43/D45/K36）| `services/adai-core/src/main/resources/application.yml:60`（含 build/ 副本）| 默认值改 `knowledge/context`；核对 .env/ADAI_TRADING_KNOWLEDGE_PATH |
-| FP-P2 | **R81 硬判定分母不含现金 → 单票持仓账户恒发"参考 reduce"**：positionPercent=单票市值/Σ持仓市值（无 cashBalance），R81 语义是占总资金 1/4~1/5；单仓+大额现金 → 占比恒 100% → 恒 OVER_WEIGHT（B46）| `TradingAdviceAppService.buildPositionViews` L257-270 + `rules-api.md` §3 | 占比改用总资产（持仓市值+现金余额，`PositionRepository.cashBalance` 已存在）；同步规格 |
-| FP-P3 | **update-current.sh 非幂等 + 时间戳可骗门禁**：重复运行注记堆叠（1→3 条）；数据未刷新却戳"更新时间"到当天，build-engine >30 天门禁可被绕过 | `os/trading-engine/09-scripts/update-current.sh` | 注入前查重；时间戳语义区分「文件刷新」与「状态更新」（K37）|
-| FP-P4 | **R66 口径偏差（现价 vs 规则文本"收盘跌破"）**：盘中插针即触发「必须 clear」硬信号，引擎 message 引用"收盘跌破"与规则原文不一致（K38）| `DefaultTradingRuleEngine.java` + `rules-api.md` §2 | 注明口径偏差或改用收盘价判定 |
+> **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**P1 当前清零**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 
 ## 🔴 P2（未修复）
@@ -75,6 +69,7 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 框架+插件审查修复批（FP-S1-S4 + FP-P1-P4）| yml 路径 11-context→knowledge/context（运行时断链根治，三官交叉印证）；R81 分母改总资产（现金纳入，+测试）；update-current.sh 幂等+时间戳语义+声明修正；R66 现价口径注明；总纲 §五 刷新全 ✅；引擎口径契约测试 RuleKnowledgeContractTest（B44）；rules-api.md §2/§3 同步；后端 555（+4）| ✅ 2026-08-16 |
 | S-R1/S-R2（deep 战略项）| launcher 插件失败 SnackBar+重试（双端对拍 web）+ 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20；后端 446（+6）| ✅ 2026-08-15 |
 | 修复批 S2（P2-B2/R2/R3 + P1-D1 + P2-D1/D2）| Account null userId 拒绝（全局中断）+ admin 内置插件开关 isProtected 门控 + launcher 测试补分支 + review-context 断链 + RFC/docs 状态同步；后端 440（+1）· app 94（+2）| ✅ 2026-08-15 |
 | 修复批 S（P1-B1-B4 + P2-B1 + P2-R1）| deep 审核后端/前端修复：domainEnum 去引号语义（CHAT 双重引号根治，补最终拼接断言）+ 时间线聚合跨天/intent/歧义边界 + 图片 domain gateDomain + trading 写入口门控（403）+ admin 插件 toggle 串行队列；后端 439（+6）· admin 33（+1）| ✅ 2026-08-15 |
@@ -131,6 +126,7 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-16 | 修复批（框架+插件审查发现）| — | 0 | ~20min | 0 新 | FP-S1-S4 + FP-P1-P4 共 8 |
 | 2026-08-16 | deep 增量（框架+插件 G-1~G-6）| backend/knowledge/docs ×3 | 3 | ~25min | 战略×4 + P1×4 + P2×9（去重后）| 0（审查只报告）|
 | 2026-08-15 | **全维度走查（首轮）** | 7 官全量并行 | 7 | ~1h | P0×1 + 战略×3 + P1×16 + P2×11 + P3×35 | 0（审查只报告）|
 | 2026-08-15 | deep 增量（批 Q/R + 展示层聚合 + 发布核对）| backend/frontend/docs ×3 | 3 | ~40min | 战略×2 + P1×5 + P2×7 + P3×21 | 0（审核只报告）|

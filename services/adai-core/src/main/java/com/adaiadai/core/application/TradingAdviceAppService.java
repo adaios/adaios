@@ -132,7 +132,7 @@ public class TradingAdviceAppService {
         }
         if (quotes == null) quotes = Map.of();
 
-        List<PositionView> views = buildPositionViews(positions, quotes);
+        List<PositionView> views = buildPositionViews(userId, positions, quotes);
 
         // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束（G-3：解析归引擎）
         String rulesText = readKnowledgeFile(RULES_PATH);
@@ -251,8 +251,15 @@ public class TradingAdviceAppService {
 
     // ── 数据准备 ──
 
-    /** 用实时行情价（缺失时用持仓存储价）计算持仓占比、盈亏等建议所需字段。 */
-    private List<PositionView> buildPositionViews(List<Position> positions, Map<String, MarketData> quotes) {
+    /**
+     * 用实时行情价（缺失时用持仓存储价）计算持仓占比、盈亏等建议所需字段。
+     * <p>
+     * FP-P2（2026-08-16 审查修复）：持仓占比分母 = **总资产**（持仓市值 + 现金余额）——
+     * R81 语义是单票占总资金 1/4~1/5（rules.md），非占总持仓市值。单仓+大额现金不再恒发 reduce。
+     * 现金余额不可用（null）时按 0 兜底，退化为总持仓市值口径。
+     */
+    private List<PositionView> buildPositionViews(String userId, List<Position> positions,
+                                                  Map<String, MarketData> quotes) {
         Map<String, BigDecimal> effectivePrices = new LinkedHashMap<>();
         BigDecimal totalValue = BigDecimal.ZERO;
         for (Position p : positions) {
@@ -260,13 +267,17 @@ public class TradingAdviceAppService {
             effectivePrices.put(p.symbol(), price);
             totalValue = totalValue.add(price.multiply(BigDecimal.valueOf(p.quantity())));
         }
+        // FP-P2：R81 分母 = 总资产（市值 + 现金余额，null 兜底 0）
+        BigDecimal cash = positionRepository.cashBalance(userId);
+        if (cash == null) cash = BigDecimal.ZERO;
+        BigDecimal totalAssets = totalValue.add(cash);
 
         List<PositionView> views = new ArrayList<>();
         for (Position p : positions) {
             BigDecimal price = effectivePrices.get(p.symbol());
             BigDecimal marketValue = price.multiply(BigDecimal.valueOf(p.quantity()));
-            BigDecimal positionPercent = totalValue.compareTo(BigDecimal.ZERO) > 0
-                    ? marketValue.multiply(BigDecimal.valueOf(100)).divide(totalValue, 2, RoundingMode.HALF_UP)
+            BigDecimal positionPercent = totalAssets.compareTo(BigDecimal.ZERO) > 0
+                    ? marketValue.multiply(BigDecimal.valueOf(100)).divide(totalAssets, 2, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
             MarketData quote = quotes.get(p.symbol());
             String name = (quote != null && quote.name() != null && !quote.name().isBlank())

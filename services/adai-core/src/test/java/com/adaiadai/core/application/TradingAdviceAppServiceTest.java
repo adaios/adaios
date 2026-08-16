@@ -348,4 +348,30 @@ class TradingAdviceAppServiceTest {
         assertTrue(prompt.contains("入场日期未知"), "无入场日期应显式标注未知");
         assertEquals(1, res.advice().size(), "无计划数据不影响建议流程");
     }
+
+    @Test
+    void positionPercent_usesTotalAssets_includingCash() {
+        // FP-P2（2026-08-16 审查修复）：R81 分母 = 持仓市值 + 现金余额——
+        // 单票市值 5460 + 现金 100 万 → 占比 ≈0.54%，不触发 OVER_WEIGHT（旧口径恒 100% 错发 reduce）
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                pos("000725", "京东方A", 1000, "5.20", "5.46")));
+        when(repo.cashBalance(any())).thenReturn(new BigDecimal("1000000"));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of());
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("{\"advice\": [], \"summary\": \"无建议\"}");
+        TradingAdviceAppService svc = service(repo, market, ai);
+
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        // 5460 / (5460 + 1000000) ≈ 0.54%
+        assertEquals(0, res.advice().get(0).positionPercent().compareTo(new BigDecimal("0.54")),
+                "持仓占比分母应含现金余额，实际: " + res.advice().get(0).positionPercent());
+        // 且不触发 R81 OVER_WEIGHT 硬信号（旧口径 100% 必触发）
+        ArgumentCaptor<ContextPackage> ctxCaptor = ArgumentCaptor.forClass(ContextPackage.class);
+        verify(ai).generate(ctxCaptor.capture(), any());
+        String prompt = ctxCaptor.getValue().prompt();
+        assertFalse(prompt.contains("超 R81 上限"), "现金充足时不应触发 R81 超仓硬信号");
+    }
 }

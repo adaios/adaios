@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 76
+lines: 80
 depends-on: []
 related: [../roles/knowledge-reviewer.md]
 tags: [review, checklist, knowledge]

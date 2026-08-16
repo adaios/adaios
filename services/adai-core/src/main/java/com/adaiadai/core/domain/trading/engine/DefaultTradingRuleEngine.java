@@ -44,10 +44,10 @@ public class DefaultTradingRuleEngine implements TradingRuleEngine {
             return new StopLossResult(StopLossVerdict.BREACHED, "R66",
                     "现价 " + currentPrice.stripTrailingZeros().toPlainString()
                             + " < 止损位 " + stopLossPrice.stripTrailingZeros().toPlainString()
-                            + "，已跌破止损位（R66 收盘跌破就走）");
+                            + "，已跌破止损位（R66，现价口径）");
         }
         return new StopLossResult(StopLossVerdict.OK, "R66",
-                "现价未跌破止损位（R66 只输一根K线）");
+                "现价未跌破止损位（R66，现价口径）");
     }
 
     @Override
