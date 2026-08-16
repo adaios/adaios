@@ -78,6 +78,7 @@
 | [20260816-trading-agent-plugin-model.md](rfc/20260816-trading-agent-plugin-model.md) | 2026-08-16 | 交易 Agent 三阶段插件模型（裸问答 → +行情 → +规则，能力按用户叠加）|
 | [20260816-trading-os-engine.md](rfc/20260816-trading-os-engine.md) | 2026-08-16 | trading-engine 领域引擎化（知识/能力/形态三区，一个内核多出口）|
 | [20260816-trading-session-push.md](rfc/20260816-trading-session-push.md) | 2026-08-16 | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）|
+| [20260816-trading-data-intelligence.md](rfc/20260816-trading-data-intelligence.md) | 2026-08-16 | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核）|
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 
