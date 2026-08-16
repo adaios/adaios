@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 56
+lines: 57
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -33,6 +33,7 @@ tags: [ai, meta, index]
 | process/review.md | 增量深审流程 | active |
 | process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
 | guard-align.sh | 文档自动对齐（端点/测试数，pre-commit 触发）| active |
+| method/_index.md | 方法论层（切入点图谱/流水线/脚手架）| active |
 | checklists/review-ux.md | 交互检查清单 | active |
 | checklists/review-ui.md | 界面检查清单 | active |
 | checklists/review-product.md | 产品架构检查清单 | active |
