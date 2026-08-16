@@ -380,12 +380,13 @@ void main() {
       expect(find.text('重试'), findsNothing);
     });
 
-    testWidgets('NL 解析 → 确认卡回显 → 确认记录（AI 错误在确认步拦截）', (tester) async {
+    testWidgets('NL 解析 → 确认卡回显（含止损/买点回填）→ 确认记录', (tester) async {
       final b = _Backend();
       mockBase(b);
       b.handlers['/api/v1/trading/trades/parse'] = (_) async => _json({
             'matched': true, 'symbol': '000725', 'name': '京东方A',
             'direction': 'BUY', 'price': 5.2, 'volume': 1000,
+            'stopLossPrice': 4.9, 'buyPoint': 'B1',
           });
       var traded = false;
       Map<String, dynamic>? tradeBody;
@@ -397,7 +398,7 @@ void main() {
       await pumpTrading(tester, b);
 
       // 输入一句话 → 解析
-      await tester.enterText(find.byType(TextField).first, '买了 1000 股京东方 @5.2');
+      await tester.enterText(find.byType(TextField).first, '买了 1000 股京东方 @5.2，止损 4.9，B1');
       await tester.tap(find.text('解析'));
       await tester.pumpAndSettle();
 
@@ -407,8 +408,11 @@ void main() {
       expect(find.text('确认记录'), findsOneWidget);
       expect(tester.widget<TextField>(fieldByHint('股数')).controller?.text, '1000');
       expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.20');
+      // RFC 20260816：NL 带回止损/买点 → 确认卡回填（用户可改）
+      expect(tester.widget<TextField>(fieldByHint('止损价')).controller?.text, '4.90');
+      expect(find.text('B1'), findsOneWidget); // 买点下拉默认/回填 B1
 
-      // 确认 → POST /trading/trades（写真实交易）
+      // 确认 → POST /trading/trades（写真实交易，BUY 带止损/买点）
       await tester.tap(find.text('确认记录'));
       await tester.pumpAndSettle();
 
@@ -418,6 +422,8 @@ void main() {
       expect(tradeBody!['direction'], 'BUY');
       expect(tradeBody!['price'], 5.2);
       expect(tradeBody!['volume'], 1000);
+      expect(tradeBody!['stopLossPrice'], 4.9);
+      expect(tradeBody!['buyPoint'], 'B1');
       expect(find.textContaining('已买入'), findsOneWidget); // 人话 SnackBar
       expect(find.text('确认记录'), findsNothing); // 确认卡已收起
     });
@@ -489,6 +495,128 @@ void main() {
 
       expect(find.text('卖出 2000 股超过持仓 1000 股'), findsOneWidget);
       expect(traded, isFalse);
+    });
+
+    testWidgets('BUY 缺止损拦截：精确表单不填止损 → 人话提示，不提交', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var traded = false;
+      b.handlers['/api/v1/trading/trades'] = (_) async {
+        traded = true;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('精确填写'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
+      await tester.enterText(fieldByHint('成交单价'), '5.2');
+      await tester.enterText(fieldByHint('股数'), '1000');
+      await tester.tap(find.text('买入'));
+      await tester.pumpAndSettle();
+
+      // RFC 20260816：BUY 缺止损 → 前端人话拦截（对齐后端 400 语义）
+      expect(find.text('买入请填止损位，跌破就按计划处理'), findsOneWidget);
+      expect(traded, isFalse); // 未发请求
+    });
+
+    testWidgets('精确表单 BUY：填止损 + 默认买点 B1 → 请求带上', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      Map<String, dynamic>? tradeBody;
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('精确填写'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
+      await tester.enterText(fieldByHint('成交单价'), '5.2');
+      await tester.enterText(fieldByHint('股数'), '1000');
+      await tester.enterText(fieldByHint('止损价，如 4.90'), '4.9');
+      await tester.tap(find.text('买入'));
+      await tester.pumpAndSettle();
+
+      expect(tradeBody, isNotNull);
+      expect(tradeBody!['direction'], 'BUY');
+      expect(tradeBody!['stopLossPrice'], 4.9);
+      expect(tradeBody!['buyPoint'], 'B1'); // 买点默认 B1
+      expect(find.textContaining('已买入'), findsOneWidget);
+    });
+
+    testWidgets('精确表单 SELL：不填止损也能卖，请求不带止损/买点', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 5.46,
+          'marketValue': 5460.0, 'pnl': 260.0, 'pnlPercent': 5.0,
+        },
+      ]);
+      Map<String, dynamic>? tradeBody;
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('精确填写'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
+      await tester.enterText(fieldByHint('成交单价'), '5.46');
+      await tester.enterText(fieldByHint('股数'), '1000');
+      await tester.tap(find.text('卖出'));
+      await tester.pumpAndSettle();
+
+      expect(tradeBody, isNotNull);
+      expect(tradeBody!['direction'], 'SELL');
+      expect(tradeBody!.containsKey('stopLossPrice'), isFalse); // SELL 空字段不发
+      expect(tradeBody!.containsKey('buyPoint'), isFalse);
+      expect(find.textContaining('已卖出'), findsOneWidget);
+    });
+
+    testWidgets('NL SELL：确认卡隐藏止损/买点，请求不带止损字段', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 5.46,
+          'marketValue': 5460.0, 'pnl': 260.0, 'pnlPercent': 5.0,
+        },
+      ]);
+      b.handlers['/api/v1/trading/trades/parse'] = (_) async => _json({
+            'matched': true, 'symbol': '000725', 'name': '京东方A',
+            'direction': 'SELL', 'price': 5.46, 'volume': 1000,
+          });
+      Map<String, dynamic>? tradeBody;
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
+        return _json({'positions': []});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.enterText(find.byType(TextField).first, '卖了 1000 股京东方 @5.46');
+      await tester.tap(find.text('解析'));
+      await tester.pumpAndSettle();
+
+      // SELL 确认卡：方向徽标 + 止损/买点隐藏（RFC 20260816：SELL 可空）
+      expect(find.text('卖出'), findsOneWidget); // 方向徽标
+      expect(fieldByHint('止损价'), findsNothing);
+      expect(find.text('B1'), findsNothing);
+
+      await tester.tap(find.text('确认记录'));
+      await tester.pumpAndSettle();
+
+      expect(tradeBody, isNotNull);
+      expect(tradeBody!['direction'], 'SELL');
+      expect(tradeBody!.containsKey('stopLossPrice'), isFalse);
+      expect(tradeBody!.containsKey('buyPoint'), isFalse);
+      expect(find.textContaining('已卖出'), findsOneWidget);
     });
 
     testWidgets('持仓卡渲染：名称/代码 + 盈亏大字 + 盈亏%', (tester) async {

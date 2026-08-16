@@ -345,12 +345,18 @@ class ApiService {
 
   /// 记录一笔交易。
   /// name 可空（RFC 20260815：代码即标的，名称由后端补全/以代码兜底）。
+  /// RFC 20260816：stopLossPrice/buyPoint 为 BUY 必填（缺失后端 400，前端先拦截）；
+  /// targetPrice/reason 可空（P1，本轮仅透传对齐 web）。SELL 时空字段不发。
   Future<PositionsResponse> recordTrade({
     required String symbol,
     String? name,
     required String direction,
     required double price,
     required int volume,
+    double? stopLossPrice,
+    String? buyPoint,
+    double? targetPrice,
+    String? reason,
   }) async {
     final body = {
       'symbol': symbol,
@@ -358,6 +364,10 @@ class ApiService {
       'direction': direction,
       'price': price,
       'volume': volume,
+      if (stopLossPrice != null) 'stopLossPrice': stopLossPrice,
+      if (buyPoint != null && buyPoint.trim().isNotEmpty) 'buyPoint': buyPoint.trim(),
+      if (targetPrice != null) 'targetPrice': targetPrice,
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
     };
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trades'),
@@ -1007,6 +1017,7 @@ class PortfolioSnapshotResponse {
 
 /// 一句话解析结果 DTO（POST /api/v1/trading/trades/parse，RFC 20260815）。
 /// 宽容解析：matched=false 时其余字段可缺省（前端落精确表单）。
+/// RFC 20260816：新增 stopLossPrice/buyPoint/targetPrice/reason（可空，宽松解析）。
 class ParseTradeResponse {
   final bool matched;
   final String symbol;
@@ -1014,6 +1025,10 @@ class ParseTradeResponse {
   final String direction; // BUY / SELL
   final double? price;
   final int? volume;
+  final double? stopLossPrice; // 止损位（BUY 通常必填，后端 parse 可带回）
+  final String? buyPoint; // 买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）
+  final double? targetPrice; // 目标价（可空）
+  final String? reason; // 交易原因/预期（可空）
 
   ParseTradeResponse({
     this.matched = false,
@@ -1022,6 +1037,10 @@ class ParseTradeResponse {
     this.direction = 'BUY',
     this.price,
     this.volume,
+    this.stopLossPrice,
+    this.buyPoint,
+    this.targetPrice,
+    this.reason,
   });
 
   factory ParseTradeResponse.fromJson(Map<String, dynamic> json) =>
@@ -1032,6 +1051,10 @@ class ParseTradeResponse {
         direction: (json['direction'] as String? ?? 'BUY').toUpperCase(),
         price: (json['price'] as num?)?.toDouble(),
         volume: (json['volume'] as num?)?.toInt(),
+        stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
+        buyPoint: json['buyPoint'] as String?,
+        targetPrice: (json['targetPrice'] as num?)?.toDouble(),
+        reason: json['reason'] as String?,
       );
 }
 

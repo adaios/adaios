@@ -37,12 +37,23 @@ class _TradingPageState extends State<TradingPage> {
   String _confirmDirection = 'BUY';
   bool _confirming = false;
 
-  // ── 通道 B：精确表单（3 字段 + 双按钮）──
+  // ── RFC 20260816 P0：止损位 + 买点类型（BUY 必填，SELL 隐藏）──
+  final _confirmStopLossCtrl = TextEditingController();
+  String _confirmBuyPoint = 'B1';
+
+  // ── 通道 B：精确表单（3 字段 + 双按钮 + 止损/买点）──
   bool _showForm = false;
   final _symbolCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _volumeCtrl = TextEditingController();
+  final _stopLossCtrl = TextEditingController();
+  String _buyPoint = 'B1';
   bool _submitting = false;
+
+  /// 买点类型白名单（RFC 20260816 §2.1：B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）。
+  static const List<String> _buyPoints = [
+    'B1', 'B2', 'B3', 'SB1', '暴力特噗', '深水炸弹', '单针', '其他',
+  ];
 
   // ── 复盘横幅（P1：has-activity 检测 + 生成）──
   bool _hasActivity = false;
@@ -62,9 +73,11 @@ class _TradingPageState extends State<TradingPage> {
     _nlCtrl.dispose();
     _confirmVolumeCtrl.dispose();
     _confirmPriceCtrl.dispose();
+    _confirmStopLossCtrl.dispose();
     _symbolCtrl.dispose();
     _priceCtrl.dispose();
     _volumeCtrl.dispose();
+    _stopLossCtrl.dispose();
     super.dispose();
   }
 
@@ -155,6 +168,20 @@ class _TradingPageState extends State<TradingPage> {
     return null;
   }
 
+  /// V7（RFC 20260816）：BUY 止损位必填、>0、不过大（对齐后端 400 语义，人话）。
+  String? _validateStopLoss(double? stopLoss) {
+    if (stopLoss == null) return '买入请填止损位，跌破就按计划处理';
+    if (stopLoss <= 0) return '止损位必须大于 0';
+    if (stopLoss > 1e7) return '止损位过大，请检查是否多打了 0';
+    return null;
+  }
+
+  /// V8（RFC 20260816）：买点类型白名单（下拉只会产出白名单值，此处兜底后端回填/异常值）。
+  String? _validateBuyPoint(String buyPoint) {
+    if (!_buyPoints.contains(buyPoint)) return '买点类型不认识，选一个吧';
+    return null;
+  }
+
   // ────────────────────────────────────────────────────────────
   // 记录交易（通道 A：NL 解析 → 确认卡）
   // ────────────────────────────────────────────────────────────
@@ -175,9 +202,14 @@ class _TradingPageState extends State<TradingPage> {
       if (parsed.matched) {
         _confirmVolumeCtrl.text = parsed.volume?.toString() ?? '';
         _confirmPriceCtrl.text = parsed.price?.toStringAsFixed(2) ?? '';
+        // RFC 20260816：NL 带回止损/买点 → 回填确认卡（用户可改；异常值兜底 B1）
+        _confirmStopLossCtrl.text = parsed.stopLossPrice?.toStringAsFixed(2) ?? '';
+        final buyPoint =
+            _buyPoints.contains(parsed.buyPoint) ? parsed.buyPoint! : 'B1';
         setState(() {
           _draft = parsed;
           _confirmDirection = parsed.direction == 'SELL' ? 'SELL' : 'BUY';
+          _confirmBuyPoint = buyPoint;
         });
       } else {
         // V10：没听懂 → 人话提示 + 自动展开精确表单（没有死路）
@@ -201,6 +233,15 @@ class _TradingPageState extends State<TradingPage> {
     if (priceErr != null) { _showSnack(priceErr, AppColors.darkOrange); return; }
     final volErr = _validateVolume(volume);
     if (volErr != null) { _showSnack(volErr, AppColors.darkOrange); return; }
+    // RFC 20260816：BUY 必填止损位 + 买点（对齐后端 400 语义，前端先拦人话）
+    double? stopLoss;
+    if (_confirmDirection == 'BUY') {
+      stopLoss = double.tryParse(_confirmStopLossCtrl.text.trim());
+      final slErr = _validateStopLoss(stopLoss);
+      if (slErr != null) { _showSnack(slErr, AppColors.darkOrange); return; }
+      final bpErr = _validateBuyPoint(_confirmBuyPoint);
+      if (bpErr != null) { _showSnack(bpErr, AppColors.darkOrange); return; }
+    }
     if (_confirmDirection == 'SELL') {
       final sellErr = _validateSell(draft.symbol, volume!);
       if (sellErr != null) { _showSnack(sellErr, AppColors.darkOrange); return; }
@@ -213,6 +254,8 @@ class _TradingPageState extends State<TradingPage> {
         direction: _confirmDirection,
         price: price!,
         volume: volume!,
+        stopLossPrice: _confirmDirection == 'BUY' ? stopLoss : null,
+        buyPoint: _confirmDirection == 'BUY' ? _confirmBuyPoint : null,
       );
       if (!mounted) return;
       _onTradeSuccess(
@@ -237,6 +280,15 @@ class _TradingPageState extends State<TradingPage> {
     if (priceErr != null) { _showSnack(priceErr, AppColors.darkOrange); return; }
     final volErr = _validateVolume(volume);
     if (volErr != null) { _showSnack(volErr, AppColors.darkOrange); return; }
+    // RFC 20260816：BUY 必填止损位 + 买点（SELL 时这两项不参与校验、不发送）
+    double? stopLoss;
+    if (direction == 'BUY') {
+      stopLoss = double.tryParse(_stopLossCtrl.text.trim());
+      final slErr = _validateStopLoss(stopLoss);
+      if (slErr != null) { _showSnack(slErr, AppColors.darkOrange); return; }
+      final bpErr = _validateBuyPoint(_buyPoint);
+      if (bpErr != null) { _showSnack(bpErr, AppColors.darkOrange); return; }
+    }
     if (direction == 'SELL') {
       final sellErr = _validateSell(symbol, volume!);
       if (sellErr != null) { _showSnack(sellErr, AppColors.darkOrange); return; }
@@ -248,6 +300,8 @@ class _TradingPageState extends State<TradingPage> {
         direction: direction,
         price: price!,
         volume: volume!,
+        stopLossPrice: direction == 'BUY' ? stopLoss : null,
+        buyPoint: direction == 'BUY' ? _buyPoint : null,
       );
       if (!mounted) return;
       _onTradeSuccess(
@@ -273,7 +327,11 @@ class _TradingPageState extends State<TradingPage> {
       _draft = null;
       _confirmVolumeCtrl.clear();
       _confirmPriceCtrl.clear();
+      _confirmStopLossCtrl.clear();
+      _confirmBuyPoint = 'B1';
       _nlCtrl.clear();
+      _stopLossCtrl.clear();
+      _buyPoint = 'B1';
       _showForm = false;
       _submitting = false;
       _confirming = false;
@@ -510,6 +568,15 @@ class _TradingPageState extends State<TradingPage> {
           const SizedBox(width: 4),
           _dirChip('SELL', '卖'),
         ]),
+        // RFC 20260816：BUY 显示止损位/买点（NL 带回则回填，可改）；SELL 隐藏
+        if (isBuy) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: _formField('止损位', _confirmStopLossCtrl, keyboardType: TextInputType.number, hintText: '止损价')),
+            const SizedBox(width: 10),
+            Expanded(child: _buyPointField('买点', _confirmBuyPoint, (v) => setState(() => _confirmBuyPoint = v))),
+          ]),
+        ],
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
@@ -536,7 +603,7 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  // ── 精确表单：标的 | 价格 | 数量 + 底部 [买入][卖出]（方向由按钮承担）──
+  // ── 精确表单：标的 | 价格 | 数量 + 止损位/买点（RFC 20260816）+ 底部 [买入][卖出] ──
 
   Widget _buildExactForm() {
     return Container(
@@ -553,6 +620,11 @@ class _TradingPageState extends State<TradingPage> {
           const SizedBox(width: 10),
           Expanded(child: _formField('数量', _volumeCtrl, keyboardType: TextInputType.number, hintText: '股数')),
         ]),
+        // RFC 20260816：买入计划字段（BUY 必填止损；SELL 提交时忽略不发送）
+        const SizedBox(height: 8),
+        _formField('止损位', _stopLossCtrl, keyboardType: TextInputType.number, hintText: '止损价，如 4.90'),
+        const SizedBox(height: 8),
+        _buyPointField('买点', _buyPoint, (v) => setState(() => _buyPoint = v)),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: _tradeButton('买入', 'BUY')),
@@ -561,6 +633,36 @@ class _TradingPageState extends State<TradingPage> {
         ]),
       ]),
     );
+  }
+
+  /// 买点类型下拉（RFC 20260816 §2.1 白名单，默认 B1）。
+  Widget _buyPointField(String label, String value, ValueChanged<String> onChanged) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      const SizedBox(height: 4),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.darkBg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.darkBorder, width: 0.5),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            dropdownColor: AppColors.darkSurface2,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
+            icon: Icon(Icons.arrow_drop_down, size: 18, color: AppColors.darkGrey5),
+            items: _buyPoints.map((p) => DropdownMenuItem<String>(
+              value: p,
+              child: Text(p, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+            )).toList(),
+            onChanged: (v) { if (v != null) onChanged(v); },
+          ),
+        ),
+      ),
+    ]);
   }
 
   /// 底部双按钮：买入=红、卖出=绿（A股红涨绿跌，与方向徽标一致）。
