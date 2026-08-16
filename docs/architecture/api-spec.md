@@ -486,6 +486,28 @@
 
 ---
 
+### `GET /api/v1/trading/lookup` — 按代码查询名称（代码输入带出 + 二次确认，2026-08-16）
+
+| 参数 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `symbol` | String | 六位股票代码 |
+
+**响应**：`{"symbol":"000725","name":"京东方A"}`（name 查询失败为空串，前端可手填）。需 trading 插件（403）。
+
+### `POST /api/v1/trading/positions/import` — 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）
+
+**body**（数组，可空）：
+```json
+[{"symbol":"600519","name":"贵州茅台","quantity":100,"avgCost":1400,
+  "stopLossPrice":1350,"buyPoint":"B1","role":"基石","entryDate":"2026-08-01"}]
+```
+- `symbol`/`quantity`/`avgCost` 必填；`name` 缺失时后端按代码行情补全
+- `stopLossPrice`/`buyPoint`/`role`/`entryDate` 可选——通达信导出无止损/买点，导入后**必须补设**（R68）建议引擎才按纪律判定
+
+**响应**：`{"imported":2,"missingStopLoss":["600519 贵州茅台",...]}`（未设止损列表，前端提示补设）。按 symbol upsert（已存在更新，不存在新增）。需 trading 插件（403）。
+
+---
+
 ### `POST /api/v1/trading/trades/parse` — 解析一句话交易（RFC 20260815 通道 A）
 
 把自然语言（「买了 1000 股京东方 @5.2」）结构化为交易入参，供前端确认卡回显。**只解析不落库**——写入仍走 `POST /trades`（正确性由确认步拦截）。

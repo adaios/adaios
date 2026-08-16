@@ -402,6 +402,35 @@ class ApiService {
     return BatchImportResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 按代码查询名称（代码输入带出 + 二次确认，2026-08-16）。
+  /// GET /api/v1/trading/lookup?symbol= → 名称；失败/空返回 null。
+  Future<String?> lookupSymbol(String symbol) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/v1/trading/lookup')
+          .replace(queryParameters: {'symbol': symbol});
+      final resp = await _client.get(uri, headers: _headers);
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final name = data['name'] as String?;
+      return (name != null && name.isNotEmpty) ? name : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）。
+  /// POST /api/v1/trading/positions/import → {imported, missingStopLoss}.
+  Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/positions/import'),
+      headers: _headers,
+      body: jsonEncode(items),
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return PositionImportResult.fromJson(data);
+  }
+
   /// 交易历史逐笔流水（web 独有，RFC 20260816 §4.2）。
   /// GET /api/v1/trading/trades?from&to（yyyy-MM-dd，可选）→ TradeRecord 列表。
   Future<List<TradeRecordItem>> getTrades({String? from, String? to}) async {
@@ -1114,6 +1143,26 @@ class TradeRecordItem {
       buyPoint: map['buyPoint'] as String?,
       targetPrice: (map['targetPrice'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+    );
+  }
+}
+
+/// 持仓初始化导入结果（POST /api/v1/trading/positions/import，通达信）。
+class PositionImportResult {
+  final int imported;
+  final List<String> missingStopLoss;
+
+  PositionImportResult({required this.imported, required this.missingStopLoss});
+
+  factory PositionImportResult.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return PositionImportResult(imported: 0, missingStopLoss: []);
+    }
+    return PositionImportResult(
+      imported: (json['imported'] as num?)?.toInt() ?? 0,
+      missingStopLoss: ((json['missingStopLoss'] as List?) ?? [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 }

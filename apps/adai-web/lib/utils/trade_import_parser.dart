@@ -158,3 +158,110 @@ ImportParseResult parseImportTrades(String text) {
   }
   return ImportParseResult(rows: rows, errors: errors);
 }
+
+// ─────────────────────────── 通达信持仓导入 ───────────────────────────
+
+/// 通达信持仓快照行（导出「资金股票」→ 持仓快照，无方向/无止损——止损/买点需补设）。
+class TdxPositionRow {
+  final String symbol;
+  final String name;
+  final int quantity;
+  final double avgCost;
+
+  TdxPositionRow({
+    required this.symbol,
+    required this.name,
+    required this.quantity,
+    required this.avgCost,
+  });
+
+  /// 转 POST /trading/positions/import 请求项。
+  Map<String, dynamic> toJson() => {
+        'symbol': symbol,
+        'name': name,
+        'quantity': quantity,
+        'avgCost': avgCost,
+      };
+}
+
+/// 通达信导出是否可识别（表头含「证券代码/代码」「股票余额/数量」等特征）。
+bool isTdxExport(String text) {
+  final first = text.split(RegExp(r'[\r\n]+')).firstWhere(
+        (l) => l.trim().isNotEmpty,
+        orElse: () => '',
+      );
+  final low = first.toLowerCase();
+  return low.contains('证券代码') ||
+      low.contains('代码') && low.contains('股票余额') ||
+      low.contains('余额') && low.contains('成本价');
+}
+
+/// 通达信解析结果：持仓快照行 + 错误列表。
+class TdxParseResult {
+  final List<TdxPositionRow> rows;
+  final List<String> errors;
+
+  TdxParseResult({required this.rows, required this.errors});
+
+  bool get hasErrors => errors.isNotEmpty;
+}
+
+/// 解析通达信持仓导出 → 持仓快照行 + 错误列表。
+///
+/// 表头定位列（版本差异容忍）：证券代码/代码 → symbol；证券名称/名称 → name；
+/// 股票余额/持仓数量/数量 → quantity；成本价/成本 → avgCost。
+/// 分隔：制表符或连续空格（通达信导出通常制表符）。
+TdxParseResult parseTdxPositions(String text) {
+  final rows = <TdxPositionRow>[];
+  final errors = <String>[];
+  final lines = text.split(RegExp(r'[\r\n]+'));
+  List<int>? col;
+
+  for (var i = 0; i < lines.length; i++) {
+    final raw = lines[i].trim();
+    if (raw.isEmpty) continue;
+    final cells = raw.split(RegExp(r'[\t\s]+'));
+    if (col == null) {
+      // 表头行：定位列索引
+      final idx = <String, int>{};
+      for (var c = 0; c < cells.length; c++) {
+        final h = cells[c].toLowerCase();
+        if (h.contains('证券代码') || h == '代码') idx['symbol'] = c;
+        if (h.contains('证券名称') || h == '名称') idx['name'] = c;
+        if (h.contains('股票余额') || h.contains('持仓') || h == '数量' || h.contains('余额')) {
+          idx['quantity'] ??= c;
+        }
+        if (h.contains('成本价') || h == '成本') idx['cost'] = c;
+      }
+      if (idx.containsKey('symbol') && idx.containsKey('quantity') && idx.containsKey('cost')) {
+        col = [idx['symbol']!, idx['name'] ?? -1, idx['quantity']!, idx['cost']!];
+        continue; // 表头本身跳过
+      }
+      // 首行无表头特征 → 按固定顺序尝试：代码 名称 数量 成本
+      errors.add('无法识别通达信表头（需要 证券代码/股票余额/成本价 列），请确认是持仓导出');
+      break;
+    }
+    if (cells.length <= col[2]) {
+      errors.add('第 ${i + 1} 行：字段不足');
+      continue;
+    }
+    final symbol = cells[col[0]].toUpperCase();
+    if (symbol.isEmpty || !RegExp(r'^\d{6}$').hasMatch(symbol)) {
+      errors.add('第 ${i + 1} 行：代码「${cells[col[0]]}」不是六位数字');
+      continue;
+    }
+    final name = col[1] >= 0 && col[1] < cells.length ? cells[col[1]] : '';
+    final quantity = int.tryParse(cells[col[2]].replaceAll(',', ''));
+    if (quantity == null || quantity <= 0) {
+      errors.add('第 ${i + 1} 行：数量「${cells[col[2]]}」不是有效正整数');
+      continue;
+    }
+    final cost = double.tryParse(cells[col[3]].replaceAll(',', ''));
+    if (cost == null || cost <= 0) {
+      errors.add('第 ${i + 1} 行：成本价「${cells[col[3]]}」不是有效正数');
+      continue;
+    }
+    rows.add(TdxPositionRow(symbol: symbol, name: name, quantity: quantity, avgCost: cost));
+  }
+  return TdxParseResult(rows: rows, errors: errors);
+}

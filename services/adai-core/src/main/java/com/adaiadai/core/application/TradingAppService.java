@@ -1,6 +1,8 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.*;
+import com.adaiadai.core.domain.trading.market.MarketData;
+import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -15,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -37,13 +40,16 @@ public class TradingAppService {
     private final PositionRepository positionRepository;
     private final RecordRepository recordRepository;
     private final TradingHistoryRepository tradingHistoryRepository;
+    private final MarketDataSource marketDataSource;
 
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
-                             TradingHistoryRepository tradingHistoryRepository) {
+                             TradingHistoryRepository tradingHistoryRepository,
+                             MarketDataSource marketDataSource) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
+        this.marketDataSource = marketDataSource;
     }
 
     private Object tradeLock(String userId) {
@@ -226,6 +232,99 @@ public class TradingAppService {
                 })
                 .toList();
     }
+
+    /**
+     * 按股票代码查询名称（GET /trading/lookup，代码输入带出名称 + 二次确认）。
+     * <p>
+     * 走行情数据源（腾讯）单码查询；失败/无结果返回 null（前端让用户手填或留空）。
+     */
+    public String lookupName(String symbol) {
+        if (symbol == null || symbol.isBlank()) return null;
+        try {
+            Map<String, MarketData> quotes = marketDataSource.quote(List.of(symbol));
+            MarketData md = quotes.get(symbol);
+            if (md != null && md.name() != null && !md.name().isBlank()) {
+                return md.name();
+            }
+        } catch (Exception e) {
+            log.warn("代码查名失败 | symbol={} | {}", symbol, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * 持仓初始化导入（通达信导出 → 持仓快照，RFC 20260816 用户需求）。
+     * <p>
+     * 按 symbol upsert（已存在更新数量/成本，不存在新增）；name 缺失时用行情补全；
+     * 返回导入统计（导入数 + 未设止损列表——R68 提示补设，建议引擎/推送才按纪律工作）。
+     *
+     * @param items 导入项（代码/名称/数量/成本 + 可选止损/买点/角色/入场日期）
+     */
+    public PositionImportResult importPositions(String userId, List<PositionImportItem> items) {
+        if (items == null || items.isEmpty()) {
+            return new PositionImportResult(0, List.of());
+        }
+        synchronized (tradeLock(userId)) {
+            List<Position> current = new ArrayList<>(positionRepository.findAll(userId));
+            List<String> missingStopLoss = new ArrayList<>();
+            int imported = 0;
+
+            for (PositionImportItem item : items) {
+                String symbol = item.symbol();
+                if (symbol == null || symbol.isBlank()) continue;
+                // name 缺失 → 行情补全（代码带名称）
+                String name = (item.name() == null || item.name().isBlank())
+                        ? (lookupName(symbol) != null ? lookupName(symbol) : symbol)
+                        : item.name();
+
+                boolean found = false;
+                for (int i = 0; i < current.size(); i++) {
+                    if (current.get(i).symbol().equals(symbol)) {
+                        Position p = current.get(i);
+                        current.set(i, new Position(symbol, name, item.quantity(), item.avgCost(), item.avgCost(),
+                                LocalDateTime.now(),
+                                item.entryDate() != null ? item.entryDate() : p.entryDate(),
+                                item.stopLossPrice() != null ? item.stopLossPrice() : p.stopLossPrice(),
+                                item.buyPoint() != null ? item.buyPoint() : p.buyPoint(),
+                                item.role() != null ? item.role() : p.role()));
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    current.add(new Position(symbol, name, item.quantity(), item.avgCost(), item.avgCost(),
+                            LocalDateTime.now(),
+                            item.entryDate() != null ? item.entryDate() : LocalDate.now(),
+                            item.stopLossPrice(), item.buyPoint(), item.role()));
+                }
+                if (item.stopLossPrice() == null) {
+                    missingStopLoss.add(symbol + " " + name);
+                }
+                imported++;
+            }
+
+            current.removeIf(p -> p.quantity() <= 0);
+            positionRepository.saveAll(userId, current);
+            log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只",
+                    userId, imported, missingStopLoss.size());
+            return new PositionImportResult(imported, missingStopLoss);
+        }
+    }
+
+    /** 持仓导入项（通达信/批量，symbol 必填；name 缺失行情补全；止损/买点可选——缺失提示补设）。 */
+    public record PositionImportItem(
+            String symbol,
+            String name,
+            int quantity,
+            BigDecimal avgCost,
+            BigDecimal stopLossPrice,
+            String buyPoint,
+            String role,
+            LocalDate entryDate
+    ) {}
+
+    /** 导入结果：导入数量 + 未设止损列表（R68 提示）。 */
+    public record PositionImportResult(int imported, List<String> missingStopLoss) {}
 
     // ── 内部方法 ──
 

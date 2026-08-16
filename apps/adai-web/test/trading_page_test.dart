@@ -660,4 +660,47 @@ void main() {
       expect(find.textContaining('2026-08-11 复盘'), findsOneWidget);
     });
   });
+
+  group('通达信持仓导入', () {
+    test('制表符导出 → 持仓快照行', () {
+      const text = '市场\t证券代码\t证券名称\t股票余额\t可用余额\t成本价\t市价\n'
+          '上海A\t600519\t贵州茅台\t100\t100\t1400.00\t1420.00\n'
+          '深圳A\t000725\t京东方A\t1000\t1000\t5.20\t5.46\n';
+      final r = parseTdxPositions(text);
+      expect(r.errors, isEmpty);
+      expect(r.rows.length, 2);
+      expect(r.rows[0].symbol, '600519');
+      expect(r.rows[0].name, '贵州茅台');
+      expect(r.rows[0].quantity, 100);
+      expect(r.rows[0].avgCost, 1400.00);
+      expect(r.rows[1].symbol, '000725');
+    });
+
+    test('空格分隔 + 千分位数量', () {
+      const text = '证券代码 证券名称 股票余额 成本价\n'
+          '600519 贵州茅台 1,000 1400.50\n';
+      final r = parseTdxPositions(text);
+      expect(r.errors, isEmpty);
+      expect(r.rows.single.quantity, 1000);
+      expect(r.rows.single.avgCost, 1400.50);
+    });
+
+    test('非法行收集人话错误', () {
+      const text = '证券代码\t证券名称\t股票余额\t成本价\n'
+          'ABCD\t非法代码\t100\t10\n'
+          '600519\t贵州茅台\t0\t1400\n';
+      final r = parseTdxPositions(text);
+      expect(r.rows, isEmpty);
+      expect(r.errors.length, 2);
+      expect(r.errors.join(' '), contains('六位数字'));
+      expect(r.errors.join(' '), contains('数量'));
+    });
+
+    test('isTdxExport 识别通达信 vs 交易 CSV', () {
+      expect(isTdxExport('证券代码\t证券名称\t股票余额\t成本价\n600519\t贵州茅台\t100\t1400'),
+          isTrue);
+      expect(isTdxExport('600519,贵州茅台,BUY,1500,100,1350,B1'), isFalse);
+    });
+  });
+
 }

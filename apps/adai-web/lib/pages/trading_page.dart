@@ -61,7 +61,7 @@ class _TradingPageState extends State<TradingPage> {
   Future<void> _recordTrade() async {
     final form = await showDialog<_TradeFormResult>(
       context: context,
-      builder: (_) => const _TradeDialog(),
+      builder: (_) => _TradeDialog(api: widget.api),
     );
     if (form == null || !mounted) return;
     try {
@@ -467,7 +467,9 @@ class _TradeFormResult {
 }
 
 class _TradeDialog extends StatefulWidget {
-  const _TradeDialog();
+  final ApiService api;
+
+  const _TradeDialog({required this.api});
 
   @override
   State<_TradeDialog> createState() => _TradeDialogState();
@@ -483,6 +485,26 @@ class _TradeDialogState extends State<_TradeDialog> {
   final _reason = TextEditingController();
   String _direction = 'BUY';
   String _buyPoint = 'B1';
+  bool _nameAutoFilled = false; // 名称是否由代码自动带出（二次确认用）
+  bool _lookingUp = false;
+
+  /// 输入 6 位数字代码 → 调后端带出名称（二次确认：名称显示在框里，可改）。
+  Future<void> _lookupName(String raw) async {
+    final symbol = raw.trim().toUpperCase();
+    if (!RegExp(r'^\d{6}$').hasMatch(symbol)) return;
+    setState(() => _lookingUp = true);
+    final name = await widget.api.lookupSymbol(symbol);
+    if (!mounted) return;
+    setState(() {
+      _lookingUp = false;
+      if (name != null && name.isNotEmpty && !_nameAutoFilled) {
+        _name.text = name;
+        _nameAutoFilled = true;
+      } else if (name == null) {
+        _nameAutoFilled = false;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -557,13 +579,19 @@ class _TradeDialogState extends State<_TradeDialog> {
             children: [
               TextField(
                 controller: _symbol,
-                decoration: const InputDecoration(labelText: '代码', hintText: '如 AAPL / 600519'),
+                decoration: const InputDecoration(labelText: '代码', hintText: '如 600519'),
                 style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+                onChanged: (v) {
+                  _nameAutoFilled = false;
+                  _lookupName(v);
+                },
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _name,
-                decoration: const InputDecoration(labelText: '名称（可选）'),
+                decoration: InputDecoration(
+                  labelText: _lookingUp ? '名称（查码中…）' : '名称（自动带出，可改）',
+                ),
                 style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
               ),
               const SizedBox(height: 8),
@@ -822,6 +850,11 @@ class _ImportDialogState extends State<_ImportDialog> {
   }
 
   Future<void> _import() async {
+    // 通达信导出（持仓快照）自动识别 → 持仓初始化导入；否则按交易 CSV 批量导入
+    if (isTdxExport(_text.text)) {
+      await _importTdxPositions();
+      return;
+    }
     final parsed = parseImportTrades(_text.text);
     if (parsed.rows.isEmpty && parsed.errors.isEmpty) {
       setState(() {
@@ -869,6 +902,47 @@ class _ImportDialogState extends State<_ImportDialog> {
     }
   }
 
+  /// 通达信持仓导入：解析快照 → POST /positions/import → 展示导入数 + 未设止损提示。
+  Future<void> _importTdxPositions() async {
+    final parsed = parseTdxPositions(_text.text);
+    setState(() {
+      _importing = true;
+      _successCount = null;
+      _errors
+        ..clear()
+        ..addAll(parsed.errors);
+    });
+    if (parsed.rows.isEmpty) {
+      setState(() => _importing = false);
+      return;
+    }
+    try {
+      final result = await widget.api.importPositions(
+        parsed.rows.map((r) => r.toJson()).toList(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _successCount = result.imported;
+        // R68：未设止损的持仓必须补设，建议引擎/推送才按纪律工作
+        if (result.missingStopLoss.isNotEmpty) {
+          _errors.add('⚠️ ${result.missingStopLoss.length} 只持仓未设止损（R68）：'
+              '${result.missingStopLoss.join('、')}——请到持仓表格补设止损位与买点');
+        }
+      });
+      if (result.imported > 0) {
+        widget.onImported();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _successCount = 0;
+        _errors.add('通达信导入请求失败，请检查网络后重试');
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -880,10 +954,15 @@ class _ImportDialogState extends State<_ImportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('每行一笔，逗号分隔：代码,名称,方向,价格,数量,止损,买点[,原因]',
+            const Text('两种格式自动识别：',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+            const SizedBox(height: 2),
+            const Text('① 交易 CSV：代码,名称,方向,价格,数量,止损,买点[,原因]',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const Text('② 通达信持仓导出：直接粘贴（证券代码/股票余额/成本价 自动识别，止损需导入后补设）',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
             const SizedBox(height: 4),
-            const Text('例：600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏',
+            const Text('例（交易）：600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
             const SizedBox(height: 8),
             TextField(

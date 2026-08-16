@@ -122,6 +122,39 @@ public class TradingController {
     }
 
     /**
+     * 按股票代码查询名称（代码输入带出名称 + 二次确认）。
+     * GET /api/v1/trading/lookup?symbol=000725 → {"symbol":"000725","name":"京东方A"}
+     */
+    @GetMapping("/lookup")
+    public ResponseEntity<?> lookupName(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String symbol) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String name = tradingAppService.lookupName(symbol);
+        return ResponseEntity.ok(Map.of("symbol", symbol, "name", name != null ? name : ""));
+    }
+
+    /**
+     * 持仓初始化导入（通达信导出 → 持仓快照）。
+     * POST /api/v1/trading/positions/import
+     * body: [{"symbol":"600519","name":"贵州茅台","quantity":100,"avgCost":1400,"stopLossPrice":1350,"buyPoint":"B1"}]
+     * name 缺失行情补全；止损/买点可选——导入结果返回 missingStopLoss 列表（R68 提示补设）。
+     */
+    @PostMapping("/positions/import")
+    public ResponseEntity<?> importPositions(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        TradingAppService.PositionImportResult result = tradingAppService.importPositions(
+                userId, items != null ? items : List.of());
+        return ResponseEntity.ok(Map.of(
+                "imported", result.imported(),
+                "missingStopLoss", result.missingStopLoss()));
+    }
+
+    /**
      * 解析一句话交易（RFC 20260815 通道 A）：把自然语言「买了 1000 股京东方 @5.2」
      * 结构化为 symbol/name/direction/price/volume，供前端确认卡回显。
      * LLM 结构化优先，失败降级正则兜底；仍无法解析 → matched=false（前端转精确表单）。

@@ -553,4 +553,50 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$[0].buyPoint").value("B1"));
     }
 
+
+    // ── 代码查名 + 持仓初始化导入（通达信，2026-08-16）──
+
+    @Test
+    void lookupName_returnsName() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.lookupName("000725")).thenReturn("京东方A");
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(get("/api/v1/trading/lookup").param("symbol", "000725"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.symbol").value("000725"))
+                .andExpect(jsonPath("$.name").value("京东方A"));
+    }
+
+    @Test
+    void lookupName_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/lookup").param("symbol", "000725"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void importPositions_importsAndReportsMissingStopLoss() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importPositions(any(), any())).thenReturn(
+                new TradingAppService.PositionImportResult(2,
+                        java.util.List.of("600519 贵州茅台", "000725 京东方A")));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"symbol\":\"600519\",\"name\":\"贵州茅台\",\"quantity\":100,\"avgCost\":1400}]"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(2))
+                .andExpect(jsonPath("$.missingStopLoss.length()").value(2));
+    }
+
+    @Test
+    void importPositions_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isForbidden());
+    }
 }

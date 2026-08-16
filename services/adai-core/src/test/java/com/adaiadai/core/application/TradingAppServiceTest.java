@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
+import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.PositionFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingHistoryFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
@@ -47,7 +48,7 @@ class TradingAppServiceTest {
 
     private TradingAppService service(PositionRepository repo, RecordRepository records,
                                       TradingHistoryRepository history) {
-        return new TradingAppService(repo, records, history);
+        return new TradingAppService(repo, records, history, mock(MarketDataSource.class));
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -424,7 +425,7 @@ class TradingAppServiceTest {
         TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
         RecordRepository records = mock(RecordRepository.class);
         when(records.findAll(any())).thenReturn(List.of());
-        TradingAppService service = new TradingAppService(repo, records, history);
+        TradingAppService service = new TradingAppService(repo, records, history, mock(MarketDataSource.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
