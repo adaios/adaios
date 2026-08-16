@@ -45,12 +45,7 @@ mode: deep 增量（批 Q/R + 展示层聚合 + 发布核对）
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
 > **P2 当前清零**（2026-08-15 修复批 S + S2 全部出表：P2-B1/B2/R1/R2/R3/D1/D2，见已修复区；历史观察项已迁移 task-log）。
-| P2-R2 | **adai-app launcher 插件失败降级无测试、无反馈（F32 未闭环）**：测试缺 `['trading']` 单独分支与 500 降级分支；失败路径无任何用户反馈（与 web P2-5 不一致，见 S-R1） | `pages_widget_test.dart:366-415` + `launcher_page.dart:102-111` | 补两测试并同步 task-log 出表 |
-| P2-R3 | **内置 admin 插件开关未按 isProtected 门控**：enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件 | `accounts_page.dart:536-545` | 插件开关加 `isProtected` 门控（禁用态 + Tooltip）+ 断言测试 |
-| P2-D1 | **docs/README RFC 状态过期**：`20260815-media-event-unification` 说明仍写「draft 待确认」，实际已 approved | `docs/README.md:73` | 改 approved 说明 |
-| P2-D2 | **RFC approved 后正文决策点未清理**：frontmatter 已 decided，§七「等你拍板」措辞遗留，后续会话误读为未决策 | `docs/rfc/20260815-media-event-unification.md:65-68` | 决策点标注「已决策」或删除该节 |
-
-> P2-7 由 status.md 单源化；历史观察项（#117/#149/#153/#176）已迁移 task-log。
+> 已修项 P2-R2/R3/D1/D2 见上方已修复区（S2 批 ✅ 2026-08-15）；历史观察项已迁移 task-log。
 
 ## 🔴 P0 / P3
 

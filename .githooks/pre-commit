@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
-# 提交前自动对齐门禁：代码 ↔ 文档内容一致性（端点/测试数），FAIL 阻止提交。
-# 由 git core.hooksPath 启用（详见 ai-engineering/process/ship.md §5）。
+# 提交前自动门禁（三层）：
+#   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
+#   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
+#   3) guard.sh    —— 防 P0 复发（G1-G7）
+# 由 git core.hooksPath 启用（scripts/setup-hooks.sh 配置，随 clone 重建）。
 cd "$(git rev-parse --show-toplevel)"
 
-# 触发条件：代码/测试变更，或状态/契约文档变更（status.md / api-spec.md / feature-reference.md）
+# 触发条件：任何 .md / .java / .dart / .sh 变更（docs-only 也要查结构）
 CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null)
-if ! echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then
+if ! echo "$CHANGED" | grep -qE '\.(java|dart|md|sh)$'; then
   exit 0
 fi
 
-echo "── pre-commit: 文档对齐检查 ──"
-bash ai-engineering/guard-align.sh
-STATUS=$?
-if [ $STATUS -ne 0 ]; then
-  echo ""
-  echo "❌ 文档未对齐，提交已阻止。"
-  echo "   修复指引："
-  echo "     1) 新增/修改端点 → 同步 docs/architecture/api-spec.md（A1）"
-  echo "     2) 测试数变化 → 更新 docs/reference/status.md（A2，/ship 时自动）"
-  echo "     3) 或强制跳过（不推荐）：git commit --no-verify"
-  exit 1
+echo "── pre-commit: 文档对齐 + 结构 + 防复发检查 ──"
+
+# 1) 内容对齐（端点/测试数）——仅代码/契约相关变更时跑
+if echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then
+  bash ai-engineering/guard-align.sh || { echo "❌ 文档内容未对齐，提交已阻止（见上）。修复指引：同步 api-spec.md / status.md。"; exit 1; }
 fi
-echo "✅ 文档对齐通过"
+
+# 2) 结构对齐（frontmatter 图谱/lines/孤儿/正文路径）——任何 md 变更都跑
+if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
+  bash ai-engineering/guard-meta.sh --fix >/dev/null 2>&1   # 幂等回写 lines
+  bash ai-engineering/guard-meta.sh || { echo "❌ frontmatter 结构未对齐，提交已阻止。修复指引：跑 bash ai-engineering/guard-meta.sh --fix 回写 lines，人工处理 M1 断链/M3 孤儿。"; exit 1; }
+fi
+
+# 3) 防 P0 复发（G1-G7）——代码变更时跑
+if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
+  bash docs/review/guard.sh >/dev/null 2>&1 || { echo "⚠️ 守护检查有 HIT（防 P0 复发），请确认非复发后提交（git commit --no-verify 绕过）。"; exit 1; }
+fi
+
+echo "✅ 文档对齐 + 结构 + 防复发检查通过"
