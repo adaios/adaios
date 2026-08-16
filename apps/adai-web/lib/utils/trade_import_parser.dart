@@ -191,9 +191,8 @@ bool isTdxExport(String text) {
         orElse: () => '',
       );
   final low = first.toLowerCase();
-  return low.contains('证券代码') ||
-      low.contains('代码') && low.contains('股票余额') ||
-      low.contains('余额') && low.contains('成本价');
+  // 通达信表头特征：含「代码/证券代码」且含「成本价」（交易 CSV 无成本价列）
+  return (low.contains('证券代码') || low.contains('代码')) && low.contains('成本价');
 }
 
 /// 通达信解析结果：持仓快照行 + 错误列表。
@@ -219,7 +218,7 @@ TdxParseResult parseTdxPositions(String text) {
 
   for (var i = 0; i < lines.length; i++) {
     final raw = lines[i].trim();
-    if (raw.isEmpty) continue;
+    if (raw.isEmpty || raw.startsWith('#')) continue; // # 注释行（通达信「#数据来源」）
     final cells = raw.split(RegExp(r'[\t\s]+'));
     if (col == null) {
       // 表头行：定位列索引
@@ -228,7 +227,7 @@ TdxParseResult parseTdxPositions(String text) {
         final h = cells[c].toLowerCase();
         if (h.contains('证券代码') || h == '代码') idx['symbol'] = c;
         if (h.contains('证券名称') || h == '名称') idx['name'] = c;
-        if (h.contains('股票余额') || h.contains('持仓') || h == '数量' || h.contains('余额')) {
+        if (h.contains('股票余额') || h.contains('证券数量') || h.contains('持仓') || h == '数量' || h.contains('余额')) {
           idx['quantity'] ??= c;
         }
         if (h.contains('成本价') || h == '成本') idx['cost'] = c;

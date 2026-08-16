@@ -703,4 +703,23 @@ void main() {
     });
   });
 
+
+    test('真实通达信导出（证券数量列 + # 注释行）', () {
+      const text = '代码\t名称\t涨幅%\t现价\t涨跌\t换手%\t涨速%\t成本价\t证券数量\t最新市值\t持仓盈亏\n'
+          '000725\t京东方Ａ\t-0.85\t5.81\t-0.05\t3.56\t0.17\t6.042\t5300\t30793\t-1230.13\n'
+          '002131\t利欧股份\t-4.14\t5.33\t-0.23\t17.94\t-0.18\t5.567\t3500\t18655\t-830.2\n'
+          '601066\t中信建投\t-1.66\t25.54\t-0.43\t0.36\t0.04\t26.191\t1100\t28094\t-716.65\n'
+          '002428\t云南锗业\t1.38\t101.59\t1.38\t11.96\t-0.03\t12.05\t200\t20318\t17908.1\n'
+          '600809\t山西汾酒\t-2.39\t123.52\t-3.03\t0.57\t-0.01\t122.385\t100\t12352\t113.51\n'
+          '#数据来源:通达信\n';
+      expect(isTdxExport(text), isTrue);
+      final r = parseTdxPositions(text);
+      expect(r.errors, isEmpty, reason: 'errors=${r.errors}');
+      expect(r.rows.length, 5);
+      expect(r.rows[0].symbol, '000725');
+      expect(r.rows[0].quantity, 5300);
+      expect(r.rows[0].avgCost, 6.042);
+      expect(r.rows[4].avgCost, 122.385);
+    });
+
 }
