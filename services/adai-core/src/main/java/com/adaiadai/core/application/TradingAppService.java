@@ -45,6 +45,7 @@ public class TradingAppService {
     private final WatchlistRepository watchlistRepository;
     private final SoldTradeRepository soldTradeRepository;
     private final AccountSnapshotRepository accountSnapshotRepository;
+    private final TransferRepository transferRepository;
     private final MarketDataSource marketDataSource;
 
     public TradingAppService(PositionRepository positionRepository,
@@ -53,6 +54,7 @@ public class TradingAppService {
                              WatchlistRepository watchlistRepository,
                              SoldTradeRepository soldTradeRepository,
                              AccountSnapshotRepository accountSnapshotRepository,
+                             TransferRepository transferRepository,
                              MarketDataSource marketDataSource) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
@@ -60,6 +62,7 @@ public class TradingAppService {
         this.watchlistRepository = watchlistRepository;
         this.soldTradeRepository = soldTradeRepository;
         this.accountSnapshotRepository = accountSnapshotRepository;
+        this.transferRepository = transferRepository;
         this.marketDataSource = marketDataSource;
     }
 
@@ -105,7 +108,7 @@ public class TradingAppService {
                         throw new TradingException(
                                 "卖出数量超过持仓: " + symbol + "（持有 " + p.quantity() + " 股）");
                     }
-                    Position updated = updatePosition(p, direction, price, volume,
+                    Position updated = updatePosition(p.symbol(), p, direction, price, volume,
                             effectiveEntryDate, stopLossPrice, buyPoint);
                     currentPositions.set(i, updated);
                     found = true;
@@ -119,8 +122,9 @@ public class TradingAppService {
             }
 
             if (!found && direction == TradeDirection.BUY) {
-                // 首次买入：新建持仓（首买日 + 止损/买点落盘；role 由 web 编辑，初始 null）
-                Position newPos = new Position(symbol, effectiveName, volume, price, price, LocalDateTime.now(),
+                // 首次买入：新建持仓（2026-08-16 手续费：avgCost = 摊薄成本价含佣金/过户费）
+                BigDecimal unit = CommissionCalculator.unitCost(symbol, price, volume);
+                Position newPos = new Position(symbol, effectiveName, volume, unit, price, LocalDateTime.now(),
                         effectiveEntryDate, stopLossPrice, buyPoint, null);
                 currentPositions.add(newPos);
             }
@@ -129,6 +133,20 @@ public class TradingAppService {
             currentPositions.removeIf(p -> p.quantity() <= 0);
 
             positionRepository.saveAll(userId, currentPositions);
+
+            // 2026-08-16 手续费自理：现金 = 当前现金 - 买入成本(含费) + 卖出回款(扣费)
+            BigDecimal tradeCashDelta = direction == TradeDirection.BUY
+                    ? CommissionCalculator.buyCost(symbol, price, volume).negate()
+                    : CommissionCalculator.sellProceeds(symbol, price, volume);
+            accountSnapshotRepository.findLatest(userId).ifPresent(current -> {
+                accountSnapshotRepository.save(userId, new AccountSnapshot(
+                        current.assets().add(tradeCashDelta),
+                        current.cash().add(tradeCashDelta),
+                        current.available().add(tradeCashDelta),
+                        current.withdrawable().add(tradeCashDelta),
+                        current.marketValue(), current.pnl(), current.todayPnl(),
+                        current.principal(), current.snapshotDate()));
+            });
 
             // RFC 20260815 §6：交易成功后同步写一条 domain=trading 记录（复盘提醒 + 时间线闭环）。
             // 位置在 saveAll 成功之后：recordTrade 失败（校验/存储异常）路径不会留下记录；
@@ -529,6 +547,44 @@ public class TradingAppService {
         }
     }
 
+    /**
+     * 银证转账（2026-08-16 净投入跟踪）：转入/转出 → 更新本金（净投入）+ 现金 + 资产，
+     * 追加流水。总盈亏 = 资产 - 本金：转账本身不变盈亏（转钱不算赚亏），后续行情/买卖推导。
+     */
+    public TransferRecord recordTransfer(String userId, String type, BigDecimal amount,
+                                         LocalDate date, String note) {
+        TransferRecord record = new TransferRecord(IdGenerator.monotonic("transfer_"),
+                type, amount, date, note);
+        synchronized (tradeLock(userId)) {
+            AccountSnapshot current = accountSnapshotRepository.findLatest(userId)
+                    .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                            BigDecimal.ZERO, LocalDate.now()));
+            BigDecimal delta = record.isIn() ? amount : amount.negate();
+            accountSnapshotRepository.save(userId, new AccountSnapshot(
+                    current.assets().add(delta),
+                    current.cash().add(delta),
+                    current.available().add(delta),
+                    current.withdrawable().add(delta),
+                    current.marketValue(),
+                    current.pnl(),
+                    current.todayPnl(),
+                    // 净投入 += 转入 - 转出（用户确认：本金 = 净投入累计）
+                    current.principal().add(delta),
+                    LocalDate.now()));
+            transferRepository.append(userId, record);
+            log.info("银证转账 | userId={} | {} {} | 本金净投入 → {}",
+                    userId, record.isIn() ? "转入" : "转出", amount,
+                    current.principal().add(delta));
+            return record;
+        }
+    }
+
+    /** 转账流水（web 展示用）。 */
+    public List<TransferRecord> transferList(String userId) {
+        return transferRepository.findAll(userId);
+    }
+
     /** 读取最近账户快照（顶层账户卡数据源）。 */
     public AccountSnapshot accountSnapshot(String userId) {
         return accountSnapshotRepository.findLatest(userId)
@@ -556,14 +612,15 @@ public class TradingAppService {
      *   <li>SELL：保留 entryDate/stopLossPrice/buyPoint/role</li>
      * </ul>
      */
-    private Position updatePosition(Position current, TradeDirection direction, BigDecimal price, int volume,
+    private Position updatePosition(String symbol, Position current, TradeDirection direction,
+                                    BigDecimal price, int volume,
                                     LocalDate entryDate, BigDecimal stopLossPrice, String buyPoint) {
         switch (direction) {
             case BUY -> {
-                // 摊平成本
+                // 摊平成本（2026-08-16 含手续费：加买入总成本 = 价×量 + 佣金 + 过户费）
                 int newQty = current.quantity() + volume;
                 BigDecimal newCost = current.costValue()
-                        .add(price.multiply(BigDecimal.valueOf(volume)))
+                        .add(CommissionCalculator.buyCost(symbol, price, volume))
                         .divide(BigDecimal.valueOf(newQty), 4, java.math.RoundingMode.HALF_UP);
                 // 加仓不覆盖首买日：已有 entryDate 保留，缺失时以本次入场日期落盘
                 LocalDate effectiveEntryDate = current.entryDate() != null ? current.entryDate() : entryDate;

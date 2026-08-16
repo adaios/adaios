@@ -430,6 +430,15 @@ class ApiService {
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return PositionImportResult.fromJson(data);
   }
+  /// 银证转账（POST /api/v1/trading/transfer：type IN/OUT + amount + note，净投入跟踪）。
+  Future<void> recordTransfer({required String type, required double amount, String? note}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/transfer'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'amount': amount, 'note': note}));
+    _check(resp);
+  }
+
   /// 账户总体快照（GET /api/v1/trading/account：资产/可用/可取/参考市值/当日盈亏/盈亏）。
   Future<AccountSnapshotDto> getAccount() async {
     final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/account'), headers: _headers);

@@ -29,6 +29,7 @@ class _TradingPageState extends State<TradingPage> {
   AccountSnapshotDto? _account;
   double? _cash;
   double? _assets;
+  String? _lastUpdated; // 顶部「上次更新」时间戳
   bool _loading = true;
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
@@ -71,6 +72,7 @@ class _TradingPageState extends State<TradingPage> {
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
         _assets = _account?.assets;
+        _lastUpdated = DateTime.now().toString().substring(11, 19);
         _loading = false;
       });
     } catch (e) {
@@ -250,7 +252,24 @@ class _TradingPageState extends State<TradingPage> {
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                     children: [
                       _buildSnapshotRow(),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        Text(_lastUpdated != null
+                            ? '上次更新 $_lastUpdated（行情实时 · 账户快照 ${_account?.snapshotDate ?? '-'}）'
+                            : '数据加载中…',
+                            style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: _loadAll,
+                          icon: const Icon(Icons.refresh, size: 14),
+                          label: const Text('点击更新', style: TextStyle(fontSize: 11)),
+                          style: TextButton.styleFrom(
+                              foregroundColor: AppColors.darkGrey4,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              minimumSize: const Size(0, 28)),
+                        ),
+                      ]),
+                      const SizedBox(height: 16),
                       _buildPositionTable(),
                       const SizedBox(height: 28),
                       _buildWatchlistSection(),
@@ -662,6 +681,26 @@ class _TradingPageState extends State<TradingPage> {
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
+          onPressed: () => _openTransferDialog(true),
+          icon: const Icon(Icons.south_west, size: 14, color: AppColors.darkGreen),
+          label: const Text('转入', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
+          onPressed: () => _openTransferDialog(false),
+          icon: const Icon(Icons.north_east, size: 14, color: AppColors.darkOrange),
+          label: const Text('转出', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton.icon(
           onPressed: () => _openImportDialog('资金股份查询',
               '粘贴通达信「资金股份查询」导出（或选择文件）：更新现金余额 + 精确成本价（4 位）',
               (c) async {
@@ -681,6 +720,67 @@ class _TradingPageState extends State<TradingPage> {
       const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
     ]);
+  }
+
+  /// 银证转账 Dialog（转入/转出，净投入跟踪，2026-08-16）。
+  Future<void> _openTransferDialog(bool isIn) async {
+    final amount = TextEditingController();
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text(isIn ? '转入（银行卡→证券）' : '转出（证券→银行卡）',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '金额（元）'),
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: note,
+            decoration: const InputDecoration(labelText: '备注（可选，如：补仓/提现）'),
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+          ),
+          const SizedBox(height: 8),
+          const Text('转入/转出会更新净投入本金与现金——总盈亏 = 资产 - 本金自动算',
+              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(amount.text.trim());
+              if (v == null || v <= 0) return;
+              Navigator.pop(context, true);
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('提交'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final v = double.tryParse(amount.text.trim());
+    if (v == null || v <= 0) {
+      _toast('请输入有效金额');
+      return;
+    }
+    try {
+      await widget.api.recordTransfer(
+        type: isIn ? 'IN' : 'OUT',
+        amount: v,
+        note: note.text.trim().isEmpty ? null : note.text.trim(),
+      );
+      await _loadAll();
+      if (mounted) _toast('${isIn ? '转入' : '转出'} ¥${v.toStringAsFixed(2)} 已记录');
+    } catch (e) {
+      if (mounted) _toast('转账记录失败');
+    }
   }
 
   /// 通用导入 Dialog：粘贴文本 或 选择文件（上传留存 + GBK 转码）→ 回调导入。

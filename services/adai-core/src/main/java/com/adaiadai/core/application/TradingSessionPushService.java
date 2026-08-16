@@ -1,6 +1,8 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.AccountSnapshot;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
@@ -73,6 +75,7 @@ public class TradingSessionPushService {
     private final TradingRuleEngine ruleEngine;
     private final AiClient aiClient;
     private final List<PushChannel> pushChannels;
+    private final AccountSnapshotRepository accountSnapshotRepository;
 
     public TradingSessionPushService(PositionRepository positionRepository,
                                      MarketDataSource marketDataSource,
@@ -80,7 +83,8 @@ public class TradingSessionPushService {
                                      PluginService pluginService,
                                      TradingRuleEngine ruleEngine,
                                      AiClient aiClient,
-                                     List<PushChannel> pushChannels) {
+                                     List<PushChannel> pushChannels,
+                                     AccountSnapshotRepository accountSnapshotRepository) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.accountRepository = accountRepository;
@@ -88,6 +92,7 @@ public class TradingSessionPushService {
         this.ruleEngine = ruleEngine;
         this.aiClient = aiClient;
         this.pushChannels = pushChannels;
+        this.accountSnapshotRepository = accountSnapshotRepository;
     }
 
     // ── 三节点 cron ──
@@ -116,6 +121,49 @@ public class TradingSessionPushService {
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "尾盘建议", "close-advice", this::buildCloseTemplate);
             pushToAll(userId, "尾盘建议", content, "session", null, null);
+        });
+    }
+
+    /** 收盘 15:05 账户自动更新（B1，2026-08-16）：行情可得部分自动——参考市值/当日盈亏/持仓浮盈；
+     *  现金/可用/本金保持券商导入值与转账推导。 */
+    @Scheduled(cron = "${adai.trading.session.close-update-cron:0 5 15 * * MON-FRI}")
+    public void closeAccountUpdate() {
+        forEachTradingUser(userId -> {
+            List<Position> positions = positionRepository.findAll(userId);
+            if (positions.isEmpty()) return;
+            Map<String, MarketData> quotes;
+            try {
+                quotes = marketDataSource.quote(positions.stream().map(Position::symbol).toList());
+            } catch (Exception e) {
+                log.warn("收盘账户更新：行情失败 | {}", e.getMessage());
+                return;
+            }
+            if (quotes.isEmpty()) return;
+            java.math.BigDecimal marketValue = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal todayPnl = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal floatPnl = java.math.BigDecimal.ZERO;
+            for (Position p : positions) {
+                MarketData md = quotes.get(p.symbol());
+                if (md == null || md.price() == null) continue;
+                java.math.BigDecimal value = md.price().multiply(java.math.BigDecimal.valueOf(p.quantity()));
+                marketValue = marketValue.add(value);
+                if (md.yesterdayClose() != null) {
+                    todayPnl = todayPnl.add(md.price().subtract(md.yesterdayClose())
+                            .multiply(java.math.BigDecimal.valueOf(p.quantity())));
+                }
+                floatPnl = floatPnl.add(md.price().subtract(p.avgCost())
+                        .multiply(java.math.BigDecimal.valueOf(p.quantity())));
+            }
+            final java.math.BigDecimal fMarket = marketValue;
+            final java.math.BigDecimal fToday = todayPnl;
+            final java.math.BigDecimal fFloat = floatPnl;
+            accountSnapshotRepository.findLatest(userId).ifPresent(cur -> {
+                accountSnapshotRepository.save(userId, new AccountSnapshot(
+                        fMarket.add(cur.cash()), cur.cash(), cur.available(), cur.withdrawable(),
+                        fMarket, fFloat, fToday, cur.principal(), java.time.LocalDate.now()));
+                log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
+                        userId, fMarket, fToday, fFloat);
+            });
         });
     }
 

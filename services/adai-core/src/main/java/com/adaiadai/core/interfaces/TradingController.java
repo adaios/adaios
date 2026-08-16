@@ -6,6 +6,7 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
@@ -249,6 +250,53 @@ public class TradingController {
                 userId, symbol, psychology != null ? psychology : "");
         return ok ? ResponseEntity.ok(Map.of("updated", true))
                 : ResponseEntity.notFound().build();
+    }
+
+    /** 银证转账（转入/转出，净投入跟踪，POST /api/v1/trading/transfer）。 */
+    @PostMapping("/transfer")
+    public ResponseEntity<?> recordTransfer(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null) return ResponseEntity.badRequest().body(Map.of("error", "请求体为空"));
+        String type = body.get("type");
+        if (!"IN".equals(type) && !"OUT".equals(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 必须为 IN（转入）或 OUT（转出）"));
+        }
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(body.getOrDefault("amount", "0"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "金额不是有效数字"));
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().body(Map.of("error", "金额必须大于 0"));
+        }
+        java.time.LocalDate date = null;
+        if (body.get("date") != null && !body.get("date").isBlank()) {
+            try {
+                date = java.time.LocalDate.parse(body.get("date"));
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "日期格式应为 yyyy-MM-dd"));
+            }
+        }
+        TransferRecord record = tradingAppService.recordTransfer(
+                userId, type, amount, date, body.get("note"));
+        return ResponseEntity.ok(Map.of(
+                "id", record.id(),
+                "type", record.type(),
+                "amount", record.amount(),
+                "date", record.date().toString()));
+    }
+
+    /** 转账流水（GET /api/v1/trading/transfers）。 */
+    @GetMapping("/transfers")
+    public ResponseEntity<?> transferList(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.transferList(userId));
     }
 
     /** 账户总体快照（资产/可用/可取/参考市值/盈亏/当日盈亏，GET /api/v1/trading/account）。 */

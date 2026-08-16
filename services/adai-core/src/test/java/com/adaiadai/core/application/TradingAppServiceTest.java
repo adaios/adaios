@@ -7,8 +7,10 @@ import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
+import com.adaiadai.core.domain.trading.TransferRepository;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
@@ -58,7 +60,8 @@ class TradingAppServiceTest {
                                       TradingHistoryRepository history) {
         return new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+                mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class));
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -437,7 +440,8 @@ class TradingAppServiceTest {
         when(records.findAll(any())).thenReturn(List.of());
         TradingAppService service = new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+                mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
@@ -472,7 +476,7 @@ class TradingAppServiceTest {
                         new BigDecimal("-0.85"), 0)));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 
@@ -491,7 +495,7 @@ class TradingAppServiceTest {
         when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 
@@ -509,7 +513,8 @@ void watchlistImport_upsertsBySymbol() {
     when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>());
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
-            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
@@ -533,7 +538,8 @@ void soldImport_preservesExistingPsychology() {
             new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", "追高后恐慌割肉"))));
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
-            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class));
 
     String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
             + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n";
@@ -555,7 +561,7 @@ void importCashQuery_updatesCashAndPreciseCost() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class),
-            mock(MarketDataSource.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class));
 
     String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
             + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
@@ -581,7 +587,8 @@ void soldUpdatePsychology_marksTrade() {
             new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", ""))));
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
-            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class));
 
     boolean ok = service.soldUpdatePsychology("default", "600206", "套牢死扛");
 
@@ -590,4 +597,61 @@ void soldUpdatePsychology_marksTrade() {
     verify(sold).saveAll(eq("default"), cap.capture());
     assertEquals("套牢死扛", cap.getValue().get(0).psychology());
 }
+
+    // ── 银证转账（2026-08-16 净投入跟踪）──
+
+    @org.junit.jupiter.api.Test
+    void recordTransfer_updatesPrincipalAndCash() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("110504.88"), new BigDecimal("292.88"),
+                        new BigDecimal("292.88"), new BigDecimal("292.88"),
+                        new BigDecimal("110212.00"), new BigDecimal("15235.55"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        TransferRepository transfers = mock(TransferRepository.class);
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), acc, transfers, mock(MarketDataSource.class));
+
+        service.recordTransfer("default", "IN", new BigDecimal("10000"), LocalDate.of(2026, 8, 17), "补仓");
+
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("default"), cap.capture());
+        AccountSnapshot updated = cap.getValue();
+        assertEquals(0, updated.principal().compareTo(new BigDecimal("160000")),
+                "转入 1 万 → 净投入 16 万");
+        assertEquals(0, updated.cash().compareTo(new BigDecimal("10292.88")),
+                "现金 +1 万");
+        assertEquals(0, updated.assets().compareTo(new BigDecimal("120504.88")),
+                "资产 +1 万");
+        verify(transfers).append(eq("default"), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    void recordTransfer_outDeductsPrincipal() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("110504.88"), new BigDecimal("292.88"),
+                        new BigDecimal("292.88"), new BigDecimal("292.88"),
+                        new BigDecimal("110212.00"), new BigDecimal("15235.55"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
+                mock(MarketDataSource.class));
+
+        service.recordTransfer("default", "OUT", new BigDecimal("50000"), LocalDate.of(2026, 8, 17), "提现");
+
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("default"), cap.capture());
+        assertEquals(0, cap.getValue().principal().compareTo(new BigDecimal("100000")),
+                "转出 5 万 → 净投入 10 万");
+        assertEquals(0, cap.getValue().cash().compareTo(new BigDecimal("-49707.12")),
+                "现金 -5 万（负=透支，理论值）");
+    }
 }
+
