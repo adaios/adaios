@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 59
+lines: 60
 depends-on: []
 related:
   - ../_index.md
@@ -47,6 +47,7 @@ tags: [meta, index, rfc]
 | 20260814-domain-plugin-model.md | Domain=插件模型（Kernel 基础服务 / Domain 受控插件） | approved |
 | 20260815-docs-governance.md | 文档治理——瘦身 + 单一事实源（先于功能开发） | approved |
 | 20260815-trading-interaction-redesign.md | 交易模块交互重设计（app 说人话 / web 详细管理）| draft |
+| 20260816-trading-os-engine.md | trading-os 领域引擎化（从插件到独立可复用的交易引擎）| draft |
 | 20260816-trading-data-model.md | 交易数据模型分层（用户提供 vs 可查询，trading domain 可执行化）| draft |
 | 20260815-ai-engineering-layer.md | AI 工程层——从「文档子目录」到「一等公民」（草案）| draft |
 | 20260815-media-event-unification.md | 图文一体——媒体事件数据层统一（一次输入 = 一条记录） | approved |
