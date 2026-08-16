@@ -5,6 +5,9 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 带图发图即对话 + 交易建议引擎 | 带图：发图即分流（ask 直进对话/log 自然回执）+ S-2 聚合卡修复；交易：/trading/advice 建议引擎（R66-R95 硬约束）+ /trades/parse 一句话解析 + 资产卡+建议展示（无执行按钮）| 后端 499（+12）· app 112（+18）· admin 34（+1）|
+| 2026-08-16 | P-be-01 安全 + admin 收敛 | 5 维护端点迁 /admin/** 鉴权（X-Admin-Token）+ 用户端恢复 PATCH /memory/{id}；admin 移除个人内容编辑（P-role 系列）；app 补记忆修正/待办完成 | 端点 55 · admin 34 |
+| 2026-08-16 | 文档自动对齐门禁 | guard-align（端点/测试数/端点数 A1-A4）+ guard-context（任务上下文注入）+ guard-sediment（沉淀检查）+ pre-commit 四层（隐私/对齐/结构/防复发）+ 方法论放回仓库 | — |
 | 2026-08-15 | 走查修复批 W2 前端续 | P1-W5 失败伪装空态五处修复（web search/memory/timeline + app timeline_modal/launcher——错误态+重试，失败不再显示「无数据」）；P1-W7 切 World 不中断上传（dispose 后继续传，UI 由 mounted 守卫）；P1-W9 全图 Dialog 3 处加 errorBuilder/loadingBuilder（防 404 白框）；P1-W11 空态/元信息文案对比度提亮 17 处（darkGrey6→4）| app 94 · web 47 |
 | 2026-08-15 | 走查修复批 W2 前端 | P1-W6 三端请求超时 15s（_TimeoutClient 包装，waiting 不再无限转圈）；P1-W8 app 删除确认弹窗（与 web 对拍，DELETE 不可逆）；测试适配 | app 94 · web 47 · admin 33 |
 | 2026-08-15 | 走查修复批 W2 后端 | P1-W14 STATEMENT prompt 闭合引号；P1-W12 parseDateTime 不再回退 now()（脏 createdAt 跳过）；P1-W13 门控旁路三修（PATCH domain gateDomain + project tasks 403 + cards/cleanup intent/日期收紧）；P1-W15 启动时全量重建标签索引（TagIndexBootstrap）；+403/round-trip 测试 | 后端 454（+1）|

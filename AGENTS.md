@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 58
+lines: 59
 depends-on:
   - ai-engineering/README.md
 related:
@@ -45,6 +45,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | 文档自动对齐 | `ai-engineering/guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
 | 任务上下文 | `ai-engineering/guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）|
+| 沉淀检查 | `ai-engineering/guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 
 ## 状态真相源
 

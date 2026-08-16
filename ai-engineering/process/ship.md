@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 80
+lines: 84
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -41,11 +41,15 @@ tags: [ai, process, ship]
 - 子项目 CLAUDE.md「当前焦点」批次状态更新
 - `docs/reference/change-log.md` 顶部追加一行（日期 | 批次 | 摘要 | 测试数变化）
 
-### 4. 决策沉淀（RFC 验收核验）
+### 4. 决策沉淀（RFC 验收核验 + 沉淀检查）
 
 - 本批关联 RFC：对照其「验收标准」段**逐条 PASS/FAIL 核验并留痕**（写回 RFC 或 change-log）
 - RFC approved 且含关键决策 → 建 `assets/adr/ADR-00N.md` 并登记 `assets/_index.md`；无新增决策则显式标注
 - 本批踩坑/取舍 → 入 checklists + `assets/pitfalls.md`（沉淀过滤器见 `workflow/discuss.md`）
+- **沉淀检查**（进攻侧②③，软提示）：`bash ai-engineering/guard-sediment.sh`
+  - S1 变更提示：本批代码文件 → 确认入 pitfalls/ADR（无则标注「无新增沉淀」）
+  - S2 出表检查：REVIEW 未修项本批处理了 → 标 ✅ 出表
+  - S3 登记检查：change-log 已登记本批（FAIL 级，未登记则补）
 
 ### 5. 元治理校验（提交前门禁）
 

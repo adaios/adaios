@@ -48,4 +48,5 @@ if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
   bash docs/review/guard.sh >/dev/null 2>&1 || { echo "⚠️ 守护检查有 HIT（防 P0 复发），请确认非复发后提交（git commit --no-verify 绕过）。"; exit 1; }
 fi
 
+bash ai-engineering/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
 echo "✅ 文档对齐 + 结构 + 防复发检查通过"
