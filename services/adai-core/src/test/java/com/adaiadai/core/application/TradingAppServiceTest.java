@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
+import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.PositionFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingHistoryFileRepository;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -444,4 +446,46 @@ class TradingAppServiceTest {
         assertEquals(new BigDecimal("9.5"), reloaded.stopLossPrice());
         assertEquals("B1", reloaded.buyPoint());
     }
+
+    // ── getPositions 实时行情注入（2026-08-16：盈亏展示正确性）──
+
+    @Test
+    void getPositions_injectsLivePrice_forPnl() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                new Position("000725", "京东方A", 1000, new BigDecimal("6.042"), new BigDecimal("6.042"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725",
+                new MarketData("000725", "京东方A", new BigDecimal("5.81"), new BigDecimal("5.81"),
+                        new BigDecimal("5.81"), new BigDecimal("5.81"), new BigDecimal("5.81"),
+                        new BigDecimal("-0.85"), 0)));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), market);
+
+        List<Position> positions = service.getPositions("default");
+
+        assertEquals(1, positions.size());
+        assertEquals(0, positions.get(0).currentPrice().compareTo(new BigDecimal("5.81")),
+                "现价应为行情价（盈亏展示依据）");
+        assertEquals(0, positions.get(0).pnl().compareTo(new BigDecimal("-232")),
+                "盈亏 = (5.81-6.042)*1000 = -232，实际: " + positions.get(0).pnl());
+    }
+
+    @Test
+    void getPositions_quoteFails_fallsBackToStoredPrice() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(pos("000725", 100)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), market);
+
+        List<Position> positions = service.getPositions("default");
+
+        assertEquals(1, positions.size());
+        assertEquals(0, positions.get(0).currentPrice().compareTo(new BigDecimal("10.5")),
+                "行情失败用存储价，不报错");
+    }
 }
+

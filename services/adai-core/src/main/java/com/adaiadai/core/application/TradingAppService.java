@@ -208,10 +208,31 @@ public class TradingAppService {
     }
 
     /**
-     * 获取所有持仓。
+     * 获取所有持仓（注入实时行情：currentPrice=现价 → 盈亏/盈亏% 展示正确）。
+     * <p>
+     * 行情拉取失败/单票无行情 → 用存储价（=成本价，盈亏 0），降级不报错。
      */
     public List<Position> getPositions(String userId) {
-        return positionRepository.findAll(userId);
+        List<Position> stored = positionRepository.findAll(userId);
+        if (stored.isEmpty()) return stored;
+        Map<String, MarketData> quotes = Map.of();
+        try {
+            quotes = marketDataSource.quote(stored.stream().map(Position::symbol).toList());
+        } catch (Exception e) {
+            log.warn("持仓行情注入失败，使用存储价 | userId={} | {}", userId, e.getMessage());
+        }
+        if (quotes.isEmpty()) return stored;
+        List<Position> result = new ArrayList<>();
+        for (Position p : stored) {
+            MarketData md = quotes.get(p.symbol());
+            if (md != null && md.price() != null && md.price().compareTo(BigDecimal.ZERO) > 0) {
+                result.add(new Position(p.symbol(), p.name(), p.quantity(), p.avgCost(), md.price(),
+                        p.lastUpdated(), p.entryDate(), p.stopLossPrice(), p.buyPoint(), p.role()));
+            } else {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     /**
