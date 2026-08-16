@@ -85,3 +85,6 @@ tags: [review, checklist, docs]
 | D41 | 规范单一事实源对拍：conventions.md 声称单一的条目在 CLAUDE.md 全库只允许指针引用、无全文副本 | 代码规范三处副本表述微漂移（自伤自查 2 官，2026-08-15）|
 | D42 | 审查官计数四对拍：roles/*.md 文件数 ↔ AGENTS.md 名单（含名字枚举）↔ README「N 官」↔ audit 路由表 | AGENTS.md 7 名称 8 官（自伤自查 2 官，2026-08-15）|
 | D43 | 工作流段完整性：宣称的「N 段闭环」必须与具名段、定义文件一一对应（每段有文件、无空段、计数一致）| 六段只具名 5 段、develop 无文件（自伤自查 3 官，2026-08-15）|
+| D44 | 新建 docs/**（含 reference/architecture）文档必须带 frontmatter——guard-meta scope 只覆盖 _index/ai-engineering/rfc，reference/*.md 是盲区 | gap 无 frontmatter（框架+插件审查 P2，2026-08-16）|
+| D45 | 目录 rename/git mv 后 grep 范围须含 application.yml 默认路径 + ai-engineering/checklists + roles（D38 只覆盖 docs/ 与子项目 CLAUDE.md）| yml 残留 11-context（G-4 审查 P1，2026-08-16）|
+| D46 | status: active 正式文档内的「现状对照」表必须与同批 gap/change-log 结果一致或标注快照日期 | 总纲 §五 自相矛盾（框架+插件审查 S1，2026-08-16）|

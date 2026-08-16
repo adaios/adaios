@@ -74,3 +74,7 @@ tags: [review, checklist, knowledge]
 | K33 | 隐私面巡检：新增落盘目录必须 `git check-ignore` 验证 + `git status data/` 无裸露（B3/K8 扩展）| data 泄露 2 次（P0 #226 / P1-3，2026-08-15）|
 | K34 | 资产卡端点/状态与代码对拍：`ai-engineering/assets/projects/*.md` 的端点数字/已知问题状态 vs status.md/REVIEW 三方一致 | 资产卡 52 vs 55 漂移（自伤自查 2026-08-16）|
 | K35 | 记忆修正闭环复核：用户端/管理端修正后，记忆文件 kind/summary/tags 实际更新（非仅内存）| P-role-02 修正链路（2026-08-16）|
+| K36 | 知识路径迁移对拍：目录 git mv 后 grep 范围须含 application.yml/yml 默认路径（Spring 属性优先级 yml 赢 @Value 默认）| trading-engine-path 残留 11-context（G-4 审查 P1，2026-08-16）|
+| K37 | 自动刷新脚本必须**幂等** + 实测验证：重复运行不堆叠注记、空输入不产生占位符行、时间戳语义区分「文件刷新」与「状态更新」（防骗 build 门禁）| update-current.sh 非幂等 + 占位符（G-4 审查 P1/P3，2026-08-16）|
+| K38 | 规则口径 vs 原文抽检：spec/引擎/CLAUDE.md 声明的判定口径与 rules.md 原文逐条对拍（"收盘跌破" vs 现价等），不一致注明偏差 | R66 现价口径（G-4 审查 P1，2026-08-16）|
+| K39 | 输出样板编号对拍：Skill/Agent 样板引用的编号（E1-E25、R1-R60）与 knowledge/context 实际编号一致 | agent-skill E1-E25 vs 实际 E1-E30（G-5 审查 P2，2026-08-16）|

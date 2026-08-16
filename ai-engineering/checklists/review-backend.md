@@ -88,3 +88,7 @@ tags: [review, checklist, backend]
 | B40 | 插件门控**对称性检查**——trading 与 project 两插件写端点逐对枚举（project tasks 未门控已命中）| 门控旁路（走查 P1-W13，2026-08-15）|
 | B41 | 手动/管理写入口（PATCH /records/{id}/domain、cards/migrate、cards/cleanup）纳入 D5/B32 枚举 | domain 旁路（走查 P1-W13，2026-08-15）|
 | B42 | Feed 与 Timeline 聚合逻辑**同源**——intent 过滤/歧义保守口径两端一致 | Feed 去重无 intent 过滤（走查 P1-W4 同族，2026-08-15）|
+| B43 | 目录/路径迁移必须 grep **配置默认值**同步（application.yml、@Value 默认、deploy.sh 模板 env）——`grep -rn "旧路径" services/adai-core/src/main/resources services/adai-core/deploy.sh` 与 os/ 实际目录逐条核对 | yml 残留 11-context（框架+插件 G-4 审查 P1，2026-08-16）|
+| B44 | 确定性规则引擎口径与知识真相源对拍：契约测试读 rules.md 断言关键判定词（R66 含"收盘跌破"、R81 含"1/4到1/5"），知识变更即击穿 | 引擎口径无联动校验（G-3 审查战略，2026-08-16）|
+| B45 | 硬判定/硬约束信号必须配**输出侧校验**：引擎 verdict 与 LLM 输出 suggestion 冲突要覆盖或告警（prompt 指令是软的）| BREACHED 但 LLM 输出 hold 透出（G-3 审查 P2，2026-08-16）|
+| B46 | 新增占比类指标必须核对**分母口径**（总资产 vs 总持仓市值）——R81 硬信号分母不含现金即此模式 | R81 占比恒 100% 错发 reduce（G-3 审查 P1，2026-08-16）|
