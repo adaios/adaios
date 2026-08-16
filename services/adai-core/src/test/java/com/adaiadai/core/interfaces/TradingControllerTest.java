@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -43,9 +42,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * TradingController — 全部 10 端点接口测试。
  * <p>
- * detectConflicts 基于真实规则解析（#23 修复：不再硬编码规则名），
- * 依赖 gradle test 运行时 cwd（services/adai-core）下可读的 os/trading-os/11-context/rules.md。
  * promote 测试写入 os/trading-os/99-inbox/2099-01-01_交易复盘.md（#211 文件名约定），测试后清理。
+ * 规则冲突检测端点（/trading/knowledge/conflicts）已迁至 AdminController（REVIEW P-be-01），
+ * 对应测试移至 AdminControllerTest（仍依赖真实 rules.md）。
  */
 class TradingControllerTest {
 
@@ -397,34 +396,6 @@ class TradingControllerTest {
         org.junit.jupiter.api.Assertions.assertNull(TradingController.sanitizeReviewContent(null));
         org.junit.jupiter.api.Assertions.assertEquals("", TradingController.sanitizeReviewContent(""));
         org.junit.jupiter.api.Assertions.assertEquals("  ", TradingController.sanitizeReviewContent("  "));
-    }
-
-    // ── 规则冲突检测（保留原覆盖） ──
-
-    @Test
-    void detectConflicts_noPositions_citesRealRule() throws Exception {
-        TradingAppService trading = mock(TradingAppService.class);
-        when(trading.getPositions(any())).thenReturn(List.of());
-        MockMvc mvc = buildMvc(trading);
-
-        mvc.perform(get("/api/v1/trading/knowledge/conflicts"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.conflicts.length()").value(greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.conflicts[0].rule").value(containsString("R")))
-                .andExpect(jsonPath("$.conflicts[0].description").value(containsString("空仓")));
-    }
-
-    @Test
-    void detectConflicts_singlePosition_citesR96() throws Exception {
-        Position single = position("600000");
-        TradingAppService trading = mock(TradingAppService.class);
-        when(trading.getPositions(any())).thenReturn(List.of(single));
-        MockMvc mvc = buildMvc(trading);
-
-        mvc.perform(get("/api/v1/trading/knowledge/conflicts"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.conflicts.length()").value(greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.conflicts[0].rule").value(containsString("R96")));
     }
 
     @Test

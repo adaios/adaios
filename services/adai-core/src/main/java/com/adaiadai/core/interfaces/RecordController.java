@@ -1,7 +1,6 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
-import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.application.RecordToTaskLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
@@ -48,7 +47,6 @@ public class RecordController {
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final MemoryService memoryService;
-    private final RecordRetryService recordRetryService;
     private final RecordToTaskLinker recordToTaskLinker;
     private final PluginService pluginService;
 
@@ -58,7 +56,6 @@ public class RecordController {
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
-                            RecordRetryService recordRetryService,
                             RecordToTaskLinker recordToTaskLinker,
                             PluginService pluginService) {
         this.intentRecognizer = intentRecognizer;
@@ -67,7 +64,6 @@ public class RecordController {
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.memoryService = memoryService;
-        this.recordRetryService = recordRetryService;
         this.recordToTaskLinker = recordToTaskLinker;
         this.pluginService = pluginService;
     }
@@ -341,22 +337,6 @@ public class RecordController {
         log.info("Update domain | id={} | domain={} → {} | userId={}", id, domain, gated, userId);
         recordRepository.updateDomain(userId, id, gated);
         return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/retry")
-    public ResponseEntity<Map<String, Object>> triggerRetry(
-            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
-        long before = memoryService.count(userId);
-        recordRetryService.retryUnprocessed(userId);
-        long after = memoryService.count(userId);
-        long newMemories = after - before;
-        log.info("手动触发重补完成 | 记忆: {} → {} ({})", before, after, newMemories);
-        return ResponseEntity.ok(Map.of(
-                "status", "ok",
-                "memoriesBefore", before,
-                "memoriesAfter", after,
-                "newMemories", newMemories
-        ));
     }
 
     private String truncate(String s, int max) {

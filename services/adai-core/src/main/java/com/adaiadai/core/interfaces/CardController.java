@@ -1,7 +1,6 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.infrastructure.storage.CardMigrationService;
-import com.adaiadai.core.infrastructure.storage.CardMigrationService.CleanupResult;
 import com.adaiadai.core.infrastructure.storage.CardMigrationService.MigrationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * CardController — 卡片管理 API。
+ * CardController — 卡片管理 API（清理维护操作已迁至 AdminController，REVIEW P-be-01）。
  */
 @RestController
 @RequestMapping("/api/v1/cards")
@@ -48,26 +47,6 @@ public class CardController {
                 "failed", result.failed(),
                 "migratedFiles", result.migratedFiles(),
                 "failedFiles", result.failedFiles()
-        ));
-    }
-
-    /**
-     * 清理重复记录：删除卡片对话对应的冗余 ContentRecord。
-     * <p>
-     * POST /api/v1/cards/cleanup
-     */
-    @PostMapping("/cleanup")
-    public ResponseEntity<Map<String, Object>> cleanupRecords(
-            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
-        log.info("清理重复记录开始...");
-        CleanupResult result = migrationService.cleanupDuplicateRecords(userId);
-
-        log.info("清理完成 | 删除={}条", result.deleted());
-
-        return ResponseEntity.ok(Map.of(
-                "deleted", result.deleted(),
-                "deletedFiles", result.deletedFiles(),
-                "skippedFiles", result.skippedFiles()
         ));
     }
 }

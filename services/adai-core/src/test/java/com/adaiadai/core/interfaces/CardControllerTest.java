@@ -15,7 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * CardController — 卡片迁移 + 清理重复记录接口测试。
+ * CardController — 卡片迁移接口测试（清理维护端点已迁至 AdminController，REVIEW P-be-01）。
  */
 class CardControllerTest {
 
@@ -48,19 +48,5 @@ class CardControllerTest {
         mvc.perform(post("/api/v1/cards/migrate").header("X-User-Id", "alice"))
                 .andExpect(status().isOk());
         org.mockito.Mockito.verify(migration).migrate("alice");
-    }
-
-    @Test
-    void cleanupRecords_returnsDeleted() throws Exception {
-        CardMigrationService migration = mock(CardMigrationService.class);
-        when(migration.cleanupDuplicateRecords(any()))
-                .thenReturn(new CardMigrationService.CleanupResult(3, List.of("card_1"), List.of("card_2")));
-        MockMvc mvc = buildMvc(migration);
-
-        mvc.perform(post("/api/v1/cards/cleanup"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deleted").value(3))
-                .andExpect(jsonPath("$.deletedFiles[0]").value("card_1"))
-                .andExpect(jsonPath("$.skippedFiles[0]").value("card_2"));
     }
 }

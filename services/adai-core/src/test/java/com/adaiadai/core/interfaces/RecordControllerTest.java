@@ -1,7 +1,6 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
-import com.adaiadai.core.application.RecordRetryService;
 import com.adaiadai.core.application.RecordToTaskLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -103,7 +102,6 @@ class RecordControllerTest {
         );
         RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
 
-        RecordRetryService retryService = mock(RecordRetryService.class);
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
@@ -111,7 +109,6 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 memoryService,
-                retryService,
                 mock(RecordToTaskLinker.class),
                 pluginService
         );
@@ -421,9 +418,9 @@ class RecordControllerTest {
                 "截断后应保留真实摘要前缀而非哨兵");
     }
 
-    // ── domain 切换 + retry（adai-admin 系统操作台依赖，纯 mock 独立构造）──
+    // ── domain 切换（adai-admin 系统操作台依赖，纯 mock 独立构造）──
 
-    private MockMvc mockRecordMvc(RecordRepository repo, MemoryService mem, RecordRetryService retry) {
+    private MockMvc mockRecordMvc(RecordRepository repo, MemoryService mem) {
         // P1-W13：gateDomain 透传（测试默认有插件，domain 原样保留）
         PluginService pluginService = mock(PluginService.class);
         when(pluginService.gateDomain(anyString(), anyString())).thenAnswer(inv -> inv.getArgument(1));
@@ -434,7 +431,6 @@ class RecordControllerTest {
                 repo,
                 mock(CardFileRepository.class),
                 mem,
-                retry,
                 mock(RecordToTaskLinker.class),
                 pluginService);
         return MockMvcBuilders.standaloneSetup(controller).build();
@@ -443,7 +439,7 @@ class RecordControllerTest {
     @Test
     void updateDomain_valid_returns204() throws Exception {
         RecordRepository repo = mock(RecordRepository.class);
-        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class), mock(RecordRetryService.class));
+        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class));
 
         mvc.perform(patch("/api/v1/records/rec_1/domain")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -455,28 +451,11 @@ class RecordControllerTest {
     @Test
     void updateDomain_invalid_returns400() throws Exception {
         RecordRepository repo = mock(RecordRepository.class);
-        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class), mock(RecordRetryService.class));
+        MockMvc mvc = mockRecordMvc(repo, mock(MemoryService.class));
 
         mvc.perform(patch("/api/v1/records/rec_1/domain")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"domain\":\"unknown\"}"))
                 .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void triggerRetry_returnsCountDelta() throws Exception {
-        RecordRepository repo = mock(RecordRepository.class);
-        MemoryService mem = mock(MemoryService.class);
-        when(mem.count(any())).thenReturn(2L, 5L);
-        RecordRetryService retry = mock(RecordRetryService.class);
-        MockMvc mvc = mockRecordMvc(repo, mem, retry);
-
-        mvc.perform(post("/api/v1/records/retry"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"))
-                .andExpect(jsonPath("$.memoriesBefore").value(2))
-                .andExpect(jsonPath("$.memoriesAfter").value(5))
-                .andExpect(jsonPath("$.newMemories").value(3));
-        verify(retry).retryUnprocessed("default");
     }
 }
