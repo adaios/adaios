@@ -49,7 +49,7 @@ public class SoldScoreService {
                     ? (buyScore * 0.5 + execScore * 0.5) : null;
             result.add(new SoldScore(t.symbol(), t.name(),
                     buyScore, bp == null ? null : bp.buyPoint(),
-                    bp == null ? "买入日 K 线不足，无法回溯" : String.join("、", bp.signals()),
+                    bp == null ? "买入日 K 线不足，无法回溯" : (bp.hit() ? String.join("、", bp.signals()) : "无买点形态（追高/随意进）"),
                     execScore, executionExplain(t),
                     total, t.verdict()));
         }
@@ -67,6 +67,8 @@ public class SoldScoreService {
         }
         if (idx < 0) return null; // 买入日超出 K 线范围（数据源只回溯近 1 年）
         List<Candle> uptoBuy = new ArrayList<>(candles.subList(0, idx + 1));
+        // K 线不足 detector 最小长度（25 根）→ 无法判定，返回 null（数据不足不评分，不误判追高）
+        if (uptoBuy.size() < 25) return null;
         return new BuyPointDetector(0.5, 0.7, 20, 1.5, 20).detect(uptoBuy);
     }
 
