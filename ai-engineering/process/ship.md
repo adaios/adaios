@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 77
+lines: 80
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -51,11 +51,14 @@ tags: [ai, process, ship]
 
 ```bash
 bash ai-engineering/guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
-bash ai-engineering/guard-meta.sh          # 必须 PASS 才可提交
+bash ai-engineering/guard-meta.sh          # frontmatter 结构：必须 PASS
+bash ai-engineering/guard-align.sh         # 代码↔文档内容对齐：必须 PASS（A1 端点/A2 测试数）
 ```
 
 - `--fix` 自动回写 frontmatter `lines`（按 wc -l 校准）与 `updated`（今日日期）
-- 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径 → **人工处理后再提交**，禁止带着 FAIL 提交
+- guard-meta 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径 → **人工处理后**，禁止带 FAIL 提交
+- guard-align FAIL 的项：A1 端点未登记 api-spec / A2 测试数漂移 status.md → 先同步文档再提交
+- **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 guard-align，FAIL 阻止提交——**无需人工提醒**
 - 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + ai-engineering/**（frontmatter-spec §四 强制区）
 
 ### 6. 规范提交

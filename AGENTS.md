@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 56
+lines: 57
 depends-on:
   - ai-engineering/README.md
 related:
@@ -43,6 +43,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 检查清单 | `ai-engineering/checklists/` | 逐条可执行（人也能用）：8 官清单 + guard 守护 |
 | 元数据规范 | `ai-engineering/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
+| 文档自动对齐 | `ai-engineering/guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
 
 ## 状态真相源
 

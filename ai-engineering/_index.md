@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 55
+lines: 56
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -31,7 +31,8 @@ tags: [ai, meta, index]
 | roles/context-reviewer.md | AI Context 审查官 | active |
 | process/audit.md | 全维度走查流程 | active |
 | process/review.md | 增量深审流程 | active |
-| process/ship.md | 收尾闭环流程（guard-meta 门禁）| active |
+| process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
+| guard-align.sh | 文档自动对齐（端点/测试数，pre-commit 触发）| active |
 | checklists/review-ux.md | 交互检查清单 | active |
 | checklists/review-ui.md | 界面检查清单 | active |
 | checklists/review-product.md | 产品架构检查清单 | active |

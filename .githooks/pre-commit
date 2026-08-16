@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# 提交前自动对齐门禁：代码 ↔ 文档内容一致性（端点/测试数），FAIL 阻止提交。
+# 由 git core.hooksPath 启用（详见 ai-engineering/process/ship.md §5）。
+cd "$(git rev-parse --show-toplevel)"
+
+# 触发条件：代码/测试变更，或状态/契约文档变更（status.md / api-spec.md / feature-reference.md）
+CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null)
+if ! echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then
+  exit 0
+fi
+
+echo "── pre-commit: 文档对齐检查 ──"
+bash ai-engineering/guard-align.sh
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "❌ 文档未对齐，提交已阻止。"
+  echo "   修复指引："
+  echo "     1) 新增/修改端点 → 同步 docs/architecture/api-spec.md（A1）"
+  echo "     2) 测试数变化 → 更新 docs/reference/status.md（A2，/ship 时自动）"
+  echo "     3) 或强制跳过（不推荐）：git commit --no-verify"
+  exit 1
+fi
+echo "✅ 文档对齐通过"
