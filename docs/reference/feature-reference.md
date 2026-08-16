@@ -716,28 +716,46 @@ Strict format:
 
 ### 功能描述
 
-- 持仓列表（表格：代码、名称、数量、成本、现价、盈亏）
+- 持仓列表（表格：代码、名称、数量、成本、现价、盈亏——现价实时行情注入，2026-08-16）
 - 投资组合快照（总市值、总盈亏、现金余额、持仓数）
-- 交易录入表单（代码、名称、方向、价格、数量）
+- 交易录入表单（代码、名称、方向、价格、数量、止损位、买点、目标价、原因；**输入 6 位代码自动带出名称**）
+- 建议引擎（`POST /trading/advice`，R66 止损 / R81 仓位硬判定）
+- 批量导入（通达信导出自动识别：持仓快照 / 交易 CSV；选择文件上传留存或粘贴）
+- 主动推送（真止损异动 / 早盘计划 / 午间跟踪 / 尾盘建议 → PushChannel Feed+微信，见 §1）
+
+### 交易数据智能（RFC 20260816，2026-08-16 落地）
+
+| 区块 | 数据 | 导入 | 展示 |
+|:-----|:-----|:-----|:-----|
+| **自选股** | `data/{userId}/trading/watchlist.json` | 通达信自选导出（代码/名称/细分行业/长期中期短期形态/近日指标提示）| 表格：代码/名称/行业/长中短形态/指标提示（金叉红）/删除 |
+| **清仓股复盘** | `data/{userId}/trading/sold.json` | 通达信清仓导出（介入/清仓日期/持仓天数/买卖次数/持仓期涨幅%）| 表格：代码/名称/介入→清仓/天数/涨幅/心理标注（点击标注追高/恐慌等）|
+| **资金股份查询** | 更新 `positions.md` cashBalance + 精确成本（4 位）| 通达信「资金股份查询」导出 | 现金/总资产展示（R81 分母=总资产）|
 
 ### 前端文件
 
 | 文件 | 类/方法 | 职责 |
 |:-----|:---------|:------|
-| `pages/trading_page.dart` | `TradingPage` | 交易仪表盘 |
+| `pages/trading_page.dart` | `TradingPage` | 交易仪表盘（持仓 + 自选 + 清仓 + 资金四区块）|
 
 ### 对应 API
 
 | API | 前端方法 | 说明 |
 |:----|:---------|:------|
-| `GET /api/v1/trading/positions` | `getPositions()` | 持仓列表 |
+| `GET /api/v1/trading/positions` | `getPositions()` | 持仓列表（实时行情注入盈亏）|
 | `GET /api/v1/trading/portfolio` | `getPortfolio()` | 组合快照 |
 | `POST /api/v1/trading/trades` | `recordTrade()` | 录入交易 |
+| `GET /api/v1/trading/lookup` | `lookupSymbol()` | 代码→名称（输入带出）|
+| `POST /api/v1/trading/positions/import` | `importPositions()` | 持仓初始化导入（通达信快照）|
+| `POST /api/v1/trading/imports/save` | `saveImportFile()` | 上传留存 + GBK 转码 |
+| `GET/POST/DELETE /api/v1/trading/watchlist*` | `getWatchlist/importWatchlist/removeWatchlist` | 自选股 |
+| `GET/POST /api/v1/trading/sold*` | `getSold/importSold/updateSoldPsychology` | 清仓股复盘 |
+| `POST /api/v1/trading/imports/cash` | `importCash()` | 资金查询（现金+精确成本）|
 
 ### 前端逻辑
 
-- 双请求并发（`Future.wait`）：positions + portfolio
-- 空状态："暂无持仓"
+- 双请求并发（`Future.wait`）：positions + portfolio + watchlist + sold
+- **切入交易页/点记录交易自动刷新**（保活缓存不再显示旧数据，2026-08-16）
+- 空状态："暂无持仓 / 暂无自选股 / 暂无清仓记录"
 - 错误状态：红色文字 "加载失败\n..."
 - 录入交易后刷新持仓
 
@@ -746,8 +764,9 @@ Strict format:
 **TradingController → TradingAppService**
 
 - 纯计算，无 AI
-- 持仓数据从 `data/trading/positions.md` 读取（freeze §2.6）
+- 持仓数据从 `data/trading/positions.md` 读取（freeze §2.6）；自选/清仓 `watchlist.json`/`sold.json`
 - 交易录入实时更新文件
+- 通达信三格式解析：`TradingImportParser`（表头定位列，GBK 已转码）
 
 ---
 
