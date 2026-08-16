@@ -247,4 +247,39 @@ public class TencentMarketDataSource implements MarketDataSource {
             return System.currentTimeMillis() - createdAt > CACHE_TTL_MS;
         }
     }
+
+    /** K 线兜底（腾讯）：主源东财失败时切换。param=sh600519,day,,,N,qfq → data.sh600519.day/qfqday。 */
+    @Override
+    public List<Candle> kline(String symbol, int limit) {
+        if (symbol == null || symbol.isBlank()) return List.of();
+        String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
+        String url = String.format("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s%s,day,,,%d,qfq",
+                prefix, symbol, Math.min(Math.max(limit, 10), 320));
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body());
+            com.fasterxml.jackson.databind.JsonNode data = root.path("data").path(prefix + symbol);
+            com.fasterxml.jackson.databind.JsonNode day = data.path("qfqday");
+            if (day.isMissingNode() || !day.isArray()) day = data.path("day");
+            List<Candle> candles = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode row : day) {
+                if (!row.isArray() || row.size() < 6) continue;
+                try {
+                    candles.add(new Candle(
+                            java.time.LocalDate.parse(row.get(0).asText()),
+                            row.get(1).asDouble(), row.get(3).asDouble(), row.get(4).asDouble(),
+                            row.get(2).asDouble(), row.get(5).asDouble()));
+                } catch (Exception ignored) {}
+            }
+            if (candles.size() > limit) candles = candles.subList(candles.size() - limit, candles.size());
+            return candles;
+        } catch (Exception e) {
+            log.warn("Tencent K线失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
 }

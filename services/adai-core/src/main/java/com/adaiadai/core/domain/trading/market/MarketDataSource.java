@@ -29,4 +29,17 @@ public interface MarketDataSource {
      * @return code → MarketData 映射
      */
     Map<String, MarketData> indices();
+
+    /**
+     * 查询日 K 线（2026-08-16，RFC 交易数据智能）。
+     * <p>
+     * 安全约定同 quote：网络异常返回空列表而非抛异常。主源东方财富，失败降级腾讯。
+     *
+     * @param symbol 6 位股票代码
+     * @param limit  最近 N 根（320 上限）
+     * @return 日 K 序列（新→旧或旧→新由实现定，统一旧→新）
+     */
+    default List<Candle> kline(String symbol, int limit) {
+        return List.of();
+    }
 }
