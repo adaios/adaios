@@ -483,9 +483,16 @@ public class TradingAppService {
                 }
                 if (!found) current.add(t);
             }
+            // D1（2026-08-16）：规则对照生成 verdict（R53/R66），保留已有心理
+            for (int i = 0; i < current.size(); i++) {
+                SoldTrade t = current.get(i);
+                String verdict = SoldTradeVerdict.compute(t.holdPnlPct(), t.holdDays());
+                current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
+                        t.holdDays(), t.tradeCount(), t.holdPnlPct(), verdict, t.psychology()));
+            }
             soldTradeRepository.saveAll(userId, current);
         }
-        log.info("清仓股导入 | userId={} | {} 笔", userId, parsed.size());
+        log.info("清仓股导入 | userId={} | {} 笔（含规则对照 verdict）", userId, parsed.size());
         return new SoldImportResult(parsed.size());
     }
 

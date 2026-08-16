@@ -62,6 +62,8 @@ public class MarketAlertService {
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
     private final boolean breakCostEnabled;
+    /** C3 接近止损阈值（距止损百分比，默认 2%）。 */
+    private final BigDecimal nearStopLossPct;
 
     public MarketAlertService(MarketDataSource marketDataSource,
                               PositionRepository positionRepository,
@@ -72,7 +74,8 @@ public class MarketAlertService {
                               TradingRuleEngine ruleEngine,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
-                              @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled) {
+                              @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled,
+                              @Value("${adai.market.alert.near-stop-loss-pct:2.0}") double nearStopLossPct) {
         this.marketDataSource = marketDataSource;
         this.positionRepository = positionRepository;
         this.accountRepository = accountRepository;
@@ -83,6 +86,7 @@ public class MarketAlertService {
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
+        this.nearStopLossPct = BigDecimal.valueOf(nearStopLossPct);
     }
 
     /**
@@ -140,6 +144,15 @@ public class MarketAlertService {
                     == StopLossVerdict.BREACHED) {
                 addIfNew(p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
+            // C3 接近止损预警（2026-08-16）：未跌破但距止损 ≤ nearStopLossPct（默认 2%，可配）
+            if (p.stopLossPrice() != null && md.price() != null
+                    && md.price().compareTo(p.stopLossPrice()) > 0) {
+                BigDecimal gapPct = md.price().subtract(p.stopLossPrice())
+                        .multiply(BigDecimal.valueOf(100)).divide(md.price(), 2, RoundingMode.HALF_UP);
+                if (gapPct.compareTo(nearStopLossPct) <= 0) {
+                    addIfNew(p, md, change, "near-stop-loss", existing, newSignatures, alerts);
+                }
+            }
             // 止损预警：单日跌幅 ≥ 阈值
             if (change.compareTo(lossThreshold.negate()) <= 0) {
                 addIfNew(p, md, change, "loss", existing, newSignatures, alerts);
@@ -191,6 +204,8 @@ public class MarketAlertService {
             case "stop-loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
                     + " 已跌破你的止损位 " + fmt(p.stopLossPrice())
                     + "——按纪律（R66）该清仓了，要我给出建议吗？";
+            case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
+                    + " 距止损位 " + fmt(p.stopLossPrice()) + " 不到 2%了——提前想好怎么走，别等插针（R66）";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
                     + fmt(md.price()) + "，触发止损预警，注意风控";
             case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "

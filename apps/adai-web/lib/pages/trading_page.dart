@@ -269,14 +269,9 @@ class _TradingPageState extends State<TradingPage> {
                               minimumSize: const Size(0, 28)),
                         ),
                       ]),
-                      const SizedBox(height: 16),
-                      _buildPositionTable(),
-                      const SizedBox(height: 28),
-                      _buildWatchlistSection(),
-                      const SizedBox(height: 28),
-                      _buildSoldSection(),
-                      const SizedBox(height: 28),
-                      _buildCashSection(),
+                      const SizedBox(height: 12),
+                      // E1（2026-08-16）：Tab 工作区替代纵向堆叠（UI/UX 审查方案）
+                      _buildTabWorkspace(),
                     ],
                   ),
       ),
@@ -527,6 +522,46 @@ class _TradingPageState extends State<TradingPage> {
     ));
   }
 
+  /// Tab 工作区（E1）：持仓（默认）/ 自选 / 清仓 / 资金 四分区。
+  Widget _buildTabWorkspace() {
+    return DefaultTabController(
+      length: 4,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+          ),
+          child: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            indicatorColor: AppColors.darkGreen,
+            labelColor: AppColors.darkGrey1,
+            unselectedLabelColor: AppColors.darkGrey5,
+            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            tabs: [
+              const Tab(text: '持仓'),
+              const Tab(text: '自选'),
+              const Tab(text: '清仓'),
+              const Tab(text: '资金'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 380,
+          child: TabBarView(children: [
+            SingleChildScrollView(child: _buildPositionTable()),
+            SingleChildScrollView(child: _buildWatchlistSection()),
+            SingleChildScrollView(child: _buildSoldSection()),
+            SingleChildScrollView(child: _buildCashSection()),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   Widget _buildWatchlistSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -620,7 +655,8 @@ class _TradingPageState extends State<TradingPage> {
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
               DataColumn(label: Text('介入→清仓')), DataColumn(label: Text('天数')),
-              DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('心理标注')),
+              DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('规则对照')),
+              DataColumn(label: Text('心理标注')),
             ],
             rows: _sold.map((s) => DataRow(cells: [
               DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
@@ -630,6 +666,9 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text('${s.holdDays}天', style: const TextStyle(fontSize: 12))),
               DataCell(Text('${s.holdPnlPct.toStringAsFixed(2)}%', style: TextStyle(fontSize: 12,
                   color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen))),
+              DataCell(Text(s.verdict, style: TextStyle(fontSize: 11,
+                  color: s.verdict.contains('R66') ? AppColors.darkOrange
+                      : s.verdict.contains('盈利') ? AppColors.darkGrey4 : AppColors.darkGrey5))),
               DataCell(InkWell(
                 onTap: () => _markPsychology(s),
                 child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
