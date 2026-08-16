@@ -3,9 +3,9 @@ title: 知识数据审查检查清单
 description: knowledge-reviewer 逐条检查项（人也能用）——os/ 消费链路/data/ 健康/隐私红线/闭环
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 71
+lines: 76
 depends-on: []
 related: [../roles/knowledge-reviewer.md]
 tags: [review, checklist, knowledge]
@@ -69,3 +69,8 @@ tags: [review, checklist, knowledge]
 | K29 | 索引覆盖率守卫：tags.json 覆盖记录数 vs 实际记录数，<90% 即 HIT（rebuild() 须有调用者）| 标签索引陈旧（走查 P1-W15，2026-08-15）|
 | K30 | 无插件用户 domain 巡检：plugins=[] 账号不得有 trading/project 标注 | alice 越界（走查 P1，2026-08-15）|
 | K31 | 记忆噪声监控：单日 kind=decision 占比异常告警 | 记忆噪声复发（走查 P2，2026-08-15）|
+
+| K32 | 交易/项目 domain 记录写后复核：recordTrade/任务落盘后，对应 data/ 目录文件真实存在且格式合规（写侧真落盘非内存）| 交易历史未落盘（P-be 审查，2026-08-15）|
+| K33 | 隐私面巡检：新增落盘目录必须 `git check-ignore` 验证 + `git status data/` 无裸露（B3/K8 扩展）| data 泄露 2 次（P0 #226 / P1-3，2026-08-15）|
+| K34 | 资产卡端点/状态与代码对拍：`ai-engineering/assets/projects/*.md` 的端点数字/已知问题状态 vs status.md/REVIEW 三方一致 | 资产卡 52 vs 55 漂移（自伤自查 2026-08-16）|
+| K35 | 记忆修正闭环复核：用户端/管理端修正后，记忆文件 kind/summary/tags 实际更新（非仅内存）| P-role-02 修正链路（2026-08-16）|

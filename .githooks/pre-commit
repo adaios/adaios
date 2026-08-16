@@ -12,7 +12,25 @@ if ! echo "$CHANGED" | grep -qE '\.(java|dart|md|sh)$'; then
   exit 0
 fi
 
-echo "── pre-commit: 文档对齐 + 结构 + 防复发检查 ──"
+echo "── pre-commit: 文档对齐 + 结构 + 防复发 + 隐私检查 ──"
+
+# 0) 隐私闸门（B3 原则）：data/ 真实数据禁止入库（只允许 *.sample.md 模板）
+if echo "$CHANGED" | grep -qE '^data/'; then
+  PRIVACY_VIOLATIONS=$(echo "$CHANGED" | grep -E '^data/' | grep -v '\.sample\.md$' || true)
+  if [ -n "$PRIVACY_VIOLATIONS" ]; then
+    echo "❌ 隐私红线（B3）：data/ 个人数据禁止提交！"
+    echo "$PRIVACY_VIOLATIONS" | sed 's/^/    /'
+    echo "   修复：git reset data/（数据只留本地），确认 .gitignore 覆盖新子目录（git check-ignore 验证）"
+    exit 1
+  fi
+  # 新增 data 子目录必须被 gitignore 覆盖
+  for f in $(echo "$CHANGED" | grep -E '^data/' | grep -v '\.sample\.md$'); do
+    if git check-ignore -q "$f"; then
+      echo "⚠️ 数据文件被 gitignore 忽略但尝试提交（已拦截）：$f"
+      exit 1
+    fi
+  done
+fi
 
 # 1) 内容对齐（端点/测试数）——仅代码/契约相关变更时跑
 if echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then

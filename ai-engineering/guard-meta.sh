@@ -35,6 +35,7 @@ files += sorted((AI/'process').glob('*.md'))
 files += sorted((AI/'checklists').glob('*.md'))
 files += sorted((AI/'assets').glob('*.md'))      # 资产层
 files += sorted((AI/'assets/adr').glob('*.md'))  # ADR
+files += sorted((AI/'assets/projects').glob('*.md'))  # 项目资产卡
 files += sorted((AI/'workflow').glob('*.md'))    # 工作流层
 files += sorted((AI/'state').glob('*.md'))       # 状态层
 files += sorted((DOCS/'review/audits').glob('*.md'))  # 走查存档（带 frontmatter）

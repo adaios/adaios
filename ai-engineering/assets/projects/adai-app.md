@@ -3,11 +3,11 @@ title: 项目资产：adai-app（移动端）——用户视角功能全景
 description: 从用户使用角度，具体到每个小功能地描述 adai-app——两个主页/切换方式/每页模块功能/交互细节
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 120
+lines: 144
 depends-on:
-  - ../frontmatter-spec.md
+  - ../../frontmatter-spec.md
   - ../conventions.md
   - ../boundaries.md
 related:

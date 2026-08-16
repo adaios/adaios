@@ -3,11 +3,11 @@ title: 项目资产：adai-core（后端核心）
 description: adai-core 项目资产卡——分层/模块/端点分布/鉴权边界；改 core 前先读本卡
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 50
+lines: 82
 depends-on:
-  - ../frontmatter-spec.md
+  - ../../frontmatter-spec.md
   - ../conventions.md
   - ../boundaries.md
 related:

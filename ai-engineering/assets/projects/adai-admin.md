@@ -5,9 +5,9 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 100
+lines: 92
 depends-on:
-  - ../frontmatter-spec.md
+  - ../../frontmatter-spec.md
   - ../conventions.md
   - ../boundaries.md
 related:
