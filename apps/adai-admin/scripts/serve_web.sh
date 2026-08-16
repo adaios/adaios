@@ -13,14 +13,15 @@ set -e
 cd "$(dirname "$0")/.."
 
 # 可选参数：API_BASE_URL（连生产后端时传入，如 http://49.235.37.220:8080）
+#           ADMIN_TOKEN（管理端令牌，与后端 ADAI_ADMIN_TOKEN 一致；REVIEW #127）
 API_BASE_URL="${1:-}"
+ADMIN_TOKEN="${2:-}"
 
 echo "=== Building Flutter Web (wasm dual-mode) ==="
-if [ -n "$API_BASE_URL" ]; then
-  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=$API_BASE_URL
-else
-  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm
-fi
+DEFINES=""
+if [ -n "$API_BASE_URL" ]; then DEFINES="$DEFINES --dart-define=API_BASE_URL=$API_BASE_URL"; fi
+if [ -n "$ADMIN_TOKEN" ]; then DEFINES="$DEFINES --dart-define=ADMIN_TOKEN=$ADMIN_TOKEN"; fi
+flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm $DEFINES
 
 echo "=== Applying local patches ==="
 # Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
