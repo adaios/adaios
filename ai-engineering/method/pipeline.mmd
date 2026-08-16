@@ -1,0 +1,105 @@
+%% AdaiOS AI 工程完整流水线（Mermaid）
+%% 渲染：Obsidian / GitHub / VS Code Mermaid 插件
+%% 图例：进攻侧=任务前注入 · 防守侧=提交拦截 · 触发侧=部署/定时
+
+flowchart TB
+    subgraph HUMAN["👤 人（审核内容 / 做决策 / 指方向）"]
+        H1[指方向：定本批做什么]
+        H2[审核内容：看审查报告]
+        H3[决策：确认部署]
+    end
+
+    subgraph OFFENSE["🚀 进攻侧（任务前 · 自动注入）"]
+        O1["① 任务上下文注入<br/>guard-context.sh"]
+        O2["C1 当前状态"]
+        O3["C2 未修项 REVIEW"]
+        O4["C3 原则级边界"]
+        O5["C4 已知坑"]
+        O6["C5 规范"]
+        O7["C6 待办"]
+    end
+
+    subgraph DEV["💻 开发"]
+        D1["② 代码编写<br/>workflow/develop"]
+    end
+
+    subgraph DEFENSE["🛡 防守侧（提交时 · 秒级拦截）"]
+        direction TB
+        P1["③ 提交门禁<br/>pre-commit hook"]
+        P2["隐私闸门<br/>data/ 禁止提交"]
+        P3["内容对齐<br/>guard-align A1-A4<br/>端点↔api-spec 测试数↔status"]
+        P4["结构门禁<br/>guard-meta M1-M4<br/>frontmatter/图谱/lines"]
+        P5["防 P0 复发<br/>guard.sh G1-G7"]
+    end
+
+    subgraph SEDIMENT["📦 沉淀检查（进攻侧②③）"]
+        S1["④ 沉淀检查<br/>guard-sediment.sh"]
+        S2["S1 坑/ADR 提示"]
+        S3["S2 REVIEW 出表检查"]
+        S4["S3 change-log 登记<br/>(FAIL 硬拦)"]
+    end
+
+    subgraph DEPLOY["🚢 部署门禁（触发侧 · 最硬闸门）"]
+        G1["⑥ deploy-gate.sh"]
+        G2["GATE-BEFORE<br/>guard-meta + align + guard.sh<br/>不过关 → 拒绝部署"]
+        G3["GATE-AFTER<br/>自动 smoke 六端点<br/>feed/advice/parse/..."]
+    end
+
+    subgraph WEEKLY["📅 每周审查（触发侧 · 防休眠）"]
+        W1["⑤ weekly-audit.sh<br/>cron 每周一 9:00"]
+        W2["W1 守护 G1-G7"]
+        W3["W2 结构+对齐"]
+        W4["W3 沉淀连续性"]
+        W5["W4 失真扫描<br/>(端点数对拍)"]
+        W6["W5 未修项报告"]
+    end
+
+    subgraph PROD["🌐 上线"]
+        X1["⑦ 生产运行<br/>app / web / admin"]
+    end
+
+    subgraph BASE["🧱 支撑层（所有环节共用）"]
+        B1["资产层 assets/<br/>规范/边界/坑/ADR"]
+        B2["状态层 state/<br/>status/REVIEW/change-log<br/>单一事实源"]
+        B3["方法论 method/<br/>切入点图谱/脚手架<br/>随实践迭代"]
+        B4["guard-meta.sh<br/>结构门禁 --fix 回写"]
+    end
+
+    %% 主流程
+    H1 -->|定任务| O1
+    O1 --> O2 & O3 & O4 & O5 & O6 & O7
+    O2 & O3 & O4 & O5 & O6 & O7 -->|带上下文开工| D1
+    D1 -->|git add + commit| P1
+    P1 --> P2 & P3 & P4 & P5
+    P2 & P3 & P4 & P5 -->|任一 FAIL 阻止| P1
+    P2 & P3 & P4 & P5 -->|全 PASS| S1
+    S1 --> S2 & S3 & S4
+    S2 & S3 & S4 -->|通过| G1
+    G1 --> G2 -->|三关通过| G3
+    G2 -->|FAIL 拒绝部署| H2
+    G3 -->|smoke 通过| X1
+    G3 -->|smoke 失败| H2
+
+    %% 每周审查
+    W1 --> W2 & W3 & W4 & W5 & W6
+    W2 & W3 & W4 & W5 & W6 -->|报告| H2
+
+    %% 人介入
+    H2 -->|审核发现| S2
+    H2 -->|审核通过| H3
+    H3 -->|确认| G1
+
+    %% 支撑层
+    BASE -.被所有环节读取.- O1 & D1 & P1 & S1 & G1 & W1
+
+    %% 样式
+    classDef human fill:#f9e79f,stroke:#b7950b,color:#333
+    classDef offense fill:#d5f5e3,stroke:#27ae60,color:#333
+    classDef defense fill:#fdebd0,stroke:#e67e22,color:#333
+    classDef trigger fill:#d6eaf8,stroke:#2980b9,color:#333
+    classDef base fill:#eaecee,stroke:#7f8c8d,color:#333
+    class H1,H2,H3 human
+    class O1,O2,O3,O4,O5,O6,O7 offense
+    class P1,P2,P3,P4,P5 defense
+    class G1,G2,G3,W1,W2,W3,W4,W5,W6 trigger
+    class B1,B2,B3,B4 base
