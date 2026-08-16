@@ -78,7 +78,6 @@ class _TradingPageState extends State<TradingPage> {
         widget.api.getSold(),
         widget.api.getAccount(),
         widget.api.getBuyPoints(),
-        widget.api.getSoldScore(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -88,19 +87,31 @@ class _TradingPageState extends State<TradingPage> {
         _sold = results[3] as List<SoldTradeDto>;
         _account = results[4] as AccountSnapshotDto;
         _buyPoints = results[5] as List<BuyPointDto>;
-        _soldScores = results[6] as List<SoldScoreDto>;
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
         _assets = _account?.assets;
         _lastUpdated = DateTime.now().toString().substring(11, 19);
         _loading = false;
       });
+      // D3 打分异步加载：162 笔拉 K 线耗时（后端 16 并发 ~5s），不阻塞主数据展示
+      _loadSoldScore();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
+  Future<void> _loadSoldScore() async {
+    try {
+      final scores = await widget.api.getSoldScore();
+      if (!mounted) return;
+      setState(() => _soldScores = scores);
+    } catch (_) {
+      // 打分失败静默：主数据已展示，打分列显示 —（数据不足不糊弄）
     }
   }
 

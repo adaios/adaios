@@ -9,6 +9,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * SoldScoreService — 清仓复盘三维打分（D3，2026-08-16）。
@@ -20,6 +24,7 @@ import java.util.List;
  *   <li><b>选股维度</b>：关注后表现（需关注历史数据积累，当前返回 null 待积累）</li>
  * </ul>
  * 分数是参考不是指令——复盘用，买不买永远人决定。
+ * 并发说明：拉 K 线是网络 IO，逐笔串行 162 笔 ≈ 56s；16 并发线程池 → ~5s（K 线源有按日缓存）。
  */
 @Service
 public class SoldScoreService {
@@ -27,6 +32,7 @@ public class SoldScoreService {
     private static final Logger log = LoggerFactory.getLogger(SoldScoreService.class);
 
     private final KlineService klineService;
+    private final ExecutorService klinePool = Executors.newFixedThreadPool(16);
 
     public SoldScoreService(KlineService klineService) {
         this.klineService = klineService;
@@ -38,22 +44,35 @@ public class SoldScoreService {
                             Integer executionScore, String executionExplain,
                             Double totalScore, String verdict) {}
 
-    /** 批量打分（按清仓列表顺序返回）。 */
+    /** 批量打分（按清仓列表顺序返回；K 线拉取 16 并发）。 */
     public List<SoldScore> score(List<SoldTrade> trades) {
         List<SoldScore> result = new ArrayList<>();
+        List<Future<SoldScore>> futures = new ArrayList<>();
         for (SoldTrade t : trades) {
-            BuyPointDetector.BuyPointResult bp = buyPointAt(t);
-            Integer buyScore = bp == null ? null : buyPointScore(bp);
-            Integer execScore = executionScore(t);
-            Double total = (buyScore != null && execScore != null)
-                    ? (buyScore * 0.5 + execScore * 0.5) : null;
-            result.add(new SoldScore(t.symbol(), t.name(),
-                    buyScore, bp == null ? null : bp.buyPoint(),
-                    bp == null ? "买入日 K 线不足，无法回溯" : (bp.hit() ? String.join("、", bp.signals()) : "无买点形态（追高/随意进）"),
-                    execScore, executionExplain(t),
-                    total, t.verdict()));
+            futures.add(klinePool.submit(() -> scoreOne(t)));
+        }
+        for (Future<SoldScore> f : futures) {
+            try {
+                result.add(f.get(30, TimeUnit.SECONDS));
+            } catch (Exception e) {
+                log.warn("打分单笔超时/失败 | {}", e.getMessage());
+                result.add(new SoldScore("", "", null, null, "K 线拉取失败", null, null, null, ""));
+            }
         }
         return result;
+    }
+
+    private SoldScore scoreOne(SoldTrade t) {
+        BuyPointDetector.BuyPointResult bp = buyPointAt(t);
+        Integer buyScore = bp == null ? null : buyPointScore(bp);
+        Integer execScore = executionScore(t);
+        Double total = (buyScore != null && execScore != null)
+                ? (buyScore * 0.5 + execScore * 0.5) : null;
+        return new SoldScore(t.symbol(), t.name(),
+                buyScore, bp == null ? null : bp.buyPoint(),
+                bp == null ? "买入日 K 线不足，无法回溯" : (bp.hit() ? String.join("、", bp.signals()) : "无买点形态（追高/随意进）"),
+                execScore, executionExplain(t),
+                total, t.verdict());
     }
 
     /** 回溯买入日：拉日 K，截取到买入日当天为止 → 判定当时买点信号。 */
