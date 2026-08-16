@@ -1,9 +1,15 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.MarketContextContributor;
+import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.market.MarketData;
+import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.context.engine.ContextContributor;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
@@ -18,9 +24,11 @@ import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +44,7 @@ import static org.mockito.Mockito.when;
  * 多用户插件隔离集成测试（RFC 20260814 T2.7）——真实 KnowledgeSource 挂 ContextEngine，
  * 验证：adai（trading/project 插件）注入交易知识，alice（无插件）不注入且 domain 收敛 life。
  * <p>
- * 依赖 monorepo 内真实 os/{trading,project,life}-os/11-context 知识文件（test cwd = services/adai-core）。
+ * 依赖 monorepo 内真实 os/{trading,project,life}-os/knowledge/context（trading）或 11-context（life/project） 知识文件（test cwd = services/adai-core）。
  */
 class PluginIsolationTest {
 
@@ -57,7 +65,7 @@ class PluginIsolationTest {
 
         // 真实知识源：trading/project 为插件域，life 为基础服务
         List<KnowledgeSource> sources = List.of(
-                new TradingKnowledgeSource("../../os/trading-engine/11-context"),
+                new TradingKnowledgeSource("../../os/trading-engine/knowledge/context"),
                 new ProjectKnowledgeSource("../../os/project-os/11-context"),
                 new LifeKnowledgeSource(memory, "../../os/life-os/11-context"));
 
@@ -145,5 +153,49 @@ class PluginIsolationTest {
 
         String alicePrompt = engine.compose("alice", "note", record("今天去公园散步，心情不错"), null).prompt();
         assertTrue(alicePrompt.contains("生活系统"), "life 基础服务知识不门控，任何用户可注入");
+    }
+
+    // ── G-6（2026-08-16）：行情注入按插件门控（行情载体跟 trading 插件走）──
+
+    @Test
+    void marketContext_gatedByTradingPlugin() {
+        // 真实 MarketContextContributor 挂 ContextEngine：adai（trading 插件）注入行情/持仓上下文，
+        // alice（无插件）不注入——行情服务跟插件走（G-1 归属 + G-2 门控全通道）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of("sh000001",
+                new MarketData("sh000001", "上证指数", new BigDecimal("3500.00"),
+                        new BigDecimal("3500.00"), new BigDecimal("3500.00"),
+                        new BigDecimal("3500.00"), new BigDecimal("3500.00"),
+                        new BigDecimal("0.50"), 0)));
+        when(market.quote(any())).thenReturn(Map.of("000725",
+                new MarketData("000725", "京东方A", new BigDecimal("5.46"),
+                        new BigDecimal("5.46"), new BigDecimal("5.46"),
+                        new BigDecimal("5.46"), new BigDecimal("5.46"),
+                        new BigDecimal("1.00"), 0)));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                new Position("000725", "京东方A", 1000, new BigDecimal("5.20"),
+                        new BigDecimal("5.46"), LocalDateTime.now())));
+        when(positions.cashBalance(any())).thenReturn(new BigDecimal("0"));
+
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findById("adai")).thenReturn(Optional.of(
+                new Account("adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+                        List.of(PluginRegistry.PLUGIN_TRADING))));
+        when(accounts.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of())));
+        PluginService pluginService = new PluginService(accounts, new PluginRegistry());
+
+        ContextContributor marketContributor = new MarketContextContributor(market, positions);
+        ContextEngine engineWithMarket = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(marketContributor), List.of(), search, pluginService);
+
+        String adaiPrompt = engineWithMarket.compose("adai", "question", record("今天大盘怎么样"), null).prompt();
+        String alicePrompt = engineWithMarket.compose("alice", "question", record("今天大盘怎么样"), null).prompt();
+
+        assertTrue(adaiPrompt.contains("交易系统状态"), "adai（trading 插件）应注入行情/持仓上下文");
+        assertTrue(adaiPrompt.contains("上证指数"), "adai 应注入大盘指数行情");
+        assertFalse(alicePrompt.contains("交易系统状态"), "alice（无插件）不应注入行情上下文——行情服务跟插件走");
+        assertFalse(alicePrompt.contains("上证指数"), "alice 不应收到大盘行情");
     }
 }

@@ -52,7 +52,7 @@ status: draft
 |:-----------|:---------|:----:|
 | 大模型分析引擎 | adai-core infrastructure/ai（DeepSeek）| ✅ 框架内置 |
 | 行情数据插件 | `TencentMarketDataSource`（已独立接口 + 归 trading 插件域，2026-08-16 G-1 拨正）| ✅ 载体已就位 |
-| 交易规则插件（抽象层）| `os/trading-engine/11-context/`（rules/strategy/mistakes）+ `TradingAdviceAppService`（R66-R95 硬约束）| ✅ 内容就位；⚠️ 能力焊在 adai-core，未成 jar |
+| 交易规则插件（抽象层）| `os/trading-engine/knowledge/context/`（rules/strategy/mistakes）+ `TradingAdviceAppService`（R66-R95 硬约束）| ✅ 内容就位；⚠️ 能力焊在 adai-core，未成 jar |
 | 按用户叠加（门控）| `Account.plugins` + `PluginService.hasPlugin` + `requireTradingPlugin(403)` + ContextEngine 过滤 | ✅ 机制就位 |
 | 数据分层（用户提供 vs 可查询）| 止损位/买点/入场日期 用户填；现价/K线 查询注入 | ✅ 就位（20260816-trading-data-model）|
 | 建议输出（非执行）| /advice 建议引擎，无执行按钮 | ✅ 就位 |
@@ -104,7 +104,7 @@ status: draft
 
 | Phase | 内容 | 对应 gap 文档 |
 |:-----:|:-----|:-------------|
-| A | 知识层内聚：`11-context/` → `knowledge/context/` + 中间层归档 + current.md 自动化 | G-4 |
+| A | 知识层内聚：`11-context/` → `knowledge/context/`（已完成）+ 中间层文档化归档 + current.md 自动化 | G-4 |
 | B | 能力抽离：`engine/` 规则接口（matchRules / evaluateStopLoss / evaluatePosition），adai-core 改调用 | G-3 |
 | C | 行情插件化：行情服务跟插件走（数据源归属插件，非全局）| G-1 |
 | D | 独立形态：Skill / Agent / MCP 输出 | G-5 |

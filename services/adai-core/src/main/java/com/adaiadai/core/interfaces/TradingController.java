@@ -4,7 +4,6 @@ import com.adaiadai.core.application.TradingAdviceAppService;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
-import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.infrastructure.storage.StorageException;
@@ -65,19 +64,24 @@ public class TradingController {
 
     /**
      * 查询当前持仓。
+     * G-2（2026-08-16）：读端点按 20260814 边界表门控——交易闭环端点（含读）只暴露给 trading 插件用户。
      */
     @GetMapping("/positions")
-    public ResponseEntity<List<Position>> getPositions(
+    public ResponseEntity<?> getPositions(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         return ResponseEntity.ok(tradingAppService.getPositions(userId));
     }
 
     /**
-     * 查询投资组合快照。
+     * 查询投资组合快照（G-2：读端点门控）。
      */
     @GetMapping("/portfolio")
-    public ResponseEntity<PortfolioSnapshot> getPortfolio(
+    public ResponseEntity<?> getPortfolio(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         return ResponseEntity.ok(tradingAppService.getPortfolioSnapshot(userId));
     }
 
@@ -102,12 +106,15 @@ public class TradingController {
     /**
      * 查询交易逐笔流水（RFC 20260816：web 交易历史）。
      * GET /api/v1/trading/trades?from=yyyy-MM-dd&to=yyyy-MM-dd（均可选）
+     * G-2：读端点门控。
      */
     @GetMapping("/trades")
     public ResponseEntity<?> getTrades(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         java.time.LocalDate fromDate = null, toDate = null;
         if (from != null && !from.isBlank()) fromDate = java.time.LocalDate.parse(from);
         if (to != null && !to.isBlank()) toDate = java.time.LocalDate.parse(to);
@@ -133,7 +140,7 @@ public class TradingController {
     /**
      * 生成持仓建议（交易模块核心定位：建议引擎）。
      * <p>
-     * 读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/11-context/rules.md} 与 {@code strategy.md}，
+     * 读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与 {@code strategy.md}，
      * 将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议
      * （suggestion / reason / rules 必须引用规则号）。建议是输出不是指令，本端点不做任何执行动作。
      * <p>
@@ -174,12 +181,14 @@ public class TradingController {
     }
 
     /**
-     * 获取指定日期的复盘笔记。
+     * 获取指定日期的复盘笔记（G-2：读端点门控）。
      */
     @GetMapping("/review")
-    public ResponseEntity<ReviewResponse> getReview(
+    public ResponseEntity<?> getReview(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         String content = reviewAppService.getReview(userId, date);
         if (content == null || content.isBlank()) {
             return ResponseEntity.notFound().build();
@@ -188,11 +197,13 @@ public class TradingController {
     }
 
     /**
-     * 列出所有复盘日期。
+     * 列出所有复盘日期（G-2：读端点门控）。
      */
     @GetMapping("/reviews")
-    public ResponseEntity<List<LocalDate>> listReviews(
+    public ResponseEntity<?> listReviews(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
         return ResponseEntity.ok(reviewAppService.listReviews(userId));
     }
 
@@ -244,8 +255,8 @@ public class TradingController {
             Files.writeString(inboxPath.resolve(fileName), content, StandardCharsets.UTF_8);
 
             log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
-            // #178：提示入库候选不会自动融入 AI context——需在 trading-engine 工作流审核融合后重建 11-context
-            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-engine）审核后归入正式目录，并在收敛时重建 11-context。";
+            // #178：提示入库候选不会自动融入 AI context——需在 trading-engine 工作流审核融合后重建 knowledge/context
+            String message = "已写入入库候选。该内容不会自动进入 AI 上下文：请在交易知识库工作流（os/trading-engine）审核后归入正式目录，并在收敛时重建 knowledge/context。";
             return ResponseEntity.ok(new PromoteResponse("ok", inboxPath.resolve(fileName).toString(), message));
         } catch (Exception e) {
             log.error("入库候选写入失败 | date={} | {}", date, e.getMessage());

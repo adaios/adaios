@@ -6,6 +6,12 @@ status: draft
 
 > **改名记录（2026-08-16 实施）**：本 RFC 实施时 `os/trading-os/` 正式改名 `os/trading-engine/`（交易引擎独立身份）。正文已同步新名；历史 RFC 中 trading-os 为当时记录不改。
 
+> **实施记录（2026-08-16，G-3/G-4/G-5 落地，见 `docs/reference/framework-plugin-gap.md`）**：
+> - **Phase 2 能力抽离 ✅**：`engine/` 规则接口已实现——Java 侧 `services/adai-core/.../domain/trading/engine/`（`TradingRuleEngine` + `DefaultTradingRuleEngine`：evaluateStopLoss R66 / evaluatePosition R81 / matchRules），规格真相源 `os/trading-engine/engine/rules-api.md`；`TradingAdviceAppService` 已改调用，硬判定信号进 prompt。
+> - **Phase A 知识层内聚 ✅**：`11-context/` → `knowledge/context/`（git mv 保留历史），Java/文档全引用同步；中间层 01-10 文档化归档（物理保留，防破坏 Step 1-5 流水线）；`09-scripts/update-current.sh` 半自动刷新 current.md（择时停更修复）。
+> - **Phase 3 形态输出（样板就绪）**：`os/trading-engine/output/agent-skill.md`（Skill 包，Coze/Dify 可导入）+ `output/mcp-server.md`（MCP 资源/工具映射，FastMCP 指引）——实际部署待后续。
+> - 验收：后端 551 测试全绿，guard-meta/align PASS。
+
 # trading-engine 领域引擎化
 
 > **方向 RFC**：把 trading-engine 从"阿呆项目内的交易知识插件"抬高为**独立的交易领域引擎（Domain Engine）**——知识 + 能力自洽，可作插件被阿呆集成，也可独立暴露为 Agent/Skill/服务供其他用户/项目使用。交易是这套"领域引擎"模式的**第一个样板**，跑通后可复制到其他领域（SLG 引擎等）。

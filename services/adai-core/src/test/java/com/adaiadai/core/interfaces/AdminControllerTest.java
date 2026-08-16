@@ -88,9 +88,9 @@ class AdminControllerTest {
         Files.createDirectories(dataDir.resolve("default").resolve("identity"));
         Files.writeString(dataDir.resolve("notes.md"), "测试文件内容");
         Files.writeString(dataDir.resolve("default").resolve("identity").resolve("profile.md"), "name: 阿呆");
-        // os/ 结构：trading-engine/11-context/rules.md
-        Files.createDirectories(osDir.resolve("trading-engine").resolve("11-context"));
-        Files.writeString(osDir.resolve("trading-engine").resolve("11-context").resolve("rules.md"), "R1 空仓也是策略");
+        // os/ 结构：trading-engine/knowledge/context/rules.md
+        Files.createDirectories(osDir.resolve("trading-engine").resolve("knowledge").resolve("context"));
+        Files.writeString(osDir.resolve("trading-engine").resolve("knowledge").resolve("context").resolve("rules.md"), "R1 空仓也是策略");
 
         storage = new InMemoryFileStorage();
         mvc = MockMvcBuilders.standaloneSetup(adminController()).build();
@@ -151,7 +151,8 @@ class AdminControllerTest {
                         .param("domain", "trading-engine")
                         .param("path", "trading-engine"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].name", hasItem("11-context")));
+                // G-4：交付层 11-context → knowledge/context，os/trading-engine/ 直接子目录含 knowledge
+                .andExpect(jsonPath("$[*].name", hasItem("knowledge")));
     }
 
     @Test
@@ -164,7 +165,7 @@ class AdminControllerTest {
 
     @Test
     void getKnowledgeContent_returnsContent() throws Exception {
-        mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "trading-engine/11-context/rules.md"))
+        mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "trading-engine/knowledge/context/rules.md"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").value("R1 空仓也是策略"));
     }

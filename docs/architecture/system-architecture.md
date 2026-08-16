@@ -359,7 +359,7 @@ flowchart LR
 | AI 记忆 | `data/memory/YYYY/MM.md` | MemoryService |
 | 用户身份 | `data/identity/profile.md` | IdentityRepository |
 | 标签索引 | `data/index/tags.json` | TagIndexService |
-| 交易知识 | `os/trading-engine/11-context/` | TradingKnowledgeSource（读取） |
+| 交易知识 | `os/trading-engine/knowledge/context/` | TradingKnowledgeSource（读取） |
 | 项目管理知识 | `os/project-os/11-context/` | ProjectKnowledgeSource（读取） |
 | 持仓数据 | `data/trading/positions.md` | PositionFileRepository |
 | 项目任务 | `data/project/tasks/YYYY/MM.md` | ProjectFileRepository |

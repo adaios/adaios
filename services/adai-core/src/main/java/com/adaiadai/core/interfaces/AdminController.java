@@ -366,7 +366,7 @@ public class AdminController {
     /**
      * 检测交易规则与当前持仓操作的潜在矛盾（admin 维护）。
      * <p>
-     * 读取 {@code os/trading-engine/11-context/rules.md} 中的真实规则（#23 修复：不再硬编码规则名），
+     * 读取 {@code os/trading-engine/knowledge/context/rules.md} 中的真实规则（#23 修复：不再硬编码规则名），
      * 与当前持仓状态对比，标记可能违反的规则。
      * <ul>
      *   <li>无持仓 → 引用真实规则 R119 空仓也是交易策略 / R4 空头区间只卖不买</li>
@@ -420,7 +420,7 @@ public class AdminController {
 
     private String readRulesFile() {
         try {
-            Path rulesPath = Paths.get("../../os/trading-engine/11-context/rules.md")
+            Path rulesPath = Paths.get("../../os/trading-engine/knowledge/context/rules.md")
                     .toAbsolutePath().normalize();
             if (Files.isReadable(rulesPath)) {
                 return Files.readString(rulesPath, StandardCharsets.UTF_8);

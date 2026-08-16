@@ -80,7 +80,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 
 | Domain | 状态 | 说明 |
 |:-------|:----:|:-----|
-| **Trading OS** | ✅ | 87 课知识库 → 11-context → KnowledgeSource → Context Engine 全链路 |
+| **Trading OS** | ✅ | 87 课知识库 → knowledge/context → KnowledgeSource → Context Engine 全链路 |
 | **Project OS** | ✅ | Status API + git 自举 + RFC 索引 + 轻量任务系统（Phase 1-4 全完成）|
 | **Life OS** | 🏗 等数据 | 骨架就绪（快速记录 + LifeKnowledgeSource）；情绪/习惯/周报待数据积累后触发 |
 

@@ -11,11 +11,11 @@
       ↑ 07-manual（人工修正，覆盖 AI 定义）
 
 第二层：批量收敛（Phase A-C）
-  融合术语 → 校准规则 → 重建系统 → 重建 11-context
+  融合术语 → 校准规则 → 重建系统 → 重建 knowledge/context
 
 第三层：人工审核（07-manual → 触发重建链）
 
-第四层：交付（11-context = 对 AI 的接口层）
+第四层：交付（knowledge/context = 对 AI 的接口层）
 ```
 
 ## 当前状态
@@ -25,7 +25,7 @@
 | 单课处理 | ✅ 87 课全部完成（06-processed 87 个 .done）|
 | 批量收敛 | 按需（一个季度/主题阶段触发）|
 | 人工审核 | 07-manual 持续 |
-| 11-context 交付 | 最近收敛 2026-07-11（current.md 待手动刷新）|
+| knowledge/context 交付 | 最近收敛 2026-07-11（current.md 待手动刷新）|
 
 ## 关键规则（来自 CLAUDE.md，不可违反）
 
@@ -38,9 +38,9 @@
 ## 与 build-engine 的关系
 
 ```
-build-course（本文件）：课程 → 11-context（知识生产）
+build-course（本文件）：课程 → knowledge/context（知识生产）
      ↓
-build-engine（知识 → 输出形态）：11-context → 插件/Agent/REST（能力消费）
+build-engine（知识 → 输出形态）：knowledge/context → 插件/Agent/REST（能力消费）
 ```
 
 **两个 build 区分**：课程 build（构建知识，CLAUDE.md 权威）+ 引擎 build（输出形态，build-engine.md）——正是"构建 vs 依赖"分离。

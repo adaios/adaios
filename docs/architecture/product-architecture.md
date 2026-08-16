@@ -186,6 +186,6 @@ Layer 3 Identity + Memory + Knowledge 更新
 - 有自己的 `CLAUDE.md`、独立的工作流程和目录规则
 - AdaiOS mono repo 只是存放位置，不干涉内部运作
 - 不依赖 adai-core 任何代码
-- adai-core 通过文件系统单向读取其产出的知识资产（`11-context/`）
+- adai-core 通过文件系统单向读取其产出的知识资产（trading 为 `knowledge/context/`，life/project 为 `11-context/`）
 - 从不反向写入：`os/` → `data/`，不反向
 - **Git 统一在根仓库管理，工作焦点各自独立**

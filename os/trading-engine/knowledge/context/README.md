@@ -1,13 +1,15 @@
-# 11-context / 交易系统上下文接口层
+# knowledge/context — 交易系统上下文接口层（交付层）
+
+> **G-4（2026-08-16）**：本目录由 `11-context/` 改名而来（git mv 保留历史），语义化命名——`knowledge/` = 知识层（AI 唯一入口），`context/` = 上下文接口。
 
 ## 定位
 
-`11-context/` 不是新的知识目录，而是"交易系统对 AI / 外部系统暴露的认知接口层"。
+`knowledge/context/` 不是新的知识目录，而是"交易系统对 AI / 外部系统暴露的认知接口层"。
 
 ```
-01-raw  ~  05-system  →  交易系统如何形成（内部知识库）
+01-raw  ~  05-system   →  交易系统如何形成（内部知识库 · 构建过程）
 08-review              →  交易系统如何学习（运行日志）
-11-context             →  交易系统如何被理解（对外投射）
+knowledge/context      →  交易系统如何被理解（对外投射 · 交付层）
 ```
 
 类比 Linux `/proc`：不存新数据，只暴露内核当前状态。
@@ -54,16 +56,20 @@ context://rules
 
 ## 维护原则
 
-1. **不新增知识**：11-context/ 不包含 01-raw ~ 05-system 之外的新交易知识
+1. **不新增知识**：knowledge/context/ 不包含 01-raw ~ 05-system 之外的新交易知识
 2. **只做重组**：内容来自 05-system/trading-system.md + 03-glossary/current/ + 04-rules/
-3. **版本同步**：每次系统收敛后（第二层 Phase C），同步更新 11-context/
-4. **current.md 按需刷新**：配合 08-review 和当前市场判断手动更新当前状态。收敛时同步更新其术语引用部分（持仓和市场状态不动）
+3. **版本同步**：每次系统收敛后（第二层 Phase C），同步更新 knowledge/context/
+4. **current.md 半自动刷新**：`09-scripts/update-current.sh` 可自动重组规则/信号表述部分（从 05-system + 08-review），持仓和市场状态由你按 `08-review` 手动确认后写入（G-4）
+
+## 构建过程归档（G-4 文档化）
+
+`01-raw/` ~ `10-prompts/`（含 `12-research/`、`99-inbox/`）是**构建过程**（课程 → 规则 → 系统），由 `CLAUDE.md` 工作流维护，**AI 对话不读**——AI 只消费本目录。物理结构保持不变（流水线单向依赖，编号从低到高），归属 `pipeline/` 语义（见 `pipeline/build-course.md`）。
 
 ## 来源映射
 
 ```
 identity.md    ← 05-system/trading-system.md 总纲 + 底层认知
-current.md     ← 05-system outline 当前市场判断 + 08-review 复盘
+current.md     ← 05-system outline 当前市场判断 + 08-review 复盘（update-current.sh 半自动）
 strategy.md    ← 05-system/trading-system.md 六步结构体
 rules.md       ← 04-rules/ + 05-system 各层的规则声明
 mistakes.md    ← 05-system A5 常见错误 + 各课认知警告

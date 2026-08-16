@@ -2,6 +2,9 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.engine.PositionVerdict;
+import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
+import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -28,17 +31,18 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * TradingAdviceAppService — 持仓建议应用服务（交易模块核心定位：建议引擎）。
  * <p>
- * 编排建议流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/11-context/rules.md} 与
+ * 编排建议流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与
  * {@code strategy.md} → 把止损规则（R66-R80）与仓位规则（R81-R95）作为 LLM 决策硬约束注入
  * prompt → LLM 结构化生成逐票建议（suggestion / reason / rules 必须引用规则号）。
  * <p>
  * 规则匹配是硬约束：建议输出必须引用规则号；本服务不做任何"执行"动作，建议是输出不是指令。
+ * <p>
+ * G-3（2026-08-16）能力抽离：确定性规则判定（止损 R66 / 仓位 R81 / 规则解析）已抽至
+ * {@link TradingRuleEngine}——本服务只编排 prompt 注入与 LLM 输出，判定口径归引擎（交易插件 jar 的能力层）。
  * <p>
  * 兜底：LLM 失败/输出不可解析时降级返回基础数据（symbol / name / position_percent 后端计算，
  * 无建议字段），不抛错——建议引擎永远返回 200，诚实优于编造。
@@ -50,10 +54,10 @@ public class TradingAdviceAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingAdviceAppService.class);
 
-    /** os/trading-engine 11-context 只读路径（相对 gradle 运行 cwd services/adai-core）。 */
-    static final Path RULES_PATH = Paths.get("../../os/trading-engine/11-context/rules.md")
+    /** os/trading-engine knowledge/context 只读路径（相对 gradle 运行 cwd services/adai-core）。 */
+    static final Path RULES_PATH = Paths.get("../../os/trading-engine/knowledge/context/rules.md")
             .toAbsolutePath().normalize();
-    static final Path STRATEGY_PATH = Paths.get("../../os/trading-engine/11-context/strategy.md")
+    static final Path STRATEGY_PATH = Paths.get("../../os/trading-engine/knowledge/context/strategy.md")
             .toAbsolutePath().normalize();
 
     /** 决策硬约束规则区间：止损 R66-R80 + 仓位 R81-R95（与 RFC 20260815 §0 建议类型对齐）。 */
@@ -90,20 +94,20 @@ public class TradingAdviceAppService {
             rules 数组列出本建议引用的规则号（应在 R66-R95 范围内）。
             """.strip();
 
-    private static final Pattern RULE_PATTERN = Pattern.compile(
-            "\\*\\*R(\\d+)\\s+([^*\\n]+?)\\s*\\*\\*(?:\\n>\\s*([^\\n]+))?");
-
     private final PositionRepository positionRepository;
     private final MarketDataSource marketDataSource;
     private final AiClient aiClient;
+    private final TradingRuleEngine ruleEngine;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TradingAdviceAppService(PositionRepository positionRepository,
                                    MarketDataSource marketDataSource,
-                                   AiClient aiClient) {
+                                   AiClient aiClient,
+                                   TradingRuleEngine ruleEngine) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.aiClient = aiClient;
+        this.ruleEngine = ruleEngine;
     }
 
     /**
@@ -130,12 +134,12 @@ public class TradingAdviceAppService {
 
         List<PositionView> views = buildPositionViews(positions, quotes);
 
-        // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束
+        // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束（G-3：解析归引擎）
         String rulesText = readKnowledgeFile(RULES_PATH);
         String strategyText = readKnowledgeFile(STRATEGY_PATH);
-        List<RuleInfo> constraintRules = parseRules(rulesText).stream()
+        List<TradingRuleEngine.RuleEntry> constraintRules = ruleEngine.parseRules(rulesText).stream()
                 .filter(r -> r.number() >= CONSTRAINT_RULE_MIN && r.number() <= CONSTRAINT_RULE_MAX)
-                .sorted(Comparator.comparingInt(RuleInfo::number))
+                .sorted(Comparator.comparingInt(TradingRuleEngine.RuleEntry::number))
                 .toList();
 
         // 3. LLM 结构化生成（失败/不可解析 → 降级基础数据）
@@ -276,7 +280,10 @@ public class TradingAdviceAppService {
                             .multiply(BigDecimal.valueOf(100));
             views.add(new PositionView(p.symbol(), name, p.quantity(), marketValue, positionPercent,
                     p.avgCost(), price, changePercent, pnl, pnlPercent,
-                    p.stopLossPrice(), p.entryDate(), p.buyPoint()));
+                    p.stopLossPrice(), p.entryDate(), p.buyPoint(),
+                    // G-3：引擎确定性判定（止损 R66 / 仓位 R81）
+                    ruleEngine.evaluateStopLoss(price, p.stopLossPrice()),
+                    ruleEngine.evaluatePosition(positionPercent)));
         }
         return views;
     }
@@ -319,38 +326,44 @@ public class TradingAdviceAppService {
         return overview.isEmpty() ? null : overview;
     }
 
-    /** 解析 rules.md 规则条目：{@code **R{n} 标题** + > 描述}（与 TradingController 同口径）。 */
-    private List<RuleInfo> parseRules(String content) {
-        if (content == null || content.isBlank()) return List.of();
-        Matcher matcher = RULE_PATTERN.matcher(content);
-        List<RuleInfo> rules = new ArrayList<>();
-        while (matcher.find()) {
-            rules.add(new RuleInfo(
-                    Integer.parseInt(matcher.group(1)),
-                    matcher.group(2).strip(),
-                    matcher.group(3) != null ? matcher.group(3).strip() : ""
-            ));
-        }
-        return rules;
-    }
+    /** 解析 rules.md 规则条目（G-3：口径归引擎 {@link TradingRuleEngine#parseRules}，本类不再持有解析逻辑）。 */
 
-    private void appendRule(StringBuilder sb, RuleInfo rule) {
+    /** 解析 rules.md 规则条目：{@code **R{n} 标题** + > 描述}（G-3：口径归引擎 {@link TradingRuleEngine#parseRules}）。 */
+    private void appendRule(StringBuilder sb, TradingRuleEngine.RuleEntry rule) {
         sb.append("**R").append(rule.number()).append(" ").append(rule.title()).append("**\n");
         if (!rule.detail().isEmpty()) {
             sb.append("> ").append(rule.detail()).append("\n");
         }
     }
 
-    /** 组装 user prompt：规则硬约束 + 止损硬判定 + 体系总纲 + 持仓/行情（含止损/入场/买点）+ 输出契约。 */
-    private String buildPrompt(List<PositionView> views, List<RuleInfo> constraintRules, String strategyOverview) {
+    /** 组装 user prompt：规则硬约束 + 止损/仓位硬判定信号 + 体系总纲 + 持仓/行情（含止损/入场/买点）+ 输出契约。 */
+    private String buildPrompt(List<PositionView> views, List<TradingRuleEngine.RuleEntry> constraintRules, String strategyOverview) {
         StringBuilder sb = new StringBuilder();
         sb.append("【决策约束——止损规则 R66-R80】\n");
-        for (RuleInfo rule : constraintRules) {
+        for (TradingRuleEngine.RuleEntry rule : constraintRules) {
             if (rule.number() <= 80) appendRule(sb, rule);
         }
         sb.append("\n【决策约束——仓位规则 R81-R95】\n");
-        for (RuleInfo rule : constraintRules) {
+        for (TradingRuleEngine.RuleEntry rule : constraintRules) {
             if (rule.number() > 80) appendRule(sb, rule);
+        }
+        // G-3：引擎确定性判定信号（比让 LLM 自行判读更可靠——数据已在引擎算过）
+        sb.append("\n【硬判定信号（引擎确定性判定，必须遵守）】\n");
+        int signalCount = 0;
+        for (PositionView v : views) {
+            if (v.stopLoss().verdict() == StopLossVerdict.BREACHED) {
+                sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
+                        .append(v.stopLoss().message()).append(" → suggestion 必须 clear（R66）\n");
+                signalCount++;
+            }
+            if (v.position().verdict() == PositionVerdict.OVER_WEIGHT) {
+                sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
+                        .append(v.position().message()).append(" → suggestion 参考 reduce（R81）\n");
+                signalCount++;
+            }
+        }
+        if (signalCount == 0) {
+            sb.append("- 无触发硬判定的持仓（全部未跌破止损位、未超仓位上限）\n");
         }
         // RFC 20260816 §3.1：止损位/入场日期/买点已注入下方持仓数据，以下为可执行的硬判定口径
         sb.append("\n【止损硬判定（数据已注入，必须按此判定）】\n");
@@ -408,7 +421,7 @@ public class TradingAdviceAppService {
             String summary
     ) {}
 
-    /** 建议引擎内部持仓视图（行情价 + 派生指标 + 用户提供的止损/入场/买点，供 prompt 与输出共用）。 */
+    /** 建议引擎内部持仓视图（行情价 + 派生指标 + 用户提供的止损/入场/买点 + 引擎硬判定信号，供 prompt 与输出共用）。 */
     private record PositionView(
             String symbol,
             String name,
@@ -422,9 +435,8 @@ public class TradingAdviceAppService {
             BigDecimal pnlPercent,
             BigDecimal stopLossPrice,
             LocalDate entryDate,
-            String buyPoint
+            String buyPoint,
+            TradingRuleEngine.StopLossResult stopLoss,
+            TradingRuleEngine.PositionResult position
     ) {}
-
-    /** 从 rules.md 解析出的真实规则条目。 */
-    private record RuleInfo(int number, String title, String detail) {}
 }

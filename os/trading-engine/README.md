@@ -66,7 +66,7 @@
 | `08-review/` | 交易复盘（预留） | — |
 | `09-scripts/` | 工具脚本（预留） | — |
 | `10-prompts/` | 提示词模板（预留） | — |
-| `11-context/` | 交易系统对 AI 暴露的认知接口层 | 不新增知识，仅重组 05-system+04-rules+03-glossary；收敛时同步更新 |
+| `knowledge/context/` | 交易系统对 AI 暴露的认知接口层 | 不新增知识，仅重组 05-system+04-rules+03-glossary；收敛时同步更新 |
 | `12-research/` | 市场生态认知（IPO、行业结构、资本关系） | 与交易系统互补的平行视角，不走流水线 |
 | `definition/` | 领域定义（concepts/workflow/README，架构层） | 原 `domains/` 合并而来，只读参考 |
 

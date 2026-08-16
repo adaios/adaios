@@ -31,7 +31,7 @@
 | `08-review/` | 用户交易复盘 | 用户自主维护 |
 | `09-scripts/` | 工具脚本、通达信公式源码 | 辅助工具。公式源码按主图/副图/选股分类 |
 | `10-prompts/` | 提示词模板 | 辅助工具 |
-| `11-context/` | 交易系统对 AI 暴露的认知接口层（identity/strategy/rules/mistakes/current） | 不新增知识，仅重组 05-system+04-rules+03-glossary；系统收敛时同步更新 |
+| `knowledge/context/` | 交易系统对 AI 暴露的认知接口层（identity/strategy/rules/mistakes/current） | 不新增知识，仅重组 05-system+04-rules+03-glossary；系统收敛时同步更新 |
 | `12-research/` | 市场生态认知（IPO、行业结构、资本关系、宏观框架） | 用户自主维护，不走 Step 1→5 流水线；与交易系统互补的平行视角 |
 | `99-inbox/` | 临时存放区 | 用户不确定放哪里的内容先放此处，由 AI 决定后续归入哪个目录。**AI 不主动处理该目录下的文件**，等待用户指示 |
 | `definition/` | 领域定义（concepts/workflow/README，架构层） | 原 `domains/` 合并而来，只读参考 |
@@ -53,7 +53,7 @@
 | `08-review/` | ❌ 不动 | 用户自主维护 |
 | `09-scripts/` | ✅ 可写 | 辅助工具 |
 | `10-prompts/` | ✅ 可写 | 提示词模板 |
-| `11-context/` | ✅ 可写 | 交易系统上下文接口，不新增知识，仅重组 05-system+04-rules+03-glossary |
+| `knowledge/context/` | ✅ 可写 | 交易系统上下文接口，不新增知识，仅重组 05-system+04-rules+03-glossary |
 | `12-research/` | ✅ 可写 | 市场生态认知，与交易系统互补的平行视角，不走流水线 |
 
 ---
@@ -110,7 +110,7 @@
 整个项目只有一条数据流链，上下游依赖关系固定：
 
 ```
-01-raw → 02-cleaned → 03-glossary → 04-rules → 05-system → 11-context
+01-raw → 02-cleaned → 03-glossary → 04-rules → 05-system → knowledge/context
                              ↑            ↑         ↑            ↑
                         07-manual/   07-manual/  07-manual/  批量收敛时
                         glossary     rules →    system      从 03+04+05
@@ -126,7 +126,7 @@
     ↓ 依赖
 05-system（系统层，基于 04-rules 和系统贡献区块组装）
     ↓ 依赖
-11-context（接口层，从 05-system + 04-rules + 03-glossary 重组，不新增知识）
+knowledge/context（接口层，从 05-system + 04-rules + 03-glossary 重组，不新增知识）
 ```
 
 上游变更会破坏下游一致性，但重建是**按需触发的**（非自动），由用户确认后执行。
@@ -142,9 +142,9 @@
               ↓
 第二层：批量收敛（多课积累后融合术语、校准规则、整合系统、重建上下文接口）
               ↓
-第三层：人工审核（07-manual 修正 → 按需重建下游 → 11-context 同步）
+第三层：人工审核（07-manual 修正 → 按需重建下游 → knowledge/context 同步）
               ↓
-交付层：11-context（交易系统对 AI 的接口，随系统版本变更同步刷新）
+交付层：knowledge/context（交易系统对 AI 的接口，随系统版本变更同步刷新）
 ```
 
 ---
@@ -300,7 +300,7 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
        ↓
 旧版本归档到 05-system/archive/
        ↓
-重建 11-context/（从 05-system + 04-rules + 03-glossary 重组 identity/strategy/rules/mistakes/current）
+重建 knowledge/context/（从 05-system + 04-rules + 03-glossary 重组 identity/strategy/rules/mistakes/current）
        ↓
 同步刷新 current.md 的术语引用部分（持仓数据和市场状态不动，仅更新规则/信号表述）
 ```
@@ -315,9 +315,9 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 
 | 位置 | 修正内容 | 影响范围 |
 |:----|:---------|:---------|
-| `07-manual/glossary/YYYY-MM-DD_主题.md` | 术语定义修正 | 融合时覆盖 AI 定义 → 下游重建含 11-context |
-| `07-manual/rules/YYYY-MM-DD_主题.md` | 规则表述修正 | 规则校准 → 下游重建含 11-context |
-| `07-manual/system/trading-system.md` | 系统结构修正 | 系统重建时直接采用 → 11-context 同步重建 |
+| `07-manual/glossary/YYYY-MM-DD_主题.md` | 术语定义修正 | 融合时覆盖 AI 定义 → 下游重建含 knowledge/context |
+| `07-manual/rules/YYYY-MM-DD_主题.md` | 规则表述修正 | 规则校准 → 下游重建含 knowledge/context |
+| `07-manual/system/trading-system.md` | 系统结构修正 | 系统重建时直接采用 → knowledge/context 同步重建 |
 
 ### AI 行为约束
 
@@ -326,12 +326,12 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 ### 重建触发链（按需触发，由用户确认）
 
 ```
-07-manual/glossary/ 变更 → 03-glossary/current/ 重融合 → 04-rules 重校准 → 05-system 重建（含大纲同步）→ 11-context 重建
-07-manual/rules/ 变更 → 04-rules 重校准 → 05-system 重建（含大纲同步）→ 11-context 重建
-07-manual/system/ 变更 → 05-system 直接覆盖（不做自动化处理），同时同步 outline.md → 11-context 重建
+07-manual/glossary/ 变更 → 03-glossary/current/ 重融合 → 04-rules 重校准 → 05-system 重建（含大纲同步）→ knowledge/context 重建
+07-manual/rules/ 变更 → 04-rules 重校准 → 05-system 重建（含大纲同步）→ knowledge/context 重建
+07-manual/system/ 变更 → 05-system 直接覆盖（不做自动化处理），同时同步 outline.md → knowledge/context 重建
 ```
 
-> `11-context` 始终作为重建链的**末端交付步骤**，不做单独更新。
+> `knowledge/context` 始终作为重建链的**末端交付步骤**，不做单独更新。
 
 ### 手册状态约定
 
@@ -345,7 +345,7 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 
 ## 第四层（交付）：上下文接口层
 
-> `11-context/` 不参与单课处理（不做逐课更新），只在**批量收敛后**同步重建，保持对外接口稳定。
+> `knowledge/context/` 不参与单课处理（不做逐课更新），只在**批量收敛后**同步重建，保持对外接口稳定。
 > 它是整个知识工程的"交付物"——其他系统/ AI 对话看到它就理解了整套交易系统。
 
 ### 文件构成
@@ -360,7 +360,7 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 
 ### 维护规则
 
-1. **不新增知识**：11-context/ 不包含 01-raw ~ 05-system 之外的新交易知识
+1. **不新增知识**：knowledge/context/ 不包含 01-raw ~ 05-system 之外的新交易知识
 2. **只做重组**：把系统内部结构转换为 AI 可直接消费的格式
 3. **版本同步**：每次系统收敛后（Phase C）同步更新
 4. `current.md` 中的当前市场状态和持仓信息，配合 08-review 手动刷新
@@ -380,7 +380,7 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 | **术语一致性** | 产出文件名与 raw 是否匹配（按主题重命名时） | 确认 date 字段一致即可 |
 | **outline 与正文对齐** | outline 覆盖课程数、对应关系是否和当前一致 | 同步更新头部信息和各层引用 |
 | **公式库同步** | 系统工具速查表是否指向最新公式文件 | 更新 B5 速查表链接 |
-| **11-context 同步** | 接口文件是否反映最新系统版本 | 收敛完成后重建 11-context/ |
+| **knowledge/context 同步** | 接口文件是否反映最新系统版本 | 收敛完成后重建 knowledge/context/ |
 
 ### 收敛触发时机
 
@@ -413,7 +413,7 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
                                                ↓
                                           06-processed（完成标记）
                                                ↓
-                                          11-context（收敛时更新）
+                                          knowledge/context（收敛时更新）
 
 并行不阻塞的卫星目录：
 07-manual（人工修正，随时写但不参与流水线）
@@ -428,8 +428,8 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 | 优先级 | 行为 | 触发条件 |
 |:------|:-----|:---------|
 | P0 | 单课 Step 1→5 完整流水线 | 有未处理的原始课程（00-temp 有新文件） |
-| P1 | 批量收敛（融合+校准+系统重建+11-context重建） | 积累到一个季度/主题阶段 |
-| P2 | 11-context 同步更新 | 05-system 版本变更后 |
+| P1 | 批量收敛（融合+校准+系统重建+knowledge/context重建） | 积累到一个季度/主题阶段 |
+| P2 | knowledge/context 同步更新 | 05-system 版本变更后 |
 | P3 | 项目审核收敛 | 季度性，或用户发现系统有矛盾时 |
 | P4 | 工具/提示词优化（09-scripts / 10-prompts） | 按需，不阻塞上游 |
 

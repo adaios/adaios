@@ -57,8 +57,21 @@ class BriefAppServiceTest {
                         recordRepository, null, null, null, reviewRepo),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
-                mock(TaskRepository.class)
+                mock(TaskRepository.class),
+                // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
+                pluginService("trading")
         );
+    }
+
+    /** 简化 PluginService mock：指定用户的插件集（G-2 门控测试）。 */
+    private com.adaiadai.core.kernel.plugin.PluginService pluginService(String... plugins) {
+        com.adaiadai.core.kernel.account.AccountRepository accounts =
+                mock(com.adaiadai.core.kernel.account.AccountRepository.class);
+        when(accounts.findById(any())).thenReturn(java.util.Optional.of(
+                new com.adaiadai.core.kernel.account.Account(
+                        "default", com.adaiadai.core.kernel.account.Account.ROLE_USER, true,
+                        java.time.LocalDate.of(2026, 8, 2), java.util.List.of(plugins))));
+        return new com.adaiadai.core.kernel.plugin.PluginService(accounts, new com.adaiadai.core.kernel.plugin.PluginRegistry());
     }
 
     @Test

@@ -10,6 +10,8 @@ import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
@@ -35,6 +37,7 @@ public class BriefAppService {
     private final DomainActivityService domainActivityService;
     private final TagRecommendationService tagRecommendationService;
     private final TaskRepository taskRepository;
+    private final PluginService pluginService;
 
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
     private final java.util.Map<String, String> cachedBriefByUser = new java.util.HashMap<>();
@@ -47,7 +50,8 @@ public class BriefAppService {
                            TradingReviewAppService tradingReviewAppService,
                            DomainActivityService domainActivityService,
                            TagRecommendationService tagRecommendationService,
-                           TaskRepository taskRepository) {
+                           TaskRepository taskRepository,
+                           PluginService pluginService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
@@ -56,6 +60,7 @@ public class BriefAppService {
         this.domainActivityService = domainActivityService;
         this.tagRecommendationService = tagRecommendationService;
         this.taskRepository = taskRepository;
+        this.pluginService = pluginService;
     }
 
     /**
@@ -233,7 +238,9 @@ public class BriefAppService {
             sb.append("If you notice a pattern or habit from the user's history (e.g. they exercise on certain days, they often talk about certain topics), mention it naturally.\n\n");
         }
 
-        boolean hasTrades = tradingReviewAppService.hasTradingActivity(userId, LocalDate.now());
+        // G-2（2026-08-16）：交易活动信号只注入 trading 插件用户——无插件用户不查交易、简报不出现交易提示
+        boolean hasTrades = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)
+                && tradingReviewAppService.hasTradingActivity(userId, LocalDate.now());
         if (hasTrades) {
             sb.append("User had trading activity today. Suggest generating a review note.\n\n");
         }

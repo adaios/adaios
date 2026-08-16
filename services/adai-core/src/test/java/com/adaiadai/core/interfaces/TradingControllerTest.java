@@ -59,10 +59,12 @@ class TradingControllerTest {
         return buildMvc(tradingAppService, reviewAppService, "trading");
     }
 
-    /** "default"用户启用插件服务的 mock（promote 门控测试用：无 trading 插件 → 403）。 */
+    /** "default"用户启用插件服务的 mock（promote 门控测试用：无 trading 插件 → 403）。
+     *  G-2（2026-08-16）：findById(any())——任意 userId 继承插件配置（alice/adai 头测试走同一配置）；
+     *  无插件用例显式传空数组。 */
     private PluginService pluginService(String... plugins) {
         AccountRepository accounts = mock(AccountRepository.class);
-        when(accounts.findById("default")).thenReturn(Optional.of(
+        when(accounts.findById(any())).thenReturn(Optional.of(
                 new Account("default", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of(plugins))));
         return new PluginService(accounts, new PluginRegistry());
     }
@@ -417,8 +419,8 @@ class TradingControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("ok"))
                     .andExpect(jsonPath("$.path").isString())
-                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-engine 工作流融合后重建 11-context）
-                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("11-context")));
+                    // #178 A 档：提示入库候选不会自动融入 AI context（需在 trading-engine 工作流融合后重建 knowledge/context）
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("knowledge/context")));
 
             // 文件真实写入 os/trading-engine/99-inbox/
             org.junit.jupiter.api.Assertions.assertTrue(Files.exists(PROMOTE_TEST_FILE),
@@ -490,6 +492,43 @@ class TradingControllerTest {
         mvc.perform(post("/api/v1/trading/review")
                         .header("X-User-Id", "default")
                         .param("date", "2099-01-01"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── G-2（2026-08-16）：交易闭环读端点同样门控（20260814 边界表「交易闭环端点不暴露」）──
+
+    @Test
+    void getPositions_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/positions").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getPortfolio_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/portfolio").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getTrades_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/trades").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getReview_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/review").header("X-User-Id", "default").param("date", "2099-01-01"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listReviews_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/reviews").header("X-User-Id", "default"))
                 .andExpect(status().isForbidden());
     }
 
