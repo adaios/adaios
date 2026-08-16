@@ -41,8 +41,14 @@ echo "  未修项真相源：docs/review/REVIEW.md"
 echo ""
 echo "✅ 部署前检查全部通过，开始部署..."
 
-# ── 执行部署 ──
-(cd services/adai-core && ./deploy.sh "$SERVER" "$JAR")
+# ── 执行部署（jar 转绝对路径，deploy.sh 内部 cd 到 adai-core 也能解析）──
+JAR_ABS="$(cd "$(dirname "$JAR")" 2>/dev/null && pwd)/$(basename "$JAR")"
+if [ ! -f "$JAR_ABS" ]; then
+    echo "❌ jar 不存在：$JAR_ABS"
+    exit 1
+fi
+echo "▸ 部署 jar：$JAR_ABS"
+(cd services/adai-core && ./deploy.sh "$SERVER" "$JAR_ABS")
 DEPLOY_OK=$?
 if [ $DEPLOY_OK -ne 0 ]; then
     echo "❌ 部署失败（deploy.sh exit $DEPLOY_OK）"

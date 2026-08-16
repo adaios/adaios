@@ -100,18 +100,28 @@ chown -R adaios:adaios /opt/adaios
 
 echo "  5/5  启动服务..."
 systemctl start adai-core || true
-sleep 3
 
-# 检查服务是否真的起来了
-if systemctl is-active --quiet adai-core; then
-    echo "  → 服务已运行，重建记忆..."
-    curl -s -X POST http://localhost:8080/api/v1/memory/rebuild
+# 检查服务是否真的起来了（带就绪重试：服务启动需 5-15 秒，sleep 3 不够）
+READY=0
+for i in 1 2 3 4 5 6; do
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/feed -H "X-User-Id: adai" 2>/dev/null | grep -q "200"; then
+        READY=1
+        break
+    fi
+    echo "  → 等待服务就绪 ($i/6)..."
+    sleep 5
+done
+if [ $READY -eq 1 ]; then
+    echo "  → 服务已运行，重建记忆（/admin/memory/rebuild，P-be-01 后端点）..."
+    # P-be-01（2026-08-16）：memory/rebuild 已迁入 /api/v1/admin/**（需 X-Admin-Token）
+    ADMIN_TOKEN=$(grep '^ADAI_ADMIN_TOKEN=' /opt/adaios/backend/.env | cut -d= -f2)
+    curl -s -X POST "http://localhost:8080/api/v1/admin/memory/rebuild?userId=adai" -H "X-Admin-Token: $ADMIN_TOKEN" || true
     echo ""
     echo "✅ 部署完成！验证:"
-    curl -s http://localhost:8080/api/v1/identity | head -c 100
+    curl -s http://localhost:8080/api/v1/identity | head -c 100 || true
     echo ""
 else
-    echo "  ⚠ 服务未启动，请检查:"
+    echo "  ⚠ 服务未就绪（6 次探测失败），请检查:"
     echo "    1. /opt/adaios/backend/.env 中的 DEEPSEEK_API_KEY 是否已填写"
     echo "    2. journalctl -u adai-core -n 50 --no-pager"
 fi
