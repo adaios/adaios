@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import 'badge.dart';
 
-/// 模块页统一页头 — 图标 + 标题 + 副标题 + MOCK 徽标。
+/// 模块页统一页头 — 图标 + 标题 + 副标题。（2026-08-16：移除 MOCK 徽标——数据源为真实后端，误导标记已清）
 class PageHeader extends StatelessWidget {
   const PageHeader({
     super.key,
@@ -39,11 +39,6 @@ class PageHeader extends StatelessWidget {
                       fontSize: 12, color: AppColors.darkGrey5)),
             ],
           ),
-        ),
-        const AppBadge(
-          label: 'MOCK',
-          color: AppColors.darkYellow,
-          icon: Icons.science_outlined,
         ),
       ],
     );
