@@ -163,4 +163,35 @@ class TradingParseAppServiceTest {
         assertEquals("SB1", r.buyPoint());
         assertEquals(new BigDecimal("5.0"), r.stopLossPrice());
     }
+
+    @Test
+    void regexHandUnit_convertsToShares() {
+        // 「5 手」= 500 股（A股 1手=100股）
+        when(aiClient.generate(any(ContextPackage.class), any(String.class)))
+                .thenThrow(new RuntimeException("LLM down"));
+        TradingParseAppService.ParseResult r = service.parse("u1", "卖了 5 手京东方A @5.8");
+        assertTrue(r.matched());
+        assertEquals("SELL", r.direction());
+        assertEquals(500, r.volume());
+        assertEquals("京东方A", r.name());
+    }
+
+    @Test
+    void regexSharesUnit_noConversion() {
+        when(aiClient.generate(any(ContextPackage.class), any(String.class)))
+                .thenThrow(new RuntimeException("LLM down"));
+        TradingParseAppService.ParseResult r = service.parse("u1", "买了 300 股京东方A @5.2");
+        assertTrue(r.matched());
+        assertEquals(300, r.volume());
+    }
+
+    @Test
+    void llmHandUnit_convertsToShares() {
+        // LLM 侧也换算（prompt 已要求）
+        stubLlm("{\"matched\": true, \"symbol\": \"000725\", \"name\": \"京东方A\", \"direction\": \"SELL\", \"price\": 5.8, \"volume\": 500}");
+        TradingParseAppService.ParseResult r = service.parse("u1", "卖了 5 手京东方A @5.8");
+        assertTrue(r.matched());
+        assertEquals(500, r.volume());
+    }
+
 }

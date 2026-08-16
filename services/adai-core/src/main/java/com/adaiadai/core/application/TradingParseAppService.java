@@ -59,9 +59,9 @@ public class TradingParseAppService {
     private static final Pattern TRADE_PATTERN = Pattern.compile(
             "(买(?:入|了|进)?|卖(?:出|了|掉)?)"                         // 1 动词
                     + "\\s*([\\u4e00-\\u9fa5A-Za-z]{2,12}|\\d{6})?"   // 2 名称/代码（可选，位置1）
-                    + "\\s*(\\d+)\\s*(?:股|手|份)?"                   // 3 数量
-                    + "\\s*([\\u4e00-\\u9fa5A-Za-z]{2,12}|\\d{6})?"   // 4 名称/代码（可选，位置2）
-                    + "\\s*[@＠]?\\s*(\\d+(?:\\.\\d+)?)",        // 5 价格
+                    + "\\s*(\\d+)\\s*(股|手|份)?"                  // 3 数量 + 4 单位（手×100）
+                    + "\\s*([\\u4e00-\\u9fa5A-Za-z]{2,12}|\\d{6})?"   // 5 名称/代码（可选，位置2）
+                    + "\\s*[@＠]?\\s*(\\d+(?:\\.\\d+)?)",        // 6 价格
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("\\d{6}");
     /** 正则兜底：止损位（RFC 20260816 §4.3：「止损 Z」→ stopLossPrice）。 */
@@ -100,7 +100,7 @@ public class TradingParseAppService {
                 规则：
                 - direction 只允许 "BUY" 或 "SELL"（买入=BUY，卖出=SELL）
                 - price 是每股价格（数字）
-                - volume 是数量（整数，股数）
+                - volume 是数量（整数，股数）——注意单位换算：用户说「5 手」= 500 股（1手=100股），「3 份」= 3 股（份=股）；必须换算成股数
                 - symbol 是 6 位代码（若有）；name 是股票名称（若有）；都没有则 null
                 - stopLossPrice 是止损位（数字，若有；买入通常必填）
                 - buyPoint 是买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他，若有）
@@ -158,7 +158,8 @@ public class TradingParseAppService {
         }
         String verb = m.group(1);
         String position1 = m.group(2);
-        String position2 = m.group(4);
+        String unit = m.group(4);  // 股/手/份（手×100）
+        String position2 = m.group(5);
         String direction = verb.startsWith("买") ? "BUY" : "SELL";
 
         // 名称/代码取位置2优先（数量后），否则位置1
@@ -176,12 +177,13 @@ public class TradingParseAppService {
         Integer volume;
         try {
             volume = Integer.parseInt(m.group(3));
+            if ("手".equals(unit)) volume = volume * 100;  // 1手=100股（A股）
         } catch (NumberFormatException e) {
             return ParseResult.unmatched();
         }
         BigDecimal price;
         try {
-            price = new BigDecimal(m.group(5));
+            price = new BigDecimal(m.group(6));
         } catch (NumberFormatException e) {
             return ParseResult.unmatched();
         }
