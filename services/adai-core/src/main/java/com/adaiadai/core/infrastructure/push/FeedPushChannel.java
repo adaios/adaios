@@ -36,8 +36,8 @@ public class FeedPushChannel implements PushChannel {
     @Override
     public void push(String userId, PushMessage message) {
         String time = message.time() != null
-                ? message.time().toString()
-                : java.time.LocalTime.now().toString();
+                ? message.time().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                : java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
         pushRepository.append(userId, LocalDate.now(), new MarketPushEvent(
                 IdGenerator.monotonic("push_"),
                 message.symbol(),
