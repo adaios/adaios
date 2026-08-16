@@ -26,6 +26,7 @@ class _TradingPageState extends State<TradingPage> {
   PortfolioSnapshotResponse? _portfolio;
   List<PositionItem> _positions = [];
   List<WatchlistItemDto> _watchlist = [];
+  List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
   List<SoldTradeDto> _sold = [];
   AccountSnapshotDto? _account;
   double? _cash;
@@ -75,6 +76,7 @@ class _TradingPageState extends State<TradingPage> {
         widget.api.getWatchlist(),
         widget.api.getSold(),
         widget.api.getAccount(),
+        widget.api.getBuyPoints(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -83,6 +85,7 @@ class _TradingPageState extends State<TradingPage> {
         _watchlist = results[2] as List<WatchlistItemDto>;
         _sold = results[3] as List<SoldTradeDto>;
         _account = results[4] as AccountSnapshotDto;
+        _buyPoints = results[5] as List<BuyPointDto>;
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
         _assets = _account?.assets;
@@ -581,7 +584,7 @@ class _TradingPageState extends State<TradingPage> {
       Row(children: [
         const Text('自选股', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const SizedBox(width: 8),
-        Text('${_watchlist.length} 只 · 盯盘买点原料', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        Text('${_watchlist.length} 只 · 阿呆帮你盯买点', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('自选股',
@@ -611,24 +614,32 @@ class _TradingPageState extends State<TradingPage> {
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
               DataColumn(label: Text('行业')), DataColumn(label: Text('长/中/短')),
-              DataColumn(label: Text('指标提示')), DataColumn(label: Text('')),
+              DataColumn(label: Text('指标提示')), DataColumn(label: Text('买点信号')), DataColumn(label: Text('')),
             ],
-            rows: _watchlist.map((w) => DataRow(cells: [
-              DataCell(Text(w.symbol, style: const TextStyle(fontSize: 12))),
-              DataCell(Text(w.name, style: const TextStyle(fontSize: 12))),
-              DataCell(Text(w.industry, style: const TextStyle(fontSize: 12))),
-              DataCell(Text('${w.longForm}/${w.midForm}/${w.shortForm}',
-                  style: const TextStyle(fontSize: 12))),
-              DataCell(Text(w.signal, style: TextStyle(fontSize: 12,
-                  color: w.signal.contains('金叉') ? AppColors.darkRed : AppColors.darkGrey4))),
-              DataCell(IconButton(
-                icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
-                onPressed: () async {
-                  await widget.api.removeWatchlist(w.symbol);
-                  await _loadAll();
-                },
-              )),
-            ])).toList(),
+            rows: _watchlist.map((w) {
+              // C2 买点信号：命中 B1/B2 显示红色徽标（判定是提示不是指令）
+              final bp = _buyPoints.where((b) => b.symbol == w.symbol).toList();
+              return DataRow(cells: [
+                DataCell(Text(w.symbol, style: const TextStyle(fontSize: 12))),
+                DataCell(Text(w.name, style: const TextStyle(fontSize: 12))),
+                DataCell(Text(w.industry, style: const TextStyle(fontSize: 12))),
+                DataCell(Text('${w.longForm}/${w.midForm}/${w.shortForm}',
+                    style: const TextStyle(fontSize: 12))),
+                DataCell(Text(w.signal, style: TextStyle(fontSize: 12,
+                    color: w.signal.contains('金叉') ? AppColors.darkRed : AppColors.darkGrey4))),
+                DataCell(bp.isEmpty
+                    ? const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
+                    : Text(bp.map((b) => '${b.buyPoint} ${(b.score * 100).toStringAsFixed(0)}%').join('、'),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))),
+                DataCell(IconButton(
+                  icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+                  onPressed: () async {
+                    await widget.api.removeWatchlist(w.symbol);
+                    await _loadAll();
+                  },
+                )),
+              ]);
+            }).toList(),
           ),
         ),
     ]);

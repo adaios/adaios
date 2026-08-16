@@ -471,6 +471,14 @@ class ApiService {
     _check(resp);
   }
 
+  /// 自选股买点信号（GET /api/v1/trading/buy-points，C2：B1/B2 命中列表）。
+  Future<List<BuyPointDto>> getBuyPoints() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/buy-points'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => BuyPointDto.fromJson(e)).toList();
+  }
+
   /// 清仓股列表（GET /api/v1/trading/sold，复盘闭环）。
   Future<List<SoldTradeDto>> getSold() async {
     final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/sold'), headers: _headers);
@@ -1287,6 +1295,27 @@ class WatchlistItemDto {
       shortForm: (m['shortForm'] as num?)?.toInt() ?? 0,
       signal: m['signal']?.toString() ?? '',
       addedAt: m['addedAt']?.toString() ?? '',
+    );
+  }
+}
+
+/// 自选股买点信号（C2 盯盘买点：B1 回调 / B2 突破）。
+class BuyPointDto {
+  final String symbol, name, buyPoint;
+  final double score;
+  final List<String> signals;
+
+  BuyPointDto({required this.symbol, required this.name, required this.buyPoint,
+      required this.score, required this.signals});
+
+  factory BuyPointDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return BuyPointDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyPoint: m['buyPoint']?.toString() ?? '',
+      score: (m['score'] as num?)?.toDouble() ?? 0,
+      signals: (m['signals'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 }
