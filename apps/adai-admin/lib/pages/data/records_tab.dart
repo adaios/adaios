@@ -5,10 +5,9 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
-import '../../widgets/dialogs.dart';
-import '../../widgets/snack.dart';
 
-/// 记录页签 — 记录列表（类型徽标 + 标签 + 时间）+ 删除（真实后端 Feed + DELETE）。
+/// 记录页签 — 治理视角查看记录列表（类型徽标 + 标签 + 时间，真实后端 Feed）。
+/// 只读：记录删除归用户端 app/web（P-role-03），admin 不提供删除。
 class RecordsTab extends StatefulWidget {
   const RecordsTab({super.key, required this.store});
 
@@ -52,22 +51,6 @@ class _RecordsTabState extends State<RecordsTab> {
         _loading = false;
       });
     }
-  }
-
-  Future<void> _delete(ContentRecord r) async {
-    final ok = await showConfirmDialog(
-      context,
-      title: '删除记录',
-      message: '确定删除记录「${r.id}」？此操作不可撤销。',
-      confirmText: '删除',
-    );
-    if (!ok || !mounted) return;
-    final success = await _store.deleteRecord(r.id);
-    if (!mounted) return;
-    showAppSnack(context,
-        success ? '已删除记录 ${r.id}' : '删除失败：记录不存在或后端不可用',
-        success ? AppColors.darkOrange : AppColors.darkOrange);
-    await _load();
   }
 
   @override
@@ -134,14 +117,6 @@ class _RecordsTabState extends State<RecordsTab> {
                           child: AppBadge(
                               label: tag, color: AppColors.darkPurple),
                         ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            size: 16, color: AppColors.darkGrey5),
-                        onPressed: () => _delete(r),
-                        tooltip: '删除记录',
-                        visualDensity: VisualDensity.compact,
-                      ),
                     ],
                   ),
                 ],

@@ -29,6 +29,7 @@
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
+| 2026-08-16 | v3.21 | **P-be-01 安全修复**：5 个维护端点（records/retry、memory/rebuild、memory/{id} PATCH、cards/cleanup、knowledge/conflicts）从 per-user 路径迁入 `/api/v1/admin/**`（需 X-Admin-Token），目标用户改 userId 查询参数；`GET /trading/has-activity` 保留产品路径（app 复盘横幅，只读）|
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
 | 2026-07-29 | v2.9 | **Feed 分页方向修复**：page 0 从最早条目改为最新条目，优化刷新后新数据可见性 |
@@ -146,7 +147,7 @@
 - `204 No Content` — 修改成功
 - `400` — domain 非法（仅 `life` / `trading` / `project`）
 
-### `POST /api/v1/records/retry` — 手动触发重补
+### `POST /api/v1/admin/records/retry` — 手动触发重补（需 X-Admin-Token）
 
 调用 `RecordRetryService`，为没有 Memory 的历史记录补齐 AI 摘要与标签。
 
@@ -371,7 +372,7 @@
 }
 ```
 
-### `POST /api/v1/cards/cleanup` — 清理卡片冗余记录
+### `POST /api/v1/admin/cards/cleanup` — 清理卡片冗余记录（需 X-Admin-Token）
 
 删除卡片对话对应的冗余 ContentRecord（卡片内容已存储在 `records/cards/` 下，无需单独保留）。
 
@@ -593,7 +594,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 >
 > **插件门控（RFC 20260814，v3.18）**：promote 写入共享 os/ 知识库 → 仅启用 trading 插件的用户可用；未启用 → `403`（`{"error":"trading 插件未启用，无法反哺知识"}`）。
 
-### `GET /api/v1/trading/knowledge/conflicts` — 检测规则矛盾
+### `GET /api/v1/admin/trading/knowledge/conflicts` — 检测规则矛盾（需 X-Admin-Token）
 
 从 `os/trading-os/11-context/rules.md` 解析真实规则，与当前持仓状态对比，标记可能违反的规则（规则名/描述取自真实规则内容，非硬编码）。
 
@@ -711,7 +712,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 }
 ```
 
-### `POST /api/v1/memory/rebuild` — 重建记忆
+### `POST /api/v1/admin/memory/rebuild` — 重建记忆（需 X-Admin-Token）
 
 **Query Parameters**
 
@@ -764,7 +765,21 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 
 - `404 Not Found` — 记忆不存在
 
-### `PATCH /api/v1/memory/{id}` — 手动修正记忆（adai-admin）
+### `PATCH /api/v1/memory/{id}` — 手动修正记忆（用户端，P-role-02）
+
+个人记忆修正归用户端（adai-app 记忆页「修正」）。走 `X-User-Id` 用户隔离（**非** admin 鉴权）。
+
+**Request Body**（任一字段缺省保持原值）
+
+```json
+{ "kind": "fact", "summary": "修正后的内容", "tags": ["生活"], "actionable": true }
+```
+
+**Response**：`{"success": true}`；找不到 → 404
+
+---
+
+### `PATCH /api/v1/admin/memory/{id}` — 手动修正记忆（管理端，需 X-Admin-Token）
 
 adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestion。任一字段缺省表示保持原值。
 
@@ -938,7 +953,7 @@ chat 模式（全屏）
 | 查询复盘 | `GET /api/v1/trading/review?date=` |
 | 检测交易活动 | `GET /api/v1/trading/has-activity` |
 | 复盘入库候选 | `POST /api/v1/trading/reviews/{date}/promote` |
-| 规则冲突检测 | `GET /api/v1/trading/knowledge/conflicts` |
+| 规则冲突检测 | `GET /api/v1/admin/trading/knowledge/conflicts` |
 | 加载项目状态 | `GET /api/v1/project/status` |
 | 任务列表 | `GET /api/v1/project/tasks` |
 | 创建任务 | `POST /api/v1/project/tasks` |
@@ -946,7 +961,7 @@ chat 模式（全屏）
 | 删除任务 | `DELETE /api/v1/project/tasks/{id}` |
 | 任务统计 | `GET /api/v1/project/tasks/stats` |
 | 卡片迁移 | `POST /api/v1/cards/migrate` |
-| 卡片清理 | `POST /api/v1/cards/cleanup` |
+| 卡片清理 | `POST /api/v1/admin/cards/cleanup` |
 
 ---
 

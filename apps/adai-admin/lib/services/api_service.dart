@@ -151,35 +151,20 @@ class ApiService {
     await _send('DELETE', '/api/v1/accounts/$userId');
   }
 
-  // ── 记录（per-user）──
+  // ── 记录（per-user，admin 只读查看）──
 
-  /// `POST /api/v1/records` body `{content, type?, tags?, intent?}`。
-  Future<void> createRecord(String content,
-      {String? type, List<String>? tags, String? intent}) async {
-    await _send('POST', '/api/v1/records',
-        headers: userHeaders,
-        body: {
-          'content': content,
-          'type': ?type,
-          if (tags != null && tags.isNotEmpty) 'tags': tags,
-          'intent': ?intent,
-        });
-  }
-
-  /// `DELETE /api/v1/records/{id}` → 204。
-  Future<void> deleteRecord(String id) async {
-    await _send('DELETE', '/api/v1/records/$id', headers: userHeaders);
-  }
-
-  /// `POST /api/v1/records/retry` → 重补缺失记忆。
+  /// `POST /api/v1/admin/records/retry?userId=` → 重补缺失记忆（维护端点，P-be-01 迁入 /admin/**）。
+  /// 系统级请求（X-Admin-Token），目标用户由 userId 查询参数显式指定。
   Future<RetryResultDto> triggerRecordRetry() async {
-    final resp = await _send('POST', '/api/v1/records/retry', headers: userHeaders);
+    final resp = await _send('POST', '/api/v1/admin/records/retry',
+        query: {'userId': userId});
     return RetryResultDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  /// `POST /api/v1/cards/cleanup` → 清理重复记录（维护操作「数据清理」）。
+  /// `POST /api/v1/admin/cards/cleanup?userId=` → 清理重复记录（维护操作「数据清理」，P-be-01 迁入 /admin/**）。
   Future<Map<String, dynamic>> cleanupCards() async {
-    final resp = await _send('POST', '/api/v1/cards/cleanup', headers: userHeaders);
+    final resp = await _send('POST', '/api/v1/admin/cards/cleanup',
+        query: {'userId': userId});
     return jsonDecode(_body(resp)) as Map<String, dynamic>;
   }
 
@@ -213,57 +198,19 @@ class ApiService {
     return list.map((e) => e.toString()).toList();
   }
 
-  /// `PATCH /api/v1/memory/{id}` body `{kind?, summary?, tags?, actionable?, suggestion?}`。
-  Future<void> updateMemory(String id,
-      {String? kind, String? summary, List<String>? tags, bool? actionable, String? suggestion}) async {
-    await _send('PATCH', '/api/v1/memory/$id',
-        headers: userHeaders,
-        body: {
-          'kind': ?kind,
-          'summary': ?summary,
-          'tags': ?tags,
-          'actionable': ?actionable,
-          'suggestion': ?suggestion,
-        });
-  }
-
-  /// `PATCH /api/v1/memory/{id}/done`。
-  Future<void> markMemoryDone(String id) async {
-    await _send('PATCH', '/api/v1/memory/$id/done', headers: userHeaders);
-  }
-
-  /// `POST /api/v1/memory/rebuild?date=`。
+  /// `POST /api/v1/admin/memory/rebuild?userId=&date=` → 记忆重建（维护端点，P-be-01 迁入 /admin/**）。
   Future<RebuildResultDto> rebuildMemory({String? date}) async {
-    final query = <String, String>{'date': ?date};
-    final resp = await _send('POST', '/api/v1/memory/rebuild',
-        headers: userHeaders, query: query);
+    final query = <String, String>{'userId': userId, 'date': ?date};
+    final resp = await _send('POST', '/api/v1/admin/memory/rebuild',
+        query: query);
     return RebuildResultDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  // ── Identity（per-user）──
+  // ── Identity（per-user，admin 只读查看）──
 
   /// `GET /api/v1/identity`。
   Future<IdentityDto> getIdentity() async {
     final resp = await _get('/api/v1/identity', headers: userHeaders);
-    if (_body(resp).trim().isEmpty) return const IdentityDto();
-    return IdentityDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
-  }
-
-  /// `PUT /api/v1/identity` 全量覆盖。
-  Future<IdentityDto> updateIdentity({
-    required String name,
-    required Map<String, String> preferences,
-    required Map<String, String> rules,
-    required List<String> tags,
-  }) async {
-    final resp = await _send('PUT', '/api/v1/identity',
-        headers: userHeaders,
-        body: {
-          'name': name,
-          'preferences': preferences,
-          'rules': rules,
-          'tags': tags,
-        });
     if (_body(resp).trim().isEmpty) return const IdentityDto();
     return IdentityDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
@@ -313,9 +260,10 @@ class ApiService {
     return ActivityCheckDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  /// `GET /api/v1/trading/knowledge/conflicts`。
+  /// `GET /api/v1/admin/trading/knowledge/conflicts?userId=`（维护端点，P-be-01 迁入 /admin/**）。
   Future<ConflictsResponseDto> getConflicts() async {
-    final resp = await _get('/api/v1/trading/knowledge/conflicts', headers: userHeaders);
+    final resp = await _get('/api/v1/admin/trading/knowledge/conflicts',
+        query: {'userId': userId});
     return ConflictsResponseDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
@@ -331,7 +279,7 @@ class ApiService {
     return PromoteResultDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  // ── Tasks（per-user）──
+  // ── Tasks（per-user，admin 只读查看）──
 
   /// `GET /api/v1/project/tasks?status=`。
   Future<List<TaskDto>> getTasks({String? status}) async {
@@ -339,44 +287,6 @@ class ApiService {
     final resp = await _get('/api/v1/project/tasks', headers: userHeaders, query: query);
     final list = jsonDecode(_body(resp)) as List;
     return list.map((e) => TaskDto.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  /// `POST /api/v1/project/tasks`。
-  Future<TaskDto> createTask({
-    required String title,
-    String? description,
-    String? priority,
-    List<String>? tags,
-  }) async {
-    final resp = await _send('POST', '/api/v1/project/tasks',
-        headers: userHeaders,
-        body: {
-          'title': title,
-          'description': ?description,
-          'priority': ?priority,
-          'tags': ?tags,
-        });
-    return TaskDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
-  }
-
-  /// `PUT /api/v1/project/tasks/{id}`。
-  Future<TaskDto> updateTask(String id,
-      {String? title, String? description, String? status, String? priority, List<String>? tags}) async {
-    final body = <String, dynamic>{
-      'title': ?title,
-      'description': ?description,
-      'status': ?status,
-      'priority': ?priority,
-      'tags': ?tags,
-    };
-    final resp = await _send('PUT', '/api/v1/project/tasks/$id',
-        headers: userHeaders, body: body);
-    return TaskDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
-  }
-
-  /// `DELETE /api/v1/project/tasks/{id}`。
-  Future<void> deleteTask(String id) async {
-    await _send('DELETE', '/api/v1/project/tasks/$id', headers: userHeaders);
   }
 
   /// `GET /api/v1/project/tasks/stats`。

@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 
 /// Memory page - AI understanding by day with tag grouping.
 /// Opens to most recent date with data.
+/// P-role-02（app 记忆修正）：记忆卡可「修正」（PATCH /memory/{id}），
+/// 待办记忆可「完成」（PATCH /memory/{id}/done）——P-app-03 闭环补全。
 class MemoryPage extends StatefulWidget {
   final ApiService api;
   const MemoryPage({super.key, required this.api});
@@ -113,6 +115,54 @@ class _MemoryPageState extends State<MemoryPage> {
 
   List<MemoryEntryResponse> get _filtered =>
       _activeTag == null ? _entries : _entries.where((e) => e.tags.contains(_activeTag)).toList();
+
+  /// 修正记忆（P-role-02）：弹窗编辑 kind/summary/tags/actionable → PATCH /memory/{id}。
+  Future<void> _edit(MemoryEntryResponse entry) async {
+    final result = await showDialog<({String kind, String summary, List<String> tags, bool actionable})>(
+      context: context,
+      builder: (_) => _MemoryEditDialog(entry: entry),
+    );
+    if (result == null || !mounted) return;
+    try {
+      await widget.api.updateMemory(
+        entry.id,
+        kind: result.kind,
+        summary: result.summary,
+        tags: result.tags,
+        actionable: result.actionable,
+      );
+      if (!mounted) return;
+      _toast('好，我按你说的记下了');
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _toast('没改成功，稍后再试');
+    }
+  }
+
+  /// 待办记忆完成（P-app-03 闭环）：PATCH /memory/{id}/done。
+  Future<void> _done(MemoryEntryResponse entry) async {
+    try {
+      await widget.api.markMemoryDone(entry.id);
+      if (!mounted) return;
+      _toast('好，这件事完成了');
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      _toast('没标记上，稍后再试');
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+        backgroundColor: AppColors.darkSurface2,
+        duration: const Duration(seconds: 2),
+      ));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -292,8 +342,45 @@ class _MemoryPageState extends State<MemoryPage> {
             const SizedBox(width: 4),
             Text('$time  ${_dateDisplay(_currentDate)}',
                 style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+            const Spacer(),
+            // P-app-03 闭环：待办记忆可「完成」（PATCH /memory/{id}/done）
+            if (entry.actionable && entry.doneAt == null) ...[
+              _doneButton(entry),
+              const SizedBox(width: 2),
+            ],
+            // P-role-02：记忆可「修正」（PATCH /memory/{id}）
+            IconButton(
+              icon: const Icon(Icons.edit_outlined,
+                  size: 15, color: AppColors.darkGrey5),
+              onPressed: () => _edit(entry),
+              tooltip: '修正这条记忆',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
           ]),
         ]),
+      ),
+    );
+  }
+
+  /// 待办记忆「完成」按钮（P-app-03）。
+  Widget _doneButton(MemoryEntryResponse entry) {
+    return GestureDetector(
+      onTap: () => _done(entry),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.darkGreen.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+              color: AppColors.darkGreen.withValues(alpha: 0.35), width: 0.5),
+        ),
+        child: const Text('完成',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: AppColors.darkGreen)),
       ),
     );
   }
@@ -320,6 +407,172 @@ class _MemoryPageState extends State<MemoryPage> {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
       child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color)),
+    );
+  }
+}
+
+/// 记忆修正弹窗 — 阿呆理解的人工修正（P-role-02）。
+/// 可改 kind / summary / tags / actionable；保存返回结果记录，取消返回 null。
+class _MemoryEditDialog extends StatefulWidget {
+  const _MemoryEditDialog({required this.entry});
+
+  final MemoryEntryResponse entry;
+
+  @override
+  State<_MemoryEditDialog> createState() => _MemoryEditDialogState();
+}
+
+class _MemoryEditDialogState extends State<_MemoryEditDialog> {
+  static const List<(String, String)> _kinds = [
+    ('insight', '洞察'),
+    ('preference', '偏好'),
+    ('pattern', '模式'),
+    ('decision', '决策'),
+    ('fact', '事实'),
+  ];
+
+  late String _kind =
+      _kinds.any((k) => k.$1 == widget.entry.kind) ? widget.entry.kind : 'insight';
+  late final TextEditingController _summaryCtrl =
+      TextEditingController(text: widget.entry.summary);
+  late final TextEditingController _tagsCtrl =
+      TextEditingController(text: widget.entry.tags.join(', '));
+  late bool _actionable = widget.entry.actionable;
+
+  @override
+  void dispose() {
+    _summaryCtrl.dispose();
+    _tagsCtrl.dispose();
+    super.dispose();
+  }
+
+  List<String> get _parsedTags => _tagsCtrl.text
+      .split(RegExp(r'[,，]'))
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface,
+      title: const Text('修正这条记忆',
+          style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('这是阿呆记下的内容，改完我就按新的记。',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+            const SizedBox(height: 12),
+            const Text('内容',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('memory-edit-summary'),
+              controller: _summaryCtrl,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                filled: true,
+                fillColor: AppColors.darkBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide:
+                      const BorderSide(color: AppColors.darkBorder, width: 0.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('标签（逗号分隔）',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('memory-edit-tags'),
+              controller: _tagsCtrl,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                filled: true,
+                fillColor: AppColors.darkBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide:
+                      const BorderSide(color: AppColors.darkBorder, width: 0.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('类型',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (final (value, label) in _kinds)
+                  ChoiceChip(
+                    label: Text(label,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: _kind == value
+                                ? AppColors.darkGreen
+                                : AppColors.darkGrey5)),
+                    selected: _kind == value,
+                    onSelected: (_) => setState(() => _kind = value),
+                    selectedColor:
+                        AppColors.darkGreen.withValues(alpha: 0.18),
+                    backgroundColor: AppColors.darkSurface2,
+                    side: BorderSide(
+                        color: _kind == value
+                            ? AppColors.darkGreen.withValues(alpha: 0.4)
+                            : AppColors.darkBorder,
+                        width: 0.5),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('标记为待办',
+                  style: TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+              value: _actionable,
+              onChanged: (v) => setState(() => _actionable = v),
+              activeTrackColor: AppColors.darkGreen.withValues(alpha: 0.4),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child:
+              const Text('取消', style: TextStyle(color: AppColors.darkGrey5)),
+        ),
+        TextButton(
+          onPressed: () {
+            final summary = _summaryCtrl.text.trim();
+            Navigator.pop(context, (
+              kind: _kind,
+              summary: summary.isEmpty ? widget.entry.summary : summary,
+              tags: _parsedTags,
+              actionable: _actionable,
+            ));
+          },
+          child: const Text('保存',
+              style: TextStyle(color: AppColors.darkGreen)),
+        ),
+      ],
     );
   }
 }

@@ -28,6 +28,41 @@ void main() {
     expect(find.text('陈述'), findsWidgets); // RecordsTab 类型徽标
   });
 
+  testWidgets('数据模块治理收敛：记录/任务页签无删除控件，档案无编辑按钮，记忆无修正入口',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('数据'));
+    await tester.pumpAndSettle();
+
+    // 记录页签：只读查看，无删除按钮（P-role-03）
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+
+    // 任务页签：只读列表，无 Checkbox / 删除（P-role-04）
+    await tester.tap(find.widgetWithText(Tab, '任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('为 adai-admin 补数据/系统/知识三个模块的页面框架'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+    expect(find.text('新建任务'), findsNothing);
+
+    // 档案页签：只读查看，无「编辑」按钮（P-role-01）
+    await tester.tap(find.widgetWithText(Tab, '档案'));
+    await tester.pumpAndSettle();
+    expect(find.text('adai'), findsOneWidget);
+    expect(find.text('编辑'), findsNothing);
+
+    // 记忆页签：只读查看，无修正入口（P-role-02）
+    await tester.tap(find.widgetWithText(Tab, '记忆'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Feed 中 type=market 的行情条需要独立渲染逻辑，与普通记录区分'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+  });
+
   testWidgets('数据模块内切换到「记忆」页签', (WidgetTester tester) async {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();

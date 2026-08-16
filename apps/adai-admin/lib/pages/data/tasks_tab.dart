@@ -4,10 +4,9 @@ import '../../services/data_api_store.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
-import '../../widgets/dialogs.dart';
-import '../../widgets/snack.dart';
 
-/// 任务页签 — 列表 + 新建 + 状态切换 + 删除（真实后端 /project/tasks）。
+/// 任务页签 — 治理视角查看任务列表 + 统计（真实后端 /project/tasks）。
+/// 只读：任务 CRUD 归用户端 app/web（P-role-04），admin 不提供新建/状态切换/删除。
 class TasksTab extends StatefulWidget {
   const TasksTab({super.key, required this.store});
 
@@ -24,23 +23,11 @@ class _TasksTabState extends State<TasksTab> {
   String? _error;
   bool _loading = true;
 
-  bool _showCreate = false;
-  final _titleCtrl = TextEditingController();
-  String _priority = 'P2';
-
   @override
   void initState() {
     super.initState();
     _load();
   }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    super.dispose();
-  }
-
-  Color get _priorityColor => AppColors.darkGreen;
 
   Future<void> _load() async {
     setState(() {
@@ -61,45 +48,6 @@ class _TasksTabState extends State<TasksTab> {
         _loading = false;
       });
     }
-  }
-
-  Future<void> _createTask() async {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) {
-      showAppSnack(context, '任务标题不能为空', AppColors.darkOrange);
-      return;
-    }
-    try {
-      await _store.addTask(title, priority: _priority);
-      if (!mounted) return;
-      _titleCtrl.clear();
-      setState(() => _showCreate = false);
-      showAppSnack(context, '已创建任务', AppColors.darkGreen);
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      showAppSnack(context, '创建失败：$e', AppColors.darkOrange);
-    }
-  }
-
-  Future<void> _toggle(TaskItem task) async {
-    await _store.toggleTask(task.id, task.done);
-    if (!mounted) return;
-    await _load();
-  }
-
-  Future<void> _delete(TaskItem task) async {
-    final ok = await showConfirmDialog(
-      context,
-      title: '删除任务',
-      message: '确定删除任务「${task.title}」？',
-      confirmText: '删除',
-    );
-    if (!ok || !mounted) return;
-    final success = await _store.deleteTask(task.id);
-    if (!mounted) return;
-    showAppSnack(context, success ? '已删除任务' : '删除失败', AppColors.darkOrange);
-    await _load();
   }
 
   @override
@@ -131,12 +79,6 @@ class _TasksTabState extends State<TasksTab> {
           ),
         ),
         const SizedBox(height: 12),
-        _buildCreateToggle(),
-        if (_showCreate) ...[
-          const SizedBox(height: 8),
-          _buildCreateForm(),
-        ],
-        const SizedBox(height: 8),
         if (tasks.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 40),
@@ -187,131 +129,6 @@ class _TasksTabState extends State<TasksTab> {
     ]);
   }
 
-  Widget _buildCreateToggle() {
-    return Row(
-      children: [
-        const Icon(Icons.playlist_add, size: 16, color: AppColors.darkGreen),
-        const SizedBox(width: 6),
-        const Text('新建任务',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.darkGrey1)),
-        const Spacer(),
-        GestureDetector(
-          onTap: () => setState(() => _showCreate = !_showCreate),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _showCreate
-                  ? AppColors.darkSurface2
-                  : AppColors.darkGreen.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _showCreate
-                    ? AppColors.darkBorder
-                    : AppColors.darkGreen.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
-            ),
-            child: Text(
-              _showCreate ? '收起' : '+ 新建',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: _showCreate ? AppColors.darkGrey5 : AppColors.darkGreen,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCreateForm() {
-    return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        TextField(
-          controller: _titleCtrl,
-          onSubmitted: (_) => _createTask(),
-          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: '任务标题（如：给复盘接真实数据）',
-            hintStyle:
-                const TextStyle(fontSize: 12, color: AppColors.darkGrey6),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            filled: true,
-            fillColor: AppColors.darkBg,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide:
-                  const BorderSide(color: AppColors.darkBorder, width: 0.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(children: [
-          const Text('优先级',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-          const SizedBox(width: 8),
-          _priorityChip('P0', 'P0'),
-          const SizedBox(width: 4),
-          _priorityChip('P1', 'P1'),
-          const SizedBox(width: 4),
-          _priorityChip('P2', 'P2'),
-          const SizedBox(width: 4),
-          _priorityChip('P3', 'P3'),
-        ]),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 38,
-          child: ElevatedButton(
-            onPressed: _createTask,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.darkGreen.withValues(alpha: 0.2),
-              foregroundColor: AppColors.darkGreen,
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('创建任务',
-                style: TextStyle(fontWeight: FontWeight.w500)),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _priorityChip(String value, String label) {
-    final selected = _priority == value;
-    return GestureDetector(
-      onTap: () => setState(() => _priority = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected
-              ? _priorityColor.withValues(alpha: 0.15)
-              : AppColors.darkBg,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: selected
-                ? _priorityColor.withValues(alpha: 0.3)
-                : AppColors.darkBorder,
-            width: 0.5,
-          ),
-        ),
-        child: Text(label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: selected ? _priorityColor : AppColors.darkGrey5,
-            )),
-      ),
-    );
-  }
-
   Widget _buildTaskCard(TaskItem task) {
     final priorityColor = switch (task.priority) {
       'P0' => AppColors.darkOrange,
@@ -326,13 +143,6 @@ class _TasksTabState extends State<TasksTab> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Checkbox(
-            value: task.done,
-            activeColor: AppColors.darkGreen,
-            checkColor: AppColors.darkBg,
-            side: const BorderSide(color: AppColors.darkGrey5),
-            onChanged: (_) => _toggle(task),
-          ),
           Expanded(
             child: Text(
               task.title,
@@ -357,13 +167,6 @@ class _TasksTabState extends State<TasksTab> {
           AppBadge(
             label: task.statusLabel,
             color: task.done ? AppColors.darkGreen : AppColors.darkOrange,
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline,
-                size: 16, color: AppColors.darkGrey5),
-            onPressed: () => _delete(task),
-            tooltip: '删除任务',
-            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

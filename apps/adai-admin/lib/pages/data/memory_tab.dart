@@ -5,10 +5,9 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
-import '../../widgets/dialogs.dart';
-import '../../widgets/snack.dart';
 
-/// 记忆页签 — 按 kind 筛选 + superseded 淡化 + 手动修正内容（真实后端 /memory）。
+/// 记忆页签 — 治理视角查看记忆（按 kind 筛选 + superseded 淡化，真实后端 /memory）。
+/// 只读：记忆修正归用户端 app/web（P-role-02，app 已补「修正/完成」），admin 不提供编辑 UI。
 class MemoryTab extends StatefulWidget {
   const MemoryTab({super.key, required this.store});
 
@@ -70,22 +69,6 @@ class _MemoryTabState extends State<MemoryTab> {
         'fact' => AppColors.darkGrey5,
         _ => AppColors.darkPurple,
       };
-
-  Future<void> _edit(MemoryItem m) async {
-    final text = await showEditDialog(
-      context,
-      title: '修正记忆内容',
-      initial: m.content,
-      hint: '输入修正后的记忆内容',
-      maxLines: 3,
-    );
-    if (text == null || text.isEmpty || !mounted) return;
-    final success = await _store.updateMemory(m.id, text);
-    if (!mounted) return;
-    showAppSnack(context, success ? '已修正记忆' : '修正失败：记忆不存在或后端不可用',
-        success ? AppColors.darkGreen : AppColors.darkOrange);
-    await _load();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -221,19 +204,6 @@ class _MemoryTabState extends State<MemoryTab> {
                   color: dimmed ? AppColors.darkGrey4 : AppColors.darkGrey2,
                   decoration: dimmed ? TextDecoration.lineThrough : null,
                 )),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined,
-                      size: 16, color: AppColors.darkGrey5),
-                  onPressed: () => _edit(m),
-                  tooltip: '修正内容',
-                  visualDensity: VisualDensity.compact,
-                ),
-              ],
-            ),
           ],
         ),
       ),

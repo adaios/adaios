@@ -1,43 +1,26 @@
 import '../models/api_dto.dart';
 import '../models/data_models.dart';
 import '../models/tree_node.dart';
-import 'api_exception.dart';
 import 'api_service.dart';
 
 /// 数据管理模块存储接口 — 页面依赖抽象，测试注入 Fake。
 ///
 /// 记录 / 记忆 / 档案 / 任务 / 持仓 / data/ 文件树均为 per-user（带 X-User-Id），
 /// 文件树走系统级 `/api/v1/admin/files`。
+/// 治理收敛（P-role-01~04）：admin 只读查看个人数据，个人数据写归用户端 app/web，
+/// 因此本接口仅保留读方法。
 abstract class DataStore {
   /// 加载记录列表（从 Feed 拉取 type=record 条目）。
   Future<List<ContentRecord>> loadRecords();
 
-  /// 删除记录。返回是否成功。
-  Future<bool> deleteRecord(String id);
-
   /// 加载记忆列表。无 date 时自动选最近有记忆的日期。
   Future<List<MemoryItem>> loadMemories({String? date});
-
-  /// 手动修正记忆内容。返回是否成功。
-  Future<bool> updateMemory(String id, String content);
 
   /// 加载个人档案。
   Future<IdentityProfile> loadIdentity();
 
-  /// 保存档案（整体替换）。
-  Future<void> saveIdentity(IdentityProfile profile);
-
   /// 加载任务列表。
   Future<List<TaskItem>> loadTasks();
-
-  /// 新建任务。
-  Future<TaskItem> addTask(String title, {String priority = 'medium'});
-
-  /// 切换任务完成状态（currentDone 为当前状态）。
-  Future<bool> toggleTask(String id, bool currentDone);
-
-  /// 删除任务。返回是否成功。
-  Future<bool> deleteTask(String id);
 
   /// 加载持仓。
   Future<List<Position>> loadPositions();
@@ -76,16 +59,6 @@ class DataApiStore implements DataStore {
   }
 
   @override
-  Future<bool> deleteRecord(String id) async {
-    try {
-      await _api.deleteRecord(id);
-      return true;
-    } on ApiException {
-      return false;
-    }
-  }
-
-  @override
   Future<List<MemoryItem>> loadMemories({String? date}) async {
     String? target = date;
     if (target == null) {
@@ -106,65 +79,15 @@ class DataApiStore implements DataStore {
   }
 
   @override
-  Future<bool> updateMemory(String id, String content) async {
-    try {
-      await _api.updateMemory(id, summary: content.trim());
-      return true;
-    } on ApiException {
-      return false;
-    }
-  }
-
-  @override
   Future<IdentityProfile> loadIdentity() async {
     final dto = await _api.getIdentity();
     return _toProfile(dto);
   }
 
   @override
-  Future<void> saveIdentity(IdentityProfile profile) async {
-    await _api.updateIdentity(
-      name: profile.name,
-      preferences: profile.preferences,
-      // 页面规则是 List<String>，后端 rules 为 Map<String,String>：key/value 相同。
-      rules: {for (final r in profile.rules) r: r},
-      tags: profile.tags,
-    );
-  }
-
-  @override
   Future<List<TaskItem>> loadTasks() async {
     final dtos = await _api.getTasks();
     return dtos.map(_toTask).toList();
-  }
-
-  @override
-  Future<TaskItem> addTask(String title, {String priority = 'P2'}) async {
-    final dto = await _api.createTask(
-      title: title.trim(),
-      priority: priority, // 直接透传后端 P0-P3，避免 round-trip 降级（#140）
-    );
-    return _toTask(dto);
-  }
-
-  @override
-  Future<bool> toggleTask(String id, bool currentDone) async {
-    try {
-      await _api.updateTask(id, status: currentDone ? 'TODO' : 'DONE');
-      return true;
-    } on ApiException {
-      return false;
-    }
-  }
-
-  @override
-  Future<bool> deleteTask(String id) async {
-    try {
-      await _api.deleteTask(id);
-      return true;
-    } on ApiException {
-      return false;
-    }
   }
 
   @override

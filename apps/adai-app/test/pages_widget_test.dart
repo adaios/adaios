@@ -92,6 +92,95 @@ void main() {
       expect(find.text('喜欢早睡'), findsOneWidget);
       expect(find.text('加载失败，请重试'), findsNothing);
     });
+
+    testWidgets('记忆修正（P-role-02）：修正弹窗 → PATCH /memory/{id} → 列表更新', (tester) async {
+      final b = _Backend();
+      b.handlers['/api/v1/memory/dates'] = (_) async => _json([_todayStr]);
+      Map<String, dynamic>? patched;
+      // 保存后的刷新按 PATCH body 回显后端新值（模拟后端已持久化）
+      b.handlers['/api/v1/memory'] = (_) async => _json([
+          {
+            'id': 'm1', 'recordId': 'r1',
+            'kind': patched?['kind'] ?? 'preference',
+            'summary': patched?['summary'] ?? '喜欢早睡',
+            'tags': patched?['tags'] ?? ['生活'],
+            'sentiment': 'positive',
+            'createdAt': '${_todayStr}T07:30:00',
+            'superseded': false,
+            'actionable': false,
+          },
+        ]);
+      b.handlers['/api/v1/memory/m1'] = (req) async {
+        patched = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
+        return _json({'success': true});
+      };
+      await tester.pumpWidget(MaterialApp(home: MemoryPage(api: _apiFor(b))));
+      await tester.pumpAndSettle();
+
+      // 初始渲染原内容
+      expect(find.text('喜欢早睡'), findsOneWidget);
+
+      // 打开修正弹窗
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      expect(find.text('修正这条记忆'), findsOneWidget);
+
+      // 改内容 + 标签 + 类型
+      await tester.enterText(find.byKey(const Key('memory-edit-summary')), '喜欢早起散步');
+      await tester.enterText(find.byKey(const Key('memory-edit-tags')), '生活, 健康');
+      await tester.tap(find.text('模式'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      // PATCH 已发：路径 + body（kind/summary/tags/actionable）
+      expect(patched, isNotNull);
+      expect(patched!['summary'], '喜欢早起散步');
+      expect(patched!['kind'], 'pattern');
+      expect(patched!['tags'], ['生活', '健康']);
+      expect(patched!['actionable'], false);
+
+      // 保存后列表按后端新值刷新
+      expect(find.text('喜欢早起散步'), findsOneWidget);
+      expect(find.text('模式'), findsOneWidget); // kind 徽标已更新
+      expect(find.text('喜欢早睡'), findsNothing);
+    });
+
+    testWidgets('待办记忆完成（P-app-03）：完成按钮 → PATCH /memory/{id}/done → 标记已完成', (tester) async {
+      final b = _Backend();
+      b.handlers['/api/v1/memory/dates'] = (_) async => _json([_todayStr]);
+      String? doneAt;
+      b.handlers['/api/v1/memory'] = (_) async => _json([
+          {
+            'id': 'm2', 'recordId': 'r2', 'kind': 'decision',
+            'summary': '下周开始每天记录交易', 'tags': ['交易'], 'sentiment': 'neutral',
+            'createdAt': '${_todayStr}T09:00:00', 'superseded': false,
+            'actionable': true, 'doneAt': doneAt,
+          },
+        ]);
+      final doneRequests = <String>[];
+      b.handlers['/api/v1/memory/m2/done'] = (req) async {
+        doneRequests.add(req.method);
+        doneAt = '${_todayStr}T10:00:00';
+        return _json({'success': true});
+      };
+      await tester.pumpWidget(MaterialApp(home: MemoryPage(api: _apiFor(b))));
+      await tester.pumpAndSettle();
+
+      // 待办记忆：显示「待办」徽标 + 完成按钮
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('完成'), findsOneWidget);
+
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+
+      // PATCH done 已发
+      expect(doneRequests, ['PATCH']);
+      // 完成后：徽标变「已完成」，完成按钮消失
+      expect(find.text('已完成'), findsOneWidget);
+      expect(find.text('完成'), findsNothing);
+    });
   });
 
   group('TimelinePage', () {

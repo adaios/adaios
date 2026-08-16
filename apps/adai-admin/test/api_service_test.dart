@@ -178,9 +178,11 @@ void main() {
       expect(p.pnlPercent, 4.42);
     });
 
-    test('GET /trading/knowledge/conflicts 解析 rule/description/category', () async {
+    test('GET /admin/trading/knowledge/conflicts 解析 rule/description/category（P-be-01：/admin/** + userId 查询参数）', () async {
       final client = MockClient((request) async {
-        expect(request.url.path, '/api/v1/trading/knowledge/conflicts');
+        expect(request.url.path, '/api/v1/admin/trading/knowledge/conflicts');
+        expect(request.url.queryParameters['userId'], 'default');
+        expect(request.headers.containsKey('X-User-Id'), isFalse); // 系统级请求
         return _json({
           'conflicts': [
             {'rule': 'R96 四不原则', 'description': '当前仅持 1 个标的', 'category': '仓位'},

@@ -11,6 +11,7 @@ import 'tasks_tab.dart';
 
 /// 数据管理主区 — 六个子页签：记录 / 记忆 / 档案 / 任务 / 持仓 / 文件树。
 /// 真实后端数据（per-user，带 X-User-Id）。
+/// 治理收敛（P-role-01~04）：本模块为只读治理视角，个人数据写归用户端 app/web。
 class DataPage extends StatefulWidget {
   const DataPage({super.key, this.store, this.userId = 'default'});
 
@@ -42,7 +43,7 @@ class _DataPageState extends State<DataPage> {
                 icon: Icons.storage_outlined,
                 title: '数据管理',
                 subtitle:
-                    '用户「${widget.userId}」· 记录 · 记忆 · 档案 · 任务 · 持仓 · data/ 文件树',
+                    '用户「${widget.userId}」· 治理只读视图 · 记录 · 记忆 · 档案 · 任务 · 持仓 · data/ 文件树',
               ),
             ),
             const SizedBox(height: 12),

@@ -211,9 +211,11 @@ void main() {
       expect(pending.date, DateTime(2026, 8, 1));
     });
 
-    test('rebuildMemory 映射为 MaintenanceResult', () async {
+    test('rebuildMemory 映射为 MaintenanceResult（P-be-01：/admin/** + userId 查询参数）', () async {
       final client = MockClient((request) async {
-        expect(request.url.path, '/api/v1/memory/rebuild');
+        expect(request.url.path, '/api/v1/admin/memory/rebuild');
+        expect(request.url.queryParameters['userId'], 'default');
+        expect(request.headers.containsKey('X-User-Id'), isFalse); // 系统级请求
         return _json({'success': 3, 'failed': 1, 'total': 4, 'errors': []});
       });
       final store = SystemApiStore(api: _api(client), userId: 'default');

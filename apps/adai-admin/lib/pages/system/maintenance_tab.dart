@@ -5,7 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/snack.dart';
 
-/// 维护操作页签 — 记忆重建 / 重补 / 清理（真实后端 /memory/rebuild、/records/retry、/cards/cleanup）。
+/// 维护操作页签 — 记忆重建 / 重补 / 清理（真实后端 /admin/memory/rebuild、/admin/records/retry、/admin/cards/cleanup）。
 class MaintenanceTab extends StatefulWidget {
   const MaintenanceTab({super.key, required this.store});
 
@@ -48,7 +48,7 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
           id: 'rebuild',
           icon: Icons.memory,
           title: '记忆重建',
-          description: '合并同主题记忆、重新生成摘要（POST /memory/rebuild）',
+          description: '合并同主题记忆、重新生成摘要（POST /admin/memory/rebuild）',
           color: AppColors.darkPurple,
           onTap: () => _run('rebuild', _store.rebuildMemory),
         ),
@@ -57,7 +57,7 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
           id: 'refill',
           icon: Icons.autorenew,
           title: '记忆重补',
-          description: 'AI 失败降级后，重新补齐缺失记忆条目（POST /records/retry）',
+          description: 'AI 失败降级后，重新补齐缺失记忆条目（POST /admin/records/retry）',
           color: AppColors.darkBlue,
           onTap: () => _run('refill', _store.refillMemory),
         ),
@@ -66,7 +66,7 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
           id: 'clean',
           icon: Icons.cleaning_services_outlined,
           title: '数据清理',
-          description: '清理重复记录与失效索引（POST /cards/cleanup）',
+          description: '清理重复记录与失效索引（POST /admin/cards/cleanup）',
           color: AppColors.darkOrange,
           onTap: () => _run('clean', _store.cleanData),
         ),

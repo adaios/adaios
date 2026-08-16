@@ -184,7 +184,7 @@ class FakeDataStore implements DataStore {
   late final List<Position> _positions;
   late final List<TreeNode> _files;
 
-  IdentityProfile _identity = IdentityProfile(
+  final IdentityProfile _identity = IdentityProfile(
     name: 'adai',
     preferences: const {'语言': '中文', '复盘粒度': '周度'},
     rules: const ['新功能先写 RFC 确认方向', '修改 API 后同步 api-spec.md'],
@@ -195,74 +195,14 @@ class FakeDataStore implements DataStore {
   Future<List<ContentRecord>> loadRecords() async => List.of(_records);
 
   @override
-  Future<bool> deleteRecord(String id) async {
-    final before = _records.length;
-    _records.removeWhere((r) => r.id == id);
-    return _records.length < before;
-  }
-
-  @override
   Future<List<MemoryItem>> loadMemories({String? date}) async =>
       List.of(_memories);
-
-  @override
-  Future<bool> updateMemory(String id, String content) async {
-    final idx = _memories.indexWhere((m) => m.id == id);
-    if (idx < 0) return false;
-    _memories[idx] = MemoryItem(
-      id: _memories[idx].id,
-      kind: _memories[idx].kind,
-      content: content.trim(),
-      superseded: _memories[idx].superseded,
-      createdAt: _memories[idx].createdAt,
-    );
-    return true;
-  }
 
   @override
   Future<IdentityProfile> loadIdentity() async => _identity;
 
   @override
-  Future<void> saveIdentity(IdentityProfile profile) async {
-    _identity = profile;
-  }
-
-  @override
   Future<List<TaskItem>> loadTasks() async => List.of(_tasks);
-
-  @override
-  Future<TaskItem> addTask(String title, {String priority = 'medium'}) async {
-    final task = TaskItem(
-      id: 't-${DateTime.now().millisecondsSinceEpoch}',
-      title: title.trim(),
-      done: false,
-      priority: priority,
-      createdAt: DateTime.now(),
-    );
-    _tasks.insert(0, task);
-    return task;
-  }
-
-  @override
-  Future<bool> toggleTask(String id, bool currentDone) async {
-    final idx = _tasks.indexWhere((t) => t.id == id);
-    if (idx < 0) return false;
-    _tasks[idx] = TaskItem(
-      id: _tasks[idx].id,
-      title: _tasks[idx].title,
-      done: !currentDone,
-      priority: _tasks[idx].priority,
-      createdAt: _tasks[idx].createdAt,
-    );
-    return true;
-  }
-
-  @override
-  Future<bool> deleteTask(String id) async {
-    final before = _tasks.length;
-    _tasks.removeWhere((t) => t.id == id);
-    return _tasks.length < before;
-  }
 
   @override
   Future<List<Position>> loadPositions() async => List.of(_positions);

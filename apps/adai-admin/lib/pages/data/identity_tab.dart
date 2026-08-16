@@ -4,9 +4,9 @@ import '../../services/data_api_store.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
-import '../../widgets/snack.dart';
 
-/// 档案页签 — 查看 / 编辑个人档案（name / preferences / rules / tags，真实后端 /identity）。
+/// 档案页签 — 治理视角查看个人档案（name / preferences / rules / tags，真实后端 /identity）。
+/// 只读：档案编辑归用户端 app/web（P-role-01），admin 不提供编辑 UI。
 class IdentityTab extends StatefulWidget {
   const IdentityTab({super.key, required this.store});
 
@@ -50,131 +50,6 @@ class _IdentityTabState extends State<IdentityTab> {
     }
   }
 
-  Future<void> _edit() async {
-    final identity = _identity;
-    if (identity == null) return;
-    final result = await _showEditDialog(identity);
-    if (result == null || !mounted) return;
-
-    try {
-      await _store.saveIdentity(result);
-      if (!mounted) return;
-      setState(() => _identity = result);
-      showAppSnack(context, '已保存档案', AppColors.darkGreen);
-    } catch (e) {
-      if (!mounted) return;
-      showAppSnack(context, '保存失败：$e', AppColors.darkOrange);
-    }
-  }
-
-  Future<IdentityProfile?> _showEditDialog(IdentityProfile current) async {
-    final nameCtrl = TextEditingController(text: current.name);
-    final prefsCtrl = TextEditingController(
-        text: current.preferences.entries
-            .map((e) => '${e.key}: ${e.value}')
-            .join('\n'));
-    final rulesCtrl = TextEditingController(text: current.rules.join('\n'));
-    final tagsCtrl = TextEditingController(text: current.tags.join(', '));
-
-    return showDialog<IdentityProfile>(
-      context: context,
-      builder: (ctx) {
-        Future<IdentityProfile?> parseProfile() {
-          final prefs = <String, String>{};
-          for (final line in prefsCtrl.text.split('\n')) {
-            final idx = line.indexOf(':');
-            if (idx > 0) {
-              prefs[line.substring(0, idx).trim()] =
-                  line.substring(idx + 1).trim();
-            }
-          }
-          final rules = rulesCtrl.text
-              .split('\n')
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList();
-          final tags = tagsCtrl.text
-              .split(RegExp(r'[,，]'))
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList();
-          return Future.value(IdentityProfile(
-            name: nameCtrl.text.trim(),
-            preferences: prefs,
-            rules: rules,
-            tags: tags,
-          ));
-        }
-
-        return AlertDialog(
-          backgroundColor: AppColors.darkSurface,
-          title: const Text('编辑档案',
-              style: TextStyle(color: AppColors.darkGrey1, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _label('姓名'),
-                _field(nameCtrl, hint: '如 adai'),
-                const SizedBox(height: 10),
-                _label('偏好（每行一条 key: value）'),
-                _field(prefsCtrl, maxLines: 3),
-                const SizedBox(height: 10),
-                _label('规则（每行一条）'),
-                _field(rulesCtrl, maxLines: 3),
-                const SizedBox(height: 10),
-                _label('标签（逗号分隔）'),
-                _field(tagsCtrl),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消',
-                  style: TextStyle(color: AppColors.darkGrey5)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, parseProfile()),
-              child: const Text('保存',
-                  style: TextStyle(color: AppColors.darkGreen)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(text,
-          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-    );
-  }
-
-  Widget _field(TextEditingController ctrl, {String? hint, int maxLines = 1}) {
-    return TextField(
-      controller: ctrl,
-      maxLines: maxLines,
-      style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: hint,
-        hintStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey6),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        filled: true,
-        fillColor: AppColors.darkBg,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.darkBorder, width: 0.5),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -206,21 +81,6 @@ class _IdentityTabState extends State<IdentityTab> {
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           color: AppColors.darkGrey1)),
-                  const Spacer(),
-                  OutlinedButton.icon(
-                    onPressed: _edit,
-                    icon: const Icon(Icons.edit_outlined,
-                        size: 14, color: AppColors.darkGreen),
-                    label: const Text('编辑',
-                        style:
-                            TextStyle(fontSize: 12, color: AppColors.darkGreen)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.darkBorder),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      minimumSize: Size.zero,
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 6),

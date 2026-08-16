@@ -83,6 +83,31 @@ class ApiService {
     _memoryCache = null;
   }
 
+  /// 修正记忆（PATCH /api/v1/memory/{id}，P-role-02 用户端记忆修正）。
+  /// 只传需要改的字段，未传字段后端保持原值。
+  Future<void> updateMemory(
+    String memoryId, {
+    String? kind,
+    String? summary,
+    List<String>? tags,
+    bool? actionable,
+  }) async {
+    final body = <String, dynamic>{
+      if (kind != null) 'kind': kind,
+      if (summary != null) 'summary': summary,
+      if (tags != null) 'tags': tags,
+      if (actionable != null) 'actionable': actionable,
+    };
+    final resp = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/memory/$memoryId'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    _check(resp);
+    // 修正影响记忆内容 → 缓存失效（#107）
+    _memoryCache = null;
+  }
+
   /// 删除记录。
   Future<void> deleteRecord(String id) async {
     final resp = await _client.delete(
