@@ -1,4 +1,4 @@
-package com.adaiadai.core.kernel.market;
+package com.adaiadai.core.domain.trading.market;
 
 import java.util.List;
 import java.util.Map;

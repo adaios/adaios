@@ -4,8 +4,8 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
-import com.adaiadai.core.kernel.market.MarketData;
-import com.adaiadai.core.kernel.market.MarketDataSource;
+import com.adaiadai.core.domain.trading.market.MarketData;
+import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

@@ -1,4 +1,4 @@
-package com.adaiadai.core.kernel.market;
+package com.adaiadai.core.domain.trading.market;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

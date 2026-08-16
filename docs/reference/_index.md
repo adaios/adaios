@@ -3,9 +3,9 @@ title: docs/reference 目录索引
 description: reference 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 34
+lines: 35
 depends-on: []
 related:
   - ../_index.md
@@ -25,6 +25,7 @@ tags: [meta, index, reference]
 | feature-reference.md | 功能真相源（唯一） | active |
 | task-log.md | 走查/待办日志 | active |
 | task-plugin-model.md | 任务插件模型说明 | active |
+| framework-plugin-gap.md | 框架+插件形态的现状差距与迁移路径（对账清单，回答"会不会重构"） | active |
 | issue-log.md | 问题跟踪 | active |
 
 ## 过期判断

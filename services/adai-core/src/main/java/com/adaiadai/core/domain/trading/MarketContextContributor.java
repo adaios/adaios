@@ -1,8 +1,8 @@
 package com.adaiadai.core.domain.trading;
 
 import com.adaiadai.core.kernel.context.engine.ContextContributor;
-import com.adaiadai.core.kernel.market.MarketData;
-import com.adaiadai.core.kernel.market.MarketDataSource;
+import com.adaiadai.core.domain.trading.market.MarketData;
+import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

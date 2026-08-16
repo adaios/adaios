@@ -32,12 +32,15 @@ AdaiOS 建立在一套统一的理念基础之上。本文列出核心理念纲�
 - **Knowledge Evolves** — 知识不是一次生成，而是不断演化：新闻 → 主题 → 行业 → 策略
 - **Reasoning is Service** — Trading OS 不是 CRUD API，是推理服务
 - **Reality → Knowledge → Action → Reality** — 必须形成反馈闭环
+- **一个框架 + 各种插件（形态总纲）** — 框架装「你是谁」（方法论/记忆/纪律/流程约定），插件装「你能做什么」（交易/行情/生活/项目，jar 概念）；大模型只是框架内置的分析引擎，能力按用户叠加。形态总纲见 `docs/architecture/framework-plus-plugin-model.md`
 
 最高设计原则：**File First, Database Second, Context Always**。
 
 ---
 
 # 4. 五层产品架构
+
+> **形态视角**：五层是「用户怎么用」（体验视角）；「阿呆是什么」由框架 + 插件形态定义（一个框架 + 各种插件，总纲见 `docs/architecture/framework-plus-plugin-model.md`）。两者并存：Kernel = 框架底座，Domain OS = 插件。
 
 AdaiOS 的用户体验从下到上分为五层，每一层回答不同的用户需求：
 

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 60
+lines: 62
 depends-on: []
 related:
   - ../_index.md
@@ -52,6 +52,8 @@ tags: [meta, index, rfc]
 | 20260815-ai-engineering-layer.md | AI 工程层——从「文档子目录」到「一等公民」（草案）| draft |
 | 20260815-media-event-unification.md | 图文一体——媒体事件数据层统一（一次输入 = 一条记录） | approved |
 | 20260815-image-chat-interaction.md | 带图交流——发图即对话（交互方案：AI 判定 log/ask 分流，ask 直进对话态） | draft |
+| 20260816-framework-plus-plugin-model.md | 框架+插件——AdaiOS 形态总纲（决策记录，已提升为正式架构文档 `architecture/framework-plus-plugin-model.md`） | approved |
+| 20260816-trading-agent-plugin-model.md | 交易 Agent 三阶段插件模型（裸问答 → +行情插件 → +规则插件，能力按用户叠加） | draft |
 
 ## 过期判断
 

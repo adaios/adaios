@@ -3,9 +3,9 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 35
+lines: 36
 depends-on: []
 related:
   - ../_index.md
@@ -22,6 +22,7 @@ tags: [meta, index, architecture]
 |:-----|:-----|:----:|
 | product-roadmap.md | 🚩 产品路线唯一蓝图（路线驱动开发） | active |
 | product-architecture.md | 五层产品架构 | active |
+| framework-plus-plugin-model.md | ★ 形态总纲——一个框架 + 各种插件（框架装「你是谁」，插件装「你能做什么」）| active |
 | system-architecture.md | 系统架构细节 | active |
 | api-spec.md | API 接口契约（唯一真相源） | active |
 | data-format-freeze.md | data/ 文件格式契约 + 变更规则 | active |

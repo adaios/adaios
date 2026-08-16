@@ -48,7 +48,6 @@ com.adaiadai.core/
 │   ├── identity/                 个人档案
 │   ├── record/                   最小个人事件单元
 │   ├── timeline/                 时间序列投影
-│   ├── market/                   行情数据源（TencentMarketDataSource）
 │   ├── ai/                       端口（REVIEW #22 依赖倒置：AiClient/AiUnderstanding 在 kernel，实现归 infra）
 │   ├── storage/                  端口（REVIEW #22 依赖倒置：FileStorage 在 kernel，实现归 infra/storage）
 │   ├── context/                  ★ Context Engine（核心）
@@ -59,7 +58,8 @@ com.adaiadai.core/
 │   └── knowledge/                结构化知识（预留）
 │
 ├── domain/                     ★ Domain OS
-│   ├── trading/                  金融交易（TradingContextContributor + MarketContextContributor + 复盘）
+│   ├── trading/                  金融交易（TradingContextContributor + MarketContextContributor + 复盘 + 行情载体）
+│   │   └── market/                行情数据载体（MarketDataSource 接口 + TencentMarketDataSource——行情服务跟插件走，归 trading 插件域，2026-08-16 G-1 拨正）
 │   ├── life/                     个人生活（LifeContextContributor + LifeKnowledgeSource）
 │   └── project/                  项目管理（ProjectContextContributor + Task 实体 + TaskRepository）
 │
