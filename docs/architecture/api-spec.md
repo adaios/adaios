@@ -463,6 +463,29 @@
 
 ---
 
+### `GET /api/v1/trading/trades` — 查询交易逐笔流水（RFC 20260816）
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `from` | String | 否 | 起始日期 `yyyy-MM-dd` |
+| `to` | String | 否 | 结束日期 `yyyy-MM-dd` |
+
+**Response**：`TradeRecord[]` — 逐笔流水（按 timestamp 倒序）
+
+```json
+[{
+  "id": "trade_1723700000000", "symbol": "000725", "name": "京东方A",
+  "direction": "BUY", "price": 5.2, "volume": 1000, "amount": 5200.0,
+  "entryDate": "2026-08-16", "stopLossPrice": 4.9, "buyPoint": "B1",
+  "targetPrice": null, "reason": null, "fee": null,
+  "timestamp": "2026-08-16T09:30:00", "sourceRecordId": "rec_..."
+}]
+```
+
+---
+
 ### `POST /api/v1/trading/trades/parse` — 解析一句话交易（RFC 20260815 通道 A）
 
 把自然语言（「买了 1000 股京东方 @5.2」）结构化为交易入参，供前端确认卡回显。**只解析不落库**——写入仍走 `POST /trades`（正确性由确认步拦截）。

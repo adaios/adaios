@@ -5,6 +5,8 @@ import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
+import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
@@ -490,4 +492,26 @@ class TradingControllerTest {
                         .param("date", "2099-01-01"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void getTrades_returnsTradeHistory() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(java.util.List.of(
+                new TradeRecord("trade_1", "000725", "京东方A", TradeDirection.BUY,
+                        new java.math.BigDecimal("5.2"), 1000, new java.math.BigDecimal("5200"),
+                        java.time.LocalDate.of(2026, 8, 16), new java.math.BigDecimal("4.9"), "B1",
+                        null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null)));
+        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"));
+        ObjectMapper om = new ObjectMapper();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+        mvc.perform(get("/api/v1/trading/trades").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("000725"))
+                .andExpect(jsonPath("$[0].stopLossPrice").value(4.9))
+                .andExpect(jsonPath("$[0].buyPoint").value("B1"));
+    }
+
 }

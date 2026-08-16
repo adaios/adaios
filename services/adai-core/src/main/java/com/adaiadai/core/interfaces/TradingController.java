@@ -100,6 +100,21 @@ public class TradingController {
     }
 
     /**
+     * 查询交易逐笔流水（RFC 20260816：web 交易历史）。
+     * GET /api/v1/trading/trades?from=yyyy-MM-dd&to=yyyy-MM-dd（均可选）
+     */
+    @GetMapping("/trades")
+    public ResponseEntity<?> getTrades(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        java.time.LocalDate fromDate = null, toDate = null;
+        if (from != null && !from.isBlank()) fromDate = java.time.LocalDate.parse(from);
+        if (to != null && !to.isBlank()) toDate = java.time.LocalDate.parse(to);
+        return ResponseEntity.ok(tradingAppService.getTradeHistory(userId, fromDate, toDate));
+    }
+
+    /**
      * 解析一句话交易（RFC 20260815 通道 A）：把自然语言「买了 1000 股京东方 @5.2」
      * 结构化为 symbol/name/direction/price/volume，供前端确认卡回显。
      * LLM 结构化优先，失败降级正则兜底；仍无法解析 → matched=false（前端转精确表单）。

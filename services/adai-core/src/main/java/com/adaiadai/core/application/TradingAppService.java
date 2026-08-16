@@ -208,6 +208,25 @@ public class TradingAppService {
         return positionRepository.findAll(userId);
     }
 
+    /**
+     * 获取交易逐笔流水（RFC 20260816：web 交易历史）。
+     * 可按日期范围过滤（from/to 均为 null 时返回全部）。
+     */
+    public List<TradeRecord> getTradeHistory(String userId, java.time.LocalDate from, java.time.LocalDate to) {
+        List<TradeRecord> all = tradingHistoryRepository.findAll(userId);
+        if ((from == null) && (to == null)) return all;
+        return all.stream()
+                .filter(tr -> {
+                    java.time.LocalDate d = tr.entryDate() != null ? tr.entryDate()
+                            : (tr.timestamp() != null ? tr.timestamp().toLocalDate() : null);
+                    if (d == null) return false;
+                    if (from != null && d.isBefore(from)) return false;
+                    if (to != null && d.isAfter(to)) return false;
+                    return true;
+                })
+                .toList();
+    }
+
     // ── 内部方法 ──
 
     /**
