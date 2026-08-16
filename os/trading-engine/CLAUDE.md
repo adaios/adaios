@@ -29,7 +29,7 @@
 | `06-processed/` | 流程标记（`.done` 文件） | 流程收尾时写入 |
 | `07-manual/` | 人工修正记录（glossary / rules / system） | **任何时候不修改** |
 | `08-review/` | 用户交易复盘 | 用户自主维护 |
-| `09-scripts/` | 工具脚本、通达信公式源码 | 辅助工具。公式源码按主图/副图/选股分类 |
+| `09-scripts/` | 工具脚本、通达信公式源码。**`update-current.sh`** = current.md 注记刷新器（幂等；current.md 停更时跑它刷时间戳+来源注记，市场状态/持仓仍人工确认，FP-P2h 收录） | 辅助工具。公式源码按主图/副图/选股分类 |
 | `10-prompts/` | 提示词模板 | 辅助工具 |
 | `knowledge/context/` | 交易系统对 AI 暴露的认知接口层（identity/strategy/rules/mistakes/current） | 不新增知识，仅重组 05-system+04-rules+03-glossary；系统收敛时同步更新 |
 | `12-research/` | 市场生态认知（IPO、行业结构、资本关系、宏观框架） | 用户自主维护，不走 Step 1→5 流水线；与交易系统互补的平行视角 |
@@ -355,8 +355,8 @@ Step 1  raw  ──→  Step 2  cleaned  ──→  Step 3  glossary
 | `identity.md` | 系统身份声明 | 05-system 总纲 + 底层认知 | 收敛时 |
 | `current.md` | 当前交易状态 | 05-system 择时判断 + 08-review 复盘 | 按需手动刷新 |
 | `strategy.md` | 交易体系结构体 | 05-system 六步结构 | 收敛时 |
-| `rules.md` | 规则调用表 R1-R60 | 04-rules + 05-system 规则声明 | 收敛时 |
-| `mistakes.md` | 高频错误诊断 E1-E25 | 05-system A5 常见错误 + 各课认知警告 | 收敛时 |
+| `rules.md` | 规则调用表 R1-R120 | 04-rules + 05-system 规则声明 | 收敛时 |
+| `mistakes.md` | 高频错误诊断 E1-E30 | 05-system A5 常见错误 + 各课认知警告 | 收敛时 |
 
 ### 维护规则
 

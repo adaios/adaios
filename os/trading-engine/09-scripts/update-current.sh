@@ -36,8 +36,8 @@ echo "→ 重组 current.md 规则/信号表述（来源：05-system + 08-review
 # 1. 抽取择时信号规则（OAMV / 多空切换 / 离场法则相关行，+ 号已移除防 grep 重复操作符）
 SIGNAL_LINES="$(grep -E "OAMV|多空|离场|-2\.3|转多|空头|多头" "$SYSTEM_FILE" | head -12 || true)"
 
-# 2. 最近复盘要点（08-review 最后修改的一个 md）
-LATEST_REVIEW="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1 || true)"
+# 2. 最近复盘要点（08-review 最后修改的一个 md；FP-P2h：注记用相对文件名，不落绝对路径）
+LATEST_REVIEW="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1 | xargs -n1 basename 2>/dev/null || true)"
 
 # 3. 更新注记区块（幂等：已存在同文注记则替换，不重复堆叠——FP-P3 修复）
 #    持仓区块（## 当前持仓）与其后内容不动；时间戳只表示「注记已刷新」，市场状态/持仓仍待人工确认。

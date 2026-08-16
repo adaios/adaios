@@ -20,7 +20,7 @@
 |:-----|:-----|:-----|
 | 规则库 | R1-R120 纪律规则（止损/仓位/买点/应对）| `knowledge/context/rules.md` |
 | 策略库 | 少妇战法六步结构体 | `knowledge/context/strategy.md` |
-| 错误库 | 高频错误模式（E1-E25）| `knowledge/context/mistakes.md` |
+| 错误库 | 高频错误模式（E1-E30）| `knowledge/context/mistakes.md` |
 | 建议流程 | 持仓×行情 → 硬判定 → 逐票建议 | 引擎 `rules-api.md`（evaluateStopLoss/evaluatePosition）|
 | 复盘流程 | 交易记录 → 计划 vs 实际 → 教训 | 可选 |
 

@@ -1,10 +1,17 @@
 ---
 title: 交易 Agent 三阶段插件模型（裸问答 → +行情插件 → +规则插件）
 date: 2026-08-16
-status: draft
+status: approved
 ---
 
 # 交易 Agent 三阶段插件模型
+
+> **实施记录（2026-08-16，FP-P2f）**：方向已确认（approved），Phase A-D 对应 G-4/G-3/G-1/G-5 全部落地（见 `docs/reference/framework-plugin-gap.md`）：
+> - Phase A（G-4）✅：`11-context` → `knowledge/context` 知识层内聚
+> - Phase B（G-3）✅：`engine/` 规则接口（TradingRuleEngine + rules-api.md），adai-core 改调用
+> - Phase C（G-1）✅：行情载体归 trading 插件域（`domain/trading/market/`）
+> - Phase D（G-5）✅：形态样板就绪（`os/trading-engine/output/`：agent-skill/mcp-server）；实际部署待后续
+> 现状映射表（§三）已同步：能力抽离已完成。
 
 > **方向 RFC**：交易 Agent 的能力 = **大模型分析引擎 + 行情数据插件 + 交易规则插件**，三者按用户叠加。三阶段是总纲（`20260816-framework-plus-plugin-model.md`）在交易上的实例化，也是 trading-engine 引擎化（`20260816-trading-os-engine.md`）的目标形态——阿呆使用插件化的交易 Agent。
 
@@ -52,13 +59,13 @@ status: draft
 |:-----------|:---------|:----:|
 | 大模型分析引擎 | adai-core infrastructure/ai（DeepSeek）| ✅ 框架内置 |
 | 行情数据插件 | `TencentMarketDataSource`（已独立接口 + 归 trading 插件域，2026-08-16 G-1 拨正）| ✅ 载体已就位 |
-| 交易规则插件（抽象层）| `os/trading-engine/knowledge/context/`（rules/strategy/mistakes）+ `TradingAdviceAppService`（R66-R95 硬约束）| ✅ 内容就位；⚠️ 能力焊在 adai-core，未成 jar |
+| 交易规则插件（抽象层）| `os/trading-engine/knowledge/context/`（rules/strategy/mistakes）+ `domain/trading/engine/` 规则引擎（G-3 抽离，`TradingAdviceAppService` 改调用）| ✅ 内容就位 + 能力已成 jar 雏形 |
 | 按用户叠加（门控）| `Account.plugins` + `PluginService.hasPlugin` + `requireTradingPlugin(403)` + ContextEngine 过滤 | ✅ 机制就位 |
 | 数据分层（用户提供 vs 可查询）| 止损位/买点/入场日期 用户填；现价/K线 查询注入 | ✅ 就位（20260816-trading-data-model）|
 | 建议输出（非执行）| /advice 建议引擎，无执行按钮 | ✅ 就位 |
-| 独立 Agent 形态（Skill/MCP/Coze）| 未实现；trading-engine build-engine 已定义 Phase 1-3 | ⬜ 未做 |
+| 独立 Agent 形态（Skill/MCP/Coze）| 样板就绪：`os/trading-engine/output/`（agent-skill/mcp-server）；实际部署待后续 | 📋 样板 |
 
-**结论**：阿呆内的「阶段三雏形」已基本在跑（生产实测：京东方持仓超 R81 建议 reduce、现价未破止损 4.9、买点 B1 可留底仓）。缺的是**插件 jar 化**（能力抽离 + 行情归属）与**独立形态**。
+**结论**：阿呆内的「阶段三雏形」已基本在跑（生产实测：京东方持仓超 R81 建议 reduce、现价未破止损 4.9、买点 B1 可留底仓）。插件 jar 化（能力抽离 + 行情归属）**已完成**（G-3/G-1）；独立形态**样板就绪**（G-5，实际部署待后续）。
 
 ## 四、行情插件与交易插件的关系
 

@@ -17,6 +17,7 @@
 
 | 文档 | 说明 |
 |:-----|:------|
+| [framework-plus-plugin-model.md](architecture/framework-plus-plugin-model.md) | ★ **形态总纲**——一个框架 + 各种插件（框架装「你是谁」，插件装「你能做什么」，能力按用户叠加）|
 | [product-architecture.md](architecture/product-architecture.md) | 五层产品架构详解（Layer 1-6） |
 | [system-architecture.md](architecture/system-architecture.md) | 系统架构、Kernel/Domain 分层、Context Engine |
 | [memory-os-design.md](architecture/memory-os-design.md) | Memory OS 设计规约：职责、数据模型与 Context Engine / Domain OS 的关系 |
@@ -73,6 +74,9 @@
 | [20260814-domain-plugin-model.md](rfc/20260814-domain-plugin-model.md) | 2026-08-14 | Domain=插件模型：Kernel 基础服务 / Domain 受控插件（插件门控全通道 + D5 domain 收敛）|
 | [20260815-docs-governance.md](rfc/20260815-docs-governance.md) | 2026-08-15 | 文档治理：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负）|
 | [20260815-media-event-unification.md](rfc/20260815-media-event-unification.md) | 2026-08-15 | 图文一体：媒体事件数据层统一（approved：层 1 展示层聚合已落地，层 2 数据层整体化排 v1.0.1）|
+| [20260816-framework-plus-plugin-model.md](rfc/20260816-framework-plus-plugin-model.md) | 2026-08-16 | 框架+插件形态总纲（决策记录，已提升为正式架构文档）|
+| [20260816-trading-agent-plugin-model.md](rfc/20260816-trading-agent-plugin-model.md) | 2026-08-16 | 交易 Agent 三阶段插件模型（裸问答 → +行情 → +规则，能力按用户叠加）|
+| [20260816-trading-os-engine.md](rfc/20260816-trading-os-engine.md) | 2026-08-16 | trading-engine 领域引擎化（知识/能力/形态三区，一个内核多出口）|
 
 > 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
 
@@ -104,6 +108,7 @@
 | [feature-reference.md](reference/feature-reference.md) | 功能参考文档（唯一功能真相源） |
 | [task-log.md](reference/task-log.md) | 任务开发文档（从产品路线拆任务 + REVIEW P3/观察项待办）|
 | [task-plugin-model.md](reference/task-plugin-model.md) | 任务插件模型（RFC `20260814-domain-plugin-model` 关联）|
+| [framework-plugin-gap.md](reference/framework-plugin-gap.md) | 框架+插件形态的现状差距与迁移路径（G-1~G-6 对账清单，回答"会不会重构"）|
 
 ## 🚀 部署
 

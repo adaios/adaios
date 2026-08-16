@@ -48,17 +48,8 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| FP-P2a | **硬判定信号无输出侧校验**：引擎 verdict 算出，但 parseLlmAdvice 不校验 LLM 输出——BREACHED 而 LLM 输出 hold 原样透出，「必须 clear」只是 prompt 软指令 | `TradingAdviceAppService.parseLlmAdvice` | verdict↔suggestion 冲突覆盖/告警（B45）|
-| FP-P2b | **R81「100万以下」前提未评估**：大资金账户也收到 25% 上限硬信号，可能与注入的 R82-R95 冲突 | `DefaultTradingRuleEngine.evaluatePosition` | 按资金量级分档或注明 |
-| FP-P2c | **测试缺口**：硬判定信号段无直接断言（茅台 96.3% 触发 OVER_WEIGHT 未断言）；DefaultTradingRuleEngineTest 缺 currentPrice≤0 分支 | `TradingAdviceAppServiceTest` / `DefaultTradingRuleEngineTest` | 补断言与分支 |
-| FP-P2d | **gap 无 frontmatter**：reference/_index 登记 active 但文件级状态无从核对（guard-meta scope 不含 reference/*.md）| `docs/reference/framework-plugin-gap.md` | 补 frontmatter；新建 docs/** 必须带 frontmatter 纳入 guard（D44）|
-| FP-P2e | **docs/README.md 未登记新文档**：架构表无总纲、RFC 表缺 20260816 三篇、reference 区无 gap（D15/D24）| `docs/README.md` | 补登记 |
-| FP-P2f | **三阶段 RFC 状态未随落地滚动**：status 仍 draft，Phase A-D 已全 ✅；§三「能力焊在 adai-core 未成 jar」在 G-3 后过时 | `docs/rfc/20260816-trading-agent-plugin-model.md` | 补实施记录/升 approved |
-| FP-P2g | **gap 把总纲指为 RFC**：应指向已提位的正式架构文档 | `docs/reference/framework-plugin-gap.md:3` | 改指 `architecture/framework-plus-plugin-model.md` |
-| FP-P2h | **update-current.sh 注记绝对路径入库 + 零收录**：注记含 ENGINE_ROOT 绝对路径；CLAUDE.md 未收录该脚本用法 | `update-current.sh` / `os/trading-engine/CLAUDE.md` | 相对路径 + CLAUDE.md 收录 |
-| FP-P2i | **输出样板编号漂移**：agent-skill E1-E25 vs 实际 E1-E30；CLAUDE.md 第四层 R1-R60 vs 实际 R1-R120 | `os/trading-engine/output/agent-skill.md` / `CLAUDE.md` | 编号对拍（K39）|
-> **P2 当前清零**（2026-08-15 修复批 S + S2 全部出表：P2-B1/B2/R1/R2/R3/D1/D2，见已修复区；历史观察项已迁移 task-log）。
-> 2026-08-16 框架+插件审查新增 FP-P2a~i（未修）。
+> **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 当前清零**。
+> 历史观察项已迁移 task-log。
 
 ## 🔴 P0 / P3
 
@@ -69,6 +60,7 @@ mode: deep 增量（框架+插件 G-1~G-6 审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 框架+插件审查 P2 清尾批（FP-P2a~i）| parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce，B45）；R81 100万前提（总资产超 100 万不强制，参考 R82-R95）；测试补断言（硬信号段 + currentPrice≤0）；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录 + §三同步；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录（09-scripts 行）；编号对拍（CLAUDE.md R1-R120/E1-E30 + agent-skill E1-E30，K39）；后端 556（+1）| ✅ 2026-08-16 |
 | 框架+插件审查修复批（FP-S1-S4 + FP-P1-P4）| yml 路径 11-context→knowledge/context（运行时断链根治，三官交叉印证）；R81 分母改总资产（现金纳入，+测试）；update-current.sh 幂等+时间戳语义+声明修正；R66 现价口径注明；总纲 §五 刷新全 ✅；引擎口径契约测试 RuleKnowledgeContractTest（B44）；rules-api.md §2/§3 同步；后端 555（+4）| ✅ 2026-08-16 |
 | S-R1/S-R2（deep 战略项）| launcher 插件失败 SnackBar+重试（双端对拍 web）+ 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20；后端 446（+6）| ✅ 2026-08-15 |
 | 修复批 S2（P2-B2/R2/R3 + P1-D1 + P2-D1/D2）| Account null userId 拒绝（全局中断）+ admin 内置插件开关 isProtected 门控 + launcher 测试补分支 + review-context 断链 + RFC/docs 状态同步；后端 440（+1）· app 94（+2）| ✅ 2026-08-15 |

@@ -126,6 +126,14 @@ class TradingAdviceAppServiceTest {
         assertNull(missing.reason());
         assertTrue(missing.rules().isEmpty());
         assertEquals("持仓 2 只，京东方仓位占比需下调", res.summary());
+
+        // FP-P2c（2026-08-16）：硬判定信号段直接断言——茅台占比 96.3% 触发 R81 OVER_WEIGHT
+        ArgumentCaptor<ContextPackage> hardCtx = ArgumentCaptor.forClass(ContextPackage.class);
+        verify(ai).generate(hardCtx.capture(), any());
+        assertTrue(hardCtx.getValue().prompt().contains("超 R81 上限 25%"),
+                "茅台占比 96.3% 应触发 R81 超仓硬信号，实际 prompt: " + hardCtx.getValue().prompt());
+        assertTrue(hardCtx.getValue().prompt().contains("→ suggestion 参考 reduce（R81）"),
+                "超仓硬信号应标注参考 reduce");
     }
 
     @Test

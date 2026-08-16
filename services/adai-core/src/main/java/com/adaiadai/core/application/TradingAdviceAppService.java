@@ -178,10 +178,22 @@ public class TradingAdviceAppService {
                 PositionView view = findBySymbol(views, node.path("symbol").asText(""));
                 // 只保留持仓中真实存在的标的（防 LLM 幻觉输出不存在的票）
                 if (view == null) continue;
+                // FP-P2a（2026-08-16）：输出侧校验——引擎硬信号优先于 LLM 输出
+                // （BREACHED 是硬约束必须 clear；OVER_WEIGHT 保守：不允许 buy）
+                String suggestion = normalizeSuggestion(node.path("suggestion").asText(""));
+                String reason = node.path("reason").asText("");
+                if (view.stopLoss().verdict() == StopLossVerdict.BREACHED && !"clear".equals(suggestion)) {
+                    suggestion = "clear";
+                    reason = ("【硬判定】" + view.stopLoss().message() + "，suggestion 修正为 clear。"
+                            + (reason != null ? reason : "")).trim();
+                } else if (view.position().verdict() == PositionVerdict.OVER_WEIGHT && "buy".equals(suggestion)) {
+                    suggestion = "reduce";
+                    reason = ("【硬判定】" + view.position().message() + "，suggestion 由 buy 保守修正为 reduce。"
+                            + (reason != null ? reason : "")).trim();
+                }
                 items.add(new TradingAdviceItem(
                         view.symbol(), view.name(), view.positionPercent(),
-                        normalizeSuggestion(node.path("suggestion").asText("")),
-                        node.path("reason").asText(""),
+                        suggestion, reason,
                         parseRulesArray(node.get("rules"))
                 ));
             }
@@ -271,6 +283,8 @@ public class TradingAdviceAppService {
         BigDecimal cash = positionRepository.cashBalance(userId);
         if (cash == null) cash = BigDecimal.ZERO;
         BigDecimal totalAssets = totalValue.add(cash);
+        // FP-P2b（2026-08-16）：R81 前提「100万以下」——超 100 万不适用 25% 上限硬信号（参考 R82-R95 配置）
+        boolean r81Applicable = totalAssets.compareTo(new BigDecimal("1000000")) < 0;
 
         List<PositionView> views = new ArrayList<>();
         for (Position p : positions) {
@@ -294,7 +308,9 @@ public class TradingAdviceAppService {
                     p.stopLossPrice(), p.entryDate(), p.buyPoint(),
                     // G-3：引擎确定性判定（止损 R66 / 仓位 R81）
                     ruleEngine.evaluateStopLoss(price, p.stopLossPrice()),
-                    ruleEngine.evaluatePosition(positionPercent)));
+                    ruleEngine.evaluatePosition(positionPercent),
+                    // FP-P2b：R81 是否适用（总资产 < 100 万）
+                    r81Applicable));
         }
         return views;
     }
@@ -368,8 +384,14 @@ public class TradingAdviceAppService {
                 signalCount++;
             }
             if (v.position().verdict() == PositionVerdict.OVER_WEIGHT) {
-                sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
-                        .append(v.position().message()).append(" → suggestion 参考 reduce（R81）\n");
+                if (v.r81Applicable()) {
+                    sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
+                            .append(v.position().message()).append(" → suggestion 参考 reduce（R81）\n");
+                } else {
+                    sb.append("- ").append(v.name()).append("(").append(v.symbol()).append(")：")
+                            .append(v.position().message())
+                            .append("（总资产超 100 万，R81 前提不适用——按 R82-R95 配置评估，不强制 reduce）\n");
+                }
                 signalCount++;
             }
         }
@@ -448,6 +470,7 @@ public class TradingAdviceAppService {
             LocalDate entryDate,
             String buyPoint,
             TradingRuleEngine.StopLossResult stopLoss,
-            TradingRuleEngine.PositionResult position
+            TradingRuleEngine.PositionResult position,
+            boolean r81Applicable
     ) {}
 }

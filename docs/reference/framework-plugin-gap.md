@@ -1,6 +1,22 @@
+---
+title: 框架+插件——现状差距与迁移路径（Gap）
+description: 对账「框架+插件」总纲与现状的对账清单——G-1~G-6 动刀点、落地证据、执行记录、验证结果；回答"会不会打击式重构"
+version: 1
+created: 2026-08-16
+updated: 2026-08-16
+status: active
+lines: 80
+depends-on:
+  - ../architecture/framework-plus-plugin-model.md
+related:
+  - ../rfc/20260816-trading-agent-plugin-model.md
+  - ../review/REVIEW.md
+tags: [reference, plugin, framework, gap]
+---
+
 # 框架 + 插件——现状差距与迁移路径（Gap）
 
-> **目的**：对账「框架 + 插件」总纲（RFC `20260816-framework-plus-plugin-model`）与现状，回答**「会不会打击式重构」**——结论：不会。大部分已就位，动刀点有限且明确，本文逐一列明，每步可验证。
+> **目的**：对账「框架 + 插件」总纲（正式架构文档 `../architecture/framework-plus-plugin-model.md`，FP-P2g 修正指向）与现状，回答**「会不会打击式重构」**——结论：不会。大部分已就位，动刀点有限且明确，本文逐一列明，每步可验证。
 > **配套**：交易 Agent 三阶段模型 RFC `20260816-trading-agent-plugin-model`；本文件是总纲的「对账清单」，不替代 RFC。
 > **状态（2026-08-16）**：G-1~G-6 **全部完成** ✅（详见 §二/§三）。
 

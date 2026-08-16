@@ -49,6 +49,14 @@ class DefaultTradingRuleEngineTest {
         assertTrue(r.message().contains("R68"));
     }
 
+    @Test
+    void evaluateStopLoss_unavailablePrice_okWithoutVerdict() {
+        // FP-P2c：现价不可用（null / ≤0）→ 无据可判，不硬判（防误触发 clear）
+        assertEquals(StopLossVerdict.OK, engine.evaluateStopLoss(null, new BigDecimal("4.90")).verdict());
+        assertEquals(StopLossVerdict.OK, engine.evaluateStopLoss(BigDecimal.ZERO, new BigDecimal("4.90")).verdict());
+        assertEquals(StopLossVerdict.OK, engine.evaluateStopLoss(new BigDecimal("-1"), new BigDecimal("4.90")).verdict());
+    }
+
     // ── 仓位硬判定（R81）──
 
     @Test
