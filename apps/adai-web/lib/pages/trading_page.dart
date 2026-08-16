@@ -65,6 +65,9 @@ class _TradingPageState extends State<TradingPage> {
         _positions = (results[1] as PositionsResponse).positions;
         _watchlist = results[2] as List<WatchlistItemDto>;
         _sold = results[3] as List<SoldTradeDto>;
+        // 资金区块：现金来自组合快照（资金股份查询导入 → cashBalance）
+        _cash = _portfolio?.cashBalance;
+        _assets = (_portfolio?.totalValue ?? 0) + (_portfolio?.cashBalance ?? 0);
         _loading = false;
       });
     } catch (e) {
