@@ -732,7 +732,7 @@ Strict format:
 **TradingController → TradingAppService**
 
 - 纯计算，无 AI
-- 持仓数据从 `data/trading/positions.yaml` 读取
+- 持仓数据从 `data/trading/positions.md` 读取（freeze §2.6）
 - 交易录入实时更新文件
 
 ---

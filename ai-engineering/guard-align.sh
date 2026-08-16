@@ -29,11 +29,11 @@ spec = (ROOT / 'docs/architecture/api-spec.md').read_text(encoding='utf-8')
 endpoints = []  # (method, full_path)
 for ctrl in sorted(interfaces.glob('*Controller.java')):
     text = ctrl.read_text(encoding='utf-8')
-    # 类级 RequestMapping
-    cls_m = re.search(r'@RequestMapping\("(/api/v1/[^"]+)"\)', text)
+    # 类级 RequestMapping（两种写法：带引号 / 无引号）
+    cls_m = re.search(r'@RequestMapping\(\s*"?(/api/v1/[^")\s]+)', text)
     base = cls_m.group(1) if cls_m else ''
-    # 方法级 Mapping
-    for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\("([^"]+)"\)', text):
+    # 方法级 Mapping（裸注解 + 带引号 + 类级 base 拼接）
+    for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\(\s*"?([^")\s]+)', text):
         method = m.group(1).upper()
         path = m.group(2)
         full = path if path.startswith('/api') else (base + path)
@@ -84,6 +84,21 @@ check_status_label('前端 adai-app', app_tests, '前端 adai-app')
 check_status_label('前端 adai-admin', admin_tests, '前端 adai-admin')
 check_status_label('前端 adai-web', web_tests, '前端 adai-web')
 print(f'A2 测试数核对：后端 {backend_tests} / app {app_tests} / admin {admin_tests} / web {web_tests}')
+
+# ── A4 端点数对拍：endpoints.txt 实测 vs status.md 声明（D35 脚本化）──
+ept = ROOT / 'services/adai-core/build/resources/main/META-INF/endpoints.txt'
+if ept.exists():
+    try:
+        actual_ept = int(ept.read_text(encoding='utf-8').strip())
+        m_ept = re.search(r'端点：\*\*(\d+)\*\*', status_text)
+        if m_ept and int(m_ept.group(1)) != actual_ept:
+            fails.append(f'A4 端点数漂移：endpoints.txt 实测 {actual_ept}，status.md 声明 {m_ept.group(1)}（需更新 status.md）')
+        elif not m_ept:
+            warns.append('A4 无法解析 status.md 端点声明（检查格式）')
+    except ValueError:
+        warns.append('A4 endpoints.txt 内容非数字，跳过')
+else:
+    warns.append('A4 endpoints.txt 不存在（需 gradle build 生成），跳过')
 
 # ── A3 变更登记提示：git 变更文件 → 确认文档同步 ──
 try:
