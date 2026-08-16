@@ -6,6 +6,8 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
+import com.adaiadai.core.domain.trading.SoldTradeRepository;
+import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.PositionFileRepository;
@@ -50,7 +52,8 @@ class TradingAppServiceTest {
 
     private TradingAppService service(PositionRepository repo, RecordRepository records,
                                       TradingHistoryRepository history) {
-        return new TradingAppService(repo, records, history, mock(MarketDataSource.class));
+        return new TradingAppService(repo, records, history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), mock(MarketDataSource.class));
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -427,7 +430,8 @@ class TradingAppServiceTest {
         TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
         RecordRepository records = mock(RecordRepository.class);
         when(records.findAll(any())).thenReturn(List.of());
-        TradingAppService service = new TradingAppService(repo, records, history, mock(MarketDataSource.class));
+        TradingAppService service = new TradingAppService(repo, records, history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), mock(MarketDataSource.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
@@ -461,7 +465,8 @@ class TradingAppServiceTest {
                         new BigDecimal("5.81"), new BigDecimal("5.81"), new BigDecimal("5.81"),
                         new BigDecimal("-0.85"), 0)));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
-                mock(TradingHistoryRepository.class), market);
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 
@@ -479,7 +484,8 @@ class TradingAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
-                mock(TradingHistoryRepository.class), market);
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 

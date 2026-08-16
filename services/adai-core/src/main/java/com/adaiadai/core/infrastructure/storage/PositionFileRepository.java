@@ -188,4 +188,16 @@ public class PositionFileRepository implements PositionRepository {
         fileStorage.write(userId, path, content);
     }
 
+
+    /** 保存现金余额（资金查询导入，2026-08-16）：读原文替换 cashBalance 行，保留持仓表。 */
+    @Override
+    public void saveCashBalance(String userId, java.math.BigDecimal cash) {
+        String content = fileStorage.read(userId, POSITIONS_PATH);
+        if (content == null) return;
+        String updated = content.replaceAll("(?m)^cashBalance:.*$", "cashBalance: " + cash.toPlainString());
+        if (!updated.equals(content)) {
+            fileStorage.write(userId, POSITIONS_PATH, updated);
+        }
+    }
+
 }

@@ -430,6 +430,67 @@ class ApiService {
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return PositionImportResult.fromJson(data);
   }
+  /// 自选股列表（GET /api/v1/trading/watchlist，RFC 20260816）。
+  Future<List<WatchlistItemDto>> getWatchlist() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/watchlist'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => WatchlistItemDto.fromJson(e)).toList();
+  }
+
+  /// 自选股导入（POST /api/v1/trading/watchlist/import，通达信导出文本）。
+  Future<int> importWatchlist(String content) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/watchlist/import'),
+      headers: _headers, body: jsonEncode({'content': content}));
+    _check(resp);
+    final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (d['imported'] as num?)?.toInt() ?? 0;
+  }
+
+  /// 删除自选股（DELETE /api/v1/trading/watchlist/{symbol}）。
+  Future<void> removeWatchlist(String symbol) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/trading/watchlist/$symbol'), headers: _headers);
+    _check(resp);
+  }
+
+  /// 清仓股列表（GET /api/v1/trading/sold，复盘闭环）。
+  Future<List<SoldTradeDto>> getSold() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/sold'), headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldTradeDto.fromJson(e)).toList();
+  }
+
+  /// 清仓股导入（POST /api/v1/trading/sold/import，通达信导出文本）。
+  Future<int> importSold(String content) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/sold/import'),
+      headers: _headers, body: jsonEncode({'content': content}));
+    _check(resp);
+    final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (d['imported'] as num?)?.toInt() ?? 0;
+  }
+
+  /// 清仓股心理标注（PUT /api/v1/trading/sold/{symbol}/psychology）。
+  Future<void> updateSoldPsychology(String symbol, String psychology) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/sold/$symbol/psychology'),
+      headers: _headers, body: jsonEncode({'psychology': psychology}));
+    _check(resp);
+  }
+
+  /// 资金股份查询导入（POST /api/v1/trading/imports/cash：现金 + 精确成本）。
+  Future<CashImportResult> importCash(String content) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/imports/cash'),
+      headers: _headers, body: jsonEncode({'content': content}));
+    _check(resp);
+    final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return CashImportResult.fromJson(d);
+  }
+
   /// 导入文件上传留存（通达信导出，2026-08-16）。
   /// POST /api/v1/trading/imports/save（multipart file）→ {path, content}（GBK 已转 UTF-8）。
   Future<ImportFileSaveResult> saveImportFile(String filename, List<int> bytes) async {
@@ -1155,6 +1216,76 @@ class TradeRecordItem {
       buyPoint: map['buyPoint'] as String?,
       targetPrice: (map['targetPrice'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+    );
+  }
+}
+
+/// 自选股条目（通达信形态/指标为买点判定原料）。
+class WatchlistItemDto {
+  final String symbol, name, industry, industry2, signal;
+  final int longForm, midForm, shortForm;
+  final String addedAt;
+
+  WatchlistItemDto({required this.symbol, required this.name, required this.industry,
+      required this.industry2, required this.longForm, required this.midForm,
+      required this.shortForm, required this.signal, required this.addedAt});
+
+  factory WatchlistItemDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return WatchlistItemDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      industry: m['industry']?.toString() ?? '',
+      industry2: m['industry2']?.toString() ?? '',
+      longForm: (m['longForm'] as num?)?.toInt() ?? 0,
+      midForm: (m['midForm'] as num?)?.toInt() ?? 0,
+      shortForm: (m['shortForm'] as num?)?.toInt() ?? 0,
+      signal: m['signal']?.toString() ?? '',
+      addedAt: m['addedAt']?.toString() ?? '',
+    );
+  }
+}
+
+/// 清仓股（B/S 复盘闭环）。
+class SoldTradeDto {
+  final String symbol, name, tradeCount, verdict, psychology;
+  final String? buyDate, sellDate;
+  final int holdDays;
+  final double holdPnlPct;
+
+  SoldTradeDto({required this.symbol, required this.name, required this.buyDate,
+      required this.sellDate, required this.holdDays, required this.tradeCount,
+      required this.holdPnlPct, required this.verdict, required this.psychology});
+
+  factory SoldTradeDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldTradeDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyDate: m['buyDate']?.toString(),
+      sellDate: m['sellDate']?.toString(),
+      holdDays: (m['holdDays'] as num?)?.toInt() ?? 0,
+      tradeCount: m['tradeCount']?.toString() ?? '',
+      holdPnlPct: (m['holdPnlPct'] as num?)?.toDouble() ?? 0,
+      verdict: m['verdict']?.toString() ?? '',
+      psychology: m['psychology']?.toString() ?? '',
+    );
+  }
+}
+
+/// 资金查询导入结果。
+class CashImportResult {
+  final double cash, assets;
+  final int updatedCost;
+
+  CashImportResult({required this.cash, required this.assets, required this.updatedCost});
+
+  factory CashImportResult.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return CashImportResult(
+      cash: (m['cash'] as num?)?.toDouble() ?? 0,
+      assets: (m['assets'] as num?)?.toDouble() ?? 0,
+      updatedCost: (m['updatedCost'] as num?)?.toInt() ?? 0,
     );
   }
 }

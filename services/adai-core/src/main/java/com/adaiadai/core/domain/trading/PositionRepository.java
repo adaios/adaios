@@ -48,4 +48,12 @@ public interface PositionRepository {
         // 默认实现：不可用（由文件存储实现覆盖）
     }
 
+
+    /**
+     * 保存现金余额（资金股份查询导入，2026-08-16）：写 positions.md 的 cashBalance 行。
+     */
+    default void saveCashBalance(String userId, java.math.BigDecimal cash) {
+        // 默认实现：不可用（由文件存储实现覆盖）
+    }
+
 }

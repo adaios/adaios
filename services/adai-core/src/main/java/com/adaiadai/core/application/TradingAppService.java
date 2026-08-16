@@ -42,15 +42,21 @@ public class TradingAppService {
     private final PositionRepository positionRepository;
     private final RecordRepository recordRepository;
     private final TradingHistoryRepository tradingHistoryRepository;
+    private final WatchlistRepository watchlistRepository;
+    private final SoldTradeRepository soldTradeRepository;
     private final MarketDataSource marketDataSource;
 
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
                              TradingHistoryRepository tradingHistoryRepository,
+                             WatchlistRepository watchlistRepository,
+                             SoldTradeRepository soldTradeRepository,
                              MarketDataSource marketDataSource) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
+        this.watchlistRepository = watchlistRepository;
+        this.soldTradeRepository = soldTradeRepository;
         this.marketDataSource = marketDataSource;
     }
 
@@ -381,8 +387,144 @@ public class TradingAppService {
         }
     }
 
+
     /** 导入文件留存结果。 */
     public record ImportFileResult(String path, String content) {}
+
+    // ── 自选股（RFC 20260816：盯盘买点原料）──
+
+    /** 读取自选股列表。 */
+    public List<WatchlistItem> watchlistList(String userId) {
+        return watchlistRepository.findAll(userId);
+    }
+
+    /** 导入自选股（通达信导出文本，表头定位；按 symbol upsert）。 */
+    public WatchlistImportResult watchlistImport(String userId, String content) {
+        List<WatchlistItem> parsed = TradingImportParser.parseWatchlist(content);
+        if (parsed.isEmpty()) return new WatchlistImportResult(0);
+        synchronized (tradeLock(userId)) {
+            List<WatchlistItem> current = new ArrayList<>(watchlistRepository.findAll(userId));
+            for (WatchlistItem item : parsed) {
+                boolean found = false;
+                for (int i = 0; i < current.size(); i++) {
+                    if (current.get(i).symbol().equals(item.symbol())) {
+                        current.set(i, item); // 覆盖（形态/指标最新）
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) current.add(item);
+            }
+            watchlistRepository.saveAll(userId, current);
+        }
+        log.info("自选股导入 | userId={} | {} 只", userId, parsed.size());
+        return new WatchlistImportResult(parsed.size());
+    }
+
+    /** 删除自选股。 */
+    public boolean watchlistRemove(String userId, String symbol) {
+        synchronized (tradeLock(userId)) {
+            List<WatchlistItem> current = new ArrayList<>(watchlistRepository.findAll(userId));
+            boolean removed = current.removeIf(it -> it.symbol().equals(symbol));
+            if (removed) watchlistRepository.saveAll(userId, current);
+            return removed;
+        }
+    }
+
+    // ── 清仓股（RFC 20260816：复盘闭环）──
+
+    /** 读取清仓股列表。 */
+    public List<SoldTrade> soldList(String userId) {
+        return soldTradeRepository.findAll(userId);
+    }
+
+    /** 导入清仓股（通达信导出文本；按 symbol upsert，保留已有 verdict/psychology）。 */
+    public SoldImportResult soldImport(String userId, String content) {
+        List<SoldTrade> parsed = TradingImportParser.parseSold(content);
+        if (parsed.isEmpty()) return new SoldImportResult(0);
+        synchronized (tradeLock(userId)) {
+            List<SoldTrade> current = new ArrayList<>(soldTradeRepository.findAll(userId));
+            for (SoldTrade t : parsed) {
+                boolean found = false;
+                for (int i = 0; i < current.size(); i++) {
+                    if (current.get(i).symbol().equals(t.symbol())) {
+                        SoldTrade old = current.get(i);
+                        // 保留已有心理/verdict，刷新日期/涨幅
+                        current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
+                                t.holdDays(), t.tradeCount(), t.holdPnlPct(),
+                                old.verdict(), old.psychology()));
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) current.add(t);
+            }
+            soldTradeRepository.saveAll(userId, current);
+        }
+        log.info("清仓股导入 | userId={} | {} 笔", userId, parsed.size());
+        return new SoldImportResult(parsed.size());
+    }
+
+    /** 补/改心理标注（用户复盘素材）。 */
+    public boolean soldUpdatePsychology(String userId, String symbol, String psychology) {
+        synchronized (tradeLock(userId)) {
+            List<SoldTrade> current = new ArrayList<>(soldTradeRepository.findAll(userId));
+            for (int i = 0; i < current.size(); i++) {
+                SoldTrade t = current.get(i);
+                if (t.symbol().equals(symbol)) {
+                    current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
+                            t.holdDays(), t.tradeCount(), t.holdPnlPct(), t.verdict(), psychology));
+                    soldTradeRepository.saveAll(userId, current);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // ── 资金股份查询（cashBalance + 精确成本）──
+
+    /** 导入资金股份查询：更新 cashBalance + 精确成本价（4 位，盈亏% 与通达信一致）。 */
+    public CashImportResult importCashQuery(String userId, String content) {
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        synchronized (tradeLock(userId)) {
+            // 1. cashBalance 更新
+            java.math.BigDecimal cash = q.cash();
+            List<Position> positions = new ArrayList<>(positionRepository.findAll(userId));
+            int updated = 0;
+            // 2. 精确成本价更新（资金查询 4 位 > 持仓导出 2-3 位）
+            for (Position p : positions) {
+                for (TradingImportParser.CashPosition cp : q.positions()) {
+                    if (cp.symbol().equals(p.symbol()) && cp.costPrice() > 0) {
+                        java.math.BigDecimal precise = java.math.BigDecimal.valueOf(cp.costPrice());
+                        if (precise.compareTo(p.avgCost()) != 0) {
+                            positions.set(positions.indexOf(p),
+                                    new Position(p.symbol(), p.name(), p.quantity(), precise, p.currentPrice(),
+                                            p.lastUpdated(), p.entryDate(), p.stopLossPrice(), p.buyPoint(), p.role()));
+                            updated++;
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!positions.isEmpty()) positionRepository.saveAll(userId, positions);
+            // cashBalance 走 snapshot 保存（positions.md 的 cashBalance 字段）
+            positionRepository.saveCashBalance(userId, cash);
+            log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只",
+                    userId, cash, q.assets(), updated);
+            return new CashImportResult(cash, q.assets(), updated);
+        }
+    }
+
+    /** 自选导入结果。 */
+    public record WatchlistImportResult(int imported) {}
+
+    /** 清仓导入结果。 */
+    public record SoldImportResult(int imported) {}
+
+    /** 资金导入结果。 */
+    public record CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets, int updatedCost) {}
+
 
     // ── 内部方法 ──
 

@@ -494,6 +494,32 @@
 
 **响应**：`{"symbol":"000725","name":"京东方A"}`（name 查询失败为空串，前端可手填）。需 trading 插件（403）。
 
+### `GET /api/v1/trading/watchlist` — 自选股列表（RFC 20260816 交易数据智能）
+
+返回自选条目（symbol/name/industry/industry2/longForm/midForm/shortForm/signal/addedAt，通达信形态与指标提示为买点判定原料）。需 trading 插件（403）。
+
+### `POST /api/v1/trading/watchlist/import` — 自选股导入（通达信导出文本）
+
+**body**：`{"content":"通达信自选导出文本（GBK 已转码）"}`。表头定位列（代码/名称/细分行业/一二级行业/长期/中期/短期形态/近日指标提示），按 symbol upsert。**响应**：`{"imported":27}`。
+
+### `DELETE /api/v1/trading/watchlist/{symbol}` — 删除自选股
+
+### `GET /api/v1/trading/sold` — 清仓股列表（复盘闭环）
+
+返回已了结交易（symbol/name/buyDate/sellDate/holdDays/tradeCount/holdPnlPct/verdict/psychology）。
+
+### `POST /api/v1/trading/sold/import` — 清仓股导入（通达信导出文本）
+
+**body**：`{"content":"..."}`。表头定位列（代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%），按 symbol upsert（保留已有 verdict/psychology）。**响应**：`{"imported":42}`。
+
+### `PUT /api/v1/trading/sold/{symbol}/psychology` — 清仓股心理标注
+
+**body**：`{"psychology":"追高后恐慌割肉"}`（用户复盘素材，个人数据隐私保护）。
+
+### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
+
+**body**：`{"content":"资金股份查询导出文本"}`。解析首行「余额/资产」→ 更新 cashBalance；明细「证券代码/成本价」→ 更新持仓精确成本（4 位，盈亏% 与通达信一致）。**响应**：`{"cash":292.88,"assets":110504.88,"updatedCost":5}`。
+
 ### `POST /api/v1/trading/imports/save` — 导入文件上传留存（通达信导出，2026-08-16）
 
 **multipart**：`file`（通达信导出 txt，GBK/UTF-8 均可）

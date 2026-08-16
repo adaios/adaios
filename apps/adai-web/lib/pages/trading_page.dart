@@ -24,6 +24,10 @@ class TradingPage extends StatefulWidget {
 class _TradingPageState extends State<TradingPage> {
   PortfolioSnapshotResponse? _portfolio;
   List<PositionItem> _positions = [];
+  List<WatchlistItemDto> _watchlist = [];
+  List<SoldTradeDto> _sold = [];
+  double? _cash;
+  double? _assets;
   bool _loading = true;
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
@@ -52,11 +56,15 @@ class _TradingPageState extends State<TradingPage> {
       final results = await Future.wait([
         widget.api.getPortfolio(),
         widget.api.getPositions(),
+        widget.api.getWatchlist(),
+        widget.api.getSold(),
       ]);
       if (!mounted) return;
       setState(() {
         _portfolio = results[0] as PortfolioSnapshotResponse;
         _positions = (results[1] as PositionsResponse).positions;
+        _watchlist = results[2] as List<WatchlistItemDto>;
+        _sold = results[3] as List<SoldTradeDto>;
         _loading = false;
       });
     } catch (e) {
@@ -238,6 +246,12 @@ class _TradingPageState extends State<TradingPage> {
                       _buildSnapshotRow(),
                       const SizedBox(height: 20),
                       _buildPositionTable(),
+                      const SizedBox(height: 28),
+                      _buildWatchlistSection(),
+                      const SizedBox(height: 28),
+                      _buildSoldSection(),
+                      const SizedBox(height: 28),
+                      _buildCashSection(),
                     ],
                   ),
       ),
@@ -453,6 +467,250 @@ class _TradingPageState extends State<TradingPage> {
             backgroundColor: AppColors.darkSurface2),
       );
     }
+  }
+
+  // ── 自选股 / 清仓股 / 资金查询区块（RFC 20260816 交易数据智能）──
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 13)),
+      backgroundColor: AppColors.darkSurface2,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  Widget _buildWatchlistSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('自选股', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 8),
+        Text('${_watchlist.length} 只 · 盯盘买点原料', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => _openImportDialog('自选股',
+              '粘贴通达信自选导出（或选择文件）：代码/名称/细分行业/长期中期短期形态/近日指标提示',
+              (c) async {
+                final n = await widget.api.importWatchlist(c);
+                await _loadAll();
+                if (mounted) _toast('自选股导入 $n 只');
+              }),
+          icon: const Icon(Icons.upload_file, size: 14),
+          label: const Text('导入自选', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (_watchlist.isEmpty)
+        const Text('暂无自选股——导入通达信自选导出，阿呆帮你盯买点',
+            style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
+      else
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
+            columns: const [
+              DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
+              DataColumn(label: Text('行业')), DataColumn(label: Text('长/中/短')),
+              DataColumn(label: Text('指标提示')), DataColumn(label: Text('')),
+            ],
+            rows: _watchlist.map((w) => DataRow(cells: [
+              DataCell(Text(w.symbol, style: const TextStyle(fontSize: 12))),
+              DataCell(Text(w.name, style: const TextStyle(fontSize: 12))),
+              DataCell(Text(w.industry, style: const TextStyle(fontSize: 12))),
+              DataCell(Text('${w.longForm}/${w.midForm}/${w.shortForm}',
+                  style: const TextStyle(fontSize: 12))),
+              DataCell(Text(w.signal, style: TextStyle(fontSize: 12,
+                  color: w.signal.contains('金叉') ? AppColors.darkRed : AppColors.darkGrey4))),
+              DataCell(IconButton(
+                icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+                onPressed: () async {
+                  await widget.api.removeWatchlist(w.symbol);
+                  await _loadAll();
+                },
+              )),
+            ])).toList(),
+          ),
+        ),
+    ]);
+  }
+
+  Widget _buildSoldSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('清仓股复盘', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 8),
+        Text('${_sold.length} 笔 · B/S 对照规则判对错', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => _openImportDialog('清仓股',
+              '粘贴通达信清仓导出（或选择文件）：代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%',
+              (c) async {
+                final n = await widget.api.importSold(c);
+                await _loadAll();
+                if (mounted) _toast('清仓股导入 $n 笔');
+              }),
+          icon: const Icon(Icons.upload_file, size: 14),
+          label: const Text('导入清仓', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (_sold.isEmpty)
+        const Text('暂无清仓记录——导入通达信清仓导出，阿呆对照规则给你判对错',
+            style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
+      else
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
+            columns: const [
+              DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
+              DataColumn(label: Text('介入→清仓')), DataColumn(label: Text('天数')),
+              DataColumn(label: Text('持仓期涨幅')), DataColumn(label: Text('心理标注')),
+            ],
+            rows: _sold.map((s) => DataRow(cells: [
+              DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
+              DataCell(Text(s.name, style: const TextStyle(fontSize: 12))),
+              DataCell(Text('${s.buyDate ?? '?'}→${s.sellDate ?? '?'}',
+                  style: const TextStyle(fontSize: 12))),
+              DataCell(Text('${s.holdDays}天', style: const TextStyle(fontSize: 12))),
+              DataCell(Text('${s.holdPnlPct.toStringAsFixed(2)}%', style: TextStyle(fontSize: 12,
+                  color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen))),
+              DataCell(InkWell(
+                onTap: () => _markPsychology(s),
+                child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
+                    style: TextStyle(fontSize: 12,
+                        color: s.psychology.isEmpty ? AppColors.darkGrey5 : AppColors.darkOrange)),
+              )),
+            ])).toList(),
+          ),
+        ),
+    ]);
+  }
+
+  Future<void> _markPsychology(SoldTradeDto s) async {
+    final controller = TextEditingController(text: s.psychology);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('标注当时心理 · ${s.name}', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: '如：追高后恐慌割肉 / 套牢死扛 / 贪心没走'),
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    await widget.api.updateSoldPsychology(s.symbol, result);
+    await _loadAll();
+  }
+
+  Widget _buildCashSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('资金股份查询', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 8),
+        if (_cash != null)
+          Text('现金 ¥${_cash!.toStringAsFixed(2)} · 总资产 ¥${_assets?.toStringAsFixed(2) ?? '-'}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => _openImportDialog('资金股份查询',
+              '粘贴通达信「资金股份查询」导出（或选择文件）：更新现金余额 + 精确成本价（4 位）',
+              (c) async {
+                final r = await widget.api.importCash(c);
+                await _loadAll();
+                if (mounted) _toast('资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只');
+              }),
+          icon: const Icon(Icons.upload_file, size: 14),
+          label: const Text('导入资金', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+    ]);
+  }
+
+  /// 通用导入 Dialog：粘贴文本 或 选择文件（上传留存 + GBK 转码）→ 回调导入。
+  Future<void> _openImportDialog(String title, String hint, Future<void> Function(String) onImport) async {
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: AppColors.darkSurface2,
+          title: Text('导入$title', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+          content: SizedBox(
+            width: 480,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+                    if (result == null || result.files.isEmpty) return;
+                    final f = result.files.first;
+                    if (f.bytes == null) return;
+                    final saved = await widget.api.saveImportFile(f.name, f.bytes!);
+                    if (!ctx.mounted) return;
+                    setDlg(() => controller.text = saved.content);
+                  },
+                  icon: const Icon(Icons.upload_file, size: 14),
+                  label: const Text('选择文件（通达信导出）', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.darkGrey1,
+                      side: const BorderSide(color: AppColors.darkGrey4)),
+                ),
+                const SizedBox(width: 8),
+                const Text('或直接粘贴', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ]),
+              const SizedBox(height: 8),
+              Text(hint, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: controller,
+                maxLines: 7, minLines: 4,
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                if (controller.text.trim().isEmpty) return;
+                Navigator.pop(ctx);
+                await onImport(controller.text);
+              },
+              style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+              child: const Text('导入'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

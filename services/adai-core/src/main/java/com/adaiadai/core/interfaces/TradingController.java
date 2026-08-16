@@ -178,6 +178,95 @@ public class TradingController {
         }
     }
 
+    // ── 自选股 / 清仓股 / 资金查询（RFC 20260816 交易数据智能）──
+
+    /** 自选股列表（GET /api/v1/trading/watchlist）。 */
+    @GetMapping("/watchlist")
+    public ResponseEntity<?> watchlist(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.watchlistList(userId));
+    }
+
+    /** 自选股导入（通达信导出文本，POST /api/v1/trading/watchlist/import）。 */
+    @PostMapping("/watchlist/import")
+    public ResponseEntity<?> watchlistImport(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String content = body == null ? null : body.get("content");
+        TradingAppService.WatchlistImportResult r = tradingAppService.watchlistImport(
+                userId, content != null ? content : "");
+        return ResponseEntity.ok(Map.of("imported", r.imported()));
+    }
+
+    /** 删除自选股（DELETE /api/v1/trading/watchlist/{symbol}）。 */
+    @DeleteMapping("/watchlist/{symbol}")
+    public ResponseEntity<?> watchlistRemove(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String symbol) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        boolean removed = tradingAppService.watchlistRemove(userId, symbol);
+        return removed ? ResponseEntity.ok(Map.of("removed", true))
+                : ResponseEntity.notFound().build();
+    }
+
+    /** 清仓股列表（GET /api/v1/trading/sold）。 */
+    @GetMapping("/sold")
+    public ResponseEntity<?> sold(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.soldList(userId));
+    }
+
+    /** 清仓股导入（通达信导出文本，POST /api/v1/trading/sold/import）。 */
+    @PostMapping("/sold/import")
+    public ResponseEntity<?> soldImport(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String content = body == null ? null : body.get("content");
+        TradingAppService.SoldImportResult r = tradingAppService.soldImport(
+                userId, content != null ? content : "");
+        return ResponseEntity.ok(Map.of("imported", r.imported()));
+    }
+
+    /** 清仓股心理标注（PUT /api/v1/trading/sold/{symbol}/psychology）。 */
+    @PutMapping("/sold/{symbol}/psychology")
+    public ResponseEntity<?> soldPsychology(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String symbol,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String psychology = body == null ? null : body.get("psychology");
+        boolean ok = tradingAppService.soldUpdatePsychology(
+                userId, symbol, psychology != null ? psychology : "");
+        return ok ? ResponseEntity.ok(Map.of("updated", true))
+                : ResponseEntity.notFound().build();
+    }
+
+    /** 资金股份查询导入（更新现金 + 精确成本，POST /api/v1/trading/imports/cash）。 */
+    @PostMapping("/imports/cash")
+    public ResponseEntity<?> importCash(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String content = body == null ? null : body.get("content");
+        TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
+                userId, content != null ? content : "");
+        return ResponseEntity.ok(Map.of(
+                "cash", r.cash(),
+                "assets", r.assets(),
+                "updatedCost", r.updatedCost()));
+    }
+
     /**
      * 解析一句话交易（RFC 20260815 通道 A）：把自然语言「买了 1000 股京东方 @5.2」
      * 结构化为 symbol/name/direction/price/volume，供前端确认卡回显。

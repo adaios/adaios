@@ -43,6 +43,9 @@ MockClient _tradingMock() {
     final path = request.url.path;
     if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
     if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
     if (path == '/api/v1/trading/trades') return _json([]);
     if (path == '/api/v1/trading/reviews') return _json([]);
     return http.Response('not found', 404);
@@ -360,6 +363,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades') {
           sent = jsonDecode(request.body) as Map<String, dynamic>;
           return _json([_positionJson()]);
@@ -394,6 +403,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades') {
           sent = jsonDecode(request.body) as Map<String, dynamic>;
           return _json([_positionJson()]);
@@ -431,6 +446,8 @@ void main() {
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/positions' && request.method == 'GET') {
           return _json([current]);
         }
@@ -476,6 +493,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (request.method == 'PUT') putCalls++;
         return http.Response('not found', 404);
       });
@@ -500,6 +523,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades/batch') {
           sentBody = jsonDecode(request.body) as Map<String, dynamic>;
           return _json({'success': 2, 'failures': []});
@@ -537,6 +566,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades/batch') {
           batchCalls++;
           return _json({'success': 0, 'failures': []});
@@ -563,6 +598,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades') {
           return _json([
             {
@@ -617,6 +658,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/trades') return _json([]);
         return http.Response('not found', 404);
       });
@@ -635,6 +682,12 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+
+    if (path == '/api/v1/trading/watchlist') return _json([]);
+    if (path == '/api/v1/trading/sold') return _json([]);
+
         if (path == '/api/v1/trading/reviews') return _json(['2026-08-12', '2026-08-11']);
         if (path == '/api/v1/trading/review') {
           final date = request.url.queryParameters['date'] ?? '';

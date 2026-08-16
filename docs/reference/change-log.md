@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 交易数据智能——自选/清仓/资金三块落地 | 自选股（WatchlistItem + 通达信自选导入，形态/指标提示=买点原料）；清仓股（SoldTrade + 导入 + 心理标注，复盘闭环）；资金股份查询（现金 292.88 + 精确成本 4 位，R81 分母修正）；Java 解析器 TradingImportParser（表头定位三格式）；web 交易页三区块 + 通用导入 Dialog（选择文件/粘贴）；7 新端点；后端 576→579（+3 解析器测试）· web 82 | 端点 59→66 |
 | 2026-08-16 | 导入文件上传留存 + 交易页自动刷新 | 后端 `POST /trading/imports/save`（multipart 留存 data/imports/ + GBK 自动转 UTF-8）；web 导入 Dialog 加「选择文件」（上传→转码→自动解析导入，免复制粘贴）；交易页切入/点记录交易自动刷新（保活缓存不再显示旧数据）；盈亏实时注入（getPositions 行情） | 后端 576（+2）· web 82 |
 | 2026-08-16 | 通达信持仓导入 + 代码带名称 | `POST /trading/positions/import` 持仓初始化导入（通达信导出快照，按 symbol upsert，name 缺失行情补全，返回未设止损列表 R68 提示补设）+ `GET /trading/lookup` 代码查名；web 批量导入自动识别通达信格式（表头定位列，制表符/空格）+ 记录交易输入 6 位代码自动带出名称（二次确认可改）；api-spec 登记 2 端点 | 后端 572（+4）· web 81（+4）|
 | 2026-08-16 | 生产部署（时段推送 + 知识层上线）| deploy-gate 全过（三关 + smoke 6 端点）；os/trading-engine/knowledge/ 上传生产 + .env 配 `ADAI_TRADING_KNOWLEDGE_PATH`（G-4 路径生产生效）+ `ADAI_PUSH_WECHAT_SENDKEY`（微信渠道生产就绪）；生产实测：京东方建议引擎引用 R81 真实规则（占比 100% 超 25% 上限 → reduce），知识加载 rules=11KB 全通 | — |
