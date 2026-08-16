@@ -44,6 +44,7 @@ public class TradingAppService {
     private final TradingHistoryRepository tradingHistoryRepository;
     private final WatchlistRepository watchlistRepository;
     private final SoldTradeRepository soldTradeRepository;
+    private final AccountSnapshotRepository accountSnapshotRepository;
     private final MarketDataSource marketDataSource;
 
     public TradingAppService(PositionRepository positionRepository,
@@ -51,12 +52,14 @@ public class TradingAppService {
                              TradingHistoryRepository tradingHistoryRepository,
                              WatchlistRepository watchlistRepository,
                              SoldTradeRepository soldTradeRepository,
+                             AccountSnapshotRepository accountSnapshotRepository,
                              MarketDataSource marketDataSource) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
         this.watchlistRepository = watchlistRepository;
         this.soldTradeRepository = soldTradeRepository;
+        this.accountSnapshotRepository = accountSnapshotRepository;
         this.marketDataSource = marketDataSource;
     }
 
@@ -487,9 +490,14 @@ public class TradingAppService {
 
     // ── 资金股份查询（cashBalance + 精确成本）──
 
-    /** 导入资金股份查询：更新 cashBalance + 精确成本价（4 位，盈亏% 与通达信一致）。 */
+    /** 导入资金股份查询：存账户快照（资产/可用/可取/市值/盈亏/当日盈亏）+ 更新 cashBalance + 精确成本。 */
     public CashImportResult importCashQuery(String userId, String content) {
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细当日盈亏和
+        double todayPnl = q.positions().stream().mapToDouble(TradingImportParser.CashPosition::todayPnl).sum();
+        accountSnapshotRepository.save(userId, new AccountSnapshot(
+                q.assets(), q.cash(), q.available(), q.withdrawable(),
+                q.marketValue(), q.pnl(), BigDecimal.valueOf(todayPnl), LocalDate.now()));
         synchronized (tradeLock(userId)) {
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
@@ -517,6 +525,13 @@ public class TradingAppService {
                     userId, cash, q.assets(), updated);
             return new CashImportResult(cash, q.assets(), updated);
         }
+    }
+
+    /** 读取最近账户快照（顶层账户卡数据源）。 */
+    public AccountSnapshot accountSnapshot(String userId) {
+        return accountSnapshotRepository.findLatest(userId)
+                .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null));
     }
 
     /** 自选导入结果。 */

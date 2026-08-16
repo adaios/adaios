@@ -430,6 +430,13 @@ class ApiService {
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return PositionImportResult.fromJson(data);
   }
+  /// 账户总体快照（GET /api/v1/trading/account：资产/可用/可取/参考市值/当日盈亏/盈亏）。
+  Future<AccountSnapshotDto> getAccount() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/account'), headers: _headers);
+    _check(resp);
+    return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 自选股列表（GET /api/v1/trading/watchlist，RFC 20260816）。
   Future<List<WatchlistItemDto>> getWatchlist() async {
     final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/watchlist'), headers: _headers);
@@ -1216,6 +1223,30 @@ class TradeRecordItem {
       buyPoint: map['buyPoint'] as String?,
       targetPrice: (map['targetPrice'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+    );
+  }
+}
+
+/// 账户总体快照（资金股份查询导入，券商口径）。
+class AccountSnapshotDto {
+  final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
+  final String snapshotDate;
+
+  AccountSnapshotDto({required this.assets, required this.cash, required this.available,
+      required this.withdrawable, required this.marketValue, required this.pnl,
+      required this.todayPnl, required this.snapshotDate});
+
+  factory AccountSnapshotDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AccountSnapshotDto(
+      assets: (m['assets'] as num?)?.toDouble() ?? 0,
+      cash: (m['cash'] as num?)?.toDouble() ?? 0,
+      available: (m['available'] as num?)?.toDouble() ?? 0,
+      withdrawable: (m['withdrawable'] as num?)?.toDouble() ?? 0,
+      marketValue: (m['marketValue'] as num?)?.toDouble() ?? 0,
+      pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
+      todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
+      snapshotDate: m['snapshotDate']?.toString() ?? '',
     );
   }
 }

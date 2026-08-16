@@ -251,6 +251,15 @@ public class TradingController {
                 : ResponseEntity.notFound().build();
     }
 
+    /** 账户总体快照（资产/可用/可取/参考市值/盈亏/当日盈亏，GET /api/v1/trading/account）。 */
+    @GetMapping("/account")
+    public ResponseEntity<?> accountSnapshot(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.accountSnapshot(userId));
+    }
+
     /** 资金股份查询导入（更新现金 + 精确成本，POST /api/v1/trading/imports/cash）。 */
     @PostMapping("/imports/cash")
     public ResponseEntity<?> importCash(

@@ -26,6 +26,7 @@ class _TradingPageState extends State<TradingPage> {
   List<PositionItem> _positions = [];
   List<WatchlistItemDto> _watchlist = [];
   List<SoldTradeDto> _sold = [];
+  AccountSnapshotDto? _account;
   double? _cash;
   double? _assets;
   bool _loading = true;
@@ -58,6 +59,7 @@ class _TradingPageState extends State<TradingPage> {
         widget.api.getPositions(),
         widget.api.getWatchlist(),
         widget.api.getSold(),
+        widget.api.getAccount(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -65,9 +67,10 @@ class _TradingPageState extends State<TradingPage> {
         _positions = (results[1] as PositionsResponse).positions;
         _watchlist = results[2] as List<WatchlistItemDto>;
         _sold = results[3] as List<SoldTradeDto>;
-        // 资金区块：现金来自组合快照（资金股份查询导入 → cashBalance）
-        _cash = _portfolio?.cashBalance;
-        _assets = (_portfolio?.totalValue ?? 0) + (_portfolio?.cashBalance ?? 0);
+        _account = results[4] as AccountSnapshotDto;
+        // 资金区块：账户快照（资金股份查询导入，券商口径）
+        _cash = _account?.cash;
+        _assets = _account?.assets;
         _loading = false;
       });
     } catch (e) {
@@ -261,21 +264,34 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
+  /// 账户总览卡（RFC 20260816：资金股份查询导入的券商口径 + 组合快照）。
+  /// 展示：总资产（主）/ 可用资金 / 可取 / 参考市值 / 当日盈亏 / 盈亏 / 快照日期。
   Widget _buildSnapshotRow() {
+    final a = _account;
     final p = _portfolio;
+    final hasAccount = a != null && a.assets > 0;
     return Row(children: [
-      _statCard('总市值', p?.totalValue ?? 0.0, format: '\$', color: AppColors.darkBlue),
+      _statCard('总资产', hasAccount ? a!.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0),
+          format: '¥', color: AppColors.darkBlue, big: true),
       const SizedBox(width: 12),
-      // #132 红涨绿亏（A股）：盈=红、亏=绿，与行情卡一致
-      _statCard('总盈亏', p?.totalPnl ?? 0.0, color: (p?.totalPnl ?? 0.0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      _statCard('可用资金', hasAccount ? a!.available : (p?.cashBalance ?? 0), format: '¥', color: AppColors.darkGrey3),
       const SizedBox(width: 12),
-      _statCard('现金', p?.cashBalance ?? 0.0, format: '\$', color: AppColors.darkGrey3),
+      _statCard('可取', hasAccount ? a!.withdrawable : 0, format: '¥', color: AppColors.darkGrey5),
       const SizedBox(width: 12),
-      _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkPurple),
+      _statCard('参考市值', hasAccount ? a!.marketValue : (p?.totalValue ?? 0), format: '¥', color: AppColors.darkPurple),
+      const SizedBox(width: 12),
+      // #132 红涨绿亏（A股）：盈=红、亏=绿
+      _statCard('当日盈亏', hasAccount ? a!.todayPnl : 0,
+          color: (hasAccount ? a!.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      const SizedBox(width: 12),
+      _statCard('盈亏', hasAccount ? a!.pnl : (p?.totalPnl ?? 0),
+          color: (hasAccount ? a!.pnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      const SizedBox(width: 12),
+      _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkGrey2),
     ]);
   }
 
-  Widget _statCard(String label, double value, {String format = '\$', required Color color}) {
+  Widget _statCard(String label, double value, {String format = '\$', required Color color, bool big = false}) {
     final isCount = format.isEmpty;
     return Expanded(
       child: Container(
@@ -292,7 +308,7 @@ class _TradingPageState extends State<TradingPage> {
             const SizedBox(height: 8),
             Text(
               isCount ? value.toInt().toString() : '$format${value.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color),
+              style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600, color: color),
             ),
           ],
         ),

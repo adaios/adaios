@@ -17,7 +17,7 @@
 ## 端点/控制器计数（Gradle `endpoints.txt` 单一口径，REVIEW #228）
 
 - Controller：**16**（`interfaces/*Controller.java`，含 MeController；GlobalExceptionHandler 非 Controller）
-- 端点：**66**（`build/resources/main/META-INF/endpoints.txt` 实测；含 /trading/advice、/trading/trades/parse、GET /trading/trades 流水、/admin/** 维护端点迁移、/trading/lookup 代码查名、/trading/positions/import 持仓导入、/trading/imports/save 文件留存、/trading/watchlist* 自选、/trading/sold* 清仓、/trading/imports/cash 资金）
+- 端点：**67**（`build/resources/main/META-INF/endpoints.txt` 实测；含 /trading/advice、/trading/trades/parse、GET /trading/trades 流水、/admin/** 维护端点迁移、/trading/lookup 代码查名、/trading/positions/import 持仓导入、/trading/imports/save 文件留存、/trading/watchlist* 自选、/trading/sold* 清仓、/trading/imports/cash 资金、/trading/account 账户快照）
 - 端点计数规则：以 Gradle 生成的 `endpoints.txt` 为准，禁止扫源码回退（REVIEW #228/#187）
 
 ## 运行环境

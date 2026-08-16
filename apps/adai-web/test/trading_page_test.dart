@@ -38,11 +38,17 @@ Map<String, dynamic> _positionJson({Map<String, dynamic>? extra}) => {
     };
 
 /// 基础交易页 mock：portfolio + positions + 空 trades/reviews。
+Map<String, dynamic> _accountJson() => {
+  'assets': 110504.88, 'cash': 292.88, 'available': 292.88, 'withdrawable': 292.88,
+  'marketValue': 110212.00, 'pnl': 15235.55, 'todayPnl': 0.0, 'snapshotDate': '2026-08-16',
+};
+
 MockClient _tradingMock() {
   return MockClient((request) async {
     final path = request.url.path;
     if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
     if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
     if (path == '/api/v1/trading/watchlist') return _json([]);
     if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -363,6 +369,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -403,6 +411,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -448,6 +458,7 @@ void main() {
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/positions' && request.method == 'GET') {
           return _json([current]);
         }
@@ -493,6 +504,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -523,6 +536,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -566,6 +581,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -598,6 +615,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -658,6 +677,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 
@@ -682,6 +703,8 @@ void main() {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
 

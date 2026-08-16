@@ -7,6 +7,7 @@ import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
@@ -56,7 +57,8 @@ class TradingAppServiceTest {
     private TradingAppService service(PositionRepository repo, RecordRepository records,
                                       TradingHistoryRepository history) {
         return new TradingAppService(repo, records, history,
-                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), mock(MarketDataSource.class));
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -434,7 +436,8 @@ class TradingAppServiceTest {
         RecordRepository records = mock(RecordRepository.class);
         when(records.findAll(any())).thenReturn(List.of());
         TradingAppService service = new TradingAppService(repo, records, history,
-                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), mock(MarketDataSource.class));
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
@@ -469,7 +472,7 @@ class TradingAppServiceTest {
                         new BigDecimal("-0.85"), 0)));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 
@@ -488,7 +491,7 @@ class TradingAppServiceTest {
         when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), market);
 
         List<Position> positions = service.getPositions("default");
 
@@ -506,7 +509,7 @@ void watchlistImport_upsertsBySymbol() {
     when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>());
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
-            mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
@@ -530,7 +533,7 @@ void soldImport_preservesExistingPsychology() {
             new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", "追高后恐慌割肉"))));
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
-            mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
 
     String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
             + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n";
@@ -551,9 +554,10 @@ void importCashQuery_updatesCashAndPreciseCost() {
                     LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null))));
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-            mock(SoldTradeRepository.class), mock(MarketDataSource.class));
+            mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class),
+            mock(MarketDataSource.class));
 
-    String content = "人民币: 余额:292.88  可用:292.88  资产:110504.88\n"
+    String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
             + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
             + "1 000725 京东方Ａ 5300.00 6.0421 5.8100 30793.00 -1229.57\n";
     var r = service.importCashQuery("default", content);
@@ -577,7 +581,7 @@ void soldUpdatePsychology_marksTrade() {
             new SoldTrade("600206", "有研新材", null, null, 3, "1+1", -12.82, "", ""))));
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
-            mock(MarketDataSource.class));
+            mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
 
     boolean ok = service.soldUpdatePsychology("default", "600206", "套牢死扛");
 
