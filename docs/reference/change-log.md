@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-16 | 生产部署（时段推送 + 知识层上线）| deploy-gate 全过（三关 + smoke 6 端点）；os/trading-engine/knowledge/ 上传生产 + .env 配 `ADAI_TRADING_KNOWLEDGE_PATH`（G-4 路径生产生效）+ `ADAI_PUSH_WECHAT_SENDKEY`（微信渠道生产就绪）；生产实测：京东方建议引擎引用 R81 真实规则（占比 100% 超 25% 上限 → reduce），知识加载 rules=11KB 全通 | — |
 | 2026-08-16 | 交易时段节奏推送（RFC 两阶段全做）| `PushChannel` 渠道插件化（kernel/push 接口 + Feed 默认 + 微信 Server酱，未配置 key 自动禁用）；`TradingSessionPushService` 三节点（早盘计划 9:15 / 午间跟踪 12:00 / 尾盘建议 14:50，cron 可配）+ 内容两阶段（LLM 自然语言生成，失败降级模板）；`MarketAlertService` 异动改走渠道（Feed+微信同发，真止损/早盘/午间/尾盘全链路）；择时状态读 `current.md`；feature-reference 补主动推送章节 | 后端 568（+8）|
 | 2026-08-16 | 真止损预警（A 最小闭环）| `MarketAlertService` 新增 `stop-loss` 检测：现价跌破用户预设止损位 → R66 硬判定（复用 G-3 引擎口径，与建议引擎一致）→ 主动推送 Feed「已跌破你的止损位 X，按纪律该清仓了」；未设止损持仓跳过（R68）；当日去重沿用；文案无第三视角；api-spec 补 push 类型说明 | 后端 560（+4）|
 | 2026-08-16 | 框架+插件审查 P2 清尾批 | FP-P2a~i：parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce）；R81 100万前提（超 100 万不强制，参考 R82-R95）；测试补断言；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录；编号对拍（R1-R120/E1-E30，K39）| 后端 556（+1）|
