@@ -90,6 +90,9 @@ ADAI_DATA_DIR=/opt/adaios/data
 ADAI_TRADING_KNOWLEDGE_PATH=
 ADAI_LIFE_KNOWLEDGE_PATH=
 ADAI_PROJECT_KNOWLEDGE_PATH=
+
+# RFC 20260816 微信推送渠道（Server酱，sct.ftqq.com 扫码获取；留空 = 仅 Feed 推送）
+ADAI_PUSH_WECHAT_SENDKEY=
 EOF
     echo "  ⚠ 请登录服务器编辑 /opt/adaios/backend/.env 填入 DEEPSEEK_API_KEY"
     echo "     然后手动执行: systemctl restart adai-core"

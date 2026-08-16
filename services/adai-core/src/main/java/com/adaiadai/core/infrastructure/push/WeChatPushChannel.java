@@ -21,7 +21,8 @@ import java.time.Duration;
  * Server酱（sct.ftqq.com）：扫码绑定微信拿 SendKey → HTTP POST → 微信服务号收到。
  * 比系统通知（FCM/APNs 需改 App + 注册推送服务）简单一个量级；个人自用免费额度够。
  * <p>
- * 配置：{@code adai.push.wechat.sendkey}（env {@code ADAI_WECHAT_SENDKEY}）；未配置 → 渠道不可用，静默跳过（Feed 不受影响）。
+ * 配置：{@code adai.push.wechat.sendkey}（env {@code ADAI_PUSH_WECHAT_SENDKEY}，Spring relaxed binding）；
+ * 未配置 → 渠道不可用，静默跳过（Feed 不受影响）。
  */
 @Component
 public class WeChatPushChannel implements PushChannel {
