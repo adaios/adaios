@@ -495,9 +495,11 @@ public class TradingAppService {
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细当日盈亏和
         double todayPnl = q.positions().stream().mapToDouble(TradingImportParser.CashPosition::todayPnl).sum();
+        BigDecimal principal = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::principal).orElse(BigDecimal.ZERO);
         accountSnapshotRepository.save(userId, new AccountSnapshot(
                 q.assets(), q.cash(), q.available(), q.withdrawable(),
-                q.marketValue(), q.pnl(), BigDecimal.valueOf(todayPnl), LocalDate.now()));
+                q.marketValue(), q.pnl(), BigDecimal.valueOf(todayPnl), principal, LocalDate.now()));
         synchronized (tradeLock(userId)) {
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
@@ -531,7 +533,8 @@ public class TradingAppService {
     public AccountSnapshot accountSnapshot(String userId) {
         return accountSnapshotRepository.findLatest(userId)
                 .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null));
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, null));
     }
 
     /** 自选导入结果。 */

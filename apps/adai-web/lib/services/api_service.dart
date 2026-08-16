@@ -1230,11 +1230,15 @@ class TradeRecordItem {
 /// 账户总体快照（资金股份查询导入，券商口径）。
 class AccountSnapshotDto {
   final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
+  final double principal;
   final String snapshotDate;
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
-      required this.todayPnl, required this.snapshotDate});
+      required this.todayPnl, required this.principal, required this.snapshotDate});
+
+  /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效；否则持仓浮盈）。
+  double get totalPnl => principal > 0 ? assets - principal : pnl;
 
   factory AccountSnapshotDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -1246,6 +1250,7 @@ class AccountSnapshotDto {
       marketValue: (m['marketValue'] as num?)?.toDouble() ?? 0,
       pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
       todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
+      principal: (m['principal'] as num?)?.toDouble() ?? 0,
       snapshotDate: m['snapshotDate']?.toString() ?? '',
     );
   }

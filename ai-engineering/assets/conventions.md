@@ -3,9 +3,9 @@ title: 规范归集（Conventions）
 description: 代码/文档/协作三组规范集中声明——从 CLAUDE.md 与 AI 工程层（原 docs/ai）归集；单一事实源，不复制到子项目文档
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 status: active
-lines: 54
+lines: 55
 depends-on: []
 related:
   - ../../CLAUDE.md
@@ -49,6 +49,7 @@ tags: [ai, assets, conventions]
 | W3 | 批次收尾 | `/ship`：测试→契约→登记→guard-meta 门禁→提交（见 `process/ship.md`）|
 | W4 | 决策沉淀 | 方案通过 → 决策入 `assets/adr/`；踩坑修复 → 入 `checklists/` + `assets/pitfalls.md` |
 | W5 | 提交规范 | 按批次主题（feat:/fix:/docs:），一提交一主题，不混合 |
+| W6 | 讨论与实施分离 | 讨论方向/方案/口径时只聊不动手；用户明确「开工/做/改」后才改代码与文档（2026-08-16 确立）|
 
 ---
 **追加方式**：新规范出现 → 补对应分组一行；改规范 → 本表为主，同步子项目指针。

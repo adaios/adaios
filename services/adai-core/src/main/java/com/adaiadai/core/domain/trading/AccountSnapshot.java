@@ -14,8 +14,9 @@ import java.time.LocalDate;
  * @param available    可用
  * @param withdrawable 可取
  * @param marketValue  参考市值
- * @param pnl          盈亏（券商口径，含手续费）
+ * @param pnl          持仓浮动盈亏（券商口径，含手续费——非总盈亏）
  * @param todayPnl     当日盈亏（持仓明细「当日盈亏」列求和，可空）
+ * @param principal    累计投入本金（用户提供，2026-08-16——总盈亏 = 资产 - 本金）
  * @param snapshotDate 快照日期
  */
 public record AccountSnapshot(
@@ -26,6 +27,7 @@ public record AccountSnapshot(
         BigDecimal marketValue,
         BigDecimal pnl,
         BigDecimal todayPnl,
+        BigDecimal principal,
         LocalDate snapshotDate
 ) {
     public AccountSnapshot {
@@ -36,6 +38,12 @@ public record AccountSnapshot(
         if (marketValue == null) marketValue = BigDecimal.ZERO;
         if (pnl == null) pnl = BigDecimal.ZERO;
         if (todayPnl == null) todayPnl = BigDecimal.ZERO;
+        if (principal == null) principal = BigDecimal.ZERO;
         if (snapshotDate == null) snapshotDate = LocalDate.now();
+    }
+
+    /** 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效；否则退回持仓浮盈）。 */
+    public BigDecimal totalPnl() {
+        return principal.compareTo(BigDecimal.ZERO) > 0 ? assets.subtract(principal) : pnl;
     }
 }

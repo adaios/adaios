@@ -284,14 +284,19 @@ class _TradingPageState extends State<TradingPage> {
       _statCard('当日盈亏', hasAccount ? a!.todayPnl : 0,
           color: (hasAccount ? a!.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
-      _statCard('盈亏', hasAccount ? a!.pnl : (p?.totalPnl ?? 0),
-          color: (hasAccount ? a!.pnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
+      _statCard('总盈亏', hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0),
+          color: (hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+          sub: hasAccount && a!.principal > 0 ? '本金 ${a.principal.toStringAsFixed(0)}' : null),
+      const SizedBox(width: 12),
+      _statCard('持仓浮盈', hasAccount ? a!.pnl : 0,
+          color: (hasAccount ? a!.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkGrey2),
     ]);
   }
 
-  Widget _statCard(String label, double value, {String format = '\$', required Color color, bool big = false}) {
+  Widget _statCard(String label, double value, {String format = '\$', required Color color, bool big = false, String? sub}) {
     final isCount = format.isEmpty;
     return Expanded(
       child: Container(
@@ -306,6 +311,11 @@ class _TradingPageState extends State<TradingPage> {
           children: [
             Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             const SizedBox(height: 8),
+            if (sub != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+              ),
             Text(
               isCount ? value.toInt().toString() : '$format${value.toStringAsFixed(2)}',
               style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600, color: color),

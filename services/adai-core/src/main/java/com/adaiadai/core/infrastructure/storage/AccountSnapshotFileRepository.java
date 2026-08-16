@@ -42,6 +42,7 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
                     num(n.path("marketValue")),
                     num(n.path("pnl")),
                     num(n.path("todayPnl")),
+                    num(n.path("principal")),
                     parseDate(n.path("snapshotDate").asText())));
         } catch (Exception e) {
             log.warn("读取账户快照失败 | userId={} | {}", userId, e.getMessage());
@@ -60,6 +61,7 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
             n.put("marketValue", s.marketValue());
             n.put("pnl", s.pnl());
             n.put("todayPnl", s.todayPnl());
+            n.put("principal", s.principal());
             n.put("snapshotDate", s.snapshotDate().toString());
             fileStorage.write(userId, PATH, MAPPER.writeValueAsString(n));
         } catch (Exception e) {
