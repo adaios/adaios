@@ -408,6 +408,8 @@ public class TradingAppService {
      */
     public Position updatePositionMeta(String userId, String symbol,
                                        String role, BigDecimal stopLossPrice) {
+        // P2-6（2026-08-17 走查）：与同文件其余 RMW 一致进 tradeLock——此前裸跑与并发交易互覆持仓
+        synchronized (tradeLock(userId)) {
         List<Position> current = new ArrayList<>(positionRepository.findAll(userId));
         for (int i = 0; i < current.size(); i++) {
             Position p = current.get(i);
@@ -424,6 +426,7 @@ public class TradingAppService {
             return updated;
         }
         return null;
+        }
     }
 
     /**

@@ -25,6 +25,9 @@ import java.util.List;
 @Repository
 public class MarketPushRepository {
 
+    // P2-8（2026-08-17 走查）：append 是读→改→写 RMW，4 线程调度下并发丢事件——per-user+date 锁
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> appendLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
     private static final Logger log = LoggerFactory.getLogger(MarketPushRepository.class);
     private static final String PUSHES_DIR = "trading/pushes/";
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -57,6 +60,8 @@ public class MarketPushRepository {
 
     /** 追加一条推送事件（读现有 → 追加 → 全量写回）。 */
     public void append(String userId, LocalDate date, MarketPushEvent event) {
+        Object lock = appendLocks.computeIfAbsent(userId + ":" + date, k -> new Object());
+        synchronized (lock) {
         List<MarketPushEvent> events = new ArrayList<>(findByDate(userId, date));
         events.add(event);
         try {
@@ -73,6 +78,7 @@ public class MarketPushRepository {
             fileStorage.write(userId, PUSHES_DIR + date + ".json", MAPPER.writeValueAsString(arr));
         } catch (Exception e) {
             log.warn("追加推送事件失败 | userId={} | date={} | {}", userId, date, e.getMessage());
+        }
         }
     }
 }

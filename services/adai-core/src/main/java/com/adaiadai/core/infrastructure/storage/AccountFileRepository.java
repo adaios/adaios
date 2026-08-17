@@ -140,6 +140,7 @@ public class AccountFileRepository implements AccountRepository {
 
     @Override
     public Account save(Account account) {
+        synchronized (FILE_LOCK) {
         List<Account> accounts = new ArrayList<>(findAll());
         int idx = -1;
         for (int i = 0; i < accounts.size(); i++) {
@@ -155,6 +156,7 @@ public class AccountFileRepository implements AccountRepository {
         }
         writeAll(accounts);
         return account;
+        }
     }
 
     @Override
@@ -180,13 +182,19 @@ public class AccountFileRepository implements AccountRepository {
 
     @Override
     public boolean delete(String userId) {
+        synchronized (FILE_LOCK) {
         List<Account> accounts = new ArrayList<>(findAll());
         boolean removed = accounts.removeIf(a -> a.userId().equals(userId));
         if (removed) {
             writeAll(accounts);
         }
         return removed;
+        }
     }
+
+    // P1-4（2026-08-17 走查）：单共享文件跨用户 RMW——per-user 锁挡不住并发，
+    // save/delete/writeAll 全部走文件级全局锁（B55）
+    private static final Object FILE_LOCK = new Object();
 
     private void writeAll(List<Account> accounts) {
         try {

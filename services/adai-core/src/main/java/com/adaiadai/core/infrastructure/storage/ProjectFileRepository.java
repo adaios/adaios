@@ -136,7 +136,7 @@ public class ProjectFileRepository implements TaskRepository {
     }
 
     @Override
-    public void delete(String userId, String id) {
+    public synchronized void delete(String userId, String id) { // P2-7（2026-08-17 走查）：与 save 同锁，防并发 save+delete 互覆
         Task task = findById(userId, id).orElse(null);
         if (task == null) {
             log.warn("任务删除失败：未找到 | id={}", id);

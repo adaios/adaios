@@ -83,8 +83,13 @@ public class RecordRetryService {
             return;
         }
         for (String userId : userIds) {
-            log.info("定时重补 | userId={}", userId);
-            retryUnprocessed(userId);
+            // P2-3（2026-08-17 走查）：per-user 隔离——某用户 findAll 抛异常不中断整批（对齐 MarketAlertService.poll）
+            try {
+                log.info("定时重补 | userId={}", userId);
+                retryUnprocessed(userId);
+            } catch (Exception e) {
+                log.warn("定时重补失败 | userId={} | {}", userId, e.getMessage());
+            }
         }
     }
 

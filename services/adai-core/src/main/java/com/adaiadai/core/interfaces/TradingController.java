@@ -516,7 +516,12 @@ public class TradingController {
             // #211：文件名符合 trading-engine 全流水线约定 `YYYY-MM-DD_主题.md`
             // （原硬编码 `review-{date}.md` 不符，已入库的候选文件一并按此改名）
             String fileName = date.toString() + "_交易复盘.md";
-            Files.writeString(inboxPath.resolve(fileName), content, StandardCharsets.UTF_8);
+            // P1-3（2026-08-17 走查）：原子写——tmp+move 防中途崩溃截断候选文件
+            Path target = inboxPath.resolve(fileName);
+            Path tmp = inboxPath.resolve(fileName + ".tmp");
+            Files.writeString(tmp, content, StandardCharsets.UTF_8);
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 
             log.info("复盘内容已提升为入库候选 | date={} | file={}", date, fileName);
             // #178：提示入库候选不会自动融入 AI context——需在 trading-engine 工作流审核融合后重建 knowledge/context
