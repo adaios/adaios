@@ -17,6 +17,7 @@ class _MemoryPageState extends State<MemoryPage> {
   DateTime _currentDate = DateTime.now();
   List<MemoryEntryResponse> _entries = [];
   bool _loading = true;
+  int _loadGen = 0; // W-P2-2 代际令牌：日期连点防乱序覆盖
   String? _error; // 后端故障时的人话错误（#108 区分「故障」vs「无数据」）
   List<String> _allDates = [];
   String? _activeTag;
@@ -65,12 +66,14 @@ class _MemoryPageState extends State<MemoryPage> {
   }
 
   Future<void> _load() async {
+    // W-P2-2（2026-08-17）：代际令牌——日期连点时旧响应不覆盖新日期（web 有守卫 app 无）
+    final gen = ++_loadGen;
     try {
       final entries = await widget.api.getMemory(date: _dateLabel);
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return; // 旧代丢弃
       setState(() { _entries = entries; _loading = false; _error = null; _activeTag = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = _errText(e); });
+      if (mounted && gen == _loadGen) setState(() { _loading = false; _error = _errText(e); });
     }
   }
 

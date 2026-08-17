@@ -98,7 +98,11 @@ class _AccountsPageState extends State<AccountsPage> {
 
   /// 插件开关（RFC 20260814）：trading/project 勾选 → PATCH 全量 plugins。
   Future<void> _togglePlugin(Account account, String plugin, bool on) {
-    _toggleQueue = _toggleQueue.then((_) => _doTogglePlugin(account, plugin, on));
+    // W-P2-3（2026-08-17）：catchError 恢复——非 ApiException 异常（网络等）不会让队列永久 error，
+    // 否则后续 toggle 全部拒绝（串行队列单点故障，F4 同类）
+    _toggleQueue = _toggleQueue
+        .catchError((_) {}) // 前序失败不阻断后续（已反馈，忽略）
+        .then((_) => _doTogglePlugin(account, plugin, on));
     return _toggleQueue;
   }
 
@@ -529,6 +533,7 @@ class _AccountsPageState extends State<AccountsPage> {
           ),
         ]),
         // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/project
+        // 08-15 前端×2（2026-08-17）：内置管理员插件受保护（enabled/删除有保护、插件开关此前无）
         const SizedBox(height: 10),
         Row(children: [
           const Text('插件',

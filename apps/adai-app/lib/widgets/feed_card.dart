@@ -447,6 +447,7 @@ class FeedCard extends StatelessWidget {
           headers: data.mediaHeaders,
           width: 96,
           height: 96,
+          cacheWidth: 192, // W-P2-4（2026-08-17）：96px 缩略图按 2x 降采样解码，避免全分辨率解码耗内存
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => Container(
             width: 96, height: 96,

@@ -204,7 +204,9 @@ class _FeedPageState extends State<FeedPage> {
               id: resp.recordId.isEmpty ? placeholderIds[i] : resp.recordId,
               type: FeedCardType.record,
               time: timeStr,
-              content: resp.summary.isEmpty ? fallback : resp.summary,
+              // W-P2-5（2026-08-17）：content 保留用户 caption（与 app _buildMediaSuccessCard 对齐），
+              // summary 单独放 AI 理解文本——之前 AI summary 占 content 双源重复
+              content: fallback,
               summary: resp.summary.isEmpty ? null : resp.summary,
               tags: resp.tags.isNotEmpty ? resp.tags : null,
               mode: CardMode.idle,

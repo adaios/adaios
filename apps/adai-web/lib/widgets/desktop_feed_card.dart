@@ -240,6 +240,7 @@ class DesktopFeedCard extends StatelessWidget {
             headers: data.mediaHeaders,
             width: 120,
             height: 90,
+            cacheWidth: 240, // W-P2-4（2026-08-17）：缩略图 2x 降采样解码
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => Container(
               width: 120, height: 90,
