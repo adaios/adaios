@@ -293,4 +293,14 @@ class TradingSessionPushServiceTest {
         // 缺行情 → 跳过保存（不覆盖旧快照）
         verify(acc, never()).save(any(), any());
     }
+    // ── 节假日守卫（P3，2026-08-17）──
+    @Test
+    void holiday_skipsPush() {
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 10, 1)), "2026-10-01 国庆应休市");
+        assertTrue(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 8, 17)), "2026-08-17 周一应开市");
+        assertTrue(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 8, 20)), "2026-08-20 周四应开市");
+    }
 }

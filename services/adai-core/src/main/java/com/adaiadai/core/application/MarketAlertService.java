@@ -205,7 +205,9 @@ public class MarketAlertService {
                     + " 已跌破你的止损位 " + fmt(p.stopLossPrice())
                     + "——按纪律（R66）该清仓了，要我给出建议吗？";
             case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 距止损位 " + fmt(p.stopLossPrice()) + " 不到 2%了——提前想好怎么走，别等插针（R66）";
+                    + " 距止损位 " + fmt(p.stopLossPrice()) + " 不到 "
+                    + nearStopLossPct.stripTrailingZeros().toPlainString()
+                    + "%了——提前想好怎么走，别等插针（R66）";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
                     + fmt(md.price())
                     + (p.stopLossPrice() != null

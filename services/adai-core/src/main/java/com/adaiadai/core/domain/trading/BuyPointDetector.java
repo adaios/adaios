@@ -19,7 +19,7 @@ public class BuyPointDetector {
 
     private final double pullbackPct;    // B1 回调幅度（0-1，默认 0.5）
     private final double shrinkRatio;    // 缩量阈值（默认 0.7）
-    private final double kdjLow;         // KDJ.J 低位阈值（默认 20）
+    private final double kdjLow;         // KDJ.J 低位阈值（课程锚点 J<13，P2-6 2026-08-17）
     private final double volumeSurge;    // B2 放量倍数（默认 1.5）
     private final int priorHighDays;     // 前高窗口（默认 20）
 

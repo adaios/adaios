@@ -38,6 +38,21 @@ public class SoldScoreService {
         this.klineService = klineService;
     }
 
+    /** P2-交易1（2026-08-17）：应用关闭时优雅关闭线程池（B53 检查点）。 */
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        klinePool.shutdown();
+        try {
+            if (!klinePool.awaitTermination(5, TimeUnit.SECONDS)) {
+                klinePool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            klinePool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("SoldScoreService K 线线程池已关闭");
+    }
+
     /** 单笔清仓的三维打分结果。 */
     public record SoldScore(String symbol, String name,
                             Integer buyPointScore, String buyPointSignal, String buyPointExplain,
@@ -51,12 +66,15 @@ public class SoldScoreService {
         for (SoldTrade t : trades) {
             futures.add(klinePool.submit(() -> scoreOne(t)));
         }
-        for (Future<SoldScore> f : futures) {
+        // P2-交易1：超时/失败不产空 symbol 占位行——返回该笔 symbol + 分数 null（前端显示 '—'，不糊弄）
+        for (int i = 0; i < futures.size(); i++) {
+            SoldTrade t = trades.get(i);
             try {
-                result.add(f.get(30, TimeUnit.SECONDS));
+                result.add(futures.get(i).get(30, TimeUnit.SECONDS));
             } catch (Exception e) {
-                log.warn("打分单笔超时/失败 | {}", e.getMessage());
-                result.add(new SoldScore("", "", null, null, "K 线拉取失败", null, null, null, ""));
+                log.warn("打分单笔超时/失败 | symbol={} | {}", t.symbol(), e.getMessage());
+                result.add(new SoldScore(t.symbol(), t.name(), null, null, "K 线拉取失败",
+                        executionScore(t), executionExplain(t), null, t.verdict()));
             }
         }
         return result;
@@ -88,7 +106,7 @@ public class SoldScoreService {
         List<Candle> uptoBuy = new ArrayList<>(candles.subList(0, idx + 1));
         // K 线不足 detector 最小长度（25 根）→ 无法判定，返回 null（数据不足不评分，不误判追高）
         if (uptoBuy.size() < 25) return null;
-        return new BuyPointDetector(0.5, 0.7, 20, 1.5, 20).detect(uptoBuy);
+        return new BuyPointDetector(0.5, 0.7, 13, 1.5, 20).detect(uptoBuy);
     }
 
     /** 买点维度分（完美图匹配度）：B2 突破 / B1 低吸 / B1? 候选 / 无形态。 */
@@ -101,10 +119,10 @@ public class SoldScoreService {
         }
     }
 
-    /** 执行维度分（verdict 纪律对照，R85 结果不决定对错纪律决定）。 */
+    /** 执行维度分（verdict 纪律对照——P3 2026-08-17：R85 实为「分仓 vs 重仓」，纪律决定对错来自复盘五步法，不再误挂 R85 编号）。 */
     private int executionScore(SoldTrade t) {
         String v = t.verdict();
-        if (v.contains("R66")) return 15;   // 扛单超 10%——止损纪律违反
+        if (v.contains("R66")) return 15;   // 扛单超 5%——止损纪律违反（阈值已对齐课程 R67/R72 3-5%）
         if (v.contains("R53")) return 45;   // 短持仓亏损——该涨不涨没处理
         if (t.holdPnlPct() >= 0) return 90; // 盈利了结
         return 65;                          // 亏损但按纪律执行

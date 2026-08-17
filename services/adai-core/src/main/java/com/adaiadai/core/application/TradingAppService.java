@@ -332,15 +332,26 @@ public class TradingAppService {
             for (PositionImportItem item : items) {
                 String symbol = item.symbol();
                 if (symbol == null || symbol.isBlank()) continue;
-                // name 缺失 → 行情补全（代码带名称）
-                String name = (item.name() == null || item.name().isBlank())
-                        ? (lookupName(symbol) != null ? lookupName(symbol) : symbol)
-                        : item.name();
+                // P2-交易22（2026-08-17）：avgCost/quantity 校验——缺失/非法会让下游 NPE 500
+                if (item.avgCost() == null || item.avgCost().signum() <= 0) {
+                    throw new TradingException("持仓导入：股票 " + symbol + " 的成本价缺失或非法（需 > 0）");
+                }
+                if (item.quantity() <= 0) {
+                    throw new TradingException("持仓导入：股票 " + symbol + " 的数量需 > 0");
+                }
+                // name 缺失 → 行情补全（P3：lookupName 只调一次，避免双网络请求）
+                String name = item.name();
+                if (name == null || name.isBlank()) {
+                    String looked = lookupName(symbol);
+                    name = looked != null ? looked : symbol;
+                }
 
                 boolean found = false;
+                boolean effectiveStopLoss = item.stopLossPrice() != null; // 导入项带止损
                 for (int i = 0; i < current.size(); i++) {
                     if (current.get(i).symbol().equals(symbol)) {
                         Position p = current.get(i);
+                        effectiveStopLoss = item.stopLossPrice() != null || p.stopLossPrice() != null;
                         current.set(i, new Position(symbol, name, item.quantity(), item.avgCost(), item.avgCost(),
                                 LocalDateTime.now(),
                                 item.entryDate() != null ? item.entryDate() : p.entryDate(),
@@ -357,7 +368,8 @@ public class TradingAppService {
                             item.entryDate() != null ? item.entryDate() : LocalDate.now(),
                             item.stopLossPrice(), item.buyPoint(), item.role()));
                 }
-                if (item.stopLossPrice() == null) {
+                // P3（2026-08-17）：已存在持仓且保留旧止损 → 不进 missingStopLoss（提示失真）
+                if (!effectiveStopLoss) {
                     missingStopLoss.add(symbol + " " + name);
                 }
                 imported++;
@@ -508,7 +520,8 @@ public class TradingAppService {
                 for (int i = 0; i < current.size(); i++) {
                     if (current.get(i).symbol().equals(t.symbol())) {
                         SoldTrade old = current.get(i);
-                        // 保留已有心理/verdict，刷新日期/涨幅
+                        // 保留已有心理标注，刷新日期/涨幅（P3 2026-08-17：verdict 下方统一重算，
+                        // 此处不再声称「保留 verdict」——确定性覆盖，避免注释误导）
                         current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
                                 t.holdDays(), t.tradeCount(), t.holdPnlPct(),
                                 old.verdict(), old.psychology()));

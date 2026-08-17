@@ -107,9 +107,31 @@ public class TradingSessionPushService {
 
     // ── 三节点 cron ──
 
+    /**
+     * P3（2026-08-17）：A 股法定节假日（2026-2027 主要休市日）——节假日不推送/不改账。
+     * cron 已排除周末（MON-FRI），此处补法定假日。仅维护主要节假日，临时调休不追。
+     */
+    static final java.util.Set<java.time.LocalDate> HOLIDAYS = java.util.Set.of(
+            // 2026 国庆（10-01 ~ 10-08）
+            java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 10, 2),
+            java.time.LocalDate.of(2026, 10, 5), java.time.LocalDate.of(2026, 10, 6),
+            java.time.LocalDate.of(2026, 10, 7), java.time.LocalDate.of(2026, 10, 8),
+            // 2027 元旦（1-01 ~ 1-03）+ 春节（约 2 月初）
+            java.time.LocalDate.of(2027, 1, 1), java.time.LocalDate.of(2027, 1, 4),
+            java.time.LocalDate.of(2027, 2, 15), java.time.LocalDate.of(2027, 2, 16),
+            java.time.LocalDate.of(2027, 2, 17), java.time.LocalDate.of(2027, 2, 18),
+            java.time.LocalDate.of(2027, 2, 19), java.time.LocalDate.of(2027, 2, 22)
+    );
+
+    /** 是否 A 股交易日（周末由 cron 排除；此处补法定节假日）。 */
+    static boolean isTradingDay(java.time.LocalDate date) {
+        return !HOLIDAYS.contains(date);
+    }
+
     /** 早盘计划（9:15）：持仓 + 止损/买点 + 今日关注。 */
     @Scheduled(cron = "${adai.trading.session.morning-cron:" + CRON_MORNING + "}")
     public void morningPlan() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "早盘计划", "morning-plan", this::buildMorningTemplate);
             pushToAll(userId, "早盘计划", content, "session", null, null);
@@ -119,6 +141,7 @@ public class TradingSessionPushService {
     /** 午间跟踪（12:00）：上午表现 + 是否触发止损 + 计划更新。 */
     @Scheduled(cron = "${adai.trading.session.midday-cron:" + CRON_MIDDAY + "}")
     public void middayTracking() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "午间跟踪", "midday-tracking", this::buildMiddayTemplate);
             pushToAll(userId, "午间跟踪", content, "session", null, null);
@@ -138,6 +161,7 @@ public class TradingSessionPushService {
      *  现金/可用/本金保持券商导入值与转账推导。 */
     @Scheduled(cron = "${adai.trading.session.close-update-cron:0 5 15 * * MON-FRI}")
     public void closeAccountUpdate() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             List<Position> positions = positionRepository.findAll(userId);
             if (positions.isEmpty()) return;
@@ -194,16 +218,24 @@ public class TradingSessionPushService {
     /** 收盘 15:10 自选股买点扫描推送（C2）：命中 B1/B2 → 「到买点了」。 */
     @Scheduled(cron = "${adai.trading.session.buy-point-cron:0 10 15 * * MON-FRI}")
     public void buyPointScan() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             List<WatchlistItem> watchlist = watchlistRepository.findAll(userId);
             if (watchlist.isEmpty()) return;
             List<WatchlistBuyPointService.WatchBuyPoint> hits =
                     buyPointService.scanWatchlist(watchlist);
             for (WatchlistBuyPointService.WatchBuyPoint h : hits) {
+                // P2-交易7（2026-08-17）：B1?（部分满足候选）不推送——「不硬推」声明；
+                // 只有正式 B1/B2 才推「到买点了」，B1? 留给 web 信号列灰显
+                if (h.buyPoint().endsWith("?")) {
+                    log.info("自选买点候选 B1? 不推送 | symbol={}", h.symbol());
+                    continue;
+                }
                 String content = h.buyPoint().startsWith("B1")
                         ? "📌 " + h.name() + "（" + h.symbol() + "）到 B1 买点区了：" + String.join("、", h.signals())
                         + "——按纪律设好止损再进（R68）"
-                        : "🚀 " + h.name() + "（" + h.symbol() + "）放量突破，B2 右侧信号：" + String.join("、", h.signals());
+                        : "🚀 " + h.name() + "（" + h.symbol() + "）放量突破，B2 右侧信号：" + String.join("、", h.signals())
+                        + "——按纪律设好止损再进（R68）";
                 pushToAll(userId, "买点提醒", content, "buy-point", h.symbol(), h.name());
             }
             log.info("自选买点推送 | userId={} | {} 命中", userId, hits.size());

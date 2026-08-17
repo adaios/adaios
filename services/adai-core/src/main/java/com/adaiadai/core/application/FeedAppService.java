@@ -367,9 +367,20 @@ public class FeedAppService {
     }
 
     private FeedEntry toPushEntry(MarketPushEvent p, LocalDate date) {
+        // P3（2026-08-17）：标题不再硬编码「行情提醒」——按 type 映射（早盘计划/买点提醒/复盘提醒等），
+        // Feed 里能区分各类推送；未知类型兜底「行情提醒」
+        String title = switch (p.type()) {
+            case "session" -> "阿呆的交易提醒";
+            case "buy-point" -> "买点提醒";
+            case "stop-loss" -> "止损预警";
+            case "near-stop-loss" -> "接近止损";
+            case "loss" -> "单日大跌提醒";
+            case "gain" -> "放飞提示";
+            default -> "行情提醒";
+        };
         return new FeedEntry(
                 "push", p.id(), null,
-                "行情提醒", p.message(), List.of("行情"),
+                title, p.message(), List.of("行情"),
                 p.time(), null, null, null, "trading",
                 date.format(DATE_FMT), null
         );

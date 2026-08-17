@@ -191,7 +191,10 @@ public class TradingAdviceAppService {
                     suggestion = "clear";
                     reason = ("【硬判定】" + view.stopLoss().message() + "，suggestion 修正为 clear。"
                             + (reason != null ? reason : "")).trim();
-                } else if (view.position().verdict() == PositionVerdict.OVER_WEIGHT && "buy".equals(suggestion)) {
+                } else if (view.position().verdict() == PositionVerdict.OVER_WEIGHT
+                        && "buy".equals(suggestion) && view.r81Applicable()) {
+                    // P2-交易21（2026-08-17）：输出侧硬判定须过 r81Applicable（总资产 <100 万前提）——
+                    // 超 100 万不强制 25% 上限（R82-R95 配置），与 prompt 段 392 行口径一致
                     suggestion = "reduce";
                     reason = ("【硬判定】" + view.position().message() + "，suggestion 由 buy 保守修正为 reduce。"
                             + (reason != null ? reason : "")).trim();
@@ -407,7 +410,7 @@ public class TradingAdviceAppService {
         sb.append("\n【止损硬判定（数据已注入，必须按此判定）】\n");
         sb.append("- 现价 < stopLossPrice（止损位）→ 判定已跌破止损位，suggestion=clear（R66）\n");
         sb.append("- 入场后 N 天未涨/持续亏损 → R53 候选（reduce/clear 参考）\n");
-        sb.append("- 买点关联应对：B1→持股/白线持有；B2/B3/SB1→S1 就走（R120）\n");
+        sb.append("- 买点关联应对：B1→持股/白线持有；B2/B3→S1 就走（R120）；SB1→破位严格止损（R46）\n");
         if (strategyOverview != null) {
             sb.append("\n【交易体系总纲（strategy.md v87）】\n").append(strategyOverview).append("\n");
         }

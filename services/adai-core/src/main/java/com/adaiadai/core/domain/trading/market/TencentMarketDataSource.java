@@ -36,6 +36,14 @@ public class TencentMarketDataSource implements MarketDataSource {
 
     private final HttpClient httpClient;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+    // P2-交易3（2026-08-17）：K 线按日缓存（东财被限时兜底不每请求都打腾讯）
+    private final Map<String, KlineCache> klineCache = new ConcurrentHashMap<>();
+
+    private record KlineCache(java.time.LocalDate date, List<Candle> candles) {
+        boolean sameDay() {
+            return date.equals(java.time.LocalDate.now());
+        }
+    }
 
     /**
      * 指数代码映射：内部标识 → 腾讯 API 代码
@@ -252,6 +260,11 @@ public class TencentMarketDataSource implements MarketDataSource {
     @Override
     public List<Candle> kline(String symbol, int limit) {
         if (symbol == null || symbol.isBlank()) return List.of();
+        // P2-交易3：按日缓存——同日已拉过且数据足够，直接复用（东财被限时避免每请求打腾讯）
+        KlineCache cached = klineCache.get(symbol);
+        if (cached != null && cached.sameDay() && cached.candles.size() >= Math.min(Math.max(limit, 10), 320)) {
+            return new ArrayList<>(cached.candles);
+        }
         String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
         String url = String.format("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s%s,day,,,%d,qfq",
                 prefix, symbol, Math.min(Math.max(limit, 10), 320));
@@ -275,6 +288,9 @@ public class TencentMarketDataSource implements MarketDataSource {
                 } catch (Exception ignored) {}
             }
             if (candles.size() > limit) candles = candles.subList(candles.size() - limit, candles.size());
+            if (!candles.isEmpty()) {
+                klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+            }
             return candles;
         } catch (Exception e) {
             log.warn("Tencent K线失败: {}", e.getMessage());
