@@ -154,6 +154,8 @@ public class AccountController {
     }
 
     private boolean isValidPlugins(List<String> plugins) {
+        // P3（2026-08-17）：查重——["trading","trading"] 此前合法落盘（消费端 Set 去重故行为正确，但数据脏）
+        if (plugins.stream().distinct().count() != plugins.size()) return false;
         return plugins.stream().allMatch(pluginRegistry::isValid);
     }
 

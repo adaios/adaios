@@ -118,8 +118,8 @@
 **domain 判定规则（AI 输出，RFC 20260814 D5）**
 
 按优先级匹配关键词，**只在用户已启用插件间判定**（无对应插件 → 该关键词不判该域）：
-- 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`（需启用 trading 插件）
-- 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`（需启用 project 插件）
+- 指标、K线、持仓、走势、复盘、买入、卖出、仓位、股票、大盘、行情、买卖 → `trading`（需启用 trading 插件）
+- 任务、进度、bug、需求、RFC、项目、待办、计划、开发 → `project`（需启用 project 插件）
 - 日常、想法、记录、心情、问题 → `life`
 
 > 无插件用户一律 `life`（单一 domain）。即使 AI 输出 `trading`/`project`，若该用户未启用对应插件，后端也会收敛为 `life`（`PluginService.gateDomain`）。插件名见 §16 `GET /me/plugins`。

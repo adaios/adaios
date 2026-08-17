@@ -480,6 +480,8 @@ class _MainPageState extends State<MainPage>
       case 'jpg': case 'jpeg': return 'image/jpeg';
       case 'webp': return 'image/webp';
       case 'gif': return 'image/gif';
+      case 'heic': return 'image/heic'; // P3（2026-08-17）：HEIC 此前误标 image/png
+      case 'heif': return 'image/heif';
       default: return 'image/png';
     }
   }

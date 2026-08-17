@@ -304,29 +304,20 @@ v1.0.0（adai-admin + 多账号）：
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
-| 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
 | 08-15 后端×6 | `AccountController.isValidPlugins` 不查重（`["trading","trading"]` 合法落盘；消费端 Set 去重故行为正确）| `AccountController.java:132-134` | P3 |
 | 08-15 后端×6 | `gateDomain` 对未知 domain 原样放行（AI 返回越界值保留，非本批引入）| `PluginService.java:46-55` | P3 |
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
-| 08-15 后端×6 | intent max_tokens 50→512 输出预算升 10 倍成本（可考虑关闭推理模式）| `DeepSeekAiClient.java:137` | P3 |
 | 08-15 后端×6 | 迁移走 `writeAll` 非原子（#126 预存债）| `AccountFileRepository.java:139-149` | P3 |
 | 08-15 docs×7 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5 五条（D25）| `docs/rfc/20260814-domain-plugin-model.md:5` | P3 |
 | 08-15 docs×7 | 根 CLAUDE.md 架构树缺 MeController + kernel/plugin（adai-core CLAUDE.md 已补、根未同步）| 根 `CLAUDE.md` | P3 |
 | 08-15 docs×7 | api-spec domain 判定关键词与代码不一致（trading 缺 股票/大盘/行情/买卖、project 缺 开发，与 P2-2 同源）| `docs/architecture/api-spec.md` | P3 |
 | 08-15 docs×7 | task-plugin-model T1.3 行仍写 owner 过滤、实现已被插件门控取代，未标 superseded | `docs/reference/task-plugin-model.md:19` | P3 |
-| 08-14 前端×8 | ImagePicker `limit` Web 静默失效（选图上限依赖截断兜底）| `input_bar.dart` | P3 |
 | 08-14 前端×8 | `_truncateForSnack` UTF-16 substring 可能劈开 emoji（SnackBar 半字符）| `main_page.dart` | P3 |
 | 08-14 前端×8 | `_mimeTypeOf` HEIC 默认误标 `image/png` | `input_bar.dart` | P3 |
 | 08-14 前端×8 | `Navigator.pop` 盲弹未守卫 | `main_page.dart:428` | P3 |
 | 08-14 前端×8 | `_showImageLimitToast` 在 setState 内副作用 | `main_page.dart:663` | P3 |
-| 08-14 前端×8 | askBatch 无「正在看图…」占位 | `main_page.dart` | P3 |
-| 08-14 前端×8 | 多图问答完整回答只在首图卡气泡需手动点开 | `main_page.dart` | P3 |
-| 08-14 前端×8 | 并发上传进度条互相覆盖 | `input_bar.dart` | P3 |
-| 08-14 docs×6 | api-spec v3.15 changelog 漏 #247 | `docs/architecture/api-spec.md` | P3 |
 | 08-14 docs×6 | `apiEndpoints: 21` 示例陈旧（实 51）| `docs/architecture/api-spec.md` | P3 |
-| 08-14 docs×6 | ask-batch 错误列表未限问句分支 | `docs/architecture/api-spec.md` | P3 |
-| 08-14 docs×6 | frontend-reference `AskResponse` 命名应为 `AskBatchResponse` | `docs/architecture/frontend-reference.md` | P3 |
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
 | 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
 | 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|

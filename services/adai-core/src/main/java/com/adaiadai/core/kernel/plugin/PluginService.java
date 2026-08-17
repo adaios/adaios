@@ -51,6 +51,11 @@ public class PluginService {
         if (PluginRegistry.PLUGIN_PROJECT.equals(domain) && !hasPlugin(userId, PluginRegistry.PLUGIN_PROJECT)) {
             return "life";
         }
+        // P3（2026-08-17）：未知 domain 原样放行会保留 AI 越界值 → 收敛 life（白名单，防脏数据进持久化）
+        if (!PluginRegistry.PLUGIN_TRADING.equals(domain) && !PluginRegistry.PLUGIN_PROJECT.equals(domain)
+                && !"life".equals(domain)) {
+            return "life";
+        }
         return domain;
     }
 
