@@ -239,7 +239,8 @@ cd services/adai-core && ./gradlew dependencies           # 查看依赖树
 > 🚩 **会话锚点：先看 [`docs/architecture/product-roadmap.md`](docs/architecture/product-roadmap.md)** —— 产品唯一蓝图，从这里拆任务、确认目标。以下为本版本即时状态。
 
 ### 当前焦点批
-- **文档治理（RFC [`20260815-docs-governance`](docs/rfc/20260815-docs-governance.md)，approved，2026-08-15）** 🔄：瘦身 + 单一事实源——新增 `docs/reference/status.md`（测试数/端点唯一真相）与 `docs/reference/change-log.md`（历史批次归档），本文件与 REVIEW 减负、P3 迁移 task-log；**v1.0.0 发布顺延**（用户决策：先治理流程，不着急功能开发）
+- **RFC 20260817 三项（[RFC](docs/rfc/20260817-trading-push-image-trade-log.md)，approved，2026-08-18）** ✅：①推送体验——push 卡专属样式（类型徽章）+ 结构化模板（总结/持仓/建议）+ per-user 推送开关（8 类型，写读双侧门控，app 左滑删/右滑设置）；②图片对话流——图片卡图置顶 turns 跟随（刷新态与聊天态一致）；③交易日志自动归集——截图/文字识别 → 当日候选去重 → 收盘 15:15 确认推送 → 确认落库（仅 trading 插件用户）；后端 654 · app 120 · web 98 · 端点 76（详见 change-log）
+- **文档治理（RFC [`20260815-docs-governance`](docs/rfc/20260815-docs-governance.md)，approved，2026-08-15）** ✅：瘦身 + 单一事实源——新增 `docs/reference/status.md`（测试数/端点唯一真相）与 `docs/reference/change-log.md`（历史批次归档），本文件与 REVIEW 减负、P3 迁移 task-log；**v1.0.0 发布顺延**（用户决策：先治理流程，不着急功能开发）
 - **research 目录整合（2026-08-15）** ✅：方法论合并 + 公司侧研究移出仓库至同级独立目录 `ai-context-research/`（按「个人/公司、新/旧、单仓多项目/单项目单库」前提）；阿呆早期设计归位 `docs/inbox/`；仓库不再有研究目录（详见 change-log）
 - **Domain=插件模型第二步（RFC [`20260814-domain-plugin-model`](docs/rfc/20260814-domain-plugin-model.md)，2026-08-15）** ✅：插件门控全通道——Account.plugins + PluginService + ContextEngine 全量门控 + D5 domain 收敛 + `/me/plugins` + Feed/promote 门控 + 三端显隐；连调待真实第二账号验证（详情见 change-log）
 

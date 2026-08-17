@@ -350,3 +350,31 @@ updatedAt: 2026-08-07
   "timestamp": "2026-08-16T09:30:00", "sourceRecordId": "rec_..."
 }]
 ```
+
+### 2.14 推送开关 `trading/push-settings.json`（RFC 20260817 新增）
+
+| 项 | 值 |
+|:---|:---|
+| 路径 | `trading/push-settings.json`（每用户一个）|
+| 格式 | JSON 对象（类型 → 开关），缺失/损坏默认全开 |
+| 真相源 | `PushSettingsRepository` |
+| 变更 | **MINOR（2026-08-18，RFC 20260817）**：新增 |
+
+```
+{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,
+ "loss":true,"gain":true,"break-cost":true,"market":true}
+```
+
+### 2.15 交易日志候选 `trading/trade-log/`（RFC 20260817 新增）
+
+| 项 | 值 |
+|:---|:---|
+| 路径 | `trading/trade-log/{yyyy-MM-dd}.json`（按日分片）|
+| 格式 | JSON 数组；候选**未落库**（待用户确认），确认后走 recordTrade 并清空当日 |
+| 真相源 | `TradeLogRepository` |
+| 变更 | **MINOR（2026-08-18，RFC 20260817）**：新增 |
+
+```
+[{"symbol":"002428","name":"云南锗业","direction":"SELL","price":null,
+  "volume":null,"source":"text","complete":false}]
+```
