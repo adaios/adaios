@@ -558,9 +558,10 @@ void importCashQuery_updatesCashAndPreciseCost() {
     when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
             new Position("000725", "京东方A", 5300, new BigDecimal("6.042"), new BigDecimal("6.042"),
                     LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null))));
+    AccountSnapshotRepository accountSnapshotRepository = mock(AccountSnapshotRepository.class);
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-            mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class),
+            mock(SoldTradeRepository.class), accountSnapshotRepository,
             mock(TransferRepository.class), mock(MarketDataSource.class));
 
     String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
@@ -571,8 +572,11 @@ void importCashQuery_updatesCashAndPreciseCost() {
     assertEquals(0, r.cash().compareTo(new BigDecimal("292.88")));
     assertEquals(0, r.assets().compareTo(new BigDecimal("110504.88")));
     assertEquals(1, r.updatedCost(), "精确成本（4 位）应更新 1 只");
-    verify(repo).saveCashBalance(eq("default"), org.mockito.ArgumentMatchers.argThat(
-            c -> c.compareTo(new BigDecimal("292.88")) == 0));
+    // S5（2026-08-17）现金单一真源：现金只落 account.json（AccountSnapshot），不再写 positions.md cashBalance
+    ArgumentCaptor<AccountSnapshot> snap = ArgumentCaptor.forClass(AccountSnapshot.class);
+    verify(accountSnapshotRepository).save(eq("default"), snap.capture());
+    assertEquals(0, snap.getValue().cash().compareTo(new BigDecimal("292.88")));
+    verify(repo, never()).saveCashBalance(any(), any()); // 不写 positions.md cashBalance
     // 成本更新为 6.0421
     ArgumentCaptor<java.util.List<Position>> cap = ArgumentCaptor.forClass(java.util.List.class);
     verify(repo).saveAll(eq("default"), cap.capture());

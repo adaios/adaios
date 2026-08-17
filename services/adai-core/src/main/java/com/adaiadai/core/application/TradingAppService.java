@@ -243,7 +243,11 @@ public class TradingAppService {
         // 2026-08-16 修复：组合快照用行情注入后的持仓（getPositions），否则 currentPrice=存储价
         // （=成本），盈亏/市值全错（此前 totalPnl 恒 ≈0，用户"资金导入不起作用"实为此因）
         List<Position> injected = getPositions(userId);
-        return PortfolioSnapshot.of(injected, positionRepository.cashBalance(userId));
+        // S5（2026-08-17）：现金唯一真源 = account.json 的 AccountSnapshot.cash（不再读 positions.md cashBalance）
+        java.math.BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash)
+                .orElse(java.math.BigDecimal.ZERO);
+        return PortfolioSnapshot.of(injected, cash);
     }
 
     /**
@@ -602,8 +606,7 @@ public class TradingAppService {
                 }
             }
             if (!positions.isEmpty()) positionRepository.saveAll(userId, positions);
-            // cashBalance 走 snapshot 保存（positions.md 的 cashBalance 字段）
-            positionRepository.saveCashBalance(userId, cash);
+            // S5（2026-08-17）：现金唯一真源 = account.json（上方已保存）——不再写 positions.md cashBalance
             log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只",
                     userId, cash, q.assets(), updated);
             return new CashImportResult(cash, q.assets(), updated);

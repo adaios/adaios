@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.AccountSnapshot;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
@@ -100,17 +102,20 @@ public class TradingAdviceAppService {
     private final MarketDataSource marketDataSource;
     private final AiClient aiClient;
     private final TradingRuleEngine ruleEngine;
+    private final AccountSnapshotRepository accountSnapshotRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TradingAdviceAppService(PositionRepository positionRepository,
                                    MarketDataSource marketDataSource,
                                    AiClient aiClient,
                                    TradingRuleEngine ruleEngine,
+                                   AccountSnapshotRepository accountSnapshotRepository,
                                    @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.aiClient = aiClient;
         this.ruleEngine = ruleEngine;
+        this.accountSnapshotRepository = accountSnapshotRepository;
         this.rulesPath = Paths.get(knowledgeDir, "rules.md").toAbsolutePath().normalize();
         this.strategyPath = Paths.get(knowledgeDir, "strategy.md").toAbsolutePath().normalize();
     }
@@ -287,8 +292,10 @@ public class TradingAdviceAppService {
             effectivePrices.put(p.symbol(), price);
             totalValue = totalValue.add(price.multiply(BigDecimal.valueOf(p.quantity())));
         }
-        // FP-P2：R81 分母 = 总资产（市值 + 现金余额，null 兜底 0）
-        BigDecimal cash = positionRepository.cashBalance(userId);
+        // FP-P2 + S5（2026-08-17）：R81 分母 = 总资产（市值 + 现金，唯一真源 = account.json 的 AccountSnapshot.cash）
+        BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash)
+                .orElse(BigDecimal.ZERO);
         if (cash == null) cash = BigDecimal.ZERO;
         BigDecimal totalAssets = totalValue.add(cash);
         // FP-P2b（2026-08-16）：R81 前提「100万以下」——超 100 万不适用 25% 上限硬信号（参考 R82-R95 配置）

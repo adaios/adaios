@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.AccountSnapshot;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -55,6 +57,15 @@ class TradingAdviceAppServiceTest {
         // G-3：注入真实规则引擎（判定口径统一，测试即验证引擎行为）
         return new TradingAdviceAppService(positions, market, ai,
                 new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                mock(AccountSnapshotRepository.class),
+                "../../os/trading-engine/knowledge/context");
+    }
+
+    /** 带现金快照的 service（S5 现金单一真源：R81 分母现金来自 AccountSnapshot）。 */
+    private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai,
+                                            AccountSnapshotRepository acc) {
+        return new TradingAdviceAppService(positions, market, ai,
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), acc,
                 "../../os/trading-engine/knowledge/context");
     }
 
@@ -365,12 +376,17 @@ class TradingAdviceAppServiceTest {
         PositionRepository repo = mock(PositionRepository.class);
         when(repo.findAll(any())).thenReturn(List.of(
                 pos("000725", "京东方A", 1000, "5.20", "5.46")));
-        when(repo.cashBalance(any())).thenReturn(new BigDecimal("1000000"));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of());
         AiClient ai = mock(AiClient.class);
         when(ai.generate(any(), any())).thenReturn("{\"advice\": [], \"summary\": \"无建议\"}");
-        TradingAdviceAppService svc = service(repo, market, ai);
+        // S5：现金单一真源——R81 分母现金来自 AccountSnapshot（旧口径 repo.cashBalance 已废弃）
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("1005460"), new BigDecimal("1000000"),
+                        new BigDecimal("1000000"), new BigDecimal("1000000"),
+                        new BigDecimal("5460"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null)));
+        TradingAdviceAppService svc = service(repo, market, ai, acc);
 
         TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
 

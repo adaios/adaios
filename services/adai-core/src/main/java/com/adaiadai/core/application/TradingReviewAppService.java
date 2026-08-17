@@ -2,6 +2,8 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.AccountSnapshot;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
@@ -48,17 +50,20 @@ public class TradingReviewAppService {
 
     private final RecordRepository recordRepository;
     private final PositionRepository positionRepository;
+    private final AccountSnapshotRepository accountSnapshotRepository;
     private final ContextEngine contextEngine;
     private final AiClient aiClient;
     private final TradingReviewFileRepository reviewRepository;
 
     public TradingReviewAppService(RecordRepository recordRepository,
                                    PositionRepository positionRepository,
+                                   AccountSnapshotRepository accountSnapshotRepository,
                                    ContextEngine contextEngine,
                                    AiClient aiClient,
                                    TradingReviewFileRepository reviewRepository) {
         this.recordRepository = recordRepository;
         this.positionRepository = positionRepository;
+        this.accountSnapshotRepository = accountSnapshotRepository;
         this.contextEngine = contextEngine;
         this.aiClient = aiClient;
         this.reviewRepository = reviewRepository;
@@ -79,7 +84,11 @@ public class TradingReviewAppService {
                 .toList();
 
         List<Position> positions = positionRepository.findAll(userId);
-        PortfolioSnapshot snapshot = positionRepository.snapshot(userId);
+        // S5（2026-08-17）：现金唯一真源 = account.json 的 AccountSnapshot.cash（不再用 positions.md snapshot）
+        java.math.BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash)
+                .orElse(java.math.BigDecimal.ZERO);
+        PortfolioSnapshot snapshot = PortfolioSnapshot.of(positions, cash);
 
         // 2. 复盘正文：当日记录 + 持仓（作为合成记录的 content，含交易关键词触发 trading 场景）
         String reviewBody = buildReviewBody(date, todayRecords, positions, snapshot);

@@ -1,5 +1,6 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -56,7 +57,8 @@ class TradingReviewAppServiceTest {
         TradingReviewFileRepository reviewRepository = mock(TradingReviewFileRepository.class);
 
         TradingReviewAppService service = new TradingReviewAppService(
-                recordRepository, positionRepository, contextEngine, aiClient, reviewRepository);
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, aiClient, reviewRepository);
 
         // ── 执行 ──
         LocalDate date = LocalDate.of(2026, 8, 1);
