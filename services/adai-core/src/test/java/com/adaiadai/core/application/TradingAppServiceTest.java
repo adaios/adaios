@@ -580,6 +580,41 @@ void importCashQuery_updatesCashAndPreciseCost() {
 }
 
 @org.junit.jupiter.api.Test
+void importCashQuery_parseFail_throwsAndNeverSavesZero() {
+    // P1-交易5（2026-08-17）修复：首行不是券商格式 → 抛错，绝不落零覆盖
+    PositionRepository repo = mock(PositionRepository.class);
+    when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+            mock(SoldTradeRepository.class), acc,
+            mock(TransferRepository.class), mock(MarketDataSource.class));
+
+    String bad = "随便贴的一段文字，不是通达信资金股份查询导出\n没有余额没有资产";
+    assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
+            () -> service.importCashQuery("default", bad),
+            "格式无法识别必须抛错而不是静默落零");
+    verify(acc, never()).save(any(), any());          // 不写 account.json
+    verify(repo, never()).saveCashBalance(any(), any()); // 不写 cashBalance
+}
+
+@org.junit.jupiter.api.Test
+void importCashQuery_emptyContent_throws() {
+    PositionRepository repo = mock(PositionRepository.class);
+    when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+            mock(SoldTradeRepository.class), acc,
+            mock(TransferRepository.class), mock(MarketDataSource.class));
+
+    assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
+            () -> service.importCashQuery("default", ""),
+            "空内容必须抛错");
+    verify(acc, never()).save(any(), any());
+}
+
+@org.junit.jupiter.api.Test
 void soldUpdatePsychology_marksTrade() {
     PositionRepository repo = mock(PositionRepository.class);
     SoldTradeRepository sold = mock(SoldTradeRepository.class);

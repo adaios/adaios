@@ -998,7 +998,12 @@ class _TradingPageState extends State<TradingPage> {
               onPressed: () async {
                 if (controller.text.trim().isEmpty) return;
                 Navigator.pop(ctx);
-                await onImport(controller.text);
+                // 2026-08-17（P1-交易5）：导入失败必须反馈——后端解析失败会 400 + 人话消息，这里透出
+                try {
+                  await onImport(controller.text);
+                } catch (e) {
+                  _toast('导入失败：${_extractApiError(e)}');
+                }
               },
               style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
               child: const Text('导入'),

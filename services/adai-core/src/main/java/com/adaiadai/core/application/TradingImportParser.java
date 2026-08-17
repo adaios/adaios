@@ -96,7 +96,8 @@ public final class TradingImportParser {
         List<CashPosition> positions = new ArrayList<>();
         List<String> lines = split(content);
         Matcher m = CASH_HEAD.matcher(lines.isEmpty() ? "" : lines.get(0));
-        if (m.find()) {
+        boolean headerMatched = m.find();
+        if (headerMatched) {
             cash.value = parseNum(m.group(1));
             available.value = parseNum(m.group(2));
             withdrawable.value = parseNum(m.group(3));
@@ -124,7 +125,7 @@ public final class TradingImportParser {
                     parseDoubleSafe(col[6], cells)));
         }
         return new CashQuery(cash.value, available.value, withdrawable.value,
-                marketValue.value, assets.value, pnl.value, positions);
+                marketValue.value, assets.value, pnl.value, positions, headerMatched);
     }
 
     // ── 工具 ──
@@ -190,5 +191,5 @@ public final class TradingImportParser {
     public record CashQuery(java.math.BigDecimal cash, java.math.BigDecimal available,
                             java.math.BigDecimal withdrawable, java.math.BigDecimal marketValue,
                             java.math.BigDecimal assets, java.math.BigDecimal pnl,
-                            List<CashPosition> positions) {}
+                            List<CashPosition> positions, boolean headerMatched) {}
 }

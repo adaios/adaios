@@ -546,6 +546,11 @@ public class TradingAppService {
     /** 导入资金股份查询：存账户快照（资产/可用/可取/市值/盈亏/当日盈亏）+ 更新 cashBalance + 精确成本。 */
     public CashImportResult importCashQuery(String userId, String content) {
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        // 2026-08-17（P1-交易5 修复）：解析失败（首行「余额/可用/可取/参考市值/资产/盈亏」未命中）
+        // 禁止落零覆盖——此前会把 account.json 资产/现金清零、cashBalance 置零且无提示（B51 检查点）
+        if (!q.headerMatched()) {
+            throw new TradingException("无法识别资金股份查询格式——请确认首行是「余额:… 可用:… 可取:… 参考市值:… 资产:… 盈亏:…」，且是通达信资金股份导出");
+        }
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细当日盈亏和
         double todayPnl = q.positions().stream().mapToDouble(TradingImportParser.CashPosition::todayPnl).sum();
         BigDecimal principal = accountSnapshotRepository.findLatest(userId)

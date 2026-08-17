@@ -49,7 +49,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P1-交易2 | recordTrade 只动现金不动市值：BUY 少计成交额、SELL 多计成交额 → 账户卡 15:05 前账目错误，快照现金滞后时 cash 可被推成负值 | `TradingAppService.java:137-148` | 买卖同步更新 marketValue |
 | P1-交易3 | closeAccountUpdate 部分行情缺失即用残缺市值覆盖总资产（旧值不可恢复）| `TradingSessionPushService.java:155,168-171` | 行情不全时跳过或保留旧市值 |
 | P1-交易4 | positionPercent 分母只算持仓不含现金（注释称含现金）→ 单仓+大现金每日误发「超 R81 减仓」（FP-P2 已修 bug 复发）| `TradingSessionPushService.java:327-341` | 分母改市值+现金（B50）|
-| P1-交易5 | importCashQuery 解析失败（CASH_HEAD 未命中）静默落零覆盖 account.json + cashBalance 置零 | `TradingAppService.java:519-553` | 解析失败禁止落零（B51）|
+| P1-交易5 | importCashQuery 解析失败（CASH_HEAD 未命中）静默落零覆盖 account.json + cashBalance 置零 | `TradingAppService.java:519-553` | ✅ 已修（2026-08-17 R3：headerMatched + 抛错 + web toast，见已修复区）|
 | P1-交易6 | CURRENT_MD 硬编码 `../../os/...` 相对路径（3487b00 只修了 TradingAdviceAppService，漏了第二个知识消费者）→ 生产择时状态恒「未知」| `TradingSessionPushService.java:60` | ✅ 已修（2026-08-17 R1：配置注入 + 不可读 warn 日志 + 2 测试；见已修复区）|
 | P1-交易7 | `_loadAll` 六请求合并 `Future.wait`：任一端点失败（如 buy-points K线抖动）→ 整页替换为错误页丢弃已展示数据（含静默刷新路径）| `trading_page.dart:74-81,98-104` | 致命/可降级请求分离（F41）|
 | P1-交易8 | 清仓三维打分按 symbol `.where(...).first`：同代码多笔交易分数错挂（两行显示第一笔分数）| `trading_page.dart:774-775` | 按列表顺序索引匹配或 (symbol,buyDate) 复合键（F42）|
@@ -97,6 +97,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| Review 修复批 R3（导入落零防护）| importCashQuery 解析失败禁止落零（P1-交易5 出表，B51）：headerMatched + TradingException 400 人话 + web 导入失败 toast；后端 620→622（+2）| ✅ 2026-08-17 |
 | Review 修复批 R1（择时路径 + 推送文案 + 持仓编辑）| CURRENT_MD 配置注入（生产择时状态恢复，P1-交易6 出表）；loss 文案如实化；**持仓编辑 404 修复**（PUT /positions/{symbol} 补端点，P2-交易23 出表）；web 记录交易默认止损 -7%（用户设定）；生产 5 只持仓按成本×0.93 补止损；后端 612→619（+7）· 端点 71→72 | ✅ 2026-08-17 |
 | 框架+插件审查 P2 清尾批（FP-P2a~i）| parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce，B45）；R81 100万前提（总资产超 100 万不强制，参考 R82-R95）；测试补断言（硬信号段 + currentPrice≤0）；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录 + §三同步；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录（09-scripts 行）；编号对拍（CLAUDE.md R1-R120/E1-E30 + agent-skill E1-E30，K39）；后端 556（+1）| ✅ 2026-08-16 |
 | 框架+插件审查修复批（FP-S1-S4 + FP-P1-P4）| yml 路径 11-context→knowledge/context（运行时断链根治，三官交叉印证）；R81 分母改总资产（现金纳入，+测试）；update-current.sh 幂等+时间戳语义+声明修正；R66 现价口径注明；总纲 §五 刷新全 ✅；引擎口径契约测试 RuleKnowledgeContractTest（B44）；rules-api.md §2/§3 同步；后端 555（+4）| ✅ 2026-08-16 |

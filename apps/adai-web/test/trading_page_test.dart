@@ -358,6 +358,10 @@ void main() {
       await tester.enterText(_field('价格'), '1500');
       await tester.enterText(_field('数量'), '100');
 
+      // 2026-08-17：价格填完止损位自动带出（默认 -7% = 1395），清空后提交才缺止损
+      expect(find.text('1395.00'), findsOneWidget, reason: '价格 1500 → 默认止损 1500×0.93=1395');
+      await tester.enterText(_field('止损位'), '');
+
       await tester.tap(find.text('提交'));
       await tester.pump();
 
