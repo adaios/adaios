@@ -333,6 +333,13 @@ v1.0.0（adai-admin + 多账号）：
 | 08-17 交易A-E×4 | pitfalls 复发信号依赖 debug 级日志（生产默认不输出）；生产可见的是 EastMoneyKlineDataSource:71 的 warn | `pitfalls.md:67` | P3 |
 | 08-17 交易A-E×4 | sold/score 示例 totalScore:89 实际序列化 89.0（JSON 等价，极轻微）| `api-spec.md:543` | P3 |
 | 08-17 交易A-E×4 | buy-point-rules 推送示例与实现微差（冒号/、分隔、文案前缀）| `buy-point-rules.md:70` | P3 |
+| 08-17 交易A-E×8 | importPositions name 兜底 `lookupName(symbol)` 判空与取值各调一次 → 双网络请求 | `TradingAppService.java:322-324` | P3 |
+| 08-17 交易A-E×8 | importPositions 已存在止损但导入项 stopLoss 为空时保留旧值却仍进 missingStopLoss 列表（提示失真）| `TradingAppService` | P3 |
+| 08-17 交易A-E×8 | soldImport 注释称「保留已有 verdict」但 D1 循环对全部条目重算（确定性覆盖）——verdict 保留是死逻辑/注释误导 | `TradingAppService.java:488-493` | P3 |
+| 08-17 交易A-E×8 | WeChatPushChannel 调度线程 catch InterruptedException 后置 interrupt 标志（影响后续调度，低危）| `WeChatPushChannel` | P3 |
+| 08-17 交易A-E×8 | Feed 推送标题硬编码「行情提醒」（FeedAppService.java:373）——早盘计划/买点提醒等标题丢失 | `FeedAppService.java:373` | P3 |
+| 08-17 交易A-E×8 | watchlist/sold/sold-score/transfer/transfers/buy-points/account/imports-cash 八端点无 controller 测试；closeAccountUpdate 与 buyPointScan 定时路径无测试 | `TradingControllerTest` | P3 |
+| 08-17 交易A-E×8 | recordTransfer 无金额上限/确认（误输大额即时改账）| `TradingAppService.recordTransfer` | P3 |
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
 | 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
