@@ -16,6 +16,8 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 # 项目审核状态报告
 
+> **2026-08-17 全维度走查（8 官独立并行 + 交叉印证）**：守护 7 PASS / 0 HIT。P0 无。**已修**（批 c98daf7）：buy-points score 量纲 100 倍（⭐前端/契约双官）、promote/Admin 硬编码路径（⭐产品/后端双官）、app _loadAux 早退吞锁、app 清仓打分 .first 错挂、positionPercent 现金分母、closeAdvice 节假日守卫、brief 降级记忆原文、TagIndex RMW 锁、CardMigration now() 回退、app totalPnl 兜底。**未修**（需用户拍板/后续批）：S6 买点参数、P1-9 B1 口径、S5 账户真源、S7 完美图、#179 鉴权、P1-交易4（positionPercent 现金分母——本次确认复发，下批必修）、web _loadDegradable 无锁、web Dialog 日期竞态、web 图片回执系统标签、web 交易成功无反馈、首屏失败伪装空态、admin 涨跌色相反（缺 darkRed）、web _extractApiError 丢人话、App Feed 卡意图/领域徽章（第一原则）、roadmap 缺插件/数据智能条目、RFC draft 已上线、promote 非原子写、节假日硬编码、R85 假引用已修、glossary 术语重复 6 处、复盘闭环断链（S9）、行为模式无回写（S10）、P3 迁移登记断裂（S11）。检查点：P23-28/U22-29/B55-61/D54-60/K44-50/V9-1..7 待入清单。
+
 常驻全量状态。每次 `/review` 更新本文件——未修复项滚动保留，已修复标 ✅ 移入已修复区，新问题追加。git 历史天然保留每次更新前的快照。
 
 ## 最近审核
