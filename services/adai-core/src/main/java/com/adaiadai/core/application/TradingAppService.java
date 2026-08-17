@@ -134,17 +134,24 @@ public class TradingAppService {
 
             positionRepository.saveAll(userId, currentPositions);
 
-            // 2026-08-16 手续费自理：现金 = 当前现金 - 买入成本(含费) + 卖出回款(扣费)
+            // P1-交易2（2026-08-17）：买卖本质是现金↔市值转移，总资产只变手续费。
+            // 旧实现只动现金不动市值 → BUY 少计成交额、SELL 多计成交额（账户卡 15:05 前账目错误）。
+            // 修：现金 ± 成交额（含费），市值 ∓ 价×量，总资产 = 现金 + 市值（不变式）。
             BigDecimal tradeCashDelta = direction == TradeDirection.BUY
                     ? CommissionCalculator.buyCost(symbol, price, volume).negate()
                     : CommissionCalculator.sellProceeds(symbol, price, volume);
+            BigDecimal tradeValueDelta = direction == TradeDirection.BUY
+                    ? price.multiply(BigDecimal.valueOf(volume))
+                    : price.multiply(BigDecimal.valueOf(volume)).negate();
             accountSnapshotRepository.findLatest(userId).ifPresent(current -> {
+                BigDecimal newCash = current.cash().add(tradeCashDelta);
+                BigDecimal newMarketValue = current.marketValue().add(tradeValueDelta);
                 accountSnapshotRepository.save(userId, new AccountSnapshot(
-                        current.assets().add(tradeCashDelta),
-                        current.cash().add(tradeCashDelta),
+                        newCash.add(newMarketValue), // 总资产 = 现金 + 市值（只差手续费）
+                        newCash,
                         current.available().add(tradeCashDelta),
                         current.withdrawable().add(tradeCashDelta),
-                        current.marketValue(), current.pnl(), current.todayPnl(),
+                        newMarketValue, current.pnl(), current.todayPnl(),
                         current.principal(), current.snapshotDate()));
             });
 

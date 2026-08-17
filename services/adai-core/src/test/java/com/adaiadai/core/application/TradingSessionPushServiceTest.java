@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
@@ -223,5 +224,73 @@ class TradingSessionPushServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(channel, times(1)).push(eq("adai"), captor.capture());
         assertTrue(captor.getValue().content().contains("择时状态未知"), "文件缺失应降级未知");
+    }
+
+    // ── 收盘账户更新（P1-交易3，2026-08-17）──
+
+    @Test
+    void closeAccountUpdate_allQuotes_persists() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
+                posWithPlan("600519", "贵州茅台", "1400.00", "1420.00", "1380.00", "B2", 100)
+        ));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "5.46", "1.2"),
+                "600519", quote("600519", "1420.00", "-0.3")
+        ));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("adai", "admin", true, null)));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
+                        new BigDecimal("10000"), new BigDecimal("10000"),
+                        new BigDecimal("140000"), new BigDecimal("2000"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
+                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                "/nonexistent/knowledge");
+
+        svc.closeAccountUpdate();
+
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("adai"), cap.capture());
+        // 市值 = 1000×5.46 + 100×1420 = 5460 + 142000 = 147460
+        assertEquals(0, cap.getValue().marketValue().compareTo(new BigDecimal("147460")));
+    }
+
+    @Test
+    void closeAccountUpdate_missingQuote_skipsSave() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
+                posWithPlan("600519", "贵州茅台", "1400.00", "1420.00", "1380.00", "B2", 100)
+        ));
+        MarketDataSource market = mock(MarketDataSource.class);
+        // 600519 缺行情（quote 没返回）→ 不应保存，旧快照保留
+        when(market.quote(any())).thenReturn(Map.of("000725", quote("000725", "5.46", "1.2")));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("adai", "admin", true, null)));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
+                        new BigDecimal("10000"), new BigDecimal("10000"),
+                        new BigDecimal("140000"), new BigDecimal("2000"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
+                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                "/nonexistent/knowledge");
+
+        svc.closeAccountUpdate();
+
+        // 缺行情 → 跳过保存（不覆盖旧快照）
+        verify(acc, never()).save(any(), any());
     }
 }

@@ -112,7 +112,9 @@ class _DesktopShellState extends State<DesktopShell> {
   Widget _buildPage(int i) {
     final entry = _items[i];
     // 交易页：传入当前可见页 label → 每次切到交易页自动刷新（行情/盈亏实时）
-    if (entry.label == 'trading') {
+    // P1-交易1 修复（2026-08-17）：label 是中文显示名（'交易'），内部标识在 plugin 字段（'trading'）
+    // 之前判 entry.label=='trading' 恒 false → 切入自动刷新从未生效（死代码）
+    if (entry.plugin == 'trading') {
       return TradingPage(api: _api, currentPage: _currentLabel);
     }
     return entry.pageBuilder(_api);

@@ -70,38 +70,55 @@ class _TradingPageState extends State<TradingPage> {
       _loading = _positions.isEmpty && _portfolio == null;
       _error = null;
     });
+    // P1-交易7（2026-08-17）：致命请求（组合/持仓/账户）失败才影响页面；已有数据时保留旧数据 + 提示
     try {
       final results = await Future.wait([
         widget.api.getPortfolio(),
         widget.api.getPositions(),
-        widget.api.getWatchlist(),
-        widget.api.getSold(),
         widget.api.getAccount(),
-        widget.api.getBuyPoints(),
       ]);
       if (!mounted) return;
       setState(() {
         _portfolio = results[0] as PortfolioSnapshotResponse;
         _positions = (results[1] as PositionsResponse).positions;
-        _watchlist = results[2] as List<WatchlistItemDto>;
-        _sold = results[3] as List<SoldTradeDto>;
-        _account = results[4] as AccountSnapshotDto;
-        _buyPoints = results[5] as List<BuyPointDto>;
+        _account = results[2] as AccountSnapshotDto;
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
         _assets = _account?.assets;
         _lastUpdated = DateTime.now().toString().substring(11, 19);
         _loading = false;
       });
-      // D3 打分异步加载：162 笔拉 K 线耗时（后端 16 并发 ~5s），不阻塞主数据展示
-      _loadSoldScore();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      // 有旧数据：保留展示（静默刷新失败不整页变白），仅首载失败才错误页
+      final hasData = _positions.isNotEmpty || _portfolio != null;
+      if (hasData) {
+        _toast('刷新失败：${_extractApiError(e)}');
+        setState(() => _loading = false);
+      } else {
+        setState(() { _error = _extractApiError(e); _loading = false; });
+      }
     }
+    // 可降级请求（自选/买点/清仓/打分）：异步拉取，失败静默（显示 '—'），不阻塞主数据
+    _loadDegradable();
+  }
+
+  /// 可降级请求：watchlist/buy-points/sold/sold-score（K 线重计算/数据展示），失败不打断页面。
+  Future<void> _loadDegradable() async {
+    try {
+      final watch = await widget.api.getWatchlist();
+      final sold = await widget.api.getSold();
+      final bps = await widget.api.getBuyPoints();
+      if (!mounted) return;
+      setState(() {
+        _watchlist = watch;
+        _sold = sold;
+        _buyPoints = bps;
+      });
+    } catch (_) {
+      // 自选/买点失败静默（信号列显示 —）
+    }
+    _loadSoldScore(); // 打分独立：162 笔 K 线耗时，失败也不影响
   }
 
   /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
@@ -769,10 +786,12 @@ class _TradingPageState extends State<TradingPage> {
               DataColumn(label: Text('买点分')), DataColumn(label: Text('执行分')), DataColumn(label: Text('总分')),
               DataColumn(label: Text('心理标注')),
             ],
-            rows: _sold.map((s) {
-              // D3 三维打分：按 symbol 匹配（分数是参考不是指令）
-              final sc = _soldScores.where((x) => x.symbol == s.symbol).toList();
-              final score = sc.isEmpty ? null : sc.first;
+            rows: _sold.asMap().entries.map((e) {
+              // D3 三维打分：按列表顺序索引匹配（P1-交易8 修复，2026-08-17）
+              // 后端 SoldScoreService.score 按 sold 列表顺序逐笔返回；同代码多笔时
+              // 旧实现按 symbol .first 会把两笔的分数都挂到第一笔上（错挂）
+              final s = e.value;
+              final score = e.key < _soldScores.length ? _soldScores[e.key] : null;
               return DataRow(cells: [
                 DataCell(Text(s.symbol, style: const TextStyle(fontSize: 12))),
                 DataCell(Text(s.name, style: const TextStyle(fontSize: 12))),

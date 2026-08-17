@@ -736,5 +736,73 @@ void soldUpdatePsychology_marksTrade() {
                 "不存在的 symbol → null");
         verify(repo, never()).saveAll(any(), any());
     }
+
+    // ── P1-交易2（2026-08-17）：recordTrade 买卖同步市值，总资产只变手续费 ──
+
+    @org.junit.jupiter.api.Test
+    void recordTrade_buy_updatesMarketValue_assetsOnlyFees() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("600519", "贵州茅台", 100, new BigDecimal("1400"), new BigDecimal("1420"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 1),
+                        new BigDecimal("1350"), "B1", "防守"))));
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
+                        new BigDecimal("10000"), new BigDecimal("10000"),
+                        new BigDecimal("140000"), new BigDecimal("2000"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = new TradingAppService(repo, records,
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
+                mock(MarketDataSource.class));
+
+        // 买入 100 股 @10：现金 -1000（无费简化），市值 +1000
+        service.recordTrade("default", "600519", "贵州茅台", TradeDirection.BUY,
+                new BigDecimal("10"), 100, LocalDate.of(2026, 8, 17),
+                new BigDecimal("9.3"), "B1", null, null);
+
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("default"), cap.capture());
+        AccountSnapshot u = cap.getValue();
+        assertEquals(0, u.cash().compareTo(new BigDecimal("8999.90")), "现金 10000 - 1000 - 手续费0.10");
+        assertEquals(0, u.marketValue().compareTo(new BigDecimal("141000")), "市值 +1000（100股@10）");
+        assertEquals(0, u.assets().compareTo(new BigDecimal("149999.90")), "总资产 = 现金+市值 = 150000 - 手续费0.10");
+    }
+
+    @org.junit.jupiter.api.Test
+    void recordTrade_sell_updatesMarketValue_assetsOnlyFees() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("600519", "贵州茅台", 200, new BigDecimal("1400"), new BigDecimal("1420"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 1),
+                        new BigDecimal("1350"), "B1", "防守"))));
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
+                        new BigDecimal("10000"), new BigDecimal("10000"),
+                        new BigDecimal("140000"), new BigDecimal("2000"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = new TradingAppService(repo, records,
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
+                mock(MarketDataSource.class));
+
+        // 卖出 100 股 @15：现金 +1500（无费简化），市值 -1500
+        service.recordTrade("default", "600519", "贵州茅台", TradeDirection.SELL,
+                new BigDecimal("15"), 100, LocalDate.of(2026, 8, 17),
+                null, null, null, null);
+
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("default"), cap.capture());
+        AccountSnapshot u = cap.getValue();
+        assertEquals(0, u.cash().compareTo(new BigDecimal("11499.10")), "现金 10000 + 1499.10（卖出回款扣费）");
+        assertEquals(0, u.marketValue().compareTo(new BigDecimal("138500")), "市值 -1500（100股@15）");
+        assertEquals(0, u.assets().compareTo(new BigDecimal("149999.10")), "总资产 = 现金+市值 = 150000 - 手续费0.90");
+    }
 }
 

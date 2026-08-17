@@ -152,9 +152,15 @@ public class TradingSessionPushService {
             java.math.BigDecimal marketValue = java.math.BigDecimal.ZERO;
             java.math.BigDecimal todayPnl = java.math.BigDecimal.ZERO;
             java.math.BigDecimal floatPnl = java.math.BigDecimal.ZERO;
+            int missingQuotes = 0;
             for (Position p : positions) {
                 MarketData md = quotes.get(p.symbol());
-                if (md == null || md.price() == null) continue;
+                if (md == null || md.price() == null) {
+                    // P1-交易3（2026-08-17）：行情缺失的持仓不计入 → 下方若存在缺失则跳过保存，
+                    // 避免用残缺市值覆盖总资产（旧值不可恢复）
+                    missingQuotes++;
+                    continue;
+                }
                 java.math.BigDecimal value = md.price().multiply(java.math.BigDecimal.valueOf(p.quantity()));
                 marketValue = marketValue.add(value);
                 if (md.yesterdayClose() != null) {
@@ -163,6 +169,14 @@ public class TradingSessionPushService {
                 }
                 floatPnl = floatPnl.add(md.price().subtract(p.avgCost())
                         .multiply(java.math.BigDecimal.valueOf(p.quantity())));
+            }
+            // P1-交易3：任一持仓缺行情 → 本次不覆盖（保留旧快照，等行情恢复）
+            if (missingQuotes > 0) {
+                log.warn("收盘账户更新：{} 只缺行情，跳过保存保留旧快照 | userId={} | 缺失={}",
+                        missingQuotes, userId, positions.stream()
+                                .filter(p -> quotes.get(p.symbol()) == null || quotes.get(p.symbol()).price() == null)
+                                .map(Position::symbol).toList());
+                return;
             }
             final java.math.BigDecimal fMarket = marketValue;
             final java.math.BigDecimal fToday = todayPnl;

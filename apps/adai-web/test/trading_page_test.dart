@@ -951,4 +951,29 @@ void main() {
     });
   });
 
+  group('P1-交易7 可降级请求', () {
+    testWidgets('buy-points 失败（500）：主数据正常渲染，不整页白屏', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') {
+          return http.Response('boom', 500); // 可降级：失败不打断页面
+        }
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      // 主数据正常（错误页不出现）
+      expect(find.text('加载失败'), findsNothing);
+      expect(find.text('总资产'), findsOneWidget);
+      expect(find.text('立昂微'), findsOneWidget);
+    });
+  });
+
 }

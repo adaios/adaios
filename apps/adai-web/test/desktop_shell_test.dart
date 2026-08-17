@@ -25,8 +25,13 @@ ApiService _api({List<String> plugins = const ['trading', 'project']}) {
     baseUrl: 'http://test',
     userId: 'default',
     client: MockClient((req) async {
-      if (req.url.path.endsWith('/api/v1/me/plugins')) {
+      final p = req.url.path;
+      if (p.endsWith('/api/v1/me/plugins')) {
         return _json(plugins);
+      }
+      // 交易页挂载需要的端点（P1-1 测试：切到交易页不应整页错误）
+      if (p.contains('/api/v1/trading/')) {
+        return _json(<String, dynamic>{});
       }
       return _json({'error': 'not mocked'}, status: 404);
     }),
@@ -90,6 +95,18 @@ void main() {
     // 已访问页面 offstage 保活
     expect(find.byType(MemoryPage, skipOffstage: false), findsOneWidget);
     expect(find.byType(FeedPage, skipOffstage: false), findsOneWidget);
+  });
+
+  testWidgets('P1-1 修复：交易页收到当前页标识（切入自动刷新不再死代码）', (tester) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('交易'));
+    await tester.pump();
+
+    // 之前 _buildPage 判 entry.label=='trading' 恒 false → TradingPage 永远 currentPage='trading' 默认值
+    // 修复后应收到当前可见页 label（'交易'），didUpdateWidget 切入刷新才可能触发
+    final tp = tester.widget<TradingPage>(find.byType(TradingPage));
+    expect(tp.currentPage, '交易', reason: '交易页应收到当前可见页 label，而非默认值');
   });
 
   testWidgets('时间线切换正常渲染', (tester) async {
