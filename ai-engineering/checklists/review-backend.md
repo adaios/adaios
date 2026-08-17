@@ -3,9 +3,9 @@ title: 后端代码审查检查清单
 description: backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-17
 status: active
-lines: 96
+lines: 102
 depends-on: []
 related: [../roles/backend-reviewer.md]
 tags: [review, checklist, backend]
@@ -94,3 +94,9 @@ tags: [review, checklist, backend]
 | B46 | 新增占比类指标必须核对**分母口径**（总资产 vs 总持仓市值）——R81 硬信号分母不含现金即此模式 | R81 占比恒 100% 错发 reduce（G-3 审查 P1，2026-08-16）|
 | B47 | 新功能**测试同批**：服务层业务逻辑 + 端点测试与功能同一批完成，不后置（解析/upsert/状态保留/写回关键分支必测）| 自选/清仓/资金业务逻辑后置补测（2026-08-16 反思）|
 | B48 | 交付前主动跑三件套门禁（guard-meta/align/guard.sh），不依赖 pre-commit 兜底；gradle 绿 ≠ 项目绿 | 部署后才补 feature-reference/guard 正则（2026-08-16 反思）|
+| B49 | 禁硬编码路径：知识/数据路径必须经 @Value/yml 注入（grep `os/trading-engine` 硬编码相对路径必须全部配置驱动）| CURRENT_MD 硬编码 ../../os/...（交易 A-E 审查 P1，2026-08-17，3487b00 只修一半）|
+| B50 | R81 占比分母=持仓市值+现金（总资产口径）；positionPercent 等新占比计算必须核对分母 | positionPercent 分母不含现金误发减仓（交易 A-E 审查 P1，2026-08-17）|
+| B51 | 导入解析失败禁止落零：CASH_HEAD 等解析未命中时不得用零值覆盖已有数据（失败返回错误，不静默写盘）| importCashQuery 解析失败覆盖 account.json（交易 A-E 审查 P1，2026-08-17）|
+| B52 | 现金单一真源：snapshot.cash / positions.md cashBalance / 转账推导必须收敛，账目类字段禁止多处独立推导 | 现金 3 真源（交易 A-E 审查战略，2026-08-17）|
+| B53 | 线程池必须 @PreDestroy shutdown；异步批量任务失败项不得产空 symbol 占位行 | SoldScoreService 16 线程池无关闭 + 30s 超时占位（交易 A-E 审查 P2，2026-08-17）|
+| B54 | 批量扫描按标的异常隔离：单只失败不中断整批（try/catch per item）| scanWatchlist 无异常隔离（交易 A-E 审查 P2，2026-08-17）|

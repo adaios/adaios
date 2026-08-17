@@ -3,9 +3,9 @@ title: 知识数据审查检查清单
 description: knowledge-reviewer 逐条检查项（人也能用）——os/ 消费链路/data/ 健康/隐私红线/闭环
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-17
 status: active
-lines: 80
+lines: 84
 depends-on: []
 related: [../roles/knowledge-reviewer.md]
 tags: [review, checklist, knowledge]
@@ -78,3 +78,7 @@ tags: [review, checklist, knowledge]
 | K37 | 自动刷新脚本必须**幂等** + 实测验证：重复运行不堆叠注记、空输入不产生占位符行、时间戳语义区分「文件刷新」与「状态更新」（防骗 build 门禁）| update-current.sh 非幂等 + 占位符（G-4 审查 P1/P3，2026-08-16）|
 | K38 | 规则口径 vs 原文抽检：spec/引擎/CLAUDE.md 声明的判定口径与 rules.md 原文逐条对拍（"收盘跌破" vs 现价等），不一致注明偏差 | R66 现价口径（G-4 审查 P1，2026-08-16）|
 | K39 | 输出样板编号对拍：Skill/Agent 样板引用的编号（E1-E25、R1-R60）与 knowledge/context 实际编号一致 | agent-skill E1-E25 vs 实际 E1-E30（G-5 审查 P2，2026-08-16）|
+| K40 | 规格草稿状态 vs 代码实现状态对拍：标注「待用户确认」的规格参数不得以硬编码默认值进入生产推送链路；未确认参数须为配置项或带「待确认」标记 | C2 5 参数待确认已硬编码上线每日推送（交易 A-E 审查战略，2026-08-17）|
+| K41 | 知识路径契约全消费者扫描：grep `os/trading-engine` 硬编码路径必须全部经 @Value/yml 注入；新增知识读取点必须复用统一配置 | CURRENT_MD 硬编码 3487b00 只修一半（交易 A-E 审查 P1，2026-08-17）|
+| K42 | 规则量化阈值锚点对拍：代码/文档引用 R 编号附带的量化阈值必须能在 rules.md/glossary 找到来源锚点；无锚点须标注「近似，待确认」| KDJ J<20 vs 课程 J<13、-10% 无锚（R72 是 3-5%）（交易 A-E 审查 P2，2026-08-17）|
+| K43 | 「样本匹配/完美图」类能力诚实性：声明「完美图/样本匹配」必须有样本库文件或明确标注「规则近似，样本未入库」| D3 自称完美图匹配实为规则阈值（交易 A-E 审查战略，2026-08-17）|

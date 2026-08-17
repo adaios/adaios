@@ -3,9 +3,9 @@ title: 文档契约审查检查清单
 description: docs-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-17
 status: active
-lines: 90
+lines: 97
 depends-on: []
 related: [../roles/docs-reviewer.md]
 tags: [review, checklist, docs]
@@ -88,3 +88,10 @@ tags: [review, checklist, docs]
 | D44 | 新建 docs/**（含 reference/architecture）文档必须带 frontmatter——guard-meta scope 只覆盖 _index/ai-engineering/rfc，reference/*.md 是盲区 | gap 无 frontmatter（框架+插件审查 P2，2026-08-16）|
 | D45 | 目录 rename/git mv 后 grep 范围须含 application.yml 默认路径 + ai-engineering/checklists + roles（D38 只覆盖 docs/ 与子项目 CLAUDE.md）| yml 残留 11-context（G-4 审查 P1，2026-08-16）|
 | D46 | status: active 正式文档内的「现状对照」表必须与同批 gap/change-log 结果一致或标注快照日期 | 总纲 §五 自相矛盾（框架+插件审查 S1，2026-08-16）|
+| D47 | RFC 落地即滚动：实现批次合入时同步刷新 RFC 实施记录/现状表（「待做」列不得残留已实现项）| data-intelligence RFC 待做列全是已实现（交易 A-E 审查 P2，2026-08-17）|
+| D48 | api-spec 变更记录版本行同步：新增端点批次必须在变更记录补版本行（v3.22+）| 15 端点无版本行（交易 A-E 审查 P2，2026-08-17）|
+| D49 | api-spec 响应示例=真实输出：示例 JSON 字段值/量纲/文案须与代码实际返回一致（score 量纲 0-100 等）| buy-points 示例 score:0.8 量纲错（交易 A-E 审查 P1，2026-08-17）|
+| D50 | guard-align A1 盲区：裸 @GetMapping/@PostMapping（无 path 属性的 Mapping 注解）不计入端点对齐，需人工对拍 endpoints.txt | A1 报 60 vs 真相源 71（交易 A-E 审查 P2，2026-08-17）|
+| D51 | 参数声明与接线同步：文档标注「参数可配」必须有 yml 配置接线；「待用户确认」的参数不得以硬编码默认值进生产 | 买点参数三处硬编码 0.5/0.7/20/1.5/20（交易 A-E 审查战略，2026-08-17）|
+| D52 | reference/ 目录纳入 frontmatter lines 校验（guard-meta scope 当前不含）| gap frontmatter lines 漂移（交易 A-E 审查 P3，2026-08-17）|
+| D53 | 定时任务表述对拍：文档「定时收市后更新为后续」等表述须与实际 cron 实现一致 | api-spec account 节与 15:05 cron 矛盾（交易 A-E 审查 P3，2026-08-17）|

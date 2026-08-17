@@ -3,9 +3,9 @@ title: 前端代码审查检查清单
 description: frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-17
 status: active
-lines: 87
+lines: 95
 depends-on: []
 related: [../roles/frontend-reviewer.md]
 tags: [review, checklist, frontend]
@@ -85,3 +85,11 @@ tags: [review, checklist, frontend]
 | F42 | 网络缩略图（Image.network）与本地预览同策略：cacheWidth 降采样 | Feed 缩略图全分辨率解码（走查 P2，2026-08-15）|
 | F43 | 失败重试 SnackBar 双端逐项对拍（show 前 clear + 成功后 hide）| F35 半闭环（走查 P3，2026-08-15）|
 | F44 | 上传成功卡 content/summary 同源策略双端对拍 | web caption 丢失（走查 P2，2026-08-15）|
+| F45 | 动态分支的字符串判等必须与实际值对拍：label（中文显示名）与内部标识（plugin/id）混用会产出永不命中的死分支；此类分支需壳层 widget 测试覆盖 | 切入自动刷新死代码 `entry.label=='trading'`（交易 A-E 审查 P1，2026-08-17）|
+| F46 | 并行 Future.wait 必须区分「致命」与「可降级」请求：K 线类重计算端点不得阻塞主数据；任一端点失败不得丢弃已展示数据（静默刷新失败应保留旧数据+人话提示）| 六请求合并 Future.wait 整页丢数据 + buy-points 阻塞首屏（交易 A-E 审查 P1/P2，2026-08-17）|
+| F47 | 按 symbol 关联的两张列表必须确认键唯一性：一对多（同 symbol 多笔）时按顺序索引或复合键匹配，禁止 .where(...).first 复用 | 清仓打分同代码多笔错挂（交易 A-E 审查 P1，2026-08-17）|
+| F48 | 全量刷新函数入口（首个 setState 前）必须有 mounted 守卫；所有 await _loadAll() 调用点在 await 前置守卫，不能只守 await 之后 | _loadAll 入口无守卫 + 导入回调 await 后直接调用（交易 A-E 审查 P2，2026-08-17）|
+| F49 | 页面颜色基准（红涨绿亏）必须全局一致：非盈亏语义列（评分/信号）不得借用盈亏色阶，空值占位符颜色不得由业务色推导 | 打分列绿=高分 vs 全局绿=亏 + '—' 渲染橙色（交易 A-E 审查 P2，2026-08-17）|
+| F50 | 关键词归类统计须防单字误配（否定/无关词）且计数口径（标注数 vs 模式命中数）需与展示文案一致 | D2 行为模式单字 contains 误配 + 重叠计数（交易 A-E 审查 P2，2026-08-17）|
+| F51 | 用户可见文案禁用无解释的内部规则编号（R81 等）与超卖描述（「行情实时」需与真实刷新机制一致）| 纪律遵守率实为胜率 + 行情实时夸大（交易 A-E 审查 P2/P3，2026-08-17）|
+| F52 | 新增端点必须配套：DTO 全量 fromJson 测试（含缺字段默认值）、mock 工厂去重、关键交互分支测试（账户卡本金 sub、转账 dialog、快捷导入失败 toast、sold-score 迟到渲染、切入自动刷新）| 交易新增 DTO 仅 BuyPointDto 有测试（交易 A-E 审查 P3，2026-08-17）|
