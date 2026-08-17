@@ -113,7 +113,7 @@ class FeedAppServiceTest {
         MarketPushRepository push = mock(MarketPushRepository.class);
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
-                        "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321，触发止损预警",
+                        "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321——单日大跌，留意风险（你还没设止损位，想好怎么走）",
                         "loss", "14:05")
         ));
 
@@ -133,7 +133,7 @@ class FeedAppServiceTest {
         MarketPushRepository push = mock(MarketPushRepository.class);
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
-                        "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321，触发止损预警",
+                        "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321——单日大跌，留意风险（你还没设止损位，想好怎么走）",
                         "loss", "14:05")
         ));
 
@@ -145,7 +145,7 @@ class FeedAppServiceTest {
         assertEquals("push_1", pushEntry.id());
         assertEquals("trading", pushEntry.domain());
         assertEquals("08-06", pushEntry.date());
-        assertTrue(pushEntry.content().contains("止损预警"));
+        assertTrue(pushEntry.content().contains("单日大跌"));
     }
 
     @Test

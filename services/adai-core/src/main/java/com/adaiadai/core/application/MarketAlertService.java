@@ -207,7 +207,7 @@ public class MarketAlertService {
             case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
                     + " 距止损位 " + fmt(p.stopLossPrice()) + " 不到 2%了——提前想好怎么走，别等插针（R66）";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
-                    + fmt(md.price()) + "，触发止损预警，注意风控";
+                    + fmt(md.price()) + "——单日大跌，留意风险（你还没设止损位，想好怎么走）";
             case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "
                     + fmt(md.price()) + "，关注放飞条件";
             default -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())

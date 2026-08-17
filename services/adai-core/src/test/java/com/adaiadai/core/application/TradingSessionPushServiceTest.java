@@ -53,6 +53,10 @@ class TradingSessionPushServiceTest {
 
     /** 双持仓：京东方（止损 4.9）+ 茅台（占比高触发 R81）。LLM 抛异常 → 走模板。 */
     private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai) {
+        return serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context");
+    }
+
+    private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir) {
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
@@ -75,7 +79,8 @@ class TradingSessionPushServiceTest {
         return new TradingSessionPushService(positions, market, accounts, pluginService,
                 new DefaultTradingRuleEngine(), ai, List.of(channel),
                 mock(AccountSnapshotRepository.class),
-                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class));
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                knowledgeDir);
     }
 
     private static String eq(String s) { return org.mockito.ArgumentMatchers.eq(s); }
@@ -169,7 +174,8 @@ class TradingSessionPushServiceTest {
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(channel),
                 mock(AccountSnapshotRepository.class),
-                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class));
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
 
@@ -177,5 +183,45 @@ class TradingSessionPushServiceTest {
         verify(channel, times(1)).push(eq("adai"), captor.capture());
         assertTrue(captor.getValue().content().contains("空仓"), "空仓文案应友好");
         assertFalse(captor.getValue().content().contains("R66"), "空仓不引用规则");
+    }
+
+    // ── 择时状态读取（P1 修复：配置路径注入，生产不再硬编码相对路径）──
+
+    @Test
+    void marketStage_readFromConfiguredDir() throws Exception {
+        // 配置目录里放 current.md（含「当前判断」行）→ 模板应带出真实择时判断
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("knowledge");
+        java.nio.file.Files.writeString(dir.resolve("current.md"),
+                "# 当前交易状态\n\n## 市场阶段\n\n**当前判断**：空头区间，谨慎操作，不追高\n");
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, dir.toString());
+
+        svc.morningPlan();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        assertTrue(captor.getValue().content().contains("空头区间"),
+                "配置路径应读到 current.md 的择时判断，实际: " + captor.getValue().content());
+        assertFalse(captor.getValue().content().contains("择时状态未知"), "不应回退到未知");
+    }
+
+    @Test
+    void marketStage_missingFile_fallsBackUnknown() {
+        // 配置目录无 current.md → 降级「择时状态未知」（不抛异常）
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai,
+                java.nio.file.Paths.get("/nonexistent/knowledge-dir").toString());
+
+        svc.morningPlan();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        assertTrue(captor.getValue().content().contains("择时状态未知"), "文件缺失应降级未知");
     }
 }

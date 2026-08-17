@@ -101,7 +101,8 @@ class MarketAlertServiceTest {
         PushChannel.PushMessage e = captor.getValue();
         assertEquals("loss", e.type());
         assertEquals("600519", e.symbol());
-        assertTrue(e.content().contains("止损预警"));
+        assertTrue(e.content().contains("单日大跌"));
+        assertTrue(e.content().contains("还没设止损位"));
     }
 
     @Test

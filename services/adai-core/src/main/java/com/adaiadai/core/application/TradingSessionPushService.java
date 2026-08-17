@@ -21,6 +21,7 @@ import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.push.PushChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -56,10 +57,6 @@ public class TradingSessionPushService {
     static final String CRON_MIDDAY = "0 0 12 * * MON-FRI";
     static final String CRON_CLOSE = "0 50 14 * * MON-FRI";
 
-    /** 择时状态来源：knowledge/context/current.md（G-4 后路径）。 */
-    static final Path CURRENT_MD = Paths.get("../../os/trading-engine/knowledge/context/current.md")
-            .toAbsolutePath().normalize();
-
     private static final String SESSION_SYSTEM_PROMPT = """
             你是阿呆，用户的个人 AI 助手，用自然、亲切、简洁的中文（无系统标签，像朋友聊天）。
             基于给出的持仓、行情与规则判定数据，生成{节点}消息。要求：
@@ -80,6 +77,8 @@ public class TradingSessionPushService {
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final WatchlistBuyPointService buyPointService;
     private final WatchlistRepository watchlistRepository;
+    /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
+    private final Path currentMd;
 
     public TradingSessionPushService(PositionRepository positionRepository,
                                      MarketDataSource marketDataSource,
@@ -90,7 +89,8 @@ public class TradingSessionPushService {
                                      List<PushChannel> pushChannels,
                                      AccountSnapshotRepository accountSnapshotRepository,
                                      WatchlistBuyPointService buyPointService,
-                                     WatchlistRepository watchlistRepository) {
+                                     WatchlistRepository watchlistRepository,
+                                     @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.accountRepository = accountRepository;
@@ -101,6 +101,8 @@ public class TradingSessionPushService {
         this.accountSnapshotRepository = accountSnapshotRepository;
         this.buyPointService = buyPointService;
         this.watchlistRepository = watchlistRepository;
+        this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
+        log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
 
     // ── 三节点 cron ──
@@ -212,15 +214,17 @@ public class TradingSessionPushService {
 
     private String readMarketStage() {
         try {
-            if (Files.isReadable(CURRENT_MD)) {
-                for (String line : Files.readAllLines(CURRENT_MD, StandardCharsets.UTF_8)) {
+            if (Files.isReadable(currentMd)) {
+                for (String line : Files.readAllLines(currentMd, StandardCharsets.UTF_8)) {
                     if (line.contains("当前判断")) {
                         return line.replace("**", "").strip();
                     }
                 }
+            } else {
+                log.warn("时段推送：current.md 不可读 | {}", currentMd);
             }
         } catch (Exception e) {
-            log.warn("时段推送：current.md 读取失败 | {}", e.getMessage());
+            log.warn("时段推送：current.md 读取失败 | {} | {}", currentMd, e.getMessage());
         }
         return "择时状态未知";
     }
