@@ -146,6 +146,30 @@ public class TradingReviewAppService {
                 });
     }
 
+    /**
+     * 当前持仓一行摘要（简报注入用，2026-08-17）。
+     * <p>
+     * 防止简报 LLM 拿历史买入记录自行算盈亏（曾产出「京东方浮盈11.73%」而实际亏 3.8%）。
+     * 每行：名称（代码）成本 X 现价 Y 盈亏 Z%（权威口径，勿从旧记录推算）。
+     */
+    public List<String> positionSummaryLines(String userId) {
+        List<Position> positions = positionRepository.findAll(userId);
+        List<String> lines = new java.util.ArrayList<>();
+        for (Position p : positions) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(p.name()).append("（").append(p.symbol()).append("）")
+                    .append(" 成本 ").append(p.avgCost() != null ? p.avgCost().stripTrailingZeros().toPlainString() : "-")
+                    .append(" 现价 ").append(p.currentPrice() != null ? p.currentPrice().stripTrailingZeros().toPlainString() : "-")
+                    .append(" 盈亏 ").append(p.pnl() != null ? p.pnl().setScale(2).toPlainString() : "-")
+                    .append(" 盈亏% ").append(p.pnlPercent() != null ? p.pnlPercent().setScale(2).toPlainString() : "-");
+            if (p.stopLossPrice() != null) {
+                sb.append(" 止损 ").append(p.stopLossPrice().stripTrailingZeros().toPlainString());
+            }
+            lines.add(sb.toString());
+        }
+        return lines;
+    }
+
     // ── 内部方法 ──
 
     /**

@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -120,6 +121,27 @@ class MarketAlertServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(push, times(1)).push(eq("default"), captor.capture());
         assertEquals("gain", captor.getValue().type());
+    }
+
+    @Test
+    void lossPush_withStopLossSet_mentionsStopLossLine() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600519", quote("600519", "-3.50")));
+        PositionRepository positions = mock(PositionRepository.class);
+        // 已设止损（2026-08-17 用户补止损）→ 文案应提止损位而非「还没设止损位」
+        Position p = new Position("600519", "贵州茅台", 200, new BigDecimal("8.00"),
+                new BigDecimal("9.00"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal("7.44"), "B1", null);
+        when(positions.findAll(anyString())).thenReturn(List.of(p));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        build(market, positions, true, push).poll("default");
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, times(1)).push(eq("default"), captor.capture());
+        assertTrue(captor.getValue().content().contains("止损位 7.44"), "已设止损 → 应提止损位");
+        assertFalse(captor.getValue().content().contains("还没设止损位"), "已设止损 → 不应再说没设");
     }
 
     @Test

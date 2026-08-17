@@ -245,6 +245,22 @@ public class BriefAppService {
             sb.append("User had trading activity today. Suggest generating a review note.\n\n");
         }
 
+        // 2026-08-17：注入真实持仓快照——防止 LLM 拿历史买入记录自行算盈亏（曾产出「京东方浮盈11.73%」而实际亏 3.8%）
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            try {
+                List<String> posLines = tradingReviewAppService.positionSummaryLines(userId);
+                if (!posLines.isEmpty()) {
+                    sb.append("Current positions (authoritative, use these for P&L — never compute from old records):\n");
+                    for (String line : posLines) {
+                        sb.append("- ").append(line).append("\n");
+                    }
+                    sb.append("\n");
+                }
+            } catch (Exception e) {
+                log.debug("Brief 持仓快照注入失败: {}", e.getMessage());
+            }
+        }
+
         // ── Domain activity signals ──
         try {
             DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity(userId);
