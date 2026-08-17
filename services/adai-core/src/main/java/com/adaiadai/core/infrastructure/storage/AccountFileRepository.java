@@ -190,10 +190,16 @@ public class AccountFileRepository implements AccountRepository {
 
     private void writeAll(List<Account> accounts) {
         try {
-            Files.createDirectories(accountsPath().getParent());
-            Files.writeString(accountsPath(),
+            Path target = accountsPath();
+            Files.createDirectories(target.getParent());
+            // W-P2-7（2026-08-17）：原子写——先写临时文件再 move 替换。
+            // 此前 Files.writeString 截断直写，写一半崩溃 → accounts.json 损坏 → 全系统起不来
+            Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+            Files.writeString(tmp,
                     objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(accounts),
                     StandardCharsets.UTF_8);
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new StorageException("写入账号文件失败: " + accountsPath(), e);
         }

@@ -216,16 +216,21 @@ public class MemoryService {
 
             // 查找并移除匹配的记录（recordId 或 cardId 双匹配——08-14 修复：对话卡删除
             // 时 cardId=卡片 id，旧卡 card_xxx 与记录 rec_xxx 分离导致记忆残留）
+            // W-P2-10（2026-08-17）：contains 哨兵匹配误删（rec_1 命中 rec_10）→ 整行精确匹配
             String recordIdMarker = "recordId: " + recordId;
             String cardIdMarker = "cardId: " + recordId;
-            if (!content.contains(recordIdMarker) && !content.contains(cardIdMarker)) continue;
+            boolean found = content.lines().anyMatch(l ->
+                    l.strip().equals(recordIdMarker) || l.strip().equals(cardIdMarker));
+            if (!found) continue;
 
             StringBuilder sb = new StringBuilder();
             Matcher matcher = ENTRY_SPLIT.matcher(content);
             boolean removed = false;
             while (matcher.find()) {
                 String entry = matcher.group();
-                if (entry.contains(recordIdMarker) || entry.contains(cardIdMarker)) {
+                boolean entryMatch = entry.lines().anyMatch(l ->
+                        l.strip().equals(recordIdMarker) || l.strip().equals(cardIdMarker));
+                if (entryMatch) {
                     removed = true;
                 } else {
                     sb.append(entry).append("\n");
@@ -686,7 +691,10 @@ public class MemoryService {
             log.warn("序列化 patterns/preferences 失败: {}", e.getMessage());
         }
 
-        String suggestion = memory.suggestion() != null ? memory.suggestion() : "";
+        // W-P2-10（2026-08-17）：suggestion 单行化——含换行会破坏 frontmatter 解析（多行截断）
+        String suggestion = memory.suggestion() != null
+                ? memory.suggestion().replace("\n", " ").replace("\r", " ").strip()
+                : "";
         return """
                 ---
                 id: %s
@@ -785,9 +793,12 @@ public class MemoryService {
                 String suggestion = fields.getOrDefault("suggestion", null);
                 if ("null".equals(suggestion)) suggestion = null;
                 String createdAtStr = fields.getOrDefault("createdAt", "");
-                LocalDateTime createdAt = createdAtStr.isBlank()
-                        ? LocalDateTime.now()
-                        : LocalDateTime.parse(createdAtStr);
+                // W-P2-10（2026-08-17）：createdAt 缺失/非法不再回退 now()——脏数据用 now() 掩盖会
+                // 把旧记忆归到今天（G2 同款坑）；解析失败该条目跳过（外层 catch）
+                if (createdAtStr.isBlank()) {
+                    throw new IllegalArgumentException("createdAt 缺失");
+                }
+                LocalDateTime createdAt = LocalDateTime.parse(createdAtStr);
 
                 List<String> tags = parseTags(fields.getOrDefault("tags", "[]"));
                 List<MemoryPattern> patterns = parsePatterns(fields.getOrDefault("patterns", "[]"));

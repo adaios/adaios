@@ -4,7 +4,10 @@ import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.engine.ContextContributor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -16,23 +19,42 @@ import java.util.stream.Collectors;
  * 面向消费方：ContextEngine（知识/贡献者门控）、FeedAppService（行情卡）、
  * RecordController/QuestionAppService（D5 domain 收敛）、MeController（前端门控）、
  * TradingController（promote 反哺仅插件用户）。
+ * <p>
+ * 性能（08-15 后端×6，2026-08-17）：enabledPlugins 被消费方高频调用（每请求多次），
+ * 每次读 accounts.json 全量解析 → 30 秒 TTL 缓存；admin 改插件后 invalidate 立即生效。
  */
 @Component
 public class PluginService {
 
+    private static final long CACHE_TTL_MS = 30_000;
+
     private final AccountRepository accountRepository;
     private final PluginRegistry registry;
+    private final Map<String, CacheEntry> pluginCache = new ConcurrentHashMap<>();
+
+    private record CacheEntry(Set<String> plugins, long cachedAt) {}
 
     public PluginService(AccountRepository accountRepository, PluginRegistry registry) {
         this.accountRepository = accountRepository;
         this.registry = registry;
     }
 
-    /** 用户启用的插件集合（未知插件名被过滤）。账号不存在 → 空（只给基础服务）。 */
+    /** 用户启用的插件集合（未知插件名被过滤）。账号不存在 → 空（只给基础服务）。30 秒 TTL 缓存。 */
     public Set<String> enabledPlugins(String userId) {
-        return accountRepository.findById(userId)
+        CacheEntry cached = pluginCache.get(userId);
+        if (cached != null && System.currentTimeMillis() - cached.cachedAt() < CACHE_TTL_MS) {
+            return cached.plugins();
+        }
+        Set<String> plugins = accountRepository.findById(userId)
                 .map(a -> a.plugins().stream().filter(registry::isValid).collect(Collectors.toSet()))
                 .orElse(Set.of());
+        pluginCache.put(userId, new CacheEntry(Set.copyOf(plugins), System.currentTimeMillis()));
+        return plugins;
+    }
+
+    /** admin 改插件后调用：立即失效缓存，下一次读取重解析（2026-08-17）。 */
+    public void invalidate(String userId) {
+        pluginCache.remove(userId);
     }
 
     public boolean hasPlugin(String userId, String plugin) {

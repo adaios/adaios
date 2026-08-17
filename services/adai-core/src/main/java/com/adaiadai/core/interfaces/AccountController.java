@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.slf4j.Logger;
@@ -37,10 +38,13 @@ public class AccountController {
 
     private final AccountRepository accountRepository;
     private final PluginRegistry pluginRegistry;
+    private final PluginService pluginService;
 
-    public AccountController(AccountRepository accountRepository, PluginRegistry pluginRegistry) {
+    public AccountController(AccountRepository accountRepository, PluginRegistry pluginRegistry,
+                             PluginService pluginService) {
         this.accountRepository = accountRepository;
         this.pluginRegistry = pluginRegistry;
+        this.pluginService = pluginService;
     }
 
     /** 账号列表（返回全部，前端按 enabled 过滤选号）。 */
@@ -82,6 +86,7 @@ public class AccountController {
             return ResponseEntity.badRequest().body(Map.of("error", "plugins 仅允许 " + pluginRegistry.all()));
         }
         Account account = accountRepository.save(new Account(userId, role, true, LocalDate.now(), plugins));
+        pluginService.invalidate(userId);
         log.info("创建账号: {} role={} plugins={}", userId, role, plugins);
         return ResponseEntity.ok(account);
     }
@@ -113,6 +118,7 @@ public class AccountController {
         }
         Account updated = accountRepository.save(
                 new Account(userId, role, enabled, existing.get().createdAt(), plugins));
+        pluginService.invalidate(userId);
         return ResponseEntity.ok(updated);
     }
 
@@ -136,6 +142,7 @@ public class AccountController {
             return ResponseEntity.notFound().build();
         }
         Account updated = accountRepository.mergePlugins(userId, add, remove);
+        pluginService.invalidate(userId);
         return ResponseEntity.ok(updated);
     }
 

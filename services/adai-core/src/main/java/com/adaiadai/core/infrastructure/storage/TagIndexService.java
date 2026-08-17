@@ -37,7 +37,8 @@ public class TagIndexService implements TagIndexReader {
     private final ObjectMapper objectMapper;
 
     // 多用户预留：索引缓存按 userId 隔离（2026-08-02）
-    private final Map<String, TagIndex> cacheByUser = new HashMap<>();
+    // W-P2-8（2026-08-17）：HashMap 并发读写会损坏缓存 → ConcurrentHashMap（读路径并发安全）
+    private final Map<String, TagIndex> cacheByUser = new java.util.concurrent.ConcurrentHashMap<>();
 
     public TagIndexService(FileStorage fileStorage) {
         this.fileStorage = fileStorage;

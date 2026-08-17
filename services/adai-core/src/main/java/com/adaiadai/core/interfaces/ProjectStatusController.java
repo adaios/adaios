@@ -106,6 +106,11 @@ public class ProjectStatusController {
     public ResponseEntity<Void> deleteTask(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable String id) {
+        // W-P2-6（2026-08-17）：B40 对称——create/update 已门控，delete 漏了
+        ResponseEntity<?> denied = requireProjectPlugin(userId);
+        if (denied != null) {
+            return ResponseEntity.status(403).build();
+        }
         taskService.deleteTask(userId, id);
         return ResponseEntity.noContent().build();
     }

@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -24,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccountControllerTest {
 
     private MockMvc mvcWith(AccountRepository repo) {
-        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry())).build();
+        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(), mock(PluginService.class))).build();
     }
 
     private Account seedAdmin() {

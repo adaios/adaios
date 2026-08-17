@@ -11,6 +11,7 @@ import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
+import com.adaiadai.core.kernel.plugin.PluginService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.MediaType;
@@ -81,7 +82,7 @@ class AdminAuthInterceptorTest {
 
         // accounts 端点同样被拦截（独立 MockMvc 映射 AccountController）
         MockMvc accountMvc = MockMvcBuilders
-                .standaloneSetup(new AccountController(mock(AccountRepository.class), new PluginRegistry()))
+                .standaloneSetup(new AccountController(mock(AccountRepository.class), new PluginRegistry(), mock(PluginService.class)))
                 .addInterceptors(new AdminAuthInterceptor("secret"))
                 .build();
         accountMvc.perform(get("/api/v1/accounts"))

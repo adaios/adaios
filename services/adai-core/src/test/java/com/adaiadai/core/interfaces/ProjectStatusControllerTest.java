@@ -162,6 +162,15 @@ class ProjectStatusControllerTest {
     }
 
     @Test
+    void deleteTask_withoutProjectPlugin_403() throws Exception {
+        // W-P2-6（2026-08-17）：B40 对称——delete 此前漏门控，补 403 契约
+        MockMvc mvc = buildMvcNoPlugin(mock(ProjectStatusAppService.class), mock(ProjectTaskAppService.class));
+        mvc.perform(delete("/api/v1/project/tasks/task_1")
+                        .header("X-User-Id", "alice"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void getTaskStats_returnsStats() throws Exception {
         ProjectTaskAppService taskService = mock(ProjectTaskAppService.class);
         when(taskService.getStats(any())).thenReturn(

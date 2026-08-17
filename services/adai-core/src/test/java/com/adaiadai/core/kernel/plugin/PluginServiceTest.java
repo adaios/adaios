@@ -72,4 +72,18 @@ class PluginServiceTest {
         assertEquals("life", service.gateDomain("alice", "life"), "life 本身不动");
         assertEquals("life", service.gateDomain("alice", null));
     }
+
+    @Test
+    void invalidate_clearsCache() {
+        // 08-15 后端×6（2026-08-17）：缓存 + 失效——改插件后下一次读取重解析
+        assertEquals(java.util.Set.of("trading", "project"), service.enabledPlugins("adai"));
+        when(accounts.findById("adai")).thenReturn(Optional.of(
+                new Account("adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+                        List.of(PluginRegistry.PLUGIN_TRADING))));
+        assertEquals(java.util.Set.of("trading", "project"), service.enabledPlugins("adai"),
+                "TTL 内缓存旧值");
+        service.invalidate("adai");
+        assertEquals(java.util.Set.of("trading"), service.enabledPlugins("adai"),
+                "invalidate 后读到新值");
+    }
 }
