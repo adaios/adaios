@@ -343,6 +343,60 @@ class ApiService {
     return PortfolioSnapshotResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 账户总体快照（券商口径：总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）。
+  Future<AccountSnapshotDto> getAccount() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/account'),
+      headers: _headers,
+    );
+    _check(resp);
+    return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 自选股列表。
+  Future<List<WatchlistItemDto>> getWatchlist() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/watchlist'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => WatchlistItemDto.fromJson(e)).toList();
+  }
+
+  /// 自选股买点信号（B1/B2 命中）。
+  Future<List<BuyPointDto>> getBuyPoints() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/buy-points'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => BuyPointDto.fromJson(e)).toList();
+  }
+
+  /// 清仓股列表（复盘闭环）。
+  Future<List<SoldTradeDto>> getSold() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/sold'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldTradeDto.fromJson(e)).toList();
+  }
+
+  /// 清仓复盘三维打分（买点/执行/总分）。
+  Future<List<SoldScoreDto>> getSoldScore() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/sold/score'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return (data as List).map((e) => SoldScoreDto.fromJson(e)).toList();
+  }
+
   /// 记录一笔交易。
   /// name 可空（RFC 20260815：代码即标的，名称由后端补全/以代码兜底）。
   /// RFC 20260816：stopLossPrice/buyPoint 为 BUY 必填（缺失后端 400，前端先拦截）；
@@ -969,6 +1023,7 @@ class PositionItem {
   final double marketValue;
   final double pnl;
   final double pnlPercent;
+  final double? stopLossPrice; // 2026-08-17 对齐 web：止损位（持仓卡显示）
 
   PositionItem({
     required this.symbol,
@@ -979,6 +1034,7 @@ class PositionItem {
     required this.marketValue,
     required this.pnl,
     required this.pnlPercent,
+    this.stopLossPrice,
   });
 
   factory PositionItem.fromJson(Map<String, dynamic> json) => PositionItem(
@@ -990,6 +1046,7 @@ class PositionItem {
     marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
     pnlPercent: (json['pnlPercent'] as num?)?.toDouble() ?? 0,
+    stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
   );
 }
 
@@ -1213,3 +1270,122 @@ class TaskStatsResponse {
   );
 }
 
+
+// ── 交易 DTO（对齐 web，2026-08-17）──
+
+/// 账户总体快照（券商口径：总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）。
+class AccountSnapshotDto {
+  final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
+  final double principal;
+
+  AccountSnapshotDto({required this.assets, required this.cash, required this.available,
+      required this.withdrawable, required this.marketValue, required this.pnl,
+      required this.todayPnl, required this.principal});
+
+  factory AccountSnapshotDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return AccountSnapshotDto(
+      assets: (m['assets'] as num?)?.toDouble() ?? 0,
+      cash: (m['cash'] as num?)?.toDouble() ?? 0,
+      available: (m['available'] as num?)?.toDouble() ?? 0,
+      withdrawable: (m['withdrawable'] as num?)?.toDouble() ?? 0,
+      marketValue: (m['marketValue'] as num?)?.toDouble() ?? 0,
+      pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
+      todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
+      principal: (m['principal'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  /// 总盈亏 = 资产 - 本金（用户确认口径，2026-08-16）。
+  double get totalPnl => assets - principal;
+}
+
+/// 自选股条目（盯盘买点原料）。
+class WatchlistItemDto {
+  final String symbol, name, industry, signal;
+  final String longForm, midForm, shortForm;
+
+  WatchlistItemDto({required this.symbol, required this.name, required this.industry,
+      required this.longForm, required this.midForm, required this.shortForm, required this.signal});
+
+  factory WatchlistItemDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return WatchlistItemDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      industry: m['industry']?.toString() ?? '',
+      longForm: m['longForm']?.toString() ?? '',
+      midForm: m['midForm']?.toString() ?? '',
+      shortForm: m['shortForm']?.toString() ?? '',
+      signal: m['signal']?.toString() ?? '',
+    );
+  }
+}
+
+/// 自选股买点信号（B1 回调 / B2 突破，判定是提示不是指令）。
+class BuyPointDto {
+  final String symbol, name, buyPoint;
+  final double score;
+  final List<String> signals;
+
+  BuyPointDto({required this.symbol, required this.name, required this.buyPoint,
+      required this.score, required this.signals});
+
+  factory BuyPointDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return BuyPointDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyPoint: m['buyPoint']?.toString() ?? '',
+      score: (m['score'] as num?)?.toDouble() ?? 0,
+      signals: (m['signals'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+    );
+  }
+}
+
+/// 清仓股（B/S 复盘闭环）。
+class SoldTradeDto {
+  final String symbol, name, verdict, psychology;
+  final String? buyDate, sellDate;
+  final int holdDays;
+  final double holdPnlPct;
+
+  SoldTradeDto({required this.symbol, required this.name, required this.buyDate,
+      required this.sellDate, required this.holdDays, required this.holdPnlPct,
+      required this.verdict, required this.psychology});
+
+  factory SoldTradeDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldTradeDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyDate: m['buyDate']?.toString(),
+      sellDate: m['sellDate']?.toString(),
+      holdDays: (m['holdDays'] as num?)?.toInt() ?? 0,
+      holdPnlPct: (m['holdPnlPct'] as num?)?.toDouble() ?? 0,
+      verdict: m['verdict']?.toString() ?? '',
+      psychology: m['psychology']?.toString() ?? '',
+    );
+  }
+}
+
+/// 清仓复盘三维打分（D3：买点/执行/总分，分数是参考不是指令）。
+class SoldScoreDto {
+  final String symbol, name;
+  final int? buyPointScore, executionScore;
+  final double? totalScore;
+
+  SoldScoreDto({required this.symbol, required this.name,
+      required this.buyPointScore, required this.executionScore, required this.totalScore});
+
+  factory SoldScoreDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SoldScoreDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyPointScore: (m['buyPointScore'] as num?)?.toInt(),
+      executionScore: (m['executionScore'] as num?)?.toInt(),
+      totalScore: (m['totalScore'] as num?)?.toDouble(),
+    );
+  }
+}

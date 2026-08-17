@@ -322,6 +322,16 @@ void main() {
           });
       b.handlers['/api/v1/trading/has-activity'] = (_) async =>
           _json({'date': '2026-08-15', 'hasActivity': false});
+      // 2026-08-17 对齐 web：账户/自选/买点/清仓/打分（_loadAux 异步加载）
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 100000.0, 'cash': 50000.0, 'available': 50000.0,
+            'withdrawable': 50000.0, 'marketValue': 50000.0, 'pnl': 0.0,
+            'todayPnl': 0.0, 'principal': 150000.0,
+          });
+      b.handlers['/api/v1/trading/watchlist'] = (_) async => _json([]);
+      b.handlers['/api/v1/trading/buy-points'] = (_) async => _json([]);
+      b.handlers['/api/v1/trading/sold'] = (_) async => _json([]);
+      b.handlers['/api/v1/trading/sold/score'] = (_) async => _json([]);
     }
 
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
@@ -343,9 +353,48 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('交易'), findsOneWidget);
-      expect(find.text('总市值'), findsOneWidget);
+      expect(find.text('总资产'), findsOneWidget);
       expect(find.text('贵州茅台'), findsOneWidget);
       expect(find.text('持仓明细'), findsOneWidget);
+    });
+
+    testWidgets('对齐 web：账户卡 + 自选买点 + 清仓打分渲染（2026-08-17）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
+            'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
+            'todayPnl': 0.0, 'principal': 150000.0,
+          });
+      b.handlers['/api/v1/trading/watchlist'] = (_) async => _json([
+            {'symbol': '000725', 'name': '京东方A', 'industry': '面板', 'industry2': '',
+             'longForm': 6, 'midForm': 8, 'shortForm': 1, 'signal': 'KDJ死叉', 'addedAt': '2026-08-16'},
+          ]);
+      b.handlers['/api/v1/trading/buy-points'] = (_) async => _json([
+            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 0.8,
+             'signals': ['回调 52%', '缩量 0.6']},
+          ]);
+      b.handlers['/api/v1/trading/sold'] = (_) async => _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
+          ]);
+      b.handlers['/api/v1/trading/sold/score'] = (_) async => _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyPointScore': 88, 'buyPointSignal': 'B1',
+             'buyPointExplain': '', 'executionScore': 90, 'executionExplain': '',
+             'totalScore': 89.0, 'verdict': '盈利了结'},
+          ]);
+      await pumpTrading(tester, b);
+
+      // 账户卡：总盈亏 = 资产 - 本金 = -39495.12（亏，绿；app 万单位显示 -3.9万）
+      expect(find.text('总资产'), findsOneWidget);
+      expect(find.text('本金'), findsOneWidget);
+      expect(find.textContaining('-3.9万'), findsOneWidget);
+      // 自选 + 买点信号
+      expect(find.text('自选股 · 买点信号'), findsOneWidget);
+      expect(find.textContaining('B1 80%'), findsOneWidget);
+      // 清仓 + 打分
+      expect(find.text('清仓复盘'), findsOneWidget);
+      expect(find.textContaining('总分 89'), findsOneWidget);
     });
 
     testWidgets('错误态：加载失败 + 重试成功', (tester) async {
@@ -497,7 +546,7 @@ void main() {
       expect(traded, isFalse);
     });
 
-    testWidgets('BUY 缺止损拦截：精确表单不填止损 → 人话提示，不提交', (tester) async {
+    testWidgets('BUY 缺止损拦截：清空自动带出止损 → 人话提示，不提交', (tester) async {
       final b = _Backend();
       mockBase(b);
       var traded = false;
@@ -513,6 +562,9 @@ void main() {
       await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
       await tester.enterText(fieldByHint('成交单价'), '5.2');
       await tester.enterText(fieldByHint('股数'), '1000');
+      // 2026-08-17：价格填完止损自动带出（默认 -7% = 4.84）；清空后提交才缺止损
+      expect(find.text('4.84'), findsOneWidget, reason: '价格 5.2 → 默认止损 5.2×0.93=4.84');
+      await tester.enterText(fieldByHint('默认按买入价 -7%，可改'), '');
       await tester.tap(find.text('买入'));
       await tester.pumpAndSettle();
 
@@ -537,7 +589,7 @@ void main() {
       await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
       await tester.enterText(fieldByHint('成交单价'), '5.2');
       await tester.enterText(fieldByHint('股数'), '1000');
-      await tester.enterText(fieldByHint('止损价，如 4.90'), '4.9');
+      await tester.enterText(fieldByHint('默认按买入价 -7%，可改'), '4.9');
       await tester.tap(find.text('买入'));
       await tester.pumpAndSettle();
 

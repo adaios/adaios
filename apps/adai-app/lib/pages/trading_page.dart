@@ -26,6 +26,14 @@ class _TradingPageState extends State<TradingPage> {
   bool _loading = true;
   String? _error;
 
+  // ── 2026-08-17 对齐 web：账户快照 + 自选/买点 + 清仓/打分（异步加载不阻塞主数据）──
+  AccountSnapshotDto? _account;
+  List<WatchlistItemDto> _watchlist = [];
+  List<BuyPointDto> _buyPoints = [];
+  List<SoldTradeDto> _sold = [];
+  List<SoldScoreDto> _soldScores = [];
+  bool _auxLoading = false; // 次级数据加载中（自选/清仓，不转圈整页）
+
   // ── 通道 A：NL 输入条 ──
   final _nlCtrl = TextEditingController();
   bool _parsing = false;
@@ -51,7 +59,7 @@ class _TradingPageState extends State<TradingPage> {
   bool _submitting = false;
 
   /// 买点类型白名单（RFC 20260816 §2.1：B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）。
-  static const List<String> _buyPoints = [
+  static const List<String> _buyPointOptions = [
     'B1', 'B2', 'B3', 'SB1', '暴力特噗', '深水炸弹', '单针', '其他',
   ];
 
@@ -104,9 +112,35 @@ class _TradingPageState extends State<TradingPage> {
         _loading = false;
       });
       _checkActivity(); // 复盘横幅检测（静默，失败不影响页面）
+      _loadAux();       // 账户/自选/清仓/打分（异步，不阻塞主数据）
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = _extractApiError(e); _loading = false; }); // #113 人话
+    }
+  }
+
+  /// 次级数据（账户快照/自选/买点/清仓/打分）：独立拉取，失败静默不影响主数据。
+  Future<void> _loadAux() async {
+    if (_auxLoading) return;
+    _auxLoading = true;
+    try {
+      final acct = await widget.api.getAccount();
+      final watch = await widget.api.getWatchlist();
+      final bps = await widget.api.getBuyPoints();
+      final sold = await widget.api.getSold();
+      final scores = await widget.api.getSoldScore();
+      if (!mounted) return;
+      setState(() {
+        _account = acct;
+        _watchlist = watch;
+        _buyPoints = bps;
+        _sold = sold;
+        _soldScores = scores;
+      });
+    } catch (_) {
+      // 次级数据失败静默（账户卡退回组合快照口径）
+    } finally {
+      _auxLoading = false;
     }
   }
 
@@ -178,7 +212,7 @@ class _TradingPageState extends State<TradingPage> {
 
   /// V8（RFC 20260816）：买点类型白名单（下拉只会产出白名单值，此处兜底后端回填/异常值）。
   String? _validateBuyPoint(String buyPoint) {
-    if (!_buyPoints.contains(buyPoint)) return '买点类型不认识，选一个吧';
+    if (!_buyPointOptions.contains(buyPoint)) return '买点类型不认识，选一个吧';
     return null;
   }
 
@@ -205,7 +239,7 @@ class _TradingPageState extends State<TradingPage> {
         // RFC 20260816：NL 带回止损/买点 → 回填确认卡（用户可改；异常值兜底 B1）
         _confirmStopLossCtrl.text = parsed.stopLossPrice?.toStringAsFixed(2) ?? '';
         final buyPoint =
-            _buyPoints.contains(parsed.buyPoint) ? parsed.buyPoint! : 'B1';
+            _buyPointOptions.contains(parsed.buyPoint) ? parsed.buyPoint! : 'B1';
         setState(() {
           _draft = parsed;
           _confirmDirection = parsed.direction == 'SELL' ? 'SELL' : 'BUY';
@@ -464,9 +498,107 @@ class _TradingPageState extends State<TradingPage> {
                 ]),
                 const SizedBox(height: 8),
                 _buildPositionCards(),
+                // 2026-08-17 对齐 web：自选股（买点信号）+ 清仓股（复盘打分）——只读展示
+                const SizedBox(height: 16),
+                _buildWatchlistSection(),
+                const SizedBox(height: 16),
+                _buildSoldSection(),
               ],
             ),
     );
+  }
+
+  // ── 自选股 + 买点信号（2026-08-17 对齐 web，只读）──
+
+  Widget _buildWatchlistSection() {
+    if (_watchlist.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        _sectionTitle('自选股 · 买点信号'),
+        if (_buyPoints.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Text('${_buyPoints.length} 只到买点', style: TextStyle(fontSize: 10, color: AppColors.darkRed)),
+        ],
+      ]),
+      const SizedBox(height: 6),
+      ..._watchlist.map((w) {
+        final bp = _buyPoints.where((b) => b.symbol == w.symbol).toList();
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface2,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Text('${w.name} ${w.symbol}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+            ),
+            if (bp.isNotEmpty)
+              Text(bp.map((b) => '${b.buyPoint} ${(b.score * 100).toStringAsFixed(0)}%').join('、'),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))
+            else
+              Text(w.signal.isEmpty ? '—' : w.signal,
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ]),
+        );
+      }),
+    ]);
+  }
+
+  // ── 清仓股 + 复盘打分（2026-08-17 对齐 web，只读）──
+
+  Widget _buildSoldSection() {
+    if (_sold.isEmpty) return const SizedBox.shrink();
+    // D2 纪律统计（对齐 web）：盈/亏 + R66/R53
+    final total = _sold.length;
+    final profit = _sold.where((s) => s.holdPnlPct >= 0).length;
+    final r66 = _sold.where((s) => s.verdict.contains('R66')).length;
+    final r53 = _sold.where((s) => s.verdict.contains('R53')).length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        _sectionTitle('清仓复盘'),
+        const SizedBox(width: 6),
+        Text('$total 笔 · 盈 $profit / 亏 ${total - profit}'
+            '${r66 > 0 ? ' · 扛单$r66' : ''}${r53 > 0 ? ' · 短亏$r53' : ''}',
+            style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+      ]),
+      const SizedBox(height: 6),
+      ..._sold.take(20).map((s) {
+        final sc = _soldScores.where((x) => x.symbol == s.symbol).toList();
+        final score = sc.isEmpty ? null : sc.first;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface2,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text('${s.name} ${s.symbol}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+              ),
+              Text('${s.holdPnlPct >= 0 ? '+' : ''}${s.holdPnlPct.toStringAsFixed(1)}%',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+            ]),
+            const SizedBox(height: 3),
+            Text(s.verdict.isEmpty ? '（未判对错）' : s.verdict,
+                style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+            if (score?.totalScore != null)
+              Text('买点 ${score!.buyPointScore ?? '—'} · 执行 ${score.executionScore ?? '—'} · 总分 ${score.totalScore!.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 10, color: AppColors.darkOrange)),
+          ]),
+        );
+      }),
+      if (_sold.length > 20)
+        Text('仅显示最近 20 笔，完整请用桌面端', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+    ]);
   }
 
   Widget _sectionTitle(String title) {
@@ -562,7 +694,8 @@ class _TradingPageState extends State<TradingPage> {
         Row(children: [
           Expanded(child: _formField('数量', _confirmVolumeCtrl, keyboardType: TextInputType.number, hintText: '股数')),
           const SizedBox(width: 10),
-          Expanded(child: _formField('价格', _confirmPriceCtrl, keyboardType: TextInputType.number, hintText: '成交单价')),
+          Expanded(child: _formField('价格', _confirmPriceCtrl, keyboardType: TextInputType.number, hintText: '成交单价',
+              onChanged: (v) => _autoStopLoss(v, _confirmStopLossCtrl))),
           const SizedBox(width: 10),
           _dirChip('BUY', '买'),
           const SizedBox(width: 4),
@@ -616,13 +749,14 @@ class _TradingPageState extends State<TradingPage> {
         _formField('标的（代码或名称）', _symbolCtrl, hintText: '如 600519 或 贵州茅台'),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: _formField('价格', _priceCtrl, keyboardType: TextInputType.number, hintText: '成交单价')),
+          Expanded(child: _formField('价格', _priceCtrl, keyboardType: TextInputType.number, hintText: '成交单价',
+              onChanged: (v) => _autoStopLoss(v, _stopLossCtrl))),
           const SizedBox(width: 10),
           Expanded(child: _formField('数量', _volumeCtrl, keyboardType: TextInputType.number, hintText: '股数')),
         ]),
         // RFC 20260816：买入计划字段（BUY 必填止损；SELL 提交时忽略不发送）
         const SizedBox(height: 8),
-        _formField('止损位', _stopLossCtrl, keyboardType: TextInputType.number, hintText: '止损价，如 4.90'),
+        _formField('止损位', _stopLossCtrl, keyboardType: TextInputType.number, hintText: '默认按买入价 -7%，可改'),
         const SizedBox(height: 8),
         _buyPointField('买点', _buyPoint, (v) => setState(() => _buyPoint = v)),
         const SizedBox(height: 12),
@@ -654,7 +788,7 @@ class _TradingPageState extends State<TradingPage> {
             dropdownColor: AppColors.darkSurface2,
             style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
             icon: Icon(Icons.arrow_drop_down, size: 18, color: AppColors.darkGrey5),
-            items: _buyPoints.map((p) => DropdownMenuItem<String>(
+            items: _buyPointOptions.map((p) => DropdownMenuItem<String>(
               value: p,
               child: Text(p, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
             )).toList(),
@@ -684,14 +818,24 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 默认止损：买入价 -7%（用户 2026-08-17 设定，对齐 web）——手动填过就不再覆盖。
+  void _autoStopLoss(String priceText, TextEditingController stopLossCtrl) {
+    if (stopLossCtrl.text.trim().isNotEmpty) return;
+    final price = double.tryParse(priceText.trim());
+    if (price != null && price > 0) {
+      stopLossCtrl.text = (price * 0.93).toStringAsFixed(2);
+    }
+  }
+
   Widget _formField(String label, TextEditingController ctrl,
-      {TextInputType keyboardType = TextInputType.text, String? hintText}) {
+      {TextInputType keyboardType = TextInputType.text, String? hintText, ValueChanged<String>? onChanged}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 4),
       TextField(
         controller: ctrl,
         keyboardType: keyboardType,
+        onChanged: onChanged,
         style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
         decoration: InputDecoration(
           isDense: true,
@@ -741,31 +885,55 @@ class _TradingPageState extends State<TradingPage> {
   // ── 快照卡 ──
 
   Widget _buildSnapshotCard() {
-    if (_snapshot == null) return const SizedBox.shrink();
-    final s = _snapshot!;
+    final a = _account;
+    final s = _snapshot;
+    final hasAccount = a != null && a.assets > 0;
+    // 2026-08-17 对齐 web：券商口径账户快照（总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）
+    final totalAssets = hasAccount ? a.assets : (s?.totalValue ?? 0) + (s?.cashBalance ?? 0);
+    final totalPnl = hasAccount ? a.totalPnl : (s?.totalPnl ?? 0);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.darkSurface2,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _snapshotItem('总市值', _fmtMoney(s.totalValue), AppColors.darkGrey1),
-          // #132 红涨绿跌（A股）：盈=红、亏=绿，与行情卡一致
-          _snapshotItem('总盈亏', '${s.totalPnl >= 0 ? '+' : ''}${_fmtMoney(s.totalPnl)}',
-              s.totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen),
-          _snapshotItem('现金', _fmtMoney(s.cashBalance), AppColors.darkBlue),
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('总资产', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 2),
+              Text(_fmtMoney(totalAssets),
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
+            ]),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 2),
+              Text('${totalPnl >= 0 ? '+' : ''}${_fmtMoney(totalPnl)}',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
+                      color: totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+            ]),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 14, runSpacing: 6, children: [
+          _snapshotItem('可用', _fmtMoney(hasAccount ? a.available : 0)),
+          _snapshotItem('可取', _fmtMoney(hasAccount ? a.withdrawable : 0)),
+          _snapshotItem('市值', _fmtMoney(hasAccount ? a.marketValue : (s?.totalValue ?? 0))),
+          _snapshotItem('当日盈亏', '${(hasAccount ? a.todayPnl : 0) >= 0 ? '+' : ''}${_fmtMoney(hasAccount ? a.todayPnl : 0)}',
+              (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+          if (hasAccount && a.principal > 0)
+            _snapshotItem('本金', _fmtMoney(a.principal)),
+        ]),
+      ]),
     );
   }
 
-  Widget _snapshotItem(String label, String value, Color color) {
-    return Column(children: [
-      Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-      const SizedBox(height: 2),
+  Widget _snapshotItem(String label, String value, [Color? color]) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey3)),
+      const SizedBox(width: 4),
       Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
     ]);
   }
@@ -818,9 +986,13 @@ class _TradingPageState extends State<TradingPage> {
           const SizedBox(height: 6),
           Row(children: [
             Expanded(
-              child: Text('${p.quantity}股 · 成本 ${_fmtPrice(p.avgCost)} · 现价 ${_fmtPrice(p.currentPrice)}',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              child: Text(
+                '${p.quantity}股 · 成本 ${_fmtPrice(p.avgCost)} · 现价 ${_fmtPrice(p.currentPrice)}'
+                '${p.stopLossPrice != null ? ' · 止损 ${_fmtPrice(p.stopLossPrice!)}' : ' · 未设止损'}',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11,
+                    color: p.stopLossPrice == null ? AppColors.darkOrange : AppColors.darkGrey5),
+              ),
             ),
             Text(pctStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pnlColor)),
           ]),
