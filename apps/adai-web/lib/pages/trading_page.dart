@@ -28,6 +28,7 @@ class _TradingPageState extends State<TradingPage> {
   List<WatchlistItemDto> _watchlist = [];
   List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
   List<SoldScoreDto> _soldScores = []; // D3 清仓复盘三维打分
+  bool _scoreLoading = false; // P2-10 打分请求在途标记（防重叠）
   List<SoldTradeDto> _sold = [];
   AccountSnapshotDto? _account;
   double? _cash;
@@ -44,8 +45,10 @@ class _TradingPageState extends State<TradingPage> {
     super.initState();
     _loadAll();
     // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
+    // P3-11（2026-08-17）：IndexedStack offstage 时（切到别的页）不再空转发请求——仅当前页为交易页才刷
+    // 注：P1-1 修复后 shell 传中文 label（'交易'），判断须用 label 而非插件标识 'trading'
     _autoRefresh = Timer.periodic(const Duration(minutes: 30), (_) {
-      if (mounted) _loadAll();
+      if (mounted && widget.currentPage == '交易') _loadAll();
     });
   }
 
@@ -59,12 +62,15 @@ class _TradingPageState extends State<TradingPage> {
   void didUpdateWidget(TradingPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 每次切到交易页 → 自动刷新（保活缓存不显示旧数据）
-    if (oldWidget.currentPage != widget.currentPage && widget.currentPage == 'trading') {
+    // P1-1 修复：shell 传中文 label '交易'；oldWidget.currentPage 初始为默认 'trading'
+    if (oldWidget.currentPage != widget.currentPage && widget.currentPage == '交易') {
       _loadAll();
     }
   }
 
   Future<void> _loadAll() async {
+    // P2-交易8（2026-08-17）：入口首行 mounted 守卫——await 期间页面销毁不再 setState
+    if (!mounted) return;
     // E2（2026-08-16）静默刷新：已有数据时刷新不闪整页 loading（首次加载才转圈）
     setState(() {
       _loading = _positions.isEmpty && _portfolio == null;
@@ -122,13 +128,19 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
+  /// P2-交易10（2026-08-17）：空列表短路（无清仓不打空请求）+ 进行中标记（避免重叠请求）
   Future<void> _loadSoldScore() async {
+    if (_sold.isEmpty) return; // 无清仓 → 不打空请求
+    if (_scoreLoading) return; // 已有请求在途 → 不重复发起
+    _scoreLoading = true;
     try {
       final scores = await widget.api.getSoldScore();
       if (!mounted) return;
       setState(() => _soldScores = scores);
     } catch (_) {
       // 打分失败静默：主数据已展示，打分列显示 —（数据不足不糊弄）
+    } finally {
+      _scoreLoading = false;
     }
   }
 
@@ -234,6 +246,30 @@ class _TradingPageState extends State<TradingPage> {
     return '网络异常，请重试';
   }
 
+  /// P2-交易15（2026-08-17）：打分列颜色——中性色阶（蓝/紫/灰），不借盈亏色（红涨绿亏）；
+  /// 空值 '—' 固定灰（不渲染成警告橙）。
+  Color _scoreColor(int? score) {
+    if (score == null) return AppColors.darkGrey5;
+    if (score >= 70) return AppColors.darkBlue;
+    if (score >= 50) return AppColors.darkPurple;
+    return AppColors.darkGrey3;
+  }
+
+  /// P2-14：千分位格式化（-39495.12 → -39,495.12）。
+  static String _thousands(double v) {
+    final neg = v < 0;
+    final s = v.abs().toStringAsFixed(2);
+    final parts = s.split('.');
+    final buf = StringBuffer();
+    final intPart = parts[0];
+    for (var i = 0; i < intPart.length; i++) {
+      buf.write(intPart[i]);
+      final remaining = intPart.length - 1 - i;
+      if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+    }
+    return '${neg ? '-' : ''}$buf.${parts[1]}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(children: [
@@ -303,7 +339,7 @@ class _TradingPageState extends State<TradingPage> {
                       const SizedBox(height: 6),
                       Row(children: [
                         Text(_lastUpdated != null
-                            ? '上次更新 $_lastUpdated（行情实时 · 账户快照 ${_account?.snapshotDate ?? '-'}）'
+                            ? '上次更新 $_lastUpdated · 每 30 分钟自动刷新 · 账户快照 ${_account?.snapshotDate ?? '-'}'
                             : '数据加载中…',
                             style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
                         const Spacer(),
@@ -349,7 +385,7 @@ class _TradingPageState extends State<TradingPage> {
       // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
       _statCard('总盈亏', hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0),
           color: (hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          sub: hasAccount && a!.principal > 0 ? '本金 ${a.principal.toStringAsFixed(0)}' : null),
+          sub: hasAccount && a!.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : null),
       const SizedBox(width: 12),
       _statCard('持仓浮盈', hasAccount ? a!.pnl : 0,
           color: (hasAccount ? a!.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
@@ -358,7 +394,7 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
-  Widget _statCard(String label, double value, {String format = '\$', required Color color, bool big = false, String? sub}) {
+  Widget _statCard(String label, double value, {String format = '¥', required Color color, bool big = false, String? sub}) {
     final isCount = format.isEmpty;
     return Expanded(
       child: Container(
@@ -378,9 +414,14 @@ class _TradingPageState extends State<TradingPage> {
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
               ),
-            Text(
-              isCount ? value.toInt().toString() : '$format${value.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600, color: color),
+            // P2-交易14（2026-08-17）：大数值（如 ¥-39495.12 22px 粗体）在窄卡溢出 → FittedBox 缩放 + 千分位
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                isCount ? value.toInt().toString() : '$format${_thousands(value)}',
+                style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600, color: color),
+              ),
             ),
           ],
         ),
@@ -665,8 +706,30 @@ class _TradingPageState extends State<TradingPage> {
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
                   onPressed: () async {
-                    await widget.api.removeWatchlist(w.symbol);
-                    await _loadAll();
+                    // P2-13 + P3（2026-08-17）：删除带确认 + 失败反馈
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        backgroundColor: AppColors.darkSurface2,
+                        title: Text('删除自选 ${w.name}？', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+                        content: const Text('删除后不再盯这只票的买点', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            style: FilledButton.styleFrom(backgroundColor: AppColors.darkOrange),
+                            child: const Text('删除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    try {
+                      await widget.api.removeWatchlist(w.symbol);
+                      await _loadAll();
+                    } catch (e) {
+                      _toast('删除失败：${_extractApiError(e)}');
+                    }
                   },
                 )),
               ]);
@@ -683,19 +746,22 @@ class _TradingPageState extends State<TradingPage> {
     final loss = total - profit;
     final r66 = _sold.where((s) => s.verdict.contains('R66')).length;
     final r53 = _sold.where((s) => s.verdict.contains('R53')).length;
-    // D2 行为模式：心理标注按关键词归类（数据积累后越准）
+    // D2 行为模式：心理标注按关键词归类（P2-交易12 2026-08-17：单字键误配「不贪/着急」→ 改双字词组 + 否定排除）
     const patterns = <String, String>{
       '追高': '追高',
       '恐慌': '恐慌割肉',
-      '贪': '贪心没走',
+      '贪婪': '贪心没走',
+      '贪心': '贪心没走',
       '死扛': '套牢死扛',
       '犹豫': '犹豫错过',
-      '急': '急躁操作',
+      '急躁': '急躁操作',
+      '急于': '急躁操作',
     };
     final marked = _sold.where((s) => s.psychology.isNotEmpty).toList();
     final patternCounts = <String, int>{};
     for (final s in marked) {
       for (final e in patterns.entries) {
+        if (e.key.startsWith('贪') && s.psychology.contains('不贪')) continue; // 否定排除
         if (s.psychology.contains(e.key)) {
           patternCounts[e.value] = (patternCounts[e.value] ?? 0) + 1;
         }
@@ -723,22 +789,24 @@ class _TradingPageState extends State<TradingPage> {
           ],
           if (total > 0) ...[
             const Spacer(),
-            Text('纪律遵守率 ${((profit / total) * 100).toStringAsFixed(0)}%',
+            // P2-交易11（2026-08-17）：旧「纪律遵守率」实为胜率（profit/total 且 >=0 计盈）——口径错标；
+            // 改：纪律遵守率 = (总笔数 - 违R66 - 违R53) / 总笔数；胜率单独展示（>0 才算盈）
+            Text('胜率 ${((profit / total) * 100).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(width: 10),
+            Text('纪律遵守率 ${(((total - r66 - r53) / total) * 100).toStringAsFixed(0)}%',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                    color: profit / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
+                    color: (total - r66 - r53) / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
           ],
         ]),
-        // D2 行为模式（心理标注聚合，标注后自动归类）
-        if (marked.isNotEmpty) ...[
+        // D2 行为模式（心理标注聚合，标注后自动归类；P3：Wrap 防窄窗口溢出，无命中不显示该行）
+        if (marked.isNotEmpty && patternCounts.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Row(children: [
+          Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('你的行为模式 · 已标 ${marked.length} 笔：',
                 style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            ...patternCounts.entries.map((e) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: Text('${e.key} ${e.value} 笔',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
-                )),
+            ...patternCounts.entries.map((e) => Text('${e.key} ${e.value} 笔',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange))),
           ]),
         ],
       ]),
@@ -805,16 +873,13 @@ class _TradingPageState extends State<TradingPage> {
                         : s.verdict.contains('盈利') ? AppColors.darkGrey4 : AppColors.darkGrey5))),
                 DataCell(Text(score?.buyPointScore?.toString() ?? '—',
                     style: TextStyle(fontSize: 12,
-                        color: (score?.buyPointScore ?? 0) >= 70 ? AppColors.darkGreen
-                            : (score?.buyPointScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                        color: _scoreColor(score?.buyPointScore)))),
                 DataCell(Text(score?.executionScore?.toString() ?? '—',
                     style: TextStyle(fontSize: 12,
-                        color: (score?.executionScore ?? 0) >= 70 ? AppColors.darkGreen
-                            : (score?.executionScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                        color: _scoreColor(score?.executionScore)))),
                 DataCell(Text(score?.totalScore?.toStringAsFixed(0) ?? '—',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                        color: (score?.totalScore ?? 0) >= 70 ? AppColors.darkGreen
-                            : (score?.totalScore ?? 0) >= 50 ? AppColors.darkGrey4 : AppColors.darkOrange))),
+                        color: _scoreColor(score?.totalScore?.toInt())))),
                 DataCell(InkWell(
                   onTap: () => _markPsychology(s),
                   child: Text(s.psychology.isEmpty ? '＋ 标注心理' : s.psychology,
@@ -853,8 +918,12 @@ class _TradingPageState extends State<TradingPage> {
       ),
     );
     if (result == null) return;
-    await widget.api.updateSoldPsychology(s.symbol, result);
-    await _loadAll();
+    try {
+      await widget.api.updateSoldPsychology(s.symbol, result);
+      await _loadAll();
+    } catch (e) {
+      _toast('标注失败：${_extractApiError(e)}');
+    }
   }
 
   Widget _buildCashSection() {
@@ -941,7 +1010,14 @@ class _TradingPageState extends State<TradingPage> {
           FilledButton(
             onPressed: () {
               final v = double.tryParse(amount.text.trim());
-              if (v == null || v <= 0) return;
+              // P3（2026-08-17）：NaN/Infinity 也拦截（tryParse 对 NaN 恒 true 的 v<=0 会放行）+ 提交有反馈
+              if (v == null || !v.isFinite || v <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('请输入大于 0 的有效金额', style: TextStyle(fontSize: 13)),
+                  backgroundColor: AppColors.darkSurface2,
+                ));
+                return;
+              }
               Navigator.pop(context, true);
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
@@ -1080,27 +1156,34 @@ class _TradeDialogState extends State<_TradeDialog> {
   String _buyPoint = 'B1';
   bool _nameAutoFilled = false; // 名称是否由代码自动带出（二次确认用）
   bool _lookingUp = false;
+  Timer? _lookupDebounce; // P3 lookup 防抖
 
   /// 输入 6 位数字代码 → 调后端带出名称（二次确认：名称显示在框里，可改）。
   Future<void> _lookupName(String raw) async {
     final symbol = raw.trim().toUpperCase();
     if (!RegExp(r'^\d{6}$').hasMatch(symbol)) return;
-    setState(() => _lookingUp = true);
-    final name = await widget.api.lookupSymbol(symbol);
-    if (!mounted) return;
-    setState(() {
-      _lookingUp = false;
-      if (name != null && name.isNotEmpty && !_nameAutoFilled) {
-        _name.text = name;
-        _nameAutoFilled = true;
-      } else if (name == null) {
-        _nameAutoFilled = false;
-      }
+    // P3（2026-08-17）：300ms 防抖——连续击键不每键都发网络请求
+    _lookupDebounce?.cancel();
+    _lookupDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+      setState(() => _lookingUp = true);
+      final name = await widget.api.lookupSymbol(symbol);
+      if (!mounted) return;
+      setState(() {
+        _lookingUp = false;
+        if (name != null && name.isNotEmpty && !_nameAutoFilled) {
+          _name.text = name;
+          _nameAutoFilled = true;
+        } else if (name == null) {
+          _nameAutoFilled = false;
+        }
+      });
     });
   }
 
   @override
   void dispose() {
+    _lookupDebounce?.cancel();
     _symbol.dispose();
     _name.dispose();
     _price.dispose();

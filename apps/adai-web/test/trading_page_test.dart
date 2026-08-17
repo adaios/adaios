@@ -976,4 +976,87 @@ void main() {
     });
   });
 
+  group('P2 口径修复', () {
+    testWidgets('P2-11 纪律遵守率=verdict 口径（非胜率）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          // 2 笔：1 盈（无违规）+ 1 亏含 R66 → 胜率 50%，纪律遵守率 50%（1-1违/2）
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '601066', 'name': '中信建投', 'buyDate': '2026-07-01', 'sellDate': '2026-07-20',
+             'holdDays': 19, 'tradeCount': '1+1', 'holdPnlPct': -8.0, 'verdict': '扛单超 5%——按 R66 只输一根K线，止损位早该执行', 'psychology': ''},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('胜率 50%'), findsOneWidget);
+      expect(find.text('纪律遵守率 50%'), findsOneWidget);
+    });
+
+    testWidgets('P2-12 行为模式否定词不误配（「不贪」不算贪心）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': '这次不贪心，及时走了'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      // 「不贪心」不应归入贪心模式 → 行为模式行不出现（patternCounts 空）
+      expect(find.textContaining('你的行为模式'), findsNothing);
+    });
+
+    testWidgets('P2-14 账户卡大数值千分位不溢出（-39,495.12）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') {
+          return _json({'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
+            'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
+            'todayPnl': 0.0, 'principal': 150000.0, 'snapshotDate': '2026-08-16'});
+        }
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      // 总盈亏 = 资产 - 本金 = -39495.12 → 千分位显示
+      expect(find.text('¥-39,495.12'), findsOneWidget);
+      expect(find.textContaining('本金 ¥150,000'), findsOneWidget);
+    });
+  });
+
 }

@@ -191,8 +191,9 @@ bool isTdxExport(String text) {
         orElse: () => '',
       );
   final low = first.toLowerCase();
-  // 通达信表头特征：含「代码/证券代码」且含「成本价」（交易 CSV 无成本价列）
-  return (low.contains('证券代码') || low.contains('代码')) && low.contains('成本价');
+  // 通达信表头特征：含「代码/证券代码」且含「成本价/成本」（P3 2026-08-17：表头为「成本」的真实导出
+  // 此前会被误路由进交易 CSV 解析——与 parseTdxPositions 的「成本价|成本」列识别统一）
+  return (low.contains('证券代码') || low.contains('代码')) && (low.contains('成本价') || low.contains('成本'));
 }
 
 /// 通达信解析结果：持仓快照行 + 错误列表。
