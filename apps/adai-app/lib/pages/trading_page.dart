@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
@@ -33,6 +34,7 @@ class _TradingPageState extends State<TradingPage> {
   List<SoldTradeDto> _sold = [];
   List<SoldScoreDto> _soldScores = [];
   bool _auxLoading = false; // 次级数据加载中（自选/清仓，不转圈整页）
+  int _auxGen = 0; // 代际令牌：_loadAux 防乱序覆盖
 
   // ── 通道 A：NL 输入条 ──
   final _nlCtrl = TextEditingController();
@@ -70,14 +72,21 @@ class _TradingPageState extends State<TradingPage> {
   bool _reviewing = false;
   ReviewResponse? _lastReview;
 
+  Timer? _autoRefresh; // 30 分钟自动刷新（对齐 web B3，2026-08-17）
+
   @override
   void initState() {
     super.initState();
     _loadAll();
+    // 跟随交易节奏：每 30 分钟自动刷新盈亏/行情（手机上看不到旧数据）
+    _autoRefresh = Timer.periodic(const Duration(minutes: 30), (_) {
+      if (mounted) _refresh();
+    });
   }
 
   @override
   void dispose() {
+    _autoRefresh?.cancel();
     _nlCtrl.dispose();
     _confirmVolumeCtrl.dispose();
     _confirmPriceCtrl.dispose();
@@ -120,7 +129,9 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 次级数据（账户快照/自选/买点/清仓/打分）：独立拉取，失败静默不影响主数据。
+  /// 代际令牌（2026-08-17）：响应乱序时旧代不覆盖新代（与 web P2-10 同款守卫）。
   Future<void> _loadAux() async {
+    final gen = ++_auxGen;
     if (_auxLoading) return;
     _auxLoading = true;
     try {
@@ -129,7 +140,7 @@ class _TradingPageState extends State<TradingPage> {
       final bps = await widget.api.getBuyPoints();
       final sold = await widget.api.getSold();
       final scores = await widget.api.getSoldScore();
-      if (!mounted) return;
+      if (!mounted || gen != _auxGen) return; // 旧代丢弃
       setState(() {
         _account = acct;
         _watchlist = watch;
@@ -140,7 +151,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (_) {
       // 次级数据失败静默（账户卡退回组合快照口径）
     } finally {
-      _auxLoading = false;
+      if (gen == _auxGen) _auxLoading = false;
     }
   }
 

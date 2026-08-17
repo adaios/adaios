@@ -58,6 +58,7 @@ class _MainPageState extends State<MainPage>
   bool _scrollAtBottom = true;
   int _uploadTotal = 0;          // 图片上传进度（阿呆 08-13：逐张反馈不足）
   int _uploadDone = 0;
+  bool _uploading = false;       // P3-8 批次锁：并发上传进度条互相覆盖防护（2026-08-17）
   static const int _pageSize = 5;
 
   /// REVIEW #234：已加载的核心条目数（type=record/card，前端统一映射为 FeedCardType.record）。
@@ -326,6 +327,20 @@ class _MainPageState extends State<MainPage>
   /// 不再多图干等只盯接口），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     if (images.isEmpty) return;
+    // P3-8（2026-08-17）：并发上传进度条互相覆盖——批次锁，上传期间拒绝新批次
+    if (_uploading) {
+      _showSnackBar('上一批图片还在上传，稍等片刻');
+      return;
+    }
+    _uploading = true;
+    try {
+      await _sendMediaInner(images, caption);
+    } finally {
+      _uploading = false;
+    }
+  }
+
+  Future<void> _sendMediaInner(List<PickedImage> images, String caption) async {
     // P1-1：对话态发媒体 → 先静默退出对话视图（waiting 卡复位 idle，chatting 保留 turns 不触发总结——
     // 发图片是独立动作）。修复前对话态残留 + _loadFeed 挤出活动卡 → 错乱视图/activeCard! 崩溃。
     if (_activeCardId != null) {

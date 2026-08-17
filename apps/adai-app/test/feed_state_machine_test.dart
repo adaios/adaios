@@ -803,6 +803,40 @@ void main() {
       expect(find.text('结束对话'), findsNothing);
       expect(find.text('提问'), findsWidgets);
     });
+
+    testWidgets('P3-8：上传批次锁——上传期间再次发送被拒（进度条不互相覆盖）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      // media 接口挂起（不返回），让上传处于进行中
+      final mediaGate = Completer<http.Response>();
+      b.handlers['/api/v1/records/media'] = (_) => mediaGate.future;
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      // 第一批：注入并发送（上传挂起）
+      inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_1.jpg', 'jpg')]);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // 上传中：第二次发送应被批次锁拒绝，提示等待
+      inputState.debugInjectImages([PickedImage([4, 5, 6], 'IMG_2.jpg', 'jpg')]);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.textContaining('上一批图片还在上传'), findsOneWidget);
+
+      // 放行第一批 → 上传完成，进度条隐藏
+      mediaGate.complete(_json({
+        'recordId': 'rec_media_1', 'intent': 'log',
+        'summary': '第一张', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/1.png',
+      }));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('上传中'), findsNothing);
+    });
   });
 
   group('P0-1/P1-1/P1-2 deep 审核修复回归', () {
