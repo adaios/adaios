@@ -32,6 +32,7 @@
 | `09-scripts/` | 工具脚本、通达信公式源码。**`update-current.sh`** = current.md 注记刷新器（幂等；current.md 停更时跑它刷时间戳+来源注记，市场状态/持仓仍人工确认，FP-P2h 收录） | 辅助工具。公式源码按主图/副图/选股分类 |
 | `10-prompts/` | 提示词模板 | 辅助工具 |
 | `knowledge/context/` | 交易系统对 AI 暴露的认知接口层（identity/strategy/rules/mistakes/current） | 不新增知识，仅重组 05-system+04-rules+03-glossary；系统收敛时同步更新 |
+| `engine/` | 能力层（规则执行规格：README / rules-api.md / buy-point-rules.md，P2-26 2026-08-17 补登记）| 语言无关的执行规格，宿主实现按此编译（G-3/G-5）|
 | `12-research/` | 市场生态认知（IPO、行业结构、资本关系、宏观框架） | 用户自主维护，不走 Step 1→5 流水线；与交易系统互补的平行视角 |
 | `99-inbox/` | 临时存放区 | 用户不确定放哪里的内容先放此处，由 AI 决定后续归入哪个目录。**AI 不主动处理该目录下的文件**，等待用户指示 |
 | `definition/` | 领域定义（concepts/workflow/README，架构层） | 原 `domains/` 合并而来，只读参考 |
@@ -54,6 +55,7 @@
 | `09-scripts/` | ✅ 可写 | 辅助工具 |
 | `10-prompts/` | ✅ 可写 | 提示词模板 |
 | `knowledge/context/` | ✅ 可写 | 交易系统上下文接口，不新增知识，仅重组 05-system+04-rules+03-glossary |
+| `engine/` | ✅ 可写 | 能力层规格（G-3/G-5 产物），随规则收敛同步更新 |
 | `12-research/` | ✅ 可写 | 市场生态认知，与交易系统互补的平行视角，不走流水线 |
 
 ---

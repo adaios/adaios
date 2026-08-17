@@ -93,7 +93,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 ## 🔴 P0 / P3
 
 - **P0 未修复当前清零**
-- **P3 打磨项全部迁移** `docs/reference/task-log.md`（2026-08-17 交易 A-E 批新增 24 项：后端 8 + 前端 12 + docs 4，见 task-log 待办迁移区；含转账金额非法静默、上次更新时间语义、本金缺¥、isTdxExport 关键词表不一、行为模式 Row 溢出、DTO 零测试、lookup 无防抖、删自选无确认、_statCard 死默认、Timer offstage 继续跑、NaN 放行、R120 引用越界含 SB1、R85 引用错位、DefaultTradingRuleEngine javadoc 未同步、B2 推送缺止损提醒、buy-point-rules 孤儿规格等）
+- **P3 打磨项**：交易 A-E 批 24 项**已全部修复出表**（R8-R11，见 change-log + 已修复区：转账金额提示/isTdxExport/R120-R85 引用/止损提醒/孤儿规格/DTO 测试/Timer 守卫等）；剩余低价值 P3（FilePicker 压缩/os 数据卫生/图片摘要居中）见 task-log
 
 ## ✅ 已修复区（最近 10 条，一行摘要；详情见 `docs/reference/change-log.md` + git log）
 
