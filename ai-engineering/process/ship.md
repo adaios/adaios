@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-18
 status: active
-lines: 106
+lines: 109
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -56,7 +56,10 @@ tags: [ai, process, ship]
 ### 4. 决策沉淀（RFC 验收核验 + 沉淀检查）
 
 - 本批关联 RFC：对照其「验收标准」段**逐条 PASS/FAIL 核验并留痕**（写回 RFC 或 change-log）
-- RFC approved 且含关键决策 → 建 `assets/adr/ADR-00N.md` 并登记 `assets/_index.md`；无新增决策则显式标注
+- **ADR 三问判断**（2026-08-18 用户确立，防「每批必建」流水账）：**全中才建** `assets/adr/ADR-00N.md` 并登记 `assets/_index.md`；否则不建（在 change-log 批次摘要写清「为什么这么定」即可兜底）
+  1. **推翻成本高**——将来反悔要动很多代码/数据？
+  2. **有被否决的备选**——当时纠结过别的方案，未来的人可能再提？
+  3. **影响未来方向**——新功能/新会话必须知道这个背景才能做对？
 - 本批踩坑/取舍 → 入 checklists + `assets/pitfalls.md`（沉淀过滤器见 `workflow/discuss.md`）
 - **沉淀检查**（进攻侧②③，软提示）：`bash ai-engineering/guard-sediment.sh`
   - S1 变更提示：本批代码文件 → 确认入 pitfalls/ADR（无则标注「无新增沉淀」）

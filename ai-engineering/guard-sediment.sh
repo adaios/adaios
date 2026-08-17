@@ -38,7 +38,7 @@ if code_changed:
     hints.append('S1 本批改了 %d 个代码文件，请确认沉淀（无则显式标注「无新增沉淀」）：' % len(code_changed))
     for c in code_changed[:12]:
         hints.append(f'    - {c}')
-    hints.append('    - 取舍/为什么这么定 → 建 assets/adr/ADR-00N.md')
+    hints.append('    - 取舍/为什么这么定 → 先过 ADR 三问（推翻成本高？有被否决备选？影响未来方向？全中才建 assets/adr/ADR-00N.md，否则 change-log 写清即可）')
     hints.append('    - 踩坑/根因 → 入 checklists + assets/pitfalls.md')
 else:
     hints.append('S1 本批无代码变更（纯文档/配置），无需沉淀')

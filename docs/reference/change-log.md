@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-18 | 流程调整：ADR 三问判断 | **为什么这么定**：ADR 每批必建会变流水账，稀释重要决策分量；改为「三问全中才建」（推翻成本高？有被否决备选？影响未来方向？），否则 change-log 写清「为什么这么定」兜底。同步 ship.md 步骤 4 + guard-sediment S1 + assets/_index 新增规则（用户确立）| — |
 | 2026-08-17 | RFC 20260817 三项批 | **①推送体验**：push 卡专属样式（类型徽章按标题配色：早盘蓝/午间紫/尾盘橙/买点绿/预警红）+ 结构化模板（总结+持仓逐行+建议，LLM prompt 与降级模板同步）；**推送开关** per-user（`data/{userId}/trading/push-settings.json`，8 类型，写侧定时任务 + 读侧 Feed 双侧门控）；app 左滑删单条/右滑进设置、web 交易页设置入口。**②图片对话流**：图片卡图置顶、turns 跟随滚动（聊天态与刷新态一致）。**③交易日志自动归集**：截图（VLM 识别）/文字（「清仓了XX」）→ TradingParseAppService 结构化 → 当日候选去重（symbol+方向）→ 收盘 15:15 推送「今日操作汇总」→ 用户「确认并入账」→ recordTrade 链路落库；仅 trading 插件用户触发；`GET/PUT /trading/push-settings` + `GET /trading/trade-log` + `POST /trading/trade-log/confirm` 4 新端点；后端 644→653（+9：PushSettings 4 + TradeLogCollect 5）· app 118→120（+2 push 卡渲染）· web 98 | — |
 | 2026-08-17 | Memory 正文 `---` 截断修复批 | **生产 110 条「createdAt 缺失」告警根治**：正文含裸 `---`（笑话/故事分隔线）时旧 ENTRY_SPLIT 正则提前截断 → 后半正文误当下条目 frontmatter → 17 条记忆读不出；新正则要求条目结束 `---` 后紧跟 frontmatter 键值行才截断（正文内 `---` 后是空行/普通文本不截断）；生产 7 月文件 17 条缺失全消除 + 回归测试；后端 643→644 | — |
 | 2026-08-17 | 走查前端 8 项批 | **web×6**：_loadDegradable 锁+代际令牌（先判锁再递增/finally 无条件复位/旧代丢弃）；历史 Dialog 日期竞态代际隔离；图片回执自然化（VLM summary 拼「看到你…，已记下」，替代「📷 已记录 N 张」）；记录交易成功补 toast（第一原则文案）；首载失败错误态+重试（不伪装空态，loading/失败/真空三分支）；_extractApiError 透出后端人话（body.error 优先，四页统一）；**app+web**：Feed 卡移除「记录/提问/领域」系统徽章（第一原则，交互保留在更多菜单）；**admin**：涨跌色红涨绿亏（补 darkRed token，行情/持仓两处）；顺手清 web 账户卡 11 处多余 `a!`；app analyze 清 2 死 getter；web 98 · app 118 · admin 34 全绿 | — |
