@@ -90,7 +90,8 @@ class AdminControllerTest {
         Files.writeString(dataDir.resolve("default").resolve("identity").resolve("profile.md"), "name: 阿呆");
         // os/ 结构：trading-engine/knowledge/context/rules.md
         Files.createDirectories(osDir.resolve("trading-engine").resolve("knowledge").resolve("context"));
-        Files.writeString(osDir.resolve("trading-engine").resolve("knowledge").resolve("context").resolve("rules.md"), "R1 空仓也是策略");
+        Files.writeString(osDir.resolve("trading-engine").resolve("knowledge").resolve("context").resolve("rules.md"),
+                "**R119 空仓也是交易策略**\n> 空仓也是交易策略\n\n**R96 四不原则**\n> 不重仓单一标的\n\n**R97 止损只输一根K线**");
 
         storage = new InMemoryFileStorage();
         mvc = MockMvcBuilders.standaloneSetup(adminController()).build();
@@ -167,7 +168,7 @@ class AdminControllerTest {
     void getKnowledgeContent_returnsContent() throws Exception {
         mvc.perform(get("/api/v1/admin/knowledge/content").param("path", "trading-engine/knowledge/context/rules.md"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content").value("R1 空仓也是策略"));
+                .andExpect(jsonPath("$.content").value(containsString("空仓也是交易策略")));
     }
 
     @Test

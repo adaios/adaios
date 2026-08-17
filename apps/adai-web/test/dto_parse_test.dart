@@ -92,7 +92,7 @@ void main() {
 
     test('BuyPointDto parses B1 hit with signals', () {
       final json = jsonDecode('''
-        [{"symbol":"000725","name":"京东方A","buyPoint":"B1","score":0.8,
+        [{"symbol":"000725","name":"京东方A","buyPoint":"B1","score":87,
           "signals":["回调 52% ≥ 50%","3 日量 0.6×5 日量 ≤ 0.7","KDJ.J 12.3 < 20"]}]
       ''');
       final hits = (json as List).map((e) => BuyPointDto.fromJson(e)).toList();
@@ -100,7 +100,7 @@ void main() {
       expect(hits[0].symbol, '000725');
       expect(hits[0].name, '京东方A');
       expect(hits[0].buyPoint, 'B1');
-      expect(hits[0].score, 0.8);
+      expect(hits[0].score, 87);
       expect(hits[0].signals.length, 3);
       expect(hits[0].signals[0], contains('回调'));
     });

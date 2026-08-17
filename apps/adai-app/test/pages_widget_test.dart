@@ -371,7 +371,7 @@ void main() {
              'longForm': 6, 'midForm': 8, 'shortForm': 1, 'signal': 'KDJ死叉', 'addedAt': '2026-08-16'},
           ]);
       b.handlers['/api/v1/trading/buy-points'] = (_) async => _json([
-            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 0.8,
+            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 87,
              'signals': ['回调 52%', '缩量 0.6']},
           ]);
       b.handlers['/api/v1/trading/sold'] = (_) async => _json([
@@ -391,7 +391,7 @@ void main() {
       expect(find.textContaining('-3.9万'), findsOneWidget);
       // 自选 + 买点信号
       expect(find.text('自选股 · 买点信号'), findsOneWidget);
-      expect(find.textContaining('B1 80%'), findsOneWidget);
+      expect(find.textContaining('B1 87%'), findsOneWidget);
       // 清仓 + 打分
       expect(find.text('清仓复盘'), findsOneWidget);
       expect(find.textContaining('总分 89'), findsOneWidget);

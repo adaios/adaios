@@ -420,8 +420,10 @@ public class AdminController {
 
     private String readRulesFile() {
         try {
-            Path rulesPath = Paths.get("../../os/trading-engine/knowledge/context/rules.md")
-                    .toAbsolutePath().normalize();
+            // P1-1（2026-08-17 走查）：改用配置驱动的 osRoot——此前硬编码 ../../os 生产失效
+            Path rulesPath = osRoot.resolve("trading-engine/knowledge/context/rules.md")
+                    .normalize();
+            log.debug("readRulesFile path: {}", rulesPath);
             if (Files.isReadable(rulesPath)) {
                 return Files.readString(rulesPath, StandardCharsets.UTF_8);
             }

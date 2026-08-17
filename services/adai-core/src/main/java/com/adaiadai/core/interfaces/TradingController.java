@@ -22,6 +22,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -56,6 +57,8 @@ public class TradingController {
     private final PluginService pluginService;
     private final WatchlistBuyPointService buyPointService;
     private final SoldScoreService soldScoreService;
+    /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
+    private final Path inboxDir;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -63,7 +66,8 @@ public class TradingController {
                              TradingParseAppService parseAppService,
                              PluginService pluginService,
                              WatchlistBuyPointService buyPointService,
-                             SoldScoreService soldScoreService) {
+                             SoldScoreService soldScoreService,
+                             @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
         this.adviceAppService = adviceAppService;
@@ -71,6 +75,8 @@ public class TradingController {
         this.pluginService = pluginService;
         this.buyPointService = buyPointService;
         this.soldScoreService = soldScoreService;
+        // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
+        this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
 
     /**
@@ -504,9 +510,8 @@ public class TradingController {
             String content = buildPromoteContent(date, request, reviewContent);
             // #203：候选文件尾保证换行（markdown 文件约定 EOF newline）
             if (!content.endsWith("\n")) content += "\n";
-            // 写入 os/trading-engine/99-inbox/
-            Path inboxPath = Paths.get("../../os/trading-engine/99-inbox")
-                    .toAbsolutePath().normalize();
+            // 写入 os/trading-engine/99-inbox/（P1-1：配置驱动，不再硬编码相对路径）
+            Path inboxPath = inboxDir;
             Files.createDirectories(inboxPath);
             // #211：文件名符合 trading-engine 全流水线约定 `YYYY-MM-DD_主题.md`
             // （原硬编码 `review-{date}.md` 不符，已入库的候选文件一并按此改名）

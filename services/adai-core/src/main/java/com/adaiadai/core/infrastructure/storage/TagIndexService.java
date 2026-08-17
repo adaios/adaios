@@ -39,6 +39,9 @@ public class TagIndexService implements TagIndexReader {
     // 多用户预留：索引缓存按 userId 隔离（2026-08-02）
     // W-P2-8（2026-08-17）：HashMap 并发读写会损坏缓存 → ConcurrentHashMap（读路径并发安全）
     private final Map<String, TagIndex> cacheByUser = new java.util.concurrent.ConcurrentHashMap<>();
+    // W-P2-8（2026-08-17 走查补强）：per-user RMW 锁——onRecordSaved/Deleted 是 load→改→save，
+    // 并发增删标签丢更新；ConcurrentHashMap 只保证读安全，写路径须锁
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> userLocks = new java.util.concurrent.ConcurrentHashMap<>();
 
     public TagIndexService(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
@@ -55,6 +58,8 @@ public class TagIndexService implements TagIndexReader {
         if (record.tags() == null || record.tags().isEmpty()) {
             return;
         }
+        Object lock = userLocks.computeIfAbsent(userId, k -> new Object());
+        synchronized (lock) {
         TagIndex index = load(userId);
         boolean changed = false;
 
@@ -93,6 +98,7 @@ public class TagIndexService implements TagIndexReader {
             cacheByUser.remove(userId);
             log.debug("标签索引已更新 | tags={}", record.tags());
         }
+        }
     }
 
     /**
@@ -100,6 +106,8 @@ public class TagIndexService implements TagIndexReader {
      */
     public void onRecordDeleted(String userId, List<String> tags, String recordId) {
         if (tags == null || tags.isEmpty()) return;
+        Object lock = userLocks.computeIfAbsent(userId, k -> new Object());
+        synchronized (lock) {
         TagIndex index = load(userId);
         boolean changed = false;
         for (String tag : tags) {
@@ -120,6 +128,7 @@ public class TagIndexService implements TagIndexReader {
             save(userId, new TagIndex(index.tags(), LocalDateTime.now()));
             cacheByUser.remove(userId);
             log.debug("标签索引已删除 | recordId={}", recordId);
+        }
         }
     }
 

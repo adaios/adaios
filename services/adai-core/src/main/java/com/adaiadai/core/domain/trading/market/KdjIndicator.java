@@ -6,7 +6,7 @@ import java.util.List;
  * KDJ 指标（随机指标，C2 买点判定用）。
  * <p>
  * 课程口径：B1 高质量买点需「KDJ 大负值」（R47）。标准 KDJ：RSV(9) → K=2/3K'+1/3RSV →
- * D=2/3D'+1/3K → J=3K-2D。J<20 视为低位（参数可配，默认建议值）。
+ * D=2/3D'+1/3K → J=3K-2D。J<13 视为低位（课程锚点，P2-6 2026-08-17：原建议 20 偏松，用户确认改 13）。
  */
 public final class KdjIndicator {
 

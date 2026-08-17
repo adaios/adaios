@@ -134,9 +134,9 @@ class CardMigrationServiceTest {
         CardMigrationService.MigrationResult result = service.migrate("default");
 
         assertEquals(1, result.migrated(), "有效卡片应迁移");
-        // 缺 createdAt → parseAsCard 回退 now()，路径按当天
-        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-        String newContent = storage.read("default", "records/cards/" + today + "/card_555555.md");
+        // 缺 createdAt → 回退固定时间戳（2026-07-01，B37 2026-08-17：不污染当天），路径按该日期
+        String fallback = java.time.LocalDate.of(2026, 7, 1).format(java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+        String newContent = storage.read("default", "records/cards/" + fallback + "/card_555555.md");
         assertTrue(newContent.contains("id: card_555555"), "frontmatter id 应改写为 card_ 前缀");
         assertTrue(newContent.contains("id: 12345"), "body 中的 id: 12345 不应被误改");
     }

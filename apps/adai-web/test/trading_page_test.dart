@@ -857,7 +857,7 @@ void main() {
         if (path == '/api/v1/trading/sold/score') return _json([]);
         if (path == '/api/v1/trading/buy-points') {
           return _json([
-            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 0.8,
+            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 87,
              'signals': ['回调 52% ≥ 50%', '缩量 0.6', 'KDJ.J 12 < 20']},
           ]);
         }
@@ -870,8 +870,8 @@ void main() {
       await tester.tap(find.text('自选'));
       await tester.pumpAndSettle();
 
-      // 命中：B1 80%（判定是提示不是指令，红色标出）
-      expect(find.text('B1 80%'), findsOneWidget);
+      // 命中：B1 87%（score 0-100 量纲，F53）
+      expect(find.text('B1 87%'), findsOneWidget);
       // 未命中：—
       expect(find.text('—'), findsOneWidget);
     });

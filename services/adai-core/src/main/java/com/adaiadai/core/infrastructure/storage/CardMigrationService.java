@@ -208,11 +208,13 @@ public class CardMigrationService {
     }
 
     private LocalDateTime parseDateTime(String value) {
-        if (value == null || value.isBlank()) return LocalDateTime.now();
+        // B37（2026-08-17 走查）：缺失/非法不再回退 now()（把旧卡归到今天，G2 同款）；
+        // 回退固定旧时间戳（迁移工具场景：未知时间 → 2026-08-01 之前，不污染今天）
+        if (value == null || value.isBlank()) return LocalDateTime.of(2026, 7, 1, 0, 0);
         try {
             return LocalDateTime.parse(value);
         } catch (Exception e) {
-            return LocalDateTime.now();
+            return LocalDateTime.of(2026, 7, 1, 0, 0);
         }
     }
 

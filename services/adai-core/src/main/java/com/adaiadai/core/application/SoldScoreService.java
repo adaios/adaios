@@ -129,7 +129,7 @@ public class SoldScoreService {
     }
 
     private String executionExplain(SoldTrade t) {
-        if (t.verdict().contains("R66")) return "违反 R66 止损纪律（扛单超 10%）";
+        if (t.verdict().contains("R66")) return "违反 R66 止损纪律（扛单超 5%）";
         if (t.verdict().contains("R53")) return "违反 R53（该涨不涨未处理）";
         if (t.holdPnlPct() >= 0) return "盈利了结，执行到位";
         return "亏损但按计划执行";

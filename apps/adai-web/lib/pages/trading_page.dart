@@ -701,7 +701,7 @@ class _TradingPageState extends State<TradingPage> {
                     color: w.signal.contains('金叉') ? AppColors.darkRed : AppColors.darkGrey4))),
                 DataCell(bp.isEmpty
                     ? const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
-                    : Text(bp.map((b) => '${b.buyPoint} ${(b.score * 100).toStringAsFixed(0)}%').join('、'),
+                    : Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))),
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),

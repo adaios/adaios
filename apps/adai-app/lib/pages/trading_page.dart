@@ -131,9 +131,11 @@ class _TradingPageState extends State<TradingPage> {
   /// 次级数据（账户快照/自选/买点/清仓/打分）：独立拉取，失败静默不影响主数据。
   /// 代际令牌（2026-08-17）：响应乱序时旧代不覆盖新代（与 web P2-10 同款守卫）。
   Future<void> _loadAux() async {
-    final gen = ++_auxGen;
+    // P2-UX1（2026-08-17 走查）：先判锁再递增——早退分支不得先递增代际，
+    // 否则在途请求 finally 判定 gen != _auxGen 不复位锁 → 次级数据本会话永久不刷新
     if (_auxLoading) return;
     _auxLoading = true;
+    final gen = ++_auxGen;
     try {
       final acct = await widget.api.getAccount();
       final watch = await widget.api.getWatchlist();
@@ -151,7 +153,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (_) {
       // 次级数据失败静默（账户卡退回组合快照口径）
     } finally {
-      if (gen == _auxGen) _auxLoading = false;
+      _auxLoading = false; // 无条件复位（锁只被本请求持有，串行安全）
     }
   }
 
@@ -548,7 +550,7 @@ class _TradingPageState extends State<TradingPage> {
                   style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
             ),
             if (bp.isNotEmpty)
-              Text(bp.map((b) => '${b.buyPoint} ${(b.score * 100).toStringAsFixed(0)}%').join('、'),
+              Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))
             else
               Text(w.signal.isEmpty ? '—' : w.signal,
@@ -577,9 +579,11 @@ class _TradingPageState extends State<TradingPage> {
             style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
       ]),
       const SizedBox(height: 6),
-      ..._sold.take(20).map((s) {
-        final sc = _soldScores.where((x) => x.symbol == s.symbol).toList();
-        final score = sc.isEmpty ? null : sc.first;
+      // P1-UX4（2026-08-17 走查）：按列表顺序索引匹配（同代码多笔不错挂）——
+      // 旧 `.where(symbol).first` 会把所有同代码笔都挂到第一笔的分数上（web P1-8 已修，app 复制了修复前版本）
+      ..._sold.take(20).toList().asMap().entries.map((e) {
+        final s = e.value;
+        final score = e.key < _soldScores.length ? _soldScores[e.key] : null;
         return Container(
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

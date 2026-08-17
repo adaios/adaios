@@ -129,11 +129,9 @@ public class BriefAppService {
                 fallback.append("\n📋 今天还没有记录");
             }
             if (!recentMemories.isEmpty()) {
-                String mem = recentMemories.get(0).summary();
-                if (mem != null && !mem.isBlank()) {
-                    if (mem.length() > 28) mem = mem.substring(0, 28) + "…";
-                    fallback.append("\n🧠 ").append(mem.trim());
-                }
+                // P1-4（2026-08-17 走查）：不再直贴 AI 记忆摘要（第三人称原文如「延续此前对面壁者计划的讨论」
+                // 是内部理解，贴进问候语=第三视角泄漏）→ 中性引导，让用户自己开口
+                fallback.append("\n🧠 你之前聊过些话题，想接着聊随时说");
             }
             fallback.append("\n☕ 慢慢来，一件件来");
             cachedBriefByUser.put(userId, truncateLines(fallback.toString(), 4));

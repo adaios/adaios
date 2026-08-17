@@ -92,7 +92,8 @@ class TradingControllerTest {
                              String... defaultPlugins) {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
-                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class));
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -115,7 +116,8 @@ class TradingControllerTest {
                              SoldScoreService soldScoreService) {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
-                pluginService(defaultPlugins), buyPointService, soldScoreService);
+                pluginService(defaultPlugins), buyPointService, soldScoreService,
+                "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -274,7 +276,8 @@ class TradingControllerTest {
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
-                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class));
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -571,7 +574,8 @@ class TradingControllerTest {
                         null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null)));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
-                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class));
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

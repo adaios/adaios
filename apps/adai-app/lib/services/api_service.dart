@@ -1297,7 +1297,9 @@ class AccountSnapshotDto {
   }
 
   /// 总盈亏 = 资产 - 本金（用户确认口径，2026-08-16）。
-  double get totalPnl => assets - principal;
+  /// P1-前端3（2026-08-17 走查）：principal>0 兜底与 web/后端对齐——本金未录时退回券商浮盈 pnl，
+  /// 否则新账号显示「总盈亏=总资产」全当盈利
+  double get totalPnl => principal > 0 ? assets - principal : pnl;
 }
 
 /// 自选股条目（盯盘买点原料）。

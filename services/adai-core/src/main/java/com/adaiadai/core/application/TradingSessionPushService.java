@@ -151,6 +151,8 @@ public class TradingSessionPushService {
     /** 尾盘建议（14:50）：逐票建议（R66/R81）+ 明日关注 + 复盘提醒。 */
     @Scheduled(cron = "${adai.trading.session.close-cron:" + CRON_CLOSE + "}")
     public void closeAdvice() {
+        // P2-1（2026-08-17 走查）：同文件 4/5 个定时任务都有 isTradingDay，唯独它漏——节假日照常推尾盘建议
+        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "尾盘建议", "close-advice", this::buildCloseTemplate);
             pushToAll(userId, "尾盘建议", content, "session", null, null);
