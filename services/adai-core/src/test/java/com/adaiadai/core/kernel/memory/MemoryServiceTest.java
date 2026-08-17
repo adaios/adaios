@@ -414,4 +414,48 @@ class MemoryServiceTest {
         assertTrue(memoryService.findPendingActions("default").stream().anyMatch(x -> x.recordId().equals("rec_a4")),
                 "待办应包含 actionable 记忆");
     }
+
+    @Test
+    void parseEntries_bodyContainingSeparator_doesNotSplitEntry() {
+        // 2026-08-17 生产修复：正文内容含裸 `---`（笑话/故事分隔线）时，旧正则会在正文内
+        // 提前截断 → 后半正文被误当下一条目 frontmatter → createdAt 缺失、记忆丢失（生产 110 条告警）。
+        // 新正则要求条目结束的 --- 后必须紧跟 frontmatter 键值行才截断。
+        String content = """
+                ---
+                id: mem_a1
+                recordId: rec_a1
+                kind: insight
+                tags: []
+                sentiment: neutral
+                actionable: false
+                patterns: []
+                preferences: []
+                suggestion:
+                createdAt: 2026-07-01T10:00:00
+                ---
+                好的阿呆，给你讲个笑话解解闷 😄
+                ---
+                一只企鹅想跟北极熊做朋友，于是决定去找它。
+                ---
+                id: mem_a2
+                recordId: rec_a2
+                kind: insight
+                tags: []
+                sentiment: neutral
+                actionable: false
+                patterns: []
+                preferences: []
+                suggestion:
+                createdAt: 2026-07-02T10:00:00
+                ---
+                第二条记忆正文
+                """;
+        fileStorage.write("default", "memory/2026/07.md", content);
+
+        List<com.adaiadai.core.kernel.memory.Memory> entries =
+                memoryService.findByDate("default", LocalDate.of(2026, 7, 2));
+        assertEquals(1, entries.size(), "第二条记忆应完整解析出（不被正文内 --- 截断）");
+        assertEquals("mem_a2", entries.get(0).id());
+        assertEquals("第二条记忆正文", entries.get(0).summary());
+    }
 }

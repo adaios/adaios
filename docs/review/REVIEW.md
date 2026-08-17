@@ -99,6 +99,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| Memory 正文分隔符截断批 | ENTRY_SPLIT 正则：正文含裸 `---` 提前截断 → 后半正文误当 frontmatter → createdAt 缺失记忆丢失（生产 110 告警/17 条）；新正则要求 `---` 后紧跟键值行才截断 + 回归测试；后端 643→644 | ✅ 2026-08-17 |
 | 走查前端 8 项批 | web 可降级锁/日期竞态/图片回执自然化/交易成功 toast/首载失败错误态/错误人话；app+web Feed 徽章移除（第一原则）；admin 涨跌色 darkRed；web 98 · app 118 · admin 34 全绿 | ✅ 2026-08-17 |
 | P2-交易20 guard-align 盲区批 | A1 正则补裸注解分支（`@GetMapping`/`@GetMapping()` 继承类级 base）：11 个裸注解不再漏数，A1 61→72 全对齐 endpoints.txt 真相源；P2-交易20 出表，P2 表清零；G1-G7 全 PASS | ✅ 2026-08-17 |
 | P1-交易4 占比分母含现金批 | TradingSessionPushService.positionPercent 分母 = 持仓市值 + AccountSnapshot.cash（S5 真源）：SessionData 注入现金 + serviceWithCash 测试 helper + 回归测试（现金 100 万不再误发 R81）；P1-交易4 出表；后端 642→643 | ✅ 2026-08-17 |

@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-17 | Memory 正文 `---` 截断修复批 | **生产 110 条「createdAt 缺失」告警根治**：正文含裸 `---`（笑话/故事分隔线）时旧 ENTRY_SPLIT 正则提前截断 → 后半正文误当下条目 frontmatter → 17 条记忆读不出；新正则要求条目结束 `---` 后紧跟 frontmatter 键值行才截断（正文内 `---` 后是空行/普通文本不截断）；生产 7 月文件 17 条缺失全消除 + 回归测试；后端 643→644 | — |
 | 2026-08-17 | 走查前端 8 项批 | **web×6**：_loadDegradable 锁+代际令牌（先判锁再递增/finally 无条件复位/旧代丢弃）；历史 Dialog 日期竞态代际隔离；图片回执自然化（VLM summary 拼「看到你…，已记下」，替代「📷 已记录 N 张」）；记录交易成功补 toast（第一原则文案）；首载失败错误态+重试（不伪装空态，loading/失败/真空三分支）；_extractApiError 透出后端人话（body.error 优先，四页统一）；**app+web**：Feed 卡移除「记录/提问/领域」系统徽章（第一原则，交互保留在更多菜单）；**admin**：涨跌色红涨绿亏（补 darkRed token，行情/持仓两处）；顺手清 web 账户卡 11 处多余 `a!`；app analyze 清 2 死 getter；web 98 · app 118 · admin 34 全绿 | — |
 | 2026-08-17 | P2-交易20 guard-align 盲区批 | **A1 端点守护补裸注解**：正则新增 `@GetMapping`/`@GetMapping()`（无路径参数）分支继承类级 base——此前 11 个裸注解漏数（A1 报 61 vs 真相源 72）；修复后 72 全对齐 endpoints.txt；P2-交易20 出表，**P2 表清零**；G1-G7 全 PASS | — |
 | 2026-08-17 | S5 现金单一真源批 | **现金唯一真源 = account.json（AccountSnapshot.cash）**：importCashQuery 不再写 positions.md cashBalance（saveCashBalance 调用移除）；TradingAdviceAppService R81 分母、TradingAppService getPortfolioSnapshot、TradingReviewAppService 复盘快照全部改 AccountSnapshot.cash；测试 3 构造器补 AccountSnapshotRepository mock + importCashQuery 断言改验 AccountSnapshot.save + positionPercent 现金走快照 mock；REVIEW S5 + P2-交易4 出表；后端 642 全绿 | — |

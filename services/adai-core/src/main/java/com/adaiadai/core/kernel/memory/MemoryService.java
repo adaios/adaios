@@ -35,9 +35,13 @@ public class MemoryService {
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    // 解析条目：--- 分隔的前置元信息 + 正文
+    // 解析条目：--- 分隔的前置元信息 + 正文。
+    // 2026-08-17（生产 110 条「createdAt 缺失」告警）：正文内容若含裸 `---`（如笑话/故事分隔线），
+    // 旧正则 `(?=\n---|\z)` 会在正文内的 --- 处提前截断 → 后半正文被误当下一条目 frontmatter → createdAt 缺失、
+    // 记忆丢失。新正则要求条目结束的 `---` 后必须紧跟 frontmatter 键值行（key: value）才截断；
+    // 正文内 --- 后跟空行/普通文本（非键值行）则不截断。生产 7 月文件 17 条缺失全部消除。
     private static final Pattern ENTRY_SPLIT = Pattern.compile(
-            "---\\n(.+?)\\n---\\n(.+?)(?=\\n---|\\z)",
+            "---\\n(.+?)\\n---\\n(.+?)(?=\\n---\\n[a-zA-Z_]+: |\\z)",
             Pattern.DOTALL);
 
     private final FileStorage fileStorage;
