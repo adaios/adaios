@@ -84,6 +84,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P2-交易20 | guard-align A1 盲区：正则只匹配括号内带路径的映射，11 个裸 @GetMapping（类级路径继承）不计入 → A1 报 60 vs 真相源 71 | `guard-align.sh:33-37` | 正则补裸注解分支或 A1 直接对拍 endpoints.txt（D50）|
 | P2-交易21 | TradingAdviceAppService 输出侧硬判定未过 r81Applicable：OVER_WEIGHT && buy → reduce 覆盖未检查总资产超 100 万前提，与 FP-P2b 语义矛盾（prompt 段尊重前提、输出段没有）| `TradingAdviceAppService.java:194-198` | 输出侧复用 r81Applicable 判定 |
 | P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 |
+| P2-交易23 | **持仓编辑端点从未实现**：前端/测试一直在调 PUT /positions/{symbol}，后端只有 GET/POST——web 点「编辑」保存必 404（功能形同虚设）| `TradingController`（2026-08-17 已补端点 ✅）| ✅ 已修（2026-08-17 R1 续：updatePositionMeta + PUT 端点，见已修复区）|
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 当前清零**。
 > 历史观察项已迁移 task-log。
 
@@ -96,7 +97,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
-| Review 修复批 R1（择时路径 + 推送文案）| CURRENT_MD 配置注入（`adai.knowledge.trading-engine-path`，生产择时状态恢复，P1-交易6 出表）；loss 推送文案如实化（「触发止损预警」→「单日大跌，留意风险（你还没设止损位）」）；后端 612（+2 择时路径测试）| ✅ 2026-08-17 |
+| Review 修复批 R1（择时路径 + 推送文案 + 持仓编辑）| CURRENT_MD 配置注入（生产择时状态恢复，P1-交易6 出表）；loss 文案如实化；**持仓编辑 404 修复**（PUT /positions/{symbol} 补端点，P2-交易23 出表）；web 记录交易默认止损 -7%（用户设定）；生产 5 只持仓按成本×0.93 补止损；后端 612→619（+7）· 端点 71→72 | ✅ 2026-08-17 |
 | 框架+插件审查 P2 清尾批（FP-P2a~i）| parseLlmAdvice 输出侧校验（BREACHED→强制 clear、OVER_WEIGHT→buy 保守改 reduce，B45）；R81 100万前提（总资产超 100 万不强制，参考 R82-R95）；测试补断言（硬信号段 + currentPrice≤0）；gap 补 frontmatter（D44）；docs/README 登记新文档；三阶段 RFC 升 approved + 实施记录 + §三同步；gap 指向正式总纲；update-current.sh 相对路径 + CLAUDE.md 收录（09-scripts 行）；编号对拍（CLAUDE.md R1-R120/E1-E30 + agent-skill E1-E30，K39）；后端 556（+1）| ✅ 2026-08-16 |
 | 框架+插件审查修复批（FP-S1-S4 + FP-P1-P4）| yml 路径 11-context→knowledge/context（运行时断链根治，三官交叉印证）；R81 分母改总资产（现金纳入，+测试）；update-current.sh 幂等+时间戳语义+声明修正；R66 现价口径注明；总纲 §五 刷新全 ✅；引擎口径契约测试 RuleKnowledgeContractTest（B44）；rules-api.md §2/§3 同步；后端 555（+4）| ✅ 2026-08-16 |
 | S-R1/S-R2（deep 战略项）| launcher 插件失败 SnackBar+重试（双端对拍 web）+ 服务端合并插件端点 `PATCH /accounts/{id}/plugins`（账号级锁原子 add/remove，根治 PATCH 全量并发互覆）+ admin 改走合并语义 + 内置 admin 插件服务端保护；api-spec v3.20；后端 446（+6）| ✅ 2026-08-15 |
