@@ -32,7 +32,7 @@ public class KlineService {
         if (symbol == null || symbol.isBlank()) return List.of();
         List<Candle> candles = primary.kline(symbol, limit);
         if (!candles.isEmpty()) return candles;
-        log.debug("东财 K线空，降级腾讯 | symbol={}", symbol);
+        log.warn("东财 K线空，降级腾讯 | symbol={}", symbol);
         List<Candle> tencent = fallback.kline(symbol, limit);
         return tencent != null ? tencent : List.of();
     }

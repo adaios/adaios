@@ -21,6 +21,7 @@ engine/（能力层：规则执行内核——接口规格，语言无关）
 | `matchRules` | `rules-api.md` §1 | 规则条目解析 + 区间抽取（R66-R95 硬约束）| `**R{n} 标题** + > 描述` 格式 |
 | `evaluateStopLoss` | `rules-api.md` §2 | 止损硬判定 | R66 收盘跌破止损位 → clear；R68 入场即设止损 |
 | `evaluatePosition` | `rules-api.md` §3 | 仓位硬判定 | R81 单票上限 25%（4-5 仓）|
+| `BuyPointDetector` | `buy-point-rules.md` | B1/B2 买点判定（C2，2026-08-16 从课程提炼）| B1 回调≥50%+缩量+KDJ.J<13；B2 放量破前高（参数为建议值，待用户校准后冻结）|
 
 ## 实现状态
 

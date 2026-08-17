@@ -10,6 +10,10 @@ import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.AccountSnapshot;
+import com.adaiadai.core.domain.trading.TransferRecord;
+import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -101,6 +105,24 @@ class TradingControllerTest {
 
     private MockMvc buildMvc(TradingAppService tradingAppService) {
         return buildMvc(tradingAppService, mock(TradingReviewAppService.class));
+    }
+
+    /** P3（2026-08-17）：注入自定义买点/打分服务的重载（sold/score、buy-points 测试用）。 */
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradingReviewAppService reviewAppService,
+                             String[] defaultPlugins,
+                             WatchlistBuyPointService buyPointService,
+                             SoldScoreService soldScoreService) {
+        TradingController controller = new TradingController(tradingAppService, reviewAppService,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService(defaultPlugins), buyPointService, soldScoreService);
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
     }
 
     private Position position(String symbol) {
@@ -684,6 +706,154 @@ class TradingControllerTest {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .multipart("/api/v1/trading/imports/save").file(file))
                 .andExpect(status().isForbidden());
+    }
+
+    // ── 八端点 controller 测试补齐（P3，2026-08-17）──
+
+    @Test
+    void watchlist_returnsList() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.watchlistList(any())).thenReturn(java.util.List.of(
+                new WatchlistItem("000725", "京东方A", "面板", "信息产业-元器件", 6, 8, 1, "金叉", java.time.LocalDate.of(2026, 8, 16))));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(get("/api/v1/trading/watchlist").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("000725"));
+    }
+
+    @Test
+    void watchlistImport_imports() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.watchlistImport(any(), any())).thenReturn(new TradingAppService.WatchlistImportResult(27));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(post("/api/v1/trading/watchlist/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"hello\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(27));
+    }
+
+    @Test
+    void sold_returnsList() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(java.util.List.of(
+                new SoldTrade("600519", "贵州茅台", java.time.LocalDate.of(2026, 8, 1),
+                        java.time.LocalDate.of(2026, 8, 11), 10, "1+1", 5.0, "盈利了结", "")));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(get("/api/v1/trading/sold").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("600519"));
+    }
+
+    @Test
+    void soldImport_imports() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldImport(any(), any())).thenReturn(new TradingAppService.SoldImportResult(42));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(post("/api/v1/trading/sold/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"hello\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(42));
+    }
+
+    @Test
+    void soldPsychology_updates() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldUpdatePsychology(any(), any(), any())).thenReturn(true);
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(put("/api/v1/trading/sold/600519/psychology")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"psychology\":\"追高后恐慌\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true));
+    }
+
+    @Test
+    void soldScore_returnsScores() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(java.util.List.of());
+        SoldScoreService scoreService = mock(SoldScoreService.class);
+        when(scoreService.score(any())).thenReturn(java.util.List.of(
+                new SoldScoreService.SoldScore("600519", "贵州茅台", 88, "B1", "回调 52%",
+                        90, "盈利了结", 89.0, "盈利了结")));
+        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, mock(WatchlistBuyPointService.class), scoreService);
+        mvc.perform(get("/api/v1/trading/sold/score").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].buyPointScore").value(88));
+    }
+
+    @Test
+    void transfer_recordsAndTransfers_list() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTransfer(any(), eq("IN"), any(), any(), any())).thenReturn(
+                new TransferRecord("transfer_1", "IN", new java.math.BigDecimal("10000"),
+                        java.time.LocalDate.of(2026, 8, 17), "补仓"));
+        when(trading.transferList(any())).thenReturn(java.util.List.of());
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(post("/api/v1/trading/transfer")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"IN\",\"amount\":10000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("transfer_1"));
+        mvc.perform(get("/api/v1/trading/transfers").header("X-User-Id", "adai"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void transfer_invalidType_400() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(post("/api/v1/trading/transfer")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"XXX\",\"amount\":10000}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void buyPoints_returnsHits() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.watchlistList(any())).thenReturn(java.util.List.of());
+        WatchlistBuyPointService bp = mock(WatchlistBuyPointService.class);
+        when(bp.scanWatchlist(any())).thenReturn(java.util.List.of(
+                new WatchlistBuyPointService.WatchBuyPoint("000725", "京东方A", "B1", 87, java.util.List.of("回调 52%"))));
+        MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, bp, mock(SoldScoreService.class));
+        mvc.perform(get("/api/v1/trading/buy-points").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].buyPoint").value("B1"));
+    }
+
+    @Test
+    void account_returnsSnapshot() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.accountSnapshot(any())).thenReturn(new AccountSnapshot(
+                new java.math.BigDecimal("110504.88"), new java.math.BigDecimal("292.88"),
+                new java.math.BigDecimal("292.88"), new java.math.BigDecimal("292.88"),
+                new java.math.BigDecimal("110212.00"), new java.math.BigDecimal("15235.55"),
+                java.math.BigDecimal.ZERO, new java.math.BigDecimal("150000"),
+                java.time.LocalDate.of(2026, 8, 16)));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(get("/api/v1/trading/account").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.principal").value(150000));
+    }
+
+    @Test
+    void importCash_returnsResult() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importCashQuery(any(), any())).thenReturn(
+                new TradingAppService.CashImportResult(new java.math.BigDecimal("292.88"), new java.math.BigDecimal("110504.88"), 5));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(post("/api/v1/trading/imports/cash")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"余额:292.88  资产:110504.88\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cash").value(292.88));
     }
 }
 

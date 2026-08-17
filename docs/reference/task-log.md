@@ -303,17 +303,6 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
-| 08-17 交易A-E×12 | 新增 DTO 仅 BuyPointDto 有测试；SoldScoreDto/SoldTradeDto/WatchlistItemDto/AccountSnapshotDto 等零测试 | `test/dto_parse_test.dart` | P3 |
-| 08-17 交易A-E×8 | buy-point-rules.md 是孤儿规格（engine/README、rules-api.md 未链接）+ B2 双义未注明 | `os/trading-engine/engine/` | P3 |
-| 08-17 交易A-E×4 | gap frontmatter lines 80 vs 实际 81（guard-meta scope 不含 reference/）| gap 文档 | P3 |
-| 08-17 交易A-E×4 | buy-point-rules §四 输出含未实现字段（candles/B3|SB1），实现 WatchBuyPoint 无 candles、detector 只出 B1/B2/B1?/NONE | `buy-point-rules.md:68` | P3 |
-| 08-17 交易A-E×4 | 「参数可配」无配置入口（buy-point-rules.md:56 + api-spec.md:522 均写可配，代码无 @Value/yml 绑定）| `buy-point-rules.md` / `api-spec.md` | P3 |
-| 08-17 交易A-E×4 | change-log 通达信持仓导入（+2 端点）与上传留存（+1 端点）两行未登记端点增量 | `change-log.md:17-18` | P3 |
-| 08-17 交易A-E×4 | pitfalls 复发信号依赖 debug 级日志（生产默认不输出）；生产可见的是 EastMoneyKlineDataSource:71 的 warn | `pitfalls.md:67` | P3 |
-| 08-17 交易A-E×4 | sold/score 示例 totalScore:89 实际序列化 89.0（JSON 等价，极轻微）| `api-spec.md:543` | P3 |
-| 08-17 交易A-E×8 | importPositions 已存在止损但导入项 stopLoss 为空时保留旧值却仍进 missingStopLoss 列表（提示失真）| `TradingAppService` | P3 |
-| 08-17 交易A-E×8 | WeChatPushChannel 调度线程 catch InterruptedException 后置 interrupt 标志（影响后续调度，低危）| `WeChatPushChannel` | P3 |
-| 08-17 交易A-E×8 | watchlist/sold/sold-score/transfer/transfers/buy-points/account/imports-cash 八端点无 controller 测试；closeAccountUpdate 与 buyPointScan 定时路径无测试 | `TradingControllerTest` | P3 |
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
 | 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |

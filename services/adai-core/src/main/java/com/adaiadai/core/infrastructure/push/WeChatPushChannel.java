@@ -68,9 +68,12 @@ public class WeChatPushChannel implements PushChannel {
             } else {
                 log.info("微信推送成功 | type={} | symbol={}", message.type(), message.symbol());
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            // P3（2026-08-17）：调度线程被中断（服务关闭）——不置 interrupt 标志污染共享调度线程，
+            // 直接记录返回（低危项，避免 Thread.currentThread().interrupt() 影响后续 @Scheduled 任务）
+            log.info("微信推送被中断（服务关闭中）| type={}", message.type());
+        } catch (IOException e) {
             log.warn("微信推送异常 | type={} | {}", message.type(), e.getMessage());
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.warn("微信推送异常 | type={} | {}", message.type(), e.getMessage());
         }

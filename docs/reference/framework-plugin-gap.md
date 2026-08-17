@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-16
 updated: 2026-08-16
 status: active
-lines: 80
+lines: 81
 depends-on:
   - ../architecture/framework-plus-plugin-model.md
 related:

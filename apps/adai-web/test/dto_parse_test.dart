@@ -112,6 +112,64 @@ void main() {
       expect(hit.score, 0);
       expect(hit.signals, isEmpty);
     });
+
+    test('SoldScoreDto parses three dimensions', () {
+      final json = jsonDecode('''
+        [{"symbol":"600519","name":"贵州茅台","buyPointScore":88,"buyPointSignal":"B1",
+          "buyPointExplain":"回调 52%","executionScore":90,"executionExplain":"盈利了结",
+          "totalScore":89.0,"verdict":"盈利了结"}]
+      ''');
+      final s = (json as List).map((e) => SoldScoreDto.fromJson(e)).first;
+      expect(s.symbol, '600519');
+      expect(s.buyPointScore, 88);
+      expect(s.executionScore, 90);
+      expect(s.totalScore, 89.0);
+    });
+
+    test('SoldScoreDto null scores default', () {
+      final s = SoldScoreDto.fromJson({'symbol': '600519'});
+      expect(s.buyPointScore, isNull);
+      expect(s.totalScore, isNull);
+    });
+
+    test('SoldTradeDto parses verdict + psychology', () {
+      final t = SoldTradeDto.fromJson({
+        'symbol': '000725', 'name': '京东方A', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+        'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0,
+        'verdict': '盈利了结', 'psychology': '追高后恐慌',
+      });
+      expect(t.symbol, '000725');
+      expect(t.holdDays, 10);
+      expect(t.holdPnlPct, 5.0);
+      expect(t.verdict, contains('盈利'));
+      expect(t.psychology, '追高后恐慌');
+    });
+
+    test('WatchlistItemDto parses fields', () {
+      final w = WatchlistItemDto.fromJson({
+        'symbol': '000725', 'name': '京东方A', 'industry': '面板', 'industry2': '',
+        'longForm': 6, 'midForm': 8, 'shortForm': 1, 'signal': 'KDJ死叉', 'addedAt': '2026-08-16',
+      });
+      expect(w.symbol, '000725');
+      expect(w.longForm, 6);
+      expect(w.signal, contains('KDJ'));
+    });
+
+    test('AccountSnapshotDto totalPnl = assets - principal', () {
+      final a = AccountSnapshotDto.fromJson({
+        'assets': 110504.88, 'cash': 292.88, 'available': 292.88, 'withdrawable': 292.88,
+        'marketValue': 110212.0, 'pnl': 15235.55, 'todayPnl': 0.0, 'principal': 150000.0,
+      });
+      expect(a.assets, 110504.88);
+      expect(a.principal, 150000.0);
+      expect(a.totalPnl, closeTo(-39495.12, 0.01));
+    });
+
+    test('AccountSnapshotDto empty defaults totalPnl 0', () {
+      final a = AccountSnapshotDto.fromJson({});
+      expect(a.assets, 0);
+      expect(a.totalPnl, 0);
+    });
   });
 
   group('ApiException', () {
