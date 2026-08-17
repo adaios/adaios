@@ -16,7 +16,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 # 项目审核状态报告
 
-> **2026-08-17 全维度走查（8 官独立并行 + 交叉印证）**：守护 7 PASS / 0 HIT。P0 无。**已修**（批 c98daf7）：buy-points score 量纲 100 倍（⭐前端/契约双官）、promote/Admin 硬编码路径（⭐产品/后端双官）、app _loadAux 早退吞锁、app 清仓打分 .first 错挂、positionPercent 现金分母、closeAdvice 节假日守卫、brief 降级记忆原文、TagIndex RMW 锁、CardMigration now() 回退、app totalPnl 兜底。**未修**（需用户拍板/后续批）：S6 买点参数、P1-9 B1 口径、S7 完美图、#179 鉴权、P1-交易4（positionPercent 现金分母——本次确认复发，下批必修）、web _loadDegradable 无锁、web Dialog 日期竞态、web 图片回执系统标签、web 交易成功无反馈、首屏失败伪装空态、admin 涨跌色相反（缺 darkRed）、web _extractApiError 丢人话、App Feed 卡意图/领域徽章（第一原则）、roadmap 缺插件/数据智能条目、RFC draft 已上线、promote 非原子写、节假日硬编码、R85 假引用已修、glossary 术语重复 6 处、复盘闭环断链（S9）、行为模式无回写（S10）、P3 迁移登记断裂（S11）。检查点：P23-28/U22-29/B55-61/D54-60/K44-50/V9-1..7 待入清单。
+> **2026-08-17 全维度走查（8 官独立并行 + 交叉印证）**：守护 7 PASS / 0 HIT。P0 无。**已修**（批 c98daf7）：buy-points score 量纲 100 倍（⭐前端/契约双官）、promote/Admin 硬编码路径（⭐产品/后端双官）、app _loadAux 早退吞锁、app 清仓打分 .first 错挂、positionPercent 现金分母、closeAdvice 节假日守卫、brief 降级记忆原文、TagIndex RMW 锁、CardMigration now() 回退、app totalPnl 兜底。**未修**（需用户拍板/后续批）：S6 买点参数、P1-9 B1 口径、S7 完美图、#179 鉴权、web _loadDegradable 无锁、web Dialog 日期竞态、web 图片回执系统标签、web 交易成功无反馈、首屏失败伪装空态、admin 涨跌色相反（缺 darkRed）、web _extractApiError 丢人话、App Feed 卡意图/领域徽章（第一原则）、roadmap 缺插件/数据智能条目、RFC draft 已上线、promote 非原子写、节假日硬编码、R85 假引用已修、glossary 术语重复 6 处、复盘闭环断链（S9）、行为模式无回写（S10）、P3 迁移登记断裂（S11）。检查点：P23-28/U22-29/B55-61/D54-60/K44-50/V9-1..7 待入清单。
 
 常驻全量状态。每次 `/review` 更新本文件——未修复项滚动保留，已修复标 ✅ 移入已修复区，新问题追加。git 历史天然保留每次更新前的快照。
 
@@ -50,7 +50,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P1-交易1 | **切入自动刷新是死代码**：`_NavEntry('交易',...,'trading',...)` label=中文'交易'，`_buildPage` 判 `entry.label=='trading'` 恒 false → 切到交易页从不触发刷新（253a35e/37d4b52 核心卖点从未工作）| `desktop_shell.dart:115` / `trading_page.dart:59-65` | 改判 `entry.plugin=='trading'`，补壳层 widget 测试 | ✅ 已修（2026-08-17 R4：改判 entry.plugin=='trading' + 壳层测试）
 | P1-交易2 | recordTrade 只动现金不动市值：BUY 少计成交额、SELL 多计成交额 → 账户卡 15:05 前账目错误，快照现金滞后时 cash 可被推成负值 | `TradingAppService.java:137-148` | 买卖同步更新 marketValue | ✅ 已修（2026-08-17 R4：现金↔市值转移，总资产只差手续费 + 2 测试）
 | P1-交易3 | closeAccountUpdate 部分行情缺失即用残缺市值覆盖总资产（旧值不可恢复）| `TradingSessionPushService.java:155,168-171` | 行情不全时跳过或保留旧市值 | ✅ 已修（2026-08-17 R4：缺行情跳过保存 + 2 测试）
-| P1-交易4 | positionPercent 分母只算持仓不含现金（注释称含现金）→ 单仓+大现金每日误发「超 R81 减仓」（FP-P2 已修 bug 复发）| `TradingSessionPushService.java:327-341` | 分母改市值+现金（B50）|
+| P1-交易4 | positionPercent 分母只算持仓不含现金（注释称含现金）→ 单仓+大现金每日误发「超 R81 减仓」（FP-P2 已修 bug 复发）| `TradingSessionPushService.java:327-341` | ✅ 已修（2026-08-17：分母 = 持仓市值 + AccountSnapshot.cash（S5 真源），SessionData 注入现金 + 回归测试；643 测试全绿，见已修复区）|
 | P1-交易5 | importCashQuery 解析失败（CASH_HEAD 未命中）静默落零覆盖 account.json + cashBalance 置零 | `TradingAppService.java:519-553` | ✅ 已修（2026-08-17 R3：headerMatched + 抛错 + web toast，见已修复区）|
 | P1-交易6 | CURRENT_MD 硬编码 `../../os/...` 相对路径（3487b00 只修了 TradingAdviceAppService，漏了第二个知识消费者）→ 生产择时状态恒「未知」| `TradingSessionPushService.java:60` | ✅ 已修（2026-08-17 R1：配置注入 + 不可读 warn 日志 + 2 测试；见已修复区）|
 | P1-交易7 | `_loadAll` 六请求合并 `Future.wait`：任一端点失败（如 buy-points K线抖动）→ 整页替换为错误页丢弃已展示数据（含静默刷新路径）| `trading_page.dart:74-81,98-104` | 致命/可降级请求分离（F41）| ✅ 已修（2026-08-17 R4：致命/可降级分离 + 测试）
@@ -99,6 +99,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| P1-交易4 占比分母含现金批 | TradingSessionPushService.positionPercent 分母 = 持仓市值 + AccountSnapshot.cash（S5 真源）：SessionData 注入现金 + serviceWithCash 测试 helper + 回归测试（现金 100 万不再误发 R81）；P1-交易4 出表；后端 642→643 | ✅ 2026-08-17 |
 | S5 现金单一真源批 | 现金唯一真源=account.json AccountSnapshot.cash：importCashQuery 不再写 positions.md cashBalance（saveCashBalance 调用移除，读取方全走 AccountSnapshot）；TradingAdviceAppService R81 分母 / TradingAppService getPortfolioSnapshot / TradingReviewAppService 复盘快照均改 AccountSnapshot.cash；测试补 AccountSnapshot mock 与断言（P2-交易4 + S5 出表）| ✅ 2026-08-17 |
 | P2 批 C（文档四连）| roadmap 状态修正 + feature-reference 补端点 + api-spec 403 契约 + os 空文件删 | ✅ 2026-08-17 |
 | P2 批 B（前端六连）| 记忆页守卫 + 缩略图降采样 + 图片 caption + toggle catchError；核实 3 项已闭环 | ✅ 2026-08-17 |

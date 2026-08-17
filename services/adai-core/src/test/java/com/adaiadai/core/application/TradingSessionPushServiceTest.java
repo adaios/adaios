@@ -57,7 +57,22 @@ class TradingSessionPushServiceTest {
         return serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context");
     }
 
+    /** P1-交易4：带现金快照的 service（现金唯一真源 = AccountSnapshot，S5）。 */
+    private TradingSessionPushService serviceWithCash(PushChannel channel, AiClient ai, String cash) {
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("1005460"), new BigDecimal(cash),
+                        new BigDecimal(cash), new BigDecimal(cash),
+                        new BigDecimal("5460"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null)));
+        return serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context", acc);
+    }
+
     private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir) {
+        return serviceWithPositions(channel, ai, knowledgeDir, mock(AccountSnapshotRepository.class));
+    }
+
+    private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
+                                                           AccountSnapshotRepository acc) {
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
@@ -79,7 +94,7 @@ class TradingSessionPushServiceTest {
 
         return new TradingSessionPushService(positions, market, accounts, pluginService,
                 new DefaultTradingRuleEngine(), ai, List.of(channel),
-                mock(AccountSnapshotRepository.class),
+                acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 knowledgeDir);
     }
@@ -139,6 +154,25 @@ class TradingSessionPushServiceTest {
         String content = captor.getValue().content();
         assertTrue(content.contains("R66") || content.contains("R81"), "尾盘建议应引用规则编号，实际: " + content);
         assertTrue(content.contains("复盘"), "尾盘建议应提醒复盘");
+    }
+
+    @Test
+    void closeAdvice_largeCash_doesNotTriggerR81() {
+        // P1-交易4（2026-08-17）：占比分母 = 持仓市值 + 现金（S5 真源 AccountSnapshot.cash）——
+        // 旧口径只算市值 → 单票恒 ~96% 必误发「超 R81 减仓」；现金 100 万时应占比 ~12% 持有
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingSessionPushService svc = serviceWithCash(channel, ai, "1000000");
+
+        svc.closeAdvice();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertFalse(content.contains("超 R81"), "现金充足时占比应回落，不得误发 R81 减仓，实际: " + content);
+        assertTrue(content.contains("持有"), "现金充足应持有，实际: " + content);
     }
 
     // ── LLM 成功：用生成内容（阶段二）──

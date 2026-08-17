@@ -246,7 +246,7 @@ public class TradingSessionPushService {
 
     // ── 数据组装 ──
 
-    /** 持仓 + 行情 + 引擎判定 + 择时状态的完整数据（模板与 LLM 共用）。 */
+    /** 持仓 + 行情 + 引擎判定 + 择时状态 + 现金的完整数据（模板与 LLM 共用）。 */
     private SessionData loadData(String userId) {
         List<Position> positions = positionRepository.findAll(userId);
         Map<String, MarketData> quotes = Map.of();
@@ -257,7 +257,11 @@ public class TradingSessionPushService {
                 log.warn("时段推送：行情查询失败 | {}", e.getMessage());
             }
         }
-        return new SessionData(positions, quotes, readMarketStage());
+        // P1-交易4（2026-08-17）：现金唯一真源 = account.json AccountSnapshot.cash（S5）
+        BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash)
+                .orElse(BigDecimal.ZERO);
+        return new SessionData(positions, quotes, readMarketStage(), cash);
     }
 
     private String readMarketStage() {
@@ -359,7 +363,7 @@ public class TradingSessionPushService {
             MarketData md = data.quotes().get(p.symbol());
             BigDecimal price = md != null ? md.price() : p.currentPrice();
             var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
-            BigDecimal percent = positionPercent(p, data.positions(), data.quotes());
+            BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
             var pv = ruleEngine.evaluatePosition(percent);
             String advice;
             if (sl.verdict() == StopLossVerdict.BREACHED) {
@@ -375,9 +379,10 @@ public class TradingSessionPushService {
         return sb.toString();
     }
 
-    /** 单票占比（总资产口径，FP-P2：市值 + 现金，现金不可用按 0）。 */
-    private BigDecimal positionPercent(Position target, List<Position> positions, Map<String, MarketData> quotes) {
-        BigDecimal total = BigDecimal.ZERO;
+    /** 单票占比（总资产口径，P1-交易4 2026-08-17：分母 = 持仓市值 + 现金；现金不可用按 0）。 */
+    private BigDecimal positionPercent(Position target, List<Position> positions, Map<String, MarketData> quotes,
+                                       BigDecimal cash) {
+        BigDecimal total = cash == null ? BigDecimal.ZERO : cash;
         BigDecimal mine = BigDecimal.ZERO;
         for (Position p : positions) {
             MarketData md = quotes.get(p.symbol());
@@ -424,7 +429,8 @@ public class TradingSessionPushService {
     }
 
     /** 时段推送数据载体。 */
-    record SessionData(List<Position> positions, Map<String, MarketData> quotes, String marketStage) {}
+    record SessionData(List<Position> positions, Map<String, MarketData> quotes, String marketStage,
+                      BigDecimal cash) {}
 
     @FunctionalInterface
     private interface TemplateBuilder {
