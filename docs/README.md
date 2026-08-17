@@ -11,7 +11,7 @@
 | [AGENTS.md](../AGENTS.md) | 🤖 **AI 协作入口**（工具无关）——项目定位、协作规则、审查体系导航 |
 | [VISION.md](VISION.md) | 项目愿景、五层产品架构、工程原则。**每个 AI 会话首先阅读。** |
 | [product-roadmap.md](architecture/product-roadmap.md) | 🚩 **产品路线 v1.0.0**——唯一蓝图，路线驱动开发：从这里拆任务、确认目标 |
-| [ai/README.md](ai/README.md) | 🤖 AI 协作协议区（工具无关标准）：8 审查官 / 走查流程 / 检查清单 / 元数据规范 |
+| [ai/](ai/) | 🤖 AI 上下文模板（project/architecture/developer）|
 
 ## 🏗 架构
 

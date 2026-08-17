@@ -391,53 +391,10 @@
 ## 5. 交易
 
 ### `GET /api/v1/trading/positions` — 查询持仓
-
-返回当前持仓列表。价格为实时行情（MarketDataSource 注入）。
-
-**Response**
-
-```json
-[
-  {
-    "symbol": "600123",
-    "name": "立昂微",
-    "quantity": 200,
-    "avgCost": 25.30,
-    "currentPrice": 25.30,
-    "lastUpdated": "2026-08-01"
-  }
-]
-```
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `GET /api/v1/trading/portfolio` — 查询投资组合快照
-
-返回持仓列表 + 汇总（总市值/总成本/总盈亏/现金/持仓数）。字段与 `PortfolioSnapshot` 对齐（REVIEW #106：原示例含不存在的 `totalMarketValue`/`totalPnlPercent`，已修正）。
-
-**Response**
-
-```json
-{
-  "positions": [
-    {
-      "symbol": "600123",
-      "name": "立昂微",
-      "quantity": 200,
-      "avgCost": 25.30,
-      "currentPrice": 26.10,
-      "marketValue": 5220.00,
-      "pnl": 160.00,
-      "pnlPercent": 3.16,
-      "lastUpdated": "2026-08-07T09:00:00"
-    }
-  ],
-  "totalPnl": 160.00,
-  "totalCost": 5060.00,
-  "totalValue": 5220.00,
-  "cashBalance": 2000.00,
-  "snapshotTime": "2026-08-07T09:00:00",
-  "positionCount": 1
-}
-```
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `POST /api/v1/trading/trades` — 记录一笔交易
 
@@ -466,25 +423,7 @@
 ---
 
 ### `GET /api/v1/trading/trades` — 查询交易逐笔流水（RFC 20260816）
-
-**Query Parameters**
-
-| 参数 | 类型 | 必填 | 说明 |
-|:-----|:-----|:----:|:------|
-| `from` | String | 否 | 起始日期 `yyyy-MM-dd` |
-| `to` | String | 否 | 结束日期 `yyyy-MM-dd` |
-
-**Response**：`TradeRecord[]` — 逐笔流水（按 timestamp 倒序）
-
-```json
-[{
-  "id": "trade_1723700000000", "symbol": "000725", "name": "京东方A",
-  "direction": "BUY", "price": 5.2, "volume": 1000, "amount": 5200.0,
-  "entryDate": "2026-08-16", "stopLossPrice": 4.9, "buyPoint": "B1",
-  "targetPrice": null, "reason": null, "fee": null,
-  "timestamp": "2026-08-16T09:30:00", "sourceRecordId": "rec_..."
-}]
-```
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ---
 
@@ -523,8 +462,7 @@
 - 需 trading 插件（403）。
 
 ### `GET /api/v1/trading/sold` — 清仓股列表（复盘闭环）
-
-返回已了结交易（symbol/name/buyDate/sellDate/holdDays/tradeCount/holdPnlPct/verdict/psychology）。
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `POST /api/v1/trading/sold/import` — 清仓股导入（通达信导出文本）
 
@@ -560,6 +498,7 @@
 - 需 trading 插件（403）
 
 ### `GET /api/v1/trading/transfers` — 转账流水
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `POST /api/v1/trading/trades`（手续费自动）— 2026-08-16 起手续费按费率自动计算，表单不再填：
 
@@ -576,8 +515,7 @@
 资金股份查询导入后返回券商口径账户：`{"assets":110504.88,"cash":292.88,"available":292.88,"withdrawable":292.88,"marketValue":110212.00,"pnl":15235.55,"todayPnl":0.0,"principal":150000,"snapshotDate":"2026-08-16"}`。**字段语义（2026-08-16 修正）**：`pnl` = 持仓浮动盈亏（券商口径，非总盈亏）；**总盈亏 = `assets - principal`**（本金由用户提供，累计投入 15 万 → 当前总盈亏 -39,495.12）。顶层展示总资产/可用/可取/参考市值/当日盈亏/总盈亏/本金。数据依赖导入；收盘 15:05 自动更新行情相关字段（参考市值/当日盈亏/浮盈，P2-交易19 修订），现金/本金保持券商导入+转账推导。需 trading 插件（403）。
 
 ### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
-
-**body**：`{"content":"资金股份查询导出文本"}`。解析首行「余额/资产」→ 更新 cashBalance；明细「证券代码/成本价」→ 更新持仓精确成本（4 位，盈亏% 与通达信一致）。**响应**：`{"cash":292.88,"assets":110504.88,"updatedCost":5}`。
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `POST /api/v1/trading/imports/save` — 导入文件上传留存（通达信导出，2026-08-16）
 
@@ -689,28 +627,13 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 ```
 
 ### `GET /api/v1/trading/review` — 查询复盘笔记
-
-**Query Parameters**：同 POST
-
-**Response**：同 POST（不存在则 404）
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `GET /api/v1/trading/reviews` — 列出所有复盘日期
-
-**Response**
-
-```json
-["2026-07-25", "2026-07-24"]
-```
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `GET /api/v1/trading/has-activity` — 检测交易活动
-
-**Query Parameters**：`date`，默认当天
-
-**Response**
-
-```json
-{ "date": "2026-07-25", "hasActivity": true }
-```
+> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ---
 

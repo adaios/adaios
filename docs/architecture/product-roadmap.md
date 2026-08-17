@@ -6,7 +6,7 @@
 > 常驻文档，随版本演进滚动更新（旧版本规划保留在「版本历史」）。
 >
 > 文档版本：v1.2 | 最后更新：2026-08-15
-> 关联：[VISION.md](../../VISION.md)（为什么）｜[product-architecture.md](product-architecture.md)（是什么）
+> 关联：[VISION.md](../VISION.md)（为什么）｜[product-architecture.md](product-architecture.md)（是什么）
 >
 > ⚠️ **2026-08-15 用户决策：先治理流程（文档治理 RFC `20260815-docs-governance` 已 approved），v1.0.0 发布顺延**——功能开发暂停优先级，路线本身不变。
 
