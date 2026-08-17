@@ -120,7 +120,14 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final newCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .map((e) => e.toFeedData(api: _api,
+            onMarkDone: e.type == FeedEntryType.action
+                ? () => _markActionDone(e.id)
+                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                    ? _confirmTradeLog
+                    : null,
+            onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
+            onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
         _brief = brief;
@@ -141,7 +148,14 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .map((e) => e.toFeedData(api: _api,
+            onMarkDone: e.type == FeedEntryType.action
+                ? () => _markActionDone(e.id)
+                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                    ? _confirmTradeLog
+                    : null,
+            onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
+            onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
         _brief = brief;
@@ -842,6 +856,53 @@ class _MainPageState extends State<MainPage>
 
   void _showError(String message) => _showSnackBar(message);
 
+  /// RFC 20260817：左滑删除单条推送（本地移除；推送源头关停走设置）。
+  void _dismissPush(String pushId) {
+    if (!mounted) return;
+    setState(() => _cards.removeWhere((c) => c.id == pushId));
+  }
+
+  /// RFC 20260817：确认当日交易日志落库（推送卡「确认并入账」）。
+  Future<void> _confirmTradeLog() async {
+    try {
+      final done = await _api.confirmTradeLog();
+      if (!mounted) return;
+      _showSnackBar(done > 0 ? '已确认 $done 笔交易并入账' : '今天没有待确认的交易');
+      await _loadFeed();
+    } catch (e) {
+      if (mounted) _showError('确认失败: ${_extractApiError(e)}');
+    }
+  }
+
+  /// RFC 20260817：右滑打开推送设置（早盘/午间/尾盘/买点/预警/行情条逐项开关）。
+  Future<void> _openPushSettings() async {
+    // 读取当前开关
+    Map<String, bool> settings = {};
+    try {
+      settings = await _api.getPushSettings();
+    } catch (_) {
+      settings = {};
+    }
+    if (!mounted) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _PushSettingsDialog(
+        settings: settings,
+        onToggle: (type, on) async {
+          try {
+            await _api.updatePushSetting(type, on);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+      ),
+    );
+    if (changed == true && mounted) {
+      _showSnackBar('推送设置已更新');
+    }
+  }
+
   /// 从 API 异常中提取人类可读的错误消息。
   /// API service 抛出的格式：Exception: API 错误 {status}: {body}
   String _extractApiError(dynamic e) {
@@ -910,7 +971,14 @@ class _MainPageState extends State<MainPage>
       if (!mounted) return;
       final moreCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
-          .map((e) => e.toFeedData(api: _api, onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null))
+          .map((e) => e.toFeedData(api: _api,
+            onMarkDone: e.type == FeedEntryType.action
+                ? () => _markActionDone(e.id)
+                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                    ? _confirmTradeLog
+                    : null,
+            onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
+            onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
         _cards = [...moreCards, ..._cards]; // 更早的条目插在前面，reverse 后出现在视觉顶部
@@ -1475,7 +1543,8 @@ class _TopBar extends StatelessWidget {
 }
 
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone}) {
+  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone,
+      VoidCallback? onDismiss, VoidCallback? onPushSettings}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
       cardTurns = turns!.map((t) => ConversationTurn(
@@ -1488,6 +1557,10 @@ extension FeedEntryResponseX on FeedEntryResponse {
       id: id, type: _toCardType(type), time: time, date: date, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
       summary: summary, turns: cardTurns, domain: domain, onMarkDone: onMarkDone,
+      // RFC 20260817：push 卡带类型标题 + 左滑删/右滑设置回调（由 MainPage 传入）
+      pushTitle: _toCardType(type) == FeedCardType.push ? title : null,
+      onDismiss: _toCardType(type) == FeedCardType.push ? onDismiss : null,
+      onPushSettings: _toCardType(type) == FeedCardType.push ? onPushSettings : null,
       mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
       mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
     );
@@ -1503,5 +1576,67 @@ extension FeedEntryResponseX on FeedEntryResponse {
       case FeedEntryType.push: return FeedCardType.push;
       default: return FeedCardType.record;
     }
+  }
+}
+
+/// RFC 20260817：推送设置对话框——逐类型开关（早盘/午间/尾盘/买点/预警/行情条）。
+class _PushSettingsDialog extends StatefulWidget {
+  final Map<String, bool> settings;
+  final Future<bool> Function(String type, bool on) onToggle;
+
+  const _PushSettingsDialog({required this.settings, required this.onToggle});
+
+  @override
+  State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
+}
+
+class _PushSettingsDialogState extends State<_PushSettingsDialog> {
+  late Map<String, bool> _settings = Map.of(widget.settings);
+
+  static const List<(String, String)> _items = [
+    ('session', '时段节奏（早盘/午间/尾盘）'),
+    ('buy-point', '买点提醒'),
+    ('stop-loss', '止损预警'),
+    ('near-stop-loss', '接近止损'),
+    ('loss', '单日大跌提醒'),
+    ('gain', '放飞提示'),
+    ('break-cost', '跌破成本线'),
+    ('market', '大盘行情条'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: const Text('推送设置',
+        style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (type, label) in _items)
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(label,
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+                value: _settings[type] ?? true,
+                activeTrackColor: AppColors.darkGreen,
+                onChanged: (on) async {
+                  final ok = await widget.onToggle(type, on);
+                  if (ok && mounted) setState(() => _settings[type] = on);
+                },
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('完成', style: TextStyle(color: AppColors.darkGrey3)),
+        ),
+      ],
+    );
   }
 }

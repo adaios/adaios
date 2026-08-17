@@ -56,6 +56,7 @@ tags: [meta, index, rfc]
 | 20260816-trading-agent-plugin-model.md | 交易 Agent 三阶段插件模型（裸问答 → +行情插件 → +规则插件，能力按用户叠加） | approved |
 | 20260816-trading-session-push.md | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）| draft |
 | 20260816-trading-data-intelligence.md | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核，B1 完美图参照系）| draft |
+| 20260817-trading-push-image-trade-log.md | 交易推送体验（样式/模板/开关）+ 图片对话流 + 交易日志自动归集 | approved |
 
 ## 过期判断
 

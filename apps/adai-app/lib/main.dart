@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'root_keys.dart';
 import 'theme/app_theme.dart';
@@ -137,11 +138,19 @@ class _RootAppState extends State<RootApp> {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
       navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       // REVIEW #246：根 messenger 挂在 MaterialApp 层——MainPage 切 World B 被 dispose
       // 后，上传失败/成功提示仍能弹出，不静默丢。
-      scaffoldMessengerKey: rootScaffoldMessengerKey,
+      // 2026-08-17（iPhone 首次安装）：emoji fallback 字体按平台——'Noto Color Emoji'
+      // 是 Android 字体，iOS 不存在 → iPhone 上 emoji 渲染成方框；iOS 用系统 Apple Color Emoji。
       builder: (context, child) => DefaultTextStyle(
-        style: const TextStyle(fontFamilyFallback: ['Noto Color Emoji']),
+        style: TextStyle(fontFamilyFallback: [
+          if (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS)
+            'Apple Color Emoji'
+          else
+            'Noto Color Emoji',
+        ]),
         child: child!,
       ),
       home: _needsSelect

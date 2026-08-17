@@ -26,6 +26,7 @@
 | 2026-08-06 | v3.7 | **行情异动主动推送（Phase 2）**：FeedEntry 新增 `type=push`（止损预警/放飞提示/跌破成本线/真止损 R66（现价跌破止损位，2026-08-16），`MarketAlertService` 交易时段轮询落盘 `data/{userId}/trading/pushes/{date}.json`，阈值可配 `adai.market.alert.*`）|
 | 2026-08-06 | v3.6 | **管理端点鉴权（REVIEW #127）**：§账号、§管理端全部端点要求 `X-Admin-Token` 请求头（配置 `ADAI_ADMIN_TOKEN`，缺失 401 / 未配置 503 fail-closed）；CORS 由 `*` 收窄为配置化 origin 白名单（默认 localhost）|
 | 2026-08-02 | v3.5 | **多模态图片记录（L4）**：新增 `POST /records/media`（multipart 上传 → GLM 视觉理解 → 记录+记忆）、`GET /records/media/{id}`（原图预览）|
+| 2026-08-17 | v3.23 | **RFC 20260817 三项**：`GET/PUT /trading/push-settings[/{type}]`（推送开关）、`GET /trading/trade-log` + `POST /trading/trade-log/confirm`（交易日志自动归集：截图/文字识别 → 当日候选去重 → 用户确认落库）；推送内容结构化（总结+持仓逐行+建议）|
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
@@ -513,6 +514,28 @@
 ### `GET /api/v1/trading/account` — 账户总体快照（顶层账户卡，2026-08-16）
 
 资金股份查询导入后返回券商口径账户：`{"assets":110504.88,"cash":292.88,"available":292.88,"withdrawable":292.88,"marketValue":110212.00,"pnl":15235.55,"todayPnl":0.0,"principal":150000,"snapshotDate":"2026-08-16"}`。**字段语义（2026-08-16 修正）**：`pnl` = 持仓浮动盈亏（券商口径，非总盈亏）；**总盈亏 = `assets - principal`**（本金由用户提供，累计投入 15 万 → 当前总盈亏 -39,495.12）。顶层展示总资产/可用/可取/参考市值/当日盈亏/总盈亏/本金。数据依赖导入；收盘 15:05 自动更新行情相关字段（参考市值/当日盈亏/浮盈，P2-交易19 修订），现金/本金保持券商导入+转账推导。需 trading 插件（403）。
+
+### `GET /api/v1/trading/push-settings` — 推送开关（RFC 20260817 交易推送体验）
+> 需 trading 插件（403）。
+
+返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。
+
+### `PUT /api/v1/trading/push-settings/{type}` — 更新推送开关
+> 需 trading 插件（403）。
+
+- **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market
+- **body**：`{"enabled":false}`（未知类型 → 400）
+- **响应**：更新后的全量开关对象
+
+### `GET /api/v1/trading/trade-log` — 当日交易日志候选（RFC 20260817 交易日志自动归集）
+> 需 trading 插件（403）。
+
+返回当日已归集的交易候选（**未落库，待确认**）：`[{"symbol":"000725","name":"京东方A","direction":"SELL","price":6.1,"volume":5300,"source":"text","complete":true}]`。来源：用户发成交截图（VLM 识别）或说「清仓了XX」（文字解析），仅 trading 插件用户触发；同 (symbol, direction, 当日) 去重。
+
+### `POST /api/v1/trading/trade-log/confirm` — 确认交易日志落库
+> 需 trading 插件（403）。
+
+当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算），确认后清空当日候选。**响应**：`{"confirmed":2}`。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
 
 ### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。

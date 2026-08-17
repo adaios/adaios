@@ -353,6 +353,49 @@ class ApiService {
     return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// RFC 20260817：推送开关（类型 → 是否开启）。
+  Future<Map<String, bool>> getPushSettings() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/push-settings'),
+      headers: _headers,
+    );
+    _check(resp);
+    final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return map.map((k, v) => MapEntry(k, v as bool? ?? true));
+  }
+
+  /// RFC 20260817：更新推送开关（类型 + 开/关）。
+  Future<void> updatePushSetting(String type, bool enabled) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/push-settings/$type'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'enabled': enabled}),
+    );
+    _check(resp);
+  }
+
+  /// RFC 20260817：交易日志当日候选。
+  Future<List<dynamic>> getTradeLogCandidates() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/trade-log'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+  }
+
+  /// RFC 20260817：确认交易日志落库。
+  Future<int> confirmTradeLog() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/trade-log/confirm'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: '{}',
+    );
+    _check(resp);
+    final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return map['confirmed'] as int? ?? 0;
+  }
+
   /// 自选股列表。
   Future<List<WatchlistItemDto>> getWatchlist() async {
     final resp = await _client.get(

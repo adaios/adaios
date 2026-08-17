@@ -11,7 +11,9 @@ import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.IntentRecognizer.Intent;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -49,6 +51,8 @@ public class RecordController {
     private final MemoryService memoryService;
     private final RecordToTaskLinker recordToTaskLinker;
     private final PluginService pluginService;
+    /** RFC 20260817：交易日志自动归集（文字「清仓了XX」→ 当日候选，待确认）。 */
+    private final TradeLogCollectService tradeLogCollectService;
 
     public RecordController(IntentRecognizer intentRecognizer,
                             QuestionAppService questionAppService,
@@ -57,7 +61,8 @@ public class RecordController {
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
                             RecordToTaskLinker recordToTaskLinker,
-                            PluginService pluginService) {
+                            PluginService pluginService,
+                            TradeLogCollectService tradeLogCollectService) {
         this.intentRecognizer = intentRecognizer;
         this.questionAppService = questionAppService;
         this.understandingService = understandingService;
@@ -66,6 +71,7 @@ public class RecordController {
         this.memoryService = memoryService;
         this.recordToTaskLinker = recordToTaskLinker;
         this.pluginService = pluginService;
+        this.tradeLogCollectService = tradeLogCollectService;
     }
 
     @PostMapping
@@ -221,6 +227,15 @@ public class RecordController {
         recordToTaskLinker.link(userId, record.id(), "log", enriched.tags(),
                 taskTitle, enriched.content(),
                 understanding != null && understanding.actionable());
+
+        // RFC 20260817：交易日志自动归集——仅 trading 插件用户；「清仓了XX」等成交表述收集为当日候选
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            try {
+                tradeLogCollectService.collect(userId, record.content(), "text");
+            } catch (Exception e) {
+                log.debug("交易日志归集跳过 | recordId={} | {}", record.id(), e.getMessage());
+            }
+        }
 
         return ResponseEntity.ok(new StatemResponse(
                 "log", record.id(), record.content(), tags, summary, domain

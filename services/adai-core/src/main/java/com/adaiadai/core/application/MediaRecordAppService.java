@@ -9,6 +9,7 @@ import com.adaiadai.core.kernel.storage.FileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
+import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
@@ -47,19 +48,23 @@ public class MediaRecordAppService {
     private final FileStorage fileStorage;
     private final CardFileRepository cardRepository;
     private final PluginService pluginService;
+    /** RFC 20260817：交易日志自动归集（截图识别为当日成交 → 候选，待确认）。 */
+    private final TradeLogCollectService tradeLogCollectService;
 
     public MediaRecordAppService(VisualAiClient visualAiClient,
                                  RecordFileRepository recordFileRepository,
                                  MemoryService memoryService,
                                  FileStorage fileStorage,
                                  CardFileRepository cardRepository,
-                                 PluginService pluginService) {
+                                 PluginService pluginService,
+                                 TradeLogCollectService tradeLogCollectService) {
         this.visualAiClient = visualAiClient;
         this.recordFileRepository = recordFileRepository;
         this.memoryService = memoryService;
         this.fileStorage = fileStorage;
         this.cardRepository = cardRepository;
         this.pluginService = pluginService;
+        this.tradeLogCollectService = tradeLogCollectService;
     }
 
     /**
@@ -113,6 +118,15 @@ public class MediaRecordAppService {
             memoryService.persist(userId, Memory.fromImageRecord(id, summary, tags));
         } catch (Exception e) {
             log.warn("图片记录记忆沉淀失败 | id={} | {}", id, e.getMessage());
+        }
+
+        // RFC 20260817：交易日志自动归集——仅 trading 插件用户；截图被 VLM 识别为成交动作时收集候选
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
+            try {
+                tradeLogCollectService.collect(userId, summary, "image");
+            } catch (Exception e) {
+                log.warn("交易日志归集失败（不影响记录）| id={} | {}", id, e.getMessage());
+            }
         }
 
         log.info("图片记录完成 | id={} | summary={} | tags={} | domain={}",

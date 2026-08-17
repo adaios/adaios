@@ -6,6 +6,8 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
+import com.adaiadai.core.application.TradeLogCollectService;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
@@ -93,6 +95,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -117,6 +120,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins), buyPointService, soldScoreService,
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -277,6 +281,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -575,6 +580,7 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)

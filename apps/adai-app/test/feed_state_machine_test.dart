@@ -414,6 +414,46 @@ void main() {
       expect(find.text('加载更早'), findsNothing);
     });
 
+    testWidgets('RFC 20260817：push 推送卡渲染类型徽章 + 内容', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [
+          {
+            'type': 'push', 'id': 'p1',
+            'title': '尾盘建议', 'content': '· 京东方A 现价 6.08（+0.63%） → 持有',
+            'tags': <String>[], 'time': '14:50', 'date': '08-17',
+            'intent': null, 'summary': null, 'turns': null,
+            'domain': 'trading', 'mediaPath': null,
+          },
+        ]
+        ..feedTotalToday = 1;
+      await _pump(tester, b);
+
+      expect(find.text('尾盘建议'), findsOneWidget); // 类型徽章
+      expect(find.textContaining('京东方A'), findsOneWidget); // 内容
+      expect(find.text('左滑删除 · 右滑设置推送'), findsOneWidget);
+    });
+
+    testWidgets('RFC 20260817：今日操作确认卡显示「确认并入账」按钮', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [
+          {
+            'type': 'push', 'id': 'p2',
+            'title': '今日操作确认',
+            'content': '· 京东方A 卖出 5300 股 @6.10\n是否完整？不完整说一声。',
+            'tags': <String>[], 'time': '15:15', 'date': '08-17',
+            'intent': null, 'summary': null, 'turns': null,
+            'domain': 'trading', 'mediaPath': null,
+          },
+        ]
+        ..feedTotalToday = 1;
+      await _pump(tester, b);
+
+      // 徽章映射：今日操作确认 → 尾盘建议色/文案
+      expect(find.text('尾盘建议'), findsOneWidget);
+      expect(find.textContaining('卖出 5300 股'), findsOneWidget);
+      expect(find.text('确认并入账'), findsOneWidget);
+    });
+
     testWidgets('竞态 #100：追加挂起时结束对话，回复不丢不崩', (tester) async {
       final b = _Backend()
         ..feedPage0 = [_record('r1', '今天买了立昂微')]

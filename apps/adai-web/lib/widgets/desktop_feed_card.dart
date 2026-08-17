@@ -42,6 +42,10 @@ class DesktopFeedCard extends StatelessWidget {
     if (data.type == FeedCardType.market) {
       return _buildSimpleCard(badgeText: '行情', badgeColor: AppColors.darkBlue, showDoneButton: false);
     }
+    // RFC 20260817：push 推送卡——类型徽章 + 结构化内容（web 无滑动，确认按钮在卡内）
+    if (data.type == FeedCardType.push) {
+      return _buildPushCard();
+    }
 
     return Hoverable(
       builder: (context, isHovered) => Padding(
@@ -101,12 +105,13 @@ class DesktopFeedCard extends StatelessWidget {
                     children: [
                       _buildHeader(),
                       const SizedBox(height: 6),
+                      // RFC 20260817（图片对话流）：图片卡图置顶（图即上下文），turns 跟随滚动
+                      if (data.mediaUrl != null) ...[
+                        _buildMediaThumb(context),
+                        const SizedBox(height: 8),
+                      ],
                       if (!_hasTurns) _buildBody(),
                       if (_hasTurns) _buildTurns(),
-                      if (data.mediaUrl != null) ...[
-                        const SizedBox(height: 8),
-                        _buildMediaThumb(context),
-                      ],
                       if (_isWaiting) _buildThinking(),
                       if (data.summary != null && _isEnded) ...[
                         const SizedBox(height: 6),
@@ -176,6 +181,67 @@ class DesktopFeedCard extends StatelessWidget {
                 ],
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// RFC 20260817：推送卡——类型徽章（按标题配色）+ 结构化内容 + 今日操作确认按钮。
+  Widget _buildPushCard() {
+    final title = data.pushTitle ?? '行情提醒';
+    final (badgeText, badgeColor) = switch (title) {
+      '早盘计划' => ('早盘计划', AppColors.darkBlue),
+      '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
+      '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
+      '买点提醒' => ('买点提醒', AppColors.darkGreen),
+      '止损预警' || '接近止损' || '单日大跌提醒' => ('预警', AppColors.darkRed),
+      _ => ('行情', AppColors.darkGrey4),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface.withValues(alpha: 0.8),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5), width: 1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                child: Text(badgeText,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
+              ),
+              const SizedBox(width: 8),
+              Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ]),
+            const SizedBox(height: 8),
+            Text(data.content,
+              style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45)),
+            if (data.onConfirmTradeLog != null) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: InkWell(
+                  onTap: data.onConfirmTradeLog,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkGreen.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('确认并入账',
+                      style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

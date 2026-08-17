@@ -74,7 +74,11 @@ class _FeedPageState extends State<FeedPage> {
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(
             api: widget.api,
-            onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
+            onMarkDone: e.type == FeedEntryType.action
+                ? () => _markActionDone(e.id)
+                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                    ? _confirmTradeLog
+                    : null,
           ))
           .toList();
       setState(() {
@@ -114,7 +118,11 @@ class _FeedPageState extends State<FeedPage> {
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(
             api: widget.api,
-            onMarkDone: e.type == FeedEntryType.action ? () => _markActionDone(e.id) : null,
+            onMarkDone: e.type == FeedEntryType.action
+                ? () => _markActionDone(e.id)
+                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                    ? _confirmTradeLog
+                    : null,
           ))
           .toList();
       setState(() {
@@ -657,6 +665,18 @@ class _FeedPageState extends State<FeedPage> {
       _loadSidebar();
     } catch (_) {
       if (mounted) _showError('标记完成失败');
+    }
+  }
+
+  /// RFC 20260817：确认当日交易日志落库（推送卡「确认并入账」按钮）。
+  Future<void> _confirmTradeLog() async {
+    try {
+      final done = await widget.api.confirmTradeLog();
+      if (!mounted) return;
+      _showSnackBar(done > 0 ? '已确认 $done 笔交易并入账' : '今天没有待确认的交易');
+      await _loadFeed();
+    } catch (e) {
+      if (mounted) _showError('确认失败: ${_extractApiError(e)}');
     }
   }
 

@@ -5,6 +5,7 @@ import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
@@ -58,6 +59,8 @@ public class MarketAlertService {
     private final PluginService pluginService;
     /** G-3 规则引擎：stop-loss 判定口径与建议引擎一致（R66，现价口径）。 */
     private final TradingRuleEngine ruleEngine;
+    /** RFC 20260817：推送开关（用户可关闭各类型推送）。 */
+    private final PushSettingsRepository pushSettingsRepository;
 
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
@@ -72,6 +75,7 @@ public class MarketAlertService {
                               List<PushChannel> pushChannels,
                               PluginService pluginService,
                               TradingRuleEngine ruleEngine,
+                              PushSettingsRepository pushSettingsRepository,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
                               @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled,
@@ -83,6 +87,7 @@ public class MarketAlertService {
         this.pushChannels = pushChannels;
         this.pluginService = pluginService;
         this.ruleEngine = ruleEngine;
+        this.pushSettingsRepository = pushSettingsRepository;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
@@ -142,7 +147,7 @@ public class MarketAlertService {
             if (p.stopLossPrice() != null && md.price() != null
                     && ruleEngine.evaluateStopLoss(md.price(), p.stopLossPrice()).verdict()
                     == StopLossVerdict.BREACHED) {
-                addIfNew(p, md, change, "stop-loss", existing, newSignatures, alerts);
+                addIfNew(userId, p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
             // C3 接近止损预警（2026-08-16）：未跌破但距止损 ≤ nearStopLossPct（默认 2%，可配）
             if (p.stopLossPrice() != null && md.price() != null
@@ -150,21 +155,21 @@ public class MarketAlertService {
                 BigDecimal gapPct = md.price().subtract(p.stopLossPrice())
                         .multiply(BigDecimal.valueOf(100)).divide(md.price(), 2, RoundingMode.HALF_UP);
                 if (gapPct.compareTo(nearStopLossPct) <= 0) {
-                    addIfNew(p, md, change, "near-stop-loss", existing, newSignatures, alerts);
+                    addIfNew(userId, p, md, change, "near-stop-loss", existing, newSignatures, alerts);
                 }
             }
             // 止损预警：单日跌幅 ≥ 阈值
             if (change.compareTo(lossThreshold.negate()) <= 0) {
-                addIfNew(p, md, change, "loss", existing, newSignatures, alerts);
+                addIfNew(userId, p, md, change, "loss", existing, newSignatures, alerts);
             }
             // 放飞提示：单日涨幅 ≥ 阈值
             if (change.compareTo(gainThreshold) >= 0) {
-                addIfNew(p, md, change, "gain", existing, newSignatures, alerts);
+                addIfNew(userId, p, md, change, "gain", existing, newSignatures, alerts);
             }
             // 跌破成本线风控提醒
             if (breakCostEnabled && md.price() != null && p.avgCost() != null
                     && md.price().compareTo(p.avgCost()) < 0) {
-                addIfNew(p, md, change, "break-cost", existing, newSignatures, alerts);
+                addIfNew(userId, p, md, change, "break-cost", existing, newSignatures, alerts);
             }
         }
 
@@ -185,8 +190,10 @@ public class MarketAlertService {
 
     // ── 内部方法 ──
 
-    private void addIfNew(Position p, MarketData md, BigDecimal change, String type,
+    private void addIfNew(String userId, Position p, MarketData md, BigDecimal change, String type,
                           Set<String> existing, Set<String> newSignatures, List<PushChannel.PushMessage> alerts) {
+        // RFC 20260817：推送开关——用户关闭的类型不生成（不落盘、不推送）
+        if (!pushSettingsRepository.findByUser(userId).isEnabled(type)) return;
         String sig = signature(p.symbol(), LocalDate.now(), type);
         if (existing.contains(sig)) return;
         newSignatures.add(sig);

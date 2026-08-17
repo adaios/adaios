@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.QuestionAppService;
 import com.adaiadai.core.application.RecordToTaskLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
+import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
@@ -110,7 +111,8 @@ class RecordControllerTest {
                 cardRepository,
                 memoryService,
                 mock(RecordToTaskLinker.class),
-                pluginService
+                pluginService,
+                mock(TradeLogCollectService.class)
         );
 
         return MockMvcBuilders.standaloneSetup(controller).build();
@@ -432,7 +434,8 @@ class RecordControllerTest {
                 mock(CardFileRepository.class),
                 mem,
                 mock(RecordToTaskLinker.class),
-                pluginService);
+                pluginService,
+                mock(TradeLogCollectService.class));
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 

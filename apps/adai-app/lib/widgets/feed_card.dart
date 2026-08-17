@@ -52,6 +52,9 @@ class FeedCardData {
   final String domain;  // "life" | "trading" | "project"
   final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒等）
+  final VoidCallback? onDismiss; // RFC 20260817：左滑删除单条推送
+  final VoidCallback? onPushSettings; // RFC 20260817：右滑进入推送设置
   final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   // REVIEW #235：上传占位卡保留原始图片字节/文件名/扩展名/共享 caption——
@@ -69,6 +72,7 @@ class FeedCardData {
     this.date = '', this.tags, this.summary, this.turns, this.mode = CardMode.idle,
     this.loading = false, this.intent, this.expanded = false,
     this.domain = 'life', this.error, this.onMarkDone,
+    this.pushTitle, this.onDismiss, this.onPushSettings,
     this.mediaUrl, this.mediaHeaders,
     this.mediaBytes, this.mediaName, this.mediaExt, this.mediaCaption,
     DateTime? updatedAt,
@@ -79,6 +83,7 @@ class FeedCardData {
     List<String>? tags, String? summary, List<ConversationTurn>? turns,
     CardMode? mode, bool? loading, IntentType? intent, bool? expanded,
     String? domain, String? error, bool clearError = false,
+    String? pushTitle, VoidCallback? onDismiss, VoidCallback? onPushSettings,
     String? mediaUrl, Map<String, String>? mediaHeaders,
     Uint8List? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
     DateTime? updatedAt,
@@ -91,6 +96,9 @@ class FeedCardData {
       intent: intent ?? this.intent, expanded: expanded ?? this.expanded,
       domain: domain ?? this.domain,
       error: clearError ? null : error ?? this.error,
+      pushTitle: pushTitle ?? this.pushTitle,
+      onDismiss: onDismiss ?? this.onDismiss,
+      onPushSettings: onPushSettings ?? this.onPushSettings,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       mediaBytes: mediaBytes ?? this.mediaBytes,
@@ -207,6 +215,10 @@ class FeedCard extends StatelessWidget {
         showDoneButton: false,
       );
     }
+    // RFC 20260817：push 推送卡——类型徽章（早盘/午间/尾盘/买点/预警）+ 结构化内容
+    if (data.type == FeedCardType.push) {
+      return _buildPushCard();
+    }
 
     // Normal / expanded rendering (unchanged from current)
     final borderColor = _isEnded
@@ -261,16 +273,16 @@ class FeedCard extends StatelessWidget {
                         children: [
                           _buildHeader(),
                           const SizedBox(height: 6),
+                          // RFC 20260817（图片对话流）：图片卡（mediaUrl/mediaBytes 非空）图置顶——
+                          // 图即上下文，与聊天态一致；有 turns 时气泡跟随图片滚动（刷新后不丢失对话流形态）
+                          if (data.mediaUrl != null || data.mediaBytes != null) ...[
+                            _buildMediaThumb(context),
+                            const SizedBox(height: 8),
+                          ],
                           if (!_hasTurns) _buildBody(),
                           if (_hasTurns) ...[
                             const SizedBox(height: 3),
                             _buildTurns(),
-                          ],
-                          // RFC 20260815：占位卡（mediaBytes 非空、mediaUrl 未就绪）也渲染缩略图——
-                          // 上传中显示本地内存图预览，替代空白/文件名
-                          if (data.mediaUrl != null || data.mediaBytes != null) ...[
-                            const SizedBox(height: 8),
-                            _buildMediaThumb(context),
                           ],
                           if (data.summary != null && !_isActive && !_isEnded) ...[
                             const SizedBox(height: 6),
@@ -367,6 +379,99 @@ class FeedCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// RFC 20260817：推送卡——类型徽章（按标题配色）+ 结构化内容 + 左滑删单条/右滑进设置。
+  Widget _buildPushCard() {
+    final title = data.pushTitle ?? '行情提醒';
+    final (badgeText, badgeColor) = switch (title) {
+      '早盘计划' => ('早盘计划', AppColors.darkBlue),
+      '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
+      '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
+      '买点提醒' => ('买点提醒', AppColors.darkGreen),
+      '止损预警' || '接近止损' || '单日大跌提醒' => ('预警', AppColors.darkRed),
+      _ => ('行情', AppColors.darkGrey4),
+    };
+    final card = Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface.withAlpha(200),
+        border: Border.all(color: AppColors.darkBorder.withAlpha(120), width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: badgeColor.withAlpha(40), borderRadius: BorderRadius.circular(6)),
+              child: Text(badgeText,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
+            ),
+            const SizedBox(width: 8),
+            Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ]),
+          const SizedBox(height: 8),
+          Text(data.content,
+            style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45)),
+          // RFC 20260817：今日操作确认卡——底部「确认并入账」按钮（审核后落库）
+          if (data.pushTitle == '今日操作确认' && data.onMarkDone != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: InkWell(
+                onTap: data.onMarkDone,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withAlpha(30),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('确认并入账',
+                    style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+          ],
+          if (data.onPushSettings != null || data.onDismiss != null) ...[
+            const SizedBox(height: 8),
+            const Text('左滑删除 · 右滑设置推送',
+              style: TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+          ],
+        ],
+      ),
+    );
+    // 左滑（endToStart）= 删除单条；右滑（startToEnd）= 打开推送设置
+    return Dismissible(
+      key: ValueKey('push_${data.id}'),
+      direction: (data.onDismiss != null && data.onPushSettings != null)
+          ? DismissDirection.horizontal
+          : (data.onDismiss != null ? DismissDirection.endToStart : DismissDirection.startToEnd),
+      onDismissed: (_) {},
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.endToStart) {
+          data.onDismiss?.call();
+          return true;
+        }
+        data.onPushSettings?.call();
+        return false; // 右滑不删除卡片，仅触发设置
+      },
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        decoration: BoxDecoration(color: AppColors.darkBlue.withAlpha(60), borderRadius: BorderRadius.circular(16)),
+        child: const Text('推送设置', style: TextStyle(fontSize: 12, color: AppColors.darkBlue)),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(color: AppColors.darkRed.withAlpha(60), borderRadius: BorderRadius.circular(16)),
+        child: const Text('删除', style: TextStyle(fontSize: 12, color: AppColors.darkRed)),
+      ),
+      child: card,
     );
   }
 

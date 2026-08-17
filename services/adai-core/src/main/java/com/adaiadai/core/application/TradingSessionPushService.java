@@ -12,6 +12,7 @@ import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -60,11 +61,10 @@ public class TradingSessionPushService {
     private static final String SESSION_SYSTEM_PROMPT = """
             你是阿呆，用户的个人 AI 助手，用自然、亲切、简洁的中文（无系统标签，像朋友聊天）。
             基于给出的持仓、行情与规则判定数据，生成{节点}消息。要求：
-            1. 第一句直接进入主题，不要寒暄废话
-            2. 逐票提到时引用其止损位/买点/占比
-            3. 引用规则时用 R 编号（如 R66/R81）
-            4. 建议是参考不是指令，语气是"我建议"而非"你必须"
-            5. 30-80 字以内
+            1. 第一行是「总结：」一句话概括当前状态
+            2. 每只持仓单独一行（· 名称 现价 涨跌 → 建议），建议引用规则用 R 编号（如 R66/R81）
+            3. 建议是参考不是指令，语气是"我建议"而非"你必须"
+            4. 简洁，不堆砌寒暄
             """.strip();
 
     private final PositionRepository positionRepository;
@@ -77,6 +77,10 @@ public class TradingSessionPushService {
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final WatchlistBuyPointService buyPointService;
     private final WatchlistRepository watchlistRepository;
+    /** RFC 20260817：推送开关（用户可关闭各类型推送）。 */
+    private final PushSettingsRepository pushSettingsRepository;
+    /** RFC 20260817：交易日志自动归集（收盘确认推送）。 */
+    private final TradeLogCollectService tradeLogCollectService;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -90,6 +94,8 @@ public class TradingSessionPushService {
                                      AccountSnapshotRepository accountSnapshotRepository,
                                      WatchlistBuyPointService buyPointService,
                                      WatchlistRepository watchlistRepository,
+                                     PushSettingsRepository pushSettingsRepository,
+                                     TradeLogCollectService tradeLogCollectService,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -101,6 +107,8 @@ public class TradingSessionPushService {
         this.accountSnapshotRepository = accountSnapshotRepository;
         this.buyPointService = buyPointService;
         this.watchlistRepository = watchlistRepository;
+        this.pushSettingsRepository = pushSettingsRepository;
+        this.tradeLogCollectService = tradeLogCollectService;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -162,8 +170,7 @@ public class TradingSessionPushService {
     /** 收盘 15:05 账户自动更新（B1，2026-08-16）：行情可得部分自动——参考市值/当日盈亏/持仓浮盈；
      *  现金/可用/本金保持券商导入值与转账推导。 */
     @Scheduled(cron = "${adai.trading.session.close-update-cron:0 5 15 * * MON-FRI}")
-    public void closeAccountUpdate() {
-        if (!isTradingDay(java.time.LocalDate.now())) return;
+    public void closeAccountUpdate() {        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             List<Position> positions = positionRepository.findAll(userId);
             if (positions.isEmpty()) return;
@@ -214,6 +221,19 @@ public class TradingSessionPushService {
                 log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
                         userId, fMarket, fToday, fFloat);
             });
+        });
+    }
+
+    /** RFC 20260817 收盘交易日志确认（15:15）：当日有归集候选 → 推送「今日操作汇总，是否完整」。
+     *  用户确认后由交易模块落库；无候选静默跳过。 */
+    @Scheduled(cron = "${adai.trading.session.trade-log-confirm-cron:0 15 15 * * MON-FRI}")
+    public void tradeLogConfirm() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
+        forEachTradingUser(userId -> {
+            var candidates = tradeLogCollectService.todayCandidates(userId);
+            if (candidates.isEmpty()) return;
+            String content = tradeLogCollectService.summarize(candidates);
+            pushToAll(userId, "今日操作确认", content, "session", null, null);
         });
     }
 
@@ -331,49 +351,61 @@ public class TradingSessionPushService {
     // ── 模板（阶段一 / LLM 降级）──
 
     private String buildMorningTemplate(SessionData data) {
-        StringBuilder sb = new StringBuilder("早上好！今天的交易计划：");
-        sb.append("当前 ").append(data.positions().size()).append(" 只持仓。");
+        // RFC 20260817：结构化——总结 + 每持仓一行（名称/数量/止损/买点）+ 纪律提醒
+        StringBuilder sb = new StringBuilder("📋 早盘计划\n");
+        sb.append("总结：").append(data.positions().size()).append(" 只持仓，今日按纪律执行。\n");
         for (Position p : data.positions()) {
-            sb.append(p.name()).append("：止损 ").append(fmt(p.stopLossPrice()))
-                    .append("，买点 ").append(p.buyPoint() != null ? p.buyPoint() : "未知").append("；");
+            sb.append("· ").append(p.name())
+                    .append("（数量 ").append(p.quantity()).append("）")
+                    .append(" 止损 ").append(fmt(p.stopLossPrice()))
+                    .append(" 买点 ").append(p.buyPoint() != null ? p.buyPoint() : "未知").append("\n");
         }
-        sb.append("择时：").append(data.marketStage()).append("。今日按纪律执行，不追高不抄底。");
+        sb.append("择时：").append(data.marketStage()).append("。\n");
+        sb.append("建议：不追高不抄底，破止损按 R66 处理。");
         return sb.toString();
     }
 
     private String buildMiddayTemplate(SessionData data) {
-        StringBuilder sb = new StringBuilder("午间跟踪：");
+        // RFC 20260817：结构化——总结 + 每持仓现价/涨跌/状态
+        StringBuilder sb = new StringBuilder("📊 午间跟踪\n");
+        sb.append("总结：上午表现如下，下午重点盯止损位。\n");
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
             String change = md != null ? (md.changePercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
                     + fmt(md.changePercent()) + "%" : "-";
             var sl = ruleEngine.evaluateStopLoss(md != null ? md.price() : null, p.stopLossPrice());
             String status = sl.verdict() == StopLossVerdict.BREACHED
-                    ? "⚠️已跌破止损位（R66），建议减仓/清仓" : "未触发止损";
-            sb.append(p.name()).append(" 现价 ").append(fmt(md != null ? md.price() : null))
-                    .append("（").append(change).append("），").append(status).append("；");
+                    ? "⚠️已破止损（R66）" : "未触发止损";
+            sb.append("· ").append(p.name()).append(" 现价 ")
+                    .append(fmt(md != null ? md.price() : null))
+                    .append("（").append(change).append("） ").append(status).append("\n");
         }
-        sb.append("计划暂时不用大改，下午重点盯止损位。");
+        sb.append("建议：计划暂不大改，破止损的按纪律处理。");
         return sb.toString();
     }
 
     private String buildCloseTemplate(SessionData data) {
-        StringBuilder sb = new StringBuilder("尾盘建议：");
+        // RFC 20260817：结构化——总结 + 每持仓一行（现价/涨跌/建议）
+        StringBuilder sb = new StringBuilder("📉 尾盘建议\n");
+        sb.append("总结：").append(data.positions().size()).append(" 只持仓，逐票建议如下。\n");
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
             BigDecimal price = md != null ? md.price() : p.currentPrice();
+            String change = md != null ? (md.changePercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                    + fmt(md.changePercent()) + "%" : "-";
             var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
             BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
             var pv = ruleEngine.evaluatePosition(percent);
             String advice;
             if (sl.verdict() == StopLossVerdict.BREACHED) {
-                advice = "已跌破止损位 → 建议清仓（R66）";
+                advice = "清仓（R66）";
             } else if (pv.verdict() == PositionVerdict.OVER_WEIGHT) {
-                advice = "占比 " + fmt(percent) + "% 超 R81 上限 → 建议减仓";
+                advice = "减仓（占比 " + fmt(percent) + "% 超 R81）";
             } else {
-                advice = "未破止损、仓位合规 → 持有";
+                advice = "持有";
             }
-            sb.append(p.name()).append("：").append(advice).append("；");
+            sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
+                    .append("（").append(change).append("） → ").append(advice).append("\n");
         }
         sb.append("明日关注：").append(data.marketStage()).append("。收盘后要不要做今日复盘？");
         return sb.toString();
@@ -414,6 +446,11 @@ public class TradingSessionPushService {
 
     private void pushToAll(String userId, String title, String content, String type,
                            String symbol, String name) {
+        // RFC 20260817：推送开关——用户关闭的类型不推送（session=早/午/尾盘，buy-point=买点）
+        if (!pushSettingsRepository.findByUser(userId).isEnabled(type)) {
+            log.info("时段推送跳过（用户关闭）| userId={} | type={}", userId, type);
+            return;
+        }
         PushChannel.PushMessage message = new PushChannel.PushMessage(
                 title, content, type, symbol, name, LocalTime.now());
         for (PushChannel channel : pushChannels) {

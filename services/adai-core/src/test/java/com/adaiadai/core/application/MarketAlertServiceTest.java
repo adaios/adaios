@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.kernel.push.PushChannel;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
 import com.adaiadai.core.kernel.account.Account;
@@ -58,6 +59,13 @@ class MarketAlertServiceTest {
                 new BigDecimal(changePercent), 1000L);
     }
 
+    /** RFC 20260817：推送开关默认全开（findByUser 未 stub 返回 null → NPE → 不推送）。 */
+    private PushSettingsRepository defaultPushSettings() {
+        PushSettingsRepository ps = mock(PushSettingsRepository.class);
+        when(ps.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        return ps;
+    }
+
     /** 构造依赖：snapshot 带「内存快照」语义（save 后下一次 alerted 可见）；push 由调用方 mock 传入。 */
     private MarketAlertService build(MarketDataSource market, PositionRepository positions,
                                      boolean breakCostEnabled, PushChannel push) {
@@ -73,8 +81,11 @@ class MarketAlertServiceTest {
             return null;
         }).when(snapshot).saveSignatures(anyString(), any(), any());
 
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                pushSettings,
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
 
@@ -235,7 +246,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
         new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), 3.0, 5.0, true, 2.0).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), defaultPushSettings(), 3.0, 5.0, true, 2.0).poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("default"), any());
@@ -271,7 +282,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
         new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), 3.0, 5.0, true, 2.0).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), defaultPushSettings(), 3.0, 5.0, true, 2.0).poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("alice"), any());

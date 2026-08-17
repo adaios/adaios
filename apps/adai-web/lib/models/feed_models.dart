@@ -49,6 +49,8 @@ class FeedCardData {
   final String domain; // "life" | "trading" | "project"
   final String? error; // API 调用失败时的错误信息，非 null 时卡片进入错误态
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒/今日操作确认等）
+  final VoidCallback? onConfirmTradeLog; // RFC 20260817：「今日操作确认」卡确认按钮
   final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   // REVIEW F37（全维度走查 P1-W1）：图片占位卡保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
@@ -74,6 +76,8 @@ class FeedCardData {
     this.domain = 'life',
     this.error,
     this.onMarkDone,
+    this.pushTitle,
+    this.onConfirmTradeLog,
     this.mediaUrl,
     this.mediaHeaders,
     this.mediaBytes,
@@ -122,6 +126,8 @@ class FeedCardData {
       expanded: expanded ?? this.expanded,
       domain: domain ?? this.domain,
       error: clearError ? null : error ?? this.error,
+      pushTitle: pushTitle ?? this.pushTitle,
+      onConfirmTradeLog: onConfirmTradeLog ?? this.onConfirmTradeLog,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       mediaBytes: mediaBytes ?? this.mediaBytes,
@@ -157,6 +163,10 @@ extension FeedEntryResponseX on FeedEntryResponse {
       turns: cardTurns,
       domain: domain,
       onMarkDone: onMarkDone,
+      pushTitle: _toCardType(type) == FeedCardType.push ? title : null,
+      onConfirmTradeLog: (_toCardType(type) == FeedCardType.push && title == '今日操作确认')
+          ? onMarkDone
+          : null,
       mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
       mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
     );

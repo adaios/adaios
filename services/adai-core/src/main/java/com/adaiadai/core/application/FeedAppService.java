@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.MarketPushEvent;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.memory.Memory;
@@ -42,19 +43,23 @@ public class FeedAppService {
     private final MarketDataSource marketDataSource;
     private final MarketPushRepository pushRepository;
     private final PluginService pluginService;
+    /** RFC 20260817：推送开关——用户关闭的类型 Feed 不注入（读侧门控，与写侧对称）。 */
+    private final PushSettingsRepository pushSettingsRepository;
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
                           CardFileRepository cardRepository,
                           MarketDataSource marketDataSource,
                           MarketPushRepository pushRepository,
-                          PluginService pluginService) {
+                          PluginService pluginService,
+                          PushSettingsRepository pushSettingsRepository) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
         this.marketDataSource = marketDataSource;
         this.pushRepository = pushRepository;
         this.pluginService = pluginService;
+        this.pushSettingsRepository = pushSettingsRepository;
     }
 
     /**
@@ -132,10 +137,16 @@ public class FeedAppService {
         // 行情相关条目（market 行情条 / push 异动推送）只注入启用 trading 插件的用户
         // （RFC 20260814 T2.6：无 trading 插件的用户 Feed 不出现行情卡）
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
-            // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
-            allEntries.addAll(buildMarketEntries());
-            // Phase 2 主动推送：当日持仓异动推送（MarketAlertService 定时落盘，按日读取）
-            allEntries.addAll(buildPushEntries(userId, queryDate));
+            // RFC 20260817：用户关闭 market 类型 → 行情条不注入（读侧门控）
+            if (pushSettingsRepository.findByUser(userId).isEnabled("market")) {
+                // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
+                allEntries.addAll(buildMarketEntries());
+            }
+            // RFC 20260817：用户关闭某 push 类型 → 该类型不注入
+            var pushSettings = pushSettingsRepository.findByUser(userId);
+            allEntries.addAll(buildPushEntries(userId, queryDate).stream()
+                    .filter(e -> pushSettings.isEnabled(e.type()))
+                    .toList());
         }
 
         allEntries.sort(Comparator.comparing(e -> e.time));

@@ -14,6 +14,9 @@ import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.domain.trading.PushSettings;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.application.TradeLogCollectService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
@@ -57,6 +60,10 @@ public class TradingController {
     private final PluginService pluginService;
     private final WatchlistBuyPointService buyPointService;
     private final SoldScoreService soldScoreService;
+    /** RFC 20260817：推送开关（用户可关闭各类型推送）。 */
+    private final PushSettingsRepository pushSettingsRepository;
+    /** RFC 20260817：交易日志自动归集（当日候选/确认落库）。 */
+    private final TradeLogCollectService tradeLogCollectService;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
     private final Path inboxDir;
 
@@ -67,6 +74,8 @@ public class TradingController {
                              PluginService pluginService,
                              WatchlistBuyPointService buyPointService,
                              SoldScoreService soldScoreService,
+                             PushSettingsRepository pushSettingsRepository,
+                             TradeLogCollectService tradeLogCollectService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -75,6 +84,8 @@ public class TradingController {
         this.pluginService = pluginService;
         this.buyPointService = buyPointService;
         this.soldScoreService = soldScoreService;
+        this.pushSettingsRepository = pushSettingsRepository;
+        this.tradeLogCollectService = tradeLogCollectService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -368,6 +379,55 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(tradingAppService.accountSnapshot(userId));
+    }
+
+    /** 推送开关（RFC 20260817）：读取用户推送类型开关（GET /api/v1/trading/push-settings）。 */
+    @GetMapping("/push-settings")
+    public ResponseEntity<?> pushSettings(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(pushSettingsRepository.findByUser(userId).enabled());
+    }
+
+    /** 推送开关（RFC 20260817）：设置某类型开/关（PUT /api/v1/trading/push-settings/{type}）。 */
+    @PutMapping("/push-settings/{type}")
+    public ResponseEntity<?> updatePushSettings(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String type,
+            @RequestBody Map<String, Boolean> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (!PushSettings.ALL_TYPES.contains(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "未知推送类型: " + type));
+        }
+        Boolean on = body.get("enabled");
+        if (on == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "缺少 enabled 字段"));
+        }
+        PushSettings settings = pushSettingsRepository.findByUser(userId).with(type, on);
+        pushSettingsRepository.save(userId, settings);
+        return ResponseEntity.ok(settings.enabled());
+    }
+
+    /** 交易日志归集（RFC 20260817）：当日候选（GET /api/v1/trading/trade-log）。 */
+    @GetMapping("/trade-log")
+    public ResponseEntity<?> tradeLogCandidates(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradeLogCollectService.todayCandidates(userId));
+    }
+
+    /** 交易日志归集（RFC 20260817）：确认落库（POST /api/v1/trading/trade-log/confirm）——
+     *  当日候选逐笔走 recordTrade（持仓/现金/流水），确认后清空候选。 */
+    @PostMapping("/trade-log/confirm")
+    public ResponseEntity<?> confirmTradeLog(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        int done = tradeLogCollectService.confirm(userId);
+        return ResponseEntity.ok(Map.of("confirmed", done));
     }
 
     /** 资金股份查询导入（更新现金 + 精确成本，POST /api/v1/trading/imports/cash）。 */

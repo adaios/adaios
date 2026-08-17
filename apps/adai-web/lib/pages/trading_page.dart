@@ -239,6 +239,31 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// RFC 20260817：推送设置对话框（逐类型开关）。
+  Future<void> _showPushSettings() async {
+    Map<String, bool> settings = {};
+    try {
+      settings = await widget.api.getPushSettings();
+    } catch (_) {
+      settings = {};
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _PushSettingsDialog(
+        settings: settings,
+        onToggle: (type, on) async {
+          try {
+            await widget.api.updatePushSetting(type, on);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
+      ),
+    );
+  }
+
   Future<void> _showHistory() {
     return showDialog<void>(
       context: context,
@@ -329,6 +354,13 @@ class _TradingPageState extends State<TradingPage> {
             icon: const Icon(Icons.upload_file_outlined, size: 18),
             color: AppColors.darkGrey4,
             tooltip: '批量导入',
+          ),
+          // RFC 20260817：推送设置入口（早盘/午间/尾盘/买点/预警/行情条开关）
+          IconButton(
+            onPressed: _showPushSettings,
+            icon: const Icon(Icons.notifications_outlined, size: 18),
+            color: AppColors.darkGrey4,
+            tooltip: '推送设置',
           ),
           // #102 交易系统反哺入口：生成复盘（AI 基于当日交易记录 + 持仓）
           IconButton(
@@ -2210,6 +2242,68 @@ class _ReviewHistoryDialogState extends State<_ReviewHistoryDialog> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// RFC 20260817：推送设置对话框——逐类型开关（早盘/午间/尾盘/买点/预警/行情条）。
+class _PushSettingsDialog extends StatefulWidget {
+  final Map<String, bool> settings;
+  final Future<bool> Function(String type, bool on) onToggle;
+
+  const _PushSettingsDialog({required this.settings, required this.onToggle});
+
+  @override
+  State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
+}
+
+class _PushSettingsDialogState extends State<_PushSettingsDialog> {
+  late Map<String, bool> _settings = Map.of(widget.settings);
+
+  static const List<(String, String)> _items = [
+    ('session', '时段节奏（早盘/午间/尾盘）'),
+    ('buy-point', '买点提醒'),
+    ('stop-loss', '止损预警'),
+    ('near-stop-loss', '接近止损'),
+    ('loss', '单日大跌提醒'),
+    ('gain', '放飞提示'),
+    ('break-cost', '跌破成本线'),
+    ('market', '大盘行情条'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: const Text('推送设置',
+        style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (type, label) in _items)
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(label,
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+                value: _settings[type] ?? true,
+                activeTrackColor: AppColors.darkGreen,
+                onChanged: (on) async {
+                  final ok = await widget.onToggle(type, on);
+                  if (ok && mounted) setState(() => _settings[type] = on);
+                },
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('完成', style: TextStyle(color: AppColors.darkGrey3)),
+        ),
+      ],
     );
   }
 }

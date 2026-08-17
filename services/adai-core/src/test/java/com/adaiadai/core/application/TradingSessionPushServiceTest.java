@@ -14,6 +14,8 @@ import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.push.PushChannel;
+import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.application.TradeLogCollectService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -92,10 +94,15 @@ class TradingSessionPushServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
+        // RFC 20260817：推送开关默认全开（findByUser 不 stub 返回 null → NPE → 不推送）
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+
         return new TradingSessionPushService(positions, market, accounts, pluginService,
                 new DefaultTradingRuleEngine(), ai, List.of(channel),
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
                 knowledgeDir);
     }
 
@@ -206,10 +213,13 @@ class TradingSessionPushServiceTest {
         PluginService pluginService = mock(PluginService.class);
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(channel),
                 mock(AccountSnapshotRepository.class),
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -284,9 +294,12 @@ class TradingSessionPushServiceTest {
                         new BigDecimal("10000"), new BigDecimal("10000"),
                         new BigDecimal("140000"), new BigDecimal("2000"),
                         BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -317,9 +330,12 @@ class TradingSessionPushServiceTest {
                         new BigDecimal("10000"), new BigDecimal("10000"),
                         new BigDecimal("140000"), new BigDecimal("2000"),
                         BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
