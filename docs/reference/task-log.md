@@ -327,6 +327,12 @@ v1.0.0（adai-admin + 多账号）：
 | 08-17 交易A-E×4 | api-spec 变更记录缺 v3.22（15 端点无版本行）| `api-spec.md` | P3 |
 | 08-17 交易A-E×4 | account 节「定时收市后更新为后续」与批1 已实现 15:05 cron 矛盾 | `api-spec.md` account 节 | P3 |
 | 08-17 交易A-E×4 | gap frontmatter lines 80 vs 实际 81（guard-meta scope 不含 reference/）| gap 文档 | P3 |
+| 08-17 交易A-E×4 | buy-point-rules §四 输出含未实现字段（candles/B3|SB1），实现 WatchBuyPoint 无 candles、detector 只出 B1/B2/B1?/NONE | `buy-point-rules.md:68` | P3 |
+| 08-17 交易A-E×4 | 「参数可配」无配置入口（buy-point-rules.md:56 + api-spec.md:522 均写可配，代码无 @Value/yml 绑定）| `buy-point-rules.md` / `api-spec.md` | P3 |
+| 08-17 交易A-E×4 | change-log 通达信持仓导入（+2 端点）与上传留存（+1 端点）两行未登记端点增量 | `change-log.md:17-18` | P3 |
+| 08-17 交易A-E×4 | pitfalls 复发信号依赖 debug 级日志（生产默认不输出）；生产可见的是 EastMoneyKlineDataSource:71 的 warn | `pitfalls.md:67` | P3 |
+| 08-17 交易A-E×4 | sold/score 示例 totalScore:89 实际序列化 89.0（JSON 等价，极轻微）| `api-spec.md:543` | P3 |
+| 08-17 交易A-E×4 | buy-point-rules 推送示例与实现微差（冒号/、分隔、文案前缀）| `buy-point-rules.md:70` | P3 |
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
 | 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
