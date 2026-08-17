@@ -653,5 +653,53 @@ void soldUpdatePsychology_marksTrade() {
         assertEquals(0, cap.getValue().cash().compareTo(new BigDecimal("-49707.12")),
                 "现金 -5 万（负=透支，理论值）");
     }
+
+    // ── 持仓元信息更新（web 编辑，2026-08-17 补端点）──
+
+    @Test
+    void updatePositionMeta_updatesStopLoss_keepsOtherFields() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll("default")).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("600519", "贵州茅台", 100, new BigDecimal("1400"), new BigDecimal("1420"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 1),
+                        new BigDecimal("1350"), "B1", "防守"))));
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+
+        Position updated = service.updatePositionMeta("default", "600519", null, new BigDecimal("1302"));
+
+        assertEquals(0, updated.stopLossPrice().compareTo(new BigDecimal("1302")), "止损应更新");
+        assertEquals("B1", updated.buyPoint(), "买点保留");
+        assertEquals("防守", updated.role(), "角色保留");
+        ArgumentCaptor<List<Position>> cap = ArgumentCaptor.forClass(List.class);
+        verify(repo).saveAll(eq("default"), cap.capture());
+        assertEquals("600519", cap.getValue().get(0).symbol());
+    }
+
+    @Test
+    void updatePositionMeta_nullFields_keepExisting() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll("default")).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("000725", "京东方A", 5300, new BigDecimal("6.0421"), new BigDecimal("5.81"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null))));
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+
+        Position updated = service.updatePositionMeta("default", "000725", "机动", null);
+
+        assertNull(updated.stopLossPrice(), "不传止损 → 保持 null（未设）");
+        assertEquals("机动", updated.role(), "角色更新");
+    }
+
+    @Test
+    void updatePositionMeta_unknownSymbol_returnsNull() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll("default")).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("600519", "贵州茅台", 100, new BigDecimal("1400"), new BigDecimal("1420"),
+                        LocalDateTime.now()))));
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+
+        assertNull(service.updatePositionMeta("default", "999999", null, new BigDecimal("10")),
+                "不存在的 symbol → null");
+        verify(repo, never()).saveAll(any(), any());
+    }
 }
 

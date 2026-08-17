@@ -598,6 +598,14 @@
 
 **响应**：`{"imported":2,"missingStopLoss":["600519 贵州茅台",...]}`（未设止损列表，前端提示补设）。按 symbol upsert（已存在更新，不存在新增）。需 trading 插件（403）。
 
+### `PUT /api/v1/trading/positions/{symbol}` — 更新持仓元信息（web 持仓编辑，2026-08-17 补端点）
+
+**body**（只带非空字段）：`{"role":"防守","stopLossPrice":1302}`（role/止损位可选）
+
+- 之前前端与测试在调但后端从未实现（编辑一直 404）——2026-08-17 补上；`targetPrice` 后端 Position 无字段落盘（前端目标价编辑是既有无效功能，另记 P3）
+- **响应**：更新后持仓对象（symbol/name/quantity/avgCost/stopLossPrice/buyPoint/role）；symbol 不存在 404；止损位非数字 400
+- 需 trading 插件（403）。
+
 ---
 
 ### `POST /api/v1/trading/trades/parse` — 解析一句话交易（RFC 20260815 通道 A）

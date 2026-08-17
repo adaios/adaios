@@ -36,11 +36,13 @@ import java.util.Optional;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -603,6 +605,58 @@ class TradingControllerTest {
         mvc.perform(post("/api/v1/trading/positions/import")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("[]"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updatePosition_updatesStopLossAndRole() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.updatePositionMeta(any(), eq("600519"), any(), any())).thenReturn(
+                new Position("600519", "贵州茅台", 100, new BigDecimal("1400"),
+                        new BigDecimal("1420"), java.time.LocalDateTime.now(),
+                        java.time.LocalDate.of(2026, 8, 1), new BigDecimal("1302"), "B1", "防守"));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(put("/api/v1/trading/positions/600519")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\":1302,\"role\":\"防守\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.symbol").value("600519"))
+                .andExpect(jsonPath("$.stopLossPrice").value(1302));
+        verify(trading).updatePositionMeta(any(), eq("600519"), eq("防守"), eq(new BigDecimal("1302")));
+    }
+
+    @Test
+    void updatePosition_notFound_404() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.updatePositionMeta(any(), any(), any(), any())).thenReturn(null);
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(put("/api/v1/trading/positions/999999")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\":10}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updatePosition_invalidStopLoss_400() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/positions/600519")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\":\"abc\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updatePosition_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(put("/api/v1/trading/positions/600519")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\":1302}"))
                 .andExpect(status().isForbidden());
     }
 

@@ -380,6 +380,34 @@ public class TradingAppService {
     public record PositionImportResult(int imported, List<String> missingStopLoss) {}
 
     /**
+     * 更新持仓元信息（web 持仓编辑，2026-08-17 补端点：role/止损位，只更新非空字段）。
+     * <p>
+     * 之前前端与测试都在调 PUT /positions/{symbol} 但后端从未实现（持仓编辑一直 404）。
+     * targetPrice 后端 Position 无字段落盘（前端编辑目标价是既有无效功能，另记 P3）。
+     *
+     * @return 更新后的持仓；symbol 不存在返回 null
+     */
+    public Position updatePositionMeta(String userId, String symbol,
+                                       String role, BigDecimal stopLossPrice) {
+        List<Position> current = new ArrayList<>(positionRepository.findAll(userId));
+        for (int i = 0; i < current.size(); i++) {
+            Position p = current.get(i);
+            if (!p.symbol().equals(symbol)) continue;
+            Position updated = new Position(p.symbol(), p.name(), p.quantity(), p.avgCost(),
+                    p.currentPrice(), p.lastUpdated(), p.entryDate(),
+                    stopLossPrice != null ? stopLossPrice : p.stopLossPrice(),
+                    p.buyPoint(),
+                    role != null ? role : p.role());
+            current.set(i, updated);
+            positionRepository.saveAll(userId, current);
+            log.info("持仓元信息更新 | userId={} | {} | 止损 {} | 角色 {}",
+                    userId, symbol, updated.stopLossPrice(), updated.role());
+            return updated;
+        }
+        return null;
+    }
+
+    /**
      * 保存导入文件（上传留存 + 编码转码，2026-08-16）。
      * <p>
      * 留存：原始文件存 {@code data/{userId}/trading/imports/{yyyy-MM}/{ts}_{filename}}（UTF-8 转码后可追溯）。

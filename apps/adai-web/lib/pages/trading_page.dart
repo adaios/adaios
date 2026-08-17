@@ -1181,6 +1181,15 @@ class _TradeDialogState extends State<_TradeDialog> {
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: '价格'),
                     style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+                    onChanged: (v) {
+                      // 默认止损：买入价 -7%（用户 2026-08-17 设定），手动填过就不再覆盖
+                      if (_direction == 'BUY' && _stopLoss.text.trim().isEmpty) {
+                        final price = double.tryParse(v.trim());
+                        if (price != null && price > 0) {
+                          _stopLoss.text = (price * 0.93).toStringAsFixed(2);
+                        }
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1198,7 +1207,7 @@ class _TradeDialogState extends State<_TradeDialog> {
                 TextField(
                   controller: _stopLoss,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '止损位', hintText: '止损价，如 4.90'),
+                  decoration: const InputDecoration(labelText: '止损位', hintText: '默认按买入价 -7%，可改'),
                   style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
                 ),
                 const SizedBox(height: 8),
