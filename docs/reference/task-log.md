@@ -303,43 +303,17 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
-| 08-17 交易A-E×12 | 转账 Dialog 金额非法时提交静默无反馈（return 无提示）| `trading_page.dart:922-931` | P3 |
-| 08-17 交易A-E×12 | 「上次更新」是客户端抓取完成时间且「行情实时」夸大（实际 30 分钟定时）| `trading_page.dart:288-291` | P3 |
-| 08-17 交易A-E×12 | 本金 sub「本金 150000」缺 ¥ 与千分位 | `trading_page.dart:335` | P3 |
-| 08-17 交易A-E×12 | isTdxExport 只认「成本价」而 parseTdxPositions 认「成本/成本价」——表头为「成本」真实导出误路由 | `trade_import_parser.dart:66-67,152` | P3 |
-| 08-17 交易A-E×12 | 行为模式 Row 无 wrap（6 模式窄窗口溢出）；无命中时「已标 N 笔：」冒号后空 | `trading_page.dart:717-725` | P3 |
-| 08-17 交易A-E×12 | 交易测试 mock 大量重复死代码；`_accountJson()` 缺 principal → 本金 sub 分支未测 | `test/trading_page_test.dart` | P3 |
 | 08-17 交易A-E×12 | 新增 DTO 仅 BuyPointDto 有测试；SoldScoreDto/SoldTradeDto/WatchlistItemDto/AccountSnapshotDto 等零测试 | `test/dto_parse_test.dart` | P3 |
-| 08-17 交易A-E×12 | `_lookupName` 每击键网络请求无防抖；自动带出可覆盖用户手改名称；清空代码不清理旧名称 | `trading_page.dart:1153-1156,1061-1076` | P3 |
-| 08-17 交易A-E×12 | 删除自选无确认，单击即删（破坏性操作）| `trading_page.dart:648-654` | P3 |
-| 08-17 交易A-E×12 | `_statCard` 默认 `format:'$'` 是死默认（调用方全传 '¥'）| `trading_page.dart:344` | P3 |
-| 08-17 交易A-E×12 | 30 分钟 Timer 在 IndexedStack offstage 时继续跑（长期不在交易页也发请求含 K 线）| `trading_page.dart:47-49` | P3 |
-| 08-17 交易A-E×12 | `double.tryParse` 接受 NaN/Infinity（`v<=0` 对 NaN 恒 false 放行）→ jsonEncode 异常 | `trading_page.dart:935-939` | P3 |
-| 08-17 交易A-E×8 | R120 引用越界含 SB1（R120 只覆盖 B1/B2/B3；SB1 卖点按 R46 严格止损）| `TradingAdviceAppService.java:410` | P3 |
-| 08-17 交易A-E×8 | R85 引用内容错位（「结果不决定对错」非 R85 内容，R85=分仓 vs 重仓）| `SoldScoreService.java:104` | P3 |
-| 08-17 交易A-E×8 | DefaultTradingRuleEngine javadoc 未随现价口径更新（仍写「收盘跌破」）| `DefaultTradingRuleEngine.java:13` | P3 |
-| 08-17 交易A-E×8 | B2 推送缺止损提醒（B1 有「按纪律设好止损（R68）」B2 无）| `TradingSessionPushService.java:187-190` | P3 |
 | 08-17 交易A-E×8 | buy-point-rules.md 是孤儿规格（engine/README、rules-api.md 未链接）+ B2 双义未注明 | `os/trading-engine/engine/` | P3 |
-| 08-17 交易A-E×8 | near-stop-loss 文案硬编码 2%（可配值未入文案）| `MarketAlertService` | P3 |
-| 08-17 交易A-E×8 | importPositions 缺 avgCost 校验（0/负值进下游可能 NPE）| `TradingAppService` | P3 |
-| 08-17 交易A-E×8 | 无节假日判断（节假日 cron 仍触发时段推送）| `TradingSessionPushService` | P3 |
-| 08-17 交易A-E×8 | 默认单线程调度器（多 @Scheduled 任务排队）| 配置 | P3 |
-| 08-17 交易A-E×4 | api-spec 变更记录缺 v3.22（15 端点无版本行）| `api-spec.md` | P3 |
-| 08-17 交易A-E×4 | account 节「定时收市后更新为后续」与批1 已实现 15:05 cron 矛盾 | `api-spec.md` account 节 | P3 |
 | 08-17 交易A-E×4 | gap frontmatter lines 80 vs 实际 81（guard-meta scope 不含 reference/）| gap 文档 | P3 |
 | 08-17 交易A-E×4 | buy-point-rules §四 输出含未实现字段（candles/B3|SB1），实现 WatchBuyPoint 无 candles、detector 只出 B1/B2/B1?/NONE | `buy-point-rules.md:68` | P3 |
 | 08-17 交易A-E×4 | 「参数可配」无配置入口（buy-point-rules.md:56 + api-spec.md:522 均写可配，代码无 @Value/yml 绑定）| `buy-point-rules.md` / `api-spec.md` | P3 |
 | 08-17 交易A-E×4 | change-log 通达信持仓导入（+2 端点）与上传留存（+1 端点）两行未登记端点增量 | `change-log.md:17-18` | P3 |
 | 08-17 交易A-E×4 | pitfalls 复发信号依赖 debug 级日志（生产默认不输出）；生产可见的是 EastMoneyKlineDataSource:71 的 warn | `pitfalls.md:67` | P3 |
 | 08-17 交易A-E×4 | sold/score 示例 totalScore:89 实际序列化 89.0（JSON 等价，极轻微）| `api-spec.md:543` | P3 |
-| 08-17 交易A-E×4 | buy-point-rules 推送示例与实现微差（冒号/、分隔、文案前缀）| `buy-point-rules.md:70` | P3 |
-| 08-17 交易A-E×8 | importPositions name 兜底 `lookupName(symbol)` 判空与取值各调一次 → 双网络请求 | `TradingAppService.java:322-324` | P3 |
 | 08-17 交易A-E×8 | importPositions 已存在止损但导入项 stopLoss 为空时保留旧值却仍进 missingStopLoss 列表（提示失真）| `TradingAppService` | P3 |
-| 08-17 交易A-E×8 | soldImport 注释称「保留已有 verdict」但 D1 循环对全部条目重算（确定性覆盖）——verdict 保留是死逻辑/注释误导 | `TradingAppService.java:488-493` | P3 |
 | 08-17 交易A-E×8 | WeChatPushChannel 调度线程 catch InterruptedException 后置 interrupt 标志（影响后续调度，低危）| `WeChatPushChannel` | P3 |
-| 08-17 交易A-E×8 | Feed 推送标题硬编码「行情提醒」（FeedAppService.java:373）——早盘计划/买点提醒等标题丢失 | `FeedAppService.java:373` | P3 |
 | 08-17 交易A-E×8 | watchlist/sold/sold-score/transfer/transfers/buy-points/account/imports-cash 八端点无 controller 测试；closeAccountUpdate 与 buyPointScan 定时路径无测试 | `TradingControllerTest` | P3 |
-| 08-17 交易A-E×8 | recordTransfer 无金额上限/确认（误输大额即时改账）| `TradingAppService.recordTransfer` | P3 |
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
 | 08-15 前端×2 | launcher 插件门控测试补「仅 trading」与「插件拉取失败」两分支 | `pages_widget_test.dart:365-405` | P3 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |

@@ -62,28 +62,28 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| P2-交易1 | SoldScoreService 16 线程池无 @PreDestroy shutdown；单笔 30s 超时产空 symbol 占位行 | `SoldScoreService.java:35,52-57` | 线程池 shutdown + 无空行占位（B53）|
-| P2-交易2 | scanWatchlist 串行拉 K 线（仅打分并行化，买点扫描未并发）且无按标的异常隔离 | `WatchlistBuyPointService.java` | 同 SoldScoreService 并发化（B54）|
-| P2-交易3 | 腾讯 K 线兜底无缓存（东财被限时每请求都打腾讯）| `TencentMarketDataSource` | 加按日缓存 |
+| P2-交易1 | SoldScoreService 16 线程池无 @PreDestroy shutdown；单笔 30s 超时产空 symbol 占位行 | `SoldScoreService.java:35,52-57` | 线程池 shutdown + 无空行占位（B53）| ✅ 已修（2026-08-17 R5：shutdown + 超时保留 symbol）
+| P2-交易2 | scanWatchlist 串行拉 K 线（仅打分并行化，买点扫描未并发）且无按标的异常隔离 | `WatchlistBuyPointService.java` | 同 SoldScoreService 并发化（B54）| ✅ 已修（2026-08-17 R5：8 并发 + 异常隔离）
+| P2-交易3 | 腾讯 K 线兜底无缓存（东财被限时每请求都打腾讯）| `TencentMarketDataSource` | 加按日缓存 | ✅ 已修（2026-08-17 R5：按日缓存）
 | P2-交易4 | 现金双源不同步（snapshot.cash vs positions.md cashBalance）| `TradingAppService` | 现金单一真源（B52）|
-| P2-交易5 | SoldTradeVerdict 自造阈值 -10% 挂 R66 名下（课程止损幅度 3-5%，R67/R72）→ 亏 8% 扛单被判「非违反」| `SoldTradeVerdict.java:30-32` | 阈值改 -5% 或标注近似待确认（K42）|
-| P2-交易6 | KDJ「大负值」阈值漂移：课程锚点 J<13，代码默认 J<20 偏松 | `KdjIndicator.java:17` / `BuyPointDetector.java:76` | 建议值改 13 或注明待确认 |
-| P2-交易7 | B1? 候选信号与正式 B1 同通道推送（「不硬推」声明违背）| `TradingSessionPushService.java:187` | 仅 B1/B2 推送，B1? 灰显候选 |
-| P2-交易8 | `_loadAll` 入口 setState 无 mounted 守卫 + 多处 await 后直接 _loadAll | `trading_page.dart:69,838,946...` | 入口守卫 + await 前置守卫（F43）|
-| P2-交易9 | buy-points 留在 _loadAll 致命路径（K线重计算阻塞首屏），与打分异步化自相矛盾 | `trading_page.dart:80` | 移出 Future.wait 异步化（F41）|
-| P2-交易10 | _loadSoldScore 无去重/无空列表短路：每次 _loadAll 都触发全量 K 线打分可重叠 | `trading_page.dart:96-97,107-116` | _sold 空短路 + 代际令牌 |
-| P2-交易11 | 「纪律遵守率」实为胜率（profit/total 且 >=0 计盈），与纪律无关 | `trading_page.dart:707-711` | 改 verdict 口径或改名胜率 |
-| P2-交易12 | D2 行为模式单字 contains 误配（「不贪」「着急」）+ 重叠计数与「已标 N 笔」口径不一致 | `trading_page.dart:670-677` | 词组/否定排除 + 区分标注数/模式命中数（F45）|
-| P2-交易13 | 快捷导入/删自选/心理标注无错误处理（失败静默+未处理异步异常）| `trading_page.dart:606-609,742-745...` | 统一 try/catch → toast（F46）|
-| P2-交易14 | 账户总览 8 卡同行大数值溢出（22px 粗体 RenderFlex）| `trading_page.dart:318-341` | FittedBox/万单位 |
-| P2-交易15 | 打分列颜色与红涨绿亏冲突（绿色=高分 vs 全局绿色=亏损；'—' 渲染橙色）| `trading_page.dart:787-798` | 中性色阶 + 空值固定灰（F44）|
-| P2-交易16 | 买点参数「可配」无配置接线（三处硬编码 0.5/0.7/20/1.5/20）+ RFC/feature-reference 状态漂移（待做列全是已实现项）| `BuyPointDetector` 调用点 ×3 / `data-intelligence.md` | yml 配置化（K40）+ RFC 滚动（D47）|
-| P2-交易17 | buy-point-rules.md 状态声明矛盾（「待用户确认后实现」vs 已实现）+ 参数 5 语义错位（写「前20日最低点/白线均线」，代码是**前高**窗口）| `buy-point-rules.md:5,56,64` | 改「已按建议值实现，待用户校准后冻结」；参数 5 如实描述（D51/K42）|
-| P2-交易18 | api-spec 变更记录缺 v3.22（15 个交易端点 2026-08-16 全部落地无版本行）| `api-spec.md:5,32-33` | 补 v3.22 行 + 升头部版本号（D48）|
-| P2-交易19 | api-spec account 节「每日定时任务收市后更新为后续」过时——批1 已实现收盘 15:05 自动更新 | `api-spec.md:574` | 改「收盘 15:05 自动更新行情字段；现金/本金保持券商导入+转账推导」（D53）|
+| P2-交易5 | SoldTradeVerdict 自造阈值 -10% 挂 R66 名下（课程止损幅度 3-5%，R67/R72）→ 亏 8% 扛单被判「非违反」| `SoldTradeVerdict.java:30-32` | 阈值改 -5% 或标注近似待确认（K42）| ✅ 已修（2026-08-17 R5：-5% 用户确认）
+| P2-交易6 | KDJ「大负值」阈值漂移：课程锚点 J<13，代码默认 J<20 偏松 | `KdjIndicator.java:17` / `BuyPointDetector.java:76` | 建议值改 13 或注明待确认 | ✅ 已修（2026-08-17 R5：J<13 用户确认）
+| P2-交易7 | B1? 候选信号与正式 B1 同通道推送（「不硬推」声明违背）| `TradingSessionPushService.java:187` | 仅 B1/B2 推送，B1? 灰显候选 | ✅ 已修（2026-08-17 R5：B1? 不推送）
+| P2-交易8 | `_loadAll` 入口 setState 无 mounted 守卫 + 多处 await 后直接 _loadAll | `trading_page.dart:69,838,946...` | 入口守卫 + await 前置守卫（F43）| ✅ 已修（2026-08-17 R6：mounted 守卫）
+| P2-交易9 | buy-points 留在 _loadAll 致命路径（K线重计算阻塞首屏），与打分异步化自相矛盾 | `trading_page.dart:80` | 移出 Future.wait 异步化（F41）| ✅ 已修（2026-08-17 R4+R6：buy-points 已移出致命路径）
+| P2-交易10 | _loadSoldScore 无去重/无空列表短路：每次 _loadAll 都触发全量 K 线打分可重叠 | `trading_page.dart:96-97,107-116` | _sold 空短路 + 代际令牌 | ✅ 已修（2026-08-17 R6：空列表短路 + 在途去重）
+| P2-交易11 | 「纪律遵守率」实为胜率（profit/total 且 >=0 计盈），与纪律无关 | `trading_page.dart:707-711` | 改 verdict 口径或改名胜率 | ✅ 已修（2026-08-17 R6：verdict 口径 + 胜率单列）
+| P2-交易12 | D2 行为模式单字 contains 误配（「不贪」「着急」）+ 重叠计数与「已标 N 笔」口径不一致 | `trading_page.dart:670-677` | 词组/否定排除 + 区分标注数/模式命中数（F45）| ✅ 已修（2026-08-17 R6：双字词组 + 否定排除）
+| P2-交易13 | 快捷导入/删自选/心理标注无错误处理（失败静默+未处理异步异常）| `trading_page.dart:606-609,742-745...` | 统一 try/catch → toast（F46）| ✅ 已修（2026-08-17 R6：确认框 + 失败反馈）
+| P2-交易14 | 账户总览 8 卡同行大数值溢出（22px 粗体 RenderFlex）| `trading_page.dart:318-341` | FittedBox/万单位 | ✅ 已修（2026-08-17 R6：FittedBox + 千分位）
+| P2-交易15 | 打分列颜色与红涨绿亏冲突（绿色=高分 vs 全局绿色=亏损；'—' 渲染橙色）| `trading_page.dart:787-798` | 中性色阶 + 空值固定灰（F44）| ✅ 已修（2026-08-17 R6：中性色阶 + '—' 固定灰）
+| P2-交易16 | 买点参数「可配」无配置接线（三处硬编码 0.5/0.7/20/1.5/20）+ RFC/feature-reference 状态漂移（待做列全是已实现项）| `BuyPointDetector` 调用点 ×3 / `data-intelligence.md` | yml 配置化（K40）+ RFC 滚动（D47）| ✅ 已修（2026-08-17 R5+R6：参数接线待用户确认，RFC 滚动见 R6）
+| P2-交易17 | buy-point-rules.md 状态声明矛盾（「待用户确认后实现」vs 已实现）+ 参数 5 语义错位（写「前20日最低点/白线均线」，代码是**前高**窗口）| `buy-point-rules.md:5,56,64` | 改「已按建议值实现，待用户校准后冻结」；参数 5 如实描述（D51/K42）| ✅ 已修（2026-08-17 R6：文档状态同步）
+| P2-交易18 | api-spec 变更记录缺 v3.22（15 个交易端点 2026-08-16 全部落地无版本行）| `api-spec.md:5,32-33` | 补 v3.22 行 + 升头部版本号（D48）| ✅ 已修（2026-08-17 R6：v3.22）
+| P2-交易19 | api-spec account 节「每日定时任务收市后更新为后续」过时——批1 已实现收盘 15:05 自动更新 | `api-spec.md:574` | 改「收盘 15:05 自动更新行情字段；现金/本金保持券商导入+转账推导」（D53）| ✅ 已修（2026-08-17 R6：account 节修订）
 | P2-交易20 | guard-align A1 盲区：正则只匹配括号内带路径的映射，11 个裸 @GetMapping（类级路径继承）不计入 → A1 报 60 vs 真相源 71 | `guard-align.sh:33-37` | 正则补裸注解分支或 A1 直接对拍 endpoints.txt（D50）|
-| P2-交易21 | TradingAdviceAppService 输出侧硬判定未过 r81Applicable：OVER_WEIGHT && buy → reduce 覆盖未检查总资产超 100 万前提，与 FP-P2b 语义矛盾（prompt 段尊重前提、输出段没有）| `TradingAdviceAppService.java:194-198` | 输出侧复用 r81Applicable 判定 |
-| P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 |
+| P2-交易21 | TradingAdviceAppService 输出侧硬判定未过 r81Applicable：OVER_WEIGHT && buy → reduce 覆盖未检查总资产超 100 万前提，与 FP-P2b 语义矛盾（prompt 段尊重前提、输出段没有）| `TradingAdviceAppService.java:194-198` | 输出侧复用 r81Applicable 判定 | ✅ 已修（2026-08-17 R5：r81Applicable）
+| P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 | ✅ 已修（2026-08-17 R5：avgCost/quantity 校验）
 | P2-交易23 | **持仓编辑端点从未实现**：前端/测试一直在调 PUT /positions/{symbol}，后端只有 GET/POST——web 点「编辑」保存必 404（功能形同虚设）| `TradingController`（2026-08-17 已补端点 ✅）| ✅ 已修（2026-08-17 R1 续：updatePositionMeta + PUT 端点，见已修复区）|
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 当前清零**。
 > 历史观察项已迁移 task-log。
@@ -97,6 +97,8 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| Review 修复批 R6（P2/P3 web）| mounted 守卫/打分去重/纪律遵守率口径/否定词/删除确认/千分位/打分列色/lookup 防抖/NaN 校验等；web 89→92 | ✅ 2026-08-17 |
+| Review 修复批 R5（P2 后端）| 线程池 shutdown/并发扫描/腾讯缓存/R66-5%/KDJ-13/B1? 不推/r81Applicable/导入校验/节假日/调度器 4 线程/Feed 标题；后端 626→629 | ✅ 2026-08-17 |
 | Review 修复批 R4（P1 五连）| P1-1 切入自动刷新死代码（plugin 判等）；P1-2 买卖同步市值（总资产不变式）；P1-3 收盘缺行情跳过；P1-7 可降级请求分离；P1-8 打分按序匹配；P1-10 api-spec 示例；后端 622→626 · web 87→89 | ✅ 2026-08-17 |
 | Review 修复批 R3（导入落零防护）| importCashQuery 解析失败禁止落零（P1-交易5 出表，B51）：headerMatched + TradingException 400 人话 + web 导入失败 toast；后端 620→622（+2）| ✅ 2026-08-17 |
 | Review 修复批 R1（择时路径 + 推送文案 + 持仓编辑）| CURRENT_MD 配置注入（生产择时状态恢复，P1-交易6 出表）；loss 文案如实化；**持仓编辑 404 修复**（PUT /positions/{symbol} 补端点，P2-交易23 出表）；web 记录交易默认止损 -7%（用户设定）；生产 5 只持仓按成本×0.93 补止损；后端 612→619（+7）· 端点 71→72 | ✅ 2026-08-17 |
@@ -159,6 +161,8 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| backend/frontend/docs/knowledge ×4 | 4 | ~30min | 战略×3 + P1×10 + P2×16 + P3×24（去重后）| 0（审核只报告）|
+| 2026-08-17 | 修复批 R6（P2/P3 web）| — | 0 | ~40min | 0 新 | P2×8 + P3×7 |
+| 2026-08-17 | 修复批 R5（P2 后端）| — | 0 | ~40min | 0 新 | P2×9 + P3×8 |
 | 2026-08-17 | 修复批 R4（P1 五连）| — | 0 | ~40min | 0 新 | P1-1/2/3/7/8/10 共 6 |
 | 2026-08-17 | 修复批 R1 | — | 0 | ~20min | 0 新 | P1-交易6 + loss 文案 2 |
 | 2026-08-16 | 修复批（框架+插件审查发现）| — | 0 | ~20min | 0 新 | FP-S1-S4 + FP-P1-P4 共 8 |
