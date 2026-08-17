@@ -558,14 +558,15 @@ public class TradingController {
     static String sanitizeReviewContent(String content) {
         if (content == null || content.isBlank()) return content;
         String s = content;
+        // W-P3-20（2026-08-17）：数字正则兼容千分位逗号（1,400 此前漏脱敏）
         // 持仓数量：持有100股 → 持有N股
-        s = s.replaceAll("持有\\s*\\d+(?:\\.\\d+)?\\s*股", "持有N股");
+        s = s.replaceAll("持有\\s*[\\d,]+(?:\\.\\d+)?\\s*股", "持有N股");
         // 市值：市值14万 → 市值（已脱敏）
-        s = s.replaceAll("市值\\s*[\\d.]+\\s*(?:万|千|亿)?", "市值（已脱敏）");
+        s = s.replaceAll("市值\\s*[\\d,.]+\\s*(?:万|千|亿)?", "市值（已脱敏）");
         // 现金余额：现金余额为零 → 现金余额（已脱敏）
         s = s.replaceAll("现金余额[^，。；\\n]*", "现金余额（已脱敏）");
         // 成本/现价/止损价：成本1400现价1400 → 成本（已脱敏）现价（已脱敏）
-        s = s.replaceAll("(成本|现价|止损位|止损价)\\s*[\\d.]+", "$1（已脱敏）");
+        s = s.replaceAll("(成本|现价|止损位|止损价)\\s*[\\d,.]+", "$1（已脱敏）");
         return s;
     }
 

@@ -467,7 +467,10 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _closeChat(String cardId) async {
-    final card = _cards.firstWhere((c) => c.id == cardId);
+    // W-P3-4（2026-08-17）：firstWhere 找不到同步抛 StateError → indexWhere 安全跳过（#205 口径）
+    final idx = _cards.indexWhere((c) => c.id == cardId);
+    if (idx < 0) return;
+    final card = _cards[idx];
     final currentTurns = card.turns?.length ?? 0;
     final hasNewTurns = currentTurns > _chatEnterTurnCount;
     final needsSummary = card.summary == null && (card.turns?.isNotEmpty ?? false);

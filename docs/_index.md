@@ -33,7 +33,7 @@ tags: [meta, index]
 | `VISION.md` | 项目愿景与理念（唯一理念真相源）|
 | `README.md` | 文档总索引（分层：必读→架构→功能→API→决策→部署）|
 | `ai-engineering/_index.md` | ★ AI 协作协议区（工具无关标准，目录治理索引）|
-| `architecture/_index.md` | 架构文档（roadmap 唯一蓝图 / product-architecture / api-spec / data-format-freeze / system-architecture / frontend-reference）|
+| `architecture/_index.md` | 架构文档（roadmap 唯一蓝图 / product-architecture / api-spec / data-format-freeze / system-architecture / frontend-reference / memory-os-design）|
 | `reference/_index.md` | 状态与历史（status.md 数字真相源 / change-log.md 批次 / feature-reference 功能真相源 / task-log 待办 / task-plugin-model）|
 | `review/_index.md` | 审核（REVIEW.md 未修项滚动区 + audits/ 走查存档）|
 | `rfc/_index.md` | 决策记录（RFC，status: draft/approved/implemented）|

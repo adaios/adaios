@@ -68,8 +68,21 @@ public class GlmResponseParser {
     // ── 内部方法 ──
 
     private static ImageUnderstanding fallback(String text) {
-        String s = text.length() > 100 ? text.substring(0, 100) + "…" : text;
+        // W-P3-13（2026-08-17）：截断避免劈开 surrogate pair（emoji）——后移一位补全高代理项
+        String s = text.length() > 100 ? truncateSafe(text, 100) + "…" : text;
         return new ImageUnderstanding(s, "photo", "", List.of());
+    }
+
+    /** 安全截断：若截断点在 surrogate pair 中间则多取一位（不劈开 emoji）。 */
+    private static String truncateSafe(String text, int max) {
+        if (text.length() <= max) return text;
+        int end = max;
+        if (end > 0 && end < text.length()
+                && Character.isHighSurrogate(text.charAt(end - 1))
+                && end < text.length() && Character.isLowSurrogate(text.charAt(end))) {
+            end++; // 把低代理项一并保留，避免半个 emoji
+        }
+        return text.substring(0, end);
     }
 
     /**

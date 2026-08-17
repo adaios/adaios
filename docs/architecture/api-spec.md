@@ -332,6 +332,7 @@
       "tags": ["标签"],
       "intent": "log",
       "summary": "AI摘要",
+      "domain": "life",
       "turns": null
     }
   ],

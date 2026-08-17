@@ -176,7 +176,10 @@ public class LocalFileStorage implements FileStorage {
      * 如 {@code default/records/2026/07/a.md} → {@code records/2026/07/a.md}。
      */
     private String stripUserPrefix(String fullPath, String userId) {
-        String prefix = userId + "/";
+        // W-P3-17（2026-08-17）：与 resolve 同款兜底（null/空 → default）——此前 resolve 落 default/ 而
+        // strip 拼 "null/" 前缀不匹配，读取列表时路径剥不干净
+        String uid = (userId == null || userId.isBlank()) ? "default" : userId;
+        String prefix = uid + "/";
         return fullPath.startsWith(prefix) ? fullPath.substring(prefix.length()) : fullPath;
     }
 }

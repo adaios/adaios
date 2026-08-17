@@ -97,6 +97,8 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| Review 修复批 R10（P3 深水区）| _closeChat indexWhere + emoji 截断 + stripUserPrefix 兜底 + 脱敏千分位 + RFC 勾销 + feed 示例 domain；核实 W-P3-3 已消失 | ✅ 2026-08-17 |
+| Review 修复批 R9（P3 尾尾批）| web SnackBar 队列/ValueKey 保活 + app superseded 标记 + ANALYSIS system 收敛注明 + CLAUDE.md 去重拆行 + README 断链 + T1.3 superseded + PATCH 契约；核实 6 条旧 P3 已闭环 | ✅ 2026-08-17 |
 | Review 修复批 R8（P3 尾批）| isValidPlugins 查重 + gateDomain 白名单收敛 + HEIC MIME + api-spec 关键词同步 + ask-batch 登记；核实 5 条旧 P3 已闭环 | ✅ 2026-08-17 |
 | Review 修复批 R7（P3 收尾）| 八端点 controller 测试 + web DTO 测试 + 降级日志 warn + WeChat interrupt + buy-point-rules 登记 + gap lines；后端 629→640 · web 92→98 | ✅ 2026-08-17 |
 | Review 修复批 R6（P2/P3 web）| mounted 守卫/打分去重/纪律遵守率口径/否定词/删除确认/千分位/打分列色/lookup 防抖/NaN 校验等；web 89→92 | ✅ 2026-08-17 |
@@ -163,6 +165,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| backend/frontend/docs/knowledge ×4 | 4 | ~30min | 战略×3 + P1×10 + P2×16 + P3×24（去重后）| 0（审核只报告）|
+| 2026-08-17 | 修复批 R10（P3 深水区）| — | 0 | ~30min | 0 新 | W-P3×8 |
 | 2026-08-17 | 修复批 R9（P3 尾尾批）| — | 0 | ~30min | 0 新 | P3×12 + 核实 6 闭环 |
 | 2026-08-17 | 修复批 R8（P3 尾批）| — | 0 | ~30min | 0 新 | P3×11 |
 | 2026-08-17 | 修复批 R7（P3 收尾）| — | 0 | ~30min | 0 新 | P3×11 |
