@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-17 | P2 批 C（文档四连）| **W-P2-12** roadmap 状态修正（数据冻结已定稿、#144/#106/#112 已修仍列待清）；**W-P2-13** feature-reference 附录补 7 交易端点 + §16 PATCH 合并语义；**W-P2-14** api-spec trades/review 补 403 插件门控契约；**W-P2-11** os 空文件删除（0 字节残留），alice 脏数据核实为测试账号（gateDomain 已防新增）；后端 642 · app 118 · web 98 · admin 34 全绿 | — |
 | 2026-08-17 | P2 批 B（前端六连）| **W-P2-2** app 记忆页日期连点代际守卫（web 有 app 无）；**W-P2-4** Feed 缩略图 cacheWidth 降采样（app 96→192 / web 120→240，避免全分辨率解码）；**W-P2-5** web 图片成功卡 content=用户 caption（与 app _buildMediaSuccessCard 对齐，summary 单列）；**W-P2-3** admin 插件 toggle 串行队列 catchError 恢复（非 ApiException 不永久卡死）；核实 W-P2-1 四项已闭环（删除确认/图片重试字节/全图 Dialog/搜索错误态）+ isProtected 已修（P2-R3）+ 163 admin 记录页=治理设计；app 118 · web 98 · admin 34 全绿 | — |
 | 2026-08-17 | P2 批 A（后端六连）| **W-P2-7** accounts.json 原子写（tmp+move，防写一半损坏全系统）；**W-P2-8** TagIndex ConcurrentHashMap（并发读写安全）；**W-P2-9** 交易落 Record 流水线核实已实现（writeTradingRecord → Timeline/Search/Memory 全链路）；**W-P2-10** MemoryService 三缺陷（suggestion 单行化 / createdAt 不再 now() 回退 / 删除哨兵改整行精确匹配）；**W-P2-6** project tasks delete 补插件门控（B40 对称，403 测试）；**08-15 后端×6** enabledPlugins 30 秒 TTL 缓存 + invalidate（每请求少读 accounts.json 数次）；后端 640→642（+2）| — |
 | 2026-08-17 | Review 修复批 R11（admin + 收尾）| **admin 操作后静默刷新**（_load(silent) 不闪全页 spinner）；**setPlugins 死接口删除**（页面全走 mergePlugins）；**PromoteResultDto 补 message**（后端响应字段）；核实 latest==null 分支/promote 重复 header 已随演进闭环；task-log 清 10 条已修残留；admin 34 全绿 | — |

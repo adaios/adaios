@@ -461,7 +461,7 @@
 > `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。
 > **RFC 20260816（数据分层）**：`entryDate` 可空缺省今天；**BUY 必填 `stopLossPrice` + `buyPoint`**（缺失 → 400 人话消息）；`targetPrice`/`reason` 可选（SELL 时止损/买点可空）。recordTrade 成功后**同步写逐笔流水**（`data/{userId}/trading/trades/{yyyy-MM}.json`）+ **写一条 domain=trading 记录**（5 分钟窗口去重）——交易进 timeline/记忆 + 复盘提醒闭环。
 
-**Response**：`Position[]` — 更新后的全部持仓
+**Response**：`Position[]` — 更新后的全部持仓。需 trading 插件（403）。
 
 ---
 
@@ -671,7 +671,7 @@
 
 ### `POST /api/v1/trading/review` — 生成交易复盘
 
-AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `data/trading/reviews/YYYY-MM-DD_review.md`。
+AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `data/trading/reviews/YYYY-MM-DD_review.md`。需 trading 插件（403，W-P2-14 2026-08-17 补门控契约）。
 
 **Query Parameters**
 

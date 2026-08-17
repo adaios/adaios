@@ -750,6 +750,12 @@ Strict format:
 | `GET/POST/DELETE /api/v1/trading/watchlist*` | `getWatchlist/importWatchlist/removeWatchlist` | 自选股 |
 | `GET/POST /api/v1/trading/sold*` | `getSold/importSold/updateSoldPsychology` | 清仓股复盘 |
 | `POST /api/v1/trading/imports/cash` | `importCash()` | 资金查询（现金+精确成本）|
+| `GET /api/v1/trading/account` | `getAccount()` | 账户总体快照（总盈亏=资产-本金）|
+| `GET /api/v1/trading/buy-points` | `getBuyPoints()` | 自选股买点信号（B1/B2）|
+| `GET /api/v1/trading/sold/score` | `getSoldScore()` | 清仓复盘三维打分 |
+| `POST /api/v1/trading/transfer` | `recordTransfer()` | 银证转账（净投入跟踪）|
+| `GET /api/v1/trading/transfers` | `transferList()` | 转账流水 |
+| `PUT /api/v1/trading/positions/{symbol}` | `updatePosition()` | 持仓元信息（止损/角色）|
 
 ### 前端逻辑
 
@@ -998,7 +1004,7 @@ POST /api/v1/records/retry
 > 详见 RFC `20260814-domain-plugin-model` + `docs/reference/task-plugin-model.md`。
 
 - **插件定义**：插件 = adai 拥有并受控开放的 Domain（`trading` / `project`）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
-- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，PATCH 全量）。新账号默认空 = 只有基础服务；seed `adai` = `[trading, project]`（owner）。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
+- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `adai` = `[trading, project]`（owner）。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
 - **查询**：`GET /api/v1/me/plugins`（无鉴权，当前用户启用插件 → 前端模块显隐）。
 - **门控面**（读写侧对称，REVIEW S-3/S-4）：
   - 读侧：ContextEngine 知识源/贡献者按 `enabledPlugins` 过滤注入；Feed 行情条/异动推送仅 trading 插件用户；promote 反哺仅 trading 插件用户（否则 403）

@@ -126,9 +126,9 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 
 | 项 | 状态 | 说明 |
 |:--|:--|:--|
-| 数据格式冻结 | 📋 待做 | 审计 data/ 全格式 → 定稿 `docs/architecture/data-format-freeze.md` + 变更/迁移规则 |
+| 数据格式冻结 | ✅ 定稿（2026-08-07）| `docs/architecture/data-format-freeze.md` v1.0.0 数据契约（W-P2-12 2026-08-17 修正状态漂移）|
 | 发布跑通 | 📋 待做 | tag v1.0.0（annotated）+ `docs/releases/v1.0.0.md` + deploy.sh 部署 + 生产验证 |
-| 残留 P1 质量 | 📋 待清 | #144 rebuild 幂等（烧 AI）· #106 api-spec 契约失真 · #112 CANCELLED 任务可见性 等 |
+| 残留 P1 质量 | ✅ 已清（2026-08-17）| #144 rebuild 幂等 / #106 api-spec 契约 / #112 CANCELLED 任务可见性 均已修复出表（W-P2-12 修正漂移，见 change-log）|
 | 用户体系前端选号 | ⏸ 顺延 v1.0.1 | 后端 ✅（账号 + 鉴权 + admin）；v1.0.0 单用户先行 |
 | Life OS 闭环 | ⏸ 数据积累后 | 情绪/习惯/周报任一；**非 v1.0.0 硬门槛**（数据问题非代码问题）|
 

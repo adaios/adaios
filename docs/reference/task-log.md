@@ -303,14 +303,11 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
-| 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
-| 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
 | 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
 | 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|
 | 117 | 缓存 key 分桶未测（价值低，留待多账号批）| `test/` | P3 |
-| 163 | adai-admin 记录页只看得到今天（Feed 契约只返回当天）| `data_api_store.dart:60-76` | P2 |
 | 166 剩余 | MediaController 上传 413 + emoji 截断已修；剩余 market id 同秒碰撞 | 后端多处 | P3 |
 | 168 | os/ 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 | P3 |
 | 171 | 优化方向（非问题）：项目页「项目记录」聚合视图 + 记录可标记类型（问题/建议）并流转为任务 | adai-app 项目页 + domain 体系 | 产品方向 |
@@ -333,20 +330,6 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
-| W-P2-1 | 双端对拍修复：图片重试字节（web F27）、删除确认（app U16）、全图 Dialog 接入（3 处）、搜索错误态（web）| 多文件 | P2 |
-| W-P2-2 | 记忆页日期连点异步乱序守卫（web 有 app 无）| `memory_page.dart:54-73` | P2 |
-| W-P2-3 | admin 插件 toggle 串行队列 catchError 恢复（非 ApiException 永久 error）| `accounts_page.dart:96-117` | P2 |
-| W-P2-4 | Feed 缩略图 cacheWidth 降采样（app/web Image.network 全分辨率解码）| `feed_card.dart:418` / `desktop_feed_card.dart:238` | P2 |
-| W-P2-5 | web 图片成功卡 content=用户 caption（#245 同步）| `feed_page.dart:200-212` | P2 |
-| W-P2-6 | project tasks 写端点加 project 插件门控（B40 对称）| `ProjectStatusController.java` | P2 |
-| W-P2-7 | accounts.json 原子写（writeAll 截断写 → 损坏全系统起不来）| `AccountFileRepository.java:191` | P2 |
-| W-P2-8 | TagIndex 并发 RMW 锁（cacheByUser 非线程安全）| `TagIndexService.java:53-95` | P2 |
-| W-P2-9 | 交易落 Record 流水线（recordTrade 只改 positions.md，不进 Timeline/Search/Memory）| `TradingAppService.java:48-92` | P2 |
-| W-P2-10 | MemoryService 序列化三缺陷：suggestion 未单行化 / createdAt now() 回退 / contains 哨兵匹配 | `MemoryService.java:689-803` | P2 |
-| W-P2-11 | 数据卫生：alice 越界 domain 标注 + 连调残留 / positions symbol-name 错配 / os/ 空文件+PNG+重复 JSON | data/alice + positions.md + os/ | P2 |
-| W-P2-12 | roadmap 状态漂移：数据冻结标「待做」实为定稿、#144/#106/#112 已修仍列待清；§3.2 补插件模型（S-W1）| `product-roadmap.md` | P2 |
-| W-P2-13 | feature-reference 附录 API 全集补 7 端点 + §16 PATCH 全量→合并语义 | `feature-reference.md` | P2 |
-| W-P2-14 | api-spec §5 trades/review 补 403 插件门控契约 | `api-spec.md:439-474` | P2 |
 
 ### P3 打磨（选录）
 
