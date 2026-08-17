@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-17
 status: active
-lines: 95
+lines: 100
 depends-on: []
 related: [../roles/frontend-reviewer.md]
 tags: [review, checklist, frontend]
@@ -93,3 +93,8 @@ tags: [review, checklist, frontend]
 | F50 | 关键词归类统计须防单字误配（否定/无关词）且计数口径（标注数 vs 模式命中数）需与展示文案一致 | D2 行为模式单字 contains 误配 + 重叠计数（交易 A-E 审查 P2，2026-08-17）|
 | F51 | 用户可见文案禁用无解释的内部规则编号（R81 等）与超卖描述（「行情实时」需与真实刷新机制一致）| 纪律遵守率实为胜率 + 行情实时夸大（交易 A-E 审查 P2/P3，2026-08-17）|
 | F52 | 新增端点必须配套：DTO 全量 fromJson 测试（含缺字段默认值）、mock 工厂去重、关键交互分支测试（账户卡本金 sub、转账 dialog、快捷导入失败 toast、sold-score 迟到渲染、切入自动刷新）| 交易新增 DTO 仅 BuyPointDto 有测试（交易 A-E 审查 P3，2026-08-17）|
+| F53 | 次级/可降级异步加载必须有锁 + 代际令牌：先判锁再递增（早退分支不得递增）、finally 无条件复位、响应乱序旧代丢弃 | web _loadDegradable 无锁（走查 8 官 P2，2026-08-17）|
+| F54 | Dialog/子页内查询快速切换必须代际隔离：起止日期等参数连点两次，慢的旧查询响应不得覆盖新参数结果 | web 历史 Dialog 日期竞态（走查 8 官，2026-08-17）|
+| F55 | 写操作（记录交易/删除/标记）成功必须有自然反馈（toast/snackbar，第一原则文案），失败有人话提示——静默成功=无反馈缺陷 | web 记录交易成功无 toast（走查 8 官，2026-08-17）|
+| F56 | 首屏加载失败不得伪装空态：失败与真空态必须区分渲染（失败=错误文案+重试按钮；真空=引导），loading 期间不得显示空态文案 | web Feed 首载失败显示「还没有记录」（走查 8 官，2026-08-17）|
+| F57 | 错误信息提取必须透出后端人话：ApiException.body 的 error 字段优先，禁止一律「请求失败 (400)」丢人话 | web _extractApiError 丢人话（走查 8 官，2026-08-17）|

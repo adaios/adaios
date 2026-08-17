@@ -385,8 +385,8 @@ void main() {
       expect(find.text('sunny'), findsOneWidget);
       expect(find.text('chat about weather'), findsOneWidget);
       expect(find.text('weather'), findsOneWidget);
-      // "提问" appears as badge + bottom button (2 instances)
-      expect(find.text('提问'), findsNWidgets(2));
+      // 第一原则（2026-08-17）：无「提问」徽章，仅底部按钮 1 个
+      expect(find.text('提问'), findsOneWidget);
       // No "end" button (not chatting/waiting)
       expect(find.text('结束'), findsNothing);
     });

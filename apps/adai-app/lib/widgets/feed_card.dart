@@ -160,13 +160,10 @@ class FeedCard extends StatelessWidget {
   bool get _isChatting => data.mode == CardMode.chatting;
   bool get _isActive => _isWaiting || _isChatting;
   bool get _isEnded => data.mode == CardMode.ended;
-  bool get _isIdle => data.mode == CardMode.idle;
   bool get _hasTurns => data.turns != null && data.turns!.isNotEmpty;
   // log: intent is 'log'; or no turns and no intent (feed-loaded records)
   bool get _isLogStyle => !_isActive && !_isEnded
       && (data.intent == IntentType.log || (data.intent == null && !_hasTurns));
-  // ask: anything that's not log, not active, not ended
-  bool get _isAskStyle => !_isActive && !_isEnded && !_isLogStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -478,42 +475,8 @@ class FeedCard extends StatelessWidget {
   Widget _buildHeader() {
     return Row(
       children: [
-        if (_isLogStyle) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: AppColors.darkGrey5.withAlpha(50),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.edit_note, size: 11, color: AppColors.darkGrey5),
-                const SizedBox(width: 2),
-                Text('记录', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-        ],
-        if (_isAskStyle) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: AppColors.darkGreen.withAlpha(50),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.help_outline, size: 11, color: AppColors.darkGreen),
-                const SizedBox(width: 2),
-                Text('提问', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-        ],
+        // 2026-08-17 走查（第一原则·无第三视角）：移除「记录/提问」意图徽章与「📝 领域」徽章——
+        // 系统视角标签不出现；domain 仍可通过更多菜单「标记为」修改（交互保留，展示去掉）
         Text(data.date.isEmpty ? data.time : '${data.date}  ${data.time}',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
         if (_isChatting) ...[
@@ -530,7 +493,7 @@ class FeedCard extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen.withAlpha(150)),
           )
         else
-          _buildDomainBadge(),
+          const SizedBox.shrink(),
         const SizedBox(width: 4),
         // More menu
         _buildMoreMenu(),
@@ -543,24 +506,6 @@ class FeedCard extends StatelessWidget {
     'trading': '📈',
     'project': '📑',
   };
-
-  Widget _buildDomainBadge() {
-    final emoji = _domainEmoji[data.domain] ?? '📝';
-    final name = data.domain == 'life' ? '生活'
-        : data.domain == 'trading' ? '交易'
-        : data.domain == 'project' ? '项目'
-        : data.domain;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface2.withAlpha(50),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.darkBorder.withAlpha(80), width: 0.5),
-      ),
-      child: Text('$emoji $name',
-        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
-    );
-  }
 
   Widget _buildMoreMenu() {
     final selected = data.domain;

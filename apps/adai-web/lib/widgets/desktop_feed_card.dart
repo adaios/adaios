@@ -33,10 +33,6 @@ class DesktopFeedCard extends StatelessWidget {
   bool get _isActive => _isWaiting || _isChatting;
   bool get _isEnded => data.mode == CardMode.ended;
   bool get _hasTurns => data.turns != null && data.turns!.isNotEmpty;
-  bool get _isLogStyle =>
-      !_isActive && !_isEnded &&
-      (data.intent == IntentType.log || (data.intent == null && !_hasTurns));
-  bool get _isAskStyle => !_isActive && !_isEnded && !_isLogStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -294,54 +290,14 @@ class DesktopFeedCard extends StatelessWidget {
   Widget _buildHeader() {
     return Row(
       children: [
-        if (_isLogStyle) ...[
-          _badge('记录', Icons.edit_note, AppColors.darkGrey5),
-          const SizedBox(width: 6),
-        ],
-        if (_isAskStyle) ...[
-          _badge('提问', Icons.help_outline, AppColors.darkGreen),
-          const SizedBox(width: 6),
-        ],
+        // 2026-08-17 走查（第一原则·无第三视角）：移除「记录/提问」意图徽章与「📝 领域」徽章——
+        // 系统视角标签不出现；domain 仍可通过更多菜单「标记为」修改（交互保留，展示去掉）
         if (data.loading)
           const SizedBox(width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
         const Spacer(),
-        _buildDomainBadge(),
-        const SizedBox(width: 4),
         _buildMoreMenu(),
       ],
-    );
-  }
-
-  Widget _badge(String label, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 11, color: color),
-        const SizedBox(width: 2),
-        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: color)),
-      ]),
-    );
-  }
-
-  Widget _buildDomainBadge() {
-    final emoji = _domainEmoji[data.domain] ?? '📝';
-    final name = data.domain == 'life'
-        ? '生活'
-        : data.domain == 'trading'
-            ? '交易'
-            : data.domain == 'project'
-                ? '项目'
-                : data.domain;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface2,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
-      ),
-      child: Text('$emoji $name', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
     );
   }
 

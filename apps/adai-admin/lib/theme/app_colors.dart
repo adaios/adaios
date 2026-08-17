@@ -25,4 +25,6 @@ class AppColors {
   static const Color darkBlue = Color(0xFF5299FF);
   static const Color darkPurple = Color(0xFF9B7FD4);
   static const Color darkYellow = Color(0xFFD4A043);
+  /// 红涨绿亏（A股，2026-08-17 走查）：涨/盈=红，跌/亏=绿（对齐 adai-web darkRed）。
+  static const Color darkRed = Color(0xFFD95757);
 }

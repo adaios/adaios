@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-17
 status: active
-lines: 97
+lines: 104
 depends-on: []
 related: [../roles/docs-reviewer.md]
 tags: [review, checklist, docs]
@@ -95,3 +95,10 @@ tags: [review, checklist, docs]
 | D51 | 参数声明与接线同步：文档标注「参数可配」必须有 yml 配置接线；「待用户确认」的参数不得以硬编码默认值进生产 | 买点参数三处硬编码 0.5/0.7/20/1.5/20（交易 A-E 审查战略，2026-08-17）|
 | D52 | reference/ 目录纳入 frontmatter lines 校验（guard-meta scope 当前不含）| gap frontmatter lines 漂移（交易 A-E 审查 P3，2026-08-17）|
 | D53 | 定时任务表述对拍：文档「定时收市后更新为后续」等表述须与实际 cron 实现一致 | api-spec account 节与 15:05 cron 矛盾（交易 A-E 审查 P3，2026-08-17）|
+| D54 | guard 脚本自身盲区排查：正则只匹配部分写法（裸注解/多行写法）即漏数，守卫脚本改动必须实测对拍真相源 | guard-align A1 漏 11 裸注解（走查 8 官 P2-20，2026-08-17）|
+| D55 | 契约「待确认」标记闭环：标注「待用户确认」的规格在用户拍板后必须立即更新文档状态（划掉/定稿），不得长期悬挂 | S6 买点 5 参数悬挂（走查 8 官战略，2026-08-17）|
+| D56 | 已修出表声明与 REVIEW 表状态一致：注记行（「当前清零」等）不得与实际未修项矛盾 | REVIEW「P1/P2 清零」contradiction（走查 8 官 S-3，2026-08-17）|
+| D57 | 知识目录与 data/ 生成物双源对拍：后端写 data/trading/reviews 与 os/08-review 必须同路径或声明同步机制 | 复盘闭环断链（走查 8 官 S9，2026-08-17）|
+| D58 | 行为模式统计回写闭环：前端展示的行为模式必须回写知识库（mistakes.md）形成反哺 | 行为模式无回写（走查 8 官 S10，2026-08-17）|
+| D59 | 术语/关键词单一真相：glossary 术语重复/漂移时以正式目录为准并清理 | glossary 术语重复 6 处（走查 8 官 P2-24，2026-08-17）|
+| D60 | 本地/生产数据源分离声明：data/ 本地空 vs 生产有数据须有数据源说明，禁止假设 | 本地 data 空 vs 生产 5 只（走查 8 官 S8，2026-08-17）|

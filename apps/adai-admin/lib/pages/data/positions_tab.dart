@@ -80,7 +80,7 @@ class _PositionsTabState extends State<PositionsTab> {
               _statItem('持仓数', '${positions.length}', AppColors.darkGrey1),
               _statItem('总市值', formatPrice(totalValue), AppColors.darkBlue),
               _statItem('浮动盈亏', formatPrice(totalProfit),
-                  totalProfit >= 0 ? AppColors.darkGreen : AppColors.darkOrange),
+                  totalProfit >= 0 ? AppColors.darkRed : AppColors.darkGreen),
             ],
           ),
         ),
@@ -159,8 +159,9 @@ class _PositionsTabState extends State<PositionsTab> {
   }
 
   Widget _buildRow(Position p) {
+    // 红涨绿亏（A股，2026-08-17 走查）：盈=红、亏=绿（此前绿/橙与 web 端相反）
     final profitColor =
-        p.profit >= 0 ? AppColors.darkGreen : AppColors.darkOrange;
+        p.profit >= 0 ? AppColors.darkRed : AppColors.darkGreen;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

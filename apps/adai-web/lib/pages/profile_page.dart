@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/models/identity_models.dart';
@@ -91,6 +92,22 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String _extractApiError(dynamic e) {
+    // 2026-08-17 走查：后端错误体 {"error":"人话"} 优先透出（与 feed/trading/task 页同口径）
+    if (e is ApiException && e.body != null && e.body!.isNotEmpty) {
+      final body = e.body!.trim();
+      if (body.startsWith('{')) {
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map && decoded['error'] is String && (decoded['error'] as String).isNotEmpty) {
+            return decoded['error'] as String;
+          }
+        } catch (_) {
+          // JSON 解析失败继续走下面分支
+        }
+      } else if (!body.startsWith('<')) {
+        return body; // 非 HTML 的裸文本错误体直接展示
+      }
+    }
     final str = e.toString();
     if (str.contains('API 请求失败')) {
       final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);

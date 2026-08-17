@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-17 | 走查前端 8 项批 | **web×6**：_loadDegradable 锁+代际令牌（先判锁再递增/finally 无条件复位/旧代丢弃）；历史 Dialog 日期竞态代际隔离；图片回执自然化（VLM summary 拼「看到你…，已记下」，替代「📷 已记录 N 张」）；记录交易成功补 toast（第一原则文案）；首载失败错误态+重试（不伪装空态，loading/失败/真空三分支）；_extractApiError 透出后端人话（body.error 优先，四页统一）；**app+web**：Feed 卡移除「记录/提问/领域」系统徽章（第一原则，交互保留在更多菜单）；**admin**：涨跌色红涨绿亏（补 darkRed token，行情/持仓两处）；顺手清 web 账户卡 11 处多余 `a!`；app analyze 清 2 死 getter；web 98 · app 118 · admin 34 全绿 | — |
 | 2026-08-17 | P2-交易20 guard-align 盲区批 | **A1 端点守护补裸注解**：正则新增 `@GetMapping`/`@GetMapping()`（无路径参数）分支继承类级 base——此前 11 个裸注解漏数（A1 报 61 vs 真相源 72）；修复后 72 全对齐 endpoints.txt；P2-交易20 出表，**P2 表清零**；G1-G7 全 PASS | — |
 | 2026-08-17 | S5 现金单一真源批 | **现金唯一真源 = account.json（AccountSnapshot.cash）**：importCashQuery 不再写 positions.md cashBalance（saveCashBalance 调用移除）；TradingAdviceAppService R81 分母、TradingAppService getPortfolioSnapshot、TradingReviewAppService 复盘快照全部改 AccountSnapshot.cash；测试 3 构造器补 AccountSnapshotRepository mock + importCashQuery 断言改验 AccountSnapshot.save + positionPercent 现金走快照 mock；REVIEW S5 + P2-交易4 出表；后端 642 全绿 | — |
 | 2026-08-17 | P2 批 C（文档四连）| **W-P2-12** roadmap 状态修正（数据冻结已定稿、#144/#106/#112 已修仍列待清）；**W-P2-13** feature-reference 附录补 7 交易端点 + §16 PATCH 合并语义；**W-P2-14** api-spec trades/review 补 403 插件门控契约；**W-P2-11** os 空文件删除（0 字节残留），alice 脏数据核实为测试账号（gateDomain 已防新增）；后端 642 · app 118 · web 98 · admin 34 全绿 | — |

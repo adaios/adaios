@@ -49,8 +49,9 @@ class _MarketTabState extends State<MarketTab> {
     }
   }
 
+  // 红涨绿亏（A股，2026-08-17 走查）：涨=红、跌=绿（此前绿/橙与 web 端相反）
   Color _changeColor(double v) =>
-      v >= 0 ? AppColors.darkGreen : AppColors.darkOrange;
+      v >= 0 ? AppColors.darkRed : AppColors.darkGreen;
 
   @override
   Widget build(BuildContext context) {

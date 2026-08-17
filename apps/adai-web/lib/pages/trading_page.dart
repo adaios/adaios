@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -29,6 +30,8 @@ class _TradingPageState extends State<TradingPage> {
   List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
   List<SoldScoreDto> _soldScores = []; // D3 清仓复盘三维打分
   bool _scoreLoading = false; // P2-10 打分请求在途标记（防重叠）
+  bool _auxLoading = false; // 可降级请求在途标记（自选/买点/清仓，防并发覆盖）
+  int _auxGen = 0; // 代际令牌：_loadDegradable 防乱序旧响应覆盖新数据
   List<SoldTradeDto> _sold = [];
   AccountSnapshotDto? _account;
   double? _cash;
@@ -110,12 +113,17 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 可降级请求：watchlist/buy-points/sold/sold-score（K 线重计算/数据展示），失败不打断页面。
+  /// 锁 + 代际令牌（2026-08-17 走查 P2）：防并发触发时慢的旧响应覆盖新数据；
+  /// 先判锁再递增——早退分支不得先递增代际，否则在途请求 finally 不复位锁 → 次级数据永久不刷新。
   Future<void> _loadDegradable() async {
+    if (_auxLoading) return;
+    _auxLoading = true;
+    final gen = ++_auxGen;
     try {
       final watch = await widget.api.getWatchlist();
       final sold = await widget.api.getSold();
       final bps = await widget.api.getBuyPoints();
-      if (!mounted) return;
+      if (!mounted || gen != _auxGen) return; // 旧代丢弃
       setState(() {
         _watchlist = watch;
         _sold = sold;
@@ -123,8 +131,10 @@ class _TradingPageState extends State<TradingPage> {
       });
     } catch (_) {
       // 自选/买点失败静默（信号列显示 —）
+    } finally {
+      _auxLoading = false; // 无条件复位（锁只被本请求持有，串行安全）
     }
-    _loadSoldScore(); // 打分独立：162 笔 K 线耗时，失败也不影响
+    if (gen == _auxGen) _loadSoldScore(); // 打分独立：162 笔 K 线耗时，失败也不影响
   }
 
   /// D3 清仓三维打分（异步拉取，失败不打断页面——分数是参考）。
@@ -167,6 +177,15 @@ class _TradingPageState extends State<TradingPage> {
         targetPrice: form.targetPrice,
         reason: form.reason,
       );
+      if (!mounted) return;
+      // 2026-08-17 走查：记录交易成功无反馈——补自然回执（第一原则，无系统视角）
+      final action = form.direction == 'buy' ? '买入' : '卖出';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$action ${form.volume} 股 ${form.name.isEmpty ? form.symbol : form.name}，已记下',
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+        backgroundColor: AppColors.darkSurface2,
+        duration: const Duration(seconds: 2),
+      ));
       await _loadAll();
     } catch (e) {
       if (mounted) {
@@ -235,6 +254,22 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   String _extractApiError(dynamic e) {
+    // 2026-08-17 走查：后端错误体 {"error":"人话"} 优先透出（与 feed/task/profile 页同口径）
+    if (e is ApiException && e.body != null && e.body!.isNotEmpty) {
+      final body = e.body!.trim();
+      if (body.startsWith('{')) {
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map && decoded['error'] is String && (decoded['error'] as String).isNotEmpty) {
+            return decoded['error'] as String;
+          }
+        } catch (_) {
+          // JSON 解析失败继续走下面分支
+        }
+      } else if (!body.startsWith('<')) {
+        return body; // 非 HTML 的裸文本错误体直接展示
+      }
+    }
     final str = e.toString();
     if (str.contains('API 请求失败')) {
       final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
@@ -369,26 +404,26 @@ class _TradingPageState extends State<TradingPage> {
     final p = _portfolio;
     final hasAccount = a != null && a.assets > 0;
     return Row(children: [
-      _statCard('总资产', hasAccount ? a!.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0),
+      _statCard('总资产', hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0),
           format: '¥', color: AppColors.darkBlue, big: true),
       const SizedBox(width: 12),
-      _statCard('可用资金', hasAccount ? a!.available : (p?.cashBalance ?? 0), format: '¥', color: AppColors.darkGrey3),
+      _statCard('可用资金', hasAccount ? a.available : (p?.cashBalance ?? 0), format: '¥', color: AppColors.darkGrey3),
       const SizedBox(width: 12),
-      _statCard('可取', hasAccount ? a!.withdrawable : 0, format: '¥', color: AppColors.darkGrey5),
+      _statCard('可取', hasAccount ? a.withdrawable : 0, format: '¥', color: AppColors.darkGrey5),
       const SizedBox(width: 12),
-      _statCard('参考市值', hasAccount ? a!.marketValue : (p?.totalValue ?? 0), format: '¥', color: AppColors.darkPurple),
+      _statCard('参考市值', hasAccount ? a.marketValue : (p?.totalValue ?? 0), format: '¥', color: AppColors.darkPurple),
       const SizedBox(width: 12),
       // #132 红涨绿亏（A股）：盈=红、亏=绿
-      _statCard('当日盈亏', hasAccount ? a!.todayPnl : 0,
-          color: (hasAccount ? a!.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      _statCard('当日盈亏', hasAccount ? a.todayPnl : 0,
+          color: (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
-      _statCard('总盈亏', hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0),
-          color: (hasAccount ? a!.totalPnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          sub: hasAccount && a!.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : null),
+      _statCard('总盈亏', hasAccount ? a.totalPnl : (p?.totalPnl ?? 0),
+          color: (hasAccount ? a.totalPnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : null),
       const SizedBox(width: 12),
-      _statCard('持仓浮盈', hasAccount ? a!.pnl : 0,
-          color: (hasAccount ? a!.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+      _statCard('持仓浮盈', hasAccount ? a.pnl : 0,
+          color: (hasAccount ? a.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkGrey2),
     ]);
@@ -1776,6 +1811,7 @@ class _HistoryDialogState extends State<_HistoryDialog> {
   List<TradeRecordItem>? _trades;
   bool _loading = true;
   String? _error;
+  int _loadGen = 0; // 代际令牌（2026-08-17 走查）：快速切换起止日期时旧响应不覆盖新查询
 
   @override
   void initState() {
@@ -1790,19 +1826,20 @@ class _HistoryDialogState extends State<_HistoryDialog> {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _load() async {
+    final gen = ++_loadGen;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final trades = await widget.api.getTrades(from: _fmt(_from), to: _fmt(_to));
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return; // 旧代丢弃（快速改日期时）
       setState(() {
         _trades = trades;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _error = e.toString();
         _loading = false;

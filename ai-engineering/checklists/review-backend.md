@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-17
 status: active
-lines: 102
+lines: 109
 depends-on: []
 related: [../roles/backend-reviewer.md]
 tags: [review, checklist, backend]
@@ -100,3 +100,10 @@ tags: [review, checklist, backend]
 | B52 | 现金单一真源：snapshot.cash / positions.md cashBalance / 转账推导必须收敛，账目类字段禁止多处独立推导 | 现金 3 真源（交易 A-E 审查战略，2026-08-17）|
 | B53 | 线程池必须 @PreDestroy shutdown；异步批量任务失败项不得产空 symbol 占位行 | SoldScoreService 16 线程池无关闭 + 30s 超时占位（交易 A-E 审查 P2，2026-08-17）|
 | B54 | 批量扫描按标的异常隔离：单只失败不中断整批（try/catch per item）| scanWatchlist 无异常隔离（交易 A-E 审查 P2，2026-08-17）|
+| B55 | 共享单文件（accounts.json 等）的 RMW 必须文件级全局锁：per-user 锁挡不住跨用户并发写同一文件 | accounts.json 跨用户互覆（走查 8 官批 2，2026-08-17）|
+| B56 | 文件写必须原子（tmp+move）：promote/账户等写一半即损坏全文件，禁止直接覆盖写 | promote 非原子写（走查 8 官批 2，2026-08-17）|
+| B57 | 锁对称性：同文件 save 加锁则 delete/writeAll 必须同锁（漏一侧即并发损坏）| ProjectFileRepository.delete 无锁（走查 8 官批 2，2026-08-17）|
+| B58 | 多线程调度的 append 类写入按 per-user+date 加锁，防 4 线程并发丢事件 | MarketPushRepository 并发丢事件（走查 8 官批 2，2026-08-17）|
+| B59 | 批量任务 per-user 异常隔离：单用户抛错不得中断整批处理 | RecordRetryService 单用户中断整批（走查 8 官批 2，2026-08-17）|
+| B60 | 持仓元信息更新（PUT /positions）等 RMW 写路径必须进同文件锁（tradeLock）| updatePositionMeta 未进锁（走查 8 官批 2，2026-08-17）|
+| B61 | 现金/账目读取全量收敛单一真源：新增占比/快照/建议读取点必须走 AccountSnapshot，禁止再读 positions.md cashBalance | S5 现金单一真源（走查 8 官战略，2026-08-17）|

@@ -131,13 +131,13 @@ void main() {
       expect(find.text('📝 记录心情'), findsOneWidget);
     });
 
-    testWidgets('初始 Feed：记录卡显示内容 + 记录徽标 + 提问按钮', (tester) async {
+    testWidgets('初始 Feed：记录卡显示内容 + 提问按钮（2026-08-17 第一原则：无记录/领域徽章）', (tester) async {
       final b = _Backend()
         ..feedPage0 = [_record('r1', '今天买了立昂微')]
         ..feedTotalToday = 1;
       await _pump(tester, b);
       expect(find.text('今天买了立昂微'), findsOneWidget);
-      expect(find.text('记录'), findsOneWidget); // log 徽标
+      expect(find.text('记录'), findsNothing); // 第一原则：无「记录」系统徽章
       expect(find.text('提问'), findsOneWidget); // 底部按钮
     });
 
@@ -195,7 +195,7 @@ void main() {
           {'recordId': 'qa1', 'answer': '这是浦发银行，持仓约 1000 股。', 'imageRecordId': 'img1'}));
       await _pump(tester, b);
 
-      // 图片卡：log 徽标 + 提问按钮（summary 同时渲染于 body 与干净摘要行）
+      // 图片卡：无「记录」系统徽章 + 底部提问按钮（summary 同时渲染于 body 与干净摘要行）
       expect(find.text('持仓截图：浦发银行'), findsWidgets);
       expect(find.text('提问'), findsOneWidget);
 
@@ -258,8 +258,8 @@ void main() {
         ..feedTotalToday = 1;
       await _pump(tester, b);
 
-      // question 卡：提问徽标 + 提问按钮 = 2 个
-      expect(find.text('提问'), findsNWidgets(2));
+      // question 卡：无「提问」系统徽章，仅底部按钮（第一原则 2026-08-17）
+      expect(find.text('提问'), findsOneWidget);
       await tester.tap(find.text('提问').last); // 底部按钮
       await tester.pumpAndSettle();
 

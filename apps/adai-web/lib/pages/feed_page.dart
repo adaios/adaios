@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -30,6 +31,7 @@ class _FeedPageState extends State<FeedPage> {
   int _totalToday = 0;
   String _brief = '';
   bool _loading = true;
+  bool _loadFailed = false; // 2026-08-17 走查：首载失败不能伪装空态（「还没有记录」误导）
 
   // #101 Feed 分页：固定页大小 + 当前页，列表底部「加载更早」追加
   static const int _pageSize = 20;
@@ -80,6 +82,7 @@ class _FeedPageState extends State<FeedPage> {
         _totalToday = feed.totalToday;
         _currentPage = 0;
         _cards = newCards;
+        _loadFailed = false;
         // F29（对齐 adai-app P0-1）：活动卡被刷新挤出 page0 → 静默退出对话态，防 hasActiveChat 与内容错乱
         _syncActiveCard(newCards);
         // #234：终止判定按核心条目数（record/card），附加条目不计入——否则 page 0 附加条目多时误判无更多
@@ -90,7 +93,10 @@ class _FeedPageState extends State<FeedPage> {
       _loadSidebar();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadFailed = true; // 首载失败：显示错误态 + 重试，不伪装「还没有记录」
+      });
       _showError('加载失败，请确认后端已启动');
     }
   }
@@ -182,6 +188,7 @@ class _FeedPageState extends State<FeedPage> {
 
     var ok = 0;
     final uploadedIds = <String>[]; // S-1 带图 ask：成功上传的 recordId 集合（上传后统一问）
+    final uploadSummaries = <String>[]; // 成功图的 VLM summary（自然回执用，无第三视角）
     String? firstErr;
     for (var i = 0; i < images.length; i++) {
       final image = images[i];
@@ -194,6 +201,7 @@ class _FeedPageState extends State<FeedPage> {
         );
         ok++;
         if (resp.recordId.isNotEmpty) uploadedIds.add(resp.recordId);
+        if (resp.summary.isNotEmpty) uploadSummaries.add(resp.summary);
         if (!mounted) return;
         // 单张完成 → 占位卡原位替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
         setState(() {
@@ -241,9 +249,9 @@ class _FeedPageState extends State<FeedPage> {
               imageRecordIds: uploadedIds, question: question);
           feedback = qa.intent == 'question' && qa.answer.isNotEmpty
               ? '💬 ${_truncateForSnack(qa.answer)}'
-              : '📷 已记录 $ok 张';
+              : _naturalMediaReceipt(summaries: uploadSummaries, count: ok);
         } catch (e) {
-          feedback = '📷 已记录 $ok 张（问答失败: ${_extractApiError(e)}）';
+          feedback = '${_naturalMediaReceipt(summaries: uploadSummaries, count: ok)}（问答失败: ${_extractApiError(e)}）';
         }
         _showSnackBar(feedback);
         _totalToday += ok;
@@ -254,7 +262,9 @@ class _FeedPageState extends State<FeedPage> {
         return;
       }
       _showSnackBar(
-        ok == images.length ? '📷 已记录 $ok 张' : '📷 已记录 $ok 张，${images.length - ok} 张失败',
+        ok == images.length
+            ? _naturalMediaReceipt(summaries: uploadSummaries, count: ok)
+            : '${_naturalMediaReceipt(summaries: uploadSummaries, count: ok)}，${images.length - ok} 张失败',
       );
       // 占位卡已原位替换为真实记录，不再整体 _loadFeed；本地计数 + 右栏联动刷新（#115）
       _totalToday += ok;
@@ -268,6 +278,16 @@ class _FeedPageState extends State<FeedPage> {
   String _truncateForSnack(String s, [int max = 60]) {
     if (s.length <= max) return s;
     return '${s.substring(0, max)}…';
+  }
+
+  /// 阿呆自然回执（无第三视角，对齐 app _naturalMediaReceipt）：用 VLM summary 拼自然对话句，
+  /// 替代「📷 已记录 N 张」系统文案。单图「看到你{summary}，已记下」；
+  /// 多图「看到你{summary}等 N 张，已记下」；无内容兜底「随手一拍，已记下」。
+  String _naturalMediaReceipt({required List<String> summaries, String? caption, int count = 1}) {
+    final first = summaries.isNotEmpty ? summaries.first.trim() : '';
+    final body = first.isNotEmpty ? first : (caption?.trim() ?? '');
+    if (body.isEmpty) return '随手一拍，已记下';
+    return '看到你$body${count > 1 ? '等 $count 张' : ''}，已记下';
   }
 
   String _mimeTypeOf(String? ext) {
@@ -712,6 +732,23 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   String _extractApiError(dynamic e) {
+    // 2026-08-17 走查：后端错误体 {"error":"人话"} 优先透出（如「无法识别资金股份查询格式」），
+    // 不丢人话只给「请求失败 (400)」
+    if (e is ApiException && e.body != null && e.body!.isNotEmpty) {
+      final body = e.body!.trim();
+      if (body.startsWith('{')) {
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map && decoded['error'] is String && (decoded['error'] as String).isNotEmpty) {
+            return decoded['error'] as String;
+          }
+        } catch (_) {
+          // JSON 解析失败继续走下面分支
+        }
+      } else if (!body.startsWith('<')) {
+        return body; // 非 HTML 的裸文本错误体直接展示
+      }
+    }
     final str = e.toString();
     if (str.contains('API 请求失败')) {
       final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
@@ -763,7 +800,10 @@ class _FeedPageState extends State<FeedPage> {
         constraints: const BoxConstraints(maxWidth: 880),
         child: Column(children: [
           Expanded(
-            child: _cards.isEmpty ? _buildEmptyState() : _buildFeedList(),
+            // 2026-08-17 走查：三分支——加载中 spinner / 失败错误态 / 真空才显示空态
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4))
+                : _cards.isEmpty ? _buildEmptyState() : _buildFeedList(),
           ),
           _buildInputBar(),
         ]),
@@ -822,6 +862,35 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Widget _buildEmptyState() {
+    if (_loadFailed) {
+      // 2026-08-17 走查：首载失败显示错误态 + 重试，不伪装「还没有记录」
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('⚠️', style: TextStyle(fontSize: 24)),
+            const SizedBox(height: 16),
+            const Text('加载失败，请确认后端已启动',
+                style: TextStyle(fontSize: 15, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            const Text('网络或服务异常，稍后再试', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6)),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _loadFailed = false;
+                });
+                _loadFeed();
+              },
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('重新加载'),
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.darkGrey3),
+            ),
+          ],
+        ),
+      );
+    }
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
