@@ -189,7 +189,14 @@ public class PositionFileRepository implements PositionRepository {
     }
 
 
-    /** 保存现金余额（资金查询导入，2026-08-16）：读原文替换 cashBalance 行，保留持仓表。 */
+    /**
+     * 保存现金余额（保留方法本体，避免破坏 positions.md 展示行）。
+     * <p>S5（2026-08-17）现金单一真源：现金唯一真源 = account.json 的 AccountSnapshot.cash，
+     * 本方法已无调用方（importCashQuery 不再写 positions.md cashBalance）；positions.md
+     * cashBalance 行仅作展示，读取方一律走 AccountSnapshotRepository.findLatest().cash()。
+     * @deprecated S5 后不再使用——不参与任何计算。
+     */
+    @Deprecated
     @Override
     public void saveCashBalance(String userId, java.math.BigDecimal cash) {
         String content = fileStorage.read(userId, POSITIONS_PATH);
