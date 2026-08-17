@@ -80,7 +80,7 @@
 | [20260816-trading-session-push.md](rfc/20260816-trading-session-push.md) | 2026-08-16 | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）|
 | [20260816-trading-data-intelligence.md](rfc/20260816-trading-data-intelligence.md) | 2026-08-16 | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核）|
 
-> 早期决策 `20260726-next-phase-direction.md` 已归档至 `docs/inbox/`（见 📥 收件箱）
+> 早期决策 `20260726-next-phase-direction.md` 已随 research 目录整合移除（2026-08-15，见 change-log）；早期设计保留 `docs/inbox/20260722-ai-context-design.md`
 
 ## 💡 想法归档
 

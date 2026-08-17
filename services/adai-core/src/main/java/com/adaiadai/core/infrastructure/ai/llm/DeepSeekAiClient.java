@@ -334,7 +334,7 @@ public class DeepSeekAiClient implements AiClient {
         var systemMsg = MAPPER.createObjectNode();
         systemMsg.put("role", "system");
         systemMsg.put("content", systemContent != null ? systemContent : """
-                分析一条个人记录，输出JSON。summary用3-5个词简短概括，不要完整句子；insight用一句话客观概括，有信息增量，不要复述原文，避免人称代词。用tags数组标注关键词标签；用domain字段判定所属领域(life/trading/project之一)。
+                分析一条个人记录，输出JSON。summary用3-5个词简短概括，不要完整句子；insight用一句话客观概括，有信息增量，不要复述原文，避免人称代词。用tags数组标注关键词标签；用domain字段判定所属领域(life/trading/project之一，以记录内容为准，越界值会被系统修正)。
                 如果记录揭示了用户的长期行为模式或明确偏好，请在patterns/preferences数组中输出，每项包含content和confidence(0-1)。
                 只输出JSON，不要包裹markdown。
                 """.strip());

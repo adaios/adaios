@@ -16,7 +16,7 @@
 |:-:|:-----|:---------|:-----|
 | T1.1 | **R2 自动转待办通用化**：`RecordToTaskLinker.link()` 去掉 `"project".equals(domain)` 门槛（`RecordToTaskLinker.java:49`），任何用户可执行记录（AI `actionable` + 排除 `#备忘/#想法`）都转自己的待办 | `RecordToTaskLinker.java` / `RecordController.java:220`（挂点不变）| 新增测试：非 project 域记录可转待办 + 排除标签仍挡 + 幂等不重复 |
 | T1.2 | **误转保护**：仅**非空摘要**的记录才转待办（AI 判定空/无内容跳过），空 actionable 过滤沿用 `findPendingActions` 机制 | `RecordToTaskLinker.java` | 测试：空摘要/空 actionable 不转 |
-| T1.3 | **KnowledgeSource 注入按 owner 过滤**：trading/project 知识源只在 owner 账号（配置 `adai.plugins.owner-user-id`，默认 adai）注入；life 不门控。拨正"os/ 知识注入所有用户" | `ContextEngine.loadKnowledgeContext` / 知识源 owner 常量 | 测试：非 owner 用户问答含交易词 → 上下文无 os/ 知识；owner 正常 |
+| T1.3 | **KnowledgeSource 注入按 owner 过滤**（⚠️ superseded 2026-08-17：实现已被插件门控取代——RFC 20260814 后 os/ 知识按用户启用 trading 插件注入，owner 常量不再生效；保留本行供追溯）：trading/project 知识源只在 owner 账号（配置 `adai.plugins.owner-user-id`，默认 adai）注入；life 不门控。拨正"os/ 知识注入所有用户" | `ContextEngine.loadKnowledgeContext` / 知识源 owner 常量 | 测试：非 owner 用户问答含交易词 → 上下文无 os/ 知识；owner 正常 |
 
 ### adai-app / adai-web
 

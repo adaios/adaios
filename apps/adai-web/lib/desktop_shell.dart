@@ -82,10 +82,13 @@ class _DesktopShellState extends State<DesktopShell> {
     try {
       final plugins = await _api.getMyPlugins();
       if (!mounted) return;
+      // W-P3-2（2026-08-17）：重试成功后清除残留的失败 SnackBar
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       setState(() {
         _plugins = plugins.toSet();
         // P1-5：插件加载后当前页按 label 重解析；若当前页被隐藏（仅插件移除场景）回落首个可见项
-        if (_items.indexWhere((e) => e.label == _currentLabel) < 0) {
+        // deep 前端（2026-08-17）：_items.first 空列表防御（全门控化时 RangeError）
+        if (_items.isNotEmpty && _items.indexWhere((e) => e.label == _currentLabel) < 0) {
           _currentLabel = _items.first.label;
           _visited.add(_currentLabel);
         }
@@ -93,7 +96,10 @@ class _DesktopShellState extends State<DesktopShell> {
     } catch (_) {
       // REVIEW P2-5：失败不再静默吞错——给反馈 + 重试入口（仅显基础服务，不阻塞壳渲染）
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      // W-P3-2（2026-08-17）：连续失败不清空会队列堆积依次播放 → 先 clear 再 show
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(SnackBar(
         content: const Text('插件加载失败，仅显示基础服务'),
         action: SnackBarAction(label: '重试', onPressed: _loadPlugins),
         duration: const Duration(seconds: 4),
@@ -101,11 +107,11 @@ class _DesktopShellState extends State<DesktopShell> {
     }
   }
 
-  void _select(int i) {
+  void _select(String label) {
     setState(() {
-      final item = _items[i];
-      _visited.add(item.label);
-      _currentLabel = item.label;
+      // deep 前端（2026-08-17）：tap 直接传 label，避免 build↔tap 间列表变更亚帧窗口取错条目
+      _visited.add(label);
+      _currentLabel = label;
     });
   }
 
@@ -133,7 +139,14 @@ class _DesktopShellState extends State<DesktopShell> {
               index: _currentIndex,
               children: List.generate(
                 _items.length,
-                (i) => _visited.contains(_items[i].label) ? _buildPage(i) : const SizedBox.shrink(),
+                // W-P3-1 + deep 前端（2026-08-17）：ValueKey(label) 保活——插件中部插入导致
+                // 已访问页 widget 槽位移时按 label 复用 state（此前 state 会被重置）
+                (i) => _visited.contains(_items[i].label)
+                    ? KeyedSubtree(
+                        key: ValueKey(_items[i].label),
+                        child: _buildPage(i),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
           ),
@@ -218,7 +231,7 @@ class _DesktopShellState extends State<DesktopShell> {
     final item = _items[i];
     final selected = item.label == _currentLabel;
     return GestureDetector(
-      onTap: () => _select(i),
+      onTap: () => _select(item.label),
       behavior: HitTestBehavior.opaque,
       child: Container(
         height: 42,

@@ -308,11 +308,6 @@ v1.0.0（adai-admin + 多账号）：
 | 08-15 后端×6 | `AccountController.isValidPlugins` 不查重（`["trading","trading"]` 合法落盘；消费端 Set 去重故行为正确）| `AccountController.java:132-134` | P3 |
 | 08-15 后端×6 | `gateDomain` 对未知 domain 原样放行（AI 返回越界值保留，非本批引入）| `PluginService.java:46-55` | P3 |
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
-| 08-15 后端×6 | 迁移走 `writeAll` 非原子（#126 预存债）| `AccountFileRepository.java:139-149` | P3 |
-| 08-15 docs×7 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5 五条（D25）| `docs/rfc/20260814-domain-plugin-model.md:5` | P3 |
-| 08-15 docs×7 | 根 CLAUDE.md 架构树缺 MeController + kernel/plugin（adai-core CLAUDE.md 已补、根未同步）| 根 `CLAUDE.md` | P3 |
-| 08-15 docs×7 | api-spec domain 判定关键词与代码不一致（trading 缺 股票/大盘/行情/买卖、project 缺 开发，与 P2-2 同源）| `docs/architecture/api-spec.md` | P3 |
-| 08-15 docs×7 | task-plugin-model T1.3 行仍写 owner 过滤、实现已被插件门控取代，未标 superseded | `docs/reference/task-plugin-model.md:19` | P3 |
 | 08-14 前端×8 | `_truncateForSnack` UTF-16 substring 可能劈开 emoji（SnackBar 半字符）| `main_page.dart` | P3 |
 | 08-14 前端×8 | `_mimeTypeOf` HEIC 默认误标 `image/png` | `input_bar.dart` | P3 |
 | 08-14 前端×8 | `Navigator.pop` 盲弹未守卫 | `main_page.dart:428` | P3 |
@@ -326,28 +321,16 @@ v1.0.0（adai-admin + 多账号）：
 | 166 剩余 | MediaController 上传 413 + emoji 截断已修；剩余 market id 同秒碰撞 | 后端多处 | P3 |
 | 168 | os/ 知识 P3 杂项：空文件 / 重复 JSON / PNG 入库 / life-os 引用漂移 / project-os 路径漂移 / 未索引标签 / gitignore 单层 / decision 死分支 | `os/` 多处 | P3 |
 | 171 | 优化方向（非问题）：项目页「项目记录」聚合视图 + 记录可标记类型（问题/建议）并流转为任务 | adai-app 项目页 + domain 体系 | 产品方向 |
-| 172 | 记忆页 superseded 记忆仍显示「待办/已完成」标记（语义矛盾）；建议隐藏 actionable 标记 + 灰角标说明 | `memory_page.dart:239-261` | P3 |
 | 202 剩余 | `userTradeLocks` 按 userId 无界累积 / `AiClient.generate(ctx, null)` 默认 system 仍是 JSON 分析指令与生成语义矛盾 | 后端多处 | P3 |
 | 229 剩余 | 首轮把「图片摘要文本」渲染成用户气泡（应居中提示）/ 折叠渐隐遮罩色不一致 / #15 折叠对超长 active 卡不设上限 / `main()` 首帧 await 延迟 | `main_page.dart:926-930` / `feed_card.dart` / `main.dart:11-22` | P3 |
 | 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
-| 08-15 deep 后端 | 存量越界 domain 标注不清理（S-3 只防新增；插件上线前无插件用户已落盘的 trading/project 标注不纠正，可一次性迁移清理）| `data/*/records/` | P3 |
-| 08-15 deep 后端 | PATCH plugins 契约语义（传 `null` 保留旧值、传 `[]` 清空）需在 api-spec 明确「清空须传空数组」| `docs/architecture/api-spec.md` | P3 |
-| 08-15 deep 后端 | ANALYSIS 模式 system 指令硬编码全量 domain（`life/trading/project之一` 与收敛后 prompt 矛盾，落盘有 gateDomain 兜底仅判定质量受影响）| `DeepSeekAiClient.java:337` | P3 |
-| 08-15 deep 后端 | Timeline 显示 conversation 记录 vs Feed 排除的口径差异（若为有意设计请注释说明）| `TimelineProjection.java:64` vs `FeedAppService.java:117` | P3 |
-| 08-15 deep 前端 | web 插件重试失败 SnackBar 队列堆积（连续失败多条依次播放，show 前 `clearSnackBars()`）| `desktop_shell.dart:96-100` | P3 |
-| 08-15 deep 前端 | web 插件重试成功后失败 SnackBar 残留（成功路径 `hideCurrentSnackBar()`）| `desktop_shell.dart:93-101` | P3 |
 | 08-15 deep 前端 | `_currentLabel`/`_visited` 硬编码 `_allEntries.first.label` 与条目顺序隐式耦合（抽常量或按首个 plugin==null 动态解析）| `desktop_shell.dart:63-64` | P3 |
-| 08-15 deep 前端 | web fallback `_items.first` 无空列表防御（当前 6 基础服务恒非空，全门控化会 RangeError）| `desktop_shell.dart:88-91` | P3 |
-| 08-15 deep 前端 | 插件中部插入导致已访问页 widget 槽位移 → 页面 state 重置（IndexedStack children 按 label 加 `ValueKey` 保活；P1-5 测试测不出状态重置）| `desktop_shell.dart:123-129` | P3 |
 | 08-15 deep 前端 | `_select(int i)` tap 时重解析 `_items[i]`（build↔tap 间列表变更亚帧窗口；tap 直接传 label/条目）| `desktop_shell.dart:104-110` | P3 |
 | 08-15 deep 前端 | admin 插件 toggle 触发全页 spinner 闪烁（`_load()` 置 `_loading=true`；改 `_load(silent: true)` 静默刷新，F4 同类）| `accounts_page.dart:41-45,186-190` | P3 |
 | 08-15 deep 前端 | admin `latest == null` 防御分支静默丢操作且实际不可达（删分支或给一次性反馈）| `accounts_page.dart:104-107` | P3 |
-| 08-15 deep docs | CLAUDE.md 目录树 `apps/` 重复两次（51-52 与 73-82 行，瘦身引入）| `CLAUDE.md:47-83` | P3 |
 | 08-15 deep docs | CLAUDE.md:131 表格头与正文段落同在一行（Markdown 渲染异常，拆行）| `CLAUDE.md:131` | P3 |
-| 08-15 deep docs | docs/README:75 引用 `20260726-next-phase-direction.md`「已归档至 inbox/」——该文件 08-15 已删（断链，改指 rfc 去向或删除）| `docs/README.md:75` | P3 |
-| 08-15 deep docs | `docs/rfc/20260730-health-management-scenario.md` 无 YAML frontmatter（D13：污染 /project/status rfcItems status=unknown）| `docs/rfc/20260730-health-management-scenario.md` | P3 |
 | 08-15 deep docs | 根 CLAUDE.md 当前焦点批缺「展示层聚合（S-2）」登记（REVIEW/change-log 已出表，可接受）| `CLAUDE.md:242-244` | P3 |
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
@@ -389,11 +372,9 @@ v1.0.0（adai-admin + 多账号）：
 | W-P3-5 | admin setPlugins 死接口清理（页面已全走 mergePlugins）| `account_api_store.dart:23` | P3 |
 | W-P3-6 | DTO 契约小漂移：PromoteResultDto.message / sourceRecordId / lastConfirmed / totalCost | 三端 api_dto | P3 |
 | W-P3-7 | promoteReview 重复 Content-Type header | 双端 api_service | P3 |
-| W-P3-8 | web 全图 Dialog errorBuilder（404 白框）| `desktop_feed_card.dart:267-280` | P3 |
 | W-P3-9 | web FilePicker 无压缩（全量字节内存 + 上传）| `feed_page.dart:976-1005` | P3 |
 | W-P3-10 | web 对话态发媒体不退出 active chat（F25 对拍残留）| `feed_page.dart:163-227` | P3 |
 | W-P3-11 | 时间线第三人称 ai_summary 自然化（P1-W4 细化）| `TimelineProjection.java` | P3 |
-| W-P3-12 | 卡片删除 substring 误删（card_123 命中 card_1230）| `CardFileRepository.java:162-176` | P3 |
 | W-P3-13 | surrogate pair 拆断（Memory.fromContentFallback/GlmResponseParser substring(0,100)）| 2 文件 | P3 |
 | W-P3-14 | ImageQaFormatter 问句含「答：」误切 | `ImageQaFormatter.java:24-34` | P3 |
 | W-P3-15 | image_qa Feed intent 错位（持久化 question 输出 log）| `FeedAppService.java:215` | P3 |

@@ -310,7 +310,8 @@ class _MemoryPageState extends State<MemoryPage> {
               const SizedBox(width: 6),
               _buildMetaTag('已取代', AppColors.darkGrey5),
             ],
-            if (entry.actionable) ...[
+            // 172（2026-08-17）：已取代记忆不再显示「待办/已完成」——语义矛盾（已被新记忆替代，无待办含义）
+            if (!isSuperseded && entry.actionable) ...[
               const SizedBox(width: 6),
               _buildMetaTag(entry.doneAt == null ? '待办' : '已完成', AppColors.darkOrange),
             ],

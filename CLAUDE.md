@@ -48,8 +48,6 @@ AdaiOS 不是传统 CRUD 应用，而是一套 Personal AI Operating System。
 services/
   adai-core/           # ★ 唯一核心运行时（Java 17 + Spring Boot 3.3）
                         #   独立 Gradle 项目：gradlew / build.gradle.kts / gradle/ / settings.gradle.kts
-apps/
-  adai-app/            #   Flutter 前端（Web / Android / iOS）
 os/                    # Domain OS（File First：知识资产 + 领域定义）
   trading-engine/          #   交易系统知识库（有独立 CLAUDE.md 和工作流；definition/ 为领域定义）
   life-os/             #   个人生活（骨架已建立，11-context/ 交付层就绪；definition/ 为领域定义）
@@ -128,7 +126,9 @@ AdaiOS 采用 **File First** 原则，但不同区域适用程度不同：
 - **新能力必须明确所属 Domain** — 先回答：属于 Kernel 还是 Domain OS？找不到归属时先讨论架构。
 - **优先设计数据流** — 先明确：Record 文件格式 → Timeline 投影 → Context 组合 → Memory 沉淀，再写代码。
 - **提交前确认根包** — 所有 Java 代码在 `com.adaiadai.core` 下。
-- **os/ 目录下的项目保持独立工作流** — 每个 `os/*/` 项目有独立的 `CLAUDE.md`、独立的工作流和目录规则。AdaiOS mono repo 只是存放它们的地方，不干涉其内部流程。它们不依赖 adai-core 的代码，adai-core 通过文件系统只读读取它们产出的知识资产。**Git 统一管理，工作焦点各自独立**。| 区域 | 工作位置 | CLAUDE.md | Git |
+- **os/ 目录下的项目保持独立工作流** — 每个 `os/*/` 项目有独立的 `CLAUDE.md`、独立的工作流和目录规则。AdaiOS mono repo 只是存放它们的地方，不干涉其内部流程。它们不依赖 adai-core 的代码，adai-core 通过文件系统只读读取它们产出的知识资产。**Git 统一管理，工作焦点各自独立**。
+
+| 区域 | 工作位置 | CLAUDE.md | Git |
 |:----|:---------|:----------|:---:|
 | `os/trading-engine/` | `cd os/trading-engine && claude` | 专注交易知识工程 | 统一在根仓库 |
 | `services/adai-core/` | `cd services/adai-core && claude` | 专注 Java 后端 | 统一在根仓库 |

@@ -1289,7 +1289,7 @@ chat 模式（全屏）
 { "enabled": false }
 ```
 
-- `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）
+- `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）；**清空插件须显式传空数组 `[]`**（传 null 视为缺省保留，P3 2026-08-17 契约明确）
 - `plugins` 传全量列表（如 `["trading"]`），仅允许 `trading` / `project`，非法 → 400
 - **内置管理员 `adai` 不可禁用、不可降级**（400）
 - `404` — 账号不存在
