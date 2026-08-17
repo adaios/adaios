@@ -32,13 +32,19 @@ for ctrl in sorted(interfaces.glob('*Controller.java')):
     # 类级 RequestMapping（两种写法：带引号 / 无引号）
     cls_m = re.search(r'@RequestMapping\(\s*"?(/api/v1/[^")\s]+)', text)
     base = cls_m.group(1) if cls_m else ''
-    # 方法级 Mapping（裸注解 + 带引号 + 类级 base 拼接）
+    # 方法级 Mapping（带路径 + 命名参数写法 + 类级 base 拼接）
     # 兼容命名参数写法 @PostMapping(value = "/path")（2026-08-16：imports/save 触发盲区）
     for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\(\s*(?:value\s*=\s*)?"?([^")\s]+)', text):
         method = m.group(1).upper()
         path = m.group(2)
         full = path if path.startswith('/api') else (base + path)
         endpoints.append((method, full))
+    # 裸注解（@GetMapping / @GetMapping() 无路径参数 → 继承类级 base，P2-20 2026-08-17：
+    # 此前只数带括号路径的，11 个裸注解漏数 → A1 报 61 vs 真相源 72）
+    for m in re.finditer(r'@(Get|Post|Put|Delete|Patch)Mapping\s*\(\s*\)\s*(?:\n|$)|@(Get|Post|Put|Delete|Patch)Mapping\s*(?:\n|$)', text):
+        method = m.group(1) or m.group(2)
+        if base:
+            endpoints.append((method.upper(), base))
 
 missing = []
 for method, path in sorted(endpoints):

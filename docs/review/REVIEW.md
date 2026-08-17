@@ -83,11 +83,11 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P2-交易17 | buy-point-rules.md 状态声明矛盾（「待用户确认后实现」vs 已实现）+ 参数 5 语义错位（写「前20日最低点/白线均线」，代码是**前高**窗口）| `buy-point-rules.md:5,56,64` | 改「已按建议值实现，待用户校准后冻结」；参数 5 如实描述（D51/K42）| ✅ 已修（2026-08-17 R6：文档状态同步）
 | P2-交易18 | api-spec 变更记录缺 v3.22（15 个交易端点 2026-08-16 全部落地无版本行）| `api-spec.md:5,32-33` | 补 v3.22 行 + 升头部版本号（D48）| ✅ 已修（2026-08-17 R6：v3.22）
 | P2-交易19 | api-spec account 节「每日定时任务收市后更新为后续」过时——批1 已实现收盘 15:05 自动更新 | `api-spec.md:574` | 改「收盘 15:05 自动更新行情字段；现金/本金保持券商导入+转账推导」（D53）| ✅ 已修（2026-08-17 R6：account 节修订）
-| P2-交易20 | guard-align A1 盲区：正则只匹配括号内带路径的映射，11 个裸 @GetMapping（类级路径继承）不计入 → A1 报 60 vs 真相源 71 | `guard-align.sh:33-37` | 正则补裸注解分支或 A1 直接对拍 endpoints.txt（D50）|
+| P2-交易20 | guard-align A1 盲区：正则只匹配括号内带路径的映射，11 个裸 @GetMapping（类级路径继承）不计入 → A1 报 60 vs 真相源 71 | `guard-align.sh:33-37` | ✅ 已修（2026-08-17：补裸注解分支 `@GetMapping`/`@GetMapping()` 继承类级 base；A1 61→72 全对齐 endpoints.txt 真相源，见已修复区）|
 | P2-交易21 | TradingAdviceAppService 输出侧硬判定未过 r81Applicable：OVER_WEIGHT && buy → reduce 覆盖未检查总资产超 100 万前提，与 FP-P2b 语义矛盾（prompt 段尊重前提、输出段没有）| `TradingAdviceAppService.java:194-198` | 输出侧复用 r81Applicable 判定 | ✅ 已修（2026-08-17 R5：r81Applicable）
 | P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 | ✅ 已修（2026-08-17 R5：avgCost/quantity 校验）
 | P2-交易23 | **持仓编辑端点从未实现**：前端/测试一直在调 PUT /positions/{symbol}，后端只有 GET/POST——web 点「编辑」保存必 404（功能形同虚设）| `TradingController`（2026-08-17 已补端点 ✅）| ✅ 已修（2026-08-17 R1 续：updatePositionMeta + PUT 端点，见已修复区）|
-> **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**注意：P2 表仅剩 P2-交易20 未修（见下表）**。
+> **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 
 ## 🔴 P0 / P3
@@ -99,6 +99,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| P2-交易20 guard-align 盲区批 | A1 正则补裸注解分支（`@GetMapping`/`@GetMapping()` 继承类级 base）：11 个裸注解不再漏数，A1 61→72 全对齐 endpoints.txt 真相源；P2-交易20 出表，P2 表清零；G1-G7 全 PASS | ✅ 2026-08-17 |
 | P1-交易4 占比分母含现金批 | TradingSessionPushService.positionPercent 分母 = 持仓市值 + AccountSnapshot.cash（S5 真源）：SessionData 注入现金 + serviceWithCash 测试 helper + 回归测试（现金 100 万不再误发 R81）；P1-交易4 出表；后端 642→643 | ✅ 2026-08-17 |
 | S5 现金单一真源批 | 现金唯一真源=account.json AccountSnapshot.cash：importCashQuery 不再写 positions.md cashBalance（saveCashBalance 调用移除，读取方全走 AccountSnapshot）；TradingAdviceAppService R81 分母 / TradingAppService getPortfolioSnapshot / TradingReviewAppService 复盘快照均改 AccountSnapshot.cash；测试补 AccountSnapshot mock 与断言（P2-交易4 + S5 出表）| ✅ 2026-08-17 |
 | P2 批 C（文档四连）| roadmap 状态修正 + feature-reference 补端点 + api-spec 403 契约 + os 空文件删 | ✅ 2026-08-17 |

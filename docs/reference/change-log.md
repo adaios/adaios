@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-17 | P2-交易20 guard-align 盲区批 | **A1 端点守护补裸注解**：正则新增 `@GetMapping`/`@GetMapping()`（无路径参数）分支继承类级 base——此前 11 个裸注解漏数（A1 报 61 vs 真相源 72）；修复后 72 全对齐 endpoints.txt；P2-交易20 出表，**P2 表清零**；G1-G7 全 PASS | — |
 | 2026-08-17 | S5 现金单一真源批 | **现金唯一真源 = account.json（AccountSnapshot.cash）**：importCashQuery 不再写 positions.md cashBalance（saveCashBalance 调用移除）；TradingAdviceAppService R81 分母、TradingAppService getPortfolioSnapshot、TradingReviewAppService 复盘快照全部改 AccountSnapshot.cash；测试 3 构造器补 AccountSnapshotRepository mock + importCashQuery 断言改验 AccountSnapshot.save + positionPercent 现金走快照 mock；REVIEW S5 + P2-交易4 出表；后端 642 全绿 | — |
 | 2026-08-17 | P2 批 C（文档四连）| **W-P2-12** roadmap 状态修正（数据冻结已定稿、#144/#106/#112 已修仍列待清）；**W-P2-13** feature-reference 附录补 7 交易端点 + §16 PATCH 合并语义；**W-P2-14** api-spec trades/review 补 403 插件门控契约；**W-P2-11** os 空文件删除（0 字节残留），alice 脏数据核实为测试账号（gateDomain 已防新增）；后端 642 · app 118 · web 98 · admin 34 全绿 | — |
 | 2026-08-17 | P2 批 B（前端六连）| **W-P2-2** app 记忆页日期连点代际守卫（web 有 app 无）；**W-P2-4** Feed 缩略图 cacheWidth 降采样（app 96→192 / web 120→240，避免全分辨率解码）；**W-P2-5** web 图片成功卡 content=用户 caption（与 app _buildMediaSuccessCard 对齐，summary 单列）；**W-P2-3** admin 插件 toggle 串行队列 catchError 恢复（非 ApiException 不永久卡死）；核实 W-P2-1 四项已闭环（删除确认/图片重试字节/全图 Dialog/搜索错误态）+ isProtected 已修（P2-R3）+ 163 admin 记录页=治理设计；app 118 · web 98 · admin 34 全绿 | — |
