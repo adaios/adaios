@@ -311,15 +311,17 @@ class ConflictDto {
 
 /// `POST /api/v1/trading/reviews/{date}/promote` 响应：`{status, path}`。
 class PromoteResultDto {
-  const PromoteResultDto({this.status = '', this.path = ''});
+  const PromoteResultDto({this.status = '', this.path = '', this.message = ''});
 
   final String status;
   final String path;
+  final String message;
 
   factory PromoteResultDto.fromJson(Map<String, dynamic> json) =>
       PromoteResultDto(
         status: json['status'] as String? ?? '',
         path: json['path'] as String? ?? '',
+        message: json['message'] as String? ?? '',
       );
 }
 

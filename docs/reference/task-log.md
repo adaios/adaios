@@ -305,14 +305,7 @@ v1.0.0（adai-admin + 多账号）：
 |:-:|:-----|:---------|:------:|
 | 08-15 前端×2 | adai-admin 内置 adai 插件开关按 `isProtected` 门控（enabled/删除有保护、插件开关 Row 无——可关掉 owner 插件）| `accounts_page.dart:523-532` | P2 |
 | 08-15 后端×6 | `PluginService.enabledPlugins` 每次调用读 accounts.json 无缓存（statement/question/feed 每请求全量读）| `PluginService.java:32-36` | P2 |
-| 08-15 后端×6 | `AccountController.isValidPlugins` 不查重（`["trading","trading"]` 合法落盘；消费端 Set 去重故行为正确）| `AccountController.java:132-134` | P3 |
-| 08-15 后端×6 | `gateDomain` 对未知 domain 原样放行（AI 返回越界值保留，非本批引入）| `PluginService.java:46-55` | P3 |
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
-| 08-14 前端×8 | `_truncateForSnack` UTF-16 substring 可能劈开 emoji（SnackBar 半字符）| `main_page.dart` | P3 |
-| 08-14 前端×8 | `_mimeTypeOf` HEIC 默认误标 `image/png` | `input_bar.dart` | P3 |
-| 08-14 前端×8 | `Navigator.pop` 盲弹未守卫 | `main_page.dart:428` | P3 |
-| 08-14 前端×8 | `_showImageLimitToast` 在 setState 内副作用 | `main_page.dart:663` | P3 |
-| 08-14 docs×6 | `apiEndpoints: 21` 示例陈旧（实 51）| `docs/architecture/api-spec.md` | P3 |
 | 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
 | 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
 | 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|
@@ -326,12 +319,6 @@ v1.0.0（adai-admin + 多账号）：
 | 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
-| 08-15 deep 前端 | `_currentLabel`/`_visited` 硬编码 `_allEntries.first.label` 与条目顺序隐式耦合（抽常量或按首个 plugin==null 动态解析）| `desktop_shell.dart:63-64` | P3 |
-| 08-15 deep 前端 | `_select(int i)` tap 时重解析 `_items[i]`（build↔tap 间列表变更亚帧窗口；tap 直接传 label/条目）| `desktop_shell.dart:104-110` | P3 |
-| 08-15 deep 前端 | admin 插件 toggle 触发全页 spinner 闪烁（`_load()` 置 `_loading=true`；改 `_load(silent: true)` 静默刷新，F4 同类）| `accounts_page.dart:41-45,186-190` | P3 |
-| 08-15 deep 前端 | admin `latest == null` 防御分支静默丢操作且实际不可达（删分支或给一次性反馈）| `accounts_page.dart:104-107` | P3 |
-| 08-15 deep docs | CLAUDE.md:131 表格头与正文段落同在一行（Markdown 渲染异常，拆行）| `CLAUDE.md:131` | P3 |
-| 08-15 deep docs | 根 CLAUDE.md 当前焦点批缺「展示层聚合（S-2）」登记（REVIEW/change-log 已出表，可接受）| `CLAUDE.md:242-244` | P3 |
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 
@@ -365,7 +352,4 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
-| W-P3-5 | admin setPlugins 死接口清理（页面已全走 mergePlugins）| `account_api_store.dart:23` | P3 |
-| W-P3-6 | DTO 契约小漂移：PromoteResultDto.message / sourceRecordId / lastConfirmed / totalCost | 三端 api_dto | P3 |
-| W-P3-7 | promoteReview 重复 Content-Type header | 双端 api_service | P3 |
 | W-P3-9 | web FilePicker 无压缩（全量字节内存 + 上传）| `feed_page.dart:976-1005` | P3 |

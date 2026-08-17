@@ -38,9 +38,10 @@ class _AccountsPageState extends State<AccountsPage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
+    // deep 前端（2026-08-17）：操作后静默刷新不闪全页 spinner（已有数据时 silent）
     setState(() {
-      _loading = true;
+      _loading = !silent;
       _error = null;
     });
     try {
@@ -75,7 +76,7 @@ class _AccountsPageState extends State<AccountsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已创建账号', AppColors.darkGreen),
     );
-    await _load();
+    await _load(silent: true);
   }
 
   Future<void> _toggleEnabled(Account account, bool enabled) async {
@@ -87,7 +88,7 @@ class _AccountsPageState extends State<AccountsPage> {
       );
       return;
     }
-    await _load();
+    await _load(silent: true);
   }
 
   /// 插件 toggle 串行队列（REVIEW P2-R1）：PATCH 全量替换（read-modify-write）并发互覆——
@@ -113,7 +114,7 @@ class _AccountsPageState extends State<AccountsPage> {
       );
       return;
     }
-    await _load();
+    await _load(silent: true);
   }
 
   Future<void> _deleteAccount(Account account) async {
@@ -154,7 +155,7 @@ class _AccountsPageState extends State<AccountsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已删除账号 ${account.userId}', AppColors.darkGreen),
     );
-    await _load();
+    await _load(silent: true);
   }
 
   SnackBar _snack(String text, Color color) {

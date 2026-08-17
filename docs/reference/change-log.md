@@ -5,6 +5,7 @@
 
 | 日期 | 批次 | 摘要 | 测试数变化 |
 |:-----|:-----|:-----|:-----------|
+| 2026-08-17 | Review 修复批 R11（admin + 收尾）| **admin 操作后静默刷新**（_load(silent) 不闪全页 spinner）；**setPlugins 死接口删除**（页面全走 mergePlugins）；**PromoteResultDto 补 message**（后端响应字段）；核实 latest==null 分支/promote 重复 header 已随演进闭环；task-log 清 10 条已修残留；admin 34 全绿 | — |
 | 2026-08-17 | Review 修复批 R10（P3 深水区）| **W-P3-4** _closeChat firstWhere→indexWhere（防 StateError）；**W-P3-13** GlmResponseParser 截断不劈 emoji（surrogate pair）；**W-P3-17** LocalFileStorage stripUserPrefix 与 resolve 同款 default 兜底（路径剥不净）；**W-P3-20** promote 脱敏正则兼容千分位（1,400 漏脱敏）；**W-P3-24/25/26** status 数字核对 + multimodal RFC 待确认勾销 + feed 示例补 domain + _index 补 memory-os-design；核实 W-P3-3（最后记录文案已消失）；后端 640 · web 98 全绿 | — |
 | 2026-08-17 | Review 修复批 R9（P3 尾尾批）| **web 插件重试 SnackBar**：失败先 clear 再 show（不队列堆积）+ 重试成功 hide（W-P3-2）；**IndexedStack ValueKey 保活**（插件中部插入不重置 state，W-P3-1）+ _select 传 label + fallback 空列表防御；**app superseded 记忆隐藏待办标记**（172）；**ANALYSIS system 越界 domain 注明会被修正**；CLAUDE.md 目录树去重 + 表格拆行；docs/README 断链修正；task-plugin-model T1.3 标 superseded；api-spec PATCH 契约明确「清空传空数组」；核实 6 条 P3 已闭环（全图 Dialog errorBuilder/卡片删除精确匹配/RFC frontmatter/存量 domain 合法/首帧 await 设计权衡/max_tokens 已修）；后端 640 · web 98 · app 118 全绿 | — |
 | 2026-08-17 | Review 修复批 R8（P3 尾批）| **isValidPlugins 查重**（["trading","trading"] 拒绝落盘）；**gateDomain 未知 domain 收敛 life**（白名单防脏数据）；**HEIC/HEIF 正确 MIME**（此前误标 png）；api-spec domain 关键词同步代码（trading +4/project +1）；frontend-reference 补 ask-batch 行；核实 5 条 P3 已随演进闭环（emoji 截断/limit toast/ImagePicker limit/max_tokens/多图回答展开）；后端 640 · app 118 全绿 | — |
