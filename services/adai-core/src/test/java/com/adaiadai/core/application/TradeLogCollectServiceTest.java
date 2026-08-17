@@ -31,7 +31,7 @@ class TradeLogCollectServiceTest {
         fileStorage = new InMemoryFileStorage();
         repository = new TradeLogRepository(fileStorage);
         TradingParseAppService parse = mock(TradingParseAppService.class);
-        when(parse.parse(any(), any())).thenAnswer(i -> {
+        when(parse.parseLoose(any(), any())).thenAnswer(i -> {
             String text = i.getArgument(1);
             if (text.contains("京东方")) {
                 return new TradingParseAppService.ParseResult(true, "000725", "京东方A",
@@ -89,5 +89,17 @@ class TradeLogCollectServiceTest {
         // mock TradingAppService.recordTrade 无副作用；确认后候选清空
         int done = service.confirm("default");
         assertTrue(service.todayCandidates("default").isEmpty(), "确认后当日候选应清空");
+    }
+
+    @Test
+    void confirm_incompleteCandidate_skippedNotCounted() {
+        // 「我清仓了（股票名）」→ 600519/SELL/无数量 → complete=false → 确认跳过不落库
+        service.collect("default", "我清仓了（股票名）", "text");
+        assertEquals(1, service.todayCandidates("default").size());
+        assertFalse(service.todayCandidates("default").get(0).complete(), "无数量价格应标不完整");
+
+        int done = service.confirm("default");
+        assertEquals(0, done, "不完整候选确认应跳过（不落库）");
+        assertTrue(service.todayCandidates("default").isEmpty(), "确认后候选清空（跳过的也清，前端引导补全）");
     }
 }

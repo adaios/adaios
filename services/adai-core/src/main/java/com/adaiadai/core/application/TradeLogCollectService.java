@@ -40,15 +40,18 @@ public class TradeLogCollectService {
         this.tradingAppService = tradingAppService;
     }
 
-    /** 归集一笔：解析文本 → 当日候选去重入库。返回该用户当日候选全量。 */
+    /** 归集一笔：宽松解析文本 → 当日候选去重入库。返回该用户当日候选全量。 */
     public List<TradeLogCandidate> collect(String userId, String text, String source) {
         if (text == null || text.isBlank()) return todayCandidates(userId);
-        TradingParseAppService.ParseResult r = parseAppService.parse(userId, text);
-        if (!r.matched() || r.symbol() == null) return todayCandidates(userId);
+        // 宽松解析（RFC 20260817）：「清仓了XX」无数量价格也归集为待补充候选（complete=false）
+        TradingParseAppService.ParseResult r = parseAppService.parseLoose(userId, text);
+        if (!r.matched() || r.symbol() == null && (r.name() == null || r.name().isBlank())) {
+            return todayCandidates(userId);
+        }
         if (r.direction() == null) return todayCandidates(userId);
 
         TradeLogCandidate candidate = new TradeLogCandidate(
-                r.symbol(),
+                r.symbol() != null ? r.symbol() : "unknown",
                 r.name(),
                 r.direction(),
                 r.price(),
@@ -58,7 +61,7 @@ public class TradeLogCollectService {
         );
         List<TradeLogCandidate> updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
         log.info("交易日志归集 | userId={} | {} {} {} | 当日候选 {} 笔",
-                userId, r.direction(), r.symbol(), r.volume() != null ? r.volume() + "股" : "（数量未知）",
+                userId, r.direction(), candidate.symbol(), r.volume() != null ? r.volume() + "股" : "（数量未知）",
                 updated.size());
         return updated;
     }
@@ -68,11 +71,20 @@ public class TradeLogCollectService {
         return tradeLogRepository.findByDate(userId, LocalDate.now());
     }
 
-    /** 用户确认：当日候选逐笔走 recordTrade 落库，然后清空候选。 */
+    /** 用户确认：当日**完整**候选逐笔走 recordTrade 落库，然后清空候选。
+     *  不完整候选（complete=false，缺数量/价格）不落库——返回跳过数，前端引导去交易模块补全。 */
     public int confirm(String userId) {
         List<TradeLogCandidate> candidates = todayCandidates(userId);
         int done = 0;
+        int skipped = 0;
         for (TradeLogCandidate c : candidates) {
+            if (!c.complete()) {
+                // RFC 20260817：数量/价格缺失的候选确认时跳过（recordTrade 0 数量会误伤/静默）
+                skipped++;
+                log.info("交易日志确认跳过（不完整）| userId={} | {} {} | 请去交易模块补全",
+                        userId, c.direction(), c.symbol());
+                continue;
+            }
             try {
                 tradingAppService.recordTrade(
                         userId,
@@ -89,7 +101,7 @@ public class TradeLogCollectService {
             }
         }
         tradeLogRepository.save(userId, LocalDate.now(), List.of());
-        log.info("交易日志确认落库 | userId={} | 成功 {} / {} 笔", userId, done, candidates.size());
+        log.info("交易日志确认落库 | userId={} | 成功 {} / 跳过(不完整) {} / 共 {} 笔", userId, done, skipped, candidates.size());
         return done;
     }
 

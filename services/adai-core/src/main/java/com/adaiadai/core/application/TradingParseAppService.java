@@ -92,6 +92,86 @@ public class TradingParseAppService {
         return parseWithRegex(trimmed);
     }
 
+    /**
+     * 宽松解析（RFC 20260817 交易日志归集用）：只要识别出「买卖方向 + 股票（代码/名称）」即 matched，
+     * 数量/价格可空（complete=false）——「清仓了云南锗业」这种无数字表述也归集为待补充候选。
+     * 严格模式（{@link #parse}）用于前端交易表单回显，必须价格+数量齐全。
+     */
+    public ParseResult parseLoose(String userId, String text) {
+        if (text == null || text.isBlank()) {
+            return ParseResult.unmatched();
+        }
+        String trimmed = text.trim();
+        try {
+            var ctx = com.adaiadai.core.kernel.context.engine.ContextPackage.simple(
+                    "trading", null, "交易识别", "识别交易动作：" + trimmed,
+                    java.util.List.of("trading"), "识别交易动作：" + trimmed);
+            String raw = aiClient.generate(ctx, LOOSE_SYSTEM_PROMPT);
+            if (raw != null && !raw.isBlank()) {
+                return parseLooseResult(raw);
+            }
+        } catch (Exception e) {
+            log.warn("宽松交易解析 LLM 失败，降级正则 | {}", e.getMessage());
+        }
+        // 正则兜底：匹配「买/卖/清仓 + 名称」即使无数量价格
+        ParseResult strict = parseWithRegex(trimmed);
+        if (strict.matched()) return strict;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(买(?:入|了|进)?|卖(?:出|了|掉)?|清仓)\\s*([\\u4e00-\\u9fa5A-Za-z]{2,12}|\\d{6})").matcher(trimmed);
+        if (m.find()) {
+            String verb = m.group(1);
+            String stock = m.group(2);
+            boolean sell = verb.contains("卖") || verb.contains("清仓");
+            String symbol = stock.matches("\\d{6}") ? stock : null;
+            return new ParseResult(true, symbol, symbol == null ? stock : null,
+                    sell ? "SELL" : "BUY", null, null, null, null, null, null);
+        }
+        return ParseResult.unmatched();
+    }
+
+    private static final String LOOSE_SYSTEM_PROMPT = """
+            你是交易动作识别器。从用户文本提取交易动作，只输出 JSON：
+            {"matched": true/false, "symbol": "6位代码或null", "name": "股票名称或null",
+             "direction": "BUY"或"SELL"或null, "price": 数字或null, "volume": 整数或null}
+            规则：
+            - 有明确的买/卖/清仓动词 + 股票名（或代码）→ matched=true，direction 必填
+            - 数量/价格没有 → null（不因此判 unmatched）
+            - 纯闲聊（无买卖动词或股票）→ matched=false
+            """.strip();
+
+    private ParseResult parseLooseResult(String raw) {
+        try {
+            var node = objectMapper.readTree(LlmResponseParser.stripCodeFences(raw));
+            if (node == null || !node.has("matched") || !node.get("matched").asBoolean(false)) {
+                return ParseResult.unmatched();
+            }
+            String direction = node.hasNonNull("direction") ? node.get("direction").asText().trim().toUpperCase(Locale.ROOT) : null;
+            if (!"BUY".equals(direction) && !"SELL".equals(direction)) {
+                return ParseResult.unmatched();
+            }
+            String symbol = node.hasNonNull("symbol") ? node.get("symbol").asText().trim() : null;
+            String name = node.hasNonNull("name") ? node.get("name").asText().trim() : null;
+            if ((symbol == null || symbol.isBlank() || "null".equals(symbol))
+                    && (name == null || name.isBlank() || "null".equals(name))) {
+                return ParseResult.unmatched();
+            }
+            BigDecimal price = null;
+            if (node.hasNonNull("price") && node.get("price").isNumber()) {
+                price = node.get("price").decimalValue();
+                if (price.compareTo(BigDecimal.ZERO) <= 0) price = null;
+            }
+            Integer volume = null;
+            if (node.hasNonNull("volume") && node.get("volume").isInt()) {
+                volume = node.get("volume").asInt();
+                if (volume <= 0) volume = null;
+            }
+            return new ParseResult(true, symbol, name, direction, price, volume, null, null, null, null);
+        } catch (Exception e) {
+            log.warn("宽松交易解析输出不可解析 | {}", e.getMessage());
+            return ParseResult.unmatched();
+        }
+    }
+
     private ParseResult parseWithLlm(String userId, String text) {
         String prompt = """
                 你是 AdaiOS 的交易记录解析器。把用户一句话交易意图结构化为 JSON。

@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-18
 status: active
-lines: 64
+lines: 65
 depends-on: []
 related:
   - ../_index.md
