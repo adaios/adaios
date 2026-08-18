@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-18
 status: active
-lines: 64
+lines: 65
 depends-on:
   - ai-engineering/README.md
 related:
@@ -25,6 +25,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 ## AI 协作规则（必读）
 
+0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash ai-engineering/guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
 1. **必读文档**：先读 `docs/VISION.md`（理念）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `ai-engineering/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 CLAUDE.md（`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口

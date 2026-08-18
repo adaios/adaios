@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-18
 updated: 2026-08-18
 status: active
-lines: 114
+lines: 116
 depends-on:
   - ../guard-cost.sh
 related:
@@ -19,6 +19,8 @@ tags: [ai, cost, guard]
 > **背景（血泪史）**：DeepSeek 2026-08-17 起峰谷定价，V4 系列涨价最高 1100%。涨价第一天 DSH 单日烧 **77.29 元**（主会话 1931 次调用、8.2 亿缓存读取 token，高峰时段 14-17 点 3 小时烧 40 元）。此后必须盯账。
 
 ## 零、先看账（每次开工前跑）
+
+> **2026-08-18 起无需手动**：AGENTS.md 规则 0 已指示 AI 开工时自动执行 `guard-context.sh`（内含 C6.5 今日成本），用户零操作。以下命令保留给手动/深查场景：
 
 ```bash
 bash ai-engineering/guard-cost.sh            # 今天花了多少
