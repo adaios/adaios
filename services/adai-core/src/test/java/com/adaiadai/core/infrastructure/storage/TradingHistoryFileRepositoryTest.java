@@ -35,7 +35,7 @@ class TradingHistoryFileRepositoryTest {
         return TradeRecord.of(id, symbol, "名称" + symbol, TradeDirection.BUY,
                 new BigDecimal(price), volume, entryDate,
                 stopLoss != null ? new BigDecimal(stopLoss) : null, buyPoint,
-                null, null, null, entryDate.atTime(9, 30), "rec_" + id);
+                null, null, null, entryDate.atTime(9, 30), "rec_" + id, null);
     }
 
     @Test
@@ -129,7 +129,7 @@ class TradingHistoryFileRepositoryTest {
         // SELL 流水止损/买点为 null → round-trip 保持 null（不写止损）
         TradeRecord sell = TradeRecord.of("trade_sell", "600000", "浦发银行", TradeDirection.SELL,
                 new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 3),
-                null, null, null, null, null, LocalDateTime.of(2026, 8, 3, 14, 0), null);
+                null, null, null, null, null, LocalDateTime.of(2026, 8, 3, 14, 0), null, null);
         repository.append("default", sell);
 
         TradeRecord loaded = repository.findAll("default").get(0);

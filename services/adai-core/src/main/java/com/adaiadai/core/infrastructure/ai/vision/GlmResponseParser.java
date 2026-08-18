@@ -47,10 +47,14 @@ public class GlmResponseParser {
         if (rawResponse == null || rawResponse.isBlank()) {
             return fallback("图片理解失败：未收到 AI 回复");
         }
-        String jsonStr = extractJson(rawResponse);
+        // P0-1（2026-08-18 生产）：降级路径必须用剥壳后文本——
+        // GLM-4.1V-Thinking 输出 <think> 壳时，若 JSON 提取失败走 fallback(rawResponse)
+        // 会把思考过程原文泄漏进 summary（生产 5 条 rec_20260818_1627* 全中，用户可见 + 交易归集中断）。
+        String cleaned = stripThinkAnswer(rawResponse);
+        String jsonStr = extractJson(cleaned);
         if (jsonStr == null) {
-            log.warn("GLM 回复中未找到 JSON，降级为原文");
-            return fallback(rawResponse.strip());
+            log.warn("GLM 回复中未找到 JSON，降级为原文（已剥 think 壳）");
+            return fallback(cleaned);
         }
         try {
             JsonNode root = MAPPER.readTree(jsonStr);
@@ -61,13 +65,17 @@ public class GlmResponseParser {
             return new ImageUnderstanding(summary, category, extractedText, tags);
         } catch (Exception e) {
             log.warn("GLM 回复 JSON 解析失败: {}", e.getMessage());
-            return fallback(rawResponse.strip());
+            return fallback(cleaned);
         }
     }
 
     // ── 内部方法 ──
 
     private static ImageUnderstanding fallback(String text) {
+        // P0-1：剥壳后为空（模型只输出了 think 思考过程）→ 给默认文案，不落空串
+        if (text == null || text.isBlank()) {
+            return new ImageUnderstanding("图片理解失败：未收到有效回复", "photo", "", List.of());
+        }
         // W-P3-13（2026-08-17）：截断避免劈开 surrogate pair（emoji）——后移一位补全高代理项
         String s = text.length() > 100 ? truncateSafe(text, 100) + "…" : text;
         return new ImageUnderstanding(s, "photo", "", List.of());
@@ -123,6 +131,8 @@ public class GlmResponseParser {
     /**
      * 剥掉 Thinking 模型的 <think>/<answer> 壳：优先取 answer 内容；
      * 无 answer 标签则移除 think 块，保留其余文本。
+     * P0-1（2026-08-18）：<think> 未闭合（模型输出截断）时也剥掉——<think> 起到文末
+     * 均为思考过程，不得泄漏进 summary。
      */
     private static String stripThinkAnswer(String text) {
         if (text == null || text.isBlank()) return text;
@@ -130,7 +140,19 @@ public class GlmResponseParser {
         if (answer.find()) {
             return answer.group(1).strip();
         }
-        return THINK_BLOCK.matcher(text).replaceAll("").strip();
+        String stripped = THINK_BLOCK.matcher(text).replaceAll("").strip();
+        // 未闭合 think 块（无 </think>）：THINK_BLOCK 匹配不到，手工从 <think> 起到文末删除
+        int unclosedThink = stripped.indexOf("<think>");
+        if (unclosedThink >= 0) {
+            stripped = stripped.substring(0, unclosedThink).strip();
+        }
+        // 未闭合 answer 块（有 <answer> 无 </answer>，如 JSON 被截断）：
+        // 剥掉标签本身，保留其后内容（供 extractJson 提取）
+        int unclosedAnswer = stripped.indexOf("<answer>");
+        if (unclosedAnswer >= 0) {
+            stripped = stripped.substring(unclosedAnswer + "<answer>".length()).strip();
+        }
+        return stripped;
     }
 
     private static String textOr(JsonNode node, String field, String defaultValue) {

@@ -442,8 +442,8 @@ class ApiService {
 
   /// 记录一笔交易。
   /// name 可空（RFC 20260815：代码即标的，名称由后端补全/以代码兜底）。
-  /// RFC 20260816：stopLossPrice/buyPoint 为 BUY 必填（缺失后端 400，前端先拦截）；
-  /// targetPrice/reason 可空（P1，本轮仅透传对齐 web）。SELL 时空字段不发。
+  /// 2026-08-18 简化：app 只记录买卖（标的/价格/数量/方向），止损/买点归 web 端设置——
+  /// stopLossPrice/buyPoint 可选透传（app 不再传，web 记录对话框/CSV 导入传）。
   Future<PositionsResponse> recordTrade({
     required String symbol,
     String? name,

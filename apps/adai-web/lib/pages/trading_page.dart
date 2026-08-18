@@ -1038,6 +1038,37 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
+      const SizedBox(height: 10),
+      // 2026-08-18：本金独立行（此前塞在按钮行最右，窄窗口被挤出看不到）——
+      // 本金 = 累计净投入（历史事实，只写本金不动现金）；充值/提现走上方「转入/转出」
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.darkGrey4, width: 0.5),
+        ),
+        child: Row(children: [
+          const Icon(Icons.savings_outlined, size: 16, color: AppColors.darkGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '本金（累计净投入）¥${_thousands(_account?.principal ?? 0)}'
+              ' · 总盈亏 ¥${_account != null ? _thousands(_account!.assets - _account!.principal) : '-'}',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: _openPrincipalDialog,
+            style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.darkGreen,
+                side: const BorderSide(color: AppColors.darkGrey4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
+            child: const Text('设置本金', style: TextStyle(fontSize: 12)),
+          ),
+        ]),
+      ),
       const SizedBox(height: 6),
       const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
@@ -1109,6 +1140,64 @@ class _TradingPageState extends State<TradingPage> {
       if (mounted) _toast('${isIn ? '转入' : '转出'} ¥${v.toStringAsFixed(2)} 已记录');
     } catch (e) {
       if (mounted) _toast('转账记录失败');
+    }
+  }
+
+  /// 本金设置 Dialog（2026-08-18）：累计净投入——只改本金（总盈亏 = 资产 - 本金），不动现金。
+  Future<void> _openPrincipalDialog() async {
+    final amount = TextEditingController(
+        text: _account != null && _account!.principal > 0
+            ? _account!.principal.toStringAsFixed(0)
+            : '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('设置本金（累计净投入）', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '本金（元）'),
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+          ),
+          const SizedBox(height: 8),
+          const Text('总盈亏 = 资产 − 本金。本金是历史累计投入，只写本金字段，不影响现金/持仓。',
+              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(amount.text.trim());
+              if (v == null || !v.isFinite || v <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('请输入大于 0 的有效金额', style: TextStyle(fontSize: 13)),
+                  backgroundColor: AppColors.darkSurface2,
+                ));
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final v = double.tryParse(amount.text.trim());
+    if (v == null || v <= 0) {
+      _toast('请输入有效金额');
+      return;
+    }
+    try {
+      await widget.api.setPrincipal(v);
+      await _loadAll();
+      if (mounted) _toast('本金已设为 ¥${v.toStringAsFixed(0)}');
+    } catch (e) {
+      if (mounted) _toast('本金设置失败，请检查网络后重试');
     }
   }
 
@@ -1594,6 +1683,8 @@ class _ImportDialogState extends State<_ImportDialog> {
   bool _importing = false;
   int? _successCount;
   final List<String> _errors = [];
+  /// 历史成交导入结果（第五份文件，2026-08-18）——含对账提示行。
+  HistoricalTradeImportResult? _historyResult;
 
   @override
   void dispose() {
@@ -1621,8 +1712,9 @@ class _ImportDialogState extends State<_ImportDialog> {
         _text.text = saved.content;
         _successCount = null;
         _errors.clear();
+        _historyResult = null;
       });
-      // 自动解析导入（通达信持仓 / 交易 CSV 自动识别）
+      // 自动解析导入（通达信持仓 / 历史成交 / 交易 CSV 自动识别）
       await _import();
     } catch (e) {
       if (!mounted) return;
@@ -1634,9 +1726,16 @@ class _ImportDialogState extends State<_ImportDialog> {
   }
 
   Future<void> _import() async {
-    // 通达信导出（持仓快照）自动识别 → 持仓初始化导入；否则按交易 CSV 批量导入
+    // 每次导入前重置历史成交对账展示（防止切换格式时残留）
+    _historyResult = null;
+    // 通达信导出（持仓快照）自动识别 → 持仓初始化导入（全量覆盖）；
+    // 历史成交查询导出 → 补逐笔流水（第五份文件）；否则按交易 CSV 批量导入
     if (isTdxExport(_text.text)) {
       await _importTdxPositions();
+      return;
+    }
+    if (isTdxHistoryExport(_text.text)) {
+      await _importTdxHistory();
       return;
     }
     final parsed = parseImportTrades(_text.text);
@@ -1701,8 +1800,10 @@ class _ImportDialogState extends State<_ImportDialog> {
       return;
     }
     try {
+      // 2026-08-18 确认批次：通达信持仓导出 = 当日券商口径快照 → 全量覆盖（replace=true，以文件为准）
       final result = await widget.api.importPositions(
         parsed.rows.map((r) => r.toJson()).toList(),
+        replace: true,
       );
       if (!mounted) return;
       setState(() {
@@ -1727,6 +1828,39 @@ class _ImportDialogState extends State<_ImportDialog> {
     }
   }
 
+  /// 历史成交导入（第五份文件，2026-08-18）：补逐笔流水不重算持仓，返回对账提示。
+  Future<void> _importTdxHistory() async {
+    setState(() {
+      _importing = true;
+      _successCount = null;
+      _historyResult = null;
+      _errors.clear();
+    });
+    try {
+      final result = await widget.api.importTradesHistory(_text.text);
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _successCount = result.imported;
+        _historyResult = result;
+      });
+      // 有非交易事件（股息红利税等）→ 提示已跳过
+      if (result.nonTrades > 0) {
+        _errors.add('已跳过 ${result.nonTrades} 行非交易资金事件（如股息红利税）——不落流水');
+      }
+      if (result.imported > 0) {
+        widget.onImported();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _successCount = 0;
+        _errors.add('历史成交导入失败：${e.toString().contains('无法识别') ? '请确认是通达信「历史成交查询」导出' : '请检查网络后重试'}');
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1738,12 +1872,14 @@ class _ImportDialogState extends State<_ImportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('两种格式自动识别：',
+            const Text('三种格式自动识别：',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
             const SizedBox(height: 2),
             const Text('① 交易 CSV：代码,名称,方向,价格,数量,止损,买点[,原因]',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const Text('② 通达信持仓导出：直接粘贴（证券代码/股票余额/成本价 自动识别，止损需导入后补设）',
+            const Text('② 通达信持仓导出：直接粘贴（证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设）',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const Text('③ 通达信历史成交查询：补逐笔流水不重算持仓（自动识别，成交编号幂等 + 对账提示）',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
             const SizedBox(height: 4),
             const Text('例（交易）：600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏',
@@ -1785,6 +1921,32 @@ class _ImportDialogState extends State<_ImportDialog> {
               if (_successCount != null)
                 Text('成功导入 $_successCount 条',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+              if (_historyResult != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkSurface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.darkGrey4, width: 0.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
+                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+                      const SizedBox(height: 4),
+                      for (final l in _historyResult!.lines)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Text('${l.name}（${l.symbol}）：${l.netVolume > 0 ? '+' : ''}${l.netVolume} 股 → ${l.note}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               if (_errors.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Container(

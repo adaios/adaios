@@ -30,9 +30,10 @@ import java.time.LocalDateTime;
  * @param buyPoint      买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他；BUY 必填；SELL 可空）
  * @param targetPrice   目标价（可空，盈亏比 R38 复盘锚点）
  * @param reason        交易原因/预期（可空，复盘锚点）
- * @param fee           手续费（可空，P2 可全局费率）
+ * @param fee           手续费（可空，P2 可全局费率；历史成交导入时 = 券商实际发生金额与成交金额之差）
  * @param timestamp     落盘时间
  * @param sourceRecordId 关联的时间线 Record ID（可空）
+ * @param orderId       券商成交编号（可空；历史成交导入幂等键——同编号不重复导入）
  */
 public record TradeRecord(
         String id,
@@ -49,7 +50,8 @@ public record TradeRecord(
         String reason,
         BigDecimal fee,
         LocalDateTime timestamp,
-        String sourceRecordId
+        String sourceRecordId,
+        String orderId
 ) {
 
     /**
@@ -59,10 +61,10 @@ public record TradeRecord(
                                  BigDecimal price, int volume, LocalDate entryDate,
                                  BigDecimal stopLossPrice, String buyPoint,
                                  BigDecimal targetPrice, String reason, BigDecimal fee,
-                                 LocalDateTime timestamp, String sourceRecordId) {
+                                 LocalDateTime timestamp, String sourceRecordId, String orderId) {
         return new TradeRecord(
                 id, symbol, name, direction, price, volume,
                 price.multiply(BigDecimal.valueOf(volume)),
-                entryDate, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId);
+                entryDate, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId);
     }
 }

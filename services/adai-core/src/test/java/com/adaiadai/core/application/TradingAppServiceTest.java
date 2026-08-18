@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -807,6 +808,109 @@ void soldUpdatePsychology_marksTrade() {
         assertEquals(0, u.cash().compareTo(new BigDecimal("11499.10")), "现金 10000 + 1499.10（卖出回款扣费）");
         assertEquals(0, u.marketValue().compareTo(new BigDecimal("138500")), "市值 -1500（100股@15）");
         assertEquals(0, u.assets().compareTo(new BigDecimal("149999.10")), "总资产 = 现金+市值 = 150000 - 手续费0.90");
+    }
+
+    // ── 历史成交导入（第五份文件，2026-08-18）：补流水不重算持仓 + 幂等 + 对账 ──
+
+    @org.junit.jupiter.api.Test
+    void importHistoricalTrades_appendsFlow_only_noPositionMutation() {
+        PositionRepository repo = mock(PositionRepository.class);
+        // 当前持仓 = 券商快照（京东方 4800 股）
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(List.of(
+                new Position("000725", "京东方Ａ", 4800, new BigDecimal("6.2031"), new BigDecimal("6.47"),
+                        LocalDateTime.now()))));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        String content = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                20260817        10:02:51        000725          京东方Ａ        卖出            -1800.00        5.79000000         10422.00        67886           0102000024870368        10415.90         0903874313
+                20260818        11:12:05        000725          京东方Ａ        买入            200.00          6.26000000         1252.00         123449          0101000048552566        -1252.11         0903874313
+                20260818        00:00:00        000725          京东方Ａ        买入            0.00            0.00000000          10.08           0                                       -10.08           0903874313
+                """;
+        TradingAppService.HistoricalTradeImportResult r =
+                service.importHistoricalTrades("default", content);
+
+        // 3 笔真实成交落流水；1 行非交易（股息红利税）不落
+        assertEquals(3, r.imported());
+        assertEquals(0, r.skipped());
+        assertEquals(1, r.nonTrades());
+        ArgumentCaptor<TradeRecord> cap = ArgumentCaptor.forClass(TradeRecord.class);
+        verify(history, times(3)).append(eq("default"), cap.capture());
+        List<TradeRecord> appended = cap.getAllValues();
+        assertEquals(TradeDirection.SELL, appended.get(0).direction());
+        assertEquals("2026-08-03", appended.get(0).entryDate().toString());
+        assertEquals("69351117", appended.get(0).orderId(), "成交编号落流水作幂等键");
+        assertEquals(0, appended.get(0).fee().compareTo(new BigDecimal("3.95")), "fee = 券商实扣");
+        // 持仓未被动过：verify 不调用 saveAll（只报告对账，不改数据）
+        verify(repo, never()).saveAll(any(), any());
+        // 对账：京东方 流水净 -1600（卖1800 买200）vs 快照 4800 → 基线缺口提示
+        TradingAppService.ReconcileLine line = r.lines().stream()
+                .filter(l -> l.symbol().equals("000725")).findFirst().orElseThrow();
+        assertEquals(-1600, line.netVolume());
+        assertEquals(4800, line.holdings());
+        assertTrue(line.note().contains("窗口前基线"), "对账提示应指出基线缺口");
+    }
+
+    @org.junit.jupiter.api.Test
+    void importHistoricalTrades_sameFileTwice_skipsByOrderId() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        String content = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+                20260803        14:53:51        002428          云南锗业        买入            400.00          68.14000000         27256.00        151747          0101000075800458        -27258.33        0903874313
+                """;
+        TradingAppService.HistoricalTradeImportResult first =
+                service.importHistoricalTrades("default", content);
+        assertEquals(1, first.imported());
+        ArgumentCaptor<TradeRecord> cap = ArgumentCaptor.forClass(TradeRecord.class);
+        verify(history, times(1)).append(eq("default"), cap.capture());
+        // 第二次导入同一文件：已存在 orderId → 全部跳过（幂等）
+        when(history.findAll(any())).thenReturn(cap.getAllValues());
+        TradingAppService.HistoricalTradeImportResult second =
+                service.importHistoricalTrades("default", content);
+        assertEquals(0, second.imported());
+        assertEquals(1, second.skipped());
+    }
+
+    // ── 本金设置（2026-08-18）：只改 principal，不动现金/资产/市值 ──
+
+    @org.junit.jupiter.api.Test
+    void setPrincipal_onlyChangesPrincipal_field() {
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("112566.91"), new BigDecimal("657.91"),
+                        new BigDecimal("657.91"), new BigDecimal("657.91"),
+                        new BigDecimal("111909.00"), new BigDecimal("18688.28"), BigDecimal.ZERO,
+                        BigDecimal.ZERO, LocalDate.of(2026, 8, 18))));
+        TradingAppService service = new TradingAppService(mock(PositionRepository.class),
+                mock(RecordRepository.class), mock(TradingHistoryRepository.class),
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                acc, mock(TransferRepository.class), mock(MarketDataSource.class));
+
+        AccountSnapshot updated = service.setPrincipal("default", new BigDecimal("150000"));
+
+        assertEquals(0, updated.principal().compareTo(new BigDecimal("150000")), "本金 = 累计净投入");
+        assertEquals(0, updated.cash().compareTo(new BigDecimal("657.91")), "现金不动");
+        assertEquals(0, updated.assets().compareTo(new BigDecimal("112566.91")), "资产不动");
+        assertEquals(0, updated.marketValue().compareTo(new BigDecimal("111909.00")), "市值不动");
+        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
+        verify(acc).save(eq("default"), cap.capture());
+        assertEquals(0, cap.getValue().principal().compareTo(new BigDecimal("150000")));
+    }
+
+    @org.junit.jupiter.api.Test
+    void setPrincipal_zeroOrNull_throws() {
+        TradingAppService service = service(mock(PositionRepository.class), mock(RecordRepository.class));
+        assertThrows(TradingException.class, () -> service.setPrincipal("default", null));
+        assertThrows(TradingException.class, () -> service.setPrincipal("default", BigDecimal.ZERO));
+        assertThrows(TradingException.class, () -> service.setPrincipal("default", new BigDecimal("-1")));
     }
 }
 

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-16
 status: active
-lines: 32
+lines: 33
 depends-on: []
 related:
   - ../_index.md
@@ -24,6 +24,7 @@ tags: [meta, index, review]
 | audits/2026-08-15.md | 首轮全维度走查存档（7 官） | active |
 | audits/2026-08-15-ai-engineering-self.md | AI 工程层自伤自查存档（8 官） | active |
 | audits/2026-08-16-ai-engineering-workflow.md | AI 工程工作流自伤自查存档（第二轮，三视角） | active |
+| audits/2026-08-18-production-log.md | 生产日志审查存档（2026-08-18 journalctl 当日问题分级） | active |
 
 ## 过期判断
 

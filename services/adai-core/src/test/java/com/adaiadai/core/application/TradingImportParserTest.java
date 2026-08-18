@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import org.junit.jupiter.api.Test;
 
@@ -73,5 +74,47 @@ class TradingImportParserTest {
         assertTrue(Math.abs(q.positions().get(0).costPrice() - 122.3849) < 0.0001);
         assertEquals("000725", q.positions().get(1).symbol());
         assertTrue(Math.abs(q.positions().get(1).costPrice() - 6.0421) < 0.0001);
+    }
+
+    @Test
+    void parseHistoricalTrades_realHeader() {
+        // 真实通达信「历史成交查询」导出片段：卖出数量为负、价格 8 位小数、含成交编号/发生金额
+        String content = """
+                -------------------------------------------------------------------------------------------------------
+
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码          备注
+                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384        证券卖出
+                20260803        14:53:51        002428          云南锗业        买入            400.00          68.14000000         27256.00        151747          0101000075800458        -27258.33        0903874313        证券买入
+                20260818        00:00:00        000725          京东方Ａ        买入            0.00            0.00000000          10.08           0                                       -10.08           0903874313        股息红利税差异化处理资金下账
+                """;
+        List<TradingImportParser.HistoricalTradeRow> rows = TradingImportParser.parseHistoricalTrades(content);
+        assertEquals(3, rows.size(), "2 笔真实成交 + 1 行数量 0 的非交易事件（股息红利税）");
+        TradingImportParser.HistoricalTradeRow sell = rows.get(0);
+        assertEquals("600206", sell.symbol());
+        assertEquals("有研新材", sell.name());
+        assertEquals(TradeDirection.SELL, sell.direction());
+        assertEquals(200, sell.volume(), "卖出数量取绝对值");
+        assertEquals("2026-08-03", sell.entryDate().toString());
+        assertEquals("69351117", sell.orderId());
+        // fee = |发生金额 - 成交金额| = 6624.00 - 6620.05 = 3.95
+        assertEquals(0, sell.fee().compareTo(new BigDecimal("3.95")));
+        TradingImportParser.HistoricalTradeRow buy = rows.get(1);
+        assertEquals(TradeDirection.BUY, buy.direction());
+        assertEquals(400, buy.volume());
+        // 买入发生金额为负：fee = |27256.00| - |-27258.33| 之差 = 2.33
+        assertEquals(0, buy.fee().compareTo(new BigDecimal("2.33")));
+        assertEquals("0101000075800458", buy.orderId());
+        // 数量 0 非交易行：volume=0，供导入方计入 nonTrades
+        assertEquals(0, rows.get(2).volume());
+        assertEquals("000725", rows.get(2).symbol());
+    }
+
+    @Test
+    void parseHistoricalTrades_wrongFormat_returnsEmpty() {
+        String content = """
+                代码\t名称\t涨幅%\t现价\t成本价\t证券数量
+                000725\t京东方Ａ\t6.41\t6.47\t6.203\t4800
+                """;
+        assertTrue(TradingImportParser.parseHistoricalTrades(content).isEmpty());
     }
 }

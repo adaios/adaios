@@ -72,6 +72,30 @@ Future<void> _pumpTrading(WidgetTester tester, ApiService api) async {
 Finder _field(String label) => find.widgetWithText(TextField, label);
 
 void main() {
+  group('批量导入格式识别（2026-08-18：通达信持仓 / 历史成交 / 交易 CSV 三格式分流）', () {
+    test('历史成交查询导出被识别（isTdxHistoryExport）', () {
+      const history = '''
+-------------------------------------------------------------------------------------------------------
+
+成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+''';
+      expect(isTdxHistoryExport(history), isTrue, reason: '含成交日期/证券代码/买卖标志/成交编号');
+      expect(isTdxExport(history), isFalse, reason: '无成本价列，不误判为持仓导出');
+    });
+
+    test('持仓导出不被误判为历史成交', () {
+      const positions = '代码\t名称\t涨幅%\t现价\t成本价\t证券数量\n000725\t京东方Ａ\t6.41\t6.47\t6.203\t4800\n';
+      expect(isTdxHistoryExport(positions), isFalse);
+      expect(isTdxExport(positions), isTrue);
+    });
+
+    test('交易 CSV 不被误判为任何通达信导出', () {
+      expect(isTdxHistoryExport('600519,贵州茅台,BUY,1500,100,1350,B1'), isFalse);
+      expect(isTdxExport('600519,贵州茅台,BUY,1500,100,1350,B1'), isFalse);
+    });
+  });
+
   group('批量导入解析（parseImportTrades）', () {
     test('BUY 行完整解析（含 reason，第 8 列）', () {
       final r = parseImportTrades('600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏');

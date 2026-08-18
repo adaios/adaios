@@ -149,7 +149,9 @@ public class GlmVisualAiClient implements VisualAiClient {
     private String buildRequestBody(ImageRequest request, String textPrompt) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("model", model);
-        root.put("max_tokens", 1024);
+        // P0-1（2026-08-18）：thinking 模型思考过程长，1024 被 think 吃光后 answer 无输出
+        // （生产 5/7 张图仅返回 <think> 无 answer）。调到 2048 给 answer 留出空间。
+        root.put("max_tokens", 2048);
         root.put("temperature", 0.3);
 
         ArrayNode messages = root.putArray("messages");
@@ -176,7 +178,7 @@ public class GlmVisualAiClient implements VisualAiClient {
     private String buildMultiRequestBody(List<ImageRequest> requests, String textPrompt) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("model", model);
-        root.put("max_tokens", 1024);
+        root.put("max_tokens", 2048);
         root.put("temperature", 0.3);
 
         ArrayNode messages = root.putArray("messages");

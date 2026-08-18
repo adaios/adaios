@@ -417,7 +417,9 @@
 ```
 
 > `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。
-> **RFC 20260816（数据分层）**：`entryDate` 可空缺省今天；**BUY 必填 `stopLossPrice` + `buyPoint`**（缺失 → 400 人话消息）；`targetPrice`/`reason` 可选（SELL 时止损/买点可空）。recordTrade 成功后**同步写逐笔流水**（`data/{userId}/trading/trades/{yyyy-MM}.json`）+ **写一条 domain=trading 记录**（5 分钟窗口去重）——交易进 timeline/记忆 + 复盘提醒闭环。
+> **RFC 20260816（数据分层）**：`entryDate` 可空缺省今天；`targetPrice`/`reason` 可选（SELL 时止损/买点可空）。
+> **2026-08-18（确认批次）**：`stopLossPrice`/`buyPoint` 由 BUY 必填改为**可选**——app 简化为纯买卖记录（标的/价格/数量/方向），止损位/买点归 web 端（记录对话框 / CSV 批量导入仍填；app 记录的持仓止损缺失 → 建议引擎纪律判定降级，web 持仓编辑补设后恢复）。
+> recordTrade 成功后**同步写逐笔流水**（`data/{userId}/trading/trades/{yyyy-MM}.json`）+ **写一条 domain=trading 记录**（5 分钟窗口去重）——交易进 timeline/记忆 + 复盘提醒闭环。
 
 **Response**：`Position[]` — 更新后的全部持仓。需 trading 插件（403）。
 
@@ -425,6 +427,39 @@
 
 ### `GET /api/v1/trading/trades` — 查询交易逐笔流水（RFC 20260816）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
+
+---
+
+### `POST /api/v1/trading/trades/batch` — 批量记录交易（2026-08-18 补实现）
+> 需 trading 插件（403）。
+
+web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 → 404，本批次补上）。
+
+**body**：`{"trades":[{"symbol":"600519","name":"贵州茅台","direction":"BUY","price":1500,"volume":100,"stopLossPrice":1350,"buyPoint":"B1","reason":"..."}, ...]}`（字段同 `POST /trades`）
+
+- 语义：逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费 + 逐笔流水）——日常多笔录入
+- **逐条失败不整批回滚**：返回每行成功/失败（带行号人话原因）
+
+**响应**：`{"success":2,"failures":[{"row":3,"message":"卖出数量超过持仓: 000725（持有 100 股）"}]}`
+
+### `POST /api/v1/trading/trades/import` — 历史成交日志导入（第五份文件，2026-08-18）
+> 需 trading 插件（403）。
+
+通达信「历史成交查询」导出 → **补逐笔流水**（增量补录），供交易历史/复盘/对账。
+
+**body**：`{"content":"通达信历史成交查询导出文本（UTF-8 转码后，表头含 成交日期/证券代码/买卖标志/成交编号）"}`
+
+- **只补流水不重算持仓/现金**：历史成交往往缺窗口前基线（如 8/3 起、8/3 前已有持仓），回放重建算不出券商口径（摊薄成本 vs 系统加权平均实测差 3.4 倍）；持仓/成本/现金以全量覆盖导入为准（`positions/import?replace=true` + `imports/cash`）
+- 每笔落流水：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**，重复导入同一文件只落一次；无编号按 symbol+direction+entryDate+price+volume 指纹去重）
+- 数量 0 行（股息红利税等非交易资金事件）不落流水，计入 `nonTrades`
+
+**响应**：
+```json
+{"imported":45,"skipped":1,"nonTrades":1,
+ "lines":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
+   "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（以持仓快照为准）"}]}
+```
+- `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
 
 ---
 
@@ -551,6 +586,8 @@
 
 ### `POST /api/v1/trading/positions/import` — 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）
 
+**query**：`replace`（可选，默认 `false`）——2026-08-18 确认批次：`replace=true` = **全量覆盖**（以文件为准，导入后移除文件里不存在的持仓，含 0 股残留；web 通达信持仓导入默认传 true）
+
 **body**（数组，可空）：
 ```json
 [{"symbol":"600519","name":"贵州茅台","quantity":100,"avgCost":1400,
@@ -567,6 +604,15 @@
 
 - 之前前端与测试在调但后端从未实现（编辑一直 404）——2026-08-17 补上；`targetPrice` 后端 Position 无字段落盘（前端目标价编辑是既有无效功能，另记 P3）
 - **响应**：更新后持仓对象（symbol/name/quantity/avgCost/stopLossPrice/buyPoint/role）；symbol 不存在 404；止损位非数字 400
+- 需 trading 插件（403）。
+
+### `PUT /api/v1/trading/principal` — 设置本金（累计净投入，2026-08-18）
+
+**body**：`{"amount":150000}`（必须 > 0）
+
+- **背景**：总盈亏 = 资产 − 本金；资金查询导入/转账推导都不覆盖本金 → 新建账号 principal=0 时总盈亏失真（本批次实测发现）
+- 本金是**历史累计净投入**，不是当前资金变动——**只改 principal 字段，不动现金/资产/市值**（转账会动现金，不能用来初始化本金）；web 资金区「本金」按钮入口
+- **响应**：更新后账户快照（含 principal）；amount 缺失/≤0 → 400
 - 需 trading 插件（403）。
 
 ---

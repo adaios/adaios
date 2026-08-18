@@ -419,10 +419,13 @@ class ApiService {
   }
 
   /// 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）。
-  /// POST /api/v1/trading/positions/import → {imported, missingStopLoss}.
-  Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items) async {
+  /// POST /api/v1/trading/positions/import?replace=true → {imported, missingStopLoss}.
+  /// replace=true（2026-08-18 确认批次）= 全量覆盖：以文件为准，文件里没有的持仓移除（含 0 股残留）。
+  Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items, {bool replace = false}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/trading/positions/import')
+        .replace(queryParameters: replace ? {'replace': 'true'} : null);
     final resp = await _client.post(
-      Uri.parse('$baseUrl/api/v1/trading/positions/import'),
+      uri,
       headers: _headers,
       body: jsonEncode(items),
     );
@@ -430,12 +433,36 @@ class ApiService {
     final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return PositionImportResult.fromJson(data);
   }
+
+  /// 历史成交日志导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）。
+  /// POST /api/v1/trading/trades/import，body {"content": 转码后文本} →
+  /// {imported, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
+  /// 语义：只补逐笔流水（entryDate=成交日 / fee=券商实扣 / 成交编号幂等），不重算持仓与现金——以全量覆盖导入为准。
+  Future<HistoricalTradeImportResult> importTradesHistory(String content) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/trades/import'),
+      headers: _headers,
+      body: jsonEncode({'content': content}),
+    );
+    _check(resp);
+    return HistoricalTradeImportResult.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
   /// 银证转账（POST /api/v1/trading/transfer：type IN/OUT + amount + note，净投入跟踪）。
   Future<void> recordTransfer({required String type, required double amount, String? note}) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/transfer'),
       headers: _headers,
       body: jsonEncode({'type': type, 'amount': amount, 'note': note}));
+    _check(resp);
+  }
+
+  /// 设置本金（PUT /api/v1/trading/principal，2026-08-18）。
+  /// 只改 principal（累计净投入，总盈亏 = 资产 − 本金），不动现金/资产/市值。
+  Future<void> setPrincipal(double amount) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/principal'),
+      headers: _headers,
+      body: jsonEncode({'amount': amount}));
     _check(resp);
   }
 
@@ -1468,8 +1495,7 @@ class PositionImportResult {
 
 /// 批量导入结果 DTO（POST /api/v1/trading/trades/batch）。
 /// 契约：逐条成功/失败结果；失败项带原始行号 + 人话原因。
-class BatchImportResponse {
-  final int success; // 成功条数
+class BatchImportResponse {  final int success; // 成功条数
   final List<BatchImportFailure> failures;
 
   BatchImportResponse({required this.success, required this.failures});
@@ -1520,9 +1546,70 @@ class BatchImportFailure {
   }
 }
 
+/// 历史成交导入结果 DTO（POST /api/v1/trading/trades/import，第五份文件，2026-08-18）。
+/// 契约：{imported, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
+/// imported=落流水笔数 / skipped=幂等去重跳过 / nonTrades=非交易事件（股息红利税等）/ lines=对账提示。
+class HistoricalTradeImportResult {
+  final int imported;
+  final int skipped;
+  final int nonTrades;
+  final List<ReconcileLine> lines;
+
+  HistoricalTradeImportResult({
+    required this.imported,
+    required this.skipped,
+    required this.nonTrades,
+    required this.lines,
+  });
+
+  factory HistoricalTradeImportResult.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return HistoricalTradeImportResult(imported: 0, skipped: 0, nonTrades: 0, lines: []);
+    }
+    return HistoricalTradeImportResult(
+      imported: (json['imported'] as num?)?.toInt() ?? 0,
+      skipped: (json['skipped'] as num?)?.toInt() ?? 0,
+      nonTrades: (json['nonTrades'] as num?)?.toInt() ?? 0,
+      lines: ((json['lines'] as List?) ?? [])
+          .map((e) => ReconcileLine.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+/// 历史成交导入对账行：每标的 导入笔数 / 流水净增减 / 当前持仓 / 人话提示。
+class ReconcileLine {
+  final String symbol;
+  final String name;
+  final int count;
+  final int netVolume;
+  final int? holdings;
+  final String note;
+
+  ReconcileLine({
+    required this.symbol,
+    required this.name,
+    required this.count,
+    required this.netVolume,
+    this.holdings,
+    required this.note,
+  });
+
+  factory ReconcileLine.fromJson(dynamic json) {
+    final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return ReconcileLine(
+      symbol: map['symbol'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      count: (map['count'] as num?)?.toInt() ?? 0,
+      netVolume: (map['netVolume'] as num?)?.toInt() ?? 0,
+      holdings: (map['holdings'] as num?)?.toInt(),
+      note: map['note'] as String? ?? '',
+    );
+  }
+}
+
 /// 反哺入库候选响应（POST /api/v1/trading/reviews/{date}/promote，#129）。
-class PromoteResponse {
-  final String status;
+class PromoteResponse {  final String status;
   final String path; // 99-inbox/ 候选文件路径
   final String message; // #178 融合提示
 

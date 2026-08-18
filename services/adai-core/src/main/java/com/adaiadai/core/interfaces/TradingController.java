@@ -31,10 +31,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -165,21 +161,80 @@ public class TradingController {
 
     /**
      * 持仓初始化导入（通达信导出 → 持仓快照）。
-     * POST /api/v1/trading/positions/import
+     * POST /api/v1/trading/positions/import?replace=true
      * body: [{"symbol":"600519","name":"贵州茅台","quantity":100,"avgCost":1400,"stopLossPrice":1350,"buyPoint":"B1"}]
      * name 缺失行情补全；止损/买点可选——导入结果返回 missingStopLoss 列表（R68 提示补设）。
+     * <p>
+     * {@code replace=true}（2026-08-18 确认批次）= 全量覆盖：以文件为准，
+     * 导入后移除文件里不存在的持仓（含 0 股残留），解决 upsert 无删除语义的漂移。
      */
     @PostMapping("/positions/import")
     public ResponseEntity<?> importPositions(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(defaultValue = "false") boolean replace,
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
-                userId, items != null ? items : List.of());
+                userId, items != null ? items : List.of(), replace);
         return ResponseEntity.ok(Map.of(
                 "imported", result.imported(),
                 "missingStopLoss", result.missingStopLoss()));
+    }
+
+    /**
+     * 批量记录交易（web 交易 CSV 批量导入，2026-08-18 补实现——此前前端调用一直 404）。
+     * POST /api/v1/trading/trades/batch，body {"trades":[...]}
+     * <p>
+     * 语义：逐笔走 recordTrade 链路（持仓增减 + 现金 + 手续费 + 逐笔流水）——日常多笔录入；
+     * 逐条失败不整批回滚：返回每行的成功/失败原因（带行号人话）。
+     */
+    @PostMapping("/trades/batch")
+    public ResponseEntity<?> batchTrades(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) BatchTradeRequest body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<BatchTradeRequest.BatchTradeItem> items = body != null && body.trades() != null
+                ? body.trades() : List.of();
+        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        int success = 0;
+        for (int i = 0; i < items.size(); i++) {
+            BatchTradeRequest.BatchTradeItem it = items.get(i);
+            try {
+                tradingAppService.recordTrade(userId, it.symbol(), it.name(), it.direction(),
+                        it.price(), it.volume(), it.entryDate(), it.stopLossPrice(), it.buyPoint(),
+                        it.targetPrice(), it.reason());
+                success++;
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                results.add(Map.of("row", i + 1, "message", msg));
+            }
+        }
+        return ResponseEntity.ok(Map.of("success", success, "failures", results));
+    }
+
+    /**
+     * 历史成交日志导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）。
+     * POST /api/v1/trading/trades/import，body {"content":"...（UTF-8 转码后文本）"}
+     * <p>
+     * 只补逐笔流水（entryDate=成交日 / fee=券商实扣 / orderId 幂等），不重算持仓与现金——
+     * 持仓/成本/现金以全量覆盖导入为准；返回导入统计 + 对账提示。
+     */
+    @PostMapping("/trades/import")
+    public ResponseEntity<?> importHistoricalTrades(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String content = body != null ? body.get("content") : null;
+        TradingAppService.HistoricalTradeImportResult result =
+                tradingAppService.importHistoricalTrades(userId, content != null ? content : "");
+        return ResponseEntity.ok(Map.of(
+                "imported", result.imported(),
+                "skipped", result.skipped(),
+                "nonTrades", result.nonTrades(),
+                "lines", result.lines()));
     }
 
     /**
@@ -379,6 +434,22 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(tradingAppService.accountSnapshot(userId));
+    }
+
+    /**
+     * 设置本金（累计净投入，2026-08-18）。
+     * PUT /api/v1/trading/principal，body {"amount":150000}
+     * 只写 principal 字段（总盈亏 = 资产 − 本金），不动现金/资产/市值——本金初始化用。
+     */
+    @PutMapping("/principal")
+    public ResponseEntity<?> setPrincipal(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        BigDecimal amount = body != null && body.get("amount") != null
+                ? new BigDecimal(body.get("amount").trim()) : null;
+        return ResponseEntity.ok(tradingAppService.setPrincipal(userId, amount));
     }
 
     /** 推送开关（RFC 20260817）：读取用户推送类型开关（GET /api/v1/trading/push-settings）。 */
@@ -647,10 +718,9 @@ public class TradingController {
      * <p>
      * RFC 20260815：name 改可空（web 标注"名称（可选）"），缺失时由 TradingAppService 以 symbol 兜底。
      * <p>
-     * RFC 20260816：BUY 必填止损位/买点（缺失 → 400 + 人话消息，由 {@link BuyFieldsRequired} 校验）；
-     * entryDate 可空缺省今天；SELL 时 stopLossPrice/buyPoint 可空。
+     * RFC 20260816：BUY 曾必填止损位/买点——2026-08-18 确认批次放开为可选（app 简化：
+     * 手机端只做日常买卖记录，止损位/买点归 web 端设置）；SELL 时两者本就可空。
      */
-    @BuyFieldsRequired
     public record TradeRequest(
             @NotBlank String symbol,
             @Size(max = 32) String name,
@@ -664,40 +734,20 @@ public class TradingController {
             String reason
     ) {}
 
-    /**
-     * BUY 必填止损/买点（RFC 20260816 §4.1）：direction=BUY 时 stopLossPrice/buyPoint 必填，
-     * 缺失 → 400 + 人话消息；SELL 及 null 请求直接放行。
-     */
-    @Target({ElementType.TYPE})
-    @Retention(RetentionPolicy.RUNTIME)
-    @Constraint(validatedBy = TradingController.BuyFieldsValidator.class)
-    public @interface BuyFieldsRequired {
-        String message() default "买入交易必须填写止损位（stopLossPrice）与买点类型（buyPoint）";
-        Class<?>[] groups() default {};
-        Class<? extends Payload>[] payload() default {};
-    }
-
-    /** {@link BuyFieldsRequired} 校验器：只对 BUY 强制，SELL 可空。 */
-    public static class BuyFieldsValidator implements ConstraintValidator<BuyFieldsRequired, TradeRequest> {
-
-        @Override
-        public boolean isValid(TradeRequest request, ConstraintValidatorContext context) {
-            if (request == null || request.direction() != TradeDirection.BUY) {
-                return true;
-            }
-            boolean missingStopLoss = request.stopLossPrice() == null;
-            boolean missingBuyPoint = request.buyPoint() == null || request.buyPoint().isBlank();
-            if (!missingStopLoss && !missingBuyPoint) {
-                return true;
-            }
-            StringBuilder message = new StringBuilder("买入交易缺少必填项：");
-            if (missingStopLoss) message.append("止损位 stopLossPrice");
-            if (missingStopLoss && missingBuyPoint) message.append("、");
-            if (missingBuyPoint) message.append("买点 buyPoint");
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(message.toString()).addConstraintViolation();
-            return false;
-        }
+    /** 批量记录交易请求体（web 交易 CSV 批量导入）。 */
+    public record BatchTradeRequest(List<BatchTradeItem> trades) {
+        public record BatchTradeItem(
+                String symbol,
+                String name,
+                TradeDirection direction,
+                BigDecimal price,
+                int volume,
+                LocalDate entryDate,
+                BigDecimal stopLossPrice,
+                String buyPoint,
+                BigDecimal targetPrice,
+                String reason
+        ) {}
     }
 
     public record ReviewResponse(String date, String content) {}

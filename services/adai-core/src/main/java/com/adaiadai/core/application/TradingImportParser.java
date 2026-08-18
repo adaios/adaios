@@ -1,8 +1,10 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -127,6 +129,80 @@ public final class TradingImportParser {
         return new CashQuery(cash.value, available.value, withdrawable.value,
                 marketValue.value, assets.value, pnl.value, positions, headerMatched);
     }
+
+    // ── 历史成交导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）──
+
+    /**
+     * 解析通达信历史成交查询导出 → 逐笔成交行。
+     * <p>
+     * 列格式（空格对齐）：成交日期 成交时间 证券代码 证券名称 买卖标志 成交数量 成交价格 成交金额
+     * 委托编号 成交编号 发生金额 股东代码 [备注]。要点：
+     * <ul>
+     *   <li>卖出数量为负（-200.00）→ volume 取绝对值 + direction=SELL</li>
+     *   <li>数量 0 行（如股息红利税资金下账）保留为 volume=0——调用方计入 nonTrades 不落流水</li>
+     *   <li>fee = |发生金额| 与 成交金额 之差（券商实际费用，含佣金/印花税/过户费）</li>
+     *   <li>orderId = 成交编号（幂等键）</li>
+     * </ul>
+     */
+    public static List<HistoricalTradeRow> parseHistoricalTrades(String content) {
+        List<HistoricalTradeRow> rows = new ArrayList<>();
+        List<String> lines = split(content);
+        int[] col = null;
+        for (String line : lines) {
+            if (line == null || line.isBlank() || line.startsWith("-")) continue;
+            String[] cells = line.split("\\s+");
+            if (col == null) {
+                int[] idx = locate(cells, "成交日期", "证券代码", "证券名称", "买卖标志",
+                        "成交数量", "成交价格", "成交金额", "成交编号", "发生金额");
+                // 表头需含核心列（成交日期/证券代码/买卖标志/成交编号），否则视为非历史成交导出
+                if (idx[0] >= 0 && idx[1] >= 0 && idx[3] >= 0 && idx[7] >= 0) {
+                    col = idx;
+                } else {
+                    return rows; // 空列表 → 调用方报「无法识别格式」
+                }
+                continue;
+            }
+            if (cells.length <= col[1] || !cells[col[1]].matches("\\d{6}")) continue;
+            String symbol = cells[col[1]].trim();
+            String name = col[2] >= 0 && col[2] < cells.length ? cells[col[2]].trim() : symbol;
+            String flag = col[3] >= 0 && col[3] < cells.length ? cells[col[3]].trim() : "";
+            TradeDirection direction = switch (flag) {
+                case "买入", "买" -> TradeDirection.BUY;
+                case "卖出", "卖" -> TradeDirection.SELL;
+                default -> null; // 非买卖标志（新股申购/配股等）→ 整行跳过
+            };
+            if (direction == null) continue;
+            double signedVolume = parseDoubleSafe(col[4], cells);
+            int volume = (int) Math.abs(signedVolume);
+            BigDecimal price = col[5] >= 0 && col[5] < cells.length
+                    ? parseNum(cells[col[5]]).stripTrailingZeros() : null;
+            if (price == null) continue;
+            LocalDate entryDate = parseDateSafe(col[0], cells);
+            if (entryDate == null) continue;
+            // 数量 0 行（股息红利税等非交易资金事件）保留——调用方计入 nonTrades 不落流水
+            if (volume == 0) {
+                rows.add(new HistoricalTradeRow(symbol, name, direction, price, 0, entryDate, null, null));
+                continue;
+            }
+            if (price.signum() <= 0) continue; // 有数量但无价格 → 数据异常跳过
+            BigDecimal amount = col[6] >= 0 && col[6] < cells.length ? parseNum(cells[col[6]]) : BigDecimal.ZERO;
+            BigDecimal occurred = col[8] >= 0 && col[8] < cells.length ? parseNum(cells[col[8]]) : null;
+            // fee = |发生金额| 与 成交金额 之差（券商实扣；买入发生金额为负）
+            BigDecimal fee = null;
+            if (occurred != null && amount.signum() > 0) {
+                fee = occurred.abs().subtract(amount).abs();
+            }
+            String orderId = col[7] >= 0 && col[7] < cells.length ? cells[col[7]].trim() : "";
+            rows.add(new HistoricalTradeRow(symbol, name, direction, price, volume,
+                    entryDate, fee, orderId.isEmpty() ? null : orderId));
+        }
+        return rows;
+    }
+
+    /** 历史成交行（解析后入参，供 {@code importHistoricalTrades} 落流水）。 */
+    public record HistoricalTradeRow(String symbol, String name, TradeDirection direction,
+                                     BigDecimal price, int volume, LocalDate entryDate,
+                                     BigDecimal fee, String orderId) {}
 
     // ── 工具 ──
 

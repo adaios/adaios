@@ -196,6 +196,22 @@ bool isTdxExport(String text) {
   return (low.contains('证券代码') || low.contains('代码')) && (low.contains('成本价') || low.contains('成本'));
 }
 
+/// 历史成交查询导出是否可识别（第五份文件，2026-08-18）。
+/// 表头特征：含「成交日期」「证券代码」「买卖标志」「成交编号」。
+/// 与持仓导出（成本价）/ 交易 CSV（symbol,name,direction…）区分开。
+/// 通达信历史成交文件表头前有 `----` 分隔线 → 跳过以 `-` 开头的行再判断。
+bool isTdxHistoryExport(String text) {
+  for (final l in text.split(RegExp(r'[\r\n]+'))) {
+    final t = l.trim();
+    if (t.isEmpty || t.startsWith('-')) continue;
+    return t.contains('成交日期') &&
+        t.contains('证券代码') &&
+        t.contains('买卖标志') &&
+        t.contains('成交编号');
+  }
+  return false;
+}
+
 /// 通达信解析结果：持仓快照行 + 错误列表。
 class TdxParseResult {
   final List<TdxPositionRow> rows;

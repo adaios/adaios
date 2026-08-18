@@ -8,6 +8,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
+> 2026-08-18 生产日志审查（P0-1 已修复）：**P0-1 `<think>` 壳泄漏**——图片记录 summary 落 `<think>` 思考原文（5+2 条，用户可见 + 交易归集中断）。修复：`GlmResponseParser` 降级路径剥壳 + 未闭合 think/answer 处理 + `max_tokens` 1024→2048；生产 7 条脏记录 glm-4v-flash 重识别清洗 + memory 重建（备份 .bak-20260818-p0 保留）。报告 `audits/2026-08-18-production-log.md`，详情 change-log。
 > 2026-08-17 deep 增量（范围 `c5aea47..HEAD`，13 commits / 121 文件，交易自理批1-5 A-E 全部优化）：守护 7 PASS / 0 HIT；派 backend/frontend/docs/knowledge ×4。**P0 无。战略×3 + P1×9 + P2×16 + P3×24（合并去重后）**。核心：账户账目无单一真源（现金 3 处独立推导，战略）；C2 买点 5 参数「待用户确认」却已硬编码上线每日推送（战略，K40）；D3 自称「完美图匹配」实为规则近似（战略，K43）；**切入自动刷新是死代码**（`entry.label=='交易'` 判 `=='trading'` 恒 false，P1-前端，功能从未生效）；recordTrade 只动现金不动市值（P1-后端）；closeAccountUpdate 残缺市值覆盖总资产（P1-后端）；CURRENT_MD 硬编码相对路径（3487b00 只修一半，P1×2 官交叉印证）；positionPercent 分母不含现金（R81 bug 复发）；importCashQuery 解析失败静默落零；打分按 symbol `.first` 同代码多笔错挂（P1-前端）；_loadAll 六请求 Future.wait 任一端点失败整页丢数据（P1-前端）；buy-points 响应示例与实现不符（P1-文档）。新增检查点 B49-B54 / F45-F52 / D47-D53 / K40-K43。
 > 2026-08-16 修复批（app-polish 审查落地）：**P-be-01 维护端点迁入 /admin/** 鉴权（安全）+ admin 收敛为纯治理（P-role 系列）+ app 补记忆修正/待办完成（P-role-02/P-app-03）+ 带图发图即对话 + 交易建议引擎**。后端 499 · app 112 · admin 34，全部出表。
 > 2026-08-15 deep 审核（范围 `7b0a527..HEAD`，33 commits / 181 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**P0 无。战略×2 + P1×5 + P2×7 + P3×21（P3 迁移 task-log）**。**修复批 S + S2 共 12 项已出表**（P1-B1-B4/D1 + P2-B1/B2/R1/R2/R3/D1/D2，后端 440 · app 94 · admin 33）；**战略剩余仅 #179（v1.0.1 登录体系）**；已沉淀检查点 B34-36 / F33-36 / D27-29。
@@ -24,6 +25,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-18 | 生产日志审查（journalctl 当日 2986 行）| 49.235.37.220 运行日志 | 主会话直接核读 | P0×1 + P1×2 + P2×4 + P3×4 | 0（审查只报告，报告见 `audits/2026-08-18-production-log.md`）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| c5aea47..HEAD（13 commits）| backend/frontend/docs/knowledge ×4 | 战略×3 + P1×9 + P2×16 + P3×24 | 0（审核不直接修）|
 | 2026-08-16 | deep 增量（框架+插件 G-1~G-6）| 7734d99..HEAD（2 commits）| backend/knowledge/docs ×3 | 战略×4 + P1×4 + P2×9 | 0（审核不直接修）|
 | 2026-08-15 | deep 增量（批 Q/R + 展示层聚合 + 发布核对）| 7b0a527..HEAD | backend/frontend/docs ×3 | 战略×2 + P1×5 + P2×7 + P3×21 | 0（审核不直接修）|

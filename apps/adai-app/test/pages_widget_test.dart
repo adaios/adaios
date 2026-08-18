@@ -429,7 +429,7 @@ void main() {
       expect(find.text('重试'), findsNothing);
     });
 
-    testWidgets('NL 解析 → 确认卡回显（含止损/买点回填）→ 确认记录', (tester) async {
+    testWidgets('NL 解析 → 确认卡回显 → 确认记录（2026-08-18 简化：止损/买点不回填不发送）', (tester) async {
       final b = _Backend();
       mockBase(b);
       b.handlers['/api/v1/trading/trades/parse'] = (_) async => _json({
@@ -457,11 +457,11 @@ void main() {
       expect(find.text('确认记录'), findsOneWidget);
       expect(tester.widget<TextField>(fieldByHint('股数')).controller?.text, '1000');
       expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.20');
-      // RFC 20260816：NL 带回止损/买点 → 确认卡回填（用户可改）
-      expect(tester.widget<TextField>(fieldByHint('止损价')).controller?.text, '4.90');
-      expect(find.text('B1'), findsOneWidget); // 买点下拉默认/回填 B1
+      // 2026-08-18 简化：NL 带回的止损/买点不再回填（app 不展示这两项，归 web 端）
+      expect(fieldByHint('止损价'), findsNothing);
+      expect(find.text('B1'), findsNothing);
 
-      // 确认 → POST /trading/trades（写真实交易，BUY 带止损/买点）
+      // 确认 → POST /trading/trades（只带买卖四要素）
       await tester.tap(find.text('确认记录'));
       await tester.pumpAndSettle();
 
@@ -471,8 +471,8 @@ void main() {
       expect(tradeBody!['direction'], 'BUY');
       expect(tradeBody!['price'], 5.2);
       expect(tradeBody!['volume'], 1000);
-      expect(tradeBody!['stopLossPrice'], 4.9);
-      expect(tradeBody!['buyPoint'], 'B1');
+      expect(tradeBody!.containsKey('stopLossPrice'), isFalse); // 止损归 web，app 不发
+      expect(tradeBody!.containsKey('buyPoint'), isFalse);
       expect(find.textContaining('已买入'), findsOneWidget); // 人话 SnackBar
       expect(find.text('确认记录'), findsNothing); // 确认卡已收起
     });
@@ -546,34 +546,7 @@ void main() {
       expect(traded, isFalse);
     });
 
-    testWidgets('BUY 缺止损拦截：清空自动带出止损 → 人话提示，不提交', (tester) async {
-      final b = _Backend();
-      mockBase(b);
-      var traded = false;
-      b.handlers['/api/v1/trading/trades'] = (_) async {
-        traded = true;
-        return _json({'positions': []});
-      };
-      await pumpTrading(tester, b);
-
-      await tester.tap(find.text('精确填写'));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
-      await tester.enterText(fieldByHint('成交单价'), '5.2');
-      await tester.enterText(fieldByHint('股数'), '1000');
-      // 2026-08-17：价格填完止损自动带出（默认 -7% = 4.84）；清空后提交才缺止损
-      expect(find.text('4.84'), findsOneWidget, reason: '价格 5.2 → 默认止损 5.2×0.93=4.84');
-      await tester.enterText(fieldByHint('默认按买入价 -7%，可改'), '');
-      await tester.tap(find.text('买入'));
-      await tester.pumpAndSettle();
-
-      // RFC 20260816：BUY 缺止损 → 前端人话拦截（对齐后端 400 语义）
-      expect(find.text('买入请填止损位，跌破就按计划处理'), findsOneWidget);
-      expect(traded, isFalse); // 未发请求
-    });
-
-    testWidgets('精确表单 BUY：填止损 + 默认买点 B1 → 请求带上', (tester) async {
+    testWidgets('精确表单 BUY：无止损/买点字段，直接提交（简化后归 web 设置）', (tester) async {
       final b = _Backend();
       mockBase(b);
       Map<String, dynamic>? tradeBody;
@@ -586,17 +559,20 @@ void main() {
       await tester.tap(find.text('精确填写'));
       await tester.pumpAndSettle();
 
+      // 2026-08-18 简化：精确表单只有 标的/价格/数量，无止损/买点字段
+      expect(find.text('止损位'), findsNothing);
+      expect(find.text('买点'), findsNothing);
+
       await tester.enterText(fieldByHint('如 600519 或 贵州茅台'), '000725');
       await tester.enterText(fieldByHint('成交单价'), '5.2');
       await tester.enterText(fieldByHint('股数'), '1000');
-      await tester.enterText(fieldByHint('默认按买入价 -7%，可改'), '4.9');
       await tester.tap(find.text('买入'));
       await tester.pumpAndSettle();
 
       expect(tradeBody, isNotNull);
       expect(tradeBody!['direction'], 'BUY');
-      expect(tradeBody!['stopLossPrice'], 4.9);
-      expect(tradeBody!['buyPoint'], 'B1'); // 买点默认 B1
+      expect(tradeBody!.containsKey('stopLossPrice'), isFalse); // 止损归 web，app 不发
+      expect(tradeBody!.containsKey('buyPoint'), isFalse);
       expect(find.textContaining('已买入'), findsOneWidget);
     });
 

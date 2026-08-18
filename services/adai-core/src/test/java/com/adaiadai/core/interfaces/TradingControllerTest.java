@@ -41,8 +41,10 @@ import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -199,30 +201,23 @@ class TradingControllerTest {
     }
 
     @Test
-    void recordTrade_buyMissingStopLoss_400() throws Exception {
-        // RFC 20260816：BUY 缺止损位/买点 → 400 + 人话消息（不再放行无止损的买入）
-        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+    void recordTrade_buyWithoutStopLossBuyPoint_200() throws Exception {
+        // 2026-08-18 确认批次：app 简化为纯买卖记录——BUY 止损/买点放开为可选（归 web 端设置），不再 400
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any()))
+                .thenReturn(List.of(position("600000")));
+        MockMvc mvc = buildMvc(trading);
 
         mvc.perform(post("/api/v1/trading/trades")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100}"""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("止损位")));
-    }
-
-    @Test
-    void recordTrade_buyMissingBuyPoint_400() throws Exception {
-        // BUY 只填止损缺买点 → 400（买点同样必填）
-        MockMvc mvc = buildMvc(mock(TradingAppService.class));
-
-        mvc.perform(post("/api/v1/trading/trades")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"symbol":"600000","name":"浦发银行","direction":"BUY","price":10.5,"volume":100,
-                                "stopLossPrice":9.5}"""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value(containsString("买点")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("600000"));
+        // 缺省入参透传：stopLoss/buyPoint 为 null（web 端补设止损，建议引擎降级窗口）
+        verify(trading).recordTrade(any(), eq("600000"), any(), eq(TradeDirection.BUY),
+                eq(new BigDecimal("10.5")), eq(100), any(), isNull(), isNull(), any(), any());
     }
 
     @Test
@@ -576,7 +571,7 @@ class TradingControllerTest {
                 new TradeRecord("trade_1", "000725", "京东方A", TradeDirection.BUY,
                         new java.math.BigDecimal("5.2"), 1000, new java.math.BigDecimal("5200"),
                         java.time.LocalDate.of(2026, 8, 16), new java.math.BigDecimal("4.9"), "B1",
-                        null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null)));
+                        null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null, null)));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
@@ -591,6 +586,96 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$[0].symbol").value("000725"))
                 .andExpect(jsonPath("$[0].stopLossPrice").value(4.9))
                 .andExpect(jsonPath("$[0].buyPoint").value("B1"));
+    }
+
+    @Test
+    void importHistoricalTrades_importsAndReportsReconciliation() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+                new TradingAppService.HistoricalTradeImportResult(45, 1, 1,
+                        java.util.List.of(new TradingAppService.ReconcileLine(
+                                "000725", "京东方Ａ", 7, -400, 4800,
+                                "当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（以持仓快照为准）"))));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"成交日期 证券代码 买卖标志 ...\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(45))
+                .andExpect(jsonPath("$.skipped").value(1))
+                .andExpect(jsonPath("$.nonTrades").value(1))
+                .andExpect(jsonPath("$.lines[0].symbol").value("000725"))
+                .andExpect(jsonPath("$.lines[0].netVolume").value(-400))
+                .andExpect(jsonPath("$.lines[0].holdings").value(4800));
+        verify(trading).importHistoricalTrades(eq("default"), any());
+    }
+
+    @Test
+    void importHistoricalTrades_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"...\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void setPrincipal_updatesPrincipal() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.setPrincipal(any(), any())).thenReturn(
+                new AccountSnapshot(new BigDecimal("112566.91"), new BigDecimal("657.91"),
+                        new BigDecimal("657.91"), new BigDecimal("657.91"),
+                        new BigDecimal("111909.00"), new BigDecimal("18688.28"), BigDecimal.ZERO,
+                        new BigDecimal("150000"), LocalDate.of(2026, 8, 18)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(put("/api/v1/trading/principal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":150000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.principal").value(150000));
+        verify(trading).setPrincipal(eq("default"), eq(new BigDecimal("150000")));
+    }
+
+    @Test
+    void setPrincipal_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(put("/api/v1/trading/principal")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":150000}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void batchTrades_reportsPartialFailures() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        // 第 1 行成功，第 2 行失败（卖出超持仓）
+        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.BUY), any(), anyInt(), any(),
+                any(), any(), any(), any())).thenReturn(java.util.List.of());
+        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.SELL), any(), anyInt(), any(),
+                any(), any(), any(), any())).thenThrow(
+                new com.adaiadai.core.infrastructure.storage.StorageException("卖出数量超过持仓"));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trades\":["
+                                + "{\"symbol\":\"600519\",\"name\":\"贵州茅台\",\"direction\":\"BUY\",\"price\":1400,\"volume\":100},"
+                                + "{\"symbol\":\"000725\",\"name\":\"京东方A\",\"direction\":\"SELL\",\"price\":5.2,\"volume\":99999}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(1))
+                .andExpect(jsonPath("$.failures.length()").value(1))
+                .andExpect(jsonPath("$.failures[0].row").value(2));
+    }
+
+    @Test
+    void batchTrades_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(post("/api/v1/trading/trades/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trades\":[]}"))
+                .andExpect(status().isForbidden());
     }
 
 
@@ -618,7 +703,7 @@ class TradingControllerTest {
     @Test
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean())).thenReturn(
                 new TradingAppService.PositionImportResult(2,
                         java.util.List.of("600519 贵州茅台", "000725 京东方A")));
         MockMvc mvc = buildMvc(trading);

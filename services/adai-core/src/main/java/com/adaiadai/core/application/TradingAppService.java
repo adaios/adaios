@@ -18,8 +18,11 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -229,7 +232,7 @@ public class TradingAppService {
                     IdGenerator.monotonic("trade_"),
                     symbol, name, direction, price, volume,
                     entryDate, stopLossPrice, buyPoint, targetPrice, reason,
-                    null, LocalDateTime.now(), sourceRecordId);
+                    null, LocalDateTime.now(), sourceRecordId, null);
             tradingHistoryRepository.append(userId, trade);
         } catch (Exception e) {
             log.warn("交易流水写入失败（不影响交易落库）| symbol={} | {}", symbol, e.getMessage());
@@ -321,10 +324,15 @@ public class TradingAppService {
      * <p>
      * 按 symbol upsert（已存在更新数量/成本，不存在新增）；name 缺失时用行情补全；
      * 返回导入统计（导入数 + 未设止损列表——R68 提示补设，建议引擎/推送才按纪律工作）。
+     * <p>
+     * 全量覆盖（2026-08-18 确认批次）：{@code replace=true} 时「以文件为准」——
+     * 导入后移除文件里不存在的持仓（含 0 股残留），解决 upsert 无删除语义导致的漂移；
+     * 通达信持仓导出是当日券商口径快照，与资金股份查询配套使用。
      *
-     * @param items 导入项（代码/名称/数量/成本 + 可选止损/买点/角色/入场日期）
+     * @param items   导入项（代码/名称/数量/成本 + 可选止损/买点/角色/入场日期）
+     * @param replace true = 全量覆盖（文件为准，缺失删除）；false = upsert（默认）
      */
-    public PositionImportResult importPositions(String userId, List<PositionImportItem> items) {
+    public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace) {
         if (items == null || items.isEmpty()) {
             return new PositionImportResult(0, List.of());
         }
@@ -332,6 +340,7 @@ public class TradingAppService {
             List<Position> current = new ArrayList<>(positionRepository.findAll(userId));
             List<String> missingStopLoss = new ArrayList<>();
             int imported = 0;
+            Set<String> importedSymbols = new java.util.HashSet<>();
 
             for (PositionImportItem item : items) {
                 String symbol = item.symbol();
@@ -376,13 +385,18 @@ public class TradingAppService {
                 if (!effectiveStopLoss) {
                     missingStopLoss.add(symbol + " " + name);
                 }
+                importedSymbols.add(symbol);
                 imported++;
             }
 
+            // 全量覆盖：以文件为准——文件里没有的持仓 = 已清仓/不在券商口径，移除（含 0 股残留）
+            if (replace) {
+                current.removeIf(p -> !importedSymbols.contains(p.symbol()));
+            }
             current.removeIf(p -> p.quantity() <= 0);
             positionRepository.saveAll(userId, current);
-            log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只",
-                    userId, imported, missingStopLoss.size());
+            log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
+                    userId, imported, missingStopLoss.size(), replace, current.size());
             return new PositionImportResult(imported, missingStopLoss);
         }
     }
@@ -658,6 +672,153 @@ public class TradingAppService {
                         BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                         BigDecimal.ZERO, null));
     }
+
+    /**
+     * 设置本金（累计净投入，2026-08-18 确认批次）。
+     * <p>
+     * 背景：总盈亏 = 资产 − 本金；资金股份查询导入/转账推导都不覆盖本金，新建账号 principal=0
+     * → 总盈亏失真。本金是「累计净投入」的历史事实，不是当前资金变动——
+     * <b>只改 principal 字段，不动现金/资产/市值</b>（转账会动现金，不能用来初始化本金）。
+     */
+    public AccountSnapshot setPrincipal(String userId, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new TradingException("本金必须是大于 0 的金额");
+        }
+        synchronized (tradeLock(userId)) {
+            AccountSnapshot current = accountSnapshotRepository.findLatest(userId)
+                    .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                            BigDecimal.ZERO, LocalDate.now()));
+            AccountSnapshot updated = new AccountSnapshot(
+                    current.assets(), current.cash(), current.available(), current.withdrawable(),
+                    current.marketValue(), current.pnl(), current.todayPnl(),
+                    amount, current.snapshotDate());
+            accountSnapshotRepository.save(userId, updated);
+            log.info("本金设置 | userId={} | principal → {}（总盈亏 = 资产 {} - 本金 = {}）",
+                    userId, amount, current.assets(), current.assets().subtract(amount));
+            return updated;
+        }
+    }
+
+    // ── 历史成交导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）──
+
+    /**
+     * 导入历史成交日志（增量补录）。
+     * <p>
+     * 把券商成交逐笔补进 {@code trades/} 流水（entryDate=成交日、fee=券商实扣、orderId=成交编号幂等），
+     * 供交易历史/复盘/对账使用。设计原则（2026-08-18 确认批次）：
+     * <ul>
+     *   <li><b>不重算持仓/现金</b>——历史成交往往缺窗口前基线（本次 8/3 起、8/3 前已有持仓），
+     *       回放重建算不出券商口径（摊薄成本 vs 系统加权平均实测差 3.4 倍）；
+     *       持仓/成本/现金以「全量覆盖」导入（positions/import replace + imports/cash）为准</li>
+     *   <li><b>幂等</b>——按成交编号 orderId 去重，重复导入同一文件只落一次；
+     *       无编号按 (symbol, direction, entryDate, price, volume) 指纹去重</li>
+     *   <li><b>非交易事件跳过</b>——数量 0 行（如股息红利税资金下账）不落流水，计入 nonTrades</li>
+     *   <li><b>对账提示</b>——每标的返回流水净增减 vs 当前持仓，指出窗口前基线或未导入成交</li>
+     * </ul>
+     */
+    public HistoricalTradeImportResult importHistoricalTrades(String userId, String content) {
+        List<TradingImportParser.HistoricalTradeRow> rows = TradingImportParser.parseHistoricalTrades(content);
+        if (rows.isEmpty()) {
+            throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
+        }
+        int imported = 0, skipped = 0, nonTrades = 0;
+        List<TradeRecord> toAdd = new ArrayList<>();
+        synchronized (tradeLock(userId)) {
+            Set<String> orderIds = new HashSet<>();
+            Set<String> fingerprints = new HashSet<>();
+            for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+                if (t.orderId() != null && !t.orderId().isBlank()) {
+                    orderIds.add(t.orderId());
+                } else {
+                    fingerprints.add(fingerprint(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()));
+                }
+            }
+            for (TradingImportParser.HistoricalTradeRow r : rows) {
+                if (r.volume() <= 0) { nonTrades++; continue; } // 非交易事件（股息红利税等）
+                String oid = r.orderId();
+                if (oid != null && !oid.isBlank()) {
+                    if (orderIds.contains(oid)) { skipped++; continue; }
+                    orderIds.add(oid);
+                } else {
+                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
+                    if (fingerprints.contains(fp)) { skipped++; continue; }
+                    fingerprints.add(fp);
+                }
+                TradeRecord trade = TradeRecord.of(
+                        IdGenerator.monotonic("trade_"),
+                        r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
+                        r.entryDate(), null, null, null, null, r.fee(),
+                        LocalDateTime.now(), null, oid);
+                toAdd.add(trade);
+                imported++;
+            }
+            for (TradeRecord t : toAdd) tradingHistoryRepository.append(userId, t);
+        }
+        List<ReconcileLine> lines = reconcileHistorical(userId, rows);
+        log.info("历史成交导入 | userId={} | 导入 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
+                userId, imported, skipped, nonTrades, lines.size());
+        return new HistoricalTradeImportResult(imported, skipped, nonTrades, lines);
+    }
+
+    /** 幂等指纹（无成交编号时）：symbol|direction|entryDate|price|volume。 */
+    private String fingerprint(String symbol, TradeDirection direction, LocalDate entryDate,
+                               BigDecimal price, int volume) {
+        return symbol + "|" + direction + "|" + entryDate + "|" + price + "|" + volume;
+    }
+
+    /** 对账：每标的 流水净增减 vs 当前持仓数量 → 基线缺口提示（只报告，不改数据）。 */
+    private List<ReconcileLine> reconcileHistorical(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
+        Map<String, ReconcileAcc> acc = new LinkedHashMap<>();
+        for (TradingImportParser.HistoricalTradeRow r : rows) {
+            if (r.volume() <= 0) continue;
+            ReconcileAcc a = acc.computeIfAbsent(r.symbol(), k -> new ReconcileAcc(r.name()));
+            a.count++;
+            a.netVolume += r.direction() == TradeDirection.BUY ? r.volume() : -r.volume();
+        }
+        Map<String, Position> holdings = positionRepository.findAll(userId).stream()
+                .collect(java.util.stream.Collectors.toMap(Position::symbol, p -> p, (a, b) -> a));
+        List<ReconcileLine> lines = new ArrayList<>();
+        for (Map.Entry<String, ReconcileAcc> e : acc.entrySet()) {
+            ReconcileAcc a = e.getValue();
+            Position h = holdings.get(e.getKey());
+            String note;
+            if (h == null) {
+                note = "当前无持仓——已清仓或快照未含（流水净 " + signed(a.netVolume) + " 股）";
+            } else if (h.quantity() == a.netVolume) {
+                note = "流水净增减与持仓一致（窗口内成交完整）";
+            } else {
+                note = "当前持仓 " + h.quantity() + " ≠ 流水净 " + signed(a.netVolume)
+                        + "——存在窗口前基线或未导入成交（以持仓快照为准）";
+            }
+            lines.add(new ReconcileLine(e.getKey(), a.name, a.count, a.netVolume,
+                    h != null ? h.quantity() : null, note));
+        }
+        return lines;
+    }
+
+    private static String signed(int v) {
+        return v > 0 ? "+" + v : String.valueOf(v);
+    }
+
+    /** 对账聚合（可变计数器）。 */
+    private static final class ReconcileAcc {
+        final String name;
+        int count;
+        int netVolume;
+
+        ReconcileAcc(String name) {
+            this.name = name;
+        }
+    }
+
+    /** 对账行：每标的 导入笔数 / 流水净增减 / 当前持仓 / 人话提示。 */
+    public record ReconcileLine(String symbol, String name, int count, int netVolume,
+                                Integer holdings, String note) {}
+
+    /** 历史成交导入结果：导入笔数 / 去重跳过 / 非交易事件 / 对账行。 */
+    public record HistoricalTradeImportResult(int imported, int skipped, int nonTrades,
+                                              List<ReconcileLine> lines) {}
 
     /** 自选导入结果。 */
     public record WatchlistImportResult(int imported) {}
