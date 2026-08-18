@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-18
 status: active
-lines: 66
+lines: 69
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -48,10 +48,13 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
 | context-reviewer | Context | ai/context/ 模板与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
 
+> **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。
+
 ## 4. 汇总与交叉印证
 
 - 各官独立输出（P0 → 战略 → P1 → P2/P3，含位置/问题/建议）
 - **交叉印证**：同一问题被 ≥2 官命中 → 标注 ⭐（多视角确认 = 优先级高）
+- **输出控字（成本纪律 2026-08-18）**：每条问题 ≤3 行（位置/一句问题/一句建议），仅 P0/战略级展开，P1-P3 列表直出（输出是 9-27 元/M 最贵通道）
 - 汇总进 `docs/review/REVIEW.md` 新增「全维度走查」区
 
 ## 5. 沉淀检查点 + 记录成本

@@ -3,9 +3,9 @@ title: 增量深审流程
 description: /review 的通用版——按改动范围派对应审查官，滚动更新 REVIEW.md
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-18
 status: active
-lines: 71
+lines: 75
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -52,9 +52,13 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | ai/**、ai-engineering/** | context-reviewer |
 | 跨多目录 | 多官并行 |
 
+> **模型分层（成本纪律 2026-08-18）**：deep 派官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。`--full` 已默认不跑，见 `audit.md` 成本纪律。
+
 ## 4. 汇总排序
 
 收集各官结果 → 去重合并 → P0（数据丢失）→ 战略 → P1 → P2/P3。守护命中并入。
+
+- **输出控字（成本纪律 2026-08-18）**：每条问题 ≤3 行（位置/一句问题/一句建议），仅 P0/战略级展开，P1-P3 列表直出（输出是 9-27 元/M 最贵通道）。
 
 ## 5. 滚动更新 REVIEW.md
 
