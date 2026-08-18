@@ -108,3 +108,6 @@ services/adai-core/data/
 *.ipa
 *.dSYM.zip
 *.dSYM
+
+# ── 成本日志（运行时数据，个人花费隐私，不入库）──
+ai-engineering/state/cost-log.jsonl

@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-18
 status: active
-lines: 61
+lines: 63
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -36,6 +36,7 @@ tags: [ai, meta, index]
 | method/_index.md | 方法论层（切入点图谱/流水线/脚手架）| active |
 | guard-context.sh | 任务上下文注入（开工前清单，进攻侧）| active |
 | guard-sediment.sh | 沉淀检查（坑/ADR/出表/登记，进攻侧②③）| active |
+| guard-cost.sh | 成本监控（读 DSH 会话日志按天/会话算钱，防守侧）| active |
 | deploy-gate.sh | 部署门禁+smoke（触发侧，最硬闸门）| active |
 | weekly-audit.sh | 每周审查（cron，防休眠）| active |
 | checklists/review-ux.md | 交互检查清单 | active |
@@ -47,6 +48,7 @@ tags: [ai, meta, index]
 | checklists/review-docs.md | 文档契约检查清单 | active |
 | checklists/review-knowledge.md | 知识数据检查清单 | active |
 | checklists/guard.md | 守护检查清单（G1-G7）| active |
+| checklists/cost.md | 成本纪律（烧钱动作清单 + 省钱原则 + 盯账）| active |
 | assets/_index.md | 资产层索引（规范/边界/ADR/坑）| active |
 | workflow/_index.md | 工作流层索引（讨论→方案→开发→审核→验收）| active |
 | state/_index.md | 状态层索引（指针化真相源）| active |

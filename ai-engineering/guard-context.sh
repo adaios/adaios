@@ -111,6 +111,32 @@ if c.exists():
                     out.append(row)
 out.append("")
 
+# C6.5 成本纪律（每次开工提醒：今天烧了多少 + 省钱原则）
+out.append("## C6.5 成本纪律（省钱原则见 checklists/cost.md）")
+try:
+    import subprocess as _sp
+    _cost = _sp.run(['bash', str(AI/'guard-cost.sh'), '--day',
+                     __import__('datetime').date.today().isoformat()],
+                    capture_output=True, text=True, timeout=25)
+    _lines = [l for l in _cost.stdout.splitlines() if l.startswith('>')]
+    out.append('\n'.join('> ' + l[2:].strip() for l in _lines[:4]) if _lines else '> （guard-cost 未输出，跳过）')
+    for l in _cost.stdout.splitlines():
+        if l.startswith('- 今日已超') or l.startswith('- 缓存读取占') or l.startswith('- 调用次数超'):
+            out.append('> ⚠️ ' + l.lstrip('- '))
+    if TOPIC and ('cost' in TOPIC or '成本' in TOPIC or '省钱' in TOPIC):
+        c = AI/'checklists/cost.md'
+        if c.exists():
+            body = c.read_text(encoding='utf-8').splitlines()
+            start = 0
+            for i, l in enumerate(body):
+                if l.startswith('# 成本纪律'): start = i; break
+            for l in body[start+1:start+26]:
+                if l.startswith('## ') or l.startswith('| C') or l.startswith('### S'):
+                    out.append('> ' + l.strip())
+except Exception as _e:
+    out.append(f'> （guard-cost 调用失败: {_e}）')
+out.append("")
+
 # C6 待办（task-log 当前任务区）
 out.append("## C6 待办（task-log.md 当前任务）")
 tl = ROOT/'docs/reference/task-log.md'
