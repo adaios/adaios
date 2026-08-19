@@ -238,8 +238,8 @@
 
 | ID | 任务 | 完成 | 关联 |
 |:---|:-----|:----|:-----|
-| DONE-3 | **FeedCard 状态机修复** — ask 直接回复、close 显示总结、load more 滚动 | 07-28 | CLAUDE.md |
-| DONE-4 | **Chat 关闭流程修复** — ConversationController prompt 去第一人称、前端弹窗处理 | 07-28 | CLAUDE.md |
+| DONE-3 | **FeedCard 状态机修复** — ask 直接回复、close 显示总结、load more 滚动 | 07-28 | AGENTS.md |
+| DONE-4 | **Chat 关闭流程修复** — ConversationController prompt 去第一人称、前端弹窗处理 | 07-28 | AGENTS.md |
 | DONE-5 | **P0-P1 两轮修复** — 18 个问题的完整修复（详见 `issue-log.md`） | 07-28 | issue-log.md |
 
 ### M-AI — 提示词修复（本轮 07-29）

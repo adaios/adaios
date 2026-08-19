@@ -1,6 +1,6 @@
 ---
 title: 规范归集（Conventions）
-description: 代码/文档/协作三组规范集中声明——从 CLAUDE.md 与 AI 工程层（原 docs/ai）归集；单一事实源，不复制到子项目文档
+description: 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集；单一事实源，不复制到子项目文档
 version: 1
 created: 2026-08-15
 updated: 2026-08-18
@@ -8,14 +8,14 @@ status: active
 lines: 55
 depends-on: []
 related:
-  - ../../CLAUDE.md
+  - ../../AGENTS.md
   - ../frontmatter-spec.md
 tags: [ai, assets, conventions]
 ---
 
 # 规范归集
 
-> **定位**：代码/文档/协作三组规范的**单一事实源**。子项目 CLAUDE.md 只保留指针（不复制全文——避免双源漂移，REVIEW P3 docs×7）。改规范改这里，同步指针。
+> **定位**：代码/文档/协作三组规范的**单一事实源**。子项目 AGENTS.md 只保留指针（不复制全文——避免双源漂移，REVIEW P3 docs×7）。改规范改这里，同步指针。
 
 ## 一、代码规范
 
@@ -38,14 +38,14 @@ tags: [ai, assets, conventions]
 | D2 | 目录治理 | 每个目录 `_index.md`（职责+清单+过期判断）|
 | D3 | 单一事实源 | 数字（测试/端点）→ status.md；未修项 → REVIEW.md；批次 → change-log.md；蓝图 → roadmap |
 | D4 | 文档登记 | 新增/移动文档 → 更新对应 `_index.md` |
-| D5 | 人/AI 双读者分离 | AGENTS.md 给 AI、CLAUDE.md 给人，不合并 |
+| D5 | 人/AI 双读者分离 | AGENTS.md 给 AI、docs/README.md 给人，不合并 |
 
 ## 三、协作规范
 
 | # | 规范 | 说明 |
 |:-:|:-----|:-----|
 | W1 | 入口统一 | `POST /api/v1/records` 是唯一输入入口 |
-| W2 | 工作焦点分离 | 在哪个子目录工作只看哪个领域（子项目独立 CLAUDE.md）|
+| W2 | 工作焦点分离 | 在哪个子目录工作只看哪个领域（子项目独立 AGENTS.md，分层就近原则）|
 | W3 | 批次收尾 | `/ship`：测试→契约→登记→guard-meta 门禁→提交（见 `process/ship.md`）|
 | W4 | 决策沉淀 | 方案通过 → 决策入 `assets/adr/`；踩坑修复 → 入 `checklists/` + `assets/pitfalls.md` |
 | W5 | 提交规范 | 按批次主题（feat:/fix:/docs:），一提交一主题，不混合 |

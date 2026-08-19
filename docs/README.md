@@ -27,6 +27,8 @@
 
 | 文档 | 说明 |
 |:-----|:------|
+| [development.md](guides/development.md) | 🛠 开发指南：全局构建/测试/运行/部署命令（原根 CLAUDE.md 承接，2026-08-19）|
+| [skills-usage.md](guides/skills-usage.md) | 🧩 技能使用指南：11 个技能何时用、怎么触发、怎么维护（给人看）|
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
 
 ## 🎨 前端参考
@@ -35,7 +37,7 @@
 |:-----|:------|
 | [frontend-reference.md](architecture/frontend-reference.md) | 前端统一参考：UI 术语对照 + 布局视觉（含 adai-web 桌面端章节） |
 | [frontend-ui-reference.md](../apps/adai-app/UI_REFERENCE.md) | 📌 UI 元素精确对照：每个按钮→代码行 |
-| `apps/adai-web/CLAUDE.md` | 📐 adai-web 桌面端子项目（两栏壳 + 8 模块桌面形态） |
+| `apps/adai-web/AGENTS.md` | 📐 adai-web 桌面端子项目（两栏壳 + 8 模块桌面形态） |
 
 ## 📋 API 契约
 
@@ -72,7 +74,7 @@
 | [20260802-multimodal-image-glm.md](rfc/20260802-multimodal-image-glm.md) | 2026-08-02 | 多模态图片记录：图片 → GLM-VLM → 现有文本闭环（L4） |
 | [20260813-record-task-and-sports-analysis.md](rfc/20260813-record-task-and-sports-analysis.md) | 2026-08-13 | 记录↔任务关联（R2）+ 相机动作分析（A2）：结构影响分析 + 方案 B 触发规则 |
 | [20260814-domain-plugin-model.md](rfc/20260814-domain-plugin-model.md) | 2026-08-14 | Domain=插件模型：Kernel 基础服务 / Domain 受控插件（插件门控全通道 + D5 domain 收敛）|
-| [20260815-docs-governance.md](rfc/20260815-docs-governance.md) | 2026-08-15 | 文档治理：瘦身 + 单一事实源（status.md / change-log.md / CLAUDE.md 指针化 / REVIEW 减负）|
+| [20260815-docs-governance.md](rfc/20260815-docs-governance.md) | 2026-08-15 | 文档治理：瘦身 + 单一事实源（status.md / change-log.md / AGENTS.md 统一 / REVIEW 减负）|
 | [20260815-media-event-unification.md](rfc/20260815-media-event-unification.md) | 2026-08-15 | 图文一体：媒体事件数据层统一（approved：层 1 展示层聚合已落地，层 2 数据层整体化排 v1.0.1）|
 | [20260816-framework-plus-plugin-model.md](rfc/20260816-framework-plus-plugin-model.md) | 2026-08-16 | 框架+插件形态总纲（决策记录，已提升为正式架构文档）|
 | [20260816-trading-agent-plugin-model.md](rfc/20260816-trading-agent-plugin-model.md) | 2026-08-16 | 交易 Agent 三阶段插件模型（裸问答 → +行情 → +规则，能力按用户叠加）|
@@ -106,7 +108,7 @@
 | 文档 | 说明 |
 |:-----|:------|
 | [status.md](reference/status.md) | 📌 测试数/端点数/运行环境唯一真相源（RFC `20260815-docs-governance`，/ship 时更新）|
-| [change-log.md](reference/change-log.md) | 批次变更日志（历史归档，根 CLAUDE.md「已完成」来源）|
+| [change-log.md](reference/change-log.md) | 批次变更日志（历史归档，历史批次来源）|
 | [feature-reference.md](reference/feature-reference.md) | 功能参考文档（唯一功能真相源） |
 | [task-log.md](reference/task-log.md) | 任务开发文档（从产品路线拆任务 + REVIEW P3/观察项待办）|
 | [task-plugin-model.md](reference/task-plugin-model.md) | 任务插件模型（RFC `20260814-domain-plugin-model` 关联）|

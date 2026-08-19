@@ -3,13 +3,13 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-20
 status: active
-lines: 65
+lines: 68
 depends-on:
   - ai-engineering/README.md
 related:
-  - CLAUDE.md
+  - ARCHITECTURE.md
   - docs/VISION.md
   - docs/architecture/product-roadmap.md
 tags: [ai, entry]
@@ -17,7 +17,7 @@ tags: [ai, entry]
 
 # AdaiOS — AI 协作入口
 
-> 本文件是**任何 AI 工具**进入 AdaiOS 项目的统一入口（与工具无关；Claude/Qoder/DSH 等均读取同一份）。人类完整项目说明见 `CLAUDE.md`，本文件只承载 AI 协作必需的最小导航。
+> 本文件是**任何 AI 工具**进入 AdaiOS 项目的统一入口（与工具无关；Claude/Qoder/DSH 等均读取同一份）。人类侧完整说明见 `docs/README.md`（文档索引），本文件只承载 AI 协作必需的最小导航。
 
 ## 项目一句话
 
@@ -26,8 +26,8 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 ## AI 协作规则（必读）
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash ai-engineering/guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
-1. **必读文档**：先读 `docs/VISION.md`（理念）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `ai-engineering/README.md`（本会话协作标准）
-2. **工作焦点分离**：子项目有独立 CLAUDE.md（`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
+1. **必读文档**：先读 `docs/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `ai-engineering/README.md`（本会话协作标准）
+2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口
 4. **第一原则「无第三视角」**：所有用户可见展示必须是「我和阿呆」的自然对话，不得出现系统视角标签（问：/答：/图片记录：/【备注】）
 5. **File First**：`os/` 与 `data/` 知识以文件为准，数据库为查询存在；`data/` 隐私受 gitignore 保护，不提交
@@ -41,7 +41,10 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 全维度走查 | `ai-engineering/process/audit.md` | 8 审查官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `ai-engineering/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `ai-engineering/process/ship.md` | /ship：测试→契约→登记→guard-meta 门禁→提交 |
-| 审查角色 | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 官 |
+| 审查角色（技能包） | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 官，封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
+| 建设技能 | `ai-engineering/skills/` | new-api / new-domain / ship 三技能：建设与收尾流程封装为 SKILL.md，加载即执行 |
+| 技能包规范 | `ai-engineering/assets/skills-spec.md` | SKILL.md 技能包标准：name + frontmatter 9 字段融合、五段结构、新增流程 |
+| 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
 | 检查清单 | `ai-engineering/checklists/` | 逐条可执行（人也能用）：8 官清单 + guard 守护 |
 | 元数据规范 | `ai-engineering/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|

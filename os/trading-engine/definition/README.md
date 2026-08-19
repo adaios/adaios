@@ -51,6 +51,6 @@ File First：`knowledge/`（规则/策略/教训）+ 宿主侧 `data/trading/`�
 
 ## 工作流导航
 
-- **构建流程**（课程 → 规则）：见 `pipeline/build-course.md`（权威在 `CLAUDE.md`）
+- **构建流程**（课程 → 规则）：见 `pipeline/build-course.md`（权威在 `AGENTS.md`）
 - **产出流程**（知识 → 输出形态）：见 `pipeline/build-engine.md`
 - **AI 消费入口**：`knowledge/context/`（rules/strategy/mistakes/current/identity）

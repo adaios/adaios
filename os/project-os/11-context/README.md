@@ -8,7 +8,7 @@
 - `docs/rfc/` — 设计决策
 - `docs/architecture/` — 系统文档
 - `git log` — 开发活动
-- `CLAUDE.md` — 项目约定
+- `AGENTS.md` — 项目约定
 
 ## 文件清单
 

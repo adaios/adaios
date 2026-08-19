@@ -14,7 +14,7 @@ tags: [review, checklist, context]
 
 # AI Context 审查检查清单（Context）
 
-> 对应 context-reviewer 四问：判断 `ai/context/`、`os/*/11-context/`、CLAUDE.md 加载结构能否帮助 AI **正确理解项目并执行任务**。
+> 对应 context-reviewer 四问：判断 `ai/context/`、`os/*/11-context/`、AGENTS.md 加载结构能否帮助 AI **正确理解项目并执行任务**。
 
 | # | 检查项 | 判定 |
 |:-:|:-------|:----:|

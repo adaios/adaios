@@ -25,7 +25,7 @@ AdaiOS 不是传统 CRUD 应用。它是围绕人、记忆、上下文、知识�
 - **Kernel + Domain OS** — 系统域与业务域分离
 - **File First, Database Second, Context Always** — 最高设计原则
 
-详见 [CLAUDE.md](CLAUDE.md) 和 [VISION.md](docs/VISION.md)。
+详见 [AGENTS.md](AGENTS.md) 和 [VISION.md](docs/VISION.md)。
 
 ## 快速开始
 

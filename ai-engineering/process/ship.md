@@ -50,7 +50,7 @@ tags: [ai, process, ship]
 
 - 新增/移动/删除文档 → 更新对应目录 `_index.md` 文件清单
 - 新增目录 → 补 `_index.md`（职责 + 文件清单 + 过期判断）
-- 子项目 CLAUDE.md「当前焦点」批次状态更新
+- 子项目 AGENTS.md「当前焦点」批次状态更新
 - `docs/reference/change-log.md` 顶部追加一行（日期 | 批次 | 摘要 | 测试数变化）
 
 ### 4. 决策沉淀（RFC 验收核验 + 沉淀检查）

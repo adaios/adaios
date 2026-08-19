@@ -24,11 +24,11 @@ tags: [ai, assets, boundaries]
 | B1 | **不出现第三视角**：所有用户可见展示必须是「我和阿呆」的自然对话，无系统标签（问：/答：/图片记录：/【备注】）| VISION §6 第一原则 |
 | B2 | **File First 不倒退**：`os/` 与 `data/` 长期知识以文件为准，数据库为查询存在；不把知识锁进数据库 | VISION §3.5 |
 | B3 | **数据隐私不泄**：`data/` 个人数据不进 git；新增落盘目录必须 gitignore 验证 | 安全基线 #127 |
-| B4 | **不提前微服务化**：Modular Monolith 是默认，直到满足独立生命周期/数据边界/部署/多人维护四条 | CLAUDE.md 开发规则 |
-| B5 | **不混合代码和知识**：代码仓库只放代码/配置/构建；Prompt 模板归 `kernel/context/prompt` | CLAUDE.md 开发规则 |
-| B6 | **Domain 间不直接依赖**：跨域协作经 application 层编排 | CLAUDE.md 分层规则 |
+| B4 | **不提前微服务化**：Modular Monolith 是默认，直到满足独立生命周期/数据边界/部署/多人维护四条 | ARCHITECTURE.md 红线 1 |
+| B5 | **不混合代码和知识**：代码仓库只放代码/配置/构建；Prompt 模板归 `kernel/context/prompt` | ARCHITECTURE.md 红线 2 |
+| B6 | **Domain 间不直接依赖**：跨域协作经 application 层编排 | ARCHITECTURE.md 分层依赖 |
 | B7 | **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）| AGENTS.md 规则 6 |
-| B8 | **外向动作默认不做**：部署/推送/外发网络请求须人确认（见 CLAUDE.md 部署说明 + deploy.sh 头部）| CLAUDE.md |
+| B8 | **外向动作默认不做**：部署/推送/外发网络请求须人确认（见 docs/guides/development.md 部署说明 + deploy.sh 头部）| docs/guides/development.md |
 | B9 | **仓库外兄弟目录只读**：ai-context-research/ 是设计来源参考，不编辑（方法论已放回仓库 ai-engineering/method/）| 本层约定 |
 
 ## 二、功能级边界（当前不做，解除须 RFC）

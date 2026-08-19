@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-20
 status: active
-lines: 63
+lines: 67
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -29,6 +29,9 @@ tags: [ai, meta, index]
 | roles/docs-reviewer.md | 文档契约官 | active |
 | roles/knowledge-reviewer.md | 知识数据官 | active |
 | roles/context-reviewer.md | AI Context 审查官 | active |
+| skills/new-api.md | 建设技能：新建/修改 API（代码→契约→测试→门控闭环）| active |
+| skills/new-domain.md | 建设技能：新增 Domain（RFC+六维→插件→数据流→落地）| active |
+| skills/ship.md | 建设技能：/ship 收尾闭环（五件套→契约→登记→门禁→提交）| active |
 | process/audit.md | 全维度走查流程 | active |
 | process/review.md | 增量深审流程 | active |
 | process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
@@ -50,6 +53,7 @@ tags: [ai, meta, index]
 | checklists/guard.md | 守护检查清单（G1-G7）| active |
 | checklists/cost.md | 成本纪律（烧钱动作清单 + 省钱原则 + 盯账）| active |
 | assets/_index.md | 资产层索引（规范/边界/ADR/坑）| active |
+| assets/skills-spec.md | 技能包规范（SKILL.md 融合规则：name + 9 字段、五段结构、新增流程）| active |
 | workflow/_index.md | 工作流层索引（讨论→方案→开发→审核→验收）| active |
 | state/_index.md | 状态层索引（指针化真相源）| active |
 | assets/adr/ADR-001.md | AI 工程层为一等公民 | accepted |

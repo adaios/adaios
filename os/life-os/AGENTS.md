@@ -1,4 +1,4 @@
-# CLAUDE.md — life-os
+# AGENTS.md — life-os
 
 > 这是 AdaiOS monorepo 的子项目（`os/life-os/`），于 2026-07-25 创建。
 > 工作方式与 trading-engine 一致：在本目录工作时，Claude 只看生活知识，不涉足后端或前端。

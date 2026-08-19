@@ -1,6 +1,6 @@
 # Trading Engine — 工作流（纪律交易 + 引擎运行）
 
-> 本文件定义 trading engine 的**运行工作流**——纪律交易六步法 + 引擎如何执行。构建流程（课程→规则）见 `pipeline/build-course.md`（CLAUDE.md 维护）；引擎输出流程（知识→形态）见 `pipeline/build-engine.md`。
+> 本文件定义 trading engine 的**运行工作流**——纪律交易六步法 + 引擎如何执行。构建流程（课程→规则）见 `pipeline/build-course.md`（AGENTS.md 维护）；引擎输出流程（知识→形态）见 `pipeline/build-engine.md`。
 
 ## 纪律交易六步法（用户日常场景）
 

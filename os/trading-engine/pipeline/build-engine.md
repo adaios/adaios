@@ -1,6 +1,6 @@
 # Trading Engine — Build 产出流程（知识 → 输出形态）
 
-> **定位**：这是"点 build 生成成熟输出口"的流程——把 trading-engine 的**知识层**（knowledge/context）编译成各种**可消费形态**。构建流程（课程→知识）见 `build-course.md`（CLAUDE.md 维护），本文件是**引擎对外输出的 build**。
+> **定位**：这是"点 build 生成成熟输出口"的流程——把 trading-engine 的**知识层**（knowledge/context）编译成各种**可消费形态**。构建流程（课程→知识）见 `build-course.md`（AGENTS.md 维护），本文件是**引擎对外输出的 build**。
 
 ## 核心：一个内核，多种出口
 

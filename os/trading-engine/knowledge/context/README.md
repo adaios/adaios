@@ -63,7 +63,7 @@ context://rules
 
 ## 构建过程归档（G-4 文档化）
 
-`01-raw/` ~ `10-prompts/`（含 `12-research/`、`99-inbox/`）是**构建过程**（课程 → 规则 → 系统），由 `CLAUDE.md` 工作流维护，**AI 对话不读**——AI 只消费本目录。物理结构保持不变（流水线单向依赖，编号从低到高），归属 `pipeline/` 语义（见 `pipeline/build-course.md`）。
+`01-raw/` ~ `10-prompts/`（含 `12-research/`、`99-inbox/`）是**构建过程**（课程 → 规则 → 系统），由 `AGENTS.md` 工作流维护，**AI 对话不读**——AI 只消费本目录。物理结构保持不变（流水线单向依赖，编号从低到高），归属 `pipeline/` 语义（见 `pipeline/build-course.md`）。
 
 ## 来源映射
 

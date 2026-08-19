@@ -58,7 +58,7 @@ tags: [review, checklist, knowledge]
 | K22 | 自动生成入库候选的隐私一致性：含真实持仓/财务数据进 git 时与 `data/*/trading/` gitignore 策略对照 | 候选真实持仓进 git（P0 #184，2026-08-12 已修复：promote 脱敏）|
 | K23 | 自动生成入库候选脱敏抽检：grep 真实持仓特征（`市值|现金余额|成本\d+|股`）命中且 git 追踪 = K8 红线复发；修复应落在生成源（TradingController.buildPromoteContent）而非事后改文件 | 2026-08-09 真实持仓进 git（P0 #184，2026-08-12 已修：sanitizeReviewContent 生成源脱敏）|
 | K24 | os/ 自动生成文件名约定一致性：`99-inbox/` 下文件名匹配 `YYYY-MM-DD_主题.md`（根因在 adai-core 生成代码 `TradingController.java:154` 硬编码 review- 前缀）| 候选文件名不符约定（P1 #211，2026-08-12）|
-| K25 | 子项目 CLAUDE.md 对 os/ 的只读声明 vs adai-core 实际写路径（promote→99-inbox）逐项对照，防「声明只读、实际写入」漂移 | adai-core CLAUDE.md:131 声称只读但 promote 写入（P2 #223，2026-08-12）|
+| K25 | 子项目 AGENTS.md 对 os/ 的只读声明 vs adai-core 实际写路径（promote→99-inbox）逐项对照，防「声明只读、实际写入」漂移 | adai-core AGENTS.md:131 声称只读但 promote 写入（P2 #223，2026-08-12）|
 | K26 | promote 脱敏后复查历史版本残留真实持仓（`git log --all --name-only -- "os/trading-engine/99-inbox/*.md"` 逐版本 grep 持仓特征）；仓库若推送过远端需登记 rewrite 决策而非静默接受 | f3ca035 历史残留真实持仓（P1 #239，2026-08-12）|
 | K27 | 自动生成候选改写标点后加全角括号配对检查（每行 `（` 与 `）` 计数相等），防半修引入未闭合括号 | R35) → R35 引入未闭合 `（`（P2 #241，2026-08-12）|
 | K28 | 删除某主题记录后复查残留 + rebuild 复发：grep `data/{userId}/records/` + `memory/` 该主题关键词，确认 ①源记录全删（note/question/conversation 派生三类）②派生记忆已删 ③部署触发 rebuild 后不复发；删除操作自身也可能被沉淀为 actionable 待办（需一并清） | 2026-08-14 岗位调整残留——漏删源记录 rec_20260813_201151636 → memory rebuild 反复重新派生岗位记忆（"删了又出现"根因）+ 清理动作自身沉淀 actionable 待办 mem_20260814_102636776「删除岗位调整记录仍残留」出现在 Feed 顶部（已清）|
@@ -76,7 +76,7 @@ tags: [review, checklist, knowledge]
 | K35 | 记忆修正闭环复核：用户端/管理端修正后，记忆文件 kind/summary/tags 实际更新（非仅内存）| P-role-02 修正链路（2026-08-16）|
 | K36 | 知识路径迁移对拍：目录 git mv 后 grep 范围须含 application.yml/yml 默认路径（Spring 属性优先级 yml 赢 @Value 默认）| trading-engine-path 残留 11-context（G-4 审查 P1，2026-08-16）|
 | K37 | 自动刷新脚本必须**幂等** + 实测验证：重复运行不堆叠注记、空输入不产生占位符行、时间戳语义区分「文件刷新」与「状态更新」（防骗 build 门禁）| update-current.sh 非幂等 + 占位符（G-4 审查 P1/P3，2026-08-16）|
-| K38 | 规则口径 vs 原文抽检：spec/引擎/CLAUDE.md 声明的判定口径与 rules.md 原文逐条对拍（"收盘跌破" vs 现价等），不一致注明偏差 | R66 现价口径（G-4 审查 P1，2026-08-16）|
+| K38 | 规则口径 vs 原文抽检：spec/引擎/AGENTS.md 声明的判定口径与 rules.md 原文逐条对拍（"收盘跌破" vs 现价等），不一致注明偏差 | R66 现价口径（G-4 审查 P1，2026-08-16）|
 | K39 | 输出样板编号对拍：Skill/Agent 样板引用的编号（E1-E25、R1-R60）与 knowledge/context 实际编号一致 | agent-skill E1-E25 vs 实际 E1-E30（G-5 审查 P2，2026-08-16）|
 | K40 | 规格草稿状态 vs 代码实现状态对拍：标注「待用户确认」的规格参数不得以硬编码默认值进入生产推送链路；未确认参数须为配置项或带「待确认」标记 | C2 5 参数待确认已硬编码上线每日推送（交易 A-E 审查战略，2026-08-17）|
 | K41 | 知识路径契约全消费者扫描：grep `os/trading-engine` 硬编码路径必须全部经 @Value/yml 注入；新增知识读取点必须复用统一配置 | CURRENT_MD 硬编码 3487b00 只修一半（交易 A-E 审查 P1，2026-08-17）|

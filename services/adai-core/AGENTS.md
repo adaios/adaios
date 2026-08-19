@@ -1,8 +1,8 @@
-# CLAUDE.md — adai-core
+# AGENTS.md — adai-core
 
 AdaiOS 核心运行时（Java 17 + Spring Boot 3.3.x）。
 
-> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 CLAUDE.md 和 VISION.md。
+> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 AGENTS.md 和 VISION.md。
 > **在本目录工作时，你的上下文限制在 adai-core 后端，不处理前端、交易知识等其他项目。**
 
 ---

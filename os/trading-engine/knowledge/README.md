@@ -18,7 +18,7 @@ knowledge/
 ## AI 消费规则
 
 1. **只读 `context/` 下 5 个文件 + 本 README**——这就是交易系统对 AI 的全部接口。
-2. `01-raw/` ~ `10-prompts/`、`12-research/`、`99-inbox/` 是**构建过程**（课程→规则→系统），由 `CLAUDE.md` 工作流维护，AI 对话不读、不改（见 `CLAUDE.md` 目录权限表）。
+2. `01-raw/` ~ `10-prompts/`、`12-research/`、`99-inbox/` 是**构建过程**（课程→规则→系统），由 `AGENTS.md` 工作流维护，AI 对话不读、不改（见 `AGENTS.md` 目录权限表）。
 3. **不新增知识**：本层只重组 `05-system + 04-rules + 03-glossary`，不包含新知识。
 4. **版本同步**：系统收敛（Phase C）时重建本层；`current.md` 用 `09-scripts/update-current.sh` 半自动刷新。
 

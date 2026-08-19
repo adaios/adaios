@@ -1,8 +1,8 @@
-# CLAUDE.md — adai-web
+# AGENTS.md — adai-web
 
 AdaiOS 桌面端（Flutter Web，独立 UI——非 adai-app 适配）。
 
-> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 CLAUDE.md 和 VISION.md。
+> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 AGENTS.md 和 VISION.md。
 > **在本目录工作时，你的上下文限制在桌面端前端，不处理后端、adai-app、交易知识等其他项目。**
 
 ---

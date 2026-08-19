@@ -1,4 +1,4 @@
-# CLAUDE.md — adai-trading-engine
+# AGENTS.md — adai-trading-engine
 
 > **这是 AdaiOS monorepo 的一个子项目**（位于 `os/trading-engine/`），已于 2026-07-18 合并到根仓库。
 > 工作方式与之前完全一致：在本目录工作时，Claude 只看交易知识，不涉足后端或前端。唯一区别是 `git commit` 统一走根目录。

@@ -1,4 +1,4 @@
-# CLAUDE.md — project-os
+# AGENTS.md — project-os
 
 > 这是 AdaiOS monorepo 的子项目（`os/project-os/`），于 2026-07-25 创建。
 > 工作方式与 trading-engine 一致：在本目录工作时，Claude 只看项目管理知识，不涉足后端或前端。
@@ -37,7 +37,7 @@ Project OS 与其他 Domain OS 不同——它的知识来源除了本目录，�
 | `docs/rfc/` | 设计决策记录 | 让 AI 了解架构决策史 |
 | `docs/architecture/` | 系统架构文档 | 让 AI 理解系统设计 |
 | `git log` | 提交历史 | 让 AI 追踪开发进度 |
-| `CLAUDE.md` | 项目约定 | 让 AI 遵守规范 |
+| `AGENTS.md` | 项目约定 | 让 AI 遵守规范 |
 
 ## 生命周期
 

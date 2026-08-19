@@ -1,8 +1,8 @@
-# CLAUDE.md — adai-app
+# AGENTS.md — adai-app
 
 AdaiOS Flutter 前端（Web / Android / iOS）。
 
-> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 CLAUDE.md 和 VISION.md。
+> 这是 AdaiOS monorepo 的一个子项目。在根目录下有全局 AGENTS.md 和 VISION.md。
 > **在本目录工作时，你的上下文限制在 Flutter 前端，不处理后端、交易知识等其他项目。**
 
 ---

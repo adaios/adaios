@@ -31,6 +31,7 @@ AI = ROOT / 'ai-engineering'
 files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
 files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录治理）
 files += sorted((AI/'roles').glob('*.md'))
+files += sorted((AI/'skills').glob('*.md'))        # 建设/流程技能包
 files += sorted((AI/'process').glob('*.md'))
 files += sorted((AI/'checklists').glob('*.md'))
 files += sorted((AI/'assets').glob('*.md'))      # 资产层
@@ -173,7 +174,7 @@ for f in files:
             target = (ROOT / cmd).resolve()
             if not target.exists():
                 fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
-    # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md、CLAUDE.md）
+    # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md；CLAUDE.md 2026-08-19 已删，正则保留防残留）
     for m in re.finditer(r'`((?:docs|ai-engineering|AGENTS|CLAUDE)[\w./-]*(?:\.md|\.sh|/))`', text):
         ref = m.group(1).rstrip('/')
         if ref.endswith('/'): continue  # 目录引用跳过

@@ -26,8 +26,8 @@ tags: [review, checklist, docs]
 
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
-| D3 | 根 CLAUDE.md 架构图声明的类/组件是否真实存在 | CLAUDE.md 描述过期（DECISION/正则兜底/B Phase4 待做）（P2，已修）|
-| D4 | CLAUDE.md「当前焦点」状态表 vs REVIEW.md 是否同步 | — |
+| D3 | 根 ARCHITECTURE.md + adai-core AGENTS.md 声明的组件/依赖/红线是否真实存在 | 根 CLAUDE.md 描述曾过期（DECISION/正则兜底/B Phase4 待做）（P2，已修）|
+| D4 | AGENTS.md 审查体系表 vs ai-engineering/_index.md 是否同步（「当前焦点」已迁 change-log.md）| — |
 
 ## RFC 决策漂移
 
@@ -44,28 +44,28 @@ tags: [review, checklist, docs]
 | D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
 | D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 review-docs 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
-| D11 | 新增子项目 CLAUDE.md 的运行参数（端口/构建命令）与 `scripts/serve_web.sh` 跨文档对齐 | adai-web CLAUDE.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
+| D11 | 新增子项目 AGENTS.md 的运行参数（端口/构建命令）与 `scripts/serve_web.sh` 跨文档对齐 | adai-web AGENTS.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
 | D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
 | D13 | RFC frontmatter 一致性：`docs/rfc/*.md` 必须有 YAML frontmatter，缺则污染 `/project/status` rfcItems 状态 | 多模态 RFC 无 frontmatter → status=unknown（P1 #143，待修）|
-| D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/CLAUDE.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
+| D14 | 外部模型名/版本号跨文档对拍：roadmap/VISION/子项目 AGENTS.md 提及的外部模型与 `application.yml` 配置逐一对拍 | roadmap 仍写 GLM-4.6V-Flash（P1 #142，待修）|
 | D15 | README 索引完整性脚本化：`for f in docs/rfc/*.md; do grep -q "$(basename $f .md)" docs/README.md || echo 未登记` | README 缺 3 篇 RFC（P1 #141，待修）|
-| D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 CLAUDE.md 已完成清单同步 | 五层状态表过期（战略 #130，待修）|
-| D17 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）：冻结契约/代码注释/迁移脚本/前端默认 userId/CLAUDE.md 五处 | default→adai 迁移后 freeze/MarketAlert/前端默认值全残留（P1 #180）|
+| D16 | 「当前状态」类真相源联动：VISION §7 / product-architecture 状态表 / system-architecture §七 三处 ✅❌ 须与 change-log.md 批次同步 | 五层状态表过期（战略 #130，待修）|
+| D17 | 数据用户层迁移/rename 后 grep 残留旧层路径引用（`data/default` 等）：冻结契约/代码注释/迁移脚本/前端默认 userId/子项目 AGENTS.md 四处 | default→adai 迁移后 freeze/MarketAlert/前端默认值全残留（P1 #180）|
 | D18 | api-spec 版本/变更记录强同步：diff 触及任一 § 内容必须升版 + 追加变更记录行 | 3 处改动未升版 v3.7（P3 #191）|
 | D19 | Release Notes 发布日期门禁：只在用户确认 tag/部署后定稿，「验证通过」≠「已发布」| v1.0.0.md 过早定稿 2026-08-09（P3 #192）|
-| D20 | 测试数三方对拍：REVIEW 已修复区行内测试数 vs CLAUDE.md 测试状态 vs 实测 @Test 计数 | 批 J 行 302 vs 实测 300（P3 #193）|
+| D20 | 测试数三方对拍：REVIEW 已修复区行内测试数 vs status.md 测试状态 vs 实测 @Test 计数 | 批 J 行 302 vs 实测 300（P3 #193）|
 | D21 | 速查表反造假：前端参考 API 速查表每行——方法动词（GET/POST…）在后端 annotation 实测存在 + 返回类型在 api-spec/代码真实定义 + 前端 api_service 有对应调用 | frontend-reference 虚构 `GET /trading/trades` + TradeResponse（P1 #237，2026-08-12）|
 | D22 | api-spec changelog 声称的每个行为变化必须反向 grep 对应 § 正文（状态码/字段表）确认已同步，升版不只记 changelog | v3.14 声明 413 但 § records/media 正文仍写 400（P1 #238，2026-08-12）|
-| D23 | 新增 Controller/端点后必须同步根 + 子项目 CLAUDE.md 的「X Controller Y 端点」计数——读 `build/resources/main/META-INF/endpoints.txt` 与两处对拍（D20 扩展）| MeController 新增后 15/50 未更新为 16/51（P2-7，2026-08-15）|
+| D23 | 新增 Controller/端点后必须同步子项目 AGENTS.md 的「X Controller Y 端点」计数——读 `build/resources/main/META-INF/endpoints.txt` 对拍（根 CLAUDE.md 已删；D20 扩展）| MeController 新增后 15/50 未更新为 16/51（P2-7，2026-08-15）|
 | D24 | README 索引完整性脚本须扫 `docs/reference/` 与 `docs/rfc/` 两个目录（D15 只扫 rfc/ 有盲区）| `task-plugin-model.md` 未登记即因 D15 漏扫 reference/（P1-8，2026-08-15）|
 | D25 | RFC 修订新增决策时，frontmatter 的「X 决策」计数须与正文决策表行数一致 | RFC 20260814 frontmatter「四决策」vs 正文 D1-D5（P3，2026-08-15）|
 | D26 | 重大新能力落地只同步 api-spec + freeze 不算完整闭环——feature-reference（唯一功能真相源）须补对应章节 | 插件模型全文 feature-reference 零登记（P2-8，2026-08-15）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
-| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 CLAUDE.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | review-context.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
+| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 AGENTS.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | review-context.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
 | D28 | RFC frontmatter 转 approved（含 decided-by）后，正文「等你拍板/待确认」等未决策措辞必须同步清理，否则后续会话误读为未决策 | media-event-unification §七决策点遗留（P2-D2，2026-08-15）|
-| D29 | CLAUDE.md 目录树瘦身/拼接后核对排版：目录重复出现（apps/ ×2）、表格头与正文段落粘连同行 | CLAUDE.md apps 重复 + 131 行表格头粘连（P3，2026-08-15）|
+| D29 | 子项目 AGENTS.md 目录树瘦身/拼接后核对排版：目录重复出现（apps/ ×2）、表格头与正文段落粘连同行 | 原根文档曾 apps 重复 + 131 行表格头粘连（P3，2026-08-15）|
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
@@ -79,14 +79,14 @@ tags: [review, checklist, docs]
 
 | D36 | 契约同步目标存在性断言：ship 引用的 api-spec/feature-reference/data-format-freeze 路径必须 grep 断言目标存在 | ship.md 指向不存在的 docs/architecture/feature-reference.md（自伤自查 8 官，2026-08-15）|
 | D37 | RFC 索引状态对拍：docs/rfc/_index.md 每行状态必须等于对应 RFC frontmatter 的 status（取值 draft/approved/implemented）| ai-engineering-layer 索引 draft vs 文件 approved（自伤自查，2026-08-15）|
-| D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 CLAUDE.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
+| D38 | 迁移完整性三件套：目录物理迁移 = ①文件移动 ②全库旧路径 grep 零残留（含自身目录/docs 索引/子项目 AGENTS.md）③_index/README 同步，三步全过才算完成 | docs/ai→ai-engineering 只完成第①步、16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
 | D39 | RFC 验收标准核验：approved RFC 的「验收标准」在 ship 时逐条 PASS/FAIL 并留痕（写回 RFC 或 change-log）| AI 工程层 RFC #1-#5 无人核验（自伤自查 3 官，2026-08-15）|
 | D40 | 状态真相源三方对拍：REVIEW 未修项 vs 审核摘要 vs change-log 出表记录三方一致 | P1-W16 已修/未修矛盾 + P2 计数 11 vs 14 vs 15（自伤自查，2026-08-15）|
-| D41 | 规范单一事实源对拍：conventions.md 声称单一的条目在 CLAUDE.md 全库只允许指针引用、无全文副本 | 代码规范三处副本表述微漂移（自伤自查 2 官，2026-08-15）|
+| D41 | 规范单一事实源对拍：conventions.md 声称单一的条目在 AGENTS.md/子项目文档只允许指针引用、无全文副本 | 代码规范三处副本表述微漂移（自伤自查 2 官，2026-08-15）|
 | D42 | 审查官计数四对拍：roles/*.md 文件数 ↔ AGENTS.md 名单（含名字枚举）↔ README「N 官」↔ audit 路由表 | AGENTS.md 7 名称 8 官（自伤自查 2 官，2026-08-15）|
 | D43 | 工作流段完整性：宣称的「N 段闭环」必须与具名段、定义文件一一对应（每段有文件、无空段、计数一致）| 六段只具名 5 段、develop 无文件（自伤自查 3 官，2026-08-15）|
 | D44 | 新建 docs/**（含 reference/architecture）文档必须带 frontmatter——guard-meta scope 只覆盖 _index/ai-engineering/rfc，reference/*.md 是盲区 | gap 无 frontmatter（框架+插件审查 P2，2026-08-16）|
-| D45 | 目录 rename/git mv 后 grep 范围须含 application.yml 默认路径 + ai-engineering/checklists + roles（D38 只覆盖 docs/ 与子项目 CLAUDE.md）| yml 残留 11-context（G-4 审查 P1，2026-08-16）|
+| D45 | 目录 rename/git mv 后 grep 范围须含 application.yml 默认路径 + ai-engineering/checklists + roles（D38 只覆盖 docs/ 与子项目 AGENTS.md）| yml 残留 11-context（G-4 审查 P1，2026-08-16）|
 | D46 | status: active 正式文档内的「现状对照」表必须与同批 gap/change-log 结果一致或标注快照日期 | 总纲 §五 自相矛盾（框架+插件审查 S1，2026-08-16）|
 | D47 | RFC 落地即滚动：实现批次合入时同步刷新 RFC 实施记录/现状表（「待做」列不得残留已实现项）| data-intelligence RFC 待做列全是已实现（交易 A-E 审查 P2，2026-08-17）|
 | D48 | api-spec 变更记录版本行同步：新增端点批次必须在变更记录补版本行（v3.22+）| 15 端点无版本行（交易 A-E 审查 P2，2026-08-17）|
