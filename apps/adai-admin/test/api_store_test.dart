@@ -231,7 +231,7 @@ void main() {
       final client = MockClient((request) async {
         if (request.url.path == '/api/v1/admin/knowledge/content') {
           return _json({
-            'path': 'trading-os/11-context/rules.md',
+            'path': 'trading-engine/knowledge/context/rules.md',
             'size': 512,
             'content': '**R1 活跃市值4%启动信号**\n> 活跃市值单日涨幅≥4% → 新波段开始\n\n**R96 四不原则**\n> 不追高不抄底',
           });
@@ -250,23 +250,23 @@ void main() {
     test('loadOsDir 映射 /admin/knowledge 条目', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/v1/admin/knowledge');
-        expect(request.url.queryParameters['domain'], 'trading-os');
+        expect(request.url.queryParameters['domain'], 'trading-engine');
         return _json([
-          {'name': '11-context', 'path': 'trading-os/11-context', 'isDir': true},
+          {'name': 'knowledge', 'path': 'trading-engine/knowledge', 'isDir': true},
           {
             'name': 'rules.md',
-            'path': 'trading-os/11-context/rules.md',
+            'path': 'trading-engine/knowledge/context/rules.md',
             'isDir': false,
             'size': 512,
           },
         ]);
       });
       final store = KnowledgeApiStore(api: _api(client));
-      final nodes = await store.loadOsDir(domain: 'trading-os', path: 'trading-os');
+      final nodes = await store.loadOsDir(domain: 'trading-engine', path: 'trading-engine');
 
       expect(nodes, hasLength(2));
       expect(nodes.first.isDir, isTrue);
-      expect(nodes.last.path, 'trading-os/11-context/rules.md');
+      expect(nodes.last.path, 'trading-engine/knowledge/context/rules.md');
     });
   });
 }

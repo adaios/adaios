@@ -255,15 +255,15 @@ void main() {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/v1/admin/knowledge/content');
         return _json({
-          'path': 'trading-os/11-context/rules.md',
+          'path': 'trading-engine/knowledge/context/rules.md',
           'size': 512,
           'content': '**R1 活跃市值4%启动信号**',
         });
       });
       final api = ApiService(client: client);
-      final content = await api.getKnowledgeContent('trading-os/11-context/rules.md');
+      final content = await api.getKnowledgeContent('trading-engine/knowledge/context/rules.md');
 
-      expect(content.path, 'trading-os/11-context/rules.md');
+      expect(content.path, 'trading-engine/knowledge/context/rules.md');
       expect(content.content, contains('R1'));
     });
   });

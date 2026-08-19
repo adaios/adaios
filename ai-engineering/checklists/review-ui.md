@@ -3,9 +3,9 @@ title: 界面审查检查清单
 description: ui-reviewer 逐条检查项（人也能用）——触达/层级/间距/三端/深色/空态
 version: 1
 created: 2026-08-15
-updated: 2026-08-17
+updated: 2026-08-19
 status: active
-lines: 43
+lines: 46
 depends-on: []
 related: [../roles/ui-reviewer.md]
 tags: [review, checklist, ui]
@@ -41,3 +41,6 @@ tags: [review, checklist, ui]
 | V9-5 | 错误文案人话：展示后端 error 原文，禁止只给状态码 | web _extractApiError 丢人话（走查 8 官，2026-08-17）|
 | V9-6 | 媒体回执自然化：用 VLM summary 拼「看到你…，已记下」，禁止「已记录 N 张」 | web 图片回执系统标签（走查 8 官，2026-08-17）|
 | V9-7 | 加载中状态不得显示空态文案（loading spinner 与空态引导互斥）| web Feed loading 期显示「还没有记录」（走查 8 官，2026-08-17）|
+| V9-8 | 新增 badge/标签/按钮颜色必须先对照红涨绿亏映射表（买点/涨/盈/买入=darkRed；跌/亏/卖出=darkGreen；预警=darkRed；蓝仅资讯推送），并抽查同页同义元素同色 | 买点提醒徽章 darkGreen vs 买点文本红色（UI/UX 审查，2026-08-19）|
+| V9-9 | 徽章文本必须等于卡片类型本体：禁止多类型映射到同一文案（「今日操作确认」不得显示「尾盘建议」）；新增类型校验文案唯一 | 确认卡徽章映射尾盘建议（UI/UX 审查，2026-08-19）|
+| V9-10 | 未知/加载中的数值必须「—」+中性色，禁止 0/+0 伪数据；0 值不得带正负号或红绿着色（±0.00 判平不判跌）| 账户次级数据失败显 +0 红色 / 行情卡 -0.00% 判绿（UI/UX 审查，2026-08-19）|

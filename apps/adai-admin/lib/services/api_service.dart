@@ -314,7 +314,7 @@ class ApiService {
 
   /// `GET /api/v1/admin/knowledge?domain=&path=` → os/ 目录条目。
   Future<List<AdminFileDto>> listKnowledge(
-      {String domain = 'trading-os', String path = ''}) async {
+      {String domain = 'trading-engine', String path = ''}) async {
     final resp = await _get('/api/v1/admin/knowledge',
         query: {'domain': domain, if (path.isNotEmpty) 'path': path});
     final list = jsonDecode(_body(resp)) as List;

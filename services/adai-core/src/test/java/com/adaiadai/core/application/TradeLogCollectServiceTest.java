@@ -33,6 +33,16 @@ class TradeLogCollectServiceTest {
         TradingParseAppService parse = mock(TradingParseAppService.class);
         when(parse.parseLoose(any(), any())).thenAnswer(i -> {
             String text = i.getArgument(1);
+            if (text.contains("未知股")) {
+                // P1-1：LLM 幻觉——有 direction 无 symbol 无 name（think 泄漏文本次生）
+                return new TradingParseAppService.ParseResult(true, null, null,
+                        "SELL", null, null, null, null, null, null);
+            }
+            if (text.contains("只有名字")) {
+                // P1-1：宽松解析「清仓了XX」——有 name 无 symbol（合法待补充场景）
+                return new TradingParseAppService.ParseResult(true, null, "山西汾酒",
+                        "SELL", null, null, null, null, null, null);
+            }
             if (text.contains("京东方")) {
                 return new TradingParseAppService.ParseResult(true, "000725", "京东方A",
                         "SELL", new BigDecimal("6.10"), 5300, null, null, null, null);
@@ -101,5 +111,41 @@ class TradeLogCollectServiceTest {
         int done = service.confirm("default");
         assertEquals(0, done, "不完整候选确认应跳过（不落库）");
         assertTrue(service.todayCandidates("default").isEmpty(), "确认后候选清空（跳过的也清，前端引导补全）");
+    }
+
+    // ── P1-1 回归（2026-08-18 生产：SELL unknown 污染）──
+
+    @Test
+    void collect_symbolAndNameMissing_ignoredNoUnknown() {
+        // LLM 幻觉：有 direction 无 symbol 无 name → 拒绝归集，不落 "unknown" 占位
+        service.collect("default", "识别出未知股卖出动作", "text");
+        assertTrue(service.todayCandidates("default").isEmpty(), "无 symbol 无 name 不得归集");
+    }
+
+    @Test
+    void collect_nameOnly_symbolNull_keptAsIncomplete() {
+        // 宽松解析「清仓了XX」：有 name 无 symbol → 归集为待补充（complete=false），不落 unknown
+        service.collect("default", "清仓了只有名字的股票", "text");
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size());
+        assertFalse(candidates.get(0).complete(), "缺 symbol/数量/价格应标不完整");
+        assertFalse("unknown".equals(candidates.get(0).symbol()), "不得用 unknown 占位");
+        assertEquals("山西汾酒", candidates.get(0).name());
+    }
+
+    @Test
+    void collect_nameOnly_differentNames_notDeduplicated() {
+        // P1-1：dedupeKey 用 name 兜底——两只不同股票（均无代码）不得互相吞并
+        service.collect("default", "清仓了只有名字的股票A", "text");
+        service.collect("default", "清仓了只有名字的股票B", "text");
+        assertEquals(2, service.todayCandidates("default").size(), "无代码但名称不同应各自归集");
+    }
+
+    @Test
+    void summarize_nameOnly_showsNameNotUnknown() {
+        service.collect("default", "清仓了只有名字的股票", "text");
+        String text = service.summarize(service.todayCandidates("default"));
+        assertTrue(text.contains("山西汾酒"), "汇总应显示股票名");
+        assertFalse(text.contains("unknown"), "汇总不得显示 unknown 占位");
     }
 }

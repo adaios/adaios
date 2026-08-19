@@ -105,7 +105,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('将 ${review.title} 提升为 os/trading-os/99-inbox/ 入库候选。',
+            Text('将 ${review.title} 提升为 os/trading-engine/99-inbox/ 入库候选。',
                 style:
                     const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
             const SizedBox(height: 10),

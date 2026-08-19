@@ -28,6 +28,11 @@ public record TradeLogCandidate(
 ) {
     /** 去重键：同 symbol + 方向 + 当日（数量 ±10% 视为同笔）。 */
     public String dedupeKey() {
-        return symbol + ":" + direction;
+        // P1-1（2026-08-18 生产）：symbol 缺失（宽松解析未识别代码）时用 name 兜底，
+        // 避免所有无代码候选共用 "unknown" 键互相吞并（生产 09:01-09:02 三次归集只剩 2 笔）。
+        String key = (symbol != null && !symbol.isBlank()) ? symbol
+                : (name != null && !name.isBlank()) ? name
+                : "?";
+        return key + ":" + direction;
     }
 }

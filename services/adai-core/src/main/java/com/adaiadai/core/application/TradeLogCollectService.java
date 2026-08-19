@@ -45,23 +45,31 @@ public class TradeLogCollectService {
         if (text == null || text.isBlank()) return todayCandidates(userId);
         // 宽松解析（RFC 20260817）：「清仓了XX」无数量价格也归集为待补充候选（complete=false）
         TradingParseAppService.ParseResult r = parseAppService.parseLoose(userId, text);
-        if (!r.matched() || r.symbol() == null && (r.name() == null || r.name().isBlank())) {
+        if (!r.matched() || r.direction() == null) return todayCandidates(userId);
+        // P1-1（2026-08-18 生产）：symbol 与 name 全无（LLM 幻觉/think 泄漏文本）→ 拒绝归集，
+        // 不得落 "unknown" 占位（确认必失败 + 污染去重键 + 推送显示 unknown）。
+        boolean hasSymbol = r.symbol() != null && !r.symbol().isBlank();
+        boolean hasName = r.name() != null && !r.name().isBlank();
+        if (!hasSymbol && !hasName) {
+            log.info("交易日志归集跳过（未识别股票）| userId={} | 文本: {}", userId, text);
             return todayCandidates(userId);
         }
-        if (r.direction() == null) return todayCandidates(userId);
 
         TradeLogCandidate candidate = new TradeLogCandidate(
-                r.symbol() != null ? r.symbol() : "unknown",
+                r.symbol(),
                 r.name(),
                 r.direction(),
                 r.price(),
                 r.volume(),
                 source,
-                r.price() != null && r.volume() != null
+                // complete = symbol + direction + price + volume 全有（TradeLogCandidate javadoc；
+                // P1-1：原实现漏了 symbol 检查 → 无代码候选误判 complete=true 落库失败）
+                hasSymbol && r.price() != null && r.volume() != null
         );
         List<TradeLogCandidate> updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
         log.info("交易日志归集 | userId={} | {} {} {} | 当日候选 {} 笔",
-                userId, r.direction(), candidate.symbol(), r.volume() != null ? r.volume() + "股" : "（数量未知）",
+                userId, r.direction(), candidate.symbol() != null ? candidate.symbol() : candidate.name(),
+                r.volume() != null ? r.volume() + "股" : "（数量未知）",
                 updated.size());
         return updated;
     }

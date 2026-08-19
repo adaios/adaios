@@ -7,15 +7,16 @@ import 'api_service.dart';
 ///
 /// os/ 资产浏览走系统级 `/api/v1/admin/knowledge`（无 X-User-Id）。
 abstract class KnowledgeStore {
-  static const List<String> domains = ['trading-os', 'life-os', 'project-os'];
+  // domain 与 os/ 目录名一致（后端白名单：trading-engine/life-os/project-os）。
+  static const List<String> domains = ['trading-engine', 'life-os', 'project-os'];
 
-  /// 加载 os/{domain}/ 目录条目（path 相对 os/ 根，如 `trading-os/11-context`）。
-  Future<List<TreeNode>> loadOsDir({String domain = 'trading-os', String path = ''});
+  /// 加载 os/{domain}/ 目录条目（path 相对 os/ 根，如 `trading-engine/knowledge`）。
+  Future<List<TreeNode>> loadOsDir({String domain = 'trading-engine', String path = ''});
 
   /// 加载 os/ 文件内容。
   Future<TreeNode?> loadOsFileContent(String path);
 
-  /// 加载术语 / 规则列表。规则从 `11-context/rules.md` 解析，术语用内置兜底。
+  /// 加载术语 / 规则列表。规则从 `knowledge/context/rules.md` 解析，术语用内置兜底。
   Future<List<TermRule>> loadTerms();
 }
 
@@ -25,25 +26,25 @@ class KnowledgeApiStore implements KnowledgeStore {
 
   final ApiService _api;
 
-  /// 术语兜底（trading-os 高频词），rules.md 解析失败时使用。
+  /// 术语兜底（trading-engine 高频词），rules.md 解析失败时使用。
   static const List<TermRule> _fallbackTerms = [
     TermRule(
       name: '持仓',
       definition: '当前持有且未平仓的金融资产',
       category: '术语',
-      source: 'trading-os',
+      source: 'trading-engine',
     ),
     TermRule(
       name: '回撤',
       definition: '从资产价格峰值到随后谷底的最大跌幅',
       category: '术语',
-      source: 'trading-os',
+      source: 'trading-engine',
     ),
     TermRule(
       name: '复盘',
       definition: '交易结束后对决策过程与结果的系统性回顾',
       category: '术语',
-      source: 'trading-os',
+      source: 'trading-engine',
     ),
     TermRule(
       name: '记忆合并',
@@ -54,7 +55,7 @@ class KnowledgeApiStore implements KnowledgeStore {
   ];
 
   @override
-  Future<List<TreeNode>> loadOsDir({String domain = 'trading-os', String path = ''}) async {
+  Future<List<TreeNode>> loadOsDir({String domain = 'trading-engine', String path = ''}) async {
     final dtos = await _api.listKnowledge(domain: domain, path: path);
     return dtos.map(_fileToNode).toList();
   }
@@ -89,7 +90,7 @@ class KnowledgeApiStore implements KnowledgeStore {
   }
 
   Future<List<TermRule>> _parseRulesFromOs() async {
-    const path = 'trading-os/11-context/rules.md';
+    const path = 'trading-engine/knowledge/context/rules.md';
     final dto = await _api.getKnowledgeContent(path);
     final rules = <TermRule>[];
     final pattern = RegExp(r'\*\*R(\d+)\s+([^*\n]+?)\s*\*\*(?:\n>\s*([^\n]+))?');
@@ -104,7 +105,7 @@ class KnowledgeApiStore implements KnowledgeStore {
         name: 'R$num',
         definition: definition,
         category: '规则',
-        source: 'trading-os',
+        source: 'trading-engine',
       ));
     }
     return rules;

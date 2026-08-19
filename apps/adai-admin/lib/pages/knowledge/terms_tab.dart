@@ -5,7 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
 
-/// 术语/规则页签 — 从 os 资产读取（trading-os 规则从 11-context/rules.md 解析，
+/// 术语/规则页签 — 从 os 资产读取（trading-engine 规则从 knowledge/context/rules.md 解析，
 /// 术语用内置兜底；失败时展示兜底列表）。
 class TermsTab extends StatefulWidget {
   const TermsTab({super.key, required this.store});

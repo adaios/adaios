@@ -6,7 +6,7 @@ import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
 import '../../widgets/tree_view.dart';
 
-/// os/ 资产页签 — 目录树（trading-os / life-os / project-os 下拉切换，懒加载），
+/// os/ 资产页签 — 目录树（trading-engine / life-os / project-os 下拉切换，懒加载），
 /// 点文件显示内容（真实后端 /admin/knowledge）。
 class OsTreeTab extends StatefulWidget {
   const OsTreeTab({super.key, required this.store});
@@ -20,7 +20,7 @@ class OsTreeTab extends StatefulWidget {
 class _OsTreeTabState extends State<OsTreeTab> {
   late final KnowledgeStore _store = widget.store;
 
-  String _domain = 'trading-os';
+  String _domain = 'trading-engine';
   TreeNode? _root;
   TreeNode? _selected;
   bool _loading = true;
@@ -84,7 +84,7 @@ class _OsTreeTabState extends State<OsTreeTab> {
 
   String get _osLabel {
     final path = _selected?.path ?? '';
-    if (path.startsWith('trading-os/') || path == 'trading-os') return 'trading-os';
+    if (path.startsWith('trading-engine/') || path == 'trading-engine') return 'trading-engine';
     if (path.startsWith('life-os/') || path == 'life-os') return 'life-os';
     if (path.startsWith('project-os/') || path == 'project-os') return 'project-os';
     return 'os';
@@ -184,20 +184,26 @@ class _OsTreeTabState extends State<OsTreeTab> {
         const Text('Domain',
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
         const SizedBox(width: 8),
-        DropdownButton<String>(
-          value: _domain,
-          dropdownColor: AppColors.darkSurface,
-          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
-          underline: const SizedBox.shrink(),
-          items: [
-            for (final d in KnowledgeStore.domains)
-              DropdownMenuItem(value: d, child: Text(d)),
-          ],
-          onChanged: (v) {
-            if (v == null || v == _domain) return;
-            setState(() => _domain = v);
-            _load();
-          },
+        Flexible(
+          child: DropdownButton<String>(
+            value: _domain,
+            isExpanded: true,
+            dropdownColor: AppColors.darkSurface,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final d in KnowledgeStore.domains)
+                DropdownMenuItem(
+                  value: d,
+                  child: Text(d, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: (v) {
+              if (v == null || v == _domain) return;
+              setState(() => _domain = v);
+              _load();
+            },
+          ),
         ),
       ],
     );

@@ -319,19 +319,19 @@ class FakeSystemStore implements SystemStore {
   @override
   Future<PromoteResultDto> promoteReview(String date, {String? note}) async =>
       const PromoteResultDto(
-          status: 'ok', path: 'os/trading-os/99-inbox/review-2026-07-31.md');
+          status: 'ok', path: 'os/trading-engine/99-inbox/review-2026-07-31.md');
 }
 
 // ── 知识浏览 ──
 
 class FakeKnowledgeStore implements KnowledgeStore {
   @override
-  Future<List<TreeNode>> loadOsDir({String domain = 'trading-os', String path = ''}) async {
+  Future<List<TreeNode>> loadOsDir({String domain = 'trading-engine', String path = ''}) async {
     return [
-      TreeNode(name: '11-context', path: 'trading-os/11-context', isDir: true, children: const []),
+      TreeNode(name: 'knowledge', path: 'trading-engine/knowledge', isDir: true, children: const []),
       TreeNode(
         name: 'rules.md',
-        path: 'trading-os/11-context/rules.md',
+        path: 'trading-engine/knowledge/context/rules.md',
         isDir: false,
         content: '**R1 活跃市值4%启动信号**\n> 活跃市值单日涨幅≥4%',
         meta: '0.3 KB',
@@ -355,12 +355,12 @@ class FakeKnowledgeStore implements KnowledgeStore {
             name: '持仓',
             definition: '当前持有且未平仓的金融资产',
             category: '术语',
-            source: 'trading-os'),
+            source: 'trading-engine'),
         TermRule(
             name: 'R096',
             definition: '交易复盘必须走 ContextEngine',
             category: '规则',
-            source: 'trading-os'),
+            source: 'trading-engine'),
       ];
 }
 

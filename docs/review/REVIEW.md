@@ -1,14 +1,17 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-17
-last-review: 2026-08-17
-baseline: c5aea47..HEAD（13 commits，交易自理批1-5：A-E 全部优化）
-mode: deep 增量（交易模块 A-E 优化批次审查）
+updated: 2026-08-19
+last-review: 2026-08-19
+baseline: 工作树（app 交易模块 UI/UX + 推送链路全量）
+mode: full 模块审查（交易 UI/UX：ui/ux/frontend ×3 官并行 + 主会话交叉印证）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
+> 2026-08-19 full 模块审查（app 交易 UI/UX + 推送链路，ui/ux/frontend ×3 官并行 + 主会话交叉印证）：守护未跑（纯 UI 读审）。**P0 无。P1×4 + P2×12 + P3×17（合并去重）**。头号：**推送标题契约断裂（P1-推送1）**——`FeedPushChannel` 落库丢标题 → `toPushEntry` 按 type 重映射（session→「阿呆的交易提醒」）→ 前端按标题 switch 的徽章配色与「确认并入账」按钮判定全部落空：交易日志归集确认闭环 UI 断裂 + 早盘蓝/午间紫/尾盘橙徽章失效（测试 mock 掩盖契约漂移）；**P1-推送2** 左滑删除仅本地刷新复现（web 无删除入口）；**P1-推送3** app 推送设置入口 self-lock（无卡即不可达）；**P1-前端1** app 静默刷新失败整页错误态（web P1-7 同类复发）。新增检查点 V9-8~10 / U30-32 / F58-60 已入清单。
 > 2026-08-18 生产日志审查（P0-1 已修复）：**P0-1 `<think>` 壳泄漏**——图片记录 summary 落 `<think>` 思考原文（5+2 条，用户可见 + 交易归集中断）。修复：`GlmResponseParser` 降级路径剥壳 + 未闭合 think/answer 处理 + `max_tokens` 1024→2048；生产 7 条脏记录 glm-4v-flash 重识别清洗 + memory 重建（备份 .bak-20260818-p0 保留）。报告 `audits/2026-08-18-production-log.md`，详情 change-log。
+> 2026-08-18 P1-1 已修复（交易归集 unknown 污染）：`TradeLogCollectService.collect` 不再落 `"unknown"` 占位（symbol+name 全无拒绝归集）、complete 判定补 symbol、`dedupeKey` name 兜底防互吞、summarize 显示 name。TradeLogCollectServiceTest +4，后端 674 全绿。
+> 2026-08-18 P2-1 已修复（东财被限刷屏）：`KlineService` 熔断——连续失败 3 次熔断 5 分钟直接走腾讯（不再打东财），冷却后半开探测恢复。单日 1154 条 WARN → 熔断后每 5 分钟至多 1 条。KlineServiceTest +3，后端 677 全绿。
 > 2026-08-17 deep 增量（范围 `c5aea47..HEAD`，13 commits / 121 文件，交易自理批1-5 A-E 全部优化）：守护 7 PASS / 0 HIT；派 backend/frontend/docs/knowledge ×4。**P0 无。战略×3 + P1×9 + P2×16 + P3×24（合并去重后）**。核心：账户账目无单一真源（现金 3 处独立推导，战略）；C2 买点 5 参数「待用户确认」却已硬编码上线每日推送（战略，K40）；D3 自称「完美图匹配」实为规则近似（战略，K43）；**切入自动刷新是死代码**（`entry.label=='交易'` 判 `=='trading'` 恒 false，P1-前端，功能从未生效）；recordTrade 只动现金不动市值（P1-后端）；closeAccountUpdate 残缺市值覆盖总资产（P1-后端）；CURRENT_MD 硬编码相对路径（3487b00 只修一半，P1×2 官交叉印证）；positionPercent 分母不含现金（R81 bug 复发）；importCashQuery 解析失败静默落零；打分按 symbol `.first` 同代码多笔错挂（P1-前端）；_loadAll 六请求 Future.wait 任一端点失败整页丢数据（P1-前端）；buy-points 响应示例与实现不符（P1-文档）。新增检查点 B49-B54 / F45-F52 / D47-D53 / K40-K43。
 > 2026-08-16 修复批（app-polish 审查落地）：**P-be-01 维护端点迁入 /admin/** 鉴权（安全）+ admin 收敛为纯治理（P-role 系列）+ app 补记忆修正/待办完成（P-role-02/P-app-03）+ 带图发图即对话 + 交易建议引擎**。后端 499 · app 112 · admin 34，全部出表。
 > 2026-08-15 deep 审核（范围 `7b0a527..HEAD`，33 commits / 181 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**P0 无。战略×2 + P1×5 + P2×7 + P3×21（P3 迁移 task-log）**。**修复批 S + S2 共 12 项已出表**（P1-B1-B4/D1 + P2-B1/B2/R1/R2/R3/D1/D2，后端 440 · app 94 · admin 33）；**战略剩余仅 #179（v1.0.1 登录体系）**；已沉淀检查点 B34-36 / F33-36 / D27-29。
@@ -25,6 +28,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-19 | full 模块审查（app 交易 UI/UX + 推送链路）| 工作树（交易模块 app/web 全部 UI 文件）| ui/ux/frontend ×3 + 主会话交叉印证 | P1×4 + P2×12 + P3×17 | 0（审查只报告）|
 | 2026-08-18 | 生产日志审查（journalctl 当日 2986 行）| 49.235.37.220 运行日志 | 主会话直接核读 | P0×1 + P1×2 + P2×4 + P3×4 | 0（审查只报告，报告见 `audits/2026-08-18-production-log.md`）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| c5aea47..HEAD（13 commits）| backend/frontend/docs/knowledge ×4 | 战略×3 + P1×9 + P2×16 + P3×24 | 0（审核不直接修）|
 | 2026-08-16 | deep 增量（框架+插件 G-1~G-6）| 7734d99..HEAD（2 commits）| backend/knowledge/docs ×3 | 战略×4 + P1×4 + P2×9 | 0（审核不直接修）|
@@ -59,6 +63,10 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P1-交易8 | 清仓三维打分按 symbol `.where(...).first`：同代码多笔交易分数错挂（两行显示第一笔分数）| `trading_page.dart:774-775` | 按列表顺序索引匹配或 (symbol,buyDate) 复合键（F42）| ✅ 已修（2026-08-17 R4：按序索引匹配）
 | P1-交易9 | B1 判定「回调一半」几何语义漂移：课程=回撤到涨幅一半位置 (high+low)/2，代码=距前高回撤 50% close≤high/2（更严）；且支撑/白线条件未实现 | `BuyPointDetector.java:63-64` vs glossary:899 | ⏸ 已搁置（2026-08-17 用户：课程细节先搁置）|
 | P1-交易10 | api-spec buy-points 响应示例与实现不符：`score:0.8` 量纲错（实际 0-100 约 87）、signals 文案与代码实际输出不同 | `api-spec.md:513-514` | 示例=真实输出（D49）| ✅ 已修（2026-08-17 R4：示例=真实输出）
+| P1-推送1 | **推送标题契约断裂（⭐ 2026-08-19 三官交叉印证 + 主会话独立验证）**：`FeedPushChannel` 落库丢弃原标题（MarketPushEvent 无 title 字段）→ `FeedAppService.toPushEntry` 按 type 重映射（session→「阿呆的交易提醒」/gain→「放飞提示」/break-cost→「行情提醒」）→ 前端按标题字符串 switch 的徽章配色与 `e.title=='今日操作确认'` 判定全部落空：①「确认并入账」按钮两端永不渲染（交易日志归集 15:15 确认闭环 UI 断裂，候选滞留服务端）②早盘蓝/午间紫/尾盘橙徽章失效，session 全落灰「行情」③「今日操作确认」徽章错标「尾盘建议」永不达。测试 mock 了不存在的标题（feed_state_machine_test 掩盖契约漂移）| `FeedAppService.java:381-391` / `FeedPushChannel.java:41-47` / `feed_card.dart:388-395,421` / `main_page.dart:126,154,977` / `feed_page.dart:79,123` | 持久化透传原标题（MarketPushEvent 加 title）+ 删 toPushEntry 重映射；或前端改按 type 判定 + 两端共享标题常量表；tradeLogConfirm 用独立 type |
+| P1-推送2 | **推送删除无持久化**：app 左滑删除仅本地 `removeWhere`（`_dismissPush`），后端无 dismiss 端点 → 30 分钟自动刷新/下拉后同卡复活；web push 卡无任何删除/忽略入口（只能关整类）；「今日操作确认」卡的唯一"忽略"路径同失效 | `main_page.dart:860-863` / `feed_card.dart:448-461` / `desktop_feed_card.dart:191-249` / `MarketPushRepository`（无删除方法）| 后端补单条已读/删除端点或前端本地持久化 dismissed id；web 补删除按钮，两端对齐 |
+| P1-推送3 | **app 推送设置入口 self-lock**：设置入口仅右滑 push 卡（`onPushSettings` 仅挂 push 类型）→ 空仓日无推送卡 / 8 类全关后 push 卡不再出现 → 设置永久不可达（web 交易页有铃铛入口，app 无）| `main_page.dart:130,158,981` / `trading_page.dart:403-429` | app 交易页补推送设置铃铛（对齐 web）或 Feed 空态加入口 |
+| P1-前端1 | **app 静默刷新失败整页错误态（web P1-7 同类在 app 复发）**：`_loadData` catch 直接 `setState(_error)`，body 分支 `_error != null` 优先于列表 → 30 分钟自动刷新/交易后 `_refresh()` 网络抖动即整页「请求失败」，已展示持仓/账户数据全部丢弃 | `trading_page.dart:100-116,427-429` | 区分首屏/刷新：已有数据时刷新失败保留旧数据 + 非阻塞提示（陈旧角标）；全页错误态仅限首载 |
 > **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**注意：P1 表仍有 P1-交易4/P1-交易9 未修（2026-08-17 走查确认，见下表）**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 
@@ -89,6 +97,18 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 | P2-交易21 | TradingAdviceAppService 输出侧硬判定未过 r81Applicable：OVER_WEIGHT && buy → reduce 覆盖未检查总资产超 100 万前提，与 FP-P2b 语义矛盾（prompt 段尊重前提、输出段没有）| `TradingAdviceAppService.java:194-198` | 输出侧复用 r81Applicable 判定 | ✅ 已修（2026-08-17 R5：r81Applicable）
 | P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 | ✅ 已修（2026-08-17 R5：avgCost/quantity 校验）
 | P2-交易23 | **持仓编辑端点从未实现**：前端/测试一直在调 PUT /positions/{symbol}，后端只有 GET/POST——web 点「编辑」保存必 404（功能形同虚设）| `TradingController`（2026-08-17 已补端点 ✅）| ✅ 已修（2026-08-17 R1 续：updatePositionMeta + PUT 端点，见已修复区）|
+| P2-推送4 | 8 类型徽章 6/8 退化为灰色「行情」通用样式：session 4 子类（P1-推送1 根因）+ gain「放飞提示」+ break-cost「行情提醒」语义错位 | `feed_card.dart:388-395` / `desktop_feed_card.dart:193-200` | 为 gain/break-cost 补专属徽章；前后端标题表收敛为同一常量源 |
+| P2-推送5 | 推送设置反馈假阳性：app 对话框「完成」恒 pop(true) 报「已更新」（读取失败全默认开、单开关 PUT 失败无提示）；web 关闭后零反馈 | `main_page.dart:889-899` / `trading_page.dart:243-266` | 记录真实变更与失败，按实际成功提示；两端同口径 |
+| P2-推送6 | session 开关文案「时段节奏（早盘/午间/尾盘）」术语化，且连带控制 15:15「今日操作确认」——关时段节奏会无意关掉收盘确认 | `main_page.dart:1603-1613` / `trading_page.dart:2426-2436` | 文案改「早盘计划/午间跟踪/尾盘建议/收盘操作确认」或注明含收盘确认 |
+| P2-UI1 | 买点提醒徽章 darkGreen 与「红涨绿亏」硬规则冲突（买=该买=涨→红；绿=亏）：RFC 20260817 定「买点绿」——设计冲突待用户拍板 | `feed_card.dart:392` / `desktop_feed_card.dart:197` | 改 darkRed 或 RFC 修订（用户决策）|
+| P2-UI2 | 账户次级数据失败（静默）后可用/可取显示伪「0」、当日盈亏「+0」红色——伪数据冒充真实值 | `trading_page.dart:830-834` | 未就绪显示「—」+ 中性色，就绪后再出真值 |
+| P2-UI3 | 确认卡方向选择器/「确认记录」按钮恒绿 + 买入成功 toast darkGreen——与买=红卖=绿、绿=亏语义冲突（成功色混用）| `trading_page.dart:321,661-663,774-792` | 买=红卖=绿统一；成功提示改中性/主题色 |
+| P2-UI4 | 自选买点文本多条件 '、' 拼接无 ellipsis、清仓复盘标题统计串未包 Expanded——窄屏 RenderFlex 溢出 | `trading_page.dart:497-499,519-525` | Flexible + TextOverflow.ellipsis 或拆行 |
+| P2-UI5 | 多处 9-10px 超小字号低于移动端可读下限（feed_card 8 处 + trading_page 6 处）| `feed_card.dart:442,624,749,755,1021` / `trading_page.dart:452,478,522-560` | 全局最小字号提到 11-12 |
+| P2-UX1 | NL 解析回显价格截 2 位小数（`toStringAsFixed(2)`），与「小键盘 5 位小数」设计矛盾——4 位成本价回显失真需手改 | `trading_page.dart:224` | 回显按后端精度（≤5 位）与输入能力一致 |
+| P2-UX2 | 自选 B1/B2、清仓 R66/R53 等规则术语零解释（「B1 回调缩量 87%」「扛单 2·短亏 1」「买点 78·执行 62」）——移动端只读展示不可理解、无图例 | `trading_page.dart:497-502,516-524,551` | 首次出现给自然解释/图例；清仓区用通俗名（扛单/短亏）|
+| P2-UX3 | 账户总览：本金未设（principal=0）时总盈亏=总资产失真且无提示；卡片无更新时间戳，收盘 15:05 后无陈旧感知 | `trading_page.dart:799-836` | 本金未设总盈亏显「—」+引导；卡加更新时间戳/收盘后备注 |
+| P2-UX4 | 今日操作确认流反馈（关联 P1-推送1，按钮修复后生效）：回执「已确认 N 笔并入账」系统语违 B1、按钮无 loading/禁用、确认后无已确认态兜底 | `main_page.dart:866-875` / `feed_card.dart:421-437` | 回执改阿呆口吻；提交中态；确认后本地灰态兜底 |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 
@@ -96,6 +116,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 - **P0 未修复当前清零**
 - **P3 打磨项**：交易 A-E 批 24 项**已全部修复出表**（R8-R11，见 change-log + 已修复区：转账金额提示/isTdxExport/R120-R85 引用/止损提醒/孤儿规格/DTO 测试/Timer 守卫等）；剩余低价值 P3（FilePicker 压缩/os 数据卫生/图片摘要居中）见 task-log
+- **P3 打磨项（2026-08-19 UI/UX 审查 17 项）**：成功回执不提自动 -7% 止损 / 精确表单价格无 ≤5 位小数限制 / 持仓卡整卡可点无视觉提示（发现性差）/ 自选清仓空列表整区隐藏无引导 / 「无法连接服务器，请确认后端已启动」开发者术语 / 推送设置「放飞提示」语义不明 / Dismissible confirmDismiss 内同步 setState 非惯用法 / 账户卡 22px 双大数无 FittedBox 极端值溢出 / 零值 ± 显示与着色（+0/-0/±0.0%）/ `_fmtMoney` 万单位舍入跳变（9999.6→10000）/ 行情卡 -0.00% 判跌为绿 / 代码块背景硬编码 0xFF2A2826 未走 token / 提示文案对比度不足（darkGrey6@10px）/ 持仓信息行 11px 过暗·未设止损整行橙偏重 / 圆角不统一（8/10/12/16 vs 主题 14）/ 次级数据异步到达跳变无骨架占位 / 推送卡长内容无折叠 + 买点文本无单位标签 + frontend-reference 徽章配色表与实现漂移
 
 ## ✅ 已修复区（最近 10 条，一行摘要；详情见 `docs/reference/change-log.md` + git log）
 
@@ -178,6 +199,7 @@ mode: deep 增量（交易模块 A-E 优化批次审查）
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-19 | full 模块审查（app 交易 UI/UX + 推送链路）| ui/ux/frontend ×3 + 主会话 | 3 | ~30min | P1×4 + P2×12 + P3×17（去重后）| 0（审查只报告）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| backend/frontend/docs/knowledge ×4 | 4 | ~30min | 战略×3 + P1×10 + P2×16 + P3×24（去重后）| 0（审核只报告）|
 | 2026-08-17 | 修复批 R11（admin + 收尾）| — | 0 | ~20min | 0 新 | admin×3 |
 | 2026-08-17 | 修复批 R10（P3 深水区）| — | 0 | ~30min | 0 新 | W-P3×8 |
