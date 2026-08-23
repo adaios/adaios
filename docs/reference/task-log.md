@@ -316,6 +316,7 @@ v1.0.0（adai-admin + 多账号）：
 | 121 | 无最小宽度/响应式保护（批 H 已评估：桌面端专用产品、常规宽度无问题，极窄窗口才压缩，低优先级）| `desktop_shell.dart` | 已评估 |
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
+| FL-04/06 | 审查跟进机制：REVIEW 未修项无强制处理（weekly-audit.sh 已覆盖自动审查触发；人工修复仍靠自觉，2026-08-23 归口自 audits/2026-08-16-ai-engineering-workflow.md）| `ai-engineering/process/` | 流程改进 |
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 

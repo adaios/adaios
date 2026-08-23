@@ -57,10 +57,24 @@ if [ ! -d "$SESS_DIR" ]; then
   exit 1
 fi
 
-# 历史日志查看
+# 历史日志查看（按 date 聚合同日多笔——2026-08-23 追加式记账后）
 if [ "$LOG" = "1" ]; then
-  echo "== 成本历史（state/cost-log.jsonl）=="
-  if [ -f "$COST_LOG" ]; then cat "$COST_LOG"; else echo "（尚无记录，先跑 --record）"; fi
+  echo "== 成本历史（state/cost-log.jsonl，按日聚合）=="
+  if [ ! -f "$COST_LOG" ]; then echo "（尚无记录，先跑 --record）"; exit 0; fi
+  python3 - "$COST_LOG" <<'PYEOF'
+import json, sys, collections
+agg = collections.OrderedDict()
+for line in open(sys.argv[1], encoding='utf-8'):
+    line = line.strip()
+    if not line: continue
+    try: e = json.loads(line)
+    except Exception: continue
+    d = e.get('date', '?')
+    a = agg.setdefault(d, {'calls': 0, 'cost': 0.0, 'records': 0})
+    a['calls'] += e.get('calls', 0); a['cost'] += e.get('cost', 0); a['records'] += 1
+for d, a in agg.items():
+    print(f"{d}  cost ¥{a['cost']:.2f}  calls {a['calls']}  (记录 {a['records']} 笔)")
+PYEOF
   exit 0
 fi
 
@@ -200,6 +214,7 @@ if RECORD:
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)
     entry = {
         'date': DAY or day_key(datetime.datetime.now()),
+        'recorded_at': datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
         'calls': tot['calls'],
         'cost': round(tot['cost'], 2),
         'cache_cost': round(cache_cost, 2),
@@ -212,11 +227,11 @@ if RECORD:
     lines = []
     if os.path.exists(COST_LOG):
         lines = [l for l in open(COST_LOG, encoding='utf-8').read().splitlines() if l.strip()]
-    # 同一天去重（覆盖）
-    lines = [l for l in lines if json.loads(l).get('date') != entry['date']]
+    # 追加式记账（2026-08-23 审计修正 P1-A2）：同日不覆盖，保留 recorded_at 区分多次记账——
+    # 覆盖式会在中途 --record 后锁死当日账、漏记后续消费；追加式保留完整痕迹，日汇总由读取端聚合
     lines.append(json.dumps(entry, ensure_ascii=False))
     with open(COST_LOG, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
-    print(f"\n✓ 已记录到 {COST_LOG}")
+    print(f"\n✓ 已追加到 {COST_LOG}（同日多笔以 recorded_at 区分）")
 PYEOF
 exit $?

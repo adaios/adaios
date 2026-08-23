@@ -179,6 +179,7 @@ for f in files:
         ref = m.group(1).rstrip('/')
         if ref.endswith('/'): continue  # 目录引用跳过
         if ref in ('ai-engineering-method', 'ai-context-research'): continue  # 仓库外兄弟目录（同级）
+        if ref == 'AGENTS.local.md': continue  # gitignore 快照（机器生成不入库，clone 缺失是设计非漂移，2026-08-23 审计实证）
         target = (ROOT / ref).resolve()
         if not target.exists():
             fails.append(f'M4 {rel}: 正文路径引用不存在 {ref}')

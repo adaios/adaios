@@ -103,6 +103,7 @@ out.append("")
 # C2 未修项（REVIEW）
 out.append("## C2 未修项（REVIEW.md）")
 review = ROOT/'docs/review/REVIEW.md'
+DONE_MARKS = ('✅', '已修', '出表', '已确认', '已移除', '已闭环', '不成立', '误报', '清零')
 if review.exists():
     lines = review.read_text(encoding='utf-8').splitlines()
     in_unfixed = False
@@ -113,6 +114,10 @@ if review.exists():
         if l.startswith('## ✅') or l.startswith('## '):
             if in_unfixed: break
         if in_unfixed and l.startswith('|') and '|' in l[1:]:
+            # 2026-08-23（P1-1）：已修/出表项不注入快照——快照每轮注入，
+            # 喂已修项会误导 AI 重复修 + 浪费每轮固定上下文（cost.md C7）
+            if any(m in l for m in DONE_MARKS):
+                continue
             cells = [c.strip() for c in l.strip('|').split('|')]
             if len(cells) >= 3 and cells[0] and (cells[0][0].isalpha() or cells[0][0].isdigit()):
                 row = f"- {cells[0]}: {cells[1][:80]}"

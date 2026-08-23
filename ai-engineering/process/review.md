@@ -5,7 +5,7 @@ version: 2
 created: 2026-08-15
 updated: 2026-08-23
 status: active
-lines: 142
+lines: 143
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -132,6 +132,7 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 - 未修项逐条核对（本次已修 → 移已修复区；未修 → 保留）
 - 新问题追加对应优先级区；更新头部（日期/基线/模式）
 - 已修复区只留最近 10 条
+- **归口强制（2026-08-23，防游离双轨）**：审查报告落盘（`docs/review/audits/`）**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`；③跑 `bash ai-engineering/guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（表状态与已修复区一致，出表项必须回填 `✅`）——未归口不许收工
 
 ## 6. 沉淀检查点
 

@@ -3,9 +3,9 @@ title: 全维度走查流程
 description: /audit 通用版——8 审查官独立并行走查 + 交叉印证（默认增量，全量仅里程碑级），沉淀到 REVIEW.md「走查区」
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-23
 status: active
-lines: 69
+lines: 70
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -56,6 +56,7 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 - **交叉印证**：同一问题被 ≥2 官命中 → 标注 ⭐（多视角确认 = 优先级高）
 - **输出控字（成本纪律 2026-08-18）**：每条问题 ≤3 行（位置/一句问题/一句建议），仅 P0/战略级展开，P1-P3 列表直出（输出是 9-27 元/M 最贵通道）
 - 汇总进 `docs/review/REVIEW.md` 新增「全维度走查」区
+- **归口强制（2026-08-23，防游离双轨）**：报告落盘**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`（豁免历史报告不再报游离）；③跑 `bash ai-engineering/guard-unfixed.sh` 验证 ③ 游离 = 0（有游离 = 归口没做完，不许收工）
 
 ## 5. 沉淀检查点 + 记录成本
 
