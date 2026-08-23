@@ -215,6 +215,41 @@ void main() {
       expect(t.stopLossPrice, isNull);
     });
 
+    test('TradeRecordItem 解析 tradeTime（RFC 20260822 成交时间，可空）', () {
+      final t = TradeRecordItem.fromJson({
+        'symbol': '600206',
+        'direction': 'SELL',
+        'price': 33.12,
+        'volume': 200,
+        'entryDate': '2026-08-03',
+        'tradeTime': '14:52:56',
+      });
+      expect(t.tradeTime, '14:52:56');
+      // 旧数据无 tradeTime → null（不报错）
+      final old = TradeRecordItem.fromJson({
+        'symbol': '600519', 'direction': 'BUY', 'price': 10.0, 'volume': 100,
+      });
+      expect(old.tradeTime, isNull);
+    });
+
+    test('DailyTradeSummaryDto 解析（RFC 20260822 时段分桶）', () {
+      final d = DailyTradeSummaryDto.fromJson({
+        'date': '2026-08-22', 'count': 4, 'buyCount': 3, 'sellCount': 1,
+        'sessions': [
+          {'name': '早盘', 'range': '09:30-11:30', 'count': 2},
+          {'name': '午盘', 'range': '13:00-14:30', 'count': 1},
+          {'name': '尾盘', 'range': '14:30-15:00', 'count': 1},
+        ],
+        'firstTradeTime': '09:41:00', 'lastTradeTime': '14:52:00',
+      });
+      expect(d.count, 4);
+      expect(d.buyCount, 3);
+      expect(d.sessions.length, 3);
+      expect(d.sessions[0].name, '早盘');
+      expect(d.sessions[0].count, 2);
+      expect(d.firstTradeTime, '09:41:00');
+    });
+
     test('BatchImportResponse 解析 success + failures（row/message）', () {
       final r = BatchImportResponse.fromJson({
         'success': 3,
@@ -661,24 +696,17 @@ void main() {
     });
   });
 
-  group('交易历史 Dialog（web 独有）', () {
-    testWidgets('按日期分组渲染：方向/代码/数量/价格/止损/买点/原因', (tester) async {
+  group('历史成交 Tab（RFC 20260823，取代交易历史 Dialog）', () {
+    testWidgets('按日期分组渲染全部列：方向/时间/代码/名称/数量/价格/金额/费用/成交编号/止损/买点/原因', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
         if (path == '/api/v1/trading/account') return _json(_accountJson());
-    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
         if (path == '/api/v1/trading/sold/score') return _json([]);
-
-    if (path == '/api/v1/trading/watchlist') return _json([]);
-    if (path == '/api/v1/trading/sold') return _json([]);
-    if (path == '/api/v1/trading/buy-points') return _json([]);
-    if (path == '/api/v1/trading/sold/score') return _json([]);
-
         if (path == '/api/v1/trading/trades') {
           return _json([
             {
@@ -689,9 +717,12 @@ void main() {
               'price': 25.3,
               'volume': 200,
               'entryDate': '2026-08-12',
+              'tradeTime': '09:41:00',
               'stopLossPrice': 22.8,
               'buyPoint': 'B2',
               'reason': '平台突破',
+              'fee': 1.23,
+              'orderId': '69351117',
             },
             {
               'id': 't2',
@@ -700,6 +731,7 @@ void main() {
               'direction': 'SELL',
               'price': 1500.0,
               'volume': 100,
+              'entryDate': '2026-08-11',
               'timestamp': '2026-08-11T10:30:00',
             },
           ]);
@@ -709,51 +741,82 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+      // RFC 20260823：历史成交从页头 Dialog 升级为第 5 Tab，点击 Tab 进入
+      await tester.tap(find.text('历史成交'));
       await tester.pumpAndSettle();
 
-      // 页面 DataTable 也在树中（覆盖层 Dialog 之后）→ 断言限定在 Dialog 内
-      Finder inDialog(Finder f) => find.descendant(of: find.byType(Dialog), matching: f);
-      expect(inDialog(find.text('交易历史')), findsOneWidget);
       // 日期分组
-      expect(inDialog(find.text('2026-08-12')), findsOneWidget);
-      expect(inDialog(find.text('2026-08-11')), findsOneWidget);
-      // 流水字段
-      expect(inDialog(find.text('买入')), findsOneWidget);
-      expect(inDialog(find.text('卖出')), findsOneWidget);
-      expect(inDialog(find.text('25.300')), findsOneWidget);
-      expect(inDialog(find.text('200')), findsOneWidget);
-      expect(inDialog(find.text('22.800')), findsOneWidget);
-      expect(inDialog(find.text('B2')), findsOneWidget);
-      expect(inDialog(find.text('平台突破')), findsOneWidget);
+      expect(find.text('2026-08-12'), findsOneWidget);
+      expect(find.text('2026-08-11'), findsOneWidget);
+      // 方向 + 成交时间（tradeTime 显示 HH:mm；旧数据无 → '—'）
+      expect(find.text('买入'), findsOneWidget);
+      expect(find.text('卖出'), findsOneWidget);
+      expect(find.text('09:41'), findsOneWidget);
+      // 全字段：价格/数量/金额（千分位）/费用/成交编号/止损/买点/原因
+      expect(find.text('25.300'), findsOneWidget);
+      expect(find.text('200'), findsOneWidget);
+      expect(find.text('5,060.00'), findsOneWidget);
+      expect(find.text('1.23'), findsOneWidget);
+      expect(find.text('69351117'), findsOneWidget);
+      expect(find.text('22.800'), findsOneWidget);
+      expect(find.text('B2'), findsOneWidget);
+      expect(find.text('平台突破'), findsOneWidget);
+      // 旧数据无 tradeTime/fee/orderId → '—' 占位
+      expect(find.text('—'), findsWidgets);
+      // 区间统计行
+      expect(find.textContaining('共 2 笔 · 买 1 卖 1'), findsOneWidget);
     });
 
-    testWidgets('空区间 → 空态文案', (tester) async {
+    testWidgets('空区间 → 空态文案 + 导入入口', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
         if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
         if (path == '/api/v1/trading/account') return _json(_accountJson());
-    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
         if (path == '/api/v1/trading/sold/score') return _json([]);
-
-    if (path == '/api/v1/trading/watchlist') return _json([]);
-    if (path == '/api/v1/trading/sold') return _json([]);
-    if (path == '/api/v1/trading/buy-points') return _json([]);
-    if (path == '/api/v1/trading/sold/score') return _json([]);
-
         if (path == '/api/v1/trading/trades') return _json([]);
         return http.Response('not found', 404);
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byIcon(Icons.receipt_long_outlined));
+      await tester.tap(find.text('历史成交'));
       await tester.pumpAndSettle();
-      expect(find.text('这段时间还没有交易记录'), findsOneWidget);
+      expect(find.text('这段时间还没有历史成交'), findsOneWidget);
+      expect(find.text('导入通达信历史成交导出'), findsOneWidget);
+    });
+
+    testWidgets('导入历史成交：非历史成交格式 → 人话拒绝（RFC 20260823 只认历史成交格式）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      // 粘贴交易 CSV（非历史成交格式）→ 人话拒绝，不静默落零
+      await tester.enterText(
+        find.byType(TextField).last,
+        '600123,立昂微,BUY,25.3,200,22.8,B2',
+      );
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('无法识别'), findsOneWidget);
     });
   });
 

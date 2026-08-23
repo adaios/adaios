@@ -76,7 +76,7 @@ class TradingAppServiceTest {
 
         assertThrows(TradingException.class, () ->
                 service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                        new BigDecimal("10.5"), 100, null, null, null, null, null));
+                        new BigDecimal("10.5"), 100, null, null, null, null, null, null));
     }
 
     @Test
@@ -88,7 +88,7 @@ class TradingAppServiceTest {
 
         assertThrows(TradingException.class, () ->
                 service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                        new BigDecimal("10.5"), 200, null, null, null, null, null));
+                        new BigDecimal("10.5"), 200, null, null, null, null, null, null));
     }
 
     @Test
@@ -101,7 +101,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                new BigDecimal("10.5"), 100, null, null, null, null, null);
+                new BigDecimal("10.5"), 100, null, null, null, null, null, null);
 
         ArgumentCaptor<List<Position>> captor = ArgumentCaptor.forClass(List.class);
         verify(repo).saveAll(any(), captor.capture());
@@ -117,7 +117,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         assertTrue(result.size() == 1 && result.get(0).symbol().equals("600000"),
                 "首次买入应新建持仓");
@@ -135,7 +135,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", null, TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         assertEquals("600000", result.get(0).name(), "缺名时以 symbol 兜底为名称");
         ArgumentCaptor<List<Position>> captor = ArgumentCaptor.forClass(List.class);
@@ -152,7 +152,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "  ", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         assertEquals("600000", result.get(0).name(), "空白名也以 symbol 兜底");
     }
@@ -168,7 +168,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         ArgumentCaptor<ContentRecord> captor = ArgumentCaptor.forClass(ContentRecord.class);
         verify(records).save(any(), captor.capture());
@@ -192,7 +192,7 @@ class TradingAppServiceTest {
 
         assertThrows(TradingException.class, () ->
                 service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                        new BigDecimal("10.5"), 100, null, null, null, null, null));
+                        new BigDecimal("10.5"), 100, null, null, null, null, null, null));
 
         verify(records, never()).save(any(), any());
     }
@@ -212,7 +212,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         verify(records, never()).save(any(), any());
     }
@@ -227,7 +227,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         assertTrue(result.size() == 1, "记录写入失败不应影响交易结果");
     }
@@ -245,7 +245,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records, history);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null,
                 new BigDecimal("9.5"), "B1", new BigDecimal("12.0"), "突破买入");
 
         ArgumentCaptor<TradeRecord> captor = ArgumentCaptor.forClass(TradeRecord.class);
@@ -274,7 +274,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records, history);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null, null, null, null);
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null, null, null, null, null);
 
         ArgumentCaptor<TradeRecord> captor = ArgumentCaptor.forClass(TradeRecord.class);
         verify(history).append(any(), captor.capture());
@@ -295,7 +295,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records, history);
 
         service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         ArgumentCaptor<TradeRecord> captor = ArgumentCaptor.forClass(TradeRecord.class);
         verify(history).append(any(), captor.capture());
@@ -313,7 +313,7 @@ class TradingAppServiceTest {
 
         assertThrows(TradingException.class, () ->
                 service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                        new BigDecimal("10.5"), 100, null, null, null, null, null));
+                        new BigDecimal("10.5"), 100, null, null, null, null, null, null));
 
         verify(history, never()).append(any(), any());
     }
@@ -330,7 +330,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records, history);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, null, new BigDecimal("9.5"), "B1", null, null);
+                new BigDecimal("10.5"), 100, null, null, new BigDecimal("9.5"), "B1", null, null);
 
         assertTrue(result.size() == 1, "流水写入失败不应影响交易结果");
     }
@@ -347,7 +347,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null,
                 new BigDecimal("9.5"), "B1", null, null);
 
         Position p = result.get(0);
@@ -368,7 +368,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 10),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 10), null,
                 new BigDecimal("9.5"), "B1", null, null);
 
         Position updated = result.get(0);
@@ -390,7 +390,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null,
                 new BigDecimal("9.5"), "B1", null, null);
 
         assertEquals(LocalDate.of(2026, 8, 16), result.get(0).entryDate(), "旧持仓无首买日 → 本次 BUY 补录");
@@ -408,7 +408,7 @@ class TradingAppServiceTest {
         TradingAppService service = service(repo, records);
 
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
-                new BigDecimal("10.5"), 100, null, null, null, null, null);
+                new BigDecimal("10.5"), 100, null, null, null, null, null, null);
 
         Position updated = result.get(0);
         assertEquals(LocalDate.of(2026, 8, 1), updated.entryDate(), "SELL 保留首买日");
@@ -446,7 +446,7 @@ class TradingAppServiceTest {
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 16), null,
                 new BigDecimal("9.5"), "B1", null, null);
 
         Position merged = result.get(0);
@@ -766,7 +766,7 @@ void soldUpdatePsychology_marksTrade() {
 
         // 买入 100 股 @10：现金 -1000（无费简化），市值 +1000
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.BUY,
-                new BigDecimal("10"), 100, LocalDate.of(2026, 8, 17),
+                new BigDecimal("10"), 100, LocalDate.of(2026, 8, 17), null,
                 new BigDecimal("9.3"), "B1", null, null);
 
         ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
@@ -799,7 +799,7 @@ void soldUpdatePsychology_marksTrade() {
 
         // 卖出 100 股 @15：现金 +1500（无费简化），市值 -1500
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.SELL,
-                new BigDecimal("15"), 100, LocalDate.of(2026, 8, 17),
+                new BigDecimal("15"), 100, LocalDate.of(2026, 8, 17), null,
                 null, null, null, null);
 
         ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
@@ -877,6 +877,79 @@ void soldUpdatePsychology_marksTrade() {
                 service.importHistoricalTrades("default", content);
         assertEquals(0, second.imported());
         assertEquals(1, second.skipped());
+        assertEquals(0, second.updated(), "旧记录已有成交时间 → 不回填");
+    }
+
+    @org.junit.jupiter.api.Test
+    void importHistoricalTrades_reimportWithTime_backfillsMissingTradeTime() {
+        // 2026-08-23：用户实测「全量重传 8 月不更新」——旧记录 tradeTime=null（首次导入无成交时间列），
+        // 重传带成交时间的文件 → 回填不落新流水
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        // 首次导入：无「成交时间」列 → tradeTime=null
+        String oldContent = """
+                成交日期        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+                20260803        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                """;
+        TradingAppService.HistoricalTradeImportResult first =
+                service.importHistoricalTrades("default", oldContent);
+        assertEquals(1, first.imported());
+        ArgumentCaptor<TradeRecord> cap = ArgumentCaptor.forClass(TradeRecord.class);
+        verify(history, times(1)).append(eq("default"), cap.capture());
+        assertNull(cap.getValue().tradeTime(), "首次导入无成交时间列 → tradeTime=null");
+
+        // 重传全量：同一 orderId 带成交时间 → 回填，不落新流水
+        when(history.findAll(any())).thenReturn(cap.getAllValues());
+        when(history.backfillTradeTime(eq("default"), eq(cap.getValue().id()),
+                eq(java.time.LocalDate.of(2026, 8, 3)), eq(java.time.LocalTime.of(14, 52, 56))))
+                .thenReturn(1);
+        String newContent = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                """;
+        TradingAppService.HistoricalTradeImportResult second =
+                service.importHistoricalTrades("default", newContent);
+
+        assertEquals(0, second.imported(), "不落新流水");
+        assertEquals(0, second.skipped(), "幂等命中但回填成功 → 不算跳过");
+        assertEquals(1, second.updated(), "回填 1 笔");
+        verify(history).backfillTradeTime(eq("default"), eq(cap.getValue().id()),
+                eq(java.time.LocalDate.of(2026, 8, 3)), eq(java.time.LocalTime.of(14, 52, 56)));
+        verify(history, times(1)).append(any(), any());
+    }
+
+    @org.junit.jupiter.api.Test
+    void importHistoricalTrades_reimportSameFile_withTime_skipsNotBackfills() {
+        // 旧记录已有成交时间（首次导入即带时间列）→ 重传全跳过（幂等），不回填
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(new java.util.ArrayList<>());
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        String content = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                """;
+        TradingAppService.HistoricalTradeImportResult first =
+                service.importHistoricalTrades("default", content);
+        assertEquals(1, first.imported());
+        ArgumentCaptor<TradeRecord> cap = ArgumentCaptor.forClass(TradeRecord.class);
+        verify(history, times(1)).append(eq("default"), cap.capture());
+        assertEquals(java.time.LocalTime.of(14, 52, 56), cap.getValue().tradeTime());
+
+        when(history.findAll(any())).thenReturn(cap.getAllValues());
+        TradingAppService.HistoricalTradeImportResult second =
+                service.importHistoricalTrades("default", content);
+
+        assertEquals(0, second.imported());
+        assertEquals(1, second.skipped(), "已有时间 → 幂等跳过");
+        assertEquals(0, second.updated());
+        verify(history, never()).backfillTradeTime(any(), any(), any(), any());
     }
 
     // ── 本金设置（2026-08-18）：只改 principal，不动现金/资产/市值 ──
@@ -911,6 +984,72 @@ void soldUpdatePsychology_marksTrade() {
         assertThrows(TradingException.class, () -> service.setPrincipal("default", null));
         assertThrows(TradingException.class, () -> service.setPrincipal("default", BigDecimal.ZERO));
         assertThrows(TradingException.class, () -> service.setPrincipal("default", new BigDecimal("-1")));
+    }
+
+    // ── 当日交易复盘聚合（RFC 20260822，纯客观数据）──
+
+    @Test
+    void getDailyTradeSummary_bucketsBySession() {
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        LocalDate day = LocalDate.of(2026, 8, 22);
+        when(history.findAll(any())).thenReturn(List.of(
+                // 早盘 2 笔（09:41 买 / 10:15 卖）
+                TradeRecord.of("t1", "000725", "京东方A", TradeDirection.BUY,
+                        new BigDecimal("5.2"), 1000, day, java.time.LocalTime.of(9, 41, 5),
+                        null, null, null, null, null, day.atTime(9, 41), null, null),
+                TradeRecord.of("t2", "000725", "京东方A", TradeDirection.SELL,
+                        new BigDecimal("5.5"), 500, day, java.time.LocalTime.of(10, 15, 0),
+                        null, null, null, null, null, day.atTime(10, 15), null, null),
+                // 午盘 1 笔（13:20 买）
+                TradeRecord.of("t3", "600519", "贵州茅台", TradeDirection.BUY,
+                        new BigDecimal("1500"), 100, day, java.time.LocalTime.of(13, 20, 0),
+                        null, null, null, null, null, day.atTime(13, 20), null, null),
+                // 尾盘 1 笔（14:52 卖）
+                TradeRecord.of("t4", "600206", "有研新材", TradeDirection.SELL,
+                        new BigDecimal("33.12"), 200, day, java.time.LocalTime.of(14, 52, 56),
+                        null, null, null, null, null, day.atTime(14, 52), null, null),
+                // 无 tradeTime 的历史流水（旧数据）：计入 count/金额，不计时段
+                TradeRecord.of("t5", "600000", "浦发银行", TradeDirection.BUY,
+                        new BigDecimal("10.5"), 100, day, null,
+                        null, null, null, null, null, day.atTime(8, 0), null, null)
+        ));
+        TradingAppService svc = service(mock(PositionRepository.class), mock(RecordRepository.class), history);
+
+        TradingAppService.DailyTradeSummary s = svc.getDailyTradeSummary("default", day);
+
+        assertEquals(5, s.count(), "含无时间旧流水共 5 笔");
+        assertEquals(3, s.buyCount(), "3 买");
+        assertEquals(2, s.sellCount(), "2 卖");
+        assertEquals(3, s.sessions().size(), "三个时段桶");
+        assertEquals(2, s.sessions().get(0).count(), "早盘 2 笔");
+        assertEquals("早盘", s.sessions().get(0).name());
+        assertEquals(1, s.sessions().get(1).count(), "午盘 1 笔");
+        assertEquals("午盘", s.sessions().get(1).name());
+        assertEquals(1, s.sessions().get(2).count(), "尾盘 1 笔");
+        assertEquals("尾盘", s.sessions().get(2).name());
+        assertEquals(java.time.LocalTime.of(9, 41, 5), s.firstTradeTime(), "首笔 09:41");
+        assertEquals(java.time.LocalTime.of(14, 52, 56), s.lastTradeTime(), "末笔 14:52");
+        // 金额：买入 5200 + 150000 + 1050（无时间旧流水也计金额）；卖出 2750 + 6624
+        assertEquals(0, BigDecimal.valueOf(5200 + 150000 + 1050)
+                .compareTo(BigDecimal.valueOf(s.buyAmount())), "买入金额含无时间流水");
+        assertEquals(0, BigDecimal.valueOf(2750 + 6624)
+                .compareTo(BigDecimal.valueOf(s.sellAmount())), "卖出金额 5.5×500 + 33.12×200");
+    }
+
+    @Test
+    void getDailyTradeSummary_noTrades_returnsZero() {
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(List.of());
+        TradingAppService svc = service(mock(PositionRepository.class), mock(RecordRepository.class), history);
+
+        TradingAppService.DailyTradeSummary s = svc.getDailyTradeSummary("default", LocalDate.of(2026, 8, 22));
+
+        assertEquals(0, s.count());
+        assertEquals(0, s.buyCount());
+        assertEquals(0, s.sellCount());
+        assertTrue(s.sessions().stream().allMatch(x -> x.count() == 0), "无成交所有时段 0");
+        assertNull(s.firstTradeTime());
+        assertNull(s.lastTradeTime());
     }
 }
 

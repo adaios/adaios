@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -81,6 +82,35 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
                 .sorted(Comparator.comparing(TradeRecord::timestamp,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+    }
+
+    @Override
+    public int backfillTradeTime(String userId, String tradeId, LocalDate entryDate, LocalTime tradeTime) {
+        if (tradeId == null || entryDate == null || tradeTime == null) return 0;
+        String path = filePath(entryDate);
+        List<TradeRecord> trades = readFile(userId, path);
+        boolean updated = false;
+        for (int i = 0; i < trades.size(); i++) {
+            TradeRecord t = trades.get(i);
+            // 仅回填缺失字段：已有成交时间不动（幂等去重语义内，重复导入不回写已存在值）
+            if (tradeId.equals(t.id()) && t.tradeTime() == null) {
+                trades.set(i, new TradeRecord(
+                        t.id(), t.symbol(), t.name(), t.direction(), t.price(), t.volume(), t.amount(),
+                        t.entryDate(), tradeTime, t.stopLossPrice(), t.buyPoint(), t.targetPrice(),
+                        t.reason(), t.fee(), t.timestamp(), t.sourceRecordId(), t.orderId()));
+                updated = true;
+                break;
+            }
+        }
+        if (!updated) return 0;
+        try {
+            fileStorage.write(userId, path, objectMapper.writeValueAsString(trades));
+            log.info("历史成交回填成交时间 | userId={} | path={} | id={} | tradeTime={}",
+                    userId, path, tradeId, tradeTime);
+            return 1;
+        } catch (JsonProcessingException e) {
+            throw new StorageException("交易流水回填序列化失败: " + path, e);
+        }
     }
 
     // ── 内部方法 ──

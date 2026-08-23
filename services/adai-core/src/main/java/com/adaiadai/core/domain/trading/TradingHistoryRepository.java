@@ -1,6 +1,7 @@
 package com.adaiadai.core.domain.trading;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 /**
@@ -29,4 +30,14 @@ public interface TradingHistoryRepository {
      * 获取该用户指定日期的交易流水（按 timestamp 倒序）。
      */
     List<TradeRecord> findByDate(String userId, LocalDate date);
+
+    /**
+     * 回填单笔流水的成交时间（历史成交重传：幂等命中的记录补缺失字段）。
+     * <p>
+     * 读-改-写该笔所在月份文件：按 {@code tradeId} 定位，仅当旧记录 {@code tradeTime} 为空时回填；
+     * 找不到该 id 静默（文件漂移/并发删除兜底，不抛错）。
+     *
+     * @return 实际回填笔数（0 或 1）
+     */
+    int backfillTradeTime(String userId, String tradeId, LocalDate entryDate, LocalTime tradeTime);
 }

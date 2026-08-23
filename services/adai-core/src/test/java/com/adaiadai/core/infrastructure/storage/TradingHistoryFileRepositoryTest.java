@@ -33,7 +33,7 @@ class TradingHistoryFileRepositoryTest {
                               String stopLoss, String buyPoint) {
         LocalDate entryDate = LocalDate.parse(date);
         return TradeRecord.of(id, symbol, "名称" + symbol, TradeDirection.BUY,
-                new BigDecimal(price), volume, entryDate,
+                new BigDecimal(price), volume, entryDate, null,
                 stopLoss != null ? new BigDecimal(stopLoss) : null, buyPoint,
                 null, null, null, entryDate.atTime(9, 30), "rec_" + id, null);
     }
@@ -128,7 +128,7 @@ class TradingHistoryFileRepositoryTest {
     void sellTrade_keepsNullStopLoss() {
         // SELL 流水止损/买点为 null → round-trip 保持 null（不写止损）
         TradeRecord sell = TradeRecord.of("trade_sell", "600000", "浦发银行", TradeDirection.SELL,
-                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 3),
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 3), null,
                 null, null, null, null, null, LocalDateTime.of(2026, 8, 3, 14, 0), null, null);
         repository.append("default", sell);
 
@@ -136,5 +136,46 @@ class TradingHistoryFileRepositoryTest {
         assertEquals(TradeDirection.SELL, loaded.direction());
         assertNull(loaded.stopLossPrice(), "SELL 止损保持 null");
         assertNull(loaded.buyPoint(), "SELL 买点保持 null");
+    }
+
+    // ── 历史成交回填（2026-08-23）：幂等命中的记录补缺失成交时间 ──
+
+    @Test
+    void backfillTradeTime_fillsMissingTime() {
+        // 旧记录 tradeTime=null（首次导入无成交时间列）
+        repository.append("default", trade("trade_1", "600000", "2026-08-01", "10.5", 100, "9.5", "B1"));
+
+        int updated = repository.backfillTradeTime("default", "trade_1",
+                LocalDate.of(2026, 8, 1), java.time.LocalTime.of(14, 52, 56));
+
+        assertEquals(1, updated, "缺失时间应回填 1 笔");
+        TradeRecord loaded = repository.findAll("default").get(0);
+        assertEquals(java.time.LocalTime.of(14, 52, 56), loaded.tradeTime(), "回填后成交时间生效");
+    }
+
+    @Test
+    void backfillTradeTime_skipsWhenTimeAlreadySet() {
+        TradeRecord withTime = TradeRecord.of("trade_2", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.5"), 100, LocalDate.of(2026, 8, 2), java.time.LocalTime.of(9, 41, 0),
+                null, null, null, null, null, LocalDateTime.of(2026, 8, 2, 9, 41), null, null);
+        repository.append("default", withTime);
+
+        int updated = repository.backfillTradeTime("default", "trade_2",
+                LocalDate.of(2026, 8, 2), java.time.LocalTime.of(10, 0, 0));
+
+        assertEquals(0, updated, "已有成交时间不回写");
+        assertEquals(java.time.LocalTime.of(9, 41, 0),
+                repository.findAll("default").get(0).tradeTime(), "原时间保持不变");
+    }
+
+    @Test
+    void backfillTradeTime_unknownId_noop() {
+        repository.append("default", trade("trade_1", "600000", "2026-08-01", "10.5", 100, "9.5", "B1"));
+
+        int updated = repository.backfillTradeTime("default", "trade_ghost",
+                LocalDate.of(2026, 8, 1), java.time.LocalTime.of(14, 52, 56));
+
+        assertEquals(0, updated, "找不到 id 静默，不抛错");
+        assertNull(repository.findAll("default").get(0).tradeTime(), "原记录不变");
     }
 }

@@ -17,7 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -91,7 +93,8 @@ public class TradingAppService {
     public List<Position> recordTrade(String userId, String symbol, String name,
                                       TradeDirection direction,
                                       BigDecimal price, int volume,
-                                      LocalDate entryDate, BigDecimal stopLossPrice, String buyPoint,
+                                      LocalDate entryDate, LocalTime tradeTime,
+                                      BigDecimal stopLossPrice, String buyPoint,
                                       BigDecimal targetPrice, String reason) {
         // #147：读-改-写加每用户锁，防并发交易互相覆盖丢持仓
         synchronized (tradeLock(userId)) {
@@ -99,6 +102,10 @@ public class TradingAppService {
             String effectiveName = (name == null || name.isBlank()) ? symbol : name;
             // RFC 20260816：入场日期缺省今天（用户可补录）
             LocalDate effectiveEntryDate = entryDate != null ? entryDate : LocalDate.now();
+            // RFC 20260822：成交时刻缺省 = 落盘时刻时分（客观真实，前端可不传）
+            LocalTime effectiveTradeTime = tradeTime != null
+                    ? tradeTime
+                    : LocalDateTime.now().toLocalTime();
 
             List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
             boolean found = false;
@@ -166,7 +173,7 @@ public class TradingAppService {
             // RFC 20260816 §2.1：逐笔流水真相源（BUY/SELL 都写）。best-effort：
             // 持仓已落库，流水写入失败不阻塞交易本身（与 writeTradingRecord 同口径），只告警。
             appendTradeRecord(userId, symbol, effectiveName, direction, price, volume,
-                    effectiveEntryDate, stopLossPrice, buyPoint, targetPrice, reason, recordId);
+                    effectiveEntryDate, effectiveTradeTime, stopLossPrice, buyPoint, targetPrice, reason, recordId);
 
             log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={} | entryDate={} | 止损={}",
                     direction, symbol, volume, price, currentPositions.size(),
@@ -224,14 +231,14 @@ public class TradingAppService {
      * best-effort：流水写入失败不阻塞交易本身（持仓已落库），只告警——与 writeTradingRecord 同口径。
      */
     private void appendTradeRecord(String userId, String symbol, String name, TradeDirection direction,
-                                   BigDecimal price, int volume, LocalDate entryDate,
+                                   BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
                                    BigDecimal stopLossPrice, String buyPoint,
                                    BigDecimal targetPrice, String reason, String sourceRecordId) {
         try {
             TradeRecord trade = TradeRecord.of(
                     IdGenerator.monotonic("trade_"),
                     symbol, name, direction, price, volume,
-                    entryDate, stopLossPrice, buyPoint, targetPrice, reason,
+                    entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason,
                     null, LocalDateTime.now(), sourceRecordId, null);
             tradingHistoryRepository.append(userId, trade);
         } catch (Exception e) {
@@ -299,6 +306,77 @@ public class TradingAppService {
                 })
                 .toList();
     }
+
+    /**
+     * 当日交易复盘聚合（RFC 20260822，纯客观数据）：指定日期成交的时段分桶/买卖分布/节奏。
+     * <p>
+     * 时段口径（2026-08-22 用户确认）：早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00。
+     * tradeTime 为 null 的历史流水：计入 count/金额，不计入 sessions（无时间不误判时段）。
+     */
+    public DailyTradeSummary getDailyTradeSummary(String userId, java.time.LocalDate date) {
+        List<TradeRecord> dayTrades = tradingHistoryRepository.findAll(userId).stream()
+                .filter(tr -> {
+                    java.time.LocalDate d = tr.entryDate() != null ? tr.entryDate()
+                            : (tr.timestamp() != null ? tr.timestamp().toLocalDate() : null);
+                    return date.equals(d);
+                })
+                .toList();
+        int buyCount = 0, sellCount = 0;
+        double buyAmount = 0, sellAmount = 0;
+        java.time.LocalTime first = null, last = null;
+        List<DailySession> sessions = new ArrayList<>();
+        // 三个时段桶（早盘/午盘/尾盘）
+        List<int[]> buckets = List.of(
+                new int[]{9, 30, 11, 30},
+                new int[]{13, 0, 14, 30},
+                new int[]{14, 30, 15, 0});
+        String[] names = {"早盘", "午盘", "尾盘"};
+        int[] counts = new int[3];
+        for (TradeRecord tr : dayTrades) {
+            boolean buy = tr.direction() == TradeDirection.BUY;
+            double amt = tr.amount() != null ? tr.amount().doubleValue() : 0;
+            if (buy) { buyCount++; buyAmount += amt; } else { sellCount++; sellAmount += amt; }
+            java.time.LocalTime t = tr.tradeTime();
+            if (t != null) {
+                if (first == null || t.isBefore(first)) first = t;
+                if (last == null || t.isAfter(last)) last = t;
+                for (int i = 0; i < buckets.size(); i++) {
+                    int[] b = buckets.get(i);
+                    java.time.LocalTime start = java.time.LocalTime.of(b[0], b[1]);
+                    java.time.LocalTime end = java.time.LocalTime.of(b[2], b[3]);
+                    if (!t.isBefore(start) && t.isBefore(end)) counts[i]++;
+                }
+            }
+        }
+        for (int i = 0; i < names.length; i++) {
+            sessions.add(new DailySession(names[i],
+                    "%02d:%02d-%02d:%02d".formatted(buckets.get(i)[0], buckets.get(i)[1],
+                            buckets.get(i)[2], buckets.get(i)[3]),
+                    counts[i]));
+        }
+        return new DailyTradeSummary(date.toString(), dayTrades.size(), buyCount, sellCount,
+                round2(buyAmount), round2(sellAmount), sessions, first, last);
+    }
+
+    private static double round2(double v) {
+        return java.math.BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /** 当日复盘聚合结果（RFC 20260822，纯客观数字）。 */
+    public record DailyTradeSummary(
+            String date,
+            int count,
+            int buyCount,
+            int sellCount,
+            double buyAmount,
+            double sellAmount,
+            List<DailySession> sessions,
+            java.time.LocalTime firstTradeTime,
+            java.time.LocalTime lastTradeTime
+    ) {}
+
+    /** 时段桶：名称 / 时间范围文案 / 笔数。 */
+    public record DailySession(String name, String range, int count) {}
 
     /**
      * 按股票代码查询名称（GET /trading/lookup，代码输入带出名称 + 二次确认）。
@@ -703,16 +781,17 @@ public class TradingAppService {
     // ── 历史成交导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）──
 
     /**
-     * 导入历史成交日志（增量补录）。
+     * 导入历史成交日志（增量补录 + 缺失字段回填）。
      * <p>
      * 把券商成交逐笔补进 {@code trades/} 流水（entryDate=成交日、fee=券商实扣、orderId=成交编号幂等），
-     * 供交易历史/复盘/对账使用。设计原则（2026-08-18 确认批次）：
+     * 供交易历史/复盘/对账使用。设计原则（2026-08-18 确认批次 + 2026-08-23 回填批次）：
      * <ul>
      *   <li><b>不重算持仓/现金</b>——历史成交往往缺窗口前基线（本次 8/3 起、8/3 前已有持仓），
      *       回放重建算不出券商口径（摊薄成本 vs 系统加权平均实测差 3.4 倍）；
      *       持仓/成本/现金以「全量覆盖」导入（positions/import replace + imports/cash）为准</li>
-     *   <li><b>幂等</b>——按成交编号 orderId 去重，重复导入同一文件只落一次；
-     *       无编号按 (symbol, direction, entryDate, price, volume) 指纹去重</li>
+     *   <li><b>幂等 + 回填</b>——按成交编号 orderId 去重，重复导入同一文件不落重复流水；
+     *       已存在 orderId 且旧记录成交时间缺失时，用新文件值回填（2026-08-23，用户实测重传不更新）
+     *       计入 updated；无编号按 (symbol, direction, entryDate, price, volume) 指纹去重</li>
      *   <li><b>非交易事件跳过</b>——数量 0 行（如股息红利税资金下账）不落流水，计入 nonTrades</li>
      *   <li><b>对账提示</b>——每标的返回流水净增减 vs 当前持仓，指出窗口前基线或未导入成交</li>
      * </ul>
@@ -722,14 +801,16 @@ public class TradingAppService {
         if (rows.isEmpty()) {
             throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
         }
-        int imported = 0, skipped = 0, nonTrades = 0;
+        int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
         List<TradeRecord> toAdd = new ArrayList<>();
         synchronized (tradeLock(userId)) {
+            Map<String, TradeRecord> byOrderId = new HashMap<>();
             Set<String> orderIds = new HashSet<>();
             Set<String> fingerprints = new HashSet<>();
             for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
                 if (t.orderId() != null && !t.orderId().isBlank()) {
                     orderIds.add(t.orderId());
+                    byOrderId.put(t.orderId(), t);
                 } else {
                     fingerprints.add(fingerprint(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()));
                 }
@@ -738,7 +819,17 @@ public class TradingAppService {
                 if (r.volume() <= 0) { nonTrades++; continue; } // 非交易事件（股息红利税等）
                 String oid = r.orderId();
                 if (oid != null && !oid.isBlank()) {
-                    if (orderIds.contains(oid)) { skipped++; continue; }
+                    if (orderIds.contains(oid)) {
+                        // 幂等命中：旧记录缺失成交时间且新文件带时间 → 回填；否则跳过
+                        TradeRecord existing = byOrderId.get(oid);
+                        if (existing != null && existing.tradeTime() == null && r.tradeTime() != null) {
+                            updated += tradingHistoryRepository.backfillTradeTime(
+                                    userId, existing.id(), existing.entryDate(), r.tradeTime());
+                        } else {
+                            skipped++;
+                        }
+                        continue;
+                    }
                     orderIds.add(oid);
                 } else {
                     String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
@@ -748,7 +839,7 @@ public class TradingAppService {
                 TradeRecord trade = TradeRecord.of(
                         IdGenerator.monotonic("trade_"),
                         r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
-                        r.entryDate(), null, null, null, null, r.fee(),
+                        r.entryDate(), r.tradeTime(), null, null, null, null, r.fee(),
                         LocalDateTime.now(), null, oid);
                 toAdd.add(trade);
                 imported++;
@@ -756,9 +847,9 @@ public class TradingAppService {
             for (TradeRecord t : toAdd) tradingHistoryRepository.append(userId, t);
         }
         List<ReconcileLine> lines = reconcileHistorical(userId, rows);
-        log.info("历史成交导入 | userId={} | 导入 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
-                userId, imported, skipped, nonTrades, lines.size());
-        return new HistoricalTradeImportResult(imported, skipped, nonTrades, lines);
+        log.info("历史成交导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
+                userId, imported, updated, skipped, nonTrades, lines.size());
+        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines);
     }
 
     /** 幂等指纹（无成交编号时）：symbol|direction|entryDate|price|volume。 */
@@ -816,8 +907,8 @@ public class TradingAppService {
     public record ReconcileLine(String symbol, String name, int count, int netVolume,
                                 Integer holdings, String note) {}
 
-    /** 历史成交导入结果：导入笔数 / 去重跳过 / 非交易事件 / 对账行。 */
-    public record HistoricalTradeImportResult(int imported, int skipped, int nonTrades,
+    /** 历史成交导入结果：导入笔数 / 回填笔数 / 去重跳过 / 非交易事件 / 对账行。 */
+    public record HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                               List<ReconcileLine> lines) {}
 
     /** 自选导入结果。 */

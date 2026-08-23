@@ -17,6 +17,7 @@
 | 2026-08-13 | v3.16 | **R2 记录↔任务关联**：任务模型新增可选 `sourceRecordId`（domain=project 记录自动转任务时关联源记录 `rec_xxx`）；非破坏性字段新增，前端手动建任务为 null |
 | 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
 | 2026-08-12 | v3.14 | **收官批 O（#166/#170/#202/#231/#122 等）**：AI 交互日志响应新增 `systemPrompt` 字段（generate 的复盘模板指令，understand/intent 为 null，#231）；上传超限改 413（`MaxUploadSizeExceededException` → PAYLOAD_TOO_LARGE，原 500，#166）；`/accounts/available` 契约补充无鉴权说明（#215 已最小集，此条再确认）；待办建议 prompt 改第二人称（#170）；复盘生成剥代码块围栏（#202）|
+| 2026-08-22 | v3.24 | **首屏提速（主页启动慢修复）**：新增 `GET /api/v1/brief/cached`（只返回 5 分钟缓存 Brief，不触发 AI 生成，空串=缓存过期）；双端主页首屏并行拉 feed+缓存 brief、渲染只等 feed，简报后到单独刷新——AI 简报不再阻塞主页加载 |
 | 2026-08-12 | v3.13 | **REVIEW #129/#218/#222**：promote 前端入口说明（交易页复盘弹窗「反哺入库」按钮，`POST` body 传 `{}`）；AI 交互日志视觉调用补真实耗时（`LoggingVisualAiClient.durationMs`）；Brief 问候加中午段（11-13 → 中午好，#222）|
 | 2026-08-12 | v3.12 | **REVIEW #214/#215/#221**：`POST /records/media/{id}/ask` 的 `question` 加长度上界（500 字符，超限 400）；`GET /accounts/available` 响应由账号对象改为 **userId 最小集**（`List<String>`，不暴露 role/enabled/createdAt）；Brief 降级问候 emoji 按时段（#221） |
 | 2026-08-12 | v3.11 | **AI 日志隐私治理（REVIEW #210）**：`GET /admin/ai-logs` 新增 `page`/`size`（上限 500，响应带 `total`）；`date` 早于保留期（`adai.ai-log.retention-days` 默认 30 天）返回 400（已清理不可查）|
@@ -409,6 +410,7 @@
   "price": 25.30,
   "volume": 100,
   "entryDate": "2026-08-16",
+  "tradeTime": "09:41:05",
   "stopLossPrice": 24.50,
   "buyPoint": "B1",
   "targetPrice": 30.00,
@@ -419,6 +421,7 @@
 > `name` **可选**（≤32 字符，RFC 20260815）：缺省时后端以 symbol 兜底。`direction` 必填（BUY/SELL），`price`/`volume` 必须 > 0（`@Positive`）。
 > **RFC 20260816（数据分层）**：`entryDate` 可空缺省今天；`targetPrice`/`reason` 可选（SELL 时止损/买点可空）。
 > **2026-08-18（确认批次）**：`stopLossPrice`/`buyPoint` 由 BUY 必填改为**可选**——app 简化为纯买卖记录（标的/价格/数量/方向），止损位/买点归 web 端（记录对话框 / CSV 批量导入仍填；app 记录的持仓止损缺失 → 建议引擎纪律判定降级，web 持仓编辑补设后恢复）。
+> **2026-08-22（RFC 20260822）**：`tradeTime`（成交时刻 `HH:mm:ss`）可选——缺省 = 落盘时刻时分（客观数据，供当日复盘时段分布）。
 > recordTrade 成功后**同步写逐笔流水**（`data/{userId}/trading/trades/{yyyy-MM}.json`）+ **写一条 domain=trading 记录**（5 分钟窗口去重）——交易进 timeline/记忆 + 复盘提醒闭环。
 
 **Response**：`Position[]` — 更新后的全部持仓。需 trading 插件（403）。
@@ -427,6 +430,38 @@
 
 ### `GET /api/v1/trading/trades` — 查询交易逐笔流水（RFC 20260816）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `from` | String | 否 | 起始日期 `yyyy-MM-dd` |
+| `to` | String | 否 | 截止日期 `yyyy-MM-dd` |
+| `date` | String | 否 | **RFC 20260822**：指定单日 → 返回 `{trades, daily}`（当日复盘聚合）|
+
+**Response（无 date）**：`TradeRecord[]` — 逐笔流水（含 `tradeTime` 可空）。
+
+**Response（带 date，RFC 20260822 当日复盘聚合）**：
+
+```json
+{
+  "trades": [{ "id": "trade_...", "symbol": "000725", "direction": "BUY", "price": 5.2,
+    "volume": 1000, "entryDate": "2026-08-22", "tradeTime": "09:41:05" }],
+  "daily": {
+    "date": "2026-08-22",
+    "count": 4, "buyCount": 3, "sellCount": 1,
+    "buyAmount": 12345.6, "sellAmount": 6789.0,
+    "sessions": [
+      {"name": "早盘", "range": "09:30-11:30", "count": 2},
+      {"name": "午盘", "range": "13:00-14:30", "count": 1},
+      {"name": "尾盘", "range": "14:30-15:00", "count": 1}
+    ],
+    "firstTradeTime": "09:41:00", "lastTradeTime": "14:52:00"
+  }
+}
+```
+
+> `daily` 为纯客观聚合（无 AI）：时段分桶口径（2026-08-22 用户确认）早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00；`tradeTime=null` 的旧流水计入 count/金额，不计入 sessions（不误判时段）。
 
 ---
 
@@ -442,7 +477,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **响应**：`{"success":2,"failures":[{"row":3,"message":"卖出数量超过持仓: 000725（持有 100 股）"}]}`
 
-### `POST /api/v1/trading/trades/import` — 历史成交日志导入（第五份文件，2026-08-18）
+### `POST /api/v1/trading/trades/import` — 历史成交日志导入（第五份文件，2026-08-18；2026-08-23 加回填）
 > 需 trading 插件（403）。
 
 通达信「历史成交查询」导出 → **补逐笔流水**（增量补录），供交易历史/复盘/对账。
@@ -451,14 +486,16 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 - **只补流水不重算持仓/现金**：历史成交往往缺窗口前基线（如 8/3 起、8/3 前已有持仓），回放重建算不出券商口径（摊薄成本 vs 系统加权平均实测差 3.4 倍）；持仓/成本/现金以全量覆盖导入为准（`positions/import?replace=true` + `imports/cash`）
 - 每笔落流水：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**，重复导入同一文件只落一次；无编号按 symbol+direction+entryDate+price+volume 指纹去重）
+- **缺失字段回填（2026-08-23）**：幂等命中的已存在记录，若旧记录 `tradeTime` 为空且新文件带成交时间 → 回填该笔成交时间（计入 `updated`），不落新流水
 - 数量 0 行（股息红利税等非交易资金事件）不落流水，计入 `nonTrades`
 
 **响应**：
 ```json
-{"imported":45,"skipped":1,"nonTrades":1,
+{"imported":45,"updated":3,"skipped":1,"nonTrades":1,
  "lines":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
    "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（以持仓快照为准）"}]}
 ```
+- `imported` = 落流水笔数 / `updated` = 回填缺失成交时间笔数（2026-08-23 新增）/ `skipped` = 幂等去重跳过 / `nonTrades` = 非交易事件
 - `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
 
 ---
@@ -777,6 +814,8 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 ### `GET /api/v1/brief` — 今日简报
 
 > 内容为 AI 生成的问候 + 当日要点：**首行问候、每行以 emoji 开头、最多 5 行**（后端 `truncateLines(…, 5)` + prompt「max 5 lines」）。前端直接渲染，无额外前缀（去绿点，避免与 AI emoji 双重前缀冲突）。AI 失败降级为按时段问候（🌙/☀️/🌤️/🌇/✨）+ 💬 引导行。
+>
+> ⚠️ **此端点会触发 AI 生成（实测 7~27s）**：主页首屏请改调 `GET /api/v1/brief/cached`（不触发 AI），缓存过期（空串）时再异步调本端点补全——避免首页加载被 AI 阻塞（v3.24）。
 
 **Response**
 
@@ -785,6 +824,20 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
   "content": "小王晚上好！\n🍜 刚聊过饿了想吃啥\n💧 睡前记得喝水哦"
 }
 ```
+
+### `GET /api/v1/brief/cached` — 缓存 Brief（不触发 AI）
+
+> v3.24：只返回 5 分钟内的缓存 Brief，**不触发 AI 生成**。缓存过期或从未生成时 `content` 为空串。主页首屏用它并行加载，空串时再异步调 `GET /api/v1/brief` 补全。
+
+**Response**
+
+```json
+{
+  "content": "小王晚上好！\n🍜 刚聊过饿了想吃啥"
+}
+```
+
+> `content` 为空串表示缓存过期（前端应后台补 AI 生成，不阻塞首屏渲染）。
 
 ---
 

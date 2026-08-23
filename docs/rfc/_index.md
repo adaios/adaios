@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-22
 status: active
-lines: 65
+lines: 67
 depends-on: []
 related:
   - ../_index.md
@@ -57,6 +57,9 @@ tags: [meta, index, rfc]
 | 20260816-trading-session-push.md | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）| draft |
 | 20260816-trading-data-intelligence.md | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核，B1 完美图参照系）| draft |
 | 20260817-trading-push-image-trade-log.md | 交易推送体验（样式/模板/开关）+ 图片对话流 + 交易日志自动归集 | approved |
+| 20260822-trading-trade-time-review.md | 成交时间点采集 + 当日交易复盘（纯客观数据——去掉理由/情绪）| approved |
+| 20260823-trading-history-tab-backfill.md | 历史成交 Tab 页（常驻第 5 Tab，取代页头 Dialog）+ 导入缺失成交时间回填（updated 计数）| implemented |
+| 20260822-memory-plugin-isolation.md | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 | draft |
 
 ## 过期判断
 

@@ -28,6 +28,10 @@ class ApiService {
   /// 底层 HTTP 客户端（可注入 mock，测试用；默认真实 client）。
   final http.Client _client;
 
+  /// AI 生成类请求专用客户端：DeepSeek 聊天/追问/总结实测 7~27s（2026-08-20 压测），
+  /// 默认 15s 超时必误杀——聊天报错且重试仍报错的根因。AI 端点放宽到 90s。
+  final http.Client _aiClient;
+
   // 内存缓存：跨页面切换不丢；timeline/memory 按参数 key 区分（参数感知）
   TagsResponse? _tagsCache;
   final Map<String, List<TimelineEntryResponse>> _timelineCache = {};
@@ -35,12 +39,26 @@ class ApiService {
 
   ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
-        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15));
+        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
+        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 90));
 
   /// 获取今日 Brief（摘要），独立接口。
+  /// AI 生成可能 7~27s（缓存命中时秒回）——走 _aiClient 防误杀。
   Future<String> getBrief() async {
-    final resp = await _client.get(
+    final resp = await _aiClient.get(
       Uri.parse('$baseUrl/api/v1/brief'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return data['content'] as String? ?? '';
+  }
+
+  /// 只取 5 分钟内的缓存 Brief（GET /api/v1/brief/cached），不触发 AI 生成。
+  /// 主页首屏用它避免被 AI 生成阻塞；空串表示缓存过期，调用方再异步调 [getBrief] 补全。
+  Future<String> getBriefCached() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/brief/cached'),
       headers: _headers,
     );
     _check(resp);
@@ -97,6 +115,8 @@ class ApiService {
   }
 
   /// 提交记录。
+  /// 2026-08-20：聊天（intent=question / cardId 续聊）走 _aiClient——DeepSeek 回答 7~27s，
+  /// 15s 默认超时必误杀（聊天报错根因）；纯 log 陈述走常规客户端。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
       'content': content,
@@ -105,7 +125,8 @@ class ApiService {
       'intent': ?intent,
       'cardId': ?cardId,
     };
-    final resp = await _client.post(
+    final aiHeavy = intent == 'question' || cardId != null;
+    final resp = await (aiHeavy ? _aiClient : _client).post(
       Uri.parse('$baseUrl/api/v1/records'),
       headers: _headers,
       body: jsonEncode(body),
@@ -149,7 +170,7 @@ class ApiService {
     required String imageRecordId,
     required String question,
   }) async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/records/media/$imageRecordId/ask'),
       headers: _headers,
       body: jsonEncode({'question': question}),
@@ -169,7 +190,7 @@ class ApiService {
     required List<String> imageRecordIds,
     required String question,
   }) async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/records/media/ask-batch'),
       headers: _headers,
       body: jsonEncode({'imageRecordIds': imageRecordIds, 'question': question}),
@@ -205,7 +226,7 @@ class ApiService {
       'turns': turns,
       'cardId': ?cardId,
     };
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/conversations/end'),
       headers: _headers,
       body: jsonEncode(body),
@@ -608,13 +629,27 @@ class ApiService {
     return list.map((e) => TradeRecordItem.fromJson(e)).toList();
   }
 
+  /// RFC 20260822：当日交易复盘聚合（纯客观）——GET /trading/trades?date=today → daily 块。
+  /// 后端旧版本无 daily 块 → 返回 null（前端不显示今日节奏行）。
+  Future<DailyTradeSummaryDto?> getDailyTrades() async {
+    final now = DateTime.now();
+    final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final uri = Uri.parse('$baseUrl/api/v1/trading/trades')
+        .replace(queryParameters: {'date': date});
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    if (data is! Map<String, dynamic> || data['daily'] == null) return null;
+    return DailyTradeSummaryDto.fromJson(data['daily']);
+  }
+
   /// 生成交易复盘（POST /api/v1/trading/review，AI 生成 → 写入 data/trading/reviews/）。
   Future<ReviewResponse> generateReview({String? date}) async {
     final params = <String, String>{};
     if (date != null) params['date'] = date;
     final uri = Uri.parse('$baseUrl/api/v1/trading/review')
         .replace(queryParameters: params.isNotEmpty ? params : null);
-    final resp = await _client.post(uri, headers: _headers);
+    final resp = await _aiClient.post(uri, headers: _headers);
     _check(resp);
     return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
@@ -1262,10 +1297,13 @@ class TradeRecordItem {
   final int volume;
   final double amount; // price × volume
   final String entryDate; // yyyy-MM-dd
+  final String? tradeTime; // HH:mm:ss（RFC 20260822，可空——旧数据无）
   final double? stopLossPrice; // BUY 必填，SELL 可空
   final String? buyPoint;
   final double? targetPrice;
   final String? reason;
+  final double? fee; // 手续费（券商实扣；2026-08-23 web 历史成交 Tab 显示）
+  final String? orderId; // 券商成交编号（2026-08-23 web 历史成交 Tab 显示）
 
   TradeRecordItem({
     required this.id,
@@ -1276,10 +1314,13 @@ class TradeRecordItem {
     required this.volume,
     required this.amount,
     required this.entryDate,
+    this.tradeTime,
     this.stopLossPrice,
     this.buyPoint,
     this.targetPrice,
     this.reason,
+    this.fee,
+    this.orderId,
   });
 
   bool get isBuy => direction.toUpperCase() == 'BUY';
@@ -1301,10 +1342,57 @@ class TradeRecordItem {
       amount: (map['amount'] as num?)?.toDouble() ??
           ((map['price'] as num?)?.toDouble() ?? 0) * (map['volume'] as int? ?? 0),
       entryDate: rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate,
+      tradeTime: map['tradeTime'] as String?,
       stopLossPrice: (map['stopLossPrice'] as num?)?.toDouble(),
       buyPoint: map['buyPoint'] as String?,
       targetPrice: (map['targetPrice'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+      fee: (map['fee'] as num?)?.toDouble(),
+      orderId: map['orderId'] as String?,
+    );
+  }
+}
+
+/// RFC 20260822：当日交易复盘聚合（纯客观）——今日 N 笔 · 买卖分布 · 时段分桶。
+class DailyTradeSummaryDto {
+  final String date;
+  final int count, buyCount, sellCount;
+  final List<DailySessionDto> sessions;
+  final String? firstTradeTime, lastTradeTime;
+
+  DailyTradeSummaryDto({required this.date, required this.count, required this.buyCount,
+      required this.sellCount, required this.sessions,
+      required this.firstTradeTime, required this.lastTradeTime});
+
+  factory DailyTradeSummaryDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return DailyTradeSummaryDto(
+      date: m['date']?.toString() ?? '',
+      count: (m['count'] as num?)?.toInt() ?? 0,
+      buyCount: (m['buyCount'] as num?)?.toInt() ?? 0,
+      sellCount: (m['sellCount'] as num?)?.toInt() ?? 0,
+      sessions: (m['sessions'] as List?)
+          ?.map((e) => DailySessionDto.fromJson(e))
+          .toList() ?? const [],
+      firstTradeTime: m['firstTradeTime']?.toString(),
+      lastTradeTime: m['lastTradeTime']?.toString(),
+    );
+  }
+}
+
+/// 时段桶：名称 / 时间范围 / 笔数。
+class DailySessionDto {
+  final String name, range;
+  final int count;
+
+  DailySessionDto({required this.name, required this.range, required this.count});
+
+  factory DailySessionDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return DailySessionDto(
+      name: m['name']?.toString() ?? '',
+      range: m['range']?.toString() ?? '',
+      count: (m['count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -1547,16 +1635,19 @@ class BatchImportFailure {
 }
 
 /// 历史成交导入结果 DTO（POST /api/v1/trading/trades/import，第五份文件，2026-08-18）。
-/// 契约：{imported, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
-/// imported=落流水笔数 / skipped=幂等去重跳过 / nonTrades=非交易事件（股息红利税等）/ lines=对账提示。
+/// 契约：{imported, updated, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
+/// imported=落流水笔数 / updated=回填缺失成交时间笔数（2026-08-23）/ skipped=幂等去重跳过 /
+/// nonTrades=非交易事件（股息红利税等）/ lines=对账提示。
 class HistoricalTradeImportResult {
   final int imported;
+  final int updated;
   final int skipped;
   final int nonTrades;
   final List<ReconcileLine> lines;
 
   HistoricalTradeImportResult({
     required this.imported,
+    required this.updated,
     required this.skipped,
     required this.nonTrades,
     required this.lines,
@@ -1564,10 +1655,12 @@ class HistoricalTradeImportResult {
 
   factory HistoricalTradeImportResult.fromJson(dynamic json) {
     if (json is! Map<String, dynamic>) {
-      return HistoricalTradeImportResult(imported: 0, skipped: 0, nonTrades: 0, lines: []);
+      return HistoricalTradeImportResult(
+          imported: 0, updated: 0, skipped: 0, nonTrades: 0, lines: []);
     }
     return HistoricalTradeImportResult(
       imported: (json['imported'] as num?)?.toInt() ?? 0,
+      updated: (json['updated'] as num?)?.toInt() ?? 0,
       skipped: (json['skipped'] as num?)?.toInt() ?? 0,
       nonTrades: (json['nonTrades'] as num?)?.toInt() ?? 0,
       lines: ((json['lines'] as List?) ?? [])

@@ -9,6 +9,7 @@ import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.infrastructure.storage.StorageException;
@@ -37,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -121,7 +123,8 @@ public class TradingController {
         List<Position> updated = tradingAppService.recordTrade(
                 userId, request.symbol(), request.name(),
                 request.direction(), request.price(), request.volume(),
-                request.entryDate(), request.stopLossPrice(), request.buyPoint(),
+                request.entryDate(), request.tradeTime(),
+                request.stopLossPrice(), request.buyPoint(),
                 request.targetPrice(), request.reason()
         );
         return ResponseEntity.ok(updated);
@@ -130,18 +133,27 @@ public class TradingController {
     /**
      * 查询交易逐笔流水（RFC 20260816：web 交易历史）。
      * GET /api/v1/trading/trades?from=yyyy-MM-dd&to=yyyy-MM-dd（均可选）
+     * RFC 20260822：加 ?date=yyyy-MM-dd → 返回 {trades, daily}（当日复盘聚合，纯客观）。
      * G-2：读端点门控。
      */
     @GetMapping("/trades")
     public ResponseEntity<?> getTrades(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String date) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         java.time.LocalDate fromDate = null, toDate = null;
         if (from != null && !from.isBlank()) fromDate = java.time.LocalDate.parse(from);
         if (to != null && !to.isBlank()) toDate = java.time.LocalDate.parse(to);
+        // RFC 20260822：指定日期 → 当日复盘聚合（trades + daily 时段分桶）
+        if (date != null && !date.isBlank()) {
+            java.time.LocalDate d = java.time.LocalDate.parse(date);
+            List<TradeRecord> dayTrades = tradingAppService.getTradeHistory(userId, d, d);
+            TradingAppService.DailyTradeSummary daily = tradingAppService.getDailyTradeSummary(userId, d);
+            return ResponseEntity.ok(Map.of("trades", dayTrades, "daily", daily));
+        }
         return ResponseEntity.ok(tradingAppService.getTradeHistory(userId, fromDate, toDate));
     }
 
@@ -203,7 +215,8 @@ public class TradingController {
             BatchTradeRequest.BatchTradeItem it = items.get(i);
             try {
                 tradingAppService.recordTrade(userId, it.symbol(), it.name(), it.direction(),
-                        it.price(), it.volume(), it.entryDate(), it.stopLossPrice(), it.buyPoint(),
+                        it.price(), it.volume(), it.entryDate(), it.tradeTime(),
+                        it.stopLossPrice(), it.buyPoint(),
                         it.targetPrice(), it.reason());
                 success++;
             } catch (Exception e) {
@@ -232,6 +245,7 @@ public class TradingController {
                 tradingAppService.importHistoricalTrades(userId, content != null ? content : "");
         return ResponseEntity.ok(Map.of(
                 "imported", result.imported(),
+                "updated", result.updated(),
                 "skipped", result.skipped(),
                 "nonTrades", result.nonTrades(),
                 "lines", result.lines()));
@@ -728,6 +742,7 @@ public class TradingController {
             @Positive BigDecimal price,
             @Positive int volume,
             LocalDate entryDate,
+            LocalTime tradeTime,
             BigDecimal stopLossPrice,
             String buyPoint,
             BigDecimal targetPrice,
@@ -743,6 +758,7 @@ public class TradingController {
                 BigDecimal price,
                 int volume,
                 LocalDate entryDate,
+                LocalTime tradeTime,
                 BigDecimal stopLossPrice,
                 String buyPoint,
                 BigDecimal targetPrice,

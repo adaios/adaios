@@ -37,6 +37,7 @@ class _TradingPageState extends State<TradingPage> {
   double? _cash;
   double? _assets;
   String? _lastUpdated; // 顶部「上次更新」时间戳
+  DailyTradeSummaryDto? _dailySummary; // RFC 20260822：当日交易复盘（今日 N 笔 · 时段分布）
   bool _loading = true;
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
@@ -110,6 +111,21 @@ class _TradingPageState extends State<TradingPage> {
     }
     // 可降级请求（自选/买点/清仓/打分）：异步拉取，失败静默（显示 '—'），不阻塞主数据
     _loadDegradable();
+    // RFC 20260822：当日交易复盘（今日 N 笔 · 时段分布）——纯客观，失败静默不显示
+    _loadDaily();
+  }
+
+  /// RFC 20260822：当日交易复盘聚合。失败/无成交静默（不显示今日节奏行），不阻塞页面。
+  Future<void> _loadDaily() async {
+    try {
+      final daily = await widget.api.getDailyTrades();
+      if (!mounted) return;
+      setState(() {
+        _dailySummary = (daily != null && daily.count > 0) ? daily : null;
+      });
+    } catch (_) {
+      // 静默：后端旧版本 / 网络抖动时页面不受影响
+    }
   }
 
   /// 可降级请求：watchlist/buy-points/sold/sold-score（K 线重计算/数据展示），失败不打断页面。
@@ -264,13 +280,6 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  Future<void> _showHistory() {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => _HistoryDialog(api: widget.api),
-    );
-  }
-
   Future<void> _showReviewHistory() {
     return showDialog<void>(
       context: context,
@@ -343,12 +352,7 @@ class _TradingPageState extends State<TradingPage> {
             color: AppColors.darkGrey4,
             tooltip: '复盘历史',
           ),
-          IconButton(
-            onPressed: _showHistory,
-            icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            color: AppColors.darkGrey4,
-            tooltip: '交易历史',
-          ),
+          // RFC 20260823：交易历史 Dialog 已升级为第 5 Tab「历史成交」，页头入口移除
           IconButton(
             onPressed: _showImport,
             icon: const Icon(Icons.upload_file_outlined, size: 18),
@@ -403,6 +407,10 @@ class _TradingPageState extends State<TradingPage> {
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                     children: [
                       _buildSnapshotRow(),
+                      if (_dailySummary != null) ...[
+                        const SizedBox(height: 4),
+                        _buildDailySummaryRow(),
+                      ],
                       const SizedBox(height: 6),
                       Row(children: [
                         Text(_lastUpdated != null
@@ -425,6 +433,31 @@ class _TradingPageState extends State<TradingPage> {
                       _buildTabWorkspace(),
                     ],
                   ),
+      ),
+    ]);
+  }
+
+  /// RFC 20260822：当日交易复盘行（纯客观数字）——今日 N 笔 · 买/卖 · 时段分布 · 首末笔时间。
+  Widget _buildDailySummaryRow() {
+    final d = _dailySummary!;
+    final sessionText = d.sessions
+        .where((s) => s.count > 0)
+        .map((s) => '${s.name} ${s.count} 笔')
+        .join(' · ');
+    final timeText = (d.firstTradeTime != null && d.lastTradeTime != null)
+        ? '${d.firstTradeTime!.substring(0, 5)}-${d.lastTradeTime!.substring(0, 5)}'
+        : '';
+    return Row(children: [
+      Icon(Icons.schedule, size: 12, color: AppColors.darkGreen),
+      const SizedBox(width: 6),
+      Flexible(
+        child: Text(
+          '今日 ${d.count} 笔 · 买 ${d.buyCount} / 卖 ${d.sellCount}'
+          '${sessionText.isEmpty ? '' : ' · $sessionText'}'
+          '${timeText.isEmpty ? '' : ' · $timeText'}',
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3),
+        ),
       ),
     ]);
   }
@@ -678,10 +711,11 @@ class _TradingPageState extends State<TradingPage> {
     ));
   }
 
-  /// Tab 工作区（E1）：持仓（默认）/ 自选 / 清仓 / 资金 四分区。
+  /// Tab 工作区（E1）：持仓（默认）/ 自选 / 清仓 / 资金 / 历史成交 五分区。
+  /// 2026-08-23：历史成交从页头 Dialog 升级为常驻第 5 Tab（RFC 20260823，取代 _HistoryDialog）。
   Widget _buildTabWorkspace() {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           decoration: BoxDecoration(
@@ -696,11 +730,12 @@ class _TradingPageState extends State<TradingPage> {
             labelColor: AppColors.darkGrey1,
             unselectedLabelColor: AppColors.darkGrey5,
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            tabs: [
-              const Tab(text: '持仓'),
-              const Tab(text: '自选'),
-              const Tab(text: '清仓'),
-              const Tab(text: '资金'),
+            tabs: const [
+              Tab(text: '持仓'),
+              Tab(text: '自选'),
+              Tab(text: '清仓'),
+              Tab(text: '资金'),
+              Tab(text: '历史成交'),
             ],
           ),
         ),
@@ -712,6 +747,7 @@ class _TradingPageState extends State<TradingPage> {
             SingleChildScrollView(child: _buildWatchlistSection()),
             SingleChildScrollView(child: _buildSoldSection()),
             SingleChildScrollView(child: _buildCashSection()),
+            _HistorySection(api: widget.api),
           ]),
         ),
       ]),
@@ -1988,24 +2024,28 @@ class _ImportDialogState extends State<_ImportDialog> {
   }
 }
 
-// ─────────────────────────── 交易历史 Dialog（web 独有） ───────────────────────────
+// ─────────────────────────── 历史成交 Tab（RFC 20260823，取代交易历史 Dialog） ───────────────────────────
 
-class _HistoryDialog extends StatefulWidget {
+/// 历史成交 Tab 内容：日期范围查询 + 按日分组全字段流水列表 + 导入历史成交入口。
+/// 2026-08-23：从页头 Dialog 升级为常驻第 5 Tab（RFC 20260823-trading-history-tab-backfill）；
+/// 进 Tab 自动加载 + 手动刷新，不做定时轮询（保活页陈旧问题，切页刷新兜底）。
+class _HistorySection extends StatefulWidget {
   final ApiService api;
 
-  const _HistoryDialog({required this.api});
+  const _HistorySection({required this.api});
 
   @override
-  State<_HistoryDialog> createState() => _HistoryDialogState();
+  State<_HistorySection> createState() => _HistorySectionState();
 }
 
-class _HistoryDialogState extends State<_HistoryDialog> {
+class _HistorySectionState extends State<_HistorySection> {
   late DateTime _from;
   late DateTime _to;
   List<TradeRecordItem>? _trades;
   bool _loading = true;
   String? _error;
   int _loadGen = 0; // 代际令牌（2026-08-17 走查）：快速切换起止日期时旧响应不覆盖新查询
+  HistoricalTradeImportResult? _importResult; // 最近一次导入结果（导入后 inline 展示，含 updated）
 
   @override
   void initState() {
@@ -2067,6 +2107,21 @@ class _HistoryDialogState extends State<_HistoryDialog> {
     }
   }
 
+  /// RFC 20260823：历史成交导入（独立入口，只认通达信历史成交导出格式）。
+  Future<void> _showImport() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _HistoryImportDialog(
+        api: widget.api,
+        onImported: (result) {
+          if (!mounted) return;
+          setState(() => _importResult = result);
+          _load();
+        },
+      ),
+    );
+  }
+
   /// 按日期分组（日期降序；无日期归「未标注日期」）。
   Map<String, List<TradeRecordItem>> _grouped() {
     final map = <String, List<TradeRecordItem>>{};
@@ -2082,86 +2137,147 @@ class _HistoryDialogState extends State<_HistoryDialog> {
     return {for (final k in keys) k: map[k]!};
   }
 
+  /// 金额千分位（与页面账户卡同口径）。
+  static String _thousands(double v) {
+    final neg = v < 0;
+    final s = v.abs().toStringAsFixed(2);
+    final parts = s.split('.');
+    final buf = StringBuffer();
+    final intPart = parts[0];
+    for (var i = 0; i < intPart.length; i++) {
+      buf.write(intPart[i]);
+      final remaining = intPart.length - 1 - i;
+      if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+    }
+    return '${neg ? '-' : ''}$buf.${parts[1]}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppColors.darkSurface,
-      insetPadding: const EdgeInsets.all(24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: SizedBox(
-        width: 760,
-        height: 520,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+    final trades = _trades ?? <TradeRecordItem>[];
+    final buyCount = trades.where((t) => t.isBuy).length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 工具行：日期范围 + 刷新 + 导入历史成交
+      Row(children: [
+        OutlinedButton(
+          onPressed: _pickFrom,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey3,
+            side: const BorderSide(color: AppColors.darkBorder),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            visualDensity: VisualDensity.compact,
+          ),
+          child: Text(_fmt(_from), style: const TextStyle(fontSize: 12)),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('至', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+        ),
+        OutlinedButton(
+          onPressed: _pickTo,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey3,
+            side: const BorderSide(color: AppColors.darkBorder),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            visualDensity: VisualDensity.compact,
+          ),
+          child: Text(_fmt(_to), style: const TextStyle(fontSize: 12)),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          onPressed: _load,
+          icon: const Icon(Icons.refresh, size: 16),
+          color: AppColors.darkGrey4,
+          tooltip: '重新加载',
+        ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: _showImport,
+          icon: const Icon(Icons.upload_file, size: 14),
+          label: const Text('导入历史成交', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      // 区间统计行：共 N 笔 · 买 X 卖 Y（纯客观）
+      if (!_loading && _error == null && trades.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text('共 ${trades.length} 笔 · 买 $buyCount 卖 ${trades.length - buyCount}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ),
+      // 最近导入结果（inline，含 updated 回填计数）
+      if (_importResult != null) ...[
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.darkGrey4, width: 0.5),
+          ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.receipt_long_outlined, size: 18, color: AppColors.darkGreen),
-              const SizedBox(width: 8),
-              const Text('交易历史',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-              const Spacer(),
-              // 日期范围选择
-              OutlinedButton(
-                onPressed: _pickFrom,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.darkGrey3,
-                  side: const BorderSide(color: AppColors.darkBorder),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
+            Text('导入完成：新增 ${_importResult!.imported} 笔'
+                '${_importResult!.updated > 0 ? ' · 回填成交时间 ${_importResult!.updated} 笔' : ''}'
+                ' · 跳过 ${_importResult!.skipped} 笔'
+                '${_importResult!.nonTrades > 0 ? ' · 非交易事件 ${_importResult!.nonTrades} 行' : ''}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+            if (_importResult!.lines.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+              const SizedBox(height: 2),
+              for (final l in _importResult!.lines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('${l.name}（${l.symbol}）：${l.netVolume > 0 ? '+' : ''}${l.netVolume} 股 → ${l.note}',
+                      style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
                 ),
-                child: Text(_fmt(_from), style: const TextStyle(fontSize: 12)),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Text('至', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-              ),
-              OutlinedButton(
-                onPressed: _pickTo,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.darkGrey3,
-                  side: const BorderSide(color: AppColors.darkBorder),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                ),
-                child: Text(_fmt(_to), style: const TextStyle(fontSize: 12)),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh, size: 16),
-                color: AppColors.darkGrey4,
-                tooltip: '重新加载',
-              ),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            const Divider(color: AppColors.darkBorder, height: 1),
-            const SizedBox(height: 6),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? Center(child: Text('加载失败\n$_error', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)))
-                      : (_trades?.isEmpty ?? true)
-                          ? const Center(
-                              child: Text('这段时间还没有交易记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)))
-                          : SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildListHeader(),
-                                  ..._grouped().entries.map((e) => _buildDateGroup(e.key, e.value)),
-                                ],
-                              ),
-                            ),
-            ),
+            ],
           ]),
         ),
+        const SizedBox(height: 6),
+      ],
+      const SizedBox(height: 4),
+      Expanded(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(child: Text('加载失败\n$_error', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)))
+                : trades.isEmpty
+                    ? Center(
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          const Text('这段时间还没有历史成交', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+                          const SizedBox(height: 6),
+                          OutlinedButton.icon(
+                            onPressed: _showImport,
+                            icon: const Icon(Icons.upload_file, size: 14),
+                            label: const Text('导入通达信历史成交导出', style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.darkGrey1,
+                                side: const BorderSide(color: AppColors.darkGrey4),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+                          ),
+                        ]),
+                      )
+                    : SingleChildScrollView(
+                        // 全字段列较多 → 横向滚动；外层纵向滚动
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildListHeader(),
+                              ..._grouped().entries.map((e) => _buildDateGroup(e.key, e.value)),
+                            ],
+                          ),
+                        ),
+                      ),
       ),
-    );
+    ]);
   }
 
   Widget _buildListHeader() {
@@ -2175,13 +2291,17 @@ class _HistoryDialogState extends State<_HistoryDialog> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
         cell('方向', 44),
+        cell('时间', 48), // RFC 20260822：成交时间（客观数据，旧数据 '—'）
         cell('代码', 72),
         cell('名称', 88),
         cell('数量', 60, right: true),
         cell('价格', 70, right: true),
+        cell('金额', 80, right: true), // RFC 20260823：全字段展示
+        cell('费用', 60, right: true), // 券商实扣（历史成交导入）
+        cell('成交编号', 110), // orderId 幂等键
         cell('止损', 70, right: true),
         cell('买点', 56),
-        Expanded(child: cell('原因', 0)),
+        cell('原因', 120),
       ]),
     );
   }
@@ -2220,22 +2340,206 @@ class _HistoryDialogState extends State<_HistoryDialog> {
               style: TextStyle(fontSize: 12, color: color ?? AppColors.darkGrey3)),
         );
     final dirColor = t.isBuy ? AppColors.darkGrey1 : AppColors.darkGrey3;
+    // RFC 20260822：成交时间（HH:mm），旧数据无 → '—'
+    final timeStr = (t.tradeTime != null && t.tradeTime!.length >= 5)
+        ? t.tradeTime!.substring(0, 5)
+        : '—';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(children: [
         cell(t.isBuy ? '买入' : '卖出', 44, color: dirColor),
+        cell(timeStr, 48, color: AppColors.darkGrey5),
         cell(t.symbol, 72, color: AppColors.darkGrey1),
         cell(t.name, 88),
         cell('${t.volume}', 60, right: true),
         cell(t.price.toStringAsFixed(3), 70, right: true),
+        cell(_thousands(t.amount), 80, right: true),
+        cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', 60, right: true),
+        cell(t.orderId ?? '—', 110, color: AppColors.darkGrey5),
         cell(t.stopLossPrice?.toStringAsFixed(3) ?? '—', 70, right: true),
         cell(t.buyPoint ?? '—', 56),
-        Expanded(
-          child: Text(t.reason ?? '',
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-        ),
+        cell(t.reason ?? '', 120),
       ]),
+    );
+  }
+}
+
+// ─────────────────────────── 历史成交导入 Dialog（RFC 20260823，只认历史成交格式） ───────────────────────────
+
+/// 历史成交导入（独立入口，2026-08-23）：只认通达信「历史成交查询」导出格式——
+/// 粘贴或选文件 → isTdxHistoryExport 识别 → POST /trades/import（幂等 + 缺失成交时间回填）。
+class _HistoryImportDialog extends StatefulWidget {
+  final ApiService api;
+  /// 导入成功（含 updated 回填）后回调：父 Tab 刷新列表并展示结果。
+  final void Function(HistoricalTradeImportResult result) onImported;
+
+  const _HistoryImportDialog({required this.api, required this.onImported});
+
+  @override
+  State<_HistoryImportDialog> createState() => _HistoryImportDialogState();
+}
+
+class _HistoryImportDialogState extends State<_HistoryImportDialog> {
+  final _text = TextEditingController();
+  bool _importing = false;
+  bool _uploading = false;
+  HistoricalTradeImportResult? _result;
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  /// 选择通达信历史成交导出 txt → 上传留存 → 转码填充 → 自动导入。
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.first;
+      if (f.bytes == null) return;
+      setState(() => _uploading = true);
+      final saved = await widget.api.saveImportFile(f.name, f.bytes!);
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _text.text = saved.content;
+        _result = null;
+        _error = null;
+      });
+      await _import();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _uploading = false;
+        _error = '文件上传失败，请重试';
+      });
+    }
+  }
+
+  Future<void> _import() async {
+    setState(() {
+      _importing = true;
+      _result = null;
+      _error = null;
+    });
+    // RFC 20260823：只认通达信历史成交导出——其他格式直接人话拒绝，不静默落零
+    if (!isTdxHistoryExport(_text.text)) {
+      setState(() {
+        _importing = false;
+        _error = '无法识别——请选择通达信「历史成交查询」导出文件（表头含成交日期/证券代码/买卖标志/成交编号）';
+      });
+      return;
+    }
+    try {
+      final result = await widget.api.importTradesHistory(_text.text);
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _result = result;
+      });
+      widget.onImported(result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _importing = false;
+        _error = e.toString().contains('无法识别')
+            ? '请确认是通达信「历史成交查询」导出'
+            : '导入失败，请检查网络后重试';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: const Text('导入历史成交', style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('只认通达信「历史成交查询」导出：补逐笔流水不重算持仓（成交编号幂等；'
+                '已存在且缺成交时间的记录自动回填，2026-08-23）',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+            const SizedBox(height: 8),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : _pickFile,
+                icon: _uploading
+                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.upload_file, size: 16),
+                label: Text(_uploading ? '上传中…' : '选择文件（通达信导出 txt）',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.darkGrey1,
+                  side: const BorderSide(color: AppColors.darkGrey4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('或直接粘贴导出文本', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _text,
+              maxLines: 8,
+              minLines: 4,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                hintText: '粘贴通达信「历史成交查询」导出文本…',
+                alignLabelWithHint: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_importing)
+              const Row(children: [
+                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 8),
+                Text('导入中…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+              ]),
+            if (_result != null) ...[
+              Text('导入完成：新增 ${_result!.imported} 笔'
+                  '${_result!.updated > 0 ? ' · 回填成交时间 ${_result!.updated} 笔' : ''}'
+                  ' · 跳过 ${_result!.skipped} 笔'
+                  '${_result!.nonTrades > 0 ? ' · 非交易事件 ${_result!.nonTrades} 行' : ''}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+              if (_result!.lines.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                const Text('对账提示：', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+                const SizedBox(height: 2),
+                for (final l in _result!.lines)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text('${l.name}（${l.symbol}）：${l.netVolume > 0 ? '+' : ''}${l.netVolume} 股 → ${l.note}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+                  ),
+              ],
+            ],
+            if (_error != null)
+              Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+        ),
+        FilledButton(
+          onPressed: _importing ? null : _import,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
+          child: const Text('导入', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
+      ],
     );
   }
 }

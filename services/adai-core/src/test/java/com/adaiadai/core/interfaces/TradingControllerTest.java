@@ -187,7 +187,7 @@ class TradingControllerTest {
     void recordTrade_valid_returnsUpdatedPositions() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
@@ -205,7 +205,7 @@ class TradingControllerTest {
         // 2026-08-18 确认批次：app 简化为纯买卖记录——BUY 止损/买点放开为可选（归 web 端设置），不再 400
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
@@ -217,7 +217,7 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$[0].symbol").value("600000"));
         // 缺省入参透传：stopLoss/buyPoint 为 null（web 端补设止损，建议引擎降级窗口）
         verify(trading).recordTrade(any(), eq("600000"), any(), eq(TradeDirection.BUY),
-                eq(new BigDecimal("10.5")), eq(100), any(), isNull(), isNull(), any(), any());
+                eq(new BigDecimal("10.5")), eq(100), any(), any(), isNull(), isNull(), any(), any());
     }
 
     @Test
@@ -225,7 +225,7 @@ class TradingControllerTest {
         // 全字段（含 entryDate/止损/买点/目标价/原因）→ 200
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
@@ -243,7 +243,7 @@ class TradingControllerTest {
         // SELL：止损/买点可空 → 200（SELL 流水不写止损）
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
@@ -271,7 +271,7 @@ class TradingControllerTest {
         // #147：SELL 未持有 → TradingException → GlobalExceptionHandler 映射 400 + 人话消息
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenThrow(new com.adaiadai.core.domain.trading.TradingException("未持有 600000，无法卖出"));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
@@ -330,7 +330,7 @@ class TradingControllerTest {
         // RFC 20260815：name 可空（web 标注"名称（可选）"），缺名请求应 200（后端以 symbol 兜底）
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(position("600000")));
         MockMvc mvc = buildMvc(trading);
 
@@ -570,7 +570,8 @@ class TradingControllerTest {
         when(trading.getTradeHistory(any(), any(), any())).thenReturn(java.util.List.of(
                 new TradeRecord("trade_1", "000725", "京东方A", TradeDirection.BUY,
                         new java.math.BigDecimal("5.2"), 1000, new java.math.BigDecimal("5200"),
-                        java.time.LocalDate.of(2026, 8, 16), new java.math.BigDecimal("4.9"), "B1",
+                        java.time.LocalDate.of(2026, 8, 16), java.time.LocalTime.of(9, 41, 5),
+                        new java.math.BigDecimal("4.9"), "B1",
                         null, null, null, java.time.LocalDateTime.of(2026, 8, 16, 9, 30), null, null)));
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
@@ -589,10 +590,40 @@ class TradingControllerTest {
     }
 
     @Test
+    void getTrades_withDate_returnsDailySummary() throws Exception {
+        // RFC 20260822：GET /trading/trades?date= → {trades, daily}（当日复盘聚合）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary("2026-08-22", 3, 2, 1,
+                        7000.0, 6600.0,
+                        java.util.List.of(
+                                new TradingAppService.DailySession("早盘", "09:30-11:30", 2),
+                                new TradingAppService.DailySession("午盘", "13:00-14:30", 0),
+                                new TradingAppService.DailySession("尾盘", "14:30-15:00", 1)),
+                        java.time.LocalTime.of(9, 41), java.time.LocalTime.of(14, 52)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(get("/api/v1/trading/trades").param("date", "2026-08-22")
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.daily.date").value("2026-08-22"))
+                .andExpect(jsonPath("$.daily.count").value(3))
+                .andExpect(jsonPath("$.daily.buyCount").value(2))
+                .andExpect(jsonPath("$.daily.sellCount").value(1))
+                .andExpect(jsonPath("$.daily.sessions[0].name").value("早盘"))
+                .andExpect(jsonPath("$.daily.sessions[0].count").value(2))
+                .andExpect(jsonPath("$.daily.sessions[2].name").value("尾盘"))
+                .andExpect(jsonPath("$.daily.sessions[2].count").value(1))
+                .andExpect(jsonPath("$.daily.firstTradeTime").value("09:41:00"))
+                .andExpect(jsonPath("$.daily.lastTradeTime").value("14:52:00"));
+        verify(trading).getDailyTradeSummary(eq("default"), eq(java.time.LocalDate.of(2026, 8, 22)));
+    }
+
+    @Test
     void importHistoricalTrades_importsAndReportsReconciliation() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.importHistoricalTrades(any(), any())).thenReturn(
-                new TradingAppService.HistoricalTradeImportResult(45, 1, 1,
+                new TradingAppService.HistoricalTradeImportResult(45, 3, 1, 1,
                         java.util.List.of(new TradingAppService.ReconcileLine(
                                 "000725", "京东方Ａ", 7, -400, 4800,
                                 "当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（以持仓快照为准）"))));
@@ -603,6 +634,7 @@ class TradingControllerTest {
                         .content("{\"content\":\"成交日期 证券代码 买卖标志 ...\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imported").value(45))
+                .andExpect(jsonPath("$.updated").value(3))
                 .andExpect(jsonPath("$.skipped").value(1))
                 .andExpect(jsonPath("$.nonTrades").value(1))
                 .andExpect(jsonPath("$.lines[0].symbol").value("000725"))
@@ -651,9 +683,9 @@ class TradingControllerTest {
     void batchTrades_reportsPartialFailures() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         // 第 1 行成功，第 2 行失败（卖出超持仓）
-        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.BUY), any(), anyInt(), any(),
+        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.BUY), any(), anyInt(), any(), any(),
                 any(), any(), any(), any())).thenReturn(java.util.List.of());
-        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.SELL), any(), anyInt(), any(),
+        when(trading.recordTrade(any(), any(), any(), eq(TradeDirection.SELL), any(), anyInt(), any(), any(),
                 any(), any(), any(), any())).thenThrow(
                 new com.adaiadai.core.infrastructure.storage.StorageException("卖出数量超过持仓"));
         MockMvc mvc = buildMvc(trading);
