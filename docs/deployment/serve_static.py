@@ -138,11 +138,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # Flutter WASM（--wasm 双模式）要求 crossOriginIsolated=true：
         # main.dart.wasm / skwasm(heavy).wasm 编译带 --import-shared-memory（SharedArrayBuffer），
         # 没有 COOP/COEP 头 → wasm 实例化失败 → 白屏 + 页面重载（2026-08-22 线上根因）。
-        # 所有响应（含 304）统一带，浏览器才判定页面为 crossOriginIsolated。
         # COEP 用 credentialless（而非 require-corp）：同样提供 crossOriginIsolated，
         # 但不拦截跨源无凭据资源（后端媒体图片 / API 走 CORS，均不受影响）。
-        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Embedder-Policy", "credentialless")
+        # 2026-08-23：仅对 wasm 产物发 COOP/COEP——JS 模式（main.dart.js，现用形态）不需要
+        # crossOriginIsolated，HTTP 下浏览器忽略 COOP 并报 "Cross-Origin-Opener-Policy header
+        # has been ignored, because the URL's origin was untrustworthy"（纯 IP/HTTP 非可信源）。
+        # 按页面主入口产物探测：请求 HTML 时查同目录是否存在 main.dart.wasm。
+        want_wasm = False
+        try:
+            path = self.translate_path(self.path.split("?")[0])
+            if os.path.isdir(path):
+                want_wasm = os.path.exists(os.path.join(path, "main.dart.wasm"))
+            else:
+                want_wasm = os.path.exists(os.path.join(os.path.dirname(path), "main.dart.wasm"))
+        except OSError:
+            want_wasm = False
+        if want_wasm:
+            self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+            self.send_header("Cross-Origin-Embedder-Policy", "credentialless")
         super().end_headers()
 
     # 基类 do_GET/do_HEAD 假定 send_head 返回文件对象；本版返回 bytes（内存读入 + gzip），
