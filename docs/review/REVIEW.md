@@ -11,9 +11,12 @@ mode: 隔离审查演示（backend + adversarial ×2 独立子代理，材料按
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
+audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log
 audits/2026-08-20-app-health-check.md → P2-UI6,P2-UI7,S-8,闭环(D1切World丢输入/D2排序四实锤/D4任务编辑PUT/D7错误文案)
 audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进机制)
 -->
+
+> 2026-08-23 元审核（AI 上下文建设工程体系全量，主审核 + adversarial-reviewer 独立子代理隔离复核 + 5 项实证实验）：**P0 无。战略×1 + P1×6 + P2×6（本体系自伤自查）**。核心：S-A2 实证修正（干净 clone M4 必 FAIL——AGENTS.local.md gitignore 快照不入库，非对抗官预测的 M2 lines）；S-A1 门禁绕过三重路径（--no-verify 提示自印 + .claude allowlist + hooksPath 不入库）；P1-A1 隐私闸门类型绕过（.txt/.json 在触发条件外 exit 0，实证 commit 成功）。**修复批 `072dcee` 已落地**：M4 白名单 / 新脚本入库 + 登记 / 隐私闸门前移 + gitignore 复核 / cost 追加式 / guard-tools.sh 接入自检。未修项已归口 P1/P2 表。报告 `audits/2026-08-23-ai-engineering-meta-audit.md`。
 
 > 2026-08-23 隔离审查演示（交易归集批**修复后残留**，backend-reviewer + adversarial-reviewer ×2 独立子代理按新规范隔离执行 + 主会话逐条核实）：守护未跑（纯 diff 读审）。**P0×1 + 战略×2 + P1×9 + P2×10（合并去重）**。交叉命中 4 处（⭐⭐ 全属实）：①`update()` 返回 null 全链路未消费——写失败静默账目分裂；②`dedupeKey` 桶 `volume/10*10` ≠ 注释 ±10%（10 vs 19 股同桶差 90%、100 vs 110 不对称）——两官从**相反方向**命中同一函数（过窄吞笔/过宽吞笔兼有）；③closeAdvice 434 行 `md.price()` 无判空（464/481 有）→ NPE；④`change=null` 流入文案。对抗官独有 P0-A：`MarketPushRepository.append` 损坏防护只验语法不验结构（`[123]`/`{"a":1}` 仍空列表+新事件覆盖，B5-5 半修残留）。复发信号 2 条（confirm 双 now()、keepAlive 陈旧）。backend 独有：api-spec §607/§612 契约漂移（guard-align 会拦）、存储层修复零测试（B8/B47）。报告 `audits/2026-08-23-reviewer-isolation-demo.md`。
 > 2026-08-20 app 全面体检（用户反馈「排序乱 / World B 切回误触搜索 / 输入框上滑·搜索下滑翻页」，ui/ux/frontend/product ×4 官并行 + 主会话独立核实）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0 无。战略×5 + P1×17 + P2/P3×24（合并去重）**。三大体感核实：①排序**部分属实**——实现无 bug 且符合 DESIGN（最新在底），但 4 处实锤（`_loadMore` 无 id 去重 / 切回重置 page0 丢已加载页 / 时间线默认最早日期 / `updatedAt=now`「刚刚」恒显）+ 双端方向相反产品口径待拍板；②误触搜索**属实**——搜索栏是「下滑返回」手势区内的 tap 大目标（竞技场 tap 赢 + 300-400 双阈值死区 + 18px 返回箭头 + AnimatedSwitcher 过渡期可点），结构性必然；③输入框上滑**可行推荐**、搜索下滑**暂不建议**（同区同向已双绑「返回」）——前置需统一「单区域单下滑语义」（现壳层 400/TopBar 200/Launcher 300/RefreshIndicator 四语义叠加）。报告 `audits/2026-08-20-app-health-check.md`。
@@ -89,6 +92,12 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P1-交易17 | 历史成交 Tab keepAlive 切 Tab 不再刷新（复发信号：保活页陈旧，U31）——收盘/他端变更后陈旧 | `trading_page.dart` | 保活页加可见性刷新 | ✅ 已修（2026-08-23 B6-5：`_TabHistoryRefreshListener` 切回历史成交 Tab 静默刷新；见已修复区）|
 | P1-交易18 | 保留候选钉子户：前端无失败明细、无丢弃入口——15:05 推送反复提醒（关联 P1-交易12）| `trading_page.dart` | 失败明细 + 丢弃入口 | ✅ 已修（2026-08-23 B11-4：失败候选保留+明细透出 + 双端丢弃入口接线 `DELETE /trade-log`，见已修复区）|
 | P1-交易19 | 存储层关键修复无同批测试（B8/B47）：update 锁/写失败 null/损坏拒写回/save 锁/dedupeKey 桶全在 mock 层，真实仓储并发/失败路径零覆盖 | `AccountSnapshotFileRepository` / `MarketPushRepository` / `TradeLogRepository` / `TradeLogCandidate` | 补仓储级并发 RMW + 写失败用例 | ✅ 已修（2026-08-23 B7-2：MarketPush 结构损坏×3、TradeLogRepositoryTest 并发 append/dedupe/discard×5、AccountSnapshot 并发无丢失；见已修复区）|
+| P1-3 | **audit.md 官表未纳入对抗官（08-23 元审核归口）**：全维度走查（里程碑级最贵流程）8 官无对抗官，而 deep review 默认 +1——最高风险场景缺最狠视角；full 定义两套口径（review.md 8+1 vs audit.md 8）打架 | `ai-engineering/process/audit.md:40-49` | audit 官表 +1 对抗官，full 口径统一 8+1 |
+| P1-5 | **init-ai-engineering.sh 声称存在实为设计稿（08-23 元审核归口）**：method/README.md:76「跑 init-ai-engineering.sh」脚本不存在；M4 正则只扫 `docs/ai-engineering/AGENTS` 前缀，裸名结构性不可检测 | `method/README.md:76` / `method/scaffold.md` | 标「待建」或补脚手架脚本 |
+| P1-6 | **README 引用不存在的仓库外目录（08-23 元审核归口）**：README.md:60 声称同级 `ai-engineering-method/` 存在（实无）；M4 白名单显式豁免该路径——守卫固化错误假设 | `ai-engineering/README.md:60` | 删行或改指仓库内 `method/` |
+| P1-A3 | **guard-cost 全量解压所有会话（08-23 对抗官独立发现）**：`glob(SESS_DIR,'*','*',...)` 全扫 + 每 zstd timeout 60s，会话膨胀后 guard-context 25s 调用超时 → 成本提醒静默降级「调用失败」| `guard-cost.sh:110-139` / `guard-context.sh:191` | 增量/按天索引/缓存，免全量解压 |
+| P1-A4 | **deploy-gate smoke 用零鉴权漏洞验证部署（08-23 对抗官独立发现）**：`-H "X-User-Id: adai"` 打六端点 = 战略 #179 漏洞利用方式——「最硬闸门」把零鉴权常态化 | `deploy-gate.sh` | 依赖 #179 登录体系后改真鉴权；`sleep 10` 固定等待对慢启动 JVM 是竞态 |
+| P1-A5 | **G1-G7 是仓库级模糊启发式非逐点检测（08-23 对抗官独立发现）**：G6 只统计全仓 mounted 守卫总数、G3 只查 catch 块内 delete——「防 P0 复发」头衔与拦截能力不匹配，weekly-audit「守护 7 PASS」是低信号结论 | `docs/review/guard.sh` | 逐点化（每调用点断言）；命中与自坏区分 |
 > **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**注意：P1 表仍有 P1-交易4/P1-交易9 未修（2026-08-17 走查确认，见下表）**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 
@@ -145,6 +154,12 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-UI7 | launcher 行排序（切换账号置顶等；08-20 体检 product P2-2 + 用户视觉批）| `launcher_page.dart` | 行序稳定规则（切换/更新不跳位）|
 | P2-UI8 | 触达目标 <44pt（iOS HIG 最小触达 44×44；用户视觉批）——小按钮/行内点击区过窄 | 双端多处 | 关键交互触达区扩到 ≥44pt |
 | P2-UI9 | 硬编码色值散落未走 token（用户视觉批；如代码块背景 `0xFF2A2826`、圆角/边框硬编码）| 双端多处 | 收敛到 `app_colors.dart` token |
+| P2-1 | **audit.md 归口机制内部自相矛盾（08-23 元审核归口，对抗官弱化裁定）**：58 行旧机制「REVIEW.md 新增走查区」vs 59 行新机制（audits/ 落盘 + unfixed-gate）同文件并存 | `ai-engineering/process/audit.md:58-59` | 58 行改指现行机制 |
+| P2-2 | **.claude/settings.local.json 残留旧 IP 49.235.37.220 ×5（08-23 元审核归口）**：allowlist 是对已下线服务器的 curl/ssh/deploy 免确认放行——误跑静默失败；文件不入 git，影响仅本机 | `.claude/settings.local.json:47-52` | 手动清理 5 处旧 IP |
+| P2-3 | **weekly-audit cron 未挂载（08-23 元审核归口，无法证实）**：`crontab -l` 被 macOS TCC 拦截；仓库内无任何挂载证据（无 plist/日志/setup）——「防审查休眠」依赖不可验证且可能从未生效的触发器 | `weekly-audit.sh:3` | 授权 TCC 后确认挂载或改 launchd |
+| P2-4 | **frontmatter「9 字段」实为 10（08-23 元审核归口，命中数字漂移复发信号）**：skills-spec.md:40/42 与 AGENTS.md 均写 9，guard-meta REQUIRED 实 10 项 | `skills-spec.md` / `AGENTS.md` | 统一为 10 字段 |
+| P2-A2 | **方法论文档自身漂移（08-23 对抗官独立发现）**：method/README.md:89 引用不存在的 research-notes/（_index 自标待建）；64-71 行状态表把已存在的 deploy-gate/weekly-audit 标「❌ 缺」 | `method/README.md:64-71,89` | 状态表按实对拍 |
+| P2-A3 | **pre-commit 吞掉 guard.sh 输出（08-23 对抗官独立发现）**：`>/dev/null 2>&1`（pre-commit:48、deploy-gate:34 同）——脚本自坏（如 services/ 缺失）与「有 HIT」无法区分，误拦/误放都无从排查 | `.githooks/pre-commit:48` | 输出降级为摘要行，HIT 与 ERROR 区分 |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 

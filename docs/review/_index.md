@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-23
 status: active
-lines: 35
+lines: 36
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-08-23-ai-engineering-meta-audit.md | AI 上下文建设工程体系元审核存档（主审核 + 对抗官复核 + 实证实验，修复批 072dcee） | active |
 | audits/2026-08-23-reviewer-isolation-demo.md | 隔离审查演示存档（对抗官首战 + 上下文隔离，交易归集批残留） | active |
 | audits/2026-08-20-app-health-check.md | app 全面体检走查存档（用户体感导向，4 官） | active |
 | audits/2026-08-15.md | 首轮全维度走查存档（7 官） | active |
