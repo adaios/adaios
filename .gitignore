@@ -117,3 +117,4 @@ AGENTS.local.md
 
 # ── Gradle 用户缓存（沙箱环境 GRADLE_USER_HOME 落到工作区，构建产物不入库）──
 .gradle-home/
+ai-engineering/state/cost-cache.json

@@ -106,12 +106,62 @@ else
 fi
 
 # G6 异步回调 setState 前必须有 mounted 守卫（UI 组件销毁后 setState 崩溃）
-G6=$(grep -rn "if (!mounted) return\|if (mounted)" "$APP" --include="*.dart" 2>/dev/null | wc -l | tr -d ' ')
-G6_SETSTATE=$(grep -rn "setState" "$APP" --include="*.dart" 2>/dev/null | wc -l | tr -d ' ')
-if [ "$G6" -eq 0 ] && [ "$G6_SETSTATE" -gt 0 ]; then
-  hit G6 "存在 setState（$G6_SETSTATE 处）但无任何 mounted 守卫"
+# 2026-08-23 P1-A5 修复：从「仓库级总数统计」改为「逐点断言」——
+# 只检查 async 方法内 **await 之后** 的 setState（await 前是同步段，组件必然在树，
+# 不误报；实测 trading_page._loadAll/timeline_modal 首 setState 均为 await 前同步段）。
+# 注：不用 $(...) 包 heredoc（python 代码里的 ) 会提前闭合命令替换），用临时文件承接输出
+G6_BAD=""
+if [ -d "$APP" ]; then
+  G6_TMP="$(mktemp)"
+  python3 - "$APP" >"$G6_TMP" <<'PYEOF'
+import sys, pathlib, re
+APP = pathlib.Path(sys.argv[1])
+bad = []
+for f in sorted(APP.rglob('*.dart')):
+    try:
+        lines = f.read_text(encoding='utf-8', errors='ignore').splitlines()
+    except Exception:
+        continue
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        # async 方法签名：行内含 `) async {`，排除 if/for/while/switch/catch/return 等控制流
+        m = re.search(r'\)\s*async\s*\{\s*$', line)
+        is_async_method = bool(m) and not re.match(r'^\s*(if|for|while|switch|catch|return|else|do|try|finally|class|void main)', line)
+        if not is_async_method:
+            i += 1
+            continue
+        # 收集方法体（大括号配对，忽略字符串/注释内的括号——启发式：去引号包裹内容）
+        depth = 1
+        j = i + 1
+        seen_await = False
+        body_has_mounted = False
+        setstate_lines = []  # 仅记录 await 之后的 setState
+        while j < n and depth > 0:
+            lj = lines[j]
+            stripped = re.sub(r'"[^"]*"|\'[^\']*\'', '', lj)
+            if re.search(r'\bawait\b', stripped):
+                seen_await = True
+            if 'mounted' in lj:
+                body_has_mounted = True
+            if seen_await and re.search(r'setState\s*\(', lj):
+                setstate_lines.append(j + 1)
+            depth += stripped.count('{') - stripped.count('}')
+            j += 1
+        if setstate_lines and not body_has_mounted:
+            for sl in setstate_lines:
+                bad.append(f"{f.relative_to(APP)}:{sl}")
+        i = j  # 跳到方法体之后
+print('\n'.join(bad))
+PYEOF
+  G6_BAD="$(cat "$G6_TMP")"
+  rm -f "$G6_TMP"
+fi
+if [ -n "$G6_BAD" ]; then
+  hit G6 "async 方法内 await 后 setState 无 mounted 守卫（逐点断言）: $(echo "$G6_BAD" | tr '\n' ';' | head -c 400)"
 else
-  ok G6 "mounted 守卫 $G6 处 / setState $G6_SETSTATE 处"
+  ok G6 "所有 async 方法 await 后 setState 均有 mounted 守卫（逐点断言）"
 fi
 
 # ── 场景路由 ──────────────────────────────────────────────
