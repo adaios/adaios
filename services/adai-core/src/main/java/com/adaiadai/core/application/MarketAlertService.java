@@ -174,8 +174,11 @@ public class MarketAlertService {
         }
 
         if (!alerts.isEmpty()) {
+            // 2026-08-20 生产「微信双份」：同股票同轮命中多个异动类型（如 loss + break-cost）
+            // 各生成一条 → 微信收到同股票两条内容重叠的消息。合并为一条（保留最严重类型 + 内容拼接）。
+            List<PushChannel.PushMessage> merged = mergeBySymbol(alerts);
             // RFC 20260816：推送走渠道插件化——Feed（默认落盘）+ 微信（外部）等所有 enabled 渠道
-            for (PushChannel.PushMessage m : alerts) {
+            for (PushChannel.PushMessage m : merged) {
                 for (PushChannel channel : pushChannels) {
                     if (channel.enabled()) {
                         channel.push(userId, m);
@@ -183,9 +186,45 @@ public class MarketAlertService {
                 }
             }
             snapshotRepository.saveSignatures(userId, today, newSignatures);
-            log.info("行情异动推送 | userId={} | {} 条 | {}", userId, alerts.size(),
-                    alerts.stream().map(PushChannel.PushMessage::type).toList());
+            log.info("行情异动推送 | userId={} | {} 条（合并前 {}）| {}", userId, merged.size(), alerts.size(),
+                    merged.stream().map(PushChannel.PushMessage::type).toList());
         }
+    }
+
+    /** 异动类型严重度（合并时保留最严重者）：真止损 > 单日大跌 > 跌破成本 > 接近止损 > 放飞。 */
+    private int severity(String type) {
+        return switch (type) {
+            case "stop-loss" -> 5;
+            case "loss" -> 4;
+            case "break-cost" -> 3;
+            case "near-stop-loss" -> 2;
+            case "gain" -> 1;
+            default -> 0;
+        };
+    }
+
+    /** 同股票同轮多类型命中 → 合并为一条：类型取最严重，内容按严重度降序拼接（避免微信双份刷屏）。 */
+    private List<PushChannel.PushMessage> mergeBySymbol(List<PushChannel.PushMessage> alerts) {
+        Map<String, PushChannel.PushMessage> bySymbol = new java.util.LinkedHashMap<>();
+        Map<String, java.util.TreeMap<Integer, String>> contentBySymbol = new java.util.LinkedHashMap<>();
+        for (PushChannel.PushMessage m : alerts) {
+            String key = m.symbol() != null && !m.symbol().isBlank() ? m.symbol() : m.name();
+            if (key == null) key = m.title();
+            PushChannel.PushMessage existing = bySymbol.get(key);
+            if (existing == null || severity(m.type()) > severity(existing.type())) {
+                bySymbol.put(key, m);
+            }
+            contentBySymbol.computeIfAbsent(key, k -> new java.util.TreeMap<>(
+                    java.util.Collections.reverseOrder())).put(severity(m.type()), m.content());
+        }
+        List<PushChannel.PushMessage> merged = new ArrayList<>();
+        for (Map.Entry<String, PushChannel.PushMessage> e : bySymbol.entrySet()) {
+            PushChannel.PushMessage main = e.getValue();
+            String combined = String.join("\n", contentBySymbol.get(e.getKey()).values());
+            merged.add(new PushChannel.PushMessage(
+                    main.title(), combined, main.type(), main.symbol(), main.name(), main.time()));
+        }
+        return merged;
     }
 
     // ── 内部方法 ──

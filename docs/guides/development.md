@@ -28,7 +28,7 @@ cd services/adai-core && ./gradlew test --tests "*ClassName*"   # 单个测试�
 cd services/adai-core && ./gradlew test --tests "*ClassName.methodName"  # 单个方法
 
 cd services/adai-core && ./gradlew bootJar
-cd services/adai-core && ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar   # 部署（scp + 重启 + 验证）
+cd services/adai-core && ./deploy.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar   # 部署（scp + 重启 + 验证）
 ```
 
 > ⚠️ **部署是外向动作，由人确认后手动触发**（脚本只负责上传/重启，见 `deploy.sh` 头部说明；边界 B8）。

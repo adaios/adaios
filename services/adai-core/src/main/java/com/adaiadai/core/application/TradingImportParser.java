@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.WatchlistItem;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -152,56 +153,66 @@ public final class TradingImportParser {
             if (line == null || line.isBlank() || line.startsWith("-")) continue;
             String[] cells = line.split("\\s+");
             if (col == null) {
-                int[] idx = locate(cells, "成交日期", "证券代码", "证券名称", "买卖标志",
+                int[] idx = locate(cells, "成交日期", "成交时间", "证券代码", "证券名称", "买卖标志",
                         "成交数量", "成交价格", "成交金额", "成交编号", "发生金额");
                 // 表头需含核心列（成交日期/证券代码/买卖标志/成交编号），否则视为非历史成交导出
-                if (idx[0] >= 0 && idx[1] >= 0 && idx[3] >= 0 && idx[7] >= 0) {
+                if (idx[0] >= 0 && idx[2] >= 0 && idx[4] >= 0 && idx[8] >= 0) {
                     col = idx;
                 } else {
                     return rows; // 空列表 → 调用方报「无法识别格式」
                 }
                 continue;
             }
-            if (cells.length <= col[1] || !cells[col[1]].matches("\\d{6}")) continue;
-            String symbol = cells[col[1]].trim();
-            String name = col[2] >= 0 && col[2] < cells.length ? cells[col[2]].trim() : symbol;
-            String flag = col[3] >= 0 && col[3] < cells.length ? cells[col[3]].trim() : "";
+            if (cells.length <= col[2] || !cells[col[2]].matches("\\d{6}")) continue;
+            String symbol = cells[col[2]].trim();
+            String name = col[3] >= 0 && col[3] < cells.length ? cells[col[3]].trim() : symbol;
+            String flag = col[4] >= 0 && col[4] < cells.length ? cells[col[4]].trim() : "";
             TradeDirection direction = switch (flag) {
                 case "买入", "买" -> TradeDirection.BUY;
                 case "卖出", "卖" -> TradeDirection.SELL;
                 default -> null; // 非买卖标志（新股申购/配股等）→ 整行跳过
             };
             if (direction == null) continue;
-            double signedVolume = parseDoubleSafe(col[4], cells);
+            double signedVolume = parseDoubleSafe(col[5], cells);
             int volume = (int) Math.abs(signedVolume);
-            BigDecimal price = col[5] >= 0 && col[5] < cells.length
-                    ? parseNum(cells[col[5]]).stripTrailingZeros() : null;
+            BigDecimal price = col[6] >= 0 && col[6] < cells.length
+                    ? parseNum(cells[col[6]]).stripTrailingZeros() : null;
             if (price == null) continue;
             LocalDate entryDate = parseDateSafe(col[0], cells);
             if (entryDate == null) continue;
+            // RFC 20260822：成交时间列（HH:mm:ss）→ tradeTime（可空，格式不匹配不阻塞整行）
+            LocalTime tradeTime = null;
+            if (col[1] >= 0 && col[1] < cells.length && !cells[col[1]].isBlank()) {
+                try {
+                    tradeTime = LocalTime.parse(cells[col[1]].trim(),
+                            DateTimeFormatter.ofPattern("HH:mm:ss"));
+                } catch (Exception ignored) {
+                    // 时间格式异常 → tradeTime 保持 null（旧文件/导出差异），不丢该笔
+                }
+            }
             // 数量 0 行（股息红利税等非交易资金事件）保留——调用方计入 nonTrades 不落流水
             if (volume == 0) {
-                rows.add(new HistoricalTradeRow(symbol, name, direction, price, 0, entryDate, null, null));
+                rows.add(new HistoricalTradeRow(symbol, name, direction, price, 0, entryDate, tradeTime, null, null));
                 continue;
             }
             if (price.signum() <= 0) continue; // 有数量但无价格 → 数据异常跳过
-            BigDecimal amount = col[6] >= 0 && col[6] < cells.length ? parseNum(cells[col[6]]) : BigDecimal.ZERO;
-            BigDecimal occurred = col[8] >= 0 && col[8] < cells.length ? parseNum(cells[col[8]]) : null;
+            BigDecimal amount = col[7] >= 0 && col[7] < cells.length ? parseNum(cells[col[7]]) : BigDecimal.ZERO;
+            BigDecimal occurred = col[9] >= 0 && col[9] < cells.length ? parseNum(cells[col[9]]) : null;
             // fee = |发生金额| 与 成交金额 之差（券商实扣；买入发生金额为负）
             BigDecimal fee = null;
             if (occurred != null && amount.signum() > 0) {
                 fee = occurred.abs().subtract(amount).abs();
             }
-            String orderId = col[7] >= 0 && col[7] < cells.length ? cells[col[7]].trim() : "";
+            String orderId = col[8] >= 0 && col[8] < cells.length ? cells[col[8]].trim() : "";
             rows.add(new HistoricalTradeRow(symbol, name, direction, price, volume,
-                    entryDate, fee, orderId.isEmpty() ? null : orderId));
+                    entryDate, tradeTime, fee, orderId.isEmpty() ? null : orderId));
         }
         return rows;
     }
 
     /** 历史成交行（解析后入参，供 {@code importHistoricalTrades} 落流水）。 */
     public record HistoricalTradeRow(String symbol, String name, TradeDirection direction,
-                                     BigDecimal price, int volume, LocalDate entryDate,
+                                     BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
                                      BigDecimal fee, String orderId) {}
 
     // ── 工具 ──

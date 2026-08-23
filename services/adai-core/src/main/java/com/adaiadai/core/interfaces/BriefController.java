@@ -30,4 +30,15 @@ public class BriefController {
         String brief = briefAppService.generateBrief(userId);
         return ResponseEntity.ok(Map.of("content", brief));
     }
+
+    /**
+     * 只返回 5 分钟内的缓存 Brief，不触发 AI 生成（可能为空串）。
+     * 前端首屏用它避免主页加载被 AI 生成阻塞；空串时再异步调 {@link #getBrief} 补全。
+     */
+    @GetMapping("/cached")
+    public ResponseEntity<Map<String, String>> getCachedBrief(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        String brief = briefAppService.getCachedBrief(userId);
+        return ResponseEntity.ok(Map.of("content", brief));
+    }
 }

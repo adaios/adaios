@@ -28,6 +28,10 @@ class ApiService {
   /// 底层 HTTP 客户端（可注入 mock，测试用；默认真实 client）。
   final http.Client _client;
 
+  /// AI 生成类请求专用客户端：DeepSeek 聊天/追问/总结实测 7~27s（2026-08-20 压测），
+  /// 默认 15s 超时必误杀——聊天报错且重试仍报错的根因。AI 端点放宽到 90s。
+  final http.Client _aiClient;
+
   // 内存缓存：跨页面切换不丢
   TagsResponse? _tagsCache;
   List<TimelineEntryResponse>? _timelineCache;
@@ -35,12 +39,26 @@ class ApiService {
 
   ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
-        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15));
+        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
+        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 90));
 
   /// 获取今日 Brief（摘要），独立接口。
+  /// AI 生成可能 7~27s（缓存命中时秒回）——走 _aiClient 防误杀。
   Future<String> getBrief() async {
-    final resp = await _client.get(
+    final resp = await _aiClient.get(
       Uri.parse('$baseUrl/api/v1/brief'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes));
+    return data['content'] as String? ?? '';
+  }
+
+  /// 只取 5 分钟内的缓存 Brief（GET /api/v1/brief/cached），不触发 AI 生成。
+  /// 主页首屏用它避免被 AI 生成阻塞；空串表示缓存过期，调用方再异步调 [getBrief] 补全。
+  Future<String> getBriefCached() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/brief/cached'),
       headers: _headers,
     );
     _check(resp);
@@ -152,7 +170,7 @@ class ApiService {
     required String imageRecordId,
     required String question,
   }) async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/records/media/$imageRecordId/ask'),
       headers: _headers,
       body: jsonEncode({'question': question}),
@@ -169,7 +187,7 @@ class ApiService {
     required List<String> imageRecordIds,
     required String question,
   }) async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/records/media/ask-batch'),
       headers: _headers,
       body: jsonEncode({'imageRecordIds': imageRecordIds, 'question': question}),
@@ -181,6 +199,8 @@ class ApiService {
   }
 
   /// 提交记录。
+  /// 2026-08-20：聊天（intent=question / cardId 续聊）走 _aiClient——DeepSeek 回答 7~27s，
+  /// 15s 默认超时必误杀（聊天报错根因）；纯 log 陈述走常规客户端。
   Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
     final body = {
       'content': content,
@@ -189,7 +209,8 @@ class ApiService {
       if (intent != null) 'intent': intent,
       if (cardId != null) 'cardId': cardId,
     };
-    final resp = await _client.post(
+    final aiHeavy = intent == 'question' || cardId != null;
+    final resp = await (aiHeavy ? _aiClient : _client).post(
       Uri.parse('$baseUrl/api/v1/records'),
       headers: _headers,
       body: jsonEncode(body),
@@ -223,7 +244,7 @@ class ApiService {
       'turns': turns,
       if (cardId != null) 'cardId': cardId,
     };
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/conversations/end'),
       headers: _headers,
       body: jsonEncode(body),
@@ -353,6 +374,18 @@ class ApiService {
     return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// RFC 20260822：当日交易复盘聚合（纯客观）——GET /trading/trades?date=today → {trades, daily}。
+  Future<DailyTradesResponse> getDailyTrades() async {
+    final today = DateTime.now();
+    final date = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/trades?date=$date'),
+      headers: _headers,
+    );
+    _check(resp);
+    return DailyTradesResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// RFC 20260817：推送开关（类型 → 是否开启）。
   Future<Map<String, bool>> getPushSettings() async {
     final resp = await _client.get(
@@ -478,7 +511,7 @@ class ApiService {
   /// 解析一句话交易（RFC 20260815 通道 A）：POST /api/v1/trading/trades/parse。
   /// 后端 LLM 结构化 + 正则兜底，返回 matched 与结构化字段；matched=false 前端落精确表单。
   Future<ParseTradeResponse> parseTrade(String text) async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/trading/trades/parse'),
       headers: _headers,
       body: jsonEncode({'text': text}),
@@ -491,7 +524,7 @@ class ApiService {
   /// 后端读 os/trading-os/11-context/rules.md（R66/R68/R71/R81-R95）+ 持仓 + 行情，
   /// 输出逐票建议（买入/持有/减仓/清仓 + 阿呆自然对话理由 + 依据规则号）。
   Future<AdviceResponse> getAdvice() async {
-    final resp = await _client.post(
+    final resp = await _aiClient.post(
       Uri.parse('$baseUrl/api/v1/trading/advice'),
       headers: {..._headers, 'content-type': 'application/json'},
       body: jsonEncode({}),
@@ -1431,6 +1464,67 @@ class SoldScoreDto {
       buyPointScore: (m['buyPointScore'] as num?)?.toInt(),
       executionScore: (m['executionScore'] as num?)?.toInt(),
       totalScore: (m['totalScore'] as num?)?.toDouble(),
+    );
+  }
+}
+
+/// RFC 20260822：当日交易复盘聚合（纯客观）——GET /trading/trades?date=today 的 {daily} 块。
+class DailyTradesResponse {
+  final DailyTradeSummaryDto daily;
+
+  DailyTradesResponse({required this.daily});
+
+  factory DailyTradesResponse.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return DailyTradesResponse(
+      daily: DailyTradeSummaryDto.fromJson(m['daily']),
+    );
+  }
+}
+
+/// 当日复盘聚合：总笔数/买卖分布/时段分桶/首末笔时间。
+class DailyTradeSummaryDto {
+  final String date;
+  final int count, buyCount, sellCount;
+  final double buyAmount, sellAmount;
+  final List<DailySessionDto> sessions;
+  final String? firstTradeTime, lastTradeTime;
+
+  DailyTradeSummaryDto({required this.date, required this.count, required this.buyCount,
+      required this.sellCount, required this.buyAmount, required this.sellAmount,
+      required this.sessions, required this.firstTradeTime, required this.lastTradeTime});
+
+  factory DailyTradeSummaryDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return DailyTradeSummaryDto(
+      date: m['date']?.toString() ?? '',
+      count: (m['count'] as num?)?.toInt() ?? 0,
+      buyCount: (m['buyCount'] as num?)?.toInt() ?? 0,
+      sellCount: (m['sellCount'] as num?)?.toInt() ?? 0,
+      buyAmount: (m['buyAmount'] as num?)?.toDouble() ?? 0,
+      sellAmount: (m['sellAmount'] as num?)?.toDouble() ?? 0,
+      sessions: (m['sessions'] as List?)
+          ?.map((e) => DailySessionDto.fromJson(e))
+          .toList() ?? const [],
+      firstTradeTime: m['firstTradeTime']?.toString(),
+      lastTradeTime: m['lastTradeTime']?.toString(),
+    );
+  }
+}
+
+/// 时段桶：名称 / 时间范围 / 笔数。
+class DailySessionDto {
+  final String name, range;
+  final int count;
+
+  DailySessionDto({required this.name, required this.range, required this.count});
+
+  factory DailySessionDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return DailySessionDto(
+      name: m['name']?.toString() ?? '',
+      range: m['range']?.toString() ?? '',
+      count: (m['count'] as num?)?.toInt() ?? 0,
     );
   }
 }

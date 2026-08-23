@@ -27,6 +27,9 @@ MockClient _pagedFeedMock() {
     if (path == '/api/v1/brief') {
       return _json({'content': '今日概览'});
     }
+    if (path == '/api/v1/brief/cached') {
+      return _json({'content': '今日概览'});
+    }
     if (path == '/api/v1/feed') {
       final page = int.parse(request.url.queryParameters['page'] ?? '0');
       List<Map<String, dynamic>> entries = [];
@@ -202,6 +205,7 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/brief') return _json({'content': '今日概览'});
+        if (path == '/api/v1/brief/cached') return _json({'content': '今日概览'});
         if (path == '/api/v1/feed') {
           final page = int.parse(request.url.queryParameters['page'] ?? '0');
           if (page == 0) {

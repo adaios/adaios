@@ -1,13 +1,14 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-19
-last-review: 2026-08-19
-baseline: 工作树（app 交易模块 UI/UX + 推送链路全量）
-mode: full 模块审查（交易 UI/UX：ui/ux/frontend ×3 官并行 + 主会话交叉印证）
+updated: 2026-08-20
+last-review: 2026-08-20
+baseline: apps/adai-app 全量（用户体感导向体检）
+mode: full app 体检（ui/ux/frontend/product ×4 官并行 + 主会话独立核实）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
+> 2026-08-20 app 全面体检（用户反馈「排序乱 / World B 切回误触搜索 / 输入框上滑·搜索下滑翻页」，ui/ux/frontend/product ×4 官并行 + 主会话独立核实）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0 无。战略×5 + P1×17 + P2/P3×24（合并去重）**。三大体感核实：①排序**部分属实**——实现无 bug 且符合 DESIGN（最新在底），但 4 处实锤（`_loadMore` 无 id 去重 / 切回重置 page0 丢已加载页 / 时间线默认最早日期 / `updatedAt=now`「刚刚」恒显）+ 双端方向相反产品口径待拍板；②误触搜索**属实**——搜索栏是「下滑返回」手势区内的 tap 大目标（竞技场 tap 赢 + 300-400 双阈值死区 + 18px 返回箭头 + AnimatedSwitcher 过渡期可点），结构性必然；③输入框上滑**可行推荐**、搜索下滑**暂不建议**（同区同向已双绑「返回」）——前置需统一「单区域单下滑语义」（现壳层 400/TopBar 200/Launcher 300/RefreshIndicator 四语义叠加）。报告 `audits/2026-08-20-app-health-check.md`。
 > 2026-08-19 full 模块审查（app 交易 UI/UX + 推送链路，ui/ux/frontend ×3 官并行 + 主会话交叉印证）：守护未跑（纯 UI 读审）。**P0 无。P1×4 + P2×12 + P3×17（合并去重）**。头号：**推送标题契约断裂（P1-推送1）**——`FeedPushChannel` 落库丢标题 → `toPushEntry` 按 type 重映射（session→「阿呆的交易提醒」）→ 前端按标题 switch 的徽章配色与「确认并入账」按钮判定全部落空：交易日志归集确认闭环 UI 断裂 + 早盘蓝/午间紫/尾盘橙徽章失效（测试 mock 掩盖契约漂移）；**P1-推送2** 左滑删除仅本地刷新复现（web 无删除入口）；**P1-推送3** app 推送设置入口 self-lock（无卡即不可达）；**P1-前端1** app 静默刷新失败整页错误态（web P1-7 同类复发）。新增检查点 V9-8~10 / U30-32 / F58-60 已入清单。
 > 2026-08-18 生产日志审查（P0-1 已修复）：**P0-1 `<think>` 壳泄漏**——图片记录 summary 落 `<think>` 思考原文（5+2 条，用户可见 + 交易归集中断）。修复：`GlmResponseParser` 降级路径剥壳 + 未闭合 think/answer 处理 + `max_tokens` 1024→2048；生产 7 条脏记录 glm-4v-flash 重识别清洗 + memory 重建（备份 .bak-20260818-p0 保留）。报告 `audits/2026-08-18-production-log.md`，详情 change-log。
 > 2026-08-18 P1-1 已修复（交易归集 unknown 污染）：`TradeLogCollectService.collect` 不再落 `"unknown"` 占位（symbol+name 全无拒绝归集）、complete 判定补 symbol、`dedupeKey` name 兜底防互吞、summarize 显示 name。TradeLogCollectServiceTest +4，后端 674 全绿。
@@ -28,6 +29,7 @@ mode: full 模块审查（交易 UI/UX：ui/ux/frontend ×3 官并行 + 主会�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-20 | full app 体检（用户体感导向）| apps/adai-app 全量 | ui/ux/frontend/product ×4 + 主会话独立核实 | 战略×5 + P1×17 + P2/P3×24（合并去重）| 0（审查只报告，报告见 `audits/2026-08-20-app-health-check.md`）|
 | 2026-08-19 | full 模块审查（app 交易 UI/UX + 推送链路）| 工作树（交易模块 app/web 全部 UI 文件）| ui/ux/frontend ×3 + 主会话交叉印证 | P1×4 + P2×12 + P3×17 | 0（审查只报告）|
 | 2026-08-18 | 生产日志审查（journalctl 当日 2986 行）| 49.235.37.220 运行日志 | 主会话直接核读 | P0×1 + P1×2 + P2×4 + P3×4 | 0（审查只报告，报告见 `audits/2026-08-18-production-log.md`）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| c5aea47..HEAD（13 commits）| backend/frontend/docs/knowledge ×4 | 战略×3 + P1×9 + P2×16 + P3×24 | 0（审核不直接修）|
@@ -159,7 +161,13 @@ mode: full 模块审查（交易 UI/UX：ui/ux/frontend ×3 官并行 + 主会�
 
 ## 🔍 全维度走查（ai-engineering/process/audit.md）
 
-> 7 审查官独立并行全量走查，交叉印证（同一问题多官命中 = ⭐ 优先级高）。走查日期 + 摘要滚动保留。
+> 审查官独立并行走查，交叉印证（同一问题多官命中 = ⭐ 优先级高）。走查日期 + 摘要滚动保留。
+
+> 2026-08-20 app 全面体检（用户体感导向，4 官：ui/ux/frontend/product）
+
+> 📄 完整发现清单见 `docs/review/audits/2026-08-20-app-health-check.md`。
+
+> 守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0 无。战略×5 + P1×17 + P2/P3×24**。**核心（4 官 ⭐⭐⭐⭐）**：World B 误触搜索=手势语义冲突（搜索栏在返回手势区内是 tap 大目标 + 300-400 双阈值死区 + 18px 返回箭头 + AnimatedSwitcher 过渡期可点）；切 World 丢输入现场（草稿/对话/上传，P-app-15 升 P1）。**排序（⭐⭐⭐）**：实现无 bug 符合 DESIGN（最新在底），实锤在 4 处（`_loadMore` 无 id 去重 / 切回重置 page0 / 时间线默认最早日期 / `updatedAt=now`「刚刚」恒显）+ 双端方向相反待拍板。**战略**：双主页形态违背「一个页面」、阿呆系统页第一原则泄漏、下滑手势四语义叠加、roadmap 漂移。检查点建议 6 条（C-app-* 系列）。
 
 > 2026-08-15 自伤自查（8 官全量，审查 AI 工程层自身）
 
@@ -199,6 +207,7 @@ mode: full 模块审查（交易 UI/UX：ui/ux/frontend ×3 官并行 + 主会�
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-20 | full app 体检（用户体感导向）| ui/ux/frontend/product ×4 + 主会话 | 4 | ~40min | 战略×5 + P1×17 + P2/P3×24（去重后）| 0（审查只报告）|
 | 2026-08-19 | full 模块审查（app 交易 UI/UX + 推送链路）| ui/ux/frontend ×3 + 主会话 | 3 | ~30min | P1×4 + P2×12 + P3×17（去重后）| 0（审查只报告）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| backend/frontend/docs/knowledge ×4 | 4 | ~30min | 战略×3 + P1×10 + P2×16 + P3×24（去重后）| 0（审核只报告）|
 | 2026-08-17 | 修复批 R11（admin + 收尾）| — | 0 | ~20min | 0 新 | admin×3 |

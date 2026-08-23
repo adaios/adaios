@@ -26,6 +26,20 @@ http.Response _json(Object data, {int status = 200}) => http.Response.bytes(
       headers: {'content-type': 'application/json'},
     );
 
+/// RFC 20260822：当日复盘聚合（GET /trading/trades?date=）默认响应——今日无成交不显示行。
+/// 覆盖 /trading/trades handler 的测试用它分流 GET（daily 聚合）与 POST（记录交易）。
+http.Response _dailyOk() => _json({
+      'trades': <Object>[],
+      'daily': {'date': '2026-08-15', 'count': 0, 'buyCount': 0, 'sellCount': 0,
+        'buyAmount': 0.0, 'sellAmount': 0.0,
+        'sessions': [
+          {'name': '早盘', 'range': '09:30-11:30', 'count': 0},
+          {'name': '午盘', 'range': '13:00-14:30', 'count': 0},
+          {'name': '尾盘', 'range': '14:30-15:00', 'count': 0},
+        ],
+        'firstTradeTime': null, 'lastTradeTime': null},
+    });
+
 class _Backend {
   final Map<String, Future<http.Response> Function(http.Request)> handlers = {};
   Future<http.Response> handle(http.Request req) {
@@ -322,16 +336,17 @@ void main() {
           });
       b.handlers['/api/v1/trading/has-activity'] = (_) async =>
           _json({'date': '2026-08-15', 'hasActivity': false});
-      // 2026-08-17 对齐 web：账户/自选/买点/清仓/打分（_loadAux 异步加载）
+      // 2026-08-17 对齐 web：账户快照（_loadAux 异步加载）
       b.handlers['/api/v1/trading/account'] = (_) async => _json({
             'assets': 100000.0, 'cash': 50000.0, 'available': 50000.0,
             'withdrawable': 50000.0, 'marketValue': 50000.0, 'pnl': 0.0,
             'todayPnl': 0.0, 'principal': 150000.0,
           });
-      b.handlers['/api/v1/trading/watchlist'] = (_) async => _json([]);
-      b.handlers['/api/v1/trading/buy-points'] = (_) async => _json([]);
-      b.handlers['/api/v1/trading/sold'] = (_) async => _json([]);
-      b.handlers['/api/v1/trading/sold/score'] = (_) async => _json([]);
+      // RFC 20260822：当日复盘聚合（今日无成交 → 不显示行）；覆盖此 handler 的测试须分流 GET/POST
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk();
+        return _json({'positions': []});
+      };
     }
 
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
@@ -358,7 +373,7 @@ void main() {
       expect(find.text('持仓明细'), findsOneWidget);
     });
 
-    testWidgets('对齐 web：账户卡 + 自选买点 + 清仓打分渲染（2026-08-17）', (tester) async {
+    testWidgets('账户卡渲染：券商口径总盈亏 = 资产 - 本金（2026-08-22：自选/清仓区块已移除）', (tester) async {
       final b = _Backend();
       mockBase(b);
       b.handlers['/api/v1/trading/account'] = (_) async => _json({
@@ -366,35 +381,45 @@ void main() {
             'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
             'todayPnl': 0.0, 'principal': 150000.0,
           });
-      b.handlers['/api/v1/trading/watchlist'] = (_) async => _json([
-            {'symbol': '000725', 'name': '京东方A', 'industry': '面板', 'industry2': '',
-             'longForm': 6, 'midForm': 8, 'shortForm': 1, 'signal': 'KDJ死叉', 'addedAt': '2026-08-16'},
-          ]);
-      b.handlers['/api/v1/trading/buy-points'] = (_) async => _json([
-            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'B1', 'score': 87,
-             'signals': ['回调 52%', '缩量 0.6']},
-          ]);
-      b.handlers['/api/v1/trading/sold'] = (_) async => _json([
-            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
-             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
-          ]);
-      b.handlers['/api/v1/trading/sold/score'] = (_) async => _json([
-            {'symbol': '600519', 'name': '贵州茅台', 'buyPointScore': 88, 'buyPointSignal': 'B1',
-             'buyPointExplain': '', 'executionScore': 90, 'executionExplain': '',
-             'totalScore': 89.0, 'verdict': '盈利了结'},
-          ]);
       await pumpTrading(tester, b);
 
       // 账户卡：总盈亏 = 资产 - 本金 = -39495.12（亏，绿；app 万单位显示 -3.9万）
       expect(find.text('总资产'), findsOneWidget);
       expect(find.text('本金'), findsOneWidget);
       expect(find.textContaining('-3.9万'), findsOneWidget);
-      // 自选 + 买点信号
-      expect(find.text('自选股 · 买点信号'), findsOneWidget);
-      expect(find.textContaining('B1 87%'), findsOneWidget);
-      // 清仓 + 打分
-      expect(find.text('清仓复盘'), findsOneWidget);
-      expect(find.textContaining('总分 89'), findsOneWidget);
+      // 2026-08-22：自选/清仓区块已移除（管理归 web，能力不删）
+      expect(find.text('自选股 · 买点信号'), findsNothing);
+      expect(find.text('清仓复盘'), findsNothing);
+    });
+
+    testWidgets('当日交易复盘：今日 N 笔 · 买/卖 · 时段分布（RFC 20260822 纯客观）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method != 'GET') return _json({'positions': []});
+        return _json({
+          'trades': <Object>[],
+          'daily': {
+            'date': '2026-08-15', 'count': 4, 'buyCount': 3, 'sellCount': 1,
+            'buyAmount': 12345.6, 'sellAmount': 6789.0,
+            'sessions': [
+              {'name': '早盘', 'range': '09:30-11:30', 'count': 2},
+              {'name': '午盘', 'range': '13:00-14:30', 'count': 1},
+              {'name': '尾盘', 'range': '14:30-15:00', 'count': 1},
+            ],
+            'firstTradeTime': '09:41:00', 'lastTradeTime': '14:52:00',
+          },
+        });
+      };
+      await pumpTrading(tester, b);
+
+      // 今日 N 笔 · 买/卖 · 时段分布 · 首末笔时间（纯客观数字）
+      expect(find.textContaining('今日 4 笔'), findsOneWidget);
+      expect(find.textContaining('买 3 卖 1'), findsOneWidget);
+      expect(find.textContaining('早盘 2'), findsOneWidget);
+      expect(find.textContaining('午盘 1'), findsOneWidget);
+      expect(find.textContaining('尾盘 1'), findsOneWidget);
+      expect(find.textContaining('09:41-14:52'), findsOneWidget);
     });
 
     testWidgets('错误态：加载失败 + 重试成功', (tester) async {
@@ -440,6 +465,7 @@ void main() {
       var traded = false;
       Map<String, dynamic>? tradeBody;
       b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         traded = true;
         tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
         return _json({'positions': []});
@@ -498,7 +524,8 @@ void main() {
       final b = _Backend();
       mockBase(b);
       var traded = false;
-      b.handlers['/api/v1/trading/trades'] = (_) async {
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         traded = true;
         return _json({'positions': []});
       };
@@ -527,7 +554,8 @@ void main() {
         },
       ]);
       var traded = false;
-      b.handlers['/api/v1/trading/trades'] = (_) async {
+      b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         traded = true;
         return _json({'positions': []});
       };
@@ -551,6 +579,7 @@ void main() {
       mockBase(b);
       Map<String, dynamic>? tradeBody;
       b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
         return _json({'positions': []});
       };
@@ -587,6 +616,7 @@ void main() {
       ]);
       Map<String, dynamic>? tradeBody;
       b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
         return _json({'positions': []});
       };
@@ -623,6 +653,7 @@ void main() {
           });
       Map<String, dynamic>? tradeBody;
       b.handlers['/api/v1/trading/trades'] = (req) async {
+        if (req.method == 'GET') return _dailyOk(); // RFC 20260822：当日复盘聚合分流
         tradeBody = jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>;
         return _json({'positions': []});
       };

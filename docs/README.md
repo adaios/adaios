@@ -21,6 +21,7 @@
 | [product-architecture.md](architecture/product-architecture.md) | 五层产品架构详解（Layer 1-6） |
 | [system-architecture.md](architecture/system-architecture.md) | 系统架构、Kernel/Domain 分层、Context Engine |
 | [memory-os-design.md](architecture/memory-os-design.md) | Memory OS 设计规约：职责、数据模型与 Context Engine / Domain OS 的关系 |
+| [memory-frameworks-borrow.md](architecture/memory-frameworks-borrow.md) | 开源记忆方案借鉴分析：Mem0/Letta/Zep/File-First 生态 → 可借鉴清单 |
 | [data-format-freeze.md](architecture/data-format-freeze.md) | 📦 **v1.0.0 数据格式冻结**——data/ 全部文件格式契约 + 变更规则 |
 
 ## 🔧 功能手册
@@ -30,6 +31,7 @@
 | [development.md](guides/development.md) | 🛠 开发指南：全局构建/测试/运行/部署命令（原根 CLAUDE.md 承接，2026-08-19）|
 | [skills-usage.md](guides/skills-usage.md) | 🧩 技能使用指南：11 个技能何时用、怎么触发、怎么维护（给人看）|
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
+| [trading-features.md](reference/trading-features.md) | 📈 交易模块（trading 插件）功能手册：端点总表/定时任务/Web·App 双端功能/知识底座/已知缺陷 |
 
 ## 🎨 前端参考
 
@@ -81,6 +83,7 @@
 | [20260816-trading-os-engine.md](rfc/20260816-trading-os-engine.md) | 2026-08-16 | trading-engine 领域引擎化（知识/能力/形态三区，一个内核多出口）|
 | [20260816-trading-session-push.md](rfc/20260816-trading-session-push.md) | 2026-08-16 | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）|
 | [20260816-trading-data-intelligence.md](rfc/20260816-trading-data-intelligence.md) | 2026-08-16 | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核）|
+| [20260822-memory-plugin-isolation.md](rfc/20260822-memory-plugin-isolation.md) | 2026-08-22 | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 |
 
 > 早期决策 `20260726-next-phase-direction.md` 已随 research 目录整合移除（2026-08-15，见 change-log）；早期设计保留 `docs/inbox/20260722-ai-context-design.md`
 

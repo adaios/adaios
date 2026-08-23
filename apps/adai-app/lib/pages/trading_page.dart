@@ -11,7 +11,9 @@ import '../services/api_service.dart';
 ///
 /// 记录区两条通道共用同一确认/写入链路：
 /// - 通道 A：一句话（NL）→ POST /trading/trades/parse → 确认卡回显（AI 错误在此拦截）
-/// - 通道 B：精确填写折叠表单（标的 | 价格 | 数量 + 底部 [买入][卖出] 双按钮，方向由按钮承担）
+/// - 通道 B：精确填写折叠表单（标的 | 价格 | 数量 + 隐藏式止损/买点 + 底部 [买入][卖出] 双按钮）
+/// 2026-08-22：止损/买点非必填隐藏式（需要时展开，止损默认 −7% 可改可清，买点可为空）；
+///            自选股/清仓复盘区块移除（管理归 web，手机专注记录 + 阿呆建议）。
 class TradingPage extends StatefulWidget {
   final ApiService api;
 
@@ -27,14 +29,14 @@ class _TradingPageState extends State<TradingPage> {
   bool _loading = true;
   String? _error;
 
-  // ── 2026-08-17 对齐 web：账户快照 + 自选/买点 + 清仓/打分（异步加载不阻塞主数据）──
+  // ── 2026-08-17 对齐 web：账户快照（异步加载不阻塞主数据）──
   AccountSnapshotDto? _account;
-  List<WatchlistItemDto> _watchlist = [];
-  List<BuyPointDto> _buyPoints = [];
-  List<SoldTradeDto> _sold = [];
-  List<SoldScoreDto> _soldScores = [];
-  bool _auxLoading = false; // 次级数据加载中（自选/清仓，不转圈整页）
+  bool _auxLoading = false; // 次级数据加载中（账户快照，不转圈整页）
   int _auxGen = 0; // 代际令牌：_loadAux 防乱序覆盖
+
+  // ── RFC 20260822：当日交易复盘（纯客观：今日 N 笔 · 时段分布）──
+  DailyTradeSummaryDto? _dailySummary;
+  bool _dailyLoading = false;
 
   // ── 通道 A：NL 输入条 ──
   final _nlCtrl = TextEditingController();
@@ -47,11 +49,15 @@ class _TradingPageState extends State<TradingPage> {
   String _confirmDirection = 'BUY';
   bool _confirming = false;
 
-  // ── 通道 B：精确表单（标的/价格/数量 + 双按钮，2026-08-18 简化：止损/买点归 web）──
+  // ── 通道 B：精确表单（标的/价格/数量 + 双按钮，2026-08-22：隐藏式止损/买点，需要时展开）──
   bool _showForm = false;
   final _symbolCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _volumeCtrl = TextEditingController();
+  bool _showPlan = false; // 隐藏式「止损/买点」展开开关（默认收起，需要时点开）
+  final _stopLossCtrl = TextEditingController();
+  String _buyPoint = ''; // 买点类型（空 = 不填，BUY 可选）
+  bool _stopLossTouched = false; // 用户手动改过止损 → 价格变化不再覆盖默认值
   bool _submitting = false;
 
   // ── 复盘横幅（P1：has-activity 检测 + 生成）──
@@ -82,6 +88,7 @@ class _TradingPageState extends State<TradingPage> {
     _symbolCtrl.dispose();
     _priceCtrl.dispose();
     _volumeCtrl.dispose();
+    _stopLossCtrl.dispose();
     super.dispose();
   }
 
@@ -108,15 +115,17 @@ class _TradingPageState extends State<TradingPage> {
         _loading = false;
       });
       _checkActivity(); // 复盘横幅检测（静默，失败不影响页面）
-      _loadAux();       // 账户/自选/清仓/打分（异步，不阻塞主数据）
+      _loadAux();       // 账户快照（异步，不阻塞主数据）
+      _loadDaily();     // RFC 20260822：当日交易复盘（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = _extractApiError(e); _loading = false; }); // #113 人话
     }
   }
 
-  /// 次级数据（账户快照/自选/买点/清仓/打分）：独立拉取，失败静默不影响主数据。
+  /// 次级数据（账户快照）：独立拉取，失败静默不影响主数据。
   /// 代际令牌（2026-08-17）：响应乱序时旧代不覆盖新代（与 web P2-10 同款守卫）。
+  /// 2026-08-22：自选/买点/清仓/打分区块移除（管理归 web，能力不删），只保留账户快照。
   Future<void> _loadAux() async {
     // P2-UX1（2026-08-17 走查）：先判锁再递增——早退分支不得先递增代际，
     // 否则在途请求 finally 判定 gen != _auxGen 不复位锁 → 次级数据本会话永久不刷新
@@ -125,17 +134,9 @@ class _TradingPageState extends State<TradingPage> {
     final gen = ++_auxGen;
     try {
       final acct = await widget.api.getAccount();
-      final watch = await widget.api.getWatchlist();
-      final bps = await widget.api.getBuyPoints();
-      final sold = await widget.api.getSold();
-      final scores = await widget.api.getSoldScore();
       if (!mounted || gen != _auxGen) return; // 旧代丢弃
       setState(() {
         _account = acct;
-        _watchlist = watch;
-        _buyPoints = bps;
-        _sold = sold;
-        _soldScores = scores;
       });
     } catch (_) {
       // 次级数据失败静默（账户卡退回组合快照口径）
@@ -152,6 +153,24 @@ class _TradingPageState extends State<TradingPage> {
       setState(() => _hasActivity = has);
     } catch (_) {
       // 检测失败不阻塞页面（横幅不出现）
+    }
+  }
+
+  /// RFC 20260822：当日交易复盘聚合（今日 N 笔 · 早/午/尾盘分布）——纯客观数字，
+  /// 失败静默（今日无成交/后端旧版本 → 不显示该行，不阻塞页面）。
+  Future<void> _loadDaily() async {
+    if (_dailyLoading) return;
+    _dailyLoading = true;
+    try {
+      final resp = await widget.api.getDailyTrades();
+      if (!mounted) return;
+      setState(() {
+        _dailySummary = resp.daily.count > 0 ? resp.daily : null; // 无成交不显示
+      });
+    } catch (_) {
+      // 静默：后端未升级 / 无数据时页面不受影响
+    } finally {
+      _dailyLoading = false;
     }
   }
 
@@ -276,6 +295,7 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 通道 B：精确表单提交。direction 由按钮承担（买入/卖出），结构上不可能漏选。
+  /// 2026-08-22：BUY 可选带隐藏式止损/买点（非必填，止损有默认值 −7%，买点可为空）。
   Future<void> _submitExactTrade(String direction) async {
     final symbol = _symbolCtrl.text.trim();
     final price = double.tryParse(_priceCtrl.text.trim());
@@ -286,11 +306,21 @@ class _TradingPageState extends State<TradingPage> {
     if (priceErr != null) { _showSnack(priceErr, AppColors.darkOrange); return; }
     final volErr = _validateVolume(volume);
     if (volErr != null) { _showSnack(volErr, AppColors.darkOrange); return; }
-    // 2026-08-18 简化：app 不填止损/买点（归 web 端设置）
+    // SELL 预检：未持有/超持仓拦截（与通道 A 一致）
     if (direction == 'SELL') {
       final sellErr = _validateSell(symbol, volume!);
       if (sellErr != null) { _showSnack(sellErr, AppColors.darkOrange); return; }
     }
+    // BUY 可选止损/买点：非必填；止损填了须 > 0（清空 = 不设止损）
+    double? stopLoss;
+    if (direction == 'BUY' && _stopLossCtrl.text.trim().isNotEmpty) {
+      stopLoss = double.tryParse(_stopLossCtrl.text.trim());
+      if (stopLoss == null || stopLoss <= 0) {
+        _showSnack('止损位须为大于 0 的数字（不设就清空）', AppColors.darkOrange);
+        return;
+      }
+    }
+    final buyPoint = direction == 'BUY' ? _buyPoint.trim() : '';
     setState(() => _submitting = true);
     try {
       await widget.api.recordTrade(
@@ -298,6 +328,8 @@ class _TradingPageState extends State<TradingPage> {
         direction: direction,
         price: price!,
         volume: volume!,
+        stopLossPrice: stopLoss,
+        buyPoint: buyPoint.isEmpty ? null : buyPoint,
       );
       if (!mounted) return;
       _onTradeSuccess(
@@ -325,6 +357,10 @@ class _TradingPageState extends State<TradingPage> {
       _confirmPriceCtrl.clear();
       _nlCtrl.clear();
       _showForm = false;
+      _showPlan = false; // 2026-08-22：收起隐藏式止损/买点并清空
+      _stopLossCtrl.clear();
+      _buyPoint = '';
+      _stopLossTouched = false;
       _submitting = false;
       _confirming = false;
       _reviewGenerated = false; // 有交易 → 复盘横幅重新可生成
@@ -430,6 +466,10 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               children: [
                 _buildSnapshotCard(),
+                if (_dailySummary != null) ...[
+                  const SizedBox(height: 10),
+                  _buildDailySummary(),
+                ],
                 if (_hasActivity && !_bannerDismissed) ...[
                   const SizedBox(height: 10),
                   _buildReviewBanner(),
@@ -456,109 +496,11 @@ class _TradingPageState extends State<TradingPage> {
                 ]),
                 const SizedBox(height: 8),
                 _buildPositionCards(),
-                // 2026-08-17 对齐 web：自选股（买点信号）+ 清仓股（复盘打分）——只读展示
-                const SizedBox(height: 16),
-                _buildWatchlistSection(),
-                const SizedBox(height: 16),
-                _buildSoldSection(),
+                // 2026-08-22：自选股/清仓复盘区块移除——管理归 web（通达信导入/打分/心理标注），
+                // 手机端专注日常记录 + 阿呆建议；买点提醒由 15:10 推送覆盖。
               ],
             ),
     );
-  }
-
-  // ── 自选股 + 买点信号（2026-08-17 对齐 web，只读）──
-
-  Widget _buildWatchlistSection() {
-    if (_watchlist.isEmpty) return const SizedBox.shrink();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        _sectionTitle('自选股 · 买点信号'),
-        if (_buyPoints.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Text('${_buyPoints.length} 只到买点', style: TextStyle(fontSize: 10, color: AppColors.darkRed)),
-        ],
-      ]),
-      const SizedBox(height: 6),
-      ..._watchlist.map((w) {
-        final bp = _buyPoints.where((b) => b.symbol == w.symbol).toList();
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.darkSurface2,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Text('${w.name} ${w.symbol}',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
-            ),
-            if (bp.isNotEmpty)
-              Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))
-            else
-              Text(w.signal.isEmpty ? '—' : w.signal,
-                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-          ]),
-        );
-      }),
-    ]);
-  }
-
-  // ── 清仓股 + 复盘打分（2026-08-17 对齐 web，只读）──
-
-  Widget _buildSoldSection() {
-    if (_sold.isEmpty) return const SizedBox.shrink();
-    // D2 纪律统计（对齐 web）：盈/亏 + R66/R53
-    final total = _sold.length;
-    final profit = _sold.where((s) => s.holdPnlPct >= 0).length;
-    final r66 = _sold.where((s) => s.verdict.contains('R66')).length;
-    final r53 = _sold.where((s) => s.verdict.contains('R53')).length;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        _sectionTitle('清仓复盘'),
-        const SizedBox(width: 6),
-        Text('$total 笔 · 盈 $profit / 亏 ${total - profit}'
-            '${r66 > 0 ? ' · 扛单$r66' : ''}${r53 > 0 ? ' · 短亏$r53' : ''}',
-            style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
-      ]),
-      const SizedBox(height: 6),
-      // P1-UX4（2026-08-17 走查）：按列表顺序索引匹配（同代码多笔不错挂）——
-      // 旧 `.where(symbol).first` 会把所有同代码笔都挂到第一笔的分数上（web P1-8 已修，app 复制了修复前版本）
-      ..._sold.take(20).toList().asMap().entries.map((e) {
-        final s = e.value;
-        final score = e.key < _soldScores.length ? _soldScores[e.key] : null;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.darkSurface2,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text('${s.name} ${s.symbol}',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
-              ),
-              Text('${s.holdPnlPct >= 0 ? '+' : ''}${s.holdPnlPct.toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                      color: s.holdPnlPct >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
-            ]),
-            const SizedBox(height: 3),
-            Text(s.verdict.isEmpty ? '（未判对错）' : s.verdict,
-                style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
-            if (score?.totalScore != null)
-              Text('买点 ${score!.buyPointScore ?? '—'} · 执行 ${score.executionScore ?? '—'} · 总分 ${score.totalScore!.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: 10, color: AppColors.darkOrange)),
-          ]),
-        );
-      }),
-      if (_sold.length > 20)
-        Text('仅显示最近 20 笔，完整请用桌面端', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
-    ]);
   }
 
   Widget _sectionTitle(String title) {
@@ -688,7 +630,8 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  // ── 精确表单：标的 | 价格 | 数量 + 底部 [买入][卖出]（2026-08-18 简化：止损/买点归 web）──
+  // ── 精确表单：标的 | 价格 | 数量 + 隐藏式止损/买点 + 底部 [买入][卖出]
+  // 2026-08-22：止损/买点非必填，默认收起，需要时展开（止损有默认值 −7%，买点可为空）──
 
   Widget _buildExactForm() {
     return Container(
@@ -703,10 +646,35 @@ class _TradingPageState extends State<TradingPage> {
         Row(children: [
           // 2026-08-18：价格键盘支持小数点（A 股成本价 4 位精度，需 5 位小数输入能力）
           Expanded(child: _formField('价格', _priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true), hintText: '成交单价')),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true), hintText: '成交单价',
+              onChanged: _onPriceChanged)),
           const SizedBox(width: 10),
           Expanded(child: _formField('数量', _volumeCtrl, keyboardType: TextInputType.number, hintText: '股数')),
         ]),
+        // 隐藏式止损/买点：默认收起，点开按需填（止损自动带默认 −7%，可改可清；买点可空）
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: () => setState(() => _showPlan = !_showPlan),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(_showPlan ? '收起止损/买点' : '止损/买点（可选）',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, decoration: TextDecoration.underline)),
+          ),
+        ),
+        if (_showPlan) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(child: _formField('止损', _stopLossCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                hintText: '跌破就清仓（默认 −7%）',
+                onChanged: (_) => _stopLossTouched = true)),
+            const SizedBox(width: 10),
+            Expanded(child: _buyPointField()),
+          ]),
+          const SizedBox(height: 4),
+          Text('止损/买点只对买入生效；清空止损 = 不设（建议引擎按 R68 降级判定）',
+              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+        ],
         const SizedBox(height: 12),
         Row(children: [
           Expanded(child: _tradeButton('买入', 'BUY')),
@@ -715,6 +683,52 @@ class _TradingPageState extends State<TradingPage> {
         ]),
       ]),
     );
+  }
+
+  /// 价格输入 → 自动带默认止损 = 价格 × 0.93（−7%，2026-08-17 设定，与 web 一致）。
+  /// 2026-08-22：只在展开隐藏区时预填（收起 = 不设置止损，隐藏式语义）；
+  /// 手动改过止损（_stopLossTouched）或当前非空则不覆盖。
+  void _onPriceChanged(String v) {
+    if (!_showPlan) return;
+    if (_stopLossTouched) return;
+    if (_stopLossCtrl.text.trim().isNotEmpty) return;
+    final price = double.tryParse(v.trim());
+    if (price != null && price > 0) {
+      _stopLossCtrl.text = (price * 0.93).toStringAsFixed(2);
+    } else {
+      _stopLossCtrl.clear();
+    }
+  }
+
+  /// 买点类型下拉（可空选，白名单与 web 一致）。
+  Widget _buyPointField() {
+    const options = ['B1', 'B2', 'B3', 'SB1', '暴力特噗', '深水炸弹', '单针', '其他'];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('买点', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      const SizedBox(height: 4),
+      Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: AppColors.darkBg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.darkBorder, width: 0.5),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: _buyPoint.isEmpty ? null : _buyPoint,
+            hint: const Text('不填', style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
+            isExpanded: true,
+            dropdownColor: AppColors.darkSurface,
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2),
+            items: [
+              ...options.map((o) => DropdownMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)))),
+            ],
+            onChanged: (v) => setState(() => _buyPoint = v ?? ''),
+          ),
+        ),
+      ),
+    ]);
   }
 
   /// 底部双按钮：买入=红、卖出=绿（A股红涨绿跌，与方向徽标一致）。
@@ -788,6 +802,40 @@ class _TradingPageState extends State<TradingPage> {
         child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
             color: selected ? AppColors.darkGreen : AppColors.darkGrey5)),
       ),
+    );
+  }
+
+  // ── RFC 20260822：当日交易复盘（纯客观数字）──
+
+  Widget _buildDailySummary() {
+    final d = _dailySummary!;
+    final sessionText = d.sessions
+        .where((s) => s.count > 0)
+        .map((s) => '${s.name} ${s.count}')
+        .join(' · ');
+    final timeText = (d.firstTradeTime != null && d.lastTradeTime != null)
+        ? '${d.firstTradeTime!.substring(0, 5)}-${d.lastTradeTime!.substring(0, 5)}'
+        : '';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.2), width: 0.5),
+      ),
+      child: Row(children: [
+        Icon(Icons.schedule, size: 14, color: AppColors.darkGreen),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            '今日 ${d.count} 笔 · 买 ${d.buyCount} 卖 ${d.sellCount}'
+            '${sessionText.isEmpty ? '' : ' · $sessionText'}'
+            '${timeText.isEmpty ? '' : ' · $timeText'}',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2),
+          ),
+        ),
+      ]),
     );
   }
 

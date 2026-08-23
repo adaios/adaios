@@ -3,9 +3,9 @@ title: 项目资产：adai-web（桌面端）
 description: adai-web 项目资产卡——模块划分/职责边界/与 app 的关系；改 web 前先读本卡
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-22
 status: active
-lines: 66
+lines: 75
 depends-on:
   - ../../frontmatter-spec.md
   - ../conventions.md
@@ -56,6 +56,15 @@ adai-web（Flutter Web 独立工程）
 
 - 布局形态不同（两栏 vs 单页双世界）——非适配，独立实现
 - 桌面端历史可达性（Feed 契约只今天，web 有分页/历史入口）
+
+## 字体资产（本地化，2026-08-20 首建 / 2026-08-22 修复 CFF 框字）
+
+- `web/fonts/NotoSansSC-Subset.woff2`：Noto Sans SC **TrueType(glyf) 轮廓 GB2312 子集**（63KB，OFL 开源可分发）
+- ⚠️ **2026-08-22 修复**：原 `HiraginoSansGB-Subset.woff2`（CFF 轮廓 1.8MB）在 skwasm 引擎下 **FreeType 解析失败 → 中文全框**（与 Flutter issue #128485「CanvasKit 不支持 WOFF2」同类；Roboto 为 TrueType 轮廓所以英文正常、中文全框）。换 TrueType 轮廓的 Noto Sans SC 后正常。
+- 中文（Noto Sans SC 等 gstatic 请求）由 `scripts/serve_web.sh` 注入的 fetch 补丁改道到本地 woff2；Roboto → Roboto.woff2
+- 重新生成（fonttools + brotli，从 Google Fonts 完整版子集化）：
+  `pyftsubset /tmp/NotoSansSC-Regular.ttf --text-file=<GB2312 charset> --flavor=woff2 --layout-features= --no-hinting`
+- 不入库（gitignore `/web/fonts/`），部署需手动放置（生产已放 `/opt/adaios/web/fonts/`）；adai-admin 同构（同一子集文件）
 
 ## 已知问题（来自 app-polish 审查）
 

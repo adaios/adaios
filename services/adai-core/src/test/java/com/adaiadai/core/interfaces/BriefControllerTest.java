@@ -49,4 +49,29 @@ class BriefControllerTest {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/brief"))
                 .andExpect(status().isMethodNotAllowed());
     }
+
+    @Test
+    void getCachedBrief_returnsCachedContent() throws Exception {
+        var briefService = mock(BriefAppService.class);
+        when(briefService.getCachedBrief(org.mockito.ArgumentMatchers.any())).thenReturn("Cached brief");
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BriefController(briefService)).build();
+
+        mvc.perform(get("/api/v1/brief/cached"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").value("Cached brief"));
+        org.mockito.Mockito.verify(briefService).getCachedBrief(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void getCachedBrief_emptyWhenNoCache() throws Exception {
+        var briefService = mock(BriefAppService.class);
+        when(briefService.getCachedBrief(org.mockito.ArgumentMatchers.any())).thenReturn("");
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BriefController(briefService)).build();
+
+        mvc.perform(get("/api/v1/brief/cached"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").value(""));
+    }
 }

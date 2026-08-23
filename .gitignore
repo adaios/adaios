@@ -112,5 +112,8 @@ services/adai-core/data/
 # ── 成本日志（运行时数据，个人花费隐私，不入库）──
 ai-engineering/state/cost-log.jsonl
 
+# ── AI 上下文快照（机器生成不入库；由 guard-context.sh --write-local 生成，随时可再生）──
+AGENTS.local.md
+
 # ── Gradle 用户缓存（沙箱环境 GRADLE_USER_HOME 落到工作区，构建产物不入库）──
 .gradle-home/

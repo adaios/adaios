@@ -3,9 +3,9 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-22
 status: active
-lines: 36
+lines: 37
 depends-on: []
 related:
   - ../_index.md
@@ -28,6 +28,7 @@ tags: [meta, index, architecture]
 | data-format-freeze.md | data/ 文件格式契约 + 变更规则 | active |
 | frontend-reference.md | 前端统一参考（术语对照 + 布局视觉） | active |
 | memory-os-design.md | 记忆 OS 设计 | active |
+| memory-frameworks-borrow.md | 开源记忆方案借鉴分析（Mem0/Letta/Zep/File-First 生态 → 可借鉴清单） | active |
 
 ## 过期判断
 

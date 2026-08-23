@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-22
 status: active
-lines: 109
+lines: 114
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -83,12 +83,17 @@ bash ai-engineering/guard-align.sh         # 代码↔文档内容对齐：必�
 ### 6. 部署（触发侧：deploy-gate 门禁 + smoke）
 
 ```bash
-bash ai-engineering/deploy-gate.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+bash ai-engineering/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
 
 - 部署前自动强制：guard-meta + guard-align + guard.sh（不过关拒绝部署）
 - 部署后自动 smoke：feed/memory/advice/parse/timeline/tags 六端点验证
 - 部署是用户确认的动作 → 最不可绕过的一道闸门
+
+### 6.5 成本登记（会话收工，2026-08-22 补）
+
+- **收工必跑**：`bash ai-engineering/guard-cost.sh --record`（今日成本入账 cost-log.jsonl），与 `guard-context.sh --write-local` 并列强制（AGENTS.md 规则 0b）
+- 若当日成本超阈值/调用超 500 次 → 按 `checklists/cost.md` 省钱原则复盘，结论入批次说明
 
 ### 7. 规范提交
 

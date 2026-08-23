@@ -3,9 +3,9 @@ title: 增量深审流程
 description: /review 的通用版——按改动范围派对应审查官，滚动更新 REVIEW.md
 version: 1
 created: 2026-08-15
-updated: 2026-08-18
+updated: 2026-08-22
 status: active
-lines: 75
+lines: 85
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -53,6 +53,16 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | 跨多目录 | 多官并行 |
 
 > **模型分层（成本纪律 2026-08-18）**：deep 派官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。`--full` 已默认不跑，见 `audit.md` 成本纪律。
+
+### 性能专项（/perf，2026-08-22）
+
+加载慢类问题**不派 8 官、不跑 guard、不滚动 REVIEW.md**——症状型快查：
+
+- 触发：`/perf <端名>`（adai-app / adai-web / adai-admin）
+- 执行：按 `checklists/review-perf.md` 阶段 A→F 逐条核对，默认 Flash
+- 时间盒 15 分钟，超时即停；输出 ≤10 条（位置 / 一句问题 / 一句建议），标注「卡首屏 / 卡内容 / 卡交互」
+- 疑似后端慢（快照计算/K 线扫描）→ 一句转派 backend-reviewer，不深挖
+- 沉淀：只追加一行到 review-perf.md 对应阶段，不进 REVIEW.md 滚动区
 
 ## 4. 汇总排序
 

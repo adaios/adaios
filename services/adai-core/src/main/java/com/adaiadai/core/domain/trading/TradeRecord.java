@@ -3,6 +3,7 @@ package com.adaiadai.core.domain.trading;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 /**
  * TradeRecord — 单笔交易记录（逐笔流水真相源，RFC 20260816 §2.1）。
@@ -13,7 +14,7 @@ import java.time.LocalDateTime;
  * <p>
  * 数据分层（RFC 20260816 §1）：
  * <ul>
- *   <li>系统字段：id / amount（price×volume 派生）/ entryDate（默认当天，可补录）/ timestamp / sourceRecordId</li>
+ *   <li>系统字段：id / amount（price×volume 派生）/ entryDate（默认当天，可补录）/ tradeTime（成交时刻，可空）/ timestamp / sourceRecordId</li>
  *   <li>用户提供：symbol / direction / price / volume / stopLossPrice / buyPoint / targetPrice / reason / fee</li>
  *   <li>行情补全：name（缺省 symbol）</li>
  * </ul>
@@ -26,6 +27,7 @@ import java.time.LocalDateTime;
  * @param volume        成交数量
  * @param amount        成交金额（price × volume，派生）
  * @param entryDate     交易日期（用户可改/可补录，缺省当天）
+ * @param tradeTime     成交时刻（可空，RFC 20260822——通达信成交时间列/当日记录缺省落盘时刻时分；旧数据 null）
  * @param stopLossPrice 止损位（BUY 必填；SELL 可空）
  * @param buyPoint      买点类型（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他；BUY 必填；SELL 可空）
  * @param targetPrice   目标价（可空，盈亏比 R38 复盘锚点）
@@ -44,6 +46,7 @@ public record TradeRecord(
         int volume,
         BigDecimal amount,
         LocalDate entryDate,
+        LocalTime tradeTime,
         BigDecimal stopLossPrice,
         String buyPoint,
         BigDecimal targetPrice,
@@ -59,12 +62,13 @@ public record TradeRecord(
      */
     public static TradeRecord of(String id, String symbol, String name, TradeDirection direction,
                                  BigDecimal price, int volume, LocalDate entryDate,
+                                 LocalTime tradeTime,
                                  BigDecimal stopLossPrice, String buyPoint,
                                  BigDecimal targetPrice, String reason, BigDecimal fee,
                                  LocalDateTime timestamp, String sourceRecordId, String orderId) {
         return new TradeRecord(
                 id, symbol, name, direction, price, volume,
                 price.multiply(BigDecimal.valueOf(volume)),
-                entryDate, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId);
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId);
     }
 }

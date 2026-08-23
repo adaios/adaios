@@ -115,8 +115,10 @@ class _MainPageState extends State<MainPage>
     // 下拉刷新：不清 active 状态，只重新拉取数据
     _currentPage = 0;
     try {
-      final brief = await _api.getBrief();
-      final feed = await _api.getFeed(page: 0, size: _pageSize);
+      // 首屏提速（2026-08-22）：并行发起，渲染只等 feed——brief 后到单独刷新
+      final feedFuture = _api.getFeed(page: 0, size: _pageSize);
+      final briefFuture = _api.getBriefCached().catchError((_) => '');
+      final feed = await feedFuture;
       if (!mounted) return;
       final newCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
@@ -130,12 +132,16 @@ class _MainPageState extends State<MainPage>
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
-        _brief = brief;
         _totalToday = feed.totalToday;
         _cards = newCards;
         // P0-1：活动卡被刷新挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
         _syncActiveCard(newCards);
       });
+      // 简报后到（不阻塞刷新）：等缓存 brief，空串（过期/失败）→ 后台补 AI 生成
+      final brief = await briefFuture;
+      if (!mounted) return;
+      setState(() => _brief = brief);
+      if (brief.isEmpty) _fillBriefLater();
     } catch (e) {
       if (mounted) _showError('刷新失败');
     }
@@ -143,8 +149,11 @@ class _MainPageState extends State<MainPage>
 
   Future<void> _loadFeed({String? date}) async {
     try {
-      final brief = await _api.getBrief();
-      final feed = await _api.getFeed(page: 0, size: _pageSize);
+      // 首屏提速（2026-08-22）：两个请求并行发起，但渲染只等 feed——
+      // brief 后到单独刷新（AI 生成可能 7~27s，绝不该阻塞首屏；失败降级为空串）
+      final feedFuture = _api.getFeed(page: 0, size: _pageSize);
+      final briefFuture = _api.getBriefCached().catchError((_) => '');
+      final feed = await feedFuture;
       if (!mounted) return;
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
@@ -158,7 +167,6 @@ class _MainPageState extends State<MainPage>
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
-        _brief = brief;
         _totalToday = feed.totalToday;
         _currentPage = 0;
         _cards = allCards;
@@ -166,10 +174,32 @@ class _MainPageState extends State<MainPage>
         _syncActiveCard(allCards);
         _loading = false;
       });
+      // 简报后到（不阻塞首屏）：等缓存 brief，空串（过期/失败）→ 后台补 AI 生成
+      final brief = await briefFuture;
+      if (!mounted) return;
+      setState(() => _brief = brief);
+      if (brief.isEmpty) _fillBriefLater();
     } catch (e) {
       if (!mounted) return;
       _showError('加载失败');
       setState(() => _loading = false);
+    }
+  }
+
+  /// 缓存 Brief 过期时后台补 AI 生成（7~27s），完成后单独刷新简报区，不影响已渲染的 Feed。
+  /// _fillingBrief 防抖：并发 _loadFeed（提交记录/静默刷新叠加）只补一次，避免重复烧 AI。
+  bool _fillingBrief = false;
+  Future<void> _fillBriefLater() async {
+    if (_fillingBrief) return;
+    _fillingBrief = true;
+    try {
+      final brief = await _api.getBrief();
+      if (!mounted) return;
+      setState(() => _brief = brief);
+    } catch (_) {
+      // 简报补全失败不打扰首屏（静默，下一轮刷新再试）
+    } finally {
+      _fillingBrief = false;
     }
   }
 

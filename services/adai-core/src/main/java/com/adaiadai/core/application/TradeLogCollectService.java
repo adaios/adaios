@@ -74,6 +74,20 @@ public class TradeLogCollectService {
         return updated;
     }
 
+    /**
+     * 文本是否命中交易表述（宽松解析成功且识别出方向）。
+     * 2026-08-20：R2 记录转任务前先判——「清仓了XX」等成交表述归交易归集管线跟踪，
+     * 不再转成 TODO 任务（生产「云南锗业清仓止盈」等 5 条脏任务根因，概览残留清仓股名）。
+     */
+    public boolean isTradeStatement(String text) {
+        if (text == null || text.isBlank()) return false;
+        TradingParseAppService.ParseResult r = parseAppService.parseLoose("default", text);
+        if (!r.matched() || r.direction() == null) return false;
+        boolean hasSymbol = r.symbol() != null && !r.symbol().isBlank();
+        boolean hasName = r.name() != null && !r.name().isBlank();
+        return hasSymbol || hasName;
+    }
+
     /** 当日候选（未确认）。 */
     public List<TradeLogCandidate> todayCandidates(String userId) {
         return tradeLogRepository.findByDate(userId, LocalDate.now());
@@ -102,6 +116,7 @@ public class TradeLogCollectService {
                         c.price() != null ? c.price() : BigDecimal.ZERO,
                         c.volume() != null ? c.volume() : 0,
                         LocalDate.now(),
+                        java.time.LocalTime.now(), // RFC 20260822：日志确认落库带当下成交时刻
                         null, null, null, null);
                 done++;
             } catch (Exception e) {

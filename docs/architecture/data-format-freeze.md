@@ -338,14 +338,15 @@ updatedAt: 2026-08-07
 | 路径 | `trading/trades/{yyyy-MM}.json`（每月一个）|
 | 格式 | JSON 数组（美化），读-改-写追加 |
 | 真相源 | `TradingHistoryFileRepository` |
-| 变更 | **MINOR（2026-08-16，RFC 20260816）**：新增目录；**MINOR（2026-08-18）**：加 `orderId`（券商成交编号，可空——历史成交导入幂等键，旧文件无该字段解析兜底 null）|
+| 变更 | **MINOR（2026-08-16，RFC 20260816）**：新增目录；**MINOR（2026-08-18）**：加 `orderId`（券商成交编号，可空——历史成交导入幂等键，旧文件无该字段解析兜底 null）；**MINOR（2026-08-22，RFC 20260822）**：加 `tradeTime`（成交时刻 `HH:mm:ss`，可空——历史成交导入解析通达信成交时间列/当日记录缺省落盘时刻；旧文件无该字段解析 null）|
 
 ```
 [{
   "id": "trade_1723700000000",
   "symbol": "000725", "name": "京东方A",
   "direction": "BUY", "price": 5.2, "volume": 1000, "amount": 5200.0,
-  "entryDate": "2026-08-16", "stopLossPrice": 4.9, "buyPoint": "B1",
+  "entryDate": "2026-08-16", "tradeTime": "09:41:05",
+  "stopLossPrice": 4.9, "buyPoint": "B1",
   "targetPrice": null, "reason": "回踩支撑买入", "fee": null,
   "timestamp": "2026-08-16T09:30:00", "sourceRecordId": "rec_...",
   "orderId": "0101000075800458"
@@ -354,6 +355,7 @@ updatedAt: 2026-08-07
 
 - `fee`：日常记录为系统费率自动算；历史成交导入（`POST /trades/import`）= |发生金额 − 成交金额|（券商实扣）
 - `orderId`：历史成交导入时 = 通达信成交编号（唯一），重复导入同一文件按此幂等去重
+- `tradeTime`：成交时刻（客观数据，RFC 20260822）——历史成交导入解析通达信「成交时间」列；当日记录缺省 = 落盘时刻时分；旧数据 null（不计入当日复盘时段分桶，只进笔数/金额）
 
 ### 2.14 推送开关 `trading/push-settings.json`（RFC 20260817 新增）
 

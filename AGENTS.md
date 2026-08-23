@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-20
 status: active
-lines: 68
+lines: 69
 depends-on:
   - ai-engineering/README.md
 related:
@@ -26,6 +26,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 ## AI 协作规则（必读）
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash ai-engineering/guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
+0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 cost.md C7）。**收尾时强制两步，缺一不可**：① `bash ai-engineering/guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash ai-engineering/guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
 1. **必读文档**：先读 `docs/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `ai-engineering/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口
@@ -49,7 +50,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 元数据规范 | `ai-engineering/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | 文档自动对齐 | `ai-engineering/guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
-| 任务上下文 | `ai-engineering/guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）|
+| 任务上下文 | `ai-engineering/guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
 | 沉淀检查 | `ai-engineering/guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `ai-engineering/deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）|
 | 每周审查 | `ai-engineering/weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|

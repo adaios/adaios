@@ -42,7 +42,8 @@ flutter test
 flutter build web
 ```
 
-> 本地字体 `web/fonts/`（Hiragino Sans GB.ttc + Roboto.woff2）不入库，需手动放置。
+> 本地字体 `web/fonts/`（NotoSansSC-Subset.woff2 + Roboto.woff2）不入库，需手动放置。
+> NotoSansSC-Subset.woff2 为 Noto Sans SC 的 TrueType(glyf) 轮廓 GB2312 子集（63KB，OFL 开源）——**必须用 TrueType 轮廓**：原 HiraginoSansGB-Subset.woff2 是 CFF 轮廓，skwasm 引擎 FreeType 解析失败导致中文全框（2026-08-22 修复，Flutter issue #128485 同类）。由 `scripts/serve_web.sh` 的 fetch 补丁指向；重新生成见 `ai-engineering/assets/projects/adai-web.md` 字体资产节。
 > 后端需先启动：`cd services/adai-core && ./gradlew bootRun`（:8080）。
 
 ## 项目结构

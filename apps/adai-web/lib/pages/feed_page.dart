@@ -67,8 +67,11 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _loadFeed() async {
     try {
-      final brief = await widget.api.getBrief();
-      final feed = await widget.api.getFeed(page: 0, size: _pageSize);
+      // 首屏提速（2026-08-22）：并行发起，渲染只等 feed——brief 后到单独刷新
+      // （AI 生成可能 7~27s，绝不该阻塞首屏；缓存 brief 秒回，失败降级为空串）
+      final feedFuture = widget.api.getFeed(page: 0, size: _pageSize);
+      final briefFuture = widget.api.getBriefCached().catchError((_) => '');
+      final feed = await feedFuture;
       if (!mounted) return;
       final newCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
@@ -82,7 +85,6 @@ class _FeedPageState extends State<FeedPage> {
           ))
           .toList();
       setState(() {
-        _brief = brief;
         _totalToday = feed.totalToday;
         _currentPage = 0;
         _cards = newCards;
@@ -93,6 +95,11 @@ class _FeedPageState extends State<FeedPage> {
         _hasMore = _coreCardCount < _totalToday;
         _loading = false;
       });
+      // 简报后到（不阻塞首屏）：等缓存 brief，空串（过期/失败）→ 后台补 AI 生成
+      final brief = await briefFuture;
+      if (!mounted) return;
+      setState(() => _brief = brief);
+      if (brief.isEmpty) _fillBriefLater();
       // #115：右栏（标签云/任务快照）随 Feed 刷新联动更新
       _loadSidebar();
     } catch (_) {
@@ -102,6 +109,23 @@ class _FeedPageState extends State<FeedPage> {
         _loadFailed = true; // 首载失败：显示错误态 + 重试，不伪装「还没有记录」
       });
       _showError('加载失败，请确认后端已启动');
+    }
+  }
+
+  /// 缓存 Brief 过期时后台补 AI 生成（7~27s），完成后单独刷新简报区，不影响已渲染的 Feed。
+  /// _fillingBrief 防抖：并发 _loadFeed（提交记录/静默刷新叠加）只补一次，避免重复烧 AI。
+  bool _fillingBrief = false;
+  Future<void> _fillBriefLater() async {
+    if (_fillingBrief) return;
+    _fillingBrief = true;
+    try {
+      final brief = await widget.api.getBrief();
+      if (!mounted) return;
+      setState(() => _brief = brief);
+    } catch (_) {
+      // 简报补全失败不打扰首屏（静默，下一轮刷新再试）
+    } finally {
+      _fillingBrief = false;
     }
   }
 

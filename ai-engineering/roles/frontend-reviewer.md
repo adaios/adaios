@@ -4,12 +4,13 @@ description: 当需要对 apps/（Flutter 三端）前端代码做审查时加�
 name: frontend-reviewer
 version: 1
 created: 2026-08-15
-updated: 2026-08-19
+updated: 2026-08-22
 status: active
-lines: 49
+lines: 52
 depends-on:
   - ../frontmatter-spec.md
   - ../checklists/review-frontend.md
+  - ../checklists/review-perf.md
 related: []
 tags: [review, frontend, skill]
 ---
@@ -21,6 +22,7 @@ tags: [review, frontend, skill]
 ## 触发条件
 
 当用户要求审查前端代码/提交（`apps/` 范围内改动）时加载本技能。
+加载慢专项（`/perf <端名>`）配合 `../checklists/review-perf.md` 使用：按加载链路阶段快查，15 分钟时间盒，不跑 8 官全量流程。
 
 ## 执行步骤
 
@@ -44,6 +46,7 @@ tags: [review, frontend, skill]
 ## 参考资料
 
 - 检查清单：`../checklists/review-frontend.md`
+- 加载慢专项：`../checklists/review-perf.md`
 - 规范：`../assets/conventions.md`
 - 边界：`../assets/boundaries.md`
 - 已知坑：`../assets/pitfalls.md`

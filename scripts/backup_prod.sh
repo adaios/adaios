@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 #
-# 生产数据定期备份脚本（服务器到期迁移用，2026-08-14）
+# 生产数据定期备份脚本（服务器迁移/到期用，2026-08-14 创建，2026-08-20 更新）
 #
-# 背景：生产服务器 49.235.37.220 于 2026-08-19 左右到期，到期前数据仍可能增长，
-#       定期快照到本地，防服务器提前故障丢数据。新服务器就绪后解压还原即可。
+# 背景：生产服务器 82.156.111.146（2026-08-19 从 49.235.37.220 迁移），
+#       定期快照到本地，防服务器故障丢数据。新服务器就绪后解压还原即可。
 #
 # 备份内容：
 #   - data/（个人数据：records/memory/ai-logs/identity/trading/index/accounts）— 不可重建
+#   - os/（Domain OS 知识资产：trading-engine/life-os/project-os）— git 可重建但含服务器运行时副本
 #   - backend/.env（DEEPSEEK_API_KEY / ADAI_ADMIN_TOKEN，只存在服务器）— 不可重建
 #   - backend/adai-core.jar（线上精确版本，可从仓库重建但便宜）
 #   - web/ admin/（前端静态产物，可重建）→ 仅 --full 时包含
 #   - .deploy-token / .last_build_id（部署状态）
 #
 # 模式：
-#   默认（快备）：data + .env + jar，~13M，约 30-60 秒（每天定期跑）
-#   --full（全量）：再加 web/admin 静态产物，~137M，约 5-8 分钟（首次/必要时）
+#   默认（快备）：data + os + .env + jar，约 30-60 秒（每天定期跑）
+#   --full（全量）：再加 web/admin 静态产物，约 5-8 分钟（首次/必要时）
 #
 # 校验：两端 checksum 一致 + 归档可完整读取，任一失败退出非 0。
 # 安全：备份在仓库外（$HOME/backups/adaios-prod/），因含密钥，绝不进 git。
@@ -25,7 +26,7 @@
 
 set -euo pipefail
 
-SERVER="49.235.37.220"
+SERVER="82.156.111.146"
 REMOTE="/opt/adaios"
 SSH_OPTS=(-o ConnectTimeout=15)
 DEST_ROOT="${BACKUP_ROOT:-$HOME/backups/adaios-prod}"
@@ -39,13 +40,13 @@ if [ "${1:-}" = "--full" ]; then FULL=1; fi
 mkdir -p "$BACKUP_DIR"
 
 # ── 服务器打包 ──
-EXCLUDES=(--exclude='*/.bak-*' --exclude='data.bak-*' --exclude='data-backup-*.tar.gz' --exclude='._*')
-INCLUDE=(data backend/.env backend/adai-core.jar .deploy-token .last_build_id)
+EXCLUDES=(--exclude='*/.bak-*' --exclude='data.bak-*' --exclude='data-backup-*.tar.gz' --exclude='._*' --exclude='.DS_Store')
+INCLUDE=(data os backend/.env backend/adai-core.jar .deploy-token .last_build_id)
 if [ "$FULL" = 1 ]; then
   INCLUDE+=(web admin)
   echo "==> 全量备份 | $SERVER → $BACKUP_DIR"
 else
-  echo "==> 快备（data + .env + jar）| $SERVER → $BACKUP_DIR"
+  echo "==> 快备（data + os + .env + jar）| $SERVER → $BACKUP_DIR"
 fi
 
 echo "  1/3  服务器打包..."

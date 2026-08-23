@@ -35,6 +35,7 @@ class _Backend {
 
   _Backend() {
     handlers['/api/v1/brief'] = (_) => Future.value(_json({'content': ''}));
+    handlers['/api/v1/brief/cached'] = (_) => Future.value(_json({'content': ''}));
     handlers['/api/v1/feed'] = (req) {
       final page = int.tryParse(req.url.queryParameters['page'] ?? '0') ?? 0;
       return Future.value(_json({

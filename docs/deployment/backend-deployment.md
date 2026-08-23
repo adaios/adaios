@@ -4,12 +4,16 @@
 
 | 项目 | 值 |
 |------|-----|
-| 服务器 OS | CentOS 8.5 (root) |
-| 部署方式 | IP + 端口直接访问 |
+| 服务器 OS | **Ubuntu 24.04 LTS**（2026-08-19 从 CentOS 8.5 迁移，旧服务器 49.235.37.220 到期下线）|
+| 服务器配置 | 2核4G · 70G SSD · 600G 流量（腾讯云轻量，北京）|
+| 服务器 IP | **82.156.111.146** |
+| 生产域名 | **adaiadai.com**（已注册；DNS + HTTPS 待配置，见 §10）|
+| 部署方式 | IP + 端口直接访问（域名就绪后走 Caddy 反代）|
 | 后端端口 | 8080 |
 | 前端端口 | 8082（adai-web）/ 8083（adai-admin）|
 | 运行方式 | systemd 服务，开机自启 |
 | 数据目录 | `/opt/adaios/data`（v1.0.0 起按 `data/{userId}/` 分层）|
+| 知识目录 | `/opt/adaios/os`（Domain OS 资产，从 git 仓库同步）|
 | 安装目录 | `/opt/adaios/backend` |
 | 账号表 | `data/accounts/accounts.json`（多账号）|
 
@@ -90,8 +94,12 @@ ADAI_AI_PROVIDER=deepseek
 
 # REVIEW #127 管理端点令牌（admin/accounts 端点鉴权，未配置时 503 fail-closed）
 ADAI_ADMIN_TOKEN=<随机生成>
-# CORS 白名单（默认 localhost:*；生产前端在服务器上追加 49.235.37.220:*）
-ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://49.235.37.220:*
+# CORS 白名单（localhost + 生产服务器 IP；域名就绪后追加 https://adaiadai.com）
+ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://82.156.111.146:*
+# os/ 知识资产根路径（注意：默认 ../../os 相对 systemd WorkingDirectory 解析为 /opt/os，必须显式配置！）
+ADAI_OS_BASE_PATH=/opt/adaios/os
+# 交易知识规则目录（AdminController /trading/knowledge 读取）
+ADAI_TRADING_KNOWLEDGE_PATH=/opt/adaios/os/trading-engine/knowledge/context
 EOF
 
 chown adaios:adaios /opt/adaios/backend/.env
@@ -181,7 +189,7 @@ cd services/adai-core
 
 # 2. 开发机：一键部署（自动上传 + 重启 + 重建记忆）
 ./deploy.sh <服务器IP> build/libs/adai-core-0.0.1-SNAPSHOT.jar
-# 示例: ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+# 示例: ./deploy.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
 
 > 脚本自动完成：上传 JAR → 停服务 → 补全 data 目录 → 修权限 → 启服务 → 重建记忆。
@@ -198,6 +206,7 @@ cd services/adai-core
 | `adai.ai.provider` | AI 提供商 | `deepseek` | `deepseek` |
 | `adai.ai.model` | AI 模型 | `deepseek-v4-pro` | `deepseek-v4-pro` |
 | `adai.security.admin-token` | 管理端点令牌 | 空（503 fail-closed）| `ADAI_ADMIN_TOKEN` |
+| `adai.os-base-path` | os/ 知识资产根路径 | `../../os`（⚠️ 相对 cwd 解析，systemd 下会错）| `/opt/adaios/os`（必须显式 `ADAI_OS_BASE_PATH`）|
 | CORS 白名单 | 允许来源 | localhost | `ADAI_ALLOWED_ORIGIN_PATTERNS` |
 
 所有配置在 `.env` 文件中管理，JAR 启动时自动读取。
@@ -241,27 +250,41 @@ v1.0.0 起生产同时部署 Flutter Web 前端（无 nginx，Python http.server
 
 ```bash
 # 本地构建（指向生产后端）
-cd apps/adai-web && flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=http://49.235.37.220:8080
+cd apps/adai-web && flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=http://82.156.111.146:8080
 # adai-admin 额外: --dart-define=ADMIN_TOKEN=<ADAI_ADMIN_TOKEN 同值>
-# 构建后必须打 CanvasKit + 字体本地化补丁（见 serve_web.sh）
+# 构建后必须打 CanvasKit + 字体本地化补丁（见 serve_web.sh）——漏打会白屏（gstatic CDN 被墙）！
 
-# 上传（tar 管道，避免 scp -r 旧版 OpenSSH 失败）
-cd build/web && tar -cf - . | ssh root@49.235.37.220 'rm -rf /opt/adaios/web && mkdir -p /opt/adaios/web && tar -xf - -C /opt/adaios/web'
+# 上传（tar 管道；⚠️ 勿直接 rm 运行中服务的 cwd，先传 admin.new 再停服原子替换）
+cd build/web && tar -cf - . | ssh ubuntu@82.156.111.146 'sudo mkdir -p /opt/adaios/web.new && sudo tar -xf - -C /opt/adaios/web.new && sudo chown -R adaios:adaios /opt/adaios/web.new && sudo systemctl stop adaios-web && sudo rm -rf /opt/adaios/web && sudo mv /opt/adaios/web.new /opt/adaios/web && sudo systemctl start adaios-web'
 
-# 服务器：创建 systemd 静态服务
+# 服务器：创建 systemd 静态服务（用 serve_static.py，正确 MIME + 多线程 + gzip 压缩 + 分级缓存）
+# serve_static.py 已入仓（docs/deployment/serve_static.py，2026-08-22 起）：
+#   - gzip 压缩：wasm 压 ~67%、js 压 ~71%（首屏 14MB → ~4MB，Windows 不再白屏 1 分钟）
+#   - 分级缓存：/canvaskit/ /fonts/ /icons/ /assets/fonts/ 长缓存（max-age=604800 immutable，
+#     中文字体为 HiraginoSansGB-Subset.woff2（GB2312 子集 1.8MB，2026-08-20 起替代 23.5MB ttc）；
+#     若 no-store 每次全量重下导致白屏/进度条），其余产物 no-cache + 条件请求
+#     （Last-Modified/If-Modified-Since → 304 秒回：刷新不全量重下，改版仍即时生效）
+#   - HTTP/1.1 keep-alive（原 HTTP/1.0 每请求新建连接，多文件下载排队）
+#   - 压缩结果内存缓存（大文件只压一次）
+# 更新部署：scp docs/deployment/serve_static.py → /opt/adaios/serve_static.py → restart adaios-web/admin
 cat > /etc/systemd/system/adaios-web.service << 'EOF'
 [Unit]
 Description=adaios-web static server (:8082)
+After=network.target
 [Service]
-WorkingDirectory=/opt/adaios/web
-ExecStart=/usr/bin/python3 -m http.server 8082 --bind 0.0.0.0
+Type=simple
+WorkingDirectory=/opt/adaios
+ExecStart=/usr/bin/python3 /opt/adaios/serve_static.py 8082 /opt/adaios/web
 Restart=on-failure
+RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
 systemctl enable --now adaios-web
 # admin 同模板，端口 8083，目录 /opt/adaios/admin
 ```
+
+> ⚠️ **前端产物烧录 IP 陷阱**：`flutter build web` 不带 `--dart-define=API_BASE_URL` 会静默烧录 `localhost:8080`，浏览器打开即白屏（请求自己电脑）。构建必须显式传生产地址。同理 iOS：`--dart-define=API_BASE_URL=http://82.156.111.146:8080`。
 
 ## 9. iOS 部署（adai-app → iPhone）
 
@@ -270,8 +293,36 @@ USB 连 Xcode 直装（免费 Apple ID，7 天有效）：
 ```bash
 # ATS 明文 HTTP 例外已配（Info.plist NSAllowsArbitraryLoads，后端为 http）
 cd apps/adai-app
-flutter build ios --release --dart-define=API_BASE_URL=http://49.235.37.220:8080
+flutter build ios --release --dart-define=API_BASE_URL=http://82.156.111.146:8080
 # 或用 Xcode 打开 ios/Runner.xcworkspace，选择真机，点 Run
 ```
 
 > ⚠️ 免费 Apple ID 签名 7 天过期；TestFlight 需付费开发者账号（90 天）。
+
+## 10. 域名 + HTTPS（adaiadai.com，待配置）
+
+目标：浏览器/app 走 `https://adaiadai.com`，Caddy 自动申请续期 Let's Encrypt 免费证书，反代三个端口。换服务器只改 DNS，前端永不重构建。
+
+```bash
+# 1. DNS：adaiadai.com A 记录 → 82.156.111.146（控制台操作）
+# 2. 安装 Caddy（apt）
+sudo apt install -y caddy
+# 3. Caddyfile（自动申请/续期证书，零额外配置）
+cat > /etc/caddy/Caddyfile << 'EOF'
+adaiadai.com {
+    handle_path /admin/* {
+        reverse_proxy 127.0.0.1:8083
+    }
+    handle {
+        reverse_proxy 127.0.0.1:8082
+    }
+}
+api.adaiadai.com {
+    reverse_proxy 127.0.0.1:8080
+}
+EOF
+sudo systemctl restart caddy
+# 4. 防火墙放行 80/443（腾讯云控制台）
+# 5. 前端重构建指向域名：--dart-define=API_BASE_URL=https://api.adaiadai.com
+#    app 写 https://api.adaiadai.com，以后换服务器永不再改 app
+```

@@ -2,13 +2,13 @@
 # ============================================================
 # AdaiOS 后端一键部署脚本
 # 用法: ./deploy.sh <服务器IP> <JAR路径>
-# 示例: ./deploy.sh 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar
+# 示例: ./deploy.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 # ============================================================
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
     echo "用法: $0 <服务器IP> <JAR路径>"
-    echo "示例: $0 49.235.37.220 build/libs/adai-core-0.0.1-SNAPSHOT.jar"
+    echo "示例: $0 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar"
     exit 1
 fi
 
@@ -79,8 +79,8 @@ DEEPSEEK_API_KEY=sk-your-key-here
 ADAI_ADMIN_TOKEN=change-me-admin-token
 
 # REVIEW #127 CORS 来源白名单（逗号分隔 origin pattern；默认 localhost）。
-# 生产前端若在服务器上，追加：http://49.235.37.220:*,http://<前端域名>:*
-ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://49.235.37.220:*
+# 生产前端若在服务器上，追加：http://82.156.111.146:*,http://<前端域名>:*
+ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://82.156.111.146:*
 
 # 数据目录（保持默认即可）
 ADAI_DATA_DIR=/opt/adaios/data

@@ -95,6 +95,7 @@ class TradingImportParserTest {
         assertEquals(TradeDirection.SELL, sell.direction());
         assertEquals(200, sell.volume(), "卖出数量取绝对值");
         assertEquals("2026-08-03", sell.entryDate().toString());
+        assertEquals(java.time.LocalTime.of(14, 52, 56), sell.tradeTime(), "RFC 20260822：成交时间列解析");
         assertEquals("69351117", sell.orderId());
         // fee = |发生金额 - 成交金额| = 6624.00 - 6620.05 = 3.95
         assertEquals(0, sell.fee().compareTo(new BigDecimal("3.95")));

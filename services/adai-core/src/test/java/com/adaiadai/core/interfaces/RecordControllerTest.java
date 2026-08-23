@@ -44,8 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -65,6 +67,8 @@ class RecordControllerTest {
     private RecordFileRepository recordRepository;
     private CardFileRepository cardRepository;
     private MemoryService memoryService;
+    private RecordToTaskLinker recordToTaskLinker;
+    private TradeLogCollectService tradeLogCollectService;
 
     /**
      * 构造 MockMvc（可注入任意 AiClient，用于模拟 AI 失败降级路径）。
@@ -103,6 +107,8 @@ class RecordControllerTest {
         );
         RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
 
+        recordToTaskLinker = mock(RecordToTaskLinker.class);
+        tradeLogCollectService = mock(TradeLogCollectService.class);
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
@@ -110,9 +116,9 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 memoryService,
-                mock(RecordToTaskLinker.class),
+                recordToTaskLinker,
                 pluginService,
-                mock(TradeLogCollectService.class)
+                tradeLogCollectService
         );
 
         return MockMvcBuilders.standaloneSetup(controller).build();
@@ -136,6 +142,47 @@ class RecordControllerTest {
                 .andExpect(jsonPath("$.summary").isString())
                 .andExpect(jsonPath("$.tags").isArray())
                 .andExpect(jsonPath("$.domain").isString());
+    }
+
+    /**
+     * 2026-08-20 生产问题 1：用户说「清仓了云南锗业」→ R2 误转 TODO 任务（生产 5 条脏任务
+     * 「云南锗业清仓止盈/汾酒利欧清仓」，概览持续提醒已清仓股）。修复：交易表述先归集、
+     * 命中则跳过 R2 任务转换（交易归集管线是唯一跟踪载体）。
+     */
+    @Test
+    void createRecord_tradeStatement_skipsTaskLink() throws Exception {
+        // 交易归集命中（宽松解析出 云南锗业 + SELL）
+        when(tradeLogCollectService.isTradeStatement("今天清仓了云南锗业，全部卖出")).thenReturn(true);
+        when(tradeLogCollectService.todayCandidates(anyString())).thenReturn(List.of());
+
+        String body = mapper.writeValueAsString(Map.of("content", "今天清仓了云南锗业，全部卖出"));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("log"));
+
+        verify(tradeLogCollectService).collect(anyString(), eq("今天清仓了云南锗业，全部卖出"), eq("text"));
+        // 交易表述不得转任务
+        verify(recordToTaskLinker, never()).link(anyString(), anyString(), anyString(), any(), anyString(), anyString(), anyBoolean());
+    }
+
+    /**
+     * 2026-08-20 生产问题 1 对称回归：非交易表述（普通记录）仍走 R2 转任务。
+     */
+    @Test
+    void createRecord_nonTradeStatement_stillLinksTask() throws Exception {
+        when(tradeLogCollectService.isTradeStatement(anyString())).thenReturn(false);
+        when(tradeLogCollectService.todayCandidates(anyString())).thenReturn(List.of());
+
+        String body = mapper.writeValueAsString(Map.of("content", "记得给花浇水"));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("log"));
+
+        verify(recordToTaskLinker).link(anyString(), anyString(), anyString(), any(), anyString(), anyString(), anyBoolean());
     }
 
     @Test

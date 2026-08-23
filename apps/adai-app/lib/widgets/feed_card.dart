@@ -445,7 +445,10 @@ class FeedCard extends StatelessWidget {
       ),
     );
     // 左滑（endToStart）= 删除单条；右滑（startToEnd）= 打开推送设置
-    return Dismissible(
+    // 2026-08-20：推送卡补齐外层水平 padding（与待办/行情/聊天卡一致），消除通栏过宽
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: Dismissible(
       key: ValueKey('push_${data.id}'),
       direction: (data.onDismiss != null && data.onPushSettings != null)
           ? DismissDirection.horizontal
@@ -472,6 +475,7 @@ class FeedCard extends StatelessWidget {
         child: const Text('删除', style: TextStyle(fontSize: 12, color: AppColors.darkRed)),
       ),
       child: card,
+      ),
     );
   }
 

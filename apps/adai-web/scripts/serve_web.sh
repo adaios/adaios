@@ -1,25 +1,25 @@
 #!/bin/bash
 # Build Flutter Web + apply local Font patches + serve via Python
-# Usage: sh scripts/serve_web.sh
-# Note: Flutter 3.44+ no longer supports --web-renderer flag.
-#       --wasm 双模式：skwasm 主渲染（根治 CanvasKit wasm 偶发崩溃 PictureRecorder OOM）
-#       + canvaskit 自动回退（不支持 WasmGC 的浏览器）；入口按浏览器能力选渲染器。
-#       --optimization-level=1 --no-strip-wasm：默认 O2 wasm-opt 会 OOM（SIGKILL exit -9）。
-#       下方 bootstrap.js 补丁注入 canvasKitBaseUrl 让 canvaskit/skwasm 从本地加载
-#       （CDN gstatic 在中国被墙）。
+# Usage: sh scripts/serve_web.sh [API_BASE_URL]
+# 渲染模式：JS + CanvasKit（不用 --wasm）——2026-08-22 线上白屏根因修复：
+#   wasm 双模式（skwasm）产物带 --import-shared-memory，依赖 SharedArrayBuffer，
+#   而浏览器只在 HTTPS（或 localhost）下才信任 COOP/COEP 头 → 纯 IP/HTTP 访问
+#   wasm 永远无法实例化 → 白屏 + 页面重载。JS 模式无需 COOP/COEP，纯 IP 可跑。
+#   代价：main.dart.js 3.1M + canvaskit.wasm 6.9M（gzip 后合计 ~4M）。
+# 下方 bootstrap.js 补丁注入 canvasKitBaseUrl 让 canvaskit 从本地加载（CDN gstatic 被墙）。
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# 可选参数：API_BASE_URL（连生产后端时传入，如 http://49.235.37.220:8080）
+# 可选参数：API_BASE_URL（连生产后端时传入，如 http://82.156.111.146:8080）
 API_BASE_URL="${1:-}"
 
-echo "=== Building Flutter Web (wasm dual-mode) ==="
+echo "=== Building Flutter Web (JS + CanvasKit) ==="
 if [ -n "$API_BASE_URL" ]; then
-  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=$API_BASE_URL
+  flutter build web --no-tree-shake-icons --dart-define=API_BASE_URL=$API_BASE_URL
 else
-  flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm
+  flutter build web --no-tree-shake-icons
 fi
 
 echo "=== Applying local patches ==="
@@ -49,9 +49,12 @@ echo "OK: canvasKitBaseUrl 注入唯一（config 块内 $CONFIG_HAS_CANVAS 次 �
 
 # Patch index.html: add fetch interceptor for blocked font CDN
 # Routes fonts.gstatic.com requests to local VALID fonts：
-#   Roboto → Roboto.woff2（拉丁）；中文（Noto Sans SC 等）→ Hiragino Sans GB.ttc
+#   Roboto → Roboto.woff2（拉丁）；中文（Noto Sans SC 等）→ NotoSansSC-Subset.woff2
+#   （2026-08-22 修复：原 HiraginoSansGB-Subset.woff2 是 CFF 轮廓，skwasm 引擎 FreeType
+#   解析失败 → 中文全框（Flutter issue #128485 同类）；Noto Sans SC 为 TrueType(glyf) 轮廓
+#   + OFL 开源协议可分发。63KB GB2312 子集，由 fonttools 从 Google Fonts 完整版子集化生成）
 INDEX="build/web/index.html"
-perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/fonts\/Roboto.woff2");return origFetch("\/fonts\/Hiragino%20Sans%20GB.ttc");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
+perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/fonts\/Roboto.woff2");return origFetch("\/fonts\/NotoSansSC-Subset.woff2");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
 
 echo "=== Starting server at http://localhost:8082 ==="
 cd build/web && python3 -m http.server 8082

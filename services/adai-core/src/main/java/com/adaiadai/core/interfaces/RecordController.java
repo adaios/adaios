@@ -221,20 +221,25 @@ public class RecordController {
         );
         recordRepository.save(userId, enriched);
 
-        // R2：记录自动转待办（通用化，RFC 20260814 D1——任何 domain 的可执行记录都转）。
-        // best-effort：失败不阻塞记录返回。
-        String taskTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
-        recordToTaskLinker.link(userId, record.id(), "log", enriched.tags(),
-                taskTitle, enriched.content(),
-                understanding != null && understanding.actionable());
-
         // RFC 20260817：交易日志自动归集——仅 trading 插件用户；「清仓了XX」等成交表述收集为当日候选
+        // 2026-08-20：先归集后 R2——命中交易表述则跳过任务转换（「清仓了云南锗业」是已完成动作，
+        // 转成 TODO 会残留概览「你还有 N 件待办」，生产 5 条脏任务根因）。交易归集管线是唯一跟踪载体。
+        boolean tradeStatement = false;
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             try {
                 tradeLogCollectService.collect(userId, record.content(), "text");
+                tradeStatement = tradeLogCollectService.isTradeStatement(record.content());
             } catch (Exception e) {
                 log.debug("交易日志归集跳过 | recordId={} | {}", record.id(), e.getMessage());
             }
+        }
+        if (!tradeStatement) {
+            // R2：记录自动转待办（通用化，RFC 20260814 D1——任何 domain 的可执行记录都转）。
+            // best-effort：失败不阻塞记录返回。
+            String taskTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
+            recordToTaskLinker.link(userId, record.id(), "log", enriched.tags(),
+                    taskTitle, enriched.content(),
+                    understanding != null && understanding.actionable());
         }
 
         return ResponseEntity.ok(new StatemResponse(

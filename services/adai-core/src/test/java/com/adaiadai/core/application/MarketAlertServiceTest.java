@@ -172,6 +172,37 @@ class MarketAlertServiceTest {
         assertEquals("break-cost", captor.getValue().type());
     }
 
+    /**
+     * 2026-08-20 生产「微信双份」回归：同股票同轮同时命中 loss + break-cost（如京东方当日
+     * 大跌且跌破成本线）→ 旧实现各发一条，微信收到两条重叠内容。修复后合并为一条，
+     * 类型取最严重（loss > break-cost），内容拼接。
+     */
+    @Test
+    void sameSymbolMultiType_mergesIntoSinglePush() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        // 现价 9.50 < 成本 10.00（break-cost 命中）；当日 -3.5%（loss 命中）
+        when(market.quote(any())).thenReturn(Map.of("600519", quoteAt("600519", "9.50", "-3.50")));
+        PositionRepository positions = mock(PositionRepository.class);
+        Position p = new Position("600519", "贵州茅台", 200, new BigDecimal("10.00"),
+                new BigDecimal("9.50"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal("9.00"), "B1", null);
+        when(positions.findAll(anyString())).thenReturn(List.of(p));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        build(market, positions, true, push).poll("default");
+
+        // 同股票同轮只推一条（不是两条）
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, times(1)).push(eq("default"), captor.capture());
+        PushChannel.PushMessage m = captor.getValue();
+        // 类型保留最严重（loss > break-cost）
+        assertEquals("loss", m.type());
+        // 内容拼接了两种提醒（大跌 + 跌破成本）
+        assertTrue(m.content().contains("单日大跌"), "合并内容应含单日大跌提醒");
+        assertTrue(m.content().contains("跌破成本"), "合并内容应含跌破成本提醒");
+    }
+
     @Test
     void sameDay_dedup_noDuplicatePush() {
         MarketDataSource market = mock(MarketDataSource.class);

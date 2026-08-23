@@ -3,9 +3,9 @@ title: 成本纪律（Cost Discipline）
 description: DeepSeek 峰谷定价后的烧钱动作清单 + 省钱原则——DSH/后端/日常开发哪些操作会烧钱、怎么省、怎么盯账；AI 开工前必读
 version: 1
 created: 2026-08-18
-updated: 2026-08-18
+updated: 2026-08-20
 status: active
-lines: 116
+lines: 119
 depends-on:
   - ../guard-cost.sh
 related:
@@ -98,7 +98,10 @@ bash ai-engineering/guard-cost.sh --record   # 收工时把今日记入成本日
 | C3 | **控输出** | max_tokens 按场景最小够用？ |
 | C4 | **降频** | 这个调用真的需要每次触发吗？缓存够长吗？|
 | C5 | **用对模型** | 轻活用 Flash、重活用 Pro？ |
-| C6 | **盯账** | 收工前 `guard-cost.sh --record` 了吗？今天超 20 元了吗？|
+| C6 | **盯账** | 收工前 `guard-cost.sh --record` 了吗（2026-08-22 起与 `--write-local` 并列**强制**，AGENTS.md 规则 0b）？今天超 20 元了吗？|
+| C7 | **控注入** | `AGENTS.local.md` 快照 ≤8KB 吗？（每轮会话都注入，膨胀 = 每轮固定开销）|
+
+> **上下文快照预算**（2026-08-20）：`AGENTS.local.md` 由 `guard-context.sh --write-local` 收尾生成，DSH/Claude 等工具**每个新会话自动注入**，之后每轮调用都随历史重发（缓存命中计费）。预算 ≤8KB ≈ 2500 tokens/轮 ≈ 0.0003 元/轮（日均 2000 轮约 0.5 元）；脚本超限会打印 ⚠️ 报警，需精简源文件（status/REVIEW/task-log 等）后重新生成。
 
 ## 四、工程侧配置检查点
 
