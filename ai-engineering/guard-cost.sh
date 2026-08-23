@@ -209,12 +209,48 @@ if cache_cost / max(tot['cost'], 0.01) > 0.7: warn.append("缓存读取占 70%+�
 if tot['calls'] > 500: warn.append("调用次数超 500——批量任务密集，评估是否可合并/降频")
 print('\n'.join(f"- {w}" for w in warn) if warn else "- 当前在健康区间（详见 checklists/cost.md）")
 
-# 记录
+# 记录（增量式，2026-08-23 P1-A2 修复 v2：真增量——只统计上次记账时刻后的新调用）
+# 原修复 v1（追加全量）会因同日多笔全量快照求和翻倍（实证 46.62+48.2=94.82 重复）；
+# 正确语义：每条记录 = 上次 recorded_at → 本次 的增量，--log 按日求和 = 当日真实消费。
 if RECORD:
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)
+    # 读该日最后一条 recorded_at 作为统计起点
+    last_ts = None
+    if os.path.exists(COST_LOG):
+        for l in open(COST_LOG, encoding='utf-8').read().splitlines():
+            l = l.strip()
+            if not l: continue
+            try: e = json.loads(l)
+            except Exception: continue
+            if e.get('date') != (DAY or day_key(datetime.datetime.now())): continue
+            ra = e.get('recorded_at')
+            if ra and (last_ts is None or ra > last_ts): last_ts = ra
+    since = last_ts or (DAY + 'T00:00:00' if DAY else '00:00:00')
+    # 过滤：只保留 last_ts 之后的调用
+    if last_ts:
+        lt = datetime.datetime.strptime(last_ts, '%Y-%m-%dT%H:%M:%S')
+        records = [r for r in records if r[3] > lt]
+        if not records:
+            print(f"\n✓ {since} 之后无新调用，跳过（避免重复记账）")
+            sys.exit(0)
+        # 重算增量汇总
+        tot = collections.Counter()
+        by_win = collections.defaultdict(collections.Counter)
+        by_sess = collections.defaultdict(collections.Counter)
+        for sid, label, m, ts, i, c, o, r, cost in records:
+            win = 'peak' if is_peak(ts) else 'off'
+            tot['calls'] += 1; tot['cost'] += cost
+            tot['in'] += i; tot['cache'] += c; tot['out'] += o; tot['reason'] += r
+            by_win[(m, win)]['cost'] += cost; by_win[(m, win)]['calls'] += 1
+            by_sess[sid]['cost'] += cost; by_sess[sid]['calls'] += 1
+            by_sess[sid]['cache'] += c; by_sess[sid]['label'] = label or '(主会话)'
+        cache_cost = sum(rec[5]/1e6 * (PRICE.get(rec[2], PRICE['deepseek-v4-flash'])['peak' if is_peak(rec[3]) else 'off']['cache']) for rec in records)
+        in_cost = sum(rec[4]/1e6 * (PRICE.get(rec[2], PRICE['deepseek-v4-flash'])['peak' if is_peak(rec[3]) else 'off']['in']) for rec in records)
+        out_cost = sum(rec[6]/1e6 * (PRICE.get(rec[2], PRICE['deepseek-v4-flash'])['peak' if is_peak(rec[3]) else 'off']['out']) for rec in records)
     entry = {
         'date': DAY or day_key(datetime.datetime.now()),
         'recorded_at': datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+        'since': since,
         'calls': tot['calls'],
         'cost': round(tot['cost'], 2),
         'cache_cost': round(cache_cost, 2),
@@ -227,11 +263,9 @@ if RECORD:
     lines = []
     if os.path.exists(COST_LOG):
         lines = [l for l in open(COST_LOG, encoding='utf-8').read().splitlines() if l.strip()]
-    # 追加式记账（2026-08-23 审计修正 P1-A2）：同日不覆盖，保留 recorded_at 区分多次记账——
-    # 覆盖式会在中途 --record 后锁死当日账、漏记后续消费；追加式保留完整痕迹，日汇总由读取端聚合
     lines.append(json.dumps(entry, ensure_ascii=False))
     with open(COST_LOG, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
-    print(f"\n✓ 已追加到 {COST_LOG}（同日多笔以 recorded_at 区分）")
+    print(f"\n✓ 已追加增量（since {since} → {entry['recorded_at']}，+{entry['cost']} 元）到 {COST_LOG}")
 PYEOF
 exit $?
