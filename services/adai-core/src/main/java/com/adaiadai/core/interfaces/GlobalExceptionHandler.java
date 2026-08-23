@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.domain.trading.TradingException;
+import com.adaiadai.core.infrastructure.storage.StorageException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,5 +55,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(Map.of("error", "文件超过大小限制（图片最大 " + maxFileSize + "）"));
+    }
+
+    /**
+     * B6-4（2026-08-23，P1-交易11）：存储写失败 → 500 + 人话（不再静默按成功/裸 500 堆栈）。
+     * 覆盖 account.json 快照写失败（资金导入/本金设置等用户主动修正动作必须显式失败）。
+     */
+    @ExceptionHandler(StorageException.class)
+    public ResponseEntity<Map<String, String>> handleStorage(StorageException e) {
+        return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
     }
 }

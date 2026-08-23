@@ -7,6 +7,7 @@ import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradeLogCollectService;
+import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.TradeDirection;
@@ -46,8 +47,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -98,6 +101,7 @@ class TradingControllerTest {
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -123,6 +127,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins), buyPointService, soldScoreService,
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -277,6 +282,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -289,6 +295,21 @@ class TradingControllerTest {
                                 {"symbol":"600000","name":"浦发银行","direction":"SELL","price":10.5,"volume":100}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(containsString("无法卖出")));
+    }
+
+    @Test
+    void recordTrade_nullDirection_400() throws Exception {
+        // P1-1（2026-08-23）：direction 缺省 → 400 拒写（此前未持仓静默 200 no-op / 已持仓 500 双行为）
+        TradingAppService trading = mock(TradingAppService.class);
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"symbol":"600000","name":"浦发银行","price":10.5,"volume":100}"""))
+                .andExpect(status().isBadRequest());
+        verify(trading, never()).recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any());
     }
 
     // ── 持仓建议（RFC 20260815：建议引擎） ──
@@ -577,6 +598,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -708,6 +730,70 @@ class TradingControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"trades\":[]}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void batchTrades_invalidRow_reportsHumanError() throws Exception {
+        // P1-2（2026-08-23）：batch 逐行校验——symbol 空 / direction 缺 / price 缺 / volume 0
+        // 全部逐行人话失败，不落库不 500，其余合法行照常成功
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(java.util.List.of());
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trades\":["
+                                + "{\"symbol\":\"600519\",\"name\":\"贵州茅台\",\"direction\":\"BUY\",\"price\":1400,\"volume\":100},"
+                                + "{\"symbol\":\"\",\"name\":\"空代码\",\"direction\":\"BUY\",\"price\":10,\"volume\":100},"
+                                + "{\"symbol\":\"000725\",\"name\":\"缺方向\",\"price\":5.2,\"volume\":100},"
+                                + "{\"symbol\":\"000001\",\"name\":\"缺价格\",\"direction\":\"BUY\",\"volume\":100},"
+                                + "{\"symbol\":\"000002\",\"name\":\"零数量\",\"direction\":\"BUY\",\"price\":10,\"volume\":0}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(1))
+                .andExpect(jsonPath("$.failures.length()").value(4))
+                .andExpect(jsonPath("$.failures[0].row").value(2))
+                .andExpect(jsonPath("$.failures[0].message").value("代码不能为空"))
+                .andExpect(jsonPath("$.failures[1].message").value("方向不能为空（BUY/SELL）"))
+                .andExpect(jsonPath("$.failures[2].message").value("价格必须大于 0"))
+                .andExpect(jsonPath("$.failures[3].message").value("数量必须大于 0"));
+        // 非法行不得进入 recordTrade（只第 1 行合法）
+        verify(trading, org.mockito.Mockito.times(1)).recordTrade(any(), any(), any(), any(),
+                any(), anyInt(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void batchTrades_emptyTrades_400() throws Exception {
+        // C3（2026-08-23，隔离审查 P2-9）：空 trades 不再静默 200 成功 0
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(post("/api/v1/trading/trades/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trades\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("没有可导入的交易（trades 不能为空）"));
+    }
+
+    @Test
+    void batchTrades_nameTooLong_rowError() throws Exception {
+        // C4（2026-08-23，隔离审查 P2-10）：name 超 32 字符 → 行级人话失败
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(java.util.List.of());
+        MockMvc mvc = buildMvc(trading);
+        String longName = "是".repeat(40); // 40 字符
+
+        mvc.perform(post("/api/v1/trading/trades/batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"trades\":["
+                                + "{\"symbol\":\"600519\",\"name\":\"" + longName + "\",\"direction\":\"BUY\",\"price\":1400,\"volume\":100}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(0))
+                .andExpect(jsonPath("$.failures.length()").value(1))
+                .andExpect(jsonPath("$.failures[0].message").value("名称不能超过 32 字符"));
+        verify(trading, org.mockito.Mockito.never()).recordTrade(any(), any(), any(), any(),
+                any(), anyInt(), any(), any(), any(), any(), any(), any());
     }
 
 
@@ -859,6 +945,45 @@ class TradingControllerTest {
                         .content("{\"content\":\"hello\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imported").value(27));
+    }
+
+    @Test
+    void dismissPush_removesById() throws Exception {
+        // B10-1（2026-08-23，P1-推送2）：DELETE /trading/pushes/{id} → 调 MarketPushRepository.dismiss
+        MarketPushRepository pushRepo = mock(MarketPushRepository.class);
+        when(pushRepo.dismiss(any(), any(), eq("push_1"))).thenReturn(true);
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
+                mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                pushRepo, "../../os/trading-engine/knowledge/context");
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mvc.perform(delete("/api/v1/trading/pushes/push_1").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dismissed").value(true));
+        verify(pushRepo).dismiss(eq("adai"), any(), eq("push_1"));
+    }
+
+    @Test
+    void dismissPush_notFound_404() throws Exception {
+        MarketPushRepository pushRepo = mock(MarketPushRepository.class);
+        when(pushRepo.dismiss(any(), any(), any())).thenReturn(false);
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
+                mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                pushRepo, "../../os/trading-engine/knowledge/context");
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mvc.perform(delete("/api/v1/trading/pushes/push_nope").header("X-User-Id", "adai"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

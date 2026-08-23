@@ -513,7 +513,8 @@ class ApiService {
   }
 
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
-  Future<int> confirmTradeLog() async {
+  /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
+  Future<TradeLogConfirmResult> confirmTradeLog() async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trade-log/confirm'),
       headers: {..._headers, 'content-type': 'application/json'},
@@ -521,7 +522,38 @@ class ApiService {
     );
     _check(resp);
     final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    return map['confirmed'] as int? ?? 0;
+    return TradeLogConfirmResult.fromJson(map);
+  }
+
+  /// B10-3（2026-08-23，P1-推送2）：删除单条推送（持久化——刷新不复活）。
+  /// DELETE /api/v1/trading/pushes/{id}；404（已删/不存在）幂等成功。
+  Future<void> dismissPush(String pushId) async {
+    try {
+      final resp = await _client.delete(
+        Uri.parse('$baseUrl/api/v1/trading/pushes/$pushId'),
+        headers: _headers,
+      );
+      _check(resp);
+    } on ApiException catch (e) {
+      if (e.statusCode != 404) rethrow;
+    }
+  }
+
+  /// B11-4（2026-08-23，P1-交易18）：丢弃一条保留的交易日志候选（失败/不完整钉子户）。
+  /// DELETE /api/v1/trading/trade-log?symbol=&direction=；404 幂等成功。
+  Future<void> discardTradeLogCandidate({String? symbol, String? direction}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/v1/trading/trade-log').replace(
+        queryParameters: {
+          if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
+          if (direction != null && direction.isNotEmpty) 'direction': direction,
+        },
+      );
+      final resp = await _client.delete(uri, headers: _headers);
+      _check(resp);
+    } on ApiException catch (e) {
+      if (e.statusCode != 404) rethrow;
+    }
   }
 
   /// 自选股列表（GET /api/v1/trading/watchlist，RFC 20260816）。
@@ -820,6 +852,53 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// 从异常中提取人话错误（后端 {"error":"人话"} 优先，其次状态码/超时/连接人话）。
+/// B2-3（2026-08-23）：独立 State 类（历史成交导入 Dialog 等）无法访问页面私有
+/// `_extractApiError`，抽为顶层函数复用——此前 `e.toString().contains('无法识别')`
+/// 恒 false 把后端人话吞成「检查网络」。
+/// B11-4（2026-08-23，P1-交易18）：确认交易日志落库结果（成功/失败/跳过 + 失败人话明细）。
+class TradeLogConfirmResult {
+  final int confirmed, failed, skipped;
+  final List<String> failures;
+
+  TradeLogConfirmResult({required this.confirmed, required this.failed,
+      required this.skipped, required this.failures});
+
+  factory TradeLogConfirmResult.fromJson(Map<String, dynamic> json) => TradeLogConfirmResult(
+    confirmed: json['confirmed'] as int? ?? 0,
+    failed: json['failed'] as int? ?? 0,
+    skipped: json['skipped'] as int? ?? 0,
+    failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+  );
+}
+
+String extractApiErrorMessage(dynamic e) {
+  if (e is ApiException && e.body != null && e.body!.isNotEmpty) {
+    final body = e.body!.trim();
+    if (body.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map && decoded['error'] is String && (decoded['error'] as String).isNotEmpty) {
+          return decoded['error'] as String;
+        }
+      } catch (_) {
+        // JSON 解析失败继续走下面分支
+      }
+    } else if (!body.startsWith('<')) {
+      return body; // 非 HTML 的裸文本错误体直接展示
+    }
+  }
+  final str = e.toString();
+  if (str.contains('API 请求失败')) {
+    final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
+    final code = codeMatch?.group(1) ?? '?';
+    return '请求失败 ($code)';
+  }
+  if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+  if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
+  return '网络异常，请重试';
+}
+
 // ── Feed entry type constants ──
 
 class FeedEntryType {
@@ -929,6 +1008,7 @@ class FeedEntryResponse {
   final String? summary;
   final List<Map<String, dynamic>>? turns;
   final String domain;
+  final String updatedAt; // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳
 
   FeedEntryResponse({
     required this.type,
@@ -944,6 +1024,7 @@ class FeedEntryResponse {
     this.summary,
     this.turns,
     this.domain = 'life',
+    this.updatedAt = '',
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -960,6 +1041,7 @@ class FeedEntryResponse {
     summary: json['summary'] as String?,
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
     domain: json['domain'] as String? ?? 'life',
+    updatedAt: json['updatedAt'] as String? ?? '',
   );
 }
 

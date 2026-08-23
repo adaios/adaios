@@ -228,24 +228,27 @@ tags: [trading, plugin, reference]
 
 ## 八、实现状态注意点（代码为准）
 
-1. **`GET /trading/has-activity` 无插件门控**：代码未调用 `requireTradingPlugin`（其余 33 个交易端点均有），api-spec 声称「需 trading 插件（403）」——**文档与代码不一致，以代码为准**（changelog v3.21 曾注明保留产品路径只读）
+1. **`GET /trading/has-activity` 无插件门控**：代码未调用 `requireTradingPlugin`（其余 33 个交易端点均有）——**唯一例外（2026-08-23 api-spec 已显式标注）**，产品路径只读（app 复盘横幅）
 2. **`TradingContextContributor` 实际未生效（半成品/死代码）**：`supports()` 恒 false、`enrich()` 恒空串；交易系统状态上下文实际由 `MarketContextContributor`（globalContext）+ `TradingKnowledgeSource` 提供
 3. **「三维打分」实为二维**（REVIEW S7）：选股维度恒 null，总分 = 买点×0.5 + 执行×0.5
-4. **C2 买点 5 参数硬编码 + 文档滞后**（REVIEW S6）：代码默认 回调 0.5/缩量 0.7/**KDJ.J<13**/放量 1.5/前高 20 日，无配置入口（仅 BuyPointDetector 构造器）；api-spec 仍写「KDJ 20 / 待用户确认」——**文档未同步 2026-08-17 P2-6 用户确认改 13**
+4. **C2 买点 5 参数构造器硬编码**（REVIEW S6，用户已确认默认值即最终值）：回调 0.5/缩量 0.7/**KDJ.J<13**/放量 1.5/前高 20 日，无配置入口（仅 BuyPointDetector 构造器）；规格 `os/trading-engine/engine/buy-point-rules.md` 已按代码事实重写（2026-08-23，P2-交易17 虚标纠偏）
 5. **Position 无 targetPrice 落盘字段**：PUT `/positions/{symbol}` 只支持 role/止损位；前端「编辑目标价」无效功能（P3）
-6. **recordTrade 现金推导依赖已有账户快照**：`findLatest(...).ifPresent(...)`——首次交易前未导入资金（无 account.json）时现金/市值不更新
+6. **recordTrade 现金推导依赖已有账户快照**：`update(...).orElse(null)`——首次交易前未导入资金（无 account.json）时现金/市值不更新
 7. **行情异动推送新旧两条链路并存**：`MarketAlertService` 直接走 PushChannel；另有 `FeedPushChannel` 落盘 `trading/pushes/{date}.json` 供 Feed 展示
 8. **历史成交导入「只补流水」是设计取舍**：不重算持仓/现金（缺窗口前基线，回放重建算不出券商口径），对账只报告不改数据；2026-08-23 起幂等命中且旧记录缺成交时间时回填（`updated` 计数），仍不重算持仓/现金
-9. **节假日表硬编码且覆盖有限**：仅维护 2026-2027 主要休市日（临时调休不追）
-10. **推送/流水写入均为 best-effort**：失败只告警不阻塞交易落库；流水文件损坏单月跳过
+9. **节假日表硬编码**（2026-08-23 B5-1 补全）：2026 按沪深交易所官方通知、2027 预测（官方通常年底发布），临时调休不追
+10. **推送/流水写入均为 best-effort**：失败只告警不阻塞交易落库；流水文件损坏单月跳过；account.json 写失败已升 error 告警（B3-4）
+11. **双锁体系（C6，2026-08-23 注释如实化）**：account.json 写路径叠加 application `tradeLock`（业务 RMW）+ repository per-user 锁（文件原子写）——均为**单实例内**进程锁（多实例同写 data/ 即失效，当前单实例）；跨文件一致性（positions/account/流水）无原子手段，收盘更新与交易并发窗口为已知取舍
+12. **推送链路（2026-08-23 修复）**：推送标题契约断裂（P1-推送1）/删除持久化（P1-推送2）/app 设置入口（P1-推送3）均已修——MarketPushEvent 透传 title、`DELETE /trading/pushes/{id}`、app 交易页铃铛；徽章/确认按钮双端回归
 
 ## 九、已知缺陷（详见 docs/review/REVIEW.md）
 
-- **P1-交易1~10**：切入自动刷新死代码、recordTrade 只动现金不动市值、收盘残缺市值覆盖、占比分母、导入解析静默落零、CURRENT_MD 硬编码路径、六请求 Future.wait 整页错误、清仓打分错挂、B1 几何语义漂移、buy-points 响应示例不符
-- **P1-推送1~3**：推送标题契约断裂、推送删除无持久化、app 推送设置入口 self-lock
-- **P2-交易1~23**：线程池无 shutdown、买点扫描未并发、腾讯兜底无缓存、现金双源不同步、verdict 阈值、KDJ 阈值漂移、B1? 同通道推送、mounted 守卫、buy-points 致命路径、打分无去重、纪律遵守率实为胜率、行为模式误配、快捷操作无错误处理、8 卡溢出、打分列颜色冲突、买点参数无配置接线、文档状态漂移、api-spec 变更记录缺版本行、account 节过时、guard-align 盲区、建议硬判定未过 r81Applicable、importPositions 缺校验
-- **P2-推送4~6**：8 类型徽章退化、推送设置反馈假阳性、session 开关文案连带
+- **P1-交易1~10**：切入自动刷新死代码、recordTrade 只动现金不动市值、收盘残缺市值覆盖、占比分母、导入解析静默落零、CURRENT_MD 硬编码路径、六请求 Future.wait 整页错误、清仓打分错挂、B1 几何语义漂移、buy-points 响应示例不符——**前 9 项已修复出表，P1-交易9（B1 几何语义）用户搁置**
+- **P1-推送1~3**：推送标题契约断裂、推送删除无持久化、app 推送设置入口 self-lock——**已修（2026-08-23 推送链路批 B9-B11，见 change-log）**
+- **P2-交易1~23**：线程池无 shutdown、买点扫描未并发、腾讯兜底无缓存、现金双源不同步、verdict 阈值、KDJ 阈值漂移、B1? 同通道推送、mounted 守卫、buy-points 致命路径、打分无去重、纪律遵守率实为胜率、行为模式误配、快捷操作无错误处理、8 卡溢出、打分列颜色冲突、买点参数无配置接线、文档状态漂移、api-spec 变更记录缺版本行、account 节过时、guard-align 盲区、建议硬判定未过 r81Applicable、importPositions 缺校验——**2026-08-23 走查修复批已出表多数（B3-2 尾盘 r81Applicable、B3-3 收盘昨收残缺、B3-5 遵守率 R53、B4-1/2 文档虚标纠偏、B5-1~6），P2-交易9 几何语义随 P1-交易9 搁置**
+- **P2-推送4~6**：8 类型徽章退化、推送设置反馈假阳性、session 开关文案连带——**已修（2026-08-23 B9-5/B11-2/B11-3，双端对齐）**
 - **#179 零鉴权**：X-User-Id 无认证（数据访问靠 header 注入）
+- **2026-08-23 修复批新增**（REVIEW 已修复区）：confirm 失败清空候选（P0-1）、account.json 写锁（P0-2）、direction 无校验（P1-1）、batch 无校验（P1-2）——全部已修
 
 ---
 

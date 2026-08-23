@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.22 | 最后更新：2026-08-17**
+**文档版本：v3.27 | 最后更新：2026-08-23**
 
 ---
 
@@ -10,6 +10,12 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-23 | v3.27 | **推送链路修复批（契约同步）**：`MarketPushEvent` 落库透传原标题（P1-推送1 根因）；`DELETE /trading/pushes/{id}` 推送删除持久化（P1-推送2）；`GET /trade-log` 去重 ±10% 区间（sameTrade）|\n| 2026-08-23 | v3.26 | **隔离审查残留批（契约同步）**：`DELETE /trade-log` 丢弃保留候选（失败/不完整钉子户出口）；`GET /trade-log` 去重口径补 ±10% 区间（sameTrade）；`POST /trade-log/confirm` 响应明确 failed/skipped/failures 语义 |
+| 2026-08-23 | v3.25 | **交易修复批（走查修复，契约同步）**：`POST /trades/batch` 逐行字段校验（代码/方向/价格/数量非法 → 行级人话失败，P1-2）；`POST /trades` 的 `direction` 必填（缺省 → 400，P1-1）；`POST /trade-log/confirm` 响应扩展 `{confirmed, failed, skipped, failures}`（失败/不完整候选保留不丢，P0-1）；buy-points 参数契约同步 KDJ.J<13（S6 确认）；has-activity 门控声明修正（见 §5 该行）|
+| 2026-08-22 | v3.24 | **首屏提速（主页启动慢修复）**：新增 `GET /api/v1/brief/cached`（只返回 5 分钟缓存 Brief，不触发 AI 生成，空串=缓存过期）；双端主页首屏并行拉 feed+缓存 brief、渲染只等 feed，简报后到单独刷新——AI 简报不再阻塞主页加载 |
+| 2026-08-18 | v3.23+ | **确认批次（2026-08-18）**：`POST /trades/batch` 补实现（此前前端调用一直 404）；`POST /positions/import?replace=true` 全量覆盖语义（文件为准，缺失删除）；`PUT /principal` 本金设置（总盈亏=资产−本金）；BUY 止损/买点放开为可选（app 简化）；`POST /trades/import` 历史成交导入（第五份文件，幂等+对账）|
+| 2026-08-17 | v3.23 | **RFC 20260817 三项**：`GET/PUT /trading/push-settings[/{type}]`（推送开关）、`GET /trading/trade-log` + `POST /trading/trade-log/confirm`（交易日志自动归集：截图/文字识别 → 当日候选去重 → 用户确认落库）；推送内容结构化（总结+持仓逐行+建议）|
+| 2026-08-17 | v3.22 | **交易 A-E 全部端点**：`/trading/account`（账户快照，含 principal/totalPnl）、`/trading/transfer` + `/trading/transfers`（银证转账净投入）、`/trading/imports/cash`（资金查询）、`/trading/imports/save`（文件留存）、`/trading/buy-points`（买点信号）、`/trading/sold/score`（复盘三维打分）、`PUT /trading/positions/{symbol}`（持仓编辑）——合计 15 端点 + 修订（手续费费率、account 语义、示例修正）|
 | 2026-08-15 | v3.20 | **合并插件端点（S-R2）**：新增 `PATCH /accounts/{userId}/plugins`（body `{add[], remove[]}`，服务端账号级锁原子合并——根治前端全量 PATCH read-modify-write 并发互覆）；内置管理员插件受保护（400）|
 | 2026-08-15 | v3.19 | **展示层聚合（S-2 图文一体）**：`mediaPath` 语义扩展——`type=image_qa` 记录（带图 ask 聚合后的图文事件）也返回媒体路径（引用首图，前端渲染缩略图）；`type=image` 原语义不变；多轮 chat 时间线按会话聚合为单条（记录层不变，仅展示口径）|
 | 2026-08-15 | v3.18 | **Domain=插件模型（RFC 20260814 第二步，插件门控）**：新增 `GET /me/plugins`（当前用户启用插件，前端模块显隐）；Account 新增 `plugins` 字段（`POST` 建号可选 / `PATCH` 可改，仅 `trading`/`project`，非法 400）；domain 判定规则按用户启用插件收敛（D5：无插件用户只判 `life`，AI 判定若属未启用插件 → 收敛 `life`）；`POST /trading/reviews/{date}/promote` 仅启用 trading 插件用户可用（否则 403）；Feed 行情条/异动推送仅注入启用 trading 插件用户；**R2 D1 通用化**：记录自动转任务去 domain 门槛（任何可执行记录即转，`sourceRecordId` 不再限 domain=project）|
@@ -17,7 +23,6 @@
 | 2026-08-13 | v3.16 | **R2 记录↔任务关联**：任务模型新增可选 `sourceRecordId`（domain=project 记录自动转任务时关联源记录 `rec_xxx`）；非破坏性字段新增，前端手动建任务为 null |
 | 2026-08-12 | v3.15 | **正文与 changelog 对齐（REVIEW #238）**：`POST /records/media` 错误列表 400（非图片）/ 413（超限）拆分；`POST /records/media/{id}/ask` 补「问题超过 500 字符 → 400」（v3.12 已声明，正文同步）|
 | 2026-08-12 | v3.14 | **收官批 O（#166/#170/#202/#231/#122 等）**：AI 交互日志响应新增 `systemPrompt` 字段（generate 的复盘模板指令，understand/intent 为 null，#231）；上传超限改 413（`MaxUploadSizeExceededException` → PAYLOAD_TOO_LARGE，原 500，#166）；`/accounts/available` 契约补充无鉴权说明（#215 已最小集，此条再确认）；待办建议 prompt 改第二人称（#170）；复盘生成剥代码块围栏（#202）|
-| 2026-08-22 | v3.24 | **首屏提速（主页启动慢修复）**：新增 `GET /api/v1/brief/cached`（只返回 5 分钟缓存 Brief，不触发 AI 生成，空串=缓存过期）；双端主页首屏并行拉 feed+缓存 brief、渲染只等 feed，简报后到单独刷新——AI 简报不再阻塞主页加载 |
 | 2026-08-12 | v3.13 | **REVIEW #129/#218/#222**：promote 前端入口说明（交易页复盘弹窗「反哺入库」按钮，`POST` body 传 `{}`）；AI 交互日志视觉调用补真实耗时（`LoggingVisualAiClient.durationMs`）；Brief 问候加中午段（11-13 → 中午好，#222）|
 | 2026-08-12 | v3.12 | **REVIEW #214/#215/#221**：`POST /records/media/{id}/ask` 的 `question` 加长度上界（500 字符，超限 400）；`GET /accounts/available` 响应由账号对象改为 **userId 最小集**（`List<String>`，不暴露 role/enabled/createdAt）；Brief 降级问候 emoji 按时段（#221） |
 | 2026-08-12 | v3.11 | **AI 日志隐私治理（REVIEW #210）**：`GET /admin/ai-logs` 新增 `page`/`size`（上限 500，响应带 `total`）；`date` 早于保留期（`adai.ai-log.retention-days` 默认 30 天）返回 400（已清理不可查）|
@@ -27,11 +32,9 @@
 | 2026-08-06 | v3.7 | **行情异动主动推送（Phase 2）**：FeedEntry 新增 `type=push`（止损预警/放飞提示/跌破成本线/真止损 R66（现价跌破止损位，2026-08-16），`MarketAlertService` 交易时段轮询落盘 `data/{userId}/trading/pushes/{date}.json`，阈值可配 `adai.market.alert.*`）|
 | 2026-08-06 | v3.6 | **管理端点鉴权（REVIEW #127）**：§账号、§管理端全部端点要求 `X-Admin-Token` 请求头（配置 `ADAI_ADMIN_TOKEN`，缺失 401 / 未配置 503 fail-closed）；CORS 由 `*` 收窄为配置化 origin 白名单（默认 localhost）|
 | 2026-08-02 | v3.5 | **多模态图片记录（L4）**：新增 `POST /records/media`（multipart 上传 → GLM 视觉理解 → 记录+记忆）、`GET /records/media/{id}`（原图预览）|
-| 2026-08-17 | v3.23 | **RFC 20260817 三项**：`GET/PUT /trading/push-settings[/{type}]`（推送开关）、`GET /trading/trade-log` + `POST /trading/trade-log/confirm`（交易日志自动归集：截图/文字识别 → 当日候选去重 → 用户确认落库）；推送内容结构化（总结+持仓逐行+建议）|
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
-| 2026-08-17 | v3.22 | **交易 A-E 全部端点**：`/trading/account`（账户快照，含 principal/totalPnl）、`/trading/transfer` + `/trading/transfers`（银证转账净投入）、`/trading/imports/cash`（资金查询）、`/trading/imports/save`（文件留存）、`/trading/buy-points`（买点信号）、`/trading/sold/score`（复盘三维打分）、`PUT /trading/positions/{symbol}`（持仓编辑）——合计 15 端点 + 修订（手续费费率、account 语义、示例修正）|
 | 2026-08-16 | v3.21 | **P-be-01 安全修复**：5 个维护端点（records/retry、memory/rebuild、memory/{id} PATCH、cards/cleanup、knowledge/conflicts）从 per-user 路径迁入 `/api/v1/admin/**`（需 X-Admin-Token），目标用户改 userId 查询参数；`GET /trading/has-activity` 保留产品路径（app 复盘横幅，只读）|
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
@@ -528,10 +531,10 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
   "signals":["回调 52%","缩量 0.6x","KDJ.J=12"]}]
 ```
 
-- **B1 回调买点**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 20
+- **B1 回调买点**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 13（2026-08-17 用户确认，P2-6）
 - **B2 突破买点**：放量（5 日均量 × 1.5）+ 收盘破前 20 日高点
-- **参数可配**（默认建议值：回调 0.5 / 缩量 0.7 / KDJ 20 / 放量 1.5 / 前高 20 日，待用户确认）
-- 收盘 15:10 定时任务自动扫描 + 命中推送「到买点了」（`TradingSessionPushService.buyPointScan`）；web 自选 Tab 显示信号列
+- **参数已定**（2026-08-23 同步）：回调 0.5 / 缩量 0.7 / KDJ 13 / 放量 1.5 / 前高 20 日——构造器硬编码（`BuyPointDetector(0.5, 0.7, 13, 1.5, 20)`），无配置入口（S6 用户确认默认值即最终值）；规格详见 `os/trading-engine/engine/buy-point-rules.md`
+- 收盘 15:10 定时任务自动扫描 + 命中推送「到买点了」（`TradingSessionPushService.buyPointScan`）；web 自选 Tab 显示信号列；**B1?（部分满足候选）不推送**（P2-交易7）
 - 需 trading 插件（403）。
 
 ### `GET /api/v1/trading/sold` — 清仓股列表（复盘闭环）
@@ -602,12 +605,22 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/trade-log` — 当日交易日志候选（RFC 20260817 交易日志自动归集）
 > 需 trading 插件（403）。
 
-返回当日已归集的交易候选（**未落库，待确认**）：`[{"symbol":"000725","name":"京东方A","direction":"SELL","price":6.1,"volume":5300,"source":"text","complete":true}]`。来源：用户发成交截图（VLM 识别）或说「清仓了XX」（文字解析），仅 trading 插件用户触发；同 (symbol, direction, 当日) 去重。
+返回当日已归集的交易候选（**未落库，待确认**）：`[{"symbol":"000725","name":"京东方A","direction":"SELL","price":6.1,"volume":5300,"source":"text","complete":true}]`。来源：用户发成交截图（VLM 识别）或说「清仓了XX」（文字解析），仅 trading 插件用户触发；**去重口径（B6-2 2026-08-23）**：同 (symbol, direction, 当日) 且数量差 ≤ ±10% 视为同笔（`sameTrade`），超量级分别保留。
 
 ### `POST /api/v1/trading/trade-log/confirm` — 确认交易日志落库
 > 需 trading 插件（403）。
 
-当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算），确认后清空当日候选。**响应**：`{"confirmed":2}`。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
+当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算）；**B6-5（2026-08-23，P0-1 延伸）**：落库失败的候选（SELL 超持仓等）与不完整候选**回写保留**（不静默清空），用户可补全/修正/丢弃后再次确认。**响应**：`{"confirmed":2,"failed":1,"skipped":1,"failures":["600519 贵州茅台: 未持有 600519，无法卖出"]}`（confirmed=成功 / failed=失败保留 / skipped=不完整保留 / failures=失败人话明细）。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
+
+### `DELETE /api/v1/trading/trade-log` — 丢弃一条保留候选（B6-5，2026-08-23，P1-交易18）
+> 需 trading 插件（403）。
+
+丢弃失败/不完整保留的「钉子户」候选（15:05 推送反复提醒同一笔时的出口）。**query**：`symbol`（可选）、`direction`（可选，BUY/SELL）。**响应**：`{"discarded":true}`；当日无此候选 → 404。
+
+### `DELETE /api/v1/trading/pushes/{id}` — 删除单条推送（B10-1，2026-08-23，P1-推送2）
+> 需 trading 插件（403）。
+
+删除当日一条推送事件（app 左滑删 / web 忽略按钮持久化——刷新/重启不再复活）。**响应**：`{"dismissed":true}`；当日无此事件 → 404（前端幂等成功）。
 
 ### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
@@ -739,7 +752,7 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
 ### `GET /api/v1/trading/has-activity` — 检测交易活动
-> 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
+> **⚠️ 唯一例外（2026-08-23 修正）**：本端点**不做 trading 插件门控**（代码无 `requireTradingPlugin`）——产品路径只读（app 复盘横幅），其余 33 个交易端点均 403 门控（v3.21 保留产品路径，此处显式标注防误读）。
 
 ---
 

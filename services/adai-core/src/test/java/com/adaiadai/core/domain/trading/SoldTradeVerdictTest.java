@@ -43,4 +43,12 @@ class SoldTradeVerdictTest {
         String v = SoldTradeVerdict.compute(-4.5, 30);
         assertTrue(v.contains("复盘"), "久持小亏应提示复盘，实际: " + v);
     }
+
+    @Test
+    void longLoss_marksR53() {
+        // B3-5（2026-08-23，P2-交易11 半修残留）：久持小亏（非短持仓）也标 R53 延展——
+        // 前端纪律遵守率按 verdict 含规则号判违规，旧末分支无规则号 → 遵守率虚高
+        String v = SoldTradeVerdict.compute(-4.5, 30);
+        assertTrue(v.contains("R53"), "久持小亏应标 R53（延展），前端才计入违规，实际: " + v);
+    }
 }

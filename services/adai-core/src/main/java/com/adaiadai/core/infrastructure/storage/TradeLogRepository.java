@@ -27,6 +27,8 @@ public class TradeLogRepository {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final FileStorage fileStorage;
+    /** per-user 写锁（C5，2026-08-23）：锁 key 收敛为 userId——date 维度会随日期无限增长；
+     *  同用户全日期共享一把锁（append/discard/save 均极快，串行度可接受）。 */
     private final java.util.concurrent.ConcurrentHashMap<String, Object> locks = new java.util.concurrent.ConcurrentHashMap<>();
 
     public TradeLogRepository(FileStorage fileStorage) {
@@ -58,20 +60,44 @@ public class TradeLogRepository {
         }
     }
 
-    /** 追加候选（按去重键去重：同 symbol+direction 当日已存在则跳过）。 */
+    /** 追加候选（去重：同 symbol+direction 且 volume ±10% 内视为同笔）。
+     *  B6-2（2026-08-23，P1-交易12）：去重从 dedupeKey 字符串桶改为 sameTrade 区间判定——
+     *  固定 10 股桶过宽吞笔（10 vs 19）/过窄漏去重（100 vs 110 → confirm 双落库）双缺陷。 */
     public List<TradeLogCandidate> append(String userId, LocalDate date, TradeLogCandidate candidate) {
-        Object lock = locks.computeIfAbsent(userId + ":" + date, k -> new Object());
+        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
         synchronized (lock) {
             List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
-            boolean dup = existing.stream().anyMatch(c -> c.dedupeKey().equals(candidate.dedupeKey()));
+            boolean dup = existing.stream().anyMatch(c -> c.sameTrade(candidate));
             if (!dup) existing.add(candidate);
             save(userId, date, existing);
             return existing;
         }
     }
 
-    /** 覆盖保存当日候选（确认后清空 = 传空列表）。 */
+    /** 覆盖保存当日候选（确认后清空 = 传空列表）。
+     *  B5-4（2026-08-23）：与 append 同一把 per-user 锁——confirm 的 save 与 collect 的 append
+     *  并发时不再清掉确认期间新归集的候选（原 save 无锁；synchronized 可重入，append 锁内调用安全）。 */
     public void save(String userId, LocalDate date, List<TradeLogCandidate> candidates) {
+        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        synchronized (lock) {
+            saveUnlocked(userId, date, candidates);
+        }
+    }
+
+    /** 丢弃一条候选（B6-5，2026-08-23，P1-交易18）：按 symbol+direction 移除，锁内读-过滤-写回。 */
+    public boolean discard(String userId, LocalDate date, String symbol, String direction) {
+        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean removed = existing.removeIf(c ->
+                    (symbol == null || symbol.equals(c.symbol()))
+                            && (direction == null || direction.equals(c.direction())));
+            if (removed) saveUnlocked(userId, date, existing);
+            return removed;
+        }
+    }
+
+    private void saveUnlocked(String userId, LocalDate date, List<TradeLogCandidate> candidates) {
         try {
             var arr = MAPPER.createArrayNode();
             for (TradeLogCandidate c : candidates) {

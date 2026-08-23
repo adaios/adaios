@@ -75,6 +75,12 @@ class TradingSessionPushServiceTest {
 
     private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
                                                            AccountSnapshotRepository acc) {
+        return serviceWithPositions(channel, ai, knowledgeDir, acc, false);
+    }
+
+    /** B6-3：missingChangePercent=true 时行情 changePercent=null（模拟字段残缺，验证不 NPE）。 */
+    private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
+                                                           AccountSnapshotRepository acc, boolean missingChangePercent) {
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
@@ -82,8 +88,16 @@ class TradingSessionPushServiceTest {
         ));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of(
-                "000725", quote("000725", "5.46", "1.2"),
-                "600519", quote("600519", "1420.00", "-0.3")
+                "000725", missingChangePercent
+                        ? new MarketData("000725", "京东方A", new BigDecimal("5.46"), new BigDecimal("5.40"),
+                                new BigDecimal("5.46"), new BigDecimal("5.50"), new BigDecimal("5.30"),
+                                null, 1000L)
+                        : quote("000725", "5.46", "1.2"),
+                "600519", missingChangePercent
+                        ? new MarketData("600519", "贵州茅台", new BigDecimal("1420.00"), new BigDecimal("1425.00"),
+                                new BigDecimal("1420.00"), new BigDecimal("1430.00"), new BigDecimal("1410.00"),
+                                null, 1000L)
+                        : quote("600519", "1420.00", "-0.3")
         ));
         AccountRepository accounts = mock(AccountRepository.class);
         when(accounts.findAll()).thenReturn(List.of(
@@ -180,6 +194,73 @@ class TradingSessionPushServiceTest {
         String content = captor.getValue().content();
         assertFalse(content.contains("超 R81"), "现金充足时占比应回落，不得误发 R81 减仓，实际: " + content);
         assertTrue(content.contains("持有"), "现金充足应持有，实际: " + content);
+    }
+
+    @Test
+    void closeAdvice_overMillion_singleStockOver25Pct_doesNotForceR81() {
+        // B3-2（2026-08-23，P2-交易21 半修残留）：总资产超 100 万 → R81 前提不适用——
+        // 单票占比 >25% 也不推「超 R81 减仓」（按 R82-R95 配置评估），与 TradingAdviceAppService 输出侧同口径
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        // 构造：茅台 300 股 ×1420 = 426000（占比 ~35%）+ 京东方 5460 + 现金 77 万 → 总资产 ~119.7 万 > 100 万
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("1197000"), new BigDecimal("770000"),
+                        new BigDecimal("770000"), new BigDecimal("770000"),
+                        new BigDecimal("431460"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null)));
+
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                posWithPlan("600519", "贵州茅台", "1400.00", "1420.00", "1380.00", "B2", 300),
+                posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000)
+        ));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "600519", quote("600519", "1420.00", "-0.3"),
+                "000725", quote("000725", "5.46", "1.2")
+        ));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("adai", "admin", true, null)));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
+                pluginService, new DefaultTradingRuleEngine(), ai, List.of(channel),
+                acc,
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
+                "../../os/trading-engine/knowledge/context");
+
+        svc.closeAdvice();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertFalse(content.contains("超 R81"), "总资产超 100 万 → R81 前提不适用，不得强制减仓，实际: " + content);
+        assertTrue(content.contains("持有"), "超 100 万应持有（按 R82-R95 评估），实际: " + content);
+    }
+
+    @Test
+    void closeAdvice_missingChangePercent_noNpe() {
+        // B6-3（2026-08-23，P1-交易13）：md 非 null 但 changePercent null → 显示 "-" 不 NPE
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai,
+                "../../os/trading-engine/knowledge/context", mock(AccountSnapshotRepository.class),
+                true); // missingChangePercent=true：构造 changePercent=null 的行情
+
+        svc.closeAdvice();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("-"), "changePercent 缺失应显示 '-'，实际: " + content);
+        assertFalse(content.contains("null"), "不得出现 null 文案，实际: " + content);
     }
 
     // ── LLM 成功：用生成内容（阶段二）──
@@ -294,6 +375,17 @@ class TradingSessionPushServiceTest {
                         new BigDecimal("10000"), new BigDecimal("10000"),
                         new BigDecimal("140000"), new BigDecimal("2000"),
                         BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        // P0-2（2026-08-23）：closeAccountUpdate 走 update（原子 RMW），捕获计算结果
+        java.util.concurrent.atomic.AtomicReference<AccountSnapshot> saved =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        when(acc.update(any(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            java.util.function.Function<java.util.Optional<AccountSnapshot>, AccountSnapshot> fn =
+                    inv.getArgument(1);
+            AccountSnapshot next = fn.apply(acc.findLatest(inv.getArgument(0)));
+            saved.set(next);
+            return next;
+        });
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
@@ -304,10 +396,8 @@ class TradingSessionPushServiceTest {
 
         svc.closeAccountUpdate();
 
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("adai"), cap.capture());
         // 市值 = 1000×5.46 + 100×1420 = 5460 + 142000 = 147460
-        assertEquals(0, cap.getValue().marketValue().compareTo(new BigDecimal("147460")));
+        assertEquals(0, saved.get().marketValue().compareTo(new BigDecimal("147460")));
     }
 
     @Test
@@ -341,9 +431,50 @@ class TradingSessionPushServiceTest {
         svc.closeAccountUpdate();
 
         // 缺行情 → 跳过保存（不覆盖旧快照）
-        verify(acc, never()).save(any(), any());
+        verify(acc, never()).update(any(), any());
     }
-    // ── 节假日守卫（P3，2026-08-17）──
+
+    @Test
+    void closeAccountUpdate_missingYesterdayClose_skipsSave() {
+        // B3-3（2026-08-23，P1-交易3 半修残留）：价格齐全但某只昨收缺失 → todayPnl 残缺，
+        // 必须整体跳过（不覆盖旧快照的当日盈亏）——与缺价格同等待遇
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
+                posWithPlan("600519", "贵州茅台", "1400.00", "1420.00", "1380.00", "B2", 100)
+        ));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "5.46", "1.2"),
+                // 茅台：价格有、昨收 null（行情字段残缺）
+                "600519", new MarketData("600519", "贵州茅台", new BigDecimal("1420.00"), null,
+                        new BigDecimal("1420.00"), new BigDecimal("1430.00"), new BigDecimal("1410.00"),
+                        new BigDecimal("-0.3"), 1000L)
+        ));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("adai", "admin", true, null)));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
+                        new BigDecimal("10000"), new BigDecimal("10000"),
+                        new BigDecimal("140000"), new BigDecimal("2000"),
+                        BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.of(2026, 8, 16))));
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
+                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class),
+                "/nonexistent/knowledge");
+
+        svc.closeAccountUpdate();
+
+        // 昨收残缺 → 跳过保存（不覆盖旧快照的当日盈亏）
+        verify(acc, never()).update(any(), any());
+    }
+    // ── 节假日守卫（P3，2026-08-17；B5-1 2026-08-23 补全 2026 官方 + 2027 预测）──
     @Test
     void holiday_skipsPush() {
         assertFalse(TradingSessionPushService.isTradingDay(
@@ -352,5 +483,48 @@ class TradingSessionPushServiceTest {
                 java.time.LocalDate.of(2026, 8, 17)), "2026-08-17 周一应开市");
         assertTrue(TradingSessionPushService.isTradingDay(
                 java.time.LocalDate.of(2026, 8, 20)), "2026-08-20 周四应开市");
+    }
+
+    @Test
+    void holiday_2026_officialSchedule() {
+        // 2026 官方（沪深交易所 2025-12-22 通知）：工作日休市日
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 2, 16)), "2026-02-16 春节应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 2, 23)), "2026-02-23 春节最后工作日应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 4, 6)), "2026-04-06 清明应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 5, 1)), "2026-05-01 劳动节应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 6, 19)), "2026-06-19 端午应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 9, 25)), "2026-09-25 中秋应休市");
+        // B5-1：旧表误记 10-08 休市——官方 2026 国庆 10-07 结束，10-08 开市
+        assertTrue(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2026, 10, 8)), "2026-10-08 国庆后应开市");
+    }
+
+    @Test
+    void holiday_2027_predictiveSchedule() {
+        // 2027 预测（官方通常年底发布，临时调休不追）
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 1, 1)), "2027-01-01 元旦应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 2, 3)), "2027-02-03 除夕应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 2, 9)), "2027-02-09 春节末应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 4, 5)), "2027-04-05 清明应休市");
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 5, 3)), "2027-05-03 劳动节应休市");
+        // C2（2026-08-23，隔离审查 P2-7）：2027 中秋在 9/15（农历八月十五）不在国庆；
+        // 国庆 10/1-10/7，10/8 开市（无 8 天长假）
+        assertFalse(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 9, 15)), "2027-09-15 中秋应休市");
+        assertTrue(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 10, 8)), "2027-10-08 国庆后应开市（中秋不并国庆）");
+        assertTrue(TradingSessionPushService.isTradingDay(
+                java.time.LocalDate.of(2027, 8, 20)), "2027-08-20 周五应开市");
     }
 }

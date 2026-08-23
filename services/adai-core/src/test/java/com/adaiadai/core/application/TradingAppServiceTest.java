@@ -28,6 +28,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -63,6 +66,22 @@ class TradingAppServiceTest {
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
                 mock(MarketDataSource.class));
+    }
+
+    /**
+     * P0-2（2026-08-23）：账户快照 mock 走 update（原子 RMW）语义——
+     * 捕获 fn 计算结果供断言（等价真实 AccountSnapshotFileRepository.update 行为）。
+     */
+    private AccountSnapshotRepository capturingAccountRepo(AtomicReference<AccountSnapshot> saved) {
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.update(any(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Function<Optional<AccountSnapshot>, AccountSnapshot> fn = inv.getArgument(1);
+            AccountSnapshot next = fn.apply(acc.findLatest(inv.getArgument(0)));
+            saved.set(next);
+            return next;
+        });
+        return acc;
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -559,7 +578,8 @@ void importCashQuery_updatesCashAndPreciseCost() {
     when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
             new Position("000725", "京东方A", 5300, new BigDecimal("6.042"), new BigDecimal("6.042"),
                     LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null))));
-    AccountSnapshotRepository accountSnapshotRepository = mock(AccountSnapshotRepository.class);
+    AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+    AccountSnapshotRepository accountSnapshotRepository = capturingAccountRepo(saved);
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), accountSnapshotRepository,
@@ -574,9 +594,8 @@ void importCashQuery_updatesCashAndPreciseCost() {
     assertEquals(0, r.assets().compareTo(new BigDecimal("110504.88")));
     assertEquals(1, r.updatedCost(), "精确成本（4 位）应更新 1 只");
     // S5（2026-08-17）现金单一真源：现金只落 account.json（AccountSnapshot），不再写 positions.md cashBalance
-    ArgumentCaptor<AccountSnapshot> snap = ArgumentCaptor.forClass(AccountSnapshot.class);
-    verify(accountSnapshotRepository).save(eq("default"), snap.capture());
-    assertEquals(0, snap.getValue().cash().compareTo(new BigDecimal("292.88")));
+    verify(accountSnapshotRepository).update(eq("default"), any());
+    assertEquals(0, saved.get().cash().compareTo(new BigDecimal("292.88")));
     verify(repo, never()).saveCashBalance(any(), any()); // 不写 positions.md cashBalance
     // 成本更新为 6.0421
     ArgumentCaptor<java.util.List<Position>> cap = ArgumentCaptor.forClass(java.util.List.class);
@@ -599,7 +618,7 @@ void importCashQuery_parseFail_throwsAndNeverSavesZero() {
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
             () -> service.importCashQuery("default", bad),
             "格式无法识别必须抛错而不是静默落零");
-    verify(acc, never()).save(any(), any());          // 不写 account.json
+    verify(acc, never()).update(any(), any());         // 不写 account.json
     verify(repo, never()).saveCashBalance(any(), any()); // 不写 cashBalance
 }
 
@@ -616,7 +635,7 @@ void importCashQuery_emptyContent_throws() {
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
             () -> service.importCashQuery("default", ""),
             "空内容必须抛错");
-    verify(acc, never()).save(any(), any());
+    verify(acc, never()).update(any(), any());
 }
 
 @org.junit.jupiter.api.Test
@@ -644,7 +663,8 @@ void soldUpdatePsychology_marksTrade() {
     void recordTransfer_updatesPrincipalAndCash() {
         PositionRepository repo = mock(PositionRepository.class);
         when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
-        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("110504.88"), new BigDecimal("292.88"),
                         new BigDecimal("292.88"), new BigDecimal("292.88"),
@@ -657,9 +677,7 @@ void soldUpdatePsychology_marksTrade() {
 
         service.recordTransfer("default", "IN", new BigDecimal("10000"), LocalDate.of(2026, 8, 17), "补仓");
 
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("default"), cap.capture());
-        AccountSnapshot updated = cap.getValue();
+        AccountSnapshot updated = saved.get();
         assertEquals(0, updated.principal().compareTo(new BigDecimal("160000")),
                 "转入 1 万 → 净投入 16 万");
         assertEquals(0, updated.cash().compareTo(new BigDecimal("10292.88")),
@@ -673,7 +691,8 @@ void soldUpdatePsychology_marksTrade() {
     void recordTransfer_outDeductsPrincipal() {
         PositionRepository repo = mock(PositionRepository.class);
         when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>());
-        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("110504.88"), new BigDecimal("292.88"),
                         new BigDecimal("292.88"), new BigDecimal("292.88"),
@@ -686,11 +705,10 @@ void soldUpdatePsychology_marksTrade() {
 
         service.recordTransfer("default", "OUT", new BigDecimal("50000"), LocalDate.of(2026, 8, 17), "提现");
 
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("default"), cap.capture());
-        assertEquals(0, cap.getValue().principal().compareTo(new BigDecimal("100000")),
+        AccountSnapshot updated = saved.get();
+        assertEquals(0, updated.principal().compareTo(new BigDecimal("100000")),
                 "转出 5 万 → 净投入 10 万");
-        assertEquals(0, cap.getValue().cash().compareTo(new BigDecimal("-49707.12")),
+        assertEquals(0, updated.cash().compareTo(new BigDecimal("-49707.12")),
                 "现金 -5 万（负=透支，理论值）");
     }
 
@@ -751,7 +769,8 @@ void soldUpdatePsychology_marksTrade() {
                 new Position("600519", "贵州茅台", 100, new BigDecimal("1400"), new BigDecimal("1420"),
                         LocalDateTime.now(), LocalDate.of(2026, 8, 1),
                         new BigDecimal("1350"), "B1", "防守"))));
-        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
                         new BigDecimal("10000"), new BigDecimal("10000"),
@@ -769,9 +788,7 @@ void soldUpdatePsychology_marksTrade() {
                 new BigDecimal("10"), 100, LocalDate.of(2026, 8, 17), null,
                 new BigDecimal("9.3"), "B1", null, null);
 
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("default"), cap.capture());
-        AccountSnapshot u = cap.getValue();
+        AccountSnapshot u = saved.get();
         assertEquals(0, u.cash().compareTo(new BigDecimal("8999.90")), "现金 10000 - 1000 - 手续费0.10");
         assertEquals(0, u.marketValue().compareTo(new BigDecimal("141000")), "市值 +1000（100股@10）");
         assertEquals(0, u.assets().compareTo(new BigDecimal("149999.90")), "总资产 = 现金+市值 = 150000 - 手续费0.10");
@@ -784,7 +801,8 @@ void soldUpdatePsychology_marksTrade() {
                 new Position("600519", "贵州茅台", 200, new BigDecimal("1400"), new BigDecimal("1420"),
                         LocalDateTime.now(), LocalDate.of(2026, 8, 1),
                         new BigDecimal("1350"), "B1", "防守"))));
-        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("150000"), new BigDecimal("10000"),
                         new BigDecimal("10000"), new BigDecimal("10000"),
@@ -802,9 +820,7 @@ void soldUpdatePsychology_marksTrade() {
                 new BigDecimal("15"), 100, LocalDate.of(2026, 8, 17), null,
                 null, null, null, null);
 
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("default"), cap.capture());
-        AccountSnapshot u = cap.getValue();
+        AccountSnapshot u = saved.get();
         assertEquals(0, u.cash().compareTo(new BigDecimal("11499.10")), "现金 10000 + 1499.10（卖出回款扣费）");
         assertEquals(0, u.marketValue().compareTo(new BigDecimal("138500")), "市值 -1500（100股@15）");
         assertEquals(0, u.assets().compareTo(new BigDecimal("149999.10")), "总资产 = 现金+市值 = 150000 - 手续费0.90");
@@ -956,7 +972,8 @@ void soldUpdatePsychology_marksTrade() {
 
     @org.junit.jupiter.api.Test
     void setPrincipal_onlyChangesPrincipal_field() {
-        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
         when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
                 new AccountSnapshot(new BigDecimal("112566.91"), new BigDecimal("657.91"),
                         new BigDecimal("657.91"), new BigDecimal("657.91"),
@@ -973,9 +990,7 @@ void soldUpdatePsychology_marksTrade() {
         assertEquals(0, updated.cash().compareTo(new BigDecimal("657.91")), "现金不动");
         assertEquals(0, updated.assets().compareTo(new BigDecimal("112566.91")), "资产不动");
         assertEquals(0, updated.marketValue().compareTo(new BigDecimal("111909.00")), "市值不动");
-        ArgumentCaptor<AccountSnapshot> cap = ArgumentCaptor.forClass(AccountSnapshot.class);
-        verify(acc).save(eq("default"), cap.capture());
-        assertEquals(0, cap.getValue().principal().compareTo(new BigDecimal("150000")));
+        assertEquals(0, saved.get().principal().compareTo(new BigDecimal("150000")));
     }
 
     @org.junit.jupiter.api.Test

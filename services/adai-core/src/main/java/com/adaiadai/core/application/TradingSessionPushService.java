@@ -116,19 +116,52 @@ public class TradingSessionPushService {
     // ── 三节点 cron ──
 
     /**
-     * P3（2026-08-17）：A 股法定节假日（2026-2027 主要休市日）——节假日不推送/不改账。
-     * cron 已排除周末（MON-FRI），此处补法定假日。仅维护主要节假日，临时调休不追。
+     * P3（2026-08-17）+ B5-1（2026-08-23）：A 股法定节假日休市日——节假日不推送/不改账。
+     * cron 已排除周末（MON-FRI），此处只登记**落在工作日**的休市日（周末无需登记）。
+     * 2026 按沪深交易所官方通知（2025-12-22 发布）；2027 为预测（官方通常年底发布），
+     * 临时调休/追加休市不追（以官方最终通知为准）。
      */
     static final java.util.Set<java.time.LocalDate> HOLIDAYS = java.util.Set.of(
-            // 2026 国庆（10-01 ~ 10-08）
+            // ── 2026（官方，沪深交易所 2025-12-22 通知）──
+            // 元旦 1/1(四)~1/3(六) → 工作日：1/1、1/2
+            java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2026, 1, 2),
+            // 春节 2/15(日)~2/23(一) → 工作日：2/16(一)~2/20(五)、2/23(一)
+            java.time.LocalDate.of(2026, 2, 16), java.time.LocalDate.of(2026, 2, 17),
+            java.time.LocalDate.of(2026, 2, 18), java.time.LocalDate.of(2026, 2, 19),
+            java.time.LocalDate.of(2026, 2, 20), java.time.LocalDate.of(2026, 2, 23),
+            // 清明 4/4(六)~4/6(一) → 工作日：4/6(一)
+            java.time.LocalDate.of(2026, 4, 6),
+            // 劳动节 5/1(五)~5/5(二) → 工作日：5/1(五)、5/4(一)、5/5(二)
+            java.time.LocalDate.of(2026, 5, 1), java.time.LocalDate.of(2026, 5, 4),
+            java.time.LocalDate.of(2026, 5, 5),
+            // 端午 6/19(五)~6/21(日) → 工作日：6/19(五)
+            java.time.LocalDate.of(2026, 6, 19),
+            // 中秋 9/25(五)~9/27(日) → 工作日：9/25(五)
+            java.time.LocalDate.of(2026, 9, 25),
+            // 国庆 10/1(四)~10/7(三) → 工作日：10/1(四)、10/2(五)、10/5(一)~10/7(三)（10/8 开市，旧表误记）
             java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 10, 2),
             java.time.LocalDate.of(2026, 10, 5), java.time.LocalDate.of(2026, 10, 6),
-            java.time.LocalDate.of(2026, 10, 7), java.time.LocalDate.of(2026, 10, 8),
-            // 2027 元旦（1-01 ~ 1-03）+ 春节（约 2 月初）
-            java.time.LocalDate.of(2027, 1, 1), java.time.LocalDate.of(2027, 1, 4),
-            java.time.LocalDate.of(2027, 2, 15), java.time.LocalDate.of(2027, 2, 16),
-            java.time.LocalDate.of(2027, 2, 17), java.time.LocalDate.of(2027, 2, 18),
-            java.time.LocalDate.of(2027, 2, 19), java.time.LocalDate.of(2027, 2, 22)
+            java.time.LocalDate.of(2026, 10, 7),
+            // ── 2027（预测，官方通常年底发布）──
+            // 元旦 1/1(五)
+            java.time.LocalDate.of(2027, 1, 1),
+            // 春节 2/3(三,除夕)~2/9(二) → 工作日：2/3(三)~2/5(五)、2/8(一)、2/9(二)
+            java.time.LocalDate.of(2027, 2, 3), java.time.LocalDate.of(2027, 2, 4),
+            java.time.LocalDate.of(2027, 2, 5), java.time.LocalDate.of(2027, 2, 8),
+            java.time.LocalDate.of(2027, 2, 9),
+            // 清明 4/4(日)~4/6(二) → 工作日：4/5(一)、4/6(二)
+            java.time.LocalDate.of(2027, 4, 5), java.time.LocalDate.of(2027, 4, 6),
+            // 劳动节 5/1(六)~5/5(三) → 工作日：5/3(一)~5/5(三)
+            java.time.LocalDate.of(2027, 5, 3), java.time.LocalDate.of(2027, 5, 4),
+            java.time.LocalDate.of(2027, 5, 5),
+            // 端午 6/9(三)（预测单日）
+            java.time.LocalDate.of(2027, 6, 9),
+            // 中秋 9/15(三)（2027 农历八月十五，预测单日——C2 修正：不在国庆，独立 9 月）
+            java.time.LocalDate.of(2027, 9, 15),
+            // 国庆 10/1(五)~10/7(四) → 工作日：10/1(五)、10/4(一)~10/7(四)（10/8 开市——C2 修正：2027 中秋不在国庆，无 8 天长假）
+            java.time.LocalDate.of(2027, 10, 1), java.time.LocalDate.of(2027, 10, 4),
+            java.time.LocalDate.of(2027, 10, 5), java.time.LocalDate.of(2027, 10, 6),
+            java.time.LocalDate.of(2027, 10, 7)
     );
 
     /** 是否 A 股交易日（周末由 cron 排除；此处补法定节假日）。 */
@@ -196,31 +229,46 @@ public class TradingSessionPushService {
                 }
                 java.math.BigDecimal value = md.price().multiply(java.math.BigDecimal.valueOf(p.quantity()));
                 marketValue = marketValue.add(value);
-                if (md.yesterdayClose() != null) {
-                    todayPnl = todayPnl.add(md.price().subtract(md.yesterdayClose())
-                            .multiply(java.math.BigDecimal.valueOf(p.quantity())));
+                // B3-3（2026-08-23，P1-交易3 半修残留）：yesterdayClose 缺失时 todayPnl 残缺
+                // 会覆盖旧快照的当日盈亏（旧值不可恢复）——与缺 price 同等待遇：整体跳过
+                if (md.yesterdayClose() == null) {
+                    missingQuotes++;
+                    continue;
                 }
+                todayPnl = todayPnl.add(md.price().subtract(md.yesterdayClose())
+                        .multiply(java.math.BigDecimal.valueOf(p.quantity())));
                 floatPnl = floatPnl.add(md.price().subtract(p.avgCost())
                         .multiply(java.math.BigDecimal.valueOf(p.quantity())));
             }
-            // P1-交易3：任一持仓缺行情 → 本次不覆盖（保留旧快照，等行情恢复）
+            // P1-交易3 + B3-3：任一持仓缺行情（price 或 yesterdayClose）→ 本次不覆盖（保留旧快照）
             if (missingQuotes > 0) {
-                log.warn("收盘账户更新：{} 只缺行情，跳过保存保留旧快照 | userId={} | 缺失={}",
+                log.warn("收盘账户更新：{} 只缺行情（价格或昨收），跳过保存保留旧快照 | userId={} | 缺失={}",
                         missingQuotes, userId, positions.stream()
-                                .filter(p -> quotes.get(p.symbol()) == null || quotes.get(p.symbol()).price() == null)
+                                .filter(p -> {
+                                    MarketData md = quotes.get(p.symbol());
+                                    return md == null || md.price() == null || md.yesterdayClose() == null;
+                                })
                                 .map(Position::symbol).toList());
                 return;
             }
             final java.math.BigDecimal fMarket = marketValue;
             final java.math.BigDecimal fToday = todayPnl;
             final java.math.BigDecimal fFloat = floatPnl;
-            accountSnapshotRepository.findLatest(userId).ifPresent(cur -> {
-                accountSnapshotRepository.save(userId, new AccountSnapshot(
-                        fMarket.add(cur.cash()), cur.cash(), cur.available(), cur.withdrawable(),
-                        fMarket, fFloat, fToday, cur.principal(), java.time.LocalDate.now()));
-                log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
-                        userId, fMarket, fToday, fFloat);
-            });
+            // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）——
+            // 原 findLatest+save 无锁，与 recordTrade/转账/资金导入并发整文件互相覆盖
+            // B6-4（2026-08-23，P1-交易11）：写失败明确告警（外层 forEachTradingUser 兜底不中断整批）
+            try {
+                accountSnapshotRepository.update(userId, cur -> cur.map(c -> {
+                    AccountSnapshot next = new AccountSnapshot(
+                            fMarket.add(c.cash()), c.cash(), c.available(), c.withdrawable(),
+                            fMarket, fFloat, fToday, c.principal(), java.time.LocalDate.now());
+                    log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
+                            userId, fMarket, fToday, fFloat);
+                    return next;
+                }).orElse(null)); // 无快照（未导入资金）不初始化
+            } catch (RuntimeException e) {
+                log.error("收盘账户更新写失败——账目未落盘 | userId={} | {}", userId, e.getMessage());
+            }
         });
     }
 
@@ -334,8 +382,13 @@ public class TradingSessionPushService {
             sb.append("- ").append(p.name()).append("(").append(p.symbol()).append(")")
                     .append(" 数量").append(p.quantity())
                     .append(" 成本").append(fmt(p.avgCost()));
-            if (md != null) sb.append(" 现价").append(fmt(md.price()))
-                    .append(" 涨跌").append(fmt(md.changePercent())).append("%");
+            if (md != null) {
+                sb.append(" 现价").append(fmt(md.price()));
+                // B6-3：changePercent 可 null（行情字段残缺）→ 显示 "-" 不 NPE
+                if (md.changePercent() != null) {
+                    sb.append(" 涨跌").append(fmt(md.changePercent())).append("%");
+                }
+            }
             sb.append(" 止损位").append(p.stopLossPrice() != null ? fmt(p.stopLossPrice()) : "未设置")
                     .append(" 买点").append(p.buyPoint() != null ? p.buyPoint() : "未知");
             var sl = ruleEngine.evaluateStopLoss(md != null ? md.price() : null, p.stopLossPrice());
@@ -371,8 +424,11 @@ public class TradingSessionPushService {
         sb.append("总结：上午表现如下，下午重点盯止损位。\n");
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
-            String change = md != null ? (md.changePercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    + fmt(md.changePercent()) + "%" : "-";
+            // B6-3：changePercent 可 null → 显示 "-" 不 NPE
+            BigDecimal changePct = md != null ? md.changePercent() : null;
+            String change = changePct != null
+                    ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
+                    : "-";
             var sl = ruleEngine.evaluateStopLoss(md != null ? md.price() : null, p.stopLossPrice());
             String status = sl.verdict() == StopLossVerdict.BREACHED
                     ? "⚠️已破止损（R66）" : "未触发止损";
@@ -390,16 +446,22 @@ public class TradingSessionPushService {
         sb.append("总结：").append(data.positions().size()).append(" 只持仓，逐票建议如下。\n");
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
-            BigDecimal price = md != null ? md.price() : p.currentPrice();
-            String change = md != null ? (md.changePercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    + fmt(md.changePercent()) + "%" : "-";
+            // B6-3（2026-08-23，P1-交易13）：md 非 null 但 price/changePercent 可 null——
+            // 原 `md.changePercent().compareTo()` 直接 NPE 崩整个尾盘推送（单用户异常中断整批）
+            BigDecimal price = md != null && md.price() != null ? md.price() : p.currentPrice();
+            BigDecimal changePct = md != null ? md.changePercent() : null;
+            String change = changePct != null
+                    ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
+                    : "-";
             var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
             BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
             var pv = ruleEngine.evaluatePosition(percent);
             String advice;
             if (sl.verdict() == StopLossVerdict.BREACHED) {
                 advice = "清仓（R66）";
-            } else if (pv.verdict() == PositionVerdict.OVER_WEIGHT) {
+            } else if (pv.verdict() == PositionVerdict.OVER_WEIGHT && r81Applicable(data)) {
+                // B3-2（2026-08-23，P2-交易21 半修残留）：R81 减仓判定须过「总资产 <100 万」前提——
+                // 与 TradingAdviceAppService 输出侧同口径（超 100 万按 R82-R95 配置评估，不强制减仓）
                 advice = "减仓（占比 " + fmt(percent) + "% 超 R81）";
             } else {
                 advice = "持有";
@@ -425,6 +487,20 @@ public class TradingSessionPushService {
         }
         if (total.compareTo(BigDecimal.ZERO) <= 0) return BigDecimal.ZERO;
         return mine.multiply(BigDecimal.valueOf(100)).divide(total, 1, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * R81 是否适用（B3-2，2026-08-23）：总资产（持仓市值 + 现金）&lt; 100 万——
+     * 与 TradingAdviceAppService 输出侧同口径（超 100 万按 R82-R95 配置评估，不强制 25% 上限）。
+     */
+    private boolean r81Applicable(SessionData data) {
+        BigDecimal total = data.cash() == null ? BigDecimal.ZERO : data.cash();
+        for (Position p : data.positions()) {
+            MarketData md = data.quotes().get(p.symbol());
+            BigDecimal price = md != null && md.price() != null ? md.price() : p.currentPrice();
+            total = total.add(price.multiply(BigDecimal.valueOf(p.quantity())));
+        }
+        return total.compareTo(new BigDecimal("1000000")) < 0;
     }
 
     // ── 推送 ──

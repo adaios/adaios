@@ -138,36 +138,37 @@ public class MarketAlertService {
 
         for (Position p : positions) {
             MarketData md = quotes.get(p.symbol());
-            if (md == null || md.changePercent() == null) continue;
+            // B5-2（2026-08-23）：行情缺失整只跳过；changePercent 缺失只跳过涨跌类判定——
+            // 原「md.changePercent()==null 即 continue」连带漏掉只依赖 price 的 R66 止损/接近止损/破成本
+            if (md == null || md.price() == null) continue;
 
-            BigDecimal change = md.changePercent();
+            BigDecimal change = md.changePercent(); // 可 null（涨跌类判定据此跳过）
 
             // 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定（引擎口径，与建议引擎一致）
             // 止损位未设置（旧数据）不判——R68 入场即设止损，买入时已强制填写
-            if (p.stopLossPrice() != null && md.price() != null
+            if (p.stopLossPrice() != null
                     && ruleEngine.evaluateStopLoss(md.price(), p.stopLossPrice()).verdict()
                     == StopLossVerdict.BREACHED) {
                 addIfNew(userId, p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
             // C3 接近止损预警（2026-08-16）：未跌破但距止损 ≤ nearStopLossPct（默认 2%，可配）
-            if (p.stopLossPrice() != null && md.price() != null
-                    && md.price().compareTo(p.stopLossPrice()) > 0) {
+            if (p.stopLossPrice() != null && md.price().compareTo(p.stopLossPrice()) > 0) {
                 BigDecimal gapPct = md.price().subtract(p.stopLossPrice())
                         .multiply(BigDecimal.valueOf(100)).divide(md.price(), 2, RoundingMode.HALF_UP);
                 if (gapPct.compareTo(nearStopLossPct) <= 0) {
                     addIfNew(userId, p, md, change, "near-stop-loss", existing, newSignatures, alerts);
                 }
             }
-            // 止损预警：单日跌幅 ≥ 阈值
-            if (change.compareTo(lossThreshold.negate()) <= 0) {
+            // 止损预警：单日跌幅 ≥ 阈值（依赖 changePercent，缺失跳过）
+            if (change != null && change.compareTo(lossThreshold.negate()) <= 0) {
                 addIfNew(userId, p, md, change, "loss", existing, newSignatures, alerts);
             }
-            // 放飞提示：单日涨幅 ≥ 阈值
-            if (change.compareTo(gainThreshold) >= 0) {
+            // 放飞提示：单日涨幅 ≥ 阈值（依赖 changePercent，缺失跳过）
+            if (change != null && change.compareTo(gainThreshold) >= 0) {
                 addIfNew(userId, p, md, change, "gain", existing, newSignatures, alerts);
             }
-            // 跌破成本线风控提醒
-            if (breakCostEnabled && md.price() != null && p.avgCost() != null
+            // 跌破成本线风控提醒（只依赖 price）
+            if (breakCostEnabled && p.avgCost() != null
                     && md.price().compareTo(p.avgCost()) < 0) {
                 addIfNew(userId, p, md, change, "break-cost", existing, newSignatures, alerts);
             }

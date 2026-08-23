@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -264,6 +263,7 @@ class _TradingPageState extends State<TradingPage> {
       settings = {};
     }
     if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     await showDialog<void>(
       context: context,
       builder: (_) => _PushSettingsDialog(
@@ -271,10 +271,18 @@ class _TradingPageState extends State<TradingPage> {
         onToggle: (type, on) async {
           try {
             await widget.api.updatePushSetting(type, on);
-            return true;
-          } catch (_) {
-            return false;
+            return null; // 成功无错误
+          } catch (e) {
+            // B5-6（2026-08-23，P2-推送5 半修残留）：失败透出原因，不再静默
+            return extractApiErrorMessage(e);
           }
+        },
+        // 失败提示走 dialog 外层的 messenger（dialog builder 内无页面 context 安全）
+        onToggleFailed: (msg) {
+          messenger.showSnackBar(SnackBar(
+            content: Text('推送设置失败：$msg', style: const TextStyle(fontSize: 13)),
+            backgroundColor: AppColors.darkSurface2,
+          ));
         },
       ),
     );
@@ -287,33 +295,7 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  String _extractApiError(dynamic e) {
-    // 2026-08-17 走查：后端错误体 {"error":"人话"} 优先透出（与 feed/task/profile 页同口径）
-    if (e is ApiException && e.body != null && e.body!.isNotEmpty) {
-      final body = e.body!.trim();
-      if (body.startsWith('{')) {
-        try {
-          final decoded = jsonDecode(body);
-          if (decoded is Map && decoded['error'] is String && (decoded['error'] as String).isNotEmpty) {
-            return decoded['error'] as String;
-          }
-        } catch (_) {
-          // JSON 解析失败继续走下面分支
-        }
-      } else if (!body.startsWith('<')) {
-        return body; // 非 HTML 的裸文本错误体直接展示
-      }
-    }
-    final str = e.toString();
-    if (str.contains('API 请求失败')) {
-      final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
-      final code = codeMatch?.group(1) ?? '?';
-      return '请求失败 ($code)';
-    }
-    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
-    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return '网络异常，请重试';
-  }
+  String _extractApiError(dynamic e) => extractApiErrorMessage(e);
 
   /// P2-交易15（2026-08-17）：打分列颜色——中性色阶（蓝/紫/灰），不借盈亏色（红涨绿亏）；
   /// 空值 '—' 固定灰（不渲染成警告橙）。
@@ -713,44 +695,51 @@ class _TradingPageState extends State<TradingPage> {
 
   /// Tab 工作区（E1）：持仓（默认）/ 自选 / 清仓 / 资金 / 历史成交 五分区。
   /// 2026-08-23：历史成交从页头 Dialog 升级为常驻第 5 Tab（RFC 20260823，取代 _HistoryDialog）。
+  /// B6-5（2026-08-23，P1-交易17）：DefaultTabController + 监听组件——历史成交 keepAlive 防重建后
+  /// 切回 Tab 时主动刷新（防收盘/他端变更后陈旧，复发信号：保活页陈旧）。
+  final GlobalKey<_HistorySectionState> _historyKey = GlobalKey<_HistorySectionState>();
+
   Widget _buildTabWorkspace() {
     return DefaultTabController(
       length: 5,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.darkSurface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      child: _TabHistoryRefreshListener(
+        onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+            ),
+            child: const TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              indicatorColor: AppColors.darkGreen,
+              labelColor: AppColors.darkGrey1,
+              unselectedLabelColor: AppColors.darkGrey5,
+              labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              tabs: [
+                Tab(text: '持仓'),
+                Tab(text: '自选'),
+                Tab(text: '清仓'),
+                Tab(text: '资金'),
+                Tab(text: '历史成交'),
+              ],
+            ),
           ),
-          child: TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            indicatorColor: AppColors.darkGreen,
-            labelColor: AppColors.darkGrey1,
-            unselectedLabelColor: AppColors.darkGrey5,
-            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            tabs: const [
-              Tab(text: '持仓'),
-              Tab(text: '自选'),
-              Tab(text: '清仓'),
-              Tab(text: '资金'),
-              Tab(text: '历史成交'),
-            ],
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 380,
+            child: TabBarView(children: [
+              SingleChildScrollView(child: _buildPositionTable()),
+              SingleChildScrollView(child: _buildWatchlistSection()),
+              SingleChildScrollView(child: _buildSoldSection()),
+              SingleChildScrollView(child: _buildCashSection()),
+              _HistorySection(key: _historyKey, api: widget.api),
+            ]),
           ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 380,
-          child: TabBarView(children: [
-            SingleChildScrollView(child: _buildPositionTable()),
-            SingleChildScrollView(child: _buildWatchlistSection()),
-            SingleChildScrollView(child: _buildSoldSection()),
-            SingleChildScrollView(child: _buildCashSection()),
-            _HistorySection(api: widget.api),
-          ]),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -883,11 +872,13 @@ class _TradingPageState extends State<TradingPage> {
               style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
           const SizedBox(width: 12),
           if (r66 > 0)
-            Text('扛单超10%（R66）$r66 笔',
+            // P2-交易5（2026-08-17）：阈值已改 -5%（课程止损幅度 3-5%），文案同步
+            Text('扛单超5%（R66）$r66 笔',
                 style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
           if (r53 > 0) ...[
             const SizedBox(width: 12),
-            Text('短持仓亏损（R53）$r53 笔',
+            // B3-5（2026-08-23）：R53 含短持仓亏损与持有较久亏损（后端 verdict 均标 R53）
+            Text('违反 R53 $r53 笔',
                 style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
           ],
           if (total > 0) ...[
@@ -1091,7 +1082,9 @@ class _TradingPageState extends State<TradingPage> {
           Expanded(
             child: Text(
               '本金（累计净投入）¥${_thousands(_account?.principal ?? 0)}'
-              ' · 总盈亏 ¥${_account != null ? _thousands(_account!.assets - _account!.principal) : '-'}',
+              // B2-2（2026-08-23）：总盈亏复用 totalPnl getter——principal=0（新账号未设本金）
+              // 时回落持仓浮盈（pnl），不再把全部资产当总盈亏（与账户卡同口径）
+              ' · 总盈亏 ¥${_account != null ? _thousands(_account!.totalPnl) : '-'}',
               style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2),
             ),
           ),
@@ -1892,7 +1885,8 @@ class _ImportDialogState extends State<_ImportDialog> {
       setState(() {
         _importing = false;
         _successCount = 0;
-        _errors.add('历史成交导入失败：${e.toString().contains('无法识别') ? '请确认是通达信「历史成交查询」导出' : '请检查网络后重试'}');
+        // B2-3（2026-08-23）：透出后端人话（原 contains('无法识别') 恒 false 吞掉人话）
+        _errors.add('历史成交导入失败：${extractApiErrorMessage(e)}');
       });
     }
   }
@@ -2026,19 +2020,57 @@ class _ImportDialogState extends State<_ImportDialog> {
 
 // ─────────────────────────── 历史成交 Tab（RFC 20260823，取代交易历史 Dialog） ───────────────────────────
 
+/// B6-5（2026-08-23，P1-交易17）：监听 DefaultTabController 的 index——切到历史成交 Tab（index 4）
+/// 时回调 onHistorySelected（TradingPage 用它驱动 _HistorySection.refreshSilently，防 keepAlive 陈旧）。
+class _TabHistoryRefreshListener extends StatefulWidget {
+  final VoidCallback onHistorySelected;
+  final Widget child;
+
+  const _TabHistoryRefreshListener({required this.onHistorySelected, required this.child});
+
+  @override
+  State<_TabHistoryRefreshListener> createState() => _TabHistoryRefreshListenerState();
+}
+
+class _TabHistoryRefreshListenerState extends State<_TabHistoryRefreshListener> {
+  TabController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller?.removeListener(_onChanged);
+    _controller = DefaultTabController.of(context);
+    _controller?.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    if (_controller?.index == 4) widget.onHistorySelected();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// 历史成交 Tab 内容：日期范围查询 + 按日分组全字段流水列表 + 导入历史成交入口。
 /// 2026-08-23：从页头 Dialog 升级为常驻第 5 Tab（RFC 20260823-trading-history-tab-backfill）；
 /// 进 Tab 自动加载 + 手动刷新，不做定时轮询（保活页陈旧问题，切页刷新兜底）。
 class _HistorySection extends StatefulWidget {
   final ApiService api;
 
-  const _HistorySection({required this.api});
+  const _HistorySection({super.key, required this.api});
 
   @override
   State<_HistorySection> createState() => _HistorySectionState();
 }
 
-class _HistorySectionState extends State<_HistorySection> {
+class _HistorySectionState extends State<_HistorySection>
+    with AutomaticKeepAliveClientMixin {
   late DateTime _from;
   late DateTime _to;
   List<TradeRecordItem>? _trades;
@@ -2047,6 +2079,11 @@ class _HistorySectionState extends State<_HistorySection> {
   int _loadGen = 0; // 代际令牌（2026-08-17 走查）：快速切换起止日期时旧响应不覆盖新查询
   HistoricalTradeImportResult? _importResult; // 最近一次导入结果（导入后 inline 展示，含 updated）
 
+  // B5-6（2026-08-23）：历史成交 Tab keepAlive——切 Tab 不再 dispose/重建重复发 _load() 请求；
+  // 数据可变（导入后手动刷新/切页刷新兜底），不引入定时轮询
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
@@ -2054,6 +2091,24 @@ class _HistorySectionState extends State<_HistorySection> {
     _to = now;
     _from = now.subtract(const Duration(days: 30));
     _load();
+  }
+
+  /// B6-5（2026-08-23，P1-交易17）：切回 Tab 静默刷新——keepAlive 不重建，
+  /// 收盘/他端变更后靠此防陈旧（不闪 loading，旧数据保留到新数据到达）。
+  void refreshSilently() {
+    final gen = ++_loadGen;
+    widget.api.getTrades(from: _fmt(_from), to: _fmt(_to)).then((trades) {
+      if (!mounted || gen != _loadGen) return;
+      setState(() {
+        _trades = trades;
+        _loading = false;
+        _error = null;
+      });
+    }).catchError((e) {
+      if (!mounted || gen != _loadGen) return;
+      // 静默失败保留旧数据（与主数据刷新同口径：不整页错误态）
+      setState(() => _loading = false);
+    });
   }
 
   static String _fmt(DateTime d) =>
@@ -2154,6 +2209,7 @@ class _HistorySectionState extends State<_HistorySection> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // B5-6：keepAlive 必须调用
     final trades = _trades ?? <TradeRecordItem>[];
     final buyCount = trades.where((t) => t.isBuy).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2445,11 +2501,10 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
       widget.onImported(result);
     } catch (e) {
       if (!mounted) return;
+      // B2-3（2026-08-23）：透出后端人话 error（原 contains('无法识别') 恒 false 吞掉人话）
       setState(() {
         _importing = false;
-        _error = e.toString().contains('无法识别')
-            ? '请确认是通达信「历史成交查询」导出'
-            : '导入失败，请检查网络后重试';
+        _error = extractApiErrorMessage(e);
       });
     }
   }
@@ -2715,9 +2770,12 @@ class _ReviewHistoryDialogState extends State<_ReviewHistoryDialog> {
 /// RFC 20260817：推送设置对话框——逐类型开关（早盘/午间/尾盘/买点/预警/行情条）。
 class _PushSettingsDialog extends StatefulWidget {
   final Map<String, bool> settings;
-  final Future<bool> Function(String type, bool on) onToggle;
+  /// 切换回调：返回 null=成功；返回字符串=失败原因（B5-6，P2-推送5 半修残留——失败不再静默）。
+  final Future<String?> Function(String type, bool on) onToggle;
+  /// 失败时提示（在 dialog 外的 messenger 上弹，避免 dialog 内无页面 context）。
+  final void Function(String message)? onToggleFailed;
 
-  const _PushSettingsDialog({required this.settings, required this.onToggle});
+  const _PushSettingsDialog({required this.settings, required this.onToggle, this.onToggleFailed});
 
   @override
   State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
@@ -2727,7 +2785,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
   late Map<String, bool> _settings = Map.of(widget.settings);
 
   static const List<(String, String)> _items = [
-    ('session', '时段节奏（早盘/午间/尾盘）'),
+    ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
     ('buy-point', '买点提醒'),
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
@@ -2757,8 +2815,14 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
                 value: _settings[type] ?? true,
                 activeTrackColor: AppColors.darkGreen,
                 onChanged: (on) async {
-                  final ok = await widget.onToggle(type, on);
-                  if (ok && mounted) setState(() => _settings[type] = on);
+                  // B5-6（2026-08-23，P2-推送5 半修残留）：成功才翻转 + 失败透出原因
+                  final err = await widget.onToggle(type, on);
+                  if (!mounted) return;
+                  if (err == null) {
+                    setState(() => _settings[type] = on);
+                  } else {
+                    widget.onToggleFailed?.call(err);
+                  }
                 },
               ),
           ],

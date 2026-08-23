@@ -153,17 +153,24 @@ public class TradingAppService {
             BigDecimal tradeValueDelta = direction == TradeDirection.BUY
                     ? price.multiply(BigDecimal.valueOf(volume))
                     : price.multiply(BigDecimal.valueOf(volume)).negate();
-            accountSnapshotRepository.findLatest(userId).ifPresent(current -> {
-                BigDecimal newCash = current.cash().add(tradeCashDelta);
-                BigDecimal newMarketValue = current.marketValue().add(tradeValueDelta);
-                accountSnapshotRepository.save(userId, new AccountSnapshot(
-                        newCash.add(newMarketValue), // 总资产 = 现金 + 市值（只差手续费）
-                        newCash,
-                        current.available().add(tradeCashDelta),
-                        current.withdrawable().add(tradeCashDelta),
-                        newMarketValue, current.pnl(), current.todayPnl(),
-                        current.principal(), current.snapshotDate()));
-            });
+            try {
+                accountSnapshotRepository.update(userId, current -> current.map(c -> {
+                    BigDecimal newCash = c.cash().add(tradeCashDelta);
+                    BigDecimal newMarketValue = c.marketValue().add(tradeValueDelta);
+                    return new AccountSnapshot(
+                            newCash.add(newMarketValue), // 总资产 = 现金 + 市值（只差手续费）
+                            newCash,
+                            c.available().add(tradeCashDelta),
+                            c.withdrawable().add(tradeCashDelta),
+                            newMarketValue, c.pnl(), c.todayPnl(),
+                            c.principal(), c.snapshotDate());
+                }).orElse(null)); // P0-2：无快照（首次交易未导入资金）不初始化，保持既有语义
+            } catch (RuntimeException e) {
+                // B6-4（2026-08-23，P1-交易11）：账目快照写失败——持仓/流水已落库（跨文件无原子回滚），
+                // 明确告警不静默（用户看到的账目可能滞后于持仓），交易本身不中断
+                log.error("交易已落库但账户快照更新失败——账目未落盘 | userId={} | {} {} {}股@{} | {}",
+                        userId, direction, symbol, volume, price, e.getMessage());
+            }
 
             // RFC 20260815 §6：交易成功后同步写一条 domain=trading 记录（复盘提醒 + 时间线闭环）。
             // 位置在 saveAll 成功之后：recordTrade 失败（校验/存储异常）路径不会留下记录；
@@ -672,11 +679,14 @@ public class TradingAppService {
         }
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细当日盈亏和
         double todayPnl = q.positions().stream().mapToDouble(TradingImportParser.CashPosition::todayPnl).sum();
-        BigDecimal principal = accountSnapshotRepository.findLatest(userId)
-                .map(AccountSnapshot::principal).orElse(BigDecimal.ZERO);
-        accountSnapshotRepository.save(userId, new AccountSnapshot(
+        // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁内原子 RMW），
+        // 原 save 在 tradeLock 外 → 与 recordTrade/转账/收盘更新并发互相覆盖
+        // B6-4（2026-08-23，P1-交易11）：写失败上抛（不再静默）——资金导入是用户主动修正账目的动作，
+        // 必须让用户知道没生效（controller → 400 人话）
+        accountSnapshotRepository.update(userId, cur -> new AccountSnapshot(
                 q.assets(), q.cash(), q.available(), q.withdrawable(),
-                q.marketValue(), q.pnl(), BigDecimal.valueOf(todayPnl), principal, LocalDate.now()));
+                q.marketValue(), q.pnl(), BigDecimal.valueOf(todayPnl),
+                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), LocalDate.now()));
         synchronized (tradeLock(userId)) {
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
@@ -714,26 +724,28 @@ public class TradingAppService {
         TransferRecord record = new TransferRecord(IdGenerator.monotonic("transfer_"),
                 type, amount, date, note);
         synchronized (tradeLock(userId)) {
-            AccountSnapshot current = accountSnapshotRepository.findLatest(userId)
-                    .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                            BigDecimal.ZERO, LocalDate.now()));
-            BigDecimal delta = record.isIn() ? amount : amount.negate();
-            accountSnapshotRepository.save(userId, new AccountSnapshot(
-                    current.assets().add(delta),
-                    current.cash().add(delta),
-                    current.available().add(delta),
-                    current.withdrawable().add(delta),
-                    current.marketValue(),
-                    current.pnl(),
-                    current.todayPnl(),
-                    // 净投入 += 转入 - 转出（用户确认：本金 = 净投入累计）
-                    current.principal().add(delta),
-                    LocalDate.now()));
+            // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）
+            AccountSnapshot updated = accountSnapshotRepository.update(userId, cur -> {
+                AccountSnapshot current = cur.orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, LocalDate.now()));
+                BigDecimal delta = record.isIn() ? amount : amount.negate();
+                return new AccountSnapshot(
+                        current.assets().add(delta),
+                        current.cash().add(delta),
+                        current.available().add(delta),
+                        current.withdrawable().add(delta),
+                        current.marketValue(),
+                        current.pnl(),
+                        current.todayPnl(),
+                        // 净投入 += 转入 - 转出（用户确认：本金 = 净投入累计）
+                        current.principal().add(delta),
+                        LocalDate.now());
+            });
             transferRepository.append(userId, record);
             log.info("银证转账 | userId={} | {} {} | 本金净投入 → {}",
                     userId, record.isIn() ? "转入" : "转出", amount,
-                    current.principal().add(delta));
+                    updated != null ? updated.principal() : amount);
             return record;
         }
     }
@@ -763,17 +775,19 @@ public class TradingAppService {
             throw new TradingException("本金必须是大于 0 的金额");
         }
         synchronized (tradeLock(userId)) {
-            AccountSnapshot current = accountSnapshotRepository.findLatest(userId)
-                    .orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                            BigDecimal.ZERO, LocalDate.now()));
-            AccountSnapshot updated = new AccountSnapshot(
-                    current.assets(), current.cash(), current.available(), current.withdrawable(),
-                    current.marketValue(), current.pnl(), current.todayPnl(),
-                    amount, current.snapshotDate());
-            accountSnapshotRepository.save(userId, updated);
+            // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）
+            AccountSnapshot updated = accountSnapshotRepository.update(userId, cur -> {
+                AccountSnapshot current = cur.orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, LocalDate.now()));
+                return new AccountSnapshot(
+                        current.assets(), current.cash(), current.available(), current.withdrawable(),
+                        current.marketValue(), current.pnl(), current.todayPnl(),
+                        amount, current.snapshotDate());
+            });
             log.info("本金设置 | userId={} | principal → {}（总盈亏 = 资产 {} - 本金 = {}）",
-                    userId, amount, current.assets(), current.assets().subtract(amount));
+                    userId, amount, updated != null ? updated.assets() : BigDecimal.ZERO,
+                    updated != null ? updated.assets().subtract(amount) : BigDecimal.ZERO);
             return updated;
         }
     }

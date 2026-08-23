@@ -1094,6 +1094,37 @@ void main() {
       expect(find.text('纪律遵守率 50%'), findsOneWidget);
     });
 
+    testWidgets('B3-5 久持小亏（R53 延展）计入违规——遵守率不再虚高', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          // 2 笔：1 盈（无违规）+ 1 久持小亏（verdict 含 R53 延展）→ 遵守率 50%（旧实现 100% 虚高）
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结', 'psychology': ''},
+            {'symbol': '601066', 'name': '中信建投', 'buyDate': '2026-06-01', 'sellDate': '2026-07-01',
+             'holdDays': 30, 'tradeCount': '1+1', 'holdPnlPct': -4.5,
+             'verdict': '亏损持仓——按纪律复盘：止损/卖点是否按计划执行（R53）', 'psychology': ''},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('违反 R53 1 笔'), findsOneWidget);
+      expect(find.text('纪律遵守率 50%'), findsOneWidget);
+    });
+
     testWidgets('P2-12 行为模式否定词不误配（「不贪」不算贪心）', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
@@ -1144,6 +1175,75 @@ void main() {
       expect(find.text('¥-39,495.12'), findsOneWidget);
       expect(find.textContaining('本金 ¥150,000'), findsOneWidget);
     });
+  });
+
+  // ── B2-2（2026-08-23）：资金区块总盈亏 principal=0 不把全部资产当总盈亏 ──
+
+  testWidgets('B2-2 本金未设（principal=0）资金区块总盈亏回落持仓浮盈', (tester) async {
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+      if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+      if (path == '/api/v1/trading/account') {
+        // principal=0（新账号未设本金），pnl=15235.55
+        return _json({'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
+          'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
+          'todayPnl': 0.0, 'principal': 0.0, 'snapshotDate': '2026-08-16'});
+      }
+      if (path == '/api/v1/trading/watchlist') return _json([]);
+      if (path == '/api/v1/trading/buy-points') return _json([]);
+      if (path == '/api/v1/trading/sold') return _json([]);
+      if (path == '/api/v1/trading/sold/score') return _json([]);
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+
+    await tester.tap(find.text('资金'));
+    await tester.pumpAndSettle();
+    // 资金区块总盈亏 = totalPnl getter = pnl（principal=0 回落浮盈），而非 assets=110504.88
+    expect(find.textContaining('总盈亏 ¥15,235.55'), findsOneWidget);
+    expect(find.textContaining('总盈亏 ¥110,504.88'), findsNothing);
+  });
+
+  // ── B2-3（2026-08-23）：历史成交导入后端人话透出（不再吞成「检查网络」）──
+
+  testWidgets('B2-3 历史成交导入失败透出后端人话 error', (tester) async {
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+      if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+      if (path == '/api/v1/trading/account') return _json(_accountJson());
+      if (path == '/api/v1/trading/watchlist') return _json([]);
+      if (path == '/api/v1/trading/sold') return _json([]);
+      if (path == '/api/v1/trading/buy-points') return _json([]);
+      if (path == '/api/v1/trading/sold/score') return _json([]);
+      if (path == '/api/v1/trading/trades') return _json([]);
+      if (path == '/api/v1/trading/trades/import') {
+        return http.Response(
+          jsonEncode({'error': '无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出'}),
+          400,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+
+    await tester.tap(find.text('历史成交'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导入历史成交'));
+    await tester.pumpAndSettle();
+    // 表头四关键词齐全 → 过本地 isTdxHistoryExport 校验 → 请求打后端 → 400 人话透出
+    await tester.enterText(find.byType(TextField).last,
+        '成交日期 证券代码 证券名称 买卖标志 成交编号');
+    await tester.tap(find.text('导入'));
+    await tester.pumpAndSettle();
+
+    // 后端人话 error 透出（原实现 contains('无法识别') 恒 false → 吞成「检查网络」）
+    expect(find.textContaining('无法识别历史成交导出'), findsOneWidget);
+    expect(find.textContaining('请检查网络后重试'), findsNothing);
   });
 
 }

@@ -93,16 +93,39 @@ public class TradeLogCollectService {
         return tradeLogRepository.findByDate(userId, LocalDate.now());
     }
 
-    /** 用户确认：当日**完整**候选逐笔走 recordTrade 落库，然后清空候选。
-     *  不完整候选（complete=false，缺数量/价格）不落库——返回跳过数，前端引导去交易模块补全。 */
-    public int confirm(String userId) {
+    /**
+     * 丢弃一条当日候选（B6-5，2026-08-23，P1-交易18）：
+     * 失败/不完整候选保留后可能成为「钉子户」——15:05 推送反复提醒同一笔；
+     * 前端提供丢弃入口（标 symbol+direction），用户确认放弃该笔归集。
+     * @return true=已移除；false=当日无此候选
+     */
+    public boolean discard(String userId, String symbol, String direction) {
+        LocalDate today = LocalDate.now();
+        return tradeLogRepository.discard(userId, today, symbol, direction);
+    }
+
+    /** 用户确认：当日**完整**候选逐笔走 recordTrade 落库。
+     *  P0-1（2026-08-23 修复）：落库失败的候选（SELL 超持仓/未持有等）与不完整候选
+     *  **回写保留**（不无条件清空），确认过的交易不静默丢失——用户可补全/修正后再次确认。
+     *  @return 确认结果（成功/失败/跳过笔数 + 失败人话明细） */
+    public ConfirmResult confirm(String userId) {
+        // B6-5（2026-08-23，P1-交易14）：单次取 now 贯穿——原 todayCandidates/save/recordTrade
+        // 三处 LocalDate.now() 跨午夜时候选昨日残留 + 今日副本（复发信号：now() 推导路径）
+        LocalDate today = LocalDate.now();
         List<TradeLogCandidate> candidates = todayCandidates(userId);
+        if (candidates.isEmpty()) {
+            return new ConfirmResult(0, 0, 0, List.of());
+        }
         int done = 0;
         int skipped = 0;
+        List<TradeLogCandidate> remaining = new java.util.ArrayList<>();
+        List<String> failures = new java.util.ArrayList<>();
         for (TradeLogCandidate c : candidates) {
             if (!c.complete()) {
-                // RFC 20260817：数量/价格缺失的候选确认时跳过（recordTrade 0 数量会误伤/静默）
+                // RFC 20260817：数量/价格缺失的候选确认时跳过（recordTrade 0 数量会误伤/静默）；
+                // P0-1：保留候选，前端引导补全后再确认
                 skipped++;
+                remaining.add(c);
                 log.info("交易日志确认跳过（不完整）| userId={} | {} {} | 请去交易模块补全",
                         userId, c.direction(), c.symbol());
                 continue;
@@ -115,18 +138,36 @@ public class TradeLogCollectService {
                         "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY,
                         c.price() != null ? c.price() : BigDecimal.ZERO,
                         c.volume() != null ? c.volume() : 0,
-                        LocalDate.now(),
+                        today,
                         java.time.LocalTime.now(), // RFC 20260822：日志确认落库带当下成交时刻
                         null, null, null, null);
                 done++;
             } catch (Exception e) {
-                log.warn("交易日志确认落库失败（跳过）| userId={} | {} {} | {}", userId, c.direction(), c.symbol(), e.getMessage());
+                // P0-1：失败候选保留（不丢），记录人话原因供前端展示
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                failures.add(label + ": " + msg);
+                remaining.add(c);
+                log.warn("交易日志确认落库失败（保留候选）| userId={} | {} {} | {}", userId, c.direction(), c.symbol(), msg);
             }
         }
-        tradeLogRepository.save(userId, LocalDate.now(), List.of());
-        log.info("交易日志确认落库 | userId={} | 成功 {} / 跳过(不完整) {} / 共 {} 笔", userId, done, skipped, candidates.size());
-        return done;
+        // C1（2026-08-23，隔离审查 P2-2）：confirm 读取→处理→save 在 repository 锁外——
+        // 处理期间新归集（collect append）的候选若直接 save(remaining) 会被覆盖清掉。
+        // 修：save 前重新读当日全部候选，把「不在本次处理范围」的新候选并入保留集。
+        List<TradeLogCandidate> latest = tradeLogRepository.findByDate(userId, today);
+        for (TradeLogCandidate n : latest) {
+            boolean handled = candidates.stream().anyMatch(c -> c.sameTrade(n));
+            boolean alreadyKept = remaining.stream().anyMatch(c -> c.sameTrade(n));
+            if (!handled && !alreadyKept) remaining.add(n);
+        }
+        tradeLogRepository.save(userId, today, remaining);
+        log.info("交易日志确认落库 | userId={} | 成功 {} / 失败 {} / 跳过(不完整) {} / 共 {} 笔 | 保留 {} 笔",
+                userId, done, failures.size(), skipped, candidates.size(), remaining.size());
+        return new ConfirmResult(done, failures.size(), skipped, failures);
     }
+
+    /** 确认结果：成功/失败/跳过笔数 + 失败人话明细（P0-1：失败候选已保留，可再次确认）。 */
+    public record ConfirmResult(int confirmed, int failed, int skipped, List<String> failures) {}
 
     /** 收盘确认文案：当日候选汇总（供 15:05 推送 / 前端展示）。 */
     public String summarize(List<TradeLogCandidate> candidates) {

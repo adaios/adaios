@@ -16,6 +16,7 @@ import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.domain.trading.PushSettings;
+import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import jakarta.validation.Constraint;
@@ -24,6 +25,7 @@ import jakarta.validation.ConstraintValidatorContext;
 import jakarta.validation.Payload;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +64,8 @@ public class TradingController {
     private final PushSettingsRepository pushSettingsRepository;
     /** RFC 20260817：交易日志自动归集（当日候选/确认落库）。 */
     private final TradeLogCollectService tradeLogCollectService;
+    /** B10-1（2026-08-23，P1-推送2）：推送删除持久化（app 左滑删/web 忽略按钮）。 */
+    private final MarketPushRepository marketPushRepository;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
     private final Path inboxDir;
 
@@ -74,6 +78,7 @@ public class TradingController {
                              SoldScoreService soldScoreService,
                              PushSettingsRepository pushSettingsRepository,
                              TradeLogCollectService tradeLogCollectService,
+                             MarketPushRepository marketPushRepository,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -84,6 +89,7 @@ public class TradingController {
         this.soldScoreService = soldScoreService;
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
+        this.marketPushRepository = marketPushRepository;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -209,11 +215,21 @@ public class TradingController {
         if (denied != null) return denied;
         List<BatchTradeRequest.BatchTradeItem> items = body != null && body.trades() != null
                 ? body.trades() : List.of();
+        // C3（2026-08-23，隔离审查 P2-9）：空 trades 不再静默 200 成功 0——显式 400 人话
+        if (items.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "没有可导入的交易（trades 不能为空）"));
+        }
         List<Map<String, Object>> results = new java.util.ArrayList<>();
         int success = 0;
         for (int i = 0; i < items.size(); i++) {
             BatchTradeRequest.BatchTradeItem it = items.get(i);
             try {
+                // P1-2（2026-08-23 走查修复）：batch 逐字段校验——此前无任何校验，
+                // symbol=null 落盘污染 positions.md、price=null NPE 500
+                String rowError = validateBatchItem(it);
+                if (rowError != null) {
+                    throw new IllegalArgumentException(rowError);
+                }
                 tradingAppService.recordTrade(userId, it.symbol(), it.name(), it.direction(),
                         it.price(), it.volume(), it.entryDate(), it.tradeTime(),
                         it.stopLossPrice(), it.buyPoint(),
@@ -225,6 +241,27 @@ public class TradingController {
             }
         }
         return ResponseEntity.ok(Map.of("success", success, "failures", results));
+    }
+
+    /** P1-2（2026-08-23）：batch 单行字段校验——返回人话错误；null 表示通过。
+     *  C4（2026-08-23，隔离审查 P2-10）：name 超长（>32）校验——与单笔 TradeRequest 同口径。 */
+    private static String validateBatchItem(BatchTradeRequest.BatchTradeItem it) {
+        if (it.symbol() == null || it.symbol().isBlank()) {
+            return "代码不能为空";
+        }
+        if (it.direction() == null) {
+            return "方向不能为空（BUY/SELL）";
+        }
+        if (it.price() == null || it.price().signum() <= 0) {
+            return "价格必须大于 0";
+        }
+        if (it.volume() <= 0) {
+            return "数量必须大于 0";
+        }
+        if (it.name() != null && it.name().length() > 32) {
+            return "名称不能超过 32 字符";
+        }
+        return null;
     }
 
     /**
@@ -504,15 +541,46 @@ public class TradingController {
         return ResponseEntity.ok(tradeLogCollectService.todayCandidates(userId));
     }
 
+    /** 交易日志归集（B6-5，2026-08-23，P1-交易18）：丢弃一条保留候选（失败/不完整钉子户）。
+     *  DELETE /api/v1/trading/trade-log?symbol=&direction= → {"discarded":true}；无此候选 404。 */
+    @DeleteMapping("/trade-log")
+    public ResponseEntity<?> discardTradeLogCandidate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(required = false) String symbol,
+            @RequestParam(required = false) String direction) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        boolean removed = tradeLogCollectService.discard(userId, symbol, direction);
+        return removed ? ResponseEntity.ok(Map.of("discarded", true))
+                : ResponseEntity.notFound().build();
+    }
+
     /** 交易日志归集（RFC 20260817）：确认落库（POST /api/v1/trading/trade-log/confirm）——
-     *  当日候选逐笔走 recordTrade（持仓/现金/流水），确认后清空候选。 */
+     *  当日候选逐笔走 recordTrade；P0-1（2026-08-23）：失败/不完整候选保留不丢，返回明细。 */
     @PostMapping("/trade-log/confirm")
     public ResponseEntity<?> confirmTradeLog(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        int done = tradeLogCollectService.confirm(userId);
-        return ResponseEntity.ok(Map.of("confirmed", done));
+        TradeLogCollectService.ConfirmResult r = tradeLogCollectService.confirm(userId);
+        return ResponseEntity.ok(Map.of(
+                "confirmed", r.confirmed(),
+                "failed", r.failed(),
+                "skipped", r.skipped(),
+                "failures", r.failures()));
+    }
+
+    /** 推送删除持久化（B10-1，2026-08-23，P1-推送2）：单条推送已读/忽略——
+     *  app 左滑删 / web 忽略按钮调用，刷新/重启不再复活。DELETE /api/v1/trading/pushes/{id} */
+    @DeleteMapping("/pushes/{id}")
+    public ResponseEntity<?> dismissPush(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String id) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        boolean removed = marketPushRepository.dismiss(userId, java.time.LocalDate.now(), id);
+        return removed ? ResponseEntity.ok(Map.of("dismissed", true))
+                : ResponseEntity.notFound().build();
     }
 
     /** 资金股份查询导入（更新现金 + 精确成本，POST /api/v1/trading/imports/cash）。 */
@@ -734,11 +802,14 @@ public class TradingController {
      * <p>
      * RFC 20260816：BUY 曾必填止损位/买点——2026-08-18 确认批次放开为可选（app 简化：
      * 手机端只做日常买卖记录，止损位/买点归 web 端设置）；SELL 时两者本就可空。
+     * <p>
+     * P1-1（2026-08-23 走查修复）：direction 加 @NotNull——此前 null 未持仓静默 200 no-op、
+     * 已持仓 500，同请求两种行为。
      */
     public record TradeRequest(
             @NotBlank String symbol,
             @Size(max = 32) String name,
-            TradeDirection direction,
+            @NotNull TradeDirection direction,
             @Positive BigDecimal price,
             @Positive int volume,
             LocalDate entryDate,

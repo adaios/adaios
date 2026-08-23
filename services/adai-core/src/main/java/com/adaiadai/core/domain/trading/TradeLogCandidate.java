@@ -26,7 +26,7 @@ public record TradeLogCandidate(
         String source,
         boolean complete
 ) {
-    /** 去重键：同 symbol + 方向 + 当日（数量 ±10% 视为同笔）。 */
+    /** 去重键：同 symbol + 方向（volume 维度由 {@link #sameTrade} 按 ±10% 区间判定）。 */
     public String dedupeKey() {
         // P1-1（2026-08-18 生产）：symbol 缺失（宽松解析未识别代码）时用 name 兜底，
         // 避免所有无代码候选共用 "unknown" 键互相吞并（生产 09:01-09:02 三次归集只剩 2 笔）。
@@ -34,5 +34,20 @@ public record TradeLogCandidate(
                 : (name != null && !name.isBlank()) ? name
                 : "?";
         return key + ":" + direction;
+    }
+
+    /**
+     * 是否与另一候选视为同一笔（B6-2，2026-08-23，P1-交易12）：
+     * 同 symbol + 方向，且 volume 差 ≤ ±10%（相对大者）——`volume/10*10` 固定 10 股桶
+     * 过宽吞笔（10 vs 19 同桶）/过窄漏去重（100 vs 110 分开 → confirm 双落库）双缺陷；
+     * 任一方 volume 缺失（不完整候选）按 symbol+direction 同笔（去重键语义不变）。
+     */
+    public boolean sameTrade(TradeLogCandidate other) {
+        if (other == null) return false;
+        if (!dedupeKey().equals(other.dedupeKey())) return false;
+        if (volume == null || other.volume == null || volume <= 0 || other.volume <= 0) return true;
+        int max = Math.max(volume, other.volume);
+        long diff = Math.abs((long) volume - other.volume);
+        return diff * 10L <= (long) max; // diff/max ≤ 0.10 → ±10% 内同笔
     }
 }
