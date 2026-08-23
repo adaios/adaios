@@ -3,9 +3,9 @@ title: 项目资产：adai-web（桌面端）
 description: adai-web 项目资产卡——模块划分/职责边界/与 app 的关系；改 web 前先读本卡
 version: 1
 created: 2026-08-15
-updated: 2026-08-22
+updated: 2026-08-23
 status: active
-lines: 75
+lines: 78
 depends-on:
   - ../../frontmatter-spec.md
   - ../conventions.md
