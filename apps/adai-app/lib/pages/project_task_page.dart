@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -20,6 +21,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
   String? _filterStatus;
   bool _showCreate = false;
   bool _submitting = false;
+  String? _editingTaskId; // P1-8（2026-08-23 app 体感）：编辑中的任务 id（null=新建）
 
   // 创建表单
   final _titleCtrl = TextEditingController();
@@ -55,14 +57,17 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
 
   Future<void> _loadData() async {
     try {
-      final results = await Future.wait([
-        widget.api.getTasks(status: _filterStatus),
-        widget.api.getTaskStats(),
-      ]);
+      // P2-9（2026-08-23 app 体感）：tasks 致命、stats 可降级——原 Future.wait 任一失败整页错误；
+      // 先 await 致命 tasks（立即处理失败防 unhandled），stats 挂 onError 降级不阻塞列表
+      final tasksFuture = widget.api.getTasks(status: _filterStatus);
+      final statsFuture = widget.api.getTaskStats()
+          .then<TaskStatsResponse?>((v) => v, onError: (_) => null);
+      final tasks = await tasksFuture;
+      final stats = await statsFuture;
       if (!mounted) return;
       setState(() {
-        _tasks = results[0] as List<TaskResponse>;
-        _stats = results[1] as TaskStatsResponse;
+        _tasks = tasks;
+        if (stats != null) _stats = stats;
         _loading = false;
         _error = null;
       });
@@ -118,21 +123,27 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
       final desc = _descCtrl.text.trim();
       final tagText = _tagCtrl.text.trim();
       final tags = tagText.isNotEmpty ? tagText.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList() : null;
-      await widget.api.createTask(
-        title: title,
-        description: desc.isNotEmpty ? desc : null,
-        priority: _priority,
-        tags: tags,
-      );
+      // P1-8（2026-08-23 app 体感修复）：编辑态保存走 PUT（原 _editTask 只填表不记 id → 恒新建）
+      if (_editingTaskId != null) {
+        await widget.api.updateTask(_editingTaskId!, title: title, description: desc.isNotEmpty ? desc : null,
+            priority: _priority, tags: tags);
+      } else {
+        await widget.api.createTask(
+          title: title,
+          description: desc.isNotEmpty ? desc : null,
+          priority: _priority,
+          tags: tags,
+        );
+      }
       if (!mounted) return;
       _titleCtrl.clear(); _descCtrl.clear(); _tagCtrl.clear();
-      setState(() { _showCreate = false; _submitting = false; });
+      setState(() { _showCreate = false; _submitting = false; _editingTaskId = null; });
       _refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建失败: ${_extractApiError(e)}', style: TextStyle(color: AppColors.darkOrange)),
+        SnackBar(content: Text('${_editingTaskId != null ? '更新' : '创建'}失败: ${_extractApiError(e)}', style: TextStyle(color: AppColors.darkOrange)),
             backgroundColor: AppColors.darkSurface2),
       );
     }
@@ -152,15 +163,21 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
   }
 
   String _extractApiError(dynamic e) {
+    // D7（2026-08-23 app 体感）：app 异常格式「API 错误 {code}: {body}」——原匹配「API 请求失败」
+    // 恒不中走英文兜底；改为从 body 提取 error 字段 + 中文兜底（与 main_page 同口径）
     final str = e.toString();
-    if (str.contains('API 请求失败')) {
-      final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
-      final code = codeMatch?.group(1) ?? '?';
-      return '请求失败 ($code)';
+    if (str.contains('API 错误')) {
+      try {
+        final jsonStr = str.split(': ').skip(1).join(': ');
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map && decoded['error'] != null) return '${decoded['error']}';
+      } catch (_) {}
+      final codeMatch = RegExp(r'API 错误 (\d+)').firstMatch(str);
+      return '请求失败 (${codeMatch?.group(1) ?? '?'})';
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器';
-    return 'network error';
+    return '网络异常，请重试';
   }
 
   Future<void> _deleteTask(String id) async {
@@ -209,7 +226,11 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
           ),
           IconButton(
             icon: Icon(Icons.add_rounded, size: 18, color: AppColors.darkGreen),
-            onPressed: () => setState(() => _showCreate = !_showCreate),
+            // P1-8：新建开关清编辑态（点 + 视为新建）
+            onPressed: () => setState(() {
+              _showCreate = !_showCreate;
+              _editingTaskId = null;
+            }),
           ),
         ],
       ),
@@ -487,7 +508,11 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
     _descCtrl.text = task.description;
     _tagCtrl.text = task.tags.join(', ');
     _priority = task.priority;
-    setState(() => _showCreate = true);
+    // P1-8（2026-08-23 app 体感修复）：记录编辑 id——保存走 PUT（原不记 → 恒新建）
+    setState(() {
+      _editingTaskId = task.id;
+      _showCreate = true;
+    });
     // Scroll to form
     Scrollable.ensureVisible(context, alignment: 0.1);
   }

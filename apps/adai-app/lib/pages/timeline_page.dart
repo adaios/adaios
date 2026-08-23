@@ -18,6 +18,7 @@ class _TimelinePageState extends State<TimelinePage> {
   Map<int, List<TimelineEntryResponse>> _entryMap = {};
   bool _loading = true;
   String? _error; // 后端故障人话（#108）
+  int _loadGen = 0; // P2-8：代际令牌（换月旧响应不覆盖）
 
   static const _weekLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -29,9 +30,11 @@ class _TimelinePageState extends State<TimelinePage> {
   }
 
   Future<void> _load() async {
+    // P2-8（2026-08-23 app 体感）：代际令牌——快速切换月份时旧响应不覆盖新月份
+    final gen = ++_loadGen;
     try {
       final entries = await widget.api.getTimeline(limit: 999);
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return; // 旧代丢弃
       final map = <int, List<TimelineEntryResponse>>{};
       for (final e in entries) {
         if (e.dateTime.length >= 10) {
@@ -54,7 +57,8 @@ class _TimelinePageState extends State<TimelinePage> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = _errText(e); });
+      if (!mounted || gen != _loadGen) return;
+      setState(() { _loading = false; _error = _errText(e); });
     }
   }
 

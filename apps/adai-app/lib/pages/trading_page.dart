@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
@@ -350,7 +351,9 @@ class _TradingPageState extends State<TradingPage> {
   }) {
     final dirLabel = direction == 'BUY' ? '买入' : '卖出';
     final label = name.isEmpty ? symbol : name;
-    _showSnack('已$dirLabel $label $volume 股 @${_fmtPrice(price)}', AppColors.darkGreen);
+    // D9（P2-UI3）：成功 toast 用中性/方向色（买=红卖=绿），不再恒绿混用成功色
+    _showSnack('已$dirLabel $label $volume 股 @${_fmtPrice(price)}',
+        direction == 'BUY' ? AppColors.darkRed : AppColors.darkGreen);
     setState(() {
       _draft = null;
       _confirmVolumeCtrl.clear();
@@ -445,6 +448,13 @@ class _TradingPageState extends State<TradingPage> {
         ),
         title: Text('交易', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         actions: [
+          // B11-1（2026-08-23，P1-推送3）：推送设置入口——app 首页入口仅右滑 push 卡，
+          // 空仓日/8 类全关后卡不可达 → self-lock；交易页常驻铃铛（对齐 web）
+          IconButton(
+            icon: Icon(Icons.notifications_outlined, size: 18, color: AppColors.darkGrey5),
+            onPressed: _openPushSettings,
+            tooltip: '推送设置',
+          ),
           // #102 交易系统反哺入口：生成复盘（被动通道，主动通道见复盘横幅）
           IconButton(
             icon: _reviewing
@@ -611,9 +621,11 @@ class _TradingPageState extends State<TradingPage> {
               height: 36,
               child: ElevatedButton(
                 onPressed: _confirming ? null : _confirmTrade,
+                // D9（P2-UI3）：确认按钮按方向着色（买=红、卖=绿），成功色不再混用
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.darkGreen.withValues(alpha: 0.2),
-                  foregroundColor: AppColors.darkGreen,
+                  backgroundColor: (_confirmDirection == 'BUY' ? AppColors.darkRed : AppColors.darkGreen)
+                      .withValues(alpha: 0.2),
+                  foregroundColor: _confirmDirection == 'BUY' ? AppColors.darkRed : AppColors.darkGreen,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: Text(_confirming ? '提交中...' : '确认记录', style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -787,20 +799,22 @@ class _TradingPageState extends State<TradingPage> {
   /// 确认卡内方向小切换（买/卖）。
   Widget _dirChip(String value, String label) {
     final selected = _confirmDirection == value;
+    // D9（2026-08-23 app 体感，P2-UI3）：方向徽标按 A 股红涨绿跌——买=红、卖=绿（原恒绿）
+    final dirColor = value == 'BUY' ? AppColors.darkRed : AppColors.darkGreen;
     return GestureDetector(
       onTap: () => setState(() => _confirmDirection = value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppColors.darkGreen.withValues(alpha: 0.15) : AppColors.darkBg,
+          color: selected ? dirColor.withValues(alpha: 0.15) : AppColors.darkBg,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: selected ? AppColors.darkGreen.withValues(alpha: 0.3) : AppColors.darkBorder,
+            color: selected ? dirColor.withValues(alpha: 0.3) : AppColors.darkBorder,
             width: 0.5,
           ),
         ),
         child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-            color: selected ? AppColors.darkGreen : AppColors.darkGrey5)),
+            color: selected ? dirColor : AppColors.darkGrey5)),
       ),
     );
   }
@@ -875,14 +889,24 @@ class _TradingPageState extends State<TradingPage> {
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 14, runSpacing: 6, children: [
-          _snapshotItem('可用', _fmtMoney(hasAccount ? a.available : 0)),
-          _snapshotItem('可取', _fmtMoney(hasAccount ? a.withdrawable : 0)),
-          _snapshotItem('市值', _fmtMoney(hasAccount ? a.marketValue : (s?.totalValue ?? 0))),
-          _snapshotItem('当日盈亏', '${(hasAccount ? a.todayPnl : 0) >= 0 ? '+' : ''}${_fmtMoney(hasAccount ? a.todayPnl : 0)}',
-              (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+          // D9（2026-08-23 app 体感，P2-UI2）：无账户快照时显示「—」——原显示伪 0 冒充真实值
+          _snapshotItem('可用', hasAccount ? _fmtMoney(a.available) : '—'),
+          _snapshotItem('可取', hasAccount ? _fmtMoney(a.withdrawable) : '—'),
+          _snapshotItem('市值', hasAccount ? _fmtMoney(a.marketValue) : (s?.totalValue != null ? _fmtMoney(s!.totalValue) : '—')),
+          _snapshotItem('当日盈亏', hasAccount
+              ? '${a.todayPnl >= 0 ? '+' : ''}${_fmtMoney(a.todayPnl)}'
+              : '—',
+              hasAccount ? (a.todayPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen) : AppColors.darkGrey5),
           if (hasAccount && a.principal > 0)
             _snapshotItem('本金', _fmtMoney(a.principal)),
         ]),
+        // D9（2026-08-23 app 体感，P2-UX3）：快照时间戳——收盘 15:05 后无陈旧感知
+        if (a?.snapshotDate != null && a!.snapshotDate.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('账户快照 ${a.snapshotDate} · 每 30 分钟自动刷新',
+                style: const TextStyle(fontSize: 9, color: AppColors.darkGrey5)),
+          ),
       ]),
     );
   }
@@ -1046,11 +1070,16 @@ class _TradingPageState extends State<TradingPage> {
   // ── 错误态 ──
 
   String _extractApiError(dynamic e) {
+    // D7（2026-08-23 app 体感）：优先提取后端人话 error（原只回状态码）
     final str = e.toString();
     if (str.contains('API 错误') || str.contains('API 请求失败')) {
+      try {
+        final jsonStr = str.split(': ').skip(1).join(': ');
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map && decoded['error'] != null) return '${decoded['error']}';
+      } catch (_) {}
       final codeMatch = RegExp(r'(\d{3})').firstMatch(str);
-      final code = codeMatch?.group(1) ?? '?';
-      return '请求失败 ($code)';
+      return '请求失败 (${codeMatch?.group(1) ?? '?'})';
     }
     if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
     if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
@@ -1082,6 +1111,39 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   // ── 复盘（被动入口 + 横幅共用）──
+
+  /// B11-1（2026-08-23，P1-推送3）：推送设置（交易页常驻铃铛入口——app 首页右滑入口
+  /// 空仓日/全关后不可达 self-lock）。开关失败透出原因（B11-2 同口径）。
+  Future<void> _openPushSettings() async {
+    Map<String, bool> settings = {};
+    try {
+      settings = await widget.api.getPushSettings();
+    } catch (_) {
+      settings = {};
+    }
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _PushSettingsDialog(
+        settings: settings,
+        onToggle: (type, on) async {
+          try {
+            await widget.api.updatePushSetting(type, on);
+            return null;
+          } catch (e) {
+            return _extractApiError(e);
+          }
+        },
+        onToggleFailed: (msg) {
+          messenger.showSnackBar(SnackBar(
+            content: Text('推送设置失败：$msg', style: const TextStyle(fontSize: 13)),
+            backgroundColor: AppColors.darkSurface2,
+          ));
+        },
+      ),
+    );
+  }
 
   /// 生成今日复盘 → 弹窗展示（交易系统反哺可达）。
   Future<void> _showReview() async {
@@ -1393,3 +1455,73 @@ String _fmtMoney(double v) {
 }
 
 String _fmtPrice(double v) => v.toStringAsFixed(2);
+
+// ── B11-1（2026-08-23，P1-推送3）：推送设置对话框（交易页常驻铃铛入口）──
+
+/// 推送设置逐项开关；onToggle 返回 null=成功 / 字符串=失败原因（B11-2 同口径）。
+class _PushSettingsDialog extends StatefulWidget {
+  final Map<String, bool> settings;
+  final Future<String?> Function(String type, bool on) onToggle;
+  final void Function(String message)? onToggleFailed;
+
+  const _PushSettingsDialog({required this.settings, required this.onToggle, this.onToggleFailed});
+
+  @override
+  State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
+}
+
+class _PushSettingsDialogState extends State<_PushSettingsDialog> {
+  late Map<String, bool> _settings = Map.of(widget.settings);
+
+  static const List<(String, String)> _items = [
+    ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'),
+    ('buy-point', '买点提醒'),
+    ('stop-loss', '止损预警'),
+    ('near-stop-loss', '接近止损'),
+    ('loss', '单日大跌提醒'),
+    ('gain', '放飞提示'),
+    ('break-cost', '跌破成本线'),
+    ('market', '大盘行情条'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: const Text('推送设置',
+        style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 300,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (type, label) in _items)
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(label,
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+                value: _settings[type] ?? true,
+                activeTrackColor: AppColors.darkGreen,
+                onChanged: (on) async {
+                  final err = await widget.onToggle(type, on);
+                  if (!mounted) return;
+                  if (err == null) {
+                    setState(() => _settings[type] = on);
+                  } else {
+                    widget.onToggleFailed?.call(err);
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('完成', style: TextStyle(color: AppColors.darkGrey3)),
+        ),
+      ],
+    );
+  }
+}

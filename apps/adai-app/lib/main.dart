@@ -236,18 +236,13 @@ class _DualWorldShellState extends State<DualWorldShell> {
         // 子级自带 onTap（FeedCard 按钮/卡片等）在手势竞技场中优先，不受影响。
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
-        child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: _showWorldB
-            ? LauncherPage(
-                key: const ValueKey('worldB'),
-                api: _api,
-                onNavigateBack: _toggleWorld,
-                onSwitchAccount: widget.onSwitchAccount,
-              )
-            : MainPage(
+        // P1-2（2026-08-23 app 体感修复）：切 World 不再丢输入现场——
+        // 原 AnimatedSwitcher 切换时 MainPage 出树 dispose（草稿/对话态/上传进度丢失）。
+        // 改 IndexedStack 常驻保活：两页状态跨切换保留；_feedRefreshTick 仍负责切回 Feed 刷新。
+        child: IndexedStack(
+          index: _showWorldB ? 1 : 0,
+          children: [
+            MainPage(
                 key: ValueKey('worldA-${_filterTag ?? ''}'),
                 userId: widget.userId,
                 // REVIEW #177：传入壳层共享 _api（测试注入 factory 时 MainPage 也走 MockClient；
@@ -266,6 +261,14 @@ class _DualWorldShellState extends State<DualWorldShell> {
                   ));
                 },
               ),
+            LauncherPage(
+                key: const ValueKey('worldB'),
+                api: _api,
+                onNavigateBack: _toggleWorld,
+                onSwitchAccount: widget.onSwitchAccount,
+                refreshTick: _feedRefreshTick, // P1-2：切回 World B 时刷新（保活不重建）
+              ),
+          ],
         ),
       ),
     );

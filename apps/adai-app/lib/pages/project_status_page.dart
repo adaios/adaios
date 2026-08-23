@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -39,8 +40,24 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() { _error = _apiError(e); _loading = false; });
     }
+  }
+
+  /// D6（2026-08-23 app 体感）：后端人话 error 透出（原 e.toString() 裸异常）。
+  String _apiError(Object e) {
+    final str = e.toString();
+    if (str.contains('API 错误')) {
+      try {
+        final jsonStr = str.split(': ').skip(1).join(': ');
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map && decoded['error'] != null) return '${decoded['error']}';
+      } catch (_) {}
+      final codeMatch = RegExp(r'API 错误 (\d+)').firstMatch(str);
+      return '请求失败 (${codeMatch?.group(1) ?? '?'})';
+    }
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    return '网络异常，请重试';
   }
 
   @override
@@ -62,8 +79,19 @@ class _ProjectStatusPageState extends State<ProjectStatusPage> {
           ),
         ],
       ),
-      body: _loading ? const Center(child: Text('加载中…', style: TextStyle(color: AppColors.darkGrey5)))
-          : _error != null ? Center(child: Text('加载失败\n$_error', style: TextStyle(color: AppColors.darkGrey5)))
+      // D6（2026-08-23 app 体感）：loading 用 spinner；失败人话 + 重试（原文本「加载中…」/裸异常）
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4))
+          : _error != null
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('加载失败\n$_error', style: const TextStyle(color: AppColors.darkGrey5), textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () { setState(() { _error = null; _loading = true; }); _load(); },
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.darkGreen),
+                    child: const Text('重试', style: TextStyle(fontSize: 13)),
+                  ),
+                ]))
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               children: [

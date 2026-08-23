@@ -21,6 +21,7 @@ class _SearchPageState extends State<SearchPage> {
   bool _loading = false;
   bool _hasSearched = false;
   String _query = '';
+  int _searchGen = 0; // P2-8：代际令牌（旧响应不覆盖新 query）
   String? _error; // 后端故障人话（#108）
 
   @override
@@ -44,6 +45,8 @@ class _SearchPageState extends State<SearchPage> {
   Future<void> _search() async {
     final q = _searchCtrl.text.trim();
     if (q.isEmpty) return;
+    // P2-8（2026-08-23 app 体感）：代际令牌——连点/快速改 query 时旧响应不覆盖新结果
+    final gen = ++_searchGen;
     setState(() {
       _loading = true;
       _hasSearched = true;
@@ -51,14 +54,15 @@ class _SearchPageState extends State<SearchPage> {
     });
     try {
       final resp = await widget.api.search(q);
-      if (!mounted) return;
+      if (!mounted || gen != _searchGen) return; // 旧代丢弃
       setState(() {
         _results = resp.results;
         _loading = false;
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = _errText(e); });
+      if (!mounted || gen != _searchGen) return;
+      setState(() { _loading = false; _error = _errText(e); });
     }
   }
 

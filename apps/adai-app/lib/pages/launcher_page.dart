@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 import 'dart:math' show cos, sin;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
@@ -17,12 +18,15 @@ class LauncherPage extends StatefulWidget {
   final ApiService api;
   final VoidCallback onNavigateBack;
   final VoidCallback? onSwitchAccount;
+  /// P1-2（2026-08-23）：IndexedStack 保活后切回 World B 不重建——壳层递增此 tick 触发刷新。
+  final ValueListenable<int>? refreshTick;
 
   const LauncherPage({
     super.key,
     required this.api,
     required this.onNavigateBack,
     this.onSwitchAccount,
+    this.refreshTick,
   });
 
   @override
@@ -32,6 +36,7 @@ class LauncherPage extends StatefulWidget {
 class _LauncherPageState extends State<LauncherPage>
     with SingleTickerProviderStateMixin {
   String? _coreError; // REVIEW P1-W5：核心数据失败提示
+  bool _coreLoaded = false; // P1-10（2026-08-23 app 体感）：核心数据就绪标记——失败时不伪装 0
   String? _myName;
   int _tagTotal = 0;
   int _memoryCount = 0;
@@ -58,11 +63,18 @@ class _LauncherPageState extends State<LauncherPage>
       parent: _graphAnim,
       curve: Curves.easeOut,
     );
+    // P1-2：保活后切回 World B 刷新（壳层递增 tick）
+    widget.refreshTick?.addListener(_onRefreshTick);
     _loadAll();
+  }
+
+  void _onRefreshTick() {
+    if (mounted) _loadAll();
   }
 
   @override
   void dispose() {
+    widget.refreshTick?.removeListener(_onRefreshTick);
     _graphAnim.dispose();
     super.dispose();
   }
@@ -92,6 +104,7 @@ class _LauncherPageState extends State<LauncherPage>
         _allTags = tagsResp.tags;
         _timelineCount = timeline.length;
         _memoryCount = memCount;
+        _coreLoaded = true; // P1-10
         _loading = false;
       });
       _graphAnim.forward();
@@ -201,7 +214,7 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow(Icons.psychology_outlined, '脑瓜子正在装...', '已存 $_memoryCount 条理解', AppColors.darkGreen, () {
+            _buildRow(Icons.psychology_outlined, '脑瓜子正在装...', _coreLoaded ? '已存 $_memoryCount 条理解' : '数据未加载', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,
@@ -210,7 +223,7 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            _buildRow(Icons.calendar_today_outlined, '时间都去哪了', '已记 $_timelineCount 条记录', AppColors.darkGreen, () {
+            _buildRow(Icons.calendar_today_outlined, '时间都去哪了', _coreLoaded ? '已记 $_timelineCount 条记录' : '数据未加载', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,
@@ -256,7 +269,7 @@ class _LauncherPageState extends State<LauncherPage>
                 const SizedBox(width: 6),
                 Text('标签宇宙', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
                 const SizedBox(width: 6),
-                Text('$_tagTotal个', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                Text(_coreLoaded ? '$_tagTotal个' : '—', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
                 const Spacer(),
                 GestureDetector(
                   onTap: _toggleView,
