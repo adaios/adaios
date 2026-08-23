@@ -41,6 +41,7 @@ class _TimelineModalState extends State<TimelineModal> {
     try {
       // Backend doesn't filter by month, so fetch all and filter on client
       final allEntries = await widget.api.getTimeline();
+      if (!mounted) return; // REVIEW P1-G6-1：await 后组件可能已销毁，setState 前必须守卫
       final map = <int, List<TimelineEntryResponse>>{};
       for (final e in allEntries) {
         if (e.dateTime.length >= 10) {
@@ -63,6 +64,7 @@ class _TimelineModalState extends State<TimelineModal> {
         _loading = false;
       });
     } catch (_) {
+      if (!mounted) return; // REVIEW P1-G6-1：catch 降级路径同样需要守卫（复用失败后 Modal 已关）
       setState(() {
         _loading = false;
         _error = '加载失败，请重试'; // REVIEW P1-W5：失败不伪装「无记录」

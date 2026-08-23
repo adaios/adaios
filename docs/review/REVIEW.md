@@ -11,7 +11,7 @@ mode: 隔离审查演示（backend + adversarial ×2 独立子代理，材料按
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
-audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log。2026-08-23 P1 批出表：P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 ✅；P2 批出表：P1-A3/P1-A5 ✅ + 新登记 P1-G6-1；剩 P1-A4/P2-2/P2-3
+audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log。P1 批出表：P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 ✅；P2 批出表：P1-A3/P1-A5 ✅；G6 守卫批出表：P1-G6-1 ✅（timeline_modal 守卫×2 + 回归×2，app 122）；剩 P1-A4/P2-2/P2-3
 audits/2026-08-20-app-health-check.md → P2-UI6,P2-UI7,S-8,闭环(D1切World丢输入/D2排序四实锤/D4任务编辑PUT/D7错误文案)
 audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进机制)
 -->
@@ -98,7 +98,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P1-A3 | **guard-cost 全量解压所有会话（08-23 对抗官独立发现）**：`glob(SESS_DIR,'*','*',...)` 全扫 + 每 zstd timeout 60s，会话膨胀后 guard-context 25s 调用超时 → 成本提醒静默降级「调用失败」| `guard-cost.sh:110-139` / `guard-context.sh:191` | 增量/按天索引/缓存，免全量解压 | ✅ 已修（2026-08-23 P2 批：按会话文件 mtime 增量缓存 cost-cache.json——未变文件跳过解压，聚合从缓存桶计算；实测 113 文件 5.35s → 0.044s（121×），结果一致）|
 | P1-A4 | **deploy-gate smoke 用零鉴权漏洞验证部署（08-23 对抗官独立发现）**：`-H "X-User-Id: adai"` 打六端点 = 战略 #179 漏洞利用方式——「最硬闸门」把零鉴权常态化 | `deploy-gate.sh` | 依赖 #179 登录体系后改真鉴权；`sleep 10` 固定等待对慢启动 JVM 是竞态 | ⚠️ 保留（依赖战略 #179 登录体系）|
 | P1-A5 | **G1-G7 是仓库级模糊启发式非逐点检测（08-23 对抗官独立发现）**：G6 只统计全仓 mounted 守卫总数、G3 只查 catch 块内 delete——「防 P0 复发」头衔与拦截能力不匹配，weekly-audit「守护 7 PASS」是低信号结论 | `docs/review/guard.sh` | 逐点化（每调用点断言）；命中与自坏区分 | ✅ 已修（2026-08-23 P2 批：G6 改为逐点断言——解析 async 方法内 await 后 setState，无 mounted 守卫即 HIT 定位文件:行号；同步方法/await 前同步段豁免（实测 18 误报→0）；**首战实锤真实缺陷** timeline_modal.dart:57/66 await 后 setState 无守卫（旧版总数统计永远 PASS）→ 新登记 P1-G6-1）|
-| P1-G6-1 | **timeline_modal.dart 全文件无 mounted 守卫（2026-08-23 G6 逐点化实锤）**：`_loadTimeline` await getTimeline() 后 setState（57 行成功路径 + 66 行 catch 路径）均无守卫——Modal 关闭后响应到达即 setState 崩溃（复发信号：await 后空值/守卫只包异步）| `apps/adai-app/lib/widgets/timeline_modal.dart:40-69` | 两处 setState 前补 `if (!mounted) return;` | ⚠️ 待修（app 代码，B7 只报告）|
+| P1-G6-1 | **timeline_modal.dart 全文件无 mounted 守卫（2026-08-23 G6 逐点化实锤）**：`_loadTimeline` await getTimeline() 后 setState（57 行成功路径 + 66 行 catch 路径）均无守卫——Modal 关闭后响应到达即 setState 崩溃（复发信号：await 后空值/守卫只包异步）| `apps/adai-app/lib/widgets/timeline_modal.dart:40-69` | 两处 setState 前补 `if (!mounted) return;` | ✅ 已修（2026-08-23 G6 守卫批：成功路径 + catch 路径各补 1 处守卫；回归测试×2——modal 关闭后响应到达不崩溃（反向验证：移除守卫测试红 `setState after dispose`）/正常路径渲染；app 120→122 全绿）|
 > **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**注意：P1 表仍有 P1-交易4/P1-交易9 未修（2026-08-17 走查确认，见下表）**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 

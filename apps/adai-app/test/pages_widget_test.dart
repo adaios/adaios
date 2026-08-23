@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ import 'package:adai_app/pages/search_page.dart';
 import 'package:adai_app/pages/trading_page.dart';
 import 'package:adai_app/pages/project_task_page.dart';
 import 'package:adai_app/pages/profile_page.dart';
+import 'package:adai_app/widgets/timeline_modal.dart'; // P1-G6-1 回归：await 后 setState 守卫
 
 // ────────────────────────────────────────────────────────────────
 // 6 页面 widget 测试（#117 剩余）
@@ -933,6 +935,69 @@ void main() {
       expect(find.text('插件加载失败，仅显示基础服务'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
+    });
+  });
+
+  group('TimelineModal await 后守卫（REVIEW P1-G6-1）', () {
+    testWidgets('modal 关闭后响应到达：mounted 守卫拦截，不 setState 崩溃', (tester) async {
+      // 用 Completer 挂起 /timeline 响应，模拟慢网络
+      final completer = Completer<http.Response>();
+      final b = _Backend()
+        ..handlers['/api/v1/timeline'] = (_) => completer.future;
+      final api = _apiFor(b);
+
+      // 打开 modal（Completer 挂起 → loading spinner 永动，不能用 pumpAndSettle，用固定帧）
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (ctx) => Center(
+          child: TextButton(
+            onPressed: () => TimelineModal.show(ctx, api: api),
+            child: const Text('打开时间线'),
+          ),
+        ))),
+      ));
+      await tester.tap(find.text('打开时间线'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // bottom sheet 动画
+      expect(find.text('时间线'), findsOneWidget);
+
+      // 响应未到时关闭 modal（组件销毁）
+      await tester.tapAt(const Offset(20, 20)); // 点 barrier 关闭
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // 关闭动画
+      expect(find.text('时间线'), findsNothing);
+
+      // 响应此刻才到达 → 旧实现 setState after dispose 抛异常；守卫后安全
+      completer.complete(_json([
+        {'id': 't1', 'type': 'note', 'title': '迟到响应', 'tags': [], 'dateTime': '${_todayStr}T07:30:00', 'mediaPath': null},
+      ]));
+      await tester.pump(); // 不用 pumpAndSettle：守卫拦截后无新帧；异常若存在在微任务间抛出
+      // 无异常即通过；且不残留 modal
+      expect(tester.takeException(), isNull);
+      expect(find.text('时间线'), findsNothing);
+    });
+
+    testWidgets('正常路径：响应到达后渲染日记录', (tester) async {
+      final b = _Backend()
+        ..handlers['/api/v1/timeline'] = (_) async => _json([
+            {
+              'id': 't1', 'type': 'note', 'title': '晨间跑步',
+              'tags': ['运动'], 'dateTime': '${_todayStr}T07:30:00', 'mediaPath': null,
+            },
+          ]);
+      final api = _apiFor(b);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Builder(builder: (ctx) => Center(
+          child: TextButton(
+            onPressed: () => TimelineModal.show(ctx, api: api),
+            child: const Text('打开时间线'),
+          ),
+        ))),
+      ));
+      await tester.tap(find.text('打开时间线'));
+      await tester.pumpAndSettle();
+      expect(find.text('时间线'), findsOneWidget);
+      // _buildRow 拼成 '$time  $title'（如「07:30  晨间跑步」），用 textContaining 匹配
+      expect(find.textContaining('晨间跑步'), findsOneWidget); // 数据渲染成功
     });
   });
 }
