@@ -390,6 +390,9 @@ class FeedCard extends StatelessWidget {
       '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
       '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
       '买点提醒' => ('买点提醒', AppColors.darkGreen),
+      // B9-5（2026-08-23，P2-推送4）：gain/break-cost 专属徽章——原落 default 灰「行情」
+      '放飞提示' => ('放飞提示', AppColors.darkPurple),
+      '跌破成本线' || '行情提醒' => ('跌破成本', AppColors.darkOrange),
       '止损预警' || '接近止损' || '单日大跌提醒' => ('预警', AppColors.darkRed),
       _ => ('行情', AppColors.darkGrey4),
     };

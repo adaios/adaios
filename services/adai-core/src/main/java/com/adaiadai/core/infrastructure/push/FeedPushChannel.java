@@ -44,6 +44,8 @@ public class FeedPushChannel implements PushChannel {
                 message.name(),
                 message.content(),
                 message.type(),
-                time));
+                time,
+                message.title())); // B9-1（2026-08-23，P1-推送1）：透传原标题——此前落库丢标题，
+        // 前端按标题 switch 全落空（徽章配色 + 「确认并入账」按钮判定）
     }
 }

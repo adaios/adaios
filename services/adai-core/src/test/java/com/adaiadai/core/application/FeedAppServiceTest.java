@@ -160,6 +160,46 @@ class FeedAppServiceTest {
     }
 
     @Test
+    void getFeed_pushTitle_passthroughOriginalTitle() {
+        // B9-1/B9-2（2026-08-23，P1-推送1 根因）：落库透传原标题 → Feed 标题=原标题
+        // （前端按标题 switch 的徽章配色 + 「确认并入账」按钮判定依赖它）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_1", "600519", "贵州茅台",
+                        "📋 今日操作汇总\n· 京东方A 卖出 5300 股 @6.10\n是否完整？",
+                        "session", "15:15", "今日操作确认") // title 透传
+        ));
+
+        FeedAppService service = serviceWith(market, push);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 6), 0, 10);
+
+        FeedAppService.FeedEntry pushEntry = resp.entries().stream()
+                .filter(e -> "push".equals(e.type())).findFirst().orElseThrow();
+        assertEquals("今日操作确认", pushEntry.title(), "原标题必须透传（不再按 type 重映射）");
+    }
+
+    @Test
+    void getFeed_pushTitle_nullTitle_fallbackByType() {
+        // B9-2：旧数据（2026-08-23 前落库无 title 字段）→ 按 type 兜底映射（渐进兼容）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_1", "600519", "贵州茅台",
+                        "📉 贵州茅台(600519) 今日跌 -3.20%", "loss", "14:05") // 旧 6 参构造 → title=null
+        ));
+
+        FeedAppService service = serviceWith(market, push);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 6), 0, 10);
+
+        FeedAppService.FeedEntry pushEntry = resp.entries().stream()
+                .filter(e -> "push".equals(e.type())).findFirst().orElseThrow();
+        assertEquals("单日大跌提醒", pushEntry.title(), "旧数据无 title 应按 type 兜底");
+    }
+
+    @Test
     void getFeed_imageRecord_carriesDateAndMediaPath() {
         ContentRecord img = new ContentRecord(
                 "rec_img1", "image", "user_input",

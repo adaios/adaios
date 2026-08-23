@@ -195,6 +195,9 @@ class DesktopFeedCard extends StatelessWidget {
       '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
       '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
       '买点提醒' => ('买点提醒', AppColors.darkGreen),
+      // B9-5（2026-08-23，P2-推送4）：gain/break-cost 专属徽章——原落 default 灰「行情」
+      '放飞提示' => ('放飞提示', AppColors.darkPurple),
+      '跌破成本线' || '行情提醒' => ('跌破成本', AppColors.darkOrange),
       '止损预警' || '接近止损' || '单日大跌提醒' => ('预警', AppColors.darkRed),
       _ => ('行情', AppColors.darkGrey4),
     };
@@ -224,11 +227,25 @@ class DesktopFeedCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(data.content,
               style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45)),
-            if (data.onConfirmTradeLog != null) ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: InkWell(
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              // B10-3（2026-08-23，P1-推送2）：「忽略」按钮（删除持久化，不复活）
+              if (data.onDismiss != null) ...[
+                InkWell(
+                  onTap: data.onDismiss,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurface2.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('忽略',
+                      style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                  ),
+                ),
+                if (data.onConfirmTradeLog != null) const SizedBox(width: 8),
+              ],
+              if (data.onConfirmTradeLog != null) ...[
+                InkWell(
                   onTap: data.onConfirmTradeLog,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -240,8 +257,8 @@ class DesktopFeedCard extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ]),
           ],
         ),
       ),

@@ -110,4 +110,67 @@ void main() {
     ));
     expect(find.text('08-03  09:05'), findsOneWidget);
   });
+
+  // ── B9-3/4 + B9-5（2026-08-23，P1-推送1 根因修复后回归）：push 卡标题/徽章/确认按钮 ──
+
+  testWidgets('push 卡「今日操作确认」渲染确认按钮 + 尾盘橙徽章', (tester) async {
+    bool confirmed = false;
+    await pumpCard(tester, FeedCardData(
+      id: 'p1', type: FeedCardType.push, time: '15:15', date: '08-23',
+      content: '📋 今日操作汇总\n· 京东方A 卖出 5300 股 @6.10',
+      pushTitle: '今日操作确认', // 后端标题透传后真实到达
+      onConfirmTradeLog: () => confirmed = true,
+    ));
+    // B9-3：确认按钮渲染（原后端丢标题 → 判定落空永不渲染）
+    expect(find.text('确认并入账'), findsOneWidget);
+    // B9-5：今日操作确认 → 尾盘建议橙徽章（不再落 default 灰）
+    expect(find.text('尾盘建议'), findsOneWidget);
+    await tester.tap(find.text('确认并入账'));
+    expect(confirmed, true);
+  });
+
+  testWidgets('push 卡「放飞提示」（gain）专属徽章不落灰', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'p2', type: FeedCardType.push, time: '14:35', date: '08-23',
+      content: '📈 贵州茅台 今日涨 5.2%，关注放飞条件',
+      pushTitle: '放飞提示',
+    ));
+    // B9-5：gain 专属徽章（原 default 灰「行情」）
+    expect(find.text('放飞提示'), findsOneWidget);
+    expect(find.text('行情'), findsNothing);
+  });
+
+  testWidgets('push 卡未知标题兜底「行情」灰徽章', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'p3', type: FeedCardType.push, time: '14:00', date: '08-23',
+      content: '大盘异动',
+      pushTitle: '未知类型', // 未匹配任何分支 → default 灰
+    ));
+    expect(find.text('行情'), findsOneWidget);
+  });
+
+  testWidgets('push 卡「忽略」按钮触发 onDismiss（B10-3）', (tester) async {
+    bool dismissed = false;
+    await pumpCard(tester, FeedCardData(
+      id: 'p4', type: FeedCardType.push, time: '14:00', date: '08-23',
+      content: '止损预警',
+      pushTitle: '止损预警',
+      onDismiss: () => dismissed = true,
+    ));
+    expect(find.text('忽略'), findsOneWidget);
+    await tester.tap(find.text('忽略'));
+    expect(dismissed, true);
+  });
+
+  testWidgets('push 卡确认+忽略按钮并存（今日操作确认）', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'p5', type: FeedCardType.push, time: '15:15', date: '08-23',
+      content: '📋 今日操作汇总',
+      pushTitle: '今日操作确认',
+      onConfirmTradeLog: () {},
+      onDismiss: () {},
+    ));
+    expect(find.text('确认并入账'), findsOneWidget);
+    expect(find.text('忽略'), findsOneWidget);
+  });
 }

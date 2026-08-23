@@ -418,7 +418,8 @@ class ApiService {
   }
 
   /// RFC 20260817：确认交易日志落库。
-  Future<int> confirmTradeLog() async {
+  /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
+  Future<TradeLogConfirmResult> confirmTradeLog() async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trade-log/confirm'),
       headers: {..._headers, 'content-type': 'application/json'},
@@ -426,8 +427,43 @@ class ApiService {
     );
     _check(resp);
     final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-    return map['confirmed'] as int? ?? 0;
+    return TradeLogConfirmResult.fromJson(map);
   }
+
+  /// B10-2/B11-4（2026-08-23）：删除单条推送（持久化）+ 丢弃保留候选（钉子户）。
+  /// DELETE /api/v1/trading/pushes/{id}；404（已删/不存在）静默成功（幂等）。
+  Future<void> dismissPush(String pushId) async {
+    try {
+      final resp = await _client.delete(
+        Uri.parse('$baseUrl/api/v1/trading/pushes/$pushId'),
+        headers: _headers,
+      );
+      _check(resp);
+    } catch (e) {
+      // app 端异常为泛 Exception('API 错误 {code}: {body}')——404 幂等成功
+      if (!_isNotFound(e)) rethrow;
+    }
+  }
+
+  /// B11-4：丢弃一条保留的交易日志候选（失败/不完整钉子户）。
+  /// DELETE /api/v1/trading/trade-log?symbol=&direction=；404 幂等成功。
+  Future<void> discardTradeLogCandidate({String? symbol, String? direction}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/v1/trading/trade-log').replace(
+        queryParameters: {
+          if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
+          if (direction != null && direction.isNotEmpty) 'direction': direction,
+        },
+      );
+      final resp = await _client.delete(uri, headers: _headers);
+      _check(resp);
+    } catch (e) {
+      if (!_isNotFound(e)) rethrow;
+    }
+  }
+
+  /// 从 app 泛 Exception 消息判断是否 404（幂等场景）。
+  bool _isNotFound(Object e) => e.toString().contains('API 错误 404');
 
   /// 自选股列表。
   Future<List<WatchlistItemDto>> getWatchlist() async {
@@ -816,6 +852,7 @@ class FeedEntryResponse {
   final String? summary;
   final List<Map<String, dynamic>>? turns;
   final String domain;
+  final String updatedAt; // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（「最近记录」相对时间）
 
   FeedEntryResponse({
     required this.type,
@@ -831,6 +868,7 @@ class FeedEntryResponse {
     this.summary,
     this.turns,
     this.domain = 'life',
+    this.updatedAt = '',
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -847,6 +885,7 @@ class FeedEntryResponse {
     summary: json['summary'] as String?,
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
     domain: json['domain'] as String? ?? 'life',
+    updatedAt: json['updatedAt'] as String? ?? '',
   );
 }
 
@@ -1353,10 +1392,11 @@ class TaskStatsResponse {
 class AccountSnapshotDto {
   final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
   final double principal;
+  final String snapshotDate; // D9（2026-08-23 app 体感，P2-UX3）：快照日期（收盘陈旧感知）
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
-      required this.todayPnl, required this.principal});
+      required this.todayPnl, required this.principal, this.snapshotDate = ''});
 
   factory AccountSnapshotDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -1369,6 +1409,7 @@ class AccountSnapshotDto {
       pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
       todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
       principal: (m['principal'] as num?)?.toDouble() ?? 0,
+      snapshotDate: m['snapshotDate']?.toString() ?? '',
     );
   }
 
@@ -1376,6 +1417,22 @@ class AccountSnapshotDto {
   /// P1-前端3（2026-08-17 走查）：principal>0 兜底与 web/后端对齐——本金未录时退回券商浮盈 pnl，
   /// 否则新账号显示「总盈亏=总资产」全当盈利
   double get totalPnl => principal > 0 ? assets - principal : pnl;
+}
+
+/// B11-4（2026-08-23，P1-交易18）：确认交易日志落库结果（成功/失败/跳过 + 失败人话明细）。
+class TradeLogConfirmResult {
+  final int confirmed, failed, skipped;
+  final List<String> failures;
+
+  TradeLogConfirmResult({required this.confirmed, required this.failed,
+      required this.skipped, required this.failures});
+
+  factory TradeLogConfirmResult.fromJson(Map<String, dynamic> json) => TradeLogConfirmResult(
+    confirmed: json['confirmed'] as int? ?? 0,
+    failed: json['failed'] as int? ?? 0,
+    skipped: json['skipped'] as int? ?? 0,
+    failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+  );
 }
 
 /// 自选股条目（盯盘买点原料）。

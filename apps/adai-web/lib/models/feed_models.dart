@@ -51,6 +51,7 @@ class FeedCardData {
   final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒/今日操作确认等）
   final VoidCallback? onConfirmTradeLog; // RFC 20260817：「今日操作确认」卡确认按钮
+  final VoidCallback? onDismiss; // B10-3（2026-08-23，P1-推送2）：push 卡「忽略」按钮（删除持久化）
   final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   // REVIEW F37（全维度走查 P1-W1）：图片占位卡保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
@@ -78,6 +79,7 @@ class FeedCardData {
     this.onMarkDone,
     this.pushTitle,
     this.onConfirmTradeLog,
+    this.onDismiss,
     this.mediaUrl,
     this.mediaHeaders,
     this.mediaBytes,
@@ -128,6 +130,7 @@ class FeedCardData {
       error: clearError ? null : error ?? this.error,
       pushTitle: pushTitle ?? this.pushTitle,
       onConfirmTradeLog: onConfirmTradeLog ?? this.onConfirmTradeLog,
+      onDismiss: onDismiss ?? this.onDismiss,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       mediaBytes: mediaBytes ?? this.mediaBytes,
@@ -141,7 +144,7 @@ class FeedCardData {
 
 /// Feed 条目 → 卡片数据（值复制自 adai-app main_page）。
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone}) {
+  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone, VoidCallback? onDismiss}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
       cardTurns = turns!.map((t) => ConversationTurn(
@@ -167,8 +170,12 @@ extension FeedEntryResponseX on FeedEntryResponse {
       onConfirmTradeLog: (_toCardType(type) == FeedCardType.push && title == '今日操作确认')
           ? onMarkDone
           : null,
+      // B10-3（2026-08-23，P1-推送2）：push 卡「忽略」按钮（删除持久化）
+      onDismiss: _toCardType(type) == FeedCardType.push ? onDismiss : null,
       mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
       mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
+      // P1-5（2026-08-23 app 体感）：透传后端 updatedAt（原默认 now → 「刚刚」恒显）
+      updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
     );
   }
 

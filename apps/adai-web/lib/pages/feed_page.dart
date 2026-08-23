@@ -82,6 +82,8 @@ class _FeedPageState extends State<FeedPage> {
                 : (e.type == FeedEntryType.push && e.title == '今日操作确认')
                     ? _confirmTradeLog
                     : null,
+            // B10-3：push 卡「忽略」按钮（删除持久化）
+            onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
           ))
           .toList();
       setState(() {
@@ -147,6 +149,8 @@ class _FeedPageState extends State<FeedPage> {
                 : (e.type == FeedEntryType.push && e.title == '今日操作确认')
                     ? _confirmTradeLog
                     : null,
+            // B10-3：push 卡「忽略」按钮（删除持久化）
+            onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
           ))
           .toList();
       setState(() {
@@ -695,13 +699,31 @@ class _FeedPageState extends State<FeedPage> {
   /// RFC 20260817：确认当日交易日志落库（推送卡「确认并入账」按钮）。
   Future<void> _confirmTradeLog() async {
     try {
-      final done = await widget.api.confirmTradeLog();
+      final result = await widget.api.confirmTradeLog();
       if (!mounted) return;
-      _showSnackBar(done > 0 ? '已确认 $done 笔交易并入账' : '今天没有待确认的交易');
+      if (result.confirmed > 0) {
+        _showSnackBar('已确认 ${result.confirmed} 笔交易并入账');
+      } else if (result.failed > 0) {
+        _showSnackBar('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
+      } else {
+        _showSnackBar('今天没有待确认的交易');
+      }
+      // 失败候选保留（P0-1）：提示可丢弃，防 15:05 反复提醒（P1-交易18）
+      if (result.failed > 0) {
+        _showSnackBar('失败候选已保留——可忽略或修正后重试');
+      }
       await _loadFeed();
     } catch (e) {
       if (mounted) _showError('确认失败: ${_extractApiError(e)}');
     }
+  }
+
+  /// B10-3（2026-08-23，P1-推送2）：推送卡「忽略」——本地移除 + 后端持久化（刷新不复活）。
+  void _dismissPush(String pushId) {
+    setState(() => _cards.removeWhere((c) => c.id == pushId));
+    widget.api.dismissPush(pushId).catchError((_) {
+      // 持久化失败静默——本地已删，最坏下次刷新复活（不打扰）
+    });
   }
 
   void _changeDomain(String id, String domain) {

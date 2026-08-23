@@ -266,7 +266,8 @@ public class FeedAppService {
                 title, content, r.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
                 intent, r.summary(), turns, r.domain(),
-                r.createdAt().format(DATE_FMT), mediaPath
+                r.createdAt().format(DATE_FMT), mediaPath,
+                r.createdAt().toString() // P1-5
         );
     }
 
@@ -297,7 +298,8 @@ public class FeedAppService {
                 card.updatedAt() != null
                         ? card.updatedAt().format(DATE_FMT)
                         : card.createdAt().format(DATE_FMT),
-                null
+                null,
+                (card.updatedAt() != null ? card.updatedAt() : card.createdAt()).toString() // P1-5
         );
     }
 
@@ -309,7 +311,8 @@ public class FeedAppService {
                 m.summary(), m.summary(), m.tags(),
                 r.createdAt().toLocalTime().format(TIME_FMT),
                 null, null, null, "life",
-                r.createdAt().format(DATE_FMT), null
+                r.createdAt().format(DATE_FMT), null,
+                r.createdAt().toString() // P1-5
         );
     }
 
@@ -340,7 +343,8 @@ public class FeedAppService {
                 text, text, m.tags(),
                 m.createdAt().toLocalTime().format(TIME_FMT),
                 null, null, null, "life",
-                m.createdAt().format(DATE_FMT), null
+                m.createdAt().format(DATE_FMT), null,
+                m.createdAt().toString() // P1-5
         );
     }
 
@@ -362,7 +366,8 @@ public class FeedAppService {
                 "market", "market_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss")), null,
                 "大盘行情", content, List.of("行情"),
                 LocalDateTime.now().format(TIME_FMT), null, null, null, "trading",
-                LocalDate.now().format(DATE_FMT), null
+                LocalDate.now().format(DATE_FMT), null,
+                LocalDateTime.now().toString() // P1-5：即时行情，时间戳=生成时刻
         );
         return List.of(entry);
     }
@@ -378,22 +383,27 @@ public class FeedAppService {
     }
 
     private FeedEntry toPushEntry(MarketPushEvent p, LocalDate date) {
-        // P3（2026-08-17）：标题不再硬编码「行情提醒」——按 type 映射（早盘计划/买点提醒/复盘提醒等），
-        // Feed 里能区分各类推送；未知类型兜底「行情提醒」
-        String title = switch (p.type()) {
-            case "session" -> "阿呆的交易提醒";
-            case "buy-point" -> "买点提醒";
-            case "stop-loss" -> "止损预警";
-            case "near-stop-loss" -> "接近止损";
-            case "loss" -> "单日大跌提醒";
-            case "gain" -> "放飞提示";
-            default -> "行情提醒";
-        };
+        // B9-2（2026-08-23，P1-推送1 根因修复）：优先用落库透传的**原标题**
+        // （早盘计划/午间跟踪/尾盘建议/今日操作确认/买点提醒…）——前端按标题 switch 的
+        // 徽章配色与「确认并入账」按钮判定依赖它；
+        // 旧数据（2026-08-23 前落库，无 title 字段）→ 按 type 兜底映射（渐进兼容）。
+        String title = p.title() != null && !p.title().isBlank()
+                ? p.title()
+                : switch (p.type()) {
+                    case "session" -> "阿呆的交易提醒";
+                    case "buy-point" -> "买点提醒";
+                    case "stop-loss" -> "止损预警";
+                    case "near-stop-loss" -> "接近止损";
+                    case "loss" -> "单日大跌提醒";
+                    case "gain" -> "放飞提示";
+                    default -> "行情提醒";
+                };
         return new FeedEntry(
                 "push", p.id(), null,
                 title, p.message(), List.of("行情"),
                 p.time(), null, null, null, "trading",
-                date.format(DATE_FMT), null
+                date.format(DATE_FMT), null,
+                date.atTime(java.time.LocalTime.now()).toString() // P1-5：推送时间戳（当日）
         );
     }
 
@@ -413,7 +423,8 @@ public class FeedAppService {
             String title, String content, List<String> tags,
             String time, String intent, String summary,
             List<TurnDto> turns, String domain,
-            String date, String mediaPath
+            String date, String mediaPath,
+            String updatedAt  // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（前端「最近记录」相对时间）
     ) {}
 
     public record TurnDto(boolean isUser, String text, String time) {}

@@ -54,6 +54,7 @@ class _MainPageState extends State<MainPage>
   String _brief = '';
   bool _loading = true;
   bool _loadingMore = false;     // load more 进度
+  String? _feedError; // P1-6（2026-08-23 app 体感）：首载失败错误态（不伪装空态，可重试）
   bool _scrollAtTop = true;
   bool _scrollAtBottom = true;
   int _uploadTotal = 0;          // 图片上传进度（阿呆 08-13：逐张反馈不足）
@@ -112,7 +113,7 @@ class _MainPageState extends State<MainPage>
   }
 
   Future<void> _refreshFeed() async {
-    // 下拉刷新：不清 active 状态，只重新拉取数据
+    // 下拉刷新/切回刷新：不清 active 状态，只重新拉取 page0 数据
     _currentPage = 0;
     try {
       // 首屏提速（2026-08-22）：并行发起，渲染只等 feed——brief 后到单独刷新
@@ -120,7 +121,7 @@ class _MainPageState extends State<MainPage>
       final briefFuture = _api.getBriefCached().catchError((_) => '');
       final feed = await feedFuture;
       if (!mounted) return;
-      final newCards = feed.entries
+      final freshCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
             onMarkDone: e.type == FeedEntryType.action
@@ -133,9 +134,15 @@ class _MainPageState extends State<MainPage>
           .toList();
       setState(() {
         _totalToday = feed.totalToday;
-        _cards = newCards;
+        _feedError = null; // P1-6：刷新成功清错误
+        // P1-3（2026-08-23 app 体感修复）：刷新替换 page0（防陈旧，MD1 语义），
+        // 保留已加载的更早页（_cards 头部 = 最早页，尾部 = page0）——滚动位置/加载进度不丢
+        final older = _cards.length > _pageSize
+            ? _cards.sublist(0, _cards.length - _pageSize)
+            : <FeedCardData>[];
+        _cards = [...freshCards, ...older];
         // P0-1：活动卡被刷新挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
-        _syncActiveCard(newCards);
+        _syncActiveCard(_cards);
       });
       // 简报后到（不阻塞刷新）：等缓存 brief，空串（过期/失败）→ 后台补 AI 生成
       final brief = await briefFuture;
@@ -170,6 +177,7 @@ class _MainPageState extends State<MainPage>
         _totalToday = feed.totalToday;
         _currentPage = 0;
         _cards = allCards;
+        _feedError = null; // P1-6：成功清错误
         // P0-1：活动卡被新记录挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
         _syncActiveCard(allCards);
         _loading = false;
@@ -181,8 +189,11 @@ class _MainPageState extends State<MainPage>
       if (brief.isEmpty) _fillBriefLater();
     } catch (e) {
       if (!mounted) return;
-      _showError('加载失败');
-      setState(() => _loading = false);
+      // P1-6（2026-08-23 app 体感）：首载失败显错误态+重试（原静默空态伪装成功）
+      setState(() {
+        _feedError = _extractApiError(e);
+        _loading = false;
+      });
     }
   }
 
@@ -886,18 +897,34 @@ class _MainPageState extends State<MainPage>
 
   void _showError(String message) => _showSnackBar(message);
 
-  /// RFC 20260817：左滑删除单条推送（本地移除；推送源头关停走设置）。
+  /// RFC 20260817：左滑删除单条推送。
+  /// B10-2（2026-08-23，P1-推送2）：本地移除 + 调后端 dismiss 持久化（刷新/重启不复活）；
+  /// 后端失败不阻塞本地删除（best-effort，下次同步仍会读回——网络恢复前可接受）。
   void _dismissPush(String pushId) {
     if (!mounted) return;
     setState(() => _cards.removeWhere((c) => c.id == pushId));
+    _api.dismissPush(pushId).catchError((_) {
+      // 删除持久化失败静默——本地已删，最坏情况下次刷新复活（不打扰用户）
+    });
   }
 
   /// RFC 20260817：确认当日交易日志落库（推送卡「确认并入账」）。
+  /// B11-4（2026-08-23，P1-交易18）：失败候选保留——透出明细并提示丢弃（钉子户出口）。
   Future<void> _confirmTradeLog() async {
     try {
-      final done = await _api.confirmTradeLog();
+      final result = await _api.confirmTradeLog();
       if (!mounted) return;
-      _showSnackBar(done > 0 ? '已确认 $done 笔交易并入账' : '今天没有待确认的交易');
+      if (result.confirmed > 0) {
+        _showSnackBar('已确认 ${result.confirmed} 笔交易并入账');
+      } else if (result.failed > 0) {
+        _showSnackBar('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
+      } else {
+        _showSnackBar('今天没有待确认的交易');
+      }
+      // 失败候选保留（P0-1）：提示可丢弃，防 15:05 反复提醒（P1-交易18）
+      if (result.failed > 0) {
+        _showSnackBar('失败候选已保留——可忽略或修正后重试');
+      }
       await _loadFeed();
     } catch (e) {
       if (mounted) _showError('确认失败: ${_extractApiError(e)}');
@@ -905,6 +932,7 @@ class _MainPageState extends State<MainPage>
   }
 
   /// RFC 20260817：右滑打开推送设置（早盘/午间/尾盘/买点/预警/行情条逐项开关）。
+  /// B11-2（2026-08-23，P2-推送5）：开关失败透出原因（不再假阳性）；「完成」按真实变更提示。
   Future<void> _openPushSettings() async {
     // 读取当前开关
     Map<String, bool> settings = {};
@@ -914,6 +942,7 @@ class _MainPageState extends State<MainPage>
       settings = {};
     }
     if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     final changed = await showDialog<bool>(
       context: context,
       builder: (_) => _PushSettingsDialog(
@@ -921,10 +950,16 @@ class _MainPageState extends State<MainPage>
         onToggle: (type, on) async {
           try {
             await _api.updatePushSetting(type, on);
-            return true;
-          } catch (_) {
-            return false;
+            return null; // 成功无错误
+          } catch (e) {
+            return _extractApiError(e); // 失败原因（Dialog 内 toast）
           }
+        },
+        onToggleFailed: (msg) {
+          messenger.showSnackBar(SnackBar(
+            content: Text('推送设置失败：$msg', style: const TextStyle(fontSize: 13)),
+            backgroundColor: AppColors.darkSurface2,
+          ));
         },
       ),
     );
@@ -1011,7 +1046,13 @@ class _MainPageState extends State<MainPage>
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
       setState(() {
-        _cards = [...moreCards, ..._cards]; // 更早的条目插在前面，reverse 后出现在视觉顶部
+        // P1-4（2026-08-23 app 体感修复）：合并按 id 去重——分页边界数据漂移时
+        // （新增/删除导致分页错位）同一 id 不重复渲染
+        final existingIds = _cards.map((c) => c.id).toSet();
+        _cards = [
+          ...moreCards.where((c) => !existingIds.contains(c.id)),
+          ..._cards,
+        ]; // 更早的条目插在前面，reverse 后出现在视觉顶部
         _loadingMore = false;
       });
     } catch (e) {
@@ -1107,8 +1148,29 @@ class _MainPageState extends State<MainPage>
       opacity: _contentAnim,
       child: SlideTransition(
         position: Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(_contentAnim),
-        child: _cards.isEmpty ? _buildEmptyState() : _buildFeedList(_cards),
+        // P1-6（2026-08-23 app 体感）：首载失败显错误态+重试（原伪装空态）
+        child: _feedError != null && _cards.isEmpty
+            ? _buildFeedError()
+            : _cards.isEmpty ? _buildEmptyState() : _buildFeedList(_cards),
       ),
+    );
+  }
+
+  /// P1-6：首载失败错误态（人话 + 重试按钮，对齐 trading _buildError）。
+  Widget _buildFeedError() {
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(_feedError ?? '加载失败', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: () {
+            setState(() => _feedError = null);
+            _loadFeed();
+          },
+          style: OutlinedButton.styleFrom(foregroundColor: AppColors.darkGreen),
+          child: const Text('重试', style: TextStyle(fontSize: 13)),
+        ),
+      ]),
     );
   }
 
@@ -1593,6 +1655,9 @@ extension FeedEntryResponseX on FeedEntryResponse {
       onPushSettings: _toCardType(type) == FeedCardType.push ? onPushSettings : null,
       mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
       mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
+      // P1-5（2026-08-23 app 体感修复）：透传后端 updatedAt——原不传 → FeedCardData 默认 now
+      // → 底部「最近记录」栏「刚刚」恒显（updatedAt 被丢弃）
+      updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
     );
   }
 
@@ -1612,9 +1677,12 @@ extension FeedEntryResponseX on FeedEntryResponse {
 /// RFC 20260817：推送设置对话框——逐类型开关（早盘/午间/尾盘/买点/预警/行情条）。
 class _PushSettingsDialog extends StatefulWidget {
   final Map<String, bool> settings;
-  final Future<bool> Function(String type, bool on) onToggle;
+  /// 切换回调：返回 null=成功；返回字符串=失败原因（B11-2，P2-推送5——失败不再假阳性）。
+  final Future<String?> Function(String type, bool on) onToggle;
+  /// 失败提示（dialog 外的 messenger 弹，避免 dialog 内无页面 context）。
+  final void Function(String message)? onToggleFailed;
 
-  const _PushSettingsDialog({required this.settings, required this.onToggle});
+  const _PushSettingsDialog({required this.settings, required this.onToggle, this.onToggleFailed});
 
   @override
   State<_PushSettingsDialog> createState() => _PushSettingsDialogState();
@@ -1624,7 +1692,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
   late Map<String, bool> _settings = Map.of(widget.settings);
 
   static const List<(String, String)> _items = [
-    ('session', '时段节奏（早盘/午间/尾盘）'),
+    ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
     ('buy-point', '买点提醒'),
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
@@ -1654,8 +1722,14 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
                 value: _settings[type] ?? true,
                 activeTrackColor: AppColors.darkGreen,
                 onChanged: (on) async {
-                  final ok = await widget.onToggle(type, on);
-                  if (ok && mounted) setState(() => _settings[type] = on);
+                  // B11-2（P2-推送5）：成功才翻转 + 失败透出原因
+                  final err = await widget.onToggle(type, on);
+                  if (!mounted) return;
+                  if (err == null) {
+                    setState(() => _settings[type] = on);
+                  } else {
+                    widget.onToggleFailed?.call(err);
+                  }
                 },
               ),
           ],
