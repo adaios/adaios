@@ -37,9 +37,9 @@ tags: [ai, meta, skills, governance]
 
 ## 三、frontmatter 融合（本规范核心）
 
-SKILL 开放标准要求 `name` + `description`；AdaiOS frontmatter 契约要求 9 字段（guard-meta 必查）。融合规则：
+SKILL 开放标准要求 `name` + `description`；AdaiOS frontmatter 契约要求 10 字段（guard-meta 必查）。融合规则：
 
-- **保留全部 9 字段**：title/description/version/created/updated/status/lines/depends-on/related/tags
+- **保留全部 10 字段**：title/description/version/created/updated/status/lines/depends-on/related/tags
 - **新增 `name`**：小写 kebab-case，与文件名一致（SKILL 标准必填）
 - **`description` 写触发语义**：「当需要 XX 时加载」+ 解决什么问题（人/AI 双读者，符合方法论 Purpose/Trigger）
 

@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-23
 status: active
-lines: 70
+lines: 71
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -16,14 +16,14 @@ tags: [ai, process]
 
 # 全维度走查流程（audit）
 
-> 目的：8 个审查官**从各自角度独立**走查产品，交叉印证发现。**成本纪律（2026-08-18）**：全量走查 = 8 官 × 全仓库并行读入，是全项目最贵的 AI 流程；**默认走增量，全量只留里程碑级**（如 v1.0.0 发布前），平时走查走 `review.md` 增量深审（成本低约一个数量级）。
+> 目的：8 客观官 + 1 对抗官**从各自角度独立**走查产品，交叉印证发现。**成本纪律（2026-08-18）**：全量走查 = 8+1 官 × 全仓库并行读入，是全项目最贵的 AI 流程；**默认走增量，全量只留里程碑级**（如 v1.0.0 发布前），平时走查走 `review.md` 增量深审（成本低约一个数量级）。
 
 ## 1. 定基线
 
-> **默认增量**：不指定范围时按 `git diff <基线>..HEAD`（同 review.md），避免 8 官 × 全仓库的全量默认执行（2026-08-18 成本修订）。
+> **默认增量**：不指定范围时按 `git diff <基线>..HEAD`（同 review.md），避免 8+1 官 × 全仓库的全量默认执行（2026-08-18 成本修订）。
 
 - 默认：`git diff <基线>..HEAD`（增量，同 `review.md`）
-- 全量（无 diff 边界）**仅限**：里程碑/发布前（如 v1.0.0）或用户显式 `audit --full`；每次全量 = 8 官 × 全仓库读入，是全项目最贵流程，高峰时段（9-12/14-18）禁跑
+- 全量（无 diff 边界）**仅限**：里程碑/发布前（如 v1.0.0）或用户显式 `audit --full`；每次全量 = 8+1 官 × 全仓库读入，是全项目最贵流程，高峰时段（9-12/14-18）禁跑
 - 指定范围：`audit <commit-range>`（如里程碑区间）
 
 ## 2. 守护检查
@@ -33,7 +33,7 @@ bash docs/review/guard.sh        # G1-G7 代码级守护
 bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
-## 3. 8 官独立并行
+## 3. 8 客观官 + 1 对抗官独立并行
 
 每个审查官**独立**执行（互不参考，保证视角纯净），按各自 `roles/*.md` 定义：
 
@@ -47,16 +47,17 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | docs-reviewer | 契约 | 文档-代码一致、断链、数字漂移 |
 | knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
 | context-reviewer | Context | ai/context/ 模板与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
+| adversarial-reviewer | 对抗 | 哪里会炸 / 用户哪里会骂 / 边界哪里漏——假设一定有问题，找最危险的点（2026-08-23 元审核 P1-3 补入，与 deep review 默认 +1 口径统一）|
 
-> **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。
+> **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。对抗官 1 官 Flash，与其他官并行，几乎不增加耗时。
 
 ## 4. 汇总与交叉印证
 
 - 各官独立输出（P0 → 战略 → P1 → P2/P3，含位置/问题/建议）
 - **交叉印证**：同一问题被 ≥2 官命中 → 标注 ⭐（多视角确认 = 优先级高）
 - **输出控字（成本纪律 2026-08-18）**：每条问题 ≤3 行（位置/一句问题/一句建议），仅 P0/战略级展开，P1-P3 列表直出（输出是 9-27 元/M 最贵通道）
-- 汇总进 `docs/review/REVIEW.md` 新增「全维度走查」区
-- **归口强制（2026-08-23，防游离双轨）**：报告落盘**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`（豁免历史报告不再报游离）；③跑 `bash ai-engineering/guard-unfixed.sh` 验证 ③ 游离 = 0（有游离 = 归口没做完，不许收工）
+- 报告落盘 `docs/review/audits/YYYY-MM-DD-<主题>.md`（带 frontmatter，登记 docs/review/_index.md）
+- **归口强制（2026-08-23，防游离双轨）**：报告落盘**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`（豁免历史报告不再报游离）；③跑 `bash ai-engineering/guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（有游离 = 归口没做完，不许收工）（2026-08-23 P2-1 修正：原「汇总进 REVIEW.md 走查区」与现行 audits/ 落盘机制冲突，统一为现行机制）
 
 ## 5. 沉淀检查点 + 记录成本
 

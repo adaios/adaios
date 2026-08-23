@@ -36,9 +36,9 @@ tags: [ai, meta, engineering]
 | 文件 | 说明 |
 |:-----|:-----|
 | `frontmatter-spec.md` | 文档元数据契约（图谱/治理/归档基础）|
-| `roles/` | 8 个审查官定义（产品架构/交互体验/界面设计/后端/前端/文档/知识数据/Context）|
+| `roles/` | 9 个审查官定义（8 客观官：产品架构/交互体验/界面设计/后端/前端/文档/知识数据/Context + 1 对抗官）|
 | `process/` | 流程定义（audit 走查 / review 深审 / ship 收尾）|
-| `checklists/` | 检查清单（执行细节，人也能用：8 官清单 + guard 守护）|
+| `checklists/` | 检查清单（执行细节，人也能用：8 客观官 + 1 对抗官清单 + guard 守护）|
 | `guard-meta.sh` | 元治理自检：frontmatter 图谱/lines/孤儿，`--fix` 回写 |
 | `guard-unfixed.sh` | **未修复问题总清单**：聚合 REVIEW.md + task-log + audits 游离项 + 状态对账矛盾，一条命令拿全（2026-08-23 建）|
 | `guard-tools.sh` | **工具接入自检**：T1-T5 检测「跨工具互通」是否真被加载（hook/快照/技能/注册/入口），机制替人记得（2026-08-23 建）|
@@ -56,6 +56,6 @@ tags: [ai, meta, engineering]
 5. 审查：`process/audit.md`（全维度）或 `process/review.md`（增量），按 `roles/` 派官
 6. 沉淀：决策入 `assets/adr/`，坑入 `assets/pitfalls.md`，结果更新 `state/`
 
-> 工具侧入口（Claude/Qoder/DSH 的一行配置）在工具自己的配置里，**不在本项目**——换工具零迁移。
+> 工具侧入口（Claude/Qoder/DSH 的一行配置）在工具自己的配置里，**不在本项目**——换工具零迁移。接入状态可用 `bash ai-engineering/guard-tools.sh` 自检。
 
-> **跨项目方法论**：本层是可复制的实例；通用骨架在仓库外 `ai-engineering-method/`（同级目录）——复制的是「如何建」，不是「建好的」。
+> **跨项目方法论**：本层是可复制的实例；通用骨架在仓库内 `method/`（「如何建」的方法论与切入点图谱）——复制的是「如何建」，不是「建好的」。（2026-08-23 P1-6 修正：原引用仓库外 `ai-engineering-method/` 不存在，方法论已放回仓库内 method/）

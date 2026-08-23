@@ -48,8 +48,20 @@ if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
 fi
 
 # 3) 防 P0 复发（G1-G7）——代码变更时跑
+# 2026-08-23 P2-A3 修正：不再吞输出——PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
 if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
-  bash docs/review/guard.sh >/dev/null 2>&1 || { echo "⚠️ 守护检查有 HIT（防 P0 复发），请确认非复发后修复（不提供 --no-verify 绕过，见 ai-engineering/process/ship.md）。"; exit 1; }
+  GUARD_OUT=$(bash docs/review/guard.sh 2>&1); GUARD_RC=$?
+  if [ "$GUARD_RC" -ne 0 ]; then
+    if echo "$GUARD_OUT" | grep -qiE 'HIT|PASS: [0-9]+ HIT'; then
+      echo "⚠️ 守护检查有 HIT（防 P0 复发），请确认非复发后修复（不提供 --no-verify 绕过，见 ai-engineering/process/ship.md）："
+      echo "$GUARD_OUT" | grep -iE 'HIT|PASS' | sed 's/^/    /'
+      exit 1
+    else
+      echo "❌ 守护脚本自身出错（非 HIT，需排查 guard.sh）："
+      echo "$GUARD_OUT" | tail -5 | sed 's/^/    /'
+      exit 1
+    fi
+  fi
 fi
 
 bash ai-engineering/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）

@@ -59,7 +59,7 @@ tags: [ai, meta, index]
 | checklists/guard.md | 守护检查清单（G1-G7）| active |
 | checklists/cost.md | 成本纪律（烧钱动作清单 + 省钱原则 + 盯账）| active |
 | assets/_index.md | 资产层索引（规范/边界/ADR/坑）| active |
-| assets/skills-spec.md | 技能包规范（SKILL.md 融合规则：name + 9 字段、五段结构、新增流程）| active |
+| assets/skills-spec.md | 技能包规范（SKILL.md 融合规则：name + 10 字段、五段结构、新增流程）| active |
 | workflow/_index.md | 工作流层索引（讨论→方案→开发→审核→验收）| active |
 | state/_index.md | 状态层索引（指针化真相源）| active |
 | assets/adr/ADR-001.md | AI 工程层为一等公民 | accepted |
