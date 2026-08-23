@@ -1,11 +1,11 @@
 ---
 title: workflow 工作流层索引
 description: AI 工程工作流层目录治理——讨论→方案→开发→审核→验收 六段闭环
-version: 1
+version: 2
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-23
 status: active
-lines: 41
+lines: 42
 depends-on: []
 related:
   - ../README.md
@@ -20,6 +20,7 @@ tags: [ai, meta, index, workflow]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| overview.md | 工作流总览（主心骨 + 五段闭环 + guard 挂点，一张图导航）| active |
 | discuss.md | 讨论登记 + 沉淀过滤器（AI 主动发现，人确认）| active |
 | design.md | RFC 骨架标准化 + 决策沉淀规则 | active |
 | develop.md | 开发执行（动工前查边界/坑/规范 + 沉淀触发）| active |

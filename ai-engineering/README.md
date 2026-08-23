@@ -1,11 +1,11 @@
 ---
 title: AI 工程层
 description: AdaiOS 的 AI 工程层入口——资产（规范/边界/ADR/坑）+ 工作流（讨论→方案→开发→审核→验收）+ 状态（动态真相）；代码工程是结果集，AI 工程是驱动层
-version: 1
+version: 2
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-23
 status: active
-lines: 57
+lines: 59
 depends-on:
   - frontmatter-spec.md
 related:
@@ -20,6 +20,8 @@ tags: [ai, meta, engineering]
 # AI 工程层（ai-engineering/）
 
 > **定位**：代码工程（services/ apps/ os/）是**结果集**；AI 工程是**驱动层**——怎么讨论、怎么定方案、怎么开发、怎么审核、怎么验收，以及一路沉淀的规范/边界/决策/坑。任何 AI 工具读此层即可参与项目全流程（工具无关）。
+
+> **行业定位（2026-08-23 确立）**：本层 = **Harness Engineering（护栏工程）的个人落地实例**——围绕自主 AI Agent 构建完整可控执行环境（标准化文档 + 强制约束 + 多层校验 + 反馈修正闭环）。行业对应物：①**AGENTS.md 项目契约**（分层 + 就近原则；本仓库在行业之上加了 AGENTS.local.md 机器生成快照自动注入）；②**Agent Skills 技能包**（roles/ 8 审查官 + skills/ 建设技能 + skills-spec.md 规范，同构 SKILL.md 标准）；③**.agents/ 目录结构**（结构同构：skills/ agents/ commands/，命名独立——不叫 .agents/，因本层是「工程驱动层」完整体系而非扩展资源目录，且 .agents/ 是 Qoder 专属约定）。参考：桌面《AI编程行业标准化合套方案.md》第九章 Harness Engineering。
 
 ## 三层结构
 

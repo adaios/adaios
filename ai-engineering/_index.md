@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-20
+updated: 2026-08-23
 status: active
-lines: 67
+lines: 68
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -29,6 +29,7 @@ tags: [ai, meta, index]
 | roles/docs-reviewer.md | 文档契约官 | active |
 | roles/knowledge-reviewer.md | 知识数据官 | active |
 | roles/context-reviewer.md | AI Context 审查官 | active |
+| roles/adversarial-reviewer.md | 对抗找茬官（deep 默认附加，找炸点/骂点/边界漏）| active |
 | skills/new-api.md | 建设技能：新建/修改 API（代码→契约→测试→门控闭环）| active |
 | skills/new-domain.md | 建设技能：新增 Domain（RFC+六维→插件→数据流→落地）| active |
 | skills/ship.md | 建设技能：/ship 收尾闭环（五件套→契约→登记→门禁→提交）| active |

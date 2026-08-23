@@ -21,7 +21,7 @@ tags: [guide, skills]
 
 技能 = 把 AdaiOS 的**高频工作流程**（建 API、建 Domain、收尾、审查）固化成标准文件。AI 接到对应任务时自动加载并**按流程执行**——不再每次临场发挥、不再靠"记不记得"。
 
-## 二、技能清单（11 个）
+## 二、技能清单（12 个）
 
 ### 建设技能（进攻侧：你做东西时，AI 按流程做）
 
@@ -43,6 +43,7 @@ tags: [guide, skills]
 | `docs-reviewer` | 文档/契约改动后 | api-spec 一致性、断链、数字漂移、frontmatter |
 | `knowledge-reviewer` | 知识/数据改动后 | os/ 与 data/ 健康、隐私面、格式契约 |
 | `context-reviewer` | 上下文/AI 模板改动后 | Purpose/Trigger/Action/Consistency 四问 |
+| `adversarial-reviewer` | 任何改动后（deep 默认附加）| 对抗找茬：哪里会炸 / 用户哪里会骂 / 边界哪里漏 |
 
 ## 三、怎么用（三种方式）
 

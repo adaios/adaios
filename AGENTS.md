@@ -42,7 +42,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 全维度走查 | `ai-engineering/process/audit.md` | 8 审查官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `ai-engineering/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `ai-engineering/process/ship.md` | /ship：测试→契约→登记→guard-meta 门禁→提交 |
-| 审查角色（技能包） | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 官，封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
+| 审查角色（技能包） | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 客观官 + 对抗找茬官（deep 默认附加），封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
 | 建设技能 | `ai-engineering/skills/` | new-api / new-domain / ship 三技能：建设与收尾流程封装为 SKILL.md，加载即执行 |
 | 技能包规范 | `ai-engineering/assets/skills-spec.md` | SKILL.md 技能包标准：name + frontmatter 9 字段融合、五段结构、新增流程 |
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
