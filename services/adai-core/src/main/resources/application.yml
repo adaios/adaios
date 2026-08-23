@@ -40,6 +40,8 @@ adai:
     # 生产前端若在服务器上，追加其域名（.env 配 ADAI_ALLOWED_ORIGIN_PATTERNS）。
     allowed-origin-patterns: ${ADAI_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   market:
+    # K 线主源（2026-08-23 用户确认腾讯优先：东财在生产被限，腾讯稳定；eastmoney 可切回历史主源）
+    kline-primary: tencent
     # Phase 2 行情异动主动推送（MarketAlertService）：交易时段轮询持仓，命中阈值写推送事件入 Feed。
     # cron 默认工作日 9-11/13-15 点每 30 分钟；阈值单位=百分比。
     alert:

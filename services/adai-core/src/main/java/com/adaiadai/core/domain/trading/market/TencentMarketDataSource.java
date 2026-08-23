@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * API 格式：{@code v_code="1~name~code~price~yesterdayClose~open~volume~...~changePercent~"}
  */
 @Component
-public class TencentMarketDataSource implements MarketDataSource {
+public class TencentMarketDataSource implements MarketDataSource, KlineSource {
 
     private static final Logger log = LoggerFactory.getLogger(TencentMarketDataSource.class);
 

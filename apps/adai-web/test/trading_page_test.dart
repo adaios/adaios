@@ -608,91 +608,86 @@ void main() {
     });
   });
 
-  group('批量导入 Dialog（web 独有）', () {
-    testWidgets('粘贴多行 → POST /trades/batch → 成功 N 条', (tester) async {
-      Map<String, dynamic>? sentBody;
+  group('持仓 Tab 导入（2026-08-23：页头「批量导入」移除，持仓导入归持仓 Tab）', () {
+    testWidgets('通达信持仓导出 → POST /positions/import?replace=true → 提示导入数', (tester) async {
+      List<dynamic>? sentBody;
+      Uri? sentUri;
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
-        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/positions' && request.method == 'GET') {
+          return _json([_positionJson()]);
+        }
+        if (path == '/api/v1/trading/positions/import' && request.method == 'POST') {
+          sentBody = jsonDecode(request.body) as List<dynamic>;
+          sentUri = request.url;
+          return _json({'imported': 2, 'missingStopLoss': ['600519']});
+        }
         if (path == '/api/v1/trading/account') return _json(_accountJson());
-    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
         if (path == '/api/v1/trading/sold/score') return _json([]);
-
-    if (path == '/api/v1/trading/watchlist') return _json([]);
-    if (path == '/api/v1/trading/sold') return _json([]);
-    if (path == '/api/v1/trading/buy-points') return _json([]);
-    if (path == '/api/v1/trading/sold/score') return _json([]);
-
-        if (path == '/api/v1/trading/trades/batch') {
-          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
-          return _json({'success': 2, 'failures': []});
-        }
         return http.Response('not found', 404);
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byIcon(Icons.upload_file_outlined));
+      // 持仓 Tab 内导入按钮（页头批量导入已移除，不再有 upload_file_outlined 图标按钮）
+      expect(find.byIcon(Icons.upload_file_outlined), findsNothing);
+      await tester.tap(find.text('导入持仓'));
       await tester.pumpAndSettle();
-      expect(find.text('批量导入交易'), findsOneWidget);
 
       await tester.enterText(
         find.byType(TextField),
-        '600123,立昂微,BUY,25.30,200,22.8,B2\n600519,贵州茅台,买,1500,100,1350,B1,季报前埋伏',
+        '代码\t名称\t成本价\t证券数量\n600123\t立昂微\t25.30\t200\n600519\t贵州茅台\t1350\t100\n',
       );
       await tester.tap(find.text('导入'));
       await tester.pumpAndSettle();
 
       expect(sentBody, isNotNull);
-      final trades = (sentBody!['trades'] as List).cast<Map<String, dynamic>>();
-      expect(trades.length, 2);
-      expect(trades[0]['symbol'], '600123');
-      expect(trades[0]['stopLossPrice'], 22.8);
-      expect(trades[0]['buyPoint'], 'B2');
-      expect(trades[1]['direction'], 'BUY');
-      expect(trades[1]['reason'], '季报前埋伏');
-      expect(find.text('成功导入 2 条'), findsOneWidget);
+      expect(sentBody!.length, 2);
+      expect(sentBody![0]['symbol'], '600123');
+      expect(sentBody![0]['avgCost'], 25.30);
+      expect(sentUri!.queryParameters['replace'], 'true');
+      expect(find.textContaining('持仓导入 2 只'), findsOneWidget);
+      expect(find.textContaining('未设止损 1 只'), findsOneWidget);
     });
 
-    testWidgets('本地解析失败 → 人话错误列表，不发请求', (tester) async {
-      var batchCalls = 0;
+    testWidgets('非通达信持仓文本 → 前端拒绝，不发请求', (tester) async {
+      var postCalls = 0;
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
-        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/positions' && request.method == 'GET') {
+          return _json([_positionJson()]);
+        }
+        if (path == '/api/v1/trading/positions/import' && request.method == 'POST') {
+          postCalls++;
+          return _json({'imported': 0, 'missingStopLoss': []});
+        }
         if (path == '/api/v1/trading/account') return _json(_accountJson());
-    if (path == '/api/v1/trading/account') return _json(_accountJson());
         if (path == '/api/v1/trading/watchlist') return _json([]);
         if (path == '/api/v1/trading/sold') return _json([]);
         if (path == '/api/v1/trading/buy-points') return _json([]);
         if (path == '/api/v1/trading/sold/score') return _json([]);
-
-    if (path == '/api/v1/trading/watchlist') return _json([]);
-    if (path == '/api/v1/trading/sold') return _json([]);
-    if (path == '/api/v1/trading/buy-points') return _json([]);
-    if (path == '/api/v1/trading/sold/score') return _json([]);
-
-        if (path == '/api/v1/trading/trades/batch') {
-          batchCalls++;
-          return _json({'success': 0, 'failures': []});
-        }
         return http.Response('not found', 404);
       });
       final api = ApiService(baseUrl: 'http://test', client: client);
       await _pumpTrading(tester, api);
 
-      await tester.tap(find.byIcon(Icons.upload_file_outlined));
+      await tester.tap(find.text('导入持仓'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), '600519,贵州茅台,BUY,1500,100,,B1');
+      // 清仓股文本（无成本价列）不应被当作持仓导入，也不应走交易 CSV 的「买点」校验
+      await tester.enterText(
+        find.byType(TextField),
+        '代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n600519\t贵州茅台\t20260801\t20260810\t9\t1\t-5.0\n',
+      );
       await tester.tap(find.text('导入'));
       await tester.pumpAndSettle();
 
-      expect(batchCalls, 0);
-      expect(find.textContaining('买入必须填止损位'), findsOneWidget);
+      expect(postCalls, 0);
+      expect(find.textContaining('无法识别通达信持仓导出'), findsOneWidget);
     });
   });
 

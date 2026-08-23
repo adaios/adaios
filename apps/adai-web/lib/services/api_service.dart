@@ -889,6 +889,14 @@ String extractApiErrorMessage(dynamic e) {
     }
   }
   final str = e.toString();
+  // 普通业务异常（非网络/HTTP）：透出 message 人话（如「无法识别通达信持仓导出」），
+  // 不要一律归为网络异常误导用户（2026-08-23：持仓导入本地校验失败曾被吞成「网络异常」）
+  if (str.startsWith('Exception: ')) {
+    final msg = str.substring('Exception: '.length).trim();
+    if (msg.isNotEmpty && !msg.contains('TimeoutException') && !msg.contains('SocketException')) {
+      return msg;
+    }
+  }
   if (str.contains('API 请求失败')) {
     final codeMatch = RegExp(r'HTTP (\d+)').firstMatch(str);
     final code = codeMatch?.group(1) ?? '?';

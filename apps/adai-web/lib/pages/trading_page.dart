@@ -228,13 +228,37 @@ class _TradingPageState extends State<TradingPage> {
         targetPrice: result.targetPrice,
       );
       if (!mounted) return;
+      // 2026-08-23 修复：保存后本地乐观更新——不依赖 _loadAll（行情注入可能慢/超时，
+      // 用户曾看到「修改止损后半天刷不出来、超时、页面显示旧值」；后端其实已落盘）
+      // 只替换编辑字段（止损/角色/目标价），保留本地行情注入后的现价/盈亏（避免回退到存储价）
+      setState(() {
+        _positions = _positions.map((pos) {
+          if (pos.symbol != p.symbol) return pos;
+          return PositionItem(
+            symbol: pos.symbol,
+            name: pos.name,
+            quantity: pos.quantity,
+            avgCost: pos.avgCost,
+            currentPrice: pos.currentPrice,
+            marketValue: pos.marketValue,
+            pnl: pos.pnl,
+            pnlPercent: pos.pnlPercent,
+            entryDate: pos.entryDate,
+            stopLossPrice: result.stopLossPrice ?? pos.stopLossPrice,
+            buyPoint: pos.buyPoint,
+            role: result.role.isEmpty ? pos.role : result.role,
+            targetPrice: result.targetPrice ?? pos.targetPrice,
+          );
+        }).toList();
+      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${p.name.isEmpty ? p.symbol : p.name} 已更新',
             style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
         backgroundColor: AppColors.darkSurface2,
         duration: const Duration(seconds: 2),
       ));
-      await _loadAll();
+      // 后台静默刷新行情/盈亏；失败不覆盖本地已更新的止损（_loadAll 内部已有旧数据保留逻辑）
+      unawaited(_loadAll());
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -245,14 +269,7 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
-  // ── 批量导入 / 交易历史 / 复盘历史 入口 ──
-
-  Future<void> _showImport() {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => _ImportDialog(api: widget.api, onImported: _loadAll),
-    );
-  }
+  // ── 交易历史 / 复盘历史 入口 ──
 
   /// RFC 20260817：推送设置对话框（逐类型开关）。
   Future<void> _showPushSettings() async {
@@ -335,12 +352,9 @@ class _TradingPageState extends State<TradingPage> {
             tooltip: '复盘历史',
           ),
           // RFC 20260823：交易历史 Dialog 已升级为第 5 Tab「历史成交」，页头入口移除
-          IconButton(
-            onPressed: _showImport,
-            icon: const Icon(Icons.upload_file_outlined, size: 18),
-            color: AppColors.darkGrey4,
-            tooltip: '批量导入',
-          ),
+          // 2026-08-23 用户确认：页头「批量导入」入口移除——清仓/资金/自选/历史成交各 Tab
+          // 已有专属导入按钮（导入清仓/导入资金/导入自选/导入历史成交），持仓导入在持仓 Tab 内，
+          // 避免用户把清仓/资金文本误塞进批量导入对话框（被交易 CSV 解析器校验「买点」拦截）
           // RFC 20260817：推送设置入口（早盘/午间/尾盘/买点/预警/行情条开关）
           IconButton(
             onPressed: _showPushSettings,
@@ -512,23 +526,66 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   Widget _buildPositionTable() {
-    if (_positions.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.only(top: 40),
-          child: Text('暂无持仓', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-        ),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+    // 2026-08-23：持仓 Tab 内导入入口（通达信持仓导出，全量覆盖）——页头「批量导入」已移除，
+    // 持仓导入不再与清仓/资金/交易 CSV 混在一个对话框（此前清仓/资金文本被交易 CSV 校验「买点」拦截）
+    final header = Row(children: [
+      Text('持仓 ${_positions.length} 只', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+      const SizedBox(width: 8),
+      Text('通达信持仓导出 · 全量覆盖 · 止损需导入后补设', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      const Spacer(),
+      OutlinedButton.icon(
+        onPressed: () => _openImportDialog('持仓',
+            '粘贴通达信持仓导出（或选择文件）：证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设',
+            (c) async {
+              final parsed = parseTdxPositions(c);
+              if (parsed.rows.isEmpty) {
+                throw Exception('无法识别通达信持仓导出——请确认表头含「证券代码/股票余额/成本价」');
+              }
+              final result = await widget.api.importPositions(
+                parsed.rows.map((r) => r.toJson()).toList(),
+                replace: true,
+              );
+              await _loadAll();
+              if (mounted) {
+                var msg = '持仓导入 ${result.imported} 只';
+                if (result.missingStopLoss.isNotEmpty) {
+                  msg += ' · 未设止损 ${result.missingStopLoss.length} 只（${result.missingStopLoss.join('、')}）';
+                }
+                _toast(msg);
+              }
+            }),
+        icon: const Icon(Icons.upload_file, size: 14),
+        label: const Text('导入持仓', style: TextStyle(fontSize: 12)),
+        style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey1,
+            side: const BorderSide(color: AppColors.darkGrey4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
+    ]);
+    if (_positions.isEmpty) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        header,
+        const SizedBox(height: 12),
+        const Center(
+          child: Padding(
+            padding: EdgeInsets.only(top: 40),
+            child: Text('暂无持仓', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+          ),
+        ),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      header,
+      const SizedBox(height: 8),
+      Container(
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           headingRowColor: WidgetStatePropertyAll(AppColors.darkSurface2.withValues(alpha: 0.5)),
           dataRowColor: WidgetStatePropertyAll(Colors.transparent),
           headingTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey5),
@@ -574,9 +631,10 @@ class _TradingPageState extends State<TradingPage> {
               )),
             ]);
           }).toList(),
+          ),
         ),
       ),
-    );
+    ]);
   }
 
   /// #102 复盘入口：生成今日复盘 → 弹窗展示（交易系统反哺可达）。
@@ -1689,329 +1747,6 @@ class _EditPositionDialogState extends State<_EditPositionDialog> {
           onPressed: _submit,
           style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
           child: const Text('保存', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────── 批量导入 Dialog（web 独有） ───────────────────────────
-
-class _ImportDialog extends StatefulWidget {
-  final ApiService api;
-  final Future<void> Function() onImported;
-
-  const _ImportDialog({required this.api, required this.onImported});
-
-  @override
-  State<_ImportDialog> createState() => _ImportDialogState();
-}
-
-class _ImportDialogState extends State<_ImportDialog> {
-  final _text = TextEditingController();
-  bool _importing = false;
-  int? _successCount;
-  final List<String> _errors = [];
-  /// 历史成交导入结果（第五份文件，2026-08-18）——含对账提示行。
-  HistoricalTradeImportResult? _historyResult;
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
-
-  bool _uploading = false;
-
-  /// 选择本地文件（通达信导出 txt）→ 上传留存 → 转码填充 → 自动导入。
-  Future<void> _pickFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final f = result.files.first;
-      if (f.bytes == null) return;
-      setState(() => _uploading = true);
-      final saved = await widget.api.saveImportFile(f.name, f.bytes!);
-      if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _text.text = saved.content;
-        _successCount = null;
-        _errors.clear();
-        _historyResult = null;
-      });
-      // 自动解析导入（通达信持仓 / 历史成交 / 交易 CSV 自动识别）
-      await _import();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _errors.add('文件上传失败，请重试');
-      });
-    }
-  }
-
-  Future<void> _import() async {
-    // 每次导入前重置历史成交对账展示（防止切换格式时残留）
-    _historyResult = null;
-    // 通达信导出（持仓快照）自动识别 → 持仓初始化导入（全量覆盖）；
-    // 历史成交查询导出 → 补逐笔流水（第五份文件）；否则按交易 CSV 批量导入
-    if (isTdxExport(_text.text)) {
-      await _importTdxPositions();
-      return;
-    }
-    if (isTdxHistoryExport(_text.text)) {
-      await _importTdxHistory();
-      return;
-    }
-    final parsed = parseImportTrades(_text.text);
-    if (parsed.rows.isEmpty && parsed.errors.isEmpty) {
-      setState(() {
-        _successCount = 0;
-        _errors
-          ..clear()
-          ..add('还没有可导入的内容，请按格式粘贴或填写');
-      });
-      return;
-    }
-    setState(() {
-      _importing = true;
-      _successCount = null;
-      _errors
-        ..clear()
-        ..addAll(parsed.errors);
-    });
-    if (parsed.rows.isEmpty) {
-      setState(() => _importing = false);
-      return;
-    }
-    try {
-      final result = await widget.api.importTrades(
-        parsed.rows.map((r) => r.toJson()).toList(),
-      );
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = result.success;
-        _errors.addAll(result.failures.map(
-          (f) => f.row > 0 ? '第 ${f.row} 行：${f.message}' : f.message,
-        ));
-      });
-      // 有成功条目（含部分成功）→ 刷新持仓表格
-      if (result.success > 0) {
-        widget.onImported();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = 0;
-        _errors.add('导入请求失败，请检查网络后重试');
-      });
-    }
-  }
-
-  /// 通达信持仓导入：解析快照 → POST /positions/import → 展示导入数 + 未设止损提示。
-  Future<void> _importTdxPositions() async {
-    final parsed = parseTdxPositions(_text.text);
-    setState(() {
-      _importing = true;
-      _successCount = null;
-      _errors
-        ..clear()
-        ..addAll(parsed.errors);
-    });
-    if (parsed.rows.isEmpty) {
-      setState(() => _importing = false);
-      return;
-    }
-    try {
-      // 2026-08-18 确认批次：通达信持仓导出 = 当日券商口径快照 → 全量覆盖（replace=true，以文件为准）
-      final result = await widget.api.importPositions(
-        parsed.rows.map((r) => r.toJson()).toList(),
-        replace: true,
-      );
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = result.imported;
-        // R68：未设止损的持仓必须补设，建议引擎/推送才按纪律工作
-        if (result.missingStopLoss.isNotEmpty) {
-          _errors.add('⚠️ ${result.missingStopLoss.length} 只持仓未设止损（R68）：'
-              '${result.missingStopLoss.join('、')}——请到持仓表格补设止损位与买点');
-        }
-      });
-      if (result.imported > 0) {
-        widget.onImported();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = 0;
-        _errors.add('通达信导入请求失败，请检查网络后重试');
-      });
-    }
-  }
-
-  /// 历史成交导入（第五份文件，2026-08-18）：补逐笔流水不重算持仓，返回对账提示。
-  Future<void> _importTdxHistory() async {
-    setState(() {
-      _importing = true;
-      _successCount = null;
-      _historyResult = null;
-      _errors.clear();
-    });
-    try {
-      final result = await widget.api.importTradesHistory(_text.text);
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = result.imported;
-        _historyResult = result;
-      });
-      // 有非交易事件（股息红利税等）→ 提示已跳过
-      if (result.nonTrades > 0) {
-        _errors.add('已跳过 ${result.nonTrades} 行非交易资金事件（如股息红利税）——不落流水');
-      }
-      if (result.imported > 0) {
-        widget.onImported();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _importing = false;
-        _successCount = 0;
-        // B2-3（2026-08-23）：透出后端人话（原 contains('无法识别') 恒 false 吞掉人话）
-        _errors.add('历史成交导入失败：${extractApiErrorMessage(e)}');
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.darkSurface2,
-      title: const Text('批量导入交易', style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
-      content: SizedBox(
-        width: 520,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('三种格式自动识别：',
-                style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
-            const SizedBox(height: 2),
-            const Text('① 交易 CSV：代码,名称,方向,价格,数量,止损,买点[,原因]',
-                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const Text('② 通达信持仓导出：直接粘贴（证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设）',
-                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const Text('③ 通达信历史成交查询：补逐笔流水不重算持仓（自动识别，成交编号幂等 + 对账提示）',
-                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const SizedBox(height: 4),
-            const Text('例（交易）：600519,贵州茅台,BUY,1500,100,1350,B1,季报前埋伏',
-                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const SizedBox(height: 8),
-            Row(children: [
-              OutlinedButton.icon(
-                onPressed: _uploading ? null : _pickFile,
-                icon: _uploading
-                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.upload_file, size: 16),
-                label: Text(_uploading ? '上传中…' : '选择文件（通达信导出 txt）',
-                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.darkGrey1,
-                  side: const BorderSide(color: AppColors.darkGrey4),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('或直接粘贴文本（两种格式自动识别）',
-                    style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _text,
-              maxLines: 9,
-              minLines: 5,
-              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
-              decoration: const InputDecoration(
-                hintText: '粘贴 CSV 或多行文本…\n600123,立昂微,买,25.30,200,22.8,B2',
-                alignLabelWithHint: true,
-              ),
-            ),
-            if (_successCount != null || _errors.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              if (_successCount != null)
-                Text('成功导入 $_successCount 条',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
-              if (_historyResult != null) ...[
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.darkGrey4, width: 0.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
-                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-                      const SizedBox(height: 4),
-                      for (final l in _historyResult!.lines)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
-                          child: Text('${l.name}（${l.symbol}）：${l.netVolume > 0 ? '+' : ''}${l.netVolume} 股 → ${l.note}',
-                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              if (_errors.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 110),
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurface,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _errors.length,
-                    itemBuilder: (_, i) => Text(_errors[i],
-                        style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
-                  ),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
-        ),
-        FilledButton.icon(
-          onPressed: _importing ? null : _import,
-          icon: _importing
-              ? const SizedBox(width: 14, height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkBg))
-              : const Icon(Icons.upload_file, size: 16),
-          label: Text(_importing ? '导入中…' : '导入'),
-          style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
         ),
       ],
     );
