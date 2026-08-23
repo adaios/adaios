@@ -18,17 +18,22 @@ REMOTE_DIR="/opt/adaios"
 DATA_DIR="${REMOTE_DIR}/data"
 BACKEND_DIR="${REMOTE_DIR}/backend"
 
-echo "▸ 上传 JAR 到 ${SERVER}:${BACKEND_DIR}/adai-core.jar..."
-scp "$JAR" "root@${SERVER}:${BACKEND_DIR}/adai-core.jar"
+echo "▸ 上传 JAR 到 ${SERVER}:/tmp/adai-core.jar..."
+# 2026-08-23：生产 SSH 用 ubuntu@（root 直连被拒），jar 先传 /tmp 再 sudo 装入 backend 目录
+scp "$JAR" "ubuntu@${SERVER}:/tmp/adai-core.jar"
 
 echo "▸ SSH 部署..."
-ssh "root@${SERVER}" bash -s << 'SSH_SCRIPT'
+ssh "ubuntu@${SERVER}" sudo bash -s << 'SSH_SCRIPT'
 set -euo pipefail
 
-echo "  1/5  停止服务..."
+echo "  0/6  装入新 JAR（/tmp/adai-core.jar → /opt/adaios/backend/adai-core.jar）..."
+install -o adaios -g adaios -m 644 /tmp/adai-core.jar /opt/adaios/backend/adai-core.jar
+rm -f /tmp/adai-core.jar
+
+echo "  1/6  停止服务..."
 systemctl stop adai-core || true
 
-echo "  2/5  检查数据目录完整性..."
+echo "  2/6  检查数据目录完整性..."
 mkdir -p /opt/adaios/data/adai/identity
 mkdir -p /opt/adaios/data/records
 mkdir -p /opt/adaios/data/records/cards
@@ -62,7 +67,7 @@ tags:
 EOF
 fi
 
-echo "  3/5  配置环境变量..."
+echo "  3/6  配置环境变量..."
 
 # ── .env — 供 DeepSeek API Key 等配置 ──
 if [ ! -f /opt/adaios/backend/.env ]; then
@@ -98,10 +103,10 @@ EOF
     echo "     然后手动执行: systemctl restart adai-core"
 fi
 
-echo "  4/5  修正目录权限..."
+echo "  4/6  修正目录权限..."
 chown -R adaios:adaios /opt/adaios
 
-echo "  5/5  启动服务..."
+echo "  5/6  启动服务..."
 systemctl start adai-core || true
 
 # 检查服务是否真的起来了（带就绪重试：服务启动需 5-15 秒，sleep 3 不够）
