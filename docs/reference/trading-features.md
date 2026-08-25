@@ -43,9 +43,9 @@ tags: [trading, plugin, reference]
 
 ---
 
-## 一、后端端点总表（TradingController 35 个 + admin 1 个）
+## 一、后端端点总表（TradingController 36 个 + admin 1 个）
 
-> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**35 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots）。
+> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**36 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots）。
 
 ### 1. 交易记录（逐笔流水）
 
@@ -57,6 +57,7 @@ tags: [trading, plugin, reference]
 | POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
 | POST | `/trading/trades/parse` | 一句话交易解析 | 自然语言 → 结构化（LLM 优先 + 正则兜底，手=×100）；**只解析不落库**；matched=false 前端转精确表单 |
 | GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all` |
+| POST | `/trading/sync` | **一键按流水重建持仓（2026-08-25 用户场景）** | 导入历史成交后快照过期 → 以流水为准重建 positions：已清仓残留自动移除（removed）、流水解释不了的真底仓保留（keptInitial）；与 sync 模式互补（sync 增量 / 本端点对齐存量） |
 
 ### 2. 持仓管理
 

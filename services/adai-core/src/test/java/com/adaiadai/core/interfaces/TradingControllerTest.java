@@ -1233,5 +1233,27 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.syncMode").value("append"))
                 .andExpect(jsonPath("$.summary").doesNotExist());
     }
+
+    @Test
+    void syncPositions_returnsReport() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.syncPositionsFromFlow(eq("adai"))).thenReturn(
+                new TradingAppService.SyncResult(1, java.util.List.of("603988"), java.util.List.of()));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/sync").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.positionCount").value(1))
+                .andExpect(jsonPath("$.removed[0]").value("603988"))
+                .andExpect(jsonPath("$.keptInitial").isArray());
+        verify(trading).syncPositionsFromFlow(eq("adai"));
+    }
+
+    @Test
+    void syncPositions_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(post("/api/v1/trading/sync").header("X-User-Id", "alice"))
+                .andExpect(status().isForbidden());
+    }
 }
 

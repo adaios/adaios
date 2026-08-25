@@ -329,6 +329,57 @@ public class TradingAppService {
     }
 
     /**
+     * 一键按流水重建持仓（2026-08-25 用户场景：导入历史成交后持仓快照过期，
+     * 中电电机已清仓但快照残留 1000 股被当初始底仓）。
+     * <p>
+     * 语义：以流水为准（结合 INIT 兜底）重放每个 symbol 的开放批次 → 覆盖 positions：
+     * <ul>
+     *   <li>有开放批次 → 持仓 = 批次 Σ（数量/加权成本），保留快照元信息（entryDate/止损/买点/角色）</li>
+     *   <li>无开放批次（流水已全部卖出）→ 快照里该 symbol 移除（removed 报告）</li>
+     *   <li>保留 INIT 底仓的 symbol → keptInitial 报告（快照早于流水的真底仓）</li>
+     * </ul>
+     * 与「每日导当天成交 sync 模式」互补：sync 处理增量，本端点一次性对齐存量账本。
+     */
+    public SyncResult syncPositionsFromFlow(String userId) {
+        Map<String, List<TradingLot>> bySymbol = tradingLotService.derive(userId);
+        Map<String, Position> oldHoldings = positionRepository.findAll(userId).stream()
+                .collect(java.util.stream.Collectors.toMap(Position::symbol, p -> p, (a, b) -> a));
+        List<Position> newPositions = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+        List<String> keptInitial = new ArrayList<>();
+        synchronized (tradeLock(userId)) {
+            for (Map.Entry<String, List<TradingLot>> e : bySymbol.entrySet()) {
+                String symbol = e.getKey();
+                List<TradingLot> open = e.getValue().stream().filter(l -> !l.closed()).toList();
+                if (open.isEmpty()) {
+                    if (oldHoldings.containsKey(symbol)) removed.add(symbol); // 流水已清仓 → 快照残留移除
+                    continue;
+                }
+                int qty = open.stream().mapToInt(TradingLot::remaining).sum();
+                BigDecimal totalCost = BigDecimal.ZERO;
+                for (TradingLot l : open) {
+                    totalCost = totalCost.add(l.costPrice().multiply(BigDecimal.valueOf(l.remaining())));
+                }
+                BigDecimal cost = totalCost.divide(BigDecimal.valueOf(qty), 4, java.math.RoundingMode.HALF_UP);
+                Position old = oldHoldings.get(symbol);
+                String name = (open.get(0).name() != null && !open.get(0).name().isBlank())
+                        ? open.get(0).name() : (old != null ? old.name() : symbol);
+                BigDecimal stop = old != null ? old.stopLossPrice() : null;
+                String bp = old != null ? old.buyPoint() : null;
+                String role = old != null ? old.role() : null;
+                LocalDate entryDate = old != null ? old.entryDate() : null;
+                if (open.stream().anyMatch(TradingLot::initial)) keptInitial.add(symbol);
+                newPositions.add(new Position(symbol, name, qty, cost, cost, LocalDateTime.now(),
+                        entryDate, stop, bp, role));
+            }
+            positionRepository.saveAll(userId, newPositions);
+        }
+        log.info("一键同步持仓 | userId={} | 持仓 {} 只 | 移除已清仓残留 {} | 保留底仓 {}",
+                userId, newPositions.size(), removed, keptInitial);
+        return new SyncResult(newPositions.size(), removed, keptInitial);
+    }
+
+    /**
      * 获取交易逐笔流水（RFC 20260816：web 交易历史）。
      * 可按日期范围过滤（from/to 均为 null 时返回全部）。
      */
@@ -996,8 +1047,7 @@ public class TradingAppService {
         return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null);
     }
 
-    /** 每日操作总结（RFC 20260825 §6）：客观聚合 + 批次 diff + 行为标注——不耗 AI 秒出。 */
-    private DailyOperationSummary buildDailySummary(String userId, List<TradingImportParser.HistoricalTradeRow> rows,
+    /** 每日操作总结（RFC 20260825 §6）：客观聚合 + 批次 diff + 行为标注——不耗 AI 秒出。 */    private DailyOperationSummary buildDailySummary(String userId, List<TradingImportParser.HistoricalTradeRow> rows,
                                                     Map<String, List<TradingLot>> before) {
         LocalDate date = rows.stream().map(TradingImportParser.HistoricalTradeRow::entryDate)
                 .filter(java.util.Objects::nonNull).max(LocalDate::compareTo).orElse(LocalDate.now());
@@ -1121,6 +1171,10 @@ public class TradingAppService {
             int deductedLots,
             List<TradingLotService.BehaviorNote> behaviors
     ) {}
+
+    /** 一键同步持仓结果（2026-08-25）：positionCount 同步后持仓数 / removed 流水已清仓的快照残留 /
+     *  keptInitial 保留的初始底仓（快照早于流水的真底仓）。 */
+    public record SyncResult(int positionCount, List<String> removed, List<String> keptInitial) {}
 
     /** 自选导入结果。 */
     public record WatchlistImportResult(int imported) {}

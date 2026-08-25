@@ -2176,6 +2176,40 @@ class _HistorySectionState extends State<_HistorySection>
     );
   }
 
+  /// 一键按流水重建持仓（2026-08-25）：历史成交导入后持仓快照可能过期——
+  /// 已清仓股票（如中电电机）从持仓移除，流水解释不了的真实底仓保留。
+  Future<void> _syncPositions() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('一键同步持仓'),
+        content: const Text('以流水为准重建持仓：已清仓的股票会自动从持仓移除，流水解释不了的真实底仓会保留。确认同步？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认同步')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final r = await widget.api.syncPositions();
+      if (!mounted) return;
+      final sb = StringBuffer('同步完成：持仓 ${r.positionCount} 只');
+      if (r.removed.isNotEmpty) {
+        sb.write('；已移除已清仓残留 ${r.removed.length} 只（${r.removed.join('、')}）');
+      }
+      if (r.keptInitial.isNotEmpty) {
+        sb.write('；保留真实底仓 ${r.keptInitial.join('、')}');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(sb.toString())));
+      _load(); // 刷新持仓/批次
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('同步失败：${extractApiErrorMessage(e)}')));
+    }
+  }
+
   /// 按日期分组（日期降序；无日期归「未标注日期」）。
   Map<String, List<TradeRecordItem>> _grouped() {
     final map = <String, List<TradeRecordItem>>{};
@@ -2253,6 +2287,17 @@ class _HistorySectionState extends State<_HistorySection>
           style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.darkGrey1,
               side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+        const SizedBox(width: 6),
+        // 2026-08-25：一键按流水重建持仓（历史成交导入后，已清仓残留自动移除——如中电电机）
+        OutlinedButton.icon(
+          onPressed: _syncPositions,
+          icon: const Icon(Icons.sync, size: 14),
+          label: const Text('一键同步', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkBlue,
+              side: const BorderSide(color: AppColors.darkBlue),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),

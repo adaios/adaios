@@ -169,6 +169,27 @@ public class TradingController {
     }
 
     /**
+     * 一键按流水重建持仓（2026-08-25 用户场景：导入历史成交后持仓快照过期——
+     * 中电电机已清仓但快照残留被当初始底仓）。
+     * POST /api/v1/trading/sync
+     * <p>
+     * 以流水为准（结合 INIT 底仓兜底）重建 positions：流水已全部卖出的 symbol 从持仓移除，
+     * 开放批次汇总为持仓；返回同步报告（removed 已清仓残留 / keptInitial 保留底仓）。
+     * 与「每日导当天成交 sync 模式」互补：sync 处理增量，本端点一次性对齐存量账本。
+     */
+    @PostMapping("/sync")
+    public ResponseEntity<?> syncPositions(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        TradingAppService.SyncResult r = tradingAppService.syncPositionsFromFlow(userId);
+        return ResponseEntity.ok(Map.of(
+                "positionCount", r.positionCount(),
+                "removed", r.removed(),
+                "keptInitial", r.keptInitial()));
+    }
+
+    /**
      * 按股票代码查询名称（代码输入带出名称 + 二次确认）。
      * GET /api/v1/trading/lookup?symbol=000725 → {"symbol":"000725","name":"京东方A"}
      */

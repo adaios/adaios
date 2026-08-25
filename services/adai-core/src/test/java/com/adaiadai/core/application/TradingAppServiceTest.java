@@ -1218,5 +1218,73 @@ void soldUpdatePsychology_marksTrade() {
                 .map(TradingLotService.BehaviorNote::date).distinct().count();
         assertEquals(2, distinctDays);
     }
+
+    @Test
+    void syncPositionsFromFlow_removesClearedStaleAndKeepsOpen() {
+        // 一键同步（2026-08-25 用户场景）：流水已清仓的快照残留移除（中电电机），开放批次汇总为持仓
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        // 快照：中电电机 1000（已清仓但快照残留）+ 有研新材 600（在持）
+        repo.saveAll("default", List.of(
+                new Position("603988", "中电电机", 1000, new BigDecimal("20.8"), new BigDecimal("20.0"), LocalDateTime.now()),
+                new Position("600206", "有研新材", 600, new BigDecimal("55.0"), new BigDecimal("51.0"), LocalDateTime.now())));
+        // 流水：中电电机 8/17 买 1000 → 8/24 卖 1000（净 0，已清仓）；有研新材 8/18 买 600（无卖出）
+        history.append("default", TradeRecord.of("t1", "603988", "中电电机", TradeDirection.BUY,
+                new BigDecimal("21.0"), 1000, LocalDate.of(2026, 8, 17), null, null, null,
+                null, null, null, LocalDateTime.now(), null, "o1"));
+        history.append("default", TradeRecord.of("t2", "603988", "中电电机", TradeDirection.SELL,
+                new BigDecimal("20.55"), 1000, LocalDate.of(2026, 8, 24), null, null, null,
+                null, null, null, LocalDateTime.now(), null, "o2"));
+        history.append("default", TradeRecord.of("t3", "600206", "有研新材", TradeDirection.BUY,
+                new BigDecimal("55.0"), 600, LocalDate.of(2026, 8, 18), null, null, null,
+                null, null, null, LocalDateTime.now(), null, "o3"));
+        KlineService kline = mock(KlineService.class);
+        when(kline.kline(any(), anyInt())).thenReturn(List.of());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class), lotService);
+
+        TradingAppService.SyncResult r = service.syncPositionsFromFlow("default");
+
+        assertEquals(List.of("603988"), r.removed(), "中电电机流水已清仓 → 快照残留移除");
+        assertTrue(r.keptInitial().isEmpty());
+        List<Position> positions = repo.findAll("default");
+        assertEquals(1, positions.size(), "只剩有研新材");
+        assertEquals("600206", positions.get(0).symbol());
+        assertEquals(600, positions.get(0).quantity());
+    }
+
+    @Test
+    void syncPositionsFromFlow_keepsRealInitialLot() {
+        // 一键同步保留真底仓：快照早于流水（entryDate 8/1），流水从 8/5 起 → INIT 兜底不丢
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        repo.saveAll("default", List.of(new Position("600000", "浦发银行", 700,
+                new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now(),
+                LocalDate.of(2026, 8, 1), null, null, null)));
+        history.append("default", TradeRecord.of("t1", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("11.0"), 500, LocalDate.of(2026, 8, 5), null, null, null,
+                null, null, null, LocalDateTime.now(), null, "o1"));
+        history.append("default", TradeRecord.of("t2", "600000", "浦发银行", TradeDirection.SELL,
+                new BigDecimal("11.5"), 300, LocalDate.of(2026, 8, 10), null, null, null,
+                null, null, null, LocalDateTime.now(), null, "o2"));
+        KlineService kline = mock(KlineService.class);
+        when(kline.kline(any(), anyInt())).thenReturn(List.of());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class), lotService);
+
+        TradingAppService.SyncResult r = service.syncPositionsFromFlow("default");
+
+        assertEquals(List.of("600000"), r.keptInitial(), "快照早于流水 → INIT 真底仓保留");
+        assertEquals(1, repo.findAll("default").size());
+        assertEquals(700, repo.findAll("default").get(0).quantity(), "INIT 500 + 8/5 批剩余 200");
+    }
 }
 

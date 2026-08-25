@@ -113,6 +113,8 @@ public class TradingLotService {
 
         // 初始批次**前置**（后端审查 P1-1）：流水覆盖不到的底仓先建（最早建仓，LIFO 最后扣）——
         // 否则「底仓快照 + 只有卖出的流水」时卖单无批次可扣、差额丢失、初始批次虚增。
+        // 用户场景修复（2026-08-25 中电电机）：流水首笔是 BUY 且快照 entryDate 不早于首笔日
+        // → 流水从建仓开始完整，快照多余部分是「过期残留」（已清仓股还挂在快照），不是真底仓 → 不 INIT 兜底。
         if (holding != null && holding.quantity() > 0) {
             int flowNet = sorted.stream().filter(t -> t.direction() == TradeDirection.BUY)
                     .mapToInt(TradeRecord::volume).sum()
@@ -120,12 +122,23 @@ public class TradingLotService {
                     .mapToInt(TradeRecord::volume).sum();
             int gap = holding.quantity() - flowNet;
             if (gap > 0) {
-                MutableLot init = new MutableLot(new TradingLot(
-                        symbol + "_INIT", symbol,
-                        holding.name() != null && !holding.name().isBlank() ? holding.name() : symbol,
-                        holding.entryDate(), gap, gap, holding.avgCost(),
-                        holding.stopLossPrice(), holding.buyPoint(), holding.role(), true, BigDecimal.ZERO));
-                open.add(0, init);
+                // 过期残留判定（2026-08-25 中电电机场景）：流水首笔是 BUY 且含卖出（闭环自洽）
+                // 且快照 entryDate 不早于首笔日 → 流水从建仓开始完整，快照多余部分是残留不是真底仓。
+                // 流水无卖出（只增不减）→ 流水未闭环 → gap 是快照里的真底仓，保留 INIT。
+                boolean flowStartsWithBuy = !sorted.isEmpty()
+                        && sorted.get(0).direction() == TradeDirection.BUY;
+                boolean hasSell = sorted.stream().anyMatch(t -> t.direction() == TradeDirection.SELL);
+                boolean snapshotPredatesFlow = holding.entryDate() != null && !sorted.isEmpty()
+                        && holding.entryDate().isBefore(effectiveDate(sorted.get(0)));
+                boolean staleSnapshot = flowStartsWithBuy && hasSell && !snapshotPredatesFlow;
+                if (!staleSnapshot) {
+                    MutableLot init = new MutableLot(new TradingLot(
+                            symbol + "_INIT", symbol,
+                            holding.name() != null && !holding.name().isBlank() ? holding.name() : symbol,
+                            holding.entryDate(), gap, gap, holding.avgCost(),
+                            holding.stopLossPrice(), holding.buyPoint(), holding.role(), true, BigDecimal.ZERO));
+                    open.add(0, init);
+                }
             }
         }
 

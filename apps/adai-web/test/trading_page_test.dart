@@ -1610,4 +1610,36 @@ void main() {
     });
   });
 
+
+
+    testWidgets('一键同步持仓：确认后调用 /trading/sync 并提示移除残留（2026-08-25）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/lots') return _json({'lots': [], 'reconcile': []});
+        if (path == '/api/v1/trading/sync' && request.method == 'POST') {
+          return _json({'positionCount': 3, 'removed': ['603988'], 'keptInitial': []});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.tap(find.text('历史成交')); // 一键同步按钮在历史成交 Tab 工具行
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('一键同步'));
+      await tester.pumpAndSettle();
+      expect(find.text('以流水为准重建持仓：已清仓的股票会自动从持仓移除，流水解释不了的真实底仓会保留。确认同步？'), findsOneWidget);
+      await tester.tap(find.text('确认同步'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('已移除已清仓残留 1 只（603988）'), findsOneWidget);
+    });
 }

@@ -483,6 +483,17 @@ class ApiService {
     _check(resp);
     return HistoricalTradeImportResult.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
+  /// 一键按流水重建持仓（2026-08-25：导入历史成交后持仓快照过期——已清仓残留自动移除）。
+  /// POST /api/v1/trading/sync → {positionCount, removed:[...], keptInitial:[...]}
+  Future<SyncResult> syncPositions() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/sync'),
+      headers: _headers,
+    );
+    _check(resp);
+    return SyncResult.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 银证转账（POST /api/v1/trading/transfer：type IN/OUT + amount + note，净投入跟踪）。
   Future<void> recordTransfer({required String type, required double amount, String? note}) async {
     final resp = await _client.post(
@@ -1828,6 +1839,26 @@ class BatchImportFailure {
           '',
     );
   }
+}
+
+/// 一键同步持仓结果 DTO（POST /api/v1/trading/sync，2026-08-25）。
+/// removed = 流水已清仓的快照残留（已从持仓移除）；keptInitial = 保留的初始底仓（快照早于流水的真底仓）。
+class SyncResult {
+  final int positionCount;
+  final List<String> removed;
+  final List<String> keptInitial;
+
+  SyncResult({
+    required this.positionCount,
+    required this.removed,
+    required this.keptInitial,
+  });
+
+  factory SyncResult.fromJson(Map<String, dynamic> json) => SyncResult(
+        positionCount: (json['positionCount'] as num?)?.toInt() ?? 0,
+        removed: (json['removed'] as List?)?.cast<String>() ?? const [],
+        keptInitial: (json['keptInitial'] as List?)?.cast<String>() ?? const [],
+      );
 }
 
 /// 历史成交导入结果 DTO（POST /api/v1/trading/trades/import，第五份文件，2026-08-18）。

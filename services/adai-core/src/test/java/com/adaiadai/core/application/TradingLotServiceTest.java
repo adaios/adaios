@@ -270,5 +270,36 @@ class TradingLotServiceTest {
         assertTrue(notes.stream().noneMatch(n -> "loss-avg-down".equals(n.type())),
                 "卖清后重新建仓不算亏损加仓（9.2 是重新入场不是补仓）");
     }
+
+    @Test
+    void staleSnapshot_noInitialLot_whenFlowCoversFromFirstBuy() {
+        // 用户场景（2026-08-25 中电电机）：快照残留 1000（已清仓但快照没更新），
+        // 流水首笔 BUY 完整覆盖（8/17 买 1000 → 8/24 卖 1000）→ 不生成 INIT 残留底仓
+        List<Position> positions = List.of(new Position("603988", "中电电机", 1000,
+                new BigDecimal("20.8263"), new BigDecimal("20.0"), LocalDateTime.now())); // entryDate null（快照导入）
+        TradingLotService svc = service(List.of(
+                buy("603988", 1000, "21.0", LocalDate.of(2026, 8, 17), null, null),
+                sell("603988", 1000, "20.55", LocalDate.of(2026, 8, 24))), positions, Map.of());
+        List<TradingLot> lots = lotsOf(svc, "603988");
+        assertTrue(lots.stream().noneMatch(TradingLot::initial),
+                "流水从建仓开始完整 → 快照残留不生成 INIT 底仓");
+        assertTrue(lots.stream().allMatch(TradingLot::closed), "两批都已清仓（回合）");
+    }
+
+    @Test
+    void realInitialLot_kept_whenSnapshotPredatesFlow() {
+        // 真底仓场景：快照 entryDate 早于流水首笔 BUY → 保留 INIT（快照早于流水的底仓）
+        List<Position> positions = List.of(new Position("600000", "浦发银行", 700,
+                new BigDecimal("10.0"), new BigDecimal("10.5"), LocalDateTime.now(),
+                LocalDate.of(2026, 8, 1), null, null, null));
+        TradingLotService svc = service(List.of(
+                buy("600000", 500, "11.0", LocalDate.of(2026, 8, 5), null, null),
+                sell("600000", 300, "11.5", LocalDate.of(2026, 8, 10))), positions, Map.of());
+        List<TradingLot> lots = lotsOf(svc, "600000");
+        assertTrue(lots.stream().anyMatch(TradingLot::initial),
+                "快照 entryDate 早于流水首笔 → 保留 INIT 真底仓");
+        int remaining = lots.stream().filter(l -> !l.closed()).mapToInt(TradingLot::remaining).sum();
+        assertEquals(700, remaining, "INIT 500 + 8/5 批 200 = 700（= 快照）");
+    }
 }
 
