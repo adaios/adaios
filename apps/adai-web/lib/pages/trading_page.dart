@@ -2398,12 +2398,9 @@ class _HistorySectionState extends State<_HistorySection>
         cell('名称', 88),
         cell('数量', 60, right: true),
         cell('价格', 70, right: true),
-        cell('金额', 80, right: true), // RFC 20260823：全字段展示
-        cell('费用', 60, right: true), // 券商实扣（历史成交导入）
+        cell('金额', 80, right: true), // 成交金额
+        cell('费用', 60, right: true), // 券商实扣（|发生金额−成交金额|）
         cell('成交编号', 110), // orderId 幂等键
-        cell('止损', 70, right: true),
-        cell('买点', 56),
-        cell('原因', 120),
       ]),
     );
   }
@@ -2458,9 +2455,6 @@ class _HistorySectionState extends State<_HistorySection>
         cell(_thousands(t.amount), 80, right: true),
         cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', 60, right: true),
         cell(t.orderId ?? '—', 110, color: AppColors.darkGrey5),
-        cell(t.stopLossPrice?.toStringAsFixed(3) ?? '—', 70, right: true),
-        cell(t.buyPoint ?? '—', 56),
-        cell(t.reason ?? '', 120),
       ]),
     );
   }

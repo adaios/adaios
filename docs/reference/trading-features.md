@@ -175,7 +175,7 @@ tags: [trading, plugin, reference]
 | 资金 Tab | 现金/总资产概览；转入/转出（金额+备注）；导入资金（现金+精确成本）；本金设置（累计净投入）；说明「现金是 R81 判定分母（总资产=持仓+现金）」 | 「转入」(绿)/「转出」(橙)/「导入资金」/「设置本金」弹窗 | POST `/trading/transfer`、POST `/trading/imports/cash`、PUT `/trading/principal`、GET `/trading/account` |
 | 复盘生成 | AI 生成今日复盘 → markdown 弹窗（可滚动/可选中）；生成中按钮转圈禁用；「反哺入库」按钮 | 页头「复盘」 | POST `/trading/review`、POST `/trading/reviews/{date}/promote` |
 | 复盘历史 | master-detail：左日期列表 + 右 markdown 内容 | 页头日历按钮 → 点日期切换 | GET `/trading/reviews`、GET `/trading/review?date=` |
-| 历史成交 Tab | **RFC 20260823：常驻第 5 Tab（取代页头交易历史 Dialog）**——日期范围查询（默认近 30 天，DatePicker 改日期自动重载）；按日分组列表（日期+笔数，未标注日期置底）；**全字段列：方向/时间 HH:mm/代码/名称/数量/价格/金额/费用/成交编号/止损/买点/原因**（横向滚动）；区间统计行「共 N 笔 · 买 X 卖 Y」；旧数据无时间/费用/成交编号显示 '—'；导入后 inline 展示结果（新增/回填/跳过/非交易 + 对账行） | 进 Tab 自动加载 + 手动刷新（无定时轮询）；行首「导入历史成交」 | GET `/trading/trades?from=&to=`、POST `/trading/trades/import` |
+| 历史成交 Tab | **RFC 20260823：常驻第 5 Tab（取代页头交易历史 Dialog）**——日期范围查询（默认近 30 天，DatePicker 改日期自动重载）；按日分组列表（日期+笔数，未标注日期置底）；**列：方向/时间 HH:mm/代码/名称/数量/价格/金额/费用/成交编号**（2026-08-25 精简——历史成交是通达信原始成交单，止损/买点/原因无此数据已删列，避免列挤压/省略号）；区间统计行「共 N 笔 · 买 X 卖 Y」；旧数据无时间/费用/成交编号显示 '—'；导入后 inline 展示结果（新增/回填/跳过/非交易 + 对账行） | 进 Tab 自动加载 + 手动刷新（无定时轮询）；行首「导入历史成交」 | GET `/trading/trades?from=&to=`、POST `/trading/trades/import` |
 | 历史成交导入 | **独立入口（RFC 20260823：只认通达信历史成交导出格式）**——粘贴或选文件，`isTdxHistoryExport` 识别；非历史成交格式人话拒绝不静默落零；幂等 + 缺失成交时间回填；**RFC 20260825：响应含 `syncMode` + `summary`**——sync 模式展示「今日操作总结」卡片（买 X 笔 ¥Y · 卖 X 笔 · 新增/扣减批次 + 行为标注列表，亏损加仓/追高等醒目色）；append 模式提示「已按历史补录处理（只补流水，持仓未动）」 | Tab 内「导入历史成交」按钮 → 粘贴/选文件 → 导入 | POST `/trading/imports/save`、POST `/trading/trades/import` |
 | 推送设置 | 8 个推送开关（时段节奏/买点/止损/接近止损/大跌/放飞/破成本/行情条）；缺失 key 默认开；仅请求成功更新本地状态 | 页头铃铛按钮 → 拨动 Switch | GET/PUT `/trading/push-settings[/{type}]` |
 

@@ -693,7 +693,7 @@ void main() {
   });
 
   group('历史成交 Tab（RFC 20260823，取代交易历史 Dialog）', () {
-    testWidgets('按日期分组渲染全部列：方向/时间/代码/名称/数量/价格/金额/费用/成交编号/止损/买点/原因', (tester) async {
+    testWidgets('按日期分组渲染：方向/时间/代码/名称/数量/价格/金额/费用/成交编号（2026-08-25 精简——历史成交无止损/买点/原因，删列）', (tester) async {
       final client = MockClient((request) async {
         final path = request.url.path;
         if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
@@ -748,15 +748,15 @@ void main() {
       expect(find.text('买入'), findsOneWidget);
       expect(find.text('卖出'), findsOneWidget);
       expect(find.text('09:41'), findsOneWidget);
-      // 全字段：价格/数量/金额（千分位）/费用/成交编号/止损/买点/原因
+      // 2026-08-25 精简列：价格/数量/金额（千分位）/费用/成交编号；止损/买点/原因已删（历史成交无此数据）
       expect(find.text('25.300'), findsOneWidget);
       expect(find.text('200'), findsOneWidget);
       expect(find.text('5,060.00'), findsOneWidget);
       expect(find.text('1.23'), findsOneWidget);
       expect(find.text('69351117'), findsOneWidget);
-      expect(find.text('22.800'), findsOneWidget);
-      expect(find.text('B2'), findsOneWidget);
-      expect(find.text('平台突破'), findsOneWidget);
+      expect(find.text('止损'), findsNothing, reason: '历史成交列已删止损（源文件无此字段）');
+      expect(find.text('买点'), findsNothing, reason: '历史成交列已删买点');
+      expect(find.text('原因'), findsNothing, reason: '历史成交列已删原因');
       // 旧数据无 tradeTime/fee/orderId → '—' 占位
       expect(find.text('—'), findsWidgets);
       // 区间统计行
