@@ -951,6 +951,7 @@ public class TradingAppService {
      * 返回对账 + 每日操作总结（含行为标注）。
      */
     private HistoricalTradeImportResult importSync(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
+        long t0 = System.nanoTime(); // 2026-08-25：导入耗时定位（锁等待/幂等/落盘分段）
         // 导入前批次快照：diff 出新增/扣减批次（每日操作总结）
         Map<String, List<TradingLot>> before = tradingLotService.derive(userId);
         int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
@@ -1014,15 +1015,16 @@ public class TradingAppService {
         }
         List<ReconcileLine> lines = tradingLotService.reconcile(userId);
         DailyOperationSummary summary = buildDailySummary(userId, rows, before);
-        log.info("当日成交同步导入 | userId={} | 同步 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 买 {} 卖 {} 新增批次 {} 扣减 {} 行为 {}",
+        log.info("当日成交同步导入 | userId={} | 同步 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 买 {} 卖 {} 新增批次 {} 扣减 {} 行为 {} | 耗时 {}ms",
                 userId, imported, skipped, nonTrades, lines.size(),
                 summary.buyCount(), summary.sellCount(), summary.newLots(), summary.deductedLots(),
-                summary.behaviors().size());
+                summary.behaviors().size(), (System.nanoTime() - t0) / 1_000_000);
         return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "sync", summary);
     }
 
     /** 补录模式（历史成交导入，原语义）：只补流水不重算持仓/现金，返回对账提示。 */
     private HistoricalTradeImportResult importAppend(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
+        long t0 = System.nanoTime(); // 2026-08-25：导入耗时定位（含锁等待）
         int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
         List<TradeRecord> toAdd = new ArrayList<>();
         synchronized (tradeLock(userId)) {
@@ -1077,8 +1079,8 @@ public class TradingAppService {
             for (TradeRecord t : toAdd) tradingHistoryRepository.append(userId, t);
         }
         List<ReconcileLine> lines = reconcileHistorical(userId, rows);
-        log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
-                userId, imported, updated, skipped, nonTrades, lines.size());
+        log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 耗时 {}ms",
+                userId, imported, updated, skipped, nonTrades, lines.size(), (System.nanoTime() - t0) / 1_000_000);
         return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null);
     }
 
@@ -1089,6 +1091,7 @@ public class TradingAppService {
      * 幂等：股息行按（symbol, entryDate, 发生金额）指纹去重，重复导入不重复记账。
      */
     private void applyDividendCash(String userId, TradingImportParser.HistoricalTradeRow r) {
+        long t0 = System.nanoTime();
         BigDecimal occurred = r.occurred();
         if (occurred == null || occurred.signum() == 0) {
             log.warn("股息类事件无发生金额，跳过记账 | userId={} | {} {}", userId, r.symbol(), r.remark());
@@ -1123,6 +1126,9 @@ public class TradingAppService {
             }
         } catch (RuntimeException e) {
             log.warn("股息类事件记账失败 | userId={} | {} | {}", userId, r.symbol(), e.getMessage());
+        } finally {
+            log.info("股息记账 | userId={} | {} {} 元 | 耗时 {}ms", userId, r.symbol(), r.occurred(),
+                    (System.nanoTime() - t0) / 1_000_000);
         }
     }
 
