@@ -748,12 +748,15 @@ void main() {
       expect(find.text('买入'), findsOneWidget);
       expect(find.text('卖出'), findsOneWidget);
       expect(find.text('09:41'), findsOneWidget);
-      // 2026-08-25 精简列：价格/数量/金额（千分位）/费用/成交编号；止损/买点/原因已删（历史成交无此数据）
+      // 2026-08-25 列设计（用户拍板）：源文件字段（成交金额/发生金额）在前，系统计算的「费用」放最后
       expect(find.text('25.300'), findsOneWidget);
       expect(find.text('200'), findsOneWidget);
-      expect(find.text('5,060.00'), findsOneWidget);
-      expect(find.text('1.23'), findsOneWidget);
-      expect(find.text('69351117'), findsOneWidget);
+      expect(find.text('5,060.00'), findsOneWidget); // 成交金额（源文件）
+      expect(find.text('-5,061.23'), findsOneWidget); // 发生金额（买入负扣款 = −(金额+费用)）
+      expect(find.text('69351117'), findsOneWidget); // 成交编号
+      expect(find.text('1.23'), findsOneWidget); // 费用（系统计算，放最后）
+      expect(find.text('成交金额'), findsOneWidget);
+      expect(find.text('发生金额'), findsOneWidget);
       expect(find.text('止损'), findsNothing, reason: '历史成交列已删止损（源文件无此字段）');
       expect(find.text('买点'), findsNothing, reason: '历史成交列已删买点');
       expect(find.text('原因'), findsNothing, reason: '历史成交列已删原因');

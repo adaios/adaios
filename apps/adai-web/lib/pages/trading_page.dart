@@ -2398,9 +2398,12 @@ class _HistorySectionState extends State<_HistorySection>
         cell('名称', 88),
         cell('数量', 60, right: true),
         cell('价格', 70, right: true),
-        cell('金额', 80, right: true), // 成交金额
-        cell('费用', 60, right: true), // 券商实扣（|发生金额−成交金额|）
-        cell('成交编号', 110), // orderId 幂等键
+        // 2026-08-25 列设计（用户拍板）：源文件原生字段在前——成交金额/发生金额（通达信原始，
+        // 买入为负扣款）；成交编号（源文件标识）；「费用」= |发生金额−成交金额| 系统计算放最后
+        cell('成交金额', 90, right: true),
+        cell('发生金额', 100, right: true),
+        cell('成交编号', 110),
+        cell('费用', 60, right: true),
       ]),
     );
   }
@@ -2430,6 +2433,14 @@ class _HistorySectionState extends State<_HistorySection>
     );
   }
 
+  /// 发生金额（源文件原生）：买入为负（扣款），卖出为正（到账）。
+  /// 系统存储 fee = |发生金额 − 成交金额|，据此反推；fee 缺失（手动记录/旧数据）→ '—'。
+  static String _occurredAmount(TradeRecordItem t) {
+    if (t.fee == null) return '—';
+    final occurred = t.isBuy ? -(t.amount + t.fee!) : (t.amount - t.fee!);
+    return _thousands(occurred);
+  }
+
   Widget _buildTradeRow(TradeRecordItem t) {
     Widget cell(String text, double width, {bool right = false, Color? color}) => SizedBox(
           width: width,
@@ -2452,9 +2463,10 @@ class _HistorySectionState extends State<_HistorySection>
         cell(t.name, 88),
         cell('${t.volume}', 60, right: true),
         cell(t.price.toStringAsFixed(3), 70, right: true),
-        cell(_thousands(t.amount), 80, right: true),
-        cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', 60, right: true),
+        cell(_thousands(t.amount), 90, right: true), // 成交金额（源文件）
+        cell(_occurredAmount(t), 100, right: true), // 发生金额（源文件原生，推导自 fee）
         cell(t.orderId ?? '—', 110, color: AppColors.darkGrey5),
+        cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', 60, right: true), // 系统计算放最后
       ]),
     );
   }
