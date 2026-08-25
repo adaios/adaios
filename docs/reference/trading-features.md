@@ -43,9 +43,9 @@ tags: [trading, plugin, reference]
 
 ---
 
-## 一、后端端点总表（TradingController 34 个 + admin 1 个）
+## 一、后端端点总表（TradingController 35 个 + admin 1 个）
 
-> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**34 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}）。
+> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**35 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots）。
 
 ### 1. 交易记录（逐笔流水）
 
@@ -54,8 +54,9 @@ tags: [trading, plugin, reference]
 | POST | `/trading/trades` | 记录一笔交易 | BUY/SELL → 持仓增减（加仓摊薄成本/清仓归零）+ 现金市值推导 + 手续费自动算 + 落逐笔流水 + 写 domain=trading 记录（5 分钟同标题去重幂等）；name 可空；止损/买点 BUY 已放开可选（2026-08-18）；SELL 超持仓/未持有 → 400 |
 | GET | `/trading/trades` | 查询逐笔流水（含 `tradeTime` 成交时刻可空）| 跨月合并按时间倒序；可选 `from`/`to` 过滤；**RFC 20260822：`?date=` 返回 `{trades, daily}` 当日复盘聚合**（时段分桶/买卖分布/首末笔时间，纯客观）|
 | POST | `/trading/trades/batch` | 批量记录交易 | 逐笔走 recordTrade 链路；逐条失败不整批回滚，返回行号+人话原因 |
-| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → 只补流水不重算持仓/现金；orderId 幂等去重 + **缺失成交时间回填**（2026-08-23，返回 `updated`）；返回每标的对账提示 |
+| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
 | POST | `/trading/trades/parse` | 一句话交易解析 | 自然语言 → 结构化（LLM 优先 + 正则兜底，手=×100）；**只解析不落库**；matched=false 前端转精确表单 |
+| GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all` |
 
 ### 2. 持仓管理
 
@@ -134,7 +135,7 @@ tags: [trading, plugin, reference]
 | 15:05 | 收盘账户自动更新 | 行情可得部分更新参考市值/当日盈亏/浮盈；**任一持仓缺行情则整体跳过不覆盖**（P1-交易3，防残缺市值覆盖总资产） |
 | 15:10 | 收盘买点扫描 | 自选股正式 B1/B2 命中 → 「到买点了」推送（附信号文案）；**B1? 不推送**（只 web 信号列灰显） |
 | 15:15 | 收盘交易日志确认 | 当日有归集候选 → 推「今日操作汇总，是否完整」；无候选静默 |
-| 每 30 分钟（9-11/13-15 点） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；同票同类当日去重、同股票多类型合并防刷屏；阈值 `adai.market.alert.*` 可配 |
+| 每 30 分钟（9-11/13-15 点） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；**批次级止损（RFC 20260825）**：某批次现价破它自己的止损（未设默认 −7% 兜底）→ 单独推「批次止损预警」带批次日期/成本（不跟底仓混，signature 带 lotId 独立去重）；同票同类当日去重、同股票多类型合并防刷屏；阈值 `adai.market.alert.*` 可配 |
 
 > **节假日**：法定节假日（2026-2027 硬编码表）不推送；周末由 cron MON-FRI 排除。
 
@@ -152,6 +153,8 @@ tags: [trading, plugin, reference]
 | 交易知识注入 | KnowledgeSource 读 `os/trading-engine/knowledge/context/` 五份交付文件（identity/strategy/rules/mistakes/current.md），文件时间戳缓存；trading/decision 场景全量注入（`TradingKnowledgeSource`） |
 | 行情上下文注入 | trading 场景：大盘指数（上证/深证/创业板）+ 持仓行情表；globalContext 全场景短版（`MarketContextContributor`） |
 | 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ BarkPushChannel（iOS 原生推送，2026-08-25 起生产启用，免费无限条数）；WeChatPushChannel（Server酱）已停用（免费 5 条/天不够，代码保留未配置即禁用） |
+| **批次推导（RFC 20260825）** | 批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权平均含费）；**纯流水重放推导不落盘**；卖出 **LIFO** 先扣最近批次、跨批分算已实现盈亏；批次剩余 0 = 关闭（回合 realizedPnl）；positions.md 覆盖不到的底仓 = 初始批次（`_INIT`）；批次止损未设按默认 **−7%** 兜底可后改；行为标注六类（亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）记录即标注进每日操作总结 |
+| **推送定时消失（RFC 20260825）** | `pushes/{date}.json` 记录加 `expiresAt`：行情类（stop-loss/near-stop-loss/loss/gain/break-cost/market/session/buy-point）**次日 09:30 消失**（收盘后晚上仍可看，次日开盘前自动清），汇总类（每日操作总结/复盘）**次日 23:59** 消失；读取侧过滤过期，用户无需手动删时效推送 |
 | 并发安全 | 每用户读写锁（tradeLock）串行持仓读-改-写，防并发交易互覆（REVIEW #147）；打分/买点扫描线程池并发拉 K 线 |
 | 文件存储 | 持仓 `positions.md`（freeze §2.6）、逐笔流水 `trades/{yyyy-MM}.json`（按月）、自选/清仓 `watchlist.json`/`sold.json`、推送 `pushes/{date}.json`、推送开关 `push-settings.json`、交易日志候选 `trade-log/{yyyy-MM-dd}.json`（freeze §2.8-2.15） |
 
@@ -163,7 +166,7 @@ tags: [trading, plugin, reference]
 | 区块 | 功能 | 操作 | 端点 |
 |:--|:--|:--|:--|
 | 账户总览 | 8 张 stat 卡（总资产/可用/可取/参考市值/当日盈亏/总盈亏/持仓浮盈/持仓数），金额千分位 + FittedBox 防溢出；红涨绿亏；总盈亏=资产−本金（本金>0） | 进页自动加载；「点击更新」手动刷新 | GET `/trading/account`（券商口径优先，assets>0）；GET `/trading/portfolio` 兜底 |
-| 持仓列表 | 12 列 DataTable（代码/名称/数量/成本/现价/市值/盈亏/盈亏%/止损/买点/角色/操作），红涨绿亏、横向滚动 | 自动加载；行尾「编辑」→ 弹窗改角色（8 组合）/止损/目标价 → 保存 | GET `/trading/positions`、PUT `/trading/positions/{symbol}` |
+| 持仓列表 | 12 列 DataTable（代码/名称/数量/成本/现价/市值/盈亏/盈亏%/止损/买点/角色/操作），红涨绿亏、横向滚动 | 自动加载；行尾「编辑」→ 弹窗改角色（8 组合）/止损/目标价 → 保存；**行尾「批次」（RFC 20260825）→ 批次明细弹窗**：每批 日期/剩余/成本/现价/盈亏/止损/距止损%/买点/状态（初始底仓/持有中/已清仓-回合盈亏）+ 流水对账不一致警告 | GET `/trading/positions`、PUT `/trading/positions/{symbol}`、GET `/trading/lots` |
 | 记录交易 | Dialog：代码 300ms 防抖查名、买入默认止损 = 价格×0.93（−7%，2026-08-17 设定）、买点 8 类型下拉（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）、SELL 不填止损/买点 | 页头「记录交易」（先整体刷新再弹窗）→ 提交 | POST `/trading/trades`、GET `/trading/lookup` |
 | 批量导入 | 三种格式自动识别：① 交易 CSV ② 通达信持仓（全量覆盖）③ 通达信历史成交（幂等补流水+对账提示）；支持文件上传留存或粘贴；逐条成功/失败结果（带行号+人话原因） | 页头「批量导入」→ 粘贴/选文件 → 导入 | POST `/trading/imports/save`、`/trading/trades/batch`、`/trading/positions/import?replace=true`、`/trading/trades/import` |
 | 自选股 Tab | 表格（代码/名称/行业/长中短形态/指标提示/买点信号/删除）；「金叉」红色高亮；买点信号「{类型} {score}%」红色徽标；删除带确认弹窗 | 「导入自选」→ 粘贴通达信自选导出；行尾 × → 确认删除 | GET `/trading/watchlist`、POST `/trading/watchlist/import`、DELETE `/trading/watchlist/{symbol}`、GET `/trading/buy-points` |
@@ -172,7 +175,7 @@ tags: [trading, plugin, reference]
 | 复盘生成 | AI 生成今日复盘 → markdown 弹窗（可滚动/可选中）；生成中按钮转圈禁用；「反哺入库」按钮 | 页头「复盘」 | POST `/trading/review`、POST `/trading/reviews/{date}/promote` |
 | 复盘历史 | master-detail：左日期列表 + 右 markdown 内容 | 页头日历按钮 → 点日期切换 | GET `/trading/reviews`、GET `/trading/review?date=` |
 | 历史成交 Tab | **RFC 20260823：常驻第 5 Tab（取代页头交易历史 Dialog）**——日期范围查询（默认近 30 天，DatePicker 改日期自动重载）；按日分组列表（日期+笔数，未标注日期置底）；**全字段列：方向/时间 HH:mm/代码/名称/数量/价格/金额/费用/成交编号/止损/买点/原因**（横向滚动）；区间统计行「共 N 笔 · 买 X 卖 Y」；旧数据无时间/费用/成交编号显示 '—'；导入后 inline 展示结果（新增/回填/跳过/非交易 + 对账行） | 进 Tab 自动加载 + 手动刷新（无定时轮询）；行首「导入历史成交」 | GET `/trading/trades?from=&to=`、POST `/trading/trades/import` |
-| 历史成交导入 | **独立入口（RFC 20260823：只认通达信历史成交导出格式）**——粘贴或选文件，`isTdxHistoryExport` 识别；非历史成交格式人话拒绝不静默落零；幂等 + 缺失成交时间回填 | Tab 内「导入历史成交」按钮 → 粘贴/选文件 → 导入 | POST `/trading/imports/save`、POST `/trading/trades/import` |
+| 历史成交导入 | **独立入口（RFC 20260823：只认通达信历史成交导出格式）**——粘贴或选文件，`isTdxHistoryExport` 识别；非历史成交格式人话拒绝不静默落零；幂等 + 缺失成交时间回填；**RFC 20260825：响应含 `syncMode` + `summary`**——sync 模式展示「今日操作总结」卡片（买 X 笔 ¥Y · 卖 X 笔 · 新增/扣减批次 + 行为标注列表，亏损加仓/追高等醒目色）；append 模式提示「已按历史补录处理（只补流水，持仓未动）」 | Tab 内「导入历史成交」按钮 → 粘贴/选文件 → 导入 | POST `/trading/imports/save`、POST `/trading/trades/import` |
 | 推送设置 | 8 个推送开关（时段节奏/买点/止损/接近止损/大跌/放飞/破成本/行情条）；缺失 key 默认开；仅请求成功更新本地状态 | 页头铃铛按钮 → 拨动 Switch | GET/PUT `/trading/push-settings[/{type}]` |
 
 **导入解析规则（前端 `trade_import_parser.dart`）**：
@@ -196,7 +199,7 @@ tags: [trading, plugin, reference]
 | 复盘横幅 | 有交易活动 → 「今日有交易 · 生成今日复盘？」；生成后变「今日复盘已生成 ✓」+查看；弹窗右下「反哺入库」；右上关闭仅本会话收起；AppBar 另有被动「复盘」图标入口 | 横幅「生成复盘」/AppBar 图标 | GET `/trading/has-activity`、POST `/trading/review`、POST `/trading/reviews/{date}/promote` |
 | 记录区 · 通道 A | 一句话输入（hint：「买了 1000 股京东方 @5.2」）→ parse 回显确认卡（方向徽标+标的，可改数量/价格/方向）；**parse 返回的止损/买点不再回填**（2026-08-18 简化归 web）；matched=false → SnackBar 人话 + 自动展开精确表单（无死路） | 输入 → 「解析」→ 「确认记录」/取消 | POST `/trading/trades/parse`、POST `/trading/trades` |
 | 记录区 · 通道 B | 精确表单（标的/价格/数量）+ **隐藏式止损/买点**（2026-08-22：非必填，默认收起「止损/买点（可选）」，展开后止损自动带默认 −7% 可改可清、买点下拉可空选 B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他；收起态不预填不发送）+ 底部双按钮「买入(红)」「卖出(绿)」——方向由按钮承担不可能漏选；价格键盘带小数点（A 股 4 位成本价精度） | 「精确填写」展开 → 填 → 点买/卖 | POST `/trading/trades` |
-| 持仓区 | 只读资产卡（名称+代码 | 盈亏大字 | N股·成本·现价·止损（未设止损橙色提示）| 盈亏%）；表头「管理」链接去 web；空态引导记录/去 web 导入 | 点按整张卡 → 弹「阿呆说」 | GET `/trading/positions` |
+| 持仓区 | 只读资产卡（名称+代码 | 盈亏大字 | N股·成本·现价·止损（未设止损橙色提示）| 盈亏%）；表头「管理」链接去 web；空态引导记录/去 web 导入；**批次简版（RFC 20260825）**：第三行「N 个批次 · 最近买入 M/d」+「含底仓」绿徽标（open 批次含 initial）+「有批次破止损」darkOrange 警示（stopLossDistancePct<0）；无批次数据/拉取失败静默降级不显示该行 | 点按整张卡 → 弹「阿呆说」 | GET `/trading/positions` + GET `/trading/lots` |
 | 阿呆建议弹层 | **app 独有核心交互**：标题「阿呆说 · 名称」+ summary 气泡 + 逐票建议卡（动作徽标 买入红/减仓清仓卖出绿/持有蓝）+「查看建议依据」展开规则号列表；按 symbol 精确匹配（后端无 symbol 按名称兜底）；无匹配显示「这只暂时没有特别要说的」；加载失败可重试；底部「管理持仓（去 web）」；**无任何执行按钮** | 点持仓卡 | POST `/trading/advice` |
 | 去 web 引导 | 三处统一入口（持仓空态/持仓表头「管理」/建议弹层底部）：「详细管理去电脑端」——批量导入、持仓编辑、历史明细、K线在电脑端；手机端负责日常记录和阿呆建议 | 点引导链接 | — |
 

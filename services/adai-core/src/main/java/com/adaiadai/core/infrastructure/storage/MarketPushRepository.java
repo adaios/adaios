@@ -32,6 +32,10 @@ public class MarketPushRepository {
     private static final String PUSHES_DIR = "trading/pushes/";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** 行情类推送类型（RFC 20260825 §7 TTL 分组）：时效性强，次日 09:30 自动消失。 */
+    public static final java.util.Set<String> SESSION_TYPES = java.util.Set.of(
+            "stop-loss", "near-stop-loss", "loss", "gain", "break-cost", "market", "session", "buy-point");
+
     private final FileStorage fileStorage;
 
     public MarketPushRepository(FileStorage fileStorage) {
@@ -52,7 +56,9 @@ public class MarketPushRepository {
                     n.path("type").asText(),
                     n.path("time").asText(),
                     // B9-1（2026-08-23，P1-推送1）：读回原标题；旧文件（2026-08-23 前）无 title → null
-                    n.has("title") ? n.path("title").asText() : null)));
+                    n.has("title") ? n.path("title").asText() : null,
+                    // RFC 20260825 §7：读回过期时间；旧文件无 expiresAt → null（按类型默认保留期）
+                    n.has("expiresAt") ? n.path("expiresAt").asText() : null)));
             return list;
         } catch (Exception e) {
             log.warn("读取推送事件失败 | userId={} | date={} | {}", userId, date, e.getMessage());
@@ -79,6 +85,8 @@ public class MarketPushRepository {
                 }
             }
             List<MarketPushEvent> events = new ArrayList<>(findByDate(userId, date));
+            // RFC 20260825 §7：写入时顺带剔除已过期条目（推送定时消失，文件不无限涨）
+            events.removeIf(e -> isExpired(e, date));
             events.add(event);
             writeAll(userId, date, events);
         }
@@ -114,11 +122,28 @@ public class MarketPushRepository {
                 n.put("type", e.type());
                 n.put("time", e.time());
                 if (e.title() != null) n.put("title", e.title()); // B9-1：透传原标题（旧数据无则不写）
+                if (e.expiresAt() != null) n.put("expiresAt", e.expiresAt()); // RFC 20260825：过期时间
             }
             fileStorage.write(userId, PUSHES_DIR + date + ".json", MAPPER.writeValueAsString(arr));
         } catch (Exception e) {
             log.warn("写入推送事件失败 | userId={} | date={} | {}", userId, date, e.getMessage());
         }
+    }
+
+    /** 推送是否已过期（RFC 20260825 §7 定时消失）：expiresAt 缺失/解析失败 → 按类型默认保留期
+     *  （行情类 = 落盘日次日 09:30，汇总类 = 次日 23:59——兑现 RFC 承诺，旧数据也会过期清理，P2-4）。 */
+    public static boolean isExpired(MarketPushEvent e, LocalDate date) {
+        if (e.expiresAt() != null && !e.expiresAt().isBlank()) {
+            try {
+                return java.time.LocalDateTime.parse(e.expiresAt()).isBefore(java.time.LocalDateTime.now());
+            } catch (Exception ex) {
+                return false; // 格式异常按不过期处理，不误删
+            }
+        }
+        java.time.LocalDateTime fallback = e.type() != null && SESSION_TYPES.contains(e.type())
+                ? date.plusDays(1).atTime(9, 30)
+                : date.plusDays(1).atTime(23, 59);
+        return fallback.isBefore(java.time.LocalDateTime.now());
     }
 
     /** 推送文件结构校验（B6-1）：必须是对象数组且每元素含非空 id 字段；`[123]`/`{"a":1}` 判损坏。 */

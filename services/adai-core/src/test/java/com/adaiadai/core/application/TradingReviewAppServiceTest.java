@@ -58,7 +58,7 @@ class TradingReviewAppServiceTest {
 
         TradingReviewAppService service = new TradingReviewAppService(
                 recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
-                contextEngine, aiClient, reviewRepository);
+                contextEngine, aiClient, reviewRepository, mock(TradingLotService.class));
 
         // ── 执行 ──
         LocalDate date = LocalDate.of(2026, 8, 1);
@@ -84,4 +84,43 @@ class TradingReviewAppServiceTest {
         verify(reviewRepository).save(any(), eq(date), anyString());
         assertEquals("今日执行纪律良好，明日关注 3400 关键位", result);
     }
+
+    @Test
+    void generateReview_injectsBehaviorNotes_intoReviewBody() {
+        // RFC 20260825：行为标注注入复盘（亏损加仓/追高等进当晚复盘）
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        PositionRepository positionRepository = mock(PositionRepository.class);
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        when(positionRepository.snapshot(any()))
+                .thenReturn(PortfolioSnapshot.of(List.of(), BigDecimal.ZERO));
+        ContextEngine contextEngine = mock(ContextEngine.class);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(new ContextPackage(
+                "trading", "用户身份摘要", "2026-08-01 交易复盘", "复盘正文",
+                List.of("trading", "复盘"), List.of(),
+                "【交易系统规则】止损三级别。\n\n请分析这条记录，输出 JSON 格式",
+                LocalDateTime.now(), List.of()));
+        AiClient aiClient = mock(AiClient.class);
+        when(aiClient.generate(any(), any())).thenReturn("复盘正文输出");
+        TradingReviewFileRepository reviewRepository = mock(TradingReviewFileRepository.class);
+        TradingLotService lotService = mock(TradingLotService.class);
+        when(lotService.analyzeBehaviors(any(), any())).thenReturn(List.of(
+                new TradingLotService.BehaviorNote("loss-avg-down", "亏损加仓", "600000", "浦发银行",
+                        LocalDate.of(2026, 8, 1), "买价 9.2 低于上一买批成本 10.0——越跌越买/补仓摊薄")));
+
+        TradingReviewAppService service = new TradingReviewAppService(
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, aiClient, reviewRepository, lotService);
+        LocalDate date = LocalDate.of(2026, 8, 1);
+        service.generateReview("default", date);
+
+        ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
+        assertTrue(recordCaptor.getValue().content().contains("当日行为标注"),
+                "复盘正文应含行为标注小节");
+        assertTrue(recordCaptor.getValue().content().contains("亏损加仓"),
+                "行为标注内容应注入复盘（阿呆观察，纪律对照）");
+        verify(lotService).analyzeBehaviors(eq("default"), eq(date));
+    }
 }
+

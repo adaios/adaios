@@ -386,6 +386,20 @@ class ApiService {
     return DailyTradesResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// RFC 20260825：逐笔批次视图（GET /api/v1/trading/lots）。
+  /// state ∈ open|closed|all（默认 all，一次拉全量按 symbol 前端过滤）；
+  /// 返回 {"lots": [...], "reconcile": [...]}——每批含日期/数量/剩余/成本/现价/盈亏/距止损。
+  Future<LotsResponse> getLots({String? state, String? symbol}) async {
+    final params = <String, String>{
+      if (state != null) 'state': state,
+      if (symbol != null) 'symbol': symbol,
+    };
+    final uri = Uri.parse('$baseUrl/api/v1/trading/lots').replace(queryParameters: params);
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    return LotsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// RFC 20260817：推送开关（类型 → 是否开启）。
   Future<Map<String, bool>> getPushSettings() async {
     final resp = await _client.get(
@@ -1162,6 +1176,88 @@ class PositionItem {
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
     pnlPercent: (json['pnlPercent'] as num?)?.toDouble() ?? 0,
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
+  );
+}
+
+/// RFC 20260825：逐笔批次视图响应（GET /api/v1/trading/lots）。
+/// {"lots": [...], "reconcile": [...]}——reconcile 为流水重放 vs 持仓快照对账提示（app 不展示）。
+class LotsResponse {
+  final List<LotItem> lots;
+
+  LotsResponse({required this.lots});
+
+  factory LotsResponse.fromJson(Map<String, dynamic> json) => LotsResponse(
+    lots: ((json['lots'] as List?) ?? [])
+        .map((e) => LotItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
+/// 单批次视图：日期/数量/剩余/成本/现价/盈亏/距止损/角色/买点（RFC 20260825）。
+/// 语义：buyDate 批次买入日期；costPrice 批次加权成本（含费）；
+/// stopLossPrice 批次止损（未设后端按默认 −7% 兜底返回）；
+/// stopLossDistancePct 距止损%（<0 = 已破止损未走）；initial=true 初始底仓（_INIT 结尾）；
+/// closed=true 已清仓回合（realizedPnl 为该回合已实现盈亏）。
+class LotItem {
+  final String lotId;
+  final String symbol;
+  final String name;
+  final String buyDate; // yyyy-MM-dd
+  final int volume; // 买入量
+  final int remaining; // 剩余量
+  final double costPrice;
+  final double currentPrice;
+  final double marketValue;
+  final double pnl;
+  final double pnlPct;
+  final double? stopLossPrice;
+  final double? stopLossDistancePct;
+  final String? buyPoint;
+  final String? role;
+  final bool initial;
+  final bool closed;
+  final double? realizedPnl;
+
+  LotItem({
+    this.lotId = '',
+    this.symbol = '',
+    this.name = '',
+    this.buyDate = '',
+    this.volume = 0,
+    this.remaining = 0,
+    this.costPrice = 0,
+    this.currentPrice = 0,
+    this.marketValue = 0,
+    this.pnl = 0,
+    this.pnlPct = 0,
+    this.stopLossPrice,
+    this.stopLossDistancePct,
+    this.buyPoint,
+    this.role,
+    this.initial = false,
+    this.closed = false,
+    this.realizedPnl,
+  });
+
+  factory LotItem.fromJson(Map<String, dynamic> json) => LotItem(
+    lotId: json['lotId'] as String? ?? '',
+    symbol: json['symbol'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    buyDate: json['buyDate'] as String? ?? '',
+    volume: json['volume'] as int? ?? 0,
+    remaining: json['remaining'] as int? ?? 0,
+    costPrice: (json['costPrice'] as num?)?.toDouble() ?? 0,
+    currentPrice: (json['currentPrice'] as num?)?.toDouble() ?? 0,
+    marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
+    pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
+    pnlPct: (json['pnlPct'] as num?)?.toDouble() ?? 0,
+    stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
+    stopLossDistancePct: (json['stopLossDistancePct'] as num?)?.toDouble(),
+    buyPoint: json['buyPoint'] as String?,
+    role: json['role'] as String?,
+    initial: json['initial'] as bool? ?? false,
+    closed: json['closed'] as bool? ?? false,
+    realizedPnl: (json['realizedPnl'] as num?)?.toDouble(),
   );
 }
 

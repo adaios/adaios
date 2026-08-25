@@ -706,6 +706,112 @@ void main() {
       expect(find.text('共 2 只'), findsOneWidget);
     });
 
+    testWidgets('持仓卡批次简版：批次数 + 最近买入 + 含底仓徽标（RFC 20260825）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '600000', 'name': '浦发银行', 'quantity': 1500,
+          'avgCost': 10.2, 'currentPrice': 10.5,
+          'marketValue': 15750.0, 'pnl': 400.0, 'pnlPercent': 2.6,
+        },
+      ]);
+      b.handlers['/api/v1/trading/lots'] = (_) async => _json({
+            'lots': [
+              {
+                'lotId': '600000_2026-07-20_A', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-07-20', 'volume': 500, 'remaining': 500,
+                'costPrice': 10.5, 'currentPrice': 10.5, 'marketValue': 5250.0,
+                'pnl': 0.0, 'pnlPct': 0.0, 'stopLossPrice': 9.77,
+                'stopLossDistancePct': 7.5, 'buyPoint': null, 'role': null,
+                'initial': true, 'closed': false, 'realizedPnl': null,
+              },
+              {
+                'lotId': '600000_2026-07-28_B', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-07-28', 'volume': 500, 'remaining': 500,
+                'costPrice': 10.2, 'currentPrice': 10.5, 'marketValue': 5250.0,
+                'pnl': 150.0, 'pnlPct': 2.94, 'stopLossPrice': 9.49,
+                'stopLossDistancePct': 10.6, 'buyPoint': 'B1', 'role': null,
+                'initial': false, 'closed': false, 'realizedPnl': null,
+              },
+              {
+                'lotId': '600000_2026-08-03_C', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-08-03', 'volume': 1000, 'remaining': 500,
+                'costPrice': 10.0, 'currentPrice': 10.5, 'marketValue': 5250.0,
+                'pnl': 250.0, 'pnlPct': 5.0, 'stopLossPrice': 9.3,
+                'stopLossDistancePct': 12.9, 'buyPoint': null, 'role': null,
+                'initial': false, 'closed': false, 'realizedPnl': null,
+              },
+              // 已清仓回合不计入开放批次（closed + remaining=0 被过滤）
+              {
+                'lotId': '600000_2026-06-01_INIT', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-06-01', 'volume': 1000, 'remaining': 0,
+                'costPrice': 9.0, 'currentPrice': 10.5, 'marketValue': 0.0,
+                'pnl': 0.0, 'pnlPct': 0.0, 'stopLossPrice': 8.37,
+                'stopLossDistancePct': 25.5, 'buyPoint': null, 'role': null,
+                'initial': true, 'closed': true, 'realizedPnl': 1200.0,
+              },
+            ],
+            'reconcile': <Object>[],
+          });
+      await pumpTrading(tester, b);
+
+      // 3 个开放批次 · 最近买入 8/03（yyyy-MM-dd → M/d）· 含底仓徽标（07-20 初始批次仍开放）
+      expect(find.textContaining('3 个批次'), findsOneWidget);
+      expect(find.textContaining('最近买入 8/03'), findsOneWidget);
+      expect(find.text('含底仓'), findsOneWidget);
+      // 无批次破止损 → 不出现警示
+      expect(find.text('有批次破止损'), findsNothing);
+    });
+
+    testWidgets('持仓卡批次警示：有批次破止损未走 → 警示文字（距止损 < 0 且剩余 > 0）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '000725', 'name': '京东方A', 'quantity': 1000,
+          'avgCost': 5.2, 'currentPrice': 4.6,
+          'marketValue': 4600.0, 'pnl': -600.0, 'pnlPercent': -11.5,
+        },
+      ]);
+      b.handlers['/api/v1/trading/lots'] = (_) async => _json({
+            'lots': [
+              {
+                'lotId': '000725_2026-08-01_A', 'symbol': '000725', 'name': '京东方A',
+                'buyDate': '2026-08-01', 'volume': 1000, 'remaining': 1000,
+                'costPrice': 5.2, 'currentPrice': 4.6, 'marketValue': 4600.0,
+                'pnl': -600.0, 'pnlPct': -11.54, 'stopLossPrice': 4.84,
+                'stopLossDistancePct': -4.96, 'buyPoint': null, 'role': null,
+                'initial': false, 'closed': false, 'realizedPnl': null,
+              },
+            ],
+            'reconcile': <Object>[],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('有批次破止损'), findsOneWidget);
+      expect(find.textContaining('1 个批次'), findsOneWidget);
+      expect(find.text('含底仓'), findsNothing); // 无初始批次 → 无徽标
+    });
+
+    testWidgets('批次拉取失败静默降级：持仓卡原样展示，不整页报错', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+          'avgCost': 1500.0, 'currentPrice': 1600.0,
+          'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7,
+        },
+      ]);
+      b.handlers['/api/v1/trading/lots'] = (_) async =>
+          _json({'error': 'boom'}, status: 500);
+      await pumpTrading(tester, b);
+
+      // 持仓卡原样渲染（无批次行、无整页错误态、无重试按钮）
+      expect(find.text('贵州茅台'), findsOneWidget);
+      expect(find.text('+1.0万'), findsOneWidget); // 盈亏大字（万单位）
+      expect(find.textContaining('个批次'), findsNothing);
+      expect(find.text('重试'), findsNothing);
+    });
+
     testWidgets('点按持仓卡 → 阿呆建议弹层（advice 端点 + 依据规则号）', (tester) async {
       final b = _Backend();
       mockBase(b, positions: [

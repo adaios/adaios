@@ -186,10 +186,13 @@ lastUpdated: 2026-08-07T09:00:00
 
 ```
 [{"id":"push_...","symbol":"600519","name":"贵州茅台",
-  "message":"📉 ... 触发止损预警","type":"loss","time":"14:05"}]
+  "message":"📉 ... 触发止损预警","type":"loss","time":"14:05",
+  "title":"止损预警","expiresAt":"2026-08-26T09:30:00"}]
 ```
 
 - `type`：`loss`（止损）/ `gain`（放飞）/ `break-cost`（跌破成本线）等
+- `title`：推送原标题（B9-1 2026-08-23 透传；旧数据无 → 读取侧按 type 兜底）
+- `expiresAt`（**RFC 20260825 MINOR 新增**）：过期时间（ISO LocalDateTime）——行情类（stop-loss/near-stop-loss/loss/gain/break-cost/market/session/buy-point）次日 09:30 消失（收盘后晚上仍可看，次日开盘前自动清）、汇总类（每日操作总结/复盘）次日 23:59 消失；读取侧过滤过期、写入时顺带剔除；旧数据无该字段 → 按类型默认保留期，不误删
 
 ### 2.9 行情去重快照 `trading/market_snapshot.json`
 

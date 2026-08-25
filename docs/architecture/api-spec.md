@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.27 | 最后更新：2026-08-23**
+**文档版本：v3.28 | 最后更新：2026-08-25**
 
 ---
 
@@ -10,7 +10,9 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
-| 2026-08-23 | v3.27 | **推送链路修复批（契约同步）**：`MarketPushEvent` 落库透传原标题（P1-推送1 根因）；`DELETE /trading/pushes/{id}` 推送删除持久化（P1-推送2）；`GET /trade-log` 去重 ±10% 区间（sameTrade）|\n| 2026-08-23 | v3.26 | **隔离审查残留批（契约同步）**：`DELETE /trade-log` 丢弃保留候选（失败/不完整钉子户出口）；`GET /trade-log` 去重口径补 ±10% 区间（sameTrade）；`POST /trade-log/confirm` 响应明确 failed/skipped/failures 语义 |
+| 2026-08-25 | v3.28 | **RFC 20260825 逐笔批次跟踪与行为纠偏（契约同步）**：新增 `GET /trading/lots`（批次视图：按日合并/LIFO 卖出/回合/初始批次/对账）；`POST /trades/import` 双模式（`syncMode` sync 同步持仓 / append 只补流水）+ 响应新增 `summary` 每日操作总结（买卖聚合 + 批次 diff + 行为标注六类）；推送事件加 `expiresAt`（行情类次日 09:30 消失——收盘后晚上仍可看，次日开盘前自动清；汇总类次日 23:59；`pushes/{date}.json` 记录新增字段，旧数据按类型默认保留期）|
+| 2026-08-23 | v3.27 | **推送链路修复批（契约同步）**：`MarketPushEvent` 落库透传原标题（P1-推送1 根因）；`DELETE /trading/pushes/{id}` 推送删除持久化（P1-推送2）；`GET /trade-log` 去重 ±10% 区间（sameTrade）|
+| 2026-08-23 | v3.26 | **隔离审查残留批（契约同步）**：`DELETE /trade-log` 丢弃保留候选（失败/不完整钉子户出口）；`GET /trade-log` 去重口径补 ±10% 区间（sameTrade）；`POST /trade-log/confirm` 响应明确 failed/skipped/failures 语义 |
 | 2026-08-23 | v3.25 | **交易修复批（走查修复，契约同步）**：`POST /trades/batch` 逐行字段校验（代码/方向/价格/数量非法 → 行级人话失败，P1-2）；`POST /trades` 的 `direction` 必填（缺省 → 400，P1-1）；`POST /trade-log/confirm` 响应扩展 `{confirmed, failed, skipped, failures}`（失败/不完整候选保留不丢，P0-1）；buy-points 参数契约同步 KDJ.J<13（S6 确认）；has-activity 门控声明修正（见 §5 该行）|
 | 2026-08-22 | v3.24 | **首屏提速（主页启动慢修复）**：新增 `GET /api/v1/brief/cached`（只返回 5 分钟缓存 Brief，不触发 AI 生成，空串=缓存过期）；双端主页首屏并行拉 feed+缓存 brief、渲染只等 feed，简报后到单独刷新——AI 简报不再阻塞主页加载 |
 | 2026-08-18 | v3.23+ | **确认批次（2026-08-18）**：`POST /trades/batch` 补实现（此前前端调用一直 404）；`POST /positions/import?replace=true` 全量覆盖语义（文件为准，缺失删除）；`PUT /principal` 本金设置（总盈亏=资产−本金）；BUY 止损/买点放开为可选（app 简化）；`POST /trades/import` 历史成交导入（第五份文件，幂等+对账）|
@@ -480,26 +482,58 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **响应**：`{"success":2,"failures":[{"row":3,"message":"卖出数量超过持仓: 000725（持有 100 股）"}]}`
 
-### `POST /api/v1/trading/trades/import` — 历史成交日志导入（第五份文件，2026-08-18；2026-08-23 加回填）
+### `POST /api/v1/trading/trades/import` — 历史成交导入（第五份文件，2026-08-18；2026-08-23 加回填；2026-08-25 双模式）
 > 需 trading 插件（403）。
 
-通达信「历史成交查询」导出 → **补逐笔流水**（增量补录），供交易历史/复盘/对账。
+通达信「历史成交查询」导出 → **自动识别双模式**（RFC 20260825 §5）：
+
+- **同步模式（`syncMode="sync"`）**：全部成交在最近 10 个自然日内（覆盖周末/节假日）→ 视为**当日成交导入**，逐笔走正常交易链路（持仓增减 + 现金/手续费推导 + 逐笔流水 + 时间线记录），`orderId` 幂等（同编号重复导入不重复加减），处理完做流水重放对账
+- **补录模式（`syncMode="append"`）**：存在更早成交 → 维持原语义**只补流水不重算持仓/现金**（缺窗口前基线，回放重建算不出券商口径；持仓/成本/现金以全量覆盖导入为准），返回对账提示
 
 **body**：`{"content":"通达信历史成交查询导出文本（UTF-8 转码后，表头含 成交日期/证券代码/买卖标志/成交编号）"}`
 
-- **只补流水不重算持仓/现金**：历史成交往往缺窗口前基线（如 8/3 起、8/3 前已有持仓），回放重建算不出券商口径（摊薄成本 vs 系统加权平均实测差 3.4 倍）；持仓/成本/现金以全量覆盖导入为准（`positions/import?replace=true` + `imports/cash`）
-- 每笔落流水：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**，重复导入同一文件只落一次；无编号按 symbol+direction+entryDate+price+volume 指纹去重）
-- **缺失字段回填（2026-08-23）**：幂等命中的已存在记录，若旧记录 `tradeTime` 为空且新文件带成交时间 → 回填该笔成交时间（计入 `updated`），不落新流水
+- 每笔落流水：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**；无编号按 symbol+direction+entryDate+price+volume 指纹去重）；同步模式 `orderId` 透传流水（幂等键不丢）
+- **缺失字段回填（2026-08-23）**：补录模式幂等命中的已存在记录，若旧记录 `tradeTime` 为空且新文件带成交时间 → 回填该笔成交时间（计入 `updated`），不落新流水
 - 数量 0 行（股息红利税等非交易资金事件）不落流水，计入 `nonTrades`
+
+**响应**（2026-08-25 扩展）：
+```json
+{"imported":45,"updated":3,"skipped":1,"nonTrades":1,
+ "syncMode":"sync",
+ "summary":{"date":"2026-08-25","buyCount":2,"sellCount":1,"buyAmount":10600.0,"sellAmount":3900.0,
+   "newLots":1,"deductedLots":1,
+   "behaviors":[{"type":"loss-avg-down","label":"亏损加仓","symbol":"600000","name":"浦发银行",
+     "date":"2026-08-25","message":"买价 9.2 低于上一买批成本 10.0——越跌越买/补仓摊薄"}]},
+ "lines":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
+   "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）"}]}
+```
+- `imported` = 落流水笔数 / `updated` = 回填缺失成交时间笔数 / `skipped` = 幂等去重跳过 / `nonTrades` = 非交易事件
+- `syncMode` = `sync`（同步持仓）或 `append`（只补流水）
+- `summary` = **每日操作总结**（RFC 20260825 §6，仅 sync 模式存在；不耗 AI 秒出）：买卖笔数/金额 + 批次 diff（`newLots` 新增批次、`deductedLots` 被扣减批次）+ `behaviors` 行为标注（`type`：loss-avg-down 亏损加仓 / chase-high 追高 / short-new 短线新开 / stop-loss-ignored 破止损未走 / giveback 浮盈回吐 / short-overdue 短线超期）
+- `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
+
+### `GET /api/v1/trading/lots` — 批次视图（RFC 20260825 逐笔批次跟踪）
+> 需 trading 插件（403）。
+
+持仓细化到每一笔买入（批次）独立跟踪：成本/盈亏/止损/角色挂批次，**批次由逐笔流水重放推导（不落盘）**。规则（用户拍板）：同标的+同方向+**同日**合并一个批次（一天最多一个买批，成本=当日加权平均含费）；卖出按 **LIFO** 先扣最近买入批次，跨批按各自成本分算已实现盈亏；批次剩余 0 = 关闭（回合）；positions.md 有但流水覆盖不到的底仓 = 初始批次（`initial=true`，`lotId` 以 `_INIT` 结尾）。
+
+| 参数 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `state` | String | `open`（仅持有中）/ `closed`（仅已关回合）/ `all`（全部，省略默认返回全部）|
+| `symbol` | String | 可选，按代码过滤 |
 
 **响应**：
 ```json
-{"imported":45,"updated":3,"skipped":1,"nonTrades":1,
- "lines":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
-   "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（以持仓快照为准）"}]}
+{"lots":[{"lotId":"600000_2026-08-03_B","symbol":"600000","name":"浦发银行","buyDate":"2026-08-03",
+  "volume":1000,"remaining":500,"costPrice":10.0011,"currentPrice":10.5,"marketValue":5250.0,
+  "pnl":249.45,"pnlPct":4.99,"stopLossPrice":9.3,"stopLossDistancePct":11.43,
+  "buyPoint":"B1","role":null,"initial":false,"closed":false,"realizedPnl":250.0}],
+ "reconcile":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
+   "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）"}]}
 ```
-- `imported` = 落流水笔数 / `updated` = 回填缺失成交时间笔数（2026-08-23 新增）/ `skipped` = 幂等去重跳过 / `nonTrades` = 非交易事件
-- `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
+- `lots` = 批次明细（注入现价；行情失败 currentPrice=成本价）；`stopLossPrice` 未设时后端按默认 −7% 兜底返回；`stopLossDistancePct` 距止损%（正=安全，负=已破）；`closed=true` 时 `realizedPnl`=该批已实现盈亏（回合总账）
+- `reconcile` = 流水重放 vs 持仓快照对账提示（防漏导一天成交静默错下去，只报告不改数据）
+- 批次级止损已接入 30 分钟行情轮询：某批现价破它自己的止损 → 单独推送「批次止损预警」（不跟底仓混）
 
 ---
 
@@ -621,6 +655,8 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 > 需 trading 插件（403）。
 
 删除当日一条推送事件（app 左滑删 / web 忽略按钮持久化——刷新/重启不再复活）。**响应**：`{"dismissed":true}`；当日无此事件 → 404（前端幂等成功）。
+
+> **推送定时消失（RFC 20260825 §7，契约同步）**：`pushes/{date}.json` 记录新增 `expiresAt`（ISO LocalDateTime）——行情类（stop-loss / near-stop-loss / loss / gain / break-cost / market / session / buy-point）落盘时设为**次日 09:30**（当天收盘后晚上仍可看，次日开盘前自动清，防「收盘后看 App 推送没了」的误判），汇总类（每日操作总结 / 复盘）设为**次日 23:59**；Feed 读取侧过滤已过期条目（用户无需手动删时效推送）。旧数据无 `expiresAt` → 按类型默认保留期，不误删。
 
 ### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。

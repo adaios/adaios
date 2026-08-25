@@ -7,6 +7,63 @@ import '../widgets/page_header.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 
+// ── RFC 20260825 共用格式化/配色（批次弹窗 + 导入总结，独立 State 类共享） ──
+
+/// 金额千分位（与页面账户卡同口径）：-39495.12 → -39,495.12。
+String _fmtThousands(double v) {
+  final neg = v < 0;
+  final s = v.abs().toStringAsFixed(2);
+  final parts = s.split('.');
+  final buf = StringBuffer();
+  final intPart = parts[0];
+  for (var i = 0; i < intPart.length; i++) {
+    buf.write(intPart[i]);
+    final remaining = intPart.length - 1 - i;
+    if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+  }
+  return '${neg ? '-' : ''}$buf.${parts[1]}';
+}
+
+/// 整数千分位（数量列）：10000 → 10,000。
+String _fmtThousandsInt(int v) {
+  final s = v.abs().toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    buf.write(s[i]);
+    final remaining = s.length - 1 - i;
+    if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+  }
+  return '${v < 0 ? '-' : ''}$buf';
+}
+
+/// 短日期（M/d，如 8/22）：导入总结标题用——sync 窗口可能跨 10 天，成交日未必是今天。
+/// 非 yyyy-MM-dd（缺省/空）原样返回，标题回落「今日操作」。
+String _fmtShortDate(String yyyyMmDd) {
+  if (yyyyMmDd.length < 10) return yyyyMmDd;
+  final month = int.tryParse(yyyyMmDd.substring(5, 7));
+  final day = int.tryParse(yyyyMmDd.substring(8, 10));
+  if (month == null || day == null) return yyyyMmDd;
+  return '$month/$day';
+}
+
+/// RFC 20260825：行为标注配色——亏损加仓/追高/破止损未走 = 红（纪律问题），
+/// 浮盈回吐/短线超期 = 橙（提醒），短线新开 = 蓝（中性信息）。
+Color _behaviorColor(String type) {
+  switch (type) {
+    case 'loss-avg-down':
+    case 'chase-high':
+    case 'stop-loss-ignored':
+      return AppColors.darkRed;
+    case 'giveback':
+    case 'short-overdue':
+      return AppColors.darkOrange;
+    case 'short-new':
+      return AppColors.darkBlue;
+    default:
+      return AppColors.darkOrange;
+  }
+}
+
 /// 交易桌面形态 — web = 详细管理（RFC 20260816 §4.2）：
 /// 快照 stat 卡 + DataTable 持仓（红涨绿亏 / 数字右对齐 + 逐行「编辑」）
 /// + 记录交易 Dialog（止损位/买点类型/目标价/原因）+ 批量导入 + 交易历史 + 复盘历史。
@@ -270,6 +327,29 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   // ── 交易历史 / 复盘历史 入口 ──
+
+  /// RFC 20260825：持仓批次明细——点击「批次」拉取该股全部批次（含回合/初始底仓），弹窗展示。
+  /// state=all 一次拿全（持有中 + 已清仓回合），symbol 由后端过滤；失败透出人话不打断页面。
+  Future<void> _showLots(PositionItem p) async {
+    LotsResponse? resp;
+    String? err;
+    try {
+      resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
+    } catch (e) {
+      err = _extractApiError(e);
+    }
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => _LotsDialog(
+        symbol: p.symbol,
+        name: p.name,
+        lots: resp?.lots ?? const [],
+        reconcile: resp?.reconcile ?? const [],
+        error: err,
+      ),
+    );
+  }
 
   /// RFC 20260817：推送设置对话框（逐类型开关）。
   Future<void> _showPushSettings() async {
@@ -620,15 +700,27 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text(p.stopLossPrice?.toStringAsFixed(3) ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.buyPoint ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.role ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
-              DataCell(TextButton(
-                onPressed: () => _editPosition(p),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              // RFC 20260825：批次明细入口（一买一批跟踪）+ 编辑
+              DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                TextButton(
+                  onPressed: () => _showLots(p),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('批次', style: TextStyle(fontSize: 12, color: AppColors.darkBlue)),
                 ),
-                child: const Text('编辑', style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
-              )),
+                TextButton(
+                  onPressed: () => _editPosition(p),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('编辑', style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+                ),
+              ])),
             ]);
           }).toList(),
           ),
@@ -1753,6 +1845,170 @@ class _EditPositionDialogState extends State<_EditPositionDialog> {
   }
 }
 
+// ─────────────────────────── 持仓批次明细 Dialog（RFC 20260825） ───────────────────────────
+
+/// 批次明细弹窗：一只股票每一笔买入一个批次——买入日期 | 剩余/买入 | 成本 | 现价 | 盈亏(红涨绿亏)
+/// | 止损 | 距止损% | 买点 | 角色 | 状态（初始底仓 / 持有中 / 已清仓-回合盈亏）。
+/// reconcile 对账提示：note 含「≠」= 流水与持仓不一致 → 橙色警告行（以持仓快照为准）。
+class _LotsDialog extends StatelessWidget {
+  final String symbol;
+  final String name;
+  final List<LotItem> lots;
+  final List<ReconcileLine> reconcile;
+  final String? error;
+
+  const _LotsDialog({
+    required this.symbol,
+    required this.name,
+    required this.lots,
+    required this.reconcile,
+    this.error,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
+    final visible = lots.where((l) => l.symbol == symbol).toList();
+    return Dialog(
+      backgroundColor: AppColors.darkSurface,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.view_agenda_outlined, size: 18, color: AppColors.darkGreen),
+                const SizedBox(width: 8),
+                Text('批次明细 · $symbol${name.isEmpty ? '' : ' $name'}',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              const Text('每一笔买入一个批次 · 一买一批跟踪（含回合盈亏）',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 10),
+              // 整块可纵向滚动（批次多时防溢出），表格横向滚动
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (error != null)
+                        Text('批次明细加载失败：$error',
+                            style: const TextStyle(fontSize: 12, color: AppColors.darkOrange))
+                      else if (visible.isEmpty)
+                        const Text('这只股票还没有批次记录',
+                            style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
+                      else
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            headingRowColor: WidgetStatePropertyAll(AppColors.darkSurface2.withValues(alpha: 0.5)),
+                            dataRowColor: WidgetStatePropertyAll(Colors.transparent),
+                            headingTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey5),
+                            columnSpacing: 24,
+                            horizontalMargin: 12,
+                            columns: const [
+                              DataColumn(label: Text('买入日期')),
+                              DataColumn(label: Text('剩余/买入'), numeric: true),
+                              DataColumn(label: Text('成本'), numeric: true),
+                              DataColumn(label: Text('现价'), numeric: true),
+                              DataColumn(label: Text('盈亏'), numeric: true),
+                              DataColumn(label: Text('止损'), numeric: true),
+                              DataColumn(label: Text('距止损%'), numeric: true),
+                              DataColumn(label: Text('买点')),
+                              DataColumn(label: Text('角色')),
+                              DataColumn(label: Text('状态')),
+                            ],
+                            rows: visible.map((l) {
+                              // 已清仓回合：盈亏列显示整批已实现盈亏；持有中/初始底仓显示剩余部分浮动盈亏
+                              final pnl = l.closed ? l.realizedPnl : l.pnl;
+                              // #132 红涨绿亏（A股）：盈=红、亏=绿
+                              final pnlColor = pnl >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+                              final stop = l.stopLossPrice;
+                              final distance = l.stopLossDistancePct;
+                              // 已清仓优先（含 initial&&closed 的初始底仓被卖完——状态与盈亏列口径一致，都按回合）
+                              final statusText = l.closed
+                                  ? '已清仓'
+                                  : l.initial
+                                      ? '初始底仓'
+                                      : '持有中';
+                              final statusColor = l.closed
+                                  ? AppColors.darkGrey4
+                                  : l.initial
+                                      ? AppColors.darkPurple
+                                      : AppColors.darkBlue;
+                              return DataRow(cells: [
+                                DataCell(Text(l.buyDate,
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
+                                DataCell(Text('${_fmtThousandsInt(l.remaining)} / ${_fmtThousandsInt(l.volume)}',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Text(l.costPrice.toStringAsFixed(3),
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Text(l.currentPrice.toStringAsFixed(3),
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
+                                DataCell(Text(l.closed ? '回合 ${_fmtThousands(l.realizedPnl)}' : _fmtThousands(l.pnl),
+                                    style: TextStyle(fontSize: 12, color: pnlColor, fontWeight: FontWeight.w600))),
+                                DataCell(Text(stop != null && stop > 0 ? stop.toStringAsFixed(3) : '—',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Text(distance != null ? '${distance.toStringAsFixed(2)}%' : '—',
+                                    style: TextStyle(fontSize: 12,
+                                        color: distance != null && distance < 0 ? AppColors.darkOrange : AppColors.darkGrey3))),
+                                DataCell(Text(l.buyPoint ?? '—',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Text(l.role ?? '—',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Text(statusText,
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: statusColor))),
+                              ]);
+                            }).toList(),
+                          ),
+                        ),
+                      // 对账提示：只显示当前股票的对账行（后端可能返回全量，按 symbol 过滤防串股）；
+                      // note 含「≠」= 流水与持仓不一致（黄色/橙色警告行，以持仓快照为准）
+                      if (reconcile.any((r) => r.symbol == symbol)) ...[
+                        const SizedBox(height: 10),
+                        const Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
+                            style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+                        const SizedBox(height: 2),
+                        for (final r in reconcile.where((r) => r.symbol == symbol))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              if (r.note.contains('≠'))
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 4, top: 1),
+                                  child: Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.darkOrange),
+                                ),
+                              Expanded(
+                                child: Text('${r.name}（${r.symbol}）：${r.note}',
+                                    style: TextStyle(fontSize: 11,
+                                        color: r.note.contains('≠') ? AppColors.darkOrange : AppColors.darkGrey2)),
+                              ),
+                            ]),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────── 历史成交 Tab（RFC 20260823，取代交易历史 Dialog） ───────────────────────────
 
 /// B6-5（2026-08-23，P1-交易17）：监听 DefaultTabController 的 index——切到历史成交 Tab（index 4）
@@ -2016,6 +2272,8 @@ class _HistorySectionState extends State<_HistorySection>
                 ' · 跳过 ${_importResult!.skipped} 笔'
                 '${_importResult!.nonTrades > 0 ? ' · 非交易事件 ${_importResult!.nonTrades} 行' : ''}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+            // RFC 20260825：syncMode + 每日操作总结（sync=总结卡+行为标注；append=补录提示）
+            _ImportResultSummary(result: _importResult!),
             if (_importResult!.lines.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
@@ -2152,6 +2410,67 @@ class _HistorySectionState extends State<_HistorySection>
         cell(t.reason ?? '', 120),
       ]),
     );
+  }
+}
+
+// ─────────────────────────── 历史成交导入结果补充（RFC 20260825：syncMode + 每日操作总结） ───────────────────────────
+
+/// 导入结果补充展示（Dialog 内与历史成交 Tab inline 共用）：
+/// syncMode=sync → 当日操作总结卡（标题带成交日期，如「8/22 操作」）+ 行为标注（亏损加仓/追高等醒目色）；
+/// syncMode=append → 补录提示（只补流水，持仓未动）；summary 缺失（append）不报错。
+class _ImportResultSummary extends StatelessWidget {
+  final HistoricalTradeImportResult result;
+
+  const _ImportResultSummary({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = result.summary;
+    if (result.syncMode == 'sync' && summary != null) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.darkGreen.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 标题带成交日期（sync 窗口跨多日，未必是今天；date 缺失回落「今日操作」）
+          Text('${summary.date.isEmpty ? '今日操作' : '${_fmtShortDate(summary.date)} 操作'}'
+              '：买 ${summary.buyCount} 笔 ¥${_fmtThousands(summary.buyAmount)}'
+              ' · 卖 ${summary.sellCount} 笔 ¥${_fmtThousands(summary.sellAmount)}'
+              ' · 新增批次 ${summary.newLots} · 扣减批次 ${summary.deductedLots}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+          if (summary.behaviors.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            for (final b in summary.behaviors)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: '${b.label} · ',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _behaviorColor(b.type))),
+                    TextSpan(text: '${b.name}（${b.symbol}）',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+                    TextSpan(text: '：${b.message}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
+                  ]),
+                ),
+              ),
+          ],
+        ]),
+      );
+    }
+    if (result.syncMode == 'append') {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Text('已按历史补录处理（只补流水，持仓未动）',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 
@@ -2302,6 +2621,8 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
                   ' · 跳过 ${_result!.skipped} 笔'
                   '${_result!.nonTrades > 0 ? ' · 非交易事件 ${_result!.nonTrades} 行' : ''}',
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+              // RFC 20260825：syncMode + 每日操作总结（sync=总结卡+行为标注；append=补录提示）
+              _ImportResultSummary(result: _result!),
               if (_result!.lines.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 const Text('对账提示：', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),

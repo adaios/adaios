@@ -7,6 +7,7 @@ import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradeLogCollectService;
+import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
@@ -102,6 +103,7 @@ class TradingControllerTest {
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -117,6 +119,31 @@ class TradingControllerTest {
         return buildMvc(tradingAppService, mock(TradingReviewAppService.class));
     }
 
+    /** RFC 20260825：注入自定义批次服务的重载（/trading/lots 测试用）。 */
+    private MockMvc buildMvc(TradingAppService tradingAppService, TradingLotService tradingLotService) {
+        return buildMvc(tradingAppService, mock(TradingReviewAppService.class), tradingLotService);
+    }
+
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradingReviewAppService reviewAppService,
+                             TradingLotService tradingLotService) {
+        TradingController controller = new TradingController(tradingAppService, reviewAppService,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                tradingLotService,
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
     /** P3（2026-08-17）：注入自定义买点/打分服务的重载（sold/score、buy-points 测试用）。 */
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -128,6 +155,7 @@ class TradingControllerTest {
                 pluginService(defaultPlugins), buyPointService, soldScoreService,
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -283,6 +311,7 @@ class TradingControllerTest {
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -599,6 +628,7 @@ class TradingControllerTest {
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -957,7 +987,7 @@ class TradingControllerTest {
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
-                pushRepo, "../../os/trading-engine/knowledge/context");
+                pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -977,7 +1007,7 @@ class TradingControllerTest {
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
-                pushRepo, "../../os/trading-engine/knowledge/context");
+                pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -1106,6 +1136,102 @@ class TradingControllerTest {
                         .content("{\"content\":\"余额:292.88  资产:110504.88\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cash").value(292.88));
+    }
+
+    // ── RFC 20260825：批次视图 + 导入同步模式响应 ──
+
+    @Test
+    void lots_returnsBatchViewsWithReconcile() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.lots(eq("adai"), any())).thenReturn(java.util.List.of(
+                new TradingLotService.TradingLotView(
+                        "600000_2026-08-03_B", "600000", "浦发银行", java.time.LocalDate.of(2026, 8, 3),
+                        1000, 1000, new java.math.BigDecimal("10.0"), new java.math.BigDecimal("10.5"),
+                        new java.math.BigDecimal("10500.0"), new java.math.BigDecimal("500.0"),
+                        new java.math.BigDecimal("5.0"), new java.math.BigDecimal("9.3"),
+                        new java.math.BigDecimal("11.43"), "B1", null, false, false, java.math.BigDecimal.ZERO)));
+        when(lots.reconcile(eq("adai"))).thenReturn(java.util.List.of());
+        MockMvc mvc = buildMvc(trading, lots);
+
+        mvc.perform(get("/api/v1/trading/lots").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lots[0].lotId").value("600000_2026-08-03_B"))
+                .andExpect(jsonPath("$.lots[0].remaining").value(1000))
+                .andExpect(jsonPath("$.lots[0].pnl").value(500.0))
+                .andExpect(jsonPath("$.lots[0].stopLossPrice").value(9.3))
+                .andExpect(jsonPath("$.lots[0].closed").value(false))
+                .andExpect(jsonPath("$.reconcile").isArray());
+        verify(lots).lots(eq("adai"), isNull());
+    }
+
+    @Test
+    void lots_symbolFilter_andClosedState() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.lots(eq("adai"), eq("closed"))).thenReturn(java.util.List.of(
+                new TradingLotService.TradingLotView(
+                        "600000_2026-07-01_B", "600000", "浦发银行", java.time.LocalDate.of(2026, 7, 1),
+                        1000, 0, new java.math.BigDecimal("10.0"), new java.math.BigDecimal("10.5"),
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
+                        new java.math.BigDecimal("9.3"), null, "B1", null, false, true,
+                        new java.math.BigDecimal("500.0"))));
+        when(lots.reconcile(eq("adai"))).thenReturn(java.util.List.of());
+        MockMvc mvc = buildMvc(trading, lots);
+
+        mvc.perform(get("/api/v1/trading/lots").header("X-User-Id", "adai")
+                        .param("state", "closed").param("symbol", "600000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lots[0].closed").value(true))
+                .andExpect(jsonPath("$.lots[0].realizedPnl").value(500.0));
+        verify(lots).lots(eq("adai"), eq("closed"));
+    }
+
+    @Test
+    void lots_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/lots").header("X-User-Id", "alice"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void importHistoricalTrades_syncMode_returnsSummary() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingAppService.DailyOperationSummary summary = new TradingAppService.DailyOperationSummary(
+                "2026-08-25", 2, 1, 10600.0, 3900.0, 1, 1,
+                java.util.List.of(new TradingLotService.BehaviorNote(
+                        "loss-avg-down", "亏损加仓", "600000", "浦发银行",
+                        java.time.LocalDate.of(2026, 8, 25), "买价低于上一买批成本")));
+        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+                new TradingAppService.HistoricalTradeImportResult(2, 0, 0, 0, java.util.List.of(), "sync", summary));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"成交日期 证券代码 买卖标志 ...\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.syncMode").value("sync"))
+                .andExpect(jsonPath("$.summary.date").value("2026-08-25"))
+                .andExpect(jsonPath("$.summary.buyCount").value(2))
+                .andExpect(jsonPath("$.summary.newLots").value(1))
+                .andExpect(jsonPath("$.summary.behaviors[0].type").value("loss-avg-down"));
+    }
+
+    @Test
+    void importHistoricalTrades_appendMode_noSummary() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+                new TradingAppService.HistoricalTradeImportResult(5, 0, 0, 0, java.util.List.of(), "append", null));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"历史成交...\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.syncMode").value("append"))
+                .andExpect(jsonPath("$.summary").doesNotExist());
     }
 }
 

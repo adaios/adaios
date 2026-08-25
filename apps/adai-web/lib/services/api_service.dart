@@ -342,6 +342,21 @@ class ApiService {
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// RFC 20260825：逐笔批次跟踪——批次明细（GET /api/v1/trading/lots）。
+  /// 可选 query：state=open|closed|all（默认 open）、symbol=xxx（不传=全部）。
+  /// 返回 {lots:[...], reconcile:[...]}；reconcile 的 note 含「≠」= 流水与持仓不一致。
+  Future<LotsResponse> getLots({String? state, String? symbol}) async {
+    final params = <String, String>{
+      if (state != null && state.isNotEmpty) 'state': state,
+      if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
+    };
+    final uri = Uri.parse('$baseUrl/api/v1/trading/lots')
+        .replace(queryParameters: params.isNotEmpty ? params : null);
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    return LotsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 查询投资组合快照。
   Future<PortfolioSnapshotResponse> getPortfolio() async {
     final resp = await _client.get(
@@ -1364,6 +1379,97 @@ class PortfolioSnapshotResponse {
       );
 }
 
+/// RFC 20260825：逐笔批次跟踪——批次明细响应（GET /api/v1/trading/lots）。
+/// lots=各批次明细；reconcile=流水净增减 vs 当前持仓的对账提示（note 含「≠」= 不一致，
+/// 以持仓快照为准，差额按初始批次兜底）。
+class LotsResponse {
+  final List<LotItem> lots;
+  final List<ReconcileLine> reconcile;
+
+  LotsResponse({required this.lots, required this.reconcile});
+
+  factory LotsResponse.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return LotsResponse(
+      lots: ((m['lots'] as List?) ?? const [])
+          .map((e) => LotItem.fromJson(e))
+          .toList(),
+      reconcile: ((m['reconcile'] as List?) ?? const [])
+          .map((e) => ReconcileLine.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+/// 批次明细（RFC 20260825）：一买一批，稳定 lotId；含剩余/成本/浮动盈亏/止损/买点/状态。
+/// initial=true 初始底仓批次（无流水，lotId 以 _INIT 结尾）；
+/// closed=true 该批已全部卖出（回合，realizedPnl=整批已实现盈亏）。
+class LotItem {
+  final String lotId;
+  final String symbol;
+  final String name;
+  final String buyDate; // 批次买入日期 yyyy-MM-dd
+  final int volume; // 买入数量
+  final int remaining; // 剩余数量
+  final double costPrice; // 批次加权成本（含费）
+  final double currentPrice; // 现价（行情失败=成本价）
+  final double marketValue; // 剩余部分市值
+  final double pnl; // 剩余部分浮动盈亏
+  final double pnlPct;
+  final double? stopLossPrice; // 止损（未设时后端已按默认 −7% 兜底返回）
+  final double? stopLossDistancePct; // 距止损%（正=安全，负=已破）
+  final String? buyPoint;
+  final String? role;
+  final bool initial; // 初始底仓批次
+  final bool closed; // 已全部卖出（回合）
+  final double realizedPnl; // 整批已实现盈亏（closed 时有效）
+
+  LotItem({
+    required this.lotId,
+    required this.symbol,
+    required this.name,
+    required this.buyDate,
+    required this.volume,
+    required this.remaining,
+    required this.costPrice,
+    required this.currentPrice,
+    required this.marketValue,
+    required this.pnl,
+    required this.pnlPct,
+    this.stopLossPrice,
+    this.stopLossDistancePct,
+    this.buyPoint,
+    this.role,
+    required this.initial,
+    required this.closed,
+    required this.realizedPnl,
+  });
+
+  factory LotItem.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return LotItem(
+      lotId: m['lotId']?.toString() ?? '',
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      buyDate: m['buyDate']?.toString() ?? '',
+      volume: (m['volume'] as num?)?.toInt() ?? 0,
+      remaining: (m['remaining'] as num?)?.toInt() ?? 0,
+      costPrice: (m['costPrice'] as num?)?.toDouble() ?? 0,
+      currentPrice: (m['currentPrice'] as num?)?.toDouble() ?? 0,
+      marketValue: (m['marketValue'] as num?)?.toDouble() ?? 0,
+      pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
+      pnlPct: (m['pnlPct'] as num?)?.toDouble() ?? 0,
+      stopLossPrice: (m['stopLossPrice'] as num?)?.toDouble(),
+      stopLossDistancePct: (m['stopLossDistancePct'] as num?)?.toDouble(),
+      buyPoint: m['buyPoint']?.toString(),
+      role: m['role']?.toString(),
+      initial: m['initial'] as bool? ?? false,
+      closed: m['closed'] as bool? ?? false,
+      realizedPnl: (m['realizedPnl'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
 /// 复盘响应 DTO（GET/POST /api/v1/trading/review）。
 class ReviewResponse {
   final String date; // yyyy-MM-dd
@@ -1728,12 +1834,16 @@ class BatchImportFailure {
 /// 契约：{imported, updated, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
 /// imported=落流水笔数 / updated=回填缺失成交时间笔数（2026-08-23）/ skipped=幂等去重跳过 /
 /// nonTrades=非交易事件（股息红利税等）/ lines=对账提示。
+/// RFC 20260825 扩展：syncMode（sync=当日成交同步，持仓已按成交同步更新 / append=历史补录，只补流水）
+/// + summary（仅 sync 模式存在；append 无此字段，不报错）。
 class HistoricalTradeImportResult {
   final int imported;
   final int updated;
   final int skipped;
   final int nonTrades;
   final List<ReconcileLine> lines;
+  final String syncMode; // 'sync' | 'append'（后端旧版本无此字段 → 默认 append 兜底）
+  final TradeImportSummary? summary; // 每日操作总结（仅 sync 模式）
 
   HistoricalTradeImportResult({
     required this.imported,
@@ -1741,6 +1851,8 @@ class HistoricalTradeImportResult {
     required this.skipped,
     required this.nonTrades,
     required this.lines,
+    this.syncMode = 'append',
+    this.summary,
   });
 
   factory HistoricalTradeImportResult.fromJson(dynamic json) {
@@ -1756,6 +1868,82 @@ class HistoricalTradeImportResult {
       lines: ((json['lines'] as List?) ?? [])
           .map((e) => ReconcileLine.fromJson(e))
           .toList(),
+      syncMode: json['syncMode'] as String? ?? 'append',
+      summary: json['summary'] == null
+          ? null
+          : TradeImportSummary.fromJson(json['summary']),
+    );
+  }
+}
+
+/// RFC 20260825：每日操作总结（sync 模式导入后）——买卖分布 + 新增/扣减批次 + 行为标注。
+class TradeImportSummary {
+  final String date; // yyyy-MM-dd
+  final int buyCount;
+  final int sellCount;
+  final double buyAmount; // 买入金额
+  final double sellAmount; // 卖出金额
+  final int newLots; // 新增批次
+  final int deductedLots; // 扣减批次
+  final List<TradeBehaviorDto> behaviors;
+
+  TradeImportSummary({
+    required this.date,
+    required this.buyCount,
+    required this.sellCount,
+    required this.buyAmount,
+    required this.sellAmount,
+    required this.newLots,
+    required this.deductedLots,
+    required this.behaviors,
+  });
+
+  factory TradeImportSummary.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return TradeImportSummary(
+      date: m['date']?.toString() ?? '',
+      buyCount: (m['buyCount'] as num?)?.toInt() ?? 0,
+      sellCount: (m['sellCount'] as num?)?.toInt() ?? 0,
+      buyAmount: (m['buyAmount'] as num?)?.toDouble() ?? 0,
+      sellAmount: (m['sellAmount'] as num?)?.toDouble() ?? 0,
+      newLots: (m['newLots'] as num?)?.toInt() ?? 0,
+      deductedLots: (m['deductedLots'] as num?)?.toInt() ?? 0,
+      behaviors: ((m['behaviors'] as List?) ?? const [])
+          .map((e) => TradeBehaviorDto.fromJson(e))
+          .toList(),
+    );
+  }
+}
+
+/// RFC 20260825：行为标注——type 语义：
+/// loss-avg-down 亏损加仓 / chase-high 追高 / short-new 短线新开 /
+/// stop-loss-ignored 破止损未走 / giveback 浮盈回吐 / short-overdue 短线超期。
+class TradeBehaviorDto {
+  final String type;
+  final String label; // 人话标签（亏损加仓/追高/…）
+  final String symbol;
+  final String name;
+  final String date;
+  final String message; // 人话解释
+
+  TradeBehaviorDto({
+    required this.type,
+    required this.label,
+    required this.symbol,
+    required this.name,
+    required this.date,
+    required this.message,
+  });
+
+  factory TradeBehaviorDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return TradeBehaviorDto(
+      type: m['type']?.toString() ?? '',
+      label: m['label']?.toString() ?? '',
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      date: m['date']?.toString() ?? '',
+      message: m['message']?.toString() ?? '',
     );
   }
 }

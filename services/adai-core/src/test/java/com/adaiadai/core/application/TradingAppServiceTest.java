@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -65,7 +66,7 @@ class TradingAppServiceTest {
         return new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
     }
 
     /**
@@ -461,7 +462,7 @@ class TradingAppServiceTest {
         TradingAppService service = new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
@@ -496,7 +497,7 @@ class TradingAppServiceTest {
                         new BigDecimal("-0.85"), 0)));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class));
 
         List<Position> positions = service.getPositions("default");
 
@@ -515,7 +516,7 @@ class TradingAppServiceTest {
         when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market);
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class));
 
         List<Position> positions = service.getPositions("default");
 
@@ -534,7 +535,7 @@ void watchlistImport_upsertsBySymbol() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
@@ -559,7 +560,7 @@ void soldImport_preservesExistingPsychology() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
     String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
             + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n";
@@ -583,7 +584,7 @@ void importCashQuery_updatesCashAndPreciseCost() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), accountSnapshotRepository,
-            mock(TransferRepository.class), mock(MarketDataSource.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
 
     String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
             + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
@@ -612,7 +613,7 @@ void importCashQuery_parseFail_throwsAndNeverSavesZero() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), acc,
-            mock(TransferRepository.class), mock(MarketDataSource.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
 
     String bad = "随便贴的一段文字，不是通达信资金股份查询导出\n没有余额没有资产";
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
@@ -630,7 +631,7 @@ void importCashQuery_emptyContent_throws() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), acc,
-            mock(TransferRepository.class), mock(MarketDataSource.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
 
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
             () -> service.importCashQuery("default", ""),
@@ -647,7 +648,7 @@ void soldUpdatePsychology_marksTrade() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
     boolean ok = service.soldUpdatePsychology("default", "600206", "套牢死扛");
 
@@ -673,7 +674,7 @@ void soldUpdatePsychology_marksTrade() {
         TransferRepository transfers = mock(TransferRepository.class);
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), acc, transfers, mock(MarketDataSource.class));
+                mock(SoldTradeRepository.class), acc, transfers, mock(MarketDataSource.class), mock(TradingLotService.class));
 
         service.recordTransfer("default", "IN", new BigDecimal("10000"), LocalDate.of(2026, 8, 17), "补仓");
 
@@ -701,7 +702,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
         service.recordTransfer("default", "OUT", new BigDecimal("50000"), LocalDate.of(2026, 8, 17), "提现");
 
@@ -781,7 +782,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, records,
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
         // 买入 100 股 @10：现金 -1000（无费简化），市值 +1000
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.BUY,
@@ -813,7 +814,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, records,
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class));
 
         // 卖出 100 股 @15：现金 +1500（无费简化），市值 -1500
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.SELL,
@@ -841,10 +842,10 @@ void soldUpdatePsychology_marksTrade() {
 
         String content = """
                 成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
-                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
-                20260817        10:02:51        000725          京东方Ａ        卖出            -1800.00        5.79000000         10422.00        67886           0102000024870368        10415.90         0903874313
-                20260818        11:12:05        000725          京东方Ａ        买入            200.00          6.26000000         1252.00         123449          0101000048552566        -1252.11         0903874313
-                20260818        00:00:00        000725          京东方Ａ        买入            0.00            0.00000000          10.08           0                                       -10.08           0903874313
+                20260303        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                20260317        10:02:51        000725          京东方Ａ        卖出            -1800.00        5.79000000         10422.00        67886           0102000024870368        10415.90         0903874313
+                20260318        11:12:05        000725          京东方Ａ        买入            200.00          6.26000000         1252.00         123449          0101000048552566        -1252.11         0903874313
+                20260318        00:00:00        000725          京东方Ａ        买入            0.00            0.00000000          10.08           0                                       -10.08           0903874313
                 """;
         TradingAppService.HistoricalTradeImportResult r =
                 service.importHistoricalTrades("default", content);
@@ -857,7 +858,7 @@ void soldUpdatePsychology_marksTrade() {
         verify(history, times(3)).append(eq("default"), cap.capture());
         List<TradeRecord> appended = cap.getAllValues();
         assertEquals(TradeDirection.SELL, appended.get(0).direction());
-        assertEquals("2026-08-03", appended.get(0).entryDate().toString());
+        assertEquals("2026-03-03", appended.get(0).entryDate().toString());
         assertEquals("69351117", appended.get(0).orderId(), "成交编号落流水作幂等键");
         assertEquals(0, appended.get(0).fee().compareTo(new BigDecimal("3.95")), "fee = 券商实扣");
         // 持仓未被动过：verify 不调用 saveAll（只报告对账，不改数据）
@@ -925,7 +926,7 @@ void soldUpdatePsychology_marksTrade() {
                 .thenReturn(1);
         String newContent = """
                 成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
-                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                20260303        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
                 """;
         TradingAppService.HistoricalTradeImportResult second =
                 service.importHistoricalTrades("default", newContent);
@@ -949,7 +950,7 @@ void soldUpdatePsychology_marksTrade() {
 
         String content = """
                 成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
-                20260803        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
+                20260303        14:52:56        600206          有研新材        卖出            -200.00         33.12000000         6624.00         151117          69351117                6620.05          A511358384
                 """;
         TradingAppService.HistoricalTradeImportResult first =
                 service.importHistoricalTrades("default", content);
@@ -982,7 +983,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(mock(PositionRepository.class),
                 mock(RecordRepository.class), mock(TradingHistoryRepository.class),
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                acc, mock(TransferRepository.class), mock(MarketDataSource.class));
+                acc, mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
 
         AccountSnapshot updated = service.setPrincipal("default", new BigDecimal("150000"));
 
@@ -1065,6 +1066,130 @@ void soldUpdatePsychology_marksTrade() {
         assertTrue(s.sessions().stream().allMatch(x -> x.count() == 0), "无成交所有时段 0");
         assertNull(s.firstTradeTime());
         assertNull(s.lastTradeTime());
+    }
+
+    // ── RFC 20260825 §5：导入双模式（当日成交同步 / 历史补录）──
+
+    /** 真实 repos + 真实批次服务的组装（sync 模式需要真实推导）。 */
+    private TradingAppService syncService(InMemoryFileStorage fs, List<Position> initialPositions) {
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        if (initialPositions != null) repo.saveAll("default", initialPositions);
+        KlineService kline = mock(KlineService.class);
+        when(kline.kline(any(), anyInt())).thenReturn(List.of());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        return new TradingAppService(repo, mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+                mock(MarketDataSource.class), lotService);
+    }
+
+    @Test
+    void importHistoricalTrades_recentWindow_syncMode_updatesPositionsWithSummary() {
+        // 用户场景：有底仓，每天收盘导当天成交 → 持仓按成交同步更新（不再只补流水）
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        String today = LocalDate.now().toString().replace("-", "");
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        10:15:00        600000          浦发银行        买入            500.00          12.00000000         6000.00         90001          10000001                -6001.10
+                """.formatted(today);
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals("sync", result.syncMode(), "近日成交 → 同步模式");
+        assertEquals(1, result.imported());
+        // 持仓同步：1000 + 500 = 1500（当日成交导入即更新持仓）
+        assertEquals(1500, service.getPositions("default").get(0).quantity());
+        // 每日操作总结：客观聚合 + 新增批次
+        assertNotNull(result.summary(), "同步模式必须带每日操作总结");
+        assertEquals(1, result.summary().buyCount());
+        assertEquals(1, result.summary().newLots(), "新增 1 个买批次（按日合并）");
+        assertEquals(0, result.summary().deductedLots());
+        // 幂等：重复导入同一批成交 → 不重复加减
+        TradingAppService.HistoricalTradeImportResult again = service.importHistoricalTrades("default", tdx);
+        assertEquals(0, again.imported(), "orderId 幂等去重");
+        assertEquals(1500, service.getPositions("default").get(0).quantity(), "持仓不被重复累加");
+    }
+
+    @Test
+    void importHistoricalTrades_recentWindow_syncMode_lifoDeductsLatestLot() {
+        // 用户场景：底仓 1000 + 当日买 500；次日导入卖 300 → LIFO 先扣最近买入批次（底仓不动）
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        String today = LocalDate.now().toString().replace("-", "");
+        String buyTdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        10:15:00        600000          浦发银行        买入            500.00          12.00000000         6000.00         90001          10000001                -6001.10
+                """.formatted(today);
+        service.importHistoricalTrades("default", buyTdx);
+        String sellTdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        14:00:00        600000          浦发银行        卖出            -300.00         13.00000000         3900.00         90002          10000002                3899.70
+                """.formatted(today);
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", sellTdx);
+        assertEquals("sync", result.syncMode());
+        assertEquals(1200, service.getPositions("default").get(0).quantity(), "1000 + 500 − 300");
+        // 批次视角：底仓（初始批次）不动 1000，当日买批剩 200（LIFO 先扣最近）
+        assertNotNull(result.summary());
+        assertEquals(1, result.summary().deductedLots(), "当日买批被扣减（LIFO）");
+        assertEquals(1, result.summary().sellCount());
+    }
+
+    @Test
+    void importHistoricalTrades_oldWindow_appendMode_onlyFillsFlow() {
+        // 3 个月前的历史成交 → 补录模式：只补流水不重算持仓（原语义），无总结
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                20260601        10:15:00        600000          浦发银行        买入            500.00          8.00000000          4000.00         90001          20000001                -4000.55
+                """;
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals("append", result.syncMode(), "明显历史 → 补录模式");
+        assertNull(result.summary(), "补录模式无每日操作总结");
+        assertEquals(1000, service.getPositions("default").get(0).quantity(), "补录不重算持仓");
+        assertEquals(1, service.getTradeHistory("default", null, null).size(), "流水已补录");
+    }
+
+    @Test
+    void importHistoricalTrades_recentWindow_syncMode_behaviorNotes() {
+        // 当日成交行为标注：亏损加仓（买价低于上一买批成本）
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        String today = LocalDate.now().toString().replace("-", "");
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        10:15:00        600000          浦发银行        买入            500.00          9.20000000          4600.00         90001          10000001                -4600.44
+                """.formatted(today);
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals("sync", result.syncMode());
+        assertNotNull(result.summary());
+        assertTrue(result.summary().behaviors().stream()
+                        .anyMatch(b -> "loss-avg-down".equals(b.type())),
+                "买价 9.2 < 底仓成本 10.0 且持仓中 → 亏损加仓标注；实际行为: "
+                        + result.summary().behaviors().stream().map(b -> b.type() + ":" + b.message()).toList());
+    }
+
+    @Test
+    void importHistoricalTrades_sync_crossDedupWithManualRecord() {
+        // 对抗审查 P0-1：白天手动记一笔（流水无 orderId）+ 收盘导入同笔（通达信带 orderId）→ 指纹交叉命中不重复入账
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("12.0"), 500, LocalDate.now(), null, null, null, null, null);
+        String today = LocalDate.now().toString().replace("-", "");
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        10:15:00        600000          浦发银行        买入            500.00          12.00000000         6000.00         90001          10000001                -6001.10
+                """.formatted(today);
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals(0, result.imported(), "手动记录的同笔成交 → 有 orderId 行也查指纹 → 跳过不重复入账");
+        assertEquals(1, result.skipped());
+        assertEquals(1500, service.getPositions("default").get(0).quantity(), "持仓不翻倍（1000 底仓 + 500 手动）");
     }
 }
 

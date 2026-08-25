@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 
 import 'package:adai_web/pages/trading_page.dart';
 import 'package:adai_web/services/api_service.dart';
+import 'package:adai_web/theme/app_colors.dart';
 import 'package:adai_web/utils/trade_import_parser.dart';
 
 /// UTF-8 JSON 响应：MockClient 默认 Latin-1 编码 body，中文会炸，必须显式 charset=utf-8。
@@ -1239,6 +1240,374 @@ void main() {
     // 后端人话 error 透出（原实现 contains('无法识别') 恒 false → 吞成「检查网络」）
     expect(find.textContaining('无法识别历史成交导出'), findsOneWidget);
     expect(find.textContaining('请检查网络后重试'), findsNothing);
+  });
+
+  // ── RFC 20260825：逐笔批次跟踪（GET /trading/lots）──
+
+  group('RFC 20260825 批次明细 DTO', () {
+    test('LotsResponse 解析批次字段（initial/closed/回合盈亏）+ reconcile', () {
+      final resp = LotsResponse.fromJson({
+        'lots': [
+          {
+            'lotId': '600000_2026-08-03_INIT',
+            'symbol': '600000', 'name': '浦发银行', 'buyDate': '2026-08-03',
+            'volume': 1000, 'remaining': 500,
+            'costPrice': 10.0011, 'currentPrice': 10.5, 'marketValue': 5250.0,
+            'pnl': 249.45, 'pnlPct': 4.99,
+            'stopLossPrice': 9.3, 'stopLossDistancePct': 11.43,
+            'buyPoint': 'B1', 'role': null,
+            'initial': true, 'closed': false, 'realizedPnl': 250.0,
+          },
+          {
+            'lotId': '600000_2026-07-10_B',
+            'symbol': '600000', 'name': '浦发银行', 'buyDate': '2026-07-10',
+            'volume': 500, 'remaining': 0,
+            'costPrice': 9.8, 'currentPrice': 10.5, 'marketValue': 0.0,
+            'pnl': 0.0, 'pnlPct': 0.0,
+            'stopLossPrice': 9.1, 'stopLossDistancePct': 15.38,
+            'buyPoint': 'B2', 'role': '防守·主仓',
+            'initial': false, 'closed': true, 'realizedPnl': -80.0,
+          },
+        ],
+        'reconcile': [
+          {'symbol': '600000', 'name': '浦发银行', 'count': 7, 'netVolume': -400, 'holdings': 4800,
+           'note': '当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）'},
+        ],
+      });
+      expect(resp.lots.length, 2);
+      final init = resp.lots[0];
+      expect(init.lotId, '600000_2026-08-03_INIT');
+      expect(init.initial, isTrue);
+      expect(init.closed, isFalse);
+      expect(init.volume, 1000);
+      expect(init.remaining, 500);
+      expect(init.costPrice, closeTo(10.0011, 1e-9));
+      expect(init.pnl, closeTo(249.45, 1e-9));
+      expect(init.stopLossPrice, closeTo(9.3, 1e-9));
+      expect(init.stopLossDistancePct, closeTo(11.43, 1e-9));
+      expect(init.buyPoint, 'B1');
+      expect(init.role, isNull);
+      final closed = resp.lots[1];
+      expect(closed.closed, isTrue);
+      expect(closed.realizedPnl, closeTo(-80.0, 1e-9));
+      expect(closed.role, '防守·主仓');
+      expect(resp.reconcile.single.note, contains('≠'));
+      expect(resp.reconcile.single.holdings, 4800);
+    });
+
+    test('LotItem 缺省字段兜底（缺失/旧后端不炸）', () {
+      final l = LotItem.fromJson({'symbol': '600000'});
+      expect(l.symbol, '600000');
+      expect(l.volume, 0);
+      expect(l.remaining, 0);
+      expect(l.initial, isFalse);
+      expect(l.closed, isFalse);
+      expect(l.stopLossPrice, isNull);
+      expect(l.stopLossDistancePct, isNull);
+      expect(l.realizedPnl, 0);
+    });
+
+    test('getLots 带 state/symbol query 参数', () async {
+      String? state;
+      String? symbol;
+      final client = MockClient((request) async {
+        state = request.url.queryParameters['state'];
+        symbol = request.url.queryParameters['symbol'];
+        return _json({'lots': [], 'reconcile': []});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      final resp = await api.getLots(state: 'all', symbol: '600000');
+      expect(state, 'all');
+      expect(symbol, '600000');
+      expect(resp.lots, isEmpty);
+      expect(resp.reconcile, isEmpty);
+    });
+  });
+
+  // ── RFC 20260825：导入 syncMode + 每日操作总结 ──
+
+  group('RFC 20260825 导入 syncMode + summary DTO', () {
+    test('sync 模式解析 summary + behaviors（亏损加仓）', () {
+      final r = HistoricalTradeImportResult.fromJson({
+        'imported': 3, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+        'syncMode': 'sync',
+        'summary': {
+          'date': '2026-08-25', 'buyCount': 2, 'sellCount': 1,
+          'buyAmount': 10600.0, 'sellAmount': 3900.0,
+          'newLots': 1, 'deductedLots': 1,
+          'behaviors': [
+            {'type': 'loss-avg-down', 'label': '亏损加仓', 'symbol': '600000', 'name': '浦发银行',
+             'date': '2026-08-25',
+             'message': '买价 9.2 低于上一买批成本 10.0——越跌越买/补仓摊薄，注意别把短线补成死扛'},
+          ],
+        },
+      });
+      expect(r.syncMode, 'sync');
+      final s = r.summary!;
+      expect(s.date, '2026-08-25');
+      expect(s.buyCount, 2);
+      expect(s.sellCount, 1);
+      expect(s.buyAmount, closeTo(10600.0, 1e-9));
+      expect(s.sellAmount, closeTo(3900.0, 1e-9));
+      expect(s.newLots, 1);
+      expect(s.deductedLots, 1);
+      expect(s.behaviors.single.type, 'loss-avg-down');
+      expect(s.behaviors.single.label, '亏损加仓');
+      expect(s.behaviors.single.message, contains('越跌越买'));
+    });
+
+    test('append 模式无 summary 不报错；旧后端无 syncMode → append 兜底', () {
+      final r = HistoricalTradeImportResult.fromJson({
+        'imported': 2, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+        'syncMode': 'append',
+      });
+      expect(r.syncMode, 'append');
+      expect(r.summary, isNull);
+      // 旧后端完全不返回 syncMode/summary → 默认 append，不炸
+      final old = HistoricalTradeImportResult.fromJson({'imported': 1});
+      expect(old.syncMode, 'append');
+      expect(old.summary, isNull);
+    });
+  });
+
+  // ── RFC 20260825：持仓批次弹窗 ──
+
+  group('持仓批次弹窗（RFC 20260825）', () {
+    testWidgets('「批次」→ 弹窗展示明细：初始底仓/持有中/已清仓-回合盈亏 + 红涨绿亏 + 对账警告', (tester) async {
+      Map<String, String>? lotsQuery;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/lots') {
+          lotsQuery = request.url.queryParameters;
+          return _json({
+            'lots': [
+              {
+                'lotId': '600123_2026-08-01_INIT', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-08-01',
+                'volume': 100, 'remaining': 100, 'costPrice': 25.0, 'currentPrice': 26.1,
+                'marketValue': 2610.0, 'pnl': 110.0, 'pnlPct': 4.4,
+                'stopLossPrice': 22.8, 'stopLossDistancePct': 12.63, 'buyPoint': null, 'role': null,
+                'initial': true, 'closed': false, 'realizedPnl': 0.0,
+              },
+              {
+                'lotId': '600123_2026-08-05_B', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-08-05',
+                'volume': 200, 'remaining': 100, 'costPrice': 25.3, 'currentPrice': 26.1,
+                'marketValue': 2610.0, 'pnl': 80.0, 'pnlPct': 3.16,
+                'stopLossPrice': 22.8, 'stopLossDistancePct': 12.63, 'buyPoint': 'B3', 'role': '防守·主仓',
+                'initial': false, 'closed': false, 'realizedPnl': 0.0,
+              },
+              {
+                'lotId': '600123_2026-07-20_B', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-07-20',
+                'volume': 300, 'remaining': 0, 'costPrice': 24.0, 'currentPrice': 26.1,
+                'marketValue': 0.0, 'pnl': 0.0, 'pnlPct': 0.0,
+                'stopLossPrice': 22.3, 'stopLossDistancePct': 17.0, 'buyPoint': 'B1', 'role': null,
+                'initial': false, 'closed': true, 'realizedPnl': 250.0,
+              },
+              {
+                'lotId': '600123_2026-07-01_B', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-07-01',
+                'volume': 500, 'remaining': 0, 'costPrice': 10.0, 'currentPrice': 9.5,
+                'marketValue': 0.0, 'pnl': 0.0, 'pnlPct': 0.0,
+                'stopLossPrice': 9.3, 'stopLossDistancePct': -2.1, 'buyPoint': null, 'role': null,
+                'initial': false, 'closed': true, 'realizedPnl': -80.0,
+              },
+              {
+                // initial && closed 并存（初始底仓被卖完）：状态列必须显示「已清仓」（closed 优先），盈亏列显示回合
+                'lotId': '600123_2026-06-15_INIT', 'symbol': '600123', 'name': '立昂微', 'buyDate': '2026-06-15',
+                'volume': 100, 'remaining': 0, 'costPrice': 22.0, 'currentPrice': 26.1,
+                'marketValue': 0.0, 'pnl': 0.0, 'pnlPct': 0.0,
+                'stopLossPrice': 20.5, 'stopLossDistancePct': 27.3, 'buyPoint': null, 'role': null,
+                'initial': true, 'closed': true, 'realizedPnl': 90.0,
+              },
+            ],
+            'reconcile': [
+              {'symbol': '600123', 'name': '立昂微', 'count': 4, 'netVolume': 100, 'holdings': 200,
+               'note': '当前持仓 200 ≠ 流水净 100——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）'},
+              {'symbol': '600123', 'name': '立昂微', 'count': 1, 'netVolume': 0, 'holdings': 200, 'note': '对账一致'},
+              // 其他股票的对账行：弹窗按当前 symbol 过滤，不得串进来
+              {'symbol': '600519', 'name': '贵州茅台', 'count': 2, 'netVolume': 50, 'holdings': 500,
+               'note': '当前持仓 500 ≠ 流水净 50——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）'},
+            ],
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('批次'));
+      await tester.pumpAndSettle();
+
+      // 请求参数：state=all + symbol（一次拿全，含回合/初始底仓）
+      expect(lotsQuery!['state'], 'all');
+      expect(lotsQuery!['symbol'], '600123');
+      // 状态标注：初始底仓 / 持有中 / 已清仓（3 个回合，含 initial&&closed 的初始底仓被卖完 → 显示已清仓）
+      expect(find.text('初始底仓'), findsOneWidget);
+      expect(find.text('持有中'), findsOneWidget);
+      expect(find.text('已清仓'), findsNWidgets(3));
+      // 回合盈亏（已清仓批次，含初始底仓回合 90.00——状态与盈亏口径一致）
+      expect(find.text('回合 250.00'), findsOneWidget);
+      expect(find.text('回合 -80.00'), findsOneWidget);
+      expect(find.text('回合 90.00'), findsOneWidget);
+      // 剩余/买入量
+      expect(find.text('100 / 100'), findsOneWidget);
+      expect(find.text('100 / 200'), findsOneWidget);
+      expect(find.text('0 / 300'), findsOneWidget);
+      expect(find.text('0 / 500'), findsOneWidget);
+      expect(find.text('0 / 100'), findsOneWidget);
+      // 买点/角色（B3 仅弹窗内；B1 在已清仓批次）
+      expect(find.text('B3'), findsOneWidget);
+      expect(find.text('B1'), findsOneWidget);
+      expect(find.text('防守·主仓'), findsOneWidget);
+      // 距止损%（正=安全，负=已破）
+      expect(find.text('12.63%'), findsNWidgets(2));
+      expect(find.text('-2.10%'), findsOneWidget);
+      // 红涨绿亏：盈利=红、亏损=绿
+      final red = tester.widget<Text>(find.text('110.00'));
+      expect(red.style?.color, AppColors.darkRed);
+      final green = tester.widget<Text>(find.text('回合 -80.00'));
+      expect(green.style?.color, AppColors.darkGreen);
+      // 对账不一致 → 橙色警告行（以持仓快照为准）；其他股票的对账行被过滤（不串股）
+      expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+      expect(find.textContaining('当前持仓 200 ≠ 流水净 100'), findsOneWidget);
+      expect(find.textContaining('贵州茅台'), findsNothing);
+      expect(find.textContaining('当前持仓 500 ≠ 流水净 50'), findsNothing);
+    });
+
+    testWidgets('批次接口失败 → 弹窗内人话错误，不打断页面', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/lots') return http.Response('boom', 500);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('批次'));
+      await tester.pumpAndSettle();
+      // 弹窗仍在（不整页白屏），失败透出
+      expect(find.text('批次明细 · 600123 立昂微'), findsOneWidget);
+      expect(find.textContaining('批次明细加载失败'), findsOneWidget);
+    });
+  });
+
+  // ── RFC 20260825：历史成交导入 syncMode + 每日操作总结 ──
+
+  group('历史成交导入 syncMode + 每日操作总结（RFC 20260825）', () {
+    const tdxText = '''
+成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+20260825        14:52:56        600000          浦发银行        买入            200.00         9.20000000         1840.00         151117          69351117                1840.00          A511358384
+''';
+
+    testWidgets('sync 模式 → 当日操作总结卡（标题带成交日期）+ 行为标注（Dialog 与 Tab inline 都展示）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          return _json({
+            'imported': 3, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'sync',
+            'summary': {
+              'date': '2026-08-25', 'buyCount': 2, 'sellCount': 1,
+              'buyAmount': 10600.0, 'sellAmount': 3900.0,
+              'newLots': 1, 'deductedLots': 1,
+              'behaviors': [
+                {'type': 'loss-avg-down', 'label': '亏损加仓', 'symbol': '600000', 'name': '浦发银行',
+                 'date': '2026-08-25',
+                 'message': '买价 9.2 低于上一买批成本 10.0——越跌越买/补仓摊薄，注意别把短线补成死扛'},
+                {'type': 'chase-high', 'label': '追高', 'symbol': '600519', 'name': '贵州茅台',
+                 'date': '2026-08-25', 'message': '买价 1500 高于上一买批成本 1400——追涨买入，注意回撤风险'},
+              ],
+            },
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // Dialog 内：总结卡（标题带成交日期 8/25，sync 窗口跨多日未必是今天）+ 行为标注
+      //（Tab inline 同步展示 → Dialog + inline 共 2 份）
+      expect(find.text('8/25 操作：买 2 笔 ¥10,600.00 · 卖 1 笔 ¥3,900.00 · 新增批次 1 · 扣减批次 1'),
+          findsNWidgets(2));
+      expect(find.textContaining('亏损加仓'), findsNWidgets(2));
+      expect(find.textContaining('越跌越买'), findsNWidgets(2));
+      expect(find.textContaining('追高'), findsNWidgets(2));
+
+      // 关闭 Dialog → 历史成交 Tab inline 保留 1 份
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.text('8/25 操作：买 2 笔 ¥10,600.00 · 卖 1 笔 ¥3,900.00 · 新增批次 1 · 扣减批次 1'),
+          findsOneWidget);
+      expect(find.textContaining('亏损加仓'), findsOneWidget);
+    });
+
+    testWidgets('append 模式 → 补录提示，无总结卡不报错', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          return _json({
+            'imported': 2, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append',
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // append：Dialog + Tab inline 都显示补录提示（共 2 份），不出现总结卡
+      expect(find.text('已按历史补录处理（只补流水，持仓未动）'), findsNWidgets(2));
+      expect(find.textContaining('今日操作'), findsNothing);
+
+      // 关闭 Dialog → inline 保留 1 份
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.text('已按历史补录处理（只补流水，持仓未动）'), findsOneWidget);
+    });
   });
 
 }

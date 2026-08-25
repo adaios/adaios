@@ -125,7 +125,7 @@ class FeedAppServiceTest {
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
                         "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321——单日大跌，留意风险（你还没设止损位，想好怎么走）",
-                        "loss", "14:05")
+                        "loss", "14:05", null, "2999-01-01T00:00:00")
         ));
 
         FeedAppService service = serviceWith("alice", market, push); // 无插件
@@ -145,7 +145,7 @@ class FeedAppServiceTest {
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
                         "📉 贵州茅台(600519) 今日跌 -3.20%，现价 1321——单日大跌，留意风险（你还没设止损位，想好怎么走）",
-                        "loss", "14:05")
+                        "loss", "14:05", null, "2999-01-01T00:00:00")
         ));
 
         FeedAppService service = serviceWith(market, push);
@@ -169,7 +169,7 @@ class FeedAppServiceTest {
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
                         "📋 今日操作汇总\n· 京东方A 卖出 5300 股 @6.10\n是否完整？",
-                        "session", "15:15", "今日操作确认") // title 透传
+                        "session", "15:15", "今日操作确认", "2999-01-01T00:00:00") // title 透传
         ));
 
         FeedAppService service = serviceWith(market, push);
@@ -188,7 +188,7 @@ class FeedAppServiceTest {
         MarketPushRepository push = mock(MarketPushRepository.class);
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_1", "600519", "贵州茅台",
-                        "📉 贵州茅台(600519) 今日跌 -3.20%", "loss", "14:05") // 旧 6 参构造 → title=null
+                        "📉 贵州茅台(600519) 今日跌 -3.20%", "loss", "14:05", null, "2999-01-01T00:00:00") // 旧 6 参构造 → title=null
         ));
 
         FeedAppService service = serviceWith(market, push);

@@ -6,6 +6,7 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
+import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.TradeDirection;
@@ -66,6 +67,8 @@ public class TradingController {
     private final TradeLogCollectService tradeLogCollectService;
     /** B10-1（2026-08-23，P1-推送2）：推送删除持久化（app 左滑删/web 忽略按钮）。 */
     private final MarketPushRepository marketPushRepository;
+    /** RFC 20260825：批次推导与行为标注（批次视图 / 导入同步模式）。 */
+    private final TradingLotService tradingLotService;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
     private final Path inboxDir;
 
@@ -79,6 +82,7 @@ public class TradingController {
                              PushSettingsRepository pushSettingsRepository,
                              TradeLogCollectService tradeLogCollectService,
                              MarketPushRepository marketPushRepository,
+                             TradingLotService tradingLotService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -90,6 +94,7 @@ public class TradingController {
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
         this.marketPushRepository = marketPushRepository;
+        this.tradingLotService = tradingLotService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -280,12 +285,39 @@ public class TradingController {
         String content = body != null ? body.get("content") : null;
         TradingAppService.HistoricalTradeImportResult result =
                 tradingAppService.importHistoricalTrades(userId, content != null ? content : "");
+        // RFC 20260825：响应扩展 syncMode（sync 同步持仓 | append 只补流水）+ 每日操作总结（客观聚合 + 行为标注）
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("imported", result.imported());
+        resp.put("updated", result.updated());
+        resp.put("skipped", result.skipped());
+        resp.put("nonTrades", result.nonTrades());
+        resp.put("lines", result.lines());
+        resp.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
+        if (result.summary() != null) resp.put("summary", result.summary());
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 批次视图（RFC 20260825 逐笔批次跟踪）：每笔买入独立跟踪/止损/盈亏。
+     * GET /api/v1/trading/lots?state=open|closed|all&symbol=
+     * <p>
+     * 返回 {"lots": [...], "reconcile": [...]}——批次（注入现价，含已关回合 realizedPnl）
+     * + 流水重放 vs 持仓快照对账提示（防漏导静默错）。
+     */
+    @GetMapping("/lots")
+    public ResponseEntity<?> lots(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String symbol) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<TradingLotService.TradingLotView> lots = tradingLotService.lots(userId, state);
+        if (symbol != null && !symbol.isBlank()) {
+            lots = lots.stream().filter(l -> symbol.equals(l.symbol())).toList();
+        }
         return ResponseEntity.ok(Map.of(
-                "imported", result.imported(),
-                "updated", result.updated(),
-                "skipped", result.skipped(),
-                "nonTrades", result.nonTrades(),
-                "lines", result.lines()));
+                "lots", lots,
+                "reconcile", tradingLotService.reconcile(userId)));
     }
 
     /**

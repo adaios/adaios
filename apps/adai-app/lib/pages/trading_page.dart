@@ -35,6 +35,11 @@ class _TradingPageState extends State<TradingPage> {
   bool _auxLoading = false; // 次级数据加载中（账户快照，不转圈整页）
   int _auxGen = 0; // 代际令牌：_loadAux 防乱序覆盖
 
+  // ── RFC 20260825：逐笔批次（GET /trading/lots，异步加载失败静默）──
+  List<LotItem> _lots = [];
+  bool _lotsLoading = false;
+  int _lotsGen = 0; // 代际令牌：_loadLots 防乱序覆盖（与 _auxGen 同款守卫）
+
   // ── RFC 20260822：当日交易复盘（纯客观：今日 N 笔 · 时段分布）──
   DailyTradeSummaryDto? _dailySummary;
   bool _dailyLoading = false;
@@ -118,6 +123,7 @@ class _TradingPageState extends State<TradingPage> {
       _checkActivity(); // 复盘横幅检测（静默，失败不影响页面）
       _loadAux();       // 账户快照（异步，不阻塞主数据）
       _loadDaily();     // RFC 20260822：当日交易复盘（异步，失败静默）
+      _loadLots();      // RFC 20260825：逐笔批次简版（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = _extractApiError(e); _loading = false; }); // #113 人话
@@ -172,6 +178,24 @@ class _TradingPageState extends State<TradingPage> {
       // 静默：后端未升级 / 无数据时页面不受影响
     } finally {
       _dailyLoading = false;
+    }
+  }
+
+  /// RFC 20260825：逐笔批次（简版）——一次拉全量，持仓卡按 symbol 过滤。
+  /// 失败静默降级（保留原持仓卡，不整页报错）：后端旧版本/网络失败 → 批次行不出现。
+  /// 代际令牌：与 _loadAux 同款守卫——旧代响应不覆盖新代。
+  Future<void> _loadLots() async {
+    if (_lotsLoading) return;
+    _lotsLoading = true;
+    final gen = ++_lotsGen;
+    try {
+      final resp = await widget.api.getLots(); // 默认 state=all（含已清仓回合，前端过滤开放批）
+      if (!mounted || gen != _lotsGen) return; // 旧代丢弃
+      setState(() => _lots = resp.lots);
+    } catch (_) {
+      // 静默：批次信息是增强项，拉取失败不影响持仓卡原有展示
+    } finally {
+      _lotsLoading = false; // 无条件复位（锁只被本请求持有，串行安全）
     }
   }
 
@@ -977,9 +1001,68 @@ class _TradingPageState extends State<TradingPage> {
             ),
             Text(pctStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pnlColor)),
           ]),
+          // RFC 20260825：批次简版（一眼可见，管理归 web；无批次数据时不出现该行）
+          if (_lotSummaryFor(p.symbol) case final lot?) ...[
+            const SizedBox(height: 6),
+            _buildLotRow(lot),
+          ],
         ]),
       ),
     );
+  }
+
+  /// 持仓卡的批次简版摘要：开放批次（未清仓且剩余 > 0）计数 + 最近买入日期 + 含底仓 + 破止损警示。
+  _LotSummary? _lotSummaryFor(String symbol) {
+    if (_lots.isEmpty) return null;
+    final open = _lots
+        .where((l) => l.symbol == symbol && !l.closed && l.remaining > 0)
+        .toList();
+    if (open.isEmpty) return null;
+    final latestBuy = open
+        .map((l) => l.buyDate)
+        .reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
+    return _LotSummary(
+      count: open.length,
+      latestBuyDate: latestBuy,
+      hasInitial: open.any((l) => l.initial),
+      breachStopLoss: open.any((l) => (l.stopLossDistancePct ?? 0) < 0),
+    );
+  }
+
+  /// 批次简版行：批次数 + 最近买入 + 含底仓徽标 + 「有批次破止损」警示点。
+  Widget _buildLotRow(_LotSummary s) {
+    return Row(children: [
+      Icon(Icons.account_tree_outlined, size: 12, color: AppColors.darkGrey5),
+      const SizedBox(width: 5),
+      Flexible(
+        child: Text(
+          '${s.count} 个批次 · 最近买入 ${_fmtShortDate(s.latestBuyDate)}',
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5),
+        ),
+      ),
+      if (s.hasInitial) ...[
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: AppColors.darkGreen.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text('含底仓',
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+        ),
+      ],
+      if (s.breachStopLoss) ...[
+        const SizedBox(width: 6),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.warning_amber_rounded, size: 11, color: AppColors.darkOrange),
+          const SizedBox(width: 3),
+          const Text('有批次破止损',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+        ]),
+      ],
+    ]);
   }
 
   Widget _buildEmptyPositions() {
@@ -1455,6 +1538,29 @@ String _fmtMoney(double v) {
 }
 
 String _fmtPrice(double v) => v.toStringAsFixed(2);
+
+/// RFC 20260825：批次简版摘要（持仓卡副行用，克制展示）。
+class _LotSummary {
+  final int count; // 开放批次数
+  final String latestBuyDate; // 最近买入日期 yyyy-MM-dd
+  final bool hasInitial; // 含初始底仓（_INIT 批次）
+  final bool breachStopLoss; // 有批次破止损未走（距止损 < 0 且仍有剩余）
+
+  const _LotSummary({
+    required this.count,
+    required this.latestBuyDate,
+    required this.hasInitial,
+    required this.breachStopLoss,
+  });
+}
+
+/// yyyy-MM-dd → M/d（如 2026-08-03 → 8/03），批次行日期克制显示。
+String _fmtShortDate(String yyyyMMdd) {
+  if (yyyyMMdd.length < 10) return yyyyMMdd;
+  final m = int.tryParse(yyyyMMdd.substring(5, 7));
+  final d = yyyyMMdd.substring(8, 10);
+  return m == null ? yyyyMMdd : '$m/$d';
+}
 
 // ── B11-1（2026-08-23，P1-推送3）：推送设置对话框（交易页常驻铃铛入口）──
 

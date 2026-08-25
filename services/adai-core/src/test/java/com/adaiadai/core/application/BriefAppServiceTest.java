@@ -55,7 +55,7 @@ class BriefAppServiceTest {
         return new BriefAppService(
                 identityRepository, recordRepository, memoryService,
                 aiClient, new TradingReviewAppService(
-                        recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo),
+                        recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo, mock(TradingLotService.class)),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
                 mock(TaskRepository.class),

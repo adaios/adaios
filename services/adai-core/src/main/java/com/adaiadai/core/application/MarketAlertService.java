@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.TradingLot;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
@@ -61,6 +62,8 @@ public class MarketAlertService {
     private final TradingRuleEngine ruleEngine;
     /** RFC 20260817：推送开关（用户可关闭各类型推送）。 */
     private final PushSettingsRepository pushSettingsRepository;
+    /** RFC 20260825：批次推导——批次级止损判定（每批独立止损，不跟底仓混）。 */
+    private final TradingLotService tradingLotService;
 
     private final BigDecimal lossThreshold;
     private final BigDecimal gainThreshold;
@@ -76,6 +79,7 @@ public class MarketAlertService {
                               PluginService pluginService,
                               TradingRuleEngine ruleEngine,
                               PushSettingsRepository pushSettingsRepository,
+                              TradingLotService tradingLotService,
                               @Value("${adai.market.alert.loss-threshold:3.0}") double lossThreshold,
                               @Value("${adai.market.alert.gain-threshold:5.0}") double gainThreshold,
                               @Value("${adai.market.alert.break-cost-enabled:true}") boolean breakCostEnabled,
@@ -88,6 +92,7 @@ public class MarketAlertService {
         this.pluginService = pluginService;
         this.ruleEngine = ruleEngine;
         this.pushSettingsRepository = pushSettingsRepository;
+        this.tradingLotService = tradingLotService;
         this.lossThreshold = BigDecimal.valueOf(lossThreshold);
         this.gainThreshold = BigDecimal.valueOf(gainThreshold);
         this.breakCostEnabled = breakCostEnabled;
@@ -174,6 +179,20 @@ public class MarketAlertService {
             }
         }
 
+        // RFC 20260825 §3：批次级止损——某批次现价破它自己的止损（未设按默认 −7% 兜底）→ 单独提醒，
+        // 不跟底仓混（「哪批该走」说清楚）；与持仓级 R66 独立去重（signature 带 lotId）
+        Map<String, List<TradingLot>> lotsBySymbol = tradingLotService.derive(userId);
+        for (Map.Entry<String, List<TradingLot>> e : lotsBySymbol.entrySet()) {
+            MarketData md = quotes.get(e.getKey());
+            if (md == null || md.price() == null) continue;
+            for (TradingLot lot : e.getValue()) {
+                if (lot.closed()) continue;
+                if (md.price().compareTo(tradingLotService.effectiveStopLoss(lot)) < 0) {
+                    addLotAlertIfNew(userId, lot, md, existing, newSignatures, alerts);
+                }
+            }
+        }
+
         if (!alerts.isEmpty()) {
             // 2026-08-20 生产「微信双份」：同股票同轮命中多个异动类型（如 loss + break-cost）
             // 各生成一条 → 微信收到同股票两条内容重叠的消息。合并为一条（保留最严重类型 + 内容拼接）。
@@ -244,6 +263,29 @@ public class MarketAlertService {
 
     private String signature(String symbol, LocalDate date, String type) {
         return symbol + ":" + date + ":" + type;
+    }
+
+    /** 批次级止损推送（RFC 20260825 §3）：signature 带 lotId，与持仓级 R66 独立去重。
+     *  对抗审查 P1-3：显式止损 → 纪律级文案；默认 −7% 兜底 → 风控提示文案（不把系统强加的线包装成违规批评）。 */
+    private void addLotAlertIfNew(String userId, TradingLot lot, MarketData md,
+                                  Set<String> existing, Set<String> newSignatures,
+                                  List<PushChannel.PushMessage> alerts) {
+        if (!pushSettingsRepository.findByUser(userId).isEnabled("stop-loss")) return;
+        String sig = lot.symbol() + ":" + LocalDate.now() + ":stop-loss:" + lot.lotId();
+        if (existing.contains(sig)) return;
+        newSignatures.add(sig);
+        BigDecimal stop = tradingLotService.effectiveStopLoss(lot);
+        String lotLabel = lot.initial() ? "底仓" : lot.buyDate() + " 买入批次";
+        String msg = lot.stopLossPrice() != null
+                ? "📉 " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
+                        + " 已跌破该批止损 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice()) + "）"
+                        + "——这是这批自己的止损位（R66），底仓不受影响，要我看看这批复盘吗？"
+                : "⚠️ " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())
+                        + " 已跌破默认 −7% 风控线 " + fmt(stop) + "（该批成本 " + fmt(lot.costPrice())
+                        + "，你还没设止损）——先想好这批复盘怎么走，要不要设个止损位？";
+        alerts.add(new PushChannel.PushMessage(
+                lot.name() + " 批次止损预警", msg,
+                "stop-loss", lot.symbol(), lot.name(), LocalTime.now()));
     }
 
     private String message(Position p, MarketData md, BigDecimal change, String type) {

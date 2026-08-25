@@ -54,19 +54,23 @@ public class TradingReviewAppService {
     private final ContextEngine contextEngine;
     private final AiClient aiClient;
     private final TradingReviewFileRepository reviewRepository;
+    /** RFC 20260825：行为标注注入（记录即标注进当晚复盘——亏损加仓/追高/破止损未走等）。 */
+    private final TradingLotService tradingLotService;
 
     public TradingReviewAppService(RecordRepository recordRepository,
                                    PositionRepository positionRepository,
                                    AccountSnapshotRepository accountSnapshotRepository,
                                    ContextEngine contextEngine,
                                    AiClient aiClient,
-                                   TradingReviewFileRepository reviewRepository) {
+                                   TradingReviewFileRepository reviewRepository,
+                                   TradingLotService tradingLotService) {
         this.recordRepository = recordRepository;
         this.positionRepository = positionRepository;
         this.accountSnapshotRepository = accountSnapshotRepository;
         this.contextEngine = contextEngine;
         this.aiClient = aiClient;
         this.reviewRepository = reviewRepository;
+        this.tradingLotService = tradingLotService;
     }
 
     /**
@@ -90,8 +94,8 @@ public class TradingReviewAppService {
                 .orElse(java.math.BigDecimal.ZERO);
         PortfolioSnapshot snapshot = PortfolioSnapshot.of(positions, cash);
 
-        // 2. 复盘正文：当日记录 + 持仓（作为合成记录的 content，含交易关键词触发 trading 场景）
-        String reviewBody = buildReviewBody(date, todayRecords, positions, snapshot);
+        // 2. 复盘正文：当日记录 + 持仓 + 行为标注（作为合成记录的 content，含交易关键词触发 trading 场景）
+        String reviewBody = buildReviewBody(date, todayRecords, positions, snapshot, userId);
 
         // 3. 合成复盘记录 → 走 ContextEngine，注入交易规则/知识/行情/身份/历史/记忆
         ContentRecord reviewRecord = new ContentRecord(
@@ -185,7 +189,7 @@ public class TradingReviewAppService {
      * 复盘正文：当日记录 + 当前持仓 + 汇总。作为合成记录的 content 传给 ContextEngine。
      */
     private String buildReviewBody(LocalDate date, List<ContentRecord> records,
-                                   List<Position> positions, PortfolioSnapshot snapshot) {
+                                   List<Position> positions, PortfolioSnapshot snapshot, String userId) {
         StringBuilder sb = new StringBuilder();
         sb.append("复盘日期：").append(date).append("\n\n");
 
@@ -199,6 +203,20 @@ public class TradingReviewAppService {
             sb.append("\n");
         } else {
             sb.append("当日无新记录。\n\n");
+        }
+
+        // RFC 20260825：当日行为标注（亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）
+        try {
+            List<TradingLotService.BehaviorNote> behaviors = tradingLotService.analyzeBehaviors(userId, date);
+            if (!behaviors.isEmpty()) {
+                sb.append("## 当日行为标注（阿呆观察，纪律对照）\n\n");
+                for (TradingLotService.BehaviorNote b : behaviors) {
+                    sb.append("- 【").append(b.label()).append("】").append(b.message()).append("\n");
+                }
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            log.warn("复盘行为标注注入失败（不影响复盘生成）| userId={} | {}", userId, e.getMessage());
         }
 
         // 当前持仓

@@ -375,9 +375,11 @@ public class FeedAppService {
     /**
      * 当日行情异动推送（Phase 2 主动推送）。MarketAlertService 落盘到
      * {@code data/{userId}/trading/pushes/{date}.json}，这里按日读取注入 type=push 条目。
+     * RFC 20260825 §7：过滤已过期条目（行情类当天收盘消失、汇总类次日 23:59）——推送定时消失，无需手动删。
      */
     private List<FeedEntry> buildPushEntries(String userId, LocalDate date) {
         return pushRepository.findByDate(userId, date).stream()
+                .filter(p -> !MarketPushRepository.isExpired(p, date))
                 .map(p -> toPushEntry(p, date))
                 .toList();
     }

@@ -52,6 +52,8 @@ public class TradingAppService {
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final TransferRepository transferRepository;
     private final MarketDataSource marketDataSource;
+    /** RFC 20260825：批次推导与行为标注（当日成交同步模式 / 每日操作总结依赖）。 */
+    private final TradingLotService tradingLotService;
 
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
@@ -60,7 +62,8 @@ public class TradingAppService {
                              SoldTradeRepository soldTradeRepository,
                              AccountSnapshotRepository accountSnapshotRepository,
                              TransferRepository transferRepository,
-                             MarketDataSource marketDataSource) {
+                             MarketDataSource marketDataSource,
+                             TradingLotService tradingLotService) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
@@ -69,6 +72,7 @@ public class TradingAppService {
         this.accountSnapshotRepository = accountSnapshotRepository;
         this.transferRepository = transferRepository;
         this.marketDataSource = marketDataSource;
+        this.tradingLotService = tradingLotService;
     }
 
     private Object tradeLock(String userId) {
@@ -96,6 +100,33 @@ public class TradingAppService {
                                       LocalDate entryDate, LocalTime tradeTime,
                                       BigDecimal stopLossPrice, String buyPoint,
                                       BigDecimal targetPrice, String reason) {
+        return recordTradeInternal(userId, symbol, name, direction, price, volume,
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, null, null);
+    }
+
+    /**
+     * 带券商成交编号与实扣费用的交易记录（RFC 20260825 §5 当日成交同步专用）：
+     * orderId 透传流水落盘（导入幂等键）、fee 透传券商实扣（后端审查 P1-2——不丢实际手续费，
+     * 与 append 补录模式同口径）。其余语义与 {@link #recordTrade} 完全一致。
+     */
+    public List<Position> recordTradeWithOrderId(String userId, String symbol, String name,
+                                                 TradeDirection direction,
+                                                 BigDecimal price, int volume,
+                                                 LocalDate entryDate, LocalTime tradeTime,
+                                                 BigDecimal stopLossPrice, String buyPoint,
+                                                 BigDecimal targetPrice, String reason,
+                                                 String orderId, BigDecimal fee) {
+        return recordTradeInternal(userId, symbol, name, direction, price, volume,
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, orderId, fee);
+    }
+
+    private List<Position> recordTradeInternal(String userId, String symbol, String name,
+                                               TradeDirection direction,
+                                               BigDecimal price, int volume,
+                                               LocalDate entryDate, LocalTime tradeTime,
+                                               BigDecimal stopLossPrice, String buyPoint,
+                                               BigDecimal targetPrice, String reason,
+                                               String orderId, BigDecimal fee) {
         // #147：读-改-写加每用户锁，防并发交易互相覆盖丢持仓
         synchronized (tradeLock(userId)) {
             // RFC 20260815：name 可空（web 标注"可选"），缺名时以 symbol 兜底（简单方案：symbol 即名）
@@ -180,7 +211,8 @@ public class TradingAppService {
             // RFC 20260816 §2.1：逐笔流水真相源（BUY/SELL 都写）。best-effort：
             // 持仓已落库，流水写入失败不阻塞交易本身（与 writeTradingRecord 同口径），只告警。
             appendTradeRecord(userId, symbol, effectiveName, direction, price, volume,
-                    effectiveEntryDate, effectiveTradeTime, stopLossPrice, buyPoint, targetPrice, reason, recordId);
+                    effectiveEntryDate, effectiveTradeTime, stopLossPrice, buyPoint, targetPrice, reason,
+                    recordId, orderId, fee);
 
             log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={} | entryDate={} | 止损={}",
                     direction, symbol, volume, price, currentPositions.size(),
@@ -240,13 +272,14 @@ public class TradingAppService {
     private void appendTradeRecord(String userId, String symbol, String name, TradeDirection direction,
                                    BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
                                    BigDecimal stopLossPrice, String buyPoint,
-                                   BigDecimal targetPrice, String reason, String sourceRecordId) {
+                                   BigDecimal targetPrice, String reason, String sourceRecordId,
+                                   String orderId, BigDecimal fee) {
         try {
             TradeRecord trade = TradeRecord.of(
                     IdGenerator.monotonic("trade_"),
                     symbol, name, direction, price, volume,
                     entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason,
-                    null, LocalDateTime.now(), sourceRecordId, null);
+                    fee, LocalDateTime.now(), sourceRecordId, orderId);
             tradingHistoryRepository.append(userId, trade);
         } catch (Exception e) {
             log.warn("交易流水写入失败（不影响交易落库）| symbol={} | {}", symbol, e.getMessage());
@@ -815,6 +848,103 @@ public class TradingAppService {
         if (rows.isEmpty()) {
             throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
         }
+        // RFC 20260825 §5：自动识别双模式——窗口内成交 → 同步（更新持仓/现金/流水 + 每日操作总结）；
+        // 窗口外历史 → 补录（只补流水 + 对账提示）。
+        // 对抗审查 P1-1：混合窗口拆组并行处理，不再「混一笔超窗成交就整批降级」——
+        // 用户导历史成交常带几笔漏掉的更早成交，近日部分照常同步持仓。
+        LocalDate windowStart = LocalDate.now().minusDays(10);
+        List<TradingImportParser.HistoricalTradeRow> recent = rows.stream()
+                .filter(r -> r.entryDate() != null && !r.entryDate().isBefore(windowStart))
+                .toList();
+        List<TradingImportParser.HistoricalTradeRow> old = rows.stream()
+                .filter(r -> r.entryDate() == null || r.entryDate().isBefore(windowStart))
+                .toList();
+        if (old.isEmpty()) {
+            return importSync(userId, recent);
+        }
+        // 先补录历史（只补流水），再同步近日（sync 的幂等指纹基于补录后的全量流水）
+        HistoricalTradeImportResult appendResult = importAppend(userId, old);
+        if (recent.isEmpty()) {
+            return appendResult;
+        }
+        HistoricalTradeImportResult syncResult = importSync(userId, recent);
+        return new HistoricalTradeImportResult(
+                appendResult.imported() + syncResult.imported(),
+                appendResult.updated() + syncResult.updated(),
+                appendResult.skipped() + syncResult.skipped(),
+                appendResult.nonTrades() + syncResult.nonTrades(),
+                syncResult.lines(), "sync", syncResult.summary());
+    }
+
+    /**
+     * 同步模式（当日/近日成交导入，RFC 20260825 §5）：幂等过滤 → 按成交时间排序 →
+     * 逐笔走 recordTrade 全链路（持仓增减 + 现金 + 手续费 + 逐笔流水 + 时间线记录），
+     * 返回对账 + 每日操作总结（含行为标注）。
+     */
+    private HistoricalTradeImportResult importSync(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
+        // 导入前批次快照：diff 出新增/扣减批次（每日操作总结）
+        Map<String, List<TradingLot>> before = tradingLotService.derive(userId);
+        int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
+        synchronized (tradeLock(userId)) {
+            Map<String, TradeRecord> byOrderId = new HashMap<>();
+            Set<String> orderIds = new HashSet<>();
+            Set<String> fingerprints = new HashSet<>();
+            for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+                if (t.orderId() != null && !t.orderId().isBlank()) {
+                    orderIds.add(t.orderId());
+                    byOrderId.put(t.orderId(), t);
+                } else {
+                    fingerprints.add(fingerprint(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()));
+                }
+            }
+            List<TradingImportParser.HistoricalTradeRow> toSync = new ArrayList<>();
+            for (TradingImportParser.HistoricalTradeRow r : rows) {
+                if (r.volume() <= 0) { nonTrades++; continue; }
+                String oid = r.orderId();
+                if (oid != null && !oid.isBlank()) {
+                    if (orderIds.contains(oid)) { skipped++; continue; }
+                    // 对抗审查 P0-1：手动记录（流水无 orderId）与收盘导入（有 orderId）同笔交叉防重——
+                    // 主场景「白天手动记一笔 + 收盘导当天成交」，有 orderId 的行也查指纹防重复入账
+                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
+                    if (fingerprints.contains(fp)) { skipped++; continue; }
+                    orderIds.add(oid);
+                    fingerprints.add(fp); // 双键都入：同文件内无编号变体也防重
+                } else {
+                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
+                    if (fingerprints.contains(fp)) { skipped++; continue; }
+                    fingerprints.add(fp);
+                }
+                toSync.add(r);
+            }
+            // LIFO 依赖时间序：按成交日期 + 成交时刻排序后逐笔处理（A 股 T+1，顺序确定）
+            toSync.sort(java.util.Comparator
+                    .comparing((TradingImportParser.HistoricalTradeRow r) -> r.entryDate() != null ? r.entryDate() : LocalDate.MIN)
+                    .thenComparing(r -> r.tradeTime() != null ? r.tradeTime() : LocalTime.MIN));
+            for (TradingImportParser.HistoricalTradeRow r : toSync) {
+                try {
+                    // 通达信成交无止损/买点列 → null；批次止损由推导层按默认 −7% 兜底（RFC 20260825）。
+                    // orderId 透传流水落盘 = 幂等键；fee 透传券商实扣（后端审查 P1-2，与 append 模式同口径）。
+                    recordTradeWithOrderId(userId, r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
+                            r.entryDate(), r.tradeTime(), null, null, null, null, r.orderId(), r.fee());
+                    imported++;
+                } catch (TradingException e) {
+                    // 逐条失败不整批回滚（与 /trades/batch 同语义）：跳过继续，失败不阻塞其余
+                    log.warn("当日成交同步单笔失败 | userId={} | {} {} | {}", userId, r.direction(), r.symbol(), e.getMessage());
+                    skipped++;
+                }
+            }
+        }
+        List<ReconcileLine> lines = tradingLotService.reconcile(userId);
+        DailyOperationSummary summary = buildDailySummary(userId, rows, before);
+        log.info("当日成交同步导入 | userId={} | 同步 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 买 {} 卖 {} 新增批次 {} 扣减 {} 行为 {}",
+                userId, imported, skipped, nonTrades, lines.size(),
+                summary.buyCount(), summary.sellCount(), summary.newLots(), summary.deductedLots(),
+                summary.behaviors().size());
+        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "sync", summary);
+    }
+
+    /** 补录模式（历史成交导入，原语义）：只补流水不重算持仓/现金，返回对账提示。 */
+    private HistoricalTradeImportResult importAppend(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
         int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
         List<TradeRecord> toAdd = new ArrayList<>();
         synchronized (tradeLock(userId)) {
@@ -861,15 +991,51 @@ public class TradingAppService {
             for (TradeRecord t : toAdd) tradingHistoryRepository.append(userId, t);
         }
         List<ReconcileLine> lines = reconcileHistorical(userId, rows);
-        log.info("历史成交导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
+        log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
                 userId, imported, updated, skipped, nonTrades, lines.size());
-        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines);
+        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null);
     }
 
-    /** 幂等指纹（无成交编号时）：symbol|direction|entryDate|price|volume。 */
+    /** 每日操作总结（RFC 20260825 §6）：客观聚合 + 批次 diff + 行为标注——不耗 AI 秒出。 */
+    private DailyOperationSummary buildDailySummary(String userId, List<TradingImportParser.HistoricalTradeRow> rows,
+                                                    Map<String, List<TradingLot>> before) {
+        LocalDate date = rows.stream().map(TradingImportParser.HistoricalTradeRow::entryDate)
+                .filter(java.util.Objects::nonNull).max(LocalDate::compareTo).orElse(LocalDate.now());
+        int buyCount = 0, sellCount = 0;
+        double buyAmount = 0, sellAmount = 0;
+        for (TradingImportParser.HistoricalTradeRow r : rows) {
+            if (r.volume() <= 0) continue;
+            double amt = r.price().multiply(BigDecimal.valueOf(r.volume())).doubleValue();
+            if (r.direction() == TradeDirection.BUY) { buyCount++; buyAmount += amt; }
+            else { sellCount++; sellAmount += amt; }
+        }
+        // 批次 diff：导入后新增批次 / 被扣减批次
+        Map<String, List<TradingLot>> after = tradingLotService.derive(userId);
+        Set<String> beforeIds = before.values().stream().flatMap(List::stream)
+                .map(TradingLot::lotId).collect(java.util.stream.Collectors.toSet());
+        Set<String> afterIds = after.values().stream().flatMap(List::stream)
+                .map(TradingLot::lotId).collect(java.util.stream.Collectors.toSet());
+        int newLots = (int) afterIds.stream().filter(id -> !beforeIds.contains(id)).count();
+        Map<String, TradingLot> beforeById = before.values().stream().flatMap(List::stream)
+                .collect(java.util.stream.Collectors.toMap(TradingLot::lotId, l -> l, (a, b) -> a));
+        int deductedLots = 0;
+        for (List<TradingLot> lots : after.values()) {
+            for (TradingLot l : lots) {
+                TradingLot b = beforeById.get(l.lotId());
+                if (b != null && b.remaining() > l.remaining()) deductedLots++;
+            }
+        }
+        List<TradingLotService.BehaviorNote> behaviors = tradingLotService.analyzeBehaviors(userId, date);
+        return new DailyOperationSummary(date.toString(), buyCount, sellCount,
+                round2(buyAmount), round2(sellAmount), newLots, deductedLots, behaviors);
+    }
+
+    /** 幂等指纹（无成交编号时）：symbol|direction|entryDate|price|volume。
+     *  价格 stripTrailingZeros 归一化（坑：BigDecimal.equals 区分 scale——手动记录 12.0 vs 导入 12.00000000 必须视为同价）。 */
     private String fingerprint(String symbol, TradeDirection direction, LocalDate entryDate,
                                BigDecimal price, int volume) {
-        return symbol + "|" + direction + "|" + entryDate + "|" + price + "|" + volume;
+        return symbol + "|" + direction + "|" + entryDate + "|"
+                + (price != null ? price.stripTrailingZeros().toPlainString() : "") + "|" + volume;
     }
 
     /** 对账：每标的 流水净增减 vs 当前持仓数量 → 基线缺口提示（只报告，不改数据）。 */
@@ -921,9 +1087,29 @@ public class TradingAppService {
     public record ReconcileLine(String symbol, String name, int count, int netVolume,
                                 Integer holdings, String note) {}
 
-    /** 历史成交导入结果：导入笔数 / 回填笔数 / 去重跳过 / 非交易事件 / 对账行。 */
+    /** 历史成交导入结果：导入笔数 / 回填笔数 / 去重跳过 / 非交易事件 / 对账行 / 模式（sync 同步 | append 补录）/ 每日操作总结。 */
     public record HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
-                                              List<ReconcileLine> lines) {}
+                                              List<ReconcileLine> lines, String syncMode,
+                                              DailyOperationSummary summary) {
+        /** 兼容旧 5 参构造（补录模式无总结）。 */
+        public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
+                                           List<ReconcileLine> lines) {
+            this(imported, updated, skipped, nonTrades, lines, null, null);
+        }
+    }
+
+    /** 每日操作总结（RFC 20260825 §6，导入/归集后秒出，不耗 AI）：
+     *  买卖聚合 + 批次 diff（新增/扣减）+ 行为标注。 */
+    public record DailyOperationSummary(
+            String date,
+            int buyCount,
+            int sellCount,
+            double buyAmount,
+            double sellAmount,
+            int newLots,
+            int deductedLots,
+            List<TradingLotService.BehaviorNote> behaviors
+    ) {}
 
     /** 自选导入结果。 */
     public record WatchlistImportResult(int imported) {}
