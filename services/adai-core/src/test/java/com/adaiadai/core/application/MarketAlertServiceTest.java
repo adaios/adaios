@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
+import com.adaiadai.core.domain.trading.TradingLot;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.kernel.push.PushChannel;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -86,6 +89,29 @@ class MarketAlertServiceTest {
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
                 pushSettings, mock(TradingLotService.class),
+                3.0, 5.0, breakCostEnabled, 2.0);
+    }
+
+    /** RFC 20260825 批次级止损测试：注入可桩 derive 的批次服务。 */
+    private MarketAlertService build(MarketDataSource market, PositionRepository positions,
+                                     boolean breakCostEnabled, PushChannel push, TradingLotService lotService) {
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("default", "user", true, null)));
+
+        Set<String> stored = new HashSet<>();
+        MarketSnapshotRepository snapshot = mock(MarketSnapshotRepository.class);
+        when(snapshot.alertedSignatures(anyString(), any())).thenAnswer(i -> new HashSet<>(stored));
+        doAnswer(i -> {
+            stored.clear();
+            stored.addAll(i.getArgument(2));
+            return null;
+        }).when(snapshot).saveSignatures(anyString(), any(), any());
+
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
+                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                pushSettings, lotService,
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
 
@@ -436,4 +462,76 @@ class MarketAlertServiceTest {
 
         verify(push, never()).push(anyString(), any());
     }
+
+    @Test
+    void lotStopLoss_createsPush_whenLotPriceBelowItsOwnStop() {
+        // RFC 20260825 §3 批次级止损（后端审查 P2-6 补测）：某批次现价破它自己的止损
+        // （未设按默认 −7% 兜底）→ 单独推「批次止损预警」，不跟底仓混；与持仓级 R66 独立去重
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600000", quoteAt("600000", "8.80", "-3.0")));
+        PositionRepository positions = mock(PositionRepository.class);
+        // 持仓级止损未设（pos 无 stopLoss）→ 仅批次级触发，验证分支独立生效
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", "浦发银行", "10.00", "9.00")));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        TradingLotService lots = mock(TradingLotService.class);
+        TradingLot lot = new TradingLot("600000_2026-08-03_B", "600000", "浦发银行",
+                LocalDate.of(2026, 8, 3), 1000, 500, new BigDecimal("10.0"),
+                new BigDecimal("9.0"), null, null, false, BigDecimal.ZERO);
+        when(lots.derive(anyString())).thenReturn(Map.of("600000", List.of(lot)));
+        when(lots.effectiveStopLoss(lot)).thenReturn(new BigDecimal("9.0"));
+
+        build(market, positions, true, push, lots).poll("default");
+
+        ArgumentCaptor<PushChannel.PushMessage> cap = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, atLeastOnce()).push(eq("default"), cap.capture());
+        assertTrue(cap.getAllValues().stream()
+                        .anyMatch(m -> m.title().contains("批次止损预警")),
+                "批次破自己的止损 → 批次止损预警推送（不跟底仓混）");
+        assertTrue(cap.getAllValues().stream()
+                        .anyMatch(m -> m.content().contains("2026-08-03 买入批次")),
+                "推送内容含批次信息（日期/成本/止损）");
+    }
+
+    @Test
+    void lotStopLoss_disabledSetting_noPush() {
+        // 推送开关关闭 stop-loss → 批次级止损不推送（与持仓级同开关）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600000", quoteAt("600000", "8.80", "-3.0")));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", "浦发银行", "10.00", "9.00")));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        TradingLotService lots = mock(TradingLotService.class);
+        TradingLot lot = new TradingLot("600000_2026-08-03_B", "600000", "浦发银行",
+                LocalDate.of(2026, 8, 3), 1000, 500, new BigDecimal("10.0"),
+                new BigDecimal("9.0"), null, null, false, BigDecimal.ZERO);
+        when(lots.derive(anyString())).thenReturn(Map.of("600000", List.of(lot)));
+        when(lots.effectiveStopLoss(lot)).thenReturn(new BigDecimal("9.0"));
+
+        // 关闭 stop-loss 推送开关
+        com.adaiadai.core.domain.trading.PushSettings ps = com.adaiadai.core.domain.trading.PushSettings.defaults();
+        ps = ps.with("stop-loss", false);
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("default", "user", true, null)));
+        MarketSnapshotRepository snapshot = mock(MarketSnapshotRepository.class);
+        when(snapshot.alertedSignatures(anyString(), any())).thenReturn(new HashSet<>());
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(anyString())).thenReturn(ps);
+        MarketAlertService svc = new MarketAlertService(market, positions, accounts, snapshot,
+                java.util.List.of(push), mock(PluginService.class),
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                pushSettings, lots, 3.0, 5.0, true, 2.0);
+
+        svc.poll("default");
+
+        // stop-loss 开关只影响止损类；loss/break-cost 推送仍会触发——精确断言无批次止损预警
+        ArgumentCaptor<PushChannel.PushMessage> cap = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, atLeastOnce()).push(eq("default"), cap.capture());
+        assertTrue(cap.getAllValues().stream().noneMatch(m -> m.title().contains("批次止损预警")),
+                "stop-loss 开关关闭 → 批次级止损不推送");
+    }
 }
+

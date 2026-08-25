@@ -321,12 +321,16 @@ public class TradingLotService {
                         .mapToInt(TradeRecord::volume).sum()
                         - sorted.stream().filter(t -> t.direction() == TradeDirection.SELL)
                         .mapToInt(TradeRecord::volume).sum();
-                boolean hasInitial = flowNet < holdingPos.quantity(); // 流水覆盖不到 → 有更早的底仓
-                lastBuyLotCost = holdingPos.avgCost();
-                lastBuyLotDate = hasInitial
-                        ? LocalDate.MIN
-                        : (holdingPos.entryDate() != null ? holdingPos.entryDate() : LocalDate.MIN);
-                holding = holdingPos.quantity();
+                // 后端审查 P2-3：持仓基线 = 快照 − 流水净量（流水覆盖不到的底仓数量），
+                // 不是快照终态——否则「卖清后重新建仓」（flow 含卖清+重买）会把重买误判为亏损加仓
+                int initialQty = holdingPos.quantity() - flowNet;
+                boolean hasInitial = initialQty > 0;
+                if (hasInitial) {
+                    lastBuyLotCost = holdingPos.avgCost();
+                    lastBuyLotDate = LocalDate.MIN; // 有更早的底仓 → 视为更早建仓
+                    holding = initialQty;
+                }
+                // 无初始底仓（流水覆盖全部持仓）：不初始化上下文——首笔 BUY 是新建仓，不判亏损加仓
             }
             for (TradeRecord t : sorted) {
                 LocalDate d = effectiveDate(t);

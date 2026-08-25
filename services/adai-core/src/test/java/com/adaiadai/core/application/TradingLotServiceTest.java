@@ -237,4 +237,38 @@ class TradingLotServiceTest {
         assertEquals(1, lines.size());
         assertTrue(lines.get(0).note().contains("≠"), "持仓 1500 ≠ 流水净 500 → 对账提示缺口");
     }
+
+    @Test
+    void initialLot_deductedBySell_withRealizedPnl() {
+        // 后端审查 P1-1 回归：底仓快照 700 + 只有卖出的流水 → 卖单扣初始批次（正确扣减 + 回合盈亏）
+        List<Position> positions = List.of(new Position("600000", "浦发银行", 700,
+                new BigDecimal("10.0"), new BigDecimal("10.5"), LocalDateTime.now()));
+        TradingLotService svc = service(List.of(
+                sell("600000", 300, "11.0", LocalDate.of(2026, 8, 5))), positions, Map.of());
+        List<TradingLot> lots = lotsOf(svc, "600000");
+        assertEquals(1, lots.size(), "只有初始批次");
+        TradingLot init = lots.get(0);
+        assertTrue(init.initial());
+        assertEquals(1000, init.volume(), "初始批次 = 卖前底仓（快照 700 + 已卖 300）");
+        assertEquals(700, init.remaining(), "卖 300 从初始批次扣：1000 − 300 = 700（= 当前快照）");
+        assertTrue(init.realizedPnl().subtract(new BigDecimal("300")).abs().compareTo(new BigDecimal("15")) < 0,
+                "回合盈亏 ≈ (11−10)×300 − 卖出费用：" + init.realizedPnl());
+    }
+
+    @Test
+    void behaviors_noLossAveragingDown_afterFullExitThenReentry() {
+        // 后端审查 P2-3：卖清后重新建仓（flow 含卖清+重买）→ 重买不算亏损加仓
+        // 快照 1500 = 底仓 1000 卖清后重买 1500；基线 = 快照 − 流水净量 = 1000，卖清后 holding=0
+        LocalDate D2 = LocalDate.of(2026, 8, 4);
+        LocalDate D3 = LocalDate.of(2026, 8, 5);
+        List<Position> positions = List.of(new Position("600000", "浦发银行", 1500,
+                new BigDecimal("11.0"), new BigDecimal("11.0"), LocalDateTime.now()));
+        TradingLotService svc = service(List.of(
+                sell("600000", 1000, "10.0", D2),
+                buy("600000", 1500, "9.2", D3, null, null)), positions, Map.of());
+        List<TradingLotService.BehaviorNote> notes = svc.analyzeBehaviors("u", D3);
+        assertTrue(notes.stream().noneMatch(n -> "loss-avg-down".equals(n.type())),
+                "卖清后重新建仓不算亏损加仓（9.2 是重新入场不是补仓）");
+    }
 }
+
