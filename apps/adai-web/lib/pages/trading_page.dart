@@ -97,6 +97,7 @@ class _TradingPageState extends State<TradingPage> {
   bool _loading = true;
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
+  bool _lotsDialogOpen = false; // P2-批次1：批次弹窗在途守卫——连点/双击防叠两层 dialog
 
   Timer? _autoRefresh;
 
@@ -331,24 +332,31 @@ class _TradingPageState extends State<TradingPage> {
   /// RFC 20260825：持仓批次明细——点击「批次」拉取该股全部批次（含回合/初始底仓），弹窗展示。
   /// state=all 一次拿全（持有中 + 已清仓回合），symbol 由后端过滤；失败透出人话不打断页面。
   Future<void> _showLots(PositionItem p) async {
-    LotsResponse? resp;
-    String? err;
+    // P2-批次1：连点/双击无幂等守卫（F20/F22 同类）——慢响应逐个 showDialog 叠两层
+    if (_lotsDialogOpen) return;
+    _lotsDialogOpen = true;
     try {
-      resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
-    } catch (e) {
-      err = _extractApiError(e);
+      LotsResponse? resp;
+      String? err;
+      try {
+        resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
+      } catch (e) {
+        err = _extractApiError(e);
+      }
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => _LotsDialog(
+          symbol: p.symbol,
+          name: p.name,
+          lots: resp?.lots ?? const [],
+          reconcile: resp?.reconcile ?? const [],
+          error: err,
+        ),
+      );
+    } finally {
+      _lotsDialogOpen = false; // 弹窗关闭后复位，允许下次打开
     }
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => _LotsDialog(
-        symbol: p.symbol,
-        name: p.name,
-        lots: resp?.lots ?? const [],
-        reconcile: resp?.reconcile ?? const [],
-        error: err,
-      ),
-    );
   }
 
   /// RFC 20260817：推送设置对话框（逐类型开关）。

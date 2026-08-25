@@ -1038,7 +1038,7 @@ class _TradingPageState extends State<TradingPage> {
         child: Text(
           '${s.count} 个批次 · 最近买入 ${_fmtShortDate(s.latestBuyDate)}',
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5),
+          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
         ),
       ),
       if (s.hasInitial) ...[
@@ -1050,7 +1050,7 @@ class _TradingPageState extends State<TradingPage> {
             borderRadius: BorderRadius.circular(4),
           ),
           child: const Text('含底仓',
-              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
         ),
       ],
       if (s.breachStopLoss) ...[
@@ -1059,7 +1059,7 @@ class _TradingPageState extends State<TradingPage> {
           Icon(Icons.warning_amber_rounded, size: 11, color: AppColors.darkOrange),
           const SizedBox(width: 3),
           const Text('有批次破止损',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
         ]),
       ],
     ]);
