@@ -1191,5 +1191,32 @@ void soldUpdatePsychology_marksTrade() {
         assertEquals(1, result.skipped());
         assertEquals(1500, service.getPositions("default").get(0).quantity(), "持仓不翻倍（1000 底仓 + 500 手动）");
     }
+
+    @Test
+    void importHistoricalTrades_syncMode_behaviorNotesPerDay() {
+        // P2-批次2（审查归口）：一次导入多天成交 → 每个交易日各做行为标注（前几天的亏损加仓不漏标）
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        LocalDate d1 = LocalDate.now().minusDays(2);
+        LocalDate d2 = LocalDate.now().minusDays(1);
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        10:15:00        600000          浦发银行        买入            500.00          9.50000000          4750.00         90001          10000001                -4750.45
+                %s        10:15:00        600000          浦发银行        买入            500.00          9.20000000          4600.00         90002          10000002                -4600.44
+                """.formatted(d1.toString().replace("-", ""), d2.toString().replace("-", ""));
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals("sync", result.syncMode());
+        assertNotNull(result.summary());
+        long lossDownCount = result.summary().behaviors().stream()
+                .filter(b -> "loss-avg-down".equals(b.type())).count();
+        assertEquals(2, lossDownCount,
+                "两天各一笔亏损加仓（9.5 与 9.2 都低于底仓 10.0）都应标注，P2-批次2 修复前只标最后一天");
+        // 去重键按日：同一天同标的同类只标一条
+        long distinctDays = result.summary().behaviors().stream()
+                .filter(b -> "loss-avg-down".equals(b.type()))
+                .map(TradingLotService.BehaviorNote::date).distinct().count();
+        assertEquals(2, distinctDays);
+    }
 }
 

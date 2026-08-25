@@ -1025,7 +1025,18 @@ public class TradingAppService {
                 if (b != null && b.remaining() > l.remaining()) deductedLots++;
             }
         }
-        List<TradingLotService.BehaviorNote> behaviors = tradingLotService.analyzeBehaviors(userId, date);
+        // P2-批次2（审查归口）：多日导入 → 每个交易日各做一次行为标注再合并（同 标的+类型+日期 去重）——
+        // 原来只分析最大日期，前几天的亏损加仓/追高被漏标（10 天窗口内一次导多天成交的场景）
+        List<TradingLotService.BehaviorNote> behaviors = new ArrayList<>();
+        Set<String> behaviorKeys = new HashSet<>();
+        for (LocalDate d : rows.stream().map(TradingImportParser.HistoricalTradeRow::entryDate)
+                .filter(java.util.Objects::nonNull).distinct().sorted().toList()) {
+            for (TradingLotService.BehaviorNote b : tradingLotService.analyzeBehaviors(userId, d)) {
+                if (behaviorKeys.add(b.type() + "|" + b.symbol() + "|" + b.date())) {
+                    behaviors.add(b);
+                }
+            }
+        }
         return new DailyOperationSummary(date.toString(), buyCount, sellCount,
                 round2(buyAmount), round2(sellAmount), newLots, deductedLots, behaviors);
     }

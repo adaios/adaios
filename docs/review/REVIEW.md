@@ -13,7 +13,7 @@ mode: deep 批次审查（backend/frontend/docs/adversarial 四官隔离并行�
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
-audits/2026-08-25-lot-tracking-review.md → P2-批次1,P2-批次2,P2-批次3（REVIEW 新增，批次批审查）；其余全部修复（对抗 P0-1~P1-5 / 后端 P1×2·P2×3·P3 / 前端 P1·P2 / 文档 P1×3·P2×2，见 change-log 2026-08-25）
+audits/2026-08-25-lot-tracking-review.md → P2-批次1,P2-批次3（REVIEW 新增，批次批审查）；P2-批次2 已修出表；其余全部修复（对抗 P0-1~P1-5 / 后端 P1×2·P2×3·P3 / 前端 P1·P2 / 文档 P1×3·P2×2，见 change-log 2026-08-25）
 audits/2026-08-24-ai-calling-governance-doc-review.md → S-9,S-10（REVIEW 新增，方案修订待办；P0-1 及 P1 清单见报告）
 audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log。P1 批出表：P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 ✅；P2 批出表：P1-A3/P1-A5 ✅；G6 守卫批出表：P1-G6-1 ✅（timeline_modal 守卫×2 + 回归×2，app 122）；剩 P1-A4/P2-2/P2-3
 audits/2026-08-20-app-health-check.md → P2-UI6,P2-UI7,S-8,闭环(D1切World丢输入/D2排序四实锤/D4任务编辑PUT/D7错误文案)
@@ -138,7 +138,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-交易22 | importPositions 缺 avgCost/quantity 校验：body 无 avgCost → Position.avgCost null → PortfolioSnapshot.of / closeAccountUpdate / 建议引擎 NPE 500 | `TradingController.java:159` / `TradingAppService.java:340` | controller 校验或 domain 兜底 | ✅ 已修（2026-08-17 R5：avgCost/quantity 校验）
 | P2-交易23 | **持仓编辑端点从未实现**：前端/测试一直在调 PUT /positions/{symbol}，后端只有 GET/POST——web 点「编辑」保存必 404（功能形同虚设）| `TradingController`（2026-08-17 已补端点 ✅）| ✅ 已修（2026-08-17 R1 续：updatePositionMeta + PUT 端点，见已修复区）|
 | P2-批次1 | **web 批次弹窗连点/双击无幂等守卫（RFC 20260825 审查）**：`_showLots` 慢响应逐个 showDialog 叠两层（F20/F22 同类，曾 #185 叠两层选号页）| `apps/adai-web/lib/pages/trading_page.dart:_showLots` | loading 守卫或弹窗前判重 |
-| P2-批次2 | **行为标注只分析导入文件最大日期（RFC 20260825 审查）**：10 天窗口内多日成交导入，只有最后一天的买入被判亏损加仓/追高，前几日行为漏标进总结 | `TradingAppService.buildDailySummary`（analyzeBehaviors 单日期）| 按导入覆盖的每个交易日分别分析合并 |
+| P2-批次2 | ✅ 已修（2026-08-25 P2-批次2 修复批：buildDailySummary 逐日分析行为标注再合并，同 标的+类型+日期 去重；回归测试多日导入两天亏损加仓都标注，见 change-log）。**行为标注只分析导入文件最大日期（RFC 20260825 审查）**：10 天窗口内多日成交导入，只有最后一天的买入被判亏损加仓/追高，前几日行为漏标进总结 | `TradingAppService.buildDailySummary` | 按导入覆盖的每个交易日分别分析合并 |
 | P2-批次3 | **app 批次行 9px/10px 超小字号（RFC 20260825 审查，P2-UI5 红线复发）**：含底仓徽标 9px / 批次文本 10px——并入 P2-UI5（27→29 处）| `apps/adai-app/lib/pages/trading_page.dart:1039,1052` | 随 P2-UI5 全局字号提到 11-12 |
 | P2-推送4 | ✅ 已修（2026-08-23 B9-5：标题透传后 session 四类徽章恢复 + gain/break-cost 专属徽章；见已修复区）。8 类型徽章 6/8 退化为灰色「行情」通用样式：session 4 子类（P1-推送1 根因）+ gain「放飞提示」+ break-cost「行情提醒」语义错位 | `feed_card.dart:388-395` / `desktop_feed_card.dart:193-200` | 为 gain/break-cost 补专属徽章；前后端标题表收敛为同一常量源 |
 | P2-推送5 | ✅ 已修（2026-08-23 B11-2：双端开关失败透出原因，不再假阳性；web 侧 B5-6 已修，本批 app 对齐）。推送设置反馈假阳性：app 对话框「完成」恒 pop(true) 报「已更新」（读取失败全默认开、单开关 PUT 失败无提示）；web 关闭后零反馈 | `main_page.dart:889-899` / `trading_page.dart:243-266` | 记录真实变更与失败，按实际成功提示；两端同口径 |
