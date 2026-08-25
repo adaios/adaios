@@ -133,15 +133,16 @@ Feed 流本身**不调用 AI**。简报的 AI 调用见 [简报模块](#5-简报
 
 | 推送 | 触发 | 内容 | 渠道 |
 |:-----|:-----|:-----|:-----|
-| **真止损异动** | 现价跌破用户预设止损位（R66 硬判定，G-3 引擎口径，当日去重）| 「京东方现价 4.8 已跌破你的止损位 4.9——按纪律（R66）该清仓了，要我给出建议吗？」| PushChannel 插件化：Feed（默认）+ 微信（Server酱，未配置 key 自动跳过）|
+| **真止损异动** | 现价跌破用户预设止损位（R66 硬判定，G-3 引擎口径，当日去重）| 「京东方现价 4.8 已跌破你的止损位 4.9——按纪律（R66）该清仓了，要我给出建议吗？」| PushChannel 插件化：Feed（默认）+ iOS 原生推送（Bark，未配置 key 自动跳过）|
 | **早盘计划** | 工作日 9:15（cron 可配）| 持仓总览 + 各票止损/买点 + 择时关注（读 `current.md`）| 同上 |
 | **午间跟踪** | 工作日 12:00 | 上午涨跌 + 是否触发止损 + 计划更新 | 同上 |
 | **尾盘建议** | 工作日 14:50 | 逐票建议（R66 止损 / R81 仓位）+ 明日关注 + 复盘提醒 | 同上 |
 | loss/gain/break-cost | 交易时段轮询（可配间隔）| 单日跌幅/涨幅/破成本线 | 同上 |
 
 - **内容两阶段**：阶段二 LLM 自然语言生成（阿呆口吻，无第三视角），LLM 失败降级模板（阶段一）
-- **配置**：`adai.push.wechat.sendkey`（env `ADAI_WECHAT_SENDKEY`）——未配置微信渠道自动禁用，Feed 不受影响
-- **渠道插件化**：`PushChannel` 接口（kernel/push）+ `FeedPushChannel`/`WeChatPushChannel`（infrastructure/push），新增渠道不动主流程
+- **外部渠道**：`adai.push.bark.key`（env `ADAI_PUSH_BARK_KEY`）——iOS 原生推送（Bark，免费无限条数），未配置自动禁用，Feed 不受影响；可选 `adai.push.bark.base-url`（env `ADAI_PUSH_BARK_BASE_URL`，默认公共服务器 `https://api.day.app`，支持自托管）
+- **微信渠道已停用**（2026-08-25）：Server酱免费版每天 5 条额度不够 AdaiOS 推送量，生产 `ADAI_PUSH_WECHAT_SENDKEY` 已删除；`WeChatPushChannel` 代码保留（未配置即禁用），如恢复需配置 key
+- **渠道插件化**：`PushChannel` 接口（kernel/push）+ `FeedPushChannel`/`BarkPushChannel`（infrastructure/push），新增渠道不动主流程
 
 ---
 

@@ -134,7 +134,7 @@ tags: [trading, plugin, reference]
 | 15:05 | 收盘账户自动更新 | 行情可得部分更新参考市值/当日盈亏/浮盈；**任一持仓缺行情则整体跳过不覆盖**（P1-交易3，防残缺市值覆盖总资产） |
 | 15:10 | 收盘买点扫描 | 自选股正式 B1/B2 命中 → 「到买点了」推送（附信号文案）；**B1? 不推送**（只 web 信号列灰显） |
 | 15:15 | 收盘交易日志确认 | 当日有归集候选 → 推「今日操作汇总，是否完整」；无候选静默 |
-| 每 30 分钟（9-11/13-15 点） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；同票同类当日去重、同股票多类型合并防微信刷屏；阈值 `adai.market.alert.*` 可配 |
+| 每 30 分钟（9-11/13-15 点） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；同票同类当日去重、同股票多类型合并防刷屏；阈值 `adai.market.alert.*` 可配 |
 
 > **节假日**：法定节假日（2026-2027 硬编码表）不推送；周末由 cron MON-FRI 排除。
 
@@ -151,7 +151,7 @@ tags: [trading, plugin, reference]
 | K 线数据源 | 东财主源 → 腾讯兜底，连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
 | 交易知识注入 | KnowledgeSource 读 `os/trading-engine/knowledge/context/` 五份交付文件（identity/strategy/rules/mistakes/current.md），文件时间戳缓存；trading/decision 场景全量注入（`TradingKnowledgeSource`） |
 | 行情上下文注入 | trading 场景：大盘指数（上证/深证/创业板）+ 持仓行情表；globalContext 全场景短版（`MarketContextContributor`） |
-| 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ WeChatPushChannel（Server酱，需配置） |
+| 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ BarkPushChannel（iOS 原生推送，2026-08-25 起生产启用，免费无限条数）；WeChatPushChannel（Server酱）已停用（免费 5 条/天不够，代码保留未配置即禁用） |
 | 并发安全 | 每用户读写锁（tradeLock）串行持仓读-改-写，防并发交易互覆（REVIEW #147）；打分/买点扫描线程池并发拉 K 线 |
 | 文件存储 | 持仓 `positions.md`（freeze §2.6）、逐笔流水 `trades/{yyyy-MM}.json`（按月）、自选/清仓 `watchlist.json`/`sold.json`、推送 `pushes/{date}.json`、推送开关 `push-settings.json`、交易日志候选 `trade-log/{yyyy-MM-dd}.json`（freeze §2.8-2.15） |
 

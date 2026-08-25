@@ -96,8 +96,13 @@ ADAI_TRADING_KNOWLEDGE_PATH=
 ADAI_LIFE_KNOWLEDGE_PATH=
 ADAI_PROJECT_KNOWLEDGE_PATH=
 
-# RFC 20260816 微信推送渠道（Server酱，sct.ftqq.com 扫码获取；留空 = 仅 Feed 推送）
+# 外部推送渠道（留空 = 仅 Feed 推送）：
+# 微信（Server酱，sct.ftqq.com 扫码获取；免费版每天 5 条——2026-08-25 起生产已停用，改用 Bark）
 ADAI_PUSH_WECHAT_SENDKEY=
+# iOS 原生推送（Bark，推荐：iPhone 装 Bark App 拿设备 key，免费无限条数，直达系统通知）
+ADAI_PUSH_BARK_KEY=
+# Bark 自托管服务器地址（可选，默认公共服务器 https://api.day.app）
+ADAI_PUSH_BARK_BASE_URL=
 EOF
     echo "  ⚠ 请登录服务器编辑 /opt/adaios/backend/.env 填入 DEEPSEEK_API_KEY"
     echo "     然后手动执行: systemctl restart adai-core"
