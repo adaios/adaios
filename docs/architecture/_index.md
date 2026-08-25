@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-22
 status: active
-lines: 37
+lines: 38
 depends-on: []
 related:
   - ../_index.md
@@ -29,6 +29,7 @@ tags: [meta, index, architecture]
 | frontend-reference.md | 前端统一参考（术语对照 + 布局视觉） | active |
 | memory-os-design.md | 记忆 OS 设计 | active |
 | memory-frameworks-borrow.md | 开源记忆方案借鉴分析（Mem0/Letta/Zep/File-First 生态 → 可借鉴清单） | active |
+| ai-calling-governance.md | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身，分三批落地） | draft |
 
 ## 过期判断
 

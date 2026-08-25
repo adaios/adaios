@@ -1,16 +1,19 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-23
-last-review: 2026-08-23
-baseline: 工作树（交易归集修复批 1-5 落地后，32 文件）
-mode: 隔离审查演示（backend + adversarial ×2 独立子代理，材料按角色裁剪 + 官间不互通 + 主会话核实）
+updated: 2026-08-24
+last-review: 2026-08-24
+baseline: 工作树（ai-calling-governance.md 方案稿新增 + _index 登记，2 文件）
+mode: deep 方案文档审查（docs/backend/frontend/adversarial 四官隔离并行，材料按角色裁剪 + 官间不互通 + 主会话汇总去重）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
+> 2026-08-24 方案文档深审（`docs/architecture/ai-calling-governance.md` AI 调用治理方案稿 + `_index.md` 登记，docs/backend/frontend/adversarial 四官隔离并行）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0×1 + 战略×7 + P1×11 + P2×13（合并去重）**。⭐⭐⭐⭐ **超时矩阵自相矛盾**（前端 90s < 后端最坏 120s，四官全中）→ S-9；⭐⭐ 路由键 scene() 不可行（parse/advice/review/push 全 scene="trading"，应改用 AiTraceContext.source）→ S-10；P0-1 流式→非流式降级重试数据一致性全文未定义（落库/幂等/RecordRetryService 双写）；⭐⭐ SseEmitter async timeout 未配置（Tomcat 默认 ~30s 掐断流式）；⭐⭐ 调用点计数 13 vs 实际 12。方案方向可行（backend 核实 9 项事实属实），修订后实施。报告 `audits/2026-08-24-ai-calling-governance-doc-review.md`。
+
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
+audits/2026-08-24-ai-calling-governance-doc-review.md → S-9,S-10（REVIEW 新增，方案修订待办；P0-1 及 P1 清单见报告）
 audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log。P1 批出表：P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 ✅；P2 批出表：P1-A3/P1-A5 ✅；G6 守卫批出表：P1-G6-1 ✅（timeline_modal 守卫×2 + 回归×2，app 122）；剩 P1-A4/P2-2/P2-3
 audits/2026-08-20-app-health-check.md → P2-UI6,P2-UI7,S-8,闭环(D1切World丢输入/D2排序四实锤/D4任务编辑PUT/D7错误文案)
 audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进机制)
@@ -40,6 +43,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-24 | deep 方案文档审查（AI 调用治理方案稿）| 工作树（ai-calling-governance.md 新增 + _index 登记，2 文件）| docs/backend/frontend/adversarial ×4 隔离并行 | P0×1 + 战略×7 + P1×11 + P2×13（⭐⭐⭐⭐ 超时矩阵四官全中）| 0（审查只报告，报告见 `audits/2026-08-24-ai-calling-governance-doc-review.md`）|
 | 2026-08-23 | 隔离审查演示（新规范首次实战：上下文隔离 + 对抗官）| 工作树（交易归集修复批 1-5 后，32 文件）| backend + adversarial ×2 独立子代理 + 主会话核实 | P0×1 + 战略×2 + P1×9 + P2×10（合并去重，⭐交叉 4 处全属实）| 0（审查只报告，报告见 `audits/2026-08-23-reviewer-isolation-demo.md`）|
 | 2026-08-23 | full 模块审查（web 交易前后端 + 契约）+ 修复批 | adai-web trading 全量 + adai-core trading 全量 + api-spec §5 | backend/frontend/contract ×3 + 主会话交叉印证 → **用户确认后修复 21 项** | P0×2 + P1×9 + P2×12 | 21（批次 1-5：P0-1/2、P1-1/2/3、B3-1~5、B4-1~5、B5-1~6，见已修复区）|
 | 2026-08-20 | full app 体检（用户体感导向）| apps/adai-app 全量 | ui/ux/frontend/product ×4 + 主会话独立核实 | 战略×5 + P1×17 + P2/P3×24（合并去重）| 0（审查只报告，报告见 `audits/2026-08-20-app-health-check.md`）|
@@ -62,6 +66,8 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | S6 | C2 买点 5 参数（回调50%/缩量0.7/KDJ20/放量1.5/前高20日）标注「待用户确认」却已硬编码上线每日 15:10 推送 + web 信号列 + D3 打分——实现替用户做了决定，无门禁 | `BuyPointDetector` / `buy-point-rules.md` | ✅ 已确认（2026-08-17 用户：无「买点5」一说，默认值即最终值）|
 | S7 | D3 自称「完美图匹配度」，实际是规则阈值 + 硬编码分数映射（无完美图样本库/归一化相似度）；「三维打分」总分实为二维（选股维度未接入） | `SoldScoreService` | ⏸ 已搁置（2026-08-17 用户决策）|
 | S-8 | **双端 Feed 阅读方向相反**（app 聊天式最新在底 vs web 流式最新在顶）——产品口径待拍板并记入 frontend-reference（2026-08-23 归口 audits/2026-08-20，⭐⭐ 两官命中）| `main_page.dart:1092-1096` vs `feed_page.dart:130,837` | ⏸ 待拍板（用户决策）|
+| S-9 | **AI 调用治理方案超时矩阵自相矛盾（⭐⭐⭐⭐ 四官全中）**：症状 B 自证「前端 90s vs 后端最坏 120s（60s×2）」，治理表同步档却仍写「90s+」——旧同步端点（在网旧客户端唯一路径）照旧超时，方案核心卖点未兑现。修复：前端 ≥120s 或后端去重试/降单次（45s×2=90s 自洽），二选一写死推导 | `docs/architecture/ai-calling-governance.md` §四③ | ⏸ 方案修订待办（2026-08-24 审查）|
+| S-10 | **方案路由键 scene() 不可行**：TradingParse/Advice/Review/SessionPush 全 `scene="trading"`（代码实锤），快/深模型无法靠 scene 区分，「不改 16 个调用方」不成立；应改用已存在的 `AiTraceContext.source`（trading_parse/trading_advice/trading_review/trading_session_*）| `docs/architecture/ai-calling-governance.md` §四① | ⏸ 方案修订待办（2026-08-24 审查）|
 > **FP-S1/S2/S3/S4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：总纲 §五 现状表刷新全 ✅（S1）；引擎口径契约测试 `RuleKnowledgeContractTest`（S2，B44）；R81 分母规格同步总资产（S3）；update-current.sh 声明修正为注记刷新器（S4）。
 > S-R1（app 插件失败 SnackBar+重试，双端对拍）与 S-R2（服务端合并插件端点，竞态根治）已出表（2026-08-15，见已修复区）。S-2（展示层聚合）已出表；数据层整体化 RFC `20260815-media-event-unification` approved 排 v1.0.1；S-3/S-4 已出表（批 Q）。
 
@@ -265,6 +271,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
 | 2026-08-23 | 隔离审查演示（交易归集批修复后残留）| backend + adversarial ×2 独立子代理（隔离子上下文）| 2 | ~20min | P0×1 + 战略×2 + P1×9 + P2×10（去重后）| 0（审查只报告）|
 | 2026-08-20 | full app 体检（用户体感导向）| ui/ux/frontend/product ×4 + 主会话 | 4 | ~40min | 战略×5 + P1×17 + P2/P3×24（去重后）| 0（审查只报告）|
+| 2026-08-24 | deep 方案文档审查（AI 调用治理）| docs/backend/frontend/adversarial ×4 | 4 | ~25min | P0×1 + 战略×7 + P1×11 + P2×13（去重后）| 0（审查只报告）|
 | 2026-08-19 | full 模块审查（app 交易 UI/UX + 推送链路）| ui/ux/frontend ×3 + 主会话 | 3 | ~30min | P1×4 + P2×12 + P3×17（去重后）| 0（审查只报告）|
 | 2026-08-17 | deep 增量（交易 A-E 批1-5）| backend/frontend/docs/knowledge ×4 | 4 | ~30min | 战略×3 + P1×10 + P2×16 + P3×24（去重后）| 0（审核只报告）|
 | 2026-08-17 | 修复批 R11（admin + 收尾）| — | 0 | ~20min | 0 新 | admin×3 |

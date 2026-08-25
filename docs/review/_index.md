@@ -3,9 +3,9 @@ title: docs/review 目录索引
 description: review 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-08-25
 status: active
-lines: 36
+lines: 37
 depends-on: []
 related:
   - ../_index.md
@@ -28,6 +28,7 @@ tags: [meta, index, review]
 | audits/2026-08-15-ai-engineering-self.md | AI 工程层自伤自查存档（8 官） | active |
 | audits/2026-08-16-ai-engineering-workflow.md | AI 工程工作流自伤自查存档（第二轮，三视角） | active |
 | audits/2026-08-18-production-log.md | 生产日志审查存档（2026-08-18 journalctl 当日问题分级） | active |
+| audits/2026-08-24-ai-calling-governance-doc-review.md | AI 调用治理方案文档深审存档（docs/backend/frontend/adversarial 四官隔离，S-9/S-10 登记） | active |
 
 ## 过期判断
 
