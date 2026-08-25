@@ -968,7 +968,16 @@ public class TradingAppService {
             }
             List<TradingImportParser.HistoricalTradeRow> toSync = new ArrayList<>();
             for (TradingImportParser.HistoricalTradeRow r : rows) {
-                if (r.volume() <= 0) { nonTrades++; continue; }
+                if (r.volume() <= 0) {
+                    // 2026-08-25 方案 A：股息类资金事件记账（入账 +现金 / 红利税 −现金，不进持仓/批次）；
+                    // 其余数量 0 行（如纯股息红利税无备注识别）计入 nonTrades
+                    if (TradingImportParser.isDividendEvent(r)) {
+                        applyDividendCash(userId, r);
+                    } else {
+                        nonTrades++;
+                    }
+                    continue;
+                }
                 String oid = r.orderId();
                 if (oid != null && !oid.isBlank()) {
                     if (orderIds.contains(oid)) { skipped++; continue; }
@@ -1029,7 +1038,15 @@ public class TradingAppService {
                 }
             }
             for (TradingImportParser.HistoricalTradeRow r : rows) {
-                if (r.volume() <= 0) { nonTrades++; continue; } // 非交易事件（股息红利税等）
+                if (r.volume() <= 0) {
+                    // 2026-08-25 方案 A：股息类资金事件记账（入账 +现金 / 红利税 −现金，不进持仓/批次）
+                    if (TradingImportParser.isDividendEvent(r)) {
+                        applyDividendCash(userId, r);
+                    } else {
+                        nonTrades++;
+                    }
+                    continue;
+                }
                 String oid = r.orderId();
                 if (oid != null && !oid.isBlank()) {
                     if (orderIds.contains(oid)) {
@@ -1063,6 +1080,50 @@ public class TradingAppService {
         log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行",
                 userId, imported, updated, skipped, nonTrades, lines.size());
         return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null);
+    }
+
+    /**
+     * 股息类资金事件记账（2026-08-25 用户拍板方案 A）：
+     * 股息入账（发生金额为正）→ 现金 +N；股息红利税（发生金额为负）→ 现金 −N。
+     * 不动持仓、不进批次；落一条 volume=0 的流水（amount=发生金额，reason=源文件备注）可回溯。
+     * 幂等：股息行按（symbol, entryDate, 发生金额）指纹去重，重复导入不重复记账。
+     */
+    private void applyDividendCash(String userId, TradingImportParser.HistoricalTradeRow r) {
+        BigDecimal occurred = r.occurred();
+        if (occurred == null || occurred.signum() == 0) {
+            log.warn("股息类事件无发生金额，跳过记账 | userId={} | {} {}", userId, r.symbol(), r.remark());
+            return;
+        }
+        // 幂等指纹（股息行无 orderId）：symbol|entryDate|发生金额绝对值
+        // （红利税为负值，流水存绝对值——统一用 abs 防 -7.5 vs 7.5 不匹配导致重复记账）
+        String fp = "DIV:" + r.symbol() + "|" + r.entryDate() + "|" + occurred.abs().stripTrailingZeros();
+        try {
+            synchronized (tradeLock(userId)) {
+                List<TradeRecord> all = tradingHistoryRepository.findAll(userId);
+                if (all.stream().anyMatch(t -> fp.equals("DIV:" + t.symbol() + "|" + t.entryDate()
+                        + "|" + (t.amount() != null ? t.amount() : BigDecimal.ZERO).stripTrailingZeros()))) {
+                    log.debug("股息类事件已记账（幂等）| userId={} | {}", userId, fp);
+                    return;
+                }
+                // 现金 ± 发生金额（只动现金/资产，不动本金/持仓）
+                accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
+                        c.assets().add(occurred),
+                        c.cash().add(occurred),
+                        c.available().add(occurred),
+                        c.withdrawable().add(occurred),
+                        c.marketValue(), c.pnl(), c.todayPnl(), c.principal(), c.snapshotDate()))
+                        .orElse(null)); // 无账户快照（未导入资金）不初始化，保持既有语义
+                // 落流水可回溯：direction = 入账 BUY / 税 SELL，volume 0，amount = 发生金额绝对值，reason = 源文件备注
+                TradeDirection dir = occurred.signum() > 0 ? TradeDirection.BUY : TradeDirection.SELL;
+                TradeRecord tr = new TradeRecord(
+                        IdGenerator.monotonic("trade_"), r.symbol(), r.name(), dir,
+                        BigDecimal.ZERO, 0, occurred.abs(), r.entryDate(), r.tradeTime(),
+                        null, null, null, r.remark(), null, LocalDateTime.now(), null, null);
+                tradingHistoryRepository.append(userId, tr);
+            }
+        } catch (RuntimeException e) {
+            log.warn("股息类事件记账失败 | userId={} | {} | {}", userId, r.symbol(), e.getMessage());
+        }
     }
 
     /** 每日操作总结（RFC 20260825 §6）：客观聚合 + 批次 diff + 行为标注——不耗 AI 秒出。 */    private DailyOperationSummary buildDailySummary(String userId, List<TradingImportParser.HistoricalTradeRow> rows,

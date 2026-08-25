@@ -157,10 +157,10 @@ public final class TradingImportParser {
         int[] col = null;
         for (String line : lines) {
             if (line == null || line.isBlank() || line.startsWith("-")) continue;
-            String[] cells = line.split("\\s+");
+            String[] cells = splitCells(line);
             if (col == null) {
                 int[] idx = locate(cells, "成交日期", "成交时间", "证券代码", "证券名称", "买卖标志",
-                        "成交数量", "成交价格", "成交金额", "成交编号", "发生金额");
+                        "成交数量", "成交价格", "成交金额", "成交编号", "发生金额", "备注");
                 // 表头需含核心列（成交日期/证券代码/买卖标志/成交编号），否则视为非历史成交导出
                 if (idx[0] >= 0 && idx[2] >= 0 && idx[4] >= 0 && idx[8] >= 0) {
                     col = idx;
@@ -196,9 +196,12 @@ public final class TradingImportParser {
                     // 时间格式异常 → tradeTime 保持 null（旧文件/导出差异），不丢该笔
                 }
             }
-            // 数量 0 行（股息红利税等非交易资金事件）保留——调用方计入 nonTrades 不落流水
+            // 数量 0 行（股息红利税/股息入账等资金事件）保留——调用方区分：股息类记账、其余计入 nonTrades
             if (volume == 0) {
-                rows.add(new HistoricalTradeRow(symbol, name, direction, price, 0, entryDate, tradeTime, null, null));
+                BigDecimal occurred0 = col[9] >= 0 && col[9] < cells.length ? parseNum(cells[col[9]]) : null;
+                String remark0 = col[10] >= 0 && col[10] < cells.length ? cells[col[10]].trim() : null;
+                rows.add(new HistoricalTradeRow(symbol, name, direction, price, 0, entryDate, tradeTime,
+                        null, null, occurred0, remark0));
                 continue;
             }
             if (price.signum() <= 0) continue; // 有数量但无价格 → 数据异常跳过
@@ -210,18 +213,37 @@ public final class TradingImportParser {
                 fee = occurred.abs().subtract(amount).abs();
             }
             String orderId = col[8] >= 0 && col[8] < cells.length ? cells[col[8]].trim() : "";
+            String remark = col[10] >= 0 && col[10] < cells.length ? cells[col[10]].trim() : null;
             rows.add(new HistoricalTradeRow(symbol, name, direction, price, volume,
-                    entryDate, tradeTime, fee, orderId.isEmpty() ? null : orderId));
+                    entryDate, tradeTime, fee, orderId.isEmpty() ? null : orderId, occurred, remark));
         }
         return rows;
     }
 
-    /** 历史成交行（解析后入参，供 {@code importHistoricalTrades} 落流水）。 */
+    /** 历史成交行（解析后入参，供 {@code importHistoricalTrades} 落流水）。
+     *  occurred = 发生金额（源文件原生，买入/下账为负、卖出/入账为正；2026-08-25 加，股息类记账用）；
+     *  remark = 备注列（证券买入/证券卖出/股息红利税差异化处理资金下账/股息入账等；2026-08-25 加）。 */
     public record HistoricalTradeRow(String symbol, String name, TradeDirection direction,
                                      BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
-                                     BigDecimal fee, String orderId) {}
+                                     BigDecimal fee, String orderId, BigDecimal occurred, String remark) {}
+
+    /** 是否股息类资金事件（备注含 股息/红利/入账——数量 0 的资金事件，非证券买卖）。
+     *  2026-08-25 用户拍板方案 A：股息入账 +现金、红利税 −现金，不进持仓/批次。 */
+    public static boolean isDividendEvent(HistoricalTradeRow r) {
+        return r.remark() != null && (r.remark().contains("股息") || r.remark().contains("红利")
+                || r.remark().contains("入账"));
+    }
 
     // ── 工具 ──
+
+    /**
+     * 智能分隔（2026-08-25 修复空列吞列）：通达信导出按 tab 分隔且空列保留（如股息行无成交编号）——
+     * 行含 tab → split("\t", -1) 保留空列；否则（测试/兼容）按空白分隔。
+     * 原 split("\s+") 会吞连续空白 → 空列错位 → 发生金额列解析到股东代码（A511358384 崩）。
+     */
+    private static String[] splitCells(String line) {
+        return line.contains("\t") ? line.split("\t", -1) : line.split("\\s+");
+    }
 
     private static List<String> split(String content) {
         if (content == null) return List.of();
@@ -260,7 +282,11 @@ public final class TradingImportParser {
     }
 
     private static java.math.BigDecimal parseNum(String s) {
-        return new java.math.BigDecimal(s.replaceAll("[,\\s]", ""));
+        try {
+            return new java.math.BigDecimal(s.replaceAll("[,\\s]", ""));
+        } catch (NumberFormatException e) {
+            return null; // 列错位/脏数据容错（2026-08-25）
+        }
     }
 
     private static LocalDate parseDateSafe(int col, String[] cells) {

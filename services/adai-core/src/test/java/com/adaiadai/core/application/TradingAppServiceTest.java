@@ -1309,5 +1309,58 @@ void soldUpdatePsychology_marksTrade() {
         assertTrue(service.getTradeHistory("default", null, null).stream()
                         .noneMatch(t -> t.symbol().equals("799999")), "流水不含占位代码");
     }
+
+
+    @Test
+    void importHistoricalTrades_dividendEvents_updateCash() {
+        // 2026-08-25 方案 A：股息入账 +现金 / 红利税 −现金（不动持仓/批次）
+        InMemoryFileStorage fs = new InMemoryFileStorage();
+        PositionFileRepository repo = new PositionFileRepository(fs);
+        TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        saved.set(new AccountSnapshot(new BigDecimal("100000"), new BigDecimal("50000"),
+                new BigDecimal("50000"), new BigDecimal("50000"), new BigDecimal("50000"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, LocalDate.now()));
+        AccountSnapshotRepository acc = capturingAccountRepo(saved);
+        // 链式：findLatest 返回 saved 当前值（多次 update 股息→买入 联动，模拟真实仓库）
+        when(acc.findLatest(any())).thenAnswer(i -> java.util.Optional.ofNullable(saved.get()));
+        KlineService kline = mock(KlineService.class);
+        when(kline.kline(any(), anyInt())).thenReturn(List.of());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
+                acc, mock(TransferRepository.class), mock(MarketDataSource.class), lotService);
+
+        // 股息红利税 -7.50（数量 0）+ 股息入账 +80.00（数量 0）+ 正常买入 500 股
+        String today = LocalDate.now().toString().replace("-", "");
+        // 通达信导出为 tab 分隔（空列保留——股息行无成交编号/委托编号）
+        String tdx = ("成交日期\t成交时间\t证券代码\t证券名称\t买卖标志\t成交数量\t成交价格\t成交金额\t委托编号\t成交编号\t发生金额\t股东代码\t备注\n"
+                + today + "\t00:00:00\t601688\t华泰证券\t买入\t0.00\t0.00000000\t7.50\t0\t\t-7.50\tA511358384\t股息红利税差异化处理资金下账\n"
+                + today + "\t00:00:00\t600000\t浦发银行\t买入\t0.00\t0.00000000\t80.00\t0\t\t+80.00\t0903874313\t股息入账\n"
+                + today + "\t10:15:00\t600000\t浦发银行\t买入\t500.00\t12.00000000\t6000.00\t90001\t10000001\t-6001.10\t0903874313\t证券买入");
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+
+        assertEquals(1, result.imported(), "只有正常买入落流水");
+        assertEquals(0, result.nonTrades(), "股息类不计入 nonTrades（已记账）");
+        // 现金：50000 − 7.50(红利税) + 80.00(股息入账) − 6000.57(买入含模型手续费) = 44071.93
+        AccountSnapshot snap = saved.get();
+        assertNotNull(snap);
+        assertEquals(0, snap.cash().compareTo(new BigDecimal("44071.93")),
+                "现金含股息入账 +80 / 红利税 −7.5 / 买入 −6000.57：" + snap.cash());
+        // 持仓正常：600000 500 股
+        assertEquals(1, repo.findAll("default").size());
+        assertEquals(500, repo.findAll("default").get(0).quantity());
+        // 流水含 2 条股息资金事件（volume 0）+ 1 条买入
+        assertEquals(3, history.findAll("default").size());
+        assertTrue(history.findAll("default").stream().anyMatch(t -> t.volume() == 0 && t.amount() != null
+                && t.amount().compareTo(new BigDecimal("80.00")) == 0), "股息入账流水 amount=80 可回溯");
+        assertTrue(history.findAll("default").stream().anyMatch(t -> t.volume() == 0 && t.amount() != null
+                && t.amount().compareTo(new BigDecimal("7.50")) == 0), "红利税流水 amount=7.5 可回溯");
+        // 幂等：重复导入不重复记账
+        TradingAppService.HistoricalTradeImportResult again = service.importHistoricalTrades("default", tdx);
+        assertEquals(0, again.imported(), "重复导入：买入 orderId 幂等跳过、股息记账幂等跳过");
+        AccountSnapshot snap2 = saved.get();
+        assertEquals(0, snap2.cash().compareTo(new BigDecimal("44071.93")), "股息不重复记账");
+    }
 }
 

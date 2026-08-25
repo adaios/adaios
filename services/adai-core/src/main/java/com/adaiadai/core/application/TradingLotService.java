@@ -143,6 +143,8 @@ public class TradingLotService {
         }
 
         for (TradeRecord t : sorted) {
+            // 2026-08-25：股息类资金事件流水（volume 0）不进批次推导（不产生批次/回合）
+            if (t.volume() <= 0) continue;
             if (t.direction() == TradeDirection.BUY) {
                 MutableLot last = open.isEmpty() ? null : open.get(open.size() - 1);
                 LocalDate d = effectiveDate(t);
@@ -346,6 +348,7 @@ public class TradingLotService {
                 // 无初始底仓（流水覆盖全部持仓）：不初始化上下文——首笔 BUY 是新建仓，不判亏损加仓
             }
             for (TradeRecord t : sorted) {
+                if (t.volume() <= 0) continue; // 2026-08-25：股息类资金事件流水不进行为分析（与 derive 同口径）
                 LocalDate d = effectiveDate(t);
                 boolean today = date.equals(d);
                 if (t.direction() == TradeDirection.BUY) {

@@ -54,7 +54,7 @@ tags: [trading, plugin, reference]
 | POST | `/trading/trades` | 记录一笔交易 | BUY/SELL → 持仓增减（加仓摊薄成本/清仓归零）+ 现金市值推导 + 手续费自动算 + 落逐笔流水 + 写 domain=trading 记录（5 分钟同标题去重幂等）；name 可空；止损/买点 BUY 已放开可选（2026-08-18）；SELL 超持仓/未持有 → 400 |
 | GET | `/trading/trades` | 查询逐笔流水（含 `tradeTime` 成交时刻可空）| 跨月合并按时间倒序；可选 `from`/`to` 过滤；**RFC 20260822：`?date=` 返回 `{trades, daily}` 当日复盘聚合**（时段分桶/买卖分布/首末笔时间，纯客观）|
 | POST | `/trading/trades/batch` | 批量记录交易 | 逐笔走 recordTrade 链路；逐条失败不整批回滚，返回行号+人话原因 |
-| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**；**非交易占位代码校验（2026-08-25）**——79/80/81/82 开头（799999 登记指定等）不入库计入 nonTrades：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
+| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**；**非交易占位代码校验（2026-08-25）**——79/80/81/82 开头（799999 登记指定等）不入库计入 nonTrades；**股息类记账（2026-08-25）**——备注含股息/红利/入账的数量 0 行：入账 +现金、红利税 −现金（不动持仓/批次，落流水可回溯）：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
 | POST | `/trading/trades/parse` | 一句话交易解析 | 自然语言 → 结构化（LLM 优先 + 正则兜底，手=×100）；**只解析不落库**；matched=false 前端转精确表单 |
 | GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all` |
 | POST | `/trading/sync` | **一键按流水重建持仓（2026-08-25 用户场景）** | 导入历史成交后快照过期 → 以流水为准重建 positions：已清仓残留自动移除（removed）、流水解释不了的真底仓保留（keptInitial）；与 sync 模式互补（sync 增量 / 本端点对齐存量） |
