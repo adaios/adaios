@@ -1286,5 +1286,28 @@ void soldUpdatePsychology_marksTrade() {
         assertEquals(1, repo.findAll("default").size());
         assertEquals(700, repo.findAll("default").get(0).quantity(), "INIT 500 + 8/5 批剩余 200");
     }
+
+
+    @Test
+    void importHistoricalTrades_skipsNonTradablePlaceholderCodes() {
+        // 2026-08-25 用户反馈：明显非股票代码（799999 登记指定）导入 → 不落库、计入 nonTrades
+        TradingAppService service = syncService(new InMemoryFileStorage(), List.of(
+                new Position("600000", "浦发银行", 1000,
+                        new BigDecimal("10.0"), new BigDecimal("10.0"), LocalDateTime.now())));
+        String today = LocalDate.now().toString().replace("-", "");
+        String tdx = """
+                成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额
+                %s        09:15:09        799999          登记指定        买入            1.00            1.00000000          1.00          0              S7z                      -1.00
+                %s        10:15:00        600000          浦发银行        买入            500.00          12.00000000         6000.00         90001          10000001                -6001.10
+                """.formatted(today, today);
+        TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
+        assertEquals(1, result.imported(), "799999 不入库，只导入 600000");
+        assertEquals(1, result.nonTrades(), "799999 计入非交易");
+        // 持仓无 799999、流水无 799999
+        assertTrue(service.getPositions("default").stream().noneMatch(p -> p.symbol().equals("799999")),
+                "持仓不含占位代码");
+        assertTrue(service.getTradeHistory("default", null, null).stream()
+                        .noneMatch(t -> t.symbol().equals("799999")), "流水不含占位代码");
+    }
 }
 

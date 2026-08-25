@@ -33,6 +33,12 @@ public final class TradingImportParser {
 
     private TradingImportParser() {}
 
+    /** 通达信占位代码（非可交易资产）：79/80/81/82 开头 6 位——如 799999「登记指定」/配号等券商占位，
+     *  不是真实股票（2026-08-25 用户反馈：明显非股票代码被照单入库）。命中 → 导入跳过并计入 nonTrades。 */
+    public static boolean isNonTradableCode(String symbol) {
+        return symbol != null && symbol.matches("^(79|80|81|82)\\d{4}$");
+    }
+
     /** 解析自选股导出 → 自选条目（表头定位列）。 */
     public static List<WatchlistItem> parseWatchlist(String content) {
         List<WatchlistItem> items = new ArrayList<>();

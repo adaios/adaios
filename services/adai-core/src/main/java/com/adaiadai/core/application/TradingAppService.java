@@ -899,6 +899,17 @@ public class TradingAppService {
         if (rows.isEmpty()) {
             throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
         }
+        // 2026-08-25 用户反馈：明显非股票代码（通达信占位段 79/80/81/82，如 799999「登记指定」）一律不落库，
+        // 计入 nonTrades（与股息红利税同口径，前端「非交易 N」可见）
+        int nonTradable = (int) rows.stream()
+                .filter(r -> TradingImportParser.isNonTradableCode(r.symbol())).count();
+        if (nonTradable > 0) {
+            log.warn("历史成交导入跳过非交易占位代码 {} 条（非股票，不入库）| userId={} | 示例: {}",
+                    nonTradable, userId,
+                    rows.stream().filter(r -> TradingImportParser.isNonTradableCode(r.symbol()))
+                            .map(r -> r.symbol() + " " + r.name()).distinct().toList());
+            rows = rows.stream().filter(r -> !TradingImportParser.isNonTradableCode(r.symbol())).toList();
+        }
         // RFC 20260825 §5：自动识别双模式——窗口内成交 → 同步（更新持仓/现金/流水 + 每日操作总结）；
         // 窗口外历史 → 补录（只补流水 + 对账提示）。
         // 对抗审查 P1-1：混合窗口拆组并行处理，不再「混一笔超窗成交就整批降级」——
@@ -911,20 +922,27 @@ public class TradingAppService {
                 .filter(r -> r.entryDate() == null || r.entryDate().isBefore(windowStart))
                 .toList();
         if (old.isEmpty()) {
-            return importSync(userId, recent);
+            HistoricalTradeImportResult r = importSync(userId, recent);
+            return withNonTrades(r, r.nonTrades() + nonTradable);
         }
         // 先补录历史（只补流水），再同步近日（sync 的幂等指纹基于补录后的全量流水）
         HistoricalTradeImportResult appendResult = importAppend(userId, old);
         if (recent.isEmpty()) {
-            return appendResult;
+            return withNonTrades(appendResult, appendResult.nonTrades() + nonTradable);
         }
         HistoricalTradeImportResult syncResult = importSync(userId, recent);
         return new HistoricalTradeImportResult(
                 appendResult.imported() + syncResult.imported(),
                 appendResult.updated() + syncResult.updated(),
                 appendResult.skipped() + syncResult.skipped(),
-                appendResult.nonTrades() + syncResult.nonTrades(),
+                appendResult.nonTrades() + syncResult.nonTrades() + nonTradable,
                 syncResult.lines(), "sync", syncResult.summary());
+    }
+
+    /** 复制导入结果并替换 nonTrades（占位代码计数并入，2026-08-25）。 */
+    private HistoricalTradeImportResult withNonTrades(HistoricalTradeImportResult r, int nonTrades) {
+        return new HistoricalTradeImportResult(r.imported(), r.updated(), r.skipped(),
+                nonTrades, r.lines(), r.syncMode(), r.summary());
     }
 
     /**

@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -118,4 +119,19 @@ class TradingImportParserTest {
                 """;
         assertTrue(TradingImportParser.parseHistoricalTrades(content).isEmpty());
     }
+
+
+    @Test
+    void isNonTradableCode_identifiesPlaceholderSegments() {
+        // 2026-08-25 用户反馈：明显非股票代码（通达信占位段）识别
+        assertTrue(TradingImportParser.isNonTradableCode("799999"), "799999 登记指定 → 非可交易占位");
+        assertTrue(TradingImportParser.isNonTradableCode("800001"), "80 段占位");
+        assertTrue(TradingImportParser.isNonTradableCode("819999"), "81 段占位");
+        assertFalse(TradingImportParser.isNonTradableCode("600519"), "沪市股票不误伤");
+        assertFalse(TradingImportParser.isNonTradableCode("000725"), "深市股票不误伤");
+        assertFalse(TradingImportParser.isNonTradableCode("512690"), "场内基金（5 开头）不误伤");
+        assertFalse(TradingImportParser.isNonTradableCode("12345"), "非 6 位不匹配");
+        assertFalse(TradingImportParser.isNonTradableCode(null));
+    }
 }
+
