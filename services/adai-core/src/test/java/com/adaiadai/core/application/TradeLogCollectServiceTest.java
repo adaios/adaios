@@ -40,6 +40,11 @@ class TradeLogCollectServiceTest {
         parse = mock(TradingParseAppService.class);
         when(parse.parseLoose(any(), any())).thenAnswer(i -> {
             String text = i.getArgument(1);
+            if (text == null) {
+                // Mockito when() 占位触发：any() 匹配器注册时传 null 命中本 answer——按真实
+                // parseLoose 语义（null → unmatched）兜底，不 NPE（2026-08-26 截图批量归集测试引入）
+                return TradingParseAppService.ParseResult.unmatched();
+            }
             if (text.contains("未知股")) {
                 // P1-1：LLM 幻觉——有 direction 无 symbol 无 name（think 泄漏文本次生）
                 return new TradingParseAppService.ParseResult(true, null, null,
@@ -253,5 +258,74 @@ class TradeLogCollectServiceTest {
         String text = service.summarize(service.todayCandidates("default"));
         assertTrue(text.contains("山西汾酒"), "汇总应显示股票名");
         assertFalse(text.contains("unknown"), "汇总不得显示 unknown 占位");
+    }
+
+    // ── 截图表格批量归集（2026-08-26 截图归集缺口修复）──
+
+    @Test
+    void collect_screenshotTable_collectsAllFilledTrades() {
+        // 截图表格文字 → parseLooseBatch 命中多笔 → 逐笔归集候选
+        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
+                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY",
+                        new BigDecimal("21.170"), 200, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY",
+                        new BigDecimal("64.840"), 300, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "000831", "中国稀土", "BUY",
+                        new BigDecimal("56.040"), 100, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "600206", "有研新材", "SELL",
+                        new BigDecimal("50.330"), 600, null, null, null, null)));
+
+        service.collect("default", "当日委托 表格文字（模拟截图识别）", "image");
+
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(4, candidates.size(), "表格 4 笔已成应全部归集");
+        assertTrue(candidates.stream().allMatch(TradeLogCandidate::complete), "表格行应完整（代码/价格/数量全有）");
+        assertTrue(candidates.stream().anyMatch(c -> "600487".equals(c.symbol())), "应含亨通光电");
+        assertTrue(candidates.stream().anyMatch(c -> "600206".equals(c.symbol())), "应含有研新材");
+    }
+
+    @Test
+    void collect_screenshotAcrossTwoImages_deduplicates() {
+        // 用户「可能给多张截图且重复」：两张截图同一笔（亨通买入 300）→ 去重只留一笔
+        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
+                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY",
+                        new BigDecimal("64.840"), 300, null, null, null, null)));
+
+        service.collect("default", "第一张截图", "image");
+        service.collect("default", "第二张截图（重复同一笔）", "image");
+
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size(), "跨截图同 symbol+方向+volume±10% 应去重");
+        assertEquals("600487", candidates.get(0).symbol());
+    }
+
+    @Test
+    void collect_plainScreenshotTable_noBatchNoSingle_ignored() {
+        // 截图表格但 parseLooseBatch 空（如全部已报/申购）→ 回退 parseLoose 仍 unmatched → 不归集
+        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of());
+        // parseLoose 对表格文字命中不了 mock 关键词分支 → 返回 null（NPE 风险：宽松解析不得返回 null）。
+        // 此测试同时回归「parseLoose 返回 null 时 collect 不得崩」——按真实实现 parseLoose 永不返回 null
+        // （末尾 return unmatched()），mock 这里显式给 unmatched 模拟真实行为。
+        when(parse.parseLoose(any(), any())).thenReturn(TradingParseAppService.ParseResult.unmatched());
+
+        service.collect("default", "云南锗业 002428 93.480 卖出 100 已报 撤 天博申购 732448 买入 4000 已确认", "image");
+
+        assertTrue(service.todayCandidates("default").isEmpty(), "全非成交截图不应产生候选");
+    }
+
+    @Test
+    void collect_batchResultWithUnknownSymbol_skipped() {
+        // 批量解析结果含无 symbol 无 name 的脏行 → 跳过不落 unknown（与单笔 P1-1 同口径）
+        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
+                new TradingParseAppService.ParseResult(true, null, null, "SELL",
+                        null, null, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY",
+                        new BigDecimal("21.170"), 200, null, null, null, null)));
+
+        service.collect("default", "表格（含幻觉脏行）", "image");
+
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size(), "脏行跳过，正常行归集");
+        assertEquals("000776", candidates.get(0).symbol());
     }
 }

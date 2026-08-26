@@ -1,7 +1,7 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-08-25
-last-review: 2026-08-25
+updated: 2026-08-26
+last-review: 2026-08-26
 baseline: 工作树（RFC 20260825 批次跟踪批，34 文件）
 mode: deep 批次审查（backend/frontend/docs/adversarial 四官隔离并行，材料按角色裁剪 + 官间不互通 + 主会话汇总去重）
 ---
@@ -45,6 +45,8 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-08-26 | 用户场景修复（白天发委托截图 → 0 候选）| 工作树（截图表格归集批，3 文件 + 部署）| 主会话 | 截图表格归集缺口：`parseLoose` 单笔一句话解析拆不出表格文字（多笔委托截图）→ 0 候选 | 4（parseLooseBatch 表格批量解析 + collect 批量归集 + 生产验证 4 笔已成归集/跨图去重 + 测试 +8；REVIEW 本条出表）|
+| 2026-08-26 | 用户反馈登记（使用频率下降访谈：App 打不开 / 交互慢 / 交易没感觉）| —（纯讨论无代码改动）| 主会话 | P2-用户1/2/3（iOS 签名 7 天过期「打不开」设计缺陷、AI 交互慢、交易价值不可感知）| 0（只登记，方案待用户拍板后开工）|
 | 2026-08-24 | deep 方案文档审查（AI 调用治理方案稿）| 工作树（ai-calling-governance.md 新增 + _index 登记，2 文件）| docs/backend/frontend/adversarial ×4 隔离并行 | P0×1 + 战略×7 + P1×11 + P2×13（⭐⭐⭐⭐ 超时矩阵四官全中）| 0（审查只报告，报告见 `audits/2026-08-24-ai-calling-governance-doc-review.md`）|
 | 2026-08-23 | 隔离审查演示（新规范首次实战：上下文隔离 + 对抗官）| 工作树（交易归集修复批 1-5 后，32 文件）| backend + adversarial ×2 独立子代理 + 主会话核实 | P0×1 + 战略×2 + P1×9 + P2×10（合并去重，⭐交叉 4 处全属实）| 0（审查只报告，报告见 `audits/2026-08-23-reviewer-isolation-demo.md`）|
 | 2026-08-23 | full 模块审查（web 交易前后端 + 契约）+ 修复批 | adai-web trading 全量 + adai-core trading 全量 + api-spec §5 | backend/frontend/contract ×3 + 主会话交叉印证 → **用户确认后修复 21 项** | P0×2 + P1×9 + P2×12 | 21（批次 1-5：P0-1/2、P1-1/2/3、B3-1~5、B4-1~5、B5-1~6，见已修复区）|
@@ -67,9 +69,9 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | S5 | 账户账目无单一真源：总资产/现金/本金被四处独立推导（snapshot.cash、positions.md cashBalance、转账推导、recordTrade 现金），现金有 3 个真源只更新其一 → R81 分母过期 | `TradingAppService` / `AccountSnapshot` | ✅ 已修（2026-08-17 S5 批：现金唯一真源=account.json AccountSnapshot.cash；importCashQuery 不再写 positions.md cashBalance；advice/portfolio/review 全走 AccountSnapshot；642 测试全绿）|
 | S6 | C2 买点 5 参数（回调50%/缩量0.7/KDJ20/放量1.5/前高20日）标注「待用户确认」却已硬编码上线每日 15:10 推送 + web 信号列 + D3 打分——实现替用户做了决定，无门禁 | `BuyPointDetector` / `buy-point-rules.md` | ✅ 已确认（2026-08-17 用户：无「买点5」一说，默认值即最终值）|
 | S7 | D3 自称「完美图匹配度」，实际是规则阈值 + 硬编码分数映射（无完美图样本库/归一化相似度）；「三维打分」总分实为二维（选股维度未接入） | `SoldScoreService` | ⏸ 已搁置（2026-08-17 用户决策）|
-| S-8 | **双端 Feed 阅读方向相反**（app 聊天式最新在底 vs web 流式最新在顶）——产品口径待拍板并记入 frontend-reference（2026-08-23 归口 audits/2026-08-20，⭐⭐ 两官命中）| `main_page.dart:1092-1096` vs `feed_page.dart:130,837` | ⏸ 待拍板（用户决策）|
-| S-9 | **AI 调用治理方案超时矩阵自相矛盾（⭐⭐⭐⭐ 四官全中）**：症状 B 自证「前端 90s vs 后端最坏 120s（60s×2）」，治理表同步档却仍写「90s+」——旧同步端点（在网旧客户端唯一路径）照旧超时，方案核心卖点未兑现。修复：前端 ≥120s 或后端去重试/降单次（45s×2=90s 自洽），二选一写死推导 | `docs/architecture/ai-calling-governance.md` §四③ | ⏸ 方案修订待办（2026-08-24 审查）|
-| S-10 | **方案路由键 scene() 不可行**：TradingParse/Advice/Review/SessionPush 全 `scene="trading"`（代码实锤），快/深模型无法靠 scene 区分，「不改 16 个调用方」不成立；应改用已存在的 `AiTraceContext.source`（trading_parse/trading_advice/trading_review/trading_session_*）| `docs/architecture/ai-calling-governance.md` §四① | ⏸ 方案修订待办（2026-08-24 审查）|
+| S-8 | **双端 Feed 阅读方向相反**（app 聊天式最新在底 vs web 流式最新在顶）——产品口径待拍板并记入 frontend-reference（2026-08-23 归口 audits/2026-08-20，⭐⭐ 两官命中）| `main_page.dart:1092-1096` vs `feed_page.dart:130,837` | ✅ 已拍板（2026-08-26 用户：**最新在底部**）+ web 已改（feed_page reverse:true + 更早页插头部，待打包），app 本就一致；frontend-reference 口径待同步 |
+| S-9 | **AI 调用治理方案超时矩阵自相矛盾（⭐⭐⭐⭐ 四官全中）**：症状 B 自证「前端 90s vs 后端最坏 120s（60s×2）」，治理表同步档却仍写「90s+」——旧同步端点（在网旧客户端唯一路径）照旧超时，方案核心卖点未兑现。修复：前端 ≥120s 或后端去重试/降单次（45s×2=90s 自洽），二选一写死推导 | `docs/architecture/ai-calling-governance.md` §四③ | ✅ 已修（2026-08-26：后端单次 60s→45s（45×2+0.6=90.6s）、前端 AI 90s→120s（app+web 双端代码已改，web/app 待打包部署）；配套重发去重幂等防超时重发重复卡片）|
+| S-10 | **方案路由键 scene() 不可行**：TradingParse/Advice/Review/SessionPush 全 `scene="trading"`（代码实锤），快/深模型无法靠 scene 区分，「不改 16 个调用方」不成立；应改用已存在的 `AiTraceContext.source`（trading_parse/trading_advice/trading_review/trading_session_*）| `docs/architecture/ai-calling-governance.md` §四① | ✅ 已修（2026-08-26：DeepSeekAiClient 双模型按 AiTraceContext.source 路由——trading_review 走 v4-pro，其余走 v4-flash；新增 `adai.ai.model-flash` 配置 + AiTraceContext.source() 读取；生产实测复盘=pro/问答=flash）|
 > **FP-S1/S2/S3/S4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：总纲 §五 现状表刷新全 ✅（S1）；引擎口径契约测试 `RuleKnowledgeContractTest`（S2，B44）；R81 分母规格同步总资产（S3）；update-current.sh 声明修正为注记刷新器（S4）。
 > S-R1（app 插件失败 SnackBar+重试，双端对拍）与 S-R2（服务端合并插件端点，竞态根治）已出表（2026-08-15，见已修复区）。S-2（展示层聚合）已出表；数据层整体化 RFC `20260815-media-event-unification` approved 排 v1.0.1；S-3/S-4 已出表（批 Q）。
 
@@ -175,6 +177,9 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-4 | **frontmatter「9 字段」实为 10（08-23 元审核归口，命中数字漂移复发信号）**：skills-spec.md:40/42 与 AGENTS.md 均写 9，guard-meta REQUIRED 实 10 项 | `skills-spec.md` / `AGENTS.md` | 统一为 10 字段 | ✅ 已修（2026-08-23 P1 批：skills-spec/AGENTS/_index 全部 9→10；ADR-005 与 change-log 属历史记录不改）|
 | P2-A2 | **方法论文档自身漂移（08-23 对抗官独立发现）**：method/README.md:89 引用不存在的 research-notes/（_index 自标待建）；64-71 行状态表把已存在的 deploy-gate/weekly-audit 标「❌ 缺」 | `method/README.md:64-71,89` | 状态表按实对拍 | ✅ 已修（2026-08-23 P1 批：状态表部署门禁/smoke 改 ✅ 已做、定时 audit 脚本已做 cron 待确认；research-notes 标注待建勿引用）|
 | P2-A3 | **pre-commit 吞掉 guard.sh 输出（08-23 对抗官独立发现）**：`>/dev/null 2>&1`（pre-commit:48、deploy-gate:34 同）——脚本自坏（如 services/ 缺失）与「有 HIT」无法区分，误拦/误放都无从排查 | `.githooks/pre-commit:48` | 输出降级为摘要行，HIT 与 ERROR 区分 | ✅ 已修（2026-08-23 P1 批：pre-commit 捕获输出——HIT 显示摘要、自坏单独报错可区分；deploy-gate:34 同款待下批）|
+| P2-用户1 | **iOS App 周期「过期打不开」（2026-08-26 用户反馈「今天想记录，打不开」）**：免费 Apple ID 签名 **7 天过期**（backend-deployment.md §9 明示），失效后 App 直接打不开、无法自助修复——**设计缺陷必然复发，非偶发故障**；阻断用户记录关键场景，信任损耗最大 | iOS 签名/部署（`backend-deployment.md` §9/§10）| 零成本兜底：配 adaiadai.com DNS+HTTPS + 手机浏览器/PWA 应急通道（域名已注册未配，§10 有现成方案）；长期正解：付费开发者账号（$99/年，签名一年有效 / TestFlight 90 天）——成本需用户拍板 |
+| P2-用户2 | **交互反馈慢（2026-08-26 用户反馈）**：AI 类请求（问答/建议）硬等后端调模型，2核4G 服务器结构性慢；前端 90s vs 后端最坏 120s 超时矩阵自相矛盾（S-9）治理方案未落地 | AI 调用链路 / `ai-calling-governance.md` | 治理方案修订落地：流式输出 + 超时矩阵修正（S-9）+ 慢接口降级路径 |
+| P2-用户3 | **交易「帮不到忙、没有感觉」（2026-08-26 用户反馈，使用频率下降主因；用户最在意交易）**：功能已堆 36 端点但价值不可感知——规则术语无解释（P2-UX2）、打分虚标（S7 三维实为二维）、建议只输出不落地、收盘推送未送到眼前；用户原话「目前还帮不到我啥」 | 交易模块双端 + 推送链路 | 术语人话化 + 去虚标 + 每日收盘「今日该注意什么」推送到手机（Bark 已接）+ 建议贴合真实操作；**优先级最高** |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 

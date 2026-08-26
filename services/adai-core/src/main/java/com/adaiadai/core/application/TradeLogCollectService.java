@@ -43,6 +43,17 @@ public class TradeLogCollectService {
     /** 归集一笔：宽松解析文本 → 当日候选去重入库。返回该用户当日候选全量。 */
     public List<TradeLogCandidate> collect(String userId, String text, String source) {
         if (text == null || text.isBlank()) return todayCandidates(userId);
+        // 2026-08-26：截图归集缺口修复——表格文字（多笔）优先走批量解析，
+        // 命中多笔（或表格形态）则逐笔归集；否则回退单笔宽松解析（一句话场景不变）。
+        List<TradingParseAppService.ParseResult> batch = parseAppService.parseLooseBatch(userId, text);
+        if (!batch.isEmpty()) {
+            return collectBatch(userId, batch, source);
+        }
+        return collectSingle(userId, text, source);
+    }
+
+    /** 单笔归集（一句话文字，RFC 20260817 原语义）。 */
+    private List<TradeLogCandidate> collectSingle(String userId, String text, String source) {
         // 宽松解析（RFC 20260817）：「清仓了XX」无数量价格也归集为待补充候选（complete=false）
         TradingParseAppService.ParseResult r = parseAppService.parseLoose(userId, text);
         if (!r.matched() || r.direction() == null) return todayCandidates(userId);
@@ -71,6 +82,34 @@ public class TradeLogCollectService {
                 userId, r.direction(), candidate.symbol() != null ? candidate.symbol() : candidate.name(),
                 r.volume() != null ? r.volume() + "股" : "（数量未知）",
                 updated.size());
+        return updated;
+    }
+
+    /**
+     * 批量归集（2026-08-26，截图表格归集）：逐笔 append 到当日候选，
+     * 去重复用 {@link TradeLogRepository#append} 的 sameTrade 语义（同 symbol+方向+volume±10% 同笔）。
+     *
+     * @return 该用户当日候选全量
+     */
+    public List<TradeLogCandidate> collectBatch(String userId, List<TradingParseAppService.ParseResult> parsed,
+                                                String source) {
+        List<TradeLogCandidate> updated = todayCandidates(userId);
+        int collected = 0;
+        for (TradingParseAppService.ParseResult r : parsed) {
+            if (r == null || !r.matched() || r.direction() == null) continue;
+            boolean hasSymbol = r.symbol() != null && !r.symbol().isBlank();
+            boolean hasName = r.name() != null && !r.name().isBlank();
+            if (!hasSymbol && !hasName) continue; // 同单笔：无 symbol/name 拒绝占位
+            TradeLogCandidate candidate = new TradeLogCandidate(
+                    r.symbol(), r.name(), r.direction(), r.price(), r.volume(), source,
+                    hasSymbol && r.price() != null && r.volume() != null);
+            updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
+            collected++;
+        }
+        if (collected > 0) {
+            log.info("交易日志批量归集 | userId={} | 解析 {} 笔 → 归集 {} 笔 | 当日候选 {} 笔",
+                    userId, parsed.size(), collected, updated.size());
+        }
         return updated;
     }
 

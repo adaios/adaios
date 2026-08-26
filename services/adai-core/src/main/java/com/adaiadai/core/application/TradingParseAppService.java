@@ -64,6 +64,18 @@ public class TradingParseAppService {
                     + "\\s*[@＠]?\\s*(\\d+(?:\\.\\d+)?)",        // 6 价格
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("\\d{6}");
+    /**
+     * 表格批量解析（2026-08-26，截图归集 P1 修复）：券商「当日委托/历史成交」截图被 VLM
+     * 识别为表格文字（如「云南锗业 002428 93.480 卖出 100 已成 14:56:09」）——一句话解析器
+     * 按单笔句式拆不出表格。本模式逐行提取「名称 代码 价格 买卖 数量 状态」六段，
+     * 每行一笔；状态非「已成」类（已报/已确认/已撤 = 未成交或非交易）整行跳过。
+     */
+    private static final Pattern TABLE_TRADE_PATTERN = Pattern.compile(
+            "([\\u4e00-\\u9fa5A-Za-z]{2,12})\\s+(\\d{6})\\s+([\\d.]+)\\s+(买入|卖出)\\s+(\\d+)\\s*([^\\s]+)");
+    /** 状态命中「已成/部成/全部成交」才归集（含"成"字）；「已报/已确认/已撤」为未成交或非交易。 */
+    private static final Pattern FILLED_STATUS_PATTERN = Pattern.compile("成");
+    /** 新股申购等非二级市场交易：名称含「申购/认购」跳过（天博申购 732448 等）。 */
+    private static final Pattern NON_TRADE_NAME_PATTERN = Pattern.compile("申购|认购");
     /** 正则兜底：止损位（RFC 20260816 §4.3：「止损 Z」→ stopLossPrice）。 */
     private static final Pattern STOP_LOSS_PATTERN = Pattern.compile("止损\\s*([\\d.]+)");
     /** 正则兜底：买点（RFC 20260816 §4.3：「，B1/B2/B3/SB1」→ buyPoint）。 */
@@ -138,6 +150,74 @@ public class TradingParseAppService {
             - 数量/价格没有 → null（不因此判 unmatched）
             - 纯闲聊（无买卖动词或股票）→ matched=false
             """.strip();
+
+    /**
+     * 表格批量解析（2026-08-26，截图归集缺口修复）：券商「当日委托」截图被 VLM 识别成
+     * 表格文字（一行多笔，如「云南锗业 002428 93.480 卖出 100 已成 14:56:09 …」）。
+     * 一句话解析器（{@link #parseLoose}）按单笔句式拆不出表格 → 0 候选；
+     * 本方法按表格行模式逐笔提取，返回多笔 {@link ParseResult}（每笔完整：symbol+direction+price+volume）。
+     * <p>
+     * 过滤规则：
+     * <ul>
+     *   <li>状态非「已成」类（已报/已确认/已撤 = 未成交或非交易）→ 整行跳过</li>
+     *   <li>名称含「申购/认购」（新股申购如 732448）→ 非二级市场交易，跳过</li>
+     *   <li>79/80/81/82 开头占位代码（通达信非交易段）→ 跳过（与历史成交导入同口径）</li>
+     * </ul>
+     *
+     * @return 解析出的完整交易笔列表（可能为空 = 非交易截图/表格）
+     */
+    public List<ParseResult> parseLooseBatch(String userId, String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        List<ParseResult> results = new java.util.ArrayList<>();
+        Matcher m = TABLE_TRADE_PATTERN.matcher(text);
+        while (m.find()) {
+            String name = m.group(1).trim();
+            String symbol = m.group(2).trim();
+            String status = m.group(6).trim();
+            // 状态过滤：只归集已成/部成（含"成"字）；已报（未成交）、已确认（非交易）、已撤 → 跳过
+            if (!FILLED_STATUS_PATTERN.matcher(status).find()) {
+                log.debug("表格行跳过（未成交/非交易状态）| {} {} {} 状态={}", name, symbol, status);
+                continue;
+            }
+            // 新股申购/认购：非二级市场交易（天博申购 732448 等）
+            if (NON_TRADE_NAME_PATTERN.matcher(name).find()) {
+                log.debug("表格行跳过（新股申购/认购）| {} {} 状态={}", name, symbol, status);
+                continue;
+            }
+            // 通达信占位代码（79/80/81/82）——与历史成交导入同口径
+            if (com.adaiadai.core.application.TradingImportParser.isNonTradableCode(symbol)) {
+                log.debug("表格行跳过（占位代码）| {} {} 状态={}", name, symbol, status);
+                continue;
+            }
+            BigDecimal price;
+            try {
+                price = new BigDecimal(m.group(3).trim());
+            } catch (NumberFormatException e) {
+                log.debug("表格行价格解析失败，跳过 | {} {}", name, symbol);
+                continue;
+            }
+            int volume;
+            try {
+                volume = Integer.parseInt(m.group(5).trim());
+            } catch (NumberFormatException e) {
+                log.debug("表格行数量解析失败，跳过 | {} {}", name, symbol);
+                continue;
+            }
+            if (price.compareTo(BigDecimal.ZERO) <= 0 || volume <= 0) {
+                continue;
+            }
+            String direction = "买入".equals(m.group(4)) ? "BUY" : "SELL";
+            results.add(new ParseResult(true, symbol, name, direction, price, volume,
+                    null, null, null, null));
+        }
+        if (!results.isEmpty()) {
+            log.info("表格批量解析 | 命中 {} 笔 | 文本前 80 字: {}", results.size(),
+                    text.length() > 80 ? text.substring(0, 80) : text);
+        }
+        return results;
+    }
 
     private ParseResult parseLooseResult(String raw) {
         try {
