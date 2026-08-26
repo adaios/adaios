@@ -21,6 +21,7 @@ import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import com.adaiadai.core.kernel.search.SearchService;
@@ -216,6 +217,87 @@ class RecordControllerTest {
         boolean markedQuestion = records.stream()
                 .anyMatch(r -> cardId != null && r.intent() != null && "question".equals(r.intent()));
         assertTrue(markedQuestion, "首问带新 cardId 的 record 应落盘 intent=question，rebuild 才能跳过");
+    }
+
+    /**
+     * 2026-08-26 生产事故回归（REVIEW S-9 关闭项）：
+     * 前端 AI 超时断开 → 后端仍跑完 → 用户/前端重发相同问句 → 同一卡片 3 条相同 turns。
+     * 同 cardId 短窗口内相同 content 应去重：不 append、不烧 AI，直接返回已有回答。
+     */
+    @Test
+    void createRecord_sameContentResendWithinWindow_deduped() throws Exception {
+        String cardId = "card_dup_resend";
+        String content = "交易市场如何玩铜呢？";  // 含「？」→ TestAiClient 识别为 question
+        String body = mapper.writeValueAsString(Map.of(
+                "content", content,
+                "cardId", cardId
+        ));
+
+        // 第一次：正常提问（card 不存在 → 创建 + answer）
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("question"));
+
+        // 模拟 answer 已完成：生产上回答结束后卡片最后 turn 是 AI（QuestionAppService 追加），
+        // 重发判定必须能穿透 AI turn 找到最近用户问句（2026-08-26 生产验证发现）。
+        Optional<CardRecord> afterFirst = cardRepository.findById("default", cardId);
+        assertTrue(afterFirst.isPresent(), "首问后卡片应存在");
+        CardRecord withAiTurn = afterFirst.get().withTurn(false, "阿呆，回答完毕", "17:36");
+        cardRepository.save("default", withAiTurn);
+
+        // 第二次：完全相同内容 + 同 cardId（模拟超时重发）→ 命中去重，不重复 append
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        Optional<CardRecord> card =
+                cardRepository.findById("default", cardId);
+        assertTrue(card.isPresent(), "卡片应存在");
+        long userTurns = card.get().turns().stream()
+                .filter(CardRecord.Turn::isUser)
+                .count();
+        assertEquals(1, userTurns, "重发不得重复 append 用户问句（生产 08-26 卡片 3 条相同问句）");
+        // AI turn 也应保持 1（Answer completed 的那一条），重发不再触发 answer
+        long aiTurns = card.get().turns().stream()
+                .filter(t -> !t.isUser())
+                .count();
+        assertEquals(1, aiTurns, "重发不得追加新的 AI 回答");
+    }
+
+    /**
+     * 去重对称回归：用户追问内容不同（真正的下一轮对话）不得被误杀。
+     */
+    @Test
+    void createRecord_differentContent_appendNormally() throws Exception {
+        String cardId = "card_dup_normal";
+        String body1 = mapper.writeValueAsString(Map.of(
+                "content", "交易市场如何玩铜呢？",
+                "cardId", cardId
+        ));
+        String body2 = mapper.writeValueAsString(Map.of(
+                "content", "那纽约铜呢？",
+                "cardId", cardId
+        ));
+
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body1))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body2))
+                .andExpect(status().isOk());
+
+        Optional<CardRecord> card =
+                cardRepository.findById("default", cardId);
+        assertTrue(card.isPresent(), "卡片应存在");
+        long userTurns = card.get().turns().stream()
+                .filter(CardRecord.Turn::isUser)
+                .count();
+        assertEquals(2, userTurns, "不同内容的追问应正常 append");
     }
 
     @Test

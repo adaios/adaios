@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.ai.llm;
 
+import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class DeepSeekAiClientTest {
 
-    private final DeepSeekAiClient client = new DeepSeekAiClient("", "", "test");
+    private final DeepSeekAiClient client = new DeepSeekAiClient("", "", "test", "test-flash");
 
     @Test
     void normalContent_returnsAsIs() throws Exception {
@@ -43,5 +44,36 @@ class DeepSeekAiClientTest {
     @Test
     void noChoices_throws() {
         assertThrows(RuntimeException.class, () -> client.parseChatCompletion("{}"));
+    }
+
+    // ── 2026-08-26 模型分层（S-10）──
+
+    @Test
+    void modelFor_reviewUsesPro() {
+        AiTraceContext.set("adai", null, null, "trading_review");
+        try {
+            assertEquals("test", client.modelFor(),
+                    "复盘（trading_review）应走旗舰 pro 模型（要推理质量）");
+        } finally {
+            AiTraceContext.restore(null);
+        }
+    }
+
+    @Test
+    void modelFor_questionUsesFlash() {
+        AiTraceContext.set("adai", "rec_x", null, "question");
+        try {
+            assertEquals("test-flash", client.modelFor(),
+                    "问答（question）应走快模型 flash（高频交互提速）");
+        } finally {
+            AiTraceContext.restore(null);
+        }
+    }
+
+    @Test
+    void modelFor_noTraceUsesFlash() {
+        AiTraceContext.restore(null);
+        assertEquals("test-flash", client.modelFor(),
+                "无 trace 上下文默认走 flash（保守快路径）");
     }
 }

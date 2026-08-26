@@ -39,6 +39,12 @@ public final class AiTraceContext {
         return HOLDER.get();
     }
 
+    /** 读取当前线程 trace 的来源标识（如 trading_review / question / brief）；未设置返回 null。 */
+    public static String source() {
+        Trace trace = HOLDER.get();
+        return trace != null ? trace.source() : null;
+    }
+
     /** 恢复快照（装饰器 finally 使用）；null 表示清空。 */
     public static void restore(Trace snapshot) {
         if (snapshot == null) {

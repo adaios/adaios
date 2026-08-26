@@ -85,10 +85,38 @@ public class BarkPushChannel implements PushChannel {
         }
     }
 
-    /** JSON 字符串转义（防 title/body 含引号/反斜杠破坏 JSON）。 */
+    /**
+     * JSON 字符串转义（防 title/body 含引号/反斜杠/换行破坏 JSON）。
+     * <p>
+     * 2026-08-26 生产事故：漏转义 {@code \n}——时段推送正文是 LLM 生成的多行文本，
+     * 真实换行进入 JSON 字符串字面量 → Bark 服务端 Go 解析报
+     * {@code invalid character '\n' in string literal} → 400 丢弃（当天 4 次时段推送全失败）。
+     * 补 {@code \n}、{@code \r}、{@code \t} 及常见控制字符。
+     */
     private String escape(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"' -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
+                default -> {
+                    // 其余控制字符（< 0x20）转 \\uXXXX（反斜杠 u 形式），防 Bark 服务端严格解析拒绝
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private String truncate(String s, int max) {

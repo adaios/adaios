@@ -29,7 +29,9 @@ class ApiService {
   final http.Client _client;
 
   /// AI 生成类请求专用客户端：DeepSeek 聊天/追问/总结实测 7~27s（2026-08-20 压测），
-  /// 默认 15s 超时必误杀——聊天报错且重试仍报错的根因。AI 端点放宽到 90s。
+  /// 默认 15s 超时必误杀——聊天报错且重试仍报错的根因。AI 端点放宽到 120s
+  /// （2026-08-26 对齐后端最坏 90.6s = 45s×2+0.6s，REVIEW S-9：原 90s < 后端 120.6s 导致
+  /// 前端先超时断开 → 用户重发 → 卡片重复，S-9 关闭）。
   final http.Client _aiClient;
 
   // 内存缓存：跨页面切换不丢
@@ -40,7 +42,7 @@ class ApiService {
   ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
         _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
-        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 90));
+        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 120));
 
   /// 获取今日 Brief（摘要），独立接口。
   /// AI 生成可能 7~27s（缓存命中时秒回）——走 _aiClient 防误杀。

@@ -155,7 +155,9 @@ class _FeedPageState extends State<FeedPage> {
           .toList();
       setState(() {
         _currentPage += 1;
-        _cards = [..._cards, ...moreCards];
+        // S-8（2026-08-26 拍板最新在底部）：reverse:true 渲染下，更早页（更旧）必须插数组
+        // 头部（视觉顶部），最新保留在数组尾部（视觉底部）——原来追加尾部会压住最新，顺序错乱。
+        _cards = [...moreCards, ..._cards];
         // #234：终止判定按已加载核心条目数；页面无更多数据（moreCards 空）同样终止
         _hasMore = moreCards.isNotEmpty && _coreCardCount < _totalToday;
         _loadingMore = false;
@@ -882,11 +884,15 @@ class _FeedPageState extends State<FeedPage> {
     final hasMore = _hasMore && _coreCardCount < _totalToday;
     return ListView.builder(
       controller: _scrollController,
+      // S-8（2026-08-26 拍板：最新在底部，与 app 聊天式一致）：
+      // _cards 保持后端升序（旧→新），reverse:true 后 i=0 在视觉底部（最新），
+      // itemBuilder 从数组尾部取（_cards[len-1-i]）→ 视觉顶部=最旧。
+      reverse: true,
       padding: const EdgeInsets.symmetric(vertical: 12),
       itemCount: _cards.length + (hasMore ? 1 : 0),
       itemBuilder: (_, i) {
         if (i >= _cards.length) return _buildLoadMoreBanner();
-        final card = _cards[i];
+        final card = _cards[_cards.length - 1 - i];
         return DesktopFeedCard(
           key: ValueKey(card.id),
           data: card,

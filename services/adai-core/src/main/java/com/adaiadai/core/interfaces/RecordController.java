@@ -82,6 +82,14 @@ public class RecordController {
 
         // cardId present AND card file exists → continuation of chat, append turn to card only
         if (request.cardId() != null && cardRepository.findById(userId, request.cardId()).isPresent()) {
+            // 2026-08-26 重发去重（生产事故：前端 90s 超时断开 → 后端 120s 仍跑完 → 用户/前端重发
+            // 相同问句 → 同一卡片 3 条相同 turns，REVIEW S-9 链条）：同 cardId 最近一轮用户问句
+            // 与本次相同 → 视为超时重发，直接返回已生成回答（不再 append、不再烧 AI）。
+            if (isDuplicateResend(userId, request.cardId(), request.content())) {
+                log.info("Card continuation 去重命中（超时重发）| cardId={} | content=\"{}\"",
+                        request.cardId(), truncate(request.content(), 40));
+                return ResponseEntity.ok(duplicateResendResponse(userId, request.cardId()));
+            }
             log.info("Card continuation | cardId={} | content=\"{}\"", request.cardId(), truncate(request.content(), 40));
             return handleQuestion(userId, record, request.cardId());
         }
@@ -361,5 +369,74 @@ public class RecordController {
 
     private String truncate(String s, int max) {
         return s != null && s.length() > max ? s.substring(0, max) + "..." : s;
+    }
+
+    // ── 2026-08-26 重发去重（REVIEW S-9 关闭项）──
+
+    /** 超时重发判定窗口：前端 AI 超时断开后重发通常发生在几十秒内，5 分钟足够覆盖。 */
+    private static final java.time.Duration RESEND_WINDOW = java.time.Duration.ofMinutes(5);
+
+    /**
+     * 判定本次 continuation 是否为超时重发：卡片最近一轮用户问句与本次内容相同，
+     * 且卡片最后活跃时间在窗口内（同 cardId 连续两次相同问句 = 前端未收到响应的重发，
+     * 不是用户的新一轮追问——用户追问内容必然不同）。
+     * <p>
+     * 注意：正常回答完成后卡片最后 turn 是 AI 回答（answer 已追加），所以必须从后往前
+     * 找最近一轮 <b>用户</b> 问句比对，而不是要求最后 turn 是用户（2026-08-26 生产验证发现）。
+     */
+    private boolean isDuplicateResend(String userId, String cardId, String content) {
+        if (content == null) return false;
+        Optional<CardRecord> cardOpt = cardRepository.findById(userId, cardId);
+        if (cardOpt.isEmpty()) return false;
+        CardRecord card = cardOpt.get();
+        if (card.turns() == null || card.turns().isEmpty()) return false;
+
+        String normalized = content.strip();
+        if (normalized.isEmpty()) return false;
+
+        // 从后往前找最近一轮用户问句
+        CardRecord.Turn lastUser = null;
+        for (int i = card.turns().size() - 1; i >= 0; i--) {
+            if (card.turns().get(i).isUser()) {
+                lastUser = card.turns().get(i);
+                break;
+            }
+        }
+        if (lastUser == null || lastUser.text() == null
+                || !lastUser.text().strip().equals(normalized)) {
+            return false;
+        }
+
+        // 窗口判定：updatedAt 距现在 ≤ 5 分钟（updatedAt 每轮 append 刷新为 now）
+        LocalDateTime now = LocalDateTime.now();
+        return card.updatedAt() != null
+                && !card.updatedAt().isBefore(now.minus(RESEND_WINDOW));
+    }
+
+    /** 重发命中：返回卡片已有内容（不 append、不烧 AI），前端拿到与上次一致的回答。 */
+    private ResponseEntity<QuestionResponse> duplicateResendResponse(String userId, String cardId) {
+        Optional<CardRecord> cardOpt = cardRepository.findById(userId, cardId);
+        if (cardOpt.isEmpty()) {
+            return ResponseEntity.ok(new QuestionResponse("question", null, null, List.of(), "", "life"));
+        }
+        CardRecord card = cardOpt.get();
+        // 取最近一轮 AI 回答作为 rawResponse（若无 AI turn 则空串）
+        String lastAi = "";
+        if (card.turns() != null) {
+            for (int i = card.turns().size() - 1; i >= 0; i--) {
+                if (!card.turns().get(i).isUser()) {
+                    lastAi = card.turns().get(i).text() != null ? card.turns().get(i).text() : "";
+                    break;
+                }
+            }
+        }
+        return ResponseEntity.ok(new QuestionResponse(
+                "question",
+                cardId,
+                card.summary(),
+                card.tags() != null ? card.tags() : List.of(),
+                lastAi,
+                "life"
+        ));
     }
 }
