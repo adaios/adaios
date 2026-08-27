@@ -68,9 +68,14 @@ public class RecordFileRepository implements RecordRepository {
         // #19 优化：rec_ 前缀 + 标准格式的 id 可直接从 id 推导年月路径直读，避免全量扫。
         if (id != null && REC_ID_PATTERN.matcher(id).matches()) {
             String path = RECORDS_DIR + "/" + id.substring(4, 8) + "/" + id.substring(8, 10) + "/" + id + ".md";
-            ContentRecord record = parseFromFile(userId, path);
-            if (record != null && id.equals(record.id())) {
-                return Optional.of(record);
+            // 2026-08-27：引用悬空（image_qa 引用的图片记录已不存在）→ 静默返回 empty，
+            // 不经过 parseFromFile 的 WARN——该 WARN（REVIEW #248）只针对「文件存在但空/损坏」，
+            // 不存在是合法降级（Feed 缩略图缺失、引用解析跳过），不该刷生产日志。
+            if (fileStorage.exists(userId, path)) {
+                ContentRecord record = parseFromFile(userId, path);
+                if (record != null && id.equals(record.id())) {
+                    return Optional.of(record);
+                }
             }
         }
         // 兼容回退：id 月份 ≠ createdAt 月份（月边界迁移）/ 不规则历史 id → 全量扫兜底

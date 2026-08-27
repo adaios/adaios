@@ -3,12 +3,15 @@ package com.adaiadai.core.infrastructure.storage;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 /**
  * RecordFileRepository 单元测试。
@@ -49,6 +52,18 @@ class RecordFileRepositoryTest {
     void findById_notFound_returnsEmpty() {
         Optional<ContentRecord> found = repository.findById("default","rec_nonexistent");
         assertFalse(found.isPresent());
+    }
+
+    @Test
+    void findById_standardIdMissingFile_returnsEmptyWithoutWarn() {
+        // 2026-08-27：image_qa 引用悬空（被引用的图片记录已不存在）→ 标准格式 id 直读路径
+        // 文件不存在应静默返回 empty，不经过 parseFromFile 的 WARN（REVIEW #248 只针对存在但损坏）。
+        InMemoryFileStorage spyStorage = Mockito.spy(new InMemoryFileStorage());
+        RecordFileRepository repo = new RecordFileRepository(spyStorage);
+        Optional<ContentRecord> found = repo.findById("default", "rec_20260811_232734755");
+        assertFalse(found.isPresent());
+        // 关键：exists 短路后不触发 read（否则 parseFromFile 会打「文件为空或不可读」WARN）
+        verify(spyStorage, never()).read(Mockito.anyString(), Mockito.anyString());
     }
 
     @Test
