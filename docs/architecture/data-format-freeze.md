@@ -381,9 +381,9 @@ updatedAt: 2026-08-07
 | 路径 | `trading/trade-log/{yyyy-MM-dd}.json`（按日分片）|
 | 格式 | JSON 数组；候选**未落库**（待用户确认），确认后走 recordTrade 并清空当日 |
 | 真相源 | `TradeLogRepository` |
-| 变更 | **MINOR（2026-08-18，RFC 20260817）**：新增 |
+| 变更 | **MINOR（2026-08-18，RFC 20260817）**：新增；**MINOR（2026-08-27）**：候选新增 `tradeDate`（截图「日期」列提取的成交日期，无 → 空串）|
 
 ```
 [{"symbol":"002428","name":"云南锗业","direction":"SELL","price":null,
-  "volume":null,"source":"text","complete":false}]
+  "volume":null,"tradeDate":"2026-08-26","source":"text","complete":false}]
 ```
