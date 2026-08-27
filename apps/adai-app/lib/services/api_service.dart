@@ -142,6 +142,8 @@ class ApiService {
   }
 
   /// 上传图片记录（多模态 L4）：multipart → VLM 理解 → 记录 + 记忆沉淀。
+  /// 2026-08-27：VLM 识别走 _aiClient（120s）——生产实测 GLM 识别单图最坏 28s（
+  /// 2026-08-26 晚截图入账日志实锤），15s 普通超时必误杀（首页发图同样结构性问题）。
   Future<MediaRecordResponse> uploadImage({
     required List<int> bytes,
     required String filename,
@@ -157,7 +159,7 @@ class ApiService {
         filename: filename,
         contentType: MediaType('image', mimeType.split('/').last),
       ));
-    final streamed = await _client.send(req);
+    final streamed = await _aiClient.send(req);
     final resp = await http.Response.fromStream(streamed);
     _check(resp);
     // 上传后缓存失效（Feed/Timeline/Memory 都会有新图片记录）
@@ -423,14 +425,39 @@ class ApiService {
     _check(resp);
   }
 
-  /// RFC 20260817：交易日志当日候选。
-  Future<List<dynamic>> getTradeLogCandidates() async {
+  /// RFC 20260817：交易日志当日候选（2026-08-26 类型化——交易页内嵌候选列表用）。
+  Future<List<TradeLogCandidateDto>> getTradeLogCandidates() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/trading/trade-log'),
       headers: _headers,
     );
     _check(resp);
-    return jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+    return list.map((e) => TradeLogCandidateDto.fromJson(e)).toList();
+  }
+
+  /// 2026-08-26 截图入账：券商「当日委托/历史成交」截图（1-3 张 multipart）→ VLM 归集为当日候选。
+  /// POST /api/v1/trading/screenshots——不建记录、不落原图，候选确认落库后即权威数据。
+  /// 2026-08-27：走 _aiClient（120s）——生产实测 VLM 单图识别最坏 28s（3 张近 90s），15s 必超时。
+  Future<TradingScreenshotResult> uploadTradingScreenshots({
+    required List<List<int>> bytesList,
+    required List<String> filenames,
+    required List<String> mimeTypes,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/trading/screenshots'))
+      ..headers['X-User-Id'] = userId;
+    for (var i = 0; i < bytesList.length; i++) {
+      req.files.add(http.MultipartFile.fromBytes(
+        'files',
+        bytesList[i],
+        filename: filenames[i],
+        contentType: MediaType('image', mimeTypes[i].split('/').last),
+      ));
+    }
+    final streamed = await _aiClient.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    return TradingScreenshotResult.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// RFC 20260817：确认交易日志落库。
@@ -1530,6 +1557,52 @@ class TradeLogConfirmResult {
     failed: json['failed'] as int? ?? 0,
     skipped: json['skipped'] as int? ?? 0,
     failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+  );
+}
+
+/// 当日交易日志候选（GET /trading/trade-log 与截图入账共用，2026-08-26 类型化）。
+/// complete=false = 缺 symbol/direction/price/volume 任一（宽松解析残件，确认会被拒）。
+/// tradeDate（2026-08-27）：截图「日期」列提取的成交日期（yyyy-MM-dd）；无 → null（确认时按确认当天）。
+class TradeLogCandidateDto {
+  final String symbol, name, direction;
+  final double? price;
+  final int? volume;
+  final String? tradeDate;
+  final bool complete;
+
+  TradeLogCandidateDto({required this.symbol, required this.name, required this.direction,
+      this.price, this.volume, this.tradeDate, required this.complete});
+
+  factory TradeLogCandidateDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return TradeLogCandidateDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      direction: m['direction']?.toString() ?? '',
+      price: double.tryParse(m['price']?.toString() ?? ''),
+      volume: int.tryParse(m['volume']?.toString() ?? ''),
+      tradeDate: m['tradeDate']?.toString(),
+      complete: m['complete'] as bool? ?? false,
+    );
+  }
+}
+
+/// 2026-08-26 截图入账结果（POST /trading/screenshots）：
+/// total 提交张数 / processed 成功识别张数 / candidates 当日候选（去重后）/ errors 逐张失败原因。
+class TradingScreenshotResult {
+  final int total, processed;
+  final List<TradeLogCandidateDto> candidates;
+  final List<String> errors;
+
+  TradingScreenshotResult({required this.total, required this.processed,
+      required this.candidates, required this.errors});
+
+  factory TradingScreenshotResult.fromJson(Map<String, dynamic> json) => TradingScreenshotResult(
+    total: json['total'] as int? ?? 0,
+    processed: json['processed'] as int? ?? 0,
+    candidates: (json['candidates'] as List? ?? const [])
+        .map((e) => TradeLogCandidateDto.fromJson(e)).toList(),
+    errors: (json['errors'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
 }
 

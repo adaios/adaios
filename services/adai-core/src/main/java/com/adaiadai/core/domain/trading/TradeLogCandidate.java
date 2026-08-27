@@ -14,6 +14,7 @@ import java.time.LocalDate;
  * @param direction BUY / SELL
  * @param price     成交价（截图识别可得；文字无价格 → null = 不完整）
  * @param volume    数量（文字「清仓了XX」无数量 → null = 不完整）
+ * @param tradeDate 成交日期（2026-08-27：截图表格「日期」列提取；当日成交单无日期列 → null = 归集当天）
  * @param source    来源（text=文字 / image=截图）
  * @param complete  是否完整（symbol+direction+price+volume 全有）
  */
@@ -23,6 +24,7 @@ public record TradeLogCandidate(
         String direction,
         BigDecimal price,
         Integer volume,
+        LocalDate tradeDate,
         String source,
         boolean complete
 ) {

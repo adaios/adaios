@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -27,7 +28,7 @@ class TradeLogRepositoryTest {
 
     private TradeLogCandidate c(String symbol, Integer volume) {
         return new TradeLogCandidate(symbol, symbol + "名", "BUY",
-                volume != null ? new BigDecimal("10.0") : null, volume, "text",
+                volume != null ? new BigDecimal("10.0") : null, volume, null, "text",
                 volume != null);
     }
 
@@ -85,6 +86,24 @@ class TradeLogRepositoryTest {
         // save 是全量覆盖语义——只保留传入的；append 后 save 覆盖（这是设计：调用方传全量）
         assertEquals(1, repo.findByDate("default", day).size());
         assertEquals("600519", repo.findByDate("default", day).get(0).symbol());
+    }
+
+    @Test
+    void append_withTradeDate_roundTrips() {
+        // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：候选成交日期（截图日期列）必须随候选落盘读回，
+        // confirm 才能用截图日期而非确认当天
+        java.time.LocalDate tradeDate = java.time.LocalDate.of(2026, 8, 26);
+        TradeLogCandidate withDate = new TradeLogCandidate(
+                "000831", "中国稀土", "BUY", new BigDecimal("56.04"), 100, tradeDate, "image", true);
+        repo.append("default", day, withDate);
+        repo.append("default", day, c("000725", 100)); // 无日期候选（文字归集）
+
+        List<TradeLogCandidate> read = repo.findByDate("default", day);
+        assertEquals(2, read.size());
+        assertEquals(tradeDate, read.stream().filter(x -> "000831".equals(x.symbol()))
+                .findFirst().orElseThrow().tradeDate(), "带日期候选 round-trip 不丢");
+        assertNull(read.stream().filter(x -> "000725".equals(x.symbol()))
+                .findFirst().orElseThrow().tradeDate(), "无日期候选保持 null");
     }
 
     @Test

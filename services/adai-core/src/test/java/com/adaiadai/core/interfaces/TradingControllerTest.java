@@ -7,7 +7,9 @@ import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradeLogCollectService;
+import com.adaiadai.core.application.TradingScreenshotAppService;
 import com.adaiadai.core.application.TradingLotService;
+import com.adaiadai.core.domain.trading.TradeLogCandidate;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
@@ -53,6 +55,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -102,6 +105,7 @@ class TradingControllerTest {
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
@@ -118,6 +122,27 @@ class TradingControllerTest {
     private MockMvc buildMvc(TradingAppService tradingAppService) {
         return buildMvc(tradingAppService, mock(TradingReviewAppService.class));
     }
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradingReviewAppService reviewAppService,
+                             TradingScreenshotAppService screenshotAppService,
+                             String... defaultPlugins) {
+        TradingController controller = new TradingController(tradingAppService, reviewAppService,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService(defaultPlugins.length > 0 ? defaultPlugins : new String[]{"trading"}),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                screenshotAppService,
+                mock(MarketPushRepository.class),
+                mock(TradingLotService.class),
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
 
     /** RFC 20260825：注入自定义批次服务的重载（/trading/lots 测试用）。 */
     private MockMvc buildMvc(TradingAppService tradingAppService, TradingLotService tradingLotService) {
@@ -132,6 +157,7 @@ class TradingControllerTest {
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 tradingLotService,
                 "../../os/trading-engine/knowledge/context");
@@ -154,6 +180,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins), buyPointService, soldScoreService,
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
@@ -310,6 +337,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
@@ -457,6 +485,66 @@ class TradingControllerTest {
         mvc.perform(get("/api/v1/trading/has-activity").param("date", "2026-08-02"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.hasActivity").value(true));
+    }
+
+    @Test
+    void hasActivity_false_whenNoTrades() throws Exception {
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.hasTradingActivity(any(), any())).thenReturn(false);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+
+        mvc.perform(get("/api/v1/trading/has-activity").param("date", "2026-08-02"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasActivity").value(false));
+    }
+
+    // ── 截图入账（2026-08-26，交易闭环第一环）──
+
+    @Test
+    void collectScreenshots_returnsCandidates() throws Exception {
+        TradingScreenshotAppService screenshot = mock(TradingScreenshotAppService.class);
+        TradeLogCandidate c = new TradeLogCandidate("002428", "云南锗业", "SELL",
+                new BigDecimal("93.48"), 100, null, "image", true);
+        when(screenshot.collect(any(), any(), any())).thenReturn(
+                new TradingScreenshotAppService.ScreenshotCollectResult(1, 1, List.of(c), List.of()));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), screenshot);
+
+        mvc.perform(multipart("/api/v1/trading/screenshots")
+                        .file(new MockMultipartFile("files", "s1.png", "image/png", "x".getBytes()))
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.candidates[0].symbol").value("002428"))
+                .andExpect(jsonPath("$.candidates[0].direction").value("SELL"))
+                .andExpect(jsonPath("$.errors").isEmpty());
+        verify(screenshot).collect(eq("u1"), any(), any());
+    }
+
+    @Test
+    void collectScreenshots_noTradingPlugin_403() throws Exception {
+        TradingScreenshotAppService screenshot = mock(TradingScreenshotAppService.class);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class),
+                screenshot, new String[]{"life"});
+
+        mvc.perform(multipart("/api/v1/trading/screenshots")
+                        .file(new MockMultipartFile("files", "s1.png", "image/png", "x".getBytes())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void collectScreenshots_serviceRejection_400() throws Exception {
+        // 校验失败（空图/超限/张数越界）由 service 抛 IllegalArgumentException → controller 400 人话
+        TradingScreenshotAppService screenshot = mock(TradingScreenshotAppService.class);
+        when(screenshot.collect(any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("第 1 张图片为空"));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), screenshot);
+
+        mvc.perform(multipart("/api/v1/trading/screenshots")
+                        .file(new MockMultipartFile("files", "s1.png", "image/png", new byte[0]))
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("图片为空")));
     }
 
     // ── 知识反哺 ──
@@ -627,6 +715,7 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 "../../os/trading-engine/knowledge/context");
@@ -987,6 +1076,7 @@ class TradingControllerTest {
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1007,6 +1097,7 @@ class TradingControllerTest {
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
                 mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

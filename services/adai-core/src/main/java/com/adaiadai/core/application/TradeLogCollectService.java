@@ -2,6 +2,7 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeLogCandidate;
+import com.adaiadai.core.infrastructure.market.NameToSymbolResolver;
 import com.adaiadai.core.infrastructure.storage.TradeLogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +32,17 @@ public class TradeLogCollectService {
     private final TradingParseAppService parseAppService;
     private final TradeLogRepository tradeLogRepository;
     private final TradingAppService tradingAppService;
+    /** 2026-08-27：截图 OCR 漏代码列时按名称补代码（东财 suggest），保证候选可确认入账。 */
+    private final NameToSymbolResolver nameToSymbolResolver;
 
     public TradeLogCollectService(TradingParseAppService parseAppService,
                                   TradeLogRepository tradeLogRepository,
-                                  TradingAppService tradingAppService) {
+                                  TradingAppService tradingAppService,
+                                  NameToSymbolResolver nameToSymbolResolver) {
         this.parseAppService = parseAppService;
         this.tradeLogRepository = tradeLogRepository;
         this.tradingAppService = tradingAppService;
+        this.nameToSymbolResolver = nameToSymbolResolver;
     }
 
     /** 归集一笔：宽松解析文本 → 当日候选去重入库。返回该用户当日候选全量。 */
@@ -72,6 +77,8 @@ public class TradeLogCollectService {
                 r.direction(),
                 r.price(),
                 r.volume(),
+                // 2026-08-27：文字归集无成交日期 → null（确认时按确认当天）
+                null,
                 source,
                 // complete = symbol + direction + price + volume 全有（TradeLogCandidate javadoc；
                 // P1-1：原实现漏了 symbol 检查 → 无代码候选误判 complete=true 落库失败）
@@ -100,8 +107,21 @@ public class TradeLogCollectService {
             boolean hasSymbol = r.symbol() != null && !r.symbol().isBlank();
             boolean hasName = r.name() != null && !r.name().isBlank();
             if (!hasSymbol && !hasName) continue; // 同单笔：无 symbol/name 拒绝占位
+            // 2026-08-27：VLM OCR 可能漏代码列（thinking 同图两次结果不同）——无代码但有名称
+            // → 按名称查代码补 symbol（查不到保持待补充 complete=false，确认时可补）。
+            String symbol = r.symbol();
+            if (!hasSymbol && hasName) {
+                String resolved = nameToSymbolResolver.resolve(r.name());
+                if (resolved != null) {
+                    symbol = resolved;
+                    hasSymbol = true;
+                }
+            }
             TradeLogCandidate candidate = new TradeLogCandidate(
-                    r.symbol(), r.name(), r.direction(), r.price(), r.volume(), source,
+                    symbol, r.name(), r.direction(), r.price(), r.volume(),
+                    // 2026-08-27：截图表格「日期」列提取（历史成交截图）；当日成交单无日期 → null
+                    r.tradeDate(),
+                    source,
                     hasSymbol && r.price() != null && r.volume() != null);
             updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
             collected++;
@@ -170,6 +190,9 @@ public class TradeLogCollectService {
                 continue;
             }
             try {
+                // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：成交日期以候选携带的 tradeDate 为准
+                // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；无日期信息才回退确认当天。
+                java.time.LocalDate entryDate = c.tradeDate() != null ? c.tradeDate() : today;
                 tradingAppService.recordTrade(
                         userId,
                         c.symbol(),
@@ -177,7 +200,7 @@ public class TradeLogCollectService {
                         "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY,
                         c.price() != null ? c.price() : BigDecimal.ZERO,
                         c.volume() != null ? c.volume() : 0,
-                        today,
+                        entryDate,
                         java.time.LocalTime.now(), // RFC 20260822：日志确认落库带当下成交时刻
                         null, null, null, null);
                 done++;

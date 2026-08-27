@@ -1,7 +1,9 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeLogCandidate;
 import com.adaiadai.core.domain.trading.TradingException;
+import com.adaiadai.core.infrastructure.market.NameToSymbolResolver;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.TradeLogRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,12 +15,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,26 +51,27 @@ class TradeLogCollectServiceTest {
             }
             if (text.contains("未知股")) {
                 // P1-1：LLM 幻觉——有 direction 无 symbol 无 name（think 泄漏文本次生）
-                return new TradingParseAppService.ParseResult(true, null, null,
-                        "SELL", null, null, null, null, null, null);
+                return new TradingParseAppService.ParseResult(true, null, null, "SELL", null, null, null, null, null, null, null);
             }
             if (text.contains("只有名字")) {
                 // P1-1：宽松解析「清仓了XX」——有 name 无 symbol（合法待补充场景）
-                return new TradingParseAppService.ParseResult(true, null, "山西汾酒",
-                        "SELL", null, null, null, null, null, null);
+                // 2026-08-27：A/B 两个不同名——验证 dedupeKey name 兜底不互吞（原 mock 同名
+                // 靠旧 bug「symbol 读成 null 字符串致 key 不同」才过，仓储归一化后须真不同名）。
+                if (text.contains("股票B")) {
+                    return new TradingParseAppService.ParseResult(true, null, "泸州老窖", "SELL", null, null, null, null, null, null, null);
+                }
+                return new TradingParseAppService.ParseResult(true, null, "山西汾酒", "SELL", null, null, null, null, null, null, null);
             }
             if (text.contains("京东方")) {
-                return new TradingParseAppService.ParseResult(true, "000725", "京东方A",
-                        "SELL", new BigDecimal("6.10"), 5300, null, null, null, null);
+                return new TradingParseAppService.ParseResult(true, "000725", "京东方A", "SELL", new BigDecimal("6.10"), 5300, null, null, null, null, null);
             }
             if (text.contains("清仓")) {
-                return new TradingParseAppService.ParseResult(true, "600519", "贵州茅台",
-                        "SELL", null, null, null, null, null, null);
+                return new TradingParseAppService.ParseResult(true, "600519", "贵州茅台", "SELL", null, null, null, null, null, null, null);
             }
             return TradingParseAppService.ParseResult.unmatched();
         });
         trading = mock(TradingAppService.class);
-        service = new TradeLogCollectService(parse, repository, trading);
+        service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
     }
 
     @Test
@@ -137,7 +142,7 @@ class TradeLogCollectServiceTest {
         doThrow(new TradingException("卖出数量超过持仓: 000725（持有 100 股）"))
                 .when(trading).recordTrade(any(), any(), any(), any(), any(), anyInt(),
                 any(), any(), any(), any(), any(), any());
-        service = new TradeLogCollectService(parse, repository, trading);
+        service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
 
         service.collect("default", "我清仓了京东方", "text");
         assertEquals(1, service.todayCandidates("default").size());
@@ -158,18 +163,51 @@ class TradeLogCollectServiceTest {
         doThrow(new TradingException("未持有 600519，无法卖出"))
                 .when(trading).recordTrade(eq("default"), eq("600519"), any(), any(), any(), anyInt(),
                 any(), any(), any(), any(), any(), any());
-        service = new TradeLogCollectService(parse, repository, trading);
+        service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
 
         service.collect("default", "我清仓了京东方", "text"); // 000725 complete（mock 京东方分支带数量价格）
         // 茅台完整候选直接 append（mock「清仓」分支无数量价格 → 不完整，会走 dedupe 去重干扰）
         repository.append("default", java.time.LocalDate.now(),
-                new TradeLogCandidate("600519", "贵州茅台", "SELL", new BigDecimal("1500"), 500, "text", true));
+                new TradeLogCandidate("600519", "贵州茅台", "SELL", new BigDecimal("1500"), 500, null, "text", true));
 
         TradeLogCollectService.ConfirmResult r = service.confirm("default");
         assertEquals(1, r.confirmed(), "京东方成功落库");
         assertEquals(1, r.failed(), "茅台失败计入失败");
         assertEquals(1, service.todayCandidates("default").size(), "失败的茅台候选保留");
         assertEquals("600519", service.todayCandidates("default").get(0).symbol());
+    }
+
+    // ── 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：确认落库日期归属 ──
+    // 候选携带截图「日期」列提取的成交日期 → entryDate = 候选日期；无日期才回退确认当天。
+
+    @Test
+    void confirm_candidateWithTradeDate_usesTradeDateAsEntryDate() {
+        java.time.LocalDate tradeDate = java.time.LocalDate.of(2026, 8, 26);
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "BUY",
+                        new BigDecimal("56.04"), 100, tradeDate, "image", true));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.confirmed());
+        verify(trading).recordTrade(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
+                eq(new BigDecimal("56.04")), eq(100), eq(tradeDate),
+                any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirm_candidateWithoutTradeDate_fallsBackToToday() {
+        // 文字归集/当日委托截图无日期列 → tradeDate=null → entryDate 回退确认当天
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "BUY",
+                        new BigDecimal("56.04"), 100, null, "text", true));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.confirmed());
+        verify(trading).recordTrade(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
+                eq(new BigDecimal("56.04")), eq(100), eq(java.time.LocalDate.now()),
+                any(), any(), any(), any(), any());
     }
 
     // ── B6-5（2026-08-23，P1-交易18）：丢弃保留候选（钉子户）──
@@ -205,14 +243,14 @@ class TradeLogCollectServiceTest {
                     // 首次处理（京东方）进行中，新候选茅台到达（模拟 collect 并发）
                     repository.append("default", java.time.LocalDate.now(),
                             new TradeLogCandidate("600519", "贵州茅台", "SELL",
-                                    new BigDecimal("1500"), 500, "text", true));
+                                    new BigDecimal("1500"), 500, null, "text", true));
                 }
                 return java.util.List.of();
             });
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        service = new TradeLogCollectService(parse, repository, trading);
+        service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
 
         service.collect("default", "我清仓了京东方", "text"); // 000725 complete
         assertEquals(1, service.todayCandidates("default").size());
@@ -266,14 +304,10 @@ class TradeLogCollectServiceTest {
     void collect_screenshotTable_collectsAllFilledTrades() {
         // 截图表格文字 → parseLooseBatch 命中多笔 → 逐笔归集候选
         when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
-                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY",
-                        new BigDecimal("21.170"), 200, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY",
-                        new BigDecimal("64.840"), 300, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "000831", "中国稀土", "BUY",
-                        new BigDecimal("56.040"), 100, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "600206", "有研新材", "SELL",
-                        new BigDecimal("50.330"), 600, null, null, null, null)));
+                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY", new BigDecimal("21.170"), 200, null, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY", new BigDecimal("64.840"), 300, null, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "000831", "中国稀土", "BUY", new BigDecimal("56.040"), 100, null, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "600206", "有研新材", "SELL", new BigDecimal("50.330"), 600, null, null, null, null, null)));
 
         service.collect("default", "当日委托 表格文字（模拟截图识别）", "image");
 
@@ -288,8 +322,7 @@ class TradeLogCollectServiceTest {
     void collect_screenshotAcrossTwoImages_deduplicates() {
         // 用户「可能给多张截图且重复」：两张截图同一笔（亨通买入 300）→ 去重只留一笔
         when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
-                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY",
-                        new BigDecimal("64.840"), 300, null, null, null, null)));
+                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY", new BigDecimal("64.840"), 300, null, null, null, null, null)));
 
         service.collect("default", "第一张截图", "image");
         service.collect("default", "第二张截图（重复同一笔）", "image");
@@ -317,15 +350,49 @@ class TradeLogCollectServiceTest {
     void collect_batchResultWithUnknownSymbol_skipped() {
         // 批量解析结果含无 symbol 无 name 的脏行 → 跳过不落 unknown（与单笔 P1-1 同口径）
         when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
-                new TradingParseAppService.ParseResult(true, null, null, "SELL",
-                        null, null, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY",
-                        new BigDecimal("21.170"), 200, null, null, null, null)));
+                new TradingParseAppService.ParseResult(true, null, null, "SELL", null, null, null, null, null, null, null),
+                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY", new BigDecimal("21.170"), 200, null, null, null, null, null)));
 
         service.collect("default", "表格（含幻觉脏行）", "image");
 
         List<TradeLogCandidate> candidates = service.todayCandidates("default");
         assertEquals(1, candidates.size(), "脏行跳过，正常行归集");
         assertEquals("000776", candidates.get(0).symbol());
+    }
+
+    // ── 2026-08-27：VLM OCR 漏代码列 → 按名称查代码补 symbol（NameToSymbolResolver）──
+
+    @Test
+    void collectBatch_missingSymbol_resolvesByName() {
+        // 截图 OCR 无代码列（名称 价格 买卖 数量 金额）→ 归集时按名称查代码 → complete=true 可确认
+        NameToSymbolResolver resolver = mock(NameToSymbolResolver.class);
+        when(resolver.resolve("有研新材")).thenReturn("600206");
+        service = new TradeLogCollectService(parse, repository, trading, resolver);
+
+        service.collectBatch("default", java.util.List.of(
+                new TradingParseAppService.ParseResult(true, null, "有研新材", "SELL", new BigDecimal("50.330"), 600, null, null, null, null, null)), "image");
+
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size());
+        assertEquals("600206", candidates.get(0).symbol(), "按名称查到代码应补 symbol");
+        assertEquals("有研新材", candidates.get(0).name());
+        assertTrue(candidates.get(0).complete(), "代码补齐后应 complete=true 可确认入账");
+        verify(resolver).resolve("有研新材");
+    }
+
+    @Test
+    void collectBatch_missingSymbol_unresolved_completeFalse() {
+        // 名称查不到代码（东财无结果/失败）→ 保持按名称归集待补充（complete=false，确认时补）
+        NameToSymbolResolver resolver = mock(NameToSymbolResolver.class);
+        when(resolver.resolve(any())).thenReturn(null);
+        service = new TradeLogCollectService(parse, repository, trading, resolver);
+
+        service.collectBatch("default", java.util.List.of(
+                new TradingParseAppService.ParseResult(true, null, "某某新股", "BUY", new BigDecimal("10.000"), 100, null, null, null, null, null)), "image");
+
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size());
+        assertNull(candidates.get(0).symbol());
+        assertFalse(candidates.get(0).complete(), "查不到代码应保持待补充");
     }
 }

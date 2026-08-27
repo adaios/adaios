@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../widgets/input_bar.dart' show PickedImage;
 
 /// TradingPage — 建议引擎，不是记账工具（RFC 20260815）。
 ///
@@ -18,7 +20,11 @@ import '../services/api_service.dart';
 class TradingPage extends StatefulWidget {
   final ApiService api;
 
-  const TradingPage({super.key, required this.api});
+  /// 测试钩子：注入选图结果（等价 input_bar 的 debugInjectImages 模式，widget 测试不真调相册）。
+  @visibleForTesting
+  final Future<List<PickedImage>> Function()? debugPickImages;
+
+  const TradingPage({super.key, required this.api, this.debugPickImages});
 
   @override
   State<TradingPage> createState() => _TradingPageState();
@@ -73,6 +79,11 @@ class _TradingPageState extends State<TradingPage> {
   bool _reviewing = false;
   ReviewResponse? _lastReview;
 
+  // ── 2026-08-26 截图入账（交易闭环第一环）：当日候选 + 确认/丢弃 ──
+  List<TradeLogCandidateDto> _candidates = [];
+  bool _shotsUploading = false;       // 截图上传 + VLM 归集中
+  bool _candidatesConfirming = false; // 全部确认入账中
+
   Timer? _autoRefresh; // 30 分钟自动刷新（对齐 web B3，2026-08-17）
 
   @override
@@ -124,9 +135,21 @@ class _TradingPageState extends State<TradingPage> {
       _loadAux();       // 账户快照（异步，不阻塞主数据）
       _loadDaily();     // RFC 20260822：当日交易复盘（异步，失败静默）
       _loadLots();      // RFC 20260825：逐笔批次简版（异步，失败静默）
+      _loadCandidates(); // 2026-08-26 截图入账：当日候选（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = _extractApiError(e); _loading = false; }); // #113 人话
+    }
+  }
+
+  /// 2026-08-26 截图入账：当日交易日志候选（GET /trading/trade-log，异步失败静默）。
+  Future<void> _loadCandidates() async {
+    try {
+      final list = await widget.api.getTradeLogCandidates();
+      if (!mounted) return;
+      setState(() => _candidates = list);
+    } catch (_) {
+      // 静默：候选是增强项，失败不影响持仓主数据（确认后失败候选保留由 _confirmCandidates 兜底）
     }
   }
 
@@ -207,6 +230,127 @@ class _TradingPageState extends State<TradingPage> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // 2026-08-26 截图入账（交易闭环第一环）：选图 → VLM 归集 → 候选确认
+  // ────────────────────────────────────────────────────────────
+
+  /// 选图（相册多选，最多 3 张）→ 上传归集。测试注入 debugPickImages 跳过相册。
+  Future<void> _pickScreenshots() async {
+    if (_shotsUploading) return;
+    List<PickedImage> picked;
+    try {
+      if (widget.debugPickImages != null) {
+        picked = await widget.debugPickImages!();
+      } else {
+        final files = await ImagePicker().pickMultiImage(
+          maxWidth: 1920, // 限制长边，避免超大字节压栈（与 input_bar 同参）
+          imageQuality: 85,
+          limit: 3,
+        );
+        picked = [];
+        for (final f in files) {
+          final bytes = await f.readAsBytes();
+          picked.add(PickedImage(bytes, f.name,
+              f.name.contains('.') ? f.name.split('.').last : 'jpg'));
+        }
+      }
+    } catch (e) {
+      _showSnack('图片选择失败: $e', AppColors.darkOrange);
+      return;
+    }
+    if (picked.isEmpty) return;
+    if (picked.length > 3) {
+      _showSnack('一次最多 3 张截图', AppColors.darkOrange);
+      picked = picked.take(3).toList();
+    }
+    await _uploadScreenshots(picked);
+  }
+
+  /// 上传截图 → 后端 VLM 识别归集为当日候选（不建记录不落原图）。
+  Future<void> _uploadScreenshots(List<PickedImage> images) async {
+    setState(() => _shotsUploading = true);
+    try {
+      final result = await widget.api.uploadTradingScreenshots(
+        bytesList: images.map((i) => i.bytes).toList(),
+        filenames: images.map((i) => i.name).toList(),
+        mimeTypes: images.map((i) => _mimeOf(i.extension)).toList(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _shotsUploading = false;
+        _candidates = result.candidates;
+      });
+      if (result.errors.isNotEmpty) {
+        _showSnack('${result.errors.length} 张识别失败：${result.errors.join('；')}', AppColors.darkOrange);
+      } else if (result.candidates.isEmpty) {
+        _showSnack('没认出成交，试试截清楚一点（只认「已成」）', AppColors.darkGrey4);
+      } else {
+        _showSnack('识别出 ${result.candidates.length} 笔成交候选，确认后入账', AppColors.darkGreen);
+      }
+      _checkActivity(); // 截图归集后今日可能有成交 → 复盘横幅重新检测
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _shotsUploading = false);
+      _showSnack('截图入账失败: ${_extractApiError(e)}', AppColors.darkOrange);
+    }
+  }
+
+  /// 全部确认入账：逐笔走 recordTrade 落库 → 清空候选 → 持仓即时刷新 + 复盘横幅触发。
+  Future<void> _confirmCandidates() async {
+    if (_candidates.isEmpty || _candidatesConfirming) return;
+    setState(() => _candidatesConfirming = true);
+    try {
+      final result = await widget.api.confirmTradeLog();
+      if (!mounted) return;
+      setState(() {
+        _candidatesConfirming = false;
+        _candidates = [];
+      });
+      if (result.confirmed > 0) {
+        _showSnack('已确认 ${result.confirmed} 笔并入账', AppColors.darkGreen);
+      } else if (result.failed > 0) {
+        _showSnack('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}', AppColors.darkOrange);
+      } else {
+        _showSnack('没有可确认的候选', AppColors.darkGrey4);
+      }
+      _refresh();       // 持仓即时刷新
+      _checkActivity(); // 成交入账 → 复盘横幅可生成（真实成交口径）
+      _loadCandidates(); // 失败候选保留（钉子户）→ 重新拉取
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _candidatesConfirming = false);
+      _showSnack('确认失败: ${_extractApiError(e)}', AppColors.darkOrange);
+    }
+  }
+
+  /// 丢弃一条候选（识别错误/重复，DELETE /trading/trade-log?symbol=&direction=）。
+  Future<void> _discardCandidate(TradeLogCandidateDto c) async {
+    try {
+      await widget.api.discardTradeLogCandidate(
+        symbol: c.symbol.isEmpty ? null : c.symbol,
+        direction: c.direction,
+      );
+      if (!mounted) return;
+      setState(() => _candidates = _candidates
+          .where((x) => !(x.symbol == c.symbol && x.direction == c.direction))
+          .toList());
+    } catch (e) {
+      if (mounted) _showSnack('丢弃失败: ${_extractApiError(e)}', AppColors.darkOrange);
+    }
+  }
+
+  /// 扩展名 → MIME（与 main_page._mimeTypeOf 同口径；HEIC 等真实类型防误标）。
+  String _mimeOf(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'webp': return 'image/webp';
+      case 'gif': return 'image/gif';
+      case 'heic': return 'image/heic';
+      case 'heif': return 'image/heif';
+      default: return 'image/png';
+    }
   }
 
   // ────────────────────────────────────────────────────────────
@@ -518,6 +662,11 @@ class _TradingPageState extends State<TradingPage> {
                   const SizedBox(height: 10),
                   _buildExactForm(),
                 ],
+                // 2026-08-26 截图入账：当日候选（快记区下方，确认即入账，与复盘横幅成闭环）
+                if (_candidates.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildCandidatesCard(),
+                ],
                 const SizedBox(height: 16),
                 Row(children: [
                   _sectionTitle(_positions.isEmpty ? '持仓' : '持仓明细'),
@@ -584,15 +733,117 @@ class _TradingPageState extends State<TradingPage> {
         ]),
       ),
       const SizedBox(height: 4),
-      GestureDetector(
-        onTap: () => setState(() => _showForm = !_showForm),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Text(_showForm ? '收起精确填写' : '精确填写',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, decoration: TextDecoration.underline)),
+      Row(children: [
+        // 2026-08-26 截图入账：用户核心工作流「发截图」的一等入口（拍照/相册 → VLM → 候选）
+        GestureDetector(
+          onTap: _shotsUploading ? null : _pickScreenshots,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(children: [
+              _shotsUploading
+                  ? const SizedBox(width: 11, height: 11,
+                      child: CircularProgressIndicator(strokeWidth: 1.6, color: AppColors.darkGreen))
+                  : Icon(Icons.camera_alt_outlined, size: 13, color: AppColors.darkGreen),
+              const SizedBox(width: 4),
+              Text('截图入账', style: TextStyle(fontSize: 11, color: AppColors.darkGreen,
+                  decoration: TextDecoration.underline, decorationColor: AppColors.darkGreen)),
+            ]),
+          ),
         ),
-      ),
+        const SizedBox(width: 16),
+        GestureDetector(
+          onTap: () => setState(() => _showForm = !_showForm),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(_showForm ? '收起精确填写' : '精确填写',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, decoration: TextDecoration.underline)),
+          ),
+        ),
+      ]),
     ]);
+  }
+
+  // ── 2026-08-26 截图入账：当日候选卡（逐笔可丢弃 + 全部确认入账）──
+
+  Widget _buildCandidatesCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.25), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.camera_alt_outlined, size: 14, color: AppColors.darkGreen),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('今日截图候选 ${_candidates.length} 笔 · 确认后入账',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        ..._candidates.map(_candidateRow),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 36,
+          child: ElevatedButton(
+            onPressed: _candidatesConfirming ? null : _confirmCandidates,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.darkGreen.withValues(alpha: 0.15),
+              foregroundColor: AppColors.darkGreen,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: _candidatesConfirming
+                ? const SizedBox(width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
+                : const Text('全部确认入账', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _candidateRow(TradeLogCandidateDto c) {
+    final isBuy = c.direction == 'BUY';
+    final dirColor = isBuy ? AppColors.darkRed : AppColors.darkGreen;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: dirColor.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(isBuy ? '买入' : '卖出',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: dirColor)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text('${c.name.isEmpty ? c.symbol : c.name} (${c.symbol})',
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey2),
+              overflow: TextOverflow.ellipsis),
+        ),
+        if (c.tradeDate != null && c.tradeDate!.isNotEmpty)
+          Text(c.tradeDate!, // 2026-08-27：截图「日期」列提取的成交日期（确认入账按此日期）
+              style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey5)),
+        if (c.price != null && c.volume != null)
+          Text('${c.volume}股 @${_fmtPrice(c.price!)}',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4)),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: () => _discardCandidate(c),
+          child: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+        ),
+      ]),
+    );
   }
 
   // ── 确认卡片：NL 结果回显（AI 错误在此拦截，可改）──
@@ -1229,7 +1480,12 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 生成今日复盘 → 弹窗展示（交易系统反哺可达）。
+  /// 2026-08-26 复盘卡点（用户拍板）：无当日真实成交 → 引导先截图入账，不空转 AI。
   Future<void> _showReview() async {
+    if (!_hasActivity) {
+      _showSnack('今天还没有导入成交，先「截图入账」吧', AppColors.darkGrey4);
+      return;
+    }
     setState(() => _reviewing = true);
     try {
       final review = await widget.api.generateReview();

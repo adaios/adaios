@@ -20,6 +20,7 @@ import com.adaiadai.core.domain.trading.PushSettings;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
+import com.adaiadai.core.application.TradingScreenshotAppService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
@@ -65,6 +66,8 @@ public class TradingController {
     private final PushSettingsRepository pushSettingsRepository;
     /** RFC 20260817：交易日志自动归集（当日候选/确认落库）。 */
     private final TradeLogCollectService tradeLogCollectService;
+    /** 2026-08-26 截图入账：券商截图 → VLM → 当日候选（不建记录）。 */
+    private final TradingScreenshotAppService screenshotAppService;
     /** B10-1（2026-08-23，P1-推送2）：推送删除持久化（app 左滑删/web 忽略按钮）。 */
     private final MarketPushRepository marketPushRepository;
     /** RFC 20260825：批次推导与行为标注（批次视图 / 导入同步模式）。 */
@@ -81,6 +84,7 @@ public class TradingController {
                              SoldScoreService soldScoreService,
                              PushSettingsRepository pushSettingsRepository,
                              TradeLogCollectService tradeLogCollectService,
+                             TradingScreenshotAppService screenshotAppService,
                              MarketPushRepository marketPushRepository,
                              TradingLotService tradingLotService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
@@ -93,6 +97,7 @@ public class TradingController {
         this.soldScoreService = soldScoreService;
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
+        this.screenshotAppService = screenshotAppService;
         this.marketPushRepository = marketPushRepository;
         this.tradingLotService = tradingLotService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
@@ -592,6 +597,44 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(tradeLogCollectService.todayCandidates(userId));
+    }
+
+    /**
+     * 截图入账（2026-08-26，交易闭环第一环）：券商「当日委托/历史成交」截图（1-3 张 multipart）
+     * → VLM 识别 → 归集为当日候选。POST /api/v1/trading/screenshots。
+     * <p>
+     * 与首页发图（POST /records/media）的关键差异：**不建记录、不落原图、不沉淀记忆**——
+     * 截图入账是交易动作，候选确认落库后即权威数据，不污染 Feed/时间线。
+     * 响应：{total, processed, candidates:[{symbol,name,direction,price,volume,source,complete}], errors:[...]}
+     */
+    @PostMapping(value = "/screenshots", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> collectScreenshots(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("files") List<org.springframework.web.multipart.MultipartFile> files) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        try {
+            if (files == null || files.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "请选择截图"));
+            }
+            List<byte[]> images = new java.util.ArrayList<>();
+            List<String> contentTypes = new java.util.ArrayList<>();
+            for (org.springframework.web.multipart.MultipartFile f : files) {
+                images.add(f.getBytes());
+                contentTypes.add(f.getContentType() != null ? f.getContentType() : "image/png");
+            }
+            TradingScreenshotAppService.ScreenshotCollectResult r = screenshotAppService.collect(userId, images, contentTypes);
+            return ResponseEntity.ok(Map.of(
+                    "total", r.total(),
+                    "processed", r.processed(),
+                    "candidates", r.candidates(),
+                    "errors", r.errors()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.warn("截图入账失败 | userId={} | {}", userId, e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", "截图处理失败: " + e.getMessage()));
+        }
     }
 
     /** 交易日志归集（B6-5，2026-08-23，P1-交易18）：丢弃一条保留候选（失败/不完整钉子户）。

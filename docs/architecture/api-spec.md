@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-26 | v3.30 | **截图入账 + 复盘卡点批（契约同步）**：新增 `POST /trading/screenshots`（multipart 1-3 张 → VLM 归集候选，不建记录/不落原图）；`GET /trading/has-activity` 口径改「当日真实成交 > 0」（废除关键词扫描，复盘与截图入账成闭环）|
 | 2026-08-25 | v3.29 | **一键按流水重建持仓（用户场景 2026-08-25）**：新增 `POST /trading/sync`——以流水为准重建 positions（已清仓快照残留自动移除，如中电电机；流水解释不了的真底仓保留 INIT），返回 `{positionCount, removed, keptInitial}`；与「每日导当天成交 sync 模式」互补（sync 处理增量、本端点对齐存量账本）|
 | 2026-08-25 | v3.28 | **RFC 20260825 逐笔批次跟踪与行为纠偏（契约同步）**：新增 `GET /trading/lots`（批次视图：按日合并/LIFO 卖出/回合/初始批次/对账）；`POST /trades/import` 双模式（`syncMode` sync 同步持仓 / append 只补流水）+ 响应新增 `summary` 每日操作总结（买卖聚合 + 批次 diff + 行为标注六类）；推送事件加 `expiresAt`（行情类次日 09:30 消失——收盘后晚上仍可看，次日开盘前自动清；汇总类次日 23:59；`pushes/{date}.json` 记录新增字段，旧数据按类型默认保留期）|
 | 2026-08-23 | v3.27 | **推送链路修复批（契约同步）**：`MarketPushEvent` 落库透传原标题（P1-推送1 根因）；`DELETE /trading/pushes/{id}` 推送删除持久化（P1-推送2）；`GET /trade-log` 去重 ±10% 区间（sameTrade）|
@@ -668,6 +669,16 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 丢弃失败/不完整保留的「钉子户」候选（15:05 推送反复提醒同一笔时的出口）。**query**：`symbol`（可选）、`direction`（可选，BUY/SELL）。**响应**：`{"discarded":true}`；当日无此候选 → 404。
 
+### `POST /api/v1/trading/screenshots` — 截图入账（2026-08-26，交易闭环第一环）
+> 需 trading 插件（403）。
+
+券商「当日委托/历史成交」截图（1-3 张）→ VLM 识别 → 归集为当日候选。**与 `POST /records/media` 的关键差异：不建记录、不落原图、不沉淀记忆**——截图入账是交易动作不是记录动作，候选确认落库后即权威数据，不污染 Feed/时间线。
+
+- **multipart**：`files`（可多文件，字段名固定 `files`；每张 ≤ 5MB，超限/非图片/识别失败逐张降级进 `errors`）
+- **响应**：`{"total":2,"processed":2,"candidates":[{"symbol":"002428","name":"云南锗业","direction":"SELL","price":93.48,"volume":100,"source":"image","complete":true}],"errors":[]}`
+  - `total` 提交张数 / `processed` 成功识别张数 / `candidates` 当日全部候选（跨图 sameTrade ±10% 自动去重，含本次新增）/ `errors` 逐张失败原因（空 = 全成功）
+- **校验失败**（空/超 3 张）→ 400 `{"error":"请选择截图"}` 等
+
 ### `DELETE /api/v1/trading/pushes/{id}` — 删除单条推送（B10-1，2026-08-23，P1-推送2）
 > 需 trading 插件（403）。
 
@@ -806,6 +817,8 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 
 ### `GET /api/v1/trading/has-activity` — 检测交易活动
 > **⚠️ 唯一例外（2026-08-23 修正）**：本端点**不做 trading 插件门控**（代码无 `requireTradingPlugin`）——产品路径只读（app 复盘横幅），其余 33 个交易端点均 403 门控（v3.21 保留产品路径，此处显式标注防误读）。
+>
+> **口径（2026-08-26 复盘卡点，用户拍板）**：`hasActivity = 当日真实成交数 > 0`（`getDailyTradeSummary().count`，成交流水 `data/{userId}/trading/trades/{yyyy-MM}.json` 按 entryDate 统计）——**废除旧「关键词扫描对话记录」**（聊到"买/仓/股"即误报、导入成交后记录文本不带关键词反而不报）。语义：复盘生成与「今日有成交」绑定，无成交 → 前端横幅不出现 / 复盘按钮引导先截图入账。
 
 ---
 

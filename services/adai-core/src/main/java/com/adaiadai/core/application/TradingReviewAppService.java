@@ -56,6 +56,9 @@ public class TradingReviewAppService {
     private final TradingReviewFileRepository reviewRepository;
     /** RFC 20260825：行为标注注入（记录即标注进当晚复盘——亏损加仓/追高/破止损未走等）。 */
     private final TradingLotService tradingLotService;
+    /** 2026-08-26 复盘卡点：hasTradingActivity 改查当日真实成交（getDailyTradeSummary.count），
+     *  复盘生成与「今日有成交」绑定（用户拍板：导入成交后才可生成复盘）。 */
+    private final TradingAppService tradingAppService;
 
     public TradingReviewAppService(RecordRepository recordRepository,
                                    PositionRepository positionRepository,
@@ -63,7 +66,8 @@ public class TradingReviewAppService {
                                    ContextEngine contextEngine,
                                    AiClient aiClient,
                                    TradingReviewFileRepository reviewRepository,
-                                   TradingLotService tradingLotService) {
+                                   TradingLotService tradingLotService,
+                                   TradingAppService tradingAppService) {
         this.recordRepository = recordRepository;
         this.positionRepository = positionRepository;
         this.accountSnapshotRepository = accountSnapshotRepository;
@@ -71,6 +75,7 @@ public class TradingReviewAppService {
         this.aiClient = aiClient;
         this.reviewRepository = reviewRepository;
         this.tradingLotService = tradingLotService;
+        this.tradingAppService = tradingAppService;
     }
 
     /**
@@ -146,17 +151,14 @@ public class TradingReviewAppService {
     /**
      * 检测指定日期是否有交易活动（交易相关记录）。
      */
+    /**
+     * 检测指定日期是否有交易活动（2026-08-26 复盘卡点，用户拍板）：
+     * **当日真实成交 > 0** 才算有——废除旧「关键词扫描对话记录」（聊到"买/仓/股"即误报；
+     * 导入成交后若记录文本不带关键词反而不报）。口径与复盘数据源一致：
+     * 无当日成交 → 复盘无可写「今日交易执行」→ 前端横幅/按钮不出现或引导先导入。
+     */
     public boolean hasTradingActivity(String userId, LocalDate date) {
-        return recordRepository.findAll(userId).stream()
-                .filter(r -> r.createdAt().toLocalDate().equals(date))
-                .anyMatch(r -> {
-                    String content = (r.content() != null ? r.content().toLowerCase() : "")
-                            + (r.title() != null ? r.title().toLowerCase() : "");
-                    return content.contains("买") || content.contains("卖")
-                            || content.contains("仓") || content.contains("股")
-                            || content.contains("交易") || content.contains("持仓")
-                            || content.contains("止损") || content.contains("止盈");
-                });
+        return tradingAppService.getDailyTradeSummary(userId, date).count() > 0;
     }
 
     /**

@@ -12,6 +12,7 @@ import 'package:adai_app/pages/search_page.dart';
 import 'package:adai_app/pages/trading_page.dart';
 import 'package:adai_app/pages/project_task_page.dart';
 import 'package:adai_app/pages/profile_page.dart';
+import 'package:adai_app/widgets/input_bar.dart' show PickedImage; // 截图入账测试注入选图
 import 'package:adai_app/widgets/timeline_modal.dart'; // P1-G6-1 回归：await 后 setState 守卫
 
 // ────────────────────────────────────────────────────────────────
@@ -349,6 +350,8 @@ void main() {
         if (req.method == 'GET') return _dailyOk();
         return _json({'positions': []});
       };
+      // 2026-08-26 截图入账：当日候选默认空（页面 initState 拉取，覆盖此 handler 的测试自设）
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(<Object>[]);
     }
 
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
@@ -574,6 +577,112 @@ void main() {
 
       expect(find.text('卖出 2000 股超过持仓 1000 股'), findsOneWidget);
       expect(traded, isFalse);
+    });
+
+    testWidgets('截图入账：当日候选渲染 + 全部确认入账（2026-08-26 交易闭环）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+          'price': '93.48', 'volume': 100, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
+        {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
+          'price': '5.20', 'volume': 1000, 'source': 'image', 'complete': true},
+      ];
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
+      b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async {
+        candidates = []; // 模拟后端确认后清空当日候选
+        return _json({'confirmed': 2, 'failed': 0, 'skipped': 0, 'failures': []});
+      };
+      await pumpTrading(tester, b);
+
+      // 候选卡渲染：标题 + 每笔（方向徽标 + 名称 + 数量价格；带日期列显示成交日期）
+      expect(find.textContaining('今日截图候选 2 笔'), findsOneWidget);
+      expect(find.text('云南锗业 (002428)'), findsOneWidget);
+      expect(find.text('京东方A (000725)'), findsOneWidget);
+      expect(find.text('100股 @93.48'), findsOneWidget);
+      expect(find.text('2026-08-26'), findsOneWidget); // 2026-08-27：截图日期列透出，确认入账按此日期
+
+      // 全部确认入账 → 清空候选 + 人话反馈
+      await tester.tap(find.text('全部确认入账'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('已确认 2 笔并入账'), findsOneWidget);
+      expect(find.textContaining('今日截图候选'), findsNothing);
+    });
+
+    testWidgets('截图入账：丢弃一条候选（× → DELETE，本地移除）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+          'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true},
+        {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
+          'price': '5.20', 'volume': 1000, 'source': 'image', 'complete': true},
+      ];
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
+      b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async =>
+          _json({'confirmed': 0, 'failed': 0, 'skipped': 0, 'failures': []});
+      var discarded = false;
+      b.handlers['/api/v1/trading/trade-log'] = (req) async {
+        if (req.method == 'DELETE') {
+          discarded = true;
+          candidates = candidates.where((c) => c['symbol'] != '002428').toList();
+          return _json({'discarded': true});
+        }
+        return _json(candidates);
+      };
+      await pumpTrading(tester, b);
+
+      // 第一行的 ×（两行各有 ×，取第一个）
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+
+      expect(discarded, isTrue);
+      expect(find.text('云南锗业 (002428)'), findsNothing);
+      expect(find.text('京东方A (000725)'), findsOneWidget);
+    });
+
+    testWidgets('截图入账：相册选图 → 上传归集 → 候选出现（debugPickImages 注入）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/screenshots'] = (_) async => _json({
+        'total': 1, 'processed': 1,
+        'candidates': [
+          {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+            'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true},
+        ],
+        'errors': [],
+      });
+      final page = TradingPage(
+        api: _apiFor(b),
+        debugPickImages: () async => [PickedImage([1, 2, 3], 's1.png', 'png')],
+      );
+      await tester.pumpWidget(MaterialApp(home: page));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('今日截图候选 1 笔'), findsOneWidget);
+      expect(find.text('云南锗业 (002428)'), findsOneWidget);
+      expect(find.textContaining('识别出 1 笔成交候选'), findsOneWidget);
+    });
+
+    testWidgets('复盘卡点：无当日成交 → 点复盘提示先截图入账（2026-08-26）', (tester) async {
+      final b = _Backend();
+      mockBase(b); // has-activity = false（今日无成交）
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(<Object>[]);
+      var reviewCalled = false;
+      b.handlers['/api/v1/trading/review'] = (_) async {
+        reviewCalled = true;
+        return _json({'date': '2026-08-15', 'content': '# 复盘'});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.byTooltip('复盘'));
+      await tester.pumpAndSettle();
+
+      expect(reviewCalled, isFalse); // 未调生成
+      expect(find.textContaining('今天还没有导入成交'), findsOneWidget);
     });
 
     testWidgets('精确表单 BUY：无止损/买点字段，直接提交（简化后归 web 设置）', (tester) async {

@@ -58,7 +58,8 @@ class TradingReviewAppServiceTest {
 
         TradingReviewAppService service = new TradingReviewAppService(
                 recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
-                contextEngine, aiClient, reviewRepository, mock(TradingLotService.class));
+                contextEngine, aiClient, reviewRepository, mock(TradingLotService.class),
+                mock(TradingAppService.class));
 
         // ── 执行 ──
         LocalDate date = LocalDate.of(2026, 8, 1);
@@ -110,7 +111,8 @@ class TradingReviewAppServiceTest {
 
         TradingReviewAppService service = new TradingReviewAppService(
                 recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
-                contextEngine, aiClient, reviewRepository, lotService);
+                contextEngine, aiClient, reviewRepository, lotService,
+                mock(TradingAppService.class));
         LocalDate date = LocalDate.of(2026, 8, 1);
         service.generateReview("default", date);
 
@@ -121,6 +123,37 @@ class TradingReviewAppServiceTest {
         assertTrue(recordCaptor.getValue().content().contains("亏损加仓"),
                 "行为标注内容应注入复盘（阿呆观察，纪律对照）");
         verify(lotService).analyzeBehaviors(eq("default"), eq(date));
+    }
+
+    @Test
+    void hasTradingActivity_true_whenDailyTradesExist() {
+        // 2026-08-26 复盘卡点：口径 = 当日真实成交 > 0（非关键词扫描对话记录）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary("2026-08-02", 2, 1, 1,
+                        1000, 500, List.of(), null, null));
+        TradingReviewAppService service = new TradingReviewAppService(
+                mock(RecordRepository.class), mock(PositionRepository.class),
+                mock(AccountSnapshotRepository.class), mock(ContextEngine.class),
+                mock(AiClient.class), mock(TradingReviewFileRepository.class),
+                mock(TradingLotService.class), trading);
+
+        assertTrue(service.hasTradingActivity("default", LocalDate.of(2026, 8, 2)));
+    }
+
+    @Test
+    void hasTradingActivity_false_whenNoDailyTrades() {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary("2026-08-02", 0, 0, 0,
+                        0, 0, List.of(), null, null));
+        TradingReviewAppService service = new TradingReviewAppService(
+                mock(RecordRepository.class), mock(PositionRepository.class),
+                mock(AccountSnapshotRepository.class), mock(ContextEngine.class),
+                mock(AiClient.class), mock(TradingReviewFileRepository.class),
+                mock(TradingLotService.class), trading);
+
+        assertFalse(service.hasTradingActivity("default", LocalDate.of(2026, 8, 2)));
     }
 }
 

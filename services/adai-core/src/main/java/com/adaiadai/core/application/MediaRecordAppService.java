@@ -121,9 +121,13 @@ public class MediaRecordAppService {
         }
 
         // RFC 20260817：交易日志自动归集——仅 trading 插件用户；截图被 VLM 识别为成交动作时收集候选
+        // 2026-08-27：归集原料用 extractedText（OCR 全文）优先——summary 只是概括（flash 只给 6 字，
+        // 表格行拆不出）；thinking 的 extractedText 才是完整表格文字（截图入账批同口径）。
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             try {
-                tradeLogCollectService.collect(userId, summary, "image");
+                String ocr = (understanding.extractedText() != null && !understanding.extractedText().isBlank())
+                        ? understanding.extractedText() : summary;
+                tradeLogCollectService.collect(userId, ocr, "image");
             } catch (Exception e) {
                 log.warn("交易日志归集失败（不影响记录）| id={} | {}", id, e.getMessage());
             }

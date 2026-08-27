@@ -45,6 +45,7 @@ public class TradingParseAppService {
             String direction, // "BUY" / "SELL"
             BigDecimal price,
             Integer volume,
+            java.time.LocalDate tradeDate, // 2026-08-27：截图表格「日期」列提取；无 → null（归集当天）
             BigDecimal stopLossPrice,
             String buyPoint,
             BigDecimal targetPrice,
@@ -52,7 +53,7 @@ public class TradingParseAppService {
     ) {
         /** 未匹配结果（matched=false，其余字段全 null）。 */
         public static ParseResult unmatched() {
-            return new ParseResult(false, null, null, null, null, null, null, null, null, null);
+            return new ParseResult(false, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -67,15 +68,23 @@ public class TradingParseAppService {
     /**
      * 表格批量解析（2026-08-26，截图归集 P1 修复）：券商「当日委托/历史成交」截图被 VLM
      * 识别为表格文字（如「云南锗业 002428 93.480 卖出 100 已成 14:56:09」）——一句话解析器
-     * 按单笔句式拆不出表格。本模式逐行提取「名称 代码 价格 买卖 数量 状态」六段，
-     * 每行一笔；状态非「已成」类（已报/已确认/已撤 = 未成交或非交易）整行跳过。
+     * 按单笔句式拆不出表格。本模式逐行提取「名称 代码 价格 买卖 数量 [尾列]」六段，
+     * 每行一笔；尾列（状态/金额）判定：中文状态非「已成」类（已报/已确认/已撤 = 未成交或
+     * 非交易）整行跳过；数字 = 成交金额（2026-08-27 当日成交单「名称 代码 价格 买卖 数量
+     * 金额 日期」无状态列）→ 有金额即已成；无尾列 → 默认归集（列齐全即成交行）。
      */
     private static final Pattern TABLE_TRADE_PATTERN = Pattern.compile(
-            "([\\u4e00-\\u9fa5A-Za-z]{2,12})\\s+(\\d{6})\\s+([\\d.]+)\\s+(买入|卖出)\\s+(\\d+)\\s*([^\\s]+)");
+            "([\\u4e00-\\u9fa5A-Za-z]{2,12})\\h+(?:(\\d{6})\\h+)?([\\d.]+)\\h+(买入|卖出)\\h+(\\d+)(?:\\h+([^\\s]+))?");
     /** 状态命中「已成/部成/全部成交」才归集（含"成"字）；「已报/已确认/已撤」为未成交或非交易。 */
     private static final Pattern FILLED_STATUS_PATTERN = Pattern.compile("成");
-    /** 新股申购等非二级市场交易：名称含「申购/认购」跳过（天博申购 732448 等）。 */
-    private static final Pattern NON_TRADE_NAME_PATTERN = Pattern.compile("申购|认购");
+    /** 尾列是数字 = 成交金额（无状态列成交单）；是中文 = 状态词（走「成」字过滤）。 */
+    private static final Pattern TAIL_IS_AMOUNT_PATTERN = Pattern.compile("\\d");
+    /** 新股申购等非二级市场交易：名称含「申购/认购/配号」跳过（天博申购 732448 / 天博配号 736448 等）。 */
+    private static final Pattern NON_TRADE_NAME_PATTERN = Pattern.compile("申购|认购|配号");
+    /** 2026-08-27：表格行内成交日期——完整 yyyy-MM-dd / yyyy/MM/dd（优先）。 */
+    private static final Pattern TRADE_DATE_FULL_PATTERN = Pattern.compile("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}");
+    /** 2026-08-27：短日期 MM-dd / M-d（无年份；跨年回退去年——1 月看去年 12 月截图）。 */
+    private static final Pattern TRADE_DATE_SHORT_PATTERN = Pattern.compile("(?<![0-9])\\d{1,2}[-/]\\d{1,2}(?![0-9])");
     /** 正则兜底：止损位（RFC 20260816 §4.3：「止损 Z」→ stopLossPrice）。 */
     private static final Pattern STOP_LOSS_PATTERN = Pattern.compile("止损\\s*([\\d.]+)");
     /** 正则兜底：买点（RFC 20260816 §4.3：「，B1/B2/B3/SB1」→ buyPoint）。 */
@@ -136,7 +145,7 @@ public class TradingParseAppService {
             boolean sell = verb.contains("卖") || verb.contains("清仓");
             String symbol = stock.matches("\\d{6}") ? stock : null;
             return new ParseResult(true, symbol, symbol == null ? stock : null,
-                    sell ? "SELL" : "BUY", null, null, null, null, null, null);
+                    sell ? "SELL" : "BUY", null, null, null, null, null, null, null);
         }
         return ParseResult.unmatched();
     }
@@ -173,22 +182,39 @@ public class TradingParseAppService {
         List<ParseResult> results = new java.util.ArrayList<>();
         Matcher m = TABLE_TRADE_PATTERN.matcher(text);
         while (m.find()) {
+            // 2026-08-27：成交日期提取——表格行内「日期」列（历史成交截图常带 yyyy-MM-dd）。
+            // 从匹配行（行首到行尾）的两侧文本里找日期，不依赖列序：行首（「2026-08-26 名称 代码 …」）
+            // 或行尾（「… 金额 2026-08-26 14:56:09」）均可；当日成交单无日期列 → null（归集当天）。
+            int lineStart = Math.max(0, text.lastIndexOf('\n', m.start()) + 1);
+            int lineEnd = text.indexOf('\n', m.end());
+            if (lineEnd < 0) lineEnd = text.length();
+            String rowBefore = text.substring(lineStart, m.start());
+            String rowAfter = text.substring(m.end(), lineEnd);
+            java.time.LocalDate tradeDate = extractTradeDate(rowBefore + " " + rowAfter);
+
             String name = m.group(1).trim();
-            String symbol = m.group(2).trim();
-            String status = m.group(6).trim();
-            // 状态过滤：只归集已成/部成（含"成"字）；已报（未成交）、已确认（非交易）、已撤 → 跳过
-            if (!FILLED_STATUS_PATTERN.matcher(status).find()) {
-                log.debug("表格行跳过（未成交/非交易状态）| {} {} {} 状态={}", name, symbol, status);
-                continue;
+            // 2026-08-27：代码列可选（VLM OCR 不稳定，同图两次可能漏代码列）——无代码行
+            // 保留 name，由归集器按名称查代码补 symbol（NameToSymbolResolver）。
+            String symbol = m.group(2) != null ? m.group(2).trim() : null;
+            String tail = m.group(6) != null ? m.group(6).trim() : "";
+            // 尾列判定（2026-08-27 兼容无状态列成交单）：
+            // - 空 → 无状态列（名称 代码 价格 买卖 数量 金额 日期）→ 默认归集
+            // - 数字 → 成交金额（30198.00）→ 有金额即已成 → 归集
+            // - 中文状态词 → 含"成"（已成/部成）归集；已报/已确认/已撤 → 跳过
+            if (!tail.isEmpty() && !TAIL_IS_AMOUNT_PATTERN.matcher(tail).find()) {
+                if (!FILLED_STATUS_PATTERN.matcher(tail).find()) {
+                    log.debug("表格行跳过（未成交/非交易状态）| {} {} {} 状态={}", name, symbol, tail);
+                    continue;
+                }
             }
-            // 新股申购/认购：非二级市场交易（天博申购 732448 等）
+            // 新股申购/认购/配号：非二级市场交易（天博申购 732448 / 天博配号 736448 等）
             if (NON_TRADE_NAME_PATTERN.matcher(name).find()) {
-                log.debug("表格行跳过（新股申购/认购）| {} {} 状态={}", name, symbol, status);
+                log.debug("表格行跳过（新股申购/认购/配号）| {} {} 尾列={}", name, symbol, tail);
                 continue;
             }
             // 通达信占位代码（79/80/81/82）——与历史成交导入同口径
-            if (com.adaiadai.core.application.TradingImportParser.isNonTradableCode(symbol)) {
-                log.debug("表格行跳过（占位代码）| {} {} 状态={}", name, symbol, status);
+            if (symbol != null && com.adaiadai.core.application.TradingImportParser.isNonTradableCode(symbol)) {
+                log.debug("表格行跳过（占位代码）| {} {} 尾列={}", name, symbol, tail);
                 continue;
             }
             BigDecimal price;
@@ -210,13 +236,46 @@ public class TradingParseAppService {
             }
             String direction = "买入".equals(m.group(4)) ? "BUY" : "SELL";
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
-                    null, null, null, null));
+                    tradeDate, null, null, null, null));
         }
         if (!results.isEmpty()) {
             log.info("表格批量解析 | 命中 {} 笔 | 文本前 80 字: {}", results.size(),
                     text.length() > 80 ? text.substring(0, 80) : text);
         }
         return results;
+    }
+
+    /**
+     * 2026-08-27：从表格行文本提取成交日期（历史成交截图「日期」列）。
+     * 完整格式 yyyy-MM-dd / yyyy/MM/dd 优先；短格式 MM-dd / M/d 无年份 → 当年，
+     * 晚于今天视为去年（跨年场景：1 月归集去年 12 月成交截图）。提取不到返回 null（归集当天兜底）。
+     */
+    private static java.time.LocalDate extractTradeDate(String row) {
+        if (row == null || row.isBlank()) return null;
+        Matcher full = TRADE_DATE_FULL_PATTERN.matcher(row);
+        if (full.find()) {
+            try {
+                return java.time.LocalDate.parse(full.group().replace('/', '-'));
+            } catch (Exception ignored) {
+                // 落到短格式
+            }
+        }
+        Matcher shortM = TRADE_DATE_SHORT_PATTERN.matcher(row);
+        if (shortM.find()) {
+            try {
+                String[] p = shortM.group().split("[-/]");
+                int month = Integer.parseInt(p[0]);
+                int day = Integer.parseInt(p[1]);
+                if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+                int year = java.time.LocalDate.now().getYear();
+                java.time.LocalDate d = java.time.LocalDate.of(year, month, day);
+                if (d.isAfter(java.time.LocalDate.now())) d = d.minusYears(1);
+                return d;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private ParseResult parseLooseResult(String raw) {
@@ -245,7 +304,7 @@ public class TradingParseAppService {
                 volume = node.get("volume").asInt();
                 if (volume <= 0) volume = null;
             }
-            return new ParseResult(true, symbol, name, direction, price, volume, null, null, null, null);
+            return new ParseResult(true, symbol, name, direction, price, volume, null, null, null, null, null);
         } catch (Exception e) {
             log.warn("宽松交易解析输出不可解析 | {}", e.getMessage());
             return ParseResult.unmatched();
@@ -308,7 +367,7 @@ public class TradingParseAppService {
         String reason = node.hasNonNull("reason") && !node.get("reason").asText().isBlank()
                 ? node.get("reason").asText().trim() : null;
         return new ParseResult(true, symbol, name, direction, price, volume,
-                stopLossPrice, buyPoint, targetPrice, reason);
+                null, stopLossPrice, buyPoint, targetPrice, reason);
     }
 
     private ParseResult parseWithRegex(String text) {
@@ -368,6 +427,6 @@ public class TradingParseAppService {
         }
 
         return new ParseResult(true, symbol, name, direction, price, volume,
-                stopLossPrice, buyPoint, null, null);
+                null, stopLossPrice, buyPoint, null, null);
     }
 }

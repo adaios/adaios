@@ -45,11 +45,15 @@ public class TradeLogRepository {
                 String price = n.path("price").asText("");
                 String volume = n.path("volume").asText("");
                 list.add(new TradeLogCandidate(
-                        n.path("symbol").asText(),
-                        n.path("name").asText(),
+                        // 2026-08-27：symbol/name 为 null 时 Jackson NullNode.asText() 返回 "null" 字符串
+                        // （round-trip 后污染 dedupeKey/complete 判定）——归一化为 null；兼容历史脏数据。
+                        normalizeNull(n.path("symbol").asText()),
+                        normalizeNull(n.path("name").asText()),
                         n.path("direction").asText(),
                         price == null || price.isBlank() ? null : new java.math.BigDecimal(price),
                         volume == null || volume.isBlank() ? null : Integer.valueOf(volume),
+                        // 2026-08-27：tradeDate 可空（文字归集/旧候选无日期）——确认时回退确认当天
+                        parseTradeDate(n.path("tradeDate").asText("")),
                         n.path("source").asText("text"),
                         n.path("complete").asBoolean(false)));
             });
@@ -57,6 +61,21 @@ public class TradeLogRepository {
         } catch (Exception e) {
             log.warn("读取交易日志候选失败 | userId={} | date={} | {}", userId, date, e.getMessage());
             return List.of();
+        }
+    }
+
+    /** Jackson NullNode.asText() 返回 "null" 字符串——统一归 null（空串/字面 "null" 均视为无值）。 */
+    private static String normalizeNull(String v) {
+        return (v == null || v.isBlank() || "null".equals(v)) ? null : v;
+    }
+
+    /** 反序列化 tradeDate：空串/非法格式 → null（旧候选/文字归集无日期，确认时回退确认当天）。 */
+    private static java.time.LocalDate parseTradeDate(String v) {
+        if (v == null || v.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(v);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -116,6 +135,7 @@ public class TradeLogRepository {
                     n.put("volume", "");
                 }
                 n.put("source", c.source());
+                n.put("tradeDate", c.tradeDate() != null ? c.tradeDate().toString() : "");
                 n.put("complete", c.complete());
             }
             fileStorage.write(userId, DIR + date + ".json", MAPPER.writeValueAsString(arr));

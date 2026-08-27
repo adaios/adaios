@@ -53,11 +53,18 @@ public class GlmVisualAiClient implements VisualAiClient {
     private final String apiKey;
     private final String apiUrl;
     private final String model;
+    /**
+     * 输出预算（2026-08-27 模型切换配置化）：thinking 模型（glm-4.1v-thinking-flash）要 2048
+     * 才有 answer 空间（P0-1：1024 被 think 吃光）；flash 模型（glm-4v-flash）上限仅 1024——
+     * 2048 直接 400（code 1210）。按模型配 `adai.ai.vision.max-tokens`，默认 2048 保 thinking 兼容。
+     */
+    private final int maxTokens;
 
     public GlmVisualAiClient(
             @Value("${GLM_API_KEY:}") String apiKey,
             @Value("${GLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}") String baseUrl,
-            @Value("${adai.ai.vision.model:glm-4.1v-thinking-flash}") String model
+            @Value("${adai.ai.vision.model:glm-4.1v-thinking-flash}") String model,
+            @Value("${adai.ai.vision.max-tokens:2048}") int maxTokens
     ) {
         this.httpClient = HttpClient.newBuilder()
                 .proxy(ProxySelector.of(null))  // 不走系统代理（Privoxy）
@@ -66,11 +73,12 @@ public class GlmVisualAiClient implements VisualAiClient {
         this.apiKey = apiKey;
         this.apiUrl = baseUrl + "/chat/completions";
         this.model = model;
+        this.maxTokens = maxTokens;
 
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("GLM_API_KEY 未设置，GlmVisualAiClient 将无法工作");
         } else {
-            log.info("GlmVisualAiClient 初始化 | url={} | model={}", this.apiUrl, this.model);
+            log.info("GlmVisualAiClient 初始化 | url={} | model={} | maxTokens={}", this.apiUrl, this.model, this.maxTokens);
         }
     }
 
@@ -151,7 +159,8 @@ public class GlmVisualAiClient implements VisualAiClient {
         root.put("model", model);
         // P0-1（2026-08-18）：thinking 模型思考过程长，1024 被 think 吃光后 answer 无输出
         // （生产 5/7 张图仅返回 <think> 无 answer）。调到 2048 给 answer 留出空间。
-        root.put("max_tokens", 2048);
+        // 2026-08-27：按模型配置（flash 上限 1024，配置 ADAI_AI_VISION_MAX_TOKENS）。
+        root.put("max_tokens", maxTokens);
         root.put("temperature", 0.3);
 
         ArrayNode messages = root.putArray("messages");
@@ -178,7 +187,7 @@ public class GlmVisualAiClient implements VisualAiClient {
     private String buildMultiRequestBody(List<ImageRequest> requests, String textPrompt) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("model", model);
-        root.put("max_tokens", 2048);
+        root.put("max_tokens", maxTokens);
         root.put("temperature", 0.3);
 
         ArrayNode messages = root.putArray("messages");

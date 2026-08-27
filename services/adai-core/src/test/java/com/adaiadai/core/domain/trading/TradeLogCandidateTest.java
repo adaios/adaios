@@ -15,7 +15,7 @@ class TradeLogCandidateTest {
 
     private TradeLogCandidate c(String symbol, String dir, Integer volume) {
         return new TradeLogCandidate(symbol, symbol + "名", dir,
-                volume != null ? new BigDecimal("10.0") : null, volume, "text",
+                volume != null ? new BigDecimal("10.0") : null, volume, null, "text",
                 volume != null);
     }
 

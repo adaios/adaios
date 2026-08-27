@@ -52,10 +52,17 @@ class BriefAppServiceTest {
     private BriefAppService buildService(TagIndexService tagIndexService) {
         MemoryService memoryService = new MemoryService(fileStorage);
         TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
+        // 2026-08-26 复盘卡点：hasTradingActivity 依赖 TradingAppService.getDailyTradeSummary——
+        // mock 打桩当日无成交（简报测试不关心成交，防 NPE）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary("2026-08-02", 0, 0, 0,
+                        0, 0, java.util.List.of(), null, null));
         return new BriefAppService(
                 identityRepository, recordRepository, memoryService,
                 aiClient, new TradingReviewAppService(
-                        recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo, mock(TradingLotService.class)),
+                        recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo, mock(TradingLotService.class),
+                        trading),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
                 mock(TaskRepository.class),
