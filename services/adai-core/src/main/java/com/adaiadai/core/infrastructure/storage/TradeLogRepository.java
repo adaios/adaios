@@ -28,8 +28,19 @@ public class TradeLogRepository {
 
     private final FileStorage fileStorage;
     /** per-user 写锁（C5，2026-08-23）：锁 key 收敛为 userId——date 维度会随日期无限增长；
-     *  同用户全日期共享一把锁（append/discard/save 均极快，串行度可接受）。 */
-    private final java.util.concurrent.ConcurrentHashMap<String, Object> locks = new java.util.concurrent.ConcurrentHashMap<>();
+     *  同用户全日期共享一把锁（append/discard/save 均极快，串行度可接受）。
+     *  P2-交易28（2026-08-29）：原 ConcurrentHashMap 锁池按 userId 无界增长（#179 任意 userId 可撑爆）——
+     *  改固定 16 条带锁（个人系统并发度低，条带串行可接受；从根上消除 map 增长）。 */
+    private static final Object[] LOCK_STRIPES = new Object[16];
+
+    static {
+        for (int i = 0; i < LOCK_STRIPES.length; i++) LOCK_STRIPES[i] = new Object();
+    }
+
+    private static Object lockFor(String userId) {
+        int h = (userId != null ? userId : "default").hashCode();
+        return LOCK_STRIPES[(h ^ (h >>> 16)) & (LOCK_STRIPES.length - 1)];
+    }
 
     public TradeLogRepository(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
@@ -83,7 +94,7 @@ public class TradeLogRepository {
      *  B6-2（2026-08-23，P1-交易12）：去重从 dedupeKey 字符串桶改为 sameTrade 区间判定——
      *  固定 10 股桶过宽吞笔（10 vs 19）/过窄漏去重（100 vs 110 → confirm 双落库）双缺陷。 */
     public List<TradeLogCandidate> append(String userId, LocalDate date, TradeLogCandidate candidate) {
-        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
             List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
             boolean dup = existing.stream().anyMatch(c -> c.sameTrade(candidate));
@@ -97,15 +108,44 @@ public class TradeLogRepository {
      *  B5-4（2026-08-23）：与 append 同一把 per-user 锁——confirm 的 save 与 collect 的 append
      *  并发时不再清掉确认期间新归集的候选（原 save 无锁；synchronized 可重入，append 锁内调用安全）。 */
     public void save(String userId, LocalDate date, List<TradeLogCandidate> candidates) {
-        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
             saveUnlocked(userId, date, candidates);
         }
     }
 
+    /**
+     * 确认落库的锁内原子「读最新 → 合并保留集 → 写回」（P2-交易25，2026-08-29）：
+     * <p>
+     * confirm 原实现先锁外读 latest 再锁内 save——读→写之间新 append 的候选仍会被覆盖
+     * （C1 只堵了「处理前读候选 → save 前读 latest」主窗口，残余窗口在 latest 读后、save 前）。
+     * 本方法把「读最新候选 + 合并 + 写」整体纳入 per-user 锁：
+     * 并发 append 要么在本锁前完成（latest 可见）、要么在本锁后执行（写后追加），串行化后无覆盖。
+     *
+     * @param handled 本次确认已处理（落库成功或保留）的候选——不重复并入
+     * @param keep    确认后保留集（失败/不完整候选）
+     * @return 合并写回后的当日候选全量
+     */
+    public List<TradeLogCandidate> saveMerging(String userId, LocalDate date,
+                                               List<TradeLogCandidate> handled,
+                                               List<TradeLogCandidate> keep) {
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> latest = new ArrayList<>(findByDate(userId, date));
+            List<TradeLogCandidate> merged = new ArrayList<>(keep);
+            for (TradeLogCandidate n : latest) {
+                boolean wasHandled = handled.stream().anyMatch(c -> c.sameTrade(n));
+                boolean alreadyKept = merged.stream().anyMatch(c -> c.sameTrade(n));
+                if (!wasHandled && !alreadyKept) merged.add(n);
+            }
+            saveUnlocked(userId, date, merged);
+            return merged;
+        }
+    }
+
     /** 丢弃一条候选（B6-5，2026-08-23，P1-交易18）：按 symbol+direction 移除，锁内读-过滤-写回。 */
     public boolean discard(String userId, LocalDate date, String symbol, String direction) {
-        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
             List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
             boolean removed = existing.removeIf(c ->
@@ -122,7 +162,7 @@ public class TradeLogRepository {
     public boolean updateTradeDate(String userId, LocalDate date, String symbol, String direction,
                                    LocalDate tradeDate) {
         if (symbol == null || direction == null || tradeDate == null) return false;
-        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
             List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
             boolean updated = false;

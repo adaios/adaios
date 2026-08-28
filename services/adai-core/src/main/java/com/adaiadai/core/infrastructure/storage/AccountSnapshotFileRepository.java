@@ -11,7 +11,6 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -31,8 +30,20 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
     /** per-user 写锁（P0-2，2026-08-23 注释修正）：同一 userId 的读-改-写串行。
      *  C6（隔离审查战略）：锁为**单实例内**进程锁（ConcurrentHashMap）——TradingAppService.tradeLock
      *  （业务 RMW）+ 本锁（文件原子写）双层；多实例部署同写 data/ 即失效（当前单实例，注释如实）。
-     *  跨文件一致性（positions/account/流水）无原子手段——收盘与交易并发窗口已文档化（trading-features §8）。 */
-    private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
+     *  跨文件一致性（positions/account/流水）无原子手段——收盘与交易并发窗口已文档化（trading-features §8）。
+     *  P2-交易28（2026-08-29）：原 ConcurrentHashMap 锁池按 userId 无界增长（#179 任意 userId 可撑爆内存）——
+     *  改固定 16 条带锁（个人系统并发度低，条带串行可接受；从根上消除 map 增长）。 */
+    private static final int LOCK_STRIPES = 16;
+    private final Object[] locks = new Object[LOCK_STRIPES];
+
+    {
+        for (int i = 0; i < LOCK_STRIPES; i++) locks[i] = new Object();
+    }
+
+    private static Object lockFor(Object[] stripes, String userId) {
+        int h = (userId != null ? userId : "default").hashCode();
+        return stripes[(h ^ (h >>> 16)) & (stripes.length - 1)];
+    }
 
     private final FileStorage fileStorage;
 
@@ -69,7 +80,7 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
 
     @Override
     public AccountSnapshot update(String userId, Function<Optional<AccountSnapshot>, AccountSnapshot> fn) {
-        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object());
+        Object lock = lockFor(locks, userId);
         synchronized (lock) {
             Optional<AccountSnapshot> current = findLatest(userId);
             AccountSnapshot next = fn.apply(current);

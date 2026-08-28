@@ -165,10 +165,11 @@ void main() {
       expect(a.totalPnl, closeTo(-39495.12, 0.01));
     });
 
-    test('AccountSnapshotDto empty defaults totalPnl 0', () {
+    test('AccountSnapshotDto empty defaults totalPnl null（本金未设不给误导数值，P2-交易31）', () {
       final a = AccountSnapshotDto.fromJson({});
       expect(a.assets, 0);
-      expect(a.totalPnl, 0);
+      expect(a.principal, 0);
+      expect(a.totalPnl, isNull, reason: 'principal=0 → 总盈亏 null（UI 显示 — 引导设本金，U32）');
     });
   });
 

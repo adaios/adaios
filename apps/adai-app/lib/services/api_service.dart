@@ -1565,7 +1565,11 @@ class AccountSnapshotDto {
   /// 总盈亏 = 资产 - 本金（用户确认口径，2026-08-16）。
   /// P1-前端3（2026-08-17 走查）：principal>0 兜底与 web/后端对齐——本金未录时退回券商浮盈 pnl，
   /// 否则新账号显示「总盈亏=总资产」全当盈利
-  double get totalPnl => principal > 0 ? assets - principal : pnl;
+  /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效）。
+  /// P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ null——不给误导数值
+  /// （旧实现回落浮盈 pnl 漏已实现盈亏：清仓后浮盈≈0 却显示「0 盈亏」仍是误导）；
+  /// UI 显示「—」+ 引导设置本金。
+  double? get totalPnl => principal > 0 ? assets - principal : null;
 }
 
 /// B11-4（2026-08-23，P1-交易18）：确认交易日志落库结果（成功/失败/跳过 + 失败人话明细）。

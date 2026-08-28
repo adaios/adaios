@@ -817,6 +817,112 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('无法识别'), findsOneWidget);
     });
+
+    testWidgets('股息类资金事件显示「股息入账/红利税」类型标签，不再误显示「买入 0 股」（P2-批次6）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') {
+          return _json([
+            {
+              'id': 't1', 'symbol': '600123', 'name': '立昂微', 'direction': 'BUY',
+              'price': 25.3, 'volume': 200, 'amount': 5060.0, 'entryDate': '2026-08-12',
+              'tradeTime': '09:41:00', 'reason': '平台突破', 'fee': 1.23, 'orderId': '69351117',
+            },
+            {
+              'id': 't2', 'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL',
+              'price': 1500.0, 'volume': 100, 'entryDate': '2026-08-11', 'timestamp': '2026-08-11T10:30:00',
+            },
+            {
+              // 股息入账：BUY + volume 0 + reason=源文件备注（2026-08-25 方案 A 落流水形态）
+              'id': 'd1', 'symbol': '600519', 'name': '贵州茅台', 'direction': 'BUY',
+              'price': 0, 'volume': 0, 'amount': 152.5, 'entryDate': '2026-08-10', 'reason': '股息入账',
+            },
+            {
+              // 红利税：SELL + volume 0
+              'id': 'd2', 'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL',
+              'price': 0, 'volume': 0, 'amount': 7.5, 'entryDate': '2026-08-10', 'reason': '股息红利税',
+            },
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+
+      // 类型标签取代「买入/卖出」，普通行不受影响
+      expect(find.text('股息入账'), findsOneWidget);
+      expect(find.text('红利税'), findsOneWidget);
+      expect(find.text('买入'), findsOneWidget, reason: '仅普通 BUY 行显示买入');
+      expect(find.text('卖出'), findsOneWidget);
+      // 股息行数量/价格 '—'；发生金额 = ±amount（入账正 / 税负）
+      expect(find.text('152.50'), findsOneWidget, reason: '股息入账发生金额为正');
+      expect(find.text('-7.50'), findsOneWidget, reason: '红利税发生金额为负');
+      // 统计行：股息事件不计入买卖，单列计数
+      expect(find.textContaining('共 4 笔 · 买 1 卖 1 · 股息/红利 2'), findsOneWidget);
+    });
+  });
+
+  group('历史成交导入聚合（P2-批次4 多文件批量）', () {
+    test('多份结果计数求和 + 对账行去重 + summary 取首份 sync', () {
+      final a = HistoricalTradeImportResult(
+        imported: 3, updated: 1, skipped: 2, nonTrades: 1,
+        lines: [
+          ReconcileLine(symbol: '600123', name: '立昂微', count: 2, netVolume: 200, holdings: 200, note: '持仓匹配'),
+        ],
+        syncMode: 'sync',
+        summary: TradeImportSummary(
+          date: '2026-08-12', buyCount: 1, sellCount: 1,
+          buyAmount: 5060, sellAmount: 150000, newLots: 1, deductedLots: 0, behaviors: const [],
+        ),
+      );
+      final b = HistoricalTradeImportResult(
+        imported: 2, updated: 0, skipped: 1, nonTrades: 0,
+        lines: [
+          // 与 a 相同的对账行 → 聚合去重
+          ReconcileLine(symbol: '600123', name: '立昂微', count: 2, netVolume: 200, holdings: 200, note: '持仓匹配'),
+          ReconcileLine(symbol: '600519', name: '贵州茅台', count: 1, netVolume: -100, holdings: 0, note: '已清仓'),
+        ],
+        syncMode: 'append',
+      );
+      final agg = aggregateImportResults([a, b]);
+      expect(agg.imported, 5);
+      expect(agg.updated, 1);
+      expect(agg.skipped, 3);
+      expect(agg.nonTrades, 1);
+      expect(agg.lines.length, 2, reason: '对账行按 (symbol, netVolume, note) 去重');
+      expect(agg.syncMode, 'sync', reason: '任一文件 sync 即 sync');
+      expect(agg.summary, isNotNull);
+    });
+
+    test('TradeRecordItem 股息事件识别与标签（P2-批次6）', () {
+      final divIn = TradeRecordItem.fromJson({
+        'id': 'd1', 'symbol': '600519', 'name': '贵州茅台', 'direction': 'BUY',
+        'price': 0, 'volume': 0, 'amount': 152.5, 'entryDate': '2026-08-12', 'reason': '股息入账',
+      });
+      expect(divIn.isDividendEvent, isTrue);
+      expect(divIn.dividendLabel, '股息入账');
+      final divTax = TradeRecordItem.fromJson({
+        'id': 'd2', 'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL',
+        'price': 0, 'volume': 0, 'amount': 7.5, 'entryDate': '2026-08-12', 'reason': '股息红利税',
+      });
+      expect(divTax.isDividendEvent, isTrue);
+      expect(divTax.dividendLabel, '红利税');
+      final normal = TradeRecordItem.fromJson({
+        'id': 't1', 'symbol': '600123', 'name': '立昂微', 'direction': 'BUY',
+        'price': 25.3, 'volume': 200, 'amount': 5060, 'entryDate': '2026-08-12', 'reason': '平台突破',
+      });
+      expect(normal.isDividendEvent, isFalse, reason: '普通成交（volume>0）不是股息事件');
+    });
   });
 
   group('复盘历史 Dialog', () {
@@ -958,8 +1064,9 @@ void main() {
 
       // 命中：B1 87%（score 0-100 量纲，F53）
       expect(find.text('B1 87%'), findsOneWidget);
-      // 未命中：—
-      expect(find.text('—'), findsOneWidget);
+      // 未命中：买点信号列 '—'（账户卡总盈亏也显 '—'——mock 无 principal=0，P2-交易31 不给误导数值）
+      expect(find.text('—'), findsWidgets);
+      expect(find.text('B1 87%'), findsOneWidget);
     });
   });
 
@@ -1178,13 +1285,13 @@ void main() {
 
   // ── B2-2（2026-08-23）：资金区块总盈亏 principal=0 不把全部资产当总盈亏 ──
 
-  testWidgets('B2-2 本金未设（principal=0）资金区块总盈亏回落持仓浮盈', (tester) async {
+  testWidgets('B2-2+P2-交易31 本金未设（principal=0）资金区块总盈亏不给误导数值（显示设本金提示）', (tester) async {
     final client = MockClient((request) async {
       final path = request.url.path;
       if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
       if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
       if (path == '/api/v1/trading/account') {
-        // principal=0（新账号未设本金），pnl=15235.55
+        // principal=0（新账号未设本金），pnl=15235.55（浮盈——旧实现回落此处漏已实现盈亏）
         return _json({'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
           'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
           'todayPnl': 0.0, 'principal': 0.0, 'snapshotDate': '2026-08-16'});
@@ -1200,9 +1307,14 @@ void main() {
 
     await tester.tap(find.text('资金'));
     await tester.pumpAndSettle();
-    // 资金区块总盈亏 = totalPnl getter = pnl（principal=0 回落浮盈），而非 assets=110504.88
-    expect(find.textContaining('总盈亏 ¥15,235.55'), findsOneWidget);
+    // P2-交易31（2026-08-29，U32）：principal=0 → 总盈亏 null → 显示「—（设置本金后显示）」，
+    // 不再回落浮盈（漏已实现盈亏误导）；也不把全部资产当总盈亏
+    expect(find.textContaining('总盈亏 —（设置本金后显示）'), findsOneWidget);
+    expect(find.textContaining('总盈亏 ¥15,235.55'), findsNothing);
     expect(find.textContaining('总盈亏 ¥110,504.88'), findsNothing);
+    // 账户卡总盈亏同样不给误导数值：statCard 显示 '—' + 「未设本金，设后显示」小字
+    expect(find.text('未设本金，设后显示'), findsOneWidget);
+    expect(find.text('—'), findsWidgets);
   });
 
   // ── B2-3（2026-08-23）：历史成交导入后端人话透出（不再吞成「检查网络」）──
@@ -1475,6 +1587,19 @@ void main() {
       expect(red.style?.color, AppColors.darkRed);
       final green = tester.widget<Text>(find.text('回合 -80.00'));
       expect(green.style?.color, AppColors.darkGreen);
+      // 盈亏%：开放批次浮动 pnlPct；已清仓回合收益率（realizedPnl / 成本×买入量，前端算）。
+      // 限定弹窗内：持仓表本身也有盈亏% 列（pnlPercent 3.16），避免与弹窗批次盈亏% 撞文本
+      final inLotsDialog = find.byType(Dialog);
+      expect(find.descendant(of: inLotsDialog, matching: find.text('4.40%')), findsOneWidget);
+      expect(find.descendant(of: inLotsDialog, matching: find.text('3.16%')), findsOneWidget);
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 3.47%')), findsOneWidget); // 250 / (24.0×300)
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 -1.60%')), findsOneWidget); // -80 / (10.0×500)
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 4.09%')), findsOneWidget); // 90 / (22.0×100)
+      // 百分比颜色同盈亏（红涨绿亏）
+      final pctRed = tester.widget<Text>(find.descendant(of: inLotsDialog, matching: find.text('4.40%')));
+      expect(pctRed.style?.color, AppColors.darkRed);
+      final pctGreen = tester.widget<Text>(find.descendant(of: inLotsDialog, matching: find.text('回合 -1.60%')));
+      expect(pctGreen.style?.color, AppColors.darkGreen);
       // 对账不一致 → 橙色警告行（以持仓快照为准）；其他股票的对账行被过滤（不串股）
       expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
       expect(find.textContaining('当前持仓 200 ≠ 流水净 100'), findsOneWidget);

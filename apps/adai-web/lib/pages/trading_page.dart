@@ -567,9 +567,11 @@ class _TradingPageState extends State<TradingPage> {
           color: (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
+      // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 「—」不给误导数值
+      // （旧回落浮盈漏已实现盈亏：清仓后显示 0 盈亏仍是误导）
       _statCard('总盈亏', hasAccount ? a.totalPnl : (p?.totalPnl ?? 0),
-          color: (hasAccount ? a.totalPnl : (p?.totalPnl ?? 0)) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
-          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : null),
+          color: ((hasAccount ? a.totalPnl : (p?.totalPnl ?? 0)) ?? 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+          sub: hasAccount && a.principal > 0 ? '本金 ¥${_thousands(a.principal)}' : (hasAccount ? '未设本金，设后显示' : null)),
       const SizedBox(width: 12),
       _statCard('持仓浮盈', hasAccount ? a.pnl : 0,
           color: (hasAccount ? a.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
@@ -578,7 +580,7 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
-  Widget _statCard(String label, double value, {String format = '¥', required Color color, bool big = false, String? sub}) {
+  Widget _statCard(String label, double? value, {String format = '¥', required Color color, bool big = false, String? sub}) {
     final isCount = format.isEmpty;
     return Expanded(
       child: Container(
@@ -599,12 +601,16 @@ class _TradingPageState extends State<TradingPage> {
                 child: Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
               ),
             // P2-交易14（2026-08-17）：大数值（如 ¥-39495.12 22px 粗体）在窄卡溢出 → FittedBox 缩放 + 千分位
+            // P2-交易31（2026-08-29）：value null（本金未设）→ 灰色「—」，不给误导数值
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                isCount ? value.toInt().toString() : '$format${_thousands(value)}',
-                style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600, color: color),
+                value == null
+                    ? '—'
+                    : isCount ? value.toInt().toString() : '$format${_thousands(value)}',
+                style: TextStyle(fontSize: big ? 22 : 16, fontWeight: big ? FontWeight.w700 : FontWeight.w600,
+                    color: value == null ? AppColors.darkGrey5 : color),
               ),
             ),
           ],
@@ -951,8 +957,12 @@ class _TradingPageState extends State<TradingPage> {
                     color: w.signal.contains('金叉') ? AppColors.darkRed : AppColors.darkGrey4))),
                 DataCell(bp.isEmpty
                     ? const Text('—', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
-                    : Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed))),
+                    : ConstrainedBox(
+                        // P2-UI4（2026-08-29）：多条件 '、' 拼接限宽 + ellipsis，防撑宽整列/窄窗溢出
+                        constraints: const BoxConstraints(maxWidth: 170),
+                        child: Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed)))),
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
                   onPressed: () async {
@@ -1025,27 +1035,24 @@ class _TradingPageState extends State<TradingPage> {
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
+        // P2-UI4（2026-08-29）：统计标题行改 Wrap——窄窗口自动换行不再 RenderFlex 溢出，
+        // 且保留各段独立 Text（R66/R53 橙色重点）
+        Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 4, children: [
           Text('$total 笔 · 盈 $profit / 亏 $loss',
               style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
-          const SizedBox(width: 12),
           if (r66 > 0)
             // P2-交易5（2026-08-17）：阈值已改 -5%（课程止损幅度 3-5%），文案同步
             Text('扛单超5%（R66）$r66 笔',
                 style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
-          if (r53 > 0) ...[
-            const SizedBox(width: 12),
+          if (r53 > 0)
             // B3-5（2026-08-23）：R53 含短持仓亏损与持有较久亏损（后端 verdict 均标 R53）
             Text('违反 R53 $r53 笔',
                 style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
-          ],
           if (total > 0) ...[
-            const Spacer(),
             // P2-交易11（2026-08-17）：旧「纪律遵守率」实为胜率（profit/total 且 >=0 计盈）——口径错标；
             // 改：纪律遵守率 = (总笔数 - 违R66 - 违R53) / 总笔数；胜率单独展示（>0 才算盈）
             Text('胜率 ${((profit / total) * 100).toStringAsFixed(0)}%',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
-            const SizedBox(width: 10),
             Text('纪律遵守率 ${(((total - r66 - r53) / total) * 100).toStringAsFixed(0)}%',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                     color: (total - r66 - r53) / total >= 0.5 ? AppColors.darkGreen : AppColors.darkOrange)),
@@ -1240,9 +1247,9 @@ class _TradingPageState extends State<TradingPage> {
           Expanded(
             child: Text(
               '本金（累计净投入）¥${_thousands(_account?.principal ?? 0)}'
-              // B2-2（2026-08-23）：总盈亏复用 totalPnl getter——principal=0（新账号未设本金）
-              // 时回落持仓浮盈（pnl），不再把全部资产当总盈亏（与账户卡同口径）
-              ' · 总盈亏 ¥${_account != null ? _thousands(_account!.totalPnl) : '-'}',
+              // B2-2（2026-08-23）+ P2-交易31（2026-08-29，U32）：总盈亏 = 资产 - 本金；
+              // 本金未设（principal=0）→ 不给误导数值（旧回落浮盈漏已实现盈亏），显示「—（设本金后显示）」
+              ' · 总盈亏 ${_account != null ? (_account!.totalPnl == null ? '—（设置本金后显示）' : '¥${_thousands(_account!.totalPnl!)}') : '-'}',
               style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2),
             ),
           ),
@@ -1873,6 +1880,14 @@ class _LotsDialog extends StatelessWidget {
     this.error,
   });
 
+  /// 盈亏%：持有中/初始底仓用后端浮动 pnlPct；已清仓回合 = realizedPnl / (成本×买入量)（后端无回合百分比字段，前端算）。
+  String _lotPnlPctText(LotItem l) {
+    if (!l.closed) return '${l.pnlPct.toStringAsFixed(2)}%';
+    final cost = l.costPrice * l.volume;
+    if (cost <= 0) return '—';
+    return '回合 ${(l.realizedPnl / cost * 100).toStringAsFixed(2)}%';
+  }
+
   @override
   Widget build(BuildContext context) {
     // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
@@ -1931,6 +1946,7 @@ class _LotsDialog extends StatelessWidget {
                               DataColumn(label: Text('成本'), numeric: true),
                               DataColumn(label: Text('现价'), numeric: true),
                               DataColumn(label: Text('盈亏'), numeric: true),
+                              DataColumn(label: Text('盈亏%'), numeric: true),
                               DataColumn(label: Text('止损'), numeric: true),
                               DataColumn(label: Text('距止损%'), numeric: true),
                               DataColumn(label: Text('买点')),
@@ -1966,6 +1982,8 @@ class _LotsDialog extends StatelessWidget {
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
                                 DataCell(Text(l.closed ? '回合 ${_fmtThousands(l.realizedPnl)}' : _fmtThousands(l.pnl),
                                     style: TextStyle(fontSize: 12, color: pnlColor, fontWeight: FontWeight.w600))),
+                                DataCell(Text(_lotPnlPctText(l),
+                                    style: TextStyle(fontSize: 12, color: pnlColor))),
                                 DataCell(Text(stop != null && stop > 0 ? stop.toStringAsFixed(3) : '—',
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
                                 DataCell(Text(distance != null ? '${distance.toStringAsFixed(2)}%' : '—',
@@ -2244,7 +2262,10 @@ class _HistorySectionState extends State<_HistorySection>
   Widget build(BuildContext context) {
     super.build(context); // B5-6：keepAlive 必须调用
     final trades = _trades ?? <TradeRecordItem>[];
-    final buyCount = trades.where((t) => t.isBuy).length;
+    // P2-批次6：股息类资金事件（volume=0）不算买卖笔数——统计口径只计真实成交
+    final buyCount = trades.where((t) => t.isBuy && !t.isDividendEvent).length;
+    final sellCount = trades.where((t) => !t.isBuy && !t.isDividendEvent).length;
+    final dividendCount = trades.where((t) => t.isDividendEvent).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // 工具行：日期范围 + 刷新 + 导入历史成交
       Row(children: [
@@ -2306,7 +2327,8 @@ class _HistorySectionState extends State<_HistorySection>
       if (!_loading && _error == null && trades.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text('共 ${trades.length} 笔 · 买 $buyCount 卖 ${trades.length - buyCount}',
+          child: Text('共 ${trades.length} 笔 · 买 $buyCount 卖 $sellCount'
+              '${dividendCount > 0 ? ' · 股息/红利 $dividendCount' : ''}',
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ),
       // 最近导入结果（inline，含 updated 回填计数）
@@ -2435,7 +2457,11 @@ class _HistorySectionState extends State<_HistorySection>
 
   /// 发生金额（源文件原生）：买入为负（扣款），卖出为正（到账）。
   /// 系统存储 fee = |发生金额 − 成交金额|，据此反推；fee 缺失（手动记录/旧数据）→ '—'。
+  /// 股息类事件（P2-批次6）：amount 即发生金额绝对值，入账为正（现金流入）/ 税为负。
   static String _occurredAmount(TradeRecordItem t) {
+    if (t.isDividendEvent) {
+      return _thousands(t.isBuy ? t.amount : -t.amount);
+    }
     if (t.fee == null) return '—';
     final occurred = t.isBuy ? -(t.amount + t.fee!) : (t.amount - t.fee!);
     return _thousands(occurred);
@@ -2449,6 +2475,27 @@ class _HistorySectionState extends State<_HistorySection>
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 12, color: color ?? AppColors.darkGrey3)),
         );
+    // P2-批次6：股息类资金事件（volume=0）不走买卖行——方向列显示类型标签，
+    // 数量/价格/成交编号/费用为 '—'，发生金额 = ±amount（入账正 / 税负）。
+    if (t.isDividendEvent) {
+      // 红涨绿亏（买红卖绿同语义）：现金流入（股息入账，BUY）红、现金流出（红利税，SELL）绿
+      final dirColor = t.isBuy ? AppColors.darkRed : AppColors.darkGreen;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Row(children: [
+          cell(t.dividendLabel, 44, color: dirColor),
+          cell('—', 48, color: AppColors.darkGrey5),
+          cell(t.symbol, 72, color: AppColors.darkGrey1),
+          cell(t.name, 88),
+          cell('—', 60, right: true),
+          cell('—', 70, right: true),
+          cell('—', 90, right: true),
+          cell(_occurredAmount(t), 100, right: true),
+          cell('—', 110, color: AppColors.darkGrey5),
+          cell('—', 60, right: true),
+        ]),
+      );
+    }
     final dirColor = t.isBuy ? AppColors.darkGrey1 : AppColors.darkGrey3;
     // RFC 20260822：成交时间（HH:mm），旧数据无 → '—'
     final timeStr = (t.tradeTime != null && t.tradeTime!.length >= 5)
@@ -2548,10 +2595,56 @@ class _HistoryImportDialog extends StatefulWidget {
   State<_HistoryImportDialog> createState() => _HistoryImportDialogState();
 }
 
+/// 导入队列任务（P2-批次4/5，2026-08-29）：一份文件或一段粘贴文本 = 一个 job，
+/// 逐份处理并实时展示状态（第 N/共 M、处理中、耗时、成功/跳过/失败）。
+class _ImportJob {
+  _ImportJob.file(this.name, this.bytes) : content = null;
+  _ImportJob.text(this.name, this.content) : bytes = null;
+
+  final String name;
+  final List<int>? bytes; // 文件（未上传转码）；粘贴文本为 null
+  String? content; // 上传转码后的内容（文件）或直接粘贴的文本
+  bool processing = false;
+  bool done = false;
+  bool failed = false;
+  String? error;
+  HistoricalTradeImportResult? result;
+  int elapsedMs = 0;
+
+  bool get finished => done || failed;
+}
+
+/// 多份历史成交导入结果聚合（P2-批次4，2026-08-29 多文件批量）：
+/// 计数求和、对账行按 (symbol, netVolume, note) 去重、syncMode 任一 sync 即 sync、
+/// summary 取首份非空（多份时以第一份 sync 的操作总结为代表）。
+HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportResult> results) {
+  final lines = <ReconcileLine>[];
+  final seen = <String>{};
+  for (final r in results) {
+    for (final l in r.lines) {
+      final key = '${l.symbol}|${l.netVolume}|${l.note}';
+      if (seen.add(key)) lines.add(l);
+    }
+  }
+  TradeImportSummary? summary;
+  for (final r in results) {
+    if (r.summary != null) { summary = r.summary; break; }
+  }
+  return HistoricalTradeImportResult(
+    imported: results.fold(0, (s, r) => s + r.imported),
+    updated: results.fold(0, (s, r) => s + r.updated),
+    skipped: results.fold(0, (s, r) => s + r.skipped),
+    nonTrades: results.fold(0, (s, r) => s + r.nonTrades),
+    lines: lines,
+    syncMode: results.any((r) => r.syncMode == 'sync') ? 'sync' : 'append',
+    summary: summary,
+  );
+}
+
 class _HistoryImportDialogState extends State<_HistoryImportDialog> {
   final _text = TextEditingController();
-  bool _importing = false;
-  bool _uploading = false;
+  bool _queueRunning = false;
+  final List<_ImportJob> _jobs = [];
   HistoricalTradeImportResult? _result;
   String? _error;
 
@@ -2561,69 +2654,122 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
     super.dispose();
   }
 
-  /// 选择通达信历史成交导出 txt → 上传留存 → 转码填充 → 自动导入。
+  /// 选择通达信历史成交导出（可多选）→ 每份入队 → 逐份上传转码 + 导入。
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
+        allowMultiple: true, // P2-批次4：一次选/粘贴多份文件
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
-      final f = result.files.first;
-      if (f.bytes == null) return;
-      setState(() => _uploading = true);
-      final saved = await widget.api.saveImportFile(f.name, f.bytes!);
       if (!mounted) return;
       setState(() {
-        _uploading = false;
-        _text.text = saved.content;
         _result = null;
         _error = null;
+        for (final f in result.files) {
+          if (f.bytes == null) continue;
+          _jobs.add(_ImportJob.file(f.name, f.bytes!));
+        }
       });
-      await _import();
+      await _runQueue();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _uploading = false;
-        _error = '文件上传失败，请重试';
-      });
+      setState(() => _error = '文件读取失败，请重试');
     }
   }
 
+  /// 粘贴文本导入：单 job 入队（保持原「导入」按钮路径）。
   Future<void> _import() async {
-    setState(() {
-      _importing = true;
-      _result = null;
-      _error = null;
-    });
-    // RFC 20260823：只认通达信历史成交导出——其他格式直接人话拒绝，不静默落零
-    if (!isTdxHistoryExport(_text.text)) {
-      setState(() {
-        _importing = false;
-        _error = '无法识别——请选择通达信「历史成交查询」导出文件（表头含成交日期/证券代码/买卖标志/成交编号）';
-      });
+    if (_text.text.trim().isEmpty) {
+      setState(() => _error = '请粘贴通达信「历史成交查询」导出文本，或选择文件');
       return;
     }
-    try {
-      final result = await widget.api.importTradesHistory(_text.text);
-      if (!mounted) return;
+    setState(() {
+      _result = null;
+      _error = null;
+      _jobs.clear();
+      _jobs.add(_ImportJob.text('粘贴文本', _text.text));
+    });
+    await _runQueue();
+  }
+
+  /// 逐份处理队列：上传留存（文件）→ 格式识别 → 导入 → 实时更新状态与耗时。
+  Future<void> _runQueue() async {
+    if (_queueRunning) return;
+    _queueRunning = true;
+    for (var i = 0; i < _jobs.length; i++) {
+      final job = _jobs[i];
+      if (job.finished) continue;
+      if (!mounted) { _queueRunning = false; return; }
       setState(() {
-        _importing = false;
-        _result = result;
+        job.processing = true;
+        job.failed = false;
+        job.error = null;
       });
-      widget.onImported(result);
-    } catch (e) {
-      if (!mounted) return;
-      // B2-3（2026-08-23）：透出后端人话 error（原 contains('无法识别') 恒 false 吞掉人话）
-      setState(() {
-        _importing = false;
-        _error = extractApiErrorMessage(e);
-      });
+      final sw = Stopwatch()..start();
+      try {
+        String content = job.content ?? '';
+        if (job.bytes != null) {
+          final saved = await widget.api.saveImportFile(job.name, job.bytes!);
+          content = saved.content;
+        }
+        if (!mounted) { _queueRunning = false; return; }
+        job.content = content;
+        // RFC 20260823：只认通达信历史成交导出——其他格式直接人话拒绝，不静默落零
+        if (!isTdxHistoryExport(content)) {
+          setState(() {
+            job.processing = false;
+            job.failed = true;
+            job.error = '无法识别——需通达信「历史成交查询」导出（表头含成交日期/证券代码/买卖标志/成交编号）';
+            job.elapsedMs = sw.elapsedMilliseconds;
+          });
+          continue;
+        }
+        final result = await widget.api.importTradesHistory(content);
+        if (!mounted) { _queueRunning = false; return; }
+        setState(() {
+          job.processing = false;
+          job.done = true;
+          job.result = result;
+          job.elapsedMs = sw.elapsedMilliseconds;
+        });
+      } catch (e) {
+        if (!mounted) { _queueRunning = false; return; }
+        // B2-3（2026-08-23）：透出后端人话 error（原 contains('无法识别') 恒 false 吞掉人话）
+        setState(() {
+          job.processing = false;
+          job.failed = true;
+          job.error = extractApiErrorMessage(e);
+          job.elapsedMs = sw.elapsedMilliseconds;
+        });
+      }
     }
+    _queueRunning = false;
+    if (!mounted) return;
+    final doneJobs = _jobs.where((j) => j.done).toList();
+    if (doneJobs.isNotEmpty) {
+      final agg = _aggregate(doneJobs);
+      setState(() => _result = agg);
+      widget.onImported(agg);
+    }
+  }
+
+  /// 多份结果聚合（P2-批次4，2026-08-29）：计数求和、对账行去重、summary 取首份 sync
+  /// （多份时展示聚合数字 + 汇总对账）。独立顶层函数便于测试。
+  static HistoricalTradeImportResult _aggregate(List<_ImportJob> jobs) {
+    return aggregateImportResults(jobs.map((j) => j.result!).toList());
+  }
+
+  static String _fmtMs(int ms) {
+    if (ms < 1000) return '${ms}ms';
+    return '${(ms / 1000).toStringAsFixed(1)}s';
   }
 
   @override
   Widget build(BuildContext context) {
+    final finishedCount = _jobs.where((j) => j.finished).length;
+    final processing = _jobs.where((j) => j.processing).toList();
     return AlertDialog(
       backgroundColor: AppColors.darkSurface2,
       title: const Text('导入历史成交', style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
@@ -2633,17 +2779,15 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('只认通达信「历史成交查询」导出：补逐笔流水不重算持仓（成交编号幂等；'
-                '已存在且缺成交时间的记录自动回填，2026-08-23）',
+            const Text('只认通达信「历史成交查询」导出：可一次选择多份文件，逐份处理；'
+                '补逐笔流水不重算持仓（成交编号幂等；缺成交时间自动回填）',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
             const SizedBox(height: 8),
             Row(children: [
               OutlinedButton.icon(
-                onPressed: _uploading ? null : _pickFile,
-                icon: _uploading
-                    ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.upload_file, size: 16),
-                label: Text(_uploading ? '上传中…' : '选择文件（通达信导出 txt）',
+                onPressed: _queueRunning ? null : _pickFile,
+                icon: const Icon(Icons.upload_file, size: 16),
+                label: Text(_queueRunning ? '处理中…' : '选择文件（可多选，通达信导出 txt）',
                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.darkGrey1,
@@ -2667,13 +2811,59 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
                 alignLabelWithHint: true,
               ),
             ),
+            // P2-批次5：逐份处理状态实时可见（第 N/共 M、处理中、耗时、成功/跳过/失败）
+            if (_jobs.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.darkGrey4, width: 0.5),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('共 ${_jobs.length} 份 · 已完成 $finishedCount'
+                      '${processing.isNotEmpty ? ' · 处理中：${processing.first.name}' : ''}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+                  const SizedBox(height: 4),
+                  for (final j in _jobs)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(children: [
+                        if (j.processing)
+                          const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2))
+                        else if (j.done)
+                          const Icon(Icons.check_circle, size: 12, color: AppColors.darkGreen)
+                        else if (j.failed)
+                          const Icon(Icons.error, size: 12, color: AppColors.darkOrange)
+                        else
+                          const SizedBox(width: 10),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(j.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
+                        ),
+                        if (j.processing)
+                          const Text('导入中…', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4))
+                        else if (j.done && j.result != null)
+                          Text('新增 ${j.result!.imported} · 跳过 ${j.result!.skipped}'
+                              '${j.result!.updated > 0 ? ' · 回填 ${j.result!.updated}' : ''}'
+                              ' · ${_fmtMs(j.elapsedMs)}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4))
+                        else if (j.failed)
+                          Flexible(
+                            child: Text(j.error ?? '失败',
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+                          ),
+                      ]),
+                    ),
+                ]),
+              ),
+            ],
             const SizedBox(height: 10),
-            if (_importing)
-              const Row(children: [
-                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 8),
-                Text('导入中…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
-              ]),
             if (_result != null) ...[
               Text('导入完成：新增 ${_result!.imported} 笔'
                   '${_result!.updated > 0 ? ' · 回填成交时间 ${_result!.updated} 笔' : ''}'
@@ -2705,9 +2895,9 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
         ),
         FilledButton(
-          onPressed: _importing ? null : _import,
+          onPressed: _queueRunning ? null : _import,
           style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
-          child: const Text('导入', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          child: Text(_queueRunning ? '导入中…' : '导入', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         ),
       ],
     );

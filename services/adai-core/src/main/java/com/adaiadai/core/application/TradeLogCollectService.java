@@ -240,16 +240,12 @@ public class TradeLogCollectService {
                 log.warn("交易日志确认落库失败（保留候选）| userId={} | {} {} | {}", userId, c.direction(), c.symbol(), msg);
             }
         }
-        // C1（2026-08-23，隔离审查 P2-2）：confirm 读取→处理→save 在 repository 锁外——
-        // 处理期间新归集（collect append）的候选若直接 save(remaining) 会被覆盖清掉。
-        // 修：save 前重新读当日全部候选，把「不在本次处理范围」的新候选并入保留集。
-        List<TradeLogCandidate> latest = tradeLogRepository.findByDate(userId, today);
-        for (TradeLogCandidate n : latest) {
-            boolean handled = candidates.stream().anyMatch(c -> c.sameTrade(n));
-            boolean alreadyKept = remaining.stream().anyMatch(c -> c.sameTrade(n));
-            if (!handled && !alreadyKept) remaining.add(n);
-        }
-        tradeLogRepository.save(userId, today, remaining);
+        // C1（2026-08-23，隔离审查 P2-2）+ P2-交易25（2026-08-29 残余窗口根治）：
+        // confirm 读取→处理→save 原在 repository 锁外——处理期间新归集（collect append）的候选
+        // 若直接 save(remaining) 会被覆盖清掉；且「锁外读 latest 再锁内 save」的读→写间仍有窗口。
+        // 现整体收敛到 repository 锁内原子「读最新 → 合并保留集 → 写回」（saveMerging）：
+        // 并发 append 与本写串行化，新候选不再被覆盖。
+        tradeLogRepository.saveMerging(userId, today, candidates, remaining);
         log.info("交易日志确认落库 | userId={} | 成功 {} / 失败 {} / 跳过(不完整) {} / 共 {} 笔 | 保留 {} 笔",
                 userId, done, failures.size(), skipped, candidates.size(), remaining.size());
         return new ConfirmResult(done, failures.size(), skipped, failures);

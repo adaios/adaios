@@ -45,6 +45,7 @@ class _TradingPageState extends State<TradingPage> {
   List<LotItem> _lots = [];
   bool _lotsLoading = false;
   int _lotsGen = 0; // 代际令牌：_loadLots 防乱序覆盖（与 _auxGen 同款守卫）
+  bool _lotsDialogOpen = false; // 批次明细弹窗在途守卫——连点/双击防叠两层（web P2-批次1 同款）
 
   // ── RFC 20260822：当日交易复盘（纯客观：今日 N 笔 · 时段分布）──
   DailyTradeSummaryDto? _dailySummary;
@@ -109,7 +110,7 @@ class _TradingPageState extends State<TradingPage> {
     super.dispose();
   }
 
-  /// 首次加载 / 下拉刷新：显示整页加载指示。
+  /// 首次加载 / 手动刷新：显示整页加载指示（失败但已有数据时保留旧数据，见 _loadData）。
   Future<void> _loadAll() async {
     setState(() { _loading = true; _error = null; });
     await _loadData();
@@ -138,7 +139,14 @@ class _TradingPageState extends State<TradingPage> {
       _loadCandidates(); // 2026-08-26 截图入账：当日候选（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = _extractApiError(e); _loading = false; }); // #113 人话
+      // P1-前端1（2026-08-29 修复，web P1-7 同类在 app 复发）：
+      // 静默刷新（30 分钟自动刷新/交易后 _refresh）失败不再整页错误态丢弃已展示数据——
+      // 已有持仓/账户数据时保留旧数据；仅首载（无数据）失败才显示错误页。
+      final hasData = _positions != null && _snapshot != null;
+      setState(() {
+        if (!hasData) _error = _extractApiError(e); // #113 人话
+        _loading = false;
+      });
     }
   }
 
@@ -417,7 +425,9 @@ class _TradingPageState extends State<TradingPage> {
       setState(() => _parsing = false);
       if (parsed.matched) {
         _confirmVolumeCtrl.text = parsed.volume?.toString() ?? '';
-        _confirmPriceCtrl.text = parsed.price?.toStringAsFixed(2) ?? '';
+        // P2-UX1（2026-08-29 修复）：NL 解析回显保留后端精度（≤5 位，去尾零），
+        // 不再截 2 位——4 位成本价回显失真需手改（原 toStringAsFixed(2) 与 5 位小数输入能力矛盾）
+        _confirmPriceCtrl.text = _fmtPriceInput(parsed.price);
         // 2026-08-18 简化：app 只记录买卖（标的/价格/数量/方向），止损/买点由 NL 带回也不再回填——归 web 端
         setState(() {
           _draft = parsed;
@@ -1203,6 +1213,8 @@ class _TradingPageState extends State<TradingPage> {
     final hasAccount = a != null && a.assets > 0;
     // 2026-08-17 对齐 web：券商口径账户快照（总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）
     final totalAssets = hasAccount ? a.assets : (s?.totalValue ?? 0) + (s?.cashBalance ?? 0);
+    // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 显示「—」+「未设本金」
+    // 小字——不给误导数值（旧回落浮盈漏已实现盈亏：清仓后显示 0 盈亏仍是误导）
     final totalPnl = hasAccount ? a.totalPnl : (s?.totalPnl ?? 0);
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1223,9 +1235,13 @@ class _TradingPageState extends State<TradingPage> {
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
-              Text('${totalPnl >= 0 ? '+' : ''}${_fmtMoney(totalPnl)}',
+              Text(totalPnl == null ? '—' : '${totalPnl! >= 0 ? '+' : ''}${_fmtMoney(totalPnl!)}',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
-                      color: totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+                      color: totalPnl == null ? AppColors.darkGrey5
+                          : totalPnl! >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+              // P2-交易31（2026-08-29，U32）：本金未设提示——总盈亏口径自解释
+              if (hasAccount && a.principal <= 0)
+                Text('未设本金，设后显示总盈亏', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5)),
             ]),
           ],
         ),
@@ -1319,14 +1335,50 @@ class _TradingPageState extends State<TradingPage> {
             ),
             Text(pctStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pnlColor)),
           ]),
-          // RFC 20260825：批次简版（一眼可见，管理归 web；无批次数据时不出现该行）
+          // RFC 20260825：批次简版（一眼可见；2026-08-28 整行可点 → 批次明细弹窗）
           if (_lotSummaryFor(p.symbol) case final lot?) ...[
             const SizedBox(height: 6),
-            _buildLotRow(lot),
+            _buildLotRow(p, lot),
           ],
         ]),
       ),
     );
+  }
+
+  /// RFC 20260825：持仓批次明细——点击批次行按 symbol 拉全部批次（含回合/初始底仓），底部弹窗展示。
+  /// 连点/双击守卫（web P2-批次1 同款）：慢响应时逐个 showModalBottomSheet 会叠两层。
+  Future<void> _showLots(PositionItem p) async {
+    if (_lotsDialogOpen) return;
+    _lotsDialogOpen = true;
+    String? error;
+    LotsResponse? resp;
+    try {
+      resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
+    } catch (e) {
+      error = _extractApiError(e);
+    }
+    if (!mounted) {
+      _lotsDialogOpen = false;
+      return;
+    }
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.darkSurface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) => _LotDetailSheet(
+          symbol: p.symbol,
+          name: p.name,
+          lots: resp?.lots ?? const <LotItem>[],
+          error: error,
+        ),
+      );
+    } finally {
+      _lotsDialogOpen = false; // 弹窗关闭后复位，允许再次打开
+    }
   }
 
   /// 持仓卡的批次简版摘要：开放批次（未清仓且剩余 > 0）计数 + 最近买入日期 + 含底仓 + 破止损警示。
@@ -1348,39 +1400,46 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 批次简版行：批次数 + 最近买入 + 含底仓徽标 + 「有批次破止损」警示点。
-  Widget _buildLotRow(_LotSummary s) {
-    return Row(children: [
-      Icon(Icons.account_tree_outlined, size: 12, color: AppColors.darkGrey5),
-      const SizedBox(width: 5),
-      Flexible(
-        child: Text(
-          '${s.count} 个批次 · 最近买入 ${_fmtShortDate(s.latestBuyDate)}',
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
-        ),
-      ),
-      if (s.hasInitial) ...[
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: AppColors.darkGreen.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(4),
+  /// 整行可点 → 批次明细弹窗（2026-08-28：手机端也能看每笔买入明细）。
+  Widget _buildLotRow(PositionItem p, _LotSummary s) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showLots(p),
+      child: Row(children: [
+        Icon(Icons.account_tree_outlined, size: 12, color: AppColors.darkGrey5),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            '${s.count} 个批次 · 最近买入 ${_fmtShortDate(s.latestBuyDate)}',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
           ),
-          child: const Text('含底仓',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
         ),
-      ],
-      if (s.breachStopLoss) ...[
-        const SizedBox(width: 6),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.warning_amber_rounded, size: 11, color: AppColors.darkOrange),
-          const SizedBox(width: 3),
-          const Text('有批次破止损',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
-        ]),
-      ],
-    ]);
+        if (s.hasInitial) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.darkGreen.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text('含底仓',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+          ),
+        ],
+        if (s.breachStopLoss) ...[
+          const SizedBox(width: 6),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.warning_amber_rounded, size: 11, color: AppColors.darkOrange),
+            const SizedBox(width: 3),
+            const Text('有批次破止损',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+          ]),
+        ],
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right, size: 14, color: AppColors.darkGrey5),
+      ]),
+    );
   }
 
   Widget _buildEmptyPositions() {
@@ -1862,6 +1921,15 @@ String _fmtMoney(double v) {
 
 String _fmtPrice(double v) => v.toStringAsFixed(2);
 
+/// P2-UX1（2026-08-29）：NL 解析回显价格——保留后端精度 ≤5 位小数并去尾零，
+/// 与小键盘输入能力一致（原 toStringAsFixed(2) 截断 4 位成本价失真）。
+String _fmtPriceInput(double? v) {
+  if (v == null) return '';
+  var s = v.toStringAsFixed(5);
+  s = s.replaceFirst(RegExp(r'\.?0+$'), '');
+  return s == '-0' ? '0' : s;
+}
+
 /// RFC 20260825：批次简版摘要（持仓卡副行用，克制展示）。
 class _LotSummary {
   final int count; // 开放批次数
@@ -1883,6 +1951,157 @@ String _fmtShortDate(String yyyyMMdd) {
   final m = int.tryParse(yyyyMMdd.substring(5, 7));
   final d = yyyyMMdd.substring(8, 10);
   return m == null ? yyyyMMdd : '$m/$d';
+}
+
+// ─────────────────────────── 持仓批次明细 Sheet（RFC 20260825，2026-08-28 App 补全） ───────────────────────────
+
+/// 批次盈亏%：持有中/初始底仓用后端浮动 pnlPct；已清仓回合 = realizedPnl / (成本×买入量)
+/// （后端无回合百分比字段，前端算；与 web 同口径）。
+String _lotPnlPctText(LotItem lot) {
+  if (!lot.closed) return '${lot.pnlPct.toStringAsFixed(2)}%';
+  final realized = lot.realizedPnl;
+  final cost = lot.costPrice * lot.volume;
+  if (realized == null || cost <= 0) return '—';
+  return '回合 ${(realized / cost * 100).toStringAsFixed(2)}%';
+}
+
+/// 批次明细底部弹层：一只股票每一笔买入一个批次——买入日期 | 剩余/买入 | 成本 | 现价 | 盈亏+盈亏% | 状态。
+/// 移动端精简布局（桌面 web 的宽 DataTable 在窄屏可读性差）：每批一块卡片式两行。
+/// 红涨绿亏：盈=红、亏=绿（#132）；破止损未走橙色警示。
+class _LotDetailSheet extends StatelessWidget {
+  final String symbol;
+  final String name;
+  final List<LotItem> lots;
+  final String? error;
+
+  const _LotDetailSheet({
+    required this.symbol,
+    required this.name,
+    required this.lots,
+    this.error,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
+    final visible = lots.where((l) => l.symbol == symbol).toList();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.view_agenda_outlined, size: 18, color: AppColors.darkGreen),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('批次明细 · $symbol${name.isEmpty ? '' : ' $name'}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close, size: 18, color: AppColors.darkGrey5),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            const Text('每一笔买入一个批次 · 一买一批跟踪（含回合盈亏）',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const SizedBox(height: 6),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text('批次明细加载失败：$error',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+              )
+            else if (visible.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('这只股票还没有批次记录',
+                    style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+              )
+            else
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final l in visible)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          child: _LotTile(lot: l),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 单批次行：日期+状态徽标+盈亏大字 / 剩余·成本·现价 / （破止损警示）。
+class _LotTile extends StatelessWidget {
+  final LotItem lot;
+
+  const _LotTile({required this.lot});
+
+  @override
+  Widget build(BuildContext context) {
+    // 已清仓回合：盈亏显示整批已实现盈亏；持有中/初始底仓显示剩余部分浮动盈亏
+    final pnl = lot.closed ? lot.realizedPnl : lot.pnl;
+    final pnlValue = pnl ?? 0;
+    final pnlColor = pnlValue >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+    final statusText = lot.closed
+        ? '已清仓'
+        : lot.initial
+            ? '初始底仓'
+            : '持有中';
+    final statusColor = lot.closed
+        ? AppColors.darkGrey4
+        : lot.initial
+            ? AppColors.darkPurple
+            : AppColors.darkBlue;
+    final dist = lot.stopLossDistancePct;
+    final breach = !lot.closed && dist != null && dist < 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text(_fmtShortDate(lot.buyDate),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(statusText,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+        ),
+        const Spacer(),
+        Text(
+          '${pnlValue >= 0 ? '+' : ''}${_fmtMoney(pnlValue)}  ${_lotPnlPctText(lot)}',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: pnlColor),
+        ),
+      ]),
+      const SizedBox(height: 4),
+      Text(
+        '剩余 ${lot.remaining}/${lot.volume} · 成本 ${lot.costPrice.toStringAsFixed(2)} · 现价 ${lot.currentPrice.toStringAsFixed(2)}',
+        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+      ),
+      if (breach) ...[
+        const SizedBox(height: 4),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.warning_amber_rounded, size: 11, color: AppColors.darkOrange),
+          const SizedBox(width: 3),
+          Text('破止损未走 · 距止损 ${dist.toStringAsFixed(2)}%',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+        ]),
+      ],
+    ]);
+  }
 }
 
 // ── B11-1（2026-08-23，P1-推送3）：推送设置对话框（交易页常驻铃铛入口）──

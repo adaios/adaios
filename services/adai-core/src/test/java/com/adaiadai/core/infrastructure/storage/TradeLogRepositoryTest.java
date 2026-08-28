@@ -118,4 +118,45 @@ class TradeLogRepositoryTest {
         assertFalse(repo.discard("default", day, "999999", "BUY"), "未命中返回 false");
         assertEquals(1, repo.findByDate("default", day).size(), "未命中不得误删");
     }
+
+    @Test
+    void saveMerging_mergesAppendedDuringConfirm() {
+        // P2-交易25（2026-08-29）：confirm 残余窗口根治——锁内原子「读最新 → 合并保留集 → 写回」。
+        // 场景：确认处理 A/B 两笔（handled），A 落库失败保留（keep=[A]）；
+        // 处理期间用户又发截图归集了 C（新 append）——saveMerging 必须把 C 并入保留集，不得覆盖清掉。
+        TradeLogCandidate a = c("000725", 100);
+        TradeLogCandidate b = c("600519", 200);
+        TradeLogCandidate cNew = c("000831", 300);
+        repo.append("default", day, a);
+        repo.append("default", day, b);
+        repo.append("default", day, cNew); // 处理期间新归集（同锁前完成，latest 可见）
+
+        List<TradeLogCandidate> result = repo.saveMerging("default", day,
+                List.of(a, b), // handled：本次确认已处理（A 保留 + B 成功）
+                List.of(a));   // keep：确认后保留集（A 失败保留）
+
+        // 结果 = keep(A) + 新候选(C)；已确认落库的 B 不残留
+        assertEquals(2, result.size(), "保留集 + 新归集候选，B 不残留");
+        assertTrue(result.stream().anyMatch(x -> "000725".equals(x.symbol())), "失败保留候选 A 在");
+        assertTrue(result.stream().anyMatch(x -> "000831".equals(x.symbol())), "处理期间新归集 C 并入");
+        assertFalse(result.stream().anyMatch(x -> "600519".equals(x.symbol())), "已确认落库 B 清出");
+        // 落盘与返回一致
+        assertEquals(2, repo.findByDate("default", day).size());
+    }
+
+    @Test
+    void saveMerging_noNewCandidates_keepsOnlyKeep() {
+        // 无新归集时：结果 = keep（全量覆盖语义不回归）
+        TradeLogCandidate a = c("000725", 100);
+        TradeLogCandidate b = c("600519", 200);
+        repo.append("default", day, a);
+        repo.append("default", day, b);
+        repo.append("default", day, c("000831", 300)); // 处理范围外的第三笔（handled 含它则清出）
+
+        List<TradeLogCandidate> result = repo.saveMerging("default", day,
+                List.of(a, b, c("000831", 300)),
+                List.of(a));
+        assertEquals(1, result.size(), "handled 全量 → 只留 keep");
+        assertEquals("000725", result.get(0).symbol());
+    }
 }

@@ -1534,6 +1534,18 @@ class TradeRecordItem {
 
   bool get isBuy => direction.toUpperCase() == 'BUY';
 
+  /// 股息类资金事件（2026-08-25 方案 A 落流水：volume=0 + reason=源文件备注）。
+  /// 与后端 TradingImportParser.isDividendEvent 同口径——备注含 股息/红利/入账。
+  /// P2-批次6（2026-08-29）：前端识别后显示「股息入账/红利税」类型标签，
+  /// 不再误显示为「买入 0 股」。
+  bool get isDividendEvent =>
+      volume == 0 &&
+      reason != null &&
+      (reason!.contains('股息') || reason!.contains('红利') || reason!.contains('入账'));
+
+  /// 股息事件类型标签：入账（BUY，现金流入）→ 股息入账；税（SELL，现金流出）→ 红利税。
+  String get dividendLabel => isBuy ? '股息入账' : '红利税';
+
   factory TradeRecordItem.fromJson(dynamic json) {
     final map = json is Map<String, dynamic> ? json : <String, dynamic>{};
     // 日期字段宽松解析：entryDate / date / timestamp（timestamp 取日期部分）
@@ -1616,8 +1628,11 @@ class AccountSnapshotDto {
       required this.withdrawable, required this.marketValue, required this.pnl,
       required this.todayPnl, required this.principal, required this.snapshotDate});
 
-  /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效；否则持仓浮盈）。
-  double get totalPnl => principal > 0 ? assets - principal : pnl;
+  /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效）。
+  /// P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ null——不给误导数值
+  /// （旧实现回落浮盈 pnl 漏已实现盈亏：清仓后浮盈≈0 却显示「0 盈亏」仍是误导）；
+  /// UI 显示「—」+ 引导设置本金。
+  double? get totalPnl => principal > 0 ? assets - principal : null;
 
   factory AccountSnapshotDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};

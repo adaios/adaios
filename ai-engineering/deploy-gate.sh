@@ -31,7 +31,20 @@ echo "▸ GATE-BEFORE 2/3 内容对齐（guard-align）..."
 bash ai-engineering/guard-align.sh || { echo "❌ 内容对齐 FAIL——同步 api-spec/status 后重试"; exit 1; }
 
 echo "▸ GATE-BEFORE 3/3 防复发（guard.sh G1-G7）..."
-bash docs/review/guard.sh >/dev/null 2>&1 || { echo "❌ 守护检查有 HIT——确认非 P0 复发后重试"; exit 1; }
+# 2026-08-29 P2-A3 残留修复（对齐 .githooks/pre-commit 同款）：不再吞输出——
+# PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
+GUARD_OUT=$(bash docs/review/guard.sh 2>&1); GUARD_RC=$?
+if [ "$GUARD_RC" -ne 0 ]; then
+  if echo "$GUARD_OUT" | grep -qiE 'HIT'; then
+    echo "❌ 守护检查有 HIT（防 P0 复发），请确认非复发后修复："
+    echo "$GUARD_OUT" | grep -iE 'HIT|PASS' | sed 's/^/    /'
+    exit 1
+  else
+    echo "❌ 守护脚本自身出错（非 HIT，需排查 guard.sh）："
+    echo "$GUARD_OUT" | sed 's/^/    /'
+    exit 1
+  fi
+fi
 
 echo ""
 echo "▸ GATE-BEFORE 增量 review 提示："

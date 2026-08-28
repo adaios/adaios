@@ -12,6 +12,7 @@ import 'package:adai_app/pages/search_page.dart';
 import 'package:adai_app/pages/trading_page.dart';
 import 'package:adai_app/pages/project_task_page.dart';
 import 'package:adai_app/pages/profile_page.dart';
+import 'package:adai_app/theme/app_colors.dart';
 import 'package:adai_app/widgets/input_bar.dart' show PickedImage; // 截图入账测试注入选图
 import 'package:adai_app/widgets/timeline_modal.dart'; // P1-G6-1 回归：await 后 setState 守卫
 
@@ -397,6 +398,23 @@ void main() {
       expect(find.text('清仓复盘'), findsNothing);
     });
 
+    testWidgets('P2-交易31：本金未设（principal=0）总盈亏显示「—」不给误导数值', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 110504.88, 'cash': 292.88, 'available': 292.88,
+            'withdrawable': 292.88, 'marketValue': 110212.0, 'pnl': 15235.55,
+            'todayPnl': 0.0, 'principal': 0.0, 'snapshotDate': '2026-08-16',
+          });
+      await pumpTrading(tester, b);
+
+      // 总盈亏「—」+ 未设本金提示（不回落浮盈 1.5万——漏已实现盈亏误导，U32）
+      expect(find.text('总盈亏'), findsOneWidget);
+      expect(find.text('—'), findsWidgets);
+      expect(find.text('未设本金，设后显示总盈亏'), findsOneWidget);
+      expect(find.textContaining('+1.5万'), findsNothing);
+    });
+
     testWidgets('当日交易复盘：今日 N 笔 · 买/卖 · 时段分布（RFC 20260822 纯客观）', (tester) async {
       final b = _Backend();
       mockBase(b);
@@ -487,7 +505,8 @@ void main() {
       expect(find.text('买入'), findsOneWidget); // 方向徽标
       expect(find.text('确认记录'), findsOneWidget);
       expect(tester.widget<TextField>(fieldByHint('股数')).controller?.text, '1000');
-      expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.20');
+      // P2-UX1（2026-08-29）：NL 回显保留后端精度去尾零（原 toStringAsFixed(2) 恒两位）
+      expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.2');
       // 2026-08-18 简化：NL 带回的止损/买点不再回填（app 不展示这两项，归 web 端）
       expect(fieldByHint('止损价'), findsNothing);
       expect(find.text('B1'), findsNothing);
@@ -506,6 +525,63 @@ void main() {
       expect(tradeBody!.containsKey('buyPoint'), isFalse);
       expect(find.textContaining('已买入'), findsOneWidget); // 人话 SnackBar
       expect(find.text('确认记录'), findsNothing); // 确认卡已收起
+    });
+
+    testWidgets('P2-UX1：NL 解析 4 位成本价回显保留精度（不再截 2 位）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/trades/parse'] = (_) async => _json({
+            'matched': true, 'symbol': '000725', 'name': '京东方A',
+            'direction': 'BUY', 'price': 5.2345, 'volume': 1000,
+          });
+      await pumpTrading(tester, b);
+
+      await tester.enterText(find.byType(TextField).first, '买了 1000 股京东方 @5.2345');
+      await tester.tap(find.text('解析'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(fieldByHint('成交单价')).controller?.text, '5.2345',
+          reason: '回显按后端精度 ≤5 位，4 位成本价不失真');
+    });
+
+    testWidgets('P1-前端1：已有数据后静默刷新失败 → 保留旧数据，不整页错误态', (tester) async {
+      final b = _Backend();
+      var fail = false;
+      b.handlers['/api/v1/trading/positions'] = (_) async => fail
+          ? _json({'error': 'boom'}, status: 500)
+          : _json({
+              'positions': [
+                {
+                  'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+                  'avgCost': 1500.0, 'currentPrice': 1600.0,
+                  'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7,
+                },
+              ],
+            });
+      b.handlers['/api/v1/trading/portfolio'] = (_) async => fail
+          ? _json({'error': 'boom'}, status: 500)
+          : _json({
+              'totalValue': 160000.0, 'totalPnl': 10000.0,
+              'cashBalance': 50000.0, 'positionCount': 1,
+            });
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 160000.0, 'cash': 50000.0, 'available': 50000.0,
+            'withdrawable': 50000.0, 'marketValue': 110000.0, 'pnl': 10000.0,
+            'todayPnl': 0.0, 'principal': 150000.0,
+          });
+      b.handlers['/api/v1/trading/trades'] = (req) async =>
+          req.method == 'GET' ? _dailyOk() : _json({'positions': []});
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(<Object>[]);
+      await pumpTrading(tester, b);
+      expect(find.text('贵州茅台'), findsOneWidget, reason: '首载成功');
+
+      // 切换为失败 → 手动刷新（_loadAll → _loadData）→ 已有数据保留，不出错误页
+      fail = true;
+      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.pumpAndSettle();
+
+      expect(find.text('贵州茅台'), findsOneWidget, reason: '刷新失败保留旧持仓数据');
+      expect(find.text('重试'), findsNothing, reason: '已有数据时刷新失败不再整页错误态');
     });
 
     testWidgets('NL 解析失败（matched=false）：提示 + 自动展开精确表单', (tester) async {
@@ -973,6 +1049,128 @@ void main() {
       expect(find.text('+1.0万'), findsOneWidget); // 盈亏大字（万单位）
       expect(find.textContaining('个批次'), findsNothing);
       expect(find.text('重试'), findsNothing);
+    });
+
+    testWidgets('点批次行 → 批次明细弹窗：状态徽标 + 盈亏% + 红涨绿亏 + 破止损警示（2026-08-28）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '600000', 'name': '浦发银行', 'quantity': 1500,
+          'avgCost': 10.2, 'currentPrice': 10.5,
+          'marketValue': 15750.0, 'pnl': 400.0, 'pnlPercent': 2.6,
+        },
+      ]);
+      Map<String, String>? lotsQuery;
+      b.handlers['/api/v1/trading/lots'] = (req) async {
+        lotsQuery = req.url.queryParameters;
+        return _json({
+          'lots': [
+            {
+              'lotId': '600000_2026-08-03_C', 'symbol': '600000', 'name': '浦发银行',
+              'buyDate': '2026-08-03', 'volume': 1000, 'remaining': 500,
+              'costPrice': 10.0, 'currentPrice': 10.5, 'marketValue': 5250.0,
+              'pnl': 250.0, 'pnlPct': 5.0, 'stopLossPrice': 9.3,
+              'stopLossDistancePct': 12.9, 'buyPoint': null, 'role': null,
+              'initial': false, 'closed': false, 'realizedPnl': null,
+            },
+            {
+              'lotId': '600000_2026-07-20_INIT', 'symbol': '600000', 'name': '浦发银行',
+              'buyDate': '2026-07-20', 'volume': 500, 'remaining': 500,
+              'costPrice': 10.5, 'currentPrice': 10.5, 'marketValue': 5250.0,
+              'pnl': 0.0, 'pnlPct': 0.0, 'stopLossPrice': 9.77,
+              'stopLossDistancePct': 7.5, 'buyPoint': null, 'role': null,
+              'initial': true, 'closed': false, 'realizedPnl': null,
+            },
+            {
+              // 破止损未走（开放 + 距止损 < 0）
+              'lotId': '600000_2026-08-10_D', 'symbol': '600000', 'name': '浦发银行',
+              'buyDate': '2026-08-10', 'volume': 200, 'remaining': 200,
+              'costPrice': 10.8, 'currentPrice': 10.5, 'marketValue': 2100.0,
+              'pnl': -60.0, 'pnlPct': -2.78, 'stopLossPrice': 10.7,
+              'stopLossDistancePct': -1.9, 'buyPoint': null, 'role': null,
+              'initial': false, 'closed': false, 'realizedPnl': null,
+            },
+            {
+              // 已清仓回合：盈亏% = 回合收益率 1200/(9.0×1000)
+              'lotId': '600000_2026-06-01_INIT', 'symbol': '600000', 'name': '浦发银行',
+              'buyDate': '2026-06-01', 'volume': 1000, 'remaining': 0,
+              'costPrice': 9.0, 'currentPrice': 10.5, 'marketValue': 0.0,
+              'pnl': 0.0, 'pnlPct': 0.0, 'stopLossPrice': 8.37,
+              'stopLossDistancePct': 25.5, 'buyPoint': null, 'role': null,
+              'initial': true, 'closed': true, 'realizedPnl': 1200.0,
+            },
+          ],
+          'reconcile': <Object>[],
+        });
+      };
+      await pumpTrading(tester, b);
+
+      // 简版计数只算开放批次（3 个）：8/03 + 07-20 + 08-10；已清仓回合不计入
+      expect(find.textContaining('3 个批次'), findsOneWidget);
+      await tester.tap(find.textContaining('3 个批次'));
+      await tester.pumpAndSettle();
+
+      // 请求参数：state=all + symbol（一次拿全，含回合/初始底仓）
+      expect(lotsQuery!['state'], 'all');
+      expect(lotsQuery!['symbol'], '600000');
+      // 状态徽标：初始底仓 ×1 / 持有中 ×2 / 已清仓 ×1（closed 优先）
+      expect(find.text('批次明细 · 600000 浦发银行'), findsOneWidget);
+      expect(find.text('初始底仓'), findsOneWidget);
+      expect(find.text('持有中'), findsNWidgets(2));
+      expect(find.text('已清仓'), findsOneWidget);
+      // 盈亏金额 + 盈亏%：开放批次浮动 pnlPct；已清仓回合收益率（前端算）
+      expect(find.textContaining('+250'), findsOneWidget);
+      expect(find.textContaining('5.00%'), findsOneWidget);
+      expect(find.textContaining('-60'), findsOneWidget);
+      expect(find.textContaining('-2.78%'), findsOneWidget);
+      expect(find.textContaining('回合 13.33%'), findsOneWidget);
+      // 破止损未走橙色警示（距止损 < 0 且剩余 > 0）
+      expect(find.text('破止损未走 · 距止损 -1.90%'), findsOneWidget);
+      // 红涨绿亏：盈=红、亏=绿
+      final red = tester.widget<Text>(find.textContaining('+250'));
+      expect(red.style?.color, AppColors.darkRed);
+      final green = tester.widget<Text>(find.textContaining('-60'));
+      expect(green.style?.color, AppColors.darkGreen);
+    });
+
+    testWidgets('批次明细接口失败 → 弹窗内人话错误，不打断页面', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '600000', 'name': '浦发银行', 'quantity': 1500,
+          'avgCost': 10.2, 'currentPrice': 10.5,
+          'marketValue': 15750.0, 'pnl': 400.0, 'pnlPercent': 2.6,
+        },
+      ]);
+      // 第 1 次（initState 简版）成功 → 有批次行；第 2 次（点击明细）失败
+      var calls = 0;
+      b.handlers['/api/v1/trading/lots'] = (_) async {
+        calls++;
+        if (calls == 1) {
+          return _json({
+            'lots': [
+              {
+                'lotId': '600000_2026-08-03_C', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-08-03', 'volume': 1000, 'remaining': 500,
+                'costPrice': 10.0, 'currentPrice': 10.5, 'marketValue': 5250.0,
+                'pnl': 250.0, 'pnlPct': 5.0, 'stopLossPrice': 9.3,
+                'stopLossDistancePct': 12.9, 'buyPoint': null, 'role': null,
+                'initial': false, 'closed': false, 'realizedPnl': null,
+              },
+            ],
+            'reconcile': <Object>[],
+          });
+        }
+        return _json({'error': 'boom'}, status: 500);
+      };
+      await pumpTrading(tester, b);
+
+      expect(find.textContaining('1 个批次'), findsOneWidget);
+      await tester.tap(find.textContaining('1 个批次'));
+      await tester.pumpAndSettle();
+      // 弹窗仍在（不整页白屏），失败透出
+      expect(find.text('批次明细 · 600000 浦发银行'), findsOneWidget);
+      expect(find.textContaining('批次明细加载失败'), findsOneWidget);
     });
 
     testWidgets('点按持仓卡 → 阿呆建议弹层（advice 端点 + 依据规则号）', (tester) async {

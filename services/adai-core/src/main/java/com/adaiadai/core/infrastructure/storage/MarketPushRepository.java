@@ -25,8 +25,20 @@ import java.util.List;
 @Repository
 public class MarketPushRepository {
 
-    // P2-8（2026-08-17 走查）：append 是读→改→写 RMW，4 线程调度下并发丢事件——per-user+date 锁
-    private final java.util.concurrent.ConcurrentHashMap<String, Object> appendLocks = new java.util.concurrent.ConcurrentHashMap<>();
+    // P2-8（2026-08-17 走查）：append 是读→改→写 RMW，4 线程调度下并发丢事件——per-user+date 锁。
+    // P2-交易28（2026-08-29）：原 ConcurrentHashMap 锁池按 userId:date 无限增长（#179 任意 userId 可撑爆）——
+    // 改固定 16 条带锁（个人系统并发度低，条带串行可接受；从根上消除 map 增长）。
+    private static final int LOCK_STRIPES = 16;
+    private final Object[] appendLocks = new Object[LOCK_STRIPES];
+
+    {
+        for (int i = 0; i < LOCK_STRIPES; i++) appendLocks[i] = new Object();
+    }
+
+    private static Object lockFor(Object[] stripes, String key) {
+        int h = (key != null ? key : "default").hashCode();
+        return stripes[(h ^ (h >>> 16)) & (stripes.length - 1)];
+    }
 
     private static final Logger log = LoggerFactory.getLogger(MarketPushRepository.class);
     private static final String PUSHES_DIR = "trading/pushes/";
@@ -73,7 +85,7 @@ public class MarketPushRepository {
      *  `[123]`/`{"a":1}` 是合法 JSON 但结构损坏，readTree 通过仍会读空列表覆盖历史；
      *  须解析为对象数组且元素含 id 字段才放行，否则保留原文件。 */
     public void append(String userId, LocalDate date, MarketPushEvent event) {
-        Object lock = appendLocks.computeIfAbsent(userId + ":" + date, k -> new Object());
+        Object lock = lockFor(appendLocks, userId + ":" + date);
         synchronized (lock) {
             String content = fileStorage.read(userId, PUSHES_DIR + date + ".json");
             if (content != null && !content.isBlank()) {
@@ -95,7 +107,7 @@ public class MarketPushRepository {
     /** 按 id 移除一条推送事件（B10-1，2026-08-23，P1-推送2）：app 左滑删/web 忽略按钮持久化——
      *  原前端仅本地 removeWhere，30 分钟自动刷新/下拉后同卡复活。返回是否命中。 */
     public boolean dismiss(String userId, LocalDate date, String eventId) {
-        Object lock = appendLocks.computeIfAbsent(userId + ":" + date, k -> new Object());
+        Object lock = lockFor(appendLocks, userId + ":" + date);
         synchronized (lock) {
             String content = fileStorage.read(userId, PUSHES_DIR + date + ".json");
             if (content != null && !content.isBlank() && !isValidPushArray(content)) {
@@ -126,7 +138,8 @@ public class MarketPushRepository {
             }
             fileStorage.write(userId, PUSHES_DIR + date + ".json", MAPPER.writeValueAsString(arr));
         } catch (Exception e) {
-            log.warn("写入推送事件失败 | userId={} | date={} | {}", userId, date, e.getMessage());
+            // P2-交易27（2026-08-29）：推送落盘失败与账目落盘同级别——持久化数据写失败必须 error
+            log.error("写入推送事件失败——当日推送可能丢失 | userId={} | date={} | {}", userId, date, e.getMessage());
         }
     }
 

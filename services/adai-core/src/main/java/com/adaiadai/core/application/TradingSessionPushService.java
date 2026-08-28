@@ -201,7 +201,10 @@ public class TradingSessionPushService {
     }
 
     /** 收盘 15:05 账户自动更新（B1，2026-08-16）：行情可得部分自动——参考市值/当日盈亏/持仓浮盈；
-     *  现金/可用/本金保持券商导入值与转账推导。 */
+     *  现金/可用/本金保持券商导入值与转账推导。
+     *  P2-交易24（2026-08-29 注释如实化）：positions/行情在 account.json update() 锁**外**读取——
+     *  与 recordTrade 并发时存在跨文件残余窗口（快照=新现金+旧市值）；收盘 15:05 与手动记录并发概率极低、
+     *  次日收盘自愈，无原子跨文件手段（详见 trading-features §8 跨文件窗口注意点）。 */
     @Scheduled(cron = "${adai.trading.session.close-update-cron:0 5 15 * * MON-FRI}")
     public void closeAccountUpdate() {        if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
@@ -242,13 +245,25 @@ public class TradingSessionPushService {
             }
             // P1-交易3 + B3-3：任一持仓缺行情（price 或 yesterdayClose）→ 本次不覆盖（保留旧快照）
             if (missingQuotes > 0) {
+                String missing = positions.stream()
+                        .filter(p -> {
+                            MarketData md = quotes.get(p.symbol());
+                            return md == null || md.price() == null || md.yesterdayClose() == null;
+                        })
+                        .map(Position::symbol).toList()
+                        .toString();
                 log.warn("收盘账户更新：{} 只缺行情（价格或昨收），跳过保存保留旧快照 | userId={} | 缺失={}",
-                        missingQuotes, userId, positions.stream()
-                                .filter(p -> {
-                                    MarketData md = quotes.get(p.symbol());
-                                    return md == null || md.price() == null || md.yesterdayClose() == null;
-                                })
-                                .map(Position::symbol).toList());
+                        missingQuotes, userId, missing);
+                // P2-交易33（2026-08-29，B3-3 残留）：跳过长期无感——新股/停牌无昨收时账户卡陈旧，
+                // 用户看不到任何提示。补一条行情提醒推送（受推送开关门控，尊重用户设置）。
+                try {
+                    pushToAll(userId, "账户今日未自动更新",
+                            "收盘自动更新跳过：有 " + missingQuotes + " 只持仓缺行情（新股/停牌可能无昨收）"
+                                    + "，账户市值维持上次快照。明日正常收盘会自愈，或手动点「点击更新」。",
+                            "market", null, null);
+                } catch (RuntimeException e) {
+                    log.warn("收盘缺行情通知推送失败 | userId={} | {}", userId, e.getMessage());
+                }
                 return;
             }
             final java.math.BigDecimal fMarket = marketValue;
