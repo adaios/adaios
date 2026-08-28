@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -197,7 +198,8 @@ class TradeLogCollectServiceTest {
 
     @Test
     void confirm_candidateWithoutTradeDate_fallsBackToToday() {
-        // 文字归集/当日委托截图无日期列 → tradeDate=null → entryDate 回退确认当天
+        // 文字归集（「清仓了XX」当日口语）无日期 → entryDate 回退确认当天（2026-08-27 二修后仍成立：
+        // 强制日期只针对截图归集——文字没有日期列概念，当日动作回退当天合理）
         repository.append("default", java.time.LocalDate.now(),
                 new TradeLogCandidate("000831", "中国稀土", "BUY",
                         new BigDecimal("56.04"), 100, null, "text", true));
@@ -208,6 +210,73 @@ class TradeLogCollectServiceTest {
         verify(trading).recordTrade(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
                 eq(new BigDecimal("56.04")), eq(100), eq(java.time.LocalDate.now()),
                 any(), any(), any(), any(), any());
+    }
+
+    // ── 2026-08-27 二修（用户拍板「截图缺日期禁止落库，补充日期后再确认」）──
+
+    @Test
+    void confirm_screenshotCandidateWithoutTradeDate_skippedAndKept() {
+        // 截图归集候选无日期列（tradeDate=null）→ 禁止落库：skipped + 候选保留 + 人话提示
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("600206", "有研新材", "SELL",
+                        new BigDecimal("50.33"), 600, null, "image", true));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(0, r.confirmed(), "截图缺日期不得落库");
+        assertEquals(1, r.skipped(), "缺日期应计入跳过");
+        assertEquals(1, r.failures().size(), "应返回人话提示");
+        assertTrue(r.failures().get(0).contains("缺少成交日期"), "提示应含缺日期原因: " + r.failures());
+        assertEquals(1, service.todayCandidates("default").size(), "候选应保留待补日期");
+        verify(trading, never()).recordTrade(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirm_screenshotCandidateWithoutTradeDate_mixedWithText_fallsBackOnlyText() {
+        // 混合场景：截图缺日期跳过保留；文字无日期正常回退当天落库——互不干扰
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("600206", "有研新材", "SELL",
+                        new BigDecimal("50.33"), 600, null, "image", true));
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "BUY",
+                        new BigDecimal("56.04"), 100, null, "text", true));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.confirmed(), "文字候选正常落库");
+        assertEquals(1, r.skipped(), "截图缺日期跳过");
+        assertEquals(1, service.todayCandidates("default").size(), "仅截图候选保留");
+    }
+
+    @Test
+    void setTradeDate_updatesCandidateTradeDate() {
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("600206", "有研新材", "SELL",
+                        new BigDecimal("50.33"), 600, null, "image", true));
+
+        boolean updated = service.setTradeDate("default", "600206", "SELL",
+                java.time.LocalDate.of(2026, 8, 26));
+
+        assertTrue(updated, "应更新成功");
+        List<TradeLogCandidate> candidates = service.todayCandidates("default");
+        assertEquals(1, candidates.size());
+        assertEquals(java.time.LocalDate.of(2026, 8, 26), candidates.get(0).tradeDate(),
+                "候选 tradeDate 应被补写");
+
+        // 补日期后可正常确认落库（entryDate=补写的日期，不再回退当天）
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+        assertEquals(1, r.confirmed());
+        verify(trading).recordTrade(eq("default"), eq("600206"), any(), eq(TradeDirection.SELL),
+                eq(new BigDecimal("50.33")), eq(600), eq(java.time.LocalDate.of(2026, 8, 26)),
+                any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void setTradeDate_unknownCandidate_returnsFalse() {
+        assertFalse(service.setTradeDate("default", "999999", "SELL",
+                java.time.LocalDate.of(2026, 8, 26)), "无此候选应返回 false");
+        assertTrue(service.todayCandidates("default").isEmpty(), "未命中不得产生候选");
     }
 
     // ── B6-5（2026-08-23，P1-交易18）：丢弃保留候选（钉子户）──

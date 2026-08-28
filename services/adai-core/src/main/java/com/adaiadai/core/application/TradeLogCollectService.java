@@ -153,6 +153,20 @@ public class TradeLogCollectService {
     }
 
     /**
+     * 补写候选成交日期（2026-08-27 二修）：截图归集候选缺日期被 confirm 拒后，
+     * 用户在确认前补日期 → 更新当日候选 tradeDate → 可再次确认（成交日 ≠ 确认日不再记错）。
+     *
+     * @return true=已更新；false=当日无此候选/参数非法
+     */
+    public boolean setTradeDate(String userId, String symbol, String direction, LocalDate tradeDate) {
+        LocalDate today = LocalDate.now();
+        boolean updated = tradeLogRepository.updateTradeDate(userId, today, symbol, direction, tradeDate);
+        log.info("交易日志候选补日期 | userId={} | {} {} → {} | {}", userId, direction, symbol,
+                tradeDate, updated ? "已更新" : "未命中");
+        return updated;
+    }
+
+    /**
      * 丢弃一条当日候选（B6-5，2026-08-23，P1-交易18）：
      * 失败/不完整候选保留后可能成为「钉子户」——15:05 推送反复提醒同一笔；
      * 前端提供丢弃入口（标 symbol+direction），用户确认放弃该笔归集。
@@ -189,9 +203,22 @@ public class TradeLogCollectService {
                         userId, c.direction(), c.symbol());
                 continue;
             }
+            // 2026-08-27（用户反馈「今日 4 笔其实是昨天」二修）：**截图归集候选缺成交日期 → 禁止落库**。
+            // 首修只把 entryDate 从「确认当天」改为候选 tradeDate，但截图表格无日期列时 tradeDate=null
+            // 仍回退确认当天——昨日委托今早确认又被记成今天。二修拍板：截图（source=image）必须有
+            // 成交日期才允许落库，缺日期 → 跳过+保留候选+提示补日期（与 P0-1 不完整候选保留同语义）。
+            if ("image".equals(c.source()) && c.tradeDate() == null) {
+                skipped++;
+                remaining.add(c);
+                String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                failures.add(label + ": 缺少成交日期（截图未识别到日期列），请补充日期后再确认");
+                log.info("交易日志确认跳过（截图缺成交日期）| userId={} | {} {} | 请补充日期",
+                        userId, c.direction(), c.symbol());
+                continue;
+            }
             try {
                 // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：成交日期以候选携带的 tradeDate 为准
-                // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；无日期信息才回退确认当天。
+                // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；文字归集无日期才回退确认当天。
                 java.time.LocalDate entryDate = c.tradeDate() != null ? c.tradeDate() : today;
                 tradingAppService.recordTrade(
                         userId,

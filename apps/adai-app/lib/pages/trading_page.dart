@@ -298,8 +298,16 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 全部确认入账：逐笔走 recordTrade 落库 → 清空候选 → 持仓即时刷新 + 复盘横幅触发。
+  /// 2026-08-27 二修：截图候选缺成交日期会被后端拒（skipped）——确认前先拦截提示补日期。
   Future<void> _confirmCandidates() async {
     if (_candidates.isEmpty || _candidatesConfirming) return;
+    final missingDateCount = _candidates.where(
+        (c) => c.tradeDate == null || c.tradeDate!.isEmpty).length;
+    if (missingDateCount > 0) {
+      _showSnack('有 $missingDateCount 笔截图候选缺成交日期——点「补日期」选好日期后才能入账',
+          AppColors.darkOrange);
+      return;
+    }
     setState(() => _candidatesConfirming = true);
     try {
       final result = await widget.api.confirmTradeLog();
@@ -808,12 +816,16 @@ class _TradingPageState extends State<TradingPage> {
   Widget _candidateRow(TradeLogCandidateDto c) {
     final isBuy = c.direction == 'BUY';
     final dirColor = isBuy ? AppColors.darkRed : AppColors.darkGreen;
+    final missingDate = c.tradeDate == null || c.tradeDate!.isEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.darkSurface,
         borderRadius: BorderRadius.circular(8),
+        border: missingDate
+            ? Border.all(color: AppColors.darkOrange.withValues(alpha: 0.5), width: 0.8)
+            : null,
       ),
       child: Row(children: [
         Container(
@@ -827,9 +839,15 @@ class _TradingPageState extends State<TradingPage> {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('${c.name.isEmpty ? c.symbol : c.name} (${c.symbol})',
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey2),
-              overflow: TextOverflow.ellipsis),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${c.name.isEmpty ? c.symbol : c.name} (${c.symbol})',
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey2),
+                overflow: TextOverflow.ellipsis),
+            if (missingDate)
+              // 2026-08-27 二修：截图缺成交日期禁止落库——需补日期才能确认入账
+              Text('⚠ 缺成交日期，需补充后才能入账',
+                  style: TextStyle(fontSize: 10, color: AppColors.darkOrange)),
+          ]),
         ),
         if (c.tradeDate != null && c.tradeDate!.isNotEmpty)
           Text(c.tradeDate!, // 2026-08-27：截图「日期」列提取的成交日期（确认入账按此日期）
@@ -838,12 +856,61 @@ class _TradingPageState extends State<TradingPage> {
           Text('${c.volume}股 @${_fmtPrice(c.price!)}',
               style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4)),
         const SizedBox(width: 6),
-        GestureDetector(
-          onTap: () => _discardCandidate(c),
-          child: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
-        ),
+        if (missingDate)
+          GestureDetector(
+            onTap: () => _pickCandidateDate(c),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.darkOrange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: const Text('补日期', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+            ),
+          )
+        else
+          GestureDetector(
+            onTap: () => _discardCandidate(c),
+            child: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+          ),
       ]),
     );
+  }
+
+  /// 2026-08-27 二修：截图候选缺成交日期 → 弹日期选择补写（PUT /trade-log/date）→ 刷新候选。
+  Future<void> _pickCandidateDate(TradeLogCandidateDto c) async {
+    if (_candidatesConfirming) return;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(now.year, now.month, now.day),
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: DateTime(now.year, now.month, now.day),
+      helpText: '这笔成交发生在哪一天？',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (picked == null || !mounted) return;
+    final dateStr = '${picked.year.toString().padLeft(4, '0')}-'
+        '${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
+    try {
+      final updated = await widget.api.setTradeLogDate(
+        symbol: c.symbol,
+        direction: c.direction,
+        tradeDate: dateStr,
+      );
+      if (!mounted) return;
+      if (updated) {
+        _showSnack('已补日期 $dateStr，可确认入账', AppColors.darkGreen);
+      } else {
+        _showSnack('未找到该候选，可能已处理', AppColors.darkOrange);
+      }
+      _loadCandidates();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('补日期失败: ${_extractApiError(e)}', AppColors.darkOrange);
+    }
   }
 
   // ── 确认卡片：NL 结果回显（AI 错误在此拦截，可改）──

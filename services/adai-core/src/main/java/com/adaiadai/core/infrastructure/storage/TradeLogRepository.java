@@ -116,6 +116,30 @@ public class TradeLogRepository {
         }
     }
 
+    /** 补写候选成交日期（2026-08-27 二修，用户拍板「截图缺日期禁止落库，补充日期后再确认」）：
+     *  截图归集候选无日期列被 confirm 拒后，用户补日期 → 更新候选 tradeDate → 可再次确认。
+     *  按 symbol+direction 定位（与 discard 同口径），锁内读-改-写。 */
+    public boolean updateTradeDate(String userId, LocalDate date, String symbol, String direction,
+                                   LocalDate tradeDate) {
+        if (symbol == null || direction == null || tradeDate == null) return false;
+        Object lock = locks.computeIfAbsent(userId != null ? userId : "default", k -> new Object()); // C5：锁收敛为 userId（date 维度无限增长）
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean updated = false;
+            for (int i = 0; i < existing.size(); i++) {
+                TradeLogCandidate c = existing.get(i);
+                if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
+                    existing.set(i, new TradeLogCandidate(
+                            c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
+                            tradeDate, c.source(), c.complete()));
+                    updated = true;
+                }
+            }
+            if (updated) saveUnlocked(userId, date, existing);
+            return updated;
+        }
+    }
+
     private void saveUnlocked(String userId, LocalDate date, List<TradeLogCandidate> candidates) {
         try {
             var arr = MAPPER.createArrayNode();

@@ -652,7 +652,8 @@ public class TradingController {
     }
 
     /** 交易日志归集（RFC 20260817）：确认落库（POST /api/v1/trading/trade-log/confirm）——
-     *  当日候选逐笔走 recordTrade；P0-1（2026-08-23）：失败/不完整候选保留不丢，返回明细。 */
+     *  当日候选逐笔走 recordTrade；P0-1（2026-08-23）：失败/不完整候选保留不丢，返回明细。
+     *  2026-08-27 二修：截图候选缺成交日期 → 禁止落库（skipped + failures 提示），补日期后可再确认。 */
     @PostMapping("/trade-log/confirm")
     public ResponseEntity<?> confirmTradeLog(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
@@ -664,6 +665,33 @@ public class TradingController {
                 "failed", r.failed(),
                 "skipped", r.skipped(),
                 "failures", r.failures()));
+    }
+
+    /** 交易日志候选补日期（2026-08-27 二修，用户拍板「截图缺日期禁止落库，补充日期后再确认」）：
+     *  截图归集候选无日期列被 confirm 拒后，前端提供日期选择 → 补写当日候选 tradeDate → 再次确认。
+     *  PUT /api/v1/trading/trade-log/date，body {"symbol":"600206","direction":"SELL","tradeDate":"2026-08-26"}
+     *  → {"updated":true}；无此候选/参数非法 → 404/400。 */
+    @PutMapping("/trade-log/date")
+    public ResponseEntity<?> setTradeLogCandidateDate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody java.util.Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String symbol = body.get("symbol");
+        String direction = body.get("direction");
+        String dateStr = body.get("tradeDate");
+        if (symbol == null || symbol.isBlank() || direction == null || dateStr == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "symbol/direction/tradeDate 必填"));
+        }
+        java.time.LocalDate tradeDate;
+        try {
+            tradeDate = java.time.LocalDate.parse(dateStr);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "tradeDate 格式应为 yyyy-MM-dd"));
+        }
+        boolean updated = tradeLogCollectService.setTradeDate(userId, symbol, direction, tradeDate);
+        return updated ? ResponseEntity.ok(Map.of("updated", true))
+                : ResponseEntity.notFound().build();
     }
 
     /** 推送删除持久化（B10-1，2026-08-23，P1-推送2）：单条推送已读/忽略——

@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-27 | v3.32 | **截图入账缺日期禁落库批（用户拍板「截图缺日期禁止落库，补充日期后再确认」二修）**：`POST /trade-log/confirm` 对**截图归集候选（source=image）无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 人话提示「缺少成交日期」）——不再回退确认当天；新增 `PUT /trade-log/date` 补写候选成交日期（补日期后再次确认可正常落库，成交日 ≠ 确认日不再记错） |
 | 2026-08-27 | v3.31 | **截图入账日期归属修复批（用户反馈「今日 4 笔其实是昨天」）**：候选新增 `tradeDate`（截图表格「日期」列提取的成交日期，无 → null）；`POST /trade-log/confirm` 落库 `entryDate` 用候选 `tradeDate`（无日期才回退确认当天）——成交日 ≠ 确认日不再记错日期 |
 | 2026-08-26 | v3.30 | **截图入账 + 复盘卡点批（契约同步）**：新增 `POST /trading/screenshots`（multipart 1-3 张 → VLM 归集候选，不建记录/不落原图）；`GET /trading/has-activity` 口径改「当日真实成交 > 0」（废除关键词扫描，复盘与截图入账成闭环）|
 | 2026-08-25 | v3.29 | **一键按流水重建持仓（用户场景 2026-08-25）**：新增 `POST /trading/sync`——以流水为准重建 positions（已清仓快照残留自动移除，如中电电机；流水解释不了的真底仓保留 INIT），返回 `{positionCount, removed, keptInitial}`；与「每日导当天成交 sync 模式」互补（sync 处理增量、本端点对齐存量账本）|
@@ -658,12 +659,17 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/trade-log` — 当日交易日志候选（RFC 20260817 交易日志自动归集）
 > 需 trading 插件（403）。
 
-返回当日已归集的交易候选（**未落库，待确认**）：`[{"symbol":"000725","name":"京东方A","direction":"SELL","price":6.1,"volume":5300,"tradeDate":"2026-08-26","source":"text","complete":true}]`。来源：用户发成交截图（VLM 识别）或说「清仓了XX」（文字解析），仅 trading 插件用户触发；**去重口径（B6-2 2026-08-23）**：同 (symbol, direction, 当日) 且数量差 ≤ ±10% 视为同笔（`sameTrade`），超量级分别保留。**tradeDate（2026-08-27）**：截图表格「日期」列提取的成交日期（历史成交截图，如 `2026-08-26`）；当日委托/文字归集无日期 → `null`（确认落库时按确认当天）。
+返回当日已归集的交易候选（**未落库，待确认**）：`[{"symbol":"000725","name":"京东方A","direction":"SELL","price":6.1,"volume":5300,"tradeDate":"2026-08-26","source":"text","complete":true}]`。来源：用户发成交截图（VLM 识别）或说「清仓了XX」（文字解析），仅 trading 插件用户触发；**去重口径（B6-2 2026-08-23）**：同 (symbol, direction, 当日) 且数量差 ≤ ±10% 视为同笔（`sameTrade`），超量级分别保留。**tradeDate（2026-08-27）**：截图表格「日期」列提取的成交日期（历史成交截图，如 `2026-08-26`）；当日委托/文字归集无日期 → `null`。**2026-08-27 二修（v3.32）**：截图归集候选（source=image）`tradeDate=null` 时**确认会被拒**——需先补日期（`PUT /trade-log/date`）再确认，防「昨日成交今早确认被记成今天」。
 
 ### `POST /api/v1/trading/trade-log/confirm` — 确认交易日志落库
 > 需 trading 插件（403）。
 
-当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算）；**2026-08-27（用户反馈「今日 4 笔其实是昨天」）**：落库 `entryDate` = 候选 `tradeDate`（截图日期列提取，成交日优先），无 `tradeDate` 的候选才用确认当天——成交日 ≠ 确认日不再记错日期；**B6-5（2026-08-23，P0-1 延伸）**：落库失败的候选（SELL 超持仓等）与不完整候选**回写保留**（不静默清空），用户可补全/修正/丢弃后再次确认。**响应**：`{"confirmed":2,"failed":1,"skipped":1,"failures":["600519 贵州茅台: 未持有 600519，无法卖出"]}`（confirmed=成功 / failed=失败保留 / skipped=不完整保留 / failures=失败人话明细）。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
+当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算）；**2026-08-27（用户反馈「今日 4 笔其实是昨天」）**：落库 `entryDate` = 候选 `tradeDate`（截图日期列提取，成交日优先）；**v3.32 二修（用户拍板）**：截图归集候选（source=image）**无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 提示「缺少成交日期」）——不再回退确认当天，用户补日期（`PUT /trade-log/date`）后再次确认；文字归集（source=text）无日期仍回退确认当天（当日口语语义）。**B6-5（2026-08-23，P0-1 延伸）**：落库失败的候选（SELL 超持仓等）与不完整候选**回写保留**（不静默清空），用户可补全/修正/丢弃后再次确认。**响应**：`{"confirmed":2,"failed":1,"skipped":1,"failures":["600519 贵州茅台: 未持有 600519，无法卖出","600206 有研新材: 缺少成交日期（截图未识别到日期列），请补充日期后再确认"]}`（confirmed=成功 / failed=失败保留 / skipped=不完整或缺日期保留 / failures=失败人话明细）。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
+
+### `PUT /api/v1/trading/trade-log/date` — 补写候选成交日期（v3.32，2026-08-27）
+> 需 trading 插件（403）。
+
+截图归集候选缺日期被 confirm 拒后，用户补日期 → 更新当日候选 `tradeDate` → 再次确认可正常落库。**body**：`{"symbol":"600206","direction":"SELL","tradeDate":"2026-08-26"}`（tradeDate 格式 `yyyy-MM-dd`）。**响应**：`{"updated":true}`；当日无此候选 → 404；参数缺失/格式非法 → 400 `{"error":"..."}`。
 
 ### `DELETE /api/v1/trading/trade-log` — 丢弃一条保留候选（B6-5，2026-08-23，P1-交易18）
 > 需 trading 插件（403）。

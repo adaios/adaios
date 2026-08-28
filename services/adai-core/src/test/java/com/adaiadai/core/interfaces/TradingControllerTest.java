@@ -20,6 +20,7 @@ import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.WatchlistItem;
+import com.adaiadai.core.infrastructure.WebConfig;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -58,6 +59,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -147,6 +150,28 @@ class TradingControllerTest {
     /** RFC 20260825：注入自定义批次服务的重载（/trading/lots 测试用）。 */
     private MockMvc buildMvc(TradingAppService tradingAppService, TradingLotService tradingLotService) {
         return buildMvc(tradingAppService, mock(TradingReviewAppService.class), tradingLotService);
+    }
+
+    /** 2026-08-27 二修：注入自定义交易日志归集服务的重载（/trade-log/date 补日期测试用）。 */
+    private MockMvc buildMvc(TradingAppService tradingAppService,
+                             TradeLogCollectService tradeLogCollectService) {
+        TradingController controller = new TradingController(tradingAppService,
+                mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), tradeLogCollectService,
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
     }
 
     private MockMvc buildMvc(TradingAppService tradingAppService,
@@ -545,6 +570,65 @@ class TradingControllerTest {
                         .header("X-User-Id", "u1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(containsString("图片为空")));
+    }
+
+    // ── 候选补日期（2026-08-27 二修：截图缺日期禁止落库，补日期后可再确认）──
+
+    @Test
+    void setTradeLogDate_updatesCandidate() throws Exception {
+        TradeLogCollectService collect = mock(TradeLogCollectService.class);
+        when(collect.setTradeDate(eq("u1"), eq("600206"), eq("SELL"),
+                eq(java.time.LocalDate.of(2026, 8, 26)))).thenReturn(true);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), collect);
+
+        mvc.perform(put("/api/v1/trading/trade-log/date")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600206\",\"direction\":\"SELL\",\"tradeDate\":\"2026-08-26\"}")
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true));
+        verify(collect).setTradeDate(eq("u1"), eq("600206"), eq("SELL"),
+                eq(java.time.LocalDate.of(2026, 8, 26)));
+    }
+
+    @Test
+    void setTradeLogDate_unknownCandidate_404() throws Exception {
+        TradeLogCollectService collect = mock(TradeLogCollectService.class);
+        when(collect.setTradeDate(any(), any(), any(), any())).thenReturn(false);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), collect);
+
+        mvc.perform(put("/api/v1/trading/trade-log/date")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600206\",\"direction\":\"SELL\",\"tradeDate\":\"2026-08-26\"}")
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void setTradeLogDate_missingParams_400() throws Exception {
+        TradeLogCollectService collect = mock(TradeLogCollectService.class);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), collect);
+
+        mvc.perform(put("/api/v1/trading/trade-log/date")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600206\"}")
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isBadRequest());
+        verify(collect, never()).setTradeDate(any(), any(), any(), any());
+    }
+
+    @Test
+    void setTradeLogDate_badDate_400() throws Exception {
+        TradeLogCollectService collect = mock(TradeLogCollectService.class);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), collect);
+
+        mvc.perform(put("/api/v1/trading/trade-log/date")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"600206\",\"direction\":\"SELL\",\"tradeDate\":\"昨天\"}")
+                        .header("X-User-Id", "u1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("yyyy-MM-dd")));
+        verify(collect, never()).setTradeDate(any(), any(), any(), any());
     }
 
     // ── 知识反哺 ──
@@ -1064,6 +1148,29 @@ class TradingControllerTest {
                         .content("{\"content\":\"hello\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imported").value(27));
+    }
+
+    @Test
+    void watchlistImport_getMethod_405_withCorsHeader() throws Exception {
+        // 2026-08-27 线上误报根因：GET 打到 POST-only 端点 → 405 响应必须带 CORS 头，
+        // 否则浏览器把 405 误报为 CORS policy 错误（WebConfig.corsFilter 兜底异常响应）。
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingController controller = new TradingController(trading,
+                mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
+                mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(TradingScreenshotAppService.class), mock(MarketPushRepository.class),
+                mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .addFilter(new WebConfig().corsFilter())
+                .build();
+        mvc.perform(get("/api/v1/trading/watchlist/import")
+                        .header("X-User-Id", "adai")
+                        .header("Origin", "http://localhost:8082"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8082"));
     }
 
     @Test

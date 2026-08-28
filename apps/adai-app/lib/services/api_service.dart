@@ -462,6 +462,7 @@ class ApiService {
 
   /// RFC 20260817：确认交易日志落库。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
+  /// 2026-08-27 二修：截图候选缺成交日期会被拒（skipped+failures），补日期后再次确认。
   Future<TradeLogConfirmResult> confirmTradeLog() async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/trade-log/confirm'),
@@ -471,6 +472,29 @@ class ApiService {
     _check(resp);
     final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return TradeLogConfirmResult.fromJson(map);
+  }
+
+  /// 2026-08-27 二修（用户拍板「截图缺日期禁止落库，补充日期后再确认」）：
+  /// 给当日候选补写成交日期（PUT /api/v1/trading/trade-log/date）。
+  /// 截图归集候选无日期列被 confirm 拒后，前端日期选择 → 补日期 → 再次确认。
+  /// @return true=已更新；false=当日无此候选
+  Future<bool> setTradeLogDate({
+    required String symbol,
+    required String direction,
+    required String tradeDate,
+  }) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/trade-log/date'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'symbol': symbol,
+        'direction': direction,
+        'tradeDate': tradeDate,
+      }),
+    );
+    _check(resp);
+    final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return map['updated'] as bool? ?? false;
   }
 
   /// B10-2/B11-4（2026-08-23）：删除单条推送（持久化）+ 丢弃保留候选（钉子户）。

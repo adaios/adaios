@@ -586,7 +586,7 @@ void main() {
         {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
           'price': '93.48', 'volume': 100, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
         {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
-          'price': '5.20', 'volume': 1000, 'source': 'image', 'complete': true},
+          'price': '5.20', 'volume': 1000, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
       ];
       b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
       b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async {
@@ -600,7 +600,7 @@ void main() {
       expect(find.text('云南锗业 (002428)'), findsOneWidget);
       expect(find.text('京东方A (000725)'), findsOneWidget);
       expect(find.text('100股 @93.48'), findsOneWidget);
-      expect(find.text('2026-08-26'), findsOneWidget); // 2026-08-27：截图日期列透出，确认入账按此日期
+      expect(find.text('2026-08-26'), findsNWidgets(2)); // 2026-08-27：截图日期列透出，确认入账按此日期
 
       // 全部确认入账 → 清空候选 + 人话反馈
       await tester.tap(find.text('全部确认入账'));
@@ -609,14 +609,68 @@ void main() {
       expect(find.textContaining('今日截图候选'), findsNothing);
     });
 
+    testWidgets('截图入账：缺成交日期候选 → 确认拦截 + 补日期入口（2026-08-27 二修）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+          'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true}, // 无 tradeDate
+        {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
+          'price': '5.20', 'volume': 1000, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
+      ];
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
+      var confirmCalled = false;
+      b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async {
+        confirmCalled = true;
+        return _json({'confirmed': 0, 'failed': 0, 'skipped': 0, 'failures': []});
+      };
+      var dateUpdated = false;
+      b.handlers['/api/v1/trading/trade-log/date'] = (req) async {
+        dateUpdated = true;
+        // 模拟后端补写成功：候选带上成交日期（_loadCandidates 重拉后缺日期警示消失）
+        candidates = [
+          {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+            'price': '93.48', 'volume': 100, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
+          {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
+            'price': '5.20', 'volume': 1000, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
+        ];
+        return _json({'updated': true});
+      };
+      await pumpTrading(tester, b);
+
+      // 缺日期候选：警示文案 + 「补日期」按钮（而非 ×）
+      expect(find.textContaining('缺成交日期'), findsOneWidget);
+      expect(find.text('补日期'), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget); // 仅京东方有 ×
+
+      // 确认被拦截：缺日期候选未补前不发 confirm
+      await tester.tap(find.text('全部确认入账'));
+      await tester.pumpAndSettle();
+      expect(confirmCalled, isFalse);
+      expect(find.textContaining('缺成交日期'), findsNWidgets(2)); // 行内警示 + snack 提示
+
+      // 补日期 → 日期选择器弹出（选今天）→ 确定 → 调补日期 API → 候选刷新后警示消失
+      await tester.pump(const Duration(seconds: 4)); // 等确认拦截 snack（3s）消失，避免干扰后续断言
+      await tester.tap(find.text('补日期'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('这笔成交发生在哪一天'), findsOneWidget); // 日期选择器已弹出
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(dateUpdated, isTrue);
+      // 补写成功 → 缺日期警示消失、两笔都显示成交日期
+      expect(find.textContaining('缺成交日期'), findsNothing);
+      expect(find.text('补日期'), findsNothing);
+      expect(find.text('2026-08-26'), findsNWidgets(2));
+    });
+
     testWidgets('截图入账：丢弃一条候选（× → DELETE，本地移除）', (tester) async {
       final b = _Backend();
       mockBase(b);
       var candidates = [
         {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
-          'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true},
+          'price': '93.48', 'volume': 100, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
         {'symbol': '000725', 'name': '京东方A', 'direction': 'BUY',
-          'price': '5.20', 'volume': 1000, 'source': 'image', 'complete': true},
+          'price': '5.20', 'volume': 1000, 'tradeDate': '2026-08-26', 'source': 'image', 'complete': true},
       ];
       b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
       b.handlers['/api/v1/trading/trade-log/confirm'] = (_) async =>
