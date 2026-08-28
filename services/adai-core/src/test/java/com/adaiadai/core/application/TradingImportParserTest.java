@@ -39,6 +39,37 @@ class TradingImportParserTest {
     }
 
     @Test
+    void parseWatchlist_soldHeader_rejected() {
+        // 2026-08-27 事故回归：清仓股表头（无形态列）不得被当作自选解析
+        String content = """
+                代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\t清仓天数\t清仓后涨幅%\t细分行业\t交易代码
+                600206\t有研新材\t6.60\t53.65\t20260731\t20260826\t26\t6+2\t32.45\t1\t6.60\t半导体\t600206
+                #数据来源:通达信
+                """;
+        assertTrue(TradingImportParser.parseWatchlist(content).isEmpty(), "清仓股表头 → 自选解析必须拒绝");
+    }
+
+    @Test
+    void parseWatchlist_cashHeader_rejected() {
+        // 资金股份查询表头（证券代码列 + 无形态列）不得被当作自选解析
+        String content = """
+                编号\t证券代码\t证券名称\t证券数量\t可卖数量\t成本价\t当前价
+                1\t600809\t山西汾酒\t100.00\t100.00\t122.3849\t123.5200
+                """;
+        assertTrue(TradingImportParser.parseWatchlist(content).isEmpty(), "资金股份表头 → 自选解析必须拒绝");
+    }
+
+    @Test
+    void parseSold_watchlistHeader_rejected() {
+        // 对称校验：自选表头（无介入/清仓日期）不得被当作清仓股解析
+        String content = """
+                代码\t名称\t量比\t主买净额\t涨幅%\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示
+                000725\t京东方Ａ\t0.80\t0.00\t-0.85\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉
+                """;
+        assertTrue(TradingImportParser.parseSold(content).isEmpty(), "自选表头 → 清仓解析必须拒绝");
+    }
+
+    @Test
     void parseSold_realHeader() {
         String content = """
                 代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\t清仓天数\t清仓后涨幅%

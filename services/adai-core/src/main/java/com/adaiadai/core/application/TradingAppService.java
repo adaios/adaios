@@ -659,26 +659,39 @@ public class TradingAppService {
         return watchlistRepository.findAll(userId);
     }
 
-    /** 导入自选股（通达信导出文本，表头定位；按 symbol upsert）。 */
+    /** 导入自选股（通达信导出文本；以文件为准全量替换）。
+     *  <p>2026-08-27 策略变更（用户拍板，覆盖+归档）：原「按 symbol 合并 upsert」→「覆盖」——
+     *  自选列表 = 最后一次导入的镜像，通达信里删除的自选随之消失；导入前旧列表自动归档
+     *  （{@code watchlist.json.bak-<ts>}）供回滚（当日清仓股文件误导入 → 170 只污染事故的直接诱因）。
+     *  同名条目保留原 addedAt（首次加入日），仅真正新增记今天。</p>
+     *  <p>格式校验：缺形态列（非自选导出，如清仓股文件）→ 解析为空 → 抛业务异常 400 + 人话提示，
+     *  不再静默 no-op（REVIEW #147 风格；前端导入对话框 toast 透出）。</p>
+     */
     public WatchlistImportResult watchlistImport(String userId, String content) {
         List<WatchlistItem> parsed = TradingImportParser.parseWatchlist(content);
-        if (parsed.isEmpty()) return new WatchlistImportResult(0);
+        if (parsed.isEmpty()) {
+            throw new TradingException("无法识别为自选股导出：缺少形态列（长期/中期/短期形态）——是否选错了文件（如清仓股/资金股份/历史成交导出）？");
+        }
         synchronized (tradeLock(userId)) {
             List<WatchlistItem> current = new ArrayList<>(watchlistRepository.findAll(userId));
-            for (WatchlistItem item : parsed) {
-                boolean found = false;
-                for (int i = 0; i < current.size(); i++) {
-                    if (current.get(i).symbol().equals(item.symbol())) {
-                        current.set(i, item); // 覆盖（形态/指标最新）
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) current.add(item);
+            // 覆盖前归档旧列表（撤销保险；失败不阻塞导入）
+            try {
+                watchlistRepository.archive(userId, LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")));
+            } catch (Exception e) {
+                log.warn("自选归档失败（不阻塞导入）| userId={} | {}", userId, e.getMessage());
             }
-            watchlistRepository.saveAll(userId, current);
+            Map<String, LocalDate> existingAddedAt = new HashMap<>();
+            for (WatchlistItem it : current) existingAddedAt.put(it.symbol(), it.addedAt());
+            List<WatchlistItem> next = new ArrayList<>(parsed.size());
+            for (WatchlistItem item : parsed) {
+                LocalDate addedAt = existingAddedAt.getOrDefault(item.symbol(), LocalDate.now());
+                next.add(new WatchlistItem(item.symbol(), item.name(), item.industry(), item.industry2(),
+                        item.longForm(), item.midForm(), item.shortForm(), item.signal(), addedAt));
+            }
+            watchlistRepository.saveAll(userId, next);
         }
-        log.info("自选股导入 | userId={} | {} 只", userId, parsed.size());
+        log.info("自选股导入（覆盖）| userId={} | {} 只", userId, parsed.size());
         return new WatchlistImportResult(parsed.size());
     }
 

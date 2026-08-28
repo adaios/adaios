@@ -82,4 +82,16 @@ public class WatchlistFileRepository implements WatchlistRepository {
             log.warn("保存自选股失败 | userId={} | {}", userId, e.getMessage());
         }
     }
+
+    /** 归档当前自选列表 → trading/watchlist.json.bak-<suffix>（覆盖策略撤销保险，2026-08-27）。 */
+    @Override
+    public void archive(String userId, String suffix) {
+        try {
+            String content = fileStorage.read(userId, PATH);
+            if (content == null || content.isBlank()) return; // 空列表无需归档
+            fileStorage.write(userId, PATH + ".bak-" + suffix, content);
+        } catch (Exception e) {
+            log.warn("自选归档失败 | userId={} | {}", userId, e.getMessage());
+        }
+    }
 }

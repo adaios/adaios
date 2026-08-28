@@ -39,7 +39,11 @@ public final class TradingImportParser {
         return symbol != null && symbol.matches("^(79|80|81|82)\\d{4}$");
     }
 
-    /** 解析自选股导出 → 自选条目（表头定位列）。 */
+    /** 解析自选股导出 → 自选条目（表头定位列）。
+     *  <p>核心列校验（2026-08-27 用户事故：清仓股文件被导入自选 → 170 只污染）：
+     *  必须命中「代码」且至少一个形态列（长期/中期/短期形态）——形态列是自选导出专有，
+     *  清仓股/资金股份/历史成交表头均无 → 选错文件时返回空列表，由调用方报「无法识别格式」。</p>
+     */
     public static List<WatchlistItem> parseWatchlist(String content) {
         List<WatchlistItem> items = new ArrayList<>();
         List<String> lines = split(content);
@@ -49,7 +53,7 @@ public final class TradingImportParser {
             String[] cells = line.split("\\t");
             if (col == null) {
                 int[] idx = locate(cells, "代码", "名称", "细分行业", "一二级行业", "长期形态", "中期形态", "短期形态", "近日指标提示");
-                if (idx[0] >= 0) col = idx;
+                if (idx[0] >= 0 && (idx[4] >= 0 || idx[5] >= 0 || idx[6] >= 0)) col = idx;
                 continue;
             }
             if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;
@@ -67,7 +71,10 @@ public final class TradingImportParser {
         return items;
     }
 
-    /** 解析清仓股导出 → 已了结交易。 */
+    /** 解析清仓股导出 → 已了结交易。
+     *  <p>核心列校验（2026-08-27 与自选导入对称）：必须命中「代码」+「介入日期」+「清仓日期」——
+     *  三者是清仓股导出专有列，自选/资金/成交表头均缺 → 选错文件返回空列表。</p>
+     */
     public static List<SoldTrade> parseSold(String content) {
         List<SoldTrade> trades = new ArrayList<>();
         List<String> lines = split(content);
@@ -77,7 +84,7 @@ public final class TradingImportParser {
             String[] cells = line.split("\\t");
             if (col == null) {
                 int[] idx = locate(cells, "代码", "名称", "介入日期", "清仓日期", "持仓天数", "买卖次数", "持仓期涨幅%");
-                if (idx[0] >= 0) col = idx;
+                if (idx[0] >= 0 && idx[2] >= 0 && idx[3] >= 0) col = idx;
                 continue;
             }
             if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;

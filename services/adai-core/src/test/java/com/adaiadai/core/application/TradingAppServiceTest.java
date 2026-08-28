@@ -528,27 +528,88 @@ class TradingAppServiceTest {
     // ── 自选/清仓/资金（RFC 20260816 交易数据智能）──
 
 @org.junit.jupiter.api.Test
-void watchlistImport_upsertsBySymbol() {
+void watchlistImport_replacesByFile() {
+    // 2026-08-27 策略变更：合并 upsert → 覆盖（自选 = 最后一次导入的镜像，文件外股票被移除）
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new WatchlistItem("000725", "京东方Ａ", "元器件", "信息产业-元器件", 6, 8, 1, "KDJ死叉", LocalDate.of(2026, 8, 19)),
+            new WatchlistItem("601066", "中信建投", "证券", "金融-证券", 2, 10, 1, "KDJ死叉", LocalDate.of(2026, 8, 19)))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "601066\t中信建投\t证券\t金融-证券\t2\t10\t1\tKDJ死叉\n"
+            + "600487\t亨通光电\t通信设备\t信息产业-通信设备\t8\t10\t13\tKDJ金叉\n";
+    var r = service.watchlistImport("default", content);
+
+    assertEquals(2, r.imported());
+    ArgumentCaptor<java.util.List<WatchlistItem>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(wl).saveAll(eq("default"), cap.capture());
+    assertEquals(2, cap.getValue().size(), "覆盖：文件外的 000725 被移除");
+    assertEquals("601066", cap.getValue().get(0).symbol());
+    assertEquals("600487", cap.getValue().get(1).symbol());
+}
+
+@org.junit.jupiter.api.Test
+void watchlistImport_keepsExistingAddedAt() {
+    // 覆盖同名保留原 addedAt（首次加入日），仅新增记今天——修复老自选日期被刷新的隐患
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new WatchlistItem("000725", "京东方Ａ", "元器件", "信息产业-元器件", 6, 8, 1, "KDJ死叉", LocalDate.of(2026, 8, 19)))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
+            + "600487\t亨通光电\t通信设备\t信息产业-通信设备\t8\t10\t13\tKDJ金叉\n";
+    service.watchlistImport("default", content);
+
+    ArgumentCaptor<java.util.List<WatchlistItem>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(wl).saveAll(eq("default"), cap.capture());
+    assertEquals(LocalDate.of(2026, 8, 19), cap.getValue().get(0).addedAt(), "同名保留原加入日");
+    assertEquals(LocalDate.now(), cap.getValue().get(1).addedAt(), "新增记今天");
+}
+
+@org.junit.jupiter.api.Test
+void watchlistImport_archivesBeforeReplace() {
+    // 覆盖前归档旧列表（撤销保险）
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new WatchlistItem("000725", "京东方Ａ", "元器件", "信息产业-元器件", 6, 8, 1, "KDJ死叉", LocalDate.of(2026, 8, 19)))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "600487\t亨通光电\t通信设备\t信息产业-通信设备\t8\t10\t13\tKDJ金叉\n";
+    service.watchlistImport("default", content);
+
+    verify(wl).archive(eq("default"), any());
+}
+
+@org.junit.jupiter.api.Test
+void watchlistImport_wrongFormat_throws() {
+    // 2026-08-27 事故：清仓股文件被导入自选 → 必须拒绝而非静默导入
     PositionRepository repo = mock(PositionRepository.class);
     WatchlistRepository wl = mock(WatchlistRepository.class);
     when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>());
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(MarketDataSource.class), mock(TradingLotService.class));
 
-    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
-            + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
-            + "601066\t中信建投\t证券\t金融-证券\t2\t10\t1\tKDJ死叉\n";
-    var r = service.watchlistImport("default", content);
-
-    assertEquals(2, r.imported());
-    ArgumentCaptor<java.util.List<WatchlistItem>> cap = ArgumentCaptor.forClass(java.util.List.class);
-    verify(wl).saveAll(eq("default"), cap.capture());
-    assertEquals(2, cap.getValue().size());
-    assertEquals("000725", cap.getValue().get(0).symbol());
-    assertEquals("KDJ死叉", cap.getValue().get(0).signal());
-    assertEquals(6, cap.getValue().get(0).longForm());
+    String soldContent = "代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600206\t有研新材\t1.14\t50.78\t20260731\t20260803\t3\t1+1\t-12.82\n";
+    assertThrows(TradingException.class, () -> service.watchlistImport("default", soldContent));
+    verify(wl, never()).saveAll(any(), any());
 }
 
 @org.junit.jupiter.api.Test
