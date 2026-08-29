@@ -5,10 +5,12 @@ import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.TradingLot;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.kernel.push.PushChannel;
 import com.adaiadai.core.infrastructure.storage.MarketSnapshotRepository;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -87,7 +89,7 @@ class MarketAlertServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, mock(TradingLotService.class),
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
@@ -110,7 +112,7 @@ class MarketAlertServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(anyString())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         return new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                mock(PluginService.class), new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, lotService,
                 3.0, 5.0, breakCostEnabled, 2.0);
     }
@@ -120,6 +122,12 @@ class MarketAlertServiceTest {
         return new Position(symbol, name, 200, new BigDecimal(avgCost), new BigDecimal("10.00"),
                 LocalDateTime.of(2026, 8, 6, 9, 30),
                 java.time.LocalDate.of(2026, 8, 1), new BigDecimal(stopLoss), "B1", null);
+    }
+
+    private static TradingRuleSettingsRepository defaultRuleRepo() {
+        TradingRuleSettingsRepository r = mock(TradingRuleSettingsRepository.class);
+        when(r.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        return r;
     }
 
     @Test
@@ -303,7 +311,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
         new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("default"), any());
@@ -339,7 +347,7 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
         new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("alice"), any());
@@ -480,7 +488,7 @@ class MarketAlertServiceTest {
                 LocalDate.of(2026, 8, 3), 1000, 500, new BigDecimal("10.0"),
                 new BigDecimal("9.0"), null, null, false, BigDecimal.ZERO);
         when(lots.derive(anyString())).thenReturn(Map.of("600000", List.of(lot)));
-        when(lots.effectiveStopLoss(lot)).thenReturn(new BigDecimal("9.0"));
+        when(lots.effectiveStopLoss(lot, "default")).thenReturn(new BigDecimal("9.0"));
 
         build(market, positions, true, push, lots).poll("default");
 
@@ -509,7 +517,7 @@ class MarketAlertServiceTest {
                 LocalDate.of(2026, 8, 3), 1000, 500, new BigDecimal("10.0"),
                 new BigDecimal("9.0"), null, null, false, BigDecimal.ZERO);
         when(lots.derive(anyString())).thenReturn(Map.of("600000", List.of(lot)));
-        when(lots.effectiveStopLoss(lot)).thenReturn(new BigDecimal("9.0"));
+        when(lots.effectiveStopLoss(lot, "default")).thenReturn(new BigDecimal("9.0"));
 
         // 关闭 stop-loss 推送开关
         com.adaiadai.core.domain.trading.PushSettings ps = com.adaiadai.core.domain.trading.PushSettings.defaults();
@@ -522,7 +530,7 @@ class MarketAlertServiceTest {
         when(pushSettings.findByUser(anyString())).thenReturn(ps);
         MarketAlertService svc = new MarketAlertService(market, positions, accounts, snapshot,
                 java.util.List.of(push), mock(PluginService.class),
-                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
                 pushSettings, lots, 3.0, 5.0, true, 2.0);
 
         svc.poll("default");

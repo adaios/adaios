@@ -48,6 +48,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -58,7 +59,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -104,10 +104,15 @@ class TradingControllerTest {
                              TradingReviewAppService reviewAppService,
                              TradingAdviceAppService adviceAppService,
                              String... defaultPlugins) {
+        com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository ruleRepo =
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.TradingRuleSettings.defaults());
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 adviceAppService, mock(TradingParseAppService.class), pluginService(defaultPlugins),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                ruleRepo,
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -133,7 +138,9 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins.length > 0 ? defaultPlugins : new String[]{"trading"}),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 screenshotAppService,
                 mock(MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -160,7 +167,9 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), tradeLogCollectService,
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                tradeLogCollectService,
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -181,7 +190,9 @@ class TradingControllerTest {
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 tradingLotService,
@@ -204,7 +215,9 @@ class TradingControllerTest {
         TradingController controller = new TradingController(tradingAppService, reviewAppService,
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
                 pluginService(defaultPlugins), buyPointService, soldScoreService,
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -361,7 +374,9 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -798,7 +813,9 @@ class TradingControllerTest {
         TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
                 mock(TradingAdviceAppService.class), mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
@@ -1159,9 +1176,12 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(TradingScreenshotAppService.class), mock(MarketPushRepository.class),
-                mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
+                mock(TradingLotService.class),
+                "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilter(new WebConfig().corsFilter())
@@ -1182,9 +1202,12 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
-                pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
+                pushRepo, mock(TradingLotService.class),
+                "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -1203,9 +1226,12 @@ class TradingControllerTest {
                 mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
                 mock(TradingParseAppService.class), pluginService("trading"),
                 mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
-                mock(PushSettingsRepository.class), mock(TradeLogCollectService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
-                pushRepo, mock(TradingLotService.class), "../../os/trading-engine/knowledge/context");
+                pushRepo, mock(TradingLotService.class),
+                "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -1257,7 +1283,7 @@ class TradingControllerTest {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.soldList(any())).thenReturn(java.util.List.of());
         SoldScoreService scoreService = mock(SoldScoreService.class);
-        when(scoreService.score(any())).thenReturn(java.util.List.of(
+        when(scoreService.score(any(), any())).thenReturn(java.util.List.of(
                 new SoldScoreService.SoldScore("600519", "贵州茅台", 88, "B1", "回调 52%",
                         90, "盈利了结", 89.0, "盈利了结")));
         MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, mock(WatchlistBuyPointService.class), scoreService);
@@ -1299,7 +1325,7 @@ class TradingControllerTest {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.watchlistList(any())).thenReturn(java.util.List.of());
         WatchlistBuyPointService bp = mock(WatchlistBuyPointService.class);
-        when(bp.scanWatchlist(any())).thenReturn(java.util.List.of(
+        when(bp.scanWatchlist(any(), anyString())).thenReturn(java.util.List.of(
                 new WatchlistBuyPointService.WatchBuyPoint("000725", "京东方A", "B1", 87, java.util.List.of("回调 52%"))));
         MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, bp, mock(SoldScoreService.class));
         mvc.perform(get("/api/v1/trading/buy-points").header("X-User-Id", "adai"))
@@ -1453,5 +1479,71 @@ class TradingControllerTest {
         mvc.perform(post("/api/v1/trading/sync").header("X-User-Id", "alice"))
                 .andExpect(status().isForbidden());
     }
-}
 
+    /** 第三阶段 Step9：GET /trading/rules 返回用户规则参数（默认值）。 */
+    @Test
+    void tradingRules_returnsDefaultParams() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(get("/api/v1/trading/rules").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.params.positionLimitPercent").value("25"))
+                .andExpect(jsonPath("$.params.buyKdjLow").value("13.0"))
+                .andExpect(jsonPath("$.params.constraintRuleMin").value("66"));
+    }
+
+    /** 第三阶段 Step9：PUT /trading/rules 更新参数（部分字段覆盖）。 */
+    @Test
+    void updateTradingRules_persistsOverrides() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/rules")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"params\":{\"positionLimitPercent\":30,\"buyKdjLow\":20}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true));
+    }
+
+    /** P0-1/P2-2（2026-08-30 审查）：PUT /rules 空 params → 400（原静默 200）。 */
+    @Test
+    void updateTradingRules_emptyParams_400() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/rules")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"params\":{}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** P2-2（2026-08-30 审查）：PUT /rules params 非 Map → 400（原 ClassCastException 500）。 */
+    @Test
+    void updateTradingRules_paramsNotMap_400() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/rules")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"params\":[1,2]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** P2-2（2026-08-30 审查）：PUT /rules NaN/Infinity → 400（原 Infinity 触发 500）。 */
+    @Test
+    void updateTradingRules_nanInfinity_400() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/rules")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"params\":{\"positionLimitPercent\":1e400}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** P3-2（2026-08-30 审查）：PUT /rules 接受字符串数字（与 GET 返回 String 对称）。 */
+    @Test
+    void updateTradingRules_stringNumber_accepted() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(put("/api/v1/trading/rules")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"params\":{\"positionLimitPercent\":\"30\"}}"))
+                .andExpect(status().isOk());
+    }
+}

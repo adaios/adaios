@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.account.Account;
@@ -15,6 +16,7 @@ import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.push.PushChannel;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -123,7 +125,7 @@ class TradingSessionPushServiceTest {
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
 
         return new TradingSessionPushService(positions, market, accounts, pluginService,
-                new DefaultTradingRuleEngine(), ai, List.of(channel),
+                new DefaultTradingRuleEngine(defaultRuleRepo()), ai, List.of(channel),
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), tradingAppService,
@@ -133,6 +135,12 @@ class TradingSessionPushServiceTest {
     private static String eq(String s) { return org.mockito.ArgumentMatchers.eq(s); }
 
     // ── 三节点模板内容（LLM 失败降级）──
+
+    private static TradingRuleSettingsRepository defaultRuleRepo() {
+        TradingRuleSettingsRepository r = mock(TradingRuleSettingsRepository.class);
+        when(r.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        return r;
+    }
 
     @Test
     void morningPlan_template_containsPositionsAndStopLoss() {
@@ -238,7 +246,7 @@ class TradingSessionPushServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
-                pluginService, new DefaultTradingRuleEngine(), ai, List.of(channel),
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), ai, List.of(channel),
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
@@ -307,7 +315,7 @@ class TradingSessionPushServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
-                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(channel),
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(channel),
                 mock(AccountSnapshotRepository.class),
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
@@ -399,7 +407,7 @@ class TradingSessionPushServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
-                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");
@@ -433,7 +441,7 @@ class TradingSessionPushServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
-                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");
@@ -474,7 +482,7 @@ class TradingSessionPushServiceTest {
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
-                pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");

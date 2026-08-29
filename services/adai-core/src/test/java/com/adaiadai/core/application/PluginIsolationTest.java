@@ -64,8 +64,10 @@ class PluginIsolationTest {
         when(cards.findById(any(), any())).thenReturn(Optional.empty());
 
         // 真实知识源：trading/project 为插件域，life 为基础服务
+        // P1-3（2026-08-30 审查）：TradingKnowledgeSource 构造器加 ownerUserId（默认 adai）
         List<KnowledgeSource> sources = List.of(
-                new TradingKnowledgeSource("../../os/trading-engine/knowledge/context"),
+                new TradingKnowledgeSource("../../os/trading-engine/knowledge/context",
+                        new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage(), "adai"),
                 new ProjectKnowledgeSource("../../os/project-os/11-context"),
                 new LifeKnowledgeSource(memory, "../../os/life-os/11-context"));
 

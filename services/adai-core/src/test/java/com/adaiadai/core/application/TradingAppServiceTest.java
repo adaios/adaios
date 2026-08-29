@@ -10,6 +10,7 @@ import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.SoldTradeRepository;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.TransferRepository;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
@@ -18,6 +19,7 @@ import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.PositionFileRepository;
 import com.adaiadai.core.infrastructure.storage.TradingHistoryFileRepository;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.junit.jupiter.api.Test;
@@ -61,12 +63,22 @@ class TradingAppServiceTest {
         return service(repo, records, mock(TradingHistoryRepository.class));
     }
 
+    /** 第三阶段：真实规则仓库 mock，findByUser → 默认配置（无规则 → 默认值兜底）。 */
+    static TradingRuleSettingsRepository defaultRuleRepo() {
+        TradingRuleSettingsRepository r = mock(TradingRuleSettingsRepository.class);
+        when(r.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        return r;
+    }
+
     private TradingAppService service(PositionRepository repo, RecordRepository records,
                                       TradingHistoryRepository history) {
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
         return new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class),
+                ruleRepo);
     }
 
     /**
@@ -462,7 +474,7 @@ class TradingAppServiceTest {
         TradingAppService service = new TradingAppService(repo, records, history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         // 旧行（600000）无新列：BUY 加仓 → entryDate 以本次 BUY 补录，止损/买点更新
         List<Position> result = service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
@@ -497,7 +509,7 @@ class TradingAppServiceTest {
                         new BigDecimal("-0.85"), 0)));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class));
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         List<Position> positions = service.getPositions("default");
 
@@ -516,7 +528,7 @@ class TradingAppServiceTest {
         when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class));
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class), mock(TransferRepository.class), market, mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         List<Position> positions = service.getPositions("default");
 
@@ -538,7 +550,7 @@ void watchlistImport_replacesByFile() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-            mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "601066\t中信建投\t证券\t金融-证券\t2\t10\t1\tKDJ死叉\n"
@@ -563,7 +575,7 @@ void watchlistImport_keepsExistingAddedAt() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-            mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"
@@ -586,7 +598,7 @@ void watchlistImport_archivesBeforeReplace() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-            mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
             + "600487\t亨通光电\t通信设备\t信息产业-通信设备\t8\t10\t13\tKDJ金叉\n";
@@ -604,7 +616,7 @@ void watchlistImport_wrongFormat_throws() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-            mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String soldContent = "代码\t名称\t涨幅%\t现价\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
             + "600206\t有研新材\t1.14\t50.78\t20260731\t20260803\t3\t1+1\t-12.82\n";
@@ -621,7 +633,8 @@ void soldImport_preservesExistingPsychology() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class),
+                TradingAppServiceTest.defaultRuleRepo());
 
     String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
             + "600206\t有研新材\t20260731\t20260803\t3\t1+1\t-12.82\n";
@@ -645,7 +658,7 @@ void importCashQuery_updatesCashAndPreciseCost() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), accountSnapshotRepository,
-            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String content = "人民币: 余额:292.88  可用:292.88  可取:292.88  参考市值:110212.00  资产:110504.88  盈亏:15235.55\n"
             + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
@@ -674,7 +687,7 @@ void importCashQuery_parseFail_throwsAndNeverSavesZero() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), acc,
-            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     String bad = "随便贴的一段文字，不是通达信资金股份查询导出\n没有余额没有资产";
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
@@ -692,7 +705,7 @@ void importCashQuery_emptyContent_throws() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
             mock(SoldTradeRepository.class), acc,
-            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
+            mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     assertThrows(com.adaiadai.core.domain.trading.TradingException.class,
             () -> service.importCashQuery("default", ""),
@@ -709,7 +722,7 @@ void soldUpdatePsychology_marksTrade() {
     TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
             mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
             mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
     boolean ok = service.soldUpdatePsychology("default", "600206", "套牢死扛");
 
@@ -735,7 +748,7 @@ void soldUpdatePsychology_marksTrade() {
         TransferRepository transfers = mock(TransferRepository.class);
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
-                mock(SoldTradeRepository.class), acc, transfers, mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(SoldTradeRepository.class), acc, transfers, mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         service.recordTransfer("default", "IN", new BigDecimal("10000"), LocalDate.of(2026, 8, 17), "补仓");
 
@@ -763,7 +776,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         service.recordTransfer("default", "OUT", new BigDecimal("50000"), LocalDate.of(2026, 8, 17), "提现");
 
@@ -843,7 +856,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, records,
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         // 买入 100 股 @10：现金 -1000（无费简化），市值 +1000
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.BUY,
@@ -875,7 +888,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(repo, records,
                 mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
                 mock(SoldTradeRepository.class), acc, mock(TransferRepository.class),
-                mock(MarketDataSource.class), mock(TradingLotService.class));
+                mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         // 卖出 100 股 @15：现金 +1500（无费简化），市值 -1500
         service.recordTrade("default", "600519", "贵州茅台", TradeDirection.SELL,
@@ -1044,7 +1057,7 @@ void soldUpdatePsychology_marksTrade() {
         TradingAppService service = new TradingAppService(mock(PositionRepository.class),
                 mock(RecordRepository.class), mock(TradingHistoryRepository.class),
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                acc, mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class));
+                acc, mock(TransferRepository.class), mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
 
         AccountSnapshot updated = service.setPrincipal("default", new BigDecimal("150000"));
 
@@ -1138,11 +1151,13 @@ void soldUpdatePsychology_marksTrade() {
         if (initialPositions != null) repo.saveAll("default", initialPositions);
         KlineService kline = mock(KlineService.class);
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
         return new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), lotService);
+                mock(MarketDataSource.class), lotService, mock(TradingRuleSettingsRepository.class));
     }
 
     @Test
@@ -1302,11 +1317,13 @@ void soldUpdatePsychology_marksTrade() {
                 null, null, null, LocalDateTime.now(), null, "o3"));
         KlineService kline = mock(KlineService.class);
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), lotService);
+                mock(MarketDataSource.class), lotService, mock(TradingRuleSettingsRepository.class));
 
         TradingAppService.SyncResult r = service.syncPositionsFromFlow("default");
 
@@ -1335,11 +1352,13 @@ void soldUpdatePsychology_marksTrade() {
                 null, null, null, LocalDateTime.now(), null, "o2"));
         KlineService kline = mock(KlineService.class);
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), lotService);
+                mock(MarketDataSource.class), lotService, mock(TradingRuleSettingsRepository.class));
 
         TradingAppService.SyncResult r = service.syncPositionsFromFlow("default");
 
@@ -1387,10 +1406,13 @@ void soldUpdatePsychology_marksTrade() {
         when(acc.findLatest(any())).thenAnswer(i -> java.util.Optional.ofNullable(saved.get()));
         KlineService kline = mock(KlineService.class);
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline);
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
-                acc, mock(TransferRepository.class), mock(MarketDataSource.class), lotService);
+                acc, mock(TransferRepository.class), mock(MarketDataSource.class), lotService,
+                mock(TradingRuleSettingsRepository.class));
 
         // 股息红利税 -7.50（数量 0）+ 股息入账 +80.00（数量 0）+ 正常买入 500 股
         String today = LocalDate.now().toString().replace("-", "");

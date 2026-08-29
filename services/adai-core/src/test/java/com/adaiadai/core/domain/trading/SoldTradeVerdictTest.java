@@ -51,4 +51,35 @@ class SoldTradeVerdictTest {
         String v = SoldTradeVerdict.compute(-4.5, 30);
         assertTrue(v.contains("R53"), "久持小亏应标 R53（延展），前端才计入违规，实际: " + v);
     }
+
+    // ── 第三阶段：用户规则参数化（阈值 + 规则引用按用户配置）──
+
+    @Test
+    void customThreshold_lessStrict_doesNotBreak() {
+        // 用户自定义止损阈值 8%（比默认 5% 宽松）：亏 6% 不判扛单
+        String v = SoldTradeVerdict.compute(-6.0, 3, 8.0, 5, "R66", "R53");
+        assertTrue(!v.contains("R66"), "用户阈值 8%：亏 6% 不应判 R66，实际: " + v);
+    }
+
+    @Test
+    void customThreshold_stricter_breaks() {
+        // 用户自定义止损阈值 3%（更严）：亏 4% 即判扛单
+        String v = SoldTradeVerdict.compute(-4.0, 3, 3.0, 5, "R66", "R53");
+        assertTrue(v.contains("R66"), "用户阈值 3%：亏 4% 应判 R66，实际: " + v);
+    }
+
+    @Test
+    void customShortHoldDays_stricter() {
+        // 用户自定义短持仓 3 天：持有 4 天小亏 → 判短持仓（默认 5 天不判）
+        String v = SoldTradeVerdict.compute(-3.0, 4, 5.0, 3, "R66", "R53");
+        assertTrue(v.contains("R53"), "用户短持仓 3 天：持有 4 天小亏应判 R53，实际: " + v);
+    }
+
+    @Test
+    void customRuleRef_usesUserReference() {
+        // 用户自定义规则引用（非 R66/R53，如自编号 S1）：前端遵守率按用户规则统计
+        String v = SoldTradeVerdict.compute(-6.0, 3, 5.0, 5, "S1", "S2");
+        assertTrue(v.contains("S1"), "用户规则引用 S1 应出现在文案，实际: " + v);
+        assertTrue(!v.contains("R66"), "不应出现默认 R66 引用，实际: " + v);
+    }
 }

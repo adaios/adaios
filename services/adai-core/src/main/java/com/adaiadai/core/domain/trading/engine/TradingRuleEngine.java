@@ -19,20 +19,47 @@ public interface TradingRuleEngine {
      * <p>
      * 现价 &lt; 止损位 → BREACHED（已跌破止损位，suggestion 必须 clear）。
      * 止损位缺失（未设置）→ OK（无据可判，不硬判）。
+     * <p>
+     * 第三阶段（用户规则层）：按 userId 读用户规则参数配置（止损判定本身无阈值参数，
+     * 但仓位上限 {@link #evaluatePosition(String, java.math.BigDecimal)} 与行为标注阈值
+     * 按用户隔离——本方法保留，默认实现委托 {@link #evaluateStopLoss(String, java.math.BigDecimal, java.math.BigDecimal)}）。
      *
      * @param currentPrice  现价（实时行情优先，缺失用持仓存储价）
      * @param stopLossPrice 用户预设止损位（可 null）
      */
-    StopLossResult evaluateStopLoss(BigDecimal currentPrice, BigDecimal stopLossPrice);
+    default StopLossResult evaluateStopLoss(BigDecimal currentPrice, BigDecimal stopLossPrice) {
+        return evaluateStopLoss(null, currentPrice, stopLossPrice);
+    }
+
+    /**
+     * 止损硬判定（按用户规则配置）。
+     *
+     * @param userId        用户 ID（null → 默认配置）
+     * @param currentPrice  现价
+     * @param stopLossPrice 用户预设止损位（可 null）
+     */
+    StopLossResult evaluateStopLoss(String userId, BigDecimal currentPrice, BigDecimal stopLossPrice);
 
     /**
      * 仓位硬判定（R81 100万以下分4-5个仓位：单票 1/4~1/5，即占比上限 25%）。
      * <p>
-     * 持仓占比 &gt; 25% → OVER_WEIGHT（超 R81 仓位上限，suggestion 参考 reduce）。
+     * 持仓占比 &gt; 上限 → OVER_WEIGHT（超 R81 仓位上限，suggestion 参考 reduce）。
+     * <p>
+     * 第三阶段：仓位上限从用户规则配置读取（默认 25%）。
      *
      * @param positionPercent 单票持仓占比（0-100，后端按市值/总市值确定性计算）
      */
-    PositionResult evaluatePosition(BigDecimal positionPercent);
+    default PositionResult evaluatePosition(BigDecimal positionPercent) {
+        return evaluatePosition(null, positionPercent);
+    }
+
+    /**
+     * 仓位硬判定（按用户规则配置）。
+     *
+     * @param userId          用户 ID（null → 默认配置）
+     * @param positionPercent 单票持仓占比（0-100）
+     */
+    PositionResult evaluatePosition(String userId, BigDecimal positionPercent);
 
     /**
      * 解析规则条目：{@code **R{n} 标题** + > 描述}（与 rules.md 格式契约一致）。

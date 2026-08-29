@@ -1,5 +1,6 @@
 package com.adaiadai.core.kernel.knowledge;
 
+import com.adaiadai.core.kernel.storage.FileStorage;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,9 @@ public class TradingKnowledgeSource implements KnowledgeSource {
     private static final Logger log = LoggerFactory.getLogger(TradingKnowledgeSource.class);
 
     private final Path contextDir;
+    private final FileStorage fileStorage;
+    /** P1-3（2026-08-30 审查）：os/ 知识只回落给 owner（默认 adai）——其他用户无私有知识则不注入，防 B3 跨用户泄漏。 */
+    private final String ownerUserId;
 
     private String cachedIdentity;
     private String cachedStrategy;
@@ -47,8 +51,12 @@ public class TradingKnowledgeSource implements KnowledgeSource {
     private Instant lastLoadTime;
 
     public TradingKnowledgeSource(
-            @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String contextPath) {
+            @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String contextPath,
+            FileStorage fileStorage,
+            @Value("${adai.plugins.owner-user-id:adai}") String ownerUserId) {
         this.contextDir = Paths.get(contextPath).toAbsolutePath().normalize();
+        this.fileStorage = fileStorage;
+        this.ownerUserId = ownerUserId;
     }
 
     @PostConstruct
@@ -66,6 +74,9 @@ public class TradingKnowledgeSource implements KnowledgeSource {
 
     @Override
     public String globalContext(String userId) {
+        // P1-3（2026-08-30 审查）：os/ identity 只注入 owner（adai）——其他用户无私有知识则不注入，
+        // 防 adai 的交易者画像泄漏给非 owner 用户（B3 红线）
+        if (!isOwner(userId)) return "";
         refreshIfChanged();
         return cachedIdentity != null ? cachedIdentity : "";
     }
@@ -73,8 +84,18 @@ public class TradingKnowledgeSource implements KnowledgeSource {
     @Override
     public String enrich(String userId, String scene) {
         if (!"trading".equals(scene) && !"decision".equals(scene)) {
-            // 非交易场景只注入 identity 摘要，让 AI 知道交易系统存在
+            // 非交易场景只注入 identity 摘要，让 AI 知道交易系统存在（同样仅 owner）
             return globalContext(userId);
+        }
+
+        // 第三阶段（D1：知识注入用户私有）：用户有 data/{userId}/trading/knowledge.md → 用用户的；
+        // 无 → **仅 owner（adai）回落 os/ 全局**；其他用户不注入交易知识（P1-3：防跨用户泄漏）
+        String userKnowledge = readUserKnowledge(userId);
+        if (userKnowledge != null) {
+            return "## 交易系统知识\n\n" + userKnowledge;
+        }
+        if (!isOwner(userId)) {
+            return "";
         }
 
         refreshIfChanged();
@@ -99,6 +120,43 @@ public class TradingKnowledgeSource implements KnowledgeSource {
         }
 
         return sb.toString();
+    }
+
+    // ── 第三阶段：用户私有知识（data/{userId}/trading/knowledge.md）──
+
+    /** 是否 owner（adai）——唯一可回落 os/ 全局知识的用户。 */
+    private boolean isOwner(String userId) {
+        return userId != null && userId.equals(ownerUserId);
+    }
+
+    /** P2-4（2026-08-30 审查）：用户知识缓存（文件时间戳变更才重读，对齐 os/ 模式）——
+     * 原每次 enrich 都读盘（knowledge.md 73KB），ContextEngine 每次记录/问答都触发。 */
+    private final java.util.Map<String, String> userKnowledgeCache = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 内容哈希（内容变更才重读——FileStorage 无 lastModified，用哈希近似）。 */
+    private final java.util.Map<String, String> userKnowledgeHash = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 读用户私有交易知识（带缓存）；无文件 → null（回落逻辑见 enrich）。 */
+    private String readUserKnowledge(String userId) {
+        if (userId == null) return null;
+        String path = "trading/knowledge.md";
+        // 文件不存在 → 缓存空
+        if (!fileStorage.exists(userId, path)) {
+            userKnowledgeCache.remove(userId);
+            return null;
+        }
+        // 文件存在：仅当修改时间变化才重读（FileStorage 无 lastModified 接口——用内容哈希近似）
+        String content = fileStorage.read(userId, path);
+        if (content == null || content.isBlank()) {
+            userKnowledgeCache.remove(userId);
+            return null;
+        }
+        String hash = Integer.toHexString(content.hashCode());
+        if (hash.equals(userKnowledgeHash.get(userId))) {
+            return userKnowledgeCache.get(userId);
+        }
+        userKnowledgeCache.put(userId, content);
+        userKnowledgeHash.put(userId, hash);
+        return content;
     }
 
     // ── 缓存逻辑 ──

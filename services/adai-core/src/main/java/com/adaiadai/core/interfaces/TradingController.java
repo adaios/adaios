@@ -9,6 +9,7 @@ import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.WatchlistItem;
@@ -19,6 +20,7 @@ import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.domain.trading.PushSettings;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
 import jakarta.validation.Constraint;
@@ -64,6 +66,7 @@ public class TradingController {
     private final SoldScoreService soldScoreService;
     /** RFC 20260817：推送开关（用户可关闭各类型推送）。 */
     private final PushSettingsRepository pushSettingsRepository;
+    private final TradingRuleSettingsRepository ruleSettingsRepository;
     /** RFC 20260817：交易日志自动归集（当日候选/确认落库）。 */
     private final TradeLogCollectService tradeLogCollectService;
     /** 2026-08-26 截图入账：券商截图 → VLM → 当日候选（不建记录）。 */
@@ -83,6 +86,7 @@ public class TradingController {
                              WatchlistBuyPointService buyPointService,
                              SoldScoreService soldScoreService,
                              PushSettingsRepository pushSettingsRepository,
+                             TradingRuleSettingsRepository ruleSettingsRepository,
                              TradeLogCollectService tradeLogCollectService,
                              TradingScreenshotAppService screenshotAppService,
                              MarketPushRepository marketPushRepository,
@@ -96,6 +100,7 @@ public class TradingController {
         this.buyPointService = buyPointService;
         this.soldScoreService = soldScoreService;
         this.pushSettingsRepository = pushSettingsRepository;
+        this.ruleSettingsRepository = ruleSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
         this.screenshotAppService = screenshotAppService;
         this.marketPushRepository = marketPushRepository;
@@ -476,7 +481,7 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         List<SoldTrade> trades = tradingAppService.soldList(userId);
-        return ResponseEntity.ok(soldScoreService.score(trades));
+        return ResponseEntity.ok(soldScoreService.score(trades, userId));
     }
 
     /** 银证转账（转入/转出，净投入跟踪，POST /api/v1/trading/transfer）。 */
@@ -533,7 +538,7 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         List<WatchlistItem> watchlist = tradingAppService.watchlistList(userId);
-        return ResponseEntity.ok(buyPointService.scanWatchlist(watchlist));
+        return ResponseEntity.ok(buyPointService.scanWatchlist(watchlist, userId));
     }
 
     /** 账户总体快照（资产/可用/可取/参考市值/盈亏/当日盈亏，GET /api/v1/trading/account）。 */
@@ -588,6 +593,119 @@ public class TradingController {
         PushSettings settings = pushSettingsRepository.findByUser(userId).with(type, on);
         pushSettingsRepository.save(userId, settings);
         return ResponseEntity.ok(settings.enabled());
+    }
+
+    /** 交易规则参数（第三阶段，GET /api/v1/trading/rules：用户自己的交易系统参数）。 */
+    @GetMapping("/rules")
+    public ResponseEntity<?> tradingRules(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        TradingRuleSettings s = ruleSettingsRepository.findByUser(userId);
+        java.util.LinkedHashMap<String, Object> params = new java.util.LinkedHashMap<>();
+        params.put("positionLimitPercent", s.positionLimitPercent().toPlainString());
+        params.put("defaultStopLossRatio", s.defaultStopLossRatio().toPlainString());
+        params.put("givebackPeakPct", s.givebackPeakPct().toPlainString());
+        params.put("givebackRatioPct", s.givebackRatioPct().toPlainString());
+        params.put("shortOverdueDays", String.valueOf(s.shortOverdueDays()));
+        params.put("soldStopLossPct", String.valueOf(s.soldStopLossPct()));
+        params.put("soldShortHoldDays", String.valueOf(s.soldShortHoldDays()));
+        params.put("buyPullbackPct", String.valueOf(s.buyPullbackPct()));
+        params.put("buyShrinkRatio", String.valueOf(s.buyShrinkRatio()));
+        params.put("buyKdjLow", String.valueOf(s.buyKdjLow()));
+        params.put("buyVolumeSurge", String.valueOf(s.buyVolumeSurge()));
+        params.put("buyPriorHighDays", String.valueOf(s.buyPriorHighDays()));
+        params.put("scoreBuyWeight", String.valueOf(s.scoreBuyWeight()));
+        params.put("scoreExecWeight", String.valueOf(s.scoreExecWeight()));
+        params.put("constraintRuleMin", String.valueOf(s.constraintRuleMin()));
+        params.put("constraintRuleMax", String.valueOf(s.constraintRuleMax()));
+        return ResponseEntity.ok(Map.of(
+                "exists", ruleSettingsRepository.exists(userId),
+                "params", params));
+    }
+
+    /** 交易规则参数更新（第三阶段，PUT /api/v1/trading/rules：覆盖非空字段，落 rules.yaml）。 */
+    @PutMapping("/rules")
+    public ResponseEntity<?> updateTradingRules(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        Object paramsObj = body.getOrDefault("params", Map.of());
+        if (!(paramsObj instanceof Map<?, ?> paramsRaw)) {
+            // P0-1（2026-08-30 审查）：params 非 Map → 400（原 ClassCastException 500）
+            return ResponseEntity.badRequest().body(Map.of("error", "params 必须是对象（如 {\"params\":{...}}）"));
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> params = (Map<String, Object>) paramsRaw;
+        if (params.isEmpty()) {
+            // P0-1（2026-08-30 审查）：空提交 → 400（原静默 200 啥也没改，用户以为生效）
+            return ResponseEntity.badRequest().body(Map.of("error", "没有要更新的参数——想恢复默认请传完整参数或点「恢复默认」"));
+        }
+        // P0-1（2026-08-30 审查）：NaN/Infinity 拒绝（原 1e400 → 500 / NaN 穿透 fail-closed）
+        for (Map.Entry<String, Object> e : params.entrySet()) {
+            Number n = num(e.getValue());
+            if (n != null && (Double.isNaN(n.doubleValue()) || Double.isInfinite(n.doubleValue()))) {
+                return ResponseEntity.badRequest().body(Map.of("error", "参数 " + e.getKey() + " 不是有效数字"));
+            }
+        }
+        TradingRuleSettings current = ruleSettingsRepository.findByUser(userId);
+        // 逐字段覆盖（缺省保持原值）；值经 TradingRuleSettings 构造器 fail-closed 校验（非法回落默认）
+        TradingRuleSettings updated = new TradingRuleSettings(
+                num(params.get("positionLimitPercent")) != null
+                        ? new java.math.BigDecimal(String.valueOf(params.get("positionLimitPercent")))
+                        : current.positionLimitPercent(),
+                num(params.get("defaultStopLossRatio")) != null
+                        ? new java.math.BigDecimal(String.valueOf(params.get("defaultStopLossRatio")))
+                        : current.defaultStopLossRatio(),
+                num(params.get("givebackPeakPct")) != null
+                        ? new java.math.BigDecimal(String.valueOf(params.get("givebackPeakPct")))
+                        : current.givebackPeakPct(),
+                num(params.get("givebackRatioPct")) != null
+                        ? new java.math.BigDecimal(String.valueOf(params.get("givebackRatioPct")))
+                        : current.givebackRatioPct(),
+                num(params.get("shortOverdueDays")) != null
+                        ? num(params.get("shortOverdueDays")).intValue() : current.shortOverdueDays(),
+                num(params.get("soldStopLossPct")) != null
+                        ? num(params.get("soldStopLossPct")).doubleValue() : current.soldStopLossPct(),
+                num(params.get("soldShortHoldDays")) != null
+                        ? num(params.get("soldShortHoldDays")).intValue() : current.soldShortHoldDays(),
+                num(params.get("buyPullbackPct")) != null
+                        ? num(params.get("buyPullbackPct")).doubleValue() : current.buyPullbackPct(),
+                num(params.get("buyShrinkRatio")) != null
+                        ? num(params.get("buyShrinkRatio")).doubleValue() : current.buyShrinkRatio(),
+                num(params.get("buyKdjLow")) != null
+                        ? num(params.get("buyKdjLow")).doubleValue() : current.buyKdjLow(),
+                num(params.get("buyVolumeSurge")) != null
+                        ? num(params.get("buyVolumeSurge")).doubleValue() : current.buyVolumeSurge(),
+                num(params.get("buyPriorHighDays")) != null
+                        ? num(params.get("buyPriorHighDays")).intValue() : current.buyPriorHighDays(),
+                num(params.get("scoreBuyWeight")) != null
+                        ? num(params.get("scoreBuyWeight")).doubleValue() : current.scoreBuyWeight(),
+                num(params.get("scoreExecWeight")) != null
+                        ? num(params.get("scoreExecWeight")).doubleValue() : current.scoreExecWeight(),
+                num(params.get("constraintRuleMin")) != null
+                        ? num(params.get("constraintRuleMin")).intValue() : current.constraintRuleMin(),
+                num(params.get("constraintRuleMax")) != null
+                        ? num(params.get("constraintRuleMax")).intValue() : current.constraintRuleMax());
+        // P0-1（2026-08-30 审查）：写盘失败抛 StorageException → GlobalExceptionHandler 500（不再静默 updated=true）
+        ruleSettingsRepository.save(userId, updated);
+        return ResponseEntity.ok(Map.of("updated", true));
+    }
+
+    /** 数值提取（规则参数 body 可为 Number）。 */
+    /** 数值提取（P3-2：GET 返回 String，PUT 也应接受字符串数字——第三方回传 GET 结构不再静默忽略）。 */
+    private static Number num(Object o) {
+        if (o instanceof Number n) return n;
+        if (o instanceof String str) {
+            try {
+                String t = str.trim();
+                return t.contains(".") ? Double.parseDouble(t) : Long.parseLong(t);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /** 交易日志归集（RFC 20260817）：当日候选（GET /api/v1/trading/trade-log）。 */

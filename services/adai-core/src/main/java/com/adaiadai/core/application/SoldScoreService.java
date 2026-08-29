@@ -2,7 +2,9 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.BuyPointDetector;
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,10 +34,13 @@ public class SoldScoreService {
     private static final Logger log = LoggerFactory.getLogger(SoldScoreService.class);
 
     private final KlineService klineService;
+    private final TradingRuleSettingsRepository settingsRepository;
     private final ExecutorService klinePool = Executors.newFixedThreadPool(16);
 
-    public SoldScoreService(KlineService klineService) {
+    public SoldScoreService(KlineService klineService,
+                            TradingRuleSettingsRepository settingsRepository) {
         this.klineService = klineService;
+        this.settingsRepository = settingsRepository;
     }
 
     /** P2-交易1（2026-08-17）：应用关闭时优雅关闭线程池（B53 检查点）。 */
@@ -59,12 +64,17 @@ public class SoldScoreService {
                             Integer executionScore, String executionExplain,
                             Double totalScore, String verdict) {}
 
-    /** 批量打分（按清仓列表顺序返回；K 线拉取 16 并发）。 */
-    public List<SoldScore> score(List<SoldTrade> trades) {
+    /** 批量打分（按清仓列表顺序返回；K 线拉取 16 并发；按用户规则买点参数）。 */
+    public List<SoldScore> score(List<SoldTrade> trades, String userId) {
+        BuyPointDetector detector = detectorFor(userId);
+        TradingRuleSettings settings = userId != null
+                ? settingsRepository.findByUser(userId) : TradingRuleSettings.defaults();
+        double buyWeight = settings.scoreBuyWeight();
+        double execWeight = settings.scoreExecWeight();
         List<SoldScore> result = new ArrayList<>();
         List<Future<SoldScore>> futures = new ArrayList<>();
         for (SoldTrade t : trades) {
-            futures.add(klinePool.submit(() -> scoreOne(t)));
+            futures.add(klinePool.submit(() -> scoreOne(t, detector, buyWeight, execWeight)));
         }
         // P2-交易1：超时/失败不产空 symbol 占位行——返回该笔 symbol + 分数 null（前端显示 '—'，不糊弄）
         for (int i = 0; i < futures.size(); i++) {
@@ -80,12 +90,14 @@ public class SoldScoreService {
         return result;
     }
 
-    private SoldScore scoreOne(SoldTrade t) {
-        BuyPointDetector.BuyPointResult bp = buyPointAt(t);
+    private SoldScore scoreOne(SoldTrade t, BuyPointDetector detector,
+                               double buyWeight, double execWeight) {
+        BuyPointDetector.BuyPointResult bp = buyPointAt(t, detector);
         Integer buyScore = bp == null ? null : buyPointScore(bp);
         Integer execScore = executionScore(t);
+        // 第三阶段：打分权重按用户规则（默认 0.5/0.5 = adai 二维打分）
         Double total = (buyScore != null && execScore != null)
-                ? (buyScore * 0.5 + execScore * 0.5) : null;
+                ? (buyScore * buyWeight + execScore * execWeight) : null;
         return new SoldScore(t.symbol(), t.name(),
                 buyScore, bp == null ? null : bp.buyPoint(),
                 bp == null ? "买入日 K 线不足，无法回溯" : (bp.hit() ? String.join("、", bp.signals()) : "无买点形态（追高/随意进）"),
@@ -93,8 +105,17 @@ public class SoldScoreService {
                 total, t.verdict());
     }
 
+    /** 按用户规则构造买点判定器（无规则/损坏 → 默认参数）。 */
+    private BuyPointDetector detectorFor(String userId) {
+        TradingRuleSettings s = userId != null
+                ? settingsRepository.findByUser(userId) : TradingRuleSettings.defaults();
+        return new BuyPointDetector(
+                s.buyPullbackPct(), s.buyShrinkRatio(), s.buyKdjLow(),
+                s.buyVolumeSurge(), s.buyPriorHighDays());
+    }
+
     /** 回溯买入日：拉日 K，截取到买入日当天为止 → 判定当时买点信号。 */
-    private BuyPointDetector.BuyPointResult buyPointAt(SoldTrade t) {
+    private BuyPointDetector.BuyPointResult buyPointAt(SoldTrade t, BuyPointDetector detector) {
         if (t.buyDate() == null) return null;
         List<Candle> candles = klineService.kline(t.symbol(), 250);
         if (candles.isEmpty()) return null;
@@ -106,7 +127,7 @@ public class SoldScoreService {
         List<Candle> uptoBuy = new ArrayList<>(candles.subList(0, idx + 1));
         // K 线不足 detector 最小长度（25 根）→ 无法判定，返回 null（数据不足不评分，不误判追高）
         if (uptoBuy.size() < 25) return null;
-        return new BuyPointDetector(0.5, 0.7, 13, 1.5, 20).detect(uptoBuy);
+        return detector.detect(uptoBuy);
     }
 
     /** 买点维度分（完美图匹配度）：B2 突破 / B1 低吸 / B1? 候选 / 无形态。 */

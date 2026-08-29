@@ -6,8 +6,11 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TradingLot;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
+import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -51,6 +54,17 @@ class TradingLotServiceTest {
 
     private TradingLotService service(List<TradeRecord> trades, List<Position> positions,
                                       Map<String, MarketData> quotes) {
+        return service(trades, positions, quotes, TradingRuleSettings.defaults());
+    }
+
+    private TradingLotService service(List<TradeRecord> trades, List<Position> positions,
+                                      Map<String, MarketData> quotes, TradingRuleSettings ruleSettings) {
+        return service(trades, positions, quotes, ruleSettings, List.of());
+    }
+
+    private TradingLotService service(List<TradeRecord> trades, List<Position> positions,
+                                      Map<String, MarketData> quotes, TradingRuleSettings ruleSettings,
+                                      List<Candle> klineData) {
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll("u")).thenReturn(trades);
         PositionRepository repo = mock(PositionRepository.class);
@@ -58,8 +72,10 @@ class TradingLotServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(anyList())).thenReturn(quotes != null ? quotes : Map.of());
         KlineService kline = mock(KlineService.class);
-        when(kline.kline(anyString(), anyInt())).thenReturn(List.of());
-        return new TradingLotService(history, repo, market, kline);
+        when(kline.kline(anyString(), anyInt())).thenReturn(klineData != null ? klineData : List.of());
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser("u")).thenReturn(ruleSettings);
+        return new TradingLotService(history, repo, market, kline, ruleRepo);
     }
 
     private static List<TradingLot> lotsOf(TradingLotService service, String symbol) {
@@ -300,6 +316,59 @@ class TradingLotServiceTest {
                 "快照 entryDate 早于流水首笔 → 保留 INIT 真底仓");
         int remaining = lots.stream().filter(l -> !l.closed()).mapToInt(TradingLot::remaining).sum();
         assertEquals(700, remaining, "INIT 500 + 8/5 批 200 = 700（= 快照）");
+    }
+
+    /** 第三阶段：行为标注阈值按用户规则配置（rules.yaml params），默认值可调。 */
+    @Test
+    void behaviors_userRuleGivebackThreshold_applied() {
+        // 默认：峰值浮盈 ≥20% 且回吐 ≥50% 才标「浮盈回吐」。用户规则放宽：峰值 ≥10% 且回吐 ≥40%。
+        LocalDate today = LocalDate.now();
+        LocalDate buyDate = today.minusDays(5);
+        // K 线峰值 12.0（买入后最高）→ 峰值浮盈 (12-10)/10 = 20%；现价 11.2 → 回吐 (20-12)/20 = 40%
+        List<Candle> klineData = List.of(
+                new Candle(buyDate.plusDays(1), 10.2, 12.0, 10.1, 11.8, 1000));
+        TradingRuleSettings relaxed = new TradingRuleSettings(
+                new BigDecimal("25"), new BigDecimal("0.93"), new BigDecimal("10"),
+                new BigDecimal("40"), 5, 5.0, 5, 0.5, 0.7, 13, 1.5, 20, 0.5, 0.5, 66, 95);
+        TradingLotService svc = service(List.of(
+                buy("600000", 1000, "10.0", buyDate, "9.0", null)), List.of(), Map.of(
+                "600000", new MarketData("600000", "浦发银行", new BigDecimal("11.2"),
+                        new BigDecimal("12.0"), new BigDecimal("11.8"), new BigDecimal("11.8"),
+                        new BigDecimal("11.2"), new BigDecimal("-3"), 1000)), relaxed, klineData);
+        List<TradingLotService.BehaviorNote> notes = svc.analyzeBehaviors("u", today);
+        assertTrue(notes.stream().anyMatch(n -> "giveback".equals(n.type())),
+                "用户规则（峰值≥10%/回吐≥40%）→ 浮盈回吐应标注：峰值 20% 回吐 40%");
+    }
+
+    /** 第三阶段：短线超期天数按用户规则配置（默认 5 天）。 */
+    @Test
+    void behaviors_userRuleShortOverdueDays_applied() {
+        // 用户规则：持有超 3 个交易日即标短线超期；默认 5 天不标。
+        // 状态类行为只在 date=今天 判定（对抗审查 P1-4）→ 买入日取今天往前推 4 个交易日（避开周末）
+        LocalDate today = LocalDate.now();
+        LocalDate buyDate = previousTradingDay(today, 5);
+        TradingRuleSettings strict = new TradingRuleSettings(
+                new BigDecimal("25"), new BigDecimal("0.93"), new BigDecimal("20"),
+                new BigDecimal("50"), 3, 5.0, 5, 0.5, 0.7, 13, 1.5, 20, 0.5, 0.5, 66, 95);
+        TradingLotService svc = service(List.of(
+                buy("600000", 1000, "10.0", buyDate, null, "SB1")), List.of(), Map.of(), strict);
+        List<TradingLotService.BehaviorNote> notes = svc.analyzeBehaviors("u", today);
+        assertTrue(notes.stream().anyMatch(n -> "short-overdue".equals(n.type())),
+                "用户规则短持仓 3 天 → 持有 4 个交易日应标短线超期");
+    }
+
+    /** 从 base 往前推 n 个交易日（跳过周末，近似 TradingLotService.tradingDaysBetween）。 */
+    private static LocalDate previousTradingDay(LocalDate base, int n) {
+        LocalDate d = base;
+        int counted = 0;
+        while (counted < n) {
+            d = d.minusDays(1);
+            if (d.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                    && d.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+                counted++;
+            }
+        }
+        return d;
     }
 }
 

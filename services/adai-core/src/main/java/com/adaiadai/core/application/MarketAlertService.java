@@ -151,8 +151,9 @@ public class MarketAlertService {
 
             // 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定（引擎口径，与建议引擎一致）
             // 止损位未设置（旧数据）不判——R68 入场即设止损，买入时已强制填写
+            // 第三阶段：按 userId 读用户规则配置（R66 判定本身无阈值参数，口径不变）
             if (p.stopLossPrice() != null
-                    && ruleEngine.evaluateStopLoss(md.price(), p.stopLossPrice()).verdict()
+                    && ruleEngine.evaluateStopLoss(userId, md.price(), p.stopLossPrice()).verdict()
                     == StopLossVerdict.BREACHED) {
                 addIfNew(userId, p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
@@ -187,7 +188,7 @@ public class MarketAlertService {
             if (md == null || md.price() == null) continue;
             for (TradingLot lot : e.getValue()) {
                 if (lot.closed()) continue;
-                if (md.price().compareTo(tradingLotService.effectiveStopLoss(lot)) < 0) {
+                if (md.price().compareTo(tradingLotService.effectiveStopLoss(lot, userId)) < 0) {
                     addLotAlertIfNew(userId, lot, md, existing, newSignatures, alerts);
                 }
             }
@@ -274,7 +275,7 @@ public class MarketAlertService {
         String sig = lot.symbol() + ":" + LocalDate.now() + ":stop-loss:" + lot.lotId();
         if (existing.contains(sig)) return;
         newSignatures.add(sig);
-        BigDecimal stop = tradingLotService.effectiveStopLoss(lot);
+        BigDecimal stop = tradingLotService.effectiveStopLoss(lot, userId);
         String lotLabel = lot.initial() ? "底仓" : lot.buyDate() + " 买入批次";
         String msg = lot.stopLossPrice() != null
                 ? "📉 " + lot.name() + "(" + lot.symbol() + ") " + lotLabel + "现价 " + fmt(md.price())

@@ -7,9 +7,11 @@ import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TradingLot;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -46,34 +48,25 @@ public class TradingLotService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingLotService.class);
 
-    /** 默认止损：买入价 −7%（RFC 20260825 用户确认：批次止损未设按 −7% 兜底，可后改）。 */
-    public static final BigDecimal DEFAULT_STOP_LOSS_RATIO = BigDecimal.valueOf(0.93);
-
     /** 短线买点类型（博一下语义）。 */
     private static final Set<String> SHORT_TERM_BUY_POINTS = Set.of("SB1", "暴力特噗", "深水炸弹", "单针");
-
-    /** 浮盈回吐判定：峰值浮盈至少 ≥ 20% 才判（没浮盈过谈不上回吐）。 */
-    private static final BigDecimal GIVEBACK_MIN_PEAK_PCT = BigDecimal.valueOf(20);
-
-    /** 浮盈回吐判定：从峰值回吐 ≥ 50% 触发。 */
-    private static final BigDecimal GIVEBACK_RATIO_PCT = BigDecimal.valueOf(50);
-
-    /** 短线超期：持有超过 5 个交易日（周末近似，法定节假日不追——P2 接节假日表）。 */
-    private static final int SHORT_OVERDUE_TRADING_DAYS = 5;
 
     private final TradingHistoryRepository tradingHistoryRepository;
     private final PositionRepository positionRepository;
     private final MarketDataSource marketDataSource;
     private final KlineService klineService;
+    private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
 
     public TradingLotService(TradingHistoryRepository tradingHistoryRepository,
                              PositionRepository positionRepository,
                              MarketDataSource marketDataSource,
-                             KlineService klineService) {
+                             KlineService klineService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository) {
         this.tradingHistoryRepository = tradingHistoryRepository;
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.klineService = klineService;
+        this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
     }
 
     // ── 批次推导 ──
@@ -280,7 +273,7 @@ public class TradingLotService {
             for (TradingLot lot : e.getValue()) {
                 if ("open".equals(state) && lot.closed()) continue;
                 if ("closed".equals(state) && !lot.closed()) continue;
-                views.add(toView(lot, price));
+                views.add(toView(lot, price, userId));
             }
         }
         views.sort(Comparator.comparing(TradingLotView::buyDate,
@@ -289,10 +282,17 @@ public class TradingLotService {
         return views;
     }
 
-    /** 批次有效止损：显式止损优先，否则成本价 × 0.93（−7% 默认，RFC 20260825）。 */
+    /** 批次有效止损：显式止损优先，否则成本价 × 默认止损比例（默认 0.93 = −7%，RFC 20260825；用户规则可调）。 */
     public BigDecimal effectiveStopLoss(TradingLot lot) {
+        return effectiveStopLoss(lot, null);
+    }
+
+    /** 批次有效止损（按用户规则配置）：显式止损优先，否则成本价 × 用户 defaultStopLossRatio。 */
+    public BigDecimal effectiveStopLoss(TradingLot lot, String userId) {
         if (lot.stopLossPrice() != null) return lot.stopLossPrice();
-        return lot.costPrice().multiply(DEFAULT_STOP_LOSS_RATIO).setScale(4, RoundingMode.HALF_UP);
+        TradingRuleSettings settings = userId != null
+                ? tradingRuleSettingsRepository.findByUser(userId) : TradingRuleSettings.defaults();
+        return lot.costPrice().multiply(settings.defaultStopLossRatio()).setScale(4, RoundingMode.HALF_UP);
     }
 
     // ── 行为标注（记录即标注，进当日操作总结/复盘）──
@@ -304,6 +304,11 @@ public class TradingLotService {
      */
     public List<BehaviorNote> analyzeBehaviors(String userId, LocalDate date) {
         List<BehaviorNote> notes = new ArrayList<>();
+        // 第三阶段：行为标注阈值按用户规则配置（rules.yaml params；无规则 → 默认值）
+        TradingRuleSettings ruleSettings = tradingRuleSettingsRepository.findByUser(userId);
+        BigDecimal givebackPeakPct = ruleSettings.givebackPeakPct();
+        BigDecimal givebackRatioPct = ruleSettings.givebackRatioPct();
+        int shortOverdueDays = ruleSettings.shortOverdueDays();
         List<TradeRecord> all = tradingHistoryRepository.findAll(userId);
         Map<String, List<TradeRecord>> bySymbol = new LinkedHashMap<>();
         for (TradeRecord t : all) {
@@ -419,7 +424,9 @@ public class TradingLotService {
                 if (!stateBehaviorsApplicable) continue;
                 // 破止损未走：现价 < 批次止损（含默认 −7% 兜底）且仍持有
                 if (price != null) {
-                    BigDecimal stop = effectiveStopLoss(lot);
+                    // P1-1（2026-08-30 审查）：用 effectiveStopLoss(lot, userId)——
+                    // 原漏传 userId 恒用默认 −7%，与异动推送（传 userId 用户规则）判定线分裂
+                    BigDecimal stop = effectiveStopLoss(lot, userId);
                     if (price.compareTo(stop) < 0) {
                         // 对抗审查 P1-3：显式止损（用户自己设的）→ 纪律级文案；默认 −7% 兜底 → 风控提示文案，
                         // 不把系统强加的默认线包装成「违反纪律 R66」的批评
@@ -439,9 +446,9 @@ public class TradingLotService {
                         BigDecimal curPct = price.subtract(lot.costPrice())
                                 .multiply(BigDecimal.valueOf(100)).divide(lot.costPrice(), 2, RoundingMode.HALF_UP);
                         BigDecimal giveback = peakPct.subtract(curPct);
-                        BigDecimal threshold = peakPct.multiply(GIVEBACK_RATIO_PCT)
+                        BigDecimal threshold = peakPct.multiply(givebackRatioPct)
                                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                        if (peakPct.compareTo(GIVEBACK_MIN_PEAK_PCT) >= 0
+                        if (peakPct.compareTo(givebackPeakPct) >= 0
                                 && giveback.compareTo(threshold) >= 0) {
                             notes.add(behavior("giveback", "浮盈回吐", lot.symbol(), lot.name(), today,
                                     (lot.initial() ? "底仓" : lot.buyDate() + " 批次") + "峰值浮盈 " + fmt(peakPct)
@@ -453,7 +460,7 @@ public class TradingLotService {
                 // 补 buyPoint 短线战法判定，手动记录带买点时可用）
                 if (isShortRole(lot.role(), lot.buyPoint())
                         && lot.buyDate() != null
-                        && tradingDaysBetween(lot.buyDate(), today) > SHORT_OVERDUE_TRADING_DAYS) {
+                        && tradingDaysBetween(lot.buyDate(), today) > shortOverdueDays) {
                     notes.add(behavior("short-overdue", "短线超期", lot.symbol(), lot.name(), today,
                             lot.buyDate() + " 买入的短线批次已持有 "
                                     + tradingDaysBetween(lot.buyDate(), today)
@@ -478,7 +485,7 @@ public class TradingLotService {
         return t.timestamp() != null ? t.timestamp().toLocalDate() : LocalDate.MIN;
     }
 
-    private TradingLotView toView(TradingLot lot, BigDecimal currentPrice) {
+    private TradingLotView toView(TradingLot lot, BigDecimal currentPrice, String userId) {
         BigDecimal price = currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) > 0
                 ? currentPrice : lot.costPrice();
         BigDecimal marketValue = price.multiply(BigDecimal.valueOf(lot.remaining()));
@@ -488,7 +495,8 @@ public class TradingLotService {
             pnlPct = price.subtract(lot.costPrice()).divide(lot.costPrice(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
         }
-        BigDecimal stop = effectiveStopLoss(lot);
+        // P1-1（2026-08-30 审查）：批次视图止损位按用户规则（原漏 userId 恒默认 −7%，与推送口径分裂）
+        BigDecimal stop = effectiveStopLoss(lot, userId);
         BigDecimal stopDist = null;
         if (price.compareTo(BigDecimal.ZERO) > 0) {
             stopDist = price.subtract(stop).multiply(BigDecimal.valueOf(100))

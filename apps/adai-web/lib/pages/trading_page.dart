@@ -105,6 +105,7 @@ class _TradingPageState extends State<TradingPage> {
   void initState() {
     super.initState();
     _loadAll();
+    _loadRules();
     // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
     // P3-11（2026-08-17）：IndexedStack offstage 时（切到别的页）不再空转发请求——仅当前页为交易页才刷
     // 注：P1-1 修复后 shell 传中文 label（'交易'），判断须用 label 而非插件标识 'trading'
@@ -865,7 +866,7 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildTabWorkspace() {
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: _TabHistoryRefreshListener(
         onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -888,6 +889,7 @@ class _TradingPageState extends State<TradingPage> {
                 Tab(text: '清仓'),
                 Tab(text: '资金'),
                 Tab(text: '历史成交'),
+                Tab(text: '规则'),
               ],
             ),
           ),
@@ -900,6 +902,7 @@ class _TradingPageState extends State<TradingPage> {
               SingleChildScrollView(child: _buildSoldSection()),
               SingleChildScrollView(child: _buildCashSection()),
               _HistorySection(key: _historyKey, api: widget.api),
+              SingleChildScrollView(child: _buildRuleSection()),
             ]),
           ),
         ]),
@@ -1401,6 +1404,228 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (mounted) _toast('本金设置失败，请检查网络后重试');
     }
+  }
+
+  // ── 第三阶段：交易规则（用户自己的交易系统参数）──
+
+  Map<String, dynamic> _ruleParams = {};
+  bool _rulesLoaded = false;
+  bool _rulesLoadFailed = false;
+  bool _ruleExists = false; // P1-6：区分「默认 adai 包」vs「已自定义」
+
+  /// 加载规则参数（GET /trading/rules；失败可重试——P1-6 不再永久失败文案）。
+  Future<void> _loadRules() async {
+    try {
+      final resp = await widget.api.getTradingRules();
+      final p = (resp['params'] as Map<String, dynamic>?) ?? {};
+      if (mounted) {
+        setState(() {
+          _ruleParams = p;
+          _ruleExists = resp['exists'] == true;
+          _rulesLoaded = true;
+          _rulesLoadFailed = false;
+        });
+      }
+    } catch (e) {
+      // P1-6：失败显示重试（原静默永久失败文案，C4「保活页陈旧」同类信号）
+      if (mounted) setState(() => _rulesLoadFailed = true);
+    }
+  }
+
+  Widget _buildRuleSection() {
+    if (!_rulesLoaded && !_rulesLoadFailed) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Text('规则加载中…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+      );
+    }
+    if (_rulesLoadFailed || _ruleParams.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          const Text('规则加载失败，请检查后端连接',
+              style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: _loadRules,
+            child: const Text('重试', style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+          ),
+        ]),
+      );
+    }
+    // 参数中文标签（表单化展示，D4 决策：表单优先）
+    const labels = <String, String>{
+      'positionLimitPercent': '单票仓位上限 %',
+      'defaultStopLossRatio': '默认止损比例（0.93 = −7%）',
+      'givebackPeakPct': '浮盈回吐：峰值浮盈 %',
+      'givebackRatioPct': '浮盈回吐：回吐比例 %',
+      'shortOverdueDays': '短线超期天数',
+      'soldStopLossPct': '清仓止损阈值 %',
+      'soldShortHoldDays': '清仓短持仓天数',
+      'buyPullbackPct': '买点：回调幅度',
+      'buyShrinkRatio': '买点：缩量阈值',
+      'buyKdjLow': '买点：KDJ 低位',
+      'buyVolumeSurge': '买点：放量倍数',
+      'buyPriorHighDays': '买点：前高窗口',
+      'scoreBuyWeight': '打分：买点权重',
+      'scoreExecWeight': '打分：执行权重',
+      'constraintRuleMin': '建议硬约束：规则号下限',
+      'constraintRuleMax': '建议硬约束：规则号上限',
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text('我的交易规则${_ruleExists ? '（已自定义）' : '（默认）'}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 8),
+        // P1-6（2026-08-30 审查）：exists 消费——区分「默认 adai 包」vs「已自定义」，
+        // 用户知道当前跑的是默认参数还是自己的规则
+        Text(_ruleExists ? '改这里 = 改你的交易系统，不影响别人' : '当前用默认参数（adai 规则包）——编辑保存后就是你自己的交易系统',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => _openRuleEditDialog(labels),
+          icon: const Icon(Icons.edit, size: 14, color: AppColors.darkGreen),
+          label: const Text('编辑规则', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: _ruleParams.entries.map((e) {
+          final label = labels[e.key] ?? e.key;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+            ),
+            child: Text('$label：${e.value}',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+          );
+        }).toList(),
+      ),
+    ]);
+  }
+
+  /// 规则编辑弹窗（表单化：数字输入 + 保存 PUT /trading/rules）。
+  Future<void> _openRuleEditDialog(Map<String, String> labels) async {
+    final controllers = <String, TextEditingController>{};
+    for (final e in _ruleParams.entries) {
+      controllers[e.key] = TextEditingController(text: e.value.toString());
+    }
+    // P1-6（2026-08-30 审查）：默认值（= TradingRuleSettings.defaults()，恢复默认按钮用）
+    const defaults = <String, String>{
+      'positionLimitPercent': '25', 'defaultStopLossRatio': '0.93',
+      'givebackPeakPct': '20', 'givebackRatioPct': '50',
+      'shortOverdueDays': '5', 'soldStopLossPct': '5.0', 'soldShortHoldDays': '5',
+      'buyPullbackPct': '0.5', 'buyShrinkRatio': '0.7', 'buyKdjLow': '13',
+      'buyVolumeSurge': '1.5', 'buyPriorHighDays': '20',
+      'scoreBuyWeight': '0.5', 'scoreExecWeight': '0.5',
+      'constraintRuleMin': '66', 'constraintRuleMax': '95',
+    };
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('编辑交易规则', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _ruleParams.keys.map((key) {
+                final label = labels[key] ?? key;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    SizedBox(width: 170, child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                    Expanded(
+                      child: TextField(
+                        controller: controllers[key],
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ]),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          // P1-6：恢复默认（填默认值 → 保存）
+          TextButton(
+            onPressed: () {
+              for (final e in controllers.entries) {
+                final d = defaults[e.key];
+                if (d != null) e.value.text = d;
+              }
+            },
+            child: const Text('恢复默认', style: TextStyle(fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(fontSize: 12)),
+          ),
+          FilledButton(
+            onPressed: () async {
+              // P1-6（2026-08-30 审查）：NaN/Infinity/非法输入不提交（原 tryParse 放行 NaN 且静默跳过）
+              final params = <String, dynamic>{};
+              for (final e in controllers.entries) {
+                final text = e.value.text.trim();
+                if (text.isEmpty) continue; // 清空字段保持原值
+                final v = double.tryParse(text);
+                if (v == null || !v.isFinite) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                      content: Text('「${labels[e.key] ?? e.key}」不是有效数字', style: const TextStyle(fontSize: 13)),
+                      backgroundColor: AppColors.darkSurface2,
+                    ));
+                  }
+                  return; // 保留弹窗让用户改
+                }
+                params[e.key] = v;
+              }
+              if (params.isEmpty) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                    content: Text('没有要更新的参数', style: TextStyle(fontSize: 13)),
+                    backgroundColor: AppColors.darkSurface2,
+                  ));
+                }
+                return;
+              }
+              try {
+                await widget.api.updateTradingRules(params);
+                await _loadRules();
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              } catch (e) {
+                // P1-6（2026-08-30 审查）：保存失败给反馈（原 catch 空块零反馈）
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                    content: Text('保存失败，请检查网络后重试', style: TextStyle(fontSize: 13)),
+                    backgroundColor: AppColors.darkSurface2,
+                  ));
+                }
+              }
+            },
+            child: const Text('保存', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+    if (saved == true && mounted) _toast('交易规则已更新');
   }
 
   /// 通用导入 Dialog：粘贴文本 或 选择文件（上传留存 + GBK 转码）→ 回调导入。

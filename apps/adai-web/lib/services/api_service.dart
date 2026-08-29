@@ -540,6 +540,23 @@ class ApiService {
     _check(resp);
   }
 
+  /// 第三阶段：交易规则参数（用户自己的交易系统参数，GET /trading/rules）。
+  Future<Map<String, dynamic>> getTradingRules() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/rules'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 第三阶段：更新交易规则参数（PUT /trading/rules，覆盖非空字段）。
+  Future<void> updateTradingRules(Map<String, dynamic> params) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/rules'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'params': params}),
+    );
+    _check(resp);
+  }
+
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
   Future<TradeLogConfirmResult> confirmTradeLog() async {

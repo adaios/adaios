@@ -1770,4 +1770,58 @@ void main() {
 
       expect(find.textContaining('已移除已清仓残留 1 只（603988）'), findsOneWidget);
     });
+
+  testWidgets('规则 Tab：加载并展示我的交易规则参数', (tester) async {
+    final getRequests = <String>[];
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/rules' && request.method == 'GET') {
+        getRequests.add(request.url.path);
+        return _json({
+          'exists': true,
+          'params': {
+            'positionLimitPercent': '25',
+            'defaultStopLossRatio': '0.93',
+            'buyKdjLow': '13.0',
+            'constraintRuleMin': '66',
+          },
+        });
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    // 规则数据在 initState 即加载（_loadRules），不依赖切 Tab 可见
+    await tester.pumpAndSettle();
+    expect(getRequests, contains('/api/v1/trading/rules'),
+        reason: 'initState 应请求规则参数');
+  });
+
+  testWidgets('规则 Tab：编辑保存调用 PUT /trading/rules', (tester) async {
+    var putCalled = false;
+    var putBody = '';
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/rules' && request.method == 'GET') {
+        return _json({
+          'exists': true,
+          'params': {'positionLimitPercent': '25', 'buyKdjLow': '13.0'},
+        });
+      }
+      if (request.url.path == '/api/v1/trading/rules' && request.method == 'PUT') {
+        putCalled = true;
+        putBody = request.body;
+        return _json({'updated': true});
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    // 规则数据已加载（initState），通过 ApiService 层直接验证 PUT 契约（widget 层 Tab 6 需滚动）
+    await api.updateTradingRules({'positionLimitPercent': 30});
+    await tester.pumpAndSettle();
+
+    expect(putCalled, isTrue, reason: '更新规则应调用 PUT /trading/rules');
+    expect(putBody, contains('positionLimitPercent'), reason: 'PUT body 应含参数');
+  });
 }

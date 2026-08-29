@@ -7,7 +7,9 @@ import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.domain.trading.market.MarketData;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -56,8 +58,9 @@ class TradingAdviceAppServiceTest {
     private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai) {
         // G-3：注入真实规则引擎（判定口径统一，测试即验证引擎行为）
         return new TradingAdviceAppService(positions, market, ai,
-                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(),
+                ruleEngineWithDefaults(),
                 mock(AccountSnapshotRepository.class),
+                TradingAdviceAppServiceTest.defaultRuleRepo(),
                 "../../os/trading-engine/knowledge/context");
     }
 
@@ -65,8 +68,24 @@ class TradingAdviceAppServiceTest {
     private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai,
                                             AccountSnapshotRepository acc) {
         return new TradingAdviceAppService(positions, market, ai,
-                new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(), acc,
+                ruleEngineWithDefaults(), acc,
+                TradingAdviceAppServiceTest.defaultRuleRepo(),
                 "../../os/trading-engine/knowledge/context");
+    }
+
+    /** 第三阶段：真实规则仓库 mock，findByUser → 默认配置。 */
+    static com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository defaultRuleRepo() {
+        com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository r =
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class);
+        when(r.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        return r;
+    }
+
+    /** 真实规则引擎 + 默认规则配置（第三阶段：无用户规则 → 默认值兜底）。 */
+    private com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine ruleEngineWithDefaults() {
+        TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
+        return new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(ruleRepo);
     }
 
     private TradingAdviceAppService serviceWithTwoPositions(MarketDataSource market, AiClient ai) {
@@ -142,7 +161,7 @@ class TradingAdviceAppServiceTest {
         // FP-P2c（2026-08-16）：硬判定信号段直接断言——茅台占比 96.3% 触发 R81 OVER_WEIGHT
         ArgumentCaptor<ContextPackage> hardCtx = ArgumentCaptor.forClass(ContextPackage.class);
         verify(ai).generate(hardCtx.capture(), any());
-        assertTrue(hardCtx.getValue().prompt().contains("超 R81 上限 25%"),
+        assertTrue(hardCtx.getValue().prompt().contains("仓位上限 25%"),
                 "茅台占比 96.3% 应触发 R81 超仓硬信号，实际 prompt: " + hardCtx.getValue().prompt());
         assertTrue(hardCtx.getValue().prompt().contains("→ suggestion 参考 reduce（R81）"),
                 "超仓硬信号应标注参考 reduce");

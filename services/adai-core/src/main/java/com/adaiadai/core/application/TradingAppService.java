@@ -4,6 +4,7 @@ import com.adaiadai.core.domain.trading.*;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.kernel.IdGenerator;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
@@ -54,6 +55,8 @@ public class TradingAppService {
     private final MarketDataSource marketDataSource;
     /** RFC 20260825：批次推导与行为标注（当日成交同步模式 / 每日操作总结依赖）。 */
     private final TradingLotService tradingLotService;
+    /** 第三阶段：用户规则参数配置（清仓 verdict 阈值按用户隔离）。 */
+    private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
 
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
@@ -63,7 +66,8 @@ public class TradingAppService {
                              AccountSnapshotRepository accountSnapshotRepository,
                              TransferRepository transferRepository,
                              MarketDataSource marketDataSource,
-                             TradingLotService tradingLotService) {
+                             TradingLotService tradingLotService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
@@ -73,6 +77,7 @@ public class TradingAppService {
         this.transferRepository = transferRepository;
         this.marketDataSource = marketDataSource;
         this.tradingLotService = tradingLotService;
+        this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
     }
 
     private Object tradeLock(String userId) {
@@ -735,9 +740,14 @@ public class TradingAppService {
                 if (!found) current.add(t);
             }
             // D1（2026-08-16）：规则对照生成 verdict（R53/R66），保留已有心理
+            // 第三阶段：阈值按用户规则配置（rules.yaml params；无规则 → 默认 -5%/5 天，R66/R53 语义）
+            TradingRuleSettings ruleSettings = tradingRuleSettingsRepository.findByUser(userId);
+            double stopLossPct = ruleSettings.soldStopLossPct();
+            int shortHoldDays = ruleSettings.soldShortHoldDays();
             for (int i = 0; i < current.size(); i++) {
                 SoldTrade t = current.get(i);
-                String verdict = SoldTradeVerdict.compute(t.holdPnlPct(), t.holdDays());
+                String verdict = SoldTradeVerdict.compute(t.holdPnlPct(), t.holdDays(),
+                        stopLossPct, shortHoldDays, "R66", "R53");
                 current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
                         t.holdDays(), t.tradeCount(), t.holdPnlPct(), verdict, t.psychology()));
             }

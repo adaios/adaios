@@ -231,7 +231,7 @@ public class TradingSessionPushService {
                 log.warn("收盘小结：今日成交统计失败 | userId={} | {}", userId, e.getMessage());
             }
             int pending = tradeLogCollectService.todayCandidates(userId).size();
-            String content = buildCloseSummaryTemplate(data, buy, sell, pending);
+            String content = buildCloseSummaryTemplate(data, userId, buy, sell, pending);
             pushToAll(userId, "收盘小结", content, "close-summary", null, null);
         });
     }
@@ -344,7 +344,7 @@ public class TradingSessionPushService {
             List<WatchlistItem> watchlist = watchlistRepository.findAll(userId);
             if (watchlist.isEmpty()) return;
             List<WatchlistBuyPointService.WatchBuyPoint> hits =
-                    buyPointService.scanWatchlist(watchlist);
+                    buyPointService.scanWatchlist(watchlist, userId);
             for (WatchlistBuyPointService.WatchBuyPoint h : hits) {
                 // P2-交易7（2026-08-17）：B1?（部分满足候选）不推送——「不硬推」声明；
                 // 只有正式 B1/B2 才推「到买点了」，B1? 留给 web 信号列灰显
@@ -411,7 +411,7 @@ public class TradingSessionPushService {
                 default -> "尾盘建议：今天空仓收盘。明天继续等信号，保持耐心。";
             };
         }
-        String dataText = buildDataText(data);
+        String dataText = buildDataText(data, userId);
         try {
             AiTraceContext.set(userId, null, null, "trading_session_" + scene);
             ContextPackage ctx = ContextPackage.simple(
@@ -421,11 +421,11 @@ public class TradingSessionPushService {
         } catch (Exception e) {
             log.warn("时段推送 LLM 生成失败，降级模板 | node={} | {}", node, e.getMessage());
         }
-        return fallback.build(data);
+        return fallback.build(data, userId);
     }
 
     /** 数据文本（注入 LLM 的上下文）。 */
-    private String buildDataText(SessionData data) {
+    private String buildDataText(SessionData data, String userId) {
         StringBuilder sb = new StringBuilder();
         sb.append("【当前持仓】\n");
         for (Position p : data.positions()) {
@@ -442,7 +442,7 @@ public class TradingSessionPushService {
             }
             sb.append(" 止损位").append(p.stopLossPrice() != null ? fmt(p.stopLossPrice()) : "未设置")
                     .append(" 买点").append(p.buyPoint() != null ? p.buyPoint() : "未知");
-            var sl = ruleEngine.evaluateStopLoss(md != null ? md.price() : null, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.stopLossPrice());
             if (sl.verdict() == StopLossVerdict.BREACHED) {
                 sb.append(" ⚠️已跌破止损位（R66）");
             }
@@ -454,7 +454,7 @@ public class TradingSessionPushService {
 
     // ── 模板（阶段一 / LLM 降级）──
 
-    private String buildMorningTemplate(SessionData data) {
+    private String buildMorningTemplate(SessionData data, String userId) {
         // RFC 20260817：结构化——总结 + 每持仓一行（名称/数量/止损/买点）+ 纪律提醒
         StringBuilder sb = new StringBuilder("📋 早盘计划\n");
         sb.append("总结：").append(data.positions().size()).append(" 只持仓，今日按纪律执行。\n");
@@ -469,7 +469,7 @@ public class TradingSessionPushService {
         return sb.toString();
     }
 
-    private String buildMiddayTemplate(SessionData data) {
+    private String buildMiddayTemplate(SessionData data, String userId) {
         // RFC 20260817：结构化——总结 + 每持仓现价/涨跌/状态
         StringBuilder sb = new StringBuilder("📊 午间跟踪\n");
         sb.append("总结：上午表现如下，下午重点盯止损位。\n");
@@ -480,7 +480,7 @@ public class TradingSessionPushService {
             String change = changePct != null
                     ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
                     : "-";
-            var sl = ruleEngine.evaluateStopLoss(md != null ? md.price() : null, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.stopLossPrice());
             String status = sl.verdict() == StopLossVerdict.BREACHED
                     ? "⚠️已破止损（R66）" : "未触发止损";
             sb.append("· ").append(p.name()).append(" 现价 ")
@@ -491,7 +491,7 @@ public class TradingSessionPushService {
         return sb.toString();
     }
 
-    private String buildCloseTemplate(SessionData data) {
+    private String buildCloseTemplate(SessionData data, String userId) {
         // RFC 20260817：结构化——总结 + 每持仓一行（现价/涨跌/建议）
         StringBuilder sb = new StringBuilder("📉 尾盘建议\n");
         sb.append("总结：").append(data.positions().size()).append(" 只持仓，逐票建议如下。\n");
@@ -504,9 +504,9 @@ public class TradingSessionPushService {
             String change = changePct != null
                     ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
                     : "-";
-            var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice());
             BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
-            var pv = ruleEngine.evaluatePosition(percent);
+            var pv = ruleEngine.evaluatePosition(userId, percent);
             String advice;
             if (sl.verdict() == StopLossVerdict.BREACHED) {
                 advice = "清仓（R66）";
@@ -525,7 +525,7 @@ public class TradingSessionPushService {
     }
 
     /** 收盘小结模板（P2-用户3，2026-08-29）：客观数字聚合，不耗 AI；阿呆口吻（B1 无系统标签）。 */
-    private String buildCloseSummaryTemplate(SessionData data, int buyCount, int sellCount, int pending) {
+    private String buildCloseSummaryTemplate(SessionData data, String userId, int buyCount, int sellCount, int pending) {
         StringBuilder sb = new StringBuilder("📋 收盘小结\n");
         int total = buyCount + sellCount;
         if (total > 0) {
@@ -542,7 +542,7 @@ public class TradingSessionPushService {
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
             BigDecimal price = md != null && md.price() != null ? md.price() : p.currentPrice();
-            var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice());
             boolean isBreached = sl.verdict() == StopLossVerdict.BREACHED;
             if (isBreached) breached++;
             sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
@@ -633,6 +633,6 @@ public class TradingSessionPushService {
 
     @FunctionalInterface
     private interface TemplateBuilder {
-        String build(SessionData data);
+        String build(SessionData data, String userId);
     }
 }

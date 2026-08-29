@@ -6,7 +6,9 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
+import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
+import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.infrastructure.ai.llm.LlmResponseParser;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -64,10 +66,6 @@ public class TradingAdviceAppService {
     private final Path rulesPath;
     private final Path strategyPath;
 
-    /** 决策硬约束规则区间：止损 R66-R80 + 仓位 R81-R95（与 RFC 20260815 §0 建议类型对齐）。 */
-    private static final int CONSTRAINT_RULE_MIN = 66;
-    private static final int CONSTRAINT_RULE_MAX = 95;
-
     /** 建议 system 指令：角色 + 规则硬约束语义（生成语义，非 understand 的 JSON 摘要语义）。 */
     private static final String ADVICE_SYSTEM_PROMPT = """
             你是一个个人交易建议助手。基于用户消息中的真实持仓与实时行情，结合交易系统规则（止损 R66-R80 / 仓位 R81-R95 是决策硬约束）给出逐票建议。
@@ -103,6 +101,7 @@ public class TradingAdviceAppService {
     private final AiClient aiClient;
     private final TradingRuleEngine ruleEngine;
     private final AccountSnapshotRepository accountSnapshotRepository;
+    private final TradingRuleSettingsRepository settingsRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TradingAdviceAppService(PositionRepository positionRepository,
@@ -110,12 +109,14 @@ public class TradingAdviceAppService {
                                    AiClient aiClient,
                                    TradingRuleEngine ruleEngine,
                                    AccountSnapshotRepository accountSnapshotRepository,
+                                   TradingRuleSettingsRepository settingsRepository,
                                    @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.aiClient = aiClient;
         this.ruleEngine = ruleEngine;
         this.accountSnapshotRepository = accountSnapshotRepository;
+        this.settingsRepository = settingsRepository;
         this.rulesPath = Paths.get(knowledgeDir, "rules.md").toAbsolutePath().normalize();
         this.strategyPath = Paths.get(knowledgeDir, "strategy.md").toAbsolutePath().normalize();
     }
@@ -147,8 +148,12 @@ public class TradingAdviceAppService {
         // 2. 只读 os/trading-engine 规则与策略，抽取 R66-R95 作为决策硬约束（G-3：解析归引擎）
         String rulesText = readKnowledgeFile(rulesPath);
         String strategyText = readKnowledgeFile(strategyPath);
+        // 第三阶段：硬约束区间按用户规则（默认 66-95 = adai R66-R95 止损+仓位）
+        TradingRuleSettings ruleSettings = settingsRepository.findByUser(userId);
+        int ruleMin = ruleSettings.constraintRuleMin();
+        int ruleMax = ruleSettings.constraintRuleMax();
         List<TradingRuleEngine.RuleEntry> constraintRules = ruleEngine.parseRules(rulesText).stream()
-                .filter(r -> r.number() >= CONSTRAINT_RULE_MIN && r.number() <= CONSTRAINT_RULE_MAX)
+                .filter(r -> r.number() >= ruleMin && r.number() <= ruleMax)
                 .sorted(Comparator.comparingInt(TradingRuleEngine.RuleEntry::number))
                 .toList();
 
@@ -321,9 +326,9 @@ public class TradingAdviceAppService {
             views.add(new PositionView(p.symbol(), name, p.quantity(), marketValue, positionPercent,
                     p.avgCost(), price, changePercent, pnl, pnlPercent,
                     p.stopLossPrice(), p.entryDate(), p.buyPoint(),
-                    // G-3：引擎确定性判定（止损 R66 / 仓位 R81）
-                    ruleEngine.evaluateStopLoss(price, p.stopLossPrice()),
-                    ruleEngine.evaluatePosition(positionPercent),
+                    // G-3：引擎确定性判定（止损 R66 / 仓位 R81）——第三阶段：按 userId 读用户规则配置
+                    ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice()),
+                    ruleEngine.evaluatePosition(userId, positionPercent),
                     // FP-P2b：R81 是否适用（总资产 < 100 万）
                     r81Applicable));
         }
