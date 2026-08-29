@@ -62,38 +62,57 @@ class _SearchPageState extends State<SearchPage> {
       });
     } catch (e) {
       if (!mounted || gen != _searchGen) return;
-      setState(() { _loading = false; _error = _errText(e); });
+      setState(() {
+        _loading = false;
+        _error = _errText(e);
+      });
     }
   }
 
   String _errText(dynamic e) {
     final str = e.toString();
-    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
-    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    if (str.contains('TimeoutException') || str.contains('timed out'))
+      return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException'))
+      return '无法连接服务器，请确认后端已启动';
     return '搜索失败，请重试';
   }
 
   Widget _buildError() {
     return Expanded(
       child: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
-          const SizedBox(height: 10),
-          Text(_error ?? '搜索失败', style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
-          const SizedBox(height: 14),
-          GestureDetector(
-            onTap: _search,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurface2,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
-              ),
-              child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
+            const SizedBox(height: 10),
+            Text(
+              _error ?? '搜索失败',
+              style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4),
             ),
-          ),
-        ]),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: _search,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface2,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppColors.darkGreen.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: const Text(
+                  '重试',
+                  style: TextStyle(fontSize: 13, color: AppColors.darkGreen),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -109,10 +128,15 @@ class _SearchPageState extends State<SearchPage> {
       if (idx > start) {
         spans.add(TextSpan(text: text.substring(start, idx)));
       }
-      spans.add(TextSpan(
-        text: text.substring(idx, idx + query.length),
-        style: TextStyle(color: AppColors.darkGreen, fontWeight: FontWeight.w600),
-      ));
+      spans.add(
+        TextSpan(
+          text: text.substring(idx, idx + query.length),
+          style: TextStyle(
+            color: AppColors.darkGreen,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
       start = idx + query.length;
       idx = lower.indexOf(qLower, start);
     }
@@ -137,11 +161,21 @@ class _SearchPageState extends State<SearchPage> {
               _buildError()
             else if (!_hasSearched)
               const Expanded(
-                child: Center(child: Text('输入关键词搜索记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey4))),
+                child: Center(
+                  child: Text(
+                    '输入关键词搜索记录',
+                    style: TextStyle(fontSize: 14, color: AppColors.darkGrey4),
+                  ),
+                ),
               )
             else if (_results.isEmpty)
               Expanded(
-                child: Center(child: Text('未找到相关记录', style: TextStyle(fontSize: 14, color: AppColors.darkGrey4))),
+                child: Center(
+                  child: Text(
+                    '未找到相关记录',
+                    style: TextStyle(fontSize: 14, color: AppColors.darkGrey4),
+                  ),
+                ),
               )
             else
               Expanded(
@@ -150,7 +184,13 @@ class _SearchPageState extends State<SearchPage> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Text('共 ${_results.length} 条结果', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+                      child: Text(
+                        '共 ${_results.length} 条结果',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.darkGrey5,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Expanded(
@@ -176,9 +216,17 @@ class _SearchPageState extends State<SearchPage> {
         children: [
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: Padding(
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.centerLeft,
               padding: const EdgeInsets.only(right: 8),
-              child: Icon(Icons.arrow_back, size: 20, color: AppColors.darkGrey4),
+              child: Icon(
+                Icons.arrow_back,
+                size: 20,
+                color: AppColors.darkGrey4,
+              ),
             ),
           ),
           Expanded(
@@ -195,7 +243,10 @@ class _SearchPageState extends State<SearchPage> {
                 style: TextStyle(fontSize: 15, color: AppColors.darkGrey1),
                 decoration: InputDecoration(
                   hintText: '搜索…',
-                  hintStyle: TextStyle(fontSize: 15, color: AppColors.darkGrey6),
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.darkGrey6,
+                  ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   isDense: true,
@@ -208,12 +259,17 @@ class _SearchPageState extends State<SearchPage> {
           GestureDetector(
             onTap: _search,
             child: Container(
-              width: 40, height: 40,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: AppColors.darkSurface2,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.darkGrey5),
+              child: Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: AppColors.darkGrey5,
+              ),
             ),
           ),
         ],
@@ -222,7 +278,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildResultCard(SearchResultItem item) {
-    final time = item.dateTime.length >= 16 ? item.dateTime.substring(11, 16) : '';
+    final time = item.dateTime.length >= 16
+        ? item.dateTime.substring(11, 16)
+        : '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -235,30 +293,58 @@ class _SearchPageState extends State<SearchPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
+          Text(
+            item.title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.darkGrey1,
+            ),
+          ),
           const SizedBox(height: 4),
           RichText(
             text: TextSpan(
-              style: TextStyle(fontSize: 13, color: AppColors.darkGrey5, height: 1.4),
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.darkGrey5,
+                height: 1.4,
+              ),
               children: _buildHighlightedText(item.content, _query),
             ),
           ),
           if (item.tags.isNotEmpty) ...[
             const SizedBox(height: 6),
             Wrap(
-              spacing: 4, runSpacing: 4,
-              children: item.tags.map((t) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurface2,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(t, style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
-              )).toList(),
+              spacing: 4,
+              runSpacing: 4,
+              children: item.tags
+                  .map(
+                    (t) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurface2,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        t,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.darkGrey5,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ],
           const SizedBox(height: 4),
-          Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          Text(
+            time,
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey4),
+          ),
         ],
       ),
     );

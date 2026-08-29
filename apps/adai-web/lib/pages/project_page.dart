@@ -178,7 +178,7 @@ class _ProjectPageState extends State<ProjectPage> {
                   color: _rfcColor(r.status).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(5),
                 ),
-                child: Text(r.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _rfcColor(r.status))),
+                child: Text(r.status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _rfcColor(r.status))),
               ),
             ]),
           )),

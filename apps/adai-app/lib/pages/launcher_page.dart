@@ -48,6 +48,9 @@ class _LauncherPageState extends State<LauncherPage>
 
   /// 启用插件（RFC 20260814 Domain=插件模型）：trading/project 显隐对应模块，基础服务常驻。
   Set<String> _plugins = {};
+  /// P2-UI7（2026-08-29）：插件行稳定槽位——首次加载完成前渲染等高位「加载中…」占位，
+  /// 加载后原地更新为真实行/隐藏；防止插件加载时序插入行导致后续行跳位（audit P2-3）。
+  bool _pluginsLoaded = false;
 
   late AnimationController _graphAnim;
   late Animation<double> _graphAlpha;
@@ -123,9 +126,13 @@ class _LauncherPageState extends State<LauncherPage>
     try {
       final plugins = await widget.api.getMyPlugins();
       if (!mounted) return;
-      setState(() => _plugins = plugins.toSet());
+      setState(() {
+        _plugins = plugins.toSet();
+        _pluginsLoaded = true; // P2-UI7：占位 → 原地更新真实行
+      });
     } catch (_) {
       if (!mounted) return;
+      setState(() => _pluginsLoaded = true); // P2-UI7：失败也结束占位（行隐藏，插件口不进）
       ScaffoldMessenger.of(context)
         ..clearSnackBars() // F35：防连续失败 SnackBar 队列堆积
         ..showSnackBar(SnackBar(
@@ -179,22 +186,25 @@ class _LauncherPageState extends State<LauncherPage>
                 GestureDetector(onTap: _loadAll, child: const Text('重试', style: TextStyle(fontSize: 12, color: AppColors.darkGreen))),
               ]),
             ),
-          // Fixed top: drag handle + search bar (not scrolled)
-          GestureDetector(
-            onVerticalDragEnd: (d) {
-              if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
-                widget.onNavigateBack();
-              }
-            },
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          // P2-UI6（2026-08-29，audit 2026-08-20 ⭐⭐⭐⭐）：下滑返回手势**只挂拖拽条**
+          // （44pt 热区），不再覆盖搜索栏——搜索栏是 tap 大目标，原在手势区内慢滑
+          // （位移<touchSlop 且 velocity<300）tap 赢 → 误开搜索页；返回语义收敛到拖拽条。
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Column(children: [
-              _buildDragHandle(),
+              GestureDetector(
+                onVerticalDragEnd: (d) {
+                  if (d.primaryVelocity != null && d.primaryVelocity! > 300) {
+                    widget.onNavigateBack();
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                // 44pt 触达热区（P2-UI8 同步）：拖拽条 24px 过窄，整条热区可下滑返回
+                child: SizedBox(height: 44, child: Center(child: _buildDragHandle())),
+              ),
               _buildSearchBar(),
             ]),
           ),
-        ),
         const SizedBox(height: 28),
         // Scrollable content
         Expanded(
@@ -232,9 +242,17 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            // 插件门控（RFC 20260814）：阿呆系统 = project 插件，仅启用项目插件的用户可见
-            if (_plugins.contains('project')) ...[
-              _buildRow(Icons.query_stats, '阿呆系统', 'Kernel · Domain · 数据', AppColors.darkBlue, () {
+            // 插件行稳定槽位（P2-UI7 2026-08-29）：固定位置显隐——加载完成前渲染等高位
+            // 「加载中…」占位，加载后原地更新，不随插件加载时序插入导致后续行跳位。
+            // 阿呆系统 = project 插件，仅启用项目插件的用户可见
+            _pluginSlot(
+              ready: _pluginsLoaded,
+              enabled: _plugins.contains('project'),
+              icon: Icons.query_stats,
+              title: '阿呆系统',
+              subtitle: 'Kernel · Domain · 数据',
+              accent: AppColors.darkBlue,
+              onTap: () {
                 // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
                 // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
                 Navigator.push(context, PageRouteBuilder(
@@ -242,8 +260,8 @@ class _LauncherPageState extends State<LauncherPage>
                   reverseTransitionDuration: Duration.zero,
                   pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
                 ));
-              }),
-            ],
+              },
+            ),
             // 任务 = Kernel 基础服务（待办人人都有），不按插件门控
             _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
@@ -251,14 +269,20 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            // 交易 = trading 插件，仅启用交易插件的用户可见
-            if (_plugins.contains('trading')) ...[
-              _buildRow(Icons.show_chart, '交易', '持仓 · 记录', AppColors.darkOrange, () {
+            // 交易 = trading 插件（稳定槽位，同 P2-UI7），仅启用交易插件的用户可见
+            _pluginSlot(
+              ready: _pluginsLoaded,
+              enabled: _plugins.contains('trading'),
+              icon: Icons.show_chart,
+              title: '交易',
+              subtitle: '持仓 · 记录',
+              accent: AppColors.darkOrange,
+              onTap: () {
                 Navigator.push(context, MaterialPageRoute(
                   builder: (_) => TradingPage(api: widget.api),
                 ));
-              }),
-            ],
+              },
+            ),
             _divider(),
             const SizedBox(height: 28),
 
@@ -490,6 +514,17 @@ class _LauncherPageState extends State<LauncherPage>
   }
 
   // 行图标用 Material Icons（CanvasKit Web 无 NotoColorEmoji，emoji 渲染会崩 Picture._cullRect，#12）
+  /// P2-UI7（2026-08-29）：插件行稳定槽位——ready=false 渲染等高位「加载中…」占位（禁点），
+  /// ready=true 且未启用 → 不占位（SizedBox.shrink）；启用 → 真实行。固定槽位顺序保证行不跳位。
+  Widget _pluginSlot({required bool ready, required bool enabled, required IconData icon,
+      required String title, required String subtitle, required Color accent, required VoidCallback onTap}) {
+    if (!ready) {
+      return _buildRow(icon, title, '加载中…', accent, () {}); // 占位：等高位、禁点
+    }
+    if (!enabled) return const SizedBox.shrink();
+    return _buildRow(icon, title, subtitle, accent, onTap);
+  }
+
   Widget _buildRow(IconData icon, String title, String preview, Color accentColor, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,

@@ -454,7 +454,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(statusLabels[task.status] ?? task.status,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
           ),
           const SizedBox(width: 6),
           if (task.priority != 'P2')
@@ -464,7 +464,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
                 color: AppColors.darkOrange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(task.priority, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+              child: Text(task.priority, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
             ),
           const Spacer(),
           PopupMenuButton<String>(
@@ -496,7 +496,7 @@ class _ProjectTaskPageState extends State<ProjectTaskPage> {
               color: AppColors.darkBg,
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text(t, style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+            child: Text(t, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           )).toList()),
         ],
       ]),

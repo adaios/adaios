@@ -126,7 +126,7 @@ class _TimelinePageState extends State<TimelinePage> {
         child: Row(
           children: weekLabels.map((l) => Expanded(
             child: Center(
-              child: Text(l, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+              child: Text(l, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             ),
           )).toList(),
         ),
@@ -229,7 +229,7 @@ class _TimelinePageState extends State<TimelinePage> {
                     borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(_typeLabel(e.type),
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
                 ),
                 const Spacer(),
                 Text(_timeOf(e.dateTime),
@@ -267,7 +267,7 @@ class _TimelinePageState extends State<TimelinePage> {
                   spacing: 4,
                   runSpacing: 4,
                   children: e.tags.map((t) => Text('#$t',
-                      style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5))).toList(),
+                      style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5))).toList(),
                 ),
               ],
             ],

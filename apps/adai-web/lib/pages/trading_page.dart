@@ -500,7 +500,7 @@ class _TradingPageState extends State<TradingPage> {
                         Text(_lastUpdated != null
                             ? '上次更新 $_lastUpdated · 每 30 分钟自动刷新 · 账户快照 ${_account?.snapshotDate ?? '-'}'
                             : '数据加载中…',
-                            style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
                         const Spacer(),
                         TextButton.icon(
                           onPressed: _loadAll,
@@ -598,7 +598,7 @@ class _TradingPageState extends State<TradingPage> {
             if (sub != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: Text(sub, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                child: Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               ),
             // P2-交易14（2026-08-17）：大数值（如 ¥-39495.12 22px 粗体）在窄卡溢出 → FittedBox 缩放 + 千分位
             // P2-交易31（2026-08-29）：value null（本金未设）→ 灰色「—」，不给误导数值
@@ -930,6 +930,10 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
+      // P2-UX2（2026-08-29）：规则术语图例——移动端/桌面只读展示不再零解释
+      const SizedBox(height: 4),
+      const Text('买点信号：B1=回调缩量低吸 · B2=放量突破右侧（判定是提示不是指令）',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 8),
       if (_watchlist.isEmpty)
         const Text('暂无自选股——导入通达信自选导出，阿呆帮你盯买点',
@@ -1095,6 +1099,10 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
         ),
       ]),
+      // P2-UX2（2026-08-29）：规则术语图例——R66/R53/三维打分不再零解释
+      const SizedBox(height: 4),
+      const Text('规则对照：R66=亏超5%扛单没走 · R53=短持/久持亏损；买点分=入场时机 · 执行分=纪律执行 · 总分=综合',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 8),
       if (_sold.isNotEmpty) _buildSoldStats(),
       const SizedBox(height: 8),
@@ -1295,7 +1303,7 @@ class _TradingPageState extends State<TradingPage> {
           ),
           const SizedBox(height: 8),
           const Text('转入/转出会更新净投入本金与现金——总盈亏 = 资产 - 本金自动算',
-              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
@@ -1358,7 +1366,7 @@ class _TradingPageState extends State<TradingPage> {
           ),
           const SizedBox(height: 8),
           const Text('总盈亏 = 资产 − 本金。本金是历史累计投入，只写本金字段，不影响现金/持仓。',
-              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),

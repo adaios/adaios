@@ -704,15 +704,15 @@ class _FeedPageState extends State<FeedPage> {
       final result = await widget.api.confirmTradeLog();
       if (!mounted) return;
       if (result.confirmed > 0) {
-        _showSnackBar('已确认 ${result.confirmed} 笔交易并入账');
+        _showSnackBar('好，${result.confirmed} 笔已经记进账了'); // P2-UX4：阿呆口吻（B1）
       } else if (result.failed > 0) {
-        _showSnackBar('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
+        _showSnackBar('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
       } else {
-        _showSnackBar('今天没有待确认的交易');
+        _showSnackBar('今天没有待确认的交易，先记新的吧');
       }
       // 失败候选保留（P0-1）：提示可丢弃，防 15:05 反复提醒（P1-交易18）
       if (result.failed > 0) {
-        _showSnackBar('失败候选已保留——可忽略或修正后重试');
+        _showSnackBar('没记上的候选还在——可以忽略，或者补好后我再记');
       }
       await _loadFeed();
     } catch (e) {
@@ -1103,7 +1103,7 @@ class _FeedPageState extends State<FeedPage> {
         ),
         child: Column(children: [
           Text('$value', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-          Text(label, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ]),
       ),
     );
@@ -1310,7 +1310,7 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
             icon: const Icon(Icons.image_outlined, size: 18),
             color: _pendingImages.isNotEmpty ? AppColors.darkGreen : AppColors.darkGrey4,
             tooltip: _pendingImages.isNotEmpty ? '更换图片' : '选择图片',
-            style: IconButton.styleFrom(minimumSize: const Size(34, 34)),
+            style: IconButton.styleFrom(minimumSize: const Size(44, 44)), // P2-UI8：触达 ≥44pt
           ),
           const SizedBox(width: 2),
           IconButton(

@@ -80,7 +80,7 @@ class DesktopFeedCard extends StatelessWidget {
                   children: [
                     if (data.date.isNotEmpty) ...[
                       Text(data.date,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
                       const SizedBox(height: 2),
                     ],
                     Text(data.time,
@@ -470,9 +470,9 @@ class DesktopFeedCard extends StatelessWidget {
             )).copyWith(
               strong: const TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
               h1: const TextStyle(fontSize: 17, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
-              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: const Color(0xFF2A2826)),
+              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkBorder),
               codeblockDecoration: BoxDecoration(
-                color: const Color(0xFF2A2826),
+                color: AppColors.darkBorder,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
               ),
@@ -518,7 +518,7 @@ class DesktopFeedCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+      child: Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
     );
   }
 
@@ -554,7 +554,7 @@ class DesktopFeedCard extends StatelessWidget {
           const SizedBox(width: 4),
           Flexible(
             child: Text(data.error!,
-                overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: AppColors.darkOrange)),
+                overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
           ),
           const Spacer(),
           Container(

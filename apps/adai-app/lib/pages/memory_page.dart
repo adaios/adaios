@@ -278,7 +278,7 @@ class _MemoryPageState extends State<MemoryPage> {
               color: (active ? AppColors.darkGreen : AppColors.darkGrey5).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(3),
             ),
-            child: Text('$count', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
+            child: Text('$count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                 color: active ? AppColors.darkGreen : AppColors.darkGrey5)),
           ),
         ]),
@@ -334,7 +334,7 @@ class _MemoryPageState extends State<MemoryPage> {
                     color: _activeTag == t ? AppColors.darkGreen.withValues(alpha: 0.15) : AppColors.darkSurface2,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(t, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+                  child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500,
                       color: _activeTag == t ? AppColors.darkGreen : AppColors.darkGrey5)),
                 ),
               )).toList(),
@@ -345,7 +345,7 @@ class _MemoryPageState extends State<MemoryPage> {
             Icon(icon, size: 12, color: iconColor),
             const SizedBox(width: 4),
             Text('$time  ${_dateDisplay(_currentDate)}',
-                style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
             const Spacer(),
             // P-app-03 闭环：待办记忆可「完成」（PATCH /memory/{id}/done）
             if (entry.actionable && entry.doneAt == null) ...[
@@ -401,7 +401,7 @@ class _MemoryPageState extends State<MemoryPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
 
@@ -410,7 +410,7 @@ class _MemoryPageState extends State<MemoryPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color)),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color)),
     );
   }
 }

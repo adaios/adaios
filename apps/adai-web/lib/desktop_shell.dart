@@ -181,7 +181,7 @@ class _DesktopShellState extends State<DesktopShell> {
                 SizedBox(height: 3),
                 Text(
                   'Personal AI OS',
-                  style: TextStyle(fontSize: 10, color: AppColors.darkGrey5, letterSpacing: 0.6),
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, letterSpacing: 0.6),
                 ),
               ],
             ),

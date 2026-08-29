@@ -141,8 +141,8 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       // P1-前端1（2026-08-29 修复，web P1-7 同类在 app 复发）：
       // 静默刷新（30 分钟自动刷新/交易后 _refresh）失败不再整页错误态丢弃已展示数据——
-      // 已有持仓/账户数据时保留旧数据；仅首载（无数据）失败才显示错误页。
-      final hasData = _positions != null && _snapshot != null;
+      // 已有快照数据时保留旧数据；仅首载（快照尚无）失败才显示错误页。
+      final hasData = _snapshot != null; // _positions 恒非空（初始空列表），首载成功标志=快照已有
       setState(() {
         if (!hasData) _error = _extractApiError(e); // #113 人话
         _loading = false;
@@ -325,11 +325,11 @@ class _TradingPageState extends State<TradingPage> {
         _candidates = [];
       });
       if (result.confirmed > 0) {
-        _showSnack('已确认 ${result.confirmed} 笔并入账', AppColors.darkGreen);
+        _showSnack('好，${result.confirmed} 笔已经记进账了', AppColors.darkGreen); // P2-UX4：阿呆口吻（B1）
       } else if (result.failed > 0) {
-        _showSnack('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}', AppColors.darkOrange);
+        _showSnack('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}', AppColors.darkOrange);
       } else {
-        _showSnack('没有可确认的候选', AppColors.darkGrey4);
+        _showSnack('今天没有待确认的候选', AppColors.darkGrey4);
       }
       _refresh();       // 持仓即时刷新
       _checkActivity(); // 成交入账 → 复盘横幅可生成（真实成交口径）
@@ -690,7 +690,7 @@ class _TradingPageState extends State<TradingPage> {
                   _sectionTitle(_positions.isEmpty ? '持仓' : '持仓明细'),
                   if (_positions.isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    Text('共 ${_positions.length} 只', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                    Text('共 ${_positions.length} 只', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
                   ],
                   const Spacer(),
                   _buildManageHint(),
@@ -845,7 +845,7 @@ class _TradingPageState extends State<TradingPage> {
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(isBuy ? '买入' : '卖出',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: dirColor)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: dirColor)),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -856,12 +856,12 @@ class _TradingPageState extends State<TradingPage> {
             if (missingDate)
               // 2026-08-27 二修：截图缺成交日期禁止落库——需补日期才能确认入账
               Text('⚠ 缺成交日期，需补充后才能入账',
-                  style: TextStyle(fontSize: 10, color: AppColors.darkOrange)),
+                  style: TextStyle(fontSize: 11, color: AppColors.darkOrange)),
           ]),
         ),
         if (c.tradeDate != null && c.tradeDate!.isNotEmpty)
           Text(c.tradeDate!, // 2026-08-27：截图「日期」列提取的成交日期（确认入账按此日期）
-              style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey5)),
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         if (c.price != null && c.volume != null)
           Text('${c.volume}股 @${_fmtPrice(c.price!)}',
               style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4)),
@@ -875,7 +875,7 @@ class _TradingPageState extends State<TradingPage> {
                 color: AppColors.darkOrange.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(5),
               ),
-              child: const Text('补日期', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+              child: const Text('补日期', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
             ),
           )
         else
@@ -1037,7 +1037,7 @@ class _TradingPageState extends State<TradingPage> {
           ]),
           const SizedBox(height: 4),
           Text('止损/买点只对买入生效；清空止损 = 不设（建议引擎按 R68 降级判定）',
-              style: TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ],
         const SizedBox(height: 12),
         Row(children: [
@@ -1235,13 +1235,13 @@ class _TradingPageState extends State<TradingPage> {
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
-              Text(totalPnl == null ? '—' : '${totalPnl! >= 0 ? '+' : ''}${_fmtMoney(totalPnl!)}',
+              Text(totalPnl == null ? '—' : '${totalPnl >= 0 ? '+' : ''}${_fmtMoney(totalPnl)}',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
                       color: totalPnl == null ? AppColors.darkGrey5
-                          : totalPnl! >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+                          : totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
               // P2-交易31（2026-08-29，U32）：本金未设提示——总盈亏口径自解释
               if (hasAccount && a.principal <= 0)
-                Text('未设本金，设后显示总盈亏', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5)),
+                Text('未设本金，设后显示总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             ]),
           ],
         ),
@@ -1263,7 +1263,7 @@ class _TradingPageState extends State<TradingPage> {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text('账户快照 ${a.snapshotDate} · 每 30 分钟自动刷新',
-                style: const TextStyle(fontSize: 9, color: AppColors.darkGrey5)),
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           ),
       ]),
     );
@@ -1907,7 +1907,7 @@ class _AdviceSheetState extends State<_AdviceSheet> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(action.isEmpty ? '建议' : action,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }
@@ -2078,7 +2078,7 @@ class _LotTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(statusText,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
         ),
         const Spacer(),
         Text(

@@ -26,9 +26,9 @@ class AppTheme {
             letterSpacing: -0.5,
           ),
         ),
-        navigationRailTheme: const NavigationRailThemeData(
+        navigationRailTheme: NavigationRailThemeData(
           backgroundColor: AppColors.darkSurface,
-          indicatorColor: Color(0x263AB75A), // darkGreen @ 15%
+          indicatorColor: AppColors.darkGreen.withValues(alpha: 0.15), // darkGreen @ 15%
           selectedIconTheme: IconThemeData(color: AppColors.darkGreen),
           unselectedIconTheme: IconThemeData(color: AppColors.darkGrey5),
           selectedLabelTextStyle: TextStyle(

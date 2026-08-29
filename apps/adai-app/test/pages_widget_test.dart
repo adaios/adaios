@@ -681,7 +681,7 @@ void main() {
       // 全部确认入账 → 清空候选 + 人话反馈
       await tester.tap(find.text('全部确认入账'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('已确认 2 笔并入账'), findsOneWidget);
+      expect(find.textContaining('好，2 笔已经记进账了'), findsOneWidget); // P2-UX4：阿呆口吻
       expect(find.textContaining('今日截图候选'), findsNothing);
     });
 
@@ -1402,6 +1402,61 @@ void main() {
       expect(find.text('插件加载失败，仅显示基础服务'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('P2-UI7：插件加载中渲染「加载中…」占位，完成后原地更新不跳位', (tester) async {
+      final b = _Backend();
+      b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
+      b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
+      b.handlers['/api/v1/timeline'] = (_) async => _json([]);
+      b.handlers['/api/v1/memory/count'] = (_) async => _json({'count': 0});
+      final pluginCompleter = Completer<http.Response>();
+      b.handlers['/api/v1/me/plugins'] = (_) => pluginCompleter.future;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: LauncherPage(api: _apiFor(b), onNavigateBack: () {})),
+      ));
+      await tester.pump(); // 插件请求挂起：槽位占位
+
+      expect(find.text('加载中…'), findsNWidgets(2), reason: '阿呆系统+交易两个插件槽位渲染等高位占位');
+
+      pluginCompleter.complete(_json(['trading', 'project']));
+      await tester.pumpAndSettle();
+      expect(find.text('加载中…'), findsNothing, reason: '加载完成后占位消失');
+      expect(find.text('阿呆系统'), findsOneWidget, reason: 'project 插件行原地出现');
+      expect(find.text('交易'), findsOneWidget, reason: 'trading 插件行原地出现');
+    });
+
+    testWidgets('P2-UI6：下滑返回只挂拖拽条——拖拽条下滑返回、搜索栏下滑不误触返回、搜索栏 tap 打开搜索', (tester) async {
+      var backCalls = 0;
+      final b = _Backend();
+      b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
+      b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
+      b.handlers['/api/v1/timeline'] = (_) async => _json([]);
+      b.handlers['/api/v1/memory/count'] = (_) async => _json({'count': 0});
+      b.handlers['/api/v1/me/plugins'] = (_) async => _json(['trading', 'project']);
+      b.handlers['/api/v1/search'] = (_) async => _json([]);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: LauncherPage(api: _apiFor(b), onNavigateBack: () => backCalls++)),
+      ));
+      await tester.pumpAndSettle();
+
+      // ① 拖拽条 44pt 热区（顶部）下滑 → 触发返回
+      final topLeft = tester.getTopLeft(find.byType(LauncherPage));
+      await tester.flingFrom(topLeft + const Offset(150, 25), const Offset(0, 250), 800);
+      await tester.pumpAndSettle();
+      expect(backCalls, 1, reason: '拖拽条 44pt 热区下滑应触发返回');
+
+      // ② 搜索栏（拖拽条下方 40px 高）下滑 → 不触发返回（返回手势只挂拖拽条，P2-UI6 根治误触）
+      final searchTop = topLeft + const Offset(150, 70); // 搜索栏中心区域
+      await tester.flingFrom(searchTop, const Offset(0, 250), 800);
+      await tester.pumpAndSettle();
+      expect(backCalls, 1, reason: '搜索栏下滑不再触发返回（原误触搜索根因）');
+
+      // ③ 搜索栏 tap → 正常打开搜索页（tap 语义清晰，无返回手势竞争）
+      await tester.tap(find.text('搜索记录、标签、记忆…'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SearchPage), findsOneWidget, reason: '搜索栏 tap 打开搜索');
+      expect(backCalls, 1, reason: 'tap 不触发返回');
     });
   });
 

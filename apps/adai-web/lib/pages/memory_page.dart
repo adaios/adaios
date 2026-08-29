@@ -221,7 +221,7 @@ class _MemoryPageState extends State<MemoryPage> {
               const SizedBox(width: 8),
             ],
             if (m.superseded)
-              Text('已合并', style: TextStyle(fontSize: 10, color: AppColors.darkGrey5.withValues(alpha: 0.7))),
+              Text('已合并', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5.withValues(alpha: 0.7))),
           ]),
           const SizedBox(height: 8),
           Text(
@@ -251,7 +251,7 @@ class _MemoryPageState extends State<MemoryPage> {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
                 ),
-                child: Text('#$t', style: const TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                child: Text('#$t', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
               )).toList(),
             ),
           ],
@@ -269,7 +269,7 @@ class _MemoryPageState extends State<MemoryPage> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
-        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
       );
     }
     // 后端真实 kind（Memory.java：fact/insight/preference/pattern/decision）
@@ -283,7 +283,7 @@ class _MemoryPageState extends State<MemoryPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(5)),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }

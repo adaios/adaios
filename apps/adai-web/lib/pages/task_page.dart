@@ -202,7 +202,7 @@ class _TaskPageState extends State<TaskPage> {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
               child: Text('${columnTasks.length}',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
             ),
           ]),
           const SizedBox(height: 8),
@@ -250,7 +250,7 @@ class _TaskPageState extends State<TaskPage> {
           ],
           if (task.priority.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(task.priority, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _priorityColor(task.priority))),
+            Text(task.priority, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _priorityColor(task.priority))),
           ],
           const SizedBox(height: 6),
           Row(children: [

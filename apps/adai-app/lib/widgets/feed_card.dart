@@ -51,7 +51,7 @@ class FeedCardData {
   final bool expanded;
   final String domain;  // "life" | "trading" | "project"
   final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
-  final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  final Future<bool> Function()? onMarkDone; // action 卡"完成"/push 卡"确认并入账"回调（返回是否成功——按钮据此灰态；P2-UX4 2026-08-29）
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒等）
   final VoidCallback? onDismiss; // RFC 20260817：左滑删除单条推送
   final VoidCallback? onPushSettings; // RFC 20260817：右滑进入推送设置
@@ -361,18 +361,8 @@ class FeedCard extends StatelessWidget {
                 Expanded(child: _buildSimpleContent()),
                 if (showDoneButton) ...[
                   const SizedBox(width: 8),
-                  InkWell(
-                    onTap: data.onMarkDone,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkGreen.withAlpha(30),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text('完成',
-                        style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
+                  // P2-UX4（2026-08-29）：完成按钮——提交中 loading + 禁用、成功灰态兜底
+                  _ActionButton(label: '完成', onTap: data.onMarkDone),
                 ],
               ],
             ),
@@ -421,28 +411,18 @@ class FeedCard extends StatelessWidget {
           Text(data.content,
             style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45)),
           // RFC 20260817：今日操作确认卡——底部「确认并入账」按钮（审核后落库）
+          // P2-UX4（2026-08-29）：提交中 loading + 禁用、确认成功后灰态「已确认 ✓」本地兜底（防刷新前重复点）
           if (data.pushTitle == '今日操作确认' && data.onMarkDone != null) ...[
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,
-              child: InkWell(
-                onTap: data.onMarkDone,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkGreen.withAlpha(30),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('确认并入账',
-                    style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
-                ),
-              ),
+              child: _ActionButton(label: '确认并入账', onTap: data.onMarkDone),
             ),
           ],
           if (data.onPushSettings != null || data.onDismiss != null) ...[
             const SizedBox(height: 8),
             const Text('左滑删除 · 右滑设置推送',
-              style: TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
           ],
         ],
       ),
@@ -628,7 +608,7 @@ class FeedCard extends StatelessWidget {
         padding: EdgeInsets.zero,
         child: Padding(
           padding: const EdgeInsets.only(left: 10),
-          child: Text('标记为', style: TextStyle(fontSize: 9, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
+          child: Text('标记为', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, fontWeight: FontWeight.w500)),
         ),
       ),
       ...['life', 'trading', 'project'].map((d) => PopupMenuItem<String>(
@@ -753,13 +733,13 @@ class FeedCard extends StatelessWidget {
                       border: Border.all(color: AppColors.darkBorder.withAlpha(76)),
                     ),
                     child: Text(collapsed ? '展开全部' : '收起',
-                      style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                      style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
                   ),
                   const SizedBox(width: 6),
                   Icon(collapsed ? Icons.expand_more : Icons.expand_less, size: 14, color: AppColors.darkGrey5),
                   const SizedBox(width: 6),
                   Text('${turns.length} 条',
-                    style: TextStyle(fontSize: 9, color: AppColors.darkGrey6)),
+                    style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
                 ],
               ),
             ),
@@ -820,9 +800,9 @@ class FeedCard extends StatelessWidget {
               h2: const TextStyle(fontSize: 16, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
               h3: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
               h4: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
-              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: const Color(0xFF2A2826)),
+              code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkBorder),
               codeblockDecoration: BoxDecoration(
-                color: const Color(0xFF2A2826),
+                color: AppColors.darkBorder,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppColors.darkGreen.withAlpha(50)),
               ),
@@ -948,7 +928,7 @@ class FeedCard extends StatelessWidget {
               child: Text(
                 data.error!,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10, color: AppColors.darkOrange),
+                style: TextStyle(fontSize: 11, color: AppColors.darkOrange),
               ),
             ),
             const Spacer(),
@@ -1025,8 +1005,75 @@ class FeedCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppColors.darkBorder.withAlpha(76)),
       ),
-      child: Text(label, style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+      child: Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
     );
   }
 
+}
+
+/// P2-UX4（2026-08-29）：确认/完成按钮——点击后提交中（小转圈 + 禁用）、
+/// 回调返回 true 后置灰态「已确认」本地兜底（防刷新前重复点）；false/异常恢复可点
+/// （错误回执由父级 SnackBar 负责，本组件只管理按钮态）。
+class _ActionButton extends StatefulWidget {
+  final String label;
+  final Future<bool> Function()? onTap;
+
+  const _ActionButton({required this.label, this.onTap});
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _submitting = false;
+  bool _done = false;
+
+  Future<void> _handle() async {
+    if (_submitting || _done || widget.onTap == null) return;
+    setState(() => _submitting = true);
+    try {
+      final ok = await widget.onTap!();
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        if (ok) _done = true;
+      });
+    } catch (_) {
+      // 父级已 SnackBar 报错；按钮恢复可点（重试路径）
+      if (!mounted) return;
+      setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) {
+      // 已确认灰态兜底（防刷新前重复点；父级刷新后卡片自然消失）
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppColors.darkGrey6.withAlpha(40),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text('已确认 ✓',
+          style: TextStyle(fontSize: 12, color: AppColors.darkGrey5, fontWeight: FontWeight.w600)),
+      );
+    }
+    return InkWell(
+      onTap: _submitting ? null : _handle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppColors.darkGreen.withAlpha(30),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: _submitting
+            ? const SizedBox(
+                width: 13, height: 13,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
+            : Text(widget.label,
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
 }

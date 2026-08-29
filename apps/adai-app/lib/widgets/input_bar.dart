@@ -20,10 +20,11 @@ class PickedImage {
 /// 语音：v2 方向，已移除误导性 stub（2026-08-03，原 REVIEW #164）。
 class InputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
-  final bool hasActiveChat;          // true when chatting with AI
+  final bool hasActiveChat; // true when chatting with AI
   final VoidCallback? onAskActivated; // called when ask mode starts typing
   final ValueChanged<PickedImage>? onImage; // 多模态：单图立即上传（兼容旧调用）
-  final void Function(List<PickedImage> images, String caption)? onSendMedia; // 多图 + 可选文字一起提交，逐张上传
+  final void Function(List<PickedImage> images, String caption)?
+  onSendMedia; // 多图 + 可选文字一起提交，逐张上传
 
   const InputBar({
     super.key,
@@ -128,10 +129,16 @@ class InputBarState extends State<InputBar> {
 
   /// 超限提示（选图/拍照共用）。
   void _showImageLimitToast() {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('最多选择 3 张图片', style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-      backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          '最多选择 3 张图片',
+          style: TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+        ),
+        backgroundColor: AppColors.darkSurface2,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _pickImage() async {
@@ -154,25 +161,35 @@ class InputBarState extends State<InputBar> {
       final picked = <PickedImage>[];
       for (final f in files) {
         final bytes = await f.readAsBytes();
-        picked.add(PickedImage(
-          bytes,
-          f.name,
-          f.name.contains('.') ? f.name.split('.').last : 'jpg',
-        ));
+        picked.add(
+          PickedImage(
+            bytes,
+            f.name,
+            f.name.contains('.') ? f.name.split('.').last : 'jpg',
+          ),
+        );
       }
       // 选图后先挂到输入栏（内联预览），发送时才真正上传
       // 保险：limit 已控剩余额度，合并后仍可能越界（如竞态）→ 截断 + 提示
       setState(() {
         final room = _maxImages - _pendingImages.length;
-        _pendingImages.addAll(room >= picked.length ? picked : picked.take(room));
+        _pendingImages.addAll(
+          room >= picked.length ? picked : picked.take(room),
+        );
         if (room < picked.length) _showImageLimitToast();
       });
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('图片选择失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-          backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '图片选择失败: $e',
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+            ),
+            backgroundColor: AppColors.darkSurface2,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -196,18 +213,26 @@ class InputBarState extends State<InputBar> {
       // 关闭附件底部弹层
       if (context.mounted) Navigator.pop(context);
       setState(() {
-        _pendingImages.add(PickedImage(
-          bytes,
-          name,
-          name.contains('.') ? name.split('.').last : 'jpg',
-        ));
+        _pendingImages.add(
+          PickedImage(
+            bytes,
+            name,
+            name.contains('.') ? name.split('.').last : 'jpg',
+          ),
+        );
       });
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('拍照失败: $e', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-          backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '拍照失败: $e',
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+            ),
+            backgroundColor: AppColors.darkSurface2,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -235,15 +260,21 @@ class InputBarState extends State<InputBar> {
           ),
           // Phase 1 数量角标（n/3，与上限呼应，元宝/ChatGPT 同款位置）
           Positioned(
-            top: 0, right: 0,
+            top: 0,
+            right: 0,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: AppColors.darkSurface2,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('${_pendingImages.length}/$_maxImages',
-                  style: const TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+              child: Text(
+                '${_pendingImages.length}/$_maxImages',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.darkGrey4,
+                ),
+              ),
             ),
           ),
         ],
@@ -270,7 +301,11 @@ class InputBarState extends State<InputBar> {
               width: 56,
               height: 56,
               color: AppColors.darkSurface,
-              child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+              child: const Icon(
+                Icons.broken_image_outlined,
+                size: 20,
+                color: AppColors.darkGrey5,
+              ),
             ),
           ),
         ),
@@ -279,14 +314,24 @@ class InputBarState extends State<InputBar> {
           right: -6,
           child: GestureDetector(
             onTap: () => setState(() => _pendingImages.removeAt(index)),
+            behavior: HitTestBehavior.opaque,
             child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurface2,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.darkBorder),
+              width: 44,
+              height: 44,
+              alignment: Alignment.topRight,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface2,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.darkBorder),
+                ),
+                child: const Icon(
+                  Icons.close,
+                  size: 12,
+                  color: AppColors.darkGrey4,
+                ),
               ),
-              child: const Icon(Icons.close, size: 12, color: AppColors.darkGrey4),
             ),
           ),
         ),
@@ -296,10 +341,16 @@ class InputBarState extends State<InputBar> {
 
   /// 未实现功能的占位提示（文件/链接）。
   void _showNotImplemented(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$feature 功能开发中', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
-      backgroundColor: AppColors.darkSurface2, behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$feature 功能开发中',
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+        ),
+        backgroundColor: AppColors.darkSurface2,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _showAttach(BuildContext context) {
@@ -317,7 +368,8 @@ class InputBarState extends State<InputBar> {
           children: [
             Center(
               child: Container(
-                width: 36, height: 4,
+                width: 36,
+                height: 4,
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
                   color: AppColors.darkGrey5.withAlpha(76),
@@ -329,10 +381,22 @@ class InputBarState extends State<InputBar> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 // 拍照（阿呆 08-13：相册之外需相机拍摄入口，image_picker camera）
-                _attachItem(Icons.photo_camera_outlined, '拍照', onTap: _pickCamera),
+                _attachItem(
+                  Icons.photo_camera_outlined,
+                  '拍照',
+                  onTap: _pickCamera,
+                ),
                 _attachItem(Icons.image_outlined, '图片', onTap: _pickImage),
-                _attachItem(Icons.description_outlined, '文件', onTap: () => _showNotImplemented('文件上传')),
-                _attachItem(Icons.link_outlined, '链接', onTap: () => _showNotImplemented('链接')),
+                _attachItem(
+                  Icons.description_outlined,
+                  '文件',
+                  onTap: () => _showNotImplemented('文件上传'),
+                ),
+                _attachItem(
+                  Icons.link_outlined,
+                  '链接',
+                  onTap: () => _showNotImplemented('链接'),
+                ),
               ],
             ),
           ],
@@ -347,7 +411,9 @@ class InputBarState extends State<InputBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 52, height: 52,
+          Container(
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: AppColors.darkSurface2,
               borderRadius: BorderRadius.circular(14),
@@ -355,7 +421,10 @@ class InputBarState extends State<InputBar> {
             child: Icon(icon, color: AppColors.darkGrey4, size: 24),
           ),
           const SizedBox(height: 6),
-          Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey4),
+          ),
         ],
       ),
     );
@@ -368,7 +437,10 @@ class InputBarState extends State<InputBar> {
       decoration: BoxDecoration(
         color: AppColors.darkSurface,
         border: Border(
-          top: BorderSide(color: AppColors.darkBorder.withAlpha(76), width: 0.5),
+          top: BorderSide(
+            color: AppColors.darkBorder.withAlpha(76),
+            width: 0.5,
+          ),
         ),
       ),
       child: SafeArea(
@@ -387,22 +459,31 @@ class InputBarState extends State<InputBar> {
                   const SizedBox(width: 8),
                   // Right button（有图或文字时绿色发送，否则附件菜单）
                   GestureDetector(
-                    onTap: _hasPending || _hasText ? _send : () => _showAttach(context),
+                    onTap: _hasPending || _hasText
+                        ? _send
+                        : () => _showAttach(context),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      width: 40, height: 40,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: _hasPending
                             ? AppColors.darkGreen
                             : _hasText
-                                ? (widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey1)
-                                : AppColors.darkSurface2,
+                            ? (widget.hasActiveChat
+                                  ? AppColors.darkGreen
+                                  : AppColors.darkGrey1)
+                            : AppColors.darkSurface2,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        (_hasPending || _hasText) ? Icons.arrow_upward_rounded : Icons.add_rounded,
+                        (_hasPending || _hasText)
+                            ? Icons.arrow_upward_rounded
+                            : Icons.add_rounded,
                         size: 20,
-                        color: (_hasPending || _hasText) ? AppColors.darkBg : AppColors.darkGrey5,
+                        color: (_hasPending || _hasText)
+                            ? AppColors.darkBg
+                            : AppColors.darkGrey5,
                       ),
                     ),
                   ),
@@ -431,14 +512,16 @@ class InputBarState extends State<InputBar> {
         focusNode: _focusNode,
         style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1),
         decoration: InputDecoration(
-          hintText: _hasPending ? '添加说明（可空）…' : (widget.hasActiveChat ? '问点什么…' : _placeholder),
+          hintText: _hasPending
+              ? '添加说明（可空）…'
+              : (widget.hasActiveChat ? '问点什么…' : _placeholder),
           hintStyle: TextStyle(
             fontSize: 15,
             color: _hasPending
                 ? AppColors.darkGreen.withAlpha(180)
                 : (widget.hasActiveChat
-                    ? AppColors.darkGreen.withAlpha(180)
-                    : AppColors.darkGrey6),
+                      ? AppColors.darkGreen.withAlpha(180)
+                      : AppColors.darkGrey6),
           ),
           border: InputBorder.none,
           filled: false,

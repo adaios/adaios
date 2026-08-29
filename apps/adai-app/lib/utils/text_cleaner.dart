@@ -37,7 +37,7 @@ class TextCleaner {
   /// 解码 \\uXXXX 转义序列为实际字符（前端兜底）。
   /// 正确处理代理对（surrogate pair）：\\uD83C\\uDF3F → 🌿 (U+1F33F)。
   static String decodeUnicodeEscapes(String text) {
-    if (text == null || text.isEmpty) return '';
+    if (text.isEmpty) return '';
     return text.replaceAllMapped(
       RegExp(r'\\u([0-9a-fA-F]{4})'),
       (match) {

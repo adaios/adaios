@@ -125,7 +125,7 @@ class _MainPageState extends State<MainPage>
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
             onMarkDone: e.type == FeedEntryType.action
-                ? () => _markActionDone(e.id)
+                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
                 : (e.type == FeedEntryType.push && e.title == '今日操作确认')
                     ? _confirmTradeLog
                     : null,
@@ -154,7 +154,7 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  Future<void> _loadFeed({String? date}) async {
+  Future<void> _loadFeed() async {
     try {
       // 首屏提速（2026-08-22）：两个请求并行发起，但渲染只等 feed——
       // brief 后到单独刷新（AI 生成可能 7~27s，绝不该阻塞首屏；失败降级为空串）
@@ -166,7 +166,7 @@ class _MainPageState extends State<MainPage>
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
             onMarkDone: e.type == FeedEntryType.action
-                ? () => _markActionDone(e.id)
+                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
                 : (e.type == FeedEntryType.push && e.title == '今日操作确认')
                     ? _confirmTradeLog
                     : null,
@@ -910,24 +910,27 @@ class _MainPageState extends State<MainPage>
 
   /// RFC 20260817：确认当日交易日志落库（推送卡「确认并入账」）。
   /// B11-4（2026-08-23，P1-交易18）：失败候选保留——透出明细并提示丢弃（钉子户出口）。
-  Future<void> _confirmTradeLog() async {
+  /// P2-UX4（2026-08-29）：返回是否成功（按钮据此灰态）；回执改阿呆口吻（B1 第一原则）。
+  Future<bool> _confirmTradeLog() async {
     try {
       final result = await _api.confirmTradeLog();
-      if (!mounted) return;
+      if (!mounted) return false;
       if (result.confirmed > 0) {
-        _showSnackBar('已确认 ${result.confirmed} 笔交易并入账');
+        _showSnackBar('好，${result.confirmed} 笔已经记进账了');
       } else if (result.failed > 0) {
-        _showSnackBar('确认失败：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
+        _showSnackBar('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
       } else {
-        _showSnackBar('今天没有待确认的交易');
+        _showSnackBar('今天没有待确认的交易，先记新的吧');
       }
       // 失败候选保留（P0-1）：提示可丢弃，防 15:05 反复提醒（P1-交易18）
       if (result.failed > 0) {
-        _showSnackBar('失败候选已保留——可忽略或修正后重试');
+        _showSnackBar('没记上的候选还在——可以忽略，或者补好后我再记');
       }
       await _loadFeed();
+      return result.confirmed > 0;
     } catch (e) {
-      if (mounted) _showError('确认失败: ${_extractApiError(e)}');
+      if (mounted) _showError('没记上：${_extractApiError(e)}');
+      return false;
     }
   }
 
@@ -1038,7 +1041,7 @@ class _MainPageState extends State<MainPage>
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
             onMarkDone: e.type == FeedEntryType.action
-                ? () => _markActionDone(e.id)
+                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
                 : (e.type == FeedEntryType.push && e.title == '今日操作确认')
                     ? _confirmTradeLog
                     : null,
@@ -1284,7 +1287,7 @@ class _MainPageState extends State<MainPage>
             ? Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
                 SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4)),
                 const SizedBox(width: 6),
-                Text('加载中…', style: TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                Text('加载中…', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
               ]))
             : Row(children: [
                 Expanded(child: Container(
@@ -1297,7 +1300,7 @@ class _MainPageState extends State<MainPage>
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(label,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color, letterSpacing: 0.5)),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color, letterSpacing: 0.5)),
                 ),
                 Expanded(child: Container(
                   height: 1,
@@ -1331,7 +1334,7 @@ class _MainPageState extends State<MainPage>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text('↓ 最新',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGreen, letterSpacing: 0.5)),
           ),
           Expanded(child: Container(
             height: 1,
@@ -1359,7 +1362,7 @@ class _MainPageState extends State<MainPage>
         Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(label, style: TextStyle(fontSize: 9, color: AppColors.darkGrey4)),
+          child: Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
         ),
         Expanded(child: Container(height: 1, color: AppColors.darkBorder.withAlpha(50))),
       ]),
@@ -1423,7 +1426,7 @@ class _MainPageState extends State<MainPage>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(color: AppColors.darkGreen.withAlpha(50), borderRadius: BorderRadius.circular(4)),
-                    child: Text('对话', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+                    child: Text('对话', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
                   ),
                   const Spacer(),
                   GestureDetector(
@@ -1570,9 +1573,9 @@ class _MainPageState extends State<MainPage>
                     h2: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
                     h3: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
                     h4: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.darkGrey1, fontWeight: FontWeight.w600),
-                    code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: const Color(0xFF2A2826)),
+                    code: TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkBorder),
                     codeblockDecoration: BoxDecoration(
-                      color: const Color(0xFF2A2826),
+                      color: AppColors.darkBorder,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.darkGreen.withAlpha(50)),
                     ),
@@ -1581,7 +1584,7 @@ class _MainPageState extends State<MainPage>
                   )),
         ),
         const SizedBox(height: 4),
-        Text(time, style: TextStyle(fontSize: 9, color: AppColors.darkGrey4)),
+        Text(time, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
       ],
     );
   }
@@ -1635,7 +1638,7 @@ class _TopBar extends StatelessWidget {
 }
 
 extension FeedEntryResponseX on FeedEntryResponse {
-  FeedCardData toFeedData({required ApiService api, VoidCallback? onMarkDone,
+  FeedCardData toFeedData({required ApiService api, Future<bool> Function()? onMarkDone,
       VoidCallback? onDismiss, VoidCallback? onPushSettings}) {
     List<ConversationTurn>? cardTurns;
     if (turns != null && turns!.isNotEmpty) {
