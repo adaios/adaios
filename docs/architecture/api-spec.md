@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.33 | 最后更新：2026-08-30**
+**文档版本：v3.34 | 最后更新：2026-08-30**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-30 | v3.34 | **流式问答（P2-用户2 批 2）**：新增 `POST /records/ask-stream`（SSE 流式问答：`text` 增量事件 + `meta` 定稿事件 + `[DONE]`；后端内降级——模型无增量输出时回退同步 understand 一次；同卡同问 5 分钟去重直返既有回答；UTF-8 字节透传防中文乱码）+ 双端（adai-app/adai-web）`SseClient` 流式渲染（90ms 节流草稿、error 事件人话透出、流开始前失败自动降级旧同步端点） |
 | 2026-08-30 | v3.33 | **交易插件规则层（第三阶段，trading-plugin-architecture.md）**：新增 `GET /trading/rules`（用户自己的交易规则参数：仓位上限/默认止损/行为标注阈值/买点参数/打分权重/硬约束区间，无规则 → 默认值）+ `PUT /trading/rules`（覆盖非空字段，落 `data/{userId}/trading/rules.yaml`）；规则参数按用户隔离，驱动止损/仓位判定、买点信号、行为标注、清仓 verdict、打分权重、建议硬约束、知识注入（`data/{userId}/trading/knowledge.md` 用户私有知识优先，os/ 作 adai 默认）——**每个人有自己的交易系统** |
 | 2026-08-27 | v3.32 | **截图入账缺日期禁落库批（用户拍板「截图缺日期禁止落库，补充日期后再确认」二修）**：`POST /trade-log/confirm` 对**截图归集候选（source=image）无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 人话提示「缺少成交日期」）——不再回退确认当天；新增 `PUT /trade-log/date` 补写候选成交日期（补日期后再次确认可正常落库，成交日 ≠ 确认日不再记错） |
 | 2026-08-27 | v3.31 | **截图入账日期归属修复批（用户反馈「今日 4 笔其实是昨天」）**：候选新增 `tradeDate`（截图表格「日期」列提取的成交日期，无 → null）；`POST /trade-log/confirm` 落库 `entryDate` 用候选 `tradeDate`（无日期才回退确认当天）——成交日 ≠ 确认日不再记错日期 |
@@ -135,6 +136,41 @@
 - 日常、想法、记录、心情、问题 → `life`
 
 > 无插件用户一律 `life`（单一 domain）。即使 AI 输出 `trading`/`project`，若该用户未启用对应插件，后端也会收敛为 `life`（`PluginService.gateDomain`）。插件名见 §16 `GET /me/plugins`。
+
+---
+
+### `POST /api/v1/records/ask-stream` — 流式问答（SSE，v3.34）
+
+问答专用流式端点（`text/event-stream;charset=UTF-8`）。**仅问答**：显式 `intent: "question"` 或 `cardId` 续聊；自动意图的新输入仍走 `POST /records`（批次 3 再分流）。
+
+**Request Body**
+
+```json
+{
+  "content": "怎么玩铜？",          // required, 1-10000 字符，blank → 400
+  "intent": "question",           // optional: "question"（首问显式指定；续问可省略，cardId 即问答语义）
+  "cardId": "card_123"            // optional: 会话卡片 ID，有值则续聊（后端 ensureCardWithUserTurn 建卡/补用户轮次）
+}
+```
+
+**Response — SSE 事件流**（`data:` 行，事件间空行分隔）
+
+| 事件 | 载荷 | 说明 |
+|:----|:----|:------|
+| `text` | `{"type":"text","content":"…"}` | 正文增量（JSON 回执已由后端剥离，直接可显示）；多段顺序拼接 = 完整回答 |
+| `meta` | `{"type":"meta","recordId","summary","tags","domain","content"}` | 定稿事件：`content`=剥离 JSON 后的最终正文（权威，前端以它替换草稿）；后端副作用（建卡/AI 轮次/记忆）已完成 |
+| `[DONE]` | `data: [DONE]` | 流结束哨兵 |
+| `error` | `{"type":"error","message":"…"}` | 失败事件（人话），随后必跟 `[DONE]`；客户端已收增量 → 保留草稿可重试，未收增量 → 自动降级旧同步端点一次 |
+
+**后端内降级（ai-calling-governance §⑤）**：模型整轮无增量输出（只回了 JSON 回执）→ 后端回退同步 `understand` 一次再吐 `text`/`meta`——前端无感知。**同卡同问去重（S-9）**：同 cardId + 相同末条用户轮次 + 卡片 5 分钟内更新过 → 直接流式回放既有回答（`text`×1 + `meta`，不调 AI、不重复 append 轮次）。
+
+**错误**
+
+- `400` — content 空白
+- `503` — 流式线程池满（`RejectedExecutionException`）
+- 编码：事件 JSON 以 UTF-8 字节发送（`StringHttpMessageConverter` 默认 ISO-8859-1 会把中文变 `?`；byte[] 走 `ByteArrayHttpMessageConverter` 原样透传，MockMvc 与生产容器一致）
+
+**前端行为（双端一致）**：`SseClient` 边到边读（IO：`http.Client.send` 流式；Web：fetch ReadableStream——dart http 浏览器实现无渐进响应）；草稿 90ms 节流 setState；`meta` 到达后以 `content` 定稿并刷新 feed/标签/记忆缓存；未收任何增量即失败 → 自动降级 `POST /records`（intent 与原调用同构）一次。
 
 ---
 

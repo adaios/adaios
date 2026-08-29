@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -287,8 +288,23 @@ class _MainPageState extends State<MainPage>
   }
 
   void _doAskRequest(String cardId, String content, String timeStr) async {
+    // 流式草稿节流（P2-用户2 批 2）：onDelta 每 token 一块，90ms 批量 flush 防全页 setState 风暴
+    final draft = StringBuffer();
+    Timer? flushTimer;
+    void flushDraft() {
+      flushTimer = null;
+      if (!mounted) return;
+      final text = draft.toString();
+      setState(() => _updateCard(cardId, (c) => _withStreamingDraft(c, text, timeStr)));
+      _scrollToBottom();
+    }
+
     try {
-      final resp = await _api.createRecord(content, intent: 'question', cardId: cardId);
+      final resp = await _api.askStream(content, cardId: cardId, intent: 'question', onDelta: (partial) {
+        draft.write(partial);
+        flushTimer ??= Timer(const Duration(milliseconds: 90), flushDraft);
+      });
+      flushTimer?.cancel();
       if (!mounted) return;
       final aiTime = TimeOfDay.now();
       final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
@@ -306,11 +322,25 @@ class _MainPageState extends State<MainPage>
       });
       _scrollToBottom();
     } catch (e) {
+      flushTimer?.cancel();
       if (mounted) {
         setState(() => _updateCard(cardId, (c) => c.copyWith(mode: CardMode.idle, loading: false)));
         _showError(_extractApiError(e));
       }
     }
+  }
+
+  /// 流式草稿写入：最后一个 turn 是 AI（草稿）→ 原位替换文本；否则 append 新 AI turn。
+  FeedCardData _withStreamingDraft(FeedCardData c, String text, String timeStr) {
+    final turns = c.turns ?? [];
+    final List<ConversationTurn> next;
+    if (turns.isNotEmpty && !turns.last.isUser) {
+      next = [...turns.sublist(0, turns.length - 1),
+          ConversationTurn(isUser: false, text: text, time: turns.last.time)];
+    } else {
+      next = [...turns, ConversationTurn(isUser: false, text: text, time: timeStr)];
+    }
+    return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question, turns: next);
   }
 
   void _closeChat(String cardId) async {
@@ -548,6 +578,13 @@ class _MainPageState extends State<MainPage>
     )));
     _scrollToBottom();
 
+    // 显式 question → 流式问答（P2-用户2 批 2：边到边显示；卡片沿用本地 cardId，
+    // 后端 ask-stream 建卡口径与同步端点一致）；intent 缺省仍走旧端点（自动意图分流）
+    if (forcedIntent == 'question') {
+      _doAskRequest(cardId, text, timeStr);
+      return;
+    }
+
     try {
       final resp = await _api.createRecord(text, intent: forcedIntent, cardId: cardId);
       if (!mounted) return;
@@ -776,7 +813,26 @@ class _MainPageState extends State<MainPage>
         _scrollToBottom();
         return;
       }
-      final resp = await _api.createRecord(text, cardId: cardId);
+      // 文本续问 → 流式（P2-用户2 批 2）：草稿节流渲染，完成后以 meta 定稿
+      final draft = StringBuffer();
+      Timer? flushTimer;
+      void flushDraft() {
+        flushTimer = null;
+        if (!mounted) return;
+        final text = draft.toString();
+        setState(() => _updateCard(cardId, (c) => _withStreamingDraft(c, text, timeStr)));
+        _scrollToBottom();
+      }
+
+      final RecordResponse resp;
+      try {
+        resp = await _api.askStream(text, cardId: cardId, onDelta: (partial) {
+          draft.write(partial);
+          flushTimer ??= Timer(const Duration(milliseconds: 90), flushDraft);
+        });
+      } finally {
+        flushTimer?.cancel();
+      }
       if (!mounted) return;
       final aiTime = TimeOfDay.now();
       final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';

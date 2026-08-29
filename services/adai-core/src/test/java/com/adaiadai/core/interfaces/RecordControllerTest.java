@@ -47,7 +47,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -82,16 +84,6 @@ class RecordControllerTest {
         cardRepository = new CardFileRepository(fileStorage);
         IntentRecognizer intentRecognizer = new IntentRecognizer(new TestAiClient());
 
-        QuestionAppService questionAppService = mock(QuestionAppService.class);
-        when(questionAppService.answer(any(), any()))
-                .thenReturn(new QuestionAppService.AnswerResult(
-                        "rec_test", "mock answer", List.of("test"), "raw", "life"
-                ));
-        when(questionAppService.answer(any(), any(), any()))
-                .thenReturn(new QuestionAppService.AnswerResult(
-                        "rec_dec", "decision analysis", List.of("trading"), "raw", "life"
-                ));
-
         // ContextEngine with real dependencies
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
         memoryService = new MemoryService(fileStorage);
@@ -107,6 +99,18 @@ class RecordControllerTest {
                 memoryService, cardRepository, List.of(), List.of(), searchService, pluginService
         );
         RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
+
+        // 2026-08-30 流式批：去重/建卡逻辑已迁移 QuestionAppService——改用 spy 真实例，
+        // 只 stub answer（保持原 mock 行为），findDuplicateResend / ensureCardWithUserTurn 走真实逻辑
+        QuestionAppService questionAppService = spy(new QuestionAppService(
+                contextEngine, cardRepository, recordRepository, memoryService,
+                aiClient, mock(com.adaiadai.core.kernel.ai.StreamingAiClient.class), pluginService));
+        doReturn(new QuestionAppService.AnswerResult(
+                "rec_test", "mock answer", List.of("test"), "raw", "life"
+        )).when(questionAppService).answer(any(), any());
+        doReturn(new QuestionAppService.AnswerResult(
+                "rec_dec", "decision analysis", List.of("trading"), "raw", "life"
+        )).when(questionAppService).answer(any(), any(), any());
 
         recordToTaskLinker = mock(RecordToTaskLinker.class);
         tradeLogCollectService = mock(TradeLogCollectService.class);

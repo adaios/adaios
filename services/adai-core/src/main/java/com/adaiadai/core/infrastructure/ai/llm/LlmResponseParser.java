@@ -108,7 +108,13 @@ public class LlmResponseParser {
 
     // ── 内部方法 ──
 
-    private static String extractJson(String text) {
+    /**
+     * 从 LLM 回复文本中提取 JSON 块（无则 null）。
+     * <p>
+     * 2026-08-30 流式批提为 public：QuestionAppService.answerStream 用它判定
+     * 流式尾巴是否为 JSON 回执（JsonTailFilter.flush 的 discard 参数）。
+     */
+    public static String extractJson(String text) {
         if (text == null || text.isBlank()) return null;
         String trimmed = text.strip();
 

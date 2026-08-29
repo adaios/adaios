@@ -4,6 +4,7 @@ import 'package:http_parser/http_parser.dart';
 import 'api_config.dart';
 import 'models/identity_models.dart';
 import 'models/tag_models.dart';
+import 'sse_client.dart';
 
 /// AdaiOS API 客户端。
 /// 封装所有后端调用，App 其他部分不直接调 HTTP。
@@ -34,15 +35,19 @@ class ApiService {
   /// 前端先超时断开 → 用户重发 → 卡片重复，S-9 关闭）。
   final http.Client _aiClient;
 
+  /// SSE 流式客户端（ask-stream 专用，见 [askStream]）。
+  final SseClient _sse;
+
   // 内存缓存：跨页面切换不丢
   TagsResponse? _tagsCache;
   List<TimelineEntryResponse>? _timelineCache;
   List<MemoryEntryResponse>? _memoryCache;
 
-  ApiService({String? baseUrl, this.userId = 'default', http.Client? client})
+  ApiService({String? baseUrl, this.userId = 'default', http.Client? client, SseClient? sseClient})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
         _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
-        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 120));
+        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 120)),
+        _sse = sseClient ?? SseClient(httpClient: client);
 
   /// 获取今日 Brief（摘要），独立接口。
   /// AI 生成可能 7~27s（缓存命中时秒回）——走 _aiClient 防误杀。
@@ -225,6 +230,63 @@ class ApiService {
     _timelineCache = null;
     _memoryCache = null;
     return RecordResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 流式问答（ai-calling-governance 批 2，REVIEW P2-用户2）：POST /records/ask-stream。
+  /// [onDelta] 逐段回调已剥离 JSON 回执的正文增量（流式草稿边到边显示）；完成后返回与
+  /// [createRecord] 同构的 RecordResponse（rawResponse=最终正文，meta 定稿）。
+  /// 降级（ai-calling-governance §⑤）：流开始前失败（HTTP 非 200 / 不支持流式）→
+  /// 自动回退旧同步端点一次；已收到增量后的中途失败 → 原样抛出（前端保留草稿可重试）。
+  Future<RecordResponse> askStream(
+    String content, {
+    String? cardId,
+    String? intent,
+    void Function(String partial)? onDelta,
+  }) async {
+    RecordResponse? meta;
+    var receivedDelta = false;
+    try {
+      await _sse.post(
+        Uri.parse('$baseUrl/api/v1/records/ask-stream'),
+        headers: _headers,
+        body: {'content': content, 'intent': ?intent, if (cardId != null) 'cardId': cardId},
+        onData: (data) {
+          if (data == '[DONE]') return;
+          final event = jsonDecode(data) as Map<String, dynamic>;
+          switch (event['type'] as String?) {
+            case 'text':
+              receivedDelta = true;
+              onDelta?.call(event['content'] as String? ?? '');
+            case 'meta':
+              meta = RecordResponse(
+                intent: 'question',
+                recordId: event['recordId'] as String?,
+                summary: event['summary'] as String?,
+                tags: (event['tags'] as List?)?.cast<String>(),
+                rawResponse: event['content'] as String?,
+                domain: event['domain'] as String? ?? 'life',
+              );
+            case 'error':
+              throw SseServerException(event['message'] as String? ?? '回答失败，请重试');
+          }
+        },
+      );
+      final result = meta;
+      if (result != null) {
+        // AI 回答落卡（tags/domain 可能变化）→ 缓存失效（与 createRecord 同口径）
+        _tagsCache = null;
+        _timelineCache = null;
+        _memoryCache = null;
+        return result;
+      }
+      throw Exception('流式回答未返回结果');
+    } catch (e) {
+      if (!receivedDelta) {
+        // 降级保持与原调用同构：intent 由调用方透传（首问 question / 续问 auto-intent）
+        return createRecord(content, intent: intent, cardId: cardId);
+      }
+      rethrow;
+    }
   }
 
   /// 获取时间线（自动缓存）。

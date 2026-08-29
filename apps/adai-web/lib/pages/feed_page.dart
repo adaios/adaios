@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
 
@@ -431,7 +432,26 @@ class _FeedPageState extends State<FeedPage> {
         _scrollToBottom();
         return;
       }
-      final resp = await widget.api.createRecord(text, cardId: cardId);
+      // 文本续问 → 流式（P2-用户2 批 2）：草稿节流渲染，完成后以 meta 定稿
+      final draft = StringBuffer();
+      Timer? flushTimer;
+      void flushDraft() {
+        flushTimer = null;
+        if (!mounted) return;
+        final text = draft.toString();
+        setState(() => _updateCard(cardId, (c) => _withStreamingDraft(c, text)));
+        _scrollToBottom();
+      }
+
+      final RecordResponse resp;
+      try {
+        resp = await widget.api.askStream(text, cardId: cardId, onDelta: (partial) {
+          draft.write(partial);
+          flushTimer ??= Timer(const Duration(milliseconds: 90), flushDraft);
+        });
+      } finally {
+        flushTimer?.cancel();
+      }
       if (!mounted) return;
       final aiReply = resp.rawResponse ?? resp.summary;
       if (aiReply != null) {
@@ -502,8 +522,23 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _doAskRequest(String cardId, String content) async {
+    // 流式草稿节流（P2-用户2 批 2）：onDelta 每 token 一块，90ms 批量 flush 防全页 setState 风暴
+    final draft = StringBuffer();
+    Timer? flushTimer;
+    void flushDraft() {
+      flushTimer = null;
+      if (!mounted) return;
+      final text = draft.toString();
+      setState(() => _updateCard(cardId, (c) => _withStreamingDraft(c, text)));
+      _scrollToBottom();
+    }
+
     try {
-      final resp = await widget.api.createRecord(content, intent: 'question', cardId: cardId);
+      final resp = await widget.api.askStream(content, cardId: cardId, intent: 'question', onDelta: (partial) {
+        draft.write(partial);
+        flushTimer ??= Timer(const Duration(milliseconds: 90), flushDraft);
+      });
+      flushTimer?.cancel();
       if (!mounted) return;
       setState(() {
         _deactivateOtherCards(cardId);
@@ -520,10 +555,24 @@ class _FeedPageState extends State<FeedPage> {
       });
       _scrollToBottom();
     } catch (e) {
+      flushTimer?.cancel();
       if (!mounted) return;
       setState(() => _updateCard(cardId, (c) => c.copyWith(mode: CardMode.idle, loading: false)));
       _showError(_extractApiError(e));
     }
+  }
+
+  /// 流式草稿写入（P2-用户2 批 2）：最后一个 turn 是 AI（草稿）→ 原位替换文本；否则 append 新 AI turn。
+  FeedCardData _withStreamingDraft(FeedCardData c, String text) {
+    final turns = c.turns ?? [];
+    final List<ConversationTurn> next;
+    if (turns.isNotEmpty && !turns.last.isUser) {
+      next = [...turns.sublist(0, turns.length - 1),
+          ConversationTurn(isUser: false, text: text, time: turns.last.time)];
+    } else {
+      next = [...turns, ConversationTurn(isUser: false, text: text, time: _now())];
+    }
+    return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question, turns: next);
   }
 
   Future<void> _closeChat(String cardId) async {

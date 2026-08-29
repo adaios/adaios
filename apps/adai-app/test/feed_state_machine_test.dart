@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:adai_app/main_page.dart';
 import 'package:adai_app/services/api_service.dart';
+import 'package:adai_app/services/sse_client.dart';
 import 'package:adai_app/widgets/input_bar.dart';
 
 // ────────────────────────────────────────────────────────────────
@@ -113,14 +114,33 @@ Map<String, dynamic> _attached(String type, String id, String content) => {
 };
 
 /// 注入 mock 后端渲染 MainPage。
-Future<_Backend> _pump(WidgetTester tester, _Backend backend) async {
+///
+/// 默认 sseClient 注入 fail-fast 替身：非流式用例的 ask 走 askStream → SSE 不通 →
+/// 自动降级同步端点（MockClient 挂起/响应，断言语义不变）；流式用例显式传入替身。
+Future<_Backend> _pump(WidgetTester tester, _Backend backend, {SseClient? sseClient}) async {
   final api = ApiService(
     baseUrl: 'http://test',
     client: MockClient(backend.handle),
+    sseClient: sseClient ?? _FailSse(),
   );
   await tester.pumpWidget(MaterialApp(home: Scaffold(body: MainPage(api: api))));
   await tester.pumpAndSettle();
   return backend;
+}
+
+/// SSE 永远不通（逼 askStream 降级同步端点）。
+class _FailSse extends SseClient {
+  _FailSse() : super();
+
+  @override
+  Future<void> post(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    required void Function(String data) onData,
+  }) async {
+    throw SseHttpException(503, 'test: sse disabled');
+  }
 }
 
 void main() {
@@ -186,6 +206,36 @@ void main() {
       }));
       await tester.pumpAndSettle();
       expect(find.textContaining('AI 回答内容', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('ask 流式：草稿 90ms 节流显示 → meta 定稿（P2-用户2 批 2）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '怎么玩铜')]
+        ..feedTotalToday = 1;
+      final holdGate = Completer<void>();
+      final sse = _HoldSse(holdGate);
+      await _pump(tester, b, sseClient: sse);
+
+      // 点提问 → 走 ask-stream SSE（不再调旧同步端点）
+      await tester.tap(find.text('提问'));
+      await tester.pump();
+      expect(sse.lastPath, '/api/v1/records/ask-stream');
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records'), isEmpty,
+          reason: '流式 ask 不落旧同步端点');
+      expect(find.text('正在思考…'), findsOneWidget);
+
+      // delta 已回调但 90ms 节流 Timer 未到 → 草稿尚未显示
+      // 节流到点 → 草稿 turn 边到边显示已收增量
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(find.textContaining('阿呆说到一半', findRichText: true), findsOneWidget);
+      expect(find.text('正在思考…'), findsNothing, reason: '收到增量后 loading 气泡让位草稿');
+
+      // 放行 → meta 定稿替换草稿
+      holdGate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('定稿回答内容', findRichText: true), findsOneWidget);
+      expect(find.textContaining('阿呆说到一半', findRichText: true), findsNothing,
+          reason: '草稿被 meta 定稿替换');
     });
 
     testWidgets('图片卡 ask：点提问 → 输入问题 → VLM 回答显示 + 走 ask 端点', (tester) async {
@@ -1005,4 +1055,31 @@ void main() {
       // 避免被重试后连续 SnackBar 排队的时序干扰）
     });
   });
+}
+
+/// 流式 ask 替身：post 时同步回放两段增量后挂起，等 [holdGate] 放行再回 meta + [DONE]。
+class _HoldSse extends SseClient {
+  _HoldSse(this.holdGate) : super();
+
+  final Completer<void> holdGate;
+
+  String? lastPath;
+
+  @override
+  Future<void> post(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    required void Function(String data) onData,
+  }) async {
+    lastPath = url.path;
+    onData(jsonEncode({'type': 'text', 'content': '阿呆说'}));
+    onData(jsonEncode({'type': 'text', 'content': '到一半'}));
+    await holdGate.future;
+    onData(jsonEncode({
+      'type': 'meta', 'recordId': 'rec_1', 'summary': '定稿回答内容',
+      'tags': ['日常'], 'domain': 'life', 'content': '定稿回答内容',
+    }));
+    onData('[DONE]');
+  }
 }
