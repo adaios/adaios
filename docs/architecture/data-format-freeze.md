@@ -387,3 +387,35 @@ updatedAt: 2026-08-07
 [{"symbol":"002428","name":"云南锗业","direction":"SELL","price":null,
   "volume":null,"tradeDate":"2026-08-26","source":"text","complete":false}]
 ```
+
+### 2.16 交易规则参数 `trading/rules.yaml`（第三阶段 2026-08-30 新增）
+
+| 项 | 值 |
+|:---|:---|
+| 路径 | `trading/rules.yaml`（每用户一个，File First 可导出/导入/版本管理）|
+| 格式 | YAML（`formatVersion: 1` + `params:` 参数区）——结构化真相源，非法值 fail-closed 回落默认（JSON Schema 校验随规则包导入机制后置） |
+| 真相源 | `TradingRuleSettingsRepository` |
+| 变更 | **MINOR（2026-08-30，v3.33）**：新增 |
+
+```
+formatVersion: 1
+params:
+  positionLimitPercent: 25        # 单票仓位上限 %
+  defaultStopLossRatio: 0.93      # 默认止损比例（−7%）
+  givebackPeakPct: 20             # 浮盈回吐：峰值浮盈 %
+  givebackRatioPct: 50            # 浮盈回吐：回吐比例 %
+  shortOverdueDays: 5             # 短线超期天数
+  soldStopLossPct: 5.0            # 清仓止损阈值 %
+  soldShortHoldDays: 5            # 清仓短持仓天数
+  buyPullbackPct: 0.5             # 买点：回调幅度
+  buyShrinkRatio: 0.7             # 买点：缩量阈值
+  buyKdjLow: 13                   # 买点：KDJ 低位
+  buyVolumeSurge: 1.5             # 买点：放量倍数
+  buyPriorHighDays: 20            # 买点：前高窗口
+  scoreBuyWeight: 0.5             # 打分：买点权重
+  scoreExecWeight: 0.5            # 打分：执行权重
+  constraintRuleMin: 66           # 建议硬约束：规则号下限
+  constraintRuleMax: 95           # 建议硬约束：规则号上限
+```
+
+**配套**：`trading/knowledge.md`（用户私有交易知识，LLM 注入；`TradingKnowledgeSource` 优先读，os/ 作 adai 默认）。**无规则文件 → 全部默认值 = adai 现状行为**（降级不坏）。

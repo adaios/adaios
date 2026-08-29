@@ -3,7 +3,7 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-29
+updated: 2026-08-30
 status: active
 lines: 39
 depends-on: []

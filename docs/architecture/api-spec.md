@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.29 | 最后更新：2026-08-25**
+**文档版本：v3.33 | 最后更新：2026-08-30**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-08-30 | v3.33 | **交易插件规则层（第三阶段，trading-plugin-architecture.md）**：新增 `GET /trading/rules`（用户自己的交易规则参数：仓位上限/默认止损/行为标注阈值/买点参数/打分权重/硬约束区间，无规则 → 默认值）+ `PUT /trading/rules`（覆盖非空字段，落 `data/{userId}/trading/rules.yaml`）；规则参数按用户隔离，驱动止损/仓位判定、买点信号、行为标注、清仓 verdict、打分权重、建议硬约束、知识注入（`data/{userId}/trading/knowledge.md` 用户私有知识优先，os/ 作 adai 默认）——**每个人有自己的交易系统** |
 | 2026-08-27 | v3.32 | **截图入账缺日期禁落库批（用户拍板「截图缺日期禁止落库，补充日期后再确认」二修）**：`POST /trade-log/confirm` 对**截图归集候选（source=image）无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 人话提示「缺少成交日期」）——不再回退确认当天；新增 `PUT /trade-log/date` 补写候选成交日期（补日期后再次确认可正常落库，成交日 ≠ 确认日不再记错） |
 | 2026-08-27 | v3.31 | **截图入账日期归属修复批（用户反馈「今日 4 笔其实是昨天」）**：候选新增 `tradeDate`（截图表格「日期」列提取的成交日期，无 → null）；`POST /trade-log/confirm` 落库 `entryDate` 用候选 `tradeDate`（无日期才回退确认当天）——成交日 ≠ 确认日不再记错日期 |
 | 2026-08-26 | v3.30 | **截图入账 + 复盘卡点批（契约同步）**：新增 `POST /trading/screenshots`（multipart 1-3 张 → VLM 归集候选，不建记录/不落原图）；`GET /trading/has-activity` 口径改「当日真实成交 > 0」（废除关键词扫描，复盘与截图入账成闭环）|
@@ -577,7 +578,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 ### `GET /api/v1/trading/buy-points` — 自选股买点信号（C2 盯盘买点，2026-08-16）
 
-对全部自选股拉 K 线（东财主源 → 腾讯降级）→ `BuyPointDetector` 判定 → 命中返回信号列表（**判定是提示不是指令**，买不买人决策）。
+对全部自选股拉 K 线（腾讯主源 → 东财兜底，2026-08-24 主源切换）→ `BuyPointDetector` 判定 → 命中返回信号列表（**判定是提示不是指令**，买不买人决策）。
 
 **响应**（P1-交易10 修正 2026-08-17：score 是 0-100 分，signals 是 detector 实际文案）：
 ```json
@@ -585,9 +586,9 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
   "signals":["回调 52%","缩量 0.6x","KDJ.J=12"]}]
 ```
 
-- **B1 回调买点**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 13（2026-08-17 用户确认，P2-6）
-- **B2 突破买点**：放量（5 日均量 × 1.5）+ 收盘破前 20 日高点
-- **参数已定**（2026-08-23 同步）：回调 0.5 / 缩量 0.7 / KDJ 13 / 放量 1.5 / 前高 20 日——构造器硬编码（`BuyPointDetector(0.5, 0.7, 13, 1.5, 20)`），无配置入口（S6 用户确认默认值即最终值）；规格详见 `os/trading-engine/engine/buy-point-rules.md`
+- **B1 回调买点（默认参数）**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 13（2026-08-17 用户确认，P2-6）
+- **B2 突破买点（默认参数）**：放量（5 日均量 × 1.5）+ 收盘破前 20 日高点
+- **参数按用户规则**（2026-08-30 v3.33，交易插件规则层）：回调 0.5 / 缩量 0.7 / KDJ 13 / 放量 1.5 / 前高 20 日是**默认值**——从 `data/{userId}/trading/rules.yaml` 的 `buyPullbackPct/buyShrinkRatio/buyKdjLow/buyVolumeSurge/buyPriorHighDays` 读取（`PUT /trading/rules` 可配，无规则 → 默认值）；B1/B2 命名语义随 adai 规则包（通用原语：回调/缩量/KDJ/放量/突破）；规格详见 `os/trading-engine/engine/buy-point-rules.md`
 - 收盘 15:10 定时任务自动扫描 + 命中推送「到买点了」（`TradingSessionPushService.buyPointScan`）；web 自选 Tab 显示信号列；**B1?（部分满足候选）不推送**（P2-交易7）
 - 需 trading 插件（403）。
 
@@ -655,6 +656,44 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market / close-summary
 - **body**：`{"enabled":false}`（未知类型 → 400）
 - **响应**：更新后的全量开关对象
+
+### `GET /api/v1/trading/rules` — 交易规则参数（第三阶段，用户自己的交易系统）
+> 需 trading 插件（403）。2026-08-30 v3.33 新增，蓝图 trading-plugin-architecture.md。
+
+返回用户规则参数（`data/{userId}/trading/rules.yaml`，无规则 → 默认值）：
+
+```json
+{
+  "exists": true,
+  "params": {
+    "positionLimitPercent": "25",      // 单票仓位上限 %（R81 默认）
+    "defaultStopLossRatio": "0.93",    // 默认止损比例（−7%）
+    "givebackPeakPct": "20",           // 浮盈回吐：峰值浮盈 %
+    "givebackRatioPct": "50",          // 浮盈回吐：回吐比例 %
+    "shortOverdueDays": "5",           // 短线超期天数
+    "soldStopLossPct": "5.0",          // 清仓止损阈值 %
+    "soldShortHoldDays": "5",          // 清仓短持仓天数
+    "buyPullbackPct": "0.5",           // 买点：回调幅度
+    "buyShrinkRatio": "0.7",           // 买点：缩量阈值
+    "buyKdjLow": "13.0",               // 买点：KDJ 低位
+    "buyVolumeSurge": "1.5",           // 买点：放量倍数
+    "buyPriorHighDays": "20",          // 买点：前高窗口
+    "scoreBuyWeight": "0.5",           // 打分：买点权重
+    "scoreExecWeight": "0.5",          // 打分：执行权重
+    "constraintRuleMin": "66",         // 建议硬约束：规则号下限
+    "constraintRuleMax": "95"          // 建议硬约束：规则号上限
+  }
+}
+```
+
+**语义（第三阶段）**：参数按用户隔离，驱动——止损/仓位判定（`TradingRuleEngine`）、买点信号（`BuyPointDetector`）、行为标注（`TradingLotService` 浮盈回吐/短线超期）、清仓 verdict（`SoldTradeVerdict` 阈值）、打分权重（`SoldScoreService`）、建议硬约束区间（`TradingAdviceAppService`）、知识注入（`TradingKnowledgeSource` 读 `data/{userId}/trading/knowledge.md` 用户私有，os/ 作 adai 默认）。**无规则用户 → 全部默认值 = adai 现状行为（降级不坏）**；改自己的参数 = 改自己的交易系统，不影响别人。
+
+### `PUT /api/v1/trading/rules` — 更新交易规则参数
+> 需 trading 插件（403）。2026-08-30 v3.33 新增。
+
+- **body**：`{"params":{"positionLimitPercent":30,"buyKdjLow":20}}`（只传要改的字段，缺省保持原值；值经 `TradingRuleSettings` 构造器 fail-closed 校验，非法回落默认）
+- **响应**：`{"updated":true}`
+- **落盘**：`data/{userId}/trading/rules.yaml`（File First，可导出/导入/版本管理）
 
 ### `GET /api/v1/trading/trade-log` — 当日交易日志候选（RFC 20260817 交易日志自动归集）
 > 需 trading 插件（403）。

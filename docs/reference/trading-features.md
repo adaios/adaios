@@ -144,7 +144,7 @@ tags: [trading, plugin, reference]
 
 | 机制 | 说明 |
 |:--|:--|
-| 规则引擎 | G-3 抽离的确定性判定层：止损 R66（现价<止损位→BREACHED；止损未设→R68 无据可判）、仓位 R81（占比>25%→OVER_WEIGHT，100 万以下适用）、rules.md 条目解析（`**R{n} 标题**` + `> 描述`）；建议引擎/时段推送/行情异动**三方共用同口径**（`TradingRuleEngine`/`DefaultTradingRuleEngine`） |
+| 规则引擎 | G-3 抽离的确定性判定层：止损 R66（现价<止损位→BREACHED；止损未设→R68 无据可判）、仓位 R81（占比>上限→OVER_WEIGHT，100 万以下适用）、rules.md 条目解析（`**R{n} 标题**` + `> 描述`）；建议引擎/时段推送/行情异动**三方共用同口径**（`TradingRuleEngine`/`DefaultTradingRuleEngine`）。**第三阶段（2026-08-30）按用户规则**：仓位上限/行为标注阈值/清仓 verdict/买点 5 参/打分权重/建议硬约束区间全部从 `data/{userId}/trading/rules.yaml` 读取（`GET/PUT /trading/rules` 可配），无规则 → 默认值 = adai 现状（P1-5 降级语义定稿） |
 | 持仓占比口径 | R81 分母 = 总资产（持仓市值+现金，现金唯一真源 account.json）——修复单仓+大现金恒发 reduce（P1-交易4） |
 | 手续费模型 | 佣金万 0.854（买卖都收，四舍五入到分，无最低 5 元）/ 印花税万 5（仅卖出去尾）/ 过户费万 0.1（仅沪市 6/9 开头）；BUY 摊薄成本价含费 4 位小数；五笔券商交割实例反推确认（`CommissionCalculator`） |
 | 交易日志自动归集 | 截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（同 symbol+direction）→ 未落库待确认 → 确认后走 recordTrade；拒绝归集 unknown 占位（P1-1 已修） |

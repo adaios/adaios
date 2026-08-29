@@ -742,7 +742,7 @@ Strict format:
 
 | 文件 | 类/方法 | 职责 |
 |:-----|:---------|:------|
-| `pages/trading_page.dart`（adai-web） | `TradingPage` | 交易管理端（持仓 + 自选 + 清仓 + 资金 + **历史成交五 Tab**，2026-08-23）|
+| `pages/trading_page.dart`（adai-web） | `TradingPage` | 交易管理端（持仓 + 自选 + 清仓 + 资金 + 历史成交 + **规则 六 Tab**——规则 Tab 2026-08-30 第三阶段：我的交易规则参数展示 + 编辑弹窗）|
 | `pages/trading_page.dart`（adai-app） | `TradingPage` | 手机交易页（账户卡 + 记录双通道 + 持仓卡 + 阿呆建议弹层；**2026-08-22 移除自选/清仓只读区块**，管理归 web）|
 
 ### 对应 API
@@ -764,6 +764,10 @@ Strict format:
 | `POST /api/v1/trading/transfer` | `recordTransfer()` | 银证转账（净投入跟踪）|
 | `GET /api/v1/trading/transfers` | `transferList()` | 转账流水 |
 | `PUT /api/v1/trading/positions/{symbol}` | `updatePosition()` | 持仓元信息（止损/角色）|
+| `GET /api/v1/trading/rules` | `getTradingRules()` | **规则参数（第三阶段 2026-08-30）**：用户自己的交易系统参数（仓位上限/止损/行为标注/买点/打分权重/硬约束），无规则 → 默认 |
+| `PUT /api/v1/trading/rules` | `updateTradingRules()` | **规则参数更新**：部分字段覆盖，落 `data/{userId}/trading/rules.yaml` |
+
+> **第三阶段（2026-08-30，trading-plugin-architecture.md）**：交易插件从 adai 专属演进为「通用能力 + 个性化规则」。规则参数按用户隔离，驱动止损/仓位/买点/行为标注/清仓 verdict/打分权重/建议硬约束/知识注入（`data/{userId}/trading/knowledge.md` 用户私有优先）。**web 交易页第 6 Tab「规则」**：参数中文标签展示 + 编辑弹窗（表单化 PUT）。无规则用户 → 全部默认 = adai 现状（降级不坏）。
 
 ### 前端逻辑
 
