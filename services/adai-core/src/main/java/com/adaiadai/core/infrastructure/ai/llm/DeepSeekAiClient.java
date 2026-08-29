@@ -14,10 +14,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -31,7 +34,7 @@ import java.util.List;
  * </ul>
  */
 @Component
-public class DeepSeekAiClient implements AiClient {
+public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.StreamingAiClient {
 
     private static final Logger log = LoggerFactory.getLogger(DeepSeekAiClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -144,6 +147,71 @@ public class DeepSeekAiClient implements AiClient {
         } catch (Exception e) {
             log.error("DeepSeek API 调用失败: {}", e.getMessage(), e);
             throw new RuntimeException("AI 调用失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 流式生成正文（REVIEW P2-用户2，2026-08-29：ai-calling-governance 批 2 聊天流式）。
+     * <p>
+     * body 复用 {@link #buildChatRequestBody}（完整上下文：身份/背景/记忆/多轮历史），
+     * 加 {@code stream:true}；响应按 SSE（{@code data: {...}} 行）解析 delta.content 逐块回调。
+     * 完整文本累计返回。失败抛 RuntimeException（调用方降级非流式重试一次）。
+     * 聊天输出含 JSON 回执尾巴（buildChatRequestBody 的 system 指令），由前端流式渲染时剥离。
+     */
+    @Override
+    public String streamGenerate(ContextPackage contextPackage, String systemPrompt,
+                                 java.util.function.Consumer<String> onDelta) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("DEEPSEEK_API_KEY 未配置，无法流式调用 DeepSeek API");
+            throw new RuntimeException("AI 未配置：缺少 API Key");
+        }
+        java.util.function.Consumer<String> sink = onDelta != null ? onDelta : s -> { };
+        try {
+            String requestBody = buildChatRequestBody(contextPackage);
+            var node = MAPPER.readTree(requestBody);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) node).put("stream", true);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(apiUrl))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(node)))
+                    // 流式长超时：生成期无新块即断（首块后 60s 无增量判超时——SseEmitter 侧同配）
+                    .timeout(Duration.ofSeconds(120))
+                    .build();
+            HttpResponse<java.io.InputStream> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() != 200) {
+                String err = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+                throw new RuntimeException("AI 流式调用失败 status=" + response.statusCode() + " " + err);
+            }
+            StringBuilder full = new StringBuilder();
+            try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) continue;
+                    String data = line.substring(5).strip();
+                    if (data.isEmpty() || "[DONE]".equals(data)) continue;
+                    try {
+                        var delta = MAPPER.readTree(data).path("choices").path(0).path("delta").path("content");
+                        if (delta.isTextual()) {
+                            String chunk = delta.asText();
+                            full.append(chunk);
+                            sink.accept(chunk);
+                        }
+                    } catch (Exception ignored) {
+                        // 跳过非 JSON 的 data 行（SSE 注释/心跳等）
+                    }
+                }
+            }
+            String result = full.toString();
+            if (result.isBlank()) throw new RuntimeException("AI 流式返回空内容");
+            log.info("[DeepSeek] 流式响应 | model={} | 长度={}", modelFor(), result.length());
+            return result;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("DeepSeek API 流式调用失败: {}", e.getMessage(), e);
+            throw new RuntimeException("AI 流式调用失败: " + e.getMessage(), e);
         }
     }
 

@@ -1697,6 +1697,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
   static const List<(String, String)> _items = [
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
     ('buy-point', '买点提醒'),
+    ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),

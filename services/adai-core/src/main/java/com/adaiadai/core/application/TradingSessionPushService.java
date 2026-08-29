@@ -57,6 +57,8 @@ public class TradingSessionPushService {
     static final String CRON_MORNING = "0 15 9 * * MON-FRI";
     static final String CRON_MIDDAY = "0 0 12 * * MON-FRI";
     static final String CRON_CLOSE = "0 50 14 * * MON-FRI";
+    /** 收盘小结 cron（P2-用户3，2026-08-29）：15:30——15:15 交易日志确认之后。 */
+    static final String CRON_CLOSE_SUMMARY = "0 30 15 * * MON-FRI";
 
     private static final String SESSION_SYSTEM_PROMPT = """
             你是阿呆，用户的个人 AI 助手，用自然、亲切、简洁的中文（无系统标签，像朋友聊天）。
@@ -81,6 +83,8 @@ public class TradingSessionPushService {
     private final PushSettingsRepository pushSettingsRepository;
     /** RFC 20260817：交易日志自动归集（收盘确认推送）。 */
     private final TradeLogCollectService tradeLogCollectService;
+    /** P2-用户3（2026-08-29）：收盘小结统计今日成交（getTradeHistory 过滤股息流水）。 */
+    private final TradingAppService tradingAppService;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -96,6 +100,7 @@ public class TradingSessionPushService {
                                      WatchlistRepository watchlistRepository,
                                      PushSettingsRepository pushSettingsRepository,
                                      TradeLogCollectService tradeLogCollectService,
+                                     TradingAppService tradingAppService,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -109,6 +114,7 @@ public class TradingSessionPushService {
         this.watchlistRepository = watchlistRepository;
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
+        this.tradingAppService = tradingAppService;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -197,6 +203,36 @@ public class TradingSessionPushService {
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "尾盘建议", "close-advice", this::buildCloseTemplate);
             pushToAll(userId, "尾盘建议", content, "session", null, null);
+        });
+    }
+
+    /**
+     * 收盘小结（15:30，P2-用户3 2026-08-29）：当日成交 + 破止损持仓 + 待确认候选 + 一句话收尾。
+     * <p>
+     * 用户原话「交易帮不到忙、没有感觉」——收盘后把「今天发生了什么 + 明天该注意什么」送到手机
+     * （Bark 已接，iOS 原生推送）。模板聚合客观数字，**不耗 AI**（秒出、稳定）；类型 close-summary
+     * 受推送开关门控（与其它类型一致，前端可单独关）。
+     */
+    @Scheduled(cron = "${adai.trading.session.close-summary-cron:" + CRON_CLOSE_SUMMARY + "}")
+    public void closeSummaryPush() {
+        if (!isTradingDay(java.time.LocalDate.now())) return;
+        java.time.LocalDate today = java.time.LocalDate.now();
+        forEachTradingUser(userId -> {
+            SessionData data = loadData(userId);
+            // 今日真实成交（过滤股息流水 volume=0——股息入账/红利税不计入买卖笔数）
+            int buy = 0, sell = 0;
+            try {
+                for (com.adaiadai.core.domain.trading.TradeRecord tr :
+                        tradingAppService.getTradeHistory(userId, today, today)) {
+                    if (tr.volume() <= 0) continue;
+                    if (tr.direction() == com.adaiadai.core.domain.trading.TradeDirection.BUY) buy++; else sell++;
+                }
+            } catch (RuntimeException e) {
+                log.warn("收盘小结：今日成交统计失败 | userId={} | {}", userId, e.getMessage());
+            }
+            int pending = tradeLogCollectService.todayCandidates(userId).size();
+            String content = buildCloseSummaryTemplate(data, buy, sell, pending);
+            pushToAll(userId, "收盘小结", content, "close-summary", null, null);
         });
     }
 
@@ -485,6 +521,41 @@ public class TradingSessionPushService {
                     .append("（").append(change).append("） → ").append(advice).append("\n");
         }
         sb.append("明日关注：").append(data.marketStage()).append("。收盘后要不要做今日复盘？");
+        return sb.toString();
+    }
+
+    /** 收盘小结模板（P2-用户3，2026-08-29）：客观数字聚合，不耗 AI；阿呆口吻（B1 无系统标签）。 */
+    private String buildCloseSummaryTemplate(SessionData data, int buyCount, int sellCount, int pending) {
+        StringBuilder sb = new StringBuilder("📋 收盘小结\n");
+        int total = buyCount + sellCount;
+        if (total > 0) {
+            sb.append("今日成交：买 ").append(buyCount).append(" 笔 · 卖 ").append(sellCount).append(" 笔");
+            if (pending > 0) sb.append(" · 还有 ").append(pending).append(" 笔没确认（15:15 那条记得点）");
+            sb.append("\n");
+        } else if (pending > 0) {
+            sb.append("今天有 ").append(pending).append(" 笔操作还没确认——点一下「确认并入账」就记上了\n");
+        }
+        if (!data.positions().isEmpty()) {
+            sb.append("持仓 ").append(data.positions().size()).append(" 只：\n");
+        }
+        int breached = 0;
+        for (Position p : data.positions()) {
+            MarketData md = data.quotes().get(p.symbol());
+            BigDecimal price = md != null && md.price() != null ? md.price() : p.currentPrice();
+            var sl = ruleEngine.evaluateStopLoss(price, p.stopLossPrice());
+            boolean isBreached = sl.verdict() == StopLossVerdict.BREACHED;
+            if (isBreached) breached++;
+            sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
+                    .append(isBreached ? " ⚠️ 破止损" : "").append("\n");
+        }
+        // 一句话收尾（按状态给建议，参考不是指令）
+        if (breached > 0) {
+            sb.append("有 ").append(breached).append(" 只破了止损没走——明早开盘按纪律处理（R66）。");
+        } else if (total > 0) {
+            sb.append("今天有操作——收盘后做个复盘，看看执行得怎么样？");
+        } else {
+            sb.append("今天没有操作，持仓按计划拿着就行。");
+        }
         return sb.toString();
     }
 

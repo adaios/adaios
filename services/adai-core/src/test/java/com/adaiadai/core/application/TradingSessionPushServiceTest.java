@@ -78,9 +78,19 @@ class TradingSessionPushServiceTest {
         return serviceWithPositions(channel, ai, knowledgeDir, acc, false);
     }
 
-    /** B6-3：missingChangePercent=true 时行情 changePercent=null（模拟字段残缺，验证不 NPE）。 */
+    /** B6-3：missingChangePercent=true 时行情 changePercent=null（模拟字段残缺，验证不 NPE）。
+     *  默认链：stub 空流水（今日无成交），防收盘小结 NPE；测试自定义 trading 时走 6 参重载自行 stub。 */
     private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
                                                            AccountSnapshotRepository acc, boolean missingChangePercent) {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of());
+        return serviceWithPositions(channel, ai, knowledgeDir, acc, missingChangePercent, trading);
+    }
+
+    /** P2-用户3：收盘小结需要 tradingAppService（今日成交统计）——测试可传入 stub 好的 mock。 */
+    private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
+                                                           AccountSnapshotRepository acc, boolean missingChangePercent,
+                                                           TradingAppService tradingAppService) {
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
@@ -116,7 +126,7 @@ class TradingSessionPushServiceTest {
                 new DefaultTradingRuleEngine(), ai, List.of(channel),
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), tradingAppService,
                 knowledgeDir);
     }
 
@@ -231,7 +241,7 @@ class TradingSessionPushServiceTest {
                 pluginService, new DefaultTradingRuleEngine(), ai, List.of(channel),
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -300,7 +310,7 @@ class TradingSessionPushServiceTest {
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(channel),
                 mock(AccountSnapshotRepository.class),
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -391,7 +401,7 @@ class TradingSessionPushServiceTest {
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -425,7 +435,7 @@ class TradingSessionPushServiceTest {
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -466,7 +476,7 @@ class TradingSessionPushServiceTest {
         TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
                 pluginService, new DefaultTradingRuleEngine(), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
-                pushSettings, mock(TradeLogCollectService.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -526,5 +536,79 @@ class TradingSessionPushServiceTest {
                 java.time.LocalDate.of(2027, 10, 8)), "2027-10-08 国庆后应开市（中秋不并国庆）");
         assertTrue(TradingSessionPushService.isTradingDay(
                 java.time.LocalDate.of(2027, 8, 20)), "2027-08-20 周五应开市");
+    }
+
+    // ── 收盘小结（P2-用户3，2026-08-29：当日成交 + 破止损 + 待确认 + 一句话收尾）──
+
+    private com.adaiadai.core.domain.trading.TradeRecord trade(String id, String symbol, String name,
+                                                                com.adaiadai.core.domain.trading.TradeDirection dir,
+                                                                String price, int volume) {
+        return com.adaiadai.core.domain.trading.TradeRecord.of(
+                id, symbol, name, dir, new BigDecimal(price), volume,
+                java.time.LocalDate.now(), null, null, null, null, null, null,
+                java.time.LocalDateTime.now(), null, null);
+    }
+
+    @Test
+    void closeSummary_template_countsTodayTrades_excludingDividend() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        TradingAppService trading = mock(TradingAppService.class);
+        // 今日 1 买 1 卖 + 1 笔股息入账（volume=0 不应计入买卖笔数）
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of(
+                trade("t1", "000725", "京东方A", com.adaiadai.core.domain.trading.TradeDirection.BUY, "5.20", 1000),
+                trade("t2", "600519", "贵州茅台", com.adaiadai.core.domain.trading.TradeDirection.SELL, "1400.00", 100),
+                trade("d1", "600519", "贵州茅台", com.adaiadai.core.domain.trading.TradeDirection.BUY, "0", 0)));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context",
+                mock(AccountSnapshotRepository.class), false, trading);
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        PushChannel.PushMessage m = captor.getValue();
+        assertEquals("收盘小结", m.title());
+        assertEquals("close-summary", m.type());
+        assertTrue(m.content().contains("买 1 笔 · 卖 1 笔"), "股息流水（volume=0）不计入买卖笔数，实际: " + m.content());
+        assertTrue(m.content().contains("持仓 2 只"), "应列持仓，实际: " + m.content());
+        assertTrue(m.content().contains("今天有操作"), "有成交应走复盘建议分支，实际: " + m.content());
+    }
+
+    @Test
+    void closeSummary_noTrades_noOperationLine() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        // trading mock 默认空流水（helper stub）
+        TradingSessionPushService svc = serviceWithPositions(channel, ai);
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("今天没有操作"), "无成交应走持有分支，实际: " + content);
+    }
+
+    @Test
+    void closeSummary_breachedStopLoss_notFlaggedWhenPriceAbove() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of(
+                trade("t1", "000725", "京东方A", com.adaiadai.core.domain.trading.TradeDirection.BUY, "5.20", 1000)));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context",
+                mock(AccountSnapshotRepository.class), false, trading);
+
+        // 京东方现价 5.46 > 止损 4.9 → 不得误标破止损（破止损判定同 closeAdvice 的 evaluateStopLoss，已测）
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertFalse(content.contains("破止损"), "现价未破止损不得误标，实际: " + content);
+        assertTrue(content.contains("买 1 笔"), "应统计今日买入，实际: " + content);
     }
 }

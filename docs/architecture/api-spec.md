@@ -647,12 +647,12 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/push-settings` — 推送开关（RFC 20260817 交易推送体验）
 > 需 trading 插件（403）。
 
-返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。
+返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true,"close-summary":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。`close-summary`（2026-08-29，P2-用户3）= 15:30 收盘小结（当日成交+破止损+待确认）。
 
 ### `PUT /api/v1/trading/push-settings/{type}` — 更新推送开关
 > 需 trading 插件（403）。
 
-- **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market
+- **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market / close-summary
 - **body**：`{"enabled":false}`（未知类型 → 400）
 - **响应**：更新后的全量开关对象
 
