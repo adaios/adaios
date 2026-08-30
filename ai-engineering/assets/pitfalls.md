@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-30
 status: active
-lines: 72
+lines: 78
 depends-on:
   - ../checklists/guard.md
 related:
@@ -67,6 +67,12 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | 东财在生产被限 | 生产 buy-points/行情全走兜底（东财 K 线全部空，本地正常） | 服务器 IP（82.156.111.146）访问 push2his.eastmoney.com 返回空 | 腾讯降级兜底（KlineService 主源失败自动切）已验证生产 0 失败；判定链路本地真数据验证通过 | ⚠️ 观察中（降级兜底已生效，无需紧急处理） | 日志大量「东财 K线空」+ 腾讯兜底数据缺失 |
+
+## 七、本地资产与生产同步（2026-08-30 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| 字体残缺版残留本地 | 本地 web 新 UI 中文显示框框（完美/案例/标注/匹配/理解 等缺字形），生产正常 | 2026-08-23 生产事故修复只替换了 `/opt/adaios/web/fonts/`，**本地三端 `web/fonts/` 未同步**（gitignore 不入库 → 无版本提示） | 重新子集化 GB2312 全量（7451 字形/1.9MB）+ 三端 web/app/admin 全替换 + `build/web/fonts/` 同步 + 字形数校验（详见 `ai-engineering/assets/projects/adai-web.md` 字体资产节）| ✅ 已修（2026-08-30）| 改字体只改一处 / 新 UI 文案出现框框 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

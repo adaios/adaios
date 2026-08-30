@@ -3,9 +3,9 @@ title: 项目资产：adai-web（桌面端）
 description: adai-web 项目资产卡——模块划分/职责边界/与 app 的关系；改 web 前先读本卡
 version: 1
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-08-30
 status: active
-lines: 78
+lines: 79
 depends-on:
   - ../../frontmatter-spec.md
   - ../conventions.md
@@ -62,11 +62,12 @@ adai-web（Flutter Web 独立工程）
 - `web/fonts/NotoSansSC-Subset.woff2`：Noto Sans SC **TrueType(glyf) 轮廓 GB2312 全量子集**（**2.4MB，7451 字形**，OFL 开源可分发）
 - ⚠️ **2026-08-22 修复**：原 `HiraginoSansGB-Subset.woff2`（CFF 轮廓 1.8MB）在 skwasm 引擎下 **FreeType 解析失败 → 中文全框**（与 Flutter issue #128485「CanvasKit 不支持 WOFF2」同类；Roboto 为 TrueType 轮廓所以英文正常、中文全框）。换 TrueType 轮廓的 Noto Sans SC 后正常。
 - ⚠️ **2026-08-23 修复（生产事故）**：线上曾部署 **242 字形残缺版（63KB）**——生成时字符清单过小，`历/史/卖/出` 等大量常用字缺字形 → 「历史成交」等界面文字显示框框（CanvasKit 已加载字体就不回退系统字体）。**重新生成 GB2312 全量（7451 字形，2.4MB）**：枚举全部 GB2312 区位（A1-F7 × A1-FE）解码出 6763 汉字 + 682 符号，再补 `—·…` 等 GB2312 外界面符号。部署替换后正常。
+- ⚠️ **2026-08-30 复发（本地源码目录未同步）**：08-23 修复只替换了生产 `/opt/adaios/web/fonts/`，**本地三端 `web/fonts/` 仍残留 63KB 残缺版**——新 UI 文案（完美/案例/标注/匹配/理解/置信度）显示框框。修复：重新子集化全量（7451 字形 / 1.9MB woff2，`/tmp/NotoSansSC-Subset.woff2` 备份）并**三端同步替换**（adai-web/adai-app/adai-admin 的 `web/fonts/` + `build/web/fonts/`）。**同步铁律**：字体改动/新增 UI 文案后必须①三端 web/app/admin 全替换②`build/web/fonts/` 同步（serve 直接读该目录，无需重 build）③校验字形数与高频字。
 - 中文（Noto Sans SC 等 gstatic 请求）由 `scripts/serve_web.sh` 注入的 fetch 补丁改道到本地 woff2；Roboto → Roboto.woff2
 - 重新生成（fonttools + brotli，从 Google Fonts 完整版子集化）：
-  `pyftsubset /tmp/NotoSansSC-Regular.ttf --text-file=<GB2312 charset> --flavor=woff2 --layout-features= --no-hinting`
-  （charset 生成：Python 枚举 GB2312 全部区位解码；源字体：jsDelivr `google/fonts` 仓库 `NotoSansSC[wght].ttf`——GitHub raw 被墙，用 jsDelivr CDN）
-- **校验铁律**：部署前必须 `TTFont().getBestCmap()` 查字形数 ≥ 7000，且 `历史成交买卖` 等 8 个界面高频字在 cmap 内——残缺子集是静默事故（页面不报错只显示框框）
+  `python3 -m fontTools.subset /tmp/NotoSansSC.ttf --text-file=<GB2312 charset> --flavor=woff2 --layout-features= --no-hinting`
+  （charset 生成：Python 枚举 GB2312 全部区位解码；源字体：jsDelivr `google/fonts` 仓库 `NotoSansSC[wght].ttf`——GitHub raw 被墙，用 jsDelivr CDN；`pyftsubset` 命令可能不在 PATH，用 `python3 -m fontTools.subset`）
+- **校验铁律**：部署前必须 `TTFont().getBestCmap()` 查字形数 ≥ 7000，且 `历史成交买卖完美匹配理解` 等界面高频字在 cmap 内——残缺子集是静默事故（页面不报错只显示框框）；**本地改字体后同样要校验**（2026-08-30 本地就是坏字体跑了半年）
 - 不入库（gitignore `/web/fonts/`），部署需手动放置（生产已放 `/opt/adaios/web/fonts/`）；adai-admin 同构（同一子集文件）
 
 ## 已知问题（来自 app-polish 审查）

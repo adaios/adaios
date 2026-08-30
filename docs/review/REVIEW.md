@@ -13,7 +13,7 @@ mode: deep 增量审查（案例库批次——**降级：子代理环境故障�
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
-audits/2026-08-30-case-library-review.md → **S1 已修**（save index 写失败回滚案例文件，939 全绿）；P1-案例1 / P2-案例1~5 / P3-案例1（REVIEW 新增）
+audits/2026-08-30-case-library-review.md → **S1/P1-案例1/P2-案例4 已修出表**（S1 回滚 939；P1-案例1 腾讯日期格式实测通过；P2-案例4 东财 beg/end 实测通过）；剩 P2-案例1~3/5 + P3-案例1（REVIEW 登记）
 audits/2026-08-30-trading-rule-layer-review.md → **已全部修复出表**（2026-08-30 审查修复批：P0×2/P1×6/P2×8/P3×6 + 文档×13；降级语义 P1-5 定稿默认值兜底；D-14 current.md 脱敏登记遗留待用户确认；后端 874 全绿，见 change-log）
 audits/2026-08-25-lot-tracking-review.md → 已全部闭环（P2-批次1/2/3 均已修出表）；其余全部修复（对抗 P0-1~P1-5 / 后端 P1×2·P2×3·P3 / 前端 P1·P2 / 文档 P1×3·P2×2，见 change-log 2026-08-25）
 audits/2026-08-24-ai-calling-governance-doc-review.md → S-9,S-10（REVIEW 新增，方案修订待办；P0-1 及 P1 清单见报告）
@@ -36,7 +36,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 > 2026-08-15 上午 deep 审核（范围：工作树未提交改动——第二步插件系统 T2.1-T2.10 + 第一步遗留，47 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**战略×2 + P1×6 + P2×7 + P3×15**。P0 无。战略 S-3（重补路径 domain 未收敛）+ S-4（行情推送写侧未门控）；P1 六项；已沉淀检查点 B31-33 / F30-32 / D23-26。S-3/S-4/P1 全部出表（批 Q/R）。
 > 2026-08-14 deep 审核（范围 `7b0a527..HEAD`，18 commits，带图 ask / 删除残留 / 图片交互批）：**P0×1 + 战略×2 + P1×2 + P2×2 + P3×14**。P0-1 + P1-1 + P1-2 + P2-1 + S-1 已修复出表；S-2 展示层已修（层 2 数据层另立 v1.0.1）。
 
-> 2026-08-30 案例库批次审查（第四阶段环 1-4 + 二期，`c9c2918..fec30bf` 36 文件 +4209 行；**降级：子代理环境故障全线启动失败（7 次尝试），主会话四视角顺序审**）：守护 G1-G7 7 PASS / 0 HIT + META PASS + ALIGN PASS。**战略×1（已修）+ P1×1 + P2×5 + P3×1**。**S1 已修**：`TradingCaseFileRepository.save` index 写失败被 StorageException catch 提前重抛跳过回滚 → 文件残留 + 重试 409 卡死——统一 catch 先回滚再抛 + 回归测试（939）。**P1-案例1**：腾讯 `klineRange` 日期格式未实测（部署前必须验证）；P2-案例1~5（窗口<60根 MA 失真 / web 未适配 buyPoint="case" / 扫描案例库无缓存 / 东财 beg/end+lmt 同传未实测 / index plus5d null→0.0）；P3-案例1（insight source 模型路由登记）。报告 `audits/2026-08-30-case-library-review.md`。
+> 2026-08-30 案例库批次审查（第四阶段环 1-4 + 二期，`c9c2918..fec30bf` 36 文件 +4209 行；**降级：子代理环境故障全线启动失败（7 次尝试），主会话四视角顺序审**）：守护 G1-G7 7 PASS / 0 HIT + META PASS + ALIGN PASS。**战略×1（已修）+ P1×1 + P2×5 + P3×1**。**S1 已修**：`TradingCaseFileRepository.save` index 写失败被 StorageException catch 提前重抛跳过回滚 → 文件残留 + 重试 409 卡死——统一 catch 先回滚再抛 + 回归测试（939）。**P1-案例1 / P2-案例4 已实测出表**（2026-08-30 本地验收：腾讯 yyyy-MM-dd 与东财 beg/end yyyyMMdd 均正常）；剩 P2-案例1~3/5（窗口<60根 MA 失真 / web 未适配 buyPoint="case" / 扫描案例库无缓存 / index plus5d null→0.0）+ P3-案例1。报告 `audits/2026-08-30-case-library-review.md`。
 > 2026-08-25 批次审查（RFC 20260825 逐笔批次跟踪与行为纠偏，工作树 34 文件；backend/frontend/docs/adversarial ×4 隔离并行）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0×1 + P1×9 + P2×10 + P3×8（合并去重）**。**P0-1 实锤：手动记录（无 orderId）与收盘导入（有 orderId）同笔成交零交集去重 → 重复入账**——主场景「白天手动记 + 收盘导」直接命中；已修（importSync 有 orderId 行也查指纹交叉防重 + fingerprint 价格 stripTrailingZeros 归一化 + 回归测试）。全部 P1 已修：初始批次前置（底仓快照+卖出正确扣减）、sync 透传 fee、混合窗口拆组（不再整批降级 append）、追高 10 日时间窗口、默认 −7% 止损文案分级（不审判未设止损用户）、状态类行为仅当天注入（历史复盘不错位）、行情类推送 15:30→次日 09:30（收盘后仍可看）、web 状态列 closed 优先、reconcile 按 symbol 过滤、api-spec v3.27 行恢复。**3 条 P2 已全部修复出表**（P2-批次1 web 弹窗双击守卫 / P2-批次2 多日导入行为标注逐日合并 / P2-批次3 app 批次行字号）；**用户 2026-08-25 反馈新增 3 条待办**：P2-批次4 多文件批量导入、P2-批次5 导入进度反馈（看不出卡住）、P2-批次6 历史成交完全尊重源文件（股息入账/红利税类型展示）。报告 `audits/2026-08-25-lot-tracking-review.md`。
 # 项目审核状态报告
 
@@ -86,7 +86,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| P1-案例1 | **腾讯 klineRange 日期格式未实测**：URL `param=%s,day,%s,%s,320,qfq` 传 `LocalDate.toString()`（yyyy-MM-dd），腾讯 fqkline 接口日期参数格式未真网络验证——格式不符 → 主源空转走东财兜底（功能可用但主源失效）| `TencentMarketDataSource.klineRange` | 部署前 bootRun 实测一次真接口；不被接受则改 BASIC_ISO_DATE |
+| P1-案例1 | **腾讯 klineRange 日期格式**（原「未实测」）| `TencentMarketDataSource.klineRange` | ✅ 已实测（2026-08-30 本地验收：`param=sh600519,day,2026-03-01,2026-04-15,320,qfq` 返回 qfqday 正常——yyyy-MM-dd 被接受，无需改动）|
 | P1-交易1 | **切入自动刷新是死代码**：`_NavEntry('交易',...,'trading',...)` label=中文'交易'，`_buildPage` 判 `entry.label=='trading'` 恒 false → 切到交易页从不触发刷新（253a35e/37d4b52 核心卖点从未工作）| `desktop_shell.dart:115` / `trading_page.dart:59-65` | 改判 `entry.plugin=='trading'`，补壳层 widget 测试 | ✅ 已修（2026-08-17 R4：改判 entry.plugin=='trading' + 壳层测试）
 | P1-交易2 | recordTrade 只动现金不动市值：BUY 少计成交额、SELL 多计成交额 → 账户卡 15:05 前账目错误，快照现金滞后时 cash 可被推成负值 | `TradingAppService.java:137-148` | 买卖同步更新 marketValue | ✅ 已修（2026-08-17 R4：现金↔市值转移，总资产只差手续费 + 2 测试）
 | P1-交易3 | closeAccountUpdate 部分行情缺失即用残缺市值覆盖总资产（旧值不可恢复）| `TradingSessionPushService.java:155,168-171` | 行情不全时跳过或保留旧市值 | ✅ 已修（2026-08-17 R4 缺行情跳过 + **2026-08-23 补 yesterdayClose 残缺同样跳过**，见已修复区）|
@@ -128,7 +128,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-案例1 | 窗口不足 60 根（停牌/新股/标注日近窗口起点）→ `ma()` 用可用根数近似 → MA60/黄白线态/距 60 日线失真（已知取舍，特征可算但不精确）| `CaseFeatureExtractor.ma` | 注明已知限制（设计文档 §4.1）；可加 `windowComplete` 标记 |
 | P2-案例2 | **web 自选 Tab 未适配 `buyPoint="case"`**：二期开关开时规则未命中但案例相似 → 返回 `case` 项，前端信号列渲染「case 0%」异常 | `WatchlistBuyPointService` / web 自选 Tab | 前端适配 case 类型显示（「形态接近历史完美买点」）；开关默认关，随部署批适配 |
 | P2-案例3 | 二期开关开时 `scanWatchlist` 每跑全量 `caseRepository.list`（index+逐文件读），案例多时拖慢扫描（无缓存）| `WatchlistBuyPointService` | 案例 >50 后加 TTL 缓存（对齐 TradingKnowledgeSource 模式）|
-| P2-案例4 | 东财 `klineRange` 同时传 `lmt=320` + `beg/end`——同传截断行为未实测（可能忽略 lmt 或 beg 前截断）| `EastMoneyKlineDataSource.klineRange` | 与 P1-案例1 一并实测 |
+| P2-案例4 | 东财 `klineRange` 同时传 `lmt=320` + `beg/end`——同传截断行为（原「未实测」）| `EastMoneyKlineDataSource.klineRange` | ✅ 已实测（2026-08-30：`beg=20260301&end=20260415` 返回指定窗口 klines 正常，lmt 不冲突）|
 | P2-案例5 | `indexEntry` 的 `plus5dReturnPct`：`verify()==null` 时存 0.0 → 列表前端显示「+5d 0.0%」而非「—」| `TradingCaseFileRepository.indexEntry` | 改存 null 或列表端 0 兜底 |
 | P2-交易1 | SoldScoreService 16 线程池无 @PreDestroy shutdown；单笔 30s 超时产空 symbol 占位行 | `SoldScoreService.java:35,52-57` | 线程池 shutdown + 无空行占位（B53）| ✅ 已修（2026-08-17 R5：shutdown + 超时保留 symbol）
 | P2-交易2 | scanWatchlist 串行拉 K 线（仅打分并行化，买点扫描未并发）且无按标的异常隔离 | `WatchlistBuyPointService.java` | 同 SoldScoreService 并发化（B54）| ✅ 已修（2026-08-17 R5：8 并发 + 异常隔离）
@@ -304,7 +304,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
-| 2026-08-30 | deep 增量（案例库批次，**降级主会话审**）| —（子代理故障）| 0 | ~25min | 战略×1 + P1×1 + P2×5 + P3×1（去重后）| 1（S1 回滚）|
+| 2026-08-30 | deep 增量（案例库批次，**降级主会话审**）| —（子代理故障）| 0 | ~25min | 战略×1 + P1×1 + P2×5 + P3×1（去重后）| 3（S1 回滚 + P1-案例1/P2-案例4 实测出表）|
 | 2026-08-23 | 隔离审查演示（交易归集批修复后残留）| backend + adversarial ×2 独立子代理（隔离子上下文）| 2 | ~20min | P0×1 + 战略×2 + P1×9 + P2×10（去重后）| 0（审查只报告）|
 | 2026-08-20 | full app 体检（用户体感导向）| ui/ux/frontend/product ×4 + 主会话 | 4 | ~40min | 战略×5 + P1×17 + P2/P3×24（去重后）| 0（审查只报告）|
 | 2026-08-24 | deep 方案文档审查（AI 调用治理）| docs/backend/frontend/adversarial ×4 | 4 | ~25min | P0×1 + 战略×7 + P1×11 + P2×13（去重后）| 0（审查只报告）|
