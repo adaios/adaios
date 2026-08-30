@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -23,9 +24,17 @@ class KlineServiceTest {
         return new Candle(LocalDate.of(2026, 8, day), 10, 11, 9, close, 1000);
     }
 
-    /** 便捷构造：tencent 主源（生产默认 2026-08-23 起）。 */
+    /** TDX 本地源 mock（默认空——测试网络源主/兜底逻辑不受影响）。 */
+    private KlineSource tdxEmpty() {
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.kline(anyString(), anyInt())).thenReturn(List.of());
+        when(tdx.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        return tdx;
+    }
+
+    /** 便捷构造：tencent 主源（生产默认 2026-08-23 起；TDX 空 = 网络源逻辑）。 */
     private KlineService tencentFirst(KlineSource tencent, KlineSource eastMoney) {
-        return new KlineService("tencent", eastMoney, tencent);
+        return new KlineService("tencent", true, eastMoney, tencent, tdxEmpty());
     }
 
     @Test
@@ -76,7 +85,7 @@ class KlineServiceTest {
         when(eastMoney.kline(anyString(), anyInt()))
                 .thenReturn(List.of(c(1, 10.5), c(2, 10.8)));
         KlineSource tencent = mock(KlineSource.class);
-        KlineService svc = new KlineService("eastmoney", eastMoney, tencent);
+        KlineService svc = new KlineService("eastmoney", true, eastMoney, tencent, tdxEmpty());
 
         List<Candle> result = svc.kline("600519", 120);
 

@@ -42,6 +42,10 @@ adai:
   market:
     # K 线主源（2026-08-23 用户确认腾讯优先：东财在生产被限，腾讯稳定；eastmoney 可切回历史主源）
     kline-primary: tencent
+    # 通达信本地数据（2026-08-30：第一优先——全 A 历史、免网络风控；tdx 无数据自动走网络源）
+    # 数据目录 = 通达信 vipdoc/ 的 sh/ sz/ 子目录（lday/*.day），生产用 ADAI_TDX_PATH 指定
+    tdx-enabled: true
+    tdx-path: ${ADAI_TDX_PATH:../../data/market/tdx}
     # Phase 2 行情异动主动推送（MarketAlertService）：交易时段轮询持仓，命中阈值写推送事件入 Feed。
     # cron 默认工作日 9-11/13-15 点每 30 分钟；阈值单位=百分比。
     alert:

@@ -173,7 +173,7 @@ tags: [trading, plugin, reference]
 | 交易日志自动归集 | 截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（同 symbol+direction）→ 未落库待确认 → 确认后走 recordTrade；拒绝归集 unknown 占位（P1-1 已修） |
 | 成交时间采集（RFC 20260822） | 逐笔流水加 `tradeTime`（成交时刻 HH:mm:ss，可空）：历史成交导入解析通达信「成交时间」列；当日记录缺省落盘时刻时分；旧数据 null 兼容 |
 | 当日复盘聚合（RFC 20260822） | `GET /trading/trades?date=` 返回 `{trades, daily}`：时段分桶（早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00）+ 买卖笔数金额 + 首末笔时间——纯客观无 AI |
-| K 线数据源 | **腾讯主源 → 东财探测兜底（2026-08-24 主源切换批）**：`adai.market.kline-primary` 默认 tencent——生产东财被限不再刷 500+/日 WARN；连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
+| K 线数据源 | **TDX 通达信本地 → 腾讯主源 → 东财探测兜底（2026-08-30 优先级调整）**：本地 .day 全 A 历史免风控（`TdxFileKlineSource`，`adai.market.tdx-path` 默认 `../../data/market/tdx`，mtime 缓存）；tdx 无数据自动走网络源；网络源连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
 | 交易知识注入 | **第三阶段（D1）用户私有优先**：读 `data/{userId}/trading/knowledge.md`（有 → 只用自己的）；无 → **仅 owner（adai）回落** `os/trading-engine/knowledge/context/` 五份交付文件（identity/strategy/rules/mistakes/current.md），其他用户不注入交易知识（P1-3 防跨用户泄漏）；内容哈希缓存（`TradingKnowledgeSource`） |
 | 行情上下文注入 | trading 场景：大盘指数（上证/深证/创业板）+ 持仓行情表；globalContext 全场景短版（`MarketContextContributor`） |
 | 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ BarkPushChannel（iOS 原生推送，2026-08-25 起生产启用，免费无限条数）；WeChatPushChannel（Server酱）已停用（免费 5 条/天不够，代码保留未配置即禁用） |

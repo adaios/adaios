@@ -31,6 +31,7 @@ public class KlineService {
 
     private final KlineSource primary;
     private final KlineSource fallback;
+    private final KlineSource tdx;
     private final String primaryName;
     private final String fallbackName;
 
@@ -40,19 +41,28 @@ public class KlineService {
 
     public KlineService(
             @Value("${adai.market.kline-primary:tencent}") String primaryName,
+            @Value("${adai.market.tdx-enabled:true}") boolean tdxEnabled,
             @Qualifier("eastMoneyKlineDataSource") KlineSource eastMoney,
-            @Qualifier("tencentMarketDataSource") KlineSource tencent) {
+            @Qualifier("tencentMarketDataSource") KlineSource tencent,
+            @Qualifier("tdxFileKlineSource") KlineSource tdx) {
         boolean tencentFirst = "tencent".equalsIgnoreCase(primaryName);
         this.primaryName = tencentFirst ? "腾讯" : "东财";
         this.fallbackName = tencentFirst ? "东财" : "腾讯";
         this.primary = tencentFirst ? tencent : eastMoney;
         this.fallback = tencentFirst ? eastMoney : tencent;
-        log.info("KlineService 初始化 | 主源={} | 兜底={}", this.primaryName, this.fallbackName);
+        // 2026-08-30：通达信本地数据第一优先（全 A 历史、免风控）——tdx 无数据（未同步/缺标的）不算失败，走网络源
+        this.tdx = tdxEnabled ? tdx : null;
+        log.info("KlineService 初始化 | 主源={} | 兜底={} | TDX本地={}",
+                this.primaryName, this.fallbackName, tdxEnabled ? "启用" : "关闭");
     }
 
-    /** 查询日 K：主源 → 兜底。熔断开启时直接走兜底。 */
+    /** 查询日 K：TDX 本地 → 主源 → 兜底。熔断开启时 TDX → 直接走兜底。 */
     public List<Candle> kline(String symbol, int limit) {
         if (symbol == null || symbol.isBlank()) return List.of();
+        if (tdx != null) {
+            List<Candle> local = tdx.kline(symbol, limit);
+            if (!local.isEmpty()) return local;
+        }
         if (circuitOpen()) {
             List<Candle> fb = fallback.kline(symbol, limit);
             return fb != null ? fb : List.of();
@@ -75,9 +85,13 @@ public class KlineService {
         return fb != null ? fb : List.of();
     }
 
-    /** 按日期范围查询（2026-08-30：案例库历史窗口）；主源→兜底，熔断同 kline。 */
+    /** 按日期范围查询（2026-08-30：案例库历史窗口）；TDX 本地 → 主源 → 兜底，熔断同 kline。 */
     public List<Candle> klineRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
         if (symbol == null || symbol.isBlank()) return List.of();
+        if (tdx != null) {
+            List<Candle> local = tdx.klineRange(symbol, from, to);
+            if (!local.isEmpty()) return local;
+        }
         if (circuitOpen()) {
             List<Candle> fb = fallback.klineRange(symbol, from, to);
             return fb != null ? fb : List.of();
