@@ -79,8 +79,18 @@ public class TradingCaseAppService {
         this.whiteMaPeriod = whiteMaPeriod;
     }
 
-    /** 标注一个完美买点案例：拉窗口 → 特征 + 后验 → 落盘。 */
+    /** 标注一个完美买点案例：拉窗口 → 特征 + 后验 → 落盘（返回案例，兼容既有调用）。 */
     public CaseRecord annotate(String userId, String symbol, LocalDate buyDate,
+                               String buyType, String description, List<String> labels, String name) {
+        return annotateWithCheck(userId, symbol, buyDate, buyType, description, labels, name).record();
+    }
+
+    /**
+     * 标注 + 共识偏离度校验（2026-08-30 建议 #4：防脏案例进库）。
+     * 落盘后基于**既有案例库**（不含新案例）共识画像评估新案例——偏离大仅提示不阻止
+     * （用户是权威）；案例库 <5 → consensusCheck null。
+     */
+    public AnnotateResult annotateWithCheck(String userId, String symbol, LocalDate buyDate,
                                String buyType, String description, List<String> labels, String name) {
         if (buyDate.isAfter(LocalDate.now())) {
             throw new TradingException("买点日期不能是未来日期：" + buyDate);
@@ -106,6 +116,7 @@ public class TradingCaseAppService {
                 log.warn("案例名称查询失败（保持空）| symbol={} | {}", symbol, e.getMessage());
             }
         }
+        List<CaseRecord> existingBeforeSave = caseRepository.list(userId);
         CaseRecord record = new CaseRecord(
                 caseId, symbol, resolvedName, buyDate,
                 buyType == null || buyType.isBlank() ? "unknown" : buyType,
@@ -114,8 +125,17 @@ public class TradingCaseAppService {
                 features, verify, CaseRecord.CaseAiInsight.empty());
         caseRepository.save(userId, record);
         log.info("完美买点案例已标注 | userId={} | caseId={} | buyType={}", userId, caseId, record.buyType());
-        return record;
+        // 共识偏离度校验：用既有案例库画像评估新案例（save 后库含新案例——用 save 前 list）
+        CaseConsensus.ConsensusResult check = null;
+        List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(existingBeforeSave);
+        if (profile != null) {
+            check = CaseConsensus.evaluate(record.features(), profile);
+        }
+        return new AnnotateResult(record, check);
     }
+
+    /** 标注结果（案例 + 共识偏离度校验，check 可为 null）。 */
+    public record AnnotateResult(CaseRecord record, CaseConsensus.ConsensusResult consensusCheck) {}
 
     /** 案例列表（buyDate 倒序）。 */
     public List<CaseRecord> list(String userId) {

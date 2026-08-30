@@ -2053,7 +2053,7 @@ class _TradingPageState extends State<TradingPage> {
       return;
     }
     try {
-      await widget.api.annotateCase(
+      final resp = await widget.api.annotateCase(
         symbol: symbol,
         buyDate: date,
         buyType: typeCtrl.text.trim(),
@@ -2061,9 +2061,66 @@ class _TradingPageState extends State<TradingPage> {
       );
       await _loadCases();
       if (mounted) _toast('案例已标注，画面已还原');
+      // 2026-08-30 建议 #4：共识偏离度校验——标注后若与库中完美买点画像偏离大，
+      // 提示确认（防脏案例进库；不阻止——用户是权威）
+      final check = (resp['consensusCheck'] as Map<String, dynamic>?) ?? const {};
+      if (check.isNotEmpty && mounted) {
+        final hitCount = (check['hitCount'] as num?)?.toInt() ?? 0;
+        final total = (check['total'] as num?)?.toInt() ?? 1;
+        if (hitCount * 2 < total) {
+          await _showConsensusDeviationDialog(hitCount, total, check);
+        }
+      }
     } catch (e) {
       if (mounted) _toast('标注失败：${_extractApiError(e)}');
     }
+  }
+
+  /// 共识偏离提示（防脏案例进库——案例库 ≥5 后生效）。
+  Future<void> _showConsensusDeviationDialog(int hitCount, int total, Map<String, dynamic> check) async {
+    final misses = ((check['hits'] as List<dynamic>?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((h) => h['hit'] != true)
+        .toList();
+    const labels = <String, String>{
+      'drawdownFromHighPct': '回撤', 'volumeShrinkRatio': '量比', 'kdjJ': 'KDJ.J',
+      'distToMa60Pct': '距60日线', 'macdHist': 'MACD', 'sidewaysDays': '盘整',
+    };
+    final detail = misses.take(3).map((h) {
+      final feature = '${h['feature'] ?? ''}';
+      final value = h['value'];
+      final low = h['low'];
+      final high = h['high'];
+      final valueText = value == null ? '—' : (value as num).toStringAsFixed(2);
+      return '${labels[feature] ?? feature} $valueText（共识 ${(low as num).toStringAsFixed(1)}-${(high as num).toStringAsFixed(1)}）';
+    }).join(' · ');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('这个案例和你的完美买点画像有偏差',
+            style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('共识命中 $hitCount/$total 维（案例库 ≥5 后从你的历史完美买点统计）。偏离维度：',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+            const SizedBox(height: 8),
+            Text(detail.isEmpty ? '（各维接近共识）' : detail,
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, height: 1.5)),
+            const SizedBox(height: 8),
+            const Text('已入库。如果它确实是你认为的完美买点，保留即可；如果不是，可以删除。',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 详情弹窗：K 线图（三区）+ 特征 + 后验（GET /trading/cases/{id}?kline=true）。

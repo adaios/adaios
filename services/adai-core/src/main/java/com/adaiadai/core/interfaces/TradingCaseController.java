@@ -46,9 +46,15 @@ public class TradingCaseController {
             @Valid @RequestBody CaseAnnotateRequest body) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        CaseRecord record = caseAppService.annotate(userId, body.symbol(), parseDate(body.buyDate()),
+        // 2026-08-30 建议 #4：标注响应带共识偏离度校验（防脏案例进库提示，不阻止）
+        TradingCaseAppService.AnnotateResult result = caseAppService.annotateWithCheck(
+                userId, body.symbol(), parseDate(body.buyDate()),
                 body.buyType(), body.description(), body.labels(), body.name());
-        return ResponseEntity.ok(record);
+        // Map.of 不接受 null value（consensusCheck 可为 null）——用 HashMap
+        Map<String, Object> resp = new java.util.HashMap<>();
+        resp.put("case", result.record());
+        if (result.consensusCheck() != null) resp.put("consensusCheck", result.consensusCheck());
+        return ResponseEntity.ok(resp);
     }
 
     /** 案例列表（buyDate 倒序摘要）。 */

@@ -81,17 +81,17 @@ class TradingCaseControllerTest {
     @Test
     void annotate_success_returnsCaseWithFeatures() throws Exception {
         CaseRecord record = sampleRecord();
-        when(appService.annotate(anyString(), anyString(), any(), any(), any(), any(), any()))
-                .thenReturn(record);
+        when(appService.annotateWithCheck(anyString(), anyString(), any(), any(), any(), any(), any()))
+                .thenReturn(new TradingCaseAppService.AnnotateResult(record, null));
         mvc("trading").perform(post("/api/v1/trading/cases")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"symbol\":\"000725\",\"buyDate\":\"2026-08-03\",\"buyType\":\"B1\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value("2026-08-03_000725"))
-                .andExpect(jsonPath("$.symbol").value("000725"))
-                .andExpect(jsonPath("$.features.drawdownFromHighPct").value(52.3))
-                .andExpect(jsonPath("$.verify.+5dReturnPct").value(18.2));
+                .andExpect(jsonPath("$.case.id").value("2026-08-03_000725"))
+                .andExpect(jsonPath("$.case.symbol").value("000725"))
+                .andExpect(jsonPath("$.case.features.drawdownFromHighPct").value(52.3))
+                .andExpect(jsonPath("$.case.verify.+5dReturnPct").value(18.2));
     }
 
     @Test
@@ -114,7 +114,7 @@ class TradingCaseControllerTest {
 
     @Test
     void annotate_duplicate_returns400WithHumanMessage() throws Exception {
-        when(appService.annotate(anyString(), anyString(), any(), any(), any(), any(), any()))
+        when(appService.annotateWithCheck(anyString(), anyString(), any(), any(), any(), any(), any()))
                 .thenThrow(new TradingException("该案例已标注过（2026-08-03_000725），可查看或删除后重标"));
         mvc("trading").perform(post("/api/v1/trading/cases")
                         .header("X-User-Id", "adai")
@@ -126,7 +126,7 @@ class TradingCaseControllerTest {
 
     @Test
     void annotate_klineUnavailable_returns400WithHumanMessage() throws Exception {
-        when(appService.annotate(anyString(), anyString(), any(), any(), any(), any(), any()))
+        when(appService.annotateWithCheck(anyString(), anyString(), any(), any(), any(), any(), any()))
                 .thenThrow(new TradingException("无法获取 000725 在 2026-08-03 前后的 K 线数据，请稍后重试或核对代码"));
         mvc("trading").perform(post("/api/v1/trading/cases")
                         .header("X-User-Id", "adai")

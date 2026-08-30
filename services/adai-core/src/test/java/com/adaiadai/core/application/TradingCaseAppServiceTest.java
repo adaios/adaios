@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -109,6 +110,35 @@ class TradingCaseAppServiceTest {
     void generateInsight_caseNotExists_throwsBusinessException() {
         assertThrows(TradingException.class,
                 () -> appService.generateInsight("adai", "2099-01-01_000725"));
+    }
+
+    // ── 建议 #4：标注共识偏离度校验 ──
+
+    @Test
+    void annotateWithCheck_belowMinCases_consensusNull() {
+        // 案例库 <5 → 无共识画像 → check null（提示不可用，不阻止）
+        var result = appService.annotateWithCheck("adai", "000831", LocalDate.of(2026, 3, 5),
+                "B1", null, null, null);
+        assertEquals("2026-03-05_000831", result.record().id());
+        assertEquals(null, result.consensusCheck());
+    }
+
+    @Test
+    void annotateWithCheck_fiveOrMoreCases_consensusEvaluated() {
+        // 预置 5 个同形态案例 → 新案例同形态 → 共识命中较高
+        // 5 个预置案例：不同 symbol 同日期（mock K 线同源 → 特征相同 → 画像=该形态）
+        String[] symbols = {"000001", "000002", "000003", "000004", "000005"};
+        for (String sym : symbols) {
+            appService.annotateWithCheck("adai", sym, LocalDate.of(2026, 3, 5),
+                    "B1", null, null, null);
+        }
+        var result = appService.annotateWithCheck("adai", "000009", LocalDate.of(2026, 3, 5),
+                "B1", null, null, null);
+        assertNotNull(result.consensusCheck(), "≥5 案例 → 应产出共识画像");
+        // 同形态（buildCandles 同源）→ 各维应落在共识区间内 → 命中率高
+        assertTrue(result.consensusCheck().hitCount() >= result.consensusCheck().total() / 2,
+                "同形态新案例应命中多数维度，实际 " + result.consensusCheck().hitCount()
+                        + "/" + result.consensusCheck().total());
     }
 
     // ── 环 4：判定当下（match）──
