@@ -188,10 +188,10 @@ public class TradingCaseAppService {
                         "failed", "北交所暂不支持（本地行情仅沪深）", null));
                 continue;
             }
-            // 标注（含共识校验）
+            // 标注（含共识校验；buyType 取笔记行内标记）
             try {
                 AnnotateResult result = annotateWithCheck(userId, symbol, item.buyDate(),
-                        null, null, null, null);
+                        item.buyType(), null, null, null);
                 results.add(new CaseImportResult(item.name(), symbol, item.buyDate(),
                         "ok", null, result.consensusCheck()));
             } catch (TradingException e) {

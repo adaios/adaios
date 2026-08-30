@@ -30,30 +30,34 @@ public final class CaseImportParser {
     private static final Pattern TITLE = Pattern.compile("^##\\s+(.+)$");
     /** 类型分组标题（完美类型X：/ 类型X：/ 补充 等非股票标题）。 */
     private static final Pattern GROUP = Pattern.compile("^(完美类型|类型|补充)");
+    /** 行内买点类型标记（B1：2025-05-09 / SB1 2025-05-12 / B2 等）。 */
+    private static final Pattern TYPE = Pattern.compile("\\b(B1|SB1|B2)\\b");
     private static final Pattern BRACKET = Pattern.compile("[【\\[]([^】\\]]+)[】\\]]");
 
     private CaseImportParser() {}
 
-    /** 解析结果项（日期缺失 → buyDate null，导入时报告跳过）。 */
-    public record ImportItem(String name, LocalDate buyDate) {}
+    /** 解析结果项（日期缺失 → buyDate null，导入时报告跳过；买点类型：行内 B1/SB1/B2 标记，无 → null）。 */
+    public record ImportItem(String name, LocalDate buyDate, String buyType) {}
 
     public static List<ImportItem> parse(String text) {
         List<ImportItem> items = new ArrayList<>();
         if (text == null || text.isBlank()) return items;
         String currentName = null;
         LocalDate currentDate = null;
+        String currentType = null;
         for (String raw : text.split("\\R")) {
             String line = raw.strip();
             Matcher tm = TITLE.matcher(line);
             if (tm.matches()) {
                 // 收尾上一只
                 if (currentName != null) {
-                    items.add(new ImportItem(currentName, currentDate));
+                    items.add(new ImportItem(currentName, currentDate, currentType));
                 }
                 String title = tm.group(1).strip();
                 if (GROUP.matcher(title).find()) {
                     currentName = null;
                     currentDate = null;
+                    currentType = null;
                     continue;
                 }
                 String name = BRACKET.matcher(title).replaceAll("").strip();
@@ -62,22 +66,31 @@ public final class CaseImportParser {
                 if (name.isEmpty()) {
                     currentName = null;
                     currentDate = null;
+                    currentType = null;
                     continue;
                 }
                 currentName = name;
                 currentDate = null;
+                currentType = null;
                 Matcher bm = BRACKET.matcher(title);
                 if (bm.find()) {
                     Matcher dm = DATE.matcher(bm.group(1));
                     if (dm.find()) currentDate = normalize(dm.group(1));
                 }
-            } else if (currentName != null && currentDate == null && line.startsWith("-")) {
-                Matcher dm = DATE.matcher(line);
-                if (dm.find()) currentDate = normalize(dm.group(1));
+            } else if (currentName != null && line.startsWith("-")) {
+                // 2026-08-31：行内买点类型标记（B1：2025-05-09 / SB1 2025-05-12）
+                Matcher tm2 = TYPE.matcher(line);
+                if (tm2.find() && currentType == null) {
+                    currentType = tm2.group(1);
+                }
+                if (currentDate == null) {
+                    Matcher dm = DATE.matcher(line);
+                    if (dm.find()) currentDate = normalize(dm.group(1));
+                }
             }
         }
         if (currentName != null) {
-            items.add(new ImportItem(currentName, currentDate));
+            items.add(new ImportItem(currentName, currentDate, currentType));
         }
         return items;
     }

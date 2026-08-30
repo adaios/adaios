@@ -91,4 +91,24 @@ class CaseImportParserTest {
         assertEquals(0, CaseImportParser.parse(null).size());
         assertEquals(0, CaseImportParser.parse("  ").size());
     }
+
+    @Test
+    void parsesInlineBuyType() {
+        // 2026-08-31：行内 B1/SB1/B2 标记 → buyType（华纳药厂「B1：2025-05-09 SB1 2025-05-12」取首个 B1）
+        String text = """
+                ## 华纳药厂【HNYC】
+                - 两个买点 B1：2025\\-05\\-09 SB1 2025\\-05\\-12
+                ## 微芯生物【WXSW】
+                - 2025\\-06\\-20
+                """;
+        List<CaseImportParser.ImportItem> items = CaseImportParser.parse(text);
+        assertEquals("B1", items.get(0).buyType(), "行内 B1 标记 → buyType B1");
+        assertEquals(null, items.get(1).buyType(), "无标记 → null（导入时落 unknown）");
+    }
+
+    @Test
+    void parsesSb1Type() {
+        String text = "## 华纳药厂【HNYC】\n- SB1 2025\\-05\\-12";
+        assertEquals("SB1", CaseImportParser.parse(text).get(0).buyType());
+    }
 }
