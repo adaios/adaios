@@ -4,11 +4,12 @@ import '../theme/app_colors.dart';
 
 /// 案例 K 线图（第四阶段 2026-08-30：完美买点案例画面还原）。
 ///
-/// 三区：主图（蜡烛 + MA10 白线 + MA60 黄线 + 买点日标记）→ 成交量 → KDJ + MACD。
+/// 通达信风格（2026-08-30 验收反馈）：主/副图**左上角指标数值标签** + **指标可切换**。
+/// - 主图：MA2（MA10 白 + MA60 黄，黄白线语义近似）/ MA4（MA5/10/20/60 标准配色）/ 裸 K
+/// - 副图：KDJ / MACD / 成交量（点指标名下拉切换）
 /// 指标序列前端从 OHLCV 重算（KDJ 9,3,3 / MACD 12,26,9），口径对齐后端
-/// `CaseFeatureExtractor`（黄线 ≈ MA60 为「黄白线」语义近似，白线 = MA10）。
-/// A 股配色：涨红跌绿（darkRed/darkGreen，对齐 AppColors 硬规则）。
-class CaseKlineChart extends StatelessWidget {
+/// `CaseFeatureExtractor`。A 股配色：涨红跌绿（darkRed/darkGreen）。
+class CaseKlineChart extends StatefulWidget {
   const CaseKlineChart({super.key, required this.kline, this.buyDate, this.height = 320});
 
   /// 窗口日 K：每项 {date, open, high, low, close, volume}（旧→新）。
@@ -18,8 +19,33 @@ class CaseKlineChart extends StatelessWidget {
   final double height;
 
   @override
+  State<CaseKlineChart> createState() => _CaseKlineChartState();
+}
+
+/// 主图指标。
+enum MainIndicator { ma2, ma4, none }
+
+/// 副图指标。
+enum SubIndicator { kdj, macd, volume }
+
+class _CaseKlineChartState extends State<CaseKlineChart> {
+  MainIndicator _main = MainIndicator.ma2;
+  SubIndicator _sub = SubIndicator.kdj;
+
+  static const _mainLabels = {
+    MainIndicator.ma2: 'MA2(10,60)',
+    MainIndicator.ma4: 'MA4(5,10,20,60)',
+    MainIndicator.none: '裸K',
+  };
+  static const _subLabels = {
+    SubIndicator.kdj: 'KDJ(9,3,3)',
+    SubIndicator.macd: 'MACD(12,26,9)',
+    SubIndicator.volume: '成交量',
+  };
+
+  @override
   Widget build(BuildContext context) {
-    if (kline.isEmpty) {
+    if (widget.kline.isEmpty) {
       return const SizedBox(
         height: 120,
         child: Center(
@@ -28,17 +54,134 @@ class CaseKlineChart extends StatelessWidget {
         ),
       );
     }
-    return SizedBox(
-      height: height,
-      width: double.infinity,
-      child: CustomPaint(painter: _CaseKlinePainter(kline, buyDate)),
+    final indicators = CaseIndicators.compute(widget.kline);
+    final mainLabel = _mainLabelText(indicators);
+    final subLabel = _subLabelText(indicators);
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 指标切换行（通达信式：点指标名下拉）
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        _indicatorMenu(
+          label: _mainLabels[_main]!,
+          items: MainIndicator.values.map((e) => (e, _mainLabels[e]!)).toList(),
+          selected: _main,
+          onSelect: (v) => setState(() => _main = v),
+        ),
+        const SizedBox(width: 6),
+        _indicatorMenu(
+          label: _subLabels[_sub]!,
+          items: SubIndicator.values.map((e) => (e, _subLabels[e]!)).toList(),
+          selected: _sub,
+          onSelect: (v) => setState(() => _sub = v),
+        ),
+      ]),
+      const SizedBox(height: 4),
+      SizedBox(
+        height: widget.height,
+        width: double.infinity,
+        child: Stack(children: [
+          CustomPaint(
+            size: Size.infinite,
+            painter: _CaseKlinePainter(
+                widget.kline, widget.buyDate, _main, _sub, indicators),
+          ),
+          // 主图左上角指标数值标签
+          Positioned(left: 4, top: 2, child: _labelChip(mainLabel)),
+          // 副图左上角指标数值标签（主图区之下）
+          Positioned(left: 4, top: widget.height * 0.66 + 2, child: _labelChip(subLabel)),
+        ]),
+      ),
+    ]);
+  }
+
+  /// 指标切换下拉（通达信式：点指标名出菜单）。
+  Widget _indicatorMenu<T>({
+    required String label,
+    required List<(T, String)> items,
+    required T selected,
+    required void Function(T) onSelect,
+  }) {
+    return PopupMenuButton<T>(
+      tooltip: '切换指标',
+      initialValue: selected,
+      onSelected: onSelect,
+      itemBuilder: (ctx) => items
+          .map((e) => PopupMenuItem<T>(
+                value: e.$1,
+                child: Text(e.$2,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: e.$1 == selected ? AppColors.darkGreen : AppColors.darkGrey2)),
+              ))
+          .toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const Icon(Icons.arrow_drop_down, size: 14, color: AppColors.darkGrey4),
+        ]),
+      ),
     );
+  }
+
+  Widget _labelChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(text,
+          style: const TextStyle(fontSize: 10, color: AppColors.darkGrey3, height: 1.2)),
+    );
+  }
+
+  /// 主图标签：MA 值（最新一根）。
+  String _mainLabelText(CaseIndicators ind) {
+    if (ind.ma10.isEmpty) return '';
+    final n = ind.ma10.length - 1;
+    switch (_main) {
+      case MainIndicator.ma2:
+        return 'MA10:${_f(ind.ma10[n])}  MA60:${_f(ind.ma60[n])}';
+      case MainIndicator.ma4:
+        return 'MA5:${_f(ind.ma5[n])}  MA10:${_f(ind.ma10[n])}  MA20:${_f(ind.ma20[n])}  MA60:${_f(ind.ma60[n])}';
+      case MainIndicator.none:
+        return '';
+    }
+  }
+
+  /// 副图标签：指标名 + 当前值。
+  String _subLabelText(CaseIndicators ind) {
+    if (ind.kdjK.isEmpty) return '';
+    final n = ind.kdjK.length - 1;
+    switch (_sub) {
+      case SubIndicator.kdj:
+        return 'KDJ(9,3,3)  K:${_f(ind.kdjK[n])}  D:${_f(ind.kdjD[n])}  J:${_f(ind.kdjJ[n])}';
+      case SubIndicator.macd:
+        return 'MACD(12,26,9)  DIF:${_f(ind.macdDif[n])}  DEA:${_f(ind.macdDea[n])}  MACD:${_f(ind.macdHist[n])}';
+      case SubIndicator.volume:
+        final vol = (widget.kline.last['volume'] as num?)?.toDouble() ?? 0;
+        return '成交量  ${_fmtVol(vol)}手';
+    }
+  }
+
+  static String _f(double v) => v.toStringAsFixed(2);
+  static String _fmtVol(double v) {
+    if (v >= 10000) return '${(v / 10000).toStringAsFixed(1)}万';
+    return v.toStringAsFixed(0);
   }
 }
 
-/// KDJ/MACD 序列计算（纯函数，可单测；口径对齐后端 KdjIndicator/MacdIndicator）。
+/// KDJ/MACD/MA 序列计算（纯函数，可单测；口径对齐后端 KdjIndicator/MacdIndicator）。
 class CaseIndicators {
+  final List<double> ma5;
   final List<double> ma10;
+  final List<double> ma20;
   final List<double> ma60;
   final List<double> kdjK;
   final List<double> kdjD;
@@ -47,16 +190,20 @@ class CaseIndicators {
   final List<double> macdDea;
   final List<double> macdHist;
 
-  const CaseIndicators(this.ma10, this.ma60, this.kdjK, this.kdjD, this.kdjJ,
-      this.macdDif, this.macdDea, this.macdHist);
+  const CaseIndicators(this.ma5, this.ma10, this.ma20, this.ma60, this.kdjK, this.kdjD,
+      this.kdjJ, this.macdDif, this.macdDea, this.macdHist);
 
   static CaseIndicators compute(List<Map<String, dynamic>> kline) {
     final closes = kline.map((e) => (e['close'] as num).toDouble()).toList();
     final n = closes.length;
+    final ma5 = <double>[];
     final ma10 = <double>[];
+    final ma20 = <double>[];
     final ma60 = <double>[];
     for (var i = 0; i < n; i++) {
+      ma5.add(_ma(closes, i, 5));
       ma10.add(_ma(closes, i, 10));
+      ma20.add(_ma(closes, i, 20));
       ma60.add(_ma(closes, i, 60));
     }
     // KDJ 9,3,3（对齐 KdjIndicator：RSV → K/D 平滑 → J）
@@ -97,7 +244,7 @@ class CaseIndicators {
       macdDea.add(dea);
       macdHist.add(dif - dea);
     }
-    return CaseIndicators(ma10, ma60, kdjK, kdjD, kdjJ, macdDif, macdDea, macdHist);
+    return CaseIndicators(ma5, ma10, ma20, ma60, kdjK, kdjD, kdjJ, macdDif, macdDea, macdHist);
   }
 
   static double _ma(List<double> closes, int idx, int n) {
@@ -111,29 +258,25 @@ class CaseIndicators {
 }
 
 class _CaseKlinePainter extends CustomPainter {
-  _CaseKlinePainter(this.kline, this.buyDate);
+  _CaseKlinePainter(this.kline, this.buyDate, this.mainIndicator, this.subIndicator, this.indicators);
 
   final List<Map<String, dynamic>> kline;
   final String? buyDate;
+  final MainIndicator mainIndicator;
+  final SubIndicator subIndicator;
+  final CaseIndicators indicators;
 
-  static const double _mainH = 170;
-  static const double _volH = 48;
-  static const double _kdjH = 52;
-  static const double _macdH = 50;
-  static const double _topPad = 12;
+  static const double _mainRatio = 0.66;
+  static const double _topPad = 14;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final indicators = CaseIndicators.compute(kline);
     final n = kline.length;
     final width = size.width;
-    // 网格横分区
-    final mainRect = Rect.fromLTWH(0, _topPad, width, _mainH);
-    final volTop = _topPad + _mainH;
-    final volRect = Rect.fromLTWH(0, volTop, width, _volH);
-    final kdjTop = volTop + _volH;
-    final kdjRect = Rect.fromLTWH(0, kdjTop, width, _kdjH);
-    final macdRect = Rect.fromLTWH(0, kdjTop + _kdjH, width, _macdH);
+    final mainH = size.height * _mainRatio;
+    final mainRect = Rect.fromLTWH(0, _topPad, width, mainH - _topPad);
+    final subTop = mainH;
+    final subRect = Rect.fromLTWH(0, subTop, width, size.height - subTop);
 
     // 买点索引
     var buyIdx = -1;
@@ -152,10 +295,12 @@ class _CaseKlinePainter extends CustomPainter {
       minPrice = math.min(minPrice, (e['low'] as num).toDouble());
       maxPrice = math.max(maxPrice, (e['high'] as num).toDouble());
     }
-    for (final v in indicators.ma60) {
-      if (v > 0) {
-        minPrice = math.min(minPrice, v);
-        maxPrice = math.max(maxPrice, v);
+    if (mainIndicator == MainIndicator.ma2 || mainIndicator == MainIndicator.ma4) {
+      for (final v in indicators.ma60) {
+        if (v > 0) {
+          minPrice = math.min(minPrice, v);
+          maxPrice = math.max(maxPrice, v);
+        }
       }
     }
     if (minPrice.isInfinite || maxPrice.isInfinite || maxPrice <= minPrice) return;
@@ -190,9 +335,19 @@ class _CaseKlinePainter extends CustomPainter {
       );
     }
 
-    // ── 主图：MA10（白线）+ MA60（黄线 = 黄白线语义近似）──
-    _drawLine(canvas, indicators.ma10, x, y, AppColors.darkGrey2, 1);
-    _drawLine(canvas, indicators.ma60, x, y, const Color(0xFFE6C34A), 1.2);
+    // ── 主图：均线（按所选指标）──
+    switch (mainIndicator) {
+      case MainIndicator.ma2:
+        _drawLine(canvas, indicators.ma10, x, y, AppColors.darkGrey2, 1);
+        _drawLine(canvas, indicators.ma60, x, y, const Color(0xFFE6C34A), 1.2);
+      case MainIndicator.ma4:
+        _drawLine(canvas, indicators.ma5, x, y, AppColors.darkGrey2, 1);
+        _drawLine(canvas, indicators.ma10, x, y, const Color(0xFFE6C34A), 1);
+        _drawLine(canvas, indicators.ma20, x, y, const Color(0xFF9B7FD4), 1);
+        _drawLine(canvas, indicators.ma60, x, y, AppColors.darkGreen, 1.2);
+      case MainIndicator.none:
+        break;
+    }
 
     // ── 主图：买点日标记（竖线 + 顶部 ▲ + 日期）──
     if (buyIdx >= 0) {
@@ -208,61 +363,60 @@ class _CaseKlinePainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      text.paint(canvas, Offset(cx - text.width / 2, mainRect.top - 10));
+      text.paint(canvas, Offset(cx - text.width / 2, mainRect.top - 11));
     }
 
-    // ── 副图：成交量（红涨绿亏）──
-    var maxVol = 0.0;
-    for (final e in kline) {
-      maxVol = math.max(maxVol, (e['volume'] as num).toDouble());
+    // ── 副图：按所选指标 ──
+    switch (subIndicator) {
+      case SubIndicator.kdj:
+        _drawScaled(canvas, subRect, [
+          (indicators.kdjK, AppColors.darkGreen),
+          (indicators.kdjD, const Color(0xFFE6C34A)),
+          (indicators.kdjJ, AppColors.darkPurple),
+        ], x, 0, 100);
+      case SubIndicator.macd:
+        var maxAbs = 0.0;
+        for (final v in indicators.macdHist) {
+          maxAbs = math.max(maxAbs, v.abs());
+        }
+        if (maxAbs <= 0) maxAbs = 1;
+        for (var i = 0; i < n; i++) {
+          final v = indicators.macdHist[i];
+          final h = subRect.height * v.abs() / maxAbs * 0.9;
+          final midY = subRect.center.dy;
+          canvas.drawRect(
+            Rect.fromLTRB(x(i) - candleW / 2, v >= 0 ? midY - h : midY, x(i) + candleW / 2,
+                v >= 0 ? midY : midY + h),
+            Paint()..color = (v >= 0 ? AppColors.darkRed : AppColors.darkGreen).withValues(alpha: 0.8),
+          );
+        }
+        _drawLine2(canvas, indicators.macdDif, x, subRect, AppColors.darkGreen, 1);
+        _drawLine2(canvas, indicators.macdDea, x, subRect, const Color(0xFFE6C34A), 1);
+      case SubIndicator.volume:
+        var maxVol = 0.0;
+        for (final e in kline) {
+          maxVol = math.max(maxVol, (e['volume'] as num).toDouble());
+        }
+        if (maxVol > 0) {
+          for (var i = 0; i < n; i++) {
+            final e = kline[i];
+            final o = (e['open'] as num).toDouble();
+            final c = (e['close'] as num).toDouble();
+            final v = (e['volume'] as num).toDouble();
+            final h = subRect.height * v / maxVol;
+            canvas.drawRect(
+              Rect.fromLTRB(x(i) - candleW / 2, subRect.bottom - h, x(i) + candleW / 2, subRect.bottom),
+              Paint()..color = (c >= o ? AppColors.darkRed : AppColors.darkGreen).withValues(alpha: 0.7),
+            );
+          }
+        }
     }
-    if (maxVol > 0) {
-      for (var i = 0; i < n; i++) {
-        final e = kline[i];
-        final o = (e['open'] as num).toDouble();
-        final c = (e['close'] as num).toDouble();
-        final v = (e['volume'] as num).toDouble();
-        final h = volRect.height * v / maxVol;
-        canvas.drawRect(
-          Rect.fromLTRB(x(i) - candleW / 2, volRect.bottom - h, x(i) + candleW / 2, volRect.bottom),
-          Paint()..color = (c >= o ? AppColors.darkRed : AppColors.darkGreen).withValues(alpha: 0.7),
-        );
-      }
-    }
-
-    // ── 副图：KDJ（K/D/J）──
-    _drawScaled(canvas, kdjRect, [
-      (indicators.kdjK, AppColors.darkGreen),
-      (indicators.kdjD, const Color(0xFFE6C34A)),
-      (indicators.kdjJ, AppColors.darkPurple),
-    ], x, 0, 100);
-
-    // ── 副图：MACD（柱红绿 + DIF/DEA 线）──
-    var maxAbs = 0.0;
-    for (final v in indicators.macdHist) {
-      maxAbs = math.max(maxAbs, v.abs());
-    }
-    if (maxAbs <= 0) maxAbs = 1;
-    for (var i = 0; i < n; i++) {
-      final v = indicators.macdHist[i];
-      final h = macdRect.height * v.abs() / maxAbs * 0.9;
-      final midY = macdRect.center.dy;
-      canvas.drawRect(
-        Rect.fromLTRB(x(i) - candleW / 2, v >= 0 ? midY - h : midY, x(i) + candleW / 2,
-            v >= 0 ? midY : midY + h),
-        Paint()..color = (v >= 0 ? AppColors.darkRed : AppColors.darkGreen).withValues(alpha: 0.8),
-      );
-    }
-    _drawLine2(canvas, indicators.macdDif, x, macdRect, AppColors.darkGreen, 1);
-    _drawLine2(canvas, indicators.macdDea, x, macdRect, const Color(0xFFE6C34A), 1);
 
     // 分区分隔线
     final sep = Paint()
       ..color = AppColors.darkBorder.withValues(alpha: 0.4)
       ..strokeWidth = 0.5;
-    canvas.drawLine(Offset(0, volTop), Offset(width, volTop), sep);
-    canvas.drawLine(Offset(0, kdjTop), Offset(width, kdjTop), sep);
-    canvas.drawLine(Offset(0, kdjTop + _kdjH), Offset(width, kdjTop + _kdjH), sep);
+    canvas.drawLine(Offset(0, subTop), Offset(width, subTop), sep);
   }
 
   void _drawLine(Canvas canvas, List<double> values, double Function(int) x,
@@ -274,7 +428,7 @@ class _CaseKlinePainter extends CustomPainter {
     final path = Path();
     var started = false;
     for (var i = 0; i < values.length; i++) {
-      if (values[i] <= 0) continue; // MA 前 60 根无值
+      if (values[i] <= 0) continue; // MA 前 N 根无值
       final p = Offset(x(i), y(values[i]));
       if (!started) {
         path.moveTo(p.dx, p.dy);
@@ -332,5 +486,8 @@ class _CaseKlinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CaseKlinePainter oldDelegate) =>
-      oldDelegate.kline != kline || oldDelegate.buyDate != buyDate;
+      oldDelegate.kline != kline ||
+      oldDelegate.buyDate != buyDate ||
+      oldDelegate.mainIndicator != mainIndicator ||
+      oldDelegate.subIndicator != subIndicator;
 }

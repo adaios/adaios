@@ -82,4 +82,35 @@ void main() {
     expect(find.byType(CaseKlineChart), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'K 线绘制不应抛异常');
   });
+
+  testWidgets('CaseKlineChart：通达信风格——指标名标签 + 副图可切换（2026-08-30）', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: CaseKlineChart(kline: klineData(90), buyDate: null, height: 320),
+        ),
+      ),
+    ));
+    await tester.pump();
+    // 默认主图 MA2 + 副图 KDJ，标签显示指标名
+    expect(find.text('MA2(10,60)'), findsOneWidget, reason: '主图指标名标签');
+    expect(find.text('KDJ(9,3,3)'), findsOneWidget, reason: '副图指标名标签');
+    // 主图数值标签（MA10/MA60 最新值）
+    expect(find.textContaining('MA10:'), findsOneWidget, reason: '主图左上角数值标签');
+
+    // 切换副图 → MACD
+    await tester.tap(find.text('KDJ(9,3,3)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MACD(12,26,9)').last);
+    await tester.pumpAndSettle();
+    expect(find.text('MACD(12,26,9)'), findsWidgets, reason: '副图已切换为 MACD');
+    expect(find.textContaining('DIF:'), findsOneWidget, reason: 'MACD 数值标签');
+
+    // 切换主图 → MA4
+    await tester.tap(find.text('MA2(10,60)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MA4(5,10,20,60)').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('MA5:'), findsOneWidget, reason: 'MA4 含 MA5 数值');
+  });
 }
