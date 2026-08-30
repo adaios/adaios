@@ -13,6 +13,8 @@ mode: deep 增量审查（案例库批次——**降级：子代理环境故障�
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
 <!-- unfixed-gate
+audits/2026-08-30-case-library-data-review.md → **P1-数据1/P2-数据1/P3-数据1 已修**（KDJ latest 回归 + 搜索竞态 + 文档过时）；P3-数据2/3 登记
+<!-- unfixed-gate
 audits/2026-08-30-case-library-review.md → **S1/P1-案例1/P2-案例4 已修出表**（S1 回滚 939；P1-案例1 腾讯日期格式实测通过；P2-案例4 东财 beg/end 实测通过）；剩 P2-案例1~3/5 + P3-案例1（REVIEW 登记）
 audits/2026-08-30-trading-rule-layer-review.md → **已全部修复出表**（2026-08-30 审查修复批：P0×2/P1×6/P2×8/P3×6 + 文档×13；降级语义 P1-5 定稿默认值兜底；D-14 current.md 脱敏登记遗留待用户确认；后端 874 全绿，见 change-log）
 audits/2026-08-25-lot-tracking-review.md → 已全部闭环（P2-批次1/2/3 均已修出表）；其余全部修复（对抗 P0-1~P1-5 / 后端 P1×2·P2×3·P3 / 前端 P1·P2 / 文档 P1×3·P2×2，见 change-log 2026-08-25）
@@ -36,6 +38,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 > 2026-08-15 上午 deep 审核（范围：工作树未提交改动——第二步插件系统 T2.1-T2.10 + 第一步遗留，47 文件）：守护 7 PASS / 0 HIT；派 backend/frontend/docs ×3。**战略×2 + P1×6 + P2×7 + P3×15**。P0 无。战略 S-3（重补路径 domain 未收敛）+ S-4（行情推送写侧未门控）；P1 六项；已沉淀检查点 B31-33 / F30-32 / D23-26。S-3/S-4/P1 全部出表（批 Q/R）。
 > 2026-08-14 deep 审核（范围 `7b0a527..HEAD`，18 commits，带图 ask / 删除残留 / 图片交互批）：**P0×1 + 战略×2 + P1×2 + P2×2 + P3×14**。P0-1 + P1-1 + P1-2 + P2-1 + S-1 已修复出表；S-2 展示层已修（层 2 数据层另立 v1.0.1）。
 
+> 2026-08-30 案例库数据批次审查（`fec30bf..HEAD` 12 commits 44 文件，**降级主会话审**）：守护 7 PASS / 0 HIT。**P1×1 + P2×1 + P3×1 已修**：①P1-数据1 KDJ latest <10 根 null 语义回归（重构 series 引入，特征 kdjJ 漂移）→ 恢复 + 回归测试（980）；②P2-数据1 _SymbolSearchField 搜索竞态（无代际令牌）→ _seq 丢弃旧响应；③P3-数据1 手册环 2 标注过时。登记 P3-数据2/3（因子拉取失败静默降级 / match 画像无缓存）。报告 `audits/2026-08-30-case-library-data-review.md`。
 > 2026-08-30 案例库批次审查（第四阶段环 1-4 + 二期，`c9c2918..fec30bf` 36 文件 +4209 行；**降级：子代理环境故障全线启动失败（7 次尝试），主会话四视角顺序审**）：守护 G1-G7 7 PASS / 0 HIT + META PASS + ALIGN PASS。**战略×1（已修）+ P1×1 + P2×5 + P3×1**。**S1 已修**：`TradingCaseFileRepository.save` index 写失败被 StorageException catch 提前重抛跳过回滚 → 文件残留 + 重试 409 卡死——统一 catch 先回滚再抛 + 回归测试（939）。**P1-案例1 / P2-案例4 已实测出表**（2026-08-30 本地验收：腾讯 yyyy-MM-dd 与东财 beg/end yyyyMMdd 均正常）；剩 P2-案例1~3/5（窗口<60根 MA 失真 / web 未适配 buyPoint="case" / 扫描案例库无缓存 / index plus5d null→0.0）+ P3-案例1。报告 `audits/2026-08-30-case-library-review.md`。
 > 2026-08-25 批次审查（RFC 20260825 逐笔批次跟踪与行为纠偏，工作树 34 文件；backend/frontend/docs/adversarial ×4 隔离并行）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0×1 + P1×9 + P2×10 + P3×8（合并去重）**。**P0-1 实锤：手动记录（无 orderId）与收盘导入（有 orderId）同笔成交零交集去重 → 重复入账**——主场景「白天手动记 + 收盘导」直接命中；已修（importSync 有 orderId 行也查指纹交叉防重 + fingerprint 价格 stripTrailingZeros 归一化 + 回归测试）。全部 P1 已修：初始批次前置（底仓快照+卖出正确扣减）、sync 透传 fee、混合窗口拆组（不再整批降级 append）、追高 10 日时间窗口、默认 −7% 止损文案分级（不审判未设止损用户）、状态类行为仅当天注入（历史复盘不错位）、行情类推送 15:30→次日 09:30（收盘后仍可看）、web 状态列 closed 优先、reconcile 按 symbol 过滤、api-spec v3.27 行恢复。**3 条 P2 已全部修复出表**（P2-批次1 web 弹窗双击守卫 / P2-批次2 多日导入行为标注逐日合并 / P2-批次3 app 批次行字号）；**用户 2026-08-25 反馈新增 3 条待办**：P2-批次4 多文件批量导入、P2-批次5 导入进度反馈（看不出卡住）、P2-批次6 历史成交完全尊重源文件（股息入账/红利税类型展示）。报告 `audits/2026-08-25-lot-tracking-review.md`。
 # 项目审核状态报告
@@ -304,6 +307,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 派发角色 | agent 数 | 耗时 | 新增 | 修复 |
 |:-----|:-----|:---------|:--------:|:-----|:----:|:----:|
+| 2026-08-30 | deep 增量（案例库数据批次，**降级主会话审**）| —（子代理故障）| 0 | ~20min | P1×1 + P2×1 + P3×1（去重后）| 3（KDJ回归/搜索竞态/文档）|
 | 2026-08-30 | deep 增量（案例库批次，**降级主会话审**）| —（子代理故障）| 0 | ~25min | 战略×1 + P1×1 + P2×5 + P3×1（去重后）| 3（S1 回滚 + P1-案例1/P2-案例4 实测出表）|
 | 2026-08-23 | 隔离审查演示（交易归集批修复后残留）| backend + adversarial ×2 独立子代理（隔离子上下文）| 2 | ~20min | P0×1 + 战略×2 + P1×9 + P2×10（去重后）| 0（审查只报告）|
 | 2026-08-20 | full app 体检（用户体感导向）| ui/ux/frontend/product ×4 + 主会话 | 4 | ~40min | 战略×5 + P1×17 + P2/P3×24（去重后）| 0（审查只报告）|

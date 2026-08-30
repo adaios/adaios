@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * IndicatorSeriesCalculatorTest — 指标全序列（2026-08-30：前后端指标一致）。
@@ -89,5 +90,11 @@ class IndicatorSeriesCalculatorTest {
             assertEquals(50.0, s.kdjK().get(i), 0.0001, "前 8 根 K/D 保持初值 50");
             assertEquals(50.0, s.kdjJ().get(i), 0.0001, "J = 3K-2D = 50");
         }
+    }
+
+    @Test
+    void kdjLatest_lessThan10_returnsNull() {
+        // 2026-08-30 审查回归：latest 对 <10 根必须 null（重构 series 曾返回 50,50,50）
+        assertNull(KdjIndicator.latest(candles(5)));
     }
 }

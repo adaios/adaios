@@ -2841,6 +2841,8 @@ class _SymbolSearchFieldState extends State<_SymbolSearchField> {
   List<Map<String, dynamic>> _candidates = const [];
   Timer? _debounce;
   bool _loading = false;
+  /// 代际令牌（2026-08-30 审查 P2）：防快速输入时旧请求后返回覆盖新候选。
+  int _seq = 0;
 
   @override
   void dispose() {
@@ -2851,6 +2853,8 @@ class _SymbolSearchFieldState extends State<_SymbolSearchField> {
 
   void _onChanged(String text) {
     _debounce?.cancel();
+    _seq++;
+    final mySeq = _seq;
     final q = text.trim();
     if (q.length < 2) {
       if (_candidates.isNotEmpty) setState(() => _candidates = const []);
@@ -2858,7 +2862,7 @@ class _SymbolSearchFieldState extends State<_SymbolSearchField> {
     }
     _debounce = Timer(const Duration(milliseconds: 300), () async {
       final r = await widget.api.searchSymbols(q);
-      if (!mounted) return;
+      if (!mounted || mySeq != _seq) return; // 竞态：新输入已发起 → 丢弃旧响应
       setState(() {
         _candidates = r;
         _loading = false;

@@ -15,8 +15,11 @@ public final class KdjIndicator {
 
     private KdjIndicator() {}
 
-    /** 从 K 线算 KDJ（9,3,3），返回最新 K/D/J；数据不足返回 null。 */
+    /** 从 K 线算 KDJ（9,3,3），返回最新 K/D/J；数据不足 10 根返回 null。
+     * 2026-08-30 审查回归修复：重构 series 后 latest 曾对 <10 根返回 (50,50,50)——
+     * 案例特征 kdjJ 语义漂移（旧案例 null vs 新案例 50），恢复 null。 */
     public static Kdj latest(List<Candle> candles) {
+        if (candles == null || candles.size() < 10) return null;
         List<Kdj> series = series(candles);
         return series.isEmpty() ? null : series.get(series.size() - 1);
     }
