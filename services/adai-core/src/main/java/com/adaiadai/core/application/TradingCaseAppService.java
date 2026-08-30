@@ -58,15 +58,22 @@ public class TradingCaseAppService {
     private final TradingCaseRepository caseRepository;
     private final TradingAppService tradingAppService;
     private final AiClient aiClient;
+    /** 黄白线近似均线周期（批 5 前置，配置化：adai.trading.case.yellow-ma / white-ma，默认 60/10）。 */
+    private final int yellowMaPeriod;
+    private final int whiteMaPeriod;
 
     public TradingCaseAppService(KlineService klineService,
                                  TradingCaseRepository caseRepository,
                                  TradingAppService tradingAppService,
-                                 AiClient aiClient) {
+                                 AiClient aiClient,
+                                 @org.springframework.beans.factory.annotation.Value("${adai.trading.case.yellow-ma:60}") int yellowMaPeriod,
+                                 @org.springframework.beans.factory.annotation.Value("${adai.trading.case.white-ma:10}") int whiteMaPeriod) {
         this.klineService = klineService;
         this.caseRepository = caseRepository;
         this.tradingAppService = tradingAppService;
         this.aiClient = aiClient;
+        this.yellowMaPeriod = yellowMaPeriod;
+        this.whiteMaPeriod = whiteMaPeriod;
     }
 
     /** 标注一个完美买点案例：拉窗口 → 特征 + 后验 → 落盘。 */
@@ -83,7 +90,7 @@ public class TradingCaseAppService {
         if (candles.isEmpty()) {
             throw new TradingException("无法获取 " + symbol + " 在 " + buyDate + " 前后的 K 线数据，请稍后重试或核对代码");
         }
-        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, buyDate);
+        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, buyDate, yellowMaPeriod, whiteMaPeriod);
         if (features == null) {
             throw new TradingException("该日期无交易数据（可能停牌或非交易日）：" + buyDate);
         }
@@ -146,11 +153,11 @@ public class TradingCaseAppService {
             throw new TradingException("无法获取 " + symbol + " 的 K 线数据，请稍后重试");
         }
         LocalDate targetDate = queryDate;
-        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, targetDate);
+        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, targetDate, yellowMaPeriod, whiteMaPeriod);
         if (features == null && !candles.isEmpty()) {
             // 指定日无数据（停牌/非交易日）→ 回落最近交易日
             targetDate = candles.get(candles.size() - 1).date();
-            features = CaseFeatureExtractor.extract(candles, targetDate);
+            features = CaseFeatureExtractor.extract(candles, targetDate, yellowMaPeriod, whiteMaPeriod);
         }
         if (features == null) {
             throw new TradingException("无法计算 " + symbol + " 的形态特征");

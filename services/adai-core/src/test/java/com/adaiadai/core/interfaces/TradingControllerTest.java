@@ -1326,7 +1326,8 @@ class TradingControllerTest {
         when(trading.watchlistList(any())).thenReturn(java.util.List.of());
         WatchlistBuyPointService bp = mock(WatchlistBuyPointService.class);
         when(bp.scanWatchlist(any(), anyString())).thenReturn(java.util.List.of(
-                new WatchlistBuyPointService.WatchBuyPoint("000725", "京东方A", "B1", 87, java.util.List.of("回调 52%"))));
+                new WatchlistBuyPointService.WatchBuyPoint("000725", "京东方A", "B1", 87,
+                        java.util.List.of("回调 52%"), java.util.List.of())));
         MockMvc mvc = buildMvc(trading, mock(TradingReviewAppService.class), new String[]{"trading"}, bp, mock(SoldScoreService.class));
         mvc.perform(get("/api/v1/trading/buy-points").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())

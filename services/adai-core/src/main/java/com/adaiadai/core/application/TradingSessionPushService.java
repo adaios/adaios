@@ -348,6 +348,11 @@ public class TradingSessionPushService {
             List<WatchlistBuyPointService.WatchBuyPoint> hits =
                     buyPointService.scanWatchlist(watchlist, userId);
             for (WatchlistBuyPointService.WatchBuyPoint h : hits) {
+                // 第四阶段环 4 二期：case 类型 = 案例相似度参考（非规则命中），不推送（web 可见）
+                if ("case".equals(h.buyPoint())) {
+                    log.info("自选买点案例参考不推送 | symbol={} | 相似案例 {} 个", h.symbol(), h.caseMatches().size());
+                    continue;
+                }
                 // P2-交易7（2026-08-17）：B1?（部分满足候选）不推送——「不硬推」声明；
                 // 只有正式 B1/B2 才推「到买点了」，B1? 留给 web 信号列灰显
                 if (h.buyPoint().endsWith("?")) {

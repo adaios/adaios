@@ -41,12 +41,21 @@ public final class CaseFeatureExtractor {
     private CaseFeatureExtractor() {}
 
     /**
-     * 提取买点日特征画像。
+     * 提取买点日特征画像（默认黄白线周期：黄线=60 日、白线=10 日）。
      *
      * @param candles 包含 buyDate 的日 K 窗口（旧→新，含前 60/后 30 的可用部分）
      * @param buyDate 买点日期（必须落在 candles 内，否则返回 null）
      */
     public static CaseRecord.CaseFeatures extract(List<Candle> candles, LocalDate buyDate) {
+        return extract(candles, buyDate, YELLOW_MA_PERIOD, WHITE_MA_PERIOD);
+    }
+
+    /**
+     * 提取买点日特征画像（黄白线周期参数化——批 5 前置：用户自定义指标语义近似，
+     * 黄线/白线均线周期可配 {@code adai.trading.case.yellow-ma} / {@code .white-ma}）。
+     */
+    public static CaseRecord.CaseFeatures extract(List<Candle> candles, LocalDate buyDate,
+                                                  int yellowMaPeriod, int whiteMaPeriod) {
         if (candles == null || candles.isEmpty() || buyDate == null) return null;
         int idx = indexOf(candles, buyDate);
         if (idx < 0) return null;
@@ -79,10 +88,10 @@ public final class CaseFeatureExtractor {
         Double macdHist = macdSeries.isEmpty() ? null : macdSeries.get(macdSeries.size() - 1).hist();
         boolean macdCrossUp = MacdIndicator.crossUp(upToBuy);
 
-        // MA10/MA20/MA60（不足用可用根数近似）
-        double ma10 = ma(candles, idx, WHITE_MA_PERIOD);
+        // MA10/MA20/MA60（不足用可用根数近似；黄/白线周期参数化）
+        double ma10 = ma(candles, idx, whiteMaPeriod);
         double ma20 = ma(candles, idx, 20);
-        double ma60 = ma(candles, idx, YELLOW_MA_PERIOD);
+        double ma60 = ma(candles, idx, yellowMaPeriod);
 
         String maRelation;
         if (close > ma20 && close > ma60) maRelation = "above_all";

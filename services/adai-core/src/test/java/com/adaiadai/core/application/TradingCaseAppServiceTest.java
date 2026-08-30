@@ -39,7 +39,7 @@ class TradingCaseAppServiceTest {
 
     @BeforeEach
     void setUp() {
-        appService = new TradingCaseAppService(klineService, repository, tradingAppService, aiClient);
+        appService = new TradingCaseAppService(klineService, repository, tradingAppService, aiClient, 60, 10);
         when(klineService.klineRange(anyString(), any(), any()))
                 .thenReturn(buildCandles());
     }

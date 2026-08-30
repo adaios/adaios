@@ -3,10 +3,15 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.BuyPointDetector;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.WatchlistItem;
+import com.adaiadai.core.domain.trading.cases.CaseFeatureExtractor;
+import com.adaiadai.core.domain.trading.cases.CaseRecord;
+import com.adaiadai.core.domain.trading.cases.CaseSimilarityEngine;
+import com.adaiadai.core.domain.trading.cases.TradingCaseRepository;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -26,6 +31,10 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 第三阶段（用户规则层）：买点参数（回调/缩量/KDJ/放量/窗口）从
  * {@code data/{userId}/trading/rules.yaml} 读取——通用信号原语内建，B1/B2 命名由用户规则包定义。
+ * <p>
+ * 第四阶段环 4 二期（2026-08-30）：可选开关 {@code adai.trading.case.scan-match}（默认关）——
+ * 开启时每只自选股附「与完美买点案例库相似度 Top 3」参考（经验增强，不覆盖规则判定）；
+ * 默认关 = 行为与现状完全一致（向前兼容，不拖慢扫描）。
  */
 @Service
 public class WatchlistBuyPointService {
@@ -34,12 +43,18 @@ public class WatchlistBuyPointService {
 
     private final KlineService klineService;
     private final TradingRuleSettingsRepository settingsRepository;
+    private final TradingCaseRepository caseRepository;
+    private final boolean scanMatchEnabled;
     private final ExecutorService klinePool = Executors.newFixedThreadPool(8);
 
     public WatchlistBuyPointService(KlineService klineService,
-                                    TradingRuleSettingsRepository settingsRepository) {
+                                    TradingRuleSettingsRepository settingsRepository,
+                                    TradingCaseRepository caseRepository,
+                                    @Value("${adai.trading.case.scan-match:false}") boolean scanMatchEnabled) {
         this.klineService = klineService;
         this.settingsRepository = settingsRepository;
+        this.caseRepository = caseRepository;
+        this.scanMatchEnabled = scanMatchEnabled;
     }
 
     /** P2-交易2：应用关闭时优雅关闭线程池。 */
@@ -56,18 +71,22 @@ public class WatchlistBuyPointService {
         }
     }
 
-    /** 单只自选买点判定结果。 */
+    /** 单只自选买点判定结果（caseMatches 为案例相似度参考，二期开关默认关 → 空）。 */
     public record WatchBuyPoint(String symbol, String name, String buyPoint,
-                                double score, List<String> signals) {}
+                                double score, List<String> signals, List<CaseMatchLite> caseMatches) {}
+
+    /** 案例相似度参考（轻量：参照案例 id + 相似度 + 后验前验）。 */
+    public record CaseMatchLite(String caseId, String buyDate, String buyType,
+                                double similarityPercent) {}
 
     /** 批量判定自选股买点（按用户规则参数；无规则 → 默认建议值）。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, String userId) {
-        return scanWatchlist(watchlist, detectorFor(userId));
+        return scanWatchlist(watchlist, detectorFor(userId), userId);
     }
 
     /** 批量判定自选股买点（默认参数，测试/降级用）。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist) {
-        return scanWatchlist(watchlist, detectorFor(null));
+        return scanWatchlist(watchlist, detectorFor(null), null);
     }
 
     /** 按用户规则构造买点判定器（无规则/损坏 → 默认参数）。 */
@@ -80,7 +99,15 @@ public class WatchlistBuyPointService {
     }
 
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, BuyPointDetector detector) {
+        return scanWatchlist(watchlist, detector, null);
+    }
+
+    /** 批量判定（含二期案例相似度：开关开 → 每只附案例库 Top 3 参考）。 */
+    public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, BuyPointDetector detector,
+                                             String userId) {
         List<WatchBuyPoint> hits = new ArrayList<>();
+        List<CaseRecord> cases = scanMatchEnabled
+                ? caseRepository.list(userId == null ? "default" : userId) : List.of();
         List<Future<WatchBuyPoint>> futures = new ArrayList<>();
         for (WatchlistItem item : watchlist) {
             futures.add(klinePool.submit(() -> {
@@ -88,9 +115,15 @@ public class WatchlistBuyPointService {
                 try {
                     List<Candle> candles = klineService.kline(item.symbol(), 60);
                     BuyPointDetector.BuyPointResult result = detector.detect(candles);
+                    List<CaseMatchLite> matches = matchCases(candles, cases);
                     if (result.hit()) {
                         return new WatchBuyPoint(item.symbol(), item.name(),
-                                result.buyPoint(), result.score(), result.signals());
+                                result.buyPoint(), result.score(), result.signals(), matches);
+                    }
+                    // 未命中规则但案例相似度高 → 仍返回（带 empty buyPoint），供前端提示「形态接近完美买点」
+                    if (!matches.isEmpty()) {
+                        return new WatchBuyPoint(item.symbol(), item.name(),
+                                "case", 0, List.of(), matches);
                     }
                     return null;
                 } catch (Exception e) {
@@ -107,7 +140,22 @@ public class WatchlistBuyPointService {
                 log.warn("自选买点扫描单只超时 | {}", e.getMessage());
             }
         }
-        log.info("自选买点扫描 | {} 只 → {} 命中", watchlist.size(), hits.size());
+        log.info("自选买点扫描 | {} 只 → {} 命中（案例匹配 {} 只）", watchlist.size(), hits.size(),
+                hits.stream().filter(h -> !h.caseMatches().isEmpty()).count());
         return hits;
+    }
+
+    /** 案例相似度 Top 3（开关关 / 案例库空 → 空列表，行为与现状一致）。 */
+    private List<CaseMatchLite> matchCases(List<Candle> candles, List<CaseRecord> cases) {
+        if (cases.isEmpty() || candles == null || candles.isEmpty()) return List.of();
+        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, candles.get(candles.size() - 1).date());
+        if (features == null) return List.of();
+        return CaseSimilarityEngine.topN(cases, features, 3).stream()
+                .map(r -> new CaseMatchLite(
+                        r.caseRecord().id(),
+                        r.caseRecord().buyDate() == null ? "" : r.caseRecord().buyDate().toString(),
+                        r.caseRecord().buyType() == null ? "" : r.caseRecord().buyType(),
+                        r.similarityPercent()))
+                .toList();
     }
 }
