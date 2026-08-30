@@ -174,4 +174,40 @@ class TradingCaseControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("案例不存在")));
     }
+
+    // ── 环 3：AI 理解（insight）──
+
+    @Test
+    void insight_withoutPlugin_returns403() throws Exception {
+        mvc().perform(post("/api/v1/trading/cases/2026-08-03_000725/insight")
+                        .header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void insight_success_returnsUpdatedCaseWithAiInsight() throws Exception {
+        CaseRecord withInsight = new CaseRecord(
+                "2026-08-03_000725", "000725", "京东方A", LocalDate.of(2026, 8, 3), "B1",
+                "回踩 60 日线 + 地量", List.of("缩量回踩"), LocalDateTime.of(2026, 8, 30, 10, 0),
+                new CaseRecord.CaseWindow(60, 30),
+                sampleRecord().features(), sampleRecord().verify(),
+                new CaseRecord.CaseAiInsight("缩量回踩黄线获支撑，教科书式 B1",
+                        List.of("缩量回踩", "黄线支撑"), 0.9, false));
+        when(appService.generateInsight(anyString(), anyString())).thenReturn(withInsight);
+        mvc("trading").perform(post("/api/v1/trading/cases/2026-08-03_000725/insight")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aiInsight.summary").value(org.hamcrest.Matchers.containsString("教科书式 B1")))
+                .andExpect(jsonPath("$.aiInsight.confidence").value(0.9));
+    }
+
+    @Test
+    void insight_llmFailure_returns400WithHumanMessage() throws Exception {
+        when(appService.generateInsight(anyString(), anyString()))
+                .thenThrow(new TradingException("AI 理解生成失败，请稍后重试：summary 为空"));
+        mvc("trading").perform(post("/api/v1/trading/cases/2026-08-03_000725/insight")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("AI 理解生成失败")));
+    }
 }

@@ -1917,4 +1917,37 @@ void main() {
     await api.getCaseDetail('2026-08-03_000725', kline: true);
     expect(detailUrl, contains('kline=true'), reason: '详情应带 kline=true 供画图');
   });
+
+  testWidgets('案例 Tab：生成 AI 理解调用 POST /cases/{id}/insight（环 3）', (tester) async {
+    var insightCalled = false;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/2026-08-03_000725/insight' &&
+          request.method == 'POST') {
+        insightCalled = true;
+        final updated = _caseJson();
+        updated['aiInsight'] = {
+          'summary': '缩量回踩黄线获支撑，教科书式 B1',
+          'keyFeatures': ['缩量回踩', '黄线支撑'],
+          'confidence': 0.9,
+          'reviewed': false,
+        };
+        return _json(updated);
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    final resp = await api.generateCaseInsight('2026-08-03_000725');
+    await tester.pumpAndSettle();
+
+    expect(insightCalled, isTrue, reason: '生成理解应调用 POST /cases/{id}/insight');
+    final insight = resp['aiInsight'] as Map<String, dynamic>;
+    expect(insight['summary'], contains('教科书式 B1'), reason: 'aiInsight 应含结构化理解');
+    expect((insight['keyFeatures'] as List).length, 2);
+  });
 }

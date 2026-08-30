@@ -82,6 +82,16 @@ public class TradingCaseController {
         return ResponseEntity.ok(Map.of("deleted", true, "caseId", caseId));
     }
 
+    /** 环 3：生成案例 AI 理解（LLM 读特征+K 线 → aiInsight 落盘）。 */
+    @PostMapping("/{caseId}/insight")
+    public ResponseEntity<?> insight(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String caseId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(caseAppService.generateInsight(userId, caseId));
+    }
+
     private ResponseEntity<?> requireTradingPlugin(String userId) {
         if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法使用交易功能"));

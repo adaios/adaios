@@ -976,6 +976,15 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 - `?kline=true` → 响应附 `kline`（90 根窗口日 K，前端画图重放；拉取失败 → 空数组）
 - 不存在 → 400「案例不存在」
 
+### `POST /api/v1/trading/cases/{caseId}/insight` — 生成案例 AI 理解（环 3，2026-08-30）
+> 需 trading 插件（403）。蓝图 trading-case-library-design.md §四环 3。
+
+LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买点」→ aiInsight 落盘（reviewed=false 待人工确认）。
+
+**Response（200）**：更新后的完整案例（`aiInsight` 含 `summary`/`keyFeatures`/`confidence`）。
+
+**错误**：案例不存在 → 400；LLM 失败/输出不可解析 → 400「AI 理解生成失败」（fail-visible，不落半成品）。
+
 ### `DELETE /api/v1/trading/cases/{caseId}` — 删除案例
 > 需 trading 插件（403）。
 

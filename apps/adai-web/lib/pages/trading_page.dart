@@ -1830,108 +1830,9 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 详情弹窗：K 线图（三区）+ 特征 + 后验（GET /trading/cases/{id}?kline=true）。
   Future<void> _openCaseDetailDialog(Map<String, dynamic> c) async {
-    final caseId = '${c['id']}';
     showDialog<void>(
       context: context,
-      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
-        future: widget.api.getCaseDetail(caseId, kline: true),
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const AlertDialog(
-              backgroundColor: AppColors.darkSurface2,
-              content: SizedBox(
-                width: 520,
-                child: Text('案例加载中…', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-              ),
-            );
-          }
-          if (snap.hasError) {
-            return AlertDialog(
-              backgroundColor: AppColors.darkSurface2,
-              content: SizedBox(
-                width: 520,
-                child: Text('加载失败：${_extractApiError(snap.error)}',
-                    style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-              ),
-            );
-          }
-          final detail = snap.data ?? const {};
-          final record = (detail['caseRecord'] as Map<String, dynamic>?) ?? detail;
-          final kline = ((detail['kline'] as List<dynamic>?) ?? const [])
-              .cast<Map<String, dynamic>>();
-          return _buildCaseDetailDialog(ctx, record, kline);
-        },
-      ),
-    );
-  }
-
-  Widget _buildCaseDetailDialog(BuildContext ctx, Map<String, dynamic> record, List<Map<String, dynamic>> kline) {
-    final features = (record['features'] as Map<String, dynamic>?) ?? const {};
-    final verify = (record['verify'] as Map<String, dynamic>?) ?? const {};
-    final buyDate = '${record['buyDate'] ?? ''}';
-    String fmt(dynamic v, {String suffix = ''}) => v == null ? '—' : '$v$suffix';
-    return AlertDialog(
-      backgroundColor: AppColors.darkSurface2,
-      title: Text('${record['name'] ?? record['symbol']}（${record['symbol']}）· ${record['buyType'] ?? ''} · $buyDate',
-          style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
-      content: SizedBox(
-        width: 620,
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CaseKlineChart(kline: kline, buyDate: buyDate),
-            const SizedBox(height: 10),
-            if ('${record['description'] ?? ''}'.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('「${record['description']}」',
-                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
-              ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _chip('回撤 ${fmt(features['drawdownFromHighPct'], suffix: '%')}'),
-                _chip('量比 ${fmt(features['volumeShrinkRatio'])}'),
-                _chip('KDJ.J ${fmt(features['kdjJ'])}'),
-                _chip('距60日线 ${fmt(features['distToMa60Pct'], suffix: '%')}'),
-                _chip('黄白线 ${features['yellowLineState'] ?? '—'}'),
-                _chip('盘整 ${fmt(features['sidewaysDays'], suffix: '天')}'),
-                _chip('破前高 ${features['breakoutFromHigh'] == true ? '是' : '否'}'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _chip('+5d ${fmt(verify['+5dReturnPct'], suffix: '%')}', highlight: true),
-                _chip('+10d ${fmt(verify['+10dReturnPct'], suffix: '%')}', highlight: true),
-                _chip('最大回撤 ${fmt(verify['maxDrawdownAfterBuyPct'], suffix: '%')}', highlight: true),
-                _chip('破止损 ${verify['stopLossHit'] == true ? '是' : '否'}', highlight: true),
-              ],
-            ),
-          ]),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-        ),
-      ],
-    );
-  }
-
-  Widget _chip(String text, {bool highlight = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-            color: highlight ? AppColors.darkGreen.withValues(alpha: 0.6) : AppColors.darkBorder.withValues(alpha: 0.5)),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+      builder: (ctx) => _CaseDetailDialog(api: widget.api, caseId: '${c['id']}'),
     );
   }
 
@@ -2621,6 +2522,230 @@ class _LotsDialog extends StatelessWidget {
 
 /// B6-5（2026-08-23，P1-交易17）：监听 DefaultTabController 的 index——切到历史成交 Tab（index 4）
 /// 时回调 onHistorySelected（TradingPage 用它驱动 _HistorySection.refreshSilently，防 keepAlive 陈旧）。
+/// 案例详情弹窗（第四阶段环 3：K 线还原 + 特征/后验 + AI 理解）。
+/// 独立顶层 StatefulWidget（Dart 禁类内嵌类）；「生成 AI 理解」→ POST /cases/{id}/insight。
+class _CaseDetailDialog extends StatefulWidget {
+  const _CaseDetailDialog({required this.api, required this.caseId});
+  final ApiService api;
+  final String caseId;
+
+  @override
+  State<_CaseDetailDialog> createState() => _CaseDetailDialogState();
+}
+
+class _CaseDetailDialogState extends State<_CaseDetailDialog> {
+  Map<String, dynamic>? _record;
+  List<Map<String, dynamic>> _kline = const [];
+  bool _loading = true;
+  String? _error;
+  bool _generating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final detail = await widget.api.getCaseDetail(widget.caseId, kline: true);
+      if (!mounted) return;
+      setState(() {
+        _record = (detail['caseRecord'] as Map<String, dynamic>?) ?? detail;
+        _kline = ((detail['kline'] as List<dynamic>?) ?? const []).cast<Map<String, dynamic>>();
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = extractApiErrorMessage(e);
+      });
+    }
+  }
+
+  Future<void> _generate() async {
+    setState(() => _generating = true);
+    try {
+      final updated = await widget.api.generateCaseInsight(widget.caseId);
+      if (!mounted) return;
+      setState(() {
+        _record = updated;
+        _generating = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _generating = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('AI 理解失败：${extractApiErrorMessage(e)}'),
+          backgroundColor: AppColors.darkSurface2));
+    }
+  }
+
+  String fmt(dynamic v, {String suffix = ''}) => v == null ? '—' : '$v$suffix';
+
+  Widget _chip(String text, {bool highlight = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+            color: highlight
+                ? AppColors.darkGreen.withValues(alpha: 0.6)
+                : AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        content: SizedBox(
+          width: 520,
+          child: Text('案例加载中…', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+        ),
+      );
+    }
+    if (_error != null) {
+      return AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        content: SizedBox(
+          width: 520,
+          child: Text('加载失败：$_error',
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+          ),
+        ],
+      );
+    }
+    final record = _record ?? const <String, dynamic>{};
+    final features = (record['features'] as Map<String, dynamic>?) ?? const {};
+    final verify = (record['verify'] as Map<String, dynamic>?) ?? const {};
+    final insight = (record['aiInsight'] as Map<String, dynamic>?) ?? const {};
+    final buyDate = '${record['buyDate'] ?? ''}';
+    final insightSummary = '${insight['summary'] ?? ''}';
+    final hasInsight = insightSummary.isNotEmpty;
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: Text('${record['name'] ?? record['symbol']}（${record['symbol']}）· ${record['buyType'] ?? ''} · $buyDate',
+          style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            CaseKlineChart(kline: _kline, buyDate: buyDate),
+            const SizedBox(height: 10),
+            if ('${record['description'] ?? ''}'.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('「${record['description']}」',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _chip('回撤 ${fmt(features['drawdownFromHighPct'], suffix: '%')}'),
+                _chip('量比 ${fmt(features['volumeShrinkRatio'])}'),
+                _chip('KDJ.J ${fmt(features['kdjJ'])}'),
+                _chip('距60日线 ${fmt(features['distToMa60Pct'], suffix: '%')}'),
+                _chip('黄白线 ${features['yellowLineState'] ?? '—'}'),
+                _chip('盘整 ${fmt(features['sidewaysDays'], suffix: '天')}'),
+                _chip('破前高 ${features['breakoutFromHigh'] == true ? '是' : '否'}'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _chip('+5d ${fmt(verify['+5dReturnPct'], suffix: '%')}', highlight: true),
+                _chip('+10d ${fmt(verify['+10dReturnPct'], suffix: '%')}', highlight: true),
+                _chip('最大回撤 ${fmt(verify['maxDrawdownAfterBuyPct'], suffix: '%')}', highlight: true),
+                _chip('破止损 ${verify['stopLossHit'] == true ? '是' : '否'}', highlight: true),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // 环 3：AI 理解（aiInsight）
+            if (hasInsight) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.4)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Text('阿呆的理解',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+                    const Spacer(),
+                    Text('置信度 ${fmt(insight['confidence'])}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(insightSummary,
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, height: 1.5)),
+                  if ((insight['keyFeatures'] as List<dynamic>?)?.isNotEmpty ?? false) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: (insight['keyFeatures'] as List<dynamic>)
+                          .map((k) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.darkSurface2,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.darkBorder),
+                                ),
+                                child: Text('$k',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.darkGrey4)),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ]),
+              ),
+            ] else
+              OutlinedButton.icon(
+                onPressed: _generating ? null : _generate,
+                icon: _generating
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.darkGreen),
+                      )
+                    : const Icon(Icons.auto_awesome, size: 14, color: AppColors.darkGreen),
+                label: Text(_generating ? '理解中…' : '生成 AI 理解',
+                    style: const TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.darkGrey1,
+                    side: const BorderSide(color: AppColors.darkGrey4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+              ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+        ),
+      ],
+    );
+  }
+}
+
 class _TabHistoryRefreshListener extends StatefulWidget {
   final VoidCallback onHistorySelected;
   final Widget child;

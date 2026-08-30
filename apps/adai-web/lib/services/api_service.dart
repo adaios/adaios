@@ -671,6 +671,16 @@ class ApiService {
     _check(resp);
   }
 
+  /// 环 3：生成案例 AI 理解（POST /trading/cases/{caseId}/insight → aiInsight 落盘）。
+  Future<Map<String, dynamic>> generateCaseInsight(String caseId) async {
+    final resp = await _aiClient.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/$caseId/insight'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
   Future<TradeLogConfirmResult> confirmTradeLog() async {

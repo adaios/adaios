@@ -143,6 +143,7 @@ tags: [trading, plugin, reference]
 | GET | `/trading/cases` | 案例列表 | buyDate 倒序（id/symbol/name/buyDate/buyType/features/verify/aiInsight）|
 | GET | `/trading/cases/{caseId}` | 案例详情 | `?kline=true` 附 90 根窗口日 K（前端画图重放）；不存在 400 |
 | DELETE | `/trading/cases/{caseId}` | 删除案例 | 删案例文件 + 清单条目；不存在 400 |
+| POST | `/trading/cases/{caseId}/insight` | **生成 AI 理解（环 3）** | LLM 读特征画像 + K 线统计 → 结构化「为什么这是完美买点」（summary/keyFeatures/confidence）→ aiInsight 落盘；LLM 失败 400 不落半成品 |
 
 ---
 
@@ -291,7 +292,7 @@ tags: [trading, plugin, reference]
 ```
 环 1  一句话标注（symbol + buyDate [+ 买点类型/描述]）
 环 2  ✅ 自动拉 前60+后30 交易日 K → 特征画像 + 后验窗口 → 落盘 JSON → web 画图（P2 批）
-环 3  LLM 理解（aiInsight 填充 + ≥20 案例归纳）——P2
+环 3  ✅ LLM 理解（aiInsight 生成 + 落盘，2026-08-30 完成；≥20 案例归纳后置）
 环 4  判定当下（特征归一化 + 相似度引擎 + match 端点 + 扫描接入）——P3
 ```
 
