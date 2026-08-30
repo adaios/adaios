@@ -13,13 +13,17 @@ import '../theme/app_colors.dart';
 /// 指标序列前端从 OHLCV 重算（KDJ 9,3,3 / MACD 12,26,9），口径对齐后端
 /// `CaseFeatureExtractor`。A 股配色：涨红跌绿。
 class CaseKlineChart extends StatefulWidget {
-  const CaseKlineChart({super.key, required this.kline, this.buyDate, this.height = 400});
+  const CaseKlineChart(
+      {super.key, required this.kline, this.buyDate, this.height = 400, this.indicators});
 
   /// 窗口日 K：每项 {date, open, high, low, close, volume}（旧→新）。
   final List<Map<String, dynamic>> kline;
   /// 买点日期（yyyy-MM-dd），命中则画竖线 + 顶部标记。
   final String? buyDate;
   final double height;
+  /// 后端指标全序列（2026-08-30 前后端一致：前端不重算，hover 值 = 特征同源）。
+  /// 空 → 前端 CaseIndicators.compute 兜底（测试/降级）。
+  final Map<String, dynamic>? indicators;
 
   @override
   State<CaseKlineChart> createState() => _CaseKlineChartState();
@@ -77,7 +81,9 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
         ),
       );
     }
-    final indicators = CaseIndicators.compute(widget.kline);
+    final indicators = widget.indicators != null
+        ? CaseIndicators.fromJson(widget.indicators!)
+        : CaseIndicators.compute(widget.kline);
     final (start, end) = _visibleRange(widget.kline);
     final hasBuyDate = widget.buyDate != null && widget.buyDate!.isNotEmpty;
     var buyIdx = -1;
@@ -266,6 +272,18 @@ class CaseIndicators {
 
   const CaseIndicators(this.ma5, this.ma10, this.ma20, this.ma60, this.kdjK, this.kdjD,
       this.kdjJ, this.macdDif, this.macdDea, this.macdHist);
+
+  /// 从后端序列反序列化（2026-08-30：前端图直接用后端指标——单一事实源）。
+  static CaseIndicators fromJson(Map<String, dynamic> json) {
+    List<double> arr(String key) => (json[key] as List<dynamic>? ?? const [])
+        .map((e) => (e as num).toDouble())
+        .toList();
+    return CaseIndicators(
+      arr('ma5'), arr('ma10'), arr('ma20'), arr('ma60'),
+      arr('kdjK'), arr('kdjD'), arr('kdjJ'),
+      arr('macdDif'), arr('macdDea'), arr('macdHist'),
+    );
+  }
 
   static CaseIndicators compute(List<Map<String, dynamic>> kline) {
     final closes = kline.map((e) => (e['close'] as num).toDouble()).toList();
@@ -480,7 +498,9 @@ class _CaseKlinePainter extends CustomPainter {
     if (maxAbs <= 0) maxAbs = 1;
     for (var i = windowStart; i <= windowEnd && i < n; i++) {
       final v = indicators.macdHist[i];
-      final h = macdRect.height * v.abs() / maxAbs * 0.9;
+      // 2026-08-30 修复：柱高按「区域半高」归一化（原 0.9×整高，单边伸出中线到区域顶
+      // → 高柱画出 macdRect 顶部覆盖成交量区，航天发展实测复现）
+      final h = macdRect.height / 2 * v.abs() / maxAbs * 0.9;
       final midY = macdRect.center.dy;
       canvas.drawRect(
         Rect.fromLTRB(x(i) - candleW / 2, v >= 0 ? midY - h : midY, x(i) + candleW / 2,
@@ -562,6 +582,12 @@ class _CaseKlinePainter extends CustomPainter {
 
   void _drawLine2(Canvas canvas, List<double> values, double Function(int) x, Rect rect,
       Color color, double strokeWidth) {
+    // 2026-08-30：MACD 线按区域高度归一化（不再固定 /8 像素——大数值画出区域，
+    // 视觉上「覆盖」上方成交量区）；以区域内最大绝对值映射，0 轴 = 中线。
+    var maxAbs = 1.0;
+    for (var i = windowStart; i <= windowEnd && i < values.length; i++) {
+      maxAbs = math.max(maxAbs, values[i].abs());
+    }
     final paint = Paint()
       ..color = color
       ..strokeWidth = strokeWidth
@@ -570,7 +596,7 @@ class _CaseKlinePainter extends CustomPainter {
     var started = false;
     for (var i = windowStart; i <= windowEnd && i < values.length; i++) {
       final midY = rect.center.dy;
-      final p = Offset(x(i), midY - values[i] / 8);
+      final p = Offset(x(i), midY - values[i] / maxAbs * rect.height * 0.45);
       if (!started) {
         path.moveTo(p.dx, p.dy);
         started = true;

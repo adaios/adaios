@@ -6,6 +6,8 @@ import com.adaiadai.core.domain.trading.cases.CaseRecord;
 import com.adaiadai.core.domain.trading.cases.CaseSimilarityEngine;
 import com.adaiadai.core.domain.trading.cases.TradingCaseRepository;
 import com.adaiadai.core.domain.trading.market.Candle;
+import com.adaiadai.core.domain.trading.market.IndicatorSeriesCalculator;
+import static com.adaiadai.core.domain.trading.market.IndicatorSeriesCalculator.IndicatorSeries;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
@@ -119,8 +121,9 @@ public class TradingCaseAppService {
         return caseRepository.list(userId);
     }
 
-    /** 案例详情；withKline=true 时附 90 根窗口日 K（前端画图重放，失败 → 空列表）。 */
-    public CaseDetail detail(String userId, String caseId, boolean withKline) {
+    /** 案例详情；withKline=true 附 90 根窗口日 K（前端画图重放，失败 → 空列表）；
+     * withIndicators=true 附指标全序列（2026-08-30 前后端一致：前端图不重算，hover 值 = 特征同源）。 */
+    public CaseDetail detail(String userId, String caseId, boolean withKline, boolean withIndicators) {
         CaseRecord record = caseRepository.findById(userId, caseId)
                 .orElseThrow(() -> new TradingException("案例不存在：" + caseId));
         List<Candle> kline = List.of();
@@ -128,7 +131,9 @@ public class TradingCaseAppService {
             kline = klineService.klineRange(record.symbol(),
                     record.buyDate().minusDays(BEFORE_CAL_DAYS), record.buyDate().plusDays(AFTER_CAL_DAYS));
         }
-        return new CaseDetail(record, kline);
+        IndicatorSeries series = withIndicators && !kline.isEmpty()
+                ? IndicatorSeriesCalculator.series(kline) : null;
+        return new CaseDetail(record, kline, series);
     }
 
     /** 删除案例；不存在 → 业务异常（400 + 人话）。 */
@@ -328,6 +333,7 @@ public class TradingCaseAppService {
         return null;
     }
 
-    /** 案例详情响应（案例 + 可选 K 线窗口）。 */
-    public record CaseDetail(CaseRecord caseRecord, List<Candle> kline) {}
+    /** 案例详情响应（案例 + 可选 K 线窗口 + 可选指标序列）。 */
+    public record CaseDetail(CaseRecord caseRecord, List<Candle> kline,
+                             IndicatorSeries indicators) {}
 }

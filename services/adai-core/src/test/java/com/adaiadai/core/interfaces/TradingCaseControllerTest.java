@@ -147,8 +147,8 @@ class TradingCaseControllerTest {
     @Test
     void detail_withKline_returnsCaseAndCandles() throws Exception {
         Candle c = new Candle(LocalDate.of(2026, 6, 2), 4.2, 4.3, 4.15, 4.25, 123456);
-        when(appService.detail(anyString(), anyString(), anyBoolean()))
-                .thenReturn(new TradingCaseAppService.CaseDetail(sampleRecord(), List.of(c)));
+        when(appService.detail(anyString(), anyString(), anyBoolean(), anyBoolean()))
+                .thenReturn(new TradingCaseAppService.CaseDetail(sampleRecord(), List.of(c), null));
         mvc("trading").perform(get("/api/v1/trading/cases/2026-08-03_000725")
                         .header("X-User-Id", "adai")
                         .param("kline", "true"))

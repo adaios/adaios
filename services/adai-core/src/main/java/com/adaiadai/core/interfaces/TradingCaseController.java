@@ -60,15 +60,17 @@ public class TradingCaseController {
         return ResponseEntity.ok(caseAppService.list(userId));
     }
 
-    /** 案例详情；?kline=true 附 90 根窗口日 K（前端画图重放）。 */
+    /** 案例详情；?kline=true 附 90 根窗口日 K（前端画图重放）；
+     * ?indicators=true 附指标全序列（2026-08-30：前端图不重算指标，hover 值 = 特征同源）。 */
     @GetMapping("/{caseId}")
     public ResponseEntity<?> detail(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable String caseId,
-            @RequestParam(defaultValue = "false") boolean kline) {
+            @RequestParam(defaultValue = "false") boolean kline,
+            @RequestParam(defaultValue = "false") boolean indicators) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        return ResponseEntity.ok(caseAppService.detail(userId, caseId, kline));
+        return ResponseEntity.ok(caseAppService.detail(userId, caseId, kline, indicators));
     }
 
     /** 删除案例。 */

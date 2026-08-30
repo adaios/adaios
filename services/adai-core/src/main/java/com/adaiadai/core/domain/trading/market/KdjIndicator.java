@@ -17,25 +17,32 @@ public final class KdjIndicator {
 
     /** 从 K 线算 KDJ（9,3,3），返回最新 K/D/J；数据不足返回 null。 */
     public static Kdj latest(List<Candle> candles) {
-        if (candles == null || candles.size() < 10) return null;
+        List<Kdj> series = series(candles);
+        return series.isEmpty() ? null : series.get(series.size() - 1);
+    }
+
+    /** KDJ 全序列（与 latest 同一递推口径——2026-08-30 前后端一致，前端图直接用后端序列）。 */
+    public static List<Kdj> series(List<Candle> candles) {
+        List<Kdj> result = new java.util.ArrayList<>();
+        if (candles == null || candles.isEmpty()) return result;
         int period = 9;
         double k = 50, d = 50;
-        Kdj result = null;
         for (int i = 0; i < candles.size(); i++) {
-            if (i < period - 1) continue;
-            double highest = Double.MIN_VALUE;
-            double lowest = Double.MAX_VALUE;
-            for (int j = i - period + 1; j <= i; j++) {
-                highest = Math.max(highest, candles.get(j).high());
-                lowest = Math.min(lowest, candles.get(j).low());
+            if (i >= period - 1) {
+                double highest = Double.MIN_VALUE;
+                double lowest = Double.MAX_VALUE;
+                for (int j = i - period + 1; j <= i; j++) {
+                    highest = Math.max(highest, candles.get(j).high());
+                    lowest = Math.min(lowest, candles.get(j).low());
+                }
+                double c = candles.get(i).close();
+                double rsv = (highest - lowest) == 0 ? 50
+                        : (c - lowest) / (highest - lowest) * 100;
+                k = 2.0 / 3.0 * k + 1.0 / 3.0 * rsv;
+                d = 2.0 / 3.0 * d + 1.0 / 3.0 * k;
             }
-            double c = candles.get(i).close();
-            double rsv = (highest - lowest) == 0 ? 50
-                    : (c - lowest) / (highest - lowest) * 100;
-            k = 2.0 / 3.0 * k + 1.0 / 3.0 * rsv;
-            d = 2.0 / 3.0 * d + 1.0 / 3.0 * k;
             double j = 3 * k - 2 * d;
-            result = new Kdj(k, d, j);
+            result.add(new Kdj(k, d, j));
         }
         return result;
     }

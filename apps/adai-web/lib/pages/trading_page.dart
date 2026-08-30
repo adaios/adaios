@@ -2812,6 +2812,7 @@ class _CaseDetailDialog extends StatefulWidget {
 class _CaseDetailDialogState extends State<_CaseDetailDialog> {
   Map<String, dynamic>? _record;
   List<Map<String, dynamic>> _kline = const [];
+  Map<String, dynamic>? _indicators;
   bool _loading = true;
   String? _error;
   bool _generating = false;
@@ -2824,11 +2825,13 @@ class _CaseDetailDialogState extends State<_CaseDetailDialog> {
 
   Future<void> _load() async {
     try {
-      final detail = await widget.api.getCaseDetail(widget.caseId, kline: true);
+      final detail =
+          await widget.api.getCaseDetail(widget.caseId, kline: true, indicators: true);
       if (!mounted) return;
       setState(() {
         _record = (detail['caseRecord'] as Map<String, dynamic>?) ?? detail;
         _kline = ((detail['kline'] as List<dynamic>?) ?? const []).cast<Map<String, dynamic>>();
+        _indicators = detail['indicators'] as Map<String, dynamic>?;
         _loading = false;
         _error = null;
       });
@@ -2918,7 +2921,7 @@ class _CaseDetailDialogState extends State<_CaseDetailDialog> {
         width: 620,
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CaseKlineChart(kline: _kline, buyDate: buyDate),
+            CaseKlineChart(kline: _kline, buyDate: buyDate, indicators: _indicators),
             const SizedBox(height: 10),
             if ('${record['description'] ?? ''}'.isNotEmpty)
               Padding(

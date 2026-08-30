@@ -669,10 +669,16 @@ class ApiService {
     return list.cast<Map<String, dynamic>>();
   }
 
-  /// 案例详情（GET /trading/cases/{caseId}；kline=true 附 90 根窗口日 K 供画图）。
-  Future<Map<String, dynamic>> getCaseDetail(String caseId, {bool kline = false}) async {
+  /// 案例详情（GET /trading/cases/{caseId}；kline=true 附 90 根窗口日 K 供画图；
+  /// indicators=true 附指标全序列——2026-08-30 前后端一致：前端图不重算指标）。
+  Future<Map<String, dynamic>> getCaseDetail(String caseId,
+      {bool kline = false, bool indicators = false}) async {
+    final params = <String>[];
+    if (kline) params.add('kline=true');
+    if (indicators) params.add('indicators=true');
+    final qs = params.isEmpty ? '' : '?${params.join('&')}';
     final resp = await _client.get(
-      Uri.parse('$baseUrl/api/v1/trading/cases/$caseId${kline ? '?kline=true' : ''}'),
+      Uri.parse('$baseUrl/api/v1/trading/cases/$caseId$qs'),
       headers: _headers,
     );
     _check(resp);
