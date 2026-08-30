@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:js_interop';
 
+import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 
 import 'sse_client_common.dart';
@@ -8,7 +9,10 @@ import 'sse_client_common.dart';
 /// Flutter Web 实现：`package:web` fetch streaming——dart http 的浏览器
 /// 实现（XHR）不暴露渐进响应，只有 fetch 的 ReadableStream 能边到边读。
 class SseClient extends SseClientBase {
-  SseClient();
+  /// [httpClient] 仅 IO 实现可用（测试注入 mock / 复用连接）；web 走
+  /// window.fetch 无法注入 http.Client，为与 IO 构造签名对齐接受后忽略，
+  /// 否则条件导入在 dart2js 下编译失败（SseClient(httpClient:) 无此参数）。
+  SseClient({http.Client? httpClient});
 
   @override
   Future<void> post(
