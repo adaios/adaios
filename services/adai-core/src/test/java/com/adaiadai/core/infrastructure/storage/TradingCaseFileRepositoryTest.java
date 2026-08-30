@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
+import com.adaiadai.core.kernel.storage.FileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -11,6 +12,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -104,5 +106,35 @@ class TradingCaseFileRepositoryTest {
         storage.write("adai", "trading/cases/" + record.id() + ".json", "{not-json");
         assertFalse(repository.findById("adai", record.id()).isPresent(),
                 "损坏案例文件 → 空（不抛错，调用方视为不存在）");
+    }
+
+    @Test
+    void save_indexWriteFailure_rollsBackCaseFile() {
+        // 模拟 index 写入失败（index 路径不可写 → 用存储层抛错的替换实现）
+        var failing = new com.adaiadai.core.infrastructure.storage.TradingCaseFileRepository(
+                new FileStorage() {
+                    private final FileStorage inner = storage;
+
+                    @Override public void write(String userId, String path, String content) {
+                        if (path.equals("trading/cases/_index.json")) {
+                            throw new com.adaiadai.core.infrastructure.storage.StorageException("index 写失败模拟");
+                        }
+                        inner.write(userId, path, content);
+                    }
+                    @Override public String read(String userId, String path) { return inner.read(userId, path); }
+                    @Override public java.util.List<String> listFiles(String userId, String dir) { return inner.listFiles(userId, dir); }
+                    @Override public boolean exists(String userId, String path) { return inner.exists(userId, path); }
+                    @Override public void writeBytes(String userId, String path, byte[] content) { inner.writeBytes(userId, path, content); }
+                    @Override public byte[] readBytes(String userId, String path) { return inner.readBytes(userId, path); }
+                    @Override public void delete(String userId, String path) { inner.delete(userId, path); }
+                    @Override public void append(String userId, String path, String content) { inner.append(userId, path, content); }
+                });
+
+        CaseRecord record = sample("000725", LocalDate.of(2026, 8, 3), "B1");
+        assertThrows(com.adaiadai.core.infrastructure.storage.StorageException.class,
+                () -> failing.save("adai", record));
+        // 回滚：案例文件不残留 → 重试不再 409 卡死
+        assertFalse(storage.exists("adai", "trading/cases/" + record.id() + ".json"),
+                "index 失败应回滚案例文件（防 409 卡死）");
     }
 }

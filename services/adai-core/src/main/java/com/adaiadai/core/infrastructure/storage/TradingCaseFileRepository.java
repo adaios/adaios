@@ -97,13 +97,23 @@ public class TradingCaseFileRepository implements TradingCaseRepository {
             throw new StorageException("案例 id 缺失，拒绝保存 | userId=" + userId);
         }
         synchronized (lockFor(userId)) {
+            String casePath = CASES_DIR + record.id() + ".json";
             try {
-                fileStorage.write(userId, CASES_DIR + record.id() + ".json",
+                fileStorage.write(userId, casePath,
                         MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(record));
                 upsertIndex(userId, record);
-            } catch (StorageException e) {
-                throw e;
             } catch (Exception e) {
+                // S1（2026-08-30 审查）：index 写失败必须回滚刚写的案例文件——
+                // 否则文件残留 + 下次标注 exists(文件)=true → 409「已标注过」卡死（无路可走）。
+                // 注意：StorageException 也走这里（index 写失败抛 StorageException），不能提前重抛。
+                try {
+                    fileStorage.delete(userId, casePath);
+                } catch (Exception ignore) {
+                    // 回滚失败也继续抛原始错误（文件残留由 list 降级/人工清理兜底）
+                }
+                if (e instanceof StorageException se) {
+                    throw se;
+                }
                 throw new StorageException("保存案例失败 | userId=" + userId + " | " + e.getMessage(), e);
             }
         }

@@ -3,9 +3,9 @@ title: docs/review 目录索引
 description: review 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-25
+updated: 2026-08-30
 status: active
-lines: 39
+lines: 40
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-08-30-case-library-review.md | 完美买点案例库批次审查存档（降级主会话审：S1 save 双文件回滚已修 + P1×1/P2×5/P3×1 登记） | active |
 | audits/2026-08-30-trading-rule-layer-review.md | 交易插件规则层审查存档（四官 + 对抗官隔离，P0×2 信任炸弹 + 硬约束 fail-open，待拍板降级语义） | active |
 | audits/2026-08-25-lot-tracking-review.md | RFC 20260825 批次跟踪批审查存档（四官隔离，对抗 P0-1 交叉防重实锤修复） | active |
 | audits/2026-08-23-ai-engineering-meta-audit.md | AI 上下文建设工程体系元审核存档（主审核 + 对抗官复核 + 实证实验，修复批 072dcee） | active |
