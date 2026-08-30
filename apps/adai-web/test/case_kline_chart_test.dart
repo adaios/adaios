@@ -83,30 +83,24 @@ void main() {
     expect(tester.takeException(), isNull, reason: 'K 线绘制不应抛异常');
   });
 
-  testWidgets('CaseKlineChart：通达信风格——指标名标签 + 副图可切换（2026-08-30）', (tester) async {
+  testWidgets('CaseKlineChart：通达信风格——三副图固定 + 单日指标标签（2026-08-30）', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
-          child: CaseKlineChart(kline: klineData(90), buyDate: null, height: 320),
+          child: CaseKlineChart(kline: klineData(90), buyDate: '2026-01-05', height: 400),
         ),
       ),
     ));
     await tester.pump();
-    // 默认主图 MA2 + 副图 KDJ，标签显示指标名
-    expect(find.text('MA2(10,60)'), findsOneWidget, reason: '主图指标名标签');
-    expect(find.text('KDJ(9,3,3)'), findsOneWidget, reason: '副图指标名标签');
-    // 主图数值标签（MA10/MA60 最新值）
+    // 主图指标名 + 数值标签
+    expect(find.text('MA2(10,60)'), findsOneWidget, reason: '主图指标名');
     expect(find.textContaining('MA10:'), findsOneWidget, reason: '主图左上角数值标签');
+    // 三个副图固定：量 / MACD / KDJ 标签都在
+    expect(find.textContaining('成交量'), findsOneWidget, reason: '副图①成交量标签');
+    expect(find.textContaining('MACD(12,26,9)'), findsOneWidget, reason: '副图②MACD标签');
+    expect(find.textContaining('KDJ(9,3,3)'), findsOneWidget, reason: '副图③KDJ标签');
 
-    // 切换副图 → MACD
-    await tester.tap(find.text('KDJ(9,3,3)'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('MACD(12,26,9)').last);
-    await tester.pumpAndSettle();
-    expect(find.text('MACD(12,26,9)'), findsWidgets, reason: '副图已切换为 MACD');
-    expect(find.textContaining('DIF:'), findsOneWidget, reason: 'MACD 数值标签');
-
-    // 切换主图 → MA4
+    // 主图切换 MA2 → MA4（副图不受影响）
     await tester.tap(find.text('MA2(10,60)'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('MA4(5,10,20,60)').last);
