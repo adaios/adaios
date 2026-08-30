@@ -4,6 +4,8 @@ import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.cases.CaseFeatureExtractor;
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
 import com.adaiadai.core.domain.trading.cases.CaseConsensus;
+import com.adaiadai.core.domain.trading.cases.CaseImportParser;
+import com.adaiadai.core.infrastructure.market.NameToSymbolResolver;
 import com.adaiadai.core.domain.trading.cases.CaseSimilarityEngine;
 import com.adaiadai.core.domain.trading.cases.TradingCaseRepository;
 import com.adaiadai.core.domain.trading.market.Candle;
@@ -61,6 +63,7 @@ public class TradingCaseAppService {
     private final TradingCaseRepository caseRepository;
     private final TradingAppService tradingAppService;
     private final AiClient aiClient;
+    private final NameToSymbolResolver nameToSymbolResolver;
     /** 黄白线近似均线周期（批 5 前置，配置化：adai.trading.case.yellow-ma / white-ma，默认 60/10）。 */
     private final int yellowMaPeriod;
     private final int whiteMaPeriod;
@@ -69,12 +72,14 @@ public class TradingCaseAppService {
                                  TradingCaseRepository caseRepository,
                                  TradingAppService tradingAppService,
                                  AiClient aiClient,
+                                 NameToSymbolResolver nameToSymbolResolver,
                                  @org.springframework.beans.factory.annotation.Value("${adai.trading.case.yellow-ma:60}") int yellowMaPeriod,
                                  @org.springframework.beans.factory.annotation.Value("${adai.trading.case.white-ma:10}") int whiteMaPeriod) {
         this.klineService = klineService;
         this.caseRepository = caseRepository;
         this.tradingAppService = tradingAppService;
         this.aiClient = aiClient;
+        this.nameToSymbolResolver = nameToSymbolResolver;
         this.yellowMaPeriod = yellowMaPeriod;
         this.whiteMaPeriod = whiteMaPeriod;
     }
@@ -141,6 +146,71 @@ public class TradingCaseAppService {
     public List<CaseRecord> list(String userId) {
         return caseRepository.list(userId);
     }
+
+    /** 批量导入（2026-08-31：用户完美案例笔记 B1/B2）——解析 → 名称转代码 → 逐条标注。 */
+    public List<CaseImportResult> importCases(String userId, String text) {
+        List<CaseImportParser.ImportItem> items = CaseImportParser.parse(text);
+        List<CaseImportResult> results = new java.util.ArrayList<>();
+        for (CaseImportParser.ImportItem item : items) {
+            // 缺日期 → 跳过报告
+            if (item.buyDate() == null) {
+                results.add(new CaseImportResult(item.name(), null, null, "skipped", "笔记缺日期（跳过）", null));
+                continue;
+            }
+            // 名称 → 代码（东财 suggest；查不到 → 失败报告）
+            String symbol = null;
+            try {
+                // 2026-08-31：本地名称表精确匹配优先（suggest 对部分名称空）→ suggest 兜底
+                symbol = nameToSymbolResolver.resolveExact(item.name());
+                if (symbol == null) {
+                    List<NameToSymbolResolver.Candidate> candidates =
+                            nameToSymbolResolver.search(item.name());
+                    if (!candidates.isEmpty()) symbol = candidates.get(0).code();
+                }
+            } catch (Exception e) {
+                log.warn("批量导入名称查代码失败 | name={} | {}", item.name(), e.getMessage());
+            }
+            if (symbol == null) {
+                results.add(new CaseImportResult(item.name(), null, item.buyDate(),
+                        "failed", "名称未匹配到代码（请核对名称或改标注）", null));
+                continue;
+            }
+            // 重复 → 跳过
+            String caseId = CaseRecord.idOf(symbol, item.buyDate());
+            if (caseRepository.exists(userId, caseId)) {
+                results.add(new CaseImportResult(item.name(), symbol, item.buyDate(),
+                        "skipped", "已存在（" + caseId + "）", null));
+                continue;
+            }
+            // 北交所（92 开头）本地行情无数据 → 明确提示（2026-08-31）
+            if (symbol.startsWith("92")) {
+                results.add(new CaseImportResult(item.name(), symbol, item.buyDate(),
+                        "failed", "北交所暂不支持（本地行情仅沪深）", null));
+                continue;
+            }
+            // 标注（含共识校验）
+            try {
+                AnnotateResult result = annotateWithCheck(userId, symbol, item.buyDate(),
+                        null, null, null, null);
+                results.add(new CaseImportResult(item.name(), symbol, item.buyDate(),
+                        "ok", null, result.consensusCheck()));
+            } catch (TradingException e) {
+                results.add(new CaseImportResult(item.name(), symbol, item.buyDate(),
+                        "failed", e.getMessage(), null));
+            }
+        }
+        log.info("完美案例批量导入 | userId={} | 解析 {} 条 → ok {} / skipped {} / failed {}",
+                userId, results.size(),
+                results.stream().filter(r -> "ok".equals(r.status())).count(),
+                results.stream().filter(r -> "skipped".equals(r.status())).count(),
+                results.stream().filter(r -> "failed".equals(r.status())).count());
+        return results;
+    }
+
+    /** 批量导入单条结果。 */
+    public record CaseImportResult(String name, String symbol, LocalDate buyDate,
+                                   String status, String error,
+                                   CaseConsensus.ConsensusResult consensusCheck) {}
 
     /** 案例详情；withKline=true 附 90 根窗口日 K（前端画图重放，失败 → 空列表）；
      * withIndicators=true 附指标全序列（2026-08-30 前后端一致：前端图不重算，hover 值 = 特征同源）。 */

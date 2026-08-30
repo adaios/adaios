@@ -100,6 +100,16 @@ public class TradingCaseController {
         return ResponseEntity.ok(caseAppService.generateInsight(userId, caseId));
     }
 
+    /** 批量导入完美案例笔记（2026-08-31）：粘贴 B1/B2 笔记 → 解析（名称/日期）→ 逐条标注。 */
+    @PostMapping("/import")
+    public ResponseEntity<?> importCases(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody CaseImportRequest body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(caseAppService.importCases(userId, body.text()));
+    }
+
     /** 环 4：判定当下——当前标的形态 vs 案例库归一化相似度 Top N（核心价值）。 */
     @PostMapping("/match")
     public ResponseEntity<?> match(
@@ -154,6 +164,11 @@ public class TradingCaseController {
             @Size(max = 50, message = "名称过长")
             String name,
             List<String> labels) {}
+
+    /** 批量导入请求体。 */
+    public record CaseImportRequest(
+            @NotBlank(message = "笔记内容不能为空")
+            String text) {}
 
     /** 匹配请求体（date 可空 = 最近交易日；字符串宽松格式同标注）。 */
     public record CaseMatchRequest(

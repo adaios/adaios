@@ -40,7 +40,8 @@ class TradingCaseAppServiceTest {
 
     @BeforeEach
     void setUp() {
-        appService = new TradingCaseAppService(klineService, repository, tradingAppService, aiClient, 60, 10);
+        appService = new TradingCaseAppService(klineService, repository, tradingAppService, aiClient,
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class), 60, 10);
         when(klineService.klineRange(anyString(), any(), any()))
                 .thenReturn(buildCandles());
     }
@@ -174,5 +175,29 @@ class TradingCaseAppServiceTest {
         TradingException ex = assertThrows(TradingException.class,
                 () -> appService.match("adai", "000725", LocalDate.of(2026, 3, 5)));
         assertTrue(ex.getMessage().contains("K 线数据"), ex.getMessage());
+    }
+
+    // ── 2026-08-31 批量导入 ──
+
+    @Test
+    void importCases_parsesAndAnnotates() {
+        com.adaiadai.core.infrastructure.market.NameToSymbolResolver resolver =
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class);
+        when(resolver.search("华纳药厂")).thenReturn(List.of(
+                new com.adaiadai.core.infrastructure.market.NameToSymbolResolver.Candidate("600027", "华纳药厂")));
+        appService = new TradingCaseAppService(klineService, repository, tradingAppService, aiClient,
+                resolver, 60, 10);
+
+        String notes = "## 华纳药厂【HNYC】\n- 两个买点 B1：2026\\-03\\-05 SB1 2026\\-03\\-09\n"
+                + "## 航天发展\n![Image](x)\n"
+                + "## 不存在股票【ABC】\n- 2025\\-06\\-01";
+        var results = appService.importCases("adai", notes);
+
+        assertEquals(3, results.size());
+        assertEquals("ok", results.get(0).status());
+        assertEquals("600027", results.get(0).symbol());
+        assertEquals(LocalDate.of(2026, 3, 5), results.get(0).buyDate());
+        assertEquals("skipped", results.get(1).status(), "缺日期 → skipped");
+        assertEquals("failed", results.get(2).status(), "名称查不到 → failed");
     }
 }

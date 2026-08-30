@@ -694,6 +694,17 @@ class ApiService {
     _check(resp);
   }
 
+  /// 批量导入完美案例笔记（2026-08-31）：POST /trading/cases/import → 逐条结果。
+  Future<List<dynamic>> importCases(String text) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/import'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+  }
+
   /// 环 3：生成案例 AI 理解（POST /trading/cases/{caseId}/insight → aiInsight 落盘）。
   Future<Map<String, dynamic>> generateCaseInsight(String caseId) async {
     final resp = await _aiClient.post(

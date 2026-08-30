@@ -14,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.time.Duration;
 
 /**
@@ -36,12 +37,51 @@ public class NameToSymbolResolver {
     private static final String QUERY_TEMPLATE = SEARCH_URL + "?input=%s&type=14&count=5";
 
     private final HttpClient httpClient;
+    /** 本地全 A 名称表路径（2026-08-31：suggest 对部分名称空 → 本地表精确兜底）。 */
+    private final java.nio.file.Path namesPath;
+    /** 名称 → 代码（懒加载，失败 → 空表不阻塞）。 */
+    private volatile Map<String, String> nameToCode;
 
-    public NameToSymbolResolver() {
+    public NameToSymbolResolver(
+            @org.springframework.beans.factory.annotation.Value(
+                    "${adai.market.names-path:../../data/market/names.json}") String namesPath) {
         this.httpClient = HttpClient.newBuilder()
                 .proxy(ProxySelector.of(null))  // 不走系统代理（与 TencentMarketDataSource 同策略）
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
+        this.namesPath = java.nio.file.Paths.get(namesPath);
+    }
+
+    /** 本地名称表精确匹配（昂立康/百普塞斯等 suggest 查不到的兜底）；表缺失/无 → null。 */
+    public String resolveExact(String name) {
+        if (name == null || name.isBlank()) return null;
+        Map<String, String> table = loadNames();
+        return table.get(name);
+    }
+
+    /** 懒加载名称表（失败 → 空表，不阻塞主链路）。 */
+    private Map<String, String> loadNames() {
+        Map<String, String> cached = nameToCode;
+        if (cached != null) return cached;
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(namesPath);
+            com.fasterxml.jackson.databind.JsonNode arr = MAPPER.readTree(bytes);
+            Map<String, String> map = new java.util.HashMap<>();
+            if (arr.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode n : arr) {
+                    String code = n.path("symbol").asText("");
+                    String nm = n.path("name").asText("");
+                    if (code.matches("\\d{6}") && !nm.isBlank()) map.put(nm, code);
+                }
+            }
+            log.info("本地名称表加载 | {} 条 | {}", map.size(), namesPath);
+            nameToCode = map;
+            return map;
+        } catch (Exception e) {
+            log.warn("本地名称表加载失败（走 suggest 兜底）| {}", e.getMessage());
+            nameToCode = Map.of();
+            return nameToCode;
+        }
     }
 
     /** 股票名称 → 6 位代码；查不到/失败 → null（调用方按名称归集待补充，不抛异常）。 */

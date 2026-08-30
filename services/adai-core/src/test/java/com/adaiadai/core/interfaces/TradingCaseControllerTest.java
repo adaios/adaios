@@ -212,6 +212,34 @@ class TradingCaseControllerTest {
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("AI 理解生成失败")));
     }
 
+    // ── 2026-08-31 批量导入 ──
+
+    @Test
+    void importCases_success_returnsResults() throws Exception {
+        when(appService.importCases(anyString(), anyString())).thenReturn(java.util.List.of(
+                new TradingCaseAppService.CaseImportResult("华纳药厂", "600027",
+                        LocalDate.of(2026, 3, 5), "ok", null, null),
+                new TradingCaseAppService.CaseImportResult("航天发展", null, null,
+                        "skipped", "笔记缺日期（跳过）", null)));
+        mvc("trading").perform(post("/api/v1/trading/cases/import")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"## 华纳药厂\\n- 2026-03-05\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("ok"))
+                .andExpect(jsonPath("$[0].symbol").value("600027"))
+                .andExpect(jsonPath("$[1].status").value("skipped"));
+    }
+
+    @Test
+    void importCases_withoutPlugin_403() throws Exception {
+        mvc().perform(post("/api/v1/trading/cases/import")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"## 华纳药厂\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     // ── 环 4：判定当下（match）──
 
     @Test

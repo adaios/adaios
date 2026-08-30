@@ -989,6 +989,18 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 - `?kline=true` → 响应附 `kline`（90 根窗口日 K，前端画图重放；拉取失败 → 空数组）
 - 不存在 → 400「案例不存在」
 
+### `POST /api/v1/trading/cases/import` — 批量导入完美案例笔记（2026-08-31）
+> 需 trading 插件（403）。
+
+粘贴用户完美案例笔记（飞书/B1/B2 格式：`## 名称【缩写】` + 日期行 / `## 名称[缩写_日期]`）→
+解析（名称/日期，兼容飞书转义 `\-`、8 位日期、区间取首、类型分组跳过）→ 名称转代码
+（**本地全 A 名称表精确匹配** `data/market/names.json` → 东财 suggest 兜底）→ 逐条标注
+（含前复权/特征/共识校验）。北交所（92 开头）本地无行情 → 明确失败。
+
+**Response（200）**：逐条结果 `[{name, symbol, buyDate, status: ok|skipped|failed, error, consensusCheck}]`。
+- `skipped`：缺日期 / 已存在（幂等）
+- `failed`：名称未匹配（含错字如「百普塞斯」应为「百普赛斯」）/ 北交所 / 无交易数据
+
 ### `POST /api/v1/trading/cases/match` — 判定当下：形态相似度匹配（环 4，2026-08-30）
 > 需 trading 插件（403）。蓝图 trading-case-library-design.md §六——**核心价值**：案例是手段，判定当下是价值。
 

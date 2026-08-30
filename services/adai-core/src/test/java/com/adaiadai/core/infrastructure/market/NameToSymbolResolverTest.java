@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class NameToSymbolResolverTest {
 
-    private final NameToSymbolResolver resolver = new NameToSymbolResolver();
+    private final NameToSymbolResolver resolver = new NameToSymbolResolver("/tmp/nonexistent-names.json");
 
     @Test
     void parseResponse_exactNameMatch_returnsCode() {
@@ -62,5 +62,18 @@ class NameToSymbolResolverTest {
     void parseCandidates_garbage_returnsEmpty() {
         assertEquals(0, resolver.parseCandidates(null).size());
         assertEquals(0, resolver.parseCandidates("not json").size());
+    }
+
+    @Test
+    void resolveExact_fromLocalNameTable() throws Exception {
+        // 构造临时名称表 → 精确匹配（suggest 对部分名称空的兜底）
+        java.nio.file.Path tmp = java.nio.file.Files.createTempFile("names", ".json");
+        java.nio.file.Files.writeString(tmp,
+                "[{\"symbol\":\"301080\",\"name\":\"百普赛斯\"},{\"symbol\":\"600519\",\"name\":\"贵州茅台\"}]");
+        NameToSymbolResolver r = new NameToSymbolResolver(tmp.toString());
+        assertEquals("301080", r.resolveExact("百普赛斯"));
+        assertEquals("600519", r.resolveExact("贵州茅台"));
+        assertEquals(null, r.resolveExact("不存在股票"));
+        java.nio.file.Files.deleteIfExists(tmp);
     }
 }

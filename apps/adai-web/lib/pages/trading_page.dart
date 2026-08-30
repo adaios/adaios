@@ -1693,6 +1693,16 @@ class _TradingPageState extends State<TradingPage> {
         ),
         const SizedBox(width: 8),
         OutlinedButton.icon(
+          onPressed: _openCaseImportDialog,
+          icon: const Icon(Icons.playlist_add, size: 14, color: AppColors.darkGreen),
+          label: const Text('批量导入', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
           onPressed: _openAnnotateCaseDialog,
           icon: const Icon(Icons.add, size: 14, color: AppColors.darkGreen),
           label: const Text('标注案例', style: TextStyle(fontSize: 12)),
@@ -1995,6 +2005,122 @@ class _TradingPageState extends State<TradingPage> {
                       }
                     },
               child: Text(loading ? '匹配中…' : '匹配',
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 批量导入弹窗（2026-08-31）：粘贴完美案例笔记（B1/B2 格式）→ POST /cases/import → 结果列表。
+  Future<void> _openCaseImportDialog() async {
+    final ctrl = TextEditingController();
+    List<Map<String, dynamic>>? results;
+    String? error;
+    var loading = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: AppColors.darkSurface2,
+          title: const Text('批量导入完美案例', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+          content: SizedBox(
+            width: 560,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('粘贴笔记（支持「名称【缩写】+日期行」或「名称[缩写_日期]」格式，自动识别名称/日期/买点）',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                maxLines: 10,
+                decoration: InputDecoration(
+                  hintText: '## 华纳药厂【HNYC】\n- 2025-05-09\n## 昂立康[ALK_20250714]',
+                  hintStyle: const TextStyle(fontSize: 11, color: AppColors.darkGrey4),
+                  filled: true,
+                  fillColor: AppColors.darkSurface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(error!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+                ),
+              if (loading)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(8),
+                  child: SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+                ))
+              else if (results != null)
+                Flexible(
+                  child: SizedBox(
+                    height: 260,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: results!.length,
+                      itemBuilder: (ctx, i) {
+                        final r = results![i];
+                        final status = '${r['status']}';
+                        final ok = status == 'ok';
+                        final skipped = status == 'skipped';
+                        final icon = ok ? '✓' : (skipped ? '⏭' : '✗');
+                        final color = ok ? AppColors.darkGreen : (skipped ? AppColors.darkGrey4 : AppColors.darkRed);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(icon, style: TextStyle(fontSize: 12, color: color)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${r['name']}${ok ? ' ${r['symbol']} ${r['buyDate']}' : ''}'
+                                '${(r['error'] as String?) ?? ''}',
+                                style: TextStyle(fontSize: 11, color: color, height: 1.4),
+                              ),
+                            ),
+                          ]),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+            ),
+            TextButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      final text = ctrl.text.trim();
+                      if (text.isEmpty) return;
+                      setDlg(() {
+                        loading = true;
+                        error = null;
+                        results = null;
+                      });
+                      try {
+                        final resp = await widget.api.importCases(text);
+                        if (!ctx.mounted) return;
+                        setDlg(() {
+                          results = resp.cast<Map<String, dynamic>>();
+                          loading = false;
+                        });
+                        await _loadCases();
+                      } catch (e) {
+                        if (!ctx.mounted) return;
+                        setDlg(() {
+                          error = '导入失败：${_extractApiError(e)}';
+                          loading = false;
+                        });
+                      }
+                    },
+              child: Text(loading ? '导入中…' : '导入',
                   style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
             ),
           ],
