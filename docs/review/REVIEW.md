@@ -132,7 +132,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-案例2 | **web 自选 Tab 未适配 `buyPoint="case"`**：二期开关开时规则未命中但案例相似 → 返回 `case` 项，前端信号列渲染「case 0%」异常 | `WatchlistBuyPointService` / web 自选 Tab | 前端适配 case 类型显示（「形态接近历史完美买点」）；开关默认关，随部署批适配 |
 | P2-案例3 | 二期开关开时 `scanWatchlist` 每跑全量 `caseRepository.list`（index+逐文件读），案例多时拖慢扫描（无缓存）| `WatchlistBuyPointService` | 案例 >50 后加 TTL 缓存（对齐 TradingKnowledgeSource 模式）|
 | P2-案例4 | 东财 `klineRange` 同时传 `lmt=320` + `beg/end`——同传截断行为（原「未实测」）| `EastMoneyKlineDataSource.klineRange` | ✅ 已实测（2026-08-30：`beg=20260301&end=20260415` 返回指定窗口 klines 正常，lmt 不冲突）|
-| P2-案例5 | `indexEntry` 的 `plus5dReturnPct`：`verify()==null` 时存 0.0 → 列表前端显示「+5d 0.0%」而非「—」| `TradingCaseFileRepository.indexEntry` | 改存 null 或列表端 0 兜底 |
+| P2-案例5 | `indexEntry` 的 `plus5dReturnPct`：`verify()==null` 时存 0.0 → 列表前端显示「+5d 0.0%」而非「—」| `TradingCaseFileRepository.indexEntry` | ⚠️ 半修（2026-08-31 双轨批）：web 列表端 null/0 兜底显示「—」✅；根治在后验回填调度器（`CaseVerifyBackfillScheduler` 每日回填 verify，null 自然消失）+ index 重建——留登记等数据自愈验证 |
 | P2-交易1 | SoldScoreService 16 线程池无 @PreDestroy shutdown；单笔 30s 超时产空 symbol 占位行 | `SoldScoreService.java:35,52-57` | 线程池 shutdown + 无空行占位（B53）| ✅ 已修（2026-08-17 R5：shutdown + 超时保留 symbol）
 | P2-交易2 | scanWatchlist 串行拉 K 线（仅打分并行化，买点扫描未并发）且无按标的异常隔离 | `WatchlistBuyPointService.java` | 同 SoldScoreService 并发化（B54）| ✅ 已修（2026-08-17 R5：8 并发 + 异常隔离）
 | P2-交易3 | 腾讯 K 线兜底无缓存（东财被限时每请求都打腾讯）| `TencentMarketDataSource` | 加按日缓存 | ✅ 已修（2026-08-17 R5：按日缓存）

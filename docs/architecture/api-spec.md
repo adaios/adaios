@@ -973,7 +973,11 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 }
 ```
 
-**Response（200）**：完整案例（含特征画像 + 后验），`verify` 字段 `+5dReturnPct`/`+10dReturnPct`/`maxDrawdownAfterBuyPct` 缺数据为 `null`。
+`buyType`：`B1`/`B2` 正样本（完美买点）；`FAILED` 负样本（失败案例，2026-08-31 双轨方案——
+形态像买点但走坏，不参与正样本画像/匹配，单独成「失败画像」供 match 风险警示）；
+其他值 → `unknown`。失败案例建议 `description` 填失败原因（如「破位不收回」）。
+
+**Response（200）**：完整案例（含特征画像 + 后验），`verify` 字段 `+5dReturnPct`/`+10dReturnPct`/`maxDrawdownAfterBuyPct` 缺数据为 `null`；案例库 ≥5 时附 `consensusCheck`（**同类型**画像逐维偏离校验，2026-08-31 双轨——标注 B1 对照 B1 画像；FAILED 不做偏离校验）。
 
 **错误**：symbol 非 6 位数字 / buyDate 缺失 → 400（校验）；buyDate 未来 → 400；重复标注（同 symbol+date）→ 400「该案例已标注过」；K 线拉取失败 → 400「无法获取…K 线数据」（不落半成品，fail-visible）。
 
@@ -1001,10 +1005,12 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 - `skipped`：缺日期 / 已存在（幂等）
 - `failed`：名称未匹配（含错字如「百普塞斯」应为「百普赛斯」）/ 北交所 / 无交易数据
 
-### `POST /api/v1/trading/cases/match` — 判定当下：形态相似度匹配（环 4，2026-08-30）
-> 需 trading 插件（403）。蓝图 trading-case-library-design.md §六——**核心价值**：案例是手段，判定当下是价值。
+### `POST /api/v1/trading/cases/match` — 判定当下：双轨形态匹配（环 4，2026-08-30 → 2026-08-31 双轨）
+> 需 trading 插件（403）。蓝图 trading-case-library-design.md §六 + trading-case-data-usage.md §3——**核心价值**：案例是手段，判定当下是价值。
 
-当前标的形态（拉 60 日 K → 特征画像 → 归一化）与案例库加权欧氏相似度 Top 5（权重：回撤 0.25/量比 0.20/KDJ 0.15/距 60 日线 0.15/MACD 0.10/盘整 0.10/信号 0.05；权重和=1 → 相似度 = (1−距离)×100%）。
+当前标的形态（拉 60 日 K → 特征画像 → 归一化）与案例库加权欧氏相似度 Top 5（默认权重：回撤 0.25/量比 0.20/KDJ 0.15/距 60 日线 0.15/MACD 0.10/盘整 0.10/信号 0.05；权重和=1 → 相似度 = (1−距离)×100%；**可配置** `adai.trading.case.sim-weights`）。
+
+**2026-08-31 双轨升级**：`matches`（全量 Top5，向后兼容）+ **双轨共识画像**（B1/B2 各自 25-75 分位区间互不稀释）+ **类型判定**（命中多的一轨）+ **失败画像警示**（与负样本最高相似度）。
 
 **Request Body**
 
@@ -1023,11 +1029,22 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
     { "caseId": "2026-08-03_000725", "symbol": "000725", "name": "京东方A",
       "buyDate": "2026-08-03", "buyType": "B1", "similarityPercent": 92.5,
       "plus5dReturnPct": 18.2, "aiInsightSummary": "缩量回踩黄线获支撑" }
-  ]
+  ],
+  "type": "B1",
+  "b1": { "hits": 5, "total": 6, "similarity": 82.5 },
+  "b2": { "hits": 1, "total": 6, "similarity": 45.0 },
+  "failedSimilarity": 78.5,
+  "consensus": { "profile": [...], "hits": [...], "hitCount": 5, "total": 6 }
 }
 ```
 
-**语义**：双轨判定——案例相似度是「经验增强」参考信号，**不覆盖规则硬判定**（止损/仓位等仍以规则引擎为准）；案例库为空 → `matches: []`（静默，不影响规则判定）；K 线拉取失败 → 400。
+- `type`：`B1`/`B2`（命中多的一轨）/ `none`（两轨都低或样本不足）
+- `b1`/`b2`：各轨 `{hits, total, similarity}`（similarity = 该轨 Top1 相似度）；案例不足 5 → null
+- `failedSimilarity`：当前形态 vs 失败画像最高相似度（无负样本 → null；≥70% 前端红色警示）
+- `consensus`：全量口径共识（旧前端兼容）
+- 负样本恒不参与正样本匹配与画像（防污染参照系）
+
+**语义**：案例相似度是「经验增强」参考信号，**不覆盖规则硬判定**（止损/仓位等仍以规则引擎为准）；案例库为空 → `matches: []`（静默，不影响规则判定）；K 线拉取失败 → 400。
 
 ### `POST /api/v1/trading/cases/{caseId}/insight` — 生成案例 AI 理解（环 3，2026-08-30）
 > 需 trading 插件（403）。蓝图 trading-case-library-design.md §四环 3。

@@ -25,4 +25,11 @@ public interface TradingCaseRepository {
 
     /** 是否已存在（同 symbol+buyDate 幂等键）。 */
     boolean exists(String userId, String caseId);
+
+    /**
+     * 重建清单（2026-08-31 后验回填/索引一致性修复）：以案例文件为准重建 _index.json。
+     * 场景：文件与清单摘要不一致（类型补标/verify 回填后清单过期）。
+     * 默认空实现（非文件实现不关心）。
+     */
+    default void rebuildIndex(String userId) {}
 }

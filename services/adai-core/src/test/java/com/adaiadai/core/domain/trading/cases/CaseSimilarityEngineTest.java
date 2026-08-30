@@ -97,4 +97,77 @@ class CaseSimilarityEngineTest {
         CaseRecord.CaseFeatures query = features(55, 1.0, 20.0, false, false, 5, 2, false, false);
         assertEquals(5, CaseSimilarityEngine.topN(cases, query, 5).size());
     }
+
+    // ── 2026-08-31 双轨方案 ──
+
+    /** 指定 buyType 的案例。 */
+    private CaseRecord record(String id, String type, CaseRecord.CaseFeatures f) {
+        return new CaseRecord(id, "000725", "京东方A", LocalDate.of(2026, 8, 3), type,
+                null, List.of(), LocalDateTime.now(), new CaseRecord.CaseWindow(60, 30),
+                f, new CaseRecord.CaseVerify(18.2, 24.5, -2.1, false),
+                CaseRecord.CaseAiInsight.empty());
+    }
+
+    @Test
+    void topN_byType_onlySameTypePositive() {
+        CaseRecord.CaseFeatures query = features(52.3, 0.62, 8.4, true, true, 1.8, 5, false, false);
+        CaseRecord b1 = record("b1", "B1", features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        CaseRecord b2 = record("b2", "B2", features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        CaseRecord failed = record("failed", CaseRecord.TYPE_FAILED,
+                features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+
+        assertEquals(1, CaseSimilarityEngine.topN(List.of(b1, b2, failed), query, 5, "B1").size());
+        assertEquals("b1", CaseSimilarityEngine.topN(List.of(b1, b2, failed), query, 5, "B1").get(0).caseRecord().id());
+        assertEquals(1, CaseSimilarityEngine.topN(List.of(b1, b2, failed), query, 5, "B2").size());
+        assertEquals("b2", CaseSimilarityEngine.topN(List.of(b1, b2, failed), query, 5, "B2").get(0).caseRecord().id());
+    }
+
+    @Test
+    void topN_allType_excludesFailed() {
+        CaseRecord.CaseFeatures query = features(52.3, 0.62, 8.4, true, true, 1.8, 5, false, false);
+        CaseRecord b1 = record("b1", "B1", features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        CaseRecord failed = record("failed", CaseRecord.TYPE_FAILED,
+                features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        // 全量匹配排除负样本（防止污染正样本参照系）
+        List<CaseSimilarityEngine.MatchResult> top =
+                CaseSimilarityEngine.topN(List.of(b1, failed), query, 5);
+        assertEquals(1, top.size());
+        assertEquals("b1", top.get(0).caseRecord().id());
+    }
+
+    @Test
+    void topN_failedType_returnsOnlyFailed() {
+        CaseRecord.CaseFeatures query = features(52.3, 0.62, 8.4, true, true, 1.8, 5, false, false);
+        CaseRecord b1 = record("b1", "B1", features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        CaseRecord failed = record("failed", CaseRecord.TYPE_FAILED,
+                features(55.0, 0.60, 10.0, true, true, 2.0, 4, false, false));
+        List<CaseSimilarityEngine.MatchResult> top =
+                CaseSimilarityEngine.topN(List.of(b1, failed), query, 5, CaseRecord.TYPE_FAILED);
+        assertEquals(1, top.size());
+        assertEquals("failed", top.get(0).caseRecord().id());
+    }
+
+    @Test
+    void parseWeights_valid_invalid_default() {
+        double[] w = CaseSimilarityEngine.parseWeights("0.25,0.20,0.15,0.10,0.15,0.10,0.05");
+        assertEquals(7, w.length);
+        assertEquals(0.25, w[0], 1e-9);
+        // 非法：个数不对 / 非数字 / 和不为 1 → 回落默认
+        assertEquals(7, CaseSimilarityEngine.parseWeights("0.5,0.5").length);
+        assertEquals(7, CaseSimilarityEngine.parseWeights("abc").length);
+        assertEquals(7, CaseSimilarityEngine.parseWeights("1,0,0,0,0,0,0").length); // 和≠1
+        assertEquals(7, CaseSimilarityEngine.parseWeights(null).length);
+        assertEquals(7, CaseSimilarityEngine.parseWeights("").length);
+    }
+
+    @Test
+    void similarity_customWeights_affectsScore() {
+        CaseRecord.CaseFeatures a = features(50, 1.0, 20.0, false, false, 5, 2, false, false);
+        CaseRecord.CaseFeatures b = features(55, 1.0, 20.0, false, false, 5, 2, false, false);
+        double[] w = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // 只看回撤
+        double sim = CaseSimilarityEngine.similarity(
+                CaseFeatureNormalizer.toVector(a), CaseFeatureNormalizer.toVector(b), w);
+        // 回撤差 5/100 → 归一化差 0.05 → 距离 0.05 → 相似度 95
+        assertEquals(95.0, sim, 0.01);
+    }
 }

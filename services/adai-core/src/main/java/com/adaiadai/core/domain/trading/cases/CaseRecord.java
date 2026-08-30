@@ -7,11 +7,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * CaseRecord — 完美买点案例（2026-08-30 第四阶段：案例沉淀 → 判定当下）。
+ * CaseRecord — 买点案例（2026-08-30 第四阶段：案例沉淀 → 判定当下）。
  * <p>
  * 真相源文件 {@code data/{userId}/trading/cases/{buyDate}_{symbol}.json}（File First）。
  * 设计：特征全为标准化相对值（跨标的可比）；verify 为后验窗口（完美与否的客观证据）；
  * aiInsight 为环 3 LLM 理解产物（P2 填充）。K 线本体不落盘——按 symbol+buyDate 可重放。
+ * <p>
+ * 2026-08-31 双轨方案：buyType 支持 B1/B2 正样本（完美买点）与 {@link #TYPE_FAILED} 负样本
+ * （失败案例——形态看似买点但走坏）。负样本不参与正样本画像/匹配，单独成「失败画像」供风险警示。
  */
 public record CaseRecord(
         String id,
@@ -26,6 +29,9 @@ public record CaseRecord(
         CaseFeatures features,
         CaseVerify verify,
         CaseAiInsight aiInsight) {
+
+    /** 负样本类型（失败案例）——2026-08-31 双轨方案：不参与正样本画像/匹配。 */
+    public static final String TYPE_FAILED = "FAILED";
 
     /** 案例 id：{buyDate}_{symbol}（#211 风格：日期+标的，天然幂等键）。 */
     public static String idOf(String symbol, LocalDate buyDate) {

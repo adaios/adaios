@@ -2021,4 +2021,35 @@ void main() {
     expect(m['similarityPercent'], 92.5);
     expect(m['caseId'], '2026-08-03_000725');
   });
+
+  testWidgets('案例 Tab：匹配响应含双轨判定（B1/B2 命中 + 类型 + 失败警示，2026-08-31）', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/match' && request.method == 'POST') {
+        return _json({
+          'symbol': '000831',
+          'matches': <Map<String, dynamic>>[],
+          'type': 'B1',
+          'b1': {'hits': 5, 'total': 6, 'similarity': 82.5},
+          'b2': {'hits': 1, 'total': 6, 'similarity': 45.0},
+          'failedSimilarity': 78.5,
+          'consensus': null,
+        });
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    final resp = await api.matchCases('000831');
+    await tester.pumpAndSettle();
+
+    expect(resp['type'], 'B1', reason: '双轨判定类型');
+    expect((resp['b1'] as Map<String, dynamic>)['hits'], 5);
+    expect((resp['b2'] as Map<String, dynamic>)['hits'], 1);
+    expect(resp['failedSimilarity'], 78.5, reason: '失败画像相似警示');
+  });
 }

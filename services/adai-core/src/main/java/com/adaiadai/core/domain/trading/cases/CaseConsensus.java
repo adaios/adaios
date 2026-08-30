@@ -32,16 +32,43 @@ public final class CaseConsensus {
 
     /**
      * 从案例库构建共识画像（每维 25-75 分位）；案例 &lt; MIN_CASES → null。
+     * 全量口径（不区分类型，向后兼容旧调用）。
      * 维度含 null 特征（KDJ/MACD 数据不足）的案例跳过该维。
      */
     public static List<Range> buildProfile(List<CaseRecord> cases) {
-        if (cases == null || cases.size() < MIN_CASES) return null;
+        return buildProfile(cases, null);
+    }
+
+    /**
+     * 双轨画像（2026-08-31 方案第 1 层）：按类型过滤后构建 25-75 分位画像。
+     * <ul>
+     *   <li>type=null/空 → 全量正样本（排除负样本 {@link CaseRecord#TYPE_FAILED}）</li>
+     *   <li>type=B1/B2 → 仅该类型正样本</li>
+     *   <li>type=FAILED → 负样本画像（失败形态参照系，供 match 风险警示）</li>
+     * </ul>
+     * 案例 &lt; MIN_CASES → null（统计无意义）。
+     */
+    public static List<Range> buildProfile(List<CaseRecord> cases, String type) {
+        if (cases == null) return null;
+        List<CaseRecord> filtered = new ArrayList<>();
+        for (CaseRecord c : cases) {
+            if (c == null) continue;
+            String t = c.buyType();
+            boolean isFailed = CaseRecord.TYPE_FAILED.equals(t);
+            if (type == null || type.isBlank()) {
+                if (isFailed) continue; // 全量口径排除负样本，防稀释
+            } else if (!type.equals(t)) {
+                continue;
+            }
+            filtered.add(c);
+        }
+        if (filtered.size() < MIN_CASES) return null;
         String[] features = {"drawdownFromHighPct", "volumeShrinkRatio", "kdjJ",
                 "distToMa60Pct", "macdHist", "sidewaysDays"};
         List<Range> ranges = new ArrayList<>();
         for (String f : features) {
             List<Double> values = new ArrayList<>();
-            for (CaseRecord c : cases) {
+            for (CaseRecord c : filtered) {
                 if (c.features() == null) continue;
                 Double v = valueOf(c.features(), f);
                 if (v != null) values.add(v);

@@ -146,6 +146,33 @@ public class TradingCaseFileRepository implements TradingCaseRepository {
         writeIndex(userId, entries);
     }
 
+    /**
+     * 重建清单（2026-08-31）：以案例文件为准全量重建 _index.json——
+     * 修复「文件类型已补标/verify 已回填但清单摘要过期」的不一致。
+     * 直接扫目录（不依赖旧 index），损坏/不可读文件跳过（不中断重建）。
+     */
+    @Override
+    public void rebuildIndex(String userId) {
+        synchronized (lockFor(userId)) {
+            try {
+                List<JsonNode> entries = new ArrayList<>();
+                for (String path : fileStorage.listFiles(userId, CASES_DIR)) {
+                    String file = path.substring(path.lastIndexOf('/') + 1);
+                    if (!file.endsWith(".json") || file.startsWith("_")) continue;
+                    String caseId = file.substring(0, file.length() - 5);
+                    findById(userId, caseId).ifPresent(c -> entries.add(indexEntry(c)));
+                }
+                entries.sort(Comparator.comparing((com.fasterxml.jackson.databind.JsonNode n)
+                        -> n.path("buyDate").asText("")).reversed());
+                writeIndex(userId, entries);
+                log.info("案例清单已重建 | userId={} | {} 条", userId, entries.size());
+            } catch (Exception e) {
+                log.error("案例清单重建失败 | userId={} | {}", userId, e.getMessage());
+                throw new StorageException("案例清单重建失败 | userId=" + userId + " | " + e.getMessage(), e);
+            }
+        }
+    }
+
     private void removeFromIndex(String userId, String caseId) throws Exception {
         List<JsonNode> entries = readIndex(userId);
         entries.removeIf(n -> caseId.equals(n.path("id").asText("")));

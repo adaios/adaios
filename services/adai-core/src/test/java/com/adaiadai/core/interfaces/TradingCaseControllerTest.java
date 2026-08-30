@@ -257,7 +257,11 @@ class TradingCaseControllerTest {
                 "2026-08-03_000725", "000725", "京东方A", LocalDate.of(2026, 8, 3),
                 "B1", 92.5, 18.2, "缩量回踩黄线获支撑");
         when(appService.match(anyString(), anyString(), any()))
-                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(item), null));
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(item), null,
+                        "B1",
+                        new TradingCaseAppService.TrackInfo("B1", 5, 6, 92.5),
+                        new TradingCaseAppService.TrackInfo("B2", 1, 6, 45.0),
+                        null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -265,13 +269,19 @@ class TradingCaseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.symbol").value("000725"))
                 .andExpect(jsonPath("$.matches[0].similarityPercent").value(92.5))
-                .andExpect(jsonPath("$.matches[0].caseId").value("2026-08-03_000725"));
+                .andExpect(jsonPath("$.matches[0].caseId").value("2026-08-03_000725"))
+                // 2026-08-31 双轨：类型判定 + 双轨命中
+                .andExpect(jsonPath("$.type").value("B1"))
+                .andExpect(jsonPath("$.b1.hits").value(5))
+                .andExpect(jsonPath("$.b1.total").value(6))
+                .andExpect(jsonPath("$.b2.hits").value(1));
     }
 
     @Test
     void match_emptyLibrary_returnsEmptyMatches() throws Exception {
         when(appService.match(anyString(), anyString(), any()))
-                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(), null));
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(), null,
+                        "none", null, null, null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -296,7 +306,8 @@ class TradingCaseControllerTest {
         java.util.concurrent.atomic.AtomicReference<LocalDate> received = new java.util.concurrent.atomic.AtomicReference<>();
         when(appService.match(anyString(), anyString(), any())).thenAnswer(inv -> {
             received.set(inv.getArgument(2));
-            return new TradingCaseAppService.MatchResponse("000831", List.of(), null);
+            return new TradingCaseAppService.MatchResponse("000831", List.of(), null,
+                    "none", null, null, null);
         });
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
@@ -310,7 +321,8 @@ class TradingCaseControllerTest {
     @Test
     void match_isoDateFormat_acceptsYyyyMmDd() throws Exception {
         when(appService.match(anyString(), anyString(), any())).thenReturn(
-                new TradingCaseAppService.MatchResponse("000831", List.of(), null));
+                new TradingCaseAppService.MatchResponse("000831", List.of(), null,
+                        "none", null, null, null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)

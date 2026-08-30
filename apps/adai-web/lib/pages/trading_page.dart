@@ -1735,18 +1735,25 @@ class _TradingPageState extends State<TradingPage> {
     final symbol = '${c['symbol'] ?? ''}';
     final buyDate = '${c['buyDate'] ?? ''}';
     final buyType = '${c['buyType'] ?? ''}';
+    final isFailed = buyType == 'FAILED';
     final verify = (c['verify'] as Map<String, dynamic>?) ?? const {};
     final plus5 = verify['+5dReturnPct'];
-    final plus5Text = plus5 == null ? '后验—' : '${(plus5 as num).toStringAsFixed(1)}%';
+    // P2-案例5：verify null 显示「—」而非 0.0%（后端 index 摘要 null 存 0.0 的历史占位）
+    final plus5Text = (plus5 == null || (plus5 is num && plus5 == 0 && verify.isEmpty))
+        ? '—'
+        : '${(plus5 as num).toStringAsFixed(1)}%';
     final features = (c['features'] as Map<String, dynamic>?) ?? const {};
     final desc = '${c['description'] ?? ''}';
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
+        color: isFailed ? AppColors.darkRed.withValues(alpha: 0.06) : AppColors.darkSurface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: isFailed
+                ? AppColors.darkRed.withValues(alpha: 0.5)
+                : AppColors.darkBorder.withValues(alpha: 0.5)),
       ),
       child: Row(children: [
         SizedBox(
@@ -1760,8 +1767,9 @@ class _TradingPageState extends State<TradingPage> {
         ),
         SizedBox(
           width: 64,
-          child: Text(buyType.isNotEmpty ? buyType : '未知',
-              style: const TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+          child: Text(isFailed ? '失败' : (buyType.isNotEmpty ? buyType : '未知'),
+              style: TextStyle(fontSize: 11,
+                  color: isFailed ? AppColors.darkRed : AppColors.darkGreen)),
         ),
         SizedBox(
           width: 76,
@@ -1790,8 +1798,7 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// 共识判定卡（2026-08-30 核心价值）：案例库统计学习的「完美买点画像」逐维命中。
-  Widget _buildConsensusCard(Map<String, dynamic> consensus) {
-    final hits = ((consensus['hits'] as List<dynamic>?) ?? const [])
+  Widget _buildConsensusCard(Map<String, dynamic> consensus) {    final hits = ((consensus['hits'] as List<dynamic>?) ?? const [])
         .cast<Map<String, dynamic>>();
     final hitCount = (consensus['hitCount'] as num?)?.toInt() ?? 0;
     final total = (consensus['total'] as num?)?.toInt() ?? 0;
@@ -1858,6 +1865,70 @@ class _TradingPageState extends State<TradingPage> {
             );
           }).toList(),
         ),
+      ]),
+    );
+  }
+
+  /// 双轨判定卡（2026-08-31 方案第 1 层）：B1/B2 各自共识画像命中 + 类型判定。
+  /// result.type 由后端判定（命中多的一轨）；b1/b2 为 {hits,total,similarity}。
+  Widget _buildTrackCard(Map<String, dynamic> result) {
+    final type = '${result['type'] ?? 'none'}';
+    final b1 = result['b1'] as Map<String, dynamic>?;
+    final b2 = result['b2'] as Map<String, dynamic>?;
+    final failedSim = (result['failedSimilarity'] as num?)?.toDouble();
+    Widget track(String label, Map<String, dynamic>? t, Color color) {
+      if (t == null) {
+        return Text('$label 画像：样本不足',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5));
+      }
+      final hits = (t['hits'] as num?)?.toInt() ?? 0;
+      final total = (t['total'] as num?)?.toInt() ?? 0;
+      final sim = (t['similarity'] as num?)?.toDouble() ?? 0;
+      return Text('$label 画像：命中 $hits/$total 维 · 最高相似 ${sim.toStringAsFixed(1)}%',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color));
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: type == 'B1' || type == 'B2'
+                ? AppColors.darkGreen.withValues(alpha: 0.6)
+                : AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('双轨判定（B1/B2 各自画像）',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const Spacer(),
+          Text(
+            type == 'B1' || type == 'B2' ? '判定：$type 型' : '判定：两不靠',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: type == 'B1' || type == 'B2' ? AppColors.darkGreen : AppColors.darkGrey2),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        track('B1', b1, AppColors.darkGreen),
+        const SizedBox(height: 3),
+        track('B2', b2, AppColors.darkGreen),
+        // 失败画像警示（2026-08-31 方案第 2 层：负样本参照系）
+        if (failedSim != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            '⚠ 形态与历史失败案例相似 ${failedSim.toStringAsFixed(1)}%'
+            '（${failedSim >= 70 ? '注意风险' : '参考'}）',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: failedSim >= 70 ? AppColors.darkRed : AppColors.darkGrey4),
+          ),
+        ],
       ]),
     );
   }
@@ -1965,6 +2036,9 @@ class _TradingPageState extends State<TradingPage> {
                     child: Text('相似 ≥80% 绿框提示——形态与库中完美买点高度接近（AI 理解见案例详情）。',
                         style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
                   ),
+                // 2026-08-31 双轨判定卡（核心价值）：B1/B2 各自画像命中 + 类型判定 + 失败警示
+                const SizedBox(height: 10),
+                _buildTrackCard(result!),
                 // 2026-08-30 共识判定（核心价值）：案例库 ≥5 → 从案例统计学习「完美买点画像」
                 // → 当前形态逐维命中（回撤/量比/KDJ/距60日线/MACD/盘整）
                 if ((result!['consensus'] as Map<String, dynamic>?) != null) ...[
@@ -2129,46 +2203,74 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
-  /// 标注弹窗：代码 + 日期 + 买点类型 + 描述 → POST /trading/cases。
+  /// 标注弹窗：代码 + 日期 + 买点类型（含失败案例）+ 描述 → POST /trading/cases。
   Future<void> _openAnnotateCaseDialog() async {
     final symbolCtrl = TextEditingController();
     final dateCtrl = TextEditingController(text: '');
     final typeCtrl = TextEditingController(text: 'B1');
     final descCtrl = TextEditingController();
+    var type = 'B1'; // 下拉选择（B1/B2/失败案例/其他）
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.darkSurface2,
-        title: const Text('标注完美买点案例', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
-        content: SizedBox(
-          width: 380,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('系统自动拉「前 60 + 后 30 交易日」日 K，还原 K 线画面、计算特征画像和后验窗口。',
-                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            const SizedBox(height: 12),
-            _SymbolSearchField(
-              api: widget.api,
-              hint: '标的（代码/名称/拼音首字母，如 000831 / 中国稀土 / zgxt）',
-              onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: AppColors.darkSurface2,
+          title: const Text('标注买点案例', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+          content: SizedBox(
+            width: 380,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('系统自动拉「前 60 + 后 30 交易日」日 K，还原 K 线画面、计算特征画像和后验窗口。',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 12),
+              _SymbolSearchField(
+                api: widget.api,
+                hint: '标的（代码/名称/拼音首字母，如 000831 / 中国稀土 / zgxt）',
+                onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+              ),
+              const SizedBox(height: 8),
+              TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
+              const SizedBox(height: 8),
+              // 2026-08-31 双轨方案：类型下拉（B1/B2/失败案例/其他），失败案例负样本入库
+              DropdownButtonFormField<String>(
+                initialValue: type,
+                decoration: _caseInput('案例类型'),
+                dropdownColor: AppColors.darkSurface2,
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
+                items: const [
+                  DropdownMenuItem(value: 'B1', child: Text('B1（回调缩量低吸）', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: 'B2', child: Text('B2（放量突破右侧）', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: 'FAILED', child: Text('失败案例（形态像买点但走坏）', style: TextStyle(fontSize: 12))),
+                  DropdownMenuItem(value: '其他', child: Text('其他（B3/SB1/自定义）', style: TextStyle(fontSize: 12))),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setDlg(() {
+                    type = v;
+                    typeCtrl.text = v == '其他' ? '' : v;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              TextField(controller: descCtrl,
+                  decoration: _caseInput(type == 'FAILED'
+                      ? '失败原因（可选，如：破位不收回 / 追高被套）'
+                      : '为什么完美（可选，如：回踩 60 日线 + 地量）')),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
             ),
-            const SizedBox(height: 8),
-            TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
-            const SizedBox(height: 8),
-            TextField(controller: typeCtrl, decoration: _caseInput('买点类型（B1/B2/B3/SB1/其他，可空）')),
-            const SizedBox(height: 8),
-            TextField(controller: descCtrl, decoration: _caseInput('为什么完美（可选，如：回踩 60 日线 + 地量）')),
-          ]),
+            TextButton(
+              onPressed: () {
+                // 同步下拉值到 typeCtrl（非「其他」时 typeCtrl 已在 onChanged 设置）
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('标注', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('标注', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
-          ),
-        ],
       ),
     );
     if (saved != true || !mounted) return;
@@ -2186,7 +2288,7 @@ class _TradingPageState extends State<TradingPage> {
         description: descCtrl.text.trim(),
       );
       await _loadCases();
-      if (mounted) _toast('案例已标注，画面已还原');
+      if (mounted) _toast(typeCtrl.text.trim() == 'FAILED' ? '失败案例已入库' : '案例已标注，画面已还原');
       // 2026-08-30 建议 #4：共识偏离度校验——标注后若与库中完美买点画像偏离大，
       // 提示确认（防脏案例进库；不阻止——用户是权威）
       final check = (resp['consensusCheck'] as Map<String, dynamic>?) ?? const {};

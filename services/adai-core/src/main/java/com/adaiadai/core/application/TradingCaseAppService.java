@@ -129,12 +129,15 @@ public class TradingCaseAppService {
                 new CaseRecord.CaseWindow(BEFORE_TRADE_DAYS, AFTER_TRADE_DAYS),
                 features, verify, CaseRecord.CaseAiInsight.empty());
         caseRepository.save(userId, record);
-        log.info("完美买点案例已标注 | userId={} | caseId={} | buyType={}", userId, caseId, record.buyType());
-        // 共识偏离度校验：用既有案例库画像评估新案例（save 后库含新案例——用 save 前 list）
+        log.info("买点案例已标注 | userId={} | caseId={} | buyType={}", userId, caseId, record.buyType());
+        // 共识偏离度校验：用既有案例库**同类型**画像评估新案例（2026-08-31 双轨：
+        // 标注 B1 对照 B1 画像，不再被混合画像稀释；负样本不参与正样本画像、不做偏离校验）
         CaseConsensus.ConsensusResult check = null;
-        List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(existingBeforeSave);
-        if (profile != null) {
-            check = CaseConsensus.evaluate(record.features(), profile);
+        if (!CaseRecord.TYPE_FAILED.equals(record.buyType())) {
+            List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(existingBeforeSave, record.buyType());
+            if (profile != null) {
+                check = CaseConsensus.evaluate(record.features(), profile);
+            }
         }
         return new AnnotateResult(record, check);
     }
@@ -236,11 +239,12 @@ public class TradingCaseAppService {
         log.info("完美买点案例已删除 | userId={} | caseId={}", userId, caseId);
     }
 
-    /** 环 4：判定当下（POST /cases/match）——当前标的形态与案例库归一化相似度 Top N。 */
+    /** 环 4：判定当下（POST /cases/match）——当前标的形态 vs 案例库相似度 + 双轨共识画像（2026-08-31）。 */
     public MatchResponse match(String userId, String symbol, LocalDate date) {
         List<CaseRecord> cases = caseRepository.list(userId);
         if (cases.isEmpty()) {
-            return new MatchResponse(symbol, List.of(), null);
+            return new MatchResponse(symbol, List.of(), null, "none",
+                    null, null, null);
         }
         LocalDate queryDate = date != null ? date : LocalDate.now();
         List<Candle> candles = klineService.klineRange(symbol,
@@ -258,6 +262,7 @@ public class TradingCaseAppService {
         if (features == null) {
             throw new TradingException("无法计算 " + symbol + " 的形态特征");
         }
+        // 相似度 Top5（全量正样本，向后兼容旧前端 matches 展示）
         List<CaseSimilarityEngine.MatchResult> top = CaseSimilarityEngine.topN(cases, features, 5);
         List<MatchItem> items = top.stream()
                 .map(r -> new MatchItem(
@@ -266,22 +271,61 @@ public class TradingCaseAppService {
                         r.caseRecord().verify() == null ? null : r.caseRecord().verify().plus5dReturnPct(),
                         insightSummary(r.caseRecord())))
                 .toList();
-        // 2026-08-30 共识判定（核心价值）：案例库 ≥5 → 从案例统计学习「完美买点画像」
-        //（各特征 25-75 分位区间）→ 当前形态逐维命中 → 「共识命中 N/M 维」。
+        // 2026-08-31 双轨共识画像：B1/B2 各算各的 25-75 分位区间（互不稀释），
+        // 当前形态逐维命中 → 命中多的一轨判定类型（方案 §3）。
+        TrackInfo b1Track = evaluateTrack(cases, features, "B1");
+        TrackInfo b2Track = evaluateTrack(cases, features, "B2");
+        String verdictType = "none";
+        if (b1Track != null && b2Track != null) {
+            verdictType = b1Track.hits() >= b2Track.hits() ? "B1" : "B2";
+        } else if (b1Track != null) {
+            verdictType = "B1";
+        } else if (b2Track != null) {
+            verdictType = "B2";
+        }
+        // 负样本警示（2026-08-31 方案 §4.2）：当前形态 vs 失败画像 → 相似度（最高命中案例）
+        Double failedSimilarity = failedSimilarity(cases, features);
+        // 兼容旧字段：consensus 保留全量口径（旧前端共识卡不破坏）
         CaseConsensus.ConsensusResult consensus = null;
         List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(cases);
         if (profile != null) {
             consensus = CaseConsensus.evaluate(features, profile);
         }
-        log.info("案例匹配完成 | userId={} | symbol={} | 基准日={} | 命中={} | 案例库={} | 共识={}",
-                userId, symbol, targetDate, items.size(), cases.size(),
-                consensus == null ? "不可用(<5案例)" : consensus.hitCount() + "/" + consensus.total());
-        return new MatchResponse(symbol, items, consensus);
+        log.info("案例匹配完成 | userId={} | symbol={} | 基准日={} | 命中={} | B1轨={} | B2轨={} | 类型={} | 失败相似={} | 案例库={}",
+                userId, symbol, targetDate, items.size(),
+                b1Track == null ? "不可用" : b1Track.hits() + "/" + b1Track.total(),
+                b2Track == null ? "不可用" : b2Track.hits() + "/" + b2Track.total(),
+                verdictType,
+                failedSimilarity == null ? "-" : failedSimilarity,
+                cases.size());
+        return new MatchResponse(symbol, items, consensus, verdictType, b1Track, b2Track, failedSimilarity);
     }
 
-    /** 匹配响应（核心价值输出：相似案例 + 相似度 + 后验参照 + 共识命中）。 */
+    /** 单轨共识评估：buildProfile(cases, type) → evaluate；案例不足/无画像 → null。 */
+    private TrackInfo evaluateTrack(List<CaseRecord> cases, CaseRecord.CaseFeatures features, String type) {
+        List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(cases, type);
+        if (profile == null) return null;
+        CaseConsensus.ConsensusResult r = CaseConsensus.evaluate(features, profile);
+        // 该轨内最高相似度（与同类型案例 Top1）
+        List<CaseSimilarityEngine.MatchResult> top = CaseSimilarityEngine.topN(cases, features, 1, type);
+        double sim = top.isEmpty() ? 0.0 : top.get(0).similarityPercent();
+        return new TrackInfo(type, r.hitCount(), r.total(), sim);
+    }
+
+    /** 负样本警示相似度：与失败画像最高相似案例的相似度（无负样本 → null）。 */
+    private Double failedSimilarity(List<CaseRecord> cases, CaseRecord.CaseFeatures features) {
+        List<CaseSimilarityEngine.MatchResult> top = CaseSimilarityEngine.topN(cases, features, 1, CaseRecord.TYPE_FAILED);
+        return top.isEmpty() ? null : top.get(0).similarityPercent();
+    }
+
+    /** 双轨匹配响应（2026-08-31 方案核心价值：B1/B2 独立命中 + 类型判定 + 失败警示）。 */
     public record MatchResponse(String symbol, List<MatchItem> matches,
-                                CaseConsensus.ConsensusResult consensus) {}
+                                CaseConsensus.ConsensusResult consensus,
+                                String type, TrackInfo b1, TrackInfo b2,
+                                Double failedSimilarity) {}
+
+    /** 单轨画像命中摘要。 */
+    public record TrackInfo(String type, int hits, int total, double similarity) {}
 
     /** 匹配条目（轻量，不含全量特征——详情可再看）。 */
     public record MatchItem(String caseId, String symbol, String name, LocalDate buyDate,

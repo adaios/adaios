@@ -145,12 +145,22 @@ public class WatchlistBuyPointService {
         return hits;
     }
 
-    /** 案例相似度 Top 3（开关关 / 案例库空 → 空列表，行为与现状一致）。 */
+    /**
+     * 案例相似度 Top 3（2026-08-31 双轨：与当前形态最相似的**同类型**案例——
+     * B1/B2 各自参照系，负样本不参与；开关关 / 案例库空 → 空列表，行为与现状一致）。
+     */
     private List<CaseMatchLite> matchCases(List<Candle> candles, List<CaseRecord> cases) {
         if (cases.isEmpty() || candles == null || candles.isEmpty()) return List.of();
         CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, candles.get(candles.size() - 1).date());
         if (features == null) return List.of();
-        return CaseSimilarityEngine.topN(cases, features, 3).stream()
+        // 双轨各自 Top3，按相似度合并排序取前 3（正样本；负样本不参与）
+        java.util.List<CaseSimilarityEngine.MatchResult> merged = new java.util.ArrayList<>();
+        merged.addAll(CaseSimilarityEngine.topN(cases, features, 3, "B1"));
+        merged.addAll(CaseSimilarityEngine.topN(cases, features, 3, "B2"));
+        merged.sort(java.util.Comparator.comparingDouble(
+                CaseSimilarityEngine.MatchResult::similarityPercent).reversed());
+        List<CaseSimilarityEngine.MatchResult> top = merged.size() > 3 ? merged.subList(0, 3) : merged;
+        return top.stream()
                 .map(r -> new CaseMatchLite(
                         r.caseRecord().id(),
                         r.caseRecord().buyDate() == null ? "" : r.caseRecord().buyDate().toString(),
