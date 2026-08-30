@@ -116,6 +116,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -144,6 +145,7 @@ class TradingControllerTest {
                 screenshotAppService,
                 mock(MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -173,6 +175,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -196,6 +199,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 tradingLotService,
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -221,6 +225,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -380,6 +385,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -819,6 +825,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1038,6 +1045,67 @@ class TradingControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    // ── 2026-08-30 标的搜索（名称/拼音首字母/代码）──
+
+    private MockMvc buildSearchMvc(com.adaiadai.core.infrastructure.market.NameToSymbolResolver resolver) {
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
+                mock(TradingParseAppService.class), pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class), resolver, "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
+    @Test
+    void searchSymbol_supportsPinyinAndName() throws Exception {
+        com.adaiadai.core.infrastructure.market.NameToSymbolResolver resolver =
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class);
+        when(resolver.search("zgxt")).thenReturn(java.util.List.of(
+                new com.adaiadai.core.infrastructure.market.NameToSymbolResolver.Candidate("000831", "中国稀土"),
+                new com.adaiadai.core.infrastructure.market.NameToSymbolResolver.Candidate("600831", "广电网络")));
+        buildSearchMvc(resolver)
+                .perform(get("/api/v1/trading/search").param("q", "zgxt"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("000831"))
+                .andExpect(jsonPath("$[0].name").value("中国稀土"))
+                .andExpect(jsonPath("$[1].symbol").value("600831"));
+    }
+
+    @Test
+    void searchSymbol_withoutTradingPlugin_403() throws Exception {
+        com.adaiadai.core.infrastructure.market.NameToSymbolResolver resolver =
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class);
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class), mock(TradingAdviceAppService.class),
+                mock(TradingParseAppService.class), pluginService(),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class), resolver, "../../os/trading-engine/knowledge/context");
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(
+                        new ObjectMapper().registerModule(new JavaTimeModule())
+                                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)))
+                .build();
+        mvc.perform(get("/api/v1/trading/search").param("q", "zgxt"))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
@@ -1181,6 +1249,7 @@ class TradingControllerTest {
                 mock(TradeLogCollectService.class),
                 mock(TradingScreenshotAppService.class), mock(MarketPushRepository.class),
                 mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1207,6 +1276,7 @@ class TradingControllerTest {
                 mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1231,6 +1301,7 @@ class TradingControllerTest {
                 mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

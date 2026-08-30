@@ -31,6 +31,9 @@ enum SubIndicator { kdj, macd, volume }
 class _CaseKlineChartState extends State<CaseKlineChart> {
   MainIndicator _main = MainIndicator.ma2;
   SubIndicator _sub = SubIndicator.kdj;
+  /// 买点后显示天数（2026-08-30 验收反馈：默认 3 天——后验涨幅不压缩前期形态；
+  /// ◀▶ 按钮/方向键移动查看后续走势，范围 0..30，步进 5）。
+  int _afterDays = 3;
 
   static const _mainLabels = {
     MainIndicator.ma2: 'MA2(10,60)',
@@ -42,6 +45,24 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
     SubIndicator.macd: 'MACD(12,26,9)',
     SubIndicator.volume: '成交量',
   };
+
+  /// 计算显示窗口 [start, end]（买点前 60 根 ~ 买点后 _afterDays；无买点 → 全窗口）。
+  (int, int) _visibleRange(List<Map<String, dynamic>> kline) {
+    final n = kline.length;
+    final buyDate = widget.buyDate;
+    if (buyDate == null || buyDate.isEmpty) return (0, n - 1);
+    var buyIdx = -1;
+    for (var i = 0; i < n; i++) {
+      if ('${kline[i]['date']}' == buyDate) {
+        buyIdx = i;
+        break;
+      }
+    }
+    if (buyIdx < 0) return (0, n - 1);
+    final start = math.max(0, buyIdx - 60);
+    final end = math.min(buyIdx + _afterDays, n - 1);
+    return (start, end);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +78,8 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
     final indicators = CaseIndicators.compute(widget.kline);
     final mainLabel = _mainLabelText(indicators);
     final subLabel = _subLabelText(indicators);
+    final (start, end) = _visibleRange(widget.kline);
+    final hasBuyDate = widget.buyDate != null && widget.buyDate!.isNotEmpty;
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       // 指标切换行（通达信式：点指标名下拉）
       Row(mainAxisSize: MainAxisSize.min, children: [
@@ -73,6 +96,20 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
           selected: _sub,
           onSelect: (v) => setState(() => _sub = v),
         ),
+        if (hasBuyDate) ...[
+          const SizedBox(width: 12),
+          _windowButton(Icons.chevron_left, '查看更早', () {
+            if (_afterDays > 0) setState(() => _afterDays = math.max(0, _afterDays - 5));
+          }),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text('买点后 $_afterDays 天',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          ),
+          _windowButton(Icons.chevron_right, '查看更晚', () {
+            setState(() => _afterDays = math.min(30, _afterDays + 5));
+          }),
+        ],
       ]),
       const SizedBox(height: 4),
       SizedBox(
@@ -82,7 +119,7 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
           CustomPaint(
             size: Size.infinite,
             painter: _CaseKlinePainter(
-                widget.kline, widget.buyDate, _main, _sub, indicators),
+                widget.kline, widget.buyDate, _main, _sub, indicators, start, end),
           ),
           // 主图左上角指标数值标签
           Positioned(left: 4, top: 2, child: _labelChip(mainLabel)),
@@ -91,6 +128,21 @@ class _CaseKlineChartState extends State<CaseKlineChart> {
         ]),
       ),
     ]);
+  }
+
+  Widget _windowButton(IconData icon, String tooltip, VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+        ),
+        child: Icon(icon, size: 14, color: AppColors.darkGrey2),
+      ),
+    );
   }
 
   /// 指标切换下拉（通达信式：点指标名出菜单）。
@@ -258,13 +310,17 @@ class CaseIndicators {
 }
 
 class _CaseKlinePainter extends CustomPainter {
-  _CaseKlinePainter(this.kline, this.buyDate, this.mainIndicator, this.subIndicator, this.indicators);
+  _CaseKlinePainter(this.kline, this.buyDate, this.mainIndicator, this.subIndicator,
+      this.indicators, this.windowStart, this.windowEnd);
 
   final List<Map<String, dynamic>> kline;
   final String? buyDate;
   final MainIndicator mainIndicator;
   final SubIndicator subIndicator;
   final CaseIndicators indicators;
+  /// 显示窗口 [start, end]（买点前 60 ~ 买点后 N 天，N 可调——防后验涨幅压缩前期形态）。
+  final int windowStart;
+  final int windowEnd;
 
   static const double _mainRatio = 0.66;
   static const double _topPad = 14;
@@ -289,14 +345,18 @@ class _CaseKlinePainter extends CustomPainter {
       }
     }
 
-    // 价格范围（含均线）
+    final count = math.max(1, windowEnd - windowStart + 1);
+    double x(int i) => ((i - windowStart) + 0.5) / count * width;
+
+    // 价格范围：仅窗口内蜡烛 + 窗口内均线（防窗口外高点压缩形态）
     var minPrice = double.infinity, maxPrice = double.negativeInfinity;
-    for (final e in kline) {
-      minPrice = math.min(minPrice, (e['low'] as num).toDouble());
-      maxPrice = math.max(maxPrice, (e['high'] as num).toDouble());
+    for (var i = windowStart; i <= windowEnd && i < n; i++) {
+      minPrice = math.min(minPrice, (kline[i]['low'] as num).toDouble());
+      maxPrice = math.max(maxPrice, (kline[i]['high'] as num).toDouble());
     }
     if (mainIndicator == MainIndicator.ma2 || mainIndicator == MainIndicator.ma4) {
-      for (final v in indicators.ma60) {
+      for (var i = windowStart; i <= windowEnd && i < indicators.ma60.length; i++) {
+        final v = indicators.ma60[i];
         if (v > 0) {
           minPrice = math.min(minPrice, v);
           maxPrice = math.max(maxPrice, v);
@@ -308,13 +368,12 @@ class _CaseKlinePainter extends CustomPainter {
     minPrice -= pad;
     maxPrice += pad;
 
-    double x(int i) => n <= 1 ? width / 2 : (width / n) * (i + 0.5);
     double y(double price) =>
         mainRect.bottom - (price - minPrice) / (maxPrice - minPrice) * mainRect.height;
 
-    // ── 主图：蜡烛 ──
-    final candleW = math.max(1.5, (width / n) * 0.6);
-    for (var i = 0; i < n; i++) {
+    // ── 主图：蜡烛（窗口内）──
+    final candleW = math.max(1.5, (width / count) * 0.6);
+    for (var i = windowStart; i <= windowEnd && i < n; i++) {
       final e = kline[i];
       final o = (e['open'] as num).toDouble();
       final c = (e['close'] as num).toDouble();
@@ -335,7 +394,7 @@ class _CaseKlinePainter extends CustomPainter {
       );
     }
 
-    // ── 主图：均线（按所选指标）──
+    // ── 主图：均线（窗口段）──
     switch (mainIndicator) {
       case MainIndicator.ma2:
         _drawLine(canvas, indicators.ma10, x, y, AppColors.darkGrey2, 1);
@@ -349,8 +408,8 @@ class _CaseKlinePainter extends CustomPainter {
         break;
     }
 
-    // ── 主图：买点日标记（竖线 + 顶部 ▲ + 日期）──
-    if (buyIdx >= 0) {
+    // ── 主图：买点日标记（窗口内）──
+    if (buyIdx >= windowStart && buyIdx <= windowEnd) {
       final cx = x(buyIdx);
       final marker = Paint()
         ..color = AppColors.darkGreen
@@ -366,7 +425,7 @@ class _CaseKlinePainter extends CustomPainter {
       text.paint(canvas, Offset(cx - text.width / 2, mainRect.top - 11));
     }
 
-    // ── 副图：按所选指标 ──
+    // ── 副图：按所选指标（窗口段）──
     switch (subIndicator) {
       case SubIndicator.kdj:
         _drawScaled(canvas, subRect, [
@@ -376,11 +435,11 @@ class _CaseKlinePainter extends CustomPainter {
         ], x, 0, 100);
       case SubIndicator.macd:
         var maxAbs = 0.0;
-        for (final v in indicators.macdHist) {
-          maxAbs = math.max(maxAbs, v.abs());
+        for (var i = windowStart; i <= windowEnd && i < indicators.macdHist.length; i++) {
+          maxAbs = math.max(maxAbs, indicators.macdHist[i].abs());
         }
         if (maxAbs <= 0) maxAbs = 1;
-        for (var i = 0; i < n; i++) {
+        for (var i = windowStart; i <= windowEnd && i < n; i++) {
           final v = indicators.macdHist[i];
           final h = subRect.height * v.abs() / maxAbs * 0.9;
           final midY = subRect.center.dy;
@@ -394,11 +453,11 @@ class _CaseKlinePainter extends CustomPainter {
         _drawLine2(canvas, indicators.macdDea, x, subRect, const Color(0xFFE6C34A), 1);
       case SubIndicator.volume:
         var maxVol = 0.0;
-        for (final e in kline) {
-          maxVol = math.max(maxVol, (e['volume'] as num).toDouble());
+        for (var i = windowStart; i <= windowEnd && i < n; i++) {
+          maxVol = math.max(maxVol, (kline[i]['volume'] as num).toDouble());
         }
         if (maxVol > 0) {
-          for (var i = 0; i < n; i++) {
+          for (var i = windowStart; i <= windowEnd && i < n; i++) {
             final e = kline[i];
             final o = (e['open'] as num).toDouble();
             final c = (e['close'] as num).toDouble();
@@ -427,7 +486,7 @@ class _CaseKlinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     final path = Path();
     var started = false;
-    for (var i = 0; i < values.length; i++) {
+    for (var i = windowStart; i <= windowEnd && i < values.length; i++) {
       if (values[i] <= 0) continue; // MA 前 N 根无值
       final p = Offset(x(i), y(values[i]));
       if (!started) {
@@ -449,7 +508,7 @@ class _CaseKlinePainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
       final path = Path();
       var started = false;
-      for (var i = 0; i < values.length; i++) {
+      for (var i = windowStart; i <= windowEnd && i < values.length; i++) {
         final v = values[i].clamp(min, max);
         final p = Offset(x(i), rect.bottom - (v - min) / (max - min) * rect.height);
         if (!started) {
@@ -471,7 +530,7 @@ class _CaseKlinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     final path = Path();
     var started = false;
-    for (var i = 0; i < values.length; i++) {
+    for (var i = windowStart; i <= windowEnd && i < values.length; i++) {
       final midY = rect.center.dy;
       final p = Offset(x(i), midY - values[i] / 8); // 柱归一化 8 单位/像素
       if (!started) {
@@ -489,5 +548,7 @@ class _CaseKlinePainter extends CustomPainter {
       oldDelegate.kline != kline ||
       oldDelegate.buyDate != buyDate ||
       oldDelegate.mainIndicator != mainIndicator ||
-      oldDelegate.subIndicator != subIndicator;
+      oldDelegate.subIndicator != subIndicator ||
+      oldDelegate.windowStart != windowStart ||
+      oldDelegate.windowEnd != windowEnd;
 }

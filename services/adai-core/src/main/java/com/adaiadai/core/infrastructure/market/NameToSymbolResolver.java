@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.time.Duration;
 
 /**
@@ -45,48 +46,71 @@ public class NameToSymbolResolver {
 
     /** 股票名称 → 6 位代码；查不到/失败 → null（调用方按名称归集待补充，不抛异常）。 */
     public String resolve(String name) {
-        if (name == null || name.isBlank()) return null;
+        List<Candidate> candidates = search(name);
+        if (candidates.isEmpty()) return null;
+        // 优先名称精确匹配（suggest 对长输入可能返回相近项）
+        for (Candidate c : candidates) {
+            if (name.equals(c.name())) return c.code();
+        }
+        return candidates.get(0).code();
+    }
+
+    /** 搜索结果候选（代码 + 名称，A 股 6 位）；失败/无结果 → 空列表（不抛异常）。 */
+    public List<Candidate> search(String q) {
+        if (q == null || q.isBlank()) return List.of();
         try {
-            String url = QUERY_TEMPLATE.formatted(URLEncoder.encode(name, StandardCharsets.UTF_8));
+            String url = QUERY_TEMPLATE.formatted(URLEncoder.encode(q, StandardCharsets.UTF_8));
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofSeconds(8))
                     .GET()
                     .build();
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
-                log.warn("名称查代码 HTTP {} | name={}", resp.statusCode(), name);
-                return null;
+                log.warn("标的搜索 HTTP {} | q={}", resp.statusCode(), q);
+                return List.of();
             }
-            return parseResponse(resp.body(), name);
+            return parseCandidates(resp.body());
         } catch (Exception e) {
-            log.warn("名称查代码失败 | name={} | {}", name, e.getMessage());
-            return null;
+            log.warn("标的搜索失败 | q={} | {}", q, e.getMessage());
+            return List.of();
         }
     }
+
+    /** 搜索结果条目。 */
+    public record Candidate(String code, String name) {}
 
     /**
      * 解析东财 suggest 响应：优先名称精确匹配，其次第一个 6 位数字代码（A 股）。
      * 包级可见：供单测直接验证解析（不依赖真实网络）。
      */
     String parseResponse(String body, String name) {
-        if (body == null || body.isBlank()) return null;
+        List<Candidate> candidates = parseCandidates(body);
+        if (candidates.isEmpty()) return null;
+        for (Candidate c : candidates) {
+            if (name.equals(c.name())) return c.code();
+        }
+        return candidates.get(0).code();
+    }
+
+    /** 解析候选列表（Code + Name，仅 A 股 6 位，最多 10 条）。 */
+    List<Candidate> parseCandidates(String body) {
+        List<Candidate> result = new java.util.ArrayList<>();
+        if (body == null || body.isBlank()) return result;
         try {
             JsonNode root = MAPPER.readTree(body);
             JsonNode data = root.path("QuotationCodeTable").path("Data");
-            if (!data.isArray() || data.isEmpty()) return null;
+            if (!data.isArray() || data.isEmpty()) return result;
             for (JsonNode n : data) {
                 String code = n.path("Code").asText("");
-                if (name.equals(n.path("Name").asText("")) && code.matches("\\d{6}")) {
-                    return code;
+                String name = n.path("Name").asText("");
+                if (code.matches("\\d{6}") && !name.isBlank()) {
+                    result.add(new Candidate(code, name));
+                    if (result.size() >= 10) break;
                 }
             }
-            for (JsonNode n : data) {
-                String code = n.path("Code").asText("");
-                if (code.matches("\\d{6}")) return code;
-            }
         } catch (Exception e) {
-            log.warn("名称查代码响应解析失败 | name={} | {}", name, e.getMessage());
+            log.warn("标的搜索响应解析失败 | {}", e.getMessage());
         }
-        return null;
+        return result;
     }
 }

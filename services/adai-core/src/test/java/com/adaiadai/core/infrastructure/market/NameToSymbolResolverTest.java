@@ -45,4 +45,22 @@ class NameToSymbolResolverTest {
         assertNull(resolver.resolve(null));
         assertNull(resolver.resolve("  "));
     }
+
+    @Test
+    void parseCandidates_returnsAListWithAStockOnly() {
+        String body = "{\"QuotationCodeTable\":{\"Data\":["
+                + "{\"Code\":\"000831\",\"Name\":\"中国稀土\"},"
+                + "{\"Code\":\"600831\",\"Name\":\"广电网络\"},"
+                + "{\"Code\":\"US.AAPL\",\"Name\":\"苹果\"}]}}";
+        var list = resolver.parseCandidates(body);
+        assertEquals(2, list.size(), "非 A 股（US.AAPL）应被过滤");
+        assertEquals("000831", list.get(0).code());
+        assertEquals("中国稀土", list.get(0).name());
+    }
+
+    @Test
+    void parseCandidates_garbage_returnsEmpty() {
+        assertEquals(0, resolver.parseCandidates(null).size());
+        assertEquals(0, resolver.parseCandidates("not json").size());
+    }
 }

@@ -1918,8 +1918,35 @@ void main() {
     expect(detailUrl, contains('kline=true'), reason: '详情应带 kline=true 供画图');
   });
 
-  testWidgets('案例 Tab：生成 AI 理解调用 POST /cases/{id}/insight（环 3）', (tester) async {
-    var insightCalled = false;
+  testWidgets('案例 Tab：标的搜索 GET /trading/search（拼音首字母/名称/代码，2026-08-30）', (tester) async {
+    String? searchQuery;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        searchQuery = request.url.queryParameters['q'];
+        return _json([
+          {'symbol': '000831', 'name': '中国稀土'},
+          {'symbol': '600831', 'name': '广电网络'},
+        ]);
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    final result = await api.searchSymbols('zgxt');
+    await tester.pumpAndSettle();
+
+    expect(searchQuery, 'zgxt', reason: '搜索参数 q 应透传');
+    expect(result.length, 2);
+    expect(result.first['symbol'], '000831');
+    expect(result.first['name'], '中国稀土');
+  });
+
+  testWidgets('案例 Tab：生成 AI 理解调用 POST /cases/{id}/insight（环 3）', (tester) async {    var insightCalled = false;
     final client = MockClient((request) async {
       if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
         return _json(<Map<String, dynamic>>[]);

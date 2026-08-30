@@ -518,6 +518,23 @@ class ApiService {
     }
   }
 
+  /// 标的搜索（2026-08-30 验收反馈：记不住代码只记得名字）——q 支持 代码/中文名/拼音首字母。
+  /// GET /api/v1/trading/search?q= → [{"symbol":"600519","name":"贵州茅台"}, ...]；失败 → 空。
+  Future<List<Map<String, dynamic>>> searchSymbols(String q) async {
+    final text = q.trim();
+    if (text.isEmpty) return const [];
+    try {
+      final uri = Uri.parse('$baseUrl/api/v1/trading/search')
+          .replace(queryParameters: {'q': text});
+      final resp = await _client.get(uri, headers: _headers);
+      if (resp.statusCode != 200) return const [];
+      final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+      return list.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）。
   /// POST /api/v1/trading/positions/import?replace=true → {imported, missingStopLoss}.
   /// replace=true（2026-08-18 确认批次）= 全量覆盖：以文件为准，文件里没有的持仓移除（含 0 股残留）。

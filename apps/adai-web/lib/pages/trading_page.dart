@@ -1800,8 +1800,11 @@ class _TradingPageState extends State<TradingPage> {
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
-                  child: TextField(controller: symbolCtrl,
-                      decoration: _caseInput('标的代码（如 000725）')),
+                  child: _SymbolSearchField(
+                    api: widget.api,
+                    hint: '标的（代码/名称/拼音首字母）',
+                    onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
@@ -1937,7 +1940,11 @@ class _TradingPageState extends State<TradingPage> {
             const Text('系统自动拉「前 60 + 后 30 交易日」日 K，还原 K 线画面、计算特征画像和后验窗口。',
                 style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             const SizedBox(height: 12),
-            TextField(controller: symbolCtrl, decoration: _caseInput('标的代码（6 位，如 000725）')),
+            _SymbolSearchField(
+              api: widget.api,
+              hint: '标的（代码/名称/拼音首字母，如 000831 / 中国稀土 / zgxt）',
+              onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+            ),
             const SizedBox(height: 8),
             TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
             const SizedBox(height: 8),
@@ -2675,6 +2682,124 @@ class _LotsDialog extends StatelessWidget {
 /// 时回调 onHistorySelected（TradingPage 用它驱动 _HistorySection.refreshSilently，防 keepAlive 陈旧）。
 /// 案例详情弹窗（第四阶段环 3：K 线还原 + 特征/后验 + AI 理解）。
 /// 独立顶层 StatefulWidget（Dart 禁类内嵌类）；「生成 AI 理解」→ POST /cases/{id}/insight。
+/// 标的搜索输入（2026-08-30 验收反馈：记不住 6 位代码只记得名字——
+/// 支持 代码/中文名/拼音首字母，通达信式候选下拉；防抖 300ms）。
+class _SymbolSearchField extends StatefulWidget {
+  const _SymbolSearchField({
+    required this.api,
+    required this.onSymbolSelected,
+    this.hint = '标的代码（如 000725）',
+  });
+
+  final ApiService api;
+  final void Function(String symbol, String name) onSymbolSelected;
+  final String hint;
+
+  @override
+  State<_SymbolSearchField> createState() => _SymbolSearchFieldState();
+}
+
+class _SymbolSearchFieldState extends State<_SymbolSearchField> {
+  final TextEditingController _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _candidates = const [];
+  Timer? _debounce;
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String text) {
+    _debounce?.cancel();
+    final q = text.trim();
+    if (q.length < 2) {
+      if (_candidates.isNotEmpty) setState(() => _candidates = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final r = await widget.api.searchSymbols(q);
+      if (!mounted) return;
+      setState(() {
+        _candidates = r;
+        _loading = false;
+      });
+    });
+    if (!_loading) setState(() => _loading = true);
+  }
+
+  void _select(Map<String, dynamic> c) {
+    final symbol = '${c['symbol']}';
+    final name = '${c['name'] ?? ''}';
+    _ctrl.text = symbol;
+    _ctrl.selection = TextSelection.collapsed(offset: symbol.length);
+    setState(() => _candidates = const []);
+    widget.onSymbolSelected(symbol, name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextField(
+        controller: _ctrl,
+        onChanged: _onChanged,
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          hintStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+          suffixIcon: _loading
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.darkGreen),
+                  ),
+                )
+              : null,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.darkBorder)),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.darkGreen)),
+        ),
+      ),
+      if (_candidates.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(top: 2),
+          constraints: const BoxConstraints(maxHeight: 180),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface2,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.darkBorder),
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _candidates.length > 6 ? 6 : _candidates.length,
+            itemBuilder: (ctx, i) {
+              final c = _candidates[i];
+              return InkWell(
+                onTap: () => _select(c),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(children: [
+                    Text('${c['symbol']}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                    const SizedBox(width: 8),
+                    Text('${c['name'] ?? ''}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
+    ]);
+  }
+}
+
 class _CaseDetailDialog extends StatefulWidget {
   const _CaseDetailDialog({required this.api, required this.caseId});
   final ApiService api;

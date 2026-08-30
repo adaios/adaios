@@ -75,6 +75,8 @@ public class TradingController {
     private final MarketPushRepository marketPushRepository;
     /** RFC 20260825：批次推导与行为标注（批次视图 / 导入同步模式）。 */
     private final TradingLotService tradingLotService;
+    /** 2026-08-30 标的搜索：名称/拼音首字母/代码 → 候选（标注/匹配输入用）。 */
+    private final com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
     private final Path inboxDir;
 
@@ -91,6 +93,7 @@ public class TradingController {
                              TradingScreenshotAppService screenshotAppService,
                              MarketPushRepository marketPushRepository,
                              TradingLotService tradingLotService,
+                             com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -105,6 +108,7 @@ public class TradingController {
         this.screenshotAppService = screenshotAppService;
         this.marketPushRepository = marketPushRepository;
         this.tradingLotService = tradingLotService;
+        this.nameToSymbolResolver = nameToSymbolResolver;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -211,6 +215,22 @@ public class TradingController {
         if (denied != null) return denied;
         String name = tradingAppService.lookupName(symbol);
         return ResponseEntity.ok(Map.of("symbol", symbol, "name", name != null ? name : ""));
+    }
+
+    /**
+     * 标的搜索（2026-08-30 验收反馈：记不住代码只记得名字）——q 支持 代码/中文名/拼音首字母
+     * （东财 suggest，如 gzmt → 贵州茅台）。GET /api/v1/trading/search?q=gzmt → 候选列表。
+     */
+    @GetMapping("/search")
+    public ResponseEntity<?> searchSymbol(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String q) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<Map<String, String>> result = nameToSymbolResolver.search(q).stream()
+                .map(c -> Map.of("symbol", c.code(), "name", c.name()))
+                .toList();
+        return ResponseEntity.ok(result);
     }
 
     /**
