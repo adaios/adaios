@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-30
 status: active
-lines: 39
+lines: 41
 depends-on: []
 related:
   - ../_index.md
@@ -30,6 +30,8 @@ tags: [meta, index, architecture]
 | memory-os-design.md | 记忆 OS 设计 | active |
 | memory-frameworks-borrow.md | 开源记忆方案借鉴分析（Mem0/Letta/Zep/File-First 生态 → 可借鉴清单） | active |
 | ai-calling-governance.md | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身，分三批落地） | draft |
+| trading-case-library-design.md | 完美买点案例库设计方案（第四阶段：案例沉淀 → 判定当下；四环链路/特征/相似度/画图，已实施） | draft |
+| trading-data-adjustment.md | 行情数据前复权设计——TDX 本地数据正确性（东财因子表 + 本地换算，口径对齐腾讯 qfq） | draft |
 | trading-plugin-architecture.md | ★ 交易插件架构设计（第二阶段：通用能力层 vs 个性化规则层，规则按用户隔离/可导入导出，多用户开放蓝图） | draft |
 
 ## 过期判断
