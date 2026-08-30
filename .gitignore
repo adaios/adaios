@@ -63,6 +63,8 @@ heapdump.*
 data/*/records/
 data/*/memory/
 data/*/trading/
+# 全局行情数据（2026-08-30 TDX 通达信本地日线，全 A 数百 MB，不入库）
+data/market/
 
 # 任务数据（R2 记录↔任务派生，含私人待办，不提交）
 # 2026-08-15 文档治理批：P1-3 补齐（此前 data/*/project/ 漏忽略，data/adai/project 曾误提交）
