@@ -12,6 +12,7 @@ import com.adaiadai.core.domain.trading.market.MarketDataSource;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.push.PushChannel;
@@ -296,6 +297,54 @@ class TradingSessionPushServiceTest {
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(channel, times(1)).push(eq("adai"), captor.capture());
         assertTrue(captor.getValue().content().contains("京东方"), "LLM 生成内容应透出");
+    }
+
+    // ── 早盘行情口径（2026-08-30 用户反馈批 B）：9:15 未开盘，行情=上一交易日收盘 ──
+    // 旧实现数据文本无日期标注，LLM 把昨日涨幅写成「今日涨跌」（用户实测歧义，生产 08-28 早盘实锤）
+
+    @Test
+    void morningPlan_llmDataText_labelsPreviousClose() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        java.util.concurrent.atomic.AtomicReference<String> dataText = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> systemPrompt = new java.util.concurrent.atomic.AtomicReference<>();
+        when(ai.generate(any(), any())).thenAnswer(inv -> {
+            ContextPackage ctx = inv.getArgument(0);
+            dataText.set(ctx.recordContent());
+            systemPrompt.set(inv.getArgument(1));
+            return "早盘计划：昨日收盘两只票按计划执行。";
+        });
+        TradingSessionPushService svc = serviceWithPositions(channel, ai);
+
+        svc.morningPlan();
+
+        assertTrue(dataText.get().contains("昨收5.46"), "早盘数据应标注昨收，实际: " + dataText.get());
+        assertTrue(dataText.get().contains("昨日涨跌1.2%"), "早盘数据应标注昨日涨跌，实际: " + dataText.get());
+        assertFalse(dataText.get().contains("现价"), "早盘数据不得再出现「现价」口径，实际: " + dataText.get());
+        assertFalse(dataText.get().contains("今日涨跌"), "早盘数据不得出现「今日涨跌」，实际: " + dataText.get());
+        assertTrue(systemPrompt.get().contains("上一交易日"), "提示词应写明早盘数据为上一交易日口径");
+    }
+
+    @Test
+    void closeAdvice_llmDataText_labelsToday() {
+        // 午间/尾盘是当日盘中数据 → 「现价/今日涨跌」口径（与早盘「昨收/昨日涨跌」互斥防串）
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        java.util.concurrent.atomic.AtomicReference<String> dataText = new java.util.concurrent.atomic.AtomicReference<>();
+        when(ai.generate(any(), any())).thenAnswer(inv -> {
+            ContextPackage ctx = inv.getArgument(0);
+            dataText.set(ctx.recordContent());
+            return "尾盘建议：两只票按纪律执行。";
+        });
+        TradingSessionPushService svc = serviceWithPositions(channel, ai);
+
+        svc.closeAdvice();
+
+        assertTrue(dataText.get().contains("现价5.46"), "盘中数据用现价口径，实际: " + dataText.get());
+        assertTrue(dataText.get().contains("今日涨跌1.2%"), "盘中数据标注今日涨跌，实际: " + dataText.get());
+        assertFalse(dataText.get().contains("昨收"), "盘中数据不得误标昨收，实际: " + dataText.get());
     }
 
     // ── 空仓 ──

@@ -67,6 +67,8 @@ public class TradingSessionPushService {
             2. 每只持仓单独一行（· 名称 现价 涨跌 → 建议），建议引用规则用 R 编号（如 R66/R81）
             3. 建议是参考不是指令，语气是"我建议"而非"你必须"
             4. 简洁，不堆砌寒暄
+            5. 行情口径必须跟随数据字段：早盘计划给的是上一交易日收盘（字段为「昨收/昨日涨跌」），
+               表述用「昨日」，禁止写成「今日」；午间跟踪/尾盘建议给的是当日盘中数据（现价/今日涨跌），表述「今日」才正确。
             """.strip();
 
     private final PositionRepository positionRepository;
@@ -411,7 +413,7 @@ public class TradingSessionPushService {
                 default -> "尾盘建议：今天空仓收盘。明天继续等信号，保持耐心。";
             };
         }
-        String dataText = buildDataText(data, userId);
+        String dataText = buildDataText(data, userId, scene);
         try {
             AiTraceContext.set(userId, null, null, "trading_session_" + scene);
             ContextPackage ctx = ContextPackage.simple(
@@ -424,8 +426,16 @@ public class TradingSessionPushService {
         return fallback.build(data, userId);
     }
 
-    /** 数据文本（注入 LLM 的上下文）。 */
-    private String buildDataText(SessionData data, String userId) {
+    /**
+     * 数据文本（注入 LLM 的上下文）。
+     * <p>
+     * 行情口径按节点区分（2026-08-30 用户反馈批 B）：早盘 9:15 未开盘，行情接口返回的是
+     * **上一交易日**收盘——字段显式标注「昨收/昨日涨跌」，配合提示词第 5 条让 LLM 说「昨日」；
+     * 旧实现无标注，LLM 把昨日涨幅写成「今日涨跌」（用户实测歧义）。午间/尾盘为当日盘中数据，
+     * 标注「现价/今日涨跌」。
+     */
+    private String buildDataText(SessionData data, String userId, String scene) {
+        boolean preMarket = "morning-plan".equals(scene);
         StringBuilder sb = new StringBuilder();
         sb.append("【当前持仓】\n");
         for (Position p : data.positions()) {
@@ -434,10 +444,17 @@ public class TradingSessionPushService {
                     .append(" 数量").append(p.quantity())
                     .append(" 成本").append(fmt(p.avgCost()));
             if (md != null) {
-                sb.append(" 现价").append(fmt(md.price()));
-                // B6-3：changePercent 可 null（行情字段残缺）→ 显示 "-" 不 NPE
-                if (md.changePercent() != null) {
-                    sb.append(" 涨跌").append(fmt(md.changePercent())).append("%");
+                if (preMarket) {
+                    sb.append(" 昨收").append(fmt(md.price()));
+                    if (md.changePercent() != null) {
+                        sb.append(" 昨日涨跌").append(fmt(md.changePercent())).append("%");
+                    }
+                } else {
+                    sb.append(" 现价").append(fmt(md.price()));
+                    // B6-3：changePercent 可 null（行情字段残缺）→ 显示 "-" 不 NPE
+                    if (md.changePercent() != null) {
+                        sb.append(" 今日涨跌").append(fmt(md.changePercent())).append("%");
+                    }
                 }
             }
             sb.append(" 止损位").append(p.stopLossPrice() != null ? fmt(p.stopLossPrice()) : "未设置")

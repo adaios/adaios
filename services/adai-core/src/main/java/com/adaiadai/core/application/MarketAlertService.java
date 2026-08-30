@@ -34,7 +34,7 @@ import java.util.Set;
 /**
  * MarketAlertService — 行情异动主动推送（Layer 2/5 主动推送，Phase 2）。
  * <p>
- * 交易时段（工作日 9:30-11:30 / 13:00-15:00，cron 可配）每 30 分钟轮询持仓行情，
+ * 交易时段（工作日 10:00-11:30 / 13:00-15:00，cron 可配）每 30 分钟轮询持仓行情，
  * 检测四类异动并写入当日推送事件（{@code data/{userId}/trading/pushes/{date}.json}）：
  * <ul>
  *   <li><b>stop-loss</b>：现价跌破用户预设止损位（R66 硬判定，G-3 引擎口径）→ 真止损预警（2026-08-16 新增）</li>
@@ -51,6 +51,16 @@ import java.util.Set;
 public class MarketAlertService {
 
     private static final Logger log = LoggerFactory.getLogger(MarketAlertService.class);
+
+    /**
+     * 轮询 cron（工作日 10-11 / 13-15 点每 30 分钟，首轮 10:00）。
+     * <p>
+     * 2026-08-30（用户反馈批 C）：旧值 {@code 9-11,13-15} 在 9:00/9:30 也轮询，但那时行情接口
+     * 返回的是**上一交易日**收盘数据——生产实锤（2026-08-27 09:00）：推「今日跌 -3.11%」实为前日
+     * 跌幅；且 signature=symbol:date:type 被旧数据烧掉当日名额，盘中真触发同类型异动反而不再推。
+     * 首轮改 10:00（开盘 30 分钟后，行情确定是当日数据）一并根治措辞与去重两个问题。
+     */
+    static final String CRON_POLL = "0 */30 10-11,13-15 * * MON-FRI";
 
     private final MarketDataSource marketDataSource;
     private final PositionRepository positionRepository;
@@ -102,10 +112,15 @@ public class MarketAlertService {
     /**
      * 定时轮询：遍历启用账号中**启用了 trading 插件**的用户逐用户检测（REVIEW S-4：写侧与 Feed 读侧
      * 门控对称——无插件用户磁盘不累积看不见的 push 残留、不做无谓行情轮询）。
-     * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置（默认工作日 9-11/13-15 点每 30 分钟）。
+     * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置。
      */
-    @Scheduled(cron = "${adai.market.alert.poll-cron:0 */30 9-11,13-15 * * MON-FRI}")
+    @Scheduled(cron = "${adai.market.alert.poll-cron:" + CRON_POLL + "}")
     public void poll() {
+        // 2026-08-30（用户反馈批）：法定节假日休市日不轮询——B5-1（2026-08-23）只补了
+        // TradingSessionPushService，本服务漏了：节假日撞工作日时行情静止，
+        // break-cost/stop-loss 类只比「价格 vs 阈值」→ 拿上一交易日收盘价每天重推一次
+        // （signature 按日去重挡不住跨日）。周末由 cron MON-FRI 排除，此处只挡节假日。
+        if (!TradingSessionPushService.isTradingDay(java.time.LocalDate.now())) return;
         Set<String> userIds = new LinkedHashSet<>();
         accountRepository.findAll().stream()
                 .filter(Account::enabled)

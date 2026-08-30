@@ -541,5 +541,45 @@ class MarketAlertServiceTest {
         assertTrue(cap.getAllValues().stream().noneMatch(m -> m.title().contains("批次止损预警")),
                 "stop-loss 开关关闭 → 批次级止损不推送");
     }
+
+    // ── 2026-08-30 用户反馈批：节假日守卫（A）+ 轮询首轮口径（C）──
+
+    @Test
+    void poll_noArg_holiday_noQuoteNoPush() {
+        // A（B5-1 残留）：法定节假日撞工作日——旧实现照常轮询，行情静止时 break-cost/止损类
+        // 拿上一交易日收盘价每天重推一次（signature 按日去重挡不住跨日）。守卫后整体跳过。
+        MarketDataSource market = mock(MarketDataSource.class);
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600519", "贵州茅台", "8.00", "9.00")));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(
+                new Account("adai", "admin", true, null, List.of(PluginRegistry.PLUGIN_TRADING))));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        try (var mocked = org.mockito.Mockito.mockStatic(TradingSessionPushService.class)) {
+            mocked.when(() -> TradingSessionPushService.isTradingDay(any())).thenReturn(false);
+            new MarketAlertService(market, positions, accounts, mock(MarketSnapshotRepository.class),
+                    List.of(push), pluginService,
+                    new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()),
+                    defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+        }
+
+        verify(market, never()).quote(any());
+        verify(push, never()).push(anyString(), any());
+    }
+
+    @Test
+    void pollCron_firstPollAtTen_notNine() {
+        // C：9:00/9:30 行情接口仍返回上一交易日收盘 → 旧数据冒充「今日」且烧掉当日去重签名
+        //（2026-08-27 生产实锤：09:00 推「今日跌 -3.11%」实为前日跌幅，盘中真触发反而不推）。首轮必须 10:00 起。
+        assertTrue(MarketAlertService.CRON_POLL.startsWith("0 */30 10-11,13-15"),
+                "轮询首轮应从 10:00 起，实际: " + MarketAlertService.CRON_POLL);
+        assertFalse(MarketAlertService.CRON_POLL.contains("9-11"),
+                "不得再含 9 点档，实际: " + MarketAlertService.CRON_POLL);
+        assertTrue(MarketAlertService.CRON_POLL.endsWith("* * MON-FRI"), "周末仍由 cron 排除");
+    }
 }
 
