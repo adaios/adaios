@@ -1805,9 +1805,9 @@ class _TradingPageState extends State<TradingPage> {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 140,
+                  width: 150,
                   child: TextField(controller: dateCtrl,
-                      decoration: _caseInput('日期（可空）')),
+                      decoration: _caseInput('日期 yyyy-MM-dd（可空）')),
                 ),
               ]),
               const SizedBox(height: 12),

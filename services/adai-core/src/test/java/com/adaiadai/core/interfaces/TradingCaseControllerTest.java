@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -258,5 +259,45 @@ class TradingCaseControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"symbol\":\"abc\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ── 日期宽容解析（2026-08-30 用户反馈 400：date=20260826）──
+
+    @Test
+    void match_basicDateFormat_acceptsYyyyMMdd() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<LocalDate> received = new java.util.concurrent.atomic.AtomicReference<>();
+        when(appService.match(anyString(), anyString(), any())).thenAnswer(inv -> {
+            received.set(inv.getArgument(2));
+            return new TradingCaseAppService.MatchResponse("000831", List.of());
+        });
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000831\",\"date\":\"20260826\"}"))
+                .andExpect(status().isOk());
+        assertEquals(LocalDate.of(2026, 8, 26), received.get(),
+                "yyyyMMdd 应被解析为 LocalDate 2026-08-26");
+    }
+
+    @Test
+    void match_isoDateFormat_acceptsYyyyMmDd() throws Exception {
+        when(appService.match(anyString(), anyString(), any())).thenReturn(
+                new TradingCaseAppService.MatchResponse("000831", List.of()));
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000831\",\"date\":\"2026-08-26\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void match_invalidDateFormat_returns400WithHumanMessage() throws Exception {
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000831\",\"date\":\"2026-8-26\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(
+                        org.hamcrest.Matchers.containsString("日期格式不正确")));
     }
 }

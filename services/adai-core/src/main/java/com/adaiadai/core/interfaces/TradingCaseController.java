@@ -46,7 +46,7 @@ public class TradingCaseController {
             @Valid @RequestBody CaseAnnotateRequest body) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        CaseRecord record = caseAppService.annotate(userId, body.symbol(), body.buyDate(),
+        CaseRecord record = caseAppService.annotate(userId, body.symbol(), parseDate(body.buyDate()),
                 body.buyType(), body.description(), body.labels(), body.name());
         return ResponseEntity.ok(record);
     }
@@ -99,7 +99,30 @@ public class TradingCaseController {
             @Valid @RequestBody CaseMatchRequest body) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        return ResponseEntity.ok(caseAppService.match(userId, body.symbol(), body.date()));
+        return ResponseEntity.ok(caseAppService.match(userId, body.symbol(),
+                body.date() == null || body.date().isBlank() ? null : parseDate(body.date())));
+    }
+
+    /**
+     * 日期宽容解析（2026-08-30 用户反馈 400）：接受 ISO（yyyy-MM-dd）与 BASIC（yyyyMMdd），
+     * 都失败 → 业务异常（400 + 人话「日期格式不正确，请用 yyyy-MM-dd」）。
+     */
+    private LocalDate parseDate(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new com.adaiadai.core.domain.trading.TradingException("日期不能为空");
+        }
+        String s = raw.strip();
+        try {
+            return LocalDate.parse(s);
+        } catch (Exception e) {
+            // 用户习惯性输入 20260826（通达信/日期选择器常见格式）
+            try {
+                return LocalDate.parse(s, java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+            } catch (Exception e2) {
+                throw new com.adaiadai.core.domain.trading.TradingException(
+                        "日期格式不正确：" + raw + "，请用 yyyy-MM-dd（如 2026-08-26）");
+            }
+        }
     }
 
     private ResponseEntity<?> requireTradingPlugin(String userId) {
@@ -109,13 +132,13 @@ public class TradingCaseController {
         return null;
     }
 
-    /** 标注请求体。 */
+    /** 标注请求体（buyDate 字符串宽松格式：yyyy-MM-dd 或 yyyyMMdd，Controller 解析）。 */
     public record CaseAnnotateRequest(
             @NotBlank(message = "标的代码不能为空")
             @Pattern(regexp = "\\d{6}", message = "标的代码需为 6 位数字")
             String symbol,
-            @NotNull(message = "买点日期不能为空")
-            LocalDate buyDate,
+            @NotBlank(message = "买点日期不能为空")
+            String buyDate,
             @Size(max = 20, message = "买点类型过长")
             String buyType,
             @Size(max = 200, message = "描述过长")
@@ -124,10 +147,10 @@ public class TradingCaseController {
             String name,
             List<String> labels) {}
 
-    /** 匹配请求体（date 可空 = 最近交易日）。 */
+    /** 匹配请求体（date 可空 = 最近交易日；字符串宽松格式同标注）。 */
     public record CaseMatchRequest(
             @NotBlank(message = "标的代码不能为空")
             @Pattern(regexp = "\\d{6}", message = "标的代码需为 6 位数字")
             String symbol,
-            LocalDate date) {}
+            String date) {}
 }
