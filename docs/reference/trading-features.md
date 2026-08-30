@@ -144,6 +144,7 @@ tags: [trading, plugin, reference]
 | GET | `/trading/cases/{caseId}` | 案例详情 | `?kline=true` 附 90 根窗口日 K（前端画图重放）；不存在 400 |
 | DELETE | `/trading/cases/{caseId}` | 删除案例 | 删案例文件 + 清单条目；不存在 400 |
 | POST | `/trading/cases/{caseId}/insight` | **生成 AI 理解（环 3）** | LLM 读特征画像 + K 线统计 → 结构化「为什么这是完美买点」（summary/keyFeatures/confidence）→ aiInsight 落盘；LLM 失败 400 不落半成品 |
+| POST | `/trading/cases/import` | **批量导入完美案例笔记（2026-08-31）** | 粘贴 B1/B2 笔记 → 解析（名称【缩写】+日期行 / 名称[缩写_日期]，飞书转义 `\-`/8 位日期/区间取首/类型分组跳过）→ 名称转代码（本地全 A 名称表 data/market/names.json 精确 → 东财 suggest 兜底）→ 逐条标注（前复权/特征/共识校验，幂等跳过已存在）；北交所 920 明确失败；实测 26 条含双创 |
 | POST | `/trading/cases/match` | **判定当下（环 4，核心价值）** | 当前标的形态 vs 案例库归一化相似度 Top 5（加权欧氏，date 可空=最近交易日）；空库 matches:[] 静默降级；相似度不覆盖规则硬判定 |
 
 ---
@@ -295,6 +296,7 @@ tags: [trading, plugin, reference]
 环 2  ✅ 自动拉 前60+后30 交易日 K → 特征画像 + 后验窗口 → 落盘 JSON → web 画图（通达信风格：三副图 + 单日指标查看 + 窗口移动，已完成）
 环 3  ✅ LLM 理解（aiInsight 生成 + 落盘，2026-08-30 完成；≥20 案例归纳后置）
 环 4  ✅ 判定当下（特征归一化 + 相似度引擎 + match 端点，2026-08-30 完成；15:10 扫描接入二期）
+环 1  ✅ 批量导入（2026-08-31：B1/B2 笔记批量标注——解析器 + 全 A 名称表 + 逐条幂等，用户 32 案例入库）
 ```
 
 **特征画像（9 项，全部从 OHLCV 重算，标准化相对值）**：距前 20 日最高收盘回撤 % / 量比（3 日均 ÷ 5 日均）/ KDJ.J + 金叉 / MACD 柱 + 金叉 / MA 关系（close vs MA20/MA60）/ 距 60 日线 %（黄线近似）/ 黄白线态（touch/near/above/below + 白线在黄线之上=开门）/ 盘整天数 / 破前高。黄白线语义依据课程（黄线≈主力成本线≈接近 60 日线）；公式源码待用户提供（P4 精确化）。
