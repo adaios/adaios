@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-30
 status: active
-lines: 71
+lines: 72
 depends-on: []
 related:
   - ../_index.md
@@ -63,6 +63,7 @@ tags: [meta, index, rfc]
 | 20260825-trading-lot-tracking-behavior.md | 交易逐笔批次跟踪与行为纠偏（lot 模型/LIFO/批次止损/行为标注/当日同步/推送过期/回合总账）| implemented |
 | 20260822-memory-plugin-isolation.md | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 | draft |
 | 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）| draft |
+| 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
 
 ## 过期判断
 

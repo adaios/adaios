@@ -419,3 +419,45 @@ params:
 ```
 
 **配套**：`trading/knowledge.md`（用户私有交易知识，LLM 注入；`TradingKnowledgeSource` 优先读，os/ 作 adai 默认）。**无规则文件 → 全部默认值 = adai 现状行为**（降级不坏）。
+
+### 2.17 完美买点案例 `trading/cases/`（第四阶段 2026-08-30 新增）
+
+| 项 | 值 |
+|:---|:---|
+| 路径 | `trading/cases/_index.json`（清单）+ `trading/cases/{buyDate}_{symbol}.json`（案例真相源，每案例一文件）|
+| 格式 | JSON（Jackson 序列化 `CaseRecord`，JavaTimeModule 日期 ISO）——对齐项目数据惯例（trades/push/account 均 json）；案例是机器消费数据，非规则真相源（YAML 仅规则层 D9 决策）|
+| 真相源 | `TradingCaseFileRepository`（domain 端口 `TradingCaseRepository`）|
+| 变更 | **MINOR（2026-08-30）**：新增 |
+
+```
+# trading/cases/2026-08-03_000725.json（摘要）
+{
+  "id": "2026-08-03_000725",
+  "symbol": "000725",
+  "name": "京东方A",
+  "buyDate": "2026-08-03",
+  "buyType": "B1",
+  "description": "回踩 60 日线 + 地量，次日大阳启动",
+  "labels": ["缩量回踩"],
+  "labeledAt": "2026-08-30T10:00:00",
+  "window": { "beforeDays": 60, "afterDays": 30 },
+  "features": {                      # 买点日特征画像（标准化相对值，跨标的可比）
+    "drawdownFromHighPct": 52.3,     # 距前 20 日最高收盘回撤 %
+    "volumeShrinkRatio": 0.62,       # 3 日均量 / 5 日均量
+    "kdjJ": 8.4, "kdjGoldenCross": true,
+    "macdHist": -0.31, "macdCrossUp": true,
+    "maRelation": "close_above_ma20_below_ma60",
+    "distToMa60Pct": 1.8,            # 距 60 日线 %（黄线近似主特征）
+    "yellowLineState": "near",       # touch/near/above/below（黄线近似态）
+    "whiteAboveYellow": false,       # 白线(MA10)在黄线之上 = 开门
+    "sidewaysDays": 5, "breakoutFromHigh": false
+  },
+  "verify": {                        # 后验窗口（缺数据 → null）
+    "+5dReturnPct": 18.2, "+10dReturnPct": 24.5,
+    "maxDrawdownAfterBuyPct": -2.1, "stopLossHit": false
+  },
+  "aiInsight": { "summary": "", "keyFeatures": [], "confidence": 0.0, "reviewed": false }
+}
+```
+
+**语义**：K 线本体不落盘（symbol+buyDate 可重放，`KlineSource.klineRange`）；特征已固化，重放只影响画面不影响判定。**前复权口径**：数据源返回前复权价，除权后历史画面可能有微调（相对值特征不受影响）。写入原子（FileStorage 覆盖），并发 per-user 条带锁；case 文件与清单无跨文件原子（已知取舍，同 §2.8 推送）。损坏案例文件 → 视为不存在（不阻断）。

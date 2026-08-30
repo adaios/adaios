@@ -942,6 +942,45 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 >
 > **插件门控（RFC 20260814，v3.18）**：promote 写入共享 os/ 知识库 → 仅启用 trading 插件的用户可用；未启用 → `403`（`{"error":"trading 插件未启用，无法反哺知识"}`）。
 
+### `POST /api/v1/trading/cases` — 标注完美买点案例（第四阶段环 1-2，2026-08-30）
+> 需 trading 插件（403）。蓝图 trading-case-library-design.md + RFC 20260830-trading-perfect-case-library.md。
+
+一句话标注 → 自动拉「前 60 + 后 30 交易日」日 K（腾讯主源/东财兜底，`klineRange`）→ 特征画像 + 后验窗口 → 落盘 `data/{userId}/trading/cases/{buyDate}_{symbol}.json`（File First，JSON）。
+
+**Request Body**
+
+```json
+{
+  "symbol": "000725",
+  "buyDate": "2026-08-03",
+  "buyType": "B1",
+  "description": "回踩 60 日线 + 地量，次日大阳启动",
+  "name": "京东方A",
+  "labels": ["缩量回踩"]
+}
+```
+
+**Response（200）**：完整案例（含特征画像 + 后验），`verify` 字段 `+5dReturnPct`/`+10dReturnPct`/`maxDrawdownAfterBuyPct` 缺数据为 `null`。
+
+**错误**：symbol 非 6 位数字 / buyDate 缺失 → 400（校验）；buyDate 未来 → 400；重复标注（同 symbol+date）→ 400「该案例已标注过」；K 线拉取失败 → 400「无法获取…K 线数据」（不落半成品，fail-visible）。
+
+### `GET /api/v1/trading/cases` — 案例列表
+> 需 trading 插件（403）。
+
+返回全部案例（buyDate 倒序），每项含 id/symbol/name/buyDate/buyType/features/verify/aiInsight。
+
+### `GET /api/v1/trading/cases/{caseId}` — 案例详情（可选 K 线窗口）
+> 需 trading 插件（403）。
+
+- `caseId` 格式 `{buyDate}_{symbol}`（如 `2026-08-03_000725`）
+- `?kline=true` → 响应附 `kline`（90 根窗口日 K，前端画图重放；拉取失败 → 空数组）
+- 不存在 → 400「案例不存在」
+
+### `DELETE /api/v1/trading/cases/{caseId}` — 删除案例
+> 需 trading 插件（403）。
+
+删除案例文件 + 清单条目；不存在 → 400「案例不存在」。响应 `{"deleted":true,"caseId":"..."}`。
+
 ### `GET /api/v1/admin/trading/knowledge/conflicts` — 检测规则矛盾（需 X-Admin-Token）
 
 从 `os/trading-engine/knowledge/context/rules.md` 解析真实规则，与当前持仓状态对比，标记可能违反的规则（规则名/描述取自真实规则内容，非硬编码）。

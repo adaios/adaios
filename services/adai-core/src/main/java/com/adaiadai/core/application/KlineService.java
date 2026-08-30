@@ -75,6 +75,31 @@ public class KlineService {
         return fb != null ? fb : List.of();
     }
 
+    /** 按日期范围查询（2026-08-30：案例库历史窗口）；主源→兜底，熔断同 kline。 */
+    public List<Candle> klineRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
+        if (symbol == null || symbol.isBlank()) return List.of();
+        if (circuitOpen()) {
+            List<Candle> fb = fallback.klineRange(symbol, from, to);
+            return fb != null ? fb : List.of();
+        }
+        List<Candle> candles = primary.klineRange(symbol, from, to);
+        if (!candles.isEmpty()) {
+            consecutiveFailures = 0;
+            return candles;
+        }
+        int failures = ++consecutiveFailures;
+        if (failures >= TRIP_THRESHOLD) {
+            circuitOpenUntil = System.currentTimeMillis() + COOLDOWN_MS;
+            log.warn("{} K线范围连续失败 {} 次，熔断 {} 分钟，直接走{}兜底",
+                    primaryName, failures, COOLDOWN_MS / 60_000, fallbackName);
+        } else {
+            log.warn("{} K线范围空，降级{} | symbol={} | 连续失败 {} 次",
+                    primaryName, fallbackName, symbol, failures);
+        }
+        List<Candle> fb = fallback.klineRange(symbol, from, to);
+        return fb != null ? fb : List.of();
+    }
+
     private boolean circuitOpen() {
         long until = circuitOpenUntil;
         if (until == 0) return false;

@@ -92,6 +92,49 @@ public class EastMoneyKlineDataSource implements KlineSource {
         }
     }
 
+    /** 按日期范围直查（2026-08-30：案例库历史窗口）。接口 beg/end 参数格式 yyyyMMdd。 */
+    @Override
+    public List<Candle> klineRange(String symbol, LocalDate from, LocalDate to) {
+        if (symbol == null || symbol.isBlank() || from == null || to == null || from.isAfter(to)) {
+            return List.of();
+        }
+        String secid = (symbol.startsWith("6") || symbol.startsWith("9")) ? "1." + symbol : "0." + symbol;
+        String url = String.format(KLINE_URL, secid, 320)
+                + "&beg=" + from.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+                + "&end=" + to.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url)).timeout(TIMEOUT)
+                    .header("User-Agent", "Mozilla/5.0").GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            JsonNode root = mapper.readTree(response.body());
+            JsonNode klines = root.path("data").path("klines");
+            if (!klines.isArray() || klines.isEmpty()) {
+                log.warn("东财 K线范围空 | symbol={} | {}-{}", symbol, from, to);
+                return List.of();
+            }
+            List<Candle> candles = new ArrayList<>();
+            for (JsonNode row : klines) {
+                String[] parts = row.asText().split(",");
+                if (parts.length < 6) continue;
+                try {
+                    Candle c = new Candle(
+                            LocalDate.parse(parts[0]),
+                            Double.parseDouble(parts[1]), Double.parseDouble(parts[3]),
+                            Double.parseDouble(parts[4]), Double.parseDouble(parts[2]),
+                            Double.parseDouble(parts[5]));
+                    if (!c.date().isBefore(from) && !c.date().isAfter(to)) candles.add(c);
+                } catch (Exception ignored) {}
+            }
+            if (candles.isEmpty()) return List.of();
+            cache.put(symbol, new KlineCache(LocalDate.now(), candles));
+            return candles;
+        } catch (Exception e) {
+            log.warn("东财 K线范围失败 | symbol={} | {}", symbol, e.getMessage());
+            return List.of();
+        }
+    }
+
     private record KlineCache(LocalDate date, List<Candle> candles) {
         boolean sameDay() {
             return date.equals(LocalDate.now());

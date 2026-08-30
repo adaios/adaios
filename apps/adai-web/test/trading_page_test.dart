@@ -1824,4 +1824,97 @@ void main() {
     expect(putCalled, isTrue, reason: '更新规则应调用 PUT /trading/rules');
     expect(putBody, contains('positionLimitPercent'), reason: 'PUT body 应含参数');
   });
+
+  // ── 第四阶段（2026-08-30）：完美买点案例库（环 1-2）──
+
+  Map<String, dynamic> _caseJson() => {
+        'id': '2026-08-03_000725',
+        'symbol': '000725',
+        'name': '京东方A',
+        'buyDate': '2026-08-03',
+        'buyType': 'B1',
+        'description': '回踩 60 日线 + 地量',
+        'features': {
+          'drawdownFromHighPct': 52.3,
+          'volumeShrinkRatio': 0.62,
+          'kdjJ': 8.4,
+          'distToMa60Pct': 1.8,
+          'yellowLineState': 'near',
+          'sidewaysDays': 5,
+          'breakoutFromHigh': false,
+        },
+        'verify': {
+          '+5dReturnPct': 18.2,
+          '+10dReturnPct': 24.5,
+          'maxDrawdownAfterBuyPct': -2.1,
+          'stopLossHit': false,
+        },
+      };
+
+  testWidgets('案例 Tab：initState 加载案例列表（GET /trading/cases）', (tester) async {
+    final getRequests = <String>[];
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        getRequests.add(request.url.path);
+        return _json([_caseJson()]);
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+    expect(getRequests, contains('/api/v1/trading/cases'),
+        reason: 'initState 应请求案例列表');
+  });
+
+  testWidgets('案例 Tab：标注调用 POST /trading/cases（契约：symbol/buyDate/buyType）', (tester) async {
+    var postCalled = false;
+    var postBody = '';
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'POST') {
+        postCalled = true;
+        postBody = request.body;
+        return _json(_caseJson());
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    // 通过 ApiService 层验证标注契约（widget 层 Tab 7 需滚动）
+    await api.annotateCase(symbol: '000725', buyDate: '2026-08-03', buyType: 'B1');
+    await tester.pumpAndSettle();
+
+    expect(postCalled, isTrue, reason: '标注应调用 POST /trading/cases');
+    expect(postBody, contains('000725'), reason: 'POST body 应含 symbol');
+    expect(postBody, contains('2026-08-03'), reason: 'POST body 应含 buyDate');
+    expect(postBody, contains('B1'), reason: 'POST body 应含 buyType');
+  });
+
+  testWidgets('案例 Tab：详情带 kline=true 参数（GET /trading/cases/{id}）', (tester) async {
+    String? detailUrl;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/2026-08-03_000725') {
+        detailUrl = request.url.toString();
+        return _json({
+          'caseRecord': _caseJson(),
+          'kline': <Map<String, dynamic>>[],
+        });
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await api.getCaseDetail('2026-08-03_000725', kline: true);
+    expect(detailUrl, contains('kline=true'), reason: '详情应带 kline=true 供画图');
+  });
 }

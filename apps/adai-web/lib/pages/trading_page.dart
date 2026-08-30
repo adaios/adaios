@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../utils/trade_import_parser.dart';
+import '../widgets/case_kline_chart.dart';
 import '../widgets/page_header.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
@@ -106,6 +107,7 @@ class _TradingPageState extends State<TradingPage> {
     super.initState();
     _loadAll();
     _loadRules();
+    _loadCases();
     // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
     // P3-11（2026-08-17）：IndexedStack offstage 时（切到别的页）不再空转发请求——仅当前页为交易页才刷
     // 注：P1-1 修复后 shell 传中文 label（'交易'），判断须用 label 而非插件标识 'trading'
@@ -866,7 +868,7 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildTabWorkspace() {
     return DefaultTabController(
-      length: 6,
+      length: 7,
       child: _TabHistoryRefreshListener(
         onHistorySelected: () => _historyKey.currentState?.refreshSilently(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -890,6 +892,7 @@ class _TradingPageState extends State<TradingPage> {
                 Tab(text: '资金'),
                 Tab(text: '历史成交'),
                 Tab(text: '规则'),
+                Tab(text: '案例'),
               ],
             ),
           ),
@@ -903,6 +906,7 @@ class _TradingPageState extends State<TradingPage> {
               SingleChildScrollView(child: _buildCashSection()),
               _HistorySection(key: _historyKey, api: widget.api),
               SingleChildScrollView(child: _buildRuleSection()),
+              SingleChildScrollView(child: _buildCaseSection()),
             ]),
           ),
         ]),
@@ -1627,6 +1631,351 @@ class _TradingPageState extends State<TradingPage> {
     );
     if (saved == true && mounted) _toast('交易规则已更新');
   }
+
+  // ── 第四阶段（2026-08-30）：完美买点案例库（环 1-2）──
+
+  List<Map<String, dynamic>> _cases = [];
+  bool _casesLoaded = false;
+  bool _casesLoadFailed = false;
+
+  /// 加载案例列表（GET /trading/cases；失败显示重试，C4「保活页陈旧」同类信号）。
+  Future<void> _loadCases() async {
+    try {
+      final list = await widget.api.listCases();
+      if (mounted) {
+        setState(() {
+          _cases = list;
+          _casesLoaded = true;
+          _casesLoadFailed = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _casesLoadFailed = true);
+    }
+  }
+
+  Widget _buildCaseSection() {
+    if (!_casesLoaded && !_casesLoadFailed) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Text('案例加载中…', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+      );
+    }
+    if (_casesLoadFailed) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          const Text('案例加载失败，请检查后端连接',
+              style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: _loadCases,
+            child: const Text('重试', style: TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+          ),
+        ]),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('完美买点案例', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const SizedBox(width: 8),
+        Text('${_cases.length} 个 · 案例是手段，判定当下是价值',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: _openAnnotateCaseDialog,
+          icon: const Icon(Icons.add, size: 14, color: AppColors.darkGreen),
+          label: const Text('标注案例', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (_cases.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Text('还没有案例——标注第一个完美买点（代码 + 日期），系统自动拉 60+30 日 K 还原画面、算特征和后验。',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            SizedBox(height: 6),
+            Text('例如：000725 / 2026-08-03 / B1 回踩 60 日线 + 地量',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+          ]),
+        )
+      else
+        ..._cases.map((c) => _buildCaseRow(c)),
+    ]);
+  }
+
+  Widget _buildCaseRow(Map<String, dynamic> c) {
+    final id = '${c['id']}';
+    final name = '${c['name'] ?? ''}';
+    final symbol = '${c['symbol'] ?? ''}';
+    final buyDate = '${c['buyDate'] ?? ''}';
+    final buyType = '${c['buyType'] ?? ''}';
+    final verify = (c['verify'] as Map<String, dynamic>?) ?? const {};
+    final plus5 = verify['+5dReturnPct'];
+    final plus5Text = plus5 == null ? '后验—' : '${(plus5 as num).toStringAsFixed(1)}%';
+    final features = (c['features'] as Map<String, dynamic>?) ?? const {};
+    final desc = '${c['description'] ?? ''}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 150,
+          child: Text(name.isNotEmpty ? '$name($symbol)' : symbol,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        ),
+        SizedBox(
+          width: 92,
+          child: Text(buyDate, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+        ),
+        SizedBox(
+          width: 64,
+          child: Text(buyType.isNotEmpty ? buyType : '未知',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGreen)),
+        ),
+        SizedBox(
+          width: 76,
+          child: Text('+5d $plus5Text', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+        ),
+        Expanded(
+          child: Text(
+            desc.isNotEmpty ? desc : '回撤 ${features['drawdownFromHighPct'] ?? '—'}% · 量比 ${features['volumeShrinkRatio'] ?? '—'} · J ${features['kdjJ'] ?? '—'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+          ),
+        ),
+        IconButton(
+          tooltip: '查看详情（K 线还原 + 特征）',
+          icon: const Icon(Icons.insert_chart_outlined, size: 16, color: AppColors.darkGrey2),
+          onPressed: () => _openCaseDetailDialog(c),
+        ),
+        IconButton(
+          tooltip: '删除案例',
+          icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.darkGrey5),
+          onPressed: () => _deleteCase(id),
+        ),
+      ]),
+    );
+  }
+
+  /// 标注弹窗：代码 + 日期 + 买点类型 + 描述 → POST /trading/cases。
+  Future<void> _openAnnotateCaseDialog() async {
+    final symbolCtrl = TextEditingController();
+    final dateCtrl = TextEditingController(text: '');
+    final typeCtrl = TextEditingController(text: 'B1');
+    final descCtrl = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('标注完美买点案例', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 380,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('系统自动拉「前 60 + 后 30 交易日」日 K，还原 K 线画面、计算特征画像和后验窗口。',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const SizedBox(height: 12),
+            TextField(controller: symbolCtrl, decoration: _caseInput('标的代码（6 位，如 000725）')),
+            const SizedBox(height: 8),
+            TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
+            const SizedBox(height: 8),
+            TextField(controller: typeCtrl, decoration: _caseInput('买点类型（B1/B2/B3/SB1/其他，可空）')),
+            const SizedBox(height: 8),
+            TextField(controller: descCtrl, decoration: _caseInput('为什么完美（可选，如：回踩 60 日线 + 地量）')),
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('标注', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+          ),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final symbol = symbolCtrl.text.trim();
+    final date = dateCtrl.text.trim();
+    if (symbol.isEmpty || date.isEmpty) {
+      _toast('代码和日期必填');
+      return;
+    }
+    try {
+      await widget.api.annotateCase(
+        symbol: symbol,
+        buyDate: date,
+        buyType: typeCtrl.text.trim(),
+        description: descCtrl.text.trim(),
+      );
+      await _loadCases();
+      if (mounted) _toast('案例已标注，画面已还原');
+    } catch (e) {
+      if (mounted) _toast('标注失败：${_extractApiError(e)}');
+    }
+  }
+
+  /// 详情弹窗：K 线图（三区）+ 特征 + 后验（GET /trading/cases/{id}?kline=true）。
+  Future<void> _openCaseDetailDialog(Map<String, dynamic> c) async {
+    final caseId = '${c['id']}';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+        future: widget.api.getCaseDetail(caseId, kline: true),
+        builder: (ctx, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const AlertDialog(
+              backgroundColor: AppColors.darkSurface2,
+              content: SizedBox(
+                width: 520,
+                child: Text('案例加载中…', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+              ),
+            );
+          }
+          if (snap.hasError) {
+            return AlertDialog(
+              backgroundColor: AppColors.darkSurface2,
+              content: SizedBox(
+                width: 520,
+                child: Text('加载失败：${_extractApiError(snap.error)}',
+                    style: const TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+              ),
+            );
+          }
+          final detail = snap.data ?? const {};
+          final record = (detail['caseRecord'] as Map<String, dynamic>?) ?? detail;
+          final kline = ((detail['kline'] as List<dynamic>?) ?? const [])
+              .cast<Map<String, dynamic>>();
+          return _buildCaseDetailDialog(ctx, record, kline);
+        },
+      ),
+    );
+  }
+
+  Widget _buildCaseDetailDialog(BuildContext ctx, Map<String, dynamic> record, List<Map<String, dynamic>> kline) {
+    final features = (record['features'] as Map<String, dynamic>?) ?? const {};
+    final verify = (record['verify'] as Map<String, dynamic>?) ?? const {};
+    final buyDate = '${record['buyDate'] ?? ''}';
+    String fmt(dynamic v, {String suffix = ''}) => v == null ? '—' : '$v$suffix';
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: Text('${record['name'] ?? record['symbol']}（${record['symbol']}）· ${record['buyType'] ?? ''} · $buyDate',
+          style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            CaseKlineChart(kline: kline, buyDate: buyDate),
+            const SizedBox(height: 10),
+            if ('${record['description'] ?? ''}'.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('「${record['description']}」',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _chip('回撤 ${fmt(features['drawdownFromHighPct'], suffix: '%')}'),
+                _chip('量比 ${fmt(features['volumeShrinkRatio'])}'),
+                _chip('KDJ.J ${fmt(features['kdjJ'])}'),
+                _chip('距60日线 ${fmt(features['distToMa60Pct'], suffix: '%')}'),
+                _chip('黄白线 ${features['yellowLineState'] ?? '—'}'),
+                _chip('盘整 ${fmt(features['sidewaysDays'], suffix: '天')}'),
+                _chip('破前高 ${features['breakoutFromHigh'] == true ? '是' : '否'}'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _chip('+5d ${fmt(verify['+5dReturnPct'], suffix: '%')}', highlight: true),
+                _chip('+10d ${fmt(verify['+10dReturnPct'], suffix: '%')}', highlight: true),
+                _chip('最大回撤 ${fmt(verify['maxDrawdownAfterBuyPct'], suffix: '%')}', highlight: true),
+                _chip('破止损 ${verify['stopLossHit'] == true ? '是' : '否'}', highlight: true),
+              ],
+            ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+        ),
+      ],
+    );
+  }
+
+  Widget _chip(String text, {bool highlight = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+            color: highlight ? AppColors.darkGreen.withValues(alpha: 0.6) : AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+    );
+  }
+
+  InputDecoration _caseInput(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.darkBorder)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppColors.darkGreen)),
+    );
+  }
+
+  Future<void> _deleteCase(String caseId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('删除案例？', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Text('$caseId 将被删除（K 线/特征/后验一并移除）。',
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(fontSize: 13, color: AppColors.darkRed)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await widget.api.deleteCase(caseId);
+      await _loadCases();
+      if (mounted) _toast('案例已删除');
+    } catch (e) {
+      if (mounted) _toast('删除失败：${_extractApiError(e)}');
+    }
+  }
+
 
   /// 通用导入 Dialog：粘贴文本 或 选择文件（上传留存 + GBK 转码）→ 回调导入。
   Future<void> _openImportDialog(String title, String hint, Future<void> Function(String) onImport) async {

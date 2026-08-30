@@ -619,6 +619,58 @@ class ApiService {
     _check(resp);
   }
 
+  // ── 第四阶段（2026-08-30）：完美买点案例库（环 1-2）──
+
+  /// 标注一个完美买点案例（POST /trading/cases，自动拉 60+30 日 K → 特征 + 后验）。
+  Future<Map<String, dynamic>> annotateCase({
+    required String symbol,
+    required String buyDate,
+    String? buyType,
+    String? description,
+    String? name,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'symbol': symbol,
+        'buyDate': buyDate,
+        if (buyType != null && buyType.isNotEmpty) 'buyType': buyType,
+        if (description != null && description.isNotEmpty) 'description': description,
+        if (name != null && name.isNotEmpty) 'name': name,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 案例列表（GET /trading/cases，buyDate 倒序）。
+  Future<List<Map<String, dynamic>>> listCases() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/cases'), headers: _headers);
+    _check(resp);
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// 案例详情（GET /trading/cases/{caseId}；kline=true 附 90 根窗口日 K 供画图）。
+  Future<Map<String, dynamic>> getCaseDetail(String caseId, {bool kline = false}) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/cases/$caseId${kline ? '?kline=true' : ''}'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 删除案例（DELETE /trading/cases/{caseId}）。
+  Future<void> deleteCase(String caseId) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/trading/cases/$caseId'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
   Future<TradeLogConfirmResult> confirmTradeLog() async {

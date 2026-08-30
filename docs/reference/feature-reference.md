@@ -728,7 +728,11 @@ Strict format:
 - **图片对话流（RFC 20260817）**：图片对话卡图置顶、turns 跟随滚动——聊天态与刷新态渲染一致（不再退化为固定附件）
 - **交易日志自动归集（RFC 20260817）**：成交截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（symbol+方向）→ 收盘 15:15 推送「今日操作汇总」→ 用户「确认并入账」→ recordTrade 链路落库；仅 trading 插件用户触发；不完整候选（无数量/价格）确认跳过引导补全；`data/{userId}/trading/trade-log/{yyyy-MM-dd}.json`
 - **历史成交 Tab（RFC 20260823）**：web 交易页常驻第 5 Tab（取代页头交易历史 Dialog）——日期范围查询 + 按日分组流水（方向/时间/代码/名称/数量/价格/成交金额/发生金额/成交编号 + 系统计算的费用放最后——2026-08-25 删止损/买点/原因三列）+ 独立导入入口（只认通达信历史成交导出）；导入幂等 + **缺失成交时间回填**（`updated` 计数）
-- **逐笔批次跟踪与行为纠偏（RFC 20260825）**：持仓从「一只股票」细化到「每一笔买入」——批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权含费），卖出 **LIFO** 先扣最近批次（底仓不动、先走短线），批次清仓 = 回合总账；**批次视图 `GET /trading/lots`**（注入现价 + 流水对账，web 持仓 Tab 批次弹窗 + app 持仓卡简版）；**导入双模式**（当日成交 → 同步持仓/现金/流水 + **每日操作总结**（买卖聚合 + 批次 diff + 行为标注六类：亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）；历史 → 只补流水）；**批次级止损推送**（批次破自己的止损（未设默认 −7%）单独提醒，不跟底仓混）；**推送定时消失**（`expiresAt`：行情类次日 09:30、汇总类次日 23:59）
+- **逐笔批次跟踪与行为纠偏（RFC 20260825）**：持仓从「一只股票」细化到「每一笔买入」——批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权含费），卖出 **LIFO** 先扣最近批次（底仓不动、先走短线），批次清仓 = 回合总账；**批次视图 `GET /trading/lots`**（注入现价 + 流水对账，web 持仓 Tab 批次弹窗 + app 持仓卡简版 + **批次明细弹窗 2026-08-28**）；**导入双模式**（当日成交 → 同步持仓/现金/流水 + **每日操作总结**（买卖聚合 + 批次 diff + 行为标注六类：亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）；历史 → 只补流水）；**批次级止损推送**（批次破自己的止损（未设默认 −7%）单独提醒，不跟底仓混）；**推送定时消失**（`expiresAt`：行情类次日 09:30、汇总类次日 23:59）
+- **截图入账（2026-08-26）**：交易页「📷 截图入账」→ 1-3 张成交截图 → VLM 识别 → 当日候选逐笔确认/丢弃；**候选缺成交日期禁落库 + 「补日期」入口**（v3.32，`PUT /trading/trade-log/date`）；`POST /trading/screenshots`
+- **交易规则层（第三阶段，2026-08-30）**：规则 = 用户私有内容——确定性判定（止损/仓位/买点/行为标注/打分/硬约束区间）全部从 `data/{userId}/trading/rules.yaml`（16 参数，`GET/PUT /trading/rules` 表单化编辑，web 规则 Tab）读取，无规则 → 默认值兜底（= adai 现状）；知识注入用户私有 `data/{userId}/trading/knowledge.md` 优先，os/ 作 adai 默认（owner 白名单）
+- **收盘小结推送（2026-08-29）**：15:30 `close-summary` 类型推送（当日成交 + 破止损 + 待确认），双端开关
+- **流式问答（2026-08-30，非交易专属但交易页在用）**：`POST /records/ask-stream` SSE（text 增量/meta 定稿/error 事件），app/web 交易页阿呆问答走流式，后端降级同步
 
 ### 交易数据智能（RFC 20260816，2026-08-16 落地）
 
@@ -742,8 +746,9 @@ Strict format:
 
 | 文件 | 类/方法 | 职责 |
 |:-----|:---------|:------|
-| `pages/trading_page.dart`（adai-web） | `TradingPage` | 交易管理端（持仓 + 自选 + 清仓 + 资金 + 历史成交 + **规则 六 Tab**——规则 Tab 2026-08-30 第三阶段：我的交易规则参数展示 + 编辑弹窗）|
-| `pages/trading_page.dart`（adai-app） | `TradingPage` | 手机交易页（账户卡 + 记录双通道 + 持仓卡 + 阿呆建议弹层；**2026-08-22 移除自选/清仓只读区块**，管理归 web）|
+| `pages/trading_page.dart`（adai-web） | `TradingPage` | 交易管理端（持仓 + 自选 + 清仓 + 资金 + 历史成交 + 规则 + **案例 七 Tab**——规则 Tab 2026-08-30 第三阶段：规则参数展示 + 编辑弹窗；**案例 Tab 2026-08-30 第四阶段**：完美买点案例列表/标注/详情弹窗（K 线图还原））|
+| `widgets/case_kline_chart.dart`（adai-web） | `CaseKlineChart` | 案例 K 线图（三区 CustomPaint：蜡烛+MA10/MA60（黄线）+买点标记 / 量 / KDJ+MACD；指标前端重算，A 股红涨绿亏）|
+| `pages/trading_page.dart`（adai-app） | `TradingPage` | 手机交易页（账户卡 + 记录双通道 + **📷 截图入账（2026-08-26）** + 持仓卡（批次简版 + **批次明细弹窗 2026-08-28**）+ 阿呆建议弹层；**2026-08-22 移除自选/清仓只读区块**，管理归 web）|
 
 ### 对应 API
 
@@ -766,6 +771,12 @@ Strict format:
 | `PUT /api/v1/trading/positions/{symbol}` | `updatePosition()` | 持仓元信息（止损/角色）|
 | `GET /api/v1/trading/rules` | `getTradingRules()` | **规则参数（第三阶段 2026-08-30）**：用户自己的交易系统参数（仓位上限/止损/行为标注/买点/打分权重/硬约束），无规则 → 默认 |
 | `PUT /api/v1/trading/rules` | `updateTradingRules()` | **规则参数更新**：部分字段覆盖，落 `data/{userId}/trading/rules.yaml` |
+| `POST /api/v1/trading/screenshots` | `uploadScreenshots()` | **截图入账（2026-08-26）**：1-3 张成交截图 → VLM → 当日候选 |
+| `PUT /api/v1/trading/trade-log/date` | `patchTradeLogDate()` | **补写候选成交日期（v3.32）**：缺日期候选补日期后允许确认 |
+| `POST /api/v1/trading/cases` | `annotateCase()` | **完美买点案例标注（第四阶段）**：symbol+buyDate → 自动拉 60+30 日 K → 特征+后验 |
+| `GET /api/v1/trading/cases` | `listCases()` | 案例列表（buyDate 倒序）|
+| `GET /api/v1/trading/cases/{id}` | `getCaseDetail()` | 案例详情（kline=true 附 90 根 K 线供画图）|
+| `DELETE /api/v1/trading/cases/{id}` | `deleteCase()` | 删除案例 |
 
 > **第三阶段（2026-08-30，trading-plugin-architecture.md）**：交易插件从 adai 专属演进为「通用能力 + 个性化规则」。规则参数按用户隔离，驱动止损/仓位/买点/行为标注/清仓 verdict/打分权重/建议硬约束/知识注入（`data/{userId}/trading/knowledge.md` 用户私有优先）。**web 交易页第 6 Tab「规则」**：参数中文标签展示 + 编辑弹窗（表单化 PUT）。无规则用户 → 全部默认 = adai 现状（降级不坏）。
 

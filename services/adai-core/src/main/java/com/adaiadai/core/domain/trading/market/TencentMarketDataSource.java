@@ -298,4 +298,43 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
         }
     }
 
+    /** 按日期范围直查（2026-08-30：案例库历史窗口）。param=sh600519,day,start,end,320,qfq。 */
+    @Override
+    public List<Candle> klineRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
+        if (symbol == null || symbol.isBlank() || from == null || to == null || from.isAfter(to)) {
+            return List.of();
+        }
+        String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
+        String url = String.format("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s%s,day,%s,%s,320,qfq",
+                prefix, symbol, from, to);
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body());
+            com.fasterxml.jackson.databind.JsonNode data = root.path("data").path(prefix + symbol);
+            com.fasterxml.jackson.databind.JsonNode day = data.path("qfqday");
+            if (day.isMissingNode() || !day.isArray()) day = data.path("day");
+            List<Candle> candles = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode row : day) {
+                if (!row.isArray() || row.size() < 6) continue;
+                try {
+                    Candle c = new Candle(
+                            java.time.LocalDate.parse(row.get(0).asText()),
+                            row.get(1).asDouble(), row.get(3).asDouble(), row.get(4).asDouble(),
+                            row.get(2).asDouble(), row.get(5).asDouble());
+                    if (!c.date().isBefore(from) && !c.date().isAfter(to)) candles.add(c);
+                } catch (Exception ignored) {}
+            }
+            if (!candles.isEmpty()) {
+                klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+            }
+            return candles;
+        } catch (Exception e) {
+            log.warn("Tencent K线范围查询失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
 }
