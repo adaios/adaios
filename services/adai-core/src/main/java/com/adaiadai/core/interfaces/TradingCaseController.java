@@ -92,6 +92,16 @@ public class TradingCaseController {
         return ResponseEntity.ok(caseAppService.generateInsight(userId, caseId));
     }
 
+    /** 环 4：判定当下——当前标的形态 vs 案例库归一化相似度 Top N（核心价值）。 */
+    @PostMapping("/match")
+    public ResponseEntity<?> match(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody CaseMatchRequest body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(caseAppService.match(userId, body.symbol(), body.date()));
+    }
+
     private ResponseEntity<?> requireTradingPlugin(String userId) {
         if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             return ResponseEntity.status(403).body(Map.of("error", "trading 插件未启用，无法使用交易功能"));
@@ -113,4 +123,11 @@ public class TradingCaseController {
             @Size(max = 50, message = "名称过长")
             String name,
             List<String> labels) {}
+
+    /** 匹配请求体（date 可空 = 最近交易日）。 */
+    public record CaseMatchRequest(
+            @NotBlank(message = "标的代码不能为空")
+            @Pattern(regexp = "\\d{6}", message = "标的代码需为 6 位数字")
+            String symbol,
+            LocalDate date) {}
 }

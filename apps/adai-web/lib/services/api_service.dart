@@ -681,6 +681,21 @@ class ApiService {
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
+  /// 环 4：判定当下（POST /trading/cases/match）——当前形态 vs 案例库相似度 Top N。
+  /// date 可空 = 最近交易日（核心价值：任意代码随查随用）。
+  Future<Map<String, dynamic>> matchCases(String symbol, {String? date}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/cases/match'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'symbol': symbol,
+        if (date != null && date.isNotEmpty) 'date': date,
+      }),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   /// RFC 20260817：确认交易日志落库（今日候选逐笔入账）。
   /// B11-4（2026-08-23，P1-交易18）：返回完整结果（含失败明细——失败候选保留，可丢弃）。
   Future<TradeLogConfirmResult> confirmTradeLog() async {

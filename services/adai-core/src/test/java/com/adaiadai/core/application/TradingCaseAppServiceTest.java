@@ -110,4 +110,39 @@ class TradingCaseAppServiceTest {
         assertThrows(TradingException.class,
                 () -> appService.generateInsight("adai", "2099-01-01_000725"));
     }
+
+    // ── 环 4：判定当下（match）──
+
+    @Test
+    void match_emptyLibrary_returnsEmptyMatches() {
+        // 库空 → 静默空（不报错，不影响规则判定）
+        TradingCaseAppService.MatchResponse resp = appService.match("adai", "000725", null);
+        assertEquals("000725", resp.symbol());
+        assertEquals(0, resp.matches().size());
+    }
+
+    @Test
+    void match_returnsTopSimilarCases() {
+        // 预置一个案例（buyDate 2026-03-05，特征由 annotate 计算）
+        CaseRecord c1 = sample();
+        // 查询同形态：构造一个与案例特征接近的 K 线（同样「涨后回撤横盘」形态）
+        when(klineService.klineRange(anyString(), any(), any())).thenReturn(buildCandles());
+
+        TradingCaseAppService.MatchResponse resp = appService.match("adai", "000725", LocalDate.of(2026, 3, 5));
+
+        assertEquals(1, resp.matches().size(), "库中 1 案例应命中");
+        TradingCaseAppService.MatchItem item = resp.matches().get(0);
+        assertEquals(c1.id(), item.caseId());
+        assertTrue(item.similarityPercent() > 80,
+                "同形态相似度应较高，实际 " + item.similarityPercent());
+    }
+
+    @Test
+    void match_klineUnavailable_throwsBusinessException() {
+        sample();
+        when(klineService.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        TradingException ex = assertThrows(TradingException.class,
+                () -> appService.match("adai", "000725", LocalDate.of(2026, 3, 5)));
+        assertTrue(ex.getMessage().contains("K 线数据"), ex.getMessage());
+    }
 }

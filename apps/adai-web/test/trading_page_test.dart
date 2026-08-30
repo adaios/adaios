@@ -1950,4 +1950,48 @@ void main() {
     expect(insight['summary'], contains('教科书式 B1'), reason: 'aiInsight 应含结构化理解');
     expect((insight['keyFeatures'] as List).length, 2);
   });
+
+  testWidgets('案例 Tab：匹配买点调用 POST /cases/match（环 4，核心价值）', (tester) async {
+    var matchCalled = false;
+    String? matchBody;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/match' && request.method == 'POST') {
+        matchCalled = true;
+        matchBody = request.body;
+        return _json({
+          'symbol': '000725',
+          'matches': [
+            {
+              'caseId': '2026-08-03_000725',
+              'symbol': '000725',
+              'name': '京东方A',
+              'buyDate': '2026-08-03',
+              'buyType': 'B1',
+              'similarityPercent': 92.5,
+              'plus5dReturnPct': 18.2,
+              'aiInsightSummary': '缩量回踩黄线获支撑',
+            },
+          ],
+        });
+      }
+      return http.Response('not found', 404);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    final resp = await api.matchCases('000725');
+    await tester.pumpAndSettle();
+
+    expect(matchCalled, isTrue, reason: '匹配应调用 POST /cases/match');
+    expect(matchBody, contains('000725'), reason: '请求体应含 symbol');
+    final matches = resp['matches'] as List<dynamic>;
+    expect(matches.length, 1);
+    final m = matches.first as Map<String, dynamic>;
+    expect(m['similarityPercent'], 92.5);
+    expect(m['caseId'], '2026-08-03_000725');
+  });
 }

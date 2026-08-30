@@ -778,6 +778,7 @@ Strict format:
 | `GET /api/v1/trading/cases/{id}` | `getCaseDetail()` | 案例详情（kline=true 附 90 根 K 线供画图）|
 | `DELETE /api/v1/trading/cases/{id}` | `deleteCase()` | 删除案例 |
 | `POST /api/v1/trading/cases/{id}/insight` | `generateCaseInsight()` | **环 3 AI 理解**：LLM 读特征+K 线 → aiInsight（summary/keyFeatures/confidence）落盘 |
+| `POST /api/v1/trading/cases/match` | `matchCases()` | **环 4 判定当下（核心价值）**：当前形态 vs 案例库相似度 Top 5 |
 
 > **第三阶段（2026-08-30，trading-plugin-architecture.md）**：交易插件从 adai 专属演进为「通用能力 + 个性化规则」。规则参数按用户隔离，驱动止损/仓位/买点/行为标注/清仓 verdict/打分权重/建议硬约束/知识注入（`data/{userId}/trading/knowledge.md` 用户私有优先）。**web 交易页第 6 Tab「规则」**：参数中文标签展示 + 编辑弹窗（表单化 PUT）。无规则用户 → 全部默认 = adai 现状（降级不坏）。
 

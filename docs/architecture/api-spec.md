@@ -976,6 +976,34 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 - `?kline=true` → 响应附 `kline`（90 根窗口日 K，前端画图重放；拉取失败 → 空数组）
 - 不存在 → 400「案例不存在」
 
+### `POST /api/v1/trading/cases/match` — 判定当下：形态相似度匹配（环 4，2026-08-30）
+> 需 trading 插件（403）。蓝图 trading-case-library-design.md §六——**核心价值**：案例是手段，判定当下是价值。
+
+当前标的形态（拉 60 日 K → 特征画像 → 归一化）与案例库加权欧氏相似度 Top 5（权重：回撤 0.25/量比 0.20/KDJ 0.15/距 60 日线 0.15/MACD 0.10/盘整 0.10/信号 0.05；权重和=1 → 相似度 = (1−距离)×100%）。
+
+**Request Body**
+
+```json
+{ "symbol": "000725", "date": "2026-08-03" }
+```
+
+`date` 可空 = 最近交易日（指定日无数据 → 回落最近交易日）。
+
+**Response（200）**
+
+```json
+{
+  "symbol": "000725",
+  "matches": [
+    { "caseId": "2026-08-03_000725", "symbol": "000725", "name": "京东方A",
+      "buyDate": "2026-08-03", "buyType": "B1", "similarityPercent": 92.5,
+      "plus5dReturnPct": 18.2, "aiInsightSummary": "缩量回踩黄线获支撑" }
+  ]
+}
+```
+
+**语义**：双轨判定——案例相似度是「经验增强」参考信号，**不覆盖规则硬判定**（止损/仓位等仍以规则引擎为准）；案例库为空 → `matches: []`（静默，不影响规则判定）；K 线拉取失败 → 400。
+
 ### `POST /api/v1/trading/cases/{caseId}/insight` — 生成案例 AI 理解（环 3，2026-08-30）
 > 需 trading 插件（403）。蓝图 trading-case-library-design.md §四环 3。
 

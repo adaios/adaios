@@ -1683,6 +1683,16 @@ class _TradingPageState extends State<TradingPage> {
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const Spacer(),
         OutlinedButton.icon(
+          onPressed: _openMatchDialog,
+          icon: const Icon(Icons.radar, size: 14, color: AppColors.darkGreen),
+          label: const Text('匹配买点', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey1,
+              side: const BorderSide(color: AppColors.darkGrey4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
           onPressed: _openAnnotateCaseDialog,
           icon: const Icon(Icons.add, size: 14, color: AppColors.darkGreen),
           label: const Text('标注案例', style: TextStyle(fontSize: 12)),
@@ -1766,6 +1776,147 @@ class _TradingPageState extends State<TradingPage> {
           onPressed: () => _deleteCase(id),
         ),
       ]),
+    );
+  }
+
+  /// 匹配买点弹窗（环 4：核心价值）——输入代码 → 当前形态 vs 案例库相似度 Top N。
+  Future<void> _openMatchDialog() async {
+    final symbolCtrl = TextEditingController();
+    final dateCtrl = TextEditingController();
+    Map<String, dynamic>? result;
+    var loading = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: AppColors.darkSurface2,
+          title: const Text('匹配买点', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+          content: SizedBox(
+            width: 460,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('输入任意 6 位代码（日期留空 = 最近交易日）——系统算当前形态特征，与你的完美买点案例库做相似度匹配。',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: TextField(controller: symbolCtrl,
+                      decoration: _caseInput('标的代码（如 000725）')),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 140,
+                  child: TextField(controller: dateCtrl,
+                      decoration: _caseInput('日期（可空）')),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(error!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+                ),
+              if (loading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen),
+                    ),
+                  ),
+                )
+              else if (result != null) ...[
+                if (((result!['matches'] as List<dynamic>?) ?? const []).isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+                      Text('当前形态与案例库无相似买点。', style: TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+                      SizedBox(height: 4),
+                      Text('先标注几个完美买点案例（案例 Tab「标注案例」），匹配才有料。',
+                          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                    ]),
+                  )
+                else
+                  ...(result!['matches'] as List<dynamic>).map<Widget>((m) {
+                    final mm = m as Map<String, dynamic>;
+                    final sim = (mm['similarityPercent'] as num?)?.toDouble() ?? 0;
+                    final plus5 = mm['plus5dReturnPct'];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: sim >= 80
+                                ? AppColors.darkGreen.withValues(alpha: 0.6)
+                                : AppColors.darkBorder.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(children: [
+                        Text('${mm['name'] ?? mm['symbol']}（${mm['symbol']}）',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+                        const SizedBox(width: 8),
+                        Text('${mm['buyDate'] ?? ''} · ${mm['buyType'] ?? ''}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                        const Spacer(),
+                        Text('相似 ${sim.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: sim >= 80 ? AppColors.darkGreen : AppColors.darkGrey2)),
+                        const SizedBox(width: 8),
+                        Text('+5d ${plus5 == null ? '—' : '${(plus5 as num).toStringAsFixed(1)}%'}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                      ]),
+                    );
+                  }),
+                if ((result!['matches'] as List<dynamic>?)?.isNotEmpty ?? false)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('相似 ≥80% 绿框提示——形态与库中完美买点高度接近（AI 理解见案例详情）。',
+                        style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                  ),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+            ),
+            TextButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      final symbol = symbolCtrl.text.trim();
+                      if (symbol.isEmpty) return;
+                      setDlg(() {
+                        loading = true;
+                        error = null;
+                        result = null;
+                      });
+                      try {
+                        final resp = await widget.api
+                            .matchCases(symbol, date: dateCtrl.text.trim());
+                        if (ctx.mounted) setDlg(() {
+                          result = resp;
+                          loading = false;
+                        });
+                      } catch (e) {
+                        if (ctx.mounted) setDlg(() {
+                          error = '匹配失败：${_extractApiError(e)}';
+                          loading = false;
+                        });
+                      }
+                    },
+              child: Text(loading ? '匹配中…' : '匹配',
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

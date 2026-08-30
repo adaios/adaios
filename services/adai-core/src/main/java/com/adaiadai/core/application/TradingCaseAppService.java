@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.cases.CaseFeatureExtractor;
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
+import com.adaiadai.core.domain.trading.cases.CaseSimilarityEngine;
 import com.adaiadai.core.domain.trading.cases.TradingCaseRepository;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
@@ -132,8 +133,55 @@ public class TradingCaseAppService {
         log.info("完美买点案例已删除 | userId={} | caseId={}", userId, caseId);
     }
 
-    /**
-     * 环 3：LLM 案例理解（POST /cases/{caseId}/insight）。
+    /** 环 4：判定当下（POST /cases/match）——当前标的形态与案例库归一化相似度 Top N。 */
+    public MatchResponse match(String userId, String symbol, LocalDate date) {
+        List<CaseRecord> cases = caseRepository.list(userId);
+        if (cases.isEmpty()) {
+            return new MatchResponse(symbol, List.of());
+        }
+        LocalDate queryDate = date != null ? date : LocalDate.now();
+        List<Candle> candles = klineService.klineRange(symbol,
+                queryDate.minusDays(BEFORE_CAL_DAYS), queryDate.plusDays(AFTER_CAL_DAYS));
+        if (candles.isEmpty()) {
+            throw new TradingException("无法获取 " + symbol + " 的 K 线数据，请稍后重试");
+        }
+        LocalDate targetDate = queryDate;
+        CaseRecord.CaseFeatures features = CaseFeatureExtractor.extract(candles, targetDate);
+        if (features == null && !candles.isEmpty()) {
+            // 指定日无数据（停牌/非交易日）→ 回落最近交易日
+            targetDate = candles.get(candles.size() - 1).date();
+            features = CaseFeatureExtractor.extract(candles, targetDate);
+        }
+        if (features == null) {
+            throw new TradingException("无法计算 " + symbol + " 的形态特征");
+        }
+        List<CaseSimilarityEngine.MatchResult> top = CaseSimilarityEngine.topN(cases, features, 5);
+        List<MatchItem> items = top.stream()
+                .map(r -> new MatchItem(
+                        r.caseRecord().id(), r.caseRecord().symbol(), r.caseRecord().name(),
+                        r.caseRecord().buyDate(), r.caseRecord().buyType(), r.similarityPercent(),
+                        r.caseRecord().verify() == null ? null : r.caseRecord().verify().plus5dReturnPct(),
+                        insightSummary(r.caseRecord())))
+                .toList();
+        log.info("案例匹配完成 | userId={} | symbol={} | 基准日={} | 命中={} | 案例库={}",
+                userId, symbol, targetDate, items.size(), cases.size());
+        return new MatchResponse(symbol, items);
+    }
+
+    /** 匹配响应（核心价值输出：相似案例 + 相似度 + 后验参照）。 */
+    public record MatchResponse(String symbol, List<MatchItem> matches) {}
+
+    /** 匹配条目（轻量，不含全量特征——详情可再看）。 */
+    public record MatchItem(String caseId, String symbol, String name, LocalDate buyDate,
+                            String buyType, double similarityPercent, Double plus5dReturnPct,
+                            String aiInsightSummary) {}
+
+    private String insightSummary(CaseRecord c) {
+        return c.aiInsight() == null || c.aiInsight().summary() == null
+                ? null : c.aiInsight().summary();
+    }
+
+    /** 环 3：LLM 案例理解（POST /cases/{caseId}/insight）。
      * 读特征画像 + K 线统计 → 结构化「为什么这是完美买点」→ aiInsight 落盘。
      * LLM 失败 / 输出不可解析 → 业务异常（fail-visible，不落半成品）。
      */

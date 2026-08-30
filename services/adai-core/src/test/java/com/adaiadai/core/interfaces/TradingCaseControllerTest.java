@@ -210,4 +210,53 @@ class TradingCaseControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("AI 理解生成失败")));
     }
+
+    // ── 环 4：判定当下（match）──
+
+    @Test
+    void match_withoutPlugin_returns403() throws Exception {
+        mvc().perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000725\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void match_success_returnsSimilarCases() throws Exception {
+        TradingCaseAppService.MatchItem item = new TradingCaseAppService.MatchItem(
+                "2026-08-03_000725", "000725", "京东方A", LocalDate.of(2026, 8, 3),
+                "B1", 92.5, 18.2, "缩量回踩黄线获支撑");
+        when(appService.match(anyString(), anyString(), any()))
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(item)));
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000725\",\"date\":\"2026-08-03\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.symbol").value("000725"))
+                .andExpect(jsonPath("$.matches[0].similarityPercent").value(92.5))
+                .andExpect(jsonPath("$.matches[0].caseId").value("2026-08-03_000725"));
+    }
+
+    @Test
+    void match_emptyLibrary_returnsEmptyMatches() throws Exception {
+        when(appService.match(anyString(), anyString(), any()))
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of()));
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"000725\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matches.length()").value(0));
+    }
+
+    @Test
+    void match_invalidSymbol_returns400() throws Exception {
+        mvc("trading").perform(post("/api/v1/trading/cases/match")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"symbol\":\"abc\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }
