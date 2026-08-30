@@ -459,8 +459,15 @@ class _FeedPageState extends State<FeedPage> {
         setState(() {
           _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
+            // 流式草稿已占最后一个 AI turn → 原位定稿；直接追加会草稿+定稿双份
+            // （2026-08-30 用户实测重复回答，与 adai-app 同款修复）。
+            // 无增量降级路径（同步 createRecord）没有草稿 turn → 走追加。
+            final next = (existing.isNotEmpty && !existing.last.isUser)
+                ? [...existing.sublist(0, existing.length - 1),
+                    ConversationTurn(isUser: false, text: aiReply, time: _now())]
+                : [...existing, ConversationTurn(isUser: false, text: aiReply, time: _now())];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
-                turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: _now())]);
+                turns: next);
           });
         });
         // #115：AI 回复带标签 → 右栏标签云联动刷新

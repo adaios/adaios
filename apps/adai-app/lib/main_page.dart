@@ -841,8 +841,15 @@ class _MainPageState extends State<MainPage>
         setState(() {
           _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
+            // 流式草稿已占最后一个 AI turn → 原位定稿；直接追加会草稿+定稿双份
+            // （2026-08-30 用户实测：每次续问的回答显示两遍，end 上报 turns 也带重复）。
+            // 无增量降级路径（同步 createRecord）没有草稿 turn → 走追加。
+            final next = (existing.isNotEmpty && !existing.last.isUser)
+                ? [...existing.sublist(0, existing.length - 1),
+                    ConversationTurn(isUser: false, text: aiReply, time: aiTimeStr)]
+                : [...existing, ConversationTurn(isUser: false, text: aiReply, time: aiTimeStr)];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
-              turns: [...existing, ConversationTurn(isUser: false, text: aiReply, time: aiTimeStr)]);
+              turns: next);
           });
         });
         _scrollToBottom();

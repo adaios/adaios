@@ -238,6 +238,42 @@ void main() {
           reason: '草稿被 meta 定稿替换');
     });
 
+    testWidgets('续问流式：meta 定稿原位替换草稿 turn，回答不重复（2026-08-30 重复回答回归）', (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '怎么玩铜')]
+        ..feedTotalToday = 1;
+      // 门控回放：delta 渲染出草稿后挂起，放行才回 meta——草稿 turn 必须真实存在，
+      // 否则（同步完成时 90ms 节流 Timer 被 cancel）草稿从未渲染，复现不了追加型重复。
+      final firstRound = _Round('首问草稿', '首问定稿回答');
+      final followRound = _Round('续问草稿回答', '续问定稿回答');
+      final sse = _SequentialHoldSse([firstRound, followRound]);
+      await _pump(tester, b, sseClient: sse);
+
+      // 首问：点提问 → delta 草稿渲染 → 放行 meta 定稿（chatting 态）
+      await tester.tap(find.text('提问'));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(find.textContaining('首问草稿', findRichText: true), findsOneWidget,
+          reason: '前置：草稿 turn 已真实渲染');
+      firstRound.gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('首问定稿回答', findRichText: true), findsOneWidget);
+
+      // 续问：chatting 态直接输入发送 → 走 _appendToActiveCard + ask-stream
+      await tester.enterText(find.byType(TextField), '接着问');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(find.textContaining('续问草稿回答', findRichText: true), findsOneWidget,
+          reason: '前置：续问草稿 turn 已真实渲染');
+
+      // 放行 meta → 定稿必须原位替换草稿：回答只出现一遍
+      followRound.gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('续问定稿回答', findRichText: true), findsOneWidget,
+          reason: 'meta 定稿原位替换草稿 turn——回答只出现一遍（修复前草稿+定稿各渲染一遍）');
+      expect(find.textContaining('续问草稿回答', findRichText: true), findsNothing,
+          reason: '草稿被定稿替换，不残留');
+    });
+
     testWidgets('图片卡 ask：点提问 → 输入问题 → VLM 回答显示 + 走 ask 端点', (tester) async {
       final b = _Backend()
         ..feedPage0 = [_imageRecord('img1', '持仓截图：浦发银行')]
@@ -1079,6 +1115,43 @@ class _HoldSse extends SseClient {
     onData(jsonEncode({
       'type': 'meta', 'recordId': 'rec_1', 'summary': '定稿回答内容',
       'tags': ['日常'], 'domain': 'life', 'content': '定稿回答内容',
+    }));
+    onData('[DONE]');
+  }
+}
+
+/// 一轮流式问答：delta 草稿（渲染后挂起在 [gate]）→ 放行 → meta 定稿。
+class _Round {
+  _Round(this.draftText, this.finalText) : gate = Completer<void>();
+
+  final String draftText;
+  final String finalText;
+  final Completer<void> gate;
+}
+
+/// 按调用次序回放多轮流式的 SSE 替身：每轮回 draftText 后挂起等 gate，放行回 meta。
+class _SequentialHoldSse extends SseClient {
+  _SequentialHoldSse(this.rounds) : super();
+
+  final List<_Round> rounds;
+  int _cursor = 0;
+
+  @override
+  Future<void> post(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    required void Function(String data) onData,
+  }) async {
+    if (_cursor >= rounds.length) {
+      throw SseHttpException(503, 'test: no more scripted rounds');
+    }
+    final round = rounds[_cursor++];
+    onData(jsonEncode({'type': 'text', 'content': round.draftText}));
+    await round.gate.future;
+    onData(jsonEncode({
+      'type': 'meta', 'recordId': 'rec_$_cursor', 'summary': round.finalText,
+      'tags': ['日常'], 'domain': 'life', 'content': round.finalText,
     }));
     onData('[DONE]');
   }
