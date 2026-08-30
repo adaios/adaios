@@ -13,6 +13,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * TdxFileKlineSourceTest — 通达信本地数据源（2026-08-30：行情源风控后的稳定替代）。
@@ -41,12 +44,18 @@ class TdxFileKlineSourceTest {
         return buf.array();
     }
 
+    private AdjFactorRepository adjEmpty() {
+        AdjFactorRepository adj = mock(AdjFactorRepository.class);
+        when(adj.factorsFor(anyString())).thenReturn(List.of());
+        return adj;
+    }
+
     private TdxFileKlineSource source(String symbol, byte[] day) throws Exception {
         boolean sh = symbol.startsWith("6");
         Path dir = tempDir.resolve(sh ? "sh" : "sz").resolve("lday");
         Files.createDirectories(dir);
         Files.write(dir.resolve((sh ? "sh" : "sz") + symbol + ".day"), day);
-        return new TdxFileKlineSource(tempDir.toString());
+        return new TdxFileKlineSource(tempDir.toString(), adjEmpty());
     }
 
     @Test
@@ -97,7 +106,7 @@ class TdxFileKlineSourceTest {
 
     @Test
     void missingFile_returnsEmpty() throws Exception {
-        TdxFileKlineSource src = new TdxFileKlineSource(tempDir.toString());
+        TdxFileKlineSource src = new TdxFileKlineSource(tempDir.toString(), adjEmpty());
         assertTrue(src.kline("000001", 10).isEmpty(), "文件缺失 → 空（不抛错，安全约定）");
     }
 

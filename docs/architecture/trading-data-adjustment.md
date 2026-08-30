@@ -16,7 +16,7 @@ tags: [trading, 数据正确性, 复权, 除权, TDX]
 
 > **定位**：完美买点案例库的**数据底座修复**。验收中确认 TDX 本地数据（.day）为**不复权原始价**——除权股在除权日价格跳空，导致：①K 线画面与通达信（前复权）不一致 ②回撤/量比等特征失真（把除权跳空误当「大跌买点」）③案例特征与 match 特征不可比 ④腾讯兜底（qfq 前复权）与 TDX 口径混用。**数据不对 → 特征错 → 判定错**，复权是案例库可信的前提。
 >
-> **状态**：draft（2026-08-30 用户拍板「先写文档，然后开工」；数据源已探通：东财除权明细接口 + 腾讯 qfq 校验接口均可用）
+> **状态**：**已实施（2026-08-30 全部完成）**——AdjustmentCalculator（算法+8 单测）+ AdjFactorRepository（东财拉取+文本解析+本地缓存）+ TdxFileKlineSource 集成；茅台 34 根 K 线 vs 腾讯 qfq 校验全部 ≤0.5% 偏差（966 全绿）。全 A 因子预热脚本后置
 
 ---
 
@@ -152,11 +152,11 @@ TdxFileKlineSource.kline/klineRange → 前复权结果（与腾讯 qfq 同口�
 
 | # | 任务 | 涉及 |
 |:-:|:-----|:-----|
-| 1 | 文档定案（本文）| — |
-| 2 | `AdjustmentFactor` + `AdjustmentCalculator`（算法 + 单测）| domain/trading/market |
-| 3 | `AdjFactorRepository`（本地缓存 + 东财拉取 + 方案文本解析 + TTL）| infrastructure/market |
-| 4 | `TdxFileKlineSource` 集成换算 | infrastructure/market |
-| 5 | 真实数据校验（茅台 vs 腾讯 qfq 对比）| 本地实测 |
+| 1 | 文档定案（本文）| ✅ |
+| 2 | ✅ `AdjustmentCalculator`（算法 + 8 单测）| domain/trading/market |
+| 3 | ✅ `AdjFactorRepository`（东财拉取 + 方案文本正则 + 本地缓存 + 按日 TTL）| infrastructure/market |
+| 4 | ✅ `TdxFileKlineSource` 集成换算（读取即前复权）| infrastructure/market |
+| 5 | ✅ 茅台 34 根 vs 腾讯 qfq 全部 ≤0.5% 偏差 | 本地实测 |
 | 6 | 文档同步（api-spec 无新端点 / status / change-log / trading-features §三 数据源行）| docs |
 | 7 | guard-meta/align + 提交 | — |
 

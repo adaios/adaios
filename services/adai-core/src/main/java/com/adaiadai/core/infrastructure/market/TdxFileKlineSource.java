@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.market;
 
+import com.adaiadai.core.domain.trading.market.AdjustmentCalculator;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.KlineSource;
 import org.slf4j.Logger;
@@ -40,12 +41,16 @@ public class TdxFileKlineSource implements KlineSource {
     private static final int RECORD_BYTES = 32;
 
     private final Path root;
+    /** 除权因子（2026-08-30：TDX 不复权 → 前复权，口径对齐腾讯 qfq）。 */
+    private final AdjFactorRepository adjFactorRepository;
     /** symbol → (文件 mtime, 蜡烛列表) 缓存（日线文件一次读全量，mtime 变化才重读）。 */
     private final Map<String, CachedKline> cache = new ConcurrentHashMap<>();
 
     public TdxFileKlineSource(
-            @Value("${adai.market.tdx-path:../../data/market/tdx}") String tdxPath) {
+            @Value("${adai.market.tdx-path:../../data/market/tdx}") String tdxPath,
+            AdjFactorRepository adjFactorRepository) {
         this.root = Paths.get(tdxPath);
+        this.adjFactorRepository = adjFactorRepository;
         log.info("TdxFileKlineSource 初始化 | root={} | 存在={}", root.toAbsolutePath(), Files.isDirectory(root));
     }
 
@@ -54,6 +59,7 @@ public class TdxFileKlineSource implements KlineSource {
         if (symbol == null || symbol.isBlank()) return List.of();
         List<Candle> all = readAll(symbol);
         if (all.isEmpty()) return List.of();
+        all = AdjustmentCalculator.adjust(all, adjFactorRepository.factorsFor(symbol));
         int n = Math.min(Math.max(limit, 1), all.size());
         return new ArrayList<>(all.subList(all.size() - n, all.size()));
     }
@@ -65,6 +71,7 @@ public class TdxFileKlineSource implements KlineSource {
         }
         List<Candle> all = readAll(symbol);
         if (all.isEmpty()) return List.of();
+        all = AdjustmentCalculator.adjust(all, adjFactorRepository.factorsFor(symbol));
         List<Candle> window = new ArrayList<>();
         for (Candle c : all) {
             if (!c.date().isBefore(from) && !c.date().isAfter(to)) window.add(c);
