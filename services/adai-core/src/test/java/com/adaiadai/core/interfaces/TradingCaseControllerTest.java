@@ -229,7 +229,7 @@ class TradingCaseControllerTest {
                 "2026-08-03_000725", "000725", "京东方A", LocalDate.of(2026, 8, 3),
                 "B1", 92.5, 18.2, "缩量回踩黄线获支撑");
         when(appService.match(anyString(), anyString(), any()))
-                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(item)));
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(item), null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -243,7 +243,7 @@ class TradingCaseControllerTest {
     @Test
     void match_emptyLibrary_returnsEmptyMatches() throws Exception {
         when(appService.match(anyString(), anyString(), any()))
-                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of()));
+                .thenReturn(new TradingCaseAppService.MatchResponse("000725", List.of(), null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -268,7 +268,7 @@ class TradingCaseControllerTest {
         java.util.concurrent.atomic.AtomicReference<LocalDate> received = new java.util.concurrent.atomic.AtomicReference<>();
         when(appService.match(anyString(), anyString(), any())).thenAnswer(inv -> {
             received.set(inv.getArgument(2));
-            return new TradingCaseAppService.MatchResponse("000831", List.of());
+            return new TradingCaseAppService.MatchResponse("000831", List.of(), null);
         });
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
@@ -282,7 +282,7 @@ class TradingCaseControllerTest {
     @Test
     void match_isoDateFormat_acceptsYyyyMmDd() throws Exception {
         when(appService.match(anyString(), anyString(), any())).thenReturn(
-                new TradingCaseAppService.MatchResponse("000831", List.of()));
+                new TradingCaseAppService.MatchResponse("000831", List.of(), null));
         mvc("trading").perform(post("/api/v1/trading/cases/match")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)

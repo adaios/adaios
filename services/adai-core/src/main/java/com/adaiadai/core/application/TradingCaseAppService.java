@@ -3,6 +3,7 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.cases.CaseFeatureExtractor;
 import com.adaiadai.core.domain.trading.cases.CaseRecord;
+import com.adaiadai.core.domain.trading.cases.CaseConsensus;
 import com.adaiadai.core.domain.trading.cases.CaseSimilarityEngine;
 import com.adaiadai.core.domain.trading.cases.TradingCaseRepository;
 import com.adaiadai.core.domain.trading.market.Candle;
@@ -149,7 +150,7 @@ public class TradingCaseAppService {
     public MatchResponse match(String userId, String symbol, LocalDate date) {
         List<CaseRecord> cases = caseRepository.list(userId);
         if (cases.isEmpty()) {
-            return new MatchResponse(symbol, List.of());
+            return new MatchResponse(symbol, List.of(), null);
         }
         LocalDate queryDate = date != null ? date : LocalDate.now();
         List<Candle> candles = klineService.klineRange(symbol,
@@ -175,13 +176,22 @@ public class TradingCaseAppService {
                         r.caseRecord().verify() == null ? null : r.caseRecord().verify().plus5dReturnPct(),
                         insightSummary(r.caseRecord())))
                 .toList();
-        log.info("案例匹配完成 | userId={} | symbol={} | 基准日={} | 命中={} | 案例库={}",
-                userId, symbol, targetDate, items.size(), cases.size());
-        return new MatchResponse(symbol, items);
+        // 2026-08-30 共识判定（核心价值）：案例库 ≥5 → 从案例统计学习「完美买点画像」
+        //（各特征 25-75 分位区间）→ 当前形态逐维命中 → 「共识命中 N/M 维」。
+        CaseConsensus.ConsensusResult consensus = null;
+        List<CaseConsensus.Range> profile = CaseConsensus.buildProfile(cases);
+        if (profile != null) {
+            consensus = CaseConsensus.evaluate(features, profile);
+        }
+        log.info("案例匹配完成 | userId={} | symbol={} | 基准日={} | 命中={} | 案例库={} | 共识={}",
+                userId, symbol, targetDate, items.size(), cases.size(),
+                consensus == null ? "不可用(<5案例)" : consensus.hitCount() + "/" + consensus.total());
+        return new MatchResponse(symbol, items, consensus);
     }
 
-    /** 匹配响应（核心价值输出：相似案例 + 相似度 + 后验参照）。 */
-    public record MatchResponse(String symbol, List<MatchItem> matches) {}
+    /** 匹配响应（核心价值输出：相似案例 + 相似度 + 后验参照 + 共识命中）。 */
+    public record MatchResponse(String symbol, List<MatchItem> matches,
+                                CaseConsensus.ConsensusResult consensus) {}
 
     /** 匹配条目（轻量，不含全量特征——详情可再看）。 */
     public record MatchItem(String caseId, String symbol, String name, LocalDate buyDate,

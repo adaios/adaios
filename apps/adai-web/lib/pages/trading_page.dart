@@ -1779,6 +1779,80 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 共识判定卡（2026-08-30 核心价值）：案例库统计学习的「完美买点画像」逐维命中。
+  Widget _buildConsensusCard(Map<String, dynamic> consensus) {
+    final hits = ((consensus['hits'] as List<dynamic>?) ?? const [])
+        .cast<Map<String, dynamic>>();
+    final hitCount = (consensus['hitCount'] as num?)?.toInt() ?? 0;
+    final total = (consensus['total'] as num?)?.toInt() ?? 0;
+    const labels = <String, String>{
+      'drawdownFromHighPct': '回撤',
+      'volumeShrinkRatio': '量比',
+      'kdjJ': 'KDJ.J',
+      'distToMa60Pct': '距60日线',
+      'macdHist': 'MACD',
+      'sidewaysDays': '盘整',
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: total > 0 && hitCount * 2 >= total
+                ? AppColors.darkGreen.withValues(alpha: 0.6)
+                : AppColors.darkBorder.withValues(alpha: 0.5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('共识命中（案例库完美买点画像）',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const Spacer(),
+          Text('$hitCount/$total 维',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: total > 0 && hitCount * 2 >= total
+                      ? AppColors.darkGreen
+                      : AppColors.darkGrey2)),
+        ]),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: hits.map<Widget>((h) {
+            final hit = h['hit'] == true;
+            final feature = '${h['feature'] ?? ''}';
+            final value = h['value'];
+            final low = h['low'];
+            final high = h['high'];
+            String valueText = value == null ? '—'
+                : (feature == 'volumeShrinkRatio' || feature == 'kdjJ' || feature == 'macdHist'
+                    ? (value as num).toStringAsFixed(2)
+                    : (value as num).toStringAsFixed(1));
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: hit ? AppColors.darkGreen.withValues(alpha: 0.12) : AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                    color: hit ? AppColors.darkGreen.withValues(alpha: 0.6) : AppColors.darkBorder),
+              ),
+              child: Text(
+                '${hit ? '✓' : '✗'} ${labels[feature] ?? feature} $valueText'
+                '（${(low as num).toStringAsFixed(1)}-${(high as num).toStringAsFixed(1)}）',
+                style: TextStyle(
+                    fontSize: 10, color: hit ? AppColors.darkGreen : AppColors.darkGrey4),
+              ),
+            );
+          }).toList(),
+        ),
+      ]),
+    );
+  }
+
+
   /// 匹配买点弹窗（环 4：核心价值）——输入代码 → 当前形态 vs 案例库相似度 Top N。
   Future<void> _openMatchDialog() async {
     final symbolCtrl = TextEditingController();
@@ -1881,6 +1955,12 @@ class _TradingPageState extends State<TradingPage> {
                     child: Text('相似 ≥80% 绿框提示——形态与库中完美买点高度接近（AI 理解见案例详情）。',
                         style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
                   ),
+                // 2026-08-30 共识判定（核心价值）：案例库 ≥5 → 从案例统计学习「完美买点画像」
+                // → 当前形态逐维命中（回撤/量比/KDJ/距60日线/MACD/盘整）
+                if ((result!['consensus'] as Map<String, dynamic>?) != null) ...[
+                  const SizedBox(height: 10),
+                  _buildConsensusCard(result!['consensus'] as Map<String, dynamic>),
+                ],
               ],
             ]),
           ),
