@@ -13,14 +13,20 @@ import java.util.Objects;
  * plugins（RFC 20260814 Domain=插件模型）：启用的插件名列表（trading/project）。
  * 新账号默认空 = 只有 Kernel 基础服务；seed adai = [trading, project]（owner 受控插件）。
  * 老账号文件无该字段 → 紧凑构造器归一为空列表。
+ * <p>
+ * passwordHash（RFC 20260901-auth-login）：账号密码的 bcrypt 哈希，可空（null = 未设密码）。
+ * 未设密码的账号无法登录；首访由 {@code POST /api/v1/auth/setup} 一次性初始化。
+ * 老 JSON 无该字段 → 紧凑构造器归一为 null。
  *
- * @param userId    账号 ID（唯一，[a-zA-Z0-9_-]+）
- * @param role      admin / user（admin 为管理端账号）
- * @param enabled   是否可用（禁用的账号不可选号进入）
- * @param createdAt 创建日期
- * @param plugins   启用的插件名列表（RFC 20260814，默认空）
+ * @param userId       账号 ID（唯一，[a-zA-Z0-9_-]+）
+ * @param role         admin / user（admin 为管理端账号）
+ * @param enabled      是否可用（禁用的账号不可选号进入）
+ * @param createdAt    创建日期
+ * @param plugins      启用的插件名列表（RFC 20260814，默认空）
+ * @param passwordHash 密码 bcrypt 哈希（RFC 20260901-auth-login，可空）
  */
-public record Account(String userId, String role, boolean enabled, LocalDate createdAt, List<String> plugins) {
+public record Account(String userId, String role, boolean enabled, LocalDate createdAt,
+                      List<String> plugins, String passwordHash) {
 
     /** 紧凑构造器：归一 null/可变列表（老 JSON 无 plugins 字段时 Jackson 传 null）；过滤 null 元素（REVIEW P2-3：脏 JSON 的 "plugins":[null] 不 NPE）；userId 必须非空（REVIEW P2-B2：脏 JSON 缺 userId 会导致遍历时 NPE 全局中断）。 */
     public Account {
@@ -31,9 +37,14 @@ public record Account(String userId, String role, boolean enabled, LocalDate cre
                 : plugins.stream().filter(Objects::nonNull).toList();
     }
 
-    /** 旧签名兼容（无插件 = 只有基础服务）。 */
+    /** 旧签名兼容（无插件 = 只有基础服务，无密码）。 */
     public Account(String userId, String role, boolean enabled, LocalDate createdAt) {
-        this(userId, role, enabled, createdAt, List.of());
+        this(userId, role, enabled, createdAt, List.of(), null);
+    }
+
+    /** 旧签名兼容（无密码）。 */
+    public Account(String userId, String role, boolean enabled, LocalDate createdAt, List<String> plugins) {
+        this(userId, role, enabled, createdAt, plugins, null);
     }
 
     public static final String ROLE_ADMIN = "admin";

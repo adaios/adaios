@@ -49,6 +49,9 @@ dependencies {
     // Jackson JSR310（LocalDateTime 序列化）
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
+    // 认证（2026-09-01 登录体系 RFC）：BCryptPasswordEncoder
+    implementation("org.springframework.security:spring-security-crypto")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     // testRuntimeOnly("com.h2database:h2")

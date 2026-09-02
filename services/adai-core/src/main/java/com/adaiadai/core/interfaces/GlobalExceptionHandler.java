@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.AuthService.AuthException;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,5 +65,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(StorageException.class)
     public ResponseEntity<Map<String, String>> handleStorage(StorageException e) {
         return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+    }
+
+    /**
+     * 认证异常（RFC 20260901-auth-login）→ 401 + 人话（账号或密码错误 / 被限流 / 会话失效）。
+     * 与 AuthInterceptor 的 401 语义一致，前端统一按 401 处理。
+     */
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<Map<String, String>> handleAuth(AuthException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", e.getMessage()));
     }
 }

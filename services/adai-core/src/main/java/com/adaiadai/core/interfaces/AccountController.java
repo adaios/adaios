@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -39,12 +40,14 @@ public class AccountController {
     private final AccountRepository accountRepository;
     private final PluginRegistry pluginRegistry;
     private final PluginService pluginService;
+    private final AuthService authService;
 
     public AccountController(AccountRepository accountRepository, PluginRegistry pluginRegistry,
-                             PluginService pluginService) {
+                             PluginService pluginService, AuthService authService) {
         this.accountRepository = accountRepository;
         this.pluginRegistry = pluginRegistry;
         this.pluginService = pluginService;
+        this.authService = authService;
     }
 
     /** 账号列表（返回全部，前端按 enabled 过滤选号）。 */
@@ -85,7 +88,16 @@ public class AccountController {
         if (!isValidPlugins(plugins)) {
             return ResponseEntity.badRequest().body(Map.of("error", "plugins 仅允许 " + pluginRegistry.all()));
         }
-        Account account = accountRepository.save(new Account(userId, role, true, LocalDate.now(), plugins));
+        // RFC 20260901-auth-login：建号可带初始密码（bcrypt），不设密码则无法登录（fail-closed）
+        String passwordHash = null;
+        if (request.password() != null && !request.password().isBlank()) {
+            if (request.password().length() < 8) {
+                return ResponseEntity.badRequest().body(Map.of("error", "初始密码长度至少 8 位"));
+            }
+            passwordHash = authService.encodePassword(request.password());
+        }
+        Account account = accountRepository.save(
+                new Account(userId, role, true, LocalDate.now(), plugins, passwordHash));
         pluginService.invalidate(userId);
         log.info("创建账号: {} role={} plugins={}", userId, role, plugins);
         return ResponseEntity.ok(account);
@@ -172,7 +184,8 @@ public class AccountController {
 
     // ── Request DTOs ──
 
-    public record CreateAccountRequest(@NotBlank String userId, String role, List<String> plugins) {}
+    public record CreateAccountRequest(@NotBlank String userId, String role, List<String> plugins,
+                                       String password) {}
 
     public record UpdateAccountRequest(Boolean enabled, String role, List<String> plugins) {}
 

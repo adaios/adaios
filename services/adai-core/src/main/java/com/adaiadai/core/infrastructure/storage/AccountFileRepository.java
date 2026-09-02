@@ -80,7 +80,8 @@ public class AccountFileRepository implements AccountRepository {
             // 字段存在（哪怕为空数组 = PATCH 显式清空）一律不碰。
             if (Account.SEED_ADMIN_ID.equals(a.userId())
                     && !rawPresence.getOrDefault(a.userId(), false)) {
-                normalized.add(new Account(a.userId(), a.role(), a.enabled(), a.createdAt(), SEED_OWNER_PLUGINS));
+                normalized.add(new Account(a.userId(), a.role(), a.enabled(), a.createdAt(),
+                        SEED_OWNER_PLUGINS, a.passwordHash()));
                 changed = true;
                 log.info("迁移：seed admin adai 老文件无 plugins 字段 → 补默认 {}", SEED_OWNER_PLUGINS);
             } else {
@@ -175,7 +176,7 @@ public class AccountFileRepository implements AccountRepository {
                 merged.removeAll(remove);
             }
             Account updated = new Account(existing.userId(), existing.role(),
-                    existing.enabled(), existing.createdAt(), merged);
+                    existing.enabled(), existing.createdAt(), merged, existing.passwordHash());
             return save(updated);
         }
     }

@@ -25,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccountControllerTest {
 
     private MockMvc mvcWith(AccountRepository repo) {
-        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(), mock(PluginService.class))).build();
+        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(),
+                mock(PluginService.class), mock(com.adaiadai.core.application.AuthService.class))).build();
     }
 
     private Account seedAdmin() {

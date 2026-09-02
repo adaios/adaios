@@ -82,7 +82,8 @@ class AdminAuthInterceptorTest {
 
         // accounts 端点同样被拦截（独立 MockMvc 映射 AccountController）
         MockMvc accountMvc = MockMvcBuilders
-                .standaloneSetup(new AccountController(mock(AccountRepository.class), new PluginRegistry(), mock(PluginService.class)))
+                .standaloneSetup(new AccountController(mock(AccountRepository.class), new PluginRegistry(),
+                        mock(PluginService.class), mock(com.adaiadai.core.application.AuthService.class)))
                 .addInterceptors(new AdminAuthInterceptor("secret"))
                 .build();
         accountMvc.perform(get("/api/v1/accounts"))
