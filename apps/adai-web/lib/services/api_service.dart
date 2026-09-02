@@ -23,8 +23,14 @@ class _TimeoutClient extends http.BaseClient {
 class ApiService {
   final String baseUrl;
 
-  /// 当前用户 ID（入口 `?userId=` 传入，默认 'default'）。
+  /// 当前用户 ID（入口 `?userId=` 传入，默认 'default'；登录后由会话决定，后端覆盖）。
   final String userId;
+
+  /// 登录会话 token（RFC 20260901-auth-login；null = 未登录）。
+  final String? token;
+
+  /// 401（会话失效/未登录）全局回调：前端清 token 并跳登录页。
+  final void Function()? onUnauthorized;
 
   /// 底层 HTTP 客户端（可注入 mock，测试用；默认真实 client）。
   final http.Client _client;
@@ -43,7 +49,8 @@ class ApiService {
   final Map<String, List<TimelineEntryResponse>> _timelineCache = {};
   final Map<String, List<MemoryEntryResponse>> _memoryCache = {};
 
-  ApiService({String? baseUrl, this.userId = 'default', http.Client? client, SseClient? sseClient})
+  ApiService({String? baseUrl, this.userId = 'default', this.token, this.onUnauthorized,
+      http.Client? client, SseClient? sseClient})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
         _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
         _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 120)),
@@ -1040,19 +1047,79 @@ class ApiService {
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
-    // 多账号：所有请求带当前用户（后端 FileStorage 按 userId 隔离）
+    // 多账号：所有请求带当前用户（后端 FileStorage 按 userId 隔离）；
+    // RFC 20260901-auth-login：后端 AuthFilter 校验 Bearer 并把 X-User-Id 覆盖为会话 userId
     'X-User-Id': userId,
+    if (token != null) 'Authorization': 'Bearer $token',
   };
 
   /// 图片记录原图 URL（供 Image.network 渲染缩略图/点击看原图）。
   String mediaUrl(String recordId) => '$baseUrl/api/v1/records/media/$recordId';
 
   /// 媒体请求鉴权头（Image.network 需要显式传入）。
-  Map<String, String> get mediaHeaders => {'X-User-Id': userId};
+  Map<String, String> get mediaHeaders => {
+    'X-User-Id': userId,
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
 
   void _check(http.Response resp) {
+    // RFC 20260901-auth-login：401 = 会话失效/未登录 → 全局回调跳登录页（先回调再抛异常）
+    if (resp.statusCode == 401 && onUnauthorized != null) {
+      onUnauthorized!();
+    }
     if (resp.statusCode >= 400) {
       // #118：resp.body 按 latin1 解码中文会乱码，改 utf8 解码 bodyBytes
+      throw ApiException(resp.statusCode, 'API 请求失败（HTTP ${resp.statusCode}）', utf8.decode(resp.bodyBytes));
+    }
+  }
+}
+
+/// 认证相关方法（RFC 20260901-auth-login）。
+extension AuthApi on ApiService {
+  /// 登录：成功返回 {token, userId, role, plugins}。
+  /// 401（密码错/未设密码/限流）抛 ApiException，不触发 onUnauthorized（登录页场景）。
+  Future<Map<String, dynamic>> login(String account, String password) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'account': account, 'password': password}),
+    );
+    _checkAuthOnly(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 首访一次性设密码：404 = 系统已初始化（引导登录）；200 = 设置成功。
+  Future<void> setup(String account, String password) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/setup'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'account': account, 'password': password}),
+    );
+    _checkAuthOnly(resp);
+  }
+
+  /// 当前会话信息：有效返回账号信息；401 = 会话失效。
+  Future<Map<String, dynamic>> authMe() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/auth/me'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 登出。
+  Future<void> logout() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/logout'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
+  /// 认证端点专用校验：>=400 抛 ApiException，但不触发 onUnauthorized 跳转。
+  void _checkAuthOnly(http.Response resp) {
+    if (resp.statusCode >= 400) {
       throw ApiException(resp.statusCode, 'API 请求失败（HTTP ${resp.statusCode}）', utf8.decode(resp.bodyBytes));
     }
   }
@@ -1522,10 +1589,13 @@ class PositionItem {
   final double pnlPercent;
   // RFC 20260816：持仓详细管理字段（后端 P0 落盘，web P1 编辑；旧数据缺失 → null 兜底）
   final String? entryDate; // 首买日 yyyy-MM-dd
-  final double? stopLossPrice; // 止损位
+  final double? stopLossPrice; // 人工止损位（最近 BUY 值 / web 编辑；可空）
   final String? buyPoint; // 买点类型（B1/B2/...）
   final String? role; // 防守/前锋/中场/机动 + 主仓/副仓
   final double? targetPrice; // 目标价
+  // 双止损位（trading-risk-plan）：系统计算止损（风险预算公式动态算）+ 生效止损 = max(人工, 计算)
+  final double? computedStopLossPrice;
+  final double? effectiveStopLoss;
 
   PositionItem({
     required this.symbol,
@@ -1541,6 +1611,8 @@ class PositionItem {
     this.buyPoint,
     this.role,
     this.targetPrice,
+    this.computedStopLossPrice,
+    this.effectiveStopLoss,
   });
 
   factory PositionItem.fromJson(Map<String, dynamic> json) => PositionItem(
@@ -1557,6 +1629,8 @@ class PositionItem {
     buyPoint: json['buyPoint'] as String?,
     role: json['role'] as String?,
     targetPrice: (json['targetPrice'] as num?)?.toDouble(),
+    computedStopLossPrice: (json['computedStopLossPrice'] as num?)?.toDouble(),
+    effectiveStopLoss: (json['effectiveStopLoss'] as num?)?.toDouble(),
   );
 }
 

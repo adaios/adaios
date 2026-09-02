@@ -10,22 +10,23 @@ import 'pages/task_page.dart';
 import 'pages/trading_page.dart';
 import 'pages/search_page.dart';
 import 'pages/profile_page.dart';
+import 'utils/open_url.dart';
 
 /// 桌面壳 — 两栏（左导航 + 主内容区），参考元宝电脑端。
 ///
 /// 主内容区用 **lazy IndexedStack**：页面保活（切换不重建，Feed 对话态跨页保留），
 /// 且只实例化已访问页面（首次访问才构建，避免启动时 8 页并发 HTTP）。
 class DesktopShell extends StatefulWidget {
-  /// 当前用户 ID（透传给各页面 ApiService）。
+  /// 当前用户 ID（透传给各页面 ApiService；后端以会话为准）。
   final String userId;
 
-  /// 切换账号回调（AdaiWebApp 提供：push 选号页 → 选定后重建整树）。
-  final VoidCallback? onSwitchAccount;
+  /// 登出回调（RFC 20260901-auth-login：底部账号点击 → 退出登录回登录页）。
+  final VoidCallback? onLogout;
 
   /// 测试注入：覆盖内部 ApiService（默认按 userId 创建）。
   final ApiService? api;
 
-  const DesktopShell({super.key, required this.userId, this.onSwitchAccount, this.api});
+  const DesktopShell({super.key, required this.userId, this.onLogout, this.api});
 
   @override
   State<DesktopShell> createState() => _DesktopShellState();
@@ -130,6 +131,7 @@ class _DesktopShellState extends State<DesktopShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.darkBg,
+      bottomNavigationBar: _buildIcpBar(),
       body: Row(
         children: [
           _buildNavRail(),
@@ -151,6 +153,33 @@ class _DesktopShellState extends State<DesktopShell> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 底部备案号栏（管局强制要求：网站底部悬挂 ICP 备案号并链接到 beian.miit.gov.cn）。
+  Widget _buildIcpBar() {
+    return Container(
+      height: 26,
+      decoration: const BoxDecoration(
+        color: AppColors.darkSurface,
+        border: Border(top: BorderSide(color: AppColors.darkBorder, width: 1)),
+      ),
+      child: Center(
+        child: InkWell(
+          onTap: () => openUrl('https://beian.miit.gov.cn'),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              '京ICP备2026056893号',
+              style: TextStyle(
+                fontSize: 10,
+                color: AppColors.darkGrey5,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -191,14 +220,14 @@ class _DesktopShellState extends State<DesktopShell> {
           // 导航项
           for (var i = 0; i < _items.length; i++) _buildNavItem(i),
           const Spacer(),
-          // 底部 userId（v1.0.0 多账号：点击切换账号）
-          // #229：Tooltip 提示切换 + hover 高亮；#201：超长 userId Expanded+ellipsis 防横向溢出
+          // 底部 userId（RFC 20260901-auth-login：点击退出登录）
+          // #229：Tooltip 提示 + hover 高亮；#201：超长 userId Expanded+ellipsis 防横向溢出
           Tooltip(
-            message: '切换账号（@${widget.userId}）',
+            message: '退出登录（@${widget.userId}）',
             waitDuration: const Duration(milliseconds: 400),
             child: Hoverable(
               builder: (context, isHovered) => GestureDetector(
-                onTap: widget.onSwitchAccount,
+                onTap: widget.onLogout,
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -207,7 +236,7 @@ class _DesktopShellState extends State<DesktopShell> {
                     border: const Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
                   ),
                   child: Row(children: [
-                    Icon(Icons.swap_horiz, size: 13, color: AppColors.darkGrey5),
+                    Icon(Icons.logout, size: 13, color: AppColors.darkGrey5),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
