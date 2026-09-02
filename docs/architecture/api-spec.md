@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.34 | 最后更新：2026-08-30**
+**文档版本：v3.35 | 最后更新：2026-08-31**
 
 ---
 
@@ -10,6 +10,8 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-01 | v3.40 | **登录体系（RFC 20260901-auth-login，根治 #179，§0/§0.1）**：新增 5 端点 `POST /auth/login`、`POST /auth/logout`、`GET /auth/me`、`POST /auth/setup`（首访一次性设密码）、`POST /auth/password`（改密踢会话）；产品端点鉴权升级——`Authorization: Bearer <token>`（30 天滑动续期），X-User-Id 后端强制覆盖为会话 userId（伪造无效），无 token 一律 401；`GET /accounts/available` 免鉴权封死；admin 体系 X-Admin-Token 不变 |
+| 2026-08-31 | v3.35 | **双止损位（trading-risk-plan，响应字段扩展，无新端点）**：`GET /trading/positions` 响应新增 `computedStopLossPrice`（系统计算止损：R=本金×1%，距离=min(R÷市值,5%)，动态算不落盘）+ `effectiveStopLoss`（生效止损=max(人工,计算)）；R66 判定/接近止损预警/建议引擎统一改用生效止损 |
 | 2026-08-30 | v3.34 | **流式问答（P2-用户2 批 2）**：新增 `POST /records/ask-stream`（SSE 流式问答：`text` 增量事件 + `meta` 定稿事件 + `[DONE]`；后端内降级——模型无增量输出时回退同步 understand 一次；同卡同问 5 分钟去重直返既有回答；UTF-8 字节透传防中文乱码）+ 双端（adai-app/adai-web）`SseClient` 流式渲染（90ms 节流草稿、error 事件人话透出、流开始前失败自动降级旧同步端点） |
 | 2026-08-30 | v3.33 | **交易插件规则层（第三阶段，trading-plugin-architecture.md）**：新增 `GET /trading/rules`（用户自己的交易规则参数：仓位上限/默认止损/行为标注阈值/买点参数/打分权重/硬约束区间，无规则 → 默认值）+ `PUT /trading/rules`（覆盖非空字段，落 `data/{userId}/trading/rules.yaml`）；规则参数按用户隔离，驱动止损/仓位判定、买点信号、行为标注、清仓 verdict、打分权重、建议硬约束、知识注入（`data/{userId}/trading/knowledge.md` 用户私有知识优先，os/ 作 adai 默认）——**每个人有自己的交易系统** |
 | 2026-08-27 | v3.32 | **截图入账缺日期禁落库批（用户拍板「截图缺日期禁止落库，补充日期后再确认」二修）**：`POST /trade-log/confirm` 对**截图归集候选（source=image）无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 人话提示「缺少成交日期」）——不再回退确认当天；新增 `PUT /trade-log/date` 补写候选成交日期（补日期后再次确认可正常落库，成交日 ≠ 确认日不再记错） |
@@ -58,15 +60,52 @@
 
 ## 0. 通用请求头（多账号预留）
 
-> v3.3 起，**所有** API 支持可选请求头 `X-User-Id`，按用户隔离数据。
+> **v3.40（2026-09-01）登录体系（RFC 20260901-auth-login）**：产品端点鉴权从「信任 X-User-Id」升级为「会话 Bearer token」。`X-User-Id` 头仍保留（Controller 兼容读取），但**后端 AuthFilter 强制覆盖为会话 userId**——客户端伪造无效；无有效 `Authorization: Bearer <token>` 一律 401（fail-closed）。
 
 | Header | 类型 | 必填 | 默认 | 说明 |
 |:-------|:-----|:----:|:----:|:-----|
-| `X-User-Id` | String | 否 | `default` | 用户标识，数据路径按 `data/{userId}/` 分层隔离。**v1.0.0 起前端必须携带所选账号**（选号/切换所得 userId）；后端兜底值 `default` 仅用于测试/兼容，本机真实账号为 `data/adai/`（default 已迁移移除，省略请求会落到空分支）|
+| `Authorization` | String | 是（登录后） | — | `Bearer <token>`，登录签发（32 字节 hex，落盘仅存 SHA-256 哈希）；30 天滑动续期；登出/改密即失效 |
+| `X-User-Id` | String | 否 | — | 用户标识（兼容保留）；**后端以会话为准强制覆盖**，客户端传什么都被忽略 |
 
 **约束**：`userId` 仅允许 `[a-zA-Z0-9_-]+`（后端校验，防路径注入）。不合法的 userId 返回 400。
 
-> 本期仅**架构预留**：不做登录/注册/账号管理，账号由后台管理系统维护（v1.0.0 功能层）。
+**免鉴权路径**（仅此 3 类）：`POST /api/v1/auth/login`、`POST /api/v1/auth/setup`（首访一次性）、`OPTIONS`（CORS 预检）。`/api/v1/admin/**` 与 `/api/v1/accounts/**` 由 `X-Admin-Token` 体系接管（不变）。`GET /api/v1/accounts/available` 原免鉴权已封死（需登录）。
+
+---
+
+## 0.1 认证（Auth，RFC 20260901-auth-login）
+
+### `POST /api/v1/auth/login` — 登录（免鉴权）
+
+请求：`{"account": "adai", "password": "..."}`
+
+响应 200：
+```json
+{"token": "3ce1...8f", "userId": "adai", "role": "admin", "plugins": ["trading","project"], "expiresAt": "2026-10-01T15:53:54Z"}
+```
+- 401：账号或密码错误 / 账号未设密码（提示先 setup）/ 连续 5 次失败限流（15 分钟锁，按 IP+账号）
+- token 明文只在此响应出现一次；落盘 `data/accounts/sessions.json` 仅存 SHA-256 哈希
+
+### `POST /api/v1/auth/logout` — 登出（会话）
+
+无请求体；删除当前 token 会话。幂等。
+
+### `GET /api/v1/auth/me` — 当前会话信息（会话）
+
+响应 200：`{"userId": "adai", "role": "admin", "enabled": true, "plugins": [...]}`
+- 401：会话失效/未登录（前端据此清 token 回登录页）
+
+### `POST /api/v1/auth/setup` — 首访一次性设密码（免鉴权）
+
+请求：`{"account": "adai", "password": "至少8位"}`
+- 200：设置成功（仅当**全系统无任何账号设过密码**时可用；此后 404「系统已完成初始化」）
+- 401：账号不存在 / 密码太短
+
+### `POST /api/v1/auth/password` — 改密（会话）
+
+请求：`{"oldPassword": "...", "newPassword": "至少8位"}`
+- 200：`{"message": "密码已更新", "kickedSessions": N}`（踢除该账号其他会话，保留当前）
+- 401：原密码错误 / 会话失效
 
 ---
 
@@ -440,6 +479,11 @@
 
 ### `GET /api/v1/trading/positions` — 查询持仓
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
+>
+> **Response**：`Position[]`，每项含双止损位字段（2026-08-31，trading-risk-plan）：
+> - `stopLossPrice`：**人工止损位**（最近 BUY 值 / web 编辑，落盘 positions.md；可空）
+> - `computedStopLossPrice`：**系统计算止损位**（风险预算公式动态算、不落盘：R=本金×1%，止损距离=min(R÷单仓市值, 5%)，止损价=成本×(1−距离)；本金缺失/异常输入 → null）
+> - `effectiveStopLoss`：**生效止损位 = max(人工, 计算)**（取更严格，R66 判定/接近止损预警/建议引擎统一用本值；两者皆空 → null）
 
 ### `GET /api/v1/trading/portfolio` — 查询投资组合快照
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。

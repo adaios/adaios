@@ -7,8 +7,8 @@
 | 服务器 OS | **Ubuntu 24.04 LTS**（2026-08-19 从 CentOS 8.5 迁移，旧服务器 49.235.37.220 到期下线）|
 | 服务器配置 | 2核4G · 70G SSD · 600G 流量（腾讯云轻量，北京）|
 | 服务器 IP | **82.156.111.146** |
-| 生产域名 | **adaiadai.com**（已注册；DNS + HTTPS 待配置，见 §10）|
-| 部署方式 | IP + 端口直接访问（域名就绪后走 Caddy 反代）|
+| 生产域名 | **adaiadai.com**（2026-09-01 已上线：ICP 备案通过 + DNS + Caddy HTTPS，见 §10）|
+| 部署方式 | Caddy 反代（adaiadai.com → 8082/8083，api.adaiadai.com → 8080）|
 | 后端端口 | 8080 |
 | 前端端口 | 8082（adai-web）/ 8083（adai-admin）|
 | 运行方式 | systemd 服务，开机自启 |
@@ -299,9 +299,11 @@ flutter build ios --release --dart-define=API_BASE_URL=http://82.156.111.146:808
 
 > ⚠️ 免费 Apple ID 签名 7 天过期；TestFlight 需付费开发者账号（90 天）。
 
-## 10. 域名 + HTTPS（adaiadai.com，待配置）
+## 10. 域名 + HTTPS（adaiadai.com，2026-09-01 已上线）
 
 目标：浏览器/app 走 `https://adaiadai.com`，Caddy 自动申请续期 Let's Encrypt 免费证书，反代三个端口。换服务器只改 DNS，前端永不重构建。
+
+> **已上线**（2026-09-01，备案号京ICP备2026056893号）：DNS A 记录 + Caddy 反代 + 证书全部就绪，web/admin 已重构建指向 `https://api.adaiadai.com`（CORS 白名单已加 `https://adaiadai.com`，注意无端口 Origin 需精确值——`:*` 通配匹配不上无端口 Origin）。
 
 ```bash
 # 1. DNS：adaiadai.com A 记录 → 82.156.111.146（控制台操作）
@@ -325,4 +327,5 @@ sudo systemctl restart caddy
 # 4. 防火墙放行 80/443（腾讯云控制台）
 # 5. 前端重构建指向域名：--dart-define=API_BASE_URL=https://api.adaiadai.com
 #    app 写 https://api.adaiadai.com，以后换服务器永不再改 app
+# 6. CORS：.env 的 ADAI_ALLOWED_ORIGIN_PATTERNS 追加 https://adaiadai.com（无端口精确值）
 ```

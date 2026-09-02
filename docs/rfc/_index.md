@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-30
+updated: 2026-09-02
 status: active
-lines: 72
+lines: 73
 depends-on: []
 related:
   - ../_index.md
@@ -64,6 +64,7 @@ tags: [meta, index, rfc]
 | 20260822-memory-plugin-isolation.md | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 | draft |
 | 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）| draft |
 | 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
+| 20260901-auth-login.md | 用户认证登录体系——根治 X-User-Id 零鉴权（账号密码 + 服务端会话，AuthFilter 覆盖 X-User-Id）| implemented |
 
 ## 过期判断
 
