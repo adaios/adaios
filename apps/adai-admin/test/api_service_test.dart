@@ -267,4 +267,152 @@ void main() {
       expect(content.content, contains('R1'));
     });
   });
+
+  group('认证 / REVIEW #178（admin 并入统一登录，X-Admin-Token 退役）', () {
+    test('无 token：系统级请求不带 Authorization / X-Admin-Token', () async {
+      final client = MockClient((request) async {
+        expect(request.headers.containsKey('Authorization'), isFalse,
+            reason: '未登录不带 Bearer');
+        expect(request.headers.containsKey('X-Admin-Token'), isFalse,
+            reason: 'X-Admin-Token 已退役');
+        return _json([
+          {'userId': 'adai', 'role': 'admin', 'enabled': true, 'createdAt': '2026-08-02'},
+        ]);
+      });
+      final api = ApiService(client: client);
+      await api.getAccounts();
+    });
+
+    test('带 token：系统级请求带 Authorization Bearer，不带 X-Admin-Token', () async {
+      final client = MockClient((request) async {
+        expect(request.headers['Authorization'], 'Bearer tok_abc');
+        expect(request.headers.containsKey('X-Admin-Token'), isFalse,
+            reason: 'X-Admin-Token 已退役');
+        expect(request.headers.containsKey('X-User-Id'), isFalse);
+        return _json([
+          {'userId': 'adai', 'role': 'admin', 'enabled': true, 'createdAt': '2026-08-02'},
+        ]);
+      });
+      final api = ApiService(client: client, token: 'tok_abc');
+      await api.getAccounts();
+    });
+
+    test('login：POST /auth/login 解析 token/userId/role；401 不触发全局登出', () async {
+      var unauthorizedFired = false;
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/auth/login');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['account'], 'adai');
+        expect(body['password'], 'secret123');
+        expect(request.headers.containsKey('X-Admin-Token'), isFalse);
+        return _json({
+          'token': 'tok_abc',
+          'userId': 'adai',
+          'role': 'admin',
+          'plugins': ['trading'],
+          'expiresAt': '2026-10-01T00:00:00Z',
+        });
+      });
+      final api = ApiService(client: client, onUnauthorized: () => unauthorizedFired = true);
+      final result = await api.login('adai', 'secret123');
+
+      expect(result['token'], 'tok_abc');
+      expect(result['role'], 'admin');
+      expect(unauthorizedFired, isFalse);
+    });
+
+    test('login 失败 401：抛 ApiException 且不触发全局登出（登录页自处）', () async {
+      var unauthorizedFired = false;
+      final client = MockClient((request) async =>
+          _json({'error': '账号或密码错误'}, 401));
+      final api = ApiService(client: client, onUnauthorized: () => unauthorizedFired = true);
+
+      await expectLater(
+        api.login('adai', 'wrong'),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', '账号或密码错误')),
+      );
+      expect(unauthorizedFired, isFalse,
+          reason: '登录失败 401 不算会话失效，不应触发全局登出');
+    });
+
+    test('业务请求 401：触发 onUnauthorized 全局回调（回登录页）', () async {
+      var unauthorizedFired = false;
+      final client = MockClient((request) async =>
+          _json({'error': '未登录或会话已失效，请先登录'}, 401));
+      final api = ApiService(client: client, token: 'expired', onUnauthorized: () => unauthorizedFired = true);
+
+      await expectLater(api.getAccounts(), throwsA(isA<ApiException>()));
+      expect(unauthorizedFired, isTrue);
+    });
+
+    test('authMe：GET /auth/me 带 Bearer，解析 userId/role', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/auth/me');
+        expect(request.headers['Authorization'], 'Bearer tok_abc');
+        return _json({
+          'userId': 'adai',
+          'role': 'admin',
+          'enabled': true,
+          'plugins': ['trading', 'project'],
+        });
+      });
+      final api = ApiService(client: client, token: 'tok_abc');
+      final me = await api.authMe();
+
+      expect(me['userId'], 'adai');
+      expect(me['role'], 'admin');
+    });
+
+    test('changePassword：POST /auth/password 带 Bearer 与 old/new，返回被踢会话数', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/auth/password');
+        expect(request.headers['Authorization'], 'Bearer tok_abc');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['oldPassword'], 'old12345');
+        expect(body['newPassword'], 'new123456');
+        return _json({'message': '密码已更新', 'kickedSessions': 2});
+      });
+      final api = ApiService(client: client, token: 'tok_abc');
+      expect(await api.changePassword(oldPassword: 'old12345', newPassword: 'new123456'), 2);
+    });
+
+    test('createAccount 带初始密码：body 含 password（≥8 位）', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/accounts');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['userId'], 'alice');
+        expect(body['role'], 'user');
+        expect(body['password'], 'secret123');
+        return _json({
+          'userId': 'alice',
+          'role': 'user',
+          'enabled': true,
+          'createdAt': '2026-09-02',
+          'plugins': <String>[],
+        });
+      });
+      final api = ApiService(client: client, token: 'tok_abc');
+      final account = await api.createAccount(userId: 'alice', role: 'user', password: 'secret123');
+      expect(account.userId, 'alice');
+    });
+
+    test('updateAccount 重置密码：body 含 password（#178）', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/accounts/alice');
+        expect(request.method, 'PATCH');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['password'], 'newpass123');
+        expect(body.containsKey('enabled'), isFalse);
+        return _json({
+          'userId': 'alice',
+          'role': 'user',
+          'enabled': true,
+          'createdAt': '2026-09-02',
+          'plugins': <String>[],
+        });
+      });
+      final api = ApiService(client: client, token: 'tok_abc');
+      await api.updateAccount('alice', password: 'newpass123');
+    });
+  });
 }

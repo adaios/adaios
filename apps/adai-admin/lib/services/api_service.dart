@@ -11,7 +11,9 @@ import 'api_exception.dart';
 ///
 /// - 构造器可注入 [http.Client]（测试用 `MockClient`）与 [baseUrl]。
 /// - [userId] 用于 per-user 请求的 `X-User-Id` header（默认 'default'）。
-/// - [adminToken]（REVIEW #127）随系统级请求带 `X-Admin-Token`，默认取 [ApiConfig.adminToken]。
+/// - [token]（RFC 20260901-auth-login / REVIEW #178）：登录会话 token，随请求带
+///   `Authorization: Bearer`；null/空 = 未登录（后端一律 401/403）。X-Admin-Token 已退役。
+/// - [onUnauthorized]：401（会话失效）全局回调——通知根组件清 token 回登录页。
 /// - 方法返回解析后的 DTO / 模型，失败抛 [ApiException]。
 /// 带超时的 http.Client 包装（REVIEW P1-W6：请求无超时 → waiting/loading 无限转圈）。
 class _TimeoutClient extends http.BaseClient {
@@ -30,21 +32,30 @@ class ApiService {
     http.Client? client,
     String? baseUrl,
     this.userId = 'default',
-    this.adminToken = ApiConfig.adminToken,
+    this.token,
+    this.onUnauthorized,
   })  : _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
         baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   final http.Client _client;
   final String baseUrl;
   final String userId;
-  final String adminToken;
+
+  /// 登录会话 token（null = 未登录）。
+  final String? token;
+
+  /// 401（会话失效/未登录）全局回调：清 token 回登录页。
+  final void Function()? onUnauthorized;
+
+  /// 已通知过 401（并发多请求只回登录页一次）。
+  bool _unauthorizedNotified = false;
 
   // ── 通用请求 ──
 
-  /// 系统级请求头（无 X-User-Id；带管理令牌）。
+  /// 系统级请求头（无 X-User-Id；REVIEW #178：统一 Bearer 会话，无 X-Admin-Token）。
   Map<String, String> get systemHeaders => {
         'Content-Type': 'application/json',
-        if (adminToken.isNotEmpty) 'X-Admin-Token': adminToken,
+        if (token != null && token!.isNotEmpty) 'Authorization': 'Bearer $token',
       };
 
   /// per-user 请求头（带 X-User-Id）。
@@ -88,8 +99,16 @@ class ApiService {
   }
 
   /// 校验响应；非 2xx 解析 `{"error": "..."}` 后抛 [ApiException]。
-  http.Response _check(http.Response resp) {
+  /// [notifyAuth] = false 用于登录/setup——密码错误 401 不应触发全局登出（本就在登录页）。
+  http.Response _check(http.Response resp, {bool notifyAuth = true}) {
     if (resp.statusCode >= 200 && resp.statusCode < 300) return resp;
+    if (notifyAuth &&
+        resp.statusCode == 401 &&
+        onUnauthorized != null &&
+        !_unauthorizedNotified) {
+      _unauthorizedNotified = true;
+      onUnauthorized!();
+    }
     final text = _body(resp);
     String message = 'HTTP ${resp.statusCode}';
     try {
@@ -110,7 +129,66 @@ class ApiService {
   /// 按 UTF-8 解码响应体（后端 JSON 为 UTF-8，避免 content-type 缺 charset 时按 latin1 解析导致中文乱码）。
   String _body(http.Response resp) => utf8.decode(resp.bodyBytes);
 
-  // ── 账号（系统级，无 X-User-Id）──
+  // ── 认证（RFC 20260901-auth-login / REVIEW #178：管理口并入统一登录）──
+
+  /// `POST /api/v1/auth/login` → `{token, userId, role, plugins, expiresAt}`。
+  /// 失败抛 [ApiException]（401 不触发全局登出——登录失败本就在登录页）。
+  Future<Map<String, dynamic>> login(String account, String password) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'account': account, 'password': password}),
+    );
+    _check(resp, notifyAuth: false);
+    return jsonDecode(_body(resp)) as Map<String, dynamic>;
+  }
+
+  /// `POST /api/v1/auth/setup` → 首访一次性设密码（全系统无密码时可用）。
+  Future<Map<String, dynamic>> setup(String account, String password) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/setup'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'account': account, 'password': password}),
+    );
+    _check(resp, notifyAuth: false);
+    return jsonDecode(_body(resp)) as Map<String, dynamic>;
+  }
+
+  /// `POST /api/v1/auth/logout` → 注销当前会话（幂等）。
+  Future<void> logout() async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/logout'),
+      headers: systemHeaders,
+    );
+    _check(resp);
+  }
+
+  /// `GET /api/v1/auth/me` → `{userId, role, enabled, plugins}`（启动校验 token + 角色）。
+  Future<Map<String, dynamic>> authMe() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/auth/me'),
+      headers: systemHeaders,
+    );
+    _check(resp);
+    return jsonDecode(_body(resp)) as Map<String, dynamic>;
+  }
+
+  /// `POST /api/v1/auth/password` → 修改本人密码（踢除其他会话）；返回被踢会话数。
+  Future<int> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/password'),
+      headers: systemHeaders,
+      body: jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
+    );
+    _check(resp);
+    final body = jsonDecode(_body(resp)) as Map<String, dynamic>;
+    return (body['kickedSessions'] as num?)?.toInt() ?? 0;
+  }
+
+  // ── 账号（系统级，无 X-User-Id；需登录 + role=admin，#178）──
 
   /// `GET /api/v1/accounts` → 账号列表。
   Future<List<Account>> getAccounts() async {
@@ -119,20 +197,31 @@ class ApiService {
     return list.map((e) => Account.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// `POST /api/v1/accounts` body `{userId, role}` → 200 / 400。
-  Future<Account> createAccount({required String userId, required String role}) async {
+  /// `POST /api/v1/accounts` body `{userId, role, password?}` → 200 / 400。
+  /// [password] 为可选初始密码（≥8 位；不带 = 无密码，需登录前先重置）。
+  Future<Account> createAccount({
+    required String userId,
+    required String role,
+    String? password,
+  }) async {
     final resp = await _send('POST', '/api/v1/accounts',
-        body: {'userId': userId, 'role': role});
+        body: {
+          'userId': userId,
+          'role': role,
+          if (password != null && password.isNotEmpty) 'password': password,
+        });
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  /// `PATCH /api/v1/accounts/{userId}` body `{enabled?, role?, plugins?}` → 200 / 400 / 404。
+  /// `PATCH /api/v1/accounts/{userId}` body `{enabled?, role?, plugins?, password?}` → 200 / 400 / 404。
+  /// [password] 非空 = 重置密码（≥8 位；后端会踢除该账号全部会话，#178）。
   Future<Account> updateAccount(String userId,
-      {bool? enabled, String? role, List<String>? plugins}) async {
+      {bool? enabled, String? role, List<String>? plugins, String? password}) async {
     final body = <String, dynamic>{
       'enabled': ?enabled,
       'role': ?role,
       'plugins': ?plugins,
+      if (password != null && password.isNotEmpty) 'password': password,
     };
     final resp = await _send('PATCH', '/api/v1/accounts/$userId', body: body);
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
@@ -154,7 +243,7 @@ class ApiService {
   // ── 记录（per-user，admin 只读查看）──
 
   /// `POST /api/v1/admin/records/retry?userId=` → 重补缺失记忆（维护端点，P-be-01 迁入 /admin/**）。
-  /// 系统级请求（X-Admin-Token），目标用户由 userId 查询参数显式指定。
+  /// 系统级请求（REVIEW #178：登录 + role=admin），目标用户由 userId 查询参数显式指定。
   Future<RetryResultDto> triggerRecordRetry() async {
     final resp = await _send('POST', '/api/v1/admin/records/retry',
         query: {'userId': userId});

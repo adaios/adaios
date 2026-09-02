@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build Flutter Web + apply local Font patches + serve via Python
-# Usage: sh scripts/serve_web.sh [API_BASE_URL] [ADMIN_TOKEN]
+# Usage: sh scripts/serve_web.sh [API_BASE_URL]
 # 渲染模式：JS + CanvasKit（不用 --wasm）——2026-08-22 线上白屏根因修复：
 #   wasm 双模式（skwasm）产物带 --import-shared-memory，依赖 SharedArrayBuffer，
 #   而浏览器只在 HTTPS（或 localhost）下才信任 COOP/COEP 头 → 纯 IP/HTTP 访问
@@ -11,15 +11,13 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-# 可选参数：API_BASE_URL（连生产后端时传入，如 http://82.156.111.146:8080）
-#           ADMIN_TOKEN（管理端令牌，与后端 ADAI_ADMIN_TOKEN 一致；REVIEW #127）
+# 可选参数：API_BASE_URL（连生产后端时传入，如 https://api.adaiadai.com）
+# REVIEW #178：X-Admin-Token / ADMIN_TOKEN 已退役——管理口并入统一登录（登录页账号密码 + Bearer 会话）。
 API_BASE_URL="${1:-}"
-ADMIN_TOKEN="${2:-}"
 
 echo "=== Building Flutter Web (JS + CanvasKit) ==="
 DEFINES=""
 if [ -n "$API_BASE_URL" ]; then DEFINES="$DEFINES --dart-define=API_BASE_URL=$API_BASE_URL"; fi
-if [ -n "$ADMIN_TOKEN" ]; then DEFINES="$DEFINES --dart-define=ADMIN_TOKEN=$ADMIN_TOKEN"; fi
 flutter build web --no-tree-shake-icons $DEFINES
 
 echo "=== Applying local patches ==="

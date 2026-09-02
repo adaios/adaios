@@ -47,9 +47,13 @@ class FakeAccountStore implements AccountStore {
   Future<List<Account>> loadAccounts() async => List.of(_accounts);
 
   @override
-  Future<String?> create({required String userId, required String role}) async {
+  Future<String?> create(
+      {required String userId, required String role, String? password}) async {
     final id = userId.trim();
     if (id.isEmpty) return '账号 ID 不能为空';
+    if (password != null && password.isNotEmpty && password.length < 8) {
+      return '初始密码长度至少 8 位';
+    }
     if (_accounts.any((a) => a.userId == id)) return '账号已存在：$id';
     _accounts.add(
       Account(userId: id, role: role, enabled: true, createdAt: DateTime.now()),
@@ -69,12 +73,13 @@ class FakeAccountStore implements AccountStore {
   }
 
   @override
-  Future<String?> setPlugins(String userId, List<String> plugins) async {
+  Future<String?> resetPassword(String userId, String newPassword) async {
+    if (newPassword.length < 8) return '密码长度至少 8 位';
     final idx = _accounts.indexWhere((a) => a.userId == userId);
     if (idx < 0) return '账号不存在：$userId';
-    _accounts[idx].plugins = List.of(plugins);
     return null;
   }
+
 
   @override
   Future<String?> mergePlugins(String userId,
@@ -382,19 +387,17 @@ class GatedAccountStore implements AccountStore {
   Future<List<Account>> loadAccounts() async => List.of(_accounts);
 
   @override
-  Future<String?> create({required String userId, required String role}) async => null;
+  Future<String?> create(
+      {required String userId, required String role, String? password}) async =>
+      null;
 
   @override
   Future<String?> setEnabled(String userId, bool enabled) async => null;
 
   @override
-  Future<String?> setPlugins(String userId, List<String> plugins) async {
-    setPluginsCalls.add(List.of(plugins));
-    await gate.future; // 挂起直到测试放行
-    final idx = _accounts.indexWhere((a) => a.userId == userId);
-    if (idx >= 0) _accounts[idx].plugins = List.of(plugins);
-    return null;
-  }
+  Future<String?> resetPassword(String userId, String newPassword) async =>
+      null;
+
 
   @override
   Future<String?> mergePlugins(String userId,

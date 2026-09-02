@@ -35,7 +35,8 @@ void main() {
     await tester.tap(find.text('+ 新建'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'zhangsan');
+    // 建号表单含「账号 ID + 初始密码」两个输入框 → 取第一个（账号 ID）
+    await tester.enterText(find.byType(TextField).first, 'zhangsan');
     // 账号卡片含插件开关后整体变高，创建按钮可能滚出可视区 → 先滚动到可见
     await tester.ensureVisible(find.text('创建账号'));
     await tester.tap(find.text('创建账号'));
@@ -52,7 +53,7 @@ void main() {
     await tester.tap(find.text('+ 新建'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'alice');
+    await tester.enterText(find.byType(TextField).first, 'alice');
     await tester.ensureVisible(find.text('创建账号'));
     await tester.tap(find.text('创建账号'));
     await tester.pumpAndSettle();
@@ -159,5 +160,42 @@ void main() {
       tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
       isTrue,
     );
+  });
+
+  testWidgets('REVIEW #178：账号卡提供重置密码，两次一致提交成功', (WidgetTester tester) async {
+    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
+    await tester.pumpAndSettle();
+
+    // 每个账号卡都有重置密码按钮（adai / alice / bob）
+    expect(find.byKey(const ValueKey('reset-pwd-adai')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reset-pwd-alice')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reset-pwd-alice')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('重置密码 · alice'), findsOneWidget);
+
+    // 弹窗两个密码输入框：新密码 + 确认（不一致会被拦）
+    await tester.enterText(find.byType(TextField).at(0), 'newpass123');
+    await tester.enterText(find.byType(TextField).at(1), 'mismatch9');
+    await tester.tap(find.text('重置密码'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('两次输入的密码不一致'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(1), 'newpass123');
+    await tester.tap(find.text('重置密码'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已重置 alice 的密码'), findsOneWidget);
+  });
+
+  testWidgets('REVIEW #178：当前登录账号自身隐藏重置密码（引导顶栏改密）', (WidgetTester tester) async {
+    await tester.pumpWidget(
+        _wrap(AccountsPage(store: FakeAccountStore(), currentUserId: 'adai')));
+    await tester.pumpAndSettle();
+
+    // adai 是当前登录账号 → 无重置按钮；alice 等他人账号仍可重置
+    expect(find.byKey(const ValueKey('reset-pwd-adai')), findsNothing);
+    expect(find.byKey(const ValueKey('reset-pwd-alice')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reset-pwd-bob')), findsOneWidget);
   });
 }

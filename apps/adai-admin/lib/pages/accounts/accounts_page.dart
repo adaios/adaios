@@ -4,12 +4,19 @@ import '../../services/account_api_store.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/badge.dart';
 
-/// 账号管理页 — 列表 + 建号表单 + 禁用/启用 + 删除（真实后端 /api/v1/accounts）。
+/// 账号管理页 — 列表 + 建号表单 + 禁用/启用 + 重置密码 + 删除（真实后端 /api/v1/accounts）。
+///
+/// REVIEW #178：改密入口放 admin——本人改密走顶栏会话菜单（/auth/password），
+/// 本页为每个账号提供「重置密码」（PATCH /accounts/{id} password，踢除该账号会话）；
+/// 当前登录账号自身隐藏重置（引导用顶栏改密，避免踢掉当前会话）。
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key, this.store});
+  const AccountsPage({super.key, this.store, this.currentUserId = ''});
 
   /// 可注入 store（测试用 Fake）；默认真实 [AccountApiStore]。
   final AccountStore? store;
+
+  /// 当前登录的 admin 账号（该账号隐藏「重置密码」，改密走顶栏会话菜单）。
+  final String currentUserId;
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();
@@ -24,6 +31,7 @@ class _AccountsPageState extends State<AccountsPage> {
 
   bool _showCreate = false;
   final _userIdCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
   String _role = 'user';
 
   @override
@@ -35,6 +43,7 @@ class _AccountsPageState extends State<AccountsPage> {
   @override
   void dispose() {
     _userIdCtrl.dispose();
+    _passwordCtrl.dispose();
     super.dispose();
   }
 
@@ -63,7 +72,15 @@ class _AccountsPageState extends State<AccountsPage> {
   // ── 操作 ──
 
   Future<void> _createAccount() async {
-    final error = await _store.create(userId: _userIdCtrl.text, role: _role);
+    final password = _passwordCtrl.text;
+    if (password.isNotEmpty && password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        _snack('初始密码长度至少 8 位', AppColors.darkOrange),
+      );
+      return;
+    }
+    final error = await _store.create(
+        userId: _userIdCtrl.text, role: _role, password: password);
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,11 +89,27 @@ class _AccountsPageState extends State<AccountsPage> {
       return;
     }
     _userIdCtrl.clear();
+    _passwordCtrl.clear();
     setState(() => _showCreate = false);
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已创建账号', AppColors.darkGreen),
     );
     await _load(silent: true);
+  }
+
+  /// 重置密码（REVIEW #178 改密入口放 admin）：设新密码 → 后端踢除该账号全部会话。
+  Future<void> _resetPassword(Account account) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ResetPasswordDialog(
+        accountId: account.userId,
+        onReset: (pwd) => _store.resetPassword(account.userId, pwd),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      _snack('已重置 ${account.userId} 的密码', AppColors.darkGreen),
+    );
   }
 
   Future<void> _toggleEnabled(Account account, bool enabled) async {
@@ -266,7 +299,7 @@ class _AccountsPageState extends State<AccountsPage> {
                     color: AppColors.darkGrey1,
                   )),
               SizedBox(height: 2),
-              Text('账号列表 · 建号（无口令）· 启用/禁用 · 插件开关 · 删除',
+              Text('账号列表 · 建号（可设初始密码）· 启用/禁用 · 重置密码 · 插件开关 · 删除',
                   style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
             ],
           ),
@@ -356,6 +389,10 @@ class _AccountsPageState extends State<AccountsPage> {
         _field('账号 ID', _userIdCtrl,
             hint: '登录名（如 zhangsan）', onSubmitted: (_) => _createAccount()),
         const SizedBox(height: 10),
+        _field('初始密码', _passwordCtrl,
+            hint: '至少 8 位（留空 = 登录前需先重置密码）', obscure: true,
+            onSubmitted: (_) => _createAccount()),
+        const SizedBox(height: 10),
         Row(children: [
           _sectionTitle('角色'),
           const SizedBox(width: 8),
@@ -384,13 +421,14 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Widget _field(String label, TextEditingController ctrl,
-      {String? hint, void Function(String)? onSubmitted}) {
+      {String? hint, bool obscure = false, void Function(String)? onSubmitted}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
           style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 4),
       TextField(
         controller: ctrl,
+        obscureText: obscure,
         onSubmitted: onSubmitted,
         style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
         decoration: InputDecoration(
@@ -506,6 +544,20 @@ class _AccountsPageState extends State<AccountsPage> {
               inactiveThumbColor: AppColors.darkGrey5,
               onChanged: (v) => _toggleEnabled(account, v),
             ),
+          // REVIEW #178：改密入口放 admin——重置密码（当前登录账号自身引导走顶栏改密）
+          if (account.userId == widget.currentUserId && widget.currentUserId.isNotEmpty)
+            const Tooltip(
+              message: '当前登录账号：请用右上角会话菜单「修改密码」',
+              child: Icon(Icons.lock_outline, size: 16, color: AppColors.darkGrey6),
+            )
+          else
+            IconButton(
+              key: ValueKey('reset-pwd-${account.userId}'),
+              icon: const Icon(Icons.password_outlined,
+                  size: 18, color: AppColors.darkGrey5),
+              onPressed: () => _resetPassword(account),
+              tooltip: '重置密码',
+            ),
           if (!isProtected)
             IconButton(
               icon: const Icon(Icons.delete_outline,
@@ -574,5 +626,130 @@ class _AccountsPageState extends State<AccountsPage> {
   String _formatDate(DateTime dt) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${dt.year}-${two(dt.month)}-${two(dt.day)}';
+  }
+}
+
+/// 重置密码弹窗（独立 StatefulWidget：控制器随弹窗 State 释放，避免退出动画期
+/// 使用已 dispose 的控制器）。
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({required this.accountId, required this.onReset});
+
+  final String accountId;
+
+  /// 提交回调：返回 null = 成功；返回字符串 = 失败原因（弹窗内展示）。
+  final Future<String?> Function(String newPassword) onReset;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  final _pwdCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  String? _error;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _pwdCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+      isDense: true,
+      filled: true,
+      fillColor: AppColors.darkBg,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: const BorderSide(color: AppColors.darkBorder, width: 0.5),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: const BorderSide(color: AppColors.darkBorder, width: 0.5),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final pwd = _pwdCtrl.text;
+    if (pwd.length < 8) {
+      setState(() => _error = '密码长度至少 8 位');
+      return;
+    }
+    if (pwd != _confirmCtrl.text) {
+      setState(() => _error = '两次输入的密码不一致');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final fail = await widget.onReset(pwd);
+    if (!mounted) return;
+    if (fail != null) {
+      setState(() {
+        _submitting = false;
+        _error = fail;
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface,
+      title: Text('重置密码 · ${widget.accountId}',
+          style: const TextStyle(color: AppColors.darkGrey1, fontSize: 15)),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _pwdCtrl,
+              obscureText: true,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: _decoration('新密码（至少 8 位）'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _confirmCtrl,
+              obscureText: true,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: _decoration('确认新密码'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+            ],
+            const SizedBox(height: 6),
+            const Text('重置后该账号所有登录将失效，需用新密码重新登录',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消', style: TextStyle(color: AppColors.darkGrey5)),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.darkBlue,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          child: Text(_submitting ? '提交中…' : '重置密码',
+              style: const TextStyle(fontSize: 13)),
+        ),
+      ],
+    );
   }
 }
