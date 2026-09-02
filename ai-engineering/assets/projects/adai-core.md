@@ -54,11 +54,11 @@ interfaces → application → domain/kernel ← infrastructure
 
 | 路径 | 保护 |
 |:-----|:-----|
-| /admin/**、/accounts/** | AdminAuthInterceptor（X-Admin-Token，fail-closed 503）|
+| /admin/**、/accounts/** | AuthFilter 统一登录 + role=admin（REVIEW #178；X-Admin-Token 退役）|
 | /accounts/available、/me/plugins | 有意无鉴权（最小集 + 模块显隐，白名单）|
 | **其余全部** | 仅 X-User-Id header 隔离，**无服务端身份认证** |
 
-✅ **P-be-01（已修 2026-08-16）**：5 个维护端点已迁入 /admin/**（X-Admin-Token + userId 查询参数）；has-activity 保留产品路径（app 复盘横幅，只读）。
+✅ **P-be-01（已修 2026-08-16）**：5 个维护端点已迁入 /admin/**（#178 后登录 + role=admin 门禁，X-Admin-Token 退役）；has-activity 保留产品路径（app 复盘横幅，只读）。
 
 ## 职责边界
 

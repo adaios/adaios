@@ -77,8 +77,9 @@ FAILED=0
 
 # RFC 20260901-auth-login（根治 #179）：smoke 必须先登录拿 token，
 # 不再用零鉴权 X-User-Id 裸打（REVIEW P1-A4：原 smoke 用零鉴权漏洞验证部署）。
-# 依赖 .env 已配 ADAI_ADMIN_TOKEN 的同款账号密码——smoke 从 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD
-# 读（deploy 前手动设置，或跳过登录失败即 FAILED）。
+# REVIEW #178（2026-09-02）：ADAI_ADMIN_TOKEN 退役——smoke 走统一登录，
+# 从 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD 读账号密码（系统内已设密码的账号；
+# 若 smoke 需打 /admin、/accounts 端点则必须是 admin 账号）。（deploy 前手动设置，或跳过登录失败即 FAILED）。
 SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-adai}"
 SMOKE_PASSWORD="${ADAI_SMOKE_PASSWORD:-}"
 TOKEN=""

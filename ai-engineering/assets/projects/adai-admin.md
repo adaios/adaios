@@ -18,14 +18,14 @@ tags: [ai, assets, project, admin, user-view]
 
 # 项目资产：adai-admin（管理端）——用户视角功能全景
 
-> **定位**：**纯系统治理端**（类企业管理系统）。管理员通过它管理账号/数据/系统/知识——不是个人使用端（个人用 app/web）。**数据全部真实后端**（经 ApiService 调 api/v1，带 X-Admin-Token），无 mock（2026-08-16 已清误导 MOCK 徽标）。
+> **定位**：**纯系统治理端**（类企业管理系统）。管理员通过它管理账号/数据/系统/知识——不是个人使用端（个人用 app/web）。**数据全部真实后端**（经 ApiService 调 api/v1，REVIEW #178 后带登录会话 Bearer），无 mock（2026-08-16 已清误导 MOCK 徽标）。
 
 ---
 
 ## 一、进入 admin
 
 - 打开 `localhost:8083` → 选用户（admin 顶栏可切换 userId，按用户维度看数据）
-- 管理操作需 `X-Admin-Token`（构建时 `--dart-define=ADMIN_TOKEN` 注入，与后端 `ADAI_ADMIN_TOKEN` 一致）
+- 管理操作需登录 + role=admin（REVIEW #178：统一登录 Bearer 会话；X-Admin-Token / ADMIN_TOKEN 已退役）
 
 ## 二、四个区（管理员视角）
 
@@ -89,4 +89,4 @@ tags: [ai, assets, project, admin, user-view]
 
 ## 六、变化规则
 
-新增治理功能 → 更新本卡 + _index.md；**任何个人内容编辑入口新增前先问「这该在 app/web 还是 admin」**（边界原则）。admin 改动走 serve_web.sh `<API_BASE_URL> <ADMIN_TOKEN>` 构建。
+新增治理功能 → 更新本卡 + _index.md；**任何个人内容编辑入口新增前先问「这该在 app/web 还是 admin」**（边界原则）。admin 改动走 serve_web.sh `<API_BASE_URL>` 构建（#178：登录会话代替 ADMIN_TOKEN）。
