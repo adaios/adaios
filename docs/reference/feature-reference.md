@@ -1031,7 +1031,7 @@ POST /api/v1/records/retry
 
 - **插件定义**：插件 = adai 拥有并受控开放的 Domain（`trading` / `project`）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
 - **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `adai` = `[trading, project]`（owner）。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
-- **查询**：`GET /api/v1/me/plugins`（无鉴权，当前用户启用插件 → 前端模块显隐）。
+- **查询**：`GET /api/v1/me/plugins`（需登录，会话账号 = 当前用户启用插件 → 前端模块显隐）。
 - **门控面**（读写侧对称，REVIEW S-3/S-4）：
   - 读侧：ContextEngine 知识源/贡献者按 `enabledPlugins` 过滤注入；Feed 行情条/异动推送仅 trading 插件用户；promote 反哺仅 trading 插件用户（否则 403）
   - 写侧：`RecordRetryService` 重补路径 domain 走 `gateDomain`（无插件用户不落盘 trading/project 标注）；`MarketAlertService` 定时轮询仅 trading 插件用户
@@ -1079,9 +1079,9 @@ POST /api/v1/records/retry
 | 33 | POST | `/api/v1/cards/cleanup` | 卡片清理 | ❌ |
 | 34 | POST | `/api/v1/records/media` | 图片记录（multipart → VLM 理解） | ✅ |
 | 35 | GET | `/api/v1/records/media/{id}` | 取回原图 | ✅ |
-| 36 | GET / POST | `/api/v1/accounts` | 账号查询/创建（adai-admin） | ✅ |
-| 37 | DELETE | `/api/v1/accounts/{userId}` | 删除账号（adai-admin） | ✅ |
-| 38 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（adai-admin） | ✅ |
-| 39 | GET | `/api/v1/accounts/available` | 启用账号列表（无鉴权，最小集 userId） | ✅ |
-| 40 | GET | `/api/v1/me/plugins` | 当前用户启用插件（无鉴权，前端模块显隐） | ✅ |
+| 36 | GET / POST | `/api/v1/accounts` | 账号查询/创建（adai-admin，需登录 + role=admin） | ✅ |
+| 37 | DELETE | `/api/v1/accounts/{userId}` | 删除账号（adai-admin，需登录 + role=admin） | ✅ |
+| 38 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（adai-admin，需登录 + role=admin） | ✅ |
+| 39 | GET | `/api/v1/accounts/available` | 启用账号列表（需登录，最小集 userId；产品端遗留选号） | ✅ |
+| 40 | GET | `/api/v1/me/plugins` | 当前用户启用插件（需登录，前端模块显隐） | ✅ |
 | 41 | POST | `/api/v1/records/media/ask-batch` | 多图问答（Phase 1 带图 ask，1-3 张一次提问） | ✅ |

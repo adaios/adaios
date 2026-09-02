@@ -133,7 +133,7 @@ tags: [trading, plugin, reference]
 |:--|:--|:--|:--|
 | POST | `/trading/imports/save` | 导入文件上传留存 | multipart；留存 `data/{userId}/trading/imports/{yyyy-MM}/`，GBK→UTF-8 转码，返回 {path, content} |
 | GET | `/trading/lookup` | 代码查名称 | 腾讯行情单码查询，失败返回空串（前端可手填） |
-| GET | `/api/v1/admin/trading/knowledge/conflicts` | 持仓 vs 规则冲突检测 | 从 rules.md 解析真实规则与当前持仓对比（空仓查 R119/R4、单吊查 R96 四不原则）；**需 X-Admin-Token**（admin） |
+| GET | `/api/v1/admin/trading/knowledge/conflicts` | 持仓 vs 规则冲突检测 | 从 rules.md 解析真实规则与当前持仓对比（空仓查 R119/R4、单吊查 R96 四不原则）；**需登录 + role=admin**（REVIEW #178：管理口并入统一登录，X-Admin-Token 退役） |
 
 ### 9. 完美买点案例（第四阶段，2026-08-30 环 1-2 最小闭环）
 

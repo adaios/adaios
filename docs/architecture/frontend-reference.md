@@ -240,7 +240,7 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 图片追问 | POST | `/api/v1/records/media/{id}/ask` | `AskResponse`（图片卡 ── 提问 ── 追问）|
 | 多图问答 | POST | `/api/v1/records/media/ask-batch` | `AskBatchResponse`（1-3 张一次提问，P3 补登记 2026-08-17）|
 | 待办完成 | PATCH | `/api/v1/memory/{id}/done` | — |
-| 启用账号 | GET | `/api/v1/accounts/available` | `List<String>`（无鉴权，仅 userId 最小集，#215）|
+| 启用账号 | GET | `/api/v1/accounts/available` | `List<String>`（需登录，仅 userId 最小集，#215；产品端遗留选号，#178）|
 
 ---
 

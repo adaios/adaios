@@ -9,9 +9,11 @@ tags: [security, auth, 登录, 鉴权, 会话]
 
 # 用户认证登录体系——根治 X-User-Id 零鉴权
 
-> **问题（P0，2026-09-01 域名上线后实测确认裸奔）**：REVIEW #179「用户层 X-User-Id 零鉴权」——全部产品端点只凭 `X-User-Id` header 认人，而 `adai` 这个值在 README/部署文档/测试代码里公开。公网实测：零凭证即可读取真实持仓、Feed、个人档案、记忆，且 POST 写入（伪造记录/篡改交易）同样无拦截。`/api/v1/admin/**` 与 `/api/v1/accounts/**` 有 `X-Admin-Token` 保护（未受影响）。
+> **问题（P0，2026-09-01 域名上线后实测确认裸奔）**：REVIEW #179「用户层 X-User-Id 零鉴权」——全部产品端点只凭 `X-User-Id` header 认人，而 `adai` 这个值在 README/部署文档/测试代码里公开。公网实测：零凭证即可读取真实持仓、Feed、个人档案、记忆，且 POST 写入（伪造记录/篡改交易）同样无拦截。`/api/v1/admin/**` 与 `/api/v1/accounts/**` 有 `X-Admin-Token` 保护（未受影响；当时现状，2026-09-02 #178 后并入统一登录）。
 >
 > **本 RFC 定义根治方案**：账号密码登录 + 服务端会话，userId 由会话推导，客户端伪造 header 无效。核心设计约束：**Controller 层 92 处 `@RequestHeader("X-User-Id")` 一行不改**——通过拦截器 + RequestWrapper 强制覆盖，把风险面收敛到新增的鉴权层，便于测试与回滚。
+
+> **2026-09-02 更新（REVIEW #178）**：本 RFC 列为「二期可选」的 admin 管理台并入统一登录已落地——`/admin/**`、`/accounts/**`（例外 `/accounts/available` 仅需登录）统一走 Bearer 会话 + role=admin 门禁（admin 会话保留 X-User-Id 供跨账号治理浏览）；`AdminAuthInterceptor` / `X-Admin-Token` / `ADAI_ADMIN_TOKEN` 全部退役删除；adai-admin 改账号密码登录（登录页 + 401 回登录 + 顶栏改密 + 账号页重置密码 + 建号初始密码）。下文「一期不动 / 二期」表述均为当时决策，已被 #178 落地取代。
 
 ---
 
@@ -21,14 +23,14 @@ tags: [security, auth, 登录, 鉴权, 会话]
 |:---|:-----|:-----|
 | 产品端点鉴权 | 无，仅 X-User-Id header 隔离 | 伪造 `X-User-Id: adai` 读持仓/Feed/档案全部 200 |
 | 写入端点 | 同无鉴权 | POST /records 仅参数校验（400），非鉴权（403）|
-| admin 端点 | X-Admin-Token（fail-closed，常量时间比较）| ✅ 安全 |
+| admin 端点 | X-Admin-Token（fail-closed，常量时间比较；2026-09-02 #178 后退役并入统一登录）| ✅ 安全 |
 | 账号体系 | accounts.json（userId/role/enabled/plugins），admin 后台建号，无注册 | `GET /accounts/available` 无鉴权返回 userId 列表 |
 | userId 来源 | 19 个 Controller × 92 处 `@RequestHeader`，默认值 `default` | 前端（web: URL ?userId= / app: 选号）直接传 |
 
 ## 二、目标与边界
 
 - **目标**：产品端（web/app）数据只能由「登录成功的本人账号」读写；伪造 X-User-Id 一律 401。
-- **非目标（本批次不做）**：admin 管理台并入统一登录（保持 X-Admin-Token，二期可选）；第三方 OAuth；多因子。
+- **非目标（本批次不做）**：admin 管理台并入统一登录（保持 X-Admin-Token，二期可选——**2026-09-02 #178 已落地**）；第三方 OAuth；多因子。
 - **安全模型**：HTTPS（已就绪）+ 密码 bcrypt + 会话 token 服务端校验 + 登录限流。Web 前端 token 存 localStorage 的 XSS 风险接受（个人站点无第三方脚本；根治需 HttpOnly cookie + CSRF 治理，二期评估）。
 
 ## 三、方案设计
@@ -79,7 +81,7 @@ AuthInterceptor（新，仿 AdminAuthInterceptor 注册方式）
 |:---|:-----|
 | adai-web | 新增登录页（无 token 时强制跳转；首访检测 setup）；token 存 localStorage；`ApiService` 统一带 `Authorization: Bearer`；401 全局拦截 → 清 token 回登录页；`main.dart` 的 `?userId=` 移除（userId 来自会话）；改密入口 |
 | adai-app | 登录页（账号+密码，替代选号）；token 存 shared_preferences；请求带 Bearer；401 → 登录页；setup 引导（iOS 首装）|
-| adai-admin | **一期不动**（保持 X-Admin-Token）；二期可选并入统一登录 |
+| adai-admin | **一期不动**（保持 X-Admin-Token）；二期可选并入统一登录（**2026-09-02 #178 落地：登录页账号密码 + role=admin 门禁，X-Admin-Token 退役**）|
 
 ### 3.6 迁移与上线顺序
 
@@ -100,7 +102,7 @@ AuthInterceptor（新，仿 AdminAuthInterceptor 注册方式）
 |:--|:-------|:---------|
 | 1 | 密码初始化 | `POST /auth/setup` 一次性端点（首访引导设 adai 密码），不搞服务器命令 |
 | 2 | 会话有效期 | 30 天滑动续期（活跃不过期）|
-| 3 | admin 管理台 | 一期保持 X-Admin-Token，二期并入统一登录 |
+| 3 | admin 管理台 | 一期保持 X-Admin-Token，二期并入统一登录（**2026-09-02 #178 已按二期落地**）|
 | 4 | `/accounts/available` | 从免鉴权移除（登录页手输账号名），封死 userId 枚举 |
 | 5 | 登录限流 | 5 次失败锁 15 分钟（按 IP+账号）|
 

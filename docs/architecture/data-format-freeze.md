@@ -295,7 +295,7 @@ updatedAt: 2026-08-07
 | `responseLength` | Integer | 响应字符数 |
 | `responseSummary` | String | 响应摘要（截断）|
 
-> **隐私注意**：`prompt` 含用户输入原文，属个人数据，按 `data/{userId}/` 分层隔离；不做对外接口暴露（仅管理端 `X-Admin-Token` 可读，见 api-spec §17）。
+> **隐私注意**：`prompt` 含用户输入原文，属个人数据，按 `data/{userId}/` 分层隔离；不做对外接口暴露（仅管理端可读——需登录 + role=admin，见 api-spec §17；X-Admin-Token 已退役，REVIEW #178）。
 
 ---
 

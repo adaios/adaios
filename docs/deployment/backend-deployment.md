@@ -92,8 +92,8 @@ DEEPSEEK_API_KEY=sk-your-deepseek-api-key-here
 ADAI_DATA_DIR=/opt/adaios/data
 ADAI_AI_PROVIDER=deepseek
 
-# REVIEW #127 管理端点令牌（admin/accounts 端点鉴权，未配置时 503 fail-closed）
-ADAI_ADMIN_TOKEN=<随机生成>
+# 管理口鉴权已并入统一登录（REVIEW #178，2026-09-02）：ADAI_ADMIN_TOKEN / X-Admin-Token 退役，无需配置；
+# adai-admin 用账号密码登录（会话账号须 role=admin），不再注入任何管理令牌
 # CORS 白名单（localhost + 生产服务器 IP；域名就绪后追加 https://adaiadai.com）
 ADAI_ALLOWED_ORIGIN_PATTERNS=http://localhost:*,http://127.0.0.1:*,http://82.156.111.146:*
 # os/ 知识资产根路径（注意：默认 ../../os 相对 systemd WorkingDirectory 解析为 /opt/os，必须显式配置！）
@@ -106,7 +106,7 @@ chown adaios:adaios /opt/adaios/backend/.env
 chmod 600 /opt/adaios/backend/.env
 ```
 
-> ⚠️ 将 `sk-your-deepseek-api-key-here` 替换为真实 DeepSeek API Key；`ADAI_ADMIN_TOKEN` 用 `openssl rand -hex 16` 生成，adai-admin 前端须 `--dart-define=ADMIN_TOKEN=<同值>`。
+> ⚠️ 将 `sk-your-deepseek-api-key-here` 替换为真实 DeepSeek API Key。管理口不再需要 `ADAI_ADMIN_TOKEN`（REVIEW #178 已退役：鉴权并入统一登录，adai-admin 用账号密码登录，会话账号须 role=admin）。
 
 ### 3.5 创建 systemd 服务
 
@@ -205,9 +205,10 @@ cd services/adai-core
 | `adai.storage.base-path` | 数据文件存储路径 | `../../data` | `/opt/adaios/data` |
 | `adai.ai.provider` | AI 提供商 | `deepseek` | `deepseek` |
 | `adai.ai.model` | AI 模型 | `deepseek-v4-pro` | `deepseek-v4-pro` |
-| `adai.security.admin-token` | 管理端点令牌 | 空（503 fail-closed）| `ADAI_ADMIN_TOKEN` |
 | `adai.os-base-path` | os/ 知识资产根路径 | `../../os`（⚠️ 相对 cwd 解析，systemd 下会错）| `/opt/adaios/os`（必须显式 `ADAI_OS_BASE_PATH`）|
 | CORS 白名单 | 允许来源 | localhost | `ADAI_ALLOWED_ORIGIN_PATTERNS` |
+
+> **REVIEW #178（2026-09-02）**：`adai.security.admin-token` 配置与 env `ADAI_ADMIN_TOKEN` 已随 `AdminAuthInterceptor` / `X-Admin-Token` 一并退役删除（上表原「管理端点令牌」行移除）——管理口（`/admin/**`、`/accounts/**`）鉴权并入统一登录，adai-admin 用账号密码登录（会话账号须 role=admin），不再配置任何管理令牌。
 
 所有配置在 `.env` 文件中管理，JAR 启动时自动读取。
 
@@ -251,7 +252,7 @@ v1.0.0 起生产同时部署 Flutter Web 前端（无 nginx，Python http.server
 ```bash
 # 本地构建（指向生产后端）
 cd apps/adai-web && flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=http://82.156.111.146:8080
-# adai-admin 额外: --dart-define=ADMIN_TOKEN=<ADAI_ADMIN_TOKEN 同值>
+# adai-admin 无需 ADMIN_TOKEN（REVIEW #178：X-Admin-Token / ADMIN_TOKEN 退役，账号密码登录）
 # 构建后必须打 CanvasKit + 字体本地化补丁（见 serve_web.sh）——漏打会白屏（gstatic CDN 被墙）！
 
 # 上传（tar 管道；⚠️ 勿直接 rm 运行中服务的 cwd，先传 admin.new 再停服原子替换）

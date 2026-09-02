@@ -33,7 +33,7 @@
 - **装饰器方案**：`LoggingAiClient`/`LoggingVisualAiClient` 包装 DeepSeek/GLM 客户端（`@Primary`），全部 9 处 AI 调用点零改动自动记录
 - **落盘**：`data/{userId}/ai-logs/YYYY/MM/ai-log-YYYY-MM-DD.jsonl`（`AiInteractionLogger` + `FileStorage.append`，同步锁防并发丢行）
 - **记录内容**：kind/scene/prompt 全文/预估 tokens/耗时/状态/响应摘要 + `AiTraceContext` 挂载 recordId/cardId/source（Question/RecordUnderstanding/Media/TradingReview/Conversation/Retry/Brief/Intent **8 处调用点**——生产验证后补 brief+intent，与 CLAUDE.md 口径一致）
-- **读取端点**：`GET /api/v1/admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权）
+- **读取端点**：`GET /api/v1/admin/ai-logs?userId=&date=`（需登录 + role=admin；X-Admin-Token 鉴权已于 2026-09-02 #178 退役，并入统一登录）
 - **顺延**：管理端可视化页（等日志积累真实数据后做）；Context 组装快照细粒度（装饰器已含 prompt/预估 tokens，标签关联等见 `ContextEngine` 日志）
 
 ## 归属

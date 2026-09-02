@@ -10,7 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
-| 2026-09-01 | v3.40 | **登录体系（RFC 20260901-auth-login，根治 #179，§0/§0.1）**：新增 5 端点 `POST /auth/login`、`POST /auth/logout`、`GET /auth/me`、`POST /auth/setup`（首访一次性设密码）、`POST /auth/password`（改密踢会话）；产品端点鉴权升级——`Authorization: Bearer <token>`（30 天滑动续期），X-User-Id 后端强制覆盖为会话 userId（伪造无效），无 token 一律 401；`GET /accounts/available` 免鉴权封死；admin 体系 X-Admin-Token 不变 |
+| 2026-09-01 | v3.40 | **登录体系（RFC 20260901-auth-login，根治 #179，§0/§0.1）**：新增 5 端点 `POST /auth/login`、`POST /auth/logout`、`GET /auth/me`、`POST /auth/setup`（首访一次性设密码）、`POST /auth/password`（改密踢会话）；产品端点鉴权升级——`Authorization: Bearer <token>`（30 天滑动续期），X-User-Id 后端强制覆盖为会话 userId（伪造无效），无 token 一律 401；`GET /accounts/available` 免鉴权封死；admin 体系 X-Admin-Token 不变（2026-09-02 #178 退役并入统一登录，见 §0）|
 | 2026-08-31 | v3.35 | **双止损位（trading-risk-plan，响应字段扩展，无新端点）**：`GET /trading/positions` 响应新增 `computedStopLossPrice`（系统计算止损：R=本金×1%，距离=min(R÷市值,5%)，动态算不落盘）+ `effectiveStopLoss`（生效止损=max(人工,计算)）；R66 判定/接近止损预警/建议引擎统一改用生效止损 |
 | 2026-08-30 | v3.34 | **流式问答（P2-用户2 批 2）**：新增 `POST /records/ask-stream`（SSE 流式问答：`text` 增量事件 + `meta` 定稿事件 + `[DONE]`；后端内降级——模型无增量输出时回退同步 understand 一次；同卡同问 5 分钟去重直返既有回答；UTF-8 字节透传防中文乱码）+ 双端（adai-app/adai-web）`SseClient` 流式渲染（90ms 节流草稿、error 事件人话透出、流开始前失败自动降级旧同步端点） |
 | 2026-08-30 | v3.33 | **交易插件规则层（第三阶段，trading-plugin-architecture.md）**：新增 `GET /trading/rules`（用户自己的交易规则参数：仓位上限/默认止损/行为标注阈值/买点参数/打分权重/硬约束区间，无规则 → 默认值）+ `PUT /trading/rules`（覆盖非空字段，落 `data/{userId}/trading/rules.yaml`）；规则参数按用户隔离，驱动止损/仓位判定、买点信号、行为标注、清仓 verdict、打分权重、建议硬约束、知识注入（`data/{userId}/trading/knowledge.md` 用户私有知识优先，os/ 作 adai 默认）——**每个人有自己的交易系统** |
@@ -36,16 +36,16 @@
 | 2026-08-12 | v3.13 | **REVIEW #129/#218/#222**：promote 前端入口说明（交易页复盘弹窗「反哺入库」按钮，`POST` body 传 `{}`）；AI 交互日志视觉调用补真实耗时（`LoggingVisualAiClient.durationMs`）；Brief 问候加中午段（11-13 → 中午好，#222）|
 | 2026-08-12 | v3.12 | **REVIEW #214/#215/#221**：`POST /records/media/{id}/ask` 的 `question` 加长度上界（500 字符，超限 400）；`GET /accounts/available` 响应由账号对象改为 **userId 最小集**（`List<String>`，不暴露 role/enabled/createdAt）；Brief 降级问候 emoji 按时段（#221） |
 | 2026-08-12 | v3.11 | **AI 日志隐私治理（REVIEW #210）**：`GET /admin/ai-logs` 新增 `page`/`size`（上限 500，响应带 `total`）；`date` 早于保留期（`adai.ai-log.retention-days` 默认 30 天）返回 400（已清理不可查）|
-| 2026-08-12 | v3.10 | **R1 AI 交互日志契约登记**：新增 §17 `GET /admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权，读 `data/{userId}/ai-logs/YYYY/MM/ai-log-{date}.jsonl`）；图片追问持久化（`POST /records/media/{id}/ask` 追问 Q/A 追加进图片卡 card 文件，Feed 图片记录 entry 带 turns）|
+| 2026-08-12 | v3.10 | **R1 AI 交互日志契约登记**：新增 §17 `GET /admin/ai-logs?userId=&date=`（X-Admin-Token 鉴权，读 `data/{userId}/ai-logs/YYYY/MM/ai-log-{date}.jsonl`——2026-09-02 #178 后退役并入统一登录）；图片追问持久化（`POST /records/media/{id}/ask` 追问 Q/A 追加进图片卡 card 文件，Feed 图片记录 entry 带 turns）|
 | 2026-08-11 | v3.9 | **图片追问（L4 图片问答）**：新增 `POST /records/media/{id}/ask`（图+问题 → GLM 自然语言回答 → 沉淀 `image_qa` 记录）；管理端点 CORS 预检修复（`OPTIONS` 放行，8082/8083 可正常访问 admin/accounts）|
 | 2026-08-09 | v3.8 | **多账号前端选号 + 契约对齐**：新增 §16 `GET /accounts/available`（无鉴权选号）/ portfolio `positionCount` 派生字段（#106）/ Feed 分页 page0 完整核心 + 卡片时间基准 `updatedAt`（#175）/ `X-User-Id` 默认说明更新（v1.0.0 起前端必须携带所选账号）|
 | 2026-08-06 | v3.7 | **行情异动主动推送（Phase 2）**：FeedEntry 新增 `type=push`（止损预警/放飞提示/跌破成本线/真止损 R66（现价跌破止损位，2026-08-16），`MarketAlertService` 交易时段轮询落盘 `data/{userId}/trading/pushes/{date}.json`，阈值可配 `adai.market.alert.*`）|
-| 2026-08-06 | v3.6 | **管理端点鉴权（REVIEW #127）**：§账号、§管理端全部端点要求 `X-Admin-Token` 请求头（配置 `ADAI_ADMIN_TOKEN`，缺失 401 / 未配置 503 fail-closed）；CORS 由 `*` 收窄为配置化 origin 白名单（默认 localhost）|
+| 2026-08-06 | v3.6 | **管理端点鉴权（REVIEW #127）**：§账号、§管理端全部端点要求 `X-Admin-Token` 请求头（配置 `ADAI_ADMIN_TOKEN`，缺失 401 / 未配置 503 fail-closed——2026-09-02 #178 后退役并入统一登录）；CORS 由 `*` 收窄为配置化 origin 白名单（默认 localhost）|
 | 2026-08-02 | v3.5 | **多模态图片记录（L4）**：新增 `POST /records/media`（multipart 上传 → GLM 视觉理解 → 记录+记忆）、`GET /records/media/{id}`（原图预览）|
 | 2026-08-02 | v3.4 | **多账号功能层 + adai-admin**：新增 §账号（accounts CRUD）、§管理端（admin 文件树/知识浏览）；Memory 新增 `PATCH /memory/{id}` 手动修正 |
 | 2026-08-02 | v3.3 | **多账号架构预留**：全 API 支持可选请求头 `X-User-Id`（默认 `default`），数据按用户分层 `data/{userId}/` |
 | 2026-08-02 | v3.2 | **记忆进化 Phase 3**：新增 `PATCH /memory/{id}/done`（actionable 闭环完成标记）；Memory 条目新增 kind/topic/superseded/evolvedTo/doneAt 字段 |
-| 2026-08-16 | v3.21 | **P-be-01 安全修复**：5 个维护端点（records/retry、memory/rebuild、memory/{id} PATCH、cards/cleanup、knowledge/conflicts）从 per-user 路径迁入 `/api/v1/admin/**`（需 X-Admin-Token），目标用户改 userId 查询参数；`GET /trading/has-activity` 保留产品路径（app 复盘横幅，只读）|
+| 2026-08-16 | v3.21 | **P-be-01 安全修复**：5 个维护端点（records/retry、memory/rebuild、memory/{id} PATCH、cards/cleanup、knowledge/conflicts）从 per-user 路径迁入 `/api/v1/admin/**`（需 X-Admin-Token——2026-09-02 #178 后退役，改登录 + role=admin），目标用户改 userId 查询参数；`GET /trading/has-activity` 保留产品路径（app 复盘横幅，只读）|
 | 2026-08-01 | v3.1 | **补全缺失端点**：`DELETE /records/{id}`、`POST /records/retry`、`GET /memory/dates`、`GET /memory/count`、`GET /trading/positions`、`GET /trading/portfolio`、`POST /trading/trades`；§5 改为"交易" |
 | 2026-07-31 | v3.0 | **行情数据注入**：ContextEngine 注入大盘指数+持仓实时行情；修复 CHAT 模式未注入上下文 Bug（市场/知识/记忆丢失） |
 | 2026-07-29 | v2.9 | **Feed 分页方向修复**：page 0 从最早条目改为最新条目，优化刷新后新数据可见性 |
@@ -65,11 +65,11 @@
 | Header | 类型 | 必填 | 默认 | 说明 |
 |:-------|:-----|:----:|:----:|:-----|
 | `Authorization` | String | 是（登录后） | — | `Bearer <token>`，登录签发（32 字节 hex，落盘仅存 SHA-256 哈希）；30 天滑动续期；登出/改密即失效 |
-| `X-User-Id` | String | 否 | — | 用户标识（兼容保留）；**后端以会话为准强制覆盖**，客户端传什么都被忽略 |
+| `X-User-Id` | String | 否 | — | 用户标识（兼容保留）；**后端以会话为准强制覆盖**——user 会话传什么都被忽略；**role=admin 会话保留客户端值**（管理口跨账号治理浏览，REVIEW #178）|
 
 **约束**：`userId` 仅允许 `[a-zA-Z0-9_-]+`（后端校验，防路径注入）。不合法的 userId 返回 400。
 
-**免鉴权路径**（仅此 3 类）：`POST /api/v1/auth/login`、`POST /api/v1/auth/setup`（首访一次性）、`OPTIONS`（CORS 预检）。`/api/v1/admin/**` 与 `/api/v1/accounts/**` 由 `X-Admin-Token` 体系接管（不变）。`GET /api/v1/accounts/available` 原免鉴权已封死（需登录）。
+**免鉴权路径**（仅此 3 类）：`POST /api/v1/auth/login`、`POST /api/v1/auth/setup`（首访一次性）、`OPTIONS`（CORS 预检）。其余全部要求 `Authorization: Bearer <token>`（v3.40 登录体系）。管理口 `/api/v1/admin/**` 与 `/api/v1/accounts/**` 需登录且会话账号 **role=admin**（REVIEW #178，2026-09-02：并入统一登录，X-Admin-Token 退役；非 admin → 403「仅管理员账号可访问」）；`GET /api/v1/accounts/available` 仅需登录（产品端遗留选号）。
 
 ---
 
@@ -235,7 +235,7 @@
 - `204 No Content` — 修改成功
 - `400` — domain 非法（仅 `life` / `trading` / `project`）
 
-### `POST /api/v1/admin/records/retry` — 手动触发重补（需 X-Admin-Token）
+### `POST /api/v1/admin/records/retry` — 手动触发重补（需登录 + role=admin，REVIEW #178）
 
 调用 `RecordRetryService`，为没有 Memory 的历史记录补齐 AI 摘要与标签。
 
@@ -461,7 +461,7 @@
 }
 ```
 
-### `POST /api/v1/admin/cards/cleanup` — 清理卡片冗余记录（需 X-Admin-Token）
+### `POST /api/v1/admin/cards/cleanup` — 清理卡片冗余记录（需登录 + role=admin，REVIEW #178）
 
 删除卡片对话对应的冗余 ContentRecord（卡片内容已存储在 `records/cards/` 下，无需单独保留）。
 
@@ -1104,7 +1104,7 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 
 删除案例文件 + 清单条目；不存在 → 400「案例不存在」。响应 `{"deleted":true,"caseId":"..."}`。
 
-### `GET /api/v1/admin/trading/knowledge/conflicts` — 检测规则矛盾（需 X-Admin-Token）
+### `GET /api/v1/admin/trading/knowledge/conflicts` — 检测规则矛盾（需登录 + role=admin，REVIEW #178）
 
 从 `os/trading-engine/knowledge/context/rules.md` 解析真实规则，与当前持仓状态对比，标记可能违反的规则（规则名/描述取自真实规则内容，非硬编码）。
 
@@ -1238,7 +1238,7 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 }
 ```
 
-### `POST /api/v1/admin/memory/rebuild` — 重建记忆（需 X-Admin-Token）
+### `POST /api/v1/admin/memory/rebuild` — 重建记忆（需登录 + role=admin，REVIEW #178）
 
 **Query Parameters**
 
@@ -1305,7 +1305,7 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 
 ---
 
-### `PATCH /api/v1/admin/memory/{id}` — 手动修正记忆（管理端，需 X-Admin-Token）
+### `PATCH /api/v1/admin/memory/{id}` — 手动修正记忆（管理端，需登录 + role=admin，REVIEW #178）
 
 adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestion。任一字段缺省表示保持原值。
 
@@ -1589,19 +1589,19 @@ chat 模式（全屏）
 
 ## 16. 账号（多账号功能层）
 
-> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端从可用账号列表选择进入（`GET /api/v1/accounts/available`，**无鉴权**，仅返回 enabled 账号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端登录后从可用账号列表选择/切换（`GET /api/v1/accounts/available`，**需登录**，仅返回 enabled 账号——产品端遗留选号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
 >
-> **管理鉴权（REVIEW #127）**：本节除 `GET /api/v1/accounts/available` 与 `GET /api/v1/me/plugins`（产品端，无鉴权）外，其余端点与 §17 管理端所有端点要求请求头 `X-Admin-Token`（值 = 后端配置 `ADAI_ADMIN_TOKEN`）。缺失或不匹配 → `401`；服务端未配置令牌 → fail-closed `503`（防生产误部署裸奔）。adai-admin 前端通过 `--dart-define=ADMIN_TOKEN=<令牌>` 注入，与后端一致。
+> **管理鉴权（REVIEW #178，2026-09-02）**：管理口并入统一登录——本节除 `GET /api/v1/accounts/available`（**仅需登录**，产品端遗留选号）与 `GET /api/v1/me/plugins`（产品端，仅需登录）外，其余端点（账号 CRUD / 插件合并）与 §17 管理端所有端点均要求 `Authorization: Bearer <token>` 且会话账号 **role=admin**（非 admin → 403「仅管理员账号可访问」）；admin 会话保留客户端 `X-User-Id`（控制台跨账号治理浏览）。`X-Admin-Token` 体系已退役删除（`AdminAuthInterceptor` / `adai.security.admin-token` / env `ADAI_ADMIN_TOKEN` / 前端 `ADMIN_TOKEN` 全部移除）。账号响应一律经 AccountView DTO 过滤，**不含 passwordHash**（bcrypt 哈希不下发）。
 >
 > **插件模型（RFC 20260814）**：Account 带 `plugins`（`["trading","project"]`）。`trading`/`project` 是 adai 拥有并受控开放的插件（Domain），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `adai` 默认 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限。
 
 ### `GET /api/v1/me/plugins` — 当前用户启用插件（前端模块显隐）
 
-**无鉴权**（凭 `X-User-Id` 头）。返回当前用户启用的插件名列表；账号不存在 → 空列表。adai-app / adai-web 据此显隐插件模块（交易页 / 阿呆系统 / 项目仪表盘），基础服务模块不依赖此端点。
+**需登录**（`Authorization: Bearer`，会话账号 = 当前用户）。返回当前用户启用的插件名列表；账号不存在 → 空列表。adai-app / adai-web 据此显隐插件模块（交易页 / 阿呆系统 / 项目仪表盘），基础服务模块不依赖此端点。
 
 **Request Headers**
 
-- `X-User-Id` — 当前用户 ID
+- `X-User-Id` — 用户标识（可选，兼容保留；后端以会话 userId 为准，客户端传值被覆盖）
 
 **Response**（`List<String>`）
 
@@ -1627,9 +1627,11 @@ chat 模式（全屏）
 ]
 ```
 
+- 响应经 AccountView DTO 过滤，**不含 passwordHash**（bcrypt 哈希不下发，REVIEW #178）
+
 ### `GET /api/v1/accounts/available` — 可用账号列表（产品端选号）
 
-> **无鉴权**（WebConfig 从 AdminAuthInterceptor 拦截范围 exclude）——adai-app / adai-web 首屏选号与切换调用。仅返回 `enabled=true` 账号的 **userId 最小集**（REVIEW #215：无鉴权端点不暴露 role/enabled/createdAt，避免 admin 标记等枚举面）。
+> **需登录**（REVIEW #178：产品端遗留选号/切换调用，仅需登录会话、无需 role=admin）。仅返回 `enabled=true` 账号的 **userId 最小集**（REVIEW #215：不暴露 role/enabled/createdAt，避免 admin 标记等枚举面）。
 
 **Response**（`List<String>`，纯 userId）
 
@@ -1649,7 +1651,8 @@ chat 模式（全屏）
 
 - `role` 可选，默认 `user`（`admin` / `user`）
 - `plugins` 可选，默认 `[]`（新用户只有基础服务）；仅允许 `trading` / `project`，非法 → 400
-- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法 / plugins 非法
+- `password` 可选（**初始密码**，≥8 位，过短 → 400；不传则账号初始无密码——无法登录，可之后由 admin 用 PATCH 重置，REVIEW #178）
+- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法 / plugins 非法 / 初始密码 <8 位
 
 ### `PATCH /api/v1/accounts/{userId}` — 更新账号
 
@@ -1661,6 +1664,7 @@ chat 模式（全屏）
 
 - `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）；**清空插件须显式传空数组 `[]`**（传 null 视为缺省保留，P3 2026-08-17 契约明确）
 - `plugins` 传全量列表（如 `["trading"]`），仅允许 `trading` / `project`，非法 → 400
+- `password` 可选（**重置密码**，≥8 位，过短 → 400「新密码长度至少 8 位」；REVIEW #178）——重置后踢除该账号**全部**会话（`AuthService.kickSessions`，被重置者需重新登录）；**不携带则保留既有 passwordHash**（修复「只改 enabled/role 即清空密码」bug）
 - **内置管理员 `adai` 不可禁用、不可降级**（400）
 - `404` — 账号不存在
 
@@ -1698,7 +1702,7 @@ chat 模式（全屏）
 
 > 系统级浏览端点（读取 `data/` 全部用户层 + `os/` 知识库），**不走 `X-User-Id` 用户层**，仅供 adai-admin 使用。路径一律防目录遍历（`normalize + startsWith` 校验）。
 >
-> **鉴权**：全部端点要求 `X-Admin-Token` 请求头（同 §16，REVIEW #127）。
+> **鉴权**：全部端点要求登录且会话账号 role=admin（同 §16，REVIEW #178：并入统一登录，X-Admin-Token 退役）。
 
 ### `GET /api/v1/admin/files?path=` — data/ 目录浏览
 
