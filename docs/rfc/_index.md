@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-02
 status: active
-lines: 73
+lines: 74
 depends-on: []
 related:
   - ../_index.md
@@ -46,7 +46,7 @@ tags: [meta, index, rfc]
 | 20260813-record-task-and-sports-analysis.md | 记录↔任务关联 + 相机动作分析（想法升级 RFC） | implemented |
 | 20260814-domain-plugin-model.md | Domain=插件模型（Kernel 基础服务 / Domain 受控插件） | approved |
 | 20260815-docs-governance.md | 文档治理——瘦身 + 单一事实源（先于功能开发） | approved |
-| 20260815-trading-interaction-redesign.md | 交易模块交互重设计（app 说人话 / web 详细管理）| draft |
+| 20260815-trading-interaction-redesign.md | 交易模块交互重设计（app 说人话 / web 详细管理；定位条款已被 20260902 取代）| superseded |
 | 20260816-trading-os-engine.md | trading-engine 领域引擎化（从插件到独立可复用的交易引擎）| draft |
 | 20260816-trading-data-model.md | 交易数据模型分层（用户提供 vs 可查询，trading domain 可执行化）| draft |
 | 20260815-ai-engineering-layer.md | AI 工程层——从「文档子目录」到「一等公民」（草案）| draft |
@@ -65,6 +65,7 @@ tags: [meta, index, rfc]
 | 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）| draft |
 | 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
 | 20260901-auth-login.md | 用户认证登录体系——根治 X-User-Id 零鉴权（账号密码 + 服务端会话，AuthFilter 覆盖 X-User-Id）| implemented |
+| 20260902-trading-memory-positioning.md | 交易模块定位重设——从「建议引擎」到「交易记忆」（用你的历史，理解你的当下；取代 20260815 定位条款）| draft |
 
 ## 过期判断
 

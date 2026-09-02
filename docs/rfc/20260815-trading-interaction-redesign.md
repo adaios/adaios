@@ -1,8 +1,11 @@
 ---
 title: 交易模块交互重设计（app 说人话 / web 详细管理）
 date: 2026-08-15
-status: draft
+status: superseded
+supersededBy: 20260902-trading-memory-positioning.md
 ---
+
+> **定位条款已取代（2026-09-02）**：本文件「核心定位：不是记账工具，是建议引擎——输出买卖/持仓建议是目的」已被 [`20260902-trading-memory-positioning.md`](20260902-trading-memory-positioning.md)（交易记忆定位）取代。交互重设计/双端分工等其余内容仍有效。
 
 # 交易模块交互重设计 — 记录真实交易，结合 trading domain 给买卖/持仓建议
 
