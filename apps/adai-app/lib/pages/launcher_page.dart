@@ -17,7 +17,7 @@ import 'trading_page.dart';
 class LauncherPage extends StatefulWidget {
   final ApiService api;
   final VoidCallback onNavigateBack;
-  final VoidCallback? onSwitchAccount;
+  final VoidCallback? onLogout;
   /// P1-2（2026-08-23）：IndexedStack 保活后切回 World B 不重建——壳层递增此 tick 触发刷新。
   final ValueListenable<int>? refreshTick;
 
@@ -25,7 +25,7 @@ class LauncherPage extends StatefulWidget {
     super.key,
     required this.api,
     required this.onNavigateBack,
-    this.onSwitchAccount,
+    this.onLogout,
     this.refreshTick,
   });
 
@@ -211,8 +211,8 @@ class _LauncherPageState extends State<LauncherPage>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
             children: [
-              _buildRow(Icons.swap_horiz, '切换账号', '@${widget.api.userId}', AppColors.darkPurple, () {
-                widget.onSwitchAccount?.call();
+              _buildRow(Icons.logout, '退出登录', '@${widget.api.userId}', AppColors.darkPurple, () {
+                widget.onLogout?.call();
               }),
               _divider(),
               _buildRow(Icons.person_outline, '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {

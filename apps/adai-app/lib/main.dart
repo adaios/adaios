@@ -8,15 +8,19 @@ import 'services/user_store.dart';
 import 'main_page.dart';
 import 'pages/account_select_page.dart';
 import 'pages/launcher_page.dart';
+import 'pages/login_page.dart';
 import 'pages/profile_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // v1.0.0 多账号：URL ?userId= 优先 > 持久化上次账号 > 无记录（首屏选号）
-  final urlUserId = resolveUserId();
+  // RFC 20260901-auth-login：启动加载持久化会话（token + 上次账号），无 token → 登录页
+  final token = await UserStore.loadToken();
   final savedUserId = await UserStore.loadUserId();
-  final selection = resolveUserSelection(urlUserId: urlUserId, savedUserId: savedUserId);
-  runApp(RootApp(userId: selection.userId, needsSelect: selection.needsSelect));
+  runApp(RootApp(
+    userId: savedUserId ?? 'default',
+    initialToken: token,
+    forceLogin: true,
+  ));
 }
 
 /// 解析最终生效 userId 与是否强制首屏选号（v1.0.0 多账号）。
@@ -53,18 +57,31 @@ String resolveUserIdFrom(Uri uri) {
 }
 
 class RootApp extends StatefulWidget {
-  const RootApp({super.key, this.userId = 'default', this.needsSelect = false, this.apiFactory});
+  const RootApp({
+    super.key,
+    this.userId = 'default',
+    this.needsSelect = false,
+    this.apiFactory,
+    this.initialToken,
+    this.forceLogin = false,
+  });
 
   /// 初始用户 ID（URL query / 持久化解析结果）。
   final String userId;
 
-  /// 首次进入无账号记录 → 显示首屏选号页。
+  /// 首次进入无账号记录 → 显示首屏选号页（旧多账号流程，测试用）。
   final bool needsSelect;
 
   /// 测试注入：按 userId 构造 ApiService（默认真实实现）。
   /// REVIEW #177：注入 factory 让「切换账号重建整树 / 双击防重入」链路可测
   /// （复用 MockClient 基建，RootApp/DualWorldShell 不再硬编码真实 ApiService）。
   final ApiService Function(String userId)? apiFactory;
+
+  /// 持久化登录 token（RFC 20260901-auth-login；可能已失效，启动时校验）。
+  final String? initialToken;
+
+  /// 强制登录：无 token 时显示登录页（生产 main() 传 true；旧测试不传保持旧行为）。
+  final bool forceLogin;
 
   @override
   State<RootApp> createState() => _RootAppState();
@@ -74,10 +91,48 @@ class _RootAppState extends State<RootApp> {
   late String _userId = widget.userId;
   late bool _needsSelect = widget.needsSelect;
 
+  /// 当前会话 token；null = 未登录。
+  String? _token;
+
+  /// 启动校验持久化 token 期间显示 loading。
+  bool _booting = false;
+
   /// MaterialApp 的 Navigator key：切换账号的 push/pop 必须走它。
   /// State 的 context 在 MaterialApp 之外，`Navigator.of(context)` 会返回 null 崩溃
   /// （v1.0.0 切换账号必现，`Null check operator used on a null value`）。
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialToken != null) {
+      _token = widget.initialToken;
+      _booting = true;
+      _validateStoredSession();
+    }
+  }
+
+  /// 启动校验：持久化 token 调 /auth/me；失效（401）→ 清 token 回登录页。
+  Future<void> _validateStoredSession() async {
+    final api = _apiFor(_userId);
+    try {
+      final me = await api.authMe();
+      if (!mounted) return;
+      setState(() {
+        _userId = me['userId'] as String? ?? _userId;
+        _booting = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      // 401 = 会话失效；其他错误（网络）先按未登录处理（安全默认，不静默进主界面）
+      await UserStore.clearToken();
+      if (!mounted) return;
+      setState(() {
+        _token = null;
+        _booting = false;
+      });
+    }
+  }
 
   /// 选定账号：持久化 + 清 URL userId + 重建整树（换 ValueKey → DualWorldShell/ApiService 重建，缓存清空）。
   Future<void> _selectAccount(String userId) async {
@@ -106,29 +161,46 @@ class _RootAppState extends State<RootApp> {
   /// REVIEW #185：选号回调防重入（双击在 pop 动画期间重复触发）。
   bool _handlingSelect = false;
 
-  /// 按 userId 构造 ApiService（优先测试注入的 factory）。
-  ApiService _apiFor(String userId) =>
-      widget.apiFactory?.call(userId) ?? ApiService(userId: userId);
-
-  /// 切换账号：push 选号页，选择后回传重建。
-  void _openAccountSelect() {
-    final nav = _navigatorKey.currentState;
-    if (nav == null) return;
-    nav.push(MaterialPageRoute(
-      builder: (_) => AccountSelectPage(
-        api: _apiFor(_userId),
-        currentUserId: _userId,
-        onSelect: (uid) {
-          // #204：守卫包住闭包整体（含 nav.pop()），快速双击不把 home 也 pop 掉。
-          // 原 #185 守卫只在 _selectAccount 内，双击第二次短路后 pop 落到栈空黑屏。
-          if (_handlingSelect) return;
-          _selectAccount(uid);
-          nav.pop();
-        },
-      ),
-    ));
+  /// 按 userId 构造 ApiService（测试 factory 优先；生产带 token 的真实实现）。
+  ApiService _apiFor(String userId) {
+    if (widget.apiFactory != null) {
+      return widget.apiFactory!(userId);
+    }
+    return ApiService(userId: userId, token: _token, onUnauthorized: _handleUnauthorized);
   }
 
+  /// 全局 401：清 token → 回登录页。
+  Future<void> _handleUnauthorized() async {
+    await UserStore.clearToken();
+    if (!mounted) return;
+    setState(() {
+      _token = null;
+      _userId = 'default';
+    });
+  }
+
+  /// 登录成功：存会话 → 进主界面。
+  Future<void> _handleLoggedIn(AuthSession session) async {
+    if (!mounted) return;
+    setState(() {
+      _token = session.token;
+      _userId = session.userId;
+      _needsSelect = false;
+    });
+  }
+
+  /// 登出（Launcher 底部「退出登录」）：调后端注销 + 清本地 → 回登录页。
+  Future<void> _handleLogout() async {
+    final api = _apiFor(_userId);
+    try {
+      await api.logout();
+    } catch (_) {
+      // 注销失败不阻塞登出（本地清 token 即生效）
+    }
+    await _handleUnauthorized();
+  }
+
+  /// 切换账号（旧多账号流程）：登录体系下已由「退出登录」替代，此处保留仅为首屏选号路径服务。
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -153,30 +225,53 @@ class _RootAppState extends State<RootApp> {
         ]),
         child: child!,
       ),
-      home: _needsSelect
-          ? AccountSelectPage(
-              api: _apiFor(_userId),
-              onSelect: _selectAccount,
-            )
-          : DualWorldShell(
-              key: ValueKey(_userId),
-              userId: _userId,
-              apiFactory: widget.apiFactory,
-              onSwitchAccount: _openAccountSelect,
-            ),
+      home: _booting
+          ? const _BootScreen()
+          : widget.forceLogin && _token == null
+              ? LoginPage(api: _apiFor(_userId), onLoggedIn: _handleLoggedIn)
+              : _needsSelect
+                  ? AccountSelectPage(
+                      api: _apiFor(_userId),
+                      onSelect: _selectAccount,
+                    )
+                  : DualWorldShell(
+                      key: ValueKey(_userId),
+                      userId: _userId,
+                      apiFactory: widget.apiFactory,
+                      onLogout: _handleLogout,
+                    ),
+    );
+  }
+}
+
+/// 启动校验期间的 loading 屏。
+class _BootScreen extends StatelessWidget {
+  const _BootScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.darkBg,
+      body: Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkBlue),
+        ),
+      ),
     );
   }
 }
 
 /// 双主页壳 — World A (Feed) 与 World B (Launcher) 无缝切换。
 class DualWorldShell extends StatefulWidget {
-  const DualWorldShell({super.key, this.userId = 'default', this.onSwitchAccount, this.apiFactory});
+  const DualWorldShell({super.key, this.userId = 'default', this.onLogout, this.apiFactory});
 
   /// 当前用户 ID（透传给 ApiService 与 MainPage）。
   final String userId;
 
-  /// 切换账号回调（RootApp 提供：push 选号页 → 选定后重建整树）。
-  final VoidCallback? onSwitchAccount;
+  /// 登出回调（RFC 20260901-auth-login：Launcher「退出登录」→ 清会话回登录页）。
+  final VoidCallback? onLogout;
 
   /// 测试注入：按 userId 构造 ApiService（默认真实实现）。
   final ApiService Function(String userId)? apiFactory;
@@ -265,7 +360,7 @@ class _DualWorldShellState extends State<DualWorldShell> {
                 key: const ValueKey('worldB'),
                 api: _api,
                 onNavigateBack: _toggleWorld,
-                onSwitchAccount: widget.onSwitchAccount,
+                onLogout: widget.onLogout,
                 refreshTick: _feedRefreshTick, // P1-2：切回 World B 时刷新（保活不重建）
               ),
           ],
