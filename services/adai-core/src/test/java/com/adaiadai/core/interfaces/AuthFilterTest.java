@@ -185,4 +185,21 @@ class AuthFilterTest {
         mvc.perform(get("/api/v1/admin/users"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void accountsListEndpoint_notHandledByAuthFilter() throws Exception {
+        // 回归（2026-09-02）：GET /api/v1/accounts（列表，无尾斜杠）此前被 AuthFilter
+        // 误拦 401（前缀 `/api/v1/accounts/` 带尾斜杠匹配不上）→ admin 账号页全挂。
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        mvc.perform(get("/api/v1/accounts"))
+                .andExpect(status().isNotFound()); // 未注册 AccountController → 404，证明未被 AuthFilter 拦
+    }
+
+    @Test
+    void adminBasePath_notHandledByAuthFilter() throws Exception {
+        // 对称回归：/api/v1/admin（无尾斜杠）也不走 AuthFilter
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        mvc.perform(get("/api/v1/admin"))
+                .andExpect(status().isNotFound());
+    }
 }

@@ -218,7 +218,7 @@ class ApiService {
     String? caption,
   }) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/records/media'))
-      ..headers['X-User-Id'] = userId
+      ..headers.addAll(mediaHeaders) // RFC 20260901-auth-login：multipart 需显式带 Bearer
       ..fields['caption'] = caption ?? ''
       ..files.add(http.MultipartFile.fromBytes(
         'file',

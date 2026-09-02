@@ -163,7 +163,7 @@ class ApiService {
     String? caption,
   }) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/records/media'))
-      ..headers['X-User-Id'] = userId
+      ..headers.addAll(_authHeaders)
       ..fields['caption'] = caption ?? ''
       ..files.add(http.MultipartFile.fromBytes(
         'file',
@@ -514,7 +514,7 @@ class ApiService {
     required List<String> mimeTypes,
   }) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/trading/screenshots'))
-      ..headers['X-User-Id'] = userId;
+      ..headers.addAll(_authHeaders);
     for (var i = 0; i < bytesList.length; i++) {
       req.files.add(http.MultipartFile.fromBytes(
         'files',
@@ -873,7 +873,11 @@ class ApiService {
   String mediaUrl(String recordId) => '$baseUrl/api/v1/records/media/$recordId';
 
   /// 媒体请求鉴权头（与 _headers 一致，Image.network 需要显式传入）。
-  Map<String, String> get mediaHeaders => {
+  Map<String, String> get mediaHeaders => _authHeaders;
+
+  /// multipart 请求鉴权头（RFC 20260901-auth-login：MultipartRequest 不自动带
+  /// _headers——2026-09-02 线上实锤：截图/图片上传只发 X-User-Id 被后端 401）。
+  Map<String, String> get _authHeaders => {
     'X-User-Id': userId,
     if (token != null) 'Authorization': 'Bearer $token',
   };

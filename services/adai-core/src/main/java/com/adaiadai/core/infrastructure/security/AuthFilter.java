@@ -9,6 +9,8 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -37,6 +39,8 @@ import java.util.Optional;
 @Order(Ordered.LOWEST_PRECEDENCE + 1)
 public class AuthFilter implements Filter {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
+
     private final AuthService authService;
 
     public AuthFilter(AuthService authService) {
@@ -58,6 +62,11 @@ public class AuthFilter implements Filter {
         Optional<Session> session = authService.validateAndTouch(token);
         // 防御纵深：AuthService 已删过期会话，这里再查一次 isExpired（即使 AuthService 实现有缺陷也挡住）
         if (session.isEmpty() || session.get().isExpired(java.time.Instant.now())) {
+            // 2026-09-02：401 记 WARN（含客户端来源 IP 与路径）——此前静默拒绝导致
+            // 前端漏带 token 类问题（multipart 未带 Bearer）在生产日志完全不可见，排查靠猜。
+            log.warn("AuthFilter 拒绝: {} {} from {} (token={})", request.getMethod(),
+                    request.getRequestURI(), request.getRemoteAddr(),
+                    token.isEmpty() ? "缺失" : "无效");
             writeUnauthorized(response);
             return;
         }
@@ -82,10 +91,15 @@ public class AuthFilter implements Filter {
         // admin 体系：X-Admin-Token 由 AdminAuthInterceptor 管（fail-closed）。
         // 例外：/accounts/available（旧免鉴权选号端点）不再免鉴权——决策 4（RFC 20260901）
         // 封掉 userId 枚举面，登录页手输账号名；故 available 走本 Filter 需登录。
-        if (uri.startsWith("/api/v1/admin/")) {
+        // 2026-09-02 修复：前缀匹配带尾斜杠版漏掉无尾斜杠的精确路径（GET /api/v1/accounts 列表
+        // 被本 Filter 误拦 401——admin 账号页全挂的根因）。
+        final String accountsBase = "/api/v1/accounts";
+        if ((uri.equals(accountsBase) || uri.startsWith(accountsBase + "/"))
+                && !uri.endsWith("/available")) {
             return true;
         }
-        if (uri.startsWith("/api/v1/accounts/") && !uri.endsWith("/available")) {
+        final String adminBase = "/api/v1/admin";
+        if (uri.equals(adminBase) || uri.startsWith(adminBase + "/")) {
             return true;
         }
         return false;

@@ -237,6 +237,9 @@ class _RootAppState extends State<RootApp> {
                   : DualWorldShell(
                       key: ValueKey(_userId),
                       userId: _userId,
+                      // RFC 20260901-auth-login：传带 token 的 ApiService（2026-09-02 线上
+                      // 实锤：生产无 apiFactory 时壳内自建丢 token → 主页全 401）
+                      api: _apiFor(_userId),
                       apiFactory: widget.apiFactory,
                       onLogout: _handleLogout,
                     ),
@@ -265,7 +268,8 @@ class _BootScreen extends StatelessWidget {
 
 /// 双主页壳 — World A (Feed) 与 World B (Launcher) 无缝切换。
 class DualWorldShell extends StatefulWidget {
-  const DualWorldShell({super.key, this.userId = 'default', this.onLogout, this.apiFactory});
+  const DualWorldShell(
+      {super.key, this.userId = 'default', this.onLogout, this.apiFactory, this.api});
 
   /// 当前用户 ID（透传给 ApiService 与 MainPage）。
   final String userId;
@@ -276,6 +280,10 @@ class DualWorldShell extends StatefulWidget {
   /// 测试注入：按 userId 构造 ApiService（默认真实实现）。
   final ApiService Function(String userId)? apiFactory;
 
+  /// 直接注入 ApiService（RFC 20260901-auth-login：RootApp 传**带 token** 的实例——
+  /// 生产无 apiFactory 时若壳内自建会丢 token 导致全 401，2026-09-02 线上实锤）。
+  final ApiService? api;
+
   @override
   State<DualWorldShell> createState() => _DualWorldShellState();
 }
@@ -283,7 +291,10 @@ class DualWorldShell extends StatefulWidget {
 class _DualWorldShellState extends State<DualWorldShell> {
   // REVIEW #177：切换账号重建整树（ValueKey 换 userId）→ 新 State 新建 ApiService，
   // 缓存（tags/timeline/memory）随之清空，不跨账号串数据。
-  late final ApiService _api = widget.apiFactory?.call(widget.userId) ?? ApiService(userId: widget.userId);
+  // 优先级：显式注入（带 token）> 测试 factory > 自建兜底
+  late final ApiService _api = widget.api ??
+      widget.apiFactory?.call(widget.userId) ??
+      ApiService(userId: widget.userId);
   bool _showWorldB = false;
   String? _filterTag;
 

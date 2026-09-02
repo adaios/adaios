@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -74,6 +75,72 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('账号或密码错误'), findsOneWidget);
+    });
+  });
+
+  group('DualWorldShell token 传递（回归：2026-09-02 线上全 401）', () {
+    testWidgets('注入带 token 的 api → 页面请求带 Authorization', (tester) async {
+      // 生产路径：RootApp 无 apiFactory，把带 token 的 ApiService 注入 DualWorldShell
+      final authHeaders = <String>[];
+      final api = ApiService(
+        userId: 'adai',
+        token: 'tok_prod',
+        client: MockClient((request) async {
+          final auth = request.headers['Authorization'];
+          if (auth != null) authHeaders.add(auth);
+          // 主页三连：plugins/feed/brief 全部 200 空数据（避免错误态干扰断言）
+          return http.Response(
+              '{"plugins":{"trading":false,"project":false}}', 200,
+              headers: {'content-type': 'application/json; charset=utf-8'});
+        }),
+      );
+
+      // 无 apiFactory、无 userId 直传时壳内自建会丢 token——注入 api 必须优先
+      await tester.pumpWidget(MaterialApp(
+        home: DualWorldShell(userId: 'adai', api: api),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(authHeaders, isNotEmpty,
+          reason: '主页请求必须携带 Authorization: Bearer（否则后端 401）');
+      expect(authHeaders.every((h) => h == 'Bearer tok_prod'), isTrue);
+    });
+  });
+
+  group('multipart 请求带 token（回归：2026-09-02 截图/发图 401）', () {
+    testWidgets('截图入账 + 发图 multipart 均携带 Authorization', (tester) async {
+      final authHeaders = <String>[];
+      final api = ApiService(
+        userId: 'adai',
+        token: 'tok_prod',
+        client: MockClient((request) async {
+          final auth = request.headers['Authorization'];
+          if (auth != null) authHeaders.add(auth);
+          return http.Response(
+              '{"content":"{}"}', 200,
+              headers: {'content-type': 'application/json; charset=utf-8'});
+        }),
+      );
+
+      // 截图入账（multipart）
+      await api.uploadTradingScreenshots(
+        bytesList: [
+          Uint8List.fromList([1, 2, 3])
+        ],
+        filenames: ['a.png'],
+        mimeTypes: ['image/png'],
+      );
+      // 发图（records/media multipart）
+      await api.uploadImage(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        filename: 'b.png',
+        mimeType: 'image/png',
+      );
+
+      expect(authHeaders.length, 2,
+          reason: '截图入账和发图两个 multipart 请求都必须带 Bearer（否则后端 401）');
+      expect(authHeaders.every((h) => h == 'Bearer tok_prod'), isTrue);
     });
   });
 }
