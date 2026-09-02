@@ -76,6 +76,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | # | 问题 | 位置 | 状态 |
 |:-:|:-----|:-----|:----:|
 | 179 | 用户层 X-User-Id 零鉴权（任何人传任意 userId 即可读对应数据）；数据访问靠 header 注入无认证。真正收紧需登录体系 | `AccountController` / `WebConfig` | ✅ 已修（2026-09-01 登录体系 RFC：账号密码 + 服务端会话，AuthFilter 校验 Bearer 并用 RequestWrapper 覆盖 X-User-Id——92 处 Controller 零改动、伪造 header 无效；无 token 一律 401；accounts/available 免鉴权封死；已部署上线 + 公网实测验证）|
+| 178 | **admin 管理口鉴权薄弱（2026-09-02 用户指出）**：X-Admin-Token 烧录在前端 JS = 任何拿到 /admin/ URL 的人可从 devtools 提取 token → 管理端点（建号/删号/重建记忆/清卡片/读文件）等于无鉴权——比产品端裸奔更危险（能改能删）。方向已确认：admin 并入统一登录（会话 + role=admin 校验，退役 X-Admin-Token）+ 改密入口放 admin + /accounts 响应过滤 passwordHash。**待新会话实施** | `AdminAuthInterceptor` / `adai-admin` | 📋 待开工（2026-09-02 用户确认方向，新会话处理）|
 | S5 | 账户账目无单一真源：总资产/现金/本金被四处独立推导（snapshot.cash、positions.md cashBalance、转账推导、recordTrade 现金），现金有 3 个真源只更新其一 → R81 分母过期 | `TradingAppService` / `AccountSnapshot` | ✅ 已修（2026-08-17 S5 批：现金唯一真源=account.json AccountSnapshot.cash；importCashQuery 不再写 positions.md cashBalance；advice/portfolio/review 全走 AccountSnapshot；642 测试全绿）|
 | S6 | C2 买点 5 参数（回调50%/缩量0.7/KDJ20/放量1.5/前高20日）标注「待用户确认」却已硬编码上线每日 15:10 推送 + web 信号列 + D3 打分——实现替用户做了决定，无门禁 | `BuyPointDetector` / `buy-point-rules.md` | ✅ 已确认（2026-08-17 用户：无「买点5」一说，默认值即最终值）|
 | S7 | D3 自称「完美图匹配度」，实际是规则阈值 + 硬编码分数映射（无完美图样本库/归一化相似度）；「三维打分」总分实为二维（选股维度未接入） | `SoldScoreService` | ⏸ 已搁置（2026-08-17 用户决策）|
