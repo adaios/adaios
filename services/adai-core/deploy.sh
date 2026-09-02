@@ -79,9 +79,10 @@ ADAI_AI_PROVIDER=deepseek
 # DeepSeek API（必填，生产模式使用 deepseek provider）
 DEEPSEEK_API_KEY=sk-your-key-here
 
-# REVIEW #127 管理端点令牌（必填，保护 /api/v1/admin/** 与 /api/v1/accounts/**；
-# 未配置时管理端点 fail-closed 返回 503）。adai-admin 前端须 --dart-define=ADMIN_TOKEN=<同值>
-ADAI_ADMIN_TOKEN=change-me-admin-token
+# REVIEW #178（2026-09-02）：X-Admin-Token / ADAI_ADMIN_TOKEN 已退役——管理端点并入统一登录
+# （登录 + role=admin 门禁）。下方为部署 smoke/自动维护用的账号密码（须是系统内已设过密码的 admin 账号）：
+ADAI_SMOKE_ACCOUNT=adai
+ADAI_SMOKE_PASSWORD=
 
 # REVIEW #127 CORS 来源白名单（逗号分隔 origin pattern；默认 localhost）。
 # 生产前端若在服务器上，追加：http://82.156.111.146:*,http://<前端域名>:*
@@ -117,7 +118,8 @@ systemctl start adai-core || true
 # 检查服务是否真的起来了（带就绪重试：服务启动需 5-15 秒，sleep 3 不够）
 READY=0
 for i in 1 2 3 4 5 6; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/feed -H "X-User-Id: adai" 2>/dev/null | grep -q "200"; then
+    # #179/#178：产品端点需登录（无 token 401）——就绪探测走 /auth/me，200（有会话）或 401（服务活着但未登录）都算服务已响应
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/auth/me 2>/dev/null | grep -qE "200|401"; then
         READY=1
         break
     fi
@@ -125,14 +127,29 @@ for i in 1 2 3 4 5 6; do
     sleep 5
 done
 if [ $READY -eq 1 ]; then
-    echo "  → 服务已运行，重建记忆（/admin/memory/rebuild，P-be-01 后端点）..."
-    # P-be-01（2026-08-16）：memory/rebuild 已迁入 /api/v1/admin/**（需 X-Admin-Token）
-    ADMIN_TOKEN=$(grep '^ADAI_ADMIN_TOKEN=' /opt/adaios/backend/.env | cut -d= -f2)
-    curl -s -X POST "http://localhost:8080/api/v1/admin/memory/rebuild?userId=adai" -H "X-Admin-Token: $ADMIN_TOKEN" || true
-    echo ""
-    echo "✅ 部署完成！验证:"
-    curl -s http://localhost:8080/api/v1/identity | head -c 100 || true
-    echo ""
+    echo "  → 服务已运行，重建记忆（/admin/memory/rebuild；REVIEW #178 后需登录 + role=admin）..."
+    # REVIEW #178：X-Admin-Token 退役。如 .env 配了 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD
+    # （系统内已设密码的 admin 账号），登录拿 Bearer 后执行；否则跳过（首次部署先 setup 设密码，
+    # 之后可在 adai-admin 控制台「系统 → 维护」手动重建）。
+    SMOKE_ACCOUNT=$(grep '^ADAI_SMOKE_ACCOUNT=' /opt/adaios/backend/.env | cut -d= -f2)
+    SMOKE_PASSWORD=$(grep '^ADAI_SMOKE_PASSWORD=' /opt/adaios/backend/.env | cut -d= -f2)
+    if [ -n "$SMOKE_PASSWORD" ]; then
+        TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d "{\"account\":\"${SMOKE_ACCOUNT:-adai}\",\"password\":\"$SMOKE_PASSWORD\"}" \
+            | grep -oE '"token":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+        if [ -n "$TOKEN" ]; then
+            curl -s -X POST "http://localhost:8080/api/v1/admin/memory/rebuild?userId=${SMOKE_ACCOUNT:-adai}" \
+                -H "Authorization: Bearer $TOKEN" || true
+            echo ""
+        else
+            echo "  → 登录失败（账号密码未设/错误）：跳过自动重建，可后续在控制台手动重建"
+        fi
+    else
+        echo "  → .env 未配 ADAI_SMOKE_PASSWORD：跳过自动重建（首次部署请先 setup 设密码，控制台手动重建）"
+    fi
+    echo "✅ 部署完成！验证（需登录态）："
+    curl -s -o /dev/null -w "  /auth/me HTTP %{http_code}\n" http://localhost:8080/api/v1/auth/me || true
 else
     echo "  ⚠ 服务未就绪（6 次探测失败），请检查:"
     echo "    1. /opt/adaios/backend/.env 中的 DEEPSEEK_API_KEY 是否已填写"

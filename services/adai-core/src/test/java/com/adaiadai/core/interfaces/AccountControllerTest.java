@@ -1,10 +1,12 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -12,7 +14,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -351,5 +355,135 @@ class AccountControllerTest {
                         .contentType("application/json")
                         .content("{\"add\":[\"trading\"]}"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ── #178：passwordHash 不外泄 + PATCH 保留/重置密码 ──
+
+    private MockMvc mvcWith(AccountRepository repo, AuthService auth) {
+        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(),
+                mock(PluginService.class), auth)).build();
+    }
+
+    @Test
+    void listAccounts_passwordHashNotExposed() throws Exception {
+        // bcrypt 哈希绝不落 API 响应（#178）——账号文件里有哈希，列表响应必须无该字段
+        var repo = mock(AccountRepository.class);
+        when(repo.findAll()).thenReturn(List.of(new Account(
+                "adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+                List.of("trading"), "$2a$10$abc")));
+
+        mvcWith(repo).perform(get("/api/v1/accounts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].userId").value("adai"))
+                .andExpect(jsonPath("$[0].role").value("admin"))
+                .andExpect(jsonPath("$[0].plugins[0]").value("trading"))
+                .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
+    }
+
+    @Test
+    void createAccount_withInitialPassword_encodedAndNotExposed() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+        when(auth.encodePassword("secret123")).thenReturn("$2a$10$encoded");
+
+        mvcWith(repo, auth).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"alice\",\"role\":\"user\",\"password\":\"secret123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("alice"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+
+        ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
+        verify(repo).save(captor.capture());
+        assertEquals("$2a$10$encoded", captor.getValue().passwordHash());
+    }
+
+    @Test
+    void createAccount_shortPassword_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.empty());
+
+        mvcWith(repo).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"alice\",\"password\":\"short\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchAccount_preservesPasswordHash() throws Exception {
+        // #178 bug 修复：PATCH（即使只改 enabled）不得清空既有密码哈希
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("bob")).thenReturn(Optional.of(new Account(
+                "bob", Account.ROLE_USER, false, LocalDate.of(2026, 8, 2),
+                List.of(), "$2a$10$oldhash")));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/bob")
+                        .contentType("application/json")
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+
+        ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
+        verify(repo).save(captor.capture());
+        assertEquals("$2a$10$oldhash", captor.getValue().passwordHash(),
+                "未带 password 的 PATCH 必须保留原哈希（防清密码 bug）");
+        verify(auth, never()).kickSessions(anyString());
+    }
+
+    @Test
+    void patchAccount_resetPassword_encodesAndKicksSessions() throws Exception {
+        // admin 重置他人密码：编码落盘 + 踢除该账号全部会话（被重置者需重新登录）
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("bob")).thenReturn(Optional.of(new Account(
+                "bob", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
+                List.of(), "$2a$10$oldhash")));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+        when(auth.encodePassword("newpass123")).thenReturn("$2a$10$newhash");
+
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/bob")
+                        .contentType("application/json")
+                        .content("{\"password\":\"newpass123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+
+        ArgumentCaptor<Account> captor = ArgumentCaptor.forClass(Account.class);
+        verify(repo).save(captor.capture());
+        assertEquals("$2a$10$newhash", captor.getValue().passwordHash());
+        verify(auth).kickSessions("bob");
+    }
+
+    @Test
+    void patchAccount_resetShortPassword_400() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("bob")).thenReturn(Optional.of(new Account(
+                "bob", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2))));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/bob")
+                        .contentType("application/json")
+                        .content("{\"password\":\"12345\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchAccount_seedAdmin_passwordResetAllowed() throws Exception {
+        // 内置管理员保护只限 禁用/降级/删/插件；重置密码允许（admin 可重置自己/他人）
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("adai")).thenReturn(Optional.of(new Account(
+                "adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+                List.of(), "$2a$10$old")));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+        when(auth.encodePassword("newpass123")).thenReturn("$2a$10$new");
+
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/adai")
+                        .contentType("application/json")
+                        .content("{\"password\":\"newpass123\"}"))
+                .andExpect(status().isOk());
     }
 }

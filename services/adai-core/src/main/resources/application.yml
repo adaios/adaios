@@ -33,11 +33,10 @@ spring:
 
 adai:
   security:
-    # 管理端点令牌（REVIEW #127）：保护 /api/v1/admin/** 与 /api/v1/accounts/**。
-    # 生产环境必须设置（.env 配 ADAI_ADMIN_TOKEN），未配置时管理端点 fail-closed 返回 503。
-    admin-token: ${ADAI_ADMIN_TOKEN:}
     # CORS 来源白名单（逗号分隔 origin pattern）。默认 localhost/127.0.0.1 任意端口；
     # 生产前端若在服务器上，追加其域名（.env 配 ADAI_ALLOWED_ORIGIN_PATTERNS）。
+    # REVIEW #178（2026-09-02）：admin-token / ADAI_ADMIN_TOKEN 已退役——管理端点鉴权并入
+    # 统一登录（AuthFilter：Bearer 会话 + role=admin 门禁，X-Admin-Token 不再使用）。
     allowed-origin-patterns: ${ADAI_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   market:
     # K 线主源（2026-08-23 用户确认腾讯优先：东财在生产被限，腾讯稳定；eastmoney 可切回历史主源）

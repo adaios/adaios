@@ -154,6 +154,18 @@ public class AuthService {
         return validateAndTouch(token).flatMap(s -> accountRepository.findById(s.userId()));
     }
 
+    /**
+     * 按 userId 查账号（不触碰会话）——AuthFilter 权限判定用
+     * （REVIEW #178：admin 端点要求会话账号 role=admin；role 每次实时读文件，
+     * 角色变更/降级即时生效，不依赖签发时的快照）。
+     */
+    public Optional<Account> findAccount(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return Optional.empty();
+        }
+        return accountRepository.findById(userId);
+    }
+
     // ── 首访初始化 ──
 
     /**
@@ -215,6 +227,24 @@ public class AuthService {
             }
         }
         log.info("改密成功: {} 踢除其他会话 {} 个", acct.userId(), removed);
+        return removed;
+    }
+
+    /**
+     * 踢除某账号全部会话（REVIEW #178：admin 在 /accounts PATCH 重置他人密码后调用，
+     * 被重置者需重新登录；不依赖调用方会话，保留逻辑与 changePassword 的「保留当前」相反）。
+     *
+     * @return 被踢除的会话数
+     */
+    public int kickSessions(String userId) {
+        int removed = 0;
+        for (Session s : sessionRepository.findByUserId(userId)) {
+            sessionRepository.deleteByTokenHash(s.tokenHash());
+            removed++;
+        }
+        if (removed > 0) {
+            log.info("踢除会话: userId={} 共 {} 个", userId, removed);
+        }
         return removed;
     }
 

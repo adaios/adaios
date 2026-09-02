@@ -21,13 +21,18 @@ import java.util.Optional;
 /**
  * AccountController — 账号管理端点（v1.0.0 多账号功能层）。
  * <p>
- * GET    /api/v1/accounts              → 账号列表（adai-admin 管理，需 X-Admin-Token）
- * GET    /api/v1/accounts/available    → 可用账号列表（仅 enabled，**无鉴权**，产品端选号）
- * POST   /api/v1/accounts              → 建号（无注册，adai-admin 后台建）
- * PATCH  /api/v1/accounts/{userId}     → 更新（启用/禁用、角色）
+ * GET    /api/v1/accounts              → 账号列表（adai-admin 管理，需登录 + role=admin）
+ * GET    /api/v1/accounts/available    → 可用账号列表（仅 enabled，登录即可，产品端遗留选号）
+ * POST   /api/v1/accounts              → 建号（无注册，adai-admin 后台建，可带初始密码）
+ * PATCH  /api/v1/accounts/{userId}     → 更新（启用/禁用、角色、插件、密码重置）
  * DELETE /api/v1/accounts/{userId}     → 删除
  * <p>
  * 内置管理员 {@code adai} 不可删除 / 不可禁用 / 不可降级（防锁死系统）。
+ * <p>
+ * REVIEW #178：鉴权并入统一登录（AuthFilter role=admin 门禁，X-Admin-Token 退役）；
+ * 所有响应经 {@link AccountView} 过滤 <b>passwordHash</b>（bcrypt 哈希不落 API 响应）；
+ * PATCH 保留既有 passwordHash（老实现 5 参构造把哈希清空 = 改 enabled 即清密码的 bug）；
+ * PATCH 携带 password 时为「重置密码」（≥8 位，重置后踢除该账号全部会话——被重置者需重新登录）。
  */
 @RestController
 @RequestMapping("/api/v1/accounts")
@@ -36,6 +41,14 @@ public class AccountController {
     private static final Logger log = LoggerFactory.getLogger(AccountController.class);
 
     private static final String USER_ID_PATTERN = "[a-zA-Z0-9_-]+";
+
+    /** 响应 DTO：与 Account 同字段但剔除 passwordHash（#178：bcrypt 哈希不下发）。 */
+    public record AccountView(String userId, String role, boolean enabled,
+                              LocalDate createdAt, List<String> plugins) {
+        static AccountView of(Account a) {
+            return new AccountView(a.userId(), a.role(), a.enabled(), a.createdAt(), a.plugins());
+        }
+    }
 
     private final AccountRepository accountRepository;
     private final PluginRegistry pluginRegistry;
@@ -50,17 +63,17 @@ public class AccountController {
         this.authService = authService;
     }
 
-    /** 账号列表（返回全部，前端按 enabled 过滤选号）。 */
+    /** 账号列表（返回全部，前端按 enabled 过滤选号）。#178：passwordHash 不外泄。 */
     @GetMapping
-    public List<Account> listAccounts() {
-        return accountRepository.findAll();
+    public List<AccountView> listAccounts() {
+        return accountRepository.findAll().stream().map(AccountView::of).toList();
     }
 
     /**
-     * 可用账号列表（产品端选号，**无鉴权**——v1.0.0 多账号前端选号提前）。
-     * <p>仅返回 {@code enabled=true} 账号的 **userId 最小集**（#215：无鉴权端点不暴露
-     * role/enabled/createdAt，避免 admin 标记等枚举面）；账号由 adai-admin 后台创建，
-     * 产品端不做注册。由 WebConfig 将该路径从 AdminAuthInterceptor 拦截范围 exclude。
+     * 可用账号列表（产品端遗留选号端点，登录即可——非 admin 范围例外，AuthFilter 门禁外）。
+     * <p>仅返回 {@code enabled=true} 账号的 **userId 最小集**（#215：不暴露 role/enabled/createdAt，
+     * 避免 admin 标记等枚举面）；账号由 adai-admin 后台创建，产品端不做注册。
+     * RFC 20260901-auth-login 决策 4 后产品端改手输账号登录，本端点仅兼容遗留客户端。
      */
     @GetMapping("/available")
     public List<String> listAvailableAccounts() {
@@ -99,11 +112,16 @@ public class AccountController {
         Account account = accountRepository.save(
                 new Account(userId, role, true, LocalDate.now(), plugins, passwordHash));
         pluginService.invalidate(userId);
-        log.info("创建账号: {} role={} plugins={}", userId, role, plugins);
-        return ResponseEntity.ok(account);
+        log.info("创建账号: {} role={} plugins={} hasPassword={}", userId, role, plugins, passwordHash != null);
+        return ResponseEntity.ok(AccountView.of(account));
     }
 
-    /** 更新账号（启用/禁用、角色）。内置管理员保护。 */
+    /**
+     * 更新账号（启用/禁用、角色、插件、密码重置）。内置管理员保护。
+     * <p>
+     * #178：① passwordHash 必须保留（老实现 5 参构造清空 = 改 enabled 即清密码的 bug）；
+     * ② 携带 password（≥8 位）视为重置密码——编码落盘 + 踢除该账号全部会话（被重置者需重新登录）。
+     */
     @PatchMapping("/{userId}")
     public ResponseEntity<?> updateAccount(@PathVariable String userId,
                                            @RequestBody UpdateAccountRequest request) {
@@ -128,10 +146,23 @@ public class AccountController {
                 return ResponseEntity.badRequest().body(Map.of("error", "内置管理员 " + Account.SEED_ADMIN_ID + " 角色不可变更"));
             }
         }
+        // 重置密码（可选）：不携带 → 保留原哈希（#178 修复 PATCH 清密码 bug）
+        String passwordHash = existing.get().passwordHash();
+        if (request.password() != null && !request.password().isBlank()) {
+            if (request.password().length() < 8) {
+                return ResponseEntity.badRequest().body(Map.of("error", "新密码长度至少 8 位"));
+            }
+            passwordHash = authService.encodePassword(request.password());
+        }
         Account updated = accountRepository.save(
-                new Account(userId, role, enabled, existing.get().createdAt(), plugins));
+                new Account(userId, role, enabled, existing.get().createdAt(), plugins, passwordHash));
+        if (request.password() != null && !request.password().isBlank()) {
+            // 重置密码是安全敏感操作：踢除该账号全部会话（被重置者需重新登录）
+            int kicked = authService.kickSessions(userId);
+            log.info("重置密码: {} (由 admin 操作，踢除会话 {} 个)", userId, kicked);
+        }
         pluginService.invalidate(userId);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(AccountView.of(updated));
     }
 
     /**
@@ -155,7 +186,7 @@ public class AccountController {
         }
         Account updated = accountRepository.mergePlugins(userId, add, remove);
         pluginService.invalidate(userId);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(AccountView.of(updated));
     }
 
     /** 删除账号。内置管理员不可删。 */
@@ -187,7 +218,8 @@ public class AccountController {
     public record CreateAccountRequest(@NotBlank String userId, String role, List<String> plugins,
                                        String password) {}
 
-    public record UpdateAccountRequest(Boolean enabled, String role, List<String> plugins) {}
+    public record UpdateAccountRequest(Boolean enabled, String role, List<String> plugins,
+                                       String password) {}
 
     public record MergePluginsRequest(List<String> add, List<String> remove) {}
 }

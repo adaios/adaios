@@ -1,7 +1,6 @@
 package com.adaiadai.core.infrastructure;
 
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceCleanupInterceptor;
-import com.adaiadai.core.infrastructure.security.AdminAuthInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,7 +14,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.List;
 
 /**
- * WebConfig — 跨域（CORS）+ 管理端点鉴权。
+ * WebConfig — 跨域（CORS）+ AiTrace 清理。
  * <p>
  * CORS 来源由 {@code *} 收窄为配置化 origin 模式（REVIEW #127）：默认仅放行
  * localhost/127.0.0.1 任意端口（覆盖 {@code flutter run -d chrome} 随机端口与
@@ -28,14 +27,11 @@ import java.util.List;
  * 不经过 addCorsMappings）也带 {@code Access-Control-Allow-Origin}，避免浏览器把
  * 「GET 打到 POST 端点」的 405 误报为 CORS policy 错误（当日线上误报根因）。
  * <p>
- * 管理端点（/api/v1/admin/**、/api/v1/accounts/**）注册 {@link AdminAuthInterceptor}，
- * 未配置令牌时 fail-closed 拒绝（防公网裸奔）。
+ * 管理端点（/api/v1/admin/**、/api/v1/accounts/**）鉴权由 {@code AuthFilter}
+ * （REVIEW #178：统一登录 + role=admin 门禁，X-Admin-Token 退役）统一处理，此处不再注册拦截器。
  */
 @Configuration
 public class WebConfig {
-
-    @Value("${adai.security.admin-token:}")
-    private String adminToken;
 
     @Value("${adai.security.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}")
     private String allowedOriginPatterns;
@@ -57,10 +53,6 @@ public class WebConfig {
                 // 跨请求残留 → 漏 set trace 的调用把日志落进上一个请求的用户目录）。
                 registry.addInterceptor(new AiTraceCleanupInterceptor())
                         .addPathPatterns("/api/**");
-                registry.addInterceptor(new AdminAuthInterceptor(adminToken))
-                        .addPathPatterns("/api/v1/admin/**", "/api/v1/accounts/**")
-                        // 产品端选号端点（仅 enabled 账号），需无鉴权可访问（v1.0.0 多账号前端选号提前）
-                        .excludePathPatterns("/api/v1/accounts/available");
             }
         };
     }

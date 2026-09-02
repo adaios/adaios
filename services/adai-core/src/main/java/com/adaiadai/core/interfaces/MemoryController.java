@@ -72,7 +72,8 @@ public class MemoryController {
      * <p>
      * PATCH /api/v1/memory/{id} — 任一字段缺省表示保持原值；找不到返回 404。
      * body {@code {kind?, summary?, tags?, actionable?, suggestion?}}（与 /admin/memory/{id} 同构，
-     * 区别在鉴权：本端点走 X-User-Id 用户隔离，admin 端点走 X-Admin-Token 管理隔离）。
+     * 区别在鉴权：本端点走 X-User-Id 用户隔离（AuthFilter 覆盖为会话 userId），
+     * admin 端点走登录 + role=admin 管理隔离（REVIEW #178，X-Admin-Token 退役）。
      */
     @PatchMapping("/{id}")
     public ResponseEntity<?> updateMemory(

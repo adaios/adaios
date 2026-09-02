@@ -123,17 +123,17 @@ com.adaiadai.core/
 | GET | `/api/v1/tags` | 标签统计 |
 | POST | `/api/v1/cards/migrate` | 卡片迁移 |
 | POST | `/api/v1/cards/cleanup` | 卡片冗余记录清理（迁移后去除重复 rec_*） |
-| GET | `/api/v1/accounts/available` | 启用账号列表（**无鉴权**，仅返回 userId 最小集，REVIEW #215）|
-| GET | `/api/v1/me/plugins` | 当前用户启用插件（**无鉴权**，前端模块显隐，RFC 20260814）|
-| GET / POST | `/api/v1/accounts` | 账号查询/创建（admin，**需 `X-Admin-Token`**）|
-| GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin，**需 `X-Admin-Token`**）|
+| GET | `/api/v1/accounts/available` | 启用账号列表（**需登录**，产品端遗留选号，无需 role=admin；仅返回 userId 最小集，REVIEW #215/#178）|
+| GET | `/api/v1/me/plugins` | 当前用户启用插件（**需登录**，前端模块显隐，RFC 20260814）|
+| GET / POST | `/api/v1/accounts` | 账号查询/创建（admin，**需登录 + role=admin**）|
+| GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin，**需登录 + role=admin**）|
 
-> **管理鉴权（REVIEW #127）**：`/api/v1/admin/**` 与 `/api/v1/accounts/**` 由 `AdminAuthInterceptor` 保护（`infrastructure/security/`），要求 `X-Admin-Token` = 配置 `adai.security.admin-token`（env `ADAI_ADMIN_TOKEN`）。未配置令牌时 fail-closed 返回 503；CORS 由 `WebConfig` 收窄为配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）。
+> **管理鉴权（REVIEW #178，2026-09-02）**：`/api/v1/admin/**` 与 `/api/v1/accounts/**`（例外 `/accounts/available` 仅需登录）并入统一登录——由 `AuthFilter` 校验 `Authorization: Bearer` 会话并额外检查 role=admin（非 admin → 403「仅管理员账号可访问」）；admin 会话保留客户端 `X-User-Id`（跨账号治理浏览）。`AdminAuthInterceptor` 与 `adai.security.admin-token`（env `ADAI_ADMIN_TOKEN`）/ `X-Admin-Token` 已退役删除。CORS 由 `WebConfig` 收窄为配置化 origin 白名单（默认 localhost:*，生产 `ADAI_ALLOWED_ORIGIN_PATTERNS`）。
 
 ## 当前测试状态
 
 - **测试数/端点数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
-- 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + #127 鉴权 + 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔任务 + 插件门控等
+- 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + 统一鉴权（#179/#178：Bearer 会话 + role=admin 门禁）+ 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔任务 + 插件门控等
 - **新增功能必须配套测试。**
 
 ## 外部依赖

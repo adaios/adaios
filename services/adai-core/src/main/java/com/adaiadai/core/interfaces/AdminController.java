@@ -38,8 +38,8 @@ import java.util.stream.Stream;
  * <p>
  * REVIEW P-be-01（安全）：维护类端点原本是 per-user 端点（仅靠 X-User-Id 隔离），
  * 任何客户端伪造 X-User-Id 即可对任意用户执行重补/重建/修正/清理——已整体迁入
- * {@code /api/v1/admin/**}，由 {@link com.adaiadai.core.infrastructure.security.AdminAuthInterceptor}
- * 强制 X-Admin-Token；目标用户通过 {@code userId} 查询参数显式指定（默认 default）。
+ * {@code /api/v1/admin/**}，由 AuthFilter 强制登录 + role=admin（REVIEW #178：
+ * X-Admin-Token 退役，管理口并入统一登录）；目标用户通过 {@code userId} 查询参数显式指定（默认 default）。
  *
  * <pre>
  * GET    /api/v1/admin/files?path=                     → data/ 目录条目列表

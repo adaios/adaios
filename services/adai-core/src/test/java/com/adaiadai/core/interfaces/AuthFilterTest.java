@@ -2,6 +2,7 @@ package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.infrastructure.security.AuthFilter;
+import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.auth.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 
@@ -28,13 +30,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * AuthFilter 安全矩阵（RFC 20260901-auth-login 核心验证）。
+ * AuthFilter 安全矩阵（RFC 20260901-auth-login 核心验证 + REVIEW #178 admin 收编）。
  * <p>
- * 验证四条红线：
+ * 验证红线：
  * 1. 无 token → 401（fail-closed，不再信任裸 X-User-Id）
  * 2. 伪造 X-User-Id + 无 token → 401
- * 3. 有效 token → 放行，且 X-User-Id 被覆盖为会话 userId（伪造 header 无效）
- * 4. login/setup 免鉴权；admin 路径由 X-Admin-Token 体系接管；OPTIONS 放行
+ * 3. 有效 token → 放行；user 会话 X-User-Id 覆盖为会话 userId（伪造 header 无效）
+ * 4. login/setup 免鉴权；OPTIONS 放行
+ * 5.（#178）admin 范围（/admin/**、/accounts/**，available 例外）：无 token 401 / user 会话 403 /
+ *    admin 会话放行——X-Admin-Token 退役，管理口并入统一登录
+ * 6.（#178）admin 会话 X-User-Id 透传（adai-admin 用户切换器跨账号治理浏览）；user 会话一律覆盖
  */
 class AuthFilterTest {
 
@@ -54,6 +59,7 @@ class AuthFilterTest {
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
+        when(authService.findAccount(anyString())).thenReturn(Optional.empty());
         mvc = MockMvcBuilders.standaloneSetup(new EchoUserIdController())
                 .addFilter(new AuthFilter(authService))
                 .build();
@@ -62,6 +68,14 @@ class AuthFilterTest {
     private Session validSession(String userId) {
         Instant now = Instant.now();
         return new Session("tok_1", userId, now, now, now.plusSeconds(Session.DEFAULT_TTL_SECONDS));
+    }
+
+    private Account account(String userId, String role) {
+        return new Account(userId, role, true, LocalDate.of(2026, 8, 2));
+    }
+
+    private void stubSession(String token, String userId) {
+        when(authService.validateAndTouch(token)).thenReturn(Optional.of(validSession(userId)));
     }
 
     // ── 红线 1：无 token → 401 ──
@@ -85,11 +99,11 @@ class AuthFilterTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ── 红线 3：有效 token → 放行 + X-User-Id 覆盖 ──
+    // ── 红线 3：有效 token → 放行 + X-User-Id 覆盖（user 会话）──
 
     @Test
     void validToken_passesThrough() throws Exception {
-        when(authService.validateAndTouch("tok_1")).thenReturn(Optional.of(validSession("adai")));
+        stubSession("tok_1", "adai");
 
         mvc.perform(get("/api/v1/test/echo").header("Authorization", "Bearer tok_1"))
                 .andExpect(status().isOk())
@@ -97,9 +111,10 @@ class AuthFilterTest {
     }
 
     @Test
-    void validToken_overridesForgedUserIdHeader() throws Exception {
-        // 客户端同时带有效 token 和伪造 userId → 覆盖为会话 userId（根治 #179 的关键断言）
-        when(authService.validateAndTouch("tok_1")).thenReturn(Optional.of(validSession("adai")));
+    void validToken_userSession_overridesForgedUserIdHeader() throws Exception {
+        // user 会话带有效 token + 伪造 userId → 覆盖为会话 userId（根治 #179 的关键断言）
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_USER)));
 
         mvc.perform(get("/api/v1/test/echo")
                         .header("Authorization", "Bearer tok_1")
@@ -122,7 +137,6 @@ class AuthFilterTest {
 
     @Test
     void loginEndpoint_isExempt() throws Exception {
-        // filter 不拦截 login：请求到达 AuthController（mock login 返回结果 → 200）
         when(authService.login(anyString(), anyString(), any()))
                 .thenReturn(new AuthService.LoginResult("tok", "adai", "admin",
                         java.util.List.of(), Instant.now().plusSeconds(3600)));
@@ -163,43 +177,114 @@ class AuthFilterTest {
                 .andExpect(status().isNotFound()); // 非 /api/**，filter 不拦
     }
 
-    @Test
-    void accountsAvailable_requiresLogin() throws Exception {
-        // 决策 4（RFC 20260901）：available 不再免鉴权——封 userId 枚举面
-        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
-        when(authService.validateAndTouch("tok_1")).thenReturn(Optional.of(validSession("adai")));
+    // ── 红线 5（#178）：admin 范围并入统一登录（X-Admin-Token 退役）──
+    // standaloneSetup 未注册 Admin/Account controller → 放行后为 404；401/403 证明被 filter 拦下。
 
-        // 无 token → 401（走 AuthFilter 鉴权）
+    @Test
+    void adminEndpoint_withoutToken_returns401() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        mvc.perform(get("/api/v1/admin/users"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminEndpoint_userRole_returns403() throws Exception {
+        // 登录了但是普通用户 → 管理端点 403（#178 role=admin 门禁）
+        stubSession("tok_1", "alice");
+        when(authService.findAccount("alice")).thenReturn(Optional.of(account("alice", Account.ROLE_USER)));
+
+        mvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("仅管理员账号可访问，请使用 admin 账号登录"));
+    }
+
+    @Test
+    void adminEndpoint_adminRole_passes() throws Exception {
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_ADMIN)));
+
+        mvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isNotFound()); // 未注册 AdminController → 404，证明未被 filter 拦
+    }
+
+    @Test
+    void accountsListEndpoint_userRole_returns403() throws Exception {
+        stubSession("tok_1", "alice");
+        when(authService.findAccount("alice")).thenReturn(Optional.of(account("alice", Account.ROLE_USER)));
+
+        mvc.perform(get("/api/v1/accounts").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void accountsListEndpoint_adminRole_passes() throws Exception {
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_ADMIN)));
+
+        mvc.perform(get("/api/v1/accounts").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isNotFound()); // 未注册 AccountController → 404，证明未被拦
+    }
+
+    @Test
+    void adminBasePath_withoutSlash_adminRole_passes() throws Exception {
+        // 对称回归（2026-09-02 根因）：无尾斜杠精确路径也走统一门禁
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_ADMIN)));
+
+        mvc.perform(get("/api/v1/admin").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void accountsAvailable_anyLogin_passes() throws Exception {
+        // available 是 admin 范围例外（产品端遗留选号）：登录即可，普通用户不被 403
+        stubSession("tok_1", "alice");
+        when(authService.findAccount("alice")).thenReturn(Optional.of(account("alice", Account.ROLE_USER)));
+
+        mvc.perform(get("/api/v1/accounts/available").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isNotFound()); // 未注册 AccountController → 404，证明未被拦
+
+        // 无 token → 401（仍需登录，RFC 决策 4：封 userId 枚举面）
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
         mvc.perform(get("/api/v1/accounts/available"))
                 .andExpect(status().isUnauthorized());
-        // 带有效 token → filter 放行（standaloneSetup 无 AccountController → 404 而非 401，证明未被拦）
-        mvc.perform(get("/api/v1/accounts/available").header("Authorization", "Bearer tok_1"))
-                .andExpect(status().isNotFound());
+    }
+
+    // ── 红线 6（#178）：admin 会话 X-User-Id 透传（adai-admin 用户切换器）──
+
+    @Test
+    void adminSession_passesThroughClientUserId() throws Exception {
+        // admin 登录控制台，浏览其他用户数据 → X-User-Id 保留客户端指定（治理只读）
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_ADMIN)));
+
+        mvc.perform(get("/api/v1/test/echo")
+                        .header("Authorization", "Bearer tok_1")
+                        .header("X-User-Id", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receivedUserId").value("alice"));
     }
 
     @Test
-    void adminEndpoints_notHandledByAuthFilter() throws Exception {
-        // admin 端点由 AdminAuthInterceptor（X-Admin-Token）接管，AuthFilter 不拦
-        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
-        // standaloneSetup 无 admin controller → 404（证明未走 AuthFilter 的 401 语义）
-        mvc.perform(get("/api/v1/admin/users"))
-                .andExpect(status().isNotFound());
+    void adminSession_withoutClientUserId_usesSessionId() throws Exception {
+        stubSession("tok_1", "adai");
+        when(authService.findAccount("adai")).thenReturn(Optional.of(account("adai", Account.ROLE_ADMIN)));
+
+        mvc.perform(get("/api/v1/test/echo").header("Authorization", "Bearer tok_1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receivedUserId").value("adai"));
     }
 
     @Test
-    void accountsListEndpoint_notHandledByAuthFilter() throws Exception {
-        // 回归（2026-09-02）：GET /api/v1/accounts（列表，无尾斜杠）此前被 AuthFilter
-        // 误拦 401（前缀 `/api/v1/accounts/` 带尾斜杠匹配不上）→ admin 账号页全挂。
-        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
-        mvc.perform(get("/api/v1/accounts"))
-                .andExpect(status().isNotFound()); // 未注册 AccountController → 404，证明未被 AuthFilter 拦
-    }
+    void userSession_alwaysOverriddenEvenOnAdminScope() throws Exception {
+        // user 会话即使带了目标 userId 头也不能越权浏览他人数据（覆盖为会话自身）
+        stubSession("tok_1", "alice");
+        when(authService.findAccount("alice")).thenReturn(Optional.of(account("alice", Account.ROLE_USER)));
 
-    @Test
-    void adminBasePath_notHandledByAuthFilter() throws Exception {
-        // 对称回归：/api/v1/admin（无尾斜杠）也不走 AuthFilter
-        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
-        mvc.perform(get("/api/v1/admin"))
-                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/test/echo")
+                        .header("Authorization", "Bearer tok_1")
+                        .header("X-User-Id", "victim"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receivedUserId").value("alice"));
     }
 }
