@@ -75,10 +75,29 @@ sleep 10
 BASE="http://${SERVER}:8080"
 FAILED=0
 
+# RFC 20260901-auth-login（根治 #179）：smoke 必须先登录拿 token，
+# 不再用零鉴权 X-User-Id 裸打（REVIEW P1-A4：原 smoke 用零鉴权漏洞验证部署）。
+# 依赖 .env 已配 ADAI_ADMIN_TOKEN 的同款账号密码——smoke 从 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD
+# 读（deploy 前手动设置，或跳过登录失败即 FAILED）。
+SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-adai}"
+SMOKE_PASSWORD="${ADAI_SMOKE_PASSWORD:-}"
+TOKEN=""
+if [ -n "$SMOKE_PASSWORD" ]; then
+    TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"account\":\"$SMOKE_ACCOUNT\",\"password\":\"$SMOKE_PASSWORD\"}" 2>/dev/null \
+        | grep -oE '"token":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+fi
+if [ -z "$TOKEN" ]; then
+    echo "❌ smoke 前置失败：无法获取登录 token（需设置 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD）"
+    exit 1
+fi
+
 check() {
     local desc="$1" method="$2" path="$3" expect="$4"
     local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$BASE$path" -H "X-User-Id: adai" 2>/dev/null)
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$BASE$path" \
+        -H "Authorization: Bearer $TOKEN" 2>/dev/null)
     if [ "$code" = "$expect" ]; then
         echo "  ✅ $desc → $code"
     else
