@@ -325,9 +325,9 @@ public class TradingAdviceAppService {
                             .multiply(BigDecimal.valueOf(100));
             views.add(new PositionView(p.symbol(), name, p.quantity(), marketValue, positionPercent,
                     p.avgCost(), price, changePercent, pnl, pnlPercent,
-                    p.stopLossPrice(), p.entryDate(), p.buyPoint(),
+                    p.effectiveStopLoss(), p.entryDate(), p.buyPoint(),
                     // G-3：引擎确定性判定（止损 R66 / 仓位 R81）——第三阶段：按 userId 读用户规则配置
-                    ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice()),
+                    ruleEngine.evaluateStopLoss(userId, price, p.effectiveStopLoss()),
                     ruleEngine.evaluatePosition(userId, positionPercent),
                     // FP-P2b：R81 是否适用（总资产 < 100 万）
                     r81Applicable));

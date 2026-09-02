@@ -462,9 +462,9 @@ public class TradingSessionPushService {
                     }
                 }
             }
-            sb.append(" 止损位").append(p.stopLossPrice() != null ? fmt(p.stopLossPrice()) : "未设置")
+            sb.append(" 止损位").append(p.effectiveStopLoss() != null ? fmt(p.effectiveStopLoss()) : "未设置")
                     .append(" 买点").append(p.buyPoint() != null ? p.buyPoint() : "未知");
-            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.effectiveStopLoss());
             if (sl.verdict() == StopLossVerdict.BREACHED) {
                 sb.append(" ⚠️已跌破止损位（R66）");
             }
@@ -483,7 +483,7 @@ public class TradingSessionPushService {
         for (Position p : data.positions()) {
             sb.append("· ").append(p.name())
                     .append("（数量 ").append(p.quantity()).append("）")
-                    .append(" 止损 ").append(fmt(p.stopLossPrice()))
+                    .append(" 止损 ").append(fmt(p.effectiveStopLoss()))
                     .append(" 买点 ").append(p.buyPoint() != null ? p.buyPoint() : "未知").append("\n");
         }
         sb.append("择时：").append(data.marketStage()).append("。\n");
@@ -502,7 +502,7 @@ public class TradingSessionPushService {
             String change = changePct != null
                     ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
                     : "-";
-            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, md != null ? md.price() : null, p.effectiveStopLoss());
             String status = sl.verdict() == StopLossVerdict.BREACHED
                     ? "⚠️已破止损（R66）" : "未触发止损";
             sb.append("· ").append(p.name()).append(" 现价 ")
@@ -526,7 +526,7 @@ public class TradingSessionPushService {
             String change = changePct != null
                     ? (changePct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(changePct) + "%"
                     : "-";
-            var sl = ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, price, p.effectiveStopLoss());
             BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
             var pv = ruleEngine.evaluatePosition(userId, percent);
             String advice;
@@ -564,7 +564,7 @@ public class TradingSessionPushService {
         for (Position p : data.positions()) {
             MarketData md = data.quotes().get(p.symbol());
             BigDecimal price = md != null && md.price() != null ? md.price() : p.currentPrice();
-            var sl = ruleEngine.evaluateStopLoss(userId, price, p.stopLossPrice());
+            var sl = ruleEngine.evaluateStopLoss(userId, price, p.effectiveStopLoss());
             boolean isBreached = sl.verdict() == StopLossVerdict.BREACHED;
             if (isBreached) breached++;
             sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))

@@ -283,18 +283,25 @@ void main() {
         'entryDate': '2026-08-01',
         'role': '防守·主仓',
         'targetPrice': 30.0,
+        'computedStopLossPrice': 21.9,
+        'effectiveStopLoss': 22.8,
       }));
       expect(p.stopLossPrice, 22.8);
       expect(p.buyPoint, 'B2');
       expect(p.entryDate, '2026-08-01');
       expect(p.role, '防守·主仓');
       expect(p.targetPrice, 30.0);
+      // 双止损位（trading-risk-plan）：计算止损 + 生效止损 = max(人工, 计算)
+      expect(p.computedStopLossPrice, 21.9);
+      expect(p.effectiveStopLoss, 22.8);
       // 旧 positions.md 无新列 → null 兜底
       final old = PositionItem.fromJson(
           {'symbol': '600123', 'quantity': 100, 'avgCost': 1.0, 'currentPrice': 1.0});
       expect(old.stopLossPrice, isNull);
       expect(old.buyPoint, isNull);
       expect(old.role, isNull);
+      expect(old.computedStopLossPrice, isNull);
+      expect(old.effectiveStopLoss, isNull);
     });
   });
 

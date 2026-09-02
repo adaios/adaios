@@ -177,8 +177,8 @@ public class TradingReviewAppService {
                     .append(" 现价 ").append(p.currentPrice() != null ? p.currentPrice().stripTrailingZeros().toPlainString() : "-")
                     .append(" 盈亏 ").append(p.pnl() != null ? p.pnl().setScale(2).toPlainString() : "-")
                     .append(" 盈亏% ").append(p.pnlPercent() != null ? p.pnlPercent().setScale(2).toPlainString() : "-");
-            if (p.stopLossPrice() != null) {
-                sb.append(" 止损 ").append(p.stopLossPrice().stripTrailingZeros().toPlainString());
+            if (p.effectiveStopLoss() != null) {
+                sb.append(" 止损 ").append(p.effectiveStopLoss().stripTrailingZeros().toPlainString());
             }
             lines.add(sb.toString());
         }

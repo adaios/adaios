@@ -167,14 +167,14 @@ public class MarketAlertService {
             // 真止损预警（2026-08-16）：现价跌破用户预设止损位 → R66 硬判定（引擎口径，与建议引擎一致）
             // 止损位未设置（旧数据）不判——R68 入场即设止损，买入时已强制填写
             // 第三阶段：按 userId 读用户规则配置（R66 判定本身无阈值参数，口径不变）
-            if (p.stopLossPrice() != null
-                    && ruleEngine.evaluateStopLoss(userId, md.price(), p.stopLossPrice()).verdict()
+            if (p.effectiveStopLoss() != null
+                    && ruleEngine.evaluateStopLoss(userId, md.price(), p.effectiveStopLoss()).verdict()
                     == StopLossVerdict.BREACHED) {
                 addIfNew(userId, p, md, change, "stop-loss", existing, newSignatures, alerts);
             }
             // C3 接近止损预警（2026-08-16）：未跌破但距止损 ≤ nearStopLossPct（默认 2%，可配）
-            if (p.stopLossPrice() != null && md.price().compareTo(p.stopLossPrice()) > 0) {
-                BigDecimal gapPct = md.price().subtract(p.stopLossPrice())
+            if (p.effectiveStopLoss() != null && md.price().compareTo(p.effectiveStopLoss()) > 0) {
+                BigDecimal gapPct = md.price().subtract(p.effectiveStopLoss())
                         .multiply(BigDecimal.valueOf(100)).divide(md.price(), 2, RoundingMode.HALF_UP);
                 if (gapPct.compareTo(nearStopLossPct) <= 0) {
                     addIfNew(userId, p, md, change, "near-stop-loss", existing, newSignatures, alerts);
@@ -307,16 +307,16 @@ public class MarketAlertService {
     private String message(Position p, MarketData md, BigDecimal change, String type) {
         return switch (type) {
             case "stop-loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 已跌破你的止损位 " + fmt(p.stopLossPrice())
+                    + " 已跌破你的止损位 " + fmt(p.effectiveStopLoss())
                     + "——按纪律（R66）该清仓了，要我给出建议吗？";
             case "near-stop-loss" -> "⚠️ " + p.name() + "(" + p.symbol() + ") 现价 " + fmt(md.price())
-                    + " 距止损位 " + fmt(p.stopLossPrice()) + " 不到 "
+                    + " 距止损位 " + fmt(p.effectiveStopLoss()) + " 不到 "
                     + nearStopLossPct.stripTrailingZeros().toPlainString()
                     + "%了——提前想好怎么走，别等插针（R66）";
             case "loss" -> "📉 " + p.name() + "(" + p.symbol() + ") 今日跌 " + fmt(change) + "%，现价 "
                     + fmt(md.price())
-                    + (p.stopLossPrice() != null
-                        ? "——单日大跌，盯紧止损位 " + fmt(p.stopLossPrice()) + "（R66）"
+                    + (p.effectiveStopLoss() != null
+                        ? "——单日大跌，盯紧止损位 " + fmt(p.effectiveStopLoss()) + "（R66）"
                         : "——单日大跌，留意风险（你还没设止损位，想好怎么走）");
             case "gain" -> "📈 " + p.name() + "(" + p.symbol() + ") 今日涨 " + fmt(change) + "%，现价 "
                     + fmt(md.price()) + "，关注放飞条件";

@@ -306,31 +306,65 @@ public class TradingAppService {
     }
 
     /**
-     * 获取所有持仓（注入实时行情：currentPrice=现价 → 盈亏/盈亏% 展示正确）。
+     * 获取所有持仓（注入实时行情：currentPrice=现价 → 盈亏/盈亏% 展示正确；
+     * 同时注入系统计算止损位 computedStopLossPrice——风险预算公式，不落盘）。
      * <p>
-     * 行情拉取失败/单票无行情 → 用存储价（=成本价，盈亏 0），降级不报错。
+     * 行情拉取失败/单票无行情 → 用存储价（=成本价，盈亏 0），降级不报错；
+     * 行情整体失败仍返回计算止损（computed 与行情无关）。
      */
     public List<Position> getPositions(String userId) {
         List<Position> stored = positionRepository.findAll(userId);
         if (stored.isEmpty()) return stored;
+        BigDecimal principal = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::principal).orElse(null);
         Map<String, MarketData> quotes = Map.of();
         try {
             quotes = marketDataSource.quote(stored.stream().map(Position::symbol).toList());
         } catch (Exception e) {
             log.warn("持仓行情注入失败，使用存储价 | userId={} | {}", userId, e.getMessage());
         }
-        if (quotes.isEmpty()) return stored;
+        if (quotes.isEmpty()) {
+            return stored.stream().map(p -> withComputedStopLoss(p, principal)).toList();
+        }
         List<Position> result = new ArrayList<>();
         for (Position p : stored) {
             MarketData md = quotes.get(p.symbol());
             if (md != null && md.price() != null && md.price().compareTo(BigDecimal.ZERO) > 0) {
-                result.add(new Position(p.symbol(), p.name(), p.quantity(), p.avgCost(), md.price(),
-                        p.lastUpdated(), p.entryDate(), p.stopLossPrice(), p.buyPoint(), p.role()));
+                Position withQuote = new Position(p.symbol(), p.name(), p.quantity(), p.avgCost(), md.price(),
+                        p.lastUpdated(), p.entryDate(), p.stopLossPrice(), p.buyPoint(), p.role());
+                result.add(withComputedStopLoss(withQuote, principal));
             } else {
-                result.add(p);
+                result.add(withComputedStopLoss(p, principal));
             }
         }
         return result;
+    }
+
+    /** 风险预算单笔风险比例（本金 × 1%，docs/reference/trading-risk-plan.md 校准参数表）。 */
+    private static final BigDecimal RISK_BUDGET_PCT = new BigDecimal("0.01");
+    /** 止损距离上限（min(R÷单仓市值, 5%)——5% 与 R66 清仓阈值闭合）。 */
+    private static final BigDecimal MAX_STOP_DISTANCE_PCT = new BigDecimal("0.05");
+
+    /**
+     * 系统计算止损位（风险预算公式，动态算、不落盘）：
+     * R = 本金 × 1%；止损距离 = min(R ÷ 单仓市值, 5%)；止损价 = 成本 × (1 − 距离)，两位小数。
+     * 本金缺失/数量成本异常 → null（无据可算，判定走人工止损或跳过）。
+     */
+    private Position withComputedStopLoss(Position p, BigDecimal principal) {
+        BigDecimal computed = null;
+        if (principal != null && principal.signum() > 0
+                && p.quantity() > 0 && p.avgCost() != null && p.avgCost().signum() > 0) {
+            BigDecimal marketValue = p.avgCost().multiply(BigDecimal.valueOf(p.quantity()));
+            BigDecimal distance = principal.multiply(RISK_BUDGET_PCT)
+                    .divide(marketValue, 4, java.math.RoundingMode.HALF_UP);
+            if (distance.compareTo(MAX_STOP_DISTANCE_PCT) > 0) {
+                distance = MAX_STOP_DISTANCE_PCT;
+            }
+            computed = p.avgCost().multiply(BigDecimal.ONE.subtract(distance))
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        return new Position(p.symbol(), p.name(), p.quantity(), p.avgCost(), p.currentPrice(),
+                p.lastUpdated(), p.entryDate(), p.stopLossPrice(), p.buyPoint(), p.role(), computed);
     }
 
     /**

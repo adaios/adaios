@@ -537,6 +537,81 @@ class TradingAppServiceTest {
                 "行情失败用存储价，不报错");
     }
 
+    // ── getPositions 系统计算止损位（双止损位：人工 + 计算，生效取更严——trading-risk-plan）──
+
+    @Test
+    void getPositions_injectsComputedStopLoss_fromPrincipal() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                new Position("000831", "中国稀土", 600, new BigDecimal("57.9166"), new BigDecimal("60.18"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 26), null, null, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000831",
+                new MarketData("000831", "中国稀土", new BigDecimal("60.18"), new BigDecimal("60.18"),
+                        new BigDecimal("60.18"), new BigDecimal("60.18"), new BigDecimal("60.18"),
+                        new BigDecimal("0.0"), 0)));
+        AccountSnapshotRepository accounts = mock(AccountSnapshotRepository.class);
+        when(accounts.findLatest(any())).thenReturn(Optional.of(new AccountSnapshot(
+                new BigDecimal("107606.79"), new BigDecimal("2452.79"), new BigDecimal("2452.79"),
+                new BigDecimal("2452.79"), new BigDecimal("105154.00"), new BigDecimal("20260.18"),
+                new BigDecimal("-1902.00"), new BigDecimal("150000.00"), LocalDate.of(2026, 8, 28))));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), accounts, mock(TransferRepository.class), market,
+                mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+        List<Position> positions = service.getPositions("default");
+
+        // R = 150000×1% = 1500；距离 = 1500 ÷ (57.9166×600) = 4.32% < 5% 不截断 → 止损 = 57.9166×(1−0.0432) = 55.41
+        assertEquals(1, positions.size());
+        assertEquals(0, positions.get(0).computedStopLossPrice().compareTo(new BigDecimal("55.41")),
+                "计算止损 = 成本×(1−min(R÷市值,5%))，实际: " + positions.get(0).computedStopLossPrice());
+        assertEquals(0, positions.get(0).effectiveStopLoss().compareTo(new BigDecimal("55.41")),
+                "人工未设 → 生效止损 = 计算止损");
+    }
+
+    @Test
+    void getPositions_computedStopLoss_capsDistanceAtFivePercent() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                new Position("000725", "京东方A", 1000, new BigDecimal("6.042"), new BigDecimal("6.042"),
+                        LocalDateTime.now(), LocalDate.of(2026, 8, 16), null, null, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了")); // 行情失败仍算计算止损
+        AccountSnapshotRepository accounts = mock(AccountSnapshotRepository.class);
+        when(accounts.findLatest(any())).thenReturn(Optional.of(new AccountSnapshot(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("150000"), LocalDate.now())));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), accounts, mock(TransferRepository.class), market,
+                mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+        List<Position> positions = service.getPositions("default");
+
+        // 距离 = 1500÷6042 = 24.8% > 5% → 截断 5% → 止损 = 6.042×0.95 = 5.74
+        assertEquals(0, positions.get(0).computedStopLossPrice().compareTo(new BigDecimal("5.74")),
+                "距离超上限截断 5%，实际: " + positions.get(0).computedStopLossPrice());
+    }
+
+    @Test
+    void getPositions_noPrincipal_noComputedStopLoss() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(pos("000725", 100)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenThrow(new RuntimeException("行情接口挂了"));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), mock(AccountSnapshotRepository.class),
+                mock(TransferRepository.class), market,
+                mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+        List<Position> positions = service.getPositions("default");
+
+        assertNull(positions.get(0).computedStopLossPrice(), "无本金快照 → 计算止损 null");
+        assertNull(positions.get(0).effectiveStopLoss(), "无人工无计算 → 生效止损 null");
+    }
+
     // ── 自选/清仓/资金（RFC 20260816 交易数据智能）──
 
 @org.junit.jupiter.api.Test

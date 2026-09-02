@@ -24,9 +24,10 @@ import java.time.LocalDateTime;
  * @param currentPrice 当前市价（由用户输入或行情更新）
  * @param lastUpdated  最后更新时间
  * @param entryDate    首买日（首次 BUY 落盘，加仓不覆盖；可空=旧数据未补录）
- * @param stopLossPrice 止损位（最近一次 BUY 的值，SELL 保留；可空）
+ * @param stopLossPrice 人工止损位（最近一次 BUY 的值，SELL 保留；web 可编辑；可空）
  * @param buyPoint     买点类型（最近一次 BUY 的值，SELL 保留；可空）
  * @param role         持仓角色（web 编辑：防守/前锋/中场/机动 + 主仓/副仓；可空）
+ * @param computedStopLossPrice 系统计算止损位（风险预算公式动态算出，不落盘；可空=无本金/异常输入）
  */
 public record Position(
         String symbol,
@@ -38,7 +39,8 @@ public record Position(
         LocalDate entryDate,
         BigDecimal stopLossPrice,
         String buyPoint,
-        String role
+        String role,
+        BigDecimal computedStopLossPrice
 ) {
 
     /**
@@ -46,7 +48,29 @@ public record Position(
      */
     public Position(String symbol, String name, int quantity, BigDecimal avgCost,
                     BigDecimal currentPrice, LocalDateTime lastUpdated) {
-        this(symbol, name, quantity, avgCost, currentPrice, lastUpdated, null, null, null, null);
+        this(symbol, name, quantity, avgCost, currentPrice, lastUpdated, null, null, null, null, null);
+    }
+
+    /**
+     * 10 参构造（无计算止损，兼容既有调用；计算止损由服务层组装时填充）。
+     */
+    public Position(String symbol, String name, int quantity, BigDecimal avgCost,
+                    BigDecimal currentPrice, LocalDateTime lastUpdated,
+                    LocalDate entryDate, BigDecimal stopLossPrice, String buyPoint, String role) {
+        this(symbol, name, quantity, avgCost, currentPrice, lastUpdated,
+                entryDate, stopLossPrice, buyPoint, role, null);
+    }
+
+    /**
+     * 生效止损位 = max(人工止损, 系统计算止损)——取更严格（更高价、更早触发）者。
+     * R66 判定/接近止损预警/建议引擎统一用本值；两者皆空 → null（未设，判定跳过）。
+     * 依据：docs/reference/trading-risk-plan.md「最终止损 = 取更严格」。
+     */
+    @JsonGetter
+    public BigDecimal effectiveStopLoss() {
+        if (stopLossPrice == null) return computedStopLossPrice;
+        if (computedStopLossPrice == null) return stopLossPrice;
+        return stopLossPrice.compareTo(computedStopLossPrice) >= 0 ? stopLossPrice : computedStopLossPrice;
     }
 
     /**

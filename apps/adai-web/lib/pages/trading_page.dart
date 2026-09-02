@@ -705,6 +705,18 @@ class _TradingPageState extends State<TradingPage> {
           rows: _positions.map((p) {
             // #132 红涨绿亏（A股）：盈=红、亏=绿
             final pnlColor = p.pnl >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+            // 双止损位（trading-risk-plan）：主值 = 生效止损 = max(人工, 计算)；
+            // 人工/计算有差异时副行标注非生效来源（系统 xx / 人工 xx）
+            final slEffective = p.effectiveStopLoss;
+            final slManual = p.stopLossPrice;
+            final slComputed = p.computedStopLossPrice;
+            final slSecondary = <String>[];
+            if (slManual != null && slComputed != null && (slManual - slComputed).abs() > 0.0005) {
+              final effectiveIsManual = slEffective != null && (slEffective - slManual).abs() < 0.0005;
+              slSecondary.add(effectiveIsManual
+                  ? '系统 ${slComputed.toStringAsFixed(3)}'
+                  : '人工 ${slManual.toStringAsFixed(3)}');
+            }
             return DataRow(cells: [
               DataCell(Text(p.symbol, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600))),
               DataCell(Text(p.name, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
@@ -714,7 +726,20 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text(p.marketValue.toStringAsFixed(2), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
               DataCell(Text(p.pnl.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: pnlColor, fontWeight: FontWeight.w600))),
               DataCell(Text('${p.pnlPercent.toStringAsFixed(2)}%', style: TextStyle(fontSize: 13, color: pnlColor))),
-              DataCell(Text(p.stopLossPrice?.toStringAsFixed(3) ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
+              DataCell(slEffective != null
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(slEffective.toStringAsFixed(3),
+                            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, fontWeight: FontWeight.w600)),
+                        if (slSecondary.isNotEmpty)
+                          Text(slSecondary.join(' · '),
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                      ],
+                    )
+                  : Text(slManual?.toStringAsFixed(3) ?? '—',
+                      style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.buyPoint ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.role ?? '—', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               // RFC 20260825：批次明细入口（一买一批跟踪）+ 编辑

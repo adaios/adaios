@@ -421,6 +421,48 @@ class MarketAlertServiceTest {
     }
 
     @Test
+    void stopLoss_computedStopLoss_breached_whenManualMissing() {
+        // 双止损位：人工未设 → 系统计算止损兜底（effectiveStopLoss = computed），现价破计算止损 → R66 触发
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.80", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        Position p = new Position("000725", "京东方A", 200, new BigDecimal("5.20"),
+                new BigDecimal("10.00"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), null, "B1", null, new BigDecimal("4.90"));
+        when(positions.findAll(anyString())).thenReturn(List.of(p));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        build(market, positions, false, push).poll("default");
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, times(1)).push(eq("default"), captor.capture());
+        assertEquals("stop-loss", captor.getValue().type());
+        assertTrue(captor.getValue().content().contains("4.9"), "文案应含计算止损位，实际: " + captor.getValue().content());
+    }
+
+    @Test
+    void stopLoss_manualStricterThanComputed_usesManual() {
+        // 人工止损更严（更高价）→ 生效 = 人工；现价在两者之间 → 人工已触发、计算未触发 → 仍推 stop-loss
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("000725", quoteAt("000725", "4.85", "0.00")));
+        PositionRepository positions = mock(PositionRepository.class);
+        Position p = new Position("000725", "京东方A", 200, new BigDecimal("5.20"),
+                new BigDecimal("10.00"), LocalDateTime.of(2026, 8, 6, 9, 30),
+                java.time.LocalDate.of(2026, 8, 1), new BigDecimal("4.90"), "B1", null, new BigDecimal("4.70"));
+        when(positions.findAll(anyString())).thenReturn(List.of(p));
+        PushChannel push = mock(PushChannel.class);
+        when(push.enabled()).thenReturn(true);
+
+        build(market, positions, false, push).poll("default");
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(push, times(1)).push(eq("default"), captor.capture());
+        assertEquals("stop-loss", captor.getValue().type());
+        assertTrue(captor.getValue().content().contains("4.9"), "应按人工止损 4.9 触发，实际: " + captor.getValue().content());
+    }
+
+    @Test
     void stopLoss_sameDayDeduplicated() {
         // 当日已推过 stop-loss → 第二轮轮询不再重复推（signature 去重）
         MarketDataSource market = mock(MarketDataSource.class);
