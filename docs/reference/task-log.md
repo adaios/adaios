@@ -328,7 +328,7 @@ v1.0.0（adai-admin + 多账号）：
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
 | FL-04/06 | 审查跟进机制：REVIEW 未修项无强制处理（weekly-audit.sh 已覆盖自动审查触发；人工修复仍靠自觉，2026-08-23 归口自 audits/2026-08-16-ai-engineering-workflow.md）| `ai-engineering/process/` | 流程改进 |
 | 2026-09-04 交易-批次止损 | ✅ **已实现（2026-09-04 晚间自主批 II，用户「按推荐来」拍板方案 A；见 change-log）**——覆盖层 `lot-stoploss.json` + derive 合并 + `PUT/DELETE /trading/lots/{lotId}/stop-loss` + web 批次弹窗行内「改」止损；app 不做止损编辑（沿用「去 web」管理惯例）。原始登记：按批次止损编辑闭环——每个买入批次独立设/改止损位且事后可单独调。现状缺口：止损编辑仅持仓级 `PUT /positions/{symbol}`（写 positions.md），非初始批止损锁死买入流水事后改不了 | `TradingLotService` / `TradingController` / web 批次弹窗 | P2（✅ 2026-09-04）|
-| 2026-09-04 交易-资金曲线 | **资金/权益曲线图（用户确认登记 2026-09-04）**：对标调研已标 ❌ 无（trading-plugin-architecture.md §4.2 权益曲线/回撤分析/权益曲线图全无，§4.3 列 P0 必备「缺任一即残废」），代码零实现。数据原料已齐：逐笔流水（trades/yyyy-MM.json）+ 批次回合 realizedPnl + account.json 账户快照 + 转账流水——「有料没做」。待做：资产/净值曲线（口径待讨论：总资产 vs 净值=资产/本金 vs 累计收益率；周期粒度；最大回撤展示），web 交易页资金区块挂图，后端曲线数据端点（按日聚合 account/快照 + 流水回放） | web trading 页资金区块 + 后端聚合端点 | P2（v1.0.0 后批次）|
+| 2026-09-04 交易-资金曲线 | ✅ **已实现（2026-09-04 晚间自主批 IV，用户「按推荐来」拍板方案 A；见 change-log）**——EquityCurveService（现金现值锚定 + 流水/转账事件 + 底仓恒持 + 收盘价）+ `GET /trading/equity-curve` + web 资金 Tab 曲线卡（净值/总资产折线 + 最大回撤）。原始登记：资金/权益曲线图（对标调研 ❌ 无 + P0 必备）；曲线起点由数据自动定（最早流水/转账），invested 口径 = 期初投入缺口 + 转账累计 | `EquityCurveService` / `EquityCurveController` / web 资金 Tab | P2（✅ 2026-09-04）|
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 

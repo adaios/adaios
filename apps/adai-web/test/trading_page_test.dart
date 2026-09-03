@@ -55,6 +55,19 @@ MockClient _tradingMock() {
     if (path == '/api/v1/trading/buy-points') return _json([]);
     if (path == '/api/v1/trading/sold/score') return _json([]);
 
+    if (path == '/api/v1/trading/equity-curve') {
+      return _json({
+        'points': [
+          {'date': '2026-08-03', 'totalAssets': 95000.0, 'cash': 20000.0, 'marketValue': 75000.0, 'invested': 100000.0, 'netValue': 0.95, 'drawdown': 0.05},
+          {'date': '2026-08-04', 'totalAssets': 108000.0, 'cash': 8000.0, 'marketValue': 100000.0, 'invested': 100000.0, 'netValue': 1.08, 'drawdown': 0.0},
+          {'date': '2026-08-05', 'totalAssets': 112000.0, 'cash': 5000.0, 'marketValue': 107000.0, 'invested': 100000.0, 'netValue': 1.12, 'drawdown': 0.0},
+        ],
+        'skippedDays': 0,
+        'startDate': '2026-08-03',
+        'endDate': '2026-08-05',
+      });
+    }
+
     if (path == '/api/v1/trading/trades') return _json([]);
     if (path == '/api/v1/trading/reviews') return _json([]);
     return http.Response('not found', 404);

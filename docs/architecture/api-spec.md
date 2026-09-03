@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.44 | 最后更新：2026-09-04**
+**文档版本：v3.45 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-04 | v3.45 | **资金曲线（决策文档方案 A，2026-09-04 晚间自主批 IV）**：新增 `GET /trading/equity-curve`（需 trading 插件）——后端按日聚合**收盘净资产**：现金（account.json 现值反向锚定 + 事件驱动）+ 持仓市值（流水回放 + 底仓恒持 + 收盘价，缺 K 停牌沿用前收/成本兜底）；响应 `{points:[{date, totalAssets, cash, marketValue, invested, netValue, drawdown}], skippedDays, startDate, endDate}`；netValue = total/invested（invested = 期初投入缺口 + 转账累计净投入），invested ≤0 → netValue null（不给误导值）；无账户快照 → 空 points |
 | 2026-09-04 | v3.44 | **买点三重校验（REVIEW P1-交易9/20 出表，2026-09-04 晚间自主批 III）**：`GET /buy-points` 判定语义按课程校准 + 防连板误报——①B1「回调一半」几何改**课程口径**：回撤占波段（窗口最高 high − 最低 low）≥ 回调比例（默认 0.5，即 close ≤ (high+low)/2）；②B2 放量阈值默认 **1.5→2.0**（倍量柱，rules.yaml/adai 规则包同步）；③B2 加三重防护：KDJ.J 拐头向上 + **J 连续 ≥90 高位钝化排除**（首日拉起放行）+ 距窗口低点涨幅 >30% 不追 + 近 2 日连板（≥9.8%）不推；④响应命中项附 `dataDate`（判定 K 线最后日期）；15:10 定时推送要求 `dataDate=当日` 才推（防滞后一日信号冒充今日，楚天龙实锤） |
 | 2026-09-04 | v3.43 | **按批次止损编辑闭环（决策文档 P1 方案 A，2026-09-04 晚间自主批 II）**：新增 `PUT /trading/lots/{lotId}/stop-loss`（body `{"stopLossPrice": 12.34}`，>0 且 ≤4 位小数，lotId 不存在 404——给某个买入批次单独设/改止损，落 `data/{userId}/trading/lot-stoploss.json` 覆盖层，不污染流水）+ `DELETE /trading/lots/{lotId}/stop-loss`（清除覆盖回退流水止损/默认 −7%，幂等 404）；`GET /trading/lots` 的 `stopLossPrice` 语义更新——批次推导后合并覆盖层（覆盖 > 流水止损 > 默认 −7%），推送/行为标注/复盘自动跟随 |
 | 2026-09-04 | v3.42 | **行情数据包导入（MD17，task-log 2026-09-04 登记）**：新增 `POST /admin/market/tdx-import`（multipart `file`，登录 + role=admin）——上传通达信日线 .zip 数据包 → 后端校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘 TDX 行情目录（`adai.market.tdx-path`）→ 返回 `{status, filename, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`；空包/无 .day/非 zip → 400 人话。数据包 >5MB：生产需配 `ADAI_MAX_FILE_SIZE`/`ADAI_MAX_REQUEST_SIZE` |
@@ -650,6 +651,22 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `DELETE /api/v1/trading/lots/{lotId}/stop-loss` — 清除批次止损覆盖（v3.43）
 
 **Response（200）**：`{"lotId": "...", "cleared": true}`（清除后回退该批流水止损/默认 −7%）；lotId 不存在 → **404**
+
+### `GET /api/v1/trading/equity-curve` — 资金曲线（v3.45，2026-09-04 决策方案 A）
+> 需 trading 插件（403）。按日收盘净资产曲线：现金（account.json 现值反向锚定 + 逐笔交易/转账事件驱动）+ 持仓市值（流水回放 + 底仓恒持 + 当日收盘价；停牌/缺 K 沿用前收、再缺用成本兜底）。
+
+**Response（200）**：
+```json
+{
+  "points": [{"date": "2026-08-03", "totalAssets": 120000.00, "cash": 20300.00,
+              "marketValue": 99700.00, "invested": 100000.00,
+              "netValue": 1.2000, "drawdown": 0.0000}],
+  "skippedDays": 0, "startDate": "2026-08-03", "endDate": "2026-09-04"
+}
+```
+- `netValue` = totalAssets / invested（invested = 期初投入缺口 + 转账累计净投入）；invested ≤0 → `netValue: null`（本金未设不给误导值，P2-交易31 同口径）
+- `drawdown` = 历史峰值到当日回落比例（0 = 新高）
+- 无账户快照（从未导入资金/无记录）→ `points: []`（静默降级不抛错）
 
 ---
 

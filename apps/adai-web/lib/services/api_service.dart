@@ -518,6 +518,18 @@ class ApiService {
     _check(resp);
   }
 
+  /// 2026-09-04 资金曲线（决策方案 A）：GET /api/v1/trading/equity-curve。
+  /// 返回每日收盘净资产 + 净值/回撤；无账户快照 → 空 points（不抛错）。
+  Future<EquityCurveResponse> getEquityCurve() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/equity-curve'),
+      headers: _headers,
+    );
+    _check(resp);
+    return EquityCurveResponse.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
   /// 批量导入交易（web 独有，RFC 20260816 §4.2）。
   /// POST /api/v1/trading/trades/batch，body {"trades": [...]} → 逐条成功/失败结果。
   Future<BatchImportResponse> importTrades(List<Map<String, dynamic>> trades) async {
@@ -2427,4 +2439,59 @@ class TaskStatsResponse {
     done: json['done'] as int? ?? 0,
     cancelled: json['cancelled'] as int? ?? 0,
   );
+}
+
+// ── 资金曲线 DTO（2026-09-04 决策方案 A）──
+
+/// 资金曲线点（date=交易日，YYYY-MM-DD；netValue/drawdown 可空）。
+class EquityCurvePoint {
+  final String date;
+  final double totalAssets;
+  final double cash;
+  final double marketValue;
+  final double invested;
+  final double? netValue;
+  final double? drawdown;
+
+  EquityCurvePoint({
+    required this.date,
+    required this.totalAssets,
+    required this.cash,
+    required this.marketValue,
+    required this.invested,
+    this.netValue,
+    this.drawdown,
+  });
+
+  factory EquityCurvePoint.fromJson(Map<String, dynamic> json) => EquityCurvePoint(
+    date: json['date'] as String? ?? '',
+    totalAssets: (json['totalAssets'] as num?)?.toDouble() ?? 0,
+    cash: (json['cash'] as num?)?.toDouble() ?? 0,
+    marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
+    invested: (json['invested'] as num?)?.toDouble() ?? 0,
+    netValue: (json['netValue'] as num?)?.toDouble(),
+    drawdown: (json['drawdown'] as num?)?.toDouble(),
+  );
+}
+
+/// 资金曲线响应 {points, startDate, endDate}。
+class EquityCurveResponse {
+  final List<EquityCurvePoint> points;
+  final String startDate;
+  final String endDate;
+
+  EquityCurveResponse({
+    required this.points,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  factory EquityCurveResponse.fromJson(Map<String, dynamic> json) =>
+      EquityCurveResponse(
+        points: ((json['points'] as List?) ?? const [])
+            .map((e) => EquityCurvePoint.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        startDate: json['startDate'] as String? ?? '',
+        endDate: json['endDate'] as String? ?? '',
+      );
 }

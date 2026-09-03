@@ -1359,6 +1359,9 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildCashSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 2026-09-04 资金曲线（决策方案 A）：净值 + 回撤迷你图
+      _EquityCurveCard(api: widget.api),
+      const SizedBox(height: 10),
       Row(children: [
         const Text('资金股份查询', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const SizedBox(width: 8),
@@ -4781,4 +4784,233 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
       ],
     );
   }
+}
+
+// ─────────────────────────── 资金曲线卡（2026-09-04 决策方案 A） ───────────────────────────
+
+/// 资金曲线迷你图：净值（或总资产，principal=0 时）折线 + 峰值参考线 + 最大回撤标注。
+/// 数据源 GET /trading/equity-curve（后端流水+快照锚定聚合）；空/失败 → 人话空态不打断资金区。
+class _EquityCurveCard extends StatefulWidget {
+  const _EquityCurveCard({required this.api});
+
+  final ApiService api;
+
+  @override
+  State<_EquityCurveCard> createState() => _EquityCurveCardState();
+}
+
+class _EquityCurveCardState extends State<_EquityCurveCard> {
+  EquityCurveResponse? _data;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final resp = await widget.api.getEquityCurve();
+      if (!mounted) return;
+      setState(() {
+        _data = resp;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = extractApiErrorMessage(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(
+        height: 150,
+        child: Center(
+          child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.darkGreen)),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text('资金曲线加载失败：$_error · ',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      );
+    }
+    final pts = _data?.points ?? const <EquityCurvePoint>[];
+    if (pts.length < 2) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Text('资金曲线：记录交易/导入资金后，这里会画出你的资产变化曲线',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      );
+    }
+
+    // 画净值；principal=0（netValue 全 null）→ 退画总资产
+    final useNet = pts.every((p) => p.netValue != null) && (pts.last.netValue ?? 0) > 0;
+    final values = useNet
+        ? pts.map((p) => p.netValue!).toList()
+        : pts.map((p) => p.totalAssets).toList();
+    double minV = values.reduce((a, b) => a < b ? a : b);
+    double maxV = values.reduce((a, b) => a > b ? a : b);
+    if (maxV - minV < 1e-9) maxV = minV + 1;
+    final last = pts.last;
+    double maxDrawdown = 0;
+    double runningPeak = double.negativeInfinity;
+    for (final v in values) {
+      if (v > runningPeak) runningPeak = v;
+      if (runningPeak > 0) {
+        final dd = (runningPeak - v) / runningPeak;
+        if (dd > maxDrawdown) maxDrawdown = dd;
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('资金曲线',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const SizedBox(width: 8),
+          Text(useNet ? '净值（总资产/净投入）' : '总资产',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          const Spacer(),
+          if (useNet)
+            Text('最新净值 ${last.netValue!.toStringAsFixed(3)}',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: last.netValue! >= 1 ? AppColors.darkRed : AppColors.darkGreen)),
+          if (!useNet)
+            Text('最新 ${_fmtThousands(last.totalAssets)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+        ]),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 120,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _EquityLinePainter(
+              values: values,
+              minValue: minV,
+              maxValue: maxV,
+              color: useNet ? AppColors.darkRed : AppColors.darkBlue,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(children: [
+          Text('${pts.first.date} → ${pts.last.date}',
+              style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+          const Spacer(),
+          Text(
+              useNet
+                  ? (last.netValue! >= 1
+                      ? '区间 ${((last.netValue! - 1) * 100).toStringAsFixed(1)}%'
+                      : '区间 ${((last.netValue! - 1) * 100).toStringAsFixed(1)}%')
+                  : '',
+              style: TextStyle(fontSize: 10, color: last.netValue != null && last.netValue! >= 1 ? AppColors.darkRed : AppColors.darkGrey5)),
+          if (maxDrawdown > 0.001) ...[
+            const SizedBox(width: 12),
+            Text('最大回撤 ${(maxDrawdown * 100).toStringAsFixed(1)}%',
+                style: const TextStyle(fontSize: 10, color: AppColors.darkOrange)),
+          ],
+        ]),
+      ]),
+    );
+  }
+}
+
+/// 折线 painter：值 → 归一折线 + 低透明面积 + 峰值参考虚线。
+class _EquityLinePainter extends CustomPainter {
+  final List<double> values;
+  final double minValue;
+  final double maxValue;
+  final Color color;
+
+  const _EquityLinePainter({
+    required this.values,
+    required this.minValue,
+    required this.maxValue,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final span = maxValue - minValue == 0 ? 1.0 : maxValue - minValue;
+    final padV = 6.0;
+    Offset point(int i) {
+      final x = size.width * i / (values.length - 1);
+      final y = padV + (size.height - padV * 2) * (1 - (values[i] - minValue) / span);
+      return Offset(x, y.clamp(0, size.height).toDouble());
+    }
+
+    final line = Path()..moveTo(point(0).dx, point(0).dy);
+    for (int i = 1; i < values.length; i++) {
+      line.lineTo(point(i).dx, point(i).dy);
+    }
+    final fill = Path.from(line)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.08));
+    canvas.drawPath(
+        line, Paint()..color = color..strokeWidth = 1.6..style = PaintingStyle.stroke);
+
+    // 峰值参考虚线
+    double peak = double.negativeInfinity;
+    int peakIdx = 0;
+    for (int i = 0; i < values.length; i++) {
+      if (values[i] > peak) {
+        peak = values[i];
+        peakIdx = i;
+      }
+    }
+    final peakY = point(peakIdx).dy;
+    canvas.drawLine(
+      Offset(0, peakY),
+      Offset(size.width, peakY),
+      Paint()
+        ..color = AppColors.darkGrey5.withValues(alpha: 0.5)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke,
+    );
+    canvas.drawCircle(point(peakIdx), 2.2, Paint()..color = color);
+    canvas.drawCircle(point(values.length - 1), 2.2, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_EquityLinePainter old) =>
+      old.values != values || old.color != color;
 }
