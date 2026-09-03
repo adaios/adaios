@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.42 | 最后更新：2026-09-04**
+**文档版本：v3.43 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-04 | v3.43 | **按批次止损编辑闭环（决策文档 P1 方案 A，2026-09-04 晚间自主批 II）**：新增 `PUT /trading/lots/{lotId}/stop-loss`（body `{"stopLossPrice": 12.34}`，>0 且 ≤4 位小数，lotId 不存在 404——给某个买入批次单独设/改止损，落 `data/{userId}/trading/lot-stoploss.json` 覆盖层，不污染流水）+ `DELETE /trading/lots/{lotId}/stop-loss`（清除覆盖回退流水止损/默认 −7%，幂等 404）；`GET /trading/lots` 的 `stopLossPrice` 语义更新——批次推导后合并覆盖层（覆盖 > 流水止损 > 默认 −7%），推送/行为标注/复盘自动跟随 |
 | 2026-09-04 | v3.42 | **行情数据包导入（MD17，task-log 2026-09-04 登记）**：新增 `POST /admin/market/tdx-import`（multipart `file`，登录 + role=admin）——上传通达信日线 .zip 数据包 → 后端校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘 TDX 行情目录（`adai.market.tdx-path`）→ 返回 `{status, filename, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`；空包/无 .day/非 zip → 400 人话。数据包 >5MB：生产需配 `ADAI_MAX_FILE_SIZE`/`ADAI_MAX_REQUEST_SIZE` |
 | 2026-09-04 | v3.41 | **活跃市值区间开关（用户手动判定，2026-09-03 对话「指南针活跃市值=一切的前提」确立）**：新增 `GET /trading/market-stage`（读用户手动判定的活跃市值多空区间：`{"exists":true,"stage":"bear","updatedAt":"..."}`，无记录 → exists=false）+ `PUT /trading/market-stage`（body `{"stage":"bull"|"bear"}`，两档，非法 400；落 `data/{userId}/trading/market-stage.json`，per-user 锁原子写）；时段推送（早盘/午间/尾盘）的【择时状态】改三级读取——**用户手动判定优先 → current.md → 「择时状态未知」**（用户判定后不再被 current.md 的 OAMV 规则推断覆盖）|
 | 2026-08-31 | v3.35 | **双止损位（trading-risk-plan，响应字段扩展，无新端点）**：`GET /trading/positions` 响应新增 `computedStopLossPrice`（系统计算止损：R=本金×1%，距离=min(R÷市值,5%)，动态算不落盘）+ `effectiveStopLoss`（生效止损=max(人工,计算)）；R66 判定/接近止损预警/建议引擎统一改用生效止损 |
@@ -636,6 +637,18 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - `lots` = 批次明细（注入现价；行情失败 currentPrice=成本价）；`stopLossPrice` 未设时后端按默认 −7% 兜底返回；`stopLossDistancePct` 距止损%（正=安全，负=已破）；`closed=true` 时 `realizedPnl`=该批已实现盈亏（回合总账）
 - `reconcile` = 流水重放 vs 持仓快照对账提示（防漏导一天成交静默错下去，只报告不改数据）
 - 批次级止损已接入 30 分钟行情轮询：某批现价破它自己的止损 → 单独推送「批次止损预警」（不跟底仓混）
+- **批次级止损覆盖（v3.43）**：`stopLossPrice` = 推导（流水）后**合并用户覆盖层** `lot-stoploss.json` 的值——覆盖 > 流水止损 > 默认 −7%；设/改与清除见下方 PUT/DELETE 端点
+
+### `PUT /api/v1/trading/lots/{lotId}/stop-loss` — 设/改批次止损（v3.43，2026-09-04）
+> 需 trading 插件（403）。给某个买入批次**单独设/改止损位（事后可调）**——落覆盖层不污染流水；改完批次预警/行为标注/复盘自动跟随。
+
+**Body**：`{"stopLossPrice": 12.34}`（>0 且 ≤4 位小数；非法 → 400 人话）
+
+**Response（200）**：`{"lotId": "600000_2026-08-03_B", "stopLossPrice": 12.34}`；lotId 不存在（流水/持仓推不出）→ **404**
+
+### `DELETE /api/v1/trading/lots/{lotId}/stop-loss` — 清除批次止损覆盖（v3.43）
+
+**Response（200）**：`{"lotId": "...", "cleared": true}`（清除后回退该批流水止损/默认 −7%）；lotId 不存在 → **404**
 
 ---
 

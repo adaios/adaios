@@ -57,7 +57,7 @@ tags: [trading, plugin, reference]
 | POST | `/trading/trades/batch` | 批量记录交易 | 逐笔走 recordTrade 链路；逐条失败不整批回滚，返回行号+人话原因 |
 | POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**；**非交易占位代码校验（2026-08-25）**——79/80/81/82 开头（799999 登记指定等）不入库计入 nonTrades；**股息类记账（2026-08-25）**——备注含股息/红利/入账的数量 0 行：入账 +现金、红利税 −现金（不动持仓/批次，落流水可回溯）：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
 | POST | `/trading/trades/parse` | 一句话交易解析 | 自然语言 → 结构化（LLM 优先 + 正则兜底，手=×100）；**只解析不落库**；matched=false 前端转精确表单 |
-| GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all` |
+| GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all`；**止损位 = 覆盖层（`lot-stoploss.json`，2026-09-04 按批次止损批可 PUT/DELETE 单独设改）> 流水止损 > 默认 −7%** |
 | POST | `/trading/sync` | **一键按流水重建持仓（2026-08-25 用户场景）** | 导入历史成交后快照过期 → 以流水为准重建 positions：已清仓残留自动移除（removed）、流水解释不了的真底仓保留（keptInitial）；与 sync 模式互补（sync 增量 / 本端点对齐存量） |
 
 ### 2. 持仓管理
@@ -181,7 +181,7 @@ tags: [trading, plugin, reference]
 | 交易知识注入 | **第三阶段（D1）用户私有优先**：读 `data/{userId}/trading/knowledge.md`（有 → 只用自己的）；无 → **仅 owner（adai）回落** `os/trading-engine/knowledge/context/` 五份交付文件（identity/strategy/rules/mistakes/current.md），其他用户不注入交易知识（P1-3 防跨用户泄漏）；内容哈希缓存（`TradingKnowledgeSource`） |
 | 行情上下文注入 | trading 场景：大盘指数（上证/深证/创业板）+ 持仓行情表；globalContext 全场景短版（`MarketContextContributor`） |
 | 推送渠道 | PushChannel 插件化：FeedPushChannel（落盘 `trading/pushes/{date}.json` 进 Feed）+ BarkPushChannel（iOS 原生推送，2026-08-25 起生产启用，免费无限条数）；WeChatPushChannel（Server酱）已停用（免费 5 条/天不够，代码保留未配置即禁用） |
-| **批次推导（RFC 20260825）** | 批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权平均含费）；**纯流水重放推导不落盘**；卖出 **LIFO** 先扣最近批次、跨批分算已实现盈亏；批次剩余 0 = 关闭（回合 realizedPnl）；positions.md 覆盖不到的底仓 = 初始批次（`_INIT`）；批次止损未设按默认 **−7%** 兜底可后改；行为标注六类（亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）记录即标注进每日操作总结 |
+| **批次推导（RFC 20260825）** | 批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权平均含费）；**纯流水重放推导不落盘**；卖出 **LIFO** 先扣最近批次、跨批分算已实现盈亏；批次剩余 0 = 关闭（回合 realizedPnl）；positions.md 覆盖不到的底仓 = 初始批次（`_INIT`）；批次止损未设按默认 **−7%** 兜底；**批次级止损覆盖（2026-09-04）**：`data/{userId}/trading/lot-stoploss.json` 可给某批单独设/改止损（覆盖 > 流水止损 > 默认 −7%），web 批次明细弹窗「✎ 改」，事后可调不污染流水；行为标注六类（亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）记录即标注进每日操作总结 |
 | **推送定时消失（RFC 20260825）** | `pushes/{date}.json` 记录加 `expiresAt`：行情类（stop-loss/near-stop-loss/loss/gain/break-cost/market/session/buy-point）**次日 09:30 消失**（收盘后晚上仍可看，次日开盘前自动清），汇总类（每日操作总结/复盘）**次日 23:59** 消失；读取侧过滤过期，用户无需手动删时效推送 |
 | 并发安全 | 每用户读写锁（tradeLock）串行持仓读-改-写，防并发交易互覆（REVIEW #147）；打分/买点扫描线程池并发拉 K 线 |
 | 文件存储 | 持仓 `positions.md`（freeze §2.6）、逐笔流水 `trades/{yyyy-MM}.json`（按月）、自选/清仓 `watchlist.json`/`sold.json`、推送 `pushes/{date}.json`、推送开关 `push-settings.json`、交易日志候选 `trade-log/{yyyy-MM-dd}.json`（freeze §2.8-2.15） |

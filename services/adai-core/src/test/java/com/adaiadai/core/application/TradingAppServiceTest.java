@@ -1228,7 +1228,8 @@ void soldUpdatePsychology_marksTrade() {
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
+                mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
         return new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
@@ -1394,7 +1395,8 @@ void soldUpdatePsychology_marksTrade() {
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
+                mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
@@ -1429,7 +1431,8 @@ void soldUpdatePsychology_marksTrade() {
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
+                mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
@@ -1483,7 +1486,8 @@ void soldUpdatePsychology_marksTrade() {
         when(kline.kline(any(), anyInt())).thenReturn(List.of());
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
-        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo);
+        TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
+                mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 acc, mock(TransferRepository.class), mock(MarketDataSource.class), lotService,

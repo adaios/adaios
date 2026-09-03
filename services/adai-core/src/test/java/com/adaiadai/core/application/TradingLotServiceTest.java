@@ -10,6 +10,7 @@ import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +66,12 @@ class TradingLotServiceTest {
     private TradingLotService service(List<TradeRecord> trades, List<Position> positions,
                                       Map<String, MarketData> quotes, TradingRuleSettings ruleSettings,
                                       List<Candle> klineData) {
+        return service(trades, positions, quotes, ruleSettings, klineData, Map.of());
+    }
+
+    private TradingLotService service(List<TradeRecord> trades, List<Position> positions,
+                                      Map<String, MarketData> quotes, TradingRuleSettings ruleSettings,
+                                      List<Candle> klineData, Map<String, BigDecimal> stopLossOverrides) {
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll("u")).thenReturn(trades);
         PositionRepository repo = mock(PositionRepository.class);
@@ -75,7 +82,9 @@ class TradingLotServiceTest {
         when(kline.kline(anyString(), anyInt())).thenReturn(klineData != null ? klineData : List.of());
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
         when(ruleRepo.findByUser("u")).thenReturn(ruleSettings);
-        return new TradingLotService(history, repo, market, kline, ruleRepo);
+        LotStopLossOverrideRepository overrideRepo = mock(LotStopLossOverrideRepository.class);
+        when(overrideRepo.findByUser("u")).thenReturn(stopLossOverrides);
+        return new TradingLotService(history, repo, market, kline, ruleRepo, overrideRepo);
     }
 
     private static List<TradingLot> lotsOf(TradingLotService service, String symbol) {
@@ -369,6 +378,58 @@ class TradingLotServiceTest {
             }
         }
         return d;
+    }
+
+    // ── 批次级止损覆盖（2026-09-04 按批次止损批，决策文档 P1 方案 A）──
+
+    @Test
+    void stopLossOverride_overridesFlowStopLoss_afterDerive() {
+        // 流水止损 9.0，用户覆盖 8.5 → derive 后批次止损 = 8.5（不污染流水）
+        TradingLotService svc = service(List.of(
+                buy("600000", 1000, "10.0", D1, "9.0", null)), List.of(), Map.of(),
+                TradingRuleSettings.defaults(), List.of(),
+                Map.of("600000_" + D1 + "_B", new BigDecimal("8.50")));
+        List<TradingLot> lots = lotsOf(svc, "600000");
+        assertEquals(1, lots.size());
+        assertEquals(0, new BigDecimal("8.5").compareTo(lots.get(0).stopLossPrice()),
+                "覆盖值 8.5 生效（数值比较，容忍精度尾零）");
+        // effectiveStopLoss 也跟随（覆盖 > 流水 > 默认）
+        assertEquals(0, new BigDecimal("8.5").compareTo(svc.effectiveStopLoss(lots.get(0), "u")));
+    }
+
+    @Test
+    void stopLossOverride_emptyMap_fallsBackToFlowStopLoss() {
+        TradingLotService svc = service(List.of(
+                buy("600000", 1000, "10.0", D1, "9.0", null)), List.of(), Map.of());
+        List<TradingLot> lots = lotsOf(svc, "600000");
+        assertEquals("9.0", lots.get(0).stopLossPrice().toPlainString(), "无覆盖时保留流水止损");
+    }
+
+    @Test
+    void containsLot_detectsOpenAndInitialLots() {
+        TradingLotService svc = service(List.of(
+                buy("600000", 1000, "10.0", D1, null, null)),
+                List.of(new Position("600000", "名", 1000, new BigDecimal("10"),
+                        new BigDecimal("10"), null, null, null, null, null)),
+                Map.of());
+        // 流水首笔 BUY + 快照 quantity == 流水净 → 无 INIT；批次 ID = symbol_date_B
+        assertTrue(svc.containsLot("u", "600000_" + D1 + "_B"));
+        assertFalse(svc.containsLot("u", "600000_INIT"));
+        assertFalse(svc.containsLot("u", "不存在的批次"));
+    }
+
+    @Test
+    void stopLossOverride_appliesToInitialLot_too() {
+        // 底仓（无流水，快照兜底 INIT）也可单独设止损
+        TradingLotService svc = service(List.of(),
+                List.of(new Position("600000", "名", 1000, new BigDecimal("10"),
+                        new BigDecimal("10"), null, null, new BigDecimal("9.0"), null, null)),
+                Map.of(), TradingRuleSettings.defaults(), List.of(),
+                Map.of("600000_INIT", new BigDecimal("8.8")));
+        List<TradingLot> lots = lotsOf(svc, "600000");
+        assertTrue(lots.stream().anyMatch(TradingLot::initial));
+        TradingLot init = lots.stream().filter(TradingLot::initial).findFirst().orElseThrow();
+        assertEquals("8.8", init.stopLossPrice().toPlainString());
     }
 }
 

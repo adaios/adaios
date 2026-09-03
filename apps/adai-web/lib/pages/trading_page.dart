@@ -170,10 +170,10 @@ class _TradingPageState extends State<TradingPage> {
       // 有旧数据：保留展示（静默刷新失败不整页变白），仅首载失败才错误页
       final hasData = _positions.isNotEmpty || _portfolio != null;
       if (hasData) {
-        _toast('刷新失败：${_extractApiError(e)}');
+        _toast('刷新失败：${extractApiErrorMessage(e)}');
         setState(() => _loading = false);
       } else {
-        setState(() { _error = _extractApiError(e); _loading = false; });
+        setState(() { _error = extractApiErrorMessage(e); _loading = false; });
       }
     }
     // 可降级请求（自选/买点/清仓/打分）：异步拉取，失败静默（显示 '—'），不阻塞主数据
@@ -227,7 +227,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() { _marketStage = prev; _marketStageSaving = false; }); // 失败回滚
-      _toast('切换失败：${_extractApiError(e)}');
+      _toast('切换失败：${extractApiErrorMessage(e)}');
     }
   }
 
@@ -374,7 +374,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('记录交易失败: ${_extractApiError(e)}', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+          content: Text('记录交易失败: ${extractApiErrorMessage(e)}', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
           backgroundColor: AppColors.darkSurface2,
         ));
       }
@@ -431,7 +431,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('更新失败: ${_extractApiError(e)}', style: const TextStyle(fontSize: 13, color: AppColors.darkOrange)),
+          content: Text('更新失败: ${extractApiErrorMessage(e)}', style: const TextStyle(fontSize: 13, color: AppColors.darkOrange)),
           backgroundColor: AppColors.darkSurface2,
         ));
       }
@@ -452,12 +452,13 @@ class _TradingPageState extends State<TradingPage> {
       try {
         resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
       } catch (e) {
-        err = _extractApiError(e);
+        err = extractApiErrorMessage(e);
       }
       if (!mounted) return;
       await showDialog(
         context: context,
         builder: (_) => _LotsDialog(
+          api: widget.api,
           symbol: p.symbol,
           name: p.name,
           lots: resp?.lots ?? const [],
@@ -510,8 +511,6 @@ class _TradingPageState extends State<TradingPage> {
       builder: (_) => _ReviewHistoryDialog(api: widget.api),
     );
   }
-
-  String _extractApiError(dynamic e) => extractApiErrorMessage(e);
 
   /// P2-交易15（2026-08-17）：打分列颜色——中性色阶（蓝/紫/灰），不借盈亏色（红涨绿亏）；
   /// 空值 '—' 固定灰（不渲染成警告橙）。
@@ -899,7 +898,7 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       setState(() => _reviewing = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('复盘生成失败: ${_extractApiError(e)}',
+        content: Text('复盘生成失败: ${extractApiErrorMessage(e)}',
             style: const TextStyle(fontSize: 13, color: AppColors.darkOrange)),
         backgroundColor: AppColors.darkSurface2,
       ));
@@ -981,7 +980,7 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('反哺入库失败: ${_extractApiError(e)}',
+        SnackBar(content: Text('反哺入库失败: ${extractApiErrorMessage(e)}',
                 style: TextStyle(fontSize: 12, color: AppColors.darkOrange)),
             backgroundColor: AppColors.darkSurface2),
       );
@@ -1157,7 +1156,7 @@ class _TradingPageState extends State<TradingPage> {
                       await widget.api.removeWatchlist(w.symbol);
                       await _loadAll();
                     } catch (e) {
-                      _toast('删除失败：${_extractApiError(e)}');
+                      _toast('删除失败：${extractApiErrorMessage(e)}');
                     }
                   },
                 )),
@@ -1354,7 +1353,7 @@ class _TradingPageState extends State<TradingPage> {
       await widget.api.updateSoldPsychology(s.symbol, result);
       await _loadAll();
     } catch (e) {
-      _toast('标注失败：${_extractApiError(e)}');
+      _toast('标注失败：${extractApiErrorMessage(e)}');
     }
   }
 
@@ -2231,7 +2230,7 @@ class _TradingPageState extends State<TradingPage> {
                         });
                       } catch (e) {
                         if (ctx.mounted) setDlg(() {
-                          error = '匹配失败：${_extractApiError(e)}';
+                          error = '匹配失败：${extractApiErrorMessage(e)}';
                           loading = false;
                         });
                       }
@@ -2347,7 +2346,7 @@ class _TradingPageState extends State<TradingPage> {
                       } catch (e) {
                         if (!ctx.mounted) return;
                         setDlg(() {
-                          error = '导入失败：${_extractApiError(e)}';
+                          error = '导入失败：${extractApiErrorMessage(e)}';
                           loading = false;
                         });
                       }
@@ -2458,7 +2457,7 @@ class _TradingPageState extends State<TradingPage> {
         }
       }
     } catch (e) {
-      if (mounted) _toast('标注失败：${_extractApiError(e)}');
+      if (mounted) _toast('标注失败：${extractApiErrorMessage(e)}');
     }
   }
 
@@ -2554,7 +2553,7 @@ class _TradingPageState extends State<TradingPage> {
       await _loadCases();
       if (mounted) _toast('案例已删除');
     } catch (e) {
-      if (mounted) _toast('删除失败：${_extractApiError(e)}');
+      if (mounted) _toast('删除失败：${extractApiErrorMessage(e)}');
     }
   }
 
@@ -2611,7 +2610,7 @@ class _TradingPageState extends State<TradingPage> {
                 try {
                   await onImport(controller.text);
                 } catch (e) {
-                  _toast('导入失败：${_extractApiError(e)}');
+                  _toast('导入失败：${extractApiErrorMessage(e)}');
                 }
               },
               style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
@@ -3027,9 +3026,10 @@ class _EditPositionDialogState extends State<_EditPositionDialog> {
 // ─────────────────────────── 持仓批次明细 Dialog（RFC 20260825） ───────────────────────────
 
 /// 批次明细弹窗：一只股票每一笔买入一个批次——买入日期 | 剩余/买入 | 成本 | 现价 | 盈亏(红涨绿亏)
-/// | 止损 | 距止损% | 买点 | 角色 | 状态（初始底仓 / 持有中 / 已清仓-回合盈亏）。
+/// | 止损（可点「改」设/改本批止损，2026-09-04 按批次止损批）| 距止损% | 买点 | 角色 | 状态（初始底仓 / 持有中 / 已清仓-回合盈亏）。
 /// reconcile 对账提示：note 含「≠」= 流水与持仓不一致 → 橙色警告行（以持仓快照为准）。
-class _LotsDialog extends StatelessWidget {
+class _LotsDialog extends StatefulWidget {
+  final ApiService api;
   final String symbol;
   final String name;
   final List<LotItem> lots;
@@ -3037,12 +3037,123 @@ class _LotsDialog extends StatelessWidget {
   final String? error;
 
   const _LotsDialog({
+    required this.api,
     required this.symbol,
     required this.name,
     required this.lots,
     required this.reconcile,
     this.error,
   });
+
+  @override
+  State<_LotsDialog> createState() => _LotsDialogState();
+}
+
+class _LotsDialogState extends State<_LotsDialog> {
+  /// 本地可变副本（行内编辑止损后重拉刷新，不必关弹窗）。
+  late List<LotItem> _lots = widget.lots;
+
+  /// 止损价展示/回填：≤4 位小数去尾零（输入能力与后端校验一致）。
+  static String _fmtStop(double v) {
+    var s = v.toStringAsFixed(4);
+    while (s.contains('.') && (s.endsWith('0') || s.endsWith('.'))) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
+  /// 编辑后重拉该股批次（止损位/距止损% 等随服务端覆盖即时生效）。
+  Future<void> _reload() async {
+    try {
+      final resp = await widget.api.getLots(state: 'all', symbol: widget.symbol);
+      if (!mounted) return;
+      setState(() => _lots = resp.lots);
+    } catch (e) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(SnackBar(
+        content: Text('刷新批次失败：${extractApiErrorMessage(e)}',
+            style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.darkSurface2,
+      ));
+    }
+  }
+
+  /// 设/改本批止损（PUT）或清空回退（DELETE）。空输入 = 清除覆盖。
+  Future<void> _editStopLoss(LotItem lot) async {
+    final controller = TextEditingController(
+        text: lot.stopLossPrice != null && lot.stopLossPrice! > 0
+            ? _fmtStop(lot.stopLossPrice!)
+            : '');
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: Text('设置 ${lot.buyDate} 批次止损',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 320,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+            decoration: const InputDecoration(
+              labelText: '止损价（空 = 清除，回退流水/默认 −7%）',
+              hintText: '如 8.50',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'clear'),
+            child: const Text('清除止损', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('取消', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkRed),
+            child: const Text('保存', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null || action == 'cancel') return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final raw = controller.text.trim();
+      if (action == 'clear' || raw.isEmpty) {
+        await widget.api.clearLotStopLoss(lot.lotId);
+        messenger.showSnackBar(const SnackBar(
+            content: Text('已清除该批止损（回退流水/默认 −7%）',
+                style: TextStyle(fontSize: 13)),
+            backgroundColor: AppColors.darkSurface2));
+      } else {
+        final v = double.tryParse(raw);
+        if (v == null || v <= 0) {
+          messenger.showSnackBar(const SnackBar(
+              content: Text('止损价需为正数', style: TextStyle(fontSize: 13)),
+              backgroundColor: AppColors.darkSurface2));
+          return;
+        }
+        await widget.api.updateLotStopLoss(lot.lotId, v);
+        messenger.showSnackBar(SnackBar(
+            content: Text('该批止损已设为 ${_fmtStop(v)}',
+                style: const TextStyle(fontSize: 13)),
+            backgroundColor: AppColors.darkSurface2));
+      }
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+          content: Text('设置止损失败：${extractApiErrorMessage(e)}',
+              style: const TextStyle(fontSize: 13)),
+          backgroundColor: AppColors.darkSurface2));
+    }
+  }
 
   /// 盈亏%：持有中/初始底仓用后端浮动 pnlPct；已清仓回合 = realizedPnl / (成本×买入量)（后端无回合百分比字段，前端算）。
   String _lotPnlPctText(LotItem l) {
@@ -3055,7 +3166,7 @@ class _LotsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
-    final visible = lots.where((l) => l.symbol == symbol).toList();
+    final visible = _lots.where((l) => l.symbol == widget.symbol).toList();
     return Dialog(
       backgroundColor: AppColors.darkSurface,
       insetPadding: const EdgeInsets.all(24),
@@ -3071,7 +3182,7 @@ class _LotsDialog extends StatelessWidget {
               Row(children: [
                 const Icon(Icons.view_agenda_outlined, size: 18, color: AppColors.darkGreen),
                 const SizedBox(width: 8),
-                Text('批次明细 · $symbol${name.isEmpty ? '' : ' $name'}',
+                Text('批次明细 · ${widget.symbol}${widget.name.isEmpty ? '' : ' ${widget.name}'}',
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
                 const Spacer(),
                 GestureDetector(
@@ -3089,8 +3200,8 @@ class _LotsDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (error != null)
-                        Text('批次明细加载失败：$error',
+                      if (widget.error != null)
+                        Text('批次明细加载失败：${widget.error}',
                             style: const TextStyle(fontSize: 12, color: AppColors.darkOrange))
                       else if (visible.isEmpty)
                         const Text('这只股票还没有批次记录',
@@ -3148,8 +3259,23 @@ class _LotsDialog extends StatelessWidget {
                                     style: TextStyle(fontSize: 12, color: pnlColor, fontWeight: FontWeight.w600))),
                                 DataCell(Text(_lotPnlPctText(l),
                                     style: TextStyle(fontSize: 12, color: pnlColor))),
-                                DataCell(Text(stop != null && stop > 0 ? stop.toStringAsFixed(3) : '—',
-                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Text(stop != null && stop > 0 ? stop.toStringAsFixed(3) : '—',
+                                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+                                  // 2026-09-04 按批次止损批：持有批次可点「改」设/改本批止损（已清仓回合止损无意义不给编辑）
+                                  if (!l.closed) ...[
+                                    const SizedBox(width: 6),
+                                    InkWell(
+                                      onTap: () => _editStopLoss(l),
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: const Tooltip(
+                                        message: '设/改本批止损',
+                                        child: Icon(Icons.edit_outlined,
+                                            size: 13, color: AppColors.darkGrey5),
+                                      ),
+                                    ),
+                                  ],
+                                ])),
                                 DataCell(Text(distance != null ? '${distance.toStringAsFixed(2)}%' : '—',
                                     style: TextStyle(fontSize: 12,
                                         color: distance != null && distance < 0 ? AppColors.darkOrange : AppColors.darkGrey3))),
@@ -3165,12 +3291,12 @@ class _LotsDialog extends StatelessWidget {
                         ),
                       // 对账提示：只显示当前股票的对账行（后端可能返回全量，按 symbol 过滤防串股）；
                       // note 含「≠」= 流水与持仓不一致（黄色/橙色警告行，以持仓快照为准）
-                      if (reconcile.any((r) => r.symbol == symbol)) ...[
+                      if (widget.reconcile.any((r) => r.symbol == widget.symbol)) ...[
                         const SizedBox(height: 10),
                         const Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',
                             style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
                         const SizedBox(height: 2),
-                        for (final r in reconcile.where((r) => r.symbol == symbol))
+                        for (final r in widget.reconcile.where((r) => r.symbol == widget.symbol))
                           Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

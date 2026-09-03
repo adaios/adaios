@@ -1506,6 +1506,80 @@ class TradingControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    // ── 2026-09-04 按批次止损批：PUT/DELETE /trading/lots/{lotId}/stop-loss ──
+
+    @Test
+    void updateLotStopLoss_setsOverride_returnsOk() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.setLotStopLoss(eq("adai"), eq("600000_2026-08-03_B"), any())).thenReturn(true);
+        MockMvc mvc = buildMvc(trading, lots);
+
+        mvc.perform(put("/api/v1/trading/lots/600000_2026-08-03_B/stop-loss")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\": 8.5}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lotId").value("600000_2026-08-03_B"))
+                .andExpect(jsonPath("$.stopLossPrice").value(8.5));
+        verify(lots).setLotStopLoss(eq("adai"), eq("600000_2026-08-03_B"), any());
+    }
+
+    @Test
+    void updateLotStopLoss_lotNotFound_404() throws Exception {
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.setLotStopLoss(any(), any(), any())).thenReturn(false);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), lots);
+
+        mvc.perform(put("/api/v1/trading/lots/nonexistent/stop-loss")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\": 8.5}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updateLotStopLoss_invalidPrice_400() throws Exception {
+        TradingLotService lots = mock(TradingLotService.class);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), lots);
+
+        mvc.perform(put("/api/v1/trading/lots/600000_2026-08-03_B/stop-loss")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\": -1}"))
+                .andExpect(status().isBadRequest());
+        // 价格 5 位小数也应拒绝
+        mvc.perform(put("/api/v1/trading/lots/600000_2026-08-03_B/stop-loss")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stopLossPrice\": 8.55555}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteLotStopLoss_clearsOverride_returnsOk() throws Exception {
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.clearLotStopLoss(eq("adai"), eq("600000_INIT"))).thenReturn(true);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), lots);
+
+        mvc.perform(delete("/api/v1/trading/lots/600000_INIT/stop-loss")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cleared").value(true));
+        verify(lots).clearLotStopLoss(eq("adai"), eq("600000_INIT"));
+    }
+
+    @Test
+    void deleteLotStopLoss_lotNotFound_404() throws Exception {
+        TradingLotService lots = mock(TradingLotService.class);
+        when(lots.clearLotStopLoss(any(), any())).thenReturn(false);
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), lots);
+
+        mvc.perform(delete("/api/v1/trading/lots/nonexistent/stop-loss")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void importHistoricalTrades_syncMode_returnsSummary() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);

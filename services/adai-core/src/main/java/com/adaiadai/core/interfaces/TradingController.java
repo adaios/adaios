@@ -378,6 +378,52 @@ public class TradingController {
     }
 
     /**
+     * 设/改批次止损（2026-09-04 按批次止损批）：给某个买入批次单独设/改止损位，
+     * 事后可调——不污染流水（覆盖层 lot-stoploss.json），推送/预警/行为标注/复盘自动跟随。
+     * PUT /api/v1/trading/lots/{lotId}/stop-loss，body {"stopLossPrice": 12.34}
+     */
+    @PutMapping("/lots/{lotId}/stop-loss")
+    public ResponseEntity<?> updateLotStopLoss(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String lotId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null || body.get("stopLossPrice") == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "缺少 stopLossPrice"));
+        }
+        BigDecimal stopLoss;
+        try {
+            stopLoss = new BigDecimal(body.get("stopLossPrice").toString());
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "止损位不是有效数字"));
+        }
+        if (!(stopLoss.compareTo(BigDecimal.ZERO) > 0) || !stopLoss.stripTrailingZeros().toPlainString().matches("\\d+(\\.\\d{1,4})?")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "止损位需为正数且至多 4 位小数"));
+        }
+        if (!tradingLotService.setLotStopLoss(userId, lotId, stopLoss)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("lotId", lotId, "stopLossPrice", stopLoss));
+    }
+
+    /**
+     * 清除批次止损覆盖（回退该批流水止损/默认 −7%）。
+     * DELETE /api/v1/trading/lots/{lotId}/stop-loss
+     */
+    @DeleteMapping("/lots/{lotId}/stop-loss")
+    public ResponseEntity<?> deleteLotStopLoss(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String lotId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (!tradingLotService.clearLotStopLoss(userId, lotId)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("lotId", lotId, "cleared", true));
+    }
+
+    /**
      * 更新持仓元信息（web 持仓编辑，2026-08-17 补端点——之前前端/测试在调但后端从未实现，一直 404）。
      * PUT /api/v1/trading/positions/{symbol}，body 只带非空字段（role/stopLossPrice），返回更新后持仓。
      */

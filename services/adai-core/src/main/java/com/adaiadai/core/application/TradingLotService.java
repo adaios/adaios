@@ -11,6 +11,7 @@ import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.Candle;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
+import com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,17 +57,20 @@ public class TradingLotService {
     private final MarketDataSource marketDataSource;
     private final KlineService klineService;
     private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
+    private final LotStopLossOverrideRepository lotStopLossOverrideRepository;
 
     public TradingLotService(TradingHistoryRepository tradingHistoryRepository,
                              PositionRepository positionRepository,
                              MarketDataSource marketDataSource,
                              KlineService klineService,
-                             TradingRuleSettingsRepository tradingRuleSettingsRepository) {
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository,
+                             LotStopLossOverrideRepository lotStopLossOverrideRepository) {
         this.tradingHistoryRepository = tradingHistoryRepository;
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
         this.klineService = klineService;
         this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
+        this.lotStopLossOverrideRepository = lotStopLossOverrideRepository;
     }
 
     // ── 批次推导 ──
@@ -90,7 +94,29 @@ public class TradingLotService {
         for (String symbol : symbols) {
             result.put(symbol, replaySymbol(symbol, bySymbol.getOrDefault(symbol, List.of()), holdings.get(symbol)));
         }
+        // 2026-09-04 按批次止损批：合并批次级止损覆盖（lot-stoploss.json）——
+        // 覆盖 > 流水止损 > 默认 −7% 兜底，不污染流水（投影侧合并，写改即时可见）。
+        applyStopLossOverrides(userId, result);
         return result;
+    }
+
+    /**
+     * 批次级止损覆盖合并：用户在 {@code lot-stoploss.json} 给某批次单独设的止损
+     * 覆盖该批次的流水止损（重建 TradingLot，其余字段不变）。
+     */
+    private void applyStopLossOverrides(String userId, Map<String, List<TradingLot>> bySymbol) {
+        Map<String, BigDecimal> overrides = lotStopLossOverrideRepository.findByUser(userId);
+        if (overrides.isEmpty()) return;
+        for (List<TradingLot> lots : bySymbol.values()) {
+            for (int i = 0; i < lots.size(); i++) {
+                TradingLot lot = lots.get(i);
+                BigDecimal override = overrides.get(lot.lotId());
+                if (override == null) continue;
+                lots.set(i, new TradingLot(lot.lotId(), lot.symbol(), lot.name(), lot.buyDate(),
+                        lot.volume(), lot.remaining(), lot.costPrice(), override,
+                        lot.buyPoint(), lot.role(), lot.initial(), lot.realizedPnl()));
+            }
+        }
     }
 
     /** 单标的流水重放 → 批次列表（含初始批次兜底与回合）。 */
@@ -293,6 +319,33 @@ public class TradingLotService {
         TradingRuleSettings settings = userId != null
                 ? tradingRuleSettingsRepository.findByUser(userId) : TradingRuleSettings.defaults();
         return lot.costPrice().multiply(settings.defaultStopLossRatio()).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    // ── 批次级止损覆盖（2026-09-04 按批次止损批，决策文档 P1 方案 A）──
+
+    /** 批次是否存在（流水/持仓重放推得出）。 */
+    public boolean containsLot(String userId, String lotId) {
+        if (lotId == null || lotId.isBlank()) return false;
+        return derive(userId).values().stream().anyMatch(lots -> lots.stream()
+                .anyMatch(l -> lotId.equals(l.lotId())));
+    }
+
+    /**
+     * 设/改某批次止损覆盖（事后可单独调）。lotId 不存在 → false（Controller 转 404）。
+     */
+    public boolean setLotStopLoss(String userId, String lotId, BigDecimal price) {
+        if (!containsLot(userId, lotId)) return false;
+        lotStopLossOverrideRepository.setStopLoss(userId, lotId, price);
+        log.info("批次止损覆盖已设 | userId={} | {} | {}", userId, lotId, price.stripTrailingZeros().toPlainString());
+        return true;
+    }
+
+    /** 清除某批次止损覆盖（回退流水止损/默认 −7%）；lotId 不存在 → false。 */
+    public boolean clearLotStopLoss(String userId, String lotId) {
+        if (!containsLot(userId, lotId)) return false;
+        lotStopLossOverrideRepository.removeStopLoss(userId, lotId);
+        log.info("批次止损覆盖已清除 | userId={} | {}", userId, lotId);
+        return true;
     }
 
     // ── 行为标注（记录即标注，进当日操作总结/复盘）──

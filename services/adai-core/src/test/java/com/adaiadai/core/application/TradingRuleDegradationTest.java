@@ -87,7 +87,8 @@ class TradingRuleDegradationTest {
                 "600000", new MarketData("600000", "浦发银行", new BigDecimal("10.8"),
                         new BigDecimal("11.0"), new BigDecimal("11.5"), new BigDecimal("11.5"),
                         new BigDecimal("10.8"), new BigDecimal("-2"), 1000)));
-        TradingLotService lotService = new TradingLotService(history, positions, market, kline, settingsRepository);
+        TradingLotService lotService = new TradingLotService(history, positions, market, kline, settingsRepository,
+                mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
 
         List<TradingLotService.BehaviorNote> notes = lotService.analyzeBehaviors("bob", today);
         // 默认回吐阈值 50%：回吐 40% 不标；峰值 20% 达线但回吐不够 → giveback 不触发

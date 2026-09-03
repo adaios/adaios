@@ -497,6 +497,27 @@ class ApiService {
     return PositionItem.fromJson(data as Map<String, dynamic>);
   }
 
+  /// 2026-09-04 按批次止损批：设/改某批次止损（事后可单独调，不污染流水）。
+  /// PUT /api/v1/trading/lots/{lotId}/stop-loss，body {"stopLossPrice": 12.34}。
+  Future<void> updateLotStopLoss(String lotId, double stopLossPrice) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/lots/$lotId/stop-loss'),
+      headers: _headers,
+      body: jsonEncode({'stopLossPrice': stopLossPrice}),
+    );
+    _check(resp);
+  }
+
+  /// 2026-09-04 按批次止损批：清除某批次止损覆盖（回退流水止损/默认 −7%）。
+  /// DELETE /api/v1/trading/lots/{lotId}/stop-loss。
+  Future<void> clearLotStopLoss(String lotId) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/trading/lots/$lotId/stop-loss'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
   /// 批量导入交易（web 独有，RFC 20260816 §4.2）。
   /// POST /api/v1/trading/trades/batch，body {"trades": [...]} → 逐条成功/失败结果。
   Future<BatchImportResponse> importTrades(List<Map<String, dynamic>> trades) async {
