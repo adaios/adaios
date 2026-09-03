@@ -131,8 +131,10 @@ if [ $READY -eq 1 ]; then
     # REVIEW #178：X-Admin-Token 退役。如 .env 配了 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD
     # （系统内已设密码的 admin 账号），登录拿 Bearer 后执行；否则跳过（首次部署先 setup 设密码，
     # 之后可在 adai-admin 控制台「系统 → 维护」手动重建）。
-    SMOKE_ACCOUNT=$(grep '^ADAI_SMOKE_ACCOUNT=' /opt/adaios/backend/.env | cut -d= -f2)
-    SMOKE_PASSWORD=$(grep '^ADAI_SMOKE_PASSWORD=' /opt/adaios/backend/.env | cut -d= -f2)
+    # 2026-09-03 修复：旧 .env（#178 前模板）无这两行 → set -euo pipefail 下 grep 无匹配即退出
+    # （部署已装 jar 却报 FAIL）——加 `|| true` 容错，无配置走「跳过重建」分支正常完成。
+    SMOKE_ACCOUNT=$(grep '^ADAI_SMOKE_ACCOUNT=' /opt/adaios/backend/.env 2>/dev/null | cut -d= -f2 || true)
+    SMOKE_PASSWORD=$(grep '^ADAI_SMOKE_PASSWORD=' /opt/adaios/backend/.env 2>/dev/null | cut -d= -f2 || true)
     if [ -n "$SMOKE_PASSWORD" ]; then
         TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
             -H "Content-Type: application/json" \
