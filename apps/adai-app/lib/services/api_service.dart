@@ -494,6 +494,27 @@ class ApiService {
     _check(resp);
   }
 
+  /// v3.41（2026-09-04）：活跃市值区间（用户手动判定，GET /trading/market-stage）。
+  /// 返回 {"exists":bool,"stage":"bull"|"bear"|null,"updatedAt":String|null}。
+  Future<Map<String, dynamic>> getMarketStage() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/market-stage'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// v3.41（2026-09-04）：设定活跃市值区间（PUT /trading/market-stage，两档 bull/bear）。
+  Future<void> setMarketStage(String stage) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/market-stage'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'stage': stage}),
+    );
+    _check(resp);
+  }
+
   /// RFC 20260817：交易日志当日候选（2026-08-26 类型化——交易页内嵌候选列表用）。
   Future<List<TradeLogCandidateDto>> getTradeLogCandidates() async {
     final resp = await _client.get(

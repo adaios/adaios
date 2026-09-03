@@ -46,7 +46,7 @@ tags: [trading, plugin, reference]
 
 ## 一、后端端点总表（TradingController 42 个 + TradingCaseController 4 个 + admin 1 个）
 
-> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 42 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
+> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 42 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules；2026-09-04 新增 GET/PUT /market-stage）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
 
 ### 1. 交易记录（逐笔流水）
 
@@ -127,6 +127,8 @@ tags: [trading, plugin, reference]
 |:--|:--|:--|:--|
 | GET | `/trading/rules` | 查询我的交易规则参数 | 16 参数（仓位上限/默认止损/浮盈回吐/短线超期/清仓阈值/买点 5 参/打分权重/硬约束区间）+ 元信息（hasRules/exists/来源 user\|default）；无规则 → 返回默认值（= adai 现状） |
 | PUT | `/trading/rules` | 更新交易规则参数 | 部分字段覆盖，落 `data/{userId}/trading/rules.yaml`（YAML 真相源，SnakeYAML SafeConstructor fail-closed）；未知键保留不删；参数范围校验（fail-closed，NaN/越界 400） |
+| GET | `/trading/market-stage` | 活跃市值区间（用户手动判定，v3.41 2026-09-04） | 返回 `{"exists", "stage": bull\|bear, "updatedAt"}`；无记录 → exists=false（推送回退 current.md 推断）。指南针活跃市值口径——「一切的前提」，多头/空头由用户亲手判定 |
+| PUT | `/trading/market-stage` | 设定活跃市值区间 | body `{"stage":"bear"}`（两档 bull/bear，非法 400）；落 `data/{userId}/trading/market-stage.json`（per-user 锁原子写）；**推送择时状态三级读取 = 用户判定优先 → current.md → 未知**，用户设了即不被 OAMV 旧规则推断覆盖 |
 
 ### 8. 导入 / 工具 / 管理
 

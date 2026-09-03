@@ -643,6 +643,24 @@ class ApiService {
     _check(resp);
   }
 
+  /// v3.41（2026-09-04）：活跃市值区间（用户手动判定，GET /trading/market-stage）。
+  /// 返回 {"exists":bool,"stage":"bull"|"bear"|null,"updatedAt":String|null}。
+  Future<Map<String, dynamic>> getMarketStage() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/market-stage'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// v3.41（2026-09-04）：设定活跃市值区间（PUT /trading/market-stage，两档 bull/bear）。
+  Future<void> setMarketStage(String stage) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/market-stage'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'stage': stage}),
+    );
+    _check(resp);
+  }
+
   // ── 第四阶段（2026-08-30）：完美买点案例库（环 1-2）──
 
   /// 标注一个完美买点案例（POST /trading/cases，自动拉 60+30 日 K → 特征 + 后验）。

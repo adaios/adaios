@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.35 | 最后更新：2026-08-31**
+**文档版本：v3.41 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,7 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
-| 2026-09-01 | v3.40 | **登录体系（RFC 20260901-auth-login，根治 #179，§0/§0.1）**：新增 5 端点 `POST /auth/login`、`POST /auth/logout`、`GET /auth/me`、`POST /auth/setup`（首访一次性设密码）、`POST /auth/password`（改密踢会话）；产品端点鉴权升级——`Authorization: Bearer <token>`（30 天滑动续期），X-User-Id 后端强制覆盖为会话 userId（伪造无效），无 token 一律 401；`GET /accounts/available` 免鉴权封死；admin 体系 X-Admin-Token 不变（2026-09-02 #178 退役并入统一登录，见 §0）|
+| 2026-09-04 | v3.41 | **活跃市值区间开关（用户手动判定，2026-09-03 对话「指南针活跃市值=一切的前提」确立）**：新增 `GET /trading/market-stage`（读用户手动判定的活跃市值多空区间：`{"exists":true,"stage":"bear","updatedAt":"..."}`，无记录 → exists=false）+ `PUT /trading/market-stage`（body `{"stage":"bull"|"bear"}`，两档，非法 400；落 `data/{userId}/trading/market-stage.json`，per-user 锁原子写）；时段推送（早盘/午间/尾盘）的【择时状态】改三级读取——**用户手动判定优先 → current.md → 「择时状态未知」**（用户判定后不再被 current.md 的 OAMV 规则推断覆盖）|
 | 2026-08-31 | v3.35 | **双止损位（trading-risk-plan，响应字段扩展，无新端点）**：`GET /trading/positions` 响应新增 `computedStopLossPrice`（系统计算止损：R=本金×1%，距离=min(R÷市值,5%)，动态算不落盘）+ `effectiveStopLoss`（生效止损=max(人工,计算)）；R66 判定/接近止损预警/建议引擎统一改用生效止损 |
 | 2026-08-30 | v3.34 | **流式问答（P2-用户2 批 2）**：新增 `POST /records/ask-stream`（SSE 流式问答：`text` 增量事件 + `meta` 定稿事件 + `[DONE]`；后端内降级——模型无增量输出时回退同步 understand 一次；同卡同问 5 分钟去重直返既有回答；UTF-8 字节透传防中文乱码）+ 双端（adai-app/adai-web）`SseClient` 流式渲染（90ms 节流草稿、error 事件人话透出、流开始前失败自动降级旧同步端点） |
 | 2026-08-30 | v3.33 | **交易插件规则层（第三阶段，trading-plugin-architecture.md）**：新增 `GET /trading/rules`（用户自己的交易规则参数：仓位上限/默认止损/行为标注阈值/买点参数/打分权重/硬约束区间，无规则 → 默认值）+ `PUT /trading/rules`（覆盖非空字段，落 `data/{userId}/trading/rules.yaml`）；规则参数按用户隔离，驱动止损/仓位判定、买点信号、行为标注、清仓 verdict、打分权重、建议硬约束、知识注入（`data/{userId}/trading/knowledge.md` 用户私有知识优先，os/ 作 adai 默认）——**每个人有自己的交易系统** |
@@ -787,6 +787,29 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - **body**：`{"params":{"positionLimitPercent":30,"buyKdjLow":20}}`（只传要改的字段，缺省保持原值；值经 `TradingRuleSettings` 构造器 fail-closed 校验，非法回落默认）
 - **响应**：`{"updated":true}`
 - **落盘**：`data/{userId}/trading/rules.yaml`（File First，可导出/导入/版本管理）
+
+### `GET /api/v1/trading/market-stage` — 活跃市值区间（用户手动判定开关，v3.41）
+> 需 trading 插件（403）。2026-09-04 新增，来源：2026-09-03 用户对话「指南针活跃市值指标——一切的前提，由我来判定多头/空头」。
+
+返回用户**手动判定**的活跃市值多空区间（指南针活跃市值口径，红涨绿亏：多头=红/空头=绿）：
+
+```json
+{
+  "exists": true,
+  "stage": "bear",        // bull（多头区间）| bear（空头区间），两档
+  "updatedAt": "2026-09-04T09:00:00"   // 最近手动判定时间
+}
+```
+
+- **无记录**（从未手动判定）：`{"exists":false,"stage":null,"updatedAt":null}`——此时推送回退 current.md 规则推断（见下方语义）。
+- **语义**：此判定是**用户权威**——一旦设置，时段推送（早盘计划/午间跟踪/尾盘建议）与知识注入的【择时状态】一律以它为准，**不再被 current.md 的 OAMV 规则推断覆盖**（解决了 2026-09-03 对话暴露的问题：current.md 靠 6/26 一条旧规则永久锁死「空头」，用户无法表达自己的判断）。
+
+### `PUT /api/v1/trading/market-stage` — 设定活跃市值区间（v3.41）
+> 需 trading 插件（403）。2026-09-04 新增。
+
+- **body**：`{"stage":"bear"}`（`bull`=多头区间 / `bear`=空头区间；缺失或非法 → 400 `{"error":"stage 必须是 bull（多头）或 bear（空头）"}`）
+- **响应**：`{"updated":true,"stage":"bear","updatedAt":"2026-09-04T09:00:00"}`
+- **落盘**：`data/{userId}/trading/market-stage.json`（File First，per-user 条带锁原子写，P2-交易28 锁池模式）
 
 ### `GET /api/v1/trading/trade-log` — 当日交易日志候选（RFC 20260817 交易日志自动归集）
 > 需 trading 插件（403）。

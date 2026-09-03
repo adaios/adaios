@@ -95,6 +95,12 @@ class _TradingPageState extends State<TradingPage> {
   double? _assets;
   String? _lastUpdated; // 顶部「上次更新」时间戳
   DailyTradeSummaryDto? _dailySummary; // RFC 20260822：当日交易复盘（今日 N 笔 · 时段分布）
+  // v3.41（2026-09-04）：活跃市值区间（用户手动判定，多头/空头红绿切换）
+  String? _marketStage; // bull（多头）| bear（空头）| null（未手动判定）
+  bool _marketStageExists = false;
+  bool _marketStageLoaded = false; // 端点可用且已加载（区别于加载失败/旧后端）
+  String? _marketStageUpdatedAt;
+  bool _marketStageSaving = false; // 切换请求在途守卫（防连点并发 PUT）
   bool _loading = true;
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
@@ -108,6 +114,7 @@ class _TradingPageState extends State<TradingPage> {
     _loadAll();
     _loadRules();
     _loadCases();
+    _loadMarketStage();
     // B3（2026-08-16）定时刷新：每 30 分钟自动更新行情/盈亏（跟随交易时段节奏）
     // P3-11（2026-08-17）：IndexedStack offstage 时（切到别的页）不再空转发请求——仅当前页为交易页才刷
     // 注：P1-1 修复后 shell 传中文 label（'交易'），判断须用 label 而非插件标识 'trading'
@@ -186,6 +193,107 @@ class _TradingPageState extends State<TradingPage> {
     } catch (_) {
       // 静默：后端旧版本 / 网络抖动时页面不受影响
     }
+  }
+
+  /// v3.41（2026-09-04）：活跃市值区间加载（用户手动判定，失败静默——不阻塞交易页）。
+  Future<void> _loadMarketStage() async {
+    try {
+      final data = await widget.api.getMarketStage();
+      if (!mounted) return;
+      setState(() {
+        _marketStageExists = data['exists'] == true;
+        _marketStage = data['stage'] as String?;
+        _marketStageUpdatedAt = data['updatedAt'] as String?;
+        _marketStageLoaded = true;
+      });
+    } catch (_) {
+      // 静默：后端旧版本（无此端点）时隐藏开关条，不影响交易页
+    }
+  }
+
+  /// v3.41（2026-09-04）：切换活跃市值区间（乐观更新 + PUT；失败回滚 + toast）。
+  Future<void> _setMarketStage(String stage) async {
+    if (_marketStageSaving) return;
+    _marketStageSaving = true;
+    final prev = _marketStage;
+    setState(() { _marketStage = stage; _marketStageExists = true; }); // 乐观
+    try {
+      await widget.api.setMarketStage(stage);
+      if (!mounted) return;
+      setState(() {
+        _marketStageUpdatedAt = DateTime.now().toString().substring(0, 19);
+        _marketStageSaving = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _marketStage = prev; _marketStageSaving = false; }); // 失败回滚
+      _toast('切换失败：${_extractApiError(e)}');
+    }
+  }
+
+  /// v3.41（2026-09-04）：活跃市值区间切换条（多头=红/空头=绿，红涨绿亏）。
+  Widget _buildMarketStageBar() {
+    final bear = _marketStage == 'bear';
+    final bull = _marketStage == 'bull';
+    final stageColor = bear
+        ? AppColors.darkGreen
+        : bull
+            ? AppColors.darkRed
+            : AppColors.darkGrey4; // 未判定 → 中性灰
+    final stageLabel = bear
+        ? '空头区间'
+        : bull
+            ? '多头区间'
+            : '未判定';
+    final sub = _marketStageExists
+        ? (_marketStageUpdatedAt != null && _marketStageUpdatedAt!.length >= 16
+            ? '手动 · ${_marketStageUpdatedAt!.substring(11, 16)}'
+            : '手动')
+        : '未判定 · 按规则推断';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: stageColor.withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        Icon(bear
+            ? Icons.trending_down
+            : bull
+                ? Icons.trending_up
+                : Icons.help_outline,
+            size: 18,
+            color: stageColor),
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('活跃市值（指南针）', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          Text(stageLabel, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: stageColor)),
+        ]),
+        const SizedBox(width: 8),
+        Text('· 一切的前提 · $sub', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        const Spacer(),
+        _stageButton('空头', 'bear', AppColors.darkGreen),
+        const SizedBox(width: 8),
+        _stageButton('多头', 'bull', AppColors.darkRed),
+      ]),
+    );
+  }
+
+  Widget _stageButton(String label, String stage, Color color) {
+    final selected = _marketStage == stage;
+    return OutlinedButton(
+      onPressed: _marketStageSaving ? null : () => _setMarketStage(stage),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: selected ? color : AppColors.darkGrey4,
+        backgroundColor: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
+        side: BorderSide(color: selected ? color : AppColors.darkBorder.withValues(alpha: 0.6), width: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        minimumSize: const Size(0, 30),
+        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      child: Text(label),
+    );
   }
 
   /// 可降级请求：watchlist/buy-points/sold/sold-score（K 线重计算/数据展示），失败不打断页面。
@@ -493,6 +601,11 @@ class _TradingPageState extends State<TradingPage> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                     children: [
+                      // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，放最顶
+                      if (_marketStageLoaded) ...[
+                        _buildMarketStageBar(),
+                        const SizedBox(height: 10),
+                      ],
                       _buildSnapshotRow(),
                       if (_dailySummary != null) ...[
                         const SizedBox(height: 4),

@@ -471,3 +471,14 @@ params:
 ```
 
 **语义**：K 线本体不落盘（symbol+buyDate 可重放，`KlineSource.klineRange`）；特征已固化，重放只影响画面不影响判定。**前复权口径**：数据源返回前复权价，除权后历史画面可能有微调（相对值特征不受影响）。写入原子（FileStorage 覆盖），并发 per-user 条带锁；case 文件与清单无跨文件原子（已知取舍，同 §2.8 推送）。损坏案例文件 → 视为不存在（不阻断）。
+
+### 2.19 活跃市值区间 `trading/market-stage.json`（v3.41，2026-09-04 新增）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/market-stage.json`（每用户一个）|
+| 格式 | JSON 对象 `{"stage":"bear","updatedAt":"2026-09-04T09:00:00"}`——`stage`：`bull`（多头区间）/`bear`（空头区间）两档；`updatedAt`：最近手动判定时间（ISO 本地时间 `yyyy-MM-dd'T'HH:mm:ss`）|
+| 真相源 | `TradingMarketStageRepository`（domain 端口 `TradingMarketStagePort`，C7 分层）|
+| 变更 | **MINOR（2026-09-04，v3.41）**：新增（指南针活跃市值口径，用户手动判定多空）|
+
+**语义**：用户亲手判定的活跃市值区间（「一切的前提」）。无文件 = 未判定（推送回退 current.md 规则推断）；一旦设置，时段推送/知识注入的【择时状态】以用户判定为准，不被 current.md 的 OAMV 规则推断覆盖。写入原子 + per-user 条带锁（P2-交易28 锁池模式）；损坏文件视为不存在（同 §2.8 推送）。消费方：`TradingSessionPushService.readMarketStage`（三级读取：用户判定 → current.md → 「择时状态未知」）、`TradingController` GET/PUT `/trading/market-stage`、Web/App 交易页红绿切换条。

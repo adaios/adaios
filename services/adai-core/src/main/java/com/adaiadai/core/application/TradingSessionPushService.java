@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
+import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
 import com.adaiadai.core.domain.trading.engine.TradingRuleEngine;
@@ -87,6 +88,8 @@ public class TradingSessionPushService {
     private final TradeLogCollectService tradeLogCollectService;
     /** P2-用户3（2026-08-29）：收盘小结统计今日成交（getTradeHistory 过滤股息流水）。 */
     private final TradingAppService tradingAppService;
+    /** v3.41（2026-09-04）：活跃市值区间（用户手动判定）——择时状态三级读取第 1 级，权威于 current.md。 */
+    private final com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository marketStageRepository;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -103,6 +106,7 @@ public class TradingSessionPushService {
                                      PushSettingsRepository pushSettingsRepository,
                                      TradeLogCollectService tradeLogCollectService,
                                      TradingAppService tradingAppService,
+                                     com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository marketStageRepository,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -117,6 +121,7 @@ public class TradingSessionPushService {
         this.pushSettingsRepository = pushSettingsRepository;
         this.tradeLogCollectService = tradeLogCollectService;
         this.tradingAppService = tradingAppService;
+        this.marketStageRepository = marketStageRepository;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -387,10 +392,24 @@ public class TradingSessionPushService {
         BigDecimal cash = accountSnapshotRepository.findLatest(userId)
                 .map(AccountSnapshot::cash)
                 .orElse(BigDecimal.ZERO);
-        return new SessionData(positions, quotes, readMarketStage(), cash);
+        return new SessionData(positions, quotes, readMarketStage(userId), cash);
     }
 
-    private String readMarketStage() {
+    /**
+     * 择时状态三级读取（v3.41，2026-09-04）：
+     * ① market-stage.json 用户手动判定（bull/bear，权威——用户设了即以此为准，
+     *    不再被 current.md 的 OAMV 规则推断覆盖）→ ② current.md「当前判断」行 → ③ "择时状态未知"。
+     */
+    private String readMarketStage(String userId) {
+        try {
+            TradingMarketStage manual = marketStageRepository.findByUser(userId);
+            if (manual != null) {
+                return "当前判断：" + TradingMarketStage.label(manual.stage())
+                        + "（用户手动判定 " + manual.updatedAt().substring(0, 10) + "）";
+            }
+        } catch (Exception e) {
+            log.warn("时段推送：用户活跃市值区间读取失败 | userId={} | {}", userId, e.getMessage());
+        }
         try {
             if (Files.isReadable(currentMd)) {
                 for (String line : Files.readAllLines(currentMd, StandardCharsets.UTF_8)) {

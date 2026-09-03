@@ -37,12 +37,18 @@ import java.util.Optional;
  *       缺省回落会话 userId</li>
  * </ol>
  * <p>
- * 顺序：{@link Order} = LOWEST_PRECEDENCE + 1，在 Spring Boot 自动注册的
- * {@code CorsFilter}（LOWEST_PRECEDENCE）之后执行——401/403 响应也带 CORS 头，
- * 浏览器能读到鉴权失败而不是误报 CORS policy 错误。
+ * 顺序（2026-09-04 线上事故根因修复）：本 Filter 注册为 {@link Ordered#HIGHEST_PRECEDENCE}
+ * 之后的低优先级（{@code HIGHEST_PRECEDENCE + 10}），确保跑在 WebConfig 的
+ * {@code CorsFilter}（HIGHEST_PRECEDENCE）<b>之后</b>——401/403 响应因此带 CORS 头，
+ * 浏览器读到的是鉴权失败而非误报 CORS policy 错误。
+ * <p>
+ * ⚠️ 历史坑（勿复犯）：原 {@code @Order(Ordered.LOWEST_PRECEDENCE + 1)} 意图「最后执行」，
+ * 但 {@code LOWEST_PRECEDENCE = Integer.MAX_VALUE}，{@code +1} <b>溢出为
+ * Integer.MIN_VALUE</b> 反成最高优先级 → 跑在 CorsFilter 之前 → 401/403 无 CORS 头
+ * → 前端把未登录/无权限误报为 CORS 错误（2026-09-04 admin 打开即 CORS 报错刷屏根因）。
  */
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE + 1)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class AuthFilter implements Filter {
 
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);

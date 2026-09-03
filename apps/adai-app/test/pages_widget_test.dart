@@ -1240,6 +1240,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('详细管理去电脑端'), findsOneWidget); // web 引导弹层
     });
+
+    testWidgets('v3.41 活跃市值区间：GET bear → 渲染空头（绿）；点多头 → PUT 切换', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var stage = 'bear';
+      b.handlers['/api/v1/trading/market-stage'] = (req) async {
+        if (req.method == 'PUT') {
+          stage = (jsonDecode(utf8.decode(req.bodyBytes)) as Map)['stage'] as String;
+          return _json({'updated': true, 'stage': stage});
+        }
+        return _json({'exists': true, 'stage': stage, 'updatedAt': '2026-09-04T09:00:00'});
+      };
+      await pumpTrading(tester, b);
+
+      expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关卡标题');
+      expect(find.text('空头区间'), findsOneWidget, reason: '用户判定空头 → 显示空头区间');
+      expect(find.text('手动判定'), findsOneWidget, reason: '已手动判定副文案');
+
+      await tester.tap(find.text('多头'));
+      await tester.pumpAndSettle();
+
+      expect(stage, 'bull', reason: 'PUT body stage=bull');
+      expect(find.text('多头区间'), findsOneWidget, reason: '切换后乐观更新为多头区间');
+    });
   });
 
   group('ProjectTaskPage', () {

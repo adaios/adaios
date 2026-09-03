@@ -12,6 +12,8 @@ import com.adaiadai.core.application.TradingLotService;
 import com.adaiadai.core.domain.trading.TradeLogCandidate;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository;
+import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.domain.trading.PortfolioSnapshot;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
@@ -117,6 +119,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -146,6 +149,7 @@ class TradingControllerTest {
                 mock(MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -176,6 +180,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -200,6 +205,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 tradingLotService,
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -226,6 +232,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -386,6 +393,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -826,6 +834,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1057,7 +1066,9 @@ class TradingControllerTest {
                 mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
-                mock(TradingLotService.class), resolver, "../../os/trading-engine/knowledge/context");
+                mock(TradingLotService.class), resolver,
+                 mock(TradingMarketStageRepository.class),
+                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -1095,7 +1106,9 @@ class TradingControllerTest {
                 mock(TradeLogCollectService.class),
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
-                mock(TradingLotService.class), resolver, "../../os/trading-engine/knowledge/context");
+                mock(TradingLotService.class), resolver,
+                 mock(TradingMarketStageRepository.class),
+                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(
@@ -1250,10 +1263,11 @@ class TradingControllerTest {
                 mock(TradingScreenshotAppService.class), mock(MarketPushRepository.class),
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
-                .addFilter(new WebConfig().corsFilter())
+                .addFilter(new WebConfig().corsFilter().getFilter())
                 .build();
         mvc.perform(get("/api/v1/trading/watchlist/import")
                         .header("X-User-Id", "adai")
@@ -1277,6 +1291,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1302,6 +1317,7 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
                 pushRepo, mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1617,5 +1633,109 @@ class TradingControllerTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("{\"params\":{\"positionLimitPercent\":\"30\"}}"))
                 .andExpect(status().isOk());
+    }
+
+    // ── v3.41（2026-09-04）：活跃市值区间开关（GET/PUT /trading/market-stage）──
+
+    /** 注入真实 market-stage repo（内存文件存储）的 MVC（round-trip 断言用）。 */
+    private MockMvc buildStageMvc(TradingMarketStageRepository stageRepo) {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        TradingController controller = new TradingController(trading, review,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                stageRepo,
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
+    /** GET /market-stage：从未手动判定 → exists=false（推送回退 current.md）。 */
+    @Test
+    void marketStage_noRecord_existsFalse() throws Exception {
+        MockMvc mvc = buildStageMvc(new TradingMarketStageRepository(new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage()));
+        mvc.perform(get("/api/v1/trading/market-stage").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(false))
+                .andExpect(jsonPath("$.stage").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    /** PUT → GET round-trip：设空头后读回（用户判定权威源）。 */
+    @Test
+    void marketStage_putBear_thenGetReturnsBear() throws Exception {
+        MockMvc mvc = buildStageMvc(new TradingMarketStageRepository(new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage()));
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"bear\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true))
+                .andExpect(jsonPath("$.stage").value("bear"));
+        mvc.perform(get("/api/v1/trading/market-stage").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exists").value(true))
+                .andExpect(jsonPath("$.stage").value("bear"))
+                .andExpect(jsonPath("$.updatedAt").isNotEmpty());
+    }
+
+    /** PUT bull 覆盖（多头 → 空头切换，双端红绿切换后端语义）。 */
+    @Test
+    void marketStage_switchBull_overwrites() throws Exception {
+        MockMvc mvc = buildStageMvc(new TradingMarketStageRepository(new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage()));
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"bear\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"bull\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stage").value("bull"));
+        mvc.perform(get("/api/v1/trading/market-stage").header("X-User-Id", "adai"))
+                .andExpect(jsonPath("$.stage").value("bull"));
+    }
+
+    /** PUT 非法 stage → 400 人话（防脏数据，fail-closed）。 */
+    @Test
+    void marketStage_invalidStage_400() throws Exception {
+        MockMvc mvc = buildStageMvc(new TradingMarketStageRepository(new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage()));
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"neutral\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("stage 必须是 bull")));
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .header("X-User-Id", "adai")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** 插件门控：无 trading 插件 → 403。 */
+    @Test
+    void marketStage_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/market-stage"))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/v1/trading/market-stage")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"stage\":\"bear\"}"))
+                .andExpect(status().isForbidden());
     }
 }

@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.WatchlistRepository;
 import com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine;
+import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.market.MarketData;
 import com.adaiadai.core.domain.trading.market.MarketDataSource;
@@ -17,6 +18,7 @@ import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.push.PushChannel;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
+import com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import org.junit.jupiter.api.Test;
@@ -94,6 +96,15 @@ class TradingSessionPushServiceTest {
     private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
                                                            AccountSnapshotRepository acc, boolean missingChangePercent,
                                                            TradingAppService tradingAppService) {
+        return serviceWithPositions(channel, ai, knowledgeDir, acc, missingChangePercent, tradingAppService,
+                mock(TradingMarketStageRepository.class));
+    }
+
+    /** v3.41（2026-09-04）：带市场阶段 repo 的终版构造（择时三级读取测试用——stub 用户手动判定）。 */
+    private TradingSessionPushService serviceWithPositions(PushChannel channel, AiClient ai, String knowledgeDir,
+                                                           AccountSnapshotRepository acc, boolean missingChangePercent,
+                                                           TradingAppService tradingAppService,
+                                                           TradingMarketStageRepository stageRepo) {
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(any())).thenReturn(List.of(
                 posWithPlan("000725", "京东方A", "5.20", "5.46", "4.90", "B1", 1000),
@@ -130,6 +141,7 @@ class TradingSessionPushServiceTest {
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), tradingAppService,
+                stageRepo,
                 knowledgeDir);
     }
 
@@ -251,6 +263,7 @@ class TradingSessionPushServiceTest {
                 acc,
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -368,6 +381,7 @@ class TradingSessionPushServiceTest {
                 mock(AccountSnapshotRepository.class),
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -459,6 +473,7 @@ class TradingSessionPushServiceTest {
                 pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -493,6 +508,7 @@ class TradingSessionPushServiceTest {
                 pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -534,6 +550,7 @@ class TradingSessionPushServiceTest {
                 pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), mock(AiClient.class), List.of(),
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -667,5 +684,72 @@ class TradingSessionPushServiceTest {
         String content = captor.getValue().content();
         assertFalse(content.contains("破止损"), "现价未破止损不得误标，实际: " + content);
         assertTrue(content.contains("买 1 笔"), "应统计今日买入，实际: " + content);
+    }
+
+    // ── v3.41（2026-09-04）：择时状态三级读取 = 用户手动判定 → current.md → 未知 ──
+
+    /** 三级①：用户手动判定 bear → 推送以用户判定为准（不受 current.md 的 OAMV 规则推断覆盖）。 */
+    @Test
+    void marketStage_userBear_beatsCurrentMd() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingMarketStageRepository stageRepo = mock(TradingMarketStageRepository.class);
+        when(stageRepo.findByUser(any())).thenReturn(
+                new TradingMarketStage("bear", "2026-09-04T09:00:00"));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context",
+                mock(AccountSnapshotRepository.class), false, mock(TradingAppService.class), stageRepo);
+
+        svc.morningPlan();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("空头区间"), "用户判定空头 → 推送显示空头区间，实际: " + content);
+        assertTrue(content.contains("用户手动判定"), "应标注用户手动判定（区别于 current.md 推断），实际: " + content);
+        assertFalse(content.contains("6/26"), "用户判定优先 → 不得再出现 current.md 的 6/26 OAMV 推断，实际: " + content);
+    }
+
+    /** 三级①：用户手动判定 bull（多头）→ 文案多头区间。 */
+    @Test
+    void marketStage_userBull_showsBull() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingMarketStageRepository stageRepo = mock(TradingMarketStageRepository.class);
+        when(stageRepo.findByUser(any())).thenReturn(
+                new TradingMarketStage("bull", "2026-09-04T09:00:00"));
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, "../../os/trading-engine/knowledge/context",
+                mock(AccountSnapshotRepository.class), false, mock(TradingAppService.class), stageRepo);
+
+        svc.morningPlan();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("多头区间"), "用户判定多头 → 推送显示多头区间，实际: " + content);
+        assertTrue(content.contains("用户手动判定"), "应标注用户手动判定，实际: " + content);
+    }
+
+    /** 三级②：无用户判定 + current.md 不可读 → 择时状态未知（现状兜底不变）。 */
+    @Test
+    void marketStage_noUser_noCurrentMd_unknown() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了"));
+        TradingMarketStageRepository stageRepo = mock(TradingMarketStageRepository.class);
+        when(stageRepo.findByUser(any())).thenReturn(null); // 从未手动判定
+        TradingSessionPushService svc = serviceWithPositions(channel, ai, "/nonexistent/knowledge",
+                mock(AccountSnapshotRepository.class), false, mock(TradingAppService.class), stageRepo);
+
+        svc.morningPlan();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("择时状态未知"), "无用户判定 + current.md 不可读 → 择时状态未知，实际: " + content);
     }
 }

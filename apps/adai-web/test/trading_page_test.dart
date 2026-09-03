@@ -73,6 +73,7 @@ Future<void> _pumpTrading(WidgetTester tester, ApiService api) async {
 Finder _field(String label) => find.widgetWithText(TextField, label);
 
 void main() {
+  _marketStageGroup();
   group('批量导入格式识别（2026-08-18：通达信持仓 / 历史成交 / 交易 CSV 三格式分流）', () {
     test('历史成交查询导出被识别（isTdxHistoryExport）', () {
       const history = '''
@@ -2096,5 +2097,73 @@ void main() {
     expect((resp['b1'] as Map<String, dynamic>)['hits'], 5);
     expect((resp['b2'] as Map<String, dynamic>)['hits'], 1);
     expect(resp['failedSimilarity'], 78.5, reason: '失败画像相似警示');
+  });
+}
+// ── v3.41（2026-09-04）：活跃市值区间开关（用户手动判定，红涨绿亏）──
+
+class _StageApi extends ApiService {
+  _StageApi({required MockClient client}) : super(baseUrl: 'http://test', client: client);
+}
+
+void _marketStageGroup() {
+  group('活跃市值区间开关（v3.41，2026-09-04）', () {
+    testWidgets('GET bear → 渲染空头区间（绿）+ 显示手动判定', (WidgetTester tester) async {
+      final requests = <String>[];
+      final client = MockClient((request) async {
+        requests.add('${request.method} ${request.url.path}');
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/market-stage') {
+          return _json({'exists': true, 'stage': 'bear', 'updatedAt': '2026-09-04T09:00:00'});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = _StageApi(client: client);
+      await _pumpTrading(tester, api);
+      await tester.pumpAndSettle();
+
+      expect(requests, contains('GET /api/v1/trading/market-stage'));
+      expect(find.text('空头区间'), findsOneWidget, reason: '用户判定空头应渲染「空头区间」');
+      expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关条标题');
+      expect(find.textContaining('手动'), findsOneWidget, reason: '手动判定副文案');
+    });
+
+    testWidgets('点「多头」→ PUT /market-stage 切换 + 乐观更新多头区间', (WidgetTester tester) async {
+      var stage = 'bear';
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/market-stage') {
+          if (request.method == 'PUT') {
+            stage = (jsonDecode(request.body) as Map)['stage'] as String;
+            return _json({'updated': true, 'stage': stage, 'updatedAt': '2026-09-04T10:00:00'});
+          }
+          return _json({'exists': true, 'stage': stage, 'updatedAt': '2026-09-04T09:00:00'});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = _StageApi(client: client);
+      await _pumpTrading(tester, api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('空头区间'), findsOneWidget);
+      await tester.tap(find.text('多头'));
+      await tester.pumpAndSettle();
+
+      expect(stage, 'bull', reason: 'PUT body stage=bull');
+      expect(find.text('多头区间'), findsOneWidget, reason: '切换后乐观更新为多头');
+    });
   });
 }

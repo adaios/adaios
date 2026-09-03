@@ -253,6 +253,9 @@ v1.0.0 起生产同时部署 Flutter Web 前端（无 nginx，Python http.server
 # 本地构建（指向生产后端）
 cd apps/adai-web && flutter build web --wasm --no-tree-shake-icons --optimization-level=1 --no-strip-wasm --dart-define=API_BASE_URL=http://82.156.111.146:8080
 # adai-admin 无需 ADMIN_TOKEN（REVIEW #178：X-Admin-Token / ADMIN_TOKEN 退役，账号密码登录）
+# ⚠️ admin 构建必须带 --base-href=/admin/（apps/adai-admin/scripts/serve_web.sh 已内置）：
+#   否则 index.html 的 <base href> 保持 "/"，浏览器打开 /admin/ 时按根加载 web 版 bootstrap/main.dart.js
+#   → 显示的是 adai-web 桌面壳而非后台（2026-09-04 线上事故根因，已修）
 # 构建后必须打 CanvasKit + 字体本地化补丁（见 serve_web.sh）——漏打会白屏（gstatic CDN 被墙）！
 
 # 上传（tar 管道；⚠️ 勿直接 rm 运行中服务的 cwd，先传 admin.new 再停服原子替换）
@@ -313,6 +316,8 @@ sudo apt install -y caddy
 # 3. Caddyfile（自动申请/续期证书，零额外配置）
 cat > /etc/caddy/Caddyfile << 'EOF'
 adaiadai.com {
+    # /admin（无尾斜杠）→ 301 /admin/，否则匹配不上 /admin/* 落到 web 404（2026-09-04）
+    redir /admin /admin/ permanent
     handle_path /admin/* {
         reverse_proxy 127.0.0.1:8083
     }

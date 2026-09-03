@@ -733,6 +733,7 @@ Strict format:
 - **逐笔批次跟踪与行为纠偏（RFC 20260825）**：持仓从「一只股票」细化到「每一笔买入」——批次 = 同标的+同方向+同日合并（一天最多一个买批，成本=当日加权含费），卖出 **LIFO** 先扣最近批次（底仓不动、先走短线），批次清仓 = 回合总账；**批次视图 `GET /trading/lots`**（注入现价 + 流水对账，web 持仓 Tab 批次弹窗 + app 持仓卡简版 + **批次明细弹窗 2026-08-28**）；**导入双模式**（当日成交 → 同步持仓/现金/流水 + **每日操作总结**（买卖聚合 + 批次 diff + 行为标注六类：亏损加仓/追高/短线新开/破止损未走/浮盈回吐/短线超期）；历史 → 只补流水）；**批次级止损推送**（批次破自己的止损（未设默认 −7%）单独提醒，不跟底仓混）；**推送定时消失**（`expiresAt`：行情类次日 09:30、汇总类次日 23:59）
 - **截图入账（2026-08-26）**：交易页「📷 截图入账」→ 1-3 张成交截图 → VLM 识别 → 当日候选逐笔确认/丢弃；**候选缺成交日期禁落库 + 「补日期」入口**（v3.32，`PUT /trading/trade-log/date`）；`POST /trading/screenshots`
 - **交易规则层（第三阶段，2026-08-30）**：规则 = 用户私有内容——确定性判定（止损/仓位/买点/行为标注/打分/硬约束区间）全部从 `data/{userId}/trading/rules.yaml`（16 参数，`GET/PUT /trading/rules` 表单化编辑，web 规则 Tab）读取，无规则 → 默认值兜底（= adai 现状）；知识注入用户私有 `data/{userId}/trading/knowledge.md` 优先，os/ 作 adai 默认（owner 白名单）
+- **活跃市值区间开关（v3.41，2026-09-04）**：用户**亲手判定**当前活跃市值多空区间（指南针活跃市值口径，两档：多头/空头），App/Web 交易页红绿切换（红涨绿亏：多头=红、空头=绿）；落 `data/{userId}/trading/market-stage.json`；**推送择时状态三级读取 = 用户判定优先 → current.md → 「择时状态未知」**——用户设了就不再被 OAMV 规则推断覆盖（解决 current.md 旧规则永久锁死空头、用户无法表达判断的问题，2026-09-03「指南针活跃市值=一切的前提」对话确立）
 - **收盘小结推送（2026-08-29）**：15:30 `close-summary` 类型推送（当日成交 + 破止损 + 待确认），双端开关
 - **流式问答（2026-08-30，非交易专属但交易页在用）**：`POST /records/ask-stream` SSE（text 增量/meta 定稿/error 事件），app/web 交易页阿呆问答走流式，后端降级同步
 
@@ -773,6 +774,8 @@ Strict format:
 | `PUT /api/v1/trading/positions/{symbol}` | `updatePosition()` | 持仓元信息（止损/角色）|
 | `GET /api/v1/trading/rules` | `getTradingRules()` | **规则参数（第三阶段 2026-08-30）**：用户自己的交易系统参数（仓位上限/止损/行为标注/买点/打分权重/硬约束），无规则 → 默认 |
 | `PUT /api/v1/trading/rules` | `updateTradingRules()` | **规则参数更新**：部分字段覆盖，落 `data/{userId}/trading/rules.yaml` |
+| `GET /api/v1/trading/market-stage` | `getMarketStage()` | **活跃市值区间（v3.41，2026-09-04）**：读用户手动判定的多空区间（指南针活跃市值口径，两档 bull/bear，红涨绿亏）|
+| `PUT /api/v1/trading/market-stage` | `setMarketStage()` | **设定活跃市值区间**：用户亲手切多头/空头，落 `data/{userId}/trading/market-stage.json`，推送择时状态改以用户判定优先 |
 | `POST /api/v1/trading/screenshots` | `uploadScreenshots()` | **截图入账（2026-08-26）**：1-3 张成交截图 → VLM → 当日候选 |
 | `PUT /api/v1/trading/trade-log/date` | `patchTradeLogDate()` | **补写候选成交日期（v3.32）**：缺日期候选补日期后允许确认 |
 | `POST /api/v1/trading/cases` | `annotateCase()` | **完美买点案例标注（第四阶段）**：symbol+buyDate → 自动拉 60+30 日 K → 特征+后验 |

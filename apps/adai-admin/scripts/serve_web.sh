@@ -6,6 +6,9 @@
 #   而浏览器只在 HTTPS（或 localhost）下才信任 COOP/COEP 头 → 纯 IP/HTTP 访问
 #   wasm 永远无法实例化 → 白屏 + 页面重载。JS 模式无需 COOP/COEP，纯 IP 可跑。
 # 下方 bootstrap.js 补丁注入 canvasKitBaseUrl 让 canvaskit 从本地加载（CDN gstatic 被墙）。
+# 2026-09-04：--base-href=/admin/ 必须带——admin 托管在 /admin/ 子路径，
+#   不带则 index.html 的 <base href="/"> 保持根，浏览器按根加载 web 版 bootstrap/main.dart.js
+#   → /admin/ 打开显示的是 adai-web 桌面壳而非后台（线上事故根因）。字体补丁同步指 /admin/fonts/。
 
 set -e
 
@@ -18,7 +21,7 @@ API_BASE_URL="${1:-}"
 echo "=== Building Flutter Web (JS + CanvasKit) ==="
 DEFINES=""
 if [ -n "$API_BASE_URL" ]; then DEFINES="$DEFINES --dart-define=API_BASE_URL=$API_BASE_URL"; fi
-flutter build web --no-tree-shake-icons $DEFINES
+flutter build web --no-tree-shake-icons --base-href=/admin/ $DEFINES
 
 echo "=== Applying local patches ==="
 # Patch flutter_bootstrap.js: add canvasKitBaseUrl to load local WASM
@@ -52,7 +55,7 @@ echo "OK: canvasKitBaseUrl 注入唯一（config 块内 $CONFIG_HAS_CANVAS 次 �
 #   解析失败 → 中文全框（Flutter issue #128485 同类）；Noto Sans SC 为 TrueType(glyf) 轮廓
 #   + OFL 开源协议可分发。63KB GB2312 子集，由 fonttools 从 Google Fonts 完整版子集化生成）
 INDEX="build/web/index.html"
-perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/fonts\/Roboto.woff2");return origFetch("\/fonts\/NotoSansSC-Subset.woff2");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
+perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/admin\/fonts\/Roboto.woff2");return origFetch("\/admin\/fonts\/NotoSansSC-Subset.woff2");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
 
 echo "=== Starting server at http://localhost:8083 ==="
 cd build/web && python3 -m http.server 8083

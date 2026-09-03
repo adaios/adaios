@@ -18,7 +18,9 @@ import com.adaiadai.core.infrastructure.storage.StorageException;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.domain.trading.PushSettings;
+import com.adaiadai.core.domain.trading.TradingMarketStage;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
+import com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
@@ -75,6 +77,8 @@ public class TradingController {
     private final MarketPushRepository marketPushRepository;
     /** RFC 20260825：批次推导与行为标注（批次视图 / 导入同步模式）。 */
     private final TradingLotService tradingLotService;
+    /** v3.41（2026-09-04）：活跃市值区间（用户手动判定，推送择时状态权威源）。 */
+    private final TradingMarketStageRepository marketStageRepository;
     /** 2026-08-30 标的搜索：名称/拼音首字母/代码 → 候选（标注/匹配输入用）。 */
     private final com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
@@ -94,6 +98,7 @@ public class TradingController {
                              MarketPushRepository marketPushRepository,
                              TradingLotService tradingLotService,
                              com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver,
+                             TradingMarketStageRepository marketStageRepository,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -109,6 +114,7 @@ public class TradingController {
         this.marketPushRepository = marketPushRepository;
         this.tradingLotService = tradingLotService;
         this.nameToSymbolResolver = nameToSymbolResolver;
+        this.marketStageRepository = marketStageRepository;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -726,6 +732,54 @@ public class TradingController {
             }
         }
         return null;
+    }
+
+    /**
+     * 活跃市值区间（v3.41，2026-09-04）：用户手动判定的多空区间（指南针活跃市值口径）。
+     * GET /api/v1/trading/market-stage——读用户判定；无记录 → exists=false（推送回退 current.md 推断）。
+     */
+    @GetMapping("/market-stage")
+    public ResponseEntity<?> marketStage(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        TradingMarketStage s = marketStageRepository.findByUser(userId);
+        // 注意：Map.of 不接受 null 值——用 HashMap（无记录时 stage/updatedAt=null 是契约语义）
+        java.util.Map<String, Object> resp = new java.util.HashMap<>();
+        if (s == null) {
+            resp.put("exists", false);
+            resp.put("stage", null);
+            resp.put("updatedAt", null);
+        } else {
+            resp.put("exists", true);
+            resp.put("stage", s.stage());
+            resp.put("updatedAt", s.updatedAt());
+        }
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 设定活跃市值区间（v3.41，2026-09-04）：用户亲手切多头/空头。
+     * PUT /api/v1/trading/market-stage，body {"stage":"bull"|"bear"}，两档；非法 → 400。
+     * 落 data/{userId}/trading/market-stage.json；推送择时状态以用户判定优先（三级读取）。
+     */
+    @PutMapping("/market-stage")
+    public ResponseEntity<?> updateMarketStage(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody java.util.Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        Object stageObj = body.get("stage");
+        String stage = stageObj instanceof String str ? str.trim() : null;
+        if (stage == null || !TradingMarketStage.isValid(stage)) {
+            return ResponseEntity.badRequest().body(java.util.Map.of(
+                    "error", "stage 必须是 bull（多头区间）或 bear（空头区间）"));
+        }
+        TradingMarketStage s = new TradingMarketStage(stage, TradingMarketStageRepository.now());
+        // P0-1 审查模式：写盘失败抛 StorageException → GlobalExceptionHandler 500（不再静默 updated=true）
+        marketStageRepository.save(userId, s);
+        return ResponseEntity.ok(java.util.Map.of(
+                "updated", true, "stage", s.stage(), "updatedAt", s.updatedAt()));
     }
 
     /** 交易日志归集（RFC 20260817）：当日候选（GET /api/v1/trading/trade-log）。 */

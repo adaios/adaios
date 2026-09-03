@@ -1,11 +1,14 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.AuthService;
+import com.adaiadai.core.infrastructure.WebConfig;
 import com.adaiadai.core.infrastructure.security.AuthFilter;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.auth.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -19,6 +22,8 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -26,6 +31,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -60,7 +66,10 @@ class AuthFilterTest {
     void setUp() {
         authService = mock(AuthService.class);
         when(authService.findAccount(anyString())).thenReturn(Optional.empty());
+        // 2026-09-04：链前加 CorsFilter（对应生产 FilterRegistrationBean 最高优先级注册）——
+        // 回归红线：AuthFilter 的 401/403 响应必须带 CORS 头，浏览器才不把鉴权失败误报为 CORS 错误。
         mvc = MockMvcBuilders.standaloneSetup(new EchoUserIdController())
+                .addFilter(new WebConfig().corsFilter().getFilter())
                 .addFilter(new AuthFilter(authService))
                 .build();
     }
@@ -286,5 +295,42 @@ class AuthFilterTest {
                         .header("X-User-Id", "victim"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.receivedUserId").value("alice"));
+    }
+
+    // ── 红线 7（2026-09-04 线上事故根因）：401/403 响应必须带 CORS 头 ──
+    // 原 AuthFilter @Order(LOWEST_PRECEDENCE + 1) 整数溢出成 MIN_VALUE → 反跑在
+    // CorsFilter 之前 → 401/403 无 Access-Control-Allow-Origin → 浏览器把未登录/无权限
+    // 误报为 CORS policy 错误（admin 打开即报错刷屏）。修复后 CorsFilter 最高优先级先写头。
+
+    @Test
+    void noToken401_carriesCorsHeader() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/test/echo").header("Origin", "http://localhost:8082"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8082"));
+    }
+
+    @Test
+    void userRole403_carriesCorsHeader() throws Exception {
+        stubSession("tok_1", "alice");
+        when(authService.findAccount("alice")).thenReturn(Optional.of(account("alice", Account.ROLE_USER)));
+
+        mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", "Bearer tok_1")
+                        .header("Origin", "http://localhost:8082"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8082"));
+    }
+
+    @Test
+    void authFilterOrder_mustStayAfterCorsFilter() throws Exception {
+        // 顺序契约（防历史坑复犯）：AuthFilter 的 order 必须高于（晚于）CorsFilter 注册的
+        // HIGHEST_PRECEDENCE；LOWEST_PRECEDENCE + 1 会溢出为 MIN_VALUE（=HIGHEST_PRECEDENCE）反超。
+        int authOrder = AuthFilter.class.getAnnotation(Order.class).value();
+        assertTrue(authOrder > Ordered.HIGHEST_PRECEDENCE,
+                "AuthFilter order 必须晚于 CorsFilter（HIGHEST_PRECEDENCE），否则 401/403 丢失 CORS 头");
+        assertNotEquals(Ordered.LOWEST_PRECEDENCE + 1, authOrder,
+                "LOWEST_PRECEDENCE + 1 整数溢出（Integer.MAX_VALUE+1 → MIN_VALUE）为历史坑，勿复犯");
     }
 }

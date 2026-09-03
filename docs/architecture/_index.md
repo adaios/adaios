@@ -3,9 +3,9 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-30
+updated: 2026-09-04
 status: active
-lines: 41
+lines: 42
 depends-on: []
 related:
   - ../_index.md
@@ -32,6 +32,7 @@ tags: [meta, index, architecture]
 | ai-calling-governance.md | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身，分三批落地） | draft |
 | trading-case-library-design.md | 完美买点案例库设计方案（第四阶段：案例沉淀 → 判定当下；四环链路/特征/相似度/画图，已实施） | draft |
 | trading-data-adjustment.md | 行情数据前复权设计——TDX 本地数据正确性（东财因子表 + 本地换算，口径对齐腾讯 qfq） | draft |
+| trading-market-stage.md | 活跃市值区间开关方案——用户手动判定多头/空头（双端红绿切换 + 推送择时三级读取，2026-09-04） | active |
 | trading-plugin-architecture.md | ★ 交易插件架构设计（第二阶段：通用能力层 vs 个性化规则层，规则按用户隔离/可导入导出，多用户开放蓝图） | draft |
 
 ## 过期判断
