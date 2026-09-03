@@ -379,7 +379,9 @@ class FeedCard extends StatelessWidget {
       '早盘计划' => ('早盘计划', AppColors.darkBlue),
       '午间跟踪' => ('午间跟踪', AppColors.darkPurple),
       '尾盘建议' || '今日操作确认' => ('尾盘建议', AppColors.darkOrange),
-      '买点提醒' => ('买点提醒', AppColors.darkGreen),
+      // P2-UI1（2026-09-03 用户拍板 A 方案）：买点徽章 darkGreen→darkRed——「买=该买=涨=红」与红涨绿亏全局一致，
+      // 不再与「绿=亏」语义撞色（原 RFC 20260817「买点绿」决策被本次拍板推翻）
+      '买点提醒' => ('买点提醒', AppColors.darkRed),
       // B9-5（2026-08-23，P2-推送4）：gain/break-cost 专属徽章——原落 default 灰「行情」
       '放飞提示' => ('放飞提示', AppColors.darkPurple),
       '跌破成本线' || '行情提醒' => ('跌破成本', AppColors.darkOrange),
