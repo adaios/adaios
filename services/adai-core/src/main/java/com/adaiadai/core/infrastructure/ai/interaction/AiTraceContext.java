@@ -28,7 +28,8 @@ public final class AiTraceContext {
      * @param userId   用户 ID（日志按用户分目录）
      * @param recordId 关联记录 ID（无则 null）
      * @param cardId   关联卡片 ID（无则 null）
-     * @param source   调用来源标识（question / log / retry / brief / trading_review / conversation / media / intent 等）
+     * @param source   调用来源标识（question / log / retry / brief / trading_review / trading_case_insight /
+     *                 conversation / media / intent 等；模型路由见 DeepSeekAiClient.modelFor）
      */
     public static void set(String userId, String recordId, String cardId, String source) {
         HOLDER.set(new Trace(userId, recordId, cardId, source));

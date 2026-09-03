@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -46,6 +48,12 @@ public class WatchlistBuyPointService {
     private final TradingCaseRepository caseRepository;
     private final boolean scanMatchEnabled;
     private final ExecutorService klinePool = Executors.newFixedThreadPool(8);
+    /** 案例库 TTL 缓存毫秒数（P2-案例3，2026-09-03：案例多时免每次全量 index+逐文件读）。 */
+    private static final long CASE_CACHE_TTL_MS = 5 * 60 * 1000L;
+    /** 案例库 TTL 缓存（key=userId；标注/删除/回填后最多延迟 TTL 生效——15:10 扫描与 15:35 回填错峰可接受，对齐 TradingKnowledgeSource 模式）。 */
+    private final Map<String, CaseCacheEntry> caseCache = new ConcurrentHashMap<>();
+
+    private record CaseCacheEntry(List<CaseRecord> cases, long expiresAtMillis) {}
 
     public WatchlistBuyPointService(KlineService klineService,
                                     TradingRuleSettingsRepository settingsRepository,
@@ -106,8 +114,7 @@ public class WatchlistBuyPointService {
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, BuyPointDetector detector,
                                              String userId) {
         List<WatchBuyPoint> hits = new ArrayList<>();
-        List<CaseRecord> cases = scanMatchEnabled
-                ? caseRepository.list(userId == null ? "default" : userId) : List.of();
+        List<CaseRecord> cases = loadCases(userId == null ? "default" : userId);
         List<Future<WatchBuyPoint>> futures = new ArrayList<>();
         for (WatchlistItem item : watchlist) {
             futures.add(klinePool.submit(() -> {
@@ -143,6 +150,21 @@ public class WatchlistBuyPointService {
         log.info("自选买点扫描 | {} 只 → {} 命中（案例匹配 {} 只）", watchlist.size(), hits.size(),
                 hits.stream().filter(h -> !h.caseMatches().isEmpty()).count());
         return hits;
+    }
+
+    /**
+     * 案例库读取（P2-案例3，2026-09-03）：TTL 缓存 5 分钟——案例多时
+     * scanWatchlist 每跑不再全量 index + 逐文件读（缓存共享不可变快照，调用方只读）。
+     * 开关关 → 空列表（行为与现状一致，不触碰缓存）。
+     */
+    private List<CaseRecord> loadCases(String userId) {
+        if (!scanMatchEnabled) return List.of();
+        long now = System.currentTimeMillis();
+        CaseCacheEntry cached = caseCache.get(userId);
+        if (cached != null && cached.expiresAtMillis() > now) return cached.cases();
+        List<CaseRecord> snapshot = List.copyOf(caseRepository.list(userId));
+        caseCache.put(userId, new CaseCacheEntry(snapshot, now + CASE_CACHE_TTL_MS));
+        return snapshot;
     }
 
     /**

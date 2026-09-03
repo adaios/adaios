@@ -103,6 +103,25 @@ void main() {
       expect(hits[0].score, 87);
       expect(hits[0].signals.length, 3);
       expect(hits[0].signals[0], contains('回调'));
+      expect(hits[0].caseMatches, isEmpty);
+    });
+
+    test('BuyPointDto parses case hit with caseMatches (P2-案例2)', () {
+      final json = jsonDecode('''
+        [{"symbol":"000725","name":"京东方A","buyPoint":"case","score":0,
+          "signals":[],
+          "caseMatches":[
+            {"caseId":"2026-08-03_000725","buyDate":"2026-08-03","buyType":"B1","similarityPercent":92.0},
+            {"caseId":"2026-07-20_000725","buyDate":"2026-07-20","buyType":"B2","similarityPercent":81.5}]}]
+      ''');
+      final hits = (json as List).map((e) => BuyPointDto.fromJson(e)).toList();
+      expect(hits.length, 1);
+      expect(hits[0].buyPoint, 'case');
+      expect(hits[0].caseMatches.length, 2);
+      expect(hits[0].caseMatches[0].caseId, '2026-08-03_000725');
+      expect(hits[0].caseMatches[0].buyType, 'B1');
+      expect(hits[0].caseMatches[0].similarityPercent, 92.0);
+      expect(hits[0].caseMatches[1].similarityPercent, 81.5);
     });
 
     test('BuyPointDto empty defaults', () {
@@ -111,6 +130,7 @@ void main() {
       expect(hit.buyPoint, '');
       expect(hit.score, 0);
       expect(hit.signals, isEmpty);
+      expect(hit.caseMatches, isEmpty);
     });
 
     test('SoldScoreDto parses three dimensions', () {

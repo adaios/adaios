@@ -51,6 +51,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-09-03 | 案例未修项修复批（用户「可修复不需决策的直接改」）| 工作树（979d5e2 后续）| 主会话 | 0 新问题（纯修复）| 6 出表（P2-案例1 已知限制注明 / P2-案例2 web 适配 case / P2-案例3 案例库 TTL 缓存 / P2-案例5 index JSON null / P3-案例1 路由登记 / P2-2 复核）|
 | 2026-08-30 | 交易插件规则层实施批（第三阶段，用户拍板「按建议来」+「继续」）| 工作树（收盘小结批后续）| 主会话 | 0 新问题（实施蓝图）| 规则层 9 步全落地（Step2-9：TradingRuleSettings/Repository/引擎按用户/买点/打分/建议/知识注入/降级/adai 规则包/规则 UI），后端 842 · web 127 · 端点 88，详见 change-log |
 | 2026-08-29 | B 类技术债清理批（用户拍板）| 工作树（晚间批后续）| 主会话 + 3 子代理（UI5/UI8/UI9 并行）| 0 新问题（纯修复）| 8 出表（P2-UX4/UX2/UI5/UI6/UI7/UI8/UI9/P2-3）|
 | 2026-08-29 | 晚间自主修复批（用户睡觉期间，明早复查）| 工作树（上次收尾遗留 5 文件 + 本批）| 主会话 | 0 新问题（纯修复）| 14 出表（P2-批次4/5/6、P1-前端1、P2-UX1/UI4、P2-交易24/25/27/28/31/33、P2-A3）+ 残留核实 5 项（26/29/30/32/P2-2）|
@@ -129,11 +130,11 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | # | 问题 | 位置 | 建议 |
 |:-:|:-----|:-----|:-----|
-| P2-案例1 | 窗口不足 60 根（停牌/新股/标注日近窗口起点）→ `ma()` 用可用根数近似 → MA60/黄白线态/距 60 日线失真（已知取舍，特征可算但不精确）| `CaseFeatureExtractor.ma` | 注明已知限制（设计文档 §4.1）；可加 `windowComplete` 标记 |
-| P2-案例2 | **web 自选 Tab 未适配 `buyPoint="case"`**：二期开关开时规则未命中但案例相似 → 返回 `case` 项，前端信号列渲染「case 0%」异常 | `WatchlistBuyPointService` / web 自选 Tab | 前端适配 case 类型显示（「形态接近历史完美买点」）；开关默认关，随部署批适配 |
-| P2-案例3 | 二期开关开时 `scanWatchlist` 每跑全量 `caseRepository.list`（index+逐文件读），案例多时拖慢扫描（无缓存）| `WatchlistBuyPointService` | 案例 >50 后加 TTL 缓存（对齐 TradingKnowledgeSource 模式）|
+| P2-案例1 | ✅ 已修（2026-09-03 案例修复批：设计文档 trading-case-library-design.md §4.1 + CaseFeatureExtractor.extract javadoc 注明已知限制——不足 60 根用可用根数近似、特征可算不精确、失真随窗口缩短增大；windowComplete 显式标记列为后续项，不改 schema 避免已落盘案例/匹配引擎连锁迁移）。**窗口不足 60 根（停牌/新股/标注日近窗口起点）→ `ma()` 用可用根数近似 → MA60/黄白线态/距 60 日线失真** | `CaseFeatureExtractor.ma` | 注明已知限制（设计文档 §4.1）；可加 `windowComplete` 标记 |
+| P2-案例2 | ✅ 已修（2026-09-03 案例修复批：web BuyPointDto 解析 caseMatches + 自选信号列 case 渲染「案例相似 {N}%」橙色（取最高相似度）+ 图例补「案例=形态接近历史完美买点」；dto_parse_test + trading_page_test 各 +1 用例——「case 0%」回归防住）。**web 自选 Tab 未适配 `buyPoint="case"`**：二期开关开时规则未命中但案例相似 → 返回 `case` 项，前端信号列渲染「case 0%」异常 | `WatchlistBuyPointService` / web 自选 Tab | 前端适配 case 类型显示（「形态接近历史完美买点」）；开关默认关，随部署批适配 |
+| P2-案例3 | ✅ 已修（2026-09-03 案例修复批：`WatchlistBuyPointService` 案例库 TTL 缓存 5 分钟——per-user ConcurrentHashMap 不可变快照（List.copyOf），开关关零 IO 不触缓存；+2 测试：两次扫描 repo.list 只 1 次 / 开关关从不读 repo）。**二期开关开时 `scanWatchlist` 每跑全量 `caseRepository.list`（index+逐文件读），案例多时拖慢扫描（无缓存）** | `WatchlistBuyPointService` | 案例 >50 后加 TTL 缓存（对齐 TradingKnowledgeSource 模式）|
 | P2-案例4 | 东财 `klineRange` 同时传 `lmt=320` + `beg/end`——同传截断行为（原「未实测」）| `EastMoneyKlineDataSource.klineRange` | ✅ 已实测（2026-08-30：`beg=20260301&end=20260415` 返回指定窗口 klines 正常，lmt 不冲突）|
-| P2-案例5 | `indexEntry` 的 `plus5dReturnPct`：`verify()==null` 时存 0.0 → 列表前端显示「+5d 0.0%」而非「—」| `TradingCaseFileRepository.indexEntry` | ⚠️ 半修（2026-08-31 双轨批）：web 列表端 null/0 兜底显示「—」✅；根治在后验回填调度器（`CaseVerifyBackfillScheduler` 每日回填 verify，null 自然消失）+ index 重建——留登记等数据自愈验证 |
+| P2-案例5 | ✅ 已修（2026-09-03 案例修复批：`indexEntry` verify 缺失改落 JSON null——不再存 0.0 占位，真实 +5d 恰为 0% 与「后验数据不足」可区分；web 列表读案例文件 verify（非 index）已 null/0 兜底「—」；回填调度器 15:35 回填 + rebuildIndex 已上线自愈；+1 仓储测试锁 JSON null 语义）。**`indexEntry` 的 `plus5dReturnPct`：`verify()==null` 时存 0.0 → 列表前端显示「+5d 0.0%」而非「—」** | `TradingCaseFileRepository.indexEntry` | ⚠️ 半修（2026-08-31 双轨批）：web 列表端 null/0 兜底显示「—」✅；根治在后验回填调度器（`CaseVerifyBackfillScheduler` 每日回填 verify，null 自然消失）+ index 重建——留登记等数据自愈验证 |
 | P2-交易1 | SoldScoreService 16 线程池无 @PreDestroy shutdown；单笔 30s 超时产空 symbol 占位行 | `SoldScoreService.java:35,52-57` | 线程池 shutdown + 无空行占位（B53）| ✅ 已修（2026-08-17 R5：shutdown + 超时保留 symbol）
 | P2-交易2 | scanWatchlist 串行拉 K 线（仅打分并行化，买点扫描未并发）且无按标的异常隔离 | `WatchlistBuyPointService.java` | 同 SoldScoreService 并发化（B54）| ✅ 已修（2026-08-17 R5：8 并发 + 异常隔离）
 | P2-交易3 | 腾讯 K 线兜底无缓存（东财被限时每请求都打腾讯）| `TencentMarketDataSource` | 加按日缓存 | ✅ 已修（2026-08-17 R5：按日缓存）
@@ -190,7 +191,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-UI8 | ✅ 已修（2026-08-29 B 类批：app 拖拽条 44pt 热区/日历格 32×36→44/搜索返回箭头/图片删除钮 12px→44 触达；web feed 选图钮 34→44；其余默认 IconButton 48pt 达标）。** 触达目标 <44pt（iOS HIG 最小触达 44×44；用户视觉批）——小按钮/行内点击区过窄 | 双端多处 | 关键交互触达区扩到 ≥44pt |
 | P2-UI9 | ✅ 已修（2026-08-29 B 类批：双端硬编码 `Color(0x...)` 全量收敛——代码块背景 0xFF2A2826→darkBorder ×4、darkGreen@15%→withValues 写法 ×1，lib/ 下 hex 字面量残留 0）。** 硬编码色值散落未走 token（用户视觉批；如代码块背景 `0xFF2A2826`、圆角/边框硬编码）| 双端多处 | 收敛到 `app_colors.dart` token |
 | P2-1 | **audit.md 归口机制内部自相矛盾（08-23 元审核归口，对抗官弱化裁定）**：58 行旧机制「REVIEW.md 新增走查区」vs 59 行新机制（audits/ 落盘 + unfixed-gate）同文件并存 | `ai-engineering/process/audit.md:58-59` | 58 行改指现行机制 | ✅ 已修（2026-08-23 P1 批：58 行改「报告落盘 audits/ + 登记 _index」，与 review.md 现行机制统一）|
-| P2-2 | ✅ 已清（2026-08-29 核实 .claude/settings.local.json 已无 49.235.37.220 残留，出表）。** **.claude/settings.local.json 残留旧 IP 49.235.37.220 ×5（08-23 元审核归口）**：allowlist 是对已下线服务器的 curl/ssh/deploy 免确认放行——误跑静默失败；文件不入 git，影响仅本机 | `.claude/settings.local.json:47-52` | 手动清理 5 处旧 IP | ⚠️ 保留（本机工具配置，用户手动清）|
+| P2-2 | ✅ 已清（2026-08-29 核实出表；2026-09-03 案例修复批复核 `.claude/settings.local.json` 无 49.235.37.220 残留）。**.claude/settings.local.json 残留旧 IP 49.235.37.220 ×5（08-23 元审核归口）**：allowlist 是对已下线服务器的 curl/ssh/deploy 免确认放行——误跑静默失败；文件不入 git，影响仅本机 | `.claude/settings.local.json` | 手动清理 5 处旧 IP |
 | P2-3 | ✅ 已修（2026-08-29：weekly-audit cron 已挂载——每周一 9:00 `--auto` 追加 /tmp/weekly-audit.log，脚本 dry-run 验证 W1-W5 跑通；与 guard-cost 日账同 crontab）| `weekly-audit.sh:3` | — | ✅ 2026-08-29（cron 实测挂载）|
 | P2-4 | **frontmatter「9 字段」实为 10（08-23 元审核归口，命中数字漂移复发信号）**：skills-spec.md:40/42 与 AGENTS.md 均写 9，guard-meta REQUIRED 实 10 项 | `skills-spec.md` / `AGENTS.md` | 统一为 10 字段 | ✅ 已修（2026-08-23 P1 批：skills-spec/AGENTS/_index 全部 9→10；ADR-005 与 change-log 属历史记录不改）|
 | P2-A2 | **方法论文档自身漂移（08-23 对抗官独立发现）**：method/README.md:89 引用不存在的 research-notes/（_index 自标待建）；64-71 行状态表把已存在的 deploy-gate/weekly-audit 标「❌ 缺」 | `method/README.md:64-71,89` | 状态表按实对拍 | ✅ 已修（2026-08-23 P1 批：状态表部署门禁/smoke 改 ✅ 已做、定时 audit 脚本已做 cron 待确认；research-notes 标注待建勿引用）|
@@ -205,7 +206,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 - **P0-交易A ✅ 已修（2026-08-23 B6-1）**：`MarketPushRepository.append` 损坏防护升级为结构校验（数组且元素含 id 才放行，`[123]`/`{"a":1}` 不覆盖历史）+ MarketPushRepositoryTest ×3；原审查登记见 `audits/2026-08-23-reviewer-isolation-demo.md`
 - **P0 其余当前清零**
-- **P3-案例1（2026-08-30 案例库审查）**：`generateInsight` 用新 `AiTraceContext.source="trading_case_insight"`——模型路由表对该新值未显式登记（预期落默认 flash，下次 AI 治理文档同步时登记）
+- **P3-案例1 ✅ 已修（2026-09-03 案例修复批：DeepSeekAiClient.modelFor javadoc + AiTraceContext source 清单显式登记 `trading_case_insight` 归 flash，+ 路由测试 `modelFor_tradingCaseInsightUsesFlash` 锁死防误升 pro）**——`generateInsight` 用 `AiTraceContext.source="trading_case_insight"`，默认分支即 flash，行为无变化
 - **P3 打磨项**：交易 A-E 批 24 项**已全部修复出表**（R8-R11，见 change-log + 已修复区：转账金额提示/isTdxExport/R120-R85 引用/止损提醒/孤儿规格/DTO 测试/Timer 守卫等）；剩余低价值 P3（FilePicker 压缩/os 数据卫生/图片摘要居中）见 task-log
 - **P3 打磨项（2026-08-19 UI/UX 审查 17 项）**：成功回执不提自动 -7% 止损 / 精确表单价格无 ≤5 位小数限制 / 持仓卡整卡可点无视觉提示（发现性差）/ 自选清仓空列表整区隐藏无引导 / 「无法连接服务器，请确认后端已启动」开发者术语 / 推送设置「放飞提示」语义不明 / Dismissible confirmDismiss 内同步 setState 非惯用法 / 账户卡 22px 双大数无 FittedBox 极端值溢出 / 零值 ± 显示与着色（+0/-0/±0.0%）/ `_fmtMoney` 万单位舍入跳变（9999.6→10000）/ 行情卡 -0.00% 判跌为绿 / 代码块背景硬编码 0xFF2A2826 未走 token / 提示文案对比度不足（darkGrey6@10px）/ 持仓信息行 11px 过暗·未设止损整行橙偏重 / 圆角不统一（8/10/12/16 vs 主题 14）/ 次级数据异步到达跳变无骨架占位 / 推送卡长内容无折叠 + 买点文本无单位标签 + frontend-reference 徽章配色表与实现漂移
 
@@ -216,6 +217,7 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | # | 摘要 | 修复 |
 |:-:|:-----|:----:|
+| 2026-09-03 案例未修项修复批 | **REVIEW 案例库未修项 6 项全出表（用户「可修复不需决策的直接改」）**：①P2-案例1 窗口<60 根 MA 失真——设计文档 §4.1 + CaseFeatureExtractor javadoc 注明已知限制（windowComplete 显式标记列后续项，不改 schema）；②P2-案例2 web 自选 Tab 适配 `buyPoint="case"`——BuyPointDto 解析 caseMatches + 信号列「案例相似 {N}%」橙色 + 图例补释义（原「case 0%」异常）；③P2-案例3 scanWatchlist 案例库 TTL 缓存 5 分钟（per-user 不可变快照，两次扫描 repo.list 只 1 次；开关关零 IO）；④P2-案例5 indexEntry verify 缺失落 JSON null——不再 0.0 占位，真实 0% 与「数据不足」可区分（前端已兜底「—」+ 回填调度器自愈已上线）；⑤P3-案例1 模型路由显式登记 trading_case_insight 归 flash（javadoc + AiTraceContext 清单 + 路由测试防误升 pro）；⑥P2-2 复核 .claude/settings.local.json 无旧 IP 出表。测试：后端 1068→1072（+4）· web 146→148（+2）· app 151 不变 | ✅ 2026-09-03（三端全绿，本地 commit 未部署）|
 | 2026-08-29 收盘小结 + 流式基础设施批 | **①P2-用户3 每日收盘小结**——15:30 推送「今日成交（过滤股息流水 volume=0）+ 破止损持仓 + 待确认候选 + 一句话收尾」到手机（Bark 已接，模板聚合不耗 AI）；新推送类型 `close-summary` 入 PushSettings.ALL_TYPES + app/web 双端开关；+3 测试。②**P2-用户2 流式后端基础设施**——`StreamingAiClient` 端口（kernel）+ `DeepSeekAiClient.streamGenerate`（body stream:true + SSE `data:` 行解析 delta 逐块回调 + 非 200/空内容抛错供降级）；本地 SSE stub 测试 ×2（逐块拼接/HTTP 500 抛错/请求带 stream）。SSE 端点与双端前端流式渲染下一批。测试：后端 835→840 | ✅ 2026-08-29（后端全绿，本地 commit 未部署）|
 | 2026-08-29 B 类技术债清理批 | **REVIEW B 类 8 项纯技术债全部清理（用户拍板）**：①P2-UX4 确认流反馈（回执阿呆口吻三处 + _ActionButton 提交中 loading/禁用/成功灰态「已确认 ✓」）；②P2-UI7 launcher 插件行稳定槽位（加载中占位防跳位）；③P2-UI6 World B 下滑返回只挂拖拽条 44pt 热区（搜索栏不再误触，四官根因消除）；④P2-UX2 web 自选/清仓术语图例（B1/B2、R66/R53、三维打分）；⑤P2-UI5 双端 9/10/10.5px 全局提到 11（app 36 处 + web 全量，残留 0）；⑥P2-UI8 关键触达区扩到 ≥44pt（拖拽条/日历格/返回箭头/删除钮/选图钮）；⑦P2-UI9 双端硬编码色值收敛 token（hex 残留 0）；⑧P2-3 weekly-audit cron 挂载（每周一 9:00 + 脚本验证）。测试：app 135→137（+2 回归）· web 125 全绿 | ✅ 2026-08-29（双端全绿，本地 commit 未部署）|
 | 2026-08-29 晚间自主修复批 | **用户睡觉期间自主修复 REVIEW 未修项（14 项出表 + 残留核实 5 项）**：①历史成交导入三连（P2-批次4 多文件批量 / P2-批次5 逐份进度反馈 / P2-批次6 股息入账·红利税类型标签取代「买入 0 股」+ 统计口径排除）；②P1-前端1 app 静默刷新失败保留旧数据（web P1-7 同类复发根治）；③P2-UX1 NL 回显 ≤5 位去尾零（4 位成本价不失真）+ P2-UI4 买点信号 ellipsis/清仓标题 Wrap；④后端技术债——P2-交易25 confirm 锁内原子 saveMerging（残余窗口闭合）、P2-交易28 三处锁池改固定 16 条带（map 增长根治）、P2-交易27 推送写失败 warn→error、P2-交易33 缺行情收盘跳过推通知、P2-交易24 残余窗口注释、P2-交易31 principal=0 总盈亏 null 不给误导数值（双端，U32）；⑤P2-A3 deploy-gate 吞输出修复；⑥REVIEW 残留核实出表（P2-交易26/29/30/32、P2-2 均已修）。测试：后端 833→835 · app 132→135 · web 122→125，三端全绿 | ✅ 2026-08-29（三端全绿，本地 commit 未部署）|

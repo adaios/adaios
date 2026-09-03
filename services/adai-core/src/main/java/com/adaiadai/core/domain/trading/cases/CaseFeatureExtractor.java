@@ -45,6 +45,12 @@ public final class CaseFeatureExtractor {
      *
      * @param candles 包含 buyDate 的日 K 窗口（旧→新，含前 60/后 30 的可用部分）
      * @param buyDate 买点日期（必须落在 candles 内，否则返回 null）
+     * <p>
+     * 已知限制（P2-案例1，REVIEW 2026-08-30）：停牌/新股/标注日近窗口起点时前 60 根不足，
+     * MA20/MA60 与黄白线态用可用根数近似（{@link #ma}）——特征可算但不精确；形态/位置类
+     * 特征（maRelation/yellowLineState/whiteAboveYellow/distToMa60Pct）随窗口缩短失真增大。
+     * 属已知取舍（设计文档 trading-case-library-design.md §4.1），标注照常成功、不阻塞；
+     * windowComplete 显式标记列为后续项。
      */
     public static CaseRecord.CaseFeatures extract(List<Candle> candles, LocalDate buyDate) {
         return extract(candles, buyDate, YELLOW_MA_PERIOD, WHITE_MA_PERIOD);

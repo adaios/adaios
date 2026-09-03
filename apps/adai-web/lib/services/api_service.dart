@@ -1940,14 +1940,34 @@ class WatchlistItemDto {
   }
 }
 
-/// 自选股买点信号（C2 盯盘买点：B1 回调 / B2 突破）。
+/// 案例相似参考（buyPoint="case" 时后端附 Top 3 相似案例；P2-案例2 2026-09-03 web 适配）。
+class CaseMatchLiteDto {
+  final String caseId, buyDate, buyType;
+  final double similarityPercent;
+
+  CaseMatchLiteDto({required this.caseId, required this.buyDate, required this.buyType,
+      required this.similarityPercent});
+
+  factory CaseMatchLiteDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return CaseMatchLiteDto(
+      caseId: m['caseId']?.toString() ?? '',
+      buyDate: m['buyDate']?.toString() ?? '',
+      buyType: m['buyType']?.toString() ?? '',
+      similarityPercent: (m['similarityPercent'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+/// 自选股买点信号（C2 盯盘买点：B1 回调 / B2 突破；buyPoint="case"=规则未命中但形态接近完美买点）。
 class BuyPointDto {
   final String symbol, name, buyPoint;
   final double score;
   final List<String> signals;
+  final List<CaseMatchLiteDto> caseMatches;
 
   BuyPointDto({required this.symbol, required this.name, required this.buyPoint,
-      required this.score, required this.signals});
+      required this.score, required this.signals, this.caseMatches = const []});
 
   factory BuyPointDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -1957,6 +1977,9 @@ class BuyPointDto {
       buyPoint: m['buyPoint']?.toString() ?? '',
       score: (m['score'] as num?)?.toDouble() ?? 0,
       signals: (m['signals'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      caseMatches: (m['caseMatches'] as List?)
+              ?.map((e) => CaseMatchLiteDto.fromJson(e)).toList() ??
+          const [],
     );
   }
 }

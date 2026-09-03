@@ -82,6 +82,19 @@ class DeepSeekAiClientTest {
                 "无 trace 上下文默认走 flash（保守快路径）");
     }
 
+    @Test
+    void modelFor_tradingCaseInsightUsesFlash() {
+        // P3-案例1（2026-09-03）：案例 AI 理解（trading_case_insight）显式登记归 flash——
+        // 归纳性文本生成不需旗舰推理，默认分支即 flash，此处锁死防误升 pro
+        AiTraceContext.set("adai", null, null, "trading_case_insight");
+        try {
+            assertEquals("test-flash", client.modelFor(),
+                    "案例 AI 理解（trading_case_insight）应走快模型 flash");
+        } finally {
+            AiTraceContext.restore(null);
+        }
+    }
+
     // ── 2026-08-29 流式输出（P2-用户2：ai-calling-governance 批 2 聊天流式）──
 
     /** 本地 SSE stub 服务：返回 sseBody，并断言请求带 stream:true。 */

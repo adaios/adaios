@@ -1075,6 +1075,44 @@ void main() {
       expect(find.text('—'), findsWidgets);
       expect(find.text('B1 87%'), findsOneWidget);
     });
+
+    testWidgets('P2-案例2：buyPoint=case 显示「案例相似 N%」，不再渲染「case 0%」', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') {
+          return _json([
+            {'symbol': '000725', 'name': '京东方A', 'industry': '面板', 'industry2': '',
+             'longForm': 1, 'midForm': 2, 'shortForm': 3, 'signal': '', 'addedAt': '2026-08-16'},
+          ]);
+        }
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/buy-points') {
+          // 二期开关开：规则未命中但案例相似 → buyPoint="case"（score=0 无意义，附 caseMatches）
+          return _json([
+            {'symbol': '000725', 'name': '京东方A', 'buyPoint': 'case', 'score': 0,
+             'signals': <String>[],
+             'caseMatches': [
+               {'caseId': '2026-08-03_000725', 'buyDate': '2026-08-03', 'buyType': 'B1',
+                'similarityPercent': 92.0},
+             ]},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('自选'));
+      await tester.pumpAndSettle();
+
+      // case 参考：显示「案例相似 92%」（取 caseMatches 最高相似度），不出现「case 0%」异常
+      expect(find.text('案例相似 92%'), findsOneWidget);
+      expect(find.textContaining('case 0%'), findsNothing);
+    });
   });
 
   group('清仓复盘三维打分（D3）', () {

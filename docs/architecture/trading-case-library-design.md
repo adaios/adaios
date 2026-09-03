@@ -164,6 +164,8 @@ cases:
 | `sidewaysDays` | 近 10 日逐日 (high−low)/close < 3% 计数 | — |
 | `breakoutFromHigh` | 收盘 > 前 20 日最高收盘 | — |
 
+> **已知限制（P2-案例1，REVIEW 2026-08-30）**：停牌 / 新股 / 标注日近窗口起点时前 60 根不足——`ma()` 用可用根数近似（`CaseFeatureExtractor.ma`），MA20/MA60 与黄白线态（`maRelation` / `yellowLineState` / `whiteAboveYellow` / `distToMa60Pct`）随窗口缩短失真增大：特征可算但不精确。属已知取舍（标注照常成功、不阻塞；相似度对比时缺失特征按归一化中性处理）。**windowComplete 显式标记（标注特征里记录窗口是否满 60 根，供画像/共识统计剔除或加权不完整窗口）列为后续项**——当前不改 schema 避免已落盘案例与匹配引擎连锁迁移。
+
 ### 4.2 自定义指标三态还原（D2）
 
 | 态 | 内容 | 状态 |

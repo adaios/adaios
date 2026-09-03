@@ -939,6 +939,20 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 买点信号列文案（P2-案例2，2026-09-03）：buyPoint="case" = 规则未命中但形态接近库中
+  /// 完美买点（后端附 caseMatches，score=0 无意义）——改显「案例相似 + 最高相似度」，
+  /// 不再渲染异常的「case 0%」。
+  String _buyPointLabel(BuyPointDto b) {
+    if (b.buyPoint == 'case') {
+      double top = 0;
+      for (final m in b.caseMatches) {
+        if (m.similarityPercent > top) top = m.similarityPercent;
+      }
+      return top > 0 ? '案例相似 ${top.round()}%' : '案例相似';
+    }
+    return '${b.buyPoint} ${b.score.toStringAsFixed(0)}%';
+  }
+
   Widget _buildWatchlistSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -964,7 +978,7 @@ class _TradingPageState extends State<TradingPage> {
       ]),
       // P2-UX2（2026-08-29）：规则术语图例——移动端/桌面只读展示不再零解释
       const SizedBox(height: 4),
-      const Text('买点信号：B1=回调缩量低吸 · B2=放量突破右侧（判定是提示不是指令）',
+      const Text('买点信号：B1=回调缩量低吸 · B2=放量突破右侧 · 案例=形态接近历史完美买点（判定是提示不是指令）',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 8),
       if (_watchlist.isEmpty)
@@ -996,9 +1010,15 @@ class _TradingPageState extends State<TradingPage> {
                     : ConstrainedBox(
                         // P2-UI4（2026-08-29）：多条件 '、' 拼接限宽 + ellipsis，防撑宽整列/窄窗溢出
                         constraints: const BoxConstraints(maxWidth: 170),
-                        child: Text(bp.map((b) => '${b.buyPoint} ${b.score.toStringAsFixed(0)}%').join('、'),
+                        child: Text(bp.map(_buyPointLabel).join('、'),
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkRed)))),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                // P2-案例2（2026-09-03）：case=形态相似弱参考，橙色区分于规则命中红
+                                color: bp.first.buyPoint == 'case'
+                                    ? AppColors.darkOrange
+                                    : AppColors.darkRed)))),
                 DataCell(IconButton(
                   icon: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
                   onPressed: () async {

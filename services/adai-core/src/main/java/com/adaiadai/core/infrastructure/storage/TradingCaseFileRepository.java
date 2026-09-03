@@ -193,16 +193,16 @@ public class TradingCaseFileRepository implements TradingCaseRepository {
     }
 
     private JsonNode indexEntry(CaseRecord record) {
+        // P2-案例5（2026-09-03）：verify 缺失落 JSON null，不再存 0.0 占位——
+        // 真实 +5d 恰为 0% 与「后验数据不足」可区分；后验回填调度器 15:35 回填 + rebuildIndex 后自然落真实值。
+        Double plus5 = record.verify() == null ? null : record.verify().plus5dReturnPct();
         return MAPPER.createObjectNode()
                 .put("id", record.id())
                 .put("symbol", record.symbol())
                 .put("name", record.name() == null ? "" : record.name())
                 .put("buyDate", record.buyDate() == null ? "" : record.buyDate().toString())
                 .put("buyType", record.buyType() == null ? "" : record.buyType())
-                .put("plus5dReturnPct",
-                        record.verify() == null || record.verify().plus5dReturnPct() == null
-                                ? java.math.BigDecimal.ZERO.doubleValue()
-                                : record.verify().plus5dReturnPct());
+                .put("plus5dReturnPct", plus5);
     }
 
     private void writeIndex(String userId, List<JsonNode> entries) throws Exception {

@@ -20,6 +20,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -95,5 +97,33 @@ class WatchlistBuyPointServiceTest {
                 List.of(new WatchlistItem("000725", "京东方A", "电子", "电子元件", 1, 1, 1, "回调", null)), "adai");
         assertTrue(hits.stream().allMatch(h -> h.caseMatches().isEmpty()),
                 "案例库空 → 不附参考（静默降级）");
+    }
+
+    @Test
+    void scanTwiceWithinTtl_caseListReadOnlyOnce() {
+        // P2-案例3（2026-09-03）：案例库 TTL 缓存——多次扫描不重复全量读 index+逐文件
+        TradingCaseRepository mockRepo = mock(TradingCaseRepository.class);
+        when(mockRepo.list("adai")).thenReturn(new ArrayList<>(List.of(sampleCase())));
+        when(klineService.kline(anyString(), anyInt())).thenReturn(buildCandles());
+        WatchlistBuyPointService svc =
+                new WatchlistBuyPointService(klineService, settingsRepository, mockRepo, true);
+        List<WatchlistItem> items = List.of(
+                new WatchlistItem("000725", "京东方A", "电子", "电子元件", 1, 1, 1, "回调", null),
+                new WatchlistItem("600519", "贵州茅台", "白酒", "白酒", 0, 0, 0, "", null));
+        svc.scanWatchlist(items, "adai");
+        svc.scanWatchlist(items, "adai");
+        verify(mockRepo, times(1)).list("adai");
+    }
+
+    @Test
+    void scan_switchOff_neverReadsCaseRepository() {
+        // 开关关：案例库既不读也不缓存（向前兼容，零 IO）
+        TradingCaseRepository mockRepo = mock(TradingCaseRepository.class);
+        when(klineService.kline(anyString(), anyInt())).thenReturn(buildCandles());
+        WatchlistBuyPointService svc =
+                new WatchlistBuyPointService(klineService, settingsRepository, mockRepo, false);
+        svc.scanWatchlist(List.of(
+                new WatchlistItem("000725", "京东方A", "电子", "电子元件", 1, 1, 1, "回调", null)), "adai");
+        verify(mockRepo, times(0)).list(anyString());
     }
 }
