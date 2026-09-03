@@ -1026,7 +1026,7 @@ POST /api/v1/records/retry
 
 - **多模态图片记录（L4）**：`POST/GET /api/v1/records/media`（multipart，图片 → GLM-4.1V-Thinking-Flash VLM 理解 → 文本化进现有闭环：Timeline/Memory/Search 零改动）。图片落 `data/{userId}/records/YYYY/MM/media/`。详见 RFC `20260802-multimodal-image-glm`。
 - **多账号（v1.0.0 预留）**：全链路 `X-User-Id` header → `data/{userId}/` 分层。账号由 adai-admin 管理（seed `adai`），无注册/口令（鉴权后补，REVIEW #127）。
-- **adai-admin 产品后台**：账号/内容/数据/系统/知识五模块，接真实 API（`/api/v1/accounts`、`/api/v1/admin/**`）。定位：独立产品后台（类企业管理系统），非产品入口。
+- **adai-admin 产品后台**：账号/内容/数据/系统/知识五模块，接真实 API（`/api/v1/accounts`、`/api/v1/admin/**`）。定位：独立产品后台（类企业管理系统），非产品入口。**系统→维护「行情数据导入」（2026-09-04 MD17）**：上传通达信 .zip 数据包 → 校验 + 原子解压更新 TDX 行情目录（`POST /admin/market/tdx-import`，替代手工 scp）。
 
 ---
 
