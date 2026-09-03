@@ -65,7 +65,7 @@ tags: [meta, index, rfc]
 | 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）| draft |
 | 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
 | 20260901-auth-login.md | 用户认证登录体系——根治 X-User-Id 零鉴权（账号密码 + 服务端会话，AuthFilter 覆盖 X-User-Id）| implemented |
-| 20260902-trading-memory-positioning.md | 交易模块定位重设——从「建议引擎」到「交易记忆」（用你的历史，理解你的当下；取代 20260815 定位条款）| draft |
+| 20260902-trading-memory-positioning.md | 交易模块定位重设——从「建议引擎」到「交易记忆」（用你的历史，理解你的当下；取代 20260815 定位条款）| approved |
 
 ## 过期判断
 

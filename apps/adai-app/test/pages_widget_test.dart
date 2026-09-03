@@ -1201,10 +1201,10 @@ void main() {
       expect(find.text('阿呆说 · 京东方A'), findsOneWidget);
       expect(find.textContaining('建议减到 20%'), findsOneWidget);
       expect(find.text('减仓'), findsOneWidget); // 动作徽标
-      expect(find.text('查看建议依据'), findsOneWidget);
+      expect(find.text('查看依据'), findsOneWidget);
       expect(find.text('管理持仓（去 web）'), findsOneWidget);
 
-      await tester.tap(find.text('查看建议依据'));
+      await tester.tap(find.text('查看依据'));
       await tester.pumpAndSettle();
       expect(find.text('R81'), findsOneWidget);
       expect(find.text('R66'), findsOneWidget);

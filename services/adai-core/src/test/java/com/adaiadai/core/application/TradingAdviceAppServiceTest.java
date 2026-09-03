@@ -30,7 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * TradingAdviceAppService — 持仓建议引擎测试（RFC 20260815 §0：建议是目的）。
+ * TradingAdviceAppService — 持仓解读（建议引擎机制）测试（RFC 20260902：交易记忆定位，机制已建能力）。
  * <p>
  * 覆盖：空仓、LLM 成功结构化解析、规则硬约束注入（R66-R95 在 prompt、R96 不在）、
  * LLM 失败/坏 JSON 降级基础数据不抛错、行情缺失用存储价兜底、LLM 漏票补齐。

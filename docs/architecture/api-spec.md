@@ -773,13 +773,13 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
     "buyPriorHighDays": "20",          // 买点：前高窗口
     "scoreBuyWeight": "0.5",           // 打分：买点权重
     "scoreExecWeight": "0.5",          // 打分：执行权重
-    "constraintRuleMin": "66",         // 建议硬约束：规则号下限
-    "constraintRuleMax": "95"          // 建议硬约束：规则号上限
+    "constraintRuleMin": "66",         // 纪律硬约束：规则号下限
+    "constraintRuleMax": "95"          // 纪律硬约束：规则号上限
   }
 }
 ```
 
-**语义（第三阶段）**：参数按用户隔离，驱动——止损/仓位判定（`TradingRuleEngine`）、买点信号（`BuyPointDetector`）、行为标注（`TradingLotService` 浮盈回吐/短线超期）、清仓 verdict（`SoldTradeVerdict` 阈值）、打分权重（`SoldScoreService`）、建议硬约束区间（`TradingAdviceAppService`）、知识注入（`TradingKnowledgeSource` 读 `data/{userId}/trading/knowledge.md` 用户私有，os/ 作 adai 默认）。**无规则用户 → 全部默认值 = adai 现状行为（降级不坏）**；改自己的参数 = 改自己的交易系统，不影响别人。
+**语义（第三阶段）**：参数按用户隔离，驱动——止损/仓位判定（`TradingRuleEngine`）、买点信号（`BuyPointDetector`）、行为标注（`TradingLotService` 浮盈回吐/短线超期）、清仓 verdict（`SoldTradeVerdict` 阈值）、打分权重（`SoldScoreService`）、纪律硬约束区间（`TradingAdviceAppService`）、知识注入（`TradingKnowledgeSource` 读 `data/{userId}/trading/knowledge.md` 用户私有，os/ 作 adai 默认）。**无规则用户 → 全部默认值 = adai 现状行为（降级不坏）**；改自己的参数 = 改自己的交易系统，不影响别人。
 
 ### `PUT /api/v1/trading/rules` — 更新交易规则参数
 > 需 trading 插件（403）。2026-08-30 v3.33 新增。
@@ -902,9 +902,9 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 ---
 
-### `POST /api/v1/trading/advice` — 生成持仓建议（交易模块核心：建议引擎）
+### `POST /api/v1/trading/advice` — 持仓解读（建议引擎机制，已建能力——模块定位见 RFC 20260902 交易记忆）
 
-读用户持仓 + 实时行情 + 只读 `os/trading-engine/knowledge/context/rules.md` 与 `strategy.md`，将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议（suggestion/reason/rules 必须引用规则号）。**建议是输出不是指令**，本端点不做任何执行动作。
+读用户持仓 + 实时行情 + 只读 `os/trading-engine/knowledge/context/rules.md` 与 `strategy.md`，将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票解读（suggestion/reason/rules 必须引用规则号）。**输出是解读不是指令**，本端点不做任何执行动作。
 
 **Request**：仅 `X-User-Id` header（body 空）
 

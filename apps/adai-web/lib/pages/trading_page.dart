@@ -1498,8 +1498,8 @@ class _TradingPageState extends State<TradingPage> {
       'buyPriorHighDays': '买点：前高窗口',
       'scoreBuyWeight': '打分：买点权重',
       'scoreExecWeight': '打分：执行权重',
-      'constraintRuleMin': '建议硬约束：规则号下限',
-      'constraintRuleMax': '建议硬约束：规则号上限',
+      'constraintRuleMin': '纪律硬约束：规则号下限',
+      'constraintRuleMax': '纪律硬约束：规则号上限',
     };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [

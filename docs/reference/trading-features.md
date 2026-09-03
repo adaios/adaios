@@ -11,6 +11,7 @@ depends-on:
 related:
   - feature-reference.md
   - status.md
+  - ../rfc/20260902-trading-memory-positioning.md
   - ../rfc/20260815-trading-interaction-redesign.md
   - ../rfc/20260816-trading-data-model.md
   - ../rfc/20260816-trading-data-intelligence.md
@@ -39,7 +40,7 @@ tags: [trading, plugin, reference]
 - **门控语义**：除注明外，全部交易端点需 trading 插件（未启用 → 403）；前端交易页/交易入口按 `GET /me/plugins` 显隐；行情推送等定时任务只轮询启用 trading 插件的用户（写读双侧门控）
 - **唯一例外**：`GET /trading/has-activity` 代码未做插件门控（产品路径只读，见 §8 注意点）
 
-**模块定位（RFC 20260815 用户确认）**：**不是记账工具，是建议引擎**——记录真实交易是喂数据的手段，输出买卖/持仓建议是目的。建议只输出不执行（双端均无平仓/减仓执行按钮）。
+**模块定位（RFC 20260902 用户拍板，取代 RFC 20260815 定位条款）**：trading 插件是「阿呆 memory 内核在交易域的投影」——**历史成交沉淀为对自己交易的理解**：阿呆以你的历史为镜，照见你的持仓/自选/复盘，为未来决策提供依据。**五层记忆模型**（RFC 20260902 §二）：①事件（逐笔流水）②模式（行为标注六类）③案例（完美买点库）④规则（rules.yaml 用户纪律）**⑤认知层（阿呆把前四层串成对你的理解——待建）**，①②③④ 均已建成。**建议引擎等确定性判定机制是已建能力（非模块目的）**：输出从「判决」到「对照」的认知层形态属第五层待建，本手册如实描述现状。建议只输出不执行（双端均无平仓/减仓执行按钮）。
 
 ---
 
@@ -96,11 +97,11 @@ tags: [trading, plugin, reference]
 | PUT | `/trading/sold/{symbol}/psychology` | 清仓股心理标注 | 用户复盘素材（隐私保护） |
 | GET | `/trading/sold/score` | 清仓三维打分 | 买点维度（回溯买入日 K 线：B2=85-100/B1=70-100/B1?=50/无形态=25，数据不足返回 null 不误判）+ 执行维度（盈利 90/守纪律亏损 65/违 R53 45/违 R66 15）；**选股维度恒 null → 总分实为二维 = 买点×0.5 + 执行×0.5（S7）** |
 
-### 6. 交易建议（核心定位：建议引擎）
+### 6. 持仓解读（/trading/advice，已建机制；现状=建议输出，认知层形态待建）
 
 | 方法 | 路径 | 功能 | 说明 |
 |:--|:--|:--|:--|
-| POST | `/trading/advice` | 生成持仓建议 | 读持仓+实时行情+规则文本（抽取 `constraintRuleMin~constraintRuleMax` 区间作决策硬约束——**第三阶段按用户规则，默认 66-95 = adai R66-R95 止损+仓位**）+strategy.md → LLM 逐票建议（buy/hold/reduce/clear，reason/rules 必须引用规则号）；**引擎硬判定覆盖 LLM 输出**（跌破止损位→强制 clear；超仓位且 R81 适用→buy 保守改 reduce）；LLM 失败降级基础数据永不抛错；**建议是输出不是指令** |
+| POST | `/trading/advice` | 生成持仓建议 | 读持仓+实时行情+规则文本（抽取 `constraintRuleMin~constraintRuleMax` 区间作决策硬约束——**第三阶段按用户规则，默认 66-95 = adai R66-R95 止损+仓位**）+strategy.md → LLM 逐票建议（buy/hold/reduce/clear，reason/rules 必须引用规则号）；**引擎硬判定覆盖 LLM 输出**（跌破止损位→强制 clear；超仓位且 R81 适用→buy 保守改 reduce）；LLM 失败降级基础数据永不抛错；**解读是输出不是指令** |
 
 ### 7. 复盘 / 推送 / 交易日志
 
@@ -168,7 +169,7 @@ tags: [trading, plugin, reference]
 
 | 机制 | 说明 |
 |:--|:--|
-| 规则引擎 | G-3 抽离的确定性判定层：止损 R66（现价<止损位→BREACHED；止损未设→R68 无据可判）、仓位 R81（占比>上限→OVER_WEIGHT，100 万以下适用）、rules.md 条目解析（`**R{n} 标题**` + `> 描述`）；建议引擎/时段推送/行情异动**三方共用同口径**（`TradingRuleEngine`/`DefaultTradingRuleEngine`）。**第三阶段（2026-08-30）按用户规则**：仓位上限/行为标注阈值/清仓 verdict/买点 5 参/打分权重/建议硬约束区间全部从 `data/{userId}/trading/rules.yaml` 读取（`GET/PUT /trading/rules` 可配），无规则 → 默认值 = adai 现状（P1-5 降级语义定稿） |
+| 规则引擎 | G-3 抽离的确定性判定层：止损 R66（现价<止损位→BREACHED；止损未设→R68 无据可判）、仓位 R81（占比>上限→OVER_WEIGHT，100 万以下适用）、rules.md 条目解析（`**R{n} 标题**` + `> 描述`）；建议引擎/时段推送/行情异动**三方共用同口径**（`TradingRuleEngine`/`DefaultTradingRuleEngine`）。**第三阶段（2026-08-30）按用户规则**：仓位上限/行为标注阈值/清仓 verdict/买点 5 参/打分权重/纪律硬约束区间全部从 `data/{userId}/trading/rules.yaml` 读取（`GET/PUT /trading/rules` 可配），无规则 → 默认值 = adai 现状（P1-5 降级语义定稿） |
 | 持仓占比口径 | R81 分母 = 总资产（持仓市值+现金，现金唯一真源 account.json）——修复单仓+大现金恒发 reduce（P1-交易4） |
 | 手续费模型 | 佣金万 0.854（买卖都收，四舍五入到分，无最低 5 元）/ 印花税万 5（仅卖出去尾）/ 过户费万 0.1（仅沪市 6/9 开头）；BUY 摊薄成本价含费 4 位小数；五笔券商交割实例反推确认（`CommissionCalculator`） |
 | 交易日志自动归集 | 截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（同 symbol+direction）→ 未落库待确认 → 确认后走 recordTrade；拒绝归集 unknown 占位（P1-1 已修） |
@@ -201,7 +202,7 @@ tags: [trading, plugin, reference]
 | 复盘历史 | master-detail：左日期列表 + 右 markdown 内容 | 页头日历按钮 → 点日期切换 | GET `/trading/reviews`、GET `/trading/review?date=` |
 | 历史成交 Tab | **RFC 20260823：常驻第 5 Tab（取代页头交易历史 Dialog）**——日期范围查询（默认近 30 天，DatePicker 改日期自动重载）；按日分组列表（日期+笔数，未标注日期置底）；**列（2026-08-25 用户拍板）：源文件原生在前——方向/时间 HH:mm/代码/名称/数量/价格/成交金额/发生金额（买入为负扣款）/成交编号；系统计算的「费用」=｜发生金额−成交金额｜单独放最后区分开**；止损/买点/原因三列已删（历史成交源文件无此数据）；区间统计行「共 N 笔 · 买 X 卖 Y」；旧数据无时间/费用/成交编号显示 '—'；导入后 inline 展示结果（新增/回填/跳过/非交易 + 对账行） | 进 Tab 自动加载 + 手动刷新（无定时轮询）；行首「导入历史成交」 | GET `/trading/trades?from=&to=`、POST `/trading/trades/import` |
 | 历史成交导入 | **独立入口（RFC 20260823：只认通达信历史成交导出格式）**——粘贴或选文件，`isTdxHistoryExport` 识别；非历史成交格式人话拒绝不静默落零；幂等 + 缺失成交时间回填；**RFC 20260825：响应含 `syncMode` + `summary`**——sync 模式展示「今日操作总结」卡片（买 X 笔 ¥Y · 卖 X 笔 · 新增/扣减批次 + 行为标注列表，亏损加仓/追高等醒目色）；append 模式提示「已按历史补录处理（只补流水，持仓未动）」 | Tab 内「导入历史成交」按钮 → 粘贴/选文件 → 导入 | POST `/trading/imports/save`、POST `/trading/trades/import` |
-| 推送设置 | 8 个推送开关（时段节奏/买点/止损/接近止损/大跌/放飞/破成本/行情条）；缺失 key 默认开；仅请求成功更新本地状态 | 页头铃铛按钮 → 拨动 Switch | GET/PUT `/trading/push-settings[/{type}]` |
+| 推送设置 | 8 个推送开关（时段节奏/买点/止损/接近止损/大跌/放飞/破成本/行情条）；缺失 key 默认开；仅请求成功更新本地状态。**RFC 20260902 §四：给熟人开 trading 时按用户只开风控类（stop-loss/near-stop-loss/loss/gain/break-cost/market），建议类（session 时段逐票、buy-point 到买点）对熟人默认关——per-user 开关零开发；本人（owner adai）保留全开（记忆需要事件积累，推送是记录触发点）** | 页头铃铛按钮 → 拨动 Switch | GET/PUT `/trading/push-settings[/{type}]` |
 | **案例 Tab（第 7 Tab，2026-08-30 第四阶段环 1-2）** | 完美买点案例列表（名称/日期/买点类型/+5d 后验/特征摘要）+「标注案例」按钮（代码+日期+类型+描述 → POST）+ 详情弹窗（**K 线图还原**：主图蜡烛 + MA10 白线 + MA60 黄线 + 买点日标记，副图成交量 + KDJ/MACD——指标前端从 OHLCV 重算，口径对齐后端 CaseFeatureExtractor）+ 特征 chips + 后验 chips + 删除确认 | GET/POST `/trading/cases`、GET/DELETE `/trading/cases/{caseId}?kline=true` |
 | **规则 Tab（第 6 Tab，2026-08-30 第三阶段）** | 我的交易规则参数展示（16 参数中文标签：仓位上限/默认止损/浮盈回吐/短线超期/清仓阈值/买点 5 参/打分权重/硬约束区间）+ 编辑弹窗（表单化 PUT）+ 加载失败降级（显示默认值） | 点「规则」Tab → 行内编辑 → 保存 | GET `/trading/rules`、PUT `/trading/rules` |
 
@@ -274,6 +275,7 @@ tags: [trading, plugin, reference]
 10. **推送/流水写入均为 best-effort**：失败只告警不阻塞交易落库；流水文件损坏单月跳过；account.json 写失败已升 error 告警（B3-4）
 11. **双锁体系（C6，2026-08-23 注释如实化）**：account.json 写路径叠加 application `tradeLock`（业务 RMW）+ repository per-user 锁（文件原子写）——均为**单实例内**进程锁（多实例同写 data/ 即失效，当前单实例）；跨文件一致性（positions/account/流水）无原子手段，收盘更新与交易并发窗口为已知取舍
 12. **推送链路（2026-08-23 修复）**：推送标题契约断裂（P1-推送1）/删除持久化（P1-推送2）/app 设置入口（P1-推送3）均已修——MarketPushEvent 透传 title、`DELETE /trading/pushes/{id}`、app 交易页铃铛；徽章/确认按钮双端回归
+13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**（现状仅 `sync_tdx_data.sh`，SSH 无 UI；趋势 = 降频/半自动而非加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
 
 ## 九、已知缺陷（详见 docs/review/REVIEW.md）
 

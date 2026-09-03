@@ -38,19 +38,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * TradingAdviceAppService — 持仓建议应用服务（交易模块核心定位：建议引擎）。
+ * TradingAdviceAppService — 持仓解读应用服务（建议引擎机制，已建能力——模块定位见 RFC 20260902 交易记忆）。
  * <p>
- * 编排建议流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与
+ * 编排解读流程：读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与
  * {@code strategy.md} → 把止损规则（R66-R80）与仓位规则（R81-R95）作为 LLM 决策硬约束注入
- * prompt → LLM 结构化生成逐票建议（suggestion / reason / rules 必须引用规则号）。
+ * prompt → LLM 结构化生成逐票解读（suggestion / reason / rules 必须引用规则号）。
  * <p>
- * 规则匹配是硬约束：建议输出必须引用规则号；本服务不做任何"执行"动作，建议是输出不是指令。
+ * 规则匹配是硬约束：解读输出必须引用规则号；本服务不做任何"执行"动作，输出是解读不是指令
+ * （「照见你」认知层形态属第五层待建，本服务输出现状如实保留）。
  * <p>
  * G-3（2026-08-16）能力抽离：确定性规则判定（止损 R66 / 仓位 R81 / 规则解析）已抽至
  * {@link TradingRuleEngine}——本服务只编排 prompt 注入与 LLM 输出，判定口径归引擎（交易插件 jar 的能力层）。
  * <p>
  * 兜底：LLM 失败/输出不可解析时降级返回基础数据（symbol / name / position_percent 后端计算，
- * 无建议字段），不抛错——建议引擎永远返回 200，诚实优于编造。
+ * 无解读字段），不抛错——解读永远返回 200，诚实优于编造。
  * <p>
  * os/trading-engine 只读：adai-core 对该目录只读（唯一例外是 promote 写 99-inbox/）。
  */

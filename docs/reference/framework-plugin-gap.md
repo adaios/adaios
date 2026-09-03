@@ -31,7 +31,7 @@ tags: [reference, plugin, framework, gap]
 | S-3 | trading-engine 引擎化 | git mv 改名 + definition 重写 + 构建/依赖分离（`build-engine.md`）| ✅ |
 | S-4 | 行情数据源独立接口 | `MarketDataSource` 接口 + `TencentMarketDataSource` 实现（归 trading 插件域，G-1 拨正）| ✅ |
 | S-5 | 数据分层（用户提供 vs 可查询）| 止损位/买点/入场日期用户填，现价/K线查询注入（RFC `20260816-trading-data-model`）| ✅ |
-| S-6 | 建议引擎（非记账）| `/trading/advice` 硬约束 R66-R95 + 止损硬判定，无执行按钮 | ✅ |
+| S-6 | 建议引擎机制（已建能力，非模块定位——定位见 RFC 20260902 交易记忆）| `/trading/advice` 硬约束 R66-R95 + 止损硬判定，无执行按钮 | ✅ |
 | S-7 | 大模型 = 基础设施 | `infrastructure/ai` 归属正确 | ✅ |
 | S-8 | 无第三视角 | boundaries B1 原则级 + product P4 检查项 | ✅ |
 

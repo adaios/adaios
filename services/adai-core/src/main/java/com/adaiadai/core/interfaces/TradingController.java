@@ -878,13 +878,13 @@ public class TradingController {
     }
 
     /**
-     * 生成持仓建议（交易模块核心定位：建议引擎）。
+     * 持仓解读（建议引擎机制，已建能力——模块定位见 RFC 20260902 交易记忆）。
      * <p>
      * 读用户持仓 + 实时行情 + 只读 {@code os/trading-engine/knowledge/context/rules.md} 与 {@code strategy.md}，
-     * 将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票建议
-     * （suggestion / reason / rules 必须引用规则号）。建议是输出不是指令，本端点不做任何执行动作。
+     * 将止损规则（R66-R80）与仓位规则（R81-R95）作为决策硬约束注入 LLM，结构化生成逐票解读
+     * （suggestion / reason / rules 必须引用规则号）。输出是解读不是指令，本端点不做任何执行动作。
      * <p>
-     * 兜底：LLM 失败时降级返回基础数据（symbol / name / position_percent，无建议字段），不抛错。
+     * 兜底：LLM 失败时降级返回基础数据（symbol / name / position_percent，无解读字段），不抛错。
      */
     @PostMapping("/advice")
     public ResponseEntity<?> generateAdvice(

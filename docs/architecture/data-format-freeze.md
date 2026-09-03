@@ -414,8 +414,8 @@ params:
   buyPriorHighDays: 20            # 买点：前高窗口
   scoreBuyWeight: 0.5             # 打分：买点权重
   scoreExecWeight: 0.5            # 打分：执行权重
-  constraintRuleMin: 66           # 建议硬约束：规则号下限
-  constraintRuleMax: 95           # 建议硬约束：规则号上限
+  constraintRuleMin: 66           # 纪律硬约束：规则号下限
+  constraintRuleMax: 95           # 纪律硬约束：规则号上限
 ```
 
 ### 2.18 全局行情数据 `data/market/`（2026-08-30/31 新增，非用户层）

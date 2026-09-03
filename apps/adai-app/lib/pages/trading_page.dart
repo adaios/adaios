@@ -7,10 +7,12 @@ import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../widgets/input_bar.dart' show PickedImage;
 
-/// TradingPage — 建议引擎，不是记账工具（RFC 20260815）。
+/// TradingPage — 交易插件手机端（模块定位：交易记忆，RFC 20260902，取代 RFC 20260815 建议引擎定位）。
 ///
-/// 记录真实交易是手段（喂数据），建议是目的：阿呆结合 trading domain 规则
-/// 给买/卖/持仓建议。本页没有「平仓/减仓」执行按钮——建议是输出，不是操作。
+/// 历史成交沉淀为对自己交易的理解：记录真实交易（手段），阿呆以你的历史照见你的持仓
+/// （另一视角，为未来决策提供依据）。建议引擎等确定性判定机制是已建能力（非模块目的）；
+/// 「照见你」认知层对话形态（第五层）待建，本页交互/弹层输出如实保留现状。
+/// 本页没有「平仓/减仓」执行按钮——输出是解读，不是操作。
 ///
 /// 记录区两条通道共用同一确认/写入链路：
 /// - 通道 A：一句话（NL）→ POST /trading/trades/parse → 确认卡回显（AI 错误在此拦截）
@@ -1036,7 +1038,7 @@ class _TradingPageState extends State<TradingPage> {
             Expanded(child: _buyPointField()),
           ]),
           const SizedBox(height: 4),
-          Text('止损/买点只对买入生效；清空止损 = 不设（建议引擎按 R68 降级判定）',
+          Text('止损/买点只对买入生效；清空止损 = 不设（止损缺失时按 R68 无据可判）',
               style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ],
         const SizedBox(height: 12),
@@ -1454,7 +1456,7 @@ class _TradingPageState extends State<TradingPage> {
         const SizedBox(height: 8),
         Text('暂无持仓', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
         const SizedBox(height: 6),
-        Text('在上方记录第一笔交易，阿呆就能开始给你建议',
+        Text('在上方记录第一笔交易，阿呆就能开始懂你的交易',
             style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         const SizedBox(height: 10),
         GestureDetector(
@@ -1827,7 +1829,7 @@ class _AdviceSheetState extends State<_AdviceSheet> {
         const SizedBox(height: 4),
         GestureDetector(
           onTap: () => setState(() => _showRules = !_showRules),
-          child: Text(_showRules ? '收起建议依据' : '查看建议依据',
+          child: Text(_showRules ? '收起依据' : '查看依据',
               style: const TextStyle(fontSize: 12, color: AppColors.darkGreen)),
         ),
         if (_showRules) ...[
@@ -1876,7 +1878,7 @@ class _AdviceSheetState extends State<_AdviceSheet> {
           ),
         ]),
         const SizedBox(height: 6),
-        Text(a.advice.isEmpty ? '阿呆暂时没有具体建议。' : a.advice,
+        Text(a.advice.isEmpty ? '阿呆暂时没有特别要说的。' : a.advice,
             style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.darkGrey2)),
       ]),
     );
