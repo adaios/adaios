@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 // 测试 Fake 存储 — 实现各 store 抽象接口，返回固定数据。
 // 供 widget 测试注入页面，避免测试依赖真实后端。
@@ -317,6 +318,11 @@ class FakeSystemStore implements SystemStore {
   @override
   Future<MaintenanceResult> cleanData() async =>
       const MaintenanceResult(success: true, message: '清理完成：删除 3 条重复记录');
+
+  @override
+  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename) async =>
+      const MaintenanceResult(
+          success: true, message: '行情数据导入完成：成功 9367 个 .day（沪 4922 · 深 4445 · 共 9367）');
 
   @override
   Future<List<ConflictItem>> loadConflicts() async => List.of(_conflicts);

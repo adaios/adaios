@@ -223,6 +223,16 @@
 | **前置** | MD15 |
 | **来源** | RFC `20260802-adai-admin.md` §3.3 |
 
+#### MD17：行情数据包导入（TDX .day 压缩包上传）（✅ 2026-09-04 晚间自主批实现）
+
+| 字段 | 值 |
+|:-----|:----|
+| **状态** | ✅ 已实现（2026-09-04 晚间自主批，见 change-log）——后端 `TdxDataPackageImporter`（zip 流式收集 `(sh\|sz)\d{6}.day` 防 zip-slip、逐文件解析校验、`.tmp`+原子 move 覆盖）+ `POST /api/v1/admin/market/tdx-import`（multipart，AuthFilter role=admin）+ adai-admin「维护」页签「行情数据导入」卡片（file_picker 选 zip → 长超时上传 → 结果摘要）；api-spec v3.42；`application.yml` multipart 上限改 env 可覆盖（生产配 `ADAI_MAX_FILE_SIZE`）。**未部署**（外向动作待用户确认） |
+| **描述** | admin 控制台提供「行情数据包导入」入口：上传通达信 .day 压缩包（zip，根下 `sh/lday/*.day` + `sz/lday/*.day`）→ 后端校验包结构 + .day 可解析 → 原子解压更新 TDX 行情目录（`adai.market.tdx-path`，生产 `/opt/adaios/data/market/tdx`）→ 返回结果（解压/更新文件数、失败清单）。替代「Windows 打包 → scp → 服务器手工解压」的运维流程 |
+| **形态** | 后端新增 admin 维护端点（`/api/v1/admin/**`，登录 + role=admin）+ adai-admin 数据页/系统页上传入口；zip 解析在服务端 |
+| **前置** | TDX 本地行情源已上线（TdxFileKlineSource + 前复权，2026-08-30）；生产 tdx 目录结构已就绪（sh/sz/lday 共 ~1.9 万 .day） |
+| **来源** | 2026-09-04 用户需求：Windows 通达信行情数据同步生产（当前手工 scp，2026-09-04 现场验证过目录结构与覆盖流程） |
+
 ---
 
 ## 已完成任务
@@ -317,6 +327,8 @@ v1.0.0（adai-admin + 多账号）：
 | 125 剩余 | README 默认模板 / hover 无手型 / 圆角 token 散落 | 多处 | P3 |
 | 263 | 99-inbox 预存项：`7家公司IPO...json` 与 `-gemini.json` MD5 重复；`AI 图形知识工程.md`/`outline.md` 缺尾部换行（数据卫生，下次 os 治理批处理）| `os/trading-engine/99-inbox/` | P3 |
 | FL-04/06 | 审查跟进机制：REVIEW 未修项无强制处理（weekly-audit.sh 已覆盖自动审查触发；人工修复仍靠自觉，2026-08-23 归口自 audits/2026-08-16-ai-engineering-workflow.md）| `ai-engineering/process/` | 流程改进 |
+| 2026-09-04 交易-批次止损 | **按批次止损编辑闭环（用户补充需求 2026-09-04，先登记待排期）**：每个买入批次独立设/改止损位且事后可单独调。现状缺口——止损编辑仅持仓级 `PUT /positions/{symbol}`（一只股票一个止损位，写 positions.md）；非初始批次的止损锁死在买入流水（`TradingLotService.derive` 取 BUY 流水 stopLossPrice），事后改不了，持仓级改止损也不传导非初始批 → 批次预警与持仓止损判定可能打架。已具备：批次止损推导 + 破批单独推送（signature 带 lotId）+ 批次明细展示。待做：批次级止损设/改端点（如 `PUT /trading/lots/{lotId}`）+ Web/App 批次弹窗编辑入口 + 推送/复盘跟随 | `TradingLotService` / `TradingController` / web·app 批次弹窗 | P2（v1.0.0 后批次）|
+| 2026-09-04 交易-资金曲线 | **资金/权益曲线图（用户确认登记 2026-09-04）**：对标调研已标 ❌ 无（trading-plugin-architecture.md §4.2 权益曲线/回撤分析/权益曲线图全无，§4.3 列 P0 必备「缺任一即残废」），代码零实现。数据原料已齐：逐笔流水（trades/yyyy-MM.json）+ 批次回合 realizedPnl + account.json 账户快照 + 转账流水——「有料没做」。待做：资产/净值曲线（口径待讨论：总资产 vs 净值=资产/本金 vs 累计收益率；周期粒度；最大回撤展示），web 交易页资金区块挂图，后端曲线数据端点（按日聚合 account/快照 + 流水回放） | web trading 页资金区块 + 后端聚合端点 | P2（v1.0.0 后批次）|
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 

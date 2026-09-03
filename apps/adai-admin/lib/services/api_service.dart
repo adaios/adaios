@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -34,11 +35,27 @@ class ApiService {
     this.userId = 'default',
     this.token,
     this.onUnauthorized,
-  })  : _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
-        baseUrl = baseUrl ?? ApiConfig.baseUrl;
+    Duration uploadTimeout = const Duration(minutes: 10),
+  }) {
+    _raw = client ?? http.Client();
+    // 注入 client（测试）直接使用；默认包 15s 超时（REVIEW P1-W6 防无限转圈）
+    _client = client != null
+        ? _raw
+        : _TimeoutClient(_raw, const Duration(seconds: 15));
+    // 大文件上传专用（行情数据包 .zip）：长超时，同一底层 client 复用
+    _upload = _TimeoutClient(_raw, uploadTimeout);
+    this.baseUrl = baseUrl ?? ApiConfig.baseUrl;
+  }
 
-  final http.Client _client;
-  final String baseUrl;
+  late final http.Client _raw;
+
+  /// 常规请求 client（15s 超时；注入 client 时原样）。
+  late final http.Client _client;
+
+  /// 大文件上传 client（默认 10 分钟超时，MD17 行情数据包）。
+  late final http.Client _upload;
+
+  late final String baseUrl;
   final String userId;
 
   /// 登录会话 token（null = 未登录）。
@@ -417,6 +434,23 @@ class ApiService {
     return AdminFileContentDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
+  /// 上传通达信日线 .zip 数据包 → 后端校验 + 原子解压更新 TDX 行情目录。
+  /// 返回 `{status, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`。
+  /// 数据包通常 >5MB、服务端解析耗时——走长超时 [_upload] client；
+  /// multipart 手动带 Bearer（MultipartRequest 不自动带请求头）。
+  Future<Map<String, dynamic>> importTdxData(Uint8List zipBytes, String filename) async {
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$baseUrl/api/v1/admin/market/tdx-import'))
+      ..headers['Authorization'] = (token == null || token!.isEmpty)
+          ? ''
+          : 'Bearer $token';
+    req.files.add(http.MultipartFile.fromBytes('file', zipBytes, filename: filename));
+    final streamed = await _upload.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    return jsonDecode(_body(resp)) as Map<String, dynamic>;
+  }
+
   /// 关闭底层 HTTP client（测试/生命周期收尾）。
-  void close() => _client.close();
+  void close() => _raw.close();
 }

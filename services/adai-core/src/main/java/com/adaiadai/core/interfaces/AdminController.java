@@ -6,6 +6,7 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLog;
 import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLogger;
+import com.adaiadai.core.infrastructure.market.TdxDataPackageImporter;
 import com.adaiadai.core.infrastructure.storage.CardMigrationService;
 import com.adaiadai.core.infrastructure.storage.CardMigrationService.CleanupResult;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -14,8 +15,10 @@ import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -76,6 +79,7 @@ public class AdminController {
     private final RecordRetryService recordRetryService;
     private final CardMigrationService cardMigrationService;
     private final TradingAppService tradingAppService;
+    private final TdxDataPackageImporter tdxDataPackageImporter;
 
     public AdminController(@Value("${adai.storage.base-path:../../data}") String dataBasePath,
                            @Value("${adai.os-base-path:../../os}") String osBasePath,
@@ -85,7 +89,8 @@ public class AdminController {
                            RecordFlowAppService recordFlowAppService,
                            RecordRetryService recordRetryService,
                            CardMigrationService cardMigrationService,
-                           TradingAppService tradingAppService) {
+                           TradingAppService tradingAppService,
+                           TdxDataPackageImporter tdxDataPackageImporter) {
         this.dataRoot = Paths.get(dataBasePath).toAbsolutePath().normalize();
         this.osRoot = Paths.get(osBasePath).toAbsolutePath().normalize();
         this.aiInteractionLogger = aiInteractionLogger;
@@ -95,6 +100,7 @@ public class AdminController {
         this.recordRetryService = recordRetryService;
         this.cardMigrationService = cardMigrationService;
         this.tradingAppService = tradingAppService;
+        this.tdxDataPackageImporter = tdxDataPackageImporter;
     }
 
     // ── data/ 文件树浏览 ──
@@ -361,6 +367,48 @@ public class AdminController {
                 "deletedFiles", result.deletedFiles(),
                 "skippedFiles", result.skippedFiles()
         ));
+    }
+
+    /**
+     * 行情数据包导入（MD17，2026-09-04 登记）：上传通达信日线 .zip 数据包。
+     * <p>
+     * 校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘到 TDX 目录
+     * （{@code adai.market.tdx-path}）→ 返回导入统计。替代「Windows 打包 → scp →
+     * 服务器手工解压」的运维流程（scripts/sync_tdx_data.sh）。
+     * <p>
+     * POST /api/v1/admin/market/tdx-import（multipart file）→ 200 / 400
+     * <pre>
+     * {
+     *   "imported": 9367, "skipped": 3, "failed": ["sz000001.day（无法解析…）"],
+     *   "markets": {"sh": 4922, "sz": 4445}, "dayFilesAfter": 9367
+     * }
+     * </pre>
+     * 注意：数据包通常 >5MB（全 A 盘后 .day），生产需配置 {@code ADAI_MAX_FILE_SIZE}
+     * / {@code ADAI_MAX_REQUEST_SIZE}（见 application.yml multipart 注释）。
+     */
+    @PostMapping(value = "/market/tdx-import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Object> importTdxPackage(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请选择要上传的 .zip 数据包"));
+        }
+        String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "未命名.zip";
+        try {
+            byte[] bytes = file.getBytes();
+            TdxDataPackageImporter.ImportResult result =
+                    tdxDataPackageImporter.importZip(bytes, filename);
+            return ResponseEntity.ok(Map.of(
+                    "status", "ok",
+                    "filename", filename,
+                    "imported", result.imported(),
+                    "skipped", result.skipped(),
+                    "failed", result.failed(),
+                    "markets", result.markets(),
+                    "dayFilesAfter", result.dayFilesAfter()
+            ));
+        } catch (Exception e) {
+            log.warn("行情数据包导入失败 | file={} | {}", filename, e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /**

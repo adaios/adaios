@@ -6,6 +6,7 @@ import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLog;
 import com.adaiadai.core.infrastructure.ai.interaction.AiInteractionLogger;
+import com.adaiadai.core.infrastructure.market.TdxDataPackageImporter;
 import com.adaiadai.core.infrastructure.storage.CardMigrationService;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -25,6 +27,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
@@ -39,6 +42,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -62,6 +66,9 @@ class AdminControllerTest {
 
     private InMemoryFileStorage storage;
 
+    /** 行情数据包导入 mock（MD17；默认空实现，需 stub 的用例直接引用本字段）。 */
+    private final TdxDataPackageImporter tdxImporter = mock(TdxDataPackageImporter.class);
+
     /** 维护端点默认 mock（避免业务测试因 mock 默认值 NPE）。 */
     private AdminController adminController(MemoryService memoryService,
                                             RecordRepository recordRepository,
@@ -71,7 +78,8 @@ class AdminControllerTest {
                                             TradingAppService trading) {
         AiInteractionLogger aiLogger = new AiInteractionLogger(storage, 30);
         return new AdminController(dataDir.toString(), osDir.toString(), aiLogger,
-                memoryService, recordRepository, flow, retry, migration, trading);
+                memoryService, recordRepository, flow, retry, migration, trading,
+                tdxImporter);
     }
 
     private AdminController adminController() {
@@ -442,5 +450,43 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conflicts.length()").value(greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.conflicts[0].rule").value(containsString("R96")));
+    }
+
+    // ── 行情数据包导入（MD17，2026-09-04）──
+
+    @Test
+    void importTdxPackage_success_returnsStats() throws Exception {
+        TdxDataPackageImporter.ImportResult result = new TdxDataPackageImporter.ImportResult(
+                9367, 2, List.of(), Map.of("sh", 4922, "sz", 4445), 9367);
+        when(tdxImporter.importZip(any(byte[].class), any())).thenReturn(result);
+
+        mvc.perform(multipart("/api/v1/admin/market/tdx-import")
+                        .file(new MockMultipartFile("file", "tdx.zip",
+                                "application/zip", new byte[]{1, 2, 3})))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.imported").value(9367))
+                .andExpect(jsonPath("$.markets.sh").value(4922))
+                .andExpect(jsonPath("$.markets.sz").value(4445))
+                .andExpect(jsonPath("$.dayFilesAfter").value(9367))
+                .andExpect(jsonPath("$.failed", hasSize(0)));
+    }
+
+    @Test
+    void importTdxPackage_importerRejects_returns400HumanMessage() throws Exception {
+        when(tdxImporter.importZip(any(byte[].class), any()))
+                .thenThrow(new IllegalArgumentException("数据包内没有任何 .day 文件"));
+
+        mvc.perform(multipart("/api/v1/admin/market/tdx-import")
+                        .file(new MockMultipartFile("file", "bad.zip",
+                                "application/zip", new byte[]{1})))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("没有任何 .day")));
+    }
+
+    @Test
+    void importTdxPackage_noFile_returns400() throws Exception {
+        mvc.perform(multipart("/api/v1/admin/market/tdx-import"))
+                .andExpect(status().isBadRequest());
     }
 }

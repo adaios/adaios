@@ -1,6 +1,7 @@
 // ApiStore 映射单元测试 — DTO → 页面模型（注入 MockClient 的 ApiService）。
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -15,6 +16,9 @@ const _jsonHeaders = {'content-type': 'application/json; charset=utf-8'};
 
 http.Response _json(Object body, [int status = 200]) =>
     http.Response(jsonEncode(body), status, headers: _jsonHeaders);
+
+http.Response _error(String message) =>
+    http.Response(jsonEncode({'error': message}), 400, headers: _jsonHeaders);
 
 ApiService _api(MockClient client, {String userId = 'default'}) =>
     ApiService(client: client, userId: userId);
@@ -223,6 +227,61 @@ void main() {
 
       expect(result.success, isFalse);
       expect(result.message, contains('成功 3 / 失败 1'));
+    });
+
+    test('importTdxPackage 上传 .zip → 摘要消息（MD17，multipart /admin/market/tdx-import）', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/admin/market/tdx-import');
+        expect(request.headers['content-type'], startsWith('multipart/form-data'));
+        expect(request.body, contains('sh_sz.zip'));
+        return _json({
+          'status': 'ok',
+          'imported': 9367,
+          'skipped': 2,
+          'failed': <String>[],
+          'markets': {'sh': 4922, 'sz': 4445},
+          'dayFilesAfter': 9367,
+        });
+      });
+      final store = SystemApiStore(api: _api(client), userId: 'default');
+      final result =
+          await store.importTdxPackage(Uint8List.fromList([1, 2, 3]), 'sh_sz.zip');
+
+      expect(result.success, isTrue);
+      expect(result.message, contains('成功 9367 个 .day'));
+      expect(result.message, contains('沪 4922 · 深 4445'));
+    });
+
+    test('importTdxPackage 部分失败 → 摘要含失败清单（MD17）', () async {
+      final client = MockClient((request) async {
+        return _json({
+          'status': 'ok',
+          'imported': 9366,
+          'skipped': 0,
+          'failed': ['sz000001.day（无法解析出任何 K 线）'],
+          'markets': {'sh': 4922, 'sz': 4444},
+          'dayFilesAfter': 9366,
+        });
+      });
+      final store = SystemApiStore(api: _api(client), userId: 'default');
+      final result =
+          await store.importTdxPackage(Uint8List.fromList([1]), 'bad.zip');
+
+      expect(result.success, isFalse);
+      expect(result.message, contains('失败 1 个'));
+      expect(result.message, contains('sz000001.day'));
+    });
+
+    test('importTdxPackage 后端拒绝 → 失败消息透出人话（MD17）', () async {
+      final client =
+          MockClient((request) async => _error('数据包内没有任何 .day 文件（需含 sh/sz + 6 位代码的 .day）'));
+      final store = SystemApiStore(api: _api(client), userId: 'default');
+      final result =
+          await store.importTdxPackage(Uint8List.fromList([1]), 'empty.zip');
+
+      expect(result.success, isFalse);
+      expect(result.message, contains('没有任何 .day'));
     });
   });
 

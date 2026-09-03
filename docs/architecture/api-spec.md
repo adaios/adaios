@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.41 | 最后更新：2026-09-04**
+**文档版本：v3.42 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-04 | v3.42 | **行情数据包导入（MD17，task-log 2026-09-04 登记）**：新增 `POST /admin/market/tdx-import`（multipart `file`，登录 + role=admin）——上传通达信日线 .zip 数据包 → 后端校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘 TDX 行情目录（`adai.market.tdx-path`）→ 返回 `{status, filename, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`；空包/无 .day/非 zip → 400 人话。数据包 >5MB：生产需配 `ADAI_MAX_FILE_SIZE`/`ADAI_MAX_REQUEST_SIZE` |
 | 2026-09-04 | v3.41 | **活跃市值区间开关（用户手动判定，2026-09-03 对话「指南针活跃市值=一切的前提」确立）**：新增 `GET /trading/market-stage`（读用户手动判定的活跃市值多空区间：`{"exists":true,"stage":"bear","updatedAt":"..."}`，无记录 → exists=false）+ `PUT /trading/market-stage`（body `{"stage":"bull"|"bear"}`，两档，非法 400；落 `data/{userId}/trading/market-stage.json`，per-user 锁原子写）；时段推送（早盘/午间/尾盘）的【择时状态】改三级读取——**用户手动判定优先 → current.md → 「择时状态未知」**（用户判定后不再被 current.md 的 OAMV 规则推断覆盖）|
 | 2026-08-31 | v3.35 | **双止损位（trading-risk-plan，响应字段扩展，无新端点）**：`GET /trading/positions` 响应新增 `computedStopLossPrice`（系统计算止损：R=本金×1%，距离=min(R÷市值,5%)，动态算不落盘）+ `effectiveStopLoss`（生效止损=max(人工,计算)）；R66 判定/接近止损预警/建议引擎统一改用生效止损 |
 | 2026-08-30 | v3.34 | **流式问答（P2-用户2 批 2）**：新增 `POST /records/ask-stream`（SSE 流式问答：`text` 增量事件 + `meta` 定稿事件 + `[DONE]`；后端内降级——模型无增量输出时回退同步 understand 一次；同卡同问 5 分钟去重直返既有回答；UTF-8 字节透传防中文乱码）+ 双端（adai-app/adai-web）`SseClient` 流式渲染（90ms 节流草稿、error 事件人话透出、流开始前失败自动降级旧同步端点） |
@@ -1822,3 +1823,29 @@ chat 模式（全屏）
 - **关联**：`recordId`/`cardId`/`source` 由调用点在 AI 调用前通过 `AiTraceContext` 挂载（无关联时靠 `scene`+`prompt` 追溯）
 - **落盘失败不影响业务**：日志 best-effort，AI 调用结果正常返回
 - **REVIEW #210 隐私治理（2026-08-12）**：日志保留 `adai.ai-log.retention-days`（默认 30 天）——写入时惰性清理过期文件；`date` 早于保留期返回 **400**（已清理不可查，防扫任意历史明文）；`size` 上限 500 防单次拉全量
+
+### `POST /api/v1/admin/market/tdx-import` — 行情数据包导入（MD17，2026-09-04）
+
+**Body** — multipart/form-data，字段 `file`（通达信盘后数据 .zip 压缩包，可含 `sh/lday/*.day` + `sz/lday/*.day`，兼容 `vipdoc/` 嵌套布局）
+
+**说明**
+
+- 后端流式解析：只按条目 basename 收集 `(sh|sz)\d{6}.day`（天然防 zip-slip），单条上限 32MB / 单包上限 30000 文件；
+- 每个 .day 校验可解析（`TdxFileKlineSource.parse` 出 ≥1 根 K 线），坏文件列入 `failed` 不落盘、不阻断其余；
+- 校验后按 `sh*.day → {tdx}/sh/lday/`、`sz*.day → {tdx}/sz/lday/` 分流，`.tmp` + 原子 move 覆盖（读取方 mtime 缓存自动失效，无需重启）；
+- 空包 / 无任何 .day / 全部无法解析 / 非 zip → **400** `{"error": "人话原因"}`；
+- **上传大小**：数据包通常 >5MB，生产需配置 `ADAI_MAX_FILE_SIZE`（如 512MB）/ `ADAI_MAX_REQUEST_SIZE`（如 520MB），见 `application.yml` multipart 注释。
+
+**Response** — 导入统计
+
+```json
+{
+  "status": "ok",
+  "filename": "sh_sz.zip",
+  "imported": 9367,
+  "skipped": 2,
+  "failed": [],
+  "markets": { "sh": 4922, "sz": 4445 },
+  "dayFilesAfter": 9367
+}
+```

@@ -130,6 +130,9 @@ class _AdminAppState extends State<AdminApp> {
                   token: _token,
                   account: _account,
                   onLogout: _handleLogout,
+                  // 2026-09-04：补传 onUnauthorized——此前漏传导致控制台内任意 401
+                  // （token 被重置/过期）不触发回登录页，页面卡在 401 错误上。
+                  onUnauthorized: _handleUnauthorized,
                 ),
     );
   }

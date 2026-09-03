@@ -277,7 +277,7 @@ tags: [trading, plugin, reference]
 10. **推送/流水写入均为 best-effort**：失败只告警不阻塞交易落库；流水文件损坏单月跳过；account.json 写失败已升 error 告警（B3-4）
 11. **双锁体系（C6，2026-08-23 注释如实化）**：account.json 写路径叠加 application `tradeLock`（业务 RMW）+ repository per-user 锁（文件原子写）——均为**单实例内**进程锁（多实例同写 data/ 即失效，当前单实例）；跨文件一致性（positions/account/流水）无原子手段，收盘更新与交易并发窗口为已知取舍
 12. **推送链路（2026-08-23 修复）**：推送标题契约断裂（P1-推送1）/删除持久化（P1-推送2）/app 设置入口（P1-推送3）均已修——MarketPushEvent 透传 title、`DELETE /trading/pushes/{id}`、app 交易页铃铛；徽章/确认按钮双端回归
-13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**（现状仅 `sync_tdx_data.sh`，SSH 无 UI；趋势 = 降频/半自动而非加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
+13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**——2026-09-04 起 admin「系统 → 维护」页签可上传通达信 .zip 数据包（MD17：`POST /admin/market/tdx-import`，校验 + 原子解压，替代手工 scp）；`scripts/sync_tdx_data.sh` 保留作命令行途径（趋势 = 降频/半自动而非产品端加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
 
 ## 九、已知缺陷（详见 docs/review/REVIEW.md）
 

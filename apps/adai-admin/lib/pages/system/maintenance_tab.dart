@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../models/system_models.dart';
 import '../../services/system_api_store.dart';
@@ -5,7 +6,8 @@ import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/snack.dart';
 
-/// 维护操作页签 — 记忆重建 / 重补 / 清理（真实后端 /admin/memory/rebuild、/admin/records/retry、/admin/cards/cleanup）。
+/// 维护操作页签 — 记忆重建 / 重补 / 清理 / 行情数据导入（真实后端 /admin/memory/rebuild、
+/// /admin/records/retry、/admin/cards/cleanup、/admin/market/tdx-import）。
 class MaintenanceTab extends StatefulWidget {
   const MaintenanceTab({super.key, required this.store});
 
@@ -70,8 +72,49 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
           color: AppColors.darkOrange,
           onTap: () => _run('clean', _store.cleanData),
         ),
+        const SizedBox(height: 10),
+        _buildAction(
+          id: 'tdx-import',
+          icon: Icons.cloud_upload_outlined,
+          title: '行情数据导入',
+          description: '上传通达信盘后 .zip 数据包，更新本地 K 线（POST /admin/market/tdx-import）',
+          color: AppColors.darkYellow,
+          onTap: _pickAndImport,
+        ),
       ],
     );
+  }
+
+  /// 选通达信数据包（.zip）→ 上传导入（MD17）。结果 snackbar 摘要。
+  Future<void> _pickAndImport() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.single;
+      final bytes = f.bytes;
+      if (!mounted) return;
+      if (bytes == null || bytes.isEmpty) {
+        showAppSnack(context, '读取文件失败（未拿到内容）', AppColors.darkOrange);
+        return;
+      }
+      setState(() => _busy = 'tdx-import');
+      final r = await _store.importTdxPackage(bytes, f.name);
+      if (!mounted) return;
+      setState(() => _busy = null);
+      showAppSnack(
+        context,
+        r.message,
+        r.success ? AppColors.darkGreen : AppColors.darkOrange,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = null);
+      showAppSnack(context, '行情数据导入失败：$e', AppColors.darkOrange);
+    }
   }
 
   Widget _buildAction({

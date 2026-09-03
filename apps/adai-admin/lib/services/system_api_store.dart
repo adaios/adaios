@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/api_dto.dart';
 import '../models/system_models.dart';
 import 'api_exception.dart';
@@ -30,6 +32,9 @@ abstract class SystemStore {
 
   /// 数据清理（cards/cleanup）。
   Future<MaintenanceResult> cleanData();
+
+  /// 行情数据包导入（MD17）：上传通达信 .zip 日线数据包更新 TDX 行情目录。
+  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename);
 
   /// 加载知识反哺冲突项。
   Future<List<ConflictItem>> loadConflicts();
@@ -145,6 +150,29 @@ class SystemApiStore implements SystemStore {
       );
     } on ApiException catch (e) {
       return MaintenanceResult(success: false, message: '清理失败：${e.message}');
+    }
+  }
+
+  @override
+  Future<MaintenanceResult> importTdxPackage(
+      Uint8List zipBytes, String filename) async {
+    try {
+      final r = await _api.importTdxData(zipBytes, filename);
+      final imported = (r['imported'] as num?)?.toInt() ?? 0;
+      final failed = (r['failed'] as List?) ?? const [];
+      final markets = (r['markets'] as Map?) ?? const {};
+      final detail = failed.isEmpty
+          ? ''
+          : '，失败 ${failed.length} 个（${failed.take(3).join('；')}'
+              '${failed.length > 3 ? '…' : ''}）';
+      return MaintenanceResult(
+        success: failed.isEmpty,
+        message: '行情数据导入完成：成功 $imported 个 .day'
+            '（沪 ${markets['sh'] ?? 0} · 深 ${markets['sz'] ?? 0}'
+            ' · 共 ${r['dayFilesAfter'] ?? 0}）$detail',
+      );
+    } on ApiException catch (e) {
+      return MaintenanceResult(success: false, message: '行情数据导入失败：${e.message}');
     }
   }
 

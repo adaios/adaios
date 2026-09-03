@@ -8,11 +8,13 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
-  # ── 多模态图片上传（L4）──
+  # ── 多模态图片上传（L4）+ admin 行情数据包导入（MD17）──
+  # 图片单张 <5MB 默认够；admin 上传通达信 .day zip（全 A 盘后 >5MB）需生产
+  # .env 放大：ADAI_MAX_FILE_SIZE=512MB / ADAI_MAX_REQUEST_SIZE=520MB。
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 6MB
+      max-file-size: ${ADAI_MAX_FILE_SIZE:5MB}
+      max-request-size: ${ADAI_MAX_REQUEST_SIZE:6MB}
 
   # ── Phase 2: 文件索引需要数据库时启用 ──
   # datasource:
