@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.43 | 最后更新：2026-09-04**
+**文档版本：v3.44 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-04 | v3.44 | **买点三重校验（REVIEW P1-交易9/20 出表，2026-09-04 晚间自主批 III）**：`GET /buy-points` 判定语义按课程校准 + 防连板误报——①B1「回调一半」几何改**课程口径**：回撤占波段（窗口最高 high − 最低 low）≥ 回调比例（默认 0.5，即 close ≤ (high+low)/2）；②B2 放量阈值默认 **1.5→2.0**（倍量柱，rules.yaml/adai 规则包同步）；③B2 加三重防护：KDJ.J 拐头向上 + **J 连续 ≥90 高位钝化排除**（首日拉起放行）+ 距窗口低点涨幅 >30% 不追 + 近 2 日连板（≥9.8%）不推；④响应命中项附 `dataDate`（判定 K 线最后日期）；15:10 定时推送要求 `dataDate=当日` 才推（防滞后一日信号冒充今日，楚天龙实锤） |
 | 2026-09-04 | v3.43 | **按批次止损编辑闭环（决策文档 P1 方案 A，2026-09-04 晚间自主批 II）**：新增 `PUT /trading/lots/{lotId}/stop-loss`（body `{"stopLossPrice": 12.34}`，>0 且 ≤4 位小数，lotId 不存在 404——给某个买入批次单独设/改止损，落 `data/{userId}/trading/lot-stoploss.json` 覆盖层，不污染流水）+ `DELETE /trading/lots/{lotId}/stop-loss`（清除覆盖回退流水止损/默认 −7%，幂等 404）；`GET /trading/lots` 的 `stopLossPrice` 语义更新——批次推导后合并覆盖层（覆盖 > 流水止损 > 默认 −7%），推送/行为标注/复盘自动跟随 |
 | 2026-09-04 | v3.42 | **行情数据包导入（MD17，task-log 2026-09-04 登记）**：新增 `POST /admin/market/tdx-import`（multipart `file`，登录 + role=admin）——上传通达信日线 .zip 数据包 → 后端校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘 TDX 行情目录（`adai.market.tdx-path`）→ 返回 `{status, filename, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`；空包/无 .day/非 zip → 400 人话。数据包 >5MB：生产需配 `ADAI_MAX_FILE_SIZE`/`ADAI_MAX_REQUEST_SIZE` |
 | 2026-09-04 | v3.41 | **活跃市值区间开关（用户手动判定，2026-09-03 对话「指南针活跃市值=一切的前提」确立）**：新增 `GET /trading/market-stage`（读用户手动判定的活跃市值多空区间：`{"exists":true,"stage":"bear","updatedAt":"..."}`，无记录 → exists=false）+ `PUT /trading/market-stage`（body `{"stage":"bull"|"bear"}`，两档，非法 400；落 `data/{userId}/trading/market-stage.json`，per-user 锁原子写）；时段推送（早盘/午间/尾盘）的【择时状态】改三级读取——**用户手动判定优先 → current.md → 「择时状态未知」**（用户判定后不再被 current.md 的 OAMV 规则推断覆盖）|
@@ -688,14 +689,16 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 **响应**（P1-交易10 修正 2026-08-17：score 是 0-100 分，signals 是 detector 实际文案）：
 ```json
 [{"symbol":"000725","name":"京东方A","buyPoint":"B1","score":87,
-  "signals":["回调 52%","缩量 0.6x","KDJ.J=12"],
-  "caseMatches":[{"caseId":"2026-08-03_000725","buyDate":"2026-08-03","buyType":"B1","similarityPercent":92.5}]}]
+  "signals":["回撤 52%（到涨幅一半位）","缩量 0.6x","KDJ.J=12"],
+  "caseMatches":[{"caseId":"2026-08-03_000725","buyDate":"2026-08-03","buyType":"B1","similarityPercent":92.5}],
+  "dataDate":"2026-09-04"}]
 ```
 - **caseMatches（环 4 二期，2026-08-30 可选）**：开关 `adai.trading.case.scan-match`（**默认 false**）开启时，每只自选股附「与完美买点案例库相似度 Top 3」参考（经验增强，不覆盖规则判定）；默认关 → 字段为空/缺失，行为与现状完全一致；`buyPoint="case"` 表示规则未命中但案例相似度高（参考信号，**15:10 定时推送会跳过该类型**，仅 web 可见）
+- **dataDate（v3.44）**：判定所用 K 线最后一根日期（YYYY-MM-DD）——**15:10 定时推送只推 dataDate=当日 的信号**（防昨日 K 冒充今日）；web 手动查询不受限（信号列可据此提示数据日）
 
-- **B1 回调买点（默认参数）**：距前高回调 ≥ 50% + 缩量（3 日均量 < 5 日均量 × 0.7）+ KDJ.J < 13（2026-08-17 用户确认，P2-6）
-- **B2 突破买点（默认参数）**：放量（5 日均量 × 1.5）+ 收盘破前 20 日高点
-- **参数按用户规则**（2026-08-30 v3.33，交易插件规则层）：回调 0.5 / 缩量 0.7 / KDJ 13 / 放量 1.5 / 前高 20 日是**默认值**——从 `data/{userId}/trading/rules.yaml` 的 `buyPullbackPct/buyShrinkRatio/buyKdjLow/buyVolumeSurge/buyPriorHighDays` 读取（`PUT /trading/rules` 可配，无规则 → 默认值）；B1/B2 命名语义随 adai 规则包（通用原语：回调/缩量/KDJ/放量/突破）；规格详见 `os/trading-engine/engine/buy-point-rules.md`
+- **B1 回调买点（2026-09-04 课程口径校准，P1-交易9 出表）**：回撤到波段**涨幅一半位置**——回撤占波段比例（窗口最高 high − 窗口最低 low 的区间）≥ 回调比例 + 缩量（3 日均量 < 5 日均量 × 缩量阈值）+ KDJ.J < 低位阈值；几何等价 close ≤ (high+low)/2（替代旧「距前高回撤 ≥50%」腰斩口径）
+- **B2 突破买点（2026-09-04 三重校验，P1-交易20 出表）**：放量（当日量 > 5 日均量 × 放量倍数，默认 **2.0** = 课程「倍量柱」）+ 收盘破前高 + **KDJ.J 拐头向上 + J 连续 ≥90 高位钝化排除（首日拉起放行）+ 距窗口低点涨幅 ≤30%（防追高）+ 非近 2 日连板（单日 ≥9.8%）**
+- **参数按用户规则**（2026-08-30 v3.33，交易插件规则层）：回调 0.5 / 缩量 0.7 / KDJ 13 / 放量 2.0 / 前高 20 日是**默认值**——从 `data/{userId}/trading/rules.yaml` 的 `buyPullbackPct/buyShrinkRatio/buyKdjLow/buyVolumeSurge/buyPriorHighDays` 读取（`PUT /trading/rules` 可配，无规则 → 默认值）；B1/B2 命名语义随 adai 规则包（通用原语：回调/缩量/KDJ/放量/突破）；规格详见 `os/trading-engine/engine/buy-point-rules.md`
 - 收盘 15:10 定时任务自动扫描 + 命中推送「到买点了」（`TradingSessionPushService.buyPointScan`）；web 自选 Tab 显示信号列；**B1?（部分满足候选）不推送**（P2-交易7）
 - 需 trading 插件（403）。
 

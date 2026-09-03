@@ -364,6 +364,14 @@ public class TradingSessionPushService {
                     log.info("自选买点候选 B1? 不推送 | symbol={}", h.symbol());
                     continue;
                 }
+                // P1-交易20 P4（2026-09-04 三重校验）：信号新鲜度——判定基于的 K 线非当日
+                // （15:10 行情未更新/停牌无成交）→ 不推「到买点」（楚天龙五连板用前一日 K 冒充今日实锤），
+                // 次日盘后数据到位扫描自然命中；web 手动 GET /buy-points 不受限（展示带 dataDate）
+                if (h.dataDate() == null || !h.dataDate().equals(java.time.LocalDate.now().toString())) {
+                    log.info("自选买点命中但数据非当日（dataDate={}）不推 | symbol={} | {}",
+                            h.dataDate(), h.symbol(), h.buyPoint());
+                    continue;
+                }
                 String content = h.buyPoint().startsWith("B1")
                         ? "📌 " + h.name() + "（" + h.symbol() + "）到 B1 买点区了：" + String.join("、", h.signals())
                         + "——按纪律设好止损再进（R68）"

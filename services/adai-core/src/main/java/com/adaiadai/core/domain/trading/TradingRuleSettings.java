@@ -29,7 +29,7 @@ import java.math.BigDecimal;
  * @param buyPullbackPct        买点信号：回调幅度（B1 低吸回调 ≥ 该比例，默认 0.5）
  * @param buyShrinkRatio        买点信号：缩量阈值（3日均量 &lt; 5日均量 × 该值，默认 0.7）
  * @param buyKdjLow             买点信号：KDJ.J 低位阈值（默认 13）
- * @param buyVolumeSurge        买点信号：放量倍数（B2 放量突破，默认 1.5）
+ * @param buyVolumeSurge        买点信号：放量倍数（B2 放量突破，默认 2.0 = 课程「倍量柱」，2026-09-04 用户拍板）
  * @param buyPriorHighDays      买点信号：前高窗口天数（默认 20）
  * @param scoreBuyWeight        清仓打分：买点维度权重（默认 0.5）
  * @param scoreExecWeight       清仓打分：执行维度权重（默认 0.5）
@@ -67,7 +67,7 @@ public record TradingRuleSettings(
                 0.5,
                 0.7,
                 13,
-                1.5,
+                2.0,
                 20,
                 0.5,
                 0.5,
@@ -117,10 +117,11 @@ public record TradingRuleSettings(
             buyKdjLow = 13;
         }
         if (buyKdjLow > 50) buyKdjLow = 13;
+        // 放量倍数：默认 2.0（倍量柱，2026-09-04 拍板）；非法/过松（<1.1x）回落默认
         if (!Double.isFinite(buyVolumeSurge) || buyVolumeSurge <= 1) {
-            buyVolumeSurge = 1.5;
+            buyVolumeSurge = 2.0;
         }
-        if (buyVolumeSurge < 1.1) buyVolumeSurge = 1.5;
+        if (buyVolumeSurge < 1.1) buyVolumeSurge = 2.0;
         if (buyPriorHighDays <= 0) {
             buyPriorHighDays = 20;
         }

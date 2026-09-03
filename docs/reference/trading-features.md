@@ -86,7 +86,7 @@ tags: [trading, plugin, reference]
 | GET | `/trading/watchlist` | 自选股列表 | 通达信形态/指标提示为买点判定原料 |
 | POST | `/trading/watchlist/import` | 自选股导入 | 通达信自选导出，按 symbol upsert |
 | DELETE | `/trading/watchlist/{symbol}` | 删除自选股 | 不存在 404 |
-| GET | `/trading/buy-points` | 自选股买点信号 | 并发拉 K 线 → B1=距前高回撤≥50%+缩量(3日均量<5日均量×0.7)+KDJ.J<13；B2=放量(>5日均量×1.5)+收盘破前 20 日高点；B1? 部分满足候选；**判定是提示不是指令**；**第三阶段（2026-08-30）**：五参（回调/缩量/KDJ/放量/前高窗口）从 `data/{userId}/trading/rules.yaml` 读取（`buyPullbackPct`/`buyShrinkRatio`/`buyKdjLow`/`buyVolumeSurge`/`buyPriorHighDays`），无规则用默认（0.5/0.7/13/1.5/20）|
+| GET | `/trading/buy-points` | 自选股买点信号 | 并发拉 K 线 → B1=回撤到波段**涨幅一半位**（回撤占波段 high−low ≥50% ⇔ close≤(high+low)/2，2026-09-04 课程校准）+缩量(3日均量<5日均量×0.7)+KDJ.J<13；B2=放量(**>5日均量×2.0** 倍量柱)+收盘破前 N 日高点+**三重防护（KDJ.J 拐头向上/J 连续 ≥90 高位钝化排除/距窗口低点涨幅 ≤30%/非近 2 日连板 ≥9.8%）**；B1? 部分满足候选；**判定是提示不是指令**；**第三阶段（2026-08-30）**：五参（回调/缩量/KDJ/放量/前高窗口）从 `data/{userId}/trading/rules.yaml` 读取（`buyPullbackPct`/`buyShrinkRatio`/`buyKdjLow`/`buyVolumeSurge`/`buyPriorHighDays`），无规则用默认（0.5/0.7/13/**2.0**/20）；**命中项附 dataDate，15:10 定时推送只推 dataDate=当日（P1-交易20 新鲜度，2026-09-04）** |
 
 ### 5. 清仓复盘
 
@@ -268,7 +268,7 @@ tags: [trading, plugin, reference]
 1. **`GET /trading/has-activity` 无插件门控**：代码未调用 `requireTradingPlugin`（其余 41 个交易端点均有）——**唯一例外（2026-08-23 api-spec 已显式标注）**，产品路径只读（app 复盘横幅）
 2. **`TradingContextContributor` 实际未生效（半成品/死代码）**：`supports()` 恒 false、`enrich()` 恒空串；交易系统状态上下文实际由 `MarketContextContributor`（globalContext）+ `TradingKnowledgeSource` 提供
 3. **「三维打分」实为二维**（REVIEW S7）：选股维度恒 null，总分 = 买点×0.5 + 执行×0.5（权重按用户规则，默认 0.5/0.5）
-4. **~~C2 买点 5 参数构造器硬编码~~ 已修复（2026-08-30 第三阶段 Step 5）**：买点 5 参（回调 0.5/缩量 0.7/KDJ.J<13/放量 1.5/前高 20 日）从 `data/{userId}/trading/rules.yaml` 读取（无规则用默认）；规格 `os/trading-engine/engine/buy-point-rules.md` 已按代码事实重写（2026-08-23，P2-交易17 虚标纠偏）
+4. **~~C2 买点 5 参数构造器硬编码~~ 已修复（2026-08-30 第三阶段 Step 5 + 2026-09-04 买点三重校验批）**：买点 5 参（回调 0.5/缩量 0.7/KDJ.J<13/放量 **2.0**（倍量柱，2026-09-04 拍板）/前高 20 日）从 `data/{userId}/trading/rules.yaml` 读取（无规则用默认）；B1 几何 = 课程「涨幅一半位」口径（回撤占波段 ≥50%）、B2 三重防护 + dataDate 新鲜度（详见 engine/buy-point-rules.md）
 5. **Position 无 targetPrice 落盘字段**：PUT `/positions/{symbol}` 只支持 role/止损位；前端「编辑目标价」无效功能（P3）
 6. **recordTrade 现金推导依赖已有账户快照**：`update(...).orElse(null)`——首次交易前未导入资金（无 account.json）时现金/市值不更新
 7. **行情异动推送新旧两条链路并存**：`MarketAlertService` 直接走 PushChannel；另有 `FeedPushChannel` 落盘 `trading/pushes/{date}.json` 供 Feed 展示

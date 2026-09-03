@@ -79,9 +79,12 @@ public class WatchlistBuyPointService {
         }
     }
 
-    /** 单只自选买点判定结果（caseMatches 为案例相似度参考，二期开关默认关 → 空）。 */
+    /** 单只自选买点判定结果（caseMatches 为案例相似度参考，二期开关默认关 → 空；
+     *  dataDate = 判定所用 K 线最后一根日期（YYYY-MM-DD，空 = 无数据）——信号新鲜度用，
+     *  15:10 推送侧要求 dataDate = 当日才推（P1-交易20 P4，2026-09-04 三重校验）。 */
     public record WatchBuyPoint(String symbol, String name, String buyPoint,
-                                double score, List<String> signals, List<CaseMatchLite> caseMatches) {}
+                                double score, List<String> signals,
+                                List<CaseMatchLite> caseMatches, String dataDate) {}
 
     /** 案例相似度参考（轻量：参照案例 id + 相似度 + 后验前验）。 */
     public record CaseMatchLite(String caseId, String buyDate, String buyType,
@@ -123,14 +126,17 @@ public class WatchlistBuyPointService {
                     List<Candle> candles = klineService.kline(item.symbol(), 60);
                     BuyPointDetector.BuyPointResult result = detector.detect(candles);
                     List<CaseMatchLite> matches = matchCases(candles, cases);
+                    // 信号新鲜度（P1-交易20 P4）：判定所用 K 线最后一根的日期
+                    String dataDate = (candles == null || candles.isEmpty())
+                            ? null : candles.get(candles.size() - 1).date().toString();
                     if (result.hit()) {
                         return new WatchBuyPoint(item.symbol(), item.name(),
-                                result.buyPoint(), result.score(), result.signals(), matches);
+                                result.buyPoint(), result.score(), result.signals(), matches, dataDate);
                     }
                     // 未命中规则但案例相似度高 → 仍返回（带 empty buyPoint），供前端提示「形态接近完美买点」
                     if (!matches.isEmpty()) {
                         return new WatchBuyPoint(item.symbol(), item.name(),
-                                "case", 0, List.of(), matches);
+                                "case", 0, List.of(), matches, dataDate);
                     }
                     return null;
                 } catch (Exception e) {

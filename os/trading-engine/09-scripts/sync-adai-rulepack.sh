@@ -70,7 +70,7 @@ if [[ -f "$RULES_YAML" ]]; then
   check_param buyPullbackPct 0.5
   check_param buyShrinkRatio 0.7
   check_param buyKdjLow 13
-  check_param buyVolumeSurge 1.5
+  check_param buyVolumeSurge 2.0
   check_param buyPriorHighDays 20
   check_param constraintRuleMin 66
   check_param constraintRuleMax 95
