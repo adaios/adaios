@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * AccountController 单元测试。
- * 验证账号 CRUD + 内置管理员 adai 保护。
+ * 验证账号 CRUD + 内置管理员 admin 保护。
  */
 class AccountControllerTest {
 
@@ -44,7 +44,7 @@ class AccountControllerTest {
 
         mvcWith(repo).perform(get("/api/v1/accounts"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].userId").value("adai"))
+                .andExpect(jsonPath("$[0].userId").value("admin"))
                 .andExpect(jsonPath("$[0].role").value("admin"))
                 .andExpect(jsonPath("$[0].enabled").value(true));
     }
@@ -79,11 +79,11 @@ class AccountControllerTest {
     @Test
     void createAccount_duplicate_400() throws Exception {
         var repo = mock(AccountRepository.class);
-        when(repo.findById("adai")).thenReturn(Optional.of(seedAdmin()));
+        when(repo.findById("admin")).thenReturn(Optional.of(seedAdmin()));
 
         mvcWith(repo).perform(post("/api/v1/accounts")
                         .contentType("application/json")
-                        .content("{\"userId\":\"adai\",\"role\":\"user\"}"))
+                        .content("{\"userId\":\"admin\",\"role\":\"user\"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -112,9 +112,9 @@ class AccountControllerTest {
     @Test
     void patchAccount_disableSeedAdmin_400() throws Exception {
         var repo = mock(AccountRepository.class);
-        when(repo.findById("adai")).thenReturn(Optional.of(seedAdmin()));
+        when(repo.findById("admin")).thenReturn(Optional.of(seedAdmin()));
 
-        mvcWith(repo).perform(patch("/api/v1/accounts/adai")
+        mvcWith(repo).perform(patch("/api/v1/accounts/admin")
                         .contentType("application/json")
                         .content("{\"enabled\":false}"))
                 .andExpect(status().isBadRequest());
@@ -123,9 +123,9 @@ class AccountControllerTest {
     @Test
     void patchAccount_demoteSeedAdmin_400() throws Exception {
         var repo = mock(AccountRepository.class);
-        when(repo.findById("adai")).thenReturn(Optional.of(seedAdmin()));
+        when(repo.findById("admin")).thenReturn(Optional.of(seedAdmin()));
 
-        mvcWith(repo).perform(patch("/api/v1/accounts/adai")
+        mvcWith(repo).perform(patch("/api/v1/accounts/admin")
                         .contentType("application/json")
                         .content("{\"role\":\"user\"}"))
                 .andExpect(status().isBadRequest());
@@ -160,7 +160,7 @@ class AccountControllerTest {
     void deleteAccount_seedAdmin_400() throws Exception {
         var repo = mock(AccountRepository.class);
 
-        mvcWith(repo).perform(delete("/api/v1/accounts/adai"))
+        mvcWith(repo).perform(delete("/api/v1/accounts/admin"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -280,7 +280,7 @@ class AccountControllerTest {
         mvcWith(repo).perform(get("/api/v1/accounts/available"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0]").value("adai"))
+                .andExpect(jsonPath("$[0]").value("admin"))
                 .andExpect(jsonPath("$[1]").value("bob"));
     }
 
@@ -292,7 +292,7 @@ class AccountControllerTest {
 
         mvcWith(repo).perform(get("/api/v1/accounts/available"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0]").value("adai"))
+                .andExpect(jsonPath("$[0]").value("admin"))
                 .andExpect(jsonPath("$[0].role").doesNotExist())
                 .andExpect(jsonPath("$[0].enabled").doesNotExist())
                 .andExpect(jsonPath("$[0].createdAt").doesNotExist());
@@ -340,7 +340,7 @@ class AccountControllerTest {
     void mergePlugins_seedAdmin_400() throws Exception {
         var repo = mock(AccountRepository.class);
 
-        mvcWith(repo).perform(patch("/api/v1/accounts/adai/plugins")
+        mvcWith(repo).perform(patch("/api/v1/accounts/admin/plugins")
                         .contentType("application/json")
                         .content("{\"add\":[\"trading\"]}"))
                 .andExpect(status().isBadRequest());
@@ -369,12 +369,12 @@ class AccountControllerTest {
         // bcrypt 哈希绝不落 API 响应（#178）——账号文件里有哈希，列表响应必须无该字段
         var repo = mock(AccountRepository.class);
         when(repo.findAll()).thenReturn(List.of(new Account(
-                "adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+                "admin", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
                 List.of("trading"), "$2a$10$abc")));
 
         mvcWith(repo).perform(get("/api/v1/accounts"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].userId").value("adai"))
+                .andExpect(jsonPath("$[0].userId").value("admin"))
                 .andExpect(jsonPath("$[0].role").value("admin"))
                 .andExpect(jsonPath("$[0].plugins[0]").value("trading"))
                 .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
@@ -474,14 +474,14 @@ class AccountControllerTest {
     void patchAccount_seedAdmin_passwordResetAllowed() throws Exception {
         // 内置管理员保护只限 禁用/降级/删/插件；重置密码允许（admin 可重置自己/他人）
         var repo = mock(AccountRepository.class);
-        when(repo.findById("adai")).thenReturn(Optional.of(new Account(
-                "adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
+        when(repo.findById("admin")).thenReturn(Optional.of(new Account(
+                "admin", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
                 List.of(), "$2a$10$old")));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         var auth = mock(AuthService.class);
         when(auth.encodePassword("newpass123")).thenReturn("$2a$10$new");
 
-        mvcWith(repo, auth).perform(patch("/api/v1/accounts/adai")
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/admin")
                         .contentType("application/json")
                         .content("{\"password\":\"newpass123\"}"))
                 .andExpect(status().isOk());

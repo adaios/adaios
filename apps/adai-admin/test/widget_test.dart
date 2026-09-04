@@ -6,20 +6,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:adai_admin/pages/accounts/accounts_page.dart';
+import 'package:adai_admin/services/account_api_store.dart';
 
 import 'fakes.dart';
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
+  /// 放大视口渲染全部账号卡（4 卡超出默认 600px 高 → ListView 懒构建找不到尾部卡），
+  /// 并注入可选 store / 当前登录账号。
+  Future<void> _pumpAccounts(WidgetTester tester,
+      {AccountStore? store, String currentUserId = ''}) async {
+    tester.view.physicalSize = const Size(1400, 2800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_wrap(AccountsPage(
+        store: store ?? FakeAccountStore(), currentUserId: currentUserId)));
+    await tester.pumpAndSettle();
+  }
   testWidgets('管理端渲染账号列表（预置账号 + 保护标记）',
       (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
-    // 预置账号：adai / alice / bob
-    expect(find.text('adai'), findsOneWidget);
+    // 预置账号：admin / alice / adai / bob
+    // admin 账号名与角色徽章文本同为 'admin'（徽章 'admin' + userId 行 'admin'）→ findsWidgets
+    expect(find.text('admin'), findsWidgets);
     expect(find.text('alice'), findsOneWidget);
+    expect(find.text('adai'), findsOneWidget);
     expect(find.text('bob'), findsOneWidget);
 
     // 内置管理员保护标记
@@ -28,8 +41,7 @@ void main() {
   });
 
   testWidgets('新建账号后列表实时反映', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
     // 展开新建表单
     await tester.tap(find.text('+ 新建'));
@@ -47,8 +59,7 @@ void main() {
   });
 
   testWidgets('重复 userId 建号被拒绝', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
     await tester.tap(find.text('+ 新建'));
     await tester.pumpAndSettle();
@@ -62,11 +73,11 @@ void main() {
   });
 
   testWidgets('禁用普通账号后状态更新为「禁用」', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
-    // 内置 adai 无启用开关（受保护）；alice / bob 各有 1 个启用开关 + 2 个插件开关
-    expect(find.byKey(const ValueKey('enabled-adai')), findsNothing);
+    // 内置 admin 无启用开关（受保护）；adai / alice / bob 各有 1 个启用开关 + 2 个插件开关
+    expect(find.byKey(const ValueKey('enabled-admin')), findsNothing);
+    expect(find.byKey(const ValueKey('enabled-adai')), findsOneWidget);
     expect(find.byKey(const ValueKey('enabled-alice')), findsOneWidget);
     expect(find.byKey(const ValueKey('enabled-bob')), findsOneWidget);
     expect(find.byKey(const ValueKey('plugin-alice-trading')), findsOneWidget);
@@ -76,14 +87,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('enabled-alice')));
     await tester.pumpAndSettle();
 
-    // 现在应有 2 个「禁用」标签（alice 禁用 + bob 本就禁用）
+    // 现在应有 2 个「禁用」标签（alice 禁用 + bob 本就禁用）；admin / adai 仍启用
     expect(find.text('禁用'), findsNWidgets(2));
-    expect(find.text('启用'), findsOneWidget); // adai 仍启用
+    expect(find.text('启用'), findsNWidgets(2));
   });
 
   testWidgets('插件开关：给 alice 开 trading → 状态反映（RFC 20260814）', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
     // alice 初始无插件
     final switchWidget = tester.widget<Switch>(
@@ -105,8 +115,7 @@ void main() {
   });
 
   testWidgets('删除账号需确认，取消则保留', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
     // 删除 alice（第一个删除按钮）
     await tester.tap(find.byIcon(Icons.delete_outline).first);
@@ -132,8 +141,7 @@ void main() {
     // 可控延迟 store：第一个 setPlugins 挂起，模拟两个 PATCH 在飞的竞态窗口
     final gate = Completer<void>();
     final store = GatedAccountStore(gate: gate);
-    await tester.pumpWidget(_wrap(AccountsPage(store: store)));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester, store: store);
 
     // 快速连点 alice 的 trading + project 两个开关
     await tester.tap(find.byKey(const ValueKey('plugin-alice-trading')));
@@ -163,10 +171,10 @@ void main() {
   });
 
   testWidgets('REVIEW #178：账号卡提供重置密码，两次一致提交成功', (WidgetTester tester) async {
-    await tester.pumpWidget(_wrap(AccountsPage(store: FakeAccountStore())));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester);
 
-    // 每个账号卡都有重置密码按钮（adai / alice / bob）
+    // 每个账号卡都有重置密码按钮（admin / adai / alice）
+    expect(find.byKey(const ValueKey('reset-pwd-admin')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-adai')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-alice')), findsOneWidget);
 
@@ -189,12 +197,11 @@ void main() {
   });
 
   testWidgets('REVIEW #178：当前登录账号自身隐藏重置密码（引导顶栏改密）', (WidgetTester tester) async {
-    await tester.pumpWidget(
-        _wrap(AccountsPage(store: FakeAccountStore(), currentUserId: 'adai')));
-    await tester.pumpAndSettle();
+    await _pumpAccounts(tester, currentUserId: 'admin');
 
-    // adai 是当前登录账号 → 无重置按钮；alice 等他人账号仍可重置
-    expect(find.byKey(const ValueKey('reset-pwd-adai')), findsNothing);
+    // admin 是当前登录账号 → 无重置按钮；adai / alice 等他人账号仍可重置
+    expect(find.byKey(const ValueKey('reset-pwd-admin')), findsNothing);
+    expect(find.byKey(const ValueKey('reset-pwd-adai')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-alice')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-bob')), findsOneWidget);
   });

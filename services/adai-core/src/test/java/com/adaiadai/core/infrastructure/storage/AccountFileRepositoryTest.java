@@ -44,7 +44,7 @@ class AccountFileRepositoryTest {
     void init_migratesExistingSeedAdmin_missingPluginsGetsDefaults() throws Exception {
         // RFC 20260814 迁移：老 accounts.json 的 seed admin 无 plugins 字段 → 启动补默认（幂等）
         String legacy = """
-                [ { "userId" : "adai", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02" } ]
+                [ { "userId" : "admin", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02" } ]
                 """;
         Files.createDirectories(tempDir.resolve("accounts"));
         Files.writeString(tempDir.resolve("accounts/accounts.json"), legacy, StandardCharsets.UTF_8);
@@ -83,7 +83,7 @@ class AccountFileRepositoryTest {
         // REVIEW P1-4：「删了又出现」K28 镜像——PATCH 显式清空（"plugins":[]）后，启动迁移不得再补默认。
         // 区分「老文件无字段」与「字段存在但为空」：只迁移前者。
         String json = """
-                [ { "userId" : "adai", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02", "plugins" : [ ] } ]
+                [ { "userId" : "admin", "role" : "admin", "enabled" : true, "createdAt" : "2026-08-02", "plugins" : [ ] } ]
                 """;
         Files.createDirectories(tempDir.resolve("accounts"));
         Files.writeString(tempDir.resolve("accounts/accounts.json"), json, StandardCharsets.UTF_8);

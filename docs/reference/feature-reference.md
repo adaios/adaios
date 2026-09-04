@@ -1025,7 +1025,7 @@ POST /api/v1/records/retry
 ## 15. 多模态 / 多账号 / adai-admin
 
 - **多模态图片记录（L4）**：`POST/GET /api/v1/records/media`（multipart，图片 → GLM-4.1V-Thinking-Flash VLM 理解 → 文本化进现有闭环：Timeline/Memory/Search 零改动）。图片落 `data/{userId}/records/YYYY/MM/media/`。详见 RFC `20260802-multimodal-image-glm`。
-- **多账号（v1.0.0 预留）**：全链路 `X-User-Id` header → `data/{userId}/` 分层。账号由 adai-admin 管理（seed `adai`），无注册/口令（鉴权后补，REVIEW #127）。
+- **多账号（v1.0.0 预留）**：全链路 `X-User-Id` header → `data/{userId}/` 分层。账号由 adai-admin 管理（seed `admin`，2026-09-04 由 adai 迁移——admin=后台管理专用、adai=产品主账号），无注册/口令（鉴权后补，REVIEW #127）。
 - **adai-admin 产品后台**：账号/内容/数据/系统/知识五模块，接真实 API（`/api/v1/accounts`、`/api/v1/admin/**`）。定位：独立产品后台（类企业管理系统），非产品入口。**系统→维护「行情数据导入」（2026-09-04 MD17）**：上传通达信 .zip 数据包 → 校验 + 原子解压更新 TDX 行情目录（`POST /admin/market/tdx-import`，替代手工 scp）。
 
 ---
@@ -1035,7 +1035,7 @@ POST /api/v1/records/retry
 > 详见 RFC `20260814-domain-plugin-model` + `docs/reference/task-plugin-model.md`。
 
 - **插件定义**：插件 = adai 拥有并受控开放的 Domain（`trading` / `project`）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
-- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `adai` = `[trading, project]`（owner）。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
+- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `admin` 预置 = `[trading, project]`（新环境兜底）；产品主账号 `adai` = `[trading, project]`。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
 - **查询**：`GET /api/v1/me/plugins`（需登录，会话账号 = 当前用户启用插件 → 前端模块显隐）。
 - **门控面**（读写侧对称，REVIEW S-3/S-4）：
   - 读侧：ContextEngine 知识源/贡献者按 `enabledPlugins` 过滤注入；Feed 行情条/异动推送仅 trading 插件用户；promote 反哺仅 trading 插件用户（否则 403）

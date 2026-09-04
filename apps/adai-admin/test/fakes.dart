@@ -21,8 +21,9 @@ class FakeAccountStore implements AccountStore {
   FakeAccountStore([List<Account>? seed]) {
     _accounts = seed ??
         [
+          // 2026-09-04 账号矩阵：admin=内置管理员（受保护）；adai=产品主账号（user）；alice/bob=普通账号
           Account(
-            userId: 'adai',
+            userId: 'admin',
             role: 'admin',
             enabled: true,
             createdAt: DateTime(2026, 7, 1),
@@ -32,6 +33,12 @@ class FakeAccountStore implements AccountStore {
             role: 'user',
             enabled: true,
             createdAt: DateTime(2026, 7, 12),
+          ),
+          Account(
+            userId: 'adai',
+            role: 'user',
+            enabled: true,
+            createdAt: DateTime(2026, 7, 1),
           ),
           Account(
             userId: 'bob',

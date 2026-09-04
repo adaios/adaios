@@ -33,7 +33,7 @@ import java.util.Optional;
  * <p>
  * 账号是系统级数据（不属于任何 {@code data/{userId}/} 用户层），直接读写
  * {@code data/accounts/accounts.json}，不走 FileStorage 的 userId 分层。
- * 首次启动自动预置 seed 管理员 {@code adai}（防止系统无管理员）。
+ * 首次启动自动预置 seed 管理员 {@code admin}（防止系统无管理员）。
  */
 @Repository
 public class AccountFileRepository implements AccountRepository {
@@ -61,7 +61,7 @@ public class AccountFileRepository implements AccountRepository {
     @PostConstruct
     public void init() {
         if (!Files.exists(accountsPath())) {
-            log.info("账号文件不存在，预置 seed 管理员 adai（plugins={}）", SEED_OWNER_PLUGINS);
+            log.info("账号文件不存在，预置 seed 管理员 {}（plugins={}）", Account.SEED_ADMIN_ID, SEED_OWNER_PLUGINS);
             List<Account> seed = new ArrayList<>();
             seed.add(new Account(Account.SEED_ADMIN_ID, Account.ROLE_ADMIN, true,
                     LocalDate.of(2026, 8, 2), SEED_OWNER_PLUGINS));
@@ -83,7 +83,7 @@ public class AccountFileRepository implements AccountRepository {
                 normalized.add(new Account(a.userId(), a.role(), a.enabled(), a.createdAt(),
                         SEED_OWNER_PLUGINS, a.passwordHash()));
                 changed = true;
-                log.info("迁移：seed admin adai 老文件无 plugins 字段 → 补默认 {}", SEED_OWNER_PLUGINS);
+                log.info("迁移：seed admin {} 老文件无 plugins 字段 → 补默认 {}", Account.SEED_ADMIN_ID, SEED_OWNER_PLUGINS);
             } else {
                 normalized.add(a);
             }

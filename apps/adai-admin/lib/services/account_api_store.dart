@@ -4,8 +4,9 @@ import 'api_service.dart';
 
 /// 账号存储接口 — 页面依赖抽象，测试注入 Fake。
 abstract class AccountStore {
-  /// 内置管理员账号：受保护，不可删除 / 禁用（防止锁死系统）。
-  static const String protectedAdminId = 'adai';
+  /// 内置管理员账号（2026-09-04：由 adai 迁为 admin——后台管理专用；adai 为产品主账号）。
+  /// 受保护：不可删除 / 禁用 / 降级（防止锁死系统）。
+  static const String protectedAdminId = 'admin';
 
   /// 加载账号列表。
   Future<List<Account>> loadAccounts();

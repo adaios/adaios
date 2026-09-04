@@ -8,10 +8,12 @@ import java.util.Objects;
  * Account — 账号实体（系统级，不属于用户数据层）。
  * <p>
  * 多账号功能层（v1.0.0）：账号由 adai-admin 后台管理创建（不做注册），
- * adai-app 首屏从账号列表选择进入。seed 管理员 {@code adai} 由 AccountFileRepository 预置。
+ * adai-app 首屏从账号列表选择进入。seed 管理员 {@code admin} 由 AccountFileRepository 预置。
  * <p>
  * plugins（RFC 20260814 Domain=插件模型）：启用的插件名列表（trading/project）。
- * 新账号默认空 = 只有 Kernel 基础服务；seed adai = [trading, project]（owner 受控插件）。
+ * 新账号默认空 = 只有 Kernel 基础服务；seed admin 预置 = [trading, project]（owner 受控插件）。
+ * 账号矩阵（2026-09-04 用户确立）：admin=后台管理专用（role=admin，无产品数据）；
+ * adai=产品主账号（app/web，role=user，个人数据在 data/adai/）；其余为普通受限账号。
  * 老账号文件无该字段 → 紧凑构造器归一为空列表。
  * <p>
  * passwordHash（RFC 20260901-auth-login）：账号密码的 bcrypt 哈希，可空（null = 未设密码）。
@@ -50,6 +52,6 @@ public record Account(String userId, String role, boolean enabled, LocalDate cre
     public static final String ROLE_ADMIN = "admin";
     public static final String ROLE_USER = "user";
 
-    /** 内置管理员账号：不可删除 / 不可禁用（防锁死系统）。 */
-    public static final String SEED_ADMIN_ID = "adai";
+    /** 内置管理员账号：不可删除 / 不可禁用（防锁死系统）。2026-09-04：由 adai 迁为 admin（后台管理专用，产品主账号为 adai）。 */
+    public static final String SEED_ADMIN_ID = "admin";
 }

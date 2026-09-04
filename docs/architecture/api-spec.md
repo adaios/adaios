@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.45 | 最后更新：2026-09-04**
+**文档版本：v3.46 | 最后更新：2026-09-04**
 
 ---
 
@@ -10,7 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
-| 2026-09-04 | v3.45 | **资金曲线（决策文档方案 A，2026-09-04 晚间自主批 IV）**：新增 `GET /trading/equity-curve`（需 trading 插件）——后端按日聚合**收盘净资产**：现金（account.json 现值反向锚定 + 事件驱动）+ 持仓市值（流水回放 + 底仓恒持 + 收盘价，缺 K 停牌沿用前收/成本兜底）；响应 `{points:[{date, totalAssets, cash, marketValue, invested, netValue, drawdown}], skippedDays, startDate, endDate}`；netValue = total/invested（invested = 期初投入缺口 + 转账累计净投入），invested ≤0 → netValue null（不给误导值）；无账户快照 → 空 points |
+| 2026-09-04 | v3.46 | **账号矩阵（语义，无端点变更）**：内置管理员由 `adai` 迁为 **`admin`**（后台管理专用：seed 预置/不可删禁降级/插件保护全部随 `SEED_ADMIN_ID` 迁移）；`adai` 降为**产品主账号** role=user（app/web 登录，个人数据 `data/adai/` 不变，plugins 保留 trading/project）；再建普通受限账号（role=user、plugins=[]，如 family）——`/accounts`、`/auth/setup`、`GET /accounts/available` 语义与示例同步更新 |
 | 2026-09-04 | v3.44 | **买点三重校验（REVIEW P1-交易9/20 出表，2026-09-04 晚间自主批 III）**：`GET /buy-points` 判定语义按课程校准 + 防连板误报——①B1「回调一半」几何改**课程口径**：回撤占波段（窗口最高 high − 最低 low）≥ 回调比例（默认 0.5，即 close ≤ (high+low)/2）；②B2 放量阈值默认 **1.5→2.0**（倍量柱，rules.yaml/adai 规则包同步）；③B2 加三重防护：KDJ.J 拐头向上 + **J 连续 ≥90 高位钝化排除**（首日拉起放行）+ 距窗口低点涨幅 >30% 不追 + 近 2 日连板（≥9.8%）不推；④响应命中项附 `dataDate`（判定 K 线最后日期）；15:10 定时推送要求 `dataDate=当日` 才推（防滞后一日信号冒充今日，楚天龙实锤） |
 | 2026-09-04 | v3.43 | **按批次止损编辑闭环（决策文档 P1 方案 A，2026-09-04 晚间自主批 II）**：新增 `PUT /trading/lots/{lotId}/stop-loss`（body `{"stopLossPrice": 12.34}`，>0 且 ≤4 位小数，lotId 不存在 404——给某个买入批次单独设/改止损，落 `data/{userId}/trading/lot-stoploss.json` 覆盖层，不污染流水）+ `DELETE /trading/lots/{lotId}/stop-loss`（清除覆盖回退流水止损/默认 −7%，幂等 404）；`GET /trading/lots` 的 `stopLossPrice` 语义更新——批次推导后合并覆盖层（覆盖 > 流水止损 > 默认 −7%），推送/行为标注/复盘自动跟随 |
 | 2026-09-04 | v3.42 | **行情数据包导入（MD17，task-log 2026-09-04 登记）**：新增 `POST /admin/market/tdx-import`（multipart `file`，登录 + role=admin）——上传通达信日线 .zip 数据包 → 后端校验包结构 + 每个 .day 可解析 → 按 sh/sz 前缀分流原子落盘 TDX 行情目录（`adai.market.tdx-path`）→ 返回 `{status, filename, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`；空包/无 .day/非 zip → 400 人话。数据包 >5MB：生产需配 `ADAI_MAX_FILE_SIZE`/`ADAI_MAX_REQUEST_SIZE` |
@@ -101,7 +101,7 @@
 
 ### `POST /api/v1/auth/setup` — 首访一次性设密码（免鉴权）
 
-请求：`{"account": "adai", "password": "至少8位"}`
+请求：`{"account": "admin", "password": "至少8位"}`（未传 `account` 默认内置管理员 `admin`；也可为任意已存在账号设密码，如产品主账号 `adai`）
 - 200：设置成功（仅当**全系统无任何账号设过密码**时可用；此后 404「系统已完成初始化」）
 - 401：账号不存在 / 密码太短
 
@@ -1646,11 +1646,11 @@ chat 模式（全屏）
 
 ## 16. 账号（多账号功能层）
 
-> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端登录后从可用账号列表选择/切换（`GET /api/v1/accounts/available`，**需登录**，仅返回 enabled 账号——产品端遗留选号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `adai` 由后端首次启动自动预置。
+> v1.0.0 多账号：账号由 adai-admin 后台创建（**不做注册**），adai-app / adai-web 前端登录后从可用账号列表选择/切换（`GET /api/v1/accounts/available`，**需登录**，仅返回 enabled 账号——产品端遗留选号）；前端记住上次账号（web 用 localStorage / io 用 shared_preferences，wasm 下 shared_preferences 插件不注册）+ 随时切换。seed 管理员 `admin` 由后端首次启动自动预置（**2026-09-04 账号矩阵**：内置管理员由 `adai` 迁为 `admin`（后台管理专用）；`adai` 降为产品主账号 role=user——个人数据在 `data/adai/` 不变；再建普通受限账号（无插件）供家庭/他人）。
 >
 > **管理鉴权（REVIEW #178，2026-09-02）**：管理口并入统一登录——本节除 `GET /api/v1/accounts/available`（**仅需登录**，产品端遗留选号）与 `GET /api/v1/me/plugins`（产品端，仅需登录）外，其余端点（账号 CRUD / 插件合并）与 §17 管理端所有端点均要求 `Authorization: Bearer <token>` 且会话账号 **role=admin**（非 admin → 403「仅管理员账号可访问」）；admin 会话保留客户端 `X-User-Id`（控制台跨账号治理浏览）。`X-Admin-Token` 体系已退役删除（`AdminAuthInterceptor` / `adai.security.admin-token` / env `ADAI_ADMIN_TOKEN` / 前端 `ADMIN_TOKEN` 全部移除）。账号响应一律经 AccountView DTO 过滤，**不含 passwordHash**（bcrypt 哈希不下发）。
 >
-> **插件模型（RFC 20260814）**：Account 带 `plugins`（`["trading","project"]`）。`trading`/`project` 是 adai 拥有并受控开放的插件（Domain），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `adai` 默认 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限。
+> **插件模型（RFC 20260814）**：Account 带 `plugins`（`["trading","project"]`）。`trading`/`project` 是 adai 拥有并受控开放的插件（Domain），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `admin` 默认 `["trading","project"]`（新环境预置兜底）；`adai`（产品主账号）持 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限。
 
 ### `GET /api/v1/me/plugins` — 当前用户启用插件（前端模块显隐）
 
@@ -1675,8 +1675,15 @@ chat 模式（全屏）
 ```json
 [
   {
-    "userId": "adai",
+    "userId": "admin",
     "role": "admin",
+    "enabled": true,
+    "createdAt": "2026-08-02",
+    "plugins": ["trading", "project"]
+  },
+  {
+    "userId": "adai",
+    "role": "user",
     "enabled": true,
     "createdAt": "2026-08-02",
     "plugins": ["trading", "project"]
@@ -1722,12 +1729,12 @@ chat 模式（全屏）
 - `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）；**清空插件须显式传空数组 `[]`**（传 null 视为缺省保留，P3 2026-08-17 契约明确）
 - `plugins` 传全量列表（如 `["trading"]`），仅允许 `trading` / `project`，非法 → 400
 - `password` 可选（**重置密码**，≥8 位，过短 → 400「新密码长度至少 8 位」；REVIEW #178）——重置后踢除该账号**全部**会话（`AuthService.kickSessions`，被重置者需重新登录）；**不携带则保留既有 passwordHash**（修复「只改 enabled/role 即清空密码」bug）
-- **内置管理员 `adai` 不可禁用、不可降级**（400）
+- **内置管理员 `admin`（2026-09-04 前为 `adai`，已迁移）不可禁用、不可降级**（400）
 - `404` — 账号不存在
 
 ### `DELETE /api/v1/accounts/{userId}` — 删除账号
 
-- **内置管理员 `adai` 不可删除**（400）
+- **内置管理员 `admin`（2026-09-04 前为 `adai`，已迁移）不可删除**（400）
 - `204` — 删除成功；`404` — 账号不存在
 
 ### `PATCH /api/v1/accounts/{userId}/plugins` — 合并插件（S-R2 服务端原子语义）
