@@ -1886,7 +1886,7 @@ void main() {
 
   // ── 第四阶段（2026-08-30）：完美买点案例库（环 1-2）──
 
-  Map<String, dynamic> _caseJson() => {
+  Map<String, dynamic> caseJson() => {
         'id': '2026-08-03_000725',
         'symbol': '000725',
         'name': '京东方A',
@@ -1915,7 +1915,7 @@ void main() {
     final client = MockClient((request) async {
       if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
         getRequests.add(request.url.path);
-        return _json([_caseJson()]);
+        return _json([caseJson()]);
       }
       return http.Response('not found', 404);
     });
@@ -1936,7 +1936,7 @@ void main() {
       if (request.url.path == '/api/v1/trading/cases' && request.method == 'POST') {
         postCalled = true;
         postBody = request.body;
-        return _json(_caseJson());
+        return _json(caseJson());
       }
       return http.Response('not found', 404);
     });
@@ -1963,7 +1963,7 @@ void main() {
       if (request.url.path == '/api/v1/trading/cases/2026-08-03_000725') {
         detailUrl = request.url.toString();
         return _json({
-          'caseRecord': _caseJson(),
+          'caseRecord': caseJson(),
           'kline': <Map<String, dynamic>>[],
         });
       }
@@ -2013,7 +2013,7 @@ void main() {
       if (request.url.path == '/api/v1/trading/cases/2026-08-03_000725/insight' &&
           request.method == 'POST') {
         insightCalled = true;
-        final updated = _caseJson();
+        final updated = caseJson();
         updated['aiInsight'] = {
           'summary': '缩量回踩黄线获支撑，教科书式 B1',
           'keyFeatures': ['缩量回踩', '黄线支撑'],

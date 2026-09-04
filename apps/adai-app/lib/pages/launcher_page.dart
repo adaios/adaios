@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/models/tag_models.dart';
+import '../widgets/change_password_dialog.dart';
 import 'profile_page.dart';
 import 'memory_page.dart';
 import 'timeline_page.dart';
@@ -152,6 +153,34 @@ class _LauncherPageState extends State<LauncherPage>
     }
   }
 
+  /// 打开「修改密码」弹窗（会话区入口，RFC 20260901-auth-login #178 对拍 admin）。
+  /// 成功（返回被踢会话数）→ SnackBar 人话，含被踢数（0 时省略）；用户保持登录。
+  Future<void> _openChangePassword() async {
+    final kicked = await showDialog<int>(
+      context: context,
+      builder: (_) => ChangePasswordDialog(
+        onSubmit: (oldPassword, newPassword) => widget.api.changePassword(
+          oldPassword: oldPassword,
+          newPassword: newPassword,
+        ),
+      ),
+    );
+    if (kicked == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          kicked > 0 ? '密码已更新（已退出其他 $kicked 处登录）' : '密码已更新',
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+        ),
+        backgroundColor: AppColors.darkSurface2,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ));
+  }
+
   void _onTagTap(String tag) {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => Scaffold(
@@ -211,6 +240,9 @@ class _LauncherPageState extends State<LauncherPage>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
             children: [
+              // 会话区：修改密码 + 退出登录（与 adai-admin 会话菜单同构，#178 改密入口）。
+              _buildRow(Icons.lock_outline, '修改密码', '更新登录密码', AppColors.darkBlue, _openChangePassword),
+              _divider(),
               _buildRow(Icons.logout, '退出登录', '@${widget.api.userId}', AppColors.darkPurple, () {
                 widget.onLogout?.call();
               }),

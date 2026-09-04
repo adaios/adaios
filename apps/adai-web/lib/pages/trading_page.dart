@@ -2227,15 +2227,19 @@ class _TradingPageState extends State<TradingPage> {
                       try {
                         final resp = await widget.api
                             .matchCases(symbol, date: dateCtrl.text.trim());
-                        if (ctx.mounted) setDlg(() {
-                          result = resp;
-                          loading = false;
-                        });
+                        if (ctx.mounted) {
+                          setDlg(() {
+                            result = resp;
+                            loading = false;
+                          });
+                        }
                       } catch (e) {
-                        if (ctx.mounted) setDlg(() {
-                          error = '匹配失败：${extractApiErrorMessage(e)}';
-                          loading = false;
-                        });
+                        if (ctx.mounted) {
+                          setDlg(() {
+                            error = '匹配失败：${extractApiErrorMessage(e)}';
+                            loading = false;
+                          });
+                        }
                       }
                     },
               child: Text(loading ? '匹配中…' : '匹配',
@@ -4729,7 +4733,7 @@ class _PushSettingsDialog extends StatefulWidget {
 }
 
 class _PushSettingsDialogState extends State<_PushSettingsDialog> {
-  late Map<String, bool> _settings = Map.of(widget.settings);
+  late final Map<String, bool> _settings = Map.of(widget.settings);
 
   static const List<(String, String)> _items = [
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认

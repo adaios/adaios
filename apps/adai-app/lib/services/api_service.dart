@@ -958,6 +958,37 @@ extension AuthApi on ApiService {
     _check(resp);
   }
 
+  /// 修改本人密码（POST /api/v1/auth/password）→ 返回被踢除的**其他**会话数
+  /// （当前会话保留，改密后无需重新登录；200 body `{message, kickedSessions}`）。
+  /// 失败抛 [ApiException]（body 为后端 JSON，UI 提取 error 人话展示）。
+  /// 401 双义（RFC 20260901-auth-login）：
+  /// - 原密码错误 → 只抛异常（改密弹窗内人话提示，用户可重试，**不**触发全局登出）；
+  /// - 会话已失效 → 抛异常前先走 [onUnauthorized]（与其它常规请求的 401 语义一致，
+  ///   清 token 回登录页；弹窗按 error 文案提示后由用户关闭）。
+  Future<int> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/password'),
+      headers: _headers,
+      body: jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
+    );
+    if (resp.statusCode == 401) {
+      final body = utf8.decode(resp.bodyBytes);
+      if (body.contains('会话') && onUnauthorized != null) {
+        onUnauthorized!();
+      }
+      throw ApiException(resp.statusCode, 'API 错误 ${resp.statusCode}', body);
+    }
+    if (resp.statusCode >= 400) {
+      throw ApiException(resp.statusCode, 'API 错误 ${resp.statusCode}',
+          utf8.decode(resp.bodyBytes));
+    }
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (data['kickedSessions'] as num?)?.toInt() ?? 0;
+  }
+
   /// 认证端点专用校验：>=400 抛 ApiException，但不触发 onUnauthorized 跳转。
   void _checkAuthOnly(http.Response resp) {
     if (resp.statusCode >= 400) {

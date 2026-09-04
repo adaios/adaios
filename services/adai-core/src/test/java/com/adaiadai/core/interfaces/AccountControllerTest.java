@@ -174,6 +174,21 @@ class AccountControllerTest {
     }
 
     @Test
+    void deleteAccount_kicksAllSessionsBeforeDelete() throws Exception {
+        // P1-1：删除前先踢除该账号全部会话（先踢后删——账号删掉后 findById 已空，旧会话立即失效）
+        var repo = mock(AccountRepository.class);
+        when(repo.delete("bob")).thenReturn(true);
+        var auth = mock(AuthService.class);
+
+        mvcWith(repo, auth).perform(delete("/api/v1/accounts/bob"))
+                .andExpect(status().isNoContent());
+
+        var inOrder = inOrder(auth, repo);
+        inOrder.verify(auth).kickSessions("bob");
+        inOrder.verify(repo).delete("bob");
+    }
+
+    @Test
     void deleteAccount_missing_404() throws Exception {
         var repo = mock(AccountRepository.class);
         when(repo.delete("ghost")).thenReturn(false);
@@ -456,6 +471,44 @@ class AccountControllerTest {
         verify(repo).save(captor.capture());
         assertEquals("$2a$10$newhash", captor.getValue().passwordHash());
         verify(auth).kickSessions("bob");
+    }
+
+    @Test
+    void patchAccount_disableAccount_kicksAllSessions() throws Exception {
+        // P1-1：显式禁用（enabled true→false）踢除该账号全部会话——被禁用者立即失效
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("bob")).thenReturn(Optional.of(new Account(
+                "bob", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
+                List.of(), "$2a$10$oldhash")));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/bob")
+                        .contentType("application/json")
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false));
+
+        verify(auth).kickSessions("bob");
+    }
+
+    @Test
+    void patchAccount_enableAccount_doesNotKickSessions() throws Exception {
+        // P1-1：启用（enabled false→true）不是安全敏感操作——不踢会话
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("bob")).thenReturn(Optional.of(new Account(
+                "bob", Account.ROLE_USER, false, LocalDate.of(2026, 8, 2),
+                List.of(), "$2a$10$oldhash")));
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var auth = mock(AuthService.class);
+
+        mvcWith(repo, auth).perform(patch("/api/v1/accounts/bob")
+                        .contentType("application/json")
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true));
+
+        verify(auth, never()).kickSessions(anyString());
     }
 
     @Test

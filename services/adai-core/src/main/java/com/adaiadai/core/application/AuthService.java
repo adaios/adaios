@@ -142,6 +142,15 @@ public class AuthService {
             sessionRepository.deleteByTokenHash(tokenHash);
             return Optional.empty();
         }
+        // P1-1 纵深防御（RFC 20260901-auth-login / REVIEW #178）：会话有效后，实时查账号——
+        // 账号已被「删除」（findById 空）或「禁用」（enabled=false）时立即删除本会话并返回 empty
+        // （fail-closed）。即使管理端禁用/删除时的「踢会话」漏执行，旧会话也立刻失效，
+        // 杜绝被禁用/删除账号的遗留会话在最长 30 天滑动有效期内继续读写产品端点。
+        Optional<Account> accountOpt = accountRepository.findById(session.userId());
+        if (accountOpt.isEmpty() || !accountOpt.get().enabled()) {
+            sessionRepository.deleteByTokenHash(tokenHash);
+            return Optional.empty();
+        }
         // 滑动续期：仅在接近过期时写盘，避免每个请求都触发文件写
         if (session.expiresAt().isBefore(now.plusSeconds(Session.DEFAULT_TTL_SECONDS / 2))) {
             sessionRepository.save(session.touch(now));

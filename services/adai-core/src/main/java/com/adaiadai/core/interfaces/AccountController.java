@@ -121,6 +121,8 @@ public class AccountController {
      * <p>
      * #178：① passwordHash 必须保留（老实现 5 参构造清空 = 改 enabled 即清密码的 bug）；
      * ② 携带 password（≥8 位）视为重置密码——编码落盘 + 踢除该账号全部会话（被重置者需重新登录）。
+     * P1-1：③ 显式禁用（enabled true→false）同为安全敏感操作——同步踢除该账号全部会话
+     *（被禁用者立即失效）；搭配 AuthService.validateAndTouch 的账号存在性/enabled 复查双保险。
      */
     @PatchMapping("/{userId}")
     public ResponseEntity<?> updateAccount(@PathVariable String userId,
@@ -154,12 +156,21 @@ public class AccountController {
             }
             passwordHash = authService.encodePassword(request.password());
         }
+        // P1-1：禁用（enabled true→false）与重置密码均为安全敏感操作——踢除该账号全部会话
+        //（被禁用者/被重置者需重新登录，遗留旧会话立即失效；两条件各自判定，可同时命中）
+        boolean passwordReset = request.password() != null && !request.password().isBlank();
+        boolean disabling = existing.get().enabled() && Boolean.FALSE.equals(request.enabled());
         Account updated = accountRepository.save(
                 new Account(userId, role, enabled, existing.get().createdAt(), plugins, passwordHash));
-        if (request.password() != null && !request.password().isBlank()) {
+        if (passwordReset) {
             // 重置密码是安全敏感操作：踢除该账号全部会话（被重置者需重新登录）
             int kicked = authService.kickSessions(userId);
             log.info("重置密码: {} (由 admin 操作，踢除会话 {} 个)", userId, kicked);
+        }
+        if (disabling) {
+            // P1-1：禁用账号是安全敏感操作：踢除该账号全部会话（被禁用者立即失效，不再能读写产品端点）
+            int kicked = authService.kickSessions(userId);
+            log.info("禁用账号: {} (由 admin 操作，踢除会话 {} 个)", userId, kicked);
         }
         pluginService.invalidate(userId);
         return ResponseEntity.ok(AccountView.of(updated));
@@ -189,12 +200,16 @@ public class AccountController {
         return ResponseEntity.ok(AccountView.of(updated));
     }
 
-    /** 删除账号。内置管理员不可删。 */
+    /** 删除账号。内置管理员不可删。P1-1：删除前先踢除该账号全部会话。 */
     @DeleteMapping("/{userId}")
     public ResponseEntity<?> deleteAccount(@PathVariable String userId) {
         if (isSeedAdmin(userId)) {
             return ResponseEntity.badRequest().body(Map.of("error", "内置管理员 " + Account.SEED_ADMIN_ID + " 不可删除"));
         }
+        // P1-1：删除前先踢除该账号全部会话——账号删除后 findById 已空（AuthService 无法再按会话复查），
+        // 先踢后删确保被删账号的旧会话立即失效，不留 30 天滑动有效期的「幽灵会话」
+        //（踢会话幂等：账号本就无会话或删除失败时无副作用）。
+        authService.kickSessions(userId);
         boolean removed = accountRepository.delete(userId);
         return removed ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }

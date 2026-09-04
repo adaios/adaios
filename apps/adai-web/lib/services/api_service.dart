@@ -1168,6 +1168,33 @@ extension AuthApi on ApiService {
     _check(resp);
   }
 
+  /// 修改本人密码（2026-09-04 web 自助改密）：POST /api/v1/auth/password，
+  /// body {oldPassword, newPassword} → 200 {message, kickedSessions}；返回被踢会话数
+  /// （后端踢除该账号**其它**会话，保留当前）。
+  /// 401 两种语义需区分：`原密码错误`（会话仍有效，弹窗内人话提示，**不**全局登出）
+  /// vs `会话已失效`（AuthFilter 拦截，触发 [onUnauthorized] 回登录页）。
+  Future<int> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/password'),
+      headers: _headers,
+      body: jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
+    );
+    if (resp.statusCode >= 400) {
+      final text = utf8.decode(resp.bodyBytes);
+      // 后端：AuthFilter 401 文案含「会话/未登录」；控制器 AuthException 401 为业务
+      // 错误（如「原密码错误」）——后者不能误判会话失效把用户踢回登录页。
+      final sessionInvalid = resp.statusCode == 401 &&
+          (text.contains('会话') || text.contains('未登录'));
+      if (sessionInvalid && onUnauthorized != null) onUnauthorized!();
+      throw ApiException(resp.statusCode, 'API 请求失败（HTTP ${resp.statusCode}）', text);
+    }
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (data['kickedSessions'] as num?)?.toInt() ?? 0;
+  }
+
   /// 认证端点专用校验：>=400 抛 ApiException，但不触发 onUnauthorized 跳转。
   void _checkAuthOnly(http.Response resp) {
     if (resp.statusCode >= 400) {

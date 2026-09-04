@@ -132,6 +132,8 @@ class AuthServiceTest {
         Session nearExpiry = new Session(AuthService.sha256Hex("tok"), "adai", now,
                 now, now.plusSeconds(60));
         when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok"))).thenReturn(Optional.of(nearExpiry));
+        // P1-1：会话有效还须账号存在且 enabled（fail-closed），这里给 enabled 账号 stub
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
         assertTrue(authService.validateAndTouch("tok").isPresent());
         verify(sessionRepository).save(any(Session.class)); // 触发续期写盘
     }
@@ -142,8 +144,39 @@ class AuthServiceTest {
         Session fresh = new Session(AuthService.sha256Hex("tok"), "adai", now, now,
                 now.plusSeconds(Session.DEFAULT_TTL_SECONDS));
         when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok"))).thenReturn(Optional.of(fresh));
+        // P1-1：会话有效还须账号存在且 enabled（fail-closed），这里给 enabled 账号 stub
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
         assertTrue(authService.validateAndTouch("tok").isPresent());
         verify(sessionRepository, never()).save(any());
+    }
+
+    @Test
+    void validateAndTouch_disabledAccount_deletesSessionAndReturnsEmpty() {
+        // P1-1：会话有效但账号已被禁用（enabled=false）→ fail-closed：删会话并返回 empty
+        //（禁用时即使管理端漏踢，旧会话也立即失效）
+        Instant now = Instant.now();
+        Session session = new Session(AuthService.sha256Hex("tok"), "bob", now, now,
+                now.plusSeconds(Session.DEFAULT_TTL_SECONDS));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok"))).thenReturn(Optional.of(session));
+        when(accountRepository.findById("bob")).thenReturn(Optional.of(
+                new Account("bob", Account.ROLE_USER, false, LocalDate.now(), List.of(), "hash")));
+
+        assertTrue(authService.validateAndTouch("tok").isEmpty());
+        verify(sessionRepository).deleteByTokenHash(AuthService.sha256Hex("tok"));
+    }
+
+    @Test
+    void validateAndTouch_missingAccount_deletesSessionAndReturnsEmpty() {
+        // P1-1：会话有效但账号已被删除（findById 空）→ fail-closed：删会话并返回 empty
+        //（被删账号的遗留会话不留 30 天滑动有效期）
+        Instant now = Instant.now();
+        Session session = new Session(AuthService.sha256Hex("tok"), "ghost", now, now,
+                now.plusSeconds(Session.DEFAULT_TTL_SECONDS));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok"))).thenReturn(Optional.of(session));
+        when(accountRepository.findById("ghost")).thenReturn(Optional.empty());
+
+        assertTrue(authService.validateAndTouch("tok").isEmpty());
+        verify(sessionRepository).deleteByTokenHash(AuthService.sha256Hex("tok"));
     }
 
     // ── setup ──

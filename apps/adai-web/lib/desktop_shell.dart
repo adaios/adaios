@@ -157,6 +157,24 @@ class _DesktopShellState extends State<DesktopShell> {
     );
   }
 
+  /// 修改密码对话框（2026-09-04 web 自助改密入口）：POST /auth/password 成功返回
+  /// 被踢会话数（踢除其他登录，保留当前），SnackBar 文案带被踢数（0 时不带括号）；
+  /// 风格沿用壳内现有 SnackBar（主题 darkSurface2 + floating，见 AppTheme.snackBarTheme）。
+  Future<void> _showChangePasswordDialog() async {
+    final kicked = await showDialog<int>(
+      context: context,
+      builder: (_) => _ChangePasswordDialog(
+        onChangePassword: (oldPwd, newPwd) =>
+            _api.changePassword(oldPassword: oldPwd, newPassword: newPwd),
+      ),
+    );
+    if (kicked == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(kicked > 0 ? '密码已更新（已退出其他 $kicked 处登录）' : '密码已更新'),
+      duration: const Duration(seconds: 3),
+    ));
+  }
+
   /// 底部备案号栏（管局强制要求：网站底部悬挂 ICP 备案号并链接到 beian.miit.gov.cn）。
   Widget _buildIcpBar() {
     return Container(
@@ -220,15 +238,54 @@ class _DesktopShellState extends State<DesktopShell> {
           // 导航项
           for (var i = 0; i < _items.length; i++) _buildNavItem(i),
           const Spacer(),
-          // 底部 userId（RFC 20260901-auth-login：点击退出登录）
-          // #229：Tooltip 提示 + hover 高亮；#201：超长 userId Expanded+ellipsis 防横向溢出
+          // 底部当前用户会话菜单（2026-09-04 web 自助改密入口）：
+          // 点击用户行弹出「修改密码 / 退出登录」（产品端 role=user 进不了 admin 后台，
+          // 只能在这里自助改密）。
+          // #229：Tooltip 提示 + hover 高亮；#201：超长 userId Expanded+ellipsis 防横向溢出。
           Tooltip(
-            message: '退出登录（@${widget.userId}）',
+            message: '账号菜单：修改密码 / 退出登录（@${widget.userId}）',
             waitDuration: const Duration(milliseconds: 400),
             child: Hoverable(
-              builder: (context, isHovered) => GestureDetector(
-                onTap: widget.onLogout,
-                behavior: HitTestBehavior.opaque,
+              builder: (context, isHovered) => PopupMenuButton<String>(
+                key: const ValueKey('session-menu'),
+                tooltip: '账号菜单',
+                color: AppColors.darkSurface2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                onSelected: (v) {
+                  switch (v) {
+                    case 'password':
+                      _showChangePasswordDialog();
+                    case 'logout':
+                      widget.onLogout?.call();
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    enabled: false,
+                    child: Text(
+                      '登录：@${widget.userId}',
+                      style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 1),
+                  const PopupMenuItem(
+                    value: 'password',
+                    child: Row(children: [
+                      Icon(Icons.lock_reset_outlined, size: 15, color: AppColors.darkGrey3),
+                      SizedBox(width: 8),
+                      Text('修改密码', style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+                    ]),
+                  ),
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(children: [
+                      Icon(Icons.logout, size: 15, color: AppColors.darkGrey3),
+                      SizedBox(width: 8),
+                      Text('退出登录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+                    ]),
+                  ),
+                ],
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
@@ -236,7 +293,7 @@ class _DesktopShellState extends State<DesktopShell> {
                     border: const Border(top: BorderSide(color: AppColors.darkBorder, width: 0.5)),
                   ),
                   child: Row(children: [
-                    Icon(Icons.logout, size: 13, color: AppColors.darkGrey5),
+                    Icon(Icons.account_circle_outlined, size: 14, color: AppColors.darkGrey5),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -246,6 +303,7 @@ class _DesktopShellState extends State<DesktopShell> {
                         maxLines: 1,
                       ),
                     ),
+                    const Icon(Icons.expand_more, size: 13, color: AppColors.darkGrey6),
                   ]),
                 ),
               ),
@@ -294,6 +352,141 @@ class _DesktopShellState extends State<DesktopShell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 修改密码弹窗（对齐 admin `_ChangePasswordDialog` 模板，web 主题与错误提取）：
+/// 独立 StatefulWidget，控制器随弹窗 State 释放；原密码 + 新密码/确认输入，
+/// 弹窗内校验（新密码 ≥8 位、两次一致），提交回调成功返回被踢会话数、失败抛
+/// [ApiException]（用 extractApiErrorMessage 人话展示，401 原密码错误不崩溃）。
+class _ChangePasswordDialog extends StatefulWidget {
+  const _ChangePasswordDialog({required this.onChangePassword});
+
+  /// 提交回调：成功返回被踢会话数；失败抛异常（弹窗内人话展示）。
+  final Future<int> Function(String oldPassword, String newPassword) onChangePassword;
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final _oldCtrl = TextEditingController();
+  final _newCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  String? _error;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _oldCtrl.dispose();
+    _newCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+      isDense: true,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: const BorderSide(color: AppColors.darkBorder, width: 0.5),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: const BorderSide(color: AppColors.darkBorder, width: 0.5),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final newPwd = _newCtrl.text;
+    if (newPwd.length < 8) {
+      setState(() => _error = '新密码长度至少 8 位');
+      return;
+    }
+    if (newPwd != _confirmCtrl.text) {
+      setState(() => _error = '两次输入的新密码不一致');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final kicked = await widget.onChangePassword(_oldCtrl.text, newPwd);
+      if (!mounted) return;
+      Navigator.pop(context, kicked);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        // 人话错误：后端 {"error":"原密码错误"} / 会话失效 / 网络异常（不崩溃）
+        _error = extractApiErrorMessage(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: const Text('修改密码',
+          style: TextStyle(color: AppColors.darkGrey1, fontSize: 16)),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _oldCtrl,
+              obscureText: true,
+              enabled: !_submitting,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: _decoration('原密码'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _newCtrl,
+              obscureText: true,
+              enabled: !_submitting,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: _decoration('新密码（至少 8 位）'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _confirmCtrl,
+              obscureText: true,
+              enabled: !_submitting,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: _decoration('确认新密码'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkRed)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          child: const Text('取消', style: TextStyle(color: AppColors.darkGrey4)),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.darkGreen,
+            foregroundColor: AppColors.darkBg,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          child: Text(_submitting ? '提交中…' : '确认修改',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
+      ],
     );
   }
 }

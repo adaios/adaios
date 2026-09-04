@@ -361,8 +361,8 @@ void main() {
       // #201：Expanded+ellipsis 吸收溢出，无 RenderFlex overflow 异常
       expect(tester.takeException(), isNull);
       expect(find.text('@$longId', skipOffstage: false), findsOneWidget);
-      // #229：tooltip 提示退出登录（RFC 20260901-auth-login）
-      expect(find.byTooltip('退出登录（@$longId）'), findsOneWidget);
+      // #229：tooltip 提示底部账号菜单（2026-09-04 起为会话菜单：修改密码 / 退出登录）
+      expect(find.byTooltip('账号菜单：修改密码 / 退出登录（@$longId）'), findsOneWidget);
     });
   });
 
