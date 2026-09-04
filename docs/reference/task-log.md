@@ -314,7 +314,7 @@ v1.0.0（adai-admin + 多账号）：
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
-| 149 | 多账号细节：accounts.json 无锁 / 删号不清理数据 / 允许创建 default | `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
+| 149 | 多账号细节复核（2026-09-05）：**accounts.json 无锁 → ✅ 已修**（2026-08-17 P1-4：单共享文件跨用户 RMW 改文件级全局锁 FILE_LOCK + 原子写，mergePlugins 账号级锁，见 AccountFileRepository 注释）；**删号不清理数据 → ⏳ 待用户拍板**（清理即删 `data/{userId}/` 属不可逆数据删除，需定语义：随删清理 / 二次确认后清理 / 保留留档；当前删号只踢会话+移除账号，数据目录留存）；**允许创建 default → ⏳ 待拍板**（`default` 是历史遗留测试目录名，真实账号用同名会与测试夹具混淆，建议 createAccount 禁保留字 + 测试）| `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
 | 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
 | 176 | 交易录入无严格校验：TradeRequest 仅 @NotBlank/@Positive，建议三层校验（格式/quote 存在性/名称模糊比对）；用户指出输入校验+持仓分析+反哺流程整体待打磨 | `TradeRequest` / `TradingAppService.recordTrade` | P2（v1.0.0 后批次）|
 | 117 | 缓存 key 分桶未测（价值低，留待多账号批）| `test/` | P3 |

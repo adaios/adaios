@@ -15,8 +15,9 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * AccountController — 账号管理端点（v1.0.0 多账号功能层）。
@@ -27,7 +28,7 @@ import java.util.Optional;
  * PATCH  /api/v1/accounts/{userId}     → 更新（启用/禁用、角色、插件、密码重置）
  * DELETE /api/v1/accounts/{userId}     → 删除
  * <p>
- * 内置管理员 {@code adai} 不可删除 / 不可禁用 / 不可降级（防锁死系统）。
+ * 内置管理员 {@link Account#SEED_ADMIN_ID}（admin）不可删除 / 不可禁用 / 不可降级（防锁死系统）。
  * <p>
  * REVIEW #178：鉴权并入统一登录（AuthFilter role=admin 门禁，X-Admin-Token 退役）；
  * 所有响应经 {@link AccountView} 过滤 <b>passwordHash</b>（bcrypt 哈希不落 API 响应）；
@@ -41,6 +42,13 @@ public class AccountController {
     private static final Logger log = LoggerFactory.getLogger(AccountController.class);
 
     private static final String USER_ID_PATTERN = "[a-zA-Z0-9_-]+";
+
+    /**
+     * 保留字 userId（task-log #149）：{@code default} 是历史遗留测试数据目录名
+     * （{@code data/default/}，测试夹具语义），真实账号同名会与测试数据混淆——禁建。
+     * seed 管理员 {@code admin} 无需列入：init() 预置存在，createAccount 走「账号已存在」400。
+     */
+    private static final Set<String> RESERVED_USER_IDS = Set.of("default");
 
     /** 响应 DTO：与 Account 同字段但剔除 passwordHash（#178：bcrypt 哈希不下发）。 */
     public record AccountView(String userId, String role, boolean enabled,
@@ -89,6 +97,9 @@ public class AccountController {
         String userId = request.userId().trim();
         if (!userId.matches(USER_ID_PATTERN)) {
             return ResponseEntity.badRequest().body(Map.of("error", "userId 仅允许 [a-zA-Z0-9_-]+"));
+        }
+        if (RESERVED_USER_IDS.contains(userId)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "userId 为系统保留字，不可创建: " + userId));
         }
         if (accountRepository.findById(userId).isPresent()) {
             return ResponseEntity.badRequest().body(Map.of("error", "账号已存在: " + userId));

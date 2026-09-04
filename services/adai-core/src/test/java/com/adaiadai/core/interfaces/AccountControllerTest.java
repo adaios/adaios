@@ -99,6 +99,20 @@ class AccountControllerTest {
     }
 
     @Test
+    void createAccount_reservedDefault_400() throws Exception {
+        // task-log #149：'default' 是历史遗留测试数据目录名（data/default/），禁建真实账号
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("default")).thenReturn(Optional.empty());
+
+        mvcWith(repo).perform(post("/api/v1/accounts")
+                        .contentType("application/json")
+                        .content("{\"userId\":\"default\",\"role\":\"user\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("userId 为系统保留字，不可创建: default"));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     void createAccount_invalidRole_400() throws Exception {
         var repo = mock(AccountRepository.class);
         when(repo.findById("x")).thenReturn(Optional.empty());
