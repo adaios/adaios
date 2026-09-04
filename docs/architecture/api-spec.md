@@ -1716,7 +1716,7 @@ chat 模式（全屏）
 - `role` 可选，默认 `user`（`admin` / `user`）
 - `plugins` 可选，默认 `[]`（新用户只有基础服务）；仅允许 `trading` / `project`，非法 → 400
 - `password` 可选（**初始密码**，≥8 位，过短 → 400；不传则账号初始无密码——无法登录，可之后由 admin 用 PATCH 重置，REVIEW #178）
-- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ role 非法 / plugins 非法 / 初始密码 <8 位
+- `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ **保留字 `default`（task-log #149：历史遗留测试数据目录名，禁建真实账号）** / role 非法 / plugins 非法 / 初始密码 <8 位
 
 ### `PATCH /api/v1/accounts/{userId}` — 更新账号
 
