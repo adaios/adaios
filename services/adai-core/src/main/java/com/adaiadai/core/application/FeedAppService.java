@@ -18,8 +18,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -45,6 +48,8 @@ public class FeedAppService {
     private final PluginService pluginService;
     /** RFC 20260817：推送开关——用户关闭的类型 Feed 不注入（读侧门控，与写侧对称）。 */
     private final PushSettingsRepository pushSettingsRepository;
+    /** 行情条窗口判定时钟（可注入固定时钟测试；生产由 Spring 注入系统默认时区时钟）。 */
+    private final Clock clock;
 
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
@@ -52,7 +57,8 @@ public class FeedAppService {
                           MarketDataSource marketDataSource,
                           MarketPushRepository pushRepository,
                           PluginService pluginService,
-                          PushSettingsRepository pushSettingsRepository) {
+                          PushSettingsRepository pushSettingsRepository,
+                          Clock clock) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
         this.cardRepository = cardRepository;
@@ -60,6 +66,7 @@ public class FeedAppService {
         this.pushRepository = pushRepository;
         this.pluginService = pluginService;
         this.pushSettingsRepository = pushSettingsRepository;
+        this.clock = clock;
     }
 
     /**
@@ -350,8 +357,16 @@ public class FeedAppService {
 
     /**
      * 大盘指数行情条（v0.2.0 L5 行情嵌入）。按 code 排序稳定输出。
+     * <p>
+     * 2026-09-05（用户反馈「周末还在给我推行情」）：仅 A 股交易时段注入行情条——
+     * 工作日 9:30-11:30 / 13:00-15:00（法定节假日除外，复用 TradingSessionPushService 节假日表）。
+     * 原实现每次打开首页都以「当前时刻」为时间戳现生成行情条：周末/凌晨/收盘后打开，
+     * 卡片显示的是打开时刻（看起来像"还在实时推送行情"），指数本身却是最近收盘的静态值。
+     * 非交易时段大盘无变化 → 首页不出现行情卡（需要时交易页仍可查行情），消除误读。
      */
     private List<FeedEntry> buildMarketEntries() {
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (!isFeedMarketWindow(now)) return List.of(); // 非交易时段不显示行情条
         Map<String, MarketData> indices = marketDataSource.indices();
         if (indices.isEmpty()) return List.of();
 
@@ -363,13 +378,38 @@ public class FeedAppService {
                 .collect(Collectors.joining(" · "));
 
         FeedEntry entry = new FeedEntry(
-                "market", "market_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss")), null,
+                "market", "market_" + now.format(DateTimeFormatter.ofPattern("HHmmss")), null,
                 "大盘行情", content, List.of("行情"),
-                LocalDateTime.now().format(TIME_FMT), null, null, null, "trading",
-                LocalDate.now().format(DATE_FMT), null,
-                LocalDateTime.now().toString() // P1-5：即时行情，时间戳=生成时刻
+                now.format(TIME_FMT), null, null, null, "trading",
+                now.toLocalDate().format(DATE_FMT), null,
+                now.toString() // P1-5：即时行情，时间戳=生成时刻
         );
         return List.of(entry);
+    }
+
+    /** A 股连续竞价时段边界（行情条窗口；午休 11:30-13:00 不显示）。 */
+    private static final LocalTime AM_START = LocalTime.of(9, 30);
+    private static final LocalTime AM_END = LocalTime.of(11, 30);
+    private static final LocalTime PM_START = LocalTime.of(13, 0);
+    private static final LocalTime PM_END = LocalTime.of(15, 0);
+
+    /**
+     * 行情条是否在「A 股交易时段」内（2026-09-05 用户反馈）：
+     * 工作日（周一至周五）+ 非法定节假日 + 连续竞价时段（9:30-11:30 / 13:00-15:00）。
+     * 周末/节假日/盘前午休收盘后 → false（首页不出现行情卡）。
+     */
+    static boolean isFeedMarketWindow(LocalDateTime t) {
+        if (!isTradingDay(t.toLocalDate())) return false;
+        LocalTime lt = t.toLocalTime();
+        return (!lt.isBefore(AM_START) && !lt.isAfter(AM_END))
+                || (!lt.isBefore(PM_START) && !lt.isAfter(PM_END));
+    }
+
+    /** A 股交易日 = 周一至周五且非法定节假日（节假日表与 TradingSessionPushService 同源，2026/2027）。 */
+    static boolean isTradingDay(LocalDate d) {
+        DayOfWeek dow = d.getDayOfWeek();
+        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY
+                && !TradingSessionPushService.HOLIDAYS.contains(d);
     }
 
     /**

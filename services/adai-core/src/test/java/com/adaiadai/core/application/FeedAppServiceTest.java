@@ -18,8 +18,10 @@ import com.adaiadai.core.kernel.record.RecordRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +41,14 @@ import static org.mockito.Mockito.when;
  * FeedAppService — v0.2.0 L5 行情嵌入测试。
  */
 class FeedAppServiceTest {
+
+    /**
+     * 固定时钟：2026-09-04（周五）10:00——A 股交易时段内。
+     * 行情条窗口（2026-09-05 起）测试前提：默认 helper 落在交易时段，注入行情条。
+     */
+    private static final Clock TRADING_CLOCK = Clock.fixed(
+            LocalDateTime.of(2026, 9, 4, 10, 0).atZone(ZoneId.systemDefault()).toInstant(),
+            ZoneId.systemDefault());
 
     /** 插件服务：默认给 trading 插件（行情卡门控的前提），可单独构建无插件用户。 */
     private PluginService pluginService(String userId, String... plugins) {
@@ -60,6 +70,11 @@ class FeedAppServiceTest {
     }
 
     private FeedAppService serviceWith(String userId, MarketDataSource market, MarketPushRepository push, String... plugins) {
+        return serviceWith(userId, market, push, TRADING_CLOCK, plugins);
+    }
+
+    private FeedAppService serviceWith(String userId, MarketDataSource market, MarketPushRepository push,
+                                       Clock clock, String... plugins) {
         RecordRepository recordRepository = mock(RecordRepository.class);
         when(recordRepository.findAll(any())).thenReturn(List.of());
         MemoryService memoryService = mock(MemoryService.class);
@@ -71,7 +86,7 @@ class FeedAppServiceTest {
         when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         return new FeedAppService(recordRepository, memoryService, cardRepository, market, push,
-                pluginService(userId, plugins), pushSettings);
+                pluginService(userId, plugins), pushSettings, clock);
     }
 
     private MarketPushRepository emptyPush() {
@@ -97,6 +112,49 @@ class FeedAppServiceTest {
                 "有行情时应输出 type=market 条目");
         assertTrue(resp.entries().stream().anyMatch(e -> e.content().contains("上证指数")),
                 "market 条目内容应含指数名称");
+    }
+
+    // ── 2026-09-05 行情条窗口：只在 A 股交易时段注入（用户反馈「周末还在给我推行情」）──
+
+    @Test
+    void getFeed_noMarketEntry_onWeekend() {
+        assertMarketHidden(2026, 9, 5, 10, 0, "周六打开首页不应出现行情条");
+    }
+
+    @Test
+    void getFeed_noMarketEntry_onHoliday() {
+        assertMarketHidden(2026, 10, 1, 10, 0, "国庆节（法定休市）不应出现行情条");
+    }
+
+    @Test
+    void getFeed_noMarketEntry_beforeOpen() {
+        assertMarketHidden(2026, 9, 4, 9, 0, "盘前 9:00 不应出现行情条");
+    }
+
+    @Test
+    void getFeed_noMarketEntry_lunchBreak() {
+        assertMarketHidden(2026, 9, 4, 12, 0, "午休不应出现行情条");
+    }
+
+    @Test
+    void getFeed_noMarketEntry_afterClose() {
+        assertMarketHidden(2026, 9, 4, 15, 30, "收盘后（15:30）不应出现行情条");
+    }
+
+    /** 行情存在但处于非交易时段 → Feed 不注入 market 行情条。 */
+    private void assertMarketHidden(int year, int month, int day, int hour, int minute, String reason) {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of(
+                "000001", new MarketData("000001", "上证指数",
+                        new BigDecimal("3200.12"), new BigDecimal("3200.00"),
+                        new BigDecimal("3190.00"), new BigDecimal("3210.00"), new BigDecimal("3180.00"),
+                        new BigDecimal("0.85"), 1000000L)
+        ));
+        Clock clock = Clock.fixed(LocalDateTime.of(year, month, day, hour, minute)
+                .atZone(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        FeedAppService service = serviceWith("default", market, emptyPush(), clock, "trading");
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(year, month, day), 0, 10);
+        assertTrue(resp.entries().stream().noneMatch(e -> "market".equals(e.type())), reason);
     }
 
     @Test
@@ -218,7 +276,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry imgEntry = resp.entries().stream()
@@ -244,7 +302,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry textEntry = resp.entries().stream()
@@ -279,7 +337,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         FeedAppService.FeedEntry aiNote = resp.entries().stream()
@@ -309,7 +367,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 10);
 
         assertTrue(resp.entries().stream().noneMatch(e -> "ai_note".equals(e.type())),
@@ -337,7 +395,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 9), 0, 10);
 
         FeedAppService.FeedEntry cardEntry = resp.entries().stream()
@@ -368,7 +426,7 @@ class FeedAppServiceTest {
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.indices()).thenReturn(Map.of());
 
-        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+        FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository, market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
 
         FeedAppService.FeedResponse page0 = service.getFeed("default", LocalDate.of(2026, 8, 3), 0, 5);
         List<FeedAppService.FeedEntry> core0 = page0.entries().stream()
@@ -415,7 +473,7 @@ class FeedAppServiceTest {
         when(market.indices()).thenReturn(Map.of());
 
         FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository,
-                market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+                market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
 
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 15), 0, 10);
 
@@ -470,7 +528,7 @@ class FeedAppServiceTest {
         when(market.indices()).thenReturn(Map.of());
 
         FeedAppService service = new FeedAppService(recordRepository, memoryService, cardRepository,
-                market, emptyPush(), pluginService("default", "trading"), defaultPushSettings());
+                market, emptyPush(), pluginService("default", "trading"), defaultPushSettings(), Clock.systemDefaultZone());
 
         FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 15), 0, 10);
 
