@@ -11,7 +11,7 @@ target/
 .gradle/
 */build/
 
-# ── IDE / Claude ──
+# ── IDE / Claude / DSH ──
 .idea/
 # .claude 排除本地设置，但共享可演进资产（skills/agents/commands）
 # `**/` 前缀让规则匹配所有层级的 .claude（根 + 子项目）
@@ -21,6 +21,8 @@ target/
 !**/.claude/agents/
 !**/.claude/agents/**
 !**/.claude/commands/
+# DSH 本地工具目录（技能 symlink 指向 ai-engineering/skills/，真相源已在 git）
+.dsh/
 !**/.claude/commands/**
 .obsidian/
 *.iml
@@ -63,6 +65,8 @@ heapdump.*
 data/*/records/
 data/*/memory/
 data/*/trading/
+# learn 学习卡片（learn 插件 RFC 20260829：外部内容学习沉淀，含视频字幕/原文摘录，个人消化留存不提交）
+data/*/learn/
 # 全局行情数据（2026-08-30 TDX 通达信本地日线，全 A 数百 MB，不入库）
 data/market/
 
