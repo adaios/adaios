@@ -141,6 +141,11 @@ class _AdminShellState extends State<AdminShell> {
       AccountsPage(
         store: widget.accountStore ?? _accountStore,
         currentUserId: widget.account,
+        // P2-6（2026-09-06）：账号卡「治理浏览」→ 切浏览用户并跳到数据区（index 1）
+        onBrowseUser: (id) => setState(() {
+          _userId = id;
+          _index = 1;
+        }),
       ),
       DataPage(
         userId: _userId,
@@ -251,21 +256,28 @@ class _AdminShellState extends State<AdminShell> {
             border: Border.all(color: AppColors.darkBorder, width: 0.5),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: selected,
-              dropdownColor: AppColors.darkSurface,
-              icon: const Icon(Icons.person_outline,
-                  size: 16, color: AppColors.darkGreen),
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.darkGrey1),
-              items: [
-                for (final id in options)
-                  DropdownMenuItem(value: id, child: Text(id)),
-              ],
-              onChanged: (v) {
-                if (v == null || v == _userId) return;
-                setState(() => _userId = v);
-              },
+            // P3-14（2026-09-06）：userId 下拉限宽 + ellipsis——防超长账号把 AppBar actions 撑宽
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: DropdownButton<String>(
+                value: selected,
+                isExpanded: true,
+                dropdownColor: AppColors.darkSurface,
+                icon: const Icon(Icons.person_outline,
+                    size: 16, color: AppColors.darkGreen),
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.darkGrey1),
+                items: [
+                  for (final id in options)
+                    DropdownMenuItem(
+                        value: id,
+                        child: Text(id, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) {
+                  if (v == null || v == _userId) return;
+                  setState(() => _userId = v);
+                },
+              ),
             ),
           ),
         ),
@@ -279,7 +291,8 @@ class _AdminShellState extends State<AdminShell> {
     return PopupMenuButton<String>(
       key: const ValueKey('session-menu'),
       tooltip: '会话',
-      offset: const Offset(0, 44),
+      // P3-24（2026-09-06）：弹层贴按钮而非悬空 44
+      offset: const Offset(0, 8),
       color: AppColors.darkSurface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       onSelected: (v) {
@@ -379,7 +392,8 @@ class _AdminShellState extends State<AdminShell> {
 
   /// 底部备案号栏（管局强制要求：网站底部悬挂 ICP 备案号并链接到 beian.miit.gov.cn）。
   Widget _buildIcpBar() {
-    return Container(
+    // P3-23（2026-09-06）：底部安全区——移动浏览器 Home 指示条不与 26px 条重叠
+    return SafeArea(top: false, child: Container(
       height: 26,
       decoration: const BoxDecoration(
         color: AppColors.darkSurface,
@@ -401,7 +415,7 @@ class _AdminShellState extends State<AdminShell> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

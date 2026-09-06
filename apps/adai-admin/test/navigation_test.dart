@@ -103,7 +103,7 @@ void main() {
     expect(find.text('os/ 资产'), findsOneWidget);
   });
 
-  testWidgets('系统模块维护操作：执行后成功 SnackBar', (WidgetTester tester) async {
+  testWidgets('系统模块维护操作：确认后执行成功 SnackBar（P2-9 增加确认）', (WidgetTester tester) async {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
 
@@ -113,8 +113,11 @@ void main() {
     await tester.tap(find.text('维护'));
     await tester.pumpAndSettle();
 
-    // 触发「记忆重建」（第一个执行按钮）
+    // 触发「记忆重建」（第一个执行按钮）→ 先出确认弹窗（P2-9：目标用户 + 影响）
     await tester.tap(find.text('执行').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('目标用户：'), findsOneWidget);
+    await tester.tap(find.text('确认执行'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('记忆重建完成'), findsOneWidget);

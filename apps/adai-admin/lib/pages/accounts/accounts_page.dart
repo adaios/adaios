@@ -10,13 +10,18 @@ import '../../widgets/badge.dart';
 /// 本页为每个账号提供「重置密码」（PATCH /accounts/{id} password，踢除该账号会话）；
 /// 当前登录账号自身隐藏重置（引导用顶栏改密，避免踢掉当前会话）。
 class AccountsPage extends StatefulWidget {
-  const AccountsPage({super.key, this.store, this.currentUserId = ''});
+  const AccountsPage(
+      {super.key, this.store, this.currentUserId = '', this.onBrowseUser});
 
   /// 可注入 store（测试用 Fake）；默认真实 [AccountApiStore]。
   final AccountStore? store;
 
   /// 当前登录的 admin 账号（该账号隐藏「重置密码」，改密走顶栏会话菜单）。
   final String currentUserId;
+
+  /// P2-6（2026-09-06）：账号卡「治理浏览」→ 跳转到该用户的数据区治理视图
+  /// （由壳层把浏览用户切到目标 userId 并切页；null = 不显示入口，如独立测试）。
+  final ValueChanged<String>? onBrowseUser;
 
   @override
   State<AccountsPage> createState() => _AccountsPageState();
@@ -30,6 +35,7 @@ class _AccountsPageState extends State<AccountsPage> {
   bool _loading = true;
 
   bool _showCreate = false;
+  bool _creating = false; // P3-9：建号提交中（防重复提交）
   final _userIdCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   String _role = 'user';
@@ -62,6 +68,15 @@ class _AccountsPageState extends State<AccountsPage> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (silent && _accounts != null) {
+        // P2-4（2026-09-06）：静默刷新失败保留已展示数据，非阻塞提示（U31）——
+        // 此前与首载同路径整页替换为「加载账号失败」，操作后一次网络抖动即丢全部列表
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          _snack('刷新失败：列表为上次数据，请稍后重试', AppColors.darkOrange),
+        );
+        return;
+      }
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -72,6 +87,7 @@ class _AccountsPageState extends State<AccountsPage> {
   // ── 操作 ──
 
   Future<void> _createAccount() async {
+    if (_creating) return; // P3-9：防双击重复提交
     final password = _passwordCtrl.text;
     if (password.isNotEmpty && password.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,26 +95,62 @@ class _AccountsPageState extends State<AccountsPage> {
       );
       return;
     }
-    final error = await _store.create(
-        userId: _userIdCtrl.text, role: _role, password: password);
-    if (!mounted) return;
-    if (error != null) {
+    setState(() => _creating = true);
+    try {
+      final error = await _store.create(
+          userId: _userIdCtrl.text, role: _role, password: password);
+      if (!mounted) return;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _snack(error, AppColors.darkOrange),
+        );
+        return;
+      }
+      _userIdCtrl.clear();
+      _passwordCtrl.clear();
+      setState(() => _showCreate = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        _snack(error, AppColors.darkOrange),
+        _snack('已创建账号', AppColors.darkGreen),
       );
-      return;
+      await _load(silent: true);
+    } finally {
+      if (mounted) setState(() => _creating = false);
     }
-    _userIdCtrl.clear();
-    _passwordCtrl.clear();
-    setState(() => _showCreate = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      _snack('已创建账号', AppColors.darkGreen),
-    );
-    await _load(silent: true);
   }
 
   /// 重置密码（REVIEW #178 改密入口放 admin）：设新密码 → 后端踢除该账号全部会话。
+  /// P3-2（2026-09-06 拍板）：内置管理员被其它管理员重置 → 先警示确认——
+  /// 保留重置逃生通道（防锁死），但明示「接管内置管理员」的后果。
   Future<void> _resetPassword(Account account) async {
+    final isProtected = account.userId == AccountStore.protectedAdminId;
+    if (isProtected) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.darkSurface,
+          title: const Text('重置内置管理员',
+              style: TextStyle(color: AppColors.darkOrange, fontSize: 16)),
+          content: Text(
+            '「${account.userId}」是系统内置管理员。\n\n重置后将用新密码接管该账号，其现有登录会话全部失效。\n\n若你就是该账号本人且忘了密码，请用右上角会话菜单「修改密码」——本列表对当前登录账号隐藏了重置按钮。',
+            style: const TextStyle(
+                fontSize: 13, height: 1.5, color: AppColors.darkGrey3),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消',
+                  style: TextStyle(color: AppColors.darkGrey5)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('继续重置',
+                  style: TextStyle(color: AppColors.darkOrange)),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => _ResetPasswordDialog(
@@ -113,6 +165,35 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _toggleEnabled(Account account, bool enabled) async {
+    // P2-2（2026-09-06）：禁用是断用操作——先确认（后端 P1-账号1：禁用即踢该账号全部会话）
+    if (!enabled) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.darkSurface,
+          title: const Text('禁用账号',
+              style: TextStyle(color: AppColors.darkOrange, fontSize: 16)),
+          content: Text(
+            '确定禁用账号「${account.userId}」？\n\n禁用后该账号无法登录，其当前登录会话将立即失效（该用户 app/web 将退出）。',
+            style: const TextStyle(
+                fontSize: 13, height: 1.5, color: AppColors.darkGrey3),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消',
+                  style: TextStyle(color: AppColors.darkGrey5)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认禁用',
+                  style: TextStyle(color: AppColors.darkOrange)),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+    }
     final error = await _store.setEnabled(account.userId, enabled);
     if (!mounted) return;
     if (error != null) {
@@ -151,6 +232,13 @@ class _AccountsPageState extends State<AccountsPage> {
       );
       return;
     }
+    // P2-3（2026-09-06）：成功给明确反馈（保存即生效）——此前静默成功用户不确定是否已存
+    const pluginLabels = {'trading': '交易', 'project': '项目'};
+    final label = pluginLabels[plugin] ?? plugin;
+    ScaffoldMessenger.of(context).showSnackBar(
+      _snack('已${on ? '开启' : '关闭'} ${account.userId} 的「$label」模块',
+          AppColors.darkGreen),
+    );
     await _load(silent: true);
   }
 
@@ -162,8 +250,11 @@ class _AccountsPageState extends State<AccountsPage> {
         title: const Text('删除账号',
             style: TextStyle(color: AppColors.darkGrey1, fontSize: 16)),
         content: Text(
-          '确定删除账号「${account.userId}」？此操作不可撤销。',
-          style: const TextStyle(color: AppColors.darkGrey3),
+          // P2-5（2026-09-06）：补充明确后果（会话失效/不可撤销）；数据目录清理
+          // 口径后端待拍板（task-log #149），不臆断写「连数据一起删」
+          '确定删除账号「${account.userId}」？\n\n其现有登录会话将立即失效，账号不可再登录；此操作不可撤销。',
+          style: const TextStyle(
+              fontSize: 13, height: 1.5, color: AppColors.darkGrey3),
         ),
         actions: [
           TextButton(
@@ -405,15 +496,16 @@ class _AccountsPageState extends State<AccountsPage> {
           width: double.infinity,
           height: 38,
           child: ElevatedButton(
-            onPressed: _createAccount,
+            // P3-9（2026-09-06）：建号提交 busy——防双击重复提交（第二次报「已存在」覆盖成功反馈）
+            onPressed: _creating ? null : _createAccount,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.darkGreen.withValues(alpha: 0.2),
               foregroundColor: AppColors.darkGreen,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('创建账号',
-                style: TextStyle(fontWeight: FontWeight.w500)),
+            child: Text(_creating ? '创建中…' : '创建账号',
+                style: const TextStyle(fontWeight: FontWeight.w500)),
           ),
         ),
       ]),
@@ -531,9 +623,10 @@ class _AccountsPageState extends State<AccountsPage> {
           ],
           const Spacer(),
           if (isProtected)
+            // P2-22（2026-09-06）：保护锁提亮 grey6→grey4（原 1.58:1 几乎不可见）
             const Tooltip(
-              message: '内置管理员受保护',
-              child: Icon(Icons.lock_outline, size: 16, color: AppColors.darkGrey6),
+              message: '内置管理员受保护（不可删除/禁用/改插件）',
+              child: Icon(Icons.lock_outline, size: 16, color: AppColors.darkGrey4),
             ),
           if (!isProtected)
             Switch(
@@ -546,9 +639,11 @@ class _AccountsPageState extends State<AccountsPage> {
             ),
           // REVIEW #178：改密入口放 admin——重置密码（当前登录账号自身引导走顶栏改密）
           if (account.userId == widget.currentUserId && widget.currentUserId.isNotEmpty)
+            // P3-3（2026-09-06）：本人账号用 account_circle 而非 lock——锁易误读为「账号被锁」
             const Tooltip(
               message: '当前登录账号：请用右上角会话菜单「修改密码」',
-              child: Icon(Icons.lock_outline, size: 16, color: AppColors.darkGrey6),
+              child: Icon(Icons.account_circle_outlined,
+                  size: 17, color: AppColors.darkGrey4),
             )
           else
             IconButton(
@@ -572,6 +667,8 @@ class _AccountsPageState extends State<AccountsPage> {
           const SizedBox(width: 6),
           Text(
             account.userId,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
@@ -595,6 +692,31 @@ class _AccountsPageState extends State<AccountsPage> {
           const SizedBox(width: 12),
           _pluginSwitch(account, 'project', '项目'),
         ]),
+        // P2-6（2026-09-06）：账号卡直达「治理浏览」——切到该用户的数据/系统区看其
+        // 记录/记忆/持仓（任务流「发现账号异常 → 去看它的数据」不再靠顶栏手动下拉）；
+        // 仅 enabled 账号可浏览（disabled 无法登录也无数据视图），自身当前即在本人视图
+        if (widget.onBrowseUser != null &&
+            account.enabled &&
+            account.userId != widget.currentUserId) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: ValueKey('browse-${account.userId}'),
+              onPressed: () => widget.onBrowseUser!(account.userId),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+              ),
+              icon: const Icon(Icons.travel_explore,
+                  size: 14, color: AppColors.darkBlue),
+              label: const Text('治理浏览',
+                  style:
+                      TextStyle(fontSize: 12, color: AppColors.darkBlue)),
+            ),
+          ),
+        ],
       ]),
     );
   }
@@ -609,7 +731,10 @@ class _AccountsPageState extends State<AccountsPage> {
           style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
       const SizedBox(width: 4),
       Tooltip(
-        message: isProtected ? '内置管理员插件受保护，不可修改' : '切换插件',
+        // P2-3（2026-09-06）：说明即时生效语义（保存即生效，影响该用户端显隐）
+        message: isProtected
+            ? '内置管理员插件受保护，不可修改'
+            : '保存即生效：开启/关闭该用户 app/web 的「$label」模块',
         waitDuration: const Duration(milliseconds: 400),
         child: Switch(
           key: ValueKey('plugin-${account.userId}-$plugin'),

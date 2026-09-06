@@ -76,11 +76,21 @@ class _IdentityTabState extends State<IdentityTab> {
                   const Icon(Icons.person_outline,
                       size: 18, color: AppColors.darkGreen),
                   const SizedBox(width: 8),
-                  Text(identity.name,
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.darkGrey1)),
+                  // P2-23（2026-09-06）：空档案不再白卡——名字空给占位
+                  Expanded(
+                    child: Text(
+                      identity.name.trim().isEmpty ? '（未设置名字）' : identity.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: identity.name.trim().isEmpty
+                            ? AppColors.darkGrey5
+                            : AppColors.darkGrey1,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -99,14 +109,29 @@ class _IdentityTabState extends State<IdentityTab> {
         ),
         const SizedBox(height: 10),
         _sectionCard('偏好', Icons.tune, [
-          for (final e in identity.preferences.entries) _kvRow(e.key, e.value),
+          if (identity.preferences.isEmpty)
+            _emptyRow('暂无偏好')
+          else
+            for (final e in identity.preferences.entries) _kvRow(e.key, e.value),
         ]),
         const SizedBox(height: 10),
         _sectionCard('协作规则', Icons.rule, [
-          for (final rule in identity.rules)
-            _bulletRow(rule, Icons.chevron_right, AppColors.darkGreen),
+          if (identity.rules.isEmpty)
+            _emptyRow('暂无协作规则')
+          else
+            for (final rule in identity.rules)
+              _bulletRow(rule, Icons.chevron_right, AppColors.darkGreen),
         ]),
       ],
+    );
+  }
+
+  /// P2-23：分区空态占位（防「看起来加载坏了」）。
+  Widget _emptyRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(text,
+          style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
     );
   }
 

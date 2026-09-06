@@ -23,6 +23,7 @@ class _ReviewsTabState extends State<ReviewsTab> {
   List<TradingReview>? _reviews;
   String? _error;
   bool _loading = true;
+  final Set<String> _busy = {}; // P3-8：生成中 review id（防连点重复触发 AI）
 
   @override
   void initState() {
@@ -52,12 +53,18 @@ class _ReviewsTabState extends State<ReviewsTab> {
   }
 
   Future<void> _generate(TradingReview review) async {
-    final ok = await _store.generateReview(review.id);
-    if (!mounted) return;
-    showAppSnack(context,
-        ok ? '已生成 ${review.title}' : '生成失败：后端不可用或无可生成内容',
-        ok ? AppColors.darkGreen : AppColors.darkOrange);
-    await _load();
+    if (_busy.contains(review.id)) return; // P3-8：生成中防重复点击
+    setState(() => _busy.add(review.id));
+    try {
+      final ok = await _store.generateReview(review.id);
+      if (!mounted) return;
+      showAppSnack(context,
+          ok ? '已生成 ${review.title}' : '生成失败：后端不可用或无可生成内容',
+          ok ? AppColors.darkGreen : AppColors.darkOrange);
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy.remove(review.id));
+    }
   }
 
   Future<void> _view(TradingReview review) async {
@@ -136,8 +143,11 @@ class _ReviewsTabState extends State<ReviewsTab> {
     if (note == null || !mounted) return;
 
     try {
+      // 2026-09-06 审查 P1-B 修复：review.date 是 DateTime，直接 toString()
+      // 会带空格毫秒（如 `2026-09-04 00:00:00.000`），后端 @PathVariable LocalDate
+      // 解析必败——反哺从未成功；改用 formatDate 输出 yyyy-MM-dd（与列表展示同口径）。
       final result =
-          await _store.promoteReview(review.date.toString(), note: note.isEmpty ? null : note);
+          await _store.promoteReview(formatDate(review.date), note: note.isEmpty ? null : note);
       if (!mounted) return;
       showAppSnack(
         context,
@@ -261,15 +271,16 @@ class _ReviewsTabState extends State<ReviewsTab> {
           const SizedBox(width: 6),
           if (!review.generated)
             TextButton(
-              onPressed: () => _generate(review),
+              onPressed:
+                  _busy.contains(review.id) ? null : () => _generate(review),
               style: TextButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 minimumSize: Size.zero,
               ),
-              child: const Text('生成',
-                  style:
-                      TextStyle(fontSize: 12, color: AppColors.darkGreen)),
+              child: Text(_busy.contains(review.id) ? '生成中…' : '生成',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.darkGreen)),
             )
           else ...[
             TextButton(

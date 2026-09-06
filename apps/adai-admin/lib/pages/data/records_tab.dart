@@ -71,6 +71,14 @@ class _RecordsTabState extends State<RecordsTab> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
         _statsRow(records.length, counts),
+        // P2-7（2026-09-06 拍板）：数据源为「当天 Feed」前 50 条——显式标注来源与上限，
+        // 防管理员把截断视图误读为「该用户当天只产生了这些数据」（历史浏览待规划）
+        if (records.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('数据源：当天记录，最多展示前 50 条',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ),
         const SizedBox(height: 12),
         if (records.isEmpty)
           const Padding(
@@ -91,11 +99,14 @@ class _RecordsTabState extends State<RecordsTab> {
                     children: [
                       AppBadge(label: r.typeLabel, color: _typeColor),
                       const SizedBox(width: 6),
-                      AppBadge(
-                        label: r.id,
-                        color: AppColors.darkGrey5,
-                        icon: Icons.tag,
-                      ),
+                      // P3-28（2026-09-06）：记录 id 是系统内部标识——从徽章（占用首行视觉位）
+                      // 弱化为小字文本，首行留给类型与时间
+                      Text(r.id,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 10, color: AppColors.darkGrey6)),
+                      const SizedBox(width: 6),
                       const Spacer(),
                       Text(formatDateTime(r.createdAt),
                           style: const TextStyle(

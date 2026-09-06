@@ -26,17 +26,18 @@ class AppTheme {
             letterSpacing: -0.5,
           ),
         ),
-        navigationRailTheme: const NavigationRailThemeData(
+        navigationRailTheme: NavigationRailThemeData(
           backgroundColor: AppColors.darkSurface,
-          indicatorColor: Color(0x263AB75A), // darkGreen @ 15%
-          selectedIconTheme: IconThemeData(color: AppColors.darkGreen),
-          unselectedIconTheme: IconThemeData(color: AppColors.darkGrey5),
-          selectedLabelTextStyle: TextStyle(
+          // P3-25（2026-09-06）：统一 15% 写法（原 hex 0x263AB75A vs navigationBar withValues 双轨）
+          indicatorColor: AppColors.darkGreen.withValues(alpha: 0.15),
+          selectedIconTheme: const IconThemeData(color: AppColors.darkGreen),
+          unselectedIconTheme: const IconThemeData(color: AppColors.darkGrey5),
+          selectedLabelTextStyle: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppColors.darkGrey1,
           ),
-          unselectedLabelTextStyle: TextStyle(
+          unselectedLabelTextStyle: const TextStyle(
             fontSize: 12,
             color: AppColors.darkGrey5,
           ),
@@ -62,15 +63,9 @@ class AppTheme {
             return const TextStyle(fontSize: 11, color: AppColors.darkGrey5);
           }),
         ),
-        cardTheme: CardThemeData(
-          color: AppColors.darkSurface,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: AppColors.darkBorder, width: 0.5),
-          ),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        ),
+        // P3-18（2026-09-06）：删除死 cardTheme——全库无一处用 Material Card
+        // （面板统一走 AppCard：darkSurface2 / radius10），cardTheme(darkSurface/radius14)
+        // 是无人消费的「第二真相」，留着会导致后续以为面板由主题 Card 控制
         dividerTheme: const DividerThemeData(
           color: AppColors.darkBorder,
           thickness: 0.5,

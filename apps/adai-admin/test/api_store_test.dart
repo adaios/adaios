@@ -270,7 +270,8 @@ void main() {
 
       expect(result.success, isFalse);
       expect(result.message, contains('失败 1 个'));
-      expect(result.message, contains('sz000001.day'));
+      // P2-10：失败明细完整透出到 failures（展示层对话框复查，消息体不再塞截断清单）
+      expect(result.failures, ['sz000001.day（无法解析出任何 K 线）']);
     });
 
     test('importTdxPackage 后端拒绝 → 失败消息透出人话（MD17）', () async {

@@ -285,6 +285,10 @@ class FakeSystemStore implements SystemStore {
   late final List<TradingReview> _reviews;
   late final List<ConflictItem> _conflicts;
 
+  /// 最近一次反哺收到的 date（P1-B 回归：应为 yyyy-MM-dd 而非 DateTime.toString()）。
+  String? lastPromoteDate;
+  String? lastPromoteNote;
+
   @override
   Future<List<FeedItem>> loadFeed() async => List.of(_feed);
 
@@ -335,9 +339,12 @@ class FakeSystemStore implements SystemStore {
   Future<List<ConflictItem>> loadConflicts() async => List.of(_conflicts);
 
   @override
-  Future<PromoteResultDto> promoteReview(String date, {String? note}) async =>
-      const PromoteResultDto(
-          status: 'ok', path: 'os/trading-engine/99-inbox/review-2026-07-31.md');
+  Future<PromoteResultDto> promoteReview(String date, {String? note}) async {
+    lastPromoteDate = date;
+    lastPromoteNote = note;
+    return const PromoteResultDto(
+        status: 'ok', path: 'os/trading-engine/99-inbox/review-2026-07-31.md');
+  }
 }
 
 // ── 知识浏览 ──

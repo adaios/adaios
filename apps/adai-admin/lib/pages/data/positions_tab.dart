@@ -79,13 +79,22 @@ class _PositionsTabState extends State<PositionsTab> {
             children: [
               _statItem('持仓数', '${positions.length}', AppColors.darkGrey1),
               _statItem('总市值', formatPrice(totalValue), AppColors.darkBlue),
-              _statItem('浮动盈亏', formatPrice(totalProfit),
-                  totalProfit >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+              _statItem('浮动盈亏', formatPrice(totalProfit), _profitColor(totalProfit)),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        _buildTable(positions),
+        // P3-6（2026-09-06）：空持仓给占位提示（原只剩统计 0 + 空表头，与故障态难区分）
+        if (positions.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 28),
+            child: Center(
+              child: Text('该用户暂无持仓',
+                  style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+            ),
+          )
+        else
+          _buildTable(positions),
       ],
     );
   }
@@ -114,6 +123,13 @@ class _PositionsTabState extends State<PositionsTab> {
       ),
     );
   }
+
+  // 红涨绿亏（A股）：盈=红、亏=绿；0 值（V9-10，2026-09-06 P1-D）判平 → 中性灰
+  Color _profitColor(double v) => v > 0
+      ? AppColors.darkRed
+      : v < 0
+          ? AppColors.darkGreen
+          : AppColors.darkGrey3;
 
   Widget _statItem(String label, String value, Color color) {
     return Column(children: [
@@ -160,8 +176,8 @@ class _PositionsTabState extends State<PositionsTab> {
 
   Widget _buildRow(Position p) {
     // 红涨绿亏（A股，2026-08-17 走查）：盈=红、亏=绿（此前绿/橙与 web 端相反）
-    final profitColor =
-        p.profit >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+    // 2026-09-06 审查 P1-D 修复（V9-10）：0 值（成本=现价）判平不判盈亏 → 中性灰
+    final profitColor = _profitColor(p.profit);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

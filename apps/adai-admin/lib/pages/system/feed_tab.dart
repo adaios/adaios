@@ -54,7 +54,9 @@ class _FeedTabState extends State<FeedTab> {
         'record' => AppColors.darkBlue,
         'card' => AppColors.darkPurple,
         'action' => AppColors.darkOrange,
-        'market' => AppColors.darkGreen,
+        // P2-18（2026-09-06）：行情类型徽标 darkBlue——对齐 adai-web desktop_feed_card
+        // （原 darkGreen 与「绿=跌」行情方向色同页互斥，易误读）
+        'market' => AppColors.darkBlue,
         'ai_note' => AppColors.darkYellow,
         _ => AppColors.darkGrey5,
       };
@@ -100,6 +102,13 @@ class _FeedTabState extends State<FeedTab> {
             ],
           ),
         ),
+        // P2-7（2026-09-06 拍板）：Feed 预览为「当天」前 50 条——显式标注来源与上限
+        if (feed.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('数据源：当天 Feed，最多展示前 50 条',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ),
         const SizedBox(height: 12),
         if (feed.isEmpty)
           const Padding(

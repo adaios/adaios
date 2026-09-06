@@ -6,6 +6,9 @@ import 'services/admin_session_store.dart';
 import 'services/api_service.dart';
 import 'theme/app_theme.dart';
 
+/// 全局 ScaffoldMessenger key（P2-1：会话失效/401 提示，切回登录页前告知原因）。
+final _rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // REVIEW #178：启动加载持久化登录会话（admin 并入统一登录）
@@ -76,8 +79,15 @@ class _AdminAppState extends State<AdminApp> {
     return ApiService(token: token, onUnauthorized: _handleUnauthorized);
   }
 
-  /// 全局 401（会话失效）：清 token 回登录页。
+  /// 全局 401（会话失效）：先提示原因再清 token 回登录页（P2-1，2026-09-06）——
+  /// 此前任意页正在进行的浏览/弹窗瞬间被替换成登录页，无任何说明。
   Future<void> _handleUnauthorized() async {
+    _rootMessengerKey.currentState?.showSnackBar(const SnackBar(
+      backgroundColor: Color(0xFF2A2826),
+      behavior: SnackBarBehavior.floating,
+      content: Text('登录已失效（会话过期或被重置），请重新登录',
+          style: TextStyle(fontSize: 13, color: Color(0xFFE8E4DE))),
+    ));
     await _clearSession();
   }
 
@@ -118,6 +128,7 @@ class _AdminAppState extends State<AdminApp> {
     return MaterialApp(
       title: '阿呆控制台',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: _rootMessengerKey,
       theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,

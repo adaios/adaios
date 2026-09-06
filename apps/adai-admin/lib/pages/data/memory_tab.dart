@@ -91,11 +91,14 @@ class _MemoryTabState extends State<MemoryTab> {
         _buildFilterChips(),
         const SizedBox(height: 12),
         if (visible.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 40),
+          // P2-24（2026-09-06）：区分「该分类下无记忆」与「用户无记忆」，防把筛选结果
+          // 误读为数据缺失
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
             child: Center(
-              child: Text('暂无记忆',
-                  style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+              child: Text(_filter != null ? '该分类下暂无记忆' : '暂无记忆',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.darkGrey5)),
             ),
           )
         else

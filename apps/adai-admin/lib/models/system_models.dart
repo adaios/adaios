@@ -115,8 +115,16 @@ class ConflictItem {
 
 /// 维护操作结果（mock 模拟异步操作返回）。
 class MaintenanceResult {
-  const MaintenanceResult({required this.success, required this.message});
+  const MaintenanceResult({
+    required this.success,
+    required this.message,
+    this.failures = const [],
+  });
 
   final bool success;
   final String message;
+
+  /// P2-10（2026-09-06）：失败明细完整清单（如行情导入 failed[]）——供对话框完整复查，
+  /// 不再只靠瞬时 snackbar + 截断前 3 条。
+  final List<String> failures;
 }

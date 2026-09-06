@@ -4,7 +4,6 @@ import '../../services/system_api_store.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/badge.dart';
-import '../../widgets/snack.dart';
 
 /// 知识反哺页签 — 真实规则冲突（/trading/knowledge/conflicts）。
 /// 冲突的「已处理」标记为前端本地状态（后端为规则对照结果，无持久化）。
@@ -51,12 +50,6 @@ class _FeedbackTabState extends State<FeedbackTab> {
     }
   }
 
-  void _toggleConflict(ConflictItem c) {
-    setState(() => c.handled = !c.handled);
-    showAppSnack(
-        context, c.handled ? '已标记冲突为已处理' : '已撤销标记', AppColors.darkGreen);
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -73,7 +66,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
-        _sectionHeader(Icons.rule, 'Conflicts 冲突'),
+        _sectionHeader(Icons.rule, '规则冲突'),
         const SizedBox(height: 8),
         if (conflicts.isEmpty)
           const _EmptyHint('暂无冲突（当前持仓与交易规则对照通过）')
@@ -85,8 +78,10 @@ class _FeedbackTabState extends State<FeedbackTab> {
               ],
             ),
           ),
-        const SizedBox(height: 16),
-        const _EmptyHint('复盘反哺入库操作在「复盘」页签对已生成复盘点击「反哺」按钮。'),
+        const SizedBox(height: 12),
+        // P2-11（2026-09-06 拍板）：移除本地「标记已处理」假操作——冲突由后端
+        // 规则对照生成（handled 只读），本地 toggle 刷新即丢会误导「已解决」。
+        const _EmptyHint('冲突状态为规则对照结果（只读）。反哺入库：在「复盘」页签对已生成的复盘点击「反哺」按钮。'),
       ],
     );
   }
@@ -151,16 +146,6 @@ class _FeedbackTabState extends State<FeedbackTab> {
                 _conflictSide('说明', c.sideB),
               ],
             ),
-          ),
-          IconButton(
-            icon: Icon(
-              c.handled ? Icons.undo : Icons.done_outline,
-              size: 16,
-              color: c.handled ? AppColors.darkGrey5 : AppColors.darkGreen,
-            ),
-            onPressed: () => _toggleConflict(c),
-            tooltip: c.handled ? '撤销已处理' : '标记已处理',
-            visualDensity: VisualDensity.compact,
           ),
         ],
       ),

@@ -15,18 +15,22 @@ Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 void main() {
   /// 放大视口渲染全部账号卡（4 卡超出默认 600px 高 → ListView 懒构建找不到尾部卡），
   /// 并注入可选 store / 当前登录账号。
-  Future<void> _pumpAccounts(WidgetTester tester,
-      {AccountStore? store, String currentUserId = ''}) async {
+  Future<void> pumpAccounts(WidgetTester tester,
+      {AccountStore? store,
+      String currentUserId = '',
+      ValueChanged<String>? onBrowseUser}) async {
     tester.view.physicalSize = const Size(1400, 2800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(_wrap(AccountsPage(
-        store: store ?? FakeAccountStore(), currentUserId: currentUserId)));
+        store: store ?? FakeAccountStore(),
+        currentUserId: currentUserId,
+        onBrowseUser: onBrowseUser)));
     await tester.pumpAndSettle();
   }
   testWidgets('管理端渲染账号列表（预置账号 + 保护标记）',
       (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // 预置账号：admin / alice / adai / bob
     // admin 账号名与角色徽章文本同为 'admin'（徽章 'admin' + userId 行 'admin'）→ findsWidgets
@@ -41,7 +45,7 @@ void main() {
   });
 
   testWidgets('新建账号后列表实时反映', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // 展开新建表单
     await tester.tap(find.text('+ 新建'));
@@ -59,7 +63,7 @@ void main() {
   });
 
   testWidgets('重复 userId 建号被拒绝', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     await tester.tap(find.text('+ 新建'));
     await tester.pumpAndSettle();
@@ -73,7 +77,7 @@ void main() {
   });
 
   testWidgets('禁用普通账号后状态更新为「禁用」', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // 内置 admin 无启用开关（受保护）；adai / alice / bob 各有 1 个启用开关 + 2 个插件开关
     expect(find.byKey(const ValueKey('enabled-admin')), findsNothing);
@@ -83,8 +87,11 @@ void main() {
     expect(find.byKey(const ValueKey('plugin-alice-trading')), findsOneWidget);
     expect(find.byKey(const ValueKey('plugin-alice-project')), findsOneWidget);
 
-    // 点击 alice 的启用开关
+    // 点击 alice 的启用开关（P2-2：禁用需确认弹窗）
     await tester.tap(find.byKey(const ValueKey('enabled-alice')));
+    await tester.pumpAndSettle();
+    expect(find.text('禁用账号'), findsOneWidget, reason: 'P2-2：禁用前需确认');
+    await tester.tap(find.text('确认禁用'));
     await tester.pumpAndSettle();
 
     // 现在应有 2 个「禁用」标签（alice 禁用 + bob 本就禁用）；admin / adai 仍启用
@@ -93,7 +100,7 @@ void main() {
   });
 
   testWidgets('插件开关：给 alice 开 trading → 状态反映（RFC 20260814）', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // alice 初始无插件
     final switchWidget = tester.widget<Switch>(
@@ -115,11 +122,15 @@ void main() {
   });
 
   testWidgets('删除账号需确认，取消则保留', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // 删除 alice（第一个删除按钮）
     await tester.tap(find.byIcon(Icons.delete_outline).first);
     await tester.pumpAndSettle();
+
+    // P2-5：确认文案明示会话失效与不可撤销
+    expect(find.textContaining('会话将立即失效'), findsOneWidget);
+    expect(find.textContaining('不可撤销'), findsOneWidget);
 
     // 取消
     await tester.tap(find.text('取消'));
@@ -141,7 +152,7 @@ void main() {
     // 可控延迟 store：第一个 setPlugins 挂起，模拟两个 PATCH 在飞的竞态窗口
     final gate = Completer<void>();
     final store = GatedAccountStore(gate: gate);
-    await _pumpAccounts(tester, store: store);
+    await pumpAccounts(tester, store: store);
 
     // 快速连点 alice 的 trading + project 两个开关
     await tester.tap(find.byKey(const ValueKey('plugin-alice-trading')));
@@ -171,7 +182,7 @@ void main() {
   });
 
   testWidgets('REVIEW #178：账号卡提供重置密码，两次一致提交成功', (WidgetTester tester) async {
-    await _pumpAccounts(tester);
+    await pumpAccounts(tester);
 
     // 每个账号卡都有重置密码按钮（admin / adai / alice）
     expect(find.byKey(const ValueKey('reset-pwd-admin')), findsOneWidget);
@@ -197,12 +208,56 @@ void main() {
   });
 
   testWidgets('REVIEW #178：当前登录账号自身隐藏重置密码（引导顶栏改密）', (WidgetTester tester) async {
-    await _pumpAccounts(tester, currentUserId: 'admin');
+    await pumpAccounts(tester, currentUserId: 'admin');
 
     // admin 是当前登录账号 → 无重置按钮；adai / alice 等他人账号仍可重置
     expect(find.byKey(const ValueKey('reset-pwd-admin')), findsNothing);
     expect(find.byKey(const ValueKey('reset-pwd-adai')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-alice')), findsOneWidget);
     expect(find.byKey(const ValueKey('reset-pwd-bob')), findsOneWidget);
+  });
+
+  testWidgets('P3-2：重置内置 admin 先警示确认；取消不进重置弹窗', (WidgetTester tester) async {
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byKey(const ValueKey('reset-pwd-admin')));
+    await tester.pumpAndSettle();
+    // 警示确认对话框（内置管理员专用）
+    expect(find.text('重置内置管理员'), findsOneWidget);
+    expect(find.textContaining('系统内置管理员'), findsOneWidget);
+    // 尚未进入实际重置弹窗
+    expect(find.textContaining('重置密码 · admin'), findsNothing);
+
+    // 取消 → 无重置弹窗
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('重置密码 · admin'), findsNothing);
+
+    // 再次进入并「继续重置」→ 才出现实际重置弹窗
+    await tester.tap(find.byKey(const ValueKey('reset-pwd-admin')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('继续重置'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('重置密码 · admin'), findsOneWidget);
+  });
+
+  testWidgets('P2-6：账号卡「治理浏览」直达该用户；自身/禁用账号无入口', (WidgetTester tester) async {
+    String? browsed;
+    await pumpAccounts(tester,
+        currentUserId: 'admin',
+        store: FakeAccountStore(),
+        onBrowseUser: (id) => browsed = id);
+
+    // enabled 的 alice/adai 有治理浏览；内置 admin（自身）与禁用 bob 无
+    expect(find.byKey(const ValueKey('browse-alice')), findsOneWidget);
+    expect(find.byKey(const ValueKey('browse-adai')), findsOneWidget);
+    expect(find.byKey(const ValueKey('browse-admin')), findsNothing,
+        reason: '自身即当前登录账号，无需跳转');
+    expect(find.byKey(const ValueKey('browse-bob')), findsNothing,
+        reason: '禁用账号不可登录，无数据治理视图');
+
+    await tester.ensureVisible(find.byKey(const ValueKey('browse-alice')));
+    await tester.tap(find.byKey(const ValueKey('browse-alice')));
+    expect(browsed, 'alice');
   });
 }

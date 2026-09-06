@@ -159,14 +159,16 @@ class SystemApiStore implements SystemStore {
     try {
       final r = await _api.importTdxData(zipBytes, filename);
       final imported = (r['imported'] as num?)?.toInt() ?? 0;
-      final failed = (r['failed'] as List?) ?? const [];
+      // P2-10：失败清单完整透出（不做前 3 截断——截断由展示层对话框处理）
+      final failures = ((r['failed'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList();
       final markets = (r['markets'] as Map?) ?? const {};
-      final detail = failed.isEmpty
-          ? ''
-          : '，失败 ${failed.length} 个（${failed.take(3).join('；')}'
-              '${failed.length > 3 ? '…' : ''}）';
+      final detail =
+          failures.isEmpty ? '' : '，失败 ${failures.length} 个';
       return MaintenanceResult(
-        success: failed.isEmpty,
+        success: failures.isEmpty,
+        failures: failures,
         message: '行情数据导入完成：成功 $imported 个 .day'
             '（沪 ${markets['sh'] ?? 0} · 深 ${markets['sz'] ?? 0}'
             ' · 共 ${r['dayFilesAfter'] ?? 0}）$detail',

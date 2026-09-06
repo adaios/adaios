@@ -160,8 +160,15 @@ class _TermsTabState extends State<TermsTab> {
                     fontSize: 12, height: 1.4, color: AppColors.darkGrey2)),
           ),
           const SizedBox(width: 8),
-          Text(rule.source,
-              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+          // P2-21（2026-09-06）：source 为文件路径（可 40+ 字符），限宽 ellipsis 防挤窄定义列
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 140),
+            child: Text(rule.source,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+          ),
         ],
       ),
     );

@@ -376,6 +376,33 @@ void main() {
       expect(await api.changePassword(oldPassword: 'old12345', newPassword: 'new123456'), 2);
     });
 
+    test('changePassword 业务 401（原密码错误）：抛 ApiException 且不触发全局登出（P1-A）', () async {
+      var unauthorizedFired = false;
+      final client = MockClient((request) async =>
+          _json({'error': '原密码错误'}, 401));
+      final api = ApiService(client: client, token: 'tok_abc', onUnauthorized: () => unauthorizedFired = true);
+
+      await expectLater(
+        api.changePassword(oldPassword: 'wrong', newPassword: 'new123456'),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', '原密码错误')),
+      );
+      expect(unauthorizedFired, isFalse,
+          reason: '原密码错误是业务 401，不应把管理员踢回登录页（弹窗内提示）');
+    });
+
+    test('changePassword 会话失效 401（含「会话/未登录」）：触发全局登出（P1-A）', () async {
+      var unauthorizedFired = false;
+      final client = MockClient((request) async =>
+          _json({'error': '未登录或会话已失效，请先登录'}, 401));
+      final api = ApiService(client: client, token: 'expired', onUnauthorized: () => unauthorizedFired = true);
+
+      await expectLater(
+        api.changePassword(oldPassword: 'old12345', newPassword: 'new123456'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(unauthorizedFired, isTrue);
+    });
+
     test('createAccount 带初始密码：body 含 password（≥8 位）', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/v1/accounts');

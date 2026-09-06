@@ -126,8 +126,13 @@ class ApiService {
       _unauthorizedNotified = true;
       onUnauthorized!();
     }
-    final text = _body(resp);
-    String message = 'HTTP ${resp.statusCode}';
+    throw ApiException(_extractError(_body(resp), resp.statusCode),
+        statusCode: resp.statusCode);
+  }
+
+  /// 从非 2xx 响应体提取用户可读错误文案：`{"error"|"message": "..."}` → 值，纯文本 → 原文。
+  String _extractError(String text, int statusCode) {
+    String message = 'HTTP $statusCode';
     try {
       final body = jsonDecode(text);
       if (body is Map && body['error'] != null) {
@@ -140,7 +145,7 @@ class ApiService {
     } catch (_) {
       if (text.trim().isNotEmpty) message = text.trim();
     }
-    throw ApiException(message, statusCode: resp.statusCode);
+    return message;
   }
 
   /// 按 UTF-8 解码响应体（后端 JSON 为 UTF-8，避免 content-type 缺 charset 时按 latin1 解析导致中文乱码）。
@@ -191,6 +196,11 @@ class ApiService {
   }
 
   /// `POST /api/v1/auth/password` → 修改本人密码（踢除其他会话）；返回被踢会话数。
+  /// `POST /api/v1/auth/password` → 修改本人密码（踢除其他会话）；返回被踢会话数。
+  ///
+  /// 401 双义（2026-09-06 审查 P1-A 修复，对齐 adai-web 口径）：
+  /// - 会话失效（AuthFilter 文案「未登录或会话已失效」）→ 触发 [onUnauthorized] 全局登出；
+  /// - 业务错误（控制器 AuthException，如「原密码错误」）→ 不登出，抛 [ApiException] 由弹窗内展示。
   Future<int> changePassword({
     required String oldPassword,
     required String newPassword,
@@ -200,7 +210,18 @@ class ApiService {
       headers: systemHeaders,
       body: jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
     );
-    _check(resp);
+    if (resp.statusCode >= 400) {
+      final text = _body(resp);
+      final sessionInvalid =
+          resp.statusCode == 401 && (text.contains('会话') || text.contains('未登录'));
+      if (sessionInvalid &&
+          onUnauthorized != null &&
+          !_unauthorizedNotified) {
+        _unauthorizedNotified = true;
+        onUnauthorized!();
+      }
+      throw ApiException(_extractError(text, resp.statusCode), statusCode: resp.statusCode);
+    }
     final body = jsonDecode(_body(resp)) as Map<String, dynamic>;
     return (body['kickedSessions'] as num?)?.toInt() ?? 0;
   }

@@ -20,6 +20,22 @@ http.Response _json(Object body, [int status = 200]) =>
 Widget _wrap(LoginPage page) => MaterialApp(home: page);
 
 void main() {
+  testWidgets('账号框初始为空（2026-09-06：不再预填默认账号）且空账号提交提示输入', (WidgetTester tester) async {
+    final api = ApiService(client: MockClient((request) async => _json({}, 500)));
+    await tester.pumpWidget(_wrap(LoginPage(api: api, onLoggedIn: (_) {})));
+    await tester.pumpAndSettle();
+
+    // 账号框无预填值
+    final accountField = tester.widget<TextField>(find.byType(TextField).at(0));
+    expect(accountField.controller!.text, isEmpty);
+
+    // 空账号直接点登录 → 提示请输入账号（不发请求）
+    await tester.enterText(find.byType(TextField).at(1), 'secret123');
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    expect(find.text('请输入账号'), findsOneWidget);
+  });
+
   testWidgets('admin 账号登录成功 → onLoggedIn 携 token/userId/role', (WidgetTester tester) async {
     final client = MockClient((request) async {
       expect(request.url.path, '/api/v1/auth/login');
@@ -37,9 +53,10 @@ void main() {
     await tester.pumpWidget(_wrap(LoginPage(api: api, onLoggedIn: (s) => session = s)));
     await tester.pumpAndSettle();
 
-    // 账号框预填 adai；只填密码
+    // 2026-09-06：账号框不再预填（留空自输）——登录前输入账号 + 密码
+    await tester.enterText(find.byType(TextField).at(0), 'adai');
     await tester.enterText(find.byType(TextField).at(1), 'secret123');
-    await tester.tap(find.text('登 录'));
+    await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
 
     expect(session, isNotNull);
@@ -62,8 +79,9 @@ void main() {
     await tester.pumpWidget(_wrap(LoginPage(api: api, onLoggedIn: (s) => session = s)));
     await tester.pumpAndSettle();
 
+    await tester.enterText(find.byType(TextField).at(0), 'alice');
     await tester.enterText(find.byType(TextField).at(1), 'secret123');
-    await tester.tap(find.text('登 录'));
+    await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
 
     expect(session, isNull, reason: '非 admin 不得进入控制台');
@@ -79,8 +97,9 @@ void main() {
     await tester.pumpWidget(_wrap(LoginPage(api: api, onLoggedIn: (_) {})));
     await tester.pumpAndSettle();
 
+    await tester.enterText(find.byType(TextField).at(0), 'admin');
     await tester.enterText(find.byType(TextField).at(1), 'wrong');
-    await tester.tap(find.text('登 录'));
+    await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
 
     expect(find.text('账号或密码错误'), findsOneWidget);
@@ -95,8 +114,9 @@ void main() {
     await tester.pumpWidget(_wrap(LoginPage(api: api, onLoggedIn: (_) {})));
     await tester.pumpAndSettle();
 
+    await tester.enterText(find.byType(TextField).at(0), 'adai');
     await tester.enterText(find.byType(TextField).at(1), 'anything');
-    await tester.tap(find.text('登 录'));
+    await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
 
     expect(find.text('首次使用：为账号「adai」设置登录密码（一次性，此后直接登录）'), findsOneWidget);

@@ -13,6 +13,7 @@ String formatDateTime(DateTime dt) =>
 /// 价格 → 保留两位小数。
 String formatPrice(double v) => v.toStringAsFixed(2);
 
-/// 涨跌幅 → `+1.01%` / `-0.35%`。
+/// 涨跌幅 → `+1.01%` / `-0.35%` / `0.00%`。
+/// 2026-09-06 审查 P1-D 修复（V9-10）：0 值不得带正负号（±0.00 判平不判涨/跌）。
 String formatPercent(double v) =>
-    '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}%';
+    '${v > 0 ? '+' : ''}${v.toStringAsFixed(2)}%';

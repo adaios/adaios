@@ -33,6 +33,7 @@ class _TreeViewState extends State<TreeView> {
   late bool _expanded;
   late List<TreeNode> _children;
   bool _loading = false;
+  String? _loadError; // 2026-09-06 审查 P1-C：目录懒加载失败不再静默伪装「空目录」
 
   @override
   void initState() {
@@ -56,7 +57,10 @@ class _TreeViewState extends State<TreeView> {
     if (_children.isNotEmpty || _loading) return;
     final loader = widget.onLoadChildren;
     if (loader == null) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final children = await loader(node);
       if (!mounted) return;
@@ -66,7 +70,11 @@ class _TreeViewState extends State<TreeView> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      // P1-C：加载失败留错误态（行内「点击重试」），不让用户误判「该目录为空」
+      setState(() {
+        _loading = false;
+        _loadError = '加载失败';
+      });
     }
   }
 
@@ -148,7 +156,25 @@ class _TreeViewState extends State<TreeView> {
             ),
           ),
         ),
-        if (isDir && _expanded)
+        if (isDir && _expanded) ...[
+          if (_loadError != null)
+            InkWell(
+              onTap: _ensureLoaded,
+              child: Padding(
+                padding: EdgeInsets.only(left: indent + 24, top: 2, bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.refresh,
+                        size: 12, color: AppColors.darkOrange),
+                    const SizedBox(width: 4),
+                    Text('$_loadError · 点击重试',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.darkOrange)),
+                  ],
+                ),
+              ),
+            ),
           for (final child in _children)
             TreeView(
               root: child,
@@ -157,6 +183,7 @@ class _TreeViewState extends State<TreeView> {
               depth: widget.depth + 1,
               expandedByDefault: widget.depth < 1,
             ),
+        ],
       ],
     );
   }

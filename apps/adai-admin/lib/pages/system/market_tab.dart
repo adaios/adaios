@@ -50,8 +50,12 @@ class _MarketTabState extends State<MarketTab> {
   }
 
   // 红涨绿亏（A股，2026-08-17 走查）：涨=红、跌=绿（此前绿/橙与 web 端相反）
-  Color _changeColor(double v) =>
-      v >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+  // 2026-09-06 审查 P1-D 修复（V9-10）：0 值（平盘/停牌）判平不判涨跌 → 中性灰
+  Color _changeColor(double v) => v > 0
+      ? AppColors.darkRed
+      : v < 0
+          ? AppColors.darkGreen
+          : AppColors.darkGrey3;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +149,10 @@ class _MarketTabState extends State<MarketTab> {
         children: [
           SizedBox(
             width: 76,
+            // P2-20（2026-09-06）：长名（ETF/基金）ellipsis 防折行
             child: Text(q.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

@@ -53,7 +53,7 @@ class _SystemPageState extends State<SystemPage> {
                   MarketTab(store: _store),
                   ReviewsTab(store: _store),
                   FeedbackTab(store: _store),
-                  MaintenanceTab(store: _store),
+                  MaintenanceTab(store: _store, userId: widget.userId),
                 ],
               ),
             ),

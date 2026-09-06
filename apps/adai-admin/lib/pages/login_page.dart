@@ -30,14 +30,29 @@ class AdminSession {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _accountCtrl = TextEditingController(text: 'adai');
+  // 2026-09-06：不再预填默认账号——账号矩阵后内置管理员为 admin 而非 adai，
+  // 预填任何具体账号都会误导（留空由管理员自行输入，避免把用户引向错误账号）
+  final _accountCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
   bool _showSetup = false; // 首访设置密码模式
 
   @override
+  void initState() {
+    super.initState();
+    // P2-25（2026-09-06）：首访提示插值账号名——输入过程即时刷新（原只在提交时重建，
+    // 输完账号文案仍显示通用版，滞后）
+    _accountCtrl.addListener(_onAccountChanged);
+  }
+
+  void _onAccountChanged() {
+    if (mounted && _showSetup) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _accountCtrl.removeListener(_onAccountChanged);
     _accountCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
@@ -178,14 +193,23 @@ class _LoginPageState extends State<LoginPage> {
                   onSubmitted: (_) => _showSetup ? _submitSetup() : _submit(),
                   decoration: _inputDecoration('密码', Icons.lock_outline),
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(_error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: _error!.contains('成功') ? AppColors.darkGreen : AppColors.darkRed)),
-                ],
+                // P3-29（2026-09-06）：错误行 AnimatedSize——出现/消失不整块布局跳变
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOut,
+                  child: _error == null
+                      ? const SizedBox(width: double.infinity)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(_error!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: _error!.contains('成功')
+                                      ? AppColors.darkGreen
+                                      : AppColors.darkRed)),
+                        ),
+                ),
                 const SizedBox(height: 24),
                 SizedBox(
                   height: 44,
@@ -200,13 +224,16 @@ class _LoginPageState extends State<LoginPage> {
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(_showSetup ? '设置密码' : '登 录',
+                        : Text(_showSetup ? '设置密码' : '登录',
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(height: 16),
                 if (_showSetup)
-                  Text('首次使用：为账号「${_accountCtrl.text}」设置登录密码（一次性，此后直接登录）',
+                  Text(
+                      _accountCtrl.text.trim().isEmpty
+                          ? '首次使用：输入账号并设置登录密码（一次性，此后直接登录）'
+                          : '首次使用：为账号「${_accountCtrl.text}」设置登录密码（一次性，此后直接登录）',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5))
                 else
