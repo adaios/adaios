@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'api_config.dart';
 import 'models/identity_models.dart';
+import 'models/learn_models.dart';
 import 'models/tag_models.dart';
 import 'sse_client.dart';
 
@@ -806,6 +807,18 @@ class ApiService {
     return list.map((e) => e.toString()).toList();
   }
 
+  // ── learn 学习插件（RFC 20260829）──
+
+  /// 资产树：learn 卡片按 type 分组（GET /learn/tree）。
+  Future<LearnTreeResponse> getLearnTree() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/tree'),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnTreeResponse.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
   // ── 任务 API ──
 
   /// 获取任务列表。

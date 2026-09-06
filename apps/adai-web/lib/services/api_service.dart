@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'api_config.dart';
 import 'models/identity_models.dart';
+import 'models/learn_models.dart';
 import 'models/tag_models.dart';
 import 'sse_client.dart';
 
@@ -1094,6 +1095,30 @@ class ApiService {
     );
     _check(resp);
     return TaskStatsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  // ── learn 学习插件（RFC 20260829）──
+
+  /// 资产树：learn 卡片按 type 分组（GET /learn/tree）。
+  Future<LearnTreeResponse> getLearnTree() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/tree'),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnTreeResponse.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 卡片列表（?type= 可选 ai/trading/other；缺省全部）。
+  Future<List<LearnCardDto>> getLearnCards({String? type}) async {
+    final uri = type == null || type.isEmpty
+        ? Uri.parse('$baseUrl/api/v1/learn/cards')
+        : Uri.parse('$baseUrl/api/v1/learn/cards').replace(queryParameters: {'type': type});
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
+    return raw.map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Map<String, String> get _headers => {
@@ -2522,3 +2547,4 @@ class EquityCurveResponse {
         endDate: json['endDate'] as String? ?? '',
       );
 }
+

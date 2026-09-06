@@ -24,7 +24,8 @@ class PluginRegistryTest {
     void knownPlugins_areValid() {
         assertTrue(registry.isValid(PluginRegistry.PLUGIN_TRADING));
         assertTrue(registry.isValid(PluginRegistry.PLUGIN_PROJECT));
-        assertEquals(Set.of("trading", "project"), registry.all());
+        assertTrue(registry.isValid(PluginRegistry.PLUGIN_LEARN), "learn 插件（RFC 20260829）已注册");
+        assertEquals(Set.of("trading", "project", "learn"), registry.all());
     }
 
     @Test
@@ -38,6 +39,8 @@ class PluginRegistryTest {
     void pluginForKnowledge_mapsByName() {
         assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForKnowledge("trading"));
         assertEquals(PluginRegistry.PLUGIN_PROJECT, registry.pluginForKnowledge("project"));
+        // RFC 20260829 L2：learn 知识源（LearnKnowledgeSource）按 name 映射 learn 插件 → ContextEngine 门控
+        assertEquals(PluginRegistry.PLUGIN_LEARN, registry.pluginForKnowledge(PluginRegistry.PLUGIN_LEARN));
         assertNull(registry.pluginForKnowledge("life"), "life 知识源不归插件");
     }
 

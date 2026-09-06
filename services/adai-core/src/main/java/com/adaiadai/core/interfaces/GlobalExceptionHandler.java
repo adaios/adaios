@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.AuthService.AuthException;
+import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TradingException.class)
     public ResponseEntity<Map<String, String>> handleTradingException(TradingException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
+    /** learn 业务异常（RFC 20260829）→ 400 + 人话（喂入校验/卡片化失败等，fail-visible）。 */
+    @ExceptionHandler(LearnException.class)
+    public ResponseEntity<Map<String, String>> handleLearnException(LearnException e) {
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 

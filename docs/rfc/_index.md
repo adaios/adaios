@@ -3,7 +3,7 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-05
+updated: 2026-09-06
 status: active
 lines: 75
 depends-on: []
@@ -62,7 +62,7 @@ tags: [meta, index, rfc]
 | 20260824-trading-company-insight.md | 公司透视——上市公司客观画像九维度 + 红黄绿排除判定（查公司，v1=单点+喂建议引擎）| draft |
 | 20260825-trading-lot-tracking-behavior.md | 交易逐笔批次跟踪与行为纠偏（lot 模型/LIFO/批次止损/行为标注/当日同步/推送过期/回合总账）| implemented |
 | 20260822-memory-plugin-isolation.md | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 | draft |
-| 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）| draft |
+| 20260829-learn-plugin.md | learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现；§四 已拍板、C Agent 方向搁置）| approved |
 | 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
 | 20260901-auth-login.md | 用户认证登录体系——根治 X-User-Id 零鉴权（账号密码 + 服务端会话，AuthFilter 覆盖 X-User-Id）| implemented |
 | 20260902-trading-memory-positioning.md | 交易模块定位重设——从「建议引擎」到「交易记忆」（用你的历史，理解你的当下；取代 20260815 定位条款）| approved |

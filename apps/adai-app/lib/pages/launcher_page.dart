@@ -13,6 +13,7 @@ import 'search_page.dart';
 import 'project_status_page.dart';
 import 'project_task_page.dart';
 import 'trading_page.dart';
+import 'learn_page.dart';
 
 /// World B — Launcher。
 class LauncherPage extends StatefulWidget {
@@ -312,6 +313,21 @@ class _LauncherPageState extends State<LauncherPage>
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(
                   builder: (_) => TradingPage(api: widget.api),
+                ));
+              },
+            ),
+            _divider(),
+            // 学习 = learn 插件（RFC 20260829 L2）：最近学习入口（移动端只做最近+单篇，完整资产浏览引导 web）
+            _pluginSlot(
+              ready: _pluginsLoaded,
+              enabled: _plugins.contains('learn'),
+              icon: Icons.auto_stories_outlined,
+              title: '学习',
+              subtitle: '最近学习 · 知识卡片',
+              accent: AppColors.darkGreen,
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => LearnPage(api: widget.api),
                 ));
               },
             ),

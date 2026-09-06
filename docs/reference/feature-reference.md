@@ -25,6 +25,7 @@
 14. [定时补完服务（RecordRetryService）](#14-定时补完服务recordretryservice)
 15. [多模态 / 多账号 / adai-admin](#15-多模态--多账号--adai-admin)
 16. [Domain=插件模型（RFC 20260814）](#16-domain插件模型rfc-20260814)
+17. [learn 学习沉淀模块（RFC 20260829）](#17-learn-学习沉淀模块rfc-20260829)
 
 ---
 
@@ -1034,7 +1035,7 @@ POST /api/v1/records/retry
 
 > 详见 RFC `20260814-domain-plugin-model` + `docs/reference/task-plugin-model.md`。
 
-- **插件定义**：插件 = adai 拥有并受控开放的 Domain（`trading` / `project`）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
+- **插件定义**：插件 = adai 拥有并受控开放的 Domain/能力（`trading` / `project`；**2026-09-06 注册第三个 `learn`**——RFC 20260829 外部内容学习沉淀，V1 后端流水线已实现，详见 §17）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
 - **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `admin` 预置 = `[trading, project]`（新环境兜底）；产品主账号 `adai` = `[trading, project]`。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
 - **查询**：`GET /api/v1/me/plugins`（需登录，会话账号 = 当前用户启用插件 → 前端模块显隐）。
 - **门控面**（读写侧对称，REVIEW S-3/S-4）：
@@ -1043,6 +1044,19 @@ POST /api/v1/records/retry
   - D5 domain 收敛：AI 判定 domain 属未启用插件 → 收敛 `life`；prompt 的 domain 枚举/判定规则按启用插件生成（单一真相源，关键词与 `detectDomainScene` 常量一致，REVIEW P2-2）；CHAT 模式 system prompt 枚举随 ContextPackage 下发（REVIEW P2-4）
 - **前端显隐**：adai-app World B Launcher（交易/阿呆系统按插件显隐）、adai-web 桌面壳（导航/IndexedStack/页面同一可见列表，按 label 重解析索引防错位，REVIEW P1-5）、adai-admin 账号卡插件开关。
 - **账号迁移**：老文件无 `plugins` 字段 → 启动补默认（仅 seed adai）；PATCH 显式清空（字段存在）不被迁移推翻（REVIEW P1-4）。
+
+## 17. learn 学习沉淀模块（RFC 20260829）
+
+> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。V2 消化闭环（复习流转/编辑/问答注入深度）待续。
+
+- **插件注册**：PluginRegistry 第三个插件 `learn`（`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
+- **定位**：外部内容（B站视频/YouTube/文章/字幕）→ AI 结构化卡片 → 个人知识资产。**与 A 方向会话技能（learn-digest skill）同源**：技能是 DSH 会话内执行版（独立落盘 `data/adai/learn/`），本插件是阿呆产品内版（按用户落 `data/{userId}/learn/`）；两者格式同构（frontmatter + 渐进式摘要）。
+- **喂入（独立端点，2026-09-06 用户拍板）**：`POST /api/v1/learn/cards`——仿截图入账先例，learn 消化是动作不是记录：不建记录、不沉淀记忆、不污染 Feed/时间线。素材留痕 `learn/_raw/`（LLM 失败时素材不丢）。
+- **卡片**：`data/{userId}/learn/{type}/{yyyy-MM-dd}_{title}.md`（File First md 即真相源）——frontmatter（title/type/platform/author/url/published/created/status/trade_related/trade_note/tags）+ RFC 3.4 正文四段（核心观点/关键要点/我的疑问/复述）。type=ai/trading/other 是文件分类非 domain 收敛对象；trade_related 仅 trading 内容有意义（防 LLM 幻觉：非 trading 强制 false；V1 只记录不联动规则库，规则候选改动须用户拍板）。
+- **失败降级（fail-visible）**：LLM 失败/输出不可解析/缺标题 → 原始素材留存 `_raw/` + 400 人话（不产半成品卡片）；同日同 type 同标题重复 → 400（防覆盖）；type 越界回落 other。
+- **并发/健壮性**：per-user 条带锁（16 条带）；损坏文件跳过不中断列表；fileStem 清洗防路径逃逸（`..`/`/` 归一）。
+- **端点**：`POST /learn/cards`（喂入消化）、`GET /learn/cards`（`?type=` 列表）、`GET /learn/card`（`?type=&title=` 单篇全文）、`GET /learn/tree`（资产树，ai/trading/other 分组）。全需 learn 插件（403）。
+- **已知边界（L1）**：不做抓取/转写（素材由用户喂入，守 B8 + 版权）；卡片编辑/复习流转 V2；多用户只架构预留；A 技能产物与插件产物同目录并存（目录结构差异由 L2 资产页统一）。
 
 ## 附录：API 全集
 
@@ -1090,3 +1104,7 @@ POST /api/v1/records/retry
 | 39 | GET | `/api/v1/accounts/available` | 启用账号列表（需登录，最小集 userId；产品端遗留选号） | ✅ |
 | 40 | GET | `/api/v1/me/plugins` | 当前用户启用插件（需登录，前端模块显隐） | ✅ |
 | 41 | POST | `/api/v1/records/media/ask-batch` | 多图问答（Phase 1 带图 ask，1-3 张一次提问） | ✅ |
+| 42 | POST | `/api/v1/learn/cards` | learn 喂入消化（learn 插件，2026-09-06 learn V1） | ✅ |
+| 43 | GET | `/api/v1/learn/cards` | learn 卡片列表（learn 插件，?type= 筛选） | ❌ |
+| 44 | GET | `/api/v1/learn/card` | learn 单篇卡片全文（learn 插件，?type=&title=） | ❌ |
+| 44 | GET | `/api/v1/learn/tree` | learn 资产树（learn 插件，ai/trading/other 分组） | ❌ |

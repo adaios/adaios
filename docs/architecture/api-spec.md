@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.47 | 最后更新：2026-09-05**
+**文档版本：v3.48 | 最后更新：2026-09-07**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-06 | v3.48 | **learn 插件 V1（RFC 20260829，独立端点喂入，用户 2026-09-06 拍板）**：新增 `POST /learn/cards`（喂入素材消化：body `{"content"必填≤50000,"type"?ai/trading/other,"platform"?,"author"?,"url"?,"published"?}` → AI 结构化 RFC 3.4 四段卡片落 `data/{userId}/learn/{type}/{date}_{title}.md`；LLM 失败/输出不可解析/缺标题 → 素材留存 `learn/_raw/` + 400 人话 fail-visible；同日同 type 同 title 重复 → 400「已有同日同名卡片」；type 越界回落 other；非 trading 内容 trade_related 强制 false）+ `GET /learn/cards`（`?type=` 筛选，created 倒序）+ `GET /learn/tree`（资产树按 ai/trading/other 分组）；全部需 learn 插件（未启用 403）；learn 是第三插件（PluginRegistry），不进 domain 收敛体系（type 仅文件分类） |
 | 2026-09-05 | v3.47 | **交易⑤认知层（RFC 20260905，用户拍板全量执行）**：新增 `GET /trading/advice-history`（建议留痕查询：`?symbol=&days=` 按票近 N 天回查、缺 symbol 返回近 30 天全量倒序——「阿呆当时说 X」数据源）+ `GET /trading/profile`（个人交易画像：`{stats{…客观统计}, objectiveText, adviceAdherence{…建议遵守率}, subjective}`）+ `PUT /trading/profile`（body `{"content":"…"}`，保存画像主观层落 profile.md）+ `GET /trading/sold/{symbol}/psychology-questions`（按交易结构确定性生成 3~5 个补情绪提问）+ `POST /trading/sold/{symbol}/psychology/answer`（body `{"psychology":"…"}`，回答回填 sold.psychology 追加式 + 沉淀画像主观层）；建议出口逐票落建议留痕（含降级 degraded 标记）；复盘注入「建议对照」段（当日清仓 vs 卖前建议）；画像注入 trading/decision 场景与建议引擎 prompt（A 点） |
 | 2026-09-04 | v3.46 | **账号矩阵（语义，无端点变更）**：内置管理员由 `adai` 迁为 **`admin`**（后台管理专用：seed 预置/不可删禁降级/插件保护全部随 `SEED_ADMIN_ID` 迁移）；`adai` 降为**产品主账号** role=user（app/web 登录，个人数据 `data/adai/` 不变，plugins 保留 trading/project）；再建普通受限账号（role=user、plugins=[]，如 family）——`/accounts`、`/auth/setup`、`GET /accounts/available` 语义与示例同步更新 |
 | 2026-09-04 | v3.44 | **买点三重校验（REVIEW P1-交易9/20 出表，2026-09-04 晚间自主批 III）**：`GET /buy-points` 判定语义按课程校准 + 防连板误报——①B1「回调一半」几何改**课程口径**：回撤占波段（窗口最高 high − 最低 low）≥ 回调比例（默认 0.5，即 close ≤ (high+low)/2）；②B2 放量阈值默认 **1.5→2.0**（倍量柱，rules.yaml/adai 规则包同步）；③B2 加三重防护：KDJ.J 拐头向上 + **J 连续 ≥90 高位钝化排除**（首日拉起放行）+ 距窗口低点涨幅 >30% 不追 + 近 2 日连板（≥9.8%）不推；④响应命中项附 `dataDate`（判定 K 线最后日期）；15:10 定时推送要求 `dataDate=当日` 才推（防滞后一日信号冒充今日，楚天龙实锤） |
@@ -1718,7 +1719,7 @@ chat 模式（全屏）
 >
 > **管理鉴权（REVIEW #178，2026-09-02）**：管理口并入统一登录——本节除 `GET /api/v1/accounts/available`（**仅需登录**，产品端遗留选号）与 `GET /api/v1/me/plugins`（产品端，仅需登录）外，其余端点（账号 CRUD / 插件合并）与 §17 管理端所有端点均要求 `Authorization: Bearer <token>` 且会话账号 **role=admin**（非 admin → 403「仅管理员账号可访问」）；admin 会话保留客户端 `X-User-Id`（控制台跨账号治理浏览）。`X-Admin-Token` 体系已退役删除（`AdminAuthInterceptor` / `adai.security.admin-token` / env `ADAI_ADMIN_TOKEN` / 前端 `ADMIN_TOKEN` 全部移除）。账号响应一律经 AccountView DTO 过滤，**不含 passwordHash**（bcrypt 哈希不下发）。
 >
-> **插件模型（RFC 20260814）**：Account 带 `plugins`（`["trading","project"]`）。`trading`/`project` 是 adai 拥有并受控开放的插件（Domain），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `admin` 默认 `["trading","project"]`（新环境预置兜底）；`adai`（产品主账号）持 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限。
+> **插件模型（RFC 20260814 + RFC 20260829）**：Account 带 `plugins`（`["trading","project"]`；**2026-09-06 learn 插件 V1 注册第三个插件 `learn`**——`trading`/`project`/`learn` 是 adai 拥有并受控开放的插件（Domain/能力），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `admin` 默认 `["trading","project"]`（新环境预置兜底）；`adai`（产品主账号）持 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限、learn 消化端点（403 门控）。
 
 ### `GET /api/v1/me/plugins` — 当前用户启用插件（前端模块显隐）
 
@@ -1956,4 +1957,74 @@ chat 模式（全屏）
   "markets": { "sh": 4922, "sz": 4445 },
   "dayFilesAfter": 9367
 }
+```
+
+## 18. learn 学习沉淀（learn 插件，RFC 20260829）
+
+> **learn 插件 V1（2026-09-06 用户拍板开工）**：外部内容（视频字幕/文章/链接原文）喂入 → AI 结构化卡片（RFC 3.4 渐进式摘要四段）→ File First 落 `data/{userId}/learn/{type}/{yyyy-MM-dd}_{title}.md` → 列表/资产树查询。V1 为**独立端点喂入**（2026-09-06 用户拍板：仿截图入账先例，learn 消化是动作不是记录——不建记录、不沉淀记忆、不污染 Feed/时间线；**不经 POST /records 主链路**）。资产页浏览（目录树+全文渲染）与 LearnKnowledgeSource 问答注入为 L2。
+>
+> 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading/project 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
+>
+> **L2（2026-09-07）问答注入**：新增 `LearnKnowledgeSource`（kernel 知识源，name=learn → PluginRegistry 映射 learn 插件门控）——ContextEngine 按用户 enabledPlugins 注入最近学习笔记（`## 你最近的学习笔记`，标题+type+核心观点，上限 5 篇；无卡片不注入；损坏文件/_raw 跳过；globalContext 注入 + enrich 空防双份）——你问「上次讲 RAG 那篇说了啥」时阿呆能引用自己消化过的卡片作答（RFC 3.7 ③ 价值呈现）。
+
+### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（v3.48）
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `content` | String | ✅ | 素材原文（字幕/文章/链接内容），1-50000 字 |
+| `type` | String | 否 | 显式类型 ai/trading/other；缺省 = LLM 判定（越界回落 other） |
+| `platform` | String | 否 | 来源平台（bilibili/youtube/web…） |
+| `author` | String | 否 | 作者/UP 主 |
+| `url` | String | 否 | 原文链接 |
+| `published` | String | 否 | 原文发布日期 yyyy-MM-dd |
+
+**Response** `200` 落盘的 LearnCard：
+
+```json
+{
+  "type": "trading",
+  "title": "回调一半的判定",
+  "platform": "bilibili",
+  "author": "某UP",
+  "url": "https://b23.tv/x",
+  "published": "2026-05-05",
+  "created": "2026-09-06",
+  "status": "new",
+  "tradeRelated": true,
+  "tradeNote": "与 R66 止损互补",
+  "tags": ["止损", "回调"],
+  "coreView": "回调到一半才是买点，几何口径 (high+low)/2",
+  "keyPoints": ["02:31 回调一半=(high+low)/2"],
+  "questions": ["它与课程口径一致吗？"]
+}
+```
+
+- `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同日同 type 同 title 已存在**（防覆盖）、AI 消化失败（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
+- `403`：learn 插件未启用
+
+### `GET /api/v1/learn/cards` — 卡片列表（v3.48）
+
+**Query Parameters**：`type`（可选 ai/trading/other；缺省返回全部，按 created 倒序）
+
+**Response** `200` LearnCard 数组（元数据 + 正文段字段）。`type` 非法 → 400。
+
+### `GET /api/v1/learn/card` — 单篇卡片全文（v3.48）
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+
+**Response** `200` LearnCard（同列表项字段）。`type` 非法 / **卡片不存在** → 400（人话「卡片不存在：type/title」）。
+
+### `GET /api/v1/learn/tree` — 资产树（v3.48）
+
+**Response** `200`：按 type 分组的卡片清单（只含已落盘规范卡片）：
+
+```json
+{ "ai": [ {LearnCard} ], "trading": [ {LearnCard} ] }
 ```

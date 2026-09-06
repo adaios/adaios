@@ -1,0 +1,332 @@
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../services/models/learn_models.dart';
+import '../theme/app_colors.dart';
+
+/// LearnPage —「最近学习」入口（RFC 20260829 learn 插件 L2 呈现·移动端）。
+/// 移动端只做「最近学习 + 单篇全文」（完整资产浏览引导到 web 桌面端，双端分工见 RFC 3.7）。
+/// 数据源：GET /learn/tree → 合并全部卡片按 created 倒序 → 顶部最新。
+class LearnPage extends StatefulWidget {
+  final ApiService api;
+  const LearnPage({super.key, required this.api});
+
+  @override
+  State<LearnPage> createState() => _LearnPageState();
+}
+
+class _LearnPageState extends State<LearnPage> {
+  LearnTreeResponse? _tree;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final tree = await widget.api.getLearnTree();
+      if (!mounted) return;
+      setState(() {
+        _tree = tree;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = _errText(e);
+      });
+    }
+  }
+
+  String _errText(dynamic e) {
+    final str = e.toString();
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    if (str.contains('403')) return '学习功能未启用（learn 插件）';
+    return '加载失败，请重试';
+  }
+
+  void _openCard(LearnCardDto card) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _LearnDetailPage(card: card),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.darkBg,
+      body: SafeArea(
+        child: Column(children: [
+          _buildHeader(),
+          Expanded(child: _buildBody()),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Icon(Icons.arrow_back, size: 20, color: AppColors.darkGrey4),
+          ),
+        ),
+        const Icon(Icons.auto_stories_outlined, size: 20, color: AppColors.darkGrey3),
+        const SizedBox(width: 8),
+        const Text('最近学习',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        const Spacer(),
+        GestureDetector(
+          onTap: _load,
+          child: const Icon(Icons.refresh, size: 18, color: AppColors.darkGrey4),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.error_outline, size: 28, color: AppColors.darkOrange),
+          const SizedBox(height: 10),
+          Text(_error!, style: const TextStyle(fontSize: 15, color: AppColors.darkGrey4)),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: _load,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+              ),
+              child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+            ),
+          ),
+        ]),
+      );
+    }
+    final tree = _tree;
+    final cards = (tree == null ? <LearnCardDto>[] : tree.recentAll);
+    if (cards.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 40),
+          child: Text('还没有学习卡片\n在对话里发「整理这个视频/文章」，阿呆帮你沉淀成卡片',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, height: 1.8, color: AppColors.darkGrey4)),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      itemCount: cards.length,
+      itemBuilder: (_, i) => _buildCard(cards[i]),
+    );
+  }
+
+  Widget _buildCard(LearnCardDto card) {
+    return GestureDetector(
+      key: ValueKey('learn-${card.id}'),
+      onTap: () => _openCard(card),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: _typeColor(card.type).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(_typeLabel(card.type),
+                style: TextStyle(fontSize: 10, color: _typeColor(card.type))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(card.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1, height: 1.4)),
+              if (card.coreView.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(card.coreView,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey4, height: 1.5)),
+              ],
+              const SizedBox(height: 6),
+              Text(_metaLine(card),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey5)),
+            ]),
+          ),
+          const SizedBox(width: 4),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Icon(Icons.chevron_right, size: 18, color: AppColors.darkGrey6),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  String _typeLabel(String type) => switch (type) {
+        'ai' => 'AI',
+        'trading' => '交易',
+        _ => '其他',
+      };
+
+  Color _typeColor(String type) => switch (type) {
+        'ai' => AppColors.darkGreen,
+        'trading' => AppColors.darkRed,
+        _ => AppColors.darkGrey4,
+      };
+
+  String _metaLine(LearnCardDto c) {
+    final parts = <String>[];
+    if (c.created.isNotEmpty) parts.add(_fmtDate(c.created));
+    if (c.author.isNotEmpty) parts.add(c.author);
+    if (c.tags.isNotEmpty) parts.add(c.tags.join(' · '));
+    return parts.join('  ');
+  }
+
+  String _fmtDate(String date) {
+    if (date.length < 10) return date;
+    final now = DateTime.now();
+    final y = int.tryParse(date.substring(0, 4));
+    final mmdd = date.substring(5);
+    return (y != null && y == now.year) ? mmdd : date;
+  }
+}
+
+/// 单篇学习卡片全文页（核心观点 / 关键要点 / 我的疑问 / 交易标注）。
+class _LearnDetailPage extends StatelessWidget {
+  final LearnCardDto card;
+  const _LearnDetailPage({required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.darkBg,
+      body: SafeArea(
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Row(children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: Icon(Icons.arrow_back, size: 20, color: AppColors.darkGrey4),
+                ),
+              ),
+              Expanded(
+                child: Text(card.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _typeRow(),
+                const SizedBox(height: 16),
+                if (card.coreView.isNotEmpty) _section('核心观点', card.coreView),
+                if (card.keyPoints.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  _listSection('关键要点', card.keyPoints),
+                ],
+                if (card.questions.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  _listSection('我的疑问', card.questions),
+                ],
+                if (card.tradeRelated) ...[
+                  const SizedBox(height: 18),
+                  _section('交易相关',
+                      card.tradeNote.isNotEmpty ? '涉及可执行交易规则（备注：${card.tradeNote}），规则变更须你拍板' : '涉及可执行交易规则，规则变更须你拍板'),
+                ],
+              ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _typeRow() {
+    final meta = <String>[];
+    if (card.author.isNotEmpty) meta.add('作者：${card.author}');
+    if (card.platform.isNotEmpty) meta.add(card.platform);
+    if (card.created.isNotEmpty) meta.add(card.created);
+    return Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      Text(_typeLabel(card.type),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _typeColor(card.type))),
+      for (final m in meta)
+        Text(m, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+    ]);
+  }
+
+  Widget _section(String title, String body) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.darkGreen)),
+          const SizedBox(height: 8),
+          Text(body, style: const TextStyle(fontSize: 14, color: AppColors.darkGrey2, height: 1.7)),
+        ],
+      );
+
+  Widget _listSection(String title, List<String> items) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.darkGreen)),
+          const SizedBox(height: 6),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('•  ', style: TextStyle(fontSize: 14, color: AppColors.darkGrey4)),
+                Expanded(
+                  child: Text(item,
+                      style: const TextStyle(fontSize: 14, color: AppColors.darkGrey2, height: 1.6)),
+                ),
+              ]),
+            ),
+        ],
+      );
+
+  String _typeLabel(String type) => switch (type) {
+        'ai' => 'AI / 技术',
+        'trading' => '交易',
+        _ => '其他',
+      };
+
+  Color _typeColor(String type) => switch (type) {
+        'ai' => AppColors.darkGreen,
+        'trading' => AppColors.darkRed,
+        _ => AppColors.darkGrey4,
+      };
+}

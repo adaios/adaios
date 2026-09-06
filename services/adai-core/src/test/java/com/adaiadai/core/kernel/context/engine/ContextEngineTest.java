@@ -175,6 +175,32 @@ class ContextEngineTest {
     }
 
     @Test
+    void learnKnowledge_pluginGated_onlyEnabledUserInjected() {
+        // RFC 20260829 L2：learn 笔记知识源是插件知识源（name=learn → PluginRegistry 映射 learn 插件）——
+        // 未启用 learn 插件用户不注入学习笔记（防跨用户/未启用泄漏），启用后始终注入
+        KnowledgeSource learnKnowledge = new KnowledgeSource() {
+            @Override public String name() { return "learn"; }
+            @Override public String globalContext(String userId) { return "## 你最近的学习笔记\n- RAG 与 Agent（ai）\n"; }
+            @Override public String enrich(String userId, String scene) { return ""; }
+        };
+        grantPlugins("bob"); // 无插件
+        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT, PluginRegistry.PLUGIN_LEARN);
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(learnKnowledge), search, pluginService());
+
+        String nonLearnCtx = engine.compose("bob", "note", record("想学习点新东西"), null).prompt();
+        assertFalse(nonLearnCtx.contains("最近的学习笔记"), "无 learn 插件用户不注入学习笔记");
+
+        String learnCtx = engine.compose("adai", "note", record("想学习点新东西"), null).prompt();
+        assertTrue(learnCtx.contains("最近的学习笔记"), "启用 learn 插件用户注入学习笔记（问答可召回）");
+    }
+
+    @Test
     void noPluginUser_tradingContent_judgedAsLife_noKnowledgeNoContributor() {
         // D5：无插件用户 → 交易词不判 trading，一律 life；知识/贡献者不注入，prompt 不含 trading domain
         RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();

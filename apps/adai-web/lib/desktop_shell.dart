@@ -8,6 +8,7 @@ import 'pages/timeline_page.dart';
 import 'pages/project_page.dart';
 import 'pages/task_page.dart';
 import 'pages/trading_page.dart';
+import 'pages/learn_page.dart';
 import 'pages/search_page.dart';
 import 'pages/profile_page.dart';
 import 'utils/open_url.dart';
@@ -32,7 +33,7 @@ class DesktopShell extends StatefulWidget {
   State<DesktopShell> createState() => _DesktopShellState();
 }
 
-/// 导航项：plugin 为空 = 基础服务常驻；trading/project = 需启用对应插件才可见（RFC 20260814）。
+/// 导航项：plugin 为空 = 基础服务常驻；trading/project/learn = 需启用对应插件才可见（RFC 20260814/20260829）。
 class _NavEntry {
   final String label;
   final IconData icon;
@@ -50,6 +51,7 @@ class _DesktopShellState extends State<DesktopShell> {
     _NavEntry('项目', Icons.dashboard_outlined, 'project', (api) => ProjectPage(api: api)),
     _NavEntry('任务', Icons.checklist_outlined, null, (api) => TaskPage(api: api)),
     _NavEntry('交易', Icons.trending_up, 'trading', (api) => TradingPage(api: api)),
+    _NavEntry('学习', Icons.auto_stories_outlined, 'learn', (api) => LearnPage(api: api)),
     _NavEntry('搜索', Icons.search, null, (api) => SearchPage(api: api)),
     _NavEntry('档案', Icons.person_outline, null, (api) => ProfilePage(api: api)),
   ];

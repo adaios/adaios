@@ -135,6 +135,15 @@ void main() {
         reason: '无 trading 插件 → 隐藏交易');
     expect(find.descendant(of: navRail, matching: find.text('项目')), findsNothing,
         reason: '无 project 插件 → 隐藏项目');
+    expect(find.descendant(of: navRail, matching: find.text('学习')), findsNothing,
+        reason: '无 learn 插件 → 隐藏学习（RFC 20260829）');
+  });
+
+  testWidgets('learn 插件门控：启用后显示「学习」导航项', (tester) async {
+    await pumpShell(tester, api: _api(plugins: ['trading', 'project', 'learn']));
+    final navRail = find.byKey(const ValueKey('nav-rail'));
+    expect(find.descendant(of: navRail, matching: find.text('学习')), findsOneWidget,
+        reason: '启用 learn 插件 → 显示学习导航');
   });
 
   testWidgets('插件拉取失败：保守只显基础服务，壳不崩溃', (tester) async {

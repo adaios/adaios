@@ -20,8 +20,10 @@ public class PluginRegistry {
 
     public static final String PLUGIN_TRADING = "trading";
     public static final String PLUGIN_PROJECT = "project";
+    /** learn 插件（RFC 20260829）：外部内容学习沉淀——喂入 → 卡片化 → 三通道呈现。 */
+    public static final String PLUGIN_LEARN = "learn";
 
-    private static final Set<String> PLUGINS = Set.of(PLUGIN_TRADING, PLUGIN_PROJECT);
+    private static final Set<String> PLUGINS = Set.of(PLUGIN_TRADING, PLUGIN_PROJECT, PLUGIN_LEARN);
 
     /** 该名称是否为已知插件（trading/project）。life 等基础服务不是插件。 */
     public boolean isValid(String name) {
