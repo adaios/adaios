@@ -482,3 +482,25 @@ params:
 | 变更 | **MINOR（2026-09-04，v3.41）**：新增（指南针活跃市值口径，用户手动判定多空）|
 
 **语义**：用户亲手判定的活跃市值区间（「一切的前提」）。无文件 = 未判定（推送回退 current.md 规则推断）；一旦设置，时段推送/知识注入的【择时状态】以用户判定为准，不被 current.md 的 OAMV 规则推断覆盖。写入原子 + per-user 条带锁（P2-交易28 锁池模式）；损坏文件视为不存在（同 §2.8 推送）。消费方：`TradingSessionPushService.readMarketStage`（三级读取：用户判定 → current.md → 「择时状态未知」）、`TradingController` GET/PUT `/trading/market-stage`、Web/App 交易页红绿切换条。
+
+### 2.20 建议留痕 `trading/advice-history/{yyyy-MM}.json`（RFC 20260905 B①，2026-09-05 新增）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/advice-history/{yyyy-MM}.json`（每用户，按月一个数组）|
+| 格式 | JSON 数组，元素 `{"id":"adv_20260905_143050_123","date":"2026-09-05","symbol":"600584","name":"长电科技","suggestion":"clear","reason":"…","rules":["R66"],"hardVerdict":true,"positionPercent":20.0,"source":"manual-advice","createdAt":"2026-09-05T14:50:30.123"}`——`suggestion`：buy/hold/reduce/clear（LLM 降级 null）；`source`：manual-advice（手动建议）/ session-push（定时推送逐票）/ degraded（LLM 降级）|
+| 真相源 | `AdviceHistoryRepository`（domain 端口）→ `AdviceHistoryFileRepository` |
+| 变更 | **MINOR（2026-09-05，RFC 20260905）**：新增——「阿呆当时说 X」留痕，供卖出回查/复盘对照/建议遵守率 |
+
+**语义**：每次建议生成出口逐票落盘（建议只记录不执行）。id 由 createdAt 派生含毫秒（同秒防覆盖）；date 归 createdAt 日期（存储层禁 now()）。写入原子 + per-user 条带锁；损坏文件拒写回（保留原文件防覆盖历史）。消费方：`TradingController` GET `/trading/advice-history`、复盘「建议对照」段、画像建议遵守率。
+
+### 2.21 个人画像主观层 `trading/profile.md`（RFC 20260905 A 层，2026-09-05 新增）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/profile.md`（每用户一个）|
+| 格式 | Markdown——主观层（用户补全/情绪回填的行为签名），客观统计实时算不落盘 |
+| 真相源 | `TradingProfileService`（domain，直接 FileStorage 读写）|
+| 变更 | **MINOR（2026-09-05，RFC 20260905）**：新增——画像主观层容器（试点记忆卡情绪回填 + PUT /trading/profile）|
+
+**语义**：只存用户确认过的主观内容（行为签名/情绪），不存系统统计（客观层实时推导防双份数字漂移）。无文件 = 未建画像（AI 注入时全球上下文不声称「了解你」——防幻觉）。消费方：`TradingProfileContributor`（trading/decision 场景注入）、`TradingController` GET/PUT `/trading/profile`、`TradePsychologyService` 情绪回答沉淀。

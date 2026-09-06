@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.46 | 最后更新：2026-09-04**
+**文档版本：v3.47 | 最后更新：2026-09-05**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-05 | v3.47 | **交易⑤认知层（RFC 20260905，用户拍板全量执行）**：新增 `GET /trading/advice-history`（建议留痕查询：`?symbol=&days=` 按票近 N 天回查、缺 symbol 返回近 30 天全量倒序——「阿呆当时说 X」数据源）+ `GET /trading/profile`（个人交易画像：`{stats{…客观统计}, objectiveText, adviceAdherence{…建议遵守率}, subjective}`）+ `PUT /trading/profile`（body `{"content":"…"}`，保存画像主观层落 profile.md）+ `GET /trading/sold/{symbol}/psychology-questions`（按交易结构确定性生成 3~5 个补情绪提问）+ `POST /trading/sold/{symbol}/psychology/answer`（body `{"psychology":"…"}`，回答回填 sold.psychology 追加式 + 沉淀画像主观层）；建议出口逐票落建议留痕（含降级 degraded 标记）；复盘注入「建议对照」段（当日清仓 vs 卖前建议）；画像注入 trading/decision 场景与建议引擎 prompt（A 点） |
 | 2026-09-04 | v3.46 | **账号矩阵（语义，无端点变更）**：内置管理员由 `adai` 迁为 **`admin`**（后台管理专用：seed 预置/不可删禁降级/插件保护全部随 `SEED_ADMIN_ID` 迁移）；`adai` 降为**产品主账号** role=user（app/web 登录，个人数据 `data/adai/` 不变，plugins 保留 trading/project）；再建普通受限账号（role=user、plugins=[]，如 family）——`/accounts`、`/auth/setup`、`GET /accounts/available` 语义与示例同步更新 |
 | 2026-09-04 | v3.44 | **买点三重校验（REVIEW P1-交易9/20 出表，2026-09-04 晚间自主批 III）**：`GET /buy-points` 判定语义按课程校准 + 防连板误报——①B1「回调一半」几何改**课程口径**：回撤占波段（窗口最高 high − 最低 low）≥ 回调比例（默认 0.5，即 close ≤ (high+low)/2）；②B2 放量阈值默认 **1.5→2.0**（倍量柱，rules.yaml/adai 规则包同步）；③B2 加三重防护：KDJ.J 拐头向上 + **J 连续 ≥90 高位钝化排除**（首日拉起放行）+ 距窗口低点涨幅 >30% 不追 + 近 2 日连板（≥9.8%）不推；④响应命中项附 `dataDate`（判定 K 线最后日期）；15:10 定时推送要求 `dataDate=当日` 才推（防滞后一日信号冒充今日，楚天龙实锤） |
 | 2026-09-04 | v3.43 | **按批次止损编辑闭环（决策文档 P1 方案 A，2026-09-04 晚间自主批 II）**：新增 `PUT /trading/lots/{lotId}/stop-loss`（body `{"stopLossPrice": 12.34}`，>0 且 ≤4 位小数，lotId 不存在 404——给某个买入批次单独设/改止损，落 `data/{userId}/trading/lot-stoploss.json` 覆盖层，不污染流水）+ `DELETE /trading/lots/{lotId}/stop-loss`（清除覆盖回退流水止损/默认 −7%，幂等 404）；`GET /trading/lots` 的 `stopLossPrice` 语义更新——批次推导后合并覆盖层（覆盖 > 流水止损 > 默认 −7%），推送/行为标注/复盘自动跟随 |
@@ -984,6 +985,73 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ```
 
 > `suggestion` 取值：buy / hold / reduce / clear。`position_percent` 后端按市值占比计算（确定性）。LLM 失败时降级返回基础数据（无建议字段），不抛错。需 trading 插件（403）。空仓返回空 advice。
+
+---
+
+### `GET /api/v1/trading/advice-history` — 建议留痕查询（RFC 20260905 B①，v3.47）
+
+「阿呆当时说 X」的历史依据——每次建议生成出口逐票落盘（`data/{userId}/trading/advice-history/{yyyy-MM}.json`，成功 source=manual-advice、LLM 降级 source=degraded 都落，诚实留史）。需 trading 插件（403）。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `symbol` | String | 否 | 标的代码；填 → 返回该标的最远 `days` 天内建议（倒序）；空 → 返回最近 `days` 天全部 |
+| `days` | Integer | 否 | 回看天数，默认 30，**上限 90**（⚠️13：仓储只保留最近 3 个月建议，超 90 天会静默截断故封顶对齐） |
+
+**Response** `200` — AdviceEntry 数组（倒序）
+
+```json
+[{"id":"adv_...","date":"2026-09-03","symbol":"600584","name":"长电科技",
+  "suggestion":"clear","reason":"跌破止损位，按 R66 只输一根K线","rules":["R66"],
+  "hardVerdict":true,"positionPercent":20.0,"source":"manual-advice","createdAt":"2026-09-03T14:50:00"}]
+```
+
+> 落盘只在建议出口（手动 /trading/advice 或未来推送逐票）；输出是记忆对照素材，非执行指令。
+
+### `GET /api/v1/trading/profile` — 个人交易画像（RFC 20260905 A 层，v3.47）
+
+客观统计（系统从清仓史实时推导）+ 建议遵守率 + 主观层原文（profile.md）。需 trading 插件（403）。
+
+**Response** `200`
+
+```json
+{"stats":{"soldCount":168,"winRatePct":33.3,"medianPnlPct":-1.54,
+  "disciplineViolationCount":91,"disciplineViolationRatePct":54.2,"avgHoldDays":12,
+  "verdictBreakdown":{"盈利了结":57,"扛单超 5%":37,"短持仓亏损":54}},
+ "objectiveText":"## 你的交易画像（客观统计…）",
+ "adviceAdherence":{"withAdviceCount":12,"followedCount":8,"followRatePct":66.7},
+ "subjective":"S1 追高的手 > 抄底的手（profile.md 原文，未建画像 → null）"}
+```
+
+> 红线：数字系统算（不靠 LLM 编造）、主语是你（合规）。
+
+### `PUT /api/v1/trading/profile` — 保存画像主观层（RFC 20260905 A 层，v3.47）
+
+**Body**
+
+```json
+{"content": "S1 追高…\nS3 下跌摊平…（自由文本，profile.md 原文）"}
+```
+
+**Response** `200` `{"updated":true}`；`content` 缺失 → 400。落 `data/{userId}/trading/profile.md`。
+
+### `GET /api/v1/trading/sold/{symbol}/psychology-questions` — 清仓情绪提问（RFC 20260905 P2，v3.47）
+
+按该笔清仓的交易结构（盈亏/持仓天数/买卖次数/verdict）确定性生成 3~5 个「当时为什么」提问（不耗 LLM）。需 trading 插件（403）。symbol 不在清仓史 → 404。
+
+**Response** `200`
+
+```json
+{"symbol":"600584",
+ "questions":[{"key":"deep_loss_trigger","question":"亏到 -29.22% 才走——是什么最终触发了离场？"}]}
+```
+
+### `POST /api/v1/trading/sold/{symbol}/psychology/answer` — 清仓情绪回答（RFC 20260905 P2，v3.47）
+
+**Body** `{"psychology": "扛到受不了才割的…"}`——回答回填 `sold.psychology`（追加式保留已有）+ 沉淀 profile.md 主观层（已有画像时）。需 trading 插件（403）；空 psychology → 400；symbol 不在清仓史 → 404。
+
+**Response** `200` `{"updated":true}`
 
 ---
 

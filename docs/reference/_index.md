@@ -3,9 +3,9 @@ title: docs/reference 目录索引
 description: reference 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-22
+updated: 2026-09-06
 status: active
-lines: 36
+lines: 38
 depends-on: []
 related:
   - ../_index.md
@@ -24,10 +24,12 @@ tags: [meta, index, reference]
 | change-log.md | 批次变更日志（历史归档） | active |
 | feature-reference.md | 功能真相源（唯一） | active |
 | trading-features.md | 交易模块（trading 插件）功能手册——端点总表/定时任务/双端功能/知识底座/已知缺陷 | active |
+| admin-features.md | adai-admin 管理后台功能手册——定位边界/登录会话/四区页面清单/端点总表/已知缺陷 | active |
 | task-log.md | 走查/待办日志 | active |
 | task-plugin-model.md | 任务插件模型说明 | active |
 | framework-plugin-gap.md | 框架+插件形态的现状差距与迁移路径（对账清单，回答"会不会重构"） | active |
 | issue-log.md | 问题跟踪 | active |
+| trading-journal-benchmark.md | 交易日志竞品调研基准——TradeZella / TraderSync / Edgewonk 纪律量化/画像/拦截机制（RFC 20260905 支撑） | active |
 
 ## 过期判断
 

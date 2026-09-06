@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-08-19
 status: active
-lines: 103
+lines: 104
 depends-on: []
 related: [../roles/frontend-reviewer.md]
 tags: [review, checklist, frontend]
@@ -101,3 +101,4 @@ tags: [review, checklist, frontend]
 | F58 | 推送标题契约断言：后端 toPushEntry 的 type→标题映射必须与前端 mock/switch 的标题表对齐（session 节点名、今日操作确认、gain/break-cost），标题被重映射即红灯——前端不得按「持久化后不存在」的标题判定 | 推送标题契约断裂（UI/UX 审查 P1-推送1，2026-08-19）|
 | F59 | 删除/忽略类操作必须持久化：左滑删除单条推送 → 30 分钟自动刷新/下拉后不得复活（需 dismiss API 或本地持久化 dismissed id）| app 左滑删推送刷新复现（UI/UX 审查 P1-推送2，2026-08-19）|
 | F60 | 推送卡 8 类型徽章全覆盖渲染测试：app/web 补 session（早/午/尾/确认）与 gain/break-cost 推送卡渲染断言（徽章非灰色 fallback、确认按钮可达）| 6/8 徽章落灰色 fallback（UI/UX 审查，2026-08-19）|
+| F61 | 认证类 401 双义必须区分：会话失效（AuthFilter「会话/未登录」文案）才触发全局登出；业务 401（控制器 AuthException，如改密「原密码错误」）抛 ApiException 由弹窗内展示——禁止把业务 401 当会话失效踢回登录页；三端（web/app/admin）口径一致 | admin 改密原密码错误被登出（admin UI/UX 审查 P1-A，2026-09-06）|

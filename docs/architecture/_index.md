@@ -3,9 +3,9 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-04
+updated: 2026-09-05
 status: active
-lines: 42
+lines: 43
 depends-on: []
 related:
   - ../_index.md
@@ -29,6 +29,7 @@ tags: [meta, index, architecture]
 | frontend-reference.md | 前端统一参考（术语对照 + 布局视觉） | active |
 | memory-os-design.md | 记忆 OS 设计 | active |
 | memory-frameworks-borrow.md | 开源记忆方案借鉴分析（Mem0/Letta/Zep/File-First 生态 → 可借鉴清单） | active |
+| memory-fidelity.md | 记忆底座质量——原文保真与证据链（三层存储诊断 / E-A 读取侧保真 / E-B evidence 字段 / E-C records 原文化 / 失真审计，2026-09-05） | draft |
 | ai-calling-governance.md | AI 调用治理方案（模型路由 / 流式 / 超时矩阵 / 上下文瘦身，分三批落地） | draft |
 | trading-case-library-design.md | 完美买点案例库设计方案（第四阶段：案例沉淀 → 判定当下；四环链路/特征/相似度/画图，已实施） | draft |
 | trading-data-adjustment.md | 行情数据前复权设计——TDX 本地数据正确性（东财因子表 + 本地换算，口径对齐腾讯 qfq） | draft |

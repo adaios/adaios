@@ -32,6 +32,7 @@
 | [skills-usage.md](guides/skills-usage.md) | 🧩 技能使用指南：11 个技能何时用、怎么触发、怎么维护（给人看）|
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
 | [trading-features.md](reference/trading-features.md) | 📈 交易模块（trading 插件）功能手册：端点总表/定时任务/Web·App 双端功能/知识底座/已知缺陷 |
+| [admin-features.md](reference/admin-features.md) | 🛠 adai-admin 管理后台功能手册：定位边界/登录会话/四区页面清单/端点总表/已知缺陷 |
 
 ## 🎨 前端参考
 

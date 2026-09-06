@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-02
+updated: 2026-09-05
 status: active
-lines: 74
+lines: 75
 depends-on: []
 related:
   - ../_index.md
@@ -66,6 +66,7 @@ tags: [meta, index, rfc]
 | 20260830-trading-perfect-case-library.md | 完美买点案例库——从案例积累到判定当下（日 K 案例沉淀 → 归一化相似度 → 双轨判定）| draft |
 | 20260901-auth-login.md | 用户认证登录体系——根治 X-User-Id 零鉴权（账号密码 + 服务端会话，AuthFilter 覆盖 X-User-Id）| implemented |
 | 20260902-trading-memory-positioning.md | 交易模块定位重设——从「建议引擎」到「交易记忆」（用你的历史，理解你的当下；取代 20260815 定位条款）| approved |
+| 20260905-trading-cognition-layer.md | 交易⑤认知层落地——个人画像（profile，客观推导+主观补全、注入建议/复盘）与建议闭环（advice 留痕→卖出回查→「说X做Y得Z」）；吸收 TradeZella/TraderSync/Edgewonk 纪律量化 | approved |
 
 ## 过期判断
 

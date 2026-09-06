@@ -1,17 +1,20 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-09-05
-last-review: 2026-08-30
-baseline: c9c2918..fec30bf（案例库批 1-4，36 文件；前值：RFC 20260825 批次跟踪批 34 文件）
-mode: deep 增量审查（案例库批次——**降级：子代理环境故障，主会话四视角顺序审**；前值：deep 批次审查 四官隔离并行）
+updated: 2026-09-06
+last-review: 2026-09-06
+baseline: 工作树 2026-09-06（admin UI/UX 专项审查 + 登录默认值批 + admin-features 手册；前值：2026-09-05 认知层落地批）
+mode: admin 管理后台 UI/UX 专项审查（ui-reviewer + ux-reviewer 隔离并行 + 主会话 P1 实测复核）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
+> 2026-09-06 admin 管理后台 UI/UX 专项审查（用户「布局上一般般」+ 历史从未对 admin 专项 UI/UX 审查；ui-reviewer + ux-reviewer 隔离并行 + 主会话 P1 实测复核）：**P1×4 成立**（改密原密码错 401 双义未区分→误踢登录页 / 反哺入库 `review.date.toString()` 传参后端 LocalDate 必败（对照同页 formatDate 正确）/ 文件树读内容失败静默吞伪装「无内容」/ 涨跌 0 值判红 + formatPercent 0 输出 +0.00%）+ **P1×1 复核排除**（会话菜单 switch 无 break——Dart 3.12 实测无 break case 不贯通，非「改密即登出」）+ **P2×25 + P3×31**（禁用/插件/维护无确认口径不齐、记录/Feed 只看当天、反哺「标记已处理」纯本地态、per-user 作用域表达不透明、灰阶对比度系统欠账、圆角/字号未 token 化 等）。**0 修复**（只报告；修复批次建议见报告）。报告 `audits/2026-09-06-admin-uiux-review.md`。
 
 > 2026-08-24 方案文档深审（`docs/architecture/ai-calling-governance.md` AI 调用治理方案稿 + `_index.md` 登记，docs/backend/frontend/adversarial 四官隔离并行）：守护 G1-G7 7 PASS / 0 HIT + META PASS。**P0×1 + 战略×7 + P1×11 + P2×13（合并去重）**。⭐⭐⭐⭐ **超时矩阵自相矛盾**（前端 90s < 后端最坏 120s，四官全中）→ S-9；⭐⭐ 路由键 scene() 不可行（parse/advice/review/push 全 scene="trading"，应改用 AiTraceContext.source）→ S-10；P0-1 流式→非流式降级重试数据一致性全文未定义（落库/幂等/RecordRetryService 双写）；⭐⭐ SseEmitter async timeout 未配置（Tomcat 默认 ~30s 掐断流式）；⭐⭐ 调用点计数 13 vs 实际 12。方案方向可行（backend 核实 9 项事实属实），修订后实施。报告 `audits/2026-08-24-ai-calling-governance-doc-review.md`。
 
 > 2026-08-23 未归口对账（`ai-engineering/guard-unfixed.sh` 聚合 audits 游离 + 用户视觉批）：**新登记 4 项**——误触搜索 P2-UI6 / launcher 行排序 P2-UI7 / 触达 44pt P2-UI8 / 硬编码色值 P2-UI9（用户视觉批）；小字号 14→27 处并入 P2-UI5；双端 Feed 方向 → S-8 待拍板。**闭环确认 6 条**（D 批已修未归口：切 World 丢输入 D1 / `_loadMore` 去重·切回 page0·时间线最早日期·「刚刚」恒显 D2 / 任务编辑走 PUT D4 / 错误文案人话 D7）。**对账回填 5 处**（P0-交易A / P1-交易18 / P2-UI2 / P2-UI3 / P2-UX3 表状态与已修复区一致化）。
 
+<!-- unfixed-gate
+audits/2026-09-06-admin-uiux-review.md → **P1×4 + P2-1/2/3/4/5/6/7/9/10/11/13/16/18/20/21/22/23/24/25 + P3-2/3/6/8/9/12/13/14/15/17/18/20/23/24/25/28 已修出表**（P1 修复批 + 拍板批 + 保护/反馈批 + UI 打磨批 A/B，admin 64 全绿）；剩 **待视觉验收/重构**（P2-14 对比度、P2-15 token 化、P3-5/11/27/31、P2-19、P3-21/22/30）+ **另排**（P2-7/8 历史浏览、P2-5 删除数据语义），详见审计报告进展表
 <!-- unfixed-gate
 audits/2026-08-30-case-library-data-review.md → **P1-数据1/P2-数据1/P3-数据1 已修**（KDJ latest 回归 + 搜索竞态 + 文档过时）；P3-数据2/3 登记
 <!-- unfixed-gate
@@ -22,6 +25,8 @@ audits/2026-08-24-ai-calling-governance-doc-review.md → S-9,S-10（REVIEW 新�
 audits/2026-08-23-ai-engineering-meta-audit.md → P1-3,P1-5,P1-6,P1-A3,P1-A4,P1-A5,P2-1,P2-2,P2-3,P2-4,P2-A2,P2-A3（REVIEW 新增）；S-A1 残留→#179 依赖；修复批 072dcee 见 change-log。P1 批出表：P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 ✅；P2 批出表：P1-A3/P1-A5 ✅；G6 守卫批出表：P1-G6-1 ✅（timeline_modal 守卫×2 + 回归×2，app 122）；剩 P1-A4/P2-2/P2-3
 audits/2026-08-20-app-health-check.md → P2-UI6,P2-UI7,S-8,闭环(D1切World丢输入/D2排序四实锤/D4任务编辑PUT/D7错误文案)
 audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进机制)
+audits/2026-09-05-memory-fidelity-audit.md → 记忆失真基线（只读审计：decision 127/172=74% + fact 错标 + 8 月全无 cardId + 8 月初无卡对话原话被 ai_summary 覆盖未落盘 + 抽样加料过半）——memory-fidelity.md 诊断待修订（E-A 前置=写侧保原话）、kind 失衡治理另立
+audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全部修复出表**（sellDate 锚定/复盘滤卖后/sold 上锁+抛错/domain 下沉/ID 毫秒/尾盘留痕/globalContext 有据/同 symbol 定位/样本门槛/跨月排序/断链 lines 档位；守护 G2 一并修）；剩 P2×6 + P3×3 + 产品口径（违纪率≡亏损率、画像基于 sold.json 失真口径、前端零入口）REVIEW 登记待拍板
 -->
 
 > 2026-08-23 元审核（AI 上下文建设工程体系全量，主审核 + adversarial-reviewer 独立子代理隔离复核 + 5 项实证实验）：**P0 无。战略×1 + P1×6 + P2×6（本体系自伤自查）**。核心：S-A2 实证修正（干净 clone M4 必 FAIL——AGENTS.local.md gitignore 快照不入库，非对抗官预测的 M2 lines）；S-A1 门禁绕过三重路径（--no-verify 提示自印 + .claude allowlist + hooksPath 不入库）；P1-A1 隐私闸门类型绕过（.txt/.json 在触发条件外 exit 0，实证 commit 成功）。**修复批 `072dcee`**（M4 白名单 / 新脚本入库 + 登记 / 隐私闸门前移 + gitignore 复核 / cost 追加式 / guard-tools.sh 接入自检）+ **P1 批**（P1-3/P1-5/P1-6/P2-1/P2-4/P2-A2/P2-A3 出表）+ **P2 批**（P1-A3 guard-cost 增量缓存 5.35s→0.044s 121× / P1-A5 G6 逐点化——首战实锤 timeline_modal.dart await 后 setState 无守卫，新登记 P1-G6-1）。剩余 P1-A4（smoke 鉴权依赖 #179）+ P2-2/P2-3（本机旧 IP/cron TCC）。报告 `audits/2026-08-23-ai-engineering-meta-audit.md`。
@@ -51,6 +56,13 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-09-06 | admin UI 打磨批 B（用户「剩下所有继续」自主推进）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-10（导入结果对话框 + failures 完整清单）/ P2-23（档案空态占位）/ P3-6（空持仓占位）/ P3-17（FilePreview 截断）/ P3-18（删 cardTheme 死 token）/ P3-29（登录错误动画）；admin 64 不变全绿 |
+| 2026-09-06 | admin UI 打磨批 A（审查剩余，用户「你继续」自主推进）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-16（窄屏空态文案 wide 分支）/ P2-18（行情徽标对齐 web darkBlue）/ P2-20/21（ellipsis）/ P2-22（保护锁提亮 grey4）/ P2-24（记忆筛选空文案区分）/ P2-25（首访提示实时刷新）/ P3-3（本人账号图标区分）/ P3-8（复盘生成 busy）/ P3-9（建号 busy）/ P3-12（登录按钮文字统一）/ P3-13（Domain→资产域）/ P3-14/15（ellipsis）/ P3-20（执行按钮 40）/ P3-23（ICP SafeArea）/ P3-24（popup offset）/ P3-25（15% token 统一）/ P3-28（记录 id 弱化）；admin 64 不变（纯 UI/行为无新测试，回归全绿） |
+| 2026-09-06 | admin 保护/反馈批（审查出表，用户「不需要我决策就开始」）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-1（全局 401 提示）/ P2-2（禁用确认）/ P2-3（插件开关反馈+说明）/ P2-4（静默刷新保留旧值）/ P2-5（删除文案会话失效）/ P2-6（账号卡治理浏览直达）/ P2-9（维护三操作确认+目标用户）；admin 63→**64** 全绿 analyze 0 |
+| 2026-09-06 | admin P2/P3 拍板修复批（用户拍板 4 项全按推荐 + 新规则「改必测/测试现行」）| 工作树 2026-09-06（审查 P2/P3 拍板项）| 主会话 | 0 新问题 | P2-11（移除反哺「标记已处理」本地假操作 → 冲突只读 + 引导指向复盘反哺）· P2-13（文件树标注全局范围）· P2-7（记录/Feed 数据源标注当天前 50）· P3-2（重置内置 admin 警示确认）；回归测试 +5；admin 58→**63** 全绿 analyze 0 |
+| 2026-09-06 | admin P1 修复批（审查出表，用户「修」）| 工作树 2026-09-06（P1-admin-1~4）| 主会话 | 0 新问题 | P1-admin-1~4 全部出表（改密 401 双义 / 反哺 formatDate / 文件树错误态 / 0 值中性灰）+ 回归测试 +5；admin 53→**58** 全绿 analyze 0 |
+| 2026-09-06 | admin 管理后台 UI/UX 专项审查（用户「布局一般般」+ 从未专项审查）| 工作树 2026-09-06（`apps/adai-admin/lib/` 全量）| ui-reviewer + ux-reviewer 隔离并行 + 主会话 P1 实测复核 | **P1×4 成立**（改密 401 双义误踢 / 反哺日期传参必败 / 文件树读失败静默吞 / 0 值判红）+ P1×1 误报排除（switch 无 break 不贯通，Dart 3.12 实测）+ P2×25 + P3×31 | 0（只报告；修复待用户拍板，建议批次见报告）|
+| 2026-09-05 | deep 增量（认知层落地批，用户「需要审核么」→ 派官）| 工作树 2026-09-05 | ×3（backend + docs + adversarial 隔离并行）| backend P1×5 + docs×6 + 对抗 💥6/⚠️10/🤔6 | P1/💥/docs 全修出表（14 项）+ 守护 G2；1181→1187 |
 | 2026-09-05 | 登记对齐批（主会话收口，无审查）| REVIEW.md 头部 + 最近审核表（09-04 九批只在 change-log/P1 行内留痕未入表）| 主会话 | 0 新问题 | 补 09-04 批次登记行（活跃市值+CORS / 行情导入 MD17 / 按批次止损 / 买点三重校验 / 资金曲线 / 账号矩阵 / 账号会话闭环 / 生产部署）+ 头部 updated 对齐 |
 | 2026-09-04 | 生产部署批（用户「直接部署」）| 本地 main（01b84d6..b9483cd 同源产物；git push 因网络受限未执行）| 主会话 | 0 新问题（部署）| 晚间自主批四件套 + 账号体系三端上线（后端 bootJar + 规则包 + .env 上限 + web/admin 重建）；公网 smoke 通过，**待用户登录态复查**（资金曲线/批次止损/admin 登录/新买点口径）|
 | 2026-09-04 | 账号体系审查 + 账号矩阵批（用户指令「后台管理系统账号改成 admin…再初始化一个无插件普通账号」）| 工作树（账号矩阵批 + 会话闭环批）| 主会话 | P1×2（账号1 禁用/删除不踢已登录会话 / 账号2 产品端无自助改密入口）| 2 出表（账号会话闭环批：禁用/删除踢会话 + validateAndTouch 账号存在性复查 + web/app 自助改密）+ 账号矩阵（seed admin adai→admin，admin/adai/family 三账号本地+生产同步手术）|
@@ -130,6 +142,10 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P1-交易20 | **买点规则缺 KDJ/追高防护/信号新鲜度三重校验，连板股高位误报（2026-08-27 生产实锤，用户质疑选股条件）**：楚天龙(003040) 8/21 首板起五连板（8/27 收 18.73，自 8/19 低点 10.84 +73%），15:10 仍推送「🚀 放量突破，B2 右侧」——推送「量能 2.0x」精确复现 8/26 量比 2.04，**信号基于 8/26 K 线滞后整整一个交易日**；同日北方铜业(000737) 同类（量能 1.6x=8/26 量比 1.56）。根因三层：①**B2 无 KDJ 条件**——课程原文「B2：KDJ勾明显往上拐头」（glossary B1/B2/B3 三件套），代码只查「量比>1.5 + 收盘>20日前高」，8/26 判定时 KDJ.J=120.6 深度超买仍命中；②**无追高防护**——前高=滚动 20 日窗口，连板日天天创新高天天「突破」，无涨幅/连板数/乖离上限；③**无信号新鲜度校验**——15:10 腾讯当日 K 未更新时拿昨日数据当今日信号（实证：8/26 15:10 扫描 0 命中 vs 同日 23:05 手动扫描 2 命中；8/27 15:10 若含当天则 8/27 量比 1.43<1.5 不会命中）。反向缺陷：**8/21 首板启动点（J=61.6 低位拉起、量比 1.88）反而因未破 8/7 高点 13.53 不命中——启动点抓不到、高位乱推**。关联 P1-交易9（B1 回调口径漂移，同文件）| `BuyPointDetector.java:69-73` / `TradingSessionPushService.java:289-313` / `WatchlistBuyPointService.java:57` | 严格卡条件（2026-08-27 用户确认方向，三处待拍板：①B1 回调口径（50% vs 课程 (high+low)/2）②B2 放量 1.5→2.0 对齐课程倍量柱 ③B2 是否加 B1/J 前置）：B2 加 KDJ.J 拐头向上 + J<90 超买排除；信号新鲜度（最新 K 线日期≠今日不推/补扫）；距 20 日低点涨幅>30% 或 ≥2 连板不推 | ✅ 已修（2026-09-04 按推荐实施，见 change-log「买点三重校验批」：B1 几何课程口径 + B2 放量 2.0 + KDJ 拐头/高位钝化排除/追高 ≤30%/连板排除 + dataDate 新鲜度——15:10 只推当日数据）|
 | P1-账号1 | **禁用/删除账号不踢已登录会话（2026-09-04 账号体系审查，P1-1）**：SessionRepository 的会话只在「重置密码」时被踢——PATCH enabled=false 与 DELETE 均不清理该账号既有会话；AuthFilter / AuthService.validateAndTouch 只校验 token 有效与过期，不查账号是否仍存在/enabled → 被禁用或删除账号的旧会话最长 30 天内仍可读写产品端点（管理口因 role 实时判定除外）| `AuthService.validateAndTouch` / `AccountController.updateAccount,deleteAccount` | 禁用与删除时 kickSessions + validateAndTouch 对不存在/disabled 账号 fail-closed 删会话 | ✅ 已修（2026-09-04 账号会话闭环批：updateAccount 显式禁用（true→false）与重置密码并列踢全部会话；deleteAccount 删前先踢；AuthService.validateAndTouch 会话有效后复查账号——不存在或 disabled → 删会话返回 empty（纵深防御，外部直改账号文件也兜住）；AuthServiceTest +2、AccountControllerTest +3；后端 1126→1131 全绿）|
 | P1-账号2 | **产品端（web/app）无自助改密入口（2026-09-04 账号体系审查，P1-2）**：改密入口只放 admin 后台（#178 决策），账号矩阵后 adai/family 均为 role=user 进不了 admin → 只能由管理员代重置密码，无法自助更新（对家人等普通账号不合理）；后端 POST /auth/password 现成未接 | `adai-web/lib/desktop_shell.dart` / `adai-app/lib/pages/launcher_page.dart`（两端 ApiService 均无 changePassword）| web 底部用户行会话菜单 + app Launcher 会话区加「修改密码」（旧+新+确认，≥8 位两次一致；401 双义：原密码错误弹窗内提示不登出 / 会话失效走全局登出）| ✅ 已修（2026-09-04 账号会话闭环批：web 底部用户行改会话菜单（PopupMenu：登录：@userId / 修改密码 / 退出登录）+ _ChangePasswordDialog；app Launcher 会话区「修改密码」入口 + ChangePasswordDialog 组件；两端 ApiService 新增 changePassword（401 文案区分业务错误与会话失效）；web +9 / app +12 测试，159 / 164 全绿）|
+| P1-admin-1 | **改密「原密码错误」401 双义未区分 → 误踢登录页（2026-09-06 admin UI/UX 审查，详见报告 P1-A）**：changePassword 走默认 notifyAuth:true，任意 401（含「原密码错误」业务 401）触发全局登出；web 端已按响应体区分（跨端不一致）| `adai-admin/services/api_service.dart:194-206` / `admin_shell.dart:328-345` | 仿 web 按响应体分类（会话失效才全局登出，原密码错误弹窗内提示）| ✅ 已修（2026-09-06 P1 修复批：changePassword 独立 401 处理——含「会话/未登录」才触发 onUnauthorized，业务 401 抛 ApiException 弹窗展示；抽 _extractError 复用；+2 回归测试，58 全绿）|
+| P1-admin-2 | **反哺入库日期传参必败（2026-09-06 admin UI/UX 审查，详见报告 P1-B）**：`review.date.toString()`（`2026-09-04 00:00:00.000`）拼入路径，后端 `@PathVariable LocalDate` 解析失败——反哺主动作不可用（同页其它操作均用 formatDate/_dateOf）| `reviews_tab.dart:140` | 改 `formatDate(review.date)` + 补 widget 测试断言请求路径 | ✅ 已修（2026-09-06 P1 修复批：formatDate 输出 yyyy-MM-dd + reviews_tab 回归测试断言 store 收到 '2026-07-31' 无空格）|
+| P1-admin-3 | **文件树/知识树读内容失败静默吞，伪装「无内容/空目录」（2026-09-06，报告 P1-C）**：管理员据此误判治理结论 | `data_tree_tab.dart:75-78` / `os_tree_tab.dart:79-82` / `tree_view.dart:67-70` | 失败态错误文案+重试，区分真空/失败 | ✅ 已修（2026-09-06 P1 修复批：data/os 两 tab 加 _contentError 态（错误文案+重试按钮）；tree_view 目录懒加载失败行内「加载失败 · 点击重试」，不再伪装空目录）|
+| P1-admin-4 | **涨跌幅/盈亏 0 值判红 + formatPercent 对 0 输出 `+0.00%`（2026-09-06，报告 P1-D）**：平盘误示为涨（对照 web V9-10 已修口径）| `market_tab.dart:53-54` / `positions_tab.dart:82-83,163-164` / `format.dart:17-18` | `v>0 红 / v<0 绿 / v==0 中性灰`；formatPercent 0 不带 + | ✅ 已修（2026-09-06 P1 修复批：market_tab._changeColor / positions_tab._profitColor 三分支 0→darkGrey3；formatPercent `v>0` 才带 +；format_test 断言 0→'0.00%'）|
 > **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**注意：P1 表仍有 P1-交易4/P1-交易9 未修（2026-08-17 走查确认，见下表）**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 
@@ -206,6 +222,9 @@ audits/2026-08-16-ai-engineering-workflow.md → task-log(FL-04/06 审查跟进�
 | P2-用户1 | **iOS App 周期「过期打不开」（2026-08-26 用户反馈「今天想记录，打不开」）**：免费 Apple ID 签名 **7 天过期**（backend-deployment.md §9 明示），失效后 App 直接打不开、无法自助修复——**设计缺陷必然复发，非偶发故障**；阻断用户记录关键场景，信任损耗最大 | iOS 签名/部署（`backend-deployment.md` §9/§10）| 零成本兜底：配 adaiadai.com DNS+HTTPS + 手机浏览器/PWA 应急通道（域名已注册未配，§10 有现成方案）；长期正解：付费开发者账号（$99/年，签名一年有效 / TestFlight 90 天）——成本需用户拍板 |
 | P2-用户2 | ✅ 全落地（2026-08-30 批 2：`POST /records/ask-stream` SSE 端点——text 增量/meta 定稿/[DONE]/error 事件 + 后端内降级（无增量回退同步 understand）+ 同卡同问 5 分钟去重 + JsonTailFilter 防 JSON 跨块 + UTF-8 byte[] 透传防乱码；adai-app/adai-web 双端 SseClient（IO http.send 流式 / Web fetch ReadableStream 条件导入）+ 90ms 节流草稿 + meta 定稿 + 未收增量自动降级同步端点（intent 同构）；api-spec v3.34，端点 88→89，后端 890/app 143/web 132 全绿。批 1：S-9 超时矩阵 + S-10 模型分层 + StreamingAiClient 已于 2026-08-29 落地） | AI 调用链路 / `ai-calling-governance.md` | ✅ 2026-08-30（三端全绿；已随 2026-08-30 全量生产部署批上线，smoke 通过） |
 | P2-用户3 | ✅ 已修（2026-08-29：每日收盘小结 15:30 推送到手机——当日成交（过滤股息流水）+ 破止损持仓 + 待确认候选 + 一句话收尾，模板聚合不耗 AI；新推送类型 close-summary 入 PushSettings + 双端开关；+3 测试）。** **交易「帮不到忙、没有感觉」（2026-08-26 用户反馈，使用频率下降主因；用户最在意交易）**：功能已堆 36 端点但价值不可感知——规则术语无解释（P2-UX2）、打分虚标（S7 三维实为二维）、建议只输出不落地、收盘推送未送到眼前；用户原话「目前还帮不到我啥」 | 交易模块双端 + 推送链路 | 术语人话化 + 去虚标 + 每日收盘「今日该注意什么」推送到手机（Bark 已接）+ 建议贴合真实操作；**优先级最高** |
+| P2-认知1 | ✅ 已修（2026-09-05 用户拍板 A：违纪只算真破纪律两类——扛单 R66 + 短打 R53，「亏损持仓」普通亏损剔除；+回归测试 lossHoldNotCountedAsViolation）。**「纪律违反率」标签≈亏损率（2026-09-05 三官审 🤔17）**：SoldTradeVerdict 三分类（扛单/短持仓亏损/亏损持仓）覆盖全部亏损 → 违反率 ≡ 100−胜率 | `TradingProfileService.computeStats` | 拍板 A 已实施 |
+| P2-认知2 | **画像统计建在 sold.json（2026-09-05 三官审 ⚠️11，用户拍板 B：本轮标注口径防误导，v2 切逐笔）**：RFC §二自曝清仓表「首买→末卖」是纸上区间收益——画像统计整层建立在此口径；本轮已在注入文本标注「清仓表口径（首买→末卖纸上区间收益，非实际回合）」，画像 v2 再切 TradingLotService 逐笔回合收益 | `TradingProfileService` | ⏸ v2 待排（本轮已标口径） |
+| P2-认知3 | **前端零入口（2026-09-05 三官审 🤔21，用户拍板 C：先对味试点再排 UI）**：5 个新端点（profile/advice-history/psychology-questions/answer）在 web/app 0 引用——主观层暂时靠试点记忆卡对话补全；试点味道确认后再把「阿呆提问→回答」做成界面 | apps/adai-web + adai-app | ⏸ 待试点对味后排 UI |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 
