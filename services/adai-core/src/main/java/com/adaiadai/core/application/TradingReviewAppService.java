@@ -46,6 +46,7 @@ public class TradingReviewAppService {
     private static final String REVIEW_SYSTEM_PROMPT = """
             你是一个个人交易复盘助手。基于用户消息中的上下文（交易系统规则、知识、行情、身份、历史记录）与复盘模板，生成结构化的交易复盘笔记正文。
             严格遵循模板的五个小节（今日交易执行/持仓变化与关注/与系统规则对照/今日教训与心得/明日关注要点）输出正文本身；不要输出 JSON，不要输出 summary，不要用 markdown 代码块包裹，不要使用 emoji。
+            【对抗审 🤔9（2026-09-05）：若上下文含「建议对照」段（阿呆当时说 → 你做了 → 结果），必须原样保留其数字与对照关系并入「与系统规则对照」小节——不得丢弃、不得改写数字、不得用指责语气（主语是你 vs 你的历史，讲事实不下判断）】。
             """.strip();
 
     private final RecordRepository recordRepository;
@@ -59,6 +60,8 @@ public class TradingReviewAppService {
     /** 2026-08-26 复盘卡点：hasTradingActivity 改查当日真实成交（getDailyTradeSummary.count），
      *  复盘生成与「今日有成交」绑定（用户拍板：导入成交后才可生成复盘）。 */
     private final TradingAppService tradingAppService;
+    /** RFC 20260905 B②③：建议留痕——卖出回查「阿呆当时说 X」→ 复盘对照段。 */
+    private final com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository;
 
     public TradingReviewAppService(RecordRepository recordRepository,
                                    PositionRepository positionRepository,
@@ -67,7 +70,8 @@ public class TradingReviewAppService {
                                    AiClient aiClient,
                                    TradingReviewFileRepository reviewRepository,
                                    TradingLotService tradingLotService,
-                                   TradingAppService tradingAppService) {
+                                   TradingAppService tradingAppService,
+                                   com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository) {
         this.recordRepository = recordRepository;
         this.positionRepository = positionRepository;
         this.accountSnapshotRepository = accountSnapshotRepository;
@@ -76,6 +80,7 @@ public class TradingReviewAppService {
         this.reviewRepository = reviewRepository;
         this.tradingLotService = tradingLotService;
         this.tradingAppService = tradingAppService;
+        this.adviceHistoryRepository = adviceHistoryRepository;
     }
 
     /**
@@ -188,6 +193,86 @@ public class TradingReviewAppService {
     // ── 内部方法 ──
 
     /**
+     * RFC 20260905 B③：建议闭环对照段。
+     * <p>
+     * 当日清仓（sold.sellDate == 复盘日）的标的 → 回查近 30 天建议留痕 →
+     * 生成「阿呆当时说 X → 你做了 Y → 结果 Z」客观对照（数字代码算，LLM 只组织语言，红线①）。
+     * <p>
+     * 数字口径：建议日价格 vs 清仓日实际结果（holdPnlPct 由清仓表提供）——
+     * 只陈述「建议动作 vs 实际动作 + 结果」，不下价值判断（合规：主语是你）。
+     */
+    private String buildAdviceCompareSection(String userId, LocalDate date) {
+        List<com.adaiadai.core.domain.trading.SoldTrade> soldDay;
+        try {
+            soldDay = tradingAppService.soldList(userId).stream()
+                    .filter(s -> date.equals(s.sellDate()))
+                    .toList();
+        } catch (Exception e) {
+            return "";
+        }
+        if (soldDay.isEmpty()) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 建议对照（阿呆当时说 → 你做了什么 → 结果）\n\n");
+        boolean any = false;
+        for (com.adaiadai.core.domain.trading.SoldTrade s : soldDay) {
+            // P1-2（2026-09-05 三官深审）：以该笔 sellDate 为锚回查卖前建议（不用 now()——
+            // 历史复盘会错窗口；且必须滤 date ≤ sellDate，防「阿呆当时说」引用清仓后生成的建议）
+            java.time.LocalDate windowStart = s.sellDate().minusDays(30);
+            java.time.YearMonth m = java.time.YearMonth.from(s.sellDate());
+            java.time.YearMonth m0 = java.time.YearMonth.from(windowStart);
+            java.util.List<com.adaiadai.core.domain.trading.AdviceEntry> preSell = new java.util.ArrayList<>();
+            try {
+                for (java.time.YearMonth ym = m; !ym.isBefore(m0); ym = ym.minusMonths(1)) {
+                    for (com.adaiadai.core.domain.trading.AdviceEntry h
+                            : adviceHistoryRepository.findByMonth(userId, ym.atDay(1))) {
+                        if (!s.symbol().equals(h.symbol())) continue;
+                        if (h.date() == null || h.date().isAfter(s.sellDate()) || h.date().isBefore(windowStart)) continue;
+                        preSell.add(h);
+                    }
+                }
+            } catch (Exception e) {
+                continue;
+            }
+            if (preSell.isEmpty()) continue;
+            any = true;
+            // 卖前最近一条（createdAt 降序取首；无 createdAt 按 date 兜底）
+            com.adaiadai.core.domain.trading.AdviceEntry latest = preSell.stream()
+                    .sorted(java.util.Comparator.comparing(
+                            (com.adaiadai.core.domain.trading.AdviceEntry h) -> h.date(),
+                            java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                    .findFirst().orElse(null);
+            if (latest == null) continue;
+            // ⚠️8（2026-09-05 对抗审）：建议动作英文枚举 → 中文（复盘是给用户读的，不是给机器）
+            String suggestion = humanSuggestion(latest.suggestion());
+            sb.append("- **").append(s.name()).append("（").append(s.symbol()).append("）**\n");
+            sb.append("  - 阿呆当时说（").append(latest.date()).append("）：").append(suggestion);
+            if (latest.reason() != null && !latest.reason().isBlank()) {
+                sb.append(" —— ").append(latest.reason());
+            }
+            sb.append("\n");
+            sb.append("  - 你做了：").append(s.sellDate()).append(" 清仓，持仓期 ").append(s.holdPnlPct()).append("%\n");
+            sb.append("  - 规则对照：").append(s.verdict() != null && !s.verdict().isBlank()
+                    ? s.verdict() : "（无判定）").append("\n");
+        }
+        if (!any) return "";
+        sb.append("\n> 数字由系统从建议留痕与清仓史推导；这份对照帮你看见「计划 vs 执行」的距离。\n");
+        return sb.toString();
+    }
+
+    /** ⚠️8（2026-09-05 对抗审）：建议动作枚举 → 中文（复盘用户可读；null/未知 → 占位）。 */
+    private String humanSuggestion(String raw) {
+        if (raw == null || raw.isBlank()) return "（当时未给出明确建议）";
+        return switch (raw.strip().toLowerCase()) {
+            case "buy" -> "加仓";
+            case "hold" -> "持有";
+            case "reduce" -> "减仓";
+            case "clear" -> "清仓";
+            default -> raw;
+        };
+    }
+
+    /**
      * 复盘正文：当日记录 + 当前持仓 + 汇总。作为合成记录的 content 传给 ContextEngine。
      */
     private String buildReviewBody(LocalDate date, List<ContentRecord> records,
@@ -219,6 +304,16 @@ public class TradingReviewAppService {
             }
         } catch (Exception e) {
             log.warn("复盘行为标注注入失败（不影响复盘生成）| userId={} | {}", userId, e.getMessage());
+        }
+
+        // RFC 20260905 B③：建议闭环对照段——当日卖出的标的，「阿呆当时说 X → 你做了 Y → 结果 Z」
+        try {
+            String adviceCompare = buildAdviceCompareSection(userId, date);
+            if (adviceCompare != null && !adviceCompare.isBlank()) {
+                sb.append(adviceCompare).append("\n");
+            }
+        } catch (Exception e) {
+            log.warn("复盘建议对照注入失败（不影响复盘生成）| userId={} | {}", userId, e.getMessage());
         }
 
         // 当前持仓

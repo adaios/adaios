@@ -59,7 +59,8 @@ class TradingReviewAppServiceTest {
         TradingReviewAppService service = new TradingReviewAppService(
                 recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
                 contextEngine, aiClient, reviewRepository, mock(TradingLotService.class),
-                mock(TradingAppService.class));
+                mock(TradingAppService.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class));
 
         // ── 执行 ──
         LocalDate date = LocalDate.of(2026, 8, 1);
@@ -112,7 +113,8 @@ class TradingReviewAppServiceTest {
         TradingReviewAppService service = new TradingReviewAppService(
                 recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
                 contextEngine, aiClient, reviewRepository, lotService,
-                mock(TradingAppService.class));
+                mock(TradingAppService.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class));
         LocalDate date = LocalDate.of(2026, 8, 1);
         service.generateReview("default", date);
 
@@ -136,7 +138,8 @@ class TradingReviewAppServiceTest {
                 mock(RecordRepository.class), mock(PositionRepository.class),
                 mock(AccountSnapshotRepository.class), mock(ContextEngine.class),
                 mock(AiClient.class), mock(TradingReviewFileRepository.class),
-                mock(TradingLotService.class), trading);
+                mock(TradingLotService.class), trading,
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class));
 
         assertTrue(service.hasTradingActivity("default", LocalDate.of(2026, 8, 2)));
     }
@@ -151,9 +154,149 @@ class TradingReviewAppServiceTest {
                 mock(RecordRepository.class), mock(PositionRepository.class),
                 mock(AccountSnapshotRepository.class), mock(ContextEngine.class),
                 mock(AiClient.class), mock(TradingReviewFileRepository.class),
-                mock(TradingLotService.class), trading);
+                mock(TradingLotService.class), trading,
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class));
 
         assertFalse(service.hasTradingActivity("default", LocalDate.of(2026, 8, 2)));
+    }
+
+    @Test
+    void generateReview_injectsAdviceCompareSection_whenSoldTodayWithHistory() {
+        // RFC 20260905 B③：当日清仓 + 曾有建议 → 复盘注入「阿呆当时说 X → 你做了 Y → 结果 Z」
+        LocalDate date = LocalDate.of(2026, 9, 5);
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        PositionRepository positionRepository = mock(PositionRepository.class);
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        when(positionRepository.snapshot(any()))
+                .thenReturn(PortfolioSnapshot.of(List.of(), BigDecimal.ZERO));
+
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.SoldTrade("600584", "长电科技",
+                        date.minusDays(12), date, 12, "5+1", -29.22,
+                        "扛单超 5%——按 R66 只输一根K线", "")));
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary(date.toString(), 1, 0, 1, 0, 30460, List.of(), null, null));
+
+        com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistory =
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class);
+        // P1-2（2026-09-05 三官）：复盘对照以 sellDate 所在月扫卖前建议
+        when(adviceHistory.findByMonth(eq("default"), eq(java.time.YearMonth.from(date).atDay(1)))).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.AdviceEntry("adv_1", date.minusDays(3), "600584", "长电科技",
+                        "clear", "跌破止损位，按 R66 只输一根K线", List.of("R66"), true,
+                        new BigDecimal("20.0"), "manual-advice",
+                        date.minusDays(3).atTime(14, 50))));
+        when(adviceHistory.findByMonth(eq("default"), eq(java.time.YearMonth.from(date).minusMonths(1).atDay(1))))
+                .thenReturn(List.of());
+
+        ContextEngine contextEngine = mock(ContextEngine.class);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(new ContextPackage(
+                "trading", "用户身份摘要", date + " 交易复盘", "复盘正文",
+                List.of("trading", "复盘"), List.of(),
+                "【交易系统规则】止损三级别。\n\n请分析这条记录，输出 JSON 格式",
+                LocalDateTime.now(), List.of()));
+        AiClient aiClient = mock(AiClient.class);
+        when(aiClient.generate(any(), any())).thenReturn("复盘输出");
+
+        TradingReviewAppService service = new TradingReviewAppService(
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, aiClient, mock(TradingReviewFileRepository.class),
+                mock(TradingLotService.class), trading, adviceHistory);
+
+        service.generateReview("default", date);
+
+        ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
+        String content = recordCaptor.getValue().content();
+        assertTrue(content.contains("建议对照"), "复盘正文应含建议对照节");
+        assertTrue(content.contains("阿呆当时说"), "应含阿呆当时说");
+        assertTrue(content.contains("清仓"), "应含当时建议动作（中文，⚠️8）");
+        assertTrue(content.contains("长电科技"), "应含标的");
+        assertTrue(content.contains("-29.22"), "应含实际结果（持仓期涨幅）");
+        assertTrue(content.contains("扛单超 5%"), "应含规则对照判定");
+    }
+
+    @Test
+    void generateReview_noAdviceCompare_whenNoSoldThatDay() {
+        // 当日无清仓 → 无建议对照段（不影响复盘）
+        LocalDate date = LocalDate.of(2026, 9, 5);
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        PositionRepository positionRepository = mock(PositionRepository.class);
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        when(positionRepository.snapshot(any()))
+                .thenReturn(PortfolioSnapshot.of(List.of(), BigDecimal.ZERO));
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(List.of());
+        ContextEngine contextEngine = mock(ContextEngine.class);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(new ContextPackage(
+                "trading", "用户身份摘要", date + " 交易复盘", "复盘正文",
+                List.of("trading", "复盘"), List.of(),
+                "【交易系统规则】止损三级别。\n\n请分析这条记录，输出 JSON 格式",
+                LocalDateTime.now(), List.of()));
+        AiClient aiClient = mock(AiClient.class);
+        when(aiClient.generate(any(), any())).thenReturn("复盘输出");
+
+        TradingReviewAppService service = new TradingReviewAppService(
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, aiClient, mock(TradingReviewFileRepository.class),
+                mock(TradingLotService.class), trading,
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class));
+
+        service.generateReview("default", date);
+
+        ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
+        String content = recordCaptor.getValue().content();
+        assertFalse(content.contains("建议对照"), "当日无清仓不应有建议对照节");
+    }
+
+    @Test
+    void generateReview_postSellAdvice_notReferenced() {
+        // P1-2 回归（2026-09-05 三官）：清仓「之后」生成的建议不得出现在对照里（date ≤ sellDate 过滤）
+        LocalDate date = LocalDate.of(2026, 9, 5);
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        PositionRepository positionRepository = mock(PositionRepository.class);
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        when(positionRepository.snapshot(any()))
+                .thenReturn(PortfolioSnapshot.of(List.of(), BigDecimal.ZERO));
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.SoldTrade("600584", "长电科技",
+                        date.minusDays(12), date, 12, "5+1", -29.22,
+                        "扛单超 5%——按 R66 只输一根K线", "")));
+        when(trading.getDailyTradeSummary(any(), any())).thenReturn(
+                new TradingAppService.DailyTradeSummary(date.toString(), 1, 0, 1, 0, 30460, List.of(), null, null));
+        com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistory =
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class);
+        // 唯一建议在 sellDate 当天之后（9-7）→ 必须被 date ≤ sellDate 过滤掉
+        when(adviceHistory.findByMonth(eq("default"), eq(java.time.YearMonth.from(date).atDay(1)))).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.AdviceEntry("adv_post", date.plusDays(2), "600584", "长电科技",
+                        "clear", "清仓后才给的建议", List.of("R66"), false,
+                        null, "manual-advice", date.plusDays(2).atTime(9, 0))));
+        when(adviceHistory.findByMonth(eq("default"), eq(java.time.YearMonth.from(date).minusMonths(1).atDay(1))))
+                .thenReturn(List.of());
+        ContextEngine contextEngine = mock(ContextEngine.class);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(new ContextPackage(
+                "trading", "用户身份摘要", date + " 交易复盘", "复盘正文",
+                List.of("trading", "复盘"), List.of(),
+                "【交易系统规则】止损三级别。\n\n请分析这条记录，输出 JSON 格式",
+                LocalDateTime.now(), List.of()));
+        AiClient aiClient = mock(AiClient.class);
+        when(aiClient.generate(any(), any())).thenReturn("复盘输出");
+        TradingReviewAppService service = new TradingReviewAppService(
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, aiClient, mock(TradingReviewFileRepository.class),
+                mock(TradingLotService.class), trading, adviceHistory);
+
+        service.generateReview("default", date);
+
+        ArgumentCaptor<ContentRecord> recordCaptor = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(contextEngine).compose(any(), eq("trading"), recordCaptor.capture());
+        String content = recordCaptor.getValue().content();
+        assertFalse(content.contains("建议对照"), "只有清仓后建议 → 对照段不应出现（卖后建议不算「当时说」）");
     }
 }
 

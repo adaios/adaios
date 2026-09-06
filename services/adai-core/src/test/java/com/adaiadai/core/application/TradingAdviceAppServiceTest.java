@@ -2,7 +2,10 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.AdviceEntry;
+import com.adaiadai.core.domain.trading.AdviceHistoryRepository;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.TradingProfileService;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
@@ -24,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -61,6 +65,8 @@ class TradingAdviceAppServiceTest {
                 ruleEngineWithDefaults(),
                 mock(AccountSnapshotRepository.class),
                 TradingAdviceAppServiceTest.defaultRuleRepo(),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
+                profileService(),
                 "../../os/trading-engine/knowledge/context");
     }
 
@@ -70,7 +76,16 @@ class TradingAdviceAppServiceTest {
         return new TradingAdviceAppService(positions, market, ai,
                 ruleEngineWithDefaults(), acc,
                 TradingAdviceAppServiceTest.defaultRuleRepo(),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
+                profileService(),
                 "../../os/trading-engine/knowledge/context");
+    }
+
+    /** 画像服务 mock：默认无画像（不干扰既有 prompt 断言）。 */
+    private TradingProfileService profileService() {
+        TradingProfileService ps = mock(TradingProfileService.class);
+        when(ps.profileText(any())).thenReturn("");
+        return ps;
     }
 
     /** 第三阶段：真实规则仓库 mock，findByUser → 默认配置。 */
@@ -417,5 +432,68 @@ class TradingAdviceAppServiceTest {
         verify(ai).generate(ctxCaptor.capture(), any());
         String prompt = ctxCaptor.getValue().prompt();
         assertFalse(prompt.contains("超 R81 上限"), "现金充足时不应触发 R81 超仓硬信号");
+    }
+
+    // ── RFC 20260905 B①：建议留痕 ──
+
+    @Test
+    void generateAdvice_success_recordsHistoryPerSymbol() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                posWithPlan("000725", "京东方A", 1000, "5.20", "4.80", "2026-08-18", "5.00", null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "京东方A", "4.80", "-5.0")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("""
+                {
+                  "advice": [
+                    {"symbol": "000725", "suggestion": "clear", "reason": "跌破止损位 5.00，按 R66 只输一根K线", "rules": ["R66"]}
+                  ],
+                  "summary": "京东方跌破止损建议清仓"
+                }
+                """);
+        AdviceHistoryRepository history = mock(AdviceHistoryRepository.class);
+        TradingAdviceAppService svc = service(repo, market, ai, history);
+
+        svc.generateAdvice("default");
+
+        // 每只持仓都落一条留痕（含硬判定标记 true）
+        ArgumentCaptor<AdviceEntry> captor = ArgumentCaptor.forClass(AdviceEntry.class);
+        verify(history, org.mockito.Mockito.atLeastOnce()).append(eq("default"), captor.capture());
+        AdviceEntry recorded = captor.getValue();
+        assertEquals("000725", recorded.symbol());
+        assertTrue(recorded.hardVerdict(), "跌破止损位的 clear 是引擎硬判定，应标记");
+        assertEquals("manual-advice", recorded.source());
+    }
+
+    @Test
+    void generateAdvice_llmFailure_degradedStillRecords() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                pos("000725", "京东方A", 1000, "5.20", "5.46")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM down"));
+        AdviceHistoryRepository history = mock(AdviceHistoryRepository.class);
+        TradingAdviceAppService svc = service(repo, mock(MarketDataSource.class), ai, history);
+
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        assertTrue(res.advice().stream().allMatch(i -> i.suggestion() == null), "降级响应无建议字段");
+        // 降级也留痕（source=degraded，诚实留史——不留就查不到「当时建议过但失败」）
+        ArgumentCaptor<AdviceEntry> captor = ArgumentCaptor.forClass(AdviceEntry.class);
+        verify(history, org.mockito.Mockito.atLeastOnce()).append(eq("default"), captor.capture());
+        assertEquals("degraded", captor.getValue().source());
+    }
+
+    private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai,
+                                            AdviceHistoryRepository history) {
+        return new TradingAdviceAppService(positions, market, ai,
+                ruleEngineWithDefaults(),
+                mock(AccountSnapshotRepository.class),
+                TradingAdviceAppServiceTest.defaultRuleRepo(),
+                history,
+                profileService(),
+                "../../os/trading-engine/knowledge/context");
     }
 }

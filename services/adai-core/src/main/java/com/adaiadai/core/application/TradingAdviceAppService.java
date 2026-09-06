@@ -2,7 +2,10 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
+import com.adaiadai.core.domain.trading.AdviceEntry;
+import com.adaiadai.core.domain.trading.AdviceHistoryRepository;
 import com.adaiadai.core.domain.trading.Position;
+import com.adaiadai.core.domain.trading.TradingProfileService;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.engine.PositionVerdict;
 import com.adaiadai.core.domain.trading.engine.StopLossVerdict;
@@ -104,6 +107,10 @@ public class TradingAdviceAppService {
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final TradingRuleSettingsRepository settingsRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    /** RFC 20260905 B①：建议留痕（每次建议出口落盘，供卖出回查与「说X做Y得Z」）。 */
+    private final AdviceHistoryRepository adviceHistoryRepository;
+    /** RFC 20260905 A 层：个人画像注入（建议前让阿呆用「你上次…」对照）。 */
+    private final TradingProfileService profileService;
 
     public TradingAdviceAppService(PositionRepository positionRepository,
                                    MarketDataSource marketDataSource,
@@ -111,6 +118,8 @@ public class TradingAdviceAppService {
                                    TradingRuleEngine ruleEngine,
                                    AccountSnapshotRepository accountSnapshotRepository,
                                    TradingRuleSettingsRepository settingsRepository,
+                                   AdviceHistoryRepository adviceHistoryRepository,
+                                   TradingProfileService profileService,
                                    @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -118,6 +127,8 @@ public class TradingAdviceAppService {
         this.ruleEngine = ruleEngine;
         this.accountSnapshotRepository = accountSnapshotRepository;
         this.settingsRepository = settingsRepository;
+        this.adviceHistoryRepository = adviceHistoryRepository;
+        this.profileService = profileService;
         this.rulesPath = Paths.get(knowledgeDir, "rules.md").toAbsolutePath().normalize();
         this.strategyPath = Paths.get(knowledgeDir, "strategy.md").toAbsolutePath().normalize();
     }
@@ -159,20 +170,77 @@ public class TradingAdviceAppService {
                 .toList();
 
         // 3. LLM 结构化生成（失败/不可解析 → 降级基础数据）
+        TradingAdviceResponse response;
         try {
-            String prompt = buildPrompt(views, constraintRules, strategyOverview(strategyText));
+            String prompt = buildPrompt(userId, views, constraintRules, strategyOverview(strategyText));
             ContextPackage ctx = ContextPackage.simple(
                     "trading", null, "持仓建议", prompt,
                     List.of("trading", "建议"), prompt);
             AiTraceContext.set(userId, null, null, "trading_advice");
             String raw = aiClient.generate(ctx, ADVICE_SYSTEM_PROMPT);
-            TradingAdviceResponse response = parseLlmAdvice(raw, views);
+            response = parseLlmAdvice(raw, views);
             log.info("持仓建议生成完成 | userId={} | 持仓数={} | 建议数={}",
                     userId, views.size(), response.advice().size());
-            return response;
         } catch (Exception e) {
             log.warn("持仓建议 LLM 生成失败，降级返回基础数据 | userId={} | {}", userId, e.getMessage());
-            return fallback(views);
+            response = fallback(views);
+        }
+        // RFC 20260905 B①：建议留痕——成功与降级都落盘（降级标记 degraded，诚实留史）
+        recordHistory(userId, response, views, response.advice().stream()
+                .noneMatch(i -> i.suggestion() != null) ? "degraded" : "manual-advice");
+        return response;
+    }
+
+    /**
+     * RFC 20260905 B①：把本次建议响应逐票落盘为 {@link AdviceEntry}（建议留痕）。
+     * 落盘失败仅 error 日志（建议功能不受阻——留痕是记忆层，失败不破坏建议主链路，
+     * 与 MarketPush 写失败同级别口径——持久化数据写失败必须 error）。
+     */
+    private void recordHistory(String userId, TradingAdviceResponse response,
+                               List<PositionView> views, String source) {
+        try {
+            LocalDate today = LocalDate.now();
+            for (TradingAdviceItem item : response.advice()) {
+                // LLM 降级补的占位行（suggestion=null）也落——记录「当日建议了这只票但无明确动作」
+                PositionView view = findBySymbol(views, item.symbol());
+                boolean hard = view != null
+                        && (view.stopLoss().verdict() == StopLossVerdict.BREACHED
+                            || (view.position().verdict() == PositionVerdict.OVER_WEIGHT && view.r81Applicable()));
+                adviceHistoryRepository.append(userId, new AdviceEntry(
+                        null, today, item.symbol(), item.name(), item.suggestion(),
+                        item.reason(), item.rules(), hard, item.positionPercent(), source,
+                        java.time.LocalDateTime.now()));
+            }
+        } catch (Exception e) {
+            log.error("建议留痕落盘失败 | userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    /**
+     * RFC 20260905 B①：查询建议留痕——某 symbol 最近 N 天建议（卖出回查/复盘对照数据源）。
+     * 无建议史返回空列表。跨月回查最多扫近 3 个月（仓储实现约束）。
+     */
+    public List<AdviceEntry> adviceHistoryRecent(String userId, String symbol, int days) {
+        try {
+            return adviceHistoryRepository.findBySymbolRecent(userId, symbol, days, LocalDate.now());
+        } catch (Exception e) {
+            log.warn("建议留痕查询失败 | userId={} | symbol={} | {}", userId, symbol, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * RFC 20260905 B①：查询建议留痕——某月全部建议（按留痕倒序）。
+     */
+    public List<AdviceEntry> adviceHistoryByMonth(String userId, java.time.YearMonth month) {
+        try {
+            List<AdviceEntry> list = adviceHistoryRepository.findByMonth(userId, month.atDay(1));
+            list.sort(Comparator.comparing(AdviceEntry::createdAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+            return list;
+        } catch (Exception e) {
+            log.warn("建议留痕月度查询失败 | userId={} | {} | {}", userId, month, e.getMessage());
+            return List.of();
         }
     }
 
@@ -384,9 +452,20 @@ public class TradingAdviceAppService {
         }
     }
 
-    /** 组装 user prompt：规则硬约束 + 止损/仓位硬判定信号 + 体系总纲 + 持仓/行情（含止损/入场/买点）+ 输出契约。 */
-    private String buildPrompt(List<PositionView> views, List<TradingRuleEngine.RuleEntry> constraintRules, String strategyOverview) {
+    /** 组装 user prompt：个人画像 + 规则硬约束 + 止损/仓位硬判定信号 + 体系总纲 + 持仓/行情（含止损/入场/买点）+ 输出契约。 */
+    private String buildPrompt(String userId, List<PositionView> views,
+                               List<TradingRuleEngine.RuleEntry> constraintRules, String strategyOverview) {
         StringBuilder sb = new StringBuilder();
+        // RFC 20260905 A 层：先注入「你的画像」（客观统计），建议对照你自己的历史说话
+        try {
+            String profile = profileService.profileText(userId);
+            if (profile != null && !profile.isBlank()) {
+                sb.append(profile).append("\n\n");
+                sb.append("> 提示：给出建议时可对照上面这位用户的画像——若本次操作与他历史中的老毛病相似（如追高/亏损加仓），在 reason 里温和点出「你上次在…」。只讲「你」，不讲市场推荐。\n\n");
+            }
+        } catch (Exception e) {
+            log.warn("建议引擎画像注入失败（不影响建议）| userId={} | {}", userId, e.getMessage());
+        }
         sb.append("【决策约束——止损规则 R66-R80】\n");
         for (TradingRuleEngine.RuleEntry rule : constraintRules) {
             if (rule.number() <= 80) appendRule(sb, rule);
@@ -444,6 +523,15 @@ public class TradingAdviceAppService {
                     ? v.stopLossPrice().stripTrailingZeros().toPlainString() : "未设置");
             sb.append(" | 入场 ").append(entryLabel(v));
             sb.append(" | 买点 ").append(v.buyPoint() != null ? v.buyPoint() : "未知");
+            // RFC 20260905 远期：回头草拦截预留——该票若在用户清仓史里亏过，注入对照提示
+            try {
+                String historyNote = profileService.symbolHistoryNote(userId, v.symbol());
+                if (historyNote != null && !historyNote.isBlank()) {
+                    sb.append("\n   [历史对照] ").append(historyNote);
+                }
+            } catch (Exception e) {
+                log.debug("持仓历史对照注入失败（不影响建议）| {}", e.getMessage());
+            }
             sb.append("\n");
         }
         sb.append("\n").append(OUTPUT_CONTRACT);

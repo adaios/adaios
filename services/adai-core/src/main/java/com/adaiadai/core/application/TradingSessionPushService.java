@@ -90,6 +90,9 @@ public class TradingSessionPushService {
     private final TradingAppService tradingAppService;
     /** v3.41（2026-09-04）：活跃市值区间（用户手动判定）——择时状态三级读取第 1 级，权威于 current.md。 */
     private final com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository marketStageRepository;
+    /** RFC 20260905 B①：建议留痕——时段推送的确定性逐票建议也落 AdviceEntry（💥1 对抗审 2026-09-05：
+     *  尾盘建议不留痕 → 遵守率分母空、复盘对照段永不出现）。 */
+    private final com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -107,6 +110,7 @@ public class TradingSessionPushService {
                                      TradeLogCollectService tradeLogCollectService,
                                      TradingAppService tradingAppService,
                                      com.adaiadai.core.infrastructure.storage.TradingMarketStageRepository marketStageRepository,
+                                     com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -122,6 +126,7 @@ public class TradingSessionPushService {
         this.tradeLogCollectService = tradeLogCollectService;
         this.tradingAppService = tradingAppService;
         this.marketStageRepository = marketStageRepository;
+        this.adviceHistoryRepository = adviceHistoryRepository;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -540,6 +545,23 @@ public class TradingSessionPushService {
         return sb.toString();
     }
 
+    /**
+     * RFC 20260905 B①（💥1 对抗审 2026-09-05）：时段推送确定性逐票建议留痕。
+     * 规则引擎判定的 clear/reduce/hold 落 AdviceEntry（source=session-push）——
+     * 否则建议遵守率分母长期空、复盘对照段永不出现（推送是每日建议的真实主源）。
+     * 落盘失败仅 error 日志（推送主链路不受阻，与 MarketPush 同口径）。
+     */
+    private void recordSessionAdvice(String userId, Position p, String suggestion, String reason, BigDecimal percent) {
+        try {
+            adviceHistoryRepository.append(userId, new com.adaiadai.core.domain.trading.AdviceEntry(
+                    null, java.time.LocalDate.now(), p.symbol(), p.name(), suggestion,
+                    reason, java.util.List.of(), false, percent, "session-push",
+                    java.time.LocalDateTime.now()));
+        } catch (Exception e) {
+            log.error("时段建议留痕失败（不影响推送）| userId={} | symbol={} | {}", userId, p.symbol(), e.getMessage());
+        }
+    }
+
     private String buildCloseTemplate(SessionData data, String userId) {
         // RFC 20260817：结构化——总结 + 每持仓一行（现价/涨跌/建议）
         StringBuilder sb = new StringBuilder("📉 尾盘建议\n");
@@ -557,15 +579,23 @@ public class TradingSessionPushService {
             BigDecimal percent = positionPercent(p, data.positions(), data.quotes(), data.cash());
             var pv = ruleEngine.evaluatePosition(userId, percent);
             String advice;
+            String suggestionKey = "hold";
+            String reason = "持有";
             if (sl.verdict() == StopLossVerdict.BREACHED) {
                 advice = "清仓（R66）";
+                suggestionKey = "clear";
+                reason = sl.message();
             } else if (pv.verdict() == PositionVerdict.OVER_WEIGHT && r81Applicable(data)) {
                 // B3-2（2026-08-23，P2-交易21 半修残留）：R81 减仓判定须过「总资产 <100 万」前提——
                 // 与 TradingAdviceAppService 输出侧同口径（超 100 万按 R82-R95 配置评估，不强制减仓）
                 advice = "减仓（占比 " + fmt(percent) + "% 超 R81）";
+                suggestionKey = "reduce";
+                reason = pv.message();
             } else {
                 advice = "持有";
             }
+            // RFC 20260905 B①（💥1 对抗审 2026-09-05）：尾盘确定性建议留痕——建议遵守率的真实数据源
+            recordSessionAdvice(userId, p, suggestionKey, reason, percent);
             sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
                     .append("（").append(change).append("） → ").append(advice).append("\n");
         }

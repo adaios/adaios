@@ -51,7 +51,7 @@ public class PluginRegistry {
     public String pluginForContributor(ContextContributor contributor) {
         String simple = contributor.getClass().getSimpleName();
         return switch (simple) {
-            case "MarketContextContributor", "TradingContextContributor" -> PLUGIN_TRADING;
+            case "MarketContextContributor", "TradingContextContributor", "TradingProfileContributor" -> PLUGIN_TRADING;
             case "ProjectContextContributor" -> PLUGIN_PROJECT;
             default -> null;
         };

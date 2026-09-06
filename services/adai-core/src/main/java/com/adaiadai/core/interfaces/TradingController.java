@@ -7,6 +7,8 @@ import com.adaiadai.core.application.WatchlistBuyPointService;
 import com.adaiadai.core.application.SoldScoreService;
 import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradingLotService;
+import com.adaiadai.core.domain.trading.TradingProfileService;
+import com.adaiadai.core.application.TradePsychologyService;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
@@ -47,6 +49,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 
@@ -83,6 +86,10 @@ public class TradingController {
     private final com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver;
     /** P1-1（2026-08-17 走查）：99-inbox 路径配置驱动（生产 /opt/adaios/os/... 由 .env 注入，防硬编码相对路径失效） */
     private final Path inboxDir;
+    /** RFC 20260905 A 层：个人交易画像（读写端点 + 客观统计）。 */
+    private final TradingProfileService profileService;
+    /** RFC 20260905 P2：清仓情绪采集（提问生成 + 回答回填）。 */
+    private final TradePsychologyService psychologyService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -99,6 +106,8 @@ public class TradingController {
                              TradingLotService tradingLotService,
                              com.adaiadai.core.infrastructure.market.NameToSymbolResolver nameToSymbolResolver,
                              TradingMarketStageRepository marketStageRepository,
+                             TradingProfileService profileService,
+                             TradePsychologyService psychologyService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -115,6 +124,8 @@ public class TradingController {
         this.tradingLotService = tradingLotService;
         this.nameToSymbolResolver = nameToSymbolResolver;
         this.marketStageRepository = marketStageRepository;
+        this.profileService = profileService;
+        this.psychologyService = psychologyService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -546,6 +557,44 @@ public class TradingController {
                 : ResponseEntity.notFound().build();
     }
 
+    /** 清仓情绪提问（RFC 20260905 P2，GET /api/v1/trading/sold/{symbol}/psychology-questions）：
+     *  按该笔交易结构（盈亏/天数/行为签名）生成 3~5 个「当时为什么」提问——前端清仓卡展示，
+     *  用户回答后 POST /psychology/answer 回填。提问确定性生成，不耗 LLM。 */
+    @GetMapping("/sold/{symbol}/psychology-questions")
+    public ResponseEntity<?> soldPsychologyQuestions(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String symbol) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        // 💥6（2026-09-05 对抗审）：同 symbol 多次清仓 → 取最近一笔（用户在清仓卡看到的就是最近）
+        SoldTrade trade = tradingAppService.soldList(userId).stream()
+                .filter(t -> t.symbol().equals(symbol) && t.sellDate() != null)
+                .max(java.util.Comparator.comparing(SoldTrade::sellDate))
+                .orElse(null);
+        if (trade == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(Map.of(
+                "symbol", symbol,
+                "questions", psychologyService.questionsFor(trade)));
+    }
+
+    /** 清仓情绪回答（RFC 20260905 P2，POST /api/v1/trading/sold/{symbol}/psychology/answer）：
+     *  用户回答回填 sold.psychology（追加式）+ 沉淀 profile.md 主观层。 */
+    @PostMapping("/sold/{symbol}/psychology/answer")
+    public ResponseEntity<?> soldPsychologyAnswer(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String symbol,
+            @RequestBody(required = false) Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String psychology = body == null ? null : body.get("psychology");
+        if (psychology == null || psychology.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "psychology 不能为空"));
+        }
+        boolean ok = psychologyService.submitAnswer(userId, symbol, psychology);
+        return ok ? ResponseEntity.ok(Map.of("updated", true))
+                : ResponseEntity.notFound().build();
+    }
+
     /** 清仓复盘三维打分（D3，GET /api/v1/trading/sold/score：买点/执行/选股，分数是参考不是指令）。 */
     @GetMapping("/sold/score")
     public ResponseEntity<?> soldScore(
@@ -781,6 +830,49 @@ public class TradingController {
     }
 
     /**
+     * 个人交易画像（RFC 20260905 A 层，GET /api/v1/trading/profile）：
+     * 客观统计（系统从清仓史推导）+ 主观层原文（profile.md）。未建画像 → subjective=null。
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<?> tradingProfile(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        TradingProfileService.TradingProfileStats stats = profileService.computeStats(userId);
+        java.util.Map<String, Object> resp = new java.util.HashMap<>();
+        resp.put("stats", stats);
+        resp.put("objectiveText", profileService.objectiveProfileText(userId));
+        // RFC 20260905 P2：建议遵守率（B 反哺 A）
+        TradingProfileService.AdviceAdherence adherence = profileService.computeAdviceAdherence(userId);
+        java.util.Map<String, Object> adherenceResp = new java.util.HashMap<>();
+        adherenceResp.put("withAdviceCount", adherence.withAdviceCount());
+        adherenceResp.put("followedCount", adherence.followedCount());
+        adherenceResp.put("followRatePct", adherence.followRatePct());
+        resp.put("adviceAdherence", adherenceResp);
+        String subjective = profileService.rawProfile(userId);
+        resp.put("subjective", subjective != null && !subjective.isBlank() ? subjective : null);
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 保存个人画像主观层（RFC 20260905 A 层，PUT /api/v1/trading/profile）：
+     * body {"content": "..."}——用户/AI 回填的行为签名与情绪记忆，落 profile.md。
+     */
+    @PutMapping("/profile")
+    public ResponseEntity<?> saveTradingProfile(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody java.util.Map<String, String> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        String content = body == null ? null : body.get("content");
+        if (content == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "content 不能为空"));
+        }
+        profileService.saveProfile(userId, content);
+        return ResponseEntity.ok(Map.of("updated", true));
+    }
+
+    /**
      * 活跃市值区间（v3.41，2026-09-04）：用户手动判定的多空区间（指南针活跃市值口径）。
      * GET /api/v1/trading/market-stage——读用户判定；无记录 → exists=false（推送回退 current.md 推断）。
      */
@@ -992,6 +1084,35 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(adviceAppService.generateAdvice(userId));
+    }
+
+    /** 建议留痕查询（RFC 20260905 B①，GET /api/v1/trading/advice-history）：
+     *  查某标的最近 N 天建议（默认 30）——「阿呆当时说 X」的数据源，供卖出回查/复盘对照。 */
+    @GetMapping("/advice-history")
+    public ResponseEntity<?> adviceHistory(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(defaultValue = "") String symbol,
+            @RequestParam(defaultValue = "30") int days) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (symbol.isBlank()) {
+            // 未指定标的 → 返回最近 30 天全部（倒序）
+            java.time.LocalDate from = java.time.LocalDate.now().minusDays(Math.max(1, Math.min(days, 90))); // ⚠️13: 上限 90 对齐仓储 3 个月窗口
+            java.util.ArrayList<com.adaiadai.core.domain.trading.AdviceEntry> all = new java.util.ArrayList<>();
+            java.time.YearMonth m = java.time.YearMonth.from(from);
+            java.time.YearMonth end = java.time.YearMonth.now();
+            for (java.time.YearMonth ym = m; !ym.isAfter(end); ym = ym.plusMonths(1)) {
+                all.addAll(adviceAppService.adviceHistoryByMonth(userId, ym));
+            }
+            return ResponseEntity.ok(all.stream()
+                    .filter(e -> e.date() == null || !e.date().isBefore(from))
+                    // 跨月拼接后统一 createdAt 降序（各月组内已倒序，跨月需全局排——docs 审查 2026-09-05）
+                    .sorted(java.util.Comparator.comparing(
+                            (com.adaiadai.core.domain.trading.AdviceEntry e) -> e.createdAt(),
+                            java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                    .toList());
+        }
+        return ResponseEntity.ok(adviceAppService.adviceHistoryRecent(userId, symbol, Math.max(1, Math.min(days, 90)))); // ⚠️13: 上限 90 对齐仓储 3 个月窗口
     }
 
     /** REVIEW P2-B1：trading 写入口门控（与 promote 403 同口径）——无 trading 插件用户不得写入持仓/复盘残留。 */

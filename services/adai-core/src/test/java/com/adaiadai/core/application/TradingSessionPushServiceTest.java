@@ -142,6 +142,7 @@ class TradingSessionPushServiceTest {
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), tradingAppService,
                 stageRepo,
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 knowledgeDir);
     }
 
@@ -264,6 +265,7 @@ class TradingSessionPushServiceTest {
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 mock(TradingMarketStageRepository.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -382,6 +384,7 @@ class TradingSessionPushServiceTest {
                 mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 mock(TradingMarketStageRepository.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 "../../os/trading-engine/knowledge/context");
 
         svc.closeAdvice();
@@ -474,6 +477,7 @@ class TradingSessionPushServiceTest {
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 mock(TradingMarketStageRepository.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -509,6 +513,7 @@ class TradingSessionPushServiceTest {
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 mock(TradingMarketStageRepository.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -551,6 +556,7 @@ class TradingSessionPushServiceTest {
                 acc, mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
                 pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
                 mock(TradingMarketStageRepository.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 "/nonexistent/knowledge");
 
         svc.closeAccountUpdate();
@@ -751,5 +757,53 @@ class TradingSessionPushServiceTest {
         verify(channel, times(1)).push(eq("adai"), captor.capture());
         String content = captor.getValue().content();
         assertTrue(content.contains("择时状态未知"), "无用户判定 + current.md 不可读 → 择时状态未知，实际: " + content);
+    }
+
+    @Test
+    void closeAdvice_recordsSessionAdviceHistory() {
+        // 💥1 对抗审（2026-09-05）：时段推送确定性建议必须落 AdviceEntry（遵守率数据源）
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenThrow(new RuntimeException("LLM 挂了")); // 走模板兜底
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(any())).thenReturn(List.of(
+                posWithPlan("600519", "贵州茅台", "1400.00", "1380.00", "1380.00", "B2", 300)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "600519", quote("600519", "1380.00", "-1.4")));
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("adai", "admin", true, null)));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+        AccountSnapshotRepository acc = mock(AccountSnapshotRepository.class);
+        when(acc.findLatest(any())).thenReturn(java.util.Optional.of(
+                new AccountSnapshot(new BigDecimal("500000"), new BigDecimal("100000"),
+                        new BigDecimal("100000"), new BigDecimal("100000"),
+                        new BigDecimal("400000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null)));
+        com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistory =
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class);
+        TradingSessionPushService svc = new TradingSessionPushService(positions, market, accounts,
+                pluginService, new DefaultTradingRuleEngine(defaultRuleRepo()), ai, List.of(channel),
+                acc,
+                mock(WatchlistBuyPointService.class), mock(WatchlistRepository.class),
+                pushSettings, mock(TradeLogCollectService.class), mock(TradingAppService.class),
+                mock(TradingMarketStageRepository.class),
+                adviceHistory,
+                "../../os/trading-engine/knowledge/context");
+
+        svc.closeAdvice();
+
+        // 每只持仓都落一条 session-push 建议留痕
+        org.mockito.ArgumentCaptor<com.adaiadai.core.domain.trading.AdviceEntry> captor =
+                org.mockito.ArgumentCaptor.forClass(com.adaiadai.core.domain.trading.AdviceEntry.class);
+        verify(adviceHistory, times(1)).append(eq("adai"), captor.capture());
+        com.adaiadai.core.domain.trading.AdviceEntry entry = captor.getValue();
+        assertEquals("600519", entry.symbol());
+        assertEquals("session-push", entry.source());
+        assertTrue(entry.suggestion().equals("hold") || entry.suggestion().equals("clear")
+                || entry.suggestion().equals("reduce"), "建议动作应为 hold/clear/reduce 之一，实际: " + entry.suggestion());
     }
 }

@@ -62,7 +62,7 @@ class BriefAppServiceTest {
                 identityRepository, recordRepository, memoryService,
                 aiClient, new TradingReviewAppService(
                         recordRepository, null, mock(AccountSnapshotRepository.class), null, null, reviewRepo, mock(TradingLotService.class),
-                        trading),
+                        trading, mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class)),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
                 mock(TaskRepository.class),

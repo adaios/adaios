@@ -9,6 +9,8 @@ import com.adaiadai.core.application.TradingReviewAppService;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
 import com.adaiadai.core.application.TradingLotService;
+import com.adaiadai.core.domain.trading.TradingProfileService;
+import com.adaiadai.core.application.TradePsychologyService;
 import com.adaiadai.core.domain.trading.TradeLogCandidate;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
 import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
@@ -120,6 +122,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -150,6 +154,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -181,6 +187,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -206,6 +214,8 @@ class TradingControllerTest {
                 tradingLotService,
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -233,6 +243,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -394,6 +406,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -445,6 +459,75 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.advice[0].rules[0]").value("R81"))
                 .andExpect(jsonPath("$.summary").value(containsString("京东方")));
         verify(advice).generateAdvice("default");
+    }
+
+    // ── RFC 20260905 B①：建议留痕查询 ──
+
+    @Test
+    void adviceHistory_bySymbol_returnsEntries() throws Exception {
+        TradingAdviceAppService advice = mock(TradingAdviceAppService.class);
+        when(advice.adviceHistoryRecent(eq("default"), eq("600584"), eq(30))).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.AdviceEntry(
+                        "adv_1", java.time.LocalDate.of(2026, 9, 3), "600584", "长电科技",
+                        "clear", "跌破止损位，按 R66 只输一根K线", List.of("R66"),
+                        true, new BigDecimal("20.0"), "manual-advice",
+                        java.time.LocalDateTime.of(2026, 9, 3, 14, 50))));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), advice, "trading");
+
+        mvc.perform(get("/api/v1/trading/advice-history")
+                        .header("X-User-Id", "default")
+                        .param("symbol", "600584").param("days", "30"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].symbol").value("600584"))
+                .andExpect(jsonPath("$[0].suggestion").value("clear"))
+                .andExpect(jsonPath("$[0].hardVerdict").value(true))
+                .andExpect(jsonPath("$[0].rules[0]").value("R66"));
+        verify(advice).adviceHistoryRecent("default", "600584", 30);
+    }
+
+    @Test
+    void adviceHistory_noSymbol_crossMonthSortedDescByCreatedAt() throws Exception {
+        // docs 审查 2026-09-05：空 symbol 逐月拼接后须全局 createdAt 降序（各月组内倒序≠跨月倒序）
+        TradingAdviceAppService advice = mock(TradingAdviceAppService.class);
+        // 用相对「今天」的日期构造（窗口=近30天随运行日漂移，固定日期会随时间过期）
+        java.time.LocalDate today = java.time.LocalDate.now();
+        com.adaiadai.core.domain.trading.AdviceEntry oldest = new com.adaiadai.core.domain.trading.AdviceEntry(
+                "adv_old", today.minusDays(25), "600584", "长电科技",
+                "hold", null, List.of(), false, null, "manual-advice",
+                java.time.LocalDateTime.of(today.minusDays(25).getYear(), today.minusDays(25).getMonth(), today.minusDays(25).getDayOfMonth(), 9, 0));
+        com.adaiadai.core.domain.trading.AdviceEntry mid = new com.adaiadai.core.domain.trading.AdviceEntry(
+                "adv_mid", today.minusDays(10), "000725", "京东方A",
+                "reduce", null, List.of(), false, null, "manual-advice",
+                java.time.LocalDateTime.of(today.minusDays(10).getYear(), today.minusDays(10).getMonth(), today.minusDays(10).getDayOfMonth(), 9, 0));
+        com.adaiadai.core.domain.trading.AdviceEntry latest = new com.adaiadai.core.domain.trading.AdviceEntry(
+                "adv_new", today.minusDays(1), "600584", "长电科技",
+                "clear", null, List.of(), false, null, "manual-advice",
+                java.time.LocalDateTime.of(today.minusDays(1).getYear(), today.minusDays(1).getMonth(), today.minusDays(1).getDayOfMonth(), 9, 0));
+        // 模拟逐月返回乱序：当前月给最新，上月给中间+最旧——验证跨月拼接后全局倒序
+        // 注意：any() 兜底 stub 必须写在 eq() stub 之前（Mockito 后写覆盖先写）
+        when(advice.adviceHistoryByMonth(eq("default"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of());
+        when(advice.adviceHistoryByMonth(eq("default"), eq(java.time.YearMonth.now())))
+                .thenReturn(List.of(latest));
+        when(advice.adviceHistoryByMonth(eq("default"), eq(java.time.YearMonth.now().minusMonths(1))))
+                .thenReturn(List.of(mid, oldest));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), advice, "trading");
+
+        mvc.perform(get("/api/v1/trading/advice-history").header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                // 全局 createdAt 降序：最新 → 中间 → 最旧
+                .andExpect(jsonPath("$[0].id").value("adv_new"))
+                .andExpect(jsonPath("$[1].id").value("adv_mid"))
+                .andExpect(jsonPath("$[2].id").value("adv_old"));
+    }
+
+    @Test
+    void adviceHistory_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), new String[0]);
+
+        mvc.perform(get("/api/v1/trading/advice-history").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -835,6 +918,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1068,6 +1153,8 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class), resolver,
                  mock(TradingMarketStageRepository.class),
+                 mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                  "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1108,6 +1195,8 @@ class TradingControllerTest {
                 mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
                 mock(TradingLotService.class), resolver,
                  mock(TradingMarketStageRepository.class),
+                 mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                  "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1264,6 +1353,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1292,6 +1383,8 @@ class TradingControllerTest {
                 pushRepo, mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1318,6 +1411,8 @@ class TradingControllerTest {
                 pushRepo, mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1727,6 +1822,8 @@ class TradingControllerTest {
                 mock(TradingLotService.class),
                 mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
                 stageRepo,
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1811,5 +1908,211 @@ class TradingControllerTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("{\"stage\":\"bear\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    // ── RFC 20260905 A 层：个人交易画像（GET/PUT /trading/profile）──
+
+    private MockMvc profileMvc(TradingProfileService profile) {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        TradingController controller = new TradingController(trading, review,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                profile,
+                mock(TradePsychologyService.class),
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
+    @Test
+    void tradingProfile_get_returnsStatsAndSubjective() throws Exception {
+        TradingProfileService profile = mock(TradingProfileService.class);
+        when(profile.computeStats(any())).thenReturn(new TradingProfileService.TradingProfileStats(
+                168, 33.3, -1.54, 91, 54.2, 12,
+                java.util.Map.of("盈利了结", 57, "扛单超 5%", 37, "短持仓亏损", 54)));
+        when(profile.computeAdviceAdherence(any())).thenReturn(
+                new TradingProfileService.AdviceAdherence(12, 8, 66.7));
+        when(profile.objectiveProfileText(any())).thenReturn("## 你的交易画像（客观统计...）");
+        when(profile.rawProfile(any())).thenReturn("S1 追高的手 > 抄底的手");
+
+        profileMvc(profile).perform(get("/api/v1/trading/profile").header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stats.soldCount").value(168))
+                .andExpect(jsonPath("$.stats.winRatePct").value(33.3))
+                .andExpect(jsonPath("$.stats.disciplineViolationCount").value(91))
+                .andExpect(jsonPath("$.adviceAdherence.followedCount").value(8))
+                .andExpect(jsonPath("$.adviceAdherence.followRatePct").value(66.7))
+                .andExpect(jsonPath("$.subjective").value(containsString("S1")));
+    }
+
+    @Test
+    void tradingProfile_put_savesContent() throws Exception {
+        TradingProfileService profile = mock(TradingProfileService.class);
+        profileMvc(profile).perform(put("/api/v1/trading/profile")
+                        .header("X-User-Id", "default")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"S1 追高\\nS3 下跌摊平\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true));
+        verify(profile).saveProfile("default", "S1 追高\nS3 下跌摊平");
+    }
+
+    @Test
+    void tradingProfile_put_emptyContent_400() throws Exception {
+        TradingProfileService profile = mock(TradingProfileService.class);
+        profileMvc(profile).perform(put("/api/v1/trading/profile")
+                        .header("X-User-Id", "default")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void tradingProfile_withoutTradingPlugin_403() throws Exception {
+        TradingProfileService profile = mock(TradingProfileService.class);
+        MockMvc mvc = profileMvc(profile);
+        // 无插件用户需单独构造（profileMvc 固定 trading 插件）
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService(new String[0]),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                profile,
+                mock(TradePsychologyService.class),
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+        mvc.perform(get("/api/v1/trading/profile").header("X-User-Id", "default"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── RFC 20260905 P2：清仓情绪采集（提问/回答）──
+
+    private MockMvc psychologyMvc(TradePsychologyService psychology) {
+        TradingAppService trading = mock(TradingAppService.class);
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        TradingController controller = new TradingController(trading, review,
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                psychology,
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
+    @Test
+    void soldPsychologyQuestions_returnsGeneratedQuestions() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(List.of(
+                new com.adaiadai.core.domain.trading.SoldTrade("600584", "长电科技",
+                        java.time.LocalDate.now().minusDays(12), java.time.LocalDate.now(),
+                        12, "5+1", -29.22, "扛单超 5%——按 R66", "")));
+        TradePsychologyService psychology = mock(TradePsychologyService.class);
+        when(psychology.questionsFor(any())).thenReturn(List.of(
+                new TradePsychologyService.PsychologyQuestion("deep_loss_trigger",
+                        "亏到 -29.22% 才走——是什么最终触发了离场？")));
+        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                psychology,
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+
+        mvc.perform(get("/api/v1/trading/sold/600584/psychology-questions").header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.symbol").value("600584"))
+                .andExpect(jsonPath("$.questions[0].key").value("deep_loss_trigger"));
+    }
+
+    @Test
+    void soldPsychologyQuestions_unknownSymbol_404() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.soldList(any())).thenReturn(List.of());
+        psychologyMvc(mock(TradePsychologyService.class))
+                .perform(get("/api/v1/trading/sold/999999/psychology-questions").header("X-User-Id", "default"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void soldPsychologyAnswer_submitsAndReturnsOk() throws Exception {
+        TradePsychologyService psychology = mock(TradePsychologyService.class);
+        when(psychology.submitAnswer(eq("default"), eq("600584"), anyString())).thenReturn(true);
+        psychologyMvc(psychology)
+                .perform(post("/api/v1/trading/sold/600584/psychology/answer")
+                        .header("X-User-Id", "default")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"psychology\":\"扛到受不了才割\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(true));
+        verify(psychology).submitAnswer("default", "600584", "扛到受不了才割");
+    }
+
+    @Test
+    void soldPsychologyAnswer_blank_400() throws Exception {
+        psychologyMvc(mock(TradePsychologyService.class))
+                .perform(post("/api/v1/trading/sold/600584/psychology/answer")
+                        .header("X-User-Id", "default")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 }
