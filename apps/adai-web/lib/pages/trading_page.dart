@@ -734,6 +734,19 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 2026-09-07（用户反馈「web 宽度足够却挤」）：DataTable 直接放进横向滚动容器会
+  /// 收缩到列内容最小宽 → 宽屏右边留白、列被最长内容绑架。
+  /// 可用宽足够（≥ minWidth）时直出，DataTable 自动把富余宽度分给各列；
+  /// 不足才包横向滚动兜底防溢出。
+  Widget _scrollableTable({required DataTable table, required double minWidth}) {
+    return LayoutBuilder(builder: (ctx, cons) {
+      if (cons.maxWidth < minWidth) {
+        return SingleChildScrollView(scrollDirection: Axis.horizontal, child: table);
+      }
+      return table;
+    });
+  }
+
   Widget _buildPositionTable() {
     // 2026-08-23：持仓 Tab 内导入入口（通达信持仓导出，全量覆盖）——页头「批量导入」已移除，
     // 持仓导入不再与清仓/资金/交易 CSV 混在一个对话框（此前清仓/资金文本被交易 CSV 校验「买点」拦截）
@@ -792,9 +805,9 @@ class _TradingPageState extends State<TradingPage> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
         ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
+        child: _scrollableTable(
+          minWidth: 1150,
+          table: DataTable(
           headingRowColor: WidgetStatePropertyAll(AppColors.darkSurface2.withValues(alpha: 0.5)),
           dataRowColor: WidgetStatePropertyAll(Colors.transparent),
           headingTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey5),
@@ -1097,9 +1110,9 @@ class _TradingPageState extends State<TradingPage> {
         const Text('暂无自选股——导入通达信自选导出，阿呆帮你盯买点',
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
+        _scrollableTable(
+          minWidth: 850,
+          table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
@@ -1274,9 +1287,9 @@ class _TradingPageState extends State<TradingPage> {
         const Text('暂无清仓记录——导入通达信清仓导出，阿呆对照规则给你判对错',
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
       else
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
+        _scrollableTable(
+          minWidth: 1000,
+          table: DataTable(
             headingRowHeight: 30, dataRowMinHeight: 32, dataRowMaxHeight: 32,
             columns: const [
               DataColumn(label: Text('代码')), DataColumn(label: Text('名称')),
@@ -4039,8 +4052,10 @@ class _HistorySectionState extends State<_HistorySection>
                           builder: (ctx, cons) {
                             // 2026-09-07 用户反馈：宽屏下列宽固定（合计 742px）不撑开，
                             // 发生金额/成交编号截断——按可用宽度分配列宽，够宽时自然消失横向滚动
-                            final widths = _histWidths(cons.maxWidth);
-                            double total = 0;
+                            // 行内水平 padding 10×2：表宽需预留，否则 cells 和 = 视口宽导致每行 RenderFlex 溢出
+                            const rowPad = 20.0;
+                            final widths = _histWidths(cons.maxWidth - rowPad);
+                            double total = rowPad;
                             for (final w in widths) {
                               total += w;
                             }
@@ -4068,7 +4083,7 @@ class _HistorySectionState extends State<_HistorySection>
   /// 历史成交列定义：(label, minWidth, grow 弹性权重, right 对齐)。
   /// 2026-09-07 用户反馈：固定列宽合计 742px，宽屏不撑开、发生金额/成交编号截断——
   /// 可用宽 > ΣminWidth 时按 grow 分配余量（长内容列权重大），不足时回落 minWidth 横向滚动。
-  static const List<(String, double, double, bool)> _HIST_COLS = [
+  static const List<(String, double, double, bool)> _histCols = [
     ('方向', 44, 0, false),
     ('时间', 48, 0, false),
     ('代码', 72, 0.8, false),
@@ -4085,13 +4100,13 @@ class _HistorySectionState extends State<_HistorySection>
   static List<double> _histWidths(double available) {
     double minTotal = 0;
     double growTotal = 0;
-    for (final c in _HIST_COLS) {
+    for (final c in _histCols) {
       minTotal += c.$2;
       growTotal += c.$3;
     }
     final extra = available > minTotal ? available - minTotal : 0.0;
     return [
-      for (final c in _HIST_COLS)
+      for (final c in _histCols)
         c.$2 + (growTotal > 0 ? extra * c.$3 / growTotal : 0),
     ];
   }
@@ -4106,8 +4121,8 @@ class _HistorySectionState extends State<_HistorySection>
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
-        for (var i = 0; i < _HIST_COLS.length; i++)
-          cell(_HIST_COLS[i].$1, widths[i], right: _HIST_COLS[i].$4),
+        for (var i = 0; i < _histCols.length; i++)
+          cell(_histCols[i].$1, widths[i], right: _histCols[i].$4),
       ]),
     );
   }

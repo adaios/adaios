@@ -1,9 +1,9 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-09-06
-last-review: 2026-09-06
-baseline: 工作树 2026-09-06（admin UI/UX 专项审查 + 登录默认值批 + admin-features 手册；前值：2026-09-05 认知层落地批）
-mode: admin 管理后台 UI/UX 专项审查（ui-reviewer + ux-reviewer 隔离并行 + 主会话 P1 实测复核）
+updated: 2026-09-07
+last-review: 2026-09-07
+baseline: 生产数据审查 2026-09-07（用户实测现金失真：导入两条今日成交 + 提现 5000 后账户现金/可取 −3.7 万；前值：2026-09-06 admin UI/UX 专项审查）
+mode: 生产数据审查（用户实测 + 日志回放：sync 回放双扣现金 3.19 万 → 券商资金股份导入校准 → P2-交易34/35 登记）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
@@ -56,6 +56,7 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-09-07 | 生产数据审查（用户实测：导入两条今日成交 + 提现 5000 后账户现金/可取 −3.7 万）| 生产 data（adai 用户 trading 全文件 + journalctl 回放）| 主会话 | **P2-交易34**（replace+sync 回放双扣现金 3.19 万，实测）/ **P2-交易35**（positions.md cashBalance 展示行与 account.json 双源不一致）| 券商资金股份导入校准 account.json（现金 −37226.29→1488.75、市值→95426、总资产→96914.75，本金 145000 保留，持仓数量不动，精确成本 3 只）+ positions.md cashBalance 对齐；数据备份 `/opt/adaios/data-backup-trading-20260907-2148/` + `.pre-cashfix-20260907` 双文件 |
 | 2026-09-06 | admin UI 打磨批 B（用户「剩下所有继续」自主推进）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-10（导入结果对话框 + failures 完整清单）/ P2-23（档案空态占位）/ P3-6（空持仓占位）/ P3-17（FilePreview 截断）/ P3-18（删 cardTheme 死 token）/ P3-29（登录错误动画）；admin 64 不变全绿 |
 | 2026-09-06 | admin UI 打磨批 A（审查剩余，用户「你继续」自主推进）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-16（窄屏空态文案 wide 分支）/ P2-18（行情徽标对齐 web darkBlue）/ P2-20/21（ellipsis）/ P2-22（保护锁提亮 grey4）/ P2-24（记忆筛选空文案区分）/ P2-25（首访提示实时刷新）/ P3-3（本人账号图标区分）/ P3-8（复盘生成 busy）/ P3-9（建号 busy）/ P3-12（登录按钮文字统一）/ P3-13（Domain→资产域）/ P3-14/15（ellipsis）/ P3-20（执行按钮 40）/ P3-23（ICP SafeArea）/ P3-24（popup offset）/ P3-25（15% token 统一）/ P3-28（记录 id 弱化）；admin 64 不变（纯 UI/行为无新测试，回归全绿） |
 | 2026-09-06 | admin 保护/反馈批（审查出表，用户「不需要我决策就开始」）| 工作树 2026-09-06 | 主会话 | 0 新问题 | P2-1（全局 401 提示）/ P2-2（禁用确认）/ P2-3（插件开关反馈+说明）/ P2-4（静默刷新保留旧值）/ P2-5（删除文案会话失效）/ P2-6（账号卡治理浏览直达）/ P2-9（维护三操作确认+目标用户）；admin 63→**64** 全绿 analyze 0 |
@@ -225,6 +226,9 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 | P2-认知1 | ✅ 已修（2026-09-05 用户拍板 A：违纪只算真破纪律两类——扛单 R66 + 短打 R53，「亏损持仓」普通亏损剔除；+回归测试 lossHoldNotCountedAsViolation）。**「纪律违反率」标签≈亏损率（2026-09-05 三官审 🤔17）**：SoldTradeVerdict 三分类（扛单/短持仓亏损/亏损持仓）覆盖全部亏损 → 违反率 ≡ 100−胜率 | `TradingProfileService.computeStats` | 拍板 A 已实施 |
 | P2-认知2 | **画像统计建在 sold.json（2026-09-05 三官审 ⚠️11，用户拍板 B：本轮标注口径防误导，v2 切逐笔）**：RFC §二自曝清仓表「首买→末卖」是纸上区间收益——画像统计整层建立在此口径；本轮已在注入文本标注「清仓表口径（首买→末卖纸上区间收益，非实际回合）」，画像 v2 再切 TradingLotService 逐笔回合收益 | `TradingProfileService` | ⏸ v2 待排（本轮已标口径） |
 | P2-认知3 | **前端零入口（2026-09-05 三官审 🤔21，用户拍板 C：先对味试点再排 UI）**：5 个新端点（profile/advice-history/psychology-questions/answer）在 web/app 0 引用——主观层暂时靠试点记忆卡对话补全；试点味道确认后再把「阿呆提问→回答」做成界面 | apps/adai-web + adai-app | ⏸ 待试点对味后排 UI |
+| P2-交易34 | **「真实持仓 replace 全量导入 + 当日成交 sync 回放」组合重复扣现金（2026-09-07 用户实测：现金被扣到 −3.7 万）**：replace 导入的是券商**当下**真实持仓（已含此前全部成交结果），随后 sync 把早于该快照日的成交再 replay 一遍（recordTradeWithOrderId 每次都 ± account.json 现金）→ 现金双扣。实测两轮：9/4（replay 9/1-9/3 六笔 ≈ −0.81 万）+ 9/7（replay 9/4 八笔 ≈ −2.38 万）合计 **−3.19 万**；叠加转入资金从未记账（transfers 长期为空）→ 现金深度负值失真。数据已由券商资金股份导入校准归零，**代码未防复发** | `TradingAppService.importSync` / `recordTradeWithOrderId` | sync 回放跳过 entryDate ≤ 持仓 replace 快照日的成交；或 replace 时记录快照日、sync 前比对提示；转账记账习惯 + 定期资金导入校准 |
+| P2-交易35 | **positions.md `cashBalance` 展示行与 account.json 现金不一致（2026-09-07 实测 292.88 vs 1488.75 并存）**：S5（2026-08-17）后 cashBalance 行不再更新（saveAll 保留旧值，importCashQuery 只写 account.json），但 `TradingContextContributor`/`MarketContextContributor` 仍读 `positionRepository.cashBalance()` → AI 上下文现金口径 ≠ 账户卡 | `PositionFileRepository` / `TradingContextContributor` / `MarketContextContributor` | importCashQuery 后同步 cashBalance 行（仅展示对齐），或 contributor 改读 AccountSnapshot.cash（S5 真源）|
+| P2-交易36 | **截图入账/手动确认成交缺成交编号与手续费（2026-09-07 用户实测：今日两条显示「发生金额 — / 成交编号 —」）**：15:31 截图表格解析只抽 方向/名称/价格/数量，候选确认落库 orderId=null、fee=null → 无法幂等去重（同笔再导重复风险）、无法对账；历史成交页发生金额按 fee 反推（fee null → '—'）。通达信历史成交导入路径无此问题（orderId 透传 + fee=|发生金额−成交金额|） | `TradingParseAppService`（截图表格解析） / confirm 链路 / web+app 确认表单 | 截图解析/确认表单补成交编号与费用字段（或落库后支持补填 PUT）；TradeRecord 直接存 occurred（源文件原生）而非 fee 反推 |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 
