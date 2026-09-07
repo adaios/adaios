@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.50 | 最后更新：2026-09-07**
+**文档版本：v3.51 | 最后更新：2026-09-07**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-07 | v3.51 | **learn V2 消化闭环批 4（复习提醒推送）**：新增每晚 20:00 定时推送（LearnReviewPushService）——遍历启用 learn 插件的用户，聚合「进入 review 已满 7 天仍未 done」的卡片推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/外部渠道）；推送类型 `learn-review` 加入 PushSettings.ALL_TYPES（`GET/PUT /trading/push-settings` 可开关，默认开）；Feed push 条目注入门控由 trading-only 放宽为 **trading 或 learn**（纯 learn 用户也能在 Feed 看到复习提醒；market 行情条仍 trading-only） |
 | 2026-09-07 | v3.50 | **learn V2 消化闭环批 3（trading 候选联动，RFC 20260829 3.5③）**：新增 `POST /learn/cards/candidate`（body `{"type":"trading","title"}` → 把 trade_related=true 的 trading learn 卡片反哺成规则候选——提炼建议卡落 `data/{userId}/trading/candidates/{date}_{title}.md`，含 `learn_card_id` 回链 learn 源卡；非 trading / 卡片不存在 / 未标 trade_related → 400 人话（审核闸前置防语义漂移））+ `GET /learn/cards/candidates`（候选列表，created 倒序，用户审核用）+ `DELETE /learn/cards/candidates`（?title= 删除，幂等）；候选只存建议不复制整卡（跨域无双写），不自动入库——需在交易知识库工作流审核后融合归正式目录（同复盘 promote 哲学） |
 | 2026-09-07 | v3.49 | **learn V2 消化闭环第一批（复习流转 + 编辑，RFC 20260829）**：新增 `PATCH /learn/cards/status`（复习状态流转 new→review→done：body `{"type","title","status"}` → 原地改 frontmatter status 返回更新后卡片，正文/手写复述段原样保留）+ `PATCH /learn/cards`（编辑卡片正文：`?type=&title=` 定位，body 部分字段补丁 `{"coreView"?,"keyPoints"?,"questions"?,"retell"?,"tradeRelated"?,"tradeNote"?,"tags"?}`，缺省字段保留原值，type/title/created 不可改（改=移动文件拒绝））；LearnCard 新增 `retell` 字段（复述段建模——24h 内自己写 100-200 字消化关键，V1 漏建模仅空段，V2 读写对称 + 可编辑） |
 | 2026-09-06 | v3.48 | **learn 插件 V1（RFC 20260829，独立端点喂入，用户 2026-09-06 拍板）**：新增 `POST /learn/cards`（喂入素材消化：body `{"content"必填≤50000,"type"?ai/trading/other,"platform"?,"author"?,"url"?,"published"?}` → AI 结构化 RFC 3.4 四段卡片落 `data/{userId}/learn/{type}/{date}_{title}.md`；LLM 失败/输出不可解析/缺标题 → 素材留存 `learn/_raw/` + 400 人话 fail-visible；同日同 type 同 title 重复 → 400「已有同日同名卡片」；type 越界回落 other；非 trading 内容 trade_related 强制 false）+ `GET /learn/cards`（`?type=` 筛选，created 倒序）+ `GET /learn/tree`（资产树按 ai/trading/other 分组）；全部需 learn 插件（未启用 403）；learn 是第三插件（PluginRegistry），不进 domain 收敛体系（type 仅文件分类） |
@@ -779,12 +780,12 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/push-settings` — 推送开关（RFC 20260817 交易推送体验）
 > 需 trading 插件（403）。
 
-返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true,"close-summary":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。`close-summary`（2026-08-29，P2-用户3）= 15:30 收盘小结（当日成交+破止损+待确认）。
+返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true,"close-summary":true,"learn-review":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。`close-summary`（2026-08-29，P2-用户3）= 15:30 收盘小结；`learn-review`（2026-09-07 learn V2 批 4）= 每晚 20:00 学习复习到期卡片汇总提醒。
 
 ### `PUT /api/v1/trading/push-settings/{type}` — 更新推送开关
 > 需 trading 插件（403）。
 
-- **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market / close-summary
+- **path**：`{type}` ∈ session / buy-point / stop-loss / near-stop-loss / loss / gain / break-cost / market / close-summary / learn-review
 - **body**：`{"enabled":false}`（未知类型 → 400）
 - **响应**：更新后的全量开关对象
 

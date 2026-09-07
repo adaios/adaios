@@ -1047,7 +1047,7 @@ POST /api/v1/records/retry
 
 ## 17. learn 学习沉淀模块（RFC 20260829）
 
-> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环批 1（2026-09-07 复习流转 + 编辑）与批 3（2026-09-07 trading 候选联动）已落地**（后端）：复习状态 new→review→done 流转 + 卡片正文编辑（复述段建模 retell）+ trading 反哺候选。V2 其余（复习提醒推送 / 多用户测试补全）待续。
+> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环批 1/3/4（2026-09-07 复习流转 + 编辑 / trading 候选联动 / 复习提醒推送）已落地**（后端）：复习状态 new→review→done 流转 + 卡片正文编辑（复述段建模 retell）+ trading 反哺候选 + 每晚 20:00 复习到期提醒推送。V2 收尾（多用户测试补全已随各批仓储/服务测试覆盖）。
 
 - **插件注册**：PluginRegistry 第三个插件 `learn`（`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
 - **定位**：外部内容（B站视频/YouTube/文章/字幕）→ AI 结构化卡片 → 个人知识资产。**与 A 方向会话技能（learn-digest skill）同源**：技能是 DSH 会话内执行版（独立落盘 `data/adai/learn/`），本插件是阿呆产品内版（按用户落 `data/{userId}/learn/`）；两者格式同构（frontmatter + 渐进式摘要）。
@@ -1059,6 +1059,7 @@ POST /api/v1/records/retry
 - **复习状态（V2 2026-09-07）**：`status` new→review→done，流转只改 frontmatter（正文/手写复述段原样保留，File First 不重建文件）。
 - **编辑与复述（V2 2026-09-07）**：`retell` 复述段建模（V1 模板四段的空段补齐读写对称——24h 内自己写 100-200 字是消化关键，AI 不代写）；`PATCH /learn/cards` 支持正文/要点/疑问/复述/trade_related/trade_note/tags 字段级补丁（type/title/created 不可改——改=移动文件拒绝，改名走新建）。「对话流让阿呆改」的后端能力就绪（前端接线随 UI 批）。
 - **trading 反哺候选（V2 批 3 2026-09-07）**：trading + trade_related 卡片经 `POST /learn/cards/candidate` 反哺 → 候选落 `data/{userId}/trading/candidates/`（建议卡 + `learn_card_id` 回链 learn 源卡——只存提炼建议不复制整卡，跨域无双写，守 B6）；候选**不自动入库**，需在交易知识库工作流审核后融合归正式目录并重建 knowledge/context（对齐复盘 promote 哲学 + 规则改动人工闸，P1-交易9 教训）；`GET /learn/cards/candidates` 列表审核、`DELETE /learn/cards/candidates?title=` 删除（幂等）。
+- **复习提醒推送（V2 批 4 2026-09-07）**：每晚 20:00（cron 配置 `adai.learn.review-cron`）LearnReviewPushService 遍历启用 learn 插件的用户 → 聚合「status=review 且 created ≥ 7 天未 done」的卡片（跨 ai/trading/other）→ 推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/Bark；不自动改状态）；推送类型 `learn-review` 入 PushSettings.ALL_TYPES（推送设置可关，默认开）；Feed push 条目注入门控由 trading-only 放宽为 **trading 或 learn**（纯 learn 用户 Feed 可见复习提醒，market 行情条仍 trading-only）。
 - **已知边界（L1）**：不做抓取/转写（素材由用户喂入，守 B8 + 版权）；卡片编辑/复习流转 V2（批 1 已落地后端）；trading 候选联动 V2 批 3 已落地后端（promote 融合仍走 trading-engine 工作流人工闸）；多用户只架构预留；A 技能产物与插件产物同目录并存（目录结构差异由 L2 资产页统一）。
 
 ## 附录：API 全集

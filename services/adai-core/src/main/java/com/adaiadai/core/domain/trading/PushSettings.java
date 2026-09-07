@@ -18,9 +18,11 @@ import java.util.stream.Collectors;
 public record PushSettings(Map<String, Boolean> enabled) {
 
     /** 全部推送类型（RFC 20260817：session=时段节奏 / buy-point=买点 / 止损/接近止损/大跌/放飞/破成本=异动 / market=行情条；
-     *  close-summary=收盘小结，P2-用户3 2026-08-29：15:30 当日成交+破止损+待确认+一句话收尾）。 */
+     *  close-summary=收盘小结，P2-用户3 2026-08-29：15:30 当日成交+破止损+待确认+一句话收尾；
+     *  learn-review=学习复习提醒，learn V2 批 4 2026-09-07：每晚 20:00 到期复习卡片汇总——见 LearnReviewPushService）。 */
     public static final Set<String> ALL_TYPES = Set.of(
-            "session", "buy-point", "stop-loss", "near-stop-loss", "loss", "gain", "break-cost", "market", "close-summary");
+            "session", "buy-point", "stop-loss", "near-stop-loss", "loss", "gain", "break-cost", "market", "close-summary",
+            "learn-review");
 
     public PushSettings {
         if (enabled == null) enabled = defaultEnabled();

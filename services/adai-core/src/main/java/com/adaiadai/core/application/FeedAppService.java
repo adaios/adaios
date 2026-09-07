@@ -141,15 +141,19 @@ public class FeedAppService {
             allEntries.add(toActionEntry(m));
         }
 
-        // 行情相关条目（market 行情条 / push 异动推送）只注入启用 trading 插件的用户
-        // （RFC 20260814 T2.6：无 trading 插件的用户 Feed 不出现行情卡）
+        // 行情相关条目只注入启用 trading 插件的用户（RFC 20260814 T2.6：无 trading 插件 Feed 不出现行情卡）
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             // RFC 20260817：用户关闭 market 类型 → 行情条不注入（读侧门控）
             if (pushSettingsRepository.findByUser(userId).isEnabled("market")) {
                 // v0.2.0 L5 行情嵌入：大盘指数行情条（MarketDataSource 60s 缓存，网络失败返回空）
                 allEntries.addAll(buildMarketEntries());
             }
-            // RFC 20260817：用户关闭某 push 类型 → 该类型不注入
+        }
+        // push 条目注入门控 = trading **或 learn**（learn V2 批 4 2026-09-07：learn-review 复习提醒
+        // 对纯 learn 用户也要可见——不再只随 trading 插件；market 行情条保持 trading-only 如上）。
+        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)
+                || pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN)) {
+            // RFC 20260817：用户关闭某 push 类型 → 该类型不注入（读侧门控）
             var pushSettings = pushSettingsRepository.findByUser(userId);
             allEntries.addAll(buildPushEntries(userId, queryDate).stream()
                     .filter(e -> pushSettings.isEnabled(e.type()))

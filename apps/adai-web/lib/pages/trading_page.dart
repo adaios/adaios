@@ -4035,22 +4035,68 @@ class _HistorySectionState extends State<_HistorySection>
                       )
                     : SingleChildScrollView(
                         // 全字段列较多 → 横向滚动；外层纵向滚动
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildListHeader(),
-                              ..._grouped().entries.map((e) => _buildDateGroup(e.key, e.value)),
-                            ],
-                          ),
+                        child: LayoutBuilder(
+                          builder: (ctx, cons) {
+                            // 2026-09-07 用户反馈：宽屏下列宽固定（合计 742px）不撑开，
+                            // 发生金额/成交编号截断——按可用宽度分配列宽，够宽时自然消失横向滚动
+                            final widths = _histWidths(cons.maxWidth);
+                            double total = 0;
+                            for (final w in widths) {
+                              total += w;
+                            }
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SizedBox(
+                                width: total,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildListHeader(widths),
+                                    ..._grouped().entries
+                                        .map((e) => _buildDateGroup(e.key, e.value, widths)),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
       ),
     ]);
   }
 
-  Widget _buildListHeader() {
+  /// 历史成交列定义：(label, minWidth, grow 弹性权重, right 对齐)。
+  /// 2026-09-07 用户反馈：固定列宽合计 742px，宽屏不撑开、发生金额/成交编号截断——
+  /// 可用宽 > ΣminWidth 时按 grow 分配余量（长内容列权重大），不足时回落 minWidth 横向滚动。
+  static const List<(String, double, double, bool)> _HIST_COLS = [
+    ('方向', 44, 0, false),
+    ('时间', 48, 0, false),
+    ('代码', 72, 0.8, false),
+    ('名称', 88, 2.5, false),
+    ('数量', 60, 0, true),
+    ('价格', 70, 1.2, true),
+    ('成交金额', 90, 2, true),
+    ('发生金额', 100, 3, true),
+    ('成交编号', 110, 4.5, false),
+    ('费用', 60, 1, true),
+  ];
+
+  /// 按可用宽度计算每列实际宽度。
+  static List<double> _histWidths(double available) {
+    double minTotal = 0;
+    double growTotal = 0;
+    for (final c in _HIST_COLS) {
+      minTotal += c.$2;
+      growTotal += c.$3;
+    }
+    final extra = available > minTotal ? available - minTotal : 0.0;
+    return [
+      for (final c in _HIST_COLS)
+        c.$2 + (growTotal > 0 ? extra * c.$3 / growTotal : 0),
+    ];
+  }
+
+  Widget _buildListHeader(List<double> widths) {
     Widget cell(String label, double width, {bool right = false}) => SizedBox(
           width: width,
           child: Text(label,
@@ -4060,23 +4106,13 @@ class _HistorySectionState extends State<_HistorySection>
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
-        cell('方向', 44),
-        cell('时间', 48), // RFC 20260822：成交时间（客观数据，旧数据 '—'）
-        cell('代码', 72),
-        cell('名称', 88),
-        cell('数量', 60, right: true),
-        cell('价格', 70, right: true),
-        // 2026-08-25 列设计（用户拍板）：源文件原生字段在前——成交金额/发生金额（通达信原始，
-        // 买入为负扣款）；成交编号（源文件标识）；「费用」= |发生金额−成交金额| 系统计算放最后
-        cell('成交金额', 90, right: true),
-        cell('发生金额', 100, right: true),
-        cell('成交编号', 110),
-        cell('费用', 60, right: true),
+        for (var i = 0; i < _HIST_COLS.length; i++)
+          cell(_HIST_COLS[i].$1, widths[i], right: _HIST_COLS[i].$4),
       ]),
     );
   }
 
-  Widget _buildDateGroup(String date, List<TradeRecordItem> trades) {
+  Widget _buildDateGroup(String date, List<TradeRecordItem> trades, List<double> widths) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4094,7 +4130,7 @@ class _HistorySectionState extends State<_HistorySection>
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
-            children: trades.map((t) => _buildTradeRow(t)).toList(),
+            children: trades.map((t) => _buildTradeRow(t, widths)).toList(),
           ),
         ),
       ],
@@ -4113,7 +4149,7 @@ class _HistorySectionState extends State<_HistorySection>
     return _thousands(occurred);
   }
 
-  Widget _buildTradeRow(TradeRecordItem t) {
+  Widget _buildTradeRow(TradeRecordItem t, List<double> widths) {
     Widget cell(String text, double width, {bool right = false, Color? color}) => SizedBox(
           width: width,
           child: Text(text,
@@ -4129,16 +4165,16 @@ class _HistorySectionState extends State<_HistorySection>
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         child: Row(children: [
-          cell(t.dividendLabel, 44, color: dirColor),
-          cell('—', 48, color: AppColors.darkGrey5),
-          cell(t.symbol, 72, color: AppColors.darkGrey1),
-          cell(t.name, 88),
-          cell('—', 60, right: true),
-          cell('—', 70, right: true),
-          cell('—', 90, right: true),
-          cell(_occurredAmount(t), 100, right: true),
-          cell('—', 110, color: AppColors.darkGrey5),
-          cell('—', 60, right: true),
+          cell(t.dividendLabel, widths[0], color: dirColor),
+          cell('—', widths[1], color: AppColors.darkGrey5),
+          cell(t.symbol, widths[2], color: AppColors.darkGrey1),
+          cell(t.name, widths[3]),
+          cell('—', widths[4], right: true),
+          cell('—', widths[5], right: true),
+          cell('—', widths[6], right: true),
+          cell(_occurredAmount(t), widths[7], right: true),
+          cell('—', widths[8], color: AppColors.darkGrey5),
+          cell('—', widths[9], right: true),
         ]),
       );
     }
@@ -4150,16 +4186,16 @@ class _HistorySectionState extends State<_HistorySection>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(children: [
-        cell(t.isBuy ? '买入' : '卖出', 44, color: dirColor),
-        cell(timeStr, 48, color: AppColors.darkGrey5),
-        cell(t.symbol, 72, color: AppColors.darkGrey1),
-        cell(t.name, 88),
-        cell('${t.volume}', 60, right: true),
-        cell(t.price.toStringAsFixed(3), 70, right: true),
-        cell(_thousands(t.amount), 90, right: true), // 成交金额（源文件）
-        cell(_occurredAmount(t), 100, right: true), // 发生金额（源文件原生，推导自 fee）
-        cell(t.orderId ?? '—', 110, color: AppColors.darkGrey5),
-        cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', 60, right: true), // 系统计算放最后
+        cell(t.isBuy ? '买入' : '卖出', widths[0], color: dirColor),
+        cell(timeStr, widths[1], color: AppColors.darkGrey5),
+        cell(t.symbol, widths[2], color: AppColors.darkGrey1),
+        cell(t.name, widths[3]),
+        cell('${t.volume}', widths[4], right: true),
+        cell(t.price.toStringAsFixed(3), widths[5], right: true),
+        cell(_thousands(t.amount), widths[6], right: true), // 成交金额（源文件）
+        cell(_occurredAmount(t), widths[7], right: true), // 发生金额（源文件原生，推导自 fee）
+        cell(t.orderId ?? '—', widths[8], color: AppColors.darkGrey5),
+        cell(t.fee != null ? t.fee!.toStringAsFixed(2) : '—', widths[9], right: true), // 系统计算放最后
       ]),
     );
   }
@@ -4739,6 +4775,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
     ('buy-point', '买点提醒'),
     ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
+    ('learn-review', '学习复习提醒（每日复习到期卡片）'), // learn V2 批 4 2026-09-07
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),

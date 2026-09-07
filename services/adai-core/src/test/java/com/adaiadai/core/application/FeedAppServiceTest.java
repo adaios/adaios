@@ -544,4 +544,43 @@ class FeedAppServiceTest {
                                         LocalDateTime time) {
         return new ContentRecord(id, type, "user_input", title, content, List.of(), time, intent, title, "life");
     }
+
+    // ── learn V2 批 4：learn-review 复习提醒对纯 learn 用户可见（Feed 注入门控放宽 trading || learn）──
+
+    @Test
+    void getFeed_learnOnlyUser_seesLearnReviewPush() {
+        // learn 用户（无 trading 插件）应能看到 learn-review push 条目——复习提醒不依赖行情插件
+        MarketDataSource market = mock(MarketDataSource.class);
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_l1", null, null,
+                        "有 1 张卡片进入复习队列已满 7 天，该回看了：\n· 回调一半的判定（2026-08-29）",
+                        "learn-review", "20:00", "学习复习提醒", null)));
+        FeedAppService service = serviceWith("alice", market, push, "learn");
+
+        FeedAppService.FeedResponse resp = service.getFeed("alice", LocalDate.of(2026, 9, 6), 0, 10);
+
+        FeedAppService.FeedEntry pushEntry = resp.entries().stream()
+                .filter(e -> "push".equals(e.type())).findFirst().orElse(null);
+        assertTrue(pushEntry != null, "纯 learn 用户 Feed 应注入 learn-review push 条目");
+        assertEquals("学习复习提醒", pushEntry.title());
+        assertTrue(pushEntry.content().contains("回调一半的判定"));
+    }
+
+    @Test
+    void getFeed_noPlugins_userSeesNoPushEntries() {
+        // 无 learn/trading 插件的用户：push 条目不注入（复习提醒/行情推送都不可见）
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_1", "600519", "贵州茅台",
+                        "学习复习提醒内容", "learn-review", "20:00", "学习复习提醒", null)));
+        FeedAppService service = serviceWith("stranger", market, push);  // 无插件
+
+        FeedAppService.FeedResponse resp = service.getFeed("stranger", LocalDate.of(2026, 9, 6), 0, 10);
+
+        assertTrue(resp.entries().stream().noneMatch(e -> "push".equals(e.type())),
+                "无 learn/trading 插件用户不应看到 push 条目");
+    }
 }
