@@ -86,6 +86,41 @@ public class LearnController {
         return ResponseEntity.ok(digestService.detail(userId, type, title));
     }
 
+    /** 复习状态流转（V2）：new → review → done。body {type, title, status}；返回更新后卡片。 */
+    @PatchMapping("/cards/status")
+    public ResponseEntity<?> changeStatus(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnStatusRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        LearnCard updated = digestService.changeStatus(userId, body.type(), body.title(), body.status());
+        return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * 编辑卡片正文（V2 对话流让阿呆改的后端支撑）：?type=&title= 定位，body 为部分字段补丁
+     * （缺省/省略字段 = 保留原值）。type/title/created 不可改。返回更新后卡片。
+     */
+    @PatchMapping("/cards")
+    public ResponseEntity<?> edit(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String type,
+            @RequestParam String title,
+            @RequestBody LearnEditRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (!LearnCard.isValidType(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
+        }
+        if (body == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "编辑内容不能为空"));
+        }
+        LearnDigestAppService.EditPatch patch = new LearnDigestAppService.EditPatch(
+                body.coreView(), body.keyPoints(), body.questions(), body.retell(),
+                body.tradeRelated(), body.tradeNote(), body.tags());
+        return ResponseEntity.ok(digestService.edit(userId, type, title, patch));
+    }
+
     /** 资产树：learn 按 type 分组（卡片清单）。 */
     @GetMapping("/tree")
     public ResponseEntity<?> tree(
@@ -129,4 +164,20 @@ public class LearnController {
             String url,
             @Size(max = 30, message = "发布日期格式 yyyy-MM-dd")
             String published) {}
+
+    /** 复习状态流转请求：type/title 定位卡片，status 目标状态（new/review/done）。 */
+    public record LearnStatusRequest(
+            @NotBlank(message = "类型不能为空") String type,
+            @NotBlank(message = "卡片标题不能为空") String title,
+            @NotBlank(message = "目标状态不能为空") String status) {}
+
+    /** 编辑补丁请求：全部字段可选，省略/缺省 = 保留原值（定位走 query type+title）。 */
+    public record LearnEditRequest(
+            String coreView,
+            java.util.List<String> keyPoints,
+            java.util.List<String> questions,
+            String retell,
+            Boolean tradeRelated,
+            String tradeNote,
+            java.util.List<String> tags) {}
 }

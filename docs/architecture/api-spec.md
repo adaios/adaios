@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.48 | 最后更新：2026-09-07**
+**文档版本：v3.49 | 最后更新：2026-09-07**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-07 | v3.49 | **learn V2 消化闭环第一批（复习流转 + 编辑，RFC 20260829）**：新增 `PATCH /learn/cards/status`（复习状态流转 new→review→done：body `{"type","title","status"}` → 原地改 frontmatter status 返回更新后卡片，正文/手写复述段原样保留）+ `PATCH /learn/cards`（编辑卡片正文：`?type=&title=` 定位，body 部分字段补丁 `{"coreView"?,"keyPoints"?,"questions"?,"retell"?,"tradeRelated"?,"tradeNote"?,"tags"?}`，缺省字段保留原值，type/title/created 不可改（改=移动文件拒绝））；LearnCard 新增 `retell` 字段（复述段建模——24h 内自己写 100-200 字消化关键，V1 漏建模仅空段，V2 读写对称 + 可编辑） |
 | 2026-09-06 | v3.48 | **learn 插件 V1（RFC 20260829，独立端点喂入，用户 2026-09-06 拍板）**：新增 `POST /learn/cards`（喂入素材消化：body `{"content"必填≤50000,"type"?ai/trading/other,"platform"?,"author"?,"url"?,"published"?}` → AI 结构化 RFC 3.4 四段卡片落 `data/{userId}/learn/{type}/{date}_{title}.md`；LLM 失败/输出不可解析/缺标题 → 素材留存 `learn/_raw/` + 400 人话 fail-visible；同日同 type 同 title 重复 → 400「已有同日同名卡片」；type 越界回落 other；非 trading 内容 trade_related 强制 false）+ `GET /learn/cards`（`?type=` 筛选，created 倒序）+ `GET /learn/tree`（资产树按 ai/trading/other 分组）；全部需 learn 插件（未启用 403）；learn 是第三插件（PluginRegistry），不进 domain 收敛体系（type 仅文件分类） |
 | 2026-09-05 | v3.47 | **交易⑤认知层（RFC 20260905，用户拍板全量执行）**：新增 `GET /trading/advice-history`（建议留痕查询：`?symbol=&days=` 按票近 N 天回查、缺 symbol 返回近 30 天全量倒序——「阿呆当时说 X」数据源）+ `GET /trading/profile`（个人交易画像：`{stats{…客观统计}, objectiveText, adviceAdherence{…建议遵守率}, subjective}`）+ `PUT /trading/profile`（body `{"content":"…"}`，保存画像主观层落 profile.md）+ `GET /trading/sold/{symbol}/psychology-questions`（按交易结构确定性生成 3~5 个补情绪提问）+ `POST /trading/sold/{symbol}/psychology/answer`（body `{"psychology":"…"}`，回答回填 sold.psychology 追加式 + 沉淀画像主观层）；建议出口逐票落建议留痕（含降级 degraded 标记）；复盘注入「建议对照」段（当日清仓 vs 卖前建议）；画像注入 trading/decision 场景与建议引擎 prompt（A 点） |
 | 2026-09-04 | v3.46 | **账号矩阵（语义，无端点变更）**：内置管理员由 `adai` 迁为 **`admin`**（后台管理专用：seed 预置/不可删禁降级/插件保护全部随 `SEED_ADMIN_ID` 迁移）；`adai` 降为**产品主账号** role=user（app/web 登录，个人数据 `data/adai/` 不变，plugins 保留 trading/project）；再建普通受限账号（role=user、plugins=[]，如 family）——`/accounts`、`/auth/setup`、`GET /accounts/available` 语义与示例同步更新 |
@@ -1966,6 +1967,8 @@ chat 模式（全屏）
 > 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading/project 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
 >
 > **L2（2026-09-07）问答注入**：新增 `LearnKnowledgeSource`（kernel 知识源，name=learn → PluginRegistry 映射 learn 插件门控）——ContextEngine 按用户 enabledPlugins 注入最近学习笔记（`## 你最近的学习笔记`，标题+type+核心观点，上限 5 篇；无卡片不注入；损坏文件/_raw 跳过；globalContext 注入 + enrich 空防双份）——你问「上次讲 RAG 那篇说了啥」时阿呆能引用自己消化过的卡片作答（RFC 3.7 ③ 价值呈现）。
+>
+> **V2 消化闭环第一批（2026-09-07 复习流转 + 编辑）**：卡片 `status` 从 V1 固定 new 变为可流转 new→review→done（PATCH 端点）；正文编辑支撑（复述段建模 retell + PATCH 编辑端点）——「对话流让阿呆改」的后端能力就绪（前端对话流接线随 UI 批）。
 
 ### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（v3.48）
 
@@ -1997,7 +2000,8 @@ chat 模式（全屏）
   "tags": ["止损", "回调"],
   "coreView": "回调到一半才是买点，几何口径 (high+low)/2",
   "keyPoints": ["02:31 回调一半=(high+low)/2"],
-  "questions": ["它与课程口径一致吗？"]
+  "questions": ["它与课程口径一致吗？"],
+  "retell": ""
 }
 ```
 
@@ -2020,6 +2024,47 @@ chat 模式（全屏）
 | `title` | String | ✅ | 卡片标题（精确匹配） |
 
 **Response** `200` LearnCard（同列表项字段）。`type` 非法 / **卡片不存在** → 400（人话「卡片不存在：type/title」）。
+
+### `PATCH /api/v1/learn/cards/status` — 复习状态流转（v3.49）
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+| `status` | String | ✅ | new/review/done |
+
+**Response** `200` 更新后的 LearnCard（仅 frontmatter status 变更，正文与手写「复述」段原样保留）。
+
+- `400`：type/status 非法、卡片不存在（人话「卡片不存在：type/title」）
+- `403`：learn 插件未启用
+
+### `PATCH /api/v1/learn/cards` — 编辑卡片正文（v3.49）
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+
+**Body**（部分字段补丁：缺省 = 保留原值，提供 = 覆盖/清空）：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `coreView` | String | 核心观点 |
+| `keyPoints` | String[] | 关键要点列表 |
+| `questions` | String[] | 我的疑问列表 |
+| `retell` | String | 复述段（自己写 100-200 字，消化关键）|
+| `tradeRelated` | Boolean | 是否涉及可执行规则（仅 type=trading 生效，非 trading 强制 false）|
+| `tradeNote` | String | 交易备注（仅 type=trading 保留）|
+| `tags` | String[] | 标签列表 |
+
+**Response** `200` 更新后的 LearnCard。`type`/`title`/`created` **不可修改**（修改 = 移动文件，拒绝——如需改名请新建卡片）。
+
+- `400`：type 非法、卡片不存在、编辑内容为空
+- `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/tree` — 资产树（v3.48）
 

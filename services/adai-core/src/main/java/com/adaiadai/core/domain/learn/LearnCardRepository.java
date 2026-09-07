@@ -24,6 +24,24 @@ public interface LearnCardRepository {
     /** 指定类型的全部卡片（created 倒序；损坏文件跳过）。 */
     List<LearnCard> list(String userId, String type);
 
+    /**
+     * 更新复习状态（V2 复习流转 new→review→done）：按 type + 标题定位并原地更新
+     * frontmatter status（File First：md 即真相源，正文其余段落原样保留）。
+     * 不存在 → LearnException；写失败 → StorageException。
+     *
+     * @return 更新后的卡片
+     */
+    LearnCard updateStatus(String userId, String type, String title, String status);
+
+    /**
+     * 覆盖更新卡片正文（V2 编辑：对话流让阿呆改 / 复述填充）。定位 = type + title；
+     * 已存在才可更新，type/title/created 不得变更（文件路径 = type + created + title，
+     * 变更即移动文件，由实现校验拒绝）。不存在 → LearnException；写失败 → StorageException。
+     *
+     * @return 更新后的卡片
+     */
+    LearnCard update(String userId, LearnCard card);
+
     /** 资产树：learn 目录下各 type 的卡片清单（只含本实现产出的规范卡片）。 */
     java.util.Map<String, List<LearnCard>> tree(String userId);
 

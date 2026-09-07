@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -59,7 +60,7 @@ class LearnControllerTest {
                 "某UP", "https://b23.tv/x", "2026-05-05",
                 LocalDate.of(2026, 9, 6), LearnCard.STATUS_NEW, true, "与 R66 互补",
                 List.of("止损", "回调"), "回调一半是买点",
-                List.of("02:31 回调一半=(high+low)/2"), List.of("口径一致？"));
+                List.of("02:31 回调一半=(high+low)/2"), List.of("口径一致？"), "");
     }
 
     @Test
@@ -191,5 +192,107 @@ class LearnControllerTest {
         mvc("learn").perform(get("/api/v1/learn/tree").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ai[0].title").value("回调一半的判定"));
+    }
+
+    // ── V2 复习状态流转 ──
+
+    @Test
+    void changeStatus_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(patch("/api/v1/learn/cards/status")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"trading\",\"title\":\"回调一半的判定\",\"status\":\"review\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void changeStatus_success_returnsUpdatedCard() throws Exception {
+        LearnCard updated = new LearnCard(LearnCard.TYPE_TRADING, "回调一半的判定", "bilibili",
+                "某UP", "https://b23.tv/x", "2026-05-05",
+                LocalDate.of(2026, 9, 6), LearnCard.STATUS_REVIEW, true, "与 R66 互补",
+                List.of("止损", "回调"), "回调一半是买点",
+                List.of("02:31 回调一半=(high+low)/2"), List.of("口径一致？"), "");
+        when(digestService.changeStatus(anyString(), anyString(), anyString(), anyString())).thenReturn(updated);
+        mvc("learn").perform(patch("/api/v1/learn/cards/status")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"trading\",\"title\":\"回调一半的判定\",\"status\":\"review\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("review"))
+                .andExpect(jsonPath("$.title").value("回调一半的判定"));
+    }
+
+    @Test
+    void changeStatus_blankField_returns400() throws Exception {
+        mvc("learn").perform(patch("/api/v1/learn/cards/status")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"trading\",\"title\":\"回调一半的判定\",\"status\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changeStatus_notFound_returns400HumanMessage() throws Exception {
+        when(digestService.changeStatus(anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(new LearnException("卡片不存在：trading/没有的卡片"));
+        mvc("learn").perform(patch("/api/v1/learn/cards/status")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"trading\",\"title\":\"没有的卡片\",\"status\":\"review\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("卡片不存在")));
+    }
+
+    // ── V2 编辑（对话流让阿呆改的后端支撑）──
+
+    @Test
+    void edit_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(patch("/api/v1/learn/cards")
+                        .header("X-User-Id", "bob")
+                        .param("type", "trading").param("title", "回调一半的判定")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"retell\":\"复述：回调一半是几何口径\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void edit_success_returnsUpdatedCard() throws Exception {
+        LearnCard updated = new LearnCard(LearnCard.TYPE_TRADING, "回调一半的判定", "bilibili",
+                "某UP", "https://b23.tv/x", "2026-05-05",
+                LocalDate.of(2026, 9, 6), LearnCard.STATUS_NEW, true, "与 R66 互补",
+                List.of("止损", "回调"), "回调一半是买点",
+                List.of("02:31 回调一半=(high+low)/2"), List.of("口径一致？"), "复述内容");
+        when(digestService.edit(anyString(), anyString(), anyString(), any())).thenReturn(updated);
+        mvc("learn").perform(patch("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .param("type", "trading").param("title", "回调一半的判定")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"retell\":\"复述内容\",\"coreView\":\"回调一半是买点\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.retell").value("复述内容"))
+                .andExpect(jsonPath("$.title").value("回调一半的判定"));
+    }
+
+    @Test
+    void edit_invalidType_returns400() throws Exception {
+        mvc("learn").perform(patch("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .param("type", "bogus").param("title", "回调一半的判定")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"retell\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void edit_notFound_returns400HumanMessage() throws Exception {
+        when(digestService.edit(anyString(), anyString(), anyString(), any()))
+                .thenThrow(new LearnException("卡片不存在：trading/没有的卡片"));
+        mvc("learn").perform(patch("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .param("type", "trading").param("title", "没有的卡片")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"retell\":\"x\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("卡片不存在")));
     }
 }

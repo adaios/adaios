@@ -1047,7 +1047,7 @@ POST /api/v1/records/retry
 
 ## 17. learn 学习沉淀模块（RFC 20260829）
 
-> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。V2 消化闭环（复习流转/编辑/问答注入深度）待续。
+> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环批 1（2026-09-07 复习流转 + 编辑）已落地**（后端）：复习状态 new→review→done 流转 + 卡片正文编辑（复述段建模 retell）。V2 其余（复习提醒推送 / trading 候选联动 / 多用户测试补全）待续。
 
 - **插件注册**：PluginRegistry 第三个插件 `learn`（`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
 - **定位**：外部内容（B站视频/YouTube/文章/字幕）→ AI 结构化卡片 → 个人知识资产。**与 A 方向会话技能（learn-digest skill）同源**：技能是 DSH 会话内执行版（独立落盘 `data/adai/learn/`），本插件是阿呆产品内版（按用户落 `data/{userId}/learn/`）；两者格式同构（frontmatter + 渐进式摘要）。
@@ -1055,8 +1055,10 @@ POST /api/v1/records/retry
 - **卡片**：`data/{userId}/learn/{type}/{yyyy-MM-dd}_{title}.md`（File First md 即真相源）——frontmatter（title/type/platform/author/url/published/created/status/trade_related/trade_note/tags）+ RFC 3.4 正文四段（核心观点/关键要点/我的疑问/复述）。type=ai/trading/other 是文件分类非 domain 收敛对象；trade_related 仅 trading 内容有意义（防 LLM 幻觉：非 trading 强制 false；V1 只记录不联动规则库，规则候选改动须用户拍板）。
 - **失败降级（fail-visible）**：LLM 失败/输出不可解析/缺标题 → 原始素材留存 `_raw/` + 400 人话（不产半成品卡片）；同日同 type 同标题重复 → 400（防覆盖）；type 越界回落 other。
 - **并发/健壮性**：per-user 条带锁（16 条带）；损坏文件跳过不中断列表；fileStem 清洗防路径逃逸（`..`/`/` 归一）。
-- **端点**：`POST /learn/cards`（喂入消化）、`GET /learn/cards`（`?type=` 列表）、`GET /learn/card`（`?type=&title=` 单篇全文）、`GET /learn/tree`（资产树，ai/trading/other 分组）。全需 learn 插件（403）。
-- **已知边界（L1）**：不做抓取/转写（素材由用户喂入，守 B8 + 版权）；卡片编辑/复习流转 V2；多用户只架构预留；A 技能产物与插件产物同目录并存（目录结构差异由 L2 资产页统一）。
+- **端点**：`POST /learn/cards`（喂入消化）、`GET /learn/cards`（`?type=` 列表）、`GET /learn/card`（`?type=&title=` 单篇全文）、`GET /learn/tree`（资产树，ai/trading/other 分组）、`PATCH /learn/cards/status`（复习状态流转 new/review/done，2026-09-07 V2）、`PATCH /learn/cards`（正文编辑补丁，?type=&title= 定位，2026-09-07 V2）。全需 learn 插件（403）。
+- **复习状态（V2 2026-09-07）**：`status` new→review→done，流转只改 frontmatter（正文/手写复述段原样保留，File First 不重建文件）。
+- **编辑与复述（V2 2026-09-07）**：`retell` 复述段建模（V1 模板四段的空段补齐读写对称——24h 内自己写 100-200 字是消化关键，AI 不代写）；`PATCH /learn/cards` 支持正文/要点/疑问/复述/trade_related/trade_note/tags 字段级补丁（type/title/created 不可改——改=移动文件拒绝，改名走新建）。「对话流让阿呆改」的后端能力就绪（前端接线随 UI 批）。
+- **已知边界（L1）**：不做抓取/转写（素材由用户喂入，守 B8 + 版权）；卡片编辑/复习流转 V2（批 1 已落地后端）；多用户只架构预留；A 技能产物与插件产物同目录并存（目录结构差异由 L2 资产页统一）。
 
 ## 附录：API 全集
 
@@ -1107,4 +1109,6 @@ POST /api/v1/records/retry
 | 42 | POST | `/api/v1/learn/cards` | learn 喂入消化（learn 插件，2026-09-06 learn V1） | ✅ |
 | 43 | GET | `/api/v1/learn/cards` | learn 卡片列表（learn 插件，?type= 筛选） | ❌ |
 | 44 | GET | `/api/v1/learn/card` | learn 单篇卡片全文（learn 插件，?type=&title=） | ❌ |
-| 44 | GET | `/api/v1/learn/tree` | learn 资产树（learn 插件，ai/trading/other 分组） | ❌ |
+| 45 | GET | `/api/v1/learn/tree` | learn 资产树（learn 插件，ai/trading/other 分组） | ❌ |
+| 46 | PATCH | `/api/v1/learn/cards/status` | learn 复习状态流转 new/review/done（learn 插件，2026-09-07 V2） | ❌ |
+| 47 | PATCH | `/api/v1/learn/cards` | learn 卡片正文编辑补丁（learn 插件，?type=&title=，2026-09-07 V2） | ❌ |

@@ -55,6 +55,12 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return locks[(h ^ (h >>> 16)) & (locks.length - 1)];
     }
 
+    private static String safeLabel(String type, String title) {
+        String t = type == null || type.isBlank() ? "?" : type;
+        String ti = title == null || title.isBlank() ? "(空标题)" : title;
+        return t + "/" + ti;
+    }
+
     @Override
     public void save(String userId, LearnCard card) {
         synchronized (lockFor(userId)) {
@@ -75,6 +81,59 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return list(userId, type).stream()
                 .filter(c -> title.equals(c.title()))
                 .findFirst();
+    }
+
+    @Override
+    public LearnCard updateStatus(String userId, String type, String title, String status) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在");
+        }
+        synchronized (lockFor(userId)) {
+            LearnCard card = find(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            String path = filePath(card);
+            String content = fileStorage.read(userId, path);
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            String updated = replaceStatusLine(content, status);
+            fileStorage.write(userId, path, updated);
+            log.info("learn 复习状态流转 | userId={} | type={} | title={} | status={}", userId, type, title, status);
+            return parse(updated);
+        }
+    }
+
+    @Override
+    public LearnCard update(String userId, LearnCard card) {
+        if (card == null) throw new LearnException("卡片不能为空");
+        synchronized (lockFor(userId)) {
+            // 定位原卡片（按 type+title）；路径稳定守卫：created/type/title 与现有一致才允许
+            // 覆盖更新（title 变 → find 不到 = 卡片不存在；created 变 → 路径变 = 拒绝移动）
+            LearnCard existing = find(userId, card.type(), card.title())
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(card.type(), card.title())));
+            if (!card.created().equals(existing.created())) {
+                throw new LearnException("标题/类型/日期不可修改（会移动文件），如需改名请新建卡片");
+            }
+            fileStorage.write(userId, filePath(existing), toMarkdown(card));
+            log.info("learn 卡片已更新 | userId={} | type={} | title={}", userId, card.type(), card.title());
+            return card;
+        }
+    }
+
+    /** 只替换 frontmatter 区内的 status 行（正文其余段落原样保留——md 即真相源）。 */
+    private static String replaceStatusLine(String content, String status) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
+        if (!m.find()) {
+            throw new LearnException("卡片文件格式异常，无法更新复习状态");
+        }
+        String fm = m.group(2);
+        String replaced = fm.replaceAll("(?m)^status:.*$", "status: " + status);
+        if (replaced.equals(fm)) {
+            replaced = fm + "\nstatus: " + status;
+        }
+        return m.group(1) + replaced + m.group(3)
+                + content.substring(m.end());
     }
 
     @Override
@@ -168,7 +227,11 @@ public class LearnCardFileRepository implements LearnCardRepository {
         if (card.questions() != null && !card.questions().isEmpty()) {
             for (String q : card.questions()) sb.append("- ").append(singleLine(q)).append("\n");
         }
-        sb.append("\n## 复述\n\n");
+        sb.append("\n## 复述\n");
+        if (card.retell() != null && !card.retell().isBlank()) {
+            sb.append(card.retell()).append("\n");
+        }
+        sb.append("\n");
         return sb.toString();
     }
 
@@ -204,7 +267,8 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 fields.getOrDefault("trade_note", "").strip(),
                 parseTags(fields.getOrDefault("tags", "")),
                 sections.getOrDefault("核心观点", "").strip(),
-                keyPoints, questions);
+                keyPoints, questions,
+                sections.getOrDefault("复述", "").strip());
     }
 
     private static Map<String, String> parseFrontmatter(String frontmatter) {

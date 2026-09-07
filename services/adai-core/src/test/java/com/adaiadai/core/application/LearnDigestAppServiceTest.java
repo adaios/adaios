@@ -150,7 +150,7 @@ class LearnDigestAppServiceTest {
     void detail_existing_returnsCard() {
         LearnCard card = new LearnCard(LearnCard.TYPE_AI, "某卡", null, null, null, null,
                 LocalDate.now(), LearnCard.STATUS_NEW, false, null, List.of(),
-                "观点", List.of("要点"), List.of());
+                "观点", List.of("要点"), List.of(), "");
         when(repository.find("adai", LearnCard.TYPE_AI, "某卡")).thenReturn(java.util.Optional.of(card));
         assertEquals("某卡", service.detail("adai", LearnCard.TYPE_AI, "某卡").title());
     }
@@ -173,7 +173,7 @@ class LearnDigestAppServiceTest {
     void list_tree_delegateToRepository() {
         LearnCard card = new LearnCard(LearnCard.TYPE_AI, "卡", null, null, null, null,
                 LocalDate.now(), LearnCard.STATUS_NEW, false, null, List.of(),
-                "观点", List.of("要点"), List.of());
+                "观点", List.of("要点"), List.of(), "");
         when(repository.list("adai", LearnCard.TYPE_AI)).thenReturn(List.of(card));
         when(repository.tree("adai")).thenReturn(java.util.Map.of("ai", List.of(card)));
         assertEquals(1, service.list("adai", LearnCard.TYPE_AI).size());
@@ -181,5 +181,111 @@ class LearnDigestAppServiceTest {
         assertEquals(1, service.tree("adai").get("ai").size());
         verify(repository).list("adai", LearnCard.TYPE_AI);
         verify(repository).tree("adai");
+    }
+
+    // ── V2 复习状态流转 ──
+
+    @Test
+    void changeStatus_valid_delegatesAndReturnsUpdated() {
+        LearnCard updated = new LearnCard(LearnCard.TYPE_AI, "某卡", null, null, null, null,
+                LocalDate.now(), LearnCard.STATUS_REVIEW, false, null, List.of(),
+                "观点", List.of("要点"), List.of(), "");
+        when(repository.updateStatus("adai", LearnCard.TYPE_AI, "某卡", LearnCard.STATUS_REVIEW))
+                .thenReturn(updated);
+        LearnCard result = service.changeStatus("adai", LearnCard.TYPE_AI, "某卡", LearnCard.STATUS_REVIEW);
+        assertEquals(LearnCard.STATUS_REVIEW, result.status());
+        verify(repository).updateStatus("adai", LearnCard.TYPE_AI, "某卡", LearnCard.STATUS_REVIEW);
+    }
+
+    @Test
+    void changeStatus_invalidType_throwsBeforeRepository() {
+        assertThrows(LearnException.class,
+                () -> service.changeStatus("adai", "hacking", "卡", LearnCard.STATUS_REVIEW));
+        verify(repository, never()).updateStatus(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void changeStatus_invalidStatus_throwsBeforeRepository() {
+        assertThrows(LearnException.class,
+                () -> service.changeStatus("adai", LearnCard.TYPE_AI, "卡", "archived"));
+        verify(repository, never()).updateStatus(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void changeStatus_blankTitle_throwsBeforeRepository() {
+        assertThrows(LearnException.class,
+                () -> service.changeStatus("adai", LearnCard.TYPE_AI, "  ", LearnCard.STATUS_DONE));
+        verify(repository, never()).updateStatus(anyString(), anyString(), anyString(), anyString());
+    }
+
+    // ── V2 编辑（对话流让阿呆改的后端支撑）──
+
+    @Test
+    void edit_patchOverridesOnlyProvidedFields() {
+        LearnCard original = new LearnCard(LearnCard.TYPE_AI, "某卡", null, null, null, null,
+                LocalDate.now(), LearnCard.STATUS_NEW, false, null, List.of("rag"),
+                "原观点", List.of("旧要点"), List.of("旧疑问"), "");
+        when(repository.find("adai", LearnCard.TYPE_AI, "某卡")).thenReturn(java.util.Optional.of(original));
+        when(repository.update(anyString(), any())).thenAnswer(inv -> inv.getArgument(1));
+
+        LearnCard result = service.edit("adai", LearnCard.TYPE_AI, "某卡",
+                new LearnDigestAppService.EditPatch("新观点", null, List.of("新疑问"),
+                        "复述内容", null, null, null));
+
+        assertEquals("新观点", result.coreView(), "提供的字段覆盖");
+        assertEquals("复述内容", result.retell());
+        assertEquals(List.of("新疑问"), result.questions());
+        assertEquals(List.of("旧要点"), result.keyPoints(), "未提供字段保留原值");
+        assertEquals(List.of("rag"), result.tags(), "未提供字段保留原值");
+        assertEquals("某卡", result.title(), "title 由原卡继承");
+    }
+
+    @Test
+    void edit_tradingCard_patchTradeNoteAndTradeRelated() {
+        LearnCard original = new LearnCard(LearnCard.TYPE_TRADING, "回调卡", null, null, null, null,
+                LocalDate.now(), LearnCard.STATUS_NEW, false, "", List.of(),
+                "观点", List.of(), List.of(), "");
+        when(repository.find("adai", LearnCard.TYPE_TRADING, "回调卡")).thenReturn(java.util.Optional.of(original));
+        when(repository.update(anyString(), any())).thenAnswer(inv -> inv.getArgument(1));
+
+        LearnCard result = service.edit("adai", LearnCard.TYPE_TRADING, "回调卡",
+                new LearnDigestAppService.EditPatch(null, null, null, null, true, "与 R66 冲突，暂不动", null));
+        assertTrue(result.tradeRelated());
+        assertEquals("与 R66 冲突，暂不动", result.tradeNote());
+    }
+
+    @Test
+    void edit_nonTradingCard_patchTradeNoteIgnored() {
+        LearnCard original = new LearnCard(LearnCard.TYPE_AI, "AI 卡", null, null, null, null,
+                LocalDate.now(), LearnCard.STATUS_NEW, false, null, List.of(),
+                "观点", List.of(), List.of(), "");
+        when(repository.find("adai", LearnCard.TYPE_AI, "AI 卡")).thenReturn(java.util.Optional.of(original));
+        when(repository.update(anyString(), any())).thenAnswer(inv -> inv.getArgument(1));
+
+        LearnCard result = service.edit("adai", LearnCard.TYPE_AI, "AI 卡",
+                new LearnDigestAppService.EditPatch(null, null, null, null, true, "不应保留", null));
+        assertFalse(result.tradeRelated(), "非 trading 卡片 trade_related 强制 false");
+        assertEquals(null, result.tradeNote(), "非 trading 卡片 trade_note 收敛 null");
+    }
+
+    @Test
+    void edit_missingCard_throws() {
+        when(repository.find("adai", LearnCard.TYPE_AI, "没有")).thenReturn(java.util.Optional.empty());
+        LearnException e = assertThrows(LearnException.class,
+                () -> service.edit("adai", LearnCard.TYPE_AI, "没有",
+                        new LearnDigestAppService.EditPatch(null, null, null, null, null, null, null)));
+        assertTrue(e.getMessage().contains("卡片不存在"));
+        verify(repository, never()).update(anyString(), any());
+    }
+
+    @Test
+    void edit_invalidTypeOrBlankTitle_throwsBeforeRepository() {
+        assertThrows(LearnException.class,
+                () -> service.edit("adai", "bogus", "卡",
+                        new LearnDigestAppService.EditPatch(null, null, null, null, null, null, null)));
+        assertThrows(LearnException.class,
+                () -> service.edit("adai", LearnCard.TYPE_AI, "  ",
+                        new LearnDigestAppService.EditPatch(null, null, null, null, null, null, null)));
+        verify(repository, never()).update(anyString(), any());
     }
 }

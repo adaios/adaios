@@ -123,7 +123,8 @@ public class LearnDigestAppService {
                 LearnCard.TYPE_TRADING.equals(type) && parsed.tradeRelated(),
                 LearnCard.TYPE_TRADING.equals(type) ? parsed.tradeNote() : null,
                 parsed.tags(),
-                parsed.coreView(), parsed.keyPoints(), parsed.questions());
+                parsed.coreView(), parsed.keyPoints(), parsed.questions(),
+                "");
         repository.save(userId, card);
         log.info("learn 卡片化完成 | userId={} | type={} | title={} | 要点 {} 条 | 疑问 {} 条",
                 userId, card.type(), card.title(),
@@ -149,6 +150,75 @@ public class LearnDigestAppService {
         return repository.find(userId, type, title)
                 .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
     }
+
+    /**
+     * 复习状态流转（V2）：new → review → done。仅改 frontmatter status，
+     * 正文与手写「复述」段落原样保留（File First）。
+     *
+     * @throws LearnException 类型/状态非法（400 人话）或卡片不存在
+     */
+    public LearnCard changeStatus(String userId, String type, String title, String status) {
+        if (!LearnCard.isValidType(type)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        if (title == null || title.isBlank()) {
+            throw new LearnException("卡片标题不能为空");
+        }
+        if (!LearnCard.isValidStatus(status)) {
+            throw new LearnException("复习状态仅支持 new/review/done");
+        }
+        return repository.updateStatus(userId, type, title, status);
+    }
+
+    /**
+     * 编辑卡片正文（V2 对话流让阿呆改的后端支撑）：按 type+title 定位，patch 字段
+     * null = 保留原值，非 null = 覆盖（含清空）。type/title/created 由原卡继承不可改
+     * （改 = 移动文件，由仓储校验拒绝）。返回更新后卡片。
+     *
+     * @throws LearnException 定位/入参非法或卡片不存在
+     */
+    public LearnCard edit(String userId, String type, String title, EditPatch patch) {
+        if (!LearnCard.isValidType(type)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        if (title == null || title.isBlank()) {
+            throw new LearnException("卡片标题不能为空");
+        }
+        LearnCard cur = repository.find(userId, type, title)
+                .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+        boolean tradeRelated = patch != null && patch.tradeRelated() != null
+                ? patch.tradeRelated() : cur.tradeRelated();
+        List<String> tags = patch != null && patch.tags() != null
+                ? cleanList(patch.tags()) : cur.tags();
+        List<String> keyPoints = patch != null && patch.keyPoints() != null
+                ? cleanList(patch.keyPoints()) : cur.keyPoints();
+        List<String> questions = patch != null && patch.questions() != null
+                ? cleanList(patch.questions()) : cur.questions();
+        LearnCard updated = new LearnCard(
+                cur.type(), cur.title(), cur.platform(), cur.author(), cur.url(), cur.published(),
+                cur.created(), cur.status(), tradeRelated,
+                patch != null && patch.tradeNote() != null ? patch.tradeNote().strip() : cur.tradeNote(),
+                tags,
+                patch != null && patch.coreView() != null ? patch.coreView().strip() : cur.coreView(),
+                keyPoints, questions,
+                patch != null && patch.retell() != null ? patch.retell().strip() : cur.retell());
+        return repository.update(userId, updated);
+    }
+
+    private List<String> cleanList(List<String> list) {
+        if (list == null) return List.of();
+        return list.stream().map(String::strip).filter(s -> !s.isBlank()).toList();
+    }
+
+    /** 编辑补丁（V2）：字段 null = 保留原值，非 null = 覆盖。 */
+    public record EditPatch(
+            String coreView,
+            List<String> keyPoints,
+            List<String> questions,
+            String retell,
+            Boolean tradeRelated,
+            String tradeNote,
+            List<String> tags) {}
 
     /** 资产树：learn 按 type 分组（只含已落盘卡片）。 */
     public Map<String, List<LearnCard>> tree(String userId) {
