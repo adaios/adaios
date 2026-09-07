@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.LearnCandidateAppService;
 import com.adaiadai.core.application.LearnDigestAppService;
 import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -16,12 +17,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LearnController — 学习沉淀 REST API（RFC 20260829 learn 插件，V1 后端流水线）。
+ * LearnController — 学习沉淀 REST API（RFC 20260829 learn 插件，V1 后端流水线 + V2 消化闭环）。
  * <p>
  * 端点：
- * POST /api/v1/learn/cards   喂入素材 → AI 卡片化 → 落 data/{userId}/learn/
- * GET  /api/v1/learn/cards   卡片列表（?type= 筛选）
- * GET  /api/v1/learn/tree    资产树（learn 按 type 分组）
+ * POST /api/v1/learn/cards         喂入素材 → AI 卡片化 → 落 data/{userId}/learn/
+ * GET  /api/v1/learn/cards         卡片列表（?type= 筛选）
+ * GET  /api/v1/learn/card          单篇卡片全文（?type=&title=）
+ * GET  /api/v1/learn/tree          资产树（learn 按 type 分组）
+ * PATCH /api/v1/learn/cards/status 复习状态流转（V2）
+ * PATCH /api/v1/learn/cards        卡片正文编辑（V2）
+ * POST  /api/v1/learn/cards/candidate        trading 卡片反哺成规则候选（V2 批 3）
+ * GET   /api/v1/learn/cards/candidates       候选列表（审核）
+ * DELETE /api/v1/learn/cards/candidates      删除候选（?title=，幂等）
  * <p>
  * 全部需 learn 插件（403）；X-User-Id 隔离（data/{userId}/learn/）。
  * 独立端点喂入（2026-09-06 用户拍板：仿截图入账先例，learn 消化是动作不是记录，
@@ -34,10 +41,14 @@ public class LearnController {
     private static final Logger log = LoggerFactory.getLogger(LearnController.class);
 
     private final LearnDigestAppService digestService;
+    private final LearnCandidateAppService candidateService;
     private final PluginService pluginService;
 
-    public LearnController(LearnDigestAppService digestService, PluginService pluginService) {
+    public LearnController(LearnDigestAppService digestService,
+                           LearnCandidateAppService candidateService,
+                           PluginService pluginService) {
         this.digestService = digestService;
+        this.candidateService = candidateService;
         this.pluginService = pluginService;
     }
 
@@ -130,6 +141,36 @@ public class LearnController {
         return ResponseEntity.ok(digestService.tree(userId));
     }
 
+    /** 反哺候选（V2 批 3）：trading 卡片 → trading 候选建议卡。body {type,title}。 */
+    @PostMapping("/cards/candidate")
+    public ResponseEntity<?> createCandidate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnCandidateRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(candidateService.createFromCard(userId, body.type(), body.title()));
+    }
+
+    /** 候选列表（V2 批 3）：trading 候选建议卡，created 倒序。 */
+    @GetMapping("/cards/candidates")
+    public ResponseEntity<?> listCandidates(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(candidateService.listCandidates(userId));
+    }
+
+    /** 删除候选（V2 批 3）：?title= 定位，幂等（不存在 200）。 */
+    @DeleteMapping("/cards/candidates")
+    public ResponseEntity<?> deleteCandidate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String title) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        candidateService.deleteCandidate(userId, title);
+        return ResponseEntity.ok(Map.of("deleted", true));
+    }
+
     private List<LearnCard> listByType(String userId, String type) {
         return digestService.list(userId, type);
     }
@@ -180,4 +221,9 @@ public class LearnController {
             Boolean tradeRelated,
             String tradeNote,
             java.util.List<String> tags) {}
+
+    /** 反哺候选请求：type/title 定位源 learn 卡片。 */
+    public record LearnCandidateRequest(
+            @NotBlank(message = "类型不能为空") String type,
+            @NotBlank(message = "卡片标题不能为空") String title) {}
 }
