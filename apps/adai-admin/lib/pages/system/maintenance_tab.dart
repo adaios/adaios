@@ -9,12 +9,20 @@ import '../../widgets/snack.dart';
 /// 维护操作页签 — 记忆重建 / 重补 / 清理 / 行情数据导入（真实后端 /admin/memory/rebuild、
 /// /admin/records/retry、/admin/cards/cleanup、/admin/market/tdx-import）。
 class MaintenanceTab extends StatefulWidget {
-  const MaintenanceTab({super.key, required this.store, this.userId = 'default'});
+  const MaintenanceTab({
+    super.key,
+    required this.store,
+    this.userId = 'default',
+    this.pickZipFile,
+  });
 
   final SystemStore store;
 
   /// 当前浏览用户（per-user 维护操作的作用对象；行情导入为全局数据、非 per-user）。
   final String userId;
+
+  /// 行情导入选 .zip（可注入；默认 [FilePicker.platform.pickFiles]，测试注入内存 fake）。
+  final Future<FilePickerResult?> Function()? pickZipFile;
 
   @override
   State<MaintenanceTab> createState() => _MaintenanceTabState();
@@ -25,6 +33,35 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
 
   /// 正在执行的操作 id；null = 空闲。
   String? _busy;
+
+  // ── 行情导入上传进度（MD17 体验增强 2026-09-07）──
+  /// 上传进度 0..1；null = 尚未开始 / 平台无逐块进度（UI 转圈兜底）。
+  double? _tdxProgress;
+
+  /// 已传 / 总字节（UI 文案用）。
+  int _tdxSentBytes = 0;
+  int _tdxTotalBytes = 0;
+
+  /// 上传开始时刻（估算剩余时间）。
+  DateTime? _tdxStartedAt;
+
+  void _onTdxProgress(int sentBytes, int totalBytes) {
+    if (!mounted) return;
+    setState(() {
+      _tdxSentBytes = sentBytes;
+      _tdxTotalBytes = totalBytes;
+      _tdxProgress =
+          (totalBytes > 0) ? (sentBytes / totalBytes).clamp(0.0, 1.0) : null;
+      _tdxStartedAt ??= DateTime.now();
+    });
+  }
+
+  void _clearTdxProgress() {
+    _tdxProgress = null;
+    _tdxSentBytes = 0;
+    _tdxTotalBytes = 0;
+    _tdxStartedAt = null;
+  }
 
   Future<void> _run(
       String id, String title, String description,
@@ -190,14 +227,16 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
     );
   }
 
-  /// 选通达信数据包（.zip）→ 上传导入（MD17）。结果 snackbar 摘要。
+  /// 选通达信数据包（.zip）→ 上传导入（MD17）。上传中显示真实进度条；结果 snackbar 摘要。
   Future<void> _pickAndImport() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['zip'],
-        withData: true,
-      );
+      final picker = widget.pickZipFile ??
+          () => FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: ['zip'],
+                withData: true,
+              );
+      final result = await picker();
       if (result == null || result.files.isEmpty) return;
       final f = result.files.single;
       final bytes = f.bytes;
@@ -206,14 +245,28 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
         showAppSnack(context, '读取文件失败（未拿到内容）', AppColors.darkOrange);
         return;
       }
-      setState(() => _busy = 'tdx-import');
-      final r = await _store.importTdxPackage(bytes, f.name);
+      setState(() {
+        _busy = 'tdx-import';
+        // 上传前即知总量：进度条分母立即可用（真实 sent 由 onProgress 驱动）。
+        _tdxProgress = 0.0;
+        _tdxSentBytes = 0;
+        _tdxTotalBytes = bytes.length;
+        _tdxStartedAt = DateTime.now();
+      });
+      final r = await _store.importTdxPackage(bytes, f.name,
+          onProgress: _onTdxProgress);
       if (!mounted) return;
-      setState(() => _busy = null);
+      setState(() {
+        _busy = null;
+        _clearTdxProgress();
+      });
       _showResult(r);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _busy = null);
+      setState(() {
+        _busy = null;
+        _clearTdxProgress();
+      });
       showAppSnack(context, '行情数据导入失败：$e', AppColors.darkOrange);
     }
   }
@@ -227,66 +280,124 @@ class _MaintenanceTabState extends State<MaintenanceTab> {
     required VoidCallback onTap,
   }) {
     final busy = _busy == id;
+    // 行情导入：上传中显示进度（百分比 + 进度条 + 已传/总量），非 tdx-import 仍转圈。
+    final uploading = busy && id == 'tdx-import';
+    final percent = (uploading && _tdxProgress != null)
+        ? (_tdxProgress! * 100).round()
+        : null;
     return AppCard(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 18, color: color),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.darkGrey1)),
-                const SizedBox(height: 3),
-                Text(description,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.darkGrey4)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 96,
-            height: 40, // P3-20（2026-09-06）：34→40 提升触达（触屏场景）
-            child: busy
-                ? const Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.darkGrey5,
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 18, color: color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.darkGrey1)),
+                    const SizedBox(height: 3),
+                    Text(description,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.darkGrey4)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 96,
+                height: 40, // P3-20（2026-09-06）：34→40 提升触达（触屏场景）
+                child: busy
+                    ? (percent != null
+                        ? Center(
+                            child: Text('$percent%',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: color)),
+                          )
+                        : const Center(
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.darkGrey5,
+                              ),
+                            ),
+                          ))
+                    : ElevatedButton(
+                        onPressed: onTap,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: color.withValues(alpha: 0.2),
+                          foregroundColor: color,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('执行',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w500)),
                       ),
-                    ),
-                  )
-                : ElevatedButton(
-                    onPressed: onTap,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: color.withValues(alpha: 0.2),
-                      foregroundColor: color,
-                      padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('执行',
-                        style:
-                            TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                  ),
+              ),
+            ],
           ),
+          if (uploading) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: _tdxProgress ?? 0,
+                minHeight: 5,
+                backgroundColor: color.withValues(alpha: 0.15),
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '已上传 ${_fmtBytes(_tdxSentBytes)} / ${_fmtBytes(_tdxTotalBytes)}'
+              '${_remainingHint()}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// `123.4 MB` / `890 KB` 文件大小文案。
+  static String _fmtBytes(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '$bytes B';
+  }
+
+  /// 按已传速度粗估剩余时间（上传刚起步 <2% 时不显示，防误导）。
+  String _remainingHint() {
+    final started = _tdxStartedAt;
+    if (started == null || _tdxSentBytes <= 0 || _tdxTotalBytes <= 0) return '';
+    final elapsedMs = DateTime.now().difference(started).inMilliseconds;
+    if (elapsedMs < 300) return '';
+    final remaining =
+        (_tdxTotalBytes - _tdxSentBytes) * elapsedMs / _tdxSentBytes;
+    final secs = remaining ~/ 1000;
+    if (secs <= 0) return '';
+    final mm = secs ~/ 60;
+    final ss = secs % 60;
+    return ' · 约剩 ${mm > 0 ? '$mm分' : ''}$ss秒';
   }
 }

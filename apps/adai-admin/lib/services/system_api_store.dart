@@ -34,7 +34,10 @@ abstract class SystemStore {
   Future<MaintenanceResult> cleanData();
 
   /// 行情数据包导入（MD17）：上传通达信 .zip 日线数据包更新 TDX 行情目录。
-  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename);
+  /// [onProgress]（2026-09-07 体验增强）：Web 端上报真实上传进度 `(已传字节, 总字节)`；
+  /// 平台不支持时永不回调（UI 按总字节显示无进度转圈兜底）。
+  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename,
+      {void Function(int sentBytes, int totalBytes)? onProgress});
 
   /// 加载知识反哺冲突项。
   Future<List<ConflictItem>> loadConflicts();
@@ -154,10 +157,10 @@ class SystemApiStore implements SystemStore {
   }
 
   @override
-  Future<MaintenanceResult> importTdxPackage(
-      Uint8List zipBytes, String filename) async {
+  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename,
+      {void Function(int sentBytes, int totalBytes)? onProgress}) async {
     try {
-      final r = await _api.importTdxData(zipBytes, filename);
+      final r = await _api.importTdxData(zipBytes, filename, onProgress: onProgress);
       final imported = (r['imported'] as num?)?.toInt() ?? 0;
       // P2-10：失败清单完整透出（不做前 3 截断——截断由展示层对话框处理）
       final failures = ((r['failed'] as List?) ?? const [])

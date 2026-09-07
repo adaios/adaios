@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:adai_admin/services/api_exception.dart';
 import 'package:adai_admin/services/api_service.dart';
 import 'package:adai_admin/services/data_api_store.dart';
 import 'package:adai_admin/services/knowledge_api_store.dart';
@@ -283,6 +284,73 @@ void main() {
 
       expect(result.success, isFalse);
       expect(result.message, contains('没有任何 .day'));
+    });
+
+    test('importTdxPackage 带 onProgress → 进度回调透传 + 成功解析（2026-09-07 体验增强）', () async {
+      final progress = <int>[];
+      // fake progress uploader：web XHR 上传器的替身——逐步上报进度并返回成功响应。
+      final api = ApiService(
+        client: MockClient((_) async => _json({'status': 'ok'})),
+        userId: 'default',
+        token: 'test-token',
+        progressUploadResolver: () {
+          return ({
+            required String url,
+            required Map<String, String> headers,
+            required Uint8List bytes,
+            required String filename,
+            required void Function(int sentBytes, int totalBytes) onProgress,
+          }) async {
+            expect(url, contains('/api/v1/admin/market/tdx-import'));
+            expect(headers['Authorization'], isNotEmpty);
+            expect(filename, 'sh.zip');
+            onProgress(10, 100);
+            onProgress(60, 100);
+            onProgress(100, 100);
+            return _json({
+              'status': 'ok',
+              'imported': 4927,
+              'skipped': 0,
+              'failed': <String>[],
+              'markets': {'sh': 4927, 'sz': 0},
+              'dayFilesAfter': 9372,
+            });
+          };
+        },
+      );
+      final store = SystemApiStore(api: api, userId: 'default');
+
+      final result = await store.importTdxPackage(Uint8List.fromList([1, 2, 3]),
+          'sh.zip', onProgress: (sent, total) => progress.add(sent));
+
+      expect(result.success, isTrue);
+      expect(result.message, contains('成功 4927 个 .day'));
+      expect(progress, [10, 60, 100]); // 逐块进度依次透传
+    });
+
+    test('importTdxPackage 进度上传器网络错误 → 失败消息（2026-09-07 体验增强）', () async {
+      final api = ApiService(
+        client: MockClient((_) async => _json({'status': 'ok'})),
+        userId: 'default',
+        progressUploadResolver: () {
+          return ({
+            required String url,
+            required Map<String, String> headers,
+            required Uint8List bytes,
+            required String filename,
+            required void Function(int sentBytes, int totalBytes) onProgress,
+          }) async {
+            throw const ApiException('网络错误：上传中断，请检查网络后重试');
+          };
+        },
+      );
+      final store = SystemApiStore(api: api, userId: 'default');
+
+      final result = await store.importTdxPackage(Uint8List.fromList([1]), 'x.zip',
+          onProgress: (_, __) {});
+
+      expect(result.success, isFalse);
+      expect(result.message, contains('网络错误'));
     });
   });
 

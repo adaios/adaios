@@ -331,9 +331,25 @@ class FakeSystemStore implements SystemStore {
       const MaintenanceResult(success: true, message: '清理完成：删除 3 条重复记录');
 
   @override
-  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename) async =>
-      const MaintenanceResult(
-          success: true, message: '行情数据导入完成：成功 9367 个 .day（沪 4922 · 深 4445 · 共 9367）');
+  Future<MaintenanceResult> importTdxPackage(Uint8List zipBytes, String filename,
+      {void Function(int sentBytes, int totalBytes)? onProgress}) async {
+    // 可观测 fake：若注册了 onProgress 收集器，测试用它模拟上传进度步进。
+    if (_tdxProgressListener != null && onProgress != null) {
+      await _tdxProgressListener!(zipBytes.length, onProgress);
+    }
+    return const MaintenanceResult(
+        success: true, message: '行情数据导入完成：成功 9367 个 .day（沪 4922 · 深 4445 · 共 9367）');
+  }
+
+  /// 测试钩子：注册后 importTdxPackage 会把真实 onProgress 回调委托给它（驱动进度 UI）。
+  Future<void> Function(int totalBytes, void Function(int, int) onProgress)?
+      _tdxProgressListener;
+
+  set tdxProgressListener(
+      Future<void> Function(int totalBytes, void Function(int, int) onProgress)?
+          listener) {
+    _tdxProgressListener = listener;
+  }
 
   @override
   Future<List<ConflictItem>> loadConflicts() async => List.of(_conflicts);

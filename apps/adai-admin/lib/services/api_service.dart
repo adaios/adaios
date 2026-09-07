@@ -7,6 +7,8 @@ import '../models/account.dart';
 import '../models/api_dto.dart';
 import 'api_config.dart';
 import 'api_exception.dart';
+import 'tdx_upload_progress.dart';
+import 'tdx_upload_types.dart';
 
 /// AdaiOS 管理端 API 客户端 — 封装所有后端调用。
 ///
@@ -36,6 +38,7 @@ class ApiService {
     this.token,
     this.onUnauthorized,
     Duration uploadTimeout = const Duration(minutes: 10),
+    this.progressUploadResolver,
   }) {
     _raw = client ?? http.Client();
     // 注入 client（测试）直接使用；默认包 15s 超时（REVIEW P1-W6 防无限转圈）
@@ -54,6 +57,10 @@ class ApiService {
 
   /// 大文件上传 client（默认 10 分钟超时，MD17 行情数据包）。
   late final http.Client _upload;
+
+  /// 带进度上传解析器（MD17 体验增强 2026-09-07）。默认取条件导出（web=XHR / 其它=null）；
+  /// 测试注入 fake 验证进度链路与响应解析。
+  final TdxProgressUploadFn? Function()? progressUploadResolver;
 
   late final String baseUrl;
   final String userId;
@@ -459,7 +466,35 @@ class ApiService {
   /// 返回 `{status, imported, skipped, failed[], markets{sh,sz}, dayFilesAfter}`。
   /// 数据包通常 >5MB、服务端解析耗时——走长超时 [_upload] client；
   /// multipart 手动带 Bearer（MultipartRequest 不自动带请求头）。
-  Future<Map<String, dynamic>> importTdxData(Uint8List zipBytes, String filename) async {
+  ///
+  /// [onProgress]（MD17 体验增强 2026-09-07）：Web 端走 XHR upload.onprogress 逐块
+  /// 上报 `(已传字节, 总字节)`；非 web（VM/原生）回落普通 MultipartRequest（无逐块进度，
+  /// 仅上传前后各回调一次 0/总量 与 全量/总量——见回落分支）。测试可注入
+  /// [progressUploadResolver] fake 验证进度链路。
+  Future<Map<String, dynamic>> importTdxData(
+    Uint8List zipBytes,
+    String filename, {
+    TdxProgressCallback? onProgress,
+  }) async {
+    if (onProgress != null) {
+      final uploader =
+          (progressUploadResolver != null ? progressUploadResolver!() : tdxProgressUpload());
+      if (uploader != null) {
+        final resp = await uploader(
+          url: '$baseUrl/api/v1/admin/market/tdx-import',
+          headers: {
+            if (token != null && token!.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          bytes: zipBytes,
+          filename: filename,
+          onProgress: onProgress,
+        );
+        _check(resp);
+        return jsonDecode(_body(resp)) as Map<String, dynamic>;
+      }
+      // 平台无真实进度通道：回落普通上传，先上报一次初始态（保持 UI 可显示总大小）。
+      onProgress(0, zipBytes.length);
+    }
     final req = http.MultipartRequest(
         'POST', Uri.parse('$baseUrl/api/v1/admin/market/tdx-import'))
       ..headers['Authorization'] = (token == null || token!.isEmpty)
