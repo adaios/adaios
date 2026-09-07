@@ -1121,6 +1121,88 @@ class ApiService {
     return raw.map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 复习状态流转（V2）：new → review → done（PATCH /learn/cards/status）。
+  Future<LearnCardDto> updateLearnStatus(
+      {required String type, required String title, required String status}) async {
+    final resp = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/learn/cards/status'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title, 'status': status}),
+    );
+    _check(resp);
+    return LearnCardDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 编辑卡片正文（V2）：?type=&title= 定位，body 部分字段补丁（缺省 = 保留原值）。
+  /// 传 null = 不改该字段；传空串/空列表 = 清空。
+  Future<LearnCardDto> editLearnCard({
+    required String type,
+    required String title,
+    String? coreView,
+    List<String>? keyPoints,
+    List<String>? questions,
+    String? retell,
+    bool? tradeRelated,
+    String? tradeNote,
+    List<String>? tags,
+  }) async {
+    final body = <String, dynamic>{
+      'coreView': ?coreView,
+      'keyPoints': ?keyPoints,
+      'questions': ?questions,
+      'retell': ?retell,
+      'tradeRelated': ?tradeRelated,
+      'tradeNote': ?tradeNote,
+      'tags': ?tags,
+    };
+    final resp = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/learn/cards')
+          .replace(queryParameters: {'type': type, 'title': title}),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    _check(resp);
+    return LearnCardDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// trading 卡片反哺成规则候选（V2 批 3）：POST /learn/cards/candidate。
+  Future<LearnTradingCandidateDto> createLearnCandidate(
+      {required String type, required String title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/candidate'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title}),
+    );
+    _check(resp);
+    return LearnTradingCandidateDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 反哺候选列表（V2 批 3）：GET /learn/cards/candidates。
+  Future<List<LearnTradingCandidateDto>> getLearnCandidates() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/cards/candidates'),
+      headers: _headers,
+    );
+    _check(resp);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
+    return raw
+        .map((e) => LearnTradingCandidateDto.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 删除反哺候选（V2 批 3）：DELETE /learn/cards/candidates?title=（幂等）。
+  Future<void> deleteLearnCandidate(String title) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/learn/cards/candidates')
+          .replace(queryParameters: {'title': title}),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     // 多账号：所有请求带当前用户（后端 FileStorage 按 userId 隔离）；

@@ -267,6 +267,9 @@ class _LearnDetailPage extends StatelessWidget {
                   _section('交易相关',
                       card.tradeNote.isNotEmpty ? '涉及可执行交易规则（备注：${card.tradeNote}），规则变更须你拍板' : '涉及可执行交易规则，规则变更须你拍板'),
                 ],
+                const SizedBox(height: 18),
+                _section('复述',
+                    card.retell.isNotEmpty ? card.retell : '还没写复述。自己写 100-200 字才是真消化（编辑请到桌面端或让阿呆帮你）。'),
               ]),
             ),
           ),
@@ -281,11 +284,30 @@ class _LearnDetailPage extends StatelessWidget {
     if (card.platform.isNotEmpty) meta.add(card.platform);
     if (card.created.isNotEmpty) meta.add(card.created);
     return Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      _statusBadge(card.status),
       Text(_typeLabel(card.type),
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _typeColor(card.type))),
       for (final m in meta)
         Text(m, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
     ]);
+  }
+
+  /// 状态徽标：new=待复习（灰）/ review=复习中（橙）/ done=已完成（绿）。
+  Widget _statusBadge(String status) {
+    final (text, color) = switch (status) {
+      'review' => ('复习中', AppColors.darkOrange),
+      'done' => ('已完成', AppColors.darkGreen),
+      _ => ('待复习', AppColors.darkGrey5),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text,
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+    );
   }
 
   Widget _section(String title, String body) => Column(

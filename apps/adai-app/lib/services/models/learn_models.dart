@@ -8,13 +8,14 @@ class LearnCardDto {
   final String url;
   final String published;
   final String created; // yyyy-MM-dd
-  final String status;
+  final String status; // new | review | done
   final bool tradeRelated;
   final String tradeNote;
   final List<String> tags;
   final String coreView;
   final List<String> keyPoints;
   final List<String> questions;
+  final String retell; // V2 复述段
 
   LearnCardDto({
     required this.type,
@@ -31,6 +32,7 @@ class LearnCardDto {
     this.coreView = '',
     this.keyPoints = const [],
     this.questions = const [],
+    this.retell = '',
   });
 
   factory LearnCardDto.fromJson(Map<String, dynamic> json) => LearnCardDto(
@@ -48,6 +50,7 @@ class LearnCardDto {
         coreView: (json['coreView'] as String?) ?? '',
         keyPoints: _list(json['keyPoints']),
         questions: _list(json['questions']),
+        retell: (json['retell'] as String?) ?? '',
       );
 
   static List<String> _list(dynamic v) =>

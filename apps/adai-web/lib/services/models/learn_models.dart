@@ -8,13 +8,14 @@ class LearnCardDto {
   final String url;
   final String published;
   final String created; // yyyy-MM-dd
-  final String status;
+  final String status; // new | review | done（V2 复习流转）
   final bool tradeRelated;
   final String tradeNote;
   final List<String> tags;
   final String coreView;
   final List<String> keyPoints;
   final List<String> questions;
+  final String retell; // V2 复述段（自己写的消化关键）
 
   LearnCardDto({
     required this.type,
@@ -31,6 +32,7 @@ class LearnCardDto {
     this.coreView = '',
     this.keyPoints = const [],
     this.questions = const [],
+    this.retell = '',
   });
 
   factory LearnCardDto.fromJson(Map<String, dynamic> json) => LearnCardDto(
@@ -48,6 +50,7 @@ class LearnCardDto {
         coreView: (json['coreView'] as String?) ?? '',
         keyPoints: _stringList(json['keyPoints']),
         questions: _stringList(json['questions']),
+        retell: (json['retell'] as String?) ?? '',
       );
 
   static List<String> _stringList(dynamic v) {
@@ -85,6 +88,47 @@ class LearnTreeResponse {
           .map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>))
           .toList();
     }
+    return const [];
+  }
+}
+
+/// learn → trading 反哺候选 DTO（RFC 20260829 V2 批 3）。
+/// 值复制自后端 domain/learn/LearnTradingCandidate。
+class LearnTradingCandidateDto {
+  final String title;
+  final String learnCardId; // 回链 learn 源卡（learn/{type}/{date}_{title}）
+  final String sourceType;
+  final String created;
+  final String coreView;
+  final List<String> keyPoints;
+  final String tradeNote;
+  final List<String> tags;
+
+  LearnTradingCandidateDto({
+    required this.title,
+    required this.learnCardId,
+    this.sourceType = 'trading',
+    this.created = '',
+    this.coreView = '',
+    this.keyPoints = const [],
+    this.tradeNote = '',
+    this.tags = const [],
+  });
+
+  factory LearnTradingCandidateDto.fromJson(Map<String, dynamic> json) =>
+      LearnTradingCandidateDto(
+        title: (json['title'] as String?) ?? '',
+        learnCardId: (json['learnCardId'] as String?) ?? '',
+        sourceType: (json['sourceType'] as String?) ?? 'trading',
+        created: (json['created'] as String?) ?? '',
+        coreView: (json['coreView'] as String?) ?? '',
+        keyPoints: _stringList(json['keyPoints']),
+        tradeNote: (json['tradeNote'] as String?) ?? '',
+        tags: _stringList(json['tags']),
+      );
+
+  static List<String> _stringList(dynamic v) {
+    if (v is List) return v.map((e) => e.toString()).toList();
     return const [];
   }
 }

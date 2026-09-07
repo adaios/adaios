@@ -169,14 +169,20 @@ class _LearnPageState extends State<LearnPage> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(card.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                color: isSelected ? AppColors.darkGrey1 : AppColors.darkGrey3,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-              )),
+          Row(children: [
+            Expanded(
+              child: Text(card.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isSelected ? AppColors.darkGrey1 : AppColors.darkGrey3,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  )),
+            ),
+            const SizedBox(width: 6),
+            _statusBadge(card.status, small: true),
+          ]),
           const SizedBox(height: 2),
           Text(_metaLine(card),
               maxLines: 1,
@@ -184,6 +190,25 @@ class _LearnPageState extends State<LearnPage> {
               style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
         ]),
       ),
+    );
+  }
+
+  /// 状态徽标：new=待复习（灰）/ review=复习中（橙）/ done=已完成（绿）。
+  Widget _statusBadge(String status, {bool small = false}) {
+    final (text, color) = switch (status) {
+      'review' => ('复习中', AppColors.darkOrange),
+      'done' => ('已完成', AppColors.darkGreen),
+      _ => ('待复习', AppColors.darkGrey5),
+    };
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: small ? 5 : 8, vertical: small ? 1 : 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: small ? 9 : 11, fontWeight: FontWeight.w600, color: color)),
     );
   }
 
@@ -205,9 +230,19 @@ class _LearnPageState extends State<LearnPage> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 40),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(card.title,
-            style: const TextStyle(
-                fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1, height: 1.4)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Text(card.title,
+                style: const TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1, height: 1.4)),
+          ),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            _statusBadge(card.status),
+            const SizedBox(height: 10),
+            ..._actionButtons(tree, card),
+          ]),
+        ]),
         const SizedBox(height: 8),
         _typeTag(card.type),
         const SizedBox(height: 6),
@@ -233,9 +268,166 @@ class _LearnPageState extends State<LearnPage> {
           _bodyText(card.tradeNote.isNotEmpty
               ? '涉及可执行交易规则（备注：${card.tradeNote}），规则变更须用户拍板'
               : '涉及可执行交易规则，规则变更须用户拍板'),
+          const SizedBox(height: 16),
         ],
+        _sectionTitle('复述'),
+        if (card.retell.isNotEmpty)
+          _bodyText(card.retell)
+        else
+          const Text('还没写复述。自己写 100-200 字才是真消化——点击右上「写复述」或让阿呆帮你改。',
+              style: TextStyle(fontSize: 12.5, color: AppColors.darkGrey5, height: 1.6)),
       ]),
     );
+  }
+
+  /// 详情操作（状态推进 / 写复述 / 反哺候选）——按卡片状态与类型呈现。
+  List<Widget> _actionButtons(LearnTreeResponse tree, LearnCardDto card) {
+    final buttons = <Widget>[];
+    if (card.status == 'new') {
+      buttons.add(_actionChip('去复习', Icons.auto_stories, () => _changeStatus(tree, card, 'review')));
+    } else if (card.status == 'review') {
+      buttons.add(_actionChip('标记完成', Icons.check_circle_outline, () => _changeStatus(tree, card, 'done')));
+    }
+    buttons.add(_actionChip('写复述', Icons.edit_outlined, () => _openRetellDialog(tree, card)));
+    if (card.type == 'trading' && card.tradeRelated && card.status != 'done') {
+      buttons.add(_actionChip('反哺候选', Icons.rocket_launch_outlined, () => _createCandidate(tree, card)));
+    }
+    return buttons;
+  }
+
+  Widget _actionChip(String label, IconData icon, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.darkBorder),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 12, color: AppColors.darkGrey4),
+            const SizedBox(width: 5),
+            Text(label,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey3)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── V2 操作 ──
+
+  Future<void> _changeStatus(LearnTreeResponse tree, LearnCardDto card, String target) async {
+    try {
+      final updated = await widget.api.updateLearnStatus(
+          type: card.type, title: card.title, status: target);
+      if (!mounted) return;
+      _replaceCard(tree, updated);
+      _showSnack('已标记「${_statusLabel(target)}」');
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack('操作失败，请重试');
+    }
+  }
+
+  Future<void> _createCandidate(LearnTreeResponse tree, LearnCardDto card) async {
+    try {
+      await widget.api.createLearnCandidate(type: card.type, title: card.title);
+      if (!mounted) return;
+      _showSnack('已生成规则候选（data/trading/candidates/），在交易知识库工作流审核后融合');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('反哺失败：${_human(e)}');
+    }
+  }
+
+  Future<void> _openRetellDialog(LearnTreeResponse tree, LearnCardDto card) async {
+    final controller = TextEditingController(text: card.retell);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('写复述 · ${card.title}',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 460,
+          child: TextField(
+            controller: controller,
+            maxLines: 10,
+            maxLength: 500,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, height: 1.6),
+            decoration: const InputDecoration(
+              hintText: '用自己的话写 100-200 字：这段内容关键是什么？和我知道的有什么关联？',
+              hintStyle: TextStyle(color: AppColors.darkGrey6),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final retell = controller.text.trim();
+    try {
+      final updated = await widget.api.editLearnCard(
+          type: card.type, title: card.title, retell: retell);
+      if (!mounted) return;
+      _replaceCard(tree, updated);
+      _showSnack(retell.isEmpty ? '复述已清空' : '复述已保存');
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack('保存失败，请重试');
+    }
+  }
+
+  /// 用后端返回的更新后卡片替换树中同 type+title 的卡片（就地刷新，不整树重拉）。
+  void _replaceCard(LearnTreeResponse tree, LearnCardDto updated) {
+    setState(() {
+      for (var gi = 0; gi < tree.groups.length; gi++) {
+        final (label, cards) = tree.groups[gi];
+        if (cards.isEmpty) continue;
+        for (var i = 0; i < cards.length; i++) {
+          if (cards[i].title == updated.title && cards[i].type == updated.type) {
+            // tree.groups 是 getter——直接改原 List 需按组定位
+            final list = label.contains('AI') ? tree.ai : (label.contains('交易') ? tree.trading : tree.other);
+            if (i < list.length) list[i] = updated;
+            if (_selectedGroup == label) _selectedIndex = i;
+            return;
+          }
+        }
+      }
+      _load(); // 兜底：树结构变化（如新组）时整树刷新
+    });
+  }
+
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 13)),
+      duration: const Duration(seconds: 3),
+      backgroundColor: AppColors.darkSurface2,
+    ));
+  }
+
+  String _statusLabel(String s) => switch (s) {
+        'review' => '复习中',
+        'done' => '已完成',
+        _ => '待复习',
+      };
+
+  String _human(Object e) {
+    final s = e.toString();
+    if (s.contains('Exception:')) return s.split('Exception:').last.trim();
+    return s;
   }
 
   Widget _typeTag(String type) {

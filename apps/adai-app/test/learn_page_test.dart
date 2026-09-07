@@ -46,13 +46,15 @@ void main() {
     test('parses full card', () {
       final card = LearnCardDto.fromJson(jsonDecode('''
         {"type":"trading","title":"回调一半的判定","created":"2026-09-06",
-         "tradeRelated":true,"tradeNote":"与 R66 互补","tags":["止损"],
+         "status":"review","tradeRelated":true,"tradeNote":"与 R66 互补","tags":["止损"],
          "coreView":"回调一半是买点","keyPoints":["02:31 回调一半"],
-         "questions":["口径一致？"]}
+         "questions":["口径一致？"],"retell":"自己写了一遍：回调一半=几何口径"}
       ''') as Map<String, dynamic>);
       expect(card.type, 'trading');
       expect(card.tradeRelated, isTrue);
       expect(card.keyPoints, ['02:31 回调一半']);
+      expect(card.status, 'review');
+      expect(card.retell, contains('几何口径'));
     });
 
     test('recentAll merged sorted desc', () {
