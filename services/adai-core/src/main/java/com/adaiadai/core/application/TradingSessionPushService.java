@@ -338,13 +338,31 @@ public class TradingSessionPushService {
         });
     }
 
-    /** P2-交易37：收盘当日盈亏 = 精确计算（已实现+浮动+股息/红利税）；失败回落旧持仓浮动估算。 */
+    /** P2-交易37：收盘当日盈亏 = 精确计算（已实现+浮动+股息/红利税）；失败回落旧持仓浮动估算。
+     *  存在「未计入附注」（缺昨收/无成本基线/今日无成交等）→ 推一条说明通知，不让「少算了」静默。 */
     private java.math.BigDecimal resolveTodayPnl(String userId, java.math.BigDecimal fallback) {
         try {
             com.adaiadai.core.application.TradingAppService.DailyPnlResult r =
                     tradingAppService.computeDailyPnl(userId, java.time.LocalDate.now());
             if (!r.notes().isEmpty()) {
-                log.info("当日盈亏计算附注 | userId={} | {}", userId, String.join("；", r.notes()));
+                String joined = String.join("；", r.notes());
+                log.info("当日盈亏计算附注 | userId={} | {}", userId, joined);
+                // 只推送「实质未计入」（缺昨收/无成本基线…）；「今日无成交记录」是纯持有日的常规提示，不打扰
+                List<String> actionable = r.notes().stream()
+                        .filter(n -> !n.startsWith("今日无成交记录"))
+                        .toList();
+                if (!actionable.isEmpty()) {
+                    try {
+                        // 复用行情类通知（受推送开关门控，尊重用户设置；best-effort 不打断收盘更新）
+                        pushToAll(userId, "当日盈亏已更新",
+                                "今日当日盈亏已计算，但部分未计入：\n· " + String.join("\n· ", actionable)
+                                        + "\n如需最精确口径：当天成交请走「历史成交导入/手动记录」入流水；"
+                                        + "缺昨收/成本基线的部分会在券商文件或明日收盘后自愈。",
+                                "market", null, null);
+                    } catch (RuntimeException e) {
+                        log.warn("当日盈亏附注通知推送失败 | userId={} | {}", userId, e.getMessage());
+                    }
+                }
             }
             return r.todayPnl();
         } catch (RuntimeException e) {

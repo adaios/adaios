@@ -26,7 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * TradingAppService — 交易领域应用服务。
@@ -42,8 +41,14 @@ public class TradingAppService {
     /** 交易记录去重窗口：同一标题的记录在窗口内视为重试，不重复写入（防重试重复进时间线/复盘提醒）。 */
     private static final Duration RECORD_DEDUP_WINDOW = Duration.ofMinutes(5);
 
-    /** 每用户读写锁：同一 userId 的持仓读-改-写全串行，防并发交易互相覆盖（REVIEW #147）。 */
-    private final ConcurrentHashMap<String, Object> userTradeLocks = new ConcurrentHashMap<>();
+    /** P2-交易37（2026-09-09 晚间自主批）：每用户读写锁固定 16 条带——
+     *  原 ConcurrentHashMap computeIfAbsent 按 userId 无界增长（同族 P3：userTradeLocks 无界累积），
+     *  收敛为固定条带（个人系统并发度低，条带串行可接受；同 TradeLogRepository/P2-交易28 模式）。 */
+    private static final Object[] USER_TRADE_LOCKS = new Object[16];
+
+    static {
+        for (int i = 0; i < USER_TRADE_LOCKS.length; i++) USER_TRADE_LOCKS[i] = new Object();
+    }
 
     private final PositionRepository positionRepository;
     private final RecordRepository recordRepository;
@@ -141,7 +146,9 @@ public class TradingAppService {
     }
 
     private Object tradeLock(String userId) {
-        return userTradeLocks.computeIfAbsent(userId != null ? userId : "default", k -> new Object());
+        // 同一 userId 的持仓读-改-写全串行，防并发交易互相覆盖（REVIEW #147）
+        int h = (userId != null ? userId : "default").hashCode();
+        return USER_TRADE_LOCKS[(h ^ (h >>> 16)) & (USER_TRADE_LOCKS.length - 1)];
     }
 
     // ── P2-交易34 治本（2026-09-09）：券商快照锚定防重 ──
