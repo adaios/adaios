@@ -90,6 +90,9 @@ class _TradingPageState extends State<TradingPage> {
   bool _auxLoading = false; // 可降级请求在途标记（自选/买点/清仓，防并发覆盖）
   int _auxGen = 0; // 代际令牌：_loadDegradable 防乱序旧响应覆盖新数据
   List<SoldTradeDto> _sold = [];
+  // RFC 20260909 批1 清仓双轨：流水已清仓但缺买入基线的待补清单（条件 B 只提示不写脏）——
+  // 清仓 Tab 横幅展示，引导导入通达信「清仓股」导出补全复盘档案
+  List<PendingClearanceDto> _pendingClearances = [];
   AccountSnapshotDto? _account;
   double? _cash;
   double? _assets;
@@ -305,12 +308,14 @@ class _TradingPageState extends State<TradingPage> {
     final gen = ++_auxGen;
     try {
       final watch = await widget.api.getWatchlist();
-      final sold = await widget.api.getSold();
+      final ov = await widget.api.getSold();
       final bps = await widget.api.getBuyPoints();
       if (!mounted || gen != _auxGen) return; // 旧代丢弃
       setState(() {
         _watchlist = watch;
-        _sold = sold;
+        // RFC 20260909 批1：sold 双轨对象——复盘档案 + 待补清单分开落字段
+        _sold = ov.sold;
+        _pendingClearances = ov.pending;
         _buyPoints = bps;
       });
     } catch (_) {
@@ -1314,6 +1319,11 @@ class _TradingPageState extends State<TradingPage> {
       const Text('规则对照：R66=亏超5%扛单没走 · R53=短持/久持亏损；买点分=入场时机 · 执行分=纪律执行 · 总分=综合',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 8),
+      // RFC 20260909 批1 清仓双轨：pending 横幅放图例后、统计/空态/表格前——即使 _sold 为空也可见
+      if (_pendingClearances.isNotEmpty) ...[
+        _buildPendingClearanceBanner(),
+        const SizedBox(height: 8),
+      ],
       if (_sold.isNotEmpty) _buildSoldStats(),
       const SizedBox(height: 8),
       if (_sold.isEmpty)
@@ -1368,6 +1378,47 @@ class _TradingPageState extends State<TradingPage> {
           ),
         ),
     ]);
+  }
+
+  /// RFC 20260909 批1 清仓双轨：pending 横幅——流水已清仓但缺买入基线（条件 B 只提示不写脏），
+  /// 展示前 3 只「名称(代码)」（多于 3 只加「等」），引导导入通达信「清仓股」导出补全复盘档案。
+  Widget _buildPendingClearanceBanner() {
+    final n = _pendingClearances.length;
+    final shown = _pendingClearances
+        .where((p) => p.symbol.isNotEmpty || p.name.isNotEmpty)
+        .take(3)
+        .map((p) => p.symbol.isNotEmpty
+            ? '${p.name.isEmpty ? p.symbol : p.name}(${p.symbol})'
+            : p.name)
+        .join('、');
+    final tail = n > 3 ? '等' : '';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.8)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.info_outline, size: 16, color: AppColors.darkOrange),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, height: 1.4),
+              children: [
+                const TextSpan(text: '检测到 '),
+                TextSpan(text: '$n',
+                    style: const TextStyle(color: AppColors.darkOrange, fontWeight: FontWeight.w700)),
+                const TextSpan(text: ' 只股票已清仓但缺复盘档案（流水缺买入基线）：'),
+                TextSpan(text: '$shown$tail'),
+                const TextSpan(text: '——导入通达信「清仓股」导出即可补全复盘档案'),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 
   Future<void> _markPsychology(SoldTradeDto s) async {

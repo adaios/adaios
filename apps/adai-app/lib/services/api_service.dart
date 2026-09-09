@@ -645,15 +645,31 @@ class ApiService {
     return (data as List).map((e) => BuyPointDto.fromJson(e)).toList();
   }
 
-  /// 清仓股列表（复盘闭环）。
-  Future<List<SoldTradeDto>> getSold() async {
+  /// 清仓股列表（复盘闭环；RFC 20260909 批1 双轨对象契约，与 web 一致）。
+  /// 新契约响应为对象：{"sold":[SoldTradeDto...], "pendingClearances":[{symbol,name,sellDate,reason}...]}——
+  /// sold 每行新增 provenance=import|flow（老行缺省 import）；pendingClearances 为流水已清仓但
+  /// 缺买入基线的待补清单（条件 B 只提示不写脏，空则省略）。
+  /// 过渡兼容：后端仍返回裸数组（旧版）时按 sold=数组、pendingClearances 空处理。
+  Future<SoldOverview> getSold() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/trading/sold'),
       headers: _headers,
     );
     _check(resp);
     final data = jsonDecode(utf8.decode(resp.bodyBytes));
-    return (data as List).map((e) => SoldTradeDto.fromJson(e)).toList();
+    if (data is List) {
+      return SoldOverview(
+        sold: data.map((e) => SoldTradeDto.fromJson(e)).toList(),
+        pending: const [],
+      );
+    }
+    final m = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return SoldOverview(
+      sold: (m['sold'] as List?)?.map((e) => SoldTradeDto.fromJson(e)).toList() ?? const [],
+      pending: (m['pendingClearances'] as List?)
+              ?.map((e) => PendingClearanceDto.fromJson(e)).toList() ??
+          const [],
+    );
   }
 
   /// 清仓复盘三维打分（买点/执行/总分）。
@@ -1929,15 +1945,16 @@ class BuyPointDto {
 }
 
 /// 清仓股（B/S 复盘闭环）。
+/// RFC 20260909 批1：双轨后自动收录的行带 provenance=flow，券商导入/人工行为 import（老行缺省 import）。
 class SoldTradeDto {
-  final String symbol, name, verdict, psychology;
+  final String symbol, name, verdict, psychology, provenance;
   final String? buyDate, sellDate;
   final int holdDays;
   final double holdPnlPct;
 
   SoldTradeDto({required this.symbol, required this.name, required this.buyDate,
       required this.sellDate, required this.holdDays, required this.holdPnlPct,
-      required this.verdict, required this.psychology});
+      required this.verdict, required this.psychology, this.provenance = 'import'});
 
   factory SoldTradeDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -1950,8 +1967,35 @@ class SoldTradeDto {
       holdPnlPct: (m['holdPnlPct'] as num?)?.toDouble() ?? 0,
       verdict: m['verdict']?.toString() ?? '',
       psychology: m['psychology']?.toString() ?? '',
+      provenance: m['provenance']?.toString() ?? 'import',
     );
   }
+}
+
+/// 待补清仓（RFC 20260909 批1 条件 B：流水已清仓但缺买入基线 → 只提示不写脏档案）。
+class PendingClearanceDto {
+  final String symbol, name;
+  final String? sellDate, reason;
+
+  PendingClearanceDto({required this.symbol, required this.name, this.sellDate, this.reason});
+
+  factory PendingClearanceDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return PendingClearanceDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      sellDate: m['sellDate']?.toString(),
+      reason: m['reason']?.toString(),
+    );
+  }
+}
+
+/// 清仓股列表响应（双轨对象契约：sold 复盘档案 + pendingClearances 待补清单）。
+class SoldOverview {
+  final List<SoldTradeDto> sold;
+  final List<PendingClearanceDto> pending;
+
+  SoldOverview({required this.sold, required this.pending});
 }
 
 /// 清仓复盘三维打分（D3：买点/执行/总分，分数是参考不是指令）。

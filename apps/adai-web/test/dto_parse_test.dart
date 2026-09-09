@@ -1,6 +1,15 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:adai_web/services/api_service.dart';
+
+/// UTF-8 JSON 响应：MockClient 默认 Latin-1 编码 body，中文会炸，必须显式 charset=utf-8。
+http.Response _json(Object body) => http.Response(
+      jsonEncode(body),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 void main() {
   group('DTO JSON parsing', () {
@@ -165,6 +174,37 @@ void main() {
       expect(t.psychology, '追高后恐慌');
     });
 
+    test('SoldTradeDto provenance：flow 显式解析，缺省 import（RFC 20260909 批1）', () {
+      final flow = SoldTradeDto.fromJson({
+        'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+        'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0,
+        'verdict': '盈利了结', 'psychology': '', 'provenance': 'flow',
+      });
+      expect(flow.provenance, 'flow');
+      // 老行无 provenance 字段 → 读侧兼容视为 import
+      final legacy = SoldTradeDto.fromJson({
+        'symbol': '000725', 'name': '京东方A', 'sellDate': '2026-08-11',
+        'verdict': '盈利了结',
+      });
+      expect(legacy.provenance, 'import');
+    });
+
+    test('PendingClearanceDto parses fields + nullable defaults', () {
+      final p = PendingClearanceDto.fromJson({
+        'symbol': '600519', 'name': '贵州茅台',
+        'sellDate': '2026-09-08', 'reason': '买入基线在同步窗口外',
+      });
+      expect(p.symbol, '600519');
+      expect(p.name, '贵州茅台');
+      expect(p.sellDate, '2026-09-08');
+      expect(p.reason, contains('窗口外'));
+      final empty = PendingClearanceDto.fromJson({});
+      expect(empty.symbol, '');
+      expect(empty.name, '');
+      expect(empty.sellDate, isNull);
+      expect(empty.reason, isNull);
+    });
+
     test('WatchlistItemDto parses fields', () {
       final w = WatchlistItemDto.fromJson({
         'symbol': '000725', 'name': '京东方A', 'industry': '面板', 'industry2': '',
@@ -207,6 +247,59 @@ void main() {
       final api = ApiService(userId: 'default');
       expect(api.userId, 'default');
       expect(api.baseUrl, isNotEmpty);
+    });
+  });
+
+  group('ApiService.getSold 双轨对象契约（RFC 20260909 批1）', () {
+    test('解析对象响应：sold + pendingClearances 两键分开', () async {
+      final api = ApiService(baseUrl: 'http://test', client: MockClient((request) async {
+        if (request.url.path != '/api/v1/trading/sold') {
+          return http.Response('not found', 404);
+        }
+        return _json({
+          'sold': [
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结',
+             'psychology': '', 'provenance': 'flow'},
+            {'symbol': '000725', 'name': '京东方A', 'buyDate': '2026-07-01', 'sellDate': '2026-07-05',
+             'holdDays': 4, 'tradeCount': '1+1', 'holdPnlPct': -8.0, 'verdict': 'R53',
+             'psychology': '追高后恐慌割肉'},
+          ],
+          'pendingClearances': [
+            {'symbol': '601066', 'name': '中信建投', 'sellDate': '2026-09-09',
+             'reason': '买入基线在同步窗口外'},
+          ],
+        });
+      }));
+      final ov = await api.getSold();
+      expect(ov.sold.length, 2);
+      expect(ov.sold[0].provenance, 'flow');
+      expect(ov.sold[1].provenance, 'import', reason: '无 provenance 字段老行缺省 import');
+      expect(ov.pending.length, 1);
+      expect(ov.pending[0].name, '中信建投');
+      expect(ov.pending[0].symbol, '601066');
+      expect(ov.pending[0].sellDate, '2026-09-09');
+    });
+
+    test('过渡兼容：后端仍是裸数组时 sold=数组、pending 空', () async {
+      final api = ApiService(baseUrl: 'http://test', client: MockClient((request) async {
+        return _json([
+          {'symbol': '600519', 'name': '贵州茅台', 'sellDate': '2026-08-11', 'verdict': '盈利了结'},
+        ]);
+      }));
+      final ov = await api.getSold();
+      expect(ov.sold.length, 1);
+      expect(ov.sold[0].symbol, '600519');
+      expect(ov.pending, isEmpty);
+    });
+
+    test('字段缺失/类型异常兜底：无 sold/pendingClearances 键不抛', () async {
+      final api = ApiService(baseUrl: 'http://test', client: MockClient((request) async {
+        return _json(<String, dynamic>{});
+      }));
+      final ov = await api.getSold();
+      expect(ov.sold, isEmpty);
+      expect(ov.pending, isEmpty);
     });
   });
 }
