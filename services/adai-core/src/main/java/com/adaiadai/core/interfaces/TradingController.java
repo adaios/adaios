@@ -520,13 +520,18 @@ public class TradingController {
                 : ResponseEntity.notFound().build();
     }
 
-    /** 清仓股列表（GET /api/v1/trading/sold）。 */
+    /**
+     * 清仓股列表（GET /api/v1/trading/sold，RFC 20260909 批 1 双轨）。
+     * 响应：{"sold": [SoldTrade(含 provenance)], "pendingClearances": [{symbol,name,sellDate,reason}]}
+     */
     @GetMapping("/sold")
     public ResponseEntity<?> sold(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        return ResponseEntity.ok(tradingAppService.soldList(userId));
+        return ResponseEntity.ok(Map.of(
+                "sold", tradingAppService.soldList(userId),
+                "pendingClearances", tradingAppService.soldPendingClearances(userId)));
     }
 
     /** 清仓股导入（通达信导出文本，POST /api/v1/trading/sold/import）。 */

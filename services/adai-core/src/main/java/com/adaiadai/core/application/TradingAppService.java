@@ -59,8 +59,10 @@ public class TradingAppService {
     private final TradingLotService tradingLotService;
     /** 第三阶段：用户规则参数配置（清仓 verdict 阈值按用户隔离）。 */
     private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
+    /** RFC 20260909 批 1：清仓股流水自动收录（可空=未接线，触发/查询判空跳过）。 */
+    private final ClearanceDetector clearanceDetector;
 
-    /** Spring 主构造（含锚定仓储——P2-交易34 防重）。 */
+    /** Spring 主构造（含锚定仓储——P2-交易34 防重；清仓推导——RFC 20260909 批 1）。 */
     @org.springframework.beans.factory.annotation.Autowired
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
@@ -72,7 +74,8 @@ public class TradingAppService {
                              MarketDataSource marketDataSource,
                              TradingLotService tradingLotService,
                              TradingRuleSettingsRepository tradingRuleSettingsRepository,
-                             TradingAnchorRepository anchorRepository) {
+                             TradingAnchorRepository anchorRepository,
+                             ClearanceDetector clearanceDetector) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
@@ -84,9 +87,27 @@ public class TradingAppService {
         this.marketDataSource = marketDataSource;
         this.tradingLotService = tradingLotService;
         this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
+        this.clearanceDetector = clearanceDetector;
     }
 
-    /** 无锚定仓储构造（测试/旧调用兼容：不做 P2-交易34 防重，行为等同历史版本）。 */
+    /** 兼容构造（11 参，无清仓推导——测试/旧调用兼容，行为等同历史版本）。 */
+    public TradingAppService(PositionRepository positionRepository,
+                             RecordRepository recordRepository,
+                             TradingHistoryRepository tradingHistoryRepository,
+                             WatchlistRepository watchlistRepository,
+                             SoldTradeRepository soldTradeRepository,
+                             AccountSnapshotRepository accountSnapshotRepository,
+                             TransferRepository transferRepository,
+                             MarketDataSource marketDataSource,
+                             TradingLotService tradingLotService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository,
+                             TradingAnchorRepository anchorRepository) {
+        this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
+                soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
+                tradingLotService, tradingRuleSettingsRepository, anchorRepository, null);
+    }
+
+    /** 无锚定仓储/清仓推导构造（测试/旧调用兼容：不做 P2-交易34 防重，行为等同历史版本）。 */
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
                              TradingHistoryRepository tradingHistoryRepository,
@@ -99,7 +120,7 @@ public class TradingAppService {
                              TradingRuleSettingsRepository tradingRuleSettingsRepository) {
         this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
                 soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
-                tradingLotService, tradingRuleSettingsRepository, noopAnchorRepository());
+                tradingLotService, tradingRuleSettingsRepository, noopAnchorRepository(), null);
     }
 
     private static TradingAnchorRepository noopAnchorRepository() {
@@ -161,6 +182,32 @@ public class TradingAppService {
             anchorRepository.updateCashImport(userId, LocalDate.now());
         } catch (RuntimeException e) {
             log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    // ── RFC 20260909 批 1：清仓股流水自动收录（触发接线）──
+
+    /**
+     * 清仓推导触发（best-effort：清仓收录/提示失败只告警，不阻断交易主流程；
+     * detector 未接线（测试/旧构造）→ 跳过）。
+     */
+    private void runClearanceSync(String userId, java.util.Collection<String> symbols) {
+        if (clearanceDetector == null || symbols == null || symbols.isEmpty()) return;
+        try {
+            clearanceDetector.sync(userId, symbols);
+        } catch (RuntimeException e) {
+            log.error("清仓推导失败（不影响交易主流程）| userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    /** 待补清仓档案提示（GET /trading/sold 响应 pendingClearances，RFC 20260909 批 1）。 */
+    public List<PendingClearance> soldPendingClearances(String userId) {
+        if (clearanceDetector == null) return List.of();
+        try {
+            return clearanceDetector.detectPending(userId);
+        } catch (RuntimeException e) {
+            log.warn("清仓待补档案检测失败 | userId={} | {}", userId, e.getMessage());
+            return List.of();
         }
     }
 
@@ -233,6 +280,8 @@ public class TradingAppService {
                         effectiveEntryDate, brokerAnchorDate(userId)));
             }
 
+            // RFC 20260909 批 1：本笔成交后卖光的 symbol 收集（供锁内清仓推导触发）
+            List<String> clearedSymbols = new java.util.ArrayList<>();
             List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
             boolean found = false;
 
@@ -243,6 +292,10 @@ public class TradingAppService {
                     if (direction == TradeDirection.SELL && volume > p.quantity()) {
                         throw new TradingException(
                                 "卖出数量超过持仓: " + symbol + "（持有 " + p.quantity() + " 股）");
+                    }
+                    if (direction == TradeDirection.SELL && volume >= p.quantity()) {
+                        // 本次卖出即清仓（剩余 ≤ 0）→ 交清仓推导自动收录（RFC 20260909 批 1）
+                        clearedSymbols.add(symbol);
                     }
                     Position updated = updatePosition(p.symbol(), p, direction, price, volume,
                             effectiveEntryDate, stopLossPrice, buyPoint);
@@ -317,6 +370,9 @@ public class TradingAppService {
             log.info("交易已记录 | {} {} {}股@{}元 | 持仓数={} | entryDate={} | 止损={}",
                     direction, symbol, volume, price, currentPositions.size(),
                     effectiveEntryDate, stopLossPrice);
+
+            // RFC 20260909 批 1：卖光 symbol → 清仓推导（flow 自动收录 / pending 提示），best-effort
+            runClearanceSync(userId, clearedSymbols);
 
             return currentPositions;
         }
@@ -510,6 +566,8 @@ public class TradingAppService {
             }
             positionRepository.saveAll(userId, newPositions);
         }
+        // RFC 20260909 批 1：一键重建移除的流水已清仓残留 → 清仓推导自动收录，best-effort
+        runClearanceSync(userId, removed);
         log.info("一键同步持仓 | userId={} | 持仓 {} 只 | 移除已清仓残留 {} | 保留底仓 {}",
                 userId, newPositions.size(), removed, keptInitial);
         return new SyncResult(newPositions.size(), removed, keptInitial);

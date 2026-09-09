@@ -23,6 +23,7 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.AccountSnapshot;
 import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.domain.trading.SoldTrade;
+import com.adaiadai.core.domain.trading.PendingClearance;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.infrastructure.WebConfig;
 import com.adaiadai.core.kernel.account.Account;
@@ -1452,15 +1453,19 @@ class TradingControllerTest {
     }
 
     @Test
-    void sold_returnsList() throws Exception {
+    void sold_returnsObjectWithPending() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.soldList(any())).thenReturn(java.util.List.of(
                 new SoldTrade("600519", "贵州茅台", java.time.LocalDate.of(2026, 8, 1),
                         java.time.LocalDate.of(2026, 8, 11), 10, "1+1", 5.0, "盈利了结", "")));
+        when(trading.soldPendingClearances(any())).thenReturn(java.util.List.of(
+                new PendingClearance("600206", "有研新材", java.time.LocalDate.of(2026, 9, 9), "缺基线")));
         MockMvc mvc = buildMvc(trading);
         mvc.perform(get("/api/v1/trading/sold").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].symbol").value("600519"));
+                .andExpect(jsonPath("$.sold[0].symbol").value("600519"))
+                .andExpect(jsonPath("$.sold[0].provenance").value("import"))
+                .andExpect(jsonPath("$.pendingClearances[0].symbol").value("600206"));
     }
 
     @Test
