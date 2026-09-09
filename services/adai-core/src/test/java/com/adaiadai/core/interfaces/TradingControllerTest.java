@@ -570,15 +570,44 @@ class TradingControllerTest {
     // ── 复盘 ──
 
     @Test
-    void generateReview_returnsContent() throws Exception {
+    void generateReview_submit_returnsPending() throws Exception {
+        // 2026-09-07 复盘超时修复批：POST 提交即返回（后台生成），不再同步阻塞 77~176s
         TradingReviewAppService review = mock(TradingReviewAppService.class);
-        when(review.generateReview(any(), any())).thenReturn("今日复盘内容");
+        when(review.submitReview(any(), any())).thenReturn(
+                new TradingReviewAppService.ReviewSubmitResult("2026-08-02", TradingReviewAppService.STATUS_PENDING));
         MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
 
         mvc.perform(post("/api/v1/trading/review").param("date", "2026-08-02"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.date").value("2026-08-02"))
-                .andExpect(jsonPath("$.content").value("今日复盘内容"));
+                .andExpect(jsonPath("$.status").value("pending"));
+    }
+
+    @Test
+    void generateReview_alreadyExists_returnsExists() throws Exception {
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.submitReview(any(), any())).thenReturn(
+                new TradingReviewAppService.ReviewSubmitResult("2026-08-02", TradingReviewAppService.STATUS_EXISTS));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+
+        mvc.perform(post("/api/v1/trading/review").param("date", "2026-08-02"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.date").value("2026-08-02"))
+                .andExpect(jsonPath("$.status").value("exists"));
+    }
+
+    @Test
+    void generateReview_alreadyRunning_returnsRunning() throws Exception {
+        // 连点/双端并发：同 user+date 生成中 → running（只跑一次 AI）
+        TradingReviewAppService review = mock(TradingReviewAppService.class);
+        when(review.submitReview(any(), any())).thenReturn(
+                new TradingReviewAppService.ReviewSubmitResult("2026-08-02", TradingReviewAppService.STATUS_RUNNING));
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), review);
+
+        mvc.perform(post("/api/v1/trading/review").param("date", "2026-08-02"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.date").value("2026-08-02"))
+                .andExpect(jsonPath("$.status").value("running"));
     }
 
     @Test

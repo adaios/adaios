@@ -897,16 +897,34 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   /// #102 复盘入口：生成今日复盘 → 弹窗展示（交易系统反哺可达）。
+  /// 2026-09-07 复盘超时修复：POST 提交即返回（AI 生成实测 77~176s，旧同步等待即使走
+  /// 120s AI 客户端，超长生成仍会超时报失败、复盘却已生成）。exists 直接 GET 展示，
+  /// pending/running 轮询 GET /trading/review 直到就绪（404=生成中）。
   Future<void> _showReview() async {
+    if (_reviewing) return; // 在途守卫：连点不重复提交
     setState(() => _reviewing = true);
     try {
-      final review = await widget.api.generateReview();
+      final sub = await widget.api.submitReview();
+      ReviewResponse? review;
+      if (sub.status == 'exists') {
+        // 已有复盘（今日已生成/他端已生成）→ 直接取来展示，不重复烧 AI
+        review = await widget.api.getReview();
+      } else {
+        // pending / running → 轮询 GET 直到文件就绪
+        review = await _waitReviewReady();
+      }
       if (!mounted) return;
       setState(() => _reviewing = false);
-      showDialog(
-        context: context,
-        builder: (_) => _buildReviewDialog(review),
-      );
+      if (review != null) {
+        final ready = review; // 闭包捕获用非空 final（防提升失效）
+        showDialog(context: context, builder: (_) => _buildReviewDialog(ready));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('复盘生成超时（超过 4 分钟），请稍后到「复盘历史」查看或重试',
+              style: TextStyle(fontSize: 13, color: AppColors.darkOrange)),
+          backgroundColor: AppColors.darkSurface2,
+        ));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _reviewing = false);
@@ -916,6 +934,21 @@ class _TradingPageState extends State<TradingPage> {
         backgroundColor: AppColors.darkSurface2,
       ));
     }
+  }
+
+  /// 轮询 GET /trading/review 直到就绪（上限 240s，步进 3s；单次失败不中断）。
+  Future<ReviewResponse?> _waitReviewReady() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 240));
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      try {
+        final r = await widget.api.getReview();
+        if (r != null) return r;
+      } catch (_) {
+        // 网络抖动/后端仍在生成：不中断，继续轮询到上限
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    return null;
   }
 
   Widget _buildReviewDialog(ReviewResponse review) {

@@ -208,10 +208,15 @@ public class TradingAppService {
                         userId, direction, symbol, volume, price, e.getMessage());
             }
 
-            // RFC 20260815 §6：交易成功后同步写一条 domain=trading 记录（复盘提醒 + 时间线闭环）。
-            // 位置在 saveAll 成功之后：recordTrade 失败（校验/存储异常）路径不会留下记录；
-            // 窗口内同标题（重试）不重复写（幂等）。返回时间线 Record ID 作为流水 sourceRecordId。
-            String recordId = writeTradingRecord(userId, direction, effectiveName, symbol, price, volume);
+            // RFC 20260815 §6：当日成交（entryDate=今天）同步写一条 domain=trading 记录
+            // （时间线事实 + Feed 事件卡 + 复盘当日上下文）。2026-09-07 用户拍板口径：
+            // 非当日成交（历史成交导入/补录 sync 回放等批量回填）不写记录——一次导几十笔历史
+            // 若逐笔进 Feed/时间线会刷屏，且复盘卡点已改「当日真实成交」口径（2026-08-26），
+            // 不再依赖记录关键词触发复盘。位置在 saveAll 成功之后：recordTrade 失败路径不会
+            // 留下记录；窗口内同标题（重试）不重复写（幂等）。返回时间线 Record ID 作为流水 sourceRecordId。
+            String recordId = effectiveEntryDate.isEqual(LocalDate.now())
+                    ? writeTradingRecord(userId, direction, effectiveName, symbol, price, volume)
+                    : null;
 
             // RFC 20260816 §2.1：逐笔流水真相源（BUY/SELL 都写）。best-effort：
             // 持仓已落库，流水写入失败不阻塞交易本身（与 writeTradingRecord 同口径），只告警。
@@ -228,9 +233,11 @@ public class TradingAppService {
     }
 
     /**
-     * 交易成功后写 domain=trading 记录（标题如「买入 京东方A 1000股@5.20」）。
+     * 当日成交成功后写 domain=trading 记录（标题如「买入 京东方A 1000股@5.20」）。
      * <p>
-     * 目的：交易进 timeline/记忆 + {@code hasTradingActivity} 关键词（买/卖/股/交易…）命中，闭环复盘提醒。
+     * 目的：当日成交进 Feed 事件卡/时间线/记忆（用户可见「今天买卖了啥」）；
+     * 复盘当日上下文（generateReview 汇总当日记录）。2026-09-07 起只对「当日」成交调用——
+     * 历史成交导入/补录等非当日批量回填不写记录，防聊天流被逐笔刷屏。
      * 附加动作 best-effort：记录写入失败不阻塞交易本身（持仓已落库），只告警。
      * 幂等：5 分钟窗口内存在同标题记录（重试）→ 跳过，防重复进时间线。
      *

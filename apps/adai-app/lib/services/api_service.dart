@@ -739,15 +739,19 @@ class ApiService {
     return data['hasActivity'] as bool? ?? false;
   }
 
-  /// 生成交易复盘（POST /api/v1/trading/review，AI 生成 → 写入 data/trading/reviews/）。
-  Future<ReviewResponse> generateReview({String? date}) async {
+  /// 生成交易复盘（POST /api/v1/trading/review）。
+  /// 2026-09-07 起 POST 改为「提交即返回」：后台生成（AI 实测 77~176s 远超客户端超时，
+  /// 旧同步等待必被 15s 客户端掐断 → 复盘实际生成却「点击没反应」）。
+  /// 返回 {date, status}：exists=已有复盘（直接 GET 展示）/ running=生成中（继续轮询）
+  /// / pending=已受理（轮询 GET /trading/review 直到 200）。
+  Future<ReviewSubmitResponse> submitReview({String? date}) async {
     final params = <String, String>{};
     if (date != null) params['date'] = date;
     final uri = Uri.parse('$baseUrl/api/v1/trading/review')
         .replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await _client.post(uri, headers: _headers);
     _check(resp);
-    return ReviewResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+    return ReviewSubmitResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 获取指定日期复盘（无复盘返回 null，GET 404）。
@@ -1656,7 +1660,7 @@ class AdviceResponse {
   }
 }
 
-/// 复盘响应 DTO（GET/POST /api/v1/trading/review）。
+/// 复盘响应 DTO（GET /api/v1/trading/review）。
 class ReviewResponse {
   final String date; // yyyy-MM-dd
   final String content; // markdown 复盘内容
@@ -1666,6 +1670,20 @@ class ReviewResponse {
   factory ReviewResponse.fromJson(Map<String, dynamic> json) => ReviewResponse(
     date: json['date'] as String? ?? '',
     content: json['content'] as String? ?? '',
+  );
+}
+
+/// 复盘提交响应 DTO（POST /api/v1/trading/review，2026-09-07 提交即返回）。
+/// status：exists（已有复盘，GET 即取）/ running（同日在生成中）/ pending（已受理后台生成）。
+class ReviewSubmitResponse {
+  final String date; // yyyy-MM-dd
+  final String status; // exists | running | pending
+
+  ReviewSubmitResponse({required this.date, required this.status});
+
+  factory ReviewSubmitResponse.fromJson(Map<String, dynamic> json) => ReviewSubmitResponse(
+    date: json['date'] as String? ?? '',
+    status: json['status'] as String? ?? '',
   );
 }
 

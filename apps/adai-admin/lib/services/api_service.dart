@@ -380,11 +380,24 @@ class ApiService {
   }
 
   /// `POST /api/v1/trading/review?date=` → 生成复盘。
+  /// 2026-09-07 后端改提交式：POST 立即返回 `{date,status}`（后台 AI 生成实测 77~176s），
+  /// 此处保持旧同步语义——提交后轮询 `GET /trading/review` 直到就绪（上限 240s），
+  /// 超时抛 ApiException（fail-visible，store 捕获取 false → 界面提示失败）。
   Future<String> generateReview(String date) async {
-    final resp = await _send('POST', '/api/v1/trading/review',
+    await _send('POST', '/api/v1/trading/review',
         headers: userHeaders, query: {'date': date});
-    final dto = ReviewDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
-    return dto.content;
+    final deadline = DateTime.now().add(const Duration(seconds: 240));
+    String? content;
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        content = await getReview(date);
+        if (content != null && content.isNotEmpty) return content;
+      } on ApiException {
+        // 404=未就绪（生成中），继续轮询；其它 ApiException 也先重试到上限
+      }
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+    throw ApiException('复盘生成超时（超过 4 分钟），请稍后重试');
   }
 
   /// `GET /api/v1/trading/has-activity?date=`。

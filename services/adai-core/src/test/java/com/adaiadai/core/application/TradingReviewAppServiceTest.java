@@ -298,5 +298,79 @@ class TradingReviewAppServiceTest {
         String content = recordCaptor.getValue().content();
         assertFalse(content.contains("建议对照"), "只有清仓后建议 → 对照段不应出现（卖后建议不算「当时说」）");
     }
+
+    // ── 2026-09-07 复盘超时修复批：提交即返回（后台生成）+ 同日去重 ──
+
+    /** submit 测试环境：reviewRepository 落盘即回读（模拟文件），aiClient 立即返回。 */
+    private record ReviewSubmitHarness(TradingReviewAppService service, AiClient ai,
+                                       TradingReviewFileRepository repo) {}
+
+    private ReviewSubmitHarness reviewSubmitHarness(java.util.concurrent.Executor executor) {
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        PositionRepository positionRepository = mock(PositionRepository.class);
+        when(positionRepository.findAll(any())).thenReturn(List.of());
+        ContextEngine contextEngine = mock(ContextEngine.class);
+        when(contextEngine.compose(any(), eq("trading"), any())).thenReturn(new ContextPackage(
+                "trading", "用户身份摘要", "复盘", "正文",
+                List.of("trading", "复盘"), List.of(),
+                "【交易系统规则】止损三级别。\n\n请分析这条记录，输出 JSON 格式",
+                LocalDateTime.now(), List.of()));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("复盘内容");
+        TradingReviewFileRepository repo = mock(TradingReviewFileRepository.class);
+        java.util.concurrent.atomic.AtomicReference<String> saved = new java.util.concurrent.atomic.AtomicReference<>();
+        when(repo.read(any(), any())).thenAnswer(inv -> saved.get());
+        doAnswer(inv -> {
+            saved.set(inv.getArgument(2));
+            return null;
+        }).when(repo).save(any(), any(), anyString());
+        TradingReviewAppService service = new TradingReviewAppService(
+                recordRepository, positionRepository, mock(AccountSnapshotRepository.class),
+                contextEngine, ai, repo,
+                mock(TradingLotService.class), mock(TradingAppService.class),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
+                executor);
+        return new ReviewSubmitHarness(service, ai, repo);
+    }
+
+    @Test
+    void submitReview_noExisting_returnsPendingAndCompletesInline() {
+        ReviewSubmitHarness h = reviewSubmitHarness(Runnable::run); // 同步执行器：submit 内即跑完
+        LocalDate date = LocalDate.of(2026, 8, 2);
+
+        TradingReviewAppService.ReviewSubmitResult first = h.service().submitReview("default", date);
+
+        assertEquals("pending", first.status(), "首次提交应返回 pending（已受理）");
+        assertEquals("2026-08-02", first.date());
+        verify(h.ai()).generate(any(), any()); // 同步执行器内已跑完一次生成
+        assertNotNull(h.repo().read("default", date), "生成应已落盘");
+
+        // 第二次提交：文件已存在 → exists，且不重复调 AI（今天已生成的复盘不再烧钱重跑）
+        TradingReviewAppService.ReviewSubmitResult second = h.service().submitReview("default", date);
+        assertEquals("exists", second.status());
+        verify(h.ai(), times(1)).generate(any(), any());
+    }
+
+    @Test
+    void submitReview_sameDateRunning_dedupes() {
+        // 阻塞执行器：只入队不跑 → 首次 pending、二次 running、任务仅入队一次
+        java.util.List<Runnable> backlog = new java.util.ArrayList<>();
+        java.util.concurrent.Executor blocker = backlog::add;
+        ReviewSubmitHarness h = reviewSubmitHarness(blocker);
+        LocalDate date = LocalDate.of(2026, 8, 2);
+
+        TradingReviewAppService.ReviewSubmitResult first = h.service().submitReview("default", date);
+        TradingReviewAppService.ReviewSubmitResult second = h.service().submitReview("default", date);
+
+        assertEquals("pending", first.status());
+        assertEquals("running", second.status(), "同日在生成中 → running 去重");
+        assertEquals(1, backlog.size(), "同一日期只应入队一次生成任务");
+        verify(h.ai(), never()).generate(any(), any()); // 尚未执行
+
+        backlog.get(0).run(); // 跑完 → 落盘 → 再次提交 exists
+        assertEquals("exists", h.service().submitReview("default", date).status());
+        verify(h.ai(), times(1)).generate(any(), any());
+    }
 }
 

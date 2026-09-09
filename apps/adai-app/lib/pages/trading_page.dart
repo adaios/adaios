@@ -1611,7 +1611,9 @@ class _TradingPageState extends State<TradingPage> {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            generated ? '今日复盘已生成 ✓' : '今日有交易 · 生成今日复盘？',
+            generated
+                ? '今日复盘已生成 ✓'
+                : (_reviewing ? '复盘生成中，约 1~3 分钟…' : '今日有交易 · 生成今日复盘？'),
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey2),
           ),
         ),
@@ -1724,30 +1726,60 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 生成今日复盘 → 弹窗展示（交易系统反哺可达）。
   /// 2026-08-26 复盘卡点（用户拍板）：无当日真实成交 → 引导先截图入账，不空转 AI。
+  /// 2026-09-07 复盘超时修复：POST 提交即返回（后台生成，AI 实测 77~176s），
+  /// exists 直接 GET 展示 / pending+running 轮询 GET 直到就绪——不再被 15s 客户端超时掐断。
   Future<void> _showReview() async {
     if (!_hasActivity) {
       _showSnack('今天还没有导入成交，先「截图入账」吧', AppColors.darkGrey4);
       return;
     }
+    if (_reviewing) return; // 在途守卫：连点不重复提交
     setState(() => _reviewing = true);
     try {
-      final review = await widget.api.generateReview();
+      final sub = await widget.api.submitReview();
+      ReviewResponse? review;
+      if (sub.status == 'exists') {
+        // 已有复盘（今日已生成/他端已生成）→ 直接取来展示，不重复烧 AI
+        review = await widget.api.getReview();
+      } else {
+        // pending / running → 轮询 GET 直到文件就绪
+        review = await _waitReviewReady();
+      }
       if (!mounted) return;
       setState(() {
         _reviewing = false;
-        _lastReview = review;
-        _reviewGenerated = true;
-        _hasActivity = true;
+        if (review != null) {
+          _lastReview = review;
+          _reviewGenerated = true;
+          _hasActivity = true;
+        }
       });
-      showDialog(
-        context: context,
-        builder: (_) => _buildReviewDialog(review),
-      );
+      if (review != null) {
+        final ready = review; // 闭包捕获用非空 final（防提升失效）
+        showDialog(context: context, builder: (_) => _buildReviewDialog(ready));
+      } else {
+        _showSnack('复盘生成超时（超过 4 分钟），请稍后到 web「复盘历史」查看或重试', AppColors.darkOrange);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _reviewing = false);
       _showSnack('复盘生成失败: ${_extractApiError(e)}', AppColors.darkOrange);
     }
+  }
+
+  /// 轮询 GET /trading/review 直到就绪（上限 240s，步进 3s；单次失败不中断）。
+  Future<ReviewResponse?> _waitReviewReady() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 240));
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      try {
+        final r = await widget.api.getReview();
+        if (r != null) return r;
+      } catch (_) {
+        // 网络抖动/后端仍在生成：不中断，继续轮询到上限
+      }
+      await Future.delayed(const Duration(seconds: 3));
+    }
+    return null;
   }
 
   Widget _buildReviewDialog(ReviewResponse review) {

@@ -1130,6 +1130,11 @@ public class TradingController {
      * <p>
      * AI 基于当日交易记录 + 持仓变化 + 近期记录生成复盘。
      * 输出写入 {@code data/trading/reviews/YYYY-MM-DD_review.md}。
+     * <p>
+     * 2026-09-07 复盘超时修复批：AI 生成实测 77~176s，远超前端客户端超时（原同步阻塞导致
+     * 前端先断、「点击没反应」而复盘实际已生成）。改为<b>提交即返回</b>（{@code status}：
+     * {@code exists} 已有复盘不重跑 / {@code running} 同日在生成中 / {@code pending} 已受理后台生成），
+     * 前端轮询 {@code GET /trading/review?date=}（404=未就绪，200=内容）。
      */
     @PostMapping("/review")
     public ResponseEntity<?> generateReview(
@@ -1137,8 +1142,8 @@ public class TradingController {
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        String content = reviewAppService.generateReview(userId, date);
-        return ResponseEntity.ok(new ReviewResponse(date.toString(), content));
+        TradingReviewAppService.ReviewSubmitResult result = reviewAppService.submitReview(userId, date);
+        return ResponseEntity.ok(new ReviewSubmitResponse(result.date(), result.status()));
     }
 
     /**
@@ -1321,6 +1326,9 @@ public class TradingController {
     }
 
     public record ReviewResponse(String date, String content) {}
+
+    /** POST /trading/review 提交响应（2026-09-07：date + status=exists|running|pending）。 */
+    public record ReviewSubmitResponse(String date, String status) {}
 
     public record ActivityCheckResponse(String date, boolean hasActivity) {}
 

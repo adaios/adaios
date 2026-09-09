@@ -16,12 +16,18 @@ import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * TradingReviewAppService — 交易复盘应用服务。
@@ -38,6 +44,18 @@ public class TradingReviewAppService {
 
     private static final Logger log = LoggerFactory.getLogger(TradingReviewAppService.class);
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+
+    /** 提交状态：已有复盘（不重复生成，前端直接 GET 展示）。 */
+    public static final String STATUS_EXISTS = "exists";
+    /** 提交状态：同一日期复盘正在生成中（连点/双端并发只跑一次 AI）。 */
+    public static final String STATUS_RUNNING = "running";
+    /** 提交状态：已受理，后台生成中（前端轮询 GET /trading/review 直到 200）。 */
+    public static final String STATUS_PENDING = "pending";
+
+    /** 复盘生成专用执行器（ReviewSubmitConfig，2 线程 + 有限队列，拒绝时抛 TradingException）。 */
+    private final Executor reviewSubmitExecutor;
+    /** 生成中集合（key = userId|date）——同日去重，防重复点击烧两次 AI（2026-09-07 复盘超时修复批）。 */
+    private final Set<String> inflight = ConcurrentHashMap.newKeySet();
 
     /**
      * 复盘生成 system 指令（生成语义）。必须用 generate() 而非 understand()：
@@ -63,6 +81,7 @@ public class TradingReviewAppService {
     /** RFC 20260905 B②③：建议留痕——卖出回查「阿呆当时说 X」→ 复盘对照段。 */
     private final com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository;
 
+    /** 测试/历史调用便捷构造：同步执行器（Runnable 直接跑），语义等价旧同步行为。 */
     public TradingReviewAppService(RecordRepository recordRepository,
                                    PositionRepository positionRepository,
                                    AccountSnapshotRepository accountSnapshotRepository,
@@ -72,6 +91,22 @@ public class TradingReviewAppService {
                                    TradingLotService tradingLotService,
                                    TradingAppService tradingAppService,
                                    com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository) {
+        this(recordRepository, positionRepository, accountSnapshotRepository, contextEngine, aiClient,
+                reviewRepository, tradingLotService, tradingAppService, adviceHistoryRepository,
+                Runnable::run);
+    }
+
+    @Autowired
+    public TradingReviewAppService(RecordRepository recordRepository,
+                                   PositionRepository positionRepository,
+                                   AccountSnapshotRepository accountSnapshotRepository,
+                                   ContextEngine contextEngine,
+                                   AiClient aiClient,
+                                   TradingReviewFileRepository reviewRepository,
+                                   TradingLotService tradingLotService,
+                                   TradingAppService tradingAppService,
+                                   com.adaiadai.core.domain.trading.AdviceHistoryRepository adviceHistoryRepository,
+                                   @Qualifier("reviewSubmitExecutor") Executor reviewSubmitExecutor) {
         this.recordRepository = recordRepository;
         this.positionRepository = positionRepository;
         this.accountSnapshotRepository = accountSnapshotRepository;
@@ -81,7 +116,57 @@ public class TradingReviewAppService {
         this.tradingLotService = tradingLotService;
         this.tradingAppService = tradingAppService;
         this.adviceHistoryRepository = adviceHistoryRepository;
+        this.reviewSubmitExecutor = reviewSubmitExecutor;
     }
+
+    /**
+     * 提交生成指定日期复盘（2026-09-07 复盘超时修复批：点击即返回，不阻塞请求线程）。
+     * <p>
+     * AI 生成实测 77~176s，远超前端 15s/120s 客户端超时——原同步 POST 必然前端先断、
+     * 结果「看似没反应」（复盘其实在后端已生成落盘）。改为：后台执行器生成 + 前端轮询
+     * {@code GET /trading/review?date=} 直到文件就绪。
+     * <p>
+     * 去重三态：文件已存在 → {@link #STATUS_EXISTS}（不重复烧 AI，前端即刻 GET 展示）；
+     * 同 user+date 正在生成 → {@link #STATUS_RUNNING}（连点/双端并发只跑一次）；
+     * 否则受理 → {@link #STATUS_PENDING}（后台生成，生成失败只记日志、不落半成品）。
+     *
+     * @return 提交状态（date + status）
+     */
+    public ReviewSubmitResult submitReview(String userId, LocalDate date) {
+        // 已有复盘 → 直接返回 exists（前端 GET 立即展示；今天已生成过的复盘不再重跑）
+        try {
+            String existing = reviewRepository.read(userId, date);
+            if (existing != null && !existing.isBlank()) {
+                return new ReviewSubmitResult(date.toString(), STATUS_EXISTS);
+            }
+        } catch (Exception e) {
+            log.warn("复盘存在性检查失败，按无复盘处理 | userId={} | date={} | {}", userId, date, e.getMessage());
+        }
+
+        String key = userId + "|" + date;
+        if (!inflight.add(key)) {
+            return new ReviewSubmitResult(date.toString(), STATUS_RUNNING);
+        }
+        try {
+            reviewSubmitExecutor.execute(() -> {
+                try {
+                    generateReview(userId, date);
+                } catch (Exception e) {
+                    log.error("复盘后台生成失败 | userId={} | date={}", userId, date);
+                    log.error("复盘生成异常", e);
+                } finally {
+                    inflight.remove(key);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            inflight.remove(key);
+            throw new com.adaiadai.core.domain.trading.TradingException("复盘任务队列已满，请稍后重试");
+        }
+        return new ReviewSubmitResult(date.toString(), STATUS_PENDING);
+    }
+
+    /** 复盘提交结果（POST /trading/review 响应：date + status，见 {@code submitReview}）。 */
+    public record ReviewSubmitResult(String date, String status) {}
 
     /**
      * 生成指定日期的交易复盘。

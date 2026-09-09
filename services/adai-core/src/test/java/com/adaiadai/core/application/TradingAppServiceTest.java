@@ -215,6 +215,23 @@ class TradingAppServiceTest {
     }
 
     @Test
+    void recordTrade_pastEntryDate_doesNotWriteTradingRecord() {
+        // 2026-09-07 用户拍板口径：非当日成交（历史成交导入/补录 sync 回放）不写时间线记录——
+        // 批量回填逐笔进 Feed/时间线会刷屏；复盘卡点已改「当日真实成交」口径，不依赖记录关键词。
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of());
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(List.of());
+        TradingAppService service = service(repo, records);
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.5"), 100, LocalDate.now().minusDays(1),
+                null, new BigDecimal("9.5"), "B1", null, null);
+
+        verify(records, never()).save(any(), any());
+    }
+
+    @Test
     void recordTrade_failure_doesNotWriteRecord() {
         // recordTrade 失败（SELL 未持有 → TradingException）时不应留下交易记录
         PositionRepository repo = mock(PositionRepository.class);
