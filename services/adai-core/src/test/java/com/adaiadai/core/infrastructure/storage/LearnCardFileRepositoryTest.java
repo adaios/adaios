@@ -150,18 +150,23 @@ class LearnCardFileRepositoryTest {
     }
 
     @Test
-    void saveSameDaySameTitle_throws() {
+    void saveDuplicateTitle_anyDate_throws() {
+        // P1-learn2（2026-09-07）：跨日同名是旧卡无法寻址/改错卡的根源 → 从喂入端拒绝任意日期同名
         LearnCard card = sample(LearnCard.TYPE_AI, "RAG 与 Agent 的区别", LocalDate.of(2026, 9, 6));
         repository.save("adai", card);
-        LearnException e = assertThrows(LearnException.class,
+        LearnException sameDay = assertThrows(LearnException.class,
                 () -> repository.save("adai", sample(LearnCard.TYPE_AI, "RAG 与 Agent 的区别", LocalDate.of(2026, 9, 6))));
-        assertTrue(e.getMessage().contains("已有同日同名卡片"));
+        assertTrue(sameDay.getMessage().contains("已有同名卡片"));
+        LearnException otherDay = assertThrows(LearnException.class,
+                () -> repository.save("adai", sample(LearnCard.TYPE_AI, "RAG 与 Agent 的区别", LocalDate.of(2026, 9, 9))));
+        assertTrue(otherDay.getMessage().contains("已有同名卡片"), "跨日同名同样拒绝");
+        assertEquals(1, repository.list("adai", LearnCard.TYPE_AI).size(), "未产生第二张同名卡");
     }
 
     @Test
-    void sameTitleDifferentType_orDifferentDay_allowed() {
+    void sameTitleDifferentType_allowed() {
         repository.save("adai", sample(LearnCard.TYPE_AI, "同一标题", LocalDate.of(2026, 9, 6)));
-        // 不同类型 → 不同路径，可存
+        // 不同类型 → 不同目录不同路径，可并存
         repository.save("adai", sample(LearnCard.TYPE_OTHER, "同一标题", LocalDate.of(2026, 9, 6)));
         assertEquals(1, repository.list("adai", LearnCard.TYPE_AI).size());
         assertEquals(1, repository.list("adai", LearnCard.TYPE_OTHER).size());
@@ -222,12 +227,12 @@ class LearnCardFileRepositoryTest {
 
     @Test
     void fileStem_cleansUnsafeCharacters() {
-        assertEquals("RAG-与-Agent-的区别", LearnCardFileRepository.fileStem("RAG/与*Agent?的区别"));
-        assertEquals("untitled", LearnCardFileRepository.fileStem("///***"));
-        assertEquals("untitled", LearnCardFileRepository.fileStem("   "));
-        assertEquals("untitled", LearnCardFileRepository.fileStem("...."));
-        assertFalse(LearnCardFileRepository.fileStem("../etc/passwd").contains(".."));
-        assertFalse(LearnCardFileRepository.fileStem("../etc/passwd").contains("/"));
+        assertEquals("RAG-与-Agent-的区别", LearnCard.fileStem("RAG/与*Agent?的区别"));
+        assertEquals("untitled", LearnCard.fileStem("///***"));
+        assertEquals("untitled", LearnCard.fileStem("   "));
+        assertEquals("untitled", LearnCard.fileStem("...."));
+        assertFalse(LearnCard.fileStem("../etc/passwd").contains(".."));
+        assertFalse(LearnCard.fileStem("../etc/passwd").contains("/"));
     }
 
     // ── V2 复习状态流转 ──
@@ -238,15 +243,18 @@ class LearnCardFileRepositoryTest {
         repository.save("adai", card);
         assertEquals(LearnCard.STATUS_NEW, repository.find("adai", LearnCard.TYPE_AI, card.title()).get().status());
 
-        LearnCard reviewed = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW);
+        LearnCard reviewed = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7));
         assertEquals(LearnCard.STATUS_REVIEW, reviewed.status(), "返回更新后卡片");
         assertEquals(LearnCard.STATUS_REVIEW,
                 repository.find("adai", LearnCard.TYPE_AI, card.title()).get().status(), "文件已持久化");
         assertEquals(card.coreView(), reviewed.coreView(), "正文核心观点保留");
+        assertEquals(LocalDate.of(2026, 9, 7), reviewed.reviewAt(), "S-learn1：进入 review 写 review_at=today");
+        assertEquals(null, reviewed.remindedAt(), "进入 review 清 reminded_at（新周期）");
 
-        LearnCard done = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE);
+        LearnCard done = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE, LocalDate.of(2026, 9, 7));
         assertEquals(LearnCard.STATUS_DONE, done.status());
         assertEquals(card.title(), done.title());
+        assertEquals(null, done.reviewAt(), "离开 review → 清计时（不再提醒）");
     }
 
     @Test
@@ -259,7 +267,7 @@ class LearnCardFileRepositoryTest {
         String content = storage.read("adai", path);
         storage.write("adai", path, content + "\n今天用自己话复述了一遍：RAG 检索增强，Agent 自主规划。\n");
 
-        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7));
 
         String after = storage.read("adai", path);
         assertTrue(after.contains("status: review"), "frontmatter status 已更新");
@@ -270,26 +278,136 @@ class LearnCardFileRepositoryTest {
     @Test
     void updateStatus_missingCard_throwsHumanMessage() {
         LearnException e = assertThrows(LearnException.class,
-                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, "不存在的卡片", LearnCard.STATUS_REVIEW));
+                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, "不存在的卡片", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7)));
         assertTrue(e.getMessage().contains("卡片不存在"));
     }
 
     @Test
     void updateStatus_invalidTypeOrBlankTitle_throws() {
         assertThrows(LearnException.class,
-                () -> repository.updateStatus("adai", "hacking", "标题", LearnCard.STATUS_REVIEW));
+                () -> repository.updateStatus("adai", "hacking", "标题", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7)));
         assertThrows(LearnException.class,
-                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, "  ", LearnCard.STATUS_REVIEW));
+                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, "  ", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7)));
     }
 
     @Test
     void updateStatus_userIsolated() {
         repository.save("adai", sample(LearnCard.TYPE_AI, "我的卡片", LocalDate.of(2026, 9, 6)));
         repository.save("bob", sample(LearnCard.TYPE_AI, "我的卡片", LocalDate.of(2026, 9, 6)));
-        repository.updateStatus("adai", LearnCard.TYPE_AI, "我的卡片", LearnCard.STATUS_DONE);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, "我的卡片", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 7));
+        repository.updateStatus("adai", LearnCard.TYPE_AI, "我的卡片", LearnCard.STATUS_DONE, LocalDate.of(2026, 9, 7));
         assertEquals(LearnCard.STATUS_DONE,
                 repository.find("adai", LearnCard.TYPE_AI, "我的卡片").get().status());
         assertEquals(LearnCard.STATUS_NEW,
                 repository.find("bob", LearnCard.TYPE_AI, "我的卡片").get().status(), "bob 卡片不受影响");
+    }
+
+    // ── V2 learn 审查修复（2026-09-07）──
+
+    @Test
+    void updateStatus_doneToReview_reEntersWithNewReviewAt() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "再看一遍", LocalDate.of(2026, 8, 1));
+        repository.save("adai", card);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 8, 5));
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE, LocalDate.of(2026, 8, 6));
+        LearnCard reReview = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 8, 20));
+        assertEquals(LocalDate.of(2026, 8, 20), reReview.reviewAt(), "P2-learn8 done→review 重进：review_at 更新为新进入日");
+    }
+
+    @Test
+    void updateStatus_illegalJump_throws() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "跳变卡", LocalDate.of(2026, 9, 1));
+        repository.save("adai", card);
+        // P2-learn8：禁止 new→done 跳变（跳过复习队列）
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE, LocalDate.of(2026, 9, 7)));
+        assertTrue(e.getMessage().contains("不被允许"));
+        assertEquals(LearnCard.STATUS_NEW,
+                repository.find("adai", LearnCard.TYPE_AI, card.title()).get().status(), "非法流转不落盘");
+    }
+
+    @Test
+    void updateStatus_doneToNew_jumpBack_throws() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "回跳卡", LocalDate.of(2026, 9, 1));
+        repository.save("adai", card);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 2));
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE, LocalDate.of(2026, 9, 3));
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_NEW, LocalDate.of(2026, 9, 7)));
+        assertTrue(e.getMessage().contains("不被允许"), "done→new 回跳两步不允许");
+    }
+
+    @Test
+    void find_multipleSameTitle_throwsHumanMessage() {
+        // 历史/手工残留跨日同名（save 已源头拒绝，此处验证读侧防御）
+        LearnCard a = sample(LearnCard.TYPE_AI, "同名残留", LocalDate.of(2026, 8, 1));
+        storage.write("adai", "learn/ai/2026-08-01_" + LearnCard.fileStem(a.title()) + ".md",
+                LearnCardFileRepository.toMarkdown(a));
+        LearnCard b = sample(LearnCard.TYPE_AI, "同名残留", LocalDate.of(2026, 8, 5));
+        storage.write("adai", "learn/ai/2026-08-05_" + LearnCard.fileStem(b.title()) + ".md",
+                LearnCardFileRepository.toMarkdown(b));
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.find("adai", LearnCard.TYPE_AI, "同名残留"));
+        assertTrue(e.getMessage().contains("2 张同名卡片"), "P1-learn2：歧义显式 400，禁止静默取最新");
+        assertTrue(e.getMessage().contains("2026-08-01"), "列出 created 供人工合并");
+    }
+
+    @Test
+    void markReminded_writesRemindedAt() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "提醒节流卡", LocalDate.of(2026, 8, 20));
+        repository.save("adai", card);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 8, 20));
+        LearnCard reminded = repository.markReminded("adai", LearnCard.TYPE_AI, card.title(), LocalDate.of(2026, 9, 7));
+        assertEquals(LocalDate.of(2026, 9, 7), reminded.remindedAt(), "markReminded 写 reminded_at");
+        assertEquals(LearnCard.STATUS_REVIEW, reminded.status(), "不改变 status");
+        LearnCard loaded = repository.find("adai", LearnCard.TYPE_AI, card.title()).orElseThrow();
+        assertEquals(LocalDate.of(2026, 9, 7), loaded.remindedAt(), "已持久化");
+    }
+
+    @Test
+    void updateStatus_remindedAtClearedOnReEnter() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "再入卡", LocalDate.of(2026, 8, 1));
+        repository.save("adai", card);
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 8, 2));
+        repository.markReminded("adai", LearnCard.TYPE_AI, card.title(), LocalDate.of(2026, 8, 10));
+        // 用户 done 后 30 天再看一遍 → 重新计时，清 reminded_at
+        repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_DONE, LocalDate.of(2026, 8, 15));
+        LearnCard reReview = repository.updateStatus("adai", LearnCard.TYPE_AI, card.title(), LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 10));
+        assertEquals(LocalDate.of(2026, 9, 10), reReview.reviewAt());
+        assertEquals(null, reReview.remindedAt(), "重进队列清上次提醒日");
+    }
+
+    @Test
+    void applyEdit_preservesUnknownFrontmatterKeyAndSection() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "未知段卡", LocalDate.of(2026, 9, 6));
+        repository.save("adai", card);
+        // 手工添加未知 frontmatter 键 + 未知正文段（md 即真相源，编辑不得抹）
+        String path = storage.listFiles("adai", "learn/ai").stream()
+                .filter(f -> f.endsWith(".md")).findFirst().orElseThrow();
+        String content = storage.read("adai", path)
+                .replaceFirst("---\n", "---\nmood: 今天状态不错\n")
+                + "\n## 我的补充笔记\n这段是手工加的，不许被编辑抹掉。\n";
+        storage.write("adai", path, content);
+
+        LearnCard edited = repository.applyEdit("adai", LearnCard.TYPE_AI, card.title(),
+                new com.adaiadai.core.domain.learn.LearnCardPatch(
+                        "编辑后的观点", null, null, "复述：写了一遍", null, null, List.of("rag", "新标签")));
+
+        assertEquals("编辑后的观点", edited.coreView(), "受管段更新");
+        assertEquals(List.of("rag", "新标签"), edited.tags());
+        String after = storage.read("adai", path);
+        assertTrue(after.contains("mood: 今天状态不错"), "P2-learn7：未知 frontmatter 键保留");
+        assertTrue(after.contains("我的补充笔记") && after.contains("不许被编辑抹掉"),
+                "P2-learn7：未知正文段保留");
+        assertTrue(after.contains("复述：写了一遍"), "受管段已写回");
+    }
+
+    @Test
+    void applyEdit_missingCard_throws() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "不存在的卡", LocalDate.of(2026, 9, 6));
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.applyEdit("adai", card.type(), card.title(),
+                        new com.adaiadai.core.domain.learn.LearnCardPatch(null, null, null, null, null, null, null)));
+        assertTrue(e.getMessage().contains("卡片不存在"));
     }
 }

@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.5 | **最后更新：** 2026-08-25（RFC 20260825：逐笔批次跟踪与行为纠偏）
+> **文档版本：** v1.6 | **最后更新：** 2026-09-07（learn 插件 V1/L2/V2 三改 + learn V2 审查修复批收口，D61-D63 检查点已入清单）
 
 ---
 
@@ -726,7 +726,7 @@ Strict format:
 - 建议引擎（`POST /trading/advice`，R66 止损 / R81 仓位硬判定）
 - 批量导入（通达信导出自动识别：持仓快照 / **历史成交** / 交易 CSV 三格式；选择文件上传留存或粘贴）
 - 主动推送（真止损异动 / 早盘计划 / 午间跟踪 / 尾盘建议 → PushChannel Feed+微信，见 §1）
-- **推送体验（RFC 20260817）**：推送卡专属样式（类型徽章：早盘蓝/午间紫/尾盘橙/买点绿/预警红）+ 结构化内容（总结+持仓逐行+建议）；**推送开关**（per-user 8 类型：时段/买点/止损/接近止损/大跌/放飞/破成本/行情条，`data/{userId}/trading/push-settings.json`，写读双侧门控）；app 左滑删单条/右滑进设置，web 交易页设置入口
+- **推送体验（RFC 20260817）**：推送卡专属样式（类型徽章：早盘蓝/午间紫/尾盘橙/买点绿/预警红）+ 结构化内容（总结+持仓逐行+建议）；**推送开关**（per-user 10 类型：时段/买点/止损/接近止损/大跌/放飞/破成本/行情条/收盘小结 close-summary/复习提醒 learn-review——2026-08-29/09-07 增，`data/{userId}/trading/push-settings.json`，写读双侧门控；learn-review 另经 `GET/PUT /learn/push-settings` learn 侧可达，纯 learn 用户可自关）；app 左滑删单条/右滑进设置，web 交易页设置入口（learn 页头铃铛开关复习提醒）
   > ⚠️ 2026-08-23 标注：徽章配色受 **P1-推送1（标题契约断裂）** 阻断——后端 `FeedPushChannel` 落库丢标题 → 前端按标题 switch 全落灰「行情」，修复前展示与上文不符
 - **图片对话流（RFC 20260817）**：图片对话卡图置顶、turns 跟随滚动——聊天态与刷新态渲染一致（不再退化为固定附件）
 - **交易日志自动归集（RFC 20260817）**：成交截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（symbol+方向）→ 收盘 15:15 推送「今日操作汇总」→ 用户「确认并入账」→ recordTrade 链路落库；仅 trading 插件用户触发；不完整候选（无数量/价格）确认跳过引导补全；`data/{userId}/trading/trade-log/{yyyy-MM-dd}.json`
@@ -1047,7 +1047,7 @@ POST /api/v1/records/retry
 
 ## 17. learn 学习沉淀模块（RFC 20260829）
 
-> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环（2026-09-07）已落地**：批 1 复习状态流转 + 编辑（PATCH /cards/status + /cards，retell 复述建模）；批 3 trading 候选联动（反哺候选 + learn_card_id 回链）；批 4 复习提醒推送（每晚 20:00 learn-review）+ **web 资产页 V2 交互接线**（状态徽标 + 去复习/标记完成 + 写复述弹窗 + 反哺候选按钮；app 详情页状态徽标 + 复述段只读呈现）。
+> **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环（2026-09-07）已落地**：批 1 复习状态流转 + 编辑（PATCH /cards/status + /cards，retell 复述建模）；批 3 trading 候选联动（反哺候选 + learn_card_id 回链）；批 4 复习提醒推送（每晚 20:00 learn-review）+ **web 资产页 V2 交互接线**（状态徽标 + 去复习/标记完成 + 写复述弹窗 + 反哺候选按钮；app 详情页状态徽标 + 复述段只读呈现）。**learn V2 审查修复批（2026-09-07 learn V2 增量深审，用户拍板）**：流转只允许相邻（new↔review / review→done / done→review，跳变 400）；进入 review 写 `review_at`、提醒按进入队列满 7 天计时 + 同卡 7 天节流（不再按消化日误判、不再每晚 nag）；同 type+title 任意日期同名拒绝 + 残留歧义读侧 400（寻址不再改错卡）；learn_card_id = 源卡真实文件路径；复习提醒开关 learn 页可达（纯 learn 用户可自关，web/app 双端铃铛）；候选管理 UI（web 页头收件箱：列表/删除）；反哺按钮按 trading 插件二次门控。
 
 - **插件注册**：PluginRegistry 第三个插件 `learn`（`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
 - **定位**：外部内容（B站视频/YouTube/文章/字幕）→ AI 结构化卡片 → 个人知识资产。**与 A 方向会话技能（learn-digest skill）同源**：技能是 DSH 会话内执行版（独立落盘 `data/adai/learn/`），本插件是阿呆产品内版（按用户落 `data/{userId}/learn/`）；两者格式同构（frontmatter + 渐进式摘要）。
@@ -1059,7 +1059,7 @@ POST /api/v1/records/retry
 - **复习状态（V2 2026-09-07）**：`status` new→review→done，流转只改 frontmatter（正文/手写复述段原样保留，File First 不重建文件）。
 - **编辑与复述（V2 2026-09-07）**：`retell` 复述段建模（V1 模板四段的空段补齐读写对称——24h 内自己写 100-200 字是消化关键，AI 不代写）；`PATCH /learn/cards` 支持正文/要点/疑问/复述/trade_related/trade_note/tags 字段级补丁（type/title/created 不可改——改=移动文件拒绝，改名走新建）。「对话流让阿呆改」的后端能力就绪（前端接线随 UI 批）。
 - **trading 反哺候选（V2 批 3 2026-09-07）**：trading + trade_related 卡片经 `POST /learn/cards/candidate` 反哺 → 候选落 `data/{userId}/trading/candidates/`（建议卡 + `learn_card_id` 回链 learn 源卡——只存提炼建议不复制整卡，跨域无双写，守 B6）；候选**不自动入库**，需在交易知识库工作流审核后融合归正式目录并重建 knowledge/context（对齐复盘 promote 哲学 + 规则改动人工闸，P1-交易9 教训）；`GET /learn/cards/candidates` 列表审核、`DELETE /learn/cards/candidates?title=` 删除（幂等）。
-- **复习提醒推送（V2 批 4 2026-09-07）**：每晚 20:00（cron 配置 `adai.learn.review-cron`）LearnReviewPushService 遍历启用 learn 插件的用户 → 聚合「status=review 且 created ≥ 7 天未 done」的卡片（跨 ai/trading/other）→ 推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/Bark；不自动改状态）；推送类型 `learn-review` 入 PushSettings.ALL_TYPES（推送设置可关，默认开）；Feed push 条目注入门控由 trading-only 放宽为 **trading 或 learn**（纯 learn 用户 Feed 可见复习提醒，market 行情条仍 trading-only）。
+- **复习提醒推送（V2 批 4 + S-learn1 修复 2026-09-07）**：每晚 20:00（cron 配置 `adai.learn.review-cron`）LearnReviewPushService 遍历启用 learn 插件的用户 → 聚合「status=review 且 **review_at（进入复习队列日）** ≥ 7 天未 done」的卡片（跨 ai/trading/other）→ 推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/Bark；不自动改状态）；**同卡 7 天内不重复推**（reminded_at 节流，防搁置卡每晚 nag）；推送类型 `learn-review` 入 PushSettings.ALL_TYPES（默认开；**learn 侧 `GET/PUT /learn/push-settings` 可关——纯 learn 用户也能自关，不再只藏交易设置页**，S-learn2）；Feed push 注入按事件类型级门控（learn-review 条目只需 learn 插件、交易类条目需 trading 插件——防残留交易 push 漏给纯 learn 用户）。
 - **已知边界（L1）**：不做抓取/转写（素材由用户喂入，守 B8 + 版权）；卡片编辑/复习流转 V2 已落地（后端 + web 资产页接线，app 只读）；trading 候选联动 V2 已落地（promote 融合仍走 trading-engine 工作流人工闸）；多用户只架构预留；A 技能产物与插件产物同目录并存（目录结构差异由 L2 资产页统一）。
 
 ## 附录：API 全集
@@ -1116,4 +1116,6 @@ POST /api/v1/records/retry
 | 47 | PATCH | `/api/v1/learn/cards` | learn 卡片正文编辑补丁（learn 插件，?type=&title=，2026-09-07 V2） | ❌ |
 | 48 | POST | `/api/v1/learn/cards/candidate` | learn trading 卡片反哺成规则候选（learn 插件，2026-09-07 V2 批 3） | ❌ |
 | 49 | GET | `/api/v1/learn/cards/candidates` | learn 反哺候选列表（learn 插件，created 倒序） | ❌ |
-| 50 | DELETE | `/api/v1/learn/cards/candidates` | learn 删除反哺候选（learn 插件，?title= 幂等） | ❌ |
+| 50 | DELETE | `/api/v1/learn/cards/candidates` | learn 删除反哺候选（learn 插件，?title= 幂等；同名歧义 400） | ❌ |
+| 51 | GET | `/api/v1/learn/push-settings` | learn 复习提醒开关读（learn 插件，S-learn2 2026-09-07） | ✅ |
+| 52 | PUT | `/api/v1/learn/push-settings/learn-review` | learn 复习提醒开关写（learn 插件，S-learn2） | ✅ |

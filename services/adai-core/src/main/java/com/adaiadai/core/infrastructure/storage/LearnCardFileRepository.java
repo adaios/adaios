@@ -1,6 +1,7 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.learn.LearnCard;
+import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.kernel.storage.FileStorage;
@@ -28,6 +29,17 @@ import java.util.Optional;
  * frontmatter 扁平 key: value（写读对称，不做嵌套——source 信息平铺为 platform/author/url/published）。
  * 并发：per-user 条带锁（固定 16 条带，P2-交易28 锁池模式）串行读-改-写。
  * 写失败抛 StorageException（fail-visible，P0-1 原则）。
+ * <p>
+ * V2 learn 审查修复（2026-09-07）：
+ * <ul>
+ *   <li><b>P1-learn2</b>：标题寻址歧义根治——save 拒绝「同 type+同 title 任意日期」已存在
+ *       （跨日同名是旧卡无法寻址/改错卡的源头）；find 遇残留多张同名抛 400（列出 created）</li>
+ *   <li><b>S-learn1</b>：frontmatter 增可选 {@code review_at}/{@code reminded_at}——复习提醒按
+ *       进入 review 之日计时 + 提醒节流（仓储只做机械落盘，today 由 application 传入，storage
+ *       不取系统时间，G2）</li>
+ *   <li><b>P2-learn6/7</b>：update/applyEdit 读-改-写在同一把锁内原子完成；写盘基于原文件做
+ *       受管键/受管正文段手术替换——手工未知 frontmatter 键与未知正文段原样保留（File First）</li>
+ * </ul>
  */
 @Repository
 public class LearnCardFileRepository implements LearnCardRepository {
@@ -37,7 +49,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
     private static final String RAW_DIR = "learn/_raw/";
     private static final DateTimeFormatter DIR_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final int LOCK_STRIPES = 16;
-    private static final int MAX_TITLE_FILE_LEN = 60;
+    /** V1 模板正文四段（编辑手术替换时受管段），其余「## 标题」段视为用户手工段保留。 */
+    private static final List<String> MANAGED_SECTIONS =
+            List.of("核心观点", "关键要点", "我的疑问", "复述");
 
     private final Object[] locks = new Object[LOCK_STRIPES];
     {
@@ -63,11 +77,16 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     @Override
     public void save(String userId, LearnCard card) {
+        if (card == null) throw new LearnException("卡片不能为空");
         synchronized (lockFor(userId)) {
-            String path = filePath(card);
-            if (fileStorage.exists(userId, path)) {
-                throw new LearnException("已有同日同名卡片《" + card.title() + "》，避免覆盖，请先查看已有卡片");
+            // P1-learn2：同 type + 同 title 已存在（任意日期）→ 拒绝，防跨日同名歧义。
+            // 卡片少、单用户，扫描可接受；不覆盖、不静默（重复消化请先编辑已有卡片）。
+            Optional<LearnCard> dup = findByTitleQuiet(userId, card.type(), card.title());
+            if (dup.isPresent()) {
+                throw new LearnException("已有同名卡片《" + card.title() + "》（创建于 "
+                        + dup.get().created() + "），同标题内容请先查看/编辑已有卡片，避免重复消化");
             }
+            String path = filePath(card);
             fileStorage.write(userId, path, toMarkdown(card));
             log.info("learn 卡片已落盘 | userId={} | type={} | title={}", userId, card.type(), card.title());
         }
@@ -76,30 +95,108 @@ public class LearnCardFileRepository implements LearnCardRepository {
     @Override
     public Optional<LearnCard> find(String userId, String type, String title) {
         if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return Optional.empty();
-        // 文件名含日期前缀（yyyy-MM-dd_{stem}.md），无法按纯标题拼路径——扫描匹配（卡片量小，
-        // 单用户会话级，与 CardFileRepository.findAll 全量扫同思路）。
+        List<LearnCard> matched = list(userId, type).stream()
+                .filter(c -> title.equals(c.title()))
+                .toList();
+        if (matched.size() > 1) {
+            // P1-learn2：残留多张同名（历史/手工）→ 显式 400，禁止静默取最新改错卡
+            String dates = matched.stream()
+                    .map(c -> c.created().toString()).sorted()
+                    .reduce((a, b) -> a + " / " + b).orElse("");
+            throw new LearnException("《" + title + "》存在 " + matched.size() + " 张同名卡片（创建于 "
+                    + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
+        }
+        return matched.isEmpty() ? Optional.empty() : Optional.of(matched.get(0));
+    }
+
+    /** 静默版标题查找（save 重复检查用；多张同名取最新 created，不抛——save 只关心「已存在」）。 */
+    private Optional<LearnCard> findByTitleQuiet(String userId, String type, String title) {
         return list(userId, type).stream()
                 .filter(c -> title.equals(c.title()))
-                .findFirst();
+                .max(Comparator.comparing(LearnCard::created));
     }
 
     @Override
-    public LearnCard updateStatus(String userId, String type, String title, String status) {
+    public LearnCard updateStatus(String userId, String type, String title, String toStatus, LocalDate today) {
         if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
             throw new LearnException("卡片不存在");
         }
         synchronized (lockFor(userId)) {
             LearnCard card = find(userId, type, title)
                     .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            String from = card.status();
+            if (!LearnCard.isValidTransition(from, toStatus)) {
+                throw new LearnException("状态流转 " + from + "→" + toStatus + " 不被允许（new→review→done，"
+                        + "可回退 review→new / done→review）");
+            }
             String path = filePath(card);
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
             }
-            String updated = replaceStatusLine(content, status);
+            // S-learn1 计时语义：进入 review（含 done→review 重进）→ review_at=today、清 reminded_at；
+            // 离开 review（→new/done）→ 清计时（不再提醒）。
+            boolean enteringReview = LearnCard.STATUS_REVIEW.equals(toStatus)
+                    && !LearnCard.STATUS_REVIEW.equals(from);
+            boolean leavingReview = !LearnCard.STATUS_REVIEW.equals(toStatus)
+                    && LearnCard.STATUS_REVIEW.equals(from);
+            String updated = replaceFrontmatterKey(content, "status", toStatus);
+            if (enteringReview) {
+                updated = replaceFrontmatterKey(updated, "review_at", today == null ? "" : today.toString());
+                updated = replaceFrontmatterKey(updated, "reminded_at", "");
+            } else if (leavingReview) {
+                updated = replaceFrontmatterKey(updated, "review_at", "");
+                updated = replaceFrontmatterKey(updated, "reminded_at", "");
+            }
             fileStorage.write(userId, path, updated);
-            log.info("learn 复习状态流转 | userId={} | type={} | title={} | status={}", userId, type, title, status);
+            log.info("learn 复习状态流转 | userId={} | type={} | title={} | {}→{}", userId, type, title, from, toStatus);
             return parse(updated);
+        }
+    }
+
+    @Override
+    public LearnCard markReminded(String userId, String type, String title, LocalDate today) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在");
+        }
+        synchronized (lockFor(userId)) {
+            LearnCard card = find(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            if (!LearnCard.STATUS_REVIEW.equals(card.status())) {
+                return card; // 非 review 卡不参与提醒节流
+            }
+            String path = filePath(card);
+            String content = fileStorage.read(userId, path);
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            String updated = replaceFrontmatterKey(content, "reminded_at",
+                    today == null ? "" : today.toString());
+            fileStorage.write(userId, path, updated);
+            log.info("learn 复习提醒已标记 | userId={} | type={} | title={} | remindedAt={}",
+                    userId, type, title, today);
+            return parse(updated);
+        }
+    }
+
+    @Override
+    public LearnCard applyEdit(String userId, String type, String title, LearnCardPatch patch) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在");
+        }
+        synchronized (lockFor(userId)) {
+            LearnCard cur = find(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            // P2-learn6：锁内基于最新快照 merge，并发 PATCH 不再丢更新
+            LearnCard updated = mergePatch(cur, patch);
+            String content = fileStorage.read(userId, filePath(cur));
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            String rewritten = rewriteManaged(content, updated);
+            fileStorage.write(userId, filePath(cur), rewritten);
+            log.info("learn 卡片已编辑 | userId={} | type={} | title={}", userId, type, title);
+            return parse(rewritten);
         }
     }
 
@@ -114,31 +211,211 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!card.created().equals(existing.created())) {
                 throw new LearnException("标题/类型/日期不可修改（会移动文件），如需改名请新建卡片");
             }
-            fileStorage.write(userId, filePath(existing), toMarkdown(card));
+            String content = fileStorage.read(userId, filePath(existing));
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(card.type(), card.title()));
+            }
+            String rewritten = rewriteManaged(content, card);
+            fileStorage.write(userId, filePath(existing), rewritten);
             log.info("learn 卡片已更新 | userId={} | type={} | title={}", userId, card.type(), card.title());
-            return card;
+            return parse(rewritten);
         }
     }
 
-    /** 只替换 frontmatter 区内的 status 行（正文其余段落原样保留——md 即真相源）。 */
-    private static String replaceStatusLine(String content, String status) {
+    // ── 补丁/手术写 ──────────────────────────────────────────────
+
+    /** 补丁 merge（锁内基于最新卡；null = 保留原值；非 trading 收敛由 LearnCard 构造器保证）。 */
+    private static LearnCard mergePatch(LearnCard cur, LearnCardPatch p) {
+        boolean tradeRelated = p != null && p.tradeRelated() != null ? p.tradeRelated() : cur.tradeRelated();
+        List<String> tags = p != null && p.tags() != null ? cleanList(p.tags()) : cur.tags();
+        List<String> keyPoints = p != null && p.keyPoints() != null ? cleanList(p.keyPoints()) : cur.keyPoints();
+        List<String> questions = p != null && p.questions() != null ? cleanList(p.questions()) : cur.questions();
+        String tradeNote = p != null && p.tradeNote() != null ? p.tradeNote().strip() : cur.tradeNote();
+        return new LearnCard(
+                cur.type(), cur.title(), cur.platform(), cur.author(), cur.url(), cur.published(),
+                cur.created(), cur.status(), tradeRelated, tradeNote, tags,
+                p != null && p.coreView() != null ? p.coreView().strip() : cur.coreView(),
+                keyPoints, questions,
+                p != null && p.retell() != null ? p.retell().strip() : cur.retell(),
+                cur.reviewAt(), cur.remindedAt());
+    }
+
+    private static List<String> cleanList(List<String> list) {
+        if (list == null) return List.of();
+        return list.stream().map(String::strip).filter(s -> !s.isBlank()).toList();
+    }
+
+    /**
+     * P2-learn7：基于原文件做「受管键 + 受管正文段」手术替换，未知 frontmatter 键与未知
+     * 「## 标题」段原样保留（File First：md 即真相源，编辑不抹手工内容）。
+     */
+    private static String rewriteManaged(String original, LearnCard card) {
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(original);
+        if (!fm.find()) throw new LearnException("卡片文件格式异常，无法更新");
+        String fmBlock = fm.group(2);
+        String body = original.substring(fm.end());
+
+        // 1) frontmatter：受管键行替换为新卡值；未受管键行原样保留
+        Map<String, String> fmLines = parseFrontmatterLines(fmBlock);
+        StringBuilder newFm = new StringBuilder();
+        newFm.append(fm.group(1));
+        List<String> managedKeys = List.of("title", "type", "platform", "author", "url", "published",
+                "created", "status", "trade_related", "trade_note", "tags", "review_at", "reminded_at");
+        for (Map.Entry<String, String> e : fmLines.entrySet()) {
+            String key = e.getKey();
+            if (managedKeys.contains(key)) {
+                String v = managedValue(card, key);
+                if (v == null) continue; // 空值键不保留（如 review_at 无值）
+                newFm.append(key).append(": ").append(v).append("\n");
+            } else {
+                newFm.append(key).append(": ").append(e.getValue()).append("\n");
+            }
+        }
+        newFm.append(fm.group(3));
+
+        // 2) 正文：按「## 标题」切段——受管段重建，未知段原样保留（顺序不变）
+        return newFm + rewriteBodySections(body, card);
+    }
+
+    /** 受管 frontmatter 键的序列化值（空串 → null = 省略该键行）。 */
+    private static String managedValue(LearnCard card, String key) {
+        return switch (key) {
+            case "title" -> singleLine(card.title());
+            case "type" -> card.type();
+            case "platform" -> singleLine(card.platform());
+            case "author" -> singleLine(card.author());
+            case "url" -> singleLine(card.url());
+            case "published" -> singleLine(card.published());
+            case "created" -> String.valueOf(card.created());
+            case "status" -> card.status();
+            case "trade_related" -> String.valueOf(card.tradeRelated());
+            case "trade_note" -> card.tradeNote() == null || card.tradeNote().isBlank() ? null : singleLine(card.tradeNote());
+            case "tags" -> "[" + String.join(", ", card.tags()) + "]";
+            case "review_at" -> card.reviewAt() == null ? null : card.reviewAt().toString();
+            case "reminded_at" -> card.remindedAt() == null ? null : card.remindedAt().toString();
+            default -> null;
+        };
+    }
+
+    /** 正文切段重建：原顺序遍历，「## 标题」段内受管标题重建、未知标题原样。 */
+    static String rewriteBodySections(String body, LearnCard card) {
+        List<BodyPart> parts = splitBodyParts(body);
+        StringBuilder sb = new StringBuilder();
+        boolean[] seen = new boolean[MANAGED_SECTIONS.size()];
+        for (BodyPart part : parts) {
+            if (part.header() != null) {
+                int idx = MANAGED_SECTIONS.indexOf(part.header());
+                if (idx >= 0) {
+                    seen[idx] = true;
+                    sb.append("## ").append(part.header()).append("\n")
+                            .append(managedSectionBody(idx, card));
+                } else {
+                    sb.append("## ").append(part.header()).append("\n").append(part.content());
+                }
+            } else {
+                sb.append(part.content()); // 首段前导文本（模板无，保留以防手工）
+            }
+        }
+        // 模板缺段补回（保持四段齐全语义）
+        for (int i = 0; i < MANAGED_SECTIONS.size(); i++) {
+            if (!seen[i]) {
+                sb.append("## ").append(MANAGED_SECTIONS.get(i)).append("\n")
+                        .append(managedSectionBody(i, card));
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String managedSectionBody(int idx, LearnCard card) {
+        return switch (idx) {
+            case 0 -> (card.coreView() == null || card.coreView().isBlank() ? "" : card.coreView()) + "\n\n";
+            case 1 -> {
+                StringBuilder sb = new StringBuilder();
+                if (card.keyPoints() != null) {
+                    for (String kp : card.keyPoints()) sb.append("- ").append(singleLine(kp)).append("\n");
+                }
+                yield sb.append("\n").toString();
+            }
+            case 2 -> {
+                StringBuilder sb = new StringBuilder();
+                if (card.questions() != null) {
+                    for (String q : card.questions()) sb.append("- ").append(singleLine(q)).append("\n");
+                }
+                yield sb.append("\n").toString();
+            }
+            default -> (card.retell() == null || card.retell().isBlank() ? "" : card.retell()) + "\n\n";
+        };
+    }
+
+    private record BodyPart(String header, String content) {}
+
+    /** 按「## 标题」切正文（含段前文本）。段内保持原样（含换行）；strip 尾空白由写入方控制。 */
+    static List<BodyPart> splitBodyParts(String body) {
+        List<BodyPart> parts = new ArrayList<>();
+        if (body == null) return parts;
+        String[] lines = body.split("\n", -1);
+        StringBuilder pre = new StringBuilder();
+        String curHeader = null;
+        StringBuilder cur = new StringBuilder();
+        for (String line : lines) {
+            if (line.startsWith("## ")) {
+                if (curHeader != null || cur.length() > 0) {
+                    parts.add(new BodyPart(curHeader, cur.toString()));
+                } else if (pre.length() > 0) {
+                    parts.add(new BodyPart(null, pre.toString()));
+                }
+                curHeader = line.substring(3).strip();
+                cur = new StringBuilder();
+            } else if (curHeader == null) {
+                pre.append(line).append("\n");
+            } else {
+                cur.append(line).append("\n");
+            }
+        }
+        if (pre.length() > 0 && curHeader == null) {
+            parts.add(new BodyPart(null, pre.toString()));
+        } else if (curHeader != null || cur.length() > 0) {
+            parts.add(new BodyPart(curHeader, cur.toString()));
+        }
+        return parts;
+    }
+
+    /** frontmatter 键值解析（含行序）；非受管键写回用。 */
+    private static Map<String, String> parseFrontmatterLines(String frontmatter) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        for (String line : frontmatter.split("\n")) {
+            int colonIdx = line.indexOf(':');
+            if (colonIdx > 0) {
+                fields.put(line.substring(0, colonIdx).trim(), line.substring(colonIdx + 1).trim());
+            }
+        }
+        return fields;
+    }
+
+    /** frontmatter 区内单键 upsert（有则替换、无则追加行；value 空串 = 删除键行）。 */
+    private static String replaceFrontmatterKey(String content, String key, String value) {
         java.util.regex.Matcher m = java.util.regex.Pattern.compile(
                 "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
-        if (!m.find()) {
-            throw new LearnException("卡片文件格式异常，无法更新复习状态");
-        }
+        if (!m.find()) throw new LearnException("卡片文件格式异常，无法更新复习状态");
         String fm = m.group(2);
-        String replaced = fm.replaceAll("(?m)^status:.*$", "status: " + status);
-        if (replaced.equals(fm)) {
-            replaced = fm + "\nstatus: " + status;
+        String linePattern = "(?m)^" + java.util.regex.Pattern.quote(key) + ":.*$";
+        boolean exists = java.util.regex.Pattern.compile(linePattern).matcher(fm).find();
+        String replaced;
+        if (value == null || value.isEmpty()) {
+            replaced = exists ? fm.replaceAll(linePattern, "") : fm;
+        } else if (exists) {
+            replaced = fm.replaceAll(linePattern, key + ": " + value);
+        } else {
+            // frontmatter 末尾追加新键行（fm 不尾随换行，需补 \n 防粘行）
+            replaced = fm.endsWith("\n") ? fm + key + ": " + value : fm + "\n" + key + ": " + value;
         }
-        return m.group(1) + replaced + m.group(3)
-                + content.substring(m.end());
+        return m.group(1) + replaced + m.group(3) + content.substring(m.end());
     }
 
     @Override
     public boolean existsOn(String userId, String type, LocalDate created, String title) {
-        String path = LEARN_DIR + type + "/" + created.format(DIR_DATE) + "_" + fileStem(title) + ".md";
+        String path = LEARN_DIR + type + "/" + created.format(DIR_DATE) + "_" + LearnCard.fileStem(title) + ".md";
         return fileStorage.exists(userId, path);
     }
 
@@ -177,24 +454,10 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     // ── md 渲染/解析（与 CardFileRepository 单行化口径一致，保证写读对称）──
 
-    /** 文件名：标题清洗为文件安全片段，同日同标题即同文件（幂等冲突检查）。 */
-    static String fileStem(String title) {
-        if (title == null || title.isBlank()) return "untitled";
-        String cleaned = title
-                .replace("\n", " ").replace("\r", " ")
-                .replaceAll("[\\\\/:*?\"<>|#]", "-")
-                .replaceAll("\\s+", " ").strip();
-        // 防路径逃逸：. 与 - 打头、连续横线收敛、纯横线/纯点归一 untitled
-        cleaned = cleaned.replaceAll("^-+", "").replaceAll("^[.]+", "")
-                .replaceAll("-{2,}", "-").strip();
-        if (cleaned.isBlank() || cleaned.matches("[-.]+")) return "untitled";
-        return cleaned.length() > MAX_TITLE_FILE_LEN
-                ? cleaned.substring(0, MAX_TITLE_FILE_LEN) : cleaned;
-    }
-
+    /** 文件名：标题清洗为文件安全片段（实现上移 domain LearnCard.fileStem，P1-learn1 复用同口径）。 */
     private String filePath(LearnCard card) {
         String date = card.created().format(DIR_DATE);
-        return LEARN_DIR + card.type() + "/" + date + "_" + fileStem(card.title()) + ".md";
+        return LEARN_DIR + card.type() + "/" + date + "_" + LearnCard.fileStem(card.title()) + ".md";
     }
 
     private static String singleLine(String text) {
@@ -202,7 +465,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return text.replace("\n", " ").replace("\r", " ").replaceAll(" +", " ").strip();
     }
 
-    /** 渲染 md：frontmatter 扁平字段 + RFC 3.4 正文四段。 */
+    /** 渲染 md（新建卡）：frontmatter 扁平字段 + RFC 3.4 正文四段（V1 模板四段空段补齐）。 */
     static String toMarkdown(LearnCard card) {
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
@@ -215,7 +478,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
         sb.append("created: ").append(card.created()).append("\n");
         sb.append("status: ").append(card.status()).append("\n");
         sb.append("trade_related: ").append(card.tradeRelated()).append("\n");
-        sb.append("trade_note: ").append(singleLine(card.tradeNote())).append("\n");
+        if (card.tradeNote() != null && !card.tradeNote().isBlank()) {
+            sb.append("trade_note: ").append(singleLine(card.tradeNote())).append("\n");
+        }
         sb.append("tags: [").append(String.join(", ", card.tags())).append("]\n");
         sb.append("---\n\n");
         sb.append("## 核心观点\n").append(card.coreView() == null || card.coreView().isBlank() ? "" : card.coreView()).append("\n\n");
@@ -268,7 +533,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 parseTags(fields.getOrDefault("tags", "")),
                 sections.getOrDefault("核心观点", "").strip(),
                 keyPoints, questions,
-                sections.getOrDefault("复述", "").strip());
+                sections.getOrDefault("复述", "").strip(),
+                parseDate(fields.get("review_at")),
+                parseDate(fields.get("reminded_at")));
     }
 
     private static Map<String, String> parseFrontmatter(String frontmatter) {

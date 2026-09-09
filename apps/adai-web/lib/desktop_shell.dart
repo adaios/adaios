@@ -126,6 +126,10 @@ class _DesktopShellState extends State<DesktopShell> {
     if (entry.plugin == 'trading') {
       return TradingPage(api: _api, currentPage: _currentLabel);
     }
+    if (entry.plugin == 'learn') {
+      // P2-learn5（2026-09-07）：反哺候选按钮需 trading 插件态（learn 开 + trading 关不可达）
+      return LearnPage(api: _api, tradingEnabled: _plugins.contains('trading'));
+    }
     return entry.pageBuilder(_api);
   }
 

@@ -1,5 +1,6 @@
 package com.adaiadai.core.infrastructure.storage;
 
+import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnTradingCandidate;
 import com.adaiadai.core.domain.learn.LearnTradingCandidateRepository;
@@ -59,6 +60,11 @@ public class LearnTradingCandidateFileRepository implements LearnTradingCandidat
             if (fileStorage.exists(userId, path)) {
                 throw new LearnException("已有同名的反哺候选《" + candidate.title() + "》，请先查看/删除已有候选");
             }
+            Optional<LearnTradingCandidate> dup = findByTitleQuiet(userId, candidate.title());
+            if (dup.isPresent()) {
+                throw new LearnException("已有同名的反哺候选《" + candidate.title() + "》（创建于 "
+                        + dup.get().created() + "），同标题请先查看/删除已有候选");
+            }
             fileStorage.write(userId, path, toMarkdown(candidate));
             log.info("learn → trading 反哺候选已落盘 | userId={} | title={} | learnCard={}",
                     userId, candidate.title(), candidate.learnCardId());
@@ -68,9 +74,23 @@ public class LearnTradingCandidateFileRepository implements LearnTradingCandidat
     @Override
     public Optional<LearnTradingCandidate> find(String userId, String title) {
         if (title == null || title.isBlank()) return Optional.empty();
+        List<LearnTradingCandidate> matched = list(userId).stream()
+                .filter(c -> title.equals(c.title()))
+                .toList();
+        if (matched.size() > 1) {
+            String dates = matched.stream()
+                    .map(c -> c.created().toString()).sorted()
+                    .reduce((a, b) -> a + " / " + b).orElse("");
+            throw new LearnException("候选《" + title + "》存在 " + matched.size() + " 条同名（创建于 "
+                    + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
+        }
+        return matched.isEmpty() ? Optional.empty() : Optional.of(matched.get(0));
+    }
+
+    private Optional<LearnTradingCandidate> findByTitleQuiet(String userId, String title) {
         return list(userId).stream()
                 .filter(c -> title.equals(c.title()))
-                .findFirst();
+                .max(Comparator.comparing(LearnTradingCandidate::created));
     }
 
     @Override
@@ -93,26 +113,28 @@ public class LearnTradingCandidateFileRepository implements LearnTradingCandidat
     public void delete(String userId, String title) {
         if (title == null || title.isBlank()) return;
         synchronized (lockFor(userId)) {
-            // 标题定位候选（日期前缀未知 → 扫描匹配，与 LearnCardFileRepository.find 同思路）
-            String target = null;
-            for (String f : fileStorage.listFiles(userId, CANDIDATE_DIR)) {
-                if (!f.endsWith(".md")) continue;
-                String content = fileStorage.read(userId, f);
-                LearnTradingCandidate c = content == null ? null : parse(content);
-                if (c != null && title.equals(c.title())) {
-                    target = f;
-                    break;
-                }
+            // 唯一语义：同名多张 → 歧义 400（禁止删错对象，P1-learn4 修复 2026-09-07）
+            List<LearnTradingCandidate> matched = list(userId).stream()
+                    .filter(c -> title.equals(c.title()))
+                    .toList();
+            if (matched.isEmpty()) return; // 幂等
+            if (matched.size() > 1) {
+                String dates = matched.stream()
+                        .map(c -> c.created().toString()).sorted()
+                        .reduce((a, b) -> a + " / " + b).orElse("");
+                throw new LearnException("候选《" + title + "》存在 " + matched.size() + " 条同名（创建于 "
+                        + dates + "），无法确定删除对象——请人工合并文件后再删除");
             }
-            if (target != null) {
-                fileStorage.delete(userId, target);
-                log.info("learn → trading 反哺候选已删除 | userId={} | title={}", userId, title);
-            }
+            LearnTradingCandidate target = matched.get(0);
+            fileStorage.delete(userId, CANDIDATE_DIR
+                    + target.created().format(DIR_DATE) + "_" + LearnCard.fileStem(target.title()) + ".md");
+            log.info("learn → trading 反哺候选已删除 | userId={} | title={} | created={}",
+                    userId, title, target.created());
         }
     }
 
     private String filePath(LearnTradingCandidate candidate) {
-        return CANDIDATE_DIR + candidate.created().format(DIR_DATE) + "_" + LearnCardFileRepository.fileStem(candidate.title()) + ".md";
+        return CANDIDATE_DIR + candidate.created().format(DIR_DATE) + "_" + LearnCard.fileStem(candidate.title()) + ".md";
     }
 
     private static String singleLine(String text) {

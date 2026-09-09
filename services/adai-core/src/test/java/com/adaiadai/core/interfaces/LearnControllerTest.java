@@ -41,6 +41,8 @@ class LearnControllerTest {
 
     private final LearnDigestAppService digestService = mock(LearnDigestAppService.class);
     private final LearnCandidateAppService candidateService = mock(LearnCandidateAppService.class);
+    private final com.adaiadai.core.application.LearnReviewPushService reviewPushService =
+            mock(com.adaiadai.core.application.LearnReviewPushService.class);
     private final PluginService pluginService = mock(PluginService.class);
     private final ObjectMapper om = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -51,7 +53,7 @@ class LearnControllerTest {
                 java.util.Arrays.asList(plugins).contains(PluginRegistry.PLUGIN_LEARN));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, pluginService))
+        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, reviewPushService, pluginService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))

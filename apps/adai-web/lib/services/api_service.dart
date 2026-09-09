@@ -1206,6 +1206,27 @@ class ApiService {
     _check(resp);
   }
 
+  /// 复习提醒开关读（S-learn2 2026-09-07）：GET /learn/push-settings → {"learn-review": bool}。
+  Future<bool> getLearnReviewEnabled() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/push-settings'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (json['learn-review'] as bool?) ?? true;
+  }
+
+  /// 复习提醒开关写（S-learn2）：PUT /learn/push-settings/learn-review，body {"enabled": bool}。
+  Future<void> setLearnReviewEnabled(bool enabled) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/learn/push-settings/learn-review'),
+      headers: _headers,
+      body: jsonEncode({'enabled': enabled}),
+    );
+    _check(resp);
+  }
+
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     // 多账号：所有请求带当前用户（后端 FileStorage 按 userId 隔离）；

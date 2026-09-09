@@ -3,9 +3,9 @@ title: 后端代码审查检查清单
 description: backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
 version: 1
 created: 2026-08-15
-updated: 2026-08-17
+updated: 2026-09-07
 status: active
-lines: 109
+lines: 112
 depends-on: []
 related: [../roles/backend-reviewer.md]
 tags: [review, checklist, backend]
@@ -107,3 +107,6 @@ tags: [review, checklist, backend]
 | B59 | 批量任务 per-user 异常隔离：单用户抛错不得中断整批处理 | RecordRetryService 单用户中断整批（走查 8 官批 2，2026-08-17）|
 | B60 | 持仓元信息更新（PUT /positions）等 RMW 写路径必须进同文件锁（tradeLock）| updatePositionMeta 未进锁（走查 8 官批 2，2026-08-17）|
 | B61 | 现金/账目读取全量收敛单一真源：新增占比/快照/建议读取点必须走 AccountSnapshot，禁止再读 positions.md cashBalance | S5 现金单一真源（走查 8 官战略，2026-08-17）|
+| B62 | 业务键定位的变更/详情端点必须消歧或拒绝：键含可变段（如跨日可重名的 type+title）时，find 不得静默取倒序最新——旧记录上操作必须能寻址（日期透传/全跨日唯一），歧义返回 400 人话 | learn 跨日同名卡 title-only 寻址改错卡（learn V2 审 P1-learn2，2026-09-07）|
+| B63 | Feed 门控放宽必须条目类型级：插件 OR 门控只放行属于该插件域的类型（纯 learn 用户只见 learn-review，不见残留交易 push），禁止类型开关外再按用户插件粗放过滤 | learn V2 Feed 门控非类型级（learn V2 审 P2-learn3，2026-09-07）|
+| B64 | 整文件重写端点必须声明未知段保留策略并配 round-trip 测试：模板重写只可动受管字段，手工未知段/未知 frontmatter 键不得被抹 | learn update 重写丢手工段（learn V2 审 P2-learn7，2026-09-07）|

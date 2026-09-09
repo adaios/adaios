@@ -10,8 +10,11 @@ import '../widgets/page_header.dart';
 /// 空态/加载失败降级（保活页 IndexedStack 下 initState 只拉一次 → 补刷新入口）。
 class LearnPage extends StatefulWidget {
   final ApiService api;
+  /// 是否启用 trading 插件（反哺候选入口二次门控，P2-learn5 2026-09-07：
+  /// learn 开 + trading 关时旧 trading 卡仍可达候选创建 → 壳层把插件态传进来）。
+  final bool tradingEnabled;
 
-  const LearnPage({super.key, required this.api});
+  const LearnPage({super.key, required this.api, this.tradingEnabled = true});
 
   @override
   State<LearnPage> createState() => _LearnPageState();
@@ -23,6 +26,7 @@ class _LearnPageState extends State<LearnPage> {
   String? _error;
   String? _selectedGroup; // 'ai' | 'trading' | 'other'
   int _selectedIndex = -1;
+  bool _busy = false; // 写操作 in-flight 守卫（P2-learn10：双击双提交/双 snack）
 
   @override
   void initState() {
@@ -77,6 +81,18 @@ class _LearnPageState extends State<LearnPage> {
         title: '学习',
         subtitle: '消化沉淀的知识卡片',
         actions: [
+          IconButton(
+            onPressed: () => _openCandidatesDialog(),
+            icon: const Icon(Icons.inbox_outlined, size: 16),
+            color: AppColors.darkGrey4,
+            tooltip: '反哺候选（交易规则建议，审核后融合）',
+          ),
+          IconButton(
+            onPressed: () => _openReviewSettingDialog(),
+            icon: const Icon(Icons.notifications_outlined, size: 16),
+            color: AppColors.darkGrey4,
+            tooltip: '复习提醒开关',
+          ),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh, size: 16),
@@ -289,8 +305,25 @@ class _LearnPageState extends State<LearnPage> {
       buttons.add(_actionChip('标记完成', Icons.check_circle_outline, () => _changeStatus(tree, card, 'done')));
     }
     buttons.add(_actionChip('写复述', Icons.edit_outlined, () => _openRetellDialog(tree, card)));
-    if (card.type == 'trading' && card.tradeRelated && card.status != 'done') {
-      buttons.add(_actionChip('反哺候选', Icons.rocket_launch_outlined, () => _createCandidate(tree, card)));
+    if (card.type == 'trading' && widget.tradingEnabled) {
+      if (card.tradeRelated && card.status != 'done') {
+        buttons.add(_actionChip('反哺候选', Icons.rocket_launch_outlined, () => _createCandidate(tree, card)));
+      } else {
+        // P2-learn4：不可反哺要给原因，不能静默无按钮（用户不知道为何不能反哺）
+        final why = card.status == 'done'
+            ? '已完成消化，如需反哺请先「再看一遍」转回复习中'
+            : '未标注涉及可执行交易规则，暂不能反哺候选';
+        buttons.add(Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Tooltip(
+            message: why,
+            child: Opacity(
+              opacity: 0.55,
+              child: _actionChip('反哺候选（不可用）', Icons.rocket_launch_outlined, () {}),
+            ),
+          ),
+        ));
+      }
     }
     return buttons;
   }
@@ -321,26 +354,34 @@ class _LearnPageState extends State<LearnPage> {
   // ── V2 操作 ──
 
   Future<void> _changeStatus(LearnTreeResponse tree, LearnCardDto card, String target) async {
+    if (_busy) return; // P2-learn10 双击守卫
+    setState(() => _busy = true);
     try {
       final updated = await widget.api.updateLearnStatus(
           type: card.type, title: card.title, status: target);
       if (!mounted) return;
       _replaceCard(tree, updated);
       _showSnack('已标记「${_statusLabel(target)}」');
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      _showSnack('操作失败，请重试');
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3：透出后端人话
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _createCandidate(LearnTreeResponse tree, LearnCardDto card) async {
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
       await widget.api.createLearnCandidate(type: card.type, title: card.title);
       if (!mounted) return;
-      _showSnack('已生成规则候选（data/trading/candidates/），在交易知识库工作流审核后融合');
+      _showSnack('已生成规则候选——点页面右上「收件箱」图标可查看/删除，审核后融合进交易规则');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('反哺失败：${_human(e)}');
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -378,19 +419,25 @@ class _LearnPageState extends State<LearnPage> {
     );
     if (saved != true || !mounted) return;
     final retell = controller.text.trim();
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
       final updated = await widget.api.editLearnCard(
           type: card.type, title: card.title, retell: retell);
       if (!mounted) return;
       _replaceCard(tree, updated);
       _showSnack(retell.isEmpty ? '复述已清空' : '复述已保存');
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      _showSnack('保存失败，请重试');
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   /// 用后端返回的更新后卡片替换树中同 type+title 的卡片（就地刷新，不整树重拉）。
+  /// P2-learn9（2026-09-07）：更新请求在途时用户改点了同组另一张卡 → 响应到达不得把
+  /// 选中强制拉回刚更新的卡（浏览被打断）——仅当当前选中仍是「这张被更新的卡」才回写 index。
   void _replaceCard(LearnTreeResponse tree, LearnCardDto updated) {
     setState(() {
       for (var gi = 0; gi < tree.groups.length; gi++) {
@@ -398,10 +445,15 @@ class _LearnPageState extends State<LearnPage> {
         if (cards.isEmpty) continue;
         for (var i = 0; i < cards.length; i++) {
           if (cards[i].title == updated.title && cards[i].type == updated.type) {
-            // tree.groups 是 getter——直接改原 List 需按组定位
             final list = label.contains('AI') ? tree.ai : (label.contains('交易') ? tree.trading : tree.other);
             if (i < list.length) list[i] = updated;
-            if (_selectedGroup == label) _selectedIndex = i;
+            // 仅当用户此刻仍选中该卡才保持/回写选中位置；已改点别处则不动
+            if (_selectedGroup == label && _selectedIndex >= 0 && _selectedIndex < cards.length) {
+              final cur = cards[_selectedIndex];
+              if (cur.title == updated.title && cur.type == updated.type) {
+                _selectedIndex = i;
+              }
+            }
             return;
           }
         }
@@ -410,7 +462,141 @@ class _LearnPageState extends State<LearnPage> {
     });
   }
 
+  /// 反哺候选管理（P2-learn4 前端死路修复 2026-09-07）：列表 + 删除确认。
+  /// 此前 getLearnCandidates/deleteLearnCandidate 零调用——误建候选无查看/删除入口。
+  Future<void> _openCandidatesDialog() async {
+    final List<LearnTradingCandidateDto> items;
+    try {
+      items = await widget.api.getLearnCandidates();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(extractApiErrorMessage(e));
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('反哺候选（待审核）',
+            style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 520,
+          height: 380,
+          child: items.isEmpty
+              ? const Center(
+                  child: Text('还没有反哺候选\n在交易类学习卡片上点「反哺候选」生成建议卡',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, height: 1.8, color: AppColors.darkGrey5)))
+              : ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.darkBorder),
+                  itemBuilder: (_, i) {
+                    final c = items[i];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(c.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1)),
+                      subtitle: Text('${c.created} · ${c.coreView.isNotEmpty ? c.coreView : "（无核心观点）"}',
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.darkRed),
+                        tooltip: '删除候选',
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: ctx,
+                            builder: (c2) => AlertDialog(
+                              backgroundColor: AppColors.darkSurface2,
+                              title: Text('删除候选《${c.title}》？',
+                                  style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+                              content: const Text('仅删除这条建议卡，源学习卡片不受影响。',
+                                  style: TextStyle(fontSize: 12.5, color: AppColors.darkGrey5)),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(c2, false), child: const Text('取消')),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(backgroundColor: AppColors.darkRed),
+                                  onPressed: () => Navigator.pop(c2, true),
+                                  child: const Text('删除'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok != true || !ctx.mounted) return;
+                          try {
+                            await widget.api.deleteLearnCandidate(c.title);
+                            if (!ctx.mounted) return;
+                            _showSnack('已删除候选《${c.title}》');
+                            _openCandidatesDialog(); // 刷新列表
+                          } catch (e) {
+                            if (!ctx.mounted) return;
+                            _showSnack(extractApiErrorMessage(e));
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  /// 复习提醒开关（S-learn2 2026-09-07）：纯 learn 用户可自关——不再只藏在交易设置页。
+  Future<void> _openReviewSettingDialog() async {
+    final bool enabled;
+    try {
+      enabled = await widget.api.getLearnReviewEnabled();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(extractApiErrorMessage(e));
+      return;
+    }
+    if (!mounted) return;
+    var current = enabled;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('复习提醒',
+            style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('进入复习队列满 7 天还没完成的卡片，阿呆每晚 20:00 汇总提醒你一次（同卡 7 天内不重复推）。',
+              style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.darkGrey5)),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(current ? '开启（每晚 20:00 提醒）' : '关闭（不再提醒复习）',
+                style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
+            value: current,
+            onChanged: (v) async {
+              try {
+                await widget.api.setLearnReviewEnabled(v);
+                setDlg(() => current = v);
+              } catch (e) {
+                if (!ctx.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                  content: Text(extractApiErrorMessage(e), style: const TextStyle(fontSize: 13)),
+                  backgroundColor: AppColors.darkSurface2,
+                ));
+              }
+            },
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      )),
+    );
+  }
+
   void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).clearSnackBars(); // P2-learn10：连点不堆积
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: const TextStyle(fontSize: 13)),
       duration: const Duration(seconds: 3),
@@ -424,11 +610,6 @@ class _LearnPageState extends State<LearnPage> {
         _ => '待复习',
       };
 
-  String _human(Object e) {
-    final s = e.toString();
-    if (s.contains('Exception:')) return s.split('Exception:').last.trim();
-    return s;
-  }
 
   Widget _typeTag(String type) {
     final (text, color) = switch (type) {

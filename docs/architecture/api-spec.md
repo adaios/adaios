@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.51 | 最后更新：2026-09-07**
+**文档版本：v3.53 | 最后更新：2026-09-07**
 
 ---
 
@@ -10,6 +10,8 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-07 | v3.53 | **learn V2 审查修复批（2026-09-07 learn V2 增量深审 S-learn1/2 + P1-learn1~4 + P2-learn2~8 出表，用户拍板）**：①**状态流转约束**：只允许 new→review→done 与回退 review→new / done→review（跳变 new→done、done→new → 400）；进入 review 时卡片写 `review_at`（服务器日期，S-learn1 计时起点）——复习提醒按「进入复习队列满 7 天」提醒（不再按消化日 created 误判），同卡 7 天内不重复推（`reminded_at` 节流）；②**跨日同名拒绝**：`POST /learn/cards` 与候选生成改为「同 type + 同 title 任意日期已存在 → 400」（跨日同名曾致标题寻址歧义改错卡）；多张同名残留读侧抛 400 列日期；③**learn_card_id 回链精确化**：= learn 源卡真实文件路径（清洗后 title），不再 raw title 拼接；④**复习提醒开关 learn 侧可达**：新增 `GET /learn/push-settings`（返回 `{"learn-review":bool}`）+ `PUT /learn/push-settings/learn-review`（body `{"enabled"}`）——纯 learn 用户（无 trading 插件）也能自关，不再只藏交易设置页；⑤**编辑并发/保真**：编辑 merge 移入仓储锁内原子完成（并发 PATCH 不丢更新），写盘保留手工未知 frontmatter 键/正文段；⑥**Feed 类型级门控**：learn-review push 条目只需 learn 插件、交易类 push 条目需 trading 插件（防跨域漏给纯 learn/纯 trading 用户）；learn-review 条目 tags/domain 不再标「行情」 |
+| 2026-09-07 | v3.52 | **复盘生成改提交式（复盘超时修复批，用户实测「点击复盘没反应」）**：`POST /trading/review` 不再同步阻塞等 AI（生成实测 77~176s，远超 App 15s/Web 120s 客户端超时——原实现前端必先断，「点击没反应」而复盘实际已在后端生成落盘）。改为**提交即返回 + 后台执行器生成 + 同日去重**：响应改 `{"date","status"}`——`exists`（已有复盘不重跑，前端 GET 即展示）/ `running`（同 user+date 正在生成中，连点只跑一次）/ `pending`（已受理，后台生成中）；生成失败只记日志不落半成品。前端轮询 `GET /trading/review?date=`（404=未就绪，200=内容）。**口径（2026-09-07 用户拍板）：交易写聊天记录仅限当日成交**——历史成交导入/补录/回放等非当日批量回填不再写 `domain=trading` 时间线记录（防逐笔刷 Feed；复盘卡点早已改「当日真实成交」口径，不依赖记录关键词） |
 | 2026-09-07 | v3.51 | **learn V2 消化闭环批 4（复习提醒推送）**：新增每晚 20:00 定时推送（LearnReviewPushService）——遍历启用 learn 插件的用户，聚合「进入 review 已满 7 天仍未 done」的卡片推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/外部渠道）；推送类型 `learn-review` 加入 PushSettings.ALL_TYPES（`GET/PUT /trading/push-settings` 可开关，默认开）；Feed push 条目注入门控由 trading-only 放宽为 **trading 或 learn**（纯 learn 用户也能在 Feed 看到复习提醒；market 行情条仍 trading-only） |
 | 2026-09-07 | v3.50 | **learn V2 消化闭环批 3（trading 候选联动，RFC 20260829 3.5③）**：新增 `POST /learn/cards/candidate`（body `{"type":"trading","title"}` → 把 trade_related=true 的 trading learn 卡片反哺成规则候选——提炼建议卡落 `data/{userId}/trading/candidates/{date}_{title}.md`，含 `learn_card_id` 回链 learn 源卡；非 trading / 卡片不存在 / 未标 trade_related → 400 人话（审核闸前置防语义漂移））+ `GET /learn/cards/candidates`（候选列表，created 倒序，用户审核用）+ `DELETE /learn/cards/candidates`（?title= 删除，幂等）；候选只存建议不复制整卡（跨域无双写），不自动入库——需在交易知识库工作流审核后融合归正式目录（同复盘 promote 哲学） |
 | 2026-09-07 | v3.49 | **learn V2 消化闭环第一批（复习流转 + 编辑，RFC 20260829）**：新增 `PATCH /learn/cards/status`（复习状态流转 new→review→done：body `{"type","title","status"}` → 原地改 frontmatter status 返回更新后卡片，正文/手写复述段原样保留）+ `PATCH /learn/cards`（编辑卡片正文：`?type=&title=` 定位，body 部分字段补丁 `{"coreView"?,"keyPoints"?,"questions"?,"retell"?,"tradeRelated"?,"tradeNote"?,"tags"?}`，缺省字段保留原值，type/title/created 不可改（改=移动文件拒绝））；LearnCard 新增 `retell` 字段（复述段建模——24h 内自己写 100-200 字消化关键，V1 漏建模仅空段，V2 读写对称 + 可编辑） |
@@ -1063,6 +1065,11 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `data/trading/reviews/YYYY-MM-DD_review.md`。需 trading 插件（403，W-P2-14 2026-08-17 补门控契约）。
 
+> **2026-09-07 v3.52 提交式改造**：AI 生成实测 77~176s，远超客户端超时（App 15s / Web 120s）——原同步等待必然前端先断、「点击没反应」而复盘实际已生成。现改为**提交即返回 + 后台生成 + 同日去重**：
+> - `status=exists`：该日期复盘已存在（不重复生成烧 AI），前端直接 `GET` 展示；
+> - `status=running`：同 user+date 正在生成中（连点/双端并发只跑一次 AI），继续轮询 `GET`；
+> - `status=pending`：已受理，后台执行器生成中，轮询 `GET /trading/review?date=` 直到 200（404=未就绪）；生成失败只记日志、不落半成品，前端轮询超时（4 分钟）提示稍后重试。
+
 **Query Parameters**
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -1074,12 +1081,14 @@ AI 基于当日交易记录 + 持仓变化生成复盘笔记，输出写入 `dat
 ```json
 {
   "date": "2026-07-25",
-  "content": "## 2026-07-25 交易复盘\n\n### 1. 今日交易执行情况\n..."
+  "status": "pending"
 }
 ```
 
 ### `GET /api/v1/trading/review` — 查询复盘笔记
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
+
+**Response** `200` 复盘正文 `{"date","content"}`；**未生成/生成中 → 404**（2026-09-07 起前端以 404 表示「复盘未就绪」，配合 POST 提交式轮询）。
 
 ### `GET /api/v1/trading/reviews` — 列出所有复盘日期
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
@@ -1971,6 +1980,8 @@ chat 模式（全屏）
 > **L2（2026-09-07）问答注入**：新增 `LearnKnowledgeSource`（kernel 知识源，name=learn → PluginRegistry 映射 learn 插件门控）——ContextEngine 按用户 enabledPlugins 注入最近学习笔记（`## 你最近的学习笔记`，标题+type+核心观点，上限 5 篇；无卡片不注入；损坏文件/_raw 跳过；globalContext 注入 + enrich 空防双份）——你问「上次讲 RAG 那篇说了啥」时阿呆能引用自己消化过的卡片作答（RFC 3.7 ③ 价值呈现）。
 >
 > **V2 消化闭环第一批（2026-09-07 复习流转 + 编辑）**：卡片 `status` 从 V1 固定 new 变为可流转 new→review→done（PATCH 端点）；正文编辑支撑（复述段建模 retell + PATCH 编辑端点）——「对话流让阿呆改」的后端能力就绪（前端对话流接线随 UI 批）。
+>
+> **V2 审查修复批（2026-09-07，learn V2 增量深审 v3.53）**：流转只允许相邻（new↔review、review→done、done→review，跳变 400）；进入 review 写 `review_at`（提醒计时起点）+ `reminded_at` 节流；同 type+title **任意日期**同名拒绝（跨日同名歧义根治）；learn_card_id = 源卡真实路径（清洗后标题）；复习提醒开关 learn 侧可达（GET/PUT `/learn/push-settings[/learn-review]`，纯 learn 用户可自关）；Feed 类型级门控。
 
 ### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（v3.48）
 
@@ -2003,11 +2014,13 @@ chat 模式（全屏）
   "coreView": "回调到一半才是买点，几何口径 (high+low)/2",
   "keyPoints": ["02:31 回调一半=(high+low)/2"],
   "questions": ["它与课程口径一致吗？"],
-  "retell": ""
+  "retell": "",
+  "reviewAt": null,
+  "remindedAt": null
 }
 ```
 
-- `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同日同 type 同 title 已存在**（防覆盖）、AI 消化失败（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
+- `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、AI 消化失败（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
 - `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/cards` — 卡片列表（v3.48）
@@ -2037,9 +2050,9 @@ chat 模式（全屏）
 | `title` | String | ✅ | 卡片标题（精确匹配） |
 | `status` | String | ✅ | new/review/done |
 
-**Response** `200` 更新后的 LearnCard（仅 frontmatter status 变更，正文与手写「复述」段原样保留）。
+**Response** `200` 更新后的 LearnCard（仅 frontmatter status 变更，正文与手写「复述」段原样保留）。进入 review（含 done→review 重进）时卡片附 `reviewAt`（= 当次进入日，S-learn1 复习提醒计时起点）；离开 review（→new/done）时 `reviewAt`/`remindedAt` 清空。
 
-- `400`：type/status 非法、卡片不存在（人话「卡片不存在：type/title」）
+- `400`：type/status 非法、**流转不被允许（v3.53：仅 new↔review、review→done、done→review；new→done、done→new 跳变拒绝）**、卡片不存在（人话「卡片不存在：type/title」）
 - `403`：learn 插件未启用
 
 ### `PATCH /api/v1/learn/cards` — 编辑卡片正文（v3.49）
@@ -2068,6 +2081,23 @@ chat 模式（全屏）
 - `400`：type 非法、卡片不存在、编辑内容为空
 - `403`：learn 插件未启用
 
+### `GET /api/v1/learn/push-settings` — 复习提醒开关读（v3.53，S-learn2）
+
+learn 插件门控。返回 learn 域推送开关：`{"learn-review": true}`（缺失默认开）。
+
+- `403`：learn 插件未启用
+
+### `PUT /api/v1/learn/push-settings/learn-review` — 复习提醒开关写（v3.53，S-learn2）
+
+**Body**：`{"enabled": true|false}`
+
+**Response** `200` 更新后 `{"learn-review": bool}`。
+
+- `400`：开关值缺失
+- `403`：learn 插件未启用
+
+> **归属说明（2026-09-07 审查 S-learn2 拍板）**：learn-review 开关同时保留在 `GET/PUT /trading/push-settings`（交易用户双入口同键同文件）；learn 侧端点让**纯 learn 用户（无 trading 插件）也能自关**——此前入口全在交易设置页，纯 learn 用户「可关」落空。
+
 ### `POST /api/v1/learn/cards/candidate` — trading 卡片反哺成规则候选（v3.50）
 
 **Body**
@@ -2094,7 +2124,7 @@ chat 模式（全屏）
 
 候选落 `data/{userId}/trading/candidates/`（只存提炼建议 + learn_card_id 回链，不复制整卡），**不自动入库**——需在交易知识库工作流（os/trading-engine）审核后融合归正式目录并重建 knowledge/context（规则改动守人工审核闸）。
 
-- `400`：type 非 trading（人话）、卡片不存在、**卡片未标 trade_related**（先确认内容再反哺）、同日同名候选已存在
+- `400`：type 非 trading（人话）、卡片不存在、**卡片未标 trade_related**（先确认内容再反哺）、同名候选已存在（任意日期，v3.53；列表/删除同名歧义时 400 列 created 日期）
 - `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/cards/candidates` — 候选列表（v3.50）

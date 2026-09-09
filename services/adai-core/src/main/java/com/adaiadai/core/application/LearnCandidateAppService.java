@@ -57,8 +57,9 @@ public class LearnCandidateAppService {
         if (!card.tradeRelated()) {
             throw new LearnException("该卡片未标注涉及可执行交易规则（trade_related=false），先让阿呆补标或确认内容后再反哺");
         }
-        // learn_card_id 回链 = learn 卡片文件相对路径（data/{userId}/ 下）
-        String learnCardId = "learn/" + type + "/" + card.created() + "_" + title;
+        // learn_card_id 回链 = learn 卡片文件真实相对路径（data/{userId}/ 下）——文件名是
+        // fileStem 清洗后的标题，raw title 拼接会指向不存在的路径（P1-learn1 修复 2026-09-07）。
+        String learnCardId = "learn/" + type + "/" + card.created() + "_" + LearnCard.fileStem(card.title()) + ".md";
         LearnTradingCandidate candidate = new LearnTradingCandidate(
                 card.title(),
                 learnCardId,

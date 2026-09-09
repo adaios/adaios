@@ -149,13 +149,16 @@ public class FeedAppService {
                 allEntries.addAll(buildMarketEntries());
             }
         }
-        // push 条目注入门控 = trading **或 learn**（learn V2 批 4 2026-09-07：learn-review 复习提醒
-        // 对纯 learn 用户也要可见——不再只随 trading 插件；market 行情条保持 trading-only 如上）。
-        if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)
-                || pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN)) {
+        // push 条目注入：类型级门控（P2-learn3 修复 2026-09-07）——learn-review 复习提醒只需
+        // learn 插件；其余交易类 push 条目仍需 trading 插件（门控放宽不能把残留交易 push 漏给
+        // 纯 learn 用户，也不能把 learn-review 漏给纯 trading 用户）。事件类型（MarketPushEvent.type）
+        // 在 toPushEntry 映射为 FeedEntry.type="push" 后不可见，故在事件层过滤。
+        boolean hasTradingPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING);
+        boolean hasLearnPlugin = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN);
+        if (hasTradingPlugin || hasLearnPlugin) {
             // RFC 20260817：用户关闭某 push 类型 → 该类型不注入（读侧门控）
             var pushSettings = pushSettingsRepository.findByUser(userId);
-            allEntries.addAll(buildPushEntries(userId, queryDate).stream()
+            allEntries.addAll(buildPushEntries(userId, queryDate, hasTradingPlugin, hasLearnPlugin).stream()
                     .filter(e -> pushSettings.isEnabled(e.type()))
                     .toList());
         }
@@ -421,9 +424,15 @@ public class FeedAppService {
      * {@code data/{userId}/trading/pushes/{date}.json}，这里按日读取注入 type=push 条目。
      * RFC 20260825 §7：过滤已过期条目（行情类当天收盘消失、汇总类次日 23:59）——推送定时消失，无需手动删。
      */
-    private List<FeedEntry> buildPushEntries(String userId, LocalDate date) {
+    private List<FeedEntry> buildPushEntries(String userId, LocalDate date,
+                                            boolean hasTradingPlugin, boolean hasLearnPlugin) {
         return pushRepository.findByDate(userId, date).stream()
                 .filter(p -> !MarketPushRepository.isExpired(p, date))
+                // P2-learn3（2026-09-07）：push 事件类型级插件可见性——learn-review 属 learn 域
+                // （需 learn 插件），其余交易类事件需 trading 插件。在事件层判定（FeedEntry.type
+                // 恒为 "push"，映射后原始类型不可见）。market 行情条（非 push 事件）保持 trading-only。
+                .filter(p -> p.type() != null && "learn-review".equals(p.type())
+                        ? hasLearnPlugin : hasTradingPlugin)
                 .map(p -> toPushEntry(p, date))
                 .toList();
     }
@@ -442,12 +451,17 @@ public class FeedAppService {
                     case "near-stop-loss" -> "接近止损";
                     case "loss" -> "单日大跌提醒";
                     case "gain" -> "放飞提示";
+                    case "learn-review" -> "学习复习提醒";
                     default -> "行情提醒";
                 };
+        // P2-learn2（2026-09-07）：learn-review 复习提醒不得标成「行情卡」（tags/domain 按类型派生）
+        boolean learnReview = "learn-review".equals(p.type());
         return new FeedEntry(
                 "push", p.id(), null,
-                title, p.message(), List.of("行情"),
-                p.time(), null, null, null, "trading",
+                title, p.message(),
+                learnReview ? List.of("学习") : List.of("行情"),
+                p.time(), null, null, null,
+                learnReview ? "learn" : "trading",
                 date.format(DATE_FMT), null,
                 date.atTime(java.time.LocalTime.now()).toString() // P1-5：推送时间戳（当日）
         );

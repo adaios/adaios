@@ -264,5 +264,109 @@ void main() {
       await pump(tester, api);
       expect(find.text('反哺候选'), findsNothing);
     });
+
+    testWidgets('P2-learn5：trading 插件关闭时 trading 卡不显示可点反哺按钮', (tester) async {
+      final api = _api(tree: {
+        'trading': [
+          {
+            'type': 'trading',
+            'title': '回调一半的判定',
+            'created': '2026-09-06',
+            'status': 'new',
+            'tradeRelated': true,
+            'coreView': '回调一半才是买点',
+          }
+        ],
+      });
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: LearnPage(api: api, tradingEnabled: false)),
+      ));
+      await tester.pumpAndSettle();
+      // trading 关闭：反哺候选入口整体隐藏（门控 P2-learn5，不可达即不出现）
+      expect(find.text('反哺候选'), findsNothing);
+      expect(find.text('反哺候选（不可用）'), findsNothing);
+    });
+
+    testWidgets('P2-learn4：页头候选入口可打开列表并删除', (tester) async {
+      var listCalled = false;
+      var deleteCalled = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({'ai': [_card('ai', 'RAG 笔记')]});
+          }
+          if (p.endsWith('/api/v1/learn/cards/candidates')) {
+            if (req.method == 'GET') {
+              listCalled = true;
+              return _json([
+                {
+                  'title': '回调一半候选',
+                  'learnCardId': 'learn/trading/2026-09-06_回调一半的判定',
+                  'sourceType': 'trading',
+                  'created': '2026-09-07',
+                  'coreView': '回调一半才是买点',
+                }
+              ]);
+            }
+            if (req.method == 'DELETE') {
+              deleteCalled = true;
+              expect(req.url.queryParameters['title'], '回调一半候选');
+              return _json({'deleted': true});
+            }
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.byTooltip('反哺候选（交易规则建议，审核后融合）'));
+      await tester.pumpAndSettle();
+      expect(listCalled, isTrue);
+      expect(find.text('回调一半候选'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.delete_outline));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(deleteCalled, isTrue, reason: '应调用 DELETE 候选');
+    });
+
+    testWidgets('S-learn2：页头复习提醒开关读取并可切换', (tester) async {
+      var putCalled = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({'ai': [_card('ai', 'RAG 笔记')]});
+          }
+          if (p.endsWith('/api/v1/learn/push-settings') && req.method == 'GET') {
+            return _json({'learn-review': true});
+          }
+          if (p.endsWith('/api/v1/learn/push-settings/learn-review') && req.method == 'PUT') {
+            putCalled = true;
+            expect(jsonDecode(req.body), {'enabled': false});
+            return _json({'learn-review': false});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.byTooltip('复习提醒开关'));
+      await tester.pumpAndSettle();
+      expect(find.text('开启（每晚 20:00 提醒）'), findsOneWidget);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(putCalled, isTrue, reason: '切换应调用 PUT /learn/push-settings/learn-review');
+    });
   });
 }

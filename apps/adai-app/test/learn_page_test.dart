@@ -124,5 +124,36 @@ void main() {
       expect(find.text('Agent 自主行动'), findsOneWidget);
       expect(find.text('存疑点一'), findsOneWidget);
     });
+
+    testWidgets('S-learn2：复习提醒铃铛可读开关并切换', (tester) async {
+      var putCalled = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({'ai': [_card('ai', 'RAG 笔记')]});
+          }
+          if (p.endsWith('/api/v1/learn/push-settings') && req.method == 'GET') {
+            return _json({'learn-review': true});
+          }
+          if (p.endsWith('/api/v1/learn/push-settings/learn-review') && req.method == 'PUT') {
+            putCalled = true;
+            return _json({'learn-review': false});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.byIcon(Icons.notifications_outlined));
+      await tester.pumpAndSettle();
+      expect(find.text('复习提醒'), findsOneWidget);
+      expect(find.text('开启中'), findsOneWidget);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(putCalled, isTrue, reason: '切换应调用 PUT /learn/push-settings/learn-review');
+    });
   });
 }

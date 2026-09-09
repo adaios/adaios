@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.LearnCandidateAppService;
 import com.adaiadai.core.application.LearnDigestAppService;
 import com.adaiadai.core.domain.learn.LearnCard;
+import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import jakarta.validation.Valid;
@@ -42,13 +43,16 @@ public class LearnController {
 
     private final LearnDigestAppService digestService;
     private final LearnCandidateAppService candidateService;
+    private final com.adaiadai.core.application.LearnReviewPushService reviewPushService;
     private final PluginService pluginService;
 
     public LearnController(LearnDigestAppService digestService,
                            LearnCandidateAppService candidateService,
+                           com.adaiadai.core.application.LearnReviewPushService reviewPushService,
                            PluginService pluginService) {
         this.digestService = digestService;
         this.candidateService = candidateService;
+        this.reviewPushService = reviewPushService;
         this.pluginService = pluginService;
     }
 
@@ -126,7 +130,7 @@ public class LearnController {
         if (body == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "编辑内容不能为空"));
         }
-        LearnDigestAppService.EditPatch patch = new LearnDigestAppService.EditPatch(
+        LearnCardPatch patch = new LearnCardPatch(
                 body.coreView(), body.keyPoints(), body.questions(), body.retell(),
                 body.tradeRelated(), body.tradeNote(), body.tags());
         return ResponseEntity.ok(digestService.edit(userId, type, title, patch));
@@ -149,6 +153,29 @@ public class LearnController {
         ResponseEntity<?> denied = requireLearnPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(candidateService.createFromCard(userId, body.type(), body.title()));
+    }
+
+    /** 复习提醒开关读（S-learn2 2026-09-07）：learn 插件用户可自关，不经 trading 门控。 */
+    @GetMapping("/push-settings")
+    public ResponseEntity<?> reviewSettings(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(Map.of("learn-review", reviewPushService.reviewEnabled(userId)));
+    }
+
+    /** 复习提醒开关写（S-learn2）：body {"enabled":false} 关闭。 */
+    @PutMapping("/push-settings/learn-review")
+    public ResponseEntity<?> updateReviewSetting(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody LearnReviewSettingRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null || body.enabled() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "开关值不能为空"));
+        }
+        reviewPushService.setReviewEnabled(userId, body.enabled());
+        return ResponseEntity.ok(Map.of("learn-review", reviewPushService.reviewEnabled(userId)));
     }
 
     /** 候选列表（V2 批 3）：trading 候选建议卡，created 倒序。 */
@@ -226,4 +253,7 @@ public class LearnController {
     public record LearnCandidateRequest(
             @NotBlank(message = "类型不能为空") String type,
             @NotBlank(message = "卡片标题不能为空") String title) {}
+
+    /** 复习提醒开关请求（S-learn2）：{"enabled": true/false}。 */
+    public record LearnReviewSettingRequest(Boolean enabled) {}
 }

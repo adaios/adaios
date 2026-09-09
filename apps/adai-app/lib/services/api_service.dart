@@ -823,6 +823,27 @@ class ApiService {
     return LearnTreeResponse.fromJson(
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
+
+  /// 复习提醒开关读（S-learn2 2026-09-07，双端一致）：GET /learn/push-settings。
+  Future<bool> getLearnReviewEnabled() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/push-settings'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (json['learn-review'] as bool?) ?? true;
+  }
+
+  /// 复习提醒开关写（S-learn2）：PUT /learn/push-settings/learn-review。
+  Future<void> setLearnReviewEnabled(bool enabled) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/learn/push-settings/learn-review'),
+      headers: _headers,
+      body: jsonEncode({'enabled': enabled}),
+    );
+    _check(resp);
+  }
   // ── 任务 API ──
 
   /// 获取任务列表。

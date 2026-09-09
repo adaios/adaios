@@ -555,7 +555,7 @@ class FeedAppServiceTest {
         when(push.findByDate(any(), any())).thenReturn(List.of(
                 new MarketPushEvent("push_l1", null, null,
                         "有 1 张卡片进入复习队列已满 7 天，该回看了：\n· 回调一半的判定（2026-08-29）",
-                        "learn-review", "20:00", "学习复习提醒", null)));
+                        "learn-review", "20:00", "学习复习提醒", "2099-01-01T09:00")));
         FeedAppService service = serviceWith("alice", market, push, "learn");
 
         FeedAppService.FeedResponse resp = service.getFeed("alice", LocalDate.of(2026, 9, 6), 0, 10);

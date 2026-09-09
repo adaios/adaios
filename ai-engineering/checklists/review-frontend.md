@@ -3,9 +3,9 @@ title: 前端代码审查检查清单
 description: frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
 version: 1
 created: 2026-08-15
-updated: 2026-08-19
+updated: 2026-09-07
 status: active
-lines: 104
+lines: 107
 depends-on: []
 related: [../roles/frontend-reviewer.md]
 tags: [review, checklist, frontend]
@@ -102,3 +102,6 @@ tags: [review, checklist, frontend]
 | F59 | 删除/忽略类操作必须持久化：左滑删除单条推送 → 30 分钟自动刷新/下拉后不得复活（需 dismiss API 或本地持久化 dismissed id）| app 左滑删推送刷新复现（UI/UX 审查 P1-推送2，2026-08-19）|
 | F60 | 推送卡 8 类型徽章全覆盖渲染测试：app/web 补 session（早/午/尾/确认）与 gain/break-cost 推送卡渲染断言（徽章非灰色 fallback、确认按钮可达）| 6/8 徽章落灰色 fallback（UI/UX 审查，2026-08-19）|
 | F61 | 认证类 401 双义必须区分：会话失效（AuthFilter「会话/未登录」文案）才触发全局登出；业务 401（控制器 AuthException，如改密「原密码错误」）抛 ApiException 由弹窗内展示——禁止把业务 401 当会话失效踢回登录页；三端（web/app/admin）口径一致 | admin 改密原密码错误被登出（admin UI/UX 审查 P1-A，2026-09-06）|
+| F62 | learn 类写操作（流转/复述/反哺）须 await 前设动作级 in-flight 守卫并禁按钮（防双击双提交/双 pop），成功提示前 clearSnackBars | web learn 写入口双击双 PATCH+双 snack（learn V2 审 P2-learn10，2026-09-07）|
+| F63 | 卡片树就地刷新须按稳定标识（type+title）判定当前选中才回写 _selectedIndex，且树级 _load 需代际/串行防旧快照覆盖新流转结果 | web learn _replaceCard 选中漂移 + _load 竞态（learn V2 审 P2-learn9，2026-09-07）|
+| F64 | 新端点配套契约测试：断言 HTTP method + query 定位参数、状态流转分支（review→done）、400 失败分支（含后端 error 人话透出断言）、DTO fromJson 单测 | ff7451f 新增测试只覆盖成功渲染路径（learn V2 审 frontend，2026-09-07）|

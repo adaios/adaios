@@ -87,10 +87,69 @@ class _LearnPageState extends State<LearnPage> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const Spacer(),
         GestureDetector(
+          onTap: _openReviewSetting,
+          child: const Icon(Icons.notifications_outlined, size: 18, color: AppColors.darkGrey4),
+        ),
+        const SizedBox(width: 14),
+        GestureDetector(
           onTap: _load,
           child: const Icon(Icons.refresh, size: 18, color: AppColors.darkGrey4),
         ),
       ]),
+    );
+  }
+
+  /// 复习提醒开关（S-learn2 2026-09-07）：纯 learn 用户（无交易页）也能自关。
+  Future<void> _openReviewSetting() async {
+    final bool enabled;
+    try {
+      enabled = await widget.api.getLearnReviewEnabled();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_errText(e), style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.darkSurface2,
+      ));
+      return;
+    }
+    if (!mounted) return;
+    var current = enabled;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.darkSurface2,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('复习提醒',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+            const SizedBox(height: 6),
+            Text(current ? '开启：进入复习队列满 7 天还没完成的卡片，每晚 20:00 汇总提醒（同卡 7 天内不重复推）。'
+                         : '关闭：不再提醒复习。',
+                style: const TextStyle(fontSize: 12.5, height: 1.6, color: AppColors.darkGrey5)),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(current ? '开启中' : '已关闭',
+                  style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
+              value: current,
+              onChanged: (v) async {
+                try {
+                  await widget.api.setLearnReviewEnabled(v);
+                  if (!ctx.mounted) return;
+                  setDlg(() => current = v);
+                } catch (e) {
+                  if (!ctx.mounted) return;
+                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                    content: Text(_errText(e), style: const TextStyle(fontSize: 13)),
+                    backgroundColor: AppColors.darkSurface2,
+                  ));
+                }
+              },
+            ),
+          ]),
+        ),
+      )),
     );
   }
 

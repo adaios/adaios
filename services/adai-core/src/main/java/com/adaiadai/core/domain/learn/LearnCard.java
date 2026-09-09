@@ -26,6 +26,10 @@ package com.adaiadai.core.domain.learn;
  * @param questions    我的疑问列表（存疑点，可触发后续讨论）
  * @param retell       复述段（24h 内自己写 100-200 字——消化关键；AI 不代写，
  *                     V2 编辑/对话流让阿呆改 后可填充）
+ * @param reviewAt     进入 review 队列的日期（V2 S-learn1 修复 2026-09-07：复习提醒按它计时，
+ *                     非消化日 created；review 卡才非空）
+ * @param remindedAt   最近一次复习提醒推送日期（V2 S-learn1：节流——同卡 7 天内不重复推，
+ *                     防「搁置卡每晚 nag」）
  */
 public record LearnCard(
         String type,
@@ -42,7 +46,9 @@ public record LearnCard(
         String coreView,
         java.util.List<String> keyPoints,
         java.util.List<String> questions,
-        String retell) {
+        String retell,
+        java.time.LocalDate reviewAt,
+        java.time.LocalDate remindedAt) {
 
     public static final String TYPE_AI = "ai";
     public static final String TYPE_TRADING = "trading";
@@ -50,6 +56,15 @@ public record LearnCard(
     public static final String STATUS_NEW = "new";
     public static final String STATUS_REVIEW = "review";
     public static final String STATUS_DONE = "done";
+
+    /** 15 参便捷构造（reviewAt/remindedAt 缺省 null）——兼容 V1 构造点/测试，不破坏调用。 */
+    public LearnCard(String type, String title, String platform, String author, String url, String published,
+                     java.time.LocalDate created, String status, boolean tradeRelated, String tradeNote,
+                     java.util.List<String> tags, String coreView, java.util.List<String> keyPoints,
+                     java.util.List<String> questions, String retell) {
+        this(type, title, platform, author, url, published, created, status, tradeRelated, tradeNote,
+                tags, coreView, keyPoints, questions, retell, null, null);
+    }
 
     public LearnCard {
         if (title == null || title.isBlank()) {
@@ -81,5 +96,33 @@ public record LearnCard(
     /** 合法复习状态（new → review → done）。 */
     public static boolean isValidStatus(String status) {
         return STATUS_NEW.equals(status) || STATUS_REVIEW.equals(status) || STATUS_DONE.equals(status);
+    }
+
+    /**
+     * 状态流转合法性（V2 P2-learn8 修复 2026-09-07）：只允许相邻流转
+     * new→review、review→done；允许回退 review→new（误标纠偏）、done→review（想再看一遍）；
+     * 禁止跳变 new→done（跳过复习队列）、done→new（跳过消化确认）。幂等（from==to）放行。
+     */
+    public static boolean isValidTransition(String from, String to) {
+        if (from == null || to == null) return false;
+        if (from.equals(to)) return true;
+        return (STATUS_NEW.equals(from) && STATUS_REVIEW.equals(to))
+                || (STATUS_REVIEW.equals(from) && STATUS_DONE.equals(to))
+                || (STATUS_REVIEW.equals(from) && STATUS_NEW.equals(to))
+                || (STATUS_DONE.equals(from) && STATUS_REVIEW.equals(to));
+    }
+
+    /** 标题 → 文件安全片段（learn 文件名 date_{stem}.md；learn_card_id 回链同口径复用，P1-learn1 修复）。 */
+    public static String fileStem(String title) {
+        if (title == null || title.isBlank()) return "untitled";
+        String cleaned = title
+                .replace("\n", " ").replace("\r", " ")
+                .replaceAll("[\\\\/:*?\"<>|#]", "-")
+                .replaceAll("\\s+", " ").strip();
+        // 防路径逃逸：. 与 - 打头、连续横线收敛、纯横线/纯点归一 untitled
+        cleaned = cleaned.replaceAll("^-+", "").replaceAll("^[.]+", "")
+                .replaceAll("-{2,}", "-").strip();
+        if (cleaned.isBlank() || cleaned.matches("[-.]+")) return "untitled";
+        return cleaned.length() > 60 ? cleaned.substring(0, 60) : cleaned;
     }
 }

@@ -3,9 +3,9 @@ title: docs/review 目录索引
 description: review 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-06
+updated: 2026-09-07
 status: active
-lines: 44
+lines: 45
 depends-on: []
 related:
   - ../_index.md
@@ -23,6 +23,7 @@ tags: [meta, index, review]
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
 | audits/2026-09-05-cognition-layer-review.md | 交易⑤认知层批三官深审存档（backend/docs/adversarial 隔离并行：P1×5 + 💥×6 + docs×6 全修出表，守护 G2 一并修） | active |
 | audits/2026-09-06-admin-uiux-review.md | adai-admin 管理后台 UI/UX 专项审查存档（ui/ux 双官隔离并行：P1×4 成立 + P1×1 误报排除 + P2×25 + P3×31，修复待拍板） | active |
+| audits/2026-09-07-learn-v2-review.md | learn V2 消化闭环增量深审存档（backend/frontend/docs/adversarial 四官隔离：战略×2 + P1×4 + P2×11 + P3×3，0 修复只报告） | active |
 | audits/2026-09-05-memory-fidelity-audit.md | 记忆失真审计基线（只读：kind 失衡/无卡对话原话缺失/抽样加料过半 → memory-fidelity.md 修订 + 写侧保真立项） | active |
 | audits/2026-08-30-case-library-data-review.md | 案例库数据批次审查存档（降级主会话：KDJ latest 回归/搜索竞态已修 + P3 登记） | active |
 | audits/2026-08-30-case-library-review.md | 完美买点案例库批次审查存档（降级主会话审：S1 save 双文件回滚已修 + P1×1/P2×5/P3×1 登记） | active |

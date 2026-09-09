@@ -3,9 +3,9 @@ title: 文档契约审查检查清单
 description: docs-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
 version: 1
 created: 2026-08-15
-updated: 2026-08-17
+updated: 2026-09-07
 status: active
-lines: 104
+lines: 107
 depends-on: []
 related: [../roles/docs-reviewer.md]
 tags: [review, checklist, docs]
@@ -102,3 +102,6 @@ tags: [review, checklist, docs]
 | D58 | 行为模式统计回写闭环：前端展示的行为模式必须回写知识库（mistakes.md）形成反哺 | 行为模式无回写（走查 8 官 S10，2026-08-17）|
 | D59 | 术语/关键词单一真相：glossary 术语重复/漂移时以正式目录为准并清理 | glossary 术语重复 6 处（走查 8 官 P2-24，2026-08-17）|
 | D60 | 本地/生产数据源分离声明：data/ 本地空 vs 生产有数据须有数据源说明，禁止假设 | 本地 data 空 vs 生产 5 只（走查 8 官 S8，2026-08-17）|
+| D61 | PushSettings 类型增量跨文档全同步：新增推送类型必须同步 api-spec / feature-reference 开关清单 / REVIEW 登记，一处漏即红灯 | learn-review 入 ALL_TYPES 但 feature-ref 8 类型清单未更（learn V2 审 P2-docs6，2026-09-07）|
+| D62 | 端点计数与实现对拍：guard-align 只抓「端点↔api-spec 存在性」，抓不到段落幽灵/漏记——新增 Controller 路由后核对 change-log/status 的端点增量数 | GET /learn/card 漏计 116 vs 117（learn V2 审 P2-docs2，2026-09-07）|
+| D63 | 提醒/推送触发条件口径逐字对拍：变更行/注释/正文的触发语义（如「满 7 天」= created 还是 reviewAt）必须一致并随实现修正 | learn 复习提醒 created vs review 口径漂移（learn V2 审 S-learn1，2026-09-07）|
