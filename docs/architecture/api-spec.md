@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.53 | 最后更新：2026-09-07**
+**文档版本：v3.54 | 最后更新：2026-09-09**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-09 | v3.54 | **交易账目治本 + 清仓级联批 1（REVIEW P2-交易34/35/36 出表 + RFC 20260909）**：①**券商快照锚定防重（P2-交易34 治本）**——持仓 replace/资金股份导入落锚定日（`data/{userId}/trading/snapshot-anchor.json`）；`POST /trades` 等手动/确认成交 entryDate ≤ 锚定日 → 400（提示历史成交导入补流水或重导快照）；`POST /trading/transfer` date ≤ 最近资金快照日 → 400（纯净投入修正走 `PUT /trading/principal`）；历史成交导入对 entryDate ≤ 锚定日改走补录（只补流水不重算持仓/现金，股息类同日期跳过）；②`GET /trading/sold` 响应结构改为对象 `{"sold":[…SoldTrade 数组，每项新增 provenance:"flow"|"import"], "pendingClearances":[{symbol,name,sellDate,reason}]}`（RFC 20260909 双轨：flow=流水自动收录、pending=已清仓但缺买入基线的待补档案提示）；③**成交编号/手续费补链（P2-交易36 治本）**——当日候选新增 `orderId`/`fee` 字段，新增 `PUT /trading/trade-log/meta`（候选确认前补填）+ `PUT /trading/trades/{tradeId}/meta`（已落库流水按 id 补填 orderId/fee，幂等，404/无值语义）；`POST /trading/trade-log/confirm` 落库改走带 orderId/fee 链路（候选透传流水） |
 | 2026-09-07 | v3.53 | **learn V2 审查修复批（2026-09-07 learn V2 增量深审 S-learn1/2 + P1-learn1~4 + P2-learn2~8 出表，用户拍板）**：①**状态流转约束**：只允许 new→review→done 与回退 review→new / done→review（跳变 new→done、done→new → 400）；进入 review 时卡片写 `review_at`（服务器日期，S-learn1 计时起点）——复习提醒按「进入复习队列满 7 天」提醒（不再按消化日 created 误判），同卡 7 天内不重复推（`reminded_at` 节流）；②**跨日同名拒绝**：`POST /learn/cards` 与候选生成改为「同 type + 同 title 任意日期已存在 → 400」（跨日同名曾致标题寻址歧义改错卡）；多张同名残留读侧抛 400 列日期；③**learn_card_id 回链精确化**：= learn 源卡真实文件路径（清洗后 title），不再 raw title 拼接；④**复习提醒开关 learn 侧可达**：新增 `GET /learn/push-settings`（返回 `{"learn-review":bool}`）+ `PUT /learn/push-settings/learn-review`（body `{"enabled"}`）——纯 learn 用户（无 trading 插件）也能自关，不再只藏交易设置页；⑤**编辑并发/保真**：编辑 merge 移入仓储锁内原子完成（并发 PATCH 不丢更新），写盘保留手工未知 frontmatter 键/正文段；⑥**Feed 类型级门控**：learn-review push 条目只需 learn 插件、交易类 push 条目需 trading 插件（防跨域漏给纯 learn/纯 trading 用户）；learn-review 条目 tags/domain 不再标「行情」 |
 | 2026-09-07 | v3.52 | **复盘生成改提交式（复盘超时修复批，用户实测「点击复盘没反应」）**：`POST /trading/review` 不再同步阻塞等 AI（生成实测 77~176s，远超 App 15s/Web 120s 客户端超时——原实现前端必先断，「点击没反应」而复盘实际已在后端生成落盘）。改为**提交即返回 + 后台执行器生成 + 同日去重**：响应改 `{"date","status"}`——`exists`（已有复盘不重跑，前端 GET 即展示）/ `running`（同 user+date 正在生成中，连点只跑一次）/ `pending`（已受理，后台生成中）；生成失败只记日志不落半成品。前端轮询 `GET /trading/review?date=`（404=未就绪，200=内容）。**口径（2026-09-07 用户拍板）：交易写聊天记录仅限当日成交**——历史成交导入/补录/回放等非当日批量回填不再写 `domain=trading` 时间线记录（防逐笔刷 Feed；复盘卡点早已改「当日真实成交」口径，不依赖记录关键词） |
 | 2026-09-07 | v3.51 | **learn V2 消化闭环批 4（复习提醒推送）**：新增每晚 20:00 定时推送（LearnReviewPushService）——遍历启用 learn 插件的用户，聚合「进入 review 已满 7 天仍未 done」的卡片推一条汇总（type=learn-review，标题「学习复习提醒」，PushChannel 渠道化进 Feed/外部渠道）；推送类型 `learn-review` 加入 PushSettings.ALL_TYPES（`GET/PUT /trading/push-settings` 可开关，默认开）；Feed push 条目注入门控由 trading-only 放宽为 **trading 或 learn**（纯 learn 用户也能在 Feed 看到复习提醒；market 行情条仍 trading-only） |
@@ -532,6 +533,11 @@
 ### `GET /api/v1/trading/trades` — 查询交易逐笔流水（RFC 20260816）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
+### `PUT /api/v1/trading/trades/{tradeId}/meta` — 流水补成交编号/手续费（P2-交易36 治本，v3.54，2026-09-09）
+> 需 trading 插件（403）。
+
+对**已落库**流水按 `tradeId` 补填 `orderId`（成交编号）/`fee`（手续费）——截图/手动确认早期缺字段的历史流水补上后即可幂等去重与对账（跨月文件定位幂等）。**body**：`{"orderId":"69351117","fee":3.95}`（可选，只覆盖非空新值；orderId 空白且 fee 空 → 400；fee 非数字 → 400）。**响应**：`{"updated":true,"tradeId":"trade_..."}`；找不到该 id → `{"updated":false,...}`。
+
 **Query Parameters**
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -729,6 +735,8 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/sold` — 清仓股列表（复盘闭环）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
+**响应结构（2026-09-09 v3.54，RFC 20260909 清仓级联批 1 双轨）**：`{"sold":[SoldTradeDto…], "pendingClearances":[{symbol,name,sellDate,reason}]}`——`sold` 每项新增 `provenance`（`"flow"`=流水自动收录（ClearanceDetector：流水证明清仓且买卖均在流水内，只填空白 symbol、幂等）/ `"import"`=券商清仓股导出，老行缺省 import）；`pendingClearances` = 流水证明已清仓但**缺买入基线**（BUY<SELL）的待补档案（reason 人话「已清仓但流水缺买入基线——导入清仓股导出补全档案」），为空时省略。前端「导入清仓」后 `sold` 以券商字段校准（upsert 保留 psychology）。
+
 ### `POST /api/v1/trading/sold/import` — 清仓股导入（通达信导出文本）
 
 **body**：`{"content":"..."}`。表头定位列（代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%），按 symbol upsert（保留已有 verdict/psychology）。**响应**：`{"imported":42}`。
@@ -860,12 +868,17 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `POST /api/v1/trading/trade-log/confirm` — 确认交易日志落库
 > 需 trading 插件（403）。
 
-当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算）；**2026-08-27（用户反馈「今日 4 笔其实是昨天」）**：落库 `entryDate` = 候选 `tradeDate`（截图日期列提取，成交日优先）；**v3.32 二修（用户拍板）**：截图归集候选（source=image）**无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 提示「缺少成交日期」）——不再回退确认当天，用户补日期（`PUT /trade-log/date`）后再次确认；文字归集（source=text）无日期仍回退确认当天（当日口语语义）。**B6-5（2026-08-23，P0-1 延伸）**：落库失败的候选（SELL 超持仓等）与不完整候选**回写保留**（不静默清空），用户可补全/修正/丢弃后再次确认。**响应**：`{"confirmed":2,"failed":1,"skipped":1,"failures":["600519 贵州茅台: 未持有 600519，无法卖出","600206 有研新材: 缺少成交日期（截图未识别到日期列），请补充日期后再确认"]}`（confirmed=成功 / failed=失败保留 / skipped=不完整或缺日期保留 / failures=失败人话明细）。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。
+当日候选逐笔走 `recordTrade` 链路（持仓增减 + 现金 + 手续费自动算）；**2026-08-27（用户反馈「今日 4 笔其实是昨天」）**：落库 `entryDate` = 候选 `tradeDate`（截图日期列提取，成交日优先）；**v3.32 二修（用户拍板）**：截图归集候选（source=image）**无 `tradeDate` → 禁止落库**（计入 skipped、候选保留、failures 提示「缺少成交日期」）——不再回退确认当天，用户补日期（`PUT /trade-log/date`）后再次确认；文字归集（source=text）无日期仍回退确认当天（当日口语语义）。**B6-5（2026-08-23，P0-1 延伸）**：落库失败的候选（SELL 超持仓等）与不完整候选**回写保留**（不静默清空），用户可补全/修正/丢弃后再次确认。**响应**：`{"confirmed":2,"failed":1,"skipped":1,"failures":["600519 贵州茅台: 未持有 600519，无法卖出","600206 有研新材: 缺少成交日期（截图未识别到日期列），请补充日期后再确认"]}`（confirmed=成功 / failed=失败保留 / skipped=不完整或缺日期保留 / failures=失败人话明细）。阿呆只归集不落库——用户确认后才写交易模块（建议引擎哲学）。**P2-交易36 治本（v3.54，2026-09-09）**：候选携带 `orderId`（成交编号）/`fee`（手续费，可选；`PUT /trade-log/meta` 在确认前补填），confirm 落库改走带 orderId/fee 的链路（`recordTradeWithOrderId`）——编号与费用透传逐笔流水（幂等去重/对账可用，历史成交页不再「—」）；已落库流水仍缺 → `PUT /trading/trades/{tradeId}/meta` 补填。
 
 ### `PUT /api/v1/trading/trade-log/date` — 补写候选成交日期（v3.32，2026-08-27）
 > 需 trading 插件（403）。
 
 截图归集候选缺日期被 confirm 拒后，用户补日期 → 更新当日候选 `tradeDate` → 再次确认可正常落库。**body**：`{"symbol":"600206","direction":"SELL","tradeDate":"2026-08-26"}`（tradeDate 格式 `yyyy-MM-dd`）。**响应**：`{"updated":true}`；当日无此候选 → 404；参数缺失/格式非法 → 400 `{"error":"..."}`。
+
+### `PUT /api/v1/trading/trade-log/meta` — 候选补成交编号/手续费（P2-交易36 治本，v3.54，2026-09-09）
+> 需 trading 插件（403）。
+
+截图入账/手动确认成交缺 orderId/fee 时，在**确认前**给当日候选补填（按 symbol+direction 定位，与 `PUT /trade-log/date` 同口径）。**body**：`{"symbol":"600206","direction":"SELL","orderId":"1234567890","fee":5.5}`（orderId/fee 均可选，只覆盖非空新值；两者皆空 → 400）。**响应**：`{"updated":true}`；当日无此候选/无可写新值 → `{"updated":false}`；symbol/direction 缺失 → 400。
 
 ### `DELETE /api/v1/trading/trade-log` — 丢弃一条保留候选（B6-5，2026-08-23，P1-交易18）
 > 需 trading 插件（403）。
