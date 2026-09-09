@@ -67,13 +67,18 @@ class DailyPnlComputeTest {
 
     private TradeRecord trade(String symbol, TradeDirection dir, int volume, String price,
                               String fee, LocalDate date, String amountOverride) {
-        return new TradeRecord("t_" + symbol + "_" + dir + "_" + volume + "_" + date,
+        return tradeAt(symbol, dir, volume, price, fee, date, LocalTime.of(10, 0), amountOverride);
+    }
+
+    private TradeRecord tradeAt(String symbol, TradeDirection dir, int volume, String price,
+                                String fee, LocalDate date, LocalTime time, String amountOverride) {
+        return new TradeRecord("t_" + symbol + "_" + dir + "_" + volume + "_" + date + "_" + time,
                 symbol, symbol + "名", dir, new BigDecimal(price), volume,
                 amountOverride != null ? new BigDecimal(amountOverride)
                         : new BigDecimal(price).multiply(BigDecimal.valueOf(volume)),
-                date, LocalTime.of(10, 0), null, null, null, null,
+                date, time, null, null, null, null,
                 fee != null ? new BigDecimal(fee) : null,
-                LocalDateTime.of(date, LocalTime.of(10, 0)), null, null);
+                LocalDateTime.of(date, time), null, null);
     }
 
     @Test
@@ -209,5 +214,117 @@ class DailyPnlComputeTest {
 
         assertEquals(0, new BigDecimal("-258.00").compareTo(saved.get().todayPnl()),
                 "文件带「当日盈亏」列 → 以券商真源覆盖（实际 " + saved.get().todayPnl() + "）");
+    }
+
+    // ── 三官深审修复（2026-09-09）：T+1 旧仓成本配比 / T+0 边界 / 空明细保留 / 随流水重算 ──
+
+    @Test
+    void computeDailyPnl_sellClearedThenRebuy_T1OldCostNotSymbolFlip() {
+        // backend 深审可复现示例：q0=1000@10，SELL 1000@12（09:30）后 BUY 1000@12.5（10:00），收盘 12.6
+        // → 卖出为旧仓（T+1），成本 = 盘前历史买入 10，不得按当日买入价冲抵（否则符号翻转）
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 1000, "11.25")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("600000", TradeDirection.BUY, 1000, "10.0", null, PREV, null),
+                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", null, DAY,
+                        LocalTime.of(9, 30), null),
+                tradeAt("600000", TradeDirection.BUY, 1000, "12.5", null, DAY,
+                        LocalTime.of(10, 0), null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.6", "10.0")));
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
+
+        // 已实现 = 12000 − 1000×10 = 2000；浮动（今日新买 1000 @12.5→12.6）= 100 → 2100（真实口径）
+        assertEquals(0, new BigDecimal("2100.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+    }
+
+    @Test
+    void computeDailyPnl_t0MixedBuySell_matchingWithHonestNote() {
+        // T+0 边界（卖出晚于当日最早买入，可转债/异常数据）：卖量内冲抵当日买入 + 超出按历史旧仓成本
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 300, "10.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("600000", TradeDirection.BUY, 500, "10.0", null, PREV, null),
+                tradeAt("600000", TradeDirection.BUY, 800, "10.0", null, DAY,
+                        LocalTime.of(9, 31), null),
+                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", null, DAY,
+                        LocalTime.of(10, 0), null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.0", "10.0")));
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
+
+        // matched 800@10 + 旧仓 200@10 = 成本 10000 → 已实现 2000；持仓浮动（旧仓 300@昨收差 2）= 600 → 2600
+        assertEquals(0, new BigDecimal("2600.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+        assertTrue(r.notes().stream().anyMatch(n -> n.contains("T+0")),
+                "T+0 边界应诚实附注: " + r.notes());
+    }
+
+    @Test
+    void importCashQuery_emptyDetails_keepsExistingTodayPnl() {
+        // 三官深审 P1-2：当日清仓后导出的资金文件明细为空 → 不得用 sum=0 覆盖精确当日盈亏（428→0 变体）
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository account = mock(AccountSnapshotRepository.class);
+        when(account.findLatest(anyString())).thenReturn(Optional.of(
+                new AccountSnapshot(new BigDecimal("20000.00"), new BigDecimal("0.00"),
+                        new BigDecimal("0.00"), new BigDecimal("0.00"),
+                        BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("428.00"), new BigDecimal("130000"), LocalDate.of(2026, 9, 9))));
+        when(account.update(any(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Function<Optional<AccountSnapshot>, AccountSnapshot> fn = inv.getArgument(1);
+            AccountSnapshot next = fn.apply(account.findLatest(inv.getArgument(0)));
+            saved.set(next);
+            return next;
+        });
+        TradingAppService service = service(mock(PositionRepository.class),
+                mock(TradingHistoryRepository.class), account, mock(MarketDataSource.class));
+        String cashText = """
+                人民币: 余额:0.00  可用:0.00  可取:0.00  参考市值:0.00  资产:20000.00  盈亏:0.00
+                -------------------------------------------------------------------------------------------------------
+                编号        证券代码        证券名称        证券数量        可卖数量        成本价          当前价          最新市值        今买数量        今卖数量        浮动盈亏        盈亏比例(%)        当日盈亏      股东代码
+                """;
+        service.importCashQuery(USER, cashText);
+
+        assertEquals(0, new BigDecimal("428.00").compareTo(saved.get().todayPnl()),
+                "明细为空 → 保留既有当日盈亏（实际 " + saved.get().todayPnl() + "）");
+    }
+
+    @Test
+    void refreshTodayPnl_recomputesAndWritesOnlyTodayPnl() {
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository account = mock(AccountSnapshotRepository.class);
+        AccountSnapshot base = new AccountSnapshot(new BigDecimal("81357.16"), new BigDecimal("2278.16"),
+                new BigDecimal("2278.16"), new BigDecimal("2278.16"),
+                new BigDecimal("79079.00"), new BigDecimal("16423.25"),
+                BigDecimal.ZERO, new BigDecimal("130000"), LocalDate.of(2026, 9, 9));
+        when(account.findLatest(anyString())).thenReturn(Optional.of(base));
+        when(account.update(any(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Function<Optional<AccountSnapshot>, AccountSnapshot> fn = inv.getArgument(1);
+            AccountSnapshot next = fn.apply(account.findLatest(inv.getArgument(0)));
+            saved.set(next);
+            return next;
+        });
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 60, "10.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.0", "10.0")));
+        TradingAppService service = service(positions, history, account, market);
+
+        service.refreshTodayPnl(USER);
+
+        // 持仓 60 × (12−10) = 120 → todayPnl 更新为 120，其余字段原样保留
+        assertEquals(0, new BigDecimal("120.00").compareTo(saved.get().todayPnl()),
+                "实际 " + saved.get().todayPnl());
+        assertEquals(0, new BigDecimal("81357.16").compareTo(saved.get().assets()), "assets 不应被改动");
+        assertEquals(0, new BigDecimal("2278.16").compareTo(saved.get().cash()), "cash 不应被改动");
     }
 }

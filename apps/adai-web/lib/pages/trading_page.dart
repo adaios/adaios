@@ -1316,7 +1316,10 @@ class _TradingPageState extends State<TradingPage> {
       ]),
       // P2-UX2（2026-08-29）：规则术语图例——R66/R53/三维打分不再零解释
       const SizedBox(height: 4),
-      const Text('规则对照：R66=亏超5%扛单没走 · R53=短持/久持亏损；买点分=入场时机 · 执行分=纪律执行 · 总分=综合 · 名称旁「流水」徽标=由成交流水自动收录',
+      const Text('规则对照：R66=亏超5%扛单没走 · R53=短持/久持亏损；买点分=入场时机 · 执行分=纪律执行 · 总分=综合',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      // 三官深审（2026-09-09）：来源徽标说明拆独立短行（避免与规则术语长句折行混排）
+      const Text('名称旁「流水」徽标 = 该清仓记录由成交流水自动收录（非券商导出）',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const SizedBox(height: 8),
       // RFC 20260909 批1 清仓双轨：pending 横幅放图例后、统计/空态/表格前——即使 _sold 为空也可见
@@ -1354,14 +1357,15 @@ class _TradingPageState extends State<TradingPage> {
                   // RFC 20260909 批 2 子项（2026-09-09 晚间批）：来源徽标——flow=由成交流水自动收录
                   if (s.provenance == 'flow') ...[
                     const SizedBox(width: 6),
+                    // 三官深审（2026-09-09）：徽标用中性灰（原 darkBlue 与本表买点高分蓝撞色，V9-8）
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                       decoration: BoxDecoration(
-                        color: AppColors.darkBlue.withValues(alpha: 0.14),
+                        color: AppColors.darkGrey4.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text('流水',
-                          style: TextStyle(fontSize: 10, color: AppColors.darkBlue)),
+                          style: TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
                     ),
                   ],
                 ])),

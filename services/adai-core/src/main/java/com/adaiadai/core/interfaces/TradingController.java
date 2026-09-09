@@ -169,6 +169,8 @@ public class TradingController {
                 request.stopLossPrice(), request.buyPoint(),
                 request.targetPrice(), request.reason()
         );
+        // 三官深审 P1-1（2026-09-09）：当日成交落库后触发当日盈亏随流水重算（best-effort）
+        tradingAppService.refreshTodayPnl(userId);
         return ResponseEntity.ok(updated);
     }
 
@@ -313,6 +315,8 @@ public class TradingController {
                 results.add(Map.of("row", i + 1, "message", msg));
             }
         }
+        // 三官深审 P1-1（2026-09-09）：当日成交落库后触发当日盈亏随流水重算（best-effort）
+        tradingAppService.refreshTodayPnl(userId);
         return ResponseEntity.ok(Map.of("success", success, "failures", results));
     }
 
@@ -995,6 +999,8 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         TradeLogCollectService.ConfirmResult r = tradeLogCollectService.confirm(userId);
+        // 三官深审 P1-1（2026-09-09）：确认落库的当日成交 → 触发当日盈亏随流水重算（best-effort）
+        tradingAppService.refreshTodayPnl(userId);
         return ResponseEntity.ok(Map.of(
                 "confirmed", r.confirmed(),
                 "failed", r.failed(),

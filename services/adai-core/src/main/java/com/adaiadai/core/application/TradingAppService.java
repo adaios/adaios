@@ -1006,10 +1006,11 @@ public class TradingAppService {
             throw new TradingException("无法识别资金股份查询格式——请确认首行是「余额:… 可用:… 可取:… 参考市值:… 资产:… 盈亏:…」，且是通达信资金股份导出");
         }
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细「当日盈亏」列和。
-        // P2-交易37（2026-09-09）：明细**缺「当日盈亏」列**时不得静默清零——保留 account 既有 todayPnl
-        //（系统收盘任务已算出的当日盈亏不能被「文件没给该列」抹掉；文件给列才以券商真源覆盖）。
+        // P2-交易37（2026-09-09）：明细**缺「当日盈亏」列**或**明细为空（当日清仓后导出无行，
+        // 三官深审 P1-2）**时不得静默清零/覆盖——保留 account 既有 todayPnl（收盘任务/随流水重算
+        // 的精确值不能被「文件没给该列/文件没有该股」抹掉；文件带列且有行才以券商真源覆盖）。
         double todayPnl = q.positions().stream().mapToDouble(TradingImportParser.CashPosition::todayPnl).sum();
-        boolean todayPnlFromFile = q.todayPnlColumn();
+        boolean todayPnlFromFile = q.todayPnlColumn() && !q.positions().isEmpty();
         // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁内原子 RMW），
         // 原 save 在 tradeLock 外 → 与 recordTrade/转账/收盘更新并发互相覆盖
         // B6-4（2026-08-23，P1-交易11）：写失败上抛（不再静默）——资金导入是用户主动修正账目的动作，
@@ -1082,7 +1083,8 @@ public class TradingAppService {
         if (!hasActivity) {
             notes.add("今日无成交记录——当日盈亏 = 持仓日浮动（若当天有成交请先导历史成交或手动记录后重算）");
         }
-        // 1. 当日已实现：逐 symbol（当日买入匹配当日卖出冲抵）
+        // 1. 当日已实现：逐 symbol 聚合 + 时序判定（三官深审 2026-09-09：A 股 T+1 当日卖出必来自盘前旧仓，
+        // 不得一律冲抵当日买入——卖光后买回/加减仓日会符号翻转与重叠）
         Map<String, SoldAgg> realized = new LinkedHashMap<>();
         for (TradeRecord t : dayTrades) {
             if (t.volume() <= 0) continue;
@@ -1090,9 +1092,18 @@ public class TradingAppService {
             if (t.direction() == TradeDirection.BUY) {
                 a.buyQty += t.volume();
                 a.buyCost = a.buyCost.add(amountOf(t, true));
+                if (t.tradeTime() != null
+                        && (a.firstBuyTime == null || t.tradeTime().isBefore(a.firstBuyTime))) {
+                    a.firstBuyTime = t.tradeTime();
+                }
             } else {
                 a.sellQty += t.volume();
                 a.sellNet = a.sellNet.add(amountOf(t, false));
+                if (t.tradeTime() != null && a.firstBuyTime != null
+                        && t.tradeTime().isAfter(a.firstBuyTime)) {
+                    // T+0 边界判定：卖出晚于当日最早买入（股票 T+1 不可能；可转债/异常数据才见）
+                    a.sellAfterFirstBuy = true;
+                }
             }
         }
         List<Position> positions = positionRepository.findAll(userId);
@@ -1101,27 +1112,39 @@ public class TradingAppService {
         for (Map.Entry<String, SoldAgg> e : realized.entrySet()) {
             SoldAgg a = e.getValue();
             if (a.sellQty <= 0) continue;
-            // 卖出成本：先冲抵当日买入（当日含费买入均价），超出按旧仓成本（持仓 avgCost /
-            // 清仓后回退流水中历史买入含费加权）
-            BigDecimal matchedToday = a.buyQty > 0
-                    ? a.buyCost.multiply(BigDecimal.valueOf(Math.min(a.sellQty, a.buyQty)))
-                    .divide(BigDecimal.valueOf(a.buyQty), 6, java.math.RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO;
-            int fromOld = (int) (a.sellQty - Math.min(a.sellQty, a.buyQty));
-            BigDecimal oldCostUnit = BigDecimal.ZERO;
+            // 卖出成本：T+1 语义 → 卖出量属盘前旧仓，成本 = 盘前成本
+            //（今日无买入 → 持仓 avgCost 即盘前，精确；有买入/已清仓 → 回退「当日之前」流水历史买入
+            //  含费加权；仍无基线 → 持仓成本兜底并诚实附注）。仅 T+0 边界才对冲抵部分按当日买入均价
+            // 并附注（A 股 T+1 账户不会出现）。
+            long matchedToday = a.sellAfterFirstBuy ? Math.min(a.sellQty, a.buyQty) : 0;
+            BigDecimal sellCost = BigDecimal.ZERO;
+            if (matchedToday > 0 && a.buyQty > 0) {
+                BigDecimal buyAvg = a.buyCost.divide(BigDecimal.valueOf(a.buyQty), 6,
+                        java.math.RoundingMode.HALF_UP);
+                sellCost = sellCost.add(buyAvg.multiply(BigDecimal.valueOf(matchedToday)));
+                notes.add(e.getKey() + " " + a.name
+                        + "：含当日先买后卖（T+0 边界），已实现成本按匹配口径近似——A 股 T+1 账户不会出现");
+            }
+            long fromOld = a.sellQty - matchedToday;
             if (fromOld > 0) {
                 Position p = held.get(e.getKey());
-                if (p != null && p.avgCost() != null && p.avgCost().signum() > 0) {
-                    oldCostUnit = p.avgCost();
+                BigDecimal oldUnit = BigDecimal.ZERO;
+                if (a.buyQty == 0 && p != null && p.avgCost() != null && p.avgCost().signum() > 0) {
+                    oldUnit = p.avgCost(); // 今日无买入摊薄 → 当前 avgCost = 盘前成本（精确）
                 } else {
-                    // 当日清仓导致持仓无行 → 回退「当日之前」流水历史买入含费加权（今日买入已由 matchedToday 冲抵）
-                    oldCostUnit = historicalBuyAvgCost(userId, e.getKey(), date);
+                    oldUnit = historicalBuyAvgCost(userId, e.getKey(), date);
+                    if (oldUnit.signum() <= 0 && p != null && p.avgCost() != null
+                            && p.avgCost().signum() > 0) {
+                        oldUnit = p.avgCost(); // 无盘前历史基线 → 持仓成本兜底（近似）
+                        notes.add(e.getKey() + " " + a.name
+                                + "：卖出旧仓缺盘前成本基线，按当前持仓成本近似（精度受当日摊薄影响）");
+                    } else if (oldUnit.signum() <= 0) {
+                        notes.add(e.getKey() + " " + a.name
+                                + "：已清仓且无成本基线，卖出已实现暂按净额计（偏高）——请导历史成交或资金股份校准");
+                    }
                 }
-                if (oldCostUnit.signum() <= 0) {
-                    notes.add(e.getKey() + " " + a.name + "：已清仓且无成本基线，卖出已实现暂按净额计（偏高）——请导历史成交或资金股份校准");
-                }
+                sellCost = sellCost.add(oldUnit.multiply(BigDecimal.valueOf(fromOld)));
             }
-            BigDecimal sellCost = matchedToday.add(oldCostUnit.multiply(BigDecimal.valueOf(fromOld)));
             pnl = pnl.add(a.sellNet.subtract(sellCost));
         }
         // 2. 持仓日浮动
@@ -1142,7 +1165,11 @@ public class TradingAppService {
             }
             int todayBuy = 0;
             SoldAgg a = realized.get(p.symbol());
-            if (a != null) todayBuy = (int) Math.min(a.buyQty, p.quantity());
+            if (a != null) {
+                // 当日买入且收盘仍持有 = 当日买入量 − 已被卖出冲抵的当日买量（T+0 边界；T+1 下即当日买入量）
+                long t0Sold = a.sellAfterFirstBuy ? Math.min(a.sellQty, a.buyQty) : 0;
+                todayBuy = (int) Math.max(0, Math.min(a.buyQty, p.quantity()) - t0Sold);
+            }
             BigDecimal floatPnl = BigDecimal.ZERO;
             if (todayBuy > 0 && a.buyQty > 0) {
                 // 当日新买入且仍持有的部分：按当日含费买入成本计浮动（无昨收基差）
@@ -1197,13 +1224,35 @@ public class TradingAppService {
     /** 当日盈亏计算结果（notes：未计入部分的人话说明，非空即非全精确）。 */
     public record DailyPnlResult(BigDecimal todayPnl, List<String> notes) {}
 
-    /** 当日单 symbol 卖出/买入聚合（可变）。 */
+    /**
+     * 三官深审 P1-1（2026-09-09）：当日成交流水在 15:05 后落库（截图确认/单笔记录/历史成交导入）
+     * → 触发当日盈亏重算写入 account.todayPnl（只改 todayPnl，不动现金/资产/市值/快照日期）。
+     * 仅当 account 快照存在才写；best-effort 失败仅告警。
+     */
+    public void refreshTodayPnl(String userId) {
+        if (accountSnapshotRepository.findLatest(userId).isEmpty()) return;
+        try {
+            DailyPnlResult r = computeDailyPnl(userId, LocalDate.now());
+            accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
+                    c.assets(), c.cash(), c.available(), c.withdrawable(),
+                    c.marketValue(), c.pnl(), r.todayPnl(), c.principal(), c.snapshotDate()))
+                    .orElse(null));
+            log.info("当日盈亏随成交流水重算 | userId={} | todayPnl={} | notes={}", userId, r.todayPnl(),
+                    r.notes().isEmpty() ? "无" : String.join("；", r.notes()));
+        } catch (RuntimeException e) {
+            log.warn("当日盈亏随成交流水重算失败 | userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    /** 当日单 symbol 卖出/买入聚合（可变；含 T+0 边界时序判定，三官深审 2026-09-09 修复）。 */
     private static final class SoldAgg {
         final String name;
         long buyQty;
         long sellQty;
         BigDecimal buyCost = BigDecimal.ZERO;   // 当日买入含费成本合计
         BigDecimal sellNet = BigDecimal.ZERO;   // 当日卖出净额（已扣费）
+        java.time.LocalTime firstBuyTime;       // 当日最早买入成交时刻（T+0 判定用）
+        boolean sellAfterFirstBuy;              // 存在卖出晚于当日最早买入（T+0 边界）
 
         SoldAgg(String name) {
             this.name = name;
@@ -1366,12 +1415,16 @@ public class TradingAppService {
             // 全部落补录（典型：收盘锚定后再导当天成交补流水）→ 无回放、无总结
             HistoricalTradeImportResult base = appendResult != null ? appendResult
                     : new HistoricalTradeImportResult(0, 0, 0, 0, List.of(), "append", null);
+            // 三官深审 P1-1（2026-09-09）：导入的当日成交补入流水 → 触发当日盈亏重算（best-effort）
+            refreshTodayPnl(userId);
             return withNonTrades(base, base.nonTrades() + nonTradable);
         }
         // 补录完成后再回放锚定日之后的成交（sync 的幂等指纹基于补录后的全量流水）
         HistoricalTradeImportResult syncResult = importSync(userId, replayRecent);
         HistoricalTradeImportResult base = appendResult != null ? appendResult
                 : new HistoricalTradeImportResult(0, 0, 0, 0, syncResult.lines(), "sync", null);
+        // 三官深审 P1-1（2026-09-09）：导入的当日成交入流水 → 触发当日盈亏重算（best-effort）
+        refreshTodayPnl(userId);
         return new HistoricalTradeImportResult(
                 base.imported() + syncResult.imported(),
                 base.updated() + syncResult.updated(),

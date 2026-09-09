@@ -762,9 +762,14 @@ void main() {
       await tester.tap(find.text('历史成交'));
       await tester.pumpAndSettle();
 
-      // 日期分组
-      expect(find.text('2026-08-12'), findsOneWidget);
-      expect(find.text('2026-08-11'), findsOneWidget);
+      // 日期分组（页面其它普通文本可能同日期字串，分组头按加粗精确匹配）
+      expect(find.text('2026-08-12'), findsWidgets);
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Text && w.data == '2026-08-11' && w.style?.fontWeight == FontWeight.w600),
+        findsOneWidget,
+        reason: '2026-08-11 分组头应存在',
+      );
       // 方向 + 成交时间（tradeTime 显示 HH:mm；旧数据无 → '—'）
       expect(find.text('买入'), findsOneWidget);
       expect(find.text('卖出'), findsOneWidget);
@@ -1163,6 +1168,40 @@ void main() {
       expect(find.text('88'), findsOneWidget); // 买点分
       expect(find.text('90'), findsOneWidget); // 执行分
       expect(find.text('89'), findsOneWidget); // 总分
+    });
+
+    testWidgets('来源徽标：flow 行显示「流水」、import 行不显示（三官深审 2026-09-09）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold') {
+          return _json([
+            {'symbol': '600519', 'name': '贵州茅台', 'buyDate': '2026-08-01', 'sellDate': '2026-08-11',
+             'holdDays': 10, 'tradeCount': '1+1', 'holdPnlPct': 5.0, 'verdict': '盈利了结',
+             'psychology': '', 'provenance': 'flow'},
+            {'symbol': '600584', 'name': '长电科技', 'buyDate': '2026-07-01', 'sellDate': '2026-07-20',
+             'holdDays': 19, 'tradeCount': '2', 'holdPnlPct': -3.0, 'verdict': '扛单超5%',
+             'psychology': '', 'provenance': 'import'},
+          ]);
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('清仓'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('流水'), findsOneWidget, reason: '只有 provenance=flow 的行显示来源徽标');
+      expect(find.text('长电科技'), findsOneWidget);
+      expect(find.text('贵州茅台'), findsOneWidget);
+      // 徽标不渲染在 import 行上：整页仅 1 个「流水」
+      expect(find.text('流水'), findsOneWidget);
+      expect(find.textContaining('名称旁「流水」徽标'), findsOneWidget, reason: '来源徽标图例独立行可见');
     });
   });
 
