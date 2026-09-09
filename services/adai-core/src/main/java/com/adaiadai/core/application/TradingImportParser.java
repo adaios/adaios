@@ -122,12 +122,16 @@ public final class TradingImportParser {
             pnl.value = parseNum(m.group(6));
         }
         int[] col = null;
+        boolean todayPnlColumn = false;
         for (String line : lines) {
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("-")) continue;
             String[] cells = line.split("\\s+"); // 资金明细空格对齐
             if (col == null) {
                 int[] idx = locate(cells, "证券代码", "证券名称", "证券数量", "成本价", "当前价", "浮动盈亏", "当日盈亏");
                 if (idx[0] >= 0) col = idx;
+                // P2-交易37（2026-09-09）：明细是否带「当日盈亏」列——缺列时调用方须保留旧值
+                // 而非静默补 0（当日盈亏被晚间导入清零的根因，2026-09-09 生产实测 428→0）
+                if (col != null && idx[6] >= 0) todayPnlColumn = true;
                 continue;
             }
             if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;
@@ -141,7 +145,7 @@ public final class TradingImportParser {
                     parseDoubleSafe(col[6], cells)));
         }
         return new CashQuery(cash.value, available.value, withdrawable.value,
-                marketValue.value, assets.value, pnl.value, positions, headerMatched);
+                marketValue.value, assets.value, pnl.value, positions, headerMatched, todayPnlColumn);
     }
 
     // ── 历史成交导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）──
@@ -313,9 +317,11 @@ public final class TradingImportParser {
     public record CashPosition(String symbol, String name, int quantity,
                                double costPrice, double currentPrice, double pnl, double todayPnl) {}
 
-    /** 资金查询结果：首行账户全字段 + 明细。 */
+    /** 资金查询结果：首行账户全字段 + 明细。
+     *  @param todayPnlColumn 明细表头是否含「当日盈亏」列（缺列 → 调用方不得把当日盈亏清零，P2-交易37） */
     public record CashQuery(java.math.BigDecimal cash, java.math.BigDecimal available,
                             java.math.BigDecimal withdrawable, java.math.BigDecimal marketValue,
                             java.math.BigDecimal assets, java.math.BigDecimal pnl,
-                            List<CashPosition> positions, boolean headerMatched) {}
+                            List<CashPosition> positions, boolean headerMatched,
+                            boolean todayPnlColumn) {}
 }

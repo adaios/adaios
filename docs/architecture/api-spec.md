@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.54 | 最后更新：2026-09-09**
+**文档版本：v3.55 | 最后更新：2026-09-09**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-09 | v3.55 | **当日盈亏精确计算（P2-交易37，用户拍板口径①）**：`GET /trading/account` 的 `todayPnl` 语义升级——收盘任务（15:05）按口径①写入精确值（当日已实现（卖出净额−卖出成本，当日买入冲抵/旧仓 avgCost/清仓回退历史买入加权） + 持仓日浮动 (现价−昨收)×数量（当日新买入按成本） + 当日股息入账（+）/红利税（−）），不再只是持仓浮动估算；`POST /trading/imports/cash` 明细表头**缺「当日盈亏」列 → 保留既有 todayPnl 不清零**（不再静默写 0），带列才以券商真源覆盖；数据前提：当日成交需经系统流水（导历史成交/手动记录），缺昨收/缺成本基线的部分不计入并后端 notes 记日志 |
 | 2026-09-09 | v3.54 | **交易账目治本 + 清仓级联批 1（REVIEW P2-交易34/35/36 出表 + RFC 20260909）**：①**券商快照锚定防重（P2-交易34 治本）**——持仓 replace/资金股份导入落锚定日（`data/{userId}/trading/snapshot-anchor.json`）；`POST /trades` 等手动/确认成交 entryDate ≤ 锚定日 → 400（提示历史成交导入补流水或重导快照）；`POST /trading/transfer` date ≤ 最近资金快照日 → 400（纯净投入修正走 `PUT /trading/principal`）；历史成交导入对 entryDate ≤ 锚定日改走补录（只补流水不重算持仓/现金，股息类同日期跳过）；②`GET /trading/sold` 响应结构改为对象 `{"sold":[…SoldTrade 数组，每项新增 provenance:"flow"|"import"], "pendingClearances":[{symbol,name,sellDate,reason}]}`（RFC 20260909 双轨：flow=流水自动收录、pending=已清仓但缺买入基线的待补档案提示）；③**成交编号/手续费补链（P2-交易36 治本）**——当日候选新增 `orderId`/`fee` 字段，新增 `PUT /trading/trade-log/meta`（候选确认前补填）+ `PUT /trading/trades/{tradeId}/meta`（已落库流水按 id 补填 orderId/fee，幂等，404/无值语义）；`POST /trading/trade-log/confirm` 落库改走带 orderId/fee 链路（候选透传流水） |
 | 2026-09-07 | v3.53 | **learn V2 审查修复批（2026-09-07 learn V2 增量深审 S-learn1/2 + P1-learn1~4 + P2-learn2~8 出表，用户拍板）**：①**状态流转约束**：只允许 new→review→done 与回退 review→new / done→review（跳变 new→done、done→new → 400）；进入 review 时卡片写 `review_at`（服务器日期，S-learn1 计时起点）——复习提醒按「进入复习队列满 7 天」提醒（不再按消化日 created 误判），同卡 7 天内不重复推（`reminded_at` 节流）；②**跨日同名拒绝**：`POST /learn/cards` 与候选生成改为「同 type + 同 title 任意日期已存在 → 400」（跨日同名曾致标题寻址歧义改错卡）；多张同名残留读侧抛 400 列日期；③**learn_card_id 回链精确化**：= learn 源卡真实文件路径（清洗后 title），不再 raw title 拼接；④**复习提醒开关 learn 侧可达**：新增 `GET /learn/push-settings`（返回 `{"learn-review":bool}`）+ `PUT /learn/push-settings/learn-review`（body `{"enabled"}`）——纯 learn 用户（无 trading 插件）也能自关，不再只藏交易设置页；⑤**编辑并发/保真**：编辑 merge 移入仓储锁内原子完成（并发 PATCH 不丢更新），写盘保留手工未知 frontmatter 键/正文段；⑥**Feed 类型级门控**：learn-review push 条目只需 learn 插件、交易类 push 条目需 trading 插件（防跨域漏给纯 learn/纯 trading 用户）；learn-review 条目 tags/domain 不再标「行情」 |
 | 2026-09-07 | v3.52 | **复盘生成改提交式（复盘超时修复批，用户实测「点击复盘没反应」）**：`POST /trading/review` 不再同步阻塞等 AI（生成实测 77~176s，远超 App 15s/Web 120s 客户端超时——原实现前端必先断，「点击没反应」而复盘实际已在后端生成落盘）。改为**提交即返回 + 后台执行器生成 + 同日去重**：响应改 `{"date","status"}`——`exists`（已有复盘不重跑，前端 GET 即展示）/ `running`（同 user+date 正在生成中，连点只跑一次）/ `pending`（已受理，后台生成中）；生成失败只记日志不落半成品。前端轮询 `GET /trading/review?date=`（404=未就绪，200=内容）。**口径（2026-09-07 用户拍板）：交易写聊天记录仅限当日成交**——历史成交导入/补录/回放等非当日批量回填不再写 `domain=trading` 时间线记录（防逐笔刷 Feed；复盘卡点早已改「当日真实成交」口径，不依赖记录关键词） |

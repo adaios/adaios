@@ -315,7 +315,10 @@ public class TradingSessionPushService {
                 return;
             }
             final java.math.BigDecimal fMarket = marketValue;
-            final java.math.BigDecimal fToday = todayPnl;
+            // P2-交易37（2026-09-09，用户拍板口径①）：当日盈亏改「精确计算」——
+            // 当日已实现（卖出净额−卖出成本） + 持仓日浮动 + 当日股息/红利税
+            //（详见 TradingAppService.computeDailyPnl；行情已确认齐备，notes 记日志）
+            final java.math.BigDecimal fToday = resolveTodayPnl(userId, todayPnl);
             final java.math.BigDecimal fFloat = floatPnl;
             // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）——
             // 原 findLatest+save 无锁，与 recordTrade/转账/资金导入并发整文件互相覆盖
@@ -333,6 +336,21 @@ public class TradingSessionPushService {
                 log.error("收盘账户更新写失败——账目未落盘 | userId={} | {}", userId, e.getMessage());
             }
         });
+    }
+
+    /** P2-交易37：收盘当日盈亏 = 精确计算（已实现+浮动+股息/红利税）；失败回落旧持仓浮动估算。 */
+    private java.math.BigDecimal resolveTodayPnl(String userId, java.math.BigDecimal fallback) {
+        try {
+            com.adaiadai.core.application.TradingAppService.DailyPnlResult r =
+                    tradingAppService.computeDailyPnl(userId, java.time.LocalDate.now());
+            if (!r.notes().isEmpty()) {
+                log.info("当日盈亏计算附注 | userId={} | {}", userId, String.join("；", r.notes()));
+            }
+            return r.todayPnl();
+        } catch (RuntimeException e) {
+            log.warn("收盘账户更新：当日盈亏精确计算失败，回落持仓浮动估算 | userId={} | {}", userId, e.getMessage());
+            return fallback;
+        }
     }
 
     /** RFC 20260817 收盘交易日志确认（15:15）：当日有归集候选 → 推送「今日操作汇总，是否完整」。
