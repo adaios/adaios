@@ -8,7 +8,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,25 +23,41 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * LearnDigestAppServiceTest — learn 消化用例（RFC 20260829，V1）。
+ * LearnDigestAppServiceTest — learn 消化用例（RFC 20260829，V1 + 2026-09-10 提交式）。
  * <p>
  * 覆盖：AI 成功卡片化（trading type → trade_related 落盘）、非 trading 强制 false、
  * type hint 显式覆盖、LLM 抛异常 → 素材留存 + 400（fail-visible 不落半成品）、
- * 输出不可解析 → 素材留存 + 400、title 空 → 素材留存 + 400、type 越界回落 other。
+ * 输出不可解析 → 素材留存 + 400、title 空 → 素材留存 + 400、type 越界回落 other；
+ * 提交式（V1.1）：受理 → 后台消化 → job done/failed、inflight 去重不重复烧 AI、
+ * 执行器拒绝 → 400 人话、无任务 → idle。
  */
 class LearnDigestAppServiceTest {
 
     private final AiClient aiClient = mock(AiClient.class);
     private final LearnCardRepository repository = mock(LearnCardRepository.class);
+    private final List<Runnable> submitted = new ArrayList<>();
     private LearnDigestAppService service;
+
+    /** 捕获型执行器：submit 只入队不执行，runAll() 手动放行（测时序/inflight 去重）。 */
+    private final Executor capturingExecutor = submitted::add;
+
+    /** 直执行器：submit 同步跑完后台任务（测受理即完成路径）。 */
+    private final Executor directExecutor = Runnable::run;
+
+    private void runAll() {
+        List<Runnable> copy = List.copyOf(submitted);
+        submitted.clear();
+        copy.forEach(Runnable::run);
+    }
 
     @BeforeEach
     void setUp() {
-        service = new LearnDigestAppService(aiClient, repository);
+        service = new LearnDigestAppService(aiClient, repository, capturingExecutor);
     }
 
     private static final String TRADING_JSON = """
@@ -272,5 +291,104 @@ class LearnDigestAppServiceTest {
         assertThrows(LearnException.class,
                 () -> service.changeStatus("adai", LearnCard.TYPE_AI, "某卡", "archived"));
         verify(repository, never()).updateStatus(anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    // ── 提交式消化（2026-09-10 learn 喂入入口批，对齐复盘 submitReview）──
+
+    @Test
+    void submit_accepted_thenBackgroundDigest_jobDone() {
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        LearnDigestAppService.DigestSubmitResult result =
+                direct.submit("adai", "字幕内容", null, "bilibili", "某UP", "https://b23.tv/x", "2026-05-05");
+
+        assertEquals(LearnDigestAppService.STATUS_PENDING, result.status());
+        LearnDigestAppService.DigestJobStatus job = direct.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
+        assertEquals(LearnCard.TYPE_TRADING, job.type());
+        assertEquals("回调一半的判定", job.title());
+        verify(repository).save(eq("adai"), any(LearnCard.class));
+        verify(repository, never()).saveRawSource(anyString(), anyString());
+    }
+
+    @Test
+    void submit_inflight_returnsRunningWithoutSecondAiCall() {
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        LearnDigestAppService.DigestSubmitResult first =
+                service.submit("adai", "字幕内容", null, null, null, null, null);
+        assertEquals(LearnDigestAppService.STATUS_PENDING, first.status());
+        assertEquals(LearnDigestAppService.STATUS_RUNNING, service.digestJobStatus("adai").status());
+
+        // 在跑中二次提交 → running（不重复入队/不重复烧 AI）
+        LearnDigestAppService.DigestSubmitResult second =
+                service.submit("adai", "另一份素材", null, null, null, null, null);
+        assertEquals(LearnDigestAppService.STATUS_RUNNING, second.status());
+        assertEquals(1, submitted.size());
+
+        runAll();
+        LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
+        verify(aiClient, times(1)).generate(any(), any());
+        verify(repository, times(1)).save(eq("adai"), any(LearnCard.class));
+    }
+
+    @Test
+    void submit_llmFailure_jobFailed_savesRawSourceNotHalfCard() {
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        when(aiClient.generate(any(), any())).thenThrow(new RuntimeException("llm down"));
+
+        LearnDigestAppService.DigestSubmitResult result =
+                direct.submit("adai", "字幕内容", null, null, null, null, null);
+        assertEquals(LearnDigestAppService.STATUS_PENDING, result.status());
+
+        LearnDigestAppService.DigestJobStatus job = direct.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
+        assertTrue(job.message().contains("素材已留存"));
+        verify(repository).saveRawSource(eq("adai"), anyString());
+        verify(repository, never()).save(anyString(), any(LearnCard.class));
+    }
+
+    @Test
+    void submit_rejectedByExecutor_throws400HumanMessage() {
+        Executor rejecting = r -> {
+            throw new RejectedExecutionException("full");
+        };
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> svc.submit("adai", "字幕内容", null, null, null, null, null));
+        assertTrue(e.getMessage().contains("繁忙"));
+        assertEquals(LearnDigestAppService.STATUS_IDLE, svc.digestJobStatus("adai").status());
+        verify(repository, never()).save(anyString(), any(LearnCard.class));
+    }
+
+    @Test
+    void submit_blankContent_throwsBeforeAccept() {
+        LearnException e = assertThrows(LearnException.class,
+                () -> service.submit("adai", "   ", null, null, null, null, null));
+        assertTrue(e.getMessage().contains("不能为空"));
+        assertEquals(0, submitted.size());
+        assertEquals(LearnDigestAppService.STATUS_IDLE, service.digestJobStatus("adai").status());
+    }
+
+    @Test
+    void submit_invalidTypeHint_throwsBeforeAccept() {
+        assertThrows(LearnException.class,
+                () -> service.submit("adai", "字幕内容", "hacking", null, null, null, null));
+        assertEquals(0, submitted.size());
+    }
+
+    @Test
+    void digestJobStatus_idleWhenNoJob_doneStableUntilConsumed() {
+        assertEquals(LearnDigestAppService.STATUS_IDLE, service.digestJobStatus("adai").status());
+        // 完成结果超过 TTL 后惰性清理回 idle（模拟 60s 未消费）
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        direct.submit("adai", "字幕内容", null, null, null, null, null);
+        assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status());
+        // TTL 边界不可注入时钟，此处仅验证同一 job 重复查询幂等（done 保留至消费/覆盖）
+        assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status());
     }
 }

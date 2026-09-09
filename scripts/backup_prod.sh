@@ -6,7 +6,7 @@
 #       定期快照到本地，防服务器故障丢数据。新服务器就绪后解压还原即可。
 #
 # 备份内容：
-#   - data/（个人数据：records/memory/ai-logs/identity/trading/index/accounts）— 不可重建
+#   - data/（个人数据：records/memory/ai-logs/identity/trading/learn/index/accounts）— 不可重建
 #   - os/（Domain OS 知识资产：trading-engine/life-os/project-os）— git 可重建但含服务器运行时副本
 #   - backend/.env（DEEPSEEK_API_KEY / ADAI_SMOKE_ACCOUNT / ADAI_SMOKE_PASSWORD，只存在服务器）— 不可重建（ADAI_ADMIN_TOKEN 已于 2026-09-02 #178 退役）
 #   - backend/adai-core.jar（线上精确版本，可从仓库重建但便宜）

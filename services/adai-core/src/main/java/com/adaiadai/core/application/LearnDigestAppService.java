@@ -11,12 +11,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * LearnDigestAppService — learn 消化用例编排（RFC 20260829 learn 插件，V1 后端流水线）。
@@ -55,10 +59,124 @@ public class LearnDigestAppService {
 
     private final AiClient aiClient;
     private final LearnCardRepository repository;
+    private final Executor learnSubmitExecutor;
 
-    public LearnDigestAppService(AiClient aiClient, LearnCardRepository repository) {
+    /** 提交式消化任务态（key=userId，2026-09-10 learn 喂入入口批）。 */
+    private final Map<String, DigestJob> jobs = new ConcurrentHashMap<>();
+
+    public LearnDigestAppService(AiClient aiClient,
+                                 LearnCardRepository repository,
+                                 @Qualifier("learnSubmitExecutor") Executor learnSubmitExecutor) {
         this.aiClient = aiClient;
         this.repository = repository;
+        this.learnSubmitExecutor = learnSubmitExecutor;
+    }
+
+    // ── 提交式消化（2026-09-10 learn 喂入入口批，对齐复盘 submitReview 先例）──
+
+    public static final String STATUS_PENDING = "pending";
+    public static final String STATUS_RUNNING = "running";
+    public static final String STATUS_DONE = "done";
+    public static final String STATUS_FAILED = "failed";
+    public static final String STATUS_IDLE = "idle";
+
+    /** done/failed 结果保留时长：前端轮询消费后即不再查询，超时惰性清理防 jobs 泄漏。 */
+    private static final long RESULT_TTL_MS = 60_000;
+
+    /**
+     * 提交消化素材（2026-09-10 learn 喂入入口批）。
+     * <p>
+     * learn 卡片化同走 LLM（几十秒级 AI 生成），远超前端 15s/120s 客户端超时——
+     * 原同步 POST 必然前端先断、结果「看似没反应」（复盘血泪先例同因）。改为后台执行器
+     * 消化 + 前端轮询 {@link #digestJobStatus} 直到 done/failed。fail-visible 语义保留：
+     * 后台消化失败（LLM 失败/输出不可解析/缺标题）素材留存 learn/_raw/，任务态记 failed + 人话。
+     * <p>
+     * 去重：同 user 已有 digest 在跑 → 直接返回 running（连点/双端并发只烧一次 AI）；
+     * 受理 → pending（入队即跑）。执行器拒绝（队列满）→ LearnException 400 人话。
+     *
+     * @return 提交状态（status：pending / running）
+     */
+    public DigestSubmitResult submit(String userId, String content, String typeHint,
+                                     String platform, String author, String url, String published) {
+        if (content == null || content.isBlank()) {
+            throw new LearnException("素材内容不能为空");
+        }
+        if (typeHint != null && !typeHint.isBlank() && !LearnCard.isValidType(typeHint)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        DigestJob cur = jobs.get(userId);
+        if (cur != null && cur.isRunning()) {
+            return new DigestSubmitResult(STATUS_RUNNING);
+        }
+        DigestJob job = new DigestJob();
+        jobs.put(userId, job);
+        try {
+            learnSubmitExecutor.execute(() -> {
+                try {
+                    LearnCard card = digest(userId, content, typeHint, platform, author, url, published);
+                    job.done(card.type(), card.title());
+                } catch (LearnException e) {
+                    log.warn("learn 后台消化失败 | userId={} | {}", userId, e.getMessage());
+                    job.fail(e.getMessage());
+                } catch (Exception e) {
+                    log.error("learn 后台消化异常 | userId={}", userId, e);
+                    job.fail("AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试");
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            jobs.remove(userId, job);
+            throw new LearnException("消化任务繁忙，请稍后重试");
+        }
+        return new DigestSubmitResult(STATUS_PENDING);
+    }
+
+    /** 当前消化任务状态（GET /learn/digest/status 响应）：running / done{type,title} / failed{message} / idle。 */
+    public DigestJobStatus digestJobStatus(String userId) {
+        DigestJob job = jobs.get(userId);
+        if (job == null) return new DigestJobStatus(STATUS_IDLE, null, null, null);
+        if (!job.isRunning() && job.elapsedMs() > RESULT_TTL_MS) {
+            jobs.remove(userId, job); // 惰性清理过期结果（消费后/超时自然回 idle）
+            return new DigestJobStatus(STATUS_IDLE, null, null, null);
+        }
+        return job.statusView();
+    }
+
+    /** 消化提交结果（POST /learn/cards 响应：status，见 {@link #submit}）。 */
+    public record DigestSubmitResult(String status) {}
+
+    /** 消化任务状态（GET /learn/digest/status 响应，见 {@link #digestJobStatus}）。 */
+    public record DigestJobStatus(String status, String type, String title, String message) {}
+
+    /** 单用户消化任务态（内存态，重启丢失 → 轮询回 idle；done/failed 60s 惰性清理）。 */
+    private static final class DigestJob {
+        private volatile String status = STATUS_RUNNING;
+        private volatile String type;
+        private volatile String title;
+        private volatile String message;
+        private final long createdAt = System.currentTimeMillis();
+
+        boolean isRunning() {
+            return STATUS_RUNNING.equals(status);
+        }
+
+        long elapsedMs() {
+            return System.currentTimeMillis() - createdAt;
+        }
+
+        void done(String type, String title) {
+            this.status = STATUS_DONE;
+            this.type = type;
+            this.title = title;
+        }
+
+        void fail(String message) {
+            this.status = STATUS_FAILED;
+            this.message = message;
+        }
+
+        DigestJobStatus statusView() {
+            return new DigestJobStatus(status, type, title, message);
+        }
     }
 
     /**

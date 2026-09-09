@@ -56,7 +56,7 @@ public class LearnController {
         this.pluginService = pluginService;
     }
 
-    /** 喂入素材 → AI 消化成学习卡片并落盘。 */
+    /** 喂入素材 → AI 消化成学习卡片（2026-09-10 提交式：立即返回 status，后台消化 + 轮询 /digest/status）。 */
     @PostMapping("/cards")
     public ResponseEntity<?> digest(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
@@ -66,9 +66,18 @@ public class LearnController {
         if (body.type() != null && !body.type().isBlank() && !LearnCard.isValidType(body.type())) {
             return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
         }
-        LearnCard card = digestService.digest(userId, body.content(),
+        LearnDigestAppService.DigestSubmitResult result = digestService.submit(userId, body.content(),
                 body.type(), body.platform(), body.author(), body.url(), body.published());
-        return ResponseEntity.ok(card);
+        return ResponseEntity.ok(result);
+    }
+
+    /** 消化任务状态（2026-09-10 提交式配套）：running / done{type,title} / failed{message} / idle。 */
+    @GetMapping("/digest/status")
+    public ResponseEntity<?> digestStatus(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(digestService.digestJobStatus(userId));
     }
 
     /** 卡片列表（?type=ai/trading/other 筛选；缺省全部）。 */

@@ -155,5 +155,90 @@ void main() {
       await tester.pumpAndSettle();
       expect(putCalled, isTrue, reason: '切换应调用 PUT /learn/push-settings/learn-review');
     });
+
+    testWidgets('喂入：页头＋提交 → 轮询 done → 回列表打开新卡', (tester) async {
+      var treeCalls = 0;
+      var pollCount = 0;
+      var posted = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            if (treeCalls == 1) return _json(const {});
+            return _json({
+              'ai': [_card('ai', '阿呆消化了新卡', created: '2026-09-10')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'POST') {
+            posted = true;
+            final body = jsonDecode(req.body) as Map<String, dynamic>;
+            expect(body['content'], contains('字幕'));
+            return _json({'status': 'running'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            pollCount++;
+            if (pollCount >= 2) {
+              return _json({'status': 'done', 'type': 'ai', 'title': '阿呆消化了新卡'});
+            }
+            return _json({'status': 'running'});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      expect(find.textContaining('还没有学习卡片'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+      expect(find.text('整理新内容'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, '一段视频字幕素材，讲 RAG…');
+      await tester.tap(find.text('让阿呆消化'));
+      await tester.pump();
+
+      expect(find.text('消化中'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(posted, isTrue, reason: '应提交 POST /learn/cards');
+      expect(pollCount, greaterThanOrEqualTo(2), reason: '应轮询 /learn/digest/status');
+      // 回到列表页 → 打开新卡全文详情
+      expect(find.text('阿呆消化了新卡 的核心观点'), findsOneWidget);
+    });
+
+    testWidgets('喂入失败：后端 400 人话透出且可重试', (tester) async {
+      var postCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'POST') {
+            postCalls++;
+            return _json({'error': 'AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试'},
+                status: 400);
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, '素材内容');
+      await tester.tap(find.text('让阿呆消化'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.textContaining('素材已留存'), findsOneWidget);
+      expect(find.text('让阿呆消化'), findsOneWidget, reason: '失败后仍可重试');
+      expect(postCalls, 1);
+    });
   });
 }

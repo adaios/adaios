@@ -1,3 +1,30 @@
+/// learn 消化任务状态（2026-09-10 提交式喂入配套）：
+/// status = idle（无任务）| running（消化中）| done（完成，type/title 定位新卡）| failed（失败，message 人话）。
+class LearnDigestJob {
+  final String status;
+  final String type;
+  final String title;
+  final String message;
+
+  LearnDigestJob({
+    required this.status,
+    this.type = '',
+    this.title = '',
+    this.message = '',
+  });
+
+  factory LearnDigestJob.fromJson(Map<String, dynamic> json) => LearnDigestJob(
+        status: (json['status'] as String?) ?? 'idle',
+        type: (json['type'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+      );
+
+  bool get isRunning => status == 'running';
+  bool get isDone => status == 'done';
+  bool get isFailed => status == 'failed';
+}
+
 /// learn 学习卡片 DTO（RFC 20260829 learn 插件）。
 /// 值复制自后端 domain/learn/LearnCard，桌面端独立解析（不跨工程 import）。
 class LearnCardDto {

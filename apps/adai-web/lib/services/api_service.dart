@@ -1118,6 +1118,45 @@ class ApiService {
 
   // ── learn 学习插件（RFC 20260829）──
 
+  /// 喂入素材消化（2026-09-10 提交式）：POST /learn/cards → {status: pending|running}，
+  /// 后台消化完成后轮询 [getLearnDigestStatus] 直到 done/failed（对齐复盘提交式先例）。
+  Future<String> submitLearnDigest({
+    required String content,
+    String? type,
+    String? platform,
+    String? author,
+    String? url,
+    String? published,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards'),
+      headers: _headers,
+      body: jsonEncode({
+        'content': content,
+        'type': ?type,
+        'platform': ?platform,
+        'author': ?author,
+        'url': ?url,
+        'published': ?published,
+      }),
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (json['status'] as String?) ?? '';
+  }
+
+  /// 消化任务状态（2026-09-10）：GET /learn/digest/status →
+  /// {status: idle|running|done|failed, type?, title?, message?}。
+  Future<LearnDigestJob> getLearnDigestStatus() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/digest/status'),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnDigestJob.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
   /// 资产树：learn 卡片按 type 分组（GET /learn/tree）。
   Future<LearnTreeResponse> getLearnTree() async {
     final resp = await _client.get(

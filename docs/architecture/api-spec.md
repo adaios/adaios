@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-10 | v3.56 | **learn 喂入入口批（用户拍板「先页面后对话流」，页面喂入）**：`POST /learn/cards` 由**同步消化改为提交式**（对齐复盘 submitReview 先例——learn 卡片化同走 LLM，几十秒级生成远超前端 15s/120s 客户端超时，原同步 POST 前端必先断「看似没反应」）：响应改 `{"status":"pending"|"running"}`——受理入后台执行器（learnSubmitExecutor 2 线程/8 队列，满 → 400「消化任务繁忙」）；同 user 已有消化在跑 → 直接 `running`（连点/双端并发只烧一次 AI）；body/校验不变（content 必填≤50000、type 越界 400、同 type+title 同名拒绝、fail-visible 素材留存 _raw/）。**新增 `GET /learn/digest/status`**（返回 `{"status":"idle"|"running"|"done"|"failed","type"?,"title"?,"message"?}`——done 后前端按 type/title 打开新卡；failed 带人话 message；done/failed 结果 60s 惰性清理回 idle）。卡片完成仍落 `data/{userId}/learn/`，产物查询全走既有端点不变 |
 | 2026-09-09 | v3.55 | **当日盈亏精确计算（P2-交易37，用户拍板口径①）**：`GET /trading/account` 的 `todayPnl` 语义升级——收盘任务（15:05）按口径①写入精确值（当日已实现（卖出净额−卖出成本，当日买入冲抵/旧仓 avgCost/清仓回退历史买入加权） + 持仓日浮动 (现价−昨收)×数量（当日新买入按成本） + 当日股息入账（+）/红利税（−）），不再只是持仓浮动估算；`POST /trading/imports/cash` 明细表头**缺「当日盈亏」列 → 保留既有 todayPnl 不清零**（不再静默写 0），带列才以券商真源覆盖；数据前提：当日成交需经系统流水（导历史成交/手动记录），缺昨收/缺成本基线的部分不计入并后端 notes 记日志 |
 | 2026-09-09 | v3.54 | **交易账目治本 + 清仓级联批 1（REVIEW P2-交易34/35/36 出表 + RFC 20260909）**：①**券商快照锚定防重（P2-交易34 治本）**——持仓 replace/资金股份导入落锚定日（`data/{userId}/trading/snapshot-anchor.json`）；`POST /trades` 等手动/确认成交 entryDate ≤ 锚定日 → 400（提示历史成交导入补流水或重导快照）；`POST /trading/transfer` date ≤ 最近资金快照日 → 400（纯净投入修正走 `PUT /trading/principal`）；历史成交导入对 entryDate ≤ 锚定日改走补录（只补流水不重算持仓/现金，股息类同日期跳过）；②`GET /trading/sold` 响应结构改为对象 `{"sold":[…SoldTrade 数组，每项新增 provenance:"flow"|"import"], "pendingClearances":[{symbol,name,sellDate,reason}]}`（RFC 20260909 双轨：flow=流水自动收录、pending=已清仓但缺买入基线的待补档案提示）；③**成交编号/手续费补链（P2-交易36 治本）**——当日候选新增 `orderId`/`fee` 字段，新增 `PUT /trading/trade-log/meta`（候选确认前补填）+ `PUT /trading/trades/{tradeId}/meta`（已落库流水按 id 补填 orderId/fee，幂等，404/无值语义）；`POST /trading/trade-log/confirm` 落库改走带 orderId/fee 链路（候选透传流水） |
 | 2026-09-07 | v3.53 | **learn V2 审查修复批（2026-09-07 learn V2 增量深审 S-learn1/2 + P1-learn1~4 + P2-learn2~8 出表，用户拍板）**：①**状态流转约束**：只允许 new→review→done 与回退 review→new / done→review（跳变 new→done、done→new → 400）；进入 review 时卡片写 `review_at`（服务器日期，S-learn1 计时起点）——复习提醒按「进入复习队列满 7 天」提醒（不再按消化日 created 误判），同卡 7 天内不重复推（`reminded_at` 节流）；②**跨日同名拒绝**：`POST /learn/cards` 与候选生成改为「同 type + 同 title 任意日期已存在 → 400」（跨日同名曾致标题寻址歧义改错卡）；多张同名残留读侧抛 400 列日期；③**learn_card_id 回链精确化**：= learn 源卡真实文件路径（清洗后 title），不再 raw title 拼接；④**复习提醒开关 learn 侧可达**：新增 `GET /learn/push-settings`（返回 `{"learn-review":bool}`）+ `PUT /learn/push-settings/learn-review`（body `{"enabled"}`）——纯 learn 用户（无 trading 插件）也能自关，不再只藏交易设置页；⑤**编辑并发/保真**：编辑 merge 移入仓储锁内原子完成（并发 PATCH 不丢更新），写盘保留手工未知 frontmatter 键/正文段；⑥**Feed 类型级门控**：learn-review push 条目只需 learn 插件、交易类 push 条目需 trading 插件（防跨域漏给纯 learn/纯 trading 用户）；learn-review 条目 tags/domain 不再标「行情」 |
@@ -1996,8 +1997,12 @@ chat 模式（全屏）
 > **V2 消化闭环第一批（2026-09-07 复习流转 + 编辑）**：卡片 `status` 从 V1 固定 new 变为可流转 new→review→done（PATCH 端点）；正文编辑支撑（复述段建模 retell + PATCH 编辑端点）——「对话流让阿呆改」的后端能力就绪（前端对话流接线随 UI 批）。
 >
 > **V2 审查修复批（2026-09-07，learn V2 增量深审 v3.53）**：流转只允许相邻（new↔review、review→done、done→review，跳变 400）；进入 review 写 `review_at`（提醒计时起点）+ `reminded_at` 节流；同 type+title **任意日期**同名拒绝（跨日同名歧义根治）；learn_card_id = 源卡真实路径（清洗后标题）；复习提醒开关 learn 侧可达（GET/PUT `/learn/push-settings[/learn-review]`，纯 learn 用户可自关）；Feed 类型级门控。
+>
+> **喂入入口批（2026-09-10，v3.56，用户拍板「先页面后对话流」）**：`POST /learn/cards` 改**提交式**（后台消化 + `GET /learn/digest/status` 轮询，对齐复盘 submitReview 先例）+ **web 资产页「＋」弹窗 / app「最近学习」页头「＋」喂入页**双端页面喂入入口（消化完成自动定位打开新卡；失败人话可重试；超时/关闭后台继续，素材留存 `_raw/`）。空态引导同步改为指向页面入口（不再指对话流——对话流喂入为批 2 待排）。
 
-### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（v3.48）
+### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（提交式，v3.56）
+
+> **v3.48（V1）起为同步消化（响应即卡片）；v3.56 起改提交式**（2026-09-10 learn 喂入入口批）：AI 消化几十秒级，远超前端客户端超时（App 15s/Web 120s）——原同步 POST 前端必先断「看似没反应」（复盘血泪先例同因）。现在 POST 立即返回受理状态，消化放后台执行器，前端轮询 `GET /learn/digest/status` 直到 done/failed。
 
 **Body**
 
@@ -2010,31 +2015,33 @@ chat 模式（全屏）
 | `url` | String | 否 | 原文链接 |
 | `published` | String | 否 | 原文发布日期 yyyy-MM-dd |
 
-**Response** `200` 落盘的 LearnCard：
+**Response** `200`：
 
 ```json
-{
-  "type": "trading",
-  "title": "回调一半的判定",
-  "platform": "bilibili",
-  "author": "某UP",
-  "url": "https://b23.tv/x",
-  "published": "2026-05-05",
-  "created": "2026-09-06",
-  "status": "new",
-  "tradeRelated": true,
-  "tradeNote": "与 R66 止损互补",
-  "tags": ["止损", "回调"],
-  "coreView": "回调到一半才是买点，几何口径 (high+low)/2",
-  "keyPoints": ["02:31 回调一半=(high+low)/2"],
-  "questions": ["它与课程口径一致吗？"],
-  "retell": "",
-  "reviewAt": null,
-  "remindedAt": null
-}
+{ "status": "pending" }
 ```
 
-- `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、AI 消化失败（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
+- `status`：`pending`（受理，后台消化中）/ `running`（同 user 已有消化在跑——连点/双端并发去重，不重复烧 AI，前端直接轮询）
+- 卡片消化完成不在此响应返回，走 `GET /learn/digest/status` 轮询到 `done` 后按 `type/title` 经 `GET /learn/card` 打开全文
+- `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、消化任务繁忙（队列满）；AI 消化失败不在此返回——后台失败后 `GET /learn/digest/status` 返回 `failed` + 人话 message（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
+- `403`：learn 插件未启用
+
+### `GET /api/v1/learn/digest/status` — 消化任务状态（v3.56）
+
+**Response** `200`：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `status` | String | `idle`（无任务/结果已过期清理）/ `running` / `done` / `failed` |
+| `type` | String? | 仅 `done`：新卡 type（ai/trading/other） |
+| `title` | String? | 仅 `done`：新卡标题（供 `GET /learn/card` 打开） |
+| `message` | String? | 仅 `failed`：人话原因（AI 失败素材已留存 `_raw/` 可重试） |
+
+```json
+{ "status": "done", "type": "ai", "title": "RAG 与 Agent 的区别" }
+```
+
+- 任务态为**内存态**（按 userId 单任务）：`done`/`failed` 结果保留 60s 惰性清理回 `idle`；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
 - `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/cards` — 卡片列表（v3.48）

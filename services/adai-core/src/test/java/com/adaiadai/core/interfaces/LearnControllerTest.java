@@ -78,18 +78,27 @@ class LearnControllerTest {
     }
 
     @Test
-    void digest_success_returnsCard() throws Exception {
-        LearnCard card = sampleCard();
-        when(digestService.digest(anyString(), any(), any(), any(), any(), any(), any())).thenReturn(card);
+    void digest_success_returnsRunning() throws Exception {
+        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new LearnDigestAppService.DigestSubmitResult("running"));
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"字幕内容\",\"platform\":\"bilibili\",\"author\":\"某UP\",\"url\":\"https://b23.tv/x\",\"published\":\"2026-05-05\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.title").value("回调一半的判定"))
-                .andExpect(jsonPath("$.type").value("trading"))
-                .andExpect(jsonPath("$.tradeRelated").value(true))
-                .andExpect(jsonPath("$.platform").value("bilibili"));
+                .andExpect(jsonPath("$.status").value("running"));
+    }
+
+    @Test
+    void digest_inflight_returnsRunning() throws Exception {
+        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new LearnDigestAppService.DigestSubmitResult("running"));
+        mvc("learn").perform(post("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"字幕内容\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("running"));
     }
 
     @Test
@@ -103,7 +112,7 @@ class LearnControllerTest {
 
     @Test
     void digest_aiFailure_returns400WithHumanMessage() throws Exception {
-        when(digestService.digest(anyString(), any(), any(), any(), any(), any(), any()))
+        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new LearnException("AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试"));
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")
@@ -111,6 +120,34 @@ class LearnControllerTest {
                         .content("{\"content\":\"字幕内容\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("素材已留存")));
+    }
+
+    @Test
+    void digestStatus_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(get("/api/v1/learn/digest/status").header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void digestStatus_success_returnsJobState() throws Exception {
+        when(digestService.digestJobStatus("adai"))
+                .thenReturn(new LearnDigestAppService.DigestJobStatus("running", null, null, null));
+        mvc("learn").perform(get("/api/v1/learn/digest/status")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("running"));
+    }
+
+    @Test
+    void digestStatus_done_returnsCardLocator() throws Exception {
+        when(digestService.digestJobStatus("adai"))
+                .thenReturn(new LearnDigestAppService.DigestJobStatus("done", "ai", "RAG 与 Agent", null));
+        mvc("learn").perform(get("/api/v1/learn/digest/status")
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("done"))
+                .andExpect(jsonPath("$.type").value("ai"))
+                .andExpect(jsonPath("$.title").value("RAG 与 Agent"));
     }
 
     @Test

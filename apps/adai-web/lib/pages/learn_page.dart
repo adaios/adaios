@@ -74,6 +74,39 @@ class _LearnPageState extends State<LearnPage> {
     return null;
   }
 
+  /// 「整理新内容」喂入弹窗（2026-09-10 learn 喂入入口批）。
+  /// 提交式：POST 立即返回 → 后台消化（几十秒级 LLM）→ 弹窗内轮询 /learn/digest/status
+  /// → done 关弹窗并定位打开新卡；failed 弹窗内人话可重试；超时提示稍后刷新（素材已留存 _raw/）。
+  Future<void> _openDigestDialog() async {
+    final result = await showDialog<({String type, String title})>(
+      context: context,
+      builder: (_) => _DigestDialog(api: widget.api),
+    );
+    if (result == null || !mounted) return;
+    _showSnack('已沉淀学习卡片《${result.title}》');
+    await _refreshAndOpen(result.type, result.title);
+  }
+
+  /// 消化完成：整树刷新后定位并打开新卡（2026-09-10 喂入入口批）。
+  Future<void> _refreshAndOpen(String type, String title) async {
+    await _load();
+    if (!mounted || _tree == null) return;
+    for (final g in _tree!.groups) {
+      final group = g.$1.contains('AI') ? 'ai' : (g.$1.contains('交易') ? 'trading' : 'other');
+      if (group != type) continue;
+      for (var i = 0; i < g.$2.length; i++) {
+        if (g.$2[i].title == title) {
+          setState(() {
+            _selectedGroup = g.$1;
+            _selectedIndex = i;
+          });
+          return;
+        }
+      }
+    }
+    // 极端兜底：树里没找到新卡（同名被拒/组异常），回落整树默认选中即可
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(children: [
@@ -81,6 +114,12 @@ class _LearnPageState extends State<LearnPage> {
         title: '学习',
         subtitle: '消化沉淀的知识卡片',
         actions: [
+          IconButton(
+            onPressed: () => _openDigestDialog(),
+            icon: const Icon(Icons.add, size: 16),
+            color: AppColors.darkGreen,
+            tooltip: '整理新内容（粘贴字幕/文章，阿呆消化成卡片）',
+          ),
           IconButton(
             onPressed: () => _openCandidatesDialog(),
             icon: const Icon(Icons.inbox_outlined, size: 16),
@@ -120,10 +159,22 @@ class _LearnPageState extends State<LearnPage> {
     }
     final tree = _tree;
     if (tree == null || tree.isEmpty) {
-      return const Center(
-        child: Text('还没有学习卡片\n在对话里说「整理这个视频/文章」，阿呆帮你沉淀成卡片',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.8, color: AppColors.darkGrey5)),
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('还没有学习卡片\n点右上角「＋」粘贴字幕或文章原文，阿呆帮你消化沉淀成卡片',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, height: 1.8, color: AppColors.darkGrey5)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _openDigestDialog,
+            icon: const Icon(Icons.add, size: 14),
+            label: const Text('整理新内容'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGreen,
+              side: const BorderSide(color: AppColors.darkBorder),
+            ),
+          ),
+        ]),
       );
     }
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -660,4 +711,243 @@ class _LearnPageState extends State<LearnPage> {
           ),
         ]),
       );
+}
+
+/// 「整理新内容」喂入弹窗（2026-09-10 learn 喂入入口批，桌面端）。
+/// 提交式：POST /learn/cards 立即返回 → 轮询 GET /learn/digest/status（每 2s，上限 150s）→
+/// done 以 (type,title) pop 给 LearnPage 打开新卡；failed 弹窗内人话 + 可重试；
+/// 超时/用户中途关闭 → 消化仍在后台继续，稍后刷新列表可见（素材已留存 learn/_raw/ 兜底）。
+class _DigestDialog extends StatefulWidget {
+  final ApiService api;
+  const _DigestDialog({required this.api});
+
+  @override
+  State<_DigestDialog> createState() => _DigestDialogState();
+}
+
+class _DigestDialogState extends State<_DigestDialog> {
+  final _contentCtl = TextEditingController();
+  final _platformCtl = TextEditingController();
+  final _authorCtl = TextEditingController();
+  final _urlCtl = TextEditingController();
+  String? _type; // null = 让阿呆自动判定
+  bool _submitting = false;
+  bool _polling = false;
+  String? _error;
+  String _progress = '';
+
+  static const _pollInterval = Duration(seconds: 2);
+  static const _pollDeadline = Duration(seconds: 150);
+
+  @override
+  void dispose() {
+    _contentCtl.dispose();
+    _platformCtl.dispose();
+    _authorCtl.dispose();
+    _urlCtl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final content = _contentCtl.text.trim();
+    if (content.isEmpty) {
+      setState(() => _error = '请先粘贴素材内容：视频字幕 / 文章原文 / 链接正文');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await widget.api.submitLearnDigest(
+        content: content,
+        type: _type,
+        platform: _trimOrNull(_platformCtl),
+        author: _trimOrNull(_authorCtl),
+        url: _trimOrNull(_urlCtl),
+      );
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _polling = true;
+        _progress = '已受理，阿呆开始消化…';
+      });
+      await _poll();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = extractApiErrorMessage(e);
+      });
+    }
+  }
+
+  String? _trimOrNull(TextEditingController c) {
+    final v = c.text.trim();
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> _poll() async {
+    final deadline = DateTime.now().add(_pollDeadline);
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(_pollInterval);
+      if (!mounted) return;
+      final LearnDigestJob job;
+      try {
+        job = await widget.api.getLearnDigestStatus();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _progress = '查询消化进度失败（${extractApiErrorMessage(e)}），继续等待…');
+        continue;
+      }
+      if (!mounted) return;
+      if (job.isDone) {
+        Navigator.pop(context, (type: job.type, title: job.title));
+        return;
+      }
+      if (job.isFailed) {
+        setState(() {
+          _polling = false;
+          _error = job.message.isEmpty ? '消化失败，素材已留存（learn/_raw/），可稍后重试' : job.message;
+        });
+        return;
+      }
+      setState(() => _progress = '正在消化中，通常 1-3 分钟…');
+    }
+    if (!mounted) return;
+    setState(() {
+      _polling = false;
+      _error = '消化仍在后台进行（AI 生成较慢）。素材已留存，稍后刷新列表即可看到新卡片；也可以再试一次。';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final polling = _polling;
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface2,
+      title: Text(polling ? '整理新内容 · 消化中' : '整理新内容',
+          style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+      content: SizedBox(width: 600, child: polling ? _buildPolling() : _buildForm()),
+      actions: polling
+          ? [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('后台继续，稍后刷新查看',
+                    style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消', style: TextStyle(fontSize: 13)),
+              ),
+              FilledButton(
+                onPressed: _submitting ? null : _submit,
+                style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('让阿呆消化'),
+              ),
+            ],
+    );
+  }
+
+  Widget _buildPolling() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5)),
+        const SizedBox(height: 14),
+        Text(_progress,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4, height: 1.6)),
+      ]),
+    );
+  }
+
+  Widget _buildForm() {
+    return SingleChildScrollView(
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          controller: _contentCtl,
+          maxLines: 11,
+          maxLength: 50000,
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1, height: 1.6),
+          decoration: const InputDecoration(
+            hintText: '粘贴素材内容：视频字幕 / 文章原文 / 链接正文…\n（阿呆只做结构化整理，不代抓取外部链接；纯链接请先粘贴正文）',
+            hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 12.5, height: 1.6),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: _type,
+          isDense: true,
+          decoration: const InputDecoration(
+            labelText: '内容类型',
+            labelStyle: TextStyle(fontSize: 12, color: AppColors.darkGrey5),
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          ),
+          style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+          items: const [
+            DropdownMenuItem<String>(value: null, child: Text('让阿呆自动判定', style: TextStyle(fontSize: 13))),
+            DropdownMenuItem<String>(value: 'ai', child: Text('AI / 技术', style: TextStyle(fontSize: 13))),
+            DropdownMenuItem<String>(value: 'trading', child: Text('交易', style: TextStyle(fontSize: 13))),
+            DropdownMenuItem<String>(value: 'other', child: Text('其他', style: TextStyle(fontSize: 13))),
+          ],
+          onChanged: _submitting ? null : (v) => setState(() => _type = v),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _authorCtl,
+              style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                hintText: '作者 / UP 主（可选）',
+                hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 12),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _platformCtl,
+              style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                hintText: '来源平台（可选）',
+                hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 12),
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _urlCtl,
+          style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey1),
+          decoration: const InputDecoration(
+            hintText: '原文链接（可选）',
+            hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 12),
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(_error!,
+              style: const TextStyle(fontSize: 12.5, color: AppColors.darkRed, height: 1.6)),
+        ],
+        const SizedBox(height: 4),
+        const Text('消化后卡片按类型归档，进入复习队列可定期回看；交易类会提示是否反哺规则候选。',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ]),
+    );
+  }
 }
