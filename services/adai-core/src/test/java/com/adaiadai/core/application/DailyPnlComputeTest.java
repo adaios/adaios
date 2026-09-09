@@ -140,8 +140,8 @@ class DailyPnlComputeTest {
         when(positions.findAll(anyString())).thenReturn(List.of());
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.SELL, 100, "12.0", null, DAY, null),
-                trade("600000", TradeDirection.BUY, 100, "10.0", null, PREV, null)));
+                trade("600000", TradeDirection.SELL, 100, "12.0", "0.0", DAY, null),
+                trade("600000", TradeDirection.BUY, 100, "10.0", "0.0", PREV, null)));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of());
         TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
@@ -226,10 +226,10 @@ class DailyPnlComputeTest {
         when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 1000, "11.25")));
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.BUY, 1000, "10.0", null, PREV, null),
-                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", null, DAY,
+                trade("600000", TradeDirection.BUY, 1000, "10.0", "0.0", PREV, null),
+                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", "0.0", DAY,
                         LocalTime.of(9, 30), null),
-                tradeAt("600000", TradeDirection.BUY, 1000, "12.5", null, DAY,
+                tradeAt("600000", TradeDirection.BUY, 1000, "12.5", "0.0", DAY,
                         LocalTime.of(10, 0), null)));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.6", "10.0")));
@@ -248,10 +248,10 @@ class DailyPnlComputeTest {
         when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 300, "10.0")));
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.BUY, 500, "10.0", null, PREV, null),
-                tradeAt("600000", TradeDirection.BUY, 800, "10.0", null, DAY,
+                trade("600000", TradeDirection.BUY, 500, "10.0", "0.0", PREV, null),
+                tradeAt("600000", TradeDirection.BUY, 800, "10.0", "0.0", DAY,
                         LocalTime.of(9, 31), null),
-                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", null, DAY,
+                tradeAt("600000", TradeDirection.SELL, 1000, "12.0", "0.0", DAY,
                         LocalTime.of(10, 0), null)));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.0", "10.0")));
@@ -326,5 +326,27 @@ class DailyPnlComputeTest {
                 "实际 " + saved.get().todayPnl());
         assertEquals(0, new BigDecimal("81357.16").compareTo(saved.get().assets()), "assets 不应被改动");
         assertEquals(0, new BigDecimal("2278.16").compareTo(saved.get().cash()), "cash 不应被改动");
+    }
+
+    @Test
+    void computeDailyPnl_manualSellWithoutFee_estimatesSellFees() {
+        // 三官深审 backend P2（2026-09-09）：手动记录 fee=null → 卖出净额按系统费率估算扣费
+        //（佣金+印花税+沪过户），历史买入成本同样含估算费——与持仓 avgCost 摊薄口径一致
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of()); // 当日清仓
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("600000", TradeDirection.BUY, 100, "10.0", null, PREV, null),
+                tradeAt("600000", TradeDirection.SELL, 100, "12.0", null, DAY,
+                        LocalTime.of(9, 30), null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of());
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
+
+        // 卖净额 ≈ 1200 − 0.10(佣) − 0.60(印花) − 0.01(沪过户) = 1199.29；历史含费成本 ≈ 1000.10 → ≈ 199.19
+        assertTrue(Math.abs(r.todayPnl().doubleValue() - 199.19) < 0.02,
+                "手动卖出无 fee 应按估算费扣除，实际 " + r.todayPnl());
     }
 }

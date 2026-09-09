@@ -1091,14 +1091,14 @@ public class TradingAppService {
             SoldAgg a = realized.computeIfAbsent(t.symbol(), s -> new SoldAgg(t.name()));
             if (t.direction() == TradeDirection.BUY) {
                 a.buyQty += t.volume();
-                a.buyCost = a.buyCost.add(amountOf(t, true));
+                a.buyCost = a.buyCost.add(buyCostOf(t));
                 if (t.tradeTime() != null
                         && (a.firstBuyTime == null || t.tradeTime().isBefore(a.firstBuyTime))) {
                     a.firstBuyTime = t.tradeTime();
                 }
             } else {
                 a.sellQty += t.volume();
-                a.sellNet = a.sellNet.add(amountOf(t, false));
+                a.sellNet = a.sellNet.add(sellNetOf(t));
                 if (t.tradeTime() != null && a.firstBuyTime != null
                         && t.tradeTime().isAfter(a.firstBuyTime)) {
                     // T+0 边界判定：卖出晚于当日最早买入（股票 T+1 不可能；可转债/异常数据才见）
@@ -1199,6 +1199,24 @@ public class TradingAppService {
         return new DailyPnlResult(pnl.setScale(2, java.math.RoundingMode.HALF_UP), List.copyOf(notes));
     }
 
+    /**
+     * 当日买入含费成本（三官深审 backend P2 修复，2026-09-09）：历史导入带券商实扣 fee → amount+fee；
+     * 手动记录 fee=null → 用系统费率估算总成本（CommissionCalculator.buyCost，与持仓 avgCost 摊薄同口径，
+     * 避免「买入成本少计佣金、卖出净额未扣费」的数元级口径不一致）。
+     */
+    private static BigDecimal buyCostOf(TradeRecord t) {
+        if (t.fee() != null) return amountOf(t, true);
+        if (t.price() == null || t.volume() <= 0) return amountOf(t, true);
+        return CommissionCalculator.buyCost(t.symbol(), t.price(), t.volume());
+    }
+
+    /** 当日卖出净额（已扣费；fee=null 手动记录 → 按系统费率估算卖出回款，见 {@link #buyCostOf}）。 */
+    private static BigDecimal sellNetOf(TradeRecord t) {
+        if (t.fee() != null) return amountOf(t, false);
+        if (t.price() == null || t.volume() <= 0) return amountOf(t, false);
+        return CommissionCalculator.sellProceeds(t.symbol(), t.price(), t.volume());
+    }
+
     /** 卖出净额 / 买入成本聚合（amount = price×volume；买入 +fee、卖出 −fee）。 */
     private static BigDecimal amountOf(TradeRecord t, boolean buy) {
         BigDecimal fee = t.fee() != null ? t.fee() : BigDecimal.ZERO;
@@ -1213,7 +1231,7 @@ public class TradingAppService {
         for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
             if (!symbol.equals(t.symbol()) || t.direction() != TradeDirection.BUY || t.volume() <= 0) continue;
             if (t.entryDate() == null || !t.entryDate().isBefore(until)) continue;
-            costSum = costSum.add(amountOf(t, true));
+            costSum = costSum.add(buyCostOf(t));
             qty += t.volume();
         }
         return qty > 0
