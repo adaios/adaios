@@ -28,11 +28,15 @@ public class TradingContextContributor implements ContextContributor {
 
     private final PositionRepository positionRepository;
     private final MarketDataSource marketDataSource;
+    /** P2-交易35 治本（2026-09-09）：现金唯一真源 = account.json（S5），不再读 positions.md cashBalance 展示行。 */
+    private final AccountSnapshotRepository accountSnapshotRepository;
 
     public TradingContextContributor(PositionRepository positionRepository,
-                                     MarketDataSource marketDataSource) {
+                                     MarketDataSource marketDataSource,
+                                     AccountSnapshotRepository accountSnapshotRepository) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
+        this.accountSnapshotRepository = accountSnapshotRepository;
     }
 
     @Override
@@ -84,10 +88,12 @@ public class TradingContextContributor implements ContextContributor {
                     .append("\n");
         }
 
+        BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash).orElse(BigDecimal.ZERO);
         sb.append("\n总市值 ").append(totalValue.setScale(2).toPlainString())
                 .append("，浮动盈亏 ").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
                 .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                .append("，现金余额 ").append(positionRepository.cashBalance(userId).setScale(2).toPlainString());
+                .append("，现金余额 ").append(cash.setScale(2).toPlainString());
 
         return sb.toString();
     }

@@ -1,6 +1,7 @@
 package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.trading.MarketContextContributor;
+import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.market.MarketData;
@@ -188,7 +189,8 @@ class PluginIsolationTest {
                 new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of())));
         PluginService pluginService = new PluginService(accounts, new PluginRegistry());
 
-        ContextContributor marketContributor = new MarketContextContributor(market, positions);
+        ContextContributor marketContributor = new MarketContextContributor(market, positions,
+                mock(AccountSnapshotRepository.class));
         ContextEngine engineWithMarket = new ContextEngine(identity, records, tagIndex, memory, cards,
                 List.of(marketContributor), List.of(), search, pluginService);
 

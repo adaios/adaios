@@ -52,12 +52,41 @@ public class TradingAppService {
     private final SoldTradeRepository soldTradeRepository;
     private final AccountSnapshotRepository accountSnapshotRepository;
     private final TransferRepository transferRepository;
+    /** P2-交易34 治本（2026-09-09）：券商快照锚定（持仓 replace / 资金股份导入日），增量推导防重复入账。 */
+    private final TradingAnchorRepository anchorRepository;
     private final MarketDataSource marketDataSource;
     /** RFC 20260825：批次推导与行为标注（当日成交同步模式 / 每日操作总结依赖）。 */
     private final TradingLotService tradingLotService;
     /** 第三阶段：用户规则参数配置（清仓 verdict 阈值按用户隔离）。 */
     private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
 
+    /** Spring 主构造（含锚定仓储——P2-交易34 防重）。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public TradingAppService(PositionRepository positionRepository,
+                             RecordRepository recordRepository,
+                             TradingHistoryRepository tradingHistoryRepository,
+                             WatchlistRepository watchlistRepository,
+                             SoldTradeRepository soldTradeRepository,
+                             AccountSnapshotRepository accountSnapshotRepository,
+                             TransferRepository transferRepository,
+                             MarketDataSource marketDataSource,
+                             TradingLotService tradingLotService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository,
+                             TradingAnchorRepository anchorRepository) {
+        this.positionRepository = positionRepository;
+        this.recordRepository = recordRepository;
+        this.tradingHistoryRepository = tradingHistoryRepository;
+        this.watchlistRepository = watchlistRepository;
+        this.soldTradeRepository = soldTradeRepository;
+        this.accountSnapshotRepository = accountSnapshotRepository;
+        this.transferRepository = transferRepository;
+        this.anchorRepository = anchorRepository;
+        this.marketDataSource = marketDataSource;
+        this.tradingLotService = tradingLotService;
+        this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
+    }
+
+    /** 无锚定仓储构造（测试/旧调用兼容：不做 P2-交易34 防重，行为等同历史版本）。 */
     public TradingAppService(PositionRepository positionRepository,
                              RecordRepository recordRepository,
                              TradingHistoryRepository tradingHistoryRepository,
@@ -68,20 +97,71 @@ public class TradingAppService {
                              MarketDataSource marketDataSource,
                              TradingLotService tradingLotService,
                              TradingRuleSettingsRepository tradingRuleSettingsRepository) {
-        this.positionRepository = positionRepository;
-        this.recordRepository = recordRepository;
-        this.tradingHistoryRepository = tradingHistoryRepository;
-        this.watchlistRepository = watchlistRepository;
-        this.soldTradeRepository = soldTradeRepository;
-        this.accountSnapshotRepository = accountSnapshotRepository;
-        this.transferRepository = transferRepository;
-        this.marketDataSource = marketDataSource;
-        this.tradingLotService = tradingLotService;
-        this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
+        this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
+                soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
+                tradingLotService, tradingRuleSettingsRepository, noopAnchorRepository());
+    }
+
+    private static TradingAnchorRepository noopAnchorRepository() {
+        return new TradingAnchorRepository() {
+            @Override
+            public SnapshotAnchor find(String userId) {
+                return SnapshotAnchor.empty();
+            }
+
+            @Override
+            public void updatePositionsReplace(String userId, java.time.LocalDate date) {
+            }
+
+            @Override
+            public void updateCashImport(String userId, java.time.LocalDate date) {
+            }
+        };
     }
 
     private Object tradeLock(String userId) {
         return userTradeLocks.computeIfAbsent(userId != null ? userId : "default", k -> new Object());
+    }
+
+    // ── P2-交易34 治本（2026-09-09）：券商快照锚定防重 ──
+
+    /**
+     * 最近一次「全量锚定」日 = 持仓 replace 与资金股份导入的较晚者。
+     * <p>锚定语义：replace/资金导入落地的是券商**当下**真实状态（已含此前全部成交/转账结果），
+     * 因此 entryDate ≤ 锚定日的增量（成交回放/手动补录/转账补记）会双计持仓与现金
+     * （2026-09-07 实测 −3.19 万、2026-09-09 同源复发 −1.27 万），必须防重。
+     */
+    private LocalDate brokerAnchorDate(String userId) {
+        SnapshotAnchor a = anchorRepository.find(userId);
+        LocalDate latest = a.cashImport();
+        if (a.positionsReplace() != null && (latest == null || a.positionsReplace().isAfter(latest))) {
+            latest = a.positionsReplace();
+        }
+        return latest;
+    }
+
+    /** 该日期是否已被券商快照锚定覆盖（防重复入账）。 */
+    private boolean coveredByAnchor(String userId, LocalDate entryDate) {
+        LocalDate anchor = brokerAnchorDate(userId);
+        return anchor != null && entryDate != null && !entryDate.isAfter(anchor);
+    }
+
+    /** 记录一次持仓全量 replace 锚定（best-effort：失败告警不阻断已成功的导入，防重暂时失效可被发现）。 */
+    private void recordPositionsReplaceAnchor(String userId) {
+        try {
+            anchorRepository.updatePositionsReplace(userId, LocalDate.now());
+        } catch (RuntimeException e) {
+            log.error("持仓 replace 已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    /** 记录一次资金股份导入锚定（best-effort，同上）。 */
+    private void recordCashImportAnchor(String userId) {
+        try {
+            anchorRepository.updateCashImport(userId, LocalDate.now());
+        } catch (RuntimeException e) {
+            log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
+        }
     }
 
     /**
@@ -142,6 +222,16 @@ public class TradingAppService {
             LocalTime effectiveTradeTime = tradeTime != null
                     ? tradeTime
                     : LocalDateTime.now().toLocalTime();
+
+            // P2-交易34 治本（2026-09-09）：成交日期 ≤ 券商快照锚定日 = 该笔已包含在快照内
+            // （持仓数量/成本与现金均已是券商口径），手动/确认再录入会双计持仓与现金 → 拒绝 + 指路。
+            // 正确姿势：白天先记/先导成交，收盘后最后做 replace+资金股份锚定；或锚定后导历史成交（只补流水）。
+            if (coveredByAnchor(userId, effectiveEntryDate)) {
+                throw new TradingException(String.format(
+                        "成交日期 %s 已包含在 %s 的券商快照中（持仓/现金已按快照校准）——重复录入会双计账目；"
+                                + "如需补流水请用「历史成交导入」（只记账不改账），确需修正持仓/现金请重导通达信持仓或资金股份快照",
+                        effectiveEntryDate, brokerAnchorDate(userId)));
+            }
 
             List<Position> currentPositions = new ArrayList<>(positionRepository.findAll(userId));
             boolean found = false;
@@ -445,6 +535,26 @@ public class TradingAppService {
     }
 
     /**
+     * 补写单笔流水成交编号/手续费（P2-交易36 治本，2026-09-09）：截图入账/手动确认成交落库后
+     * 缺 orderId/fee → 按 tradeId 对已落库流水补填（PUT /trades/{tradeId}/meta）。
+     * <p>简单委托 history repo（含 per-user 锁——与 recordTrade/import 等流水写路径同锁，
+     * 防止补填读-改-写与并发 append 互相覆盖）；只覆盖非空新值。
+     *
+     * @return 实际更新笔数（0 = 找不到该 tradeId 或无可写新值）
+     */
+    public int updateTradeMeta(String userId, String tradeId, String orderId, BigDecimal fee) {
+        synchronized (tradeLock(userId)) { // #147：与流水写路径同 per-user 锁
+            int updated = tradingHistoryRepository.updateTradeMeta(userId, tradeId, orderId, fee);
+            log.info("交易流水补成交元信息 | userId={} | tradeId={} | orderId={} fee={} | {}",
+                    userId, tradeId,
+                    orderId != null && !orderId.isBlank() ? orderId : "（不改）",
+                    fee != null ? fee : "（不改）",
+                    updated > 0 ? "已更新" : "未命中");
+            return updated;
+        }
+    }
+
+    /**
      * 当日交易复盘聚合（RFC 20260822，纯客观数据）：指定日期成交的时段分桶/买卖分布/节奏。
      * <p>
      * 时段口径（2026-08-22 用户确认）：早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00。
@@ -610,6 +720,11 @@ public class TradingAppService {
             }
             current.removeIf(p -> p.quantity() <= 0);
             positionRepository.saveAll(userId, current);
+            // P2-交易34 治本：replace=true 是「以券商文件为准」的全量锚定——记锚定日供增量防重
+            // （此后 entryDate ≤ 本日的成交 sync 回放/手动补录将转补录或拒绝，防 replace+回放双计）。
+            if (replace) {
+                recordPositionsReplaceAnchor(userId);
+            }
             log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
                     userId, imported, missingStopLoss.size(), replace, current.size());
             return new PositionImportResult(imported, missingStopLoss);
@@ -857,6 +972,8 @@ public class TradingAppService {
             }
             if (!positions.isEmpty()) positionRepository.saveAll(userId, positions);
             // S5（2026-08-17）：现金唯一真源 = account.json（上方已保存）——不再写 positions.md cashBalance
+            // P2-交易34 治本：资金股份导入 = 现金/资产锚定日（此后 ≤ 本日的转账补记/成交回放需防重）。
+            recordCashImportAnchor(userId);
             log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只",
                     userId, cash, q.assets(), updated);
             return new CashImportResult(cash, q.assets(), updated);
@@ -869,8 +986,19 @@ public class TradingAppService {
      */
     public TransferRecord recordTransfer(String userId, String type, BigDecimal amount,
                                          LocalDate date, String note) {
+        // P2-交易34 治本（2026-09-09）：转账日期 ≤ 最近资金股份快照锚定日 → 该笔现金变动已包含在
+        // 快照内（2026-09-09 实测：21:23 锚定余额 2278.16 后又补记当天提现 15000 → 现金被双扣成 −12721.84），
+        // 补记会重复扣现金——拒绝并指路：纯净投入修正走「设置本金」，现金以券商快照为准。
+        LocalDate transferDate = date != null ? date : LocalDate.now();
+        LocalDate cashAnchor = anchorRepository.find(userId).cashImport();
+        if (cashAnchor != null && !transferDate.isAfter(cashAnchor)) {
+            throw new TradingException(String.format(
+                    "转账日期 %s 已包含在 %s 的资金股份快照中（快照余额已含这笔现金变动）——补记会重复扣现金；"
+                            + "如仅需修正净投入本金，请用「设置本金」；现金请以券商资金快照为准（转账应在快照导入前记录）",
+                    transferDate, cashAnchor));
+        }
         TransferRecord record = new TransferRecord(IdGenerator.monotonic("transfer_"),
-                type, amount, date, note);
+                type, amount, transferDate, note);
         synchronized (tradeLock(userId)) {
             // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）
             AccountSnapshot updated = accountSnapshotRepository.update(userId, cur -> {
@@ -985,21 +1113,40 @@ public class TradingAppService {
         List<TradingImportParser.HistoricalTradeRow> old = rows.stream()
                 .filter(r -> r.entryDate() == null || r.entryDate().isBefore(windowStart))
                 .toList();
-        if (old.isEmpty()) {
-            HistoricalTradeImportResult r = importSync(userId, recent);
-            return withNonTrades(r, r.nonTrades() + nonTradable);
+        // P2-交易34 治本（2026-09-09）：近 10 日窗口内成交再按「券商快照锚定」拆两层——
+        // entryDate ≤ 最近 replace/资金导入锚定日 → 该成交已包含在券商口径（positions/现金已按快照校准），
+        // 只能补流水，不再回放（recordTrade 双计现金/持仓——2026-09-07 replace+sync 实测 −3.19 万）；
+        // 晚于锚定日 → 正常 sync 回放（快照未覆盖的增量）。
+        LocalDate anchor = brokerAnchorDate(userId);
+        List<TradingImportParser.HistoricalTradeRow> anchoredRecent = new ArrayList<>();
+        List<TradingImportParser.HistoricalTradeRow> replayRecent = new ArrayList<>();
+        for (TradingImportParser.HistoricalTradeRow r : recent) {
+            (anchor != null && r.entryDate() != null && !r.entryDate().isAfter(anchor)
+                    ? anchoredRecent : replayRecent).add(r);
         }
-        // 先补录历史（只补流水），再同步近日（sync 的幂等指纹基于补录后的全量流水）
-        HistoricalTradeImportResult appendResult = importAppend(userId, old);
-        if (recent.isEmpty()) {
-            return withNonTrades(appendResult, appendResult.nonTrades() + nonTradable);
+        List<TradingImportParser.HistoricalTradeRow> appendRows = new ArrayList<>(old);
+        appendRows.addAll(anchoredRecent);
+
+        HistoricalTradeImportResult appendResult = null;
+        if (!appendRows.isEmpty()) {
+            // 先补录（窗口外历史 + 锚定已覆盖的近日成交：只补流水，不重算持仓/现金）
+            appendResult = importAppend(userId, appendRows);
         }
-        HistoricalTradeImportResult syncResult = importSync(userId, recent);
+        if (replayRecent.isEmpty()) {
+            // 全部落补录（典型：收盘锚定后再导当天成交补流水）→ 无回放、无总结
+            HistoricalTradeImportResult base = appendResult != null ? appendResult
+                    : new HistoricalTradeImportResult(0, 0, 0, 0, List.of(), "append", null);
+            return withNonTrades(base, base.nonTrades() + nonTradable);
+        }
+        // 补录完成后再回放锚定日之后的成交（sync 的幂等指纹基于补录后的全量流水）
+        HistoricalTradeImportResult syncResult = importSync(userId, replayRecent);
+        HistoricalTradeImportResult base = appendResult != null ? appendResult
+                : new HistoricalTradeImportResult(0, 0, 0, 0, syncResult.lines(), "sync", null);
         return new HistoricalTradeImportResult(
-                appendResult.imported() + syncResult.imported(),
-                appendResult.updated() + syncResult.updated(),
-                appendResult.skipped() + syncResult.skipped(),
-                appendResult.nonTrades() + syncResult.nonTrades() + nonTradable,
+                base.imported() + syncResult.imported(),
+                base.updated() + syncResult.updated(),
+                base.skipped() + syncResult.skipped(),
+                base.nonTrades() + syncResult.nonTrades() + nonTradable,
                 syncResult.lines(), "sync", syncResult.summary());
     }
 
@@ -1037,7 +1184,12 @@ public class TradingAppService {
                     // 2026-08-25 方案 A：股息类资金事件记账（入账 +现金 / 红利税 −现金，不进持仓/批次）；
                     // 其余数量 0 行（如纯股息红利税无备注识别）计入 nonTrades
                     if (TradingImportParser.isDividendEvent(r)) {
-                        applyDividendCash(userId, r);
+                        if (coveredByAnchor(userId, r.entryDate())) {
+                            // P2-交易34 治本：股息/红利税日期 ≤ 券商快照锚定日 → 该现金变动已含在快照内，跳过防双计
+                            skipped++;
+                        } else {
+                            applyDividendCash(userId, r);
+                        }
                     } else {
                         nonTrades++;
                     }

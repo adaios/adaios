@@ -82,8 +82,9 @@ public class TradeLogCollectService {
                 source,
                 // complete = symbol + direction + price + volume 全有（TradeLogCandidate javadoc；
                 // P1-1：原实现漏了 symbol 检查 → 无代码候选误判 complete=true 落库失败）
-                hasSymbol && r.price() != null && r.volume() != null
-        );
+                hasSymbol && r.price() != null && r.volume() != null,
+                // P2-交易36 治本（2026-09-09）：本期文字归集不抽取 orderId/fee → null（确认后流水补填）
+                null, null);
         List<TradeLogCandidate> updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
         log.info("交易日志归集 | userId={} | {} {} {} | 当日候选 {} 笔",
                 userId, r.direction(), candidate.symbol() != null ? candidate.symbol() : candidate.name(),
@@ -122,7 +123,10 @@ public class TradeLogCollectService {
                     // 2026-08-27：截图表格「日期」列提取（历史成交截图）；当日成交单无日期 → null
                     r.tradeDate(),
                     source,
-                    hasSymbol && r.price() != null && r.volume() != null);
+                    hasSymbol && r.price() != null && r.volume() != null,
+                    // P2-交易36 治本（2026-09-09）：本期截图 OCR 不抽取 orderId/fee → null
+                    //（候选确认前由用户补填 updateMeta，或确认落库后对流水补填）
+                    null, null);
             updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
             collected++;
         }
@@ -163,6 +167,31 @@ public class TradeLogCollectService {
         boolean updated = tradeLogRepository.updateTradeDate(userId, today, symbol, direction, tradeDate);
         log.info("交易日志候选补日期 | userId={} | {} {} → {} | {}", userId, direction, symbol,
                 tradeDate, updated ? "已更新" : "未命中");
+        return updated;
+    }
+
+    /**
+     * 补写候选成交编号/手续费（P2-交易36 治本，2026-09-09）：截图入账/手动确认成交缺
+     * orderId/fee——确认前用户在候选上补填（PUT /trade-log/meta），确认落库时随
+     * {@link #confirm(String)} 经 recordTradeWithOrderId 透传流水。
+     * <p>按 (symbol, direction) 定位当日候选（与 {@link #setTradeDate} 同口径，参照其写法）；
+     * 只覆盖非空新值：orderId 非 null/非 blank 才替换、fee 非 null 才替换；两者皆空直接返回 false。
+     * 锁内读-改-写由 {@link TradeLogRepository#updateMeta} 承担。
+     *
+     * @return true=至少更新了一笔候选；false=当日无此候选/无新值可写
+     */
+    public boolean updateMeta(String userId, String symbol, String direction,
+                              String orderId, BigDecimal fee) {
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        boolean hasFee = fee != null;
+        if (!hasOrder && !hasFee) return false;
+        LocalDate today = LocalDate.now();
+        boolean updated = tradeLogRepository.updateMeta(userId, today, symbol, direction,
+                hasOrder ? orderId : null, hasFee ? fee : null);
+        log.info("交易日志候选补成交元信息 | userId={} | {} {} | orderId={} fee={} | {}",
+                userId, direction, symbol,
+                hasOrder ? orderId : "（不改）", hasFee ? fee : "（不改）",
+                updated ? "已更新" : "未命中");
         return updated;
     }
 
@@ -220,7 +249,10 @@ public class TradeLogCollectService {
                 // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：成交日期以候选携带的 tradeDate 为准
                 // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；文字归集无日期才回退确认当天。
                 java.time.LocalDate entryDate = c.tradeDate() != null ? c.tradeDate() : today;
-                tradingAppService.recordTrade(
+                // P2-交易36 治本（2026-09-09）：完整候选确认落库走带 orderId/fee 的
+                // recordTradeWithOrderId——候选补填的成交编号/手续费透传流水落盘
+                // （原 recordTrade 无此两参，截图入账/手动确认成交会丢「成交编号/发生金额」）。
+                tradingAppService.recordTradeWithOrderId(
                         userId,
                         c.symbol(),
                         c.name(),
@@ -229,7 +261,8 @@ public class TradeLogCollectService {
                         c.volume() != null ? c.volume() : 0,
                         entryDate,
                         java.time.LocalTime.now(), // RFC 20260822：日志确认落库带当下成交时刻
-                        null, null, null, null);
+                        null, null, null, null,
+                        c.orderId(), c.fee());
                 done++;
             } catch (Exception e) {
                 // P0-1：失败候选保留（不丢），记录人话原因供前端展示

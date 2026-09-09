@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +56,7 @@ public class TradeLogRepository {
             MAPPER.readTree(content).forEach(n -> {
                 String price = n.path("price").asText("");
                 String volume = n.path("volume").asText("");
+                String fee = n.path("fee").asText("");
                 list.add(new TradeLogCandidate(
                         // 2026-08-27：symbol/name 为 null 时 Jackson NullNode.asText() 返回 "null" 字符串
                         // （round-trip 后污染 dedupeKey/complete 判定）——归一化为 null；兼容历史脏数据。
@@ -66,12 +68,26 @@ public class TradeLogRepository {
                         // 2026-08-27：tradeDate 可空（文字归集/旧候选无日期）——确认时回退确认当天
                         parseTradeDate(n.path("tradeDate").asText("")),
                         n.path("source").asText("text"),
-                        n.path("complete").asBoolean(false)));
+                        n.path("complete").asBoolean(false),
+                        // P2-交易36 治本（2026-09-09）：orderId/fee 可空字段——缺字段 → null
+                        // （Jackson NullNode.asText()="null" 由 normalizeNull 归一）；fee 数字文本解析失败 → null
+                        normalizeNull(n.path("orderId").asText()),
+                        parseFee(fee)));
             });
             return list;
         } catch (Exception e) {
             log.warn("读取交易日志候选失败 | userId={} | date={} | {}", userId, date, e.getMessage());
             return List.of();
+        }
+    }
+
+    /** 反序列化 fee：空串/缺字段 → null；非数字文本（脏数据）解析失败 → null（不阻断整文件读取）。 */
+    private static java.math.BigDecimal parseFee(String v) {
+        if (v == null || v.isBlank()) return null;
+        try {
+            return new java.math.BigDecimal(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -158,7 +174,8 @@ public class TradeLogRepository {
 
     /** 补写候选成交日期（2026-08-27 二修，用户拍板「截图缺日期禁止落库，补充日期后再确认」）：
      *  截图归集候选无日期列被 confirm 拒后，用户补日期 → 更新候选 tradeDate → 可再次确认。
-     *  按 symbol+direction 定位（与 discard 同口径），锁内读-改-写。 */
+     *  按 symbol+direction 定位（与 discard 同口径），锁内读-改-写。
+     *  P2-交易36（2026-09-09）：重建候选保留 c.orderId()/c.fee()（补日期不丢已填成交元信息）。 */
     public boolean updateTradeDate(String userId, LocalDate date, String symbol, String direction,
                                    LocalDate tradeDate) {
         if (symbol == null || direction == null || tradeDate == null) return false;
@@ -171,7 +188,38 @@ public class TradeLogRepository {
                 if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            tradeDate, c.source(), c.complete()));
+                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee()));
+                    updated = true;
+                }
+            }
+            if (updated) saveUnlocked(userId, date, existing);
+            return updated;
+        }
+    }
+
+    /** 补写候选成交元信息（P2-交易36 治本，2026-09-09）：确认前用户补成交编号/手续费。
+     *  <p>按 symbol+direction 定位（与 updateTradeDate 同口径），锁内读-改-写；
+     *  只覆盖非空新值——orderId 仅非 null 且非 blank 才替换、fee 仅非 null 才替换，其余保持；
+     *  orderId 与 fee 都无可写值 → 直接返回 false（无操作）。</p>
+     *  @return true=至少更新了一笔候选；false=当日无此候选/无新值可写 */
+    public boolean updateMeta(String userId, LocalDate date, String symbol, String direction,
+                              String orderId, BigDecimal fee) {
+        if (symbol == null || direction == null) return false;
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        boolean hasFee = fee != null;
+        if (!hasOrder && !hasFee) return false;
+        Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean updated = false;
+            for (int i = 0; i < existing.size(); i++) {
+                TradeLogCandidate c = existing.get(i);
+                if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
+                    existing.set(i, new TradeLogCandidate(
+                            c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
+                            c.tradeDate(), c.source(), c.complete(),
+                            hasOrder ? orderId : c.orderId(),
+                            hasFee ? fee : c.fee()));
                     updated = true;
                 }
             }
@@ -201,6 +249,13 @@ public class TradeLogRepository {
                 n.put("source", c.source());
                 n.put("tradeDate", c.tradeDate() != null ? c.tradeDate().toString() : "");
                 n.put("complete", c.complete());
+                // P2-交易36（2026-09-09）：orderId/fee 可空——空写 ""，读侧空串/缺字段归 null
+                n.put("orderId", c.orderId() != null ? c.orderId() : "");
+                if (c.fee() != null) {
+                    n.put("fee", c.fee());
+                } else {
+                    n.put("fee", "");
+                }
             }
             fileStorage.write(userId, DIR + date + ".json", MAPPER.writeValueAsString(arr));
         } catch (Exception e) {

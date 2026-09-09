@@ -141,8 +141,8 @@ class TradeLogCollectServiceTest {
         // recordTrade 抛错（如 SELL 超持仓）→ 该候选保留 + 失败明细返回，不静默清空
         TradingAppService trading = mock(TradingAppService.class);
         doThrow(new TradingException("卖出数量超过持仓: 000725（持有 100 股）"))
-                .when(trading).recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any(), any());
+                .when(trading).recordTradeWithOrderId(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any(), any(), any());
         service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
 
         service.collect("default", "我清仓了京东方", "text");
@@ -162,8 +162,8 @@ class TradeLogCollectServiceTest {
         TradingAppService trading = mock(TradingAppService.class);
         // 京东方（000725/SELL）成功；贵州茅台（600519/SELL）抛错
         doThrow(new TradingException("未持有 600519，无法卖出"))
-                .when(trading).recordTrade(eq("default"), eq("600519"), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any(), any());
+                .when(trading).recordTradeWithOrderId(eq("default"), eq("600519"), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any(), any(), any());
         service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
 
         service.collect("default", "我清仓了京东方", "text"); // 000725 complete（mock 京东方分支带数量价格）
@@ -191,9 +191,9 @@ class TradeLogCollectServiceTest {
         TradeLogCollectService.ConfirmResult r = service.confirm("default");
 
         assertEquals(1, r.confirmed());
-        verify(trading).recordTrade(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
+        verify(trading).recordTradeWithOrderId(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
                 eq(new BigDecimal("56.04")), eq(100), eq(tradeDate),
-                any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -207,9 +207,9 @@ class TradeLogCollectServiceTest {
         TradeLogCollectService.ConfirmResult r = service.confirm("default");
 
         assertEquals(1, r.confirmed());
-        verify(trading).recordTrade(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
+        verify(trading).recordTradeWithOrderId(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
                 eq(new BigDecimal("56.04")), eq(100), eq(java.time.LocalDate.now()),
-                any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any());
     }
 
     // ── 2026-08-27 二修（用户拍板「截图缺日期禁止落库，补充日期后再确认」）──
@@ -228,8 +228,8 @@ class TradeLogCollectServiceTest {
         assertEquals(1, r.failures().size(), "应返回人话提示");
         assertTrue(r.failures().get(0).contains("缺少成交日期"), "提示应含缺日期原因: " + r.failures());
         assertEquals(1, service.todayCandidates("default").size(), "候选应保留待补日期");
-        verify(trading, never()).recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                any(), any(), any(), any(), any(), any());
+        verify(trading, never()).recordTradeWithOrderId(any(), any(), any(), any(), any(), anyInt(),
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -267,9 +267,9 @@ class TradeLogCollectServiceTest {
         // 补日期后可正常确认落库（entryDate=补写的日期，不再回退当天）
         TradeLogCollectService.ConfirmResult r = service.confirm("default");
         assertEquals(1, r.confirmed());
-        verify(trading).recordTrade(eq("default"), eq("600206"), any(), eq(TradeDirection.SELL),
+        verify(trading).recordTradeWithOrderId(eq("default"), eq("600206"), any(), eq(TradeDirection.SELL),
                 eq(new BigDecimal("50.33")), eq(600), eq(java.time.LocalDate.of(2026, 8, 26)),
-                any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -306,8 +306,8 @@ class TradeLogCollectServiceTest {
         TradingAppService trading = mock(TradingAppService.class);
         AtomicInteger calls = new AtomicInteger(0);
         try {
-            when(trading.recordTrade(any(), any(), any(), any(), any(), anyInt(),
-                    any(), any(), any(), any(), any(), any())).thenAnswer(inv -> {
+            when(trading.recordTradeWithOrderId(any(), any(), any(), any(), any(), anyInt(),
+                    any(), any(), any(), any(), any(), any(), any(), any())).thenAnswer(inv -> {
                 if (calls.incrementAndGet() == 1) {
                     // 首次处理（京东方）进行中，新候选茅台到达（模拟 collect 并发）
                     repository.append("default", java.time.LocalDate.now(),
@@ -463,5 +463,53 @@ class TradeLogCollectServiceTest {
         assertEquals(1, candidates.size());
         assertNull(candidates.get(0).symbol());
         assertFalse(candidates.get(0).complete(), "查不到代码应保持待补充");
+    }
+
+    // ── P2-交易36 治本（2026-09-09）：成交编号/手续费 候选补填 + 确认透传 ──
+
+    @Test
+    void confirm_candidateWithOrderIdAndFee_passesToRecordTradeWithOrderId() {
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "BUY",
+                        new BigDecimal("56.04"), 100, java.time.LocalDate.of(2026, 9, 9),
+                        "image", true, "order-12345", new BigDecimal("5.6")));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.confirmed());
+        verify(trading).recordTradeWithOrderId(eq("default"), eq("000831"), any(), eq(TradeDirection.BUY),
+                eq(new BigDecimal("56.04")), eq(100), eq(java.time.LocalDate.of(2026, 9, 9)),
+                any(), any(), any(), any(), any(),
+                eq("order-12345"), eq(new BigDecimal("5.6")));
+    }
+
+    @Test
+    void updateMeta_setsOrderIdAndFee_onTodayCandidate() {
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("600206", "有研新材", "SELL",
+                        new BigDecimal("50.33"), 600, java.time.LocalDate.of(2026, 9, 9),
+                        "image", true));
+
+        assertTrue(service.updateMeta("default", "600206", "SELL", "委托号88", new BigDecimal("3.20")),
+                "应更新成功");
+        TradeLogCandidate c = service.todayCandidates("default").get(0);
+        assertEquals("委托号88", c.orderId());
+        assertEquals(0, new BigDecimal("3.20").compareTo(c.fee()), "手续费应写回候选");
+
+        // 只覆盖非空：再补 null orderId（保留旧值）+ 新 fee
+        assertTrue(service.updateMeta("default", "600206", "SELL", null, new BigDecimal("4.00")));
+        c = service.todayCandidates("default").get(0);
+        assertEquals("委托号88", c.orderId(), "null 不得清空已有 orderId");
+        assertEquals(0, new BigDecimal("4.00").compareTo(c.fee()));
+    }
+
+    @Test
+    void updateMeta_unknownCandidateOrEmptyValues_returnsFalse() {
+        repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("600206", "有研新材", "SELL",
+                        new BigDecimal("50.33"), 600, null, "image", true));
+        assertFalse(service.updateMeta("default", "999999", "SELL", "x", null), "无此候选返回 false");
+        assertFalse(service.updateMeta("default", "600206", "SELL", null, null), "无可写值返回 false");
+        assertEquals(1, service.todayCandidates("default").size());
     }
 }

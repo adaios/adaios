@@ -178,4 +178,46 @@ class TradingHistoryFileRepositoryTest {
         assertEquals(0, updated, "找不到 id 静默，不抛错");
         assertNull(repository.findAll("default").get(0).tradeTime(), "原记录不变");
     }
+
+    // ── P2-交易36 治本（2026-09-09）：流水补成交编号/手续费 ──
+
+    @Test
+    void updateTradeMeta_fillsOrderIdAndFee_keepsOthers() {
+        repository.append("default", trade("trade_1", "600000", "2026-08-01", "10.5", 100, "9.5", "B1"));
+
+        int updated = repository.updateTradeMeta("default", "trade_1", "order-88", new BigDecimal("3.20"));
+
+        assertEquals(1, updated, "按 id 补填应命中 1 笔");
+        TradeRecord loaded = repository.findAll("default").get(0);
+        assertEquals("order-88", loaded.orderId());
+        assertEquals(0, new BigDecimal("3.20").compareTo(loaded.fee()));
+        assertEquals(new BigDecimal("9.5"), loaded.stopLossPrice(), "其它字段不受影响");
+        assertEquals("B1", loaded.buyPoint());
+    }
+
+    @Test
+    void updateTradeMeta_onlyOverridesNonNull() {
+        repository.append("default", trade("trade_1", "600000", "2026-08-01", "10.5", 100, "9.5", "B1"));
+
+        repository.updateTradeMeta("default", "trade_1", null, new BigDecimal("1.00"));
+        TradeRecord loaded = repository.findAll("default").get(0);
+        assertNull(loaded.orderId(), "fee 补填时 orderId=null 不覆盖");
+        assertEquals(0, new BigDecimal("1.00").compareTo(loaded.fee()));
+
+        repository.updateTradeMeta("default", "trade_1", "order-9", null);
+        loaded = repository.findAll("default").get(0);
+        assertEquals("order-9", loaded.orderId(), "orderId 补填生效");
+        assertEquals(0, new BigDecimal("1.00").compareTo(loaded.fee()), "原 fee 保留");
+    }
+
+    @Test
+    void updateTradeMeta_unknownIdOrNoValues_noop() {
+        repository.append("default", trade("trade_1", "600000", "2026-08-01", "10.5", 100, "9.5", "B1"));
+
+        assertEquals(0, repository.updateTradeMeta("default", "trade_ghost", "x", new BigDecimal("1")),
+                "找不到 id 返回 0");
+        assertEquals(0, repository.updateTradeMeta("default", "trade_1", null, null),
+                "无可写新值返回 0");
+        assertNull(repository.findAll("default").get(0).orderId(), "原记录不变");
+    }
 }

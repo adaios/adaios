@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 /**
  * PluginRegistry — 插件名常量 + 校验 + 知识源/贡献者归属映射（RFC 20260814 T2.3）。
@@ -46,8 +47,8 @@ class PluginRegistryTest {
 
     @Test
     void pluginForContributor_mapsTradingAndProjectDomains() {
-        assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new MarketContextContributor(null, null)));
-        assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new TradingContextContributor(null, null)));
+        assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new MarketContextContributor(null, null, mock(com.adaiadai.core.domain.trading.AccountSnapshotRepository.class))));
+        assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new TradingContextContributor(null, null, mock(com.adaiadai.core.domain.trading.AccountSnapshotRepository.class))));
         assertEquals(PluginRegistry.PLUGIN_PROJECT, registry.pluginForContributor(new ProjectContextContributor(null, null)));
 
         // 非插件贡献者（life/默认）不门控

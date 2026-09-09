@@ -17,6 +17,9 @@ import java.time.LocalDate;
  * @param tradeDate 成交日期（2026-08-27：截图表格「日期」列提取；当日成交单无日期列 → null = 归集当天）
  * @param source    来源（text=文字 / image=截图）
  * @param complete  是否完整（symbol+direction+price+volume 全有）
+ * @param orderId   券商成交编号（P2-交易36 治本，2026-09-09：截图入账/手动确认可携带；
+ *                  可空——本期截图 OCR 不抽取，由用户确认前补填或确认落库后对流水补填）
+ * @param fee       手续费（同上，可空；确认落库透传 recordTradeWithOrderId）
  */
 public record TradeLogCandidate(
         String symbol,
@@ -26,8 +29,21 @@ public record TradeLogCandidate(
         Integer volume,
         LocalDate tradeDate,
         String source,
-        boolean complete
+        boolean complete,
+        String orderId,
+        BigDecimal fee
 ) {
+    /** canonical 构造兜底（与 TradeLogRepository.normalizeNull 同口径）：
+     *  orderId 空白/字面 "null" → null（防脏值污染落库与去重判定）；fee 无空值概念保持原样。 */
+    public TradeLogCandidate {
+        orderId = (orderId == null || orderId.isBlank() || "null".equals(orderId)) ? null : orderId;
+    }
+
+    /** 8 参委派构造（历史调用点兼容）：orderId/fee 缺省 null——截图 OCR 抽取上线前候选不携带。 */
+    public TradeLogCandidate(String symbol, String name, String direction, BigDecimal price,
+                             Integer volume, LocalDate tradeDate, String source, boolean complete) {
+        this(symbol, name, direction, price, volume, tradeDate, source, complete, null, null);
+    }
     /** 去重键：同 symbol + 方向（volume 维度由 {@link #sameTrade} 按 ±10% 区间判定）。 */
     public String dedupeKey() {
         // P1-1（2026-08-18 生产）：symbol 缺失（宽松解析未识别代码）时用 name 兜底，

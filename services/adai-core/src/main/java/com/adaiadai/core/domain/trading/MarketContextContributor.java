@@ -27,10 +27,14 @@ public class MarketContextContributor implements ContextContributor {
 
     private final MarketDataSource marketDataSource;
     private final PositionRepository positionRepository;
+    /** P2-交易35 治本（2026-09-09）：现金唯一真源 = account.json（S5），不再读 positions.md cashBalance 展示行。 */
+    private final AccountSnapshotRepository accountSnapshotRepository;
 
-    public MarketContextContributor(MarketDataSource marketDataSource, PositionRepository positionRepository) {
+    public MarketContextContributor(MarketDataSource marketDataSource, PositionRepository positionRepository,
+                                    AccountSnapshotRepository accountSnapshotRepository) {
         this.marketDataSource = marketDataSource;
         this.positionRepository = positionRepository;
+        this.accountSnapshotRepository = accountSnapshotRepository;
         log.info("MarketContextContributor 已初始化");
     }
 
@@ -168,10 +172,12 @@ public class MarketContextContributor implements ContextContributor {
                     .append(" |\n");
         }
 
+        BigDecimal cash = accountSnapshotRepository.findLatest(userId)
+                .map(AccountSnapshot::cash).orElse(BigDecimal.ZERO);
         sb.append("\n**汇总：** 总市值=").append(totalValue.setScale(2).toPlainString())
                 .append("，浮动盈亏=").append(totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
                 .append(totalPnl.setScale(2, RoundingMode.HALF_UP).toPlainString())
-                .append("，现金余额=").append(positionRepository.cashBalance(userId).setScale(2).toPlainString())
+                .append("，现金余额=").append(cash.setScale(2).toPlainString())
                 .append("\n");
     }
 

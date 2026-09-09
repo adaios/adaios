@@ -1024,6 +1024,67 @@ public class TradingController {
                 : ResponseEntity.notFound().build();
     }
 
+    /** 交易日志候选补成交元信息（P2-交易36 治本，2026-09-09）：截图入账/手动确认成交缺
+     *  成交编号(orderId)与手续费(fee)——确认前在候选上补填，确认落库时透传流水。
+     *  PUT /api/v1/trading/trade-log/meta，body {"symbol":"600206","direction":"SELL",
+     *  "orderId":"1234567890","fee":5.5}（orderId/fee 均可选，只覆盖非空值）
+     *  → {"updated":true}；无此候选/都无可写值 → {"updated":false}；参数非法 → 400。 */
+    @PutMapping("/trade-log/meta")
+    public ResponseEntity<?> updateTradeLogCandidateMeta(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null) return ResponseEntity.badRequest().body(Map.of("error", "请求体为空"));
+        String symbol = body.get("symbol") != null ? String.valueOf(body.get("symbol")) : null;
+        String direction = body.get("direction") != null ? String.valueOf(body.get("direction")) : null;
+        if (symbol == null || symbol.isBlank() || direction == null || direction.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "symbol/direction 必填"));
+        }
+        String orderId = body.get("orderId") != null ? String.valueOf(body.get("orderId")) : null;
+        BigDecimal fee = null;
+        if (body.get("fee") != null) {
+            try {
+                fee = new BigDecimal(String.valueOf(body.get("fee")).trim());
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "fee 不是有效数字"));
+            }
+        }
+        boolean updated = tradeLogCollectService.updateMeta(userId, symbol, direction, orderId, fee);
+        return ResponseEntity.ok(Map.of("updated", updated));
+    }
+
+    /** 交易流水补成交元信息（P2-交易36 治本，2026-09-09）：对**已落库**流水按 tradeId 补填
+     *  成交编号(orderId)/手续费(fee)——候选已确认入账但缺字段的历史场景。
+     *  PUT /api/v1/trading/trades/{tradeId}/meta，body {"orderId":"1234567890","fee":5.5}
+     *  （只覆盖非空值，不改其它字段）→ {"updated":true,"tradeId":"trade_..."}；
+     *  orderId 空白且 fee 为空 → 400；fee 解析失败 → 400。 */
+    @PutMapping("/trades/{tradeId}/meta")
+    public ResponseEntity<?> updateTradeMeta(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @PathVariable String tradeId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null) return ResponseEntity.badRequest().body(Map.of("error", "请求体为空"));
+        String orderId = body.get("orderId") != null ? String.valueOf(body.get("orderId")) : null;
+        BigDecimal fee = null;
+        if (body.get("fee") != null) {
+            try {
+                fee = new BigDecimal(String.valueOf(body.get("fee")).trim());
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "fee 不是有效数字"));
+            }
+        }
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        if (!hasOrder && fee == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "orderId 与 fee 不能都为空——请至少补填成交编号或手续费"));
+        }
+        int updated = tradingAppService.updateTradeMeta(userId, tradeId, orderId, fee);
+        return ResponseEntity.ok(Map.of("updated", updated > 0, "tradeId", tradeId));
+    }
+
     /** 推送删除持久化（B10-1，2026-08-23，P1-推送2）：单条推送已读/忽略——
      *  app 左滑删 / web 忽略按钮调用，刷新/重启不再复活。DELETE /api/v1/trading/pushes/{id} */
     @DeleteMapping("/pushes/{id}")

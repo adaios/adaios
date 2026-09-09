@@ -1,5 +1,6 @@
 package com.adaiadai.core.domain.trading;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -40,4 +41,21 @@ public interface TradingHistoryRepository {
      * @return 实际回填笔数（0 或 1）
      */
     int backfillTradeTime(String userId, String tradeId, LocalDate entryDate, LocalTime tradeTime);
+
+    /**
+     * 补写单笔流水的成交编号/手续费（P2-交易36 治本，2026-09-09：截图入账/手动确认成交
+     * 落库时缺 orderId/fee——对已落库流水按 tradeId 补填）。
+     * <p>
+     * 读-改-写该笔所在月份文件（跨月：优先按 tradeId 内时间戳定位月份文件，找不到再全扫兜底）：
+     * 只覆盖非空新值——orderId 非 null 且非 blank 才替换、fee 非 null 才替换；
+     * 不改其它字段与时间戳；找不到该 id 返回 0（不抛错）；写失败抛 StorageException
+     * （与 {@link #backfillTradeTime} 同口径）。
+     *
+     * @param userId  用户 ID
+     * @param tradeId 流水 ID（定位键）
+     * @param orderId 券商成交编号（可空：null/blank 不覆盖）
+     * @param fee     手续费（可空：null 不覆盖）
+     * @return 实际更新笔数（0 或 1）；无可写新值（orderId 空且 fee null）返回 0
+     */
+    int updateTradeMeta(String userId, String tradeId, String orderId, BigDecimal fee);
 }

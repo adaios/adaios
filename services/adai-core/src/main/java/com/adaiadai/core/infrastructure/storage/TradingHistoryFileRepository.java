@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -111,6 +112,48 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
         } catch (JsonProcessingException e) {
             throw new StorageException("交易流水回填序列化失败: " + path, e);
         }
+    }
+
+    @Override
+    public int updateTradeMeta(String userId, String tradeId, String orderId, BigDecimal fee) {
+        // P2-交易36 治本（2026-09-09）：已落库流水补填成交编号/手续费——只覆盖非空新值。
+        if (tradeId == null || tradeId.isBlank()) return 0;
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        boolean hasFee = fee != null;
+        if (!hasOrder && !hasFee) return 0; // 无可写新值
+        // 跨月定位：逐月文件全扫（id 内时间戳是落盘时刻，历史导入的 entryDate 月份可能与 id 月份
+        // 不一致——全扫兜底最稳；个人流水月文件量小，性能可接受），按 tradeId 精确命中。
+        for (String path : fileStorage.listFiles(userId, TRADES_DIR)) {
+            if (path == null || !path.endsWith(".json")) continue;
+            List<TradeRecord> trades = readFile(userId, path);
+            boolean updated = false;
+            for (int i = 0; i < trades.size(); i++) {
+                TradeRecord t = trades.get(i);
+                if (tradeId.equals(t.id())) {
+                    // 只覆盖非空新值，不改其它字段与时间戳（旧记录 orderId/fee=null 兼容补填）
+                    trades.set(i, new TradeRecord(
+                            t.id(), t.symbol(), t.name(), t.direction(), t.price(), t.volume(), t.amount(),
+                            t.entryDate(), t.tradeTime(), t.stopLossPrice(), t.buyPoint(), t.targetPrice(),
+                            t.reason(),
+                            hasFee ? fee : t.fee(),
+                            t.timestamp(), t.sourceRecordId(),
+                            hasOrder ? orderId : t.orderId()));
+                    updated = true;
+                    break;
+                }
+            }
+            if (!updated) continue;
+            try {
+                fileStorage.write(userId, path, objectMapper.writeValueAsString(trades));
+                log.info("交易流水补成交元信息 | userId={} | path={} | id={} | orderId={} fee={}",
+                        userId, path, tradeId,
+                        hasOrder ? orderId : "（不改）", hasFee ? fee : "（不改）");
+                return 1;
+            } catch (JsonProcessingException e) {
+                throw new StorageException("交易流水补成交元信息序列化失败: " + path, e);
+            }
+        }
+        return 0;
     }
 
     // ── 内部方法 ──
