@@ -288,20 +288,25 @@ systemctl enable --now adaios-web
 # admin 同模板，端口 8083，目录 /opt/adaios/admin
 ```
 
-> ⚠️ **前端产物烧录 IP 陷阱**：`flutter build web` 不带 `--dart-define=API_BASE_URL` 会静默烧录 `localhost:8080`，浏览器打开即白屏（请求自己电脑）。构建必须显式传生产地址。同理 iOS：`--dart-define=API_BASE_URL=http://82.156.111.146:8080`。
+> ⚠️ **前端产物烧录 IP 陷阱**：`flutter build web` 不带 `--dart-define=API_BASE_URL` 会静默烧录 `localhost:8080`，浏览器打开即白屏（请求自己电脑）。构建必须显式传生产地址。同理 iOS：`--dart-define=API_BASE_URL=https://api.adaiadai.com`。
 
 ## 9. iOS 部署（adai-app → iPhone）
 
 USB 连 Xcode 直装（免费 Apple ID，7 天有效）：
 
 ```bash
-# ATS 明文 HTTP 例外已配（Info.plist NSAllowsArbitraryLoads，后端为 http）
+# 地址用域名（§10：换服务器永不重构建）；ATS 明文例外仍配在 Info.plist（NSAllowsArbitraryLoads），https 域名不依赖它
 cd apps/adai-app
-flutter build ios --release --dart-define=API_BASE_URL=http://82.156.111.146:8080
+flutter build ios --release --dart-define=API_BASE_URL=https://api.adaiadai.com
+# 首次装机需在手机信任证书：设置 → 通用 → VPN与设备管理 → 信任「Apple Development: rottokaka@gmail.com」
+# 安装 / 启动（UDID 用 `xcrun devicectl list devices` 查）
+xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
+xcrun devicectl device process launch --device <UDID> com.adaiadai.adaiApp
 # 或用 Xcode 打开 ios/Runner.xcworkspace，选择真机，点 Run
 ```
 
-> ⚠️ 免费 Apple ID 签名 7 天过期；TestFlight 需付费开发者账号（90 天）。
+> ⚠️ 免费 Apple ID 签名 7 天过期（REVIEW P2-用户1：装机后第 7 天前后 App 打不开，需重装）；TestFlight 需付费开发者账号（90 天）。
+> 历史装机（≤2026-08-30）烧 IP `http://82.156.111.146:8080`；**2026-09-10 起改烧域名** `https://api.adaiadai.com`。
 
 ## 10. 域名 + HTTPS（adaiadai.com，2026-09-01 已上线）
 
