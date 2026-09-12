@@ -148,21 +148,20 @@ public class LearnDigestAppService {
         if (input == null) {
             throw new LearnException("素材不能为空：请给我一个链接，或者把内容粘进来");
         }
-        DigestJob cur = jobs.get(userId);
-        if (cur != null && cur.isRunning()) {
-            return new DigestSubmitResult(STATUS_RUNNING);
+        // 「检查在跑 + 占位」必须原子完成（2026-09-12 自查）：原先是 get→判断→put 三步，
+        // 两端同时提交会各建一个 job 各跑一遍 → 重复抓取 + 重复烧 AI（确认路径下还会重复花钱）。
+        // ConcurrentHashMap.compute 对同一 key 原子：抢占失败方直接复用当前任务，不再入队。
+        DigestJob fresh = new DigestJob();
+        DigestJob current = jobs.compute(userId,
+                (key, cur) -> (cur == null || cur.isTerminal()) ? fresh : cur);
+        if (current != fresh) {
+            // 已有任务在跑 → running；等确认期间再次提交 → 如实回待确认（不吞掉用户的选择）
+            return new DigestSubmitResult(current.isAwaitingConfirm() ? STATUS_NEEDS_CONFIRMATION : STATUS_RUNNING);
         }
-        if (cur != null && cur.isAwaitingConfirm()) {
-            // 等确认期间再次提交：不覆盖待确认的任务（丢了报价等于把用户的选择吞掉），
-            // 如实回当前状态，前端据此重新弹费用提示
-            return new DigestSubmitResult(STATUS_NEEDS_CONFIRMATION);
-        }
-        DigestJob job = new DigestJob();
-        jobs.put(userId, job);
         try {
-            learnSubmitExecutor.execute(() -> runJob(userId, job, input));
+            learnSubmitExecutor.execute(() -> runJob(userId, current, input));
         } catch (RejectedExecutionException e) {
-            jobs.remove(userId, job);
+            jobs.remove(userId, current);
             throw new LearnException("消化任务繁忙，请稍后重试");
         }
         return new DigestSubmitResult(STATUS_PENDING);
@@ -221,19 +220,32 @@ public class LearnDigestAppService {
      * @throws LearnException 当前没有等待确认的任务
      */
     public DigestJobStatus confirm(String userId, boolean confirm) {
-        DigestJob job = jobs.get(userId);
-        if (job == null || !job.isAwaitingConfirm()) {
+        // 原子「取待确认任务 + 转移状态」（2026-09-12 自查）：原先是 get→isAwaitingConfirm→resume 三步，
+        // 两端（web + app）同时点「继续转写」可双双通过检查 → 两个执行任务 → **重复转写 = 重复花钱**。
+        // 用 compute 对同一 key 原子转移：只有第一个调用者能把它从 needs_confirmation 挪走。
+        boolean[] claimed = {false};
+        DigestJob job = jobs.compute(userId, (key, cur) -> {
+            if (cur == null || !cur.isAwaitingConfirm()) {
+                return cur;
+            }
+            claimed[0] = true;
+            if (confirm) {
+                cur.resume();
+            } else {
+                cur.cancel();
+            }
+            return cur;
+        });
+        if (job == null || !claimed[0]) {
             throw new LearnException("现在没有等待确认的整理任务");
         }
         if (!confirm) {
-            job.cancel();
             log.info("learn 转写被用户取消（元数据已留存，未产生费用）| userId={}", userId);
             return job.statusView();
         }
         LearnSource source = job.pendingSource;
         ResolvedInput pendingInput = job.pendingInput;
         String typeHint = job.pendingTypeHint;
-        job.resume();
         try {
             learnSubmitExecutor.execute(() -> {
                 try {
@@ -392,6 +404,12 @@ public class LearnDigestAppService {
 
         boolean isAwaitingConfirm() {
             return STATUS_NEEDS_CONFIRMATION.equals(status);
+        }
+
+        /** 终态（done/failed/cancelled）：可被新提交替换；非终态（running/needs_confirmation）在跑/待回话。 */
+        boolean isTerminal() {
+            return STATUS_DONE.equals(status) || STATUS_FAILED.equals(status)
+                    || STATUS_CANCELLED.equals(status);
         }
 
         long elapsedSinceSettled() {

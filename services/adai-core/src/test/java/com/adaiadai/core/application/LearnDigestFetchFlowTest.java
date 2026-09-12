@@ -274,6 +274,110 @@ class LearnDigestFetchFlowTest {
         verify(fetchService, times(1)).fetchAndArchive(anyString(), anyString());
     }
 
+    // ── 原子性（2026-09-12 自查：检查-再动作竞态会重复花钱）──
+
+    @Test
+    void confirm_twiceWithWorkStillQueued_onlyFirstWins_noSecondTranscription() {
+        // 混合执行器：第 1 个任务（抓取链路）内联跑完以便到达「等确认」；之后的（转写）只入队不执行，
+        // 模拟「用户已确认但转写还在跑」的窗口
+        java.util.List<Runnable> queued = new java.util.ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger taskSeq = new java.util.concurrent.atomic.AtomicInteger();
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withoutSubtitle());
+        when(transcriptionService.estimate(anyString(), any())).thenReturn(estimate(2244, 0.1795d, true));
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository,
+                task -> {
+                    if (taskSeq.incrementAndGet() == 1) {
+                        task.run();
+                    } else {
+                        queued.add(task);
+                    }
+                }, fetchService, transcriptionService);
+        svc.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, svc.digestJobStatus("adai").status());
+
+        svc.confirm("adai", true);
+
+        assertEquals(1, queued.size(), "确认后只应入队一次转写");
+        assertEquals(LearnDigestAppService.STATUS_RUNNING, svc.digestJobStatus("adai").status());
+        // 第二次确认（连点 / 另一端同时点）→ 拒绝，绝不再排一次转写
+        assertThrows(LearnException.class, () -> svc.confirm("adai", true));
+        assertEquals(1, queued.size(), "第二次确认不得再入队（否则重复转写 = 重复花钱）");
+        verify(transcriptionService, never()).transcribe(anyString(), any());
+    }
+
+    @Test
+    void confirm_concurrentFromManyThreads_exactlyOneWins() throws Exception {
+        java.util.List<Runnable> queued = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger taskSeq = new java.util.concurrent.atomic.AtomicInteger();
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withoutSubtitle());
+        when(transcriptionService.estimate(anyString(), any())).thenReturn(estimate(2244, 0.1795d, true));
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository,
+                task -> {
+                    if (taskSeq.incrementAndGet() == 1) {
+                        task.run();
+                    } else {
+                        queued.add(task);
+                    }
+                }, fetchService, transcriptionService);
+        svc.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://www.bilibili.com/video/BV1xx411c7mD", null, null, null, null, null));
+
+        int threads = 8;
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threads);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger ok = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger rejected = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.List<Thread> workers = new java.util.ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            Thread t = new Thread(() -> {
+                ready.countDown();
+                try {
+                    go.await();
+                    svc.confirm("adai", true);
+                    ok.incrementAndGet();
+                } catch (LearnException e) {
+                    rejected.incrementAndGet();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            workers.add(t);
+            t.start();
+        }
+        ready.await();
+        go.countDown();
+        for (Thread t : workers) t.join();
+
+        assertEquals(1, ok.get(), "并发确认只有一个能抢到（原子转移）——否则同一视频会被转写多次");
+        assertEquals(threads - 1, rejected.get());
+        assertEquals(1, queued.size(), "只应排一次转写任务");
+    }
+
+    @Test
+    void confirm_afterCancel_throws() {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withoutSubtitle());
+        when(transcriptionService.estimate(anyString(), any())).thenReturn(estimate(600, 0.048d, true));
+        submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
+        service.confirm("adai", false);
+
+        assertThrows(LearnException.class, () -> service.confirm("adai", true));
+        verify(transcriptionService, never()).transcribe(anyString(), any());
+    }
+
+    @Test
+    void submit_afterTerminalJob_startsFreshRun() {
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withSubtitle());
+        submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
+        assertEquals(LearnDigestAppService.STATUS_DONE, service.digestJobStatus("adai").status());
+
+        LearnDigestAppService.DigestSubmitResult again = submitUrl("https://www.bilibili.com/video/BV2yy411c7mD");
+
+        assertEquals(LearnDigestAppService.STATUS_PENDING, again.status(),
+                "终态任务可被新提交替换（不是永久去重）");
+        verify(fetchService, times(2)).fetchAndArchive(anyString(), anyString());
+    }
+
     @Test
     void stageIsClearedAfterSettling() {
         when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withSubtitle());
