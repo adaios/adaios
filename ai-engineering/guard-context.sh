@@ -6,6 +6,7 @@
 #        bash ai-engineering/guard-context.sh <主题词>    # 按主题过滤
 #        bash ai-engineering/guard-context.sh --write-local  # 收尾：写 AGENTS.local.md 快照（DSH 等新会话自动注入）
 # 说明:  每次开工前跑一次，自动汇总 AI 该知道的上下文，不用人提醒：
+#         C0 产品心跳（用户是否还在用 — 最高优先级信号，2026-09-13 新增）
 #         C1 当前状态（state/_index 指针 → status/REVIEW/task-log）
 #         C1.5 主题手册导航（docs/reference/*-features.md 深度文档直读索引）
 #         C2 未修项（REVIEW 战略/P1/P2 中与本批相关的）
@@ -60,6 +61,85 @@ if WRITE_LOCAL:
 else:
     out.append(f"# AI 任务上下文清单{('（主题：' + TOPIC + '）') if TOPIC else ''}")
     out.append(f"> 生成时间：{__import__('datetime').date.today()} · 开工前读此清单，不用人提醒\n")
+
+# C0 产品心跳（用户是否还在用 — 最高优先级信号）
+# 由来（2026-09-13）：项目一度「手感上停了」，真相是 AI 建设速率高、产品交付中、**用户使用速率→0**
+#   （生产记录 09-10 后断档）。旧 guard 只注入「AI 花了多少钱」，没有任何一行是「用户还在不在用」，
+#   于是 AI 会一路空转建设。本段把「使用心跳」变成每轮开工第一眼可见的信号。
+# 成本：一次只读 ssh（15 分钟 TTL 缓存），失败静默降级 — 绝不阻塞开工。
+out.append("## C0 产品心跳（用户是否还在用 — 最高优先级）")
+try:
+    import subprocess as _sp0, json as _json0, time as _time0, datetime as _dt0
+    _cache = AI/'state/usage-cache.json'
+    _TTL = 900
+    _raw = None; _age = None
+    try:
+        if _cache.exists():
+            _c = _json0.loads(_cache.read_text(encoding='utf-8'))
+            _age = _time0.time() - float(_c.get('ts', 0))
+            if _age < _TTL: _raw = _c.get('raw'); _age = int(_age)
+    except Exception:
+        _raw = None
+    if _raw is None:
+        _remote = (
+            "D=/opt/adaios/data/adai; R=$D/records; "
+            "last=$(sudo find $R -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | tail -1); "
+            "n7=$(sudo find $R -type f -newermt '-7 days' 2>/dev/null | wc -l); "
+            "n14=$(sudo find $R -type f -newermt '-14 days' 2>/dev/null | wc -l); "
+            "today=$(sudo find $R -type f -newermt 'today' 2>/dev/null | wc -l); "
+            "tr=$(sudo find $D/trading -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | tail -1); "
+            "echo \"LAST=${last:-none}|N7=$n7|N14=$n14|TODAY=$today|TRADING=${tr:-none}\""
+        )
+        _r = _sp0.run(['ssh', '-o', 'ConnectTimeout=8', '-o', 'BatchMode=yes',
+                       'ubuntu@82.156.111.146', _remote],
+                      capture_output=True, text=True, timeout=25)
+        if _r.returncode == 0 and 'LAST=' in _r.stdout:
+            _raw = _r.stdout.strip().splitlines()[-1].strip()
+            _age = 0
+            try:
+                _cache.parent.mkdir(parents=True, exist_ok=True)
+                _cache.write_text(_json0.dumps({'ts': _time0.time(), 'raw': _raw}), encoding='utf-8')
+            except Exception:
+                pass
+    if _raw:
+        _p = dict(kv.split('=', 1) for kv in _raw.split('|') if '=' in kv)
+        _last = _p.get('LAST', 'none')
+        _days = '?'
+        if _last and _last != 'none':
+            try:
+                _days = (_dt0.date.today() - _dt0.date.fromisoformat(_last)).days
+            except Exception:
+                pass
+        _fresh = '' if not _age else f'（{_age//60} 分钟前缓存，非实时）'
+        if WRITE_LOCAL:
+            # 快照 = 每轮注入固定开销，C0 压到 2 行（见 checklists/cost.md C7）
+            out.append(f"> 最后记录 **{_last}**（{_days} 天前）· 今日 {_p.get('TODAY','?')} · 近 7 天 {_p.get('N7','?')} · 交易最近 {_p.get('TRADING','?')}{_fresh}")
+        else:
+            out.append(f"> 最后一条记录：**{_last}**（{_days} 天前）· 今日 **{_p.get('TODAY','?')}** 条 · 近 7 天 **{_p.get('N7','?')}** 条 · 近 14 天 **{_p.get('N14','?')}** 条{_fresh}")
+            out.append(f"> 交易模块最近写入：{_p.get('TRADING','?')}")
+        _spend = 0.0
+        _log = AI/'state/cost-log.jsonl'
+        if _log.exists():
+            _cut = (_dt0.date.today() - _dt0.timedelta(days=7)).isoformat()
+            for _l in _log.read_text(encoding='utf-8', errors='ignore').splitlines():
+                try:
+                    _rec = _json0.loads(_l)
+                    if _rec.get('date', '') >= _cut: _spend += float(_rec.get('cost') or 0)
+                except Exception:
+                    pass
+        if not WRITE_LOCAL:
+            out.append(f"> 近 7 天：AI 投入 **{_spend:.1f} 元** / 你的记录 **{_p.get('N7','?')}** 条")
+        try:
+            _d = int(_days)
+        except Exception:
+            _d = -1
+        if _d >= 3:
+            out.append(f"> ⚠️ **用户已 {_d} 天未记录** — 本轮优先修「让人愿意用」的摩擦（入口/可信度/顺手），**不要继续加新功能**（近 7 天 AI 投入 {_spend:.1f} 元）；新功能先问「这会让他明天多用一次吗？」")
+    else:
+        out.append("> （未能读取生产使用数据：ssh 不可达或无缓存；不影响开工，但本轮请**先问用户最近用没用**）")
+except Exception as _e0:
+    out.append(f"> （使用心跳读取失败: {_e0}）")
+out.append("")
 
 # C1 当前状态
 out.append("## C1 当前状态")
