@@ -688,6 +688,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
             }
             removeTopicReadmeEntry(userId, type, oldTopic, baseName(located.path()));
             updateTopicReadme(userId, type, target, card.withTopic(target), file);
+            // 老主题若已没有别的卡，把它的 _raw/ 素材一起搬过去——否则素材会留在空目录里成孤儿
+            // （2026-09-13 生产实测发现：改主题只挪卡不挪素材，老主题只剩 README + _raw/）
+            moveRawIfTopicEmptied(userId, type, oldTopic, target);
             log.info("learn 卡片已改主题 | userId={} | {} → {}", userId, located.path(), newPath);
             return decorate(parse(updated), newPath, type, updated);
         }
@@ -798,6 +801,40 @@ public class LearnCardFileRepository implements LearnCardRepository {
         } catch (Exception e) {
             // 索引是附带收益：写不进去不该让已花钱的消化失败（与留痕同口径）
             log.warn("learn 主题 README 更新失败 | userId={} | {}/{} | {}", userId, type, topic, e.getMessage());
+        }
+    }
+
+    /**
+     * 老主题搬空后把主题级 {@code _raw/} 素材跟着搬到新主题（2026-09-13 生产实测补）。
+     * <p>
+     * 契约里 {@code _raw/} 是**主题级**的（一个主题的多源素材放一起）。当一张卡被挪走、老主题里
+     * 已经没有任何卡片时，那些素材其实都是这张卡的来源——留在空目录里就是孤儿，所以一起搬。
+     * 老主题还有别的卡 → 不动（素材仍属于那个主题）。
+     * <p>
+     * 目标同名不覆盖（与 promoteRaw 同口径）：改名并存，绝不丢素材。
+     */
+    private void moveRawIfTopicEmptied(String userId, String type, String oldTopic, String newTopic) {
+        String oldDir = LEARN_DIR + type + "/" + LearnCard.topicDir(oldTopic) + "/";
+        if (!locateAll(userId, type).stream()
+                .anyMatch(l -> LearnCard.topicDir(l.card().topic()).equals(LearnCard.topicDir(oldTopic)))) {
+            String targetDir = LEARN_DIR + type + "/" + LearnCard.topicDir(newTopic) + "/" + RAW_SUBDIR + "/";
+            for (String f : fileStorage.listFiles(userId, oldDir)) {
+                if (!f.contains("/" + RAW_SUBDIR + "/")) continue;
+                try {
+                    String name = baseName(f);
+                    byte[] content = fileStorage.readBytes(userId, f);
+                    if (content == null) continue;
+                    String target = targetDir + name;
+                    if (fileStorage.readBytes(userId, target) != null) {
+                        target = targetDir + versionedName(name);
+                    }
+                    fileStorage.writeBytes(userId, target, content);
+                    fileStorage.delete(userId, f);
+                    log.info("learn 素材随卡迁移 | userId={} | {} → {}", userId, f, target);
+                } catch (Exception e) {
+                    log.warn("learn 素材随卡迁移失败（原处保留）| userId={} | {} | {}", userId, f, e.getMessage());
+                }
+            }
         }
     }
 

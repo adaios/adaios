@@ -979,4 +979,42 @@ class LearnCardFileRepositoryTest {
                 () -> repository.moveToTopic("adai", LearnCard.TYPE_AI, "没有这张", "x"));
         assertTrue(e2.getMessage().contains("卡片不存在"));
     }
+
+    @Test
+    void moveToTopic_lastCardOfTopic_carriesRawAssetsAlong() {
+        // 2026-09-13 生产实测补：改主题只挪卡不挪素材 → 老主题留下孤儿 _raw/（素材是主题级的）
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "独苗卡", "bilibili", "UP", null, null,
+                LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "旧主题");
+        repository.save("adai", card);
+        repository.saveRawBytes("adai", "bilibili-BVx-meta.json", new byte[]{1, 2, 3});
+        repository.promoteRaw("adai", LearnCard.TYPE_AI, "旧主题", List.of("bilibili-BVx-meta.json"));
+
+        repository.moveToTopic("adai", LearnCard.TYPE_AI, "独苗卡", "新主题");
+
+        assertFalse(storage.exists("adai", "learn/ai/旧主题/_raw/bilibili-BVx-meta.json"),
+                "老主题搬空 → 素材跟着走，不留孤儿");
+        assertArrayEquals(new byte[]{1, 2, 3},
+                storage.readBytes("adai", "learn/ai/新主题/_raw/bilibili-BVx-meta.json"),
+                "素材字节不变地到了新主题");
+        assertEquals("新主题", repository.find("adai", LearnCard.TYPE_AI, "独苗卡").orElseThrow().topic());
+    }
+
+    @Test
+    void moveToTopic_topicStillHasOtherCards_keepsRawWithTheTopic() {
+        // 老主题还有别的卡 → 素材仍属于那个主题，不动（契约：_raw/ 是主题级的）
+        for (String title : List.of("留下的卡", "要走的卡")) {
+            repository.save("adai", new LearnCard(LearnCard.TYPE_AI, title, "web", null, null, null,
+                    LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                    List.of(), List.of(), "", "旧主题"));
+        }
+        repository.saveRaw("adai", "article-x-text.txt", "旧主题的素材");
+        repository.promoteRaw("adai", LearnCard.TYPE_AI, "旧主题", List.of("article-x-text.txt"));
+
+        repository.moveToTopic("adai", LearnCard.TYPE_AI, "要走的卡", "新主题");
+
+        assertTrue(storage.exists("adai", "learn/ai/旧主题/_raw/article-x-text.txt"),
+                "老主题还有卡 → 素材留在原主题（不误搬）");
+        assertFalse(storage.exists("adai", "learn/ai/新主题/_raw/article-x-text.txt"));
+    }
 }
