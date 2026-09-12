@@ -1,6 +1,10 @@
 #!/bin/bash
 # Build Flutter Web + apply local Font patches + serve via Python
-# Usage: sh scripts/serve_web.sh [API_BASE_URL]
+# Usage: sh scripts/serve_web.sh [API_BASE_URL] [--build-only]
+#   --build-only（2026-09-13 补）：只构建 + 打补丁，不起本地服务器——
+#     部署流程（tar 到 /opt/adaios/web）需要一个「构建完就退出」的入口；
+#     没有它时部署只能把下面两步 perl 补丁复制进部署命令，等于补丁两份（会漂移）。
+#     放在第 1 或第 2 个位置都可（下面解析时先摘掉它）。
 # 渲染模式：JS + CanvasKit（不用 --wasm）——2026-08-22 线上白屏根因修复：
 #   wasm 双模式（skwasm）产物带 --import-shared-memory，依赖 SharedArrayBuffer，
 #   而浏览器只在 HTTPS（或 localhost）下才信任 COOP/COEP 头 → 纯 IP/HTTP 访问
@@ -12,8 +16,15 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-# 可选参数：API_BASE_URL（连生产后端时传入，如 http://82.156.111.146:8080）
-API_BASE_URL="${1:-}"
+# 摘出 --build-only（可在任意位置）
+BUILD_ONLY=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--build-only" ]; then BUILD_ONLY=1; else ARGS+=("$a"); fi
+done
+
+# 可选参数：API_BASE_URL（连生产后端时传入，如 https://api.adaiadai.com）
+API_BASE_URL="${ARGS[0]:-}"
 
 echo "=== Building Flutter Web (JS + CanvasKit) ==="
 if [ -n "$API_BASE_URL" ]; then
@@ -55,6 +66,11 @@ echo "OK: canvasKitBaseUrl 注入唯一（config 块内 $CONFIG_HAS_CANVAS 次 �
 #   + OFL 开源协议可分发。63KB GB2312 子集，由 fonttools 从 Google Fonts 完整版子集化生成）
 INDEX="build/web/index.html"
 perl -i -pe 's{<script src="flutter_bootstrap.js" async></script>}{<script>var origFetch=window.fetch.bind(window);window.fetch=function(url,opts){if(typeof url==="string"&&url.includes("fonts.gstatic.com")){if(url.includes("roboto"))return origFetch("\/fonts\/Roboto.woff2");return origFetch("\/fonts\/NotoSansSC-Subset.woff2");}return origFetch(url,opts);};<\/script>\n  <script src="flutter_bootstrap.js" async><\/script>}' "$INDEX"
+
+if [ "$BUILD_ONLY" = "1" ]; then
+  echo "=== --build-only：构建 + 补丁完成，产物在 $(pwd)/build/web（未起服务器）==="
+  exit 0
+fi
 
 echo "=== Starting server at http://localhost:8082 ==="
 cd build/web && python3 -m http.server 8082
