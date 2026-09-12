@@ -114,6 +114,43 @@ check "一句话解析"      POST "/api/v1/trading/trades/parse"   200
 check "时间线"          GET  "/api/v1/timeline"               200
 check "标签统计"        GET  "/api/v1/tags"                   200
 
+# ── GATE-AFTER 领域自检：防重型机制（2026-09-12 账实一致性批）──
+# 教训：锚定防重（P2-交易34）代码上线了，但生产 snapshot-anchor.json 根本不存在 →
+# 机制静默 fail-open，导入把已含在快照里的成交重放一遍（现金被推到 −2.67 万），三天后靠人肉眼发现。
+# 因此凡「防重型机制」上线，部署后必须自检**它在线上真的在工作**（存在性 + 口径可见），
+# 不能只看接口 200。任一 probe 失败 → 与 smoke 同样计失败（部署不算成功）。
+probe() {
+    local desc="$1" method="$2" path="$3" body="$4" needle="$5"
+    local out
+    if [ -n "$body" ]; then
+        out=$(curl -s -X "$method" "$BASE$path" -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" -d "$body" 2>/dev/null)
+    else
+        out=$(curl -s -X "$method" "$BASE$path" -H "Authorization: Bearer $TOKEN" 2>/dev/null)
+    fi
+    if echo "$out" | grep -qE "$needle"; then
+        echo "  ✅ $desc → 自检通过"
+    else
+        echo "  ❌ $desc → 自检失败（期望响应含 $needle）"
+        echo "     实际：$(echo "$out" | head -c 300)"
+        FAILED=1
+    fi
+}
+
+# 1) 账实一致性口径上线（新端点存在 + 契约字段在）
+probe "账实一致性自检端点"   GET "/api/v1/trading/integrity" "" '"holdingsKnown"'
+# 2) 锚定状态可查（GET /trading/anchor 是锚定机制的可见性出口）
+probe "券商快照锚定状态端点" GET "/api/v1/trading/anchor"     "" '"known"'
+# 3) 历史成交导入契约（rejected/anchor 字段在场，且锚定缺失时是 fail-closed 而非静默重放）
+probe "导入 fail-visible 契约" POST "/api/v1/trading/trades/import" '{"content":""}' 'rejected|anchor|无法识别'
+
+# 提示（不判失败）：锚定缺失先提示用户动作，而不是自动改账
+ANCHOR_JSON=$(curl -s "$BASE/api/v1/trading/anchor" -H "Authorization: Bearer $TOKEN" 2>/dev/null)
+if echo "$ANCHOR_JSON" | grep -q '"known":false'; then
+    echo "  ⚠️  券商快照锚定缺失（known=false）：需要改账的历史成交导入会被拒绝——请先在交易页导一次"
+    echo "     「持仓股 / 资金股份查询」快照建立锚定（或显式用「仅补流水」模式）"
+fi
+
 if [ $FAILED -eq 1 ]; then
     echo "❌ 部署后 smoke 有失败项——请检查后端日志"
     exit 1

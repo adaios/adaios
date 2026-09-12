@@ -12,6 +12,28 @@
 /// - 解析错误逐行收集人话原因（带行号），不整批失败。
 library;
 
+/// 从通达信导出**文件名**解析快照自身日期（2026-09-12 账实一致性批）。
+///
+/// 后端拿它当**锚定日**（positions/import 的 `snapshotDate` query、imports/cash 的 body 字段），
+/// **优先于导入日**：补导几天前的快照文件时若把锚定日写成今天，锚定日之后、快照之前的成交会被
+/// 误判成「已含在快照口径内」而丢掉增量（RFC 20260912-trading-ledger-integrity）。
+///
+/// 支持 `20260912`（8 位连写）、`2026-09-12`、`2026_09_12`，可带前后缀
+/// （如 `持仓股20260912.txt`、`资金股份查询-2026-09-12.csv`）。
+/// 取不到（无日期 / 非法日期如 20261345）→ null，调用方不传该字段（后端退回导入日）。
+String? parseSnapshotDateFromFilename(String filename) {
+  if (filename.isEmpty) return null;
+  final m = RegExp(r'(20\d{2})[-_/]?(0\d|1[0-2])[-_/]?(0[1-9]|[12]\d|3[01])').firstMatch(filename);
+  if (m == null) return null;
+  final y = int.parse(m.group(1)!);
+  final mo = int.parse(m.group(2)!);
+  final d = int.parse(m.group(3)!);
+  // 逐字段回验（20260230 这类假日期必须判掉，不能把锚定日写歪）
+  final dt = DateTime(y, mo, d);
+  if (dt.year != y || dt.month != mo || dt.day != d) return null;
+  return '${m.group(1)}-${m.group(2)}-${m.group(3)}';
+}
+
 /// 解析成功的一行导入交易。
 class ImportTradeRow {
   final String symbol;

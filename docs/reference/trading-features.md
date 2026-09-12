@@ -44,9 +44,9 @@ tags: [trading, plugin, reference]
 
 ---
 
-## 一、后端端点总表（TradingController 42 个 + TradingCaseController 4 个 + admin 1 个）
+## 一、后端端点总表（TradingController 45 个 + TradingCaseController 4 个 + admin 1 个）
 
-> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 42 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules；2026-09-04 新增 GET/PUT /market-stage）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
+> 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 45 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules；2026-09-04 新增 GET/PUT /market-stage；**2026-09-12 账实一致性批新增 GET /integrity + GET /anchor + PUT /anchor**）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
 
 ### 1. 交易记录（逐笔流水）
 
@@ -55,7 +55,7 @@ tags: [trading, plugin, reference]
 | POST | `/trading/trades` | 记录一笔交易 | BUY/SELL → 持仓增减（加仓摊薄成本/清仓归零）+ 现金市值推导 + 手续费自动算 + 落逐笔流水 + 写 domain=trading 记录（5 分钟同标题去重幂等）；name 可空；止损/买点 BUY 已放开可选（2026-08-18）；SELL 超持仓/未持有 → 400 |
 | GET | `/trading/trades` | 查询逐笔流水（含 `tradeTime` 成交时刻可空）| 跨月合并按时间倒序；可选 `from`/`to` 过滤；**RFC 20260822：`?date=` 返回 `{trades, daily}` 当日复盘聚合**（时段分桶/买卖分布/首末笔时间，纯客观）|
 | POST | `/trading/trades/batch` | 批量记录交易 | 逐笔走 recordTrade 链路；逐条失败不整批回滚，返回行号+人话原因 |
-| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → **双模式自动识别（RFC 20260825）**；**非交易占位代码校验（2026-08-25）**——79/80/81/82 开头（799999 登记指定等）不入库计入 nonTrades；**股息类记账（2026-08-25）**——备注含股息/红利/入账的数量 0 行：入账 +现金、红利税 −现金（不动持仓/批次，落流水可回溯）：成交都在最近 10 日内 → `syncMode="sync"` 同步持仓/现金/流水（orderId 幂等，透传流水不丢幂等键）；明显历史 → `syncMode="append"` 只补流水不重算持仓（原语义）；返回对账提示 + **每日操作总结 `summary`**（sync 模式：买卖聚合 + 批次 diff + 行为标注）|
+| POST | `/trading/trades/import` | 历史成交日志导入 | 通达信「历史成交查询」导出 → 落逐笔流水（**唯一成交真相源**）；**v3.61 账实一致性批重写**：新增 `mode`（`auto` 默认 \| `append`）——`auto` **按券商快照锚定分派**（`entryDate ≤ 锚定日` 只补流水，晚于锚定日才回放持仓/现金），**锚定未知 + 系统已有账目状态 + 有需回放行 → 400 人话拒绝**（防静默重放双计，逃生路径：先导快照建锚定 / `mode=append` 只补流水；全新用户可从零回放）；`append` = 全部只补流水；**幂等统一**（orderId 与指纹双键都判，命中且成交时间兼容 → 合并回填**不新增行**，时间明显不同视为两笔；`updated` = 跨来源同笔合并回填笔数）；**卖超不再丢弃**（只落流水 + `rejected` 明细 + ERROR 日志，持仓/现金不动）；新增 `dryRun=true` **预检**（只返回 `plan`，不写任何文件）与响应 `rejected`/`anchor`/`dryRun`；**非交易占位代码校验（2026-08-25）**——79/80/81/82 开头（799999 登记指定等）不入库计入 nonTrades；**股息类记账（2026-08-25）**——备注含股息/红利/入账的数量 0 行：入账 +现金、红利税 −现金（不动持仓/批次，落流水可回溯）；返回对账提示 + **每日操作总结 `summary`**（有回放行时：买卖聚合 + 批次 diff + 行为标注）|
 | POST | `/trading/trades/parse` | 一句话交易解析 | 自然语言 → 结构化（LLM 优先 + 正则兜底，手=×100）；**只解析不落库**；matched=false 前端转精确表单 |
 | GET | `/trading/lots` | **批次视图（RFC 20260825）** | 持仓细化到每笔买入：按日合并/LIFO 卖出/回合/初始批次，注入现价 + 流水对账提示；`state=open\|closed\|all`；**止损位 = 覆盖层（`lot-stoploss.json`，2026-09-04 按批次止损批可 PUT/DELETE 单独设改）> 流水止损 > 默认 −7%** |
 | POST | `/trading/sync` | **一键按流水重建持仓（2026-08-25 用户场景）** | 导入历史成交后快照过期 → 以流水为准重建 positions：已清仓残留自动移除（removed）、流水解释不了的真底仓保留（keptInitial）；与 sync 模式互补（sync 增量 / 本端点对齐存量） |
@@ -66,7 +66,7 @@ tags: [trading, plugin, reference]
 |:--|:--|:--|:--|
 | GET | `/trading/positions` | 查询持仓 | 注入实时行情现价（行情失败降级存储价=成本价） |
 | GET | `/trading/portfolio` | 投资组合快照 | 持仓（行情注入后）+ 现金（唯一真源 = account.json 的 cash，S5） |
-| POST | `/trading/positions/import` | 持仓初始化导入 | 通达信导出 upsert；`replace=true` 全量覆盖（以文件为准）；name 行情补全；返回 `missingStopLoss` 提示补设（R68） |
+| POST | `/trading/positions/import` | 持仓初始化导入 | 通达信导出 upsert；`replace=true` 全量覆盖（以文件为准）；**v3.61：`snapshotDate` 可选（快照自身日期 = 文件名日期，兼容 yyyyMMdd）**——`replace=true` 时作为锚定日并记录**持仓基线**（`snapshot-anchor.json` 的 `holdings`，对账闸门 `derived` 的来源）；不传退回导入日；name 行情补全；返回 `missingStopLoss` 提示补设（R68） |
 | PUT | `/trading/positions/{symbol}` | 更新持仓元信息 | 只更新非空字段 role/止损位；不存在 404、止损位非数字 400；**targetPrice 无落盘字段（前端目标价编辑无效，P3）** |
 
 ### 3. 账户资金
@@ -74,7 +74,7 @@ tags: [trading, plugin, reference]
 | 方法 | 路径 | 功能 | 说明 |
 |:--|:--|:--|:--|
 | GET | `/trading/account` | 账户总体快照 | 券商口径：assets/cash/available/withdrawable/marketValue/pnl（持仓浮盈）/todayPnl/principal；**总盈亏 = 资产 − 本金** |
-| POST | `/trading/imports/cash` | 资金股份查询导入 | 通达信「资金股份查询」导出 → 存账户快照 + 更新现金 + 精确成本价（4 位）；首行 CASH_HEAD 未命中 → 400 拒绝落零覆盖（P1-交易5 已修） |
+| POST | `/trading/imports/cash` | 资金股份查询导入 | 通达信「资金股份查询」导出 → 存账户快照 + 更新现金 + 精确成本价（4 位）；**v3.61：body 可选 `snapshotDate`（快照自身日期）同时作为账户快照日期与现金锚定日（`cashImport`）**，不传退回导入日；首行 CASH_HEAD 未命中 → 400 拒绝落零覆盖（P1-交易5 已修） |
 | POST | `/trading/transfer` | 银证转账 | IN/OUT → 本金（净投入）+ 现金 + 资产同步 ±，追加流水；转账本身不变盈亏 |
 | GET | `/trading/transfers` | 转账流水 | — |
 | PUT | `/trading/principal` | 设置本金 | 只写 principal 字段（不动现金/资产/市值）；≤0 → 400 |
@@ -135,6 +135,9 @@ tags: [trading, plugin, reference]
 | 方法 | 路径 | 功能 | 说明 |
 |:--|:--|:--|:--|
 | POST | `/trading/imports/save` | 导入文件上传留存 | multipart；留存 `data/{userId}/trading/imports/{yyyy-MM}/`，GBK→UTF-8 转码，返回 {path, content} |
+| GET | `/trading/integrity` | **账实一致性自检（对账闸门，v3.61，2026-09-12）** | 只读报告：`derived = 券商快照基线（锚定日 replace 记录的 holdings）+ 锚定日之后逐笔流水净增减`，与落地持仓不一致 → `drift:[{symbol,name,snapshotQty,ledgerDelta,derived,holdings,diff,note}]`；重放卖超缺口 → `gaps:[{symbol,name,direction,volume,price,entryDate,reason}]`（缺口行**不计入 derived 也不计入净增减**，只报出等人工核对）；锚定缺失/基线未记录 → `note` 诚实「无法判定」+ 空 drift（不误报）；发现不符记 ERROR 日志，deploy-gate 据此显式告警 |
+| GET | `/trading/anchor` | **锚定状态查询（v3.61）** | 只读、不写数据：`{positionsReplace, cashImport, known, holdingsKnown, anchorDate}`（`anchorDate` = 两者较晚者，未知 null）；前端提示与部署自检用 |
+| PUT | `/trading/anchor` | **锚定回填（存量环境显式自愈，v3.61）** | body `{positionsReplace?, cashImport?, holdings?:[{symbol,name,quantity}]}`——**只改元信息，不动持仓/现金/流水**；日期**只前进不后退**；三者全空 → 400 人话；给「升级前导过快照但没写锚定文件」的老环境解开 fail-closed，并可用 `holdings` 补建对账基线 |
 | GET | `/trading/lookup` | 代码查名称 | 腾讯行情单码查询，失败返回空串（前端可手填） |
 | GET | `/api/v1/admin/trading/knowledge/conflicts` | 持仓 vs 规则冲突检测 | 从 rules.md 解析真实规则与当前持仓对比（空仓查 R119/R4、单吊查 R96 四不原则）；**需登录 + role=admin**（REVIEW #178：管理口并入统一登录，X-Admin-Token 退役） |
 
@@ -162,7 +165,7 @@ tags: [trading, plugin, reference]
 | 15:05 | 收盘账户自动更新 | 行情可得部分更新参考市值/当日盈亏/浮盈；**任一持仓缺行情则整体跳过不覆盖**（P1-交易3，防残缺市值覆盖总资产）；**2026-08-29（P2-交易33）跳过时推一条「账户今日未自动更新」行情提醒**（新股/停牌无昨收不再长期无感，受推送开关门控） |
 | 15:10 | 收盘买点扫描 | 自选股正式 B1/B2 命中 → 「到买点了」推送（附信号文案）；**B1? 不推送**（只 web 信号列灰显） |
 | 15:15 | 收盘交易日志确认 | 当日有归集候选 → 推「今日操作汇总，是否完整」；无候选静默 |
-| 15:30 | **收盘小结（close-summary，2026-08-29）** | 当日成交笔数 + 破止损提醒 + 待确认候选提示推送（`close-summary` 类型，双端开关，受推送开关门控；汇总类次日 23:59 消失） |
+| 15:30 | **收盘小结（close-summary，2026-08-29）** | 当日成交笔数 + 破止损提醒 + 待确认候选提示推送（`close-summary` 类型，双端开关，受推送开关门控；汇总类次日 23:59 消失）；**账实自检行（2026-09-12）**：委派 `TradingAppService.integrity`（唯一口径），**有 `drift`/`gaps` 才**追加一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（无差异不推，不制造噪音；自检失败静默降级，不中断推送主流程） |
 | 每 30 分钟（10-11/13-15 点，首轮 10:00） | 行情异动轮询 | stop-loss（现价破止损位 R66 硬判定）/near-stop-loss（距止损≤2%）/loss（日跌≥3%）/gain（日涨≥5%）/break-cost（跌破成本线）；**批次级止损（RFC 20260825）**：某批次现价破它自己的止损（未设默认 −7% 兜底）→ 单独推「批次止损预警」带批次日期/成本（不跟底仓混，signature 带 lotId 独立去重）；同票同类当日去重、同股票多类型合并防刷屏；阈值 `adai.market.alert.*` 可配。**2026-08-30（用户反馈批）两修**：① 轮询时段 9-11/13-15 → 10-11/13-15——9:00/9:30 行情接口仍返回上一交易日收盘，旧数据冒充「今日」（生产 08-27 09:00 实锤「今日跌 -3.11%」实为前日跌幅）且按日去重签名被旧数据烧掉名额、盘中真触发反而不推；② 补法定节假日守卫（B5-1 残留：节假日撞工作日时 break-cost/止损类拿前日收盘价每天重推） |
 
 > **节假日**：法定节假日（2026-2027 硬编码表）不推送——`TradingSessionPushService` 全部 7 个定时任务 + `MarketAlertService` 轮询（2026-08-30 补）均有 `isTradingDay` 守卫；周末由 cron MON-FRI 排除。
@@ -278,6 +281,11 @@ tags: [trading, plugin, reference]
 11. **双锁体系（C6，2026-08-23 注释如实化）**：account.json 写路径叠加 application `tradeLock`（业务 RMW）+ repository per-user 锁（文件原子写）——均为**单实例内**进程锁（多实例同写 data/ 即失效，当前单实例）；跨文件一致性（positions/account/流水）无原子手段，收盘更新与交易并发窗口为已知取舍
 12. **推送链路（2026-08-23 修复）**：推送标题契约断裂（P1-推送1）/删除持久化（P1-推送2）/app 设置入口（P1-推送3）均已修——MarketPushEvent 透传 title、`DELETE /trading/pushes/{id}`、app 交易页铃铛；徽章/确认按钮双端回归
 13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**——2026-09-04 起 admin「系统 → 维护」页签可上传通达信 .zip 数据包（MD17：`POST /admin/market/tdx-import`，校验 + 原子解压，替代手工 scp）；`scripts/sync_tdx_data.sh` 保留作命令行途径（趋势 = 降频/半自动而非产品端加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
+14. **三条真源与锚点语义（RFC 20260912，2026-09-12 账实一致性批，本手册的口径基线）**：交易账本有三条真源，**必须分清谁是谁**——
+    - **① 券商快照（锚点）**：持仓 `replace=true` 导入 / 资金股份查询导入落地的是**券商当下的真实状态**（已含此前全部成交与转账的结果），对应 `data/{userId}/trading/snapshot-anchor.json` `{positionsReplace, cashImport, recordedAt, holdingsRecorded, holdings[]}`（`holdingsRecorded=true` 表示基线**已记录**——与「记录为空」区分：未记录 → 对账报「无法判定」，空基线 → 合法的真空仓）——它同时是**锚定日**（`anchorDate` = 两日期较晚者）与**持仓基线**（`holdings`，`replace` 时记录；更新锚定日**保留**基线）。锚定日一律取**快照自身日期**（通达信文件名日期，`snapshotDate` 参数；不传退回导入日）——补导几天前的快照不能把锚定日写成今天。
+    - **② 逐笔流水（File First，唯一成交真相源）**：`trading/trades/{yyyy-MM}.json`，所有成交无论是否参与回放都先落流水；手动记录 / 截图确认 / 历史成交导入 / 回放共用**同一套幂等判定**（orderId + 指纹双键，合并回填不新增行）。
+    - **③ 派生持仓（不是真源，是算出来的）**：`positions.md` = `锚点快照基线 + 锚定日之后流水重放`；对账闸门口径 `derived = 基线 + 净增减`（`GET /trading/integrity`），与落地持仓不一致即 `drift`。**锚定日及之前的成交只补流水、不回放**——回放它们就是把快照已包含的结果再算一遍（2026-09-12 生产事故：持仓+现金双计，现金 −26666.85）。
+    - **fail-closed 取舍**：锚定缺失/读不到时，**宁可拒绝也不静默重放**（`POST /trades/import` 400 人话 + 两条逃生路径：先导「持仓股」/「资金股份查询」快照建立锚定，或 `mode=append` 只补流水；全新用户无锚定无账目状态仍允许从零回放）；存量环境用 `PUT /trading/anchor` **显式**回填（只改元信息、日期只前进）。**主动改账的动作必须让人知道**——导入支持 `dryRun=true` 预检（只返回 `plan`、不写任何文件），卖超/未归属的真实成交改「落流水 + `rejected` 明细 + 缺口可见」而不是 WARN 后消失。
 
 ## 九、已知缺陷（详见 docs/review/REVIEW.md）
 
@@ -288,6 +296,7 @@ tags: [trading, plugin, reference]
 - **第三阶段（2026-08-30）出表**：S6（买点 5 参构造器硬编码）→ 已修（用户规则可配）；P1-5 降级语义定稿（无规则 = 默认值兜底，行为不空）；P1-3 多用户知识泄漏 → owner 白名单收窄
 - **#179 零鉴权**：X-User-Id 无认证（数据访问靠 header 注入）
 - **2026-08-23 修复批新增**（REVIEW 已修复区）：confirm 失败清空候选（P0-1）、account.json 写锁（P0-2）、direction 无校验（P1-1）、batch 无校验（P1-2）——全部已修
+- **锚定文件缺失史（RFC 20260912，2026-09-12 账实一致性批闭合）**：`snapshot-anchor.json` 缺失使防重**静默失效**，同一事故形态已复发三次——2026-09-07 实测「replace + sync 双回放」致现金 −3.19 万 / 2026-09-09 实测锚定后补记当日提现致现金 −1.27 万 / **2026-09-12 复发（快照基线未记 + 锚定读不到，一次导入重放已含在快照内的成交）致现金 −2.67 万（−26666.85，正确值 ≈ 1381.93）**。本批以 **fail-closed（锚定未知 + 有需回放行 → 400，不再静默重放）+ 运行时自检（`GET /trading/integrity` 报 drift/gaps）+ 失败可见（`rejected` 明细 + ERROR 日志 + deploy-gate 告警）+ 存量显式回填（`PUT /trading/anchor`）** 四件套闭合。**残留（如实）**：多实例部署同写 `data/` 无跨进程锁（与注意点 11 同一条，当前单实例），锚定防重与流水写入仍为**单实例内**保证；golden 回归夹具为合成数据（真实成交导出不入 git）。
 
 ## 十、完美买点案例库（第四阶段，2026-08-30 环 1-2）
 

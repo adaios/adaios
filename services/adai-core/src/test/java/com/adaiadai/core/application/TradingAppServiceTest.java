@@ -1247,10 +1247,17 @@ void soldUpdatePsychology_marksTrade() {
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
         TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
                 mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
+        // 2026-09-12 账实一致性批：锚定缺失 + 已有持仓时，近日成交导入 fail-closed（不再静默重放）。
+        // 本组用例验证「近日成交按锚定后回放」，因此先建立一次早期锚定（30 天前）——语义与线上一致：
+        // 锚定日之后的成交才回放持仓/现金。
+        com.adaiadai.core.infrastructure.storage.TradingAnchorFileRepository anchorRepo =
+                new com.adaiadai.core.infrastructure.storage.TradingAnchorFileRepository(fs);
+        anchorRepo.updatePositionsReplace("default", LocalDate.now().minusDays(30));
+        anchorRepo.updateCashImport("default", LocalDate.now().minusDays(30));
         return new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
-                mock(MarketDataSource.class), lotService, mock(TradingRuleSettingsRepository.class));
+                mock(MarketDataSource.class), lotService, mock(TradingRuleSettingsRepository.class), anchorRepo);
     }
 
     @Test
@@ -1356,9 +1363,12 @@ void soldUpdatePsychology_marksTrade() {
                 %s        10:15:00        600000          浦发银行        买入            500.00          12.00000000         6000.00         90001          10000001                -6001.10
                 """.formatted(today);
         TradingAppService.HistoricalTradeImportResult result = service.importHistoricalTrades("default", tdx);
-        assertEquals(0, result.imported(), "手动记录的同笔成交 → 有 orderId 行也查指纹 → 跳过不重复入账");
-        assertEquals(1, result.skipped());
+        // 2026-09-12：跨来源同笔由「跳过」升级为「合并回填」——不新增流水，同时把成交编号/手续费补进既有记录
+        assertEquals(0, result.imported(), "手动记录的同笔成交 → 有 orderId 行也查指纹 → 不重复入账");
+        assertEquals(1, result.updated(), "同笔应合并回填成交编号/手续费");
+        assertEquals(0, result.skipped());
         assertEquals(1500, service.getPositions("default").get(0).quantity(), "持仓不翻倍（1000 底仓 + 500 手动）");
+        assertEquals(1, service.getTradeHistory("default", null, null).size(), "流水仍只有手动那一条");
     }
 
     @Test
@@ -1505,10 +1515,16 @@ void soldUpdatePsychology_marksTrade() {
         when(ruleRepo.findByUser(any())).thenReturn(TradingRuleSettings.defaults());
         TradingLotService lotService = new TradingLotService(history, repo, mock(MarketDataSource.class), kline, ruleRepo,
                 mock(com.adaiadai.core.infrastructure.storage.LotStopLossOverrideRepository.class));
+        // 2026-09-12 账实一致性批：锚定缺失 + 已有持仓 → 近日成交导入 fail-closed；
+        // 本用例验证锚定后回放，故先建 30 天前早期锚定（与线上语义一致）
+        com.adaiadai.core.infrastructure.storage.TradingAnchorFileRepository anchorRepo =
+                new com.adaiadai.core.infrastructure.storage.TradingAnchorFileRepository(fs);
+        anchorRepo.updatePositionsReplace("default", LocalDate.now().minusDays(30));
+        anchorRepo.updateCashImport("default", LocalDate.now().minusDays(30));
         TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class), history,
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 acc, mock(TransferRepository.class), mock(MarketDataSource.class), lotService,
-                mock(TradingRuleSettingsRepository.class));
+                mock(TradingRuleSettingsRepository.class), anchorRepo);
 
         // 股息红利税 -7.50（数量 0）+ 股息入账 +80.00（数量 0）+ 正常买入 500 股
         String today = LocalDate.now().toString().replace("-", "");

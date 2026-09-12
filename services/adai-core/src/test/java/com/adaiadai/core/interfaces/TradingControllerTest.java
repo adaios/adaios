@@ -995,7 +995,7 @@ class TradingControllerTest {
     @Test
     void importHistoricalTrades_importsAndReportsReconciliation() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+        when(trading.importHistoricalTrades(any(), any(), any(), anyBoolean())).thenReturn(
                 new TradingAppService.HistoricalTradeImportResult(45, 3, 1, 1,
                         java.util.List.of(new TradingAppService.ReconcileLine(
                                 "000725", "京东方Ａ", 7, -400, 4800,
@@ -1013,7 +1013,127 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.lines[0].symbol").value("000725"))
                 .andExpect(jsonPath("$.lines[0].netVolume").value(-400))
                 .andExpect(jsonPath("$.lines[0].holdings").value(4800));
-        verify(trading).importHistoricalTrades(eq("default"), any());
+        verify(trading).importHistoricalTrades(eq("default"), any(), any(), anyBoolean());
+    }
+
+    // ── 2026-09-12 账实一致性批：rejected/anchor 可见性 + 预检 + integrity/anchor 端点 ──
+
+    @Test
+    void importHistoricalTrades_returnsRejectedAndAnchor() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importHistoricalTrades(any(), any(), any(), anyBoolean())).thenReturn(
+                new TradingAppService.HistoricalTradeImportResult(3, 1, 2, 0, List.of(), "sync", null,
+                        List.of(new TradingAppService.RejectedLine("000831", "中国稀土",
+                                TradeDirection.SELL, 800, new java.math.BigDecimal("54.83"),
+                                java.time.LocalDate.of(2026, 9, 8), "未持有 000831——已落流水，未动持仓与现金")),
+                        new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9),
+                                java.time.LocalDate.of(2026, 9, 9), true, true)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rejected.length()").value(1))
+                .andExpect(jsonPath("$.rejected[0].symbol").value("000831"))
+                .andExpect(jsonPath("$.rejected[0].reason").value(org.hamcrest.Matchers.containsString("已落流水")))
+                .andExpect(jsonPath("$.anchor.known").value(true))
+                .andExpect(jsonPath("$.anchor.positionsReplace").value("2026-09-09"))
+                .andExpect(jsonPath("$.dryRun").value(false));
+    }
+
+    @Test
+    void importHistoricalTrades_dryRun_returnsPlanWithoutPersisting() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importHistoricalTrades(any(), any(), any(), eq(true))).thenReturn(
+                new TradingAppService.HistoricalTradeImportResult(5, 1, 2, 0, List.of(), "sync", null,
+                        List.of(new TradingAppService.RejectedLine("000831", "中国稀土",
+                                TradeDirection.SELL, 800, new java.math.BigDecimal("54.83"),
+                                java.time.LocalDate.of(2026, 9, 8), "未持有")),
+                        new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9), null, true, true)));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import?dryRun=true&mode=append")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dryRun").value(true))
+                .andExpect(jsonPath("$.plan.new").value(5))
+                .andExpect(jsonPath("$.plan.merged").value(1))
+                .andExpect(jsonPath("$.plan.wouldReject").value(1))
+                .andExpect(jsonPath("$.plan.anchorKnown").value(true));
+        verify(trading).importHistoricalTrades(eq("default"), any(), eq(TradingAppService.ImportMode.APPEND), eq(true));
+    }
+
+    @Test
+    void importHistoricalTrades_anchorMissing_400WithHumanMessage() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importHistoricalTrades(any(), any(), any(), anyBoolean())).thenThrow(
+                new com.adaiadai.core.domain.trading.TradingException(
+                        "券商快照锚定缺失：请先导入「持仓股」或「资金股份查询」快照建立锚定"));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/trades/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("锚定")));
+    }
+
+    @Test
+    void integrity_returnsReport() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.integrity(any())).thenReturn(new TradingAppService.IntegrityReport(
+                new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9), null, true, true),
+                true,
+                List.of(new TradingAppService.DriftLine("600206", "有研新材", 600, 300, 900, 1500, 600, "账实不符")),
+                List.of(), "账实不符：1 只标的持仓不一致"));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(get("/api/v1/trading/integrity"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.holdingsKnown").value(true))
+                .andExpect(jsonPath("$.drift[0].symbol").value("600206"))
+                .andExpect(jsonPath("$.drift[0].diff").value(600))
+                .andExpect(jsonPath("$.note").value(org.hamcrest.Matchers.containsString("账实不符")));
+    }
+
+    @Test
+    void integrity_withoutTradingPlugin_403() throws Exception {
+        MockMvc mvc = buildMvc(mock(TradingAppService.class), mock(TradingReviewAppService.class), new String[0]);
+        mvc.perform(get("/api/v1/trading/integrity")).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anchorStatus_returnsState() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.anchorStatus(any())).thenReturn(new TradingAppService.AnchorStatus(
+                java.time.LocalDate.of(2026, 9, 9), java.time.LocalDate.of(2026, 9, 9), true, true));
+        MockMvc mvc = buildMvc(trading);
+        mvc.perform(get("/api/v1/trading/anchor"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.known").value(true))
+                .andExpect(jsonPath("$.anchorDate").value("2026-09-09"));
+    }
+
+    @Test
+    void backfillAnchor_writesAndRejectsBadDate() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.backfillAnchor(any(), any(), any(), any())).thenReturn(
+                new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9), null, true, true));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(put("/api/v1/trading/anchor")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"positionsReplace\":\"2026-09-09\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.known").value(true));
+
+        mvc.perform(put("/api/v1/trading/anchor")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"positionsReplace\":\"09/09/2026\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("日期格式")));
     }
 
     @Test
@@ -1241,7 +1361,7 @@ class TradingControllerTest {
     @Test
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any(), anyBoolean())).thenReturn(
+        when(trading.importPositions(any(), any(), anyBoolean(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2,
                         java.util.List.of("600519 贵州茅台", "000725 京东方A")));
         MockMvc mvc = buildMvc(trading);
@@ -1568,7 +1688,7 @@ class TradingControllerTest {
     @Test
     void importCash_returnsResult() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importCashQuery(any(), any())).thenReturn(
+        when(trading.importCashQuery(any(), any(), any())).thenReturn(
                 new TradingAppService.CashImportResult(new java.math.BigDecimal("292.88"), new java.math.BigDecimal("110504.88"), 5));
         MockMvc mvc = buildMvc(trading);
         mvc.perform(post("/api/v1/trading/imports/cash")
@@ -1717,7 +1837,7 @@ class TradingControllerTest {
                 java.util.List.of(new TradingLotService.BehaviorNote(
                         "loss-avg-down", "亏损加仓", "600000", "浦发银行",
                         java.time.LocalDate.of(2026, 8, 25), "买价低于上一买批成本")));
-        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+        when(trading.importHistoricalTrades(any(), any(), any(), anyBoolean())).thenReturn(
                 new TradingAppService.HistoricalTradeImportResult(2, 0, 0, 0, java.util.List.of(), "sync", summary));
         MockMvc mvc = buildMvc(trading);
 
@@ -1736,7 +1856,7 @@ class TradingControllerTest {
     @Test
     void importHistoricalTrades_appendMode_noSummary() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importHistoricalTrades(any(), any())).thenReturn(
+        when(trading.importHistoricalTrades(any(), any(), any(), anyBoolean())).thenReturn(
                 new TradingAppService.HistoricalTradeImportResult(5, 0, 0, 0, java.util.List.of(), "append", null));
         MockMvc mvc = buildMvc(trading);
 

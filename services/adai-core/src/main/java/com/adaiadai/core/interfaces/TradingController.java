@@ -13,6 +13,7 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.SoldTrade;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.WatchlistItem;
 import com.adaiadai.core.domain.trading.TransferRecord;
@@ -265,11 +266,15 @@ public class TradingController {
     public ResponseEntity<?> importPositions(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "false") boolean replace,
+            @RequestParam(required = false) String snapshotDate,
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
+        // 2026-09-12：锚定日 = 快照自身日期（通达信「持仓股」文件名里的日期）——补导几天前的文件时
+        // 不能把锚定日写成今天，否则锚定日之后、快照之前的成交会被误判为「已含在快照内」而丢掉增量
+        java.time.LocalDate snapshot = parseOptionalDate(snapshotDate, "snapshotDate");
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
-                userId, items != null ? items : List.of(), replace);
+                userId, items != null ? items : List.of(), replace, snapshot);
         return ResponseEntity.ok(Map.of(
                 "imported", result.imported(),
                 "missingStopLoss", result.missingStopLoss()));
@@ -342,21 +347,36 @@ public class TradingController {
     }
 
     /**
-     * 历史成交日志导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）。
-     * POST /api/v1/trading/trades/import，body {"content":"...（UTF-8 转码后文本）"}
+     * 历史成交日志导入（第五份文件：通达信「历史成交查询」导出，2026-08-18；
+     * 2026-09-12 账实一致性批扩展：锚定 fail-closed + 统一幂等 + 卖超不丢数据 + 预检）。
+     * POST /api/v1/trading/trades/import?mode=auto|append&dryRun=false
+     * body {"content":"...（UTF-8 转码后文本）"}
      * <p>
-     * 只补逐笔流水（entryDate=成交日 / fee=券商实扣 / orderId 幂等），不重算持仓与现金——
-     * 持仓/成本/现金以全量覆盖导入为准；返回导入统计 + 对账提示。
+     * 语义：
+     * <ul>
+     *   <li>{@code mode=auto}（默认）：按券商快照锚定分派——≤ 锚定日的成交只补流水，晚于锚定日才回放持仓/现金；
+     *       锚定缺失而系统已有账目状态 → 400 人话（防静默重放双计，见 RFC 20260912）</li>
+     *   <li>{@code mode=append}：全部只补流水（不动持仓/现金）——锚定缺失时的安全模式</li>
+     *   <li>{@code dryRun=true}：只返回计划（新增/合并/跳过/非交易/无法归属 + 锚定状态），不写任何文件</li>
+     * </ul>
+     * 响应在原有 imported/updated/skipped/nonTrades/lines/syncMode/summary 之上新增
+     * {@code rejected}（真实成交无法归属持仓的行级明细——**已落流水、未动持仓/现金**）与 {@code anchor}
+     * （锚定状态）+ dryRun 时的 {@code plan}。
      */
     @PostMapping("/trades/import")
     public ResponseEntity<?> importHistoricalTrades(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(defaultValue = "auto") String mode,
+            @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestBody(required = false) Map<String, String> body) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         String content = body != null ? body.get("content") : null;
+        TradingAppService.ImportMode importMode = "append".equalsIgnoreCase(mode)
+                ? TradingAppService.ImportMode.APPEND : TradingAppService.ImportMode.AUTO;
         TradingAppService.HistoricalTradeImportResult result =
-                tradingAppService.importHistoricalTrades(userId, content != null ? content : "");
+                tradingAppService.importHistoricalTrades(userId, content != null ? content : "",
+                        importMode, dryRun);
         // RFC 20260825：响应扩展 syncMode（sync 同步持仓 | append 只补流水）+ 每日操作总结（客观聚合 + 行为标注）
         java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
         resp.put("imported", result.imported());
@@ -366,7 +386,109 @@ public class TradingController {
         resp.put("lines", result.lines());
         resp.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
         if (result.summary() != null) resp.put("summary", result.summary());
+        // 2026-09-12：无法归属的真实成交必须可见（旧实现只写 WARN + 计入「跳过」，3 笔真实卖出就此消失）
+        resp.put("rejected", result.rejected() != null ? result.rejected() : List.of());
+        if (result.anchor() != null) resp.put("anchor", result.anchor());
+        resp.put("dryRun", dryRun);
+        if (dryRun) {
+            java.util.Map<String, Object> plan = new java.util.LinkedHashMap<>();
+            plan.put("new", result.imported());
+            plan.put("merged", result.updated());
+            plan.put("skipped", result.skipped());
+            plan.put("nonTrades", result.nonTrades());
+            plan.put("wouldReject", result.rejected() != null ? result.rejected().size() : 0);
+            plan.put("anchorKnown", result.anchor() != null && result.anchor().known());
+            plan.put("syncMode", result.syncMode() != null ? result.syncMode() : "append");
+            resp.put("plan", plan);
+        }
         return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 账实一致性自检（2026-09-12，RFC 20260912 §4.2）：应有持仓（券商快照基线 + 锚定日之后流水净增减）
+     * 与落地持仓逐标的比对，差异即「账实不符」；同时报出重放缺口（卖超/未持有）。
+     * GET /api/v1/trading/integrity
+     * <p>
+     * 把口径崩坏变成当天可见的闸门（本次生产事故：三条真源互相矛盾三天，靠用户肉眼发现）。
+     * 降级诚实：锚定/基线缺失 → note 说明「无法判定」，不误报差异。
+     */
+    @GetMapping("/integrity")
+    public ResponseEntity<?> integrity(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.integrity(userId));
+    }
+
+    /** 锚定状态查询（GET /api/v1/trading/anchor，2026-09-12）：部署自检与前端提示用，不写任何数据。 */
+    @GetMapping("/anchor")
+    public ResponseEntity<?> anchorStatus(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.anchorStatus(userId));
+    }
+
+    /**
+     * 锚点回填（PUT /api/v1/trading/anchor，2026-09-12）：body
+     * {"positionsReplace":"yyyy-MM-dd","cashImport":"yyyy-MM-dd","holdings":[{"symbol","name","quantity"}]}
+     * <p>
+     * 存量环境（升级前导过快照但没写锚定文件）的**显式**自愈手段：只改元信息，不动持仓/现金/流水；
+     * 日期只前进不后退。用于解开 fail-closed 拒绝，避免用户只能靠重导一遍快照文件绕。
+     */
+    @PutMapping("/anchor")
+    public ResponseEntity<?> backfillAnchor(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        try {
+            java.time.LocalDate positionsReplace = parseAnchorDate(body, "positionsReplace");
+            java.time.LocalDate cashImport = parseAnchorDate(body, "cashImport");
+            List<com.adaiadai.core.domain.trading.SnapshotHolding> holdings = new java.util.ArrayList<>();
+            Object raw = body != null ? body.get("holdings") : null;
+            if (raw instanceof List<?> list) {
+                for (Object o : list) {
+                    if (!(o instanceof Map<?, ?> m)) continue;
+                    Object sym = m.get("symbol");
+                    if (sym == null || String.valueOf(sym).isBlank()) continue;
+                    Object qty = m.get("quantity");
+                    int quantity = qty instanceof Number n ? n.intValue() : 0;
+                    Object nm = m.get("name");
+                    holdings.add(new com.adaiadai.core.domain.trading.SnapshotHolding(
+                            String.valueOf(sym), nm != null ? String.valueOf(nm) : null, quantity));
+                }
+            }
+            return ResponseEntity.ok(tradingAppService.backfillAnchor(
+                    userId, positionsReplace, cashImport, holdings));
+        } catch (TradingException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** 可选日期参数解析（null/空串 → null；格式错 → 400 人话；兼容 yyyyMMdd）。 */
+    private static java.time.LocalDate parseOptionalDate(String raw, String field) {
+        if (raw == null || raw.isBlank()) return null;
+        String v = raw.trim();
+        try {
+            if (v.matches("\\d{8}")) {
+                return java.time.LocalDate.parse(v, java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+            }
+            return java.time.LocalDate.parse(v);
+        } catch (Exception e) {
+            throw new TradingException("日期格式不正确（" + field + " 需 yyyy-MM-dd 或 yyyyMMdd）");
+        }
+    }
+
+    /** 锚点回填日期解析（缺省/空串 → null；格式错 → 400 人话）。 */
+    private static java.time.LocalDate parseAnchorDate(Map<String, Object> body, String key) {
+        Object v = body != null ? body.get(key) : null;
+        if (v == null || String.valueOf(v).isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(String.valueOf(v).trim());
+        } catch (Exception e) {
+            throw new TradingException("日期格式不正确（" + key + " 需 yyyy-MM-dd）");
+        }
     }
 
     /**
@@ -1117,8 +1239,11 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         String content = body == null ? null : body.get("content");
+        // 2026-09-12：账户快照日期/现金锚定日 = 快照自身日期（前端从文件名取，如 20260909）
+        java.time.LocalDate snapshot = parseOptionalDate(body != null ? body.get("snapshotDate") : null,
+                "snapshotDate");
         TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
-                userId, content != null ? content : "");
+                userId, content != null ? content : "", snapshot);
         return ResponseEntity.ok(Map.of(
                 "cash", r.cash(),
                 "assets", r.assets(),

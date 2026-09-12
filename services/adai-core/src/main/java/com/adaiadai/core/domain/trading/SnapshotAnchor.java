@@ -23,4 +23,23 @@ public record SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport) {
     public static SnapshotAnchor empty() {
         return new SnapshotAnchor(null, null);
     }
+
+    /**
+     * 锚定是否已知（至少做过一次全量导入）。
+     * <p>
+     * 2026-09-12 账实一致性批：空锚定**不再**等于「不做防重」——未知锚定 + 需要重放的增量
+     * = fail-closed（拒绝重放 + 指路先导快照），防 P2-交易34 式静默双计在生产再现
+     * （2026-09-12 实测：生产 snapshot-anchor.json 根本不存在 → 防重整条失效 → 一次导入
+     * 把已含在 09-09 快照内的成交重放一遍，持仓与现金双计，现金被推到 −26666.85）。
+     */
+    public boolean known() {
+        return positionsReplace != null || cashImport != null;
+    }
+
+    /** 合并后的锚定日（较晚者；两者皆空 → null）。 */
+    public LocalDate latest() {
+        if (positionsReplace == null) return cashImport;
+        if (cashImport == null) return positionsReplace;
+        return positionsReplace.isAfter(cashImport) ? positionsReplace : cashImport;
+    }
 }

@@ -108,6 +108,9 @@ class _TradingPageState extends State<TradingPage> {
   String? _error;
   bool _reviewing = false; // 复盘生成中（#102 交易系统反哺入口）
   bool _lotsDialogOpen = false; // P2-批次1：批次弹窗在途守卫——连点/双击防叠两层 dialog
+  // RFC 20260912 账实一致性：对账闸门（GET /trading/integrity）——drift/gaps 非空才显示横幅（无差异零噪音）
+  IntegrityReportDto? _integrity;
+  bool _integrityExpanded = false;
 
   Timer? _autoRefresh;
 
@@ -183,6 +186,21 @@ class _TradingPageState extends State<TradingPage> {
     _loadDegradable();
     // RFC 20260822：当日交易复盘（今日 N 笔 · 时段分布）——纯客观，失败静默不显示
     _loadDaily();
+    // RFC 20260912：账实对账闸门（应有持仓 vs 落地持仓 / 重放缺口）——失败静默降级，不打断加载
+    unawaited(_loadIntegrity());
+  }
+
+  /// RFC 20260912 账实一致性闸门（GET /trading/integrity）：
+  /// drift（应有持仓 ≠ 落地持仓）/ gaps（卖超·未持有的重放缺口）非空 → 顶部可展开橙色横幅。
+  /// 可降级请求：失败 / 旧后端 404 → 静默（不显示横幅、不打断页面，绝不整页错误态）。
+  Future<void> _loadIntegrity() async {
+    try {
+      final r = await widget.api.getTradingIntegrity();
+      if (!mounted) return;
+      setState(() => _integrity = r);
+    } catch (_) {
+      // 静默降级：对账闸门拿不到不影响看盘（宁可不显示，也不误报差异）
+    }
   }
 
   /// RFC 20260822：当日交易复盘聚合。失败/无成交静默（不显示今日节奏行），不阻塞页面。
@@ -610,6 +628,11 @@ class _TradingPageState extends State<TradingPage> {
                         _buildMarketStageBar(),
                         const SizedBox(height: 10),
                       ],
+                      // RFC 20260912：账实不符闸门（drift/gaps 非空才出现，无差异零噪音）
+                      if (_integrity != null && _integrity!.hasIssue) ...[
+                        _buildIntegrityBanner(_integrity!),
+                        const SizedBox(height: 10),
+                      ],
                       _buildSnapshotRow(),
                       if (_dailySummary != null) ...[
                         const SizedBox(height: 4),
@@ -761,26 +784,7 @@ class _TradingPageState extends State<TradingPage> {
       Text('通达信持仓导出 · 全量覆盖 · 止损需导入后补设', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       const Spacer(),
       OutlinedButton.icon(
-        onPressed: () => _openImportDialog('持仓',
-            '粘贴通达信持仓导出（或选择文件）：证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设',
-            (c) async {
-              final parsed = parseTdxPositions(c);
-              if (parsed.rows.isEmpty) {
-                throw Exception('无法识别通达信持仓导出——请确认表头含「证券代码/股票余额/成本价」');
-              }
-              final result = await widget.api.importPositions(
-                parsed.rows.map((r) => r.toJson()).toList(),
-                replace: true,
-              );
-              await _loadAll();
-              if (mounted) {
-                var msg = '持仓导入 ${result.imported} 只';
-                if (result.missingStopLoss.isNotEmpty) {
-                  msg += ' · 未设止损 ${result.missingStopLoss.length} 只（${result.missingStopLoss.join('、')}）';
-                }
-                _toast(msg);
-              }
-            }),
+        onPressed: _openPositionsImport,
         icon: const Icon(Icons.upload_file, size: 14),
         label: const Text('导入持仓', style: TextStyle(fontSize: 12)),
         style: OutlinedButton.styleFrom(
@@ -1092,7 +1096,12 @@ class _TradingPageState extends State<TradingPage> {
               SingleChildScrollView(child: _buildWatchlistSection()),
               SingleChildScrollView(child: _buildSoldSection()),
               SingleChildScrollView(child: _buildCashSection()),
-              _HistorySection(key: _historyKey, api: widget.api),
+              _HistorySection(
+                key: _historyKey,
+                api: widget.api,
+                onImportSnapshot: _openPositionsImport,
+                onImported: () => unawaited(_loadIntegrity()),
+              ),
               SingleChildScrollView(child: _buildRuleSection()),
               SingleChildScrollView(child: _buildCaseSection()),
             ]),
@@ -1126,7 +1135,7 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('自选股',
               '粘贴通达信自选导出（或选择文件）：代码/名称/细分行业/长期中期短期形态/近日指标提示',
-              (c) async {
+              (c, _) async {
                 final n = await widget.api.importWatchlist(c);
                 await _loadAll();
                 if (mounted) _toast('自选股导入 $n 只');
@@ -1301,7 +1310,7 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('清仓股',
               '粘贴通达信清仓导出（或选择文件）：代码/名称/介入日期/清仓日期/持仓天数/买卖次数/持仓期涨幅%',
-              (c) async {
+              (c, _) async {
                 final n = await widget.api.importSold(c);
                 await _loadAll();
                 if (mounted) _toast('清仓股导入 $n 笔');
@@ -1440,6 +1449,64 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// RFC 20260912 账实不符闸门横幅（橙色，可展开）：
+  /// drift = 应有持仓（快照基线 + 锚点后流水净增减）≠ 落地持仓；gaps = 卖超/未持有的重放缺口。
+  /// 无差异 → 调用方不渲染（绝不制造噪音）；锚定/基线缺失时不误报（后端已降级为空 + note 说明）。
+  Widget _buildIntegrityBanner(IntegrityReportDto r) {
+    final drift = r.drift;
+    final gaps = r.gaps;
+    final parts = <String>[
+      if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
+      if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _integrityExpanded = !_integrityExpanded),
+          child: Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.darkOrange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('阿呆发现账对不上：${parts.join(' / ')}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+            ),
+            Text(_integrityExpanded ? '收起' : '看明细',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            Icon(_integrityExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkGrey4),
+          ]),
+        ),
+        if (_integrityExpanded) ...[
+          const SizedBox(height: 6),
+          for (final d in drift)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                  '${d.symbol} ${d.name}：应有 ${d.derived} 股'
+                  '（快照基线 ${d.snapshotQty ?? 0} + 锚点后流水 ${d.ledgerDelta > 0 ? '+' : ''}${d.ledgerDelta}），'
+                  '落地 ${d.holdings ?? 0} 股，差 ${d.diff > 0 ? '+' : ''}${d.diff}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          for (final g in gaps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text('回放缺口 · ${g.display}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          const SizedBox(height: 2),
+          const Text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        ],
+      ]),
+    );
+  }
+
   Future<void> _markPsychology(SoldTradeDto s) async {
     final controller = TextEditingController(text: s.psychology);
     final result = await showDialog<String>(
@@ -1508,11 +1575,7 @@ class _TradingPageState extends State<TradingPage> {
         OutlinedButton.icon(
           onPressed: () => _openImportDialog('资金股份查询',
               '粘贴通达信「资金股份查询」导出（或选择文件）：更新现金余额 + 精确成本价（4 位）',
-              (c) async {
-                final r = await widget.api.importCash(c);
-                await _loadAll();
-                if (mounted) _toast('资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只');
-              }),
+              _importCashSnapshot),
           icon: const Icon(Icons.upload_file, size: 14),
           label: const Text('导入资金', style: TextStyle(fontSize: 12)),
           style: OutlinedButton.styleFrom(
@@ -2682,8 +2745,48 @@ class _TradingPageState extends State<TradingPage> {
 
 
   /// 通用导入 Dialog：粘贴文本 或 选择文件（上传留存 + GBK 转码）→ 回调导入。
-  Future<void> _openImportDialog(String title, String hint, Future<void> Function(String) onImport) async {
+  /// 持仓快照导入（通达信「持仓股」导出，全量覆盖）——也是**建立/推进券商快照锚定**的入口
+  /// （RFC 20260912：历史成交导入预检发现锚定缺失时，从这里「先导快照」把锚定日补上）。
+  /// [snapshotDate] = 快照文件自身日期（从文件名解析），后端拿它当锚定日，优先于导入日。
+  Future<void> _importPositionsSnapshot(String content, String? snapshotDate) async {
+    final parsed = parseTdxPositions(content);
+    if (parsed.rows.isEmpty) {
+      throw Exception('无法识别通达信持仓导出——请确认表头含「证券代码/股票余额/成本价」');
+    }
+    final result = await widget.api.importPositions(
+      parsed.rows.map((r) => r.toJson()).toList(),
+      replace: true,
+      snapshotDate: snapshotDate,
+    );
+    await _loadAll();
+    if (mounted) {
+      var msg = '持仓导入 ${result.imported} 只';
+      if (result.missingStopLoss.isNotEmpty) {
+        msg += ' · 未设止损 ${result.missingStopLoss.length} 只（${result.missingStopLoss.join('、')}）';
+      }
+      _toast(msg);
+    }
+  }
+
+  void _openPositionsImport() => _openImportDialog(
+        '持仓',
+        '粘贴通达信持仓导出（或选择文件）：证券代码/股票余额/成本价 自动识别，全量覆盖，止损需导入后补设',
+        _importPositionsSnapshot,
+      );
+
+  /// 资金股份查询导入（现金 + 精确成本）——同样建立锚定（cashImport，RFC 20260912）。
+  Future<void> _importCashSnapshot(String content, String? snapshotDate) async {
+    final r = await widget.api.importCash(content, snapshotDate: snapshotDate);
+    await _loadAll();
+    if (mounted) _toast('资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只');
+  }
+
+  Future<void> _openImportDialog(String title, String hint,
+      Future<void> Function(String content, String? snapshotDate) onImport) async {
     final controller = TextEditingController();
+    // 2026-09-12：所选文件名的日期（通达信导出名带日期）→ 当锚定日传给后端（优先于导入日）；
+    // 粘贴路径取不到 → null（不传该字段，后端退回导入日）
+    String? snapshotDate;
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -2702,7 +2805,10 @@ class _TradingPageState extends State<TradingPage> {
                     if (f.bytes == null) return;
                     final saved = await widget.api.saveImportFile(f.name, f.bytes!);
                     if (!ctx.mounted) return;
-                    setDlg(() => controller.text = saved.content);
+                    setDlg(() {
+                      controller.text = saved.content;
+                      snapshotDate = parseSnapshotDateFromFilename(f.name);
+                    });
                   },
                   icon: const Icon(Icons.upload_file, size: 14),
                   label: const Text('选择文件（通达信导出）', style: TextStyle(fontSize: 12)),
@@ -2731,7 +2837,7 @@ class _TradingPageState extends State<TradingPage> {
                 Navigator.pop(ctx);
                 // 2026-08-17（P1-交易5）：导入失败必须反馈——后端解析失败会 400 + 人话消息，这里透出
                 try {
-                  await onImport(controller.text);
+                  await onImport(controller.text, snapshotDate);
                 } catch (e) {
                   _toast('导入失败：${extractApiErrorMessage(e)}');
                 }
@@ -3841,8 +3947,13 @@ class _TabHistoryRefreshListenerState extends State<_TabHistoryRefreshListener> 
 /// 进 Tab 自动加载 + 手动刷新，不做定时轮询（保活页陈旧问题，切页刷新兜底）。
 class _HistorySection extends StatefulWidget {
   final ApiService api;
+  /// RFC 20260912：锚定缺失时的「先导快照」出路——关掉导入弹窗并打开持仓快照导入
+  /// （「持仓股」导出即可建立锚定日）。可空：不传则只给引导文案。
+  final VoidCallback? onImportSnapshot;
+  /// RFC 20260912：确认落盘后回调（父页重算账实对账闸门——这次导入可能新增缺口）。
+  final VoidCallback? onImported;
 
-  const _HistorySection({super.key, required this.api});
+  const _HistorySection({super.key, required this.api, this.onImportSnapshot, this.onImported});
 
   @override
   State<_HistorySection> createState() => _HistorySectionState();
@@ -3947,10 +4058,13 @@ class _HistorySectionState extends State<_HistorySection>
       context: context,
       builder: (_) => _HistoryImportDialog(
         api: widget.api,
+        onImportSnapshot: widget.onImportSnapshot,
         onImported: (result) {
           if (!mounted) return;
           setState(() => _importResult = result);
           _load();
+          // RFC 20260912：这次导入可能新增账实缺口 → 让父页重算对账闸门横幅
+          widget.onImported?.call();
         },
       ),
     );
@@ -4324,6 +4438,7 @@ class _HistorySectionState extends State<_HistorySection>
 /// 导入结果补充展示（Dialog 内与历史成交 Tab inline 共用）：
 /// syncMode=sync → 当日操作总结卡（标题带成交日期，如「8/22 操作」）+ 行为标注（亏损加仓/追高等醒目色）；
 /// syncMode=append → 补录提示（只补流水，持仓未动）；summary 缺失（append）不报错。
+/// RFC 20260912 扩展：rejected（无法归属持仓的成交逐条显眼展示）+ anchor 缺失/基线缺失提示。
 class _ImportResultSummary extends StatelessWidget {
   final HistoricalTradeImportResult result;
 
@@ -4332,64 +4447,134 @@ class _ImportResultSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = result.summary;
-    if (result.syncMode == 'sync' && summary != null) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppColors.darkGreen.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.35)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // 标题带成交日期（sync 窗口跨多日，未必是今天；date 缺失回落「今日操作」）
-          Text('${summary.date.isEmpty ? '今日操作' : '${_fmtShortDate(summary.date)} 操作'}'
-              '：买 ${summary.buyCount} 笔 ¥${_fmtThousands(summary.buyAmount)}'
-              ' · 卖 ${summary.sellCount} 笔 ¥${_fmtThousands(summary.sellAmount)}'
-              ' · 新增批次 ${summary.newLots} · 扣减批次 ${summary.deductedLots}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
-          if (summary.behaviors.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            for (final b in summary.behaviors)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: '${b.label} · ',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _behaviorColor(b.type))),
-                    TextSpan(text: '${b.name}（${b.symbol}）',
-                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
-                    TextSpan(text: '：${b.message}',
-                        style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
-                  ]),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (result.rejected.isNotEmpty) _rejectedBlock(),
+      if (result.anchor != null && !result.anchor!.known) _anchorMissingBlock(),
+      // 基线未记录（holdingsKnown=false）→ 对账无法判定（诚实说明，不误报差异）
+      if (result.anchor != null && !result.anchor!.holdingsKnown) _baselineBlock(),
+      if (result.syncMode == 'sync' && summary != null)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.darkGreen.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.35)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // 标题带成交日期（sync 窗口跨多日，未必是今天；date 缺失回落「今日操作」）
+            Text('${summary.date.isEmpty ? '今日操作' : '${_fmtShortDate(summary.date)} 操作'}'
+                '：买 ${summary.buyCount} 笔 ¥${_fmtThousands(summary.buyAmount)}'
+                ' · 卖 ${summary.sellCount} 笔 ¥${_fmtThousands(summary.sellAmount)}'
+                ' · 新增批次 ${summary.newLots} · 扣减批次 ${summary.deductedLots}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+            if (summary.behaviors.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              for (final b in summary.behaviors)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '${b.label} · ',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _behaviorColor(b.type))),
+                      TextSpan(text: '${b.name}（${b.symbol}）',
+                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+                      TextSpan(text: '：${b.message}',
+                          style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
+                    ]),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ]),
+        )
+      else if (result.syncMode == 'append')
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text('已按历史补录处理（只补流水，持仓未动）',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        ),
+    ]);
+  }
+
+  /// RFC 20260912 关键可见性：无法归属持仓的成交逐条列出（橙色警示卡）。
+  /// 这些笔**已经记进流水**，但持仓/现金没动——旧实现把它们混在「跳过 N 笔」里，用户根本看不见。
+  Widget _rejectedBlock() {
+    final n = result.rejected.length;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('有 $n 笔成交没能并入持仓（已记账，未动持仓/现金）',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.darkOrange)),
+          ),
         ]),
-      );
-    }
-    if (result.syncMode == 'append') {
-      return const Padding(
-        padding: EdgeInsets.only(top: 4),
-        child: Text('已按历史补录处理（只补流水，持仓未动）',
+        const SizedBox(height: 4),
+        for (final r in result.rejected)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text(r.display, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2, height: 1.35)),
+          ),
+        const Text('先导一次「持仓股」或「资金股份查询」快照，我就能把它们归位了。',
             style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
-      );
-    }
-    return const SizedBox.shrink();
+      ]),
+    );
+  }
+
+  /// 锚定缺失（anchor.known=false）：说清原因 + 下一步（先导快照，或只想补流水就用 append）。
+  Widget _anchorMissingBlock() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.5)),
+      ),
+      child: const Text(
+        '还没拿到券商快照的锚定日：哪些成交已经在券商口径里，我判断不了。'
+        '先导一次「持仓股」或「资金股份查询」快照，我就能对上了；'
+        '只想补逐笔流水（不动持仓/现金）就走「仅补流水」。',
+        style: TextStyle(fontSize: 11, color: AppColors.darkGrey2, height: 1.35),
+      ),
+    );
+  }
+
+  /// 快照基线未记录（holdingsKnown=false）：诚实说明对账无法判定（不误报差异）。
+  Widget _baselineBlock() {
+    return const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Text('快照基线未记录，账实对账暂时无法判定（导一次「持仓股」快照即可开始对账）',
+          style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+    );
   }
 }
 
 // ─────────────────────────── 历史成交导入 Dialog（RFC 20260823，只认历史成交格式） ───────────────────────────
 
 /// 历史成交导入（独立入口，2026-08-23）：只认通达信「历史成交查询」导出格式——
-/// 粘贴或选文件 → isTdxHistoryExport 识别 → POST /trades/import（幂等 + 缺失成交时间回填）。
+/// 粘贴或选文件 → isTdxHistoryExport 识别 → 预检（dryRun）→ 用户确认 → POST /trades/import。
+/// RFC 20260912：从「点了就落盘」升级为**两段式**（改账与花钱同等待遇）——
+/// 先 dryRun 预检拿计划（新增/合并/跳过/非交易/无法归属 + 锚定状态），确认后才真正写。
 class _HistoryImportDialog extends StatefulWidget {
   final ApiService api;
-  /// 导入成功（含 updated 回填）后回调：父 Tab 刷新列表并展示结果。
+  /// 导入成功（含 updated 回填）后回调：父 Tab 刷新列表并展示结果。**预检不触发**。
   final void Function(HistoricalTradeImportResult result) onImported;
+  /// RFC 20260912：锚定缺失时「先导快照」的出路（关弹窗 → 打开持仓快照导入）。可空。
+  final VoidCallback? onImportSnapshot;
 
-  const _HistoryImportDialog({required this.api, required this.onImported});
+  const _HistoryImportDialog({required this.api, required this.onImported, this.onImportSnapshot});
 
   @override
   State<_HistoryImportDialog> createState() => _HistoryImportDialogState();
@@ -4397,6 +4582,7 @@ class _HistoryImportDialog extends StatefulWidget {
 
 /// 导入队列任务（P2-批次4/5，2026-08-29）：一份文件或一段粘贴文本 = 一个 job，
 /// 逐份处理并实时展示状态（第 N/共 M、处理中、耗时、成功/跳过/失败）。
+/// RFC 20260912：拆出 [plan]（预检结果，未落盘）与 [result]（确认后正式落盘结果）。
 class _ImportJob {
   _ImportJob.file(this.name, this.bytes) : content = null;
   _ImportJob.text(this.name, this.content) : bytes = null;
@@ -4405,30 +4591,44 @@ class _ImportJob {
   final List<int>? bytes; // 文件（未上传转码）；粘贴文本为 null
   String? content; // 上传转码后的内容（文件）或直接粘贴的文本
   bool processing = false;
-  bool done = false;
+  bool done = false; // 已正式落盘
   bool failed = false;
   String? error;
-  HistoricalTradeImportResult? result;
+  HistoricalTradeImportResult? plan; // 预检计划（dryRun=true，未落盘）
+  HistoricalTradeImportResult? result; // 确认后正式导入结果
   int elapsedMs = 0;
 
+  bool get planned => plan != null;
   bool get finished => done || failed;
 }
 
 /// 多份历史成交导入结果聚合（P2-批次4，2026-08-29 多文件批量）：
 /// 计数求和、对账行按 (symbol, netVolume, note) 去重、syncMode 任一 sync 即 sync、
 /// summary 取首份非空（多份时以第一份 sync 的操作总结为代表）。
+/// RFC 20260912：rejected 按 (symbol,direction,volume,price,entryDate,reason) 去重并合并；
+/// anchor 取首份非空（同一次导入同一个锚定状态）。
 HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportResult> results) {
   final lines = <ReconcileLine>[];
   final seen = <String>{};
+  final rejected = <RejectedLineDto>[];
+  final seenRejected = <String>{};
   for (final r in results) {
     for (final l in r.lines) {
       final key = '${l.symbol}|${l.netVolume}|${l.note}';
       if (seen.add(key)) lines.add(l);
     }
+    for (final x in r.rejected) {
+      final key = '${x.symbol}|${x.direction}|${x.volume}|${x.price}|${x.entryDate}|${x.reason}';
+      if (seenRejected.add(key)) rejected.add(x);
+    }
   }
   TradeImportSummary? summary;
   for (final r in results) {
     if (r.summary != null) { summary = r.summary; break; }
+  }
+  AnchorStatusDto? anchor;
+  for (final r in results) {
+    if (r.anchor != null) { anchor = r.anchor; break; }
   }
   return HistoricalTradeImportResult(
     imported: results.fold(0, (s, r) => s + r.imported),
@@ -4438,14 +4638,32 @@ HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportRes
     lines: lines,
     syncMode: results.any((r) => r.syncMode == 'sync') ? 'sync' : 'append',
     summary: summary,
+    rejected: rejected,
+    anchor: anchor,
+    dryRun: results.any((r) => r.dryRun),
   );
 }
 
+/// 多份预检计划汇总（RFC 20260912）：计数求和；wouldReject / anchorKnown 以聚合结果为准
+/// （明细列表与计数必须一致，否则用户看到的「N 笔」和下面列出的行数对不上）。
+ImportPlanDto aggregateImportPlans(HistoricalTradeImportResult agg) => ImportPlanDto(
+      newCount: agg.imported,
+      merged: agg.updated,
+      skipped: agg.skipped,
+      nonTrades: agg.nonTrades,
+      wouldReject: agg.rejected.length,
+      anchorKnown: agg.anchor?.known ?? false,
+      syncMode: agg.syncMode,
+    );
+
 class _HistoryImportDialogState extends State<_HistoryImportDialog> {
   final _text = TextEditingController();
-  bool _queueRunning = false;
+  bool _busy = false; // 预检或落盘在途（防连点并发）
+  bool _appendOnly = false; // 用户选了「仅补流水」→ mode=append（不动持仓/现金）
+  bool _confirmed = false; // 已确认落盘（预检阶段为 false）
   final List<_ImportJob> _jobs = [];
-  HistoricalTradeImportResult? _result;
+  HistoricalTradeImportResult? _preflight; // 预检聚合（未落盘）
+  HistoricalTradeImportResult? _result; // 正式导入聚合结果
   String? _error;
 
   @override
@@ -4454,7 +4672,7 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
     super.dispose();
   }
 
-  /// 选择通达信历史成交导出（可多选）→ 每份入队 → 逐份上传转码 + 导入。
+  /// 选择通达信历史成交导出（可多选）→ 每份入队 → 逐份预检（不落盘）。
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -4466,20 +4684,22 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
       if (!mounted) return;
       setState(() {
         _result = null;
+        _preflight = null;
         _error = null;
+        _confirmed = false;
         for (final f in result.files) {
           if (f.bytes == null) continue;
           _jobs.add(_ImportJob.file(f.name, f.bytes!));
         }
       });
-      await _runQueue();
+      await _preflightQueue();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '文件读取失败，请重试');
     }
   }
 
-  /// 粘贴文本导入：单 job 入队（保持原「导入」按钮路径）。
+  /// 粘贴文本：单 job 入队 → 预检。
   Future<void> _import() async {
     if (_text.text.trim().isEmpty) {
       setState(() => _error = '请粘贴通达信「历史成交查询」导出文本，或选择文件');
@@ -4487,25 +4707,31 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
     }
     setState(() {
       _result = null;
+      _preflight = null;
       _error = null;
+      _confirmed = false;
       _jobs.clear();
       _jobs.add(_ImportJob.text('粘贴文本', _text.text));
     });
-    await _runQueue();
+    await _preflightQueue();
   }
 
-  /// 逐份处理队列：上传留存（文件）→ 格式识别 → 导入 → 实时更新状态与耗时。
-  Future<void> _runQueue() async {
-    if (_queueRunning) return;
-    _queueRunning = true;
-    for (var i = 0; i < _jobs.length; i++) {
-      final job = _jobs[i];
-      if (job.finished) continue;
-      if (!mounted) { _queueRunning = false; return; }
+  /// 阶段一（RFC 20260912）：逐份 dryRun 预检——只算计划，**不写任何文件**。
+  /// 多文件时逐份预检、汇总计划后再确认；失败（含锚定缺失 400）原样透出人话 error。
+  Future<void> _preflightQueue() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final plans = <HistoricalTradeImportResult>[];
+    String? firstError;
+    for (final job in _jobs) {
+      if (!mounted) { _busy = false; return; }
       setState(() {
         job.processing = true;
         job.failed = false;
         job.error = null;
+        job.plan = null;
+        job.done = false;
+        job.result = null;
       });
       final sw = Stopwatch()..start();
       try {
@@ -4514,7 +4740,7 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           final saved = await widget.api.saveImportFile(job.name, job.bytes!);
           content = saved.content;
         }
-        if (!mounted) { _queueRunning = false; return; }
+        if (!mounted) { _busy = false; return; }
         job.content = content;
         // RFC 20260823：只认通达信历史成交导出——其他格式直接人话拒绝，不静默落零
         if (!isTdxHistoryExport(content)) {
@@ -4526,44 +4752,174 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           });
           continue;
         }
-        final result = await widget.api.importTradesHistory(content);
-        if (!mounted) { _queueRunning = false; return; }
+        final plan = await widget.api.importTradesHistory(content,
+            mode: _appendOnly ? 'append' : 'auto', dryRun: true);
+        if (!mounted) { _busy = false; return; }
+        setState(() {
+          job.processing = false;
+          job.plan = plan;
+          job.elapsedMs = sw.elapsedMilliseconds;
+        });
+        plans.add(plan);
+      } catch (e) {
+        if (!mounted) { _busy = false; return; }
+        // 预检失败：原样透出（锚定缺失是 400 + 中文人话，必须逐字给用户看）
+        final msg = extractApiErrorMessage(e);
+        firstError ??= msg;
+        setState(() {
+          job.processing = false;
+          job.failed = true;
+          job.error = msg;
+          job.elapsedMs = sw.elapsedMilliseconds;
+        });
+      }
+    }
+    if (!mounted) { _busy = false; return; }
+    setState(() {
+      _busy = false;
+      if (plans.isNotEmpty) _preflight = aggregateImportResults(plans);
+      if (firstError != null) _error = firstError;
+    });
+  }
+
+  /// 阶段二：用户点「确认导入」→ 才真正落盘（dryRun=false）。
+  Future<void> _confirmImport() async {
+    if (_busy) return;
+    final targets = _jobs.where((j) => j.planned).toList();
+    if (targets.isEmpty) return;
+    setState(() => _busy = true);
+    final done = <HistoricalTradeImportResult>[];
+    String? firstError;
+    for (final job in targets) {
+      if (!mounted) { _busy = false; return; }
+      setState(() => job.processing = true);
+      final sw = Stopwatch()..start();
+      try {
+        final result = await widget.api.importTradesHistory(job.content ?? '',
+            mode: _appendOnly ? 'append' : 'auto');
+        if (!mounted) { _busy = false; return; }
         setState(() {
           job.processing = false;
           job.done = true;
           job.result = result;
           job.elapsedMs = sw.elapsedMilliseconds;
         });
+        done.add(result);
       } catch (e) {
-        if (!mounted) { _queueRunning = false; return; }
-        // B2-3（2026-08-23）：透出后端人话 error（原 contains('无法识别') 恒 false 吞掉人话）
+        if (!mounted) { _busy = false; return; }
+        final msg = extractApiErrorMessage(e);
+        firstError ??= msg;
         setState(() {
           job.processing = false;
           job.failed = true;
-          job.error = extractApiErrorMessage(e);
+          job.error = msg;
           job.elapsedMs = sw.elapsedMilliseconds;
         });
       }
     }
-    _queueRunning = false;
-    if (!mounted) return;
-    final doneJobs = _jobs.where((j) => j.done).toList();
-    if (doneJobs.isNotEmpty) {
-      final agg = _aggregate(doneJobs);
-      setState(() => _result = agg);
-      widget.onImported(agg);
-    }
+    if (!mounted) { _busy = false; return; }
+    final agg = done.isNotEmpty ? aggregateImportResults(done) : null;
+    setState(() {
+      _busy = false;
+      _confirmed = agg != null;
+      _result = agg;
+      if (firstError != null) _error = firstError;
+    });
+    if (agg != null) widget.onImported(agg);
   }
 
-  /// 多份结果聚合（P2-批次4，2026-08-29）：计数求和、对账行去重、summary 取首份 sync
-  /// （多份时展示聚合数字 + 汇总对账）。独立顶层函数便于测试。
-  static HistoricalTradeImportResult _aggregate(List<_ImportJob> jobs) {
-    return aggregateImportResults(jobs.map((j) => j.result!).toList());
+  /// 「仅补流水」：以 mode=append 重新预检（只补逐笔流水，不动持仓/现金）——锚定缺失时的安全路。
+  Future<void> _retryAppendOnly() async {
+    setState(() {
+      _appendOnly = true;
+      _error = null;
+      _preflight = null;
+      _confirmed = false;
+      _result = null;
+      for (final j in _jobs) {
+        j.failed = false;
+        j.error = null;
+        j.plan = null;
+        j.done = false;
+        j.result = null;
+      }
+    });
+    await _preflightQueue();
+  }
+
+  /// 「先导快照」：关掉本弹窗，去导一份「持仓股」/「资金股份查询」建立锚定。
+  void _goImportSnapshot() {
+    Navigator.pop(context);
+    widget.onImportSnapshot?.call();
   }
 
   static String _fmtMs(int ms) {
     if (ms < 1000) return '${ms}ms';
     return '${(ms / 1000).toStringAsFixed(1)}s';
+  }
+
+  /// 预检计划卡（RFC 20260912）：这一次会改什么，落盘前先给用户看清楚。
+  Widget _planCard(HistoricalTradeImportResult pre) {
+    final plan = aggregateImportPlans(pre);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkBlue.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBlue.withValues(alpha: 0.45)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('先看一眼会记什么（还没落盘）${_appendOnly ? ' · 仅补流水' : ''}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.darkBlue)),
+        const SizedBox(height: 4),
+        Text('新增 ${plan.newCount} 笔 · 合并 ${plan.merged} 笔 · 跳过 ${plan.skipped} 笔'
+            '${plan.nonTrades > 0 ? ' · 非交易 ${plan.nonTrades} 行' : ''}',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+        Text(plan.syncMode == 'sync'
+                ? '会按成交更新持仓与现金（${plan.anchorKnown ? '锚定日已对上' : '锚定日缺失'}）'
+                : '只补逐笔流水，持仓与现金不动',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        _ImportResultSummary(result: pre),
+      ]),
+    );
+  }
+
+  /// 失败卡（RFC 20260912）：原样透出人话 error + 两条路（先导快照 / 仅补流水）。
+  Widget _errorCard(String msg) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(msg, style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1, height: 1.4)),
+        if (!_appendOnly) ...[
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, children: [
+            OutlinedButton(
+              onPressed: _busy ? null : _goImportSnapshot,
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.darkGrey1,
+                  side: const BorderSide(color: AppColors.darkGrey4)),
+              child: const Text('先导快照', style: TextStyle(fontSize: 12)),
+            ),
+            OutlinedButton(
+              onPressed: _busy ? null : _retryAppendOnly,
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.darkOrange,
+                  side: const BorderSide(color: AppColors.darkOrange)),
+              child: const Text('仅补流水', style: TextStyle(fontSize: 12)),
+            ),
+          ]),
+        ],
+      ]),
+    );
   }
 
   @override
@@ -4580,14 +4936,15 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('只认通达信「历史成交查询」导出：可一次选择多份文件，逐份处理；'
-                '补逐笔流水不重算持仓（成交编号幂等；缺成交时间自动回填）',
+                '补逐笔流水不重算持仓（成交编号幂等；缺成交时间自动回填）。'
+                '选好后我先算一遍给你看，你点头才真正记进去。',
                 style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
             const SizedBox(height: 8),
             Row(children: [
               OutlinedButton.icon(
-                onPressed: _queueRunning ? null : _pickFile,
+                onPressed: _busy ? null : _pickFile,
                 icon: const Icon(Icons.upload_file, size: 16),
-                label: Text(_queueRunning ? '处理中…' : '选择文件（可多选，通达信导出 txt）',
+                label: Text(_busy ? '处理中…' : '选择文件（可多选，通达信导出 txt）',
                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.darkGrey1,
@@ -4646,11 +5003,17 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
                               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
                         ),
                         if (j.processing)
-                          const Text('导入中…', style: TextStyle(fontSize: 11, color: AppColors.darkGrey4))
+                          Text(_confirmed ? '导入中…' : '预检中…',
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4))
                         else if (j.done && j.result != null)
                           Text('新增 ${j.result!.imported} · 跳过 ${j.result!.skipped}'
                               '${j.result!.updated > 0 ? ' · 回填 ${j.result!.updated}' : ''}'
+                              '${j.result!.rejected.isNotEmpty ? ' · 未并入 ${j.result!.rejected.length}' : ''}'
                               ' · ${_fmtMs(j.elapsedMs)}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4))
+                        else if (j.planned && j.plan != null)
+                          Text('预检：新增 ${j.plan!.imported} · 跳过 ${j.plan!.skipped}'
+                              '${j.plan!.rejected.isNotEmpty ? ' · 未并入 ${j.plan!.rejected.length}' : ''}',
                               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4))
                         else if (j.failed)
                           Flexible(
@@ -4664,13 +5027,14 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
               ),
             ],
             const SizedBox(height: 10),
-            if (_result != null) ...[
+            if (_confirmed && _result != null) ...[
               Text('导入完成：新增 ${_result!.imported} 笔'
                   '${_result!.updated > 0 ? ' · 回填成交时间 ${_result!.updated} 笔' : ''}'
                   ' · 跳过 ${_result!.skipped} 笔'
                   '${_result!.nonTrades > 0 ? ' · 非交易事件 ${_result!.nonTrades} 行' : ''}',
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
               // RFC 20260825：syncMode + 每日操作总结（sync=总结卡+行为标注；append=补录提示）
+              // RFC 20260912：rejected 明细 + 锚定缺失提示（同一组件内一并展示）
               _ImportResultSummary(result: _result!),
               if (_result!.lines.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -4683,9 +5047,9 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
                         style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
                   ),
               ],
-            ],
-            if (_error != null)
-              Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.darkOrange)),
+            ] else if (_preflight != null)
+              _planCard(_preflight!),
+            if (_error != null && !_confirmed) _errorCard(_error!),
           ],
         ),
       ),
@@ -4694,16 +5058,23 @@ class _HistoryImportDialogState extends State<_HistoryImportDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('关闭', style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
         ),
-        FilledButton(
-          onPressed: _queueRunning ? null : _import,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
-          child: Text(_queueRunning ? '导入中…' : '导入', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        ),
+        if (_preflight != null && !_confirmed)
+          FilledButton(
+            onPressed: _busy ? null : _confirmImport,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
+            child: const Text('确认导入', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        // 有预检计划时只留「确认导入」（不给第二个会重新预检的入口，避免点错）
+        if (_preflight == null && !_confirmed)
+          FilledButton(
+            onPressed: _busy ? null : _import,
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen, foregroundColor: AppColors.darkBg),
+            child: Text(_busy ? '处理中…' : '导入', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
       ],
     );
   }
 }
-
 // ─────────────────────────── 复盘历史 Dialog ───────────────────────────
 
 class _ReviewHistoryDialog extends StatefulWidget {

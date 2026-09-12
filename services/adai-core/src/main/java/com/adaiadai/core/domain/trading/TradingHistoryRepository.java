@@ -58,4 +58,18 @@ public interface TradingHistoryRepository {
      * @return 实际更新笔数（0 或 1）；无可写新值（orderId 空且 fee null）返回 0
      */
     int updateTradeMeta(String userId, String tradeId, String orderId, BigDecimal fee);
+
+    /**
+     * 跨来源同笔合并回填（2026-09-12 账实一致性批）：把券商导出里的成交编号/手续费/成交时间
+     * **补进**既有流水（只补缺失，不覆盖已有非空值；不动持仓/现金/其它字段）。
+     * <p>
+     * 场景：白天用「截图入账 / 记录归集」落了一笔（无 orderId、无 fee），收盘导历史成交时同一笔
+     * 带编号再来——旧实现只对「无编号」的入参查指纹，导致同一笔双落（2026-09-12 实测 4 笔重复流水，
+     * 600206 被重复卖出 600 股打成 −600，后续买入全在填坑）。
+     *
+     * @param entryDate 该笔成交日（跨月定位用；null → 全月扫描兜底）
+     * @return 实际更新笔数（0 或 1；无可补字段返回 0）
+     */
+    int mergeFromImport(String userId, String tradeId, LocalDate entryDate,
+                        String orderId, BigDecimal fee, LocalTime tradeTime);
 }

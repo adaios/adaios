@@ -671,6 +671,54 @@ class TradingSessionPushServiceTest {
         assertTrue(content.contains("今天没有操作"), "无成交应走持有分支，实际: " + content);
     }
 
+    // ── 2026-09-12 账实一致性批：收盘小结带「账对不上」自检行 ──
+
+    @Test
+    void closeSummary_includesMismatchLineWhenDriftExists() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of());
+        when(trading.integrity(any())).thenReturn(new TradingAppService.IntegrityReport(
+                new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9), null, true, true), true,
+                List.of(new TradingAppService.DriftLine("600206", "有研新材", 600, 300, 900, 1500, 600, "账实不符")),
+                List.of(new TradingAppService.RejectedLine("000831", "中国稀土",
+                        com.adaiadai.core.domain.trading.TradeDirection.SELL, 800,
+                        new BigDecimal("54.83"), java.time.LocalDate.of(2026, 9, 8), "未持有")),
+                "账实不符"));
+        TradingSessionPushService svc = serviceWithPositions(channel, mock(AiClient.class),
+                "../../os/trading-engine/knowledge/context", mock(AccountSnapshotRepository.class), false, trading);
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        String content = captor.getValue().content();
+        assertTrue(content.contains("阿呆对不上账"), "有 drift/gaps 必须提示，实际: " + content);
+        assertTrue(content.contains("1 只标的的持仓和流水对不上"), content);
+        assertTrue(content.contains("1 笔成交没能并进持仓"), content);
+        assertFalse(content.contains("系统"), "第一原则：不得出现系统视角，实际: " + content);
+    }
+
+    @Test
+    void closeSummary_noMismatchLineWhenConsistent() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of());
+        when(trading.integrity(any())).thenReturn(new TradingAppService.IntegrityReport(
+                new TradingAppService.AnchorStatus(java.time.LocalDate.of(2026, 9, 9), null, true, true), true,
+                List.of(), List.of(), "账实一致"));
+        TradingSessionPushService svc = serviceWithPositions(channel, mock(AiClient.class),
+                "../../os/trading-engine/knowledge/context", mock(AccountSnapshotRepository.class), false, trading);
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        assertFalse(captor.getValue().content().contains("对不上账"), "无差异不得制造噪音");
+    }
+
     @Test
     void closeSummary_breachedStopLoss_notFlaggedWhenPriceAbove() {
         PushChannel channel = mock(PushChannel.class);

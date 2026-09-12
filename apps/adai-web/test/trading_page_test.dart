@@ -1451,8 +1451,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // 后端人话 error 透出（原实现 contains('无法识别') 恒 false → 吞成「检查网络」）
-    expect(find.textContaining('无法识别历史成交导出'), findsOneWidget);
+    // RFC 20260912：预检阶段就失败——人话同时出现在「这份文件的处理状态行」和「失败卡」两处
+    expect(find.textContaining('无法识别历史成交导出'), findsNWidgets(2));
     expect(find.textContaining('请检查网络后重试'), findsNothing);
+    // 预检失败 → 不给「确认导入」（不落盘），但给两条路
+    expect(find.text('确认导入'), findsNothing);
+    expect(find.text('先导快照'), findsOneWidget);
+    expect(find.text('仅补流水'), findsOneWidget);
   });
 
   // ── RFC 20260825：逐笔批次跟踪（GET /trading/lots）──
@@ -1778,6 +1783,9 @@ void main() {
       await tester.enterText(find.byType(TextField).last, tdxText);
       await tester.tap(find.text('导入'));
       await tester.pumpAndSettle();
+      // RFC 20260912：两段式——先预检（dryRun），点「确认导入」才落盘
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
 
       // Dialog 内：总结卡（标题带成交日期 8/25，sync 窗口跨多日未必是今天）+ 行为标注
       //（Tab inline 同步展示 → Dialog + inline 共 2 份）
@@ -1823,6 +1831,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, tdxText);
       await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+      // RFC 20260912：两段式——预检后才落盘
+      await tester.tap(find.text('确认导入'));
       await tester.pumpAndSettle();
 
       // append：Dialog + Tab inline 都显示补录提示（共 2 份），不出现总结卡
@@ -2149,6 +2160,668 @@ void main() {
     expect((resp['b1'] as Map<String, dynamic>)['hits'], 5);
     expect((resp['b2'] as Map<String, dynamic>)['hits'], 1);
     expect(resp['failedSimilarity'], 78.5, reason: '失败画像相似警示');
+  });
+
+  // ── RFC 20260912：账实一致性批（锚定 fail-closed + 预检确认 + rejected 可见性 + 对账闸门）──
+
+  group('RFC 20260912 账实一致性 DTO（rejected / anchor / plan / integrity）', () {
+    test('导入结果解析 rejected + anchor + dryRun + plan（字段齐全）', () {
+      final r = HistoricalTradeImportResult.fromJson({
+        'imported': 3, 'updated': 0, 'skipped': 1, 'nonTrades': 0, 'lines': [],
+        'syncMode': 'sync', 'dryRun': false,
+        'rejected': [
+          {
+            'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL', 'volume': 100,
+            'price': 1500.0, 'entryDate': '2026-09-10',
+            'reason': '未持有 600519（快照基线/流水缺该标的的买入）——已落流水，未动持仓与现金',
+          },
+        ],
+        'anchor': {
+          'positionsReplace': '2026-09-08', 'cashImport': '2026-09-09',
+          'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-09',
+        },
+      });
+      expect(r.dryRun, isFalse);
+      expect(r.rejected.single.symbol, '600519');
+      expect(r.rejected.single.direction, 'SELL');
+      expect(r.rejected.single.directionLabel, '卖出', reason: '方向枚举名转人话');
+      expect(r.rejected.single.volume, 100);
+      expect(r.rejected.single.price, closeTo(1500.0, 1e-9));
+      expect(r.rejected.single.entryDate, '2026-09-10');
+      expect(r.rejected.single.reason, contains('未持有'));
+      expect(r.rejected.single.display, '卖出 贵州茅台（600519）100 股 @ 1500.00 · 未持有 600519'
+          '（快照基线/流水缺该标的的买入）——已落流水，未动持仓与现金');
+      expect(r.anchor!.known, isTrue);
+      expect(r.anchor!.holdingsKnown, isTrue);
+      expect(r.anchor!.anchorDate, '2026-09-09');
+      expect(r.anchor!.positionsReplace, '2026-09-08');
+      expect(r.plan, isNull, reason: '正式导入无 plan');
+    });
+
+    test('dryRun 响应解析 plan（JSON 键 new → newCount）+ anchorKnown=false', () {
+      final r = HistoricalTradeImportResult.fromJson({
+        'imported': 2, 'updated': 1, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+        'syncMode': 'sync', 'dryRun': true,
+        'rejected': [
+          {'symbol': '600123', 'name': '立昂微', 'direction': 'SELL', 'volume': 200, 'price': null,
+           'entryDate': '2026-09-11', 'reason': '未持有 600123'},
+        ],
+        'anchor': {'positionsReplace': null, 'cashImport': null, 'known': false, 'holdingsKnown': false},
+        'plan': {
+          'new': 2, 'merged': 1, 'skipped': 0, 'nonTrades': 0,
+          'wouldReject': 1, 'anchorKnown': false, 'syncMode': 'sync',
+        },
+      });
+      expect(r.dryRun, isTrue);
+      final p = r.plan!;
+      expect(p.newCount, 2);
+      expect(p.merged, 1);
+      expect(p.skipped, 0);
+      expect(p.nonTrades, 0);
+      expect(p.wouldReject, 1);
+      expect(p.anchorKnown, isFalse);
+      expect(p.syncMode, 'sync');
+      expect(r.anchor!.known, isFalse);
+      expect(r.anchor!.anchorDate, isNull);
+      expect(r.rejected.single.price, isNull, reason: '价格可空保持可空');
+    });
+
+    test('字段缺失 / 非 map 兜底（旧后端不炸）', () {
+      // 旧后端：无 rejected/anchor/dryRun/plan
+      final old = HistoricalTradeImportResult.fromJson({'imported': 1});
+      expect(old.rejected, isEmpty);
+      expect(old.anchor, isNull);
+      expect(old.dryRun, isFalse);
+      expect(old.plan, isNull);
+      // 非 map 兜底
+      final bad = HistoricalTradeImportResult.fromJson('boom');
+      expect(bad.imported, 0);
+      expect(bad.rejected, isEmpty);
+      // 行级 DTO 非 map / 缺字段兜底
+      final rl = RejectedLineDto.fromJson(null);
+      expect(rl.symbol, '');
+      expect(rl.volume, 0);
+      expect(rl.price, isNull);
+      expect(rl.reason, '');
+      expect(RejectedLineDto.fromJson('x').directionLabel, '');
+      final a = AnchorStatusDto.fromJson(42);
+      expect(a.known, isFalse);
+      expect(a.holdingsKnown, isFalse);
+      expect(a.positionsReplace, isNull);
+      final p = ImportPlanDto.fromJson('x');
+      expect(p.newCount, 0);
+      expect(p.anchorKnown, isFalse);
+      expect(p.syncMode, 'append', reason: '缺省回落 append（只补流水的保守口径）');
+      final ir = IntegrityReportDto.fromJson(null);
+      expect(ir.hasIssue, isFalse);
+      expect(ir.drift, isEmpty);
+      expect(ir.gaps, isEmpty);
+      final dl = DriftLineDto.fromJson([]);
+      expect(dl.ledgerDelta, 0);
+      expect(dl.snapshotQty, isNull, reason: '基线可空保持可空');
+      expect(dl.holdings, isNull);
+    });
+
+    test('integrity 报告解析 drift + gaps + note', () {
+      final r = IntegrityReportDto.fromJson({
+        'anchor': {'positionsReplace': '2026-09-08', 'cashImport': null,
+                   'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-08'},
+        'holdingsKnown': true,
+        'drift': [
+          {'symbol': '600123', 'name': '立昂微', 'snapshotQty': 200, 'ledgerDelta': -100,
+           'derived': 100, 'holdings': 200, 'diff': 100,
+           'note': '派生持仓 100 ≠ 落地持仓 200——快照之后有未导入的成交或重复流水'},
+        ],
+        'gaps': [
+          {'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL', 'volume': 100,
+           'price': 1500.0, 'entryDate': '2026-09-10', 'reason': '未持有 600519'},
+        ],
+        'note': '账实不符（1 只标的持仓不一致 / 1 笔回放缺口，锚定日 2026-09-08）',
+      });
+      expect(r.hasIssue, isTrue);
+      expect(r.holdingsKnown, isTrue);
+      expect(r.anchor!.anchorDate, '2026-09-08');
+      expect(r.drift.single.symbol, '600123');
+      expect(r.drift.single.snapshotQty, 200);
+      expect(r.drift.single.ledgerDelta, -100);
+      expect(r.drift.single.derived, 100);
+      expect(r.drift.single.holdings, 200);
+      expect(r.drift.single.diff, 100);
+      expect(r.drift.single.note, contains('≠'));
+      expect(r.gaps.single.directionLabel, '卖出');
+      expect(r.note, contains('账实不符'));
+      // 无差异 → hasIssue false（页面不显示任何横幅）
+      final clean = IntegrityReportDto.fromJson({'holdingsKnown': true, 'drift': [], 'gaps': [],
+        'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-08）'});
+      expect(clean.hasIssue, isFalse);
+    });
+
+    test('文件名解析快照日（yyyymmdd / yyyy-MM-dd / 假日期判掉）', () {
+      expect(parseSnapshotDateFromFilename('持仓股20260912.txt'), '2026-09-12');
+      expect(parseSnapshotDateFromFilename('资金股份查询-2026-09-12.csv'), '2026-09-12');
+      expect(parseSnapshotDateFromFilename('持仓股_2026_09_08.TXT'), '2026-09-08');
+      expect(parseSnapshotDateFromFilename('历史成交查询.txt'), isNull, reason: '无日期 → 不传，退回导入日');
+      expect(parseSnapshotDateFromFilename(''), isNull);
+      expect(parseSnapshotDateFromFilename('导出20261345.txt'), isNull, reason: '假日期不当作锚定日');
+      expect(parseSnapshotDateFromFilename('导出20260230.txt'), isNull, reason: '2/30 不存在');
+    });
+  });
+
+  group('RFC 20260912 历史成交导入：预检 → 确认两段式', () {
+    const tdxText = '''
+成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+20260912        14:52:56        600000          浦发银行        买入            200.00         9.20000000         1840.00         151117          69351117                1840.00          A511358384
+''';
+
+    testWidgets('先发 dryRun 预检；未确认前不发正式导入；确认后才落盘', (tester) async {
+      final posts = <String>[];
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          posts.add('${request.url.queryParameters['mode']}|$dry');
+          return _json({
+            'imported': 2, 'updated': 0, 'skipped': 1, 'nonTrades': 0, 'lines': [],
+            'syncMode': dry ? 'sync' : 'append',
+            'dryRun': dry,
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-10'},
+            if (dry)
+              'plan': {'new': 2, 'merged': 0, 'skipped': 1, 'nonTrades': 0,
+                       'wouldReject': 0, 'anchorKnown': true, 'syncMode': 'sync'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // 预检阶段：只发了一次 dryRun=true；计划卡可见（未落盘）
+      expect(posts, ['auto|true'], reason: '点「导入」只做预检，不落盘');
+      expect(find.text('先看一眼会记什么（还没落盘）'), findsOneWidget);
+      expect(find.text('新增 2 笔 · 合并 0 笔 · 跳过 1 笔'), findsOneWidget);
+      expect(find.text('会按成交更新持仓与现金（锚定日已对上）'), findsOneWidget);
+      expect(find.text('确认导入'), findsOneWidget);
+
+      // 点确认 → 才发正式导入（dryRun=false）
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+      expect(posts, ['auto|true', 'auto|false'], reason: '确认后才真正落盘');
+      // Dialog + Tab inline 各一份
+      expect(find.textContaining('导入完成：新增 2 笔'), findsNWidgets(2));
+      expect(find.text('先看一眼会记什么（还没落盘）'), findsNothing);
+    });
+
+    testWidgets('rejected 明细逐条展示（Dialog + Tab inline 各一份）', (tester) async {
+      const rejectedReason = '未持有 600519（快照基线/流水缺该标的的买入）——已落流水，未动持仓与现金';
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          return _json({
+            'imported': 0, 'updated': 0, 'skipped': 1, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append',
+            'dryRun': dry,
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-10'},
+            'rejected': [
+              {'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL', 'volume': 100,
+               'price': 1500.0, 'entryDate': '2026-09-10', 'reason': rejectedReason},
+            ],
+            if (dry)
+              'plan': {'new': 0, 'merged': 0, 'skipped': 1, 'nonTrades': 0,
+                       'wouldReject': 1, 'anchorKnown': true, 'syncMode': 'append'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // 预检阶段就可见（用户确认前就知道有 N 笔要落成「未并入持仓」）
+      expect(find.text('有 1 笔成交没能并入持仓（已记账，未动持仓/现金）'), findsOneWidget);
+      expect(find.textContaining('卖出 贵州茅台（600519）100 股 @ 1500.00'), findsOneWidget);
+
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+
+      // 落盘后：Dialog + Tab inline 各一份（findsNWidgets(2)）
+      expect(find.text('有 1 笔成交没能并入持仓（已记账，未动持仓/现金）'), findsNWidgets(2));
+      expect(find.textContaining('卖出 贵州茅台（600519）100 股 @ 1500.00 · $rejectedReason'),
+          findsNWidgets(2));
+      // 关闭 Dialog → inline 保留一份
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.text('有 1 笔成交没能并入持仓（已记账，未动持仓/现金）'), findsOneWidget);
+      expect(find.textContaining('未持有 600519'), findsOneWidget);
+    });
+
+    testWidgets('锚定缺失 400：人话原样透出 + 「仅补流水」以 append 重新预检并落盘', (tester) async {
+      const anchorError = '券商快照锚定缺失（trading/snapshot-anchor.json 缺失或损坏）：本次有 2 笔近日成交'
+          '需要回放持仓/现金，但没有锚定日就无法判断哪些成交已包含在券商口径内——照旧回放会把它们重复'
+          '计算一遍。请先导入「持仓股」或「资金股份查询」快照建立锚定；若只想补逐笔流水（不动持仓/现金），'
+          '用「仅补流水」模式重试';
+      final calls = <String>[];
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          final mode = request.url.queryParameters['mode'] ?? '';
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          calls.add('$mode|$dry');
+          // auto 模式 = 锚定缺失 fail-closed 400；append 模式 = 只补流水成功
+          if (mode == 'auto') {
+            return http.Response(jsonEncode({'error': anchorError}), 400,
+                headers: {'content-type': 'application/json; charset=utf-8'});
+          }
+          return _json({
+            'imported': 2, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append', 'dryRun': dry, 'rejected': [],
+            'anchor': {'positionsReplace': null, 'cashImport': null,
+                       'known': false, 'holdingsKnown': false, 'anchorDate': null},
+            if (dry)
+              'plan': {'new': 2, 'merged': 0, 'skipped': 0, 'nonTrades': 0,
+                       'wouldReject': 0, 'anchorKnown': false, 'syncMode': 'append'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // 400 人话原样透出（不吞成「检查网络」）+ 两条路
+      // （同一句同时出现在「这份文件的处理状态行」和「失败卡」→ 2 处）
+      expect(calls, ['auto|true']);
+      expect(find.textContaining('券商快照锚定缺失'), findsNWidgets(2));
+      expect(find.textContaining('请先导入「持仓股」或「资金股份查询」快照建立锚定'), findsWidgets);
+      expect(find.text('先导快照'), findsOneWidget);
+      expect(find.text('仅补流水'), findsOneWidget);
+      expect(find.text('确认导入'), findsNothing, reason: '预检失败不给确认（不落盘）');
+
+      // 「仅补流水」→ 以 mode=append 重新预检
+      await tester.tap(find.text('仅补流水'));
+      await tester.pumpAndSettle();
+      expect(calls, ['auto|true', 'append|true'], reason: '仅补流水以 append 重新预检');
+      expect(find.text('先看一眼会记什么（还没落盘） · 仅补流水'), findsOneWidget);
+      expect(find.text('只补逐笔流水，持仓与现金不动'), findsOneWidget);
+      expect(find.textContaining('券商快照锚定缺失'), findsNothing, reason: 'append 路径不再报锚定缺失');
+      // 锚定缺失提示条仍在（让用户知道可以先补快照）
+      expect(find.textContaining('还没拿到券商快照的锚定日'), findsOneWidget);
+
+      // 确认 → append 模式落盘
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+      expect(calls, ['auto|true', 'append|true', 'append|false']);
+      expect(find.textContaining('导入完成：新增 2 笔'), findsNWidgets(2));
+    });
+
+    testWidgets('「先导快照」→ 关掉导入弹窗并打开持仓导入弹窗', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          return http.Response(jsonEncode({'error': '券商快照锚定缺失（x）：请先导入「持仓股」快照建立锚定'}), 400,
+              headers: {'content-type': 'application/json; charset=utf-8'});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('先导快照'));
+      await tester.pumpAndSettle();
+
+      // 历史成交导入弹窗已关，持仓导入弹窗打开（用户在这里补一份「持仓股」建立锚定）
+      expect(find.textContaining('选好后我先算一遍给你看'), findsNothing, reason: '历史成交导入弹窗已关');
+      expect(find.textContaining('粘贴通达信持仓导出'), findsOneWidget);
+      expect(find.textContaining('无法识别'), findsNothing);
+    });
+    testWidgets('anchor.holdingsKnown=false → 「快照基线未记录，对账无法判定」提示', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          return _json({
+            'imported': 1, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append', 'dryRun': dry, 'rejected': [],
+            // 有锚定日（known=true）但快照持仓基线没落下来（holdingsKnown=false）
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': false, 'anchorDate': '2026-09-10'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('快照基线未记录，账实对账暂时无法判定'), findsNWidgets(2),
+          reason: 'Dialog + Tab inline 各一份');
+      expect(find.textContaining('还没拿到券商快照的锚定日'), findsNothing, reason: '锚定日有，不报锚定缺失');
+    });
+
+    testWidgets('确认落盘后重算对账闸门（GET /integrity 二次请求 → 横幅出现）', (tester) async {
+      var integrityCalls = 0;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/integrity') {
+          integrityCalls++;
+          final dirty = integrityCalls > 1; // 导入后才出现缺口
+          return _json({
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-10'},
+            'holdingsKnown': true,
+            'drift': dirty
+                ? [
+                    {'symbol': '600123', 'name': '立昂微', 'snapshotQty': 200, 'ledgerDelta': -100,
+                     'derived': 100, 'holdings': 200, 'diff': 100, 'note': '派生 100 ≠ 落地 200'},
+                  ]
+                : <Map<String, dynamic>>[],
+            'gaps': <Map<String, dynamic>>[],
+            'note': dirty ? '账实不符（1 只标的持仓不一致，锚定日 2026-09-10）' : '账实一致',
+          });
+        }
+        if (path == '/api/v1/trading/trades/import') {
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          return _json({
+            'imported': 1, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append', 'dryRun': dry, 'rejected': [],
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-10'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+
+      expect(integrityCalls, greaterThan(1), reason: '落盘后重算对账闸门');
+      expect(find.text('阿呆发现账对不上：1 只标的持仓不一致'), findsOneWidget);
+    });
+  });
+
+  group('RFC 20260912 账实不符闸门横幅（GET /trading/integrity）', () {
+    testWidgets('drift/gaps 非空 → 顶部橙色横幅（可展开明细，文案第一原则）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/integrity') {
+          return _json({
+            'anchor': {'positionsReplace': '2026-09-08', 'cashImport': '2026-09-09',
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-09'},
+            'holdingsKnown': true,
+            'drift': [
+              {'symbol': '600123', 'name': '立昂微', 'snapshotQty': 200, 'ledgerDelta': -100,
+               'derived': 100, 'holdings': 200, 'diff': 100, 'note': '派生 100 ≠ 落地 200'},
+            ],
+            'gaps': [
+              {'symbol': '600519', 'name': '贵州茅台', 'direction': 'SELL', 'volume': 100,
+               'price': 1500.0, 'entryDate': '2026-09-10', 'reason': '未持有 600519'},
+            ],
+            'note': '账实不符（1 只标的持仓不一致 / 1 笔回放缺口，锚定日 2026-09-09）',
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.text('阿呆发现账对不上：1 只标的持仓不一致 / 1 笔回放缺口'), findsOneWidget);
+      expect(find.text('看明细'), findsOneWidget);
+      // 未展开 → 明细不显示（不制造噪音）
+      expect(find.textContaining('应有 100 股'), findsNothing);
+
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+      expect(find.text('600123 立昂微：应有 100 股（快照基线 200 + 锚点后流水 -100），落地 200 股，差 +100'),
+          findsOneWidget);
+      expect(find.textContaining('回放缺口 · 卖出 贵州茅台（600519）100 股 @ 1500.00'), findsOneWidget);
+      expect(find.text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。'), findsOneWidget);
+    });
+
+    testWidgets('无差异 → 不显示任何横幅；接口失败静默降级不打断页面', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/integrity') {
+          return _json({
+            'anchor': {'positionsReplace': '2026-09-09', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-09'},
+            'holdingsKnown': true, 'drift': [], 'gaps': [],
+            'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-09）',
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.textContaining('账实一致'), findsNothing, reason: '一致时不刷存在感');
+      // 页面正常（持仓表在）
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+
+    testWidgets('integrity 404（旧后端）→ 静默降级，页面正常', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404); // /integrity 也 404
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.textContaining('加载失败'), findsNothing, reason: '可降级请求失败不整页错误态');
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+  });
+
+  group('RFC 20260912 快照导入带 snapshotDate（锚定日 = 快照自身日期）', () {
+    test('importPositions 传 snapshotDate（replace=true 并存）', () async {
+      Map<String, String>? query;
+      final client = MockClient((request) async {
+        query = request.url.queryParameters;
+        return _json({'imported': 1, 'missingStopLoss': []});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await api.importPositions([
+        {'symbol': '600123', 'name': '立昂微', 'quantity': 200}
+      ], replace: true, snapshotDate: '2026-09-08');
+      expect(query!['replace'], 'true');
+      expect(query!['snapshotDate'], '2026-09-08');
+    });
+
+    test('importPositions 不传 snapshotDate → query 里没有该参数（后端退回导入日）', () async {
+      Map<String, String>? query;
+      final client = MockClient((request) async {
+        query = request.url.queryParameters;
+        return _json({'imported': 0, 'missingStopLoss': []});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await api.importPositions([], replace: true);
+      expect(query!.containsKey('snapshotDate'), isFalse);
+    });
+
+    test('importCash 传 snapshotDate（body）', () async {
+      Map<String, dynamic>? body;
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return _json({'cash': 1000.0, 'updatedCost': 2});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await api.importCash('资金导出文本', snapshotDate: '2026-09-09');
+      expect(body!['content'], '资金导出文本');
+      expect(body!['snapshotDate'], '2026-09-09');
+      // 不传 → body 里没有该字段
+      await api.importCash('资金导出文本');
+      expect(body!.containsKey('snapshotDate'), isFalse);
+    });
+
+    test('getTradingIntegrity / getAnchorStatus / backfillAnchor 请求形态', () async {
+      final calls = <String>[];
+      final putBodies = <Map<String, dynamic>>[];
+      final client = MockClient((request) async {
+        calls.add('${request.method} ${request.url.path}');
+        if (request.url.path == '/api/v1/trading/integrity') {
+          return _json({'anchor': null, 'holdingsKnown': false, 'drift': [], 'gaps': [], 'note': '锚定缺失'});
+        }
+        if (request.method == 'PUT') {
+          final b = jsonDecode(request.body) as Map<String, dynamic>;
+          putBodies.add(b);
+          return _json({'positionsReplace': b['positionsReplace'], 'cashImport': b['cashImport'],
+                        'known': true, 'holdingsKnown': b.containsKey('holdings'),
+                        'anchorDate': b['positionsReplace']});
+        }
+        return _json({'positionsReplace': '2026-09-08', 'cashImport': null,
+                      'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-08'});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+
+      final ig = await api.getTradingIntegrity();
+      expect(ig.hasIssue, isFalse);
+      expect(ig.note, '锚定缺失');
+      final a = await api.getAnchorStatus();
+      expect(a.known, isTrue);
+      expect(a.anchorDate, '2026-09-08');
+      final after = await api.backfillAnchor(
+        positionsReplace: '2026-09-08',
+        cashImport: '2026-09-09',
+        holdings: [
+          {'symbol': '600123', 'name': '立昂微', 'quantity': 200}
+        ],
+      );
+      expect(after.holdingsKnown, isTrue);
+      expect(putBodies.single['positionsReplace'], '2026-09-08');
+      expect(putBodies.single['cashImport'], '2026-09-09');
+      expect((putBodies.single['holdings'] as List).first['symbol'], '600123');
+      // 只回填日期（holdings 不传）→ body 无 holdings 键
+      await api.backfillAnchor(positionsReplace: '2026-09-10');
+      expect(putBodies.length, 2);
+      expect(putBodies[1].containsKey('holdings'), isFalse);
+      expect(putBodies[1].containsKey('cashImport'), isFalse);
+      expect(calls, [
+        'GET /api/v1/trading/integrity',
+        'GET /api/v1/trading/anchor',
+        'PUT /api/v1/trading/anchor',
+        'PUT /api/v1/trading/anchor',
+      ]);
+    });
   });
 }
 // ── v3.41（2026-09-04）：活跃市值区间开关（用户手动判定，红涨绿亏）──

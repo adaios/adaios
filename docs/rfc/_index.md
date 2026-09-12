@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-12
 status: active
-lines: 77
+lines: 78
 depends-on: []
 related:
   - ../_index.md
@@ -69,6 +69,7 @@ tags: [meta, index, rfc]
 | 20260905-trading-cognition-layer.md | 交易⑤认知层落地——个人画像（profile，客观推导+主观补全、注入建议/复盘）与建议闭环（advice 留痕→卖出回查→「说X做Y得Z」）；吸收 TradeZella/TraderSync/Edgewonk 纪律量化 | approved |
 | 20260909-trading-clearance-derivation.md | 清仓股双轨收录（RFC 20260909 批 1 已落地）——流水证明清仓自动收录 sold.json（provenance=flow，只填空白）+ 缺基线 pending 提示（GET /trading/sold 双轨响应）；批 2 多段派生视图待排 | implemented |
 | 20260912-learn-product-digest.md | 产品内容消化（D 形态）——app/web 喂入 → **服务端抓取** → 结构化留存；A 的能力下沉产品（B 死因是「不做抓取」）；**2026-09-12 拍板：独立页面为基线前提 + 会话内集成为增强、首期 B站/文章/图片、转写必须对接 fun-asr 且费用须可控（§3.8 六条）**；**2026-09-12 阶段 1 抓取主干已本地落地（§十 落地记录；未部署生产；topic 契约迁移与图片源留待下批）** | approved |
+| 20260912-trading-ledger-integrity.md | 交易账本完整性——三条真源（券商快照/逐笔流水/派生持仓）收口：快照锚点 **fail-closed**、append 与 replay 幂等统一、卖超**不丢数据**、`GET /trading/integrity` 账实自检 + deploy-gate 门禁（2026-09-12 生产实测：锚点文件缺失→重放双计，现金 -26666.85 应 ≈1381.93；3 笔真实卖出被静默丢弃）| implemented |
 
 ## 过期判断
 

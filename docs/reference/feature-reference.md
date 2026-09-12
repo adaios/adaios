@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.7 | **最后更新：** 2026-09-10（learn 喂入入口批：POST /learn/cards 提交式 + GET /learn/digest/status + 双端页面喂入，v3.56）
+> **文档版本：** v1.8 | **最后更新：** 2026-09-12（交易账实一致性批：导入锚定 fail-closed + dryRun 预检 + 卖超 rejected 可见 + 对账闸门 GET /trading/integrity 与 GET/PUT /trading/anchor，v3.61）
 
 ---
 
@@ -725,6 +725,7 @@ Strict format:
 - 交易录入表单（代码、名称、方向、价格、数量、止损位、买点、目标价、原因；**输入 6 位代码自动带出名称**）
 - 建议引擎（`POST /trading/advice`，R66 止损 / R81 仓位硬判定）
 - 批量导入（通达信导出自动识别：持仓快照 / **历史成交** / 交易 CSV 三格式；选择文件上传留存或粘贴）
+- **交易账实一致性（v3.61，2026-09-12 账实一致性批，RFC 20260912）**：账本三条真源（券商快照锚点 / 逐笔流水 / 派生持仓）收口——导入支持 **`dryRun` 预检**（只返回 `plan`，不写任何文件，改账前先让人看见）、**锚定 fail-closed**（锚定缺失而本次需回放持仓/现金 → 400 人话 + 逃生路径：先导「持仓股」/「资金股份查询」快照建锚定，或 `mode=append` 仅补流水）、**卖超可见**（`rejected` 行级明细 + ERROR 日志，真实成交不再「WARN 后消失」）、**对账闸门**（`GET /trading/integrity` 报 `drift`/`gaps`，`GET /trading/anchor` 查状态、`PUT /trading/anchor` 存量显式回填）；**账实不符当天可见**——15:30 收盘小结（`close-summary` 推送）在有 `drift`/`gaps` 时追加一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（无差异不推、自检失败静默降级）——口径见 `trading-features.md` §八 14
 - 主动推送（真止损异动 / 早盘计划 / 午间跟踪 / 尾盘建议 → PushChannel Feed+微信，见 §1）
 - **推送体验（RFC 20260817）**：推送卡专属样式（类型徽章：早盘蓝/午间紫/尾盘橙/买点绿/预警红）+ 结构化内容（总结+持仓逐行+建议）；**推送开关**（per-user 10 类型：时段/买点/止损/接近止损/大跌/放飞/破成本/行情条/收盘小结 close-summary/复习提醒 learn-review——2026-08-29/09-07 增，`data/{userId}/trading/push-settings.json`，写读双侧门控；learn-review 另经 `GET/PUT /learn/push-settings` learn 侧可达，纯 learn 用户可自关）；app 左滑删单条/右滑进设置，web 交易页设置入口（learn 页头铃铛开关复习提醒）
   > ⚠️ 2026-08-23 标注：徽章配色受 **P1-推送1（标题契约断裂）** 阻断——后端 `FeedPushChannel` 落库丢标题 → 前端按标题 switch 全落灰「行情」，修复前展示与上文不符

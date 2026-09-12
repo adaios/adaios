@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -208,6 +209,54 @@ class TradingHistoryFileRepositoryTest {
         loaded = repository.findAll("default").get(0);
         assertEquals("order-9", loaded.orderId(), "orderId 补填生效");
         assertEquals(0, new BigDecimal("1.00").compareTo(loaded.fee()), "原 fee 保留");
+    }
+
+    // ── 跨来源同笔合并回填（2026-09-12 账实一致性批）──
+
+    @Test
+    void mergeFromImport_fillsMissingOrderIdFeeAndTime() {
+        // 截图/记录归集落的一笔：有成交时间，缺 orderId/fee
+        repository.append("default", TradeRecord.of("trade_1", "600000", "浦发银行",
+                TradeDirection.BUY, new BigDecimal("12.0"), 500, LocalDate.of(2026, 8, 1),
+                LocalTime.of(10, 15), null, null, null, null, null,
+                LocalDate.of(2026, 8, 1).atTime(10, 20), "rec_1", null));
+
+        int n = repository.mergeFromImport("default", "trade_1", LocalDate.of(2026, 8, 1),
+                "10000001", new BigDecimal("6.10"), LocalTime.of(10, 15));
+
+        assertEquals(1, n);
+        TradeRecord loaded = repository.findAll("default").get(0);
+        assertEquals("10000001", loaded.orderId(), "成交编号补齐");
+        assertEquals(0, new BigDecimal("6.10").compareTo(loaded.fee()), "手续费补齐");
+        assertEquals(LocalTime.of(10, 15), loaded.tradeTime(), "已有时间不动");
+        assertEquals(1, repository.findAll("default").size(), "不得新增流水");
+    }
+
+    @Test
+    void mergeFromImport_fillsMissingTimeOnly() {
+        repository.append("default", TradeRecord.of("trade_1", "600000", "浦发银行",
+                TradeDirection.BUY, new BigDecimal("12.0"), 500, LocalDate.of(2026, 8, 1),
+                null, null, null, null, null, new BigDecimal("6.10"),
+                LocalDate.of(2026, 8, 1).atTime(10, 20), null, "10000001"));
+
+        assertEquals(1, repository.mergeFromImport("default", "trade_1", LocalDate.of(2026, 8, 1),
+                "10000001", new BigDecimal("9.99"), LocalTime.of(10, 15)));
+        TradeRecord loaded = repository.findAll("default").get(0);
+        assertEquals(LocalTime.of(10, 15), loaded.tradeTime(), "缺成交时间 → 补");
+        assertEquals(0, new BigDecimal("6.10").compareTo(loaded.fee()), "已有费用不覆盖");
+    }
+
+    @Test
+    void mergeFromImport_alreadyComplete_noop() {
+        repository.append("default", TradeRecord.of("trade_1", "600000", "浦发银行",
+                TradeDirection.BUY, new BigDecimal("12.0"), 500, LocalDate.of(2026, 8, 1),
+                LocalTime.of(10, 15), null, null, null, null, new BigDecimal("6.10"),
+                LocalDate.of(2026, 8, 1).atTime(10, 20), null, "10000001"));
+
+        assertEquals(0, repository.mergeFromImport("default", "trade_1", LocalDate.of(2026, 8, 1),
+                "10000001", new BigDecimal("6.10"), LocalTime.of(10, 15)), "字段齐全 → 不写盘");
+        assertEquals(0, repository.mergeFromImport("default", "trade_ghost", LocalDate.of(2026, 8, 1),
+                "x", new BigDecimal("1"), null), "找不到 id → 0");
     }
 
     @Test

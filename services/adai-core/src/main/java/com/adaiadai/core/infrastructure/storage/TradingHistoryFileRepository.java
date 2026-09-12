@@ -158,6 +158,55 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
 
     // ── 内部方法 ──
 
+    /**
+     * 跨来源同笔合并回填（2026-09-12 账实一致性批）：只补缺失的 orderId/fee/tradeTime，
+     * 不覆盖已有非空值、不动其它字段与落盘时间戳（持仓/现金由调用方决定，不在此处动）。
+     * 定位策略与 updateTradeMeta 一致：跨月全扫按 tradeId 精确命中（历史导入的 entryDate 月份
+     * 可能与 id 内时间戳月份不同），先试 entryDate 所在月文件，未命中再全扫。
+     */
+    @Override
+    public int mergeFromImport(String userId, String tradeId, LocalDate entryDate,
+                               String orderId, BigDecimal fee, LocalTime tradeTime) {
+        if (tradeId == null || tradeId.isBlank()) return 0;
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        if ((!hasOrder) && fee == null && tradeTime == null) return 0;
+        List<String> paths = new java.util.ArrayList<>();
+        if (entryDate != null) paths.add(filePath(entryDate));
+        for (String p : fileStorage.listFiles(userId, TRADES_DIR)) {
+            if (p != null && p.endsWith(".json") && !paths.contains(p)) paths.add(p);
+        }
+        for (String path : paths) {
+            List<TradeRecord> trades = readFile(userId, path);
+            boolean updated = false;
+            for (int i = 0; i < trades.size(); i++) {
+                TradeRecord t = trades.get(i);
+                if (!tradeId.equals(t.id())) continue;
+                boolean needOrder = hasOrder && (t.orderId() == null || t.orderId().isBlank());
+                boolean needFee = fee != null && t.fee() == null;
+                boolean needTime = tradeTime != null && t.tradeTime() == null;
+                if (!needOrder && !needFee && !needTime) return 0; // 已完整，无需回填
+                trades.set(i, new TradeRecord(
+                        t.id(), t.symbol(), t.name(), t.direction(), t.price(), t.volume(), t.amount(),
+                        t.entryDate(), needTime ? tradeTime : t.tradeTime(),
+                        t.stopLossPrice(), t.buyPoint(), t.targetPrice(), t.reason(),
+                        needFee ? fee : t.fee(), t.timestamp(), t.sourceRecordId(),
+                        needOrder ? orderId : t.orderId()));
+                updated = true;
+                break;
+            }
+            if (!updated) continue;
+            try {
+                fileStorage.write(userId, path, objectMapper.writeValueAsString(trades));
+                log.info("流水跨来源合并回填 | userId={} | path={} | id={} | 补编号={} 补费用={} 补时间={}",
+                        userId, path, tradeId, hasOrder, fee != null, tradeTime != null);
+                return 1;
+            } catch (JsonProcessingException e) {
+                throw new StorageException("流水跨来源合并回填序列化失败: " + path, e);
+            }
+        }
+        return 0;
+    }
+
     private String filePath(LocalDate date) {
         return TRADES_DIR + "/" + date.format(MONTH_FMT) + ".json";
     }

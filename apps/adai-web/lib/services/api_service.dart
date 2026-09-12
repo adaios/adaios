@@ -579,9 +579,18 @@ class ApiService {
   /// 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）。
   /// POST /api/v1/trading/positions/import?replace=true → {imported, missingStopLoss}.
   /// replace=true（2026-08-18 确认批次）= 全量覆盖：以文件为准，文件里没有的持仓移除（含 0 股残留）。
-  Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items, {bool replace = false}) async {
+  /// [snapshotDate]（2026-09-12 账实一致性批）= 快照文件自身日期（从文件名解析，`yyyy-MM-dd`）——
+  /// **优先于导入日**，后端拿它当锚定日；不传（null/空）则退回导入日。
+  /// 补导几天前的快照时若把锚定日写成今天，锚定日之后、快照之前的成交会被误判成
+  /// 「已含在快照口径内」而丢掉增量（见 RFC 20260912-trading-ledger-integrity）。
+  Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items,
+      {bool replace = false, String? snapshotDate}) async {
+    final params = <String, String>{
+      if (replace) 'replace': 'true',
+      if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+    };
     final uri = Uri.parse('$baseUrl/api/v1/trading/positions/import')
-        .replace(queryParameters: replace ? {'replace': 'true'} : null);
+        .replace(queryParameters: params.isEmpty ? null : params);
     final resp = await _client.post(
       uri,
       headers: _headers,
@@ -596,14 +605,63 @@ class ApiService {
   /// POST /api/v1/trading/trades/import，body {"content": 转码后文本} →
   /// {imported, skipped, nonTrades, lines:[{symbol,name,count,netVolume,holdings,note}]}。
   /// 语义：只补逐笔流水（entryDate=成交日 / fee=券商实扣 / 成交编号幂等），不重算持仓与现金——以全量覆盖导入为准。
-  Future<HistoricalTradeImportResult> importTradesHistory(String content) async {
+  ///
+  /// 2026-09-12 账实一致性批：
+  /// - [mode]：`auto`（默认）按券商快照锚定分派「≤锚定日只补流水 / 晚于锚定日才回放改账」；
+  ///   `append` = 全部只补流水（锚定缺失时的安全模式，不动持仓/现金）
+  /// - [dryRun]：只返回计划（新增/合并/跳过/非交易/无法归属 + 锚定状态），**不落任何盘**——
+  ///   前端先预检让用户确认，再以 dryRun=false 真正导入
+  /// - 锚定缺失且本次有需要改账的成交 → 后端 400 人话（用 [extractApiErrorMessage] 透出）
+  Future<HistoricalTradeImportResult> importTradesHistory(String content,
+      {String mode = 'auto', bool dryRun = false}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/trading/trades/import').replace(queryParameters: {
+      'mode': mode,
+      if (dryRun) 'dryRun': 'true',
+    });
     final resp = await _client.post(
-      Uri.parse('$baseUrl/api/v1/trading/trades/import'),
+      uri,
       headers: _headers,
       body: jsonEncode({'content': content}),
     );
     _check(resp);
     return HistoricalTradeImportResult.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 账实一致性自检（GET /api/v1/trading/integrity，2026-09-12）：
+  /// 应有持仓（快照基线 + 锚定日之后流水净增减）≠ 落地持仓 → drift；卖超/未持有 → gaps。
+  /// 失败由调用方静默降级（这是可降级请求，不该打断页面加载）。
+  Future<IntegrityReportDto> getTradingIntegrity() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/integrity'), headers: _headers);
+    _check(resp);
+    return IntegrityReportDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 锚定状态（GET /api/v1/trading/anchor，2026-09-12）：只读，不写任何数据。
+  Future<AnchorStatusDto> getAnchorStatus() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/anchor'), headers: _headers);
+    _check(resp);
+    return AnchorStatusDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 锚点回填（PUT /api/v1/trading/anchor，2026-09-12）：存量环境（升级前导过快照但没写锚定文件）
+  /// 的显式自愈手段——只改元信息，不动持仓/现金/流水；日期只前进不后退。
+  /// [holdings] 形如 `[{'symbol':'600519','name':'贵州茅台','quantity':100}]`（快照持仓基线）。
+  Future<AnchorStatusDto> backfillAnchor({
+    String? positionsReplace,
+    String? cashImport,
+    List<Map<String, dynamic>>? holdings,
+  }) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/anchor'),
+      headers: _headers,
+      body: jsonEncode(<String, dynamic>{
+        if (positionsReplace != null && positionsReplace.isNotEmpty) 'positionsReplace': positionsReplace,
+        if (cashImport != null && cashImport.isNotEmpty) 'cashImport': cashImport,
+        'holdings': ?holdings,
+      }),
+    );
+    _check(resp);
+    return AnchorStatusDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
   /// 一键按流水重建持仓（2026-08-25：导入历史成交后持仓快照过期——已清仓残留自动移除）。
   /// POST /api/v1/trading/sync → {positionCount, removed:[...], keptInitial:[...]}
@@ -917,10 +975,16 @@ class ApiService {
   }
 
   /// 资金股份查询导入（POST /api/v1/trading/imports/cash：现金 + 精确成本）。
-  Future<CashImportResult> importCash(String content) async {
+  /// [snapshotDate]（2026-09-12）= 快照文件自身日期（`yyyy-MM-dd`），优先于导入日——
+  /// 后端用它做锚定日（cashImport）。不传则退回导入日。
+  Future<CashImportResult> importCash(String content, {String? snapshotDate}) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/trading/imports/cash'),
-      headers: _headers, body: jsonEncode({'content': content}));
+      headers: _headers,
+      body: jsonEncode(<String, dynamic>{
+        'content': content,
+        if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+      }));
     _check(resp);
     final d = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     return CashImportResult.fromJson(d);
@@ -2573,6 +2637,11 @@ class HistoricalTradeImportResult {
   final List<ReconcileLine> lines;
   final String syncMode; // 'sync' | 'append'（后端旧版本无此字段 → 默认 append 兜底）
   final TradeImportSummary? summary; // 每日操作总结（仅 sync 模式）
+  // ── 2026-09-12 账实一致性批 ──
+  final List<RejectedLineDto> rejected; // 无法归属持仓的真实成交明细（已落流水，未动持仓/现金）
+  final AnchorStatusDto? anchor; // 券商快照锚定状态（旧后端无此字段 → null）
+  final bool dryRun; // true = 这份结果是预检计划，未落盘
+  final ImportPlanDto? plan; // 仅 dryRun 时存在
 
   HistoricalTradeImportResult({
     required this.imported,
@@ -2582,6 +2651,10 @@ class HistoricalTradeImportResult {
     required this.lines,
     this.syncMode = 'append',
     this.summary,
+    this.rejected = const [],
+    this.anchor,
+    this.dryRun = false,
+    this.plan,
   });
 
   factory HistoricalTradeImportResult.fromJson(dynamic json) {
@@ -2601,6 +2674,222 @@ class HistoricalTradeImportResult {
       summary: json['summary'] == null
           ? null
           : TradeImportSummary.fromJson(json['summary']),
+      rejected: ((json['rejected'] as List?) ?? const [])
+          .map((e) => RejectedLineDto.fromJson(e))
+          .toList(),
+      anchor: json['anchor'] == null ? null : AnchorStatusDto.fromJson(json['anchor']),
+      dryRun: json['dryRun'] == true,
+      plan: json['plan'] == null ? null : ImportPlanDto.fromJson(json['plan']),
+    );
+  }
+}
+
+/// 无法归属持仓的成交行（POST /trading/trades/import 的 `rejected`，2026-09-12）。
+/// 语义：该笔**已落逐笔流水**，但持仓/现金未变——快照基线缺口 / 漏导买入 / 重复流水污染。
+/// 必须显眼展示：旧实现只写日志并计入「跳过 N 笔」，真实卖出就此消失（本次生产事故根因）。
+class RejectedLineDto {
+  final String symbol;
+  final String name;
+  final String direction; // 'BUY' | 'SELL'（后端 TradeDirection 枚举名）
+  final int volume;
+  final double? price; // 可空保持可空
+  final String entryDate; // yyyy-MM-dd
+  final String reason; // 中文人话原因
+
+  RejectedLineDto({
+    required this.symbol,
+    required this.name,
+    required this.direction,
+    required this.volume,
+    this.price,
+    required this.entryDate,
+    required this.reason,
+  });
+
+  /// 人话方向（BUY→买入 / SELL→卖出；缺失原样返回，不编造）。
+  String get directionLabel {
+    switch (direction.toUpperCase()) {
+      case 'BUY':
+        return '买入';
+      case 'SELL':
+        return '卖出';
+      default:
+        return direction;
+    }
+  }
+
+  /// 明细行文案：`卖出 贵州茅台（600519）100 股 @ 1500.00 · 原因`。
+  String get display {
+    final qty = '${_thousandsNum(volume)} 股';
+    final p = price == null ? '' : ' @ ${price!.toStringAsFixed(2)}';
+    final who = name.isEmpty ? symbol : '$name（$symbol）';
+    return '$directionLabel $who$qty$p${reason.isEmpty ? '' : ' · $reason'}';
+  }
+
+  factory RejectedLineDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return RejectedLineDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      direction: m['direction']?.toString() ?? '',
+      volume: (m['volume'] as num?)?.toInt() ?? 0,
+      price: (m['price'] as num?)?.toDouble(),
+      entryDate: m['entryDate']?.toString() ?? '',
+      reason: m['reason']?.toString() ?? '',
+    );
+  }
+}
+
+/// 整数千分位（明细文案用）：10000 → 10,000。
+String _thousandsNum(int v) {
+  final s = v.abs().toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    buf.write(s[i]);
+    final remaining = s.length - 1 - i;
+    if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+  }
+  return '${v < 0 ? '-' : ''}$buf';
+}
+
+/// 券商快照锚定状态（GET/PUT /trading/anchor + 导入结果 `anchor`，2026-09-12）。
+/// [known]=false → 无法判断哪些成交已包含在券商快照口径内（后端对需要改账的导入 fail-closed 400）；
+/// [holdingsKnown]=false → 快照持仓基线未记录，对账（integrity）无法判定（诚实降级，不误报差异）。
+class AnchorStatusDto {
+  final String? positionsReplace; // yyyy-MM-dd（「持仓股」快照导入日）
+  final String? cashImport; // yyyy-MM-dd（「资金股份查询」快照导入日）
+  final bool known;
+  final bool holdingsKnown;
+  final String? anchorDate; // 生效锚定日（较晚者）；未知 → null
+
+  AnchorStatusDto({
+    this.positionsReplace,
+    this.cashImport,
+    required this.known,
+    required this.holdingsKnown,
+    this.anchorDate,
+  });
+
+  factory AnchorStatusDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return AnchorStatusDto(
+      positionsReplace: m['positionsReplace']?.toString(),
+      cashImport: m['cashImport']?.toString(),
+      known: m['known'] == true,
+      holdingsKnown: m['holdingsKnown'] == true,
+      anchorDate: m['anchorDate']?.toString(),
+    );
+  }
+}
+
+/// 预检计划（dryRun=true 响应的 `plan`，2026-09-12）：这次导入会做什么——不落盘先给用户看。
+/// 注意 JSON 键是 `new`（Dart 关键字）→ 字段名 [newCount]。
+class ImportPlanDto {
+  final int newCount;
+  final int merged;
+  final int skipped;
+  final int nonTrades;
+  final int wouldReject;
+  final bool anchorKnown;
+  final String syncMode; // 'sync'（要改持仓/现金）| 'append'（只补流水）
+
+  ImportPlanDto({
+    required this.newCount,
+    required this.merged,
+    required this.skipped,
+    required this.nonTrades,
+    required this.wouldReject,
+    required this.anchorKnown,
+    required this.syncMode,
+  });
+
+  factory ImportPlanDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return ImportPlanDto(
+      newCount: (m['new'] as num?)?.toInt() ?? 0,
+      merged: (m['merged'] as num?)?.toInt() ?? 0,
+      skipped: (m['skipped'] as num?)?.toInt() ?? 0,
+      nonTrades: (m['nonTrades'] as num?)?.toInt() ?? 0,
+      wouldReject: (m['wouldReject'] as num?)?.toInt() ?? 0,
+      anchorKnown: m['anchorKnown'] == true,
+      syncMode: m['syncMode']?.toString() ?? 'append',
+    );
+  }
+}
+
+/// 账实对账差异行（GET /trading/integrity `drift`，2026-09-12）：
+/// [derived] = 应有持仓（快照基线 [snapshotQty] + 锚点后流水净增减 [ledgerDelta]）。
+/// [snapshotQty]/[holdings] 可空保持可空（基线未记录 / 标的不在持仓里）。
+class DriftLineDto {
+  final String symbol;
+  final String name;
+  final int? snapshotQty;
+  final int ledgerDelta;
+  final int derived;
+  final int? holdings;
+  final int diff;
+  final String note;
+
+  DriftLineDto({
+    required this.symbol,
+    required this.name,
+    this.snapshotQty,
+    required this.ledgerDelta,
+    required this.derived,
+    this.holdings,
+    required this.diff,
+    required this.note,
+  });
+
+  factory DriftLineDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return DriftLineDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      snapshotQty: (m['snapshotQty'] as num?)?.toInt(),
+      ledgerDelta: (m['ledgerDelta'] as num?)?.toInt() ?? 0,
+      derived: (m['derived'] as num?)?.toInt() ?? 0,
+      holdings: (m['holdings'] as num?)?.toInt(),
+      diff: (m['diff'] as num?)?.toInt() ?? 0,
+      note: m['note']?.toString() ?? '',
+    );
+  }
+}
+
+/// 账实一致性报告（GET /trading/integrity，2026-09-12）：锚定状态 + 差异 + 重放缺口。
+/// 降级诚实：锚定/基线缺失 → [note] 说明「无法判定」，drift/gaps 为空（不误报）。
+class IntegrityReportDto {
+  final AnchorStatusDto? anchor;
+  final bool holdingsKnown;
+  final List<DriftLineDto> drift;
+  final List<RejectedLineDto> gaps; // 重放缺口（卖超/未持有）——与导入 rejected 同一件事
+  final String note;
+
+  IntegrityReportDto({
+    this.anchor,
+    required this.holdingsKnown,
+    required this.drift,
+    required this.gaps,
+    required this.note,
+  });
+
+  /// 有需要用户看的东西吗（无差异 → 页面不显示任何横幅，不制造噪音）。
+  bool get hasIssue => drift.isNotEmpty || gaps.isNotEmpty;
+
+  factory IntegrityReportDto.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return IntegrityReportDto(holdingsKnown: false, drift: const [], gaps: const [], note: '');
+    }
+    return IntegrityReportDto(
+      anchor: json['anchor'] == null ? null : AnchorStatusDto.fromJson(json['anchor']),
+      holdingsKnown: json['holdingsKnown'] == true,
+      drift: ((json['drift'] as List?) ?? const [])
+          .map((e) => DriftLineDto.fromJson(e))
+          .toList(),
+      gaps: ((json['gaps'] as List?) ?? const [])
+          .map((e) => RejectedLineDto.fromJson(e))
+          .toList(),
+      note: json['note']?.toString() ?? '',
     );
   }
 }

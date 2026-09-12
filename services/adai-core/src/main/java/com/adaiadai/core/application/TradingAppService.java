@@ -142,6 +142,20 @@ public class TradingAppService {
             @Override
             public void updateCashImport(String userId, java.time.LocalDate date) {
             }
+
+            @Override
+            public void recordHoldings(String userId, List<SnapshotHolding> holdings) {
+            }
+
+            @Override
+            public List<SnapshotHolding> holdings(String userId) {
+                return List.of();
+            }
+
+            @Override
+            public boolean holdingsRecorded(String userId) {
+                return false;
+            }
         };
     }
 
@@ -174,22 +188,144 @@ public class TradingAppService {
         return anchor != null && entryDate != null && !entryDate.isAfter(anchor);
     }
 
-    /** 记录一次持仓全量 replace 锚定（best-effort：失败告警不阻断已成功的导入，防重暂时失效可被发现）。 */
-    private void recordPositionsReplaceAnchor(String userId) {
+    /** 记录一次持仓全量 replace 锚定（best-effort：失败告警不阻断已成功的导入，防重暂时失效可被发现）。
+     *  2026-09-12：锚定日取**快照自身日期**（文件名日期，前端可传 snapshotDate）——补导几天前的快照文件时，
+     *  不能把锚定日写成「今天」，否则锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。 */
+    private void recordPositionsReplaceAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updatePositionsReplace(userId, LocalDate.now());
+            anchorRepository.updatePositionsReplace(userId,
+                    snapshotDate != null ? snapshotDate : LocalDate.now());
         } catch (RuntimeException e) {
             log.error("持仓 replace 已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
     }
 
-    /** 记录一次资金股份导入锚定（best-effort，同上）。 */
-    private void recordCashImportAnchor(String userId) {
+    /** 记录一次资金股份导入锚定（best-effort，同上；锚定日取快照自身日期，见 recordPositionsReplaceAnchor）。 */
+    private void recordCashImportAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updateCashImport(userId, LocalDate.now());
+            anchorRepository.updateCashImport(userId,
+                    snapshotDate != null ? snapshotDate : LocalDate.now());
         } catch (RuntimeException e) {
             log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
+    }
+
+    // ── 账实一致性闸门（2026-09-12）：把「口径塌了」变成当天可见 ──
+
+    /**
+     * 账实一致性报告（GET /trading/integrity）。
+     * <p>
+     * 应有持仓 = 券商快照基线（锚定日，positions replace 时记录的 holdings）+ 锚定日之后逐笔流水
+     * 净增减；与当前落地持仓比对，差异即「账实不符」。同时从基线开始按时序重放流水，
+     * 报出「卖超/未持有」的缺口（对应导入时 rejected 的同一件事，可重复核算，不依赖当时返回）。
+     * <p>
+     * 降级（诚实、不误报）：锚定未知 或 基线未记录 → note 说明「无法判定」，drift 为空。
+     */
+    public IntegrityReport integrity(String userId) {
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        if (anchor == null) anchor = SnapshotAnchor.empty();
+        List<SnapshotHolding> base = anchorRepository.holdings(userId);
+        boolean holdingsKnown = anchorRepository.holdingsRecorded(userId);
+        AnchorStatus status = AnchorStatus.of(anchor, holdingsKnown);
+        if (!anchor.known()) {
+            return new IntegrityReport(status, holdingsKnown, List.of(), List.of(),
+                    "券商快照锚定缺失（还没有导过「持仓股」或「资金股份查询」快照）——"
+                            + "此时无法判断哪些成交已包含在券商口径内，导入近日成交会被拒绝重放（可改用「仅补流水」）");
+        }
+        if (!holdingsKnown) {
+            return new IntegrityReport(status, false, List.of(), List.of(),
+                    "快照持仓基线未记录（锚定日 " + status.anchorDate() + " 的 replace 导入未带基线，"
+                            + "或基线文件缺失）——对账无法判定；重导一次「持仓股」快照即可建立基线");
+        }
+        LocalDate anchorDate = status.anchorDate();
+        Map<String, Integer> baseQty = new LinkedHashMap<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        for (SnapshotHolding h : base) {
+            baseQty.merge(h.symbol(), h.quantity(), Integer::sum);
+            names.put(h.symbol(), h.name());
+        }
+        // 锚定日之后的流水（含被拒绝入账但已落流水的那些）：按 symbol 聚合净增减 + 逐笔缺口
+        List<TradeRecord> after = tradingHistoryRepository.findAll(userId).stream()
+                .filter(t -> t.volume() > 0 && t.entryDate() != null && t.entryDate().isAfter(anchorDate))
+                .sorted(java.util.Comparator.comparing(TradeRecord::entryDate)
+                        .thenComparing(t -> t.tradeTime() != null ? t.tradeTime() : LocalTime.MIN))
+                .toList();
+        Map<String, Integer> delta = new LinkedHashMap<>();
+        Map<String, Integer> running = new LinkedHashMap<>(baseQty);
+        List<RejectedLine> gaps = new ArrayList<>();
+        for (TradeRecord t : after) {
+            String s = t.symbol();
+            names.putIfAbsent(s, t.name());
+            int signed = t.direction() == TradeDirection.BUY ? t.volume() : -t.volume();
+            int held = running.getOrDefault(s, 0);
+            if (t.direction() == TradeDirection.SELL && t.volume() > held) {
+                // 缺口行**既不计入派生持仓、也不计入流水净增减**（否则派生值本身就是错的：
+                // 会得出「应有 −800 股」这种荒谬结论）；它只以 gaps 报出，等人工核对/重导快照
+                gaps.add(new RejectedLine(s, t.name(), TradeDirection.SELL, t.volume(), t.price(),
+                        t.entryDate(), "重放时持仓不足（持有 " + held + " 股）——快照基线缺口或漏导买入；"
+                        + "该笔未计入派生持仓"));
+                continue;
+            }
+            delta.merge(s, signed, Integer::sum);
+            running.put(s, held + signed);
+        }
+        Map<String, Integer> holdings = currentQuantities(userId);
+        Set<String> symbols = new java.util.LinkedHashSet<>();
+        symbols.addAll(baseQty.keySet());
+        symbols.addAll(delta.keySet());
+        symbols.addAll(holdings.keySet());
+        List<DriftLine> drift = new ArrayList<>();
+        for (String s : symbols) {
+            Integer baseQ = baseQty.get(s);
+            int d = delta.getOrDefault(s, 0);
+            int derived = (baseQ != null ? baseQ : 0) + d;
+            Integer have = holdings.get(s);
+            int haveQ = have != null ? have : 0;
+            int diff = haveQ - derived;
+            if (diff == 0) continue;
+            drift.add(new DriftLine(s, names.getOrDefault(s, s), baseQ, d, derived, have, diff,
+                    "应有 " + derived + " 股（快照基线 " + (baseQ != null ? baseQ : 0) + " + 锚点后流水 "
+                            + signed(d) + "），落地 " + haveQ + " 股，差 " + signed(diff)
+                            + " 股——账实不符，请核对流水/重导券商快照"));
+        }
+        String note = drift.isEmpty() && gaps.isEmpty()
+                ? "账实一致：派生持仓与落地持仓逐标的相符（锚定日 " + anchorDate + "）"
+                : String.format("账实不符：%d 只标的持仓不一致、%d 笔回放缺口（锚定日 %s）——"
+                        + "先核对逐笔流水，再决定是否重导券商快照重建口径",
+                        drift.size(), gaps.size(), anchorDate);
+        if (!drift.isEmpty() || !gaps.isEmpty()) {
+            log.error("账实一致性自检发现不符 | userId={} | 锚定={} | 差异 {} 只 | 缺口 {} 笔 | 明细={}",
+                    userId, anchorDate, drift.size(), gaps.size(), drift.stream().limit(5).toList());
+        }
+        return new IntegrityReport(status, true, drift, gaps, note);
+    }
+
+    /**
+     * 锚点回填（PUT /trading/anchor，2026-09-12）：给「升级前已导过快照、但没有锚定文件」的存量环境
+     * 一次显式自愈手段（防 fail-closed 把用户卡死）。语义是元信息修正，不改持仓/现金/流水；
+     * 传 holdings 时可一并补建对账基线；日期只前进不后退。
+     */
+    public AnchorStatus backfillAnchor(String userId, LocalDate positionsReplace, LocalDate cashImport,
+                                       List<SnapshotHolding> holdings) {
+        if (positionsReplace == null && cashImport == null && (holdings == null || holdings.isEmpty())) {
+            throw new TradingException("锚点回填至少要给一个日期（positionsReplace / cashImport）或持仓基线");
+        }
+        if (positionsReplace != null) anchorRepository.updatePositionsReplace(userId, positionsReplace);
+        if (cashImport != null) anchorRepository.updateCashImport(userId, cashImport);
+        if (holdings != null && !holdings.isEmpty()) anchorRepository.recordHoldings(userId, holdings);
+        SnapshotAnchor after = anchorRepository.find(userId);
+        if (after == null) after = SnapshotAnchor.empty();
+        log.info("券商快照锚点回填 | userId={} | positionsReplace={} | cashImport={} | 基线 {} 只",
+                userId, after.positionsReplace(), after.cashImport(),
+                holdings != null ? holdings.size() : 0);
+        return AnchorStatus.of(after, anchorRepository.holdingsRecorded(userId));
+    }
+
+    /** 锚定状态查询（GET /trading/anchor）：前端/部署自检用，不触发任何写入。 */
+    public AnchorStatus anchorStatus(String userId) {
+        SnapshotAnchor a = anchorRepository.find(userId);
+        if (a == null) a = SnapshotAnchor.empty();
+        return AnchorStatus.of(a, anchorRepository.holdingsRecorded(userId));
     }
 
     // ── RFC 20260909 批 1：清仓股流水自动收录（触发接线）──
@@ -723,6 +859,16 @@ public class TradingAppService {
      * @param replace true = 全量覆盖（文件为准，缺失删除）；false = upsert（默认）
      */
     public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace) {
+        return importPositions(userId, items, replace, null);
+    }
+
+    /**
+     * 持仓全量/增量导入（2026-09-12 账实一致性批加 {@code snapshotDate}）：
+     * {@code replace=true} 时按 {@code snapshotDate}（通达信「持仓股」文件名里的日期）记锚定日 +
+     * 快照持仓基线；为 null 时退回导入日（旧行为，兼容既有前端与测试）。
+     */
+    public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
+                                                LocalDate snapshotDate) {
         if (items == null || items.isEmpty()) {
             return new PositionImportResult(0, List.of());
         }
@@ -788,7 +934,18 @@ public class TradingAppService {
             // P2-交易34 治本：replace=true 是「以券商文件为准」的全量锚定——记锚定日供增量防重
             // （此后 entryDate ≤ 本日的成交 sync 回放/手动补录将转补录或拒绝，防 replace+回放双计）。
             if (replace) {
-                recordPositionsReplaceAnchor(userId);
+                recordPositionsReplaceAnchor(userId, snapshotDate);
+                // 2026-09-12 账实一致性批：同文件记「快照当日持仓基线」——
+                // 对账闸门（integrity）用基线 + 锚点之后流水净增减推应有持仓，与落地持仓比对，
+                // 让「账实不符」当天可见（本次生产事故：口径塌了三天没人报警）。
+                try {
+                    anchorRepository.recordHoldings(userId, current.stream()
+                            .map(p -> new SnapshotHolding(p.symbol(), p.name(), p.quantity()))
+                            .toList());
+                } catch (RuntimeException e) {
+                    log.error("持仓 replace 已落库但快照持仓基线写入失败（对账降级为无法判定）| userId={} | {}",
+                            userId, e.getMessage());
+                }
             }
             log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
                     userId, imported, missingStopLoss.size(), replace, current.size());
@@ -999,6 +1156,15 @@ public class TradingAppService {
 
     /** 导入资金股份查询：存账户快照（资产/可用/可取/市值/盈亏/当日盈亏）+ 更新 cashBalance + 精确成本。 */
     public CashImportResult importCashQuery(String userId, String content) {
+        return importCashQuery(userId, content, null);
+    }
+
+    /**
+     * 资金股份查询导入（2026-09-12 加 {@code snapshotDate}）：账户快照日期与现金锚定日都用
+     * 快照自身日期（文件名日期），为 null 时退回今天（旧行为）。
+     */
+    public CashImportResult importCashQuery(String userId, String content, LocalDate snapshotDate) {
+        LocalDate effectiveDate = snapshotDate != null ? snapshotDate : LocalDate.now();
         TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
         // 2026-08-17（P1-交易5 修复）：解析失败（首行「余额/可用/可取/参考市值/资产/盈亏」未命中）
         // 禁止落零覆盖——此前会把 account.json 资产/现金清零、cashBalance 置零且无提示（B51 检查点）
@@ -1020,7 +1186,7 @@ public class TradingAppService {
                 q.marketValue(), q.pnl(),
                 todayPnlFromFile ? BigDecimal.valueOf(todayPnl)
                         : cur.map(AccountSnapshot::todayPnl).orElse(BigDecimal.ZERO),
-                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), LocalDate.now()));
+                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), effectiveDate));
         synchronized (tradeLock(userId)) {
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
@@ -1044,7 +1210,7 @@ public class TradingAppService {
             if (!positions.isEmpty()) positionRepository.saveAll(userId, positions);
             // S5（2026-08-17）：现金唯一真源 = account.json（上方已保存）——不再写 positions.md cashBalance
             // P2-交易34 治本：资金股份导入 = 现金/资产锚定日（此后 ≤ 本日的转账补记/成交回放需防重）。
-            recordCashImportAnchor(userId);
+            recordCashImportAnchor(userId, snapshotDate);
             log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
                     userId, cash, q.assets(), updated, todayPnlFromFile);
             return new CashImportResult(cash, q.assets(), updated);
@@ -1384,6 +1550,35 @@ public class TradingAppService {
      * </ul>
      */
     public HistoricalTradeImportResult importHistoricalTrades(String userId, String content) {
+        return importHistoricalTrades(userId, content, ImportMode.AUTO, false);
+    }
+
+    /**
+     * 历史成交导入（2026-09-12 账实一致性批重写：fail-closed 锚定 + 统一幂等 + 卖超不丢数据 + 预检）。
+     * <p>
+     * 与旧实现的差别（本次生产事故根因，见 RFC 20260912-trading-ledger-integrity）：
+     * <ol>
+     *   <li><b>锚定 fail-closed</b>：锚定未知（snapshot-anchor.json 缺失/损坏/两日期皆空）而系统
+     *       已有持仓或账户快照 → 存在需要改账的回放行时**拒绝导入**并指路（先导持仓/资金快照建立锚定，
+     *       或显式 {@code mode=append} 只补流水）。旧实现遇到空锚定直接当「不做防重」继续重放 →
+     *       把已含在券商快照内的成交重算一遍（2026-09-12 实测现金被推到 −26666.85）。</li>
+     *   <li><b>幂等统一</b>：append 与 replay 用同一套判定（含「有成交编号的行也查指纹」）——
+     *       跨来源同笔（截图/记录归集无编号 ↔ 券商导出有编号）合并回填，不再双落
+     *       （2026-09-12 实测 4 笔重复流水，600206 一度被卖成 −600 股）。</li>
+     *   <li><b>卖超不丢数据</b>：回放时 SELL 超出持仓/未持有的真实成交**仍落流水**，进
+     *       {@code rejected} 行级明细（持仓/现金不动，由对账闸门提示缺口）——
+     *       旧实现 try/catch 后计入「去重跳过」，3 笔真实卖出永久消失（09-03 600487 400 股、
+     *       09-04 000776 600 股、09-08 000831 800 股）。</li>
+     *   <li><b>预检（dryRun）</b>：只算计划不落盘（新增/合并/跳过/非交易/无法归属 + 锚定状态），
+     *       供前端「先看计划再确认」——改账与花钱同等待遇。</li>
+     * </ol>
+     *
+     * @param mode   {@link ImportMode#AUTO} 按锚定分派补录/回放；{@link ImportMode#APPEND} 全部只补流水
+     * @param dryRun true = 只返回计划，不写任何文件
+     */
+    public HistoricalTradeImportResult importHistoricalTrades(String userId, String content,
+                                                              ImportMode mode, boolean dryRun) {
+        ImportMode effectiveMode = mode != null ? mode : ImportMode.AUTO;
         List<TradingImportParser.HistoricalTradeRow> rows = TradingImportParser.parseHistoricalTrades(content);
         if (rows.isEmpty()) {
             throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
@@ -1399,10 +1594,8 @@ public class TradingAppService {
                             .map(r -> r.symbol() + " " + r.name()).distinct().toList());
             rows = rows.stream().filter(r -> !TradingImportParser.isNonTradableCode(r.symbol())).toList();
         }
-        // RFC 20260825 §5：自动识别双模式——窗口内成交 → 同步（更新持仓/现金/流水 + 每日操作总结）；
-        // 窗口外历史 → 补录（只补流水 + 对账提示）。
-        // 对抗审查 P1-1：混合窗口拆组并行处理，不再「混一笔超窗成交就整批降级」——
-        // 用户导历史成交常带几笔漏掉的更早成交，近日部分照常同步持仓。
+        // RFC 20260825 §5：窗口内成交 → 同步（更新持仓/现金/流水 + 每日操作总结）；
+        // 窗口外历史 → 补录（只补流水 + 对账提示）。对抗审查 P1-1：混合窗口拆组，不整批降级。
         LocalDate windowStart = LocalDate.now().minusDays(10);
         List<TradingImportParser.HistoricalTradeRow> recent = rows.stream()
                 .filter(r -> r.entryDate() != null && !r.entryDate().isBefore(windowStart))
@@ -1410,75 +1603,165 @@ public class TradingAppService {
         List<TradingImportParser.HistoricalTradeRow> old = rows.stream()
                 .filter(r -> r.entryDate() == null || r.entryDate().isBefore(windowStart))
                 .toList();
-        // P2-交易34 治本（2026-09-09）：近 10 日窗口内成交再按「券商快照锚定」拆两层——
-        // entryDate ≤ 最近 replace/资金导入锚定日 → 该成交已包含在券商口径（positions/现金已按快照校准），
-        // 只能补流水，不再回放（recordTrade 双计现金/持仓——2026-09-07 replace+sync 实测 −3.19 万）；
-        // 晚于锚定日 → 正常 sync 回放（快照未覆盖的增量）。
-        LocalDate anchor = brokerAnchorDate(userId);
+        // P2-交易34 治本 + 2026-09-12 fail-closed：近 10 日窗口内成交按「券商快照锚定」拆两层——
+        // entryDate ≤ 锚定日 → 已含在券商口径，只补流水；晚于锚定日 → 回放（快照未覆盖的增量）。
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        if (anchor == null) anchor = SnapshotAnchor.empty(); // mock/异常实现兜底：null 视为未知锚定（fail-closed）
+        AnchorStatus anchorStatus = AnchorStatus.of(anchor, anchorRepository.holdingsRecorded(userId));
         List<TradingImportParser.HistoricalTradeRow> anchoredRecent = new ArrayList<>();
         List<TradingImportParser.HistoricalTradeRow> replayRecent = new ArrayList<>();
         for (TradingImportParser.HistoricalTradeRow r : recent) {
-            (anchor != null && r.entryDate() != null && !r.entryDate().isAfter(anchor)
+            (anchorStatus.known() && r.entryDate() != null && !r.entryDate().isAfter(anchorStatus.anchorDate())
                     ? anchoredRecent : replayRecent).add(r);
         }
         List<TradingImportParser.HistoricalTradeRow> appendRows = new ArrayList<>(old);
         appendRows.addAll(anchoredRecent);
-
+        // APPEND 模式：全部按补录处理（只补流水），replay 组清空
+        if (effectiveMode == ImportMode.APPEND && !replayRecent.isEmpty()) {
+            appendRows.addAll(replayRecent);
+            replayRecent = List.of();
+        }
+        // fail-closed：锚定未知 + 系统已有账目状态 + 存在需要改账的回放行 → 拒绝（不静默重放）。
+        // 预检（dryRun）同样拒绝：让用户在「确认导入」前就知道这次不能导、以及两条逃生路径。
+        if (!anchorStatus.known() && !replayRecent.isEmpty() && hasExistingAccountState(userId)) {
+            throw new TradingException(String.format(
+                    "券商快照锚定缺失（%s）：本次有 %d 笔近日成交需要回放持仓/现金，但没有锚定日就无法判断"
+                            + "哪些成交已包含在券商口径内——照旧回放会把它们重复计算一遍。请先导入「持仓股」或"
+                            + "「资金股份查询」快照建立锚定；若只想补逐笔流水（不动持仓/现金），用「仅补流水」模式重试",
+                    "trading/snapshot-anchor.json 缺失或损坏", replayRecent.size()));
+        }
+        if (dryRun) {
+            return dryRunPlan(userId, rows, appendRows, replayRecent, anchorStatus, effectiveMode, nonTradable);
+        }
         HistoricalTradeImportResult appendResult = null;
         if (!appendRows.isEmpty()) {
-            // 先补录（窗口外历史 + 锚定已覆盖的近日成交：只补流水，不重算持仓/现金）
             appendResult = importAppend(userId, appendRows);
         }
         if (replayRecent.isEmpty()) {
-            // 全部落补录（典型：收盘锚定后再导当天成交补流水）→ 无回放、无总结
             HistoricalTradeImportResult base = appendResult != null ? appendResult
-                    : new HistoricalTradeImportResult(0, 0, 0, 0, List.of(), "append", null);
-            // 三官深审 P1-1（2026-09-09）：导入的当日成交补入流水 → 触发当日盈亏重算（best-effort）
+                    : new HistoricalTradeImportResult(0, 0, 0, 0, List.of(), "append", null, List.of(), anchorStatus);
             refreshTodayPnl(userId);
-            return withNonTrades(base, base.nonTrades() + nonTradable);
+            return withExtras(base, base.nonTrades() + nonTradable, base.rejected(), anchorStatus);
         }
-        // 补录完成后再回放锚定日之后的成交（sync 的幂等指纹基于补录后的全量流水）
         HistoricalTradeImportResult syncResult = importSync(userId, replayRecent);
         HistoricalTradeImportResult base = appendResult != null ? appendResult
-                : new HistoricalTradeImportResult(0, 0, 0, 0, syncResult.lines(), "sync", null);
-        // 三官深审 P1-1（2026-09-09）：导入的当日成交入流水 → 触发当日盈亏重算（best-effort）
+                : new HistoricalTradeImportResult(0, 0, 0, 0, syncResult.lines(), "sync", null, List.of(), anchorStatus);
         refreshTodayPnl(userId);
+        List<RejectedLine> rejected = new ArrayList<>(base.rejected());
+        rejected.addAll(syncResult.rejected());
         return new HistoricalTradeImportResult(
                 base.imported() + syncResult.imported(),
                 base.updated() + syncResult.updated(),
                 base.skipped() + syncResult.skipped(),
                 base.nonTrades() + syncResult.nonTrades() + nonTradable,
-                syncResult.lines(), "sync", syncResult.summary());
+                syncResult.lines(), "sync", syncResult.summary(), rejected, anchorStatus);
     }
 
-    /** 复制导入结果并替换 nonTrades（占位代码计数并入，2026-08-25）。 */
-    private HistoricalTradeImportResult withNonTrades(HistoricalTradeImportResult r, int nonTrades) {
+    /** 导入模式（2026-09-12）：AUTO = 按券商快照锚定分派补录/回放；APPEND = 全部只补流水（锚定缺失时的安全模式）。 */
+    public enum ImportMode { AUTO, APPEND }
+
+    /**
+     * 预检计划（dryRun，2026-09-12）：不落盘地给出「这次导入会做什么」——
+     * 前端先展示再让用户确认（改账与花钱同等待遇；旧实现点了就落盘，出问题才知道）。
+     */
+    private HistoricalTradeImportResult dryRunPlan(String userId,
+                                                   List<TradingImportParser.HistoricalTradeRow> rows,
+                                                   List<TradingImportParser.HistoricalTradeRow> appendRows,
+                                                   List<TradingImportParser.HistoricalTradeRow> replayRows,
+                                                   AnchorStatus anchorStatus, ImportMode mode, int nonTradable) {
+        List<TradeRecord> existing = tradingHistoryRepository.findAll(userId);
+        IntakeIndex index = buildIndex(existing);
+        int fresh = 0, merged = 0, skipped = 0, nonTrades = 0;
+        List<RejectedLine> wouldReject = new ArrayList<>();
+        // 回放行的可归属性预演：从当前持仓出发按时间顺序模拟（与真实回放同一规则）
+        Map<String, Integer> simQty = new java.util.LinkedHashMap<>();
+        for (Position p : positionRepository.findAll(userId)) simQty.put(p.symbol(), p.quantity());
+        List<TradingImportParser.HistoricalTradeRow> orderedReplay = new ArrayList<>(replayRows);
+        orderedReplay.sort(rowOrder());
+        for (TradingImportParser.HistoricalTradeRow r : appendRows) {
+            if (r.volume() <= 0) { nonTrades++; continue; }
+            String action = classify(index, r);
+            if ("NEW".equals(action)) { index.addRecord(previewRecord(r)); fresh++; }
+            else if ("MERGE".equals(action)) merged++;
+            else skipped++;
+        }
+        for (TradingImportParser.HistoricalTradeRow r : orderedReplay) {
+            if (r.volume() <= 0) { nonTrades++; continue; }
+            String action = classify(index, r);
+            if ("SKIP".equals(action)) { skipped++; continue; }
+            if ("MERGE".equals(action)) merged++;
+            String reason = replayBlockReason(simQty, r);
+            if (reason != null) {
+                wouldReject.add(new RejectedLine(r.symbol(), r.name(), r.direction(), r.volume(),
+                        r.price(), r.entryDate(), reason));
+            } else {
+                simQty.merge(r.symbol(), r.direction() == TradeDirection.BUY ? r.volume() : -r.volume(),
+                        Integer::sum);
+                fresh++;
+            }
+            if (!"MERGE".equals(action)) index.addRecord(previewRecord(r));
+        }
+        HistoricalTradeImportResult plan = new HistoricalTradeImportResult(
+                fresh, merged, skipped, nonTrades + nonTradable, List.of(),
+                mode == ImportMode.APPEND ? "append" : (replayRows.isEmpty() ? "append" : "sync"),
+                null, wouldReject, anchorStatus);
+        log.info("历史成交导入预检（未落盘）| userId={} | 新增 {} 合并 {} 跳过 {} 非交易 {} 无法归属 {} | 锚定={} | mode={}",
+                userId, fresh, merged, skipped, nonTrades + nonTradable, wouldReject.size(),
+                anchorStatus.known() ? anchorStatus.anchorDate() : "缺失", mode);
+        return plan;
+    }
+
+    /** 预检用的占位流水（只参与后续幂等判定，不落盘）。 */
+    private TradeRecord previewRecord(TradingImportParser.HistoricalTradeRow r) {
+        return TradeRecord.of("plan_" + Math.abs(r.hashCode()), r.symbol(), r.name(), r.direction(),
+                r.price(), r.volume(), r.entryDate(), r.tradeTime(), null, null, null, null, r.fee(),
+                LocalDateTime.now(), null, r.orderId());
+    }
+
+    /** 系统是否已有账目状态（持仓非空或账户快照存在）——fail-closed 判定用：
+     *  全新用户（无持仓/无账户）从零回放不会双计，允许；已有状态才禁止盲回放。 */
+    private boolean hasExistingAccountState(String userId) {
+        if (!positionRepository.findAll(userId).isEmpty()) return true;
+        return accountSnapshotRepository.findLatest(userId).isPresent();
+    }
+
+    /** 回放行能否归属到持仓：返回 null = 可回放（并在模拟态上扣减）；非 null = 无法归属的原因。 */
+    private String replayBlockReason(Map<String, Integer> simQty, TradingImportParser.HistoricalTradeRow r) {
+        if (r.direction() != TradeDirection.SELL) return null;
+        int held = simQty.getOrDefault(r.symbol(), 0);
+        if (held <= 0) {
+            return "未持有 " + r.symbol() + "（快照基线/流水缺该标的的买入）——已落流水，未动持仓与现金";
+        }
+        if (r.volume() > held) {
+            return "卖出 " + r.volume() + " 股超过可归属持仓 " + held + " 股"
+                    + "（快照基线缺口或漏导买入）——已落流水，未动持仓与现金";
+        }
+        return null;
+    }
+
+    /** 复制导入结果并替换 nonTrades / rejected / anchor（2026-09-12 扩展）。 */
+    private HistoricalTradeImportResult withExtras(HistoricalTradeImportResult r, int nonTrades,
+                                                   List<RejectedLine> rejected, AnchorStatus anchor) {
         return new HistoricalTradeImportResult(r.imported(), r.updated(), r.skipped(),
-                nonTrades, r.lines(), r.syncMode(), r.summary());
+                nonTrades, r.lines(), r.syncMode(), r.summary(), rejected, anchor);
     }
 
     /**
-     * 同步模式（当日/近日成交导入，RFC 20260825 §5）：幂等过滤 → 按成交时间排序 →
-     * 逐笔走 recordTrade 全链路（持仓增减 + 现金 + 手续费 + 逐笔流水 + 时间线记录），
-     * 返回对账 + 每日操作总结（含行为标注）。
+     * 回放模式（锚定日之后的增量成交）：幂等过滤 → 按成交时间排序 → 逐笔走 recordTrade 全链路
+     * （持仓增减 + 现金 + 手续费 + 逐笔流水），返回对账 + 每日操作总结（含行为标注）。
+     * <p>
+     * 2026-09-12 账实一致性批：幂等判定与补录统一（{@link #classify}）；
+     * <b>无法归属到持仓的真实卖出不再丢弃</b>——仍落流水 + 进 rejected 明细（原因人话）+
+     * ERROR 日志 + 由对账闸门（GET /trading/integrity）报缺口，持仓/现金不动。
      */
     private HistoricalTradeImportResult importSync(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
         long t0 = System.nanoTime(); // 2026-08-25：导入耗时定位（锁等待/幂等/落盘分段）
         // 导入前批次快照：diff 出新增/扣减批次（每日操作总结）
         Map<String, List<TradingLot>> before = tradingLotService.derive(userId);
         int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
+        List<RejectedLine> rejected = new ArrayList<>();
         synchronized (tradeLock(userId)) {
-            Map<String, TradeRecord> byOrderId = new HashMap<>();
-            Set<String> orderIds = new HashSet<>();
-            Set<String> fingerprints = new HashSet<>();
-            for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
-                if (t.orderId() != null && !t.orderId().isBlank()) {
-                    orderIds.add(t.orderId());
-                    byOrderId.put(t.orderId(), t);
-                } else {
-                    fingerprints.add(fingerprint(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()));
-                }
-            }
+            IntakeIndex index = buildIndex(tradingHistoryRepository.findAll(userId));
             List<TradingImportParser.HistoricalTradeRow> toSync = new ArrayList<>();
             for (TradingImportParser.HistoricalTradeRow r : rows) {
                 if (r.volume() <= 0) {
@@ -1496,27 +1779,30 @@ public class TradingAppService {
                     }
                     continue;
                 }
-                String oid = r.orderId();
-                if (oid != null && !oid.isBlank()) {
-                    if (orderIds.contains(oid)) { skipped++; continue; }
-                    // 对抗审查 P0-1：手动记录（流水无 orderId）与收盘导入（有 orderId）同笔交叉防重——
-                    // 主场景「白天手动记一笔 + 收盘导当天成交」，有 orderId 的行也查指纹防重复入账
-                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
-                    if (fingerprints.contains(fp)) { skipped++; continue; }
-                    orderIds.add(oid);
-                    fingerprints.add(fp); // 双键都入：同文件内无编号变体也防重
-                } else {
-                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
-                    if (fingerprints.contains(fp)) { skipped++; continue; }
-                    fingerprints.add(fp);
+                String action = classify(index, r);
+                if ("SKIP".equals(action)) { skipped++; continue; }
+                if ("MERGE".equals(action)) {
+                    updated += mergeInto(userId, index, r);
+                    continue;
                 }
+                // 2026-09-12：把「待回放」的行也登记进索引——同文件内重复行（同编号/同指纹）必须被识别，
+                // 否则会回放两次（旧实现靠 orderIds 累加防住，重写时若遗漏即退化）
+                index.addRecord(previewRecord(r));
                 toSync.add(r);
             }
             // LIFO 依赖时间序：按成交日期 + 成交时刻排序后逐笔处理（A 股 T+1，顺序确定）
-            toSync.sort(java.util.Comparator
-                    .comparing((TradingImportParser.HistoricalTradeRow r) -> r.entryDate() != null ? r.entryDate() : LocalDate.MIN)
-                    .thenComparing(r -> r.tradeTime() != null ? r.tradeTime() : LocalTime.MIN));
+            toSync.sort(rowOrder());
             for (TradingImportParser.HistoricalTradeRow r : toSync) {
+                // 2026-09-12：回放前先判「能否归属到持仓」——不能归属的真实成交也要留痕，不再静默丢弃
+                String block = replayBlockReason(currentQuantities(userId), r);
+                if (block != null) {
+                    ledgerOnly(userId, r);
+                    rejected.add(new RejectedLine(r.symbol(), r.name(), r.direction(), r.volume(),
+                            r.price(), r.entryDate(), block));
+                    log.error("当日成交回放无法归属持仓（已落流水、未动持仓与现金）| userId={} | {} {} {}股@{} | {}",
+                            userId, r.direction(), r.symbol(), r.volume(), r.price(), block);
+                    continue;
+                }
                 try {
                     // 通达信成交无止损/买点列 → null；批次止损由推导层按默认 −7% 兜底（RFC 20260825）。
                     // orderId 透传流水落盘 = 幂等键；fee 透传券商实扣（后端审查 P1-2，与 append 模式同口径）。
@@ -1524,38 +1810,53 @@ public class TradingAppService {
                             r.entryDate(), r.tradeTime(), null, null, null, null, r.orderId(), r.fee());
                     imported++;
                 } catch (TradingException e) {
-                    // 逐条失败不整批回滚（与 /trades/batch 同语义）：跳过继续，失败不阻塞其余
-                    log.warn("当日成交同步单笔失败 | userId={} | {} {} | {}", userId, r.direction(), r.symbol(), e.getMessage());
-                    skipped++;
+                    // 逐条失败不整批回滚（与 /trades/batch 同语义）：真实成交落流水 + 明确可见，不阻塞其余
+                    ledgerOnly(userId, r);
+                    rejected.add(new RejectedLine(r.symbol(), r.name(), r.direction(), r.volume(),
+                            r.price(), r.entryDate(), e.getMessage() + "——已落流水，未动持仓与现金"));
+                    log.error("当日成交回放单笔失败（已落流水、未动持仓与现金）| userId={} | {} {} {}股@{} | {}",
+                            userId, r.direction(), r.symbol(), r.volume(), r.price(), e.getMessage());
                 }
             }
         }
         List<ReconcileLine> lines = tradingLotService.reconcile(userId);
         DailyOperationSummary summary = buildDailySummary(userId, rows, before);
-        log.info("当日成交同步导入 | userId={} | 同步 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 买 {} 卖 {} 新增批次 {} 扣减 {} 行为 {} | 耗时 {}ms",
-                userId, imported, skipped, nonTrades, lines.size(),
+        log.info("当日成交回放导入 | userId={} | 回放 {} 笔 | 合并回填 {} 笔 | 去重跳过 {} | 无法归属 {} | 非交易 {} | 对账 {} 行 | 买 {} 卖 {} 新增批次 {} 扣减 {} 行为 {} | 耗时 {}ms",
+                userId, imported, updated, skipped, rejected.size(), nonTrades, lines.size(),
                 summary.buyCount(), summary.sellCount(), summary.newLots(), summary.deductedLots(),
                 summary.behaviors().size(), (System.nanoTime() - t0) / 1_000_000);
-        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "sync", summary);
+        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "sync", summary,
+                rejected, null);
     }
 
-    /** 补录模式（历史成交导入，原语义）：只补流水不重算持仓/现金，返回对账提示。 */
+    /** 当前持仓数量表（回放可归属性判定用）。 */
+    private Map<String, Integer> currentQuantities(String userId) {
+        Map<String, Integer> m = new java.util.LinkedHashMap<>();
+        for (Position p : positionRepository.findAll(userId)) m.put(p.symbol(), p.quantity());
+        return m;
+    }
+
+    /** 只落流水、不动持仓与现金（2026-09-12：真实成交永不因系统状态不准而消失）。 */
+    private void ledgerOnly(String userId, TradingImportParser.HistoricalTradeRow r) {
+        try {
+            appendTradeRecord(userId, r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
+                    r.entryDate(), r.tradeTime(), null, null, null, null, null, r.orderId(), r.fee());
+        } catch (RuntimeException e) {
+            log.error("回放流水兜底写入失败（该笔未能留痕）| userId={} | {} {} {}股 | {}",
+                    userId, r.direction(), r.symbol(), r.volume(), e.getMessage());
+        }
+    }
+
+    /** 补录模式（历史成交导入）：只补流水不重算持仓/现金，返回对账提示。
+     *  2026-09-12：幂等判定与 sync 统一（{@link #classify}）——有成交编号的行也查指纹，
+     *  跨来源同笔合并回填而不是双落（旧实现只在「无编号」分支查指纹 → 记录/截图归集过的同一笔
+     *  再导就多出一行，600206 曾被重复卖出 600 股打成 −600）。 */
     private HistoricalTradeImportResult importAppend(String userId, List<TradingImportParser.HistoricalTradeRow> rows) {
         long t0 = System.nanoTime(); // 2026-08-25：导入耗时定位（含锁等待）
         int imported = 0, skipped = 0, updated = 0, nonTrades = 0;
         List<TradeRecord> toAdd = new ArrayList<>();
         synchronized (tradeLock(userId)) {
-            Map<String, TradeRecord> byOrderId = new HashMap<>();
-            Set<String> orderIds = new HashSet<>();
-            Set<String> fingerprints = new HashSet<>();
-            for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
-                if (t.orderId() != null && !t.orderId().isBlank()) {
-                    orderIds.add(t.orderId());
-                    byOrderId.put(t.orderId(), t);
-                } else {
-                    fingerprints.add(fingerprint(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()));
-                }
-            }
+            IntakeIndex index = buildIndex(tradingHistoryRepository.findAll(userId));
             for (TradingImportParser.HistoricalTradeRow r : rows) {
                 if (r.volume() <= 0) {
                     // 2026-08-25 方案 A：股息类资金事件记账（入账 +现金 / 红利税 −现金，不进持仓/批次）
@@ -1566,39 +1867,130 @@ public class TradingAppService {
                     }
                     continue;
                 }
-                String oid = r.orderId();
-                if (oid != null && !oid.isBlank()) {
-                    if (orderIds.contains(oid)) {
-                        // 幂等命中：旧记录缺失成交时间且新文件带时间 → 回填；否则跳过
-                        TradeRecord existing = byOrderId.get(oid);
-                        if (existing != null && existing.tradeTime() == null && r.tradeTime() != null) {
-                            updated += tradingHistoryRepository.backfillTradeTime(
-                                    userId, existing.id(), existing.entryDate(), r.tradeTime());
-                        } else {
-                            skipped++;
-                        }
-                        continue;
-                    }
-                    orderIds.add(oid);
-                } else {
-                    String fp = fingerprint(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume());
-                    if (fingerprints.contains(fp)) { skipped++; continue; }
-                    fingerprints.add(fp);
+                String action = classify(index, r);
+                if ("SKIP".equals(action)) { skipped++; continue; }
+                if ("MERGE".equals(action)) {
+                    updated += mergeInto(userId, index, r);
+                    continue;
                 }
                 TradeRecord trade = TradeRecord.of(
                         IdGenerator.monotonic("trade_"),
                         r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
                         r.entryDate(), r.tradeTime(), null, null, null, null, r.fee(),
-                        LocalDateTime.now(), null, oid);
+                        LocalDateTime.now(), null, r.orderId());
                 toAdd.add(trade);
+                index.addRecord(trade);
                 imported++;
             }
             for (TradeRecord t : toAdd) tradingHistoryRepository.append(userId, t);
         }
         List<ReconcileLine> lines = reconcileHistorical(userId, rows);
-        log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 耗时 {}ms",
+        log.info("历史成交补录导入 | userId={} | 导入 {} 笔 | 合并回填 {} 笔 | 去重跳过 {} | 非交易 {} | 对账 {} 行 | 耗时 {}ms",
                 userId, imported, updated, skipped, nonTrades, lines.size(), (System.nanoTime() - t0) / 1_000_000);
-        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null);
+        return new HistoricalTradeImportResult(imported, updated, skipped, nonTrades, lines, "append", null, List.of(), null);
+    }
+
+    // ── 统一幂等索引（2026-09-12 账实一致性批）──
+
+    /** 幂等索引：orderId 精确命中 + 指纹命中（含「旧行无编号」与「旧行有编号」两种情况）。 */
+    private static final class IntakeIndex {
+        final Map<String, TradeRecord> byOrderId = new HashMap<>();
+        final Map<String, TradeRecord> byFingerprint = new HashMap<>();
+
+        /** 同一文件内已判定的行也要进索引（同文件重复行同样要合并/跳过）。 */
+        void addRecord(TradeRecord t) {
+            if (t.orderId() != null && !t.orderId().isBlank()) byOrderId.putIfAbsent(t.orderId(), t);
+            if (t.entryDate() != null && t.price() != null) {
+                byFingerprint.putIfAbsent(key(t.symbol(), t.direction(), t.entryDate(), t.price(), t.volume()), t);
+            }
+        }
+
+        static String key(String symbol, TradeDirection direction, LocalDate entryDate,
+                          BigDecimal price, int volume) {
+            return symbol + "|" + direction + "|" + entryDate + "|"
+                    + (price != null ? price.stripTrailingZeros().toPlainString() : "") + "|" + volume;
+        }
+    }
+
+    private IntakeIndex buildIndex(List<TradeRecord> all) {
+        IntakeIndex idx = new IntakeIndex();
+        for (TradeRecord t : all) idx.addRecord(t);
+        return idx;
+    }
+
+    /**
+     * 单行归类：{@code NEW}（新增流水）/ {@code MERGE}（跨来源同笔，合并回填）/ {@code SKIP}（完全重复）。
+     * <p>
+     * 判定顺序：orderId 命中 → 缺元信息则 MERGE，否则 SKIP；指纹命中 → 时间兼容则 MERGE（补齐编号/费用/
+     * 成交时间），时间明显不同（同价同量同日的两笔真实成交）→ NEW。时间兼容规则：
+     * 任一侧缺失、或旧值带纳秒（历史遗留「落盘时刻」被写进成交时间）、或相差 ≤ 1 分钟。
+     */
+    private String classify(IntakeIndex index, TradingImportParser.HistoricalTradeRow r) {
+        if (r.volume() <= 0) return "SKIP";
+        String oid = r.orderId();
+        if (oid != null && !oid.isBlank()) {
+            TradeRecord hit = index.byOrderId.get(oid);
+            if (hit != null) {
+                return needsBackfill(hit, r) ? "MERGE" : "SKIP";
+            }
+        }
+        if (r.entryDate() == null || r.price() == null) return "NEW";
+        TradeRecord fp = index.byFingerprint.get(
+                IntakeIndex.key(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume()));
+        if (fp == null) return "NEW";
+        return timeCompatible(fp.tradeTime(), r.tradeTime()) ? "MERGE" : "NEW";
+    }
+
+    /** 旧流水是否缺「新文件能补上」的元信息（成交编号/手续费/成交时间）。 */
+    private boolean needsBackfill(TradeRecord existing, TradingImportParser.HistoricalTradeRow r) {
+        if (existing.orderId() == null || existing.orderId().isBlank()) {
+            if (r.orderId() != null && !r.orderId().isBlank()) return true;
+        }
+        if (existing.fee() == null && r.fee() != null) return true;
+        return existing.tradeTime() == null && r.tradeTime() != null;
+    }
+
+    /** 成交时间是否可作为同一笔（见 {@link #classify} 注释）。 */
+    private static boolean timeCompatible(LocalTime existing, LocalTime incoming) {
+        if (existing == null || incoming == null) return true;
+        if (existing.getNano() != 0) return true; // 历史遗留：落盘时刻被写进成交时间，不可当判据
+        if (existing.equals(incoming)) return true;
+        return Math.abs(java.time.Duration.between(existing, incoming).getSeconds()) <= 60;
+    }
+
+    /** 合并回填：把新文件里的成交编号/手续费/成交时间补进既有流水（只补缺，不覆盖已有值）。 */
+    private int mergeInto(String userId, IntakeIndex index, TradingImportParser.HistoricalTradeRow r) {
+        TradeRecord existing = null;
+        if (r.orderId() != null && !r.orderId().isBlank()) {
+            existing = index.byOrderId.get(r.orderId());
+        }
+        if (existing == null && r.entryDate() != null && r.price() != null) {
+            existing = index.byFingerprint.get(
+                    IntakeIndex.key(r.symbol(), r.direction(), r.entryDate(), r.price(), r.volume()));
+        }
+        if (existing == null) return 0;
+        // 同编号且已有费用 → 只可能缺成交时间：走既有回填（语义与历史行为一致）
+        if (existing.orderId() != null && !existing.orderId().isBlank() && existing.fee() != null) {
+            return (r.tradeTime() != null && existing.tradeTime() == null)
+                    ? tradingHistoryRepository.backfillTradeTime(userId, existing.id(),
+                            existing.entryDate(), r.tradeTime())
+                    : 0;
+        }
+        int n = tradingHistoryRepository.mergeFromImport(userId, existing.id(), existing.entryDate(),
+                r.orderId(), r.fee(), r.tradeTime());
+        if (n > 0) {
+            log.info("历史成交跨来源同笔合并回填 | userId={} | tradeId={} | {} {} {}股@{} | orderId={}",
+                    userId, existing.id(), r.direction(), r.symbol(), r.volume(), r.price(),
+                    r.orderId() != null ? r.orderId() : "（无）");
+        }
+        return n;
+    }
+
+    /** 按「成交日期 + 成交时刻」排序（回放/LIFO 依赖时间序；A 股 T+1 顺序确定）。 */
+    private static java.util.Comparator<TradingImportParser.HistoricalTradeRow> rowOrder() {
+        return java.util.Comparator
+                .comparing((TradingImportParser.HistoricalTradeRow r) -> r.entryDate() != null ? r.entryDate() : LocalDate.MIN)
+                .thenComparing(r -> r.tradeTime() != null ? r.tradeTime() : LocalTime.MIN);
     }
 
     /**
@@ -1750,16 +2142,64 @@ public class TradingAppService {
     public record ReconcileLine(String symbol, String name, int count, int netVolume,
                                 Integer holdings, String note) {}
 
-    /** 历史成交导入结果：导入笔数 / 回填笔数 / 去重跳过 / 非交易事件 / 对账行 / 模式（sync 同步 | append 补录）/ 每日操作总结。 */
+    /**
+     * 历史成交导入结果：导入笔数 / 合并回填笔数 / 去重跳过 / 非交易事件 / 对账行 /
+     * 模式（sync 回放 | append 补录）/ 每日操作总结 / **无法归属明细（rejected）** / **锚定状态（anchor）**。
+     * <p>
+     * 2026-09-12 账实一致性批：新增 {@code rejected} 与 {@code anchor}——真实成交因系统状态不准
+     * 而无法入账时必须**可见**（旧实现只写 WARN 日志、计入「去重跳过」，3 笔真实卖出就此消失）；
+     * 锚定状态让「为什么这次重放/为什么不重放/为什么被拒绝」在前端有据可查。
+     */
     public record HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                               List<ReconcileLine> lines, String syncMode,
-                                              DailyOperationSummary summary) {
+                                              DailyOperationSummary summary,
+                                              List<RejectedLine> rejected, AnchorStatus anchor) {
+        /** 兼容旧 7 参构造（rejected/anchor 缺省的内部中间结果）。 */
+        public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
+                                           List<ReconcileLine> lines, String syncMode,
+                                           DailyOperationSummary summary) {
+            this(imported, updated, skipped, nonTrades, lines, syncMode, summary, List.of(), null);
+        }
+
         /** 兼容旧 5 参构造（补录模式无总结）。 */
         public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                            List<ReconcileLine> lines) {
-            this(imported, updated, skipped, nonTrades, lines, null, null);
+            this(imported, updated, skipped, nonTrades, lines, null, null, List.of(), null);
         }
     }
+
+    /**
+     * 无法归属的成交（2026-09-12）：该笔**已落逐笔流水**，但持仓/现金未变——系统状态不足以
+     * 判定它归属哪个批次（快照基线缺口 / 漏导买入 / 重复流水污染）。
+     * 前端必须显示（橙色），不得再让它消失在「跳过 N 笔」里。
+     */
+    public record RejectedLine(String symbol, String name, TradeDirection direction, int volume,
+                               BigDecimal price, LocalDate entryDate, String reason) {}
+
+    /** 券商快照锚定状态（导入结果与对账闸门共用）：known=false → 无法判断哪些成交已含在快照内。 */
+    public record AnchorStatus(LocalDate positionsReplace, LocalDate cashImport,
+                               boolean known, boolean holdingsKnown) {
+        static AnchorStatus of(SnapshotAnchor a, boolean holdingsKnown) {
+            return new AnchorStatus(a.positionsReplace(), a.cashImport(), a.known(), holdingsKnown);
+        }
+
+        /** 生效锚定日（较晚者；未知 → null）。显式 @JsonProperty：record 默认只序列化组件，
+         *  前端（与部署自检）需要一个字段名，避免各自拼 positionsReplace/cashImport 取较晚者。 */
+        @com.fasterxml.jackson.annotation.JsonProperty("anchorDate")
+        public LocalDate anchorDate() {
+            if (positionsReplace == null) return cashImport;
+            if (cashImport == null) return positionsReplace;
+            return positionsReplace.isAfter(cashImport) ? positionsReplace : cashImport;
+        }
+    }
+
+    /** 账实对账差异行（2026-09-12）：应有持仓（快照基线 + 锚点之后流水净增减）≠ 落地持仓。 */
+    public record DriftLine(String symbol, String name, Integer snapshotQty, int ledgerDelta,
+                            int derived, Integer holdings, int diff, String note) {}
+
+    /** 账实一致性报告（GET /trading/integrity）：锚定状态 + 差异 + 重放缺口。 */
+    public record IntegrityReport(AnchorStatus anchor, boolean holdingsKnown, List<DriftLine> drift,
+                                  List<RejectedLine> gaps, String note) {}
 
     /** 每日操作总结（RFC 20260825 §6，导入/归集后秒出，不耗 AI）：
      *  买卖聚合 + 批次 diff（新增/扣减）+ 行为标注。 */

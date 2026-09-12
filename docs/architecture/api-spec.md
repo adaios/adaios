@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.60 | 最后更新：2026-09-12**
+**文档版本：v3.61 | 最后更新：2026-09-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-12 | v3.61 | **交易账实一致性批（RFC 20260912 全量落地，用户「要流程上正解」）**——根治生产实测「一次历史成交导入把**已含在券商快照内**的成交又重放一遍」（持仓与现金双计，现金被算成 −26666.85）、**3 笔真实卖出静默消失**、4 笔流水重复落账：①**锚定 fail-closed**：`POST /trading/trades/import` 新增 query `mode`（`auto` 默认 \| `append`）——`auto` 按券商快照锚定**分派**（`entryDate ≤ 锚定日` 的成交只补流水，晚于锚定日才回放持仓+现金）；**锚定缺失而系统已有持仓/账户快照、且本次有需要回放的行 → 400 人话拒绝**（不再把「锚定读不到」当成「不做防重」继续重放），逃生路径 = 先导「持仓股」/「资金股份查询」快照建立锚定，或显式 `mode=append` 只补流水（全新用户无锚定无账目状态仍允许从零回放）；②**预检 `dryRun=true`**：只返回计划、**不写任何文件**，响应新增 `dryRun:true` 与 `plan:{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`；③**幂等统一（一个 intake、一个键空间）**：orderId 命中 → 缺元信息则合并回填否则跳过；指纹（`symbol\|direction\|entryDate\|price\|volume`）命中且成交时间兼容（任一侧缺失、旧值带纳秒、或相差 ≤1 分钟）→ **合并回填不新增行**（补 orderId/fee/成交时间），时间明显不同（同价同量同日两笔）→ 视为两笔——`updated` 语义改为**跨来源同笔合并回填**笔数；④**卖超/未持有不丢数据**：回放行 SELL 超出可归属持仓 → **只落流水 + `rejected` 明细 + ERROR 日志**（持仓/现金不动），新增 `rejected:[{symbol,name,direction,volume,price,entryDate,reason}]`（原因中文人话）；⑤响应新增 `anchor:{positionsReplace,cashImport,known,holdingsKnown,anchorDate}`（`anchorDate` = 两者较晚者，未知为 null）；⑥**新增对账闸门与锚定三端点**：`GET /trading/integrity`（`derived = 券商快照基线 + 锚定日之后流水净增减`，与落地持仓不一致即 `drift`，卖超缺口走 `gaps`，锚定/基线缺失诚实报「无法判定」）+ `GET /trading/anchor`（锚定状态只读）+ `PUT /trading/anchor`（存量环境显式回填锚定日/持仓基线，只改元信息、日期只前进）；⑦`POST /trading/positions/import?replace=true&snapshotDate=yyyy-MM-dd` 与 `POST /trading/imports/cash`（body `snapshotDate`）新增**快照自身日期**（通达信文件名里的日期；不传退回导入日）——补导几天前的快照文件不再把锚定日写成今天；⑧落盘 `trading/snapshot-anchor.json` 现为 `{positionsReplace,cashImport,recordedAt,holdingsRecorded,holdings:[{symbol,name,quantity}]}`（持仓 replace 导入记录基线并置 `holdingsRecorded=true`；更新锚定日**保留**既有基线，不把「未记录」写成「记录为空」——前者对账报「无法判定」，后者是合法基线）；⑨**收盘小结（15:30 `close-summary` 推送）新增一行账实自检**——委派 `TradingAppService.integrity`（唯一口径），有 `drift`/`gaps` 时推一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（**无差异不推**，不制造噪音；自检失败静默降级，不中断推送主流程；文案遵循第一原则=阿呆口吻，非系统视角）。端点 134→**137** |
 | 2026-09-12 | v3.60 | **learn 完整升级批（用户拍板「我要的是完整的升级，成熟的方案」）**——learn 从「能用」变「完整可用」：产物契约与 Mac 侧技能统一 + 图片源 + 对话流 + 全文 + 搜索。①**落盘结构统一**：新卡从扁平 `{type}/{yyyy-MM-dd}_{title}.md` 改为 **`{type}/{topic}/NN-{slug}.md`**（主题目录 + 主题内编号，与 Mac 上 DSH 技能产物同契约），自动维护主题 `README.md`（产品只**追加** `## 阿呆整理记录（自动维护）` 段，**不重写**手工 README）；原始素材从 `learn/_raw/` 暂存区**归位**到 `{type}/{topic}/_raw/`（源与卡放一起）；老扁平卡**照旧可读可写、不强制迁移**。②**LearnCard 新增 `topic`（主题目录名，缺省「未归类」）与 `writable`（false = Mac 上整理的原始卡，只读）**；同名时**本产品卡优先**，别处手工卡同名不再拦住新建（P2-learn20 修复）。③**新端点 `GET /learn/content`**（按 md **原文**返回全文 + 元信息——列表只有产品建模的四段，手工卡的「关键内容详解/金句/概念关系」只在原文里）。④**新端点 `GET /learn/find`**（找卡片：「打开那篇」与学习页搜索，纯规则打分不烧 AI）。⑤**新端点 `POST /learn/digest/image`**（图片源：书页/PPT/讲义/截图 1~3 张 → 视觉模型**忠实提取**文字与图意 → 同一条消化流水线；原图先落 `_raw/`）。⑥`GET /learn/digest/status` 的 `stage` 新增 **`reading`**（正在读图）。⑦**新端点 `POST /learn/migrate`**（**幂等**：把 V1/V2 老式扁平卡 `{type}/{date}_{title}.md` 一次性迁到主题目录，补 `origin`/`topic` 键 + 主题内续号 + 维护该主题 README；Mac 侧技能整理的主题目录卡**一动不动**）。端点 130→**134** |
 | 2026-09-12 | v3.59 | **learn 读侧对齐批（同一个 learn 目录有两个写入方）**——目录里既有产品写的卡（`{type}/{date}_{title}.md`），也有 Mac 上 DSH 技能 A 写在主题子目录里的手工卡（`{type}/{topic}/NN-{slug}.md`，文件名与段名都不一样）。本批**只改读侧与写守卫，不动任何落盘格式**：①`GET /learn/tree`、`GET /learn/cards`、`GET /learn/card` 现在能正确读出 A 形态卡的核心观点/疑问（段名容错：`## 核心观点（一句话）`、`## 二、核心观点` 均识别；A 的 `## 内容脉络` 不做语义改名，如实不映射为「关键要点」）；②`PATCH /learn/cards`、`PATCH /learn/cards/status` 对**产品之外的卡**（A 在 Mac 上整理的原始卡）返回 **400 + 人话**「这张《X》是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你」（原先因按产品路径读写而报「卡片不存在」，语义不准）；③同端点的产品卡行为不变。无端点增删 |
 | 2026-09-12 | v3.58 | **learn 抓取批·对抗审查修复（独立审查官 10 条：P0×2/P1×5/P2×3，全部处置）**——**对外行为有四处在用户可感知层面变了**：①**出站白名单（SSRF 修复）**：`POST /learn/digest` 的 `url` 现在会先过出站策略——**私有/回环/链路本地/云元数据地址、非 80/443 端口、非 http(s) 协议一律 400 人话拒绝**（「这个地址不像是能公开访问的内容页，我就不去抓了」），重定向改为**逐跳复检**（超 3 跳 → 人话拒绝），字幕/快照等第三方响应地址收敛到域名白名单，响应体加上限（正文 4MB / 音频 64MB，超限人话失败）；②**不再把「字幕接口报错」当「没字幕」**：接口报错/限流是可重试错误 → 直接人话失败（「B站字幕接口这次没返回（可能限流了），稍后再试一次」），**不再弹付费转写确认**（原先会引导用户为本来能省的钱买单）；同理**音频地址拿不到时在报价前就失败**，不让用户为做不到的事点头；③**转写费用按实际时长结算**（原先一律按预估；时长未知按 30 分钟估会低估）——`GET /learn/digest/quota` 与 `cost` 里的数字现在反映转码产物的真实时长；④**先预留后花钱**：转写前先记账（账本写不进去就一分钱不花），转写失败**退回预留**，因此「转写失败」不再消耗额度；另：账本文件损坏时**拒绝转写**（fail-closed，原先按空账本处理等于额度归零、闸门失效）；落盘要求「核心观点或要点至少一个非空」（原先只有标题也会落一张空卡）；等确认期间 `stage` 置空（原先返回 `transcribing`，前端会显示「正在转写」而实际在等你拍板）。无端点增删 |
@@ -604,26 +605,43 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 > **与 sync 模式（`trades/import`）互补**：`trades/import` 的 sync 处理**增量**（每日当天成交），本端点一次性**对齐存量账本**（历史成交全量导入后清理快照残留）。web 历史成交 Tab「一键同步」按钮入口。
 
-### `POST /api/v1/trading/trades/import` — 历史成交导入（第五份文件，2026-08-18；2026-08-23 加回填；2026-08-25 双模式）
+### `POST /api/v1/trading/trades/import` — 历史成交导入（第五份文件，2026-08-18；2026-08-23 加回填；2026-08-25 双模式；v3.61 锚定 fail-closed + 幂等统一 + 预检）
 > 需 trading 插件（403）。
 
-通达信「历史成交查询」导出 → **自动识别双模式**（RFC 20260825 §5）：
+通达信「历史成交查询」导出 → 落逐笔流水（**唯一成交真相源**），并按**券商快照锚定**决定是否回放持仓/现金。
 
-- **同步模式（`syncMode="sync"`）**：全部成交在最近 10 个自然日内（覆盖周末/节假日）→ 视为**当日成交导入**，逐笔走正常交易链路（持仓增减 + 现金/手续费推导 + 逐笔流水 + 时间线记录），`orderId` 幂等（同编号重复导入不重复加减），处理完做流水重放对账
-- **补录模式（`syncMode="append"`）**：存在更早成交 → 维持原语义**只补流水不重算持仓/现金**（缺窗口前基线，回放重建算不出券商口径；持仓/成本/现金以全量覆盖导入为准），返回对账提示
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `mode` | String | 否 | `auto`（默认）按锚定分派：`entryDate ≤ 锚定日` 只补流水、晚于锚定日回放；`append` **全部只补流水**（不动持仓/现金，锚定缺失时的安全模式）|
+| `dryRun` | boolean | 否 | 默认 `false`；`true` = **只返回计划，不写任何文件** |
 
 **body**：`{"content":"通达信历史成交查询导出文本（UTF-8 转码后，表头含 成交日期/证券代码/买卖标志/成交编号）"}`
 
-- 每笔落流水：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**；无编号按 symbol+direction+entryDate+price+volume 指纹去重）；同步模式 `orderId` 透传流水（幂等键不丢）
-- **缺失字段回填（2026-08-23）**：补录模式幂等命中的已存在记录，若旧记录 `tradeTime` 为空且新文件带成交时间 → 回填该笔成交时间（计入 `updated`），不落新流水
+- **锚定分派（`mode=auto`，v3.61）**：券商快照（`replace=true` 持仓导入 / 资金股份查询）落的锚定日代表「券商当下真实状态**已含**此前全部成交」，因此 `entryDate ≤ 锚定日` 的成交**只补流水**（不动持仓/现金），晚于锚定日才**回放**（持仓增减 + 现金/手续费推导 + 时间线记录）。RFC 20260825 的「sync/append 双模式自动识别」在 v3.61 被锚定口径取代——`syncMode` 字段仍在，含义变为「本次**是否有回放行**」。
+- **fail-closed（v3.61，本批核心）**：**锚定未知**（`trading/snapshot-anchor.json` 缺失/损坏/两日期皆空）**且系统已有持仓或账户快照**，而本次又有需要回放的行 → **400 人话拒绝**（「券商快照锚定缺失…本次有 N 笔近日成交需要回放持仓/现金，但没有锚定日就无法判断哪些成交已包含在券商口径内——照旧回放会把它们重复计算一遍。请先导入『持仓股』或『资金股份查询』快照建立锚定；若只想补逐笔流水（不动持仓/现金），用『仅补流水』模式重试」）。旧行为 = 锚定读不到就当「不做防重」继续全量重放（2026-09-12 生产事故根因：持仓 + 现金双计，现金被算成 −26666.85）。**全新用户**（无持仓无账户快照）无锚定仍允许从零回放。
+- **预检（`dryRun=true`，v3.61）**：只算计划不落盘（改账动作先让人看见，对齐「花钱先报价」）；响应带 `dryRun:true` + `plan:{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`，**trades/、positions.md、account.json、imports/ 字节不变**。
+- **每笔落流水**：`entryDate`=成交日期、`fee`=|发生金额−成交金额|（券商实扣）、`orderId`=成交编号（**幂等键**）；无编号按指纹去重。
+- **幂等统一（v3.61：一个 intake、一个键空间，append 与 replay 同一判定）**——`orderId` 与指纹**双键都判**，与旧行有无 `orderId` 无关：
+  - `orderId` 命中 → 缺元信息（`fee`/成交时间/`orderId`）则**合并回填**，否则跳过；
+  - 指纹（`symbol|direction|entryDate|price|volume`）命中且成交时间**兼容**（任一侧缺失、或旧值带纳秒、或相差 ≤1 分钟）→ **合并回填不新增行**（补 `orderId`/`fee`/成交时间）；
+  - 时间明显不同（同价、同量、同日的两笔真实成交）→ 视为**两笔**，照常新增。
+  这条修掉了 2026-08-26 四笔跨来源重复流水（旧行为「同步/补录两套判定」）。
+- **卖超/未持有不丢数据（v3.61）**：回放行的 SELL 超出可归属持仓 → **流水照落**（真实成交必须有记录）+ 计入 `rejected` 行级明细 + ERROR 日志，**持仓/现金不动**，同一缺口由 `GET /trading/integrity` 的 `gaps` 可重复核算。旧行为 = 只写 WARN 后丢弃（3 笔真实卖出有去无回）。
 - 数量 0 行（股息红利税等非交易资金事件）不落流水，计入 `nonTrades`
 - **非交易占位代码跳过（2026-08-25 用户反馈）**：明显非股票代码（通达信占位段 `79/80/81/82` 开头 6 位，如 `799999`「登记指定」/配号）一律不落库，计入 `nonTrades`（前端「非交易 N」可见）——此前 `799999 登记指定` 被当真实持仓入库
 - **股息类资金事件记账（2026-08-25 用户拍板方案 A）**：备注列含 股息/红利/入账 的数量 0 行（如「股息红利税差异化处理资金下账」「股息入账」）→ **计入现金**：入账（发生金额正）现金 +N、红利税（负）现金 −N；不动持仓、不进批次；落一条 volume=0 流水（amount=发生金额，reason=源文件备注）可回溯；幂等（symbol+日期+发生金额绝对值指纹）；其余数量 0 行（无备注识别）计入 `nonTrades`
 
-**响应**（2026-08-25 扩展）：
+**响应**（2026-08-25 扩展；v3.61 新增 `rejected`/`anchor`/`dryRun`/`plan`）：
 ```json
 {"imported":45,"updated":3,"skipped":1,"nonTrades":1,
  "syncMode":"sync",
+ "rejected":[{"symbol":"600487","name":"亨通光电","direction":"SELL","volume":400,"price":65.31,
+   "entryDate":"2026-09-03","reason":"卖出数量超过可归属持仓（持有 0 股）——该笔已落流水、持仓/现金未动，请核对快照基线或补导买入成交"}],
+ "anchor":{"positionsReplace":"2026-09-09","cashImport":"2026-09-09","known":true,
+   "holdingsKnown":true,"anchorDate":"2026-09-09"},
+ "dryRun":false,
  "summary":{"date":"2026-08-25","buyCount":2,"sellCount":1,"buyAmount":10600.0,"sellAmount":3900.0,
    "newLots":1,"deductedLots":1,
    "behaviors":[{"type":"loss-avg-down","label":"亏损加仓","symbol":"600000","name":"浦发银行",
@@ -631,10 +649,67 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
  "lines":[{"symbol":"000725","name":"京东方Ａ","count":7,"netVolume":-400,"holdings":4800,
    "note":"当前持仓 4800 ≠ 流水净 -400——存在窗口前基线或未导入成交（持仓快照为准，差额已按初始批次兜底）"}]}
 ```
-- `imported` = 落流水笔数 / `updated` = 回填缺失成交时间笔数 / `skipped` = 幂等去重跳过 / `nonTrades` = 非交易事件
-- `syncMode` = `sync`（同步持仓）或 `append`（只补流水）
+- `imported` = 落流水笔数 / `updated` = **跨来源同笔合并回填**笔数（v3.61 语义统一；旧语义「回填缺失成交时间笔数」并入此处；RFC §四 原拟新增独立 `merged` 字段，**实现沿用 `updated`**，`merged` 只出现在 `plan` 里）/ `skipped` = 幂等去重跳过 / `nonTrades` = 非交易事件
+- `rejected` = **已落流水、未动持仓/现金**的真实成交（卖超/未持有）行级明细，`reason` 为中文人话；不再静默丢弃
+- `anchor` = 券商快照锚定状态：`known=false` → 无法判断哪些成交已含在快照内；`holdingsKnown` = 持仓基线是否已记录；`anchorDate` = `positionsReplace`/`cashImport` **较晚者**，未知为 `null`
+- `dryRun` = 本次是否为预检（恒在响应中）；`plan`（仅 `dryRun=true`）= `{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`，**且不写任何文件**
+- `syncMode` = `sync`（本次有回放行）或 `append`（全部只补流水）
 - `summary` = **每日操作总结**（RFC 20260825 §6，仅 sync 模式存在；不耗 AI 秒出）：买卖笔数/金额 + 批次 diff（`newLots` 新增批次、`deductedLots` 被扣减批次）+ `behaviors` 行为标注（`type`：loss-avg-down 亏损加仓 / chase-high 追高 / short-new 短线新开 / stop-loss-ignored 破止损未走 / giveback 浮盈回吐 / short-overdue 短线超期）
 - `lines` = 对账提示：每标的 流水净增减 vs 当前持仓快照，指出基线缺口/已清仓（只报告不改数据）
+
+**错误**：锚定 fail-closed 拒绝 → **400** 人话（含两条逃生路径）；`content` 缺失 → 400。
+
+### `GET /api/v1/trading/integrity` — 账实一致性自检（对账闸门，v3.61，2026-09-12）
+> 需 trading 插件（403）。
+
+把「三条真源是否自洽」变成**当天可见**的只读闸门（2026-09-12 生产事故：口径互斥三天，靠用户肉眼发现）。**口径**：`derived` = 券商快照基线数量（锚定日 `replace` 导入时记录的 `holdings`）+ 锚定日之后**逐笔流水净增减**；与落地持仓不一致即 `drift`。本端点**只报告不改数据**。
+
+**Response（200）**：
+```json
+{
+  "anchor": {"positionsReplace":"2026-09-09","cashImport":"2026-09-09","known":true,
+             "holdingsKnown":true,"anchorDate":"2026-09-09"},
+  "holdingsKnown": true,
+  "drift": [{"symbol":"002428","name":"云南锗业","snapshotQty":300,"ledgerDelta":100,
+             "derived":400,"holdings":350,"diff":-50,
+             "note":"应有 400 股（快照基线 300 + 锚点后流水 +100），落地 350 股，差 -50 股——账实不符，请核对流水/重导券商快照"}],
+  "gaps": [{"symbol":"600487","name":"亨通光电","direction":"SELL","volume":400,"price":65.31,
+            "entryDate":"2026-09-03","reason":"重放时持仓不足（持有 0 股）——快照基线缺口或漏导买入；该笔未计入派生持仓"}],
+  "note": "账实不符：1 只标的持仓不一致、1 笔回放缺口（锚定日 2026-09-09）——先核对逐笔流水，再决定是否重导券商快照重建口径"
+}
+```
+- `anchor` = 与导入响应同一结构；`holdingsKnown` = 快照基线是否已记录（决定能否对账）
+- `drift[]`：`snapshotQty`（快照基线，缺则 `null`）/`ledgerDelta`（锚定日之后流水净增减）/`derived`（应有）/`holdings`（落地）/`diff`（落地−应有）/`note`（人话）；`diff=0` 的标的不列出
+- `gaps[]`：重放时**卖超/未持有**的缺口行（与导入响应 `rejected` 是同一件事，可重复核算，不依赖当时返回）——缺口行**既不计入 `derived` 也不计入 `ledgerDelta`**（否则会得出「应有 −800 股」这种荒谬结论），只以 `gaps` 报出等人工核对/重导快照
+- **降级诚实**：锚定缺失 → `anchor.known=false` + `note`「无法判定」+ `drift:[]`；锚定有但基线未记录（`holdingsKnown=false`）→ 同样不误报差异，`note` 指路「重导一次『持仓股』快照即可建立基线」
+- 发现不符时后端记 ERROR 日志（含明细前 5 条）；deploy-gate 以「`anchor.known=false` 或 `drift` 非空」为显式告警
+
+### `GET /api/v1/trading/anchor` — 券商快照锚定状态（v3.61，2026-09-12）
+> 需 trading 插件（403）。
+
+**只读**（不触发任何写入），供前端提示与部署自检。
+
+**Response（200）**：`{"positionsReplace":"2026-09-09","cashImport":"2026-09-09","known":true,"holdingsKnown":true,"anchorDate":"2026-09-09"}`
+
+- `positionsReplace`/`cashImport` = 持仓 `replace` 导入日 / 资金股份导入日（未发生过为 `null`）
+- `known` = 至少一个日期存在（`false` → 无法判断哪些成交已含在快照内：导入会走 fail-closed 拒绝，需先建锚定或 `mode=append`）
+- `holdingsKnown` = 快照持仓基线是否已记录（决定对账闸门能否判定）
+- `anchorDate` = 生效锚定日 = `positionsReplace`/`cashImport` 的**较晚者**（皆无 → `null`）
+
+### `PUT /api/v1/trading/anchor` — 锚定回填（存量环境显式自愈，v3.61，2026-09-12）
+> 需 trading 插件（403）。
+
+给「升级前已导过快照、但没写锚定文件」的存量环境一次**显式**自愈手段（否则 fail-closed 会把用户卡死，只能靠重导快照文件绕）。**只改元信息（锚定日/持仓基线），不动持仓/现金/流水**；日期**只前进不后退**。
+
+**Request Body**（三者至少给一个，全空 → **400** 人话「锚点回填至少要给一个日期（positionsReplace / cashImport）或持仓基线」）：
+```json
+{"positionsReplace":"2026-09-09","cashImport":"2026-09-09",
+ "holdings":[{"symbol":"600206","name":"有研新材","quantity":600}]}
+```
+- `positionsReplace`/`cashImport`：`yyyy-MM-dd`（兼容 `yyyyMMdd`；格式错 → 400 人话）；小于当前值 → 忽略（**不后退**）
+- `holdings`：可选，补建对账基线（`GET /trading/integrity` 的 `snapshotQty` 来源）；`symbol` 空的行忽略
+
+**Response（200）**：`{"positionsReplace":"2026-09-09","cashImport":"2026-09-09","known":true,"holdingsKnown":true,"anchorDate":"2026-09-09"}`（回填后的锚定状态，与 `GET /trading/anchor` 同结构）
 
 ### `GET /api/v1/trading/lots` — 批次视图（RFC 20260825 逐笔批次跟踪）
 > 需 trading 插件（403）。
@@ -912,6 +987,8 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `POST /api/v1/trading/imports/cash` — 资金股份查询导入（现金 + 精确成本）
 > 需 trading 插件（403，W-P2-14 走查补全 2026-08-17）。
 
+**body（v3.61）**：`{"content":"…转码后文本…","snapshotDate":"2026-09-09"}`——`snapshotDate` 可选（`yyyy-MM-dd`，兼容 `yyyyMMdd`），语义 = **快照自身日期**（通达信「资金股份查询」文件名里的日期）：该日期同时作为**账户快照日期**与**现金锚定日**（`trading/snapshot-anchor.json` 的 `cashImport`）；不传则退回导入日（今天）。补导几天前的资金文件必须传它，否则现金锚定日偏晚会把快照日之后、锚定日之前的现金变动误判为已包含。格式错 → 400 人话。
+
 ### `POST /api/v1/trading/imports/save` — 导入文件上传留存（通达信导出，2026-08-16）
 
 **multipart**：`file`（通达信导出 txt，GBK/UTF-8 均可）
@@ -924,6 +1001,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `POST /api/v1/trading/positions/import` — 持仓初始化导入（通达信导出 → 持仓快照，2026-08-16）
 
 **query**：`replace`（可选，默认 `false`）——2026-08-18 确认批次：`replace=true` = **全量覆盖**（以文件为准，导入后移除文件里不存在的持仓，含 0 股残留；web 通达信持仓导入默认传 true）
+**query（v3.61）**：`snapshotDate`（可选，`yyyy-MM-dd`，兼容 `yyyyMMdd`）——**快照自身日期**（通达信「持仓股」文件名里的日期）。`replace=true` 时该日期作为**券商快照锚定日**并记录**持仓基线**（`trading/snapshot-anchor.json` 的 `holdings`，对账闸门 `GET /trading/integrity` 用它算 `derived`）；不传则退回导入日（今天）。补导几天前的快照文件必须传它——否则锚定日被写成今天，锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。格式错 → 400 人话。
 
 **body**（数组，可空）：
 ```json

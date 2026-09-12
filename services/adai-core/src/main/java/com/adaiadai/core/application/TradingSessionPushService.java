@@ -663,6 +663,10 @@ public class TradingSessionPushService {
             sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
                     .append(isBreached ? " ⚠️ 破止损" : "").append("\n");
         }
+        // 2026-09-12 账实一致性批：收盘小结带一句「账对不上」自检——把口径崩坏送到眼前，
+        // 不再依赖用户某天自己发现（本次生产事故：三条真源互相矛盾三天，靠人肉眼看出）。
+        String mismatch = mismatchLine(userId);
+        if (mismatch != null) sb.append(mismatch);
         // 一句话收尾（按状态给建议，参考不是指令）
         if (breached > 0) {
             sb.append("有 ").append(breached).append(" 只破了止损没走——明早开盘按纪律处理（R66）。");
@@ -672,6 +676,30 @@ public class TradingSessionPushService {
             sb.append("今天没有操作，持仓按计划拿着就行。");
         }
         return sb.toString();
+    }
+
+    /**
+     * 账实不符自检行（2026-09-12）：委派 {@code TradingAppService.integrity}（唯一口径），
+     * 有 drift/gaps 才追加一行（无差异不制造噪音）；失败静默降级（推送主流程不因此中断）。
+     * 文案遵循第一原则：是「阿呆对不上账」，不是「系统检测到数据不一致」。
+     */
+    private String mismatchLine(String userId) {
+        if (tradingAppService == null) return null;
+        try {
+            TradingAppService.IntegrityReport report = tradingAppService.integrity(userId);
+            int drift = report.drift() != null ? report.drift().size() : 0;
+            int gaps = report.gaps() != null ? report.gaps().size() : 0;
+            if (drift == 0 && gaps == 0) return null;
+            StringBuilder line = new StringBuilder("⚠️ 阿呆对不上账：");
+            if (drift > 0) line.append(drift).append(" 只标的的持仓和流水对不上");
+            if (drift > 0 && gaps > 0) line.append("、");
+            if (gaps > 0) line.append(gaps).append(" 笔成交没能并进持仓");
+            line.append("——打开交易页，我把明细列给你看\n");
+            return line.toString();
+        } catch (RuntimeException e) {
+            log.warn("收盘小结：账实自检失败（跳过该行）| userId={} | {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     /** 单票占比（总资产口径，P1-交易4 2026-08-17：分母 = 持仓市值 + 现金；现金不可用按 0）。 */
