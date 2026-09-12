@@ -217,7 +217,7 @@ cd services/adai-core
 | 项 | 要求 | 缺了会怎样 |
 |:---|:-----|:-----------|
 | `ffmpeg` | 生产服务器需 `sudo apt install -y ffmpeg`（B站音频是 fMP4，必须转 16k 单声道 mp3 才能送云端 ASR）| 无字幕视频走不通，人话提示「服务器上还没装转码工具」；**有字幕视频与文章不受影响** |
-| `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）|
+| `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）| **（2026-09-13 已配：凭证不入库、`.env` 权限 640；配好后重启服务，`GET /learn/digest/quota` 应报 `asrAvailable:true`）**
 | `ADAI_BILIBILI_COOKIE`（**可选**）| B站 登录态 Cookie（至少 `SESSDATA=...`）——**未登录时 B站 字幕接口一律返回空**（2026-09-12 实测 6 个视频全空），于是「字幕优先、免费」这条省钱路径实际走不到，每个视频都落进付费转写。配了 Cookie 才有机会拿到 AI 字幕 → 省转写费 | 不配也能用，但视频基本都要转写；**注意隐私**：这等于把你的 B站 登录态放在服务器上，按需开启、随时可撤 |
 > **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）；且如果本机挂了代理（本项目开发机默认 `HTTP_PROXY=127.0.0.1:1087`），curl 打 `http://82.156.111.146:8080` 会被代理拦掉 → 登录拿不到 token。完整可用的跑法（2026-09-12 实测通过）：
 > ```bash
