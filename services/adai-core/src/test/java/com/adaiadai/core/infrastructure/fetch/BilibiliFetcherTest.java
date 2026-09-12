@@ -33,6 +33,8 @@ class BilibiliFetcherTest {
     private final AtomicInteger viewCalls = new AtomicInteger();
     private final AtomicReference<String> lastViewQuery = new AtomicReference<>();
     private final AtomicReference<String> lastPlayurlQuery = new AtomicReference<>();
+    /** 字幕接口收到的 Cookie 头（2026-09-12：可选 B站 登录态，null = 没带）。 */
+    private final AtomicReference<String> lastSubtitleCookie = new AtomicReference<>();
 
     private String viewBody = """
             {"code":0,"data":{"bvid":"BV1xx411c7mD","cid":123456,"title":"用 Harness 做 Agent 工程",
@@ -55,7 +57,10 @@ class BilibiliFetcherTest {
             lastViewQuery.set(ex.getRequestURI().getQuery());
             respond(ex, viewStatus, viewBody);
         });
-        server.createContext("/x/player/v2", ex -> respond(ex, 200, playerBody));
+        server.createContext("/x/player/v2", ex -> {
+            lastSubtitleCookie.set(ex.getRequestHeaders().getFirst("Cookie"));
+            respond(ex, 200, playerBody);
+        });
         server.createContext("/x/player/playurl", ex -> {
             lastPlayurlQuery.set(ex.getRequestURI().getQuery());
             respond(ex, 200, playurlBody.replace("AUDIO_URL", base + "/audio.m4s"));
@@ -86,7 +91,12 @@ class BilibiliFetcherTest {
 
     private BilibiliFetcher fetcher() {
         // 本地 mock server 是 127.0.0.1，故把字幕域名白名单配置成本机（生产为 hdslb.com/bilibili.com）
-        return new BilibiliFetcher(base, 2, "127.0.0.1");
+        return new BilibiliFetcher(base, 2, "127.0.0.1", "");
+    }
+
+    /** 带 B站 登录态 Cookie 的实例（可选配置：未登录时字幕接口一律返回空，见 2026-09-12 实测）。 */
+    private BilibiliFetcher fetcherWithCookie(String cookie) {
+        return new BilibiliFetcher(base, 2, "127.0.0.1", cookie);
     }
 
     // ── 域名识别（B8 白名单：只认内容页域名）──
@@ -270,5 +280,22 @@ class BilibiliFetcherTest {
     void downloadAudio_blankUrl_throwsHumanMessage() {
         assertThrows(LearnException.class, () -> fetcher().downloadAudio(""));
         assertThrows(LearnException.class, () -> fetcher().downloadAudio(null));
+    }
+
+    // ── 可选 B站 Cookie（2026-09-12：未登录字幕接口一律返回空 → 免转写的省钱路径走不到）──
+
+    @Test
+    void fetch_cookieConfigured_isSentToSubtitleEndpoint() {
+        fetcherWithCookie("SESSDATA=abc123").fetch(base + "/video/BV1xx411c7mD");
+
+        assertEquals("SESSDATA=abc123", lastSubtitleCookie.get(),
+                "配置了 Cookie 就要带上（否则拿不到 AI 字幕，只能付费转写）");
+    }
+
+    @Test
+    void fetch_noCookieConfigured_sendsNoCookieHeader() {
+        fetcher().fetch(base + "/video/BV1xx411c7mD");
+
+        assertEquals(null, lastSubtitleCookie.get(), "没配就不带（默认不在服务器上放用户登录态）");
     }
 }

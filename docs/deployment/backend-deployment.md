@@ -218,6 +218,8 @@ cd services/adai-core
 |:---|:-----|:-----------|
 | `ffmpeg` | 生产服务器需 `sudo apt install -y ffmpeg`（B站音频是 fMP4，必须转 16k 单声道 mp3 才能送云端 ASR）| 无字幕视频走不通，人话提示「服务器上还没装转码工具」；**有字幕视频与文章不受影响** |
 | `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）|
+| `ADAI_BILIBILI_COOKIE`（**可选**）| B站 登录态 Cookie（至少 `SESSDATA=...`）——**未登录时 B站 字幕接口一律返回空**（2026-09-12 实测 6 个视频全空），于是「字幕优先、免费」这条省钱路径实际走不到，每个视频都落进付费转写。配了 Cookie 才有机会拿到 AI 字幕 → 省转写费 | 不配也能用，但视频基本都要转写；**注意隐私**：这等于把你的 B站 登录态放在服务器上，按需开启、随时可撤 |
+> **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）——部署前先 `export`，否则该步会自报「无法获取登录 token」。
 | 月度转写配额 | `adai.learn.asr.month-quota-seconds`（默认 `36000` = 10 小时，fun-asr 免费额度内）| 用满即拒绝并说明剩余额度，不会静默花钱 |
 | **单实例部署（硬约束）** | **必须单实例/单进程**：learn 的消化任务态（`jobs`）是**进程内 Map**、转写配额靠 **JVM 内** per-user 条带锁做的读-改-写原子 | **多实例/同机多进程会超卖**：同一素材可能被转写两次（重复花钱）、月度额度可能被突破（REVIEW P2-learn18）。将来要横向扩容，必须先把任务态与账本移出进程（或引入分布式锁）|
 

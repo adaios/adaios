@@ -64,14 +64,25 @@ public class BilibiliFetcher implements LearnSourceFetcher {
     private final String apiBase;
     private final int maxRetry;
     private final List<String> subtitleHosts;
+    /**
+     * 可选的 B站 Cookie（{@code adai.learn.bilibili.cookie} / env {@code ADAI_BILIBILI_COOKIE}）。
+     * <p>
+     * 为什么需要（2026-09-12 实测）：**未登录时字幕接口一律返回空**——连试 6 个视频
+     * {@code player/v2} 的 {@code subtitle.subtitles} 都是空数组，于是「字幕优先、免费」这条
+     * 省钱路径实际走不到，每个视频都落进付费转写。带上登录态 Cookie（至少 SESSDATA）后，
+     * B站 的 AI 字幕才有机会返回 → 能省钱。**默认为空 = 不启用**（不在服务器上放你的登录态）。
+     */
+    private final String cookie;
 
     public BilibiliFetcher(@Value("${adai.learn.bilibili.api-base:https://api.bilibili.com}") String apiBase,
                            @Value("${adai.learn.fetch.max-retry:2}") int maxRetry,
                            @Value("${adai.learn.bilibili.subtitle-hosts:" + DEFAULT_SUBTITLE_HOSTS + "}")
-                           String subtitleHosts) {
+                           String subtitleHosts,
+                           @Value("${adai.learn.bilibili.cookie:${ADAI_BILIBILI_COOKIE:}}") String cookie) {
         this.apiBase = apiBase;
         this.maxRetry = Math.max(1, maxRetry);
         this.subtitleHosts = substringHosts(subtitleHosts);
+        this.cookie = cookie == null ? "" : cookie.strip();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -217,7 +228,9 @@ public class BilibiliFetcher implements LearnSourceFetcher {
      * @throws LearnException 接口报错/限流（**可重试**，调用方不得当成「没字幕」）
      */
     private String fetchSubtitle(String bvid, long cid) {
-        JsonNode root = getJson(apiBase + "/x/player/v2?bvid=" + bvid + "&cid=" + cid);
+        // 带登录态请求字幕列表（未登录时 B站一律返回空 → 只能付费转写）
+        JsonNode root = getJson(apiBase + "/x/player/v2?bvid=" + bvid + "&cid=" + cid,
+                !cookie.isBlank());
         if (root.path("code").asInt(-1) != 0) {
             throw new LearnException("B站字幕接口返回 code " + root.path("code").asInt(-1));
         }
@@ -294,11 +307,21 @@ public class BilibiliFetcher implements LearnSourceFetcher {
 
     /** 带退避重试 + 响应体上限的 JSON 请求（限流/5xx/网络抖动重试；业务 4xx 不重试）。 */
     private JsonNode getJson(String apiUrl) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(apiUrl))
+        return getJson(apiUrl, false);
+    }
+
+    /**
+     * @param withCookie 是否带上配置的 B站 登录态（只有字幕接口需要——AI 字幕对未登录用户不返回）
+     */
+    private JsonNode getJson(String apiUrl, boolean withCookie) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(apiUrl))
                 .timeout(Duration.ofSeconds(20))
                 .header("User-Agent", UA)
-                .header("Referer", REFERER)
-                .GET().build();
+                .header("Referer", REFERER);
+        if (withCookie && !cookie.isBlank()) {
+            builder.header("Cookie", cookie);
+        }
+        HttpRequest request = builder.GET().build();
         IOException last = null;
         for (int attempt = 1; attempt <= maxRetry; attempt++) {
             try {
