@@ -30,7 +30,7 @@
 - **生产服务器**：`82.156.111.146`（北京 · 腾讯云轻量 · 2核4G · Ubuntu 24.04 LTS · 2026-08-19 从 49.235.37.220 迁移，旧服务器到期下线）
 - **生产域名**：`adaiadai.com`（2026-09-01 已上线：ICP 备案通过 `京ICP备2026056893号` + DNS + Caddy HTTPS + 登录体系，见 `docs/deployment/backend-deployment.md` §10）
 - 生产访问：web `https://adaiadai.com` · admin `https://adaiadai.com/admin/` · API `https://api.adaiadai.com`（**需登录 Bearer token**，旧 IP:8080 直连已不对外）
-- **生产当前版本（2026-09-12 部署）**：后端 **v3.60**（learn 完整升级批）· web 产物同日替换（API 指向 `https://api.adaiadai.com` + CanvasKit/字体本地化补丁）· **learn 前置：`ffmpeg 6.1.1` 已装 ✅ / `DASHSCOPE_API_KEY` 未配 ⚠️**（无字幕视频走不通，代码如实人话失败；有字幕视频、文章、图片不受影响）· 生产 `.env` 已补 `ADAI_SMOKE_ACCOUNT/PASSWORD`；**注意 deploy-gate 的 GATE-AFTER smoke 读的是「本机环境变量」**，须 `export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=…` 再跑门禁（否则这一步会自报无法取 token）；本次已按同口径手工跑通 smoke 9/9 200（feed/记忆/交易建议/一句话解析/时间线/标签 + learn 资产树/全文/找卡）
+- **生产当前版本（2026-09-12 部署）**：后端 **v3.60**（learn 完整升级批）· web 产物同日替换（API 指向 `https://api.adaiadai.com` + CanvasKit/字体本地化补丁）· **learn 前置：`ffmpeg 6.1.1` 已装 ✅ / `DASHSCOPE_API_KEY` 未配 ⚠️**（无字幕视频走不通，代码如实人话失败；有字幕视频、文章、图片不受影响）· **iOS app**：release 包已构建签名就绪（`apps/adai-app/build/ios/iphoneos/Runner.app`，19.6MB，API 指向生产域名），待手机可达即装机（本轮 `devicectl` 报设备 unavailable）· 生产 `.env` 已补 `ADAI_SMOKE_ACCOUNT/PASSWORD`；**注意 deploy-gate 的 GATE-AFTER smoke 读的是「本机环境变量」**，须 `export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=…` 再跑门禁（否则这一步会自报无法取 token）；本次已按同口径手工跑通 smoke 9/9 200（feed/记忆/交易建议/一句话解析/时间线/标签 + learn 资产树/全文/找卡）
 - 生产目录：`/opt/adaios`（backend/data/web/admin/os；`.env` 含密钥不进 git）
 - 数据路径：`data/{userId}/...`（本机账号 = `data/adai/`，default 已迁移移除；测试可用 `data/default/`）
 
