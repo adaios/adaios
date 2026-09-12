@@ -241,6 +241,44 @@ public class LearnController {
         return ResponseEntity.ok(digestService.edit(userId, type, title, patch));
     }
 
+    /**
+     * 删卡片（2026-09-13 缺口批）：{@code ?type=&title=} 定位。
+     * <p>
+     * **软删除**——文件移入 {@code learn/_trash/}（可人工捡回），不真丢内容；只允许删本产品产出的卡
+     * （别处整理的原始卡人话拒绝）。**级联**：指向该卡的 trading 反哺候选一并清理（P2-learn11 治本）。
+     */
+    @DeleteMapping("/cards")
+    public ResponseEntity<?> deleteCard(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String type,
+            @RequestParam String title) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (!LearnCard.isValidType(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
+        }
+        String learnCardId = digestService.deleteCard(userId, type, title);
+        java.util.List<String> cascaded = candidateService.deleteByLearnCardId(userId, learnCardId);
+        return ResponseEntity.ok(Map.of(
+                "deleted", true,
+                "title", title,
+                "learnCardId", learnCardId,
+                "cascadedCandidates", cascaded));
+    }
+
+    /**
+     * 改主题（2026-09-13 缺口批）：把卡片挪到另一个主题目录（新主题内续号），frontmatter 的
+     * {@code topic} 与两个主题的 README 索引一起同步。body {@code {"type","title","topic"}}。
+     */
+    @PatchMapping("/cards/topic")
+    public ResponseEntity<?> moveTopic(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnTopicRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(digestService.moveToTopic(userId, body.type(), body.title(), body.topic()));
+    }
+
     /** 资产树：learn 按 type 分组（卡片清单）。 */
     @GetMapping("/tree")
     public ResponseEntity<?> tree(
@@ -416,6 +454,12 @@ public class LearnController {
     public record LearnCandidateRequest(
             @NotBlank(message = "类型不能为空") String type,
             @NotBlank(message = "卡片标题不能为空") String title) {}
+
+    /** 改主题请求：type/title 定位卡片，topic 目标主题名。 */
+    public record LearnTopicRequest(
+            @NotBlank(message = "类型不能为空") String type,
+            @NotBlank(message = "卡片标题不能为空") String title,
+            @NotBlank(message = "主题名不能为空") String topic) {}
 
     /** 复习提醒开关请求（S-learn2）：{"enabled": true/false}。 */
     public record LearnReviewSettingRequest(Boolean enabled) {}

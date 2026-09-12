@@ -193,4 +193,20 @@ class LearnKnowledgeSourceTest {
         assertTrue(ctx.contains("harness-engineering"), "注入行带主题名（便于按主题召回）：" + ctx);
         assertFalse(ctx.contains("学习资料包"), "索引不混进召回：" + ctx);
     }
+
+    @Test
+    void recentNotes_skipsTrashedCards_deletedCardIsNotRecalled() {
+        // 2026-09-13 卡片管理批：删卡是软删除（进 learn/_trash/），回收站里的卡**不许再被问答召回**
+        storage.write("adai", "learn/ai/量价关系/01-活着的卡.md",
+                "---\ntitle: 活着的卡\ntype: ai\ncreated: 2026-09-13\n---\n\n## 核心观点\n\n活着的观点\n");
+        storage.write("adai", "learn/_trash/learn_del_123-01-删掉的卡.md",
+                "---\ntitle: 删掉的卡\ntype: ai\ncreated: 2026-09-13\n---\n\n## 核心观点\n\n删掉的观点\n");
+
+        var notes = source.recentNotes("adai");
+        String ctx = source.globalContext("adai");
+
+        assertEquals(1, notes.size(), "回收站里的卡不算笔记：" + notes);
+        assertTrue(ctx.contains("活着的卡"));
+        assertFalse(ctx.contains("删掉的卡"), "已删的卡不该再出现在召回里：" + ctx);
+    }
 }

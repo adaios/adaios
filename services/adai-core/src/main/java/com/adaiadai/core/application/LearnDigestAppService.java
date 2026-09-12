@@ -911,6 +911,35 @@ public class LearnDigestAppService {
     }
 
     /**
+     * 删卡片（软删除到 {@code learn/_trash/}，可人工捡回）——2026-09-13 缺口批。
+     *
+     * @return 被删卡片的原始相对路径（控制器据此级联清理跨域回链）
+     */
+    public String deleteCard(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        if (title == null || title.isBlank()) {
+            throw new LearnException("卡片标题不能为空");
+        }
+        return repository.deleteCard(userId, type, title);
+    }
+
+    /** 改主题（移文件 + 双主题 README 同步）；只允许本产品产出的卡。 */
+    public LearnCard moveToTopic(String userId, String type, String title, String topic) {
+        if (!LearnCard.isValidType(type)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        if (title == null || title.isBlank()) {
+            throw new LearnException("卡片标题不能为空");
+        }
+        if (topic == null || topic.isBlank()) {
+            throw new LearnException("请给个主题名（比如「量价关系」）");
+        }
+        return repository.moveToTopic(userId, type, title, topic);
+    }
+
+    /**
      * 老式扁平卡一次性迁移到主题目录（2026-09-12 完整升级批；**幂等**）。
      * <p>
      * 为什么需要：V1/V2 的产品卡落在 `{type}/{date}_{title}.md`，与 Mac 侧技能的主题目录契约不同构；

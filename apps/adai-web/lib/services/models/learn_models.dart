@@ -285,6 +285,39 @@ class LearnCardDto {
   }
 }
 
+/// 删卡片响应（DELETE /learn/cards，2026-09-13 卡片管理批）。
+/// 后端是**软删除**：文件移进 learn/_trash/（可人工找回）并从主题 README 索引里摘除；
+/// 若该卡曾反哺过交易候选，那些候选会被级联清理——标题列在 cascadedCandidates 里，
+/// 必须如实告诉用户（别让人以为只是少了一张卡）。
+class LearnCardDeletedDto {
+  final bool deleted;
+  final String title;
+  final String learnCardId; // 被删卡片的 id（如 learn/ai/量价关系/01-x.md）
+  final List<String> cascadedCandidates; // 被级联清掉的交易候选标题（空 = 没有）
+
+  LearnCardDeletedDto({
+    this.deleted = false,
+    this.title = '',
+    this.learnCardId = '',
+    this.cascadedCandidates = const [],
+  });
+
+  factory LearnCardDeletedDto.fromJson(Map<String, dynamic> json) => LearnCardDeletedDto(
+        deleted: (json['deleted'] as bool?) ?? false,
+        title: (json['title'] as String?) ?? '',
+        learnCardId: (json['learnCardId'] as String?) ?? '',
+        cascadedCandidates: _stringList(json['cascadedCandidates']),
+      );
+
+  /// 级联清掉的候选条数（0 = 只删了卡本身）。
+  int get cascadedCount => cascadedCandidates.length;
+
+  static List<String> _stringList(dynamic v) {
+    if (v is List) return v.map((e) => e.toString()).toList();
+    return const [];
+  }
+}
+
 /// 单篇卡片全文（GET /learn/content）：列表接口只回产品建模的四段，md 原文才读得全。
 class LearnCardContentDto {
   final String type;

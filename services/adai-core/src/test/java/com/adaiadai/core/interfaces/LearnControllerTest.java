@@ -532,4 +532,63 @@ class LearnControllerTest {
         mvc().perform(post("/api/v1/learn/migrate").header("X-User-Id", "bob"))
                 .andExpect(status().isForbidden());
     }
+
+    // ── 缺口批（2026-09-13）：删卡 + 改主题 ──
+
+    @Test
+    void deleteCard_returnsCascadeSummary() throws Exception {
+        when(digestService.deleteCard("adai", "ai", "要删的卡")).thenReturn("learn/ai/量价关系/01-要删的卡.md");
+        when(candidateService.deleteByLearnCardId("adai", "learn/ai/量价关系/01-要删的卡.md"))
+                .thenReturn(List.of("反哺候选一"));
+
+        mvc("learn").perform(delete("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .param("type", "ai")
+                        .param("title", "要删的卡"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(true))
+                .andExpect(jsonPath("$.cascadedCandidates[0]").value("反哺候选一"));
+    }
+
+    @Test
+    void deleteCard_invalidType_returns400() throws Exception {
+        mvc("learn").perform(delete("/api/v1/learn/cards")
+                        .header("X-User-Id", "adai")
+                        .param("type", "hacking")
+                        .param("title", "x"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deleteCard_withoutPlugin_returns403() throws Exception {
+        mvc().perform(delete("/api/v1/learn/cards")
+                        .header("X-User-Id", "bob")
+                        .param("type", "ai")
+                        .param("title", "x"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void moveTopic_returnsUpdatedCard() throws Exception {
+        when(digestService.moveToTopic("adai", "ai", "待归类", "量价关系"))
+                .thenReturn(new LearnCard(LearnCard.TYPE_AI, "待归类", "bilibili", "UP", null, null,
+                        LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                        List.of(), List.of(), "", "量价关系"));
+
+        mvc("learn").perform(patch("/api/v1/learn/cards/topic")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"待归类\",\"topic\":\"量价关系\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topic").value("量价关系"));
+    }
+
+    @Test
+    void moveTopic_blankTopic_returns400() throws Exception {
+        mvc("learn").perform(patch("/api/v1/learn/cards/topic")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"x\",\"topic\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }

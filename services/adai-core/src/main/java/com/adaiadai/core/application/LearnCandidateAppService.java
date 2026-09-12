@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -77,6 +78,28 @@ public class LearnCandidateAppService {
         log.info("learn → trading 候选生成 | userId={} | title={} | learnCard={}",
                 userId, candidate.title(), learnCardId);
         return candidate;
+    }
+
+    /**
+     * 级联清理：源 learn 卡被删时，指向它的候选一并删除（P2-learn11 的治本）。
+     *
+     * @param learnCardId 源卡的真实相对路径（删卡前由仓储给出）
+     * @return 被一并删掉的候选标题（供调用方如实回执）
+     */
+    public List<String> deleteByLearnCardId(String userId, String learnCardId) {
+        if (learnCardId == null || learnCardId.isBlank()) return List.of();
+        List<String> removed = new ArrayList<>();
+        for (LearnTradingCandidate candidate : candidateRepository.list(userId)) {
+            if (learnCardId.equals(candidate.learnCardId())) {
+                candidateRepository.delete(userId, candidate.title());
+                removed.add(candidate.title());
+            }
+        }
+        if (!removed.isEmpty()) {
+            log.info("learn 源卡删除 → 级联清理候选 | userId={} | learnCard={} | 删掉 {} 条",
+                    userId, learnCardId, removed.size());
+        }
+        return removed;
     }
 
     /** 候选列表（created 倒序；用户审核用）。 */

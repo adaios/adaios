@@ -11,6 +11,7 @@
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
 | 2026-09-12 | v3.61 | **交易账实一致性批（RFC 20260912 全量落地，用户「要流程上正解」）**——根治生产实测「一次历史成交导入把**已含在券商快照内**的成交又重放一遍」（持仓与现金双计，现金被算成 −26666.85）、**3 笔真实卖出静默消失**、4 笔流水重复落账：①**锚定 fail-closed**：`POST /trading/trades/import` 新增 query `mode`（`auto` 默认 \| `append`）——`auto` 按券商快照锚定**分派**（`entryDate ≤ 锚定日` 的成交只补流水，晚于锚定日才回放持仓+现金）；**锚定缺失而系统已有持仓/账户快照、且本次有需要回放的行 → 400 人话拒绝**（不再把「锚定读不到」当成「不做防重」继续重放），逃生路径 = 先导「持仓股」/「资金股份查询」快照建立锚定，或显式 `mode=append` 只补流水（全新用户无锚定无账目状态仍允许从零回放）；②**预检 `dryRun=true`**：只返回计划、**不写任何文件**，响应新增 `dryRun:true` 与 `plan:{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`；③**幂等统一（一个 intake、一个键空间）**：orderId 命中 → 缺元信息则合并回填否则跳过；指纹（`symbol\|direction\|entryDate\|price\|volume`）命中且成交时间兼容（任一侧缺失、旧值带纳秒、或相差 ≤1 分钟）→ **合并回填不新增行**（补 orderId/fee/成交时间），时间明显不同（同价同量同日两笔）→ 视为两笔——`updated` 语义改为**跨来源同笔合并回填**笔数；④**卖超/未持有不丢数据**：回放行 SELL 超出可归属持仓 → **只落流水 + `rejected` 明细 + ERROR 日志**（持仓/现金不动），新增 `rejected:[{symbol,name,direction,volume,price,entryDate,reason}]`（原因中文人话）；⑤响应新增 `anchor:{positionsReplace,cashImport,known,holdingsKnown,anchorDate}`（`anchorDate` = 两者较晚者，未知为 null）；⑥**新增对账闸门与锚定三端点**：`GET /trading/integrity`（`derived = 券商快照基线 + 锚定日之后流水净增减`，与落地持仓不一致即 `drift`，卖超缺口走 `gaps`，锚定/基线缺失诚实报「无法判定」）+ `GET /trading/anchor`（锚定状态只读）+ `PUT /trading/anchor`（存量环境显式回填锚定日/持仓基线，只改元信息、日期只前进）；⑦`POST /trading/positions/import?replace=true&snapshotDate=yyyy-MM-dd` 与 `POST /trading/imports/cash`（body `snapshotDate`）新增**快照自身日期**（通达信文件名里的日期；不传退回导入日）——补导几天前的快照文件不再把锚定日写成今天；⑧落盘 `trading/snapshot-anchor.json` 现为 `{positionsReplace,cashImport,recordedAt,holdingsRecorded,holdings:[{symbol,name,quantity}]}`（持仓 replace 导入记录基线并置 `holdingsRecorded=true`；更新锚定日**保留**既有基线，不把「未记录」写成「记录为空」——前者对账报「无法判定」，后者是合法基线）；⑨**收盘小结（15:30 `close-summary` 推送）新增一行账实自检**——委派 `TradingAppService.integrity`（唯一口径），有 `drift`/`gaps` 时推一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（**无差异不推**，不制造噪音；自检失败静默降级，不中断推送主流程；文案遵循第一原则=阿呆口吻，非系统视角）。端点 134→**137** |
+| 2026-09-13 | v3.61 | **learn 卡片管理批（补「缺口」：产品里终于能删卡 / 改主题）**——此前 learn 只有「写」没有「管」：清测试卡、给卡片换主题都得**手动改服务器文件**。①**新端点 `DELETE /learn/cards`**（`?type=&title=`）：**软删除**（文件移入 `learn/_trash/`，可人工捡回，不真丢内容）+ 从主题 README 索引摘行 + **级联清理**指向该卡的 trading 反哺候选（回应 REVIEW P2-learn11「孤儿回链」，回执里如实列出被清掉的候选标题）；**只读卡（别处整理的原始卡）人话拒绝**；②**新端点 `PATCH /learn/cards/topic`**（body `{"type","title","topic"}`）：把卡片挪到另一个主题目录（新主题内续号），frontmatter 的 `topic` 与**两个主题的 README**一起同步（老主题摘行、新主题追加，不重写手工内容）；同主题幂等；只读卡拒绝。端点 137→**139** |
 | 2026-09-12 | v3.60 | **learn 完整升级批（用户拍板「我要的是完整的升级，成熟的方案」）**——learn 从「能用」变「完整可用」：产物契约与 Mac 侧技能统一 + 图片源 + 对话流 + 全文 + 搜索。①**落盘结构统一**：新卡从扁平 `{type}/{yyyy-MM-dd}_{title}.md` 改为 **`{type}/{topic}/NN-{slug}.md`**（主题目录 + 主题内编号，与 Mac 上 DSH 技能产物同契约），自动维护主题 `README.md`（产品只**追加** `## 阿呆整理记录（自动维护）` 段，**不重写**手工 README）；原始素材从 `learn/_raw/` 暂存区**归位**到 `{type}/{topic}/_raw/`（源与卡放一起）；老扁平卡**照旧可读可写、不强制迁移**。②**LearnCard 新增 `topic`（主题目录名，缺省「未归类」）与 `writable`（false = Mac 上整理的原始卡，只读）**；同名时**本产品卡优先**，别处手工卡同名不再拦住新建（P2-learn20 修复）。③**新端点 `GET /learn/content`**（按 md **原文**返回全文 + 元信息——列表只有产品建模的四段，手工卡的「关键内容详解/金句/概念关系」只在原文里）。④**新端点 `GET /learn/find`**（找卡片：「打开那篇」与学习页搜索，纯规则打分不烧 AI）。⑤**新端点 `POST /learn/digest/image`**（图片源：书页/PPT/讲义/截图 1~3 张 → 视觉模型**忠实提取**文字与图意 → 同一条消化流水线；原图先落 `_raw/`）。⑥`GET /learn/digest/status` 的 `stage` 新增 **`reading`**（正在读图）。⑦**新端点 `POST /learn/migrate`**（**幂等**：把 V1/V2 老式扁平卡 `{type}/{date}_{title}.md` 一次性迁到主题目录，补 `origin`/`topic` 键 + 主题内续号 + 维护该主题 README；Mac 侧技能整理的主题目录卡**一动不动**）。端点 130→**134** |
 | 2026-09-12 | v3.59 | **learn 读侧对齐批（同一个 learn 目录有两个写入方）**——目录里既有产品写的卡（`{type}/{date}_{title}.md`），也有 Mac 上 DSH 技能 A 写在主题子目录里的手工卡（`{type}/{topic}/NN-{slug}.md`，文件名与段名都不一样）。本批**只改读侧与写守卫，不动任何落盘格式**：①`GET /learn/tree`、`GET /learn/cards`、`GET /learn/card` 现在能正确读出 A 形态卡的核心观点/疑问（段名容错：`## 核心观点（一句话）`、`## 二、核心观点` 均识别；A 的 `## 内容脉络` 不做语义改名，如实不映射为「关键要点」）；②`PATCH /learn/cards`、`PATCH /learn/cards/status` 对**产品之外的卡**（A 在 Mac 上整理的原始卡）返回 **400 + 人话**「这张《X》是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你」（原先因按产品路径读写而报「卡片不存在」，语义不准）；③同端点的产品卡行为不变。无端点增删 |
 | 2026-09-12 | v3.58 | **learn 抓取批·对抗审查修复（独立审查官 10 条：P0×2/P1×5/P2×3，全部处置）**——**对外行为有四处在用户可感知层面变了**：①**出站白名单（SSRF 修复）**：`POST /learn/digest` 的 `url` 现在会先过出站策略——**私有/回环/链路本地/云元数据地址、非 80/443 端口、非 http(s) 协议一律 400 人话拒绝**（「这个地址不像是能公开访问的内容页，我就不去抓了」），重定向改为**逐跳复检**（超 3 跳 → 人话拒绝），字幕/快照等第三方响应地址收敛到域名白名单，响应体加上限（正文 4MB / 音频 64MB，超限人话失败）；②**不再把「字幕接口报错」当「没字幕」**：接口报错/限流是可重试错误 → 直接人话失败（「B站字幕接口这次没返回（可能限流了），稍后再试一次」），**不再弹付费转写确认**（原先会引导用户为本来能省的钱买单）；同理**音频地址拿不到时在报价前就失败**，不让用户为做不到的事点头；③**转写费用按实际时长结算**（原先一律按预估；时长未知按 30 分钟估会低估）——`GET /learn/digest/quota` 与 `cost` 里的数字现在反映转码产物的真实时长；④**先预留后花钱**：转写前先记账（账本写不进去就一分钱不花），转写失败**退回预留**，因此「转写失败」不再消耗额度；另：账本文件损坏时**拒绝转写**（fail-closed，原先按空账本处理等于额度归零、闸门失效）；落盘要求「核心观点或要点至少一个非空」（原先只有标题也会落一张空卡）；等确认期间 `stage` 置空（原先返回 `transcribing`，前端会显示「正在转写」而实际在等你拍板）。无端点增删 |
@@ -2222,6 +2223,43 @@ chat 模式（全屏）
 
 - 任务态为**内存态**（按 userId 单任务）：`done`/`failed`/`cancelled` 结果保留 60s 惰性清理回 `idle`；`needs_confirmation` 保留 **30 分钟**（用户可能过一会儿才点确认）；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
 - `403`：learn 插件未启用
+
+### `DELETE /api/v1/learn/cards` — 删卡片（软删除，v3.61）
+
+> **软删除**：文件移入 `learn/_trash/`（不是真删——知识是资产，误删要能捡回来），并从主题 `README.md` 的自动索引段摘掉该行。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+
+**Response** `200`：
+
+```json
+{ "deleted": true, "title": "可转债双低策略要点", "learnCardId": "learn/trading/可转债双低策略/01-….md",
+  "cascadedCandidates": ["候选标题一"] }
+```
+
+- `cascadedCandidates`：指向该卡的 **trading 反哺候选**被一并清理的标题列表（**级联**，回应 P2-learn11 的孤儿回链；前端要如实告知用户）
+- `400`：卡片不存在 / **是别处整理的只读卡**（`writable=false` → 人话拒绝，前端应隐藏入口）/ `type` 非法；`403`：learn 插件未启用
+
+### `PATCH /api/v1/learn/cards/topic` — 改主题（v3.61）
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+| `topic` | String | ✅ | 目标主题名（空 → 400 人话）|
+
+**Response** `200` 更新后的 LearnCard（`topic` 已是新值）。
+
+- 语义：`{type}/{老主题}/NN-x.md` → `{type}/{新主题}/MM-x.md`（新主题内续号），frontmatter `topic` 同步，**两个主题的 README 一起维护**（老主题摘行、新主题追加；手工内容不重写）；**同主题幂等**（原样返回）
+- 失败安全：新文件写成功但老文件删不掉 → **回滚新文件**并人话报错（不留两张同名可写卡）
+- `400`：卡片不存在 / 只读卡 / `topic` 为空 / `type` 非法；`403`：learn 插件未启用
 
 ### `GET /api/v1/learn/cards` — 卡片列表（v3.48；v3.60 加 topic/writable）
 

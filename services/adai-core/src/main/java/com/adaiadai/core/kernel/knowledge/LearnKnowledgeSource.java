@@ -105,6 +105,8 @@ public class LearnKnowledgeSource implements KnowledgeSource {
             if (!f.endsWith(".md") || f.contains("/_raw/")) continue;
             // 主题 README 也长得像卡（有 title/type/created）——它是索引不是笔记，别当学习笔记注入
             if (f.endsWith("/README.md")) continue;
+            // 软删除回收站（learn/_trash/）：**删掉的卡不许再被问答召回**（2026-09-13 卡片管理批）
+            if (f.contains("/_trash/")) continue;
             String content = fileStorage.read(userId, f);
             if (content == null || content.isBlank()) continue;
             NoteSummary n = parseSummary(content, f);

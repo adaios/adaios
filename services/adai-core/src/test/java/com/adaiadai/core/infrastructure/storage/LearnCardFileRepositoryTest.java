@@ -879,4 +879,104 @@ class LearnCardFileRepositoryTest {
         assertEquals("量价关系", reviewed.topic(), "流转响应带主题");
         assertEquals(LearnCard.STATUS_REVIEW, reviewed.status());
     }
+
+    // ── 缺口批（2026-09-13）：删卡（软删除）+ 改主题 ──
+
+    @Test
+    void deleteCard_movesToTrash_removesFromListAndReadme() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "要删的卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "量价关系");
+        repository.save("adai", card);
+        String before = repository.cardPath("adai", LearnCard.TYPE_AI, "要删的卡");
+        String readmeBefore = storage.read("adai", "learn/ai/量价关系/README.md");
+        assertTrue(readmeBefore.contains("要删的卡"), "删前索引里有它");
+
+        String removedPath = repository.deleteCard("adai", LearnCard.TYPE_AI, "要删的卡");
+
+        assertEquals(before, removedPath, "回执给出原始路径（供级联清理回链）");
+        assertFalse(storage.exists("adai", before), "原位置已不在");
+        assertTrue(repository.find("adai", LearnCard.TYPE_AI, "要删的卡").isEmpty(), "列表里也没有了");
+        List<String> trash = storage.listFiles("adai", "learn/_trash");
+        assertEquals(1, trash.size(), "软删除：内容进了 _trash（可人工捡回）：" + trash);
+        String trashed = storage.read("adai", trash.get(0));
+        assertTrue(trashed.contains("要删的卡") && trashed.contains("## 核心观点"), "内容一字不少");
+        String readmeAfter = storage.read("adai", "learn/ai/量价关系/README.md");
+        assertFalse(readmeAfter.contains("要删的卡"), "索引行已摘除：" + readmeAfter);
+    }
+
+    @Test
+    void deleteCard_foreignCard_isRefused_fileUntouched() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.deleteCard("adai", LearnCard.TYPE_AI, "Harness 到底是什么？"));
+
+        assertTrue(e.getMessage().contains("不改动它"), e.getMessage());
+        assertTrue(storage.exists("adai", "learn/ai/harness/01-video-card.md"), "别处的原始文件不许删");
+        assertEquals(0, storage.listFiles("adai", "learn/_trash").size(), "_trash 里也不该有它");
+    }
+
+    @Test
+    void moveToTopic_movesFile_updatesFrontmatter_andBothReadmes() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "待归类的卡", "bilibili", "UP", null, null,
+                LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "未归类");
+        repository.save("adai", card);
+        // 目标主题里先放一张（占 01），再把 README 手写内容叠上——同时验证续号与「不重写他人内容」
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "早就有的卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 1), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系"));
+        String readmePath = "learn/ai/量价关系/README.md";
+        storage.write("adai", readmePath, storage.read("adai", readmePath) + "\n手写内容\n");
+
+        LearnCard moved = repository.moveToTopic("adai", LearnCard.TYPE_AI, "待归类的卡", "量价关系");
+
+        assertEquals("量价关系", moved.topic());
+        assertEquals("learn/ai/量价关系/02-待归类的卡.md", repository.cardPath("adai", LearnCard.TYPE_AI, "待归类的卡"),
+                "挪进新主题并续号（老主题已有 01 时不能撞号）");
+        assertFalse(storage.exists("adai", "learn/ai/" + LearnCard.DEFAULT_TOPIC + "/01-待归类的卡.md"), "老位置已清");
+        String content = repository.readCard("adai", LearnCard.TYPE_AI, "待归类的卡");
+        assertTrue(content.contains("topic: 量价关系"), "frontmatter 同步了新主题");
+        String newReadme = storage.read("adai", "learn/ai/量价关系/README.md");
+        assertTrue(newReadme.contains("手写内容"), "别人手写的 README 内容保留");
+        assertTrue(newReadme.contains("待归类的卡"), "新主题索引里有它");
+        String oldReadme = storage.read("adai", "learn/ai/" + LearnCard.DEFAULT_TOPIC + "/README.md");
+        assertFalse(oldReadme.contains("待归类的卡"), "老主题索引已摘行");
+    }
+
+    @Test
+    void moveToTopic_sameTopic_isNoop() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "原地卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系");
+        repository.save("adai", card);
+        String path = repository.cardPath("adai", LearnCard.TYPE_AI, "原地卡");
+
+        LearnCard same = repository.moveToTopic("adai", LearnCard.TYPE_AI, "原地卡", "量价关系");
+
+        assertEquals("量价关系", same.topic());
+        assertEquals(path, repository.cardPath("adai", LearnCard.TYPE_AI, "原地卡"), "同主题不动文件（幂等）");
+    }
+
+    @Test
+    void moveToTopic_foreignCard_isRefused() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+
+        LearnException e = assertThrows(LearnException.class, () -> repository.moveToTopic(
+                "adai", LearnCard.TYPE_AI, "Harness 到底是什么？", "harness-engineering"));
+
+        assertTrue(e.getMessage().contains("不改动它"), e.getMessage());
+        assertTrue(storage.exists("adai", "learn/ai/harness/01-video-card.md"), "别处的卡不许挪");
+    }
+
+    @Test
+    void deleteCard_andMoveToTopic_missingCard_humanMessage() {
+        LearnException e1 = assertThrows(LearnException.class,
+                () -> repository.deleteCard("adai", LearnCard.TYPE_AI, "没有这张"));
+        assertTrue(e1.getMessage().contains("卡片不存在"));
+        LearnException e2 = assertThrows(LearnException.class,
+                () -> repository.moveToTopic("adai", LearnCard.TYPE_AI, "没有这张", "x"));
+        assertTrue(e2.getMessage().contains("卡片不存在"));
+    }
 }

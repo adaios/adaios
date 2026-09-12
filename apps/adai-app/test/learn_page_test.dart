@@ -54,6 +54,20 @@ class _LearnBackend {
   /// 非空 → confirm 请求挂在这里（连点守卫用例：控制回包时机）
   Completer<void>? confirmGate;
 
+  /// 删卡回包里的 cascadedCandidates（该卡反哺过、被一起清掉的交易候选标题）
+  List<String> deleteCascaded = const [];
+
+  /// 非空 → 删卡 / 挪主题回 400，body 即后端人话（「失败透出人话」用例）
+  Map<String, dynamic> deleteError = const {};
+  Map<String, dynamic> moveError = const {};
+
+  /// 删卡 / 挪主题的状态码（200 = 正常；403 = learn 插件未启用，回空 body 走人话兜底）
+  int deleteStatus = 200;
+  int moveStatus = 200;
+
+  /// 非空 → 挪主题请求挂在这里（动作级连点守卫用例：控制回包时机）
+  Completer<void>? moveGate;
+
   final List<http.Request> requests = [];
 
   void addCard(
@@ -146,6 +160,42 @@ class _LearnBackend {
       });
     }
     if (p.endsWith('/api/v1/learn/find')) return _json(findHits);
+    // 卡片管理动作（2026-09-13 卡片管理动作批）
+    if (p.endsWith('/api/v1/learn/cards/topic') && req.method == 'PATCH') {
+      final gate = moveGate;
+      if (gate != null) await gate.future;
+      if (moveError.isNotEmpty) {
+        return _json(moveError, status: moveStatus == 200 ? 400 : moveStatus);
+      }
+      if (moveStatus != 200) return _json(const {}, status: moveStatus);
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final type = body['type'] as String? ?? '';
+      final title = body['title'] as String? ?? '';
+      final topic = body['topic'] as String? ?? '';
+      final card = _byType[type]?.where((c) => c['title'] == title).firstOrNull;
+      if (card == null) return _json({'error': '卡片不存在：$type/$title'}, status: 400);
+      card['topic'] = topic;
+      metas['$type/$title'] = {...?metas['$type/$title'], 'topic': topic};
+      return _json(card);
+    }
+    if (p.endsWith('/api/v1/learn/cards') && req.method == 'DELETE') {
+      if (deleteError.isNotEmpty) {
+        return _json(deleteError, status: deleteStatus == 200 ? 400 : deleteStatus);
+      }
+      if (deleteStatus != 200) return _json(const {}, status: deleteStatus);
+      final type = req.url.queryParameters['type'] ?? '';
+      final title = req.url.queryParameters['title'] ?? '';
+      final existed = _byType[type]?.any((c) => c['title'] == title) ?? false;
+      if (!existed) return _json({'error': '卡片不存在：$title'}, status: 400);
+      _byType[type]!.removeWhere((c) => c['title'] == title);
+      contents.remove('$type/$title');
+      metas.remove('$type/$title');
+      return _json({
+        'deleted': true, 'title': title,
+        'learnCardId': 'learn/$type/$title/01-$title.md',
+        'cascadedCandidates': deleteCascaded,
+      });
+    }
     if (p.endsWith('/api/v1/learn/digest/status')) {
       final i = statusCalls < statusSeq.length ? statusCalls : statusSeq.length - 1;
       statusCalls++;
@@ -1008,6 +1058,232 @@ void main() {
       await pump(tester, backend.api(),
           initialCard: (type: 'ai', title: '刚整理好的卡'));
       expect(find.text('刚整理好的卡 的核心观点'), findsOneWidget);
+    });
+
+    // ── 2026-09-13 卡片管理动作批：移动到主题 / 删除（只对 writable == true 的卡）──
+
+    testWidgets('⑮ 删除：二次确认说清后果 → DELETE /learn/cards → 回列表刷新、卡不在列表里',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '要删的卡', created: '2026-09-06', topic: 'harness')
+        ..addCard('ai', '留着的卡', created: '2026-09-05', topic: 'harness');
+      await pump(tester, backend.api());
+      await tester.tap(find.text('要删的卡'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-delete-card')));
+      await tester.pumpAndSettle();
+
+      // 确认框：说清 ① 移入回收站不彻底消失 ② 反哺过的交易候选会一起清掉
+      expect(find.text('删除这张卡？'), findsOneWidget);
+      expect(find.textContaining('回收站'), findsOneWidget, reason: '说清不是彻底消失');
+      expect(find.textContaining('交易候选'), findsOneWidget, reason: '说清级联清理的后果');
+      expect(backend.requestsTo('/api/v1/learn/cards'), isEmpty,
+          reason: '没点确认前不发删除请求');
+
+      final treeCallsBefore = backend.requestsTo('/api/v1/learn/tree').length;
+      await tester.tap(find.byKey(const ValueKey('learn-delete-confirm')));
+      await tester.pumpAndSettle();
+
+      final dels = backend.requestsTo('/api/v1/learn/cards')
+          .where((r) => r.method == 'DELETE').toList();
+      expect(dels.length, 1, reason: '应送达 DELETE /learn/cards');
+      expect(dels.first.url.queryParameters['type'], 'ai');
+      expect(dels.first.url.queryParameters['title'], '要删的卡', reason: '按精确标题删');
+      expect(backend.requestsTo('/api/v1/learn/tree').length, greaterThan(treeCallsBefore),
+          reason: '回列表要刷新');
+      expect(find.text('要删的卡'), findsNothing, reason: '删掉的卡不该还在列表里');
+      expect(find.text('留着的卡'), findsOneWidget, reason: '只删这一张，别的卡不动');
+      expect(find.textContaining('移进回收站'), findsWidgets, reason: '给一句人话交代');
+      expect(find.textContaining('接口'), findsNothing, reason: 'B1：不出现系统口径');
+    });
+
+    testWidgets('⑯ 删除级联清理：cascadedCandidates 非空 → 如实说清掉了几条交易候选',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('trading', '回调一半的判定', created: '2026-09-06', topic: '止损',
+            keyPoints: const ['回调=(high+low)/2'])
+        ..addCard('trading', '留着的老卡', created: '2026-09-05', topic: '止损')
+        ..deleteCascaded = const ['回调一半是买点', '止损位设在结构位'];
+      await pump(tester, backend.api());
+      await tester.tap(find.text('回调一半的判定'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-delete-card')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('learn-delete-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('同时清掉了 2 条交易候选'), findsWidgets,
+          reason: '级联清掉的候选条数必须如实告诉用户');
+      expect(find.text('回调一半的判定'), findsNothing);
+      expect(find.text('留着的老卡'), findsOneWidget);
+    });
+
+    testWidgets('⑰ 只读卡（writable=false）：不出现「移动到主题 / 删除」两个入口', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', 'Mac 上整理的原卡', created: '2026-09-12', topic: 'harness',
+            writable: false, extra: '手工卡里才有的详解段');
+      await pump(tester, backend.api());
+      await tester.tap(find.text('Mac 上整理的原卡'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learn-card-actions')), findsNothing);
+      expect(find.byKey(const ValueKey('learn-move-topic')), findsNothing);
+      expect(find.byKey(const ValueKey('learn-delete-card')), findsNothing);
+      expect(find.text('移动到主题'), findsNothing);
+      expect(find.text('删除'), findsNothing);
+      expect(find.byKey(const ValueKey('learn-readonly-note')), findsOneWidget,
+          reason: '只读卡保持现状：一行说明，不把人送到墙上撞');
+      expect(find.textContaining('手工卡里才有的详解段'), findsOneWidget, reason: '只读也能读全文');
+    });
+
+    testWidgets('⑱ 移动到主题：预填当前主题 + 提示 → PATCH → 回列表刷新并重新定位打开',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', 'RAG 笔记', created: '2026-09-06', topic: 'harness',
+            keyPoints: const ['检索增强']);
+      await pump(tester, backend.api());
+      await tester.tap(find.text('RAG 笔记'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learn-card-actions')), findsOneWidget,
+          reason: '能改的卡才亮这两个动作');
+      final treeCallsBefore = backend.requestsTo('/api/v1/learn/tree').length;
+      await tester.tap(find.byKey(const ValueKey('learn-move-topic')));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('learn-topic-input')));
+      expect(field.controller?.text, 'harness', reason: '预填当前主题');
+      expect(field.decoration?.hintText, '比如 量价关系', reason: '给个新主题的样子');
+      expect(backend.requestsTo('/api/v1/learn/cards/topic'), isEmpty,
+          reason: '没点确认前不发请求');
+
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '量价关系');
+      await tester.tap(find.byKey(const ValueKey('learn-topic-confirm')));
+      await tester.pumpAndSettle();
+
+      final patches = backend.requestsTo('/api/v1/learn/cards/topic');
+      expect(patches.length, 1, reason: '应送达 PATCH /learn/cards/topic');
+      expect(patches.first.method, 'PATCH');
+      final body = jsonDecode(patches.first.body) as Map<String, dynamic>;
+      expect(body['type'], 'ai');
+      expect(body['title'], 'RAG 笔记', reason: '按精确标题定位卡片');
+      expect(body['topic'], '量价关系');
+      expect(backend.requestsTo('/api/v1/learn/tree').length, greaterThan(treeCallsBefore),
+          reason: '回列表要刷新');
+      expect(find.textContaining('已挪到「量价关系」'), findsWidgets, reason: '人话交代');
+      // 重新定位打开：详情页按新的主题渲染（换了主题分组）
+      expect(find.text('量价关系'), findsWidgets, reason: '详情页主题已是新值');
+      expect(find.text('RAG 笔记 的核心观点'), findsOneWidget, reason: '仍旧是这张卡');
+
+      // 返回列表：新主题分组已就位
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('learn-topic-ai-量价关系')), findsOneWidget,
+          reason: '列表按新主题归置');
+      expect(find.byKey(const ValueKey('learn-topic-ai-harness')), findsNothing,
+          reason: '老主题下不该还留着它');
+    });
+
+    testWidgets('⑲ 移动到主题：主题名空着 → 当场提示、不往外发；动作送达中按钮禁用（连点守卫）',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '守卫卡', created: '2026-09-06', topic: 'harness')
+        ..moveGate = Completer<void>();
+      await pump(tester, backend.api());
+      await tester.tap(find.text('守卫卡'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-move-topic')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '   ');
+      await tester.tap(find.byKey(const ValueKey('learn-topic-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('主题名不能空着'), findsOneWidget);
+      expect(backend.requestsTo('/api/v1/learn/cards/topic'), isEmpty,
+          reason: '空主题不发请求');
+
+      await tester.tap(find.byKey(const ValueKey('learn-move-topic')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '量价关系');
+      await tester.tap(find.byKey(const ValueKey('learn-topic-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(backend.requestsTo('/api/v1/learn/cards/topic').length, 1);
+      final btn = tester.widget<OutlinedButton>(find.byKey(const ValueKey('learn-move-topic')));
+      expect(btn.onPressed, isNull, reason: '动作送达中：按钮禁用，连点不重复提交');
+
+      backend.moveGate!.complete();
+      await tester.pumpAndSettle();
+      expect(backend.requestsTo('/api/v1/learn/cards/topic').length, 1,
+          reason: '一个动作只送一次');
+    });
+
+    testWidgets('⑳ 移动失败：透出后端人话（只读卡说明），不出现「请求失败 / 接口」', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '撞墙卡', created: '2026-09-06', topic: 'harness')
+        ..moveError = const {'error': '这张《撞墙卡》不是我在产品里写的，我只当资料看、不改动它'};
+      await pump(tester, backend.api());
+      await tester.tap(find.text('撞墙卡'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-move-topic')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '量价关系');
+      await tester.tap(find.byKey(const ValueKey('learn-topic-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('我只当资料看、不改动它'), findsWidgets,
+          reason: '后端 400 人话如实透出');
+      expect(find.textContaining('接口'), findsNothing, reason: 'B1：不出现系统口径');
+      expect(find.textContaining('请求失败'), findsNothing);
+      expect(find.byKey(const ValueKey('learn-topic-input')), findsNothing,
+          reason: '弹窗已收起');
+      expect(find.text('撞墙卡 的核心观点'), findsOneWidget, reason: '失败不 pop，人还在这页');
+    });
+
+    testWidgets('㉑ 删除失败（403 learn 插件未启用）：透出后端人话，卡还在', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '删不掉的卡', created: '2026-09-06', topic: 'harness')
+        // 真后端 403 回 body：{"error":"learn 插件未启用，无法使用学习功能"}
+        ..deleteError = const {'error': 'learn 插件未启用，无法使用学习功能'}
+        ..deleteStatus = 403;
+      await pump(tester, backend.api());
+      await tester.tap(find.text('删不掉的卡'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-delete-card')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('learn-delete-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('learn 插件未启用'), findsWidgets, reason: '403 人话如实透出');
+      expect(find.text('删不掉的卡 的核心观点'), findsOneWidget, reason: '没删掉，人还在这页');
+      expect(find.textContaining('接口'), findsNothing, reason: 'B1：不出现系统口径');
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.text('删不掉的卡'), findsOneWidget, reason: '列表里这张卡还在');
+    });
+
+    testWidgets('㉒ 403 没带人话时：按本页口径兜底，不甩状态码/系统原话', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '兜底卡', created: '2026-09-06', topic: 'harness')
+        ..deleteStatus = 403; // 空 body 的 403
+      await pump(tester, backend.api());
+      await tester.tap(find.text('兜底卡'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('learn-delete-card')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('learn-delete-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('学习功能未启用（learn 插件）'), findsWidgets);
+      expect(find.textContaining('403'), findsNothing, reason: '不甩状态码');
+      expect(find.textContaining('接口'), findsNothing, reason: 'B1：不出现系统口径');
     });
   });
 }

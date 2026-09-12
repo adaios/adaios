@@ -317,6 +317,31 @@ class LearnCardContentDto {
   String get topicLabel => topic.isEmpty ? '未归类' : topic;
 }
 
+/// 删卡结果（DELETE /api/v1/learn/cards，2026-09-13 卡片管理动作批）。
+/// 软删除：卡文件移入 learn/_trash/（不真丢，可人工找回），主题 README 索引摘行；
+/// cascadedCandidates = 这张卡曾反哺过的交易候选，这次被一起清掉的标题——
+/// **非空就必须如实告诉用户**（别悄悄替他清了东西）。
+class LearnCardDeleteResult {
+  final bool deleted;
+  final String title;
+  final String learnCardId; // 形如 learn/ai/量价关系/01-x.md（回收站里的身份）
+  final List<String> cascadedCandidates;
+
+  LearnCardDeleteResult({
+    this.deleted = false,
+    this.title = '',
+    this.learnCardId = '',
+    this.cascadedCandidates = const [],
+  });
+
+  factory LearnCardDeleteResult.fromJson(Map<String, dynamic> json) => LearnCardDeleteResult(
+        deleted: (json['deleted'] as bool?) ?? false,
+        title: (json['title'] as String?) ?? '',
+        learnCardId: (json['learnCardId'] as String?) ?? '',
+        cascadedCandidates: LearnCardDto._list(json['cascadedCandidates']),
+      );
+}
+
 /// learn 类型中文名（列表分组标题、对话流回话共用，单一口径）。
 String learnTypeLabel(String type) => switch (type) {
       'ai' => 'AI / 技术',

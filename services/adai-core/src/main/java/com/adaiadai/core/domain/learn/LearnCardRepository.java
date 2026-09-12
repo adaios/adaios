@@ -102,6 +102,29 @@ public interface LearnCardRepository {
      */
     String cardPath(String userId, String type, String title);
 
+    /**
+     * 删除卡片（**软删除**：文件移入 {@code learn/_trash/}，不是真删——知识是资产，误删要能捡回来）。
+     * <p>
+     * 只允许删**本产品产出**的卡（{@code writable}）；别处整理的卡人话拒绝。同时从主题 README
+     * 索引里摘掉该行。
+     *
+     * @return 被删除卡片的**原始相对路径**（供调用方级联处理跨域回链，如 trading 候选）
+     * @throws LearnException 卡片不存在 / 只读卡 / 写失败
+     */
+    String deleteCard(String userId, String type, String title);
+
+    /**
+     * 把卡片移动到另一个主题（2026-09-13 缺口批）：{@code {type}/{老主题}/NN-x.md}
+     * → {@code {type}/{新主题}/MM-x.md}（新主题内续号），frontmatter 的 {@code topic} 同步，
+     * 两个主题的 README 索引一起维护（老主题摘行、新主题追加）。
+     * <p>
+     * 只允许移动**本产品产出**的卡；新旧主题相同 → 原样返回（幂等）。
+     *
+     * @return 移动后的卡片（topic 已是新值）
+     * @throws LearnException 卡片不存在 / 只读卡 / 写失败（失败时原文件保持不动）
+     */
+    LearnCard moveToTopic(String userId, String type, String title, String newTopic);
+
     /** 一次迁移动作（老 → 新）。 */
     record MigrationItem(String type, String from, String to) {}
 

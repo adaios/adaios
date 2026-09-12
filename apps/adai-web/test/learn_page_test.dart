@@ -480,9 +480,11 @@ void main() {
       expect(listCalled, isTrue);
       expect(find.text('回调一半候选'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.delete_outline));
+      // 详情区也有「删除」动作按钮（2026-09-13 卡片管理批）→ 两个 finder 都指名弹窗里的那个
+      await tester.tap(
+          find.descendant(of: find.byType(AlertDialog), matching: find.byIcon(Icons.delete_outline)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('删除'));
+      await tester.tap(find.widgetWithText(FilledButton, '删除'));
       await tester.pumpAndSettle();
       expect(deleteCalled, isTrue, reason: '应调用 DELETE 候选');
     });
@@ -1561,6 +1563,293 @@ type: ai
       // 点结果 → 回到目录并打开该卡
       expect(find.text('找到 1 张卡'), findsNothing);
       expect(find.text('Harness engineering 的核心观点'), findsOneWidget);
+    });
+  });
+
+  // ── 2026-09-13 卡片管理批：换主题（PATCH /learn/cards/topic）+ 软删除（DELETE /learn/cards）──
+  group('LearnPage 卡片管理（2026-09-13）', () {
+    test('LearnCardDeletedDto 解析 + 缺字段兜底（旧后端不炸）', () {
+      final full = LearnCardDeletedDto.fromJson(jsonDecode('''
+        {"deleted":true,"title":"量价关系","learnCardId":"learn/ai/量价关系/01-x.md",
+         "cascadedCandidates":["回调一半的判定","止损口径"]}
+      '''));
+      expect(full.deleted, isTrue);
+      expect(full.title, '量价关系');
+      expect(full.learnCardId, 'learn/ai/量价关系/01-x.md');
+      expect(full.cascadedCandidates, ['回调一半的判定', '止损口径']);
+      expect(full.cascadedCount, 2);
+
+      final bare = LearnCardDeletedDto.fromJson(jsonDecode('{"deleted":true}'));
+      expect(bare.title, '');
+      expect(bare.learnCardId, '');
+      expect(bare.cascadedCandidates, isEmpty);
+      expect(bare.cascadedCount, 0);
+
+      final dirty = LearnCardDeletedDto.fromJson(jsonDecode('{"cascadedCandidates":"不是列表"}'));
+      expect(dirty.cascadedCandidates, isEmpty, reason: '脏数据当没有，不能抛');
+      expect(dirty.deleted, isFalse);
+    });
+
+    testWidgets('可写卡点「删除」→ 二次确认 → DELETE → 树刷新且该卡消失（选中回落第一张）', (tester) async {
+      var deleteCalls = 0;
+      var treeCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            return _json({
+              'ai': [
+                _card('ai', '第一张卡', created: '2026-09-10', topic: 'harness'),
+                // 删掉之后树里就没有它了
+                if (deleteCalls == 0) _card('ai', '要删的卡', created: '2026-09-01', topic: 'harness'),
+              ]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'DELETE') {
+            deleteCalls++;
+            expect(req.url.queryParameters['type'], 'ai');
+            expect(req.url.queryParameters['title'], '要删的卡');
+            return _json({
+              'deleted': true,
+              'title': '要删的卡',
+              'learnCardId': 'learn/ai/harness/02-要删的卡.md',
+              'cascadedCandidates': const <String>[],
+            });
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            final title = req.url.queryParameters['title']!;
+            return _json(_contentJson('ai', title, '# $title\n\n## 关键内容详解\n- 正文\n',
+                topic: 'harness'));
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      expect(find.text('要删的卡'), findsWidgets);
+
+      // 选到要删的那张（倒序：第一张卡在前，所以它是 index 1）
+      await tester.tap(find.byKey(const ValueKey('learn-card-ai-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('要删的卡 的核心观点'), findsOneWidget);
+
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      // 二次确认：标题 + 说清「进回收站不是消失」和「候选会一起清掉」
+      expect(find.text('删除这张卡？'), findsOneWidget);
+      expect(find.textContaining('会移进回收站（learn/_trash）'), findsOneWidget);
+      expect(find.textContaining('反哺过交易候选'), findsOneWidget);
+
+      await tester.tap(find.text('确认删除'));
+      await tester.pumpAndSettle();
+
+      expect(deleteCalls, 1, reason: '应调用 DELETE /learn/cards');
+      expect(treeCalls, greaterThanOrEqualTo(2), reason: '删完要整树刷新');
+      expect(find.text('要删的卡'), findsNothing, reason: '该卡从目录里消失');
+      expect(find.text('第一张卡 的核心观点'), findsOneWidget, reason: '选中回落第一张卡');
+      expect(find.textContaining('已删除《要删的卡》'), findsOneWidget);
+      expect(find.textContaining('回收站'), findsWidgets, reason: '话说清楚：是回收站，不是彻底没了');
+    });
+
+    testWidgets('级联候选非空：snack 如实说「同时清掉了 N 条交易候选」+ 树空了走空态', (tester) async {
+      var deleteCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            if (deleteCalls > 0) return _json(const {});
+            return _json({
+              'trading': [_card('trading', '回调一半的判定', tradeRelated: true, topic: '量价关系')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'DELETE') {
+            deleteCalls++;
+            return _json({
+              'deleted': true,
+              'title': '回调一半的判定',
+              'learnCardId': 'learn/trading/量价关系/01-回调一半的判定.md',
+              'cascadedCandidates': const ['回调一半的判定', '止损口径'],
+            });
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            return _json(_contentJson('trading', '回调一半的判定', '# 回调一半的判定\n', topic: '量价关系'));
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认删除'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('同时清掉了 2 条交易候选'), findsOneWidget,
+          reason: '级联清掉的候选要如实展示，不能只当删了一张卡');
+      expect(find.textContaining('还没有学习卡片'), findsOneWidget, reason: '删光了 → 空态');
+    });
+
+    testWidgets('删除失败：后端 400 只读卡人话原样透出（卡片还在）', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            // 树里的 writable 是旧的（true），后端才知道真相 → 拿 400 人话
+            return _json({
+              'ai': [_card('ai', '别处整理的卡', topic: 'harness')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'DELETE') {
+            return _json({
+              'error': '这张《别处整理的卡》不是我在产品里写的，我只当资料看、不改动它；想改的话，我可以照它的内容另存一张能编辑的给你'
+            }, status: 400);
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            return _json(_contentJson('ai', '别处整理的卡', '# 别处整理的卡\n', topic: 'harness'));
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认删除'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('不是我在产品里写的'), findsOneWidget, reason: 'P1-learn3：透出后端人话');
+      expect(find.text('别处整理的卡'), findsWidgets, reason: '删除失败 → 卡片照旧在');
+    });
+
+    testWidgets('「移动到主题」：预填当前主题 → PATCH → 树刷新后换组并定位回这张卡', (tester) async {
+      var patchCalls = 0;
+      var moved = false;
+      Map<String, dynamic>? patchBody;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [
+                _card('ai', 'RAG 笔记', topic: moved ? '量价关系' : 'harness', created: '2026-09-06'),
+                _card('ai', '另一张卡', topic: 'harness', created: '2026-09-01'),
+              ]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/topic') && req.method == 'PATCH') {
+            patchCalls++;
+            patchBody = jsonDecode(req.body) as Map<String, dynamic>;
+            moved = true;
+            return _json(_card('ai', 'RAG 笔记', topic: '量价关系', created: '2026-09-06'));
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            final title = req.url.queryParameters['title']!;
+            return _json(_contentJson('ai', title, '# $title\n\n## 关键内容详解\n- 正文\n',
+                topic: moved ? '量价关系' : 'harness'));
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      expect(find.text('harness'), findsOneWidget, reason: '详情里显示当前主题');
+
+      await tester.tap(find.text('移动到主题'));
+      await tester.pumpAndSettle();
+      // 预填当前主题
+      expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('learn-topic-input'))).controller!.text,
+          'harness');
+      expect(find.text('比如 量价关系'), findsOneWidget, reason: '占位提示');
+
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '量价关系');
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+
+      expect(patchCalls, 1, reason: '应调用 PATCH /learn/cards/topic');
+      expect(patchBody, {'type': 'ai', 'title': 'RAG 笔记', 'topic': '量价关系'});
+      expect(find.textContaining('已挪到「量价关系」'), findsOneWidget);
+      expect(find.text('量价关系'), findsOneWidget, reason: '详情主题标签已是新主题');
+      expect(find.text('量价关系（1）'), findsOneWidget, reason: '目录里进了新主题组');
+      expect(find.text('RAG 笔记 的核心观点'), findsOneWidget, reason: '换组后仍定位在这张卡上');
+    });
+
+    testWidgets('动作在途守卫：PATCH 在途时「删除」变灰不可点（连点不重复提交）', (tester) async {
+      var deleteCalls = 0;
+      var moved = false;
+      final patchGate = Completer<void>();
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记', topic: moved ? '量价关系' : 'harness')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/topic') && req.method == 'PATCH') {
+            await patchGate.future; // 卡住响应，观察在途态
+            moved = true;
+            return _json(_card('ai', 'RAG 笔记', topic: '量价关系'));
+          }
+          if (p.endsWith('/api/v1/learn/cards') && req.method == 'DELETE') {
+            deleteCalls++;
+            return _json({'deleted': true, 'title': 'RAG 笔记'});
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            return _json(_contentJson('ai', 'RAG 笔记', '# RAG 笔记\n', topic: '量价关系'));
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.text('移动到主题'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-topic-input')), '量价关系');
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+
+      // 在途：删除入口变灰不可点 → 连点也弹不出确认框、发不出第二份请求
+      await tester.tap(find.text('删除'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text('删除这张卡？'), findsNothing, reason: '在途守卫：不再弹删除确认');
+      expect(deleteCalls, 0);
+
+      patchGate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('已挪到「量价关系」'), findsOneWidget);
+    });
+  });
+
+  group('LearnPage 只读卡管理入口（2026-09-13）', () {
+    testWidgets('writable=false：不显示「移动到主题」与「删除」（只读卡保持现状）', (tester) async {
+      final api = _api(tree: {
+        'ai': [_card('ai', 'Mac 整理的原始卡', writable: false, topic: 'harness')],
+      });
+      await pump(tester, api);
+
+      expect(find.text('移动到主题'), findsNothing, reason: '只读卡不给改主题入口');
+      expect(find.text('删除'), findsNothing, reason: '只读卡不给删除入口');
+      expect(find.textContaining('这张是在 Mac 上整理的原始卡'), findsOneWidget);
+    });
+
+    testWidgets('writable=true：两个管理入口都在（对照）', (tester) async {
+      final api = _api(tree: {
+        'ai': [_card('ai', 'RAG 笔记', topic: 'harness')],
+      });
+      await pump(tester, api);
+
+      expect(find.text('移动到主题'), findsOneWidget);
+      expect(find.text('删除'), findsOneWidget);
     });
   });
 }

@@ -1376,6 +1376,38 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 改主题（2026-09-13 卡片管理批）：PATCH /learn/cards/topic，body {type, title, topic}
+  /// → 更新后的 LearnCard（topic 已是新值）。卡片被移到 {type}/{新主题}/NN-标题.md，新主题内续号。
+  /// 幂等：新旧主题相同 → 原样返回。400：卡片不存在 / 只读卡 / topic 为空 / type 非法；403：learn 未启用。
+  Future<LearnCardDto> moveLearnCardTopic(
+      {required String type, required String title, required String topic}) async {
+    final resp = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/learn/cards/topic'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title, 'topic': topic}),
+    );
+    _check(resp);
+    return LearnCardDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 删卡片（软删除，2026-09-13 卡片管理批）：DELETE /learn/cards?type=&title= →
+  /// {deleted, title, learnCardId, cascadedCandidates}。
+  /// 文件移进 learn/_trash/（可人工找回）并从主题 README 索引里摘除；曾反哺过的交易候选
+  /// 会被级联清理（标题在 cascadedCandidates 里，调用方要如实展示）。
+  /// 400：卡片不存在 / 别处整理的只读卡 / type 非法；403：learn 未启用。
+  Future<LearnCardDeletedDto> deleteLearnCard(
+      {required String type, required String title}) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/learn/cards')
+          .replace(queryParameters: {'type': type, 'title': title}),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnCardDeletedDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
   /// trading 卡片反哺成规则候选（V2 批 3）：POST /learn/cards/candidate。
   Future<LearnTradingCandidateDto> createLearnCandidate(
       {required String type, required String title}) async {

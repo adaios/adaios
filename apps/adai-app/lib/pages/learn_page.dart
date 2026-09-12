@@ -17,6 +17,41 @@ String _errText(dynamic e) {
   return '加载失败，请重试';
 }
 
+/// 动作类错误的人话（写动作：挪主题 / 删卡 / 喂入确认，沿用本页既有口径）：
+/// 优先取后端 error body（400/403 后端给的是人话），取不到就按错误类型给自然口吻兜底
+/// （B1：不把「请求失败 / 接口」这类系统原话甩给用户）。
+String _apiError(dynamic e) {
+  if (e is ApiException && e.body != null) {
+    try {
+      final json = jsonDecode(e.body!);
+      if (json is Map && json['error'] is String) return json['error'] as String;
+    } catch (_) {}
+  }
+  final s = e.toString();
+  if (s.contains('TimeoutException') || s.contains('timed out')) return '等太久了，检查下网络再试';
+  if (s.contains('SocketException') || s.contains('Connection refused')) return '暂时连不上，检查下网络再试';
+  if (s.contains('403')) return '学习功能未启用（learn 插件）';
+  return '这次没成功，稍后再试一次';
+}
+
+/// 单篇页动作的结果（pop 回列表后由列表页刷新 + 交代人话）。
+sealed class _CardActionResult {
+  const _CardActionResult();
+}
+
+/// 换了主题：回列表刷新后把这张卡重新定位打开（它已经归到新主题分组下）。
+class _CardMoved extends _CardActionResult {
+  final String topic;
+  const _CardMoved(this.topic);
+}
+
+/// 进了回收站：[cascaded] 是这次被一起清掉的交易候选标题（非空要如实说）。
+class _CardDeleted extends _CardActionResult {
+  final String title;
+  final List<String> cascaded;
+  const _CardDeleted(this.title, this.cascaded);
+}
+
 /// LearnPage —「最近学习」入口（RFC 20260829 learn 插件 L2 呈现·移动端）。
 /// 移动端只做「最近学习 + 单篇全文」（完整资产浏览引导到 web 桌面端，双端分工见 RFC 3.7）。
 /// 数据源：GET /learn/tree → 按 type → topic 二级归置（组内 created 倒序）；
@@ -193,10 +228,30 @@ class _LearnPageState extends State<LearnPage> {
     }
   }
 
-  void _openCard(LearnCardDto card) {
-    Navigator.push(context, MaterialPageRoute(
+  /// 打开单篇全文。单篇页里的卡片管理动作（挪主题 / 删卡）以结果 pop 回来，
+  /// 由这里统一收尾：刷新列表 → 交代一句人话 → 挪过主题的卡按新分组重新定位打开。
+  Future<void> _openCard(LearnCardDto card) async {
+    final result = await Navigator.push<_CardActionResult>(context, MaterialPageRoute(
       builder: (_) => _LearnDetailPage(card: card, api: widget.api),
     ));
+    if (result == null || !mounted) return;
+    await _load();
+    if (!mounted) return;
+    switch (result) {
+      case _CardMoved(:final topic):
+        _snack('已挪到「$topic」');
+        final tree = _tree;
+        if (tree == null) return;
+        final found = tree.recentAll
+            .where((c) => c.type == card.type && c.title == card.title)
+            .firstOrNull;
+        // 换了主题分组 → 从新列表里重新定位这张卡打开
+        if (found != null && mounted) _openCard(found);
+      case _CardDeleted(:final title, :final cascaded):
+        _snack(cascaded.isEmpty
+            ? '已把《$title》移进回收站（回头想找还能翻出来）'
+            : '已把《$title》移进回收站，同时清掉了 ${cascaded.length} 条交易候选');
+    }
   }
 
   @override
@@ -613,6 +668,9 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
   String? _error;
   LearnCardContentDto? _content; // 拿到了就是全文权威（含 topic/writable）
 
+  /// 动作级连点守卫（挪主题 / 删卡）：一次只送一个动作，回包前重复点击不再送出。
+  bool _actionBusy = false;
+
   /// 代际令牌：重试后旧回包作废（沿用既有防护写法）。
   int _gen = 0;
 
@@ -654,6 +712,131 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
   }
 
   LearnCardDto get _card => widget.card;
+
+  /// 页面内一句人话（动作失败/成功交代用）。
+  void _snack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text, style: const TextStyle(fontSize: 13)),
+      backgroundColor: AppColors.darkSurface2,
+    ));
+  }
+
+  /// 「移动到主题」（只在能改的卡上出现）：填主题 → PATCH → 回列表刷新 + 重新定位打开。
+  /// 只读卡不出现这个入口（后端也会拒写，不把人送到墙上撞）。
+  Future<void> _moveTopic() async {
+    if (_actionBusy) return;
+    final current = (_content?.topic ?? _card.topic).trim();
+    setState(() => _actionBusy = true);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (_) => _TopicInputDialog(initial: current),
+    );
+    if (!mounted) return;
+    if (next == null) {
+      setState(() => _actionBusy = false);
+      return;
+    }
+    if (next.isEmpty) {
+      setState(() => _actionBusy = false);
+      _snack('主题名不能空着，比如「量价关系」');
+      return;
+    }
+    final gen = ++_gen;
+    try {
+      await widget.api.moveLearnCardTopic(
+        type: _card.type,
+        title: _card.title,
+        topic: next,
+      );
+      if (!mounted || gen != _gen) return;
+      Navigator.pop(context, _CardMoved(next));
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() => _actionBusy = false);
+      _snack(_apiError(e));
+    }
+  }
+
+  /// 「删除」（只在能改的卡上出现）：二次确认 → DELETE（软删除进回收站）→ 回列表刷新。
+  /// 确认框要说清两件事：① 不是彻底消失（移入回收站可找回）；② 反哺过的交易候选会一起清掉。
+  Future<void> _deleteCard() async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('删除这张卡？',
+            style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+        content: Text(
+            '《${_card.title}》会移进回收站（learn/_trash/），不是彻底没了，回头想找回我还能翻出来。\n\n'
+            '要是这张卡之前反哺过交易候选，那些候选会跟着一起清掉——清掉几条我会在这边如实告诉你。',
+            style: const TextStyle(fontSize: 13, height: 1.7, color: AppColors.darkGrey3)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(color: AppColors.darkGrey5)),
+          ),
+          TextButton(
+            key: const ValueKey('learn-delete-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除', style: TextStyle(color: AppColors.darkOrange)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (ok != true) {
+      setState(() => _actionBusy = false);
+      return;
+    }
+    final gen = ++_gen;
+    try {
+      final res = await widget.api.deleteLearnCard(type: _card.type, title: _card.title);
+      if (!mounted || gen != _gen) return;
+      Navigator.pop(
+        context,
+        _CardDeleted(res.title.isEmpty ? _card.title : res.title, res.cascadedCandidates),
+      );
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() => _actionBusy = false);
+      _snack(_apiError(e));
+    }
+  }
+
+  /// 卡片管理动作行（2026-09-13 卡片管理动作批）：只对能改的卡出现。
+  Widget _cardActions() {
+    final disabled = _actionBusy || _loading;
+    return Row(
+      key: const ValueKey('learn-card-actions'),
+      children: [
+        OutlinedButton.icon(
+          key: const ValueKey('learn-move-topic'),
+          onPressed: disabled ? null : _moveTopic,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey3,
+            side: const BorderSide(color: AppColors.darkGrey6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          icon: const Icon(Icons.drive_file_move_outline, size: 16),
+          label: const Text('移动到主题', style: TextStyle(fontSize: 13)),
+        ),
+        const SizedBox(width: 10),
+        OutlinedButton.icon(
+          key: const ValueKey('learn-delete-card'),
+          onPressed: disabled ? null : _deleteCard,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkOrange,
+            side: BorderSide(color: AppColors.darkOrange.withValues(alpha: 0.4)),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          icon: const Icon(Icons.delete_outline, size: 16),
+          label: const Text('删除', style: TextStyle(fontSize: 13)),
+        ),
+      ],
+    );
+  }
 
   /// 全文里的 writable 优先（列表可能来自旧缓存），缺省按卡上的值。
   bool get _writable => _content?.writable ?? _card.writable;
@@ -702,6 +885,10 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
                 if (!_writable) ...[
                   const SizedBox(height: 14),
                   _readOnlyNote(),
+                ] else ...[
+                  // 卡片管理动作（挪主题 / 删卡）：只读卡不出现（后端也拒写）
+                  const SizedBox(height: 14),
+                  _cardActions(),
                 ],
                 const SizedBox(height: 16),
                 ..._buildContent(),
@@ -907,6 +1094,61 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
       };
 }
 
+/// 「移动到主题」输入框（预填当前主题；自带 controller 生命周期，随弹窗一起销毁）。
+class _TopicInputDialog extends StatefulWidget {
+  final String initial;
+  const _TopicInputDialog({required this.initial});
+
+  @override
+  State<_TopicInputDialog> createState() => _TopicInputDialogState();
+}
+
+class _TopicInputDialogState extends State<_TopicInputDialog> {
+  late final TextEditingController _ctl = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface,
+      title: const Text('移动到主题',
+          style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          key: const ValueKey('learn-topic-input'),
+          controller: _ctl,
+          autofocus: true,
+          style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
+          decoration: const InputDecoration(
+            hintText: '比如 量价关系',
+            hintStyle: TextStyle(fontSize: 13, color: AppColors.darkGrey6),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text('换个主题名，这张卡就搬到那个主题下：内容不动，编号在新主题里接着排。',
+            style: TextStyle(fontSize: 12, height: 1.6, color: AppColors.darkGrey5)),
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消', style: TextStyle(color: AppColors.darkGrey5)),
+        ),
+        TextButton(
+          key: const ValueKey('learn-topic-confirm'),
+          onPressed: () => Navigator.pop(context, _ctl.text.trim()),
+          child: const Text('挪过去', style: TextStyle(color: AppColors.darkGreen)),
+        ),
+      ],
+    );
+  }
+}
+
 /// 「整理新内容」喂入页（2026-09-10 喂入入口批·移动端；2026-09-12 抓取批接链接 + 转写费用确认；
 /// 2026-09-12 完整升级批接图片喂入 + 本月转写额度）。
 /// 提交式：POST /learn/digest（只丢链接也行，抓取交给服务端）→ 轮询 GET /learn/digest/status（每 2s，上限 150s）
@@ -1106,21 +1348,6 @@ class _DigestInputPageState extends State<_DigestInputPage> {
   String? _trimOrNull(TextEditingController c) {
     final v = c.text.trim();
     return v.isEmpty ? null : v;
-  }
-
-  /// 错误人话：优先取后端 error body（400 人话，如「请给我一个链接，或者把素材内容粘进来」），
-  /// 取不到就按错误类型给自然口吻兜底（不把技术原话甩给用户）。
-  String _apiError(dynamic e) {
-    if (e is ApiException && e.body != null) {
-      try {
-        final json = jsonDecode(e.body!);
-        if (json is Map && json['error'] is String) return json['error'] as String;
-      } catch (_) {}
-    }
-    final s = e.toString();
-    if (s.contains('TimeoutException') || s.contains('timed out')) return '等太久了，检查下网络再试';
-    if (s.contains('SocketException') || s.contains('Connection refused')) return '暂时连不上，检查下网络再试';
-    return '这次没成功，稍后再试一次';
   }
 
   /// 「继续转写 / 先不转写」（2026-09-12 抓取批）：把用户的选择告诉阿呆。

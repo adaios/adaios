@@ -816,6 +816,12 @@ class _LearnPageState extends State<LearnPage> {
       buttons.add(_actionChip('标记完成', Icons.check_circle_outline, () => _changeStatus(card, 'done')));
     }
     buttons.add(_actionChip('写复述', Icons.edit_outlined, () => _openRetellDialog(card)));
+    // 卡片管理（2026-09-13）：换主题归档 / 删卡（软删除进回收站）。
+    // 只读卡在上面 readOnly 分支已整体挡住，这里不再出现（后端也会 400 拒绝）。
+    buttons.add(_actionChip('移动到主题', Icons.drive_file_move_outlined,
+        () => _openMoveTopicDialog(card), enabled: !_busy));
+    buttons.add(_actionChip('删除', Icons.delete_outline, () => _confirmDeleteCard(card),
+        enabled: !_busy, danger: true));
     if (card.type == 'trading' && widget.tradingEnabled) {
       if (card.tradeRelated && card.status != 'done') {
         buttons.add(_actionChip('反哺候选', Icons.rocket_launch_outlined, () => _createCandidate(card)));
@@ -839,24 +845,31 @@ class _LearnPageState extends State<LearnPage> {
     return buttons;
   }
 
-  Widget _actionChip(String label, IconData icon, VoidCallback onTap) {
+  /// [enabled] = false 时按钮变灰且不可点（动作在途时挡住连点；守卫同时也在处理函数里兜一层）。
+  /// [danger] = true 用红色（删除这类不可逆动作）。
+  Widget _actionChip(String label, IconData icon, VoidCallback onTap,
+      {bool enabled = true, bool danger = false}) {
+    final textColor = danger ? AppColors.darkRed : AppColors.darkGrey3;
+    final iconColor = danger ? AppColors.darkRed : AppColors.darkGrey4;
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.darkBorder),
-            borderRadius: BorderRadius.circular(6),
+      child: Opacity(
+        opacity: enabled ? 1 : 0.5,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.darkBorder),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 12, color: iconColor),
+              const SizedBox(width: 5),
+              Text(label, style: TextStyle(fontSize: 11.5, color: textColor)),
+            ]),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 12, color: AppColors.darkGrey4),
-            const SizedBox(width: 5),
-            Text(label,
-                style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey3)),
-          ]),
         ),
       ),
     );
@@ -942,6 +955,138 @@ class _LearnPageState extends State<LearnPage> {
     } catch (e) {
       if (!mounted) return;
       _showSnack(extractApiErrorMessage(e)); // P1-learn3
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 换主题归档（2026-09-13 卡片管理批）：预填当前主题 → PATCH /learn/cards/topic →
+  /// **整树刷新**（卡片换了主题组，目录分组跟着变）并**重新定位回这张卡**（别丢选中）；
+  /// 失败透出后端人话（400：卡片不存在 / 别处整理的只读卡 / 主题为空）。
+  Future<void> _openMoveTopicDialog(LearnCardDto card) async {
+    if (card.readOnly) return; // 兜底：只读卡入口本身不出现
+    if (_busy) return;         // 连点守卫：一次只发一份
+    final controller = TextEditingController(text: card.topic.trim());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('移动到主题 · ${card.title}',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('换个主题，卡片就挪到那个主题目录里（左边目录的分组跟着变）。',
+                style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.darkGrey5)),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('learn-topic-input'),
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              onSubmitted: (_) => Navigator.pop(ctx, true),
+              decoration: const InputDecoration(
+                hintText: '比如 量价关系',
+                hintStyle: TextStyle(color: AppColors.darkGrey6),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final topic = controller.text.trim();
+    if (topic.isEmpty) {
+      // 后端 400 也会说「topic 为空」，但没必要多跑一趟：这里就说清楚
+      _showSnack('主题名不能空着——给它起个名字（比如「量价关系」）');
+      return;
+    }
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final updated = await widget.api.moveLearnCardTopic(
+          type: card.type, title: card.title, topic: topic);
+      if (!mounted) return;
+      // 主题变了 → 目录分组会换：整树刷新后按 type+title 重新定位（_refreshAndOpen = _load + 定位）
+      await _refreshAndOpen(
+        updated.type.isEmpty ? card.type : updated.type,
+        updated.title.isEmpty ? card.title : updated.title,
+      );
+      if (!mounted) return;
+      _showSnack('已挪到「${updated.topic.trim().isEmpty ? topic : updated.topicLabel}」');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3：透出后端人话
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 删卡（软删除，2026-09-13 卡片管理批）：二次确认说清「进回收站、不是消失」+「候选会级联清掉」
+  /// → DELETE → 整树刷新 + 选中回落第一张（树空了就空态）；级联清掉的候选条数如实报出来。
+  Future<void> _confirmDeleteCard(LearnCardDto card) async {
+    if (card.readOnly) return; // 兜底：只读卡入口本身不出现
+    if (_busy) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('删除这张卡？', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 440,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('《${card.title}》', style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+            const SizedBox(height: 10),
+            const Text('① 它不是彻底没了：会移进回收站（learn/_trash），哪天真想找回来跟我说一声。',
+                style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.darkGrey5)),
+            const SizedBox(height: 6),
+            const Text('② 如果它之前反哺过交易候选，那些候选会跟着一起清掉（源卡都不在了，建议也留不住）。',
+                style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.darkGrey5)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkRed),
+            child: const Text('确认删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final res = await widget.api.deleteLearnCard(type: card.type, title: card.title);
+      if (!mounted) return;
+      // 选中回落第一张卡：先清掉选择，_load() 里的 _resolveCurrentCard 就会落到第一个非空组第一张。
+      // （不能沿用 _selectedIndex：被删卡后面的卡片位移上来，同一个下标会指向另一张卡）
+      setState(() {
+        _selectedGroup = null;
+        _selectedIndex = -1;
+      });
+      // 整树刷新（就地刷新：_load 不置 _loading，不整页闪）；树空了 → 走空态
+      await _load();
+      if (!mounted) return;
+      final cascade = res.cascadedCandidates.isEmpty
+          ? ''
+          : '；同时清掉了 ${res.cascadedCandidates.length} 条交易候选';
+      _showSnack('已删除《${res.title.isEmpty ? card.title : res.title}》'
+          '，卡片进了回收站（learn/_trash），想找回跟我说一声$cascade');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3：400（卡片不存在/只读卡/type 非法）人话透出
     } finally {
       if (mounted) setState(() => _busy = false);
     }

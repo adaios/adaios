@@ -448,6 +448,19 @@ class ApiService {
     return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// RFC 20260912 账实一致性自检（GET /api/v1/trading/integrity，P2-交易39 手机端补课）：
+  /// 锚定状态 + drift（应有持仓 ≠ 落地持仓）+ gaps（重放缺口）。
+  /// 降级诚实：锚定/基线缺失 → [IntegrityReportDto.note] 说明「无法判定」，drift/gaps 空（不误报差异）。
+  /// 调用方（交易页）失败必须静默——本端点是增强项，不能拖垮持仓主数据。
+  Future<IntegrityReportDto> getIntegrity() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/integrity'),
+      headers: _headers,
+    );
+    _check(resp);
+    return IntegrityReportDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// RFC 20260822：当日交易复盘聚合（纯客观）——GET /trading/trades?date=today → {trades, daily}。
   Future<DailyTradesResponse> getDailyTrades() async {
     final today = DateTime.now();
@@ -933,6 +946,47 @@ class ApiService {
     return list
         .map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  // ── learn 卡片管理动作（2026-09-13 卡片管理动作批）──
+  //
+  // 只对「我在产品里写过的卡」（writable=true）成立；只读卡（Mac 侧技能整理的原始卡）
+  // 后端一律 400 拒写，前端也不该把那两个入口亮出来（不把用户送到墙上撞）。
+
+  /// 挪主题：PATCH /learn/cards/topic，body {type,title,topic} → 更新后的 LearnCard。
+  /// 卡片文件会移到 `{type}/{新主题}/NN-标题.md`（新主题续号）；同主题幂等（照常 200）。
+  /// 400（卡片不存在 / 只读卡 / type 非法）与 403（learn 插件未启用）抛 [ApiException]，
+  /// body 里是后端人话（UI 层提取 error 展示，不甩技术原话）。
+  Future<LearnCardDto> moveLearnCardTopic({
+    required String type,
+    required String title,
+    required String topic,
+  }) async {
+    final resp = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/learn/cards/topic'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title, 'topic': topic}),
+    );
+    _check(resp);
+    return LearnCardDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 删卡（软删除，不真丢）：DELETE /learn/cards?type=&title=（精确标题）→
+  /// {deleted,title,learnCardId,cascadedCandidates}。卡文件移入 learn/_trash/（可人工找回），
+  /// 主题 README 索引摘行；若该卡曾反哺过交易候选，候选会被级联清理，
+  /// 标题在 cascadedCandidates 里——**调用方必须如实告诉用户**。
+  /// 400 / 403 语义同 [moveLearnCardTopic]。
+  Future<LearnCardDeleteResult> deleteLearnCard({
+    required String type,
+    required String title,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/learn/cards')
+        .replace(queryParameters: {'type': type, 'title': title});
+    final resp = await _client.delete(uri, headers: _headers);
+    _check(resp);
+    return LearnCardDeleteResult.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 图片喂入（2026-09-12 完整升级批）：POST /learn/digest/image（multipart，字段名 files，1~3 张，
@@ -1611,6 +1665,185 @@ class PositionItem {
     pnlPercent: (json['pnlPercent'] as num?)?.toDouble(),
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
   );
+}
+
+/// 券商快照锚定状态（GET /trading/integrity `anchor`，2026-09-12；值复制自 adai-web）。
+/// [known]=false → 无法判断哪些成交已含在券商快照口径内；[holdingsKnown]=false →
+/// 快照持仓基线未记录，对账无法判定（诚实降级，不误报差异）。
+class AnchorStatusDto {
+  final String? positionsReplace; // yyyy-MM-dd（「持仓股」快照导入日）
+  final String? cashImport; // yyyy-MM-dd（「资金股份查询」快照导入日）
+  final bool known;
+  final bool holdingsKnown;
+  final String? anchorDate; // 生效锚定日（较晚者）；未知 → null
+
+  AnchorStatusDto({
+    this.positionsReplace,
+    this.cashImport,
+    required this.known,
+    required this.holdingsKnown,
+    this.anchorDate,
+  });
+
+  factory AnchorStatusDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return AnchorStatusDto(
+      positionsReplace: m['positionsReplace']?.toString(),
+      cashImport: m['cashImport']?.toString(),
+      known: m['known'] == true,
+      holdingsKnown: m['holdingsKnown'] == true,
+      anchorDate: m['anchorDate']?.toString(),
+    );
+  }
+}
+
+/// 账实对账差异行（`drift`，2026-09-12）：
+/// [derived] = 应有持仓（快照基线 [snapshotQty] + 锚点后流水净增减 [ledgerDelta]）。
+/// [snapshotQty]/[holdings] 可空保持可空（基线未记录 / 标的不在持仓里）。
+class DriftLineDto {
+  final String symbol;
+  final String name;
+  final int? snapshotQty;
+  final int ledgerDelta;
+  final int derived;
+  final int? holdings;
+  final int diff;
+  final String note;
+
+  DriftLineDto({
+    required this.symbol,
+    required this.name,
+    this.snapshotQty,
+    required this.ledgerDelta,
+    required this.derived,
+    this.holdings,
+    required this.diff,
+    required this.note,
+  });
+
+  /// 人话明细：`600206 有研新材：应有 900 股（快照基线 900 + 锚点后流水 0），落地 700 股，差 -200`。
+  String get display =>
+      '$symbol $name：应有 $derived 股'
+      '（快照基线 ${snapshotQty ?? 0} + 锚点后流水 ${ledgerDelta > 0 ? '+' : ''}$ledgerDelta），'
+      '落地 ${holdings ?? 0} 股，差 ${diff > 0 ? '+' : ''}$diff';
+
+  factory DriftLineDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return DriftLineDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      snapshotQty: (m['snapshotQty'] as num?)?.toInt(),
+      ledgerDelta: (m['ledgerDelta'] as num?)?.toInt() ?? 0,
+      derived: (m['derived'] as num?)?.toInt() ?? 0,
+      holdings: (m['holdings'] as num?)?.toInt(),
+      diff: (m['diff'] as num?)?.toInt() ?? 0,
+      note: m['note']?.toString() ?? '',
+    );
+  }
+}
+
+/// 重放缺口行（`gaps`，2026-09-12）：卖超/未持有的流水——与历史成交导入 rejected 同一件事。
+class RejectedLineDto {
+  final String symbol;
+  final String name;
+  final String direction; // 'BUY' | 'SELL'（后端 TradeDirection 枚举名）
+  final int volume;
+  final double? price; // 可空保持可空
+  final String entryDate; // yyyy-MM-dd
+  final String reason; // 中文人话原因
+
+  RejectedLineDto({
+    required this.symbol,
+    required this.name,
+    required this.direction,
+    required this.volume,
+    this.price,
+    required this.entryDate,
+    required this.reason,
+  });
+
+  /// 人话方向（BUY→买入 / SELL→卖出；缺失原样返回，不编造）。
+  String get directionLabel {
+    switch (direction.toUpperCase()) {
+      case 'BUY':
+        return '买入';
+      case 'SELL':
+        return '卖出';
+      default:
+        return direction;
+    }
+  }
+
+  /// 明细行文案：`卖出 贵州茅台（600519）100 股 @ 1500.00 · 原因`。
+  String get display {
+    final qty = '${_thousandsNum(volume)} 股';
+    final p = price == null ? '' : ' @ ${price!.toStringAsFixed(2)}';
+    final who = name.isEmpty ? symbol : '$name（$symbol）';
+    return '$directionLabel $who$qty$p${reason.isEmpty ? '' : ' · $reason'}';
+  }
+
+  factory RejectedLineDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return RejectedLineDto(
+      symbol: m['symbol']?.toString() ?? '',
+      name: m['name']?.toString() ?? '',
+      direction: m['direction']?.toString() ?? '',
+      volume: (m['volume'] as num?)?.toInt() ?? 0,
+      price: (m['price'] as num?)?.toDouble(),
+      entryDate: m['entryDate']?.toString() ?? '',
+      reason: m['reason']?.toString() ?? '',
+    );
+  }
+}
+
+/// 整数千分位（明细文案用）：10000 → 10,000。
+String _thousandsNum(int v) {
+  final s = v.abs().toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    buf.write(s[i]);
+    final remaining = s.length - 1 - i;
+    if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+  }
+  return '${v < 0 ? '-' : ''}$buf';
+}
+
+/// 账实一致性报告（GET /api/v1/trading/integrity，2026-09-12）：锚定状态 + 差异 + 重放缺口。
+/// 降级诚实：锚定/基线缺失 → [note] 说明「无法判定」，drift/gaps 为空（不误报）。
+class IntegrityReportDto {
+  final AnchorStatusDto? anchor;
+  final bool holdingsKnown;
+  final List<DriftLineDto> drift;
+  final List<RejectedLineDto> gaps; // 重放缺口（卖超/未持有）——与导入 rejected 同一件事
+  final String note;
+
+  IntegrityReportDto({
+    this.anchor,
+    required this.holdingsKnown,
+    required this.drift,
+    required this.gaps,
+    required this.note,
+  });
+
+  /// 有需要用户看的东西吗（无差异 → 页面不显示任何横幅，不制造噪音）。
+  bool get hasIssue => drift.isNotEmpty || gaps.isNotEmpty;
+
+  factory IntegrityReportDto.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return IntegrityReportDto(holdingsKnown: false, drift: const [], gaps: const [], note: '');
+    }
+    return IntegrityReportDto(
+      anchor: json['anchor'] == null ? null : AnchorStatusDto.fromJson(json['anchor']),
+      holdingsKnown: json['holdingsKnown'] == true,
+      drift: ((json['drift'] as List?) ?? const [])
+          .map((e) => DriftLineDto.fromJson(e))
+          .toList(),
+      gaps: ((json['gaps'] as List?) ?? const [])
+          .map((e) => RejectedLineDto.fromJson(e))
+          .toList(),
+      note: json['note']?.toString() ?? '',
+    );
+  }
 }
 
 /// RFC 20260825：逐笔批次视图响应（GET /api/v1/trading/lots）。

@@ -66,6 +66,8 @@ public class LearnCardFileRepository implements LearnCardRepository {
     /** 素材暂存区（消化成功前主题未知；成功后归位到主题目录，见 {@link #promoteRaw}）。 */
     private static final String RAW_STAGING_DIR = "learn/_raw/";
     private static final String RAW_SUBDIR = "_raw";
+    /** 软删除目录（删卡不真删：知识是资产，误删要能捡回来）。 */
+    private static final String TRASH_SUBDIR = "_trash";
     private static final String README_NAME = "README.md";
     /** 本实现写出的卡带此标记；别处（Mac 上技能）整理的卡没有 → 只读。 */
     private static final String ORIGIN_KEY = "origin";
@@ -625,6 +627,73 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     @Override
+    public String deleteCard(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在：" + safeLabel(type, title));
+        }
+        synchronized (lockFor(userId)) {
+            LearnCard card = find(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            Located located = requireWritable(userId, type, card);
+            String content = fileStorage.read(userId, located.path());
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            // 软删除：先进 _trash（保留原主题信息，便于人工捡回），再摘掉老位置与索引行
+            String trashName = com.adaiadai.core.kernel.IdGenerator.monotonic("learn_del_") + "-"
+                    + baseName(located.path());
+            fileStorage.write(userId, LEARN_DIR + TRASH_SUBDIR + "/" + trashName, content);
+            fileStorage.delete(userId, located.path());
+            removeTopicReadmeEntry(userId, type, located.card().topic(), baseName(located.path()));
+            log.info("learn 卡片已删除（软删除到 _trash）| userId={} | {} → {}/{}",
+                    userId, located.path(), TRASH_SUBDIR, trashName);
+            return located.path();
+        }
+    }
+
+    @Override
+    public LearnCard moveToTopic(String userId, String type, String title, String newTopic) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在：" + safeLabel(type, title));
+        }
+        synchronized (lockFor(userId)) {
+            LearnCard card = find(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            Located located = requireWritable(userId, type, card);
+            String target = LearnCard.topicDir(newTopic);
+            String oldTopic = located.card().topic();
+            if (target.equals(oldTopic)) {
+                return located.card();   // 同主题：幂等
+            }
+            String content = fileStorage.read(userId, located.path());
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            String dir = LEARN_DIR + type + "/" + target + "/";
+            String file = fileName(nextSeq(userId, dir), LearnCard.fileStem(card.title()));
+            String newPath = dir + file;
+            String updated = replaceFrontmatterKey(content, "topic", target);
+            fileStorage.write(userId, newPath, updated);
+            try {
+                fileStorage.delete(userId, located.path());
+            } catch (Exception e) {
+                // 老文件删不掉 → 回滚新文件，避免同题两张同名卡（locate 会 400，卡就废了）
+                log.warn("learn 改主题删旧文件失败，已回滚 | userId={} | {} | {}", userId, located.path(), e.getMessage());
+                try {
+                    fileStorage.delete(userId, newPath);
+                } catch (Exception rollback) {
+                    log.error("learn 改主题回滚失败（两处都有副本，需人工合并）| userId={} | {}", userId, newPath);
+                }
+                throw new LearnException("这次没挪动（老位置删不掉），稍后再试一次");
+            }
+            removeTopicReadmeEntry(userId, type, oldTopic, baseName(located.path()));
+            updateTopicReadme(userId, type, target, card.withTopic(target), file);
+            log.info("learn 卡片已改主题 | userId={} | {} → {}", userId, located.path(), newPath);
+            return decorate(parse(updated), newPath, type, updated);
+        }
+    }
+
+    @Override
     public List<MigrationItem> migrateLegacy(String userId) {
         List<MigrationItem> items = new ArrayList<>();
         for (String type : List.of(LearnCard.TYPE_AI, LearnCard.TYPE_TRADING, LearnCard.TYPE_OTHER)) {
@@ -729,6 +798,31 @@ public class LearnCardFileRepository implements LearnCardRepository {
         } catch (Exception e) {
             // 索引是附带收益：写不进去不该让已花钱的消化失败（与留痕同口径）
             log.warn("learn 主题 README 更新失败 | userId={} | {}/{} | {}", userId, type, topic, e.getMessage());
+        }
+    }
+
+    /** 从主题 README 的自动段里摘掉某张卡的行（删卡/改主题时调用；只动带标记的自动段）。 */
+    private void removeTopicReadmeEntry(String userId, String type, String topic, String fileName) {
+        String path = LEARN_DIR + type + "/" + LearnCard.topicDir(topic) + "/" + README_NAME;
+        try {
+            String existing = fileStorage.read(userId, path);
+            if (existing == null || existing.isBlank() || !existing.contains(README_MARKER)) return;
+            String marker = "(" + fileName + ")";
+            StringBuilder kept = new StringBuilder();
+            boolean removed = false;
+            for (String line : existing.split("\n", -1)) {
+                if (line.startsWith("- ") && line.contains(marker)) {
+                    removed = true;
+                    continue;
+                }
+                kept.append(line).append('\n');
+            }
+            if (removed) {
+                fileStorage.write(userId, path, kept.toString());
+                log.info("learn 主题 README 已摘除索引行 | userId={} | {}/{} | {}", userId, type, topic, fileName);
+            }
+        } catch (Exception e) {
+            log.warn("learn 主题 README 摘行失败 | userId={} | {}/{} | {}", userId, type, topic, e.getMessage());
         }
     }
 

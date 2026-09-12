@@ -3,9 +3,9 @@ title: docs/review 目录索引
 description: review 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-10
+updated: 2026-09-13
 status: active
-lines: 46
+lines: 47
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-09-13-trading-ledger-dirty-rows.md | 交易账本存量脏流水逐笔核对存档（全量 1707 笔重判：真重复 6 组非 4 笔 + 负持仓同根因 + 粗暴去重反例 25 只负持仓；只报告未改数据，处置待拍板） | active |
 | audits/2026-09-05-cognition-layer-review.md | 交易⑤认知层批三官深审存档（backend/docs/adversarial 隔离并行：P1×5 + 💥×6 + docs×6 全修出表，守护 G2 一并修） | active |
 | audits/2026-09-06-admin-uiux-review.md | adai-admin 管理后台 UI/UX 专项审查存档（ui/ux 双官隔离并行：P1×4 成立 + P1×1 误报排除 + P2×25 + P3×31，修复待拍板） | active |
 | audits/2026-09-09-daily-pnl-review.md | 当日盈亏精确计算三官深审存档（backend/frontend/adversarial 隔离并行：⭐⭐ 交叉命中 T+1 成本配比算术缺陷，修复批已落地 audits 同日期 + REVIEW 头部登记；未修三项排后续） | active |
