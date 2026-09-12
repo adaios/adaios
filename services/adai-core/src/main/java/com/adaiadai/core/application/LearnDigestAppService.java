@@ -582,18 +582,24 @@ public class LearnDigestAppService {
     /**
      * 转写报价文案（用户可见，必须如实）。
      * <p>
-     * 2026-09-13 纠正口径：那 10 小时是**我们自设的月度上限**（防跑飞），**不是云端的免费额度**——
-     * 百炼的新人免费额度是**一次性 90 天**、按模型各自独立、ASR 类模型还要在控制台业务空间单独开通，
-     * 用完或过期即按量计费（用户 2026-09-06 的 fun-asr 账单即此类）。所以文案里要标出单价，
-     * 并说清「实际扣费以阿里云账单为准」。
+     * 口径（2026-09-13 用户控制台核对后定稿）：
+     * <ul>
+     *   <li>默认模型 {@code paraformer-v2} 在百炼有**每月 1 日重置、长期有效**的 36,000 秒（10 小时）免费额度
+     *       （控制台原文「每月1日额度重置 · 长期有效」）——**额度内实际 0 元**；</li>
+     *   <li>额度与**模型快照**绑定：换模型（如 {@code fun-asr} 0.792 元/小时）可能不通用、且更贵；</li>
+     *   <li>产品自设的月度上限也是 36,000 秒，与免费额度对齐，所以正常用不会产生费用；</li>
+     *   <li>只有「超出 10 小时」或「换到没额度的模型」才按 0.288 元/小时计费——所以文案里既给估算金额，
+     *       也说清「免费额度内为 0 元」，并保留「以阿里云账单为准」。</li>
+     * </ul>
      */
     static String quoteMessage(LearnTranscriptionService.CostEstimate estimate,
                                LearnTranscriptionService service) {
         return "这个视频没有字幕，需要转写：" + DigestJob.humanDuration(estimate)
                 + "，预计约 " + String.format("%.2f", estimate.estimatedYuan())
                 + " 元（按 " + String.format("%.3f", service.yuanPerHour())
-                + " 元/小时估；我这边本月还剩 " + LearnTranscriptionService.humanHours(estimate.remainSeconds())
-                + " 的自设上限——不是云端免费额度，实际以阿里云账单为准）";
+                + " 元/小时估；本月的云端免费额度还没用完的话**这笔实际是 0 元**，超出自设上限 "
+                + LearnTranscriptionService.humanHours(estimate.remainSeconds())
+                + " 后按此价计费，最终以阿里云账单为准）";
     }
 
     /** 卡片「平台」展示值：文章用它自己的域名（bilibili 保持原样），比裸 "article" 有信息量。 */

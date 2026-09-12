@@ -136,10 +136,10 @@ class LearnDigestFetchFlowTest {
         assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, job.status());
         assertTrue(job.message().contains("37 分钟"), "要说清多长：37 分钟");
         assertTrue(job.message().contains("0.18"), "要给出预计金额");
-        assertTrue(job.message().contains("本月还剩"), "要带上本月剩余（我这边自设上限的口径）：" + job.message());
-        assertTrue(job.message().contains("不是云端免费额度"),
-                "2026-09-13 纠正：必须说清那 10 小时是自设上限、不是云端免费额度（客服化表述会误导）：" + job.message());
-        assertTrue(job.message().contains("阿里云账单"), "实际扣费以阿里云账单为准");
+        assertTrue(job.message().contains("自设上限"), "要带上自设上限口径：" + job.message());
+        assertTrue(job.message().contains("实际是 0 元"),
+                "2026-09-13 用户控制台核对：默认模型 paraformer-v2 有每月 1 日重置的 10 小时免费额度 → 额度内应说清 0 元：" + job.message());
+        assertTrue(job.message().contains("阿里云账单"), "同时保留「以阿里云账单为准」（我们查不到云端余量）");
         assertNotNull(job.cost());
         assertEquals(2244, job.cost().durationSeconds());
         assertEquals(0.1795d, job.cost().estimatedYuan(), 1e-9);
