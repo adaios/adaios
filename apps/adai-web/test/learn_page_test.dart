@@ -27,6 +27,39 @@ Map<String, dynamic> _card(String type, String title,
       'keyPoints': keyPoints,
     };
 
+/// 本月转写额度样例（GET /learn/digest/quota）。
+Map<String, dynamic> _quotaJson({int remainSeconds = 34800, bool asrAvailable = true}) => {
+      'month': '2026-09',
+      'usedSeconds': 1200,
+      'usedYuan': 0.096,
+      'quotaSeconds': 36000,
+      'remainSeconds': remainSeconds,
+      'yuanPerHour': 0.288,
+      'asrAvailable': asrAvailable,
+      'unavailableReason': null,
+    };
+
+/// 「视频没字幕 → 先报价等你点头」的轮询响应样例（RFC 20260912 §3.8 条 5）。
+Map<String, dynamic> _needsConfirmJson() => {
+      'status': 'needs_confirmation',
+      'message': '这个视频没有字幕，需要转写：37 分钟，预计约 0.18 元（本月剩余额度 9.7 小时）',
+      'stage': 'transcribing',
+      'source': {
+        'platform': 'bilibili',
+        'title': '某视频',
+        'author': '某UP',
+        'durationSeconds': 2244,
+      },
+      'cost': {
+        'durationSeconds': 2244,
+        'durationKnown': true,
+        'estimatedYuan': 0.1795,
+        'monthUsedSeconds': 0,
+        'quotaSeconds': 36000,
+        'remainSeconds': 36000,
+      },
+    };
+
 ApiService _api({required Map<String, dynamic> tree}) {
   return ApiService(
     baseUrl: 'http://test',
@@ -77,6 +110,76 @@ void main() {
       expect(card.keyPoints, isEmpty);
       expect(card.tradeRelated, isFalse);
       expect(card.status, 'new');
+    });
+
+    test('LearnDigestJob 缺字段一律兜底：stage/source/cost 可空，脏数据不炸', () {
+      final bare = LearnDigestJob.fromJson(jsonDecode('{"status":"running"}'));
+      expect(bare.stage, '');
+      expect(bare.source, isNull);
+      expect(bare.cost, isNull);
+      expect(bare.isActive, isTrue, reason: 'running 还在忙 → 轮询继续');
+      expect(bare.stageLabel, '');
+
+      final nulled = LearnDigestJob.fromJson(jsonDecode(
+          '{"status":"needs_confirmation","message":"要转写","stage":null,"source":null,"cost":null}'));
+      expect(nulled.isAwaitingConfirm, isTrue);
+      expect(nulled.source, isNull);
+      expect(nulled.cost, isNull);
+
+      final dirty = LearnDigestJob.fromJson(jsonDecode(
+          '{"status":"done","stage":"structuring","source":"怪东西","cost":123}'));
+      expect(dirty.source, isNull, reason: 'source 不是对象 → 当没有，不能抛');
+      expect(dirty.cost, isNull, reason: 'cost 不是对象 → 当没有，不能抛');
+      expect(dirty.stageLabel, '正在整理成卡片');
+
+      expect(LearnDigestJob.fromJson(jsonDecode('{"status":"cancelled"}')).isCancelled, isTrue);
+      expect(LearnDigestJob.fromJson(jsonDecode('{"status":"pending"}')).isActive, isTrue);
+    });
+
+    test('LearnDigestJob 全量解析：抓到谁 + 转写要花多少钱', () {
+      final job = LearnDigestJob.fromJson(jsonDecode('''
+        {"status":"needs_confirmation","message":"这个视频没有字幕，需要转写：37 分钟，预计约 0.18 元",
+         "stage":"transcribing",
+         "source":{"platform":"bilibili","title":"某视频","author":"某UP","durationSeconds":2244},
+         "cost":{"durationSeconds":2244,"durationKnown":true,"estimatedYuan":0.1795,
+                 "monthUsedSeconds":0,"quotaSeconds":36000,"remainSeconds":36000}}
+      '''));
+      expect(job.isAwaitingConfirm, isTrue);
+      expect(job.stageLabel, '正在转写，可能要几分钟');
+      expect(job.source!.platform, 'bilibili');
+      expect(job.source!.durationSeconds, 2244);
+      expect(job.source!.durationText, '37 分钟');
+      expect(job.source!.summaryLine, '某视频 · 某UP · 37 分钟');
+      expect(job.cost!.durationKnown, isTrue);
+      expect(job.cost!.estimatedYuan, closeTo(0.1795, 1e-9));
+      expect(job.cost!.estimateText, '约 0.18 元');
+      expect(job.cost!.remainText, '本月还剩 10 小时');
+    });
+
+    test('LearnCostDto 时长未知/整数金额也说得出来', () {
+      final unknown = LearnCostDto.fromJson(jsonDecode(
+          '{"durationSeconds":null,"durationKnown":false,"estimatedYuan":0,"remainSeconds":0}'));
+      expect(unknown!.durationText, '时长没查到');
+      expect(unknown.estimateText, '约 0.00 元');
+      expect(unknown.remainText, '本月还剩 0 分钟');
+      expect(LearnCostDto.fromJson(null), isNull);
+    });
+
+    test('LearnQuotaDto 缺字段兜底 + 额度说人话', () {
+      final empty = LearnQuotaDto.fromJson(jsonDecode('{}'));
+      expect(empty.month, '');
+      expect(empty.asrAvailable, isTrue);
+      expect(empty.remainText, '0 分钟');
+
+      final q = LearnQuotaDto.fromJson(jsonDecode('''
+        {"month":"2026-09","usedSeconds":1200,"usedYuan":0.096,"quotaSeconds":36000,
+         "remainSeconds":34800,"yuanPerHour":0.288,"asrAvailable":true,"unavailableReason":null}
+      '''));
+      expect(q.month, '2026-09');
+      expect(q.usedText, '20 分钟');
+      expect(q.remainText, '9.7 小时');
+      expect(q.yuanPerHour, closeTo(0.288, 1e-9));
+      expect(q.unavailableReason, '');
     });
 
     test('LearnTreeResponse parses groups and empty groups omitted', () {
@@ -387,19 +490,19 @@ void main() {
               'ai': [_card('ai', '阿呆消化了新卡')]
             });
           }
-          if (p.endsWith('/api/v1/learn/cards') && req.method == 'POST') {
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
             submitBody = jsonDecode(req.body) as Map<String, dynamic>;
             expect(submitBody['content'], contains('字幕'));
             // 未手动选类型 → 不传 type，交给阿呆自动判定
             expect(submitBody.containsKey('type'), isFalse);
-            return _json({'status': 'running'});
+            return _json({'status': 'pending'});
           }
           if (p.endsWith('/api/v1/learn/digest/status')) {
             pollCount++;
             if (pollCount >= 2) {
               return _json({'status': 'done', 'type': 'ai', 'title': '阿呆消化了新卡'});
             }
-            return _json({'status': 'running'});
+            return _json({'status': 'running', 'stage': 'structuring'});
           }
           return _json({'error': 'not mocked'}, status: 404);
         }),
@@ -408,19 +511,21 @@ void main() {
       expect(find.textContaining('还没有学习卡片'), findsOneWidget);
 
       // 空态与页头都有入口；点页头「＋」弹表单
-      await tester.tap(find.byTooltip('整理新内容（粘贴字幕/文章，阿呆消化成卡片）'));
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
       await tester.pumpAndSettle();
-      expect(find.text('让阿呆消化'), findsOneWidget);
+      expect(find.text('开始整理'), findsOneWidget);
 
       await tester.enterText(
-          find.byType(TextField).first, '这是一段视频字幕素材内容，讲 RAG…');
-      await tester.tap(find.text('让阿呆消化'));
+          find.byKey(const ValueKey('learn-digest-content')), '这是一段视频字幕素材内容，讲 RAG…');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
       await tester.pump();
 
       // 提交式：立即受理 → 弹窗转消化中（轮询每 2s）
       expect(find.text('整理新内容 · 消化中'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
+      expect(find.text('正在整理成卡片'), findsOneWidget, reason: 'stage 要说人话');
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
@@ -433,7 +538,7 @@ void main() {
       expect(find.text('阿呆消化了新卡 的核心观点'), findsOneWidget);
     });
 
-    testWidgets('喂入校验：空素材不提交，给出提示', (tester) async {
+    testWidgets('喂入校验：链接与素材都没填时「开始整理」不可点', (tester) async {
       var posted = false;
       final api = ApiService(
         baseUrl: 'http://test',
@@ -441,21 +546,23 @@ void main() {
         client: MockClient((req) async {
           final p = req.url.path;
           if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
-          if (p.endsWith('/api/v1/learn/cards') && req.method == 'POST') {
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
             posted = true;
-            return _json({'status': 'running'});
+            return _json({'status': 'pending'});
           }
           return _json({'error': 'not mocked'}, status: 404);
         }),
       );
       await pump(tester, api);
-      await tester.tap(find.byTooltip('整理新内容（粘贴字幕/文章，阿呆消化成卡片）'));
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('让阿呆消化'));
+      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '开始整理'));
+      expect(button.onPressed, isNull, reason: '两个框都空 → 按钮不可点');
+
+      await tester.tap(find.text('开始整理'), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(posted, isFalse, reason: '空素材不应提交');
-      expect(find.textContaining('请先粘贴素材内容'), findsOneWidget);
     });
 
     testWidgets('喂入失败：后端 400 人话透出，弹窗可重试', (tester) async {
@@ -465,25 +572,346 @@ void main() {
         client: MockClient((req) async {
           final p = req.url.path;
           if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
-          if (p.endsWith('/api/v1/learn/cards') && req.method == 'POST') {
-            return _json({'error': 'AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试'},
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            return _json({'error': '这个链接我打不开（对方不给看），把正文粘进来也行'},
                 status: 400);
           }
           return _json({'error': 'not mocked'}, status: 404);
         }),
       );
       await pump(tester, api);
-      await tester.tap(find.byTooltip('整理新内容（粘贴字幕/文章，阿呆消化成卡片）'));
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField).first, '素材内容');
-      await tester.tap(find.text('让阿呆消化'));
+      await tester.enterText(
+          find.byKey(const ValueKey('learn-digest-url')), 'https://example.com/a');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.textContaining('素材已留存'), findsOneWidget);
+      expect(find.textContaining('这个链接我打不开'), findsOneWidget);
       // 表单仍可编辑重试（弹窗未关）
-      expect(find.text('让阿呆消化'), findsOneWidget);
+      expect(find.text('开始整理'), findsOneWidget);
+    });
+  });
+
+  // ── RFC 20260912 D 形态抓取批：链接喂入 + 转写费用确认（前端）──
+  group('LearnPage 喂入·链接与转写费用确认（RFC 20260912）', () {
+    testWidgets('① 丢链接就能整理：提交带 url → 轮询 done → 自动打开新卡', (tester) async {
+      var treeCalls = 0;
+      var pollCount = 0;
+      var submitBody = <String, dynamic>{};
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            if (treeCalls == 1) return _json(const {});
+            return _json({
+              'ai': [_card('ai', 'B站视频整理出来的卡')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            submitBody = jsonDecode(req.body) as Map<String, dynamic>;
+            return _json({'status': 'pending'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            pollCount++;
+            if (pollCount >= 2) {
+              return _json({'status': 'done', 'type': 'ai', 'title': 'B站视频整理出来的卡'});
+            }
+            return _json({
+              'status': 'running',
+              'stage': 'fetching',
+              'source': {'platform': 'bilibili', 'title': '某视频', 'author': '某UP'},
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV1xx411c7mD');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pump();
+
+      // 只给了链接 → 提交就是链接，不塞空素材
+      expect(submitBody['url'], 'https://www.bilibili.com/video/BV1xx411c7mD');
+      expect(submitBody.containsKey('content'), isFalse);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('正在抓取原文'), findsOneWidget);
+      expect(find.textContaining('某视频'), findsOneWidget, reason: '抓到谁要说一声');
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // done → 关弹窗 → 提示 + 整树刷新并选中新卡
+      expect(find.textContaining('已沉淀学习卡片'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('B站视频整理出来的卡 的核心观点'), findsOneWidget);
+    });
+
+    testWidgets('② 没字幕要先报价：摆出钱数、停下轮询，绝不自动花钱', (tester) async {
+      var confirmCalls = 0;
+      var statusCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            return _json({'status': 'pending'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/confirm')) {
+            confirmCalls++;
+            return _json({'status': 'running'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            statusCalls++;
+            return _json(_needsConfirmJson());
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+
+      // 表单上先把本月额度说清楚
+      expect(find.textContaining('本月转写还剩 9.7 小时'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV1xx411c7mD');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+
+      expect(find.text('整理新内容 · 转写要花钱，你说了算'), findsOneWidget);
+      expect(find.textContaining('这个视频没有字幕，需要转写'), findsOneWidget);
+      expect(find.textContaining('预计花 约 0.18 元'), findsOneWidget);
+      expect(find.textContaining('来源：某视频 · 某UP · 37 分钟'), findsOneWidget);
+      expect(find.text('继续转写'), findsOneWidget);
+      expect(find.text('先不转写'), findsOneWidget);
+      expect(confirmCalls, 0, reason: '没点头之前一分钱都不能花');
+
+      // 停下轮询：再等 6 秒也不会再去问进度
+      final seen = statusCalls;
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump();
+      expect(statusCalls, seen, reason: '等待确认期间应停止轮询');
+      expect(confirmCalls, 0);
+    });
+
+    testWidgets('③ 点「继续转写」：confirm(true) 之后恢复轮询，done 打开新卡', (tester) async {
+      var treeCalls = 0;
+      var statusCalls = 0;
+      Map<String, dynamic>? confirmBody;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            if (treeCalls == 1) return _json(const {});
+            return _json({
+              'ai': [_card('ai', '转写后整理出来的卡')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            return _json({'status': 'pending'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/confirm')) {
+            confirmBody = jsonDecode(req.body) as Map<String, dynamic>;
+            return _json({'status': 'running', 'stage': 'transcribing'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            statusCalls++;
+            if (statusCalls == 1) return _json(_needsConfirmJson());
+            return _json({'status': 'done', 'type': 'ai', 'title': '转写后整理出来的卡'});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV1xx411c7mD');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('继续转写'), findsOneWidget);
+
+      await tester.tap(find.text('继续转写'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(confirmBody, {'confirm': true}, reason: '只发一次确认，且是继续');
+      expect(find.text('整理新内容 · 消化中'), findsOneWidget, reason: '点头后恢复轮询');
+      expect(find.text('正在转写，可能要几分钟'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining('已沉淀学习卡片'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('转写后整理出来的卡 的核心观点'), findsOneWidget);
+    });
+
+    testWidgets('④ 点「先不转写」：confirm(false) 收尾，不进 done 流程', (tester) async {
+      var treeCalls = 0;
+      var statusCalls = 0;
+      Map<String, dynamic>? confirmBody;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            return _json(const {});
+          }
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            return _json({'status': 'pending'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/confirm')) {
+            confirmBody = jsonDecode(req.body) as Map<String, dynamic>;
+            return _json({
+              'status': 'cancelled',
+              'message': '已取消转写（没花钱），抓到的元数据我留着了，回头想整理再说一声',
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            statusCalls++;
+            return _json(_needsConfirmJson());
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV1xx411c7mD');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('先不转写'), findsOneWidget);
+
+      await tester.tap(find.text('先不转写'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(confirmBody, {'confirm': false}, reason: '只发一次确认，且是不转写');
+      expect(find.textContaining('已取消转写（没花钱）'), findsOneWidget);
+      expect(find.text('关闭'), findsOneWidget);
+      expect(find.text('继续转写'), findsNothing);
+      // 不进 done 流程：没有沉淀提示，也没重拉资产树
+      expect(find.textContaining('已沉淀学习卡片'), findsNothing);
+      expect(treeCalls, 1, reason: '取消 → 不刷新资产树、不打开新卡');
+
+      // 轮询已停：再等也不问进度
+      final seen = statusCalls;
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump();
+      expect(statusCalls, seen);
+    });
+
+    testWidgets('⑤ 只填链接、素材留空时「开始整理」可用', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '开始整理')).onPressed,
+        isNull,
+        reason: '两个框都空 → 不可点',
+      );
+
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')),
+          'https://www.bilibili.com/video/BV1xx411c7mD');
+      await tester.pump();
+
+      expect(
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, '开始整理')).onPressed,
+        isNotNull,
+        reason: '只给链接（素材留空）也能开始整理',
+      );
+      expect(find.textContaining('本月转写还剩 9.7 小时'), findsOneWidget);
+    });
+
+    testWidgets('⑥ 阶段说人话：抓取 → 转写 → 整理，各有各的说法', (tester) async {
+      const stages = ['fetching', 'transcribing', 'structuring'];
+      var i = 0;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) return _json(const {});
+          if (p.endsWith('/api/v1/learn/digest/quota')) return _json(_quotaJson());
+          if (p.endsWith('/api/v1/learn/digest') && req.method == 'POST') {
+            return _json({'status': 'pending'});
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            if (i < stages.length) return _json({'status': 'running', 'stage': stages[i++]});
+            return _json({'status': 'done', 'type': 'ai', 'title': '收尾的卡'});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      await tester.tap(find.byTooltip('整理新内容（丢链接或粘素材，阿呆消化成卡片）'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('learn-digest-url')), 'https://example.com/a');
+      await tester.pump();
+      await tester.tap(find.text('开始整理'));
+      await tester.pump();
+
+      for (final text in ['正在抓取原文', '正在转写，可能要几分钟', '正在整理成卡片']) {
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pump();
+        expect(find.text(text), findsOneWidget);
+      }
+
+      // 收尾到 done，别把轮询定时器留在测试里
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining('已沉淀学习卡片'), findsOneWidget);
+      await tester.pumpAndSettle();
     });
   });
 }

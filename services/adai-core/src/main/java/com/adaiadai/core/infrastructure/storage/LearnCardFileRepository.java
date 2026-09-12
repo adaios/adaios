@@ -452,6 +452,29 @@ public class LearnCardFileRepository implements LearnCardRepository {
         log.info("learn 原始素材已留存 | userId={} | path={}", userId, path);
     }
 
+    @Override
+    public void saveRaw(String userId, String name, String content) {
+        String path = RAW_DIR + safeRawName(name);
+        fileStorage.write(userId, path, content == null ? "" : content);
+        log.info("learn 原始素材已留存 | userId={} | path={} | {} 字", userId, path,
+                content == null ? 0 : content.length());
+    }
+
+    @Override
+    public String readRaw(String userId, String name) {
+        if (name == null || name.isBlank()) return null;
+        return fileStorage.read(userId, RAW_DIR + safeRawName(name));
+    }
+
+    /** 具名素材文件名清洗（防路径逃逸：只允许 [A-Za-z0-9._-]，拒绝 .. 与分隔符）。 */
+    static String safeRawName(String name) {
+        if (name == null || name.isBlank()) throw new LearnException("素材文件名不能为空");
+        String cleaned = name.strip().replaceAll("[^A-Za-z0-9._-]", "_");
+        while (cleaned.contains("..")) cleaned = cleaned.replace("..", "_");
+        if (cleaned.isBlank()) throw new LearnException("素材文件名不合法");
+        return cleaned;
+    }
+
     // ── md 渲染/解析（与 CardFileRepository 单行化口径一致，保证写读对称）──
 
     /** 文件名：标题清洗为文件安全片段（实现上移 domain LearnCard.fileStem，P1-learn1 复用同口径）。 */

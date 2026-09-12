@@ -43,6 +43,8 @@ class LearnControllerTest {
     private final LearnCandidateAppService candidateService = mock(LearnCandidateAppService.class);
     private final com.adaiadai.core.application.LearnReviewPushService reviewPushService =
             mock(com.adaiadai.core.application.LearnReviewPushService.class);
+    private final com.adaiadai.core.application.LearnTranscriptionService transcriptionService =
+            mock(com.adaiadai.core.application.LearnTranscriptionService.class);
     private final PluginService pluginService = mock(PluginService.class);
     private final ObjectMapper om = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -53,7 +55,7 @@ class LearnControllerTest {
                 java.util.Arrays.asList(plugins).contains(PluginRegistry.PLUGIN_LEARN));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, reviewPushService, pluginService))
+        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, reviewPushService, transcriptionService, pluginService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
@@ -79,7 +81,7 @@ class LearnControllerTest {
 
     @Test
     void digest_success_returnsRunning() throws Exception {
-        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
+        when(digestService.submit(anyString(), any(LearnDigestAppService.DigestRequest.class)))
                 .thenReturn(new LearnDigestAppService.DigestSubmitResult("running"));
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")
@@ -91,7 +93,7 @@ class LearnControllerTest {
 
     @Test
     void digest_inflight_returnsRunning() throws Exception {
-        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
+        when(digestService.submit(anyString(), any(LearnDigestAppService.DigestRequest.class)))
                 .thenReturn(new LearnDigestAppService.DigestSubmitResult("running"));
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")
@@ -112,7 +114,7 @@ class LearnControllerTest {
 
     @Test
     void digest_aiFailure_returns400WithHumanMessage() throws Exception {
-        when(digestService.submit(anyString(), any(), any(), any(), any(), any(), any()))
+        when(digestService.submit(anyString(), any(LearnDigestAppService.DigestRequest.class)))
                 .thenThrow(new LearnException("AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试"));
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")

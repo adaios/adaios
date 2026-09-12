@@ -46,8 +46,8 @@ class _LearnPageState extends State<LearnPage> {
 
   String _errText(dynamic e) {
     final str = e.toString();
-    if (str.contains('TimeoutException') || str.contains('timed out')) return '请求超时，请检查网络';
-    if (str.contains('Connection refused') || str.contains('SocketException')) return '无法连接服务器，请确认后端已启动';
+    if (str.contains('TimeoutException') || str.contains('timed out')) return '等太久了，检查下网络再试';
+    if (str.contains('Connection refused') || str.contains('SocketException')) return '暂时连不上，检查下网络再试';
     if (str.contains('403')) return '学习功能未启用（learn 插件）';
     return '加载失败，请重试';
   }
@@ -213,7 +213,7 @@ class _LearnPageState extends State<LearnPage> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 40),
-          child: Text('还没有学习卡片\n点右上角「＋」粘贴视频字幕或文章，阿呆帮你消化成卡片',
+          child: Text('还没有学习卡片\n点右上角「＋」丢个 B站 / 文章链接给我，阿呆抓来消化成卡片（没字幕的视频会先问你要不要转写）',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, height: 1.8, color: AppColors.darkGrey4)),
         ),
@@ -442,9 +442,11 @@ class _LearnDetailPage extends StatelessWidget {
       };
 }
 
-/// 「整理新内容」喂入页（2026-09-10 learn 喂入入口批·移动端）。
-/// 提交式：POST /learn/cards 立即返回 → 轮询 GET /learn/digest/status（每 2s，上限 150s）→
-/// done 以 (type,title) pop 回列表页打开新卡；failed 页内人话 + 可重试；
+/// 「整理新内容」喂入页（2026-09-10 喂入入口批·移动端；2026-09-12 抓取批接链接 + 转写费用确认）。
+/// 提交式：POST /learn/digest（只丢链接也行，抓取交给服务端）→ 轮询 GET /learn/digest/status（每 2s，上限 150s）
+/// → done 以 (type,title) pop 回列表页打开新卡；failed 页内人话 + 可重试；
+/// needs_confirmation（视频没字幕、转写要花钱）→ 停轮询、亮出费用预估与「继续转写 / 先不转写」，
+/// 用户点头（POST /learn/digest/confirm）后才接着花钱；先不转写则到此为止（没花钱）；
 /// 超时/返回 → 消化仍在后台继续，稍后刷新可见（素材已留存 learn/_raw/ 兜底）。
 class _DigestInputPage extends StatefulWidget {
   final ApiService api;
@@ -455,55 +457,69 @@ class _DigestInputPage extends StatefulWidget {
 }
 
 class _DigestInputPageState extends State<_DigestInputPage> {
+  final _linkCtl = TextEditingController();
   final _contentCtl = TextEditingController();
   final _platformCtl = TextEditingController();
   final _authorCtl = TextEditingController();
-  final _urlCtl = TextEditingController();
   String? _type; // null = 让阿呆自动判定
   bool _submitting = false;
   bool _polling = false;
+  bool _awaiting = false; // 转写要花钱，等用户点头（已停轮询）
+  bool _confirming = false; // 「继续 / 先不」正在送达
   String? _error;
+  String? _confirmError;
+  String? _cancelled; // 「先不转写」的结果人话（非 null = 这次到此为止）
   String _progress = '';
+  LearnDigestJob? _job; // 最新一次状态（舞台/来源展示 + 费用提示来源）
+
+  /// 代际令牌：重试/确认后旧轮询自行失效，防两条轮询并行（沿用既有防护写法）。
+  int _gen = 0;
 
   static const _pollInterval = Duration(seconds: 2);
   static const _pollDeadline = Duration(seconds: 150);
 
   @override
   void dispose() {
+    _gen++; // 页面销毁 → 在途轮询作废
+    _linkCtl.dispose();
     _contentCtl.dispose();
     _platformCtl.dispose();
     _authorCtl.dispose();
-    _urlCtl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    final link = _linkCtl.text.trim();
     final content = _contentCtl.text.trim();
-    if (content.isEmpty) {
-      setState(() => _error = '请先粘贴素材内容：视频字幕 / 文章原文 / 链接正文');
+    if (link.isEmpty && content.isEmpty) {
+      setState(() => _error = '给我一个链接，或者把素材内容粘进来');
       return;
     }
     setState(() {
       _submitting = true;
       _error = null;
+      _cancelled = null;
+      _confirmError = null;
     });
+    final gen = ++_gen;
     try {
       await widget.api.submitLearnDigest(
-        content: content,
+        url: link.isEmpty ? null : link,
+        content: content.isEmpty ? null : content,
         type: _type,
         platform: _trimOrNull(_platformCtl),
         author: _trimOrNull(_authorCtl),
-        url: _trimOrNull(_urlCtl),
       );
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       setState(() {
         _submitting = false;
         _polling = true;
-        _progress = '已受理，阿呆开始消化…';
+        _job = null;
+        _progress = link.isNotEmpty ? '收到链接，我这就去看看…' : '已受理，阿呆开始消化…';
       });
-      await _poll();
+      await _poll(gen);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       setState(() {
         _submitting = false;
         _error = _apiError(e);
@@ -516,35 +532,77 @@ class _DigestInputPageState extends State<_DigestInputPage> {
     return v.isEmpty ? null : v;
   }
 
-  /// 错误人话：优先取后端 error body（LearnException 400 人话，如「AI 消化失败，素材已留存…」）。
+  /// 错误人话：优先取后端 error body（400 人话，如「请给我一个链接，或者把素材内容粘进来」），
+  /// 取不到就按错误类型给自然口吻兜底（不把技术原话甩给用户）。
   String _apiError(dynamic e) {
     if (e is ApiException && e.body != null) {
       try {
         final json = jsonDecode(e.body!);
         if (json is Map && json['error'] is String) return json['error'] as String;
       } catch (_) {}
-      return e.message;
     }
     final s = e.toString();
-    if (s.contains('TimeoutException') || s.contains('timed out')) return '请求超时，请检查网络';
-    if (s.contains('SocketException') || s.contains('Connection refused')) return '无法连接服务器，请确认后端已启动';
-    return '操作失败，请重试';
+    if (s.contains('TimeoutException') || s.contains('timed out')) return '等太久了，检查下网络再试';
+    if (s.contains('SocketException') || s.contains('Connection refused')) return '暂时连不上，检查下网络再试';
+    return '这次没成功，稍后再试一次';
   }
 
-  Future<void> _poll() async {
+  /// 「继续转写 / 先不转写」（2026-09-12 抓取批）：把用户的选择告诉阿呆。
+  /// 继续 → 恢复轮询；先不 → 展示结果并结束（不产生费用）。
+  Future<void> _confirm(bool yes) async {
+    if (_confirming) return;
+    setState(() {
+      _confirming = true;
+      _confirmError = null;
+    });
+    final gen = ++_gen;
+    try {
+      final job = await widget.api.confirmLearnTranscription(yes);
+      if (!mounted || gen != _gen) return;
+      if (!yes) {
+        setState(() {
+          _confirming = false;
+          _awaiting = false;
+          _job = job;
+          _cancelled = job.cancelledText;
+        });
+        return;
+      }
+      if (job.isDone) {
+        Navigator.pop(context, (type: job.type, title: job.title));
+        return;
+      }
+      setState(() {
+        _confirming = false;
+        _awaiting = false;
+        _job = job;
+        _polling = true;
+        _progress = job.stageText.isNotEmpty ? job.stageText : '正在转写，可能要几分钟';
+      });
+      await _poll(gen);
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _confirming = false;
+        _confirmError = _apiError(e);
+      });
+    }
+  }
+
+  Future<void> _poll(int gen) async {
     final deadline = DateTime.now().add(_pollDeadline);
-    while (mounted && DateTime.now().isBefore(deadline)) {
+    while (mounted && gen == _gen && DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(_pollInterval);
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       final LearnDigestJob job;
       try {
         job = await widget.api.getLearnDigestStatus();
       } catch (e) {
-        if (!mounted) return;
-        setState(() => _progress = '查询消化进度失败（${_apiError(e)}），继续等待…');
+        if (!mounted || gen != _gen) return;
+        setState(() => _progress = '暂时没拿到进度（${_apiError(e)}），我接着等…');
         continue;
       }
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       if (job.isDone) {
         Navigator.pop(context, (type: job.type, title: job.title));
         return;
@@ -552,21 +610,50 @@ class _DigestInputPageState extends State<_DigestInputPage> {
       if (job.isFailed) {
         setState(() {
           _polling = false;
-          _error = job.message.isEmpty ? '消化失败，素材已留存（learn/_raw/），可稍后重试' : job.message;
+          _job = job;
+          _error = job.message.isEmpty ? '这次没整理成，素材我留着了，稍后可以再试一次' : job.message;
         });
         return;
       }
-      setState(() => _progress = '正在消化中，通常 1-3 分钟…');
+      if (job.isCancelled) {
+        setState(() {
+          _polling = false;
+          _job = job;
+          _cancelled = job.cancelledText;
+        });
+        return;
+      }
+      if (job.isAwaitingConfirm) {
+        // 转写要花钱：停下轮询，等用户点头（不自动继续）。
+        setState(() {
+          _polling = false;
+          _awaiting = true;
+          _job = job;
+          _progress = '';
+        });
+        return;
+      }
+      setState(() {
+        _job = job;
+        _progress = job.stageText.isNotEmpty ? job.stageText : '正在消化中，通常 1-3 分钟…';
+      });
     }
-    if (!mounted) return;
+    if (!mounted || gen != _gen) return;
     setState(() {
       _polling = false;
       _error = '消化仍在后台进行（AI 生成较慢）。素材已留存，稍后刷新列表即可看到新卡片；也可以再试一次。';
     });
   }
 
+  String get _headerTitle {
+    if (_cancelled != null) return '这次先不转写';
+    if (_awaiting) return '转写确认';
+    return _polling ? '消化中' : '整理新内容';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showSubmit = !_polling && !_awaiting && _cancelled == null;
     return Scaffold(
       backgroundColor: AppColors.darkBg,
       body: SafeArea(
@@ -583,17 +670,17 @@ class _DigestInputPageState extends State<_DigestInputPage> {
               ),
               const Icon(Icons.auto_stories_outlined, size: 20, color: AppColors.darkGrey3),
               const SizedBox(width: 8),
-              Text(_polling ? '消化中' : '整理新内容',
+              Text(_headerTitle,
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
             ]),
           ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              child: _polling ? _buildPolling() : _buildForm(),
+              child: _buildScroller(),
             ),
           ),
-          if (!_polling)
+          if (showSubmit)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: SizedBox(
@@ -618,7 +705,16 @@ class _DigestInputPageState extends State<_DigestInputPage> {
     );
   }
 
+  Widget _buildScroller() {
+    if (_cancelled != null) return _buildCancelled();
+    if (_awaiting) return _buildConfirm();
+    if (_polling) return _buildPolling();
+    return _buildForm();
+  }
+
+  /// 进行中：舞台人话（抓取 / 转写 / 整理）+ 抓到的来源。
   Widget _buildPolling() {
+    final src = _job?.source?.summaryLine ?? '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60),
       child: Column(children: [
@@ -627,6 +723,12 @@ class _DigestInputPageState extends State<_DigestInputPage> {
         Text(_progress,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey4, height: 1.6)),
+        if (src.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(src,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5, height: 1.6)),
+        ],
         const SizedBox(height: 8),
         const Text('可以返回「最近学习」，稍后下拉刷新查看',
             style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
@@ -634,15 +736,114 @@ class _DigestInputPageState extends State<_DigestInputPage> {
     );
   }
 
+  /// 转写要花钱：把费用摆出来，等用户点头（不点头不花钱）。
+  Widget _buildConfirm() {
+    final job = _job;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 20),
+      Row(children: [
+        const Icon(Icons.record_voice_over_outlined, size: 20, color: AppColors.darkOrange),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text('转写要花钱，先问你一句',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      Text(job?.confirmText ?? '这个视频没有字幕，得先转成文字，会花一点钱。要我继续吗？',
+          style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey2, height: 1.7)),
+      if ((job?.source?.summaryLine ?? '').isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(job!.source!.summaryLine,
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5, height: 1.6)),
+      ],
+      if (_confirmError != null) ...[
+        const SizedBox(height: 10),
+        Text(_confirmError!,
+            style: const TextStyle(fontSize: 13, color: AppColors.darkRed, height: 1.6)),
+      ],
+      const SizedBox(height: 18),
+      Row(children: [
+        Expanded(
+          child: FilledButton(
+            onPressed: _confirming ? null : () => _confirm(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.darkGreen,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            child: _confirming
+                ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('继续转写', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: OutlinedButton(
+            onPressed: _confirming ? null : () => _confirm(false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey3,
+              side: const BorderSide(color: AppColors.darkGrey6),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            child: const Text('先不转写', style: TextStyle(fontSize: 14.5)),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      const Text('继续 = 花这笔钱把语音转成文字，估算是参考、按实际时长算；先不转写就到此为止，这钱不花，抓到的信息我留着。',
+          style: TextStyle(fontSize: 11.5, color: AppColors.darkGrey5, height: 1.6)),
+    ]);
+  }
+
+  /// 「先不转写」结果：到此为止（没花钱），可以返回列表。
+  Widget _buildCancelled() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 50),
+      child: Column(children: [
+        const Icon(Icons.check_circle_outline, size: 30, color: AppColors.darkGrey4),
+        const SizedBox(height: 14),
+        Text(_cancelled!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey3, height: 1.7)),
+        const SizedBox(height: 18),
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey3,
+            side: const BorderSide(color: AppColors.darkGrey6),
+          ),
+          child: const Text('返回最近学习', style: TextStyle(fontSize: 13.5)),
+        ),
+      ]),
+    );
+  }
+
   Widget _buildForm() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       TextField(
+        key: const ValueKey('learn-digest-link'),
+        controller: _linkCtl,
+        style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.6),
+        decoration: const InputDecoration(
+          hintText: '粘贴 B站 / 文章链接，我来整理',
+          hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 13, height: 1.6),
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text('链接给我就行，字幕 / 正文我自己去取（没有字幕的视频会先问你要不要花钱转写）。',
+          style: TextStyle(fontSize: 11.5, color: AppColors.darkGrey5, height: 1.6)),
+      const SizedBox(height: 14),
+      TextField(
+        key: const ValueKey('learn-digest-content'),
         controller: _contentCtl,
-        maxLines: 10,
+        maxLines: 8,
         maxLength: 50000,
         style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.6),
         decoration: const InputDecoration(
-          hintText: '粘贴素材内容：视频字幕 / 文章原文 / 链接正文…\n（阿呆只做结构化整理，不代抓取外部链接；纯链接请先粘贴正文）',
+          hintText: '素材正文（可留空）：视频字幕 / 文章原文…\n（链接取不到内容时，把正文粘进来）',
           hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 13, height: 1.6),
           border: OutlineInputBorder(),
         ),
@@ -694,17 +895,6 @@ class _DigestInputPageState extends State<_DigestInputPage> {
           ),
         ),
       ]),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _urlCtl,
-        style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey1),
-        decoration: const InputDecoration(
-          hintText: '原文链接（可选）',
-          hintStyle: TextStyle(color: AppColors.darkGrey6, fontSize: 12.5),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
-      ),
       if (_error != null) ...[
         const SizedBox(height: 12),
         Text(_error!,

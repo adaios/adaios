@@ -18,10 +18,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * LearnController — 学习沉淀 REST API（RFC 20260829 learn 插件，V1 后端流水线 + V2 消化闭环）。
+ * LearnController — 学习沉淀 REST API（RFC 20260829 learn 插件 V1/V2 + RFC 20260912 D 形态抓取批）。
  * <p>
  * 端点：
- * POST /api/v1/learn/cards         喂入素材 → AI 卡片化 → 落 data/{userId}/learn/
+ * POST /api/v1/learn/digest        喂入链接/素材 → 服务端抓取（+转写）→ AI 卡片化 → 落 data/{userId}/learn/
+ * GET  /api/v1/learn/digest/status 消化任务状态（阶段 + 费用预估）
+ * POST /api/v1/learn/digest/confirm 转写费用确认（无字幕视频花钱前经用户点头）
+ * GET  /api/v1/learn/digest/quota  本月转写用量与剩余额度
+ * POST /api/v1/learn/cards         （兼容别名，同 /digest；2026-09-10 先例保留）
  * GET  /api/v1/learn/cards         卡片列表（?type= 筛选）
  * GET  /api/v1/learn/card          单篇卡片全文（?type=&title=）
  * GET  /api/v1/learn/tree          资产树（learn 按 type 分组）
@@ -44,31 +48,81 @@ public class LearnController {
     private final LearnDigestAppService digestService;
     private final LearnCandidateAppService candidateService;
     private final com.adaiadai.core.application.LearnReviewPushService reviewPushService;
+    private final com.adaiadai.core.application.LearnTranscriptionService transcriptionService;
     private final PluginService pluginService;
 
     public LearnController(LearnDigestAppService digestService,
                            LearnCandidateAppService candidateService,
                            com.adaiadai.core.application.LearnReviewPushService reviewPushService,
+                           com.adaiadai.core.application.LearnTranscriptionService transcriptionService,
                            PluginService pluginService) {
         this.digestService = digestService;
         this.candidateService = candidateService;
         this.reviewPushService = reviewPushService;
+        this.transcriptionService = transcriptionService;
         this.pluginService = pluginService;
     }
 
-    /** 喂入素材 → AI 消化成学习卡片（2026-09-10 提交式：立即返回 status，后台消化 + 轮询 /digest/status）。 */
-    @PostMapping("/cards")
+    /**
+     * 喂入链接或素材 → AI 消化成学习卡片（提交式：立即返回 status，后台消化 + 轮询 /digest/status）。
+     * <p>
+     * 2026-09-12 抓取批：{@code url} 走**服务端抓取**（B站/文章），这是 D 形态的核心——
+     * 用户只丢链接，最费力的一步（搞字幕/原文）交给阿呆；{@code content} 保留为降级路径
+     * （抓不到时用户粘正文）。
+     */
+    @PostMapping("/digest")
     public ResponseEntity<?> digest(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @Valid @RequestBody LearnDigestRequest body) {
+        return doDigest(userId, body);
+    }
+
+    /** 兼容别名（2026-09-10 喂入入口批的端点名，双端旧版本仍在用）。 */
+    @PostMapping("/cards")
+    public ResponseEntity<?> digestLegacy(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnDigestRequest body) {
+        return doDigest(userId, body);
+    }
+
+    private ResponseEntity<?> doDigest(String userId, LearnDigestRequest body) {
         ResponseEntity<?> denied = requireLearnPlugin(userId);
         if (denied != null) return denied;
-        if (body.type() != null && !body.type().isBlank() && !LearnCard.isValidType(body.type())) {
+        if (body == null || (isBlank(body.url()) && isBlank(body.content()))) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请给我一个链接，或者把素材内容粘进来"));
+        }
+        if (!isBlank(body.type()) && !LearnCard.isValidType(body.type())) {
             return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
         }
-        LearnDigestAppService.DigestSubmitResult result = digestService.submit(userId, body.content(),
-                body.type(), body.platform(), body.author(), body.url(), body.published());
+        LearnDigestAppService.DigestSubmitResult result = digestService.submit(userId,
+                new LearnDigestAppService.DigestRequest(body.url(), body.content(), body.type(),
+                        body.platform(), body.author(), body.published()));
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 转写费用确认（RFC 20260912 §3.8 条 5）：无字幕视频在花钱转写前，先由用户点头。
+     * body {"confirm": true|false}；false = 取消（元数据已留痕，不产生费用）。
+     */
+    @PostMapping("/digest/confirm")
+    public ResponseEntity<?> confirmTranscription(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestBody LearnConfirmRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (body == null || body.confirm() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请告诉我是继续还是取消"));
+        }
+        return ResponseEntity.ok(digestService.confirm(userId, body.confirm()));
+    }
+
+    /** 本月转写用量与剩余额度（费用可控条 4：累计费用可查、月初自动重置）。 */
+    @GetMapping("/digest/quota")
+    public ResponseEntity<?> quota(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(transcriptionService.quota(userId));
     }
 
     /** 消化任务状态（2026-09-10 提交式配套）：running / done{type,title} / failed{message} / idle。 */
@@ -219,6 +273,10 @@ public class LearnController {
         return all;
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     private ResponseEntity<?> requireLearnPlugin(String userId) {
         if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN)) {
             return ResponseEntity.status(403).body(Map.of("error", "learn 插件未启用，无法使用学习功能"));
@@ -226,10 +284,14 @@ public class LearnController {
         return null;
     }
 
-    /** 喂入请求：content 素材原文必填；type/platform/author/url/published 可选。 */
+    /**
+     * 喂入请求（2026-09-12 抓取批）：{@code url} **或** {@code content} 至少一个（url 优先）；
+     * type/platform/author/published 可选。
+     */
     public record LearnDigestRequest(
-            @NotBlank(message = "素材内容不能为空")
-            @Size(min = 1, max = 50000, message = "素材过长（限 50000 字），建议分段消化")
+            @Size(max = 500, message = "链接过长")
+            String url,
+            @Size(max = 50000, message = "素材过长（限 50000 字），建议分段消化")
             String content,
             @Size(max = 20, message = "类型仅 ai/trading/other")
             String type,
@@ -237,10 +299,11 @@ public class LearnController {
             String platform,
             @Size(max = 100, message = "作者名过长")
             String author,
-            @Size(max = 500, message = "链接过长")
-            String url,
             @Size(max = 30, message = "发布日期格式 yyyy-MM-dd")
             String published) {}
+
+    /** 转写费用确认请求（RFC 20260912 §3.8 条 5）：{"confirm": true|false}。 */
+    public record LearnConfirmRequest(Boolean confirm) {}
 
     /** 复习状态流转请求：type/title 定位卡片，status 目标状态（new/review/done）。 */
     public record LearnStatusRequest(

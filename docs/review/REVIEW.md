@@ -1,13 +1,14 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-09-07
-last-review: 2026-09-07
+updated: 2026-09-12
+last-review: 2026-09-12
 baseline: learn V2 消化闭环增量深审（d3b8f4a^..ff7451f 4 commit，用户「learn V2 增量审核」）；前值：生产数据审查 2026-09-07
 mode: deep 增量（learn V2 四官隔离并行：backend/frontend/docs + adversarial；0 修复只报告）
 ---
 
 > **结构（RFC `20260815-docs-governance` 减负）**：本文件只留「战略 + P0-P2 未修复 + 最近审核摘要 + 执行成本」；已修复详情见 `docs/reference/change-log.md` + git log；P3/观察项已迁移 `docs/reference/task-log.md`。
 
+> 2026-09-12 **learn 抓取批（v3.57，RFC 20260912 D 形态阶段 1 抓取主干；用户「不需要我的干预」自主执行）**：把 A 形态的能力（抓取 → 转写 → 六段结构化 → `_raw/` 留痕）下沉为产品能力——服务端抓 B站元数据/字幕与文章正文、无字幕则**报价 + 用户确认**后走云端转写（费用闸六条）、提交式链接喂入 + 双端 UI。后端 1355→**1493** · web 183→**193** · app 173→**183** · 端点 127→**130**，三端全绿 + guard-meta/align PASS + **真实网络验证**（B站 BV12LR1B3EUt 元数据/无字幕判定、音频带 Referer 206 vs 不带 403、文章 9559 字、知乎 403→Web Archive→人话）。**⚠️ 本批未经独立对抗审查**（调两个审查子代理均异常中断未出报告，属环境问题非发现缺陷）+ **产物契约未迁移**（未做 §3.3 原则 2 的 topic 目录，§七 验收 4「A 与 D 同契约」本批未达成）+ 云端转写真实链路未验证 + 未部署生产 + 未执行 RFC 20260829 §九 的 B 形态删除批次（决策点 5/6 按 RFC 建议**临时口径**）——详见下 P2-learn12~17。
 > 2026-09-09 当日盈亏三官深审（用户选 A，范围 ec9031a..HEAD 991c874+2227797；backend/frontend/adversarial 三官隔离并行，报告 audits/2026-09-09-daily-pnl-review.md）：守护 7 PASS/0 HIT。**⭐⭐ 交叉命中（backend P1 + 对抗 P0-1）当日盈亏算术缺陷**——卖出成本一律冲抵当日买入 + 用当日末 avgCost（含当日摊薄），A 股 T+1「卖光后买回/卖旧+加仓」符号翻转重叠（示例旧口径 −400 vs 真实 +2100）。**已修（2026-09-09 三官修复批）**：computeDailyPnl v2（T+1 盘前成本口径 + T+0 边界附注）+ 主流程随流水重算 refreshTodayPnl（/trades、/batch、confirm、历史成交导入触发）+ 导入空明细保留 + web 徽标中性化/字号/图例拆行 + 徽标 widget 测试；后端 1339→1343、web 179→180 全绿。**未修三项登记**：展示层降级视觉标记（P1-3）/ 附注推送跨日节流与导入覆盖日期语义（P2-1）/ 手动 fee=null 数元级含费口径（backend P2）——排后续。
 > 2026-09-07 learn V2 消化闭环增量深审（用户「learn V2 增量审核」，范围 `d3b8f4a^..ff7451f` 4 commit 31 文件 +2389：批1 复习流转/编辑 → 批3 trading 候选联动 → 批4 复习提醒推送 → web/app 前端接线；backend/frontend/docs/adversarial ×4 隔离并行 + 主会话代码核实）：守护 7 PASS + META + ALIGN PASS；learn 测试类全绿（1292）。**P0 无。战略×2 + P1×4 + P2×11 + P3×3（合并去重）**。⭐⭐⭐ **learn_card_id 回链悬空指针**（raw title 拼回链 ≠ fileStem 真实文件名，含 `/` 标题即 404；对抗+backend+主会话实锤）；⭐⭐⭐ **复习提醒计时口径失真**（created 消化日判「满 7 天」非 review 日 + 无冷却每晚 nag）；⭐⭐⭐ **learn-review 开关归属 trading 门控**（纯 learn 用户不可自关）；⭐⭐ **title-only 寻址跨日同名歧义**（find 恒取最新，老卡操作落新卡/前端串台）；⭐ 前端写失败人话丢失 + 候选删除删错对象。**0 修复**（只报告；修复批次建议见报告）。报告 `audits/2026-09-07-learn-v2-review.md`。**2026-09-07 审查修复批已出表**（用户「按决策来」）：S-learn1/2 + P1-learn1~4 + P2-learn1~10 全修（后端 1309 / web 174 / app 171 / 端点 124 全绿，见 change-log）；P2-learn11 + P2-docs1~7 随 ship/后续（P2-docs 多为本次已同步的文档收口，见登记）。
 > 2026-09-06 admin 管理后台 UI/UX 专项审查（用户「布局上一般般」+ 历史从未对 admin 专项 UI/UX 审查；ui-reviewer + ux-reviewer 隔离并行 + 主会话 P1 实测复核）：**P1×4 成立**（改密原密码错 401 双义未区分→误踢登录页 / 反哺入库 `review.date.toString()` 传参后端 LocalDate 必败（对照同页 formatDate 正确）/ 文件树读内容失败静默吞伪装「无内容」/ 涨跌 0 值判红 + formatPercent 0 输出 +0.00%）+ **P1×1 复核排除**（会话菜单 switch 无 break——Dart 3.12 实测无 break case 不贯通，非「改密即登出」）+ **P2×25 + P3×31**（禁用/插件/维护无确认口径不齐、记录/Feed 只看当天、反哺「标记已处理」纯本地态、per-user 作用域表达不透明、灰阶对比度系统欠账、圆角/字号未 token 化 等）。**0 修复**（只报告；修复批次建议见报告）。报告 `audits/2026-09-06-admin-uiux-review.md`。
@@ -260,6 +261,12 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 | P2-docs5 | **✅ 已修（2026-09-07：status.md adai-app 行 learn 备注含 V2 呈现与开关入口）status adai-app 行备注缺 ff7451f 的 app V2 呈现登记（2026-09-07 learn V2 审：docs P2⑤）**：与 web 行不对称 | `status.md` | 补 app learn V2 备注 |
 | P2-docs6 | **✅ 已修（2026-09-07：feature-reference 推送开关清单 8→10 类型，含 learn-review 归属说明）feature-reference 推送开关「8 类型」清单落后实际 10 类（2026-09-07 learn V2 审：docs P2⑥）**：close-summary/learn-review 漏 | `feature-reference.md:729` | 清单同步 10 类 |
 | P2-docs7 | **✅ 已修（2026-09-07：status.md learn 里程碑尾注修正——批1 +22→1255 / 批3 +28→1283 / 批4 +9→1292）status 后端行里程碑尾注错配（2026-09-07 learn V2 审：docs P2②）**：批1 尾注「1283」实为 1255（1283 是批3 后值），总数 1292 自洽 | `status.md` | 尾注修正 |
+| P2-learn12 | **D 形态产物契约未与 A 对齐（2026-09-12 抓取批自曝，RFC 20260912 §3.3 原则 2 未落地）**：新卡仍落 `{type}/{date}_{title}.md`，未迁到 A 的 `{type}/{topic}/NN-{slug}.md` + README + topic 级 `_raw/` → **两个写入方（A 技能 / 产品）目录结构不同构**，RFC §七 验收 4「产物同契约」未达成。理由：迁移会改写已部署读路径（列表/单篇/编辑/流转全按 type+title 定位），而 B 下架批次未决断，属双重风险 | `LearnCardFileRepository` / RFC §3.3 | 与决策点 5 一并定；定后一次迁移 + A 技能文档同步 |
+| P2-learn13 | **云端转写真实链路未验证（2026-09-12 抓取批）**：本机无 DashScope 凭证 → `DashScopeAsrClient` 全流程（getPolicy→上传→异步提交→轮询→取成品）仅由 mock server 单测锁定（含 `X-DashScope-OssResourceResolve` 头契约），**真上传真转写未跑过** | `DashScopeAsrClient` / `LearnTranscriptionService` | 部署后按「有字幕视频 → 无字幕视频」两条真链路各实测一次 |
+| P2-learn14 | **转写链路的生产前置未就位（2026-09-12 抓取批）**：①生产服务器（Ubuntu 24.04）**未装 ffmpeg**（上一轮实测是本地转码再回传）；②生产 `.env` 无 `DASHSCOPE_API_KEY`。二者缺一 → 无字幕视频走不通（代码已 fail-visible 提示「服务器上还没装转码工具/缺凭证」，有字幕视频与文章不受影响） | 生产服务器 / 部署 `.env` | 用户确认后 `apt install ffmpeg` + 补凭证（属生产变更，B8） |
+| P2-learn15 | **app 侧转写额度无 UI 落点（2026-09-12 抓取批）**：`getLearnQuota()` 已实现，web 弹窗已调用，**app 端暂无调用点**（额度信息目前来自确认页 message 文案） | `apps/adai-app` | 在喂入页或确认页展示本月剩余额度 |
+| P2-learn16 | **⚠️ 本批未取得独立审查（2026-09-12 抓取批）**：调两个审查子代理（对抗审查官）均**异常中断未出报告**（环境问题，非发现缺陷）→ 本批结论基于自测 + 真实网络验证。**合并/部署前建议补一次深审**（重点：费用闸并发双花、状态机卡死、`repairJson` 宽松修复的反例） | 本批 diff | 重跑对抗审查，结论出来再定是否补修 |
+| P2-learn17 | **等确认期间离开页面无恢复入口（2026-09-12 抓取批 app 侧自曝）**：任务处于 `needs_confirmation` 时若用户直接返回列表，前端不主动查状态 → 没有「有任务等你点头」的入口，只能重新提交（后端 30 分钟内仍保留该任务与报价）。注：此时也没有花钱 | `apps/adai-app` / `apps/adai-web` | 列表页加「有一件事等你拍板」入口（查 `/learn/digest/status`） |
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 

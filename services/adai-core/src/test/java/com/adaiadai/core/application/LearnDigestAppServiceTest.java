@@ -40,6 +40,8 @@ class LearnDigestAppServiceTest {
 
     private final AiClient aiClient = mock(AiClient.class);
     private final LearnCardRepository repository = mock(LearnCardRepository.class);
+    private final LearnFetchService fetchService = mock(LearnFetchService.class);
+    private final LearnTranscriptionService transcriptionService = mock(LearnTranscriptionService.class);
     private final List<Runnable> submitted = new ArrayList<>();
     private LearnDigestAppService service;
 
@@ -57,7 +59,7 @@ class LearnDigestAppServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LearnDigestAppService(aiClient, repository, capturingExecutor);
+        service = new LearnDigestAppService(aiClient, repository, capturingExecutor, fetchService, transcriptionService);
     }
 
     private static final String TRADING_JSON = """
@@ -297,7 +299,7 @@ class LearnDigestAppServiceTest {
 
     @Test
     void submit_accepted_thenBackgroundDigest_jobDone() {
-        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor, fetchService, transcriptionService);
         when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
 
         LearnDigestAppService.DigestSubmitResult result =
@@ -336,7 +338,7 @@ class LearnDigestAppServiceTest {
 
     @Test
     void submit_llmFailure_jobFailed_savesRawSourceNotHalfCard() {
-        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor, fetchService, transcriptionService);
         when(aiClient.generate(any(), any())).thenThrow(new RuntimeException("llm down"));
 
         LearnDigestAppService.DigestSubmitResult result =
@@ -355,7 +357,7 @@ class LearnDigestAppServiceTest {
         Executor rejecting = r -> {
             throw new RejectedExecutionException("full");
         };
-        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting);
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting, fetchService, transcriptionService);
 
         LearnException e = assertThrows(LearnException.class,
                 () -> svc.submit("adai", "字幕内容", null, null, null, null, null));
@@ -385,7 +387,7 @@ class LearnDigestAppServiceTest {
         assertEquals(LearnDigestAppService.STATUS_IDLE, service.digestJobStatus("adai").status());
         // 完成结果超过 TTL 后惰性清理回 idle（模拟 60s 未消费）
         when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
-        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor);
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor, fetchService, transcriptionService);
         direct.submit("adai", "字幕内容", null, null, null, null, null);
         assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status());
         // TTL 边界不可注入时钟，此处仅验证同一 job 重复查询幂等（done 保留至消费/覆盖）

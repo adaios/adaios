@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.55 | 最后更新：2026-09-09**
+**文档版本：v3.57 | 最后更新：2026-09-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-12 | v3.57 | **learn 抓取批（RFC 20260912 D 形态，阶段 1 抓取主干）**：learn 从「用户自己搞素材来粘」升级为**服务端自己抓**（这是 B 形态失败的根本原因——把最费力的一步留给了用户）。①**新端点 `POST /learn/digest`**（旧 `POST /learn/cards` 保留为兼容别名）：body 支持 `url`（**服务端抓取** B站视频元数据/字幕、文章正文）或 `content`（降级路径：抓不到时用户粘正文），二者至少一个；素材框里只粘了一个裸链接 → 自动按链接处理（不再拿链接本身当素材白烧一次 AI）；链接与正文同时给出 → 正文为准、链接只记来源；②**新端点 `POST /learn/digest/confirm`**（费用确认，**§3.8 费用可控条 5**）：无字幕视频要花钱转写，先回「该视频 37 分钟，预计约 0.18 元（本月剩余额度 10 小时）」→ 用户点头才真调云端 ASR；`{"confirm":false}` = 取消（元数据已留存，**不产生费用**）；③**新端点 `GET /learn/digest/quota`**（费用可控条 4）：本月转写用量/费用/剩余额度 + 单价 + ASR 可用性（不可用时带人话原因）；④**`GET /learn/digest/status` 扩展**：新增 `stage`（fetching/transcribing/structuring，抓取批后耗时从秒级变分钟级，进度要可见）、`source`（抓到的平台/标题/作者/时长回显）、`cost`（单次预估 + 本月额度）；status 取值新增 `needs_confirmation` / `cancelled`；⑤**费用可控六条落地**：字幕优先（有字幕就不转写）／同一素材只转一次（转写稿落 `_raw/{platform}-{id}-transcript.txt`，重整理零费用）／只在你明确发话时花钱（无批量后台转写）／月度配额硬闸 + 记账（`data/{userId}/learn/_quota.json`，月初自动重置，超限拒绝并说明剩余）／单次前置报价确认／ASR 走端口（可换更便宜通道）；⑥**源必留痕**：抓到的元数据/字幕/文章全文/转写稿全部落 `learn/_raw/`（文章会失效、原音频丢了不可重建）；⑦**首期不做清单明确**：YouTube（服务器网络不可达）、公众号/知乎/小红书/X/微博/抖音（反爬与登录墙）→ **人话告知 + 给替代路径**（把正文粘进来），不假装能抓、不绕登录墙 |
 | 2026-09-10 | v3.56 | **learn 喂入入口批（用户拍板「先页面后对话流」，页面喂入）**：`POST /learn/cards` 由**同步消化改为提交式**（对齐复盘 submitReview 先例——learn 卡片化同走 LLM，几十秒级生成远超前端 15s/120s 客户端超时，原同步 POST 前端必先断「看似没反应」）：响应改 `{"status":"pending"|"running"}`——受理入后台执行器（learnSubmitExecutor 2 线程/8 队列，满 → 400「消化任务繁忙」）；同 user 已有消化在跑 → 直接 `running`（连点/双端并发只烧一次 AI）；body/校验不变（content 必填≤50000、type 越界 400、同 type+title 同名拒绝、fail-visible 素材留存 _raw/）。**新增 `GET /learn/digest/status`**（返回 `{"status":"idle"|"running"|"done"|"failed","type"?,"title"?,"message"?}`——done 后前端按 type/title 打开新卡；failed 带人话 message；done/failed 结果 60s 惰性清理回 idle）。卡片完成仍落 `data/{userId}/learn/`，产物查询全走既有端点不变 |
 | 2026-09-09 | v3.55 | **当日盈亏精确计算（P2-交易37，用户拍板口径①）**：`GET /trading/account` 的 `todayPnl` 语义升级——收盘任务（15:05）按口径①写入精确值（当日已实现（卖出净额−卖出成本，当日买入冲抵/旧仓 avgCost/清仓回退历史买入加权） + 持仓日浮动 (现价−昨收)×数量（当日新买入按成本） + 当日股息入账（+）/红利税（−）），不再只是持仓浮动估算；`POST /trading/imports/cash` 明细表头**缺「当日盈亏」列 → 保留既有 todayPnl 不清零**（不再静默写 0），带列才以券商真源覆盖；数据前提：当日成交需经系统流水（导历史成交/手动记录），缺昨收/缺成本基线的部分不计入并后端 notes 记日志 |
 | 2026-09-09 | v3.54 | **交易账目治本 + 清仓级联批 1（REVIEW P2-交易34/35/36 出表 + RFC 20260909）**：①**券商快照锚定防重（P2-交易34 治本）**——持仓 replace/资金股份导入落锚定日（`data/{userId}/trading/snapshot-anchor.json`）；`POST /trades` 等手动/确认成交 entryDate ≤ 锚定日 → 400（提示历史成交导入补流水或重导快照）；`POST /trading/transfer` date ≤ 最近资金快照日 → 400（纯净投入修正走 `PUT /trading/principal`）；历史成交导入对 entryDate ≤ 锚定日改走补录（只补流水不重算持仓/现金，股息类同日期跳过）；②`GET /trading/sold` 响应结构改为对象 `{"sold":[…SoldTrade 数组，每项新增 provenance:"flow"|"import"], "pendingClearances":[{symbol,name,sellDate,reason}]}`（RFC 20260909 双轨：flow=流水自动收录、pending=已清仓但缺买入基线的待补档案提示）；③**成交编号/手续费补链（P2-交易36 治本）**——当日候选新增 `orderId`/`fee` 字段，新增 `PUT /trading/trade-log/meta`（候选确认前补填）+ `PUT /trading/trades/{tradeId}/meta`（已落库流水按 id 补填 orderId/fee，幂等，404/无值语义）；`POST /trading/trade-log/confirm` 落库改走带 orderId/fee 链路（候选透传流水） |
@@ -1998,7 +1999,83 @@ chat 模式（全屏）
 >
 > **V2 审查修复批（2026-09-07，learn V2 增量深审 v3.53）**：流转只允许相邻（new↔review、review→done、done→review，跳变 400）；进入 review 写 `review_at`（提醒计时起点）+ `reminded_at` 节流；同 type+title **任意日期**同名拒绝（跨日同名歧义根治）；learn_card_id = 源卡真实路径（清洗后标题）；复习提醒开关 learn 侧可达（GET/PUT `/learn/push-settings[/learn-review]`，纯 learn 用户可自关）；Feed 类型级门控。
 >
+> **抓取批（2026-09-12，v3.57，RFC 20260912 D 形态阶段 1 抓取主干）**：**D 形态与 B 形态的分水岭是「抓取进服务端」**——B 要求用户自己搞到字幕/原文再粘贴（最费力的一步留给用户），D 由阿呆完成。喂入支持 `url` 后，用户只丢一个 B站链接或文章地址：服务端抓元数据/字幕/正文；**无字幕则先报价、用户点头再走云端转写**（实测多数视频确实没有可获取的字幕，所以转写是必经路径而非降级）。产物契约、卡片模板、落盘目录沿用既有 learn 契约不变（A 技能与 D 形态共用同一份产物格式，不建第二套）。
+>
+> **B8 授权边界（抓取批落地口径）**：只抓内容页（域名白名单：bilibili.com/b23.tv + 一般文章页），不触登录态接口、不绕付费墙与登录墙；单用户月度转写配额硬闸（默认 36,000 秒 = 10 小时，对齐阿里云免费额度）+ 单次前置报价确认；社交平台与 YouTube 首期不做自动抓取（反爬/登录墙/服务器网络不可达），一律人话告知并引导用户粘正文或截图。
+>
 > **喂入入口批（2026-09-10，v3.56，用户拍板「先页面后对话流」）**：`POST /learn/cards` 改**提交式**（后台消化 + `GET /learn/digest/status` 轮询，对齐复盘 submitReview 先例）+ **web 资产页「＋」弹窗 / app「最近学习」页头「＋」喂入页**双端页面喂入入口（消化完成自动定位打开新卡；失败人话可重试；超时/关闭后台继续，素材留存 `_raw/`）。空态引导同步改为指向页面入口（不再指对话流——对话流喂入为批 2 待排）。
+
+### `POST /api/v1/learn/digest` — 喂入链接/素材 → 抓取 + 消化（提交式，v3.57）
+
+> **推荐端点（v3.57 起）**：`POST /learn/cards` 是同一逻辑的**兼容别名**（2026-09-10 先例，双端旧版本仍在用），新接入请用 `/learn/digest`。
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `url` | String | 否* | 内容页链接（**v3.57 新增**）：服务端抓取——B站视频（元数据 + 字幕 + 音频线索）/ 文章正文（反爬 403 → Web Archive 快照兜底） |
+| `content` | String | 否* | 素材原文（降级路径：抓不到时用户粘正文），1-50000 字 |
+| `type` | String | 否 | 显式类型 ai/trading/other；缺省 = LLM 判定（越界回落 other） |
+| `platform` | String | 否 | 来源平台（仅素材路径有意义） |
+| `author` | String | 否 | 作者/UP 主（仅素材路径有意义） |
+| `published` | String | 否 | 原文发布日期 yyyy-MM-dd（仅素材路径有意义） |
+
+> \* `url` 与 `content` **至少给一个**。归一规则：`content` 若是单行裸链接且未给 `url` → 按链接抓取（用户很容易把链接粘进素材框）；两者都给 → **正文为准，链接记为卡片来源**。
+
+**Response** `200`：
+
+```json
+{ "status": "pending" }
+```
+
+- `status`：`pending`（受理，后台执行）/ `running`（同 user 已有任务在跑——含等确认期间再次提交，会如实回 `needs_confirmation`，不覆盖待确认任务）/ `needs_confirmation`（**需用户确认转写费用**，见下）
+- `400`：`url` 与 `content` 都为空、type 非法、执行器队列满（「消化任务繁忙」）；**平台不支持**也走 400 + 人话（「YouTube 从这台服务器连不上…把字幕或正文粘进来更稳」）
+- 抓取/转写/结构化的进行与结果一律走 `GET /learn/digest/status` 轮询
+- `403`：learn 插件未启用
+
+**流程（服务端）**：判源类型 → 抓元数据 + 字幕/正文（**源必留痕** `_raw/`）→ 有字幕直接结构化；**无字幕 → 报价 + 等确认**（见 `/digest/confirm`）→ 云端转写 → LLM 六段结构化 → 落卡片 → 轮询回 `done`
+
+### `POST /api/v1/learn/digest/confirm` — 转写费用确认（v3.57）
+
+> RFC 20260912 §3.8「费用可控条 5：单次可预期」——抓到无字幕视频时先回一条报价，**用户点头后才真花钱**。
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `confirm` | Boolean | ✅ | `true` = 继续转写；`false` = 取消 |
+
+**Response** `200`：与 `GET /learn/digest/status` 同结构（`confirm:false` → `status=cancelled`）
+
+```json
+{ "status": "running", "stage": "transcribing", "message": null }
+```
+
+- `confirm:false` → `status=cancelled`，message 说明「已取消转写（没花钱），抓到的元数据我留着了」——**不产生任何费用**
+- `400`：「现在没有等待确认的整理任务」（没有 pending 任务 / 已超时清理）
+- 确认环节结论保留 30 分钟（短于它的 60s 结果 TTL 会误清），过期后回 `idle`
+- `403`：learn 插件未启用
+
+### `GET /api/v1/learn/digest/quota` — 本月转写用量与额度（v3.57）
+
+**Response** `200`：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `month` | String | 账期 yyyy-MM（新月份键不存在即归零，**月初自动重置**，无需定时任务） |
+| `usedSeconds` / `usedYuan` | Int / Double | 本月已用转写时长（秒，仅语音内容计费口径）/ 已产生费用（元） |
+| `quotaSeconds` / `remainSeconds` | Int | 月度配额上限（默认 36000 = 10 小时）/ 剩余（不为负） |
+| `yuanPerHour` | Double | 单价（默认 0.288 元/小时，阿里云公开价同族模型口径） |
+| `asrAvailable` | Boolean | 转写链路是否可用（凭证 + 转码工具齐备） |
+| `unavailableReason` | String? | 不可用时的人话原因（缺凭证 / 服务器没装 ffmpeg），可用时为 null |
+
+```json
+{ "month": "2026-09", "usedSeconds": 1200, "usedYuan": 0.096, "quotaSeconds": 36000,
+  "remainSeconds": 34800, "yuanPerHour": 0.288, "asrAvailable": true, "unavailableReason": null }
+```
+
+- 记账落 `data/{userId}/learn/_quota.json`；记账写盘失败会**中止转写**（不产生不可追溯的费用）
+- `403`：learn 插件未启用
 
 ### `POST /api/v1/learn/cards` — 喂入素材 → AI 消化成学习卡片（提交式，v3.56）
 
@@ -2026,22 +2103,35 @@ chat 模式（全屏）
 - `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、消化任务繁忙（队列满）；AI 消化失败不在此返回——后台失败后 `GET /learn/digest/status` 返回 `failed` + 人话 message（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
 - `403`：learn 插件未启用
 
-### `GET /api/v1/learn/digest/status` — 消化任务状态（v3.56）
+### `GET /api/v1/learn/digest/status` — 消化任务状态（v3.56；v3.57 加 stage/source/cost）
 
 **Response** `200`：
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:-----|
-| `status` | String | `idle`（无任务/结果已过期清理）/ `running` / `done` / `failed` |
+| `status` | String | `idle`（无任务/结果已过期清理）/ `pending` / `running` / `needs_confirmation`（**v3.57**：需确认转写费用）/ `done` / `failed` / `cancelled`（**v3.57**：用户取消转写） |
 | `type` | String? | 仅 `done`：新卡 type（ai/trading/other） |
 | `title` | String? | 仅 `done`：新卡标题（供 `GET /learn/card` 打开） |
-| `message` | String? | 仅 `failed`：人话原因（AI 失败素材已留存 `_raw/` 可重试） |
+| `message` | String? | 人话：`failed` 原因 / `needs_confirmation` 报价文案 / `cancelled` 说明；进行中为 null |
+| `stage` | String? | **v3.57**：进行中阶段 `fetching`（抓取原文）/ `transcribing`（云端转写，分钟级）/ `structuring`（整理成卡片）；任务结束后清空 |
+| `source` | Object? | **v3.57**：抓到的源信息 `{platform,title,author,durationSeconds}`（抓取成功后即可回显，让用户看到阿呆在抓什么） |
+| `cost` | Object? | **v3.57**：转写费用视图 `{durationSeconds,durationKnown,estimatedYuan,monthUsedSeconds,quotaSeconds,remainSeconds}`（等确认时必填；`durationKnown=false` 表示时长未知、按 30 分钟保守估算） |
 
 ```json
-{ "status": "done", "type": "ai", "title": "RAG 与 Agent 的区别" }
+{ "status": "done", "type": "ai", "title": "RAG 与 Agent 的区别", "message": null, "stage": null, "source": null, "cost": null }
 ```
 
-- 任务态为**内存态**（按 userId 单任务）：`done`/`failed` 结果保留 60s 惰性清理回 `idle`；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
+等确认时的典型响应：
+
+```json
+{ "status": "needs_confirmation", "stage": "transcribing",
+  "message": "这个视频没有字幕，需要转写：37 分钟，预计约 0.18 元（本月剩余额度 10 小时）",
+  "source": { "platform": "bilibili", "title": "某视频", "author": "某UP", "durationSeconds": 2244 },
+  "cost": { "durationSeconds": 2244, "durationKnown": true, "estimatedYuan": 0.1795,
+            "monthUsedSeconds": 0, "quotaSeconds": 36000, "remainSeconds": 36000 } }
+```
+
+- 任务态为**内存态**（按 userId 单任务）：`done`/`failed`/`cancelled` 结果保留 60s 惰性清理回 `idle`；`needs_confirmation` 保留 **30 分钟**（用户可能过一会儿才点确认）；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
 - `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/cards` — 卡片列表（v3.48）

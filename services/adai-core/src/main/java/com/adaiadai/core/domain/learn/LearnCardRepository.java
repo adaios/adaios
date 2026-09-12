@@ -77,4 +77,22 @@ public interface LearnCardRepository {
 
     /** 落原始素材（LLM 失败时素材不丢）：learn/_raw/{yyyy-MM-dd}_{time}.txt。 */
     void saveRawSource(String userId, String content);
+
+    /**
+     * 写**具名**原始素材（RFC 20260912 源必留痕铁律，learn 抓取批 2026-09-12）：
+     * {@code learn/_raw/{name}}。
+     * <p>
+     * 与 {@link #saveRawSource} 的差异：具名 = **可寻址、可幂等**——同一素材重复处理时命中
+     * 既有留痕（转写稿只烧一次钱、文章失效仍可从 {@code _raw/} 复原）。命名由抓取/转写侧按
+     * 源标识生成（如 {@code bilibili-BVxxx-meta.json} / {@code article-{hash}-text.txt}），
+     * 实现须清洗文件名防路径逃逸。
+     */
+    void saveRaw(String userId, String name, String content);
+
+    /**
+     * 读具名原始素材；不存在 → null。
+     *
+     * @see #saveRaw
+     */
+    String readRaw(String userId, String name);
 }

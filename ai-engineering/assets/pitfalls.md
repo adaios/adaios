@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-08-30
+updated: 2026-09-12
 status: active
-lines: 78
+lines: 95
 depends-on:
   - ../checklists/guard.md
 related:
@@ -37,6 +37,7 @@ tags: [ai, assets, pitfalls]
 | emoji 代理对 | AI 回复 emoji 抛异常丢字段 | 解析器未处理 surrogate pair | `LlmResponseParser` 按 matcher region 推进（B11） | ✅ 已修 | 新解析器不用 region |
 | AI 失败删记录 | 调用失败数据丢失 | 失败路径直接删 | 失败有降级路径（B12） | ✅ 已修 | 失败→删除逻辑 |
 | 哨兵复用 | summary="recorded" 被三处消费，记录无限重补 | 内容文本兼任处理标记 | 显式处理标记，禁止内容哨兵（B26） | ✅ 已修 | 新标记复用内容文本 |
+| LLM 输出 JSON 夹未转义引号 | 结构化解析崩：`Unexpected character ('思')` / 期望逗号却遇汉字；**同一素材重试即成功（概率性）** | LLM 在 JSON 字符串值内直接写英文双引号（技术素材引用术语时高发），严格 Jackson 解析提前结束字符串 | ✅ **已修（2026-09-12 抓取批，双做）**：① prompt 层明确「字符串值内禁止英文双引号，引用请用「」」；② 解析层宽松兜底 `repairJson`——按「引号后是否紧跟 `:` `,` `}` `]`」判定值内引号并转义 + 删尾随逗号，且解析前先剥代码块围栏/前缀散文；修不好仍 fail-visible（素材留 `_raw/`、不产半成品）。回归网 `LearnJsonRepairTest`（11 用例：值内引号/已转义引号不误改/围栏/前缀/尾随逗号/彻底崩坏仍 fail-visible + prompt 契约） | ✅ 已修 | 解析异常信息里出现汉字/引号；失败重试就成 |
 
 ## 三、前端状态与生命周期（F 系列）
 
@@ -73,6 +74,22 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | 字体残缺版残留本地 | 本地 web 新 UI 中文显示框框（完美/案例/标注/匹配/理解 等缺字形），生产正常 | 2026-08-23 生产事故修复只替换了 `/opt/adaios/web/fonts/`，**本地三端 `web/fonts/` 未同步**（gitignore 不入库 → 无版本提示） | 重新子集化 GB2312 全量（7451 字形/1.9MB）+ 三端 web/app/admin 全替换 + `build/web/fonts/` 同步 + 字形数校验（详见 `ai-engineering/assets/projects/adai-web.md` 字体资产节）| ✅ 已修（2026-08-30）| 改字体只改一处 / 新 UI 文案出现框框 |
+
+## 八、外部内容源与云端 ASR（2026-09-12 新增，D 形态前置实测）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| DashScope 上传文件下载失败 | 转写任务**秒级** FAILED；`paraformer-v1` 报 `FILE_DOWNLOAD_FAILED`，`paraformer-v2` 只报笼统 `SERVER_ERROR` | RESTful API 用 getPolicy 上传得到的 `oss://` 临时 URL 时，服务端需显式被允许解析 OSS 资源；**请求头缺 `X-DashScope-OssResourceResolve: enable`** | 提交 `POST /api/v1/services/audio/asr/transcription` 时带该头（官方 FAQ 藏着这条）；URL 拼法 `oss://` + `upload_dir` + `/` + `basename`；上传 multipart 字段对齐官方 SDK（`OSSAccessKeyId`/`Signature`/`policy`/`key`/`x-oss-object-acl`/`x-oss-forbid-overwrite`/`x-oss-content-type`/`success_action_status=200`）；轮询 `GET /api/v1/tasks/{id}`，成品在 `results[].transcription_url` | ✅ 已跑通（2026-09-12 生产实测 28min 视频 → 10297 字） | 任务秒级 FAILED 且错误码是下载类；不加头重试仍失败 |
+| B站 dash 音频直传 ASR 必失败 | 上传返回 200，转写任务仍 FAILED；只把后缀改成 `.m4a` 也不认 | `playurl` 的 `dash.audio[].baseUrl` 下的是 **fMP4 分片容器**（`ftyp`+`moov`+`moof`/`mdat`），ASR 解不了 | 先转码：`ffmpeg -i x.m4s -vn -ac 1 -ar 16000 -b:a 32k x.mp3`（28min→6.7MB）；**生产服务器未装 ffmpeg** → 经 SSH 拉到本地转码再回传（不为一次性转码动生产系统包） | ✅ 已跑通 | 上传成功但转写失败；只改后缀不改容器 |
+| B站音频下载缺 Referer | 音频 URL 直连 403（150B 错误页），转写链路拿不到音频 | B站 CDN 校验 `Referer`；`playurl` 的 baseUrl 带时效签名**也不够**，无 Referer 一律 403 | 抓取层 `downloadAudio` 固定带 `Referer: https://www.bilibili.com` + 浏览器 UA | ✅ 已修（2026-09-12 实测：带 Referer 206 可分段下载 / 不带 403） | 音频 URL 拼对了却 403；只验元数据不验音频就以为通了 |
+| B站字幕接口默认拿不到 | `player/v2` 的 `subtitle.subtitles` 为空，误判「视频无字幕」 | 未登录请求时常不返回 AI 字幕列表 | 先探测；确无字幕再走转写（**实测多数视频确实无字幕**——这正是 D 形态必须对接 ASR 的依据） | ⚠️ 观察 | 字幕列表空但视频有 CC 标识 |
+
+## 九、装配与构建（Spring / Gradle，2026-09-12 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| 同一个 Bean 写两个构造器 | 单测验得好好的，全量跑 `contextLoads` 才炸：`BeanInstantiationException: No default constructor found` → 整个 Spring 上下文起不来 | Spring 对**多构造器**的 Bean 无法自动选择（单构造器才隐式注入）；为测试方便加一个包级「测试构造器」就踩中 | 删掉测试构造器，让生产构造器参数化（base-url / interval 等本就该可注入——本轮 `BilibiliFetcher`/`ArticleFetcher`/`DashScopeAsrClient` 即这样修掉，顺带缩小 API 面） | ✅ 已修（2026-09-12） | 新增一个「只为测试用」的构造器；单测绿但 `AdaiCoreApplicationTests.contextLoads` 红 |
+| Gradle wrapper 写不进 `~/.gradle` | `FileNotFoundException: ...gradle-8.14.5-bin.zip.lck (Operation not permitted)`，测试根本跑不起来 | 沙箱只放开 workspace 写权限，而 Gradle 的 wrapper 发行包/依赖缓存固定在用户主目录 | 给构建命令开更宽文件权限（本项目沙箱口径：full access）；不要用 `GRADLE_USER_HOME` 指到仓库内（会重新下载整包） | ✅ 已解（2026-09-12） | 报错路径在 `~/.gradle/`；构建还没编译就先失败 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

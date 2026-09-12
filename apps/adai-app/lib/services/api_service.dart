@@ -829,26 +829,28 @@ class ApiService {
 
   // ── learn 学习插件（RFC 20260829）──
 
-  /// 喂入素材消化（2026-09-10 提交式）：POST /learn/cards → {status: pending|running}，
-  /// 后台消化完成后轮询 [getLearnDigestStatus] 直到 done/failed（对齐复盘提交式先例）。
+  /// 喂入链接或素材消化（2026-09-12 抓取批）：POST /learn/digest → {status: pending|running|needs_confirmation}，
+  /// 后台抓取（B站/文章，没字幕的视频走转写）+ AI 卡片化，完成后轮询 [getLearnDigestStatus] 直到 done/failed。
+  /// [url] 与 [content] 至少给一个（url 优先：服务端自己抓，用户不必先搞字幕/正文；
+  /// content 是抓不到时的降级路径）。旧地址 /learn/cards 仍是兼容别名，前端统一走 /digest。
   Future<String> submitLearnDigest({
-    required String content,
+    String? url,
+    String? content,
     String? type,
     String? platform,
     String? author,
-    String? url,
     String? published,
   }) async {
     final body = <String, dynamic>{
-      'content': content,
+      if (url != null && url.isNotEmpty) 'url': url,
+      if (content != null && content.isNotEmpty) 'content': content,
       if (type != null) 'type': type,
       if (platform != null) 'platform': platform,
       if (author != null) 'author': author,
-      if (url != null) 'url': url,
       if (published != null) 'published': published,
     };
     final resp = await _client.post(
-      Uri.parse('$baseUrl/api/v1/learn/cards'),
+      Uri.parse('$baseUrl/api/v1/learn/digest'),
       headers: _headers,
       body: jsonEncode(body),
     );
@@ -857,8 +859,32 @@ class ApiService {
     return (json['status'] as String?) ?? '';
   }
 
-  /// 消化任务状态（2026-09-10）：GET /learn/digest/status →
-  /// {status: idle|running|done|failed, type?, title?, message?}。
+  /// 转写费用确认（2026-09-12）：POST /learn/digest/confirm，body {"confirm": true|false}。
+  /// true = 花钱转写（恢复消化），false = 先不转写（不产生费用）；两者都返回最新任务状态。
+  Future<LearnDigestJob> confirmLearnTranscription(bool confirm) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/digest/confirm'),
+      headers: _headers,
+      body: jsonEncode({'confirm': confirm}),
+    );
+    _check(resp);
+    return LearnDigestJob.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 本月转写用量与剩余额度（2026-09-12）：GET /learn/digest/quota。
+  Future<LearnQuotaDto> getLearnQuota() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/digest/quota'),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnQuotaDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 消化任务状态（2026-09-12 抓取批补齐 stage/source/cost）：
+  /// GET /learn/digest/status → {status, type?, title?, message?, stage?, source?, cost?}。
   Future<LearnDigestJob> getLearnDigestStatus() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/learn/digest/status'),

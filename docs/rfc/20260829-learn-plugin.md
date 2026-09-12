@@ -1,11 +1,16 @@
 ---
 title: learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）
 date: 2026-08-29
-status: approved
-decided-by: adai（2026-09-06：§四 六项决策点全按建议默认拍板；C 方向同日搁置；同日开工 V1 后端流水线——独立端点喂入（仿截图入账先例）+ 卡片化落盘 + 列表/树端点，测试先行 +30 全绿；2026-09-07 开工 L2 呈现层——LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习，三端测试全绿；详见 change-log）
+status: superseded
+supersededBy: ../../ai-engineering/skills/learn-digest.md
+decided-by: adai（2026-09-06：§四 六项决策点全按建议默认拍板；C 方向同日搁置；同日开工 V1 后端流水线——独立端点喂入（仿截图入账先例）+ 卡片化落盘 + 列表/树端点，测试先行 +30 全绿；2026-09-07 开工 L2 呈现层——LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习，三端测试全绿；详见 change-log；**2026-09-12：拍板下架 B 形态（产品内插件整体撤销，需求回归 A 形态会话技能 learn-digest，读层一并砍）**——理由与待执行清单见 §九）
 ---
 
 # learn 插件：外部内容学习沉淀
+
+> ⛔ **已下架（2026-09-12，adai 拍板）**：本 RFC 的 **B 形态（产品内 learn 插件）整体撤销**——喂入/消化/复习流转/编辑/交易候选反哺全链路，连同「读层」（问答召回 + 资产页浏览）一并砍掉；产品内不再保留「学习」入口与 `/learn/*` 端点。需求回归 **A 形态**会话技能 [`learn-digest`](../../ai-engineering/skills/learn-digest.md)（明确保留，唯一入口）。
+> **下架理由（实据）、不砍的资产、待执行清单见 §九**；§一~§八 保留为历史决策记录（**不是当前口径**，勿据此开工）。
+> ⚠️ 状态提示：本文档登记的是**决策**；代码与生产插件开关**尚未变更**（2026-09-12 用户指示「只写文档，另有会话在处理代码」）——执行须等用户发批次。
 
 > **方向 RFC**：用户日常消费 B 站等平台的高质量视频/文章（AI 相关、交易相关、知识科普混合），希望整理成文档慢慢消化、留存。learn 插件把「外部内容 → 个人知识资产」变成一条标准流水线：**喂入 → AI 结构化卡片（File First）→ 对话流/资产页/问答三通道呈现 → 交易类内容经审核闸反哺交易规则库**。
 
@@ -257,7 +262,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 | 形态 | 载体 | 适用场景 | 状态 |
 |:-----|:-----|:---------|:----:|
 | **A 会话技能** | `ai-engineering/skills/learn-digest.md`（五段格式技能包，可挂 DSH 会话 skill） | 会话内：用户说「整理这个视频」→ AI 按 skill 自动走 抓取→转写→结构化→落盘 流程 | ✅ 已落地（2026-09-06，首例 `data/adai/learn/ai/harness-engineering/` 9 文档）|
-| **B learn 插件** | 本 RFC（阿呆产品内插件：喂入 → 卡片 → 三通道呈现） | 产品内长期沉淀，不依赖 DSH 会话，数据落服务器 `data/{userId}/learn/` | ✅ **V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：注册/卡片化落盘/列表/树端点 + LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习（后端 1233/app 170/web 167 全绿）；V2 消化闭环（复习流转/编辑/trading 候选联动）待续 |
+| **B learn 插件** | 本 RFC（阿呆产品内插件：喂入 → 卡片 → 三通道呈现） | 产品内长期沉淀，不依赖 DSH 会话，数据落服务器 `data/{userId}/learn/` | ⛔ **2026-09-12 整体下架（见 §九）**——曾 ✅ **V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：注册/卡片化落盘/列表/树端点 + LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习（后端 1233/app 170/web 167 全绿）；V2 消化闭环（复习流转/编辑/trading 候选联动）待续 |
 | **C 专用 Agent** | 独立专用 agent（拉取 → 转写 → 整理，全自动后台跑） | 批量/无人值守：一批链接/订阅源丢进去自动消化，无需人在场 | ⏸ **搁置（2026-09-06 用户拍板）** |
 
 ### 8.1 C 方向定义（记录在案，暂不实施）
@@ -270,3 +275,58 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 - 卡片模板/落盘结构先在 A 的实战中打磨稳定，C 直接复用，避免边设计边批量跑出废卡
 
 **复启条件**：出现真实批量场景（如一次性导入 N 个收藏、订阅源定期自动消化）+ 用户明确的外向动作授权策略；届时复用 A 沉淀的模板，以后台任务或独立 agent 形态重启。
+
+---
+
+## 九、下架决策（2026-09-12，B 形态整体撤销）
+
+### 9.1 决策
+
+- **B 形态（产品内 learn 插件）整体下架**：喂入消化 / 复习流转 / 复习推送 / 卡片编辑 / 交易候选反哺 **全链路砍掉**；「读层」（`LearnKnowledgeSource` 问答召回 + 资产页浏览）**一并砍掉**（2026-09-12 用户同日拍板），learn 插件不再作为产品能力存在。
+- **需求回归 A 形态**：会话技能 [`learn-digest`](../../ai-engineering/skills/learn-digest.md) 是 learn 需求的**唯一入口**，明确保留、继续使用。
+- 用户原话（2026-09-12）：**「A 是我明确需要的，B 太麻烦了，失去了意义」**。
+
+### 9.2 下架理由（实据，非主观）
+
+| # | 事实 | 证据 |
+|:-:|:-----|:-----|
+| 1 | **产品插件零使用** | `data/adai/learn/` 全部 10 个 md 的 `created` 均为 2026-09-06，且全部是 **A 技能**产物（含 `_raw/` 转写原文），**无一为插件喂入产出**——V1（09-06）→ L2（09-07）→ V2 消化闭环（09-07）→ 喂入入口（09-10）落地后，插件侧调用记录为 0 |
+| 2 | **生产入口从未出现过** | 2026-09-10 部署时才实锤：生产 adai 账号 `GET /me/plugins` = `["project","trading"]`，**learn 从未开启** → 双端「学习」入口从未显示（用户以为已开） |
+| 3 | **B 在最费力的一步上比 A 弱（结构性，不是偶发）** | B 守 B8 红线**不做抓取**，素材须用户自行获取字幕/原文再粘贴（≤50000 字）；A 能抓取 + 转写，一句「整理这个视频」即可。learn 场景里最累的恰是「拿到素材」——B 把这步留给用户，却没换到 A 给不了的能力 |
+| 4 | **投入已沉没，维护面持续计费** | 后端 15 个主代码文件 / 7 个测试类约 123 用例 / 13 个端点；前端 web + app 各 3 个文件；每次 guard / 审查 / 文档对齐都要背上这部分 |
+
+**结论**：B 的问题不是「忘了开插件」的执行疏忽，也**不是「产品内不该有 learn 入口」**，而是**能力错位 + 范围膨胀**：入口形态（app/web）本来就对，错在**该做抓取却没做**——把最费力的一步（拿到字幕/原文）留给了用户；同时又堆了从未被使用的重功能（复习推送/复习流转/卡片编辑/交易候选反哺）。**2026-09-12 用户澄清**：「太麻烦」指的是手动搬运素材这一步。因此本文 §九的下架结论**只针对 B 这一具体实现**；产品内入口形态由新方向 RFC [`20260912-learn-product-digest.md`](20260912-learn-product-digest.md)（D 形态：产品内入口 + 服务端抓取）重新承接。
+
+### 9.3 不砍的资产（硬约束，任何执行批次都不得触碰）
+
+- `data/adai/learn/**`——**A 的真相源，一篇不删**（含 `ai/harness-engineering/` 9 篇 + README + `_raw/` 转写与 meta）。
+- A 技能 `ai-engineering/skills/learn-digest.md`（**单一事实源**，五段格式技能包）——`.dsh/skills/learn-digest.md` 是指向它的**软链接**（DSH 会话加载入口；勿复制成两份，改内容只改源文件）。
+- 本文档本身——保留为历史决策记录（`status: superseded`）。
+
+### 9.4 待执行清单（**尚未执行**；须用户发批次 + 确认并发会话已收敛）
+
+| # | 动作 | 说明 |
+|:-:|:-----|:-----|
+| 1 | **生产止血**：admin 关掉 adai 账号的 learn 插件（或 `data/accounts/accounts.json` 摘除 `learn`） | 立即从三端消失、`/learn/*` 全 403；属**外向动作（B8）须用户确认**。2026-09-10 手术补开的那个开关，此处关回 |
+| 2 | 后端删除 | `LearnController`（13 端点）+ `LearnDigestAppService` + `LearnSubmitConfig` + `LearnReviewPushService` + `LearnCandidateAppService` + `LearnTradingCandidate*` + `LearnCard`/`LearnCardPatch`/仓储/端口/`LearnException` + `LearnKnowledgeSource`；`FeedAppService` 的 learn-review 条目撤除；`PluginRegistry` 摘除 learn 注册 |
+| 3 | 前端删除 | `apps/adai-web/lib/pages/learn_page.dart` + `services/models/learn_models.dart` + 壳导航「学习」门控项；`apps/adai-app` 同三处 |
+| 4 | 测试收口 | 7 个测试类（`LearnControllerTest` 33 / `LearnDigestAppServiceTest` 28 / `LearnCardFileRepositoryTest` 29 / `LearnReviewPushServiceTest` 12 / `LearnTradingCandidateFileRepositoryTest` 8 / `LearnCandidateAppServiceTest` 7 / `LearnKnowledgeSourceTest` 6）删除或改写；前端 learn_page_test 同步 |
+| 5 | 文档收口 | `api-spec.md` §18 删除、`feature-reference.md` §17 删除、`status.md` 测试数与端点重算、`change-log.md` 记本批、`REVIEW.md` 中 P2-learn11 出表（源卡删除场景随端点消失而消灭）；本 RFC §九 标记「已执行」 |
+| 6 | 数据 | `data/` 侧**只保留不删**；`backup_prod.sh` 的 learn 注释同步 |
+
+> **执行坑提示**：①「数字散落漂移」——测试数/端点数改动后须**实测重算**（勿照抄估算：端点 127 减 13、后端 1355、web 183、app 173 均需以实跑为准）；②「整文件重写并发」——动代码前确认另一会话改动已收敛，防 RMW 丢更新；③ 别误删 `data/adai/learn/`（A 的资产，与代码删除是两回事）；④ **⚠️ 可能不需全删（2026-09-12 新增）**：新方向 RFC [`20260912-learn-product-digest.md`](20260912-learn-product-digest.md)（D 形态）可能复用本清单第 2 步中的「读全文/列表端点 + `LearnKnowledgeSource` 问答召回」等少量部件——**在该 RFC §四 决策点 5 拍板前，不要执行第 2 步的全删**；若决定复用，本清单须调整为「删喂入/消化/复习/编辑/候选，留读层」——**复用的真实成本见新 RFC §9.1**：`LearnKnowledgeSource` 问答召回近零成本（只需改「核心观点」正则以匹配 A 的 `## 二、核心观点`），但列表/读全文仓储结构不匹配（本文平铺 `{type}/{date}_{title}.md` vs A 的 `{type}/{topic}/NN-{slug}.md`）**需改造**。
+
+### 9.5 A 形态现状（保留，唯一入口）
+
+- 技能包：`ai-engineering/skills/learn-digest.md`（五段格式，**单一事实源**）；`.dsh/skills/learn-digest.md` → 指向它的软链接（DSH 侧会话加载入口）。
+- 流程：抓取 → 转写/取文 → 结构化整理 → 落盘 `data/adai/learn/` + 时效性追踪。
+- 首例产物：`data/adai/learn/ai/harness-engineering/`（2026-09-06，9 篇 + README + `_raw/`）。
+- **A 产物的检索方式不依赖产品**：DSH 会话内直接 `read`/`grep` `data/adai/learn/` 即可。
+- 已知待办（**低优先，可不做**）：A 产物格式与 B 解析契约存在错位——正文段名 `## 核心观点（一句话）` 匹配不上注入正则 `##\s*核心观点\s*\n`（导致问答召回只剩标题）、frontmatter 用嵌套 `source:` 块而 B 仓储只认扁平 `platform/author/url`。**该错位随读层下架自然消亡（无消费方即无契约约束）**；若将来重建读层，须先对齐格式或修正则。
+
+### 9.6 复启条件（若将来重启）
+
+出现「手机端随手喂入 / 批量消化」的**真实高频场景**（当前无），且用户愿意明确授权抓取与云端转写（B8 外向动作 + 费用边界）时——**届时应直接做「抓取 + 结构化」一体化**（对齐 A 的能力），不要把最费力的一步留给用户；卡片模板复用 A 的实战模板。
+
+> **本轮教训（值得记住）**：**不为想象中的场景先建系统**。B 是这个教训的最小复现——设计完整（RFC 272 行 / 三通道 / 六决策点 / V1+V2 两批落地），但真实使用为 0，而成本是真实的代码、测试、审查与文档维护。
+

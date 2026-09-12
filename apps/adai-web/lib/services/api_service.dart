@@ -1118,25 +1118,31 @@ class ApiService {
 
   // ── learn 学习插件（RFC 20260829）──
 
-  /// 喂入素材消化（2026-09-10 提交式）：POST /learn/cards → {status: pending|running}，
-  /// 后台消化完成后轮询 [getLearnDigestStatus] 直到 done/failed（对齐复盘提交式先例）。
+  /// 喂入链接或素材消化（RFC 20260912 D 形态抓取批）：POST /learn/digest →
+  /// {status: pending|running|needs_confirmation}。**url 我（后端）自己去抓**（B站/文章），
+  /// 抓不到时用户粘 content 兜底；两者至少给一个，url 优先（旧地址 /learn/cards 是同一逻辑的别名）。
+  /// 素材框里只放一个裸链接时后端也当链接处理。
+  /// 后台消化完成后轮询 [getLearnDigestStatus] 直到 done/failed/needs_confirmation。
   Future<String> submitLearnDigest({
-    required String content,
+    String? url,
+    String? content,
     String? type,
     String? platform,
     String? author,
-    String? url,
     String? published,
   }) async {
+    assert((url != null && url.trim().isNotEmpty) ||
+        (content != null && content.trim().isNotEmpty),
+        '链接与素材至少给一个，否则我没法开始整理');
     final resp = await _client.post(
-      Uri.parse('$baseUrl/api/v1/learn/cards'),
+      Uri.parse('$baseUrl/api/v1/learn/digest'),
       headers: _headers,
       body: jsonEncode({
-        'content': content,
+        'url': ?url,
+        'content': ?content,
         'type': ?type,
         'platform': ?platform,
         'author': ?author,
-        'url': ?url,
         'published': ?published,
       }),
     );
@@ -1145,8 +1151,32 @@ class ApiService {
     return (json['status'] as String?) ?? '';
   }
 
-  /// 消化任务状态（2026-09-10）：GET /learn/digest/status →
-  /// {status: idle|running|done|failed, type?, title?, message?}。
+  /// 转写费用确认（RFC 20260912 §3.8 条 5）：抓到没字幕的视频 → 先把时长和钱说清 → 你点头我才花钱。
+  /// POST /learn/digest/confirm，body {"confirm": true|false} → 任务状态对象。
+  Future<LearnDigestJob> confirmLearnTranscription(bool confirm) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/digest/confirm'),
+      headers: _headers,
+      body: jsonEncode({'confirm': confirm}),
+    );
+    _check(resp);
+    return LearnDigestJob.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 本月转写用量与额度（GET /learn/digest/quota）：还剩多少先说清楚，别默默花钱。
+  Future<LearnQuotaDto> getLearnQuota() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/digest/quota'),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnQuotaDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 消化任务状态（2026-09-10；2026-09-12 抓取批加 stage/source/cost）：
+  /// GET /learn/digest/status → {status, type?, title?, message?, stage?, source?, cost?}。
   Future<LearnDigestJob> getLearnDigestStatus() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/learn/digest/status'),
