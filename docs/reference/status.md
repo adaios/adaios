@@ -29,9 +29,10 @@
 - 前端：adai-app `localhost:8081`（移动端入口，Web 形态）· adai-web `localhost:8082`（桌面端入口）· adai-admin `localhost:8083`（产品后台）（均 Flutter Web + CanvasKit 补丁）
 - **生产服务器**：`82.156.111.146`（北京 · 腾讯云轻量 · 2核4G · Ubuntu 24.04 LTS · 2026-08-19 从 49.235.37.220 迁移，旧服务器到期下线）
 - **生产域名**：`adaiadai.com`（2026-09-01 已上线：ICP 备案通过 `京ICP备2026056893号` + DNS + Caddy HTTPS + 登录体系，见 `docs/deployment/backend-deployment.md` §10）
-- 生产访问：web `https://adaiadai.com` · admin `https://adaiadai.com/admin/` · API `https://api.adaiadai.com`（**需登录 Bearer token**，旧 IP:8080 直连已不对外）
+- 生产访问：web `https://adaiadai.com` · **PWA（手机装主屏）`https://adaiadai.com/m/`** · admin `https://adaiadai.com/admin/` · API `https://api.adaiadai.com`（**需登录 Bearer token**，旧 IP:8080 直连已不对外）
+- **PWA 入口（2026-09-13 装机批）**：`adaiadai.com/m/` = `adai-app` 的 web 构建（**与 iOS 原生 app 同一份代码**），iPhone Safari「添加到主屏幕」后独立 App 形式全屏运行——用来终结「免费签名 7 天过期就用不了」的入口断裂（REVIEW P2-用户1）。服务：`adaios-app.service`（`:8084` → `/opt/adaios/app-web`，复用 `serve_static.py` gzip+分级缓存）；Caddy `handle_path /m/*`（存量 web/admin 未动）。构建：`cd apps/adai-app && sh scripts/build_web.sh <API_BASE_URL> /m/`（脚本内置 base-href + CanvasKit/字体补丁 + 三条硬校验）。**入口即未验证项**：实机「添加到主屏幕」需用户在手机上完成（本机无浏览器代跑）
 - **生产当前版本（2026-09-13 部署）**：后端 **v3.61**（交易账实一致性批，RFC 20260912；deploy-gate 前置三门 PASS + 部署后自检 3 项 PASS，自检当场报出「券商快照锚定缺失 known=false」= 本批根因可见化）· web 产物同日替换（含预检→确认两段式/rejected 卡/账实横幅；API 指向 `https://api.adaiadai.com` + CanvasKit/字体本地化补丁，产物校验：`main.dart.js` 3,510,014 B 含新 UI 串、canvaskit 本地 200）· **⚠️ 生产交易账实仍未校准（P2-交易38）**：锚定缺失 + 存量持仓/现金为 09-12 双计后的错口径——需用户先导一次「持仓股/资金股份」快照建立锚定再核对· **learn 前置全部就位（2026-09-13）：`ffmpeg 6.1.1` ✅ / `DASHSCOPE_API_KEY` 已配（凭证不入库，.env 权限 640）✅ / 月度额度 10 小时 ✅**；转写真链已在生产实测跑通（B站 37 分钟无字幕视频 → 报价确认 → 转写 → 卡片 + `_raw/` 转写稿与元数据归位，约 100 秒，账本 `2244s / 0.1795 元`）；「有字幕视频」链仍不可达（B站 字幕接口对未登录请求返回空，需可选 `ADAI_BILIBILI_COOKIE`）· **iOS app**：release 包已构建签名就绪（`apps/adai-app/build/ios/iphoneos/Runner.app`，19.6MB，API 指向生产域名），待手机可达即装机（本轮 `devicectl` 报设备 unavailable）· 生产 `.env` 已补 `ADAI_SMOKE_ACCOUNT/PASSWORD`；**注意 deploy-gate 的 GATE-AFTER smoke 读的是「本机环境变量」**，须 `export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=… no_proxy=82.156.111.146` 再跑门禁（本机代理会拦 IP:8080 → 拿不到 token；2026-09-12 已用这个跑法让 GATE-BEFORE + 部署 + GATE-AFTER smoke 6/6 全绿）；本次已按同口径手工跑通 smoke 9/9 200（feed/记忆/交易建议/一句话解析/时间线/标签 + learn 资产树/全文/找卡）
-- 生产目录：`/opt/adaios`（backend/data/web/admin/os；`.env` 含密钥不进 git）
+- 生产目录：`/opt/adaios`（backend/data/web/admin/**app-web**/os；`.env` 含密钥不进 git）
 - 数据路径：`data/{userId}/...`（本机账号 = `data/adai/`，default 已迁移移除；测试可用 `data/default/`）
 
 ## 发布状态

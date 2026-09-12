@@ -309,6 +309,39 @@ systemctl enable --now adaios-web
 # admin 同模板，端口 8083，目录 /opt/adaios/admin
 ```
 
+### 8.1 PWA（手机装到主屏）— 2026-09-13 装机批
+
+手机端入口走 **`adai-app` 的 web 构建**（与 iOS 原生 app 同一份代码），托管在 `https://adaiadai.com/m/`，
+iPhone Safari「添加到主屏幕」后以独立 App 形式全屏运行。**目的**：终结「免费 Apple ID 签名 7 天过期 → 打不开」的入口断裂（REVIEW P2-用户1）。
+
+```bash
+# ① 本地构建（脚本内置 base-href + CanvasKit 补丁 + 字体本地化补丁 + 三条硬校验）
+cd apps/adai-app
+sh scripts/build_web.sh https://api.adaiadai.com /m/
+#   ⚠️ 必须传 /m/ 作为 BASE_HREF：字体补丁路径会跟着子路径走（漏了 → 中文全框）
+#   ⚠️ 构建与补丁逻辑在 scripts/build_web.sh（serve_web.sh 只负责本地起服务，不再重复实现）
+#   ⚠️ 校验会 FAIL 的三种情况：补丁未注入 / 补丁缺 base-href 前缀 / 字体文件不在产物内
+
+# ② 上传（原子替换，admin 同款 tar 管道）
+cd build/web && tar -cf - . | ssh ubuntu@82.156.111.146 \
+  'sudo rm -rf /opt/adaios/app-web.new && sudo mkdir -p /opt/adaios/app-web.new && sudo tar -xf - -C /opt/adaios/app-web.new && sudo chown -R adaios:adaios /opt/adaios/app-web.new && sudo rm -rf /opt/adaios/app-web && sudo mv /opt/adaios/app-web.new /opt/adaios/app-web && sudo systemctl restart adaios-app'
+
+# ③ systemd（端口 8084，目录 /opt/adaios/app-web，复用 serve_static.py）
+#    单元 adaios-app.service 与 adaios-web 同模板，仅端口/目录/描述不同
+
+# ④ Caddy：/m/ 整段剥前缀转发（⚠️ 必须排在兜底 handle 之前）
+#    adaiadai.com {
+#        redir /m /m/ permanent
+#        handle_path /m/* { reverse_proxy 127.0.0.1:8084 }
+#        handle { reverse_proxy 127.0.0.1:8082 }   # 存量桌面 web，不动
+#    }
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && sudo systemctl reload caddy
+```
+
+> 装机步骤（用户手动，一次性）：iPhone Safari 打开 `https://adaiadai.com/m/` → 分享 → 「添加到主屏幕」→ 主屏出现「阿呆阿呆」图标 → 点开即全屏 App（无需签名、不会 7 天过期）。
+> 已验证：`/m/` 全链路 200（index/manifest/图标/main.dart.js/service worker/字体）、`/m` → 301 → `/m/`、CORS 允许 `adaiadai.com` 调 `api.adaiadai.com`、登录 + feed/memory/learn/trading 端点 200。
+> 未验证：实机「添加到主屏幕」与 iOS 上首次加载体验（本机无浏览器/手机可代跑，需用户确认）。
+
 > ⚠️ **前端产物烧录 IP 陷阱**：`flutter build web` 不带 `--dart-define=API_BASE_URL` 会静默烧录 `localhost:8080`，浏览器打开即白屏（请求自己电脑）。构建必须显式传生产地址。同理 iOS：`--dart-define=API_BASE_URL=https://api.adaiadai.com`。
 
 ## 9. iOS 部署（adai-app → iPhone）
