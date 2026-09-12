@@ -410,4 +410,113 @@ class LearnCardFileRepositoryTest {
                         new com.adaiadai.core.domain.learn.LearnCardPatch(null, null, null, null, null, null, null)));
         assertTrue(e.getMessage().contains("卡片不存在"));
     }
+
+    // ── 读侧对齐批（2026-09-12）：A 形态卡片读得到、改不动 ──
+
+    /** A 形态卡片（Mac 上 DSH 技能写的）：主题子目录 + 编号文件名 + 段名带括号后缀 + 嵌套 source 块。 */
+    private static final String A_FORM_CARD = """
+            ---
+            title: Harness 到底是什么？
+            type: ai
+            source:
+              platform: bilibili
+              author: 马克的技术工作坊
+              url: https://www.bilibili.com/video/BV12LR1B3EUt/
+              published: 2026-05-05
+            created: 2026-09-06
+            status: new
+            trade_related: false
+            tags: [harness]
+            ---
+            ## 核心观点（一句话）
+
+            **Harness = 围绕模型搭系统的工程学科**。
+
+            ## 内容脉络
+
+            - 第一条脉络
+
+            ## 我的疑问
+
+            - 与软件工程的关系？
+            """;
+
+    @Test
+    void normalizeSectionName_toleratesNumberingAndSuffix() {
+        assertEquals("核心观点", LearnCardFileRepository.normalizeSectionName("核心观点（一句话）"));
+        assertEquals("核心观点", LearnCardFileRepository.normalizeSectionName("二、核心观点"));
+        assertEquals("核心观点", LearnCardFileRepository.normalizeSectionName("2. 核心观点"));
+        assertEquals("我的疑问", LearnCardFileRepository.normalizeSectionName("我的疑问（可讨论点）"));
+        assertEquals("关键要点", LearnCardFileRepository.normalizeSectionName("关键要点"));
+        assertEquals("内容脉络", LearnCardFileRepository.normalizeSectionName("内容脉络"),
+                "不同名字的段不冒充别的段（不做语义改名）");
+    }
+
+    @Test
+    void aFormCard_isParsedWithCoreViewAndQuestions() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+
+        List<LearnCard> cards = repository.list("adai", LearnCard.TYPE_AI);
+
+        assertEquals(1, cards.size(), "递归列表会读到主题子目录里的卡（看得见）");
+        LearnCard card = cards.get(0);
+        assertTrue(card.coreView().contains("Harness = 围绕模型搭系统"),
+                "段名带后缀也要能解析出核心观点：" + card.coreView());
+        assertEquals(1, card.questions().size(), "「我的疑问」段能解析");
+        assertTrue(card.keyPoints().isEmpty(), "「内容脉络」是另一个名字的段，不冒充关键要点（如实为空）");
+    }
+
+    @Test
+    void aFormCard_editIsRefusedWithHumanMessage_fileUntouched() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        String before = storage.read("adai", "learn/ai/harness/01-video-card.md");
+
+        LearnException e = assertThrows(LearnException.class, () -> repository.applyEdit(
+                "adai", LearnCard.TYPE_AI, "Harness 到底是什么？",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("改过的核心观点", null, null, null, null, null, null)));
+
+        assertTrue(e.getMessage().contains("Mac 上整理"), "要说清为什么不能改：" + e.getMessage());
+        assertTrue(e.getMessage().contains("另存"), "要给可行路径");
+        assertEquals(before, storage.read("adai", "learn/ai/harness/01-video-card.md"),
+                "别人的原始文件一个字都不能动");
+        assertFalse(storage.exists("adai", "learn/ai/2026-09-06_"
+                + LearnCard.fileStem("Harness 到底是什么？") + ".md"), "也不该另写一份到产品路径");
+    }
+
+    @Test
+    void aFormCard_statusChangeIsRefused() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+
+        LearnException e = assertThrows(LearnException.class, () -> repository.updateStatus(
+                "adai", LearnCard.TYPE_AI, "Harness 到底是什么？", LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 12)));
+
+        assertTrue(e.getMessage().contains("Mac 上整理"));
+    }
+
+    @Test
+    void productCard_isStillEditable_regression() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "产品卡", LocalDate.of(2026, 9, 12));
+        repository.save("adai", card);
+
+        LearnCard updated = repository.applyEdit("adai", LearnCard.TYPE_AI, "产品卡",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("改过的核心观点", null, null, null, null, null, null));
+
+        assertEquals("改过的核心观点", updated.coreView(), "本实现产出的卡照旧可编辑（守卫不能误伤）");
+    }
+
+    @Test
+    void handRenamedManagedSection_isNotDuplicatedOnWrite() {
+        // 手工把段名改成「核心观点（一句话）」→ 写回时按归一识别为受管段，不再补一份重复段
+        LearnCard card = sample(LearnCard.TYPE_AI, "改名卡", LocalDate.of(2026, 9, 12));
+        repository.save("adai", card);
+        String path = "learn/ai/2026-09-12_" + LearnCard.fileStem("改名卡") + ".md";
+        storage.write("adai", path, storage.read("adai", path).replace("## 核心观点", "## 核心观点（一句话）"));
+
+        LearnCard updated = repository.applyEdit("adai", LearnCard.TYPE_AI, "改名卡",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("新观点", null, null, null, null, null, null));
+
+        assertEquals("新观点", updated.coreView());
+        String content = storage.read("adai", path);
+        assertEquals(1, content.split("## 核心观点", -1).length - 1, "不该出现重复的核心观点段");
+    }
 }

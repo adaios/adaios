@@ -45,8 +45,18 @@ public class LearnKnowledgeSource implements KnowledgeSource {
     private static final Pattern TITLE_PATTERN = Pattern.compile("(?m)^title:\\s*(.+)$");
     private static final Pattern TYPE_PATTERN = Pattern.compile("(?m)^type:\\s*(.+)$");
     private static final Pattern CREATED_PATTERN = Pattern.compile("(?m)^created:\\s*(\\d{4}-\\d{2}-\\d{2})");
+    /**
+     * 核心观点段（**容错匹配**，2026-09-12 读侧对齐批）。
+     * <p>
+     * 同一个 learn 目录里有两个写入方：产品写 `## 核心观点`，Mac 上的 DSH 技能 A 写
+     * `## 核心观点（一句话）`（段名带括号后缀、标题下还常空一行、正文首行是加粗）。
+     * 原正则要求「段名后紧跟换行且下一行非空」——A 的卡全部匹配失败，召回到的只剩标题
+     * （RFC 20260912 §9.1 记过这条）。这里放宽三处：允许段名前带序号（`二、核心观点`）、
+     * 段名后带后缀（`核心观点（一句话）`）、标题与正文之间允许空行。
+     */
     private static final Pattern CORE_VIEW_PATTERN = Pattern.compile(
-            "##\\s*核心观点\\s*\\n(?!\\n)([^\\n#]{1," + CORE_VIEW_MAX + "})");
+            "(?m)^[ \\t]*##[ \\t]*(?:(?:[0-9０-９]+|[一二三四五六七八九十]+)[、.．)）][ \\t]*)?"
+                    + "核心观点[^\\n]*\\n(?:[ \\t]*\\n)*[ \\t]*([^\\n#][^\\n]*)");
 
     private final FileStorage fileStorage;
 
@@ -119,8 +129,9 @@ public class LearnKnowledgeSource implements KnowledgeSource {
         Matcher m = CORE_VIEW_PATTERN.matcher(content);
         if (!m.find()) return "";
         String view = m.group(1).strip();
-        // 去列表/空行噪音
-        view = view.replaceAll("^[-*]\\s+", "").strip();
+        // 去列表/引用/加粗噪音（A 的卡正文首行常写成 **加粗一句话**）
+        view = view.replaceAll("^[-*>]\\s+", "").strip();
+        view = view.replaceAll("^\\*+", "").replaceAll("\\*+$", "").strip();
         return view.length() > CORE_VIEW_MAX ? view.substring(0, CORE_VIEW_MAX) + "…" : view;
     }
 

@@ -24,6 +24,72 @@ class LearnKnowledgeSourceTest {
         source = new LearnKnowledgeSource(storage);
     }
 
+    /**
+     * A 形态（DSH 技能写过的那批）真实片段：frontmatter 是嵌套 source 块、段名带括号后缀、
+     * 标题下空一行、正文首行加粗——2026-09-12 读侧对齐批之前，这类卡被召回时核心观点是空的。
+     */
+    private static final String A_FORM_CARD = """
+            ---
+            title: Harness Engineering 到底是什么？（B站视频卡片）
+            type: ai
+            source:
+              platform: bilibili
+              author: 马克的技术工作坊
+              url: https://www.bilibili.com/video/BV12LR1B3EUt/
+              published: 2026-05-05
+            created: 2026-09-06
+            status: new
+            trade_related: false
+            tags: [harness-engineering]
+            ---
+            ## 核心观点（一句话）
+
+            **Harness Engineering = 一门"研究除了大模型本身之外所有东西"的工程学科**——它是 Prompt Engineering 之后范围更广的第三层。
+
+            ## 内容脉络
+
+            - 第一条脉络
+
+            ## 我的疑问
+
+            - 它与软件工程的关系？
+            """;
+
+    @Test
+    void aFormCard_coreViewIsRecalled_notJustTitle() {
+        storage.write("adai", "learn/ai/harness-engineering/01-video-card.md", A_FORM_CARD);
+
+        LearnKnowledgeSource.NoteSummary note = source.recentNotes("adai").get(0);
+
+        assertEquals("Harness Engineering 到底是什么？（B站视频卡片）", note.title());
+        assertFalse(note.coreView().isBlank(), "A 形态的卡也要能召回出核心观点（原先只剩标题）");
+        assertTrue(note.coreView().startsWith("Harness Engineering = 一门"),
+                "首行加粗标记要清掉，留下正文：" + note.coreView());
+    }
+
+    @Test
+    void aFormCardNumberedSection_alsoMatched() {
+        storage.write("adai", "learn/ai/topic/01-x.md", A_FORM_CARD.replace("## 核心观点（一句话）", "## 二、核心观点"));
+
+        assertFalse(source.recentNotes("adai").get(0).coreView().isBlank(), "带序号的段名同样要能匹配");
+    }
+
+    @Test
+    void productFormCard_stillMatched() {
+        storage.write("adai", "learn/ai/2026-09-12_x.md", cardMd("产品卡", "ai", "2026-09-12", "产品侧写的核心观点"));
+
+        assertEquals("产品侧写的核心观点", source.recentNotes("adai").get(0).coreView());
+    }
+
+    @Test
+    void coreViewBlankLineAfterHeader_stillCaptured() {
+        // 标题与正文之间空一行（原正则的 (?!\n) 会直接判失败）
+        storage.write("adai", "learn/ai/2026-09-12_x.md",
+                cardMd("空行卡", "ai", "2026-09-12", "核心观点但在下一行前有空行"));
+
+        assertFalse(source.recentNotes("adai").get(0).coreView().isBlank());
+    }
+
     private String cardMd(String title, String type, String created, String coreView) {
         return """
                 ---

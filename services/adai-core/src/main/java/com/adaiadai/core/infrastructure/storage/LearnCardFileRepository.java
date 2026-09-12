@@ -64,6 +64,45 @@ public class LearnCardFileRepository implements LearnCardRepository {
         this.fileStorage = fileStorage;
     }
 
+    /**
+     * 定位卡片**实际所在文件**（递归扫该 type 目录，含主题子目录）。
+     * <p>
+     * 为什么需要：`listFiles` 是递归的，所以 Mac 上 A 技能写在 `{type}/{topic}/NN-*.md` 的卡
+     * 也会被本仓储读到（列表/资产树里看得见）。但本实现的读写路径是按 `{type}/{date}_{title}.md`
+     * **算出来的**——对这些「别处整理的卡」读写会算出另一个不存在的路径。
+     */
+    private String locatedPath(String userId, String type, LearnCard card) {
+        for (String f : fileStorage.listFiles(userId, LEARN_DIR + type)) {
+            if (!f.endsWith(".md")) continue;
+            String content = fileStorage.read(userId, f);
+            if (content == null || content.isBlank()) continue;
+            LearnCard parsed = parse(content);
+            if (parsed == null || !type.equals(parsed.type())) continue;
+            if (card.title().equals(parsed.title())) return f;
+        }
+        return null;
+    }
+
+    /**
+     * 可写路径守卫（2026-09-12 读侧对齐批）：只允许改**本实现产出的卡片**。
+     * <p>
+     * 别处整理的卡（Mac 上 A 技能写在主题目录里的手工卡）一律**只读**——既避免把产品模板段
+     * 注入别人的文件，也把原先那句莫名的「卡片不存在」换成说得通的人话。
+     *
+     * @throws LearnException 卡不存在 / 不是本实现产出的卡（消息为人话）
+     */
+    private String writablePath(String userId, String type, LearnCard card) {
+        String located = locatedPath(userId, type, card);
+        if (located == null) {
+            throw new LearnException("卡片不存在：" + safeLabel(type, card.title()));
+        }
+        if (!located.equals(filePath(card))) {
+            throw new LearnException("这张《" + card.title() + "》是在 Mac 上整理的原始卡，"
+                    + "我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你");
+        }
+        return located;
+    }
+
     private Object lockFor(String key) {
         int h = (key != null ? key : "default").hashCode();
         return locks[(h ^ (h >>> 16)) & (locks.length - 1)];
@@ -129,7 +168,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 throw new LearnException("状态流转 " + from + "→" + toStatus + " 不被允许（new→review→done，"
                         + "可回退 review→new / done→review）");
             }
-            String path = filePath(card);
+            String path = writablePath(userId, type, card);
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -165,7 +204,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!LearnCard.STATUS_REVIEW.equals(card.status())) {
                 return card; // 非 review 卡不参与提醒节流
             }
-            String path = filePath(card);
+            String path = writablePath(userId, type, card);
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -189,12 +228,13 @@ public class LearnCardFileRepository implements LearnCardRepository {
                     .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
             // P2-learn6：锁内基于最新快照 merge，并发 PATCH 不再丢更新
             LearnCard updated = mergePatch(cur, patch);
-            String content = fileStorage.read(userId, filePath(cur));
+            String path = writablePath(userId, type, cur);
+            String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
             }
             String rewritten = rewriteManaged(content, updated);
-            fileStorage.write(userId, filePath(cur), rewritten);
+            fileStorage.write(userId, path, rewritten);
             log.info("learn 卡片已编辑 | userId={} | type={} | title={}", userId, type, title);
             return parse(rewritten);
         }
@@ -211,12 +251,13 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!card.created().equals(existing.created())) {
                 throw new LearnException("标题/类型/日期不可修改（会移动文件），如需改名请新建卡片");
             }
-            String content = fileStorage.read(userId, filePath(existing));
+            String path = writablePath(userId, card.type(), existing);
+            String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(card.type(), card.title()));
             }
             String rewritten = rewriteManaged(content, card);
-            fileStorage.write(userId, filePath(existing), rewritten);
+            fileStorage.write(userId, path, rewritten);
             log.info("learn 卡片已更新 | userId={} | type={} | title={}", userId, card.type(), card.title());
             return parse(rewritten);
         }
@@ -305,7 +346,8 @@ public class LearnCardFileRepository implements LearnCardRepository {
         boolean[] seen = new boolean[MANAGED_SECTIONS.size()];
         for (BodyPart part : parts) {
             if (part.header() != null) {
-                int idx = MANAGED_SECTIONS.indexOf(part.header());
+                // 与读侧同口径归一：手工把段名写成「核心观点（一句话）」也不当成未知段重复补一份
+                int idx = MANAGED_SECTIONS.indexOf(normalizeSectionName(part.header()));
                 if (idx >= 0) {
                     seen[idx] = true;
                     sb.append("## ").append(part.header()).append("\n")
@@ -572,7 +614,24 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return fields;
     }
 
-    /** 按 "## 标题" 切正文段。 */
+    /**
+     * 段名归一（**容错读**，2026-09-12 读侧对齐批）。
+     * <p>
+     * 同一个 learn 目录里有两个写入方：产品（本实现，段名 `## 核心观点`）与 Mac 上的 DSH 技能 A
+     * （段名 `## 核心观点（一句话）`、`## 二、核心观点` 这类带后缀/序号的写法）。原先按**精确段名**
+     * 取值，A 的卡被读出来就是「核心观点/要点全空」——看得见、读不全。
+     * 归一只做**同一概念的写法差异**（去编号前缀、去括号后缀），**不做语义改名**：
+     * A 的 `## 内容脉络` 保持原样（它是另一个名字的段，不冒充「关键要点」），未知段照旧原样保留。
+     */
+    static String normalizeSectionName(String header) {
+        if (header == null) return "";
+        String h = header.strip();
+        h = h.replaceAll("^(?:[0-9０-９]+|[一二三四五六七八九十]+)\\s*[、.．)）]\\s*", "");
+        h = h.replaceAll("[（(][^（()）]*[)）]\\s*$", "");
+        return h.strip();
+    }
+
+    /** 按 "## 标题" 切正文段（段名经 {@link #normalizeSectionName} 归一）。 */
     private static Map<String, String> parseSections(String body) {
         Map<String, String> sections = new LinkedHashMap<>();
         if (body == null || body.isBlank()) return sections;
@@ -581,7 +640,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
         for (String line : body.split("\n")) {
             if (line.startsWith("## ")) {
                 if (current != null) sections.put(current, sb.toString().strip());
-                current = line.substring(3).strip();
+                current = normalizeSectionName(line.substring(3));
                 sb = new StringBuilder();
             } else {
                 sb.append(line).append("\n");
