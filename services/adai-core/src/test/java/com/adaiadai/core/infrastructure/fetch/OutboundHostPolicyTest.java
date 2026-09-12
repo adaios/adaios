@@ -124,4 +124,29 @@ class OutboundHostPolicyTest {
         assertTrue(new OutboundHostPolicy(false, 5).maxRedirects() == 5);
         assertTrue(new OutboundHostPolicy(false, -1).maxRedirects() == 0, "负数收敛为 0");
     }
+
+    // ── DNS 解析后复检（2026-09-12 对抗审查 P2-learn19 残余：DNS rebinding）──
+
+    @Test
+    void rejectsDomainResolvingToLoopback_evenIfNameLooksPublic() {
+        // 构造一个「名字看着正常、解析到回环」的域名：用 *.localhost 之外的路径难造，
+        // 这里用本机回环的等价写法验证解析层判定（127.0.0.1 的域名形态）
+        assertNotNull(strict.rejection("http://localtest.me/"), "解析到 127.0.0.1 的域名要拒（DNS rebinding 面）");
+    }
+
+    @Test
+    void allowsPublicDomain_afterResolution() {
+        // 解析出的公网地址照常放行（不能因为加了复检把正常抓取拦死）。
+        // 注意：本用例需要 DNS 可用；离线环境会走「解析失败」分支，那也属于如实处理，故一并接受。
+        String reason = strict.rejection("https://example.com/article");
+        assertTrue(reason == null || reason.contains("解析不了"),
+                "公网域名放行（无 DNS 环境按解析失败处理）：" + reason);
+    }
+
+    @Test
+    void unresolvableDomain_getsHumanMessage() {
+        String reason = strict.rejection("https://this-domain-should-not-exist-adaios-test.invalid/");
+        assertNotNull(reason);
+        assertTrue(reason.contains("解析不了"), "人话而不是异常：" + reason);
+    }
 }

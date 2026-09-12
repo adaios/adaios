@@ -238,7 +238,10 @@ public class LearnDigestAppService {
             1) 逐字抄录图中的文字，保留标题层级、编号、公式、代码与专有名词（不要改写、不要总结成一句话）；
             2) 若有图表，说明它表达了什么（坐标轴/趋势/结论）；
             3) 手写体或模糊处把握不准的，标「（此处不清晰）」。
+            4) **若内容超出你的输出长度上限**，在结尾另起一行写「（余下内容未能提取）」——
+               宁可我事后补，也不要静默省略。
             只输出提取结果本身，不要客套话，不要「以下是」这类开场。
+            不要总结成一段话，也不要为了简短而省略条目。
             """;
 
     /**
@@ -346,11 +349,16 @@ public class LearnDigestAppService {
                 ImageInput img = images.get(i);
                 String text;
                 try {
+                    // 用户备注要**并进问题文本**：视觉客户端的 ask 只发问题，ImageRequest.caption 会被忽略
+                    // （2026-09-12 对抗审查指出「note 参数实际无效」）——所以在这里显式拼进去。
+                    String question = (note == null || note.isBlank())
+                            ? IMAGE_READ_PROMPT
+                            : "用户补充说明：" + note.strip() + "\n\n" + IMAGE_READ_PROMPT;
                     text = visualAiClient.ask(
                             new com.adaiadai.core.infrastructure.ai.vision.ImageRequest(
                                     java.util.Base64.getEncoder().encodeToString(img.bytes()),
                                     img.contentType(), note),
-                            IMAGE_READ_PROMPT);
+                            question);
                 } catch (Exception e) {
                     log.warn("learn 读图失败 | userId={} | 第 {} 张 | {}", userId, i + 1, e.getMessage());
                     throw new LearnException("第 " + (i + 1) + " 张图我没读出来，原图已留存，稍后再试一次");

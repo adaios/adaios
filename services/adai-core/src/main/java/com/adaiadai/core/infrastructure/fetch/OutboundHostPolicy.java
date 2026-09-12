@@ -19,9 +19,17 @@ import java.util.Set;
  * 并回显 —— 即**服务端替用户访问任意地址**（SSRF）。重定向（{@code followRedirects}）会把
  * 公网 URL 跳到内网，因此**每一跳都要复检**。
  * <p>
- * 本类只做「免费的静态判定」：协议、端口、字面 IP 的私有/回环/链路本地/元数据网段、内网域名后缀。
- * **不含 DNS 解析后的复检**（DNS rebinding 面），故注释里如实标明残余风险；生产为单用户自有产品，
- * 该残余面小于凭证泄露面。
+ * 判据两层：
+ * <ol>
+ *   <li><b>静态判定</b>（免费）：协议、端口、字面 IP 的私有/回环/链路本地/元数据网段、内网域名后缀</li>
+ *   <li><b>DNS 解析后复检</b>（2026-09-12 补，对抗审查 P2-learn19 残余）：把域名解析出的**每个地址**
+ *       都按上面的规则判一遍——防「域名看着正常、解析到 127.0.0.1 / 169.254.169.254」的
+ *       DNS rebinding（也防某条 A 记录被换掉）。解析失败按用户输入错处理（人话）。</li>
+ * </ol>
+ * <p>
+ * 说明：解析通过后，连接时仍可能被再次解析到别的地址（严格来说要靠连接级校验才彻底闭合）；
+ * 对本产品（单用户、抓的是公开内容页）这一层已经堵住「构造域名指向内网」这条现实路径。
+ * 需要时可再上「连接前二次校验」。
  */
 @Component
 public class OutboundHostPolicy implements LearnFetchPolicy {
@@ -97,15 +105,37 @@ public class OutboundHostPolicy implements LearnFetchPolicy {
         if (isLiteralIp(lower)) {
             try {
                 InetAddress addr = InetAddress.getByName(lower);
-                if (addr.isLoopbackAddress() || addr.isAnyLocalAddress() || addr.isLinkLocalAddress()
-                        || addr.isSiteLocalAddress() || addr.isMulticastAddress() || isSharedAddressSpace(addr)) {
+                if (isForbiddenAddress(addr)) {
                     return "这个地址不像是能公开访问的内容页，我就不去抓了";
                 }
             } catch (Exception e) {
                 return "这个地址解析不了，检查一下链接";
             }
+            return null;
+        }
+        // DNS 解析后复检（防 DNS rebinding：域名看着正常、解析落到内网/元数据地址）
+        InetAddress[] resolved;
+        try {
+            resolved = InetAddress.getAllByName(lower);
+        } catch (Exception e) {
+            return "这个地址解析不了，检查一下链接";
+        }
+        if (resolved.length == 0) {
+            return "这个地址解析不了，检查一下链接";
+        }
+        for (InetAddress addr : resolved) {
+            if (isForbiddenAddress(addr)) {
+                log.warn("出站拒绝：域名解析到内网/受限地址 | host={} | resolved={}", host, addr.getHostAddress());
+                return "这个地址不像是能公开访问的内容页，我就不去抓了";
+            }
         }
         return null;
+    }
+
+    /** 该地址是否属于「绝不允许出站访问」的类别（回环/本机/链路本地/私有/组播/运营商级 NAT）。 */
+    private static boolean isForbiddenAddress(InetAddress addr) {
+        return addr.isLoopbackAddress() || addr.isAnyLocalAddress() || addr.isLinkLocalAddress()
+                || addr.isSiteLocalAddress() || addr.isMulticastAddress() || isSharedAddressSpace(addr);
     }
 
     /** 100.64.0.0/10（运营商级 NAT）——InetAddress 的判定不覆盖，单独挡。 */

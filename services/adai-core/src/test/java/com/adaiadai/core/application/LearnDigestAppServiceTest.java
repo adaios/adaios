@@ -476,6 +476,21 @@ class LearnDigestAppServiceTest {
     }
 
     @Test
+    void submitImages_note_isPassedIntoTheQuestion_notOnlyCaption() {
+        // 对抗审查指出：ImageRequest.caption 会被视觉客户端的 ask 丢弃 → note 实际无效。
+        // 修复后 note 并进问题文本，模型才真的看得到用户的补充说明。
+        when(visualAiClient.ask(any(), anyString())).thenReturn("第一页：可转债双低……");
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+
+        withVision().submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                null, "这是可转债策略讲义第 3 页");
+
+        verify(visualAiClient).ask(any(), argThat(q -> q.contains("用户补充说明")
+                && q.contains("可转债策略讲义第 3 页") && q.contains("逐字抄录")));
+    }
+
+    @Test
     void submitImages_emptyOcrResult_failsVisibleWithoutCard() {
         when(visualAiClient.ask(any(), any())).thenReturn("   ");
 
