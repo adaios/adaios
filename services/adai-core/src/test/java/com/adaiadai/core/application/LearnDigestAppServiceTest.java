@@ -390,7 +390,226 @@ class LearnDigestAppServiceTest {
         LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor, fetchService, transcriptionService);
         direct.submit("adai", "字幕内容", null, null, null, null, null);
         assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status());
+        assertEquals(LearnCard.DEFAULT_TOPIC, direct.digestJobStatus("adai").topic(),
+                "done 回传 topic（前端不必再打一次 /learn/content 才知道归到哪）");
         // TTL 边界不可注入时钟，此处仅验证同一 job 重复查询幂等（done 保留至消费/覆盖）
         assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status());
+    }
+
+    // ── 结构统一批（2026-09-12）：主题目录契约 + 素材归位 ──
+
+    private static final String TOPIC_JSON = """
+            {"title":"回调一半的判定","type":"trading","topic":"量价关系","tags":["止损"],
+            "core_view":"回调到一半才是买点","key_points":["02:31 几何口径"],
+            "questions":[],"trade_related":true,"trade_note":""}""";
+
+    @Test
+    void digest_llmTopic_landsOnCard() {
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+
+        LearnCard card = service.digest("adai", "字幕……", null, "bilibili", "UP", null, null);
+
+        assertEquals("量价关系", card.topic(), "LLM 给的主题落到卡片上（决定落盘目录）");
+    }
+
+    @Test
+    void digest_llmTopicMissing_fallsBackToDefaultTopic() {
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON); // 无 topic 字段
+
+        LearnCard card = service.digest("adai", "字幕……", null, "bilibili", "UP", null, null);
+
+        assertEquals(LearnCard.DEFAULT_TOPIC, card.topic(), "没给主题 → 缺省主题，而不是空目录名");
+    }
+
+    @Test
+    void digest_promptListsExistingTopics_soSameTopicMerges() {
+        when(repository.topics("adai", LearnCard.TYPE_TRADING)).thenReturn(List.of("量价关系"));
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+
+        service.digest("adai", "字幕……", "trading", "bilibili", "UP", null, null);
+
+        verify(aiClient).generate(argThat(ctx -> ctx.prompt().contains("量价关系")
+                && ctx.prompt().contains("完全同名")), any());
+    }
+
+    @Test
+    void submit_pastedMaterial_archivesRawAndPromotesIntoTopic() {
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+        LearnDigestAppService direct = new LearnDigestAppService(
+                aiClient, repository, directExecutor, fetchService, transcriptionService);
+
+        direct.submit("adai", "这是一段粘进来的正文……", "trading", "web", "某人", null, null);
+
+        String expectedName = "pasted-" + LearnDigestAppService.shortHash("这是一段粘进来的正文……") + ".txt";
+        verify(repository).saveRaw(eq("adai"), eq(expectedName), eq("这是一段粘进来的正文……"));
+        verify(repository).promoteRaw(eq("adai"), eq(LearnCard.TYPE_TRADING), eq("量价关系"),
+                argThat(names -> names.contains(expectedName)));
+    }
+
+    // ── 图片源（2026-09-12 完整升级批：书页/PPT/截图）──
+
+    private final com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient =
+            mock(com.adaiadai.core.infrastructure.ai.vision.VisualAiClient.class);
+
+    private LearnDigestAppService withVision() {
+        return new LearnDigestAppService(aiClient, repository, directExecutor, fetchService,
+                transcriptionService, visualAiClient);
+    }
+
+    @Test
+    void submitImages_readsImageThenDigests_andPromotesOriginalImage() {
+        when(visualAiClient.ask(any(), any())).thenReturn("第一页：量价关系的三个层次……");
+        when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
+
+        withVision().submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                "trading", "书页第 3 页");
+
+        verify(repository).saveRawBytes(eq("adai"), argThat(n -> n.startsWith("image-1-") && n.endsWith(".png")),
+                argThat(b -> java.util.Arrays.equals(b, new byte[]{1, 2, 3})));
+        verify(visualAiClient).ask(argThat(req -> "image/png".equals(req.contentType())
+                && "书页第 3 页".equals(req.caption())), anyString());
+        verify(repository).save(eq("adai"), argThat(c -> LearnCard.TYPE_TRADING.equals(c.type())
+                && "量价关系".equals(c.topic())));
+        verify(repository).promoteRaw(eq("adai"), eq(LearnCard.TYPE_TRADING), eq("量价关系"),
+                argThat(names -> names.stream().anyMatch(n -> n.startsWith("image-1-"))));
+    }
+
+    @Test
+    void submitImages_emptyOcrResult_failsVisibleWithoutCard() {
+        when(visualAiClient.ask(any(), any())).thenReturn("   ");
+
+        LearnDigestAppService svc = withVision();
+        svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{9}, "image/jpeg", "p.jpg")), null, null);
+
+        assertEquals(LearnDigestAppService.STATUS_FAILED, svc.digestJobStatus("adai").status());
+        assertTrue(svc.digestJobStatus("adai").message().contains("没读出内容"));
+        verify(repository, never()).save(any(), any());
+    }
+
+    @Test
+    void submitImages_tooMany_throwsBeforeSavingAnything() {
+        List<LearnDigestAppService.ImageInput> four = List.of(
+                new LearnDigestAppService.ImageInput(new byte[]{1}, "image/png", null),
+                new LearnDigestAppService.ImageInput(new byte[]{2}, "image/png", null),
+                new LearnDigestAppService.ImageInput(new byte[]{3}, "image/png", null),
+                new LearnDigestAppService.ImageInput(new byte[]{4}, "image/png", null));
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> withVision().submitImages("adai", four, null, null));
+
+        assertTrue(e.getMessage().contains("最多"), e.getMessage());
+        verify(repository, never()).saveRawBytes(any(), any(), any());
+    }
+
+    @Test
+    void submitImages_withoutVisualModel_throwsHumanMessage() {
+        LearnException e = assertThrows(LearnException.class, () -> service.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1}, "image/png", null)), null, null));
+
+        assertTrue(e.getMessage().contains("视觉模型"), "没接视觉模型要说人话，而不是空指针：" + e.getMessage());
+    }
+
+    // ── 找卡片 / 读全文（2026-09-12 完整升级批：「打开那篇」+ 学习页搜索）──
+
+    @Test
+    void find_titleHitBeatsTopicHit_andRespectsLimit() {
+        LearnCard titleHit = new LearnCard(LearnCard.TYPE_AI, "量价关系入门", "web", null, null, null,
+                LocalDate.of(2026, 9, 1), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "其他主题");
+        LearnCard topicHit = new LearnCard(LearnCard.TYPE_AI, "另一篇", "web", null, null, null,
+                LocalDate.of(2026, 9, 2), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系");
+        when(repository.list("adai", LearnCard.TYPE_AI)).thenReturn(List.of(topicHit, titleHit));
+
+        List<LearnCard> found = service.find("adai", "量价关系", null);
+
+        assertEquals(2, found.size());
+        assertEquals("量价关系入门", found.get(0).title(), "标题命中权重高于主题命中");
+    }
+
+    @Test
+    void find_blankQuery_returnsEmptyWithoutTouchingRepository() {
+        assertTrue(service.find("adai", "   ", null).isEmpty());
+        verify(repository, never()).list(any(), any());
+    }
+
+    @Test
+    void content_returnsRawMarkdown_missingThrowsHuman() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "全文卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系");
+        when(repository.find("adai", LearnCard.TYPE_AI, "全文卡")).thenReturn(java.util.Optional.of(card));
+        when(repository.readCard("adai", LearnCard.TYPE_AI, "全文卡")).thenReturn("# 全文卡\n\n## 关键内容详解\n正文");
+
+        LearnDigestAppService.CardContent content = service.content("adai", LearnCard.TYPE_AI, "全文卡");
+
+        assertEquals("量价关系", content.topic());
+        assertTrue(content.content().contains("关键内容详解"), "按 md 原文返回（手工卡的段不丢）");
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> service.content("adai", LearnCard.TYPE_AI, "没这张"));
+        assertTrue(e.getMessage().contains("卡片不存在"));
+    }
+
+    // ── 对抗审查修复批（2026-09-12）：P1-B 占位回收、P2-7 body ──
+
+    @Test
+    void submitImages_stagingFailure_reclaimsSlot_andReportsHumanMessage() {
+        // P1-B：原图写暂存失败（磁盘满/权限）→ 异常直穿 500 且 job 留非终态 →
+        // 该用户之后所有喂入被「有任务在跑」永久挡死。修复后：回收占位 + 人话 400。
+        org.mockito.Mockito.doThrow(new com.adaiadai.core.infrastructure.storage.StorageException("磁盘满"))
+                .when(repository).saveRawBytes(anyString(), anyString(), any());
+        LearnDigestAppService svc = withVision();
+
+        LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2}, "image/png", "p.png")), null, null));
+
+        assertTrue(e.getMessage().contains("稍后再试"), "要说人话而不是 500：" + e.getMessage());
+        assertEquals(LearnDigestAppService.STATUS_IDLE, svc.digestJobStatus("adai").status(),
+                "占位已回收（否则后续喂入永远 running）");
+        // 关键回归：下一个喂入还能正常受理
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+        LearnDigestAppService direct = new LearnDigestAppService(aiClient, repository, directExecutor,
+                fetchService, transcriptionService, visualAiClient);
+        direct.submit("adai", "素材正文", null, null, null, null, null);
+        assertEquals(LearnDigestAppService.STATUS_DONE, direct.digestJobStatus("adai").status(),
+                "换成同一仓储后新喂入照常完成（证明前一次失败没钉死入口）");
+    }
+
+    @Test
+    void submitImages_executorRejected_cleansStagedOriginals() {
+        java.util.concurrent.Executor rejecting = command -> {
+            throw new RejectedExecutionException("queue full");
+        };
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting,
+                fetchService, transcriptionService, visualAiClient);
+        when(repository.readRawBytes(anyString(), anyString())).thenReturn(new byte[]{1});
+        List<LearnDigestAppService.ImageInput> images = List.of(
+                new LearnDigestAppService.ImageInput(new byte[]{1}, "image/png", "p1.png"),
+                new LearnDigestAppService.ImageInput(new byte[]{2}, "image/jpeg", "p2.jpg"));
+
+        LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai", images, null, null));
+
+        assertTrue(e.getMessage().contains("繁忙"), e.getMessage());
+        verify(repository, times(2)).deleteRaw(eq("adai"), anyString());
+        assertEquals(LearnDigestAppService.STATUS_IDLE, svc.digestJobStatus("adai").status());
+    }
+
+    @Test
+    void content_bodyHasFrontmatterStripped_forDisplay() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "全文卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系");
+        when(repository.find("adai", LearnCard.TYPE_AI, "全文卡")).thenReturn(java.util.Optional.of(card));
+        when(repository.readCard("adai", LearnCard.TYPE_AI, "全文卡"))
+                .thenReturn("---\ntitle: 全文卡\norigin: product\n---\n\n## 关键内容详解\n正文");
+
+        LearnDigestAppService.CardContent c = service.content("adai", LearnCard.TYPE_AI, "全文卡");
+
+        assertTrue(c.content().contains("origin: product"), "原文照给（需要完整文件的消费方用）");
+        assertFalse(c.body().contains("origin: product"), "展示用的 body 不带内部字段（第一原则）");
+        assertTrue(c.body().startsWith("## 关键内容详解"), c.body());
     }
 }

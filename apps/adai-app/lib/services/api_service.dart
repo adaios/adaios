@@ -906,6 +906,66 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 单篇卡片全文（2026-09-12 完整升级批）：GET /learn/content?type=&title=（精确标题）→
+  /// {type,title,topic,writable,content}，content 是该卡 md 原文。
+  /// 列表接口只给产品建模的四个段——Mac 侧技能整理的卡还有「关键内容详解/金句/概念关系」等段，
+  /// **读全文必须走这里**，否则那些段在界面上永远看不到。
+  Future<LearnCardContentDto> getLearnContent({
+    required String type,
+    required String title,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/learn/content')
+        .replace(queryParameters: {'type': type, 'title': title});
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    return LearnCardContentDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 找卡片（学习页搜索 + 对话流「打开那篇」）：GET /learn/find?q=&limit=。
+  /// 服务端已按相关度排好（纯规则打分，不烧 AI）；没命中 → 空列表（兜底话术交给调用方）。
+  Future<List<LearnCardDto>> searchLearnCards(String q, {int limit = 5}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/learn/find')
+        .replace(queryParameters: {'q': q, 'limit': '$limit'});
+    final resp = await _client.get(uri, headers: _headers);
+    _check(resp);
+    final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List<dynamic>;
+    return list
+        .map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 图片喂入（2026-09-12 完整升级批）：POST /learn/digest/image（multipart，字段名 files，1~3 张，
+  /// 可选 type/note）→ {status}。原图先落 learn/_raw/（源必留痕），后台读图（stage=reading）后
+  /// 与链接/素材走同一条消化流水线；提交式——拿到 status 后照旧轮询 [getLearnDigestStatus]。
+  /// 走 _aiClient（120s）：多图上传 + 服务端读图排队，15s 默认超时会在弱网误杀（同截图入账口径）。
+  /// multipart 必须显式带 [_authHeaders]（2026-09-02 线上实锤：漏了 Bearer → 401）。
+  Future<String> submitLearnImages({
+    required List<List<int>> bytesList,
+    required List<String> filenames,
+    required List<String> mimeTypes,
+    String? type,
+    String? note,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/learn/digest/image'))
+      ..headers.addAll(_authHeaders);
+    if (type != null && type.isNotEmpty) req.fields['type'] = type;
+    if (note != null && note.trim().isNotEmpty) req.fields['note'] = note.trim();
+    for (var i = 0; i < bytesList.length; i++) {
+      req.files.add(http.MultipartFile.fromBytes(
+        'files',
+        bytesList[i],
+        filename: filenames[i],
+        contentType: MediaType('image', mimeTypes[i].split('/').last),
+      ));
+    }
+    final streamed = await _aiClient.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (json['status'] as String?) ?? '';
+  }
+
   /// 复习提醒开关读（S-learn2 2026-09-07，双端一致）：GET /learn/push-settings。
   Future<bool> getLearnReviewEnabled() async {
     final resp = await _client.get(

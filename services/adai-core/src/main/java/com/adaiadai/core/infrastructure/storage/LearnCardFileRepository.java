@@ -23,17 +23,34 @@ import java.util.Optional;
  * <p>
  * 文件布局 {@code data/{userId}/learn/}（File First，md 即卡片真相源，可 diff/可渲染）：
  * <pre>
- * {type}/{yyyy-MM-dd}_{title}.md      # 卡片（frontmatter + RFC 3.4 正文四段）
- * _raw/{time}.txt                     # 原始素材（LLM 失败时素材不丢，fail-visible）
+ * {type}/{topic}/NN-{slug}.md      # 卡片（frontmatter + 正文段）——与 Mac 侧技能产物同契约
+ * {type}/{topic}/README.md         # 主题索引（本实现只**追加**「阿呆整理记录」段，不重写他人内容）
+ * {type}/{topic}/_raw/{name}       # 该主题的原始素材（源必留痕，与卡放在一起）
+ * _raw/{name}                      # 素材暂存区（消化成功前主题未知；成功后 promoteRaw 归位）
  * </pre>
  * frontmatter 扁平 key: value（写读对称，不做嵌套——source 信息平铺为 platform/author/url/published）。
  * 并发：per-user 条带锁（固定 16 条带，P2-交易28 锁池模式）串行读-改-写。
  * 写失败抛 StorageException（fail-visible，P0-1 原则）。
  * <p>
+ * 2026-09-12 结构统一批（本文件最主要的改造）：
+ * <ul>
+ *   <li><b>主题目录契约</b>：新卡落 {@code {type}/{topic}/NN-{slug}.md}（NN 主题内递增 + 主题 README
+ *       索引），与 Mac 上 DSH 技能 `learn-digest` 的产物**同一个结构**——两个写入方不再各写一套</li>
+ *   <li><b>来源判定（origin）</b>：本实现写出的卡带 {@code origin: product}；别处整理的卡没有该键
+ *       → 判定为**只读**（读写路径守卫从「路径算得对不对」改为「这张卡是不是我写的」，手工卡与
+ *       产品卡同在一个主题目录里也能各自区分）</li>
+ *   <li><b>标题歧义消解</b>：同名时**本产品卡优先**；别处手工卡同名不再拦截新建（P2-learn20），
+ *       多个本产品同名卡仍 400（P1-learn2 不变）</li>
+ *   <li><b>兼容读**：老式扁平 {@code {type}/{date}_{title}.md} 与主题目录两种布局都能读/能改
+ *       （老卡原地不动，不强制迁移）</li>
+ *   <li><b>README.md 不当卡片</b>：主题索引的 frontmatter 也长得像卡（有 title/type/created），
+ *       列表/定位一律跳过</li>
+ * </ul>
+ * <p>
  * V2 learn 审查修复（2026-09-07）：
  * <ul>
- *   <li><b>P1-learn2</b>：标题寻址歧义根治——save 拒绝「同 type+同 title 任意日期」已存在
- *       （跨日同名是旧卡无法寻址/改错卡的源头）；find 遇残留多张同名抛 400（列出 created）</li>
+ *   <li><b>P1-learn2</b>：标题寻址歧义根治——save 拒绝「同 type+同 title」已存在
+ *       （跨日同名是旧卡无法寻址/改错卡的源头）</li>
  *   <li><b>S-learn1</b>：frontmatter 增可选 {@code review_at}/{@code reminded_at}——复习提醒按
  *       进入 review 之日计时 + 提醒节流（仓储只做机械落盘，today 由 application 传入，storage
  *       不取系统时间，G2）</li>
@@ -46,7 +63,15 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     private static final Logger log = LoggerFactory.getLogger(LearnCardFileRepository.class);
     private static final String LEARN_DIR = "learn/";
-    private static final String RAW_DIR = "learn/_raw/";
+    /** 素材暂存区（消化成功前主题未知；成功后归位到主题目录，见 {@link #promoteRaw}）。 */
+    private static final String RAW_STAGING_DIR = "learn/_raw/";
+    private static final String RAW_SUBDIR = "_raw";
+    private static final String README_NAME = "README.md";
+    /** 本实现写出的卡带此标记；别处（Mac 上技能）整理的卡没有 → 只读。 */
+    private static final String ORIGIN_KEY = "origin";
+    private static final String ORIGIN_PRODUCT = "product";
+    /** README 自动段标记（只追加、不重写他人已写内容）。 */
+    private static final String README_MARKER = "## 阿呆整理记录（自动维护）";
     private static final DateTimeFormatter DIR_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final int LOCK_STRIPES = 16;
     /** V1 模板正文四段（编辑手术替换时受管段），其余「## 标题」段视为用户手工段保留。 */
@@ -64,43 +89,143 @@ public class LearnCardFileRepository implements LearnCardRepository {
         this.fileStorage = fileStorage;
     }
 
+    /** 定位结果：卡片**实际所在文件** + 该文件的主题/可写性（由路径与 origin 判定）。 */
+    private record Located(String path, LearnCard card) {}
+
     /**
-     * 定位卡片**实际所在文件**（递归扫该 type 目录，含主题子目录）。
+     * 扫某 type 下的全部卡片文件（递归，含主题子目录里的手工卡）。
      * <p>
-     * 为什么需要：`listFiles` 是递归的，所以 Mac 上 A 技能写在 `{type}/{topic}/NN-*.md` 的卡
-     * 也会被本仓储读到（列表/资产树里看得见）。但本实现的读写路径是按 `{type}/{date}_{title}.md`
-     * **算出来的**——对这些「别处整理的卡」读写会算出另一个不存在的路径。
+     * 主题由**文件所在目录**决定（路径是位置真相），可写性由 {@code origin: product} 决定
+     * （是不是我写的）——两者都从盘上算，不从 frontmatter 里猜。
      */
-    private String locatedPath(String userId, String type, LearnCard card) {
+    private List<Located> locateAll(String userId, String type) {
+        List<Located> out = new ArrayList<>();
         for (String f : fileStorage.listFiles(userId, LEARN_DIR + type)) {
-            if (!f.endsWith(".md")) continue;
+            if (!f.endsWith(".md") || isReadme(f)) continue;
+            if (f.contains("/" + RAW_SUBDIR + "/")) continue;   // _raw/ 里的素材不是卡片
             String content = fileStorage.read(userId, f);
             if (content == null || content.isBlank()) continue;
             LearnCard parsed = parse(content);
             if (parsed == null || !type.equals(parsed.type())) continue;
-            if (card.title().equals(parsed.title())) return f;
+            out.add(new Located(f, decorate(parsed, f, type, content)));
         }
-        return null;
+        return out;
+    }
+
+    /** 读盘后补上「在哪（主题）」与「能不能改（是否本实现产出）」。 */
+    private static LearnCard decorate(LearnCard parsed, String path, String type, String content) {
+        return parsed.withTopic(topicOfPath(path, type)).withWritable(isOwn(path, type, content));
+    }
+
+    /** 文件所在主题目录名（扁平老布局/直接放在 type 下 → 缺省主题）。 */
+    private static String topicOfPath(String path, String type) {
+        String prefix = LEARN_DIR + type + "/";
+        if (path == null || !path.startsWith(prefix)) return LearnCard.DEFAULT_TOPIC;
+        String rel = path.substring(prefix.length());
+        int slash = rel.indexOf('/');
+        if (slash <= 0) return LearnCard.DEFAULT_TOPIC;
+        String dir = rel.substring(0, slash);
+        return RAW_SUBDIR.equals(dir) ? LearnCard.DEFAULT_TOPIC : dir;
     }
 
     /**
-     * 可写路径守卫（2026-09-12 读侧对齐批）：只允许改**本实现产出的卡片**。
+     * 是否**本实现产出的卡**（可写）。
      * <p>
-     * 别处整理的卡（Mac 上 A 技能写在主题目录里的手工卡）一律**只读**——既避免把产品模板段
-     * 注入别人的文件，也把原先那句莫名的「卡片不存在」换成说得通的人话。
+     * 两条判据：① 老式扁平布局 {@code {type}/{date}_{title}.md}（V1/V2 产品卡，原地保留不迁移）；
+     * ② 主题布局里带 {@code origin: product} 的（本批起新产品卡）。Mac 上技能写的卡两条都不满足
+     * → 只读（列表/全文照常可见）。
+     */
+    private static boolean isOwn(String path, String type, String content) {
+        String prefix = LEARN_DIR + type + "/";
+        if (path == null || !path.startsWith(prefix)) return false;
+        String rel = path.substring(prefix.length());
+        int slash = rel.indexOf('/');
+        if (slash < 0) {
+            return rel.matches("\\d{4}-\\d{2}-\\d{2}_.+\\.md");   // 老式扁平产品卡
+        }
+        String dir = rel.substring(0, slash);
+        if (RAW_SUBDIR.equals(dir)) return false;
+        String file = rel.substring(slash + 1);
+        return file.matches("\\d+-.+\\.md") && hasProductOrigin(content);
+    }
+
+    /**
+     * 是不是本实现写的卡（看 frontmatter 的 {@code origin: product}）。
+     * <p>
+     * 对抗审查 P1-A（2026-09-12）修复：**只在前言块里找**——原先扫全文，外部卡正文/代码块里
+     * 只要出现一行 {@code origin: product}（例如一张讲解本契约的笔记），就会被误判成「产品卡」
+     * 进而被产品改写（正是本批要防的「把产品模板段注入别人的文件」）。正文一概不算。
+     */
+    private static boolean hasProductOrigin(String content) {
+        if (content == null) return false;
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
+        if (!fm.find()) return false;
+        return java.util.regex.Pattern
+                .compile("(?m)^" + ORIGIN_KEY + ":\\s*" + ORIGIN_PRODUCT + "\\s*$")
+                .matcher(fm.group(2)).find();
+    }
+
+    /** 主题索引文件（README.md / index.md）不是卡片。 */
+    private static boolean isReadme(String path) {
+        if (path == null) return false;
+        String base = baseName(path).toLowerCase();
+        return base.equals("readme.md") || base.equals("index.md");
+    }
+
+    /**
+     * 按 type + 标题定位（**本产品卡优先**，P2-learn20 修复）。
+     * <p>
+     * 同名可能来自两处：本实现写的卡、Mac 上技能写的手工卡。产品侧的操作（编辑/流转/反哺）
+     * 只应落在自己的卡上；全是手工卡时返回它（只读，供查看）。**多个本产品卡同名**仍 400
+     * （P1-learn2：禁止静默改错卡）。
+     */
+    private Optional<Located> locate(String userId, String type, String title) {
+        List<Located> named = locateAll(userId, type).stream()
+                .filter(l -> title.equals(l.card().title()))
+                .toList();
+        if (named.isEmpty()) return Optional.empty();
+        List<Located> own = named.stream().filter(l -> l.card().writable()).toList();
+        if (own.size() > 1) {
+            String dates = own.stream().map(l -> l.card().created().toString()).sorted()
+                    .reduce((a, b) -> a + " / " + b).orElse("");
+            throw new LearnException("《" + title + "》存在 " + own.size() + " 张同名卡片（创建于 "
+                    + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
+        }
+        if (own.size() == 1) return Optional.of(own.get(0));
+        if (named.size() > 1) {
+            log.warn("learn 同名手工卡多张，取第一张（只读）| userId={} | type={} | title={} | 命中 {} 张",
+                    userId, type, title, named.size());
+        }
+        return Optional.of(named.get(0));
+    }
+
+    /**
+     * 可写路径守卫（2026-09-12 读侧对齐批 → 结构统一批改为 origin 判据）：只允许改
+     * **本实现产出的卡片**。别处整理的卡一律只读——既避免把产品模板段注入别人的文件，
+     * 也把原先那句莫名的「卡片不存在」换成说得通的人话。
      *
      * @throws LearnException 卡不存在 / 不是本实现产出的卡（消息为人话）
      */
-    private String writablePath(String userId, String type, LearnCard card) {
-        String located = locatedPath(userId, type, card);
-        if (located == null) {
-            throw new LearnException("卡片不存在：" + safeLabel(type, card.title()));
-        }
-        if (!located.equals(filePath(card))) {
-            throw new LearnException("这张《" + card.title() + "》是在 Mac 上整理的原始卡，"
-                    + "我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你");
+    private Located requireWritable(String userId, String type, LearnCard card) {
+        Located located = locate(userId, type, card.title())
+                .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, card.title())));
+        if (!located.card().writable()) {
+            throw new LearnException(readOnlyMessage(located.card().title()));
         }
         return located;
+    }
+
+    /**
+     * 别处整理的手工卡：只读人话（含可行路径，别让用户撞墙）。
+     * <p>
+     * 对抗审查 P2-1（2026-09-12）：产品卡的判据是 frontmatter 的 {@code origin: product}，
+     * 若该行被手工/别处工具改写掉，产品卡会退化成只读——所以话术要**如实**（不说死「一定是在
+     * Mac 上整理的」）并给两条可行动路径。
+     */
+    private static String readOnlyMessage(String title) {
+        return "这张《" + title + "》不是我在产品里写的（一般是在 Mac 上整理的，也可能它的来源标记被改过），"
+                + "我只当资料看、不改动它；想改的话，我可以照它的内容另存一张能编辑的给你";
     }
 
     private Object lockFor(String key) {
@@ -118,41 +243,29 @@ public class LearnCardFileRepository implements LearnCardRepository {
     public void save(String userId, LearnCard card) {
         if (card == null) throw new LearnException("卡片不能为空");
         synchronized (lockFor(userId)) {
-            // P1-learn2：同 type + 同 title 已存在（任意日期）→ 拒绝，防跨日同名歧义。
-            // 卡片少、单用户，扫描可接受；不覆盖、不静默（重复消化请先编辑已有卡片）。
-            Optional<LearnCard> dup = findByTitleQuiet(userId, card.type(), card.title());
+            // P1-learn2：同 type + 同 title 已存在 → 拒绝，防跨日同名歧义。
+            // 2026-09-12：只挡**本产品产出**的同名卡——别处整理的手工卡同名不该拦住新建
+            // （P2-learn20 修复：两者是不同文件，寻址时本产品卡优先）。
+            Optional<Located> dup = locate(userId, card.type(), card.title())
+                    .filter(l -> l.card().writable());
             if (dup.isPresent()) {
                 throw new LearnException("已有同名卡片《" + card.title() + "》（创建于 "
-                        + dup.get().created() + "），同标题内容请先查看/编辑已有卡片，避免重复消化");
+                        + dup.get().card().created() + "），同标题内容请先查看/编辑已有卡片，避免重复消化");
             }
-            String path = filePath(card);
+            String topic = LearnCard.topicDir(card.topic());
+            String dir = LEARN_DIR + card.type() + "/" + topic + "/";
+            String file = fileName(nextSeq(userId, dir), LearnCard.fileStem(card.title()));
+            String path = dir + file;
             fileStorage.write(userId, path, toMarkdown(card));
-            log.info("learn 卡片已落盘 | userId={} | type={} | title={}", userId, card.type(), card.title());
+            updateTopicReadme(userId, card.type(), topic, card, file);
+            log.info("learn 卡片已落盘 | userId={} | type={} | topic={} | file={}", userId, card.type(), topic, file);
         }
     }
 
     @Override
     public Optional<LearnCard> find(String userId, String type, String title) {
         if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return Optional.empty();
-        List<LearnCard> matched = list(userId, type).stream()
-                .filter(c -> title.equals(c.title()))
-                .toList();
-        if (matched.size() > 1) {
-            // P1-learn2：残留多张同名（历史/手工）→ 显式 400，禁止静默取最新改错卡
-            String dates = matched.stream()
-                    .map(c -> c.created().toString()).sorted()
-                    .reduce((a, b) -> a + " / " + b).orElse("");
-            throw new LearnException("《" + title + "》存在 " + matched.size() + " 张同名卡片（创建于 "
-                    + dates + "），标题无法唯一寻址——请人工合并文件后再操作");
-        }
-        return matched.isEmpty() ? Optional.empty() : Optional.of(matched.get(0));
-    }
-
-    /** 静默版标题查找（save 重复检查用；多张同名取最新 created，不抛——save 只关心「已存在」）。 */
-    private Optional<LearnCard> findByTitleQuiet(String userId, String type, String title) {
-        return list(userId, type).stream()
-                .filter(c -> title.equals(c.title()))
-                .max(Comparator.comparing(LearnCard::created));
+        return locate(userId, type, title).map(Located::card);
     }
 
     @Override
@@ -168,7 +281,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 throw new LearnException("状态流转 " + from + "→" + toStatus + " 不被允许（new→review→done，"
                         + "可回退 review→new / done→review）");
             }
-            String path = writablePath(userId, type, card);
+            String path = requireWritable(userId, type, card).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -189,7 +302,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
             }
             fileStorage.write(userId, path, updated);
             log.info("learn 复习状态流转 | userId={} | type={} | title={} | {}→{}", userId, type, title, from, toStatus);
-            return parse(updated);
+            // 返回**补全 topic/writable 的卡**（2026-09-12）：写响应缺这两个字段时，前端就地写回
+            // 会把卡片从它的主题组跳到「未归类」（web 侧自查 P1，根治放在后端）
+            return decorate(parse(updated), path, type, updated);
         }
     }
 
@@ -204,7 +319,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!LearnCard.STATUS_REVIEW.equals(card.status())) {
                 return card; // 非 review 卡不参与提醒节流
             }
-            String path = writablePath(userId, type, card);
+            String path = requireWritable(userId, type, card).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -214,7 +329,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             fileStorage.write(userId, path, updated);
             log.info("learn 复习提醒已标记 | userId={} | type={} | title={} | remindedAt={}",
                     userId, type, title, today);
-            return parse(updated);
+            return decorate(parse(updated), path, type, updated);
         }
     }
 
@@ -228,7 +343,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                     .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
             // P2-learn6：锁内基于最新快照 merge，并发 PATCH 不再丢更新
             LearnCard updated = mergePatch(cur, patch);
-            String path = writablePath(userId, type, cur);
+            String path = requireWritable(userId, type, cur).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(type, title));
@@ -236,7 +351,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
             String rewritten = rewriteManaged(content, updated);
             fileStorage.write(userId, path, rewritten);
             log.info("learn 卡片已编辑 | userId={} | type={} | title={}", userId, type, title);
-            return parse(rewritten);
+            return decorate(parse(rewritten), path, type, rewritten);
         }
     }
 
@@ -251,15 +366,17 @@ public class LearnCardFileRepository implements LearnCardRepository {
             if (!card.created().equals(existing.created())) {
                 throw new LearnException("标题/类型/日期不可修改（会移动文件），如需改名请新建卡片");
             }
-            String path = writablePath(userId, card.type(), existing);
+            String path = requireWritable(userId, card.type(), existing).path();
             String content = fileStorage.read(userId, path);
             if (content == null || content.isBlank()) {
                 throw new LearnException("卡片不存在：" + safeLabel(card.type(), card.title()));
             }
-            String rewritten = rewriteManaged(content, card);
+            // 主题以**文件所在目录**为准（位置真相）：调用方传进来的卡若没带主题（缺省「未归类」），
+            // 不能把 frontmatter 的 topic 覆盖成与目录不一致的值
+            String rewritten = rewriteManaged(content, card.withTopic(existing.topic()));
             fileStorage.write(userId, path, rewritten);
             log.info("learn 卡片已更新 | userId={} | type={} | title={}", userId, card.type(), card.title());
-            return parse(rewritten);
+            return decorate(parse(rewritten), path, card.type(), rewritten);
         }
     }
 
@@ -278,7 +395,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
                 p != null && p.coreView() != null ? p.coreView().strip() : cur.coreView(),
                 keyPoints, questions,
                 p != null && p.retell() != null ? p.retell().strip() : cur.retell(),
-                cur.reviewAt(), cur.remindedAt());
+                cur.reviewAt(), cur.remindedAt(), cur.topic(), cur.writable());
     }
 
     private static List<String> cleanList(List<String> list) {
@@ -301,7 +418,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
         Map<String, String> fmLines = parseFrontmatterLines(fmBlock);
         StringBuilder newFm = new StringBuilder();
         newFm.append(fm.group(1));
-        List<String> managedKeys = List.of("title", "type", "platform", "author", "url", "published",
+        List<String> managedKeys = List.of("title", "type", "topic", "platform", "author", "url", "published",
                 "created", "status", "trade_related", "trade_note", "tags", "review_at", "reminded_at");
         for (Map.Entry<String, String> e : fmLines.entrySet()) {
             String key = e.getKey();
@@ -324,6 +441,7 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return switch (key) {
             case "title" -> singleLine(card.title());
             case "type" -> card.type();
+            case "topic" -> LearnCard.topicDir(card.topic());
             case "platform" -> singleLine(card.platform());
             case "author" -> singleLine(card.author());
             case "url" -> singleLine(card.url());
@@ -457,21 +575,16 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     @Override
     public boolean existsOn(String userId, String type, LocalDate created, String title) {
-        String path = LEARN_DIR + type + "/" + created.format(DIR_DATE) + "_" + LearnCard.fileStem(title) + ".md";
-        return fileStorage.exists(userId, path);
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return false;
+        // 兼容两种布局（老扁平 + 主题目录）：同名即视为已存在（防重复消化覆盖）
+        return locate(userId, type, title).isPresent();
     }
 
     @Override
     public List<LearnCard> list(String userId, String type) {
         List<LearnCard> result = new ArrayList<>();
-        List<String> files = fileStorage.listFiles(userId, LEARN_DIR + type);
-        for (String f : files) {
-            if (!f.endsWith(".md")) continue;
-            String content = fileStorage.read(userId, f);
-            if (content == null || content.isBlank()) continue;
-            LearnCard card = parse(content);
-            if (card == null || !type.equals(card.type())) continue;  // 损坏/异型文件跳过
-            result.add(card);
+        for (Located l : locateAll(userId, type)) {
+            result.add(l.card());
         }
         result.sort(Comparator.comparing(LearnCard::created).reversed());
         return result;
@@ -488,24 +601,260 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     @Override
+    public List<String> topics(String userId, String type) {
+        if (!LearnCard.isValidType(type)) return List.of();
+        java.util.LinkedHashSet<String> topics = new java.util.LinkedHashSet<>();
+        for (Located l : locateAll(userId, type)) {
+            if (!LearnCard.DEFAULT_TOPIC.equals(l.card().topic())) topics.add(l.card().topic());
+        }
+        return List.copyOf(topics);
+    }
+
+    @Override
+    public String readCard(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return null;
+        return locate(userId, type, title)
+                .map(l -> fileStorage.read(userId, l.path()))
+                .orElse(null);
+    }
+
+    @Override
+    public String cardPath(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) return null;
+        return locate(userId, type, title).map(Located::path).orElse(null);
+    }
+
+    @Override
+    public List<MigrationItem> migrateLegacy(String userId) {
+        List<MigrationItem> items = new ArrayList<>();
+        for (String type : List.of(LearnCard.TYPE_AI, LearnCard.TYPE_TRADING, LearnCard.TYPE_OTHER)) {
+            for (String f : fileStorage.listFiles(userId, LEARN_DIR + type)) {
+                if (!isLegacyFlat(f, type)) continue;
+                synchronized (lockFor(userId)) {
+                    MigrationItem item = migrateOne(userId, type, f);
+                    if (item != null) items.add(item);
+                }
+            }
+        }
+        if (!items.isEmpty()) {
+            log.info("learn 老式扁平卡迁移完成 | userId={} | {} 张", userId, items.size());
+        }
+        return items;
+    }
+
+    /** 老式扁平产品卡：直接放在 type 目录下、以日期开头。 */
+    private static boolean isLegacyFlat(String path, String type) {
+        String prefix = LEARN_DIR + type + "/";
+        if (path == null || !path.startsWith(prefix)) return false;
+        String rel = path.substring(prefix.length());
+        return !rel.contains("/") && rel.endsWith(".md") && rel.matches("\\d{4}-\\d{2}-\\d{2}_.+\\.md");
+    }
+
+    /**
+     * 迁移单张老扁平卡：补 origin/topic 键 → 落主题目录（续号）→ 维护 README → 删老文件。
+     * 删不掉则回滚目标（不留两张同名可写卡）。内容不可解析（不是卡片）→ 原地不动（返回 null）。
+     */
+    private MigrationItem migrateOne(String userId, String type, String sourcePath) {
+        String content = fileStorage.read(userId, sourcePath);
+        if (content == null || content.isBlank()) return null;
+        LearnCard card = parse(content);
+        if (card == null || !type.equals(card.type())) return null;
+        try {
+            String topic = LearnCard.topicDir(frontmatterValue(content, "topic"));
+            String updated = replaceFrontmatterKey(content, ORIGIN_KEY, ORIGIN_PRODUCT);
+            updated = replaceFrontmatterKey(updated, "topic", topic);
+            String dir = LEARN_DIR + type + "/" + topic + "/";
+            String file = fileName(nextSeq(userId, dir), LearnCard.fileStem(card.title()));
+            String target = dir + file;
+            fileStorage.write(userId, target, updated);
+            try {
+                fileStorage.delete(userId, sourcePath);
+            } catch (Exception deleteFailure) {
+                // 宁可不迁：回滚目标，避免留下两张同名可写卡（locate 会 400，卡就废了）
+                log.warn("learn 老卡迁移删源失败，已回滚 | userId={} | {} | {}",
+                        userId, sourcePath, deleteFailure.getMessage());
+                try {
+                    fileStorage.delete(userId, target);
+                } catch (Exception rollbackFailure) {
+                    log.error("learn 迁移回滚失败（目标已留副本，需人工合并）| userId={} | {} | {}",
+                            userId, target, rollbackFailure.getMessage());
+                }
+                return null;
+            }
+            updateTopicReadme(userId, type, topic, card.withTopic(topic), file);
+            log.info("learn 老卡已迁移 | userId={} | {} → {}", userId, sourcePath, target);
+            return new MigrationItem(type, sourcePath, target);
+        } catch (Exception e) {
+            log.warn("learn 老卡迁移失败（原地保留，不影响使用）| userId={} | {} | {}",
+                    userId, sourcePath, e.getMessage());
+            return null;
+        }
+    }
+
+    /** frontmatter 单键取值（迁移用：老卡可能有手工写的 topic）。只在 frontmatter 区内找，不误取正文。 */
+    private static String frontmatterValue(String content, String key) {
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(content);
+        String block = fm.find() ? fm.group(2) : "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(?m)^" + java.util.regex.Pattern.quote(key) + ":\\s*(.*)$").matcher(block);
+        return m.find() ? m.group(1).strip() : null;
+    }
+
+    // ── 主题 README 索引（追加式，不重写他人内容）──
+
+    /**
+     * 维护主题目录的 README 索引。
+     * <p>
+     * Mac 上技能整理的 README 是用户资产（有手写目录/frontmatter）——本实现**只追加**一个
+     * 明确标记的自动段，绝不重写既有内容；产品自建的主题目录则直接建 README。
+     */
+    private void updateTopicReadme(String userId, String type, String topic, LearnCard card, String fileName) {
+        String path = LEARN_DIR + type + "/" + topic + "/" + README_NAME;
+        // 标题里的 []() 会破坏 markdown 链接（对抗审查 P3 2026-09-12）→ 归一为全角括号
+        String label = singleLine(card.title()).replace('[', '（').replace(']', '）');
+        String entry = "- [" + fileName + "](" + fileName + ") — " + label
+                + "（" + card.sourceLabel() + "，" + card.created() + "）";
+        try {
+            String existing = fileStorage.read(userId, path);
+            if (existing == null || existing.isBlank()) {
+                fileStorage.write(userId, path, "# " + topic + " 学习资料\n\n" + README_MARKER + "\n\n" + entry + "\n");
+            } else if (existing.contains(README_MARKER)) {
+                if (!existing.contains("(" + fileName + ")")) {
+                    fileStorage.append(userId, path, entry + "\n");
+                }
+            } else {
+                fileStorage.append(userId, path, "\n" + README_MARKER + "\n\n" + entry + "\n");
+            }
+        } catch (Exception e) {
+            // 索引是附带收益：写不进去不该让已花钱的消化失败（与留痕同口径）
+            log.warn("learn 主题 README 更新失败 | userId={} | {}/{} | {}", userId, type, topic, e.getMessage());
+        }
+    }
+
+    @Override
     public void saveRawSource(String userId, String content) {
-        String path = RAW_DIR + com.adaiadai.core.kernel.IdGenerator.monotonic("learn_raw_") + ".txt";
+        String path = RAW_STAGING_DIR + com.adaiadai.core.kernel.IdGenerator.monotonic("learn_raw_") + ".txt";
         fileStorage.write(userId, path, content == null ? "" : content);
         log.info("learn 原始素材已留存 | userId={} | path={}", userId, path);
     }
 
     @Override
     public void saveRaw(String userId, String name, String content) {
-        String path = RAW_DIR + safeRawName(name);
+        String path = RAW_STAGING_DIR + safeRawName(name);
         fileStorage.write(userId, path, content == null ? "" : content);
-        log.info("learn 原始素材已留存 | userId={} | path={} | {} 字", userId, path,
+        log.info("learn 原始素材已留存（暂存）| userId={} | path={} | {} 字", userId, path,
                 content == null ? 0 : content.length());
     }
 
     @Override
     public String readRaw(String userId, String name) {
         if (name == null || name.isBlank()) return null;
-        return fileStorage.read(userId, RAW_DIR + safeRawName(name));
+        String safe = safeRawName(name);
+        String staged = fileStorage.read(userId, RAW_STAGING_DIR + safe);
+        if (staged != null) return staged;
+        // 归位后暂存区已删：按已落盘的主题目录回读（幂等复用转写稿的前提）
+        for (String f : fileStorage.listFiles(userId, LEARN_DIR)) {
+            if (f.endsWith("/" + RAW_SUBDIR + "/" + safe)) return fileStorage.read(userId, f);
+        }
+        return null;
+    }
+
+    @Override
+    public void saveRawBytes(String userId, String name, byte[] bytes) {
+        String path = RAW_STAGING_DIR + safeRawName(name);
+        fileStorage.writeBytes(userId, path, bytes == null ? new byte[0] : bytes);
+        log.info("learn 原始素材已留存（暂存/二进制）| userId={} | path={} | {} 字节", userId, path,
+                bytes == null ? 0 : bytes.length);
+    }
+
+    @Override
+    public byte[] readRawBytes(String userId, String name) {
+        if (name == null || name.isBlank()) return null;
+        String safe = safeRawName(name);
+        byte[] staged = fileStorage.readBytes(userId, RAW_STAGING_DIR + safe);
+        if (staged != null) return staged;
+        for (String f : fileStorage.listFiles(userId, LEARN_DIR)) {
+            if (f.endsWith("/" + RAW_SUBDIR + "/" + safe)) return fileStorage.readBytes(userId, f);
+        }
+        return null;
+    }
+
+    @Override
+    public void deleteRaw(String userId, String name) {
+        if (name == null || name.isBlank()) return;
+        String safe = safeRawName(name);
+        String staged = RAW_STAGING_DIR + safe;
+        if (fileStorage.exists(userId, staged)) fileStorage.delete(userId, staged);
+        for (String f : fileStorage.listFiles(userId, LEARN_DIR)) {
+            if (f.endsWith("/" + RAW_SUBDIR + "/" + safe)) fileStorage.delete(userId, f);
+        }
+    }
+
+    @Override
+    public List<String> promoteRaw(String userId, String type, String topic, List<String> names) {
+        if (!LearnCard.isValidType(type) || names == null || names.isEmpty()) return List.of();
+        String dir = LEARN_DIR + type + "/" + LearnCard.topicDir(topic) + "/" + RAW_SUBDIR + "/";
+        List<String> promoted = new ArrayList<>();
+        for (String rawName : names) {
+            try {
+                String safe = safeRawName(rawName);
+                String stagedPath = RAW_STAGING_DIR + safe;
+                // 字节通道取内容（文本与二进制都不改写），再按「能不能当文本读」决定落盘通道：
+                // 文本素材保持文本（readRaw 可读）；二进制（原图）走 writeBytes
+                byte[] content = fileStorage.readBytes(userId, stagedPath);
+                if (content == null) continue;               // 未产生该素材（如未转写）→ 跳过
+                String target = dir + safe;
+                byte[] existing = fileStorage.readBytes(userId, target);
+                if (existing != null) {
+                    if (java.util.Arrays.equals(existing, content)) {
+                        fileStorage.delete(userId, stagedPath);   // 同一份素材已归位过 → 幂等收尾
+                        promoted.add(safe);
+                        continue;
+                    }
+                    // 对抗审查 P2-2（2026-09-12）修复：目标已存在且内容不同（同一源更新后重跑）
+                    // → **不覆盖**（源必留痕：旧留痕也是证据），改名并存 + WARN
+                    target = dir + versionedName(safe);
+                    log.warn("learn 素材归位遇同名不同内容，改用新名并存 | userId={} | {} → {}",
+                            userId, safe, target);
+                }
+                String text = tryReadText(userId, stagedPath);
+                if (text != null) {
+                    fileStorage.write(userId, target, text);
+                } else {
+                    fileStorage.writeBytes(userId, target, content);
+                }
+                fileStorage.delete(userId, stagedPath);
+                promoted.add(baseName(target));
+            } catch (Exception e) {
+                log.warn("learn 素材归位失败 | userId={} | name={} | {}", userId, rawName, e.getMessage());
+            }
+        }
+        if (!promoted.isEmpty()) {
+            log.info("learn 素材已归位到主题目录 | userId={} | {}/{} | {} 个", userId, type, topic, promoted.size());
+        }
+        return promoted;
+    }
+
+    /** 同名素材的版本化文件名（{@code a.txt} → {@code a-2.txt}、{@code a-3.txt}…）。 */
+    private static String versionedName(String safe) {
+        int dot = safe.lastIndexOf('.');
+        String stem = dot > 0 ? safe.substring(0, dot) : safe;
+        String ext = dot > 0 ? safe.substring(dot) : "";
+        for (int v = 2; v < 100; v++) {
+            String candidate = stem + "-" + v + ext;
+            if (!candidate.equals(safe)) return candidate;
+        }
+        return stem + "-dup" + ext;
+    }
+
+    /** 尝试按文本读（二进制素材读不出文本 → null，交由字节通道处理）。 */
+    private String tryReadText(String userId, String path) {
+        try {
+            return fileStorage.read(userId, path);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 具名素材文件名清洗（防路径逃逸：只允许 [A-Za-z0-9._-]，拒绝 .. 与分隔符）。 */
@@ -519,10 +868,31 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     // ── md 渲染/解析（与 CardFileRepository 单行化口径一致，保证写读对称）──
 
-    /** 文件名：标题清洗为文件安全片段（实现上移 domain LearnCard.fileStem，P1-learn1 复用同口径）。 */
-    private String filePath(LearnCard card) {
-        String date = card.created().format(DIR_DATE);
-        return LEARN_DIR + card.type() + "/" + date + "_" + LearnCard.fileStem(card.title()) + ".md";
+    /** 主题内下一个编号（NN 递增；扫该主题目录下已存在**卡片**文件的数字前缀）。 */
+    private int nextSeq(String userId, String dir) {
+        int max = 0;
+        for (String f : fileStorage.listFiles(userId, dir)) {
+            if (f.contains("/" + RAW_SUBDIR + "/") || isReadme(f)) continue;   // 素材/索引不占编号
+            String base = baseName(f);
+            int dash = base.indexOf('-');
+            if (dash <= 0 || dash > 3) continue;   // 编号是 1~3 位（`01-`/`12-`/`100-`）；`2026-09-12_x.md` 不当编号
+            try {
+                max = Math.max(max, Integer.parseInt(base.substring(0, dash)));
+            } catch (NumberFormatException ignored) {
+                // 非编号文件跳过
+            }
+        }
+        return max + 1;
+    }
+
+    private static String fileName(int seq, String stem) {
+        return String.format("%02d-%s.md", seq, stem);
+    }
+
+    private static String baseName(String path) {
+        if (path == null) return "";
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
     }
 
     private static String singleLine(String text) {
@@ -530,12 +900,15 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return text.replace("\n", " ").replace("\r", " ").replaceAll(" +", " ").strip();
     }
 
-    /** 渲染 md（新建卡）：frontmatter 扁平字段 + RFC 3.4 正文四段（V1 模板四段空段补齐）。 */
+    /** 渲染 md（新建卡）：frontmatter 扁平字段 + 正文四段（V1 模板四段空段补齐）。 */
     static String toMarkdown(LearnCard card) {
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
         sb.append("title: ").append(singleLine(card.title())).append("\n");
         sb.append("type: ").append(card.type()).append("\n");
+        // origin：本实现写出的卡带此标记（判定可写）；Mac 上技能整理的卡没有该键 → 只读
+        sb.append("origin: ").append(ORIGIN_PRODUCT).append("\n");
+        sb.append("topic: ").append(LearnCard.topicDir(card.topic())).append("\n");
         sb.append("platform: ").append(singleLine(card.platform())).append("\n");
         sb.append("author: ").append(singleLine(card.author())).append("\n");
         sb.append("url: ").append(singleLine(card.url())).append("\n");

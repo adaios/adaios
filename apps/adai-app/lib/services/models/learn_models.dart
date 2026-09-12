@@ -58,8 +58,10 @@ class LearnDigestJob {
   bool get isInProgress => isPending || isRunning;
 
   /// 进行中阶段人话（无阶段 = ''）。
+  /// 2026-09-12 完整升级批新增 reading（图片喂入：正在读图）。
   String get stageText => switch (stage) {
         'fetching' => '正在抓取原文',
+        'reading' => '正在读图',
         'transcribing' => '正在转写，可能要几分钟',
         'structuring' => '正在整理成卡片',
         _ => '',
@@ -197,6 +199,18 @@ class LearnQuotaDto {
 
   /// 剩余额度人话（如「还剩 9 小时 40 分」）。
   String get remainLabel => '还剩 ${humanDuration(remainSeconds)}';
+
+  /// 本月额度一行话（喂入页展示用，P2-learn15）：「本月还剩 9 小时 40 分，已用 0.10 元」。
+  String get monthLabel => '本月${remainLabel}，已用 ${usedYuan.toStringAsFixed(2)} 元';
+
+  /// 单价人话（「转写 0.29 元/小时」；后端没给单价 → ''）。
+  String get priceLabel =>
+      yuanPerHour <= 0 ? '' : '转写 ${yuanPerHour.toStringAsFixed(2)} 元/小时';
+
+  /// 转写通道不可用时的人话（可用 = ''；不可用优先用后端给的原因）。
+  String get unavailableLabel => asrAvailable
+      ? ''
+      : (unavailableReason.isNotEmpty ? unavailableReason : '这会还转不了文字，回头再说');
 }
 
 /// learn 学习卡片 DTO（RFC 20260829 learn 插件）。
@@ -217,6 +231,8 @@ class LearnCardDto {
   final List<String> keyPoints;
   final List<String> questions;
   final String retell; // V2 复述段
+  final String topic; // 主题目录名（2026-09-12 完整升级批；缺省 = 未归类）
+  final bool writable; // false = Mac 侧技能整理的原始卡，只读（改/流转/反哺会被后端拒）
 
   LearnCardDto({
     required this.type,
@@ -234,6 +250,8 @@ class LearnCardDto {
     this.keyPoints = const [],
     this.questions = const [],
     this.retell = '',
+    this.topic = '',
+    this.writable = true,
   });
 
   factory LearnCardDto.fromJson(Map<String, dynamic> json) => LearnCardDto(
@@ -252,13 +270,112 @@ class LearnCardDto {
         keyPoints: _list(json['keyPoints']),
         questions: _list(json['questions']),
         retell: (json['retell'] as String?) ?? '',
+        // 防御式：老后端/老卡没有这两个字段 → topic ''、writable true（当自己的卡处理）
+        topic: (json['topic'] as String?) ?? '',
+        writable: (json['writable'] as bool?) ?? true,
       );
 
   static List<String> _list(dynamic v) =>
       (v is List) ? v.map((e) => e.toString()).toList() : const [];
 
+  /// 主题目录名（空 → 「未归类」，全 app 统一口径）。
+  String get topicLabel => topic.isEmpty ? '未归类' : topic;
+
   /// 最近列表合并键（单篇阅读用 type+title）。
   String get id => '$type/$title';
+}
+
+/// 卡片全文（GET /learn/content，2026-09-12 完整升级批）。
+/// 列表接口只给产品建模的四个段；Mac 侧整理的卡还有「关键内容详解 / 金句 / 概念关系」等段——
+/// 读全文必须走本 DTO（content = 该卡 md 原文，两种来源都完整）。
+class LearnCardContentDto {
+  final String type;
+  final String title;
+  final String topic;
+  final bool writable;
+  final String content; // md 原文（含 frontmatter；需要完整文件时用）
+  final String body; // 展示用正文（后端已剥 frontmatter；老后端缺失 → 空串，前端自行兜底剥壳）
+
+  LearnCardContentDto({
+    this.type = '',
+    this.title = '',
+    this.topic = '',
+    this.writable = true,
+    this.content = '',
+    this.body = '',
+  });
+
+  factory LearnCardContentDto.fromJson(Map<String, dynamic> json) => LearnCardContentDto(
+        type: (json['type'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        topic: (json['topic'] as String?) ?? '',
+        writable: (json['writable'] as bool?) ?? true,
+        content: (json['content'] as String?) ?? '',
+        body: (json['body'] as String?) ?? '',
+      );
+
+  String get topicLabel => topic.isEmpty ? '未归类' : topic;
+}
+
+/// learn 类型中文名（列表分组标题、对话流回话共用，单一口径）。
+String learnTypeLabel(String type) => switch (type) {
+      'ai' => 'AI / 技术',
+      'trading' => '交易',
+      'other' => '其他',
+      _ => '其他',
+    };
+
+/// 最近学习的二级分组：type（ai/trading/other）→ topic → 卡片（created 倒序）。
+class LearnTypeGroup {
+  final String type;
+  final List<LearnTopicGroup> topics;
+
+  LearnTypeGroup({required this.type, required this.topics});
+
+  String get label => learnTypeLabel(type);
+
+  int get count => topics.fold(0, (sum, t) => sum + t.cards.length);
+}
+
+/// 主题层分组（topic 空 → 未归类）。
+class LearnTopicGroup {
+  final String topic;
+  final List<LearnCardDto> cards;
+
+  LearnTopicGroup({required this.topic, required this.cards});
+
+  String get label => topic.isEmpty ? '未归类' : topic;
+}
+
+/// 卡片列表 → type → topic 二级分组（2026-09-12 完整升级批·最近学习按主题归置）。
+/// 类型顺序固定 ai → trading → other；主题按各自最新卡 created 倒序；组内 created 倒序。
+List<LearnTypeGroup> groupLearnCards(List<LearnCardDto> cards) {
+  final byType = <String, Map<String, List<LearnCardDto>>>{};
+  for (final card in cards) {
+    final type = card.type.isEmpty ? 'other' : card.type;
+    (byType[type] ??= <String, List<LearnCardDto>>{}).putIfAbsent(card.topic, () => []).add(card);
+  }
+  final groups = <LearnTypeGroup>[];
+  for (final type in const ['ai', 'trading', 'other']) {
+    final topics = byType[type];
+    if (topics == null || topics.isEmpty) continue;
+    final topicGroups = topics.entries.map((e) {
+      final list = [...e.value]..sort((a, b) => b.created.compareTo(a.created));
+      return LearnTopicGroup(topic: e.key, cards: list);
+    }).toList()
+      ..sort((a, b) => b.cards.first.created.compareTo(a.cards.first.created));
+    groups.add(LearnTypeGroup(type: type, topics: topicGroups));
+  }
+  // 未知 type（后端将来加类型）兜底：排最后，不丢卡
+  for (final entry in byType.entries) {
+    if (const ['ai', 'trading', 'other'].contains(entry.key)) continue;
+    final topicGroups = entry.value.entries.map((e) {
+      final list = [...e.value]..sort((a, b) => b.created.compareTo(a.created));
+      return LearnTopicGroup(topic: e.key, cards: list);
+    }).toList();
+    groups.add(LearnTypeGroup(type: entry.key, topics: topicGroups));
+  }
+  return groups;
 }
 
 /// learn 资产树响应：{ ai: [...], trading: [...], other: [...] }（只含非空组）。

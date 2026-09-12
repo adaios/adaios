@@ -3,8 +3,10 @@ package com.adaiadai.core.domain.learn;
 /**
  * LearnCard — 学习卡片（RFC 20260829 learn 插件）。
  * <p>
- * File First：每张卡片 = {@code data/{userId}/learn/{type}/{yyyy-MM-dd}_{title}.md}
- * （frontmatter 元数据 + RFC 3.4 正文四段）。多用户按 userId 分目录（对齐 trading）。
+ * File First：每张卡片 = {@code data/{userId}/learn/{type}/{topic}/NN-{slug}.md}
+ * （frontmatter 元数据 + 正文段），与 Mac 侧 DSH 技能 `learn-digest` 的产物**同一契约**
+ * （2026-09-12 结构统一批：主题目录归档，两个写入方不再各写一套结构）。
+ * 多用户按 userId 分目录（对齐 trading）。
  * <p>
  * type：ai（技术）| trading（交易）| other（科普/人文）——卡片分类，非插件 domain 收敛对象
  * （learn 不进 life/trading/project 收敛，2026-09-06 拍板）。trade_related 仅 type=trading
@@ -30,6 +32,11 @@ package com.adaiadai.core.domain.learn;
  *                     非消化日 created；review 卡才非空）
  * @param remindedAt   最近一次复习提醒推送日期（V2 S-learn1：节流——同卡 7 天内不重复推，
  *                     防「搁置卡每晚 nag」）
+ * @param topic        主题目录名（2026-09-12 结构统一批）：卡片落
+ *                     {@code learn/{type}/{topic}/NN-{slug}.md}——与 Mac 侧技能产物**同一契约**
+ *                     （主题维度归档，多源同主题归并）；空 → {@link #DEFAULT_TOPIC}
+ * @param writable     是否本产品产出的卡（可读写）。false = 别处（Mac 上技能）整理的手工卡，
+ *                     只读：列表/全文照常看到，写入口统一人话拒绝
  */
 public record LearnCard(
         String type,
@@ -48,7 +55,9 @@ public record LearnCard(
         java.util.List<String> questions,
         String retell,
         java.time.LocalDate reviewAt,
-        java.time.LocalDate remindedAt) {
+        java.time.LocalDate remindedAt,
+        String topic,
+        boolean writable) {
 
     public static final String TYPE_AI = "ai";
     public static final String TYPE_TRADING = "trading";
@@ -56,14 +65,35 @@ public record LearnCard(
     public static final String STATUS_NEW = "new";
     public static final String STATUS_REVIEW = "review";
     public static final String STATUS_DONE = "done";
+    /** 主题目录缺省名（LLM 未给出主题时归到这里，界面上看得见、可再编辑归类）。 */
+    public static final String DEFAULT_TOPIC = "未归类";
 
-    /** 15 参便捷构造（reviewAt/remindedAt 缺省 null）——兼容 V1 构造点/测试，不破坏调用。 */
+    /** 15 参便捷构造（reviewAt/remindedAt/topic 缺省）——兼容 V1 构造点/测试，不破坏调用。 */
     public LearnCard(String type, String title, String platform, String author, String url, String published,
                      java.time.LocalDate created, String status, boolean tradeRelated, String tradeNote,
                      java.util.List<String> tags, String coreView, java.util.List<String> keyPoints,
                      java.util.List<String> questions, String retell) {
         this(type, title, platform, author, url, published, created, status, tradeRelated, tradeNote,
-                tags, coreView, keyPoints, questions, retell, null, null);
+                tags, coreView, keyPoints, questions, retell, null, null, null, true);
+    }
+
+    /** 17 参便捷构造（V2 复习计时字段）——topic 缺省、writable=true。 */
+    public LearnCard(String type, String title, String platform, String author, String url, String published,
+                     java.time.LocalDate created, String status, boolean tradeRelated, String tradeNote,
+                     java.util.List<String> tags, String coreView, java.util.List<String> keyPoints,
+                     java.util.List<String> questions, String retell,
+                     java.time.LocalDate reviewAt, java.time.LocalDate remindedAt) {
+        this(type, title, platform, author, url, published, created, status, tradeRelated, tradeNote,
+                tags, coreView, keyPoints, questions, retell, reviewAt, remindedAt, null, true);
+    }
+
+    /** 18 参便捷构造（含 topic，writable=true）。 */
+    public LearnCard(String type, String title, String platform, String author, String url, String published,
+                     java.time.LocalDate created, String status, boolean tradeRelated, String tradeNote,
+                     java.util.List<String> tags, String coreView, java.util.List<String> keyPoints,
+                     java.util.List<String> questions, String retell, String topic) {
+        this(type, title, platform, author, url, published, created, status, tradeRelated, tradeNote,
+                tags, coreView, keyPoints, questions, retell, null, null, topic, true);
     }
 
     public LearnCard {
@@ -86,6 +116,43 @@ public record LearnCard(
             tradeRelated = false;
             tradeNote = null;
         }
+        topic = (topic == null || topic.isBlank()) ? DEFAULT_TOPIC : topic.strip();
+    }
+
+    /** 主题目录名（文件安全：去路径分隔符/控制符，防逃逸；空 → {@link #DEFAULT_TOPIC}）。 */
+    public static String topicDir(String topic) {
+        if (topic == null || topic.isBlank()) return DEFAULT_TOPIC;
+        String cleaned = topic.strip()
+                // 控制符（含 \u0000）会让路径解析直接抛异常（对抗审查 P3 2026-09-12 实测 500）
+                .replaceAll("[\\p{Cntrl}]", "")
+                .replace("\n", " ").replace("\r", " ")
+                .replaceAll("[\\\\/:*?\"<>|#]", "-")
+                .replaceAll("\\s+", "-");
+        cleaned = cleaned.replaceAll("-{2,}", "-").replaceAll("^-+", "").replaceAll("^[.]+", "").strip();
+        if (cleaned.isBlank() || cleaned.matches("[-.]+")) return DEFAULT_TOPIC;
+        return cleaned.length() > 40 ? cleaned.substring(0, 40) : cleaned;
+    }
+
+    /** 返回 topic/writable 被替换的新卡（仓储读盘时标注来源与可写性）。 */
+    public LearnCard withTopic(String newTopic) {
+        return new LearnCard(type, title, platform, author, url, published, created, status, tradeRelated,
+                tradeNote, tags, coreView, keyPoints, questions, retell, reviewAt, remindedAt, newTopic, writable);
+    }
+
+    /** 返回 writable 被替换的新卡。 */
+    public LearnCard withWritable(boolean newWritable) {
+        return new LearnCard(type, title, platform, author, url, published, created, status, tradeRelated,
+                tradeNote, tags, coreView, keyPoints, questions, retell, reviewAt, remindedAt, topic, newWritable);
+    }
+
+    /** 来源展示标签（主题 README 索引用）：平台 · 作者，都没有 → 本地素材。 */
+    public String sourceLabel() {
+        String p = platform == null ? "" : platform.strip();
+        String a = author == null ? "" : author.strip();
+        if (!p.isEmpty() && !a.isEmpty()) return p + " · " + a;
+        if (!p.isEmpty()) return p;
+        if (!a.isEmpty()) return a;
+        return "本地素材";
     }
 
     /** 合法类型。 */
@@ -116,6 +183,7 @@ public record LearnCard(
     public static String fileStem(String title) {
         if (title == null || title.isBlank()) return "untitled";
         String cleaned = title
+                .replaceAll("[\\p{Cntrl}]", "")   // 控制符（含 \u0000）不进文件名
                 .replace("\n", " ").replace("\r", " ")
                 .replaceAll("[\\\\/:*?\"<>|#]", "-")
                 .replaceAll("\\s+", " ").strip();

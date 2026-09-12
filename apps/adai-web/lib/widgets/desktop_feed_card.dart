@@ -448,8 +448,33 @@ class DesktopFeedCard extends StatelessWidget {
         child: turn.isUser
             ? Text(turn.text,
                 style: const TextStyle(fontSize: 15, height: 1.6, fontWeight: FontWeight.w500, color: AppColors.darkGrey1))
-            : _buildAiMessage(turn.text),
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _buildAiMessage(turn.text),
+                // 阿呆气泡里的可点入口（去学习页看这张卡 / 继续转写…）
+                if (turn.actions != null && turn.actions!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12, top: 6, bottom: 2),
+                    child: Wrap(spacing: 8, runSpacing: 6, children: turn.actions!.map(_buildTurnAction).toList()),
+                  ),
+              ]),
       )).toList(),
+    );
+  }
+
+  /// 气泡里的入口小按钮（沿用卡内 chip 风格：细边 + darkGreen 文字）。
+  Widget _buildTurnAction(TurnAction action) {
+    return InkWell(
+      onTap: action.onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.7)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(action.label,
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+      ),
     );
   }
 

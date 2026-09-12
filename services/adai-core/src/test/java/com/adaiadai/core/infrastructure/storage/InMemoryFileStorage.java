@@ -32,12 +32,15 @@ public class InMemoryFileStorage implements FileStorage {
         String v = store.get(key(userId, path));
         if (v == null) return null;
         if (v.startsWith(BYTES_PREFIX)) return B64D.decode(v.substring(BYTES_PREFIX.length()));
-        return null;
+        // 文本文件也能按字节读（与 LocalFileStorage 一致：盘上都是字节，readString 只是解码）
+        return v.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     @Override
     public String read(String userId, String path) {
-        return store.get(key(userId, path));
+        String v = store.get(key(userId, path));
+        // 二进制文件按文本读不出来（与 LocalFileStorage 一致：生产会抛解码异常）
+        return v != null && v.startsWith(BYTES_PREFIX) ? null : v;
     }
 
     @Override

@@ -19,11 +19,20 @@ enum IntentType {
   }
 }
 
+/// 阿呆气泡下面的可点小入口（2026-09-12 learn 对话流入口）：去学习页看这张卡 / 继续转写…
+/// 值复制自 adai-app 同名字段，桌面端独立重绘。
+class TurnAction {
+  final String label;
+  final VoidCallback onTap;
+  const TurnAction({required this.label, required this.onTap});
+}
+
 class ConversationTurn {
   final bool isUser;
   final String text;
   final String time;
-  ConversationTurn({required this.isUser, required this.text, required this.time});
+  final List<TurnAction>? actions; // 仅阿呆气泡用：入口按钮（可空 = 纯文本气泡）
+  ConversationTurn({required this.isUser, required this.text, required this.time, this.actions});
 }
 
 enum CardMode {

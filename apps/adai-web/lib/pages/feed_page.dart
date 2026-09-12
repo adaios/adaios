@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/models/tag_models.dart';
+import '../services/models/learn_models.dart';
 import '../models/feed_models.dart';
 import '../widgets/page_header.dart';
 import '../widgets/desktop_feed_card.dart';
@@ -18,7 +19,13 @@ import '../widgets/desktop_feed_card.dart';
 class FeedPage extends StatefulWidget {
   final ApiService api;
 
-  const FeedPage({super.key, required this.api});
+  /// learn 插件是否启用（2026-09-12 完整升级批）：只有启用时「链接整理/打开那篇」才在对话流里生效。
+  final bool learnEnabled;
+
+  /// 「去学习页看这张卡」的回调（壳层切到学习页并打开该卡）；未接则不给该入口。
+  final void Function(String type, String title)? onOpenLearnCard;
+
+  const FeedPage({super.key, required this.api, this.learnEnabled = false, this.onOpenLearnCard});
 
   @override
   State<FeedPage> createState() => _FeedPageState();
@@ -62,6 +69,7 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   void dispose() {
+    _learnGen++; // 离开页面：learn 轮询的迟到响应一律作废
     _scrollController.dispose();
     super.dispose();
   }
@@ -193,6 +201,18 @@ class _FeedPageState extends State<FeedPage> {
 
   void _onSend(String text) {
     final timeStr = _now();
+    // learn 对话流入口（2026-09-12 完整升级批）：只有 learn 插件启用时才接管；
+    // 两类消息各走各的，其余一字不变地走原来的记录/问答流程。
+    if (widget.learnEnabled) {
+      if (_looksLikeLearnDigest(text)) {
+        _startLearnDigest(text, timeStr);
+        return;
+      }
+      if (_looksLikeOpenLearnCard(text)) {
+        _openLearnCardFromChat(text, timeStr);
+        return;
+      }
+    }
     if (_activeCardId != null) {
       setState(() => _hasActiveChat = false);
       _appendToActiveCard(text, timeStr);
@@ -202,9 +222,337 @@ class _FeedPageState extends State<FeedPage> {
     _createNewCard(text, timeStr);
   }
 
+  // ── learn 对话流入口（2026-09-12 完整升级批）──
+  // 只做三件事，其余一概走原流程：
+  // ① 「链接 + 整理/消化/学习留存/归档」→ 交给阿呆抓取消化（submitLearnDigest + 轮询）；
+  // ② 「打开那篇 / 打开《X》/ 看看上次整理的那篇」→ 找卡（searchLearnCards）命中就把全文摆出来，
+  //    没命中就照常当普通问题答（绝不吞掉用户的问题）；
+  // ③ 都不匹配 → 一字不变走 /records。
+
+  /// learn 动作的代际令牌：新任务/离开页面后，旧轮询的迟到响应一律作废。
+  int _learnGen = 0;
+  bool _learnConfirmBusy = false; // 转写确认连点守卫（只发一份）
+
+  static final RegExp _learnUrlRe = RegExp(r'''https?://[^\s，。；、）)】》"]+''');
+  static const List<String> _learnDigestWords = ['整理', '消化', '学习留存', '归档'];
+
+  /// 用户消息是不是「把这个链接整理成学习卡」（必须同时有链接 + 整理类动词）。
+  bool _looksLikeLearnDigest(String text) =>
+      _extractLearnUrl(text) != null && _learnDigestWords.any(text.contains);
+
+  /// 用户消息是不是「打开那篇 / 打开《X》/ 看看上次整理的那篇」。
+  bool _looksLikeOpenLearnCard(String text) {
+    final hasVerb = text.contains('打开') ||
+        text.contains('看看') ||
+        text.contains('看下') ||
+        text.contains('看一下') ||
+        text.contains('调出');
+    final hasTarget = text.contains('那篇') ||
+        text.contains('这篇') ||
+        text.contains('《') ||
+        text.contains('上次');
+    return hasVerb && hasTarget;
+  }
+
+  /// 从消息里取出 http(s) 链接（去掉贴着的中文标点尾巴）。
+  String? _extractLearnUrl(String text) {
+    final match = _learnUrlRe.firstMatch(text);
+    if (match == null) return null;
+    final url = match.group(0)!.replaceAll(RegExp(r'''[，。；、！？）)】》!"'.,;:]+$'''), '');
+    return url.isEmpty ? null : url;
+  }
+
+  /// 「打开《X》」→ 关键词 X：去掉动词/指代与书名号，剩不下就用整句（后端按子串匹配，没命中有兜底）。
+  String _learnQueryFrom(String text) {
+    var q = text.trim();
+    q = q.replaceAll(RegExp(r'^(帮我|麻烦你|你|给我)'), '');
+    q = q.replaceAll(
+        RegExp(r'(打开|看一下|看看|看下|调出|找一下|找到|上次|之前|整理过的|整理的|那篇|这篇)'), ' ');
+    q = q.replaceAll(RegExp(r'''[《》「」“”"'，。？！、]'''), ' ');
+    q = q.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return q.isEmpty ? text.trim() : q;
+  }
+
+  /// learn 相关的失败一律说人话（B1：不出现「请求/接口/状态码」这类系统视角的标签）。
+  String _learnErrorLine(dynamic e) {
+    final msg = _extractApiError(e);
+    if (msg.startsWith('请求失败') || msg.contains('状态码')) return '网络那边没接上，等一下再试？';
+    return msg;
+  }
+
+  /// ① 链接整理：先摆出用户的话 + 阿呆回执，再提交消化并轮询进度（全部落在同一张卡里）。
+  /// 学习整理是动作不是提问，所以单开一张卡，不影响正在进行的那轮对话。
+  Future<void> _startLearnDigest(String text, String timeStr) async {
+    final url = _extractLearnUrl(text);
+    if (url == null) {
+      _createNewCard(text, timeStr); // 理论上进不来，兜底走原流程
+      return;
+    }
+    final cardId = 'learn_${DateTime.now().millisecondsSinceEpoch}';
+    final gen = ++_learnGen;
+    setState(() {
+      _activeCardId = null;
+      _hasActiveChat = false;
+      _deactivateOtherCards('');
+      _cards.add(FeedCardData(
+        id: cardId,
+        type: FeedCardType.record,
+        time: timeStr,
+        content: text,
+        mode: CardMode.idle,
+        intent: IntentType.question,
+        turns: [
+          ConversationTurn(isUser: true, text: text, time: timeStr),
+          ConversationTurn(
+              isUser: false,
+              text: '好，我去把这个链接整理成学习卡片，可能要几分钟；弄好了在这儿告诉你',
+              time: _now()),
+        ],
+      ));
+    });
+    _scrollToBottom();
+    try {
+      await widget.api.submitLearnDigest(url: url);
+    } catch (e) {
+      if (!mounted || gen != _learnGen) return;
+      _setLearnBubble(cardId, '这个链接我没接住：${_learnErrorLine(e)}。你看看是不是发全了，再来一次？');
+      return;
+    }
+    if (!mounted || gen != _learnGen) return;
+    await _pollLearnDigest(cardId, gen);
+  }
+
+  /// 轮询消化进度（每 2s，上限 150s）：done 追加「整理好了：《标题》（主题）」+ 去学习页的入口；
+  /// 等你拍板转写 → 气泡里直接给「继续转写 / 先不转写」；失败/取消都说人话。
+  Future<void> _pollLearnDigest(String cardId, int gen) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 150));
+    while (mounted && gen == _learnGen && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted || gen != _learnGen) return;
+      final LearnDigestJob job;
+      try {
+        job = await widget.api.getLearnDigestStatus();
+      } catch (_) {
+        continue; // 一轮看不到进度不算失败，接着等
+      }
+      if (!mounted || gen != _learnGen) return;
+      if (job.isDone) {
+        var topic = job.topic;
+        if (topic.isEmpty) {
+          // 状态里没带主题 → 顺口问一下这张卡（读不到就不提主题，不编）
+          try {
+            final content = await widget.api.getLearnContent(type: job.type, title: job.title);
+            topic = content.topic;
+          } catch (_) {
+            // 主题拿不到不影响「整理好了」这件事本身
+          }
+        }
+        if (!mounted || gen != _learnGen) return;
+        final label = topic.trim().isEmpty ? '' : '（${topic.trim()}）';
+        _setLearnBubble(cardId, '整理好了：《${job.title}》$label',
+            actions: [
+              if (widget.onOpenLearnCard != null)
+                TurnAction(
+                    label: '去学习页看这张卡',
+                    onTap: () => widget.onOpenLearnCard!(job.type, job.title)),
+            ]);
+        return;
+      }
+      if (job.isAwaitingConfirm) {
+        // 视频没字幕、转写要花钱 → 停下轮询，在气泡里把报价和两个按钮摆出来
+        _setLearnBubble(
+            cardId,
+            job.message.isEmpty ? '这个视频得先转写才能整理（要花点钱），你说转不转？' : job.message,
+            actions: [
+              TurnAction(label: '继续转写', onTap: () => _answerLearnConfirm(cardId, true)),
+              TurnAction(label: '先不转写', onTap: () => _answerLearnConfirm(cardId, false)),
+            ]);
+        return;
+      }
+      if (job.isFailed) {
+        _setLearnBubble(cardId, job.message.isEmpty ? '这次没整理成，素材我留着，过会儿再试一次' : job.message);
+        return;
+      }
+      if (job.isCancelled) {
+        _setLearnBubble(cardId, job.message.isEmpty ? '好，这次先不整理了（没花钱）' : job.message);
+        return;
+      }
+      final stage = job.stageLabel;
+      if (stage.isNotEmpty) _setLearnBubble(cardId, '$stage…');
+    }
+    if (!mounted || gen != _learnGen) return;
+    _setLearnBubble(cardId, '这个还在后台慢慢弄（抓取和整理都要时间）。弄好了我再告诉你，也可以直接去学习页看看。');
+  }
+
+  /// 气泡里的转写确认（连点守卫：一次只发一份）。
+  Future<void> _answerLearnConfirm(String cardId, bool confirm) async {
+    if (_learnConfirmBusy) return;
+    _learnConfirmBusy = true;
+    final LearnDigestJob job;
+    try {
+      job = await widget.api.confirmLearnTranscription(confirm);
+    } catch (e) {
+      if (!mounted) return;
+      _setLearnBubble(cardId, '这会儿没接上：${_learnErrorLine(e)}');
+      return;
+    } finally {
+      // 守卫只护住「这一份确认」，不能连带把后面几分钟的轮询也锁住
+      _learnConfirmBusy = false;
+    }
+    if (!mounted) return;
+    if (!confirm) {
+      _setLearnBubble(cardId,
+          job.message.isEmpty ? '好，这个先不转写（没花钱）。链接我留着，想整理再说一声' : job.message);
+      return;
+    }
+    final gen = ++_learnGen;
+    _setLearnBubble(cardId, '好，我接着转写，可能要几分钟');
+    await _pollLearnDigest(cardId, gen);
+  }
+
+  /// ② 「打开那篇」：找卡，命中就把全文摆出来（纯文本，md 标记轻量清理）+ 跳学习页的入口；
+  /// 没命中就说人话兜底，**并照常把这句当普通问题答**（不吞用户的问题）。
+  Future<void> _openLearnCardFromChat(String text, String timeStr) async {
+    final cardId = 'learn_${DateTime.now().millisecondsSinceEpoch}';
+    final gen = ++_learnGen;
+    setState(() {
+      _activeCardId = null;
+      _hasActiveChat = false;
+      _deactivateOtherCards('');
+      _cards.add(FeedCardData(
+        id: cardId,
+        type: FeedCardType.record,
+        time: timeStr,
+        content: text,
+        mode: CardMode.idle,
+        intent: IntentType.question,
+        turns: [
+          ConversationTurn(isUser: true, text: text, time: timeStr),
+          ConversationTurn(isUser: false, text: '我去翻翻学习卡片…', time: _now()),
+        ],
+      ));
+    });
+    _scrollToBottom();
+
+    final List<LearnCardDto> hits;
+    try {
+      // 带标题 → 按关键词找；纯指代（「打开那篇」没给标题）→ 退回**最近整理的那一篇**
+      // （2026-09-12 完整升级批：与 app 端同口径；原先纯指代必然找不到，只能兜底当普通问答）
+      final query = _learnQueryFrom(text);
+      final pronounOnly = query.isEmpty || query == text.trim();
+      final found = pronounOnly
+          ? await _latestLearnCard()
+          : await widget.api.searchLearnCards(query);
+      hits = found;
+    } catch (e) {
+      if (!mounted || gen != _learnGen) return;
+      _setLearnBubble(cardId, '我一时翻不到卡片（${_learnErrorLine(e)}），先当普通问题答你：');
+      await _continueNormalFlow(cardId, text);
+      return;
+    }
+    if (!mounted || gen != _learnGen) return;
+    if (hits.isEmpty) {
+      _setLearnBubble(cardId, '我没找到对应的那张卡，你在学习页看看？');
+      await _continueNormalFlow(cardId, text); // 不吞用户的问题：照常走普通问答
+      return;
+    }
+    final hit = hits.first;
+    LearnCardContentDto? content;
+    try {
+      content = await widget.api.getLearnContent(type: hit.type, title: hit.title);
+    } catch (_) {
+      // 全文读不到时用列表里的核心观点兜底（并如实说明读得不全）
+    }
+    if (!mounted || gen != _learnGen) return;
+    final body = content != null && content.hasContent
+        ? _plainCardText(content.displayText)
+        : (hit.coreView.isNotEmpty ? hit.coreView : '（这张卡的正文我暂时没读上来）');
+    _setLearnBubble(cardId, '找到了：《${hit.title}》（${hit.topicLabel}）\n\n$body',
+        actions: [
+          if (widget.onOpenLearnCard != null)
+            TurnAction(
+                label: '去学习页看这张卡',
+                onTap: () => widget.onOpenLearnCard!(hit.type, hit.title)),
+        ]);
+  }
+
+  /// 「最近整理的那一篇」：按 created 取最新一张（纯指代时的兜底，2026-09-12）。
+  /// 拿不到树就返回空（交给调用方走「没找到」人话兜底 + 照常问答，绝不吞问题）。
+  Future<List<LearnCardDto>> _latestLearnCard() async {
+    try {
+      final tree = await widget.api.getLearnTree();
+      final all = <LearnCardDto>[
+        ...tree.ai,
+        ...tree.trading,
+        ...tree.other,
+      ]..sort((a, b) => b.created.compareTo(a.created));
+      return all.isEmpty ? const [] : [all.first];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 卡片全文 → 对话里读的纯文本（md 标记轻量清理，不做花哨排版）。
+  String _plainCardText(String md) {
+    var text = md.replaceAll('\r\n', '\n');
+    final frontmatter = RegExp(r'^---\n[\s\S]*?\n---\n').firstMatch(text);
+    if (frontmatter != null) text = text.substring(frontmatter.end);
+    text = text.replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '');
+    text = text.replaceAll('**', '').replaceAll('`', '');
+    text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    return text.trim();
+  }
+
+  /// 「打开那篇」没命中时的兜底：照常走普通问答（记录/提问都按原口径），答案追加在同一张卡里。
+  Future<void> _continueNormalFlow(String cardId, String text) async {
+    try {
+      final resp = await widget.api.createRecord(text, cardId: cardId);
+      if (!mounted) return;
+      final reply = resp.rawResponse ?? resp.summary;
+      setState(() {
+        _updateCard(cardId, (c) {
+          final turns = List<ConversationTurn>.of(c.turns ?? const <ConversationTurn>[]);
+          if (reply != null && reply.isNotEmpty) {
+            turns.add(ConversationTurn(isUser: false, text: reply, time: _now()));
+          }
+          return c.copyWith(
+            mode: CardMode.idle,
+            loading: false,
+            intent: IntentType.parse(resp.intent),
+            tags: resp.tags,
+            domain: resp.domain,
+            turns: turns,
+          );
+        });
+      });
+      _loadSidebar();
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      _setLearnBubble(cardId, _learnErrorLine(e));
+    }
+  }
+
+  /// 就地改写/追加最后一条阿呆气泡（进度、结果、报价都走这里）。
+  void _setLearnBubble(String cardId, String text, {List<TurnAction>? actions}) {
+    if (!mounted) return;
+    setState(() {
+      _updateCard(cardId, (c) {
+        final turns = List<ConversationTurn>.of(c.turns ?? const <ConversationTurn>[]);
+        if (turns.isNotEmpty && !turns.last.isUser) {
+          turns[turns.length - 1] =
+              ConversationTurn(isUser: false, text: text, time: turns.last.time, actions: actions);
+        } else {
+          turns.add(ConversationTurn(isUser: false, text: text, time: _now(), actions: actions));
+        }
+        return c.copyWith(turns: turns);
+      });
+    });
+    _scrollToBottom();
+  }
+
   /// 多模态 L4：多图逐张上传（每张一条记录+记忆，caption 共享）。
-  /// REVIEW #255（对齐 #174）：逐张上传进度占位——每张图先插入 loading 占位卡（立即视觉反馈，
-  /// 不再多图干等），单张完成后原位替换为真实记录卡，失败置 error 可重试。
+  /// REVIEW #255（对齐 #174）：逐张上传进度占位——每张图先插入 loading 占位卡（立即视觉反馈，  /// 不再多图干等），单张完成后原位替换为真实记录卡，失败置 error 可重试。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     if (images.isEmpty) return;
     final timeStr = _now();

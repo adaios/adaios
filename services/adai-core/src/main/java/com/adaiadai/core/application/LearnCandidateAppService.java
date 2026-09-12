@@ -57,9 +57,13 @@ public class LearnCandidateAppService {
         if (!card.tradeRelated()) {
             throw new LearnException("该卡片未标注涉及可执行交易规则（trade_related=false），先让阿呆补标或确认内容后再反哺");
         }
-        // learn_card_id 回链 = learn 卡片文件真实相对路径（data/{userId}/ 下）——文件名是
-        // fileStem 清洗后的标题，raw title 拼接会指向不存在的路径（P1-learn1 修复 2026-09-07）。
-        String learnCardId = "learn/" + type + "/" + card.created() + "_" + LearnCard.fileStem(card.title()) + ".md";
+        // learn_card_id 回链 = learn 卡片文件**真实相对路径**（2026-09-12 结构统一批：路径按主题
+        // 目录定位，不能再按「日期_标题」拼——那样拼的是旧扁平格式的假路径，指向不存在的文件；
+        // P1-learn1 的原修复是拼路径，结构一变就失效，改为直接问仓储要真实路径）
+        String learnCardId = cardRepository.cardPath(userId, type, title);
+        if (learnCardId == null) {
+            throw new LearnException("卡片不存在：" + type + "/" + title);
+        }
         LearnTradingCandidate candidate = new LearnTradingCandidate(
                 card.title(),
                 learnCardId,

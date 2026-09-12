@@ -6,6 +6,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'root_keys.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
+import 'services/models/learn_models.dart';
+import 'pages/learn_page.dart';
 import 'widgets/feed_card.dart';
 import 'widgets/full_image_dialog.dart';
 import 'widgets/input_bar.dart';
@@ -84,6 +86,17 @@ class _MainPageState extends State<MainPage>
   bool _mediaJudging = false;
   List<String> _uploadSummaries = [];
 
+  // ── 2026-09-12 learn 对话流入口（完整升级批）──
+  /// learn 插件启用态：懒查一次并缓存（对话流识别的前置门控）。查不到 = 不接管，原路径照走。
+  bool? _learnEnabled;
+
+  /// 对话流「整理成学习卡」卡片状态（卡片 id → 状态；气泡文案/报价/结果都在这里）。
+  final Map<String, _LearnDigestState> _learnDigests = {};
+
+  /// 代际令牌：新一次整理 / 刷新 / 页面销毁后，在途轮询与确认回包作废
+  /// （后端同一用户只跑一个消化任务，故用全局代际而非按卡）。
+  int _learnGen = 0;
+
   late AnimationController _enterCtrl;
   late Animation<double> _contentAnim;
 
@@ -103,6 +116,7 @@ class _MainPageState extends State<MainPage>
   @override
   void dispose() {
     widget.refreshTick?.removeListener(_onRefreshTick);
+    _learnGen++; // 页面销毁 → 在途整理轮询/确认回包作废
     _scrollController.dispose();
     _enterCtrl.dispose();
     super.dispose();
@@ -398,6 +412,14 @@ class _MainPageState extends State<MainPage>
   void _onSend(String text) async {
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    // 2026-09-12 learn 对话流入口：只有「整理 + 链接」「打开那篇」这类消息才先问 learn——
+    // 判断是同步的（不匹配 = 一次 await 都不发生），原记录/问答路径行为一字不变；
+    // 正在对话里（_activeCardId 非空）不抢话，交给原对话流。
+    if (_activeCardId == null && _isLearnTrigger(text)) {
+      final handled = await _handleLearnFlow(text, timeStr);
+      if (!mounted) return;   // await 后守卫（guard G6 / pitfall「await 后空值」族）
+      if (handled) return;
+    }
     if (_activeCardId != null) {
       setState(() => _hasActiveChat = false);
       _appendToActiveCard(text, timeStr);
@@ -405,6 +427,298 @@ class _MainPageState extends State<MainPage>
     }
     setState(() => _hasActiveChat = false);
     _createNewCard(text, timeStr, null);
+  }
+
+  /// 对话流 learn 触发词（2026-09-12 完整升级批）：
+  /// ① 含 http(s) 链接 + 「整理 / 消化 / 学习留存 / 归档」→ 让阿呆整理成学习卡；
+  /// ② 「打开那篇 / 打开《X》/ 看看上次整理的那篇」→ 找卡，命中就把全文摊在对话里。
+  static final RegExp _httpLinkRe = RegExp(r'https?://[^\s，。；、）)】」]+');
+  static final RegExp _digestWordsRe = RegExp(r'整理|消化|学习留存|归档');
+  static final RegExp _openWordsRe =
+      RegExp(r'打开那篇|打开这篇|打开上次|打开《|看看.*整理的那篇|上次整理的那篇');
+
+  static String? _httpLinkOf(String text) => _httpLinkRe.firstMatch(text)?.group(0);
+
+  /// 这条消息是不是在跟阿呆说学习的事（同步判断，不匹配一眼放行）。
+  static bool _isLearnTrigger(String text) {
+    if (text.trim().isEmpty) return false;
+    final link = _httpLinkOf(text);
+    if (link != null && _digestWordsRe.hasMatch(text)) return true;
+    return _openWordsRe.hasMatch(text);
+  }
+
+  /// learn 插件是否启用（懒查一次并缓存；查不到 = 当作没开 → 原路径，且不缓存失败结果）。
+  Future<bool> _isLearnEnabled() async {
+    final cached = _learnEnabled;
+    if (cached != null) return cached;
+    try {
+      final plugins = await _api.getMyPlugins();
+      _learnEnabled = plugins.contains('learn');
+    } catch (_) {
+      return false; // 静默：问不到就照常记录/问答
+    }
+    return _learnEnabled!;
+  }
+
+  /// 学习相关消息的总入口。返回 true = 这次由 learn 接管（不再走记录/问答）；
+  /// false = 没接住（已给人话兜底），调用方继续原路径——用户的问题绝不吞掉。
+  Future<bool> _handleLearnFlow(String text, String timeStr) async {
+    if (!await _isLearnEnabled() || !mounted) return false;
+    final link = _httpLinkOf(text);
+    if (link != null && _digestWordsRe.hasMatch(text)) {
+      _startLearnDigestCard(text, link, timeStr);
+      return true;
+    }
+    final card = await _findLearnCardFor(text);
+    if (card == null) {
+      _showSnackBar('我没找到你说的那篇（也可能还没整理过）。先按你说的来；说个更准的标题我更好找。');
+      return false;
+    }
+    await _appendLearnCardBubbles(card, text, timeStr);
+    return true;
+  }
+
+  /// ② 找卡：「打开《X》」按书名号里的词搜；「打开那篇 / 看看上次整理的那篇」→ 最近整理的那篇。
+  Future<LearnCardDto?> _findLearnCardFor(String text) async {
+    final query = _learnOpenQueryOf(text);
+    if (query != null) {
+      try {
+        final hits = await _api.searchLearnCards(query);
+        if (hits.isNotEmpty) return hits.first;
+      } catch (_) {
+        return null; // 找不动就说人话兜底，不把技术原话甩给用户
+      }
+    }
+    try {
+      final tree = await _api.getLearnTree();
+      final all = tree.recentAll;
+      return all.isEmpty ? null : all.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 兜底剥掉 md 的 frontmatter 块（老后端没有 body 字段时用）。
+  static String _stripFrontmatter(String md) {
+    final m = RegExp(r'^---\r?\n.*?\r?\n---\r?\n', dotAll: true).firstMatch(md);
+    return m == null ? md : md.substring(m.end);
+  }
+
+  /// 从「打开《X》」里取书名号里的词；「打开那篇」这类没有指代的 → null（用最近一篇兜底）。
+  static String? _learnOpenQueryOf(String text) {
+    final quoted = RegExp(r'《([^》]+)》').firstMatch(text);
+    final inner = quoted?.group(1)?.trim() ?? '';
+    return inner.isEmpty ? null : inner;
+  }
+
+  /// ② 命中：把该卡全文（GET /learn/content，产品没建模的段也在）当阿呆气泡追加。
+  Future<void> _appendLearnCardBubbles(LearnCardDto card, String text, String timeStr) async {
+    var md = '';
+    try {
+      final content = await _api.getLearnContent(type: card.type, title: card.title);
+      // 展示用 body（后端已剥掉 frontmatter）——直接摊 content 会把 origin/type/created
+      // 这些内部字段当成阿呆的话（第一原则「无第三视角」；对抗审查 P2-7）
+      md = content.body.trim();
+      if (md.isEmpty) md = _stripFrontmatter(content.content).trim();
+    } catch (_) {
+      md = ''; // 全文取不到就用手上的字段，至少不空口
+    }
+    if (!mounted) return;
+    final body = md.isNotEmpty ? md : card.coreView;
+    final header = '找到了：《${card.title}》（${learnTypeLabel(card.type)} · ${card.topicLabel}）';
+    setState(() {
+      _cards.add(FeedCardData(
+        id: 'learn_open_${DateTime.now().microsecondsSinceEpoch}',
+        type: FeedCardType.record, time: timeStr, content: text,
+        mode: CardMode.idle, intent: IntentType.question, domain: 'life',
+        turns: [
+          ConversationTurn(isUser: true, text: text, time: timeStr),
+          ConversationTurn(
+            isUser: false,
+            text: body.isEmpty ? '$header\n\n这篇卡里的正文还是空的，等我在桌面端补上再给你看。' : '$header\n\n$body',
+            time: timeStr,
+          ),
+        ],
+      ));
+    });
+    _scrollToBottom();
+  }
+
+  /// ① 「整理 + 链接」：先在对话里显示用户气泡，再加阿呆回话，然后提交 + 轮询任务态。
+  void _startLearnDigestCard(String text, String link, String timeStr) {
+    final cardId = 'learn_digest_${DateTime.now().microsecondsSinceEpoch}';
+    setState(() {
+      _learnDigests[cardId] = _LearnDigestState(
+        url: link,
+        userText: text,
+        time: timeStr,
+        aiText: '好，我去把这个链接整理成学习卡片，可能要几分钟；弄好了在这儿告诉你。',
+        loading: true,
+      );
+      _cards.add(FeedCardData(
+        id: cardId, type: FeedCardType.record, time: timeStr, content: text,
+        mode: CardMode.idle, intent: IntentType.question, domain: 'life',
+      ));
+    });
+    _scrollToBottom();
+    final gen = ++_learnGen;
+    _submitAndPollLearnDigest(cardId, link, gen);
+  }
+
+  Future<void> _submitAndPollLearnDigest(String cardId, String link, int gen) async {
+    try {
+      await _api.submitLearnDigest(url: link);
+    } catch (e) {
+      _updateLearnDigest(cardId, gen, (s) {
+        s.loading = false;
+        s.aiText = '这条我这次没接住（${_learnApiError(e)}），等会儿再丢给我一次就行。';
+      });
+      return;
+    }
+    await _pollLearnDigest(cardId, gen);
+  }
+
+  /// 轮询消化任务态（每 2s，上限 3 分钟）：阶段人话 → 气泡里滚动更新；
+  /// done → 「整理好了：<标题>（<topic>）」+ 可点去学习页；needs_confirmation → 停轮询、报价 + 两个按钮。
+  Future<void> _pollLearnDigest(String cardId, int gen) async {
+    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    while (mounted && gen == _learnGen && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted || gen != _learnGen) return;
+      final LearnDigestJob job;
+      try {
+        job = await _api.getLearnDigestStatus();
+      } catch (_) {
+        continue; // 一次没拿到进度不算失败，接着等
+      }
+      if (!mounted || gen != _learnGen) return;
+      if (job.isDone) {
+        await _finishLearnDigest(cardId, gen, job.type, job.title);
+        return;
+      }
+      if (job.isFailed) {
+        _updateLearnDigest(cardId, gen, (s) {
+          s.loading = false;
+          s.aiText = job.message.isEmpty ? '这次没整理成，素材我留着了，稍后可以再让我试一次。' : job.message;
+        });
+        return;
+      }
+      if (job.isCancelled) {
+        _updateLearnDigest(cardId, gen, (s) {
+          s.loading = false;
+          s.awaiting = false;
+          s.aiText = job.cancelledText;
+        });
+        return;
+      }
+      if (job.isAwaitingConfirm) {
+        // 转写要花钱：停轮询，把报价摆在气泡里，等用户点头。
+        _updateLearnDigest(cardId, gen, (s) {
+          s.loading = false;
+          s.awaiting = true;
+          s.aiText = job.confirmText;
+        });
+        return;
+      }
+      _updateLearnDigest(cardId, gen, (s) {
+        s.loading = true;
+        s.aiText = job.stageText.isNotEmpty ? job.stageText : '还在整理，通常 1-3 分钟…';
+      });
+    }
+    if (!mounted || gen != _learnGen) return;
+    _updateLearnDigest(cardId, gen, (s) {
+      s.loading = false;
+      s.aiText = '还在后台整理着（AI 生成慢些）。弄好了在「学习」里见，也可以稍后刷新看看。';
+    });
+  }
+
+  /// done 收尾：拿 topic（全文端点顺带给）→ 气泡「整理好了：<标题>（<topic>）」+ 去学习页入口。
+  Future<void> _finishLearnDigest(String cardId, int gen, String type, String title) async {
+    var topic = '未归类';
+    try {
+      final content = await _api.getLearnContent(type: type, title: title);
+      if (content.topic.isNotEmpty) topic = content.topic;
+    } catch (_) {
+      // 拿不到主题就按未归类显示，不影响「整理好了」这件事
+    }
+    _updateLearnDigest(cardId, gen, (s) {
+      s.loading = false;
+      s.awaiting = false;
+      s.doneType = type;
+      s.doneTitle = title;
+      s.doneTopic = topic;
+      s.aiText = '整理好了：《$title》（$topic）';
+    });
+  }
+
+  /// 「继续转写 / 先不转写」（连点守卫：确认送达前重复点击直接忽略）。
+  Future<void> _confirmLearnDigest(String cardId, bool yes) async {
+    final state = _learnDigests[cardId];
+    if (state == null || state.confirming) return;
+    _updateLearnDigest(cardId, _learnGen, (s) {
+      s.confirming = true;
+      s.confirmError = null;
+    });
+    final gen = ++_learnGen;
+    try {
+      final job = await _api.confirmLearnTranscription(yes);
+      if (!mounted || gen != _learnGen) return;
+      if (!yes) {
+        _updateLearnDigest(cardId, gen, (s) {
+          s.confirming = false;
+          s.awaiting = false;
+          s.aiText = job.cancelledText;
+        });
+        return;
+      }
+      if (job.isDone) {
+        await _finishLearnDigest(cardId, gen, job.type, job.title);
+        return;
+      }
+      _updateLearnDigest(cardId, gen, (s) {
+        s.confirming = false;
+        s.awaiting = false;
+        s.loading = true;
+        s.aiText = job.stageText.isNotEmpty ? job.stageText : '正在转写，可能要几分钟';
+      });
+      await _pollLearnDigest(cardId, gen);
+    } catch (e) {
+      _updateLearnDigest(cardId, gen, (s) {
+        s.confirming = false;
+        s.confirmError = _learnApiError(e);
+      });
+    }
+  }
+
+  /// 整理卡状态更新（代际不符 = 陈旧回包，直接丢弃）。
+  void _updateLearnDigest(String cardId, int gen, void Function(_LearnDigestState) mutate) {
+    if (!mounted || gen != _learnGen) return;
+    final state = _learnDigests[cardId];
+    if (state == null) return;
+    setState(() => mutate(state));
+  }
+
+  /// learn 对话流的人话错误（B1 无第三视角）：优先后端 error body 里的人话，
+  /// 其次按错误类型给自然口吻——不用通用 `_extractApiError`（那句「请求失败 (400)」是系统口径）。
+  String _learnApiError(dynamic e) {
+    if (e is ApiException && e.body != null) {
+      try {
+        final json = jsonDecode(e.body!);
+        if (json is Map && json['error'] is String) return json['error'] as String;
+      } catch (_) {}
+    }
+    final s = e.toString();
+    if (s.contains('TimeoutException') || s.contains('timed out')) return '等太久了，检查下网络再试';
+    if (s.contains('SocketException') || s.contains('Connection refused')) return '暂时连不上，检查下网络再试';
+    if (s.contains('403')) return '学习功能还没开（learn 插件）';
+    return '这次没成功，稍后再说一次';
+  }
+
+  /// 从对话流跳去学习页看这张卡（学习页会直接打开全文）。
+  void _openLearnCardPage(String type, String title) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => LearnPage(api: _api, initialCard: (type: type, title: title)),
+    ));
   }
 
   /// 多模态 L4：多图 + 可选文字 → 逐张上传（caption 共享）→ 刷新 Feed + 轻提示。
@@ -1253,6 +1567,33 @@ class _MainPageState extends State<MainPage>
         children: [
           ...cards.reversed.toList().asMap().entries.map((entry) {
             final card = entry.value;
+            // 2026-09-12 learn 对话流整理卡：自带气泡/按钮（转写报价 + 结果跳转），不走 FeedCard
+            final digest = _learnDigests[card.id];
+            final Widget child = digest != null
+                ? _LearnDigestCardView(
+                    state: digest,
+                    onConfirm: () => _confirmLearnDigest(card.id, true),
+                    onCancel: () => _confirmLearnDigest(card.id, false),
+                    onOpen: digest.doneTitle.isEmpty
+                        ? null
+                        : () => _openLearnCardPage(digest.doneType, digest.doneTitle),
+                  )
+                : FeedCard(
+                    key: ValueKey(card.id),
+                    data: card,
+                    onActivate: () => _onCardActivate(card.id),
+                    onAsk: () => _onAskCard(card.id),
+                    onEnd: null,
+                    onDelete: () => _deleteCard(card.id),
+                    onToggleExpand: () {
+                      final idx = _cards.indexWhere((c) => c.id == card.id);
+                      if (idx >= 0) {
+                        setState(() => _cards[idx] = _cards[idx].copyWith(expanded: !_cards[idx].expanded));
+                      }
+                    },
+                    onDomainChanged: (domain) => _changeDomain(card.id, domain),
+                    onRetry: card.error != null ? () => _onRetryCard(card.id) : null,
+                  );
             return TweenAnimationBuilder<double>(
               key: ValueKey('card_${card.id}'),
               tween: Tween(begin: 0.0, end: 1.0),
@@ -1265,22 +1606,7 @@ class _MainPageState extends State<MainPage>
                   child: child,
                 ),
               ),
-              child: FeedCard(
-                key: ValueKey(card.id),
-                data: card,
-                onActivate: () => _onCardActivate(card.id),
-                onAsk: () => _onAskCard(card.id),
-                onEnd: null,
-                onDelete: () => _deleteCard(card.id),
-                onToggleExpand: () {
-                  final idx = _cards.indexWhere((c) => c.id == card.id);
-                  if (idx >= 0) {
-                    setState(() => _cards[idx] = _cards[idx].copyWith(expanded: !_cards[idx].expanded));
-                  }
-                },
-                onDomainChanged: (domain) => _changeDomain(card.id, domain),
-                onRetry: card.error != null ? () => _onRetryCard(card.id) : null,
-              ),
+              child: child,
             );
           }),
         ],
@@ -1809,6 +2135,198 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
           child: const Text('完成', style: TextStyle(color: AppColors.darkGrey3)),
         ),
       ],
+    );
+  }
+}
+
+/// 对话流里「整理成学习卡」这张卡的状态（2026-09-12 完整升级批）。
+/// 气泡文案/阶段/报价/结果都在这儿，卡片本体仍留在 _cards（Feed 刷新态不变）。
+class _LearnDigestState {
+  final String url;
+  final String userText;
+  final String time;
+
+  /// 阿呆气泡当前说的话（阶段人话 / 转写报价 / 整理好的结果 / 失败人话）。
+  String aiText;
+  bool loading = false;
+
+  /// 转写要花钱，等用户点头（气泡内亮「继续转写 / 先不转写」）。
+  bool awaiting = false;
+  bool confirming = false;
+  String? confirmError;
+
+  /// 整理好的卡（可点跳去学习页看全文）。
+  String doneType = '';
+  String doneTitle = '';
+  String doneTopic = '';
+
+  _LearnDigestState({
+    required this.url,
+    required this.userText,
+    required this.time,
+    required this.aiText,
+    this.loading = false,
+  });
+}
+
+/// 对话流整理卡视图：用户气泡 + 阿呆气泡（左边绿竖线，同 FeedCard 的对话样式）。
+/// 转写要花钱时在气泡下给「继续转写 / 先不转写」；整理好了给「去看看这张卡」。
+/// 全程「我和阿呆」的自然口吻（B1：不出现系统视角标签）。
+class _LearnDigestCardView extends StatelessWidget {
+  final _LearnDigestState state;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+  final VoidCallback? onOpen;
+
+  const _LearnDigestCardView({
+    required this.state,
+    required this.onConfirm,
+    required this.onCancel,
+    this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.darkBorder.withAlpha(200)),
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(16),
+            bottomRight: Radius.circular(16),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(15),
+            bottomRight: Radius.circular(15),
+          ),
+          child: Container(
+            color: AppColors.darkSurface,
+            child: Stack(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.auto_stories_outlined, size: 14, color: AppColors.darkGreen),
+                    const SizedBox(width: 6),
+                    const Text('学习留存',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+                    const Spacer(),
+                    Text(state.time, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(state.userText,
+                      key: const ValueKey('learn-digest-user'),
+                      style: const TextStyle(fontSize: 15, height: 1.6,
+                          fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
+                  const SizedBox(height: 6),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 2,
+                      margin: const EdgeInsets.only(top: 4, right: 10),
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: AppColors.darkGreen.withAlpha(100),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                    Expanded(
+                      child: MarkdownBody(
+                        key: const ValueKey('learn-digest-ai'),
+                        data: state.aiText,
+                        selectable: true,
+                        styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+                          textTheme: const TextTheme(bodyMedium: TextStyle(
+                              fontSize: 15, height: 1.6, color: AppColors.darkGrey1)),
+                        )),
+                      ),
+                    ),
+                  ]),
+                  if (state.loading) ...[
+                    const SizedBox(height: 6),
+                    const Padding(
+                      padding: EdgeInsets.only(left: 28),
+                      child: SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ],
+                  if (state.confirmError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(state.confirmError!,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.darkRed, height: 1.6)),
+                  ],
+                  if (state.awaiting) ...[
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      FilledButton(
+                        onPressed: state.confirming ? null : onConfirm,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.darkGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                        ),
+                        child: state.confirming
+                            ? const SizedBox(
+                                width: 14, height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Text('继续转写',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton(
+                        onPressed: state.confirming ? null : onCancel,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.darkGrey3,
+                          side: const BorderSide(color: AppColors.darkGrey6),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                        ),
+                        child: const Text('先不转写', style: TextStyle(fontSize: 13)),
+                      ),
+                    ]),
+                  ],
+                  if (onOpen != null) ...[
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      key: const ValueKey('learn-digest-open'),
+                      onTap: onOpen,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurface2,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.darkGreen.withAlpha(60)),
+                        ),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('去看看这张卡',
+                              style: TextStyle(fontSize: 12.5, color: AppColors.darkGreen)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward, size: 13, color: AppColors.darkGreen),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
+              PositionedDirectional(
+                start: 0, top: 0, bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withAlpha(150),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }

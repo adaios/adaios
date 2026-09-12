@@ -120,6 +120,14 @@ class _DesktopShellState extends State<DesktopShell> {
 
   Widget _buildPage(int i) {
     final entry = _items[i];
+    // 对话流：learn 插件启用时接上「对话里整理链接 / 打开那篇」入口（2026-09-12 完整升级批）
+    if (entry.label == '对话流') {
+      return FeedPage(
+        api: _api,
+        learnEnabled: _plugins.contains('learn'),
+        onOpenLearnCard: _openLearnCard,
+      );
+    }
     // 交易页：传入当前可见页 label → 每次切到交易页自动刷新（行情/盈亏实时）
     // P1-交易1 修复（2026-08-17）：label 是中文显示名（'交易'），内部标识在 plugin 字段（'trading'）
     // 之前判 entry.label=='trading' 恒 false → 切入自动刷新从未生效（死代码）
@@ -128,9 +136,25 @@ class _DesktopShellState extends State<DesktopShell> {
     }
     if (entry.plugin == 'learn') {
       // P2-learn5（2026-09-07）：反哺候选按钮需 trading 插件态（learn 开 + trading 关不可达）
-      return LearnPage(api: _api, tradingEnabled: _plugins.contains('trading'));
+      return LearnPage(
+        api: _api,
+        tradingEnabled: _plugins.contains('trading'),
+        openCard: _learnOpenRequest,
+      );
     }
     return entry.pageBuilder(_api);
+  }
+
+  /// 对话流「去学习页看这张卡」请求（2026-09-12）：切到学习页并把要打开的卡传下去。
+  /// id 递增——同一张卡再次被请求时学习页也要重新定位（不能靠 type+title 去重）。
+  ({int id, String type, String title})? _learnOpenRequest;
+
+  void _openLearnCard(String type, String title) {
+    setState(() {
+      _learnOpenRequest = (id: (_learnOpenRequest?.id ?? 0) + 1, type: type, title: title);
+      _visited.add('学习');
+      _currentLabel = '学习';
+    });
   }
 
   @override

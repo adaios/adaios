@@ -1209,6 +1209,63 @@ class ApiService {
     return raw.map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 单篇卡片全文（GET /learn/content?type=&title=）：md 原文 + topic/writable。
+  /// 2026-09-12 完整升级批：列表只回产品建模的四段，Mac 侧整理的卡（关键内容详解/金句/概念关系）
+  /// 必须走这里才读得全。
+  Future<LearnCardContentDto> getLearnContent(
+      {required String type, required String title}) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/content')
+          .replace(queryParameters: {'type': type, 'title': title}),
+      headers: _headers,
+    );
+    _check(resp);
+    return LearnCardContentDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 找卡片（GET /learn/find?q=&limit=）：对话里「打开那篇」与学习页搜索共用。
+  /// 服务端已按相关度排序（纯规则，不烧 AI）；没找到返回空列表。
+  Future<List<LearnCardDto>> searchLearnCards(String q, {int limit = 5}) async {
+    final query = q.trim();
+    if (query.isEmpty) return const [];
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/find')
+          .replace(queryParameters: {'q': query, 'limit': limit.toString()}),
+      headers: _headers,
+    );
+    _check(resp);
+    final List raw = jsonDecode(utf8.decode(resp.bodyBytes));
+    return raw.map((e) => LearnCardDto.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 图片喂入（POST /learn/digest/image，multipart files 1~3 张，可选 type/note）→
+  /// {"status":"pending"}；之后照旧轮询 [getLearnDigestStatus]。原图落 learn/_raw/。
+  Future<String> submitLearnImages(List<LearnImageInput> images,
+      {String? type, String? note}) async {
+    assert(images.isNotEmpty, '至少给我一张图');
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/learn/digest/image'))
+      ..headers.addAll(mediaHeaders) // multipart 不走 _headers：需显式带 X-User-Id 与 Bearer
+      ..fields.addAll({
+        if (type != null && type.trim().isNotEmpty) 'type': type,
+        if (note != null && note.trim().isNotEmpty) 'note': note,
+      });
+    for (final image in images) {
+      final mime = image.mimeType.split('/');
+      req.files.add(http.MultipartFile.fromBytes(
+        'files',
+        image.bytes,
+        filename: image.filename,
+        contentType: mime.length == 2 ? MediaType(mime[0], mime[1]) : MediaType('image', 'png'),
+      ));
+    }
+    final streamed = await _client.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (json['status'] as String?) ?? '';
+  }
+
   /// 复习状态流转（V2）：new → review → done（PATCH /learn/cards/status）。
   Future<LearnCardDto> updateLearnStatus(
       {required String type, required String title, required String status}) async {

@@ -51,12 +51,15 @@ class LearnCandidateAppServiceTest {
     void createFromCard_tradingRelatedCard_generatesCandidateWithLearnCardId() {
         LearnCard card = tradingCard("回调一半的判定", true, "与 R66 止损互补");
         when(cardRepository.find(anyString(), anyString(), anyString())).thenReturn(Optional.of(card));
+        // 2026-09-12 结构统一：回链取仓储给出的**真实路径**（主题目录），不再按日期拼假路径
+        when(cardRepository.cardPath("adai", "trading", "回调一半的判定"))
+                .thenReturn("learn/trading/量价关系/01-回调一半的判定.md");
 
         LearnTradingCandidate c = service.createFromCard("adai", "trading", "回调一半的判定");
 
         assertEquals("回调一半的判定", c.title());
-        assertTrue(c.learnCardId().startsWith("learn/trading/"), "回链指向 learn 卡片文件: " + c.learnCardId());
-        assertTrue(c.learnCardId().contains(card.created().toString()), "回链含源卡片日期");
+        assertEquals("learn/trading/量价关系/01-回调一半的判定.md", c.learnCardId(),
+                "回链 = 源卡真实文件路径（主题目录下），不是拼出来的：");
         assertEquals("trading", c.sourceType());
         assertEquals("回调到一半才是买点", c.coreView());
         assertEquals(1, c.keyPoints().size());

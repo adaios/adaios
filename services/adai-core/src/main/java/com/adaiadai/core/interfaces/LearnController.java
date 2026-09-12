@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -150,7 +151,48 @@ public class LearnController {
         return ResponseEntity.ok(cards);
     }
 
-    /** 单篇卡片全文（?type=ai/trading/other&title= 精确标题）；不存在 → 400 人话。 */
+    /**
+     * 图片喂入（2026-09-12 完整升级批）：multipart 1~3 张（书页/PPT/讲义/截图）→ 视觉模型忠实提取
+     * → 与链接/素材同一条消化流水线（提交式，轮询 /digest/status）。
+     * <p>
+     * 原图先落 {@code learn/_raw/}（源必留痕：原图丢了不可重建），消化成功后随卡归位到主题目录。
+     */
+    @PostMapping("/digest/image")
+    public ResponseEntity<?> digestImages(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String note) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (files == null || files.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "请给我至少一张图片"));
+        }
+        if (!isBlank(type) && !LearnCard.isValidType(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
+        }
+        List<LearnDigestAppService.ImageInput> images = new java.util.ArrayList<>();
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "有一张图是空的，重新发一次"));
+            }
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "只能发图片（png/jpg/webp）"));
+            }
+            try {
+                images.add(new LearnDigestAppService.ImageInput(
+                        file.getBytes(), contentType, file.getOriginalFilename()));
+            } catch (java.io.IOException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "这张图我没读上来，重发一次试试"));
+            }
+        }
+        return ResponseEntity.ok(digestService.submitImages(userId, images, type, note));
+    }
+
+    /**
+     * 单篇卡片全文（?type=ai/trading/other&title= 精确标题）；不存在 → 400 人话。
+     */
     @GetMapping("/card")
     public ResponseEntity<?> card(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
@@ -206,6 +248,55 @@ public class LearnController {
         ResponseEntity<?> denied = requireLearnPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(digestService.tree(userId));
+    }
+
+    /**
+     * 卡片全文（md 原文 + 元信息）：?type=&title= 定位。
+     * <p>
+     * 2026-09-12 完整升级批：列表里的卡片字段只有产品建模的四个段，Mac 侧技能整理的卡
+     * （关键内容详解/金句/概念关系）**在界面上读不全**——本端点按 md 原文返回，两种来源都完整。
+     */
+    @GetMapping("/content")
+    public ResponseEntity<?> content(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String type,
+            @RequestParam String title) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (!LearnCard.isValidType(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
+        }
+        return ResponseEntity.ok(digestService.content(userId, type, title));
+    }
+
+    /**
+     * 老式扁平卡一次性迁移到主题目录（2026-09-12 完整升级批）：POST，**幂等**（已迁过 → migrated=0）。
+     * <p>
+     * 把 V1/V2 的 `{type}/{date}_{title}.md` 迁到 `{type}/{topic}/NN-{slug}.md`（补 `origin`/`topic`
+     * 两个 frontmatter 键 + 主题内续号 + 维护主题 README）。**Mac 侧技能整理的主题目录卡一动不动。**
+     */
+    @PostMapping("/migrate")
+    public ResponseEntity<?> migrate(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        List<com.adaiadai.core.domain.learn.LearnCardRepository.MigrationItem> items =
+                digestService.migrateLegacy(userId);
+        return ResponseEntity.ok(Map.of("migrated", items.size(), "items", items));
+    }
+
+    /**
+     * 找卡片（对话里「打开那篇」+ 学习页搜索）：?q=关键词，纯规则打分不烧 AI。
+     * 命中为空 → 空列表（前端自行兜底话术）。
+     */
+    @GetMapping("/find")
+    public ResponseEntity<?> find(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String q,
+            @RequestParam(required = false) Integer limit) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(digestService.find(userId, q, limit));
     }
 
     /** 反哺候选（V2 批 3）：trading 卡片 → trading 候选建议卡。body {type,title}。 */

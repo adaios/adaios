@@ -177,4 +177,20 @@ class LearnKnowledgeSourceTest {
         assertEquals("", source.enrich("adai", "question"));
         assertEquals("", source.enrich("adai", "trading"));
     }
+
+    @Test
+    void recentNotes_skipsTopicReadme_injectsTopicLabel() {
+        // 2026-09-12 结构统一批：主题 README 也是「长得像卡」的 md（有 title/type/created）——
+        // 它是索引不是笔记；同时注入行带上主题名，用户说「量价关系那篇」也能对上
+        storage.write("adai", "learn/ai/harness-engineering/README.md",
+                "---\ntitle: Harness Engineering 学习资料包\ntype: ai\ncreated: 2026-09-06\n---\n\n# 资料包\n\n## 目录\n");
+        storage.write("adai", "learn/ai/harness-engineering/01-video-card.md", A_FORM_CARD);
+
+        var notes = source.recentNotes("adai");
+        String ctx = source.globalContext("adai");
+
+        assertEquals(1, notes.size(), "README 不当笔记注入：" + notes);
+        assertTrue(ctx.contains("harness-engineering"), "注入行带主题名（便于按主题召回）：" + ctx);
+        assertFalse(ctx.contains("学习资料包"), "索引不混进召回：" + ctx);
+    }
 }

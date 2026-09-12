@@ -212,6 +212,17 @@ cd services/adai-core
 
 所有配置在 `.env` 文件中管理，JAR 启动时自动读取。
 
+### 6.1 learn 插件（学习）上线前置（2026-09-12）
+
+| 项 | 要求 | 缺了会怎样 |
+|:---|:-----|:-----------|
+| `ffmpeg` | 生产服务器需 `sudo apt install -y ffmpeg`（B站音频是 fMP4，必须转 16k 单声道 mp3 才能送云端 ASR）| 无字幕视频走不通，人话提示「服务器上还没装转码工具」；**有字幕视频与文章不受影响** |
+| `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）|
+| 月度转写配额 | `adai.learn.asr.month-quota-seconds`（默认 `36000` = 10 小时，fun-asr 免费额度内）| 用满即拒绝并说明剩余额度，不会静默花钱 |
+| **单实例部署（硬约束）** | **必须单实例/单进程**：learn 的消化任务态（`jobs`）是**进程内 Map**、转写配额靠 **JVM 内** per-user 条带锁做的读-改-写原子 | **多实例/同机多进程会超卖**：同一素材可能被转写两次（重复花钱）、月度额度可能被突破（REVIEW P2-learn18）。将来要横向扩容，必须先把任务态与账本移出进程（或引入分布式锁）|
+
+> learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `learn-digest` 同契约**——备份/迁移只需拷 `data/`（`backup_prod.sh` 已覆盖）。
+
 ## 7. 多账号数据迁移（v1.0.0）
 
 单用户 → 多账号（`data/` → `data/{userId}/`）升级时执行：

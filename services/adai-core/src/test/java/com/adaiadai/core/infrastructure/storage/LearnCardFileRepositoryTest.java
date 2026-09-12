@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -509,7 +510,9 @@ class LearnCardFileRepositoryTest {
         // 手工把段名改成「核心观点（一句话）」→ 写回时按归一识别为受管段，不再补一份重复段
         LearnCard card = sample(LearnCard.TYPE_AI, "改名卡", LocalDate.of(2026, 9, 12));
         repository.save("adai", card);
-        String path = "learn/ai/2026-09-12_" + LearnCard.fileStem("改名卡") + ".md";
+        String path = storage.listFiles("adai", "learn/ai").stream()
+                .filter(f -> f.endsWith(".md") && !f.endsWith("README.md"))
+                .findFirst().orElseThrow();
         storage.write("adai", path, storage.read("adai", path).replace("## 核心观点", "## 核心观点（一句话）"));
 
         LearnCard updated = repository.applyEdit("adai", LearnCard.TYPE_AI, "改名卡",
@@ -518,5 +521,362 @@ class LearnCardFileRepositoryTest {
         assertEquals("新观点", updated.coreView());
         String content = storage.read("adai", path);
         assertEquals(1, content.split("## 核心观点", -1).length - 1, "不该出现重复的核心观点段");
+    }
+
+    // ── 结构统一批（2026-09-12）：主题目录契约 + README 索引 + 素材归位 + 同名消解 ──
+
+    @Test
+    void save_landsInTopicDir_withSeqAndKeepsTopicInFrontmatter() {
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "回调一半的判定",
+                "bilibili", "UP", "https://b23.tv/a", "2026-05-05", LocalDate.of(2026, 9, 12),
+                LearnCard.STATUS_NEW, false, null, List.of("买点"), "观点", List.of("要点"), List.of("疑问"), "",
+                "量价关系"));
+
+        assertTrue(storage.exists("adai", "learn/ai/量价关系/01-回调一半的判定.md"),
+                "新产品卡落 {type}/{topic}/NN-{slug}.md（与 Mac 侧技能同契约）；实际："
+                        + storage.listFiles("adai", "learn/ai"));
+        String content = storage.read("adai", "learn/ai/量价关系/01-回调一半的判定.md");
+        assertTrue(content.contains("topic: 量价关系"), "主题写进 frontmatter");
+        assertTrue(content.contains("origin: product"), "带 origin 标记（判定可写的依据）");
+    }
+
+    @Test
+    void save_sameTopic_incrementsSeq_andKeepsSingleReadmeEntryPerCard() {
+        for (String title : List.of("第一篇", "第二篇")) {
+            repository.save("adai", new LearnCard(LearnCard.TYPE_AI, title, "bilibili", "UP", null, null,
+                    LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                    List.of("要点"), List.of(), "", "量价关系"));
+        }
+
+        assertTrue(storage.exists("adai", "learn/ai/量价关系/01-第一篇.md"));
+        assertTrue(storage.exists("adai", "learn/ai/量价关系/02-第二篇.md"), "同主题编号递增");
+        String readme = storage.read("adai", "learn/ai/量价关系/README.md");
+        assertTrue(readme.contains("阿呆整理记录"), "README 索引带自动段标记");
+        assertTrue(readme.contains("01-第一篇.md") && readme.contains("02-第二篇.md"), "两篇都进索引");
+        assertEquals(2, repository.list("adai", LearnCard.TYPE_AI).size(), "README 本身不当卡片");
+    }
+
+    @Test
+    void save_missingTopic_fallsBackToDefaultTopicDir() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "无主题卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "");
+        repository.save("adai", card);
+
+        assertTrue(storage.exists("adai", "learn/ai/" + LearnCard.DEFAULT_TOPIC + "/01-无主题卡.md"),
+                "LLM 没给主题 → 归到默认主题，界面上看得见（不是散在 type 根目录）");
+    }
+
+    @Test
+    void save_existingTopicReadme_appendsMarkerSectionWithoutRewriting() {
+        storage.write("adai", "learn/ai/harness-engineering/README.md",
+                "---\ntitle: Harness 资料包\ntype: ai\ncreated: 2026-09-06\n---\n\n# Harness 资料包\n\n手写目录，不许被重写。\n");
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "Harness 新篇", "bilibili", "UP", null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "harness-engineering"));
+
+        String readme = storage.read("adai", "learn/ai/harness-engineering/README.md");
+        assertTrue(readme.contains("手写目录，不许被重写"), "他人 README 的既有内容一个字不动（追加式）");
+        assertTrue(readme.contains("阿呆整理记录") && readme.contains("01-Harness 新篇.md"), "自动段追加索引");
+        assertTrue(storage.exists("adai", "learn/ai/harness-engineering/01-Harness 新篇.md"),
+                "A 已有主题目录里新建卡同样按 NN 编号");
+    }
+
+    @Test
+    void list_reportsTopicFromPath_andReadOnlyForForeignCards() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "我的卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "我的主题"));
+
+        List<LearnCard> cards = repository.list("adai", LearnCard.TYPE_AI);
+        LearnCard foreign = cards.stream().filter(c -> c.title().equals("Harness 到底是什么？")).findFirst().orElseThrow();
+        LearnCard mine = cards.stream().filter(c -> c.title().equals("我的卡")).findFirst().orElseThrow();
+        assertEquals("harness", foreign.topic(), "主题取自文件所在目录（路径是位置真相）");
+        assertFalse(foreign.writable(), "别处整理的卡 → 只读");
+        assertEquals("我的主题", mine.topic());
+        assertTrue(mine.writable());
+    }
+
+    @Test
+    void sameTitleAsForeignCard_isAllowed_andOwnCardWinsAddressing() {
+        // P2-learn20：A 卡与产品卡标题完全相同时，原先新建被同名保护拒绝
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "Harness 到底是什么？", "bilibili", "UP",
+                "https://b23.tv/a", "2026-05-05", LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false,
+                null, List.of(), "我的观点", List.of("要点"), List.of(), "", "harness"));
+
+        LearnCard found = repository.find("adai", LearnCard.TYPE_AI, "Harness 到底是什么？").orElseThrow();
+        assertTrue(found.writable(), "同名时本产品卡优先（操作落在自己的卡上）");
+        assertEquals("我的观点", found.coreView());
+        assertEquals(2, repository.list("adai", LearnCard.TYPE_AI).size(), "两张卡都在（别处的只读但看得见）");
+    }
+
+    @Test
+    void duplicateOwnTitle_stillRejected() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "重复卡", LocalDate.of(2026, 9, 12));
+        repository.save("adai", card);
+        LearnException e = assertThrows(LearnException.class, () -> repository.save("adai", card));
+        assertTrue(e.getMessage().contains("已有同名卡片"), e.getMessage());
+    }
+
+    @Test
+    void promoteRaw_movesStagedAssetIntoTopicDir_andReadRawFallsBack() {
+        repository.saveRaw("adai", "bilibili-BV1-meta.json", "{\"title\":\"x\"}");
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "留痕卡", "bilibili", "UP", null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "harness");
+        repository.save("adai", card);
+
+        List<String> promoted = repository.promoteRaw("adai", LearnCard.TYPE_AI, card.topic(),
+                List.of("bilibili-BV1-meta.json", "从未产生的-稿.txt"));
+
+        assertEquals(List.of("bilibili-BV1-meta.json"), promoted, "只搬真实存在的素材（未转写的不搬）");
+        assertTrue(storage.exists("adai", "learn/ai/harness/_raw/bilibili-BV1-meta.json"),
+                "素材归位到主题目录（与 Mac 侧技能同契约）");
+        assertFalse(storage.exists("adai", "learn/_raw/bilibili-BV1-meta.json"), "暂存副本已清");
+        assertEquals("{\"title\":\"x\"}", repository.readRaw("adai", "bilibili-BV1-meta.json"),
+                "归位后仍能按名回读（转写稿幂等复用的前提）");
+    }
+
+    @Test
+    void topics_listsExistingTopicDirsByType() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "我的卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "我的主题"));
+
+        List<String> topics = repository.topics("adai", LearnCard.TYPE_AI);
+        assertTrue(topics.contains("harness") && topics.contains("我的主题"),
+                "已有主题目录都报出来（供消化时提示归并）：" + topics);
+        assertTrue(repository.topics("adai", LearnCard.TYPE_TRADING).isEmpty());
+    }
+
+    @Test
+    void legacyFlatCard_stillReadableAndWritable_noForcedMigration() {
+        LearnCard legacy = sample(LearnCard.TYPE_AI, "老卡", LocalDate.of(2026, 9, 1));
+        storage.write("adai", "learn/ai/2026-09-01_" + LearnCard.fileStem("老卡") + ".md",
+                LearnCardFileRepository.toMarkdown(legacy));
+
+        Optional<LearnCard> found = repository.find("adai", LearnCard.TYPE_AI, "老卡");
+        assertTrue(found.isPresent(), "老扁平布局照旧读得到（不强制迁移）");
+        assertEquals(LearnCard.DEFAULT_TOPIC, found.get().topic());
+        LearnCard edited = repository.applyEdit("adai", LearnCard.TYPE_AI, "老卡",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("老卡也能改", null, null, null, null, null, null));
+        assertEquals("老卡也能改", edited.coreView(), "老卡原地可写（不是一刀切只读）");
+        assertTrue(storage.exists("adai", "learn/ai/2026-09-01_" + LearnCard.fileStem("老卡") + ".md"),
+                "写入没有偷偷搬家");
+    }
+
+    @Test
+    void readCard_returnsRawMarkdown_includingSectionsProductDoesNotModel() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+
+        String md = repository.readCard("adai", LearnCard.TYPE_AI, "Harness 到底是什么？");
+
+        assertTrue(md.contains("## 内容脉络"), "手工卡独有的段（产品没建模）也要按原文读得到");
+        assertTrue(md.contains("第一条脉络"));
+        assertEquals(null, repository.readCard("adai", LearnCard.TYPE_AI, "不存在的卡"));
+    }
+
+    @Test
+    void readCard_afterSave_productCardAlsoReadable() {
+        LearnCard card = sample(LearnCard.TYPE_AI, "全文卡", LocalDate.of(2026, 9, 12));
+        repository.save("adai", card);
+
+        String md = repository.readCard("adai", LearnCard.TYPE_AI, "全文卡");
+
+        assertTrue(md.contains("全文卡") && md.contains("## 核心观点"), md);
+    }
+
+    @Test
+    void cardPath_returnsRealTopicPath_usedForCrossDomainBacklink() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        LearnCard card = sample(LearnCard.TYPE_AI, "我的卡", LocalDate.of(2026, 9, 12));
+        repository.save("adai", card.withTopic("量价关系"));
+
+        assertEquals("learn/ai/量价关系/01-我的卡.md",
+                repository.cardPath("adai", LearnCard.TYPE_AI, "我的卡"));
+        assertEquals("learn/ai/harness/01-video-card.md",
+                repository.cardPath("adai", LearnCard.TYPE_AI, "Harness 到底是什么？"),
+                "别处整理的卡也能给出真实回链路径（不再按日期拼假路径）");
+        assertEquals(null, repository.cardPath("adai", LearnCard.TYPE_AI, "没有这张"));
+    }
+
+    @Test
+    void list_skipsRawAssetsAndReadme_insideTopicDir() {
+        storage.write("adai", "learn/ai/harness/README.md",
+                "---\ntitle: 资料包\ntype: ai\ncreated: 2026-09-06\n---\n\n## 目录\n");
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);
+        // _raw/ 里的素材即便碰巧是 .md，也不是卡片
+        storage.write("adai", "learn/ai/harness/_raw/notes.md",
+                "---\ntitle: 素材片段\ntype: ai\ncreated: 2026-09-06\n---\n\n正文\n");
+
+        List<LearnCard> cards = repository.list("adai", LearnCard.TYPE_AI);
+
+        assertEquals(1, cards.size(), "只有真卡片进列表（README 与 _raw/ 素材都排除）：" + cards);
+        assertEquals("Harness 到底是什么？", cards.get(0).title());
+    }
+
+    // ── 老卡一次性迁移（2026-09-12 完整升级批）──
+
+    @Test
+    void migrateLegacy_movesFlatCardIntoTopicDir_andIsIdempotent() {
+        LearnCard legacy = sample(LearnCard.TYPE_AI, "老卡", LocalDate.of(2026, 9, 12));
+        storage.write("adai", "learn/ai/2026-09-12_" + LearnCard.fileStem("老卡") + ".md",
+                LearnCardFileRepository.toMarkdown(legacy));
+
+        var items = repository.migrateLegacy("adai");
+
+        assertEquals(1, items.size());
+        assertEquals("learn/ai/" + LearnCard.DEFAULT_TOPIC + "/01-老卡.md", items.get(0).to(),
+                "没标主题 → 归到默认主题目录");
+        assertFalse(storage.exists("adai", "learn/ai/2026-09-12_老卡.md"), "老文件已删（不搬家）");
+        String moved = storage.read("adai", "learn/ai/" + LearnCard.DEFAULT_TOPIC + "/01-老卡.md");
+        assertTrue(moved.contains("origin: product") && moved.contains("topic: " + LearnCard.DEFAULT_TOPIC),
+                "补写归属与主题键：" + moved.substring(0, Math.min(200, moved.length())));
+        assertTrue(moved.contains("核心观点"), "正文一字不动（只是补键 + 挪位置）");
+        assertTrue(repository.find("adai", LearnCard.TYPE_AI, "老卡").orElseThrow().writable(),
+                "迁移后仍是本产品卡（可编辑）");
+        assertTrue(repository.migrateLegacy("adai").isEmpty(), "幂等：再跑没有可迁的");
+    }
+
+    @Test
+    void migrateLegacy_honorsFrontmatterTopic_andLeavesSkillCardsAlone() {
+        storage.write("adai", "learn/ai/harness/01-video-card.md", A_FORM_CARD);   // Mac 侧技能卡
+        LearnCard legacy = sample(LearnCard.TYPE_AI, "带主题的老卡", LocalDate.of(2026, 9, 1));
+        storage.write("adai", "learn/ai/2026-09-01_" + LearnCard.fileStem("带主题的老卡") + ".md",
+                LearnCardFileRepository.toMarkdown(legacy).replaceFirst("type: ai\n", "type: ai\ntopic: 量价关系\n"));
+
+        var items = repository.migrateLegacy("adai");
+
+        assertEquals(1, items.size());
+        assertEquals("learn/ai/量价关系/01-带主题的老卡.md", items.get(0).to(), "frontmatter 里的主题被尊重");
+        assertEquals(1, storage.listFiles("adai", "learn/ai/harness").size(),
+                "技能卡一张没多没少（一动没动）：" + storage.listFiles("adai", "learn/ai/harness"));
+        assertFalse(repository.find("adai", LearnCard.TYPE_AI, "Harness 到底是什么？").orElseThrow().writable(),
+                "技能卡迁移后依旧只读");
+    }
+
+    @Test
+    void migrateLegacy_nonCardFlatFile_leftAlone() {
+        storage.write("adai", "learn/ai/2026-09-12_不是卡.md", "随手记的几行字，没有 frontmatter\n");
+
+        assertTrue(repository.migrateLegacy("adai").isEmpty());
+        assertTrue(storage.exists("adai", "learn/ai/2026-09-12_不是卡.md"), "认不出是卡就不动它");
+    }
+
+    // ── 对抗审查修复批（2026-09-12）：P1-A / P2-2 / P3 的回归 ──
+
+    @Test
+    void originMarkerInBody_doesNotMakeForeignCardWritable() {
+        // P1-A：原先扫全文 → 外部卡正文/代码块里出现一行 origin: product 就被当产品卡被改写
+        storage.write("adai", "learn/ai/mac主题/01-外部卡.md", """
+                ---
+                title: 外部卡
+                type: ai
+                created: 2026-09-10
+                ---
+                ## 核心观点
+
+                讲一个契约示例：
+
+                ```yaml
+                origin: product
+                ```
+                """);
+
+        LearnCard card = repository.find("adai", LearnCard.TYPE_AI, "外部卡").orElseThrow();
+
+        assertFalse(card.writable(), "只有**前言块**里的 origin 才算数（正文里的同名字符串不算）");
+        LearnException e = assertThrows(LearnException.class, () -> repository.applyEdit(
+                "adai", LearnCard.TYPE_AI, "外部卡",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("产品注入", null, null, null, null, null, null)));
+        assertTrue(e.getMessage().contains("不改动它") && e.getMessage().contains("另存"), e.getMessage());
+        assertFalse(storage.read("adai", "learn/ai/mac主题/01-外部卡.md").contains("产品注入"),
+                "外部文件一个字都不能动");
+        assertFalse(storage.read("adai", "learn/ai/mac主题/01-外部卡.md").contains("## 关键要点"),
+                "更不能把产品模板段注入别人的文件");
+    }
+
+    @Test
+    void promoteRaw_binaryAsset_movesByteIdentical() {
+        // 审查指出「风险最高的二进制通道零覆盖」→ 补真二进制（非法 UTF-8）回归
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x00, (byte) 0xFF, (byte) 0xFE, 0x01};
+        repository.saveRawBytes("adai", "image-1-abc.png", png);
+
+        List<String> promoted = repository.promoteRaw("adai", LearnCard.TYPE_AI, "量价关系",
+                List.of("image-1-abc.png"));
+
+        assertEquals(List.of("image-1-abc.png"), promoted);
+        assertArrayEquals(png, storage.readBytes("adai", "learn/ai/量价关系/_raw/image-1-abc.png"),
+                "字节完全一致（不经过文本通道）");
+        assertArrayEquals(png, repository.readRawBytes("adai", "image-1-abc.png"), "归位后仍能按名回读");
+        assertFalse(storage.exists("adai", "learn/_raw/image-1-abc.png"), "暂存副本已清");
+    }
+
+    @Test
+    void promoteRaw_sameNameDifferentContent_keepsBoth() {
+        // P2-2：原先目标同名直接覆盖（源必留痕被破）→ 现在并存 + 保留旧留痕
+        repository.promoteRaw("adai", LearnCard.TYPE_AI, "量价关系",
+                writeStaged("article-x-text.txt", "旧内容-不可丢"));
+        repository.saveRaw("adai", "article-x-text.txt", "新内容-文章更新后重跑");
+
+        List<String> promoted = repository.promoteRaw("adai", LearnCard.TYPE_AI, "量价关系",
+                List.of("article-x-text.txt"));
+
+        assertEquals("旧内容-不可丢", repository.readRaw("adai", "article-x-text.txt"),
+                "旧留痕没被顶掉（仍能按原名读到）");
+        assertEquals("新内容-文章更新后重跑", repository.readRaw("adai", promoted.get(0)),
+                "新内容另存一份：promoted=" + promoted);
+    }
+
+    @Test
+    void topicDir_controlChars_doNotBreakPath() {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "控制符卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "奇怪\u0000主题");
+
+        repository.save("adai", card);   // 原先   会让路径解析抛 500
+
+        assertTrue(repository.find("adai", LearnCard.TYPE_AI, "控制符卡").isPresent(),
+                "控制符主题不炸路径：" + storage.listFiles("adai", "learn/ai"));
+    }
+
+    @Test
+    void nextSeq_ignoresDatePrefixedFiles() {
+        storage.write("adai", "learn/ai/量价关系/2026-09-12_手工命名.md",
+                LearnCardFileRepository.toMarkdown(sample(LearnCard.TYPE_AI, "手工命名", LocalDate.of(2026, 9, 12))));
+        repository.save("adai", new LearnCard(LearnCard.TYPE_AI, "新产品卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系"));
+
+        assertTrue(storage.exists("adai", "learn/ai/量价关系/01-新产品卡.md"),
+                "日期前缀文件不算编号（原先会命名成 2027-新产品卡）：" + storage.listFiles("adai", "learn/ai/量价关系"));
+    }
+
+    /** 往暂存区写一份文本素材并返回名单（辅助）。 */
+    private List<String> writeStaged(String name, String content) {
+        repository.saveRaw("adai", name, content);
+        return List.of(name);
+    }
+
+    @Test
+    void writeOps_returnTopicAndWritable_soFrontendDoesNotLoseGrouping() {
+        // web 侧自查 P1：PATCH 响应原先不带 topic/writable → 前端就地写回会把卡片跳到「未归类」组
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "分组卡", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of("要点"), List.of(), "", "量价关系");
+        repository.save("adai", card);
+
+        LearnCard edited = repository.applyEdit("adai", LearnCard.TYPE_AI, "分组卡",
+                new com.adaiadai.core.domain.learn.LearnCardPatch("改过的观点", null, null, null, null, null, null));
+        LearnCard reviewed = repository.updateStatus("adai", LearnCard.TYPE_AI, "分组卡",
+                LearnCard.STATUS_REVIEW, LocalDate.of(2026, 9, 12));
+
+        assertEquals("量价关系", edited.topic(), "编辑响应带主题（前端不跳组）");
+        assertTrue(edited.writable());
+        assertEquals("量价关系", reviewed.topic(), "流转响应带主题");
+        assertEquals(LearnCard.STATUS_REVIEW, reviewed.status());
     }
 }

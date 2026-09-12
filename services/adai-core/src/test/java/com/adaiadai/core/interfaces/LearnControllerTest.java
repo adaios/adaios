@@ -419,4 +419,117 @@ class LearnControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deleted").value(true));
     }
+
+    // ── 图片喂入（2026-09-12 完整升级批）──
+
+    private org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder imageUpload() {
+        return org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .multipart("/api/v1/learn/digest/image");
+    }
+
+    @Test
+    void digestImage_withoutPlugin_returns403() throws Exception {
+        mvc().perform(imageUpload()
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "files", "p.png", "image/png", new byte[]{1, 2}))
+                        .header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void digestImage_nonImageContentType_returns400HumanMessage() throws Exception {
+        mvc("learn").perform(imageUpload()
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "files", "notes.txt", "text/plain", "不是图".getBytes()))
+                        .header("X-User-Id", "adai"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("只能发图片（png/jpg/webp）"));
+    }
+
+    @Test
+    void digestImage_success_returnsPending() throws Exception {
+        when(digestService.submitImages(anyString(), any(), any(), any()))
+                .thenReturn(new LearnDigestAppService.DigestSubmitResult("pending"));
+
+        mvc("learn").perform(imageUpload()
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "files", "p.png", "image/png", new byte[]{1, 2, 3}))
+                        .header("X-User-Id", "adai")
+                        .param("type", "ai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("pending"));
+    }
+
+    // ── 全文 / 找卡片（2026-09-12 完整升级批）──
+
+    @Test
+    void content_returnsRawMarkdown() throws Exception {
+        when(digestService.content("adai", "ai", "Harness 到底是什么？"))
+                .thenReturn(new LearnDigestAppService.CardContent("ai", "Harness 到底是什么？",
+                        "harness", false, "---\ntitle: x\n---\n\n## 内容脉络\n- 第一条",
+                        "## 内容脉络\n- 第一条"));
+
+        mvc("learn").perform(get("/api/v1/learn/content")
+                        .header("X-User-Id", "adai")
+                        .param("type", "ai")
+                        .param("title", "Harness 到底是什么？"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topic").value("harness"))
+                .andExpect(jsonPath("$.writable").value(false))
+                .andExpect(jsonPath("$.content").value(org.hamcrest.Matchers.containsString("内容脉络")))
+                .andExpect(jsonPath("$.body").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("title: x"))));
+    }
+
+    @Test
+    void content_invalidType_returns400() throws Exception {
+        mvc("learn").perform(get("/api/v1/learn/content")
+                        .header("X-User-Id", "adai")
+                        .param("type", "hacking")
+                        .param("title", "x"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void content_withoutPlugin_returns403() throws Exception {
+        mvc().perform(get("/api/v1/learn/content")
+                        .header("X-User-Id", "bob")
+                        .param("type", "ai")
+                        .param("title", "x"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void find_returnsRankedCards() throws Exception {
+        LearnCard card = new LearnCard(LearnCard.TYPE_AI, "量价关系入门", "web", null, null, null,
+                LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                List.of(), List.of(), "", "量价关系");
+        when(digestService.find("adai", "量价", 5)).thenReturn(List.of(card));
+
+        mvc("learn").perform(get("/api/v1/learn/find")
+                        .header("X-User-Id", "adai")
+                        .param("q", "量价")
+                        .param("limit", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("量价关系入门"))
+                .andExpect(jsonPath("$[0].topic").value("量价关系"));
+    }
+
+    @Test
+    void migrate_returnsMigrationSummary() throws Exception {
+        when(digestService.migrateLegacy("adai")).thenReturn(List.of(
+                new com.adaiadai.core.domain.learn.LearnCardRepository.MigrationItem(
+                        "ai", "learn/ai/2026-09-12_老卡.md", "learn/ai/未归类/01-老卡.md")));
+
+        mvc("learn").perform(post("/api/v1/learn/migrate").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.migrated").value(1))
+                .andExpect(jsonPath("$.items[0].to").value("learn/ai/未归类/01-老卡.md"));
+    }
+
+    @Test
+    void migrate_withoutPlugin_returns403() throws Exception {
+        mvc().perform(post("/api/v1/learn/migrate").header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
 }

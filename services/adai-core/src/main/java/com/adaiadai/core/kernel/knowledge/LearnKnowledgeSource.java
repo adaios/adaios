@@ -42,6 +42,7 @@ public class LearnKnowledgeSource implements KnowledgeSource {
     /** 单篇核心观点截断长度（注入是索引不是全文）。 */
     private static final int CORE_VIEW_MAX = 80;
 
+    private static final Pattern TOPIC_PATTERN = Pattern.compile("(?m)^topic:\\s*(.+)$");
     private static final Pattern TITLE_PATTERN = Pattern.compile("(?m)^title:\\s*(.+)$");
     private static final Pattern TYPE_PATTERN = Pattern.compile("(?m)^type:\\s*(.+)$");
     private static final Pattern CREATED_PATTERN = Pattern.compile("(?m)^created:\\s*(\\d{4}-\\d{2}-\\d{2})");
@@ -81,6 +82,7 @@ public class LearnKnowledgeSource implements KnowledgeSource {
         StringBuilder sb = new StringBuilder("## 你最近的学习笔记\n\n");
         for (NoteSummary n : notes) {
             sb.append("- ").append(n.title());
+            if (!n.topic().isBlank()) sb.append("〔").append(n.topic()).append("〕");
             if (!n.type().isBlank()) sb.append("（").append(n.type()).append("）");
             if (!n.coreView().isBlank()) sb.append("：").append(n.coreView());
             sb.append("\n");
@@ -101,9 +103,11 @@ public class LearnKnowledgeSource implements KnowledgeSource {
         List<String> files = fileStorage.listFiles(userId, LEARN_DIR);
         for (String f : files) {
             if (!f.endsWith(".md") || f.contains("/_raw/")) continue;
+            // 主题 README 也长得像卡（有 title/type/created）——它是索引不是笔记，别当学习笔记注入
+            if (f.endsWith("/README.md")) continue;
             String content = fileStorage.read(userId, f);
             if (content == null || content.isBlank()) continue;
-            NoteSummary n = parseSummary(content);
+            NoteSummary n = parseSummary(content, f);
             if (n == null) continue;
             notes.add(n);
         }
@@ -112,7 +116,7 @@ public class LearnKnowledgeSource implements KnowledgeSource {
     }
 
     /** 轻量 frontmatter 提取（title/type/created）+ 核心观点首行；核心字段缺失 → null。 */
-    private NoteSummary parseSummary(String content) {
+    private NoteSummary parseSummary(String content, String path) {
         String title = firstLine(TITLE_PATTERN, content);
         if (title == null || title.isBlank()) return null;
         String type = firstLine(TYPE_PATTERN, content);
@@ -120,9 +124,19 @@ public class LearnKnowledgeSource implements KnowledgeSource {
         String coreView = extractCoreView(content);
         return new NoteSummary(
                 title.strip(),
+                topicOf(content, path),
                 type == null ? "" : type.strip(),
                 created == null ? "" : created.strip(),
                 coreView);
+    }
+
+    /** 主题：优先 frontmatter 的 {@code topic:}（产品卡），否则从所在目录段推断（技能卡）。 */
+    private String topicOf(String content, String path) {
+        String topic = firstLine(TOPIC_PATTERN, content);
+        if (topic != null && !topic.isBlank()) return topic.strip();
+        if (path == null) return "";
+        String[] seg = path.split("/");            // learn/{type}/{topic}/NN-x.md
+        return seg.length >= 4 ? seg[2] : "";
     }
 
     private String extractCoreView(String content) {
@@ -140,6 +154,11 @@ public class LearnKnowledgeSource implements KnowledgeSource {
         return m.find() ? m.group(1).strip() : null;
     }
 
-    /** 注入用摘要（title + type + created + 核心观点）。 */
-    record NoteSummary(String title, String type, String created, String coreView) {}
+    /**
+     * 注入用摘要（title + topic + type + created + 核心观点）。
+     * <p>
+     * 2026-09-12 结构统一批：加 {@code topic}（主题目录名）——问答召回时带上「这是哪个主题的
+     * 笔记」，用户说「量价关系那篇」也能对上；README 索引不再当笔记注入。
+     */
+    record NoteSummary(String title, String topic, String type, String created, String coreView) {}
 }

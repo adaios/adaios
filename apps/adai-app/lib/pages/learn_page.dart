@@ -1,15 +1,39 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/models/learn_models.dart';
 import '../theme/app_colors.dart';
+import '../widgets/input_bar.dart' show PickedImage;
+
+/// 加载/接口错误的人话（B1 无第三视角：不甩异常原文，给人话 + 出路）。
+String _errText(dynamic e) {
+  final str = e.toString();
+  if (str.contains('TimeoutException') || str.contains('timed out')) return '等太久了，检查下网络再试';
+  if (str.contains('Connection refused') || str.contains('SocketException')) return '暂时连不上，检查下网络再试';
+  if (str.contains('403')) return '学习功能未启用（learn 插件）';
+  return '加载失败，请重试';
+}
 
 /// LearnPage —「最近学习」入口（RFC 20260829 learn 插件 L2 呈现·移动端）。
 /// 移动端只做「最近学习 + 单篇全文」（完整资产浏览引导到 web 桌面端，双端分工见 RFC 3.7）。
-/// 数据源：GET /learn/tree → 合并全部卡片按 created 倒序 → 顶部最新。
+/// 数据源：GET /learn/tree → 按 type → topic 二级归置（组内 created 倒序）；
+/// 顶部搜索框（GET /learn/find，服务端按相关度排好）；进页顺带查一次任务态，
+/// 有「等你拍板的转写」就在顶部亮提示条（P2-learn17 确认恢复入口）。
 class LearnPage extends StatefulWidget {
   final ApiService api;
-  const LearnPage({super.key, required this.api});
+
+  /// 从对话流「整理好了」跳进来时直接打开的单篇（type + 精确标题）——
+  /// 列表里找不到也照样打开（全文走 /learn/content，不依赖列表）。
+  final ({String type, String title})? initialCard;
+
+  /// 测试钩子：注入选图结果（等价 trading_page 的 debugPickImages，widget 测试不真调相册）。
+  @visibleForTesting
+  final Future<List<PickedImage>> Function()? debugPickImages;
+
+  const LearnPage({super.key, required this.api, this.initialCard, this.debugPickImages});
 
   @override
   State<LearnPage> createState() => _LearnPageState();
@@ -20,23 +44,53 @@ class _LearnPageState extends State<LearnPage> {
   bool _loading = true;
   String? _error;
 
+  /// 代际令牌：_load 重入/页面销毁后在途回包作废（沿用既有防护写法）。
+  int _gen = 0;
+
+  // 搜索（防抖 300ms）：_query 为空 = 没在搜，展示分组列表。
+  final _searchCtl = TextEditingController();
+  Timer? _searchDebounce;
+  String _query = '';
+  List<LearnCardDto>? _searchResults; // null = 没在搜（或搜挂了，走 _searchError）
+  bool _searching = false;
+  String? _searchError;
+  int _searchGen = 0;
+
+  // 确认恢复入口（P2-learn17）：进页查一次状态，needs_confirmation → 顶部提示条等用户拍板。
+  LearnDigestJob? _pendingConfirm;
+  bool _confirmBusy = false; // 连点守卫：不点头前只允许一次确认送达
+
+  bool _initialOpened = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _checkPendingConfirm();
+  }
+
+  @override
+  void dispose() {
+    _gen++;
+    _searchGen++;
+    _searchDebounce?.cancel();
+    _searchCtl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    final gen = ++_gen;
     try {
       final tree = await widget.api.getLearnTree();
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       setState(() {
         _tree = tree;
         _loading = false;
         _error = null;
       });
+      _openInitialCardIfNeeded();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _gen) return;
       setState(() {
         _loading = false;
         _error = _errText(e);
@@ -44,17 +98,104 @@ class _LearnPageState extends State<LearnPage> {
     }
   }
 
-  String _errText(dynamic e) {
-    final str = e.toString();
-    if (str.contains('TimeoutException') || str.contains('timed out')) return '等太久了，检查下网络再试';
-    if (str.contains('Connection refused') || str.contains('SocketException')) return '暂时连不上，检查下网络再试';
-    if (str.contains('403')) return '学习功能未启用（learn 插件）';
-    return '加载失败，请重试';
+  /// 从对话流跳进来的单篇：列表加载后自动打开（只开一次）。
+  void _openInitialCardIfNeeded() {
+    final target = widget.initialCard;
+    if (target == null || _initialOpened || !mounted) return;
+    _initialOpened = true;
+    final card = _tree?.recentAll
+        .where((c) => c.type == target.type && c.title == target.title)
+        .firstOrNull;
+    _openCard(card ?? LearnCardDto(type: target.type, title: target.title, created: ''));
+  }
+
+  /// 确认恢复入口（P2-learn17）：进列表查一次任务态——有待拍板的转写就顶部提示，
+  /// 用户不必回想刚才是在哪个入口触发的。查不到静默降级（不打扰人）。
+  Future<void> _checkPendingConfirm() async {
+    try {
+      final job = await widget.api.getLearnDigestStatus();
+      if (!mounted) return;
+      if (job.isAwaitingConfirm) setState(() => _pendingConfirm = job);
+    } catch (_) {
+      // 静默：查不到就当作没有待确认的事
+    }
+  }
+
+  /// 「继续转写 / 先不转写」（带连点守卫：不点头前的重复点击不再送达）。
+  Future<void> _resolvePendingConfirm(bool yes) async {
+    if (_confirmBusy) return;
+    setState(() => _confirmBusy = true);
+    final gen = ++_gen;
+    try {
+      final job = await widget.api.confirmLearnTranscription(yes);
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _confirmBusy = false;
+        _pendingConfirm = null;
+      });
+      if (!yes) {
+        _snack(job.cancelledText);
+        return;
+      }
+      _snack('好，我去转写了，弄好了列表里见（可能要几分钟）');
+      await _load();
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() => _confirmBusy = false);
+      _snack(_errText(e));
+    }
+  }
+
+  void _snack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text, style: const TextStyle(fontSize: 13)),
+      backgroundColor: AppColors.darkSurface2,
+    ));
+  }
+
+  /// 搜索输入：防抖 300ms（打字中间词不发请求），清空则回到分组列表。
+  void _onSearchChanged(String raw) {
+    _searchDebounce?.cancel();
+    final q = raw.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _query = '';
+        _searchResults = null;
+        _searchError = null;
+        _searching = false;
+      });
+      return;
+    }
+    setState(() {
+      _query = q;
+      _searching = true;
+      _searchError = null;
+    });
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () => _runSearch(q));
+  }
+
+  Future<void> _runSearch(String q) async {
+    final gen = ++_searchGen;
+    try {
+      final list = await widget.api.searchLearnCards(q);
+      if (!mounted || gen != _searchGen || _query != q) return;
+      setState(() {
+        _searchResults = list;
+        _searching = false;
+      });
+    } catch (e) {
+      if (!mounted || gen != _searchGen) return;
+      setState(() {
+        _searchResults = null;
+        _searching = false;
+        _searchError = _errText(e);
+      });
+    }
   }
 
   void _openCard(LearnCardDto card) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => _LearnDetailPage(card: card),
+      builder: (_) => _LearnDetailPage(card: card, api: widget.api),
     ));
   }
 
@@ -110,22 +251,17 @@ class _LearnPageState extends State<LearnPage> {
   Future<void> _openDigest() async {
     final result = await Navigator.push<({String type, String title})>(
       context,
-      MaterialPageRoute(builder: (_) => _DigestInputPage(api: widget.api)),
+      MaterialPageRoute(
+        builder: (_) => _DigestInputPage(api: widget.api, debugPickImages: widget.debugPickImages),
+      ),
     );
     if (result == null || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('已沉淀学习卡片《${result.title}》', style: const TextStyle(fontSize: 13)),
-      backgroundColor: AppColors.darkSurface2,
-    ));
+    _snack('已沉淀学习卡片《${result.title}》');
     await _load();
     if (!mounted || _tree == null) return;
-    LearnCardDto? found;
-    for (final c in _tree!.recentAll) {
-      if (c.type == result.type && c.title == result.title) {
-        found = c;
-        break;
-      }
-    }
+    final found = _tree!.recentAll
+        .where((c) => c.type == result.type && c.title == result.title)
+        .firstOrNull;
     if (found != null && mounted) _openCard(found);
   }
 
@@ -136,10 +272,7 @@ class _LearnPageState extends State<LearnPage> {
       enabled = await widget.api.getLearnReviewEnabled();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_errText(e), style: const TextStyle(fontSize: 13)),
-        backgroundColor: AppColors.darkSurface2,
-      ));
+      _snack(_errText(e));
       return;
     }
     if (!mounted) return;
@@ -209,6 +342,120 @@ class _LearnPageState extends State<LearnPage> {
     }
     final tree = _tree;
     final cards = (tree == null ? <LearnCardDto>[] : tree.recentAll);
+    return Column(children: [
+      if (_pendingConfirm != null) _buildConfirmBanner(_pendingConfirm!),
+      _buildSearchField(),
+      Expanded(child: _buildListArea(cards)),
+    ]);
+  }
+
+  /// 确认恢复入口提示条（P2-learn17）：有一件等你拍板的事（转写要花钱）。
+  Widget _buildConfirmBanner(LearnDigestJob job) {
+    return Container(
+      key: const ValueKey('learn-confirm-banner'),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.record_voice_over_outlined, size: 17, color: AppColors.darkOrange),
+          const SizedBox(width: 7),
+          const Text('有一件事等你拍板',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        ]),
+        const SizedBox(height: 8),
+        Text(job.confirmText,
+            style: const TextStyle(fontSize: 13, height: 1.7, color: AppColors.darkGrey2)),
+        const SizedBox(height: 12),
+        Row(children: [
+          FilledButton(
+            onPressed: _confirmBusy ? null : () => _resolvePendingConfirm(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.darkGreen,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: _confirmBusy
+                ? const SizedBox(
+                    width: 15, height: 15,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('继续转写', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            onPressed: _confirmBusy ? null : () => _resolvePendingConfirm(false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.darkGrey3,
+              side: const BorderSide(color: AppColors.darkGrey6),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            child: const Text('先不转写', style: TextStyle(fontSize: 13.5)),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
+      child: TextField(
+        key: const ValueKey('learn-search'),
+        controller: _searchCtl,
+        onChanged: _onSearchChanged,
+        style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey1),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: '找找看：关键词 / 主题',
+          hintStyle: const TextStyle(color: AppColors.darkGrey6, fontSize: 13),
+          prefixIcon: const Icon(Icons.search, size: 17, color: AppColors.darkGrey5),
+          suffixIcon: _query.isEmpty
+              ? null
+              : GestureDetector(
+                  onTap: () {
+                    _searchCtl.clear();
+                    _onSearchChanged('');
+                  },
+                  child: const Icon(Icons.close, size: 16, color: AppColors.darkGrey5),
+                ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListArea(List<LearnCardDto> cards) {
+    if (_query.isNotEmpty) {
+      if (_searching) return const Center(child: CircularProgressIndicator());
+      if (_searchError != null) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(_searchError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, height: 1.8, color: AppColors.darkGrey4)),
+          ),
+        );
+      }
+      final hits = _searchResults ?? const <LearnCardDto>[];
+      if (hits.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text('没找到和「$_query」对得上的卡。换个说法试试，或者把链接丢给我整理一篇。',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, height: 1.8, color: AppColors.darkGrey4)),
+          ),
+        );
+      }
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        children: hits.map(_buildCard).toList(),
+      );
+    }
     if (cards.isEmpty) {
       return const Center(
         child: Padding(
@@ -219,10 +466,45 @@ class _LearnPageState extends State<LearnPage> {
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: cards.length,
-      itemBuilder: (_, i) => _buildCard(cards[i]),
+    return _buildGroupedList(cards);
+  }
+
+  /// 最近学习按 type（中文名）→ topic 二级归置（组内 created 倒序）。
+  Widget _buildGroupedList(List<LearnCardDto> cards) {
+    final children = <Widget>[];
+    for (final group in groupLearnCards(cards)) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Row(children: [
+          Text(group.label,
+              key: ValueKey('learn-type-${group.type}'),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _typeColor(group.type))),
+          const SizedBox(width: 6),
+          Text('${group.count} 篇', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6)),
+        ]),
+      ));
+      for (final topic in group.topics) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            const Icon(Icons.folder_outlined, size: 13, color: AppColors.darkGrey5),
+            const SizedBox(width: 5),
+            Text(topic.label,
+                key: ValueKey('learn-topic-${group.type}-${topic.topic}'),
+                style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey4)),
+            const SizedBox(width: 6),
+            Text('${topic.cards.length}', style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey6)),
+          ]),
+        ));
+        children.addAll(topic.cards.map(_buildCard));
+      }
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+      children: children,
     );
   }
 
@@ -269,6 +551,11 @@ class _LearnPageState extends State<LearnPage> {
             ]),
           ),
           const SizedBox(width: 4),
+          if (!card.writable)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, right: 4),
+              child: Icon(Icons.lock_outline, size: 14, color: AppColors.darkGrey6),
+            ),
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Icon(Icons.chevron_right, size: 18, color: AppColors.darkGrey6),
@@ -307,10 +594,81 @@ class _LearnPageState extends State<LearnPage> {
   }
 }
 
-/// 单篇学习卡片全文页（核心观点 / 关键要点 / 我的疑问 / 交易标注）。
-class _LearnDetailPage extends StatelessWidget {
+/// 单篇学习卡片全文页（2026-09-12 完整升级批：走 GET /learn/content 拿 md 原文渲染）。
+/// 列表接口只给产品建模的四个段，Mac 侧技能整理的卡还有「关键内容详解 / 金句 / 与主题概念的关系」
+/// 等段——**本页渲染 md 全文**，产品没建模的段也看得到；读不到给错误态 + 重试。
+/// 只读卡（writable=false，Mac 上整理的原始卡）：编辑 / 复述 / 状态流转 / 反哺入口一律不出现，
+/// 只留一行说明——后端也会拒绝写入，不把用户送到墙上撞。
+class _LearnDetailPage extends StatefulWidget {
   final LearnCardDto card;
-  const _LearnDetailPage({required this.card});
+  final ApiService api;
+  const _LearnDetailPage({required this.card, required this.api});
+
+  @override
+  State<_LearnDetailPage> createState() => _LearnDetailPageState();
+}
+
+class _LearnDetailPageState extends State<_LearnDetailPage> {
+  bool _loading = true;
+  String? _error;
+  LearnCardContentDto? _content; // 拿到了就是全文权威（含 topic/writable）
+
+  /// 代际令牌：重试后旧回包作废（沿用既有防护写法）。
+  int _gen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _gen++;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final gen = ++_gen;
+    try {
+      final content = await widget.api.getLearnContent(
+        type: widget.card.type,
+        title: widget.card.title,
+      );
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _content = content;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _loading = false;
+        _error = _errText(e);
+      });
+    }
+  }
+
+  LearnCardDto get _card => widget.card;
+
+  /// 全文里的 writable 优先（列表可能来自旧缓存），缺省按卡上的值。
+  bool get _writable => _content?.writable ?? _card.writable;
+
+  String get _topicLabel =>
+      (_content != null && _content!.topic.isNotEmpty) ? _content!.topic : _card.topicLabel;
+
+  /// 展示用正文：优先后端的 body（已剥 frontmatter）；老后端没有该字段时自行剥壳兜底。
+  String get _md {
+    final body = (_content?.body ?? '').trim();
+    if (body.isNotEmpty) return body;
+    final raw = (_content?.content ?? '').trim();
+    final m = RegExp(r'^---\r?\n.*?\r?\n---\r?\n', dotAll: true).firstMatch(raw);
+    return m == null ? raw : raw.substring(m.end).trim();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +687,7 @@ class _LearnDetailPage extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: Text(card.title,
+                child: Text(_card.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
@@ -341,24 +699,12 @@ class _LearnDetailPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _typeRow(),
+                if (!_writable) ...[
+                  const SizedBox(height: 14),
+                  _readOnlyNote(),
+                ],
                 const SizedBox(height: 16),
-                if (card.coreView.isNotEmpty) _section('核心观点', card.coreView),
-                if (card.keyPoints.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  _listSection('关键要点', card.keyPoints),
-                ],
-                if (card.questions.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  _listSection('我的疑问', card.questions),
-                ],
-                if (card.tradeRelated) ...[
-                  const SizedBox(height: 18),
-                  _section('交易相关',
-                      card.tradeNote.isNotEmpty ? '涉及可执行交易规则（备注：${card.tradeNote}），规则变更须你拍板' : '涉及可执行交易规则，规则变更须你拍板'),
-                ],
-                const SizedBox(height: 18),
-                _section('复述',
-                    card.retell.isNotEmpty ? card.retell : '还没写复述。自己写 100-200 字才是真消化（编辑请到桌面端或让阿呆帮你）。'),
+                ..._buildContent(),
               ]),
             ),
           ),
@@ -367,15 +713,140 @@ class _LearnDetailPage extends StatelessWidget {
     );
   }
 
+  /// 正文：优先 md 全文（含产品未建模的段）；md 为空 → 拿列表里的结构化字段兜底。
+  List<Widget> _buildContent() {
+    if (_loading) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 50),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (_error != null) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Column(children: [
+            Icon(Icons.error_outline, size: 26, color: AppColors.darkOrange),
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(fontSize: 14, color: AppColors.darkGrey4)),
+            const SizedBox(height: 14),
+            GestureDetector(
+              key: const ValueKey('learn-content-retry'),
+              onTap: _load,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface2,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.3)),
+                ),
+                child: const Text('重试', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
+              ),
+            ),
+          ]),
+        ),
+      ];
+    }
+    if (_md.isNotEmpty) {
+      return [
+        MarkdownBody(
+          key: const ValueKey('learn-full-content'),
+          data: _md,
+          selectable: true,
+          styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+            textTheme: const TextTheme(bodyMedium: TextStyle(fontSize: 14, height: 1.7, color: AppColors.darkGrey2)),
+          )).copyWith(
+            p: const TextStyle(fontSize: 14, height: 1.7, color: AppColors.darkGrey2),
+            strong: const TextStyle(fontSize: 14, height: 1.7, color: AppColors.darkGrey1, fontWeight: FontWeight.w700),
+            h1: const TextStyle(fontSize: 16, height: 1.5, color: AppColors.darkGreen, fontWeight: FontWeight.w700),
+            h2: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.darkGreen, fontWeight: FontWeight.w700),
+            h3: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.darkGreen, fontWeight: FontWeight.w600),
+            code: const TextStyle(fontSize: 13, color: AppColors.darkGreen, backgroundColor: AppColors.darkBorder),
+            listBullet: const TextStyle(fontSize: 14, height: 1.7, color: AppColors.darkGrey2),
+            a: const TextStyle(fontSize: 14, color: AppColors.darkBlue),
+          ),
+        ),
+        // 写入口（复述）：只读卡不出现（后端也拒写，不让人撞墙）
+        if (_writable) ...[
+          const SizedBox(height: 22),
+          _retellEntry(),
+        ],
+      ];
+    }
+    // md 空（老卡/接口只给了元信息）→ 结构化兜底，别给人白屏
+    return [
+      if (_card.coreView.isNotEmpty) _section('核心观点', _card.coreView),
+      if (_card.keyPoints.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _listSection('关键要点', _card.keyPoints),
+      ],
+      if (_card.questions.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _listSection('我的疑问', _card.questions),
+      ],
+      if (_writable) ...[
+        const SizedBox(height: 18),
+        _retellEntry(),
+      ],
+    ];
+  }
+
+  /// 只读卡说明（writable=false：Mac 上整理的原始卡，只当资料看）。
+  Widget _readOnlyNote() {
+    return Container(
+      key: const ValueKey('learn-readonly-note'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkGrey6.withValues(alpha: 0.5)),
+      ),
+      child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: EdgeInsets.only(top: 2, right: 8),
+          child: Icon(Icons.lock_outline, size: 15, color: AppColors.darkGrey5),
+        ),
+        Expanded(
+          child: Text(
+            '这张是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你。',
+            style: TextStyle(fontSize: 12.5, height: 1.7, color: AppColors.darkGrey4),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// 复述写入口（只有能改的卡才出现）。
+  Widget _retellEntry() {
+    return Column(
+      key: const ValueKey('learn-write-actions'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _section('复述',
+            _card.retell.isNotEmpty ? _card.retell : '还没写复述。自己写 100-200 字才是真消化（编辑请到桌面端或让阿呆帮你）。'),
+        const SizedBox(height: 10),
+        const Text('这张卡能改：编辑、复习状态流转、反哺规则候选都在桌面端更顺手（手机端先当资料看）。',
+            style: TextStyle(fontSize: 11.5, height: 1.6, color: AppColors.darkGrey5)),
+      ],
+    );
+  }
+
   Widget _typeRow() {
     final meta = <String>[];
-    if (card.author.isNotEmpty) meta.add('作者：${card.author}');
-    if (card.platform.isNotEmpty) meta.add(card.platform);
-    if (card.created.isNotEmpty) meta.add(card.created);
+    if (_card.author.isNotEmpty) meta.add('作者：${_card.author}');
+    if (_card.platform.isNotEmpty) meta.add(_card.platform);
+    if (_card.created.isNotEmpty) meta.add(_card.created);
     return Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      _statusBadge(card.status),
-      Text(_typeLabel(card.type),
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _typeColor(card.type))),
+      if (_writable) _statusBadge(_card.status),
+      Text(learnTypeLabel(_card.type),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _typeColor(_card.type))),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.folder_outlined, size: 12, color: AppColors.darkGrey5),
+        const SizedBox(width: 4),
+        Text(_topicLabel, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ]),
       for (final m in meta)
         Text(m, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
     ]);
@@ -429,12 +900,6 @@ class _LearnDetailPage extends StatelessWidget {
         ],
       );
 
-  String _typeLabel(String type) => switch (type) {
-        'ai' => 'AI / 技术',
-        'trading' => '交易',
-        _ => '其他',
-      };
-
   Color _typeColor(String type) => switch (type) {
         'ai' => AppColors.darkGreen,
         'trading' => AppColors.darkRed,
@@ -442,15 +907,22 @@ class _LearnDetailPage extends StatelessWidget {
       };
 }
 
-/// 「整理新内容」喂入页（2026-09-10 喂入入口批·移动端；2026-09-12 抓取批接链接 + 转写费用确认）。
+/// 「整理新内容」喂入页（2026-09-10 喂入入口批·移动端；2026-09-12 抓取批接链接 + 转写费用确认；
+/// 2026-09-12 完整升级批接图片喂入 + 本月转写额度）。
 /// 提交式：POST /learn/digest（只丢链接也行，抓取交给服务端）→ 轮询 GET /learn/digest/status（每 2s，上限 150s）
 /// → done 以 (type,title) pop 回列表页打开新卡；failed 页内人话 + 可重试；
 /// needs_confirmation（视频没字幕、转写要花钱）→ 停轮询、亮出费用预估与「继续转写 / 先不转写」，
 /// 用户点头（POST /learn/digest/confirm）后才接着花钱；先不转写则到此为止（没花钱）；
+/// 图片路径：顶部「选图整理（1~3 张）」→ POST /learn/digest/image（multipart）→ 同一套轮询（stage=reading 正在读图）；
+/// 页内顺带显示本月转写额度（GET /learn/digest/quota，P2-learn15），查不到静默降级、不挡喂入；
 /// 超时/返回 → 消化仍在后台继续，稍后刷新可见（素材已留存 learn/_raw/ 兜底）。
 class _DigestInputPage extends StatefulWidget {
   final ApiService api;
-  const _DigestInputPage({required this.api});
+
+  /// 测试钩子：注入选图结果（等价 trading_page 的 debugPickImages，widget 测试不真调相册）。
+  final Future<List<PickedImage>> Function()? debugPickImages;
+
+  const _DigestInputPage({required this.api, this.debugPickImages});
 
   @override
   State<_DigestInputPage> createState() => _DigestInputPageState();
@@ -471,12 +943,19 @@ class _DigestInputPageState extends State<_DigestInputPage> {
   String? _cancelled; // 「先不转写」的结果人话（非 null = 这次到此为止）
   String _progress = '';
   LearnDigestJob? _job; // 最新一次状态（舞台/来源展示 + 费用提示来源）
+  LearnQuotaDto? _quota; // 本月转写额度（P2-learn15；查不到 = null，不挡喂入）
 
   /// 代际令牌：重试/确认后旧轮询自行失效，防两条轮询并行（沿用既有防护写法）。
   int _gen = 0;
 
   static const _pollInterval = Duration(seconds: 2);
   static const _pollDeadline = Duration(seconds: 150);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQuota();
+  }
 
   @override
   void dispose() {
@@ -486,6 +965,17 @@ class _DigestInputPageState extends State<_DigestInputPage> {
     _platformCtl.dispose();
     _authorCtl.dispose();
     super.dispose();
+  }
+
+  /// 本月转写额度（P2-learn15）：进页查一次，查不到静默降级——不弹错、不挡喂入。
+  Future<void> _loadQuota() async {
+    try {
+      final quota = await widget.api.getLearnQuota();
+      if (!mounted) return;
+      setState(() => _quota = quota);
+    } catch (_) {
+      // 静默：额度查不到不影响喂入
+    }
   }
 
   Future<void> _submit() async {
@@ -524,6 +1014,92 @@ class _DigestInputPageState extends State<_DigestInputPage> {
         _submitting = false;
         _error = _apiError(e);
       });
+    }
+  }
+
+  /// 选图整理（2026-09-12 完整升级批）：相册多选 1~3 张（书页/PPT/讲义/截图）→ 直接提交读图。
+  /// 与截图入账同交互：选完就送，不让人再点一次；测试注入 debugPickImages 跳过相册。
+  Future<void> _pickImages() async {
+    if (_submitting || _polling || _awaiting) return;
+    List<PickedImage> picked;
+    try {
+      if (widget.debugPickImages != null) {
+        picked = await widget.debugPickImages!();
+      } else {
+        final files = await ImagePicker().pickMultiImage(
+          maxWidth: 1920, // 限制长边（与 input_bar 同参）
+          imageQuality: 85,
+          limit: 3,
+        );
+        picked = [];
+        for (final f in files) {
+          final bytes = await f.readAsBytes();
+          picked.add(PickedImage(
+            bytes,
+            f.name,
+            f.name.contains('.') ? f.name.split('.').last : 'jpg',
+          ));
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '图片没选上来，再试一次');
+      return;
+    }
+    if (picked.isEmpty || !mounted) return;
+    if (picked.length > 3) picked = picked.take(3).toList();
+    await _submitImages(picked);
+  }
+
+  /// 提交图片消化（1~3 张）→ 同一套轮询（stage=reading「正在读图」）。
+  Future<void> _submitImages(List<PickedImage> images) async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _cancelled = null;
+      _confirmError = null;
+    });
+    final gen = ++_gen;
+    try {
+      await widget.api.submitLearnImages(
+        bytesList: images.map((i) => i.bytes).toList(),
+        filenames: images.map((i) => i.name).toList(),
+        mimeTypes: images.map((i) => _mimeOf(i.extension ?? '')).toList(),
+        type: _type,
+      );
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _submitting = false;
+        _polling = true;
+        _job = null;
+        _progress = '收到 ${images.length} 张图，我这就看…';
+      });
+      await _poll(gen);
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() {
+        _submitting = false;
+        _error = _apiError(e);
+      });
+    }
+  }
+
+  /// 扩展名 → mime（与 main_page/trading_page 同口径）。
+  String _mimeOf(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/png';
     }
   }
 
@@ -762,6 +1338,11 @@ class _DigestInputPageState extends State<_DigestInputPage> {
         Text(_confirmError!,
             style: const TextStyle(fontSize: 13, color: AppColors.darkRed, height: 1.6)),
       ],
+      if (_quota != null) ...[
+        const SizedBox(height: 12),
+        Text('本月转写额度：${_quota!.monthLabel}',
+            style: const TextStyle(fontSize: 11.5, height: 1.6, color: AppColors.darkGrey5)),
+      ],
       const SizedBox(height: 18),
       Row(children: [
         Expanded(
@@ -822,6 +1403,27 @@ class _DigestInputPageState extends State<_DigestInputPage> {
 
   Widget _buildForm() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // 选图整理（2026-09-12 完整升级批）：书页 / PPT / 讲义 / 截图 1~3 张 → 阿呆读图后整理成卡
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          key: const ValueKey('learn-pick-images'),
+          onPressed: _submitting ? null : _pickImages,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGreen,
+            side: BorderSide(color: AppColors.darkGreen.withValues(alpha: 0.4)),
+            padding: const EdgeInsets.symmetric(vertical: 11),
+          ),
+          icon: const Icon(Icons.image_outlined, size: 17),
+          label: const Text('选图整理（1~3 张）',
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text('书页 / PPT / 讲义 / 截图都行，我逐张读成文字再整理（原图我留着，源不丢）。',
+          style: TextStyle(fontSize: 11.5, color: AppColors.darkGrey5, height: 1.6)),
+      const SizedBox(height: 14),
+      _buildQuotaLine(),
       TextField(
         key: const ValueKey('learn-digest-link'),
         controller: _linkCtl,
@@ -904,5 +1506,34 @@ class _DigestInputPageState extends State<_DigestInputPage> {
       const Text('消化后卡片按类型归档，可进入复习队列定期回看；交易类会提示是否反哺规则候选。',
           style: TextStyle(fontSize: 11.5, color: AppColors.darkGrey5, height: 1.6)),
     ]);
+  }
+
+  /// 本月转写额度人话（P2-learn15）：查到才显示；查不到或不可用给对应人话，绝不挡喂入。
+  Widget _buildQuotaLine() {
+    final quota = _quota;
+    if (quota == null) return const SizedBox.shrink();
+    final unavailable = quota.unavailableLabel;
+    final text = unavailable.isNotEmpty
+        ? unavailable
+        : [quota.monthLabel, if (quota.priceLabel.isNotEmpty) quota.priceLabel].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        key: const ValueKey('learn-quota'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(children: [
+          const Icon(Icons.hourglass_bottom_outlined, size: 14, color: AppColors.darkGrey5),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(fontSize: 11.5, height: 1.6, color: AppColors.darkGrey4)),
+          ),
+        ]),
+      ),
+    );
   }
 }

@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.59 | 最后更新：2026-09-12**
+**文档版本：v3.60 | 最后更新：2026-09-12**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-12 | v3.60 | **learn 完整升级批（用户拍板「我要的是完整的升级，成熟的方案」）**——learn 从「能用」变「完整可用」：产物契约与 Mac 侧技能统一 + 图片源 + 对话流 + 全文 + 搜索。①**落盘结构统一**：新卡从扁平 `{type}/{yyyy-MM-dd}_{title}.md` 改为 **`{type}/{topic}/NN-{slug}.md`**（主题目录 + 主题内编号，与 Mac 上 DSH 技能产物同契约），自动维护主题 `README.md`（产品只**追加** `## 阿呆整理记录（自动维护）` 段，**不重写**手工 README）；原始素材从 `learn/_raw/` 暂存区**归位**到 `{type}/{topic}/_raw/`（源与卡放一起）；老扁平卡**照旧可读可写、不强制迁移**。②**LearnCard 新增 `topic`（主题目录名，缺省「未归类」）与 `writable`（false = Mac 上整理的原始卡，只读）**；同名时**本产品卡优先**，别处手工卡同名不再拦住新建（P2-learn20 修复）。③**新端点 `GET /learn/content`**（按 md **原文**返回全文 + 元信息——列表只有产品建模的四段，手工卡的「关键内容详解/金句/概念关系」只在原文里）。④**新端点 `GET /learn/find`**（找卡片：「打开那篇」与学习页搜索，纯规则打分不烧 AI）。⑤**新端点 `POST /learn/digest/image`**（图片源：书页/PPT/讲义/截图 1~3 张 → 视觉模型**忠实提取**文字与图意 → 同一条消化流水线；原图先落 `_raw/`）。⑥`GET /learn/digest/status` 的 `stage` 新增 **`reading`**（正在读图）。⑦**新端点 `POST /learn/migrate`**（**幂等**：把 V1/V2 老式扁平卡 `{type}/{date}_{title}.md` 一次性迁到主题目录，补 `origin`/`topic` 键 + 主题内续号 + 维护该主题 README；Mac 侧技能整理的主题目录卡**一动不动**）。端点 130→**134** |
 | 2026-09-12 | v3.59 | **learn 读侧对齐批（同一个 learn 目录有两个写入方）**——目录里既有产品写的卡（`{type}/{date}_{title}.md`），也有 Mac 上 DSH 技能 A 写在主题子目录里的手工卡（`{type}/{topic}/NN-{slug}.md`，文件名与段名都不一样）。本批**只改读侧与写守卫，不动任何落盘格式**：①`GET /learn/tree`、`GET /learn/cards`、`GET /learn/card` 现在能正确读出 A 形态卡的核心观点/疑问（段名容错：`## 核心观点（一句话）`、`## 二、核心观点` 均识别；A 的 `## 内容脉络` 不做语义改名，如实不映射为「关键要点」）；②`PATCH /learn/cards`、`PATCH /learn/cards/status` 对**产品之外的卡**（A 在 Mac 上整理的原始卡）返回 **400 + 人话**「这张《X》是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它；想改的话我可以照它的内容另存一张能编辑的给你」（原先因按产品路径读写而报「卡片不存在」，语义不准）；③同端点的产品卡行为不变。无端点增删 |
 | 2026-09-12 | v3.58 | **learn 抓取批·对抗审查修复（独立审查官 10 条：P0×2/P1×5/P2×3，全部处置）**——**对外行为有四处在用户可感知层面变了**：①**出站白名单（SSRF 修复）**：`POST /learn/digest` 的 `url` 现在会先过出站策略——**私有/回环/链路本地/云元数据地址、非 80/443 端口、非 http(s) 协议一律 400 人话拒绝**（「这个地址不像是能公开访问的内容页，我就不去抓了」），重定向改为**逐跳复检**（超 3 跳 → 人话拒绝），字幕/快照等第三方响应地址收敛到域名白名单，响应体加上限（正文 4MB / 音频 64MB，超限人话失败）；②**不再把「字幕接口报错」当「没字幕」**：接口报错/限流是可重试错误 → 直接人话失败（「B站字幕接口这次没返回（可能限流了），稍后再试一次」），**不再弹付费转写确认**（原先会引导用户为本来能省的钱买单）；同理**音频地址拿不到时在报价前就失败**，不让用户为做不到的事点头；③**转写费用按实际时长结算**（原先一律按预估；时长未知按 30 分钟估会低估）——`GET /learn/digest/quota` 与 `cost` 里的数字现在反映转码产物的真实时长；④**先预留后花钱**：转写前先记账（账本写不进去就一分钱不花），转写失败**退回预留**，因此「转写失败」不再消耗额度；另：账本文件损坏时**拒绝转写**（fail-closed，原先按空账本处理等于额度归零、闸门失效）；落盘要求「核心观点或要点至少一个非空」（原先只有标题也会落一张空卡）；等确认期间 `stage` 置空（原先返回 `transcribing`，前端会显示「正在转写」而实际在等你拍板）。无端点增删 |
 | 2026-09-12 | v3.57 | **learn 抓取批（RFC 20260912 D 形态，阶段 1 抓取主干）**：learn 从「用户自己搞素材来粘」升级为**服务端自己抓**（这是 B 形态失败的根本原因——把最费力的一步留给了用户）。①**新端点 `POST /learn/digest`**（旧 `POST /learn/cards` 保留为兼容别名）：body 支持 `url`（**服务端抓取** B站视频元数据/字幕、文章正文）或 `content`（降级路径：抓不到时用户粘正文），二者至少一个；素材框里只粘了一个裸链接 → 自动按链接处理（不再拿链接本身当素材白烧一次 AI）；链接与正文同时给出 → 正文为准、链接只记来源；②**新端点 `POST /learn/digest/confirm`**（费用确认，**§3.8 费用可控条 5**）：无字幕视频要花钱转写，先回「该视频 37 分钟，预计约 0.18 元（本月剩余额度 10 小时）」→ 用户点头才真调云端 ASR；`{"confirm":false}` = 取消（元数据已留存，**不产生费用**）；③**新端点 `GET /learn/digest/quota`**（费用可控条 4）：本月转写用量/费用/剩余额度 + 单价 + ASR 可用性（不可用时带人话原因）；④**`GET /learn/digest/status` 扩展**：新增 `stage`（fetching/transcribing/structuring，抓取批后耗时从秒级变分钟级，进度要可见）、`source`（抓到的平台/标题/作者/时长回显）、`cost`（单次预估 + 本月额度）；status 取值新增 `needs_confirmation` / `cancelled`；⑤**费用可控六条落地**：字幕优先（有字幕就不转写）／同一素材只转一次（转写稿落 `_raw/{platform}-{id}-transcript.txt`，重整理零费用）／只在你明确发话时花钱（无批量后台转写）／月度配额硬闸 + 记账（`data/{userId}/learn/_quota.json`，月初自动重置，超限拒绝并说明剩余）／单次前置报价确认／ASR 走端口（可换更便宜通道）；⑥**源必留痕**：抓到的元数据/字幕/文章全文/转写稿全部落 `learn/_raw/`（文章会失效、原音频丢了不可重建）；⑦**首期不做清单明确**：YouTube（服务器网络不可达）、公众号/知乎/小红书/X/微博/抖音（反爬与登录墙）→ **人话告知 + 给替代路径**（把正文粘进来），不假装能抓、不绕登录墙 |
@@ -1991,7 +1992,9 @@ chat 模式（全屏）
 
 ## 18. learn 学习沉淀（learn 插件，RFC 20260829）
 
-> **learn 插件 V1（2026-09-06 用户拍板开工）**：外部内容（视频字幕/文章/链接原文）喂入 → AI 结构化卡片（RFC 3.4 渐进式摘要四段）→ File First 落 `data/{userId}/learn/{type}/{yyyy-MM-dd}_{title}.md` → 列表/资产树查询。V1 为**独立端点喂入**（2026-09-06 用户拍板：仿截图入账先例，learn 消化是动作不是记录——不建记录、不沉淀记忆、不污染 Feed/时间线；**不经 POST /records 主链路**）。资产页浏览（目录树+全文渲染）与 LearnKnowledgeSource 问答注入为 L2。
+> **learn 插件 V1（2026-09-06 用户拍板开工）**：外部内容（视频字幕/文章/链接原文）喂入 → AI 结构化卡片（RFC 3.4 渐进式摘要四段）→ File First 落 `data/{userId}/learn/` → 列表/资产树查询。V1 为**独立端点喂入**（2026-09-06 用户拍板：仿截图入账先例，learn 消化是动作不是记录——不建记录、不沉淀记忆、不污染 Feed/时间线；**不经 POST /records 主链路**）。资产页浏览（目录树+全文渲染）与 LearnKnowledgeSource 问答注入为 L2。
+>
+> **落盘结构（v3.60 起）**：`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + 主题 `_raw/`（**与 Mac 侧 DSH 技能 `learn-digest` 同契约**：手工整理与产品整理共用同一目录，读得到对方的产物）。V1/V2 时代的扁平 `{type}/{yyyy-MM-dd}_{title}.md` **照旧可读可写**（原地不动、不强制迁移）。
 >
 > 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading/project 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
 >
@@ -2104,7 +2107,7 @@ chat 模式（全屏）
 ```
 
 - `status`：`pending`（受理，后台消化中）/ `running`（同 user 已有消化在跑——连点/双端并发去重，不重复烧 AI，前端直接轮询）
-- 卡片消化完成不在此响应返回，走 `GET /learn/digest/status` 轮询到 `done` 后按 `type/title` 经 `GET /learn/card` 打开全文
+- 卡片消化完成不在此响应返回，走 `GET /learn/digest/status` 轮询到 `done` 后按 `type/title` 经 `GET /learn/content` 读全文（**v3.60**：落 `{type}/{topic}/NN-{slug}.md`，`topic` 由 LLM 判定并优先归并到已有主题目录）
 - `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、消化任务繁忙（队列满）；AI 消化失败不在此返回——后台失败后 `GET /learn/digest/status` 返回 `failed` + 人话 message（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
 - `403`：learn 插件未启用
 
@@ -2118,7 +2121,7 @@ chat 模式（全屏）
 | `type` | String? | 仅 `done`：新卡 type（ai/trading/other） |
 | `title` | String? | 仅 `done`：新卡标题（供 `GET /learn/card` 打开） |
 | `message` | String? | 人话：`failed` 原因 / `needs_confirmation` 报价文案 / `cancelled` 说明；进行中为 null |
-| `stage` | String? | **v3.57**：进行中阶段 `fetching`（抓取原文）/ `transcribing`（云端转写，分钟级）/ `structuring`（整理成卡片）；任务结束后清空 |
+| `stage` | String? | **v3.57**：进行中阶段 `fetching`（抓取原文）/ `transcribing`（云端转写，分钟级）/ `structuring`（整理成卡片）；**v3.60 新增 `reading`（正在读图，图片源）**；任务结束后清空 |
 | `source` | Object? | **v3.57**：抓到的源信息 `{platform,title,author,durationSeconds}`（抓取成功后即可回显，让用户看到阿呆在抓什么） |
 | `cost` | Object? | **v3.57**：转写费用视图 `{durationSeconds,durationKnown,estimatedYuan,monthUsedSeconds,quotaSeconds,remainSeconds}`（等确认时必填；`durationKnown=false` 表示时长未知、按 30 分钟保守估算） |
 
@@ -2139,11 +2142,85 @@ chat 模式（全屏）
 - 任务态为**内存态**（按 userId 单任务）：`done`/`failed`/`cancelled` 结果保留 60s 惰性清理回 `idle`；`needs_confirmation` 保留 **30 分钟**（用户可能过一会儿才点确认）；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
 - `403`：learn 插件未启用
 
-### `GET /api/v1/learn/cards` — 卡片列表（v3.48）
+### `GET /api/v1/learn/cards` — 卡片列表（v3.48；v3.60 加 topic/writable）
 
 **Query Parameters**：`type`（可选 ai/trading/other；缺省返回全部，按 created 倒序）
 
 **Response** `200` LearnCard 数组（元数据 + 正文段字段）。`type` 非法 → 400。
+
+**LearnCard 字段（v3.60 新增两个）**：
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `topic` | String | **v3.60**：主题目录名（同一主题的多源归并到一个目录）；老式扁平卡与未归类卡为 `未归类` |
+| `writable` | Boolean | **v3.60**：`true` = 本产品产出的卡（可编辑/流转/反哺）；`false` = **在 Mac 上用 DSH 技能整理的原始卡 → 只读**（列表与全文照常可见，写操作后端返回 400 人话） |
+
+### `GET /api/v1/learn/content` — 卡片全文（md 原文，v3.60）
+
+> **为什么需要**：列表/单篇接口返回的是产品建模的段（核心观点/关键要点/我的疑问/复述），而 Mac 侧技能整理的卡还有「关键内容详解 / 金句 / 与主题概念的关系 / 概念追踪」等段——**只按建模字段渲染就"看得见、读不全"**。本端点按 md 原文返回，两种来源的卡都能完整呈现。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | ✅ | ai/trading/other |
+| `title` | String | ✅ | 卡片标题（精确匹配） |
+
+**Response** `200`：
+
+```json
+{ "type": "ai", "title": "Harness 到底是什么？", "topic": "harness-engineering",
+  "writable": false, "content": "---\ntitle: ...\n---\n\n## 核心观点（一句话）\n..." }
+```
+
+- `400`：`type` 非法（仅 ai/trading/other）/ 卡片不存在（人话）；`403`：learn 插件未启用
+
+### `GET /api/v1/learn/find` — 找卡片（「打开那篇」+ 学习页搜索，v3.60）
+
+> 纯**规则打分**（标题 > 主题 > 标签 > 核心观点/要点），**不烧 AI**；服务端已排序，前端直接用。
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `q` | String | ✅ | 关键词（整句也可以，按子串 + 分词匹配）；空白 → 空数组 |
+| `limit` | Integer | 否 | 返回上限（默认 5，最大 20） |
+
+**Response** `200`：LearnCard 数组（相关度降序；同分按 created 倒序）。空命中 → `[]`（前端自行兜底话术）。
+
+### `POST /api/v1/learn/digest/image` — 图片喂入（书页/PPT/截图，v3.60）
+
+> 图片源（RFC 20260912 §3.5「复用现有图片上传通道 + VLM」）：**视觉模型只做「忠实提取」**（逐字抄录 + 图表含义 + 存疑标注），结构化交给文本模型——与链接/素材**同一条消化流水线**（提交式 + 同一套轮询）。
+
+**Request**：`multipart/form-data`
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `files` | File[] | ✅ | 1~3 张图片（png/jpg/webp，单张 ≤ 5MB）；**非图片类型 → 400**；>3 张 → 400 |
+| `type` | String | 否 | ai/trading/other（缺省由 LLM 判定） |
+| `note` | String | 否 | 给读图模型的补充说明（如「这是我拍的板书，第 3 页」） |
+
+**Response** `200`：`{ "status": "pending" }`（同 `POST /learn/digest`，随后轮询 `GET /learn/digest/status`，此时 `stage=reading`）
+
+- 原图**先落** `data/{userId}/learn/_raw/image-N-{hash}.{ext}`（源必留痕：原图丢了不可重建），消化成功后随卡**归位**到 `{type}/{topic}/_raw/`
+- `400`：没有图片 / 非图片类型 / 单张超 5MB / 超过 3 张 / type 非法 / 空图；`403`：learn 插件未启用
+- 读图失败（模型异常）→ 任务 `failed` + 人话（原图已留存，可重试）；读出的内容为空 → 人话「换一张清楚的，或者把文字粘进来」
+
+### `POST /api/v1/learn/migrate` — 老式扁平卡一次性迁移（v3.60）
+
+> **为什么需要**：V1/V2 的产品卡落在 `{type}/{yyyy-MM-dd}_{title}.md`，与 Mac 侧技能的主题目录契约不同构。迁移后两个写入方才真正同一契约。老卡**不迁也能照常用**（原地可读可写），所以这是**可选的一次动作**，不是强制的启动改造。
+
+**Response** `200`：
+
+```json
+{ "migrated": 1,
+  "items": [ { "type": "ai", "from": "learn/ai/2026-09-12_老卡.md", "to": "learn/ai/未归类/01-老卡.md" } ] }
+```
+
+- **幂等**：已迁过 → `{"migrated":0,"items":[]}`
+- 主题取该卡 frontmatter 的 `topic`（缺省 → `未归类`）；正文**一字不动**（只补 `origin: product` + `topic` 两个键并挪位置）
+- 安全：目标写成功但老文件删不掉 → **回滚目标**（宁可不迁，也不留两张同名可写卡）；认不出是卡的文件（无 frontmatter）**原地不动**
+- `403`：learn 插件未启用
 
 ### `GET /api/v1/learn/card` — 单篇卡片全文（v3.48）
 
