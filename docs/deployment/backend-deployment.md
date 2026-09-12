@@ -224,7 +224,7 @@ cd services/adai-core
 > export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=… no_proxy=82.156.111.146 NO_PROXY=82.156.111.146
 > bash ai-engineering/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
 > ```
-| 月度转写配额 | `adai.learn.asr.month-quota-seconds`（默认 `36000` = 10 小时，**与云端免费额度对齐**：百炼语音识别模型有每月 1 日重置、长期有效的 36,000 秒免费额度，默认模型 `paraformer-v2` 就在其中）| 用满即拒绝并说明剩余额度，不会静默花钱 |
+| 月度转写配额 | `adai.learn.asr.month-quota-seconds`（**默认 `108000` = 30 小时**，用户 2026-09-13 拍板：前 10 小时走云端免费额度=0 元，超出部分按 0.288 元/小时，最坏 ≈5.76 元/月；想完全不花钱就调回 `36000`）| 用满即拒绝并说明剩余额度，不会静默花钱 |
 > **免费额度按模型快照绑定（2026-09-13 用户控制台核对）**：默认模型 `paraformer-v2` 有 **36,000 秒（10 小时）· 每月 1 日重置 · 长期有效** 的免费额度（本产品当前就用它，所以额度内转写 0 元）；而同账号 `fun-asr-flash-2026-06-15` 是另一种带到期日的额度（2026-09-16 到期）且该模型**仅支持 ≤5 分钟短音频**，与长视频场景不通用。**结论：默认保持不变**；`adai.learn.asr.model` 可换模型，但换之前必须确认两件事：① 该模型支持长音频；② 与现有「录音文件异步转写」API 兼容，并同步改 `yuan-per-hour`。
 
 | 转写单价（用于报价估算）| `adai.learn.asr.yuan-per-hour`（默认 `0.288`，对应 `paraformer-v2` 官方价 0.00008 元/秒）；若改用 `fun-asr`（0.00022 元/秒 = 0.792 元/小时）**必须同步改这个值**，否则报价会低估。默认模型有每月 10 小时免费额度，额度内实际 0 元 |

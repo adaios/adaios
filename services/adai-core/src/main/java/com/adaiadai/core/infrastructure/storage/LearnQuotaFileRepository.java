@@ -39,9 +39,9 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
     private final int quotaSeconds;
 
     public LearnQuotaFileRepository(com.adaiadai.core.kernel.storage.FileStorage fileStorage,
-                                    @Value("${adai.learn.asr.month-quota-seconds:36000}") int quotaSeconds) {
+                                    @Value("${adai.learn.asr.month-quota-seconds:108000}") int quotaSeconds) {
         this.fileStorage = fileStorage;
-        this.quotaSeconds = quotaSeconds > 0 ? quotaSeconds : 36000;
+        this.quotaSeconds = quotaSeconds > 0 ? quotaSeconds : 108000;
     }
 
     private Object lockFor(String userId) {
