@@ -234,12 +234,18 @@ bool isTdxHistoryExport(String text) {
   return false;
 }
 
-/// 通达信解析结果：持仓快照行 + 错误列表。
+/// 通达信解析结果：持仓快照行 + 错误列表 + 已清空跳过行。
+///
+/// [errors] 与 [skipped] 的区别（2026-09-13 负成本批）：
+/// - [errors] = **没看懂**的行（数量/成本列取不到数、代码不是 6 位）→ 调用方必须**拒绝整份导入**：
+///   持仓导入是 `replace=true` 全量覆盖，漏掉一行 = 那只持仓被静默删除。
+/// - [skipped] = **看懂了、但本来就不是持仓**的行（0 股残留）→ 正常导入，只需告知。
 class TdxParseResult {
   final List<TdxPositionRow> rows;
   final List<String> errors;
+  final List<String> skipped;
 
-  TdxParseResult({required this.rows, required this.errors});
+  TdxParseResult({required this.rows, required this.errors, this.skipped = const []});
 
   bool get hasErrors => errors.isNotEmpty;
 }
@@ -252,6 +258,7 @@ class TdxParseResult {
 TdxParseResult parseTdxPositions(String text) {
   final rows = <TdxPositionRow>[];
   final errors = <String>[];
+  final skipped = <String>[];
   final lines = text.split(RegExp(r'[\r\n]+'));
   List<int>? col;
 
@@ -279,8 +286,13 @@ TdxParseResult parseTdxPositions(String text) {
       errors.add('无法识别通达信表头（需要 证券代码/股票余额/成本价 列），请确认是持仓导出');
       break;
     }
-    if (cells.length <= col[2]) {
-      errors.add('第 ${i + 1} 行：字段不足');
+    // 2026-09-13 负成本批修复：原实现只校验到数量列（col[2]），却继续读成本列（col[3]）
+    // → 行比表头短时 cells[col[3]] 抛 RangeError（粘贴半截文件即触发），
+    // 异常穿过解析器被上层 catch 成人话「导入失败：Invalid value...」，既难查也不体面。
+    // 这里按「实际要读的最大列下标」校验。
+    final needMax = [col[0], col[2], col[3]].reduce((a, b) => a > b ? a : b);
+    if (cells.length <= needMax) {
+      errors.add('第 ${i + 1} 行：字段不足（需要至少 ${needMax + 1} 列，实际 ${cells.length} 列）');
       continue;
     }
     final symbol = cells[col[0]].toUpperCase();
@@ -290,16 +302,30 @@ TdxParseResult parseTdxPositions(String text) {
     }
     final name = col[1] >= 0 && col[1] < cells.length ? cells[col[1]] : '';
     final quantity = int.tryParse(cells[col[2]].replaceAll(',', ''));
-    if (quantity == null || quantity <= 0) {
-      errors.add('第 ${i + 1} 行：数量「${cells[col[2]]}」不是有效正整数');
+    if (quantity == null) {
+      errors.add('第 ${i + 1} 行 $symbol $name：数量「${cells[col[2]]}」不是整数');
       continue;
     }
+    // 0 股 = 券商文件里保留的已清空标的（不是持仓，也不是脏数据）→ 跳过但不报错
+    if (quantity == 0) {
+      skipped.add('$symbol $name（0 股，已清空）');
+      continue;
+    }
+    if (quantity < 0) {
+      errors.add('第 ${i + 1} 行 $symbol $name：数量「$quantity」为负，不是有效持仓');
+      continue;
+    }
+    // 成本价：**负数合法**（反复做 T / 分红把成本摊到 0 以下是真实存在且券商就这么记的，
+    // 实测 600601 方正科技 成本 −5.078 / 100 股，券商那行盈亏 +134% 正说明成本在 0 以下）。
+    // 2026-09-13 负成本批修复：原实现 cost <= 0 一律当脏数据丢弃 → 用户 3 只持仓只进来 2 只，
+    // 且因 replace 全量覆盖语义，若该票原本在持仓里会被**静默删除**。
+    // 只有「取不到数」（空列/非数字）才是真错误。
     final cost = double.tryParse(cells[col[3]].replaceAll(',', ''));
-    if (cost == null || cost <= 0) {
-      errors.add('第 ${i + 1} 行：成本价「${cells[col[3]]}」不是有效正数');
+    if (cost == null) {
+      errors.add('第 ${i + 1} 行 $symbol $name：成本价「${cells[col[3]]}」不是数字');
       continue;
     }
     rows.add(TdxPositionRow(symbol: symbol, name: name, quantity: quantity, avgCost: cost));
   }
-  return TdxParseResult(rows: rows, errors: errors);
+  return TdxParseResult(rows: rows, errors: errors, skipped: skipped);
 }

@@ -77,14 +77,17 @@ public class MarketContextContributor implements ContextContributor {
                 BigDecimal price = md != null ? md.price() : p.currentPrice();
                 BigDecimal pnl = price.subtract(p.avgCost())
                         .multiply(BigDecimal.valueOf(p.quantity()));
+                // 负/零成本 → 百分比无意义，写字面「—」而不是 0.00%（2026-09-13 负成本批）
                 BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
                         ? price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-                        : BigDecimal.ZERO;
+                        : null;
 
                 sb.append("\n- ").append(p.name()).append("(").append(p.symbol()).append(")")
                         .append(" 现价").append(price.stripTrailingZeros().toPlainString())
-                        .append(" ").append(pnlPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                        .append(pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString()).append("%");
+                        .append(" ")
+                        .append(pnlPct == null ? "—（成本非正，百分比不适用）"
+                                : (pnlPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                                  + pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString() + "%");
             }
         }
 
@@ -152,7 +155,7 @@ public class MarketContextContributor implements ContextContributor {
             BigDecimal pnl = value.subtract(cost);
             BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
                     ? price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-                    : BigDecimal.ZERO;
+                    : null;
 
             totalValue = totalValue.add(value);
             totalPnl = totalPnl.add(pnl);
@@ -182,6 +185,10 @@ public class MarketContextContributor implements ContextContributor {
     }
 
     private String formatPct(BigDecimal pct) {
+        // null = 无意义（负/零成本，2026-09-13 负成本批）→ 字面「—」，不冒充 0%
+        if (pct == null) {
+            return "—";
+        }
         if (pct.compareTo(BigDecimal.ZERO) >= 0) {
             return "+" + pct.setScale(2, RoundingMode.HALF_UP).toPlainString() + "%";
         }

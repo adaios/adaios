@@ -1415,7 +1415,10 @@ class _TradingPageState extends State<TradingPage> {
         ? AppColors.darkRed
         : (isLoss ? AppColors.darkGreen : AppColors.darkGrey3);
     final pnlStr = '${p.pnl >= 0 ? '+' : ''}${_fmtMoney(p.pnl)}';
-    final pctStr = '${p.pnlPercent >= 0 ? '+' : ''}${p.pnlPercent.toStringAsFixed(1)}%';
+    // 负/零成本 → pnlPercent 为 null → 「—」；百分比符号翻转时给数字反而误导（2026-09-13 负成本批）
+    final pctStr = p.pnlPercent == null
+        ? '—'
+        : '${p.pnlPercent! >= 0 ? '+' : ''}${p.pnlPercent!.toStringAsFixed(1)}%';
     return GestureDetector(
       onTap: () => _showAdvice(p),
       child: Container(
@@ -2107,7 +2110,8 @@ String _fmtShortDate(String yyyyMMdd) {
 /// 批次盈亏%：持有中/初始底仓用后端浮动 pnlPct；已清仓回合 = realizedPnl / (成本×买入量)
 /// （后端无回合百分比字段，前端算；与 web 同口径）。
 String _lotPnlPctText(LotItem lot) {
-  if (!lot.closed) return '${lot.pnlPct.toStringAsFixed(2)}%';
+  // 负/零成本 → 后端给 null（百分比语义翻转），显示「—」而不是 0.00%
+  if (!lot.closed) return lot.pnlPct == null ? '—' : '${lot.pnlPct!.toStringAsFixed(2)}%';
   final realized = lot.realizedPnl;
   final cost = lot.costPrice * lot.volume;
   if (realized == null || cost <= 0) return '—';

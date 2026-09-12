@@ -2001,7 +2001,9 @@ class PositionItem {
   final double currentPrice;
   final double marketValue;
   final double pnl;
-  final double pnlPercent;
+  /// 浮动盈亏%：**负/零成本时为 null**（后端 Position.pnlPercent 语义，2026-09-13 负成本批）
+  /// ——前端必须渲染成「—」而不是 0%：「0%」会被读成「没涨没跌」，与「成本已为负」是两回事。
+  final double? pnlPercent;
   // RFC 20260816：持仓详细管理字段（后端 P0 落盘，web P1 编辑；旧数据缺失 → null 兜底）
   final String? entryDate; // 首买日 yyyy-MM-dd
   final double? stopLossPrice; // 人工止损位（最近 BUY 值 / web 编辑；可空）
@@ -2020,7 +2022,7 @@ class PositionItem {
     required this.currentPrice,
     required this.marketValue,
     required this.pnl,
-    required this.pnlPercent,
+    this.pnlPercent,
     this.entryDate,
     this.stopLossPrice,
     this.buyPoint,
@@ -2038,7 +2040,7 @@ class PositionItem {
     currentPrice: (json['currentPrice'] as num?)?.toDouble() ?? 0,
     marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
-    pnlPercent: (json['pnlPercent'] as num?)?.toDouble() ?? 0,
+    pnlPercent: (json['pnlPercent'] as num?)?.toDouble(),
     entryDate: json['entryDate'] as String?,
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
     buyPoint: json['buyPoint'] as String?,
@@ -2107,7 +2109,8 @@ class LotItem {
   final double currentPrice; // 现价（行情失败=成本价）
   final double marketValue; // 剩余部分市值
   final double pnl; // 剩余部分浮动盈亏
-  final double pnlPct;
+  /// 剩余部分浮动盈亏%：**负/零成本时为 null**（后端给「—」语义，2026-09-13 负成本批）
+  final double? pnlPct;
   final double? stopLossPrice; // 止损（未设时后端已按默认 −7% 兜底返回）
   final double? stopLossDistancePct; // 距止损%（正=安全，负=已破）
   final String? buyPoint;
@@ -2127,7 +2130,7 @@ class LotItem {
     required this.currentPrice,
     required this.marketValue,
     required this.pnl,
-    required this.pnlPct,
+    this.pnlPct,
     this.stopLossPrice,
     this.stopLossDistancePct,
     this.buyPoint,
@@ -2150,7 +2153,7 @@ class LotItem {
       currentPrice: (m['currentPrice'] as num?)?.toDouble() ?? 0,
       marketValue: (m['marketValue'] as num?)?.toDouble() ?? 0,
       pnl: (m['pnl'] as num?)?.toDouble() ?? 0,
-      pnlPct: (m['pnlPct'] as num?)?.toDouble() ?? 0,
+      pnlPct: (m['pnlPct'] as num?)?.toDouble(),
       stopLossPrice: (m['stopLossPrice'] as num?)?.toDouble(),
       stopLossDistancePct: (m['stopLossDistancePct'] as num?)?.toDouble(),
       buyPoint: m['buyPoint']?.toString(),

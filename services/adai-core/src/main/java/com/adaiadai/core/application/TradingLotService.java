@@ -543,7 +543,9 @@ public class TradingLotService {
                 ? currentPrice : lot.costPrice();
         BigDecimal marketValue = price.multiply(BigDecimal.valueOf(lot.remaining()));
         BigDecimal pnl = price.subtract(lot.costPrice()).multiply(BigDecimal.valueOf(lot.remaining()));
-        BigDecimal pnlPct = BigDecimal.ZERO;
+        // 负/零成本 → 百分比无意义 → null（前端显示「—」）；原实现给 0 会被读成「不赚不亏」
+        // （2026-09-13 负成本批，与 Position.pnlPercent 同口径）
+        BigDecimal pnlPct = null;
         if (lot.costPrice().compareTo(BigDecimal.ZERO) > 0) {
             pnlPct = price.subtract(lot.costPrice()).divide(lot.costPrice(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));

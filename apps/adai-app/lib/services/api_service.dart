@@ -1583,7 +1583,9 @@ class PositionItem {
   final double currentPrice;
   final double marketValue;
   final double pnl;
-  final double pnlPercent;
+  /// 浮动盈亏%：**负/零成本时为 null**（后端 Position.pnlPercent 语义，2026-09-13 负成本批）
+  /// ——前端必须渲染成「—」而不是 0%。
+  final double? pnlPercent;
   final double? stopLossPrice; // 2026-08-17 对齐 web：止损位（持仓卡显示）
 
   PositionItem({
@@ -1594,7 +1596,7 @@ class PositionItem {
     required this.currentPrice,
     required this.marketValue,
     required this.pnl,
-    required this.pnlPercent,
+    this.pnlPercent,
     this.stopLossPrice,
   });
 
@@ -1606,7 +1608,7 @@ class PositionItem {
     currentPrice: (json['currentPrice'] as num?)?.toDouble() ?? 0,
     marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
-    pnlPercent: (json['pnlPercent'] as num?)?.toDouble() ?? 0,
+    pnlPercent: (json['pnlPercent'] as num?)?.toDouble(),
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
   );
 }
@@ -1641,7 +1643,8 @@ class LotItem {
   final double currentPrice;
   final double marketValue;
   final double pnl;
-  final double pnlPct;
+  /// 剩余部分浮动盈亏%：**负/零成本时为 null**（2026-09-13 负成本批）
+  final double? pnlPct;
   final double? stopLossPrice;
   final double? stopLossDistancePct;
   final String? buyPoint;
@@ -1661,7 +1664,7 @@ class LotItem {
     this.currentPrice = 0,
     this.marketValue = 0,
     this.pnl = 0,
-    this.pnlPct = 0,
+    this.pnlPct,
     this.stopLossPrice,
     this.stopLossDistancePct,
     this.buyPoint,
@@ -1682,7 +1685,7 @@ class LotItem {
     currentPrice: (json['currentPrice'] as num?)?.toDouble() ?? 0,
     marketValue: (json['marketValue'] as num?)?.toDouble() ?? 0,
     pnl: (json['pnl'] as num?)?.toDouble() ?? 0,
-    pnlPct: (json['pnlPct'] as num?)?.toDouble() ?? 0,
+    pnlPct: (json['pnlPct'] as num?)?.toDouble(),
     stopLossPrice: (json['stopLossPrice'] as num?)?.toDouble(),
     stopLossDistancePct: (json['stopLossDistancePct'] as num?)?.toDouble(),
     buyPoint: json['buyPoint'] as String?,

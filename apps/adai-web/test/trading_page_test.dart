@@ -676,6 +676,94 @@ void main() {
       expect(find.textContaining('未设止损 1 只'), findsOneWidget);
     });
 
+    // ── 负成本事故（2026-09-13）核心行为：看不懂的行 → 拒绝全量覆盖，不发请求 ──
+    // 现场：用户 3 只持仓只进来 2 只、界面无任何提示。根因是解析器把负成本当脏数据静默丢弃，
+    // 而持仓导入是 replace=true 全量覆盖——漏一行 = 该持仓被静默删除。
+    testWidgets('有看不懂的行 → fail-closed：不发请求、持仓不动、逐行摆出原因', (tester) async {
+      var postCalls = 0;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions' && request.method == 'GET') {
+          return _json([_positionJson()]);
+        }
+        if (path == '/api/v1/trading/positions/import' && request.method == 'POST') {
+          postCalls++;
+          return _json({'imported': 1, 'missingStopLoss': []});
+        }
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('导入持仓'));
+      await tester.pumpAndSettle();
+      // 第 2 行成本列不是数字（真看不懂）→ 整份不得覆盖
+      await tester.enterText(
+        find.byType(TextField),
+        '证券代码\t证券名称\t股票余额\t成本价\n'
+        '600206\t有研新材\t900\t46.012\n'
+        '600601\t方正科技\t100\t--\n',
+      );
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(postCalls, 0, reason: '有看不懂的行时绝不能发全量覆盖请求（会误删持仓）');
+      expect(find.text('先不动你的持仓'), findsOneWidget, reason: '必须显式说明为什么没导');
+      expect(find.textContaining('不是数字'), findsOneWidget, reason: '要逐行摆出原因，不能只说「失败」');
+      expect(find.textContaining('看懂了的 1 行是：600206'), findsOneWidget, reason: '告知看懂了几行');
+    });
+
+    testWidgets('负成本持仓正常导入（不再被当脏数据丢掉）', (tester) async {
+      List<dynamic>? sentBody;
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions' && request.method == 'GET') {
+          return _json([_positionJson()]);
+        }
+        if (path == '/api/v1/trading/positions/import' && request.method == 'POST') {
+          sentBody = jsonDecode(request.body) as List<dynamic>;
+          return _json({'imported': 3, 'missingStopLoss': []});
+        }
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('导入持仓'));
+      await tester.pumpAndSettle();
+      // 用户那份生产文件的同构内容：3 只有持仓（含负成本）+ 1 行 0 股残留
+      await tester.enterText(
+        find.byType(TextField),
+        '代码\t名称\t成本价\t持仓量\n'
+        '600206\t有研新材\t46.012\t900\n'
+        '002428\t云南锗业\t53.765\t400\n'
+        '600601\t方正科技\t-5.078\t100\n'
+        '603113\t金能科技\t5.569\t0\n',
+      );
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull, reason: '3 只全解析成功 → 正常导入');
+      expect(sentBody!.length, 3, reason: '3 只有持仓全部要送进后端（事故时只送了 2 只）');
+      final fangzheng = sentBody!.firstWhere((e) => e['symbol'] == '600601');
+      expect(fangzheng['avgCost'], closeTo(-5.078, 0.0001), reason: '负成本原样送后端');
+      expect(find.textContaining('持仓导入 3 只'), findsOneWidget);
+      expect(find.textContaining('另有 1 行已清空未计入'), findsOneWidget,
+          reason: '文件 4 行、进来 3 只，如实告知（0 股残留不是错误，但要让人知道）');
+    });
+
     testWidgets('非通达信持仓文本 → 前端拒绝，不发请求', (tester) async {
       var postCalls = 0;
       final client = MockClient((request) async {
@@ -1019,15 +1107,76 @@ void main() {
       expect(r.rows.single.avgCost, 1400.50);
     });
 
-    test('非法行收集人话错误', () {
+    test('非法行收集人话错误；0 股归「已清空跳过」不算错误（2026-09-13 负成本批改口径）', () {
       const text = '证券代码\t证券名称\t股票余额\t成本价\n'
           'ABCD\t非法代码\t100\t10\n'
           '600519\t贵州茅台\t0\t1400\n';
       final r = parseTdxPositions(text);
       expect(r.rows, isEmpty);
-      expect(r.errors.length, 2);
+      // 代码不是 6 位 = 真看不懂 → errors；0 股 = 券商文件里保留的已清空标的 → skipped
+      expect(r.errors.length, 1, reason: 'errors=${r.errors}');
       expect(r.errors.join(' '), contains('六位数字'));
-      expect(r.errors.join(' '), contains('数量'));
+      expect(r.skipped.length, 1, reason: 'skipped=${r.skipped}');
+      expect(r.skipped.join(' '), contains('已清空'));
+    });
+
+    // ── 负成本持仓批（2026-09-13）用户实测事故回归 ──
+    // 现场：用户 3 只持仓只进来 2 只。被丢的是 600601 方正科技 100 股 / 成本 −5.078——
+    // 反复做 T / 分红把成本摊到 0 以下是合法且券商就这么记的，原实现 cost <= 0 一律当脏数据丢弃。
+    group('负成本持仓（2026-09-13 事故回归）', () {
+      // 与生产文件同构：4 行 = 3 只有持仓 + 1 行 0 股残留
+      const realFile = '代码\t名称\t涨幅%\t现价\t涨跌\t换手%\t涨跌%\t成本价\t持仓量\t市值\t盈亏\t盈亏%\t当日盈亏\t币种\t代码2\t交易所\t板块\n'
+          '600206\t有研新材\t-2.65\t45.55\t-1.24\t8.70\t-0.03\t46.012\t900\t40995.00\t-415.62\t-1.00\t-1116.00\tCNY\t600206\t沪主板\t北京\n'
+          '002428\t云南锗业\t-1.79\t88.43\t-1.61\t6.23\t0.02\t53.765\t400\t35372.00\t13865.88\t64.47\t-644.00\tCNY\t002428\t深主板\t云南\n'
+          '600601\t方正科技\t0.07\t14.83\t0.01\t5.76\t-0.06\t-5.078\t100\t1483.00\t1990.77\t134.24\t1.00\tCNY\t600601\t沪主板\t上海\n'
+          '603113\t金能科技\t-4.92\t5.02\t-0.26\t3.89\t0.20\t5.569\t0\t0.00\t-0.00\t-9.86\t-0.00\tCNY\t603113\t沪主板\t山东\n'
+          '#数据来源:通达信\n';
+
+      test('用户那份真实文件的 3 只有持仓必须全部解析出来（含成本 −5.078 的 600601）', () {
+        expect(isTdxExport(realFile), isTrue);
+        final r = parseTdxPositions(realFile);
+        expect(r.errors, isEmpty, reason: '真实文件不应有任何「看不懂」的行：errors=${r.errors}');
+        expect(r.rows.length, 3, reason: '3 只有持仓全部要进来（事故时只进来 2 只）');
+        expect(r.rows.map((e) => e.symbol).toList(), ['600206', '002428', '600601']);
+        final fangzheng = r.rows.firstWhere((e) => e.symbol == '600601');
+        expect(fangzheng.name, '方正科技');
+        expect(fangzheng.quantity, 100);
+        expect(fangzheng.avgCost, closeTo(-5.078, 0.0001),
+            reason: '负成本必须原样保留（不做符号修正，它就是券商口径）');
+        // 0 股残留行如实归入 skipped
+        expect(r.skipped.length, 1);
+        expect(r.skipped.single, contains('603113'));
+      });
+
+      test('负成本与零成本都接受（只有「取不到数」才是错误）', () {
+        const text = '证券代码\t证券名称\t股票余额\t成本价\n'
+            '600601\t方正科技\t100\t-5.078\n'
+            '600602\t云赛智联\t200\t0\n'
+            '600603\t广汇物流\t300\t--\n';
+        final r = parseTdxPositions(text);
+        expect(r.rows.length, 2, reason: '负成本/零成本合法；成本列不是数字才是错误');
+        expect(r.rows[0].avgCost, closeTo(-5.078, 0.0001));
+        expect(r.rows[1].avgCost, 0);
+        expect(r.errors.length, 1);
+        expect(r.errors.join(' '), contains('不是数字'));
+      });
+
+      test('短行不再抛 RangeError（原实现只校验数量列却读成本列 → 粘贴半截文件即崩）', () {
+        const text = '证券代码\t证券名称\t股票余额\t成本价\n'
+            '600601\t方正科技\t100\n';
+        final r = parseTdxPositions(text);
+        expect(r.rows, isEmpty);
+        expect(r.errors.single, contains('字段不足'));
+      });
+
+      test('负数数量是真错误（不是「已清空」）', () {
+        const text = '证券代码\t证券名称\t股票余额\t成本价\n'
+            '600601\t方正科技\t-100\t5.078\n';
+        final r = parseTdxPositions(text);
+        expect(r.rows, isEmpty);
+        expect(r.skipped, isEmpty);
+        expect(r.errors.single, contains('为负'));
+      });
     });
 
     test('isTdxExport 识别通达信 vs 交易 CSV', () {

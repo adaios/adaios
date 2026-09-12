@@ -99,11 +99,18 @@ public record Position(
 
     /**
      * 浮动盈亏百分比。
+     * <p>
+     * **成本价 ≤ 0 → null（前端显示「—」），不给数字**（2026-09-13 负成本批）：
+     * 成本价经反复做 T / 分红摊到 0 以下时，「(现价−成本)/成本」这个式子在数学上仍然是数，
+     * 但语义已经翻转——负成本下它算出的是负的百分比（实测 600601：成本 −5.078 / 现价 14.83
+     * → −392%，而券商口径是 +134%），会把人误导成巨亏。
+     * 盈亏**金额**不受影响（市场价−成本额，负成本自然算出更高的浮盈，与券商一致）。
+     * 另外前端一律要把 null 渲染成「—」而不是 0%——「0%」会被读成「没涨没跌」，也是错的。
      */
     @JsonGetter
     public BigDecimal pnlPercent() {
-        if (avgCost.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
+        if (avgCost == null || avgCost.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
         }
         return currentPrice.subtract(avgCost)
                 .divide(avgCost, 4, RoundingMode.HALF_UP)

@@ -882,8 +882,12 @@ public class TradingAppService {
                 String symbol = item.symbol();
                 if (symbol == null || symbol.isBlank()) continue;
                 // P2-交易22（2026-08-17）：avgCost/quantity 校验——缺失/非法会让下游 NPE 500
-                if (item.avgCost() == null || item.avgCost().signum() <= 0) {
-                    throw new TradingException("持仓导入：股票 " + symbol + " 的成本价缺失或非法（需 > 0）");
+                // 2026-09-13 负成本批：**负数成本合法**（反复做 T / 分红把成本摊到 0 以下是真实存在的，
+                // 通达信持仓导出就是这么记的——实测 600601 方正科技 成本 −5.078 / 100 股）。
+                // 原实现 signum() <= 0 一律抛异常 → 前端一旦放行负成本就会「整批 400、一只都进不去」，
+                // 比静默少一只更糟。此处只拒「缺失」；0 与负数都放行（0 的百分比语义由 Position.pnlPercent 兜）。
+                if (item.avgCost() == null) {
+                    throw new TradingException("持仓导入：股票 " + symbol + " 的成本价缺失");
                 }
                 if (item.quantity() <= 0) {
                     throw new TradingException("持仓导入：股票 " + symbol + " 的数量需 > 0");

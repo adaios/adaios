@@ -859,7 +859,9 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text(p.currentPrice.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
               DataCell(Text(p.marketValue.toStringAsFixed(2), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
               DataCell(Text(p.pnl.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: pnlColor, fontWeight: FontWeight.w600))),
-              DataCell(Text('${p.pnlPercent.toStringAsFixed(2)}%', style: TextStyle(fontSize: 13, color: pnlColor))),
+              // 负/零成本 → pnlPercent 为 null → 「—」（不给 0.00%，那是谎报「不赚不亏」）
+              DataCell(Text(p.pnlPercent == null ? '—' : '${p.pnlPercent!.toStringAsFixed(2)}%',
+                  style: TextStyle(fontSize: 13, color: pnlColor))),
               DataCell(slEffective != null
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -2753,6 +2755,14 @@ class _TradingPageState extends State<TradingPage> {
     if (parsed.rows.isEmpty) {
       throw Exception('无法识别通达信持仓导出——请确认表头含「证券代码/股票余额/成本价」');
     }
+    // 2026-09-13 负成本事故的正面修复：持仓导入是 replace=true **全量覆盖**——
+    // 漏掉一行 = 那只持仓从持仓表里被静默删除（用户那次 3 只只进来 2 只，且毫不知情）。
+    // 所以只要有一行没看懂，就**不覆盖**，并把每行的原因摆出来让人自己判断。
+    // 这与交易账实一致性批确立的判据一致：状态不确定时 fail-closed，不猜。
+    if (parsed.errors.isNotEmpty) {
+      if (mounted) _showUnparsedRowsDialog(parsed);
+      return;
+    }
     final result = await widget.api.importPositions(
       parsed.rows.map((r) => r.toJson()).toList(),
       replace: true,
@@ -2764,8 +2774,43 @@ class _TradingPageState extends State<TradingPage> {
       if (result.missingStopLoss.isNotEmpty) {
         msg += ' · 未设止损 ${result.missingStopLoss.length} 只（${result.missingStopLoss.join('、')}）';
       }
+      // 0 股残留行（已清空）如实告知：它不是错误，但用户有权知道「文件里有 4 行、进来 3 只」
+      if (parsed.skipped.isNotEmpty) {
+        msg += ' · 另有 ${parsed.skipped.length} 行已清空未计入';
+      }
       _toast(msg);
     }
+  }
+
+  /// 「这份文件有 N 行我没看懂」——拒绝全量覆盖时把原因摆清楚（不猜、不静默）。
+  void _showUnparsedRowsDialog(TdxParseResult parsed) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('先不动你的持仓', style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 480,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('这份文件里有 ${parsed.errors.length} 行我没看懂，'
+                '导进去会按「以文件为准」覆盖持仓——那几只不在文件里的会被一起删掉，所以先停手了。',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+            const SizedBox(height: 10),
+            ...parsed.errors.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('· $e', style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2)),
+                )),
+            const SizedBox(height: 8),
+            Text('看懂了的 ${parsed.rows.length} 行是：${parsed.rows.map((r) => r.symbol).join('、')}',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+        ],
+      ),
+    );
+    _toast('有 ${parsed.errors.length} 行没看懂，持仓未改动');
   }
 
   void _openPositionsImport() => _openImportDialog(
@@ -3386,7 +3431,8 @@ class _LotsDialogState extends State<_LotsDialog> {
 
   /// 盈亏%：持有中/初始底仓用后端浮动 pnlPct；已清仓回合 = realizedPnl / (成本×买入量)（后端无回合百分比字段，前端算）。
   String _lotPnlPctText(LotItem l) {
-    if (!l.closed) return '${l.pnlPct.toStringAsFixed(2)}%';
+    // 负/零成本 → 后端给 null（百分比语义翻转），显示「—」而不是 0.00%
+    if (!l.closed) return l.pnlPct == null ? '—' : '${l.pnlPct!.toStringAsFixed(2)}%';
     final cost = l.costPrice * l.volume;
     if (cost <= 0) return '—';
     return '回合 ${(l.realizedPnl / cost * 100).toStringAsFixed(2)}%';

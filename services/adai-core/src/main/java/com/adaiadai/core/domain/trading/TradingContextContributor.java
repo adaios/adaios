@@ -73,9 +73,11 @@ public class TradingContextContributor implements ContextContributor {
             BigDecimal value = realPrice.multiply(BigDecimal.valueOf(p.quantity()));
             BigDecimal cost = p.avgCost().multiply(BigDecimal.valueOf(p.quantity()));
             BigDecimal pnl = value.subtract(cost);
+            // 负/零成本 → 百分比无意义（分母不是正的成本），写字面「—」而不是 0.00%：
+            // 0% 会被模型读成「没涨没跌」，与「成本已为负」是两回事（2026-09-13 负成本批）
             BigDecimal pnlPct = p.avgCost().compareTo(BigDecimal.ZERO) > 0
                     ? realPrice.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-                    : BigDecimal.ZERO;
+                    : null;
 
             totalValue = totalValue.add(value);
             totalPnl = totalPnl.add(pnl);
@@ -84,7 +86,8 @@ public class TradingContextContributor implements ContextContributor {
                     .append(" 现价").append(realPrice.stripTrailingZeros().toPlainString())
                     .append(" 成本").append(p.avgCost().stripTrailingZeros().toPlainString())
                     .append(" ").append(pnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                    .append(pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString()).append("%")
+                    .append(pnlPct == null ? "—" : pnlPct.setScale(2, RoundingMode.HALF_UP).toPlainString() + "%")
+                    .append(pnlPct == null ? "（成本非正，百分比不适用）" : "")
                     .append("\n");
         }
 
