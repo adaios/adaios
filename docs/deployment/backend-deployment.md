@@ -224,7 +224,9 @@ cd services/adai-core
 > export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=… no_proxy=82.156.111.146 NO_PROXY=82.156.111.146
 > bash ai-engineering/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
 > ```
-| 月度转写配额 | `adai.learn.asr.month-quota-seconds`（默认 `36000` = 10 小时，fun-asr 免费额度内）| 用满即拒绝并说明剩余额度，不会静默花钱 |
+| 月度转写配额 | `adai.learn.asr.month-quota-seconds`（默认 `36000` = 10 小时，**产品自设上限，不是云端免费额度**）| 用满即拒绝并说明剩余额度，不会静默花钱 |
+| 转写单价（用于报价估算）| `adai.learn.asr.yuan-per-hour`（默认 `0.288`，对应 `paraformer-v2` 官方价 0.00008 元/秒）；若改用 `fun-asr`（0.00022 元/秒 = 0.792 元/小时）**必须同步改这个值**，否则报价会低估 |
+| 防意外扣费（建议在阿里云控制台做）| 百炼控制台 → 免费额度页 → 为目标 ASR 模型开启**免费额度用完即停**（额度耗尽返回 403 `AllocationQuota.FreeTierOnly`，不再按量扣费）| 不开则额度用尽后**自动按量付费**（2026-09-06 那笔 fun-asr 费用就是这种情况）|
 | **单实例部署（硬约束）** | **必须单实例/单进程**：learn 的消化任务态（`jobs`）是**进程内 Map**、转写配额靠 **JVM 内** per-user 条带锁做的读-改-写原子 | **多实例/同机多进程会超卖**：同一素材可能被转写两次（重复花钱）、月度额度可能被突破（REVIEW P2-learn18）。将来要横向扩容，必须先把任务态与账本移出进程（或引入分布式锁）|
 
 > learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `learn-digest` 同契约**——备份/迁移只需拷 `data/`（`backup_prod.sh` 已覆盖）。

@@ -214,6 +214,11 @@ public class LearnTranscriptionService {
                             int remainSeconds, double yuanPerHour, boolean asrAvailable,
                             String unavailableReason) {}
 
+    /** 当前转写单价（元/小时）——报价文案要如实标出用的哪个价位（2026-09-13）。 */
+    public double yuanPerHour() {
+        return yuanPerHour;
+    }
+
     /** 本月转写用量与剩余额度（月初自动重置：新月份键不存在即归零）。 */
     public QuotaView quota(String userId) {
         LearnQuota quota = quotaRepository.view(userId, YearMonth.now());

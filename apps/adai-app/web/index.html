@@ -20,11 +20,21 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="阿呆阿呆 — Personal AI Operating System">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS meta tags & icons（PWA 装机批 2026-09-13）
+       注：viewport 由 Flutter 引擎运行时注入（main.dart.js 自带
+       width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no），
+       此处**不再重复声明**，避免与之冲突。
+       也刻意不设 viewport-fit=cover：不设时浏览器把整页排在刘海/灵动岛安全区之内，
+       SafeArea 补 0 也无害；设了则需引擎读 env(safe-area-inset-*) 补偿，
+       Flutter web 支持不确定 → 有内容钻到灵动岛下面的风险。 -->
   <meta name="mobile-web-app-capable" content="yes">
+  <!-- iOS「添加到主屏幕」后全屏独立运行（iOS < 16.4 只认 apple- 前缀这个名） -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="阿呆阿呆">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="theme-color" content="#0d0d0d">
+  <link rel="apple-touch-icon" href="icons/Icon-180.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>

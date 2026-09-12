@@ -443,7 +443,7 @@ public class LearnDigestAppService {
                 }
             });
         } catch (RejectedExecutionException e) {
-            job.awaitConfirm(job.pendingCost);
+            job.awaitConfirm(job.pendingCost, null);   // 回退到等待确认（文案用兜底，见 DigestJob.defaultQuoteMessage）
             throw new LearnException("消化任务繁忙，请稍后重试");
         }
         return job.statusView();
@@ -517,7 +517,7 @@ public class LearnDigestAppService {
                     + LearnTranscriptionService.humanHours(estimate.remainSeconds())
                     + "），下月 1 日重置；抓到的元数据我已留存");
         }
-        job.awaitConfirm(estimate);
+        job.awaitConfirm(estimate, quoteMessage(estimate, transcriptionService));
         log.info("learn 等待转写确认 | userId={} | {} | 约 {} 分钟 | 预计 {} 元",
                 userId, source.title(), Math.round(estimate.durationSeconds() / 60.0), estimate.estimatedYuan());
     }
@@ -577,6 +577,23 @@ public class LearnDigestAppService {
         } catch (Exception e) {
             return Integer.toHexString(text.hashCode());
         }
+    }
+
+    /**
+     * 转写报价文案（用户可见，必须如实）。
+     * <p>
+     * 2026-09-13 纠正口径：那 10 小时是**我们自设的月度上限**（防跑飞），**不是云端的免费额度**——
+     * 百炼的新人免费额度是**一次性 90 天**、按模型各自独立、ASR 类模型还要在控制台业务空间单独开通，
+     * 用完或过期即按量计费（用户 2026-09-06 的 fun-asr 账单即此类）。所以文案里要标出单价，
+     * 并说清「实际扣费以阿里云账单为准」。
+     */
+    static String quoteMessage(LearnTranscriptionService.CostEstimate estimate,
+                               LearnTranscriptionService service) {
+        return "这个视频没有字幕，需要转写：" + DigestJob.humanDuration(estimate)
+                + "，预计约 " + String.format("%.2f", estimate.estimatedYuan())
+                + " 元（按 " + String.format("%.3f", service.yuanPerHour())
+                + " 元/小时估；我这边本月还剩 " + LearnTranscriptionService.humanHours(estimate.remainSeconds())
+                + " 的自设上限——不是云端免费额度，实际以阿里云账单为准）";
     }
 
     /** 卡片「平台」展示值：文章用它自己的域名（bilibili 保持原样），比裸 "article" 有信息量。 */
@@ -665,7 +682,7 @@ public class LearnDigestAppService {
             return settledAt == 0L ? 0L : System.currentTimeMillis() - settledAt;
         }
 
-        void awaitConfirm(LearnTranscriptionService.CostEstimate estimate) {
+        void awaitConfirm(LearnTranscriptionService.CostEstimate estimate, String quoteMessage) {
             this.pendingSource = source;
             this.pendingCost = estimate;
             // 对抗审查 P2-3：等确认时**不能**留 stage=transcribing —— 状态与阶段自相矛盾，
@@ -673,9 +690,7 @@ public class LearnDigestAppService {
             this.stage = null;
             this.status = STATUS_NEEDS_CONFIRMATION;
             this.settledAt = System.currentTimeMillis();
-            this.message = "这个视频没有字幕，需要转写：" + humanDuration(estimate)
-                    + "，预计约 " + String.format("%.2f", estimate.estimatedYuan())
-                    + " 元（本月剩余额度 " + LearnTranscriptionService.humanHours(estimate.remainSeconds()) + "）";
+            this.message = quoteMessage == null ? defaultQuoteMessage(estimate) : quoteMessage;
         }
 
         void resume() {
@@ -715,6 +730,12 @@ public class LearnDigestAppService {
                     pendingCost.estimatedYuan(), pendingCost.monthUsedSeconds(), pendingCost.quotaSeconds(),
                     pendingCost.remainSeconds());
             return new DigestJobStatus(status, type, title, topic, message, stage, sourceView, costView);
+        }
+
+        /** 兜底报价文案（调用方未给时用；正常路径由 application 层带单价生成）。 */
+        static String defaultQuoteMessage(LearnTranscriptionService.CostEstimate estimate) {
+            return "这个视频没有字幕，需要转写：" + humanDuration(estimate)
+                    + "，预计约 " + String.format("%.2f", estimate.estimatedYuan()) + " 元";
         }
 
         private static String humanDuration(LearnTranscriptionService.CostEstimate estimate) {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:js_interop';
 
+import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 
 import 'sse_client_common.dart';
@@ -8,7 +9,16 @@ import 'sse_client_common.dart';
 /// Flutter Web 实现：`package:web` fetch streaming——dart http 的浏览器
 /// 实现（XHR）不暴露渐进响应，只有 fetch 的 ReadableStream 能边到边读。
 class SseClient extends SseClientBase {
-  SseClient();
+  /// [httpClient] 只为与 `sse_client_io.dart` **保持构造签名一致**而存在
+  /// （`sse_client.dart` 的条件导出要求两份实现 API 面完全相同，否则目标平台编译失败）。
+  ///
+  /// Web 上**不使用**它：浏览器 fetch 的渐进响应能力来自 ReadableStream，
+  /// `package:http` 的浏览器实现（XHR）拿不到，注入也无效。测试注入口只在 IO/VM 侧有意义。
+  ///
+  /// 2026-09-13（PWA 装机批）修复：本文件原缺该参数 → 参数只在 io 侧存在 →
+  /// `flutter build web` 编译失败（`No named parameter with the name 'httpClient'`）。
+  /// 因为此前 web 目标从未构建过（PWA 是第一次），这个断链一直没被任何测试或门禁发现。
+  SseClient({http.Client? httpClient});
 
   @override
   Future<void> post(

@@ -136,7 +136,10 @@ class LearnDigestFetchFlowTest {
         assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, job.status());
         assertTrue(job.message().contains("37 分钟"), "要说清多长：37 分钟");
         assertTrue(job.message().contains("0.18"), "要给出预计金额");
-        assertTrue(job.message().contains("本月剩余额度"), "要带上本月剩余额度");
+        assertTrue(job.message().contains("本月还剩"), "要带上本月剩余（我这边自设上限的口径）：" + job.message());
+        assertTrue(job.message().contains("不是云端免费额度"),
+                "2026-09-13 纠正：必须说清那 10 小时是自设上限、不是云端免费额度（客服化表述会误导）：" + job.message());
+        assertTrue(job.message().contains("阿里云账单"), "实际扣费以阿里云账单为准");
         assertNotNull(job.cost());
         assertEquals(2244, job.cost().durationSeconds());
         assertEquals(0.1795d, job.cost().estimatedYuan(), 1e-9);

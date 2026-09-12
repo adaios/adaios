@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../pages/life_quick_entry.dart';
 import '../theme/app_colors.dart';
 
 /// 用户选择的图片（多模态 L4，交给宿主上传）。
@@ -15,7 +16,7 @@ class PickedImage {
   late final Uint8List bytesU8 = Uint8List.fromList(bytes);
 }
 
-/// Input bar — text input + [+] menu（图片/文件/链接）。
+/// Input bar — text input + 生活快捷条（心情/运动/饮食/睡眠）+ [+] menu（图片/文件/链接）。
 /// Supports ask placeholder mode (triggered from parent).
 /// 语音：v2 方向，已移除误导性 stub（2026-08-03，原 REVIEW #164）。
 class InputBar extends StatefulWidget {
@@ -430,6 +431,48 @@ class InputBarState extends State<InputBar> {
     );
   }
 
+  /// 生活快捷条（2026-09-13 接线批）：把「随手记一笔」的门槛降到一下点击。
+  ///
+  /// 由来：`LifeQuickEntry` 弹窗（含四类模板）此前**定义了但全仓库无人引用**——
+  /// 已做好的降门槛零件躺在死代码里。此处接线，且刻意不藏进 [+] 附件菜单
+  /// （选附件 → 找入口 → 点类型 = 三跳），改为常驻一行一点即开。
+  /// 对话进行中（hasActiveChat）不显示：此时用户的意图是接着聊，不是开新记录。
+  Widget _buildLifeQuickRow() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
+      child: Row(
+        children: kLifeTemplates
+            .map((t) => Expanded(
+                  child: GestureDetector(
+                    onTap: () => showLifeQuickEntry(
+                      context,
+                      (text) => widget.onSend(text),
+                      initialType: t.key,
+                    ),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurface2,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(t.emoji, style: const TextStyle(fontSize: 13)),
+                          const SizedBox(width: 4),
+                          Text(t.label,
+                              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -450,6 +493,8 @@ class InputBarState extends State<InputBar> {
           children: [
             // 内联图片附件预览（多图横向缩略图，每张可移除）
             if (_pendingImages.isNotEmpty) _buildImagePreview(),
+            // 生活快捷条（对话进行中隐藏）
+            if (!widget.hasActiveChat) _buildLifeQuickRow(),
             SizedBox(
               height: 40,
               child: Row(

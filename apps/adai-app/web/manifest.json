@@ -2,6 +2,7 @@
     "name": "阿呆阿呆",
     "short_name": "阿呆阿呆",
     "start_url": ".",
+    "scope": "./",
     "display": "standalone",
     "background_color": "#0d0d0d",
     "theme_color": "#0d0d0d",
