@@ -16,6 +16,7 @@ import java.util.concurrent.Executor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -224,6 +225,54 @@ class LearnDigestFetchFlowTest {
         assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
         assertTrue(job.message().contains("额度"), "超配额要在**报价阶段**就拦住（不是转写失败后才发现）");
         verify(transcriptionService, never()).transcribe(anyString(), any());
+    }
+
+    // ── 对抗审查 P1-2 / P2-3 回归 ──
+
+    @Test
+    void subtitleApiError_doesNotFallIntoPaidTranscription() {
+        // 接口报错（可重试）不是「确实没字幕」：不能弹「要花钱」的确认框
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(new LearnSource(
+                "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD", "某视频", "某UP",
+                "2026-05-05", null, true, "https://audio/x.m4s", 2244, List.of(),
+                "B站字幕接口这次没返回（可能限流了），稍后再试一次"));
+
+        submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
+
+        LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
+        assertTrue(job.message().contains("稍后再试"), "要让人话说明这是可重试的报错");
+        verify(transcriptionService, never()).estimate(anyString(), any());
+        verify(transcriptionService, never()).transcribe(anyString(), any());
+    }
+
+    @Test
+    void noAudioUrl_failsBeforeAskingUserToPay() {
+        // 音频地址拿不到时不该先让用户点头（点了才发现做不到）
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(new LearnSource(
+                "bilibili", "BV1xx411c7mD", "https://www.bilibili.com/video/BV1xx411c7mD", "某视频", "某UP",
+                "2026-05-05", null, true, null, 2244, List.of()));
+
+        submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
+
+        LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
+        assertTrue(job.message().contains("粘进来"), "给替代路径（粘正文）");
+        verify(transcriptionService, never()).estimate(anyString(), any());
+    }
+
+    @Test
+    void awaitingConfirm_hasNoInProgressStage() {
+        // P2-3：等确认时 stage 不能是 transcribing（前端按 stage 渲染会显示「正在转写」，
+        // 而实际在等用户拍板、一分钱没花）
+        when(fetchService.fetchAndArchive(eq("adai"), anyString())).thenReturn(withoutSubtitle());
+        when(transcriptionService.estimate(anyString(), any())).thenReturn(estimate(2244, 0.1795d, true));
+
+        submitUrl("https://www.bilibili.com/video/BV1xx411c7mD");
+
+        LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_NEEDS_CONFIRMATION, job.status());
+        assertNull(job.stage(), "等确认时不该带进行中阶段");
     }
 
     // ── 输入归一：素材框里只粘了一个链接 ──

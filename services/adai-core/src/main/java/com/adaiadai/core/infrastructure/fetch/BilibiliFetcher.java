@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -33,15 +34,15 @@ import java.util.regex.Pattern;
  *   <li><b>字幕</b> {@code x/player/v2?bvid=&cid=} → {@code subtitle.subtitles[].subtitle_url} → 正文</li>
  *   <li><b>音频线索</b> {@code x/player/playurl?bvid=&cid=&fnval=16} → {@code dash.audio[].baseUrl}</li>
  * </ol>
- * 无字幕 → {@code needsTranscription=true}（**实测多数视频确实无字幕**，这是 D 形态必须对接
- * ASR 的依据，见 pitfall「B站字幕接口默认拿不到」）。注意字幕接口未登录时常返回空列表——
- * 空列表只作「疑似无字幕」信号，真正的判决在转写分流处（fail-visible，不静默产废卡）。
+ * <b>「接口报错」与「确实没字幕」严格区分</b>（2026-09-12 对抗审查 P1-2 修复）：空字幕列表是**正常**
+ * 情况（实测多数视频如此 → 走转写）；而限流/网络这类**可重试错误**不能降级成「无字幕」，
+ * 否则会引导用户为本来能省的钱买单——此时置 {@link LearnSource#textUnavailableReason()}，由上层
+ * fail-visible 提示重试，不进付费分支。
  * <p>
- * 直连不走代理（技能文档口径：B站 API 国内直连）；出网受 B8 边界约束：只读内容页 API，
- * 不含登录态接口，不绕付费墙。
+ * 直连不走代理；出网受 B8 边界约束：只读内容页 API，不含登录态接口，不绕付费墙。
  */
 @Component
-@org.springframework.core.annotation.Order(0)
+@Order(0)
 public class BilibiliFetcher implements LearnSourceFetcher {
 
     private static final Logger log = LoggerFactory.getLogger(BilibiliFetcher.class);
@@ -54,14 +55,23 @@ public class BilibiliFetcher implements LearnSourceFetcher {
                     + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     private static final String REFERER = "https://www.bilibili.com";
 
+    /** B站域名白名单（内容页与短链）。 */
+    private static final List<String> ALLOWED_HOSTS = List.of("bilibili.com", "b23.tv");
+    /** 字幕文件域名白名单默认值（第三方响应给的地址必须收敛，见对抗审查 P0-1；可配置以便本地联调）。 */
+    private static final String DEFAULT_SUBTITLE_HOSTS = "hdslb.com,bilibili.com";
+
     private final HttpClient httpClient;
     private final String apiBase;
     private final int maxRetry;
+    private final List<String> subtitleHosts;
 
     public BilibiliFetcher(@Value("${adai.learn.bilibili.api-base:https://api.bilibili.com}") String apiBase,
-                           @Value("${adai.learn.fetch.max-retry:2}") int maxRetry) {
+                           @Value("${adai.learn.fetch.max-retry:2}") int maxRetry,
+                           @Value("${adai.learn.bilibili.subtitle-hosts:" + DEFAULT_SUBTITLE_HOSTS + "}")
+                           String subtitleHosts) {
         this.apiBase = apiBase;
         this.maxRetry = Math.max(1, maxRetry);
+        this.subtitleHosts = substringHosts(subtitleHosts);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -76,7 +86,7 @@ public class BilibiliFetcher implements LearnSourceFetcher {
     @Override
     public boolean supports(String url) {
         String host = hostOf(url);
-        return host != null && (host.endsWith("bilibili.com") || host.endsWith("b23.tv"));
+        return host != null && hostMatches(host, ALLOWED_HOSTS);
     }
 
     @Override
@@ -91,17 +101,20 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         String published = pubDate(data.path("pubdate").asLong(0));
 
         String subtitleText = null;
+        String subtitleError = null;
         if (cid > 0) {
             try {
                 subtitleText = fetchSubtitle(bvid, cid);
             } catch (Exception e) {
-                log.warn("B站字幕获取失败（转写分流）| bvid={} | {}", bvid, e.getMessage());
+                // 可重试错误（限流/网络/接口报错）——不能当成「没字幕」，见类注释 P1-2
+                subtitleError = "B站字幕接口这次没返回（可能限流了），稍后再试一次";
+                log.warn("B站字幕获取失败，标记为可重试错误 | bvid={} | {}", bvid, e.getMessage());
             }
         }
 
-        String audioUrl = null;
         boolean needsTranscription = subtitleText == null || subtitleText.isBlank();
-        if (needsTranscription && cid > 0) {
+        String audioUrl = null;
+        if (needsTranscription && cid > 0 && subtitleError == null) {
             try {
                 audioUrl = fetchAudioUrl(bvid, cid);
             } catch (Exception e) {
@@ -115,15 +128,17 @@ public class BilibiliFetcher implements LearnSourceFetcher {
             raw.add(new LearnSource.RawAsset("bilibili-" + bvid + "-subtitle.txt", subtitleText));
         }
 
-        log.info("B站抓取完成 | bvid={} | title={} | 时长 {}s | 字幕 {} | 音频 {}",
+        log.info("B站抓取完成 | bvid={} | title={} | 时长 {}s | 字幕 {} | 音频 {} | 字幕异常 {}",
                 bvid, title, duration,
                 needsTranscription ? "无" : subtitleText.length() + " 字",
-                audioUrl == null ? "未取到" : "已取到");
+                audioUrl == null ? "未取到" : "已取到",
+                subtitleError == null ? "无" : "有");
 
         return new LearnSource(
                 "bilibili", bvid, url, title, author, published,
                 needsTranscription ? null : subtitleText,
-                needsTranscription, audioUrl, (int) duration, raw);
+                needsTranscription, audioUrl, (int) duration, raw,
+                needsTranscription ? subtitleError : null);
     }
 
     @Override
@@ -131,15 +146,25 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         if (audioUrl == null || audioUrl.isBlank()) {
             throw new LearnException("拿不到这个视频的音频地址，没法转写");
         }
-        HttpResponse<byte[]> resp = send(HttpRequest.newBuilder(URI.create(audioUrl))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(audioUrl))
                 .timeout(Duration.ofSeconds(120))
                 .header("User-Agent", UA)
                 .header("Referer", REFERER)
-                .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
-        if (resp.statusCode() != 200 || resp.body() == null || resp.body().length == 0) {
-            throw new LearnException("音频下载失败（B站返回 " + resp.statusCode() + "），可稍后重试");
+                .GET().build();
+        try {
+            HttpBodies.Fetched fetched = HttpBodies.getBytes(httpClient, request, HttpBodies.MAX_AUDIO_BYTES);
+            if (fetched.status() != 200 || fetched.bytes() == null || fetched.bytes().length == 0) {
+                throw new LearnException("音频下载失败（B站返回 " + fetched.status() + "），可稍后重试");
+            }
+            return fetched.bytes();
+        } catch (HttpBodies.TooLargeException e) {
+            throw new LearnException("这个视频音频太大了，转写先跳过（可把正文粘进来）");
+        } catch (IOException e) {
+            throw new LearnException("音频下载失败（网络问题），可稍后重试");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LearnException("音频下载被中断，请重试");
         }
-        return resp.body();
     }
 
     // ── 内部 ──
@@ -150,7 +175,7 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         if (m.find()) return m.group();
 
         String host = hostOf(url);
-        if (host != null && host.endsWith("b23.tv")) {
+        if (host != null && hostMatches(host, List.of("b23.tv"))) {
             try {
                 HttpResponse<Void> resp = send(HttpRequest.newBuilder(URI.create(url))
                         .timeout(Duration.ofSeconds(15))
@@ -171,12 +196,12 @@ public class BilibiliFetcher implements LearnSourceFetcher {
     }
 
     private JsonNode viewData(String bvid) {
-        String api = apiBase + "/x/web-interface/view?bvid=" + bvid;
-        JsonNode root = getJson(api);
+        JsonNode root = getJson(apiBase + "/x/web-interface/view?bvid=" + bvid);
         int code = root.path("code").asInt(-1);
         if (code != 0) {
             String msg = root.path("message").asText("");
-            throw new LearnException("B站没能返回这个视频的信息（" + (msg.isBlank() ? "code " + code : msg) + "），请确认链接可访问");
+            throw new LearnException("B站没能返回这个视频的信息（"
+                    + (msg.isBlank() ? "code " + code : msg) + "），请确认链接可访问");
         }
         JsonNode data = root.path("data");
         if (data.isMissingNode() || data.isNull()) {
@@ -185,15 +210,23 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         return data;
     }
 
+    /**
+     * 取字幕正文。
+     *
+     * @return 字幕文本；**null = 接口正常但没有字幕**（正常情况，走转写）
+     * @throws LearnException 接口报错/限流（**可重试**，调用方不得当成「没字幕」）
+     */
     private String fetchSubtitle(String bvid, long cid) {
         JsonNode root = getJson(apiBase + "/x/player/v2?bvid=" + bvid + "&cid=" + cid);
-        if (root.path("code").asInt(-1) != 0) return null;
+        if (root.path("code").asInt(-1) != 0) {
+            throw new LearnException("B站字幕接口返回 code " + root.path("code").asInt(-1));
+        }
         JsonNode subs = root.path("data").path("subtitle").path("subtitles");
-        if (!subs.isArray() || subs.isEmpty()) return null;
+        if (!subs.isArray() || subs.isEmpty()) return null;   // 确实没有字幕
+
         JsonNode pick = subs.get(0);
         for (JsonNode s : subs) {
-            String lan = s.path("lan").asText("");
-            if (lan.startsWith("zh")) {
+            if (s.path("lan").asText("").startsWith("zh")) {
                 pick = s;
                 break;
             }
@@ -201,6 +234,14 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         String subUrl = pick.path("subtitle_url").asText("");
         if (subUrl.isBlank()) return null;
         if (subUrl.startsWith("//")) subUrl = "https:" + subUrl;
+
+        // 第三方响应给的地址必须收敛（对抗审查 P0-1）：只认 B站自己的字幕域名
+        String subHost = hostOf(subUrl);
+        if (subHost == null || !hostMatches(subHost, subtitleHosts)) {
+            log.warn("字幕地址域名不在白名单，按无字幕处理 | host={}", subHost);
+            return null;
+        }
+
         JsonNode body = getJson(subUrl).path("body");
         if (!body.isArray() || body.isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
@@ -251,26 +292,50 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         return LocalDate.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.of("Asia/Shanghai")).toString();
     }
 
+    /** 带退避重试 + 响应体上限的 JSON 请求（限流/5xx/网络抖动重试；业务 4xx 不重试）。 */
     private JsonNode getJson(String apiUrl) {
-        HttpResponse<String> resp = send(HttpRequest.newBuilder(URI.create(apiUrl))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(apiUrl))
                 .timeout(Duration.ofSeconds(20))
                 .header("User-Agent", UA)
                 .header("Referer", REFERER)
-                .GET().build(), HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() == 412 || resp.statusCode() == 429) {
-            throw new LearnException("B站限流了（" + resp.statusCode() + "），请稍后再试");
+                .GET().build();
+        IOException last = null;
+        for (int attempt = 1; attempt <= maxRetry; attempt++) {
+            try {
+                HttpBodies.Fetched fetched = HttpBodies.getText(httpClient, request, HttpBodies.MAX_TEXT_BYTES);
+                if (fetched.status() == 412 || fetched.status() == 429) {
+                    throw new LearnException("B站限流了（" + fetched.status() + "），请稍后再试");
+                }
+                if (fetched.status() >= 500) {
+                    if (attempt == maxRetry) {
+                        throw new LearnException("B站接口返回 " + fetched.status() + "，抓取失败");
+                    }
+                    sleepBackoff(attempt);
+                    continue;
+                }
+                if (fetched.status() != 200) {
+                    throw new LearnException("B站接口返回 " + fetched.status() + "，抓取失败");
+                }
+                try {
+                    return MAPPER.readTree(fetched.text());
+                } catch (Exception e) {
+                    throw new LearnException("B站返回的内容无法解析，抓取失败");
+                }
+            } catch (HttpBodies.TooLargeException e) {
+                throw new LearnException("B站返回的内容太大了，先不抓这个");
+            } catch (IOException e) {
+                last = e;
+                if (attempt == maxRetry) break;
+                sleepBackoff(attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new LearnException("抓取被中断，请重试");
+            }
         }
-        if (resp.statusCode() != 200) {
-            throw new LearnException("B站接口返回 " + resp.statusCode() + "，抓取失败");
-        }
-        try {
-            return MAPPER.readTree(resp.body());
-        } catch (Exception e) {
-            throw new LearnException("B站返回的内容无法解析，抓取失败");
-        }
+        throw new LearnException("连不上 B站（" + (last == null ? "网络超时" : last.getMessage()) + "），请稍后重试");
     }
 
-    /** 带退避重试的发送（限流/网络抖动重试；4xx 业务错误不重试）。 */
+    /** 无响应体要求的请求（短链跳转探测）。 */
     private <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
         IOException last = null;
         for (int attempt = 1; attempt <= maxRetry; attempt++) {
@@ -296,6 +361,25 @@ public class BilibiliFetcher implements LearnSourceFetcher {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** 逗号分隔的字幕域名白名单（默认 hdslb.com,bilibili.com）。 */
+    private static List<String> substringHosts(String configured) {
+        if (configured == null || configured.isBlank()) {
+            return List.of(DEFAULT_SUBTITLE_HOSTS.split(","));
+        }
+        return java.util.Arrays.stream(configured.split(","))
+                .map(String::strip).filter(s -> !s.isBlank()).toList();
+    }
+
+    /** 域名白名单匹配：精确或子域（**必须补点**——`evilbilibili.com` 不能算 B站）。 */
+    static boolean hostMatches(String host, List<String> allowed) {
+        if (host == null) return false;
+        String h = host.toLowerCase();
+        for (String base : allowed) {
+            if (h.equals(base) || h.endsWith("." + base)) return true;
+        }
+        return false;
     }
 
     private static String hostOf(String url) {

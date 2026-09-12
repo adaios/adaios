@@ -184,19 +184,18 @@ class LearnTranscriptionServiceTest {
     }
 
     @Test
-    void transcribe_ledgerWriteFailure_stopsWithHumanMessage_butKeepsTranscript() {
-        when(fetchService.downloadAudio(anyString(), anyString())).thenReturn(new byte[]{9});
-        when(transcoder.toAsrCompatible(any(), anyString())).thenReturn(new byte[]{8});
-        when(asrClient.transcribe(any(), anyString())).thenReturn("转写全文");
+    void transcribe_ledgerFailure_abortsBeforeSpendingAnything() {
+        // 对抗审查 P1-4 修复后：记账（预留）在**花钱之前**，账本写不进去就一分钱不花；
+        // 原顺序是「先转写后记账」，一旦记账失败就是「钱花了、账上没有」，且重试命中缓存永不再入账。
         when(quotaRepository.consume(anyString(), any(), anyInt(), anyDouble()))
                 .thenThrow(new RuntimeException("disk full"));
 
         LearnException e = assertThrows(LearnException.class, () -> service.transcribe("adai", video(600)));
 
-        assertTrue(e.getMessage().contains("记账"), "记账失败要如实说，不要伪装成 AI 失败");
-        assertTrue(e.getMessage().contains("不会重复花钱"), "要让用户知道重试是安全的（转写稿已留痕）");
-        // 转写稿先留痕再记账：钱花了但账没记时，重试命中缓存 → 不再重复花钱
-        verify(cardRepository).saveRaw(eq("adai"), eq("bilibili-BV1xx411c7mD-transcript.txt"), eq("转写全文"));
+        assertTrue(e.getMessage().contains("账本"), "要把原因说清楚（账本写不进去），不要伪装成 AI 失败");
+        verify(asrClient, never()).transcribe(any(), anyString());
+        verify(fetchService, never()).downloadAudio(anyString(), anyString());
+        verify(cardRepository, never()).saveRaw(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -209,7 +208,36 @@ class LearnTranscriptionServiceTest {
 
         assertTrue(e.getMessage().contains("云端转写失败"));
         verify(cardRepository, never()).saveRaw(anyString(), anyString(), anyString());
-        verify(quotaRepository, never()).consume(anyString(), any(), anyInt(), anyDouble());
+        // 预留（+600s）后失败 → 必须等额退回，净额为零（用户不为失败买单）
+        verify(quotaRepository).consume(eq("adai"), any(), eq(600), anyDouble());
+        verify(quotaRepository).consume(eq("adai"), any(), eq(-600), anyDouble());
+    }
+
+    @Test
+    void transcribe_settlesByActualAudioDuration_notByEstimate() {
+        // 对抗审查 P1-3：闸门与记账原先一律用「预估秒数」；时长未知按 30 分钟估 →
+        // 实际 3 小时的视频只记 1800s，额度可严重超用且账面上看不出来。
+        // 修复后按转码产物的实际时长（32kbps CBR 单声道 mp3：字节/4000 = 秒）结算差额。
+        when(fetchService.downloadAudio(anyString(), anyString())).thenReturn(new byte[]{9});
+        // 60s 预估 vs 90s 实际（360000 字节 / 4000 = 90s）
+        when(transcoder.toAsrCompatible(any(), anyString())).thenReturn(new byte[4000 * 90]);
+        when(asrClient.transcribe(any(), anyString())).thenReturn("转写全文");
+        when(quotaRepository.consume(anyString(), any(), anyInt(), anyDouble()))
+                .thenReturn(new LearnQuota(YearMonth.now().toString(), 0, 0d, QUOTA));
+
+        LearnTranscriptionService.TranscriptionResult result = service.transcribe("adai", video(60));
+
+        assertEquals(90, result.usedSeconds(), "记账要按实际音频时长，不是预估值");
+        verify(quotaRepository).consume(eq("adai"), any(), eq(60), anyDouble());    // 预留（预估）
+        verify(quotaRepository).consume(eq("adai"), any(), eq(30), anyDouble());    // 按实际补差
+    }
+
+    @Test
+    void actualSecondsOf_derivesFromMp3Size_fallsBackWhenUnknown() {
+        assertEquals(90, LearnTranscriptionService.actualSecondsOf(new byte[4000 * 90], 1800));
+        assertEquals(1800, LearnTranscriptionService.actualSecondsOf(new byte[0], 1800));
+        assertEquals(1800, LearnTranscriptionService.actualSecondsOf(null, 1800));
+        assertEquals(1800, LearnTranscriptionService.actualSecondsOf(new byte[10], 1800), "算不出就退回预估");
     }
 
     // ── 单次可预期（费用可控条 5）──

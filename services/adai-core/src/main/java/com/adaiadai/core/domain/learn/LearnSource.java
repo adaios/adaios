@@ -24,6 +24,10 @@ import java.util.List;
  * @param audioUrl          需转写时的音频地址（可空）
  * @param durationSeconds   内容时长（秒）；0 = 未知（费用预估用）
  * @param rawAssets         待写入 {@code _raw/} 的文本类原始素材
+ * @param textUnavailableReason 正文「取不到」的原因（**对抗审查 P1-2 修复新增**）：仅当
+ *                          **接口报错/限流**这类**可重试**原因导致拿不到正文时非空。
+ *                          与「确实没有字幕」（空列表，属正常情况→走转写）严格区分——
+ *                          否则会把可重试的报错降级成「花钱转写」：既多花钱，又不算 fail-visible。
  */
 public record LearnSource(
         String platform,
@@ -36,15 +40,29 @@ public record LearnSource(
         boolean needsTranscription,
         String audioUrl,
         int durationSeconds,
-        List<RawAsset> rawAssets) {
+        List<RawAsset> rawAssets,
+        String textUnavailableReason) {
 
     public LearnSource {
         rawAssets = rawAssets == null ? List.of() : List.copyOf(rawAssets);
     }
 
+    /** 兼容构造器（不含「正文取不到原因」= 无异常，语义同旧调用）。 */
+    public LearnSource(String platform, String sourceId, String url, String title, String author,
+                       String published, String text, boolean needsTranscription, String audioUrl,
+                       int durationSeconds, List<RawAsset> rawAssets) {
+        this(platform, sourceId, url, title, author, published, text, needsTranscription, audioUrl,
+                durationSeconds, rawAssets, null);
+    }
+
     /** 是否已拿到可结构化的正文（有字幕/文章全文）。 */
     public boolean hasText() {
         return text != null && !text.isBlank();
+    }
+
+    /** 正文是否因**可重试原因**（接口报错/限流）缺失——此时不应进入付费转写分支。 */
+    public boolean textBlockedByError() {
+        return textUnavailableReason != null && !textUnavailableReason.isBlank();
     }
 
     /** 待留痕的原始素材（文件名 + 文本内容）；文件名落 {@code learn/_raw/}。 */

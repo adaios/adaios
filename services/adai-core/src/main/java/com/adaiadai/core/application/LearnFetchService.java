@@ -4,6 +4,7 @@ import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnSource;
 import com.adaiadai.core.domain.learn.LearnSourceFetcher;
+import com.adaiadai.core.domain.learn.LearnFetchPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,10 +49,13 @@ public class LearnFetchService {
 
     private final List<LearnSourceFetcher> fetchers;
     private final LearnCardRepository repository;
+    private final LearnFetchPolicy hostPolicy;
 
-    public LearnFetchService(List<LearnSourceFetcher> fetchers, LearnCardRepository repository) {
+    public LearnFetchService(List<LearnSourceFetcher> fetchers, LearnCardRepository repository,
+                             LearnFetchPolicy hostPolicy) {
         this.fetchers = fetchers;
         this.repository = repository;
+        this.hostPolicy = hostPolicy;
     }
 
     /**
@@ -72,6 +76,12 @@ public class LearnFetchService {
     public LearnSource fetch(String url) {
         if (url == null || url.isBlank()) {
             throw new LearnException("链接不能为空");
+        }
+        // 出站白名单（2026-09-12 对抗审查 P0-1 修复）：服务端不能替用户去访问任意地址——
+        // 内网/回环/云元数据（169.254.169.254 可取临时凭证）/非标准端口一律先挡在门口。
+        String rejection = hostPolicy.rejection(url);
+        if (rejection != null) {
+            throw new LearnException(rejection);
         }
         String host = hostOf(url);
         if (host == null) {

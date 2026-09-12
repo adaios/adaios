@@ -62,6 +62,21 @@ class ArticleFetcherTest {
             respond(ex, waybackStatus, waybackBody);
         });
         server.createContext("/snapshot", ex -> respond(ex, 200, articleHtml));
+        server.createContext("/r1", ex -> {
+            ex.getResponseHeaders().add("Location", "/r2");
+            ex.sendResponseHeaders(302, -1);
+            ex.close();
+        });
+        server.createContext("/r2", ex -> {
+            ex.getResponseHeaders().add("Location", "/article");
+            ex.sendResponseHeaders(302, -1);
+            ex.close();
+        });
+        server.createContext("/hop", ex -> {
+            ex.getResponseHeaders().add("Location", "/article");
+            ex.sendResponseHeaders(302, -1);
+            ex.close();
+        });
         server.start();
     }
 
@@ -79,7 +94,11 @@ class ArticleFetcherTest {
     }
 
     private ArticleFetcher fetcher() {
-        return new ArticleFetcher(base + "/wayback", 1);
+        return new ArticleFetcher(base + "/wayback", 1, new OutboundHostPolicy(true, 3));
+    }
+
+    private ArticleFetcher fetcher(com.adaiadai.core.domain.learn.LearnFetchPolicy policy, int maxRetry) {
+        return new ArticleFetcher(base + "/wayback", maxRetry, policy);
     }
 
     private static String page(String title, String body) {
@@ -211,6 +230,41 @@ class ArticleFetcherTest {
 
         assertTrue(e.getMessage().contains("粘进来"), "5xx 也走快照兜底，兜不住就给人话 + 替代路径");
         assertEquals(1, waybackCalls.get(), "直抓失败应先尝试快照兜底");
+    }
+
+    // ── 出站白名单（对抗审查 P0-1）──
+
+    @Test
+    void fetch_localhostBlockedByPolicy_beforeAnyRequest() {
+        // 本机地址（actuator/内网管理口）必须被挡在出站之前——注意用 localhost 写法，
+        // 因为 mock server 就在 127.0.0.1 上，这一条恰好证明「策略先于请求生效」
+        ArticleFetcher strict = fetcher(new OutboundHostPolicy(false, 3), 1);
+        int before = articleCalls.get();
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> strict.fetch("http://localhost:" + server.getAddress().getPort() + "/article"));
+
+        assertTrue(e.getMessage().contains("公开访问"), "拒绝话术要人话：" + e.getMessage());
+        assertEquals(before, articleCalls.get(), "被策略拒绝时不应发出任何请求");
+    }
+
+    @Test
+    void fetch_followsSingleRedirect() {
+        articleHtml = page("跳转后的标题", LONG_BODY);
+
+        LearnSource source = fetcher().fetch(base + "/hop");
+
+        assertEquals("跳转后的标题", source.title(), "手工跟跳转后仍能取到正文");
+    }
+
+    @Test
+    void fetch_tooManyRedirects_failsVisible() {
+        // maxRedirects=1：/r1 → /r2 → /article 超限 → 人话失败（不无限跟）
+        ArticleFetcher limited = fetcher(new OutboundHostPolicy(true, 1), 1);
+
+        LearnException e = assertThrows(LearnException.class, () -> limited.fetch(base + "/r1"));
+
+        assertTrue(e.getMessage().contains("跳转太多次"), e.getMessage());
     }
 
     @Test

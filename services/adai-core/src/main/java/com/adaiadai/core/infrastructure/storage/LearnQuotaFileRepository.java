@@ -61,8 +61,9 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
         synchronized (lockFor(userId)) {
             JsonNode root = readRoot(userId);
             LearnQuota current = extract(root, month);
-            int usedSeconds = current.usedSeconds() + Math.max(0, seconds);
-            double usedYuan = current.usedYuan() + Math.max(0d, yuan);
+            // 允许负数 = 回退预留（转写失败时把钱退回去，对抗审查 P1-4 的配套语义）；总量钳在 0 以上
+            int usedSeconds = Math.max(0, current.usedSeconds() + seconds);
+            double usedYuan = Math.max(0d, round4(current.usedYuan() + yuan));
 
             ObjectNode next = root != null && root.isObject()
                     ? (ObjectNode) root.deepCopy()
@@ -87,14 +88,27 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
         return extract(readRoot(userId), month);
     }
 
+    /**
+     * 读账本。
+     * <p>
+     * **对抗审查 P2-1 修复**：原实现「解析失败 → 按空账本处理」= 一次损坏就把闸门永久打开
+     * （额度重新归零 → 可无限转写），与「fail-visible」相反。改为 **fail-closed**：账本存在但
+     * 读不出来 → 抛 {@code StorageException} 拒绝转写并告警，由用户去修 `learn/_quota.json`。
+     * 「文件不存在」仍是正常的全新用户（返回 null → 全零）。
+     */
     private JsonNode readRoot(String userId) {
+        String content;
         try {
-            String content = fileStorage.read(userId, QUOTA_PATH);
-            if (content == null || content.isBlank()) return null;
+            content = fileStorage.read(userId, QUOTA_PATH);
+        } catch (Exception e) {
+            throw new StorageException("转写额度账本读不出来，为防超支已暂停转写", e);
+        }
+        if (content == null || content.isBlank()) return null;
+        try {
             return MAPPER.readTree(content);
         } catch (Exception e) {
-            log.warn("learn 配额账本损坏，按空账本处理 | userId={} | {}", userId, e.getMessage());
-            return null;
+            log.error("learn 配额账本内容异常，拒绝转写（fail-closed）| userId={} | {}", userId, e.getMessage());
+            throw new StorageException("转写额度账本内容异常，为防超支已暂停转写（请检查 learn/_quota.json）", e);
         }
     }
 

@@ -7,6 +7,7 @@ import java.time.YearMonth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -75,14 +76,30 @@ class LearnQuotaFileRepositoryTest {
     }
 
     @Test
-    void corruptLedger_degradesToEmpty_doesNotThrow() {
+    void corruptLedger_failsClosed_doesNotSilentlyResetQuota() {
+        // 对抗审查 P2-1：原先「解析失败 → 按空账本处理」= 一次损坏就把额度闸门永久打开
+        // （额度归零 → 可无限转写）。改为 fail-closed：拒绝操作 + 告警，等人工修文件。
         storage.write("adai", "learn/_quota.json", "{ 这不是 JSON");
 
-        LearnQuota quota = repository.view("adai", YearMonth.of(2026, 9));
-        assertEquals(0, quota.usedSeconds(), "损坏账本降级为空账本（不阻断转写，也不误报已用额度）");
+        assertThrows(StorageException.class, () -> repository.view("adai", YearMonth.of(2026, 9)));
+        assertThrows(StorageException.class,
+                () -> repository.consume("adai", YearMonth.of(2026, 9), 120, 0.0096d));
+    }
 
-        LearnQuota after = repository.consume("adai", YearMonth.of(2026, 9), 120, 0.0096d);
-        assertEquals(120, after.usedSeconds());
+    @Test
+    void missingLedger_isStillTreatedAsFreshUser() {
+        // 与「损坏」区分：文件不存在 = 全新用户（正常路径，不能因为 fail-closed 就把新用户也挡住）
+        assertEquals(0, repository.view("adai", YearMonth.of(2026, 9)).usedSeconds());
+    }
+
+    @Test
+    void consume_negativeDelta_refundsReservation() {
+        repository.consume("adai", YearMonth.of(2026, 9), 1800, 0.144d);
+
+        LearnQuota after = repository.consume("adai", YearMonth.of(2026, 9), -1800, -0.144d);
+
+        assertEquals(0, after.usedSeconds(), "转写失败要能把预留退回（否则用户为失败买单）");
+        assertEquals(0d, after.usedYuan(), 1e-9);
     }
 
     @Test

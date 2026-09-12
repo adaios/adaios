@@ -195,6 +195,64 @@ class LearnJsonRepairTest {
                 service.digest("adai", "素材", null, null, null, null, null).title());
     }
 
+    // ── 对抗审查 P1-5 反例：字符串内的 ", }" 不得被吞 ──
+
+    @Test
+    void repairJson_stringContainingCommaBrace_survivesTrailingCommaRepair() throws Exception {
+        // 审查官给的反例：LLM 只在**别处**犯了尾随逗号，而串内本来正确的 `, }` 被全局正则吞掉 →
+        // 解析成功、卡片内容已被无声改坏。状态机修复后串内内容原样保留。
+        String broken = "{\"core_view\":\"最后一项不能带逗号，比如 {\\\"a\\\": 1, } 就是错的\",\"type\":\"ai\",}";
+
+        JsonNode node = MAPPER.readTree(LearnDigestAppService.repairJson(broken));
+
+        assertEquals("最后一项不能带逗号，比如 {\"a\": 1, } 就是错的", node.path("core_view").asText(),
+                "串内的 ', }' 属于正文，不能被当尾随逗号删掉");
+        assertEquals("ai", node.path("type").asText());
+    }
+
+    @Test
+    void repairJson_trailingCommaInArrayStillRemoved() throws Exception {
+        JsonNode node = MAPPER.readTree(LearnDigestAppService.repairJson("{\"a\":[1,2,],}"));
+
+        assertEquals(2, node.path("a").size(), "字符串外的尾随逗号照旧要清理");
+    }
+
+    @Test
+    void repairJson_keepsBracketInsideString() throws Exception {
+        String json = "{\"note\":\"数组写法是 [1, 2, ]\"}";
+
+        JsonNode node = MAPPER.readTree(LearnDigestAppService.repairJson(json));
+
+        assertEquals("数组写法是 [1, 2, ]", node.path("note").asText());
+    }
+
+    // ── 对抗审查 P2-2：空卡门禁 ──
+
+    @Test
+    void digest_onlyTitleWithoutPoints_failsVisible_noEmptyCard() {
+        when(aiClient.generate(any(), any())).thenReturn("""
+                {"title":"只有标题的卡片","type":"ai","tags":[],"core_view":"",
+                "key_points":[],"questions":[],"trade_related":false,"trade_note":""}""");
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> service.digest("adai", "素材正文", null, null, null, null, null));
+
+        assertTrue(e.getMessage().contains("没给出可用的要点"), e.getMessage());
+        verify(repository).saveRawSource(eq("adai"), anyString());
+        verify(repository, never()).save(anyString(), any(LearnCard.class));
+    }
+
+    @Test
+    void digest_keyPointsOnlyWithEmptyCoreView_stillProducesCard() {
+        when(aiClient.generate(any(), any())).thenReturn("""
+                {"title":"只有要点的卡片","type":"ai","tags":[],"core_view":"",
+                "key_points":["要点一","要点二"],"questions":[],"trade_related":false,"trade_note":""}""");
+
+        LearnCard card = service.digest("adai", "素材正文", null, null, null, null, null);
+
+        assertEquals("只有要点的卡片", card.title(), "核心观点为空但要点有内容 → 仍是有效卡片");
+    }
+
     @Test
     void repairJson_doesNotCorruptPlainContent() {
         String plain = "{\"title\":\"正常标题\",\"key_points\":[\"a\",\"b\"]}";

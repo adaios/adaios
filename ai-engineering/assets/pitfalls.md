@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-12
 status: active
-lines: 95
+lines: 98
 depends-on:
   - ../checklists/guard.md
 related:
@@ -29,6 +29,9 @@ tags: [ai, assets, pitfalls]
 | now() 推导路径 | 跨日复制丢轮次/旧卡归"今天" | storage 用 `LocalDate.now()` 推 filePath / parseDateTime 回退 now() | 从实体 `createdAt` 推导；缺失返回 null（G2/B29/B37） | ✅ 已修 | 新增 `now()` 回退代码 |
 | 删除在降级路径 | AI 失败时删用户记录 | catch 降级路径内调用删除 | 正常业务删除豁免，降级路径禁止（G3） | ✅ 已修 | catch 块内出现 delete |
 | 整文件重写并发 | 并发 RMW 静默丢更新 | Memory/TagIndex/Position 整文件重写无锁 | synchronized / per-user 锁（B14） | 状态见 REVIEW #126 | save 无锁 |
+
+| 出站抓取无白名单（SSRF） | 服务端替用户访问任意地址：内网站点/管理口被读走并回显，云元数据地址可换出临时凭证 | 「抓取」被当成普通读取，忘了目标来自**用户输入**（还叠加 `followRedirects`：一跳就落到内网） | 出站白名单：拒私有/回环/链路本地/元数据网段与非标准端口；**关自动重定向、逐跳复检**；第三方响应给的地址（字幕/快照）也要收敛域名白名单；响应体加上限（防大文件打爆内存） | ✅ 已修（2026-09-12 learn 抓取批，对抗审查 P0-1） | 新增任何「用户给 URL，服务端去取」的功能；播 `allow-private-hosts` 这类测试开关进生产 |
+| 检查-再动作竞态（并发花钱） | 两端同时点「确认」→ **同一个付费动作执行两次**（重复计费/重复扣额）；连点提交 → 双任务、后一个把前一个的上下文覆盖成孤儿 | `get → 判断 → put/resume` 三步在并发下都可双双通过检查；后台池大小**不构成**保护（竞态发生在 HTTP 线程） | 状态转移用 `ConcurrentHashMap.compute`/CAS 原子完成（本项目 2026-09-12 learn 抓取批即此修法），配多线程回归断言「恰好一个胜出」 | ✅ 已修（2026-09-12） | 新写「先判断再改状态」的提交/确认/领取逻辑；只做单人点击测试就以为安全 |
 
 ## 二、AI 集成健壮性（B11-B12/B24/B26）
 

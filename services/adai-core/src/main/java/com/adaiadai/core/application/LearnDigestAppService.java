@@ -313,9 +313,22 @@ public class LearnDigestAppService {
             return;
         }
 
+        // 对抗审查 P1-2①：「接口报错/限流」是可重试的错误，**不是**「确实没字幕」。
+        // 把它降级成付费转写 = 让用户为本来能省的钱买单，且违反 fail-visible → 直接人话失败。
+        if (source.textBlockedByError()) {
+            throw new LearnException(source.textUnavailableReason() + "；抓到的信息我已留存，稍后再试一次");
+        }
+
         String reason = transcriptionService.unavailableReason();
         if (reason != null) {
             throw new LearnException(reason);
+        }
+
+        // 对抗审查 P1-2②：先确认音频真的拿得到，再让用户点头——
+        // 否则用户为一件做不到的事点了确认（点了才报「拿不到音频地址」）。
+        if (source.audioUrl() == null || source.audioUrl().isBlank()) {
+            throw new LearnException("这个视频的音频我拿不到（可能要登录或被限制），"
+                    + "把字幕或正文粘进来我照样能整理");
         }
         LearnTranscriptionService.CostEstimate estimate = transcriptionService.estimate(userId, source);
         if (estimate.exceedsQuota()) {
@@ -419,7 +432,9 @@ public class LearnDigestAppService {
         void awaitConfirm(LearnTranscriptionService.CostEstimate estimate) {
             this.pendingSource = source;
             this.pendingCost = estimate;
-            this.stage = STAGE_TRANSCRIBING;
+            // 对抗审查 P2-3：等确认时**不能**留 stage=transcribing —— 状态与阶段自相矛盾，
+            // 前端按 stage 渲染会显示「正在转写」，而实际在等你拍板、一分钱没花。置空交由状态渲染。
+            this.stage = null;
             this.status = STATUS_NEEDS_CONFIRMATION;
             this.settledAt = System.currentTimeMillis();
             this.message = "这个视频没有字幕，需要转写：" + humanDuration(estimate)
@@ -522,6 +537,12 @@ public class LearnDigestAppService {
         if (parsed.title() == null || parsed.title().isBlank()) {
             repository.saveRawSource(userId, content);
             throw new LearnException("AI 消化未给出标题，原始素材已留存（learn/_raw/），可稍后重试");
+        }
+        // 对抗审查 P2-2：原先只卡「标题非空」→ 核心观点/要点全空也会落一张只有标题的空卡，
+        // 而 AI 已经花了钱。要求「核心观点或要点至少有一个」，否则 fail-visible（素材已留存）。
+        if ((parsed.coreView() == null || parsed.coreView().isBlank()) && parsed.keyPoints().isEmpty()) {
+            repository.saveRawSource(userId, content);
+            throw new LearnException("AI 这次没给出可用的要点，原始素材已留存（learn/_raw/），可稍后重试");
         }
 
         // type：显式 hint > LLM 判 > other 兜底（越界值不落盘）
@@ -654,8 +675,12 @@ public class LearnDigestAppService {
         try {
             node = MAPPER.readTree(json);
         } catch (Exception strict) {
-            // pitfall「LLM 输出 JSON 夹未转义引号」：同一素材重试即成功（概率性）——先做宽松修复再放弃
-            node = MAPPER.readTree(repairJson(json));
+            // pitfall「LLM 输出 JSON 夹未转义引号」：同一素材重试即成功（概率性）——先做宽松修复再放弃。
+            // 修复是启发式，可能改动文本，故留日志便于事后核对（对抗审查 P1-5）。
+            String repaired = repairJson(json);
+            log.warn("learn LLM 输出严格解析失败，走宽松修复 | {} | 原文 {} 字 → 修复后 {} 字",
+                    strict.getMessage(), json.length(), repaired.length());
+            node = MAPPER.readTree(repaired);
         }
         String title = node.path("title").asText("").strip();
         String type = node.path("type").asText("").strip().toLowerCase();
@@ -739,8 +764,18 @@ public class LearnDigestAppService {
                 }
                 continue;
             }
+            if (c == ',' && !inString) {
+                // 尾随逗号：**只处理字符串外的逗号**（对抗审查 P1-5）。原先用全局正则
+                // replaceAll(",\s*([}\]])")，对转义内容一视同仁——LLM 只要在别处犯了尾随逗号，
+                // 正文里本来就正确的 `, }` / `, ]` 也会被吞掉，且**解析成功、无声改坏卡片**。
+                int j = i + 1;
+                while (j < json.length() && Character.isWhitespace(json.charAt(j))) j++;
+                if (j < json.length() && (json.charAt(j) == '}' || json.charAt(j) == ']')) {
+                    continue;   // 丢弃这个尾随逗号
+                }
+            }
             sb.append(c);
         }
-        return sb.toString().replaceAll(",\\s*([}\\]])", "$1");
+        return sb.toString();
     }
 }

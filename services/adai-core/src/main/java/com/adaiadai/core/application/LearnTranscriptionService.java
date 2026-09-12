@@ -101,8 +101,13 @@ public class LearnTranscriptionService {
     /**
      * 转写（含费用闸）。
      * <p>
-     * 顺序：命中留痕 → 复用（0 元）→ 否则校验可用性 → 校验配额硬闸（超限直接拒绝）
-     * → 下载音频 → ffmpeg 转码 → 云端转写 → 留痕 → 记账。
+     * <b>顺序（2026-09-12 对抗审查 P1-3/P1-4 修复后）</b>：
+     * 命中留痕 → 复用（0 元）→ 校验可用性 → 校验配额硬闸 → **先预留记账**（写不进账就不花钱）
+     * → 下载 → 转码 → 云端转写（失败则**退回预留**）→ **按实际音频时长结算差额** → 留痕。
+     * <p>
+     * 为什么改成「先预留再花钱」：原顺序是「先转写、再记账」，一旦记账写盘失败，钱花了却没入账，
+     * 而重试会命中转写稿缓存直接返回 → **这笔费用永久不入账、剩余额度虚高**。留痕也移到记账成功
+     * 之后（避免「有稿无账」）；留痕失败只告警（卡片已经该出就出，不影响账目）。
      *
      * @throws LearnException 转写不可用 / 超配额 / 下载或转写失败（人话）
      */
@@ -123,28 +128,80 @@ public class LearnTranscriptionService {
         }
         YearMonth month = YearMonth.now();
 
-        byte[] audio = fetchService.downloadAudio(source.platform(), source.audioUrl());
-        byte[] transcoded = transcoder.toAsrCompatible(audio, "m4s");
+        // ① 先预留（记账在前，花钱在后）：账本写不进去就一分钱都不花
+        try {
+            quotaRepository.consume(userId, month, estimate.durationSeconds(), estimate.estimatedYuan());
+        } catch (RuntimeException e) {
+            log.error("转写预留记账失败，未开始转写 | userId={} | {}", userId, e.getMessage());
+            throw new LearnException("额度账本暂时写不进去，我先不转写了（免得花了钱记不上账），稍后再试");
+        }
+
+        // ② 花钱：下载 → 转码 → 云端转写；任何失败都退回预留（不让用户为失败买单）
+        byte[] transcoded;
         String text;
         try {
+            byte[] audio = fetchService.downloadAudio(source.platform(), source.audioUrl());
+            transcoded = transcoder.toAsrCompatible(audio, "m4s");
             text = asrClient.transcribe(transcoded, "learn-" + source.sourceId() + ".mp3");
-        } catch (IllegalStateException e) {
-            throw new LearnException(e.getMessage());
-        }
-        cardRepository.saveRaw(userId, transcriptRawName(source), text);
-        LearnQuota after;
-        try {
-            after = quotaRepository.consume(userId, month, estimate.durationSeconds(), estimate.estimatedYuan());
+        } catch (LearnException e) {
+            refund(userId, month, estimate);
+            throw e;
         } catch (RuntimeException e) {
-            // 记账写盘失败（StorageException）：**中止消化**而不是带着「花过钱但没账」的隐患继续。
-            // 转写稿已留痕 → 稍后重试命中缓存，不再重复花钱（fail-visible，不静默）。
-            log.error("转写记账失败，已中止消化 | userId={} | {}", userId, e.getMessage());
-            throw new LearnException("转写好了，但记账没写成，我先把这一步停住了（避免产生查不到的费用）。"
-                    + "转写稿已留存，稍后重试不会重复花钱");
+            refund(userId, month, estimate);
+            throw new LearnException(e.getMessage() == null ? "转写失败，已退回额度" : e.getMessage());
         }
-        log.info("转写完成 | userId={} | {} 字 | 用时 {}s | 花费约 {} 元 | 本月累计 {}s",
-                userId, text.length(), estimate.durationSeconds(), estimate.estimatedYuan(), after.usedSeconds());
-        return new TranscriptionResult(text, false, estimate.durationSeconds(), estimate.estimatedYuan(), after);
+
+        // ③ 按**实际音频时长**结算（对抗审查 P1-3）：转码产物是 32kbps CBR 单声道 mp3，
+        //    字节数 / 4000 = 秒。时长未知时原先一律按 30 分钟记账 → 3 小时的视频只记 1800s，
+        //    额度可以严重超用且账面上看不出来。
+        int actualSeconds = actualSecondsOf(transcoded, estimate.durationSeconds());
+        LearnQuota after = settle(userId, month, estimate, actualSeconds);
+
+        // ④ 留痕（记账成功后才留痕；留痕失败只告警——不影响账目，卡片照出）
+        try {
+            cardRepository.saveRaw(userId, transcriptRawName(source), text);
+        } catch (RuntimeException e) {
+            log.warn("转写稿留痕失败（下次同源整理会重新计费）| userId={} | {}", userId, e.getMessage());
+        }
+        log.info("转写完成 | userId={} | {} 字 | 实际 {}s | 花费约 {} 元 | 本月累计 {}s",
+                userId, text.length(), actualSeconds, yuanFor(actualSeconds), after.usedSeconds());
+        return new TranscriptionResult(text, false, actualSeconds, yuanFor(actualSeconds), after);
+    }
+
+    /** 退回预留（转写失败不扣额度；退回本身失败只告警——宁可少扣，不可漏账）。 */
+    private void refund(String userId, YearMonth month, CostEstimate estimate) {
+        try {
+            quotaRepository.consume(userId, month, -estimate.durationSeconds(), -estimate.estimatedYuan());
+            log.info("转写失败，已退回预留额度 | userId={} | {}s", userId, estimate.durationSeconds());
+        } catch (RuntimeException e) {
+            log.error("退回预留失败（额度可能被多扣）| userId={} | {}", userId, e.getMessage());
+        }
+    }
+
+    /** 按实际时长结算与预估的差额（正=补记，负=退回）。 */
+    private LearnQuota settle(String userId, YearMonth month, CostEstimate estimate, int actualSeconds) {
+        int deltaSeconds = actualSeconds - estimate.durationSeconds();
+        double deltaYuan = round4(yuanFor(actualSeconds) - estimate.estimatedYuan());
+        if (deltaSeconds == 0 && Math.abs(deltaYuan) < 1e-9) {
+            return quotaRepository.view(userId, month);
+        }
+        try {
+            return quotaRepository.consume(userId, month, deltaSeconds, deltaYuan);
+        } catch (RuntimeException e) {
+            log.error("按实际时长结算失败（账目可能停留在预估口径）| userId={} | {}", userId, e.getMessage());
+            return quotaRepository.view(userId, month);
+        }
+    }
+
+    /** 实际时长（秒）：32kbps CBR 单声道 mp3 → 4000 字节/秒；推算不出来就退回预估值。 */
+    static int actualSecondsOf(byte[] transcodedMp3, int fallbackSeconds) {
+        if (transcodedMp3 == null || transcodedMp3.length == 0) return fallbackSeconds;
+        int seconds = (int) Math.round(transcodedMp3.length / 4000.0d);
+        return seconds > 0 ? seconds : fallbackSeconds;
+    }
+
+    private double yuanFor(int seconds) {
+        return round4(seconds / 3600.0d * yuanPerHour);
     }
 
     /** 单次预估结果（费用可控条 5：单次可预期）。 */

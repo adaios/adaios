@@ -28,6 +28,9 @@ import static org.mockito.Mockito.verify;
 class LearnFetchServiceTest {
 
     private final LearnCardRepository repository = mock(LearnCardRepository.class);
+    /** 抓取策略：单测里的假抓取实现用 example.com 等公网域名，放开私有地址限制不影响断言。 */
+    private static final com.adaiadai.core.infrastructure.fetch.OutboundHostPolicy PERMISSIVE =
+            new com.adaiadai.core.infrastructure.fetch.OutboundHostPolicy(true, 3);
 
     /** 假抓取实现：记录调用次数，返回构造时给定的结果。 */
     private static class FakeFetcher implements LearnSourceFetcher {
@@ -69,7 +72,7 @@ class LearnFetchServiceTest {
     void fetch_dispatchesToSupportingFetcher() {
         FakeFetcher bili = new FakeFetcher("bilibili", List.of("bilibili.com"), source("bilibili", "BV1"));
         FakeFetcher article = new FakeFetcher("article", List.of("http"), source("article", "abc"));
-        LearnFetchService service = new LearnFetchService(List.of(bili, article), repository);
+        LearnFetchService service = new LearnFetchService(List.of(bili, article), repository, PERMISSIVE);
 
         LearnSource result = service.fetch("https://www.bilibili.com/video/BV1xx411c7mD");
 
@@ -81,7 +84,7 @@ class LearnFetchServiceTest {
     @Test
     void fetch_youtube_rejectedWithHumanMessage_notPretending() {
         LearnFetchService service = new LearnFetchService(
-                List.of(new FakeFetcher("article", List.of("http"), source("article", "a"))), repository);
+                List.of(new FakeFetcher("article", List.of("http"), source("article", "a"))), repository, PERMISSIVE);
 
         LearnException e = assertThrows(LearnException.class,
                 () -> service.fetch("https://www.youtube.com/watch?v=abc"));
@@ -93,7 +96,7 @@ class LearnFetchServiceTest {
     @Test
     void fetch_socialPlatforms_rejectedWithAlternative() {
         LearnFetchService service = new LearnFetchService(
-                List.of(new FakeFetcher("article", List.of("http"), source("article", "a"))), repository);
+                List.of(new FakeFetcher("article", List.of("http"), source("article", "a"))), repository, PERMISSIVE);
 
         assertTrue(assertThrows(LearnException.class,
                 () -> service.fetch("https://mp.weixin.qq.com/s/abcdef")).getMessage().contains("公众号"));
@@ -106,7 +109,8 @@ class LearnFetchServiceTest {
     @Test
     void fetch_noFetcherSupports_throwsHumanMessage() {
         LearnFetchService service = new LearnFetchService(
-                List.of(new FakeFetcher("bilibili", List.of("bilibili.com"), source("bilibili", "BV1"))), repository);
+                List.of(new FakeFetcher("bilibili", List.of("bilibili.com"), source("bilibili", "BV1"))),
+                repository, PERMISSIVE);
 
         LearnException e = assertThrows(LearnException.class, () -> service.fetch("https://example.com/a"));
         assertTrue(e.getMessage().contains("粘进来"));
@@ -114,7 +118,7 @@ class LearnFetchServiceTest {
 
     @Test
     void fetch_blankOrMalformedUrl_throwsHumanMessage() {
-        LearnFetchService service = new LearnFetchService(List.of(), repository);
+        LearnFetchService service = new LearnFetchService(List.of(), repository, PERMISSIVE);
         assertThrows(LearnException.class, () -> service.fetch("  "));
         assertThrows(LearnException.class, () -> service.fetch("不是链接"));
     }
@@ -122,7 +126,7 @@ class LearnFetchServiceTest {
     @Test
     void fetchAndArchive_writesRawAssets_andReportsFailuresQuietly() {
         FakeFetcher bili = new FakeFetcher("bilibili", List.of("bilibili.com"), source("bilibili", "BV1"));
-        LearnFetchService service = new LearnFetchService(List.of(bili), repository);
+        LearnFetchService service = new LearnFetchService(List.of(bili), repository, PERMISSIVE);
 
         service.fetchAndArchive("adai", "https://www.bilibili.com/video/BV1xx411c7mD");
 
@@ -132,7 +136,7 @@ class LearnFetchServiceTest {
     @Test
     void fetchAndArchive_rawWriteFailure_doesNotBreakFetch() {
         FakeFetcher bili = new FakeFetcher("bilibili", List.of("bilibili.com"), source("bilibili", "BV1"));
-        LearnFetchService service = new LearnFetchService(List.of(bili), repository);
+        LearnFetchService service = new LearnFetchService(List.of(bili), repository, PERMISSIVE);
         org.mockito.Mockito.doThrow(new RuntimeException("disk"))
                 .when(repository).saveRaw(anyString(), anyString(), anyString());
 
@@ -148,7 +152,7 @@ class LearnFetchServiceTest {
                 return new byte[]{1, 2, 3};
             }
         };
-        LearnFetchService service = new LearnFetchService(List.of(bili), repository);
+        LearnFetchService service = new LearnFetchService(List.of(bili), repository, PERMISSIVE);
 
         assertEquals(3, service.downloadAudio("bilibili", "https://audio/x.m4s").length);
         assertThrows(LearnException.class, () -> service.downloadAudio("article", "https://audio/x.m4s"));
@@ -179,7 +183,7 @@ class LearnFetchServiceTest {
 
     @Test
     void archive_nullSource_isNoOp() {
-        LearnFetchService service = new LearnFetchService(List.of(), repository);
+        LearnFetchService service = new LearnFetchService(List.of(), repository, PERMISSIVE);
         service.archive("adai", null);
         verify(repository, never()).saveRaw(anyString(), anyString(), anyString());
     }

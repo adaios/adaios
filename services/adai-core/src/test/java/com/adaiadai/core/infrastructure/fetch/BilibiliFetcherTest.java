@@ -85,7 +85,8 @@ class BilibiliFetcherTest {
     }
 
     private BilibiliFetcher fetcher() {
-        return new BilibiliFetcher(base, 2);
+        // 本地 mock server 是 127.0.0.1，故把字幕域名白名单配置成本机（生产为 hdslb.com/bilibili.com）
+        return new BilibiliFetcher(base, 2, "127.0.0.1");
     }
 
     // ── 域名识别（B8 白名单：只认内容页域名）──
@@ -159,13 +160,51 @@ class BilibiliFetcherTest {
     }
 
     @Test
-    void fetch_subtitleInterfaceFails_degradesToTranscription() {
+    void fetch_subtitleInterfaceErrors_marksRetryableInsteadOfOfferingPaidTranscription() {
+        // 对抗审查 P1-2：接口报错/限流是**可重试错误**，不是「确实没字幕」。
+        // 降级成「无字幕→花钱转写」= 引导用户为本来能省的钱买单。
         playerBody = """
-                {"code":-404,"message":"啥都木有"}""";
+                {"code":-352,"message":"风控校验失败"}""";
 
         LearnSource source = fetcher().fetch("https://www.bilibili.com/video/BV1xx411c7mD");
 
-        assertTrue(source.needsTranscription(), "字幕接口失败按「无字幕」处理，不整单失败");
+        assertTrue(source.needsTranscription(), "确实需要文本，但——");
+        assertTrue(source.textBlockedByError(), "——要标记为「可重试错误」，上层据此走人话失败而非付费分支");
+        assertTrue(source.textUnavailableReason().contains("稍后再试"));
+        assertEquals(null, source.audioUrl(), "报错时不该再去取音频（省一次请求）");
+    }
+
+    @Test
+    void fetch_emptySubtitleList_isNormalNotError() {
+        playerBody = """
+                {"code":0,"data":{"subtitle":{"subtitles":[]}}}""";
+
+        LearnSource source = fetcher().fetch("https://www.bilibili.com/video/BV1xx411c7mD");
+
+        assertTrue(source.needsTranscription());
+        assertFalse(source.textBlockedByError(), "空列表是正常情况（实测多数视频如此）→ 走转写");
+        assertTrue(source.audioUrl() != null, "正常无字幕时应取到音频线索");
+    }
+
+    @Test
+    void supports_rejectsLookalikeHost() {
+        BilibiliFetcher f = fetcher();
+        assertFalse(f.supports("https://evilbilibili.com/video/BV1xx411c7mD"),
+                "少一个点的 endsWith 会把 evilbilibili.com 当 B站");
+        assertFalse(f.supports("https://bilibili.com.evil.com/x"));
+    }
+
+    @Test
+    void fetch_subtitleHostOutsideWhitelist_treatedAsNoSubtitle() {
+        // 第三方响应给的地址必须收敛（对抗审查 P0-1）：非白名单域名不 fetch
+        playerBody = """
+                {"code":0,"data":{"subtitle":{"subtitles":[
+                  {"lan":"zh-CN","lan_doc":"中文","subtitle_url":"https://evil.example.com/sub.json"}]}}}""";
+
+        LearnSource source = fetcher().fetch("https://www.bilibili.com/video/BV1xx411c7mD");
+
+        assertFalse(source.hasText(), "白名单外的字幕地址不抓（按无字幕处理）");
+        assertTrue(source.needsTranscription());
     }
 
     @Test
