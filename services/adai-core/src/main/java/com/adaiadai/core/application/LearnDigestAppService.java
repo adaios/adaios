@@ -597,9 +597,9 @@ public class LearnDigestAppService {
         return "这个视频没有字幕，需要转写：" + DigestJob.humanDuration(estimate)
                 + "，预计约 " + String.format("%.2f", estimate.estimatedYuan())
                 + " 元（按 " + String.format("%.3f", service.yuanPerHour())
-                + " 元/小时估；本月的云端免费额度还没用完的话**这笔实际是 0 元**，超出自设上限 "
-                + LearnTranscriptionService.humanHours(estimate.remainSeconds())
-                + " 后按此价计费，最终以阿里云账单为准）";
+                + " 元/小时估；本月的云端免费额度没用完的话这笔实际是 0 元。"
+                + "我这边本月还剩 " + LearnTranscriptionService.humanHours(estimate.remainSeconds())
+                + " 额度，用超了按此价计费，最终以阿里云账单为准）";
     }
 
     /** 卡片「平台」展示值：文章用它自己的域名（bilibili 保持原样），比裸 "article" 有信息量。 */
