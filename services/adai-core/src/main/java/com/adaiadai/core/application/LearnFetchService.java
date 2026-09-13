@@ -32,20 +32,32 @@ public class LearnFetchService {
     private static final Logger log = LoggerFactory.getLogger(LearnFetchService.class);
 
     /**
-     * 首期不做自动抓取的平台（RFC 20260912 §3.5「社交平台」「YouTube」两行）：
-     * 反爬/登录墙/服务器网络不可达 → **明确告知并给替代路径**，不假装能抓（风险表对策）。
+     * 仍然不做自动抓取的平台：**明确告知并给替代路径**，不假装能抓（风险表对策），
+     * 也不硬绕登录墙/付费墙（B8）。
+     * <p>
+     * <b>2026-09-13 平台抓取放开批：清单从 10 条缩到 7 条</b>——微博 / 公众号 / 头条由
+     * 「要登录，抓不了」改为**已支持**（各由专用抓取器接管）。这不是放宽标准，而是纠正三条
+     * **基于错误假设的保守判断**：生产实测表明三者都免登录可读，只是各有各的请求头要求
+     * （微博要移动端 XHR 头、公众号要伪装 UA、头条要走移动版）。一条「人话拒绝」如果不建立在
+     * 实测之上，它就只是把用户挡在门外——**而它还长得像一条安全边界**。
+     * <p>
+     * 留在清单里的每一条都有实测依据：
+     * <ul>
+     *   <li><b>知乎</b>：403 + {@code zh-zse-ck} JS 挑战，接口 40362，移动版是 SPA 空壳</li>
+     *   <li><b>抖音</b>：内容接口需 {@code a_bogus + timestamp + x-secsdk-web-signature} 三件套签名
+     *       （删任一即 403）；短链能解析出 ID，但拿不到内容——注册游客 ttwid 的流行偏方实测无效</li>
+     *   <li><b>小红书</b>：{@code xsec_token} 必需且会过期，匿名取 token 的入口被拒</li>
+     *   <li><b>X/Twitter、YouTube 系</b>：大陆服务器直连全部超时（连 {@code web.archive.org} 也不可达）</li>
+     * </ul>
      */
     private static final Map<String, String> UNSUPPORTED = Map.ofEntries(
             Map.entry("youtube.com", "YouTube 从这台服务器连不上（海外网络），把字幕或正文粘进来更稳"),
             Map.entry("youtu.be", "YouTube 从这台服务器连不上（海外网络），把字幕或正文粘进来更稳"),
-            Map.entry("mp.weixin.qq.com", "公众号有反爬，暂时抓不了，把正文粘进来我照样能整理"),
-            Map.entry("zhihu.com", "知乎有反爬，暂时抓不了，把正文粘进来我照样能整理"),
-            Map.entry("xiaohongshu.com", "小红书要登录，暂时抓不了，截图发我一样能整理"),
-            Map.entry("weibo.com", "微博要登录，暂时抓不了，把正文或截图发我一样能整理"),
-            Map.entry("x.com", "X/Twitter 要登录，暂时抓不了，把正文或截图发我一样能整理"),
-            Map.entry("twitter.com", "X/Twitter 要登录，暂时抓不了，把正文或截图发我一样能整理"),
-            Map.entry("douyin.com", "抖音要登录，暂时抓不了，截图发我一样能整理"),
-            Map.entry("toutiao.com", "这个平台有反爬，暂时抓不了，把正文粘进来我照样能整理"));
+            Map.entry("zhihu.com", "知乎有反爬（要登录），把正文粘进来我照样能整理"),
+            Map.entry("xiaohongshu.com", "小红书要登录态，截图发我一样能整理"),
+            Map.entry("x.com", "X/Twitter 要登录，把正文或截图发我一样能整理"),
+            Map.entry("twitter.com", "X/Twitter 要登录，把正文或截图发我一样能整理"),
+            Map.entry("douyin.com", "抖音的正文接口需要签名，我暂时读不到，截图发我一样能整理"));
 
     private final List<LearnSourceFetcher> fetchers;
     private final LearnCardRepository repository;

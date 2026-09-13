@@ -98,12 +98,34 @@ class LearnFetchServiceTest {
         LearnFetchService service = new LearnFetchService(
                 List.of(new FakeFetcher("article", List.of("http"), source("article", "a"))), repository, PERMISSIVE);
 
-        assertTrue(assertThrows(LearnException.class,
-                () -> service.fetch("https://mp.weixin.qq.com/s/abcdef")).getMessage().contains("公众号"));
+        // 2026-09-13 平台抓取放开批：公众号/微博/头条已移出本清单（生产实测免登录可读），
+        // 这里只断言**仍然留在清单里**的平台——每一条都有实测依据（见 LearnFetchService 注释）。
         assertTrue(assertThrows(LearnException.class,
                 () -> service.fetch("https://www.zhihu.com/question/123")).getMessage().contains("知乎"));
         assertTrue(assertThrows(LearnException.class,
                 () -> service.fetch("https://x.com/someone/status/1")).getMessage().contains("X/Twitter"));
+        assertTrue(assertThrows(LearnException.class,
+                () -> service.fetch("https://www.douyin.com/video/7123")).getMessage().contains("抖音"));
+        assertTrue(assertThrows(LearnException.class,
+                () -> service.fetch("https://www.xiaohongshu.com/explore/abc")).getMessage().contains("小红书"));
+    }
+
+    /**
+     * 反向锁：微博 / 公众号 / 头条**不再被门口拦掉**，而是交给抓取器。
+     * <p>
+     * 这条测试的意义在于——那三条「人话拒绝」曾长期存在且看起来像安全边界，实际是基于
+     * 未经实测的假设。任何人把它改回保守拦截，这条会红。
+     */
+    @Test
+    void fetch_formerlyBlockedPlatforms_nowHandedToFetchers() {
+        FakeFetcher article = new FakeFetcher("article", List.of("http"), source("article", "a"));
+        LearnFetchService service = new LearnFetchService(List.of(article), repository, PERMISSIVE);
+
+        service.fetch("https://mp.weixin.qq.com/s/abcdef");
+        service.fetch("https://weibo.com/1234567890/z8ElgBLeQ");
+        service.fetch("https://www.toutiao.com/article/7123456789012345678/");
+
+        assertEquals(3, article.fetched.size(), "三个平台都应落到抓取器，而不是被门口拦掉");
     }
 
     @Test
