@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.8 | **最后更新：** 2026-09-12（交易账实一致性批：导入锚定 fail-closed + dryRun 预检 + 卖超 rejected 可见 + 对账闸门 GET /trading/integrity 与 GET/PUT /trading/anchor，v3.61）
+> **文档版本：** v1.9 | **最后更新：** 2026-09-13（APNs 自有推送渠道批：阿呆 app 直连 APNs，不再借 Bark 转达 + 推送设备登记/链路自检 4 端点，v3.63）
 
 ---
 
@@ -1130,3 +1130,54 @@ POST /api/v1/records/retry
 | 57 | POST | `/api/v1/learn/migrate` | learn 老式扁平卡一次性迁移到主题目录（幂等；learn 插件，2026-09-12） | ❌ |
 | 58 | DELETE | `/api/v1/learn/cards` | learn 删卡片（**软删除**到 `_trash/` + 级联清理反哺候选；只读卡拒绝；learn 插件，2026-09-13） | ❌ |
 | 59 | PATCH | `/api/v1/learn/cards/topic` | learn 改主题（移文件 + 双主题 README 同步，新主题内续号；只读卡拒绝；learn 插件，2026-09-13） | ❌ |
+
+---
+
+## 18. 推送设备与 APNs 渠道（RFC 20260913）
+
+**定位**：把「阿呆的消息送到你的手机」打通。**推送内容**由各推送生产方决定（时段/买点/止损/行情异动/收盘小结/复习提醒，共 10 类），本节只管**推到哪台设备**与**链路通不通**。
+
+### 与既有推送开关的分工
+
+| 端点 | 管什么 |
+|:-----|:-------|
+| `GET/PUT /api/v1/trading/push-settings` | 「哪些**类型**要推」（用户偏好开关，逐类型） |
+| `GET/POST/DELETE /api/v1/push/devices` | 「推到**哪台设备**」（通道与目标） |
+
+两者正交，互不覆盖。
+
+### 渠道模型
+
+`PushChannel`（kernel 端口）→ 推送生产方注入 `List<PushChannel>` 遍历所有 `enabled()` 渠道扇出。现有渠道：
+
+| 渠道 | 说明 |
+|:-----|:-----|
+| `feed` | App 内 Feed（永远开启）——**不打开 App 就等于没推送** |
+| `bark` | 第三方 App Bark（生产已配 key；APNs 上线后可留作冗余或退役） |
+| `apns` | **阿呆自己**（本批新增）：直连 APNs，通知上是阿呆的名字、点击回到阿呆 |
+| `wechat` | Server酱，已停用（免费 5 条/天不够），保留代码未配置即禁用 |
+
+### 后端处理
+
+- **凭据**：APNs Auth Key（`.p8`，ES256）。**不随年过期**、sandbox+production 两套网关通用。配置 `ADAI_PUSH_APNS_KEY_PATH` + `ADAI_PUSH_APNS_KEY_ID`（+ `TEAM_ID`/`BUNDLE_ID`/`TYPES`）。未配 → `enabled()=false` 静默跳过，Feed 与其它渠道不受影响。
+- **JWT**：`{alg:ES256, kid:keyId}` + `{iss:teamId, iat}`，缓存 40 分钟（Apple 要求 20~60 分钟内刷新且不得快于 20 分钟）。
+- **API 调用**：HTTP/2 `POST /3/device/{token}`，头 `apns-topic` / `apns-push-type: alert` / `apns-priority: 10` / `apns-expiration`（+1 小时，手机离线时 APNs 代为存储；0 = 不存储会丢）。
+- **负载**：`{"aps":{"alert":{title,body},"sound":"default","thread-id":"adai-<type>"}}` —— 用 Jackson 序列化（不手拼 JSON：本项目吃过「LLM 多行正文裸换行 → 服务端 400 丢弃」的事故）+ 同类推送归组。
+- **环境分流**：deviceToken 分属 sandbox / production 两套互不相通的网关，`environment` **跟着 token 存**；送错只回 `BadDeviceToken` 静默丢弃，故日志记录 reason + 处置提示。
+- **失败策略**：一律不抛（外部网关抖动不得打断推送生产方的定时任务）；`410 Unregistered` → 自动清理设备登记。
+- **落盘**：`data/{userId}/push/devices.json`（per-user 条带锁原子写；损坏文件**读路径降级**、**写路径拒绝写回**，防覆盖丢设备）。
+- **灰度**：`adai.push.apns.types` 逗号白名单，留空 = 全量。
+
+### iOS 端
+
+- `ios/Runner/Runner.entitlements`：`aps-environment=development`（沙箱，对应 development 签名；上架时 Xcode 自动改写为 production）。
+- `Runner.xcodeproj`：Runner target **三个构建配置**（Debug/Release/Profile）都挂 `CODE_SIGN_ENTITLEMENTS`。
+- `AppDelegate.swift`：`UNUserNotificationCenter` delegate（复用 FlutterAppDelegate 既有的协议遵循，方法加 `override`）；注册远程通知；token/失败/点击三个回调经 MethodChannel `adai/push` 交给 Dart；**前台也弹横幅**；点击通知 → Dart 切回 Feed 并刷新。
+- `PushService`（Dart）：仅 iOS 原生生效（`supported` 守卫），Web/PWA/Android 降级为 unavailable；登录后 init（申请权限 → 取 token → 上报）；登出注销本机设备；权限被拒时给「去开启」引导。
+
+### 验证方法（配完 .p8 后）
+
+1. `GET /api/v1/push/status` → `channels[].name=apns` 且 `enabled=true`、`deviceCount≥1`；
+2. App 打开一次（登录态）→ `GET /api/v1/push/devices` 应出现本机 token（`environment=sandbox`）；
+3. 白名单只留 `close-summary,learn-review` 时，触发一次复习提醒（或等 15:30 收盘小结）→ 手机上应出现**阿呆自己的**通知；
+4. 反向验证：`TYPES` 白名单外的类型（如止损）不应有通知，但 Feed 里照常看得到（渠道隔离）。

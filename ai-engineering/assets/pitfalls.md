@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-13
 status: active
-lines: 125
+lines: 137
 depends-on:
   - ../checklists/guard.md
 related:
@@ -120,6 +120,18 @@ tags: [ai, assets, pitfalls]
 | **付费后 Xcode 不重签描述文件** | 升级付费开发者账号后重新构建，App 仍是 **7 天**过期（`embedded.mobileprovision` 起止日一字未变）；会员权益明明已生效、构建日志全绿 | Xcode 优先复用**本地缓存且尚未过期**的旧 profile（免费期那份还剩几天寿命），压根不向 Apple 服务器按新会员状态重新签发 | 删掉 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision` 再构建——无 profile 可用时 Xcode 只能去服务器要新的（实测立即拿到 1 年版） | ✅ 已解（2026-09-13 iOS 开发者账号批） | 「权益变了但签名没变」；只对比代码/配置不查 profile 实际起止日；以为重新构建＝重新签名 |
 | **Flutter 引擎比目标 iOS 旧 → debug 装机必闪退** | 装完点开即闪退（`EXC_BAD_ACCESS` / `KERN_INVALID_ADDRESS at 0x0`），崩溃栈落在 `-[FlutterViewController createTouchRateCorrectionVSyncClientIfNeeded]`；**同一份代码 release 构建却完全正常** | Flutter 3.44.6 的引擎（2026-06-30 构建）早于设备 iOS 26.6.1；该函数为 ProMotion 高刷屏做触摸采样率校正，**debug 才有此代码路径**（release 不走）→ 引擎与 OS 版本错配 | 升 Flutter 3.44.6 → **3.47.4**（引擎 2026-09-03，晚于 iOS 26）；**过渡期**：iOS 真机先用 `flutter build ios --release` 安装绕开，代价是失去热重载 | ✅ 已解（2026-09-13） | 只装 release 就断定「iOS 没问题」；debug/release 行为不一致时当成偶发；Flutter 版本比目标 OS 老 |
 | **`flutter upgrade` 内部的 git fetch 不读 shell 代理** | `HTTP_PROXY`/`https_proxy` 都在环境里、`curl -x` 走代理 200，但 `flutter upgrade` 仍报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443` | Flutter 工具链内部调 `git fetch --tags`，而 **git 不认 shell 的 `*_PROXY` 环境变量**（需显式 `git config http.proxy`） | 给 SDK 仓库单独配（不动全局）：`git -C <flutter-sdk> config http.proxy http://127.0.0.1:1087`；引擎下载另开国内镜像 `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn` | ✅ 已解（2026-09-13） | 「curl 通但 git 不通」；只在 shell 里 `export` 代理却没落到 git config |
+
+
+## 十三、推送与 APNs（2026-09-13 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **FlutterAppDelegate 已遵循 UNUserNotificationCenterDelegate** | Swift 里写 `extension AppDelegate: UNUserNotificationCenterDelegate { func userNotificationCenter(...) }` → 编译报 **`Redundant conformance of 'AppDelegate' to protocol 'UNUserNotificationCenterDelegate'`**，同时四个方法报 **`Overriding declaration requires an 'override' keyword`** | Flutter 的 `FlutterAppDelegate` **本身已遵循该协议**（头文件里查不到——`FlutterAppDelegate.h` 只列 `UIApplicationDelegate, FlutterPluginRegistry, FlutterAppLifeCycleProvider`，实现藏在编译好的 framework 里），而它在实现里把通知回调**转发给注册为通知类插件的 FlutterPlugin** | 四个方法改写进类体并加 `override`（不放 extension）；**刻意不调 super**——本项目无任何通知插件（pubspec 无 flutter_local_notifications / firebase_messaging），调 super 反而要处理「插件未处理时 completionHandler 可能已被调用」的双调用风险；**将来引入通知类插件时必须改成「先 super 转发、未处理再自己 completionHandler」** | ✅ 已解（2026-09-13 APNs 批） | 只读头文件就断言「父类没实现这个协议」；`extension X: 协议` 编译报 redundant conformance；把「头文件没有」等同于「没有实现」|
+| **`#if DEBUG` 判 APNs 环境必错** | 推送全部被 APNs 丢弃（`BadDeviceToken`），但代码看着天经地义 | APNs 有 **sandbox / production 两套互不相通**的网关，token 只在自己那套有效。本项目 iOS 装机是 **`flutter build ios --release` + development 描述文件** = **release 优化 + 沙箱环境**，`#if DEBUG` 会判成生产 → 拿沙箱 token 往生产网关送 | 不猜：**Swift 里读签名打进包里的 `embedded.mobileprovision`**（解出 XML plist 取 `Entitlements.aps-environment`），读不到才回落 sandbox；后端把 `environment` **跟着 token 存**并按它选网关 | ✅ 已解（2026-09-13） | 用构建配置（debug/release）推断**运行环境**；新增任何「按环境选地址」的逻辑时假设一维；送错网关只回一个不带上下文的 `BadDeviceToken` |
+| **APNs JWT 直接送 Java 的 ECDSA 签名 → 401** | `403 InvalidProviderToken` / `401`，**报错完全不含「签名格式」线索**，且换 key、换 keyId、对时钟都无效 | Java 的 `Signature.getInstance("SHA256withECDSA")` 输出 **DER**（`SEQUENCE{INTEGER r, INTEGER s}`），而 JOSE/ES256 要求 **定长 raw R\|\|S（各 32 字节）**。DER 的 INTEGER 是**有符号大端**：最高位为 1 时多一个 `0x00` 前导字节（约 50% 概率），数值小时又不足 32 字节 | 自实现 `derToJose`：两侧分量**去前导 0 → 右对齐补零到 32**；单测覆盖「有符号补位」与「分量不足」两类边界 + **用公钥真验签**（不是只断言长度） | ✅ 已解（2026-09-13） | 加密相关失败只断言「不抛异常」而不验签；格式转换没有边界用例；把「换凭据无效」当成凭据问题（其实一直是编码问题）|
+| **Jackson 默认忽略尾部多余内容** | 被截断/写坏的文件（`[]]`、`[...] 垃圾`）**解析成功并读出前半段**——「损坏」变成「读出一部分」，静默丢数据 | `DeserializationFeature.FAIL_ON_TRAILING_TOKENS` **默认关闭** | 对「损坏必须被发现」的写路径显式 `.enable(FAIL_ON_TRAILING_TOKENS)`（并用反例单测锁死）；读路径仍可宽容（降级为空） | ⚠️ 本批只修 `PushDeviceFileRepository`；其它仓储同型**未逐一核**（REVIEW P2-工程4）| 用「能不能解析成 JSON」当损坏判据；只测「整段乱码」，不测「合法前缀 + 垃圾后缀」|
+| **付费开发者账号 ≠ 能力自动可用** | 以为付了钱就啥都有了；实际推送/后台/小组件等**能力是逐项声明+注册**的，缺一道就静默失败 | 能力需要三处同时具备：① `Runner.entitlements` 声明 `aps-environment`；② pbxproj 挂 `CODE_SIGN_ENTITLEMENTS`（**三个 Runner 配置都要**，只挂 Debug 会让装机用的 release 没能力）；③ App ID 上该能力被开启 + 描述文件重签 | 三处补齐；实测 `flutter build ios`（自动签名）会自动去 Apple 侧开启能力并重签描述文件（`codesign -d --entitlements` + `embedded.mobileprovision` 双取证） | ✅ 已解（2026-09-13） | 只加 entitlements 文件不挂 pbxproj；只挂 Debug 配置；改完不验产物 entitlements |
+| **付费账号到期 = 周期性「打不开日」** | 2027-09-13 之后 App 会像免费签名 7 天过期那样**直接打不开**（同型事故换了个周期） | 描述文件有效期 1 年，**不自动续期就不会续签**；证书/描述文件失效 → 系统拒绝启动已安装 App | 到期日写进文档（`backend-deployment.md` §9）+ pitfalls；**仍缺日历提醒**（REVIEW P2-APNs5） | ⚠️ 部分缓解 | 把「升级成 1 年」当成「解决了」；只有文档没有会主动叫人的提醒 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

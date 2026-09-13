@@ -362,6 +362,9 @@ xcrun devicectl device process launch --device <UDID> com.adaiadai.adaiApp
 > ✅ **2026-09-13 起签名 1 年有效**：付费开发者账号已落地，实测 `embedded.mobileprovision` = `2026-09-13 → 2027-09-13`（REVIEW P2-用户1 已出表）。**若发现 profile 起止日没变**，是 Xcode 复用了本地尚未过期的旧 profile——删掉 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision` 再构建即可强制重签（详见 pitfalls 十二）。
 > ⚠️ **最低支持 iOS 15**：Flutter 3.47 构建时自动把 `IPHONEOS_DEPLOYMENT_TARGET` 由 13.0 提到 15.0，iOS 13/14 设备将装不了。
 > ⚠️ **debug 装机可能闪退**：Flutter 引擎版本须晚于设备 iOS 版本，否则 debug 构建启动即崩（`-[FlutterViewController createTouchRateCorrectionVSyncClientIfNeeded]` 空指针；release 不受影响）。2026-09-13 已升 Flutter **3.47.4**（引擎 2026-09-03）规避；若再遇到，可先用 `flutter build ios --release` 装机兜底。
+> ⚠️ **到期日：2027-09-13**（`embedded.mobileprovision` 实测起止 `2026-09-13 → 2027-09-13`）。到期当天 App 会像免费签名 7 天过期那样**直接打不开**——同型风险只是把周期从 7 天拉长到 1 年（REVIEW P2-APNs5）。**建议自建日历提醒（提前 30 天）**；不续费/证书撤销后同样失效。
+> **推送能力（RFC 20260913）**：Runner target 已挂 `Runner/Runner.entitlements`（`aps-environment=development`，三个构建配置都挂）——自动签名下 `flutter build ios` 会自行去 Apple 侧开启 App ID 的 Push Notifications 能力并重签描述文件（2026-09-13 实测：产物 `codesign -d --entitlements` 含 `aps-environment`）。**若构建报 `Provisioning profile doesn't include the aps-environment entitlement`**：用 Xcode 打开 `ios/Runner.xcworkspace` 点一次 Run 完成能力注册，或给 xcodebuild 加 `-allowProvisioningUpdates`。
+> **装机信任步骤（仅免费签名需要）**：付费开发者账号的 development 签名通常**不再需要**「设置 → 通用 → VPN与设备管理 → 信任」这一步；若仍被要求信任，按提示操作即可（2026-09-13 未在付费账号下重复验证该差异）。
 > TestFlight 待接（需 Apple Distribution 证书 + Archive 上传；内测构建 90 天有效）。
 > 历史装机（≤2026-08-30）烧 IP `http://82.156.111.146:8080`；**2026-09-10 起改烧域名** `https://api.adaiadai.com`。
 
@@ -397,3 +400,70 @@ sudo systemctl restart caddy
 #    app 写 https://api.adaiadai.com，以后换服务器永不再改 app
 # 6. CORS：.env 的 ADAI_ALLOWED_ORIGIN_PATTERNS 追加 https://adaiadai.com（无端口精确值）
 ```
+
+---
+
+## 11. APNs 推送配置（阿呆 app 自有推送，RFC 20260913）
+
+**目标**：让 10 种推送（盘前/买点/止损/行情异动/收盘小结/复习提醒）由**阿呆自己**弹到手机，不再借第三方 App（Bark）转达。
+
+### 11.1 创建 APNs Auth Key（用户手动，一次性）
+
+> 这步**必须由账号持有人做**（密钥只能下载一次，且需要 Apple ID 登录）。
+
+1. 打开 <https://developer.apple.com/account/resources/authkeys/list>；
+2. `+` → Name 填 `AdaiOS APNs` → 勾选 **Apple Push Notifications service (APNs)** → Continue → Register；
+3. **Download** 得到 `AuthKey_XXXXXXXXXX.p8`（**只给这一次机会下载**，请立即保存）；
+4. 记下页面上的 **Key ID**（10 位，如 `ABCD123456`）；Team ID 是 `4G3D37YKSB`（本项目固定）。
+
+### 11.2 放到服务器并配置
+
+```bash
+# 1) 私钥放服务器本地（不进 git、不进仓库）
+ssh ubuntu@82.156.111.146
+sudo mkdir -p /opt/adaios/backend/secrets
+sudo cp AuthKey_XXXXXXXXXX.p8 /opt/adaios/backend/secrets/
+sudo chown adaios:adaios /opt/adaios/backend/secrets/AuthKey_XXXXXXXXXX.p8
+sudo chmod 600 /opt/adaios/backend/secrets/AuthKey_XXXXXXXXXX.p8
+
+# 2) 写进 /opt/adaios/backend/.env（该文件权限 640，不进 git）
+ADAI_PUSH_APNS_KEY_PATH=/opt/adaios/backend/secrets/AuthKey_XXXXXXXXXX.p8
+ADAI_PUSH_APNS_KEY_ID=<Key ID>
+ADAI_PUSH_APNS_TEAM_ID=4G3D37YKSB
+ADAI_PUSH_APNS_BUNDLE_ID=com.adaiadai.adaiApp
+# 灰度：第一刀只放收盘小结 + 复习提醒验证链路；验证通过后清空该行 = 全量（无需改代码）
+ADAI_PUSH_APNS_TYPES=close-summary,learn-review
+
+# 3) 重启并自检
+sudo systemctl restart adaios-backend
+sudo journalctl -u adaios-backend -n 30 --no-pager | grep -i apns
+```
+
+### 11.3 验证（不必等下一次定时推送）
+
+```bash
+TOKEN=$(curl -s -X POST https://api.adaiadai.com/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"account":"adai","password":"<密码>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+
+curl -s https://api.adaiadai.com/api/v1/push/status -H "Authorization: Bearer $TOKEN"
+# 期望：channels 里 name=apns 的 enabled=true / configured=true，deviceCount>=1
+```
+
+App 侧：打开一次 App（登录态）即完成设备登记 → `GET /api/v1/push/devices` 应出现本机 token（`environment=sandbox`）。
+
+### 11.4 排查对照表
+
+| 日志/现象 | 含义 | 处置 |
+|:---------|:-----|:-----|
+| `APNs 渠道不可用：.p8 私钥加载失败` | 路径不对/权限不足/文件不是 PKCS#8 PEM | 核对 `KEY_PATH` 与 `chmod 600` |
+| `status=403 reason=InvalidProviderToken` | `.p8` 与 `key-id`/`team-id` 不配套（或 JWT 签名格式错） | 三者必须来自**同一把 key** |
+| `status=400 reason=BadDeviceToken` | token 与网关/环境不匹配，或 apns-topic 不对 | 侧载= sandbox、TestFlight/上架= production；`bundle-id` 与 App 一致 |
+| `reason=ExpiredProviderToken` | 服务器时钟偏移 | 校时（`timedatectl`）|
+| `status=410 reason=Unregistered` | 设备已删 App | 无需处理（渠道会自动清理该登记）|
+| 日志「跳过（不在灰度白名单）」 | `ADAI_PUSH_APNS_TYPES` 挡住了该类型 | 验证通过后清空该变量 |
+| 手机连一条通知都没有，且 `enabled=true`/`deviceCount>=1` | 系统通知权限没给 | App 内会提示，点「去开启」跳系统设置 |
+
+> **出网自检（生产服务器，2026-09-13 实测通过）**：
+> `curl -i --http2 -X POST https://api.sandbox.push.apple.com/3/device/<64位假token> -H "authorization: bearer bogus" -H "apns-topic: com.adaiadai.adaiApp" -d '{}'`
+> → 期望 `HTTP/2 403` + `{"reason":"InvalidProviderToken"}`（假 JWT 的预期结果，**证明网络与 HTTP/2 传输路径通**）。

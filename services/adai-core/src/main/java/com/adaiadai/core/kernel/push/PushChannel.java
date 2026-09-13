@@ -25,6 +25,20 @@ public interface PushChannel {
      */
     void push(String userId, PushMessage message);
 
+    /**
+     * 渠道自述状态（RFC 20260913 APNs 批）：给 {@code GET /api/v1/push/status} 用。
+     * <p>
+     * 默认只报「我是谁、通不通」，具体渠道可覆写补充诊断信息（如 APNs 的 keyId / 灰度白名单）。
+     * 之所以加在端口上而不是让 Controller 判断实现类型：application 层应当只依赖 kernel 端口，
+     * 对基础设施实现做 instanceof 会破坏分层依赖（C7）。
+     */
+    default java.util.Map<String, Object> status() {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("name", name());
+        m.put("enabled", enabled());
+        return m;
+    }
+
     /** 推送消息载体。 */
     record PushMessage(
             String title,

@@ -10,6 +10,7 @@ import 'pages/account_select_page.dart';
 import 'pages/launcher_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_page.dart';
+import 'services/push_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -192,6 +193,9 @@ class _RootAppState extends State<RootApp> {
   /// 登出（Launcher 底部「退出登录」）：调后端注销 + 清本地 → 回登录页。
   Future<void> _handleLogout() async {
     final api = _apiFor(_userId);
+    // RFC 20260913 APNs 批：先注销本机推送设备，再登出会话——
+    // 否则换账号后新账号的止损/复盘推送会发到这台已登出的设备上。
+    await PushService.unregister(api: api);
     try {
       await api.logout();
     } catch (_) {
@@ -303,6 +307,52 @@ class _DualWorldShellState extends State<DualWorldShell> {
 
   /// 切世界拖拽的起点 Y（#16：用于排除底部输入框区域）。
   double? _dragStartY;
+
+  @override
+  void initState() {
+    super.initState();
+    // RFC 20260913 APNs 批：登录后接入自有推送——申请系统通知权限 → 取 APNs deviceToken
+    // → 上报后端（`POST /api/v1/push/devices`），此后后端 10 种推送由 ApnsPushChannel
+    // 直连 APNs 弹到本机，不再借 Bark 第三方 App 转达。
+    // 放在壳层而不是 main()：需要**带 token 的 _api**（未登录上报必 401）。
+    _initPush();
+  }
+
+  Future<void> _initPush() async {
+    final status = await PushService.init(
+      api: _api,
+      onTap: (_) {
+        // 点通知 → 回到 Feed 世界并刷新：让「点开看到的就是那条消息」成立
+        // （通知正文讲止损/收盘小结，落点却在背面 Launcher 会很怪）
+        if (!mounted) return;
+        setState(() => _showWorldB = false);
+        _feedRefreshTick.value++;
+      },
+    );
+    if (!mounted) return;
+    if (status.authorization == PushAuthorization.denied) {
+      _showNotificationReminder();
+    } else if (status.lastError != null) {
+      // 授权通过却注册失败（描述文件缺 aps-environment / 到 APNs 不通）——
+      // fail-visible：别让用户对着「怎么没有通知」猜
+      rootScaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
+        content: Text('通知注册失败：${status.lastError}'),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+  }
+
+  /// 通知权限被拒时的补救引导（每启动一次最多提示一次；点「去开启」跳系统设置）。
+  void _showNotificationReminder() {
+    rootScaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
+      content: const Text('系统通知没开——阿呆的止损、收盘小结、复习提醒只会躺在 App 里'),
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: '去开启',
+        onPressed: () => PushService.openSettings(),
+      ),
+    ));
+  }
 
   void _toggleWorld() {
     final wasWorldB = _showWorldB;

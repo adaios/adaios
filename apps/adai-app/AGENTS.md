@@ -54,7 +54,8 @@ lib/
 ├── main_page.dart               # 主页面 — TopBar + Feed + InputBar
 ├── services/
 │   ├── api_config.dart          # API 配置（后端地址）
-│   └── api_service.dart         # HTTP 客户端（REST API 调用）
+│   ├── api_service.dart         # HTTP 客户端（REST API 调用）
+│   └── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生生效，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；Web/PWA/Android 降级 unavailable 不碰原生通道
 ├── theme/
 │   ├── app_colors.dart          # 调色板
 │   └── app_theme.dart           # Material 3 ThemeData
@@ -120,6 +121,13 @@ cd apps/adai-app && flutter test
 | 更新任务 | `PUT /api/v1/project/tasks/{id}` |
 | 删除任务 | `DELETE /api/v1/project/tasks/{id}` |
 | 任务统计 | `GET /api/v1/project/tasks/stats` |
+
+## iOS 推送（RFC 20260913）
+
+- **原生侧**：`ios/Runner/Runner.entitlements`（`aps-environment`）+ pbxproj 三个 Runner 配置挂 `CODE_SIGN_ENTITLEMENTS` + `ios/Runner/AppDelegate.swift`（注册远程通知、token/失败/点击回调经 MethodChannel `adai/push` 交给 Dart、前台也弹横幅）。⚠️ `FlutterAppDelegate` **本身已遵循** `UNUserNotificationCenterDelegate`，四个回调必须写成类体内的 `override`（放 extension 会报 redundant conformance，见 pitfalls 十三）。
+- **Dart 侧**：`PushService` 只在 `!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS` 生效；登录后由 `DualWorldShell.initState` 调用；通知点击 → 切回 Feed 并刷新；权限被拒 → 一条可点的「去开启」引导；登出注销本机设备。
+- **环境别猜**：deviceToken 分属 sandbox / production 两套互不相通的网关，App 侧读包内 `embedded.mobileprovision` 的 `aps-environment` 得出环境上报（**不能用 `#if DEBUG`**：本项目装机是 `--release` + development 描述文件 = release 优化 + 沙箱环境）。
+- 服务端配置与验证步骤见 `docs/deployment/backend-deployment.md` §11。
 
 ## 设计约定
 

@@ -69,3 +69,21 @@ adai:
     trading-engine-path: ${ADAI_TRADING_KNOWLEDGE_PATH:../../os/trading-engine/knowledge/context}
     life-os-path: ${ADAI_LIFE_KNOWLEDGE_PATH:../../os/life-os/11-context}
     project-os-path: ${ADAI_PROJECT_KNOWLEDGE_PATH:../../os/project-os/11-context}
+
+  push:
+    # ── APNs 渠道（RFC 20260913：付费开发者账号后阿呆 app 直连 APNs，不再借 Bark 转达）──
+    # 未配 key-path/key-id → 渠道 enabled()=false，静默跳过（同 Bark 未配 key 的先例），
+    # Feed 与其它渠道不受影响。凭据一律走 env（.env 权限 640，不进 git）。
+    apns:
+      enabled: ${ADAI_PUSH_APNS_ENABLED:true}
+      # .p8 私钥（Apple 控制台 Keys → APNs Auth Key 下载，只能下一次）——放服务器本地，别进仓库
+      key-path: ${ADAI_PUSH_APNS_KEY_PATH:}
+      key-id: ${ADAI_PUSH_APNS_KEY_ID:}
+      team-id: ${ADAI_PUSH_APNS_TEAM_ID:4G3D37YKSB}
+      bundle-id: ${ADAI_PUSH_APNS_BUNDLE_ID:com.adaiadai.adaiApp}
+      # 灰度白名单（逗号分隔推送类型；留空 = 全部推送）。第一刀只放「收盘小结 + 复习提醒」
+      # 验证链路（配 close-summary,learn-review），验证通过清空即全量，无需改代码
+      types: ${ADAI_PUSH_APNS_TYPES:}
+      # 两套网关按 token 自带环境选择（侧载=development 签名→sandbox token；TestFlight/上架→production）
+      sandbox-host: ${ADAI_PUSH_APNS_SANDBOX_HOST:https://api.sandbox.push.apple.com}
+      production-host: ${ADAI_PUSH_APNS_PRODUCTION_HOST:https://api.push.apple.com}

@@ -125,6 +125,9 @@ com.adaiadai.core/
 | POST | `/api/v1/cards/cleanup` | 卡片冗余记录清理（迁移后去除重复 rec_*） |
 | GET | `/api/v1/accounts/available` | 启用账号列表（**需登录**，产品端遗留选号，无需 role=admin；仅返回 userId 最小集，REVIEW #215/#178）|
 | GET | `/api/v1/me/plugins` | 当前用户启用插件（**需登录**，前端模块显隐，RFC 20260814）|
+| POST / GET | `/api/v1/push/devices` | 推送设备登记/查询（APNs token，幂等 upsert，RFC 20260913）|
+| DELETE | `/api/v1/push/devices/{token}` | 推送设备注销（幂等；登出时调用，换账号不串推送）|
+| GET | `/api/v1/push/status` | 推送链路自检（各渠道 enabled/configured + 设备数；配完 .p8 用它确认生效）|
 | GET / POST | `/api/v1/accounts` | 账号查询/创建（admin，**需登录 + role=admin**）|
 | GET | `/api/v1/admin/**` | 数据/系统/知识管理（admin，**需登录 + role=admin**）|
 
@@ -135,6 +138,17 @@ com.adaiadai.core/
 - **测试数/端点数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
 - 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + 统一鉴权（#179/#178：Bearer 会话 + role=admin 门禁）+ 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔任务 + 插件门控等
 - **新增功能必须配套测试。**
+
+## 推送渠道（kernel/push，渠道插件化）
+
+推送生产方（`TradingSessionPushService` / `MarketAlertService` / `LearnReviewPushService`）注入 `List<PushChannel>` 遍历所有 `enabled()` 渠道扇出，**新增渠道不动主流程**（RFC 20260816）。
+
+| 渠道 | 实现 | 说明 |
+|:-----|:-----|:-----|
+| `feed` | `FeedPushChannel` | App 内 Feed（永远开启）——不打开 App 就等于没推送 |
+| `bark` | `BarkPushChannel` | 第三方 App Bark（配 `ADAI_PUSH_BARK_KEY` 后启用；与 apns 并存会**弹两条**，见 REVIEW P2-APNs2）|
+| `apns` | `ApnsPushChannel` | **阿呆自己**（RFC 20260913）：直连 APNs（.p8/ES256）。环境随 token 存（sandbox/production 两套互不相通的网关）；灰度白名单 `adai.push.apns.types`；410 自动清理登记；失败一律不抛 |
+| `wechat` | `WeChatPushChannel` | Server酱，已停用（未配置即禁用）|
 
 ## 外部依赖
 

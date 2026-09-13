@@ -1232,6 +1232,53 @@ extension AuthApi on ApiService {
   }
 }
 
+/// 推送设备登记（RFC 20260913 APNs 批）。
+extension PushApi on ApiService {
+  /// 登记/刷新本机 APNs 设备（后端 `POST /api/v1/push/devices`，同 token 幂等）。
+  ///
+  /// [environment] 为 `sandbox` / `production`——由 iOS 侧读包内
+  /// `embedded.mobileprovision` 的 `aps-environment` 得出（不是猜的 debug/release）；
+  /// 后端按它选择 APNs 网关，送错会被 APNs 回 BadDeviceToken 丢弃。
+  Future<void> registerPushDevice({
+    required String token,
+    required String environment,
+    String? bundleId,
+    String? label,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/push/devices'),
+      headers: _headers,
+      body: jsonEncode({
+        'token': token,
+        'platform': 'ios',
+        'environment': environment,
+        if (bundleId != null) 'bundleId': bundleId,
+        if (label != null) 'label': label,
+      }),
+    );
+    _check(resp);
+  }
+
+  /// 注销本机设备（登出时调用；幂等，不存在也返回成功）。
+  Future<void> unregisterPushDevice(String token) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/push/devices/$token'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
+  /// 推送链路自检：渠道就绪状态（apns enabled/configured/灰度白名单）+ 已登记设备数。
+  Future<Map<String, dynamic>> getPushStatus() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/push/status'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+}
+
 /// API 自定义异常：携带 statusCode 与后端返回体，UI 层可按状态码区分处理。
 class ApiException implements Exception {
   final int statusCode;

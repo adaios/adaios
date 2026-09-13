@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Runner.entitlements — App 能力声明（RFC 20260913 APNs 批，2026-09-13 新增）。
+
+	  aps-environment：远程推送能力。这是付费开发者账号解锁的第一个「能力」（之前只有 1 年签名）。
+	  取值 development = 沙箱网关（api.sandbox.push.apple.com），对应 development 签名
+	  （当前侧载路径，见 docs/deployment/backend-deployment.md §9）；
+	  将来走 TestFlight / App Store（Apple Distribution 证书）时应为 production，
+	  由 Xcode 按签名方式自动改写，不需要手改本文件。
+
+	  ⚠️ 本文件必须在 Xcode 里对应 App ID 的 Push Notifications 能力被开启后才能签名成功：
+	  自动签名（CODE_SIGN_STYLE = Automatic）下 Xcode 会自动去 developer.apple.com
+	  把 App ID 的能力打开并重签描述文件——**首次构建可能要求联网授权**，
+	  命令行构建需加 -allowProvisioningUpdates（flutter build ios 不带此参数时可能报
+	  "Provisioning profile doesn't include the aps-environment entitlement"）。
+	  若遇到该报错，用 Xcode 打开 ios/Runner.xcworkspace 点一次 Run 即可完成能力注册。
+
+	  配套改动（同批）：Runner.xcodeproj 三个 Runner 构建配置加 CODE_SIGN_ENTITLEMENTS；
+	  Runner/AppDelegate.swift 注册远程通知并把 deviceToken 交给 Dart 层。
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

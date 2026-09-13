@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.61 | 最后更新：2026-09-12**
+**文档版本：v3.63 | 最后更新：2026-09-13**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-13 | v3.63 | **APNs 自有推送渠道批（RFC 20260913，付费开发者账号后「物尽其用」第一刀）**——此前 10 种推送（盘前/买点/止损/行情异动/收盘小结/复习提醒…）虽然全部投产，但**真正弹到手机这一步只能借第三方 App（Bark）转达**（`PushChannel` 只有 Feed 站内 + Bark 两个渠道），通知上写着别人的名字、点击也回不到阿呆。付费开发者账号解锁 `aps-environment` 能力后，新增**阿呆自己的 APNs 渠道**：①**新端点 `POST /api/v1/push/devices`**（客户端上报 APNs deviceToken：body `{token, platform?, environment?, bundleId?, label?}`——token 严格校验十六进制 32~200 位，因为它会被拼进 APNs 出站 URL 路径；同 token 幂等 upsert，保留首次注册时间；缺失/非法 → 400 人话）；②**新端点 `GET /api/v1/push/devices`**（本账号已登记设备）；③**新端点 `DELETE /api/v1/push/devices/{token}`**（注销，幂等返回 `{"removed":bool}`；登出时调用——否则换账号后新账号的止损/复盘推送会发到已登出的设备）；④**新端点 `GET /api/v1/push/status`**（链路自检：各渠道 enabled/configured + apns 的 keyId/teamId/灰度白名单 + 设备数——**配完 .p8 后用这一条确认生效，不必等下一次定时推送**）。⑤**环境分流（最易踩的坑）**：deviceToken 分属两套互不相通的 APNs 网关，故 `environment`（`sandbox`/`production`）**跟着 token 存**而不是跟后端部署环境走——侧载（development 描述文件签名）拿到的永远是 sandbox token，将来 TestFlight/上架才是 production；送错网关只会得到 `BadDeviceToken` 静默丢弃，因此推送日志把 reason 原样记下并附「下一步该干什么」的提示。⑥**灰度白名单**：`adai.push.apns.types` 逗号列表，留空 = 全量；第一刀只放 `close-summary,learn-review` 验证链路，验证通过清空即全量（不改代码）。⑦**失败一律不抛**：410 Unregistered → 自动清理该设备登记（否则此后每次推送都白跑）；其它错误 warn 记录但不影响推送生产方。⑧**落盘 `data/{userId}/push/devices.json`**（File First，per-user 条带锁原子写）；**损坏文件读路径降级为空、写路径拒绝写回**（防「损坏当空」后用空列表覆盖掉其它设备）。⑨凭据：APNs Auth Key（.p8，ES256）——比推送证书好，**不随年过期**且两套网关通用。客户端侧同批落地（`Runner.entitlements` 的 `aps-environment` + `Runner.xcodeproj` 三个配置挂 `CODE_SIGN_ENTITLEMENTS` + `AppDelegate.swift` 注册/回调 + `PushService`）。端点 139→**143** |
 | 2026-09-13 | v3.62 | **当日盈亏券商口径入账 + 重算两道闸（用户实测：「屏幕上的当日盈亏 −2837 是对的么」→ 查出**真值 −1759.00**）**——两个独立缺陷叠在一起：①**券商「持仓股」导出的「当日盈亏」列从来没被读**（前端只解析 代码/名称/数量/成本；后端入参无此字段），而它是**权威值**——该文件 600206 −1116.00 / 002428 −644.00 / 600601 +1.00 = **−1759.00**，与逐股复算 `(45.55−46.79)×900 + (88.43−90.04)×400 + (14.83−14.82)×100` 一字不差，且「09-10 市值 79609 → 09-11 市值 77850」之差亦为 1759 → **`POST /trading/positions/import` 新增 query `todayPnl`**（前端把该列**全表求和**后传入，**含 0 股行**——当日清仓标的的已实现盈亏也在这一列里）；后端**三闸**才写：值为 null（缺列/有行取不到数）不写、无账户快照不写、**文件日期 ≠ 账户快照日期不写**（「当日」必须同日，否则就是混日期）；写前若已有同日值且不同 → **WARN 记录两个口径与差值**（差异可见化，不静默覆盖）。②**`refreshTodayPnl` 在周六被触发**（09-12 用户导入 09-11 历史成交 → 用周六的日期 + 周末行情接口给的「最后两个交易日收盘」+ 当时**被双计污染**的持仓，算出 −2837.00 并写成「当日盈亏」挂了整整两天）→ 新增**闸 1 非交易日不重算**（新增 `isTradingDayStrict`：周末 + 法定节假日；原 `isTradingDay` 只查节假日表，其调用前提是「周末由 cron 排除」，**禁止被非 cron 路径复用**——这次就是这么踩的）+ **闸 2 有实质未计入则不覆盖**（缺昨收/无成本基线时算出的值偏小，写回去比保留旧值更糟——它看起来像真的；「今日无成交记录」不算实质缺失）。③**当日盈亏三源与优先级定稿**：券商文件（权威，同日）> 收盘 15:05 精确计算（口径①）> 保留旧值；缺列/不可靠一律**不落零**（P2-交易37 约定）。④`todayPnl` 传非数字 → **400 人话**（「字段被无声忽略」正是本次事故的成因）。**端点 139→139（无增删，仅 query 扩展）** |
 | 2026-09-12 | v3.61 | **交易账实一致性批（RFC 20260912 全量落地，用户「要流程上正解」）**——根治生产实测「一次历史成交导入把**已含在券商快照内**的成交又重放一遍」（持仓与现金双计，现金被算成 −26666.85）、**3 笔真实卖出静默消失**、4 笔流水重复落账：①**锚定 fail-closed**：`POST /trading/trades/import` 新增 query `mode`（`auto` 默认 \| `append`）——`auto` 按券商快照锚定**分派**（`entryDate ≤ 锚定日` 的成交只补流水，晚于锚定日才回放持仓+现金）；**锚定缺失而系统已有持仓/账户快照、且本次有需要回放的行 → 400 人话拒绝**（不再把「锚定读不到」当成「不做防重」继续重放），逃生路径 = 先导「持仓股」/「资金股份查询」快照建立锚定，或显式 `mode=append` 只补流水（全新用户无锚定无账目状态仍允许从零回放）；②**预检 `dryRun=true`**：只返回计划、**不写任何文件**，响应新增 `dryRun:true` 与 `plan:{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`；③**幂等统一（一个 intake、一个键空间）**：orderId 命中 → 缺元信息则合并回填否则跳过；指纹（`symbol\|direction\|entryDate\|price\|volume`）命中且成交时间兼容（任一侧缺失、旧值带纳秒、或相差 ≤1 分钟）→ **合并回填不新增行**（补 orderId/fee/成交时间），时间明显不同（同价同量同日两笔）→ 视为两笔——`updated` 语义改为**跨来源同笔合并回填**笔数；④**卖超/未持有不丢数据**：回放行 SELL 超出可归属持仓 → **只落流水 + `rejected` 明细 + ERROR 日志**（持仓/现金不动），新增 `rejected:[{symbol,name,direction,volume,price,entryDate,reason}]`（原因中文人话）；⑤响应新增 `anchor:{positionsReplace,cashImport,known,holdingsKnown,anchorDate}`（`anchorDate` = 两者较晚者，未知为 null）；⑥**新增对账闸门与锚定三端点**：`GET /trading/integrity`（`derived = 券商快照基线 + 锚定日之后流水净增减`，与落地持仓不一致即 `drift`，卖超缺口走 `gaps`，锚定/基线缺失诚实报「无法判定」）+ `GET /trading/anchor`（锚定状态只读）+ `PUT /trading/anchor`（存量环境显式回填锚定日/持仓基线，只改元信息、日期只前进）；⑦`POST /trading/positions/import?replace=true&snapshotDate=yyyy-MM-dd` 与 `POST /trading/imports/cash`（body `snapshotDate`）新增**快照自身日期**（通达信文件名里的日期；不传退回导入日）——补导几天前的快照文件不再把锚定日写成今天；⑧落盘 `trading/snapshot-anchor.json` 现为 `{positionsReplace,cashImport,recordedAt,holdingsRecorded,holdings:[{symbol,name,quantity}]}`（持仓 replace 导入记录基线并置 `holdingsRecorded=true`；更新锚定日**保留**既有基线，不把「未记录」写成「记录为空」——前者对账报「无法判定」，后者是合法基线）；⑨**收盘小结（15:30 `close-summary` 推送）新增一行账实自检**——委派 `TradingAppService.integrity`（唯一口径），有 `drift`/`gaps` 时推一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（**无差异不推**，不制造噪音；自检失败静默降级，不中断推送主流程；文案遵循第一原则=阿呆口吻，非系统视角）。端点 134→**137** |
 | 2026-09-13 | v3.61 | **learn 卡片管理批（补「缺口」：产品里终于能删卡 / 改主题）**——此前 learn 只有「写」没有「管」：清测试卡、给卡片换主题都得**手动改服务器文件**。①**新端点 `DELETE /learn/cards`**（`?type=&title=`）：**软删除**（文件移入 `learn/_trash/`，可人工捡回，不真丢内容）+ 从主题 README 索引摘行 + **级联清理**指向该卡的 trading 反哺候选（回应 REVIEW P2-learn11「孤儿回链」，回执里如实列出被清掉的候选标题）；**只读卡（别处整理的原始卡）人话拒绝**；②**新端点 `PATCH /learn/cards/topic`**（body `{"type","title","topic"}`）：把卡片挪到另一个主题目录（新主题内续号），frontmatter 的 `topic` 与**两个主题的 README**一起同步（老主题摘行、新主题追加，不重写手工内容）；同主题幂等；只读卡拒绝。端点 137→**139** |
@@ -2458,3 +2459,79 @@ learn 插件门控。返回 learn 域推送开关：`{"learn-review": true}`（�
 ```json
 { "ai": [ {LearnCard} ], "trading": [ {LearnCard} ] }
 ```
+
+---
+
+## 19. 推送设备与链路自检（APNs，RFC 20260913）
+
+> 定位：把「阿呆的消息送到你的手机」这件事打通。推送**内容**仍由各推送生产方决定
+> （时段/买点/止损/行情异动/收盘小结/复习提醒），本节只管**推到哪台设备**与**链路通不通**。
+>
+> 与 `GET/PUT /api/v1/trading/push-settings`（§5）的分工：那个管「哪些**类型**要推」（用户偏好开关），
+> 本节管「推到**哪台设备**」（通道与目标）。两者正交，互不覆盖。
+>
+> 鉴权：需登录（Bearer）。**无插件门控**——推送跨 feed/trading/learn 三域，按插件门控会把
+> 纯 learn 用户的通知挡掉（先例：learn-review 开关归属 trading 门控的教训）。
+> 数据落 `data/{userId}/push/devices.json`（X-User-Id 隔离）。
+
+### `POST /api/v1/push/devices` — 登记/刷新推送设备（v3.63）
+
+iOS 客户端拿到 APNs deviceToken 后上报；**同 token 幂等**（重复上报只刷新 `lastSeenAt`，
+保留首次注册时间与 token 原写法）。
+
+**Request Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:----|:----|:----|:----|
+| `token` | String | ✅ | APNs deviceToken（**十六进制 32~200 位**；会被拼进 APNs 出站 URL 路径，故严格校验） |
+| `platform` | String? | — | 默认 `ios` |
+| `environment` | String? | — | `sandbox` / `production`（客户端读包内 `aps-environment` 得出；`development`/`dev` 归一为 sandbox，未知一律回落 sandbox） |
+| `bundleId` | String? | — | 一般**不要传**：apns-topic 以后端配置 `adai.push.apns.bundle-id` 为单一事实源 |
+| `label` | String? | — | 设备备注（如「iPhone」） |
+
+**Response** `200`
+
+```json
+{
+  "token": "a1b2...（64 位十六进制）",
+  "platform": "ios",
+  "environment": "sandbox",
+  "bundleId": null,
+  "label": "iPhone",
+  "registeredAt": "2026-09-13T04:30:00Z",
+  "lastSeenAt": "2026-09-13T04:30:00Z"
+}
+```
+
+- `400`：`{"error":"缺少设备推送标识"}` / `{"error":"设备推送标识不合法（应为十六进制 token）"}`
+- `500`：存量文件损坏 → `{"error":"推送设备文件已损坏，本次写入已取消（避免覆盖其它设备）"}`（**拒绝写回而非覆盖**）
+
+### `GET /api/v1/push/devices` — 已登记设备（v3.63）
+
+**Response** `200`：PushDevice 数组（无设备 → `[]`）。App 侧「本机是否已登记」自检用。
+
+### `DELETE /api/v1/push/devices/{token}` — 注销设备（v3.63）
+
+**Response** `200` `{"removed":true|false}`（幂等：不存在返回 false，不报错）。
+登出时调用，避免换账号后推送发到已登出的设备；后端在 APNs 回 `410 Unregistered` 时也会自动清理。
+
+### `GET /api/v1/push/status` — 推送链路自检（v3.63）
+
+**Response** `200`
+
+```json
+{
+  "channels": [
+    {"name": "feed", "enabled": true},
+    {"name": "bark", "enabled": true},
+    {"name": "apns", "enabled": true, "configured": true, "keyId": "ABCD123456",
+     "teamId": "4G3D37YKSB", "bundleId": "com.adaiadai.adaiApp",
+     "typeAllowlist": "close-summary,learn-review"}
+  ],
+  "deviceCount": 1,
+  "devices": [ {"token": "...", "environment": "sandbox", "label": "iPhone"} ]
+}
+```
+
+用途：配完 `.p8`（`ADAI_PUSH_APNS_KEY_PATH` + `ADAI_PUSH_APNS_KEY_ID`）后用这一条确认
+`apns.enabled=true`，不必等下一次定时推送。`typeAllowlist` 为「全部」表示未设灰度白名单。

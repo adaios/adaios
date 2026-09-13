@@ -67,6 +67,9 @@ data/*/memory/
 data/*/trading/
 # learn 学习卡片（learn 插件 RFC 20260829：外部内容学习沉淀，含视频字幕/原文摘录，个人消化留存不提交）
 data/*/learn/
+# 推送设备登记（RFC 20260913 APNs 批：deviceToken 是可关联到具体设备的个人标识，换机/重装即变）
+# 2026-09-13 本批新增落盘目录 data/{userId}/push/devices.json → 按 B3/B25「新增落盘目录必须 gitignore 验证」同步
+data/*/push/
 # 全局行情数据（2026-08-30 TDX 通达信本地日线，全 A 数百 MB，不入库）
 data/market/
 
