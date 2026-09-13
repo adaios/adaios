@@ -18,9 +18,9 @@ import Foundation
 @available(iOS 16.0, *)
 struct RecordIntent: AppIntent {
 
-    static var title: LocalizedStringResource = "记一笔"
+    static var title: LocalizedStringResource = "阿呆阿呆"
 
-    static var description = IntentDescription("把一句话记到阿呆里，它会替你理解、归类、留档。")
+    static var description = IntentDescription("把一句话交给阿呆阿呆，它会替你理解、归类、留档。")
 
     /// 让系统先把阿呆拉到前台——见类注释的取舍说明。
     static var openAppWhenRun: Bool = true
@@ -29,7 +29,7 @@ struct RecordIntent: AppIntent {
     var text: String
 
     static var parameterSummary: some ParameterSummary {
-        Summary("把 \(\.$text) 记到阿呆")
+        Summary("让阿呆阿呆记下 \(\.$text)")
     }
 
     func perform() async throws -> some IntentResult {
@@ -40,9 +40,13 @@ struct RecordIntent: AppIntent {
 
 /// AdaiAppShortcuts — 免配置的 Siri 短语（iOS 16+）。
 ///
-/// 短语里必须含 `\(.applicationName)`（系统要求，用于消歧），因此说的是
-/// 「用阿呆阿呆记一笔」——显示名是「阿呆阿呆」，Siri 通常也能听懂省略成「阿呆」的说法，
-/// 但这取决于系统匹配，故多给几个变体。
+/// **命名（2026-09-13 用户拍板）**：这个动作就叫「**阿呆阿呆**」——不要「阿呆记一笔」那种
+/// 把 App 名和动作名拼起来的叫法。动作名、短语、shortTitle 一律用「阿呆阿呆」。
+///
+/// 短语里必须含 `\(.applicationName)`（系统要求，用于消歧）。三个变体从短到长：
+/// 只叫名字、「用」+名字、「让」+名字+记下——**只叫名字那条最自然（「嘿 Siri，阿呆阿呆」），
+/// 但风险是与「打开 App」的默认语义撞车**（系统对「App 名」的默认动作是启动 App）；
+/// 因此同时给带动词的两条兜底，用户挑顺口的用。
 @available(iOS 16.0, *)
 struct AdaiAppShortcuts: AppShortcutsProvider {
 
@@ -50,11 +54,11 @@ struct AdaiAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: RecordIntent(),
             phrases: [
-                "用\(.applicationName)记一笔",
-                "记一笔到\(.applicationName)",
-                "\(.applicationName)记录",
+                "用\(.applicationName)",
+                "\(.applicationName)",
+                "让\(.applicationName)记下",
             ],
-            shortTitle: "记一笔",
+            shortTitle: "阿呆阿呆",
             systemImageName: "square.and.pencil"
         )
     }
