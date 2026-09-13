@@ -3,7 +3,7 @@ title: 域名备案（ICP）资料整理——adaiadai.com
 description: 个人网站备案资料清单与填报指引（腾讯云接入），结合本项目域名/服务器/三端现状
 version: 1
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-09-14
 status: active
 lines: 136
 depends-on:
@@ -116,7 +116,7 @@ tags: [deployment, 备案, icp]
 2. **HTTPS + 反代**：按 `backend-deployment.md` §10 装 Caddy，反代 8080/8082/8083，自动申请 Let's Encrypt 证书。✅ 已完成
 3. **前端重建指向域名**：`--dart-define=API_BASE_URL=https://api.adaiadai.com`，重构建 web/admin 并重新部署 app（换服务器永不再改）。✅ web/admin 已完成；⬜ iOS app 待重签（见步骤 6）
 4. **网站底部悬挂备案号**：`京ICP备2026056893号`，并链接到 https://beian.miit.gov.cn（管局强制要求）。✅ 2026-09-01 web/admin 底部备案栏已上线
-5. **公安联网备案（30 天内，易漏！）**：到全国互联网安全管理服务平台（www.beian.gov.cn）提交公安备案，通过后把公安备案号也挂到网站底部。⬜ **待办（最迟 2026-09-30）**
+5. **公安联网备案（30 天内，易漏！）**：到全国互联网安全管理服务平台（**beian.mps.gov.cn**，2026-09-14 实测可达；旧指引多写 www.beian.gov.cn）提交公安备案——需先用「**公安一网通办**」App 完成实人认证；通过后 30 日内把公安备案号 **+ 备案编号图标/HTML 代码**挂到网站底部。⬜ **待办（最迟 2026-09-30）**
 6. **移动端 App**：本机安装 + 通过备案域名访问即合规；**若未来上架大陆区 App Store 或安卓商店，需补办 App 备案**（2023-09 起工信部强制）。⬜ iOS app 重签指向 `https://api.adaiadai.com`（当前仍指向 IP:8080，随下次重签一起改）
 
 ## 7. 常见退回原因避坑
