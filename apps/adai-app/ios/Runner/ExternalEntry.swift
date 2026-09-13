@@ -44,15 +44,33 @@ enum ExternalEntry {
         return entry
     }
 
+    // MARK: - URL 去重（实测必需，见下）
+
+    /// 最近一次已接受的 URL 动作，用于去重。
+    private static var lastURLAction: String?
+    private static var lastURLText: String?
+    private static var lastURLAt: Date?
+
+    /// 同一 (action, text) 在该窗口内视为**同一次外部动作**。
+    private static let urlDedupeWindow: TimeInterval = 3
+
     /// 解析并接受 `adai://` URL。
     ///
     /// 支持的形态：
-    /// - `adai://record?text=今天减仓了立昂微` → 直接落成一条记录（warm 路径）
+    /// - `adai://record?text=今天减仓了立昂微` → 直接落成一条记录
     /// - `adai://record`                        → 打开 App 并把记录入口准备好
+    ///
+    /// **为什么要去重**：2026-09-13 真机实测——**冷启动**时 iOS 会把「启动用的那个 URL」
+    /// 同时经 `scene(_:willConnectTo:options:)` 与 `scene(_:openURLContexts:)` 送达，
+    /// 于是同一次唤起**落了两条一模一样的记录**（实测两条相隔 516ms）。
+    /// 这是 OS 的送达方式，不是用户动作，所以在**入口处**去重（而不是在 `stash` 里）：
+    /// App Intent 的 `stash` 是用户亲口说的，哪怕内容相同也必须每次都记。
+    /// 窗口 3 秒——人不可能在 3 秒内用同一条链接说两遍一模一样的话，
+    /// 但两次送达必然在 1 秒内。
     ///
     /// @return 是否识别并接受（未识别返回 false，不干扰其它 URL 处理）
     @discardableResult
-    static func handle(url: URL) -> Bool {
+    static func handle(url: URL, source: String) -> Bool {
         guard url.scheme?.lowercased() == scheme else { return false }
         // adai://record → host = "record"；adai:///record → path = "/record"，两种都容忍
         let action = (url.host?.isEmpty == false ? url.host : url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
@@ -60,7 +78,18 @@ enum ExternalEntry {
         guard action == "record" else { return false }
         let text = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "text" })?.value
-        stash(action: "record", text: text, source: "url")
+
+        // 场景回调都在主线程 → 这几个静态变量无需加锁
+        let now = Date()
+        if action == lastURLAction, text == lastURLText,
+           let last = lastURLAt, now.timeIntervalSince(last) < urlDedupeWindow {
+            return true // 同一次外部动作的第二次送达，静默忽略
+        }
+        lastURLAction = action
+        lastURLText = text
+        lastURLAt = now
+
+        stash(action: action, text: text, source: source)
         return true
     }
 }

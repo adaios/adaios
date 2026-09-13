@@ -22,7 +22,7 @@ class SceneDelegate: FlutterSceneDelegate {
     override func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                         options connectionOptions: UIScene.ConnectionOptions) {
         for context in connectionOptions.urlContexts {
-            _ = ExternalEntry.handle(url: context.url)
+            _ = ExternalEntry.handle(url: context.url, source: "url-cold")
         }
         super.scene(scene, willConnectTo: session, options: connectionOptions)
     }
@@ -30,7 +30,7 @@ class SceneDelegate: FlutterSceneDelegate {
     /// 运行中（后台/前台）被 URL 唤起。
     override func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            _ = ExternalEntry.handle(url: context.url)
+            _ = ExternalEntry.handle(url: context.url, source: "url-warm")
         }
         super.scene(scene, openURLContexts: URLContexts)
     }

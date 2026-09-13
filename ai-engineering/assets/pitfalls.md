@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-13
 status: active
-lines: 147
+lines: 148
 depends-on:
   - ../checklists/guard.md
 related:
@@ -141,6 +141,7 @@ tags: [ai, assets, pitfalls]
 | **只接 `openURLContexts` → 冷启动静默丢内容** | 点链接/唤起 App **确实打开了**，但内容没了（看到一个空的记录框、或什么都没发生）；运行中（warm）却完全正常 | iOS 的 URL 有**两条互不重叠**的送达路径：App 已在跑 → `scene(_:openURLContexts:)`；**App 没在跑 → `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts`**。只实现前者，冷启动那条就没人接——而且不报错 | 两条都实现（`SceneDelegate`）。判据：**任何「从外部唤起 App 并带数据」的功能，必须同时问「冷启动时数据从哪来」** | ✅ 已解（2026-09-13） | 只测「App 开着时点一下」；把「App 起来了」当成「功能生效了」 |
 | **`FlutterSceneDelegate` 的 scene 方法：头文件没有，但必须 `override` 且必须调 `super`** | 不写 `override` → 编译报 `Overriding declaration requires an 'override' keyword`（说明 Swift 其实看得见）；写了不调 `super` → **`willConnectTo` 里 Flutter 的引擎装配不执行，App 起不来/白屏** | Flutter 把实现藏在编译好的 framework 里（`FlutterSceneDelegate.h` 只暴露 `window`，`nm` 才能看到 `scene:willConnectToSession:options:` 等）。它的实现负责转发给「场景生命周期插件」+ 引擎装配 | 方法加 `override` **并调 `super`**（与 AppDelegate 的通知回调**相反的取舍**——那边刻意不调，因为无通知插件且要避免 completionHandler 双调用；**每个 API 都要单独判断，不能照搬结论**） | ✅ 已解（2026-09-13） | 把「头文件没声明」等同于「父类没实现」（也可能是「实现但没暴露」）；照搬另一个 API 的 super 取舍 |
 | **App Intent 冷启动时引擎还没起来 → 投递丢** | 用 Siri 记一笔，App 起来了但内容没进去（尤其 App 被杀掉后再唤起） | `openAppWhenRun = true` 时 `perform()` 与 Flutter 引擎初始化**没有先后保证**：引擎没好时 MethodChannel 为空，直接投就是丢 | **先落 UserDefaults，再发同进程通知**：引擎就绪 → 通知即刻投；未就绪 → AppDelegate 不消费，Dart 起来后 `takePendingEntry` 兜底取。drain 即清空 → 天然消费一次（不会重复记两条） | ✅ 已解（2026-09-13） | 只走 MethodChannel 投递一次性事件；不做「事件可能早于监听者」的假设 |
+| **冷启动的启动 URL 被 iOS 送两遍 → 同一句话落两条记录** | 冷启动点链接：App 打开了、内容也对，但**同一条记录出现两次**（实测两条相隔 516ms）。warm 路径完全正常 | 冷启动时 iOS 会把「启动用的那个 URL」**同时**经 `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts` **和** `scene(_:openURLContexts:)` 送达（两条路径都接就会被处理两次）。这是 OS 的送达方式，不是用户动作 | 在**入口处**按 (action, text) 去重（窗口 3 秒——人不可能 3 秒内用同一条链接说两遍一样的话，而两次送达必然在 1 秒内）。**去重放在 URL 入口而不是 `stash`**：App Intent 是用户亲口说的，内容相同也必须每次都记 | ✅ 已解（2026-09-13） | 「接了两条路径」就当万事大吉，不做「同一次外部动作被送两次」的假设；去重位置放错层（把用户主动动作也吞掉） |
 | **scene 生命周期下 `application(_:open:options:)` 根本不会被调用** | URL 处理写在 AppDelegate 里 → 点了没有任何反应，日志也干净 | 用了 `UIApplicationSceneManifest`（scene 生命周期）的 App，URL 一律由 SceneDelegate 收；AppDelegate 那几个 `application(_:open:)` 是**非 scene 时代**的入口 | URL 处理放 `SceneDelegate`；AppDelegate 只留「与 scene 无关」的职责（通知、启动配置） | ✅ 已解（2026-09-13） | 文档抄来的示例没确认是 scene 还是非 scene 架构 |
 
 ---
