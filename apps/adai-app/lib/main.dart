@@ -11,6 +11,7 @@ import 'pages/launcher_page.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_page.dart';
 import 'services/push_service.dart';
+import 'services/entry_intent_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -316,6 +317,10 @@ class _DualWorldShellState extends State<DualWorldShell> {
     // 直连 APNs 弹到本机，不再借 Bark 第三方 App 转达。
     // 放在壳层而不是 main()：需要**带 token 的 _api**（未登录上报必 401）。
     _initPush();
+    // RFC 20260913 外部入口批：接 Siri / 快捷指令 / adai:// 的「记一笔」。
+    // 同样放在会话就绪之后——记录要带 token 才能落盘；未登录时原生侧不会消费，
+    // 入口会攒着，登录进壳后自然被 MainPage 消费掉。
+    EntryIntentService.init();
   }
 
   Future<void> _initPush() async {

@@ -22,6 +22,24 @@
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>阿呆阿呆</string>
+	<!-- 自定义 URL scheme（RFC 20260913 外部入口批）：
+	     adai://record?text=…  → 记一笔（warm 路径，见 SceneDelegate 注释）
+	     adai://record         → 打开 App 并准备好记录入口
+	     用途：iOS 快捷指令「打开 URL」、其它 App 跳转、二维码/桌面书签。
+	     注意：**冷启动**的文本送达请用 App Intent（RecordIntent，落 UserDefaults 不丢）。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.adaiadai.adaiApp</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>adai</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

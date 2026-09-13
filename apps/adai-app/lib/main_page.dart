@@ -6,6 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'root_keys.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
+import 'services/entry_intent_service.dart';
 import 'services/models/learn_models.dart';
 import 'pages/learn_page.dart';
 import 'widgets/feed_card.dart';
@@ -111,15 +112,37 @@ class _MainPageState extends State<MainPage>
     _contentAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic);
     _enterCtrl.forward();
     widget.refreshTick?.addListener(_onRefreshTick);
+    // RFC 20260913 外部入口批：Siri / 快捷指令 / adai:// 发起的「记一笔」
+    EntryIntentService.pending.addListener(_onExternalEntry);
+    // 冷启动：入口可能早于本页挂载就排好了（Siri 拉起 App）——首帧后补消费一次
+    WidgetsBinding.instance.addPostFrameCallback((_) => _consumeExternalEntry());
   }
 
   @override
   void dispose() {
     widget.refreshTick?.removeListener(_onRefreshTick);
+    EntryIntentService.pending.removeListener(_onExternalEntry);
     _learnGen++; // 页面销毁 → 在途整理轮询/确认回包作废
     _scrollController.dispose();
     _enterCtrl.dispose();
     super.dispose();
+  }
+
+  void _onExternalEntry() => _consumeExternalEntry();
+
+  /// 消费一条来自 App 外部（Siri / 快捷指令 / URL）的入口。
+  ///
+  /// **有内容就直接落成记录**，不要求再点一次发送：语音输入的意图已经明确（你亲口说的），
+  /// 多一次点击等于把 Siri 的价值抵消掉；卡片照常可见、可删（既有能力）。
+  /// **没内容不猜**：只把输入框准备好并聚焦，等你自己写（例如只说了「打开阿呆」）。
+  void _consumeExternalEntry() {
+    final entry = EntryIntentService.take();
+    if (entry == null || !mounted) return;
+    if (!entry.hasText) {
+      _inputBarKey.currentState?.prefillText('');
+      return;
+    }
+    _onSend(entry.text!);
   }
 
   void _onRefreshTick() {

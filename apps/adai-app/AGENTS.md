@@ -55,7 +55,8 @@ lib/
 ├── services/
 │   ├── api_config.dart          # API 配置（后端地址）
 │   ├── api_service.dart         # HTTP 客户端（REST API 调用）
-│   └── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生生效，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；Web/PWA/Android 降级 unavailable 不碰原生通道
+│   ├── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；Web/PWA/Android 降级不碰原生通道
+│   └── entry_intent_service.dart # 外部入口（RFC 20260913）：接 Siri「记一笔」/ 快捷指令 / adai:// → 有内容直接落成记录，空内容只预填；同样仅 iOS 原生
 ├── theme/
 │   ├── app_colors.dart          # 调色板
 │   └── app_theme.dart           # Material 3 ThemeData
@@ -128,6 +129,13 @@ cd apps/adai-app && flutter test
 - **Dart 侧**：`PushService` 只在 `!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS` 生效；登录后由 `DualWorldShell.initState` 调用；通知点击 → 切回 Feed 并刷新；权限被拒 → 一条可点的「去开启」引导；登出注销本机设备。
 - **环境别猜**：deviceToken 分属 sandbox / production 两套互不相通的网关，App 侧读包内 `embedded.mobileprovision` 的 `aps-environment` 得出环境上报（**不能用 `#if DEBUG`**：本项目装机是 `--release` + development 描述文件 = release 优化 + 沙箱环境）。
 - 服务端配置与验证步骤见 `docs/deployment/backend-deployment.md` §11。
+
+## iOS 外部入口（RFC 20260913）
+
+- **三条入口**：Siri 短语（`AdaiAppShortcuts`，免配置）· 快捷指令/聚焦搜索的「记一笔」动作（`RecordIntent`）· `adai://record?text=…`。
+- **投递必须落盘**：App Intent 的 `perform()` 与 Flutter 引擎初始化**没有先后保证**（冷启动时引擎可能还没起来），所以 `ExternalEntry` 走「落 UserDefaults + 同进程通知」双路径，Dart 起来后再 `takePendingEntry` 兜底取；drain 即清空 → 天然消费一次。
+- **URL 有两条送达路径，缺一不可**：warm → `SceneDelegate.scene(_:openURLContexts:)`；cold → `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts`。**两条都必须调 `super`**（`FlutterSceneDelegate` 的实现藏在 framework 里，头文件没暴露但 Swift 可覆写；`willConnectTo` 里 super 负责引擎装配，跳过会让 App 起不来）。见 pitfalls 十四。
+- **scene 架构下 AppDelegate 的 `application(_:open:)` 不会被调用**——URL 处理别写在 AppDelegate。
 
 ## 设计约定
 

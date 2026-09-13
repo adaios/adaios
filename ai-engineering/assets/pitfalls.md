@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-13
 status: active
-lines: 137
+lines: 147
 depends-on:
   - ../checklists/guard.md
 related:
@@ -132,6 +132,16 @@ tags: [ai, assets, pitfalls]
 | **Jackson 默认忽略尾部多余内容** | 被截断/写坏的文件（`[]]`、`[...] 垃圾`）**解析成功并读出前半段**——「损坏」变成「读出一部分」，静默丢数据 | `DeserializationFeature.FAIL_ON_TRAILING_TOKENS` **默认关闭** | 对「损坏必须被发现」的写路径显式 `.enable(FAIL_ON_TRAILING_TOKENS)`（并用反例单测锁死）；读路径仍可宽容（降级为空） | ⚠️ 本批只修 `PushDeviceFileRepository`；其它仓储同型**未逐一核**（REVIEW P2-工程4）| 用「能不能解析成 JSON」当损坏判据；只测「整段乱码」，不测「合法前缀 + 垃圾后缀」|
 | **付费开发者账号 ≠ 能力自动可用** | 以为付了钱就啥都有了；实际推送/后台/小组件等**能力是逐项声明+注册**的，缺一道就静默失败 | 能力需要三处同时具备：① `Runner.entitlements` 声明 `aps-environment`；② pbxproj 挂 `CODE_SIGN_ENTITLEMENTS`（**三个 Runner 配置都要**，只挂 Debug 会让装机用的 release 没能力）；③ App ID 上该能力被开启 + 描述文件重签 | 三处补齐；实测 `flutter build ios`（自动签名）会自动去 Apple 侧开启能力并重签描述文件（`codesign -d --entitlements` + `embedded.mobileprovision` 双取证） | ✅ 已解（2026-09-13） | 只加 entitlements 文件不挂 pbxproj；只挂 Debug 配置；改完不验产物 entitlements |
 | **付费账号到期 = 周期性「打不开日」** | 2027-09-13 之后 App 会像免费签名 7 天过期那样**直接打不开**（同型事故换了个周期） | 描述文件有效期 1 年，**不自动续期就不会续签**；证书/描述文件失效 → 系统拒绝启动已安装 App | 到期日写进文档（`backend-deployment.md` §9）+ pitfalls；**仍缺日历提醒**（REVIEW P2-APNs5） | ⚠️ 部分缓解 | 把「升级成 1 年」当成「解决了」；只有文档没有会主动叫人的提醒 |
+
+
+## 十四、iOS 外部入口（URL scheme / App Intents，2026-09-13 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **只接 `openURLContexts` → 冷启动静默丢内容** | 点链接/唤起 App **确实打开了**，但内容没了（看到一个空的记录框、或什么都没发生）；运行中（warm）却完全正常 | iOS 的 URL 有**两条互不重叠**的送达路径：App 已在跑 → `scene(_:openURLContexts:)`；**App 没在跑 → `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts`**。只实现前者，冷启动那条就没人接——而且不报错 | 两条都实现（`SceneDelegate`）。判据：**任何「从外部唤起 App 并带数据」的功能，必须同时问「冷启动时数据从哪来」** | ✅ 已解（2026-09-13） | 只测「App 开着时点一下」；把「App 起来了」当成「功能生效了」 |
+| **`FlutterSceneDelegate` 的 scene 方法：头文件没有，但必须 `override` 且必须调 `super`** | 不写 `override` → 编译报 `Overriding declaration requires an 'override' keyword`（说明 Swift 其实看得见）；写了不调 `super` → **`willConnectTo` 里 Flutter 的引擎装配不执行，App 起不来/白屏** | Flutter 把实现藏在编译好的 framework 里（`FlutterSceneDelegate.h` 只暴露 `window`，`nm` 才能看到 `scene:willConnectToSession:options:` 等）。它的实现负责转发给「场景生命周期插件」+ 引擎装配 | 方法加 `override` **并调 `super`**（与 AppDelegate 的通知回调**相反的取舍**——那边刻意不调，因为无通知插件且要避免 completionHandler 双调用；**每个 API 都要单独判断，不能照搬结论**） | ✅ 已解（2026-09-13） | 把「头文件没声明」等同于「父类没实现」（也可能是「实现但没暴露」）；照搬另一个 API 的 super 取舍 |
+| **App Intent 冷启动时引擎还没起来 → 投递丢** | 用 Siri 记一笔，App 起来了但内容没进去（尤其 App 被杀掉后再唤起） | `openAppWhenRun = true` 时 `perform()` 与 Flutter 引擎初始化**没有先后保证**：引擎没好时 MethodChannel 为空，直接投就是丢 | **先落 UserDefaults，再发同进程通知**：引擎就绪 → 通知即刻投；未就绪 → AppDelegate 不消费，Dart 起来后 `takePendingEntry` 兜底取。drain 即清空 → 天然消费一次（不会重复记两条） | ✅ 已解（2026-09-13） | 只走 MethodChannel 投递一次性事件；不做「事件可能早于监听者」的假设 |
+| **scene 生命周期下 `application(_:open:options:)` 根本不会被调用** | URL 处理写在 AppDelegate 里 → 点了没有任何反应，日志也干净 | 用了 `UIApplicationSceneManifest`（scene 生命周期）的 App，URL 一律由 SceneDelegate 收；AppDelegate 那几个 `application(_:open:)` 是**非 scene 时代**的入口 | URL 处理放 `SceneDelegate`；AppDelegate 只留「与 scene 无关」的职责（通知、启动配置） | ✅ 已解（2026-09-13） | 文档抄来的示例没确认是 scene 还是非 scene 架构 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

@@ -3,7 +3,7 @@
 > **定位：** AdaiOS 功能完整参考。按前端模块划分，每个模块覆盖功能、API、前端实现、后端处理、AI 提示词。
 > **用途：** 问题定位、新功能开发、重构时的基准对照。
 >
-> **文档版本：** v1.9 | **最后更新：** 2026-09-13（APNs 自有推送渠道批：阿呆 app 直连 APNs，不再借 Bark 转达 + 推送设备登记/链路自检 4 端点，v3.63）
+> **文档版本：** v2.0 | **最后更新：** 2026-09-13（APNs 自有推送渠道批 + 外部入口批：Siri/快捷指令/adai:// 一句话记录）
 
 ---
 
@@ -1181,3 +1181,41 @@ POST /api/v1/records/retry
 2. App 打开一次（登录态）→ `GET /api/v1/push/devices` 应出现本机 token（`environment=sandbox`）；
 3. 白名单只留 `close-summary,learn-review` 时，触发一次复习提醒（或等 15:30 收盘小结）→ 手机上应出现**阿呆自己的**通知；
 4. 反向验证：`TYPES` 白名单外的类型（如止损）不应有通知，但 Feed 里照常看得到（渠道隔离）。
+
+---
+
+## 19. 外部入口（Siri / 快捷指令 / `adai://`，RFC 20260913）
+
+**定位**：把**记录**这个核心动作的摩擦从「解锁 → 找 App → 点开 → 打字」降到**一句话**。
+这是付费开发者账号解锁的第二项能力（App Intents，iOS 16+），直击「几天没记录」的真实瓶颈。
+
+### 三条入口
+
+| 入口 | 怎么用 | 冷启动可靠 |
+|:-----|:-------|:----------:|
+| **Siri** | 「嘿 Siri，用阿呆记一笔」→ 说内容 → 自动落成记录 | ✅ |
+| **快捷指令 / 聚焦搜索** | 选「记一笔」动作（App Intent 自动出现，无需手配） | ✅ |
+| **URL scheme** | `adai://record?text=…`（其它 App / 快捷指令「打开 URL」/ 二维码） | ✅（cold+warm 两条都接） |
+
+### 行为约定
+
+- **有内容 → 直接落成记录**：语音输入的意图已经明确（你亲口说的），再要求摸手机点一次发送等于把 Siri 的价值抵消掉；
+  记录照常出现在 Feed，是一张普通卡，**可见、可删**（既有能力）。
+- **空内容 → 不猜**：只把输入框准备好并聚焦，等你自己写（例如只说了「打开阿呆」）。
+- **未登录时**：入口会攒着（原生侧不消费），登录进主界面后自然被消费。
+
+### 实现位置
+
+| 层 | 文件 | 职责 |
+|:---|:-----|:-----|
+| App Intent | `ios/Runner/RecordIntent.swift` | `RecordIntent`（带「内容」参数、`openAppWhenRun`）+ `AdaiAppShortcuts`（免配置 Siri 短语） |
+| 投递桥 | `ios/Runner/ExternalEntry.swift` | 落 UserDefaults + 同进程通知**双路径**（冷启动引擎未就绪也不丢）；`adai://` 解析；drain 即清空 |
+| 生命周期 | `ios/Runner/SceneDelegate.swift` | `openURLContexts`（warm）+ `willConnectTo` 的 `connectionOptions.urlContexts`（cold），**两条都调 `super`** |
+| 通道 | `ios/Runner/AppDelegate.swift` | `adai/entry` 通道（`onEntry` 推送 + `takePendingEntry` 兜底取） |
+| Dart | `lib/services/entry_intent_service.dart` | 平台守卫（仅 iOS 原生）、解析、消费一次 |
+| 消费 | `lib/main_page.dart` | `_consumeExternalEntry` → 有文本走 `_onSend`，无文本只预填 |
+
+### 已验证 / 待验证
+
+- **已验证**：iOS 包编译通过（含 App Intents 与 `adai://` 声明）、Dart 侧 12 项单测（平台守卫/冷启动取/推送投递/消费一次/空内容不猜/未知动作不硬塞/旧版本降级）。
+- **待真机验证**：`adai://record?text=…` 的 warm 与 cold 两条路径；Siri 短语需用户亲口说（无法代跑）。

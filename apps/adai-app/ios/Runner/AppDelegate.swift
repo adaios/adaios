@@ -8,7 +8,6 @@ enum PushBridge {
     /// 兜底 aps-environment 取值：侧载（development 签名）走沙箱网关。
     static let defaultEnvironment = "sandbox"
 }
-
 /// AppDelegate — 远程推送接入（RFC 20260913 APNs 批）。
 ///
 /// 背景：付费开发者账号之前 App 拿不到 `aps-environment` 能力，后端 10 种推送
@@ -35,6 +34,8 @@ enum PushBridge {
     private var registerError: String?
     /// 通道就绪前收到的通知点击（冷启动场景）——等 Dart 调用 getStatus 时补投。
     private var pendingTap: String?
+    /// 外部入口通道（Siri / 快捷指令 / `adai://` URL，RFC 20260913 外部入口批）。
+    private var entryChannel: FlutterMethodChannel?
 
     override func application(
         _ application: UIApplication,
@@ -46,6 +47,12 @@ enum PushBridge {
         // 它若已把 center.delegate 设成自己，这里赋的 self 是同一个对象，覆盖的是其中一组
         // 方法实现（见类体末尾的 override 说明），不构成冲突。
         UNUserNotificationCenter.current().delegate = self
+        // 外部入口（App Intent / URL）：有人存了待处理入口就投给 Dart。
+        // 引擎未就绪时**不消费**（条目留在 UserDefaults，等 Dart 启动时主动取）——
+        // 若此时就把 drain 掉，内容会丢在没人接的地方。
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleExternalEntry),
+            name: .adaiExternalEntry, object: nil)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
@@ -60,6 +67,39 @@ enum PushBridge {
             self?.handle(call, result: result)
         }
         pushChannel = channel
+
+        // 外部入口通道（Siri / 快捷指令 / adai:// URL）
+        let entry = FlutterMethodChannel(
+            name: ExternalEntry.channelName,
+            binaryMessenger: engineBridge.applicationRegistrar.messenger()
+        )
+        entry.setMethodCallHandler { [weak self] call, result in
+            switch call.method {
+            case "takePendingEntry":
+                result(self?.takePendingEntry())
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
+        entryChannel = entry
+        // 引擎刚就绪：若冷启动期间已排了入口（Siri 拉起 App / URL 唤起），立刻补投
+        handleExternalEntry()
+    }
+
+    // MARK: - 外部入口（Siri / 快捷指令 / adai:// URL）
+
+    /// 有待处理入口且通道已就绪 → 投给 Dart；否则原样留在 UserDefaults 等 Dart 来取。
+    @objc private func handleExternalEntry() {
+        guard let channel = entryChannel else { return }
+        guard let entry = ExternalEntry.drain() else { return }
+        DispatchQueue.main.async {
+            channel.invokeMethod("onEntry", arguments: entry)
+        }
+    }
+
+    /// Dart 主动取一次（冷启动兜底：Dart 起来时通道才建好，此前无人消费）。
+    private func takePendingEntry() -> [String: Any]? {
+        ExternalEntry.drain()
     }
 
     // MARK: - Dart → Swift
