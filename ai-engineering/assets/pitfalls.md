@@ -148,7 +148,7 @@ tags: [ai, assets, pitfalls]
 
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
-| **`$VAR` 紧跟全角标点 → bash 把标点字节并进变量名** | `guard-tools.sh: line 77: N_SKILLS?: unbound variable`——变量上一行明明赋过值却报未定义；`set -u` 下脚本当场中止，看代码完全正常 | 非 UTF-8 locale（`LANG` 未设 / 为 `C`）时 bash 不把多字节字符当词法边界：`$N_SKILLS）` 里 `）`（`EF BC 89`）的首字节被当成变量名的合法字符，于是去找名为 `N_SKILLS\xef` 的变量 | 变量一律用 `${...}` 界定（`${N_SKILLS}` 而非 `$N_SKILLS`）；**凡中文文案里嵌 shell 变量，一律加花括号** | ✅ 已修（2026-09-14 guard-tools 计数动态化） | 报「unbound variable」但变量确实赋过值；报错里变量名后面粘着一个乱码字符；中英混排的 `echo` 字符串；本机直接跑正常、cron/hook 里跑就崩 |
+| **`$VAR` 紧跟全角标点 → bash 把标点字节并进变量名** | `guard-tools.sh: line 77: N_SKILLS?: unbound variable`——变量上一行明明赋过值却报未定义；`set -u` 下脚本当场中止，看代码完全正常 | 非 UTF-8 locale（`LANG` 未设 / 为 `C`——cron、git hook、部分 CI 的默认）时 bash 不把多字节字符当词法边界：`$N_SKILLS）` 里 `）`（`EF BC 89`）的首字节被当成变量名的合法字符，于是去找名为 `N_SKILLS\xef` 的变量 | 变量一律用 `${...}` 界定（`${N_SKILLS}` 而非 `$N_SKILLS`）；**凡中文文案里嵌 shell 变量，一律加花括号**。**已机器化（2026-09-14）**：`scripts/lint-shell-vars.py` 按 shell 词法扫描（单引号/注释/`\$` 转义不报，`${}` `$()` `$?` 不报），挂 `guard-tools.sh` T6 + git pre-commit 第 4 层——**落地当轮扫出全仓 18 处存量**（deploy-gate / guard-tools / weekly-audit / build_apk / build_web / sync-adai-rulepack / backup_prod / migrate-data-to-user-layer），全部修复 | ✅ 已修 + 已加自动门禁（2026-09-14） | 报「unbound variable」但变量确实赋过值；报错里变量名后面粘着一个乱码字符；中英混排的 `echo` 字符串；本机直接跑正常、cron/hook 里跑就崩 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

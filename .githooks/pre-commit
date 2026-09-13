@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# 提交前自动门禁（三层）：
+# 提交前自动门禁（四层）：
 #   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
 #   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
+#   4) T6 shell-lint —— shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下 unbound）
 # 由 git core.hooksPath 启用（scripts/setup-hooks.sh 配置，随 clone 重建）。
 cd "$(git rev-parse --show-toplevel)"
 
@@ -29,12 +30,13 @@ if [ -n "$PRIVACY_VIOLATIONS" ]; then
   exit 1
 fi
 
-# 触发条件：任何 .md / .java / .dart / .sh 变更（docs-only 也要查结构）
-if ! echo "$CHANGED" | grep -qE '\.(java|dart|md|sh)$'; then
+# 触发条件：任何 .md / .java / .dart / .sh / .bash 变更，或 .githooks/ 自身变更
+# （docs-only 也要查结构；.githooks/ 无扩展名，漏了它会让「只改钩子」绕过全部检查）
+if ! echo "$CHANGED" | grep -qE '\.(java|dart|md|sh|bash)$|^\.githooks/'; then
   exit 0
 fi
 
-echo "── pre-commit: 文档对齐 + 结构 + 防复发 + 隐私检查 ──"
+echo "── pre-commit: 文档对齐 + 结构 + 防复发 + shell 健壮性 + 隐私检查 ──"
 
 # 1) 内容对齐（端点/测试数）——仅代码/契约相关变更时跑
 if echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then
@@ -64,5 +66,12 @@ if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
   fi
 fi
 
+# 4) shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下字节被并进变量名，set -u 中止）
+#    根因与复发信号见 ai-engineering/assets/pitfalls.md 十五；执行器 scripts/lint-shell-vars.py
+#    仅 shell 变更时跑（执行器自身扫描全部 git 跟踪的 shell 脚本，27 个，很快）
+if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
+  bash ai-engineering/guard-tools.sh --shell-lint || { echo "❌ shell 脚本健壮性检查未通过，提交已阻止。修复指引：把 \$VAR 写成 \${VAR}——凡中文文案里嵌 shell 变量，一律加花括号。"; exit 1; }
+fi
+
 bash ai-engineering/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
-echo "✅ 文档对齐 + 结构 + 防复发检查通过"
+echo "✅ 文档对齐 + 结构 + 防复发 + shell 健壮性检查通过"

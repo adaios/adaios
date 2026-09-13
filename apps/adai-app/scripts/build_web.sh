@@ -93,10 +93,10 @@ fi
 # 注意：产物目录不带 base-href 前缀（base href 只是 URL 前缀，文件仍在 build/web 根下）。
 for f in fonts/Roboto.woff2 fonts/NotoSansSC-Subset.woff2; do
   if [ ! -f "build/web/$f" ]; then
-    echo "ERROR: 字体文件缺失 build/web/$f——补丁会 404 → 中文框框。请从 web/fonts/ 补齐（web/fonts/ 不入库）。"
+    echo "ERROR: 字体文件缺失 build/web/${f}——补丁会 404 → 中文框框。请从 web/fonts/ 补齐（web/fonts/ 不入库）。"
     exit 1
   fi
 done
-echo "OK: 字体补丁已注入且带 base-href 前缀（$BASE_HREF）+ 两个字体文件均在产物内"
+echo "OK: 字体补丁已注入且带 base-href 前缀（${BASE_HREF}）+ 两个字体文件均在产物内"
 
 echo "=== Build done: $(pwd)/build/web ==="

@@ -64,7 +64,7 @@ echo "▸ 部署 jar：$JAR_ABS"
 (cd services/adai-core && ./deploy.sh "$SERVER" "$JAR_ABS")
 DEPLOY_OK=$?
 if [ $DEPLOY_OK -ne 0 ]; then
-    echo "❌ 部署失败（deploy.sh exit $DEPLOY_OK）"
+    echo "❌ 部署失败（deploy.sh exit ${DEPLOY_OK}）"
     exit 1
 fi
 
@@ -102,7 +102,7 @@ check() {
     if [ "$code" = "$expect" ]; then
         echo "  ✅ $desc → $code"
     else
-        echo "  ❌ $desc → $code（期望 $expect）"
+        echo "  ❌ $desc → ${code}（期望 ${expect}）"
         FAILED=1
     fi
 }
@@ -131,7 +131,7 @@ probe() {
     if echo "$out" | grep -qE "$needle"; then
         echo "  ✅ $desc → 自检通过"
     else
-        echo "  ❌ $desc → 自检失败（期望响应含 $needle）"
+        echo "  ❌ $desc → 自检失败（期望响应含 ${needle}）"
         echo "     实际：$(echo "$out" | head -c 300)"
         FAILED=1
     fi

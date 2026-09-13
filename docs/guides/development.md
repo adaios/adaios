@@ -47,7 +47,7 @@ cd apps/adai-app && flutter run -d android         # Android
 ## 环境与工程
 
 - **零数据库启动**：MVP 阶段不需要 MySQL，所有数据通过 File First 存储到 `data/`。
-- **git hooks（换机 clone 后执行一次）**：`sh scripts/setup-hooks.sh` —— 启用 pre-commit 自动检查（文档对齐 + frontmatter 结构 + G1-G7 防复发）。
+- **git hooks（换机 clone 后执行一次）**：`sh scripts/setup-hooks.sh` —— 启用 pre-commit 自动检查（文档对齐 + frontmatter 结构 + G1-G7 防复发 + shell 脚本健壮性）。
 - **技能注册（换机 clone 后执行一次）**：`bash scripts/link-skills.sh` —— 把「用户直触发」技能软链到本机工具目录（如 `.dsh/skills/`）。工具侧目录被 `.gitignore` 忽略（注册是本机状态，真相源在 `ai-engineering/skills/`），不跑这条就**没有技能可用**。自检：`bash scripts/link-skills.sh --check` 或 `bash ai-engineering/guard-tools.sh`（T4）。
 
 ## 相关

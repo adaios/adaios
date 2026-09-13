@@ -59,7 +59,7 @@ echo "  3/3  校验..."
 REMOTE_MD5="$(ssh "${SSH_OPTS[@]}" "root@$SERVER" "md5sum $REMOTE_TAR | cut -d' ' -f1")"
 LOCAL_MD5="$(md5 -q "$BACKUP_DIR/adaios-prod-$STAMP.tar.gz")"
 if [ "$REMOTE_MD5" != "$LOCAL_MD5" ]; then
-  echo "!! checksum 不一致（本地 $LOCAL_MD5 ≠ 服务器 $REMOTE_MD5），备份中止"
+  echo "!! checksum 不一致（本地 $LOCAL_MD5 ≠ 服务器 ${REMOTE_MD5}），备份中止"
   exit 1
 fi
 echo "  ✓ checksum 一致: $LOCAL_MD5"

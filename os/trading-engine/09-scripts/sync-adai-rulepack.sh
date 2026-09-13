@@ -41,7 +41,7 @@ mkdir -p "$(dirname "$TARGET")"
 for f in "${FILES[@]}"; do
   SRC="$CONTEXT_DIR/$f"
   if [[ ! -f "$SRC" ]]; then
-    echo "⚠️ 缺 $f（跳过）" >&2
+    echo "⚠️ 缺 ${f}（跳过）" >&2
     continue
   fi
   echo "" >> "$TARGET"
@@ -51,7 +51,7 @@ for f in "${FILES[@]}"; do
   echo "" >> "$TARGET"
   echo "---" >> "$TARGET"
 done
-echo "✅ knowledge.md 已生成（$TARGET，$(wc -l < "$TARGET") 行）"
+echo "✅ knowledge.md 已生成（${TARGET}，$(wc -l < "$TARGET") 行）"
 
 # 2. 校验 rules.yaml 参数 = 默认值（防漂移）
 if [[ -f "$RULES_YAML" ]]; then
@@ -62,7 +62,7 @@ if [[ -f "$RULES_YAML" ]]; then
     local actual
     actual=$(grep -A40 "^params:" "$RULES_YAML" | grep "^  $key:" | awk '{print $2}' | tr -d '"' || true)
     if [[ "$actual" != "$expected" ]]; then
-      echo "⚠️ $key: 期望 $expected 实际 $actual（与课程默认不符，请检查）"
+      echo "⚠️ $key: 期望 $expected 实际 ${actual}（与课程默认不符，请检查）"
     fi
   }
   check_param positionLimitPercent 25

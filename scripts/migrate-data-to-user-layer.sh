@@ -29,7 +29,7 @@ DIRS=("identity" "index" "memory" "project" "records" "trading")
 echo "==> 数据迁移 | data 根: $DATA_PATH | 目标用户: $TARGET_USER"
 
 if [ ! -d "$DATA_PATH" ]; then
-  echo "!! data 目录不存在（$DATA_PATH），跳过"
+  echo "!! data 目录不存在（${DATA_PATH}），跳过"
   exit 0
 fi
 

@@ -43,7 +43,7 @@ tags: [ai, meta, index]
 | guard-meta.sh | 元治理自检（frontmatter 图谱/lines/孤儿/正文路径，`--fix` 回写）| active |
 | guard-roadmap.sh | 规划状态对拍（roadmap 体检 + 漂移检查）| active |
 | guard-unfixed.sh | 未修复问题总清单（REVIEW/task-log/audits 四源聚合 + 对账）| active |
-| guard-tools.sh | 工具接入自检（T1 hook/T2 快照/T3 技能/T4 注册/T5 入口，跨工具互通可验证）| active |
+| guard-tools.sh | 工具接入自检（T1 hook/T2 快照/T3 技能/T4 注册/T5 入口/T6 shell 变量花括号，跨工具互通可验证；`--shell-lint` 供 pre-commit）| active |
 | guard-align.sh | 文档自动对齐（端点/测试数，pre-commit 触发）| active |
 | method/_index.md | 方法论层（切入点图谱/流水线/脚手架）| active |
 | guard-context.sh | 任务上下文注入（开工前清单，进攻侧）| active |

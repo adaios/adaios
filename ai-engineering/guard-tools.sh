@@ -2,9 +2,10 @@
 # ─────────────────────────────────────────────────────────────
 # 工具接入自检（防守侧）— 检测「AI 上下文工程体系」在各工具侧是否真的被加载
 #
-# 用法:  bash ai-engineering/guard-tools.sh          # 全量自检
+# 用法:  bash ai-engineering/guard-tools.sh             # 全量自检（T1-T6）
+#        bash ai-engineering/guard-tools.sh --shell-lint # 只跑 T6（pre-commit 调用，快）
 # 说明:  体系的「跨工具互通」不是文档承诺，是可验证状态（2026-08-23 对抗审计 P1-4 修复）。
-#        自检 5 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
+#        自检 6 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
 #        机制替人记得——运行即知当前工具接入状态）。
 #
 # 检测项:
@@ -13,6 +14,7 @@
 #   T3 仓库内技能      → roles/ + skills/ 的 SKILL.md 是否齐备（name 字段校验）
 #   T4 工具侧技能注册  → .dsh / .claude / .agents 的 skills/ 是否软链回本体系（按真身判定）
 #   T5 工具侧上下文注入→ 若存在 .claude/settings.json，是否显式引用 AGENTS.md（无则仅提示）
+#   T6 shell 脚本健壮性→ `$VAR` 紧跟非 ASCII（非 UTF-8 locale 下被并进变量名 → unbound）
 # ─────────────────────────────────────────────────────────────
 set -u
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
@@ -22,6 +24,13 @@ PASS=0; WARN=0; FAIL=0
 ok()   { echo "  ✅ $1"; PASS=$((PASS+1)); }
 warn() { echo "  ⚠️  $1"; WARN=$((WARN+1)); }
 bad()  { echo "  ❌ $1"; FAIL=$((FAIL+1)); }
+
+# T6 独立快速模式：pre-commit 只需要这一项，避免整轮自检拖慢提交
+if [ "${1:-}" = "--shell-lint" ]; then
+  echo '── T6 shell 脚本健壮性（$VAR 紧跟非 ASCII）──'
+  python3 "$ROOT/scripts/lint-shell-vars.py" || exit 1
+  exit 0
+fi
 
 echo "── 工具接入自检（guard-tools.sh）──"
 
@@ -60,7 +69,7 @@ for f in "$ROOT"/ai-engineering/roles/*.md; do
   N_ROLES=$((N_ROLES+1))
   base="$(basename "$f" .md)"
   if ! grep -q "^name: $base$" "$f"; then
-    echo "  ❌ $f: 缺 name: $base（skills-spec 必填）"
+    echo "  ❌ $f: 缺 name: ${base}（skills-spec 必填）"
     MISSING=$((MISSING+1))
   fi
 done
@@ -69,7 +78,7 @@ for f in "$ROOT"/ai-engineering/skills/*.md; do
   N_SKILLS=$((N_SKILLS+1))
   base="$(basename "$f" .md)"
   if ! grep -q "^name: $base$" "$f"; then
-    echo "  ❌ $f: 缺 name: $base（skills-spec 必填）"
+    echo "  ❌ $f: 缺 name: ${base}（skills-spec 必填）"
     MISSING=$((MISSING+1))
   fi
 done
@@ -109,6 +118,19 @@ elif grep -q "AGENTS.md" "$CC" 2>/dev/null; then
   ok ".claude/settings.json 引用 AGENTS.md"
 else
   warn "存在 .claude/settings.json 但未引用 AGENTS.md（Claude 会默认读 CLAUDE.md；本体系以 AGENTS.md 为入口）"
+fi
+
+# T6: shell 脚本健壮性（`$VAR` 紧跟非 ASCII 字节）
+# 根因见 assets/pitfalls.md 十五：非 UTF-8 locale 下 bash 把多字节字符首字节并进变量名，
+# `set -u` 时 unbound variable 中止——而代码看起来完全正常、本机跑也正常，只在 cron/hook 炸。
+echo ""
+echo "T6 shell 脚本健壮性（\$VAR 紧跟非 ASCII）"
+LINT_OUT="$(python3 "$ROOT/scripts/lint-shell-vars.py" 2>&1)"; LINT_RC=$?
+if [ "$LINT_RC" -eq 0 ]; then
+  ok "${LINT_OUT#SHELL-LINT: }"
+else
+  echo "$LINT_OUT" | sed 's/^/  /'
+  bad "shell 脚本存在 \$VAR 紧跟非 ASCII 的写法（改用 \${VAR}）"
 fi
 
 echo ""

@@ -82,7 +82,7 @@ if [ -n "$APKSIGNER" ] && [ -n "$EXPECTED_FP" ]; then
     echo "  它现在装得上，但将来换正式签名无法覆盖升级（对方要卸载重装，数据全丢）。"
     exit 1
   fi
-  echo "OK: 签名校验通过（SHA-256 $EXPECTED_FP）——正式证书，可覆盖升级"
+  echo "OK: 签名校验通过（SHA-256 ${EXPECTED_FP}）——正式证书，可覆盖升级"
 else
   echo "WARN: 未能自动验签（apksigner 或 keystore 指纹不可得）——请手工确认产物用的是正式证书："
   echo "  期望证书 SHA-256: ${EXPECTED_FP:-<读不到>}"
@@ -90,6 +90,6 @@ else
 fi
 
 echo "=== Build done ==="
-echo "产物：$(pwd)/$APK（$(ls -lh "$APK" | awk '{print $5}')）"
+echo "产物：$(pwd)/${APK}（$(ls -lh "$APK" | awk '{print $5}')）"
 echo "sha256：$(shasum -a 256 "$APK" | awk '{print $1}')"
 echo "侧载：把该 APK 发给对方 → 手机允许「安装未知应用」→ 安装（以后更新用同一 keystore 的包覆盖）"
