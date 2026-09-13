@@ -2767,6 +2767,9 @@ class _TradingPageState extends State<TradingPage> {
       parsed.rows.map((r) => r.toJson()).toList(),
       replace: true,
       snapshotDate: snapshotDate,
+      // 2026-09-13：券商「当日盈亏」列之和（含 0 股行）——账户卡的当日盈亏以券商口径为准。
+      // null（文件没这列 / 有行取不到数）不传 → 后端保留账户旧值，绝不落零。
+      todayPnl: parsed.todayPnl,
     );
     await _loadAll();
     if (mounted) {

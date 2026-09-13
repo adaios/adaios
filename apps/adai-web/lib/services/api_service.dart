@@ -583,11 +583,14 @@ class ApiService {
   /// **优先于导入日**，后端拿它当锚定日；不传（null/空）则退回导入日。
   /// 补导几天前的快照时若把锚定日写成今天，锚定日之后、快照之前的成交会被误判成
   /// 「已含在快照口径内」而丢掉增量（见 RFC 20260912-trading-ledger-integrity）。
+  /// [todayPnl]（2026-09-13）= 券商「持仓股」导出「当日盈亏」列之和（[TdxParseResult.todayPnl]）——
+  /// **券商权威口径**，后端只在与账户快照同一天时写入；缺列/不可靠时传 null（保留账户旧值）。
   Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items,
-      {bool replace = false, String? snapshotDate}) async {
+      {bool replace = false, String? snapshotDate, double? todayPnl}) async {
     final params = <String, String>{
       if (replace) 'replace': 'true',
       if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+      if (todayPnl != null) 'todayPnl': todayPnl.toStringAsFixed(2),
     };
     final uri = Uri.parse('$baseUrl/api/v1/trading/positions/import')
         .replace(queryParameters: params.isEmpty ? null : params);

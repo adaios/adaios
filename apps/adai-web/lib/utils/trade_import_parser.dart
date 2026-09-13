@@ -245,7 +245,16 @@ class TdxParseResult {
   final List<String> errors;
   final List<String> skipped;
 
-  TdxParseResult({required this.rows, required this.errors, this.skipped = const []});
+  /// 券商口径「当日盈亏」：**Σ 全表**（含 0 股行——当日清仓标的的已实现盈亏也在这一列里），
+  /// 与账户卡上的「当日盈亏」同一口径（2026-09-13）。
+  ///
+  /// null 的两种含义（**都必须保留账户旧值，绝不发一个半截/错的总数**）：
+  /// - 文件没有这一列（老版本导出 / 别的券商）→ 调用方不传该参数；
+  /// - 列存在但**有行取不到数**（空列/非数字）→ 总数不可靠，宁可不发。
+  /// 这两点沿用的是资金股份导入的同一约定（缺列不覆盖，P2-交易37）。
+  final double? todayPnl;
+
+  TdxParseResult({required this.rows, required this.errors, this.skipped = const [], this.todayPnl});
 
   bool get hasErrors => errors.isNotEmpty;
 }
@@ -253,7 +262,7 @@ class TdxParseResult {
 /// 解析通达信持仓导出 → 持仓快照行 + 错误列表。
 ///
 /// 表头定位列（版本差异容忍）：证券代码/代码 → symbol；证券名称/名称 → name；
-/// 股票余额/持仓数量/数量 → quantity；成本价/成本 → avgCost。
+/// 股票余额/持仓数量/数量 → quantity；成本价/成本 → avgCost；当日盈亏 → todayPnl。
 /// 分隔：制表符或连续空格（通达信导出通常制表符）。
 TdxParseResult parseTdxPositions(String text) {
   final rows = <TdxPositionRow>[];
@@ -261,6 +270,12 @@ TdxParseResult parseTdxPositions(String text) {
   final skipped = <String>[];
   final lines = text.split(RegExp(r'[\r\n]+'));
   List<int>? col;
+  // 2026-09-13：券商「持仓股」导出带「当日盈亏」列（实测 600206 −1116.00 / 002428 −644.00 /
+  // 600601 +1.00，Σ = −1759.00 与逐股复算一字不差）——**券商自己的权威值**。
+  // 原实现只读 代码/名称/数量/成本 四列，把它直接丢了，账户卡只能退回系统自算（而自算可能错）。
+  double todayPnlSum = 0;
+  var todayPnlSeen = false; // 见到过这一列（表头命中）
+  var todayPnlBroken = false; // 有行取不到数 → 总数不可靠
 
   for (var i = 0; i < lines.length; i++) {
     final raw = lines[i].trim();
@@ -277,9 +292,12 @@ TdxParseResult parseTdxPositions(String text) {
           idx['quantity'] ??= c;
         }
         if (h.contains('成本价') || h == '成本') idx['cost'] = c;
+        // 「当日盈亏」：注意不能写成 contains('盈亏')——那会命中「持仓盈亏」（累计口径，不是当日）
+        if (h.contains('当日盈亏')) idx['todayPnl'] = c;
       }
       if (idx.containsKey('symbol') && idx.containsKey('quantity') && idx.containsKey('cost')) {
-        col = [idx['symbol']!, idx['name'] ?? -1, idx['quantity']!, idx['cost']!];
+        col = [idx['symbol']!, idx['name'] ?? -1, idx['quantity']!, idx['cost']!, idx['todayPnl'] ?? -1];
+        todayPnlSeen = (idx['todayPnl'] ?? -1) >= 0;
         continue; // 表头本身跳过
       }
       // 首行无表头特征 → 按固定顺序尝试：代码 名称 数量 成本
@@ -301,6 +319,17 @@ TdxParseResult parseTdxPositions(String text) {
       continue;
     }
     final name = col[1] >= 0 && col[1] < cells.length ? cells[col[1]] : '';
+    // 当日盈亏累计放在「0 股跳过」之前：0 股行的当日盈亏是本日清仓的已实现盈亏，必须计入总额。
+    // 取不到数（缺列/非数字）→ 标记不可靠（总额宁可不发，也不发一个偏小的假数）。
+    if (col[4] >= 0) {
+      final cell = col[4] < cells.length ? cells[col[4]].replaceAll(',', '') : '';
+      final v = double.tryParse(cell);
+      if (v == null) {
+        todayPnlBroken = true;
+      } else {
+        todayPnlSum += v;
+      }
+    }
     final quantity = int.tryParse(cells[col[2]].replaceAll(',', ''));
     if (quantity == null) {
       errors.add('第 ${i + 1} 行 $symbol $name：数量「${cells[col[2]]}」不是整数');
@@ -327,5 +356,7 @@ TdxParseResult parseTdxPositions(String text) {
     }
     rows.add(TdxPositionRow(symbol: symbol, name: name, quantity: quantity, avgCost: cost));
   }
-  return TdxParseResult(rows: rows, errors: errors, skipped: skipped);
+  final double? todayPnl =
+      (todayPnlSeen && !todayPnlBroken) ? double.parse(todayPnlSum.toStringAsFixed(2)) : null;
+  return TdxParseResult(rows: rows, errors: errors, skipped: skipped, todayPnl: todayPnl);
 }

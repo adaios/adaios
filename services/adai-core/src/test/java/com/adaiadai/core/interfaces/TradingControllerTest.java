@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -1361,7 +1362,8 @@ class TradingControllerTest {
     @Test
     void importPositions_importsAndReportsMissingStopLoss() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
-        when(trading.importPositions(any(), any(), anyBoolean(), any())).thenReturn(
+        // 2026-09-13：Controller 改调 5 参重载（加券商当日盈亏 brokerTodayPnl）
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
                 new TradingAppService.PositionImportResult(2,
                         java.util.List.of("600519 贵州茅台", "000725 京东方A")));
         MockMvc mvc = buildMvc(trading);
@@ -1372,6 +1374,43 @@ class TradingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imported").value(2))
                 .andExpect(jsonPath("$.missingStopLoss.length()").value(2));
+    }
+
+    @Test
+    void importPositions_passesBrokerTodayPnlFromQuery() throws Exception {
+        // 2026-09-13 用户实测：持仓股导出的「当日盈亏」列一直被丢（前端不解析、后端无入参），
+        // 账户卡只能退回系统自算。本用例锁住「该列能一路传到 service」。
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+                new TradingAppService.PositionImportResult(1, java.util.List.of()));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .param("replace", "true")
+                        .param("snapshotDate", "2026-09-11")
+                        .param("todayPnl", "-1759.00")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"symbol\":\"600206\",\"name\":\"有研新材\",\"quantity\":900,\"avgCost\":46.012}]"))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<java.math.BigDecimal> cap =
+                org.mockito.ArgumentCaptor.forClass(java.math.BigDecimal.class);
+        verify(trading).importPositions(any(), any(), eq(true),
+                eq(java.time.LocalDate.of(2026, 9, 11)), cap.capture());
+        assertEquals(0, new java.math.BigDecimal("-1759.00").compareTo(cap.getValue()),
+                "券商当日盈亏必须原样传到 service（实际 " + cap.getValue() + "）");
+    }
+
+    @Test
+    void importPositions_invalidTodayPnl_400() throws Exception {
+        // 非数字不静默忽略——宁可显式报错（「字段被无声丢弃」正是本次事故的成因）
+        MockMvc mvc = buildMvc(mock(TradingAppService.class));
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .param("todayPnl", "一千七百五十九")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(containsString("todayPnl 需为数字")));
     }
 
     @Test

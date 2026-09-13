@@ -182,8 +182,30 @@ public class TradingSessionPushService {
             java.time.LocalDate.of(2027, 10, 7)
     );
 
-    /** 是否 A 股交易日（周末由 cron 排除；此处补法定节假日）。 */
+    /**
+     * 是否交易日 —— <b>仅查法定节假日表，不判周末</b>。
+     * <p>
+     * ⚠️ <b>调用前提（务必先读）</b>：它的调用方全是 `@Scheduled(cron = …MON-FRI)` 的定时任务，
+     * <b>周末由 cron 表达式排除</b>，所以本方法不需要（也刻意没有）判周末。
+     * <b>非 cron 路径（HTTP 触发、测试直调）禁止直接用</b>——否则周六会被判成交易日。
+     * 2026-09-13 生产实测事故正是这么来的：`refreshTodayPnl` 在<b>周六</b>被历史成交导入触发，
+     * 用「周末行情接口给的最后两个交易日收盘」算出「当日浮动」，把周五的涨跌（且当时持仓还被双计污染）
+     * 写成 −2837.00 当作「当日盈亏」挂了整整两天（真值 −1759.00）。
+     * 这类路径请改用 {@link #isTradingDayStrict(java.time.LocalDate)}。
+     */
     static boolean isTradingDay(java.time.LocalDate date) {
+        return !HOLIDAYS.contains(date);
+    }
+
+    /**
+     * 是否交易日 —— <b>自证版：周末 + 法定节假日都不算</b>。
+     * <p>
+     * 与 {@link #isTradingDay} 的区别只有一点：**不依赖「调用方已按工作日调度」这个前提**，
+     * 因此可以被任何路径（含 HTTP 触发的重算）安全复用。两者对工作日的判断完全一致。
+     */
+    static boolean isTradingDayStrict(java.time.LocalDate date) {
+        java.time.DayOfWeek dow = date.getDayOfWeek();
+        if (dow == java.time.DayOfWeek.SATURDAY || dow == java.time.DayOfWeek.SUNDAY) return false;
         return !HOLIDAYS.contains(date);
     }
 

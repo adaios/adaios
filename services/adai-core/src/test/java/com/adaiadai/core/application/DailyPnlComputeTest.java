@@ -319,7 +319,10 @@ class DailyPnlComputeTest {
         when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.0", "10.0")));
         TradingAppService service = service(positions, history, account, market);
 
-        service.refreshTodayPnl(USER);
+        // 2026-09-13：改用日期重载并显式传一个**交易日**——refreshTodayPnl 新增了「非交易日不重算」闸
+        // （事故：周六重算把周五的涨跌写成当日盈亏），而本用例测的是重算本身，
+        // 若走 now() 就会在周末运行时早退（测试结果依赖「今天是不是交易日」＝不稳定用例）。
+        service.refreshTodayPnl(USER, LocalDate.of(2026, 9, 11));
 
         // 持仓 60 × (12−10) = 120 → todayPnl 更新为 120，其余字段原样保留
         assertEquals(0, new BigDecimal("120.00").compareTo(saved.get().todayPnl()),

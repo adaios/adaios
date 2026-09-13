@@ -869,6 +869,31 @@ public class TradingAppService {
      */
     public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
                                                 LocalDate snapshotDate) {
+        return importPositions(userId, items, replace, snapshotDate, null);
+    }
+
+    /**
+     * 持仓导入（2026-09-13 加 {@code brokerTodayPnl}）。
+     * <p>
+     * <b>为什么加这个参数</b>：用户实测发现「通达信『持仓股』导出**有『当日盈亏』列**（实测
+     * 600206 −1116.00 / 002428 −644.00 / 600601 +1.00，Σ = −1759.00，与逐股复算一字不差），
+     * 而系统从来没读它」——前端只解析 代码/名称/数量/成本 四列，后端入参也没有这个字段，
+     * 于是账户卡的当日盈亏永远退回「系统自算」。而自算值可能错（实测：周六重算 + 双计污染持仓
+     * → 把 −1759 写成 −2837 并挂了两天）。
+     * <p>
+     * 语义（与资金股份导入的「缺列不覆盖」同一约定，P2-交易37）：
+     * <ul>
+     *   <li>{@code brokerTodayPnl == null}（文件没这列 / 有行取不到数）→ <b>什么都不做</b>，
+     *       保留账户旧值（绝不静默落零）；</li>
+     *   <li>非 null 时仅当<b>文件日期与账户快照日相同</b>才写入——不同日期意味着
+     *       「当日」不是同一天，写进去就是混日期（那正是本批要根除的病）；</li>
+     *   <li>写入前若账户已有同日值且不同 → WARN 记录两个口径与差值（<b>口径差异可见化</b>）。</li>
+     * </ul>
+     *
+     * @param brokerTodayPnl 券商「持仓股」导出「当日盈亏」列之和（含 0 股行）。可 null。
+     */
+    public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
+                                                LocalDate snapshotDate, BigDecimal brokerTodayPnl) {
         if (items == null || items.isEmpty()) {
             return new PositionImportResult(0, List.of());
         }
@@ -961,9 +986,59 @@ public class TradingAppService {
                             userId, e.getMessage());
                 }
             }
+            // 2026-09-13：券商「持仓股」导出的「当日盈亏」列（权威口径）落到账户卡——
+            // 此前这一列从未被读（前端不解析、后端无入参），账户卡的当日盈亏只能靠系统自算。
+            applyBrokerTodayPnl(userId, brokerTodayPnl, snapshotDate);
             log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
                     userId, imported, missingStopLoss.size(), replace, current.size());
             return new PositionImportResult(imported, missingStopLoss);
+        }
+    }
+
+    /**
+     * 券商口径当日盈亏入账（2026-09-13）。
+     * <p>
+     * 严格三闸，任一不满足就<b>不写</b>（保留账户旧值 + INFO/WARN 说明），绝不猜：
+     * ① 值为 null（文件没这一列 / 有行取不到数）→ 不动；
+     * ② 无账户快照（未导过资金股份）→ 不动（不凭空初始化账户）；
+     * ③ <b>文件日期 ≠ 账户快照日期</b> → 不动——「当日」必须是同一天，
+     *    否则就是把 A 日的当日盈亏贴到 B 日的快照上（本批要根除的正是这类混日期）。
+     */
+    private void applyBrokerTodayPnl(String userId, BigDecimal brokerTodayPnl, LocalDate fileDate) {
+        if (brokerTodayPnl == null) {
+            return; // ① 缺列/不可靠：保留旧值（P2-交易37 约定）
+        }
+        java.util.Optional<AccountSnapshot> found = accountSnapshotRepository.findLatest(userId);
+        if (found.isEmpty()) {
+            log.info("券商当日盈亏未写入（尚无账户快照）| userId={} | 券商值={}", userId, brokerTodayPnl);
+            return; // ②
+        }
+        AccountSnapshot snap = found.get();
+        if (fileDate == null || snap.snapshotDate() == null || !fileDate.equals(snap.snapshotDate())) {
+            log.info("券商当日盈亏未写入（文件日期与账户快照日不同，避免混日期）| userId={} | 文件日={} 快照日={} 券商值={}",
+                    userId, fileDate, snap.snapshotDate(), brokerTodayPnl);
+            return; // ③
+        }
+        BigDecimal prev = snap.todayPnl();
+        if (prev != null && prev.compareTo(brokerTodayPnl) == 0) {
+            log.info("券商当日盈亏与账户一致（无需改写）| userId={} | {}", userId, brokerTodayPnl);
+            return;
+        }
+        if (prev != null) {
+            // 口径差异可见化：不静默覆盖——把「系统自算」与「券商权威」两个数都留在日志里
+            log.warn("当日盈亏口径差异（以券商为准覆盖）| userId={} | 券商={} 系统={} 差={}",
+                    userId, brokerTodayPnl, prev, brokerTodayPnl.subtract(prev));
+        }
+        try {
+            accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
+                    c.assets(), c.cash(), c.available(), c.withdrawable(),
+                    c.marketValue(), c.pnl(), brokerTodayPnl, c.principal(), c.snapshotDate()))
+                    .orElse(null));
+            log.info("券商当日盈亏入库 | userId={} | todayPnl={}（持仓股导出「当日盈亏」列求和的权威值）",
+                    userId, brokerTodayPnl);
+        } catch (RuntimeException e) {
+            // 持仓已落库、只有账户这一个字段没写：不抛错回滚（导入本身成功了），但必须 ERROR 可见
+            log.error("券商当日盈亏写失败——账户卡当日盈亏仍是旧值 | userId={} | {}", userId, e.getMessage());
         }
     }
 
@@ -1462,9 +1537,41 @@ public class TradingAppService {
      * 仅当 account 快照存在才写；best-effort 失败仅告警。
      */
     public void refreshTodayPnl(String userId) {
+        refreshTodayPnl(userId, LocalDate.now());
+    }
+
+    /**
+     * 指定日期版本（生产走 {@link #refreshTodayPnl(String)}；日期参数化是为了能测非交易日）。
+     * <p>
+     * 2026-09-13 加两道闸——起因是用户实测「屏幕上的当日盈亏 −2837 是错的」：
+     * 09-12（<b>周六</b>）导入 09-11 历史成交时触发了本方法，于是
+     * <pre>周六的日期 + 周末行情接口给的「最后两个交易日收盘」+ 双计污染后的持仓 = −2837</pre>
+     * 顶着「当日盈亏」的名义在账户卡上挂了整整两天（真值 −1759.00，券商「持仓股」导出的
+     * 「当日盈亏」列求和也是 −1759.00）。
+     * <ul>
+     *   <li><b>闸 1 非交易日不重算</b>：非交易日「当日」不存在，算出来的既不是今天的、也不是
+     *       上一交易日真值的数（它是用两日收盘差冒充的）。</li>
+     *   <li><b>闸 2 有实质未计入则不覆盖</b>（P2-交易46）：缺昨收/无成本基线时算出的值是<b>偏小的</b>，
+     *       写回去比保留旧值更糟——它看起来像真的。「今日无成交记录」不算实质缺失
+     *       （纯持有日只算浮动是可信的）。</li>
+     * </ul>
+     */
+    public void refreshTodayPnl(String userId, LocalDate today) {
+        if (!TradingSessionPushService.isTradingDayStrict(today)) {
+            log.info("非交易日不重算当日盈亏 | userId={} | {}", userId, today);
+            return;
+        }
         if (accountSnapshotRepository.findLatest(userId).isEmpty()) return;
         try {
-            DailyPnlResult r = computeDailyPnl(userId, LocalDate.now());
+            DailyPnlResult r = computeDailyPnl(userId, today);
+            List<String> actionable = r.notes().stream()
+                    .filter(n -> !n.startsWith("今日无成交记录"))
+                    .toList();
+            if (!actionable.isEmpty()) {
+                log.warn("当日盈亏未写回（有实质未计入，保留原值）| userId={} | 算出={} | {}",
+                        userId, r.todayPnl(), String.join("；", actionable));
+                return;
+            }
             accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
                     c.assets(), c.cash(), c.available(), c.withdrawable(),
                     c.marketValue(), c.pnl(), r.todayPnl(), c.principal(), c.snapshotDate()))

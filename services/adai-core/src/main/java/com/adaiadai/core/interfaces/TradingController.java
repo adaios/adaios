@@ -261,20 +261,34 @@ public class TradingController {
      * <p>
      * {@code replace=true}（2026-08-18 确认批次）= 全量覆盖：以文件为准，
      * 导入后移除文件里不存在的持仓（含 0 股残留），解决 upsert 无删除语义的漂移。
+     * <p>
+     * 2026-09-13：query 加 {@code todayPnl} = 券商「持仓股」导出「当日盈亏」列之和（权威口径，含 0 股行）——
+     * 前端解析该列后传上来，后端只在与账户快照同一天时写入（避免混日期）；缺列不传即保留账户旧值。
      */
     @PostMapping("/positions/import")
     public ResponseEntity<?> importPositions(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestParam(defaultValue = "false") boolean replace,
             @RequestParam(required = false) String snapshotDate,
+            @RequestParam(required = false) String todayPnl,
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         // 2026-09-12：锚定日 = 快照自身日期（通达信「持仓股」文件名里的日期）——补导几天前的文件时
         // 不能把锚定日写成今天，否则锚定日之后、快照之前的成交会被误判为「已含在快照内」而丢掉增量
         java.time.LocalDate snapshot = parseOptionalDate(snapshotDate, "snapshotDate");
+        // 2026-09-13：非数字即 400 人话——宁可显式报错也不静默丢弃。
+        // 「字段被无声忽略」正是本次事故的成因之一：用户的文件一直有「当日盈亏」列，系统从来没读它。
+        java.math.BigDecimal brokerTodayPnl = null;
+        if (todayPnl != null && !todayPnl.isBlank()) {
+            try {
+                brokerTodayPnl = new java.math.BigDecimal(todayPnl.trim());
+            } catch (NumberFormatException e) {
+                throw new TradingException("todayPnl 需为数字（收到「" + todayPnl + "」）");
+            }
+        }
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
-                userId, items != null ? items : List.of(), replace, snapshot);
+                userId, items != null ? items : List.of(), replace, snapshot, brokerTodayPnl);
         return ResponseEntity.ok(Map.of(
                 "imported", result.imported(),
                 "missingStopLoss", result.missingStopLoss()));

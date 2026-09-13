@@ -1148,6 +1148,44 @@ void main() {
         expect(r.skipped.single, contains('603113'));
       });
 
+      // ── 券商「当日盈亏」列（2026-09-13 用户点出：这一列一直没被读）──
+      // 现场：账户卡显示 −2837.00（周六重算 + 双计污染持仓的产物），而文件里这一列 Σ = −1759.00
+      // 与逐股复算一字不差 —— 权威值一直在用户手上，只是系统从来没解析它。
+      group('券商当日盈亏列（2026-09-13）', () {
+        test('Σ 全表（含 0 股行）= −1759.00 —— 与券商/复算一致', () {
+          final r = parseTdxPositions(realFile);
+          expect(r.todayPnl, isNotNull);
+          expect(r.todayPnl, closeTo(-1759.00, 0.001),
+              reason: '−1116.00 + −644.00 + 1.00 + −0.00 = −1759.00；'
+                  '必须把 0 股行一起加（当日清仓标的的已实现盈亏也在这一列里）');
+        });
+
+        test('缺列 → null（不传，后端保留账户旧值，绝不落零）', () {
+          const text = '证券代码\t证券名称\t股票余额\t成本价\n'
+              '600206\t有研新材\t900\t46.012\n';
+          final r = parseTdxPositions(text);
+          expect(r.rows.length, 1);
+          expect(r.todayPnl, isNull, reason: '文件没这一列 → 不发，避免把账户值覆盖成 0');
+        });
+
+        test('有行取不到数 → null（不可靠就不发，不发半截假数）', () {
+          const text = '证券代码\t证券名称\t股票余额\t成本价\t当日盈亏\n'
+              '600206\t有研新材\t900\t46.012\t-1116.00\n'
+              '002428\t云南锗业\t400\t53.765\t--\n';
+          final r = parseTdxPositions(text);
+          expect(r.rows.length, 2, reason: '持仓行本身照常解析（当日盈亏只是附带列）');
+          expect(r.todayPnl, isNull, reason: '有一行取不到数 → 总额不可靠，宁可不发');
+        });
+
+        test('「持仓盈亏」（累计口径）不得被误认成「当日盈亏」', () {
+          const text = '证券代码\t证券名称\t股票余额\t成本价\t持仓盈亏\n'
+              '600206\t有研新材\t900\t46.012\t-415.62\n';
+          final r = parseTdxPositions(text);
+          expect(r.todayPnl, isNull,
+              reason: '持仓盈亏是相对成本的累计口径，与「当日」不是一回事——张冠李戴会把账户值改错');
+        });
+      });
+
       test('负成本与零成本都接受（只有「取不到数」才是错误）', () {
         const text = '证券代码\t证券名称\t股票余额\t成本价\n'
             '600601\t方正科技\t100\t-5.078\n'
@@ -2905,6 +2943,24 @@ void main() {
       final api = ApiService(baseUrl: 'http://test', client: client);
       await api.importPositions([], replace: true);
       expect(query!.containsKey('snapshotDate'), isFalse);
+    });
+
+    test('importPositions 传券商当日盈亏（2026-09-13）——两位小数进 query；不传则无该参数', () async {
+      Map<String, String>? query;
+      final client = MockClient((request) async {
+        query = request.url.queryParameters;
+        return _json({'imported': 1, 'missingStopLoss': []});
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+
+      await api.importPositions([
+        {'symbol': '600206', 'name': '有研新材', 'quantity': 900}
+      ], replace: true, snapshotDate: '2026-09-11', todayPnl: -1759.0);
+      expect(query!['todayPnl'], '-1759.00', reason: '券商「持仓股」导出该列之和');
+
+      // 缺列（null）→ 不传：后端保留账户旧值，绝不落零
+      await api.importPositions([], replace: true, snapshotDate: '2026-09-11');
+      expect(query!.containsKey('todayPnl'), isFalse);
     });
 
     test('importCash 传 snapshotDate（body）', () async {
