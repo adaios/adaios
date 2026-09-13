@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.63 | 最后更新：2026-09-13**
+**文档版本：v3.64 | 最后更新：2026-09-14**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-14 | v3.64 | **部署前深审修复批（安全面：外部令牌生命周期 + 锁屏脱敏补全 + 抓取健壮性）**——**端点总数不变（146）**，但三处**对外行为**变了，前端与快捷指令需知道：①**外部工具令牌有了有效期**：新签发的令牌 **90 天后自动失效**（`POST /api/v1/auth/tokens` 与 `GET /api/v1/auth/tokens` 的每一项新增 `expiresAt`（ISO 字符串；存量老令牌为 `null` = 不过期）与 `id`（令牌哈希，64 位十六进制）——`id` 是撤销用的**稳定标识**，因为显示前缀只有 8 位十六进制、同账号碰撞时无法区分是哪一把）；签发响应同时新增 `id`/`expiresAt`，`notice` 说明有效期。②**撤销改为按 `id`**：`DELETE /api/v1/auth/tokens/{idOrPrefix}` 接受 `id`（推荐）或旧前缀；**前缀非唯一命中时拒绝撤销**（旧实现会一次删掉两把钥匙）。③**外部通知的锁屏文案口径收紧**（推送 payload，前端无需改）：锁屏正文改为 **fail-closed**——推送消息未显式给锁屏版时，外部渠道（APNs/Bark/微信）发中性文案「阿呆有新的提示，打开看看。」**不再回落完整正文**；行情/批次止损的**标题**同样不再带股票名（`PushMessage.notificationTitle()`）。站内 Feed 仍收完整正文，行为不变。后端 1805→**1817** 全绿；guard G1-G8 PASS |
 | 2026-09-13 | v3.63 | **APNs 自有推送渠道批（RFC 20260913，付费开发者账号后「物尽其用」第一刀）**——此前 10 种推送（盘前/买点/止损/行情异动/收盘小结/复习提醒…）虽然全部投产，但**真正弹到手机这一步只能借第三方 App（Bark）转达**（`PushChannel` 只有 Feed 站内 + Bark 两个渠道），通知上写着别人的名字、点击也回不到阿呆。付费开发者账号解锁 `aps-environment` 能力后，新增**阿呆自己的 APNs 渠道**：①**新端点 `POST /api/v1/push/devices`**（客户端上报 APNs deviceToken：body `{token, platform?, environment?, bundleId?, label?}`——token 严格校验十六进制 32~200 位，因为它会被拼进 APNs 出站 URL 路径；同 token 幂等 upsert，保留首次注册时间；缺失/非法 → 400 人话）；②**新端点 `GET /api/v1/push/devices`**（本账号已登记设备）；③**新端点 `DELETE /api/v1/push/devices/{token}`**（注销，幂等返回 `{"removed":bool}`；登出时调用——否则换账号后新账号的止损/复盘推送会发到已登出的设备）；④**新端点 `GET /api/v1/push/status`**（链路自检：各渠道 enabled/configured + apns 的 keyId/teamId/灰度白名单 + 设备数——**配完 .p8 后用这一条确认生效，不必等下一次定时推送**）。⑤**环境分流（最易踩的坑）**：deviceToken 分属两套互不相通的 APNs 网关，故 `environment`（`sandbox`/`production`）**跟着 token 存**而不是跟后端部署环境走——侧载（development 描述文件签名）拿到的永远是 sandbox token，将来 TestFlight/上架才是 production；送错网关只会得到 `BadDeviceToken` 静默丢弃，因此推送日志把 reason 原样记下并附「下一步该干什么」的提示。⑥**灰度白名单**：`adai.push.apns.types` 逗号列表，留空 = 全量；第一刀只放 `close-summary,learn-review` 验证链路，验证通过清空即全量（不改代码）。⑦**失败一律不抛**：410 Unregistered → 自动清理该设备登记（否则此后每次推送都白跑）；其它错误 warn 记录但不影响推送生产方。⑧**落盘 `data/{userId}/push/devices.json`**（File First，per-user 条带锁原子写）；**损坏文件读路径降级为空、写路径拒绝写回**（防「损坏当空」后用空列表覆盖掉其它设备）。⑨凭据：APNs Auth Key（.p8，ES256）——比推送证书好，**不随年过期**且两套网关通用。客户端侧同批落地（`Runner.entitlements` 的 `aps-environment` + `Runner.xcodeproj` 三个配置挂 `CODE_SIGN_ENTITLEMENTS` + `AppDelegate.swift` 注册/回调 + `PushService`）。端点 139→**143** |
 | 2026-09-13 | v3.62 | **当日盈亏券商口径入账 + 重算两道闸（用户实测：「屏幕上的当日盈亏 −2837 是对的么」→ 查出**真值 −1759.00**）**——两个独立缺陷叠在一起：①**券商「持仓股」导出的「当日盈亏」列从来没被读**（前端只解析 代码/名称/数量/成本；后端入参无此字段），而它是**权威值**——该文件 600206 −1116.00 / 002428 −644.00 / 600601 +1.00 = **−1759.00**，与逐股复算 `(45.55−46.79)×900 + (88.43−90.04)×400 + (14.83−14.82)×100` 一字不差，且「09-10 市值 79609 → 09-11 市值 77850」之差亦为 1759 → **`POST /trading/positions/import` 新增 query `todayPnl`**（前端把该列**全表求和**后传入，**含 0 股行**——当日清仓标的的已实现盈亏也在这一列里）；后端**三闸**才写：值为 null（缺列/有行取不到数）不写、无账户快照不写、**文件日期 ≠ 账户快照日期不写**（「当日」必须同日，否则就是混日期）；写前若已有同日值且不同 → **WARN 记录两个口径与差值**（差异可见化，不静默覆盖）。②**`refreshTodayPnl` 在周六被触发**（09-12 用户导入 09-11 历史成交 → 用周六的日期 + 周末行情接口给的「最后两个交易日收盘」+ 当时**被双计污染**的持仓，算出 −2837.00 并写成「当日盈亏」挂了整整两天）→ 新增**闸 1 非交易日不重算**（新增 `isTradingDayStrict`：周末 + 法定节假日；原 `isTradingDay` 只查节假日表，其调用前提是「周末由 cron 排除」，**禁止被非 cron 路径复用**——这次就是这么踩的）+ **闸 2 有实质未计入则不覆盖**（缺昨收/无成本基线时算出的值偏小，写回去比保留旧值更糟——它看起来像真的；「今日无成交记录」不算实质缺失）。③**当日盈亏三源与优先级定稿**：券商文件（权威，同日）> 收盘 15:05 精确计算（口径①）> 保留旧值；缺列/不可靠一律**不落零**（P2-交易37 约定）。④`todayPnl` 传非数字 → **400 人话**（「字段被无声忽略」正是本次事故的成因）。**端点 139→139（无增删，仅 query 扩展）** |
 | 2026-09-12 | v3.61 | **交易账实一致性批（RFC 20260912 全量落地，用户「要流程上正解」）**——根治生产实测「一次历史成交导入把**已含在券商快照内**的成交又重放一遍」（持仓与现金双计，现金被算成 −26666.85）、**3 笔真实卖出静默消失**、4 笔流水重复落账：①**锚定 fail-closed**：`POST /trading/trades/import` 新增 query `mode`（`auto` 默认 \| `append`）——`auto` 按券商快照锚定**分派**（`entryDate ≤ 锚定日` 的成交只补流水，晚于锚定日才回放持仓+现金）；**锚定缺失而系统已有持仓/账户快照、且本次有需要回放的行 → 400 人话拒绝**（不再把「锚定读不到」当成「不做防重」继续重放），逃生路径 = 先导「持仓股」/「资金股份查询」快照建立锚定，或显式 `mode=append` 只补流水（全新用户无锚定无账目状态仍允许从零回放）；②**预检 `dryRun=true`**：只返回计划、**不写任何文件**，响应新增 `dryRun:true` 与 `plan:{new,merged,skipped,nonTrades,wouldReject,anchorKnown,syncMode}`；③**幂等统一（一个 intake、一个键空间）**：orderId 命中 → 缺元信息则合并回填否则跳过；指纹（`symbol\|direction\|entryDate\|price\|volume`）命中且成交时间兼容（任一侧缺失、旧值带纳秒、或相差 ≤1 分钟）→ **合并回填不新增行**（补 orderId/fee/成交时间），时间明显不同（同价同量同日两笔）→ 视为两笔——`updated` 语义改为**跨来源同笔合并回填**笔数；④**卖超/未持有不丢数据**：回放行 SELL 超出可归属持仓 → **只落流水 + `rejected` 明细 + ERROR 日志**（持仓/现金不动），新增 `rejected:[{symbol,name,direction,volume,price,entryDate,reason}]`（原因中文人话）；⑤响应新增 `anchor:{positionsReplace,cashImport,known,holdingsKnown,anchorDate}`（`anchorDate` = 两者较晚者，未知为 null）；⑥**新增对账闸门与锚定三端点**：`GET /trading/integrity`（`derived = 券商快照基线 + 锚定日之后流水净增减`，与落地持仓不一致即 `drift`，卖超缺口走 `gaps`，锚定/基线缺失诚实报「无法判定」）+ `GET /trading/anchor`（锚定状态只读）+ `PUT /trading/anchor`（存量环境显式回填锚定日/持仓基线，只改元信息、日期只前进）；⑦`POST /trading/positions/import?replace=true&snapshotDate=yyyy-MM-dd` 与 `POST /trading/imports/cash`（body `snapshotDate`）新增**快照自身日期**（通达信文件名里的日期；不传退回导入日）——补导几天前的快照文件不再把锚定日写成今天；⑧落盘 `trading/snapshot-anchor.json` 现为 `{positionsReplace,cashImport,recordedAt,holdingsRecorded,holdings:[{symbol,name,quantity}]}`（持仓 replace 导入记录基线并置 `holdingsRecorded=true`；更新锚定日**保留**既有基线，不把「未记录」写成「记录为空」——前者对账报「无法判定」，后者是合法基线）；⑨**收盘小结（15:30 `close-summary` 推送）新增一行账实自检**——委派 `TradingAppService.integrity`（唯一口径），有 `drift`/`gaps` 时推一行「⚠️ 阿呆对不上账：N 只标的的持仓和流水对不上、M 笔成交没能并进持仓——打开交易页，我把明细列给你看」（**无差异不推**，不制造噪音；自检失败静默降级，不中断推送主流程；文案遵循第一原则=阿呆口吻，非系统视角）。端点 134→**137** |
@@ -135,19 +136,21 @@
 **不要**把登录会话交给它们——那是明文写在 plist 里、且 `.shortcut` 文件会被分享出去的东西。
 
 请求：`{"label": "快捷指令", "scopes": ["learn:digest"]}`（`label` 可空 → 「未命名」；`scopes` 至少要有一项，未知 id 被丢弃）
-- 200：`{"token": "adai_<64位hex>", "prefix": "adai_xxxxxxxx", "label", "scopes", "createdAt", "notice"}`
-  —— **`token` 明文只在这里出现一次**（落盘只存 SHA-256），丢了就撤销重发一把
+- 200：`{"token": "adai_<64位hex>", "id": "<64位hex 哈希>", "prefix": "adai_xxxxxxxx", "label", "scopes", "createdAt", "expiresAt", "notice"}`
+  —— **`token` 明文只在这里出现一次**（落盘只存 SHA-256），丢了就撤销重发一把；
+  `expiresAt` = 有效期（**默认 90 天**，2026-09-14 晚间批），`id` = 撤销用的稳定标识
 - 400：没给任何有效 scope（「至少要给它一项权限」）
 
 ### `GET /api/v1/auth/tokens` — 列出已签发的外部令牌（会话）
 
-- 200：`{"tokens": [{prefix, label, scopes, createdAt, lastUsedAt}], "availableScopes": [{id, description, allowedRequests}]}`
-  —— **不含任何明文**；`lastUsedAt` 为 null 表示「还没用过」
+- 200：`{"tokens": [{id, prefix, label, scopes, createdAt, lastUsedAt, expiresAt}], "availableScopes": [{id, description, allowedRequests}]}`
+  —— **不含任何明文**；`lastUsedAt` 为 null 表示「还没用过」；`expiresAt` 为 null 表示**不过期**（仅存量老令牌）
 
-### `DELETE /api/v1/auth/tokens/{prefix}` — 撤销一把外部令牌（会话）
+### `DELETE /api/v1/auth/tokens/{idOrPrefix}` — 撤销一把外部令牌（会话）
 
+- 路径参数：`id`（令牌哈希，**推荐**，2026-09-14 晚间批）或显示前缀（兼容旧版 app）
 - 200：`{"message": "已撤销，这把令牌立刻失效"}`（不影响登录会话与其它设备）
-- 404：没找到（可能已撤销过）
+- 404：没找到 / **前缀非唯一命中被拒**（同账号两把令牌前缀碰撞时不再一次删两把——旧行为会静默误撤）
 
 > **外部令牌能访问什么**：由 `TokenScope` 白名单**精确匹配**决定，当前仅 `learn:digest`
 > （`POST /api/v1/learn/digest`、`POST /api/v1/learn/digest/confirm`、

@@ -167,6 +167,41 @@ fi
 # ── 场景路由 ──────────────────────────────────────────────
 echo "── 场景路由 ──"
 
+# G8 推送构造点必须显式给锁屏版（P0-1 复发信号 / 2026-09-14 晚间批）。
+# 背景：锁屏脱敏曾只覆盖「收盘小结」一条路径，行情/止损/早中尾盘照旧把持仓名+现价怼上锁屏；
+# 而 PushMessage 的兜底曾回落完整正文（fail-open），新调用点漏传即静默泄露。
+# 本条机械要求：`new PushChannel.PushMessage(` 处**至少传 7 个参数**（含 lockScreenContent）。
+G8_BAD=$(python3 - "$SRC/application" <<'PYEOF'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+bad = []
+for f in sorted(root.rglob('*.java')):
+    text = f.read_text(encoding='utf-8', errors='ignore')
+    for m in re.finditer(r'new PushChannel\.PushMessage\(', text):
+        i = m.end(); depth = 1; commas = 0
+        while i < len(text) and depth:
+            c = text[i]
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            elif c == ',' and depth == 1:
+                commas += 1
+            i += 1
+        if commas < 6:   # 6 个逗号 = 7 个参数
+            line = text[:m.start()].count('\n') + 1
+            bad.append(f"{f}:{line}")
+print(';'.join(bad))
+PYEOF
+)
+if [ -n "$G8_BAD" ]; then
+  hit G8 "推送构造点未显式给锁屏正文（漏传即中性兜底/或静默泄露）：$G8_BAD"
+else
+  ok G8 "推送构造点均显式声明锁屏版（含 lockScreenContent）"
+fi
+
 # G7 compose 必须真实传入 scene，Contributor 的 supports() 才能分流。
 # 允许固定字面量（如 retry 场景 compose("note", record)），但必须存在传变量的调用。
 G7_CALLS=$(grep -rn "contextEngine.compose\|engine.compose" "$SRC/application" --include="*.java" 2>/dev/null)

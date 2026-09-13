@@ -75,8 +75,9 @@ class BarkPushChannelTest {
             BarkPushChannel channel = new BarkPushChannel(baseUrl, "test-key");
             // LLM 生成的多行时段推送正文：含换行/引号/反斜杠/制表符
             String multiLine = "早盘计划：\n1. 看白线\n2. 回踩不破找 B1 \"买点\"\n路径 C:\\tmp";
+            // P2-推送1（2026-09-14 晚间批）后：锁屏正文不回落完整内容 → 显式声明（本条测转义）
             channel.push("adai", new PushChannel.PushMessage(
-                    "早盘计划", multiLine, "session", null, null, LocalTime.now()));
+                    "早盘计划", multiLine, "session", null, null, LocalTime.now(), multiLine));
 
             String body = capturedBody.get();
             assertTrue(body != null && !body.isEmpty(), "应发出请求 body");

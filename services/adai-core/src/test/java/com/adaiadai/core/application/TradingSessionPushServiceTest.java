@@ -174,6 +174,11 @@ class TradingSessionPushServiceTest {
         assertTrue(m.content().contains("京东方"), "模板应含持仓名");
         assertTrue(m.content().contains("4.9"), "模板应含止损位");
         assertTrue(m.content().contains("择时"), "模板应含择时状态");
+        // P0-1（2026-09-14 增量深审）：正文含持仓名/止损位 → 锁屏版不得照搬（此前只有收盘小结脱敏）
+        String lock = m.notificationContent();
+        assertFalse(lock.contains("京东方"), "锁屏不得出现持仓名，实际: " + lock);
+        assertFalse(lock.contains("4.9"), "锁屏不得出现止损位，实际: " + lock);
+        assertTrue(lock.contains("打开阿呆看看"), "锁屏应给出下一步，实际: " + lock);
         verify(channel, never()).push(eq("alice"), any()); // 无插件用户不推
     }
 
@@ -189,7 +194,11 @@ class TradingSessionPushServiceTest {
 
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(channel, times(1)).push(eq("adai"), captor.capture());
-        assertTrue(captor.getValue().content().contains("未触发止损"), "现价未破止损应标注未触发");
+        PushChannel.PushMessage m = captor.getValue();
+        assertTrue(m.content().contains("未触发止损"), "现价未破止损应标注未触发");
+        // P0-1：午间跟踪同样逐票 → 锁屏只留提示
+        assertFalse(m.notificationContent().contains("京东方"), "锁屏不得出现持仓名: " + m.notificationContent());
+        assertTrue(m.notificationContent().contains("打开阿呆看看"));
     }
 
     @Test
@@ -204,9 +213,13 @@ class TradingSessionPushServiceTest {
 
         ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
         verify(channel, times(1)).push(eq("adai"), captor.capture());
-        String content = captor.getValue().content();
+        PushChannel.PushMessage m = captor.getValue();
+        String content = m.content();
         assertTrue(content.contains("R66") || content.contains("R81"), "尾盘建议应引用规则编号，实际: " + content);
         assertTrue(content.contains("复盘"), "尾盘建议应提醒复盘");
+        // P0-1：尾盘建议正文含逐票建议 → 锁屏不得照搬
+        assertFalse(m.notificationContent().contains("京东方"), "锁屏不得出现持仓名: " + m.notificationContent());
+        assertTrue(m.notificationContent().contains("打开阿呆看看"));
     }
 
     @Test
@@ -723,19 +736,32 @@ class TradingSessionPushServiceTest {
     }
 
     @Test
-    void pushMessage_notificationContent_fallsBackToContentWhenBlank() {
-        // 未给锁屏版的老构造点 → 通知正文回落完整版（行为不变）；空白视为未脱敏
+    void pushMessage_notificationContent_isFailClosedWhenLockScreenMissing() {
+        // P2-推送1（2026-09-14 晚间批）：回退方向改为 **fail-closed**——
+        // 漏传锁屏正文时外部渠道发中性兜底，**绝不回落完整正文**（那是 P0-1 的机制根因：
+        // 新调用点一旦漏传就静默把持仓摊上锁屏）。要发中性文案就必须显式传。
         PushChannel.PushMessage legacy = new PushChannel.PushMessage(
-                "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON);
-        assertEquals("完整正文", legacy.notificationContent());
+                "收盘小结", "完整正文：京东方A 现价 5.46", "close-summary", null, null,
+                java.time.LocalTime.NOON);
+        assertEquals(PushChannel.PushMessage.NEUTRAL_LOCK_SCREEN, legacy.notificationContent(),
+                "漏传锁屏版 → 中性兜底");
+        assertFalse(legacy.notificationContent().contains("京东方A"), "兜底文案不得泄漏完整正文");
 
         PushChannel.PushMessage blank = new PushChannel.PushMessage(
                 "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON, "   ");
-        assertEquals("完整正文", blank.notificationContent(), "空白锁屏版应视为未脱敏");
+        assertEquals(PushChannel.PushMessage.NEUTRAL_LOCK_SCREEN, blank.notificationContent(),
+                "空白锁屏版同样按漏传处理");
 
         PushChannel.PushMessage masked = new PushChannel.PushMessage(
                 "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON, "精简");
         assertEquals("精简", masked.notificationContent());
+
+        // 中性推送 = 显式声明（把自己的文案当锁屏版传），行为与完整版一致
+        PushChannel.PushMessage neutral = new PushChannel.PushMessage(
+                "账户今日未自动更新", "有 2 只持仓缺行情", "market", null, null,
+                java.time.LocalTime.NOON, "有 2 只持仓缺行情。打开阿呆看看。", "账户今日未自动更新");
+        assertEquals("有 2 只持仓缺行情。打开阿呆看看。", neutral.notificationContent());
+        assertEquals("账户今日未自动更新", neutral.notificationTitle());
     }
 
     // ── 2026-09-12 账实一致性批：收盘小结带「账对不上」自检行 ──

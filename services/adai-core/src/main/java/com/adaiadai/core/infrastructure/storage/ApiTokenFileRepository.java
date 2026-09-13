@@ -3,6 +3,7 @@ package com.adaiadai.core.infrastructure.storage;
 import com.adaiadai.core.kernel.auth.ApiToken;
 import com.adaiadai.core.kernel.auth.ApiTokenRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -55,7 +56,12 @@ public class ApiTokenFileRepository implements ApiTokenRepository {
         this.basePath = Paths.get(basePath).toAbsolutePath().normalize();
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                // P2-令牌3（2026-09-14 晚间批）：Jackson 默认**忽略尾部多余内容**——截断/写坏的
+                // 文件（如 `[...]` 后面半行垃圾）会被解析成功并读出前半段，随后任一写入
+                //（连 lastUsedAt 的 5 分钟节流写盘都算）会把半截列表整体回写 → 静默丢令牌。
+                // 类注释自称「损坏 fail-fast」，这里必须真的 fail-fast（与 PushDeviceFileRepository 同款修复）。
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
 
     private Path tokensPath() {

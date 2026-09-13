@@ -112,7 +112,9 @@ public class LearnReviewPushService {
         }
         String content = buildContent(stale);
         PushChannel.PushMessage message = new PushChannel.PushMessage(
-                TITLE, content, "learn-review", null, null, java.time.LocalTime.now());
+                TITLE, content, "learn-review", null, null, java.time.LocalTime.now(),
+                // P0-1（2026-09-14 增量深审）：正文逐条列卡片标题（可能是交易笔记）→ 锁屏只报张数
+                "有 " + stale.size() + " 张卡等你复习。打开阿呆看看。");
         for (PushChannel channel : pushChannels) {
             if (channel.enabled()) {
                 try {

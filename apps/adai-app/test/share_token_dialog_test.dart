@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:adai_app/services/api_service.dart';
 import 'package:adai_app/widgets/share_token_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -26,6 +27,9 @@ http.Response _json(Object data, {int status = 200}) => http.Response.bytes(
 class _Backend {
   List<Map<String, dynamic>> tokens = [];
   bool issueFails = false;
+  bool listFails = false;
+  bool issueWithoutToken = false;
+  Duration listDelay = Duration.zero;
   int deleteCalls = 0;
   final List<http.Request> requests = [];
 
@@ -37,6 +41,10 @@ class _Backend {
     final path = req.url.path;
 
     if (path.endsWith('/api/v1/auth/tokens') && req.method == 'GET') {
+      if (listDelay > Duration.zero) await Future<void>.delayed(listDelay);
+      if (listFails) {
+        return _json({'error': '这次没读到你的钥匙'}, status: 500);
+      }
       return _json({
         'tokens': tokens,
         'availableScopes': [
@@ -52,15 +60,17 @@ class _Backend {
       const prefix = 'adai_abcd1234';
       tokens = [
         {
+          'id': _idFor(prefix),
           'prefix': prefix,
           'label': '快捷指令',
           'scopes': ['learn:digest'],
           'createdAt': '2026-09-13T10:00:00Z',
           'lastUsedAt': null,
+          'expiresAt': null,
         }
       ];
       return _json({
-        'token': plainToken,
+        if (!issueWithoutToken) 'token': plainToken,
         'prefix': prefix,
         'label': '快捷指令',
         'scopes': ['learn:digest'],
@@ -71,26 +81,50 @@ class _Backend {
 
     if (path.contains('/api/v1/auth/tokens/') && req.method == 'DELETE') {
       deleteCalls++;
-      final prefix = path.split('/').last;
-      tokens = tokens.where((t) => t['prefix'] != prefix).toList();
+      final target = path.split('/').last;
+      tokens = tokens
+          .where((t) => t['prefix'] != target && t['id'] != target)
+          .toList();
       return _json({'message': '已撤销，这把令牌立刻失效'});
     }
 
     return _json({'error': 'not mocked'}, status: 404);
+  }
+
+  /// 假 id：64 位十六进制（后端契约：id = 令牌哈希）。
+  static String _idFor(String prefix) {
+    final hex = prefix.replaceAll(RegExp(r'[^0-9a-f]'), '');
+    return (hex * 8).substring(0, 64);
   }
 }
 
 void main() {
   late _Backend backend;
   late ApiService api;
+  String? clipboard;
 
   setUp(() {
     backend = _Backend();
+    clipboard = null;
+    // 剪贴板走 flutter/platform 通道：测试环境必须装假实现，否则 Clipboard.setData
+    // 抛 MissingPluginException，复制分支永远走不到。
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        clipboard = (call.arguments as Map)['text'] as String?;
+      }
+      return null;
+    });
     api = ApiService(
       baseUrl: 'http://test',
       userId: 'adai',
       client: MockClient(backend.handle),
     );
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
   Future<void> pumpDialog(WidgetTester tester) async {
@@ -213,5 +247,256 @@ void main() {
     await tapText(tester, '再要一把');
 
     expect(find.textContaining('至少要给它一项权限'), findsOneWidget);
+  });
+
+  /// 点第 [index] 个「收回」（ensureVisible 后再点，避免视口外点击打空）。
+  Future<void> tapRevoke(WidgetTester tester, int index) async {
+    final finder = find.text('收回').at(index);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pumpAndSettle();
+  }
+
+  /// 不发请求的纯文本/文案断言。
+  testWidgets('⑦ 说清代价与边界：整理会花转写额度（会花钱）+ 别把快捷指令分享给别人', (tester) async {
+    await pumpDialog(tester);
+
+    expect(find.textContaining('会花钱'), findsOneWidget,
+        reason: '这是花钱的动作，必须事先说清');
+    expect(find.textContaining('转写额度'), findsOneWidget);
+    expect(find.textContaining('别把配好的快捷指令分享给别人'), findsOneWidget);
+  });
+
+  testWidgets('⑧ 明文不被 loading 顶掉：签发后 _load 置 loading，明文仍在', (tester) async {
+    await pumpDialog(tester);
+
+    // 让签发成功后的那次 _load 慢下来，制造「明文拿到 + 列表在转圈」的窗口
+    backend.listDelay = const Duration(seconds: 2);
+    final button = find.text('给我一把钥匙');
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pump(); // POST 发出
+    await tester.pump(const Duration(milliseconds: 20)); // POST 回包 → 明文 + loading=true
+
+    expect(find.text(_Backend.plainToken), findsOneWidget,
+        reason: '明文只出现这一次，渲染顺序必须排在 loading 之前——被 spinner 顶掉就真丢了');
+
+    await tester.pump(const Duration(seconds: 3)); // 放行被延迟的 GET
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('⑨ 撤回失败/空 id 之外：收回一把后按钮不灰（_busy 成功分支也复位）', (tester) async {
+    backend.tokens = [
+      {
+        'id': _Backend._idFor('adai_aaaa1111'),
+        'prefix': 'adai_aaaa1111',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      },
+      {
+        'id': _Backend._idFor('adai_bbbb2222'),
+        'prefix': 'adai_bbbb2222',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      },
+    ];
+    await pumpDialog(tester);
+
+    await tapRevoke(tester, 0);
+    expect(backend.deleteCalls, 1);
+
+    // 若 _busy 没有在成功分支复位，按钮会永久置灰 → 第二次点不动
+    await tapRevoke(tester, 0);
+    expect(backend.deleteCalls, 2, reason: '收回一把之后按钮必须还能用');
+    expect(find.textContaining('adai_bbbb2222'), findsNothing);
+  });
+
+  testWidgets('⑩ 优先用 id 撤销（后端契约：id 唯一，前缀可能非唯一被拒）', (tester) async {
+    final id = _Backend._idFor('adai_deadbeef');
+    backend.tokens = [
+      {
+        'id': id,
+        'prefix': 'adai_deadbeef',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      }
+    ];
+    await pumpDialog(tester);
+
+    await tapRevoke(tester, 0);
+
+    final deletes = backend.requests.where((r) => r.method == 'DELETE').toList();
+    expect(deletes.single.url.path, endsWith('/api/v1/auth/tokens/$id'));
+    expect(deletes.single.url.path, isNot(endsWith('/adai_deadbeef')));
+  });
+
+  testWidgets('⑪ 缺 id 时回退前缀撤销（兼容旧后端）', (tester) async {
+    backend.tokens = [
+      {
+        'prefix': 'adai_deadbeef',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      }
+    ];
+    await pumpDialog(tester);
+
+    await tapRevoke(tester, 0);
+
+    final deletes = backend.requests.where((r) => r.method == 'DELETE').toList();
+    expect(deletes.single.url.path, endsWith('/api/v1/auth/tokens/adai_deadbeef'));
+  });
+
+  testWidgets('⑫ 列表读取失败 ≠ 没有钥匙：说「没读到」+ 重试，绝不渲染「还没有。」', (tester) async {
+    backend.listFails = true;
+    await pumpDialog(tester);
+
+    expect(find.text('这不代表你一把都没发过，只是这次没读到。'), findsOneWidget);
+    expect(find.textContaining('这次没读到你的钥匙'), findsOneWidget, reason: '透出后端人话');
+    expect(find.text('还没有。'), findsNothing, reason: '失败不能伪装成空态');
+    expect(find.text('再试一次'), findsOneWidget);
+
+    // 重试成功 → 回到正常列表
+    backend.listFails = false;
+    backend.tokens = [
+      {
+        'prefix': 'adai_deadbeef',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      }
+    ];
+    await tapText(tester, '再试一次');
+    expect(find.textContaining('adai_deadbeef'), findsOneWidget);
+    expect(find.text('还没有。'), findsNothing);
+  });
+
+  testWidgets('⑬ 签发响应缺 token 明文 → 明确人话（不静默留空）', (tester) async {
+    backend.issueWithoutToken = true;
+    await pumpDialog(tester);
+
+    await tapText(tester, '给我一把钥匙');
+
+    expect(find.textContaining('没拿到钥匙的明文'), findsOneWidget);
+    expect(find.text(_Backend.plainToken), findsNothing);
+  });
+
+  testWidgets('⑭ 有效期：expiresAt 有值显示「有效期至 X」，为 null 显示「长期有效」', (tester) async {
+    backend.tokens = [
+      {
+        'prefix': 'adai_aaaa1111',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': '2026-09-13T08:30:00Z',
+        'expiresAt': '2026-12-31T00:00:00Z',
+      },
+      {
+        'prefix': 'adai_bbbb2222',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+        'expiresAt': null,
+      },
+    ];
+    await pumpDialog(tester);
+
+    expect(find.text('有效期至 2026-12-31'), findsOneWidget);
+    expect(find.text('长期有效'), findsOneWidget);
+  });
+
+  testWidgets('⑮ 畸形/短日期不崩弹窗（长度守卫）', (tester) async {
+    backend.tokens = [
+      {
+        'prefix': 'adai_aaaa1111',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': 'bad',
+        'lastUsedAt': '99',
+        'expiresAt': '20',
+      }
+    ];
+    await pumpDialog(tester);
+
+    expect(find.textContaining('最近用过：99'), findsOneWidget);
+    expect(find.text('有效期至 20'), findsOneWidget);
+  });
+
+  testWidgets('⑯ 明文没复制就关窗（关闭按钮）→ 二次确认；「再看看」留下明文', (tester) async {
+    await pumpDialog(tester);
+    await tapText(tester, '给我一把钥匙');
+    expect(find.text(_Backend.plainToken), findsOneWidget);
+
+    await tapText(tester, '知道了');
+    expect(find.text('钥匙还没复制走'), findsOneWidget, reason: '未复制的明文关窗必须二次确认');
+
+    await tapText(tester, '再看看');
+    expect(find.text(_Backend.plainToken), findsOneWidget, reason: '取消关窗 → 明文还在');
+    expect(find.text('钥匙还没复制走'), findsNothing);
+
+    // 再关一次，这次确认关掉
+    await tapText(tester, '知道了');
+    await tapText(tester, '关掉');
+    expect(find.text('把分享接到阿呆'), findsNothing);
+  });
+
+  testWidgets('⑰ 复制过明文再关窗 → 不再二次确认', (tester) async {
+    await pumpDialog(tester);
+    await tapText(tester, '给我一把钥匙');
+
+    await tapText(tester, '复制');
+    expect(clipboard, _Backend.plainToken, reason: '复制的是明文本身');
+    expect(find.textContaining('钥匙已复制'), findsOneWidget, reason: '内联提示（不是被 barrier 遮挡的 SnackBar）');
+    expect(find.byType(SnackBar), findsNothing);
+
+    await tapText(tester, '知道了');
+    expect(find.text('钥匙还没复制走'), findsNothing);
+    expect(find.text('把分享接到阿呆'), findsNothing);
+  });
+
+  testWidgets('⑱ 返回键（系统 back）同样走二次确认', (tester) async {
+    await pumpDialog(tester);
+    await tapText(tester, '给我一把钥匙');
+    expect(find.text(_Backend.plainToken), findsOneWidget);
+
+    // 系统返回键（flutter/navigation popRoute）→ 走 PopScope 的二次确认
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'flutter/navigation',
+      const JSONMethodCodec().encodeMethodCall(const MethodCall('popRoute')),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('钥匙还没复制走'), findsOneWidget);
+    expect(find.text(_Backend.plainToken), findsOneWidget, reason: '确认前明文不能被关掉');
+  });
+
+  testWidgets('⑲ 收回成功 → 弹窗内内联提示（不用被 barrier 遮挡的 SnackBar）', (tester) async {
+    backend.tokens = [
+      {
+        'prefix': 'adai_deadbeef',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+      }
+    ];
+    await pumpDialog(tester);
+
+    await tapRevoke(tester, 0);
+
+    expect(find.textContaining('收回来了'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 }

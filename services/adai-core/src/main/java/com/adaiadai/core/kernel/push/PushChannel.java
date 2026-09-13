@@ -42,13 +42,21 @@ public interface PushChannel {
     /**
      * 推送消息载体。
      * <p>
-     * {@code lockScreenContent} 是**锁屏精简正文**（D1，2026-09-13 外部视角审查拍板 A）：
-     * 外部通知渠道（APNs / Bark / 微信）渲染它，站内 Feed 仍渲染完整 {@code content}。
+     * {@code lockScreenContent} / {@code lockScreenTitle} 是**锁屏精简版**（D1，2026-09-13 外部视角
+     * 审查拍板 A；2026-09-14 增量深审 P0-1 补全）：外部通知渠道（APNs / Bark / 微信）渲染它们，
+     * 站内 Feed 仍渲染完整 {@code title/content}。
      * 起因：收盘小结的完整正文会逐只列出持仓名称与现价，而它是 alert 推送——**锁屏直接可见**，
-     * 手机放在桌上就等于把持仓摊开给旁边的人。凡 content 含标的/金额细节的推送都应给精简版：
+     * 手机放在桌上就等于把持仓摊开给旁边的人。
+     * <p>
+     * <b>凡 title 或 content 含标的/金额/成本/止损价的推送，都必须给锁屏版</b>——包括把股票名写进
+     * title 的行情提醒（P0-1：此前只改了收盘小结一条路径，行情/止损/早中尾盘照样把持仓明细怼上锁屏）。
      * 锁屏只留「有几件事」，细节留给打开 App 的人。
      * <p>
-     * null / 空白 = 沿用 {@code content}（未脱敏）——老构造点行为不变，可渐进补齐。
+     * null / 空白 = **不回落完整正文**（2026-09-14 晚间批 P2-推送1：回退方向改为 fail-closed）——
+     * 外部渠道改发中性兜底文案 {@link PushMessage#NEUTRAL_LOCK_SCREEN}。
+     * 理由：回落完整正文是 fail-open，**新**调用点一旦漏传就静默泄露（P0-1 的机制根因）；
+     * 「少说一句」比「把持仓摊在锁屏上」便宜得多。中性推送（内容本身不含标的/金额）
+     * 请显式把自己的文案作为锁屏版传入，把「这条不敏感」变成代码里的显式声明。
      */
     record PushMessage(
             String title,
@@ -57,18 +65,43 @@ public interface PushChannel {
             String symbol,
             String name,
             LocalTime time,
-            String lockScreenContent
+            String lockScreenContent,
+            String lockScreenTitle
     ) {
-        /** 兼容构造（不区分锁屏正文）：外部通知渠道也渲染完整 content。 */
+        /** 漏传锁屏正文时的中性兜底：不含任何标的/金额/上下文，只说明「有事，打开看」。 */
+        public static final String NEUTRAL_LOCK_SCREEN = "阿呆有新的提示，打开看看。";
+
+        /** 兼容构造（不区分锁屏版）：外部通知渠道渲染中性兜底文案（不再回落完整内容）。 */
         public PushMessage(String title, String content, String type,
                            String symbol, String name, LocalTime time) {
-            this(title, content, type, symbol, name, time, null);
+            this(title, content, type, symbol, name, time, null, null);
         }
 
-        /** 外部通知渠道应当渲染的正文：有精简版用精简版，否则回落完整版。 */
+        /** 兼容构造（只有锁屏正文、标题不脱敏）。 */
+        public PushMessage(String title, String content, String type,
+                           String symbol, String name, LocalTime time, String lockScreenContent) {
+            this(title, content, type, symbol, name, time, lockScreenContent, null);
+        }
+
+        /**
+         * 外部通知渠道应当渲染的正文：**有锁屏版用锁屏版，没有就用中性兜底**（fail-closed）。
+         * 见上方类型注释——这里是 P0-1 的机制修复点，不要改回「回落 content」。
+         */
         public String notificationContent() {
             return (lockScreenContent == null || lockScreenContent.isBlank())
-                    ? content : lockScreenContent;
+                    ? NEUTRAL_LOCK_SCREEN : lockScreenContent;
+        }
+
+        /**
+         * 外部通知渠道应当渲染的标题：有锁屏标题用锁屏标题，否则回落完整标题。
+         * <p>
+         * 标题**刻意保留回落**：推送标题在设计上是短标签（「早盘计划」「收盘小结」「买点提醒」），
+         * 带标的名的只有行情/批次止损两条路径，它们已显式传锁屏标题；
+         * 且有专门的用例把「行情类标题不得含股票名」钉住。若将来新增带标的的标题，必须同时传锁屏标题。
+         */
+        public String notificationTitle() {
+            return (lockScreenTitle == null || lockScreenTitle.isBlank())
+                    ? title : lockScreenTitle;
         }
     }
 }

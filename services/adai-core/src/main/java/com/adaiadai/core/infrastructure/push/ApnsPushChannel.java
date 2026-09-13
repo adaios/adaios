@@ -254,7 +254,10 @@ public class ApnsPushChannel implements PushChannel {
      */
     String payload(PushMessage message) throws IOException {
         Map<String, Object> alert = new LinkedHashMap<>();
-        alert.put("title", message.title() != null ? message.title() : "阿呆");
+        // P0-1（2026-09-14 增量深审）：**标题也要脱敏**——行情提醒此前把股票名写进 title
+        //（"XX 行情提醒"），锁屏标题即暴露持仓。见 PushMessage#notificationTitle。
+        String lockTitle = message.notificationTitle();
+        alert.put("title", lockTitle != null ? lockTitle : "阿呆");
         // D1（2026-09-13 外部视角审查）：APNs 是**锁屏可见**的 alert 通知 → 渲染锁屏精简正文；
         // 完整正文（含持仓名称/现价）留给站内 Feed。见 PushChannel.PushMessage#notificationContent。
         alert.put("body", message.notificationContent() != null ? message.notificationContent() : "");

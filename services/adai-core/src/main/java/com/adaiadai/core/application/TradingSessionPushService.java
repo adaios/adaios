@@ -215,7 +215,9 @@ public class TradingSessionPushService {
         if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "早盘计划", "morning-plan", this::buildMorningTemplate);
-            pushToAll(userId, "早盘计划", content, "session", null, null);
+            // P0-1（2026-09-14 增量深审）：早盘计划正文含持仓名/现价/止损 → 锁屏只留「有几件事」
+            pushToAll(userId, "早盘计划", content, "session", null, null,
+                    "早盘计划备好了。有几只要留意的，打开阿呆看看。");
         });
     }
 
@@ -225,7 +227,9 @@ public class TradingSessionPushService {
         if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "午间跟踪", "midday-tracking", this::buildMiddayTemplate);
-            pushToAll(userId, "午间跟踪", content, "session", null, null);
+            // P0-1：午间跟踪正文含逐票表现 → 锁屏精简
+            pushToAll(userId, "午间跟踪", content, "session", null, null,
+                    "午间看过了。上午怎么样、要不要动手，打开阿呆看看。");
         });
     }
 
@@ -236,7 +240,9 @@ public class TradingSessionPushService {
         if (!isTradingDay(java.time.LocalDate.now())) return;
         forEachTradingUser(userId -> {
             String content = generateContent(userId, "尾盘建议", "close-advice", this::buildCloseTemplate);
-            pushToAll(userId, "尾盘建议", content, "session", null, null);
+            // P0-1：尾盘建议正文含逐票建议 → 锁屏精简
+            pushToAll(userId, "尾盘建议", content, "session", null, null,
+                    "尾盘建议出来了。该做什么，打开阿呆看看。");
         });
     }
 
@@ -331,7 +337,11 @@ public class TradingSessionPushService {
                     pushToAll(userId, "账户今日未自动更新",
                             "收盘自动更新跳过：有 " + missingQuotes + " 只持仓缺行情（新股/停牌可能无昨收）"
                                     + "，账户市值维持上次快照。明日正常收盘会自愈，或手动点「点击更新」。",
-                            "market", null, null);
+                            "market", null, null,
+                            // P2-推送1（2026-09-14 晚间批）：本条正文只有「几只缺行情」的计数，
+                            // 无标的/金额——按 fail-closed 口径**显式声明**它是中性文案（而不是靠漏传回落）
+                            "收盘自动更新跳过了：有 " + missingQuotes + " 只持仓缺行情。打开阿呆看看。",
+                            "账户今日未自动更新");
                 } catch (RuntimeException e) {
                     log.warn("收盘缺行情通知推送失败 | userId={} | {}", userId, e.getMessage());
                 }
@@ -381,7 +391,9 @@ public class TradingSessionPushService {
                                 "今日当日盈亏已计算，但部分未计入：\n· " + String.join("\n· ", actionable)
                                         + "\n如需最精确口径：当天成交请走「历史成交导入/手动记录」入流水；"
                                         + "缺昨收/成本基线的部分会在券商文件或明日收盘后自愈。",
-                                "market", null, null);
+                                "market", null, null,
+                                // P0-1：附注明细逐条点名标的/金额 → 锁屏只说「有说明」
+                                "今日盈亏算好了，但有几句要跟你说明。打开阿呆看看。");
                     } catch (RuntimeException e) {
                         log.warn("当日盈亏附注通知推送失败 | userId={} | {}", userId, e.getMessage());
                     }
@@ -403,7 +415,9 @@ public class TradingSessionPushService {
             var candidates = tradeLogCollectService.todayCandidates(userId);
             if (candidates.isEmpty()) return;
             String content = tradeLogCollectService.summarize(candidates);
-            pushToAll(userId, "今日操作确认", content, "session", null, null);
+            // P0-1：今日操作汇总含标的/数量/金额 → 锁屏只说笔数
+            pushToAll(userId, "今日操作确认", content, "session", null, null,
+                    "今天有 " + candidates.size() + " 笔操作等你确认。打开阿呆看看对不对。");
         });
     }
 
@@ -441,7 +455,9 @@ public class TradingSessionPushService {
                         + "——按纪律设好止损再进（R68）"
                         : "🚀 " + h.name() + "（" + h.symbol() + "）放量突破，B2 右侧信号：" + String.join("、", h.signals())
                         + "——按纪律设好止损再进（R68）";
-                pushToAll(userId, "买点提醒", content, "buy-point", h.symbol(), h.name());
+                // P0-1：买点正文含名称/代码/信号 → 锁屏不点名（标题本就中性）
+                pushToAll(userId, "买点提醒", content, "buy-point", h.symbol(), h.name(),
+                        "有一只自选到买点区了。打开阿呆看是哪只。");
             }
             log.info("自选买点推送 | userId={} | {} 命中", userId, hits.size());
         });
@@ -801,7 +817,7 @@ public class TradingSessionPushService {
 
     private void pushToAll(String userId, String title, String content, String type,
                            String symbol, String name) {
-        pushToAll(userId, title, content, type, symbol, name, null);
+        pushToAll(userId, title, content, type, symbol, name, null, null);
     }
 
     /**
@@ -809,17 +825,32 @@ public class TradingSessionPushService {
      * <p>
      * 外部通知渠道（APNs / Bark / 微信）渲染 {@code lockScreenContent}，站内 Feed 仍渲染完整
      * {@code content}——锁屏是「放在桌上旁人能看见」的，Feed 是「自己打开才看到」的，两者不该同一份字。
-     * 传 null = 不脱敏：老的 6 参调用点走这条路，行为不变，可按推送类型渐进补齐。
+     * <p>
+     * <b>传 null（例如 6 参重载路径）= 外部渠道发中性兜底文案，不回落完整正文</b>
+     * （P2-推送1，2026-09-14 晚间批：回退方向 fail-closed）。中性推送请显式传自己的文案 +
+     * {@code lockScreenTitle}，把「这条不敏感」写进代码。
      */
     private void pushToAll(String userId, String title, String content, String type,
+                           String symbol, String name, String lockScreenContent,
+                           String lockScreenTitle) {
+        pushToAllInternal(userId, title, content, type, symbol, name, lockScreenContent, lockScreenTitle);
+    }
+
+    private void pushToAll(String userId, String title, String content, String type,
                            String symbol, String name, String lockScreenContent) {
+        pushToAllInternal(userId, title, content, type, symbol, name, lockScreenContent, null);
+    }
+
+    private void pushToAllInternal(String userId, String title, String content, String type,
+                                   String symbol, String name, String lockScreenContent,
+                                   String lockScreenTitle) {
         // RFC 20260817：推送开关——用户关闭的类型不推送（session=早/午/尾盘，buy-point=买点）
         if (!pushSettingsRepository.findByUser(userId).isEnabled(type)) {
             log.info("时段推送跳过（用户关闭）| userId={} | type={}", userId, type);
             return;
         }
         PushChannel.PushMessage message = new PushChannel.PushMessage(
-                title, content, type, symbol, name, LocalTime.now(), lockScreenContent);
+                title, content, type, symbol, name, LocalTime.now(), lockScreenContent, lockScreenTitle);
         for (PushChannel channel : pushChannels) {
             if (channel.enabled()) {
                 channel.push(userId, message);

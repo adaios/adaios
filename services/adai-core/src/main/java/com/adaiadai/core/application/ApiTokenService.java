@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.auth.ApiToken;
 import com.adaiadai.core.kernel.auth.ApiTokenRepository;
 import com.adaiadai.core.kernel.auth.TokenScope;
@@ -33,6 +35,14 @@ import java.util.Set;
  *       {@link #LAST_USED_THROTTLE} 时才写——成本换到「分钟级精度足够回答它在不在用」。</li>
  *   <li><b>scope 白名单在枚举里，不在这里</b>：本服务不做任何「路径推断权限」的判断，
  *       一律问 {@link TokenScope#allows}——权限判定只有一处，避免两套规则漂移。</li>
+ *   <li><b>失效不只靠手动撤销</b>（2026-09-14 增量深审 P0-2 修复）：改密 / 管理员重置密码 /
+ *       禁用 / 删号都会调 {@link #revokeAll}（挂在 {@code AuthService} 的同一条安全路径上），
+ *       校验时另复核账号仍在且未禁用——「改密能否踢掉泄漏的钥匙」是用户对凭据的基本预期，
+ *       不能只写在注释里。</li>
+ *   <li><b>到期即失效 + 按哈希撤销</b>（2026-09-14 晚间批 P1-令牌1 / S-凭据1）：新签发令牌
+ *       默认 {@link ApiToken#DEFAULT_TTL_DAYS} 天到期（存量老令牌可空 = 不过期）；
+ *       撤销优先按完整哈希（{@link TokenView#id}），前缀只在**唯一命中**时兼容放行——
+ *       这把钥匙的明文会躺在可能被转发的 {@code .shortcut} 里，不能只靠人记得回来撤。</li>
  * </ol>
  */
 @Service
@@ -55,10 +65,12 @@ public class ApiTokenService {
     private static final int MAX_LABEL_CHARS = 40;
 
     private final ApiTokenRepository repository;
+    private final AccountRepository accountRepository;
     private final Clock clock;
 
-    public ApiTokenService(ApiTokenRepository repository, Clock clock) {
+    public ApiTokenService(ApiTokenRepository repository, AccountRepository accountRepository, Clock clock) {
         this.repository = repository;
+        this.accountRepository = accountRepository;
         this.clock = clock;
     }
 
@@ -90,17 +102,23 @@ public class ApiTokenService {
         }
 
         String plain = ApiToken.PLAIN_PREFIX + randomHex(TOKEN_BYTES);
+        Instant now = clock.instant();
         ApiToken token = new ApiToken(
                 AuthService.sha256Hex(plain),
                 plain.substring(0, ApiToken.PLAIN_PREFIX.length() + PREFIX_HEX_CHARS),
                 userId,
                 normalizeLabel(label),
                 scopes,
-                clock.instant(),
-                null);
+                now,
+                null,
+                // P1-令牌1/S-凭据1（2026-09-14 晚间批）：新令牌默认 90 天到期——
+                // 这把钥匙的明文会被放进「可能被转发出去」的 .shortcut 文件里，
+                // 不能只靠用户记得回来手动撤销。
+                now.plus(Duration.ofDays(ApiToken.DEFAULT_TTL_DAYS)));
         repository.save(token);
 
-        log.info("签发外部令牌 | userId={} | prefix={} | scopes={}", userId, token.tokenPrefix(), scopes);
+        log.info("签发外部令牌 | userId={} | prefix={} | scopes={} | expiresAt={}",
+                userId, token.tokenPrefix(), scopes, token.expiresAt());
         return new IssuedToken(plain, token);
     }
 
@@ -109,6 +127,11 @@ public class ApiTokenService {
      * <p>
      * 认不出 → 空（调用方转 401）。**不做任何降级**：这里返回空只意味着「不是有效的外部令牌」，
      * 不代表「放行」——Filter 会把「会话与外部令牌都不认」判为 401。
+     * <p>
+     * <b>账号状态复核（2026-09-14 增量深审 backend P1-2）</b>：令牌本身有效还不够，
+     * 还要**账号仍在且未禁用**——会话路径（{@code AuthService.validateAndTouch}）是 fail-closed 的，
+     * 令牌路径此前不看账号状态，禁用/已删账号的旧令牌仍能打卡（含付费的 learn/confirm）。
+     * 读账号失败（{@link StorageException}）**不降级为放行**：抛出去比悄悄放行安全。
      */
     public Optional<ApiToken> validate(String plainToken) {
         if (plainToken == null || plainToken.isBlank()) {
@@ -124,6 +147,19 @@ public class ApiTokenService {
         }
         ApiToken token = found.get();
         Instant now = clock.instant();
+        // P1-令牌1（2026-09-14 晚间批）：到期即失效（可空 = 存量老令牌不过期）。
+        // 放在账号复核之前：过期是更廉价也更常见的拒绝理由。
+        if (token.isExpired(now)) {
+            log.warn("外部令牌被拒：已过期 | prefix={} | expiresAt={}", token.tokenPrefix(), token.expiresAt());
+            return Optional.empty();
+        }
+        // 账号状态复核：账号不存在或已禁用 → 视为无效凭据（与会话路径同口径 fail-closed）
+        Optional<Account> account = accountRepository.findById(token.userId());
+        if (account.isEmpty() || !account.get().enabled()) {
+            log.warn("外部令牌被拒：账号不存在或已禁用 | prefix={} | userId={}",
+                    token.tokenPrefix(), token.userId());
+            return Optional.empty();
+        }
         // 节流写盘（见类注释第 2 条）
         if (token.lastUsedAt() == null
                 || token.lastUsedAt().isBefore(now.minus(LAST_USED_THROTTLE))) {
@@ -145,16 +181,63 @@ public class ApiTokenService {
                 .toList();
     }
 
-    /** 按前缀撤销（限定 userId，防跨账号删除）。 */
-    public boolean revoke(String userId, String prefix) {
-        boolean removed = repository.deleteByPrefix(userId, prefix);
+    /**
+     * 撤销一把令牌（限定 userId，防跨账号删除）。
+     * <p>
+     * <b>P1-令牌1（2026-09-14 晚间批）</b>：优先按**完整哈希**（新前端用 {@code TokenView.id}）撤销；
+     * 前缀只作兼容退路，且**必须唯一命中**——旧实现直接按前缀删，
+     * 同账号两把令牌前缀碰撞时会一次删掉两把（静默误撤，用户只想收回其中一把）。
+     */
+    public boolean revoke(String userId, String idOrPrefix) {
+        if (userId == null || idOrPrefix == null || idOrPrefix.isBlank()) {
+            return false;
+        }
+        String needle = idOrPrefix.strip();
+        if (isFullHash(needle)) {
+            Optional<ApiToken> mine = repository.findByTokenHash(needle)
+                    .filter(t -> Objects.equals(t.userId(), userId));
+            if (mine.isEmpty()) {
+                return false;
+            }
+            boolean removed = repository.deleteByTokenHash(needle);
+            if (removed) {
+                log.info("撤销外部令牌 | userId={} | id={}", userId, needle);
+            }
+            return removed;
+        }
+        List<ApiToken> matched = repository.findByUserId(userId).stream()
+                .filter(t -> Objects.equals(t.tokenPrefix(), needle))
+                .toList();
+        if (matched.size() != 1) {
+            if (matched.size() > 1) {
+                log.warn("撤销外部令牌被拒：前缀 {} 命中 {} 把（请改用完整 id） | userId={}",
+                        needle, matched.size(), userId);
+            }
+            return false;
+        }
+        boolean removed = repository.deleteByTokenHash(matched.get(0).tokenHash());
         if (removed) {
-            log.info("撤销外部令牌 | userId={} | prefix={}", userId, prefix);
+            log.info("撤销外部令牌 | userId={} | prefix={}", userId, needle);
         }
         return removed;
     }
 
-    /** 撤销某账号全部令牌（改密联动用）。 */
+    /** 64 位十六进制 = SHA-256 十六进制哈希（撤销用的稳定标识）。 */
+    private static boolean isFullHash(String s) {
+        if (s.length() != 64) {
+            return false;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 撤销某账号全部令牌（**改密 / 管理员重置密码 / 禁用 / 删号联动**，见 {@code AuthService}）。 */
     public int revokeAll(String userId) {
         int removed = repository.deleteByUserId(userId);
         if (removed > 0) {
@@ -166,9 +249,13 @@ public class ApiTokenService {
     private static String normalizeLabel(String label) {
         if (label == null || label.isBlank()) return "未命名";
         String trimmed = label.strip();
-        return trimmed.length() <= MAX_LABEL_CHARS
-                ? trimmed
-                : trimmed.substring(0, MAX_LABEL_CHARS);
+        // P2-令牌4（2026-09-14 晚间批）：按 **codePoint** 截断——substring 会把 emoji 的代理对切成
+        // 孤立代理字符落盘（命中 pitfalls「emoji 代理对」）。
+        if (trimmed.codePointCount(0, trimmed.length()) <= MAX_LABEL_CHARS) {
+            return trimmed;
+        }
+        int end = trimmed.offsetByCodePoints(0, MAX_LABEL_CHARS);
+        return trimmed.substring(0, end);
     }
 
     private static String randomHex(int bytes) {
@@ -186,12 +273,18 @@ public class ApiTokenService {
 
     public record ScopeView(String id, String description, List<String> allowedRequests) {}
 
-    /** 令牌的对外视图（**不含哈希**，也不含明文——明文只在签发那一次出现过）。 */
-    public record TokenView(String prefix, String label, Set<String> scopes,
-                            Instant createdAt, Instant lastUsedAt) {
+    /**
+     * 令牌的对外视图：**不含明文**（明文只在签发那一次出现过）。
+     * <p>
+     * {@code id} = 令牌哈希（SHA-256 十六进制）：它是撤销用的**稳定标识**——前缀只有 8 位十六进制，
+     * 同账号碰撞时无法区分是哪一把（P1-令牌1）；{@code expiresAt} 让界面能显示「有效期至」。
+     * 哈希不可反推明文，暴露它不比暴露前缀更危险。
+     */
+    public record TokenView(String id, String prefix, String label, Set<String> scopes,
+                            Instant createdAt, Instant lastUsedAt, Instant expiresAt) {
         public static TokenView of(ApiToken t) {
-            return new TokenView(t.tokenPrefix(), t.label(), t.scopes(),
-                    t.createdAt(), t.lastUsedAt());
+            return new TokenView(t.tokenHash(), t.tokenPrefix(), t.label(), t.scopes(),
+                    t.createdAt(), t.lastUsedAt(), t.expiresAt());
         }
     }
 }

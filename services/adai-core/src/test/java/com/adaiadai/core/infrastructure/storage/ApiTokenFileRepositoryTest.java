@@ -139,6 +139,28 @@ class ApiTokenFileRepositoryTest {
                 "损坏文件必须原样保留，供人工修复");
     }
 
+    /**
+     * P2-令牌3（2026-09-14 晚间批）：**尾部多余内容**是比语法错更隐蔽的损坏——
+     * Jackson 默认忽略它，`[...]` 后面半行垃圾会被读成「合法前半段」，
+     * 随后任一写入（连 lastUsedAt 节流写盘都算）会把半截列表整体回写 → 静默丢令牌。
+     */
+    @Test
+    void truncatedFileWithTrailingGarbage_failsFast_notSilentlyHalfRead() throws Exception {
+        Files.createDirectories(tokensFile().getParent());
+        String half = "[{\"tokenHash\":\"h1\",\"tokenPrefix\":\"adai_a1\",\"userId\":\"adai\","
+                + "\"label\":\"x\",\"scopes\":[\"learn:digest\"],"
+                + "\"createdAt\":\"2026-09-01T00:00:00Z\",\"lastUsedAt\":null}]";
+        String broken = half + "\n{\"tokenHash\":\"h2\"   <-- 写坏/截断的尾巴";
+        Files.writeString(tokensFile(), broken, StandardCharsets.UTF_8);
+
+        assertThrows(StorageException.class, () -> repo().findAll(),
+                "尾部垃圾必须 fail-fast，不得读成前半段");
+        assertThrows(StorageException.class, () -> repo().save(token("h3", "adai_a3", "adai", "y")),
+                "写路径同样拒绝执行，防止半截列表被整体回写");
+        assertEquals(broken, Files.readString(tokensFile(), StandardCharsets.UTF_8),
+                "损坏文件原样保留供人工修复");
+    }
+
     @Test
     void writesAtomically_noTmpFileLeftBehind() {
         ApiTokenFileRepository repo = repo();

@@ -27,6 +27,7 @@ class AuthServiceTest {
 
     private AccountRepository accountRepository;
     private SessionRepository sessionRepository;
+    private ApiTokenService apiTokenService;
     private AuthService authService;
 
     private static final Account ACCOUNT_WITH_PASSWORD = new Account("adai", "admin", true,
@@ -36,7 +37,8 @@ class AuthServiceTest {
     void setUp() {
         accountRepository = mock(AccountRepository.class);
         sessionRepository = mock(SessionRepository.class);
-        authService = new AuthService(accountRepository, sessionRepository);
+        apiTokenService = mock(ApiTokenService.class);
+        authService = new AuthService(accountRepository, sessionRepository, apiTokenService);
     }
 
     // ── 登录 ──
@@ -230,6 +232,9 @@ class AuthServiceTest {
         assertEquals(1, kicked);
         verify(sessionRepository).deleteByTokenHash("h_other");
         verify(sessionRepository, never()).deleteByTokenHash("h_current");
+        // P0-2（2026-09-14 增量深审）：改密必须同时撤销外部工具令牌——
+        // 否则「改密补救泄露」对快捷指令里那把钥匙无效
+        verify(apiTokenService).revokeAll("adai");
     }
 
     @Test
@@ -244,6 +249,22 @@ class AuthServiceTest {
         assertThrows(AuthException.class,
                 () -> authService.changePassword("tok", "wrong", "new12345"));
         verify(accountRepository, never()).save(any());
+        // 原密码错 = 不是本人在改密，不得误伤既有令牌
+        verify(apiTokenService, never()).revokeAll(anyString());
+    }
+
+    @Test
+    void kickSessions_alsoRevokesExternalTokens() {
+        Instant now = Instant.now();
+        Session a = new Session("h1", "bob", now, now, now.plusSeconds(3600));
+        Session b = new Session("h2", "bob", now, now, now.plusSeconds(3600));
+        when(sessionRepository.findByUserId("bob")).thenReturn(List.of(a, b));
+
+        int kicked = authService.kickSessions("bob");
+
+        assertEquals(2, kicked);
+        // 重置密码 / 禁用 / 删号三条路径都走本方法（AccountController），必须一并撤令牌
+        verify(apiTokenService).revokeAll("bob");
     }
 
     // ── token 哈希 ──
@@ -258,7 +279,7 @@ class AuthServiceTest {
     // ── helpers ──
 
     private Account withPassword(Account base, String rawPassword) {
-        AuthService svc = new AuthService(accountRepository, sessionRepository);
+        AuthService svc = new AuthService(accountRepository, sessionRepository, apiTokenService);
         return new Account(base.userId(), base.role(), base.enabled(), base.createdAt(),
                 base.plugins(), svc.encodePassword(rawPassword));
     }

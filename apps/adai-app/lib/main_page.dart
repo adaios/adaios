@@ -113,7 +113,10 @@ class _MainPageState extends State<MainPage>
     _contentAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic);
     _enterCtrl.forward();
     widget.refreshTick?.addListener(_onRefreshTick);
-    // RFC 20260913 外部入口批：Siri / 快捷指令 / adai:// 发起的「记一笔」
+    // RFC 20260913 外部入口批：Siri / 快捷指令 / adai:// 发起的「记一笔」。
+    // 绑定本页的 userId（REVIEW P1-入口2）：换账号即清空队列，登出期间到达的入口不会
+    // 被下一个登录的账号消费。同账号重复绑定是 no-op。
+    EntryIntentService.bindUser(widget.userId);
     EntryIntentService.pending.addListener(_onExternalEntry);
     // 冷启动：入口可能早于本页挂载就排好了（Siri 拉起 App）——首帧后补消费一次
     WidgetsBinding.instance.addPostFrameCallback((_) => _consumeExternalEntry());
@@ -131,27 +134,87 @@ class _MainPageState extends State<MainPage>
 
   void _onExternalEntry() => _consumeExternalEntry();
 
-  /// 消费一条来自 App 外部（Siri / 快捷指令 / URL）的入口。
+  /// 外部入口消费流水线是否在跑（防重入：多条目按 FIFO 逐条处理）。
+  bool _drainingExternalEntries = false;
+
+  /// 消费来自 App 外部（Siri / 快捷指令 / URL）的入口。
   ///
+  /// **先判挂载，再取**（REVIEW P1-入口3）：原实现先 `take()` 再判 `mounted`，
+  /// 未挂载时内容已被取走 → 永远丢掉。现在未挂载直接返回，队列原样留着，
+  /// 等本页真正挂载后再消费。
+  ///
+  /// **逐条取、逐条处理**：队列可能有多条（连发 Siri / 冷启动两条 URL），
+  /// 一次只取一条，页面中途销毁时剩余入口仍留在队列里等下一次挂载，不会一起丢。
   /// 按 [ExternalEntryAction] 分派——它是**动作**，不是一句需要被理解的自然语言，
   /// 所以这里不做任何关键词判断：
   /// - [ExternalEntryAction.record]：**有内容就直接落成记录**，不要求再点一次发送：
   ///   语音输入的意图已经明确（你亲口说的），多一次点击等于把 Siri 的价值抵消掉；
   ///   卡片照常可见、可删（既有能力）。**没内容不猜**：只把输入框准备好并聚焦
   ///   （例如只说了「打开阿呆」）。
-  /// - [ExternalEntryAction.digest]：直达 learn 流水线，见 [_startLearnDigestFromEntry]。
+  /// - [ExternalEntryAction.digest]：先一次点击确认（会抓原文/可能转写），再直达
+  ///   learn 流水线，见 [_startLearnDigestFromEntry]。
   void _consumeExternalEntry() {
-    final entry = EntryIntentService.take();
-    if (entry == null || !mounted) return;
+    if (!mounted) return; // 未挂载不得消费：取走的内容没有页面接着就永远丢了
+    unawaited(_drainExternalEntries());
+  }
+
+  Future<void> _drainExternalEntries() async {
+    if (_drainingExternalEntries) return;
+    _drainingExternalEntries = true;
+    try {
+      while (mounted) {
+        final entry = EntryIntentService.take();
+        if (entry == null) break;
+        await _dispatchExternalEntry(entry);
+      }
+    } finally {
+      _drainingExternalEntries = false;
+    }
+  }
+
+  Future<void> _dispatchExternalEntry(ExternalEntry entry) async {
     if (!entry.hasText) {
+      if (!mounted) return;
       _inputBarKey.currentState?.prefillText('');
       return;
     }
     if (entry.action == ExternalEntryAction.digest) {
-      _startLearnDigestFromEntry(entry.text!);
+      // 安全要求（2026-09-14）：外部入口的「整理」会真的去抓原文、可能转写（花额度），
+      // 提交前明确问一次。record 动作刻意保持直达，不加这一步摩擦。
+      final confirmed = await _confirmDigestFromEntry();
+      if (!confirmed || !mounted) return;
+      await _startLearnDigestFromEntry(entry.text!);
       return;
     }
+    if (!mounted) return;
     _onSend(entry.text!);
+  }
+
+  /// digest 动作的一次点击确认（阿呆口吻，不是系统警告）。
+  /// [barrierDismissible] 关闭：误关 = 这次分享白丢，宁可要求明确点一下。
+  Future<bool> _confirmDigestFromEntry() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('要我现在整理吗？',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+        content: const Text('要我现在整理这个链接吗？它会去抓原文、可能需要转写。',
+            style: TextStyle(fontSize: 13, height: 1.5, color: AppColors.darkGrey3)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('先不用'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('现在整理'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   /// 「整理」这个明确动作的落点：**直达 learn 流水线**。

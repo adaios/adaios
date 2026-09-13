@@ -55,7 +55,8 @@ public class WeChatPushChannel implements PushChannel {
         if (!enabled()) return;
         try {
             String url = String.format(SCT_URL, sendKey)
-                    + "?title=" + encode(message.title())
+                    // P0-1（2026-09-14 增量深审）：外部渠道标题也走锁屏版
+                    + "?title=" + encode(message.notificationTitle())
                     + "&desp=" + encode(message.notificationContent());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))

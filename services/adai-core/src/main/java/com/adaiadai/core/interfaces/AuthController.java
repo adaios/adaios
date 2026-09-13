@@ -131,11 +131,14 @@ public class AuthController {
                 account.get().userId(), request.label(), request.scopes());
         return ResponseEntity.ok(Map.of(
                 "token", issued.plainToken(),
+                "id", issued.token().tokenHash(),
                 "prefix", issued.token().tokenPrefix(),
                 "label", issued.token().label(),
                 "scopes", issued.token().scopes(),
                 "createdAt", issued.token().createdAt().toString(),
-                "notice", "这串令牌只会显示这一次，请现在就复制走；丢了就撤销重发一把。"));
+                "expiresAt", issued.token().expiresAt().toString(),
+                "notice", "这串令牌只会显示这一次，请现在就复制走；丢了就撤销重发一把。"
+                        + "它有有效期（默认 90 天），到期自动失效，也可以随时在这里撤销。"));
     }
 
     /** 列出本账号已签发的外部令牌 + 可选权限清单（供界面展示「这把钥匙能做什么」）。 */
@@ -151,14 +154,19 @@ public class AuthController {
                 "availableScopes", ApiTokenService.availableScopes()));
     }
 
-    /** 撤销一把外部令牌（会话）：立即失效，不影响登录会话与其它设备。 */
-    @DeleteMapping("/tokens/{prefix}")
-    public ResponseEntity<?> revokeToken(@PathVariable String prefix, HttpServletRequest servletRequest) {
+    /**
+     * 撤销一把外部令牌（会话）：立即失效，不影响登录会话与其它设备。
+     * <p>
+     * 路径参数接受**令牌 id（哈希，推荐）**或**显示前缀**（兼容旧版 app）；
+     * 前缀在同账号内非唯一命中时拒绝撤销（P1-令牌1：旧实现按前缀删会一次删掉两把）。
+     */
+    @DeleteMapping("/tokens/{idOrPrefix}")
+    public ResponseEntity<?> revokeToken(@PathVariable String idOrPrefix, HttpServletRequest servletRequest) {
         Optional<Account> account = authService.currentAccount(bearerToken(servletRequest));
         if (account.isEmpty()) {
             return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
         }
-        boolean removed = apiTokenService.revoke(account.get().userId(), prefix);
+        boolean removed = apiTokenService.revoke(account.get().userId(), idOrPrefix);
         if (!removed) {
             return ResponseEntity.status(404).body(Map.of("error", "没找到这把令牌，可能已经撤销过了"));
         }

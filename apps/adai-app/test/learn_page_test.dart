@@ -428,6 +428,30 @@ void main() {
       expect(aiY < tradingY, isTrue, reason: '类型顺序 ai → trading');
     });
 
+    testWidgets('页头分享入口：热区 ≥44pt + tooltip + 可点开弹窗（原 19px 纯图标）', (tester) async {
+      final backend = _LearnBackend();
+      await pump(tester, backend.api());
+
+      final icon = find.byIcon(Icons.ios_share);
+      expect(icon, findsOneWidget);
+
+      // 热区：包住图标的可点容器必须 ≥44×44（Apple 最小点按目标）
+      final hotArea = tester.getSize(find.ancestor(of: icon, matching: find.byType(SizedBox)).first);
+      expect(hotArea.width, greaterThanOrEqualTo(44));
+      expect(hotArea.height, greaterThanOrEqualTo(44));
+
+      // 提示：Tooltip 挂在入口上（图标本身没有文字，无提示等于让用户猜）
+      final tooltip = tester.widget<Tooltip>(
+        find.ancestor(of: icon, matching: find.byType(Tooltip)).first,
+      );
+      expect(tooltip.message, '把分享接到阿呆');
+
+      // 热区真的可点：点开「把分享接到阿呆」弹窗
+      await tester.tap(icon);
+      await tester.pumpAndSettle();
+      expect(find.text('把分享接到阿呆'), findsOneWidget);
+    });
+
     testWidgets('空态提示', (tester) async {
       await pump(tester, _LearnBackend().api());
       expect(find.textContaining('还没有学习卡片'), findsOneWidget);

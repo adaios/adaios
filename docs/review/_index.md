@@ -3,9 +3,9 @@ title: docs/review 目录索引
 description: review 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-13
+updated: 2026-09-14
 status: active
-lines: 48
+lines: 49
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-09-14-pre-deploy-review.md | **部署前增量深审**（未发布面 `dc95599..HEAD` 四官隔离并行 + 主会话实测：⭐ 多官命中 4 处；**P0×2 当场修复出表**——锁屏脱敏只覆盖收盘小结 / 外部令牌可收回接不上；P1×8 + 战略×1 + P2×6 已归口 REVIEW）| active |
 | audits/2026-09-13-first-contact-review.md | **首轮外部视角审查**（面向身边人之前：陌生人/社会性/支持台三官首跑，只看字不看码，**三端口径** → P0×2「Android 两端零通知 + Android App debug 签名不可分发」+ P1×7 术语/空态/三端不同源/9 个无效推送开关 + 决策×6【D1/D2/D6 已拍板 A，附函数级落地方案】；只报告未修）| active |
 | audits/2026-09-13-trading-ledger-dirty-rows.md | 交易账本存量脏流水逐笔核对存档（全量 1707 笔重判：真重复 6 组非 4 笔 + 负持仓同根因 + 粗暴去重反例 25 只负持仓；只报告未改数据，处置待拍板） | active |
 | audits/2026-09-05-cognition-layer-review.md | 交易⑤认知层批三官深审存档（backend/docs/adversarial 隔离并行：P1×5 + 💥×6 + docs×6 全修出表，守护 G2 一并修） | active |

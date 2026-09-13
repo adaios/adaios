@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.auth.ApiToken;
 import com.adaiadai.core.kernel.auth.ApiTokenRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -40,11 +43,45 @@ class ApiTokenServiceTest {
     private MutableClock clock;
     private ApiTokenService service;
 
+    /** 账号状态复核（2026-09-14 增量深审 P1-2）用的可控账号表。 */
+    private final Map<String, Account> accounts = new LinkedHashMap<>();
+
     @BeforeEach
     void setUp() {
         repository = new InMemoryTokenRepo();
         clock = new MutableClock(Instant.parse("2026-09-13T10:00:00Z"));
-        service = new ApiTokenService(repository, clock);
+        accounts.clear();
+        accounts.put("adai", new Account("adai", "admin", true, LocalDate.of(2026, 8, 2), List.of("learn")));
+        accounts.put("someone-else", new Account("someone-else", "user", true,
+                LocalDate.of(2026, 8, 2), List.of("learn")));
+        AccountRepository accountRepository = new AccountRepository() {
+            @Override
+            public List<Account> findAll() {
+                return new ArrayList<>(accounts.values());
+            }
+
+            @Override
+            public Optional<Account> findById(String userId) {
+                return Optional.ofNullable(accounts.get(userId));
+            }
+
+            @Override
+            public Account save(Account account) {
+                accounts.put(account.userId(), account);
+                return account;
+            }
+
+            @Override
+            public boolean delete(String userId) {
+                return accounts.remove(userId) != null;
+            }
+
+            @Override
+            public Account mergePlugins(String userId, List<String> add, List<String> remove) {
+                throw new UnsupportedOperationException("本测试不涉及插件合并");
+            }
+        };
+        service = new ApiTokenService(repository, accountRepository, clock);
     }
 
     // ── 签发 ──
@@ -135,6 +172,24 @@ class ApiTokenServiceTest {
     }
 
     @Test
+    void validate_disabledAccount_returnsEmpty() {
+        // P1-2（2026-09-14 增量深审）：禁用账号的旧令牌不得继续可用——
+        // 会话路径是 fail-closed 的，令牌路径必须同口径（否则「禁用了他，快捷指令还能用」）
+        var issued = service.issue("adai", "快捷指令", List.of("learn:digest"));
+        accounts.put("adai", new Account("adai", "admin", false, LocalDate.of(2026, 8, 2), List.of("learn")));
+
+        assertTrue(service.validate(issued.plainToken()).isEmpty());
+    }
+
+    @Test
+    void validate_deletedAccount_returnsEmpty() {
+        var issued = service.issue("adai", "快捷指令", List.of("learn:digest"));
+        accounts.remove("adai");
+
+        assertTrue(service.validate(issued.plainToken()).isEmpty());
+    }
+
+    @Test
     void validate_withoutPrefix_returnsEmpty_withoutTouchingRepository() {
         // 前缀筛选：任意无效 token 不该触发令牌文件读取（既是无谓 IO，也让「猜 token」不成为探针）
         assertTrue(service.validate("some-session-token").isEmpty());
@@ -219,6 +274,76 @@ class ApiTokenServiceTest {
         assertEquals(2, service.revokeAll("adai"));
         assertEquals(0, service.list("adai").size());
         assertTrue(service.validate(other.plainToken()).isPresent());
+    }
+
+    // ── P1-令牌1 / S-凭据1（2026-09-14 晚间批）：到期与按 id 撤销 ──
+
+    @Test
+    void issue_setsDefaultExpiry() {
+        var issued = service.issue("adai", "快捷指令", List.of("learn:digest"));
+        assertNotNull(issued.token().expiresAt(), "新令牌必须有有效期（钥匙会被转发出去）");
+        assertEquals(Instant.parse("2026-09-13T10:00:00Z")
+                        .plus(Duration.ofDays(ApiToken.DEFAULT_TTL_DAYS)),
+                issued.token().expiresAt());
+    }
+
+    @Test
+    void validate_expiredToken_returnsEmpty() {
+        var issued = service.issue("adai", "快捷指令", List.of("learn:digest"));
+        assertTrue(service.validate(issued.plainToken()).isPresent(), "到期前可用");
+        clock.advance(Duration.ofDays(ApiToken.DEFAULT_TTL_DAYS));   // 恰好到期（now == expiresAt）
+        assertTrue(service.validate(issued.plainToken()).isEmpty(), "到期即失效");
+    }
+
+    @Test
+    void validate_legacyTokenWithoutExpiry_stillWorks() {
+        // 存量老令牌（文件里没有 expiresAt）→ 不过期，行为不变，由用户手动撤销
+        ApiToken legacy = new ApiToken(AuthService.sha256Hex("adai_" + "a".repeat(64)),
+                "adai_aaaaaaaa", "adai", "老钥匙", java.util.Set.of("learn:digest"),
+                Instant.parse("2026-01-01T00:00:00Z"), null);
+        repository.save(legacy);
+        assertTrue(service.validate("adai_" + "a".repeat(64)).isPresent());
+    }
+
+    @Test
+    void revoke_byFullHash_works() {
+        var issued = service.issue("adai", "快捷指令", List.of("learn:digest"));
+        assertTrue(service.revoke("adai", issued.token().tokenHash()), "按 id 撤销");
+        assertTrue(service.validate(issued.plainToken()).isEmpty());
+    }
+
+    @Test
+    void revoke_prefixCollision_isRefusedInsteadOfDeletingBoth() {
+        // 构造两把前缀相同的令牌（真实概率极低，但旧实现会一次删两把）
+        String prefix = "adai_deadbeef";
+        ApiToken a = new ApiToken(AuthService.sha256Hex("tok-a"), prefix, "adai", "a",
+                java.util.Set.of("learn:digest"), clock.instant(), null);
+        ApiToken b = new ApiToken(AuthService.sha256Hex("tok-b"), prefix, "adai", "b",
+                java.util.Set.of("learn:digest"), clock.instant(), null);
+        repository.save(a);
+        repository.save(b);
+
+        assertFalse(service.revoke("adai", prefix), "前缀非唯一命中必须拒绝撤销");
+        assertEquals(2, service.list("adai").size(), "两把都还在（不静默误撤）");
+        assertTrue(service.revoke("adai", a.tokenHash()), "改用完整 id 可精确撤销");
+        assertEquals(1, service.list("adai").size());
+    }
+
+    @Test
+    void revoke_otherUsersTokenById_isRefused() {
+        var mine = service.issue("adai", "我的", List.of("learn:digest"));
+        assertFalse(service.revoke("someone-else", mine.token().tokenHash()), "跨账号按 id 撤销必须失败");
+        assertTrue(service.list("adai").size() == 1);
+    }
+
+    @Test
+    void label_truncatesByCodePoint_neverSplitsEmoji() {
+        // P2-令牌4：40 个 emoji（每个 2 个 char）——按 char 截断会切出孤立代理字符
+        String label = "\uD83D\uDE00".repeat(60);
+        var issued = service.issue("adai", label, List.of("learn:digest"));
+        String stored = issued.token().label();
+        assertEquals(40, stored.codePointCount(0, stored.length()), "按 codePoint 截到 40");
+        assertFalse(stored.endsWith("\uD83D"), "不得以孤立高位代理结尾（pitfalls emoji 代理对）");
     }
 
     // ── 替身 ──

@@ -88,17 +88,25 @@ enum PushBridge {
 
     // MARK: - 外部入口（Siri / 快捷指令 / adai:// URL）
 
-    /// 有待处理入口且通道已就绪 → 投给 Dart；否则原样留在 UserDefaults 等 Dart 来取。
+    /// 有待处理入口且通道已就绪 → 把**整条队列**逐条投给 Dart；否则原样留在 UserDefaults
+    /// 等 Dart 来取（引擎未就绪时消费掉就等于丢在没人接的地方）。
+    ///
+    /// 队列（REVIEW P1-入口1）：冷启动连发两条时单槽 drain 会把第一条静默吞掉，
+    /// 所以这里按 FIFO 逐条 `invokeMethod`；Dart 侧入队并逐条消费。
     @objc private func handleExternalEntry() {
         guard let channel = entryChannel else { return }
-        guard let entry = ExternalEntry.drain() else { return }
+        let entries = ExternalEntry.drain()
+        guard !entries.isEmpty else { return }
         DispatchQueue.main.async {
-            channel.invokeMethod("onEntry", arguments: entry)
+            for entry in entries {
+                channel.invokeMethod("onEntry", arguments: entry)
+            }
         }
     }
 
     /// Dart 主动取一次（冷启动兜底：Dart 起来时通道才建好，此前无人消费）。
-    private func takePendingEntry() -> [String: Any]? {
+    /// 返回整条队列（可能为空数组）——单条形态已由 Dart 侧兼容。
+    private func takePendingEntry() -> [[String: Any]] {
         ExternalEntry.drain()
     }
 

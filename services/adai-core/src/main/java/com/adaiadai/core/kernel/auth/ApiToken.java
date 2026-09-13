@@ -31,12 +31,24 @@ import java.util.Set;
  * @param scopes      权限范围 id 集合（见 {@link TokenScope}）
  * @param createdAt   签发时间
  * @param lastUsedAt  最近一次使用时间（可空 = 从未用过）；用于「这把钥匙还在用吗」
+ * @param expiresAt   到期时间（**2026-09-14 晚间批新增**；可空 = 不过期，仅存量老令牌如此）。
+ *                    见 {@link #DEFAULT_TTL_DAYS}：新签发的令牌默认 90 天后失效——
+ *                    一把会被转发出去的钥匙不该「只能靠人记得去撤」。
  */
 public record ApiToken(String tokenHash, String tokenPrefix, String userId, String label,
-                       Set<String> scopes, Instant createdAt, Instant lastUsedAt) {
+                       Set<String> scopes, Instant createdAt, Instant lastUsedAt, Instant expiresAt) {
+
+    /** 新签发令牌的默认有效期（天）。存量老令牌（无该字段）保持不过期，由用户手动撤销。 */
+    public static final int DEFAULT_TTL_DAYS = 90;
 
     public ApiToken {
         scopes = scopes == null ? Set.of() : Set.copyOf(scopes);
+    }
+
+    /** 兼容构造（无到期时间）：存量老令牌与老测试用。 */
+    public ApiToken(String tokenHash, String tokenPrefix, String userId, String label,
+                    Set<String> scopes, Instant createdAt, Instant lastUsedAt) {
+        this(tokenHash, tokenPrefix, userId, label, scopes, createdAt, lastUsedAt, null);
     }
 
     /** 明文令牌前缀（可读标识），用于展示。 */
@@ -57,8 +69,13 @@ public record ApiToken(String tokenHash, String tokenPrefix, String userId, Stri
         return false;
     }
 
+    /** 是否已到期（可空 = 永不过期）。到期判定在 application 层做，storage 层不取 now()（G2 守卫）。 */
+    public boolean isExpired(Instant now) {
+        return expiresAt != null && !now.isBefore(expiresAt);
+    }
+
     /** 记录一次使用（返回新实例；调用方决定何时落盘）。 */
     public ApiToken usedAt(Instant now) {
-        return new ApiToken(tokenHash, tokenPrefix, userId, label, scopes, createdAt, now);
+        return new ApiToken(tokenHash, tokenPrefix, userId, label, scopes, createdAt, now, expiresAt);
     }
 }

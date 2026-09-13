@@ -239,10 +239,15 @@ public class MarketAlertService {
         };
     }
 
-    /** 同股票同轮多类型命中 → 合并为一条：类型取最严重，内容按严重度降序拼接（避免微信双份刷屏）。 */
+    /** 同股票同轮多类型命中 → 合并为一条：类型取最严重，内容按严重度降序拼接（避免微信双份刷屏）。
+     *  <p>
+     *  P0-1（2026-09-14 增量深审）：合并会**重建 PushMessage**，此前把 {@code lockScreenContent} 丢掉了
+     *  ——修好各调用点却在合并这一步又退回完整正文（锁屏仍显示持仓名+现价）。这里同步合并锁屏版：
+     *  锁屏正文按同样顺序拼接；任一来源缺锁屏版则用中性兜底（**不回落完整内容**）。 */
     private List<PushChannel.PushMessage> mergeBySymbol(List<PushChannel.PushMessage> alerts) {
         Map<String, PushChannel.PushMessage> bySymbol = new java.util.LinkedHashMap<>();
         Map<String, java.util.TreeMap<Integer, String>> contentBySymbol = new java.util.LinkedHashMap<>();
+        Map<String, java.util.TreeMap<Integer, String>> lockBySymbol = new java.util.LinkedHashMap<>();
         for (PushChannel.PushMessage m : alerts) {
             String key = m.symbol() != null && !m.symbol().isBlank() ? m.symbol() : m.name();
             if (key == null) key = m.title();
@@ -252,13 +257,23 @@ public class MarketAlertService {
             }
             contentBySymbol.computeIfAbsent(key, k -> new java.util.TreeMap<>(
                     java.util.Collections.reverseOrder())).put(severity(m.type()), m.content());
+            if (m.notificationContent() != null && !m.notificationContent().isBlank()
+                    && !java.util.Objects.equals(m.notificationContent(), m.content())) {
+                lockBySymbol.computeIfAbsent(key, k -> new java.util.TreeMap<>(
+                        java.util.Collections.reverseOrder())).put(severity(m.type()), m.notificationContent());
+            }
         }
         List<PushChannel.PushMessage> merged = new ArrayList<>();
         for (Map.Entry<String, PushChannel.PushMessage> e : bySymbol.entrySet()) {
             PushChannel.PushMessage main = e.getValue();
             String combined = String.join("\n", contentBySymbol.get(e.getKey()).values());
+            java.util.TreeMap<Integer, String> locks = lockBySymbol.get(e.getKey());
+            String lockCombined = (locks == null || locks.isEmpty())
+                    ? null   // 调用点漏传 → 由渠道侧的兜底文案接住，绝不回落完整正文
+                    : String.join("\n", locks.values());
             merged.add(new PushChannel.PushMessage(
-                    main.title(), combined, main.type(), main.symbol(), main.name(), main.time()));
+                    main.title(), combined, main.type(), main.symbol(), main.name(), main.time(),
+                    lockCombined, main.notificationTitle()));
         }
         return merged;
     }
@@ -272,9 +287,23 @@ public class MarketAlertService {
         String sig = signature(p.symbol(), LocalDate.now(), type);
         if (existing.contains(sig)) return;
         newSignatures.add(sig);
+        // P0-1（2026-09-14 增量深审）：标题带股票名 + 正文带现价/止损价 → 都必须给锁屏版
         alerts.add(new PushChannel.PushMessage(
                 p.name() + " 行情提醒", message(p, md, change, type), type,
-                p.symbol(), p.name(), LocalTime.now()));
+                p.symbol(), p.name(), LocalTime.now(),
+                lockScreenMessage(type), "行情提醒"));
+    }
+
+    /** 锁屏精简正文（P0-1）：只说「发生了什么」，**不点标的、不带价格/成本/止损价**。
+     *  详情留给打开 App 的人——锁屏是「放在桌上旁人能看见」的场合。 */
+    private String lockScreenMessage(String type) {
+        return switch (type) {
+            case "stop-loss" -> "有持仓跌破止损位了。打开阿呆看看。";
+            case "near-stop-loss" -> "有持仓快到止损位了。打开阿呆看看。";
+            case "loss" -> "有持仓单日大跌。打开阿呆看看。";
+            case "gain" -> "有持仓今天涨得不错。打开阿呆看看。";
+            default -> "有持仓跌破成本线了。打开阿呆看看。";
+        };
     }
 
     private String signature(String symbol, LocalDate date, String type) {
@@ -301,7 +330,9 @@ public class MarketAlertService {
                         + "，你还没设止损）——先想好这批复盘怎么走，要不要设个止损位？";
         alerts.add(new PushChannel.PushMessage(
                 lot.name() + " 批次止损预警", msg,
-                "stop-loss", lot.symbol(), lot.name(), LocalTime.now()));
+                "stop-loss", lot.symbol(), lot.name(), LocalTime.now(),
+                // P0-1：正文含名称/现价/该批成本 → 锁屏不点名、不带价
+                "有一个买入批次跌破止损了。打开阿呆看看。", "批次止损预警"));
     }
 
     private String message(Position p, MarketData md, BigDecimal change, String type) {

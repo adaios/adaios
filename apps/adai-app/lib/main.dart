@@ -174,6 +174,9 @@ class _RootAppState extends State<RootApp> {
   /// 全局 401：清 token → 回登录页。
   Future<void> _handleUnauthorized() async {
     await UserStore.clearToken();
+    // 登出/会话失效：解绑并清空外部入口队列（REVIEW P1-入口2）——
+    // 登出期间到达的 Siri / 快捷指令入口不会被下一个登录的账号消费，杜绝串号。
+    EntryIntentService.clearForLogout();
     if (!mounted) return;
     setState(() {
       _token = null;
@@ -318,9 +321,9 @@ class _DualWorldShellState extends State<DualWorldShell> {
     // 放在壳层而不是 main()：需要**带 token 的 _api**（未登录上报必 401）。
     _initPush();
     // RFC 20260913 外部入口批：接 Siri / 快捷指令 / adai:// 的「记一笔」。
-    // 同样放在会话就绪之后——记录要带 token 才能落盘；未登录时原生侧不会消费，
-    // 入口会攒着，登录进壳后自然被 MainPage 消费掉。
-    EntryIntentService.init();
+    // 同样放在会话就绪之后——记录要带 token 才能落盘；未登录时入口不排队（防串号，
+    // 见 EntryIntentService），原生侧攒着的等登录进壳后一次性取走。
+    EntryIntentService.init(userId: widget.userId);
   }
 
   Future<void> _initPush() async {

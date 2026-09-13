@@ -53,7 +53,19 @@ fi
 # 期望指纹从 keystore 直接读（唯一真源），与实际签名对拍。
 # 防的是「signingConfig 被改回 debug 却没人发现」——那产出的包现在装得上，
 # 但将来换正式签名无法覆盖升级（最坏的失败方式：不是装不上，而是以后更新要卸载）。
-KEYTOOL=$(command -v keytool || echo "$JAVA_HOME/bin/keytool")
+# P2-构建1（2026-09-14 晚间批）：原先 `command -v keytool || echo "$JAVA_HOME/bin/keytool"` 在
+# JAVA_HOME 未设时退化成 `/bin/keytool`（不存在）→ 指纹读不到 → 走 WARN 分支 exit 0 并照样提示
+# 「把该 APK 发给对方」。这与「绝不回退 debug 签名」的承诺相反，且发错签名的包将来只能卸载重装
+# （丢数据）。这里改 fail-closed：工具找不到就不产出可分发结论。
+KEYTOOL=$(command -v keytool 2>/dev/null || true)
+if [ -z "$KEYTOOL" ] && [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/keytool" ]; then
+  KEYTOOL="$JAVA_HOME/bin/keytool"
+fi
+if [ -z "$KEYTOOL" ] || [ ! -x "$KEYTOOL" ]; then
+  echo "ERROR: 找不到 keytool（JAVA_HOME=${JAVA_HOME:-未设置}）——无法验签。"
+  echo "  按纪律 **fail-closed**：本次构建不输出可分发结论。设好 JAVA_HOME 或把 keytool 放进 PATH 后重跑。"
+  exit 1
+fi
 EXPECTED_FP=$("$KEYTOOL" -list -v -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$KEY_ALIAS" 2>/dev/null \
   | awk -F'SHA256: ' '/SHA256:/{print $2; exit}' | tr -d ' :' | tr 'A-Z' 'a-z')
 
@@ -84,12 +96,15 @@ if [ -n "$APKSIGNER" ] && [ -n "$EXPECTED_FP" ]; then
   fi
   echo "OK: 签名校验通过（SHA-256 ${EXPECTED_FP}）——正式证书，可覆盖升级"
 else
-  echo "WARN: 未能自动验签（apksigner 或 keystore 指纹不可得）——请手工确认产物用的是正式证书："
+  # P2-构建1：验签不可得 = 不知道这个包是不是正式证书签的。不知道就不能说「可以发给对方」。
+  echo "ERROR: 无法验签（apksigner=${APKSIGNER:-未找到} / 期望指纹=${EXPECTED_FP:-读不到}）——"
+  echo "  按纪律 **fail-closed**：不输出分发提示，本次 APK 请勿分发。"
   echo "  期望证书 SHA-256: ${EXPECTED_FP:-<读不到>}"
   echo "  手工验签：\$ANDROID_HOME/build-tools/*/apksigner verify --print-certs $APK"
+  exit 1
 fi
 
-echo "=== Build done ==="
+echo "=== Build done（签名已校验，可分发）==="
 echo "产物：$(pwd)/${APK}（$(ls -lh "$APK" | awk '{print $5}')）"
 echo "sha256：$(shasum -a 256 "$APK" | awk '{print $1}')"
 echo "侧载：把该 APK 发给对方 → 手机允许「安装未知应用」→ 安装（以后更新用同一 keystore 的包覆盖）"

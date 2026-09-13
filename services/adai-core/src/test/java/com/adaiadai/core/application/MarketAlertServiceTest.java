@@ -235,6 +235,19 @@ class MarketAlertServiceTest {
         // 内容拼接了两种提醒（大跌 + 跌破成本）
         assertTrue(m.content().contains("单日大跌"), "合并内容应含单日大跌提醒");
         assertTrue(m.content().contains("跌破成本"), "合并内容应含跌破成本提醒");
+
+        // ── P0-1（2026-09-14 增量深审）：行情推送也要锁屏脱敏，且**合并不得把脱敏丢掉** ──
+        // 完整版（站内 Feed）：标题点名 + 正文带现价——这是它该有的样子
+        assertTrue(m.title().contains("贵州茅台"), m.title());
+        assertTrue(m.content().contains("9.5"), m.content());
+        // 锁屏版：标题不点名、正文不带价，但仍说清「发生了什么」
+        assertEquals("行情提醒", m.notificationTitle(), "锁屏标题不得含股票名");
+        String lock = m.notificationContent();
+        assertFalse(lock.contains("贵州茅台"), "锁屏不得出现股票名，实际: " + lock);
+        assertFalse(lock.contains("600519"), "锁屏不得出现代码，实际: " + lock);
+        assertFalse(lock.contains("9.5"), "锁屏不得出现现价，实际: " + lock);
+        assertTrue(lock.contains("单日大跌"), "合并后应保留各类型的锁屏提示，实际: " + lock);
+        assertTrue(lock.contains("跌破成本线"), "合并后应保留各类型的锁屏提示，实际: " + lock);
     }
 
     @Test
@@ -542,6 +555,14 @@ class MarketAlertServiceTest {
         assertTrue(cap.getAllValues().stream()
                         .anyMatch(m -> m.content().contains("2026-08-03 买入批次")),
                 "推送内容含批次信息（日期/成本/止损）");
+        // P0-1（2026-09-14 增量深审）：批次止损正文含名称/现价/成本 → 锁屏标题与正文都不得点名带价
+        PushChannel.PushMessage lotAlert = cap.getAllValues().stream()
+                .filter(m -> m.title().contains("批次止损预警")).findFirst().orElseThrow();
+        assertEquals("批次止损预警", lotAlert.notificationTitle(), "锁屏标题不得含股票名");
+        assertFalse(lotAlert.notificationContent().contains("浦发银行"),
+                "锁屏不得出现股票名: " + lotAlert.notificationContent());
+        assertFalse(lotAlert.notificationContent().contains("10.0"),
+                "锁屏不得出现成本: " + lotAlert.notificationContent());
     }
 
     @Test

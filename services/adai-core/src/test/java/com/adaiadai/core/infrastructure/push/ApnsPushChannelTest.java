@@ -171,9 +171,11 @@ class ApnsPushChannelTest {
         repo.save("adai", device(TOKEN, PushDevice.ENV_SANDBOX));
 
         String multiLine = "收盘小结：\n1. 今日成交 2 笔\n2. 破止损「立昂微」\n路径 C:\\tmp";
+        // P2-推送1（2026-09-14 晚间批）后：锁屏正文不再回落完整内容 → 这里显式声明锁屏版
+        //（本条测的是「多行中文 JSON 转义」，与本例内容是否敏感无关）
         channel(keyFile.toString(), KEY_ID, TEAM_ID, "", sandbox.baseUrl(), "http://127.0.0.1:1")
                 .push("adai", new PushChannel.PushMessage("收盘小结", multiLine, "close-summary",
-                        null, null, LocalTime.of(15, 30)));
+                        null, null, LocalTime.of(15, 30), multiLine));
 
         String body = sandbox.requests.get(0).body;
         // 关键：序列化后不得出现裸换行（Bark 2026-08-26 事故同型防护）
@@ -203,6 +205,38 @@ class ApnsPushChannelTest {
         assertEquals(lockScreen, alert.get("body").asText(), "锁屏必须用精简正文");
         assertFalse(alert.get("body").asText().contains("京东方A"), "锁屏不得泄漏持仓名: " + alert);
         assertFalse(alert.get("body").asText().contains("1420"), "锁屏不得泄漏现价: " + alert);
+    }
+
+    @Test
+    void payload_usesLockScreenTitle_notFullTitle() throws Exception {
+        // P0-1（2026-09-14 增量深审）：行情提醒的完整标题是「贵州茅台 行情提醒」——
+        // 标题同样出现在锁屏上，只脱敏正文等于没脱敏。
+        FakeApns sandbox = fakeApns(200, "{}");
+        repo.save("adai", device(TOKEN, PushDevice.ENV_SANDBOX));
+
+        channel(keyFile.toString(), KEY_ID, TEAM_ID, "", sandbox.baseUrl(), "http://127.0.0.1:1")
+                .push("adai", new PushChannel.PushMessage(
+                        "贵州茅台 行情提醒", "📉 贵州茅台(600519) 现价 1420.00 已跌破止损位 1450.00",
+                        "stop-loss", "600519", "贵州茅台", LocalTime.of(10, 30),
+                        "有持仓跌破止损位了。打开阿呆看看。", "行情提醒"));
+
+        JsonNode alert = MAPPER.readTree(sandbox.requests.get(0).body).get("aps").get("alert");
+        assertEquals("行情提醒", alert.get("title").asText(), "锁屏标题必须用精简标题");
+        assertFalse(alert.get("title").asText().contains("茅台"), "锁屏标题不得泄漏标的: " + alert);
+        assertFalse(alert.get("body").asText().contains("1420"), "锁屏正文不得泄漏现价: " + alert);
+    }
+
+    @Test
+    void payload_notificationTitle_fallsBackToTitleAndBlankTreatedAsUnmasked() throws Exception {
+        // 未给锁屏标题的老构造点行为不变（回退完整标题），空白视为未脱敏
+        assertEquals("完整标题", new PushChannel.PushMessage(
+                "完整标题", "正文", "session", null, null, LocalTime.NOON).notificationTitle());
+        assertEquals("完整标题", new PushChannel.PushMessage(
+                "完整标题", "正文", "session", null, null, LocalTime.NOON, "精简正文", "   ")
+                .notificationTitle(), "空白锁屏标题应视为未脱敏");
+        assertEquals("精简标题", new PushChannel.PushMessage(
+                "完整标题", "正文", "session", null, null, LocalTime.NOON, "精简正文", "精简标题")
+                .notificationTitle());
     }
 
     @Test

@@ -39,29 +39,46 @@ enum ExternalEntry {
     /// MethodChannel 名（Dart 侧 `entry_intent_service.dart` 同名）。
     static let channelName = "adai/entry"
 
-    /// 待处理入口的存储键。
-    private static let pendingKey = "adai_pending_entry"
+    /// 待处理入口的存储键（**队列**：追加不覆盖，读时一次取空）。
+    private static let pendingKey = "adai_pending_entries"
+
+    /// 旧版本的单槽键。升级时若还压着一条没消费的入口，读队列时顺带兼容取出，别丢。
+    private static let legacyPendingKey = "adai_pending_entry"
 
     /// 自定义 scheme（Info.plist 的 CFBundleURLTypes 声明）。
     static let scheme = "adai"
 
     /// 存一条待处理入口（App Intent 与 URL 两条路都走这里）。
+    ///
+    /// **队列语义（REVIEW P1-入口1）**：原来是单键覆盖写——冷启动时连发两条
+    /// （例如 Siri 连说两次、或一条 URL + 一条 Intent），后到的会把先到的**静默覆盖掉**。
+    /// 现在追加进数组，Dart 起来后整批取走。
     static func stash(action: ExternalEntryAction, text: String?, source: String) {
         var entry: [String: Any] = ["action": action.rawValue, "source": source]
         if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             entry["text"] = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        UserDefaults.standard.set(entry, forKey: pendingKey)
+        var queue = UserDefaults.standard.array(forKey: pendingKey) as? [[String: Any]] ?? []
+        queue.append(entry)
+        UserDefaults.standard.set(queue, forKey: pendingKey)
         // 通知同进程的 AppDelegate 立刻投给 Dart（引擎已就绪时走这条，最快）；
         // 引擎未就绪时 AppDelegate 不会消费，条目留在 UserDefaults 等 Dart 启动时取。
         NotificationCenter.default.post(name: .adaiExternalEntry, object: nil)
     }
 
-    /// 取出并清空（消费一次）。无待处理返回 nil。
-    static func drain() -> [String: Any]? {
-        guard let entry = UserDefaults.standard.dictionary(forKey: pendingKey) else { return nil }
+    /// 取出并清空**整条队列**（消费一次，FIFO 顺序）。无待处理返回空数组。
+    ///
+    /// 顺带兼容旧单槽键：升级后第一次 drain 时若新队列为空而旧键有值，一并取出并清掉。
+    static func drain() -> [[String: Any]] {
+        var queue = UserDefaults.standard.array(forKey: pendingKey) as? [[String: Any]] ?? []
+        if queue.isEmpty,
+           let legacy = UserDefaults.standard.dictionary(forKey: legacyPendingKey) {
+            queue = [legacy]
+        }
+        guard !queue.isEmpty else { return [] }
         UserDefaults.standard.removeObject(forKey: pendingKey)
-        return entry
+        UserDefaults.standard.removeObject(forKey: legacyPendingKey)
+        return queue
     }
 
     // MARK: - URL 去重（实测必需，见下）
@@ -79,6 +96,7 @@ enum ExternalEntry {
     /// 支持的形态（动作取自 [ExternalEntryAction]，**新增动作不必改本方法**）：
     /// - `adai://record?text=今天减仓了立昂微` → 直接落成一条记录
     /// - `adai://record`                        → 打开 App 并把记录入口准备好
+    /// - `adai://`（host 与 path 都空）          → 同上（只要求打开阿呆）
     /// - `adai://digest?url=https%3A%2F%2Fb23.tv%2Fx` → 让阿呆去整理这个链接
     ///
     /// **为什么要去重**：2026-09-13 真机实测——**冷启动**时 iOS 会把「启动用的那个 URL」
@@ -93,12 +111,23 @@ enum ExternalEntry {
     @discardableResult
     static func handle(url: URL, source: String) -> Bool {
         guard url.scheme?.lowercased() == scheme else { return false }
-        // adai://record → host = "record"；adai:///record → path = "/record"，两种都容忍
-        let rawAction = (url.host?.isEmpty == false ? url.host : url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-            ?? ExternalEntryAction.record.rawValue
-        // 认不出来就**不认领**（返回 false，不干扰别的 URL 处理）。
-        // 不认识的 action 一律回落成 record 会把「整理」悄悄变成「记一条」——正是本批要根除的失败模式。
-        guard let action = ExternalEntryAction(rawValue: rawAction) else { return false }
+        // adai://record → host = "record"；adai:///record → path = "/record"，两种都容忍。
+        // 裸 `adai://`（host 与 path 都空）= 只要求「打开阿呆」，明确映射成 record 的
+        // 「空内容」语义（打开 App 并把记录入口准备好）——原实现的 `?? record.rawValue`
+        // 兜底永远走不到（这里两个分支都不为 nil），是个死代码 + 隐性语义缺口。
+        let rawAction = (url.host?.isEmpty == false
+            ? url.host
+            : url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) ?? ""
+        let action: ExternalEntryAction
+        if rawAction.isEmpty {
+            action = .record
+        } else if let parsed = ExternalEntryAction(rawValue: rawAction) {
+            action = parsed
+        } else {
+            // 认不出来就**不认领**（返回 false，不干扰别的 URL 处理）。
+            // 不认识的 action 一律回落成 record 会把「整理」悄悄变成「记一条」——正是本批要根除的失败模式。
+            return false
+        }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
         // digest 的主参数叫 `url`（语义直白）；`text` 作为别名一并接受，
         // 这样同一条快捷指令把参数名写成 text 也不会静默丢内容。
@@ -109,7 +138,12 @@ enum ExternalEntry {
         let now = Date()
         if action == lastURLAction, text == lastURLText,
            let last = lastURLAt, now.timeIntervalSince(last) < urlDedupeWindow {
-            return true // 同一次外部动作的第二次送达，静默忽略
+            // 被吞要有痕（REVIEW P1-入口4）：去重本身要保留（它修的是冷启动同一次 URL
+            // 被系统送两遍的真 bug），但不再零日志零反馈——排查时能看到「这里吞了一条」。
+            NSLog("[AdaiEntry] URL 入口 %.0fms 内重复（同一次唤起被系统送了两次）→ 忽略第二条："
+                + "action=%@ text=%@ source=%@",
+                  now.timeIntervalSince(last) * 1000, action.rawValue, text ?? "<无>", source)
+            return true // 同一次外部动作的第二次送达，已记录日志后忽略
         }
         lastURLAction = action
         lastURLText = text

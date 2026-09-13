@@ -407,8 +407,17 @@ void main() {
     /// 模拟原生侧投递一条外部入口（快捷指令「阿呆阿呆整理」/ `adai://digest`）。
     /// listener 是同步触发的，但落地路径里要 await 插件查询 → 多 pump 几次。
     Future<void> emit(WidgetTester tester, ExternalEntryAction action, String text) async {
-      EntryIntentService.pending.value =
-          ExternalEntry(action: action, text: text, source: 'shortcut');
+      EntryIntentService.debugEnqueue(
+          ExternalEntry(action: action, text: text, source: 'shortcut'));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+    }
+
+    /// digest 入口会先弹一次点击确认（2026-09-14 安全要求）：点「现在整理」才提交。
+    Future<void> confirmDigest(WidgetTester tester) async {
+      expect(find.text('要我现在整理吗？'), findsOneWidget, reason: '提交前必须问一次');
+      await tester.tap(find.text('现在整理'));
       for (var i = 0; i < 4; i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
@@ -432,6 +441,7 @@ void main() {
       await pump(tester, backend);
 
       await emit(tester, ExternalEntryAction.digest, 'https://www.bilibili.com/video/BV1xx411c7mD');
+      await confirmDigest(tester);
 
       final posts = backend.requestsTo('/api/v1/learn/digest')
           .where((r) => r.method == 'POST').toList();
@@ -443,6 +453,30 @@ void main() {
       await settlePolling(tester);
     });
 
+    testWidgets('⑪b 一次点击确认：不确认不提交，点「先不用」什么都不发生', (tester) async {
+      final backend = _Backend()
+        ..statusSeq = [
+          {'status': 'done', 'type': 'ai', 'title': '不该出现'},
+        ];
+      await pump(tester, backend);
+
+      await emit(tester, ExternalEntryAction.digest, 'https://www.bilibili.com/video/BV1xx411c7mD');
+
+      // 确认弹窗出现，且此时还没有任何请求
+      expect(find.text('要我现在整理吗？'), findsOneWidget);
+      expect(find.textContaining('它会去抓原文、可能需要转写'), findsOneWidget);
+      expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty,
+          reason: '用户没点头前不替他花钱');
+      expect(backend.recordCalls, 0);
+
+      await tester.tap(find.text('先不用'));
+      await tester.pumpAndSettle();
+
+      expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty, reason: '点了「先不用」就不该提交');
+      expect(backend.recordCalls, 0, reason: '也不能退化成一条普通记录');
+      expect(find.text('要我现在整理吗？'), findsNothing, reason: '弹窗要收掉');
+    });
+
     testWidgets('⑫ 分享文本夹着口令也能择出链接（抖音那种形态）', (tester) async {
       final backend = _Backend()
         ..statusSeq = [
@@ -452,6 +486,7 @@ void main() {
 
       await emit(tester, ExternalEntryAction.digest,
           '8.88 复制打开抖音，看看【某某某】的作品 https://v.douyin.com/AbCdEf/ 很有意思');
+      await confirmDigest(tester);
 
       final posts = backend.requestsTo('/api/v1/learn/digest')
           .where((r) => r.method == 'POST').toList();
@@ -467,13 +502,14 @@ void main() {
       await pump(tester, backend);
 
       await emit(tester, ExternalEntryAction.digest, '这段文字里没有任何网址');
+      await confirmDigest(tester);
 
       expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty);
       expect(backend.recordCalls, 0, reason: '整理不了也不该退化成一条记录');
       expect(find.textContaining('没找到链接'), findsOneWidget);
     });
 
-    testWidgets('⑭ record 入口行为不变（回归）：有内容直接落成记录，不碰 learn', (tester) async {
+    testWidgets('⑭ record 入口行为不变（回归）：有内容直接落成记录，不碰 learn、不加确认', (tester) async {
       final backend = _Backend();
       await pump(tester, backend);
 
@@ -483,6 +519,49 @@ void main() {
       expect(backend.recordCalls, 1);
       expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty);
       expect(find.byKey(const ValueKey('learn-digest-user')), findsNothing);
+      expect(find.text('要我现在整理吗？'), findsNothing, reason: 'record 是直达动作，不加摩擦');
+    });
+
+    testWidgets('⑯ 未挂载不消费：页面不在时到达的入口留在队列，重新挂载后补消费（不丢件）',
+        (tester) async {
+      final backend = _Backend();
+      await pump(tester, backend);
+
+      // 拆掉 MainPage（dispose → 监听器移除）——此刻没有任何页面能接住入口
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpAndSettle();
+
+      EntryIntentService.debugEnqueue(const ExternalEntry(
+          action: ExternalEntryAction.record, text: '别把我弄丢', source: 'siri'));
+      await tester.pump();
+
+      expect(EntryIntentService.pendingCount, 1, reason: '没有挂载的页面 → 入口不该被取走');
+      expect(backend.recordCalls, 0);
+
+      // 重新挂载 → 首帧后补消费，入口不丢
+      await pump(tester, backend);
+      await tester.pumpAndSettle();
+
+      expect(backend.recordCalls, 1, reason: '入口要被重新挂载的页面消费，而不是凭空消失');
+      expect(EntryIntentService.pendingCount, 0);
+    });
+
+    testWidgets('⑰ 队列不丢件：一次连发两条 record → 两条都落成记录（FIFO 逐条处理）',
+        (tester) async {
+      final backend = _Backend();
+      await pump(tester, backend);
+
+      EntryIntentService.debugEnqueue(const ExternalEntry(
+          action: ExternalEntryAction.record, text: '第一条', source: 'siri'));
+      EntryIntentService.debugEnqueue(const ExternalEntry(
+          action: ExternalEntryAction.record, text: '第二条', source: 'siri'));
+      // 两条提交都在途：给足帧即可（这里不用 pumpAndSettle——连续建卡的入场动画会把它拖住）
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(backend.recordCalls, 2, reason: '后到的不能把先到的覆盖掉（单槽时代的 bug）');
+      expect(EntryIntentService.pendingCount, 0);
     });
   });
 }

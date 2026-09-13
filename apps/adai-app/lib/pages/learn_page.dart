@@ -285,11 +285,22 @@ class _LearnPageState extends State<LearnPage> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const Spacer(),
         // 「把分享接到阿呆」：配一次快捷指令，以后在任意 App 分享就能直接进来（2026-09-13 外部入口批）
-        GestureDetector(
-          onTap: () => ShareTokenDialog.show(context, widget.api),
-          child: const Icon(Icons.ios_share, size: 19, color: AppColors.darkGrey4),
+        // 热区 ≥44pt（点按目标下限）+ tooltip：原来是 19px 纯图标，既没提示也难点中。
+        Tooltip(
+          message: '把分享接到阿呆',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => ShareTokenDialog.show(context, widget.api),
+            child: const SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: Icon(Icons.ios_share, size: 19, color: AppColors.darkGrey4),
+              ),
+            ),
+          ),
         ),
-        const SizedBox(width: 18),
+        const SizedBox(width: 4),
         GestureDetector(
           onTap: _openDigest,
           child: const Icon(Icons.add_circle_outline, size: 22, color: AppColors.darkGreen),

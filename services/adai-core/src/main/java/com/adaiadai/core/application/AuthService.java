@@ -38,6 +38,7 @@ public class AuthService {
 
     private final AccountRepository accountRepository;
     private final SessionRepository sessionRepository;
+    private final ApiTokenService apiTokenService;
     private final BCryptPasswordEncoder passwordEncoder;
 
     /** 登录失败限流：key = ip + "|" + account → {failCount, lockUntil}。重启清零（个人站点可接受）。 */
@@ -47,9 +48,11 @@ public class AuthService {
     static final int MAX_FAILURES = 5;
     static final long LOCK_SECONDS = 15 * 60;
 
-    public AuthService(AccountRepository accountRepository, SessionRepository sessionRepository) {
+    public AuthService(AccountRepository accountRepository, SessionRepository sessionRepository,
+                       ApiTokenService apiTokenService) {
         this.accountRepository = accountRepository;
         this.sessionRepository = sessionRepository;
+        this.apiTokenService = apiTokenService;
         this.passwordEncoder = new BCryptPasswordEncoder(10);
     }
 
@@ -209,7 +212,13 @@ public class AuthService {
     // ── 改密 ──
 
     /**
-     * 改密：校验旧密码 → 更新哈希 → 踢除该账号其他会话（保留当前 token 的会话）。
+     * 改密：校验旧密码 → 更新哈希 → 踢除该账号其他会话（保留当前 token 的会话）
+     * → **撤销该账号全部外部工具令牌**（2026-09-14 增量深审 P0-2）。
+     * <p>
+     * 为什么改密必须撤令牌：外部令牌的明文会存在**用户控制不了的地方**（快捷指令的
+     * {@code .shortcut} 文件会被分享出去）。用户「发现不对劲 → 改密码」是对凭据泄露的标准补救动作，
+     * 若改密只踢会话不撤令牌，那把泄漏的钥匙就永久有效、还能继续打卡（含付费的整理确认）——
+     * 「可撤销」就只剩手动一条路，而用户恰恰不知道该去撤销。
      *
      * @return 被踢除的会话数
      */
@@ -235,13 +244,18 @@ public class AuthService {
                 removed++;
             }
         }
-        log.info("改密成功: {} 踢除其他会话 {} 个", acct.userId(), removed);
+        int revoked = apiTokenService.revokeAll(acct.userId());
+        log.info("改密成功: {} 踢除其他会话 {} 个 / 撤销外部令牌 {} 把", acct.userId(), removed, revoked);
         return removed;
     }
 
     /**
      * 踢除某账号全部会话（REVIEW #178：admin 在 /accounts PATCH 重置他人密码后调用，
      * 被重置者需重新登录；不依赖调用方会话，保留逻辑与 changePassword 的「保留当前」相反）。
+     * <p>
+     * <b>同时撤销该账号全部外部工具令牌</b>（2026-09-14 增量深审 P0-2）：本方法的三条调用路径
+     * （重置密码 / 禁用账号 / 删除账号）都是安全敏感操作，只踢会话不撤令牌等于「禁用了他，
+     * 但他的快捷指令还能用」。改密路径另在 {@link #changePassword} 内撤销。
      *
      * @return 被踢除的会话数
      */
@@ -251,8 +265,9 @@ public class AuthService {
             sessionRepository.deleteByTokenHash(s.tokenHash());
             removed++;
         }
-        if (removed > 0) {
-            log.info("踢除会话: userId={} 共 {} 个", userId, removed);
+        int revoked = apiTokenService.revokeAll(userId);
+        if (removed > 0 || revoked > 0) {
+            log.info("踢除会话: userId={} 共 {} 个 / 撤销外部令牌 {} 把", userId, removed, revoked);
         }
         return removed;
     }
