@@ -93,6 +93,11 @@ class _TradingPageState extends State<TradingPage> {
   bool _marketStageLoaded = false; // 端点可用且已加载（区别于加载失败/旧后端）
   bool _marketStageSaving = false; // 切换请求在途守卫（防连点并发 PUT）
 
+  // ── RFC 20260912 账实一致性闸门（P2-交易39：手机端补课，此前只有 web 看得见）──
+  // null = 未加载 / 加载失败——失败静默保持 null（对账是增强项，绝不误报、不拖垮持仓主数据）。
+  IntegrityReportDto? _integrity;
+  bool _integrityExpanded = false; // 横幅展开态（默认收起，无差异时整个横幅不渲染）
+
   Timer? _autoRefresh; // 30 分钟自动刷新（对齐 web B3，2026-08-17）
 
   @override
@@ -146,6 +151,7 @@ class _TradingPageState extends State<TradingPage> {
       _loadLots();      // RFC 20260825：逐笔批次简版（异步，失败静默）
       _loadCandidates(); // 2026-08-26 截图入账：当日候选（异步，失败静默）
       _loadMarketStage(); // v3.41：活跃市值区间（异步，失败静默）
+      _loadIntegrity();   // RFC 20260912：账实一致性自检（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
       // P1-前端1（2026-08-29 修复，web P1-7 同类在 app 复发）：
@@ -200,6 +206,76 @@ class _TradingPageState extends State<TradingPage> {
       setState(() { _marketStage = prev; _marketStageSaving = false; }); // 失败回滚
       _showSnack('切换失败：${_extractApiError(e)}', AppColors.darkOrange);
     }
+  }
+
+  /// RFC 20260912 账实一致性自检（GET /trading/integrity，P2-交易39 手机端补课）。
+  /// 静默降级：旧后端无此端点 / 网络抖动 / 未登录 → 保持 null，不显示横幅也不报错
+  /// （对账是增强项，不能拖垮持仓主数据；且「不知道」绝不能渲染成「没问题」）。
+  Future<void> _loadIntegrity() async {
+    try {
+      final r = await widget.api.getIntegrity();
+      if (!mounted) return;
+      setState(() => _integrity = r);
+    } catch (_) {
+      // 静默：见上（失败保持原值，若此前已加载出问题则继续显示——比悄悄消失安全）
+    }
+  }
+
+  /// RFC 20260912 账实不符闸门横幅（橙色，可展开）：
+  /// drift = 应有持仓（快照基线 + 锚点后流水净增减）≠ 落地持仓；gaps = 卖超/未持有的重放缺口。
+  /// 无差异 → 调用方不渲染（绝不制造噪音）；锚定/基线缺失时不误报（后端已降级为空 + note 说明）。
+  /// 第一原则：主语是「我」（阿呆），不出现系统视角标签；修正入口在电脑端（本页不做导入，见页头注释）。
+  Widget _buildIntegrityBanner(IntegrityReportDto r) {
+    final drift = r.drift;
+    final gaps = r.gaps;
+    final parts = <String>[
+      if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
+      if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _integrityExpanded = !_integrityExpanded),
+          child: Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.darkOrange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('阿呆发现账对不上：${parts.join(' / ')}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+            ),
+            Text(_integrityExpanded ? '收起' : '看明细',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            Icon(_integrityExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkGrey4),
+          ]),
+        ),
+        if (_integrityExpanded) ...[
+          const SizedBox(height: 6),
+          for (final d in drift)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(d.display,
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          for (final g in gaps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text('回放缺口 · ${g.display}',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          const SizedBox(height: 2),
+          // 手机端只负责「看得见」：导入/校准在电脑端（账户卡与持仓明细也都以券商口径为准）
+          const Text('去电脑端导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+        ],
+      ]),
+    );
   }
 
   /// v3.41（2026-09-04）：活跃市值区间切换卡（多头=红/空头=绿，红涨绿亏）。
@@ -773,6 +849,12 @@ class _TradingPageState extends State<TradingPage> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               children: [
+                // RFC 20260912 账实不符闸门（P2-交易39）：drift/gaps 非空才出现，无差异零噪音。
+                // 放最顶——「账对不上」比账户数字本身更需要第一眼看见（数字不可信时先别信数字）。
+                if (_integrity != null && _integrity!.hasIssue) ...[
+                  _buildIntegrityBanner(_integrity!),
+                  const SizedBox(height: 10),
+                ],
                 _buildSnapshotCard(),
                 // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，快照下方
                 if (_marketStageLoaded) ...[

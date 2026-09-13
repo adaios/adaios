@@ -353,6 +353,15 @@ void main() {
       };
       // 2026-08-26 截图入账：当日候选默认空（页面 initState 拉取，覆盖此 handler 的测试自设）
       b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(<Object>[]);
+      // RFC 20260912 账实一致性闸门（P2-交易39 手机端补课）：默认无差异 → 页面不出横幅（零噪音）
+      b.handlers['/api/v1/trading/integrity'] = (_) async => _json({
+            'anchor': {
+              'positionsReplace': '2026-09-11', 'cashImport': '2026-09-11',
+              'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-11',
+            },
+            'holdingsKnown': true, 'drift': <Object>[], 'gaps': <Object>[],
+            'note': '账实一致：派生持仓与落地持仓逐标的相符（锚定日 2026-09-11）',
+          });
     }
 
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
@@ -377,6 +386,85 @@ void main() {
       expect(find.text('总资产'), findsOneWidget);
       expect(find.text('贵州茅台'), findsOneWidget);
       expect(find.text('持仓明细'), findsOneWidget);
+    });
+
+    // ── RFC 20260912 账实一致性闸门（P2-交易39）：手机端终于看得见「账对不上」 ──
+    // 本批治本动机：三次双计事故都是「线上一片安静，账慢慢错」，用户手机上完全无感。
+
+    testWidgets('账实不符：出橙色横幅 + 展开摆明细（drift + gaps 逐行）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/integrity'] = (_) async => _json({
+            'anchor': {'positionsReplace': '2026-09-11', 'cashImport': '2026-09-11',
+              'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-11'},
+            'holdingsKnown': true,
+            'drift': [
+              {'symbol': '600206', 'name': '有研新材', 'snapshotQty': 900, 'ledgerDelta': -200,
+                'derived': 700, 'holdings': 900, 'diff': 200, 'note': '落地持仓多于派生'},
+            ],
+            'gaps': [
+              {'symbol': '002131', 'name': '利欧股份', 'direction': 'SELL', 'volume': 3500,
+                'price': 5.24, 'entryDate': '2026-08-17', 'reason': '卖超：持仓不足 3500 股'},
+            ],
+            'note': '发现账实差异',
+          });
+      await pumpTrading(tester, b);
+
+      // 横幅在、汇总数字在（1 只 + 1 笔）——明细默认收起（不占屏）
+      expect(find.textContaining('阿呆发现账对不上'), findsOneWidget);
+      expect(find.textContaining('1 只标的持仓不一致'), findsOneWidget);
+      expect(find.textContaining('1 笔回放缺口'), findsOneWidget);
+      expect(find.text('看明细'), findsOneWidget);
+      expect(find.textContaining('有研新材'), findsNothing); // 收起时明细不渲染
+
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+
+      // 展开后逐行人话：drift 含「应有/快照基线/锚点后流水/落地/差」；gaps 含方向人话 + 千分位
+      expect(find.text('收起'), findsOneWidget);
+      expect(find.textContaining('应有 700 股'), findsOneWidget);
+      expect(find.textContaining('快照基线 900 + 锚点后流水 -200'), findsOneWidget);
+      expect(find.textContaining('落地 900 股，差 +200'), findsOneWidget);
+      expect(find.textContaining('回放缺口 · 卖出 利欧股份（002131）3,500 股 @ 5.24'), findsOneWidget);
+      expect(find.textContaining('卖超：持仓不足 3500 股'), findsOneWidget);
+      // 手机端只负责「看得见」，修正指路电脑端（本页不做导入）
+      expect(find.textContaining('去电脑端导一次'), findsOneWidget);
+    });
+
+    testWidgets('账实一致：drift/gaps 空 → 一条横幅都不出（零噪音）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+          'positions': [
+            {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+              'avgCost': 1500.0, 'currentPrice': 1600.0,
+              'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7},
+          ],
+        });
+      await pumpTrading(tester, b);
+
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.text('看明细'), findsNothing);
+      expect(find.text('贵州茅台'), findsOneWidget); // 页面正常，不受影响
+    });
+
+    testWidgets('对账端点失败/旧后端无此端点：静默降级——不出横幅、不报错、主数据照常', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/positions'] = (_) async => _json({
+          'positions': [
+            {'symbol': '600519', 'name': '贵州茅台', 'quantity': 100,
+              'avgCost': 1500.0, 'currentPrice': 1600.0,
+              'marketValue': 160000.0, 'pnl': 10000.0, 'pnlPercent': 6.7},
+          ],
+        });
+      b.handlers['/api/v1/trading/integrity'] = (_) async => _json({'error': '维护中'}, status: 500);
+      await pumpTrading(tester, b);
+
+      // 「不知道」绝不渲染成「没问题」，也绝不渲染成错误页——只是没有横幅
+      expect(find.textContaining('阿呆发现账对不上'), findsNothing);
+      expect(find.text('贵州茅台'), findsOneWidget);
+      expect(find.text('重试'), findsNothing);
     });
 
     testWidgets('账户卡渲染：券商口径总盈亏 = 资产 - 本金（2026-08-22：自选/清仓区块已移除）', (tester) async {
