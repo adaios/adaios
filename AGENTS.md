@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-08-20
+updated: 2026-09-13
 status: active
-lines: 69
+lines: 70
 depends-on:
   - ai-engineering/README.md
 related:
@@ -43,10 +43,11 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 增量深审 | `ai-engineering/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `ai-engineering/process/ship.md` | /ship：测试→契约→登记→guard-meta 门禁→提交 |
 | 审查角色（技能包） | `ai-engineering/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 客观官 + 对抗找茬官（deep 默认附加），封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
+| **外部视角审查** | `ai-engineering/roles/`（stranger / social / support）| **面向身边人 / 新用户前必跑**：陌生人官（首次使用，**禁读源码**）+ 社会性官（递出去那一刻）+ 支持台官（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
 | 建设技能 | `ai-engineering/skills/` | new-api / new-domain / ship 三技能：建设与收尾流程封装为 SKILL.md，加载即执行 |
 | 技能包规范 | `ai-engineering/assets/skills-spec.md` | SKILL.md 技能包标准：name + frontmatter 10 字段融合、五段结构、新增流程 |
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
-| 检查清单 | `ai-engineering/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官清单 + guard 守护 |
+| 检查清单 | `ai-engineering/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官清单 + guard 守护 |
 | 元数据规范 | `ai-engineering/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `ai-engineering/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | 文档自动对齐 | `ai-engineering/guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|

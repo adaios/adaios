@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-06
+updated: 2026-09-13
 status: active
-lines: 74
+lines: 80
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -30,6 +30,9 @@ tags: [ai, meta, index]
 | roles/knowledge-reviewer.md | 知识数据官 | active |
 | roles/context-reviewer.md | AI Context 审查官 | active |
 | roles/adversarial-reviewer.md | 对抗找茬官（deep 默认附加，找炸点/骂点/边界漏）| active |
+| roles/stranger-reviewer.md | **陌生人官**（外部视角）：首次使用者——入门口可达/开号/空世界首屏，禁读源码 | active |
+| roles/social-reviewer.md | **社会性官**（外部视角）：递手机/被邀请者——通知暴露面/门槛/退出口，产出决策表 | active |
+| roles/support-reviewer.md | **支持台官**（外部视角）：预演「他一定会问的」——答不上来的即缺陷 | active |
 | skills/new-api.md | 建设技能：新建/修改 API（代码→契约→测试→门控闭环）| active |
 | skills/new-domain.md | 建设技能：新增 Domain（RFC+六维→插件→数据流→落地）| active |
 | skills/ship.md | 建设技能：/ship 收尾闭环（五件套→契约→登记→门禁→提交）| active |
@@ -56,6 +59,9 @@ tags: [ai, meta, index]
 | checklists/review-frontend.md | 前端代码检查清单 | active |
 | checklists/review-docs.md | 文档契约检查清单 | active |
 | checklists/review-knowledge.md | 知识数据检查清单 | active |
+| checklists/review-stranger.md | **陌生人首次使用**检查清单（入口可达/空世界/五问/术语）| active |
+| checklists/review-social.md | **社会性（递出去那一刻）**检查清单（暴露面/门槛/退出）| active |
+| checklists/review-support.md | **支持台（他一定会问）**检查清单（20 问 + 归属判定）| active |
 | checklists/review-perf.md | 加载性能专项（阶段 A→F 快查）| active |
 | checklists/guard.md | 守护检查清单（G1-G7）| active |
 | checklists/cost.md | 成本纪律（烧钱动作清单 + 省钱原则 + 盯账）| active |

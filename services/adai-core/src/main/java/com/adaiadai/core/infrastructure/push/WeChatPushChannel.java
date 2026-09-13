@@ -56,7 +56,7 @@ public class WeChatPushChannel implements PushChannel {
         try {
             String url = String.format(SCT_URL, sendKey)
                     + "?title=" + encode(message.title())
-                    + "&desp=" + encode(message.content());
+                    + "&desp=" + encode(message.notificationContent());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(8))

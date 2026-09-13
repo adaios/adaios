@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../services/push_service.dart';
 import '../widgets/input_bar.dart' show PickedImage;
 
 /// TradingPage — 交易插件手机端（模块定位：交易记忆，RFC 20260902，取代 RFC 20260815 建议引擎定位）。
@@ -2360,6 +2361,10 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'),
     ('buy-point', '买点提醒'),
     ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
+    // D2（2026-09-13 首轮外部视角审查）：与首页右滑那份 `_PushSettingsDialog` 对齐——
+    // 此前这里漏了这一项，于是**同一端两个入口给出不同的开关集合**（首页 10 项 / 交易页 9 项），
+    // 从交易页进来的纯 learn 用户根本关不掉复习提醒。
+    ('learn-review', '学习复习提醒（每日复习到期卡片）'),
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),
@@ -2368,9 +2373,39 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('market', '大盘行情条'),
   ];
 
+  /// D2（2026-09-13 首轮外部视角审查拍板 A）：本机到底能不能收到推送。
+  /// 安卓与网页**没有任何推送渠道**（APNs 是 iOS 专有，未接 FCM / 厂商通道 / Web Push）。
+  /// 此前这里没有门控：开关全能点、服务端也如实存下，然后一条通知都不来——
+  /// 用户不会认为是「这个产品没做」，只会以为「我是不是设错了」。
+  bool get _canReceivePush => PushService.supported;
+
+  /// 非 iOS 端的说明：不承诺收不到的东西（D2-A 明确告知）。
+  Widget _notSupportedNotice() {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 10),
+      child: Text(
+        '这台收不到通知——阿呆现在只能推到 iPhone。\n'
+        '这些开关先留着，以后换到 iPhone 就按这个来。',
+        style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4),
+      ),
+    );
+  }
+
+  Future<void> _toggle(String type, bool on) async {
+    final err = await widget.onToggle(type, on);
+    if (!mounted) return;
+    if (err == null) {
+      setState(() => _settings[type] = on);
+    } else {
+      widget.onToggleFailed?.call(err);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // D2（2026-09-13）：加了「这台收不到通知」说明条后内容变高，小屏会溢出 → 可滚动
+      scrollable: true,
       backgroundColor: AppColors.darkSurface2,
       title: const Text('推送设置',
         style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
@@ -2379,6 +2414,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!_canReceivePush) _notSupportedNotice(),
             for (final (type, label) in _items)
               SwitchListTile(
                 dense: true,
@@ -2387,15 +2423,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
                   style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
                 value: _settings[type] ?? true,
                 activeTrackColor: AppColors.darkGreen,
-                onChanged: (on) async {
-                  final err = await widget.onToggle(type, on);
-                  if (!mounted) return;
-                  if (err == null) {
-                    setState(() => _settings[type] = on);
-                  } else {
-                    widget.onToggleFailed?.call(err);
-                  }
-                },
+                onChanged: _canReceivePush ? (on) { _toggle(type, on); } : null,
               ),
           ],
         ),

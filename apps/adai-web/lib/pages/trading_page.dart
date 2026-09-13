@@ -5309,6 +5309,12 @@ class _PushSettingsDialog extends StatefulWidget {
 class _PushSettingsDialogState extends State<_PushSettingsDialog> {
   late final Map<String, bool> _settings = Map.of(widget.settings);
 
+  /// D2（2026-09-13 首轮外部视角审查拍板 A）：网页端**收不到**推送。
+  /// 浏览器通知本项目未接（Web Push 需要 Service Worker + VAPID），阿呆目前只能推到 iPhone。
+  /// 此前这里没有门控：开关全能点、服务端也如实存下，然后一条通知都不来——
+  /// 用户不会认为是「这个产品没做」，只会以为「我是不是设错了」。
+  static const bool _canReceivePush = false;
+
   static const List<(String, String)> _items = [
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'), // B11-3：注明含 15:15 收盘操作确认
     ('buy-point', '买点提醒'),
@@ -5322,9 +5328,34 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('market', '大盘行情条'),
   ];
 
+  /// 网页端的说明：不承诺收不到的东西（D2-A 明确告知）。
+  Widget _notSupportedNotice() {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 10),
+      child: Text(
+        '网页里收不到通知——阿呆现在只能推到 iPhone。\n'
+        '这些开关先留着，装了 iPhone 上的阿呆就按这个来。',
+        style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4),
+      ),
+    );
+  }
+
+  Future<void> _toggle(String type, bool on) async {
+    // B5-6（2026-08-23，P2-推送5 半修残留）：成功才翻转 + 失败透出原因
+    final err = await widget.onToggle(type, on);
+    if (!mounted) return;
+    if (err == null) {
+      setState(() => _settings[type] = on);
+    } else {
+      widget.onToggleFailed?.call(err);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // D2（2026-09-13）：加了「网页里收不到通知」说明条后内容变高，小屏会溢出 → 可滚动
+      scrollable: true,
       backgroundColor: AppColors.darkSurface2,
       title: const Text('推送设置',
         style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
@@ -5333,6 +5364,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!_canReceivePush) _notSupportedNotice(),
             for (final (type, label) in _items)
               SwitchListTile(
                 dense: true,
@@ -5341,16 +5373,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
                   style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
                 value: _settings[type] ?? true,
                 activeTrackColor: AppColors.darkGreen,
-                onChanged: (on) async {
-                  // B5-6（2026-08-23，P2-推送5 半修残留）：成功才翻转 + 失败透出原因
-                  final err = await widget.onToggle(type, on);
-                  if (!mounted) return;
-                  if (err == null) {
-                    setState(() => _settings[type] = on);
-                  } else {
-                    widget.onToggleFailed?.call(err);
-                  }
-                },
+                onChanged: _canReceivePush ? (on) { _toggle(type, on); } : null,
               ),
           ],
         ),

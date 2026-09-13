@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-13
 status: active
-lines: 47
+lines: 48
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, review]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | REVIEW.md | 审核全量状态报告（未修项滚动区） | active |
+| audits/2026-09-13-first-contact-review.md | **首轮外部视角审查**（面向身边人之前：陌生人/社会性/支持台三官首跑，只看字不看码，**三端口径** → P0×2「Android 两端零通知 + Android App debug 签名不可分发」+ P1×7 术语/空态/三端不同源/9 个无效推送开关 + 决策×6【D1/D2/D6 已拍板 A，附函数级落地方案】；只报告未修）| active |
 | audits/2026-09-13-trading-ledger-dirty-rows.md | 交易账本存量脏流水逐笔核对存档（全量 1707 笔重判：真重复 6 组非 4 笔 + 负持仓同根因 + 粗暴去重反例 25 只负持仓；只报告未改数据，处置待拍板） | active |
 | audits/2026-09-05-cognition-layer-review.md | 交易⑤认知层批三官深审存档（backend/docs/adversarial 隔离并行：P1×5 + 💥×6 + docs×6 全修出表，守护 G2 一并修） | active |
 | audits/2026-09-06-admin-uiux-review.md | adai-admin 管理后台 UI/UX 专项审查存档（ui/ux 双官隔离并行：P1×4 成立 + P1×1 误报排除 + P2×25 + P3×31，修复待拍板） | active |

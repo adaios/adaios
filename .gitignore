@@ -112,6 +112,11 @@ services/adai-core/data/
 **/android/.gradle/
 **/android/local.properties
 **/android/key.properties
+# D6-A（2026-09-13 侧载批）：Android 发布签名密钥本体。
+# 泄漏 = 任何人都能签出「看似官方」的升级包；丢失 = 已分发的包永远无法覆盖升级
+# （对方必须卸载重装 → 数据丢失）。生成后必须离线备份（keystore + 密码一起）。
+**/android/*.jks
+**/android/*.keystore
 *.apk
 *.aab
 *.ipa

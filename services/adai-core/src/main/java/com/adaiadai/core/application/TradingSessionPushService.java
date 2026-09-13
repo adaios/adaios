@@ -265,8 +265,9 @@ public class TradingSessionPushService {
                 log.warn("收盘小结：今日成交统计失败 | userId={} | {}", userId, e.getMessage());
             }
             int pending = tradeLogCollectService.todayCandidates(userId).size();
-            String content = buildCloseSummaryTemplate(data, userId, buy, sell, pending);
-            pushToAll(userId, "收盘小结", content, "close-summary", null, null);
+            // D1（2026-09-13 外部视角审查拍板 A）：完整版进站内 Feed；锁屏只收精简版（不含持仓名称/现价）
+            CloseSummaryText text = buildCloseSummary(data, userId, buy, sell, pending);
+            pushToAll(userId, "收盘小结", text.full(), "close-summary", null, null, text.lockScreen());
         });
     }
 
@@ -661,19 +662,31 @@ public class TradingSessionPushService {
         return sb.toString();
     }
 
-    /** 收盘小结模板（P2-用户3，2026-08-29）：客观数字聚合，不耗 AI；阿呆口吻（B1 无系统标签）。 */
-    private String buildCloseSummaryTemplate(SessionData data, String userId, int buyCount, int sellCount, int pending) {
-        StringBuilder sb = new StringBuilder("📋 收盘小结\n");
+    /** 收盘小结的两种正文：完整版给站内 Feed，锁屏版给外部通知（D1，2026-09-13）。 */
+    private record CloseSummaryText(String full, String lockScreen) {}
+
+    /**
+     * 收盘小结正文——**一次遍历产出两版**（D1，2026-09-13 外部视角审查拍板 A）：
+     * <ul>
+     *   <li>{@code full}：逐只持仓名称 + 现价 + 破止损标记 → **站内 Feed**（要打开 App 才看到）；</li>
+     *   <li>{@code lockScreen}：只报「几件事」，**不含任何标的名称与价格** → 锁屏通知。</li>
+     * </ul>
+     * 起因：这条是 alert 推送，**锁屏直接可见**——手机放在桌上就等于把持仓摊开给旁边的人。
+     * 之所以一次遍历出两版，是不想把 {@code ruleEngine.evaluateStopLoss} 跑两遍。
+     */
+    private CloseSummaryText buildCloseSummary(SessionData data, String userId,
+                                               int buyCount, int sellCount, int pending) {
+        StringBuilder full = new StringBuilder("📋 收盘小结\n");
         int total = buyCount + sellCount;
         if (total > 0) {
-            sb.append("今日成交：买 ").append(buyCount).append(" 笔 · 卖 ").append(sellCount).append(" 笔");
-            if (pending > 0) sb.append(" · 还有 ").append(pending).append(" 笔没确认（15:15 那条记得点）");
-            sb.append("\n");
+            full.append("今日成交：买 ").append(buyCount).append(" 笔 · 卖 ").append(sellCount).append(" 笔");
+            if (pending > 0) full.append(" · 还有 ").append(pending).append(" 笔没确认（15:15 那条记得点）");
+            full.append("\n");
         } else if (pending > 0) {
-            sb.append("今天有 ").append(pending).append(" 笔操作还没确认——点一下「确认并入账」就记上了\n");
+            full.append("今天有 ").append(pending).append(" 笔操作还没确认——点一下「确认并入账」就记上了\n");
         }
         if (!data.positions().isEmpty()) {
-            sb.append("持仓 ").append(data.positions().size()).append(" 只：\n");
+            full.append("持仓 ").append(data.positions().size()).append(" 只：\n");
         }
         int breached = 0;
         for (Position p : data.positions()) {
@@ -682,22 +695,37 @@ public class TradingSessionPushService {
             var sl = ruleEngine.evaluateStopLoss(userId, price, p.effectiveStopLoss());
             boolean isBreached = sl.verdict() == StopLossVerdict.BREACHED;
             if (isBreached) breached++;
-            sb.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
+            full.append("· ").append(p.name()).append(" 现价 ").append(fmt(price))
                     .append(isBreached ? " ⚠️ 破止损" : "").append("\n");
         }
         // 2026-09-12 账实一致性批：收盘小结带一句「账对不上」自检——把口径崩坏送到眼前，
         // 不再依赖用户某天自己发现（本次生产事故：三条真源互相矛盾三天，靠人肉眼看出）。
         String mismatch = mismatchLine(userId);
-        if (mismatch != null) sb.append(mismatch);
+        if (mismatch != null) full.append(mismatch);
         // 一句话收尾（按状态给建议，参考不是指令）
         if (breached > 0) {
-            sb.append("有 ").append(breached).append(" 只破了止损没走——明早开盘按纪律处理（R66）。");
+            full.append("有 ").append(breached).append(" 只破了止损没走——明早开盘按纪律处理（R66）。");
         } else if (total > 0) {
-            sb.append("今天有操作——收盘后做个复盘，看看执行得怎么样？");
+            full.append("今天有操作——收盘后做个复盘，看看执行得怎么样？");
         } else {
-            sb.append("今天没有操作，持仓按计划拿着就行。");
+            full.append("今天没有操作，持仓按计划拿着就行。");
         }
-        return sb.toString();
+
+        // ── 锁屏精简版：只给「有几件事」，不给任何标的名称与价格 ──
+        StringBuilder lock = new StringBuilder();
+        if (total > 0) {
+            lock.append("今日成交 ").append(total).append(" 笔");
+            if (pending > 0) lock.append(" · 待确认 ").append(pending).append(" 笔");
+        } else if (pending > 0) {
+            lock.append("待确认 ").append(pending).append(" 笔");
+        } else {
+            lock.append("今天没有操作");
+        }
+        if (breached > 0) lock.append(" · ").append(breached).append(" 只破止损");
+        // 账实有出入只报「有这回事」、不带数字细节——细节留给打开 App 的人
+        if (mismatch != null) lock.append(" · 账实有出入");
+        lock.append("\n打开阿呆看详情");
+        return new CloseSummaryText(full.toString(), lock.toString());
     }
 
     /**
@@ -773,13 +801,25 @@ public class TradingSessionPushService {
 
     private void pushToAll(String userId, String title, String content, String type,
                            String symbol, String name) {
+        pushToAll(userId, title, content, type, symbol, name, null);
+    }
+
+    /**
+     * 带**锁屏精简正文**的重载（D1，2026-09-13 外部视角审查拍板 A）。
+     * <p>
+     * 外部通知渠道（APNs / Bark / 微信）渲染 {@code lockScreenContent}，站内 Feed 仍渲染完整
+     * {@code content}——锁屏是「放在桌上旁人能看见」的，Feed 是「自己打开才看到」的，两者不该同一份字。
+     * 传 null = 不脱敏：老的 6 参调用点走这条路，行为不变，可按推送类型渐进补齐。
+     */
+    private void pushToAll(String userId, String title, String content, String type,
+                           String symbol, String name, String lockScreenContent) {
         // RFC 20260817：推送开关——用户关闭的类型不推送（session=早/午/尾盘，buy-point=买点）
         if (!pushSettingsRepository.findByUser(userId).isEnabled(type)) {
             log.info("时段推送跳过（用户关闭）| userId={} | type={}", userId, type);
             return;
         }
         PushChannel.PushMessage message = new PushChannel.PushMessage(
-                title, content, type, symbol, name, LocalTime.now());
+                title, content, type, symbol, name, LocalTime.now(), lockScreenContent);
         for (PushChannel channel : pushChannels) {
             if (channel.enabled()) {
                 channel.push(userId, message);

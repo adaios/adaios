@@ -1,8 +1,8 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-09-12
-last-review: 2026-09-12
-baseline: learn V2 消化闭环增量深审（d3b8f4a^..ff7451f 4 commit，用户「learn V2 增量审核」）；前值：生产数据审查 2026-09-07
+updated: 2026-09-13
+last-review: 2026-09-13
+baseline: 首轮外部视角审查（面向身边人之前：陌生人/社会性/支持台三官首跑，禁读源码）+ D1/D2/D6 落地批；前值：APNs 自有推送渠道批 2026-09-13
 mode: deep 增量（learn V2 四官隔离并行：backend/frontend/docs + adversarial；0 修复只报告）
 ---
 
@@ -64,6 +64,7 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 
 | 日期 | 模式 | 基线 | 派发角色 | 新增 | 修复 |
 |:-----|:-----|:-----|:---------|:-----|:-----|
+| 2026-09-13 | **首轮外部视角审查 + D1/D2/D6 落地批**（用户「面向身边人，该用什么角色/手段做审查」→ 拍板 A/A/A 全做）| 工作树（新增外部视角角色包 + 三端入口/文案/Android 构建配置）| stranger / social / support 三官首跑（**装备纪律：禁读源码**，只看渲染截图/用户可见文案/渠道与构建事实）+ 主会话落地 | **P0×2 + P1×7 + 决策×6**：P0-1 Android 两端零通知（无 FCM/厂商通道/Web Push，AndroidManifest 仅 INTERNET）· P0-2 Android App debug 签名不可分发 · P1-1 首屏不解释自己（`Kernel · Domain · 数据`）· P1-2 空态无下一步 · P1-3 架构术语上脸 · P1-4 错误提示透出内部动词 · P1-5 自造词 · P1-6 三端不同源 · P1-7 **安卓/网页 9 个推送开关全部无效** | **D6-A/D1-A/D2-A 三项落地**：正式 keystore + `build_apk.sh`（`signingReport` 实证 release → `adaios-release.jks`，不再是 `AndroidDebugKey`）· 收盘小结**锁屏脱敏**（`PushMessage.lockScreenContent` 分层正文，Feed 仍收完整版；后端 +4 测试）· 三处推送设置**非 iOS 置灰 + 明确告知**（app +1 测试，补齐同端两个同名对话框 9 vs 10 的开关差）；剩 **P1-2/P1-3/P1-4 文案**（自造词替换用词待拍板）+ 重复 UI 抽组件；报告 `audits/2026-09-13-first-contact-review.md` |
 | 2026-09-13 | APNs 自有推送渠道批（RFC 20260913；用户「有了开发者账号，建议我做什么」→「开工」）| 工作树（push 设备登记 + ApnsPushChannel + iOS entitlements/AppDelegate + Dart PushService）| 主会话自测 + 实测取证（entitlements / APNs 探针）| P2-APNs1~5 + P2-工程4（点击不深链 / Bark+APNs 双弹 / 静默推送与角标未接 / 小组件与 App Intents 未做 / 付费账号到期运维 / Jackson 尾部容错同型）| 本批无 P0/P1：推送是尽力而为的动作（失败不抛且 fail-visible），设备登记写路径损坏 fail-closed；未修项 6 条见下 |
 | 2026-09-07 | deep 增量（learn V2 消化闭环，用户「learn V2 增量审核」）| `d3b8f4a^..ff7451f`（4 commit 31 文件）| ×4（backend + frontend + docs + adversarial 隔离并行）| 战略×2 + P1×4 + P2×11 + P3×3（去重后；详见 audits/2026-09-07-learn-v2-review.md）| 0（只报告；修复批次待拍板）|
 | 2026-09-07 | learn V2 审查修复批（用户「按决策来，我要睡了」自主推进）| 工作树（learn V2 审查登记后续）| 主会话 | 0 新问题 | **S-learn1/2 + P1-learn1~4 + P2-learn1~10 出表**：状态流转约束 + review_at 计时 + reminded_at 7 天节流 + 跨日同名拒绝 + 回链 fileStem + learn 侧开关端点（纯 learn 可自关）+ Feed 事件类型级门控 + 候选管理 UI + 仓储 applyEdit 锁内 merge + 未知段手术保留 + busy 守卫/clearSnackBars；后端 1292→**1309** · web 171→**174** · app 170→**171** · 端点 122→**124**；guard-meta/align PASS（详见 change-log）|

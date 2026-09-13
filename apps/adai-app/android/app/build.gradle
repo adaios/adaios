@@ -4,6 +4,17 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// D6-A（2026-09-13 侧载批）：Android 发布签名从 android/key.properties 读（该文件与 .jks 均不进 git）。
+// 缺该文件 → signingConfigs.release 不完整 → release 构建**直接失败**（fail-visible），
+// 绝不回退 debug 签名，原因有二：
+//   1) debug 签名的包不能上架，也不该分发给别人；
+//   2) 一旦把 debug 签名的包发出去，将来换正式签名**无法覆盖升级**——对方必须卸载重装 = 数据丢失。
+def keystorePropertiesFile = rootProject.file('key.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.adaiadai.app"
     compileSdk = 36
@@ -24,11 +35,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            // 缺 key.properties 时不赋值 → release 构建因签名配置不完整而失败（见文件头说明），
+            // 这是刻意为之：宁可构建失败，也不产出「看着像正式版、其实签不上」的包。
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
+                storeFile = file(keystoreProperties['storeFile'])
+                storePassword = keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            signingConfig = signingConfigs.release
         }
     }
 }

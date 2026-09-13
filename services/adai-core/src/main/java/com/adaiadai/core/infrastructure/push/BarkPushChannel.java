@@ -62,7 +62,7 @@ public class BarkPushChannel implements PushChannel {
         try {
             // POST JSON：title/body 不受 URL 长度限制，比 GET 路径拼接稳（Server酱 GET 曾因内容超长/特殊字符受限）
             String json = "{\"title\":\"%s\",\"body\":\"%s\",\"group\":\"AdaiOS\",\"level\":\"active\"}"
-                    .formatted(escape(message.title()), escape(message.content()));
+                    .formatted(escape(message.title()), escape(message.notificationContent()));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/" + deviceKey))
                     .timeout(Duration.ofSeconds(8))

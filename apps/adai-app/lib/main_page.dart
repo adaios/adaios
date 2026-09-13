@@ -7,6 +7,7 @@ import 'root_keys.dart';
 import 'theme/app_colors.dart';
 import 'services/api_service.dart';
 import 'services/entry_intent_service.dart';
+import 'services/push_service.dart';
 import 'services/models/learn_models.dart';
 import 'pages/learn_page.dart';
 import 'widgets/feed_card.dart';
@@ -2157,9 +2158,40 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('market', '大盘行情条'),
   ];
 
+  /// D2（2026-09-13 首轮外部视角审查拍板 A）：本机到底能不能收到推送。
+  /// 安卓与网页**没有任何推送渠道**（APNs 是 iOS 专有，未接 FCM / 厂商通道 / Web Push）。
+  /// 此前这里没有门控：开关全能点、服务端也如实存下，然后一条通知都不来——
+  /// 用户不会认为是「这个产品没做」，只会以为「我是不是设错了」。
+  bool get _canReceivePush => PushService.supported;
+
+  /// 非 iOS 端的说明：不承诺收不到的东西（D2-A 明确告知）。
+  Widget _notSupportedNotice() {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 10),
+      child: Text(
+        '这台收不到通知——阿呆现在只能推到 iPhone。\n'
+        '这些开关先留着，以后换到 iPhone 就按这个来。',
+        style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4),
+      ),
+    );
+  }
+
+  Future<void> _toggle(String type, bool on) async {
+    // B11-2（P2-推送5）：成功才翻转 + 失败透出原因
+    final err = await widget.onToggle(type, on);
+    if (!mounted) return;
+    if (err == null) {
+      setState(() => _settings[type] = on);
+    } else {
+      widget.onToggleFailed?.call(err);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // D2（2026-09-13）：加了「这台收不到通知」说明条后内容变高，小屏会溢出 → 可滚动
+      scrollable: true,
       backgroundColor: AppColors.darkSurface2,
       title: const Text('推送设置',
         style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
@@ -2168,6 +2200,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!_canReceivePush) _notSupportedNotice(),
             for (final (type, label) in _items)
               SwitchListTile(
                 dense: true,
@@ -2176,16 +2209,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
                   style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
                 value: _settings[type] ?? true,
                 activeTrackColor: AppColors.darkGreen,
-                onChanged: (on) async {
-                  // B11-2（P2-推送5）：成功才翻转 + 失败透出原因
-                  final err = await widget.onToggle(type, on);
-                  if (!mounted) return;
-                  if (err == null) {
-                    setState(() => _settings[type] = on);
-                  } else {
-                    widget.onToggleFailed?.call(err);
-                  }
-                },
+                onChanged: _canReceivePush ? (on) { _toggle(type, on); } : null,
               ),
           ],
         ),

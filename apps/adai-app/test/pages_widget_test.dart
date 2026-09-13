@@ -364,6 +364,36 @@ void main() {
           });
     }
 
+    // ── D2（2026-09-13 首轮外部视角审查拍板 A）：不承诺收不到的东西 ──
+    // 起因：安卓与网页没有任何推送渠道，但开关照样能点、服务端也照样存 ——
+    // 用户把开关全打开，然后一条通知都不来，还以为是自己的设置出了问题。
+
+    testWidgets('D2 推送设置：非 iOS 端置灰 + 明确告知；开关集合与首页那份对齐', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/push-settings'] = (_) async => _json({
+            'session': true, 'close-summary': true, 'learn-review': true,
+          });
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.byTooltip('推送设置'));
+      await tester.pumpAndSettle();
+
+      // ① 明说收不到（测试环境 targetPlatform 默认 android，本机没有推送渠道）
+      expect(find.textContaining('这台收不到通知'), findsOneWidget,
+          reason: '非 iOS 端必须明说收不到，否则用户会以为是自己的设置错了');
+
+      // ② 开关置灰：能点却永远不生效是最坏的假象
+      final tiles = tester.widgetList<SwitchListTile>(find.byType(SwitchListTile)).toList();
+      expect(tiles, isNotEmpty, reason: '既定设置仍要展示（换到 iPhone 后照此生效）');
+      expect(tiles.every((t) => t.onChanged == null), isTrue,
+          reason: '非 iOS 端开关必须置灰');
+
+      // ③ 与首页那份的 10 项对齐（此前这里漏了 learn-review，两个入口给出的开关集合不同）
+      expect(tiles.length, 10);
+      expect(find.text('学习复习提醒（每日复习到期卡片）'), findsOneWidget);
+    });
+
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
       final b = _Backend();
       b.handlers['/api/v1/trading/positions'] = (_) async => _json({

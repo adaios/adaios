@@ -671,6 +671,73 @@ class TradingSessionPushServiceTest {
         assertTrue(content.contains("今天没有操作"), "无成交应走持有分支，实际: " + content);
     }
 
+    // ── D1（2026-09-13 首轮外部视角审查拍板 A）：收盘小结锁屏脱敏 ──
+    //     锁屏是「手机放在桌上、旁人一眼能看见」的；完整正文（逐只持仓名称 + 现价）只给站内 Feed。
+
+    @Test
+    void closeSummary_lockScreen_leaksNoPositionNameOrPrice() {
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getTradeHistory(any(), any(), any())).thenReturn(List.of(
+                trade("t1", "000725", "京东方A", com.adaiadai.core.domain.trading.TradeDirection.BUY, "5.20", 1000)));
+        TradingSessionPushService svc = serviceWithPositions(channel, mock(AiClient.class),
+                "../../os/trading-engine/knowledge/context", mock(AccountSnapshotRepository.class), false, trading);
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        PushChannel.PushMessage m = captor.getValue();
+
+        // 完整版（站内 Feed）逐只列名 + 现价——这是它该有的样子
+        assertTrue(m.content().contains("京东方A"), "完整版应列持仓名，实际: " + m.content());
+        assertTrue(m.content().contains("贵州茅台"), m.content());
+
+        // 锁屏版：只报「几件事」，不得出现任何标的名称与现价
+        String lock = m.notificationContent();
+        assertFalse(lock.contains("京东方A"), "锁屏不得出现持仓名，实际: " + lock);
+        assertFalse(lock.contains("贵州茅台"), lock);
+        assertFalse(lock.contains("5.46"), "锁屏不得出现现价，实际: " + lock);
+        assertFalse(lock.contains("1420"), lock);
+        assertTrue(lock.contains("今日成交 1 笔"), "锁屏应报成交笔数，实际: " + lock);
+        assertTrue(lock.contains("打开阿呆看详情"), "锁屏应给出下一步，实际: " + lock);
+        assertTrue(lock.length() < 60, "锁屏正文应短到一眼看完，实际 " + lock.length() + " 字: " + lock);
+    }
+
+    @Test
+    void closeSummary_feedAndLockScreen_areTwoDifferentTexts() {
+        // Feed 收完整版、锁屏收精简版——若两份字相同，等于脱敏白做
+        PushChannel channel = mock(PushChannel.class);
+        when(channel.enabled()).thenReturn(true);
+        TradingSessionPushService svc = serviceWithPositions(channel, mock(AiClient.class));
+
+        svc.closeSummaryPush();
+
+        ArgumentCaptor<PushChannel.PushMessage> captor = ArgumentCaptor.forClass(PushChannel.PushMessage.class);
+        verify(channel, times(1)).push(eq("adai"), captor.capture());
+        PushChannel.PushMessage m = captor.getValue();
+        assertFalse(m.content().equals(m.lockScreenContent()),
+                "Feed 版与锁屏版必须是两份不同的字，实际相同: " + m.content());
+        assertTrue(m.content().contains("持仓 2 只"), "Feed 版保留完整细节，实际: " + m.content());
+    }
+
+    @Test
+    void pushMessage_notificationContent_fallsBackToContentWhenBlank() {
+        // 未给锁屏版的老构造点 → 通知正文回落完整版（行为不变）；空白视为未脱敏
+        PushChannel.PushMessage legacy = new PushChannel.PushMessage(
+                "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON);
+        assertEquals("完整正文", legacy.notificationContent());
+
+        PushChannel.PushMessage blank = new PushChannel.PushMessage(
+                "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON, "   ");
+        assertEquals("完整正文", blank.notificationContent(), "空白锁屏版应视为未脱敏");
+
+        PushChannel.PushMessage masked = new PushChannel.PushMessage(
+                "收盘小结", "完整正文", "close-summary", null, null, java.time.LocalTime.NOON, "精简");
+        assertEquals("精简", masked.notificationContent());
+    }
+
     // ── 2026-09-12 账实一致性批：收盘小结带「账对不上」自检行 ──
 
     @Test

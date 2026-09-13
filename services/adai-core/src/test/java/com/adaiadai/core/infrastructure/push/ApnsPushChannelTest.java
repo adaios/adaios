@@ -187,6 +187,25 @@ class ApnsPushChannelTest {
     }
 
     @Test
+    void payload_usesLockScreenContent_notFullContent() throws Exception {
+        // D1（2026-09-13 首轮外部视角审查拍板 A）：APNs 是**锁屏可见**的 alert 通知 →
+        // 渲染锁屏精简正文；完整正文（逐只持仓名称/现价）只留在站内 Feed。
+        FakeApns sandbox = fakeApns(200, "{}");
+        repo.save("adai", device(TOKEN, PushDevice.ENV_SANDBOX));
+
+        String full = "📋 收盘小结\n持仓 2 只：\n· 京东方A 现价 5.46\n· 贵州茅台 现价 1420.00";
+        String lockScreen = "今日成交 1 笔 · 1 只破止损\n打开阿呆看详情";
+        channel(keyFile.toString(), KEY_ID, TEAM_ID, "", sandbox.baseUrl(), "http://127.0.0.1:1")
+                .push("adai", new PushChannel.PushMessage("收盘小结", full, "close-summary",
+                        null, null, LocalTime.of(15, 30), lockScreen));
+
+        JsonNode alert = MAPPER.readTree(sandbox.requests.get(0).body).get("aps").get("alert");
+        assertEquals(lockScreen, alert.get("body").asText(), "锁屏必须用精简正文");
+        assertFalse(alert.get("body").asText().contains("京东方A"), "锁屏不得泄漏持仓名: " + alert);
+        assertFalse(alert.get("body").asText().contains("1420"), "锁屏不得泄漏现价: " + alert);
+    }
+
+    @Test
     void push_productionDevice_goesToProductionGateway() throws Exception {
         FakeApns sandbox = fakeApns(200, "{}");
         FakeApns production = fakeApns(200, "{}");
