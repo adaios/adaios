@@ -1,6 +1,6 @@
 ---
 title: 项目审核全量状态报告
-updated: 2026-09-13
+updated: 2026-09-14
 last-review: 2026-09-13
 baseline: 首轮外部视角审查（面向身边人之前：陌生人/社会性/支持台三官首跑，禁读源码）+ D1/D2/D6 落地批；前值：APNs 自有推送渠道批 2026-09-13
 mode: deep 增量（learn V2 四官隔离并行：backend/frontend/docs + adversarial；0 修复只报告）
@@ -165,6 +165,7 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 | P1-learn2 | **✅ 已修（2026-09-07 审查修复批：save 全日期同名拒绝源头消除 + find 歧义 400）。title-only 寻址跨日同名歧义（⭐⭐ 2026-09-07 learn V2 审：对抗 P1-2 + backend P1 + 主会话 find() 实锤）**：防覆盖只挡同日；跨日重喂同标题落第二张同名卡后 `find()` = list（created desc）+ `findFirst()` **恒取最新**——PATCH status/edit、反哺、详情对老卡操作静默落新卡，老卡无法流转/编辑；前端 `_replaceCard` 按 type+title 替换 → 刷新回弹、双卡串台 | `LearnCardFileRepository.java:77-84` / web learn_page | 业务键加日期消歧（created 透传定位），歧义 400 人话 |
 | P1-learn3 | **✅ 已修（2026-09-07 审查修复批：web learn_page 改用 extractApiErrorMessage 透出后端人话）。learn 前端写失败人话丢失 + 技术文本外露（⭐ 2026-09-07 learn V2 审：frontend P1 + 对抗细节，U26/F57 复发）**：反哺/流转/复述三处 catch 不取后端 body.error，`_human` 只认 `Exception:` 前缀——`ApiException(400): API 请求失败（HTTP 400）` 整段外露；失败吞成笼统「操作失败请重试」 | web `learn_page.dart:330-433` / `api_service.dart:1322,1345` | 统一换用既有 `extractApiErrorMessage` |
 | P1-learn4 | **✅ 已修（2026-09-07 审查修复批：候选仓储同名唯一语义 + 歧义 400，不再删错对象）。候选删除删错对象（⭐ 2026-09-07 learn V2 审：对抗 P2-3 + backend P2⑥）**：`delete` 对 `listFiles` **无序首命中**删除，列表按 created desc——跨日同名候选并存时删错条、无回显 | `LearnTradingCandidateFileRepository.delete` / `DELETE /learn/cards/candidates` | 按 created+title 定位或返回被删标题确认 |
+| P1-合规1 | **公安联网备案未办（ICP 备案后 30 天内，最迟 2026-09-30）**：`京ICP备2026056893号` 只是工信部 ICP 备案；公安联网备案须另到全国互联网安全管理服务平台（www.beian.gov.cn）提交，通过后还要把公安备案号挂到网站底部（web/admin 已有 ICP 栏可并列）。**登记前此条只在 `icp-filing.md` §6 步骤 5 有一个 ⬜，未进 task-log/REVIEW/快照——新会话完全看不到（2026-09-14 核实）** | 运营/合规（无代码）；步骤见 `docs/deployment/icp-filing.md` §6 | 在期限内提交（自 2026-09-01 备案通过起 30 天内）；通过后补挂底部备案号；办完关闭本行 |
 > **FP-P1~P4 已出表**（2026-08-16 框架+插件审查修复批，见已修复区）：yml 路径 11-context→knowledge/context（P1）；R81 分母改总资产（现金纳入，P2）；update-current.sh 幂等+时间戳语义（P3）；R66 现价口径注明（P4）。**注意：P1 表仍有 P1-交易4/P1-交易9 未修（2026-08-17 走查确认，见下表）**。
 > **P1 当前清零**（2026-08-15 修复批 S + S2 全部出表：P1-B1/B2/B3/B4 + P1-D1，见已修复区）。2026-08-16 框架+插件审查新增 FP-P1~P4（未修）。
 
