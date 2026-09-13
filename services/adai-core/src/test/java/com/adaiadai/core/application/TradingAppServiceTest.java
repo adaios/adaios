@@ -717,6 +717,53 @@ void watchlistImport_wrongFormat_throws() {
 }
 
 @org.junit.jupiter.api.Test
+void watchlistImport_unparsedRow_throwsAndNeverOverwrites() {
+    // 2026-09-13（P2-交易41 同型风险封堵）：自选导入是**全量覆盖**（saveAll 以文件为准）——
+    // 有一行没看懂就必须拒绝，绝不「丢一行 = 静默删一只自选」。
+    // 原实现 `if (!matches("\\d{6}")) continue` 静默丢行、无计数无明细、仍照常覆盖。
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new WatchlistItem("000725", "京东方Ａ", "元器件", "信息产业-元器件", 6, 8, 1, "KDJ死叉", LocalDate.of(2026, 8, 19)))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "601066\t中信建投\t证券\t金融-证券\t2\t10\t1\tKDJ死叉\n"
+            + "\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉\n"; // 列错位：代码列空 → 原来被静默丢
+    TradingException ex = assertThrows(TradingException.class, () -> service.watchlistImport("default", content));
+
+    assertTrue(ex.getMessage().contains("1 行"), "报错要如实说清没识别几行：" + ex.getMessage());
+    assertTrue(ex.getMessage().contains("京东方Ａ"), "报错要给出没看懂的那一行：" + ex.getMessage());
+    verify(wl, never()).saveAll(any(), any()); // 关键：一行都不落盘，旧自选完好
+    verify(wl, never()).archive(any(), any()); // 拒绝发生在归档之前（不留无意义的备份噪音）
+}
+
+@org.junit.jupiter.api.Test
+void watchlistImport_trailingCommentAndBlankLines_notTreatedAsUnparsed() {
+    // 判据边界（防误伤正常文件）：通达信自选导出的行尾就是「#数据来源:通达信」，末尾常有空行——
+    // 这些结构性行不能算「没看懂的行」，否则每次正常导入都会被 fail-closed 拒掉（比原 bug 更糟）。
+    PositionRepository repo = mock(PositionRepository.class);
+    WatchlistRepository wl = mock(WatchlistRepository.class);
+    when(wl.findAll(any())).thenReturn(new java.util.ArrayList<>());
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), wl, mock(SoldTradeRepository.class),
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+    String content = "代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示\n"
+            + "600487\t亨通光电\t通信设备\t信息产业-通信设备\t8\t10\t13\tKDJ金叉\n"
+            + "#数据来源:通达信\n"
+            + "\n";
+    var r = service.watchlistImport("default", content);
+
+    assertEquals(1, r.imported(), "注释行/空行不算没看懂的行——正常文件必须能导入");
+    verify(wl).saveAll(eq("default"), any());
+}
+
+@org.junit.jupiter.api.Test
 void soldImport_preservesExistingPsychology() {
     PositionRepository repo = mock(PositionRepository.class);
     SoldTradeRepository sold = mock(SoldTradeRepository.class);
@@ -737,6 +784,40 @@ void soldImport_preservesExistingPsychology() {
     assertEquals("追高后恐慌割肉", cap.getValue().get(0).psychology(),
             "重新导入应保留已有心理标注");
     assertEquals("2026-07-31", cap.getValue().get(0).buyDate().toString());
+}
+
+@org.junit.jupiter.api.Test
+void soldImport_parseFailedRow_keepsExistingFields() {
+    // 2026-09-13（P2-交易41 同型「字段级静默落零」封堵）：解析器取不到数时落 null/0
+    // （parseDateSafe→null、parseIntSafe→0、parseDoubleSafe→0.0），而这里是**整体覆盖**既有行 →
+    // 介入/清仓日期被清空（连带 /sold/{symbol}/psychology-questions 走 404）、
+    // 持仓天数与持仓期涨幅归零（再连带 verdict 用被置 0 的 holdPnlPct 重算出错误结论）。
+    // 判据：A 股 T+1，真实清仓行的两个日期与持仓天数（≥1）必然存在 → 缺失只可能是「没解析出来」。
+    PositionRepository repo = mock(PositionRepository.class);
+    SoldTradeRepository sold = mock(SoldTradeRepository.class);
+    when(sold.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new SoldTrade("600206", "有研新材", LocalDate.of(2026, 7, 31), LocalDate.of(2026, 8, 3),
+                    3, "1+1", -12.82, "扛单", "追高后恐慌割肉"))));
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class), sold,
+            mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
+            mock(MarketDataSource.class), mock(TradingLotService.class),
+            TradingAppServiceTest.defaultRuleRepo());
+
+    // 第二份导出这一行数值列全空（截断/列错位）→ 解析结果退化为 null/0
+    String content = "代码\t名称\t介入日期\t清仓日期\t持仓天数\t买卖次数\t持仓期涨幅%\n"
+            + "600206\t有研新材\t\t\t\t\t\n";
+    service.soldImport("default", content);
+
+    ArgumentCaptor<java.util.List<SoldTrade>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(sold).saveAll(eq("default"), cap.capture());
+    SoldTrade saved = cap.getValue().get(0);
+    assertEquals("2026-07-31", saved.buyDate().toString(), "介入日期解析失败不得清空既有值");
+    assertEquals("2026-08-03", saved.sellDate().toString(), "清仓日期解析失败不得清空既有值（否则情绪提问 404）");
+    assertEquals(3, saved.holdDays(), "持仓天数解析失败不得归零（否则 verdict 误判为短线）");
+    assertEquals(-12.82, saved.holdPnlPct(), 1e-9, "持仓期涨幅解析失败不得归零（否则 verdict 重算错）");
+    assertEquals("1+1", saved.tradeCount(), "买卖次数空值不得清空");
+    assertEquals("追高后恐慌割肉", saved.psychology());
 }
 
 @org.junit.jupiter.api.Test
@@ -768,6 +849,34 @@ void importCashQuery_updatesCashAndPreciseCost() {
     ArgumentCaptor<java.util.List<Position>> cap = ArgumentCaptor.forClass(java.util.List.class);
     verify(repo).saveAll(eq("default"), cap.capture());
     assertEquals(0, cap.getValue().get(0).avgCost().compareTo(new BigDecimal("6.0421")));
+}
+
+@org.junit.jupiter.api.Test
+void importCashQuery_negativeCost_updatesPreciseCost() {
+    // 2026-09-13（P2-交易41 同源残留封堵）：原条件 `cp.costPrice() > 0` 把**负成本**
+    // （合法：反复做 T / 分红摊到 0 以下，现场 600601 方正科技 −5.078）当哨兵跳过 →
+    // 「精确成本」永远不更新，用户看到的仍是粗糙的 2-3 位成本（资金查询的 4 位精度白导）。
+    PositionRepository repo = mock(PositionRepository.class);
+    when(repo.findAll(any())).thenReturn(new java.util.ArrayList<>(java.util.List.of(
+            new Position("600601", "方正科技", 100, new BigDecimal("-5.08"), new BigDecimal("14.83"),
+                    LocalDateTime.now(), LocalDate.of(2026, 9, 13), null, null, null))));
+    AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+    TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+            mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+            mock(SoldTradeRepository.class), capturingAccountRepo(saved),
+            mock(TransferRepository.class), mock(MarketDataSource.class),
+            mock(TradingLotService.class), mock(TradingRuleSettingsRepository.class));
+
+    String content = "人民币: 余额:1381.93  可用:1381.93  可取:1381.93  参考市值:77850.00  资产:79231.93  盈亏:14298.88\n"
+            + "编号 证券代码 证券名称 证券数量 成本价 当前价 最新市值 浮动盈亏\n"
+            + "1 600601 方正科技 100.00 -5.0780 14.8300 1483.00 1990.77\n";
+    var r = service.importCashQuery("default", content);
+
+    assertEquals(1, r.updatedCost(), "负成本同样要吃 4 位精确成本（原实现静默跳过）");
+    ArgumentCaptor<java.util.List<Position>> cap = ArgumentCaptor.forClass(java.util.List.class);
+    verify(repo).saveAll(eq("default"), cap.capture());
+    assertEquals(0, cap.getValue().get(0).avgCost().compareTo(new BigDecimal("-5.078")),
+            "精确成本应被负值覆盖（−5.08 → −5.078）");
 }
 
 @org.junit.jupiter.api.Test

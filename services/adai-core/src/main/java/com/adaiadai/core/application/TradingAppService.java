@@ -876,11 +876,21 @@ public class TradingAppService {
             List<Position> current = new ArrayList<>(positionRepository.findAll(userId));
             List<String> missingStopLoss = new ArrayList<>();
             int imported = 0;
+            int rowNo = 0; // 入参行号（1 起）——fail-closed 报错定位用（2026-09-13）
             Set<String> importedSymbols = new java.util.HashSet<>();
 
             for (PositionImportItem item : items) {
+                rowNo++;
                 String symbol = item.symbol();
-                if (symbol == null || symbol.isBlank()) continue;
+                // 2026-09-13（P2-交易41 同源残留封堵）：原实现 `continue` 静默丢行——而 replace=true
+                // 是**全量覆盖**，丢一行 = 静默删一只持仓（正是「3 只只导入 2 只」的成因之一），
+                // 且响应只有 {imported, missingStopLoss}、没有「被丢行」出口，调用方完全看不见。
+                // 前端已 fail-closed，但后端是公共 API（curl / 未来 app 端导入）必须自证：
+                // 缺代码即拒绝，且**在写任何东西之前**抛（items 只读，不落盘）。
+                if (symbol == null || symbol.isBlank()) {
+                    throw new TradingException("持仓导入：第 " + rowNo + " 行没有股票代码——"
+                            + "为避免覆盖时丢掉持仓，本次导入已取消（未改动任何持仓）");
+                }
                 // P2-交易22（2026-08-17）：avgCost/quantity 校验——缺失/非法会让下游 NPE 500
                 // 2026-09-13 负成本批：**负数成本合法**（反复做 T / 分红把成本摊到 0 以下是真实存在的，
                 // 通达信持仓导出就是这么记的——实测 600601 方正科技 成本 −5.078 / 100 股）。
@@ -1055,9 +1065,17 @@ public class TradingAppService {
      *  不再静默 no-op（REVIEW #147 风格；前端导入对话框 toast 透出）。</p>
      */
     public WatchlistImportResult watchlistImport(String userId, String content) {
-        List<WatchlistItem> parsed = TradingImportParser.parseWatchlist(content);
-        if (parsed.isEmpty()) {
+        TradingImportParser.WatchlistParse parsed = TradingImportParser.parseWatchlistDetailed(content);
+        if (parsed.items().isEmpty()) {
             throw new TradingException("无法识别为自选股导出：缺少形态列（长期/中期/短期形态）——是否选错了文件（如清仓股/资金股份/历史成交导出）？");
+        }
+        // 2026-09-13（P2-交易41 同型风险封堵）：本导入是**全量覆盖**（saveAll 以文件为准）——
+        // 有一行没看懂就拒绝，绝不「丢一行 = 静默删一只自选」。与持仓导入前端 fail-closed 同一判据
+        // （一行没解析成功就拒绝覆盖），把「静默丢行」变成用户可见的拒绝。
+        if (!parsed.unparsed().isEmpty()) {
+            throw new TradingException("自选股文件有 " + parsed.unparsed().size()
+                    + " 行没能识别，为避免覆盖时丢掉自选，本次导入已取消：" + previewRows(parsed.unparsed())
+                    + "——请确认文件完整（如粘贴时被截断）或删掉这些行后重试");
         }
         synchronized (tradeLock(userId)) {
             List<WatchlistItem> current = new ArrayList<>(watchlistRepository.findAll(userId));
@@ -1070,16 +1088,25 @@ public class TradingAppService {
             }
             Map<String, LocalDate> existingAddedAt = new HashMap<>();
             for (WatchlistItem it : current) existingAddedAt.put(it.symbol(), it.addedAt());
-            List<WatchlistItem> next = new ArrayList<>(parsed.size());
-            for (WatchlistItem item : parsed) {
+            List<WatchlistItem> next = new ArrayList<>(parsed.items().size());
+            for (WatchlistItem item : parsed.items()) {
                 LocalDate addedAt = existingAddedAt.getOrDefault(item.symbol(), LocalDate.now());
                 next.add(new WatchlistItem(item.symbol(), item.name(), item.industry(), item.industry2(),
                         item.longForm(), item.midForm(), item.shortForm(), item.signal(), addedAt));
             }
             watchlistRepository.saveAll(userId, next);
         }
-        log.info("自选股导入（覆盖）| userId={} | {} 只", userId, parsed.size());
-        return new WatchlistImportResult(parsed.size());
+        log.info("自选股导入（覆盖）| userId={} | {} 只", userId, parsed.items().size());
+        return new WatchlistImportResult(parsed.items().size());
+    }
+
+    /** 人话预览被丢弃/未识别的行（最多 5 行，超出报总数）——fail-closed 报错文案用（2026-09-13）。 */
+    private static String previewRows(List<String> rows) {
+        List<String> head = rows.stream().limit(5)
+                .map(r -> r.length() > 60 ? r.substring(0, 60) + "…" : r)
+                .toList();
+        String joined = String.join(" ／ ", head);
+        return rows.size() > head.size() ? joined + " 等 " + rows.size() + " 行" : joined;
     }
 
     /** 删除自选股。 */
@@ -1110,10 +1137,22 @@ public class TradingAppService {
                 for (int i = 0; i < current.size(); i++) {
                     if (current.get(i).symbol().equals(t.symbol())) {
                         SoldTrade old = current.get(i);
-                        // 保留已有心理标注，刷新日期/涨幅（P3 2026-08-17：verdict 下方统一重算，
-                        // 此处不再声称「保留 verdict」——确定性覆盖，避免注释误导）
-                        current.set(i, new SoldTrade(t.symbol(), t.name(), t.buyDate(), t.sellDate(),
-                                t.holdDays(), t.tradeCount(), t.holdPnlPct(),
+                        // 2026-09-13（P2-交易41 同型「字段级静默落零」封堵）：解析器取不到数时
+                        // 落 null/0（parseDateSafe→null、parseIntSafe→0、parseDoubleSafe→0.0），
+                        // 而此处是**整体覆盖**既有行 → 介入/清仓日期被清空（连带
+                        // /sold/{symbol}/psychology-questions 走 404）、持仓天数与持仓期涨幅归零
+                        // （再连带下方 verdict 用被置 0 的 holdPnlPct 重算出错误结论）。
+                        // 判据：A 股 T+1，真实清仓行的介入/清仓日期与持仓天数（≥1）必然存在——
+                        // 缺失或 0 只可能是「这一列没解析出来」→ 该字段保留旧值，不让解析失败覆盖真数据。
+                        boolean rowNumericOk = t.holdDays() > 0;
+                        current.set(i, new SoldTrade(
+                                t.symbol(),
+                                t.name().isBlank() ? old.name() : t.name(),
+                                t.buyDate() != null ? t.buyDate() : old.buyDate(),
+                                t.sellDate() != null ? t.sellDate() : old.sellDate(),
+                                rowNumericOk ? t.holdDays() : old.holdDays(),
+                                t.tradeCount().isBlank() ? old.tradeCount() : t.tradeCount(),
+                                rowNumericOk ? t.holdPnlPct() : old.holdPnlPct(),
                                 old.verdict(), old.psychology()));
                         found = true;
                         break;
@@ -1199,7 +1238,12 @@ public class TradingAppService {
             // 2. 精确成本价更新（资金查询 4 位 > 持仓导出 2-3 位）
             for (Position p : positions) {
                 for (TradingImportParser.CashPosition cp : q.positions()) {
-                    if (cp.symbol().equals(p.symbol()) && cp.costPrice() > 0) {
+                    // 2026-09-13（P2-交易41 同型封堵）：原条件 `costPrice() > 0` 把**负成本**
+                    // （合法：反复做 T / 分红把成本摊到 0 以下，实测 600601 方正科技 −5.078）
+                    // 与 0 一并静默跳过 → 「精确成本」永远不更新，用户看到的仍是粗糙的 2-3 位成本。
+                    // 改为只把 0 当「该列没取到数」的哨兵（parseDoubleSafe 失败返回 0）——0 成本本身
+                    // 也已由持仓链路兜住；负成本则正常写入（`!= 0`）。
+                    if (cp.symbol().equals(p.symbol()) && cp.costPrice() != 0) {
                         java.math.BigDecimal precise = java.math.BigDecimal.valueOf(cp.costPrice());
                         if (precise.compareTo(p.avgCost()) != 0) {
                             positions.set(positions.indexOf(p),

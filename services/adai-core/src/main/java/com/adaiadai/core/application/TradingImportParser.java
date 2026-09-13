@@ -45,18 +45,39 @@ public final class TradingImportParser {
      *  清仓股/资金股份/历史成交表头均无 → 选错文件时返回空列表，由调用方报「无法识别格式」。</p>
      */
     public static List<WatchlistItem> parseWatchlist(String content) {
+        return parseWatchlistDetailed(content).items();
+    }
+
+    /**
+     * 自选股解析（带「没看懂的行」）——2026-09-13 P2-交易41 同型风险封堵。
+     * <p>
+     * 导入自选是<b>全量覆盖</b>（saveAll 以文件为准）。原实现 `if (!matches("\\d{6}")) continue`
+     * 把非 6 位代码的行（截断行/格式漂移行）静默丢掉、无计数无明细 → <b>丢一行 = 静默删一只自选</b>，
+     * 与 2026-09-13 持仓「3 只只进来 2 只」事故同型。此处把丢弃改为如实上报，
+     * 由调用方 fail-closed（有看不懂的行就拒绝覆盖）。
+     * <p>
+     * 判据边界（避免误伤正常文件）：空行 / `#数据来源:通达信` 注释 / 纯分隔线不算「没看懂的行」——
+     * 通达信自选导出的行尾就是 `#数据来源:通达信`，没有统计行（2026-09-13 按测试夹具核实）。
+     *
+     * @return items = 解析成功的条目；unparsed = 表头定位后仍没看懂的行（原始文本，供人话报错）
+     */
+    public static WatchlistParse parseWatchlistDetailed(String content) {
         List<WatchlistItem> items = new ArrayList<>();
+        List<String> unparsed = new ArrayList<>();
         List<String> lines = split(content);
         int[] col = null;
         for (String line : lines) {
-            if (line.isEmpty() || line.startsWith("#")) continue;
-            String[] cells = line.split("\\t");
+            if (isSkippableLine(line)) continue;
+            String[] cells = splitCells(line);
             if (col == null) {
                 int[] idx = locate(cells, "代码", "名称", "细分行业", "一二级行业", "长期形态", "中期形态", "短期形态", "近日指标提示");
                 if (idx[0] >= 0 && (idx[4] >= 0 || idx[5] >= 0 || idx[6] >= 0)) col = idx;
                 continue;
             }
-            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;
+            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) {
+                unparsed.add(line.trim());
+                continue;
+            }
             items.add(new WatchlistItem(
                     cells[col[0]].trim(),
                     col[1] >= 0 && col[1] < cells.length ? cells[col[1]].trim() : "",
@@ -68,8 +89,19 @@ public final class TradingImportParser {
                     col[7] >= 0 && col[7] < cells.length ? cells[col[7]].trim() : "",
                     LocalDate.now()));
         }
-        return items;
+        return new WatchlistParse(items, unparsed);
     }
+
+    /** 自选股解析结果（2026-09-13）：条目 + 没看懂的行（fail-closed 判据）。 */
+    public record WatchlistParse(List<WatchlistItem> items, List<String> unparsed) {}
+
+    /** 结构性行（空行 / `#` 注释 / 纯分隔线）——不算「没看懂的行」（2026-09-13 fail-closed 判据）。 */
+    private static boolean isSkippableLine(String line) {
+        if (line == null) return true;
+        String t = line.trim();
+        return t.isEmpty() || t.startsWith("#") || t.matches("^[-=_~*\\s]+$");
+    }
+
 
     /** 解析清仓股导出 → 已了结交易。
      *  <p>核心列校验（2026-08-27 与自选导入对称）：必须命中「代码」+「介入日期」+「清仓日期」——

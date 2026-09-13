@@ -78,8 +78,13 @@ public class WatchlistFileRepository implements WatchlistRepository {
                 n.put("addedAt", it.addedAt().toString());
             }
             fileStorage.write(userId, PATH, MAPPER.writeValueAsString(arr));
+        } catch (StorageException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("保存自选股失败 | userId={} | {}", userId, e.getMessage());
+            // 2026-09-13（P2-交易41 同型风险封堵）：写失败必须抛错，不得 log.warn 吞掉。
+            // 原实现吞异常 → 导入端点照回「成功 N 只」而文件根本没写：用户以为自选已覆盖，
+            // 实际还是旧的（信任炸弹）。对齐 SoldTradeFileRepository.writeAll 的 P1-3 口径。
+            throw new StorageException("保存自选股失败 | userId=" + userId + " | " + e.getMessage(), e);
         }
     }
 

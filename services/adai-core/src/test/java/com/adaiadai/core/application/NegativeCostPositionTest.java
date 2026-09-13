@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -174,6 +175,31 @@ class NegativeCostPositionTest {
                 new TradingAppService.PositionImportItem("603113", "金能科技", 0, new BigDecimal("5.569"), null, null, null, null)
         ), true, null)).getMessage().contains("数量需 > 0"),
                 "0 股不是持仓（券商文件里的残留行），必须拒（前端应先行过滤为「已清空跳过」）");
+    }
+
+    /**
+     * 2026-09-13（P2-交易41 同源残留封堵）：缺代码的行必须 <b>fail-closed 拒绝</b>，不得静默丢行。
+     *
+     * <p>原实现 {@code if (symbol == null || symbol.isBlank()) continue;}——而 {@code replace=true}
+     * 是<b>全量覆盖</b>，丢一行就等于静默删掉一只持仓（正是本次「3 只只进来 2 只」的成因形态之一）；
+     * 且响应只有 {@code {imported, missingStopLoss}}，没有「被丢行」出口，调用方完全看不见。
+     * 前端已 fail-closed，后端是公共 API（curl / 未来 app 端导入）必须自证。
+     */
+    @Test
+    void importPositions_blankSymbol_failClosedAndNeverOverwrites() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos(REAL_COST, REAL_PRICE, 100)));
+        TradingAppService service = service(repo);
+
+        TradingException ex = assertThrows(TradingException.class, () -> service.importPositions(USER, List.of(
+                new TradingAppService.PositionImportItem("600206", "有研新材", 900, new BigDecimal("46.012"), null, null, null, null),
+                new TradingAppService.PositionImportItem("  ", "???", 100, new BigDecimal("5.0"), null, null, null, null)
+        ), true, null));
+
+        assertEquals(true, ex.getMessage().contains("第 2 行"),
+                "报错要指到具体行（调用方才知道文件哪一行坏了）。实际: " + ex.getMessage());
+        // 关键：一行都不落盘——replace 全量覆盖下「拒绝」必须是真拒绝，旧持仓完好
+        verify(repo, never()).saveAll(anyString(), any());
     }
 
     /** 服务构造照 TradingAnchorGuardTest 的 11 参 mock 模板。 */

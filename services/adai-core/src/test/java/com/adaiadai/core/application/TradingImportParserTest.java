@@ -60,6 +60,41 @@ class TradingImportParserTest {
     }
 
     @Test
+    void parseWatchlistDetailed_reportsUnparsedRows() {
+        // 2026-09-13（P2-交易41 同型风险）：自选导入是全量覆盖，原来没看懂的行被 `continue` 静默丢掉
+        // →「丢一行 = 静默删一只自选」。改为如实上报，由调用方 fail-closed（拒绝覆盖）。
+        String content = """
+                代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示
+                000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉
+                \t列错位行\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉
+                6004\t截断代码\t证券\t金融-证券\t2\t10\t1\tKDJ死叉
+                #数据来源:通达信
+                """;
+        TradingImportParser.WatchlistParse p = TradingImportParser.parseWatchlistDetailed(content);
+        assertEquals(1, p.items().size());
+        assertEquals("000725", p.items().get(0).symbol());
+        assertEquals(2, p.unparsed().size(), "没看懂的行必须如实上报，不能静默丢");
+        assertTrue(p.unparsed().get(0).contains("列错位行"), "原样保留整行供人话报错：" + p.unparsed().get(0));
+        assertTrue(p.unparsed().get(1).contains("截断代码"));
+    }
+
+    @Test
+    void parseWatchlist_structuralLines_notCountedAsUnparsed() {
+        // 判据边界（防误伤正常文件）：#数据来源注释 / 空行 / 纯分隔线属结构性行。
+        // 若把它们算作「没看懂的行」，每次正常导入都会被 fail-closed 拒掉——比原 bug 更糟。
+        String content = """
+                代码\t名称\t细分行业\t一二级行业\t长期形态\t中期形态\t短期形态\t近日指标提示
+                000725\t京东方Ａ\t元器件\t信息产业-元器件\t6\t8\t1\tKDJ死叉
+                #数据来源:通达信
+
+                ----------
+                """;
+        TradingImportParser.WatchlistParse p = TradingImportParser.parseWatchlistDetailed(content);
+        assertEquals(1, p.items().size());
+        assertTrue(p.unparsed().isEmpty(), "结构性行不算没看懂的行，实际: " + p.unparsed());
+    }
+
+    @Test
     void parseSold_watchlistHeader_rejected() {
         // 对称校验：自选表头（无介入/清仓日期）不得被当作清仓股解析
         String content = """
