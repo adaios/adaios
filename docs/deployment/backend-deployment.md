@@ -431,8 +431,9 @@ ADAI_PUSH_APNS_KEY_PATH=/opt/adaios/backend/secrets/AuthKey_XXXXXXXXXX.p8
 ADAI_PUSH_APNS_KEY_ID=<Key ID>
 ADAI_PUSH_APNS_TEAM_ID=4G3D37YKSB
 ADAI_PUSH_APNS_BUNDLE_ID=com.adaiadai.adaiApp
-# 灰度：第一刀只放收盘小结 + 复习提醒验证链路；验证通过后清空该行 = 全量（无需改代码）
-ADAI_PUSH_APNS_TYPES=close-summary,learn-review
+# 灰度（可选）：首次接入时先只放少数类型验证链路，例如 close-summary,learn-review；
+# 验证通过后清空该行 = 全量（无需改代码）。**2026-09-13 生产已清空 = 10 类全量。**
+ADAI_PUSH_APNS_TYPES=
 
 # 3) 重启并自检
 sudo systemctl restart adaios-backend
@@ -464,6 +465,10 @@ App 侧：打开一次 App（登录态）即完成设备登记 → `GET /api/v1/
 | 日志「跳过（不在灰度白名单）」 | `ADAI_PUSH_APNS_TYPES` 挡住了该类型 | 验证通过后清空该变量 |
 | 手机连一条通知都没有，且 `enabled=true`/`deviceCount>=1` | 系统通知权限没给 | App 内会提示，点「去开启」跳系统设置 |
 
+> ⚠️ **与 Bark 并存会弹两条**：Bark 渠道（`ADAI_PUSH_BARK_KEY`）若仍配置，同一条推送会同时经 APNs 与本机 Bark App 各弹一次。**2026-09-13 生产已注释该键**（原值在 `.env.bak-*`）；要回退放开注释并填回 device key 即可。Feed 渠道不受影响（关 Bark 不丢消息）。
+>
+> **真实投递冒烟（换 key / 续期后必跑）**：`ADAI_APNS_LIVE_KEY_PATH=… ADAI_APNS_LIVE_KEY_ID=… ADAI_APNS_LIVE_TEAM_ID=4G3D37YKSB ADAI_APNS_LIVE_TOKEN=<GET /push/devices 里的真机 token> ADAI_APNS_LIVE_ENV=sandbox ./gradlew test --tests "*ApnsLiveSmokeTest*"` → 断言 APNs 回 200，且**你手机上会真的收到一条通知**（默认跳过，常规测试不受影响）。
+>
 > **出网自检（生产服务器，2026-09-13 实测通过）**：
 > `curl -i --http2 -X POST https://api.sandbox.push.apple.com/3/device/<64位假token> -H "authorization: bearer bogus" -H "apns-topic: com.adaiadai.adaiApp" -d '{}'`
 > → 期望 `HTTP/2 403` + `{"reason":"InvalidProviderToken"}`（假 JWT 的预期结果，**证明网络与 HTTP/2 传输路径通**）。
