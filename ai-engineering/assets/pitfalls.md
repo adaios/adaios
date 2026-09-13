@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-13
 status: active
-lines: 117
+lines: 125
 depends-on:
   - ../checklists/guard.md
 related:
@@ -112,6 +112,14 @@ tags: [ai, assets, pitfalls]
 | 条件导出的两份实现 API 面不一致（只有 build 那个平台才炸） | `flutter build web` 编译失败：`No named parameter with the name 'httpClient'`；而 `flutter test` 与 iOS 构建全绿——**测试永远覆盖不到另一个平台分支** | `sse_client.dart` 用条件导出 `export 'sse_client_io.dart' if (dart.library.js_interop) 'sse_client_web.dart'`，要求两份实现的构造签名/方法签名严格一致；实际 io 侧有 `SseClient({http.Client? httpClient})`、web 侧只有 `SseClient()`，且 web 目标**从未构建过**（PWA 是第一次）→ 断链长期潜伏 | 补齐 web 侧同名可选参数（fetch 渐进响应用不到 `package:http`，参数标注为占位并写明无效原因）；**根本解是给门禁加「每端各跑一次 build」**——test 覆盖不到平台分支 | ✅ 已修本次断链（2026-09-13 PWA 装机批）；门禁补 web build 待排（REVIEW P2-工程1） | 新增条件导入/条件导出（`if (dart.library.*)`）；只加参数到其中一份实现；某端只跑 test 不跑 build；某端长期「构建过但没人再构建」 |
 | 同仓库并发会话收尾（git add -A 卷走别人的活） | 本批工作区里 9 个文件（含新增测试与脚本）被**另一个会话的无关提交**一并带走（2026-09-13 实际发生：PWA 批被卷进 `fix(learn): 纠正额度/报价口径`），本批登记随之缺失 | 两个会话同时在同一工作区干活；收尾方用 `git add -A`/`--all` 而非显式路径 → 把对方尚未提交的改动当成自己的提交；更坏的分支是双方都 `-A` + `checkout`/`stash`，会直接吞掉对方未提交的工作 | ① 收尾提交**显式列路径**（`git add <明确路径>`），不用 `-A`；② 同一时刻只允许一个写仓库的会话；③ 收工前 `git status` 必须干净再离场 | ⚠️ 待用户拍板是否写进 ship 流程为硬规则（REVIEW P2-工程2） | 提交信息与改动内容不匹配；`git log --stat` 里出现与本批无关的文件；发现「我的文件不见了」但 git 历史里又有它 |
 | 解析失败行被静默跳过 × 全量覆盖落盘（漏一行 = 删一条真数据） | 用户「明明三只持仓，只导入 2 只」：通达信持仓快照 4 行（3 只有持仓 + 1 行 0 股残留）只落 2 只，界面零提示；被丢的 600601 成本为**负数**（−5.078，做 T/分红摊出来的，合法） | 两件事各自「看起来合理」地凑成了数据丢失：①解析器把「不认识的值」当成「我这行不要了」→ `continue` 静默跳过；②落盘走的是 `replace=true` 全量覆盖（以文件为准）→ 文件里没有的行被当作「已清仓」**删除**。两者叠加时，**解析器的一个宽容/苛刻判断直接变成一次静默删除**，而用户和日志都看不到 | ①解析器只把「取不到数」当错误，语义判断（负成本/0 股）交由业务规则区分对待；②**调用方 fail-closed**：只要有一行没解析成功，就**不用这份文件做全量覆盖**（拒绝 + 逐行摆原因 + 不发请求）；③「跳过的行」必须显式回传（0 股归「已清空跳过」并告知，不能混进 errors 也不能消失）；④落盘前的守卫按「要读的最大列下标」校验，短行报人话而不是崩 | ✅ 已修（2026-09-13 负成本持仓批） | 新增任何「解析文件 → 全量覆盖落盘」的链路（导入/同步/重建）时只测正常文件；解析器里出现 `continue` 跳过而不记录原因；errors/skipped 收集了却没有消费方；用户报「N 条变成 M 条」而日志里查不到被丢掉的那条 |
+
+## 十二、iOS 构建·签名·分发（2026-09-13 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **付费后 Xcode 不重签描述文件** | 升级付费开发者账号后重新构建，App 仍是 **7 天**过期（`embedded.mobileprovision` 起止日一字未变）；会员权益明明已生效、构建日志全绿 | Xcode 优先复用**本地缓存且尚未过期**的旧 profile（免费期那份还剩几天寿命），压根不向 Apple 服务器按新会员状态重新签发 | 删掉 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision` 再构建——无 profile 可用时 Xcode 只能去服务器要新的（实测立即拿到 1 年版） | ✅ 已解（2026-09-13 iOS 开发者账号批） | 「权益变了但签名没变」；只对比代码/配置不查 profile 实际起止日；以为重新构建＝重新签名 |
+| **Flutter 引擎比目标 iOS 旧 → debug 装机必闪退** | 装完点开即闪退（`EXC_BAD_ACCESS` / `KERN_INVALID_ADDRESS at 0x0`），崩溃栈落在 `-[FlutterViewController createTouchRateCorrectionVSyncClientIfNeeded]`；**同一份代码 release 构建却完全正常** | Flutter 3.44.6 的引擎（2026-06-30 构建）早于设备 iOS 26.6.1；该函数为 ProMotion 高刷屏做触摸采样率校正，**debug 才有此代码路径**（release 不走）→ 引擎与 OS 版本错配 | 升 Flutter 3.44.6 → **3.47.4**（引擎 2026-09-03，晚于 iOS 26）；**过渡期**：iOS 真机先用 `flutter build ios --release` 安装绕开，代价是失去热重载 | ✅ 已解（2026-09-13） | 只装 release 就断定「iOS 没问题」；debug/release 行为不一致时当成偶发；Flutter 版本比目标 OS 老 |
+| **`flutter upgrade` 内部的 git fetch 不读 shell 代理** | `HTTP_PROXY`/`https_proxy` 都在环境里、`curl -x` 走代理 200，但 `flutter upgrade` 仍报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443` | Flutter 工具链内部调 `git fetch --tags`，而 **git 不认 shell 的 `*_PROXY` 环境变量**（需显式 `git config http.proxy`） | 给 SDK 仓库单独配（不动全局）：`git -C <flutter-sdk> config http.proxy http://127.0.0.1:1087`；引擎下载另开国内镜像 `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn` | ✅ 已解（2026-09-13） | 「curl 通但 git 不通」；只在 shell 里 `export` 代理却没落到 git config |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

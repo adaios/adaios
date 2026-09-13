@@ -346,7 +346,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && sudo sy
 
 ## 9. iOS 部署（adai-app → iPhone）
 
-USB 连 Xcode 直装（免费 Apple ID，7 天有效）：
+USB 连 Xcode 直装（**付费开发者账号**，profile 1 年有效；Team `4G3D37YKSB`）：
 
 ```bash
 # 地址用域名（§10：换服务器永不重构建）；ATS 明文例外仍配在 Info.plist（NSAllowsArbitraryLoads），https 域名不依赖它
@@ -359,7 +359,10 @@ xcrun devicectl device process launch --device <UDID> com.adaiadai.adaiApp
 # 或用 Xcode 打开 ios/Runner.xcworkspace，选择真机，点 Run
 ```
 
-> ⚠️ 免费 Apple ID 签名 7 天过期（REVIEW P2-用户1：装机后第 7 天前后 App 打不开，需重装）；TestFlight 需付费开发者账号（90 天）。
+> ✅ **2026-09-13 起签名 1 年有效**：付费开发者账号已落地，实测 `embedded.mobileprovision` = `2026-09-13 → 2027-09-13`（REVIEW P2-用户1 已出表）。**若发现 profile 起止日没变**，是 Xcode 复用了本地尚未过期的旧 profile——删掉 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision` 再构建即可强制重签（详见 pitfalls 十二）。
+> ⚠️ **最低支持 iOS 15**：Flutter 3.47 构建时自动把 `IPHONEOS_DEPLOYMENT_TARGET` 由 13.0 提到 15.0，iOS 13/14 设备将装不了。
+> ⚠️ **debug 装机可能闪退**：Flutter 引擎版本须晚于设备 iOS 版本，否则 debug 构建启动即崩（`-[FlutterViewController createTouchRateCorrectionVSyncClientIfNeeded]` 空指针；release 不受影响）。2026-09-13 已升 Flutter **3.47.4**（引擎 2026-09-03）规避；若再遇到，可先用 `flutter build ios --release` 装机兜底。
+> TestFlight 待接（需 Apple Distribution 证书 + Archive 上传；内测构建 90 天有效）。
 > 历史装机（≤2026-08-30）烧 IP `http://82.156.111.146:8080`；**2026-09-10 起改烧域名** `https://api.adaiadai.com`。
 
 ## 10. 域名 + HTTPS（adaiadai.com，2026-09-01 已上线）
