@@ -176,8 +176,31 @@ public class ApnsPushChannel implements PushChannel {
         }
     }
 
+    /**
+     * 投递结果：APNs 的响应状态与 reason。
+     * <p>
+     * 之所以**返回**而不只打日志：真实投递冒烟（{@code ApnsLiveSmokeTest}）要能断言
+     * 「APNs 真的回了 200」。对 fail-safe 设计的渠道，只断言「没抛异常」毫无鉴别力——
+     * 凭据错、格式错、网关卡错，`push()` 同样一声不吭。
+     */
+    record DeliveryResult(int status, String reason) {
+        boolean ok() {
+            return status == 200;
+        }
+    }
+
+    /**
+     * 真实投递冒烟入口（测试用，包内可见）：对指定设备同步投递一次并返回 APNs 响应。
+     * <p>
+     * 存在的意义是「换 key / 换年 / 换 App 之后怎么确认凭据还好使」——见
+     * {@code ApnsLiveSmokeTest}（默认跳过，需显式给 LIVE 环境变量）。
+     */
+    DeliveryResult deliverNow(String userId, PushDevice device, PushMessage message) throws Exception {
+        return deliver(userId, device, message, bearerToken());
+    }
+
     /** 投递到单台设备：按 token 自带的环境选网关（侧载 = sandbox，TestFlight = production）。 */
-    private void deliver(String userId, PushDevice device, PushMessage message, String jwt) {
+    private DeliveryResult deliver(String userId, PushDevice device, PushMessage message, String jwt) {
         String host = PushDevice.ENV_PRODUCTION.equals(device.environment()) ? productionHost : sandboxHost;
         try {
             String body = payload(message);
@@ -197,20 +220,25 @@ public class ApnsPushChannel implements PushChannel {
             int code = resp.statusCode();
             if (code == 200) {
                 log.info("APNs 推送成功 | type={} | env={}", message.type(), device.environment());
-            } else if (code == 410) {
+                return new DeliveryResult(200, null);
+            }
+            if (code == 410) {
                 // 设备已卸载 App / token 失效：清理登记，避免此后每次推送都白跑一趟
                 boolean removed = deviceRepository.remove(userId, device.token());
                 log.warn("APNs token 已失效（410 Unregistered），已清理登记 | removed={}", removed);
-            } else {
-                String reason = reason(resp.body());
-                log.warn("APNs 推送失败 | status={} | reason={} | env={} | {}", code, reason,
-                        device.environment(), hint(code, reason));
+                return new DeliveryResult(410, "Unregistered");
             }
+            String reason = reason(resp.body());
+            log.warn("APNs 推送失败 | status={} | reason={} | env={} | {}", code, reason,
+                    device.environment(), hint(code, reason));
+            return new DeliveryResult(code, reason);
         } catch (InterruptedException e) {
             // 同 Bark/WeChat（P3，2026-08-17）：不置 interrupt 标志污染共享调度线程
             log.info("APNs 推送被中断（服务关闭中）| type={}", message.type());
+            return new DeliveryResult(-1, "interrupted");
         } catch (Exception e) {
             log.warn("APNs 推送异常 | type={} | {}", message.type(), e.getMessage());
+            return new DeliveryResult(-1, e.getMessage());
         }
     }
 
