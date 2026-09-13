@@ -2261,10 +2261,15 @@ class AccountSnapshotDto {
   final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
   final double principal;
   final String snapshotDate; // D9（2026-08-23 app 体感，P2-UX3）：快照日期（收盘陈旧感知）
+  // P2-交易48（2026-09-14）：当日盈亏来源（broker=券商「资金股份」文件该列求和 /
+  // calc=系统按当日成交流水精算 / '' = 未知或旧后端缺字段）。UI 据此标注口径与日期；
+  // 未知一律不标（宁可不说，也不编造）。
+  final String todayPnlSource;
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
-      required this.todayPnl, required this.principal, this.snapshotDate = ''});
+      required this.todayPnl, required this.principal, this.snapshotDate = '',
+      this.todayPnlSource = ''});
 
   factory AccountSnapshotDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -2278,6 +2283,8 @@ class AccountSnapshotDto {
       todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
       principal: (m['principal'] as num?)?.toDouble() ?? 0,
       snapshotDate: m['snapshotDate']?.toString() ?? '',
+      // 宽松：非字符串（数字/bool/对象）也安全转字符串；null/缺字段 → ''（不标来源）
+      todayPnlSource: m['todayPnlSource']?.toString() ?? '',
     );
   }
 
@@ -2336,13 +2343,17 @@ class TradeLogCandidateDto {
 
 /// 2026-08-26 截图入账结果（POST /trading/screenshots）：
 /// total 提交张数 / processed 成功识别张数 / candidates 当日候选（去重后）/ errors 逐张失败原因。
+/// P2-交易43（2026-09-14）：dropped = 截图里**没记**的行（状态不是已成/部成、认不出的行），
+/// 人话逐条（如「第 1 张 · 第 2 行「…」：状态「已报」不是已成/部成（未成交的单子没有记）」）——
+/// 旧实现静默丢，用户以为整张都记上了。旧后端缺该字段 → 空列表（行为与现在完全一致）。
 class TradingScreenshotResult {
   final int total, processed;
   final List<TradeLogCandidateDto> candidates;
   final List<String> errors;
+  final List<String> dropped;
 
   TradingScreenshotResult({required this.total, required this.processed,
-      required this.candidates, required this.errors});
+      required this.candidates, required this.errors, this.dropped = const []});
 
   factory TradingScreenshotResult.fromJson(Map<String, dynamic> json) => TradingScreenshotResult(
     total: json['total'] as int? ?? 0,
@@ -2350,6 +2361,7 @@ class TradingScreenshotResult {
     candidates: (json['candidates'] as List? ?? const [])
         .map((e) => TradeLogCandidateDto.fromJson(e)).toList(),
     errors: (json['errors'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+    dropped: (json['dropped'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
 }
 

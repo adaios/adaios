@@ -42,9 +42,10 @@ import java.util.regex.Pattern;
 public class AdjFactorRepository {
 
     private static final Logger log = LoggerFactory.getLogger(AdjFactorRepository.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    private static final ObjectMapper MAPPER =
+            com.adaiadai.core.infrastructure.storage.StrictJson.strict(new ObjectMapper()
+                    .registerModule(new JavaTimeModule())
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
     private static final String API_URL =
             "https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_SHAREBONUS_DET"
                     + "&columns=ALL&pageSize=200&sortColumns=EX_DIVIDEND_DATE&sortTypes=-1";

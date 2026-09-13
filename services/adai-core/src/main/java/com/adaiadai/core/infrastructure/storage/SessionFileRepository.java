@@ -45,7 +45,7 @@ public class SessionFileRepository implements SessionRepository {
 
     public SessionFileRepository(@Value("${adai.storage.base-path:data}") String basePath) {
         this.basePath = Paths.get(basePath).toAbsolutePath().normalize();
-        this.objectMapper = new ObjectMapper()
+        this.objectMapper = StrictJson.strict(new ObjectMapper())
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }

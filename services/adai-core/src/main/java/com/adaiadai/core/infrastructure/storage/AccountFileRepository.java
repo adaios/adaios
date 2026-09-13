@@ -49,7 +49,7 @@ public class AccountFileRepository implements AccountRepository {
         this.basePath = Paths.get(basePath).toAbsolutePath().normalize();
         // freeze #3：LocalDate 统一序列化为 ISO 字符串（"2026-08-02"），
         // 与其余 JSON（memory/tags）风格一致；读取兼容旧数组格式 [年,月,日]
-        this.objectMapper = new ObjectMapper()
+        this.objectMapper = StrictJson.strict(new ObjectMapper())
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }

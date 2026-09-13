@@ -25,7 +25,7 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
 
     private static final Logger log = LoggerFactory.getLogger(AccountSnapshotFileRepository.class);
     private static final String PATH = "trading/account.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     /** per-user 写锁（P0-2，2026-08-23 注释修正）：同一 userId 的读-改-写串行。
      *  C6（隔离审查战略）：锁为**单实例内**进程锁（ConcurrentHashMap）——TradingAppService.tradeLock
@@ -66,7 +66,9 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
                     num(n.path("pnl")),
                     num(n.path("todayPnl")),
                     num(n.path("principal")),
-                    parseDate(n.path("snapshotDate").asText())));
+                    parseDate(n.path("snapshotDate").asText()),
+                    // P2-交易48：当日盈亏来源（旧文件无此键 → null = 未知，不编造）
+                    text(n.path("todayPnlSource"))));
         } catch (Exception e) {
             log.warn("读取账户快照失败 | userId={} | {}", userId, e.getMessage());
             return Optional.empty();
@@ -105,6 +107,8 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
             n.put("todayPnl", s.todayPnl());
             n.put("principal", s.principal());
             n.put("snapshotDate", s.snapshotDate().toString());
+            // P2-交易48：来源随值落盘（null = 未知，不写键——旧读端不受影响）
+            if (s.todayPnlSource() != null) n.put("todayPnlSource", s.todayPnlSource());
             fileStorage.write(userId, PATH, MAPPER.writeValueAsString(n));
         } catch (StorageException e) {
             throw e; // 存储层已抛的原样透传
@@ -125,5 +129,12 @@ public class AccountSnapshotFileRepository implements AccountSnapshotRepository 
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 取文本值（缺失/null/空 → null）。 */
+    private String text(com.fasterxml.jackson.databind.JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull()) return null;
+        String v = n.asText();
+        return v == null || v.isBlank() ? null : v;
     }
 }

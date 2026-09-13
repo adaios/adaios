@@ -485,7 +485,7 @@ public class TradingAppService {
                             c.available().add(tradeCashDelta),
                             c.withdrawable().add(tradeCashDelta),
                             newMarketValue, c.pnl(), c.todayPnl(),
-                            c.principal(), c.snapshotDate());
+                            c.principal(), c.snapshotDate(), c.todayPnlSource());
                 }).orElse(null)); // P0-2：无快照（首次交易未导入资金）不初始化，保持既有语义
             } catch (RuntimeException e) {
                 // B6-4（2026-08-23，P1-交易11）：账目快照写失败——持仓/流水已落库（跨文件无原子回滚），
@@ -1032,7 +1032,8 @@ public class TradingAppService {
         try {
             accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
                     c.assets(), c.cash(), c.available(), c.withdrawable(),
-                    c.marketValue(), c.pnl(), brokerTodayPnl, c.principal(), c.snapshotDate()))
+                    c.marketValue(), c.pnl(), brokerTodayPnl, c.principal(), c.snapshotDate(),
+                    AccountSnapshot.SOURCE_BROKER))
                     .orElse(null));
             log.info("券商当日盈亏入库 | userId={} | todayPnl={}（持仓股导出「当日盈亏」列求和的权威值）",
                     userId, brokerTodayPnl);
@@ -1289,6 +1290,19 @@ public class TradingAppService {
         if (!q.headerMatched()) {
             throw new TradingException("无法识别资金股份查询格式——请确认首行是「余额:… 可用:… 可取:… 参考市值:… 资产:… 盈亏:…」，且是通达信资金股份导出");
         }
+        // P2-交易45（2026-09-14）：表头命中了正则 ≠ 6 个数值都解析成功——parseNum 失败返回 null，
+        // 原来 null 会一路写进 AccountSnapshot（资产/现金变空，账户卡显示异常且无提示）。
+        // 缺任何一项直接拒绝导入（fail-closed），绝不用半份数据覆盖账户。
+        if (!q.headerUnparsed().isEmpty()) {
+            throw new TradingException("资金文件首行的「" + String.join("、", q.headerUnparsed())
+                    + "」没能读成数字，为避免把账户资金写成空值，本次导入已取消——"
+                    + "请确认导出完整（数字列之间是正常空格、文件没被截断）后重试");
+        }
+        if (!q.unparsedRows().isEmpty()) {
+            // 明细丢一行 = 该只持仓的「精确成本」不更新（不覆盖既有数据，故不 fail-closed，但必须可见）
+            log.warn("资金明细有 {} 行没看懂（这些持仓的精确成本本次不更新）| userId={} | {}",
+                    q.unparsedRows().size(), userId, previewRows(q.unparsedRows()));
+        }
         // 账户总体快照（券商口径，顶层账户卡数据源）——当日盈亏 = 明细「当日盈亏」列和。
         // P2-交易37（2026-09-09）：明细**缺「当日盈亏」列**或**明细为空（当日清仓后导出无行，
         // 三官深审 P1-2）**时不得静默清零/覆盖——保留 account 既有 todayPnl（收盘任务/随流水重算
@@ -1304,7 +1318,11 @@ public class TradingAppService {
                 q.marketValue(), q.pnl(),
                 todayPnlFromFile ? BigDecimal.valueOf(todayPnl)
                         : cur.map(AccountSnapshot::todayPnl).orElse(BigDecimal.ZERO),
-                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), effectiveDate));
+                cur.map(AccountSnapshot::principal).orElse(BigDecimal.ZERO), effectiveDate,
+                // P2-交易48：来源随值一起落盘——文件带「当日盈亏」列且明细非空 → broker（券商权威）；
+                // 否则该字段没被本次导入改动，来源原样继承（不得把券商来源错记成系统计算）
+                todayPnlFromFile ? AccountSnapshot.SOURCE_BROKER
+                        : cur.map(AccountSnapshot::todayPnlSource).orElse(null)));
         synchronized (tradeLock(userId)) {
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
@@ -1336,7 +1354,7 @@ public class TradingAppService {
             recordCashImportAnchor(userId, snapshotDate);
             log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
                     userId, cash, q.assets(), updated, todayPnlFromFile);
-            return new CashImportResult(cash, q.assets(), updated);
+            return new CashImportResult(cash, q.assets(), updated, q.unparsedRows().size());
         }
     }
 
@@ -1418,18 +1436,29 @@ public class TradingAppService {
             if (fromOld > 0) {
                 Position p = held.get(e.getKey());
                 BigDecimal oldUnit = BigDecimal.ZERO;
-                if (a.buyQty == 0 && p != null && p.avgCost() != null && p.avgCost().signum() > 0) {
-                    oldUnit = p.avgCost(); // 今日无买入摊薄 → 当前 avgCost = 盘前成本（精确）
+                // P2-交易42 拍板（2026-09-14，用户「券商负成本」）：盘前旧仓成本优先取**券商口径的持仓成本**
+                // ——`avgCost` 允许为**负**（反复做 T / 分红把成本摊到 0 下，券商就是这么记的）。
+                // 原判定 `signum() > 0` 把负成本挡在门外 → 负成本持仓卖出改按「历史买入均价」算已实现，
+                // 与券商口径不一致（实测 600601 券商 +134%，按历史均价算则明显偏低）。
+                // 改为 `!= 0`：只要成本可得（含负）就用它。
+                if (a.buyQty == 0 && p != null && p.avgCost() != null && p.avgCost().signum() != 0) {
+                    oldUnit = p.avgCost(); // 今日无买入摊薄 → 当前 avgCost = 盘前成本（精确，含负成本）
                 } else {
+                    // 当日有买入（avgCost 已被摊薄）或标的已清仓：券商盘前成本取不到 →
+                    // 退回「当日之前的历史买入含费加权均价」（近似）
                     oldUnit = historicalBuyAvgCost(userId, e.getKey(), date);
                     if (oldUnit.signum() <= 0 && p != null && p.avgCost() != null
-                            && p.avgCost().signum() > 0) {
-                        oldUnit = p.avgCost(); // 无盘前历史基线 → 持仓成本兜底（近似）
+                            && p.avgCost().signum() != 0) {
+                        oldUnit = p.avgCost(); // 无盘前历史基线 → 券商持仓成本兜底（近似，含负成本）
                         notes.add(e.getKey() + " " + a.name
                                 + "：卖出旧仓缺盘前成本基线，按当前持仓成本近似（精度受当日摊薄影响）");
                     } else if (oldUnit.signum() <= 0) {
                         notes.add(e.getKey() + " " + a.name
                                 + "：已清仓且无成本基线，卖出已实现暂按净额计（偏高）——请导历史成交或资金股份校准");
+                    } else if (p != null && p.avgCost() != null && p.avgCost().signum() < 0) {
+                        // 负成本 + 当日有买入：券商盘前（负）成本取不到，如实说明本笔口径
+                        notes.add(e.getKey() + " " + a.name
+                                + "：当日有买入，盘前券商成本（负）取不到，这笔卖出已实现按历史买入均价近似");
                     }
                 }
                 sellCost = sellCost.add(oldUnit.multiply(BigDecimal.valueOf(fromOld)));
@@ -1574,7 +1603,8 @@ public class TradingAppService {
             }
             accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
                     c.assets(), c.cash(), c.available(), c.withdrawable(),
-                    c.marketValue(), c.pnl(), r.todayPnl(), c.principal(), c.snapshotDate()))
+                    c.marketValue(), c.pnl(), r.todayPnl(), c.principal(), c.snapshotDate(),
+                    AccountSnapshot.SOURCE_CALC))
                     .orElse(null));
             log.info("当日盈亏随成交流水重算 | userId={} | todayPnl={} | notes={}", userId, r.todayPnl(),
                     r.notes().isEmpty() ? "无" : String.join("；", r.notes()));
@@ -1634,7 +1664,7 @@ public class TradingAppService {
                         current.todayPnl(),
                         // 净投入 += 转入 - 转出（用户确认：本金 = 净投入累计）
                         current.principal().add(delta),
-                        LocalDate.now());
+                        LocalDate.now(), current.todayPnlSource());
             });
             transferRepository.append(userId, record);
             log.info("银证转账 | userId={} | {} {} | 本金净投入 → {}",
@@ -1677,7 +1707,7 @@ public class TradingAppService {
                 return new AccountSnapshot(
                         current.assets(), current.cash(), current.available(), current.withdrawable(),
                         current.marketValue(), current.pnl(), current.todayPnl(),
-                        amount, current.snapshotDate());
+                        amount, current.snapshotDate(), current.todayPnlSource());
             });
             log.info("本金设置 | userId={} | principal → {}（总盈亏 = 资产 {} - 本金 = {}）",
                     userId, amount, updated != null ? updated.assets() : BigDecimal.ZERO,
@@ -1734,9 +1764,16 @@ public class TradingAppService {
     public HistoricalTradeImportResult importHistoricalTrades(String userId, String content,
                                                               ImportMode mode, boolean dryRun) {
         ImportMode effectiveMode = mode != null ? mode : ImportMode.AUTO;
-        List<TradingImportParser.HistoricalTradeRow> rows = TradingImportParser.parseHistoricalTrades(content);
+        // P2-交易43（2026-09-14）：解析层丢弃的行带行号/原文/原因上报（原来静默 continue，
+        // 用户只看到「识别出 N 笔」而不知道同文件里还有行被丢了）
+        TradingImportParser.HistoricalTradeParse parsed = TradingImportParser.parseHistoricalTradesDetailed(content);
+        List<TradingImportParser.HistoricalTradeRow> rows = new ArrayList<>(parsed.rows());
+        List<TradingImportParser.UnparsedLine> unparsedLines = parsed.unparsed();
         if (rows.isEmpty()) {
-            throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」且为通达信历史成交查询导出");
+            String extra = unparsedLines.isEmpty() ? ""
+                    : "（另有 " + unparsedLines.size() + " 行没能识别，首条：" + unparsedLines.get(0).describe() + "）";
+            throw new TradingException("无法识别历史成交导出——请确认表头含「成交日期/证券代码/买卖标志」"
+                    + "且为通达信历史成交查询导出" + extra);
         }
         // 2026-08-25 用户反馈：明显非股票代码（通达信占位段 79/80/81/82，如 799999「登记指定」）一律不落库，
         // 计入 nonTrades（与股息红利税同口径，前端「非交易 N」可见）
@@ -1786,7 +1823,8 @@ public class TradingAppService {
                     "trading/snapshot-anchor.json 缺失或损坏", replayRecent.size()));
         }
         if (dryRun) {
-            return dryRunPlan(userId, rows, appendRows, replayRecent, anchorStatus, effectiveMode, nonTradable);
+            return withUnparsed(dryRunPlan(userId, rows, appendRows, replayRecent, anchorStatus,
+                    effectiveMode, nonTradable), unparsedLines);
         }
         HistoricalTradeImportResult appendResult = null;
         if (!appendRows.isEmpty()) {
@@ -1796,7 +1834,8 @@ public class TradingAppService {
             HistoricalTradeImportResult base = appendResult != null ? appendResult
                     : new HistoricalTradeImportResult(0, 0, 0, 0, List.of(), "append", null, List.of(), anchorStatus);
             refreshTodayPnl(userId);
-            return withExtras(base, base.nonTrades() + nonTradable, base.rejected(), anchorStatus);
+            return withUnparsed(withExtras(base, base.nonTrades() + nonTradable, base.rejected(), anchorStatus),
+                    unparsedLines);
         }
         HistoricalTradeImportResult syncResult = importSync(userId, replayRecent);
         HistoricalTradeImportResult base = appendResult != null ? appendResult
@@ -1804,12 +1843,12 @@ public class TradingAppService {
         refreshTodayPnl(userId);
         List<RejectedLine> rejected = new ArrayList<>(base.rejected());
         rejected.addAll(syncResult.rejected());
-        return new HistoricalTradeImportResult(
+        return withUnparsed(new HistoricalTradeImportResult(
                 base.imported() + syncResult.imported(),
                 base.updated() + syncResult.updated(),
                 base.skipped() + syncResult.skipped(),
                 base.nonTrades() + syncResult.nonTrades() + nonTradable,
-                syncResult.lines(), "sync", syncResult.summary(), rejected, anchorStatus);
+                syncResult.lines(), "sync", syncResult.summary(), rejected, anchorStatus), unparsedLines);
     }
 
     /** 导入模式（2026-09-12）：AUTO = 按券商快照锚定分派补录/回放；APPEND = 全部只补流水（锚定缺失时的安全模式）。 */
@@ -1898,7 +1937,15 @@ public class TradingAppService {
     private HistoricalTradeImportResult withExtras(HistoricalTradeImportResult r, int nonTrades,
                                                    List<RejectedLine> rejected, AnchorStatus anchor) {
         return new HistoricalTradeImportResult(r.imported(), r.updated(), r.skipped(),
-                nonTrades, r.lines(), r.syncMode(), r.summary(), rejected, anchor);
+                nonTrades, r.lines(), r.syncMode(), r.summary(), rejected, anchor, r.unparsed());
+    }
+
+    /** P2-交易43：把解析层「没看懂的行」附到结果上（各分支统一出口，避免遗漏）。 */
+    private HistoricalTradeImportResult withUnparsed(HistoricalTradeImportResult r,
+                                                     List<TradingImportParser.UnparsedLine> unparsed) {
+        if (unparsed == null || unparsed.isEmpty()) return r;
+        return new HistoricalTradeImportResult(r.imported(), r.updated(), r.skipped(), r.nonTrades(),
+                r.lines(), r.syncMode(), r.summary(), r.rejected(), r.anchor(), unparsed);
     }
 
     /**
@@ -2178,7 +2225,8 @@ public class TradingAppService {
                         c.cash().add(occurred),
                         c.available().add(occurred),
                         c.withdrawable().add(occurred),
-                        c.marketValue(), c.pnl(), c.todayPnl(), c.principal(), c.snapshotDate()))
+                        c.marketValue(), c.pnl(), c.todayPnl(), c.principal(), c.snapshotDate(),
+                        c.todayPnlSource()))
                         .orElse(null)); // 无账户快照（未导入资金）不初始化，保持既有语义
                 // 落流水可回溯：direction = 入账 BUY / 税 SELL，volume 0，amount = 发生金额绝对值，reason = 源文件备注
                 TradeDirection dir = occurred.signum() > 0 ? TradeDirection.BUY : TradeDirection.SELL;
@@ -2308,18 +2356,33 @@ public class TradingAppService {
     public record HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                               List<ReconcileLine> lines, String syncMode,
                                               DailyOperationSummary summary,
-                                              List<RejectedLine> rejected, AnchorStatus anchor) {
+                                              List<RejectedLine> rejected, AnchorStatus anchor,
+                                              List<TradingImportParser.UnparsedLine> unparsed) {
+        public HistoricalTradeImportResult {
+            if (unparsed == null) unparsed = List.of();
+        }
+
+        /** 兼容旧 9 参构造（无「没看懂的行」上报）。 */
+        public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
+                                           List<ReconcileLine> lines, String syncMode,
+                                           DailyOperationSummary summary,
+                                           List<RejectedLine> rejected, AnchorStatus anchor) {
+            this(imported, updated, skipped, nonTrades, lines, syncMode, summary, rejected, anchor,
+                    List.of());
+        }
+
         /** 兼容旧 7 参构造（rejected/anchor 缺省的内部中间结果）。 */
         public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                            List<ReconcileLine> lines, String syncMode,
                                            DailyOperationSummary summary) {
-            this(imported, updated, skipped, nonTrades, lines, syncMode, summary, List.of(), null);
+            this(imported, updated, skipped, nonTrades, lines, syncMode, summary, List.of(), null,
+                    List.of());
         }
 
         /** 兼容旧 5 参构造（补录模式无总结）。 */
         public HistoricalTradeImportResult(int imported, int updated, int skipped, int nonTrades,
                                            List<ReconcileLine> lines) {
-            this(imported, updated, skipped, nonTrades, lines, null, null, List.of(), null);
+            this(imported, updated, skipped, nonTrades, lines, null, null, List.of(), null, List.of());
         }
     }
 
@@ -2380,7 +2443,13 @@ public class TradingAppService {
     public record SoldImportResult(int imported) {}
 
     /** 资金导入结果。 */
-    public record CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets, int updatedCost) {}
+    public record CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets,
+                                   int updatedCost, int unparsedRows) {
+        /** 兼容旧 3 参构造。 */
+        public CashImportResult(java.math.BigDecimal cash, java.math.BigDecimal assets, int updatedCost) {
+            this(cash, assets, updatedCost, 0);
+        }
+    }
 
 
     // ── 内部方法 ──

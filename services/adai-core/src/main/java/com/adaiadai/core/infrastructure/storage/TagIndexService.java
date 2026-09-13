@@ -45,7 +45,7 @@ public class TagIndexService implements TagIndexReader {
 
     public TagIndexService(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
-        this.objectMapper = new ObjectMapper()
+        this.objectMapper = StrictJson.strict(new ObjectMapper())
                 .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
                 .enable(SerializationFeature.INDENT_OUTPUT)
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);

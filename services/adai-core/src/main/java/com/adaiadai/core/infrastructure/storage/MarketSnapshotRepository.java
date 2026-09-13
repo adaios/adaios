@@ -28,7 +28,7 @@ public class MarketSnapshotRepository {
 
     private static final Logger log = LoggerFactory.getLogger(MarketSnapshotRepository.class);
     private static final String SNAPSHOT_PATH = "trading/market_snapshot.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     private final FileStorage fileStorage;
 

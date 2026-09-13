@@ -2175,6 +2175,18 @@ class TradingControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    /** P2-交易47（2026-09-14）：空串/纯空白曾可把 profile.md 整文件覆盖清空（原只判 null）。 */
+    @Test
+    void tradingProfile_put_blankStringContent_400() throws Exception {
+        TradingProfileService profile = mock(TradingProfileService.class);
+        profileMvc(profile).perform(put("/api/v1/trading/profile")
+                        .header("X-User-Id", "default")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        verify(profile, never()).saveProfile(any(), any());
+    }
+
     @Test
     void tradingProfile_withoutTradingPlugin_403() throws Exception {
         TradingProfileService profile = mock(TradingProfileService.class);

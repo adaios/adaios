@@ -17,6 +17,10 @@ http.Response _json(Object body) => http.Response(
       headers: {'content-type': 'application/json; charset=utf-8'},
     );
 
+/// yyyy-MM-dd（P2-交易48 账户卡来源日期断言用；页面按「今天」判是否过期）。
+String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 const _portfolioJson = {
   'totalValue': 5220.0,
   'totalPnl': 160.0,
@@ -3026,6 +3030,315 @@ void main() {
         'PUT /api/v1/trading/anchor',
         'PUT /api/v1/trading/anchor',
       ]);
+    });
+  });
+
+  // ── P2-交易48（当日盈亏来源/日期）+ P2-交易43（导入丢行可见），2026-09-14 后端本批 ──
+  // 共同红线：字段缺失/来源未知/解析失败 → 行为与现在完全一致（不报错、不显示、不崩）。
+
+  group('P2-交易48 当日盈亏来源小字（纯函数）', () {
+    final now = DateTime(2026, 9, 14, 10, 0);
+
+    test('broker/calc → 人话口径 + MM-dd；当天不缀「已过期」', () {
+      expect(todayPnlSourceNote('broker', '2026-09-14', now: now), '券商口径 · 09-14');
+      expect(todayPnlSourceNote('calc', '2026-09-14', now: now), '系统计算 · 09-14');
+    });
+
+    test('快照日不是今天 → 缀「（已过期）」（陈值一眼可见）', () {
+      expect(todayPnlSourceNote('calc', '2026-09-13', now: now), '系统计算 · 09-13（已过期）');
+      expect(todayPnlSourceNote('broker', '2026-09-11', now: now), '券商口径 · 09-11（已过期）');
+    });
+
+    test('来源未知/缺失/认不出 → null（不标，绝不编造）', () {
+      expect(todayPnlSourceNote('', '2026-09-14', now: now), isNull);
+      expect(todayPnlSourceNote('  ', '2026-09-14', now: now), isNull);
+      expect(todayPnlSourceNote('void-calc', '2026-09-14', now: now), isNull,
+          reason: '认不出的值不硬翻人话');
+    });
+
+    test('大小写/空格容忍；日期缺失/非法 → 只报来源，不崩', () {
+      expect(todayPnlSourceNote(' BROKER ', '2026-09-14', now: now), '券商口径 · 09-14');
+      expect(todayPnlSourceNote('calc', '', now: now), '系统计算');
+      expect(todayPnlSourceNote('calc', '2026-09', now: now), '系统计算');
+      expect(todayPnlSourceNote('calc', '2026-0X-11', now: now), '系统计算');
+      expect(todayPnlSourceNote('calc', 'not-a-date', now: now), '系统计算');
+    });
+  });
+
+  group('P2-交易48/43 DTO 解析（旧后端缺字段不炸）', () {
+    test('AccountSnapshotDto 解析 todayPnlSource；缺字段/类型不符安全兜底', () {
+      final a = AccountSnapshotDto.fromJson({'assets': 1.0, 'todayPnlSource': 'broker'});
+      expect(a.todayPnlSource, 'broker');
+      expect(AccountSnapshotDto.fromJson({'assets': 1.0}).todayPnlSource, '',
+          reason: '旧后端缺字段 → 空（前端不标来源）');
+      expect(AccountSnapshotDto.fromJson({'todayPnlSource': 123}).todayPnlSource, '123',
+          reason: '类型不符转字符串，不崩');
+      expect(AccountSnapshotDto.fromJson(null).todayPnlSource, '');
+    });
+
+    test('CashImportResult 解析 unparsedRows；缺字段 → 0', () {
+      expect(CashImportResult.fromJson({'cash': 1.0, 'updatedCost': 2, 'unparsedRows': 3}).unparsedRows, 3);
+      expect(CashImportResult.fromJson({'cash': 1.0}).unparsedRows, 0);
+      expect(CashImportResult.fromJson('boom').unparsedRows, 0);
+    });
+
+    test('HistoricalTradeImportResult 解析 unparsed + unparsedCount；旧后端 → 空/0', () {
+      final r = HistoricalTradeImportResult.fromJson({
+        'imported': 0,
+        'unparsed': ['第 3 行「2026080X …」：成交日期「2026080X」不是 yyyyMMdd 格式', 42],
+        'unparsedCount': 5,
+      });
+      expect(r.unparsed.length, 2);
+      expect(r.unparsed.first, contains('不是 yyyyMMdd 格式'));
+      expect(r.unparsed[1], '42', reason: '非字符串元素安全转字符串');
+      expect(r.unparsedCount, 5, reason: '明细可能只给前几条，计数以字段为准');
+      final old = HistoricalTradeImportResult.fromJson({'imported': 1});
+      expect(old.unparsed, isEmpty);
+      expect(old.unparsedCount, 0);
+      expect(HistoricalTradeImportResult.fromJson('boom').unparsed, isEmpty);
+    });
+
+    test('计数缺省 → 退回明细条数；聚合去重合并 + 计数累加', () {
+      final single = HistoricalTradeImportResult.fromJson({
+        'imported': 0, 'unparsed': ['第 1 行：数量不是数字'],
+      });
+      expect(single.unparsedCount, 1, reason: '字段缺失 → 明细条数兜底');
+      final a = HistoricalTradeImportResult.fromJson({
+        'imported': 0, 'unparsed': ['第 3 行：日期不是 yyyyMMdd'],
+      });
+      final b = HistoricalTradeImportResult.fromJson({
+        'imported': 0,
+        'unparsed': ['第 3 行：日期不是 yyyyMMdd', '第 7 行：买卖标志认不出'],
+      });
+      final agg = aggregateImportResults([a, b]);
+      expect(agg.unparsed.length, 2, reason: '相同文本去重合并');
+      expect(agg.unparsedCount, 3, reason: '两份文件的没看懂行计数累加');
+    });
+  });
+
+  group('P2-交易48 账户卡当日盈亏来源（widget）', () {
+    // 页面按「今天」判过期，测试用运行时的今天/昨天构造，避免固定日期随日历失真。
+    MockClient mock(Map<String, dynamic> account) => MockClient((request) async {
+          final path = request.url.path;
+          if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+          if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+          if (path == '/api/v1/trading/account') return _json(account);
+          if (path == '/api/v1/trading/watchlist') return _json([]);
+          if (path == '/api/v1/trading/sold') return _json([]);
+          if (path == '/api/v1/trading/buy-points') return _json([]);
+          if (path == '/api/v1/trading/sold/score') return _json([]);
+          if (path == '/api/v1/trading/trades') return _json([]);
+          if (path == '/api/v1/trading/reviews') return _json([]);
+          if (path == '/api/v1/trading/equity-curve') {
+            return _json({'points': [], 'skippedDays': 0, 'startDate': '', 'endDate': ''});
+          }
+          return http.Response('not found', 404);
+        });
+
+    Map<String, dynamic> account({required double todayPnl, String? source, String? date}) => {
+          'assets': 110504.88, 'cash': 292.88, 'available': 292.88, 'withdrawable': 292.88,
+          'marketValue': 110212.00, 'pnl': 15235.55, 'todayPnl': todayPnl,
+          'snapshotDate': date ?? _ymd(DateTime.now()),
+          'todayPnlSource': ?source,
+        };
+
+    testWidgets('券商口径 + 快照当天 → 当日盈亏下小字「券商口径 · MM-dd」', (tester) async {
+      final today = DateTime.now();
+      final md = '${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(account(todayPnl: -1759.0, source: 'broker'))));
+      expect(find.text('券商口径 · $md'), findsOneWidget);
+    });
+
+    testWidgets('系统计算 + 快照不是今天 → 缀「（已过期）」', (tester) async {
+      final y = DateTime.now().subtract(const Duration(days: 1));
+      final md = '${y.month.toString().padLeft(2, '0')}-${y.day.toString().padLeft(2, '0')}';
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(account(todayPnl: -2837.0, source: 'calc', date: _ymd(y)))));
+      expect(find.text('系统计算 · $md（已过期）'), findsOneWidget);
+    });
+
+    testWidgets('当日盈亏 0 / 来源缺失 / 来源认不出 → 都不标（宁可不说）', (tester) async {
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(account(todayPnl: 0.0, source: 'broker'))));
+      expect(find.textContaining('券商口径'), findsNothing, reason: '当日盈亏 0 不标');
+
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(account(todayPnl: -1759.0))));
+      expect(find.textContaining('券商口径'), findsNothing, reason: '旧后端无 todayPnlSource 不标');
+      expect(find.textContaining('系统计算'), findsNothing);
+
+      await _pumpTrading(tester,
+          ApiService(baseUrl: 'http://test', client: mock(account(todayPnl: -1759.0, source: 'void-calc'))));
+      expect(find.textContaining('void-calc'), findsNothing, reason: '认不出的来源不原样甩给用户');
+      expect(find.textContaining('券商口径'), findsNothing);
+    });
+  });
+
+  group('P2-交易43 历史成交导入「没看懂的行」（widget）', () {
+    const tdxText = '''
+成交日期        成交时间        证券代码        证券名称        买卖标志        成交数量        成交价格            成交金额        委托编号        成交编号                发生金额         股东代码
+20260912        14:52:56        600000          浦发银行        买入            200.00         9.20000000         1840.00         151117          69351117                1840.00          A511358384
+''';
+    const unparsedLine = '第 3 行「2026080X …」：成交日期「2026080X」不是 yyyyMMdd 格式';
+
+    testWidgets('unparsed 非空 → 橙色警示 + 明细可收起/展开（Dialog + Tab inline 各一份）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          final dry = request.url.queryParameters['dryRun'] == 'true';
+          return _json({
+            'imported': 1, 'updated': 0, 'skipped': 0, 'nonTrades': 0, 'lines': [],
+            'syncMode': 'append', 'dryRun': dry, 'rejected': [],
+            'unparsed': [unparsedLine], 'unparsedCount': 1,
+            'anchor': {'positionsReplace': '2026-09-10', 'cashImport': null,
+                       'known': true, 'holdingsKnown': true, 'anchorDate': '2026-09-10'},
+            if (dry)
+              'plan': {'new': 1, 'merged': 0, 'skipped': 0, 'nonTrades': 0,
+                       'wouldReject': 0, 'anchorKnown': true, 'syncMode': 'append'},
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      // 预检阶段就可见（默认展开：丢数据第一眼可见）
+      expect(find.text('有 1 行没能识别（这些成交没有导入）'), findsOneWidget);
+      expect(find.text('· $unparsedLine'), findsOneWidget);
+
+      // 收起 → 明细隐藏、警示还在；再展开
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('· $unparsedLine'), findsNothing);
+      expect(find.text('有 1 行没能识别（这些成交没有导入）'), findsOneWidget);
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+      expect(find.text('· $unparsedLine'), findsOneWidget);
+
+      // 落盘后：Dialog + Tab inline 各一份
+      await tester.tap(find.text('确认导入'));
+      await tester.pumpAndSettle();
+      expect(find.text('有 1 行没能识别（这些成交没有导入）'), findsNWidgets(2));
+      expect(find.text('· $unparsedLine'), findsNWidgets(2));
+    });
+
+    testWidgets('unparsed 缺失（旧后端）→ 不显示任何警示（行为与现在一致）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/trades/import') {
+          return _json({'imported': 1, 'updated': 0, 'skipped': 0, 'nonTrades': 0,
+                        'lines': [], 'syncMode': 'append', 'rejected': [],
+                        'dryRun': request.url.queryParameters['dryRun'] == 'true'});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+      await tester.tap(find.text('历史成交'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入历史成交'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, tdxText);
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('没能识别'), findsNothing);
+      expect(find.textContaining('没有导入'), findsNothing);
+    });
+  });
+
+  group('P2-交易43 资金股份导入「没认出来的明细行」（widget）', () {
+    testWidgets('unparsedRows>0 → 成功提示追加「另有 N 行…精确成本本次没更新」', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/equity-curve') {
+          return _json({'points': [], 'skippedDays': 0, 'startDate': '', 'endDate': ''});
+        }
+        if (path == '/api/v1/trading/imports/cash') {
+          return _json({'cash': 1381.93, 'assets': 77850.0, 'updatedCost': 2, 'unparsedRows': 3});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('资金'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入资金'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '资金导出文本');
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
+      expect(find.textContaining('另有 3 行明细没认出来，这些持仓的精确成本本次没更新'), findsOneWidget);
+    });
+
+    testWidgets('unparsedRows 缺失（旧后端）/为 0 → 提示维持原样', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/trades') return _json([]);
+        if (path == '/api/v1/trading/equity-curve') {
+          return _json({'points': [], 'skippedDays': 0, 'startDate': '', 'endDate': ''});
+        }
+        if (path == '/api/v1/trading/imports/cash') {
+          return _json({'cash': 1381.93, 'assets': 77850.0, 'updatedCost': 2});
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      await tester.tap(find.text('资金'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导入资金'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '资金导出文本');
+      await tester.tap(find.text('导入'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('资金已更新：现金 ¥1381.93 · 成本更新 2 只'), findsOneWidget);
+      expect(find.textContaining('没认出来'), findsNothing);
     });
   });
 }

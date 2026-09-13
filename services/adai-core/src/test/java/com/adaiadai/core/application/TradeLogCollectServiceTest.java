@@ -43,6 +43,11 @@ class TradeLogCollectServiceTest {
         fileStorage = new InMemoryFileStorage();
         repository = new TradeLogRepository(fileStorage);
         parse = mock(TradingParseAppService.class);
+        // P2-交易44（2026-09-14）：Mockito 对自定义 record 返回类型默认给 null（只有 List 才默认空表），
+        // 而真实实现「表格未命中 → 空结果 + 回退单笔宽松解析」。这里显式兜底，避免未 stub 的用例 NPE；
+        // 各用例自己的 stub 写在测试方法里，晚于此处置，按 Mockito 语义覆盖本行。
+        when(parse.parseLooseBatchDetailed(any(), any()))
+                .thenReturn(new TradingParseAppService.LooseBatchParse(java.util.List.of(), java.util.List.of()));
         when(parse.parseLoose(any(), any())).thenAnswer(i -> {
             String text = i.getArgument(1);
             if (text == null) {
@@ -372,11 +377,12 @@ class TradeLogCollectServiceTest {
     @Test
     void collect_screenshotTable_collectsAllFilledTrades() {
         // 截图表格文字 → parseLooseBatch 命中多笔 → 逐笔归集候选
-        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
+        when(parse.parseLooseBatchDetailed(any(), any())).thenReturn(new TradingParseAppService.LooseBatchParse(java.util.List.of(
                 new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY", new BigDecimal("21.170"), 200, null, null, null, null, null),
                 new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY", new BigDecimal("64.840"), 300, null, null, null, null, null),
                 new TradingParseAppService.ParseResult(true, "000831", "中国稀土", "BUY", new BigDecimal("56.040"), 100, null, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "600206", "有研新材", "SELL", new BigDecimal("50.330"), 600, null, null, null, null, null)));
+                new TradingParseAppService.ParseResult(true, "600206", "有研新材", "SELL", new BigDecimal("50.330"), 600, null, null, null, null, null)),
+                java.util.List.of()));
 
         service.collect("default", "当日委托 表格文字（模拟截图识别）", "image");
 
@@ -390,8 +396,9 @@ class TradeLogCollectServiceTest {
     @Test
     void collect_screenshotAcrossTwoImages_deduplicates() {
         // 用户「可能给多张截图且重复」：两张截图同一笔（亨通买入 300）→ 去重只留一笔
-        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
-                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY", new BigDecimal("64.840"), 300, null, null, null, null, null)));
+        when(parse.parseLooseBatchDetailed(any(), any())).thenReturn(new TradingParseAppService.LooseBatchParse(java.util.List.of(
+                new TradingParseAppService.ParseResult(true, "600487", "亨通光电", "BUY", new BigDecimal("64.840"), 300, null, null, null, null, null)),
+                java.util.List.of()));
 
         service.collect("default", "第一张截图", "image");
         service.collect("default", "第二张截图（重复同一笔）", "image");
@@ -404,23 +411,32 @@ class TradeLogCollectServiceTest {
     @Test
     void collect_plainScreenshotTable_noBatchNoSingle_ignored() {
         // 截图表格但 parseLooseBatch 空（如全部已报/申购）→ 回退 parseLoose 仍 unmatched → 不归集
-        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of());
+        // P2-交易44（2026-09-14）：同时验证「被丢掉的行」随归集结果带出去（原来只 log.debug 静默吞）
+        when(parse.parseLooseBatchDetailed(any(), any())).thenReturn(new TradingParseAppService.LooseBatchParse(
+                java.util.List.of(),
+                java.util.List.of(new TradingImportParser.UnparsedLine(1,
+                        "云南锗业 002428 93.480 卖出 100 已报",
+                        "状态「已报」不是已成/部成（未成交的单子没有记）"))));
         // parseLoose 对表格文字命中不了 mock 关键词分支 → 返回 null（NPE 风险：宽松解析不得返回 null）。
         // 此测试同时回归「parseLoose 返回 null 时 collect 不得崩」——按真实实现 parseLoose 永不返回 null
         // （末尾 return unmatched()），mock 这里显式给 unmatched 模拟真实行为。
         when(parse.parseLoose(any(), any())).thenReturn(TradingParseAppService.ParseResult.unmatched());
 
-        service.collect("default", "云南锗业 002428 93.480 卖出 100 已报 撤 天博申购 732448 买入 4000 已确认", "image");
+        TradeLogCollectService.CollectResult r = service.collectDetailed("default",
+                "云南锗业 002428 93.480 卖出 100 已报 撤 天博申购 732448 买入 4000 已确认", "image");
 
-        assertTrue(service.todayCandidates("default").isEmpty(), "全非成交截图不应产生候选");
+        assertTrue(r.candidates().isEmpty(), "全非成交截图不应产生候选");
+        assertEquals(1, r.dropped().size(), "没记的行必须随结果带出去（用户才知道截图里有行没进候选）");
+        assertTrue(r.dropped().get(0).reason().contains("已报"));
     }
 
     @Test
     void collect_batchResultWithUnknownSymbol_skipped() {
         // 批量解析结果含无 symbol 无 name 的脏行 → 跳过不落 unknown（与单笔 P1-1 同口径）
-        when(parse.parseLooseBatch(any(), any())).thenReturn(java.util.List.of(
+        when(parse.parseLooseBatchDetailed(any(), any())).thenReturn(new TradingParseAppService.LooseBatchParse(java.util.List.of(
                 new TradingParseAppService.ParseResult(true, null, null, "SELL", null, null, null, null, null, null, null),
-                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY", new BigDecimal("21.170"), 200, null, null, null, null, null)));
+                new TradingParseAppService.ParseResult(true, "000776", "广发证券", "BUY", new BigDecimal("21.170"), 200, null, null, null, null, null)),
+                java.util.List.of()));
 
         service.collect("default", "表格（含幻觉脏行）", "image");
 

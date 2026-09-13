@@ -240,6 +240,35 @@ class TradingParseAppServiceTest {
         assertTrue(results.isEmpty());
     }
 
+    // ── P2-交易44（2026-09-14）：被丢掉的行必须可见（原来五处只 log.debug，用户看不到丢行）──
+
+    @Test
+    void parseLooseBatchDetailed_realScreenshot_reportsDroppedRows() {
+        TradingParseAppService.LooseBatchParse p =
+                service.parseLooseBatchDetailed("u1", REAL_ORDER_SCREENSHOT_TEXT);
+
+        assertEquals(4, p.trades().size(), "已成 4 笔照旧解析");
+        assertEquals(2, p.dropped().size(),
+                "已报 1 笔 + 申购 1 笔都要如实上报——用户才知道「识别出 4 笔」之外还有 2 行没进候选");
+        assertTrue(p.dropped().stream().anyMatch(d -> d.reason().contains("已报")),
+                "未成交状态要说明原因：" + p.dropped());
+        assertTrue(p.dropped().stream().anyMatch(d -> d.reason().contains("申购")),
+                "申购/配号要说明原因：" + p.dropped());
+        assertTrue(p.dropped().get(0).describe().startsWith("第 1 行"), p.dropped().get(0).describe());
+    }
+
+    @Test
+    void parseLooseBatchDetailed_zeroPrice_reportedAsDropped() {
+        // 有数量但价格为 0（送股/红股/占位行的典型形态）——原来静默丢弃，
+        // 用户只看到「识别出 N 笔」而不知道这一行被跳过了
+        String text = "识别交易动作：名称/代码 成交价/买卖 成交量/额 日期\n"
+                + "有研新材 600206 0.000 买入 8 0.00 2026-08-26\n";
+        TradingParseAppService.LooseBatchParse p = service.parseLooseBatchDetailed("u1", text);
+        assertTrue(p.trades().isEmpty());
+        assertEquals(1, p.dropped().size());
+        assertTrue(p.dropped().get(0).reason().contains("不是有效成交"), p.dropped().get(0).reason());
+    }
+
     /** 用户 2026-08-27 真实「当日成交」截图（VLM OCR，无状态列——名称 代码 价格 买卖 数量 金额 日期）。 */
     private static final String REAL_DAILY_TRADES_TEXT =
             "识别交易动作：名称/代码 成交价/买卖 成交量/额 日期\n"

@@ -32,7 +32,7 @@ public class TradingMarketStageRepository implements TradingMarketStagePort {
 
     private static final Logger log = LoggerFactory.getLogger(TradingMarketStageRepository.class);
     private static final String STAGE_PATH = "trading/market-stage.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     /** per-user 条带锁（固定 16 条带，防任意 userId 撑爆 map）。 */

@@ -99,6 +99,53 @@ class DailyPnlComputeTest {
         assertTrue(r.notes().isEmpty(), "行情与成本齐备不应有附注: " + r.notes());
     }
 
+    /**
+     * P2-交易42 拍板（2026-09-14，用户「券商负成本」）：负成本持仓卖出，旧仓成本用**券商成本价**。
+     * <p>
+     * 现场：600601 方正科技 100 股 / 成本 −5.078（反复做 T + 分红把成本摊到 0 下——券商就是这么记的，
+     * 该股券商口径盈亏 +134%）。原判定 `avgCost.signum() > 0` 把负成本挡在门外，
+     * 这笔卖出会退化成「无成本基线 → 按净额计」，已实现被少算 507.80。
+     */
+    @Test
+    void computeDailyPnl_negativeCostHolding_usesBrokerNegativeCost() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600601", 100, "-5.078")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("600601", TradeDirection.SELL, 100, "14.83", "5.0", DAY, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of()); // 缺行情 → 只验已实现部分（浮动 0）
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
+
+        // 卖出净额 = 14.83×100 − 5 = 1478.00；旧仓成本 = −5.078×100 = −507.80（券商口径，含负）
+        // 已实现 = 1478.00 − (−507.80) = 1985.80
+        assertEquals(0, new BigDecimal("1985.80").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+        assertTrue(r.notes().stream().noneMatch(n -> n.contains("按净额计")),
+                "负成本是券商合法口径，不得降级成「无成本基线按净额计」: " + r.notes());
+    }
+
+    /** 负成本 + **当日有买入**（avgCost 已被摊薄）→ 退回历史买入均价，并如实附注本笔口径差异。 */
+    @Test
+    void computeDailyPnl_negativeCost_withTodayBuy_fallsBackToHistoryAndNotesIt() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600601", 100, "-5.078")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("600601", TradeDirection.BUY, 100, "20.0", "0", PREV, null), // 历史基线 20.0
+                trade("600601", TradeDirection.BUY, 100, "10.0", "0", DAY, null),  // 当日买入 → 摊薄
+                trade("600601", TradeDirection.SELL, 100, "14.83", "0", DAY, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of());
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
+
+        assertTrue(r.notes().stream().anyMatch(n -> n.contains("盘前券商成本（负）取不到")),
+                "当日有买入时券商盘前成本确实取不到，必须如实说明本笔按历史均价近似: " + r.notes());
+    }
+
     @Test
     void computeDailyPnl_withDividendCashEvent() {
         PositionRepository positions = mock(PositionRepository.class);

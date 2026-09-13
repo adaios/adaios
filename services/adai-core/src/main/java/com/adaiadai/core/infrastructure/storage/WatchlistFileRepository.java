@@ -20,7 +20,7 @@ public class WatchlistFileRepository implements WatchlistRepository {
 
     private static final Logger log = LoggerFactory.getLogger(WatchlistFileRepository.class);
     private static final String PATH = "trading/watchlist.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     /** 解析日期；空/非法返回 null（由 domain 层兜底，storage 不取 now()——G2 防复发）。 */
     private static LocalDate parseDateOrNull(String s) {

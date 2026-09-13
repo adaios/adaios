@@ -25,7 +25,7 @@ public class TradeLogRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TradeLogRepository.class);
     private static final String DIR = "trading/trade-log/";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     private final FileStorage fileStorage;
     /** per-user 写锁（C5，2026-08-23）：锁 key 收敛为 userId——date 维度会随日期无限增长；

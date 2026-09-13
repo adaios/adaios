@@ -26,7 +26,7 @@ import java.time.YearMonth;
 public class LearnQuotaFileRepository implements LearnQuotaRepository {
 
     private static final Logger log = LoggerFactory.getLogger(LearnQuotaFileRepository.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
     private static final String QUOTA_PATH = "learn/_quota.json";
     private static final int LOCK_STRIPES = 16;
 

@@ -1382,6 +1382,161 @@ void main() {
       expect(stage, 'bull', reason: 'PUT body stage=bull');
       expect(find.text('多头区间'), findsOneWidget, reason: '切换后乐观更新为多头区间');
     });
+
+    // ── P2-交易48（当日盈亏来源/日期）+ P2-交易43（截图丢行可见），2026-09-14 后端本批 ──
+    // 共同红线：字段缺失/来源未知/解析失败 → 行为与现在完全一致（不报错、不显示、不崩）。
+
+    String ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    String md(DateTime d) => '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    void mockAccount(_Backend b, {required double todayPnl, String? source, String? date}) {
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 100000.0, 'cash': 50000.0, 'available': 50000.0,
+            'withdrawable': 50000.0, 'marketValue': 50000.0, 'pnl': 0.0,
+            'todayPnl': todayPnl, 'principal': 150000.0,
+            'snapshotDate': date ?? ymd(DateTime.now()),
+            if (source != null) 'todayPnlSource': source,
+          });
+    }
+
+    testWidgets('P2-交易48：当日盈亏下小字标来源与日期（券商口径 · MM-dd）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      mockAccount(b, todayPnl: -1759.0, source: 'broker');
+      await pumpTrading(tester, b);
+
+      expect(find.text('券商口径 · ${md(DateTime.now())}'), findsOneWidget);
+    });
+
+    testWidgets('P2-交易48：快照不是今天 → 缀「（已过期）」', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      final y = DateTime.now().subtract(const Duration(days: 1));
+      mockAccount(b, todayPnl: -2837.0, source: 'calc', date: ymd(y));
+      await pumpTrading(tester, b);
+
+      expect(find.text('系统计算 · ${md(y)}（已过期）'), findsOneWidget);
+    });
+
+    testWidgets('P2-交易48：当日盈亏 0 / 来源缺失 / 来源认不出 → 都不标', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      mockAccount(b, todayPnl: 0.0, source: 'broker');
+      await pumpTrading(tester, b);
+      expect(find.textContaining('券商口径'), findsNothing, reason: '当日盈亏 0 不标');
+
+      final b2 = _Backend();
+      mockBase(b2);
+      mockAccount(b2, todayPnl: -1759.0); // 旧后端无 todayPnlSource
+      await pumpTrading(tester, b2);
+      expect(find.textContaining('券商口径'), findsNothing);
+      expect(find.textContaining('系统计算'), findsNothing);
+
+      final b3 = _Backend();
+      mockBase(b3);
+      mockAccount(b3, todayPnl: -1759.0, source: 'void-calc');
+      await pumpTrading(tester, b3);
+      expect(find.textContaining('void-calc'), findsNothing, reason: '认不出的来源不原样甩给用户');
+      expect(find.textContaining('券商口径'), findsNothing);
+    });
+
+    testWidgets('P2-交易43：截图有 N 行没记 → 橙色提示 + 明细可收起/展开', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/screenshots'] = (_) async => _json({
+            'total': 1, 'processed': 1, 'candidates': <Object>[], 'errors': <Object>[],
+            'dropped': [
+              '第 1 张 · 第 2 行「…」：状态「已报」不是已成/部成（未成交的单子没有记）',
+            ],
+            'droppedCount': 1,
+          });
+      final page = TradingPage(
+        api: _apiFor(b),
+        debugPickImages: () async => [PickedImage([1, 2, 3], 's1.png', 'png')],
+      );
+      await tester.pumpWidget(MaterialApp(home: page));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('这张截图有 1 行没记'), findsOneWidget);
+      expect(find.text('第 1 张 · 第 2 行「…」：状态「已报」不是已成/部成（未成交的单子没有记）'),
+          findsOneWidget);
+
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('状态「已报」'), findsNothing, reason: '收起后明细隐藏');
+      expect(find.text('这张截图有 1 行没记'), findsOneWidget, reason: '警示本身不消失');
+
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('状态「已报」'), findsOneWidget);
+    });
+
+    testWidgets('P2-交易43：dropped 缺失（旧后端）→ 不显示任何提示', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/screenshots'] = (_) async => _json({
+            'total': 1, 'processed': 1,
+            'candidates': [
+              {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+                'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true},
+            ],
+            'errors': <Object>[],
+          });
+      final page = TradingPage(
+        api: _apiFor(b),
+        debugPickImages: () async => [PickedImage([1, 2, 3], 's1.png', 'png')],
+      );
+      await tester.pumpWidget(MaterialApp(home: page));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('截图入账'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('这张截图有'), findsNothing);
+      expect(find.textContaining('行没记'), findsNothing);
+    });
+  });
+
+  // ── P2-交易48/43 DTO 解析（旧后端缺字段不炸），2026-09-14 ──
+
+  group('交易失败可见字段 DTO（P2-交易48/43）', () {
+    test('AccountSnapshotDto 解析 todayPnlSource；缺字段/类型不符安全兜底', () {
+      final a = AccountSnapshotDto.fromJson({'assets': 1.0, 'todayPnlSource': 'broker'});
+      expect(a.todayPnlSource, 'broker');
+      expect(AccountSnapshotDto.fromJson({'assets': 1.0}).todayPnlSource, '',
+          reason: '旧后端缺字段 → 空（不标来源）');
+      expect(AccountSnapshotDto.fromJson({'todayPnlSource': 123}).todayPnlSource, '123',
+          reason: '类型不符转字符串，不崩');
+      expect(AccountSnapshotDto.fromJson(null).todayPnlSource, '');
+    });
+
+    test('TradingScreenshotResult 解析 dropped；缺字段 → 空', () {
+      final r = TradingScreenshotResult.fromJson({
+        'total': 1, 'processed': 1, 'candidates': [], 'errors': [],
+        'dropped': ['第 1 张 · 第 2 行：状态「已报」不是已成/部成', 7],
+      });
+      expect(r.dropped.length, 2);
+      expect(r.dropped.first, contains('不是已成/部成'));
+      expect(r.dropped[1], '7', reason: '非字符串元素安全转字符串');
+      expect(TradingScreenshotResult.fromJson({'total': 1}).dropped, isEmpty);
+    });
+
+    test('todayPnlSourceNote：人话口径 + 过期标记 + 未知一律 null', () {
+      final now = DateTime(2026, 9, 14, 10, 0);
+      expect(todayPnlSourceNote('broker', '2026-09-14', now: now), '券商口径 · 09-14');
+      expect(todayPnlSourceNote('calc', '2026-09-14', now: now), '系统计算 · 09-14');
+      expect(todayPnlSourceNote('calc', '2026-09-13', now: now), '系统计算 · 09-13（已过期）');
+      expect(todayPnlSourceNote('', '2026-09-14', now: now), isNull);
+      expect(todayPnlSourceNote('void-calc', '2026-09-14', now: now), isNull);
+      expect(todayPnlSourceNote(' CALC ', '2026-09-14', now: now), '系统计算 · 09-14');
+      expect(todayPnlSourceNote('broker', '', now: now), '券商口径');
+      expect(todayPnlSourceNote('broker', '2026-0X-11', now: now), '券商口径');
+    });
   });
 
   group('ProjectTaskPage', () {

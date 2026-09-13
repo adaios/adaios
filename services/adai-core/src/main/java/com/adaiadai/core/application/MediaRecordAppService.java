@@ -127,7 +127,14 @@ public class MediaRecordAppService {
             try {
                 String ocr = (understanding.extractedText() != null && !understanding.extractedText().isBlank())
                         ? understanding.extractedText() : summary;
-                tradeLogCollectService.collect(userId, ocr, "image");
+                // P2-交易44（2026-09-14）：被表格规则丢弃的行必须可见——此处是通用图片记录入口，
+                // 响应契约不在本批改动面内，用 WARN 如实记录（原来只在解析器里 log.debug 静默吞）
+                java.util.List<TradingImportParser.UnparsedLine> dropped =
+                        tradeLogCollectService.collectDetailed(userId, ocr, "image").dropped();
+                if (!dropped.isEmpty()) {
+                    log.warn("图片记录归集：有 {} 行没能归集 | id={} | {}", dropped.size(), id,
+                            dropped.stream().map(TradingImportParser.UnparsedLine::describe).toList());
+                }
             } catch (Exception e) {
                 log.warn("交易日志归集失败（不影响记录）| id={} | {}", id, e.getMessage());
             }

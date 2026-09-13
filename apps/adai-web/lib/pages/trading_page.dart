@@ -47,6 +47,34 @@ String _fmtShortDate(String yyyyMmDd) {
   return '$month/$day';
 }
 
+/// 快照日期 `yyyy-MM-dd` → `MM-dd`（账户卡来源小字用，P2-交易48）。
+/// 非该格式（短/空/非数字）→ null（只报来源，不编造日期）。
+String? _snapshotMonthDay(String snapshotDate) {
+  if (snapshotDate.length < 10) return null;
+  final md = snapshotDate.substring(5, 10);
+  final month = int.tryParse(md.substring(0, 2));
+  final day = int.tryParse(md.substring(3, 5));
+  if (month == null || day == null) return null;
+  return md;
+}
+
+/// 当日盈亏来源小字（P2-交易48，2026-09-14）：`券商口径 · 09-11` / `系统计算 · 09-14（已过期）`。
+/// - 来源认不出（null/缺字段/旧后端/未知值）→ null：**不标**（宁可不说，也不编造）；
+/// - 快照日不是今天 → 缀「（已过期）」——提示这不是今天的数（同名字段可能是两天前的陈值）；
+/// - 日期缺失/非法 → 只报来源。
+/// [now] 仅测试注入用。
+String? todayPnlSourceNote(String source, String snapshotDate, {DateTime? now}) {
+  final s = source.trim().toLowerCase();
+  final label = s == 'broker' ? '券商口径' : (s == 'calc' ? '系统计算' : null);
+  if (label == null) return null;
+  final md = _snapshotMonthDay(snapshotDate);
+  if (md == null) return label;
+  final t = now ?? DateTime.now();
+  final today = '${t.year.toString().padLeft(4, '0')}-'
+      '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+  return '$label · $md${snapshotDate.substring(0, 10) == today ? '' : '（已过期）'}';
+}
+
 /// RFC 20260825：行为标注配色——亏损加仓/追高/破止损未走 = 红（纪律问题），
 /// 浮盈回吐/短线超期 = 橙（提醒），短线新开 = 蓝（中性信息）。
 Color _behaviorColor(String type) {
@@ -706,8 +734,13 @@ class _TradingPageState extends State<TradingPage> {
       _statCard('参考市值', hasAccount ? a.marketValue : (p?.totalValue ?? 0), format: '¥', color: AppColors.darkPurple),
       const SizedBox(width: 12),
       // #132 红涨绿亏（A股）：盈=红、亏=绿
+      // P2-交易48（2026-09-14）：当日盈亏标来源与日期（券商口径 / 系统计算），
+      // 0 / 来源未知 → 不标（宁可不说，也不编造）。
       _statCard('当日盈亏', hasAccount ? a.todayPnl : 0,
-          color: (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
+          color: (hasAccount ? a.todayPnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen,
+          note: hasAccount && a.todayPnl != 0
+              ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
+              : null),
       const SizedBox(width: 12),
       // 总盈亏 = 资产 - 本金（用户确认：累计投入 15 万，当前亏 3.9 万——券商浮盈不是总盈亏）
       // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 「—」不给误导数值
@@ -723,7 +756,7 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
-  Widget _statCard(String label, double? value, {String format = '¥', required Color color, bool big = false, String? sub}) {
+  Widget _statCard(String label, double? value, {String format = '¥', required Color color, bool big = false, String? sub, String? note}) {
     final isCount = format.isEmpty;
     return Expanded(
       child: Container(
@@ -756,6 +789,14 @@ class _TradingPageState extends State<TradingPage> {
                     color: value == null ? AppColors.darkGrey5 : color),
               ),
             ),
+            // P2-交易48：数值下方小字注（当日盈亏来源与日期；11px 项目下限）
+            if (note != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(note,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ),
           ],
         ),
       ),
@@ -2826,7 +2867,14 @@ class _TradingPageState extends State<TradingPage> {
   Future<void> _importCashSnapshot(String content, String? snapshotDate) async {
     final r = await widget.api.importCash(content, snapshotDate: snapshotDate);
     await _loadAll();
-    if (mounted) _toast('资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只');
+    if (mounted) {
+      var msg = '资金已更新：现金 ¥${r.cash.toStringAsFixed(2)} · 成本更新 ${r.updatedCost} 只';
+      // P2-交易43（2026-09-14）：有明细行没认出来 → 该只精确成本本次没更新（丢数据必须可见）
+      if (r.unparsedRows > 0) {
+        msg += ' · 另有 ${r.unparsedRows} 行明细没认出来，这些持仓的精确成本本次没更新';
+      }
+      _toast(msg);
+    }
   }
 
   Future<void> _openImportDialog(String title, String hint,
@@ -4497,6 +4545,11 @@ class _ImportResultSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = result.summary;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // P2-交易43（2026-09-14）：没看懂的行**根本没导入**——排在 rejected 之前（那批至少已记账）
+      if (result.unparsed.isNotEmpty) _UnparsedBlock(
+        lines: result.unparsed,
+        declaredCount: result.unparsedCount,
+      ),
       if (result.rejected.isNotEmpty) _rejectedBlock(),
       if (result.anchor != null && !result.anchor!.known) _anchorMissingBlock(),
       // 基线未记录（holdingsKnown=false）→ 对账无法判定（诚实说明，不误报差异）
@@ -4610,6 +4663,67 @@ class _ImportResultSummary extends StatelessWidget {
   }
 }
 
+/// 历史成交导入「没看懂的行」（P2-交易43，2026-09-14）：**这些行根本没导入**——
+/// 旧实现静默 continue，用户在「跳过 N 笔」里根本看不出来自己丢了成交。
+/// 沿用同页 rejected 警示卡配色（darkOrange 12%/60%），明细可收起（行多时不占满屏幕）。
+/// 默认展开：丢数据必须第一眼可见。
+class _UnparsedBlock extends StatefulWidget {
+  final List<String> lines;
+  final int declaredCount; // 后端计数（明细可能只给前几条）→ 取两者较大值显示
+
+  const _UnparsedBlock({required this.lines, this.declaredCount = 0});
+
+  @override
+  State<_UnparsedBlock> createState() => _UnparsedBlockState();
+}
+
+class _UnparsedBlockState extends State<_UnparsedBlock> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.declaredCount > widget.lines.length
+        ? widget.declaredCount
+        : widget.lines.length;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('有 $n 行没能识别（这些成交没有导入）',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.darkOrange)),
+            ),
+            Text(_expanded ? '收起' : '看明细',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkGrey4),
+          ]),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 4),
+          for (final line in widget.lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text('· $line',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2, height: 1.35)),
+            ),
+        ],
+      ]),
+    );
+  }
+}
+
 // ─────────────────────────── 历史成交导入 Dialog（RFC 20260823，只认历史成交格式） ───────────────────────────
 
 /// 历史成交导入（独立入口，2026-08-23）：只认通达信「历史成交查询」导出格式——
@@ -4656,11 +4770,15 @@ class _ImportJob {
 /// summary 取首份非空（多份时以第一份 sync 的操作总结为代表）。
 /// RFC 20260912：rejected 按 (symbol,direction,volume,price,entryDate,reason) 去重并合并；
 /// anchor 取首份非空（同一次导入同一个锚定状态）。
+/// P2-交易43（2026-09-14）：unparsed 明细按文本去重合并、unparsedCount 求和
+/// （多份文件各有自己的没看懂行，计数必须累加，否则「N 行」和列出的明细对不上）。
 HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportResult> results) {
   final lines = <ReconcileLine>[];
   final seen = <String>{};
   final rejected = <RejectedLineDto>[];
   final seenRejected = <String>{};
+  final unparsed = <String>[];
+  final seenUnparsed = <String>{};
   for (final r in results) {
     for (final l in r.lines) {
       final key = '${l.symbol}|${l.netVolume}|${l.note}';
@@ -4669,6 +4787,9 @@ HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportRes
     for (final x in r.rejected) {
       final key = '${x.symbol}|${x.direction}|${x.volume}|${x.price}|${x.entryDate}|${x.reason}';
       if (seenRejected.add(key)) rejected.add(x);
+    }
+    for (final u in r.unparsed) {
+      if (seenUnparsed.add(u)) unparsed.add(u);
     }
   }
   TradeImportSummary? summary;
@@ -4679,6 +4800,7 @@ HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportRes
   for (final r in results) {
     if (r.anchor != null) { anchor = r.anchor; break; }
   }
+  final unparsedCount = results.fold(0, (s, r) => s + r.unparsedCount);
   return HistoricalTradeImportResult(
     imported: results.fold(0, (s, r) => s + r.imported),
     updated: results.fold(0, (s, r) => s + r.updated),
@@ -4690,6 +4812,9 @@ HistoricalTradeImportResult aggregateImportResults(List<HistoricalTradeImportRes
     rejected: rejected,
     anchor: anchor,
     dryRun: results.any((r) => r.dryRun),
+    unparsed: unparsed,
+    // 求和后若小于去重后的明细条数（同一行在多份文件里重复出现）→ 取明细条数
+    unparsedCount: unparsedCount > unparsed.length ? unparsedCount : unparsed.length,
   );
 }
 

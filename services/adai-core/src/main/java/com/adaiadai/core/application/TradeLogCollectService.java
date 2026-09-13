@@ -47,14 +47,35 @@ public class TradeLogCollectService {
 
     /** 归集一笔：宽松解析文本 → 当日候选去重入库。返回该用户当日候选全量。 */
     public List<TradeLogCandidate> collect(String userId, String text, String source) {
-        if (text == null || text.isBlank()) return todayCandidates(userId);
+        return collectDetailed(userId, text, source).candidates();
+    }
+
+    /**
+     * 归集（带「被丢掉的表格行」）——2026-09-14 P2-交易44。
+     * <p>
+     * 截图/一句话归集原来只回候选列表，「识别出 2 笔」掩盖了同一张截图里被丢掉的行
+     * （状态不符/申购/占位代码/价格数量没认出来）。此处把解析层的丢弃明细一并带出去，
+     * 由调用方透出到响应（截图入账是核心工作流，丢行必须可见）。
+     */
+    public CollectResult collectDetailed(String userId, String text, String source) {
+        if (text == null || text.isBlank()) {
+            return new CollectResult(todayCandidates(userId), List.of());
+        }
         // 2026-08-26：截图归集缺口修复——表格文字（多笔）优先走批量解析，
         // 命中多笔（或表格形态）则逐笔归集；否则回退单笔宽松解析（一句话场景不变）。
-        List<TradingParseAppService.ParseResult> batch = parseAppService.parseLooseBatch(userId, text);
-        if (!batch.isEmpty()) {
-            return collectBatch(userId, batch, source);
+        TradingParseAppService.LooseBatchParse batch = parseAppService.parseLooseBatchDetailed(userId, text);
+        if (!batch.trades().isEmpty()) {
+            return new CollectResult(collectBatch(userId, batch.trades(), source), batch.dropped());
         }
-        return collectSingle(userId, text, source);
+        return new CollectResult(collectSingle(userId, text, source), batch.dropped());
+    }
+
+    /** 归集结果（2026-09-14 P2-交易44）：当日候选全量 + 被丢弃的表格行（原文 + 原因）。 */
+    public record CollectResult(List<TradeLogCandidate> candidates,
+                                List<TradingImportParser.UnparsedLine> dropped) {
+        public CollectResult {
+            if (dropped == null) dropped = List.of();
+        }
     }
 
     /** 单笔归集（一句话文字，RFC 20260817 原语义）。 */

@@ -360,7 +360,9 @@ public class TradingSessionPushService {
                 accountSnapshotRepository.update(userId, cur -> cur.map(c -> {
                     AccountSnapshot next = new AccountSnapshot(
                             fMarket.add(c.cash()), c.cash(), c.available(), c.withdrawable(),
-                            fMarket, fFloat, fToday, c.principal(), java.time.LocalDate.now());
+                            fMarket, fFloat, fToday, c.principal(), java.time.LocalDate.now(),
+                            // P2-交易48：收盘写入的当日盈亏 = 系统精确计算（口径①）
+                            AccountSnapshot.SOURCE_CALC);
                     log.info("收盘账户更新 | userId={} | 市值={} 当日盈亏={} 浮盈={}",
                             userId, fMarket, fToday, fFloat);
                     return next;

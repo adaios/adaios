@@ -42,7 +42,7 @@ public class MarketPushRepository {
 
     private static final Logger log = LoggerFactory.getLogger(MarketPushRepository.class);
     private static final String PUSHES_DIR = "trading/pushes/";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     /** 行情类推送类型（RFC 20260825 §7 TTL 分组）：时效性强，次日 09:30 自动消失。 */
     public static final java.util.Set<String> SESSION_TYPES = java.util.Set.of(

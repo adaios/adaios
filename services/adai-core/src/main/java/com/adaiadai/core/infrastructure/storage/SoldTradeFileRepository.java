@@ -20,7 +20,7 @@ public class SoldTradeFileRepository implements SoldTradeRepository {
 
     private static final Logger log = LoggerFactory.getLogger(SoldTradeFileRepository.class);
     private static final String PATH = "trading/sold.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
     /** P1-3（2026-09-05 三官深审）：sold.json 读-改-写全量覆盖无锁——本批新增
      *  情绪采集写入口（TradePsychologyService.submitAnswer）后与导入/删除并发互相丢更新
      *  （pitfalls「整文件重写并发」）。per-user 条带锁（固定 16 条带，P2-交易28 模式）。 */

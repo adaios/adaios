@@ -56,6 +56,8 @@ public class TradingScreenshotAppService {
             throw new IllegalArgumentException("一次最多 " + MAX_BATCH_IMAGES + " 张截图");
         }
         List<String> errors = new ArrayList<>();
+        // P2-交易44（2026-09-14）：被表格规则丢弃的行（含图片序号）——不再只写 log.debug
+        List<String> dropped = new ArrayList<>();
         int processed = 0;
         for (int i = 0; i < images.size(); i++) {
             byte[] bytes = images.get(i);
@@ -84,7 +86,9 @@ public class TradingScreenshotAppService {
                 // 两个模型都受益：thinking 的 extractedText 才是完整表格文字，summary 可能截断。
                 String ocr = (u.extractedText() != null && !u.extractedText().isBlank())
                         ? u.extractedText() : (u.summary() != null ? u.summary() : "");
-                tradeLogCollectService.collect(userId, ocr, "image");
+                final int imageNo = i + 1;
+                tradeLogCollectService.collectDetailed(userId, ocr, "image").dropped()
+                        .forEach(d -> dropped.add("第 " + imageNo + " 张 · " + d.describe()));
                 processed++;
             } catch (Exception e) {
                 log.warn("截图识别失败 | 第 {} 张 | userId={} | {}", i + 1, userId, e.getMessage());
@@ -96,15 +100,26 @@ public class TradingScreenshotAppService {
             log.info("截图入账完成 | userId={} | 处理 {} 张 | 当日候选 {} 条 | 失败 {} 张",
                     userId, processed, candidates.size(), errors.size());
         }
-        return new ScreenshotCollectResult(images.size(), processed, candidates, errors);
+        return new ScreenshotCollectResult(images.size(), processed, candidates, errors, dropped);
     }
 
     /**
      * 截图入账结果：total 提交张数 / processed 成功识别张数 / candidates 当日候选（去重后）/
-     * errors 逐张失败原因（空 = 全部成功）。
+     * errors 逐张失败原因（空 = 全部成功）/
+     * dropped 被丢掉的表格行（P2-交易44：原文 + 原因，空 = 截图里的成交行都认出来了）。
      */
     public record ScreenshotCollectResult(int total, int processed,
                                           List<TradeLogCandidate> candidates,
-                                          List<String> errors) {
+                                          List<String> errors,
+                                          List<String> dropped) {
+        public ScreenshotCollectResult {
+            if (dropped == null) dropped = List.of();
+        }
+
+        /** 兼容旧 4 参构造（无丢弃明细）。 */
+        public ScreenshotCollectResult(int total, int processed,
+                                       List<TradeLogCandidate> candidates, List<String> errors) {
+            this(total, processed, candidates, errors, List.of());
+        }
     }
 }

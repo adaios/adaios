@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -184,6 +185,77 @@ class TradingImportParserTest {
                 000725\t京东方Ａ\t6.41\t6.47\t6.203\t4800
                 """;
         assertTrue(TradingImportParser.parseHistoricalTrades(content).isEmpty());
+    }
+
+    // ── 2026-09-14 P2-交易43/45：解析层「被丢弃的行」必须可见（行号 + 原因）──
+
+    @Test
+    void parseHistoricalTradesDetailed_reportsEveryDroppedRowWithLineNumberAndReason() {
+        // 每行一个坏法（除第 2 行正常）：行号 1 起算，含表头行
+        String content = String.join("\n",
+                String.join("\t", "成交日期", "成交时间", "证券代码", "证券名称", "买卖标志",
+                        "成交数量", "成交价格", "成交金额", "成交编号", "发生金额", "备注"),
+                String.join("\t", "20260803", "14:52:56", "600206", "有研新材", "卖出",
+                        "-200.00", "33.12000000", "6624.00", "69351117", "6620.05", "证券卖出"),
+                String.join("\t", "2026080X", "14:53:51", "002428", "坏日期", "买入",
+                        "400.00", "68.14000000", "27256.00", "0101000075800458", "-27258.33", "证券买入"),
+                String.join("\t", "20260803", "14:53:51", "002428", "坏价格", "买入",
+                        "400.00", "--", "27256.00", "0101000075800459", "-27258.33", "证券买入"),
+                String.join("\t", "20260803", "14:53:51", "732448", "天博申购", "新股申购",
+                        "500.00", "10.00000000", "5000.00", "0101000075800460", "-5000.00", "新股申购"),
+                String.join("\t", "20260803", "14:53:51", "600601", "送股", "买入",
+                        "100.00", "0.00000000", "0.00", "0101000075800461", "0.00", "红股入账"),
+                String.join("\t", "20260803", "14:53:51", "60021", "代码坏", "买入",
+                        "100.00", "10.00000000", "1000.00", "0101000075800462", "-1000.00", "证券买入"));
+
+        TradingImportParser.HistoricalTradeParse p = TradingImportParser.parseHistoricalTradesDetailed(content);
+
+        assertEquals(1, p.rows().size(), "只有第 2 行是能认的成交");
+        assertEquals(5, p.unparsed().size(), "另外 5 行必须如实上报（原来全部静默 continue）");
+        assertEquals(3, p.unparsed().get(0).lineNo());
+        assertTrue(p.unparsed().get(0).reason().contains("成交日期"), p.unparsed().get(0).reason());
+        assertTrue(p.unparsed().get(1).reason().contains("成交价格"), p.unparsed().get(1).reason());
+        assertTrue(p.unparsed().get(2).reason().contains("买卖标志"), p.unparsed().get(2).reason());
+        assertTrue(p.unparsed().get(3).reason().contains("送股"), p.unparsed().get(3).reason());
+        assertTrue(p.unparsed().get(4).reason().contains("6 位"), p.unparsed().get(4).reason());
+        // describe() 带行号与原文，供响应/报错直接展示
+        assertTrue(p.unparsed().get(0).describe().contains("第 3 行"));
+    }
+
+    @Test
+    void parseHistoricalTrades_priceNotNumber_doesNotThrow() {
+        // P2-交易43 附带修：原 `parseNum(...).stripTrailingZeros()` 在价格列非数字时 NPE 炸整个导入
+        String content = String.join("\n",
+                String.join("\t", "成交日期", "证券代码", "买卖标志", "成交数量", "成交价格", "成交编号"),
+                String.join("\t", "20260803", "600206", "买入", "100.00", "不是数字", "1"));
+        TradingImportParser.HistoricalTradeParse p = TradingImportParser.parseHistoricalTradesDetailed(content);
+        assertTrue(p.rows().isEmpty());
+        assertEquals(1, p.unparsed().size(), "非数字价格要被记为丢弃行，而不是抛 NPE");
+    }
+
+    @Test
+    void parseCash_headerMatchedButValueUnparsable_reportsFieldNames() {
+        // P2-交易45：首行正则命中（1.2.3 落在 [\d,.]+ 内）但 parseNum 失败 → 原来 null 一路写进账户快照
+        String content = "人民币: 余额:1.2.3  可用:1000.00  可取:500.00  参考市值:2000.00  资产:3000.00  盈亏:10.00\n"
+                + "证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏\n"
+                + "600206 有研新材 900 46.012 50.0 100.0\n";
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        assertTrue(q.headerMatched(), "正则本身命中");
+        assertEquals(1, q.headerUnparsed().size());
+        assertTrue(q.headerUnparsed().contains("余额"), "要指名是哪一项没读成数字：" + q.headerUnparsed());
+        assertNull(q.cash(), "该字段确为 null——正是必须 fail-closed 的原因");
+    }
+
+    @Test
+    void parseCash_unparsedDetailRows_reported() {
+        String content = "人民币: 余额:1.00  可用:1.00  可取:1.00  参考市值:1.00  资产:1.00  盈亏:1.00\n"
+                + "证券代码 证券名称 证券数量 成本价 当前价 浮动盈亏\n"
+                + "600206 有研新材 900 46.012 50.0 100.0\n"
+                + "这不是明细行 xxx\n";
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        assertTrue(q.headerUnparsed().isEmpty());
+        assertEquals(1, q.positions().size());
+        assertEquals(1, q.unparsedRows().size(), "没看懂的明细行要上报（丢一行 = 该只精确成本不更新）");
     }
 
 

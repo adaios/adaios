@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.TradingAdviceAppService;
+import com.adaiadai.core.application.TradingImportParser;
 import com.adaiadai.core.application.TradingParseAppService;
 import com.adaiadai.core.application.TradingAppService;
 import com.adaiadai.core.application.WatchlistBuyPointService;
@@ -402,6 +403,12 @@ public class TradingController {
         if (result.summary() != null) resp.put("summary", result.summary());
         // 2026-09-12：无法归属的真实成交必须可见（旧实现只写 WARN + 计入「跳过」，3 笔真实卖出就此消失）
         resp.put("rejected", result.rejected() != null ? result.rejected() : List.of());
+        // P2-交易43（2026-09-14）：解析层「没看懂的行」带行号+原因透出——「识别出 N 笔」不再掩盖被丢的行
+        if (result.unparsed() != null && !result.unparsed().isEmpty()) {
+            resp.put("unparsed", result.unparsed().stream()
+                    .map(TradingImportParser.UnparsedLine::describe).toList());
+            resp.put("unparsedCount", result.unparsed().size());
+        }
         if (result.anchor() != null) resp.put("anchor", result.anchor());
         resp.put("dryRun", dryRun);
         if (dryRun) {
@@ -1010,8 +1017,11 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         String content = body == null ? null : body.get("content");
-        if (content == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "content 不能为空"));
+        // P2-交易47（2026-09-14）：原只判 null → **空串/纯空白可通过**，把 profile.md 整文件覆盖清空
+        //（画像主观层 = 用户手写/AI 回填的行为签名与情绪记忆，清空无从恢复）。空串与 null 同拒。
+        if (content == null || content.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "画像内容不能为空——想保留原内容就别提交空白；确实要清空请直接说明"));
         }
         profileService.saveProfile(userId, content);
         return ResponseEntity.ok(Map.of("updated", true));
@@ -1099,11 +1109,17 @@ public class TradingController {
                 contentTypes.add(f.getContentType() != null ? f.getContentType() : "image/png");
             }
             TradingScreenshotAppService.ScreenshotCollectResult r = screenshotAppService.collect(userId, images, contentTypes);
-            return ResponseEntity.ok(Map.of(
-                    "total", r.total(),
-                    "processed", r.processed(),
-                    "candidates", r.candidates(),
-                    "errors", r.errors()));
+            java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+            resp.put("total", r.total());
+            resp.put("processed", r.processed());
+            resp.put("candidates", r.candidates());
+            resp.put("errors", r.errors());
+            // P2-交易44（2026-09-14）：被表格规则丢弃的行（原文+原因）——「识别出 N 笔」不再掩盖丢行
+            if (r.dropped() != null && !r.dropped().isEmpty()) {
+                resp.put("dropped", r.dropped());
+                resp.put("droppedCount", r.dropped().size());
+            }
+            return ResponseEntity.ok(resp);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
@@ -1261,7 +1277,9 @@ public class TradingController {
         return ResponseEntity.ok(Map.of(
                 "cash", r.cash(),
                 "assets", r.assets(),
-                "updatedCost", r.updatedCost()));
+                "updatedCost", r.updatedCost(),
+                // P2-交易45：明细里没看懂的行数（>0 时前端提示「这几只的精确成本本次没更新」）
+                "unparsedRows", r.unparsedRows()));
     }
 
     /**

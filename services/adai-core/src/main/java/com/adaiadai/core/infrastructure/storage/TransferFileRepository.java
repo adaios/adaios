@@ -21,7 +21,7 @@ public class TransferFileRepository implements TransferRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TransferFileRepository.class);
     private static final String PATH = "trading/transfers.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     private final FileStorage fileStorage;
 

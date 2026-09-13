@@ -38,7 +38,7 @@ public class LotStopLossOverrideRepository {
 
     private static final Logger log = LoggerFactory.getLogger(LotStopLossOverrideRepository.class);
     private static final String OVERRIDE_PATH = "trading/lot-stoploss.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     /** per-user 条带锁（固定 16 条带，P2-交易28 锁池模式）。 */
     private final Object[] lockStripes = new Object[16];

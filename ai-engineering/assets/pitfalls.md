@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-14
 status: active
-lines: 154
+lines: 161
 depends-on:
   - ../checklists/guard.md
 related:
@@ -149,6 +149,13 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **`$VAR` 紧跟全角标点 → bash 把标点字节并进变量名** | `guard-tools.sh: line 77: N_SKILLS?: unbound variable`——变量上一行明明赋过值却报未定义；`set -u` 下脚本当场中止，看代码完全正常 | 非 UTF-8 locale（`LANG` 未设 / 为 `C`——cron、git hook、部分 CI 的默认）时 bash 不把多字节字符当词法边界：`$N_SKILLS）` 里 `）`（`EF BC 89`）的首字节被当成变量名的合法字符，于是去找名为 `N_SKILLS\xef` 的变量 | 变量一律用 `${...}` 界定（`${N_SKILLS}` 而非 `$N_SKILLS`）；**凡中文文案里嵌 shell 变量，一律加花括号**。**已机器化（2026-09-14）**：`scripts/lint-shell-vars.py` 按 shell 词法扫描（单引号/注释/`\$` 转义不报，`${}` `$()` `$?` 不报），挂 `guard-tools.sh` T6 + git pre-commit 第 4 层——**落地当轮扫出全仓 18 处存量**（deploy-gate / guard-tools / weekly-audit / build_apk / build_web / sync-adai-rulepack / backup_prod / migrate-data-to-user-layer），全部修复 | ✅ 已修 + 已加自动门禁（2026-09-14） | 报「unbound variable」但变量确实赋过值；报错里变量名后面粘着一个乱码字符；中英混排的 `echo` 字符串；本机直接跑正常、cron/hook 里跑就崩 |
+
+## 十六、解析与失败可见性（2026-09-14 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **注释写「跳过该行」，实现却是 NPE 炸整批** | 导入一份文件直接 500/崩溃，而代码注释明明写着「数据异常跳过」；单测只覆盖正常文件时永远发现不了 | 三元表达式里把可能为 null 的解析结果**直接链式调用**：`col >= 0 ? parseNum(cells[col]).stripTrailingZeros() : null`——`parseNum` 对非数字返回 null，于是 `null.stripTrailingZeros()` 抛 NPE。作者的心智模型是「解析失败 → 跳过」，代码实际是「解析失败 → 崩」 | **先解析、再判空、再使用**：`price = parseNum(...); if (price == null) { 记录丢弃; continue; }`。**判据**：凡「容错解析」函数返回 null 的分支，紧跟着的链式调用一律视为可疑 | ✅ 已修（2026-09-14 P2-交易43 附带） | 注释与下一行代码语义相反（「跳过」/「忽略」/「容错」却无 `continue`/`return`）；容错函数返回 null 却直接 `.method()`；导入类端点返回 500 而非 400 人话 |
+| **后端把「丢行」上报了，前端不展示 = 白修** | 修完解析层以为万事大吉，用户侧感受与修复前**完全一样**（还是只看到「识别出 N 笔」） | 可见性修复是**两段链**：解析层上报（`unparsed`/`dropped`）→ 响应字段 → 前端展示。只做前两段时，用户在 UI 上什么也看不到 | 修「丢数据可见性」时**把三段当一件事验收**：后端字段 + 前端展示 + 一条「有丢行时用户能看到」的测试。本批即因此把前端接线作为同一批的必须项 | ✅ 已按此验收（2026-09-14） | 只改后端就宣称「用户现在能看见了」；新增响应字段零前端引用；测试只断言后端字段、无 UI 断言 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

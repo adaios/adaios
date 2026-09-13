@@ -42,7 +42,7 @@ public class AdviceHistoryFileRepository implements AdviceHistoryRepository {
 
     public AdviceHistoryFileRepository(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
-        this.mapper = new ObjectMapper()
+        this.mapper = StrictJson.strict(new ObjectMapper())
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }

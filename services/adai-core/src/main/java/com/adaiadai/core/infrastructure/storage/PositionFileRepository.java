@@ -80,11 +80,17 @@ public class PositionFileRepository implements PositionRepository {
 
     @Override
     public void saveAll(String userId, List<Position> positions) {
-        // 保留手工维护的现金余额（#138：toMarkdown 原硬编码 0，任一笔交易后现金被清）
+        // 保留手工维护的现金余额行（#138：toMarkdown 原硬编码 0，任一笔交易后现金被清）——
+        // 注意自 S5（2026-08-17）起它**不是现金真源**（真源 = account.json 的 AccountSnapshot.cash），
+        // 这里只是不让旧文件里的展示行被抹成 0。
         BigDecimal cash = cashBalance(userId);
         String content = toMarkdown(positions, cash);
         fileStorage.write(userId, POSITIONS_PATH, content);
-        log.info("持仓已更新 | 数量={} | cashBalance={}", positions.size(), cash);
+        // P2-工程3（2026-09-14）：原来这行打印 cashBalance 的**废弃值**——2026-09-13 排查时日志显示
+        // cashBalance=2278.16 而真实现金是 1381.93（与券商文件一致），差点被当成现金不一致事故。
+        // 打印废弃字段比字段本身更危险（会让排查者跟着错数字走），故不再复述，只记数量并指路真源。
+        log.info("持仓已更新 | 数量={} | （现金真源见 account.json；本文件 cashBalance 行仅历史展示值，勿当现金）",
+                positions.size());
     }
 
     @Override

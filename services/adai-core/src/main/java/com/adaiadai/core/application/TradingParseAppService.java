@@ -176,11 +176,27 @@ public class TradingParseAppService {
      * @return 解析出的完整交易笔列表（可能为空 = 非交易截图/表格）
      */
     public List<ParseResult> parseLooseBatch(String userId, String text) {
+        return parseLooseBatchDetailed(userId, text).trades();
+    }
+
+    /**
+     * 表格批量解析（带「被丢掉的行」）——2026-09-14 P2-交易44 同型风险封堵。
+     * <p>
+     * 原实现五处 {@code log.debug} 静默丢行，响应里只有<b>图片级</b> errors + 候选列表 ——
+     * 用户看到「识别出 2 笔」，不知道同一张截图里第 3 笔被丢了（截图入账是核心工作流）。
+     * 现在每一处丢弃都带<b>行原文 + 原因</b>上报（「有意跳过」与「没认出来」原因分开写清），
+     * 由调用方透出到响应。
+     *
+     * @return trades = 识别出的交易笔；dropped = 被丢弃的表格行（原文 + 原因）
+     */
+    public LooseBatchParse parseLooseBatchDetailed(String userId, String text) {
         if (text == null || text.isBlank()) {
-            return List.of();
+            return new LooseBatchParse(List.of(), List.of());
         }
         List<ParseResult> results = new java.util.ArrayList<>();
+        List<TradingImportParser.UnparsedLine> dropped = new java.util.ArrayList<>();
         Matcher m = TABLE_TRADE_PATTERN.matcher(text);
+        int seq = 0;
         while (m.find()) {
             // 2026-08-27：成交日期提取——表格行内「日期」列（历史成交截图常带 yyyy-MM-dd）。
             // 从匹配行（行首到行尾）的两侧文本里找日期，不依赖列序：行首（「2026-08-26 名称 代码 …」）
@@ -191,12 +207,31 @@ public class TradingParseAppService {
             String rowBefore = text.substring(lineStart, m.start());
             String rowAfter = text.substring(m.end(), lineEnd);
             java.time.LocalDate tradeDate = extractTradeDate(rowBefore + " " + rowAfter);
+            seq++;
+            String rawRow = text.substring(lineStart, lineEnd).trim();
 
             String name = m.group(1).trim();
             // 2026-08-27：代码列可选（VLM OCR 不稳定，同图两次可能漏代码列）——无代码行
             // 保留 name，由归集器按名称查代码补 symbol（NameToSymbolResolver）。
             String symbol = m.group(2) != null ? m.group(2).trim() : null;
             String tail = m.group(6) != null ? m.group(6).trim() : "";
+            // 新股申购/认购/配号：非二级市场交易（天博申购 732448 / 天博配号 736448 等）。
+            // P2-交易44（2026-09-14）：本判定与占位代码判定**提到状态判定之前**——「天博申购…已确认」
+            // 若先按状态拦下，用户看到的原因是「已确认不是已成」（像在说他单子没成交），
+            // 而真正的原因是「申购本来就不会记」（语义更强、也更准）。
+            if (NON_TRADE_NAME_PATTERN.matcher(name).find()) {
+                log.debug("表格行跳过（新股申购/认购/配号）| {} {} 尾列={}", name, symbol, tail);
+                dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                        "「" + name + "」是申购/认购/配号，不是二级市场买卖（没有记）"));
+                continue;
+            }
+            // 通达信占位代码（79/80/81/82）——与历史成交导入同口径
+            if (symbol != null && com.adaiadai.core.application.TradingImportParser.isNonTradableCode(symbol)) {
+                log.debug("表格行跳过（占位代码）| {} {} 尾列={}", name, symbol, tail);
+                dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                        "「" + symbol + "」是券商占位代码，不是真实股票（没有记）"));
+                continue;
+            }
             // 尾列判定（2026-08-27 兼容无状态列成交单）：
             // - 空 → 无状态列（名称 代码 价格 买卖 数量 金额 日期）→ 默认归集
             // - 数字 → 成交金额（30198.00）→ 有金额即已成 → 归集
@@ -204,24 +239,18 @@ public class TradingParseAppService {
             if (!tail.isEmpty() && !TAIL_IS_AMOUNT_PATTERN.matcher(tail).find()) {
                 if (!FILLED_STATUS_PATTERN.matcher(tail).find()) {
                     log.debug("表格行跳过（未成交/非交易状态）| {} {} {} 状态={}", name, symbol, tail);
+                    dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                            "状态「" + tail + "」不是已成/部成（未成交的单子没有记）"));
                     continue;
                 }
-            }
-            // 新股申购/认购/配号：非二级市场交易（天博申购 732448 / 天博配号 736448 等）
-            if (NON_TRADE_NAME_PATTERN.matcher(name).find()) {
-                log.debug("表格行跳过（新股申购/认购/配号）| {} {} 尾列={}", name, symbol, tail);
-                continue;
-            }
-            // 通达信占位代码（79/80/81/82）——与历史成交导入同口径
-            if (symbol != null && com.adaiadai.core.application.TradingImportParser.isNonTradableCode(symbol)) {
-                log.debug("表格行跳过（占位代码）| {} {} 尾列={}", name, symbol, tail);
-                continue;
             }
             BigDecimal price;
             try {
                 price = new BigDecimal(m.group(3).trim());
             } catch (NumberFormatException e) {
                 log.debug("表格行价格解析失败，跳过 | {} {}", name, symbol);
+                dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                        "价格「" + m.group(3).trim() + "」没认出来（这一笔没有记）"));
                 continue;
             }
             int volume;
@@ -229,9 +258,13 @@ public class TradingParseAppService {
                 volume = Integer.parseInt(m.group(5).trim());
             } catch (NumberFormatException e) {
                 log.debug("表格行数量解析失败，跳过 | {} {}", name, symbol);
+                dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                        "数量「" + m.group(5).trim() + "」没认出来（这一笔没有记）"));
                 continue;
             }
             if (price.compareTo(BigDecimal.ZERO) <= 0 || volume <= 0) {
+                dropped.add(new TradingImportParser.UnparsedLine(seq, rawRow,
+                        "价格/数量为 " + price.toPlainString() + " / " + volume + "，不是有效成交（这一笔没有记）"));
                 continue;
             }
             String direction = "买入".equals(m.group(4)) ? "BUY" : "SELL";
@@ -239,10 +272,22 @@ public class TradingParseAppService {
                     tradeDate, null, null, null, null));
         }
         if (!results.isEmpty()) {
-            log.info("表格批量解析 | 命中 {} 笔 | 文本前 80 字: {}", results.size(),
+            log.info("表格批量解析 | 命中 {} 笔 | 丢弃 {} 行 | 文本前 80 字: {}", results.size(), dropped.size(),
+                    text.length() > 80 ? text.substring(0, 80) : text);
+        } else if (!dropped.isEmpty()) {
+            log.info("表格批量解析 | 命中 0 笔 | 丢弃 {} 行 | 文本前 80 字: {}", dropped.size(),
                     text.length() > 80 ? text.substring(0, 80) : text);
         }
-        return results;
+        return new LooseBatchParse(results, dropped);
+    }
+
+    /** 表格批量解析结果（2026-09-14 P2-交易44）：识别出的交易 + 被丢弃的行（原文 + 原因）。 */
+    public record LooseBatchParse(List<ParseResult> trades,
+                                  List<TradingImportParser.UnparsedLine> dropped) {
+        public LooseBatchParse {
+            if (trades == null) trades = List.of();
+            if (dropped == null) dropped = List.of();
+        }
     }
 
     /**

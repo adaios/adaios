@@ -36,7 +36,7 @@ public class TradingCaseFileRepository implements TradingCaseRepository {
     private static final Logger log = LoggerFactory.getLogger(TradingCaseFileRepository.class);
     private static final String CASES_DIR = "trading/cases/";
     private static final String INDEX_PATH = CASES_DIR + "_index.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper()
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper())
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .enable(SerializationFeature.INDENT_OUTPUT);

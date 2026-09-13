@@ -42,7 +42,7 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
 
     public TradingHistoryFileRepository(FileStorage fileStorage) {
         this.fileStorage = fileStorage;
-        this.objectMapper = new ObjectMapper()
+        this.objectMapper = StrictJson.strict(new ObjectMapper())
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .enable(SerializationFeature.INDENT_OUTPUT);

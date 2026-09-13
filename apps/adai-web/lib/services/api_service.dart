@@ -2354,10 +2354,15 @@ class AccountSnapshotDto {
   final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
   final double principal;
   final String snapshotDate;
+  // P2-交易48（2026-09-14）：当日盈亏来源（broker=券商「资金股份」文件该列求和 /
+  // calc=系统按当日成交流水精算 / '' = 未知或旧后端缺字段）。UI 据此标注口径；
+  // 未知一律不标（宁可不说，也不编造来源与日期）。
+  final String todayPnlSource;
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
-      required this.todayPnl, required this.principal, required this.snapshotDate});
+      required this.todayPnl, required this.principal, required this.snapshotDate,
+      this.todayPnlSource = ''});
 
   /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效）。
   /// P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ null——不给误导数值
@@ -2377,6 +2382,8 @@ class AccountSnapshotDto {
       todayPnl: (m['todayPnl'] as num?)?.toDouble() ?? 0,
       principal: (m['principal'] as num?)?.toDouble() ?? 0,
       snapshotDate: m['snapshotDate']?.toString() ?? '',
+      // 宽松：非字符串（数字/bool/对象）也安全转字符串；null/缺字段 → ''（不标来源）
+      todayPnlSource: m['todayPnlSource']?.toString() ?? '',
     );
   }
 }
@@ -2537,8 +2544,12 @@ class SoldScoreDto {
 class CashImportResult {
   final double cash, assets;
   final int updatedCost;
+  // P2-交易43（2026-09-14）：没认出来的明细行数（前端只认得出表头列的那几行）——
+  // 丢一行 = 该只精确成本本次不更新。旧后端无此字段 → 0（行为与现在完全一致）。
+  final int unparsedRows;
 
-  CashImportResult({required this.cash, required this.assets, required this.updatedCost});
+  CashImportResult({required this.cash, required this.assets, required this.updatedCost,
+      this.unparsedRows = 0});
 
   factory CashImportResult.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -2546,6 +2557,7 @@ class CashImportResult {
       cash: (m['cash'] as num?)?.toDouble() ?? 0,
       assets: (m['assets'] as num?)?.toDouble() ?? 0,
       updatedCost: (m['updatedCost'] as num?)?.toInt() ?? 0,
+      unparsedRows: (m['unparsedRows'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -2680,6 +2692,11 @@ class HistoricalTradeImportResult {
   final AnchorStatusDto? anchor; // 券商快照锚定状态（旧后端无此字段 → null）
   final bool dryRun; // true = 这份结果是预检计划，未落盘
   final ImportPlanDto? plan; // 仅 dryRun 时存在
+  // ── P2-交易43（2026-09-14）──
+  // 没看懂、**根本没导入**的行（人话逐条，如「第 3 行「2026080X …」：成交日期不是 yyyyMMdd 格式」）。
+  // 旧后端无此字段 → 空列表/0（行为与现在完全一致，不报错、不显示）。
+  final List<String> unparsed;
+  final int unparsedCount; // 后端计数（可能与 unparsed 条数不同：明细过长时后端只给前几条）
 
   HistoricalTradeImportResult({
     required this.imported,
@@ -2693,6 +2710,8 @@ class HistoricalTradeImportResult {
     this.anchor,
     this.dryRun = false,
     this.plan,
+    this.unparsed = const [],
+    this.unparsedCount = 0,
   });
 
   factory HistoricalTradeImportResult.fromJson(dynamic json) {
@@ -2700,6 +2719,9 @@ class HistoricalTradeImportResult {
       return HistoricalTradeImportResult(
           imported: 0, updated: 0, skipped: 0, nonTrades: 0, lines: []);
     }
+    final unparsed = ((json['unparsed'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
     return HistoricalTradeImportResult(
       imported: (json['imported'] as num?)?.toInt() ?? 0,
       updated: (json['updated'] as num?)?.toInt() ?? 0,
@@ -2718,6 +2740,9 @@ class HistoricalTradeImportResult {
       anchor: json['anchor'] == null ? null : AnchorStatusDto.fromJson(json['anchor']),
       dryRun: json['dryRun'] == true,
       plan: json['plan'] == null ? null : ImportPlanDto.fromJson(json['plan']),
+      unparsed: unparsed,
+      // 计数缺失/非法 → 退回明细条数（宁可少报，也不虚报）
+      unparsedCount: (json['unparsedCount'] as num?)?.toInt() ?? unparsed.length,
     );
   }
 }

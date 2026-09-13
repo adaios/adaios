@@ -388,8 +388,11 @@ public class TradingAdviceAppService {
             BigDecimal changePercent = (quote != null && quote.changePercent() != null)
                     ? quote.changePercent() : null;
             BigDecimal pnl = marketValue.subtract(p.costValue());
-            BigDecimal pnlPercent = p.avgCost().compareTo(BigDecimal.ZERO) == 0
-                    ? BigDecimal.ZERO
+            // P2-交易42（2026-09-14 核对，与负成本持仓批同口径）：原只特别处理 avgCost==0（给 0%），
+            // 负成本走正常公式 → 算出**符号翻转**的百分比（实测 600601 得 −392% 而券商 +134%）。
+            // 现在负/零成本一律 null（前端/文本按「—」处理：分母不是正数，百分比无意义）。
+            BigDecimal pnlPercent = p.avgCost() == null || p.avgCost().compareTo(BigDecimal.ZERO) <= 0
+                    ? null
                     : price.subtract(p.avgCost()).divide(p.avgCost(), 4, RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(100));
             views.add(new PositionView(p.symbol(), name, p.quantity(), marketValue, positionPercent,

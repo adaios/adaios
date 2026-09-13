@@ -114,6 +114,10 @@ class RecordControllerTest {
 
         recordToTaskLinker = mock(RecordToTaskLinker.class);
         tradeLogCollectService = mock(TradeLogCollectService.class);
+        // P2-交易44（2026-09-14）：记录归集改走 collectDetailed（带被丢弃行）；
+        // Mockito 对自定义 record 返回类型默认给 null（List 才默认空表），显式兜底为「无丢弃」
+        when(tradeLogCollectService.collectDetailed(any(), any(), any()))
+                .thenReturn(new TradeLogCollectService.CollectResult(java.util.List.of(), java.util.List.of()));
         RecordController controller = new RecordController(
                 intentRecognizer,
                 questionAppService,
@@ -167,7 +171,7 @@ class RecordControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intent").value("log"));
 
-        verify(tradeLogCollectService).collect(anyString(), eq("今天清仓了云南锗业，全部卖出"), eq("text"));
+        verify(tradeLogCollectService).collectDetailed(anyString(), eq("今天清仓了云南锗业，全部卖出"), eq("text"));
         // 交易表述不得转任务
         verify(recordToTaskLinker, never()).link(anyString(), anyString(), anyString(), any(), anyString(), anyString(), anyBoolean());
     }

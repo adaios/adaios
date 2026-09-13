@@ -87,6 +87,10 @@ class _TradingPageState extends State<TradingPage> {
   List<TradeLogCandidateDto> _candidates = [];
   bool _shotsUploading = false;       // 截图上传 + VLM 归集中
   bool _candidatesConfirming = false; // 全部确认入账中
+  // P2-交易43（2026-09-14）：上一次截图里「没记」的行（状态不是已成/部成、认不出的行）——
+  // 旧实现静默丢，用户以为整张截图都记上了。下一次上传时整体替换。
+  List<String> _dropped = [];
+  bool _droppedExpanded = true; // 丢数据必须第一眼可见：默认展开明细
 
   // ── v3.41（2026-09-04）：活跃市值区间（用户手动判定，多头/空头红绿切换）──
   String? _marketStage; // bull（多头）| bear（空头）| null（未手动判定）
@@ -478,6 +482,9 @@ class _TradingPageState extends State<TradingPage> {
       setState(() {
         _shotsUploading = false;
         _candidates = result.candidates;
+        // P2-交易43：本次结果整体替换上次的丢弃明细（新结果 → 明细重新展开）
+        _dropped = result.dropped;
+        _droppedExpanded = true;
       });
       if (result.errors.isNotEmpty) {
         _showSnack('${result.errors.length} 张识别失败：${result.errors.join('；')}', AppColors.darkOrange);
@@ -885,6 +892,12 @@ class _TradingPageState extends State<TradingPage> {
                   const SizedBox(height: 10),
                   _buildCandidatesCard(),
                 ],
+                // P2-交易43（2026-09-14）：这张截图有 N 行没记（橙色可展开，人话明细）——
+                // 与候选卡独立渲染：一行都没认出（candidates 空）时它更要出现
+                if (_dropped.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildDroppedNotice(),
+                ],
                 const SizedBox(height: 16),
                 Row(children: [
                   _sectionTitle(_positions.isEmpty ? '持仓' : '持仓明细'),
@@ -1019,6 +1032,45 @@ class _TradingPageState extends State<TradingPage> {
                 : const Text('全部确认入账', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
         ),
+      ]),
+    );
+  }
+
+  /// P2-交易43（2026-09-14）：这张截图有 N 行没记——橙色可展开，人话明细。
+  /// 主语是「我」（阿呆），不出现系统视角标签；明细来自后端（逐行说明为什么没记）。
+  Widget _buildDroppedNotice() {
+    final n = _dropped.length;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _droppedExpanded = !_droppedExpanded),
+          child: Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.darkOrange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('这张截图有 $n 行没记',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+            ),
+            Text(_droppedExpanded ? '收起' : '看明细',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            Icon(_droppedExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkGrey4),
+          ]),
+        ),
+        if (_droppedExpanded) ...[
+          const SizedBox(height: 6),
+          for (final d in _dropped)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(d, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2, height: 1.35)),
+            ),
+        ],
       ]),
     );
   }
@@ -1416,6 +1468,11 @@ class _TradingPageState extends State<TradingPage> {
     // P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ totalPnl null → 显示「—」+「未设本金」
     // 小字——不给误导数值（旧回落浮盈漏已实现盈亏：清仓后显示 0 盈亏仍是误导）
     final totalPnl = hasAccount ? a.totalPnl : (s?.totalPnl ?? 0);
+    // P2-交易48（2026-09-14）：当日盈亏标来源与日期（券商口径 / 系统计算）；
+    // 0 / 来源未知 → null（不标，宁可不说也不编造）。
+    final pnlNote = hasAccount && a.todayPnl != 0
+        ? todayPnlSourceNote(a.todayPnlSource, a.snapshotDate)
+        : null;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1458,6 +1515,13 @@ class _TradingPageState extends State<TradingPage> {
           if (hasAccount && a.principal > 0)
             _snapshotItem('本金', _fmtMoney(a.principal)),
         ]),
+        // P2-交易48：当日盈亏的来源与日期（小字，11px 下限）——`券商口径 · 09-11` /
+        // `系统计算 · 09-14（已过期）`；来源未知/当日盈亏为 0 时整行不渲染
+        if (pnlNote != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(pnlNote, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ),
         // D9（2026-08-23 app 体感，P2-UX3）：快照时间戳——收盘 15:05 后无陈旧感知
         if (a?.snapshotDate != null && a!.snapshotDate.isNotEmpty)
           Padding(
@@ -2186,6 +2250,26 @@ String _fmtShortDate(String yyyyMMdd) {
   final m = int.tryParse(yyyyMMdd.substring(5, 7));
   final d = yyyyMMdd.substring(8, 10);
   return m == null ? yyyyMMdd : '$m/$d';
+}
+
+/// 当日盈亏来源小字（P2-交易48，2026-09-14）：`券商口径 · 09-11` / `系统计算 · 09-14（已过期）`。
+/// - 来源认不出（null/缺字段/旧后端/未知值）→ null：**不标**（宁可不说，也不编造）；
+/// - 快照日不是今天 → 缀「（已过期）」——提示这不是今天的数（同名字段可能是两天前的陈值）；
+/// - 日期缺失/非法 → 只报来源。
+/// [now] 仅测试注入用。
+String? todayPnlSourceNote(String source, String snapshotDate, {DateTime? now}) {
+  final s = source.trim().toLowerCase();
+  final label = s == 'broker' ? '券商口径' : (s == 'calc' ? '系统计算' : null);
+  if (label == null) return null;
+  if (snapshotDate.length < 10) return label;
+  final md = snapshotDate.substring(5, 10);
+  final m = int.tryParse(md.substring(0, 2));
+  final d = int.tryParse(md.substring(3, 5));
+  if (m == null || d == null) return label;
+  final t = now ?? DateTime.now();
+  final today = '${t.year.toString().padLeft(4, '0')}-'
+      '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+  return '$label · $md${snapshotDate.substring(0, 10) == today ? '' : '（已过期）'}';
 }
 
 // ─────────────────────────── 持仓批次明细 Sheet（RFC 20260825，2026-08-28 App 补全） ───────────────────────────

@@ -238,7 +238,15 @@ public class RecordController {
         boolean tradeStatement = false;
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
             try {
-                tradeLogCollectService.collect(userId, record.content(), "text");
+                // P2-交易44（2026-09-14）：文本里被表格规则丢弃的行如实 WARN（原来静默吞）
+                java.util.List<com.adaiadai.core.application.TradingImportParser.UnparsedLine> dropped =
+                        tradeLogCollectService.collectDetailed(userId, record.content(), "text").dropped();
+                if (!dropped.isEmpty()) {
+                    log.warn("记录归集：有 {} 行没能归集 | recordId={} | {}", dropped.size(), record.id(),
+                            dropped.stream()
+                                    .map(com.adaiadai.core.application.TradingImportParser.UnparsedLine::describe)
+                                    .toList());
+                }
                 tradeStatement = tradeLogCollectService.isTradeStatement(record.content());
             } catch (Exception e) {
                 log.debug("交易日志归集跳过 | recordId={} | {}", record.id(), e.getMessage());

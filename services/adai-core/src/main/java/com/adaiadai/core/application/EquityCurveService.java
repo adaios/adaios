@@ -223,7 +223,11 @@ public class EquityCurveService {
                     // 停牌/缺 K：沿用前收；仍无 → 成本价近似（不低估在持资产）
                     Double prev = lastClose.get(en.getKey());
                     if (prev != null) c = prev;
-                    else c = qtyCost.getOrDefault(en.getKey(), 0.0);
+                    // P2-交易42（2026-09-14 核对）：成本价近似对**负成本**持仓会算出**负市值**——
+                    // 负成本（反复做 T / 分红摊到 0 下，实测 600601 −5.078）在券商口径里表示
+                    // 「已回本还有富余」，但资产绝不会是负数。这里以 0 兜底（宁可保守低估，
+                    // 也不能让缺 K 的那天把总资产/净值/回撤拖成负值）。
+                    else c = Math.max(0.0, qtyCost.getOrDefault(en.getKey(), 0.0));
                 } else {
                     anyPrice = true;
                     lastClose.put(en.getKey(), c);

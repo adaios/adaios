@@ -142,6 +142,11 @@ public final class TradingImportParser {
         BigDecimalHolder assets = new BigDecimalHolder();
         BigDecimalHolder pnl = new BigDecimalHolder();
         List<CashPosition> positions = new ArrayList<>();
+        // P2-交易45（2026-09-14）：首行正则命中 ≠ 6 个数值都解析成功——parseNum 失败返回 null，
+        // 原来一路写进 AccountSnapshot（资产/现金变 null → 账户卡显示空/异常，且无任何提示）。
+        // 现在把「表头命中了但这一项没读成数字」逐项上报，由调用方 fail-closed（缺一个就 400 人话）。
+        List<String> headerUnparsed = new ArrayList<>();
+        List<String> unparsedRows = new ArrayList<>();
         List<String> lines = split(content);
         Matcher m = CASH_HEAD.matcher(lines.isEmpty() ? "" : lines.get(0));
         boolean headerMatched = m.find();
@@ -152,6 +157,12 @@ public final class TradingImportParser {
             marketValue.value = parseNum(m.group(4));
             assets.value = parseNum(m.group(5));
             pnl.value = parseNum(m.group(6));
+            if (cash.value == null) headerUnparsed.add("余额");
+            if (available.value == null) headerUnparsed.add("可用");
+            if (withdrawable.value == null) headerUnparsed.add("可取");
+            if (marketValue.value == null) headerUnparsed.add("参考市值");
+            if (assets.value == null) headerUnparsed.add("资产");
+            if (pnl.value == null) headerUnparsed.add("盈亏");
         }
         int[] col = null;
         boolean todayPnlColumn = false;
@@ -166,7 +177,12 @@ public final class TradingImportParser {
                 if (col != null && idx[6] >= 0) todayPnlColumn = true;
                 continue;
             }
-            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) continue;
+            if (cells.length <= col[0] || !cells[col[0]].matches("\\d{6}")) {
+                // P2-交易45 附带：明细丢一行 = 某只持仓的「精确成本」不更新（不覆盖数据，故不 fail-closed，
+                // 但要如实上报——原来静默 continue，用户以为全部更新了）
+                unparsedRows.add(line.trim());
+                continue;
+            }
             positions.add(new CashPosition(
                     cells[col[0]].trim(),
                     col[1] >= 0 && col[1] < cells.length ? cells[col[1]].trim() : "",
@@ -177,7 +193,8 @@ public final class TradingImportParser {
                     parseDoubleSafe(col[6], cells)));
         }
         return new CashQuery(cash.value, available.value, withdrawable.value,
-                marketValue.value, assets.value, pnl.value, positions, headerMatched, todayPnlColumn);
+                marketValue.value, assets.value, pnl.value, positions, headerMatched, todayPnlColumn,
+                headerUnparsed, unparsedRows);
     }
 
     // ── 历史成交导入（第五份文件：通达信「历史成交查询」导出，2026-08-18）──
@@ -195,10 +212,30 @@ public final class TradingImportParser {
      * </ul>
      */
     public static List<HistoricalTradeRow> parseHistoricalTrades(String content) {
+        return parseHistoricalTradesDetailed(content).rows();
+    }
+
+    /**
+     * 历史成交解析（带「没看懂的行」）——2026-09-14 P2-交易43 同型风险封堵。
+     * <p>
+     * 原实现五处 `continue` 静默丢行、响应里没有任何出口：用户只看到「识别出 N 笔」，
+     * 不知道同一份文件里还有行被丢了——本链虽不覆盖落盘（append/merge），
+     * 但<b>丢一笔真实成交 = 账目缺口只能靠 integrity gaps 事后发现</b>。
+     * 现在每处丢弃都带<b>行号 + 原文 + 原因</b>上报，由调用方透出到导入结果。
+     * <p>
+     * 判据边界：空行 / 纯分隔线（`-` 开头）不算「没看懂的行」。
+     * <b>不改判定本身</b>（如「有量无价」是否该放行，缺用户样本前不凭猜改，见 REVIEW P2-交易43）。
+     *
+     * @return rows = 解析成功的行；unparsed = 被丢弃的行（行号 1 起算，原文，原因）
+     */
+    public static HistoricalTradeParse parseHistoricalTradesDetailed(String content) {
         List<HistoricalTradeRow> rows = new ArrayList<>();
+        List<UnparsedLine> unparsed = new ArrayList<>();
         List<String> lines = split(content);
         int[] col = null;
-        for (String line : lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            int lineNo = i + 1;
             if (line == null || line.isBlank() || line.startsWith("-")) continue;
             String[] cells = splitCells(line);
             if (col == null) {
@@ -208,11 +245,14 @@ public final class TradingImportParser {
                 if (idx[0] >= 0 && idx[2] >= 0 && idx[4] >= 0 && idx[8] >= 0) {
                     col = idx;
                 } else {
-                    return rows; // 空列表 → 调用方报「无法识别格式」
+                    return new HistoricalTradeParse(rows, unparsed); // 空 → 调用方报「无法识别格式」
                 }
                 continue;
             }
-            if (cells.length <= col[2] || !cells[col[2]].matches("\\d{6}")) continue;
+            if (cells.length <= col[2] || !cells[col[2]].matches("\\d{6}")) {
+                unparsed.add(new UnparsedLine(lineNo, line.trim(), "列数不足或证券代码不是 6 位数字"));
+                continue;
+            }
             String symbol = cells[col[2]].trim();
             String name = col[3] >= 0 && col[3] < cells.length ? cells[col[3]].trim() : symbol;
             String flag = col[4] >= 0 && col[4] < cells.length ? cells[col[4]].trim() : "";
@@ -221,14 +261,32 @@ public final class TradingImportParser {
                 case "卖出", "卖" -> TradeDirection.SELL;
                 default -> null; // 非买卖标志（新股申购/配股等）→ 整行跳过
             };
-            if (direction == null) continue;
+            if (direction == null) {
+                unparsed.add(new UnparsedLine(lineNo, line.trim(),
+                        "买卖标志「" + flag + "」不是买入/卖出（新股申购/配股等非二级市场交易）"));
+                continue;
+            }
             double signedVolume = parseDoubleSafe(col[5], cells);
             int volume = (int) Math.abs(signedVolume);
-            BigDecimal price = col[6] >= 0 && col[6] < cells.length
-                    ? parseNum(cells[col[6]]).stripTrailingZeros() : null;
-            if (price == null) continue;
+            // P2-交易43 附带修：原 `parseNum(...).stripTrailingZeros()` 在价格列非数字时
+            // parseNum 返回 null → NPE 直接炸整个导入（不是「跳过该行」）；改为先解析再判空。
+            BigDecimal price = null;
+            if (col[6] >= 0 && col[6] < cells.length) {
+                price = parseNum(cells[col[6]]);
+                if (price != null) price = price.stripTrailingZeros();
+            }
+            if (price == null) {
+                unparsed.add(new UnparsedLine(lineNo, line.trim(),
+                        "成交价格「" + (col[6] >= 0 && col[6] < cells.length ? cells[col[6]].trim() : "") + "」不是数字"));
+                continue;
+            }
             LocalDate entryDate = parseDateSafe(col[0], cells);
-            if (entryDate == null) continue;
+            if (entryDate == null) {
+                unparsed.add(new UnparsedLine(lineNo, line.trim(),
+                        "成交日期「" + (col[0] >= 0 && col[0] < cells.length ? cells[col[0]].trim() : "")
+                                + "」不是 yyyyMMdd 格式"));
+                continue;
+            }
             // RFC 20260822：成交时间列（HH:mm:ss）→ tradeTime（可空，格式不匹配不阻塞整行）
             LocalTime tradeTime = null;
             if (col[1] >= 0 && col[1] < cells.length && !cells[col[1]].isBlank()) {
@@ -247,7 +305,12 @@ public final class TradingImportParser {
                         null, null, occurred0, remark0));
                 continue;
             }
-            if (price.signum() <= 0) continue; // 有数量但无价格 → 数据异常跳过
+            if (price.signum() <= 0) {
+                // P2-交易43：有数量但成交价为 0/负——疑似送股/红股行（无样本前不改判定，但必须可见）
+                unparsed.add(new UnparsedLine(lineNo, line.trim(),
+                        "有成交数量但成交价为 " + price.toPlainString() + "（疑似送股/红股行）"));
+                continue;
+            }
             BigDecimal amount = col[7] >= 0 && col[7] < cells.length ? parseNum(cells[col[7]]) : BigDecimal.ZERO;
             BigDecimal occurred = col[9] >= 0 && col[9] < cells.length ? parseNum(cells[col[9]]) : null;
             // fee = |发生金额| 与 成交金额 之差（券商实扣；买入发生金额为负）
@@ -260,7 +323,19 @@ public final class TradingImportParser {
             rows.add(new HistoricalTradeRow(symbol, name, direction, price, volume,
                     entryDate, tradeTime, fee, orderId.isEmpty() ? null : orderId, occurred, remark));
         }
-        return rows;
+        return new HistoricalTradeParse(rows, unparsed);
+    }
+
+    /** 历史成交解析结果（2026-09-14 P2-交易43）：成功行 + 被丢弃行（行号/原文/原因）。 */
+    public record HistoricalTradeParse(List<HistoricalTradeRow> rows, List<UnparsedLine> unparsed) {}
+
+    /** 被丢弃的一行（P2-交易43/45 统一结构）：行号 1 起算、原始文本、人话原因。 */
+    public record UnparsedLine(int lineNo, String raw, String reason) {
+        /** 人话一行（供报错文案/响应透出）。 */
+        public String describe() {
+            String r = raw != null && raw.length() > 60 ? raw.substring(0, 60) + "…" : (raw != null ? raw : "");
+            return "第 " + lineNo + " 行「" + r + "」：" + reason;
+        }
     }
 
     /** 历史成交行（解析后入参，供 {@code importHistoricalTrades} 落流水）。
@@ -350,10 +425,28 @@ public final class TradingImportParser {
                                double costPrice, double currentPrice, double pnl, double todayPnl) {}
 
     /** 资金查询结果：首行账户全字段 + 明细。
-     *  @param todayPnlColumn 明细表头是否含「当日盈亏」列（缺列 → 调用方不得把当日盈亏清零，P2-交易37） */
+     *  @param todayPnlColumn 明细表头是否含「当日盈亏」列（缺列 → 调用方不得把当日盈亏清零，P2-交易37）
+     *  @param headerUnparsed 首行命中了正则、但这些项没读成数字（P2-交易45：非空 → 调用方必须拒绝导入）
+     *  @param unparsedRows   明细里没看懂的行（P2-交易45：不阻塞，但如实上报） */
     public record CashQuery(java.math.BigDecimal cash, java.math.BigDecimal available,
                             java.math.BigDecimal withdrawable, java.math.BigDecimal marketValue,
                             java.math.BigDecimal assets, java.math.BigDecimal pnl,
                             List<CashPosition> positions, boolean headerMatched,
-                            boolean todayPnlColumn) {}
+                            boolean todayPnlColumn, List<String> headerUnparsed,
+                            List<String> unparsedRows) {
+
+        public CashQuery {
+            if (headerUnparsed == null) headerUnparsed = List.of();
+            if (unparsedRows == null) unparsedRows = List.of();
+        }
+
+        /** 旧 10 参构造（无上报字段）——既有测试/调用方兼容。 */
+        public CashQuery(java.math.BigDecimal cash, java.math.BigDecimal available,
+                         java.math.BigDecimal withdrawable, java.math.BigDecimal marketValue,
+                         java.math.BigDecimal assets, java.math.BigDecimal pnl,
+                         List<CashPosition> positions, boolean headerMatched, boolean todayPnlColumn) {
+            this(cash, available, withdrawable, marketValue, assets, pnl, positions,
+                    headerMatched, todayPnlColumn, List.of(), List.of());
+        }
+    }
 }

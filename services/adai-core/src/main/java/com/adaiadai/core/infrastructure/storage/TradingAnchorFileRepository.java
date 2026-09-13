@@ -37,7 +37,7 @@ public class TradingAnchorFileRepository implements TradingAnchorRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TradingAnchorFileRepository.class);
     private static final String PATH = "trading/snapshot-anchor.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
     private static final int LOCK_STRIPES = 16;
     private final Object[] locks = new Object[LOCK_STRIPES];
 

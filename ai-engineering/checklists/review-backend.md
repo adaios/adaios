@@ -3,9 +3,9 @@ title: 后端代码审查检查清单
 description: backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
 version: 1
 created: 2026-08-15
-updated: 2026-09-13
+updated: 2026-09-14
 status: active
-lines: 119
+lines: 121
 depends-on: []
 related: [../roles/backend-reviewer.md]
 tags: [review, checklist, backend]
@@ -116,4 +116,6 @@ tags: [review, checklist, backend]
 | B68 | 「快照/全量覆盖」类导入必须记录**锚定日与基线**，且锚定日取快照自身日期（文件名日期）而非导入日；日期只前进不后退，更新锚定不得抹掉基线 | 补导旧快照把锚定日推到导入日（账实一致性批 P1，2026-09-12）|
 | B69 | 出站到**多网关/多环境**的第三方服务（APNs sandbox/production 等）：环境随**目标实体**（token/凭据）存并按它选地址，禁止用构建配置（debug/release）或部署环境推断；送错方向常见报错（BadDeviceToken 等）必须原样记入日志并附处置提示 | 侧载 release 构建被判成生产网关（APNs 批，2026-09-13）|
 | B70 | 结构化负载一律走序列化器（Jackson 等），**禁止手拼 JSON 字符串**：正文来自 LLM（含真实换行/引号）时手拼转义必漏 → 对端 400 丢消息 | Bark 多行正文裸换行 400（2026-08-26）/ APNs 同型防护（2026-09-13）|
-| B71 | 解析「损坏必须被发现」的写路径显式开 `FAIL_ON_TRAILING_TOKENS`：Jackson 默认忽略尾部垃圾，截断文件会被读成合法前半段（同型排查见 REVIEW P2-工程4）| APNs 批实测 `[]]` 被当 `[]` 读出（2026-09-13）|
+| B71 | 解析「损坏必须被发现」的写路径显式开 `FAIL_ON_TRAILING_TOKENS`（**统一走 `StrictJson.strict(...)`**，2026-09-14 起 18 个文件仓储全量覆盖）：Jackson 默认忽略尾部垃圾，截断文件会被读成合法前半段后回写覆盖（同型排查见 REVIEW P2-工程4）| APNs 批实测 `[]]` 被当 `[]` 读出（2026-09-13）· 令牌批同型（2026-09-14）|
+| B72 | 容错解析函数（返回 null 表示「读不出」）的结果**禁止直接链式调用**：必须「先解析 → 判空 → 再使用」；注释写「跳过」而实现抛 NPE 是最隐蔽的一类（正常文件测不出来）| 历史成交价格列非数字 → `parseNum(...).stripTrailingZeros()` NPE 炸整个导入（P2-交易43，2026-09-14）|
+| B73 | 「丢行/丢值」修复必须**端到端验收**：解析层带行号+原因上报 → 响应字段（`unparsed`/`dropped`/`unparsedRows`）→ **前端展示** + 一条 UI 测试；只改后端不算修（用户侧感受与修复前完全一样）| 账本可见性批（P2-交易43/44，2026-09-14）|

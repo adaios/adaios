@@ -21,7 +21,7 @@ public class PushSettingsRepository {
 
     private static final Logger log = LoggerFactory.getLogger(PushSettingsRepository.class);
     private static final String SETTINGS_PATH = "trading/push-settings.json";
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
 
     private final FileStorage fileStorage;
 

@@ -41,7 +41,9 @@ class TradingScreenshotAppServiceTest {
     void setUp() {
         glm = mock(VisualAiClient.class);
         collectService = mock(TradeLogCollectService.class);
-        when(collectService.collect(any(), any(), any())).thenReturn(List.of());
+        // P2-交易44（2026-09-14）：截图入账改走 collectDetailed（带被丢弃行），默认给空丢弃明细
+        when(collectService.collectDetailed(any(), any(), any()))
+                .thenReturn(new TradeLogCollectService.CollectResult(List.of(), List.of()));
         service = new TradingScreenshotAppService(glm, collectService);
     }
 
@@ -66,7 +68,7 @@ class TradingScreenshotAppServiceTest {
         assertEquals(1, r.candidates().size());
         assertEquals("002428", r.candidates().get(0).symbol());
         // 归集器收到的是 extractedText（OCR 全文）而非 summary 概括
-        verify(collectService).collect(eq("u1"), eq("云南锗业 002428 93.480 卖出 100 已成 14:56:09"), eq("image"));
+        verify(collectService).collectDetailed(eq("u1"), eq("云南锗业 002428 93.480 卖出 100 已成 14:56:09"), eq("image"));
     }
 
     @Test
@@ -78,7 +80,7 @@ class TradingScreenshotAppServiceTest {
 
         service.collect("u1", List.of(png(100)), List.of("image/png"));
 
-        verify(collectService).collect(eq("u1"), eq("股票交易记录"), eq("image"));
+        verify(collectService).collectDetailed(eq("u1"), eq("股票交易记录"), eq("image"));
     }
 
     @Test
@@ -92,7 +94,7 @@ class TradingScreenshotAppServiceTest {
 
         assertEquals(2, r.processed());
         // 逐张调用归集器（跨图去重由归集器 sameTrade 负责）
-        verify(collectService, times(2)).collect(any(), any(), any());
+        verify(collectService, times(2)).collectDetailed(any(), any(), any());
         assertEquals(1, r.candidates().size());
     }
 
