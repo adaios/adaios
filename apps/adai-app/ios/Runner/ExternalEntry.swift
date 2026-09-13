@@ -14,6 +14,26 @@ import UIKit
 /// 2. **drain 语义 = 取出即清空**：消费一次就删键，天然幂等——通知路径与 Dart 主动取路径
 ///    即使同时发生，也只有一个能拿到内容（不会重复记两条）。
 /// 3. **不猜内容**：只有确实带了文本才走「直接落成记录」，空文本只把输入框准备好（见 Dart 侧）。
+///
+/// ⚠️ **动作表是两份**：本枚举与 Dart 侧 `ExternalEntryAction`（`lib/services/entry_intent_service.dart`）
+/// 是一份契约的两端，**必须同步增删**——只加一侧会让新入口「原生发得出去、Dart 认不出来」，
+/// 表现为点了没反应且日志干净（同族坑见 pitfalls「条件导出的两份实现 API 面不一致」）。
+enum ExternalEntryAction: String, CaseIterable {
+
+    /// 记一笔：内容直接落成一条记录（Siri / 快捷指令 / `adai://record`）。
+    case record
+
+    /// 整理：把链接交给 learn 流水线（抓取 → 按需转写 → 结构化学习卡片；`adai://digest`）。
+    ///
+    /// **为什么要独立成一个动作**：它与 `record` 是**动作语义**之别，不是内容特征之别——
+    /// record 是「把这句话记下来」，digest 是「去把这个链接读明白」。此前没有这个动作，
+    /// 只能退而求其次让用户把「整理」二字写进文本、靠 Dart 侧的关键词正则去猜；
+    /// 2026-09-13 真机实测：用户在快捷指令里把共享链接直接接进「记一笔」动作，
+    /// 文本里没有触发词 → **静默落成一条普通记录，并没有整理**。
+    /// 让「整理」成为一个动作，这类「少说两个字就走错分支」的失败就不再可能。
+    case digest
+}
+
 enum ExternalEntry {
 
     /// MethodChannel 名（Dart 侧 `entry_intent_service.dart` 同名）。
@@ -26,8 +46,8 @@ enum ExternalEntry {
     static let scheme = "adai"
 
     /// 存一条待处理入口（App Intent 与 URL 两条路都走这里）。
-    static func stash(action: String, text: String?, source: String) {
-        var entry: [String: Any] = ["action": action, "source": source]
+    static func stash(action: ExternalEntryAction, text: String?, source: String) {
+        var entry: [String: Any] = ["action": action.rawValue, "source": source]
         if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             entry["text"] = text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -47,7 +67,7 @@ enum ExternalEntry {
     // MARK: - URL 去重（实测必需，见下）
 
     /// 最近一次已接受的 URL 动作，用于去重。
-    private static var lastURLAction: String?
+    private static var lastURLAction: ExternalEntryAction?
     private static var lastURLText: String?
     private static var lastURLAt: Date?
 
@@ -56,9 +76,10 @@ enum ExternalEntry {
 
     /// 解析并接受 `adai://` URL。
     ///
-    /// 支持的形态：
+    /// 支持的形态（动作取自 [ExternalEntryAction]，**新增动作不必改本方法**）：
     /// - `adai://record?text=今天减仓了立昂微` → 直接落成一条记录
     /// - `adai://record`                        → 打开 App 并把记录入口准备好
+    /// - `adai://digest?url=https%3A%2F%2Fb23.tv%2Fx` → 让阿呆去整理这个链接
     ///
     /// **为什么要去重**：2026-09-13 真机实测——**冷启动**时 iOS 会把「启动用的那个 URL」
     /// 同时经 `scene(_:willConnectTo:options:)` 与 `scene(_:openURLContexts:)` 送达，
@@ -73,11 +94,16 @@ enum ExternalEntry {
     static func handle(url: URL, source: String) -> Bool {
         guard url.scheme?.lowercased() == scheme else { return false }
         // adai://record → host = "record"；adai:///record → path = "/record"，两种都容忍
-        let action = (url.host?.isEmpty == false ? url.host : url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-            ?? "record"
-        guard action == "record" else { return false }
-        let text = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "text" })?.value
+        let rawAction = (url.host?.isEmpty == false ? url.host : url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+            ?? ExternalEntryAction.record.rawValue
+        // 认不出来就**不认领**（返回 false，不干扰别的 URL 处理）。
+        // 不认识的 action 一律回落成 record 会把「整理」悄悄变成「记一条」——正是本批要根除的失败模式。
+        guard let action = ExternalEntryAction(rawValue: rawAction) else { return false }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        // digest 的主参数叫 `url`（语义直白）；`text` 作为别名一并接受，
+        // 这样同一条快捷指令把参数名写成 text 也不会静默丢内容。
+        let text = items?.first(where: { $0.name == "url" })?.value
+            ?? items?.first(where: { $0.name == "text" })?.value
 
         // 场景回调都在主线程 → 这几个静态变量无需加锁
         let now = Date()

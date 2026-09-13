@@ -161,6 +161,46 @@ void main() {
     expect(ExternalEntry.fromNative(null), isNull);
   });
 
+  // ── digest 动作（2026-09-13 分享与整理批）──
+  //
+  // 为什么单独锁：这个动作存在的唯一理由，就是**不再靠文本里的「整理」二字去猜**。
+  // 若哪天有人把不认识的 action 回落成 record（那是本批要根除的失败模式），
+  // 这些用例会红。
+
+  test('digest 动作被识别（分享/整理链路）', () {
+    final e = ExternalEntry.fromNative(
+        {'action': 'digest', 'text': 'https://b23.tv/AbCdEf', 'source': 'shortcut'});
+
+    expect(e, isNotNull);
+    expect(e!.action, ExternalEntryAction.digest);
+    expect(e.text, 'https://b23.tv/AbCdEf');
+    expect(e.source, 'shortcut');
+  });
+
+  test('digest 与 record 是两种动作（不互相污染）', () {
+    final r = ExternalEntry.fromNative({'action': 'record', 'text': '记一笔', 'source': 'siri'});
+    final d = ExternalEntry.fromNative({'action': 'digest', 'text': 'https://b23.tv/x'});
+
+    expect(r!.action, ExternalEntryAction.record);
+    expect(d!.action, ExternalEntryAction.digest);
+  });
+
+  test('digest 空内容 → hasText=false（只准备输入框，不猜）', () {
+    final e = ExternalEntry.fromNative({'action': 'digest', 'source': 'shortcut'});
+    expect(e, isNotNull);
+    expect(e!.hasText, isFalse);
+  });
+
+  test('冷启动取到 digest 入口（Siri/快捷指令拉起 App）', () async {
+    installChannel(
+        pending: {'action': 'digest', 'text': 'https://b23.tv/x', 'source': 'shortcut'});
+
+    await EntryIntentService.init();
+
+    expect(EntryIntentService.pending.value?.action, ExternalEntryAction.digest);
+    expect(EntryIntentService.pending.value?.text, 'https://b23.tv/x');
+  });
+
   test('source 缺失 → unknown（不崩）', () {
     final e = ExternalEntry.fromNative({'action': 'record', 'text': 'x'});
     expect(e!.source, 'unknown');

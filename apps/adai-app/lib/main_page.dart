@@ -132,9 +132,13 @@ class _MainPageState extends State<MainPage>
 
   /// 消费一条来自 App 外部（Siri / 快捷指令 / URL）的入口。
   ///
-  /// **有内容就直接落成记录**，不要求再点一次发送：语音输入的意图已经明确（你亲口说的），
-  /// 多一次点击等于把 Siri 的价值抵消掉；卡片照常可见、可删（既有能力）。
-  /// **没内容不猜**：只把输入框准备好并聚焦，等你自己写（例如只说了「打开阿呆」）。
+  /// 按 [ExternalEntryAction] 分派——它是**动作**，不是一句需要被理解的自然语言，
+  /// 所以这里不做任何关键词判断：
+  /// - [ExternalEntryAction.record]：**有内容就直接落成记录**，不要求再点一次发送：
+  ///   语音输入的意图已经明确（你亲口说的），多一次点击等于把 Siri 的价值抵消掉；
+  ///   卡片照常可见、可删（既有能力）。**没内容不猜**：只把输入框准备好并聚焦
+  ///   （例如只说了「打开阿呆」）。
+  /// - [ExternalEntryAction.digest]：直达 learn 流水线，见 [_startLearnDigestFromEntry]。
   void _consumeExternalEntry() {
     final entry = EntryIntentService.take();
     if (entry == null || !mounted) return;
@@ -142,7 +146,41 @@ class _MainPageState extends State<MainPage>
       _inputBarKey.currentState?.prefillText('');
       return;
     }
+    if (entry.action == ExternalEntryAction.digest) {
+      _startLearnDigestFromEntry(entry.text!);
+      return;
+    }
     _onSend(entry.text!);
+  }
+
+  /// 「整理」这个明确动作的落点：**直达 learn 流水线**。
+  ///
+  /// 与对话流入口（[_handleLearnFlow]）的两点关键差别，都是「动作 vs 自然语言」的直接推论：
+  /// 1. **不看关键词**——这是用户在分享面板里点的一个动作，不必再靠「整理/消化/学习留存/归档」
+  ///    几个字去猜。2026-09-13 真机实测：共享链接缺触发词 → **静默落成普通记录**，就是这个坑。
+  /// 2. **不避让活动对话卡**——[_onSend] 里「正在对话中不抢话」的约束是为**插话**设计的；
+  ///    这是明确动作，没有抢话问题，理应立即执行。
+  ///
+  /// 但**保留 learn 插件门控**：插件没开时后端会 403，先给人话比让用户对着失败猜要好。
+  Future<void> _startLearnDigestFromEntry(String raw) async {
+    final now = TimeOfDay.now();
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    // 分享出来的常常是「夹着链接的一整段口令文本」（抖音那种「…复制打开抖音… https://v.douyin.com/x」），
+    // 所以从文本里择链接，而不是把它当纯 URL 用。
+    final link = _httpLinkOf(raw);
+    if (link == null) {
+      _showSnackBar('这次分享来的内容里我没找到链接；把链接发我，我就能去读它。');
+      return;
+    }
+    final enabled = await _isLearnEnabled();
+    if (!mounted) return;
+    // 只在**确知插件关闭**时拦下并说明；网络抖动查不到（_learnEnabled 仍为 null）就照常提交，
+    // 由后端门控与人话错误兜底——不把「不知道」渲染成「没开」。
+    if (!enabled && _learnEnabled != null) {
+      _showSnackBar('「学习」这件事我这儿还关着，去插件设置里打开，我们再继续。');
+      return;
+    }
+    _startLearnDigestCard('整理 $link', link, timeStr);
   }
 
   void _onRefreshTick() {

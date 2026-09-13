@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:adai_app/main_page.dart';
 import 'package:adai_app/services/api_service.dart';
+import 'package:adai_app/services/entry_intent_service.dart';
 import 'package:adai_app/services/sse_client.dart';
 
 // ────────────────────────────────────────────────────────────────
@@ -388,6 +389,100 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('已记下'), findsOneWidget, reason: '插件查不到 → 照旧记录，不打扰用户');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // 外部入口的「整理」动作（2026-09-13 分享与整理批）
+  //
+  // 与上面「对话流入口」的区别是本质的：那是**一句自然语言**（要靠关键词猜是不是在说学习），
+  // 这是一个**明确动作**（用户在分享面板里点的那一下）。两条推论：
+  // ① 不靠关键词——文本里没有「整理」二字也照样整理；
+  // ② 不避让活动对话卡——它是动作，不是插话。
+  // 2026-09-13 真机实测踩的正是 ①：共享链接缺触发词 → **静默落成一条普通记录**。
+  // ────────────────────────────────────────────────────────────────
+  group('外部入口：分享来的「整理」动作', () {
+    tearDown(EntryIntentService.resetForTest);
+
+    /// 模拟原生侧投递一条外部入口（快捷指令「阿呆阿呆整理」/ `adai://digest`）。
+    /// listener 是同步触发的，但落地路径里要 await 插件查询 → 多 pump 几次。
+    Future<void> emit(WidgetTester tester, ExternalEntryAction action, String text) async {
+      EntryIntentService.pending.value =
+          ExternalEntry(action: action, text: text, source: 'shortcut');
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+    }
+
+    /// 让 learn 轮询跑到终止（否则测试结束时留着 pending timer）。
+    Future<void> settlePolling(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('⑪ 文本里没有「整理」二字，也照样整理（动作不靠关键词猜）', (tester) async {
+      final backend = _Backend()
+        ..statusSeq = [
+          {'status': 'running', 'stage': 'fetching'},
+          {'status': 'done', 'type': 'ai', 'title': 'B站视频整理'},
+        ];
+      await pump(tester, backend);
+
+      await emit(tester, ExternalEntryAction.digest, 'https://www.bilibili.com/video/BV1xx411c7mD');
+
+      final posts = backend.requestsTo('/api/v1/learn/digest')
+          .where((r) => r.method == 'POST').toList();
+      expect(posts.length, 1, reason: 'digest 动作应直达 /learn/digest');
+      expect(jsonDecode(posts.first.body)['url'], 'https://www.bilibili.com/video/BV1xx411c7mD');
+      expect(backend.recordCalls, 0, reason: '这是「整理」，不该落成普通记录');
+      expect(find.byKey(const ValueKey('learn-digest-user')), findsOneWidget);
+
+      await settlePolling(tester);
+    });
+
+    testWidgets('⑫ 分享文本夹着口令也能择出链接（抖音那种形态）', (tester) async {
+      final backend = _Backend()
+        ..statusSeq = [
+          {'status': 'done', 'type': 'ai', 'title': '抖音视频整理'},
+        ];
+      await pump(tester, backend);
+
+      await emit(tester, ExternalEntryAction.digest,
+          '8.88 复制打开抖音，看看【某某某】的作品 https://v.douyin.com/AbCdEf/ 很有意思');
+
+      final posts = backend.requestsTo('/api/v1/learn/digest')
+          .where((r) => r.method == 'POST').toList();
+      expect(posts.length, 1);
+      expect(jsonDecode(posts.first.body)['url'], 'https://v.douyin.com/AbCdEf/',
+          reason: '要从口令文本里择出链接，而不是把整段当 URL');
+
+      await settlePolling(tester);
+    });
+
+    testWidgets('⑬ 分享内容里没有链接 → 人话告知，不发请求、不落记录', (tester) async {
+      final backend = _Backend();
+      await pump(tester, backend);
+
+      await emit(tester, ExternalEntryAction.digest, '这段文字里没有任何网址');
+
+      expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty);
+      expect(backend.recordCalls, 0, reason: '整理不了也不该退化成一条记录');
+      expect(find.textContaining('没找到链接'), findsOneWidget);
+    });
+
+    testWidgets('⑭ record 入口行为不变（回归）：有内容直接落成记录，不碰 learn', (tester) async {
+      final backend = _Backend();
+      await pump(tester, backend);
+
+      await emit(tester, ExternalEntryAction.record, '今天减仓了立昂微');
+      await tester.pumpAndSettle();
+
+      expect(backend.recordCalls, 1);
+      expect(backend.requestsTo('/api/v1/learn/digest'), isEmpty);
+      expect(find.byKey(const ValueKey('learn-digest-user')), findsNothing);
     });
   });
 }

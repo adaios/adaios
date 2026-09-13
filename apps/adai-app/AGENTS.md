@@ -56,7 +56,7 @@ lib/
 │   ├── api_config.dart          # API 配置（后端地址）
 │   ├── api_service.dart         # HTTP 客户端（REST API 调用）
 │   ├── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；Web/PWA/Android 降级不碰原生通道
-│   └── entry_intent_service.dart # 外部入口（RFC 20260913）：接 Siri「记一笔」/ 快捷指令 / adai:// → 有内容直接落成记录，空内容只预填；同样仅 iOS 原生
+│   └── entry_intent_service.dart # 外部入口（RFC 20260913）：接 Siri「记一笔」/ 快捷指令 / adai:// → **按动作（record/digest）分派**；record 有内容直接落成记录、空内容只预填，digest 直达 learn 整理；同样仅 iOS 原生
 ├── theme/
 │   ├── app_colors.dart          # 调色板
 │   └── app_theme.dart           # Material 3 ThemeData
@@ -130,12 +130,16 @@ cd apps/adai-app && flutter test
 - **环境别猜**：deviceToken 分属 sandbox / production 两套互不相通的网关，App 侧读包内 `embedded.mobileprovision` 的 `aps-environment` 得出环境上报（**不能用 `#if DEBUG`**：本项目装机是 `--release` + development 描述文件 = release 优化 + 沙箱环境）。
 - 服务端配置与验证步骤见 `docs/deployment/backend-deployment.md` §11。
 
-## iOS 外部入口（RFC 20260913）
+## iOS 外部入口（RFC 20260913 + 2026-09-13 整理动作批）
 
-- **三条入口**：Siri 短语（`AdaiAppShortcuts`，免配置）· 快捷指令/聚焦搜索的「记一笔」动作（`RecordIntent`）· `adai://record?text=…`。
+- **两个动作**（「入口」是从哪来，「动作」是要做什么）：**记一笔** `RecordIntent`（Siri 短语 `AdaiAppShortcuts` / 快捷指令「阿呆阿呆」动作 / `adai://record?text=…`）· **整理** `DigestIntent`（快捷指令「阿呆阿呆整理」动作 / `adai://digest?url=…`，交付 learn 流水线）。
+- **新增入口改哪里**：原生 `ExternalEntryAction`（`ExternalEntry.swift`）是张**表**，加一个入口 = 加一个枚举值 + Dart 侧 `ExternalEntryAction`（`entry_intent_service.dart`）一个分支，原生侧不再动结构。⚠️ **两份动作表必须同步**——只加一侧就是「原生发得出去、Dart 认不出来」的静默无反应（同族坑见 pitfalls「条件导出的两份实现 API 面不一致」）。
+- **认不出的动作既不认领也不回落**（原生 `handle` 返回 false / Dart `fromNative` 返回 null）。回落成 record 会把「整理」悄悄变成「记一条」——那正是 2026-09-13 真机实测到的失败（快捷指令里共享链接缺「整理」二字 → 静默落成普通记录）。
+- **`DigestIntent` 的参数是 `String` 不是 `URL`**：分享出来常是夹着链接的口令文本（抖音那种「8.88 复制打开抖音… https://v.douyin.com/x」），URL 强校验会直接拒收；由 Dart 侧 `_httpLinkOf` 择出链接。它**刻意不进 `AdaiAppShortcuts`**（用嘴念 URL 不现实，只会给 Siri 添噪声）。
 - **投递必须落盘**：App Intent 的 `perform()` 与 Flutter 引擎初始化**没有先后保证**（冷启动时引擎可能还没起来），所以 `ExternalEntry` 走「落 UserDefaults + 同进程通知」双路径，Dart 起来后再 `takePendingEntry` 兜底取；drain 即清空 → 天然消费一次。
 - **URL 有两条送达路径，缺一不可**：warm → `SceneDelegate.scene(_:openURLContexts:)`；cold → `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts`。**两条都必须调 `super`**（`FlutterSceneDelegate` 的实现藏在 framework 里，头文件没暴露但 Swift 可覆写；`willConnectTo` 里 super 负责引擎装配，跳过会让 App 起不来）。见 pitfalls 十四。
 - **scene 架构下 AppDelegate 的 `application(_:open:)` 不会被调用**——URL 处理别写在 AppDelegate。
+- ⚠️ **本批只做到「跳 App 后能整理」**：`openAppWhenRun = true` 是 `DigestIntent` 的固有代价，而用户真实痛点是「**要跳一下 App，打断了看到就丢**」→ 真正的解是 **Share Extension**（扩展自己把链接投给后端），见 `docs/rfc/`（分享扩展批次）。
 
 ## 设计约定
 

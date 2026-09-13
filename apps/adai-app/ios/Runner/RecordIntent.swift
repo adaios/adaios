@@ -33,7 +33,7 @@ struct RecordIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        ExternalEntry.stash(action: "record", text: text, source: "siri")
+        ExternalEntry.stash(action: .record, text: text, source: "siri")
         return .result()
     }
 }
