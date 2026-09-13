@@ -3,9 +3,9 @@ title: docs/guides 目录索引
 description: guides 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-09-14
 status: active
-lines: 29
+lines: 32
 depends-on: []
 related:
   - ../_index.md
@@ -20,7 +20,10 @@ tags: [meta, index, guides]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
-| project-os-usage.md | Project OS 使用指南 | active |
+| development.md | 开发指南：全局构建/测试/运行/部署命令 + 换机必跑的三件事（hooks/技能注册/定时任务） | active |
+| routine.md | **固定动作清单（每天/每周/到期）**——周期性人肉工作总清单 + 2026-09-14 盘点的三个静默失效缺口 | active |
+| skills-usage.md | 技能使用指南：技能何时用、怎么触发、怎么维护（给人看） | active |
+| project-os-usage.md | Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 | active |
 
 ## 过期判断
 

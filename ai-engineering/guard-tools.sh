@@ -2,10 +2,10 @@
 # ─────────────────────────────────────────────────────────────
 # 工具接入自检（防守侧）— 检测「AI 上下文工程体系」在各工具侧是否真的被加载
 #
-# 用法:  bash ai-engineering/guard-tools.sh             # 全量自检（T1-T6）
+# 用法:  bash ai-engineering/guard-tools.sh             # 全量自检（T1-T7）
 #        bash ai-engineering/guard-tools.sh --shell-lint # 只跑 T6（pre-commit 调用，快）
 # 说明:  体系的「跨工具互通」不是文档承诺，是可验证状态（2026-08-23 对抗审计 P1-4 修复）。
-#        自检 6 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
+#        自检 7 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
 #        机制替人记得——运行即知当前工具接入状态）。
 #
 # 检测项:
@@ -15,6 +15,8 @@
 #   T4 工具侧技能注册  → .dsh / .claude / .agents 的 skills/ 是否软链回本体系（按真身判定）
 #   T5 工具侧上下文注入→ 若存在 .claude/settings.json，是否显式引用 AGENTS.md（无则仅提示）
 #   T6 shell 脚本健壮性→ `$VAR` 紧跟非 ASCII（非 UTF-8 locale 下被并进变量名 → unbound）
+#   T7 定时任务（launchd）→ 备份 / 每周审查是否真加载 + 真跑过（2026-09-14 加：
+#                          此前 26 天没备份、每周审查从未运行，全体系没有一处会报）
 # ─────────────────────────────────────────────────────────────
 set -u
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
@@ -131,6 +133,19 @@ if [ "$LINT_RC" -eq 0 ]; then
 else
   echo "$LINT_OUT" | sed 's/^/  /'
   bad "shell 脚本存在 \$VAR 紧跟非 ASCII 的写法（改用 \${VAR}）"
+fi
+
+# T7: 定时任务（launchd）——把「静默失效的自动化」变成每次自检都可见
+# 由来见 docs/guides/routine.md §六：生产备份 26 天没跑、每周审查从未运行，
+# 而当时没有任何一处会报出来（crontab 被 TCC 拦，声称「已挂载」却无日志）。
+echo ""
+echo "T7 定时任务（launchd：每日备份 / 每周审查）"
+T7_OUT="$(bash "$ROOT/scripts/setup-launchd.sh" --check 2>&1)"; T7_RC=$?
+if [ "$T7_RC" -eq 0 ]; then
+  ok "$(echo "$T7_OUT" | grep '✅' | sed 's/^ *//; s/^✅ *//' | tr '\n' '；' | sed 's/；$//')"
+else
+  echo "$T7_OUT" | sed 's/^/  /'
+  bad "定时任务未就绪（备份 / 每周审查可能静默失效）→ bash scripts/setup-launchd.sh"
 fi
 
 echo ""

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 定时审查（触发侧：cron 每周自动跑，防审查休眠）
+# 定时审查（触发侧：每周自动跑，防审查休眠）
 #
 # 用法:  bash ai-engineering/weekly-audit.sh [--auto]
 # 说明:  每周自动执行：
@@ -9,9 +9,14 @@
 #         W3 沉淀检查（guard-sediment——change-log 是否连续）
 #         W4 失真扫描（端点数/测试数三方对拍报告）
 #         W5 未修项报告（REVIEW 战略/P1 清单）
-#        --auto = cron 模式（只输出 FAIL 摘要，适合邮件/日志）
-# 接入 cron（每周一 9:00）：
-#   0 9 * * 1 bash /path/to/ai-engineering/weekly-audit.sh --auto >> /tmp/weekly-audit.log 2>&1
+#         W6 到期红线（公安备案/域名/Apple 账号；见 scripts/check_deadlines.py）
+#        --auto = 只输出 FAIL 摘要，适合日志（保留参数兼容）
+#
+# 触发方式（2026-09-14 起）：
+#   ❌ 旧：crontab `0 9 * * 1` —— macOS TCC 拦截 crontab，**从未真正跑过**
+#   ✅ 新：LaunchAgent `com.adai.adaios-weekly-audit`（每周一 09:00）
+#          日志 ai-engineering/state/weekly-audit.log
+#          重装：bash scripts/setup-launchd.sh
 # ─────────────────────────────────────────────────────────────
 set -u
 
@@ -54,6 +59,11 @@ fi
 echo "▸ W5 未修项（REVIEW 战略/P1）..."
 bash ai-engineering/guard-context.sh 2>&1 | sed -n '/## C2/,/## C3/p' | grep "^- " | head -8 || echo "   （无未修项）"
 
+# W6 到期红线（2026-09-14 加：盘点发现到期型事项只写在文档里，文档不会主动叫人）
+echo "▸ W6 到期红线..."
+python3 scripts/check_deadlines.py --one-line 2>&1 || true
+
 echo ""
 echo "═══ 每周审查完成（${TODAY}）═══"
 echo "报告存档建议：发现未修项 → docs/review/REVIEW.md；需全维度走查 → 派 8 官（process/audit.md）"
+echo "到期项处置 → docs/guides/routine.md §四（勿只留在日志里）"

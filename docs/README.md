@@ -29,6 +29,7 @@
 | 文档 | 说明 |
 |:-----|:------|
 | [development.md](guides/development.md) | 🛠 开发指南：全局构建/测试/运行/部署命令（原根 CLAUDE.md 承接，2026-08-19）|
+| [routine.md](guides/routine.md) | ⏰ **固定动作清单（每天/每周/到期）**：哪些已自动、哪些要你亲自做、到期红线（2026-09-14）|
 | [skills-usage.md](guides/skills-usage.md) | 🧩 技能使用指南：11 个技能何时用、怎么触发、怎么维护（给人看）|
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
 | [trading-features.md](reference/trading-features.md) | 📈 交易模块（trading 插件）功能手册：端点总表/定时任务/Web·App 双端功能/知识底座/已知缺陷 |
