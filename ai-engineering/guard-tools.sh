@@ -11,8 +11,8 @@
 #   T1 git hooksPath   → 门禁是否随仓库生效（S-A1 修复验证）
 #   T2 AGENTS.local.md → 快照是否新鲜（机器生成 + gitignore，勿手改）
 #   T3 仓库内技能      → roles/ + skills/ 的 SKILL.md 是否齐备（name 字段校验）
-#   T4 工具侧技能注册  → Claude Code (.claude/skills) / DSH (~/.dsh) 是否指向本体系
-#   T5 工具侧上下文注入→ Claude Code 是否把 AGENTS.md 当入口（settings 检查）
+#   T4 工具侧技能注册  → .dsh / .claude / .agents 的 skills/ 是否软链回本体系（按真身判定）
+#   T5 工具侧上下文注入→ 若存在 .claude/settings.json，是否显式引用 AGENTS.md（无则仅提示）
 # ─────────────────────────────────────────────────────────────
 set -u
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/.." && pwd)")"
@@ -51,12 +51,22 @@ else
   warn "快照缺失 → bash ai-engineering/guard-context.sh --write-local 生成"
 fi
 
-# T3: 仓库内技能齐备（roles/ 9 + skills/ 3，name 字段=文件名）
+# T3: 仓库内技能齐备（name 字段=文件名；计数动态，新增角色不再需要改文案）
 echo ""
 echo "T3 仓库内技能包（SKILL.md）"
-MISSING=0
-for f in "$ROOT"/ai-engineering/roles/*.md "$ROOT"/ai-engineering/skills/*.md; do
+MISSING=0; N_ROLES=0; N_SKILLS=0
+for f in "$ROOT"/ai-engineering/roles/*.md; do
   [ -f "$f" ] || continue
+  N_ROLES=$((N_ROLES+1))
+  base="$(basename "$f" .md)"
+  if ! grep -q "^name: $base$" "$f"; then
+    echo "  ❌ $f: 缺 name: $base（skills-spec 必填）"
+    MISSING=$((MISSING+1))
+  fi
+done
+for f in "$ROOT"/ai-engineering/skills/*.md; do
+  [ -f "$f" ] || continue
+  N_SKILLS=$((N_SKILLS+1))
   base="$(basename "$f" .md)"
   if ! grep -q "^name: $base$" "$f"; then
     echo "  ❌ $f: 缺 name: $base（skills-spec 必填）"
@@ -64,36 +74,41 @@ for f in "$ROOT"/ai-engineering/roles/*.md "$ROOT"/ai-engineering/skills/*.md; d
   fi
 done
 if [ "$MISSING" -eq 0 ]; then
-  ok "12 个技能包 name 字段齐备（roles/ 9 + skills/ 3）"
+  ok "$((N_ROLES+N_SKILLS)) 个技能包 name 字段齐备（roles/ ${N_ROLES} + skills/ ${N_SKILLS}）"
 else
   bad "$MISSING 个技能包缺 name"
 fi
 
-# T4: 工具侧技能注册（Claude Code / DSH）
+# T4: 工具侧技能注册（按「链接是否指向本仓库 ai-engineering/」判定，不认名字、不写死工具）
 echo ""
 echo "T4 工具侧技能注册"
-CLAUDE_SKILLS="$HOME/.claude/skills"
-DSH_SKILLS="$HOME/.dsh/skills"
 REG=0
-for d in "$CLAUDE_SKILLS" "$DSH_SKILLS"; do
-  if [ -d "$d" ]; then
-    LINK=$(find "$d" -maxdepth 1 -type l -name "*adaios*" 2>/dev/null | head -1)
-    [ -n "$LINK" ] && { ok "找到技能链接: $LINK"; REG=$((REG+1)); }
-  fi
+for d in "$ROOT/.dsh/skills" "$HOME/.dsh/skills" "$ROOT/.claude/skills" "$HOME/.claude/skills" "$ROOT/.agents/skills" "$HOME/.agents/skills"; do
+  [ -d "$d" ] || continue
+  for f in "$d"/*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    # 解析软链真身（macOS 无 readlink -f 兜底用 python3/realpath）
+    TGT="$(readlink -f "$f" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
+    case "$TGT" in
+      "$ROOT"/ai-engineering/*) ok "技能已注册: ${f/#$HOME/~} → ${TGT#$ROOT/}"; REG=$((REG+1));;
+    esac
+  done
 done
 if [ "$REG" -eq 0 ]; then
-  warn "未发现指向 ai-engineering/ 的技能注册（Claude Code / DSH 均无）"
-  echo "    说明: 工具侧配置在工具自己设置里（AGENTS.md 工具接入段）；本项仅提示，不强制"
+  warn "未发现指向 ai-engineering/ 的技能注册（.dsh / .claude / .agents 均无）"
+  echo "    修复: bash scripts/link-skills.sh（换机/新 clone 后必跑一次）"
 fi
 
-# T5: Claude Code 上下文入口
+# T5: 工具侧上下文入口（**仅当该工具确实在用**才校验；不用则跳过，避免永久警告让「全绿」失去信号）
 echo ""
-echo "T5 Claude Code 上下文入口"
+echo "T5 工具侧上下文入口"
 CC="$ROOT/.claude/settings.json"
-if [ -f "$CC" ] && grep -q "AGENTS.md" "$CC" 2>/dev/null; then
+if [ ! -f "$CC" ]; then
+  ok "未使用 Claude Code（无 .claude/settings.json）→ 跳过"
+elif grep -q "AGENTS.md" "$CC" 2>/dev/null; then
   ok ".claude/settings.json 引用 AGENTS.md"
 else
-  warn "无 .claude/settings.json 显式引用 AGENTS.md（Claude 会默认读 CLAUDE.md；本体系以 AGENTS.md 为入口）"
+  warn "存在 .claude/settings.json 但未引用 AGENTS.md（Claude 会默认读 CLAUDE.md；本体系以 AGENTS.md 为入口）"
 fi
 
 echo ""

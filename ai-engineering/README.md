@@ -36,9 +36,9 @@ tags: [ai, meta, engineering]
 | 文件 | 说明 |
 |:-----|:-----|
 | `frontmatter-spec.md` | 文档元数据契约（图谱/治理/归档基础）|
-| `roles/` | 9 个审查官定义（8 客观官：产品架构/交互体验/界面设计/后端/前端/文档/知识数据/Context + 1 对抗官）|
+| `roles/` | 12 个审查官定义（8 客观官：产品架构/交互体验/界面设计/后端/前端/文档/知识数据/Context + 1 对抗官 + 3 外部视角官：陌生人/社会性/支持台）|
 | `process/` | 流程定义（audit 走查 / review 深审 / ship 收尾）|
-| `checklists/` | 检查清单（执行细节，人也能用：8 客观官 + 1 对抗官清单 + guard 守护）|
+| `checklists/` | 检查清单（执行细节，人也能用：8 客观官 + 1 对抗官 + 3 外部视角官清单 + guard/cost/perf）|
 | `guard-meta.sh` | 元治理自检：frontmatter 图谱/lines/孤儿，`--fix` 回写 |
 | `guard-unfixed.sh` | **未修复问题总清单**：聚合 REVIEW.md + task-log + audits 游离项 + 状态对账矛盾，一条命令拿全（2026-08-23 建）|
 | `guard-tools.sh` | **工具接入自检**：T1-T5 检测「跨工具互通」是否真被加载（hook/快照/技能/注册/入口），机制替人记得（2026-08-23 建）|

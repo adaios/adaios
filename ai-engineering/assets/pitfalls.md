@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-09-13
+updated: 2026-09-14
 status: active
-lines: 148
+lines: 154
 depends-on:
   - ../checklists/guard.md
 related:
@@ -143,6 +143,12 @@ tags: [ai, assets, pitfalls]
 | **App Intent 冷启动时引擎还没起来 → 投递丢** | 用 Siri 记一笔，App 起来了但内容没进去（尤其 App 被杀掉后再唤起） | `openAppWhenRun = true` 时 `perform()` 与 Flutter 引擎初始化**没有先后保证**：引擎没好时 MethodChannel 为空，直接投就是丢 | **先落 UserDefaults，再发同进程通知**：引擎就绪 → 通知即刻投；未就绪 → AppDelegate 不消费，Dart 起来后 `takePendingEntry` 兜底取。drain 即清空 → 天然消费一次（不会重复记两条） | ✅ 已解（2026-09-13） | 只走 MethodChannel 投递一次性事件；不做「事件可能早于监听者」的假设 |
 | **冷启动的启动 URL 被 iOS 送两遍 → 同一句话落两条记录** | 冷启动点链接：App 打开了、内容也对，但**同一条记录出现两次**（实测两条相隔 516ms）。warm 路径完全正常 | 冷启动时 iOS 会把「启动用的那个 URL」**同时**经 `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts` **和** `scene(_:openURLContexts:)` 送达（两条路径都接就会被处理两次）。这是 OS 的送达方式，不是用户动作 | 在**入口处**按 (action, text) 去重（窗口 3 秒——人不可能 3 秒内用同一条链接说两遍一样的话，而两次送达必然在 1 秒内）。**去重放在 URL 入口而不是 `stash`**：App Intent 是用户亲口说的，内容相同也必须每次都记 | ✅ 已解（2026-09-13） | 「接了两条路径」就当万事大吉，不做「同一次外部动作被送两次」的假设；去重位置放错层（把用户主动动作也吞掉） |
 | **scene 生命周期下 `application(_:open:options:)` 根本不会被调用** | URL 处理写在 AppDelegate 里 → 点了没有任何反应，日志也干净 | 用了 `UIApplicationSceneManifest`（scene 生命周期）的 App，URL 一律由 SceneDelegate 收；AppDelegate 那几个 `application(_:open:)` 是**非 scene 时代**的入口 | URL 处理放 `SceneDelegate`；AppDelegate 只留「与 scene 无关」的职责（通知、启动配置） | ✅ 已解（2026-09-13） | 文档抄来的示例没确认是 scene 还是非 scene 架构 |
+
+## 十五、AI 工程工具链（harness 自身，2026-09-14 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **`$VAR` 紧跟全角标点 → bash 把标点字节并进变量名** | `guard-tools.sh: line 77: N_SKILLS?: unbound variable`——变量上一行明明赋过值却报未定义；`set -u` 下脚本当场中止，看代码完全正常 | 非 UTF-8 locale（`LANG` 未设 / 为 `C`）时 bash 不把多字节字符当词法边界：`$N_SKILLS）` 里 `）`（`EF BC 89`）的首字节被当成变量名的合法字符，于是去找名为 `N_SKILLS\xef` 的变量 | 变量一律用 `${...}` 界定（`${N_SKILLS}` 而非 `$N_SKILLS`）；**凡中文文案里嵌 shell 变量，一律加花括号** | ✅ 已修（2026-09-14 guard-tools 计数动态化） | 报「unbound variable」但变量确实赋过值；报错里变量名后面粘着一个乱码字符；中英混排的 `echo` 字符串；本机直接跑正常、cron/hook 里跑就崩 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

@@ -11,19 +11,13 @@ target/
 .gradle/
 */build/
 
-# ── IDE / Claude / DSH ──
+# ── IDE / AI 工具本地目录 ──
 .idea/
-# .claude 排除本地设置，但共享可演进资产（skills/agents/commands）
-# `**/` 前缀让规则匹配所有层级的 .claude（根 + 子项目）
-**/.claude/*
-!**/.claude/skills/
-!**/.claude/skills/**
-!**/.claude/agents/
-!**/.claude/agents/**
-!**/.claude/commands/
-# DSH 本地工具目录（技能 symlink 指向 ai-engineering/skills/，真相源已在 git）
+# 工具侧目录整目录忽略：技能注册是「本机状态」而非仓库资产，真相源在 ai-engineering/
+# 换机 / 新 clone 后重建：bash scripts/link-skills.sh（验证：bash ai-engineering/guard-tools.sh 的 T4）
 .dsh/
-!**/.claude/commands/**
+.claude/
+.agents/
 .obsidian/
 *.iml
 *.iws
