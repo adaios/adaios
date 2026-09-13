@@ -1,7 +1,9 @@
 package com.adaiadai.core.infrastructure.security;
 
+import com.adaiadai.core.application.ApiTokenService;
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.auth.ApiToken;
 import com.adaiadai.core.kernel.auth.Session;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
@@ -35,6 +37,11 @@ import java.util.Optional;
  *   <li>X-User-Id 覆盖：user 会话一律覆盖为会话 userId（伪造 header 无效）；
  *       admin 会话保留客户端传入的 X-User-Id（adai-admin 用户切换器跨账号治理浏览），
  *       缺省回落会话 userId</li>
+ *   <li><b>外部工具令牌（2026-09-13 外部入口批）</b>：会话校验不通过时，再试限权的外部令牌
+ *       （{@code adai_} 前缀，见 {@link com.adaiadai.core.kernel.auth.TokenScope}）。
+ *       放行哪些 (方法, 路径) 完全由该令牌的 scope 白名单决定——**精确匹配、默认拒绝**；
+ *       未列出即 403。外部令牌同样走 X-User-Id 覆盖，且**无法访问 {@code /api/v1/auth/**}**
+ *       （白名单里没有任何 auth 路径），因此不能借它给自己签发一把权限更大的钥匙。</li>
  * </ol>
  * <p>
  * 顺序（2026-09-04 线上事故根因修复）：本 Filter 注册为 {@link Ordered#HIGHEST_PRECEDENCE}
@@ -54,9 +61,11 @@ public class AuthFilter implements Filter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
 
     private final AuthService authService;
+    private final ApiTokenService apiTokenService;
 
-    public AuthFilter(AuthService authService) {
+    public AuthFilter(AuthService authService, ApiTokenService apiTokenService) {
         this.authService = authService;
+        this.apiTokenService = apiTokenService;
     }
 
     @Override
@@ -73,7 +82,15 @@ public class AuthFilter implements Filter {
         String token = bearerToken(request);
         Optional<Session> session = authService.validateAndTouch(token);
         // 防御纵深：AuthService 已删过期会话，这里再查一次 isExpired（即使 AuthService 实现有缺陷也挡住）
-        if (session.isEmpty() || session.get().isExpired(java.time.Instant.now())) {
+        boolean sessionValid = session.isPresent()
+                && !session.get().isExpired(java.time.Instant.now());
+        if (!sessionValid) {
+            // 会话不认 → 再试**外部工具令牌**（2026-09-13 外部入口批）：快捷指令 / 脚本 / 将来
+            // 的邮件入站用限权凭据即可，不必交出登录会话。放行与否完全由该令牌的 scope
+            // 白名单决定（TokenScope，精确匹配、默认拒绝）。
+            if (handleExternalToken(token, request, response, chain)) {
+                return;
+            }
             // 2026-09-02：401 记 WARN（含客户端来源 IP 与路径）——此前静默拒绝导致
             // 前端漏带 token 类问题（multipart 未带 Bearer）在生产日志完全不可见，排查靠猜。
             log.warn("AuthFilter 拒绝: {} {} from {} (token={})", request.getMethod(),
@@ -139,6 +156,41 @@ public class AuthFilter implements Filter {
     /** 精确路径或子路径判定（同时覆盖带/不带尾斜杠的精确命中）。 */
     private boolean isUnder(String uri, String base) {
         return uri.equals(base) || uri.startsWith(base + "/");
+    }
+
+    /**
+     * 会话不认时再试**外部工具令牌**（2026-09-13 外部入口批）。
+     * <p>
+     * <b>为什么放在同一个 Filter 里、而不另开一条通路</b>：鉴权只能有一个入口。若外部令牌
+     * 走别的拦截器、或由某个 Controller 自己校验，就会出现两套「谁被放行」的规则——而安全边界
+     * 的漂移从来不是一次大错，是两处判断慢慢变得不一致。这里与会话共用同一条通路、同一个
+     * X-User-Id 覆盖机制，差别只有「凭据是谁签的、允许访问什么」。
+     *
+     * @return true = 已处理（已放行或已写拒绝响应）；false = 不是外部令牌，交给上层按 401 处理
+     */
+    private boolean handleExternalToken(String token, HttpServletRequest request,
+                                        HttpServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        // 廉价前置：外部令牌一律带固定前缀。避免把任意无效 token 都当候选去读令牌文件
+        // （那既是无谓 IO，也让「猜 token」能触发文件读取）。
+        if (token.isEmpty() || !token.startsWith(ApiToken.PLAIN_PREFIX)) {
+            return false;
+        }
+        Optional<ApiToken> external = apiTokenService.validate(token);
+        if (external.isEmpty()) {
+            return false;
+        }
+        ApiToken apiToken = external.get();
+        if (!apiToken.allows(request.getMethod(), request.getRequestURI())) {
+            log.warn("AuthFilter 403: {} {} from {} (外部令牌 {} 无此权限)",
+                    request.getMethod(), request.getRequestURI(), request.getRemoteAddr(),
+                    apiToken.tokenPrefix());
+            writeJson(response, HttpServletResponse.SC_FORBIDDEN, "这把令牌没有访问这里的权限");
+            return true;
+        }
+        // 外部令牌一律以它所属账号行事：覆盖客户端 X-User-Id（伪造无效，也不允许跨账号）
+        chain.doFilter(new UserIdHeaderRequestWrapper(request, apiToken.userId()), response);
+        return true;
     }
 
     private String bearerToken(HttpServletRequest request) {

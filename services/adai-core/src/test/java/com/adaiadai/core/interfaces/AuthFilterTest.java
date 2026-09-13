@@ -1,9 +1,11 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.ApiTokenService;
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.infrastructure.WebConfig;
 import com.adaiadai.core.infrastructure.security.AuthFilter;
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.auth.ApiToken;
 import com.adaiadai.core.kernel.auth.Session;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthFilterTest {
 
     private AuthService authService;
+    private ApiTokenService apiTokenService;
     private MockMvc mvc;
 
     /** 测试用控制器：回显收到的 X-User-Id（验证 filter 覆盖生效）。 */
@@ -62,15 +65,40 @@ class AuthFilterTest {
         }
     }
 
+    /**
+     * 测试用控制器：路径与 {@code learn:digest} 的 scope 白名单**逐条对齐**
+     * （模拟真实的整理端点，用于验证「白名单内的放行、白名单外的 403」）。
+     */
+    @RestController
+    @RequestMapping("/api/v1/learn/digest")
+    static class FakeDigestController {
+        @org.springframework.web.bind.annotation.PostMapping
+        public Map<String, String> submit(
+                @RequestHeader(value = "X-User-Id", defaultValue = "none") String userId) {
+            return Map.of("receivedUserId", userId);
+        }
+
+        @GetMapping("/status")
+        public Map<String, String> status(
+                @RequestHeader(value = "X-User-Id", defaultValue = "none") String userId) {
+            return Map.of("receivedUserId", userId);
+        }
+    }
+
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
         when(authService.findAccount(anyString())).thenReturn(Optional.empty());
+        // 外部工具令牌（2026-09-13 外部入口批）：默认「不是外部令牌」，
+        // 外部令牌相关的用例自己 stub。Mock 而非真实实例，是为了让本测试只关心
+        // 「Filter 怎么用鉴权结论」，令牌本身的签发/校验规则由 ApiTokenServiceTest 覆盖。
+        apiTokenService = mock(ApiTokenService.class);
+        when(apiTokenService.validate(anyString())).thenReturn(Optional.empty());
         // 2026-09-04：链前加 CorsFilter（对应生产 FilterRegistrationBean 最高优先级注册）——
         // 回归红线：AuthFilter 的 401/403 响应必须带 CORS 头，浏览器才不把鉴权失败误报为 CORS 错误。
-        mvc = MockMvcBuilders.standaloneSetup(new EchoUserIdController())
+        mvc = MockMvcBuilders.standaloneSetup(new EchoUserIdController(), new FakeDigestController())
                 .addFilter(new WebConfig().corsFilter().getFilter())
-                .addFilter(new AuthFilter(authService))
+                .addFilter(new AuthFilter(authService, apiTokenService))
                 .build();
     }
 
@@ -85,6 +113,12 @@ class AuthFilterTest {
 
     private void stubSession(String token, String userId) {
         when(authService.validateAndTouch(token)).thenReturn(Optional.of(validSession(userId)));
+    }
+
+    /** 造一把外部工具令牌（2026-09-13 外部入口批）。 */
+    private ApiToken apiToken(String userId, String... scopeIds) {
+        return new ApiToken("hash_" + userId, "adai_abcd1234", userId, "快捷指令",
+                java.util.Set.of(scopeIds), Instant.now(), null);
     }
 
     // ── 红线 1：无 token → 401 ──
@@ -149,9 +183,9 @@ class AuthFilterTest {
         when(authService.login(anyString(), anyString(), any()))
                 .thenReturn(new AuthService.LoginResult("tok", "adai", "admin",
                         java.util.List.of(), Instant.now().plusSeconds(3600)));
-        MockMvc loginMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService))
+        MockMvc loginMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService, apiTokenService))
                 .setControllerAdvice(new GlobalExceptionHandler())
-                .addFilter(new AuthFilter(authService))
+                .addFilter(new AuthFilter(authService, apiTokenService))
                 .build();
 
         loginMvc.perform(post("/api/v1/auth/login")
@@ -332,5 +366,66 @@ class AuthFilterTest {
                 "AuthFilter order 必须晚于 CorsFilter（HIGHEST_PRECEDENCE），否则 401/403 丢失 CORS 头");
         assertNotEquals(Ordered.LOWEST_PRECEDENCE + 1, authOrder,
                 "LOWEST_PRECEDENCE + 1 整数溢出（Integer.MAX_VALUE+1 → MIN_VALUE）为历史坑，勿复犯");
+    }
+
+    // ── 外部工具令牌（2026-09-13 外部入口批）──
+    //
+    // 这组用例守的是一条边界：外部令牌（交给快捷指令的那把）**只能**做它被授权的事，
+    // 且永远以它所属账号行事。任一条红了，都意味着「限权」这个前提不成立。
+
+    @Test
+    void externalToken_scopeCovers_letThrough_withUserIdFromToken() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        when(apiTokenService.validate("adai_ext")).thenReturn(Optional.of(apiToken("adai", "learn:digest")));
+
+        // 路径命中 learn:digest 白名单 → 放行
+        mvc.perform(post("/api/v1/learn/digest").header("Authorization", "Bearer adai_ext"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receivedUserId").value("adai"));
+
+        mvc.perform(get("/api/v1/learn/digest/status").header("Authorization", "Bearer adai_ext"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void externalToken_scopeDoesNotCover_returns403_notSessionFallback() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        when(apiTokenService.validate("adai_ext")).thenReturn(Optional.of(apiToken("adai", "learn:digest")));
+
+        // /api/v1/test/echo 不在任何 scope 白名单里 → 403（而不是「当作没带 token」的 401）
+        mvc.perform(get("/api/v1/test/echo").header("Authorization", "Bearer adai_ext"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("这把令牌没有访问这里的权限"));
+    }
+
+    @Test
+    void externalToken_forgedUserId_isOverriddenByTokenOwner() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        when(apiTokenService.validate("adai_ext")).thenReturn(Optional.of(apiToken("adai", "learn:digest")));
+
+        // 即便请求里塞了别人的 X-User-Id，也必须以令牌所属账号行事（不能跨账号）
+        mvc.perform(get("/api/v1/learn/digest/status")
+                        .header("Authorization", "Bearer adai_ext")
+                        .header("X-User-Id", "someone-else"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receivedUserId").value("adai"));
+    }
+
+    @Test
+    void unknownExternalToken_returns401() throws Exception {
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+        when(apiTokenService.validate("adai_bad")).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/learn/digest/status").header("Authorization", "Bearer adai_bad"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void externalToken_lookalikePrefixWithoutUnderscore_isNotTreatedAsToken() throws Exception {
+        // 前缀筛选的边界：只有 adai_ 开头才当候选去校验，避免任意无效 token 都触发令牌文件读取
+        when(authService.validateAndTouch(anyString())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/v1/learn/digest/status").header("Authorization", "Bearer adaiext"))
+                .andExpect(status().isUnauthorized());
     }
 }

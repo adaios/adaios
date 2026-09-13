@@ -129,6 +129,32 @@
 - 200：`{"message": "密码已更新", "kickedSessions": N}`（踢除该账号其他会话，保留当前）
 - 401：原密码错误 / 会话失效
 
+### `POST /api/v1/auth/tokens` — 签发外部工具令牌（会话，2026-09-13 外部入口批）
+
+给「我们控制不了凭据存放处」的工具（快捷指令等）发一把**限权、可撤销**的钥匙。
+**不要**把登录会话交给它们——那是明文写在 plist 里、且 `.shortcut` 文件会被分享出去的东西。
+
+请求：`{"label": "快捷指令", "scopes": ["learn:digest"]}`（`label` 可空 → 「未命名」；`scopes` 至少要有一项，未知 id 被丢弃）
+- 200：`{"token": "adai_<64位hex>", "prefix": "adai_xxxxxxxx", "label", "scopes", "createdAt", "notice"}`
+  —— **`token` 明文只在这里出现一次**（落盘只存 SHA-256），丢了就撤销重发一把
+- 400：没给任何有效 scope（「至少要给它一项权限」）
+
+### `GET /api/v1/auth/tokens` — 列出已签发的外部令牌（会话）
+
+- 200：`{"tokens": [{prefix, label, scopes, createdAt, lastUsedAt}], "availableScopes": [{id, description, allowedRequests}]}`
+  —— **不含任何明文**；`lastUsedAt` 为 null 表示「还没用过」
+
+### `DELETE /api/v1/auth/tokens/{prefix}` — 撤销一把外部令牌（会话）
+
+- 200：`{"message": "已撤销，这把令牌立刻失效"}`（不影响登录会话与其它设备）
+- 404：没找到（可能已撤销过）
+
+> **外部令牌能访问什么**：由 `TokenScope` 白名单**精确匹配**决定，当前仅 `learn:digest`
+> （`POST /api/v1/learn/digest`、`POST /api/v1/learn/digest/confirm`、
+> `GET /api/v1/learn/digest/status`、`GET /api/v1/learn/digest/quota`）。
+> ⚠️ **任何 scope 都不含 `/api/v1/auth/**`**——外部令牌无法自造一把权限更大的钥匙；
+> 上面三条令牌管理端点只接受**会话**鉴权。
+
 ---
 
 ## 1. 记录（Records）

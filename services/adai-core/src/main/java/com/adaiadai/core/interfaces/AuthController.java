@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.ApiTokenService;
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.kernel.account.Account;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -29,9 +31,11 @@ import java.util.Optional;
 public class AuthController {
 
     private final AuthService authService;
+    private final ApiTokenService apiTokenService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ApiTokenService apiTokenService) {
         this.authService = authService;
+        this.apiTokenService = apiTokenService;
     }
 
     /** 登录（免鉴权）。失败 401 + 人话；连续失败触发限流。 */
@@ -103,6 +107,64 @@ public class AuthController {
         return header.substring("Bearer ".length()).trim();
     }
 
+    // ── 外部工具令牌（2026-09-13 外部入口批）──
+    //
+    // 为什么另立一类凭据：快捷指令的 token 是**明文写在 plist 里**的，而 .shortcut 文件
+    // 本身会被分享出去。把登录会话交给它，等于把「能改密码、能读全部数据」的主钥匙
+    // 放进一个会被转发的文件里。这三条端点让用户自己发一把**限权、可撤销、可辨认**的钥匙。
+    //
+    // ⚠️ 这三条端点**只能由会话 token 访问**：外部令牌的 scope 白名单（TokenScope）里
+    // 没有任何 /api/v1/auth/** 路径，所以外部令牌调到这里会被 AuthFilter 判 403
+    // ——它无法给自己签发一把权限更大的钥匙。
+
+    /**
+     * 签发外部令牌（会话）。**明文只在这次响应里出现一次**，之后连服务端也还原不出来。
+     */
+    @PostMapping("/tokens")
+    public ResponseEntity<?> issueToken(@Valid @RequestBody IssueTokenRequest request,
+                                        HttpServletRequest servletRequest) {
+        Optional<Account> account = authService.currentAccount(bearerToken(servletRequest));
+        if (account.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
+        }
+        ApiTokenService.IssuedToken issued = apiTokenService.issue(
+                account.get().userId(), request.label(), request.scopes());
+        return ResponseEntity.ok(Map.of(
+                "token", issued.plainToken(),
+                "prefix", issued.token().tokenPrefix(),
+                "label", issued.token().label(),
+                "scopes", issued.token().scopes(),
+                "createdAt", issued.token().createdAt().toString(),
+                "notice", "这串令牌只会显示这一次，请现在就复制走；丢了就撤销重发一把。"));
+    }
+
+    /** 列出本账号已签发的外部令牌 + 可选权限清单（供界面展示「这把钥匙能做什么」）。 */
+    @GetMapping("/tokens")
+    public ResponseEntity<?> listTokens(HttpServletRequest servletRequest) {
+        Optional<Account> account = authService.currentAccount(bearerToken(servletRequest));
+        if (account.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
+        }
+        return ResponseEntity.ok(Map.of(
+                "tokens", apiTokenService.list(account.get().userId()).stream()
+                        .map(ApiTokenService.TokenView::of).toList(),
+                "availableScopes", ApiTokenService.availableScopes()));
+    }
+
+    /** 撤销一把外部令牌（会话）：立即失效，不影响登录会话与其它设备。 */
+    @DeleteMapping("/tokens/{prefix}")
+    public ResponseEntity<?> revokeToken(@PathVariable String prefix, HttpServletRequest servletRequest) {
+        Optional<Account> account = authService.currentAccount(bearerToken(servletRequest));
+        if (account.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
+        }
+        boolean removed = apiTokenService.revoke(account.get().userId(), prefix);
+        if (!removed) {
+            return ResponseEntity.status(404).body(Map.of("error", "没找到这把令牌，可能已经撤销过了"));
+        }
+        return ResponseEntity.ok(Map.of("message", "已撤销，这把令牌立刻失效"));
+    }
+
     private String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
@@ -116,6 +178,9 @@ public class AuthController {
 
     public record LoginRequest(@NotBlank(message = "账号不能为空") String account,
                                @NotBlank(message = "密码不能为空") String password) {}
+
+    /** 签发外部令牌：{@code label} 是用途备注（如「快捷指令」），{@code scopes} 见 TokenScope。 */
+    public record IssueTokenRequest(String label, List<String> scopes) {}
 
     public record SetupRequest(String account,
                                @Size(min = 8, message = "密码长度至少 8 位") String password) {}

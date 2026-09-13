@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/models/learn_models.dart';
 import '../theme/app_colors.dart';
 import '../widgets/input_bar.dart' show PickedImage;
+import '../widgets/share_token_dialog.dart';
 
 /// 加载/接口错误的人话（B1 无第三视角：不甩异常原文，给人话 + 出路）。
 String _errText(dynamic e) {
@@ -283,6 +284,12 @@ class _LearnPageState extends State<LearnPage> {
         const Text('最近学习',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
         const Spacer(),
+        // 「把分享接到阿呆」：配一次快捷指令，以后在任意 App 分享就能直接进来（2026-09-13 外部入口批）
+        GestureDetector(
+          onTap: () => ShareTokenDialog.show(context, widget.api),
+          child: const Icon(Icons.ios_share, size: 19, color: AppColors.darkGrey4),
+        ),
+        const SizedBox(width: 18),
         GestureDetector(
           onTap: _openDigest,
           child: const Icon(Icons.add_circle_outline, size: 22, color: AppColors.darkGreen),

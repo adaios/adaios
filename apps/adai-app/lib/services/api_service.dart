@@ -1192,6 +1192,49 @@ extension AuthApi on ApiService {
     _check(resp);
   }
 
+  // ── 外部工具令牌（2026-09-13 外部入口批）──
+  //
+  // 快捷指令这类「我们控制不了凭据存放处」的工具用它：限权（scope 白名单）、可撤销、
+  // 明文只在签发响应里出现一次。**绝不要把登录会话 token 交给快捷指令**——那是明文写在
+  // plist 里、且 .shortcut 文件会被分享出去的东西。
+
+  /// 签发一把外部令牌（POST /api/v1/auth/tokens）
+  /// → `{token, prefix, label, scopes, createdAt, notice}`。
+  /// **token 明文只在这一次响应里出现**，调用方必须立刻展示给用户复制走。
+  Future<Map<String, dynamic>> issueExternalToken({
+    required String label,
+    List<String> scopes = const ['learn:digest'],
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/tokens'),
+      headers: _headers,
+      body: jsonEncode({'label': label, 'scopes': scopes}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 已签发的外部令牌 + 可选权限清单（GET /api/v1/auth/tokens）。
+  /// 返回 `{tokens: [...], availableScopes: [...]}`；**不含任何明文**。
+  Future<Map<String, dynamic>> listExternalTokens() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/auth/tokens'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 撤销一把外部令牌（DELETE /api/v1/auth/tokens/{prefix}）——立即失效，
+  /// 不影响登录会话与其它设备。404 表示这把已经不在（可能撤销过）。
+  Future<void> revokeExternalToken(String prefix) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/auth/tokens/${Uri.encodeComponent(prefix)}'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
   /// 修改本人密码（POST /api/v1/auth/password）→ 返回被踢除的**其他**会话数
   /// （当前会话保留，改密后无需重新登录；200 body `{message, kickedSessions}`）。
   /// 失败抛 [ApiException]（body 为后端 JSON，UI 提取 error 人话展示）。

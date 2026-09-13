@@ -1,5 +1,6 @@
 package com.adaiadai.core.interfaces;
 
+import com.adaiadai.core.application.ApiTokenService;
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.application.AuthService.AuthException;
 import com.adaiadai.core.application.AuthService.LoginResult;
@@ -30,12 +31,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerTest {
 
     private AuthService authService;
+    private ApiTokenService apiTokenService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new AuthController(authService))
+        apiTokenService = mock(ApiTokenService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new AuthController(authService, apiTokenService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
