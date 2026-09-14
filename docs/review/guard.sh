@@ -215,6 +215,47 @@ else
   hit G7 "未找到任何 compose 调用"
 fi
 
+# ── 配置挂钩 ──────────────────────────────────────────────
+echo "── 配置挂钩 ──"
+
+# G9 相对路径类配置必须在 application.yml 显式声明（P2-交易49 复发信号 / 2026-09-14）。
+# 背景：AdjFactorRepository 读 `adai.market.adj-path`，但 yml 里没这个键——于是 .env 配的
+# `ADAI_ADJ_PATH` 不生效（SystemEnvironmentPropertySource 只把属性名 adai.market.adj-path
+# 映射到 ADAI_MARKET_ADJ_PATH），静默落回相对默认值 ../../data/market/adj，按
+# WorkingDirectory=/opt/adaios/backend 解析成 /opt/data/... （不存在且不可写）→
+# 生产自 2026-08-30 起所有标的「除权因子读取失败」，前复权静默失效 16 天。
+# 机械要求：凡默认值是相对路径（../）的 @Value 属性，都必须能在 application.yml 找到同名键
+# ——显式声明 = 给环境变量一个明确挂钩，「配了相近名字却不生效」不再可能。
+G9_BAD=$(python3 - "$SRC" "$ROOT/services/adai-core/src/main/resources/application.yml" <<'PYEOF'
+import pathlib, re, sys
+src = pathlib.Path(sys.argv[1]); yml_path = pathlib.Path(sys.argv[2])
+props = {}
+for f in sorted(src.rglob('*.java')):
+    text = f.read_text(encoding='utf-8', errors='ignore')
+    for m in re.finditer(r'@Value\("\$\{([A-Za-z0-9._-]+):(\.\./[^}]*)\}"\)', text):
+        props.setdefault(m.group(1), f.name)
+keys = set(); stack = []
+for line in yml_path.read_text(encoding='utf-8').splitlines():
+    if not line.strip() or line.strip().startswith('#'):
+        continue
+    m = re.match(r'^(\s*)([A-Za-z0-9._-]+):', line)
+    if not m:
+        continue
+    ind = len(m.group(1)); key = m.group(2)
+    while stack and stack[-1][0] >= ind:
+        stack.pop()
+    stack.append((ind, key))
+    keys.add('.'.join(k for _, k in stack))
+bad = [f"{p}（{f}）" for p, f in sorted(props.items()) if p not in keys]
+print(';'.join(bad))
+PYEOF
+)
+if [ -n "$G9_BAD" ]; then
+  hit G9 "相对路径类配置未在 application.yml 声明（env 变量名对不上会静默落相对默认值→按 WorkingDirectory 解析到错位置）：$G9_BAD"
+else
+  ok G9 "相对路径类配置均已在 application.yml 显式声明（环境变量挂钩明确）"
+fi
+
 echo ""
 echo "守护检查完成：$PASS PASS / $HIT HIT / $NOTE NOTE"
 [ "$HIT" -gt 0 ] && exit 1
