@@ -129,13 +129,29 @@ if os.path.exists(CACHE):
     try: cache = json.load(open(CACHE, encoding='utf-8'))
     except Exception: cache = {}
 
-sess_paths = sorted(glob.glob(os.path.join(SESS_DIR, '*', '*', 'session.jsonl.zstd')))
-if not sess_paths:
-    sess_paths = sorted(glob.glob(os.path.join(SESS_DIR, '*', 'session.jsonl.zstd')))
+# 会话文件命名随 DSH 版本变化：v0-v2 = `session.jsonl.zstd`，v3+ = `session.v3.jsonl.zstd`。
+# 2026-09-14 修：原 glob 只认旧名 → 新会话（v3）一个都扫不到，当日成本恒报「无记录」。
+cand = (glob.glob(os.path.join(SESS_DIR, '*', '*', 'session*.jsonl.zstd'))
+        + glob.glob(os.path.join(SESS_DIR, '*', 'session*.jsonl.zstd')))
+# 迁移期同一会话目录可能同时留有旧/新两个文件（实测 session-58ca9422：同 id、同 216 条、
+# 内容重叠）→ 每个会话目录只取 mtime 最新的一个，否则同一会话被计两次。
+_best = {}
+for _p in cand:
+    try:
+        _mt = os.path.getmtime(_p)
+    except Exception:
+        continue
+    _d = os.path.dirname(_p)
+    if _d not in _best or _mt > _best[_d][1]:
+        _best[_d] = (_p, _mt)
+sess_paths = sorted(p for p, _ in _best.values())
 
-# 清理缓存中已不存在的会话文件
-for p in [p for p in cache if not os.path.exists(p)]:
-    del cache[p]
+# 清理缓存中不再参与聚合的条目（文件已删，或已被同目录更新的命名取代）。
+# 必须在 sess_paths 非空时才清——否则会话目录临时不可读会把整份缓存抹掉。
+if sess_paths:
+    _allowed = set(sess_paths)
+    for p in [p for p in list(cache) if p not in _allowed]:
+        del cache[p]
 
 records = []  # 本次实际解压的 (sid, label, model, ts, in, cache, out, reason, cost)
 for path in sess_paths:
@@ -205,7 +221,12 @@ except Exception:
 tot = collections.Counter()
 by_win = collections.defaultdict(collections.Counter)
 by_sess = collections.defaultdict(collections.Counter)
-for path, e in cache.items():
+# 只聚合 sess_paths（已按会话目录去重）——不能遍历整个 cache：被去重掉的旧命名文件
+# 依然留在缓存里，遍历 cache 会把同一会话算两次（2026-09-14 修）。
+for path in sess_paths:
+    e = cache.get(path)
+    if not e:
+        continue
     for d, v in e.get('by_date', {}).items():
         if DAY and d != DAY: continue
         if MONTH and not d.startswith(MONTH): continue

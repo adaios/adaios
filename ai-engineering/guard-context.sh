@@ -36,10 +36,15 @@ TOPIC = sys.argv[2] if len(sys.argv) > 2 else ''
 WRITE_LOCAL = len(sys.argv) > 3 and sys.argv[3] == '1'
 AI = ROOT / 'ai-engineering'
 
-# 快照 = 每轮会话都注入的固定开销，必须控体积（见 checklists/cost.md C7）
-LIM = 12 if WRITE_LOCAL else 10**9     # C2/C4 行数上限
-LIM_C5 = 12 if WRITE_LOCAL else 10**9  # C5 行数上限
-LIM_C6 = 12 if WRITE_LOCAL else 60     # C6 行数上限
+# 快照 = 每轮会话都注入的固定开销，必须控体积（见 checklists/cost.md C7）。
+# 2026-09-14：C1 段此前**没有任何条数上限**，单段涨到 3.6KB/25 行，是快照突破 8KB 的唯一大头
+# （C2/C4/C5/C6 都有上限，只有 C1 漏了）。现补 LIM_C1 + 收紧各段上限，并在末尾加**总量兜底**
+# ——无论源文件怎么膨胀，快照都会被裁回预算内，不再依赖"有人记得看那行警告"。
+BUDGET = 8192                          # 快照总预算（字节，cost.md C7）
+LIM = 8 if WRITE_LOCAL else 10**9      # C2/C4 行数上限
+LIM_C5 = 10 if WRITE_LOCAL else 10**9  # C5 行数上限
+LIM_C6 = 10 if WRITE_LOCAL else 60     # C6 行数上限
+LIM_C1 = 19 if WRITE_LOCAL else 10**9  # C1 行数上限
 
 def head_file(p, n=15, title=None):
     if not p.exists(): return ''
@@ -55,9 +60,8 @@ def head_file(p, n=15, title=None):
 out = []
 if WRITE_LOCAL:
     out.append("# AI 开工上下文快照（机器生成，勿手改）")
-    out.append(f"> 生成时间：{__import__('datetime').date.today()} · 由 `bash ai-engineering/guard-context.sh --write-local` 生成")
-    out.append("> 本文件由 DSH/Claude 等工具在**新会话开始时自动注入**，是上次收尾时的状态基线；真相源是 docs/ 与 ai-engineering/assets/ 源文件，改源文件后重新生成即可（gitignore，不入库）。")
-    out.append("> 当日成本 C6.5 不在此（隔日失真），开工现跑 `guard-context.sh` 获取。\n")
+    out.append(f"> 生成：{__import__('datetime').date.today()} · `guard-context.sh --write-local` · 新会话自动注入；真相源 `docs/`，改源后重跑（gitignore，不入库）。")
+    out.append("> 当日成本不在此（隔日失真），开工现跑 `guard-context.sh`。\n")
 else:
     out.append(f"# AI 任务上下文清单{('（主题：' + TOPIC + '）') if TOPIC else ''}")
     out.append(f"> 生成时间：{__import__('datetime').date.today()} · 开工前读此清单，不用人提醒\n")
@@ -145,12 +149,24 @@ out.append("")
 out.append("## C1 当前状态")
 status = (ROOT/'docs/reference/status.md')
 if status.exists():
+    c1 = 0
     for l in status.read_text(encoding='utf-8').splitlines():
         if '**' in l and ('|' in l or '：' in l):
             item = l.strip()
-            if WRITE_LOCAL and len(item) > 90:
-                item = item[:90] + '…（详见 status.md）'
+            # 2026-09-14：三类行不进快照（它们把「公安备案/域名到期」等硬信息挤出了上限）：
+            # ① 版本沿革「上一版本…」= 历史，真相源在 status.md / change-log；
+            # ② 「更新规则…」= 文档元信息，不是状态；
+            # ③ 「HEAD（≠）= 生产…」= 版本状态已由「生产当前版本…」行承载，重复。
+            if WRITE_LOCAL and ('上一版本' in item or '此前版本' in item
+                                or '更新规则' in item or 'HEAD' in item):
+                continue
+            if WRITE_LOCAL and len(item) > 58:
+                item = item[:58] + '…（详见 status.md）'
             out.append(f"- {item}")
+            c1 += 1
+            if c1 >= LIM_C1:
+                out.append(f"- …（快照精简，C1 共 {c1} 条，详见 status.md）")
+                break
 out.append("")
 
 # C1.5 主题手册导航（深度文档直读索引，2026-08-22 新增）
@@ -172,7 +188,7 @@ if handbook_dir.exists():
             if dm: desc = dm.group(1).strip()
         row = f"- **{title}** → `docs/reference/{f.name}`"
         if desc:
-            row += f"（{desc[:70]}…）" if len(desc) > 70 else f"（{desc}）"
+            row += f"（{desc[:50]}…）" if len(desc) > 50 else f"（{desc}）"
         if TOPIC and TOPIC not in row: continue
         out.append(row)
         handbook_count += 1
@@ -200,7 +216,7 @@ if review.exists():
                 continue
             cells = [c.strip() for c in l.strip('|').split('|')]
             if len(cells) >= 3 and cells[0] and (cells[0][0].isalpha() or cells[0][0].isdigit()):
-                row = f"- {cells[0]}: {cells[1][:80]}"
+                row = f"- {cells[0]}: {cells[1][:60]}"
                 if TOPIC and TOPIC not in row: continue
                 out.append(row)
                 count += 1
@@ -311,12 +327,31 @@ out.append("")
 
 body = '\n'.join(out)
 if WRITE_LOCAL:
+    # 总量兜底（2026-09-14）：超预算时按段优先级自动裁剪，保证快照永不超注入预算。
+    # 裁剪顺序 = 信息重要度倒序（C6 待办 → C5 规范 → C4 坑 → C3 边界 → C2 未修 → C1.5 → C1），
+    # C0 心跳与头部不动。此前只有一行「请精简源文件」的警告——没人看就等于没有闸。
+    before = len(body.encode('utf-8'))
+    if before > BUDGET:
+        lines = body.split('\n')
+        for seg in ('C6 待办', 'C5 规范', 'C4 已知坑', 'C3 原则级边界',
+                    'C2 未修项', 'C1.5 主题手册', 'C1 当前状态'):
+            s = next((i for i, l in enumerate(lines) if l.startswith('## ') and seg in l), None)
+            if s is None:
+                continue
+            e = next((i for i in range(s + 1, len(lines)) if lines[i].startswith('## ')), len(lines))
+            # 删段内末尾内容行（段末是空行，标题至少保留一行）
+            while len('\n'.join(lines).encode('utf-8')) > BUDGET and e - s > 2:
+                del lines[e - 2]
+                e -= 1
+        body = '\n'.join(lines)
     target = ROOT / 'AGENTS.local.md'
     target.write_text(body + '\n', encoding='utf-8')
     size = len(body.encode('utf-8'))
     print(f'[guard-context] 快照已写入 AGENTS.local.md（{size} 字节 / {body.count(chr(10)) + 1} 行）')
-    if size > 8192:
-        print('[guard-context] ⚠️ 超过 8KB 注入预算（cost.md C7），请精简源文件')
+    if size > BUDGET:
+        print(f'[guard-context] ⚠️ 仍超 {BUDGET} 字节预算（各段已裁到最小），请精简源文件')
+    elif before > BUDGET:
+        print(f'[guard-context] 已按段优先级自动裁剪 {before} → {size} 字节（预算 {BUDGET}）；源文件建议同步精简')
 else:
     print(body)
 PYEOF

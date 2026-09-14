@@ -129,24 +129,33 @@ do_check() {
   done
 
   # 备份新鲜度：超过 2 天没成功备份 = 红灯（2026-09-14 就是 26 天没人发现）
-  # 判据刻意收紧：不只是「目录在」，而是「目录里真有归档」——失败的备份会留下空目录，
-  # 只看目录新鲜度会把失败读成成功（2026-09-14 实测踩到：校验失败仍报绿灯）
+  # 判据：不只是「目录在」，而是「目录里真有归档」——失败的备份会留下空目录。
+  # 2026-09-14 再修：找「最近一次**真有归档**的目录」。原实现只看最新目录，于是一次偶发
+  # 网络抖动（21:16 ssh unreachable 留下空目录）就把同日 02:41 的成功备份读成「无成功备份」
+  # ——把「最新一次失败」误报成「从来没成功过」，红得没有信息量。
   local bdir="$HOME/backups/adaios-prod"
-  local newest tgz
-  newest="$(ls -1dt "${bdir}"/*/ 2>/dev/null | head -1 || true)"
-  tgz=""
-  [ -n "${newest}" ] && tgz="$(ls -1 "${newest}"*.tar.gz 2>/dev/null | head -1 || true)"
-  if [ -z "${newest}" ] || [ -z "${tgz}" ]; then
-    echo "  ❌ 无成功备份（${bdir} 下最新目录没有归档）→ 看 ${BACKUP_LOG}"
+  local latest_ok="" _d _f
+  for _d in $(ls -1dt "${bdir}"/*/ 2>/dev/null || true); do
+    _f="$(ls -1 "${_d}"*.tar.gz 2>/dev/null | head -1 || true)"
+    if [ -n "${_f}" ]; then latest_ok="${_d}"; break; fi
+  done
+  if [ -z "${latest_ok}" ]; then
+    echo "  ❌ 无成功备份（${bdir} 下没有任何含归档的目录）→ 看 ${BACKUP_LOG}"
     rc=1
   else
-    local age=$(( ( $(date +%s) - $(stat -f %m "${newest}") ) / 86400 ))
+    local age=$(( ( $(date +%s) - $(stat -f %m "${latest_ok}") ) / 86400 ))
     if [ "${age}" -le 2 ]; then
-      echo "  ✅ 最近备份 ${age} 天前（$(basename "${newest}")）"
+      echo "  ✅ 最近成功备份 ${age} 天前（$(basename "${latest_ok}")）"
     else
-      echo "  ❌ 最近备份 ${age} 天前 → 定时任务可能没跑，看 ${BACKUP_LOG}"
+      echo "  ❌ 最近成功备份 ${age} 天前 → 定时任务可能没跑，看 ${BACKUP_LOG}"
       rc=1
     fi
+  fi
+  # 最新一次尝试没产出归档 → 提示（不判红：同日已有成功备份时属偶发；连续失败由上面的 age 兜住）
+  local newest
+  newest="$(ls -1dt "${bdir}"/*/ 2>/dev/null | head -1 || true)"
+  if [ -n "${newest}" ] && [ "${newest}" != "${latest_ok}" ]; then
+    echo "  ⚠️ 最近一次尝试未产出归档（$(basename "${newest}")）→ 看 ${BACKUP_LOG}"
   fi
 
   # 每周审查新鲜度：超过 8 天没跑 = 红灯

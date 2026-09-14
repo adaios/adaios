@@ -142,7 +142,14 @@ echo ""
 echo "T7 定时任务（launchd：每日备份 / 每周审查）"
 T7_OUT="$(bash "$ROOT/scripts/setup-launchd.sh" --check 2>&1)"; T7_RC=$?
 if [ "$T7_RC" -eq 0 ]; then
-  ok "$(echo "$T7_OUT" | grep '✅' | sed 's/^ *//; s/^✅ *//' | tr '\n' '；' | sed 's/；$//')"
+  # 绿灯但「最近一次尝试失败」也要说出来——否则偶发失败会被「绿」永久藏掉
+  # （2026-09-14：一次 ssh 抖动的空目录曾把 T7 判红；改成看「最近成功」后，又可能反向掩盖这次失败）
+  _t7w="$(echo "$T7_OUT" | grep '⚠️' | sed 's/^ *//' | tr '\n' '；' | sed 's/；$//')"
+  if [ -n "$_t7w" ]; then
+    warn "$(echo "$T7_OUT" | grep '✅' | sed 's/^ *//; s/^✅ *//' | tr '\n' '；' | sed 's/；$//')；${_t7w}"
+  else
+    ok "$(echo "$T7_OUT" | grep '✅' | sed 's/^ *//; s/^✅ *//' | tr '\n' '；' | sed 's/；$//')"
+  fi
 else
   echo "$T7_OUT" | sed 's/^/  /'
   bad "定时任务未就绪（备份 / 每周审查可能静默失效）→ bash scripts/setup-launchd.sh"
