@@ -414,6 +414,19 @@ class ApiService {
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 查询当前持仓（当日口径）：GET /api/v1/trading/positions/daily。
+  /// 与 getPositions() 同鉴权；`positions` 元素与原端点同形状（直接复用 PositionItem 解析），
+  /// 额外给 daily（逐票当日盈亏/今日涨跌幅/仓位比例）、总仓位/现金比例与 notes（未计入项）。
+  /// 每个数值字段都可能为 null＝「没算出来」（缺昨收 / 总资产为 0），**不是 0**。
+  Future<PositionsDailyResponse> getPositionsDaily() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/positions/daily'),
+      headers: _headers,
+    );
+    _check(resp);
+    return PositionsDailyResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// RFC 20260825：逐笔批次跟踪——批次明细（GET /api/v1/trading/lots）。
   /// 可选 query：state=open|closed|all（默认 open）、symbol=xxx（不传=全部）。
   /// 返回 {lots:[...], reconcile:[...]}；reconcile 的 note 含「≠」= 流水与持仓不一致。
@@ -2024,6 +2037,102 @@ class PositionsResponse {
     final list = (json is List) ? json : (json['positions'] as List?) ?? [];
     return PositionsResponse(
       positions: list.map((e) => PositionItem.fromJson(e)).toList(),
+    );
+  }
+}
+
+/// 宽松取数值：number 原样，数字字符串（后端偶发字符串化）解析，其余（缺失/ null / 认不出）
+/// → null。null 的语义是「没算出来」，前端必须渲染「—」，**绝不兜底成 0**。
+double? _optDouble(dynamic v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v.trim());
+  return null;
+}
+
+/// 逐票当日口径（`GET /api/v1/trading/positions/daily` 的 `daily[symbol]`）。
+/// 四个字段每个都可能 null（缺昨收 → todayPnl/dayChangePct 为 null；总资产为 0 → positionRatio 为 null）。
+class PositionDailyItem {
+  /// 当日盈亏（券商口径＝今天真实赚亏，不是累计浮盈金额）；null＝缺昨收没算出来。
+  final double? todayPnl;
+  /// 昨收价；null＝缺昨收。
+  final double? yesterdayClose;
+  /// 今日涨跌幅 %（(现价−昨收)/昨收）；null＝缺昨收。
+  final double? dayChangePct;
+  /// 该股市值占总资产（含现金）的百分比。
+  final double? positionRatio;
+
+  PositionDailyItem({
+    this.todayPnl,
+    this.yesterdayClose,
+    this.dayChangePct,
+    this.positionRatio,
+  });
+
+  factory PositionDailyItem.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    return PositionDailyItem(
+      todayPnl: _optDouble(m['todayPnl']),
+      yesterdayClose: _optDouble(m['yesterdayClose']),
+      dayChangePct: _optDouble(m['dayChangePct']),
+      positionRatio: _optDouble(m['positionRatio']),
+    );
+  }
+}
+
+/// `GET /api/v1/trading/positions/daily` 响应：持仓主数据 + 当日口径。
+/// 总仓位/现金比例 null＝总资产为 0（算不出比例，前端整段不显示）。
+/// notes 非空＝有未计入项（当日盈亏偏小），必须如实提示，不能装作没事。
+class PositionsDailyResponse {
+  final List<PositionItem> positions;
+  final Map<String, PositionDailyItem> daily;
+  final double? totalAssets;
+  final double? totalMarketValue;
+  final double? cashBalance;
+  /// 总仓位 %（持仓总市值/总资产）＝「几成仓」；null＝总资产为 0。
+  final double? totalPositionRatio;
+  /// 现金比例 %；null＝总资产为 0。
+  final double? cashRatio;
+  final List<String> notes;
+
+  PositionsDailyResponse({
+    required this.positions,
+    required this.daily,
+    this.totalAssets,
+    this.totalMarketValue,
+    this.cashBalance,
+    this.totalPositionRatio,
+    this.cashRatio,
+    this.notes = const [],
+  });
+
+  factory PositionsDailyResponse.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    final rawPositions = m['positions'];
+    final rawDaily = m['daily'];
+    final daily = <String, PositionDailyItem>{};
+    if (rawDaily is Map) {
+      rawDaily.forEach((k, v) {
+        final symbol = k?.toString() ?? '';
+        if (symbol.isEmpty) return;
+        daily[symbol] = PositionDailyItem.fromJson(v);
+      });
+    }
+    return PositionsDailyResponse(
+      positions: rawPositions is List
+          ? rawPositions.map((e) => PositionItem.fromJson(e)).toList()
+          : <PositionItem>[],
+      daily: daily,
+      totalAssets: _optDouble(m['totalAssets']),
+      totalMarketValue: _optDouble(m['totalMarketValue']),
+      cashBalance: _optDouble(m['cashBalance']),
+      totalPositionRatio: _optDouble(m['totalPositionRatio']),
+      cashRatio: _optDouble(m['cashRatio']),
+      notes: (m['notes'] is List)
+          ? (m['notes'] as List)
+              .map((e) => e?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList()
+          : <String>[],
     );
   }
 }

@@ -277,6 +277,41 @@ class TradingControllerTest {
     }
 
     @Test
+    void getPositionsDaily_returnsPerStockTodayPnlAndRatio() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getPositionsDailyView(any())).thenReturn(new TradingAppService.PositionsDailyView(
+                List.of(position("600000")),
+                java.util.Map.of("600000", new TradingAppService.StockDaily(
+                        new BigDecimal("189.00"), new BigDecimal("88.43"),
+                        new BigDecimal("2.14"), new BigDecimal("33.27"))),
+                new BigDecimal("81453.53"), new BigDecimal("50696.00"), new BigDecimal("30757.53"),
+                new BigDecimal("62.24"), new BigDecimal("37.76"), List.of()));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(get("/api/v1/trading/positions/daily"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.positions[0].symbol").value("600000"))
+                .andExpect(jsonPath("$.daily['600000'].todayPnl").value(189.00))
+                .andExpect(jsonPath("$.daily['600000'].dayChangePct").value(2.14))
+                .andExpect(jsonPath("$.daily['600000'].positionRatio").value(33.27))
+                .andExpect(jsonPath("$.totalPositionRatio").value(62.24))
+                .andExpect(jsonPath("$.cashRatio").value(37.76));
+    }
+
+    @Test
+    void getPositionsDaily_forwardsUserIdHeader() throws Exception {
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.getPositionsDailyView(any())).thenReturn(new TradingAppService.PositionsDailyView(
+                List.of(), java.util.Map.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, List.of()));
+        MockMvc mvc = buildMvc(trading);
+
+        mvc.perform(get("/api/v1/trading/positions/daily").header("X-User-Id", "alice"))
+                .andExpect(status().isOk());
+        verify(trading).getPositionsDailyView("alice");
+    }
+
+    @Test
     void getPositions_forwardsUserIdHeader() throws Exception {
         TradingAppService trading = mock(TradingAppService.class);
         when(trading.getPositions(any())).thenReturn(List.of());

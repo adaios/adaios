@@ -44,7 +44,7 @@ tags: [trading, plugin, reference]
 
 ---
 
-## 一、后端端点总表（TradingController 45 个 + TradingCaseController 4 个 + admin 1 个）
+## 一、后端端点总表（TradingController 46 个 + TradingCaseController 4 个 + admin 1 个）
 
 > 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 45 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules；2026-09-04 新增 GET/PUT /market-stage；**2026-09-12 账实一致性批新增 GET /integrity + GET /anchor + PUT /anchor**）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
 
@@ -65,6 +65,7 @@ tags: [trading, plugin, reference]
 | 方法 | 路径 | 功能 | 说明 |
 |:--|:--|:--|:--|
 | GET | `/trading/positions` | 查询持仓 | 注入实时行情现价（行情失败降级存储价=成本价） |
+| GET | `/trading/positions/daily` | **持仓列表视图（v3.66，2026-09-14）** | 原持仓 + **逐股当日口径**（平行 map `daily{symbol}`）：`todayPnl` 当日盈亏（**券商口径**＝今天真实赚亏）/ `dayChangePct` 今日涨跌幅 %（(现价−昨收)/昨收）/ `positionRatio` 仓位比例 %（该股市值/总资产含现金）；外层 `totalPositionRatio` 总仓位 + `cashRatio` 现金比例 + `notes` 未计入说明。**可空字段前端一律「—」，不得渲染成 0%**。独立端点是为了不破坏 `/positions` 的 `List<Position>` 形状（app/web/admin 三处消费） |
 | GET | `/trading/portfolio` | 投资组合快照 | 持仓（行情注入后）+ 现金（唯一真源 = account.json 的 cash，S5） |
 | POST | `/trading/positions/import` | 持仓初始化导入 | 通达信导出 upsert；`replace=true` 全量覆盖（以文件为准）；**v3.61：`snapshotDate` 可选（快照自身日期 = 文件名日期，兼容 yyyyMMdd）**——`replace=true` 时作为锚定日并记录**持仓基线**（`snapshot-anchor.json` 的 `holdings`，对账闸门 `derived` 的来源）；不传退回导入日；name 行情补全；返回 `missingStopLoss` 提示补设（R68） |
 | PUT | `/trading/positions/{symbol}` | 更新持仓元信息 | 只更新非空字段 role/止损位；不存在 404、止损位非数字 400；**targetPrice 无落盘字段（前端目标价编辑无效，P3）** |
@@ -197,7 +198,7 @@ tags: [trading, plugin, reference]
 | 区块 | 功能 | 操作 | 端点 |
 |:--|:--|:--|:--|
 | 账户总览 | 8 张 stat 卡（总资产/可用/可取/参考市值/当日盈亏/总盈亏/持仓浮盈/持仓数），金额千分位 + FittedBox 防溢出；红涨绿亏；总盈亏=资产−本金（本金>0） | 进页自动加载；「点击更新」手动刷新 | GET `/trading/account`（券商口径优先，assets>0）；GET `/trading/portfolio` 兜底 |
-| 持仓列表 | 12 列 DataTable（代码/名称/数量/成本/现价/市值/盈亏/盈亏%/止损/买点/角色/操作），红涨绿亏、横向滚动 | 自动加载；行尾「编辑」→ 弹窗改角色（8 组合）/止损/目标价 → 保存；**行尾「批次」（RFC 20260825）→ 批次明细弹窗**：每批 日期/剩余/成本/现价/盈亏/止损/距止损%/买点/状态（初始底仓/持有中/已清仓-回合盈亏）+ 流水对账不一致警告 | GET `/trading/positions`、PUT `/trading/positions/{symbol}`、GET `/trading/lots` |
+| 持仓列表 | **15 列 DataTable（代码/名称/数量/成本/现价/市值/盈亏/盈亏%/仓位占比/当日盈亏/今日涨跌幅/止损/买点/角色/操作；列序 6/7/8＝当日口径，v3.66）**，红涨绿亏（当日口径同用 darkRed 正 / darkGreen 负），横向滚动（minWidth 1150→1520）；**顶部一行「仓位 X% · 现金 Y%」总仓位**；当日三列 null 一律「—」（**严禁渲染成 0 / 0.00%**）；`notes` 非空 → 中性橙轻提示「有几笔今天的盈亏还没算全——…」（直接口吻，无引述前缀） | 自动加载；行尾「编辑」→ 弹窗改角色（8 组合）/止损/目标价 → 保存；**行尾「批次」（RFC 20260825）→ 批次明细弹窗**：每批 日期/剩余/成本/现价/盈亏/止损/距止损%/买点/状态（初始底仓/持有中/已清仓-回合盈亏）+ 流水对账不一致警告 | GET `/trading/positions/daily`（当日口径主源，失败静默降级 `/trading/positions`）、PUT `/trading/positions/{symbol}`、GET `/trading/lots` |
 | 记录交易 | Dialog：代码 300ms 防抖查名、买入默认止损 = 价格×0.93（−7%，2026-08-17 设定）、买点 8 类型下拉（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）、SELL 不填止损/买点 | 页头「记录交易」（先整体刷新再弹窗）→ 提交 | POST `/trading/trades`、GET `/trading/lookup` |
 | 批量导入 | 三种格式自动识别：① 交易 CSV ② 通达信持仓（全量覆盖）③ 通达信历史成交（幂等补流水+对账提示）；支持文件上传留存或粘贴；逐条成功/失败结果（带行号+人话原因） | 页头「批量导入」→ 粘贴/选文件 → 导入 | POST `/trading/imports/save`、`/trading/trades/batch`、`/trading/positions/import?replace=true`、`/trading/trades/import` |
 | 自选股 Tab | 表格（代码/名称/行业/长中短形态/指标提示/买点信号/删除）；「金叉」红色高亮；买点信号红徽标（B1/B2 →「{类型} {score}%」）；删除带确认弹窗；**案例相似度参考（环 4 二期，开关 `adai.trading.case.scan-match` 默认关）**：规则未命中但形态接近库中完美买点 → 信号列「**案例相似 {N}%**」橙色（P2-案例2，2026-09-03 适配——原「case 0%」异常） | 「导入自选」→ 粘贴通达信自选导出；行尾 × → 确认删除 | GET `/trading/watchlist`、POST `/trading/watchlist/import`、DELETE `/trading/watchlist/{symbol}`、GET `/trading/buy-points` |
@@ -233,7 +234,7 @@ tags: [trading, plugin, reference]
 | 记录区 · 通道 A | 一句话输入（hint：「买了 1000 股京东方 @5.2」）→ parse 回显确认卡（方向徽标+标的，可改数量/价格/方向）；**parse 返回的止损/买点不再回填**（2026-08-18 简化归 web）；matched=false → SnackBar 人话 + 自动展开精确表单（无死路） | 输入 → 「解析」→ 「确认记录」/取消 | POST `/trading/trades/parse`、POST `/trading/trades` |
 | 记录区 · 通道 B | 精确表单（标的/价格/数量）+ **隐藏式止损/买点**（2026-08-22：非必填，默认收起「止损/买点（可选）」，展开后止损自动带默认 −7% 可改可清、买点下拉可空选 B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他；收起态不预填不发送）+ 底部双按钮「买入(红)」「卖出(绿)」——方向由按钮承担不可能漏选；价格键盘带小数点（A 股 4 位成本价精度） | 「精确填写」展开 → 填 → 点买/卖 | POST `/trading/trades` |
 | **截图入账（2026-08-26）** | 交易页「📷 截图入账」入口 → 选 1-3 张成交截图 → VLM 识别 → 当日候选内嵌列表（逐笔确认/丢弃，带方向/标的/数量/价格/成交日期；缺日期候选行警示「补日期」）；**确认前拦截缺日期候选**（v3.32，需先补日期才能确认落库） | 「📷」→ 选图 → 逐笔确认/丢弃 | POST `/trading/screenshots`、PUT `/trading/trade-log/date`、POST `/trading/trade-log/confirm` |
-| 持仓区 | 只读资产卡（名称+代码 | 盈亏大字 | N股·成本·现价·止损（未设止损橙色提示）| 盈亏%）；表头「管理」链接去 web；空态引导记录/去 web 导入；**批次简版（RFC 20260825）**：第三行「N 个批次 · 最近买入 M/d」+「含底仓」绿徽标（open 批次含 initial）+「有批次破止损」darkOrange 警示（stopLossDistancePct<0）；无批次数据/拉取失败静默降级不显示该行；**批次明细弹窗（2026-08-28）**：点批次行 → 每笔买入的日期/状态徽标（初始底仓/持有中/已清仓）/剩余·成本·现价/盈亏+盈亏%（开放批次浮动 pnlPct、已清仓回合收益率前端算）/破止损橙色警示，连点守卫防叠两层 | 点按整张卡 → 弹「阿呆说」；点批次行 → 批次明细弹窗 | GET `/trading/positions` + GET `/trading/lots` |
+| 持仓区 | 只读资产卡（名称+代码 | 盈亏大字 | N股·成本·现价·止损（未设止损橙色提示）| 盈亏%）；**当日口径行（v3.66）**：当日盈亏 · 今日涨跌幅 · 仓位比例 三样（null 一律「—」，红涨绿亏）+ 持仓区头部「仓位 X% · 现金 Y%」总仓位行 + `notes` 非空轻提示「有几笔我没算进去：…」（中性橙）；表头「管理」链接去 web；空态引导记录/去 web 导入；**批次简版（RFC 20260825）**：第三行「N 个批次 · 最近买入 M/d」+「含底仓」绿徽标（open 批次含 initial）+「有批次破止损」darkOrange 警示（stopLossDistancePct<0）；无批次数据/拉取失败静默降级不显示该行；**批次明细弹窗（2026-08-28）**：点批次行 → 每笔买入的日期/状态徽标（初始底仓/持有中/已清仓）/剩余·成本·现价/盈亏+盈亏%（开放批次浮动 pnlPct、已清仓回合收益率前端算）/破止损橙色警示，连点守卫防叠两层 | 点按整张卡 → 弹「阿呆说」；点批次行 → 批次明细弹窗 | GET `/trading/positions/daily`（失败静默降级 `/trading/positions`）+ GET `/trading/lots` |
 | 阿呆建议弹层 | **app 独有核心交互**：标题「阿呆说 · 名称」+ summary 气泡 + 逐票建议卡（动作徽标 买入红/减仓清仓卖出绿/持有蓝）+「查看建议依据」展开规则号列表；按 symbol 精确匹配（后端无 symbol 按名称兜底）；无匹配显示「这只暂时没有特别要说的」；加载失败可重试；底部「管理持仓（去 web）」；**无任何执行按钮** | 点持仓卡 | POST `/trading/advice` |
 | 去 web 引导 | 三处统一入口（持仓空态/持仓表头「管理」/建议弹层底部）：「详细管理去电脑端」——批量导入、持仓编辑、历史明细、K线在电脑端；手机端负责日常记录和阿呆建议 | 点引导链接 | — |
 

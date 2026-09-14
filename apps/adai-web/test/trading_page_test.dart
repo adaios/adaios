@@ -3409,4 +3409,238 @@ void _marketStageGroup() {
       expect(find.text('多头区间'), findsOneWidget, reason: '切换后乐观更新为多头');
     });
   });
+
+  group('当日口径（GET /trading/positions/daily，2026-09-14）', () {
+    var pumpSeq = 0;
+    /// 每次用新 key 强制重建 State（pumpWidget 复用旧 State 时不会重新加载，
+    /// 同一测试里换 mock 再 pump 就测不到新数据）。
+    Future<void> pumpDaily(WidgetTester tester, ApiService api) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: TradingPage(key: ValueKey('daily-${pumpSeq++}'), api: api))));
+      await tester.pumpAndSettle();
+    }
+
+    /// 当日端点响应：positions 与原端点同形状，daily 逐票当日盈亏/涨跌幅/仓位占比。
+    Map<String, dynamic> dailyJson({
+      Object? positionRatio = 33.27,
+      Object? todayPnl = 756.00,
+      Object? dayChangePct = 2.14,
+      Object? totalPositionRatio = 62.24,
+      Object? cashRatio = 37.76,
+      List<Object?> notes = const [],
+    }) =>
+        {
+          'positions': [_positionJson()],
+          'daily': {
+            '600123': {
+              'todayPnl': todayPnl,
+              'yesterdayClose': 25.55,
+              'dayChangePct': dayChangePct,
+              'positionRatio': positionRatio,
+            },
+          },
+          'totalAssets': 81453.53,
+          'totalMarketValue': 50696.00,
+          'cashBalance': 30757.53,
+          'totalPositionRatio': totalPositionRatio,
+          'cashRatio': cashRatio,
+          'notes': notes,
+        };
+
+    MockClient dailyMock(Object dailyBody, {int dailyStatus = 200}) => MockClient((request) async {
+          final path = request.url.path;
+          if (path == '/api/v1/trading/positions/daily') {
+            return dailyStatus == 200 ? _json(dailyBody) : http.Response('boom', dailyStatus);
+          }
+          if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+          if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+          if (path == '/api/v1/trading/account') return _json(_accountJson());
+          if (path == '/api/v1/trading/watchlist') return _json([]);
+          if (path == '/api/v1/trading/sold') return _json([]);
+          if (path == '/api/v1/trading/buy-points') return _json([]);
+          if (path == '/api/v1/trading/sold/score') return _json([]);
+          if (path == '/api/v1/trading/trades') return _json([]);
+          if (path == '/api/v1/trading/reviews') return _json([]);
+          return http.Response('not found', 404);
+        });
+
+    /// 定位持仓表（按首列代码 600123 认，避免误取其它 Tab 的表格）。
+    DataTable positionsTable(WidgetTester tester) => tester
+        .widgetList<DataTable>(find.byType(DataTable))
+        .firstWhere((t) => t.rows.any((r) =>
+            r.cells.isNotEmpty && r.cells.first.child is Text && (r.cells.first.child as Text).data == '600123'));
+
+    // 列序：0 代码 / 1 名称 / 2 数量 / 3 成本 / 4 现价 / 5 市值 / 6 仓位占比 /
+    //       7 当日盈亏 / 8 今日涨跌幅 / 9 盈亏 / 10 盈亏% …
+    String cellText(DataTable t, int i) => (t.rows.first.cells[i].child as Text).data!;
+    Color? cellColor(DataTable t, int i) => (t.rows.first.cells[i].child as Text).style?.color;
+
+    test('DTO 解析：字段缺失/null/类型不符 → null（不崩，也绝不兜底成 0）', () {
+      final r = PositionsDailyResponse.fromJson({
+        'positions': [_positionJson()],
+        'daily': {
+          '600123': {'todayPnl': 756.0, 'dayChangePct': null, 'positionRatio': '33.27'},
+          '000001': {'todayPnl': null},
+          'BAD': 'not-a-map',
+          42: {'todayPnl': 1.0},
+        },
+        'totalPositionRatio': null,
+        'cashRatio': 0,
+        'notes': ['002428 云南锗业：缺昨收，这笔卖出的当日盈亏未计入', 42, null, ''],
+      });
+      expect(r.positions.single.symbol, '600123', reason: 'positions 与原端点同形状，直接复用解析');
+      expect(r.daily['600123']!.todayPnl, 756.0);
+      expect(r.daily['600123']!.dayChangePct, isNull, reason: '显式 null 保留 null（缺昨收），不写成 0');
+      expect(r.daily['600123']!.positionRatio, 33.27, reason: '数字字符串也能读');
+      expect(r.daily['000001']!.todayPnl, isNull, reason: '字段缺失 → null');
+      expect(r.daily['BAD']!.todayPnl, isNull, reason: '非对象元素不崩');
+      expect(r.daily['42']!.todayPnl, 1.0, reason: '非字符串键也能落表');
+      expect(r.totalPositionRatio, isNull);
+      expect(r.cashRatio, 0.0, reason: '0 是真实值（总资产为 0 时才是 null），两者不能混');
+      expect(r.notes, ['002428 云南锗业：缺昨收，这笔卖出的当日盈亏未计入', '42'],
+          reason: '非字符串转字符串、null/空串剔除');
+
+      // 整体畸形 / 旧后端：一律空，不崩
+      final junk = PositionsDailyResponse.fromJson('boom');
+      expect(junk.positions, isEmpty);
+      expect(junk.daily, isEmpty);
+      expect(junk.totalPositionRatio, isNull);
+      expect(junk.notes, isEmpty);
+      final weird = PositionsDailyResponse.fromJson({'daily': 'x', 'notes': 'oops', 'positions': 5});
+      expect(weird.daily, isEmpty);
+      expect(weird.notes, isEmpty);
+      expect(weird.positions, isEmpty);
+      expect(PositionsDailyResponse.fromJson(null).totalPositionRatio, isNull);
+    });
+
+    testWidgets('正常渲染三样（当日盈亏 / 今日涨跌幅 / 仓位占比）+ 顶部「仓位 · 现金」一行', (tester) async {
+      await pumpDaily(tester,
+          ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
+      final t = positionsTable(tester);
+      expect(cellText(t, 6), '33.27%', reason: '仓位占比');
+      expect(cellText(t, 7), '756.00', reason: '当日盈亏（金额）');
+      expect(cellText(t, 8), '2.14%', reason: '今日涨跌幅');
+      expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget, reason: '顶部总仓位一行');
+    });
+
+    testWidgets('涨跌着色＝红涨绿亏（token 含 darkRed），不是绿涨红跌', (tester) async {
+      await pumpDaily(tester,
+          ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson(todayPnl: 756.0, dayChangePct: 2.14))));
+      var t = positionsTable(tester);
+      expect(cellColor(t, 7), AppColors.darkRed, reason: '赚=红');
+      expect(cellColor(t, 8), AppColors.darkRed, reason: '涨=红');
+
+      await pumpDaily(tester,
+          ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson(todayPnl: -321.50, dayChangePct: -1.28))));
+      t = positionsTable(tester);
+      expect(cellText(t, 7), '-321.50');
+      expect(cellText(t, 8), '-1.28%');
+      expect(cellColor(t, 7), AppColors.darkGreen, reason: '亏=绿');
+      expect(cellColor(t, 8), AppColors.darkGreen, reason: '跌=绿');
+      expect(cellColor(t, 6), AppColors.darkGrey3, reason: '仓位占比是中性灰，不借涨跌色');
+    });
+
+    testWidgets('三项 null → 全「—」且不崩；绝不渲染成 0 / 0.00%', (tester) async {
+      await pumpDaily(
+          tester,
+          ApiService(
+              baseUrl: 'http://test',
+              client: dailyMock(dailyJson(
+                  positionRatio: null,
+                  todayPnl: null,
+                  dayChangePct: null,
+                  totalPositionRatio: null,
+                  cashRatio: null))));
+      final t = positionsTable(tester);
+      expect(cellText(t, 6), '—');
+      expect(cellText(t, 7), '—');
+      expect(cellText(t, 8), '—');
+      expect(cellText(t, 9), '160.00', reason: '累计浮盈列是另一口径，不受当日 null 影响');
+      expect(cellColor(t, 7), AppColors.darkGrey5, reason: '「—」不借涨跌色');
+      expect(find.text('0.00'), findsNothing, reason: 'null 不许渲染成 0');
+      expect(find.text('0.00%'), findsNothing, reason: 'null 不许渲染成 0.00%');
+      expect(find.textContaining('仓位 '), findsNothing, reason: '总仓位 null → 整段不显示');
+      expect(find.textContaining('现金 '), findsNothing);
+      expect(find.textContaining('持仓 1 只'), findsOneWidget, reason: '页面照常');
+    });
+
+    testWidgets('该票不在 daily 里（新票 / 降级残留）→ 三列「—」', (tester) async {
+      await pumpDaily(
+          tester,
+          ApiService(
+              baseUrl: 'http://test',
+              client: dailyMock({
+                'positions': [_positionJson()],
+                'daily': <String, dynamic>{},
+                'totalPositionRatio': 62.24,
+                'cashRatio': 37.76,
+                'notes': <String>[],
+              })));
+      final t = positionsTable(tester);
+      expect(cellText(t, 6), '—');
+      expect(cellText(t, 7), '—');
+      expect(cellText(t, 8), '—');
+      expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget,
+          reason: '整体比例仍可用（个股缺条目不影响总仓位）');
+    });
+
+    testWidgets('当日端点失败（500 / 404 旧后端）→ 降级回旧端点，持仓主数据照常显示', (tester) async {
+      for (final status in [500, 404]) {
+        final requests = <String>[];
+        final client = MockClient((request) async {
+          final path = request.url.path;
+          requests.add(path);
+          if (path == '/api/v1/trading/positions/daily') return http.Response('boom', status);
+          if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+          if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+          if (path == '/api/v1/trading/account') return _json(_accountJson());
+          if (path == '/api/v1/trading/watchlist') return _json([]);
+          if (path == '/api/v1/trading/sold') return _json([]);
+          if (path == '/api/v1/trading/buy-points') return _json([]);
+          if (path == '/api/v1/trading/sold/score') return _json([]);
+          if (path == '/api/v1/trading/trades') return _json([]);
+          if (path == '/api/v1/trading/reviews') return _json([]);
+          return http.Response('not found', 404);
+        });
+        await pumpDaily(tester, ApiService(baseUrl: 'http://test', client: client));
+
+        expect(requests, contains('/api/v1/trading/positions/daily'), reason: '先打当日端点');
+        expect(requests, contains('/api/v1/trading/positions'), reason: '失败后降级回旧端点（status=$status）');
+        expect(find.textContaining('持仓 1 只'), findsOneWidget, reason: '增强项失败不拖垮持仓主数据');
+        expect(find.text('600123'), findsOneWidget);
+        expect(find.textContaining('加载失败'), findsNothing, reason: '不整页错误态');
+        final t = positionsTable(tester);
+        expect(cellText(t, 7), '—', reason: '当日盈亏回落「—」');
+        expect(find.textContaining('仓位 '), findsNothing);
+      }
+    });
+
+    testWidgets('notes 非空 → 一行轻提示（橙，不是错误红；口语化无第三视角标签）', (tester) async {
+      await pumpDaily(
+          tester,
+          ApiService(
+              baseUrl: 'http://test',
+              client: dailyMock(dailyJson(
+                  notes: ['002428 云南锗业：缺昨收，这笔卖出（100 股）的当日盈亏未计入——当日盈亏偏小']))));
+      final finder = find.textContaining('有几笔今天的盈亏还没算全');
+      expect(finder, findsOneWidget);
+      final text = tester.widget<Text>(finder);
+      expect(text.data, contains('002428 云南锗业'));
+      expect(text.data, contains('当日盈亏偏小'), reason: '如实提示偏小，不装作没事');
+      expect(text.style?.color, AppColors.darkGrey3, reason: '轻提示不是错误红');
+      // 第一原则 B1：无第三视角标签，也不加「阿呆说：」这类引述前缀（加了就是记录视角）——
+      // 阿呆是对话的另一方，直接说话即可。
+      for (final banned in ['系统', '数据', '记录', '接口', '阿呆说', '提示：']) {
+        expect(text.data, isNot(contains(banned)), reason: '第一原则：无「$banned」这类第三视角/引述标签');
+      }
+    });
+
+    testWidgets('notes 缺失/空 → 不显示提示（不刷存在感）', (tester) async {
+      await pumpDaily(tester,
+          ApiService(baseUrl: 'http://test', client: dailyMock(dailyJson())));
+      expect(find.textContaining('有几笔今天的盈亏还没算全'), findsNothing);
+    });
+  });
 }

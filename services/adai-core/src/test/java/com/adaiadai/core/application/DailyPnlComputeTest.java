@@ -100,50 +100,86 @@ class DailyPnlComputeTest {
     }
 
     /**
-     * P2-交易42 拍板（2026-09-14，用户「券商负成本」）：负成本持仓卖出，旧仓成本用**券商成本价**。
+     * **A 方案核心（2026-09-14 用户拍板）**：卖出部分的当日基准是**昨收**，不是建仓成本。
      * <p>
-     * 现场：600601 方正科技 100 股 / 成本 −5.078（反复做 T + 分红把成本摊到 0 下——券商就是这么记的，
-     * 该股券商口径盈亏 +134%）。原判定 `avgCost.signum() > 0` 把负成本挡在门外，
-     * 这笔卖出会退化成「无成本基线 → 按净额计」，已实现被少算 507.80。
+     * 现场（真实数据）：云南锗业建仓成本 53.765、昨收 88.43、今日卖 100@90.32。
+     * 旧口径算出 (9032−5376.53)=3655.47 当成「当日盈亏」，把过去累积的浮盈记进了今天；
+     * 券商口径只有 100×(90.32−88.43)=189。当日盈亏 5826 vs 券商 2245（差 3587）就是这么来的。
      */
     @Test
-    void computeDailyPnl_negativeCostHolding_usesBrokerNegativeCost() {
+    void computeDailyPnl_sellUsesYesterdayClose_notBuildCost() {
         PositionRepository positions = mock(PositionRepository.class);
-        when(positions.findAll(anyString())).thenReturn(List.of(pos("600601", 100, "-5.078")));
+        when(positions.findAll(anyString())).thenReturn(List.of()); // 当日清仓
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600601", TradeDirection.SELL, 100, "14.83", "5.0", DAY, null)));
+                trade("002428", TradeDirection.SELL, 100, "90.32", "0.0", DAY, null)));
         MarketDataSource market = mock(MarketDataSource.class);
-        when(market.quote(any())).thenReturn(Map.of()); // 缺行情 → 只验已实现部分（浮动 0）
+        when(market.quote(any())).thenReturn(Map.of("002428", md("002428", "90.32", "88.43")));
         TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
 
         TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
 
-        // 卖出净额 = 14.83×100 − 5 = 1478.00；旧仓成本 = −5.078×100 = −507.80（券商口径，含负）
-        // 已实现 = 1478.00 − (−507.80) = 1985.80
-        assertEquals(0, new BigDecimal("1985.80").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
-        assertTrue(r.notes().stream().noneMatch(n -> n.contains("按净额计")),
-                "负成本是券商合法口径，不得降级成「无成本基线按净额计」: " + r.notes());
+        // 9032 − 88.43×100 = 189（券商口径）；若按建仓成本 53.765 会得 3655.47
+        assertEquals(0, new BigDecimal("189.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+        assertTrue(r.notes().isEmpty(), "昨收齐备不应有附注: " + r.notes());
     }
 
-    /** 负成本 + **当日有买入**（avgCost 已被摊薄）→ 退回历史买入均价，并如实附注本笔口径差异。 */
+    /**
+     * 今日**卖光**的票已不在持仓里，但它的昨收仍必须拿得到——否则那笔卖出的当日盈亏算不出来。
+     * 本用例按「入参符号集合」返回行情：只查持仓（漏掉今日成交票）时会拿不到 600601 的昨收。
+     */
     @Test
-    void computeDailyPnl_negativeCost_withTodayBuy_fallsBackToHistoryAndNotesIt() {
+    void computeDailyPnl_sellClearedHolding_quoteCoversTradedSymbols() {
         PositionRepository positions = mock(PositionRepository.class);
-        when(positions.findAll(anyString())).thenReturn(List.of(pos("600601", 100, "-5.078")));
+        when(positions.findAll(anyString())).thenReturn(List.of(pos("600000", 100, "10.0")));
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600601", TradeDirection.BUY, 100, "20.0", "0", PREV, null), // 历史基线 20.0
-                trade("600601", TradeDirection.BUY, 100, "10.0", "0", DAY, null),  // 当日买入 → 摊薄
-                trade("600601", TradeDirection.SELL, 100, "14.83", "0", DAY, null)));
+                trade("600601", TradeDirection.SELL, 100, "14.81", "0.0", DAY, null)));
         MarketDataSource market = mock(MarketDataSource.class);
-        when(market.quote(any())).thenReturn(Map.of());
+        when(market.quote(any())).thenAnswer(inv -> {
+            List<String> asked = inv.getArgument(0);
+            Map<String, MarketData> m = new java.util.HashMap<>();
+            if (asked.contains("600000")) m.put("600000", md("600000", "10.0", "10.0"));
+            if (asked.contains("600601")) m.put("600601", md("600601", "14.81", "14.83"));
+            return m;
+        });
         TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
 
         TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
 
-        assertTrue(r.notes().stream().anyMatch(n -> n.contains("盘前券商成本（负）取不到")),
-                "当日有买入时券商盘前成本确实取不到，必须如实说明本笔按历史均价近似: " + r.notes());
+        // 600601：1481 − 14.83×100 = −2（今日微亏 2 元）；600000 浮动 0 → −2
+        assertEquals(0, new BigDecimal("-2.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+        assertTrue(r.notes().stream().noneMatch(n -> n.contains("缺昨收")),
+                "今日有成交的票也必须进行情查询，否则漏算: " + r.notes());
+    }
+
+    /** 逐股拆分（持仓列表消费）：bySymbol 之和必须等于总数，且按股各归各家。 */
+    @Test
+    void dailyPnlDetail_splitsBySymbol() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(
+                pos("002428", 300, "53.765"), pos("600206", 500, "46.012")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("002428", TradeDirection.SELL, 100, "90.32", "0.0", DAY, null),
+                trade("600206", TradeDirection.SELL, 400, "47.2", "0.0", DAY, null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "002428", md("002428", "90.32", "88.43"),
+                "600206", md("600206", "47.2", "45.55")));
+        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
+
+        TradingAppService.DailyPnlDetail d = service.dailyPnlDetail(USER, DAY);
+
+        // 002428：卖 100×(90.32−88.43)=189 + 留仓 300×1.89=567 → 756
+        // 600206：卖 400×(47.2−45.55)=660 + 留仓 500×1.65=825 → 1485
+        assertEquals(0, new BigDecimal("756.00").compareTo(d.bySymbol().get("002428")),
+                "002428 实际 " + d.bySymbol().get("002428"));
+        assertEquals(0, new BigDecimal("1485.00").compareTo(d.bySymbol().get("600206")),
+                "600206 实际 " + d.bySymbol().get("600206"));
+        assertEquals(0, d.todayPnl().compareTo(
+                        d.bySymbol().values().stream().reduce(BigDecimal.ZERO, BigDecimal::add)),
+                "逐股之和必须等于总数（否则列表与账户卡会不一致）");
     }
 
     @Test
@@ -165,38 +201,25 @@ class DailyPnlComputeTest {
         assertEquals(0, new BigDecimal("299.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
     }
 
+    /**
+     * 新口径下同类风险从「无成本基线」变成「**缺昨收**」：算不出来必须如实附注，
+     * 不得静默按 0 计（静默会让当日盈亏偏小且看不出原因）。
+     */
     @Test
-    void computeDailyPnl_sellCleared_noBaseline_noteNotSilent() {
+    void computeDailyPnl_missingYesterdayClose_notesItAndExcludes() {
         PositionRepository positions = mock(PositionRepository.class);
-        when(positions.findAll(anyString())).thenReturn(List.of()); // 已清仓
+        when(positions.findAll(anyString())).thenReturn(List.of()); // 当日清仓
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.SELL, 100, "12.0", null, DAY, null))); // 历史无 BUY 基线
+                trade("600000", TradeDirection.SELL, 100, "12.0", "0.0", DAY, null)));
         MarketDataSource market = mock(MarketDataSource.class);
-        when(market.quote(any())).thenReturn(Map.of());
+        when(market.quote(any())).thenReturn(Map.of()); // 行情整体拉不到 → 无昨收
         TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
 
         TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
 
-        assertTrue(r.notes().stream().anyMatch(n -> n.contains("无成本基线")), "应诚实说明无成本基线: " + r.notes());
-    }
-
-    @Test
-    void computeDailyPnl_sellCleared_usesHistoricalBuyAverage() {
-        PositionRepository positions = mock(PositionRepository.class);
-        when(positions.findAll(anyString())).thenReturn(List.of());
-        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
-        when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.SELL, 100, "12.0", "0.0", DAY, null),
-                trade("600000", TradeDirection.BUY, 100, "10.0", "0.0", PREV, null)));
-        MarketDataSource market = mock(MarketDataSource.class);
-        when(market.quote(any())).thenReturn(Map.of());
-        TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
-
-        TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
-
-        // 已实现 = 1200 − 100×10 = 200（历史买入加权成本）
-        assertEquals(0, new BigDecimal("200.00").compareTo(r.todayPnl()), "实际 " + r.todayPnl());
+        assertTrue(r.notes().stream().anyMatch(n -> n.contains("缺昨收")),
+                "缺昨收必须诚实附注（refreshTodayPnl 见实质缺失会拒绝写回）: " + r.notes());
     }
 
     @Test
@@ -380,23 +403,75 @@ class DailyPnlComputeTest {
 
     @Test
     void computeDailyPnl_manualSellWithoutFee_estimatesSellFees() {
-        // 三官深审 backend P2（2026-09-09）：手动记录 fee=null → 卖出净额按系统费率估算扣费
-        //（佣金+印花税+沪过户），历史买入成本同样含估算费——与持仓 avgCost 摊薄口径一致
+        // fee=null（截图/手动记录）→ 卖出净额按系统费率估算扣费（佣金+印花税+过户）；
+        // 2026-09-14 A 方案后基准改为昨收：这里昨收 11.0 → ≈ 1199.29 − 1100 = 99.29。
         PositionRepository positions = mock(PositionRepository.class);
         when(positions.findAll(anyString())).thenReturn(List.of()); // 当日清仓
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("600000", TradeDirection.BUY, 100, "10.0", null, PREV, null),
                 tradeAt("600000", TradeDirection.SELL, 100, "12.0", null, DAY,
                         LocalTime.of(9, 30), null)));
         MarketDataSource market = mock(MarketDataSource.class);
-        when(market.quote(any())).thenReturn(Map.of());
+        when(market.quote(any())).thenReturn(Map.of("600000", md("600000", "12.0", "11.0")));
         TradingAppService service = service(positions, history, mock(AccountSnapshotRepository.class), market);
 
         TradingAppService.DailyPnlResult r = service.computeDailyPnl(USER, DAY);
 
-        // 卖净额 ≈ 1200 − 0.10(佣) − 0.60(印花) − 0.01(沪过户) = 1199.29；历史含费成本 ≈ 1000.10 → ≈ 199.19
-        assertTrue(Math.abs(r.todayPnl().doubleValue() - 199.19) < 0.02,
-                "手动卖出无 fee 应按估算费扣除，实际 " + r.todayPnl());
+        // 卖净额 ≈ 1200 − 0.10(佣) − 0.60(印花) − 0.01(沪过户) = 1199.29；基准 = 昨收 11.0×100 = 1100
+        assertTrue(Math.abs(r.todayPnl().doubleValue() - 99.29) < 0.02,
+                "手动卖出无 fee 应按估算费扣除、且以昨收为基准，实际 " + r.todayPnl());
+    }
+
+    // ── 持仓列表视图（2026-09-14 用户拍板：逐股当日盈亏 + 今日涨跌幅 + 仓位比例）──
+
+    /** 今日涨跌幅 =（现价−昨收）/昨收；仓位比例 = 该股市值/总资产；顶部总仓位/现金比例同源。 */
+    @Test
+    void getPositionsDailyView_dayChangeRatioAndPositionRatio() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of(
+                pos("002428", 300, "53.765"), pos("600206", 500, "46.012")));
+        AccountSnapshotRepository account = mock(AccountSnapshotRepository.class);
+        // 现金 30757.53 → 总资产 = 27096 + 23600 + 30757.53 = 81453.53
+        when(account.findLatest(anyString())).thenReturn(Optional.of(new AccountSnapshot(
+                new BigDecimal("81453.53"), new BigDecimal("30757.53"),
+                new BigDecimal("30757.53"), new BigDecimal("30757.53"),
+                new BigDecimal("50696.00"), new BigDecimal("17698.00"), BigDecimal.ZERO,
+                new BigDecimal("130000"), LocalDate.of(2026, 9, 14))));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                trade("002428", TradeDirection.SELL, 100, "90.32", "0.0", LocalDate.now(), null),
+                trade("600206", TradeDirection.SELL, 400, "47.2", "0.0", LocalDate.now(), null)));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "002428", md("002428", "90.32", "88.43"),
+                "600206", md("600206", "47.2", "45.55")));
+        TradingAppService service = service(positions, history, account, market);
+
+        TradingAppService.PositionsDailyView v = service.getPositionsDailyView(USER);
+
+        TradingAppService.StockDaily yn = v.daily().get("002428");
+        // 涨跌幅 = (90.32−88.43)/88.43 = 2.14%
+        assertEquals(0, new BigDecimal("2.14").compareTo(yn.dayChangePct()), "涨跌幅 实际 " + yn.dayChangePct());
+        assertEquals(0, new BigDecimal("756.00").compareTo(yn.todayPnl()), "当日盈亏 实际 " + yn.todayPnl());
+        // 仓位 = 27096 / 81453.53 = 33.27%
+        assertEquals(0, new BigDecimal("33.27").compareTo(yn.positionRatio()), "仓位 实际 " + yn.positionRatio());
+        // 总仓位 = 50696 / 81453.53 = 62.24%；现金比例 = 30757.53 / 81453.53 = 37.76%
+        assertEquals(0, new BigDecimal("62.24").compareTo(v.totalPositionRatio()),
+                "总仓位 实际 " + v.totalPositionRatio());
+        assertEquals(0, new BigDecimal("37.76").compareTo(v.cashRatio()), "现金比例 实际 " + v.cashRatio());
+    }
+
+    /** 总资产为 0（未导资金快照）→ 仓位比例 null，不得编造 0%。 */
+    @Test
+    void getPositionsDailyView_zeroAssets_ratioNullNotZero() {
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll(anyString())).thenReturn(List.of());
+        TradingAppService service = service(positions, mock(TradingHistoryRepository.class),
+                mock(AccountSnapshotRepository.class), mock(MarketDataSource.class));
+
+        TradingAppService.PositionsDailyView v = service.getPositionsDailyView(USER);
+
+        assertEquals(null, v.totalPositionRatio(), "总资产为 0 时不得编造 0%");
+        assertEquals(null, v.cashRatio());
     }
 }

@@ -145,6 +145,19 @@ public class TradingController {
     }
 
     /**
+     * 持仓列表视图（2026-09-14 用户拍板）：逐股「当日盈亏 + 今日涨跌幅 + 仓位比例」+ 顶部总仓位/现金比例。
+     * <p>
+     * 独立端点（不动 {@code /positions} 的 List 形状）——app/web/admin 三处都在消费那个形状。
+     */
+    @GetMapping("/positions/daily")
+    public ResponseEntity<?> getPositionsDaily(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(tradingAppService.getPositionsDailyView(userId));
+    }
+
+    /**
      * 查询投资组合快照（G-2：读端点门控）。
      */
     @GetMapping("/portfolio")

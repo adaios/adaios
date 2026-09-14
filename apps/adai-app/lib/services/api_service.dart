@@ -428,6 +428,20 @@ class ApiService {
     return PositionsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 当日口径持仓（GET /api/v1/trading/positions/daily，2026-09-14 当日口径批）：
+  /// 在原持仓之上多给每票「当日盈亏 / 今日涨跌幅 / 仓位比例」，外加总仓位/现金比例与
+  /// 「哪些没算进去」的说明（[PositionsDailyResponse.notes]）。
+  /// 每个数值字段都可能为 null（缺昨收 → 当日盈亏算不出；总资产为 0 → 仓位算不出）。
+  /// 调用方（交易页）失败必须静默降级回 [getPositions]——增强项不能拖垮持仓主数据。
+  Future<PositionsDailyResponse> getPositionsDaily() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/positions/daily'),
+      headers: _headers,
+    );
+    _check(resp);
+    return PositionsDailyResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 查询投资组合快照。
   Future<PortfolioSnapshotResponse> getPortfolio() async {
     final resp = await _client.get(
@@ -1717,6 +1731,97 @@ class PositionsResponse {
       positions: list.map((e) => PositionItem.fromJson(e)).toList(),
     );
   }
+}
+
+/// 数值解析（当日口径专用）：缺失 / null / 类型不对 → null——
+/// **绝不回落成 0**，否则「不知道」会被渲染成 0（仓位 0% / 当日盈亏 0）。
+double? _asNumOrNull(Object? v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v);
+  return null;
+}
+
+/// 当日口径持仓（GET /api/v1/trading/positions/daily，2026-09-14 当日口径批）。
+/// [positions] 与原 /trading/positions 元素同形状（直接复用 [PositionItem] 解析）；
+/// [daily] 按 symbol → 当日指标；[totalPositionRatio] = 总仓位 %（几成仓）、[cashRatio] = 现金比例 %；
+/// [notes] 非空 = 有未计入项（当日盈亏偏小），调用方必须如实提示。
+/// 防御式解析：字段缺失 / null / 类型不对一律不崩，数值字段解析不出就是 null（绝不回落成 0）。
+class PositionsDailyResponse {
+  final List<PositionItem> positions;
+  final Map<String, DailyPositionDto> daily;
+  final double? totalAssets;
+  final double? totalMarketValue;
+  final double? cashBalance;
+  final double? totalPositionRatio;
+  final double? cashRatio;
+  final List<String> notes;
+
+  PositionsDailyResponse({
+    required this.positions,
+    required this.daily,
+    this.totalAssets,
+    this.totalMarketValue,
+    this.cashBalance,
+    this.totalPositionRatio,
+    this.cashRatio,
+    this.notes = const [],
+  });
+
+  factory PositionsDailyResponse.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    final rawPositions = m['positions'];
+    final rawDaily = m['daily'];
+    final rawNotes = m['notes'];
+    final daily = <String, DailyPositionDto>{};
+    if (rawDaily is Map) {
+      rawDaily.forEach((k, v) {
+        if (v is Map) daily[k.toString()] = DailyPositionDto.fromJson(v.cast<String, dynamic>());
+      });
+    }
+    return PositionsDailyResponse(
+      positions: rawPositions is List
+          ? rawPositions.whereType<Map>().map((e) => PositionItem.fromJson(e.cast<String, dynamic>())).toList()
+          : <PositionItem>[],
+      daily: daily,
+      totalAssets: _asNumOrNull(m['totalAssets']),
+      totalMarketValue: _asNumOrNull(m['totalMarketValue']),
+      cashBalance: _asNumOrNull(m['cashBalance']),
+      totalPositionRatio: _asNumOrNull(m['totalPositionRatio']),
+      cashRatio: _asNumOrNull(m['cashRatio']),
+      notes: rawNotes is List
+          ? rawNotes.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList()
+          : const <String>[],
+    );
+  }
+
+  /// 该票的当日指标；没有 / 解析不出 → null（调用方渲染「—」，不渲染 0）。
+  DailyPositionDto? forSymbol(String symbol) => daily[symbol];
+}
+
+/// 单票当日指标（[PositionsDailyResponse.daily] 的值）。**每个字段都可能为 null**：
+/// - [todayPnl]：当日盈亏（券商口径＝今天真实赚亏，不是累计浮盈）——缺昨收 → null；
+/// - [yesterdayClose]：昨收；
+/// - [dayChangePct]：今日涨跌幅 %（(现价−昨收)/昨收）——缺昨收 → null；
+/// - [positionRatio]：该股市值占总资产（含现金）的百分比。
+class DailyPositionDto {
+  final double? todayPnl;
+  final double? yesterdayClose;
+  final double? dayChangePct;
+  final double? positionRatio;
+
+  DailyPositionDto({
+    this.todayPnl,
+    this.yesterdayClose,
+    this.dayChangePct,
+    this.positionRatio,
+  });
+
+  factory DailyPositionDto.fromJson(Map<String, dynamic> json) => DailyPositionDto(
+    todayPnl: _asNumOrNull(json['todayPnl']),
+    yesterdayClose: _asNumOrNull(json['yesterdayClose']),
+    dayChangePct: _asNumOrNull(json['dayChangePct']),
+    positionRatio: _asNumOrNull(json['positionRatio']),
+  );
 }
 
 class PositionItem {

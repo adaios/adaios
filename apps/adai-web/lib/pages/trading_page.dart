@@ -47,6 +47,16 @@ String _fmtShortDate(String yyyyMmDd) {
   return '$month/$day';
 }
 
+/// 当日口径数值 → 文案：null（缺昨收 / 总资产为 0 / 旧后端）一律「—」。
+/// **严禁**渲染成 0 / 0.00%——那是谎报「不赚不亏」。
+String _fmtDailyMoney(double? v) => v == null ? '—' : v.toStringAsFixed(2);
+String _fmtDailyPct(double? v) => v == null ? '—' : '${v.toStringAsFixed(2)}%';
+
+/// 盈亏/涨跌着色：本项目**红涨绿亏**（token 名含 darkRed）＝正红负绿，
+/// 不是 A 股默认的绿涨红跌。null → 灰（「—」不借涨跌色）。
+Color _dailyUpDownColor(double? v) =>
+    v == null ? AppColors.darkGrey5 : (v >= 0 ? AppColors.darkRed : AppColors.darkGreen);
+
 /// 快照日期 `yyyy-MM-dd` → `MM-dd`（账户卡来源小字用，P2-交易48）。
 /// 非该格式（短/空/非数字）→ null（只报来源，不编造日期）。
 String? _snapshotMonthDay(String snapshotDate) {
@@ -93,6 +103,15 @@ Color _behaviorColor(String type) {
   }
 }
 
+/// 持仓主数据 + 当日口径的打包结果（`_fetchPositions` 用）。
+/// daily 为 null＝当日端点拿不到（降级走旧端点）——主数据照常显示，当日三列回落「—」。
+class _PositionsLoad {
+  final PositionsResponse positions;
+  final PositionsDailyResponse? daily;
+
+  const _PositionsLoad(this.positions, this.daily);
+}
+
 /// 交易桌面形态 — web = 详细管理（RFC 20260816 §4.2）：
 /// 快照 stat 卡 + DataTable 持仓（红涨绿亏 / 数字右对齐 + 逐行「编辑」）
 /// + 记录交易 Dialog（止损位/买点类型/目标价/原因）+ 批量导入 + 交易历史 + 复盘历史。
@@ -111,6 +130,12 @@ class TradingPage extends StatefulWidget {
 class _TradingPageState extends State<TradingPage> {
   PortfolioSnapshotResponse? _portfolio;
   List<PositionItem> _positions = [];
+  // 当日口径（GET /trading/positions/daily）：逐票当日盈亏/今日涨跌幅/仓位占比 + 总仓位/现金比例。
+  // 端点失败 → 保持空/null（增强项拿不到不拖垮持仓主数据，表格那三列回落「—」）。
+  Map<String, PositionDailyItem> _dailyItems = {};
+  double? _totalPositionRatio; // 总仓位 %（几成仓）；null＝总资产为 0 → 整段不显示
+  double? _cashRatio; // 现金比例 %
+  List<String> _dailyNotes = []; // 非空＝有未计入项，当日盈亏偏小（如实提示）
   List<WatchlistItemDto> _watchlist = [];
   List<BuyPointDto> _buyPoints = []; // C2 自选股买点信号（B1/B2 命中）
   List<SoldScoreDto> _soldScores = []; // D3 清仓复盘三维打分
@@ -173,6 +198,18 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
+  /// 持仓数据源：优先进当日口径端点（GET /trading/positions/daily），
+  /// **当日口径是增强项——它失败绝不能拖垮持仓主数据**：失败即静默回落现有 getPositions()，
+  /// 页面照常显示持仓，只是当日三列与顶部总仓位回落「—」/不显示。
+  Future<_PositionsLoad> _fetchPositions() async {
+    try {
+      final d = await widget.api.getPositionsDaily();
+      return _PositionsLoad(PositionsResponse(positions: d.positions), d);
+    } catch (_) {
+      return _PositionsLoad(await widget.api.getPositions(), null);
+    }
+  }
+
   Future<void> _loadAll() async {
     // P2-交易8（2026-08-17）：入口首行 mounted 守卫——await 期间页面销毁不再 setState
     if (!mounted) return;
@@ -185,13 +222,19 @@ class _TradingPageState extends State<TradingPage> {
     try {
       final results = await Future.wait([
         widget.api.getPortfolio(),
-        widget.api.getPositions(),
+        _fetchPositions(),
         widget.api.getAccount(),
       ]);
       if (!mounted) return;
+      final pos = results[1] as _PositionsLoad;
       setState(() {
         _portfolio = results[0] as PortfolioSnapshotResponse;
-        _positions = (results[1] as PositionsResponse).positions;
+        _positions = pos.positions.positions;
+        // 当日口径只在端点成功时更新；失败则清空为「—」，不残留上一次的陈旧数字
+        _dailyItems = pos.daily?.daily ?? {};
+        _totalPositionRatio = pos.daily?.totalPositionRatio;
+        _cashRatio = pos.daily?.cashRatio;
+        _dailyNotes = pos.daily?.notes ?? const [];
         _account = results[2] as AccountSnapshotDto;
         // 资金区块：账户快照（资金股份查询导入，券商口径）
         _cash = _account?.cash;
@@ -662,6 +705,14 @@ class _TradingPageState extends State<TradingPage> {
                         const SizedBox(height: 10),
                       ],
                       _buildSnapshotRow(),
+                      if (_hasPositionRatioLine) ...[
+                        const SizedBox(height: 8),
+                        _buildPositionRatioLine(),
+                      ],
+                      if (_dailyNotes.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _buildDailyNotesLine(),
+                      ],
                       if (_dailySummary != null) ...[
                         const SizedBox(height: 4),
                         _buildDailySummaryRow(),
@@ -803,6 +854,47 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 顶部总仓位/现金比例：有其一即显示（「仓位 62.24% · 现金 37.76%」）；
+  /// 两者皆 null（总资产为 0 算不出比例 / 旧后端）→ 整段不显示（不编造 0%）。
+  bool get _hasPositionRatioLine => _totalPositionRatio != null || _cashRatio != null;
+
+  Widget _buildPositionRatioLine() {
+    final parts = <String>[
+      if (_totalPositionRatio != null) '仓位 ${_totalPositionRatio!.toStringAsFixed(2)}%',
+      if (_cashRatio != null) '现金 ${_cashRatio!.toStringAsFixed(2)}%',
+    ];
+    return Row(children: [
+      const Icon(Icons.pie_chart_outline, size: 14, color: AppColors.darkGrey4),
+      const SizedBox(width: 6),
+      Text(parts.join(' · '),
+          style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, fontWeight: FontWeight.w600)),
+    ]);
+  }
+
+  /// 有未计入项（缺昨收 / 卖出未计）时的轻提示：口语化如实说明「当日盈亏偏小」。
+  /// 用中性橙（不是错误红）——这既不是故障也不是用户的错，只是今天这笔没算全。
+  /// 文案直接说话（**不加「阿呆说：」这类引述前缀**——加了就成了第三方记录视角，违背 B1）。
+  Widget _buildDailyNotesLine() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.35)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.info_outline, size: 14, color: AppColors.darkOrange),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '有几笔今天的盈亏还没算全——${_dailyNotes.join('；')}',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3, height: 1.5),
+          ),
+        ),
+      ]),
+    );
+  }
+
   /// 2026-09-07（用户反馈「web 宽度足够却挤」）：DataTable 直接放进横向滚动容器会
   /// 收缩到列内容最小宽 → 宽屏右边留白、列被最长内容绑架。
   /// 可用宽足够（≥ minWidth）时直出，DataTable 自动把富余宽度分给各列；
@@ -856,7 +948,7 @@ class _TradingPageState extends State<TradingPage> {
           border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
         ),
         child: _scrollableTable(
-          minWidth: 1150,
+          minWidth: 1520,
           table: DataTable(
           headingRowColor: WidgetStatePropertyAll(AppColors.darkSurface2.withValues(alpha: 0.5)),
           dataRowColor: WidgetStatePropertyAll(Colors.transparent),
@@ -870,6 +962,10 @@ class _TradingPageState extends State<TradingPage> {
             DataColumn(label: Text('成本'), numeric: true),
             DataColumn(label: Text('现价'), numeric: true),
             DataColumn(label: Text('市值'), numeric: true),
+            // 当日口径三列（GET /trading/positions/daily）：缺值一律「—」，不给 0
+            DataColumn(label: Text('仓位占比'), numeric: true),
+            DataColumn(label: Text('当日盈亏'), numeric: true),
+            DataColumn(label: Text('今日涨跌幅'), numeric: true),
             DataColumn(label: Text('盈亏'), numeric: true),
             DataColumn(label: Text('盈亏%'), numeric: true),
             DataColumn(label: Text('止损'), numeric: true),
@@ -880,6 +976,8 @@ class _TradingPageState extends State<TradingPage> {
           rows: _positions.map((p) {
             // #132 红涨绿亏（A股）：盈=红、亏=绿
             final pnlColor = p.pnl >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+            // 当日口径：该票缺条目（端点降级/新票）→ d 为 null → 三列全「—」
+            final d = _dailyItems[p.symbol];
             // 双止损位（trading-risk-plan）：主值 = 生效止损 = max(人工, 计算)；
             // 人工/计算有差异时副行标注非生效来源（系统 xx / 人工 xx）
             final slEffective = p.effectiveStopLoss;
@@ -899,6 +997,16 @@ class _TradingPageState extends State<TradingPage> {
               DataCell(Text(p.avgCost.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3))),
               DataCell(Text(p.currentPrice.toStringAsFixed(3), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
               DataCell(Text(p.marketValue.toStringAsFixed(2), style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1))),
+              // 仓位占比：中性灰（不是涨跌，不借红绿）；null → 灰「—」
+              DataCell(Text(_fmtDailyPct(d?.positionRatio),
+                  style: TextStyle(fontSize: 13,
+                      color: d?.positionRatio == null ? AppColors.darkGrey5 : AppColors.darkGrey3))),
+              // 当日盈亏（券商口径＝今天真实赚亏）：正红负绿；null（缺昨收）→ 灰「—」，绝不写 0.00
+              DataCell(Text(_fmtDailyMoney(d?.todayPnl),
+                  style: TextStyle(fontSize: 13, color: _dailyUpDownColor(d?.todayPnl), fontWeight: FontWeight.w600))),
+              // 今日涨跌幅 %：同一套红涨绿亏；null（缺昨收）→ 灰「—」，绝不写 0.00%
+              DataCell(Text(_fmtDailyPct(d?.dayChangePct),
+                  style: TextStyle(fontSize: 13, color: _dailyUpDownColor(d?.dayChangePct)))),
               DataCell(Text(p.pnl.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: pnlColor, fontWeight: FontWeight.w600))),
               // 负/零成本 → pnlPercent 为 null → 「—」（不给 0.00%，那是谎报「不赚不亏」）
               DataCell(Text(p.pnlPercent == null ? '—' : '${p.pnlPercent!.toStringAsFixed(2)}%',

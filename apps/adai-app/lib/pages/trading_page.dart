@@ -39,6 +39,10 @@ class _TradingPageState extends State<TradingPage> {
   bool _loading = true;
   String? _error;
 
+  // ── 2026-09-14 当日口径批：每票「当日盈亏 / 今日涨跌幅 / 仓位比例」+ 总仓位/现金比例 ──
+  // null = 该次刷新新端点失败（已降级回旧端点）→ 当日口径整块不显示，绝不用 0 冒充。
+  PositionsDailyResponse? _positionsDaily;
+
   // ── 2026-08-17 对齐 web：账户快照（异步加载不阻塞主数据）──
   AccountSnapshotDto? _account;
   bool _auxLoading = false; // 次级数据加载中（账户快照，不转圈整页）
@@ -142,7 +146,7 @@ class _TradingPageState extends State<TradingPage> {
 
   Future<void> _loadData() async {
     try {
-      final positionsResp = await widget.api.getPositions();
+      final positionsResp = await _fetchPositions();
       final snapshotResp = await widget.api.getPortfolio();
       if (!mounted) return;
       setState(() {
@@ -167,6 +171,22 @@ class _TradingPageState extends State<TradingPage> {
         if (!hasData) _error = _extractApiError(e); // #113 人话
         _loading = false;
       });
+    }
+  }
+
+  /// 2026-09-14 当日口径批：持仓优先走新端点（GET /trading/positions/daily，多带当日盈亏/
+  /// 今日涨跌幅/仓位比例），失败静默降级回旧端点（GET /trading/positions）。
+  /// 约定同「增强项失败不能拖垮持仓主数据」：持仓本身必须看得见。
+  /// 降级时 [_positionsDaily] 置空（宁可不说，也不把上一次的陈值当成今天的数）。
+  Future<PositionsResponse> _fetchPositions() async {
+    try {
+      final daily = await widget.api.getPositionsDaily();
+      _positionsDaily = daily;
+      return PositionsResponse(positions: daily.positions);
+    } catch (_) {
+      // 静默：旧后端无此端点 / 网络抖动 → 回旧端点（持仓照常显示，当日口径不显示）
+      _positionsDaily = null;
+      return widget.api.getPositions();
     }
   }
 
@@ -908,6 +928,9 @@ class _TradingPageState extends State<TradingPage> {
                   const Spacer(),
                   _buildManageHint(),
                 ]),
+                // 2026-09-14 当日口径批：总仓位（几成仓）+ 现金比例；算不出（null）整行不显示——
+                // 显示 0% 会被当成「空仓」，比不说更坏。notes 非空 = 有未计入项，如实轻提示。
+                if (_positionsDaily != null) _buildDailyPositionsHeader(_positionsDaily!),
                 const SizedBox(height: 8),
                 _buildPositionCards(),
                 // 2026-08-22：自选股/清仓复盘区块移除——管理归 web（通达信导入/打分/心理标注），
@@ -1555,6 +1578,33 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 2026-09-14 当日口径批：持仓区头部一行——「仓位 62.24% · 现金 37.76%」（几成仓）。
+  /// 总仓位 null（总资产为 0 / 当日口径降级）→ 整行不显示：显示 0% 会被读成「空仓」，比不说更坏。
+  /// notes 非空 = 有未计入项（当日盈亏偏小）→ 如实轻提示（橙，不是错误红）。
+  Widget _buildDailyPositionsHeader(PositionsDailyResponse d) {
+    final ratio = d.totalPositionRatio;
+    final cash = d.cashRatio;
+    final notes = d.notes;
+    if (ratio == null && notes.isEmpty) return const SizedBox.shrink();
+    final ratioLine = <String>[
+      if (ratio != null) '仓位 ${ratio.toStringAsFixed(2)}%',
+      if (ratio != null && cash != null) '现金 ${cash.toStringAsFixed(2)}%',
+    ].join(' · ');
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (ratio != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(ratioLine, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ),
+      if (notes.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('有几笔我没算进去：${notes.join('；')}',
+              style: TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+        ),
+    ]);
+  }
+
   Widget _buildPositionCard(PositionItem p) {
     final isGain = p.pnl > 0.01;   // 盈=红
     final isLoss = p.pnl < -0.01;  // 亏=绿
@@ -1602,6 +1652,8 @@ class _TradingPageState extends State<TradingPage> {
             ),
             Text(pctStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pnlColor)),
           ]),
+          // 2026-09-14 当日口径批：这票三样——当日盈亏（金额）/ 今日涨跌幅 / 仓位比例
+          _buildPositionDailyRow(p),
           // RFC 20260825：批次简版（一眼可见；2026-08-28 整行可点 → 批次明细弹窗）
           if (_lotSummaryFor(p.symbol) case final lot?) ...[
             const SizedBox(height: 6),
@@ -1610,6 +1662,43 @@ class _TradingPageState extends State<TradingPage> {
         ]),
       ),
     );
+  }
+
+  /// 2026-09-14 当日口径批：持仓卡第三行——当日盈亏（金额）/ 今日涨跌幅（%）/ 仓位比例（%）。
+  /// null（缺昨收算不出 / 总资产为 0 / 新端点降级）→ 一律「—」，**严禁渲染成 0 或 0.00%**。
+  /// 着色沿用本页累计盈亏同一套 token：**红涨绿亏**（darkRed=涨，darkGreen=跌），未知/持平不上涨跌色。
+  Widget _buildPositionDailyRow(PositionItem p) {
+    final d = _positionsDaily?.forSymbol(p.symbol);
+    final pnl = d?.todayPnl;
+    final chg = d?.dayChangePct;
+    final ratio = d?.positionRatio;
+    final pnlStr = pnl == null ? '—' : '${pnl >= 0 ? '+' : ''}${_fmtMoney(pnl)}';
+    final chgStr = chg == null ? '—' : '${chg >= 0 ? '+' : ''}${chg.toStringAsFixed(2)}%';
+    final ratioStr = ratio == null ? '—' : '${ratio.toStringAsFixed(2)}%';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(spacing: 12, runSpacing: 4, children: [
+        _dailyMetric('当日', pnlStr, _trendColor(pnl)),
+        _dailyMetric('今日', chgStr, _trendColor(chg)),
+        _dailyMetric('仓位', ratioStr, AppColors.darkGrey3),
+      ]),
+    );
+  }
+
+  /// 涨跌色（红涨绿亏，不是 A 股默认的绿涨红跌）：不知道 → 灰（不上色）。
+  Color _trendColor(double? v) {
+    if (v == null) return AppColors.darkGrey5;
+    if (v > 0) return AppColors.darkRed;
+    if (v < 0) return AppColors.darkGreen;
+    return AppColors.darkGrey3; // 持平
+  }
+
+  Widget _dailyMetric(String label, String value, Color color) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      const SizedBox(width: 4),
+      Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+    ]);
   }
 
   /// RFC 20260825：持仓批次明细——点击批次行按 symbol 拉全部批次（含回合/初始底仓），底部弹窗展示。

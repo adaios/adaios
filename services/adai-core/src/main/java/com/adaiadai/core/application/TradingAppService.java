@@ -601,6 +601,78 @@ public class TradingAppService {
         return PortfolioSnapshot.of(injected, cash);
     }
 
+    /** 单股当日口径（持仓列表现用）：当日盈亏 / 昨收 / 今日涨跌幅 / 仓位比例。 */
+    public record StockDaily(
+            BigDecimal todayPnl,        // 当日盈亏（券商口径；null = 未计入，见外层 notes）
+            BigDecimal yesterdayClose,  // 昨收（null = 缺）
+            BigDecimal dayChangePct,    // 今日涨跌幅 %（null = 缺昨收）
+            BigDecimal positionRatio    // 占总资产 %（null = 总资产为 0）
+    ) {}
+
+    /** 持仓列表视图：原持仓 + 逐股当日口径 + 总仓位/现金比例 + 未计入说明。 */
+    public record PositionsDailyView(
+            List<Position> positions,
+            Map<String, StockDaily> daily,
+            BigDecimal totalAssets,          // 总资产 = 持仓市值 + 现金
+            BigDecimal totalMarketValue,     // 持仓总市值
+            BigDecimal cashBalance,
+            BigDecimal totalPositionRatio,   // 总仓位 %（持仓市值 / 总资产）
+            BigDecimal cashRatio,            // 现金比例 %
+            List<String> notes               // 未计入项（非空 → 当日盈亏偏小）
+    ) {}
+
+    /**
+     * 持仓列表视图（2026-09-14 用户拍板）：给每只票补「当日盈亏 + 今日涨跌幅 + 仓位比例」，
+     * 外加顶部「总仓位 / 现金比例」。
+     * <p>
+     * 设计取舍：**不改** {@link #getPositions} 的返回形状——app/web/admin 三处都在消费
+     * `List<Position>`，改成对象属破坏性变更；因此新增独立端点，逐股当日口径放**平行 map**
+     * （key=symbol），前端原有解析原样可用，只多读一个 map。
+     * <p>
+     * 数据一致性：当日盈亏取 {@link #dailyPnlDetail}（与账户卡、收盘、重算同一份实现），
+     * 不在这里另算——否则「卡片一个数、列表另一个数」就是下一个漂移。
+     */
+    public PositionsDailyView getPositionsDailyView(String userId) {
+        PortfolioSnapshot snap = getPortfolioSnapshot(userId);
+        DailyPnlDetail detail = dailyPnlDetail(userId, LocalDate.now());
+        Map<String, MarketData> quotes = Map.of();
+        List<String> symbols = snap.positions().stream().map(Position::symbol).toList();
+        if (!symbols.isEmpty()) {
+            try {
+                quotes = marketDataSource.quote(symbols);
+            } catch (Exception e) {
+                log.warn("持仓视图：昨收拉取失败 | userId={} | {}", userId, e.getMessage());
+            }
+        }
+        BigDecimal totalAssets = snap.totalValue().add(snap.cashBalance());
+        Map<String, StockDaily> daily = new LinkedHashMap<>();
+        for (Position p : snap.positions()) {
+            MarketData md = quotes.get(p.symbol());
+            BigDecimal yc = md != null ? md.yesterdayClose() : null;
+            BigDecimal changePct = null;
+            if (yc != null && yc.signum() > 0 && p.currentPrice() != null) {
+                changePct = p.currentPrice().subtract(yc)
+                        .divide(yc, 6, java.math.RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            }
+            daily.put(p.symbol(), new StockDaily(
+                    detail.bySymbol().get(p.symbol()), yc, changePct, pct(p.marketValue(), totalAssets)));
+        }
+        return new PositionsDailyView(snap.positions(), Map.copyOf(daily), totalAssets,
+                snap.totalValue(), snap.cashBalance(),
+                pct(snap.totalValue(), totalAssets), pct(snap.cashBalance(), totalAssets),
+                detail.notes());
+    }
+
+    /** a / b → 百分数（两位小数）；b ≤ 0 或无意义 → null（不编造 0%）。 */
+    private static BigDecimal pct(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null || b.signum() <= 0) return null;
+        return a.divide(b, 6, java.math.RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
     /**
      * 获取所有持仓（注入实时行情：currentPrice=现价 → 盈亏/盈亏% 展示正确；
      * 同时注入系统计算止损位 computedStopLossPrice——风险预算公式，不落盘）。
@@ -1381,8 +1453,21 @@ public class TradingAppService {
      * @param date 查询日（通常 = 今日）
      */
     public DailyPnlResult computeDailyPnl(String userId, LocalDate date) {
+        DailyPnlDetail d = dailyPnlDetail(userId, date);
+        return new DailyPnlResult(d.todayPnl(), d.notes());
+    }
+
+    /**
+     * 当日盈亏明细（含逐股拆分）。账户卡的持仓列表（{@link #getPortfolioView}）与收盘/重算路径
+     * 共用这一份实现——否则「卡片一个数、日志另一个数」就是下一个同型漂移。
+     */
+    public record DailyPnlDetail(BigDecimal todayPnl, List<String> notes,
+                                 Map<String, BigDecimal> bySymbol) {}
+
+    public DailyPnlDetail dailyPnlDetail(String userId, LocalDate date) {
         BigDecimal pnl = BigDecimal.ZERO;
         List<String> notes = new ArrayList<>();
+        Map<String, BigDecimal> bySymbol = new LinkedHashMap<>();
         List<TradeRecord> dayTrades = tradingHistoryRepository.findAll(userId).stream()
                 .filter(t -> date.equals(t.entryDate()))
                 .toList();
@@ -1414,66 +1499,54 @@ public class TradingAppService {
             }
         }
         List<Position> positions = positionRepository.findAll(userId);
-        Map<String, Position> held = positions.stream()
-                .collect(java.util.stream.Collectors.toMap(Position::symbol, p -> p, (a, b) -> a));
-        for (Map.Entry<String, SoldAgg> e : realized.entrySet()) {
-            SoldAgg a = e.getValue();
-            if (a.sellQty <= 0) continue;
-            // 卖出成本：T+1 语义 → 卖出量属盘前旧仓，成本 = 盘前成本
-            //（今日无买入 → 持仓 avgCost 即盘前，精确；有买入/已清仓 → 回退「当日之前」流水历史买入
-            //  含费加权；仍无基线 → 持仓成本兜底并诚实附注）。仅 T+0 边界才对冲抵部分按当日买入均价
-            // 并附注（A 股 T+1 账户不会出现）。
-            long matchedToday = a.sellAfterFirstBuy ? Math.min(a.sellQty, a.buyQty) : 0;
-            BigDecimal sellCost = BigDecimal.ZERO;
-            if (matchedToday > 0 && a.buyQty > 0) {
-                BigDecimal buyAvg = a.buyCost.divide(BigDecimal.valueOf(a.buyQty), 6,
-                        java.math.RoundingMode.HALF_UP);
-                sellCost = sellCost.add(buyAvg.multiply(BigDecimal.valueOf(matchedToday)));
-                notes.add(e.getKey() + " " + a.name
-                        + "：含当日先买后卖（T+0 边界），已实现成本按匹配口径近似——A 股 T+1 账户不会出现");
-            }
-            long fromOld = a.sellQty - matchedToday;
-            if (fromOld > 0) {
-                Position p = held.get(e.getKey());
-                BigDecimal oldUnit = BigDecimal.ZERO;
-                // P2-交易42 拍板（2026-09-14，用户「券商负成本」）：盘前旧仓成本优先取**券商口径的持仓成本**
-                // ——`avgCost` 允许为**负**（反复做 T / 分红把成本摊到 0 下，券商就是这么记的）。
-                // 原判定 `signum() > 0` 把负成本挡在门外 → 负成本持仓卖出改按「历史买入均价」算已实现，
-                // 与券商口径不一致（实测 600601 券商 +134%，按历史均价算则明显偏低）。
-                // 改为 `!= 0`：只要成本可得（含负）就用它。
-                if (a.buyQty == 0 && p != null && p.avgCost() != null && p.avgCost().signum() != 0) {
-                    oldUnit = p.avgCost(); // 今日无买入摊薄 → 当前 avgCost = 盘前成本（精确，含负成本）
-                } else {
-                    // 当日有买入（avgCost 已被摊薄）或标的已清仓：券商盘前成本取不到 →
-                    // 退回「当日之前的历史买入含费加权均价」（近似）
-                    oldUnit = historicalBuyAvgCost(userId, e.getKey(), date);
-                    if (oldUnit.signum() <= 0 && p != null && p.avgCost() != null
-                            && p.avgCost().signum() != 0) {
-                        oldUnit = p.avgCost(); // 无盘前历史基线 → 券商持仓成本兜底（近似，含负成本）
-                        notes.add(e.getKey() + " " + a.name
-                                + "：卖出旧仓缺盘前成本基线，按当前持仓成本近似（精度受当日摊薄影响）");
-                    } else if (oldUnit.signum() <= 0) {
-                        notes.add(e.getKey() + " " + a.name
-                                + "：已清仓且无成本基线，卖出已实现暂按净额计（偏高）——请导历史成交或资金股份校准");
-                    } else if (p != null && p.avgCost() != null && p.avgCost().signum() < 0) {
-                        // 负成本 + 当日有买入：券商盘前（负）成本取不到，如实说明本笔口径
-                        notes.add(e.getKey() + " " + a.name
-                                + "：当日有买入，盘前券商成本（负）取不到，这笔卖出已实现按历史买入均价近似");
-                    }
-                }
-                sellCost = sellCost.add(oldUnit.multiply(BigDecimal.valueOf(fromOld)));
-            }
-            pnl = pnl.add(a.sellNet.subtract(sellCost));
-        }
-        // 2. 持仓日浮动
+        // 行情符号 = 当前持仓 ∪ 今日有成交的票。必须含后者：今天卖光的票已不在持仓里，
+        // 但它的昨收是「券商口径卖出当日盈亏」的唯一基准（2026-09-14 A 方案）。
+        java.util.LinkedHashSet<String> quoteSymbols = new java.util.LinkedHashSet<>();
+        positions.forEach(p -> quoteSymbols.add(p.symbol()));
+        realized.keySet().forEach(quoteSymbols::add);
         Map<String, MarketData> quotes = Map.of();
-        if (!positions.isEmpty()) {
+        if (!quoteSymbols.isEmpty()) {
             try {
-                quotes = marketDataSource.quote(positions.stream().map(Position::symbol).toList());
+                quotes = marketDataSource.quote(new ArrayList<>(quoteSymbols));
             } catch (Exception ex) {
                 log.warn("当日盈亏：行情拉取失败 | {}", ex.getMessage());
             }
         }
+        for (Map.Entry<String, SoldAgg> e : realized.entrySet()) {
+            SoldAgg a = e.getValue();
+            if (a.sellQty <= 0) continue;
+            // ── 卖出部分的「当日」基差（2026-09-14 用户拍板 A：改为券商口径）──
+            // 原口径拿**建仓成本**当基准 → 算的是「这笔交易从建仓到现在赚了多少」，把过去累积的
+            // 浮盈记进了「当日」（实测：云南锗业卖 100 股虚增 3466 元，系统 5826 vs 券商 2245）。
+            // 券商口径 = **昨收**：卖出部分的当日盈亏 = 卖出净额 − 昨收 × 卖量。
+            // 唯一例外是 T+0 边界（当日先买后卖，A 股 T+1 不会出现）→ 该部分按当日买入均价。
+            long matchedToday = a.sellAfterFirstBuy ? Math.min(a.sellQty, a.buyQty) : 0;
+            BigDecimal basis = BigDecimal.ZERO;
+            if (matchedToday > 0 && a.buyQty > 0) {
+                BigDecimal buyAvg = a.buyCost.divide(BigDecimal.valueOf(a.buyQty), 6,
+                        java.math.RoundingMode.HALF_UP);
+                basis = basis.add(buyAvg.multiply(BigDecimal.valueOf(matchedToday)));
+                notes.add(e.getKey() + " " + a.name
+                        + "：含当日先买后卖（T+0 边界），该部分按当日买入均价计——A 股 T+1 账户不会出现");
+            }
+            long fromOld = a.sellQty - matchedToday;
+            if (fromOld > 0) {
+                MarketData md = quotes.get(e.getKey());
+                BigDecimal yc = md != null ? md.yesterdayClose() : null;
+                if (yc == null) {
+                    // 缺昨收 → 这笔的当日盈亏算不出来。静默按 0 计会让总数偏小且看不出原因，
+                    // 故如实附注；refreshTodayPnl 见「实质未计入」会拒绝写回（P2-交易46 的闸）。
+                    notes.add(e.getKey() + " " + a.name + "：缺昨收，这笔卖出（" + fromOld
+                            + " 股）的当日盈亏未计入——当日盈亏偏小");
+                } else {
+                    basis = basis.add(yc.multiply(BigDecimal.valueOf(fromOld)));
+                }
+            }
+            BigDecimal delta = a.sellNet.subtract(basis);
+            pnl = pnl.add(delta);
+            bySymbol.merge(e.getKey(), delta, BigDecimal::add);
+        }
+        // 2. 持仓日浮动（quotes 已在上方按「持仓 ∪ 今日成交」拉好）
         for (Position p : positions) {
             if (p.quantity() <= 0) continue;
             MarketData md = quotes.get(p.symbol());
@@ -1504,17 +1577,18 @@ public class TradingAppService {
                 }
             }
             pnl = pnl.add(floatPnl);
+            bySymbol.merge(p.symbol(), floatPnl, BigDecimal::add);
         }
         // 3. 当日股息入账（+）/红利税（−）：volume=0 的资金事件（amount 存绝对值，方向编码）
         for (TradeRecord t : dayTrades) {
             if (t.volume() != 0 || t.amount() == null) continue;
-            if (t.direction() == TradeDirection.BUY) {
-                pnl = pnl.add(t.amount());
-            } else {
-                pnl = pnl.subtract(t.amount());
-            }
+            BigDecimal ev = t.direction() == TradeDirection.BUY ? t.amount() : t.amount().negate();
+            pnl = pnl.add(ev);
+            bySymbol.merge(t.symbol(), ev, BigDecimal::add);
         }
-        return new DailyPnlResult(pnl.setScale(2, java.math.RoundingMode.HALF_UP), List.copyOf(notes));
+        bySymbol.remove(null);
+        return new DailyPnlDetail(pnl.setScale(2, java.math.RoundingMode.HALF_UP),
+                List.copyOf(notes), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(bySymbol)));
     }
 
     /**
@@ -1540,21 +1614,6 @@ public class TradingAppService {
         BigDecimal fee = t.fee() != null ? t.fee() : BigDecimal.ZERO;
         BigDecimal base = t.amount() != null ? t.amount() : BigDecimal.ZERO;
         return buy ? base.add(fee) : base.subtract(fee);
-    }
-
-    /** 清仓后无持仓行时，回退「当日之前」流水历史买入的含费加权均价作为卖出成本基线。 */
-    private BigDecimal historicalBuyAvgCost(String userId, String symbol, LocalDate until) {
-        BigDecimal costSum = BigDecimal.ZERO;
-        long qty = 0;
-        for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
-            if (!symbol.equals(t.symbol()) || t.direction() != TradeDirection.BUY || t.volume() <= 0) continue;
-            if (t.entryDate() == null || !t.entryDate().isBefore(until)) continue;
-            costSum = costSum.add(buyCostOf(t));
-            qty += t.volume();
-        }
-        return qty > 0
-                ? costSum.divide(BigDecimal.valueOf(qty), 6, java.math.RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
     }
 
     /** 当日盈亏计算结果（notes：未计入部分的人话说明，非空即非全精确）。 */

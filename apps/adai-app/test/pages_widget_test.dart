@@ -364,6 +364,123 @@ void main() {
           });
     }
 
+    // ── 2026-09-14 当日口径批：持仓卡每票「当日盈亏 / 今日涨跌幅 / 仓位比例」+ 总仓位 ──
+    // 后端 GET /trading/positions/daily 已实现，app 只消费：每票 field 都可能 null（缺昨收没算出来），
+    // null 必须显示「—」，严禁渲染成 0 / 0.00%（显示 0 会被读成「今天没赚没亏」，比不说更坏）。
+
+    /// 单票持仓行（新旧端点同形状）。
+    const posRow = <String, dynamic>{
+      'symbol': '002428', 'name': '云南锗业', 'quantity': 100,
+      'avgCost': 80.0, 'currentPrice': 88.43,
+      'marketValue': 8843.0, 'pnl': 843.0, 'pnlPercent': 10.5,
+    };
+
+    /// 当日口径端点默认响应（正常三样数值 + 总仓位/现金比例）。
+    void mockDaily(_Backend b, {Map<String, dynamic>? daily, List<String> notes = const []}) {
+      mockBase(b, positions: [posRow]);
+      b.handlers['/api/v1/trading/positions/daily'] = (_) async => _json({
+            'positions': [posRow],
+            'daily': daily ??
+                {
+                  '002428': {
+                    'todayPnl': 756.0, 'yesterdayClose': 88.43,
+                    'dayChangePct': 2.14, 'positionRatio': 33.27,
+                  },
+                },
+            'totalAssets': 81453.53, 'totalMarketValue': 50696.0,
+            'cashBalance': 30757.53, 'totalPositionRatio': 62.24,
+            'cashRatio': 37.76, 'notes': notes,
+          });
+    }
+
+    testWidgets('当日口径：每票三样数值 + 顶部总仓位一行', (tester) async {
+      final b = _Backend();
+      mockDaily(b);
+      await pumpTrading(tester, b);
+
+      expect(find.text('+756'), findsOneWidget);   // 当日盈亏（金额，券商口径）
+      expect(find.text('+2.14%'), findsOneWidget); // 今日涨跌幅
+      expect(find.text('33.27%'), findsOneWidget); // 该票市值占总资产
+      expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget); // 几成仓 + 现金比例
+      expect(find.textContaining('有几笔我没算进去'), findsNothing); // 没有未计入项 → 不提示
+    });
+
+    testWidgets('当日口径：字段为 null → 显示「—」且不崩（不渲染 0 / 0.00%）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [posRow]);
+      b.handlers['/api/v1/trading/positions/daily'] = (_) async => _json({
+            'positions': [posRow],
+            'daily': {'002428': <String, dynamic>{}}, // 每个字段都缺（缺昨收 / 总资产为 0）
+            'totalPositionRatio': null, 'cashRatio': null, 'notes': <String>[],
+          });
+      await pumpTrading(tester, b);
+
+      expect(find.text('云南锗业'), findsOneWidget); // 页面照常渲染，不崩
+      expect(find.text('—'), findsNWidgets(3));     // 三样都不知道 → 三个「—」
+      expect(find.text('0.00%'), findsNothing);
+      expect(find.textContaining('仓位 '), findsNothing); // 总仓位 null → 整行不显示（不是 0%）
+    });
+
+    testWidgets('当日口径端点失败：静默降级回旧端点，持仓照常显示', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [posRow]);
+      b.handlers['/api/v1/trading/positions/daily'] = (_) async =>
+          _json({'error': 'boom'}, status: 500);
+      await pumpTrading(tester, b);
+
+      expect(find.text('云南锗业'), findsOneWidget); // 增强项失败不能拖垮持仓主数据
+      expect(find.text('持仓明细'), findsOneWidget);
+      expect(find.text('+756'), findsNothing);       // 当日口径整块降级
+      expect(find.textContaining('仓位 '), findsNothing);
+    });
+
+    testWidgets('当日口径：有未计入项 → 如实轻提示（橙，不是错误红）', (tester) async {
+      final b = _Backend();
+      mockDaily(b, notes: ['002428 云南锗业：缺昨收，这笔卖出（100 股）的当日盈亏未计入——当日盈亏偏小']);
+      await pumpTrading(tester, b);
+
+      final hint = find.textContaining('有几笔我没算进去：');
+      expect(hint, findsOneWidget);
+      expect(find.textContaining('缺昨收'), findsOneWidget);
+      expect(tester.widget<Text>(hint).style?.color, AppColors.darkOrange);
+    });
+
+    test('PositionsDailyResponse：字段缺失 / null / 脏数据不崩（解析不出就是 null，不回落 0）', () {
+      final empty = PositionsDailyResponse.fromJson(null);
+      expect(empty.positions, isEmpty);
+      expect(empty.daily, isEmpty);
+      expect(empty.totalPositionRatio, isNull);
+      expect(empty.notes, isEmpty);
+
+      final partial = PositionsDailyResponse.fromJson(<String, dynamic>{
+        'positions': [posRow],
+        'daily': {
+          '002428': <String, dynamic>{'todayPnl': null, 'dayChangePct': 2.14},
+        },
+        'notes': ['缺昨收', ''],
+      });
+      expect(partial.positions.single.symbol, '002428');
+      expect(partial.forSymbol('002428')!.todayPnl, isNull); // null 不变成 0
+      expect(partial.forSymbol('002428')!.dayChangePct, 2.14);
+      expect(partial.forSymbol('999999'), isNull); // 没有的票 → null（页面渲染「—」）
+      expect(partial.notes, ['缺昨收']);            // 空串过滤
+      expect(partial.totalPositionRatio, isNull);
+      expect(partial.cashRatio, isNull);
+
+      // 类型不对：能解析的字符串照收，解析不出 → null（不崩、不回落 0）
+      final dirty = PositionsDailyResponse.fromJson(<String, dynamic>{
+        'daily': {
+          '002428': <String, dynamic>{'dayChangePct': '2.14', 'positionRatio': 'abc'},
+        },
+        'totalPositionRatio': '62.24',
+        'cashRatio': <Object>[],
+      });
+      expect(dirty.forSymbol('002428')!.dayChangePct, 2.14);
+      expect(dirty.forSymbol('002428')!.positionRatio, isNull);
+      expect(dirty.totalPositionRatio, 62.24);
+      expect(dirty.cashRatio, isNull);
+    });
+
     // ── D2（2026-09-13 首轮外部视角审查拍板 A）：不承诺收不到的东西 ──
     // 起因：安卓与网页没有任何推送渠道，但开关照样能点、服务端也照样存 ——
     // 用户把开关全打开，然后一条通知都不来，还以为是自己的设置出了问题。
