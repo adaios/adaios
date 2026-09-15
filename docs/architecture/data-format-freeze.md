@@ -44,6 +44,12 @@ domain: life
 - **`image_qa` 问答记录 content 格式**（MINOR，2026-08-14 登记；单图追问 v3.9 已存在，多图带图 ask 同日补充）：
   - 单图：`【图片问答】\n图片记录：{recordId}\n问：{question}\n答：{answer}`
   - 多图（`POST /records/media/ask-batch`）：`【多图问答】\n图片记录：{id1}, {id2}\n问：{question}\n答：{answer}`（引用全部图片 ID，逗号+空格分隔）
+- **`conversation` 记录正文口径变更**（MINOR，2026-09-15，`memory-fidelity.md` E-A 写侧保真；用户拍板 P4①）：
+  - 正文 = **对话原文**（`我：…` / `你：…` 交替，格式契约 `kernel/record/ConversationText`）；原「AI 转述占据正文」改为转述进 `summary` 字段
+  - `source` 由 `ai_summary` 改为 `user_input` —— 作「本条正文是原话」的新旧可分标记（存量记录仍为 `ai_summary` 且正文是转述，E-C 存量迁移据此辨识，无需逐条判断）
+  - **判 MINOR 而非 MAJOR 的依据**：无字段改名/删除；旧文件解析路径不变（`source` 透传、正文照读）；conversation 记录不进 Feed/Timeline 展示（`FeedAppService` 按 `type` 跳过），读侧无回归；新值只增不改，旧记录语义保持
+  - `title` 由正文首行派生：conversation 记录解析时剥角色前缀（`我：`/`你：`），其它类型不剥（note 正文可能真以「我：」开头）
+  - 写入口两处同口径：`ConversationController`（`POST /conversations/end`）· `RecordRetryService`（卡片重补）
 
 ### 2.2 图片媒体 `records/.../media/`
 

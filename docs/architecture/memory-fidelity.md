@@ -1,9 +1,9 @@
 ---
 title: 记忆底座质量——原文保真与证据链（Memory Fidelity）
 description: 阿呆记忆「少失真」设计稿——三层存储（卡片原话 / 记录转述 / 记忆提炼）现状实测、失真链分析、E-A 读取侧保真 / E-B evidence 字段 / E-C records 原文化三方案与失真审计方法；方向来源 2026-09-05 用户选择
-version: 1
+version: 2
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-15
 status: draft
 depends-on:
   - data-format-freeze.md
@@ -69,6 +69,7 @@ tags: [memory, fidelity, design]
 - 做法：`QuestionAppService` 等入口侧——records 落盘改存原问原文（content = 原话），转述进 summary；存量无卡转述记录**不可恢复**（原话已丢），仅新数据受益（或卡片续接对话已天然保真）。
 - 影响面：records 格式字段语义（freeze §2.1 判定 MINOR/MAJOR）+ Feed/时间线展示口径（展示用 summary 还是 content？）+ 旧数据回填无源。
 - 拍板点见 §六 P4。
+- **状态：✅ 已落地（2026-09-15，用户拍板 P4①）**——正文 = 对话原文（`我：` / `你：` 交替，格式契约 `kernel/record/ConversationText`），AI 转述降入 `summary` 字段；`source` 由 `ai_summary` 改为 `user_input` 作「正文是原话」的新旧可分标记。写入口两处同口径：`ConversationController`（`POST /conversations/end`，原唯一丢原话处）· `RecordRetryService`（卡片重补，原正文 = summary）。连带：`title` 派生时 conversation 记录剥角色前缀。契约登记见 `data-format-freeze.md` §2.1（**MINOR**）。实测影响面小于本文预估——conversation 记录本就不进 Feed（`FeedAppService` 按 type 跳过），故读侧无回归。**存量无卡记录的原话仍不可恢复**（E-C 范围，未立项）。
 
 ### E-A2 读取侧保真（原 E-A，依赖写侧保真后才有料）
 

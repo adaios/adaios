@@ -7,6 +7,7 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.junit.jupiter.api.Test;
@@ -118,5 +119,40 @@ class RecordRetryServiceTest {
         verify(records).save(eq("alice"), saved.capture());
         assertEquals("life", saved.getValue().domain(), "无插件用户重补成功不得落盘 trading 标注");
         verify(pluginService).gateDomain("alice", "trading");
+    }
+
+    @Test
+    void retryCard_persistsOriginalTextNotSummary() {
+        // E-A 写侧保真：卡片重补落盘的 conversation 记录正文 = 卡片还原的对话原文（原实现 = summary 转述）
+        CardRecord card = new CardRecord(
+                "card_e2e", "conversation", "active", List.of(),
+                List.of(new CardRecord.Turn(true, "我最近睡不好", "23:00"),
+                        new CardRecord.Turn(false, "是不是想太多了", "23:01")),
+                null, LocalDateTime.now().minusMinutes(10), LocalDateTime.now().minusMinutes(10));
+
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.findAll()).thenReturn(List.of(new Account("alice", "user", true, null)));
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("alice")).thenReturn(List.of());
+        CardFileRepository cards = mock(CardFileRepository.class);
+        when(cards.findAll("alice")).thenReturn(List.of(card));
+        AiClient ai = mock(AiClient.class);
+        when(ai.understand(any())).thenReturn(new AiUnderstanding(
+                "睡眠困扰", null, null, null,
+                List.of("健康"), "neutral", "life", false, null, "[Test]"));
+
+        RecordRetryService svc = new RecordRetryService(
+                records, mock(RecordUnderstandingService.class), ai,
+                mock(MemoryService.class), cards, accounts, mock(PluginService.class));
+
+        svc.retryUnprocessed();
+
+        ArgumentCaptor<ContentRecord> saved = ArgumentCaptor.forClass(ContentRecord.class);
+        verify(records).save(eq("alice"), saved.capture());
+        ContentRecord r = saved.getValue();
+        assertEquals("conversation", r.type());
+        assertEquals("user_input", r.source(), "重补记录 source 应为 user_input（正文=原话标记）");
+        assertEquals("我：我最近睡不好\n你：是不是想太多了", r.content(), "正文必须是卡片还原的对话原文");
+        assertEquals("睡眠困扰", r.summary(), "AI 转述应保留在 summary 字段");
     }
 }

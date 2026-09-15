@@ -137,6 +137,38 @@ class RecordFileRepositoryTest {
     }
 
     @Test
+    void parseConversationTitle_stripsSpeakerPrefix() {
+        // E-A：conversation 正文为「我：/你：」对话原文 → 标题剥角色前缀保持干净
+        ContentRecord record = new ContentRecord(
+                "rec_20260915_100000",
+                "conversation", "user_input", "标题",
+                "我：我最近睡不好\n你：是不是想太多了",
+                List.of(),
+                LocalDateTime.of(2026, 9, 15, 10, 0)
+        );
+        repository.save("default", record);
+
+        ContentRecord loaded = repository.findById("default", "rec_20260915_100000").orElseThrow();
+        assertEquals("我最近睡不好", loaded.title(), "对话记录标题应剥掉「我：」前缀");
+    }
+
+    @Test
+    void parseNoteTitle_keepsLeadingSpeakerLikeText() {
+        // 反向锁：剥离只对 conversation 生效——note 正文真以「我：」开头时不得改动
+        ContentRecord record = new ContentRecord(
+                "rec_20260915_100001",
+                "note", "user_input", "标题",
+                "我：这是我的口头禅开场",
+                List.of(),
+                LocalDateTime.of(2026, 9, 15, 10, 1)
+        );
+        repository.save("default", record);
+
+        ContentRecord loaded = repository.findById("default", "rec_20260915_100001").orElseThrow();
+        assertEquals("我：这是我的口头禅开场", loaded.title(), "note 记录标题不得被剥前缀");
+    }
+
+    @Test
     void generateId_format() {
         String id = RecordFileRepository.generateId();
         assertTrue(id.matches("rec_\\d{8}_\\d{9}"), "ID 应含毫秒精度: " + id);

@@ -10,6 +10,7 @@ import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
+import com.adaiadai.core.kernel.record.ContentRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,6 +110,36 @@ class ConversationControllerTest {
 
         // Verify a record was saved
         assertFalse(storage.listFiles("default", "records").isEmpty());
+    }
+
+    @Test
+    void endConversation_persistsOriginalTextNotSummary() throws Exception {
+        // E-A 写侧保真（memory-fidelity.md，2026-09-15 P4①）：正文必须是对话原文，
+        // AI 转述降入 summary；source 由 ai_summary 改为 user_input 作「正文=原话」标记。
+        InMemoryFileStorage storage = new InMemoryFileStorage();
+        TagIndexService tis = new TagIndexService(storage);
+        RecordFileRepository repo = new RecordFileRepository(storage);
+        repo.setTagIndexService(tis);
+        ConversationController ctrl = new ConversationController(
+                new TestAiClient(), repo, new CardFileRepository(storage), new MemoryService(storage));
+        MockMvc localMvc = MockMvcBuilders.standaloneSetup(ctrl).build();
+
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("我最近睡不好", "是不是想太多了")));
+
+        localMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        List<ContentRecord> saved = repo.findAll("default");
+        assertEquals(1, saved.size(), "应落一条 conversation 记录");
+        ContentRecord r = saved.get(0);
+        assertEquals("user_input", r.source(), "source 应为 user_input（正文=原话的新旧可分标记）");
+        assertTrue(r.content().contains("我：我最近睡不好"), "正文必须是用户原话，实际：" + r.content());
+        assertTrue(r.content().contains("你：是不是想太多了"), "正文应含阿呆原话");
+        assertNotNull(r.summary(), "AI 转述应保留在 summary 字段");
+        assertFalse(r.summary().contains("我："), "summary 应是 AI 转述而非对话原文");
     }
 
     @Test

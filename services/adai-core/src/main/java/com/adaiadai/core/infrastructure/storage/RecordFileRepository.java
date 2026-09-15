@@ -265,7 +265,7 @@ public class RecordFileRepository implements RecordRepository {
         // #144：intent 落盘——rebuild 借此区分 question 记录，避免重跑烧 AI
         String intent = fields.getOrDefault("intent", null);
         if (intent != null && intent.isBlank()) intent = null;
-        return new ContentRecord(id, type, source, extractTitle(body, id), body, tags, createdAt, intent, summary, domain);
+        return new ContentRecord(id, type, source, extractTitle(body, type, id), body, tags, createdAt, intent, summary, domain);
     }
 
     private Map<String, String> parseFrontmatter(String frontmatter) {
@@ -302,10 +302,20 @@ public class RecordFileRepository implements RecordRepository {
         }
     }
 
-    private String extractTitle(String body, String fallbackId) {
+    /**
+     * 标题由正文首行派生（title 不落盘，读写对称靠它）。
+     * <p>
+     * E-A：conversation 记录正文为「我：/你：…」对话原文（memory-fidelity.md），
+     * 标题剥掉角色前缀保持干净；其它类型不剥——note 正文可能真的以「我：」开头。
+     */
+    private String extractTitle(String body, String type, String fallbackId) {
         String firstLine = body.lines().findFirst().orElse("").strip();
         if (!firstLine.isEmpty() && firstLine.length() < 100) {
-            return firstLine.replaceAll("^#+\\s*", "");
+            String title = firstLine.replaceAll("^#+\\s*", "");
+            if ("conversation".equals(type)) {
+                title = title.replaceFirst("^(我|你)：", "");
+            }
+            if (!title.isBlank()) return title;
         }
         return fallbackId;
     }

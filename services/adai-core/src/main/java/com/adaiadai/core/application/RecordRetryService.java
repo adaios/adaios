@@ -13,6 +13,7 @@ import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ConversationText;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -204,7 +205,7 @@ public class RecordRetryService {
 
     private void processCard(String userId, CardRecord card) {
         // 构建对话摘要 prompt（同 ConversationController 一致）
-        String turnText = buildTurnText(card.turns());
+        String turnText = ConversationText.fromTurns(card.turns());
         String prompt = """
                 客观总结这段对话（不超过40字），避免人称代词。
                 输出 JSON（不要包裹 markdown 代码块）：
@@ -241,12 +242,16 @@ public class RecordRetryService {
         );
         cardRepository.save(userId, updated);
 
-        // 新建一条记录沉淀对话摘要
+        // 新建一条记录沉淀对话（E-A 写侧保真：正文 = 卡片还原的对话原文，转述降入 summary；
+        // source 由 ai_summary 改为 user_input 作「正文是原话」标记，与 ConversationController 同口径）
         String recordId = RecordFileRepository.generateId();
+        String originalText = ConversationText.fromTurns(card.turns());
+        String recordBody = originalText.isBlank() ? summary : originalText;
         ContentRecord record = new ContentRecord(
-                recordId, "conversation", "ai_summary",
-                truncate(summary, 50), summary,
-                tags, LocalDateTime.now()
+                recordId, "conversation", "user_input",
+                truncate(recordBody, 50), recordBody,
+                tags, LocalDateTime.now(),
+                null, summary, "life"
         );
         recordRepository.save(userId, record);
 
@@ -258,15 +263,6 @@ public class RecordRetryService {
 
         log.info("重补卡片完成 | cardId={} | summary=\"{}\" | tags={}",
                 card.id(), truncate(summary, 40), tags);
-    }
-
-    private String buildTurnText(List<CardRecord.Turn> turns) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < turns.size(); i++) {
-            String prefix = (i % 2 == 0) ? "我" : "你";
-            sb.append(prefix).append("：").append(turns.get(i).text()).append("\n");
-        }
-        return sb.toString();
     }
 
     private static String truncate(String s, int maxLen) {

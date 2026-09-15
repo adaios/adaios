@@ -9,6 +9,7 @@ import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.record.CardRecord;
 import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.ConversationText;
 import com.adaiadai.core.kernel.record.RecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +55,7 @@ public class ConversationController {
                 userId, request.turns().size(), request.cardId());
 
         // Build prompt from all turns
-        String turnText = buildTurnText(request.turns());
+        String turnText = ConversationText.fromAlternating(request.turns());
         String prompt = """
                 客观总结这段对话（不超过40字），避免人称代词。
                 输出 JSON（不要包裹 markdown 代码块）：
@@ -100,12 +101,20 @@ public class ConversationController {
             tags = List.of();
         }
 
+        // E-A 写侧保真（memory-fidelity.md，2026-09-15 用户拍板 P4①）：
+        // 正文 = 对话原文（"我：/你："交替），AI 转述降入 summary 字段；source 由
+        // ai_summary 改为 user_input —— 作为「本条正文是原话」的新旧可分标记
+        // （存量 source=ai_summary 且正文为转述，E-C 存量迁移据此辨识，无需逐条判断）。
+        String originalText = turnText.isBlank() ? summaryText : turnText;
         ContentRecord record = new ContentRecord(
-                id, "conversation", "ai_summary",
-                summaryText.length() > 50 ? summaryText.substring(0, 50) : summaryText,
-                summaryText,
+                id, "conversation", "user_input",
+                truncate(originalText, 50),
+                originalText,
                 tags,
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                null,          // intent：conversation 不参与 #144 的 question 排除逻辑
+                summaryText,   // summary = AI 转述（原先占据正文位置的内容）
+                "life"         // domain：本批不扩 domain 透传（RFC 20260822 P1 另行拍板）
         );
         recordRepository.save(userId, record);
 
@@ -147,13 +156,10 @@ public class ConversationController {
         return clean.length() > 50 ? clean.substring(0, 50) + "…" : clean;
     }
 
-    private String buildTurnText(List<String> turns) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < turns.size(); i++) {
-            String prefix = (i % 2 == 0) ? "我" : "你";
-            sb.append(prefix).append("：").append(turns.get(i)).append("\n");
-        }
-        return sb.toString();
+    /** 标题用的单行截断（title 是派生字段：落盘不存，读回由正文首行重建）。 */
+    private String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "…";
     }
 
     public record EndConversationRequest(
