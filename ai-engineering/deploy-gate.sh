@@ -72,7 +72,12 @@ fi
 echo ""
 echo "▸ GATE-AFTER 部署后验证（smoke）..."
 sleep 10
-BASE="http://${SERVER}:8080"
+# 2026-09-15 端口收敛：生产 8080/8082/8083/8084 已绑回环（不再对公网明文开放），
+# smoke 改走真实生产入口（Caddy + HTTPS），顺带把反代链路也验证在内。
+# 本机默认挂 HTTP_PROXY（127.0.0.1:1087）会拦裸 IP 请求，故先把生产域名排除在代理外。
+export no_proxy="api.adaiadai.com,${no_proxy:-}"
+export NO_PROXY="$no_proxy"
+BASE="${ADAI_GATE_BASE_URL:-https://api.adaiadai.com}"
 FAILED=0
 
 # RFC 20260901-auth-login（根治 #179）：smoke 必须先登录拿 token，

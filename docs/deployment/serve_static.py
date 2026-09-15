@@ -190,6 +190,8 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8082
     root_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
     os.chdir(root_dir)
-    server = ThreadingServer(("0.0.0.0", port), Handler)
+    # 2026-09-15 端口收敛：只绑回环，公网一律经 Caddy 反代（此前 0.0.0.0 与 Caddy 并存，
+    # 互联网可直接绕过 HTTPS/Caddy 打到明文端口，当天实测 202 条外网直连记录）。
+    server = ThreadingServer(("127.0.0.1", port), Handler)
     print(f"Threading+gzip serving {root_dir} on :{port}")
     server.serve_forever()

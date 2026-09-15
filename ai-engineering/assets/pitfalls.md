@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-09-14
+updated: 2026-09-15
 status: active
-lines: 161
+lines: 168
 depends-on:
   - ../checklists/guard.md
 related:
@@ -156,6 +156,13 @@ tags: [ai, assets, pitfalls]
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **注释写「跳过该行」，实现却是 NPE 炸整批** | 导入一份文件直接 500/崩溃，而代码注释明明写着「数据异常跳过」；单测只覆盖正常文件时永远发现不了 | 三元表达式里把可能为 null 的解析结果**直接链式调用**：`col >= 0 ? parseNum(cells[col]).stripTrailingZeros() : null`——`parseNum` 对非数字返回 null，于是 `null.stripTrailingZeros()` 抛 NPE。作者的心智模型是「解析失败 → 跳过」，代码实际是「解析失败 → 崩」 | **先解析、再判空、再使用**：`price = parseNum(...); if (price == null) { 记录丢弃; continue; }`。**判据**：凡「容错解析」函数返回 null 的分支，紧跟着的链式调用一律视为可疑 | ✅ 已修（2026-09-14 P2-交易43 附带） | 注释与下一行代码语义相反（「跳过」/「忽略」/「容错」却无 `continue`/`return`）；容错函数返回 null 却直接 `.method()`；导入类端点返回 500 而非 400 人话 |
 | **后端把「丢行」上报了，前端不展示 = 白修** | 修完解析层以为万事大吉，用户侧感受与修复前**完全一样**（还是只看到「识别出 N 笔」） | 可见性修复是**两段链**：解析层上报（`unparsed`/`dropped`）→ 响应字段 → 前端展示。只做前两段时，用户在 UI 上什么也看不到 | 修「丢数据可见性」时**把三段当一件事验收**：后端字段 + 前端展示 + 一条「有丢行时用户能看到」的测试。本批即因此把前端接线作为同一批的必须项 | ✅ 已按此验收（2026-09-14） | 只改后端就宣称「用户现在能看见了」；新增响应字段零前端引用；测试只断言后端字段、无 UI 断言 |
+
+## 十七、生产运维与网络暴露（2026-09-15 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **服务绑 `0.0.0.0`，文档却写「已不对外」** | 文档声称「旧 IP:8080 直连已不对外」，实际 `ss` 显示 8080/8082/8083/8084 **全在 `0.0.0.0`**；当天静态站 **202 条外网直连记录**、API 端口有境外 IP 直连 → 可**绕过 Caddy/HTTPS 明文**访问登录接口（密码/token 裸奔） | 端口绑定从来没被当成契约：Tomcat 默认 `0.0.0.0`、`ThreadingServer(("0.0.0.0", port))`；而 Caddy 反代写 `127.0.0.1:PORT` 看起来「已经在内网」，掩盖了服务其实同时在公网裸听 | 服务侧绑回环（unit 加 `Environment=SERVER_ADDRESS=127.0.0.1`、静态服务改 `("127.0.0.1", port)`），对外只留 Caddy；**验收必须从外部视角打**（本机 curl `IP:PORT` 应连接失败），`ss` 只能证明「监听了」、不能证明「外面打不到」 | ✅ 已修（2026-09-15） | 新增长期运行的服务只测「Caddy 能通」；文档里出现「已不对外/已关闭/已收敛」这类断言却拿不出外部视角实测 |
+| **`caddy validate` 以 root 留下日志文件 → reload 静默不生效** | `caddy validate` 报 Valid，紧接着 `systemctl reload caddy` 失败：`open /var/log/caddy/xxx-access.log: permission denied`；**Caddy 保留旧配置继续服务**（站点照常 200），所以只有 exit code 与 journal 里有痕迹，极易被当成「不影响」 | `caddy validate` **不是纯语法检查**——它会真的构建配置并打开 log writer；以 root 跑就在 `/var/log/caddy/` 留下 `root:root 600` 的空文件，而服务进程是 `caddy` 用户，写不进去 | `validate` 后先清掉它留下的空日志再 reload（`sudo rm -f /var/log/caddy/*.log`）或 `sudo chown caddy:caddy`；**顺序固定为 validate → 清残留 → reload** | ✅ 已修（2026-09-15） | 用 root 跑任何「会落地文件」的校验/dry-run 工具；reload/重载类命令失败但线上仍可用 → 没人回头看 exit code |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。

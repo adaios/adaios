@@ -162,4 +162,4 @@ SSH_SCRIPT
 
 echo ""
 echo "✅ 远程部署完成！"
-echo "   验证: curl http://${SERVER}:8080/api/v1/identity"
+echo "   验证: curl https://api.adaiadai.com/api/v1/identity   # 2026-09-15 起 8080 已绑回环，不再用 IP 直连"

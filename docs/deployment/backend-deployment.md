@@ -122,6 +122,9 @@ User=adaios
 Group=adaios
 WorkingDirectory=/opt/adaios/backend
 EnvironmentFile=/opt/adaios/backend/.env
+# 2026-09-15 端口收敛：只监听回环，公网一律经 Caddy（api.adaiadai.com）反代。
+# 此前 Tomcat 默认绑 0.0.0.0 → 互联网可绕过 HTTPS 直接明文访问 API（登录密码/token 裸奔）。
+Environment=SERVER_ADDRESS=127.0.0.1
 ExecStart=/usr/bin/java -jar /opt/adaios/backend/adai-core.jar
 SuccessExitStatus=143
 Restart=on-failure
@@ -219,11 +222,12 @@ cd services/adai-core
 | `ffmpeg` | 生产服务器需 `sudo apt install -y ffmpeg`（B站音频是 fMP4，必须转 16k 单声道 mp3 才能送云端 ASR）| 无字幕视频走不通，人话提示「服务器上还没装转码工具」；**有字幕视频与文章不受影响** |
 | `DASHSCOPE_API_KEY` | `.env` 补阿里云百炼凭证（fun-asr 转写）| 转写链路整体不可用（同样 fail-visible 提示缺凭证）| **（2026-09-13 已配：凭证不入库、`.env` 权限 640；配好后重启服务，`GET /learn/digest/quota` 应报 `asrAvailable:true`）**
 | `ADAI_BILIBILI_COOKIE`（**可选**）| B站 登录态 Cookie（至少 `SESSDATA=...`）——**未登录时 B站 字幕接口一律返回空**（2026-09-12 实测 6 个视频全空），于是「字幕优先、免费」这条省钱路径实际走不到，每个视频都落进付费转写。配了 Cookie 才有机会拿到 AI 字幕 → 省转写费 | 不配也能用，但视频基本都要转写；**注意隐私**：这等于把你的 B站 登录态放在服务器上，按需开启、随时可撤 |
-> **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）；且如果本机挂了代理（本项目开发机默认 `HTTP_PROXY=127.0.0.1:1087`），curl 打 `http://82.156.111.146:8080` 会被代理拦掉 → 登录拿不到 token。完整可用的跑法（2026-09-12 实测通过）：
+> **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）。**2026-09-15 起 smoke 走真实生产入口 `https://api.adaiadai.com`**（生产 8080 已绑回环，不再有 IP:8080 可打；顺带把 Caddy + HTTPS 链路也验在内），脚本内已自行 `export no_proxy=api.adaiadai.com` 绕开本机代理。完整可用的跑法：
 > ```bash
-> export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=… no_proxy=82.156.111.146 NO_PROXY=82.156.111.146
+> export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=…
 > bash ai-engineering/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
 > ```
+> （`ADAI_GATE_BASE_URL` 可覆盖 BASE，用于打预发/其他环境。历史跑法 `no_proxy=82.156.111.146` 打 `IP:8080` 已随端口收敛失效。）
 | 月度转写配额 | `adai.learn.asr.month-quota-seconds`（**默认 `108000` = 30 小时**，用户 2026-09-13 拍板：前 10 小时走云端免费额度=0 元，超出部分按 0.288 元/小时，最坏 ≈5.76 元/月；想完全不花钱就调回 `36000`）| 用满即拒绝并说明剩余额度，不会静默花钱 |
 > **免费额度按模型快照绑定（2026-09-13 用户控制台核对）**：默认模型 `paraformer-v2` 有 **36,000 秒（10 小时）· 每月 1 日重置 · 长期有效** 的免费额度（本产品当前就用它，所以额度内转写 0 元）；而同账号 `fun-asr-flash-2026-06-15` 是另一种带到期日的额度（2026-09-16 到期）且该模型**仅支持 ≤5 分钟短音频**，与长视频场景不通用。**结论：默认保持不变**；`adai.learn.asr.model` 可换模型，但换之前必须确认两件事：① 该模型支持长音频；② 与现有「录音文件异步转写」API 兼容，并同步改 `yuan-per-hour`。
 
@@ -291,6 +295,8 @@ cd build/web && tar -cf - . | ssh ubuntu@82.156.111.146 'sudo mkdir -p /opt/adai
 #     （Last-Modified/If-Modified-Since → 304 秒回：刷新不全量重下，改版仍即时生效）
 #   - HTTP/1.1 keep-alive（原 HTTP/1.0 每请求新建连接，多文件下载排队）
 #   - 压缩结果内存缓存（大文件只压一次）
+#   - 只绑回环 127.0.0.1（2026-09-15 端口收敛）：公网一律经 Caddy 反代，
+#     此前绑 0.0.0.0 导致 8082/8083/8084 可被互联网直连（当天实测 202 条外网直连记录）
 # 更新部署：scp docs/deployment/serve_static.py → /opt/adaios/serve_static.py → restart adaios-web/admin
 cat > /etc/systemd/system/adaios-web.service << 'EOF'
 [Unit]
@@ -412,20 +418,48 @@ sudo apt install -y caddy
 # 3. Caddyfile（自动申请/续期证书，零额外配置）
 cat > /etc/caddy/Caddyfile << 'EOF'
 adaiadai.com {
+    # 2026-09-15 访问日志：此前 Caddy 无 access log → 公网请求量/4xx/5xx 无记录，
+    # 只能靠后端日志反推（观测盲区）
+    log {
+        output file /var/log/caddy/adaiadai-access.log {
+            roll_size 20MiB
+            roll_keep 10
+            roll_keep_for 336h
+        }
+    }
     # /admin（无尾斜杠）→ 301 /admin/，否则匹配不上 /admin/* 落到 web 404（2026-09-04）
     redir /admin /admin/ permanent
+    redir /m /m/ permanent
     handle_path /admin/* {
         reverse_proxy 127.0.0.1:8083
+    }
+    handle_path /m/* {
+        reverse_proxy 127.0.0.1:8084
     }
     handle {
         reverse_proxy 127.0.0.1:8082
     }
 }
 api.adaiadai.com {
+    log {
+        output file /var/log/caddy/api-access.log {
+            roll_size 20MiB
+            roll_keep 10
+            roll_keep_for 336h
+        }
+    }
     reverse_proxy 127.0.0.1:8080
 }
 EOF
-sudo systemctl restart caddy
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && sudo systemctl reload caddy
+```
+
+> ⚠️ **`caddy validate` 会以 root 真的打开一次日志 writer**（2026-09-15 实测踩到）：它会在 `/var/log/caddy/` 留下 **`root:root 600`** 的空日志文件，随后 `systemctl reload caddy`（服务以 `caddy` 用户跑）报
+> `open /var/log/caddy/adaiadai-access.log: permission denied` → **reload 失败**（Caddy 会保留旧配置继续服务，不至于中断，但新配置一直不生效）。
+> 处置：`sudo rm -f /var/log/caddy/*.log` 后重新 reload，让 caddy 用户自己创建文件；或直接 `sudo chown caddy:caddy /var/log/caddy/*.log`。
+> **顺序建议**：`validate` → 清掉它留下的空日志 → `reload`。
+
+```bash
 # 4. 防火墙放行 80/443（腾讯云控制台）
 # 5. 前端重构建指向域名：--dart-define=API_BASE_URL=https://api.adaiadai.com
 #    app 写 https://api.adaiadai.com，以后换服务器永不再改 app
