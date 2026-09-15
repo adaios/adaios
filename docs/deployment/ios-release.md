@@ -100,14 +100,41 @@ python3 scripts/asc_signing.py --ensure   # 幂等：缺则建、有则复用、
 3. iPhone 装 App Store 的 **TestFlight** App，收到邀请后即可安装阿呆
 4. 构建 **90 天过期**；再次上传必须递增构建号
 
-命令行查状态（无需开浏览器）：
+命令行查状态（无需开浏览器；`release_testflight.sh` 上传后也会自动跑一次）：
 
 ```bash
-python3 - << 'PY'   # 需要 ASC_ISSUER_ID
-# GET /v1/builds?filter[app]=<app_id>&sort=-uploadedDate
-# processingState: PROCESSING → VALID / INVALID / FAILED
-PY
+python3 scripts/testflight_status.py          # 查最近 3 个构建
+python3 scripts/testflight_status.py --wait   # 轮询到终态（默认最多 30 分钟；CI 可用退出码判据）
+sh scripts/release_testflight.sh --status     # 等价入口
 ```
+
+## 4.1 首次开通实测记录（2026-09-15，从零到装进手机）
+
+| 时间 | 动作 | 结果 |
+|:-----|:-----|:-----|
+| 21:0x | 补 `PrivacyInfo.xcprivacy`（主 App + 分享扩展）+ `ITSAppUsesNonExemptEncryption=false` | archive 产物内 **7 份隐私清单齐备**（含 `Flutter.framework` 与 4 个插件） |
+| 21:28 | 首次导出（走云签名） | ❌ `Cloud signing permission error`（App Manager 不够，云签名要 Admin） |
+| 21:29 | 改用 API 直建证书 | ✅ 分发证书 `2M8DTF4TPM`（到期 2027-09-15） |
+| 21:30 | 建两个 App Store 描述文件 + 手动签名导出 | ✅ `阿呆阿呆.ipa`（23.7MB，主 App 与扩展均 iPhone Distribution 签名） |
+| 21:32 | `altool` 上传 | ✅ `UPLOAD SUCCEEDED`（Delivery UUID `c82d0f3f…`，23.6MB / 27.6s） |
+| 21:35 | 查构建状态 | ✅ 版本 1 = **VALID**（过期 2026-12-14，`usesNonExemptEncryption=false`） |
+| 21:59 | App Store Connect 建内部组「阿呆内测」+ 加自己 | ✅ 测试员 `state=INVITED` |
+| 22:1x | 手机 TestFlight 接受邀请并安装 | ✅ `state=INSTALLED` |
+| 22:2x | **真机复验** | **Face ID 门禁 ✅ 通过**；**分享扩展 ❌ 报「没拿到钥匙」**（原因与方案见 RFC `20260915-share-extension-credentials.md`） |
+
+## 4.2 发布检查清单
+
+**发版前**
+- [ ] `cd apps/adai-app && flutter test` 全绿
+- [ ] 构建号已递增（同一版本号重复上传会被 Apple 拒）→ `--build-number N`
+- [ ] 若改了 iOS 原生能力（entitlements / App ID 能力）：先在 Apple 侧开好能力，再 `asc_signing.py --ensure` 重建 profile
+
+**发版后**
+- [ ] `--status` 结果为 **VALID**（PROCESSING 是正常中间态；INVALID 去看 App Store Connect 的通知邮件）
+- [ ] 手机 TestFlight 更新后冒烟：登录 / Feed / 分享扩展 / Face ID
+
+**到期红线**（已登记 `docs/guides/routine.md`）
+- 构建 **90 天**过期（当前版本 1 → 2026-12-14）· 分发证书 2027-09-15 · 描述文件 2027-09-13
 
 ## 5. 实测踩到的坑（都已固化进脚本）
 
@@ -120,6 +147,20 @@ PY
 | **缺隐私清单会被拒** | 上传报 `ITMS-91053` | 已于本批补 `PrivacyInfo.xcprivacy`（主 App + 分享扩展），声明 `UserDefaults` 的 `CA92.1`/`1C8F.1`；产物内 7 份清单齐备（含 `Flutter.framework` 与 4 个插件自带的） |
 | **出口合规卡 processing** | 构建长期停在处理中 | `Info.plist` 补 `ITSAppUsesNonExemptEncryption=false`（两个 target），实测上传后 `usesNonExemptEncryption=false` 且直接 VALID |
 | **分享扩展签名与 App Groups** | 导出/上传报 entitlements 不匹配 | 归档时扩展用同一 Team 的 distribution 签名；`group.com.adaiadai.adaiApp` 在主 App 与扩展**两个 App ID** 上都要开（本项目已开）；扩展 `CFBundleVersion` 必须与主 App 一致（走 `$(FLUTTER_BUILD_NUMBER)` + 挂 Flutter xcconfig） |
+
+## 5.1 故障排查（按报错查）
+
+| 现象 | 原因 | 处置 |
+|:-----|:-----|:-----|
+| `Cloud signing permission error` | 想用云签名，但 Key 是 App Manager | **别用云签名**；走 `asc_signing.py --ensure` + 手动导出 |
+| `No signing certificate "iOS Distribution" found` | 本地钥匙串没有分发身份 | `asc_signing.py --ensure`（会自动导入；p12 必须用 `-legacy`） |
+| `No profiles for '…' were found` | 描述文件没建或没落盘 | 同上；确认 `~/Library/MobileDevice/Provisioning Profiles/` 里有对应 `uuid.mobileprovision` |
+| `409 Multiple profiles found with the name …` | 同名 profile 残留（早前手工建的） | `asc_signing.py --ensure` 会自动清理同一 bundleId 的多余 profile |
+| API 返回 403，或 relationships 取不到 | 列表少 `include=` 参数 | 统一带 `&include=bundleId`（脚本已固化） |
+| 上传成功但构建变 INVALID | Apple 侧校验不过 | 看 App Store Connect 通知邮件（常见：缺图标 / 权限描述 / 隐私清单） |
+| 测试员加不了自己 | 走的是**外部测试**（要邮箱 + 审核） | 回到 **Internal Testing**；Account Holder 直接从团队成员列表勾选，免审核免邮件 |
+| 手机让「输入邀请码」 | 被邀请后需要接受 | 打开邀请邮件，点「View in TestFlight」（邀请码也在邮件里） |
+| 装好后图标名称前有**黄点** | TestFlight 的 beta 标记 | **正常**，不是故障 |
 
 ## 6. 与侧载（devicectl）的关系
 

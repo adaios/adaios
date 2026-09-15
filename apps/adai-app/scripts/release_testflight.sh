@@ -7,6 +7,8 @@
 #   sh scripts/release_testflight.sh --skip-build     # 复用已有 archive，只导出+上传
 #   sh scripts/release_testflight.sh --build-number 5 # 指定构建号（默认读 pubspec.yaml 的 +N）
 #   sh scripts/release_testflight.sh --export-only    # 只导出 IPA 不上传（先自检签名）
+#   sh scripts/release_testflight.sh --status         # 只查最近构建状态（upload 后的 processing 结果）
+#   sh scripts/release_testflight.sh --wait           # 上传后轮询到 Apple 处理出终态再退出
 #
 # 凭据（App Store Connect API Key = **Team Key**）：
 #   export ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
@@ -39,6 +41,8 @@ EXPORT_OPTIONS="build/ios/ExportOptions-manual.plist"
 
 SKIP_BUILD=0
 EXPORT_ONLY=0
+STATUS_ONLY=0
+WAIT=0
 BUILD_NUMBER=""
 
 while [ $# -gt 0 ]; do
@@ -46,6 +50,8 @@ while [ $# -gt 0 ]; do
     --skip-build)   SKIP_BUILD=1 ;;
     --export-only)  EXPORT_ONLY=1 ;;
     --build-number) BUILD_NUMBER="${2:-}"; shift ;;
+    --status)       STATUS_ONLY=1 ;;
+    --wait)         WAIT=1 ;;
     -h|--help)      sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "未知参数：${1}（-h 看用法）"; exit 1 ;;
   esac
@@ -63,6 +69,11 @@ if [ -z "${ASC_ISSUER_ID:-}" ]; then
   3. export ASC_ISSUER_ID=<Issuer ID>
 EOF
   exit 1
+fi
+
+if [ "$STATUS_ONLY" = "1" ]; then
+  python3 scripts/testflight_status.py
+  exit 0
 fi
 
 echo "▸ 准备分发签名资产（幂等）..."
@@ -166,13 +177,16 @@ echo "▸ 上传到 App Store Connect（Key ${ASC_KEY_ID}）..."
 xcrun altool --upload-app -f "$IPA" -t ios \
   --apiKey "${ASC_KEY_ID}" --apiIssuer "${ASC_ISSUER_ID}" 2>&1 | tail -12
 
+echo ""
+echo "▸ 查询 Apple 侧处理状态..."
+if [ "$WAIT" = "1" ]; then
+  python3 scripts/testflight_status.py --wait || true
+else
+  python3 scripts/testflight_status.py || true
+fi
+
 cat << 'EOF'
 
-✅ 上传动作已完成（Apple 仍需 processing，通常 5~30 分钟）。
-
-接下来：
-  1. App Store Connect → TestFlight → 等构建状态变为可测试
-  2. 首次使用：TestFlight → Internal Testing 里把自己（Apple ID）加成测试员
-  3. 手机装 App Store 的 TestFlight，收到邀请后即可安装
-  4. 构建 90 天过期；再次上传必须递增构建号（--build-number N）
+✅ 上传动作已完成。构建 90 天过期；再次上传必须递增构建号（--build-number N）。
+   （TestFlight 的测试组与测试员是一次性配置，之后发版不用再动。）
 EOF

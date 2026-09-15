@@ -30,7 +30,14 @@ sh scripts/build_web.sh https://api.adaiadai.com /m/      # PWA（手机装主�
 # 本地预览（构建 + 起 python http.server:8081）
 sh scripts/serve_web.sh https://api.adaiadai.com /m/
 
-# iOS（装机需手机可达，devicectl）
+# iOS 发布（TestFlight，2026-09-15 起；无线分发，不需要数据线/手机在场）
+# 完整方案见 docs/deployment/ios-release.md
+export ASC_ISSUER_ID=<App Store Connect Issuer ID>   # 一次性配置
+sh scripts/release_testflight.sh                     # 构建 + 导出 IPA + 上传
+sh scripts/release_testflight.sh --build-number 2    # 递增构建号（同一版本重复上传会被 Apple 拒）
+sh scripts/release_testflight.sh --status            # 查 Apple 侧处理结果（PROCESSING/VALID/INVALID）
+
+# iOS 侧载（**仅本地调试**用；2026-09-15 起不再是分发手段）
 flutter build ios --release --dart-define=API_BASE_URL=https://api.adaiadai.com
 
 # 分析 / 测试
