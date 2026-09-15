@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -38,6 +39,24 @@ void main() {
       await tester.pumpWidget(app);
       await tester.pumpAndSettle();
       expect(find.byType(LoginPage), findsOneWidget);
+    });
+  });
+
+  group('L1 自动填充语义（RFC 20260914：让浏览器/钥匙串把这对框认成登录表单）', () {
+    testWidgets('登录页：AutofillGroup + username/password 语义齐全', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: LoginPage(api: _apiWithAuthMe(200), onLoggedIn: (_) {}),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AutofillGroup), findsOneWidget,
+          reason: '两个输入框必须包在 AutofillGroup 内，否则系统不认这张表单');
+
+      final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();
+      expect(fields.length, 2);
+      expect(fields[0].autofillHints, const [AutofillHints.username]);
+      expect(fields[1].autofillHints, const [AutofillHints.password]);
+      expect(fields[1].obscureText, isTrue);
     });
   });
 }

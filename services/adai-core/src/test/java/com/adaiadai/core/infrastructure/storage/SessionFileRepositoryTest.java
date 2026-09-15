@@ -45,6 +45,39 @@ class SessionFileRepositoryTest {
     }
 
     @Test
+    void saveWithDevice_roundTrip_keepsDeviceInfo() {
+        Instant now = Instant.now();
+        Session s = new Session("h1", "adai", now, now, now.plusSeconds(3600),
+                new Session.DeviceInfo("iPhone 15", "ios", "3.66.0"));
+        repo.save(s);
+
+        Session found = repo.findByTokenHash("h1").orElseThrow();
+        assertNotNull(found.device());
+        assertEquals("iPhone 15", found.device().name());
+        assertEquals("ios", found.device().platform());
+        assertEquals("3.66.0", found.device().appVersion());
+        // 滑动续期不得丢掉设备信息（丢了下一次列设备就变成「未知设备」）
+        assertEquals("iPhone 15", found.touch(now.plusSeconds(60)).device().name());
+    }
+
+    @Test
+    void legacyFileWithoutDeviceField_readsAsNullDevice() throws IOException {
+        Path dir = tempDir.resolve("accounts");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("sessions.json"), """
+                [{"tokenHash":"old1","userId":"adai","createdAt":"2026-09-01T00:00:00Z",
+                  "lastSeenAt":"2026-09-01T00:00:00Z","expiresAt":"2026-10-01T00:00:00Z"}]
+                """);
+
+        Session found = repo.findByTokenHash("old1").orElseThrow();
+
+        // 升级前签发的会话没有 device 字段 → 读成 null 而不是报错
+        // （否则本次升级会把所有已登录设备一次性踢下线）
+        assertNull(found.device());
+        assertEquals("adai", found.userId());
+    }
+
+    @Test
     void save_overwritesSameTokenHash() {
         repo.save(session("h1", "adai", Instant.now().plusSeconds(3600)));
         repo.save(session("h1", "other", Instant.now().plusSeconds(3600)));

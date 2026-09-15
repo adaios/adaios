@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/models/identity_models.dart';
+import 'login_devices_page.dart';
 
 /// 身份页 — 展示和编辑个人档案。
 class ProfilePage extends StatefulWidget {
@@ -240,6 +241,31 @@ class _ProfilePageState extends State<ProfilePage> {
           else
             Text('暂无标签',
                 style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+        ]),
+        const SizedBox(height: 12),
+
+        // 登录设备（RFC 20260914 L2）：看得见「哪些设备登录着」，并能单独撤销一台
+        _sectionCard([
+          InkWell(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => LoginDevicesPage(api: widget.api))),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.devices_outlined, size: 16, color: AppColors.darkGrey4),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('登录设备',
+                        style: TextStyle(fontSize: 13, color: AppColors.darkGrey2)),
+                  ),
+                  const Text('查看 / 撤销',
+                      style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+                  const Icon(Icons.chevron_right, size: 16, color: AppColors.darkGrey5),
+                ],
+              ),
+            ),
+          ),
         ]),
         const SizedBox(height: 28),
 

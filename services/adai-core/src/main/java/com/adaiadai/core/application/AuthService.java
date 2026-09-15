@@ -78,6 +78,15 @@ public class AuthService {
      * @throws AuthException 账号不存在 / 未设密码 / 密码错误 / 被限流
      */
     public LoginResult login(String account, String password, String clientIp) {
+        return login(account, password, clientIp, null);
+    }
+
+    /**
+     * 登录（带设备信息，RFC 20260914 L2）：设备信息写入会话，供「登录设备」列表辨认。
+     * 设备信息**来自客户端上报，仅供展示，不可用于安全判定**。
+     */
+    public LoginResult login(String account, String password, String clientIp,
+                             Session.DeviceInfo device) {
         if (account == null || account.isBlank()) {
             throw new AuthException("账号不能为空");
         }
@@ -108,11 +117,11 @@ public class AuthService {
         String tokenHash = sha256Hex(token);
         Instant now = Instant.now();
         Session session = new Session(tokenHash, acct.userId(), now, now,
-                now.plusSeconds(Session.DEFAULT_TTL_SECONDS));
+                now.plusSeconds(Session.DEFAULT_TTL_SECONDS), device);
         sessionRepository.save(session);
         log.info("登录成功: {} from {}", acct.userId(), clientIp);
         return new LoginResult(token, acct.userId(), acct.role(), acct.plugins(),
-                session.expiresAt());
+                session.expiresAt(), session.viewId());
     }
 
     /** 登出：删除指定 token 对应会话。 */
@@ -121,6 +130,91 @@ public class AuthService {
             return;
         }
         sessionRepository.deleteByTokenHash(sha256Hex(token));
+    }
+
+    // ── 登录设备（会话）管理（2026-09-14 登录体验方案 RFC 20260914 L2） ──
+    //
+    // 为什么需要：会话是 30 天滑动续期（活跃即不过期），意味着「一旦登录过，那台设备
+    // 长期有效」。此前没有任何界面能看到『哪些设备登录着』，用户唯一的补救手段是改密码
+    // （踢掉全部）——代价是自己也被踢出去、且分不清是哪台设备。这两条端点把「看见 + 单点撤销」
+    // 补上，与 REVIEW「外部凭据只有手动撤销一条出口」同一条思路：
+    // 凭证的生命周期必须有可辨认、可撤销的出口。
+
+    /**
+     * 列出当前账号的全部**未过期**会话（GET /auth/sessions）——「哪些设备登录着」。
+     * 当前 token 对应的一台标记 {@code current=true}；按最近活跃倒序。
+     *
+     * @return 会话视图列表；token 无效/被踢/账号禁用 → 空（Controller 401）
+     */
+    public Optional<List<SessionView>> listSessions(String currentToken) {
+        Optional<Session> current = validSession(currentToken);
+        if (current.isEmpty()) {
+            return Optional.empty();
+        }
+        Instant now = Instant.now();
+        String currentHash = current.get().tokenHash();
+        List<SessionView> views = sessionRepository.findByUserId(current.get().userId()).stream()
+                .filter(s -> !s.isExpired(now))
+                .sorted((a, b) -> b.lastSeenAt().compareTo(a.lastSeenAt()))
+                .map(s -> new SessionView(s.viewId(), s.device(), s.createdAt(),
+                        s.lastSeenAt(), s.expiresAt(), s.tokenHash().equals(currentHash)))
+                .toList();
+        return Optional.of(views);
+    }
+
+    /**
+     * 撤销一台设备的会话（DELETE /auth/sessions/{idOrPrefix}）。
+     * <p>
+     * 接受**完整 token 哈希**或**其前缀**（即列表里的 {@code id}）。两条拒绝路径：
+     * 前缀在本账号内命中多台 → 拒绝（防误撤，与外部工具令牌撤销同口径）；
+     * 命中当前设备 → 拒绝并提示改用「退出登录」（避免用户把自己静默踢下线却不明白为什么）。
+     *
+     * @return 撤销结果；失败时 {@code error} 是给人看的原因
+     */
+    public RevokeOutcome revokeSession(String currentToken, String idOrPrefix) {
+        Optional<Session> current = validSession(currentToken);
+        if (current.isEmpty()) {
+            return RevokeOutcome.fail("会话已失效，请重新登录");
+        }
+        if (idOrPrefix == null || idOrPrefix.isBlank()) {
+            return RevokeOutcome.fail("请指定要撤销的设备");
+        }
+        String key = idOrPrefix.trim().toLowerCase();
+        List<Session> matched = sessionRepository.findByUserId(current.get().userId()).stream()
+                .filter(s -> s.tokenHash() != null && s.tokenHash().toLowerCase().startsWith(key))
+                .toList();
+        if (matched.isEmpty()) {
+            return RevokeOutcome.fail("没找到这台设备，可能已经退出过了");
+        }
+        if (matched.size() > 1) {
+            return RevokeOutcome.fail("这个标识对应多台设备，请用完整的设备 id");
+        }
+        Session target = matched.get(0);
+        if (target.tokenHash().equals(current.get().tokenHash())) {
+            return RevokeOutcome.fail("这台就是当前设备；要退出它请用「退出登录」");
+        }
+        sessionRepository.deleteByTokenHash(target.tokenHash());
+        log.info("撤销会话: userId={} 设备={}", current.get().userId(), target.viewId());
+        return new RevokeOutcome(true, null);
+    }
+
+    /**
+     * 取有效会话（**不续期、不写盘**）——会话管理端点用。
+     * 除 token 有效外，同时复核账号仍存在且 enabled（与 validateAndTouch 同一 fail-closed 口径）。
+     */
+    private Optional<Session> validSession(String token) {
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<Session> session = sessionRepository.findByTokenHash(sha256Hex(token));
+        if (session.isEmpty() || session.get().isExpired(Instant.now())) {
+            return Optional.empty();
+        }
+        Optional<Account> account = accountRepository.findById(session.get().userId());
+        if (account.isEmpty() || !account.get().enabled()) {
+            return Optional.empty();
+        }
+        return session;
     }
 
     // ── 会话校验（AuthInterceptor 调用） ──
@@ -333,9 +427,26 @@ public class AuthService {
         }
     }
 
-    /** 登录结果（token 明文只此一次）。 */
+    /** 登录结果（token 明文只此一次）。{@code sessionId} = 本次会话的短标识（token 哈希前 8 位）。 */
     public record LoginResult(String token, String userId, String role, List<String> plugins,
-                              Instant expiresAt) {}
+                              Instant expiresAt, String sessionId) {}
+
+    /**
+     * 登录设备视图（GET /auth/sessions）。
+     *
+     * @param id         会话短标识（token 哈希前 8 位）——撤销时用它
+     * @param device     签发时的设备信息（可空：老会话或客户端未上报）
+     * @param current    是否为当前请求所用的会话
+     */
+    public record SessionView(String id, Session.DeviceInfo device, Instant createdAt,
+                              Instant lastSeenAt, Instant expiresAt, boolean current) {}
+
+    /** 撤销会话结果；{@code removed=false} 时 {@code error} 为给人看的原因。 */
+    public record RevokeOutcome(boolean removed, String error) {
+        static RevokeOutcome fail(String message) {
+            return new RevokeOutcome(false, message);
+        }
+    }
 
     /** 限流状态。 */
     private static final class RateLimit {

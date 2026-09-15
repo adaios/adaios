@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.ApiTokenService;
 import com.adaiadai.core.application.AuthService;
 import com.adaiadai.core.kernel.account.Account;
+import com.adaiadai.core.kernel.auth.Session;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -43,13 +44,15 @@ public class AuthController {
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
                                    HttpServletRequest servletRequest) {
         AuthService.LoginResult result = authService.login(
-                request.account(), request.password(), clientIp(servletRequest));
+                request.account(), request.password(), clientIp(servletRequest),
+                deviceOf(request.device()));
         return ResponseEntity.ok(Map.of(
                 "token", result.token(),
                 "userId", result.userId(),
                 "role", result.role(),
                 "plugins", result.plugins(),
-                "expiresAt", result.expiresAt().toString()));
+                "expiresAt", result.expiresAt().toString(),
+                "sessionId", result.sessionId()));
     }
 
     /** 登出（会话）。幂等：无 token 也返回成功。 */
@@ -72,6 +75,42 @@ public class AuthController {
                 "role", a.role(),
                 "enabled", a.enabled(),
                 "plugins", a.plugins()));
+    }
+
+    // ── 登录设备（会话）管理（2026-09-14 登录体验方案 RFC 20260914 L2）──
+    //
+    // 「哪些设备登录着 + 单独撤销一台」：会话 30 天滑动续期，一旦登录长期有效，
+    // 此前唯一的补救手段是改密码（把自己也一起踢下线、且分不清是哪台）。
+    // 这两条端点把可辨认、可撤销的出口补上。
+
+    /** 列出当前账号登录着的设备（会话），按最近活跃倒序；当前设备标记 {@code current=true}。 */
+    @GetMapping("/sessions")
+    public ResponseEntity<?> listSessions(HttpServletRequest servletRequest) {
+        Optional<List<AuthService.SessionView>> sessions =
+                authService.listSessions(bearerToken(servletRequest));
+        if (sessions.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
+        }
+        return ResponseEntity.ok(Map.of("sessions", sessions.get()));
+    }
+
+    /**
+     * 撤销一台设备的登录（会话）：立即失效，不影响其它设备。
+     * <p>
+     * 路径参数接受**完整会话 id（token 哈希）**或**列表里的短 id（前缀）**；
+     * 前缀在本账号内非唯一命中 → 400（防误撤）；命中当前设备 → 400（提示用「退出登录」）。
+     */
+    @DeleteMapping("/sessions/{idOrPrefix}")
+    public ResponseEntity<?> revokeSession(@PathVariable String idOrPrefix,
+                                           HttpServletRequest servletRequest) {
+        AuthService.RevokeOutcome outcome =
+                authService.revokeSession(bearerToken(servletRequest), idOrPrefix);
+        if (!outcome.removed()) {
+            String error = outcome.error() == null ? "撤销失败" : outcome.error();
+            int status = error.contains("会话已失效") ? 401 : error.contains("没找到") ? 404 : 400;
+            return ResponseEntity.status(status).body(Map.of("error", error));
+        }
+        return ResponseEntity.ok(Map.of("message", "已撤销，这台设备需要重新登录"));
     }
 
     /**
@@ -173,6 +212,28 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("message", "已撤销，这把令牌立刻失效"));
     }
 
+    /** 设备信息清洗：可空；各字段截断防超长（客户端上报不可信，仅供展示）。 */
+    private Session.DeviceInfo deviceOf(DeviceRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String name = trimTo(request.name(), 64);
+        String platform = trimTo(request.platform(), 32);
+        String appVersion = trimTo(request.appVersion(), 32);
+        if (name == null && platform == null && appVersion == null) {
+            return null;
+        }
+        return new Session.DeviceInfo(name, platform, appVersion);
+    }
+
+    private String trimTo(String value, int max) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+
     private String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
@@ -185,7 +246,14 @@ public class AuthController {
     // ── Request DTOs ──
 
     public record LoginRequest(@NotBlank(message = "账号不能为空") String account,
-                               @NotBlank(message = "密码不能为空") String password) {}
+                               @NotBlank(message = "密码不能为空") String password,
+                               DeviceRequest device) {}
+
+    /**
+     * 登录时可选上报的设备信息（RFC 20260914 L2）：写进会话，供「登录设备」列表辨认。
+     * **属客户端自述，服务端不据此做任何安全判定**（可伪造）。
+     */
+    public record DeviceRequest(String name, String platform, String appVersion) {}
 
     /** 签发外部令牌：{@code label} 是用途备注（如「快捷指令」），{@code scopes} 见 TokenScope。 */
     public record IssueTokenRequest(String label, List<String> scopes) {}

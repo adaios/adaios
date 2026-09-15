@@ -31,8 +31,12 @@ class UserStore {
     }
   }
 
-  /// 读取登录 token；无记录返回 null。
+  /// 未开启「记住我」时的内存副本（仅本次会话有效；与原生实现签名一致）。
+  static String? _memoryToken;
+
+  /// 读取登录 token：内存优先（本次会话），其次 localStorage；无记录返回 null。
   static Future<String?> loadToken() async {
+    if (_memoryToken != null) return _memoryToken;
     try {
       return web.window.localStorage.getItem(_keyToken);
     } catch (e) {
@@ -43,9 +47,17 @@ class UserStore {
   }
 
   /// 保存登录 token。
-  static Future<void> saveToken(String token) async {
+  ///
+  /// [remember] = 登录页「记住这台设备」开关。Web 没有系统钥匙串，
+  /// `remember: false` 语义为「只留内存、不写 localStorage」（关闭浏览器即需重登）。
+  static Future<void> saveToken(String token, {bool remember = true}) async {
+    _memoryToken = token;
     try {
-      web.window.localStorage.setItem(_keyToken, token);
+      if (remember) {
+        web.window.localStorage.setItem(_keyToken, token);
+      } else {
+        web.window.localStorage.removeItem(_keyToken);
+      }
     } catch (e) {
       // ignore: avoid_print
       print('UserStore saveToken localStorage failed: $e');
@@ -54,6 +66,7 @@ class UserStore {
 
   /// 清除登录 token（登出 / 会话失效）。
   static Future<void> clearToken() async {
+    _memoryToken = null;
     try {
       web.window.localStorage.removeItem(_keyToken);
     } catch (e) {

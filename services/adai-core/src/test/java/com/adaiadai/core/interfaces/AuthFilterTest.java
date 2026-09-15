@@ -180,9 +180,9 @@ class AuthFilterTest {
 
     @Test
     void loginEndpoint_isExempt() throws Exception {
-        when(authService.login(anyString(), anyString(), any()))
+        when(authService.login(anyString(), anyString(), any(), any()))
                 .thenReturn(new AuthService.LoginResult("tok", "adai", "admin",
-                        java.util.List.of(), Instant.now().plusSeconds(3600)));
+                        java.util.List.of(), Instant.now().plusSeconds(3600), "abc12345"));
         MockMvc loginMvc = MockMvcBuilders.standaloneSetup(new AuthController(authService, apiTokenService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilter(new AuthFilter(authService, apiTokenService))

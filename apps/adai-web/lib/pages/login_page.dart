@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/user_store.dart';
 import '../theme/app_colors.dart';
@@ -65,6 +66,8 @@ class _LoginPageState extends State<LoginPage> {
       final role = result['role'] as String? ?? 'user';
       await UserStore.saveToken(token);
       await UserStore.saveUserId(userId);
+      // L1（RFC 20260914）：提交自动填充上下文 → 浏览器/系统才提示「保存密码」。
+      TextInput.finishAutofillContext(shouldSave: true);
       if (!mounted) return;
       // 先关 loading（否则 spinner 永转，父组件切换前 pumpAndSettle 卡死）
       setState(() => _loading = false);
@@ -101,6 +104,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await widget.api.setup(account, password);
       if (!mounted) return;
+      // 新密码同样走保存提示（AutofillHints.newPassword + 这一步）
+      TextInput.finishAutofillContext(shouldSave: true);
       setState(() {
         _showSetup = false;
         _loading = false;
@@ -159,20 +164,35 @@ class _LoginPageState extends State<LoginPage> {
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: AppColors.darkGrey5, letterSpacing: 1)),
                 const SizedBox(height: 40),
-                TextField(
-                  controller: _accountCtrl,
-                  enabled: !_loading,
-                  style: const TextStyle(color: AppColors.darkGrey1),
-                  decoration: _inputDecoration('账号', Icons.person_outline),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordCtrl,
-                  enabled: !_loading,
-                  obscureText: true,
-                  style: const TextStyle(color: AppColors.darkGrey1),
-                  onSubmitted: (_) => _showSetup ? _submitSetup() : _submit(),
-                  decoration: _inputDecoration('密码', Icons.lock_outline),
+                // L1（RFC 20260914）：AutofillGroup + autofillHints —— 让浏览器/系统把这对输入框
+                // 认成登录表单（提交后提示保存、下次可自动填充）。
+                AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _accountCtrl,
+                        enabled: !_loading,
+                        autofillHints: const [AutofillHints.username],
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(color: AppColors.darkGrey1),
+                        decoration: _inputDecoration('账号', Icons.person_outline),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _passwordCtrl,
+                        enabled: !_loading,
+                        obscureText: true,
+                        autofillHints: _showSetup
+                            ? const [AutofillHints.newPassword]
+                            : const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        style: const TextStyle(color: AppColors.darkGrey1),
+                        onSubmitted: (_) => _showSetup ? _submitSetup() : _submit(),
+                        decoration: _inputDecoration('密码', Icons.lock_outline),
+                      ),
+                    ],
+                  ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 14),

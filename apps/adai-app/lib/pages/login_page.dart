@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/user_store.dart';
 import '../theme/app_colors.dart';
@@ -34,6 +36,8 @@ class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
   bool _showSetup = false; // 首访设置密码模式
+  /// RFC 20260914 L2：「记住我这台设备」——关闭时 token 只留内存（重启需重新登录）。
+  bool _rememberMe = true;
 
   @override
   void dispose() {
@@ -58,13 +62,16 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      final result = await widget.api.login(account, password);
+      final result = await widget.api.login(account, password, device: _deviceInfo());
       if (!mounted) return;
       final token = result['token'] as String;
       final userId = result['userId'] as String;
       final role = result['role'] as String? ?? 'user';
-      await UserStore.saveToken(token);
+      await UserStore.saveToken(token, remember: _rememberMe);
       await UserStore.saveUserId(userId);
+      // L1（RFC 20260914）：告知平台「自动填充表单已提交」→ iOS 才会弹「存储密码」；
+      // 漏掉这一步时系统经常静默不保存（登录表单语义 + 这一句才算完整）。
+      TextInput.finishAutofillContext(shouldSave: true);
       if (!mounted) return;
       // 先关 loading（否则 spinner 永转，父组件切换前 pumpAndSettle 卡死）
       setState(() => _loading = false);
@@ -101,6 +108,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await widget.api.setup(account, password);
       if (!mounted) return;
+      // 新密码也走同一条保存提示（AutofillHints.newPassword + 这一步 = 系统问「是否保存」）
+      TextInput.finishAutofillContext(shouldSave: true);
       setState(() {
         _showSetup = false;
         _loading = false;
@@ -157,20 +166,36 @@ class _LoginPageState extends State<LoginPage> {
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: AppColors.darkGrey5, letterSpacing: 1)),
                 const SizedBox(height: 44),
-                TextField(
-                  controller: _accountCtrl,
-                  enabled: !_loading,
-                  style: const TextStyle(color: AppColors.darkGrey1),
-                  decoration: _inputDecoration('账号', Icons.person_outline),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordCtrl,
-                  enabled: !_loading,
-                  obscureText: true,
-                  style: const TextStyle(color: AppColors.darkGrey1),
-                  onSubmitted: (_) => _showSetup ? _submitSetup() : _submit(),
-                  decoration: _inputDecoration('密码', Icons.lock_outline),
+                // L1（RFC 20260914）：AutofillGroup + autofillHints 让 iOS 钥匙串认出这是登录表单
+                // （→ 提交后提示「存储密码」、下次键盘上方给建议、经 Face ID 确认后自动填入）。
+                AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _accountCtrl,
+                        enabled: !_loading,
+                        autofillHints: const [AutofillHints.username],
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(color: AppColors.darkGrey1),
+                        decoration: _inputDecoration('账号', Icons.person_outline),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _passwordCtrl,
+                        enabled: !_loading,
+                        obscureText: true,
+                        // 设密码态告知系统这是「新密码」（触发强密码建议）；登录态才是可填充的既有密码
+                        autofillHints: _showSetup
+                            ? const [AutofillHints.newPassword]
+                            : const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        style: const TextStyle(color: AppColors.darkGrey1),
+                        onSubmitted: (_) => _showSetup ? _submitSetup() : _submit(),
+                        decoration: _inputDecoration('密码', Icons.lock_outline),
+                      ),
+                    ],
+                  ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 14),
@@ -180,7 +205,33 @@ class _LoginPageState extends State<LoginPage> {
                           fontSize: 13,
                           color: _error!.contains('成功') ? AppColors.darkGreen : AppColors.darkRed)),
                 ],
-                const SizedBox(height: 28),
+                // RFC 20260914 L2：记住我这台设备——勾上则 token 落系统钥匙串（下次 Face ID 免密进入）
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Checkbox(
+                        value: _rememberMe,
+                        activeColor: AppColors.darkBlue,
+                        side: const BorderSide(color: AppColors.darkBorder),
+                        onChanged: _loading
+                            ? null
+                            : (v) => setState(() => _rememberMe = v ?? false),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _loading ? null : () => setState(() => _rememberMe = !_rememberMe),
+                        child: const Text('记住我这台设备（下次免密进入）',
+                            style: TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
                 SizedBox(
                   height: 48,
                   child: FilledButton(
@@ -221,8 +272,15 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  InputDecoration _inputDecoration(String label, IconData icon) {
-    return InputDecoration(
+  /// 上报给后端的设备信息（RFC 20260914 L2，「登录设备」列表辨认用；
+  /// **服务端不据此做安全判定**）。不引设备信息插件：平台用 defaultTargetPlatform（三端可用），
+  /// 设备名留空由后端/前端兜底显示为「iOS 设备」。
+  Map<String, dynamic> _deviceInfo() => {
+        'platform': defaultTargetPlatform.name,
+        'appVersion': '1.0.0',
+      };
+
+  InputDecoration _inputDecoration(String label, IconData icon) {    return InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(color: AppColors.darkGrey4),
       prefixIcon: Icon(icon, size: 18, color: AppColors.darkGrey4),

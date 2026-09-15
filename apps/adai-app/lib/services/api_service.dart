@@ -1165,13 +1165,21 @@ class ApiService {
 
 /// 认证相关方法（RFC 20260901-auth-login）。
 extension AuthApi on ApiService {
-  /// 登录：成功返回 {token, userId, role, plugins}。
+  /// 登录：成功返回 {token, userId, role, plugins, sessionId, expiresAt}。
   /// 401（密码错/未设密码/限流）抛 ApiException，不触发 onUnauthorized（登录页场景）。
-  Future<Map<String, dynamic>> login(String account, String password) async {
+  ///
+  /// [device]（RFC 20260914 L2）可选上报 `{name, platform, appVersion}`：写进会话供
+  /// 「登录设备」列表辨认。**服务端不据此做任何安全判定**（可伪造），且缺失完全可用。
+  Future<Map<String, dynamic>> login(String account, String password,
+      {Map<String, dynamic>? device}) async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/auth/login'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'account': account, 'password': password}),
+      body: jsonEncode({
+        'account': account,
+        'password': password,
+        if (device != null) 'device': device,
+      }),
     );
     _checkAuthOnly(resp);
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
@@ -1201,6 +1209,32 @@ extension AuthApi on ApiService {
   Future<void> logout() async {
     final resp = await _client.post(
       Uri.parse('$baseUrl/api/v1/auth/logout'),
+      headers: _headers,
+    );
+    _check(resp);
+  }
+
+  // ── 登录设备（RFC 20260914 L2：看得见 + 撤得掉）──
+
+  /// 当前账号登录着的设备（GET /auth/sessions）。
+  /// 每项：`{id, device: {name, platform, appVersion}?, createdAt, lastSeenAt, expiresAt, current}`。
+  Future<List<Map<String, dynamic>>> listSessions() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/auth/sessions'),
+      headers: _headers,
+    );
+    _check(resp);
+    final data = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final list = data['sessions'];
+    if (list is! List) return const [];
+    return list.whereType<Map<String, dynamic>>().toList();
+  }
+
+  /// 撤销一台设备的登录（DELETE /auth/sessions/{id}）。
+  /// 400 = 标识对应多台 / 想撤销当前设备（后端给人话）；404 = 已经退出过了。
+  Future<void> revokeSession(String id) async {
+    final resp = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/auth/sessions/${Uri.encodeComponent(id)}'),
       headers: _headers,
     );
     _check(resp);

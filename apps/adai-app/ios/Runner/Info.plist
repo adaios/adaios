@@ -13,6 +13,9 @@
 	<string>拍摄照片用于记录到阿呆阿呆</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>选择照片用于记录到阿呆阿呆</string>
+	<!-- RFC 20260914 L2：Face ID 作本地解锁闸（生物特征永不出设备，凭证仍是会话 token） -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>用面容 ID 免密打开阿呆阿呆（你的面容数据只在手机上，不会上传）</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleLocalizations</key>

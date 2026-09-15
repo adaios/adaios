@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-12
+updated: 2026-09-14
 status: active
-lines: 78
+lines: 80
 depends-on: []
 related:
   - ../_index.md
@@ -70,6 +70,8 @@ tags: [meta, index, rfc]
 | 20260909-trading-clearance-derivation.md | 清仓股双轨收录（RFC 20260909 批 1 已落地）——流水证明清仓自动收录 sold.json（provenance=flow，只填空白）+ 缺基线 pending 提示（GET /trading/sold 双轨响应）；批 2 多段派生视图待排 | implemented |
 | 20260912-learn-product-digest.md | 产品内容消化（D 形态）——app/web 喂入 → **服务端抓取** → 结构化留存；A 的能力下沉产品（B 死因是「不做抓取」）；**2026-09-12 拍板：独立页面为基线前提 + 会话内集成为增强、首期 B站/文章/图片、转写必须对接 fun-asr 且费用须可控（§3.8 六条）**；**2026-09-12 阶段 1 抓取主干已本地落地（§十 落地记录；未部署生产；topic 契约迁移与图片源留待下批）** | approved |
 | 20260912-trading-ledger-integrity.md | 交易账本完整性——三条真源（券商快照/逐笔流水/派生持仓）收口：快照锚点 **fail-closed**、append 与 replay 幂等统一、卖超**不丢数据**、`GET /trading/integrity` 账实自检 + deploy-gate 门禁（2026-09-12 生产实测：锚点文件缺失→重放双计，现金 -26666.85 应 ≈1381.93；3 笔真实卖出被静默丢弃）| implemented |
+| 20260914-login-credential-experience.md | 登录体验方案（待拍板）——L1 补 `AutofillGroup`/`autofillHints` 让 iCloud 钥匙串记住并填充密码；L2 token 落 Keychain + `local_auth` Face ID 本地门禁 + 后端会话设备列表与单设备撤销；L3（二期可选）Passkey / Sign in with Apple。生物特征永不出设备，Face ID 只是本地解锁闸；会话维持 30 天滑动（痛点不在时长，在「登录那一次」与「打开时无门禁」）| draft |
+| 20260914-ios-share-extension.md | iOS 分享扩展（Share Extension）——B站/抖音分享面板直达阿呆：新增 Extension target + App Groups 共享 `learn:digest` 限权令牌，扩展自进程内提交 `/learn/digest`、**不拉起主 App**（2026-09-14 拍板：反馈「已交给阿呆，正在读…」约 1 秒自动关 / 令牌签发时自动写入 / 只放「整理」一个动作）| approved |
 
 ## 过期判断
 

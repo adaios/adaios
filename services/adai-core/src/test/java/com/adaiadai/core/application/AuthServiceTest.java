@@ -8,6 +8,7 @@ import com.adaiadai.core.kernel.auth.Session;
 import com.adaiadai.core.kernel.auth.SessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -265,6 +266,119 @@ class AuthServiceTest {
         assertEquals(2, kicked);
         // 重置密码 / 禁用 / 删号三条路径都走本方法（AccountController），必须一并撤令牌
         verify(apiTokenService).revokeAll("bob");
+    }
+
+    // ── 登录设备管理（RFC 20260914 L2：看得见 + 撤得掉） ──
+
+    @Test
+    void login_withDeviceInfo_savesDeviceIntoSession() {
+        Account acct = withPassword(ACCOUNT_WITH_PASSWORD, "secret123");
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(acct));
+        when(sessionRepository.findByTokenHash(anyString())).thenReturn(Optional.empty());
+
+        LoginResult result = authService.login("adai", "secret123", "1.2.3.4",
+                new Session.DeviceInfo("iPhone 15", "ios", "3.66.0"));
+
+        ArgumentCaptor<Session> captor = ArgumentCaptor.forClass(Session.class);
+        verify(sessionRepository).save(captor.capture());
+        Session saved = captor.getValue();
+        assertEquals("iPhone 15", saved.device().name());
+        assertEquals("ios", saved.device().platform());
+        assertEquals("3.66.0", saved.device().appVersion());
+        // 短 id 随登录响应回给客户端（前端可据此判断「这台是不是当前设备」）
+        assertEquals(saved.tokenHash().substring(0, 8), result.sessionId());
+    }
+
+    @Test
+    void listSessions_returnsOwnActiveSessionsAndMarksCurrent() {
+        Instant now = Instant.now();
+        Session current = new Session("currhash", "adai", now, now, now.plusSeconds(3600));
+        Session other = new Session("otherhas", "adai", now, now.minusSeconds(60), now.plusSeconds(3600));
+        Session expired = new Session("expiredh", "adai", now, now, now.minusSeconds(1));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok")))
+                .thenReturn(Optional.of(current));
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
+        when(sessionRepository.findByUserId("adai")).thenReturn(List.of(current, other, expired));
+
+        List<AuthService.SessionView> views = authService.listSessions("tok").orElseThrow();
+
+        assertEquals(2, views.size(), "已过期会话不进列表");
+        assertEquals("currhash", views.get(0).id(), "最近活跃在前");
+        assertTrue(views.get(0).current());
+        assertFalse(views.get(1).current());
+    }
+
+    @Test
+    void listSessions_invalidToken_returnsEmpty() {
+        when(sessionRepository.findByTokenHash(anyString())).thenReturn(Optional.empty());
+
+        assertTrue(authService.listSessions("bad").isEmpty());
+    }
+
+    @Test
+    void revokeSession_byPrefix_removesTargetDeviceOnly() {
+        Instant now = Instant.now();
+        Session current = new Session("currhash", "adai", now, now, now.plusSeconds(3600));
+        Session other = new Session("otherhas", "adai", now, now, now.plusSeconds(3600));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok")))
+                .thenReturn(Optional.of(current));
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
+        when(sessionRepository.findByUserId("adai")).thenReturn(List.of(current, other));
+
+        AuthService.RevokeOutcome outcome = authService.revokeSession("tok", "otherh");
+
+        assertTrue(outcome.removed());
+        verify(sessionRepository).deleteByTokenHash("otherhas");
+        verify(sessionRepository, never()).deleteByTokenHash("currhash");
+    }
+
+    @Test
+    void revokeSession_ambiguousPrefix_rejectedWithoutDeleting() {
+        Instant now = Instant.now();
+        Session current = new Session("aaaa1111", "adai", now, now, now.plusSeconds(3600));
+        Session a = new Session("bbbb1111", "adai", now, now, now.plusSeconds(3600));
+        Session b = new Session("bbbb2222", "adai", now, now, now.plusSeconds(3600));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok")))
+                .thenReturn(Optional.of(current));
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
+        when(sessionRepository.findByUserId("adai")).thenReturn(List.of(current, a, b));
+
+        AuthService.RevokeOutcome outcome = authService.revokeSession("tok", "bbbb");
+
+        assertFalse(outcome.removed(), "前缀命中多台必须拒绝（防一次撤掉两台）");
+        assertTrue(outcome.error().contains("多台"));
+        verify(sessionRepository, never()).deleteByTokenHash(anyString());
+    }
+
+    @Test
+    void revokeSession_currentDevice_rejected() {
+        Instant now = Instant.now();
+        Session current = new Session("currhash", "adai", now, now, now.plusSeconds(3600));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok")))
+                .thenReturn(Optional.of(current));
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
+        when(sessionRepository.findByUserId("adai")).thenReturn(List.of(current));
+
+        AuthService.RevokeOutcome outcome = authService.revokeSession("tok", "curr");
+
+        assertFalse(outcome.removed(), "当前设备只能走「退出登录」，不在这里静默踢自己");
+        assertTrue(outcome.error().contains("当前设备"));
+        verify(sessionRepository, never()).deleteByTokenHash(anyString());
+    }
+
+    @Test
+    void revokeSession_unknownId_returnsNotFoundMessage() {
+        Instant now = Instant.now();
+        Session current = new Session("currhash", "adai", now, now, now.plusSeconds(3600));
+        when(sessionRepository.findByTokenHash(AuthService.sha256Hex("tok")))
+                .thenReturn(Optional.of(current));
+        when(accountRepository.findById("adai")).thenReturn(Optional.of(ACCOUNT_WITH_PASSWORD));
+        when(sessionRepository.findByUserId("adai")).thenReturn(List.of(current));
+
+        AuthService.RevokeOutcome outcome = authService.revokeSession("tok", "zzzz");
+
+        assertFalse(outcome.removed());
+        assertTrue(outcome.error().contains("没找到"));
     }
 
     // ── token 哈希 ──

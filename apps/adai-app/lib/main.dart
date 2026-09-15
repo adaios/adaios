@@ -12,6 +12,8 @@ import 'pages/login_page.dart';
 import 'pages/profile_page.dart';
 import 'services/push_service.dart';
 import 'services/entry_intent_service.dart';
+import 'services/share_extension_service.dart';
+import 'services/biometric_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +68,7 @@ class RootApp extends StatefulWidget {
     this.apiFactory,
     this.initialToken,
     this.forceLogin = false,
+    this.biometric,
   });
 
   /// 初始用户 ID（URL query / 持久化解析结果）。
@@ -85,6 +88,9 @@ class RootApp extends StatefulWidget {
   /// 强制登录：无 token 时显示登录页（生产 main() 传 true；旧测试不传保持旧行为）。
   final bool forceLogin;
 
+  /// 生物识别本地门禁（RFC 20260914 L2）。测试注入假实现；生产走 BiometricService。
+  final BiometricGate? biometric;
+
   @override
   State<RootApp> createState() => _RootAppState();
 }
@@ -98,6 +104,12 @@ class _RootAppState extends State<RootApp> {
 
   /// 启动校验持久化 token 期间显示 loading。
   bool _booting = false;
+
+  /// 生物识别门禁实例（测试注入优先；生产复用单例，避免重复构造 LocalAuthentication）。
+  BiometricGate? _gateInstance;
+
+  BiometricGate get _biometricGate =>
+      _gateInstance ??= (widget.biometric ?? BiometricService());
 
   /// MaterialApp 的 Navigator key：切换账号的 push/pop 必须走它。
   /// State 的 context 在 MaterialApp 之外，`Navigator.of(context)` 会返回 null 崩溃
@@ -115,6 +127,10 @@ class _RootAppState extends State<RootApp> {
   }
 
   /// 启动校验：持久化 token 调 /auth/me；失效（401）→ 清 token 回登录页。
+  ///
+  /// RFC 20260914 L2：校验通过后，若 token 来自身份钥匙串（= 上次勾了「记住我这台设备」）
+  /// 且本机可用生物识别 → 先过一道 **Face ID 本地门禁**再进主界面。
+  /// 取消/失败 → 回登录页，但**不清 token**（用户重开 App 可再来一次，不必重输密码）。
   Future<void> _validateStoredSession() async {
     final api = _apiFor(_userId);
     try {
@@ -122,17 +138,33 @@ class _RootAppState extends State<RootApp> {
       if (!mounted) return;
       setState(() {
         _userId = me['userId'] as String? ?? _userId;
+      });
+      final remembered = await UserStore.loadToken();
+      if (remembered != null && remembered.isNotEmpty) {
+        final gate = _biometricGate;
+        if (await gate.isAvailable()) {
+          final passed = await gate.authenticate(reason: '解锁阿呆阿呆');
+          if (!mounted) return;
+          if (!passed) {
+            // 门禁没过：回登录页（token 留在钥匙串，下次打开还能用 Face ID）
+            setState(() {
+              _token = null;
+              _booting = false;
+            });
+            return;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
         _booting = false;
       });
     } catch (e) {
       if (!mounted) return;
-      // 401 = 会话失效；其他错误（网络）先按未登录处理（安全默认，不静默进主界面）
-      await UserStore.clearToken();
-      if (!mounted) return;
-      setState(() {
-        _token = null;
-        _booting = false;
-      });
+      // 401 = 会话失效；其他错误（网络）先按未登录处理（安全默认，不静默进主界面）。
+      // 统一走 _handleUnauthorized：它除了清 token，还会**清分享扩展的共享容器**
+      // （不清 → 换账号后分享进来的链接会落到上一个账号的学习卡里；2026-09-14 分享扩展批的回归点）。
+      await _handleUnauthorized();
     }
   }
 
@@ -177,10 +209,18 @@ class _RootAppState extends State<RootApp> {
     // 登出/会话失效：解绑并清空外部入口队列（REVIEW P1-入口2）——
     // 登出期间到达的 Siri / 快捷指令入口不会被下一个登录的账号消费，杜绝串号。
     EntryIntentService.clearForLogout();
+    // 分享扩展那把钥匙**独立于登录会话**：登出既不会让它失效、后端也不会连带撤销它。
+    // 所以必须在这里显式清空共享容器——否则换账号后在 B站分享的链接，会被扩展提交到
+    // **上一个账号**的学习卡里（与 REVIEW P1-入口2 同族的串号；2026-09-14 自查补上，
+    // 原实现只接了「签发」与「撤销」两条路径，漏了登出这一条）。
+    await ShareExtensionService.clearToken();
     if (!mounted) return;
     setState(() {
       _token = null;
       _userId = 'default';
+      // 启动校验期间也会走到这里（持久 token 已失效）→ 必须收掉 loading，
+      // 否则 BootScreen 的进度圈会一直转（pumpAndSettle 直接超时）
+      _booting = false;
     });
   }
 
