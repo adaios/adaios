@@ -3,9 +3,11 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
+import com.adaiadai.core.domain.learn.LearnPage;
 import com.adaiadai.core.kernel.ai.AiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -20,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -70,8 +73,7 @@ class LearnDigestAppServiceTest {
             "trade_related":true,"trade_note":"与 R66 止损互补"}""";
 
     @Test
-    void digest_tradingContent_savesCardWithTradeRelated() {
-        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+    void digest_tradingContent_savesCardWithTradeRelated() {        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
         LearnCard card = service.digest("adai", "视频字幕……回调一半……",
                 null, "bilibili", "某UP", "https://b23.tv/x", "2026-05-05");
 
@@ -82,8 +84,59 @@ class LearnDigestAppServiceTest {
         assertEquals(LocalDate.now(), card.created());
         assertEquals("bilibili", card.platform());
         assertEquals("https://b23.tv/x", card.url());
-        verify(repository).save(anyString(), any(LearnCard.class));
+        verify(repository).save(anyString(), any(LearnCard.class), anyList());
         verify(repository, never()).saveRawSource(anyString(), anyString());
+    }
+
+    /** 新格式：消化时 LLM 一并给出页序列（2026-09-15 卡片流批）。 */
+    private static final String PAGED_JSON = """
+            {"title":"带页的卡","type":"ai","tags":["harness"],
+            "core_view":"一句话观点",
+            "key_points":["要点一"],
+            "questions":["疑问一"],
+            "trade_related":false,"trade_note":"",
+            "pages":[{"kind":"diagram","title":"三层递进","claim":"范围变大",
+                      "nodes":[{"text":"Prompt Engineering","note":"怎么问"}]},
+                     {"kind":"numbers","title":"账单","claim":"贵 20 倍",
+                      "numbers":[{"v":"6 小时","l":"$200"}]}]}""";
+
+    @Test
+    void digest_withPages_handsPagesToStorage() {
+        when(aiClient.generate(any(), any())).thenReturn(PAGED_JSON);
+        service.digest("adai", "素材正文", null, "bilibili", "某UP", null, null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<LearnPage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(repository).save(eq("adai"), any(LearnCard.class), captor.capture());
+        assertEquals(2, captor.getValue().size(), "页序列必须一路传到落盘");
+        assertEquals(LearnPage.KIND_DIAGRAM, captor.getValue().get(0).kind());
+        assertEquals("$200", captor.getValue().get(1).numbers().get(0).l());
+    }
+
+    @Test
+    void digest_withoutPages_storesEmptyPages() {
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+        service.digest("adai", "素材正文", null, "bilibili", "某UP", null, null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<LearnPage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(repository).save(anyString(), any(LearnCard.class), captor.capture());
+        assertTrue(captor.getValue().isEmpty(), "LLM 没给页 → 空列表 → 前端退回旧形态（不报错）");
+    }
+
+    @Test
+    void digest_brokenPages_doesNotFailCard() {
+        // pages 字段坏掉（这里是类型不对）时，卡片本身必须照常落盘——呈现层问题不该毁掉知识资产
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON.replace(
+                "\"trade_note\":\"与 R66 止损互补\"}",
+                "\"trade_note\":\"与 R66 止损互补\",\"pages\":\"这不是数组\"}"));
+        LearnCard card = service.digest("adai", "素材正文", null, "bilibili", "某UP", null, null);
+
+        assertEquals("回调一半的判定", card.title());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<LearnPage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(repository).save(anyString(), any(LearnCard.class), captor.capture());
+        assertTrue(captor.getValue().isEmpty(), "坏页 → 空页，不抛异常");
     }
 
     @Test
@@ -114,7 +167,7 @@ class LearnDigestAppServiceTest {
         LearnException e = assertThrows(LearnException.class,
                 () -> service.digest("adai", "内容", "hacking", null, null, null, null));
         assertTrue(e.getMessage().contains("类型仅支持"));
-        verify(repository, never()).save(anyString(), any());
+        verify(repository, never()).save(anyString(), any(), anyList());
     }
 
     @Test
@@ -135,7 +188,7 @@ class LearnDigestAppServiceTest {
                 () -> service.digest("adai", "原始字幕", null, null, null, null, null));
         assertTrue(e.getMessage().contains("原始素材已留存"), "素材不丢：消息应提示已留存");
         verify(repository).saveRawSource(anyString(), anyString());
-        verify(repository, never()).save(anyString(), any());
+        verify(repository, never()).save(anyString(), any(), anyList());
     }
 
     @Test
@@ -145,7 +198,7 @@ class LearnDigestAppServiceTest {
                 () -> service.digest("adai", "字幕", null, null, null, null, null));
         assertTrue(e.getMessage().contains("无法识别"));
         verify(repository).saveRawSource(anyString(), anyString());
-        verify(repository, never()).save(anyString(), any());
+        verify(repository, never()).save(anyString(), any(), anyList());
     }
 
     @Test
@@ -157,7 +210,7 @@ class LearnDigestAppServiceTest {
         assertThrows(LearnException.class,
                 () -> service.digest("adai", "字幕", null, null, null, null, null));
         verify(repository).saveRawSource(anyString(), anyString());
-        verify(repository, never()).save(anyString(), any());
+        verify(repository, never()).save(anyString(), any(), anyList());
     }
 
     @Test
@@ -166,7 +219,7 @@ class LearnDigestAppServiceTest {
                 () -> service.digest("adai", "   ", null, null, null, null, null));
         assertTrue(e.getMessage().contains("素材内容不能为空"));
         verify(aiClient, never()).generate(any(), any());
-        verify(repository, never()).save(anyString(), any());
+        verify(repository, never()).save(anyString(), any(), anyList());
     }
 
     @Test
@@ -310,7 +363,7 @@ class LearnDigestAppServiceTest {
         assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
         assertEquals(LearnCard.TYPE_TRADING, job.type());
         assertEquals("回调一半的判定", job.title());
-        verify(repository).save(eq("adai"), any(LearnCard.class));
+        verify(repository).save(eq("adai"), any(LearnCard.class), anyList());
         verify(repository, never()).saveRawSource(anyString(), anyString());
     }
 
@@ -333,7 +386,7 @@ class LearnDigestAppServiceTest {
         LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
         assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
         verify(aiClient, times(1)).generate(any(), any());
-        verify(repository, times(1)).save(eq("adai"), any(LearnCard.class));
+        verify(repository, times(1)).save(eq("adai"), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -349,7 +402,7 @@ class LearnDigestAppServiceTest {
         assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
         assertTrue(job.message().contains("素材已留存"));
         verify(repository).saveRawSource(eq("adai"), anyString());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -363,7 +416,7 @@ class LearnDigestAppServiceTest {
                 () -> svc.submit("adai", "字幕内容", null, null, null, null, null));
         assertTrue(e.getMessage().contains("繁忙"));
         assertEquals(LearnDigestAppService.STATUS_IDLE, svc.digestJobStatus("adai").status());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -470,7 +523,7 @@ class LearnDigestAppServiceTest {
         verify(visualAiClient).ask(argThat(req -> "image/png".equals(req.contentType())
                 && "书页第 3 页".equals(req.caption())), anyString());
         verify(repository).save(eq("adai"), argThat(c -> LearnCard.TYPE_TRADING.equals(c.type())
-                && "量价关系".equals(c.topic())));
+                && "量价关系".equals(c.topic())), anyList());
         verify(repository).promoteRaw(eq("adai"), eq(LearnCard.TYPE_TRADING), eq("量价关系"),
                 argThat(names -> names.stream().anyMatch(n -> n.startsWith("image-1-"))));
     }
@@ -500,7 +553,7 @@ class LearnDigestAppServiceTest {
 
         assertEquals(LearnDigestAppService.STATUS_FAILED, svc.digestJobStatus("adai").status());
         assertTrue(svc.digestJobStatus("adai").message().contains("没读出内容"));
-        verify(repository, never()).save(any(), any());
+        verify(repository, never()).save(any(), any(), anyList());
     }
 
     @Test

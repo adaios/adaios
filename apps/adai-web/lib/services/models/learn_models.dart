@@ -318,6 +318,170 @@ class LearnCardDeletedDto {
   }
 }
 
+/// 表格载荷。
+class LearnPageTable {
+  final List<String> headers;
+  final List<List<String>> rows;
+  const LearnPageTable({this.headers = const [], this.rows = const []});
+
+  static LearnPageTable? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final headers = _pageStrList(json['headers']);
+    final rows = <List<String>>[];
+    final raw = json['rows'];
+    if (raw is List) {
+      for (final r in raw) {
+        if (r is List) {
+          final cells = _pageStrList(r);
+          if (cells.isNotEmpty) rows.add(cells);
+        }
+      }
+    }
+    if (headers.isEmpty && rows.isEmpty) return null;
+    return LearnPageTable(headers: headers, rows: rows);
+  }
+}
+
+/// 数字卡载荷（v = 大号数字/词，l = 下方说明）。
+class LearnPageNumber {
+  final String v;
+  final String l;
+  const LearnPageNumber({this.v = '', this.l = ''});
+}
+
+/// 对照栏载荷（tone = good|bad|neutral）。
+class LearnPageSide {
+  final String title;
+  final String tone;
+  final List<String> items;
+  const LearnPageSide({this.title = '', this.tone = 'neutral', this.items = const []});
+
+  static LearnPageSide? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final title = (json['title'] as String?)?.trim() ?? '';
+    final items = _pageStrList(json['items']);
+    if (title.isEmpty && items.isEmpty) return null;
+    final tone = (json['tone'] as String?)?.trim().toLowerCase() ?? 'neutral';
+    return LearnPageSide(
+      title: title,
+      tone: const ['good', 'bad', 'neutral'].contains(tone) ? tone : 'neutral',
+      items: items,
+    );
+  }
+}
+
+/// 竖排图节点（不依赖 mermaid，宽屏窄屏都画得清楚）。
+class LearnPageNode {
+  final String text;
+  final String note;
+  final String tone;
+  const LearnPageNode({this.text = '', this.note = '', this.tone = 'neutral'});
+}
+
+/// 卡片页（2026-09-15 卡片流批）：一页只讲一件事——一句结论 + 一张图或一张表。
+/// **老卡没有该段 → 空列表 → 按旧形态渲染。**
+class LearnPageDto {
+  final String kind; // points|table|numbers|compare|diagram|quote
+  final String title;
+  final String claim;
+  final List<String> bullets;
+  final LearnPageTable? table;
+  final List<LearnPageNumber> numbers;
+  final LearnPageSide? left;
+  final LearnPageSide? right;
+  final List<LearnPageNode> nodes;
+
+  const LearnPageDto({
+    this.kind = 'points',
+    this.title = '',
+    this.claim = '',
+    this.bullets = const [],
+    this.table,
+    this.numbers = const [],
+    this.left,
+    this.right,
+    this.nodes = const [],
+  });
+
+  factory LearnPageDto.fromJson(Map<String, dynamic> json) {
+    final numbers = <LearnPageNumber>[];
+    final rawNumbers = json['numbers'];
+    if (rawNumbers is List) {
+      for (final n in rawNumbers) {
+        if (n is Map) {
+          final v = (n['v'] as String?)?.trim() ?? '';
+          final l = (n['l'] as String?)?.trim() ?? '';
+          if (v.isNotEmpty || l.isNotEmpty) numbers.add(LearnPageNumber(v: v, l: l));
+        }
+      }
+    }
+    final nodes = <LearnPageNode>[];
+    final rawNodes = json['nodes'];
+    if (rawNodes is List) {
+      for (final n in rawNodes) {
+        if (n is Map) {
+          final text = (n['text'] as String?)?.trim() ?? '';
+          final note = (n['note'] as String?)?.trim() ?? '';
+          if (text.isEmpty && note.isEmpty) continue;
+          final tone = (n['tone'] as String?)?.trim().toLowerCase() ?? 'neutral';
+          nodes.add(LearnPageNode(
+            text: text,
+            note: note,
+            tone: const ['good', 'bad', 'neutral', 'info'].contains(tone) ? tone : 'neutral',
+          ));
+        }
+      }
+    }
+    final kind = (json['kind'] as String?)?.trim().toLowerCase() ?? '';
+    return LearnPageDto(
+      kind: const ['points', 'table', 'numbers', 'compare', 'diagram', 'quote'].contains(kind)
+          ? kind
+          : 'points',
+      title: (json['title'] as String?)?.trim() ?? '',
+      claim: (json['claim'] as String?)?.trim() ?? '',
+      bullets: _pageStrList(json['bullets']),
+      table: LearnPageTable.fromJson(json['table']),
+      numbers: numbers,
+      left: LearnPageSide.fromJson(json['left']),
+      right: LearnPageSide.fromJson(json['right']),
+      nodes: nodes,
+    );
+  }
+
+  bool get isEmpty =>
+      title.isEmpty &&
+      claim.isEmpty &&
+      bullets.isEmpty &&
+      numbers.isEmpty &&
+      nodes.isEmpty &&
+      table == null &&
+      left == null &&
+      right == null;
+}
+
+List<String> _pageStrList(dynamic v) {
+  if (v is! List) return const [];
+  final out = <String>[];
+  for (final e in v) {
+    if (e == null) continue;
+    final s = e is String ? e.trim() : '$e'.trim();
+    if (s.isNotEmpty) out.add(s);
+  }
+  return out;
+}
+
+List<LearnPageDto> _pageList(dynamic v) {
+  if (v is! List) return const [];
+  final out = <LearnPageDto>[];
+  for (final e in v) {
+    if (e is Map) {
+      final p = LearnPageDto.fromJson(Map<String, dynamic>.from(e));
+      if (!p.isEmpty) out.add(p);
+    }
+  }
+  return out;
+}
+
 /// 单篇卡片全文（GET /learn/content）：列表接口只回产品建模的四段，md 原文才读得全。
 class LearnCardContentDto {
   final String type;
@@ -326,6 +490,7 @@ class LearnCardContentDto {
   final bool writable;
   final String content; // 该卡 md 全文（含 frontmatter；需要完整文件时用）
   final String body; // 展示用正文（后端已剥 frontmatter；老后端缺失 → 空串）
+  final List<LearnPageDto> pages; // 卡片流（2026-09-15）；空 = 老卡
 
   LearnCardContentDto({
     this.type = '',
@@ -334,6 +499,7 @@ class LearnCardContentDto {
     this.writable = true,
     this.content = '',
     this.body = '',
+    this.pages = const [],
   });
 
   factory LearnCardContentDto.fromJson(Map<String, dynamic> json) => LearnCardContentDto(
@@ -343,6 +509,7 @@ class LearnCardContentDto {
         writable: (json['writable'] as bool?) ?? true,
         content: (json['content'] as String?) ?? '',
         body: (json['body'] as String?) ?? '',
+        pages: _pageList(json['pages']),
       );
 
   bool get hasContent => displayText.trim().isNotEmpty;

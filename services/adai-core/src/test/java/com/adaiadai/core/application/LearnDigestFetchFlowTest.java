@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -90,7 +91,7 @@ class LearnDigestFetchFlowTest {
         assertEquals(LearnCard.TYPE_TRADING, job.type());
         assertEquals("回调一半的判定", job.title());
         verify(transcriptionService, never()).transcribe(anyString(), any());
-        verify(repository).save(eq("adai"), any(LearnCard.class));
+        verify(repository).save(eq("adai"), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -101,7 +102,7 @@ class LearnDigestFetchFlowTest {
 
         org.mockito.ArgumentCaptor<LearnCard> captor =
                 org.mockito.ArgumentCaptor.forClass(LearnCard.class);
-        verify(repository).save(eq("adai"), captor.capture());
+        verify(repository).save(eq("adai"), captor.capture(), anyList());
         LearnCard card = captor.getValue();
         assertEquals("bilibili", card.platform());
         assertEquals("某UP", card.author());
@@ -119,7 +120,7 @@ class LearnDigestFetchFlowTest {
 
         org.mockito.ArgumentCaptor<LearnCard> captor =
                 org.mockito.ArgumentCaptor.forClass(LearnCard.class);
-        verify(repository).save(eq("adai"), captor.capture());
+        verify(repository).save(eq("adai"), captor.capture(), anyList());
         assertEquals("example.com", captor.getValue().platform(), "文章卡片平台显示域名，比裸 article 有信息量");
     }
 
@@ -147,7 +148,7 @@ class LearnDigestFetchFlowTest {
         assertEquals("某视频", job.source().title());
         // 关键：报价阶段**没有花钱**
         verify(transcriptionService, never()).transcribe(anyString(), any());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -165,7 +166,7 @@ class LearnDigestFetchFlowTest {
         LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
         assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
         assertEquals("回调一半的判定", job.title());
-        verify(repository).save(eq("adai"), any(LearnCard.class));
+        verify(repository).save(eq("adai"), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -179,7 +180,7 @@ class LearnDigestFetchFlowTest {
         assertEquals(LearnDigestAppService.STATUS_CANCELLED, after.status());
         assertTrue(after.message().contains("没花钱"), "取消要明确告诉用户没产生费用");
         verify(transcriptionService, never()).transcribe(anyString(), any());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -213,7 +214,7 @@ class LearnDigestFetchFlowTest {
         LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
         assertEquals(LearnDigestAppService.STATUS_FAILED, job.status());
         assertTrue(job.message().contains("粘进来"));
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -298,7 +299,7 @@ class LearnDigestFetchFlowTest {
         verify(fetchService, never()).fetchAndArchive(anyString(), anyString());
         org.mockito.ArgumentCaptor<LearnCard> captor =
                 org.mockito.ArgumentCaptor.forClass(LearnCard.class);
-        verify(repository).save(eq("adai"), captor.capture());
+        verify(repository).save(eq("adai"), captor.capture(), anyList());
         assertEquals("https://example.com/post/1", captor.getValue().url(), "给了正文时链接只作来源记录");
         assertEquals("example.com", captor.getValue().platform());
     }

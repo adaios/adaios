@@ -685,6 +685,7 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
   bool _loading = true;
   String? _error;
   LearnCardContentDto? _content; // 拿到了就是全文权威（含 topic/writable）
+  bool _showOriginal = false; // 卡片流底下「看原文」展开态（2026-09-15 卡片流批）
 
   /// 动作级连点守卫（挪主题 / 删卡）：一次只送一个动作，回包前重复点击不再送出。
   bool _actionBusy = false;
@@ -954,6 +955,20 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
         ),
       ];
     }
+    // 卡片流优先（2026-09-15）：后端给了页序列就按「一页一单元」渲染，
+    // 原文退到底部折叠区——文字墙正是这次要治的病。老卡/别处整理的卡没有页 → 走下面的旧路径。
+    final pages = _content?.pages ?? const <LearnPageDto>[];
+    if (pages.isNotEmpty) {
+      return [
+        _pageFlow(pages),
+        const SizedBox(height: 16),
+        _originalSection(pages.length),
+        if (_writable) ...[
+          const SizedBox(height: 22),
+          _retellEntry(),
+        ],
+      ];
+    }
     if (_md.isNotEmpty) {
       return [
         MarkdownBody(
@@ -1074,6 +1089,289 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
     );
   }
+
+  // ── 卡片流（2026-09-15）：一页只讲一件事，一句结论 + 一张图或一张表 ──
+
+  static const Map<String, String> _kindLabels = {
+    'points': '要点',
+    'table': '对照表',
+    'numbers': '数字',
+    'compare': '正反对比',
+    'diagram': '结构',
+    'quote': '原话',
+  };
+
+  Color _toneColor(String tone) => switch (tone) {
+        'good' => AppColors.darkGreen,
+        'bad' => AppColors.darkRed,
+        'info' => AppColors.darkBlue,
+        _ => AppColors.darkGrey4,
+      };
+
+  Widget _pageFlow(List<LearnPageDto> pages) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < pages.length; i++) ...[
+            _pageCard(pages[i], i + 1, pages.length),
+            if (i != pages.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      );
+
+  Widget _pageCard(LearnPageDto p, int index, int total) => Container(
+        key: ValueKey('learn-page-$index'),
+        padding: const EdgeInsets.fromLTRB(16, 13, 16, 16),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface2,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.darkBorder),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('$index / $total',
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.darkGrey5)),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.darkGreen.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(_kindLabels[p.kind] ?? '要点',
+                  style: const TextStyle(
+                      fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.darkGreen)),
+            ),
+          ]),
+          if (p.title.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(p.title,
+                style: const TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.darkGrey1, height: 1.35)),
+          ],
+          if (p.claim.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.only(left: 10),
+              decoration: const BoxDecoration(
+                border: Border(left: BorderSide(color: AppColors.darkGreen, width: 3)),
+              ),
+              child: Text(p.claim,
+                  style: const TextStyle(fontSize: 13.5, color: AppColors.darkGrey2, height: 1.6)),
+            ),
+          ],
+          ..._pagePayload(p),
+        ]),
+      );
+
+  List<Widget> _pagePayload(LearnPageDto p) {
+    final out = <Widget>[];
+    if (p.table != null) out.addAll([const SizedBox(height: 12), _pageTable(p.table!)]);
+    if (p.numbers.isNotEmpty) out.addAll([const SizedBox(height: 12), _pageNumbers(p.numbers)]);
+    if (p.nodes.isNotEmpty) out.addAll([const SizedBox(height: 12), _pageNodes(p.nodes)]);
+    if (p.bullets.isNotEmpty) out.addAll([const SizedBox(height: 12), _pageBullets(p.bullets, p.kind == 'quote')]);
+    if (p.left != null || p.right != null) out.addAll([const SizedBox(height: 12), _pageCompare(p)]);
+    return out;
+  }
+
+  /// 表格：手机屏窄，整表可横向滑动；行长短不一时按最大列数补空（Table 要求每行列数一致）。
+  Widget _pageTable(LearnPageTable t) {
+    var cols = t.headers.length;
+    for (final r in t.rows) {
+      if (r.length > cols) cols = r.length;
+    }
+    if (cols == 0) return const SizedBox.shrink();
+    List<Widget> cells(List<String> src, {required bool header}) => List.generate(
+          cols,
+          (i) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Text(i < src.length ? src[i] : '',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.5,
+                  fontWeight: header ? FontWeight.w700 : FontWeight.w400,
+                  color: header ? AppColors.darkGrey1 : AppColors.darkGrey2,
+                )),
+          ),
+        );
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        border: TableBorder.all(color: AppColors.darkBorder, width: 1),
+        children: [
+          if (t.headers.isNotEmpty) TableRow(children: cells(t.headers, header: true)),
+          for (final r in t.rows) TableRow(children: cells(r, header: false)),
+        ],
+      ),
+    );
+  }
+
+  Widget _pageNumbers(List<LearnPageNumber> nums) {
+    final rows = <Widget>[];
+    for (var i = 0; i < nums.length; i += 2) {
+      rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: _numberCell(nums[i])),
+        const SizedBox(width: 10),
+        if (i + 1 < nums.length) Expanded(child: _numberCell(nums[i + 1])) else const Expanded(child: SizedBox()),
+      ]));
+      if (i + 2 < nums.length) rows.add(const SizedBox(height: 10));
+    }
+    return Column(children: rows);
+  }
+
+  Widget _numberCell(LearnPageNumber n) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.darkSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.darkBorder),
+        ),
+        child: Column(children: [
+          Text(n.v,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.darkGreen, height: 1.15)),
+          if (n.l.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(n.l,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4, height: 1.4)),
+          ],
+        ]),
+      );
+
+  /// 竖排结构图：节点 + 向下箭头（不需要 mermaid / WebView，手机端直接画得清楚）。
+  Widget _pageNodes(List<LearnPageNode> nodes) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < nodes.length; i++) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _toneColor(nodes[i].tone).withValues(alpha: 0.38)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(nodes[i].text,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey1, height: 1.4)),
+                if (nodes[i].note.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(nodes[i].note,
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.45)),
+                ],
+              ]),
+            ),
+            if (i != nodes.length - 1)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 3),
+                child: Center(
+                    child: Text('↓', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))),
+              ),
+          ],
+        ],
+      );
+
+  Widget _pageBullets(List<String> items, bool quote) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(quote ? '“  ' : '•  ',
+                    style: TextStyle(
+                        fontSize: quote ? 13 : 13.5,
+                        color: quote ? AppColors.darkGrey5 : AppColors.darkGrey4)),
+                Expanded(
+                  child: Text(item,
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          color: quote ? AppColors.darkGrey3 : AppColors.darkGrey2,
+                          height: 1.6,
+                          fontStyle: quote ? FontStyle.italic : FontStyle.normal)),
+                ),
+              ]),
+            ),
+        ],
+      );
+
+  Widget _pageCompare(LearnPageDto p) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (p.left != null) _sideCard(p.left!),
+          if (p.left != null && p.right != null) const SizedBox(height: 10),
+          if (p.right != null) _sideCard(p.right!),
+        ],
+      );
+
+  Widget _sideCard(LearnPageSide side) {
+    final tone = _toneColor(side.tone);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tone.withValues(alpha: 0.32)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (side.title.isNotEmpty) ...[
+          Text(side.title,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: tone)),
+          const SizedBox(height: 7),
+        ],
+        for (final item in side.items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('▸  ', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              Expanded(
+                child: Text(item,
+                    style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2, height: 1.55)),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  /// 原文折叠区：卡片流是「怎么读」，原文是「底稿」——默认收起，想看再展开。
+  Widget _originalSection(int pageCount) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            key: const ValueKey('learn-original-toggle'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _showOriginal = !_showOriginal),
+            child: Row(children: [
+              Icon(_showOriginal ? Icons.expand_less : Icons.expand_more,
+                  size: 16, color: AppColors.darkGrey4),
+              const SizedBox(width: 6),
+              Text(_showOriginal ? '收起原文' : '看原文（这 $pageCount 页的底稿）',
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey4)),
+            ]),
+          ),
+          if (_showOriginal) ...[
+            const SizedBox(height: 10),
+            MarkdownBody(
+              key: const ValueKey('learn-original-body'),
+              data: _md,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet.fromTheme(ThemeData(
+                textTheme: const TextTheme(
+                    bodyMedium: TextStyle(fontSize: 13.5, height: 1.7, color: AppColors.darkGrey3)),
+              )).copyWith(
+                p: const TextStyle(fontSize: 13.5, height: 1.7, color: AppColors.darkGrey3),
+                strong: const TextStyle(
+                    fontSize: 13.5, height: 1.7, color: AppColors.darkGrey2, fontWeight: FontWeight.w700),
+                code: const TextStyle(fontSize: 12.5, color: AppColors.darkGreen),
+              ),
+            ),
+          ],
+        ],
+      );
 
   Widget _section(String title, String body) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

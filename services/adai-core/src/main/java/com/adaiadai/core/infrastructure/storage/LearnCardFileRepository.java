@@ -1,9 +1,11 @@
 package com.adaiadai.core.infrastructure.storage;
 
 import com.adaiadai.core.domain.learn.LearnCard;
+import com.adaiadai.core.domain.learn.LearnCardPages;
 import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
+import com.adaiadai.core.domain.learn.LearnPage;
 import com.adaiadai.core.kernel.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -241,8 +243,78 @@ public class LearnCardFileRepository implements LearnCardRepository {
         return t + "/" + ti;
     }
 
+    /**
+     * 只替换/追加 {@code ## 卡片页} 段（2026-09-15 卡片流批：历史卡回填）。
+     * <p>
+     * 与 {@link #rewriteManaged} 的区别：**只碰页段**——frontmatter、核心观点/关键要点/我的疑问/复述
+     * 以及手工段全部原样保留（回填是补呈现层，不是重写用户读过的内容）。
+     */
+    @Override
+    public LearnCard updatePages(String userId, String type, String title, List<LearnPage> pages) {
+        if (pages == null || pages.isEmpty()) throw new LearnException("没有可写入的页");
+        synchronized (lockFor(userId)) {
+            Located located = locate(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            if (!located.card().writable()) {
+                throw new LearnException("这张是在 Mac 上整理的原始卡，我在这里只当资料看、不改动它");
+            }
+            String original = fileStorage.read(userId, located.path());
+            if (original == null || original.isBlank()) {
+                throw new LearnException("卡片文件读不出来，先不写");
+            }
+            fileStorage.write(userId, located.path(), replacePagesSection(original, pages));
+            log.info("learn 卡片页序列已写入 | userId={} | type={} | title={} | 页 {} 个",
+                    userId, type, title, pages.size());
+            return located.card();
+        }
+    }
+
+    /** 页段手术：丢掉旧页段 → 追加新页段；其余字节原样（含 frontmatter 与未知段）。 */
+    static String replacePagesSection(String md, List<LearnPage> pages) {
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile(
+                "^(---\\n)(.*?)(\\n---\\n)", java.util.regex.Pattern.DOTALL).matcher(md);
+        if (!fm.find()) throw new LearnException("卡片文件格式异常，无法更新");
+        String head = md.substring(0, fm.end());
+        String body = md.substring(fm.end());
+        StringBuilder sb = new StringBuilder();
+        for (BodyPart part : splitBodyParts(body)) {
+            if (part.header() != null
+                    && LearnCardPages.SECTION.equals(LearnCardPages.normalizeHeader(part.header()))) {
+                continue;   // 旧页段丢弃（新页段统一追加在末尾）
+            }
+            if (part.header() != null) {
+                sb.append("## ").append(part.header()).append("\n").append(part.content());
+            } else {
+                sb.append(part.content());
+            }
+        }
+        StringBuilder out = new StringBuilder(head).append(sb.toString().stripTrailing());
+        String section = LearnCardPages.renderSection(pages);
+        if (!section.isBlank()) out.append("\n\n").append(section);
+        return out.append("\n").toString();
+    }
+
+    @Override
+    public List<String> rawAssets(String userId, String type, String topic) {
+        if (!LearnCard.isValidType(type) || topic == null || topic.isBlank()) return List.of();
+        String dir = LEARN_DIR + type + "/" + LearnCard.topicDir(topic) + "/" + RAW_SUBDIR;
+        List<String> out = new ArrayList<>();
+        for (String f : fileStorage.listFiles(userId, dir)) {
+            int slash = f.lastIndexOf('/');
+            if (slash < 0 || slash == f.length() - 1) continue;
+            out.add(f.substring(slash + 1));
+        }
+        return out;
+    }
+
     @Override
     public void save(String userId, LearnCard card) {
+        save(userId, card, List.of());
+    }
+
+    /** 带页序列的落盘（2026-09-15 卡片流批）：页结构写进 md 的 {@code ## 卡片页} 段。 */
+    @Override
+    public void save(String userId, LearnCard card, List<LearnPage> pages) {
         if (card == null) throw new LearnException("卡片不能为空");
         synchronized (lockFor(userId)) {
             // P1-learn2：同 type + 同 title 已存在 → 拒绝，防跨日同名歧义。
@@ -258,9 +330,10 @@ public class LearnCardFileRepository implements LearnCardRepository {
             String dir = LEARN_DIR + card.type() + "/" + topic + "/";
             String file = fileName(nextSeq(userId, dir), LearnCard.fileStem(card.title()));
             String path = dir + file;
-            fileStorage.write(userId, path, toMarkdown(card));
+            fileStorage.write(userId, path, toMarkdown(card, pages));
             updateTopicReadme(userId, card.type(), topic, card, file);
-            log.info("learn 卡片已落盘 | userId={} | type={} | topic={} | file={}", userId, card.type(), topic, file);
+            log.info("learn 卡片已落盘 | userId={} | type={} | topic={} | file={} | 页 {} 个",
+                    userId, card.type(), topic, file, pages == null ? 0 : pages.size());
         }
     }
 
@@ -1033,6 +1106,16 @@ public class LearnCardFileRepository implements LearnCardRepository {
 
     /** 渲染 md（新建卡）：frontmatter 扁平字段 + 正文四段（V1 模板四段空段补齐）。 */
     static String toMarkdown(LearnCard card) {
+        return toMarkdown(card, List.of());
+    }
+
+    /**
+     * 渲染 md（新建卡，含页序列）——2026-09-15 卡片流批。
+     * <p>
+     * 页段 {@code ## 卡片页} 追加在**正文末尾**，原有四段一字不动：旧卡没有这一段照常读，
+     * 编辑手术（{@link #rewriteBodySections}）把未知段原样保留，所以改核心观点不会毁掉页结构。
+     */
+    static String toMarkdown(LearnCard card, List<LearnPage> pages) {
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
         sb.append("title: ").append(singleLine(card.title())).append("\n");
@@ -1066,6 +1149,9 @@ public class LearnCardFileRepository implements LearnCardRepository {
             sb.append(card.retell()).append("\n");
         }
         sb.append("\n");
+        // 页序列段（无页 → 空串，卡片与老模板逐字节一致——保证「没开页的卡」零差异）
+        String pagesSection = LearnCardPages.renderSection(pages);
+        if (!pagesSection.isBlank()) sb.append("\n").append(pagesSection);
         return sb.toString();
     }
 

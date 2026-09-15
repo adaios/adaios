@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -112,7 +113,7 @@ class LearnJsonRepairTest {
         assertEquals("他说\"回调一半\"就是买点", card.title());
         assertEquals(LearnCard.TYPE_TRADING, card.type());
         assertTrue(card.tradeRelated());
-        verify(repository).save(eq("adai"), any(LearnCard.class));
+        verify(repository).save(eq("adai"), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -150,7 +151,7 @@ class LearnJsonRepairTest {
 
         assertTrue(e.getMessage().contains("素材已留存"), "修不好也必须 fail-visible：素材留存、不产半成品");
         verify(repository).saveRawSource(eq("adai"), anyString());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test
@@ -239,7 +240,7 @@ class LearnJsonRepairTest {
 
         assertTrue(e.getMessage().contains("没给出可用的要点"), e.getMessage());
         verify(repository).saveRawSource(eq("adai"), anyString());
-        verify(repository, never()).save(anyString(), any(LearnCard.class));
+        verify(repository, never()).save(anyString(), any(LearnCard.class), anyList());
     }
 
     @Test

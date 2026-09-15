@@ -279,6 +279,22 @@ public class LearnController {
         return ResponseEntity.ok(digestService.moveToTopic(userId, body.type(), body.title(), body.topic()));
     }
 
+    /**
+     * 重排页序列（2026-09-15 卡片流批）：拿这张卡留在 {@code _raw/} 的原始素材，让阿呆补排
+     * 「一页一单元」的卡片流；**核心观点/要点/复述与手工编辑一字不动**（只补呈现层）。
+     * body {@code {"type","title"}}。老卡没有素材 → 400 人话（不硬凑）。
+     */
+    @PostMapping("/cards/repages")
+    public ResponseEntity<?> repages(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnCardKeyRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        LearnCard card = digestService.repages(userId, body.type(), body.title());
+        return ResponseEntity.ok(Map.of(
+                "type", card.type(), "title", card.title(), "repaged", true));
+    }
+
     /** 资产树：learn 按 type 分组（卡片清单）。 */
     @GetMapping("/tree")
     public ResponseEntity<?> tree(
@@ -452,6 +468,11 @@ public class LearnController {
 
     /** 反哺候选请求：type/title 定位源 learn 卡片。 */
     public record LearnCandidateRequest(
+            @NotBlank(message = "类型不能为空") String type,
+            @NotBlank(message = "卡片标题不能为空") String title) {}
+
+    /** 按 type/title 定位一张卡（重排页序列等卡片级动作）。 */
+    public record LearnCardKeyRequest(
             @NotBlank(message = "类型不能为空") String type,
             @NotBlank(message = "卡片标题不能为空") String title) {}
 

@@ -25,6 +25,9 @@ class _LearnBackend {
   /// 'type/title' → md 全文（GET /learn/content）
   final Map<String, String> contents = {};
 
+  /// 'type/title' → 页序列（GET /learn/content 的 pages，2026-09-15 卡片流批）
+  final Map<String, List<Map<String, dynamic>>> pages = {};
+
   /// 'type/title' → 卡元信息（topic / writable）
   final Map<String, Map<String, dynamic>> metas = {};
 
@@ -80,6 +83,7 @@ class _LearnBackend {
     List<String> keyPoints = const [],
     List<String> questions = const ['存疑点一'],
     String extra = '',
+    List<Map<String, dynamic>> pageList = const [],
   }) {
     final view = coreView.isEmpty ? '$title 的核心观点' : coreView;
     _byType[type]!.add({
@@ -90,6 +94,7 @@ class _LearnBackend {
     metas['$type/$title'] = {'topic': topic, 'writable': writable};
     contents['$type/$title'] = _md(title, coreView: view,
         keyPoints: keyPoints, questions: questions, extra: extra);
+    if (pageList.isNotEmpty) pages['$type/$title'] = pageList;
   }
 
   /// 卡片 md 原文：产品建模的四段 +（可选）Mac 侧整理的「关键内容详解」等额外段。
@@ -157,6 +162,7 @@ class _LearnBackend {
         'type': type, 'title': title,
         'topic': meta['topic'] ?? '', 'writable': meta['writable'] ?? true,
         'content': md,
+        'pages': pages['$type/$title'] ?? const [],
       });
     }
     if (p.endsWith('/api/v1/learn/find')) return _json(findHits);
@@ -506,6 +512,69 @@ void main() {
       expect(find.text('关键内容详解'), findsOneWidget, reason: '产品未建模的段也要看得到');
       expect(find.textContaining('Mac 侧整理的详解'), findsOneWidget);
       expect(find.text('复述'), findsOneWidget, reason: '能改的卡保留复述写入口');
+    });
+
+    testWidgets('卡片流：有页序列 → 一页一单元渲染，原文默认收起（2026-09-15）', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', '带页的卡',
+            created: '2026-09-15', topic: 'harness',
+            keyPoints: const ['一条很长的要点，过去只能这样堆着看'],
+            pageList: const [
+              {
+                'kind': 'diagram',
+                'title': '三层递进',
+                'claim': '范围一圈圈变大',
+                'nodes': [
+                  {'text': 'Prompt Engineering', 'note': '怎么问'},
+                  {'text': 'Harness Engineering', 'tone': 'good'},
+                ],
+              },
+              {
+                'kind': 'numbers',
+                'title': '账单',
+                'claim': '贵 20 倍',
+                'numbers': [
+                  {'v': '6 小时', 'l': r'$200'},
+                ],
+              },
+            ]);
+      final api = backend.api();
+      await pump(tester, api);
+
+      await tester.tap(find.text('带页的卡'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learn-page-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('learn-page-2')), findsOneWidget);
+      expect(find.text('1 / 2'), findsOneWidget);
+      expect(find.text('三层递进'), findsOneWidget);
+      expect(find.text('范围一圈圈变大'), findsOneWidget);
+      expect(find.text('Harness Engineering'), findsOneWidget);
+      expect(find.text('6 小时'), findsOneWidget);
+      expect(find.text('结构'), findsOneWidget, reason: 'kind 标签让用户知道这页是什么形式');
+      // 原文退到底部折叠区：默认不摊开（文字墙正是这次要治的病）
+      expect(find.byKey(const ValueKey('learn-original-body')), findsNothing);
+      expect(find.textContaining('看原文'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('learn-original-toggle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('learn-original-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('learn-original-body')), findsOneWidget,
+          reason: '想看底稿时能展开');
+    });
+
+    testWidgets('卡片流：老卡没有页序列 → 仍走原有全文渲染（零影响）', (tester) async {
+      final backend = _LearnBackend()..addCard('ai', '老卡', created: '2026-09-10');
+      final api = backend.api();
+      await pump(tester, api);
+
+      await tester.tap(find.text('老卡'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learn-full-content')), findsOneWidget);
+      expect(find.text('核心观点'), findsOneWidget);
+      expect(find.byKey(const ValueKey('learn-page-1')), findsNothing);
     });
 
     testWidgets('全文读取失败 → 人话错误态 + 重试恢复', (tester) async {

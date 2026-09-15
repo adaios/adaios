@@ -25,6 +25,32 @@ public interface LearnCardRepository {
     void save(String userId, LearnCard card);
 
     /**
+     * 保存卡片并写入页序列（2026-09-15 卡片流批）——页结构落在 md 的 {@code ## 卡片页} 段，
+     * 原有四段不动。**默认实现忽略页序列**（测试桩/其它实现不必改），页为空时与 {@link #save} 等价。
+     */
+    default void save(String userId, LearnCard card, List<LearnPage> pages) {
+        save(userId, card);
+    }
+
+    /**
+     * 只替换/追加 {@code ## 卡片页} 段（2026-09-15 卡片流批的「历史卡回填」用）。
+     * <p>
+     * frontmatter、原有四段、手工追加的段**一字不动**——回填只补呈现层，不重写用户看过的内容。
+     * 默认实现不支持（测试桩无需实现）。
+     */
+    default LearnCard updatePages(String userId, String type, String title, List<LearnPage> pages) {
+        throw new UnsupportedOperationException("本实现不支持更新页序列");
+    }
+
+    /**
+     * 列出某主题 {@code _raw/} 下的素材文件名（回填页序列时找底稿：转写稿/文章正文）。
+     * 默认实现返回空（测试桩无需实现）。
+     */
+    default List<String> rawAssets(String userId, String type, String topic) {
+        return List.of();
+    }
+
+    /**
      * 按 type + 标题精确读取。**本产品产出卡优先**；若只有别处整理的手工卡，则返回它
      * （writable=false，调用方按只读处理）。同为本产品产出且多张同名 → 抛 LearnException 400
      * （列出 created 日期，提示人工合并）——禁止静默取最新改错卡（P1-learn2）。
