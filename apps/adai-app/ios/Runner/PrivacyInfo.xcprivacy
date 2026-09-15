@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- AdaiOS app 隐私清单（2026-09-15 TestFlight 批新增）
+	     Apple 要求：使用 required-reason API 的 App 必须声明用途，否则上传报 ITMS-91053。
+	     本 App 不追踪用户、不收集数据；仅使用 UserDefaults 保存本机投递队列与设置。 -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- CA92.1：访问本 App 自己的 UserDefaults（设置、投递队列） -->
+				<string>CA92.1</string>
+				<!-- 1C8F.1：访问 App Group 容器的 UserDefaults（分享扩展与主 App 共享令牌/单槽） -->
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -25,6 +25,8 @@
 		AD41E17A0000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AD41E17A0000000000000014 /* Assets.xcassets */; };
 		AD41E17A0000000000000017 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AD41E17A0000000000000016 /* ShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		AD41E17A0000000000000041 /* ShareBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD41E17A0000000000000040 /* ShareBridge.swift */; };
+		AD41E17A0000000000000061 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AD41E17A0000000000000060 /* PrivacyInfo.xcprivacy */; };
+		AD41E17A0000000000000063 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AD41E17A0000000000000062 /* PrivacyInfo.xcprivacy */; };
 		D38B28398FC004649829CEE5 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CFFF2B3A360858309FF4FD91 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -105,6 +107,8 @@
 		AD41E17A000000000000001B /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		AD41E17A0000000000000050 /* ShareExtension.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ShareExtension.xcconfig; sourceTree = "<group>"; };
 		AD41E17A0000000000000040 /* ShareBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ShareBridge.swift; sourceTree = "<group>"; };
+		AD41E17A0000000000000060 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		AD41E17A0000000000000062 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		CFFF2B3A360858309FF4FD91 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -194,6 +198,7 @@
 				AD41E17A0000000000000005 /* DigestIntent.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				AD41E17A0000000000000040 /* ShareBridge.swift */,
+				AD41E17A0000000000000060 /* PrivacyInfo.xcprivacy */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -208,6 +213,7 @@
 				AD41E17A000000000000001A /* Info.plist */,
 				AD41E17A000000000000001B /* ShareExtension.entitlements */,
 				AD41E17A0000000000000050 /* ShareExtension.xcconfig */,
+				AD41E17A0000000000000062 /* PrivacyInfo.xcprivacy */,
 			);
 			path = ShareExtension;
 			sourceTree = "<group>";
@@ -362,6 +368,7 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+				AD41E17A0000000000000061 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,6 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD41E17A0000000000000015 /* Assets.xcassets in Resources */,
+				AD41E17A0000000000000063 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

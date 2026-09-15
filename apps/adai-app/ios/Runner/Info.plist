@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- TestFlight/App Store 上传（2026-09-15）：声明不使用非豁免加密（仅标准 HTTPS）。
+	     缺这一条时每个构建都要在 App Store Connect 手动回答出口合规问题，processing 会卡在那一步。 -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
