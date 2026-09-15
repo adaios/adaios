@@ -43,7 +43,7 @@
 - 数据路径：`data/{userId}/...`（本机账号 = `data/adai/`，default 已迁移移除；测试可用 `data/default/`）
 - **账号与订阅**：Apple Developer Program 付费个人账号（Team `4G3D37YKSB`，2026-09-13 落地）
 - **iOS 描述文件到期**：**2027-09-13**（到期当天 App 打不开，提前 30 天提醒；见 REVIEW P2-APNs5）
-- **TestFlight**：未接（缺 Apple Distribution 证书 + Archive 上传；内测构建 90 天有效）
+- **TestFlight**：**✅ 已打通（2026-09-15）**——iOS 构建 `1` 已上传且 App Store Connect 侧 **VALID**（过期 2026-12-14，即 90 天）；分发签名**绕开 Xcode 云签名**（云托管分发证书需 Admin 角色，App Manager 的 API Key 会被拒），改由 `apps/adai-app/scripts/asc_signing.py` 用 App Store Connect API 直建**分发证书**（id `2M8DTF4TPM`，到期 2027-09-15）+ 两个 App Store 描述文件，再由 `release_testflight.sh` 手动签名导出 + `altool` 上传；全程无需 Admin、无需在 Xcode 登录 Apple ID。完整方案见 `docs/deployment/ios-release.md`。内测构建 90 天有效
 - **域名 / 服务器到期**：域名 `adaiadai.com` 注册至 **2027-01-30**（DNSPod）；服务器续费日未登记
 - **公安联网备案**：须 **2026-09-30** 前完成（ICP 后 30 天内；见 REVIEW P1-合规1）
 

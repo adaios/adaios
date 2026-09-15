@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-15
 status: active
-lines: 168
+lines: 177
 depends-on:
   - ../checklists/guard.md
 related:
@@ -163,6 +163,15 @@ tags: [ai, assets, pitfalls]
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **服务绑 `0.0.0.0`，文档却写「已不对外」** | 文档声称「旧 IP:8080 直连已不对外」，实际 `ss` 显示 8080/8082/8083/8084 **全在 `0.0.0.0`**；当天静态站 **202 条外网直连记录**、API 端口有境外 IP 直连 → 可**绕过 Caddy/HTTPS 明文**访问登录接口（密码/token 裸奔） | 端口绑定从来没被当成契约：Tomcat 默认 `0.0.0.0`、`ThreadingServer(("0.0.0.0", port))`；而 Caddy 反代写 `127.0.0.1:PORT` 看起来「已经在内网」，掩盖了服务其实同时在公网裸听 | 服务侧绑回环（unit 加 `Environment=SERVER_ADDRESS=127.0.0.1`、静态服务改 `("127.0.0.1", port)`），对外只留 Caddy；**验收必须从外部视角打**（本机 curl `IP:PORT` 应连接失败），`ss` 只能证明「监听了」、不能证明「外面打不到」 | ✅ 已修（2026-09-15） | 新增长期运行的服务只测「Caddy 能通」；文档里出现「已不对外/已关闭/已收敛」这类断言却拿不出外部视角实测 |
 | **`caddy validate` 以 root 留下日志文件 → reload 静默不生效** | `caddy validate` 报 Valid，紧接着 `systemctl reload caddy` 失败：`open /var/log/caddy/xxx-access.log: permission denied`；**Caddy 保留旧配置继续服务**（站点照常 200），所以只有 exit code 与 journal 里有痕迹，极易被当成「不影响」 | `caddy validate` **不是纯语法检查**——它会真的构建配置并打开 log writer；以 root 跑就在 `/var/log/caddy/` 留下 `root:root 600` 的空文件，而服务进程是 `caddy` 用户，写不进去 | `validate` 后先清掉它留下的空日志再 reload（`sudo rm -f /var/log/caddy/*.log`）或 `sudo chown caddy:caddy`；**顺序固定为 validate → 清残留 → reload** | ✅ 已修（2026-09-15） | 用 root 跑任何「会落地文件」的校验/dry-run 工具；reload/重载类命令失败但线上仍可用 → 没人回头看 exit code |
+
+## 十八、iOS 分发签名（TestFlight，2026-09-15 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **云签名要 Admin，App Manager 不够** | `xcodebuild -exportArchive` 报 `Cloud signing permission error` + `No signing certificate "iOS Distribution" found`，即使 API Key 有效、权限看着齐全 | Xcode 的**云托管分发证书**要求 **Admin** 角色；而 App Store Connect API Key 常按「最小权限」建为 App Manager | **绕开云签名**：App Store Connect API 允许 App Manager 直接 `POST /v1/certificates`（`IOS_DISTRIBUTION` + 本地 CSR）与 `POST /v1/profiles`（`IOS_APP_STORE`），再走本地 **manual 签名**导出。见 `apps/adai-app/scripts/asc_signing.py` | ✅ 已修（2026-09-15） | 一看到「云签名权限」就去要 Admin；其实 API 自己就能建证书/profile |
+| **OpenSSL 3 的 p12，macOS `security import` 解不开** | `security: SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)`——密码明明是对的 | OpenSSL 3 默认用 AES-256-CBC + PBKDF2 加密 p12，Apple 的 `security` 不认这套 | `openssl pkcs12 -export **-legacy** …` 生成传统算法 p12 | ✅ 已修（2026-09-15） | 手工合成 p12 给 keychain 用时；报「密码错误」但你确定密码没错 |
+| **App Store Connect API 不给 `include` 就不返回 relationships** | 按 bundleId 匹配 profile「全部落空」→ 误判成「没有」→ 为同一 App 建出第二个 profile；再跑撞 `409 Multiple profiles found with the name …` | 列表端点默认**不返回**关联数据，`relationships` 为空 → 匹配条件恒为 false | 列表一律带 `&include=bundleId` 再按关联匹配；**并且** DELETE 成功返回 **204 空 body**，`json.loads` 会抛异常——必须判空 body，否则清理循环崩在第一个删除处（本批因此**误删了分享扩展的描述文件**） | ✅ 已修（2026-09-15） | 用「关联 id」做集合匹配却拿不到 relationships；批量删除脚本只删成功第一条就炸 |
+| **`flutter build ipa` 的 export 阶段必失败** | 脚本报错退出，但其实 archive 已经产出 | 本机 Xcode 未登录账号 → Flutter 内置的 export 走云签名必挂；**我们要的只是 archive** | 脚本容忍该阶段失败（`set +e`）并**检查 archive 是否真的产出**，导出改由自己的 manual 签名流程接管 | ✅ 已修（2026-09-15） | 把 `flutter build ipa` 当「一条命令出包」用；因为它失败就认为「构建没成」 |
 
 ---
 **追加方式**：AI 在开发/审核中发现新坑 → ①入对应 checklists（活文档）②本文件按域补一行（索引）。两条都要，防止只入一处。
