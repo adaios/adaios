@@ -28,6 +28,9 @@ enum ShareBridge {
     static let tokenKey = "adai_share_token"
     static let tokenIdKey = "adai_share_token_id"
     static let savedAtKey = "adai_share_saved_at"
+    /// 令牌到期时间（ISO8601 字符串，RFC 20260915 自动续期批）——
+    /// 主 App 靠它判断「还剩不到 7 天就换把新的」；扩展不读这个键。
+    static let expiresAtKey = "adai_share_expires_at"
 
     /// App Groups 的 UserDefaults。`suiteName` 拼错 / 能力没开时可能返回一个「看着能用但
     /// 不共享」的实例，所以调用方一律配合回读校验与 `containerURL` 判定。
@@ -71,6 +74,13 @@ enum ShareBridgeHandler {
         defaults.set(token, forKey: ShareBridge.tokenKey)
         defaults.set(args["id"] as? String, forKey: ShareBridge.tokenIdKey)
         defaults.set(Date().timeIntervalSince1970, forKey: ShareBridge.savedAtKey)
+        // 到期时间：空值必须**移除**旧键——否则上一把钥匙的过期时间会留下来，
+        // 骗过自动续期的判断（以为还没临期，实际新钥匙没有记录）。
+        if let expiresAt = args["expiresAt"] as? String, !expiresAt.isEmpty {
+            defaults.set(expiresAt, forKey: ShareBridge.expiresAtKey)
+        } else {
+            defaults.removeObject(forKey: ShareBridge.expiresAtKey)
+        }
 
         // 回读校验：写进去但读不出来（Entitlements 没配好 / 容器不可用）必须当场暴露，
         // 否则用户会以为「已就绪」，直到某天在 B站分享时才失败。
@@ -83,6 +93,7 @@ enum ShareBridgeHandler {
         defaults.removeObject(forKey: ShareBridge.tokenKey)
         defaults.removeObject(forKey: ShareBridge.tokenIdKey)
         defaults.removeObject(forKey: ShareBridge.savedAtKey)
+        defaults.removeObject(forKey: ShareBridge.expiresAtKey)
         return defaults.string(forKey: ShareBridge.tokenKey) == nil
     }
 
@@ -104,6 +115,9 @@ enum ShareBridgeHandler {
         if let id = defaults.string(forKey: ShareBridge.tokenIdKey) { out["id"] = id }
         let savedAt = defaults.double(forKey: ShareBridge.savedAtKey)
         if savedAt > 0 { out["savedAt"] = savedAt }
+        if let expiresAt = defaults.string(forKey: ShareBridge.expiresAtKey) {
+            out["expiresAt"] = expiresAt
+        }
         return out
     }
 

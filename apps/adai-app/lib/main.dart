@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'root_keys.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
+import 'services/share_token_keeper.dart';
 import 'services/api_service.dart';
 import 'services/user_store.dart';
 import 'main_page.dart';
@@ -159,6 +161,9 @@ class _RootAppState extends State<RootApp> {
       setState(() {
         _booting = false;
       });
+      // RFC 20260915：启动时也确保一次——覆盖「装完没手动签过」「老数据补到期时间」
+      // 「令牌临期」三种情况。同样静默，且不阻塞进主界面。
+      unawaited(ShareTokenKeeper.ensure(api));
     } catch (e) {
       if (!mounted) return;
       // 401 = 会话失效；其他错误（网络）先按未登录处理（安全默认，不静默进主界面）。
@@ -232,6 +237,9 @@ class _RootAppState extends State<RootApp> {
       _userId = session.userId;
       _needsSelect = false;
     });
+    // RFC 20260915：登录后顺手把「分享扩展那把钥匙」放好——用户零操作。
+    // 静默执行（内部吞异常），失败也绝不影响登录；不 await 是为了不拖慢进主界面。
+    unawaited(ShareTokenKeeper.ensure(_apiFor(session.userId)));
   }
 
   /// 登出（Launcher 底部「退出登录」）：调后端注销 + 清本地 → 回登录页。

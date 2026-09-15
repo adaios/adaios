@@ -179,7 +179,9 @@ final class ShareViewController: UIViewController {
 
     private func submit(_ link: String) {
         guard let token = ShareAuth.token else {
-            setFailure("阿呆还没拿到钥匙——先在阿呆里打开学习页，把分享接上。")
+            // RFC 20260915：主 App 现在会在登录/启动时**自动**把钥匙放好，
+            // 所以这里不该再让用户去翻学习页——只要给一个动作：「打开阿呆一次」。
+            setFailure("分享还没接通——打开阿呆一次，就会自动接上。")
             return
         }
         guard let base = Self.apiBaseUrl, let url = URL(string: base + Self.digestPath) else {
@@ -251,7 +253,7 @@ final class ShareViewController: UIViewController {
         }
         switch status {
         case 400: return "这个链接我没法读（换个链接试试）。"
-        case 401: return "钥匙过期或已被收回——回阿呆重新接一次分享。"
+        case 401: return "这把钥匙已失效——打开阿呆一次，会自动换一把新的。"
         case 403: return "「学习」这件事我这儿还关着，去插件设置里打开再来。"
         case 404: return "没找到整理的服务，可能是我这边地址不对。"
         case 500...599: return "我这边出了点问题，稍后再试一次。"

@@ -20,6 +20,10 @@ class ShareExtensionStatus {
   /// 令牌写入时间（Unix 秒）。
   final double? savedAt;
 
+  /// 令牌到期时间（ISO8601 字符串，RFC 20260915 自动续期批）。
+  /// `null` = 容器里的老数据没记过（升级上来的），调用方应**补签一次**把它带上。
+  final String? expiresAt;
+
   /// App Group id（排查用，界面不展示）。
   final String? appGroup;
 
@@ -28,6 +32,7 @@ class ShareExtensionStatus {
     required this.hasToken,
     this.id,
     this.savedAt,
+    this.expiresAt,
     this.appGroup,
   });
 
@@ -36,6 +41,7 @@ class ShareExtensionStatus {
         hasToken = false,
         id = null,
         savedAt = null,
+        expiresAt = null,
         appGroup = null;
 
   @override
@@ -68,12 +74,17 @@ class ShareExtensionService {
   /// 把令牌明文写进共享容器。返回 `true` 才算真的接上了——
   /// 原生侧做了**回读校验**，写进去读不出来（Entitlements 没配好）会返回 false，
   /// 不靠「调用没报错」下结论。
-  static Future<bool> saveToken({required String token, String? id}) async {
+  static Future<bool> saveToken({
+    required String token,
+    String? id,
+    String? expiresAt,
+  }) async {
     if (!supported || token.trim().isEmpty) return false;
     try {
       final ok = await _channel.invokeMethod<bool>('saveToken', {
         'token': token,
         'id': id,
+        'expiresAt': expiresAt,
       });
       return ok ?? false;
     } catch (_) {
@@ -105,6 +116,7 @@ class ShareExtensionService {
         savedAt: raw['savedAt'] is num
             ? (raw['savedAt'] as num).toDouble()
             : null,
+        expiresAt: raw['expiresAt']?.toString(),
         appGroup: raw['appGroup']?.toString(),
       );
     } catch (_) {
