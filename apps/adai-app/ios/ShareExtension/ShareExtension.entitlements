@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  ShareExtension.entitlements — 分享扩展的能力声明（RFC 20260914）。
+
+	  **必须与主 App 的 Runner.entitlements 声明同一个 App Group**：扩展进程有独立沙箱，
+	  读不到主 App 的 UserDefaults；分享链接要提交给后端就得有那把限权令牌
+	  （`learn:digest`，不是登录会话），而令牌只能经 App Groups 容器共享过去。
+
+	  ⚠️ App Group 的 id 在两处（本文件与 Runner.entitlements）必须逐字一致，
+	  且必须与 ShareBridge.swift / ShareAuth.swift 里的 suiteName 字面量一致——
+	  拼错的表现是「扩展读不到令牌」，提交时给人话「阿呆还没拿到钥匙」，不崩溃。
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.adaiadai.adaiApp</string>
+	</array>
+</dict>
+</plist>

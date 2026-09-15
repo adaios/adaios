@@ -367,6 +367,37 @@ xcrun devicectl device process launch --device <UDID> com.adaiadai.adaiApp
 > **装机信任步骤（仅免费签名需要）**：付费开发者账号的 development 签名通常**不再需要**「设置 → 通用 → VPN与设备管理 → 信任」这一步；若仍被要求信任，按提示操作即可（2026-09-13 未在付费账号下重复验证该差异）。
 > TestFlight 待接（需 Apple Distribution 证书 + Archive 上传；内测构建 90 天有效）。
 > 历史装机（≤2026-08-30）烧 IP `http://82.156.111.146:8080`；**2026-09-10 起改烧域名** `https://api.adaiadai.com`。
+>
+> **分享扩展（Share Extension，RFC 20260914）的装机与验证**——⚠️ **这条链路尚未在真机验证过**
+> （2026-09-14 构建与 entitlements 已取证，但 `devicectl` 报设备 `unavailable`，装不了机）：
+> 1. **App Groups 能力**：`Runner` 与 `ShareExtension` 两个 App ID 都要挂 `group.com.adaiadai.adaiApp`。
+>    自动签名下 `flutter build ios` 会自行去 Apple 侧开启并重签描述文件——2026-09-14 实测**已成功**，
+>    判据是产物 entitlements 里两个 target 都出现 `com.apple.security.application-groups`：
+>    `codesign -d --entitlements :- build/ios/iphoneos/Runner.app`（主 App）
+>    `codesign -d --entitlements :- build/ios/iphoneos/Runner.app/PlugIns/ShareExtension.appex`（扩展）。
+> 2. **扩展真的嵌进去了**：`ls build/ios/iphoneos/Runner.app/PlugIns/` 应看到 `ShareExtension.appex`。
+> 3. **装机**：`xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app`
+>    （设备 `unavailable` 时报 `unable to locate a device matching the requested device identifier`，
+>    error 1011 —— 需 USB 连接或同一网络且已解锁）。
+> 4. **一次性动作**：打开阿呆 → 学习页页头「把分享接到阿呆」→ 点「给我一把钥匙」——这一步会把限权令牌
+>    写进 App Groups 共享容器（弹窗会显示「分享面板已就绪」）。**在此之前分享面板里点了也不会有反应**。
+> 5. **真实验收**：B站（或抖音）→ 分享 → 面板里找「阿呆阿呆」→ 点一下 → 应看到「已交给阿呆，正在读…」
+>    约 1 秒后自动关闭，且**主 App 没有被拉起**；稍后打开阿呆，学习页能看到正在读/新卡片。
+>    ℹ️ 面板「第一排」由系统按使用习惯排序，新装的扩展可能先落在**「更多」**里——不是失败，用一次会浮上来。
+>
+> **分享扩展排查对照表**（真机验收时按现象对号入座；每条都对应扩展里那句人话或一个可查的事实）：
+>
+> | 现象 | 最可能的原因 | 怎么办 |
+> |:-----|:-------------|:-------|
+> | 分享面板里**找不到**「阿呆阿呆」 | ① 新装的扩展被系统排在**「更多」**里；② 分享的内容类型不在激活规则内（本批只收 URL / 网页 / 文本，**图片和文件不在范围**）；③ 扩展根本没装进包 | ① 拉到最后点「更多」找它并置顶；② 确认分享的是链接/文本；③ `ls build/ios/iphoneos/Runner.app/PlugIns/` 应有 `ShareExtension.appex` |
+> | 点了「阿呆阿呆」，**转一下就没了 / 没反应** | 共享容器里没有令牌（从未在 App 里点过「给我一把钥匙」） | 打开阿呆 → 学习页页头「把分享接到阿呆」→ 弹窗应显示「**分享面板已就绪**」；若显示「接过一次，但好像已经失效了」就再点一次「给我一把钥匙」 |
+> | 扩展里说「阿呆还没拿到钥匙」 | 同上（容器空），或 **App Groups 没签上** | ① 先签发一次；② 仍不行 → `codesign -d --entitlements :- <路径>/ShareExtension.appex` 必须能看到 `group.com.adaiadai.adaiApp` |
+> | 扩展里说「钥匙过期或已被收回」 | 令牌 90 天到期 / 在网页端被撤销 / 改密触发了 `revokeAll` | 回 App 重新点「给我一把钥匙」（会覆盖容器里那把） |
+> | 扩展里说「我还在读上一条，这条没排上」 | 后端同一时间只跑一个消化任务（`jobs.compute` 抢占失败即复用当前 job，**新输入不入队**） | 等上一条读完再分享。这是**如实告知**，不是 bug；后端丢弃语义待改（REVIEW P2-分享4） |
+> | 扩展里说「这次分享来的内容里我没找到链接」 | 分享的是纯文字/图片，或链接是非 http scheme（如 `bilibili://`） | 确认分享内容里带 `http(s)://` 链接 |
+> | 扩展里说「学习这件事我这儿还关着」 | learn 插件未启用 | 到插件设置里打开 |
+> | 想确认扩展**有没有被系统加载** | — | Xcode → Window → Devices and Simulators → 选设备 → Open Console，过滤 `ShareExtension`；或手机「设置 → 隐私与安全性 → 分析与改进 → 分析数据」搜 `ShareExtension` |
+> | 扩展**闪退** | 历史原因之一已修（曾因 xcconfig 继承而链上 Flutter 引擎，2026-09-14 实测已剥离为 0 依赖）；其它崩溃看崩溃日志 | 取「分析数据」里的 `ShareExtension-*.ips` 看栈 |
 
 ## 10. 域名 + HTTPS（adaiadai.com，2026-09-01 已上线）
 

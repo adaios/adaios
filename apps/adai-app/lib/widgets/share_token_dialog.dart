@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_service.dart';
+import '../services/share_extension_service.dart';
 import '../theme/app_colors.dart';
 
 /// ShareTokenDialog — 「把分享接到阿呆」的引导（2026-09-13 外部入口批）。
@@ -70,10 +71,24 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
 
   List<Map<String, dynamic>> _tokens = const [];
 
+  /// 分享扩展的凭据状态（RFC 20260914）。**仅 iOS 有值**：Android/Web 上
+  /// [ShareExtensionService.supported] 为 false，这一段 UI 整个不出现——
+  /// 不能让用户去找一个在这台设备上根本不存在的东西。
+  ShareExtensionStatus? _shareStatus;
+
   @override
   void initState() {
     super.initState();
     _load();
+    unawaited(_loadShareStatus());
+  }
+
+  /// 查共享容器里有没有那把钥匙（只在 iOS 有意义）。
+  Future<void> _loadShareStatus() async {
+    if (!ShareExtensionService.supported) return;
+    final status = await ShareExtensionService.status();
+    if (!mounted) return;
+    setState(() => _shareStatus = status);
   }
 
   /// 明文没复制走就要拦一下。
@@ -109,7 +124,7 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
       _hint = null;
     });
     try {
-      final data = await widget.api.issueExternalToken(label: '快捷指令');
+      final data = await widget.api.issueExternalToken(label: '系统分享与快捷指令');
       if (!mounted) return;
       final plain = data['token']?.toString();
       if (plain == null || plain.isEmpty) {
@@ -121,13 +136,32 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
         await _load();
         return;
       }
+      final freshId = data['id']?.toString();
       setState(() {
         _freshPlain = plain;
         _freshPrefix = data['prefix']?.toString();
-        _freshId = data['id']?.toString();
+        _freshId = freshId;
         _freshCopied = false;
-        _busy = false;
       });
+      // 顺手把明文搬进 App Groups 共享容器：分享扩展是**独立进程**，读不到 App 的存储，
+      // 而明文只在这一次响应里存在（后端只存哈希）——过了这一刻谁也还原不出来。
+      // 用户拍板「签发时自动写入」，所以这里不额外加一步确认（2026-09-14 RFC）。
+      if (ShareExtensionService.supported) {
+        final connected =
+            await ShareExtensionService.saveToken(token: plain, id: freshId);
+        if (!mounted) return;
+        if (!connected) {
+          // 「拿到钥匙」与「系统分享接上了」是两件事，失败必须分开说——
+          // 否则用户会以为分享面板已经能用了。
+          setState(() => _actionError =
+              '钥匙拿到了，但系统分享那边没接上。先把上面这串复制走，我回头修这里。');
+        }
+        await _loadShareStatus();
+      }
+      if (!mounted) return;
+      // `_busy` 复位必须放在**所有 await 之后**：早复位会让等待期间按钮已可点，
+      // 连点就签发两把——第一把明文被第二把顶掉，容器里留的是后写入的那把。
+      setState(() => _busy = false);
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -169,6 +203,7 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
       // 成功分支也要复位 _busy——只复位失败分支的话，收回一把之后按钮就永久灰了。
       setState(() => _busy = false);
       _showHint('收回来了，这把钥匙立刻失效。');
+      await _syncShareContainerAfterRevoke(revokedId: id);
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -177,6 +212,59 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
         _actionError = _humanError(e);
       });
     }
+  }
+
+  /// 撤销之后同步共享容器。**判不准就清**：容器里那把可能正是被撤的，
+  /// 留着它只会让用户下次分享时收到一个说不清的 401；宁可让他重新点一次「发一把」，
+  /// 也不要留一把可能已经失效的钥匙（fail-safe）。
+  Future<void> _syncShareContainerAfterRevoke({String? revokedId}) async {
+    if (!ShareExtensionService.supported) return;
+    final status = _shareStatus;
+    final sharedId = status?.id;
+    final revoked = (revokedId != null && revokedId.isNotEmpty) ? revokedId : null;
+    // 只有**确知容器里躺的是另一把**时才留着不动（状态可读 + 有令牌 + 两边 id 都明确且不同）。
+    // 其余一律清 —— 包括 `_shareStatus == null`（通道报错或还没返回）：「不知道」时不清，
+    // 就是留下一把可能已经失效的钥匙；判不准就清是这里唯一安全的默认（fail-safe）。
+    final knownOtherKey = status != null &&
+        status.hasToken &&
+        sharedId != null &&
+        revoked != null &&
+        sharedId != revoked;
+    if (knownOtherKey) return;
+    final cleared = await ShareExtensionService.clearToken();
+    await _loadShareStatus();
+    if (!cleared && mounted) {
+      // 清失败不能静默：界面若继续显示「已就绪」，用户会以为分享还能用（对抗审查 P2-6）。
+      setState(() => _hint = '收回来了。系统分享那边那把我没清掉，回头我修这里。');
+    }
+  }
+
+  /// 共享容器里那把钥匙**现在还有效吗**。
+  ///
+  /// 只看「字符串在不在」不够（对抗审查 P2-7）：令牌可能已经到期（90 天）或在别处被撤销，
+  /// 那种情况下弹窗说「已就绪」，用户会去分享面板白找一趟。
+  /// 判据复用**列表的真实数据**（容器里只存了副本的 id）：id 不在列表里 = 已被撤销/删号；
+  /// 列表里那项 `expiresAt` 已过 = 已到期。**查不准时不误判**（列表没读到、旧版没记 id、
+  /// 日期解析不了，一律当作有效）——「不知道」不能渲染成「失效」。
+  bool get _sharedTokenAlive {
+    final status = _shareStatus;
+    if (status == null || !status.hasToken) return false;
+    final id = status.id;
+    if (id == null || id.isEmpty) return true;
+    if (_listError != null) return true; // 列表没读到 ≠ 这把没了
+    Map<String, dynamic>? match;
+    for (final token in _tokens) {
+      if (token['id']?.toString() == id) {
+        match = token;
+        break;
+      }
+    }
+    if (match == null) return false;
+    final expiresAt = match['expiresAt']?.toString();
+    if (expiresAt == null || expiresAt.isEmpty) return true;
+    final parsed = DateTime.tryParse(expiresAt);
+    if (parsed == null) return true;
+    return parsed.isAfter(DateTime.now());
   }
 
   Future<void> _copy(String text, String what, {bool freshKey = false}) async {
@@ -351,6 +439,7 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
       return children;
     }
 
+    children.addAll(_buildShareSheetSection());
     children.addAll(_buildHowTo());
     children.add(const SizedBox(height: 16));
     children.addAll(_buildExistingKeys());
@@ -393,6 +482,70 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
           ],
         ),
       ),
+    ];
+  }
+
+  /// iOS 上的「分享面板里的阿呆阿呆」（RFC 20260914）。
+  ///
+  /// **排在快捷指令引导之前**：iOS 上这才是主路径——点分享就进阿呆，不用配四条动作；
+  /// 快捷指令引导保留给 Android/Web 与「不想用扩展」的场景（那两边没有这个扩展）。
+  List<Widget> _buildShareSheetSection() {
+    if (!ShareExtensionService.supported) return const <Widget>[];
+    final status = _shareStatus;
+
+    final String title;
+    final String detail;
+    Color color = AppColors.darkGrey3;
+    if (status == null) {
+      title = '正在确认系统分享接上没…';
+      detail = '';
+    } else if (!status.available) {
+      title = '系统分享这条路还没接上';
+      detail = '这台手机的共享容器没配好。先用下面的快捷指令，一样能分享。';
+      color = AppColors.darkOrange;
+    } else if (status.hasToken && _sharedTokenAlive) {
+      title = '分享面板已就绪';
+      detail = '在 B站/抖音点分享，在那一排里找「阿呆阿呆」。';
+      color = AppColors.darkGreen;
+    } else if (status.hasToken) {
+      // 容器里有字符串 ≠ 那把钥匙还有效（90 天到期、或在别处被撤销）。
+      title = '接过一次，但好像已经失效了';
+      detail = '再点一次「给我一把钥匙」，我就把分享重新接上。';
+      color = AppColors.darkOrange;
+    } else {
+      title = '还差一步';
+      detail = '点下面的「给我一把钥匙」，我就把分享接上。';
+      color = AppColors.darkOrange;
+    }
+
+    return [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(
+          status != null && status.hasToken && _sharedTokenAlive
+              ? Icons.ios_share
+              : Icons.info_outline,
+          size: 15,
+          color: color,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+              if (detail.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(detail,
+                    style: const TextStyle(
+                        fontSize: 11, height: 1.4, color: AppColors.darkGrey4)),
+              ],
+            ],
+          ),
+        ),
+      ]),
+      const SizedBox(height: 14),
     ];
   }
 

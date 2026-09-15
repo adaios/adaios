@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:adai_app/services/api_service.dart';
 import 'package:adai_app/widgets/share_token_dialog.dart';
+import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -71,6 +72,7 @@ class _Backend {
       ];
       return _json({
         if (!issueWithoutToken) 'token': plainToken,
+        'id': _idFor(prefix),
         'prefix': prefix,
         'label': '快捷指令',
         'scopes': ['learn:digest'],
@@ -98,14 +100,58 @@ class _Backend {
   }
 }
 
+/// 假的 App Groups 共享容器（模拟原生 `ShareBridgeHandler`）。
+///
+/// `saveToken` 的返回值按**回读校验**语义给：写进去读得出来才算 true——
+/// 原生侧就是这么做的，测试跟着这个语义走才能锁住「写失败 ≠ 已就绪」。
+class _ShareContainer {
+  bool available = true;
+  String? token;
+  String? id;
+  int saveCalls = 0;
+  int clearCalls = 0;
+
+  Future<Object?> handle(MethodCall call) async {
+    switch (call.method) {
+      case 'saveToken':
+        saveCalls++;
+        final args = (call.arguments as Map?) ?? const {};
+        if (!available) return false;
+        token = args['token'] as String?;
+        id = args['id'] as String?;
+        return token != null && token!.isNotEmpty;
+      case 'clearToken':
+        clearCalls++;
+        token = null;
+        id = null;
+        return true;
+      case 'status':
+        return <String, Object?>{
+          'available': available,
+          'hasToken': token != null && token!.isNotEmpty,
+          if (id != null) 'id': id,
+          'appGroup': 'group.com.adaiadai.adaiApp',
+        };
+    }
+    return null;
+  }
+}
+
 void main() {
   late _Backend backend;
   late ApiService api;
+  late _ShareContainer container;
   String? clipboard;
 
   setUp(() {
     backend = _Backend();
+    container = _ShareContainer();
     clipboard = null;
+    // 分享扩展的共享容器（App Groups）走独立通道（RFC 20260914）：测试环境装假实现，
+    // 否则 iOS 分支一调用就抛 MissingPluginException。
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('adai/share'), (call) => container.handle(call));
     // 剪贴板走 flutter/platform 通道：测试环境必须装假实现，否则 Clipboard.setData
     // 抛 MissingPluginException，复制分支永远走不到。
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -125,6 +171,10 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('adai/share'), null);
+    // 平台覆盖是全局的：不复位会污染后面所有测试（第 ㉔ 条正靠默认平台为「非 iOS」）
+    debugDefaultTargetPlatformOverride = null;
   });
 
   Future<void> pumpDialog(WidgetTester tester) async {
@@ -498,5 +548,161 @@ void main() {
 
     expect(find.textContaining('收回来了'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
+  });
+  // ── 2026-09-14 分享扩展批（RFC 20260914）──
+  //
+  // iOS 的「分享面板里的阿呆阿呆」是**独立进程**，读不到 App 的存储，只能读 App Groups
+  // 共享容器。所以这一页在 iOS 上多了「把钥匙搬进容器」这一步，这里锁四件事：
+  // 签发→写入、撤销→清空、容器不可用→如实说、非 iOS→整段不出现。
+  //
+  // ⚠️ 平台覆盖必须用 try/finally 在**测试体内部**复位：Flutter 的测试框架在测试体
+  // 结束时就断言「foundation 调试变量已复位」，addTearDown 执行得太晚（2026-09-14 实测踩到）。
+
+  testWidgets('⑳ iOS：签发成功后把明文写进共享容器（用户零操作）', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await pumpDialog(tester);
+
+      await tapText(tester, '给我一把钥匙');
+
+      expect(container.saveCalls, 1,
+          reason: '签发成功就该顺手把系统分享接上，不该再要用户多做一步');
+      expect(container.token, _Backend.plainToken,
+          reason: '搬进容器的必须是那把真正的令牌明文');
+      expect(container.id, _Backend._idFor('adai_abcd1234'),
+          reason: 'id 也必须一起进去——撤销时靠它判断「扩展用的是不是这一把」');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉑ iOS：容器里有钥匙 → 说「分享面板已就绪」并指路', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      container.token = 'adai_existing_token';
+      await pumpDialog(tester);
+
+      expect(find.text('分享面板已就绪'), findsOneWidget);
+      expect(find.textContaining('那一排里找「阿呆阿呆」'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉒ iOS：容器可用但没钥匙 → 说「还差一步」，不谎报已就绪', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await pumpDialog(tester);
+
+      expect(find.text('还差一步'), findsOneWidget);
+      expect(find.text('分享面板已就绪'), findsNothing,
+          reason: '没接上就说没接上——谎报会让用户去分享面板白找一趟');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉓ iOS：共享容器不可用 → 如实说 + 保留快捷指令退路', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      container.available = false;
+      await pumpDialog(tester);
+
+      expect(find.text('系统分享这条路还没接上'), findsOneWidget);
+      expect(find.textContaining('先用下面的快捷指令'), findsOneWidget,
+          reason: '路断了要给另一条路，不能只说「不行」');
+      // 快捷指令引导仍在（这条退路是真的可用，不是安慰话）
+      expect(find.text('怎么用在快捷指令里'), findsOneWidget);
+
+      // **真的点一次**「发一把」：容器不可用时写进去会失败，必须如实说「没接上」——
+      // 不能因为签发本身成功就渲染成「已就绪」（原用例只开窗没点按钮，等于没验证）。
+      await tapText(tester, '给我一把钥匙');
+      expect(find.textContaining('系统分享那边没接上'), findsOneWidget);
+      expect(find.text('分享面板已就绪'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉔ 非 iOS：整段不出现（别让用户找不存在的东西）', (tester) async {
+    await pumpDialog(tester);
+
+    expect(find.text('分享面板已就绪'), findsNothing);
+    expect(find.text('还差一步'), findsNothing);
+    expect(find.textContaining('那一排里找'), findsNothing);
+    expect(container.saveCalls, 0, reason: '非 iOS 不该去碰原生通道');
+  });
+
+  testWidgets('㉕ iOS：撤销的是扩展那把 → 清空共享容器（不留孤儿钥匙）', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      const prefix = 'adai_deadbeef';
+      final id = _Backend._idFor(prefix);
+      backend.tokens = [
+        {
+          'id': id,
+          'prefix': prefix,
+          'label': '快捷指令',
+          'scopes': ['learn:digest'],
+          'createdAt': '2026-09-01T10:00:00Z',
+          'lastUsedAt': null,
+        }
+      ];
+      container.token = 'adai_existing_token';
+      container.id = id;
+      await pumpDialog(tester);
+
+      await tapText(tester, '收回');
+
+      expect(container.clearCalls, 1, reason: '撤销了正在用的那把，容器里不能留');
+      expect(container.token, isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉗ iOS：容器里有钥匙但已被撤销 → 不谎报「已就绪」', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      // 容器里还躺着字符串，但它已经不在令牌列表里了（被撤销 / 网页端撤销 / 删号）。
+      container.token = 'adai_orphan_token';
+      container.id = 'a' * 64;
+      backend.tokens = [];
+      await pumpDialog(tester);
+
+      expect(find.text('接过一次，但好像已经失效了'), findsOneWidget);
+      expect(find.text('分享面板已就绪'), findsNothing,
+          reason: '容器里有字符串 ≠ 那把钥匙还有效——谎报已就绪会让用户去分享面板白找一趟');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('㉖ iOS：撤销的是别的把 → 容器里的钥匙不动（不误伤）', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      const prefix = 'adai_deadbeef';
+      backend.tokens = [
+        {
+          'id': _Backend._idFor(prefix),
+          'prefix': prefix,
+          'label': '快捷指令',
+          'scopes': ['learn:digest'],
+          'createdAt': '2026-09-01T10:00:00Z',
+          'lastUsedAt': null,
+        }
+      ];
+      // 容器里躺着的是**另一把**（id 不同）——撤销它不该误伤扩展那条链路
+      container.token = 'adai_existing_token';
+      container.id = 'f' * 64;
+      await pumpDialog(tester);
+
+      await tapText(tester, '收回');
+
+      expect(container.clearCalls, 0);
+      expect(container.token, 'adai_existing_token');
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

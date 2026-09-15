@@ -1,0 +1,22 @@
+// ShareExtension.xcconfig — 扩展自己的构建设置入口（RFC 20260914 分享扩展批）。
+//
+// **为什么不直接拿 Flutter 的 Debug/Release.xcconfig 当 Base Configuration**：
+// 那两个文件在引入 CocoaPods 集成后长这样——
+//     #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+//     #include "Generated.xcconfig"
+// 直接继承它们，扩展就会**白捡 Runner 的 `OTHER_LDFLAGS`**（例如
+// `-framework "flutter_secure_storage"`），进而链上 flutter_secure_storage.framework，
+// 而它自己又链 Flutter.framework。
+//
+// 2026-09-14 对抗审查实测（当时的产物）：
+//     otool -L ShareExtension.appex/ShareExtension
+//     → @rpath/flutter_secure_storage.framework/flutter_secure_storage
+// 扩展内存上限只有 ~120MB，白映射一个几十 MB 的引擎就是被系统 jetsam 杀掉的风险，
+// 也直接违反「扩展不嵌 Flutter」这条红线（见 apps/adai-app/AGENTS.md）。
+//
+// 只 include `Generated.xcconfig` 就够：它**只**含 FLUTTER_* 变量
+// （其中 `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER` 供 Info.plist 的
+// CFBundleShortVersionString / CFBundleVersion 用），既不 include Pods、也不设
+// OTHER_LDFLAGS —— 版本号仍是单一事实源（由 Flutter 生成），但扩展不再继承
+// Runner 的链接选项。
+#include "../Flutter/Generated.xcconfig"

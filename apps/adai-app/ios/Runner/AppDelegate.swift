@@ -36,6 +36,9 @@ enum PushBridge {
     private var pendingTap: String?
     /// 外部入口通道（Siri / 快捷指令 / `adai://` URL，RFC 20260913 外部入口批）。
     private var entryChannel: FlutterMethodChannel?
+    /// 分享扩展凭据通道（RFC 20260914 分享扩展批）：把限权令牌写进 App Groups 共享容器，
+    /// 好让 `ShareExtension` 在**自己的进程里**提交链接（不拉起本 App）。
+    private var shareChannel: FlutterMethodChannel?
 
     override func application(
         _ application: UIApplication,
@@ -82,6 +85,13 @@ enum PushBridge {
             }
         }
         entryChannel = entry
+
+        // 分享扩展凭据通道（RFC 20260914）：Dart 在**签发 / 撤销令牌**时把明文写进 / 清出
+        // App Groups 共享容器。为什么必须由 App 来写——令牌明文只在签发响应里出现一次
+        // （后端只存 SHA-256），过了那一刻谁也还原不出来，所以只能顺手搬进共享容器。
+        shareChannel = ShareBridgeHandler.register(
+            messenger: engineBridge.applicationRegistrar.messenger())
+
         // 引擎刚就绪：若冷启动期间已排了入口（Siri 拉起 App / URL 唤起），立刻补投
         handleExternalEntry()
     }

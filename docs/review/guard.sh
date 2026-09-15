@@ -256,6 +256,29 @@ else
   ok G9 "相对路径类配置均已在 application.yml 显式声明（环境变量挂钩明确）"
 fi
 
+# ── 入口契约 ──────────────────────────────────────────────
+echo "── 入口契约 ──"
+
+# G10 「从分享文本里择链接」的正则双端必须逐字同口径（对抗审查 P1-3 / 2026-09-14）。
+# 背景：App 内整理走 Dart 的 `_httpLinkRe`（`apps/adai-app/lib/main_page.dart`），
+# 分享扩展走 Swift 的 `linkPattern`（`ios/ShareExtension/ShareViewController.swift`）。
+# 两份正则差一个字符，就会出现「**App 里能整理、分享进来却说找不到链接**」——而且
+# 两边各自都"正常工作"，**编译与测试都不会报**。首版真实漏了全角 `）`（U+FF09）：
+# `看这个（https://www.bilibili.com/video/BV1xx411c7mD）讲得不错`
+#   Swift → `https://…BV1xx411c7mD）讲得不错`（垃圾 URL → 后端抓取必失败）
+#   Dart  → `https://…BV1xx411c7mD`（正确）
+G10_SWIFT=$(sed -n 's/.*linkPattern = #"\(.*\)"#.*/\1/p' \
+  "$ROOT/apps/adai-app/ios/ShareExtension/ShareViewController.swift" 2>/dev/null | head -1)
+G10_DART=$(sed -n "s/.*_httpLinkRe = RegExp(r'\(.*\)').*/\1/p" \
+  "$ROOT/apps/adai-app/lib/main_page.dart" 2>/dev/null | head -1)
+if [ -z "$G10_SWIFT" ] || [ -z "$G10_DART" ]; then
+  note G10 "未提取到双端择链接正则（变量改名/文件挪动？）——检查点无法验证"
+elif [ "$G10_SWIFT" != "$G10_DART" ]; then
+  hit G10 "双端择链接正则不同口径（App 能整理、分享进来会说找不到链接）：swift=[$G10_SWIFT] dart=[$G10_DART]"
+else
+  ok G10 "双端择链接正则同口径（分享扩展与 App 内整理不会各说各话）"
+fi
+
 echo ""
 echo "守护检查完成：$PASS PASS / $HIT HIT / $NOTE NOTE"
 [ "$HIT" -gt 0 ] && exit 1

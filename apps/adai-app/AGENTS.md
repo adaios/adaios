@@ -130,7 +130,7 @@ cd apps/adai-app && flutter test
 - **环境别猜**：deviceToken 分属 sandbox / production 两套互不相通的网关，App 侧读包内 `embedded.mobileprovision` 的 `aps-environment` 得出环境上报（**不能用 `#if DEBUG`**：本项目装机是 `--release` + development 描述文件 = release 优化 + 沙箱环境）。
 - 服务端配置与验证步骤见 `docs/deployment/backend-deployment.md` §11。
 
-## iOS 外部入口（RFC 20260913 + 2026-09-13 整理动作批）
+## iOS 外部入口（RFC 20260913 + 2026-09-13 整理动作批 + RFC 20260914 分享扩展批）
 
 - **两个动作**（「入口」是从哪来，「动作」是要做什么）：**记一笔** `RecordIntent`（Siri 短语 `AdaiAppShortcuts` / 快捷指令「阿呆阿呆」动作 / `adai://record?text=…`）· **整理** `DigestIntent`（快捷指令「阿呆阿呆整理」动作 / `adai://digest?url=…`，交付 learn 流水线）。
 - **新增入口改哪里**：原生 `ExternalEntryAction`（`ExternalEntry.swift`）是张**表**，加一个入口 = 加一个枚举值 + Dart 侧 `ExternalEntryAction`（`entry_intent_service.dart`）一个分支，原生侧不再动结构。⚠️ **两份动作表必须同步**——只加一侧就是「原生发得出去、Dart 认不出来」的静默无反应（同族坑见 pitfalls「条件导出的两份实现 API 面不一致」）。
@@ -139,7 +139,11 @@ cd apps/adai-app && flutter test
 - **投递必须落盘**：App Intent 的 `perform()` 与 Flutter 引擎初始化**没有先后保证**（冷启动时引擎可能还没起来），所以 `ExternalEntry` 走「落 UserDefaults + 同进程通知」双路径，Dart 起来后再 `takePendingEntry` 兜底取；drain 即清空 → 天然消费一次。
 - **URL 有两条送达路径，缺一不可**：warm → `SceneDelegate.scene(_:openURLContexts:)`；cold → `scene(_:willConnectTo:options:)` 的 `connectionOptions.urlContexts`。**两条都必须调 `super`**（`FlutterSceneDelegate` 的实现藏在 framework 里，头文件没暴露但 Swift 可覆写；`willConnectTo` 里 super 负责引擎装配，跳过会让 App 起不来）。见 pitfalls 十四。
 - **scene 架构下 AppDelegate 的 `application(_:open:)` 不会被调用**——URL 处理别写在 AppDelegate。
-- ⚠️ **本批只做到「跳 App 后能整理」**：`openAppWhenRun = true` 是 `DigestIntent` 的固有代价，而用户真实痛点是「**要跳一下 App，打断了看到就丢**」→ 真正的解是 **Share Extension**（扩展自己把链接投给后端），见 `docs/rfc/`（分享扩展批次）。
+- ✅ **「看到就丢」已实现（RFC 20260914，2026-09-14）**：`ShareExtension` target = 分享面板里的「阿呆阿呆」，扩展在**自己的进程**里提交 `/api/v1/learn/digest`，**不拉起主 App**。`DigestIntent`（`openAppWhenRun = true`，必跳 App）保留作为快捷指令入口，两条路并存。
+- ⚠️ **分享扩展的跨 target 契约（四处必须逐字一致）**：App Group id 与键名同时出现在 `Runner/ShareBridge.swift`、`ShareExtension/ShareAuth.swift`、`Runner/Runner.entitlements`、`ShareExtension/ShareExtension.entitlements`。不一致的表现**不是崩溃**，而是「扩展总说没拿到钥匙」（提交时给人话）——排查先核对这四处；Apple 侧要对**主 App 与扩展两个 App ID** 都开启该 App Group。
+- ⚠️ **扩展不嵌 Flutter**：`ShareViewController` 是纯 UIKit（扩展内存上限 ~120MB，装不下 Flutter 引擎），也**不要** import Flutter——否则连 debug 装机都容易因引擎/系统版本敏感而闪退。
+- ⚠️ **成功提示的 1 秒延迟必须排在 `completeRequest` 之前**：`completeRequest` 一调，系统立即终止扩展进程，之后的 `asyncAfter` 永远不会执行（2026-09-14 调研核实，见 `ShareViewController.setSuccess`）。
+- ⚠️ **扩展的 `CFBundleVersion` 用 `$(FLUTTER_BUILD_NUMBER)`，且扩展 target 三个 configuration 都挂了 Flutter 的 `Debug/Release.xcconfig` 作 Base Configuration**：两个条件缺一不可——只写变量不挂 xcconfig 会得到空字符串（装机校验失败），只挂 xcconfig 不写变量会让版本号与主 App 漂（App Store 要求一致）。
 
 ## 设计约定
 

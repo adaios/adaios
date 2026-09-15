@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- 分享面板里显示的**名字**：用户在 B站点分享时看到的就是它。 -->
+	<key>CFBundleDisplayName</key>
+	<string>阿呆阿呆</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<!--
+	  ⚠️ 版本号用 Flutter 的变量，**并把扩展 target 的三个 configuration 都挂上
+	  Flutter 的 Debug/Release.xcconfig 作 Base Configuration**（pbxproj 同批改）。
+	  两个条件缺一不可：只写变量不挂 xcconfig，变量在扩展里是空串 → CFBundleVersion 为空
+	  → 装机校验失败；只挂 xcconfig 不写变量，版本号会跟主 App 漂（App Store 要求两者一致）。
+	  出处：flutter#71262 官方回复的做法。子版本号（build number）必须与主 App 一致。
+	-->
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+
+	<!-- 整理端点所在的域名。**写进 Info.plist 而不是硬编码在 Swift 里**：
+	     与项目既有口径一致（换服务器永不重编译，见 docs/deployment/backend-deployment.md §9），
+	     也让「地址不对」这一类排查只需看一个文件。 -->
+	<key>AdaiApiBaseUrl</key>
+	<string>https://api.adaiadai.com</string>
+
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!--
+			  接收哪些分享内容。三条都开：
+			  - SupportsWebURL / SupportsWebPage：Safari、B站「复制链接」这类给 URL；
+			  - SupportsText：抖音那种「8.88 复制打开抖音… https://v.douyin.com/x」的纯文本口令。
+			  只开 URL 的话，分享纯文本的 App 里阿呆阿呆**根本不出现在面板里**（不是点了没反应，
+			  是压根没有这个图标），这是本批最容易踩的一处配置。
+			  ⚠️ 值为 1 表示「最多一条」；多选批量不在本批口径内（见 RFC §3.6 不做清单）。
+			-->
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationDictionaryVersion</key>
+				<integer>2</integer>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+			</dict>
+		</dict>
+		<!-- com.apple.share-services = 分享面板第一排的「分享目标」。
+		     换成 com.apple.ui-services（Action Extension）只会掉进「更多」列表里，
+		     达不到「分享面板里点阿呆阿呆」的诉求。 -->
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+	</dict>
+</dict>
+</plist>

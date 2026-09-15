@@ -20,8 +20,19 @@
 
 	  配套改动（同批）：Runner.xcodeproj 三个 Runner 构建配置加 CODE_SIGN_ENTITLEMENTS；
 	  Runner/AppDelegate.swift 注册远程通知并把 deviceToken 交给 Dart 层。
+
+	  com.apple.security.application-groups（RFC 20260914 分享扩展批）：与 ShareExtension
+	  target 共享那把限权令牌（`learn:digest`），好让「B站/抖音 → 分享 → 阿呆阿呆」在扩展
+	  进程里就能提交给后端、**不必拉起主 App**。group id 必须与
+	  `ShareExtension/ShareExtension.entitlements` 逐字一致。
+	  ⚠️ 同样是「能力」：自动签名下首次构建要去 Apple 侧开启 App Groups 并重签描述文件，
+	  报错时给 xcodebuild 加 -allowProvisioningUpdates（或以 Xcode 打开 workspace 点一次 Run）。
 	-->
 	<key>aps-environment</key>
 	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.adaiadai.adaiApp</string>
+	</array>
 </dict>
 </plist>
