@@ -133,7 +133,15 @@ decided-by: adai（2026-09-14：① 分享后的反馈 = 显示「已交给阿�
 | P2 | 明文令牌落 App Groups（无 Keychain；扩展不受 App 侧 Face ID 门禁约束）· 扩展 API 基址硬编码生产域名 | ⏸ **登记未修**：REVIEW P2-分享2 / P2-分享3（设计取舍与待排项，不擅自改） |
 | P3 | 文案「发一把」与按钮名不符 · 签发 label 固定「快捷指令」· `ShareAuth` 注释提到不存在的键 · `_busy` 早复位导致可并发签发两把 | ✅ 已修 |
 
-**⏳ 未完成（唯一）**
+**✅ 真机验证通过（2026-09-15，本批最终验收）**
+
+装机后实测：B站 → 分享 → 面板「更多」里的「阿呆阿呆」→ 后端日志完整跑通
+（13:49:24 签发令牌 `adai_61f66b16` → 13:50:12 抓取 `BV1CrKA6YETu` 613s/无字幕 → 13:50:25 转写记账 0.049 元
+→ 13:50:53 卡片落盘 `learn/ai/harness-engineering/03-八种Agent设计模式：从ReAct到自主循环.md`）。
+**这条链路此前一次都没走过，现在走通了** —— 并顺带证实了一条设计取舍的价值：没在 App 里点过
+「给我一把钥匙」时，扩展说的是「阿呆还没拿到钥匙」（fail-visible），而不是静默失败或谎报「已交给阿呆」。
+
+**⚠️ 以下是验证前写下的「未完成」条目，保留以存档当时的风险判断**
 
 - **真机分享链路实测**：`xcrun devicectl list devices` 报 `Adai的iPhone … unavailable`，`device install` 报 `unable to locate a device matching the requested device identifier`（error 1011）。**装机需手机可达**（USB 连接或同一网络且已解锁）。
   装机命令（§9 口径）：`xcrun devicectl device install app --device 0DA85EE6-5FF0-56CD-B647-DB4B27C60D89 build/ios/iphoneos/Runner.app`
