@@ -205,5 +205,6 @@ related:
 | 登录设备 | 新增 `lib/pages/login_devices_page.dart`（列表 / 单台撤销 / 确认弹窗 / 错误人话）；个人档案页入口；`ApiService.listSessions/revokeSession`；登录时上报 `device` |
 | 顺手修的既有缺陷 | 启动 401 路径改走 `_handleUnauthorized()`——原内联分支**漏清分享扩展共享容器**（换账号后分享落到上一个账号）+ 补 `_booting=false`（BootScreen 进度圈常转，`pumpAndSettle` 超时） |
 | 验证 | app **337 全绿** · 两端 `flutter analyze` 0 issue · `flutter build web --release` 通过（条件导出的 web 实现也编译过）· iOS 集成构建见 status.md |
-| **真机验收** | ✅ **2026-09-14 iPhone 装机实测：打开 App（未进主页）即弹 Face ID 启动门禁** → L2 门禁链路在真机生效（钥匙串 token 读取／老值迁移 → `isAvailable` → `authenticate` → 放行）。⏳ 仍待验：①「存储密码」提示（本次没走登录流程，需退出登录后用密码重登一次）②Safari 端 autofill 识别率 ③分享扩展真实分享链路（并行批） |
+| **真机验收** | ✅ **2026-09-14 iPhone 装机实测：打开 App（未进主页）即弹 Face ID 启动门禁** → L2 门禁链路在真机生效（钥匙串 token 读取／老值迁移 → `isAvailable` → `authenticate` → 放行，通过后正常进主页）。⏳ 仍待验：①「存储密码」提示（本次没走登录流程，需退出登录后用密码重登一次）②Safari 端 autofill 识别率 ③分享扩展真实分享链路（并行批） |
+| **部署** | ✅ **2026-09-14 第六次部署（后端 v3.67 上线，用户授权）**：GATE-BEFORE 三门 PASS + GATE-AFTER smoke **9/9**。**上线后线上实测**：login 含 `sessionId` ✓ · `GET /auth/sessions` 的 `current` 标记与 `device` ✓ · 撤销当前设备 → **400 人话** ✓。**同日数据治理**：生产历史会话 **111 → 0**（110 条无设备信息的旧版/调试/smoke 遗留 + 1 条自检；用户授权）——**代价是各端要重新登录一次**（重登后新会话带设备信息，列表才干净）。**教训（本批自己踩的）**：会话列表首查时把「唯一带 device 的那条」误判成用户手机，其实那是部署自检会话——**判据必须是"带设备信息 + 非自检命名"，不能凭数量猜** |
 | 未做 | L3（Passkey / Sign in with Apple）—按决策点 5 暂不做 |
