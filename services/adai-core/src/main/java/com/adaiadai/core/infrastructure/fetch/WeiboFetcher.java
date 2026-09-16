@@ -107,7 +107,10 @@ public class WeiboFetcher implements LearnSourceFetcher {
         String host = hostOf(url);
         if (host == null) return false;
         return host.equals("weibo.com") || host.endsWith(".weibo.com")
-                || host.equals("weibo.cn") || host.endsWith(".weibo.cn");
+                || host.equals("weibo.cn") || host.endsWith(".weibo.cn")
+                // t.cn = 微博官方短链（2026-09-16 P1-分享7）：它今天会掉进 ArticleFetcher 兜底，
+                // 把落地页 HTML 当正文抓成一张废卡、还白烧一次 LLM——收进本抓取器跟跳转才是正解
+                || host.equals("t.cn") || host.endsWith(".t.cn");
     }
 
     @Override
@@ -258,14 +261,19 @@ public class WeiboFetcher implements LearnSourceFetcher {
      * <p>实测形态（2026-09-16 用户两次分享）：{@code mapp.api.weibo.cn/fx/<32位hex>.html}
      * （302 → {@code m.weibo.cn/status/<id>}）；另兼容 {@code /sinaurl?u=…} 这类历史上出现过的中转链。
      *
-     * <p>只按**路径形态**判断、不锁域名：能进到本类的前提已是 {@link #supports} 放行的微博域名，
-     * 而 {@code /fx/<hex>.html} 这种路径在别处几乎不存在；**其余认不出的地址照旧直接人话失败**，
-     * 不为「猜它是不是短链」白付一次网络超时。
+     * <p>只按**路径/域名形态**判断：能进到本类的前提已是 {@link #supports} 放行的微博域名，而
+     * {@code /fx/<hex>.html} 这种路径在别处几乎不存在；{@code t.cn} 只能按 host 认（其 path 是任意短码）。
+     * **其余认不出的地址照旧直接人话失败**，不为「猜它是不是短链」白付一次网络超时。
+     *
+     * <p>package-private 供 {@code WeiboFetcherTest} 直接锁形态判定（与 {@link #midOf} 同口径）。
      */
-    private static boolean looksLikeShareShortLink(String url) {
+    static boolean looksLikeShareShortLink(String url) {
         try {
             String path = URI.create(url.strip()).getPath();
             if (path == null) return false;
+            // t.cn 是微博官方短链（path 是任意短码，没有可辨形态）→ 只能按 host 认
+            String host = hostOf(url);
+            if (host != null && (host.equals("t.cn") || host.endsWith(".t.cn"))) return true;
             return path.startsWith("/sinaurl") || SHARE_LANDING_PATH.matcher(path).matches();
         } catch (Exception e) {
             return false;

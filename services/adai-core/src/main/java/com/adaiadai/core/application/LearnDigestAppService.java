@@ -159,6 +159,16 @@ public class LearnDigestAppService {
 
     /** done/failed/cancelled 结果保留时长：前端轮询消费后即不再查询，超时惰性清理防 jobs 泄漏。 */
     private static final long RESULT_TTL_MS = 60_000;
+
+    /**
+     * 失败结果的保留时长（2026-09-16，REVIEW P1-分享7）。
+     *
+     * <p><b>为什么 failed 不能沿用 60 秒</b>：{@code done} 有卡片兜底（结果 60 秒后消失无所谓），
+     * 但 {@code failed} <b>没有任何兜底</b>——不落卡片、{@code learn/_raw/} 也没素材（抓取前就失败），
+     * 于是 60 秒后「这条没整理成」从用户世界彻底消失。2026-09-16 用户两次分享微博失败、事后完全
+     * 无痕，就是撞在这里。给失败与「待确认」同档的 30 分钟。
+     */
+    private static final long FAILED_TTL_MS = 30 * 60_000L;
     /** needs_confirmation 保留更久（用户可能过一会儿才确认，不该被 60s 清掉）。 */
     private static final long CONFIRM_TTL_MS = 30 * 60_000L;
 
@@ -478,7 +488,9 @@ public class LearnDigestAppService {
         DigestJob job = jobs.get(userId);
         if (job == null) return DigestJobStatus.idle();
         if (!job.isRunning()) {
-            long ttl = job.isAwaitingConfirm() ? CONFIRM_TTL_MS : RESULT_TTL_MS;
+            long ttl = job.isAwaitingConfirm() ? CONFIRM_TTL_MS
+                    : job.isFailed() ? FAILED_TTL_MS   // P1-分享7：失败没有卡片兜底，60 秒太短
+                    : RESULT_TTL_MS;
             if (job.elapsedSinceSettled() > ttl) {
                 jobs.remove(userId, job);
                 return DigestJobStatus.idle();
@@ -736,6 +748,11 @@ public class LearnDigestAppService {
 
         boolean isAwaitingConfirm() {
             return STATUS_NEEDS_CONFIRMATION.equals(status);
+        }
+
+        /** 失败态——P1-分享7：判定该用 {@link #FAILED_TTL_MS} 而不是 done 的 60 秒。 */
+        boolean isFailed() {
+            return STATUS_FAILED.equals(status);
         }
 
         /** 终态（done/failed/cancelled）：可被新提交替换；非终态（running/needs_confirmation）在跑/待回话。 */

@@ -82,6 +82,7 @@ class WeiboFetcherTest {
         assertTrue(f.supports("https://m.weibo.cn/status/3520617028999724"));
         assertTrue(f.supports("https://weibo.com/1234567890/z8ElgBLeQ"));
         assertTrue(f.supports("https://weibo.cn/sinaurl?u=x"));
+        assertTrue(f.supports("https://t.cn/A6xyzABC"), "微博官方短链（2026-09-16 P1-分享7）");
         assertFalse(f.supports("https://evilweibo.com/1234567890/z8ElgBLeQ"));
         assertFalse(f.supports("https://weibo.com.attacker.com/x/y"));
     }
@@ -189,6 +190,20 @@ class WeiboFetcherTest {
         assertEquals("5343427417869888",
                 WeiboFetcher.midOf("https://m.weibo.cn/status/5343427417869888"),
                 "302 落点是标准形态、本就能解析——问题只在第一跳");
+    }
+
+    /** 该跟跳转的形态要认全，不该跟的一个都别多花网络（2026-09-16 P1-分享7）。 */
+    @Test
+    void looksLikeShareShortLink_coversFxSinaurlAndTcn_butNotStandardUrls() {
+        assertTrue(WeiboFetcher.looksLikeShareShortLink(
+                "https://mapp.api.weibo.cn/fx/f821c7563e3653987fc2e5258eb776f0.html"), "实测形态");
+        assertTrue(WeiboFetcher.looksLikeShareShortLink("https://weibo.cn/sinaurl?u=aHR0cHM6"), "中转链");
+        assertTrue(WeiboFetcher.looksLikeShareShortLink("https://t.cn/A6xyzABC"),
+                "t.cn 官方短链：不跟跳转就会掉进 ArticleFetcher 抓成废卡");
+        assertFalse(WeiboFetcher.looksLikeShareShortLink("https://weibo.com/1234567890/PdXyZabc"),
+                "标准形态本就能解析，不该多付一次网络请求");
+        assertFalse(WeiboFetcher.looksLikeShareShortLink("https://weibo.com/"),
+                "认不出的地址不该为「猜它是不是短链」白等一次超时");
     }
 
     @Test
