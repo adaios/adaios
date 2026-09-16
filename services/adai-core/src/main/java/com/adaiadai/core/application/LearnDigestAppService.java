@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -495,12 +497,48 @@ public class LearnDigestAppService {
                 finishJob(userId, job, input.material(), input.type(), null, input, List.of());
             }
         } catch (LearnException e) {
-            log.warn("learn 后台消化失败 | userId={} | {}", userId, e.getMessage());
+            log.warn("learn 后台消化失败 | userId={} | 输入形态={} | {}", userId, urlShape(input.fetchUrl()), e.getMessage());
             job.fail(e.getMessage());
         } catch (Exception e) {
-            log.error("learn 后台消化异常 | userId={}", userId, e);
+            log.error("learn 后台消化异常 | userId={} | 输入形态={}", userId, urlShape(input.fetchUrl()), e);
             job.fail("AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试");
         }
+    }
+
+    /**
+     * 失败日志里的「输入形态」摘要（2026-09-16，REVIEW P1-分享7）。
+     *
+     * <p><b>为什么需要它</b>：抓取失败（尤其「这条微博的链接我认不出来」）原先只打异常人话、
+     * <b>不记用户发来的是什么</b>——2026-09-16 微博分享连挂两次，Caddy 只有 body 长度、后端只有人话，
+     * 谁都说不清那条链接长什么样，定位只能靠猜。这里补上「能否当 URL 解析 + scheme/host/path + 字节数」，
+     * <b>不带 query 内容</b>（只报 query 的字节数）：够定位形态，又不把分享参数写进日志。
+     *
+     * <p>非 URL 文本（例如分享扩展在择不出链接时回退提交的整段分享文本）会报字节数与中日韩字符数
+     * ——这正是 2026-09-16 要区分的两种可能之一（文本 vs 长参数链）。
+     */
+    static String urlShape(String raw) {
+        if (raw == null || raw.isBlank()) return "无链接（走正文路径）";
+        int bytes = raw.getBytes(StandardCharsets.UTF_8).length;
+        try {
+            URI uri = URI.create(raw.strip());
+            String host = uri.getHost();
+            if (uri.getScheme() == null || host == null) {
+                return "非完整 URL（" + bytes + " 字节，" + cjkCount(raw) + " 个中日韩字符）";
+            }
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            if (path.length() > 120) path = path.substring(0, 120) + "…";
+            String query = uri.getQuery();
+            return uri.getScheme() + "://" + host + path + "（" + bytes + " 字节"
+                    + (query == null ? "，无 query" : "，query " + query.getBytes(StandardCharsets.UTF_8).length + " 字节")
+                    + "）";
+        } catch (Exception e) {
+            return "非完整 URL（" + bytes + " 字节，" + cjkCount(raw) + " 个中日韩字符）";
+        }
+    }
+
+    /** 中日韩字符个数——用来区分「一整段分享文本」与「一条长 URL」（见 {@link #urlShape}）。 */
+    private static long cjkCount(String raw) {
+        return raw.codePoints().filter(c -> c >= 0x2E80 && c <= 0x9FFF).count();
     }
 
     /** 链接路径：抓 →（无字幕则费用闸 + 等确认）→ 否则直接结构化。 */

@@ -680,4 +680,34 @@ class LearnDigestAppServiceTest {
         assertFalse(c.body().contains("origin: product"), "展示用的 body 不带内部字段（第一原则）");
         assertTrue(c.body().startsWith("## 关键内容详解"), c.body());
     }
+
+    // ── P1-分享7（2026-09-16）：失败日志的「输入形态」摘要 ──
+
+    @Test
+    void urlShape_weiboLink_keepsHostAndPath_butNotQueryContent() {
+        String shape = LearnDigestAppService.urlShape(
+                "https://weibo.com/1234567890/PdXyZabc?refer_flag=1001030103_");
+
+        assertTrue(shape.contains("weibo.com"), shape);
+        assertTrue(shape.contains("/1234567890/PdXyZabc"), shape);
+        assertFalse(shape.contains("refer_flag"), "query 内容不得进日志：" + shape);
+        assertTrue(shape.contains("query"), shape);
+        assertTrue(shape.contains("字节"), shape);
+    }
+
+    @Test
+    void urlShape_shareText_isReportedAsNonUrlWithCjkCount() {
+        String withSpace = LearnDigestAppService.urlShape("分享自@微博 今天大跌，大家还好吗");
+        String withoutSpace = LearnDigestAppService.urlShape("分享自微博今天大跌");
+
+        assertTrue(withSpace.startsWith("非完整 URL"), withSpace);
+        assertTrue(withSpace.contains("中日韩字符"), withSpace);
+        assertTrue(withoutSpace.startsWith("非完整 URL"), withoutSpace);
+    }
+
+    @Test
+    void urlShape_blankInput_saysBodyPath() {
+        assertTrue(LearnDigestAppService.urlShape(null).contains("正文路径"));
+        assertTrue(LearnDigestAppService.urlShape("   ").contains("正文路径"));
+    }
 }
