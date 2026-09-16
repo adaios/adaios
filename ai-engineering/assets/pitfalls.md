@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-09-15
+updated: 2026-09-16
 status: active
-lines: 177
+lines: 178
 depends-on:
   - ../checklists/guard.md
 related:
@@ -149,6 +149,7 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **`$VAR` 紧跟全角标点 → bash 把标点字节并进变量名** | `guard-tools.sh: line 77: N_SKILLS?: unbound variable`——变量上一行明明赋过值却报未定义；`set -u` 下脚本当场中止，看代码完全正常 | 非 UTF-8 locale（`LANG` 未设 / 为 `C`——cron、git hook、部分 CI 的默认）时 bash 不把多字节字符当词法边界：`$N_SKILLS）` 里 `）`（`EF BC 89`）的首字节被当成变量名的合法字符，于是去找名为 `N_SKILLS\xef` 的变量 | 变量一律用 `${...}` 界定（`${N_SKILLS}` 而非 `$N_SKILLS`）；**凡中文文案里嵌 shell 变量，一律加花括号**。**已机器化（2026-09-14）**：`scripts/lint-shell-vars.py` 按 shell 词法扫描（单引号/注释/`\$` 转义不报，`${}` `$()` `$?` 不报），挂 `guard-tools.sh` T6 + git pre-commit 第 4 层——**落地当轮扫出全仓 18 处存量**（deploy-gate / guard-tools / weekly-audit / build_apk / build_web / sync-adai-rulepack / backup_prod / migrate-data-to-user-layer），全部修复 | ✅ 已修 + 已加自动门禁（2026-09-14） | 报「unbound variable」但变量确实赋过值；报错里变量名后面粘着一个乱码字符；中英混排的 `echo` 字符串；本机直接跑正常、cron/hook 里跑就崩 |
+| **`find -newermt today` 恒为 0 → 心跳一直说「用户今天没用」** | C0 产品心跳的「今日 N 条」**长期显示 0**，而用户当天明明在用（2026-09-16 实有 6 张对话卡 / 27 条记录）；同一行的「近 7 天」「近 14 天」却正常——**只有今日那一格坏掉**，看起来像「今天刚好还没记」，**不报错、不崩、没人会怀疑脚本**。这是「用户是否还在用」的最高优先级信号，坏了会让 AI 误判产品已停用，转而继续空转加功能 | **GNU date 把 `today` 解析成「当前时刻」而不是「今天 00:00」**：实测生产 `date -d today` → `Wed Sep 16 09:02:09 PM CST 2026`（分秒正是执行的那一刻）。于是 `find -newermt 'today'` = 「找比**现在**更新的文件」→ 恒 0（除非存在未来时间戳）。相对量 `'-7 days'` / `'-14 days'` 语义正确，所以坏的恰好只有 `today` 这一个词 | 改用**绝对日**当边界：`T=$(date +%F); find … -newermt "$T"`（或 GNU find 的 `-daystart -mtime -1`）。2026-09-16 修 `guard-context.sh` C0 心跳，修后当日 0 → **27**（实测对齐）。**判据**：时间边界参数一律用可验证的绝对量（`date +%F` / ISO 串），不用 `today`/`now` 这类模糊词 | ✅ 已修（2026-09-16，随「生产日报」每日流程首跑发现） | 任何「今日/当天」口径的统计**长期恒为 0**，或各窗口之间数量关系反常（今日 0 但近 7 天几十）；`date -d today` 打印出当前时分秒而非 `00:00:00`；find/date 的边界参数写作 `today` / `now` / `0 day` |
 
 ## 十六、解析与失败可见性（2026-09-14 新增）
 

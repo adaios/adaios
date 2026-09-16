@@ -86,11 +86,13 @@ try:
         _raw = None
     if _raw is None:
         _remote = (
-            "D=/opt/adaios/data/adai; R=$D/records; "
+            "D=/opt/adaios/data/adai; R=$D/records; T=$(date +%F); "
             "last=$(sudo find $R -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | tail -1); "
             "n7=$(sudo find $R -type f -newermt '-7 days' 2>/dev/null | wc -l); "
             "n14=$(sudo find $R -type f -newermt '-14 days' 2>/dev/null | wc -l); "
-            "today=$(sudo find $R -type f -newermt 'today' 2>/dev/null | wc -l); "
+            # 不能用 -newermt 'today'：GNU date 把 'today' 解析成**当前时刻**（不是今天 00:00），
+            # 于是 find 永远找不到「比现在更新」的文件 → 今日恒为 0（2026-09-16 实测发现并修）
+            "today=$(sudo find $R -type f -newermt \"$T\" 2>/dev/null | wc -l); "
             "tr=$(sudo find $D/trading -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort | tail -1); "
             "echo \"LAST=${last:-none}|N7=$n7|N14=$n14|TODAY=$today|TRADING=${tr:-none}\""
         )
@@ -118,9 +120,12 @@ try:
         if WRITE_LOCAL:
             # 快照 = 每轮注入固定开销，C0 压到 2 行（见 checklists/cost.md C7）
             out.append(f"> 最后记录 **{_last}**（{_days} 天前）· 今日 {_p.get('TODAY','?')} · 近 7 天 {_p.get('N7','?')} · 交易最近 {_p.get('TRADING','?')}{_fresh}")
+            out.append("> 每日流程：用户说「**每日巡检**」→ 跑 `bash ai-engineering/guard-prod.sh`，只用人话讲「用户之声 / 有没有新异常 / 心跳趋势」（AGENTS.md 规则 8）")
         else:
             out.append(f"> 最后一条记录：**{_last}**（{_days} 天前）· 今日 **{_p.get('TODAY','?')}** 条 · 近 7 天 **{_p.get('N7','?')}** 条 · 近 14 天 **{_p.get('N14','?')}** 条{_fresh}")
             out.append(f"> 交易模块最近写入：{_p.get('TRADING','?')}")
+            if _p.get('TODAY', '0') not in ('0', '?', ''):
+                out.append("> 📣 今日有新的真实使用 — 先跑 `bash ai-engineering/guard-prod.sh`：看用户在问什么（用户之声）+ 生产日志有没有新异常")
         _spend = 0.0
         _log = AI/'state/cost-log.jsonl'
         if _log.exists():

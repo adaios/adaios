@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-13
+updated: 2026-09-16
 status: active
-lines: 80
+lines: 81
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -49,6 +49,7 @@ tags: [ai, meta, index]
 | guard-context.sh | 任务上下文注入（开工前清单，进攻侧）| active |
 | guard-sediment.sh | 沉淀检查（坑/ADR/出表/登记，进攻侧②③）| active |
 | guard-cost.sh | 成本监控（读 DSH 会话日志按天/会话算钱，防守侧）| active |
+| guard-prod.sh | **生产日报**（生产日志 + 真实对话卡片；4xx/5xx 自动分「扫描器/探针/设计语义/待关注」，每日流程第一眼）| active |
 | deploy-gate.sh | 部署门禁+smoke（触发侧，最硬闸门）| active |
 | weekly-audit.sh | 每周审查（cron，防休眠）| active |
 | checklists/review-ux.md | 交互检查清单 | active |

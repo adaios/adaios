@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-09-13
+updated: 2026-09-16
 status: active
-lines: 70
+lines: 72
 depends-on:
   - ai-engineering/README.md
 related:
@@ -34,6 +34,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 5. **File First**：`os/` 与 `data/` 知识以文件为准，数据库为查询存在；`data/` 隐私受 gitignore 保护，不提交
 6. **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）
 7. **讨论与实施分离**（2026-08-16 确立，2026-08-18 明确范围）：讨论方向/方案/数据口径时**只聊不动手**——用户明确说「开工 / 做 / 改」后才改**代码与 `data/` 数据资产**；未指示前不写代码。**本规则只约束代码/数据修改**；AI 工程建设层面文档（`ai-engineering/` 协作规范与流程、AGENTS.md 等）属工程自身持续维护，可直接修订。违背此条即越界（已发生一次：账户总盈亏口径讨论中擅自改代码）
+8. **触发词「每日巡检」（2026-09-16 用户确立：「以后我说每日巡检，你触发就好」）**：用户说出「**每日巡检**」四个字，AI **立即执行** `bash ai-engineering/guard-prod.sh`，并把结果**用人话讲给他听**——只讲三条：**① 用户之声**（他最近真问了什么、在骂什么）· **② 有没有新异常**（新类目的告警 / ERROR / 服务非 active）· **③ 心跳趋势**（他还在不在用）。**不堆原始日志**（扫描器噪音与老朋友的东财 Kline 已由脚本自动折叠）；巡检中发现的**产品反馈 / 新缺陷 → 提议登记，不擅自改代码**（受规则 7 约束）。用户**不必自己敲命令**——「每日巡检」就是他触发这条每日流程的唯一入口
 
 ## 审查体系（ai-engineering/）
 
@@ -54,6 +55,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 任务上下文 | `ai-engineering/guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
 | 沉淀检查 | `ai-engineering/guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `ai-engineering/deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）|
+| **生产日报（每日）** | `ai-engineering/guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
 | 每周审查 | `ai-engineering/weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|
 | 成本监控 | `ai-engineering/guard-cost.sh` | 读 DSH 会话按天/会话算钱；收工前 `--record`，开工看 `guard-context.sh` C6.5 |
 | 成本纪律 | `ai-engineering/checklists/cost.md` | 烧钱动作清单 + 省钱原则（错峰/断会话/控输出/降频/用对模型/盯账）|
