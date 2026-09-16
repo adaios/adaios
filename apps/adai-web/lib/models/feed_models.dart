@@ -69,6 +69,9 @@ class FeedCardData {
   final String? mediaExt;
   final String? mediaCaption;
   final DateTime updatedAt;
+  // P2-UI12（2026-09-16）：这张卡若是后端把「同一分钟同向成交」折叠出来的，
+  // 这里是被折叠进本条的原始记录 id（含本卡 id）；删除时必须逐条删全，否则刷新后又一笔笔回来。
+  final List<String> mergedIds;
 
   FeedCardData({
     required this.id,
@@ -96,6 +99,7 @@ class FeedCardData {
     this.mediaExt,
     this.mediaCaption,
     DateTime? updatedAt,
+    this.mergedIds = const [],
   }) : updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
@@ -121,6 +125,7 @@ class FeedCardData {
     String? mediaExt,
     String? mediaCaption,
     DateTime? updatedAt,
+    List<String>? mergedIds,
   }) {
     return FeedCardData(
       id: id ?? this.id,
@@ -147,6 +152,7 @@ class FeedCardData {
       mediaExt: mediaExt ?? this.mediaExt,
       mediaCaption: mediaCaption ?? this.mediaCaption,
       updatedAt: updatedAt ?? DateTime.now(),
+      mergedIds: mergedIds ?? this.mergedIds,
     );
   }
 }
@@ -185,6 +191,8 @@ extension FeedEntryResponseX on FeedEntryResponse {
       mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
       // P1-5（2026-08-23 app 体感）：透传后端 updatedAt（原默认 now → 「刚刚」恒显）
       updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
+      // P2-UI12：折叠卡代表的原始记录 id（删除要删全，见 FeedPage._deleteCard）
+      mergedIds: mergedIds,
     );
   }
 

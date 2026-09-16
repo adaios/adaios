@@ -105,8 +105,11 @@ Map<String, dynamic> _needsConfirmJson() => {
       },
     };
 
-ApiService _api({required Map<String, dynamic> tree}) {
-  return ApiService(
+/// yyyy-MM-dd（widget 测试里按「今天」造数，口径跟 LearnProgressSummary 一致）。
+String _ymd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+ApiService _api({required Map<String, dynamic> tree}) {  return ApiService(
     baseUrl: 'http://test',
     userId: 'adai',
     client: MockClient((req) async {
@@ -155,6 +158,68 @@ void main() {
       expect(card.keyPoints, isEmpty);
       expect(card.tradeRelated, isFalse);
       expect(card.status, 'new');
+      expect(card.reviewAt, isNull, reason: '缺字段 → null（老数据不炸）');
+      expect(card.remindedAt, isNull);
+    });
+
+    test('reviewAt / remindedAt 解析（2026-09-16 进度追踪批）：后端 tree 已返回，前端此前没解析', () {
+      final card = LearnCardDto.fromJson(jsonDecode('''
+        {"type":"ai","title":"RAG 笔记","created":"2026-09-06","status":"review",
+         "reviewAt":"2026-09-01","remindedAt":"2026-09-10"}
+      '''));
+      expect(card.reviewAt, DateTime(2026, 9, 1));
+      expect(card.remindedAt, DateTime(2026, 9, 10));
+    });
+
+    test('reviewAt / remindedAt 脏数据防御：null / 空串 / 不是日期 / 类型不符 一律 null', () {
+      final nulls = LearnCardDto.fromJson(jsonDecode(
+          '{"type":"ai","title":"t","created":"2026-09-06","reviewAt":null,"remindedAt":null}'));
+      expect(nulls.reviewAt, isNull);
+      expect(nulls.remindedAt, isNull);
+
+      final dirty = LearnCardDto.fromJson(jsonDecode(
+          '{"type":"ai","title":"t","created":"2026-09-06","reviewAt":"","remindedAt":"昨天"}'));
+      expect(dirty.reviewAt, isNull);
+      expect(dirty.remindedAt, isNull);
+
+      final wrongType = LearnCardDto.fromJson(jsonDecode(
+          '{"type":"ai","title":"t","created":"2026-09-06","reviewAt":12345,"remindedAt":[1,2]}'));
+      expect(wrongType.reviewAt, isNull, reason: '非日期类型当没有，不能抛');
+      expect(wrongType.remindedAt, isNull);
+    });
+
+    test('LearnProgressSummary 口径（钉死，与每晚 20:00 复习提醒同源）', () {
+      // 今天固定 2026-09-16（周三）→ 周一 = 09-14，满 7 天线 = 09-09
+      final tree = LearnTreeResponse.fromJson(jsonDecode('''
+        {"ai":[
+          {"type":"ai","title":"到期(正好7天)","created":"2026-08-01","status":"review","writable":true,"reviewAt":"2026-09-09"},
+          {"type":"ai","title":"还差一天","created":"2026-08-01","status":"review","writable":true,"reviewAt":"2026-09-10"},
+          {"type":"ai","title":"只读卡到期也不流转","created":"2026-08-01","status":"review","writable":false,"reviewAt":"2026-09-01"},
+          {"type":"ai","title":"没进队列日期","created":"2026-08-01","status":"review","writable":true,"reviewAt":null},
+          {"type":"ai","title":"已掌握","created":"2026-09-14","status":"done"}
+        ],
+        "trading":[],
+        "other":[
+          {"type":"other","title":"上周日的卡","created":"2026-09-13","status":"new"},
+          {"type":"other","title":"今天的卡","created":"2026-09-16","status":"new"}
+        ]}
+      '''));
+      final s = LearnProgressSummary.fromTree(tree, now: DateTime(2026, 9, 16));
+      expect(s.due, 1, reason: 'review + 可写 + reviewAt 正好满 7 天 → 待复习');
+      expect(s.learning, 3, reason: '没到期 / 只读卡 / 没 reviewAt 都算学习中');
+      expect(s.mastered, 1, reason: 'done = 已掌握');
+      expect(s.weekNew, 2, reason: '周一起算：09-14 与 09-16 算本周，09-13（上周日）不算');
+      expect(s.line, '待复习 1 · 学习中 3 · 已掌握 1 · 本周 +2');
+    });
+
+    test('LearnProgressSummary 空树 / 脏 created 都兜底为 0', () {
+      final empty = LearnProgressSummary.fromTree(
+          LearnTreeResponse.fromJson(jsonDecode('{}')), now: DateTime(2026, 9, 16));
+      expect(empty.line, '待复习 0 · 学习中 0 · 已掌握 0 · 本周 +0');
+
+      final dirty = LearnTreeResponse.fromJson(jsonDecode(
+          '{"ai":[{"type":"ai","title":"t","created":"","status":"new"}]}'));
+      expect(LearnProgressSummary.fromTree(dirty, now: DateTime(2026, 9, 16)).weekNew, 0);
     });
 
     test('LearnDigestJob 缺字段一律兜底：stage/source/cost 可空，脏数据不炸', () {
@@ -292,6 +357,43 @@ void main() {
       expect(find.text('学习笔记 · 交易'), findsOneWidget);
       expect(find.text('RAG 笔记'), findsWidgets);
       expect(find.text('回调一半'), findsWidgets);
+    });
+
+    // ── 进度汇总（2026-09-16 学习卡片进度追踪批）──
+
+    testWidgets('页面头部一行汇总：待复习/学习中/已掌握/本周（全部本地统计，不发新请求）', (tester) async {
+      var treeCalls = 0;
+      final now = DateTime.now();
+      // 上周日（一定在本周之外，跟今天是周几无关）
+      final lastSunday = DateTime(now.year, now.month, now.day - now.weekday);
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            treeCalls++;
+            return _json({
+              'ai': [
+                _card('ai', '今天新消化的', status: 'done', created: _ymd(now)),
+                _card('ai', '上周日的卡', status: 'new', created: _ymd(lastSunday)),
+              ],
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.byKey(const ValueKey('learn-progress-summary')), findsOneWidget);
+      expect(find.text('待复习 0 · 学习中 0 · 已掌握 1 · 本周 +1'), findsOneWidget,
+          reason: '口径：done=已掌握；created 在本周内=本周 +1');
+      expect(treeCalls, 1, reason: '汇总只用已加载的 tree，不新增网络请求');
+    });
+
+    testWidgets('空树不摆汇总行（没有卡就别摆一行 0）', (tester) async {
+      await pump(tester, _api(tree: const {}));
+      expect(find.byKey(const ValueKey('learn-progress-summary')), findsNothing);
     });
   });
 
@@ -1437,6 +1539,96 @@ type: ai
       });
       await pump(tester, api);
       expect(find.textContaining('有一件事等你拍板'), findsNothing);
+    });
+
+    // ── 失败看得见（P1-分享7 2026-09-16）──
+
+    testWidgets('进页面看到上次那条没整理成：哪条 + 为什么（失败留 30 分钟，不再无痕）', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            return _json({
+              'status': 'failed',
+              'message': '这条要登录才看得到，我没抓到正文',
+              'source': {'platform': 'weibo', 'title': '一条微博'},
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.byKey(const ValueKey('learn-digest-failed-banner')), findsOneWidget);
+      expect(find.textContaining('《一条微博》我没整理成'), findsOneWidget, reason: '哪条没整理成');
+      expect(find.textContaining('这条要登录才看得到'), findsOneWidget, reason: '为什么（后端人话原样透出）');
+      expect(find.textContaining('有一件事等你拍板'), findsNothing, reason: 'failed 不是待拍板，不混用文案');
+
+      // 「知道了」收掉
+      await tester.tap(find.text('知道了'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('learn-digest-failed-banner')), findsNothing);
+    });
+
+    testWidgets('失败原因缺失/没有来源标题：也给一句人话（不摆空提示条）', (tester) async {
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            return _json({'status': 'failed', 'message': ''});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.byKey(const ValueKey('learn-digest-failed-banner')), findsOneWidget);
+      expect(find.textContaining('上次你给的那条我没整理成'), findsOneWidget);
+      expect(find.textContaining('具体原因我没留住'), findsOneWidget);
+    });
+
+    testWidgets('状态回到 idle：失败提示条收掉（刷新不残留旧提示）', (tester) async {
+      var recovered = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/digest/status')) {
+            return recovered
+                ? _json({'status': 'idle'})
+                : _json({'status': 'failed', 'message': '没抓到'});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+      expect(find.byKey(const ValueKey('learn-digest-failed-banner')), findsOneWidget);
+
+      // 点页头刷新 → _load → 再查一次状态（idle）→ 提示条收掉
+      recovered = true;
+      await tester.tap(find.byIcon(Icons.refresh).first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('learn-digest-failed-banner')), findsNothing);
     });
   });
 

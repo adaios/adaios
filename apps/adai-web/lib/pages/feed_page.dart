@@ -987,28 +987,48 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  /// 删除卡片（#109）：后端会连带清理 record+card+memory，不可逆。
+  ///
+  /// P2-UI12（2026-09-16）：后端把「同一分钟、同一方向」的多笔成交折叠成**一条** Feed 卡，
+  /// 被折叠的原始记录 id 全在 `mergedIds` 里（含本卡 id）。删除时必须**逐条删全**——
+  /// 否则只删了代表卡，刷新后其余几笔又回来（假删除）。任一条失败如实告知，不假装成功。
   Future<void> _deleteCard(String id) async {
     // 删除确认（#109）：DELETE 连带清理 record+card+memory，不可逆
     final confirmed = await _confirmDelete();
     if (!confirmed) return;
-    try {
-      await widget.api.deleteRecord(id);
-      if (!mounted) return;
-      setState(() {
-        _cards.removeWhere((c) => c.id == id);
-        // 删除 active 卡 → 清理全局引用，防后续输入 append 到已删卡（#104）
-        if (_activeCardId == id) {
-          _activeCardId = null;
-          _hasActiveChat = false;
-        }
-        // 本地计数跟随（#119）
-        if (_totalToday > 0) _totalToday -= 1;
-      });
-      // #115：删除记录 → 标签/任务统计变化，右栏联动刷新
-      _loadSidebar();
-    } catch (_) {
-      if (mounted) _showError('删除失败');
+    final card = _cards.where((c) => c.id == id).firstOrNull;
+    // 折叠卡：代表卡 + 全部被折叠记录；普通卡：就删自己。Set 去重防重复请求
+    // （后端折叠时 mergedIds 已含本卡 id，这里再并一次只是防御，不会多发请求）。
+    final ids = <String>{id, ...?card?.mergedIds};
+    final failed = <String>[];
+    for (final rid in ids) {
+      try {
+        await widget.api.deleteRecord(rid);
+      } catch (_) {
+        failed.add(rid);
+      }
     }
+    if (!mounted) return;
+    if (failed.isNotEmpty) {
+      // 有删不掉的：**不本地移除**（假删除会让用户以为干净了），如实说还剩几笔
+      final ok = ids.length - failed.length;
+      _showError(ids.length > 1
+          ? '这一串 ${ids.length} 笔里，我删掉了 $ok 笔，还有 ${failed.length} 笔没删掉（多半是网络的事）。刷新后还在的再删一次就行。'
+          : '删除失败');
+      return;
+    }
+    setState(() {
+      _cards.removeWhere((c) => c.id == id);
+      // 删除 active 卡 → 清理全局引用，防后续输入 append 到已删卡（#104）
+      if (_activeCardId == id) {
+        _activeCardId = null;
+        _hasActiveChat = false;
+      }
+      // 本地计数跟随（#119）：折叠卡在 Feed 里也算 1 条核心条目
+      if (_totalToday > 0) _totalToday -= 1;
+    });
+    // #115：删除记录 → 标签/任务统计变化，右栏联动刷新
+    _loadSidebar();
   }
 
   Future<bool> _confirmDelete() async {

@@ -210,6 +210,23 @@ Map<String, dynamic>? _asMap(dynamic v) {
   return null;
 }
 
+/// yyyy-MM-dd（或 ISO 时间戳）→ 当天零点；缺字段/空串/脏值一律 null（防御式，不炸）。
+/// 只取日期部分：后端 LearnCard 的 created/reviewAt/remindedAt 都是 LocalDate。
+DateTime? _toDate(dynamic v) {
+  final s = v?.toString().trim() ?? '';
+  if (s.isEmpty) return null;
+  final m = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(s);
+  if (m == null) return null;
+  final y = int.tryParse(m.group(1)!);
+  final mo = int.tryParse(m.group(2)!);
+  final d = int.tryParse(m.group(3)!);
+  if (y == null || mo == null || d == null || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return DateTime(y, mo, d);
+}
+
+/// 日期加减天数（用构造函数归一，避免 Duration 跨 DST 偏一小时导致差一天）。
+DateTime _addDays(DateTime d, int days) => DateTime(d.year, d.month, d.day + days);
+
 /// learn 学习卡片 DTO（RFC 20260829 learn 插件）。
 /// 值复制自后端 domain/learn/LearnCard，桌面端独立解析（不跨工程 import）。
 /// 2026-09-12 完整升级批：新增 topic（主题目录名）与 writable（是否本产品产出的卡）。
@@ -231,6 +248,10 @@ class LearnCardDto {
   final String retell; // V2 复述段（自己写的消化关键）
   final String topic; // 主题目录名（缺字段/空 → 展示为「未归类」）
   final bool writable; // false = 别处（Mac 技能）整理的原始卡，只读（缺字段按 true 兼容旧响应）
+  // 2026-09-16 学习进度追踪批：后端 tree 一直返回这两个字段，前端此前没解析。
+  // 进入 review 队列的日期（复习提醒按它计时，非 review 卡为空）/ 最近一次复习提醒日期。
+  final DateTime? reviewAt;
+  final DateTime? remindedAt;
 
   LearnCardDto({
     required this.type,
@@ -250,6 +271,8 @@ class LearnCardDto {
     this.retell = '',
     this.topic = '',
     this.writable = true,
+    this.reviewAt,
+    this.remindedAt,
   });
 
   factory LearnCardDto.fromJson(Map<String, dynamic> json) => LearnCardDto(
@@ -271,6 +294,9 @@ class LearnCardDto {
         // 防御式：旧响应没有这两个字段也不能炸（topic 空串 → 展示兜「未归类」，writable 缺省 true 保持可写）
         topic: (json['topic'] as String?) ?? '',
         writable: (json['writable'] as bool?) ?? true,
+        // 防御式：老数据可能是 null / 空串 / 脏字符串 → 一律当没有（不抛）
+        reviewAt: _toDate(json['reviewAt']),
+        remindedAt: _toDate(json['remindedAt']),
       );
 
   /// 目录里显示的主题名（空 → 未归类，与后端 DEFAULT_TOPIC 同口径）。
@@ -676,6 +702,58 @@ class LearnTreeResponse {
     }
     return <LearnCardDto>[]; // 可变列表：上层要按 created 就地排序
   }
+}
+
+/// 学习进度汇总（2026-09-16 学习卡片进度追踪批）。
+///
+/// **口径唯一**（与「每晚 20:00 复习提醒」对齐，别处不要另发明）：
+/// - 待复习 = `status == 'review'` 且 `writable == true` 且 `reviewAt != null` 且 `reviewAt ≤ 今天 − 7 天`
+///   （只读卡不参与复习流转，排除；`reviewAt` 缺失不计入）
+/// - 学习中 = `status == 'review'` 但没到期待复习
+/// - 已掌握 = `status == 'done'`
+/// - 本周 = `created` 落在本周（周一起算，含今天）
+///
+/// 全部从**已加载的 tree** 本地统计，不发新请求（[fromTree] 是纯函数，便于单测钉死口径）。
+class LearnProgressSummary {
+  final int due; // 待复习（进队列满 7 天）
+  final int learning; // 学习中（在复习队列里，还没到期）
+  final int mastered; // 已掌握
+  final int weekNew; // 本周新增（周一起算）
+
+  const LearnProgressSummary({
+    this.due = 0,
+    this.learning = 0,
+    this.mastered = 0,
+    this.weekNew = 0,
+  });
+
+  /// 进 review 队列满几天才算「该回看」——与后端 LearnReviewPushService.REVIEW_STALE_DAYS 同口径。
+  static const int reviewStaleDays = 7;
+
+  factory LearnProgressSummary.fromTree(LearnTreeResponse tree, {DateTime? now}) {
+    final today = _addDays(now ?? DateTime.now(), 0);
+    final monday = _addDays(today, -(today.weekday - 1)); // 周一（weekday: 1=周一）
+    final staleBefore = _addDays(today, -reviewStaleDays);
+    var due = 0, learning = 0, mastered = 0, weekNew = 0;
+    for (final card in [...tree.ai, ...tree.trading, ...tree.other]) {
+      if (card.status == 'done') mastered++;
+      if (card.status == 'review') {
+        final ra = card.reviewAt;
+        // 到期：可写 + 有进队列日期 + 已满 7 天（只读卡只读不流转 → 归「学习中」）
+        if (card.writable && ra != null && !ra.isAfter(staleBefore)) {
+          due++;
+        } else {
+          learning++;
+        }
+      }
+      final created = _toDate(card.created);
+      if (created != null && !created.isBefore(monday) && !created.isAfter(today)) weekNew++;
+    }
+    return LearnProgressSummary(due: due, learning: learning, mastered: mastered, weekNew: weekNew);
+  }
+
+  /// 页面头部那一行（用户拍板格式，别改）：待复习 N · 学习中 M · 已掌握 K · 本周 +J。
+  String get line => '待复习 $due · 学习中 $learning · 已掌握 $mastered · 本周 +$weekNew';
 }
 
 /// learn → trading 反哺候选 DTO（RFC 20260829 V2 批 3）。

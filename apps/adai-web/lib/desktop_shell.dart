@@ -265,8 +265,16 @@ class _DesktopShellState extends State<DesktopShell> {
           ),
           const Divider(height: 1, color: AppColors.darkBorder),
           const SizedBox(height: 8),
-          // 导航项
-          for (var i = 0; i < _items.length; i++) _buildNavItem(i),
+          // 导航项分两段（2026-09-16 分组批）：原生能力在前、「插件」在后，中间一个轻量分节标题。
+          // ⚠️ 只改**渲染顺序**（各段仍按 _items 下标渲染），_items 列表本身与 IndexedStack 的
+          // index 映射原样不动——否则会出现「点第 N 项打开第 M 个页面」。
+          for (var i = 0; i < _items.length; i++)
+            if (_items[i].plugin == null) _buildNavItem(i),
+          if (_items.any((e) => e.plugin != null)) ...[
+            _buildNavSectionHeader('插件'),
+            for (var i = 0; i < _items.length; i++)
+              if (_items[i].plugin != null) _buildNavItem(i),
+          ],
           const Spacer(),
           // 底部当前用户会话菜单（2026-09-04 web 自助改密入口）：
           // 点击用户行弹出「修改密码 / 退出登录」（产品端 role=user 进不了 admin 后台，
@@ -344,6 +352,18 @@ class _DesktopShellState extends State<DesktopShell> {
     );
   }
 
+  /// 分节标题（原生能力 / 插件）：弱化样式，不是导航项（不可点、不参与选中）。
+  Widget _buildNavSectionHeader(String title) {
+    return Padding(
+      key: ValueKey('nav-section-$title'),
+      padding: const EdgeInsets.fromLTRB(21, 10, 16, 4),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey6, letterSpacing: 1.0),
+      ),
+    );
+  }
+
   Widget _buildNavItem(int i) {
     final item = _items[i];
     final selected = item.label == _currentLabel;
@@ -371,14 +391,34 @@ class _DesktopShellState extends State<DesktopShell> {
             const SizedBox(width: 10),
             Icon(item.icon, size: 18, color: selected ? AppColors.darkGreen : AppColors.darkGrey4),
             const SizedBox(width: 10),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 14,
-                color: selected ? AppColors.darkGrey1 : AppColors.darkGrey4,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            Flexible(
+              child: Text(
+                item.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: selected ? AppColors.darkGrey1 : AppColors.darkGrey4,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
             ),
+            // 「插件」小角标（弱化样式）：一眼分出哪些是插件域带来的能力（RFC 20260814）
+            if (item.plugin != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                key: ValueKey('nav-plugin-badge-${item.label}'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.darkBorder),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: const Text(
+                  '插件',
+                  style: TextStyle(fontSize: 9, color: AppColors.darkGrey6, height: 1.1),
+                ),
+              ),
+            ],
           ],
         ),
       ),

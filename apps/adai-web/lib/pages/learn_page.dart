@@ -57,6 +57,10 @@ class _LearnPageState extends State<LearnPage> {
   LearnDigestJob? _pendingConfirm;
   bool _confirmBusy = false;
 
+  // ── 失败看得见（P1-分享7 2026-09-16）：分享完关掉扩展、再打开学习页，必须看到「哪条没整理成、为什么」。
+  //    此前只在喂入弹窗的 60 秒轮询窗口里展示 failed，窗口一关就无痕 → 现在后端留 30 分钟，进页面捞一次。
+  LearnDigestJob? _digestFailed;
+
   int _loadGen = 0; // 树加载代际（迟到响应作废）
   int _handledOpenId = -1; // 已处理过的跳转请求（避免重复定位/重复 setState）
   ({String type, String title})? _pendingOpen; // 首次构建就带跳转请求时，等树加载完再定位
@@ -131,11 +135,25 @@ class _LearnPageState extends State<LearnPage> {
 
   /// 进页面查一次：有任务在等用户拍板（无字幕视频要不要花钱转写）→ 顶部提示条恢复入口。
   /// P2-learn17：此前只在喂入弹窗里能点头，关了弹窗就再也点不到。
+  /// P1-分享7（2026-09-16）：**failed 也一并接住**——分享失败结果后端留 30 分钟，
+  /// 用户回到学习页必须看得见是哪条没整理成、为什么（此前只在轮询窗口内可见 → 等于无痕）。
   Future<void> _checkPendingConfirm() async {
     try {
       final job = await widget.api.getLearnDigestStatus();
-      if (!mounted || !job.isAwaitingConfirm) return;
-      setState(() => _pendingConfirm = job);
+      if (!mounted) return;
+      setState(() {
+        if (job.isAwaitingConfirm) {
+          _pendingConfirm = job;
+          _digestFailed = null;
+        } else if (job.isFailed) {
+          _digestFailed = job;
+          _pendingConfirm = null;
+        } else {
+          // 没有待办/已在跑/已完成 → 两条提示都收掉（刷新后不残留旧提示）
+          _pendingConfirm = null;
+          _digestFailed = null;
+        }
+      });
     } catch (_) {
       // 查不到就当没有（不打扰）：真有待办，用户重新喂一次也能看到
     }
@@ -372,8 +390,11 @@ class _LearnPageState extends State<LearnPage> {
           ),
         ],
       ),
+      // 进度汇总一行：只从已加载的 tree 本地统计（空树不摆一行全 0）
+      if (_tree != null && !_tree!.isEmpty) _buildProgressSummary(_tree!),
       _buildSearchBar(),
       if (_pendingConfirm != null) _buildConfirmBanner(_pendingConfirm!),
+      if (_digestFailed != null) _buildFailedBanner(_digestFailed!),
       Expanded(
         child: _buildBody(),
       ),
@@ -444,8 +465,58 @@ class _LearnPageState extends State<LearnPage> {
     );
   }
 
-  Widget _buildBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+  /// 进度汇总一行（2026-09-16 学习卡片进度追踪批）：待复习 N · 学习中 M · 已掌握 K · 本周 +J。
+  /// 口径见 [LearnProgressSummary.fromTree]（与每晚 20:00 复习提醒同一口径）；
+  /// 全部来自已加载的 tree，本地统计——**不发任何新请求**。
+  Widget _buildProgressSummary(LearnTreeResponse tree) {
+    return Container(
+      key: const ValueKey('learn-progress-summary'),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      child: Text(
+        LearnProgressSummary.fromTree(tree).line,
+        style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4),
+      ),
+    );
+  }
+
+  /// 「上次那条没整理成」提示条（P1-分享7 2026-09-16）：哪条没整理成 + 为什么，
+  /// 复用待确认提示条的视觉（换个色 + 换句话），可直接「再整理一次」。
+  Widget _buildFailedBanner(LearnDigestJob job) {
+    final what = job.source?.title.trim() ?? '';
+    final why = job.message.trim().isEmpty ? '具体原因我没留住，你再说一声我重来。' : job.message.trim();
+    return Container(
+      key: const ValueKey('learn-digest-failed-banner'),
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkRed.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkRed.withValues(alpha: 0.35)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.error_outline, size: 15, color: AppColors.darkRed),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            what.isEmpty ? '上次你给的那条我没整理成：$why' : '上次你给的《$what》我没整理成：$why',
+            style: const TextStyle(fontSize: 12.5, color: AppColors.darkGrey2, height: 1.6),
+          ),
+        ),
+        const SizedBox(width: 10),
+        TextButton(
+          onPressed: () => setState(() => _digestFailed = null),
+          child: const Text('知道了', style: TextStyle(fontSize: 12.5)),
+        ),
+        FilledButton(
+          onPressed: _openDigestDialog,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+          child: const Text('再整理一次', style: TextStyle(fontSize: 12.5)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildBody() {    if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

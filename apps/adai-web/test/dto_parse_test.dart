@@ -54,6 +54,26 @@ void main() {
       expect(entry.content, '上证指数 3200 +0.5%');
     });
 
+    // P2-UI12（2026-09-16）：同分钟同向成交折叠卡的原始记录 id（删除要删全）
+    test('FeedEntryResponse mergedIds：折叠卡解析出全部原始 id；缺字段/脏数据兜底为空', () {
+      final merged = FeedEntryResponse.fromJson(jsonDecode(
+          '{"type":"record","id":"rec_1","title":"买入 3 笔","content":"x","time":"09:31",'
+          '"mergedIds":["rec_1","rec_2","rec_3"]}'));
+      expect(merged.mergedIds, ['rec_1', 'rec_2', 'rec_3']);
+
+      final plain = FeedEntryResponse.fromJson(
+          jsonDecode('{"type":"record","id":"rec_9","content":"x","time":"09:31","mergedIds":null}'));
+      expect(plain.mergedIds, isEmpty, reason: '未折叠/后端返回 null → 空，不炸');
+
+      final missing = FeedEntryResponse.fromJson(
+          jsonDecode('{"type":"record","id":"rec_9","content":"x","time":"09:31"}'));
+      expect(missing.mergedIds, isEmpty, reason: '旧后端没有该字段 → 空');
+
+      final dirty = FeedEntryResponse.fromJson(jsonDecode(
+          '{"type":"record","id":"rec_9","content":"x","time":"09:31","mergedIds":"rec_1"}'));
+      expect(dirty.mergedIds, isEmpty, reason: '不是 List → 当没有，不能抛');
+    });
+
     test('RecordResponse log intent', () {
       final json = jsonDecode('{"intent": "log", "recordId": "r1", "tags": ["a", "b"], "summary": "done"}');
       final resp = RecordResponse.fromJson(json);

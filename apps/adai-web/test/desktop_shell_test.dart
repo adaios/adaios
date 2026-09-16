@@ -7,7 +7,9 @@ import 'package:http/testing.dart';
 import 'package:adai_web/desktop_shell.dart';
 import 'package:adai_web/pages/feed_page.dart';
 import 'package:adai_web/pages/memory_page.dart';
+import 'package:adai_web/pages/profile_page.dart';
 import 'package:adai_web/pages/project_page.dart';
+import 'package:adai_web/pages/search_page.dart';
 import 'package:adai_web/pages/task_page.dart';
 import 'package:adai_web/pages/timeline_page.dart';
 import 'package:adai_web/pages/trading_page.dart';
@@ -206,5 +208,65 @@ void main() {
         reason: 'P1-5：不得错位到项目页');
     // 已访问页面保活
     expect(find.byType(FeedPage, skipOffstage: false), findsOneWidget);
+  });
+
+  // ── 原生能力 / 插件 分组（2026-09-16 分组批）──
+
+  testWidgets('插件条目带「插件」角标，「插件」分节标题把两段分开（原生在前、插件在后）', (tester) async {
+    await pumpShell(tester, api: _api(plugins: ['trading', 'project', 'learn']));
+    final navRail = find.byKey(const ValueKey('nav-rail'));
+    Finder navText(String label) => find.descendant(of: navRail, matching: find.text(label));
+
+    // 角标：插件条目各一个；基础服务（含刻意算基础服务的「任务」）没有
+    for (final label in ['项目', '交易', '学习']) {
+      expect(find.byKey(ValueKey('nav-plugin-badge-$label')), findsOneWidget,
+          reason: '插件「$label」应带「插件」角标');
+    }
+    for (final label in ['对话流', '记忆', '时间线', '任务', '搜索', '档案']) {
+      expect(find.byKey(ValueKey('nav-plugin-badge-$label')), findsNothing,
+          reason: '基础服务「$label」不该带插件角标');
+    }
+
+    // 分节标题 + 两段顺序
+    final header = find.byKey(const ValueKey('nav-section-插件'));
+    expect(header, findsOneWidget);
+    final headerY = tester.getTopLeft(header).dy;
+    for (final label in ['对话流', '记忆', '时间线', '任务', '搜索', '档案']) {
+      expect(tester.getTopLeft(navText(label)).dy, lessThan(headerY),
+          reason: '「$label」属原生段 → 排在插件标题之上');
+    }
+    for (final label in ['项目', '交易', '学习']) {
+      expect(tester.getTopLeft(navText(label)).dy, greaterThan(headerY),
+          reason: '「$label」属插件段 → 排在插件标题之下');
+    }
+  });
+
+  testWidgets('无插件用户：不显示「插件」分节标题（导航维持原样）', (tester) async {
+    await pumpShell(tester, api: _api(plugins: []));
+    expect(find.byKey(const ValueKey('nav-section-插件')), findsNothing);
+    expect(find.byKey(const ValueKey('nav-plugin-badge-任务')), findsNothing);
+  });
+
+  testWidgets('分组后索引不错位：点每一项都打开对应页面，IndexedStack.index 对齐 _items 下标', (tester) async {
+    await pumpShell(tester); // 插件：trading + project → _items 共 8 项
+    final navRail = find.byKey(const ValueKey('nav-rail'));
+    // _items 全序（分组只改渲染顺序，不动 _items 本身）→ 下标即 IndexedStack.index
+    final expected = <String, (int, Type)>{
+      '对话流': (0, FeedPage),
+      '记忆': (1, MemoryPage),
+      '时间线': (2, TimelinePage),
+      '项目': (3, ProjectPage),
+      '任务': (4, TaskPage),
+      '交易': (5, TradingPage),
+      '搜索': (6, SearchPage),
+      '档案': (7, ProfilePage),
+    };
+    for (final e in expected.entries) {
+      await tester.tap(find.descendant(of: navRail, matching: find.text(e.key)));
+      await tester.pump();
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, e.value.$1,
+          reason: '点「${e.key}」后 IndexedStack.index 必须等于它在 _items 里的下标（分组插标题不能错位）');
+      expect(find.byType(e.value.$2), findsOneWidget, reason: '点「${e.key}」应打开对应页面');
+    }
   });
 }

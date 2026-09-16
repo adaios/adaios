@@ -1788,6 +1788,9 @@ class FeedEntryResponse {
   final List<Map<String, dynamic>>? turns;
   final String domain;
   final String updatedAt; // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳
+  // P2-UI12（2026-09-16）：后端把「同一分钟同向成交」折叠成一条卡，这里是被折叠进本条的
+  // 原始记录 id（删除时要删全，否则「删了又回来」）；未折叠/后端未返回 → 空列表。
+  final List<String> mergedIds;
 
   FeedEntryResponse({
     required this.type,
@@ -1804,6 +1807,7 @@ class FeedEntryResponse {
     this.turns,
     this.domain = 'life',
     this.updatedAt = '',
+    this.mergedIds = const [],
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -1821,6 +1825,10 @@ class FeedEntryResponse {
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
     domain: json['domain'] as String? ?? 'life',
     updatedAt: json['updatedAt'] as String? ?? '',
+    // 防御式：null / 不是 List / 脏元素都兜住（非 List → 空；元素统一转字符串）
+    mergedIds: json['mergedIds'] is List
+        ? (json['mergedIds'] as List).map((e) => e.toString()).toList()
+        : const [],
   );
 }
 
