@@ -64,6 +64,8 @@ def sh(cmd):
 # ── ① 服务存活 ──
 svcs = ['adai-core', 'adaios-web', 'adaios-admin', 'adaios-app', 'caddy']
 out['services'] = {s: sh('systemctl is-active ' + s).strip() for s in svcs}
+# P2-工程7（2026-09-16）：生产到底在跑哪份代码——deploy.sh 部署时落在 backend/DEPLOYED 的构建来源
+out['deployed'] = sh('cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip()
 
 # ── ② 应用日志（当日）──
 jr = sh(f'journalctl -u adai-core --since "{TODAY.isoformat()} 00:00:00" '
@@ -243,6 +245,17 @@ if bad:
 else:
     print(f"  ✅ {' / '.join(svc)} 全 active")
 print(f"  ERROR {d['error_total']} · WARN {d['warn_total']}")
+# P2-工程7：生产代码版本——2026-09-16 想给「分享失败」加一行日志时才发现，
+# 没有它根本答不出「生产跑的是哪个 commit、工作区当时脏不脏」。
+_dep = d.get('deployed') or ''
+if _dep:
+    _f = dict(l.split('=', 1) for l in _dep.splitlines() if '=' in l)
+    print(f"  生产代码 {(_f.get('commit') or '?')[:7]} · 部署于 {_f.get('deployedAt', '?')}"
+          f" · 当时工作区脏文件 {_f.get('dirtyFiles', '?')}")
+    if _f.get('commitSubject'):
+        print(f"    {_f['commitSubject'][:72]}")
+else:
+    print("  生产代码 unknown（还没有 backend/DEPLOYED——这是加上部署记录之前的版本）")
 for line in d['error_lines']:
     print(f"  \033[31m✗ {line}\033[0m")
 

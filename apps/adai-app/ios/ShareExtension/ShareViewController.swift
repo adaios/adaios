@@ -288,17 +288,21 @@ final class ShareViewController: UIViewController {
         closeButton.isHidden = true
     }
 
-    /// 用户拍板的口径：成功显示「已交给阿呆，正在读…」约 1 秒自动关。
+    /// 用户拍板的口径：成功显示「交出去了」约 1.6 秒自动关。
     /// 提交式端点秒回，抓取/转写在后台跑——没有任何理由让用户在这里等。
+    ///
+    /// P1-分享7（2026-09-16）：**提交成功 ≠ 整理成功**——这里原先说「正在读…」，读起来像保证
+    /// 会成功；而后台消化失败时（实测微博分享两次都失败）用户事后去学习页才发现什么都没有。
+    /// 所以文案改成如实指路：结果去「学习」页看，成功没成功都在那。
     private func setSuccess() {
         spinner.stopAnimating()
         spinner.isHidden = true
         symbolLabel.isHidden = false
         symbolLabel.text = "✅"
-        titleLabel.text = "已交给阿呆"
-        detailLabel.text = "正在读…"
+        titleLabel.text = "交出去了"
+        detailLabel.text = "结果去「学习」页看（成没成都写在那）"
         closeButton.isHidden = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
             self?.finish()
         }
     }

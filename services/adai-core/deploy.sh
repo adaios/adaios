@@ -22,13 +22,31 @@ echo "▸ 上传 JAR 到 ${SERVER}:/tmp/adai-core.jar..."
 # 2026-08-23：生产 SSH 用 ubuntu@（root 直连被拒），jar 先传 /tmp 再 sudo 装入 backend 目录
 scp "$JAR" "ubuntu@${SERVER}:/tmp/adai-core.jar"
 
+# P2-工程7（2026-09-16）：生产上没有 monorepo，事后**查不出「跑的是哪份代码」**
+# （2026-09-16 想给分享失败加一行日志时才发现：生产 jar 的构建时刻夹在一批未提交改动中间，
+# 既说不清它含哪些、也说不清 HEAD 差多少）。把构建来源随 jar 一起带过去，落在
+# backend/DEPLOYED——与 jar 同目录、同生命周期、每次覆盖、零依赖，比 jar manifest 免改构建。
+DEPLOY_META="$(mktemp)"
+{
+    echo "deployedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "commitSubject=$(git log -1 --pretty=%s 2>/dev/null || echo unknown)"
+    echo "dirtyFiles=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+    echo "jar=$(basename "$JAR")"
+    echo "jarSha256=$(shasum -a 256 "$JAR" 2>/dev/null | awk '{print $1}')"
+} > "$DEPLOY_META"
+scp "$DEPLOY_META" "ubuntu@${SERVER}:/tmp/adai-core.DEPLOYED"
+rm -f "$DEPLOY_META"
+
 echo "▸ SSH 部署..."
 ssh "ubuntu@${SERVER}" sudo bash -s << 'SSH_SCRIPT'
 set -euo pipefail
 
 echo "  0/6  装入新 JAR（/tmp/adai-core.jar → /opt/adaios/backend/adai-core.jar）..."
 install -o adaios -g adaios -m 644 /tmp/adai-core.jar /opt/adaios/backend/adai-core.jar
-rm -f /tmp/adai-core.jar
+# P2-工程7：构建来源（commit / 是否脏 / jar 校验和）落同目录，供事后回答「生产跑的是哪份代码」
+install -o adaios -g adaios -m 644 /tmp/adai-core.DEPLOYED /opt/adaios/backend/DEPLOYED
+rm -f /tmp/adai-core.jar /tmp/adai-core.DEPLOYED
 
 echo "  1/6  停止服务..."
 systemctl stop adai-core || true
