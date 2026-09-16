@@ -233,7 +233,7 @@ class _AccountsPageState extends State<AccountsPage> {
       return;
     }
     // P2-3（2026-09-06）：成功给明确反馈（保存即生效）——此前静默成功用户不确定是否已存
-    const pluginLabels = {'trading': '交易', 'project': '项目'};
+    const pluginLabels = {'trading': '交易', 'project': '项目', 'learn': '学习'};
     final label = pluginLabels[plugin] ?? plugin;
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已${on ? '开启' : '关闭'} ${account.userId} 的「$label」模块',
@@ -681,17 +681,23 @@ class _AccountsPageState extends State<AccountsPage> {
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6),
           ),
         ]),
-        // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/project
+        // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/project/learn
         // 08-15 前端×2（2026-08-17）：内置管理员插件受保护（enabled/删除有保护、插件开关此前无）
+        // 2026-09-16「第一次见面」批：补 learn（后端 PluginRegistry 早已注册并支持 PATCH，
+        // 此前 admin 前端硬编码只有 trading/project → learn 无处可勾）；Wrap 防三开关溢出
         const SizedBox(height: 10),
-        Row(children: [
-          const Text('插件',
-              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-          const SizedBox(width: 8),
-          _pluginSwitch(account, 'trading', '交易'),
-          const SizedBox(width: 12),
-          _pluginSwitch(account, 'project', '项目'),
-        ]),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            const Text('插件',
+                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            _pluginSwitch(account, 'trading', '交易'),
+            _pluginSwitch(account, 'project', '项目'),
+            _pluginSwitch(account, 'learn', '学习'),
+          ],
+        ),
         // P2-6（2026-09-06）：账号卡直达「治理浏览」——切到该用户的数据/系统区看其
         // 记录/记忆/持仓（任务流「发现账号异常 → 去看它的数据」不再靠顶栏手动下拉）；
         // 仅 enabled 账号可浏览（disabled 无法登录也无数据视图），自身当前即在本人视图

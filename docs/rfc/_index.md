@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-15
+updated: 2026-09-16
 status: active
-lines: 81
+lines: 82
 depends-on: []
 related:
   - ../_index.md
@@ -73,6 +73,7 @@ tags: [meta, index, rfc]
 | 20260914-login-credential-experience.md | 登录体验方案（待拍板）——L1 补 `AutofillGroup`/`autofillHints` 让 iCloud 钥匙串记住并填充密码；L2 token 落 Keychain + `local_auth` Face ID 本地门禁 + 后端会话设备列表与单设备撤销；L3（二期可选）Passkey / Sign in with Apple。生物特征永不出设备，Face ID 只是本地解锁闸；会话维持 30 天滑动（痛点不在时长，在「登录那一次」与「打开时无门禁」）| draft |
 | 20260914-ios-share-extension.md | iOS 分享扩展（Share Extension）——B站/抖音分享面板直达阿呆：新增 Extension target + App Groups 共享 `learn:digest` 限权令牌，扩展自进程内提交 `/learn/digest`、**不拉起主 App**（2026-09-14 拍板：反馈「已交给阿呆，正在读…」约 1 秒自动关 / 令牌签发时自动写入 / 只放「整理」一个动作）| approved |
 | 20260915-share-extension-credentials.md | 分享扩展凭据方案（待拍板）——把「用户手点一次签发」改为**登录后自动签发 + 自动续期**（保住「扩展只拿限权令牌」的取舍，同时去掉手动步骤），并可选把凭据通道从 App Group **明文容器**升级为**共享 Keychain**；起因是 2026-09-15 TestFlight 首次实装真机复验暴露「别人装完、登录了、分享却用不了，且不知道原因」——业界共识是登录即自动写入、用户零感知 | draft |
+| 20260916-first-meeting.md | 第一次见面——新用户冷启动批：①admin 账号页补 **learn 插件开关**（后端早已注册，前端硬编码漏项，学习功能此前无处可勾）；②对话流空态改**阿呆先开口 + 3 个可点开场问句**（走问答路径，插件默认全关时唯一零配置能跑通的能力面）并注入**能力边界 prompt**（禁越界承诺）；③档案页「**阿呆对你的了解**」（`GET /memory/insights` 聚合长期沉淀的 patterns/preferences + 确认回流 identity）；含昵称语义修正（「姓名」→「阿呆怎么称呼你」、默认值不再用 AI 自己的名）| implemented |
 
 ## 过期判断
 

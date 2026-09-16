@@ -35,6 +35,15 @@ public class MemoryService {
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    /**
+     * patterns/preferences 聚合的默认窗口（天）——RFC 20260905 画像口径。
+     * 「阿呆对你的了解」（档案页）用更长窗口，见 MemoryController。
+     */
+    public static final int DEFAULT_PATTERN_WINDOW_DAYS = 30;
+
+    /** 聚合类查询回看多少个月（记忆按月文件存放）。 */
+    private static final int MEMORY_LOOKBACK_MONTHS = 24;
+
     // 解析条目：--- 分隔的前置元信息 + 正文。
     // 2026-08-17（生产 110 条「createdAt 缺失」告警）：正文内容若含裸 `---`（如笑话/故事分隔线），
     // 旧正则 `(?=\n---|\z)` 会在正文内的 --- 处提前截断 → 后半正文被误当下一条目 frontmatter → createdAt 缺失、
@@ -284,22 +293,39 @@ public class MemoryService {
 
     /**
      * 查询该用户所有 memory 中出现的 patterns（去重，按置信度降序）。
+     * <p>
+     * 默认窗口 {@link #DEFAULT_PATTERN_WINDOW_DAYS} 天（RFC 20260905 画像口径）。
      */
     public List<MemoryPattern> findAllPatterns(String userId) {
+        return findAllPatterns(userId, DEFAULT_PATTERN_WINDOW_DAYS);
+    }
+
+    /**
+     * 按窗口聚合 patterns（2026-09-16「第一次见面」批加窗口参数）。
+     * <p>
+     * **时效只影响排序，不影响返回的 confidence**——返回的是观察本身的原始置信度，
+     * 衰减分只用来决定先后（否则三个月前一条 0.9 的观察会被显示成 10%，误导用户）。
+     * <p>
+     * 窗口可配的原因：「阿呆对你的了解」要的是**长期**画像，30 天窗口会让一个
+     * 两个月没记录的用户看到「我还不认识你」——不是没观察过，是被窗口挡掉了。
+     *
+     * @param windowDays 只聚合最近这些天内的记忆（&lt;=0 表示不设上限）
+     */
+    public List<MemoryPattern> findAllPatterns(String userId, int windowDays) {
         Map<String, MemoryPattern> merged = new LinkedHashMap<>();
         Map<String, Double> bestScore = new HashMap<>();
-        for (int i = 0; i < 30; i++) {
-            LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(userId, date)) {
-                double decay = timeDecay(m);
-                if (m.patterns() != null) {
-                    for (MemoryPattern p : m.patterns()) {
-                        // 时效衰减：置信度 × 时间衰减，旧记忆不再平权参与
-                        double score = p.confidence() * decay;
-                        if (score > bestScore.getOrDefault(p.content(), 0.0)) {
-                            bestScore.put(p.content(), score);
-                            merged.put(p.content(), p);
-                        }
+        for (Memory m : readAllMemories(userId)) {
+            if (windowDays > 0 && m.createdAt().toLocalDate().isBefore(LocalDate.now().minusDays(windowDays))) {
+                continue;
+            }
+            double decay = timeDecay(m);
+            if (m.patterns() != null) {
+                for (MemoryPattern p : m.patterns()) {
+                    // 时效衰减：置信度 × 时间衰减，旧记忆不再平权参与
+                    double score = p.confidence() * decay;
+                    if (score > bestScore.getOrDefault(p.content(), 0.0)) {
+                        bestScore.put(p.content(), score);
+                        merged.put(p.content(), p);
                     }
                 }
             }
@@ -313,22 +339,32 @@ public class MemoryService {
 
     /**
      * 查询该用户所有 memory 中出现的 preferences（去重，按置信度降序）。
+     * <p>
+     * 默认窗口 {@link #DEFAULT_PATTERN_WINDOW_DAYS} 天；窗口语义见
+     * {@link #findAllPatterns(String, int)}。
      */
     public List<MemoryPreference> findAllPreferences(String userId) {
+        return findAllPreferences(userId, DEFAULT_PATTERN_WINDOW_DAYS);
+    }
+
+    /**
+     * 按窗口聚合 preferences（2026-09-16「第一次见面」批加窗口参数）。
+     */
+    public List<MemoryPreference> findAllPreferences(String userId, int windowDays) {
         Map<String, MemoryPreference> merged = new LinkedHashMap<>();
         Map<String, Double> bestScore = new HashMap<>();
-        for (int i = 0; i < 30; i++) {
-            LocalDate date = LocalDate.now().minusDays(i);
-            for (Memory m : findByDate(userId, date)) {
-                double decay = timeDecay(m);
-                if (m.preferences() != null) {
-                    for (MemoryPreference p : m.preferences()) {
-                        // 时效衰减：置信度 × 时间衰减，旧偏好不再平权误导当前决策
-                        double score = p.confidence() * decay;
-                        if (score > bestScore.getOrDefault(p.content(), 0.0)) {
-                            bestScore.put(p.content(), score);
-                            merged.put(p.content(), p);
-                        }
+        for (Memory m : readAllMemories(userId)) {
+            if (windowDays > 0 && m.createdAt().toLocalDate().isBefore(LocalDate.now().minusDays(windowDays))) {
+                continue;
+            }
+            double decay = timeDecay(m);
+            if (m.preferences() != null) {
+                for (MemoryPreference p : m.preferences()) {
+                    // 时效衰减：置信度 × 时间衰减，旧偏好不再平权误导当前决策
+                    double score = p.confidence() * decay;
+                    if (score > bestScore.getOrDefault(p.content(), 0.0)) {
+                        bestScore.put(p.content(), score);
+                        merged.put(p.content(), p);
                     }
                 }
             }
@@ -338,6 +374,34 @@ public class MemoryService {
                         bestScore.getOrDefault(b.content(), 0.0),
                         bestScore.getOrDefault(a.content(), 0.0)))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 一次读全部记忆（按月文件，每月只读一次）。
+     * <p>
+     * 2026-09-16：聚合类查询原先按天遍历 30~365 次 `findByDate`，而后者每次都会
+     * **重新读取并解析整个月文件**——365 天窗口下等于把同一个月文件解析十几次。
+     * 这里改为按月读，最多 {@link #MEMORY_LOOKBACK_MONTHS} 次。
+     */
+    private List<Memory> readAllMemories(String userId) {
+        LocalDate now = LocalDate.now();
+        List<Memory> all = new ArrayList<>();
+        for (int i = 0; i < MEMORY_LOOKBACK_MONTHS; i++) {
+            String ym = now.minusMonths(i).format(DateTimeFormatter.ofPattern("yyyy/MM"));
+            String content = fileStorage.read(userId, MEMORY_DIR + "/" + ym + ".md");
+            if (content == null || content.isBlank()) continue;
+            all.addAll(parseEntries(content));
+        }
+        return all;
+    }
+
+    /**
+     * 最早一条记忆的日期（2026-09-16「第一次见面」批：档案页「阿呆对你的了解」的起点文案）。
+     */
+    public Optional<LocalDate> earliestMemoryDate(String userId) {
+        return readAllMemories(userId).stream()
+                .map(m -> m.createdAt().toLocalDate())
+                .min(LocalDate::compareTo);
     }
 
     /**

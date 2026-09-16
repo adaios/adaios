@@ -51,6 +51,16 @@ class _FeedPageState extends State<FeedPage> {
   /// _totalToday 只计核心记录，附加条目（action/market/push）不计入分页终止判定。
   int get _coreCardCount => _cards.where((c) => c.type == FeedCardType.record).length;
 
+  /// 右栏是否有内容可看（2026-09-16「第一次见面」批）。
+  /// 新用户三块全空时收起右栏——不让「暂无摘要 / 暂无标签 / 暂无任务」三连空
+  /// 把登录后的第一眼撑得更冷（数据为空 ≠ 要展示三个空壳）。
+  bool get _hasSidebarContent {
+    if (_brief.trim().isNotEmpty) return true;
+    if ((_tags?.tags ?? const []).isNotEmpty) return true;
+    final stats = _taskStats;
+    return stats != null && stats.total > 0;
+  }
+
   // 右上下文栏数据
   TagsResponse? _tags;
   TaskStatsResponse? _taskStats;
@@ -1258,8 +1268,9 @@ class _FeedPageState extends State<FeedPage> {
                 children: [
                   // 主对话流（居中限宽 880）
                   Expanded(child: _buildMainFlow()),
-                  // 右上下文栏
-                  Container(width: 300, color: AppColors.darkSurface, child: _buildSidebar()),
+                  // 右上下文栏（2026-09-16：零数据新用户收起，避免三连空壳）
+                  if (_hasSidebarContent)
+                    Container(width: 300, color: AppColors.darkSurface, child: _buildSidebar()),
                 ],
               ),
       ),
@@ -1368,37 +1379,113 @@ class _FeedPageState extends State<FeedPage> {
       );
     }
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('✦ ✦ ✦', style: TextStyle(fontSize: 24, color: AppColors.darkGrey6)),
-          const SizedBox(height: 16),
-          const Text('还没有记录',
-              style: TextStyle(fontSize: 16, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          const Text('在下方输入你的第一条记录', style: TextStyle(fontSize: 13, color: AppColors.darkGrey6)),
-          const SizedBox(height: 32),
-          // #159 快速开始引导 chips：点击填入输入框并聚焦
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _emptyChip('📝 记录心情', () => _inputBarKey.currentState?.prefillText('今天心情')),
-            const SizedBox(width: 12),
-            _emptyChip('🤔 问个问题', () => _inputBarKey.currentState?.prefillText('')),
-          ]),
-        ],
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.darkBorder),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: AppColors.darkGreen.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Text('呆',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.darkGreen,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('阿呆',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.darkGrey3,
+                          fontWeight: FontWeight.w600)),
+                ]),
+                const SizedBox(height: 14),
+                Text('${_greetingNow()}。我是阿呆。',
+                    style: const TextStyle(
+                        fontSize: 16,
+                        color: AppColors.darkGrey1,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4)),
+                const SizedBox(height: 6),
+                const Text('第一次见，你先随便问我一句——点下面的也行。',
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
+                const SizedBox(height: 18),
+                for (final q in _firstMeetingQuestions) _openingQuestion(q),
+                const SizedBox(height: 6),
+                const Text('也可以直接说点什么，或者丢张图给我。',
+                    style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _emptyChip(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.darkBorder),
-          borderRadius: BorderRadius.circular(12),
+  /// 「第一次见面」三个开场问句（2026-09-16）。
+  ///
+  /// 刻意只用 Kernel 基础能力（记录 / 问答 / 记忆）——新用户插件默认全关，
+  /// 只有这几件事是**真的能立刻跑起来**的；拿没开的能力当招牌就是骗人。
+  static const List<String> _firstMeetingQuestions = [
+    '你能干什么？',
+    '你有什么特别的能力？',
+    '我该怎么用你？',
+  ];
+
+  /// 时段问候（与 BriefAppService.greetingForHour 同口径）。
+  String _greetingNow() {
+    final h = DateTime.now().hour;
+    if (h < 6) return '夜深了';
+    if (h < 11) return '早上好';
+    if (h < 14) return '中午好';
+    if (h < 18) return '下午好';
+    return '晚上好';
+  }
+
+  /// 开场问句一行：点击**直接发问**（走真实问答链路），不是预填占位。
+  /// 用户要看的是「AI 真的在回答」，不是一句被塞进输入框的空话。
+  Widget _openingQuestion(String question) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        key: ValueKey('first-meeting-$question'),
+        onTap: () => _onSend(question),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface2,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.darkBorder),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Text(question,
+                  style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+            ),
+            const Icon(Icons.arrow_forward, size: 15, color: AppColors.darkGrey5),
+          ]),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
       ),
     );
   }

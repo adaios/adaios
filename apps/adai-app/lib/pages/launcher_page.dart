@@ -104,7 +104,10 @@ class _LauncherPageState extends State<LauncherPage>
 
       setState(() {
         _myName = identity.name;
-        _ageStr = '${identity.preferences['style'] ?? ''} · ${identity.preferences['focus'] ?? ''}';
+        // 2026-09-16「第一次见面」批：风格/领域都空时不再拼出「 · 」空壳
+        final style = identity.preferences['style'] ?? '';
+        final focus = identity.preferences['focus'] ?? '';
+        _ageStr = [style, focus].where((s) => s.isNotEmpty).join(' · ');
         _tagTotal = tagsResp.total;
         _allTags = tagsResp.tags;
         _timelineCount = timeline.length;
@@ -248,7 +251,16 @@ class _LauncherPageState extends State<LauncherPage>
                 widget.onLogout?.call();
               }),
               _divider(),
-              _buildRow(Icons.person_outline, '关于我', '$_myName · $_ageStr', AppColors.darkGreen, () {
+              // 2026-09-16「第一次见面」批：新用户名字为空时不再显示「 · 」空壳
+              //（此前拼成「阿呆 · 」，名字是档案默认值、风格/领域全空）
+              _buildRow(
+                  Icons.person_outline,
+                  '关于我',
+                  [
+                    (_myName?.isNotEmpty ?? false) ? _myName! : '还没告诉我',
+                    if (_ageStr.isNotEmpty) _ageStr,
+                  ].join(' · '),
+                  AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => Scaffold(
                   backgroundColor: AppColors.darkBg,

@@ -64,9 +64,13 @@ public class IdentityFileRepository implements IdentityRepository {
 
     /**
      * 文件不存在或解析失败时的默认降级档案。
+     * <p>
+     * 2026-09-16「第一次见面」批：默认 name 由「阿呆」改为空。此前 UI 上 label 是「姓名/你的名字」，
+     * 默认值却是 AI 自己的名字「阿呆」，还被当作「称呼」注入 prompt → 模型以为用户叫阿呆（语义串线）。
+     * 空 name = 未告知称呼，前端展示「未命名」并引导用户自己填。
      */
     private IdentityProfile defaultProfile() {
-        return new IdentityProfile("阿呆", Map.of(), Map.of(), List.of());
+        return new IdentityProfile("", Map.of(), Map.of(), List.of());
     }
 
     @Override
@@ -89,7 +93,7 @@ public class IdentityFileRepository implements IdentityRepository {
         Map<String, String> fields = parseFrontmatter(frontmatter);
         log.debug("parseProfile fields: {}", fields);
 
-        String name = fields.getOrDefault("name", "用户");
+        String name = fields.getOrDefault("name", "");
         Map<String, String> preferences = parseSubMap(fields.get("preferences"));
         Map<String, String> rules = parseSubMap(fields.get("rules"));
         List<String> tags = parseList(fields.get("tags"));

@@ -28,9 +28,11 @@ class IdentityFileRepositoryTest {
     @Test
     void load_whenFileMissing_returnsDefault() {
         // 文件不存在时返回默认档案，不抛异常
+        // 2026-09-16「第一次见面」批：默认 name 由「阿呆」（AI 自己的名）改为空——
+        // 「姓名」字段是 AI 对用户的称呼，默认给 AI 的名会串线
         Optional<IdentityProfile> result = repository.load("default");
         assertTrue(result.isPresent());
-        assertEquals("阿呆", result.get().name());
+        assertEquals("", result.get().name());
     }
 
     @Test
@@ -73,6 +75,6 @@ class IdentityFileRepositoryTest {
         fileStorage.write("default", "identity/profile.md", "这不是有效的 frontmatter 格式");
         Optional<IdentityProfile> result = repository.load("default");
         assertTrue(result.isPresent());
-        assertEquals("阿呆", result.get().name());
+        assertEquals("", result.get().name());
     }
 }

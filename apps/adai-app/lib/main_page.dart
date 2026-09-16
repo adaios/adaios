@@ -1740,40 +1740,112 @@ class _MainPageState extends State<MainPage>
   }
 
   Widget _buildEmptyState() {
+    // 2026-09-16「第一次见面」批：空态不再是「还没有记录 + 两个点不出结果的冷词」，
+    // 而是阿呆先开口 + 三个能**直接发问**的开场（详见 _firstMeetingQuestions 注释）。
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('✦ ✦ ✦', style: TextStyle(fontSize: 24, color: AppColors.darkGrey4)),
-            const SizedBox(height: 20),
-            Text('还没有记录', style: TextStyle(fontSize: 18, color: AppColors.darkGrey4, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            Text('在下方输入你的第一条记录\n或语音、或文字，随你', textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: AppColors.darkGrey4, height: 1.6)),
-            const SizedBox(height: 32),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              _emptyChip('📝 记录心情', () => _inputBarKey.currentState?.prefillText('今天心情')),
-              const SizedBox(width: 12),
-              _emptyChip('🤔 问个问题', () => _inputBarKey.currentState?.prefillText('')),
-            ]),
-          ],
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.darkBorder.withAlpha(150)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withAlpha(46),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text('呆',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.darkGreen,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('阿呆',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.darkGrey3,
+                        fontWeight: FontWeight.w600)),
+              ]),
+              const SizedBox(height: 14),
+              Text('${_greetingNow()}。我是阿呆。',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      color: AppColors.darkGrey1,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4)),
+              const SizedBox(height: 6),
+              const Text('第一次见，你先随便问我一句——点下面的也行。',
+                  style: TextStyle(
+                      fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
+              const SizedBox(height: 16),
+              for (final q in _firstMeetingQuestions) _openingQuestion(q),
+              const SizedBox(height: 4),
+              const Text('也可以直接说点什么，或者丢张图给我。',
+                  style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _emptyChip(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.darkBorder.withAlpha(150)),
-          borderRadius: BorderRadius.circular(12),
+  /// 「第一次见面」三个开场问句（2026-09-16）。
+  ///
+  /// 刻意只用 Kernel 基础能力（记录 / 问答 / 记忆）——新用户插件默认全关，
+  /// 只有这几件事是**真的能立刻跑起来**的；拿没开的能力当招牌就是骗人。
+  static const List<String> _firstMeetingQuestions = [
+    '你能干什么？',
+    '你有什么特别的能力？',
+    '我该怎么用你？',
+  ];
+
+  /// 时段问候（与后端 BriefAppService.greetingForHour 同口径）。
+  String _greetingNow() {
+    final h = DateTime.now().hour;
+    if (h < 6) return '夜深了';
+    if (h < 11) return '早上好';
+    if (h < 14) return '中午好';
+    if (h < 18) return '下午好';
+    return '晚上好';
+  }
+
+  /// 开场问句一行：点击**直接发问**（走真实问答链路），不是预填占位。
+  Widget _openingQuestion(String question) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        key: ValueKey('first-meeting-$question'),
+        onTap: () => _onSend(question),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurface2,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.darkBorder.withAlpha(150)),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Text(question,
+                  style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+            ),
+            const Icon(Icons.arrow_forward, size: 15, color: AppColors.darkGrey5),
+          ]),
         ),
-        child: Text(label, style: TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
       ),
     );
   }

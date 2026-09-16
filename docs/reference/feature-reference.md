@@ -635,6 +635,10 @@ Strict format:
 - 标签过滤（水平滚动标签栏，取前 8 个标签 + "全部"）
 - 情绪图标标记（正面 / 负面 / 中性）
 - 打开后自动跳转到最近有数据的日期
+- **「阿呆对你的了解」（2026-09-16「第一次见面」批）**：个人档案页把长期沉淀的
+  patterns / preferences 端出来（`GET /memory/insights`，365 天长期窗口、按置信度降序、
+  行为模式与偏好各取 3 条）；用户点「✓ 对」→ 写回 `identity.preferences`（此后随档案
+  注入 prompt），形成「观察 → 确认 → 记住」闭环。数据本就一直在长，此前只是没有出口
 
 ### 前端文件
 
@@ -648,6 +652,7 @@ Strict format:
 |:----|:---------|:------|
 | `GET /api/v1/memory/dates` | `getMemoryDates()` | 有记忆的日期列表 |
 | `GET /api/v1/memory?date=` | `getMemory(date:)` | 按日获取记忆条目 |
+| `GET /api/v1/memory/insights` | `getMemoryInsights()` | 「阿呆对你的了解」——长期观察聚合（patterns/preferences，365 天窗口，双端档案页消费） |
 
 ### API 响应
 

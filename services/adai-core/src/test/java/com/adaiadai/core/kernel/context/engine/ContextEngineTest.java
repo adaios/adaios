@@ -4,6 +4,7 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -239,5 +241,71 @@ class ContextEngineTest {
         engine.compose("bob", "note", record("项目 B 方向 Phase 4 的任务进度怎么样"), null);
 
         assertEquals("life", knowledge.receivedScene, "无 project 插件 → 项目词不判 project");
+    }
+
+    // ── 2026-09-16「第一次见面」批：新用户第一眼问答 ──
+
+    @Test
+    void capabilityContext_newUserWithNoPlugins_marksPluginsAsUnavailable() {
+        // 新用户插件默认全关：问「你能干什么」时，模型必须知道交易/项目/学习现在用不了，
+        // 否则顺口承诺 → 用户点下去只有 403，第一印象当场崩
+        grantPlugins("newbie"); // 无任何插件
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService());
+
+        String prompt = engine.compose("newbie", "question", record("你能干什么？"), null).prompt();
+
+        assertTrue(prompt.contains("能力边界"), "开场问答必须带能力边界约束");
+        assertTrue(prompt.contains("已经能用的：") && prompt.contains("记录（随手记"),
+                "Kernel 基础能力必须如实列入「已经能用」");
+        assertTrue(prompt.contains("还没开、现在用不了的："), "未开启插件要有独立一行");
+        assertTrue(prompt.contains("交易（持仓、复盘、买点）"), "未开启的插件要如实标注用不了");
+        assertTrue(prompt.contains("不许编造"), "要有禁止编造能力的硬约束");
+    }
+
+    @Test
+    void capabilityContext_learnEnabled_movesLearnIntoAvailable() {
+        grantPlugins("learner", PluginRegistry.PLUGIN_LEARN);
+        when(identity.load(any())).thenReturn(Optional.empty());
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService());
+
+        String prompt = engine.compose("learner", "question", record("你能干什么？"), null).prompt();
+
+        assertTrue(prompt.contains("学习（把链接、视频整理成能复习的卡片）"),
+                "已开启的 learn 应出现在可用能力清单");
+        int offIdx = prompt.indexOf("还没开、现在用不了的：");
+        if (offIdx >= 0) {
+            String offLine = prompt.substring(offIdx, prompt.indexOf('\n', offIdx));
+            assertFalse(offLine.contains("学习"), "learn 已开启，不应再出现在「用不了」里");
+        }
+    }
+
+    @Test
+    void identitySummary_whenNameBlank_omitsEmptyCallLine() {
+        // 2026-09-16：新用户还没填昵称时，不注入「- 称呼：」空壳，也不给模型编造名字的机会
+        grantPlugins("newbie");
+        when(identity.load(any())).thenReturn(Optional.of(
+                new IdentityProfile("", Map.of(), Map.of(), List.of())));
+        when(records.findAll(any())).thenReturn(List.of());
+        when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
+        when(memory.recent(any(), anyInt())).thenReturn(List.of());
+        when(search.search(any(), anyString())).thenReturn(List.of());
+        ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
+                List.of(), List.of(), search, pluginService());
+
+        String prompt = engine.compose("newbie", "question", record("你好"), null).prompt();
+
+        assertTrue(prompt.contains("还没告诉我"), "空称呼要显式写成「还没告诉我」");
+        assertFalse(prompt.contains("- 称呼：\n"), "不应出现空称呼行");
     }
 }

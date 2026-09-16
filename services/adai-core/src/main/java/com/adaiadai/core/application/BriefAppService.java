@@ -93,9 +93,14 @@ public class BriefAppService {
                 .filter(r -> r.createdAt().toLocalDate().isAfter(LocalDate.now().minusDays(2)))
                 .toList();
         List<Memory> recentMemories = memoryService.recent(userId, 7);
-        String identityName = identityRepository.load(userId)
+        // 2026-09-16「第一次见面」批：name 现在允许为空（新用户还没填昵称）。
+        // 分开两用——给 AI 的空值兜底成 "the user"，给用户看的问候语则在空时整段省掉称呼，
+        // 避免拼出「☀️  早上好！」这种双空格或把英文塞进中文问候。
+        String userName = identityRepository.load(userId)
                 .map(IdentityProfile::name)
-                .orElse("user");
+                .map(String::trim)
+                .orElse("");
+        String identityName = userName.isEmpty() ? "the user" : userName;
 
         int hour = java.time.LocalDateTime.now().getHour();
         boolean hasTodayRecords = !todayRecords.isEmpty();
@@ -120,7 +125,9 @@ public class BriefAppService {
             String greeting = greetingForHour(hour);
             // 降级增强（阿呆 08-14 反馈「就两条」）：AI 失败时用本地数据拼内容，不再干巴巴 2 行
             StringBuilder fallback = new StringBuilder();
-            fallback.append(emojiForHour(hour)).append(" ").append(identityName).append(" ").append(greeting).append("！");
+            fallback.append(emojiForHour(hour)).append(" ");
+            if (!userName.isEmpty()) fallback.append(userName).append(" ");
+            fallback.append(greeting).append("！");
             if (!todayRecords.isEmpty()) {
                 fallback.append("\n📋 今日已有 ").append(todayRecords.size()).append(" 条记录");
             } else if (!recentRecords.isEmpty()) {

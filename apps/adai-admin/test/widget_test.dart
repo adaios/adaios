@@ -86,6 +86,8 @@ void main() {
     expect(find.byKey(const ValueKey('enabled-bob')), findsOneWidget);
     expect(find.byKey(const ValueKey('plugin-alice-trading')), findsOneWidget);
     expect(find.byKey(const ValueKey('plugin-alice-project')), findsOneWidget);
+    // 2026-09-16「第一次见面」批：learn 必须在列（此前前端硬编码漏项 → 学习功能无处可开）
+    expect(find.byKey(const ValueKey('plugin-alice-learn')), findsOneWidget);
 
     // 点击 alice 的启用开关（P2-2：禁用需确认弹窗）
     await tester.tap(find.byKey(const ValueKey('enabled-alice')));
@@ -117,6 +119,31 @@ void main() {
     // project 开关不受影响
     expect(
       tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
+      isFalse,
+    );
+  });
+
+  testWidgets('插件开关：给 alice 开 learn → 状态反映（2026-09-16 补漏项）',
+      (WidgetTester tester) async {
+    await pumpAccounts(tester);
+
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-learn'))).value,
+      isFalse,
+      reason: 'alice 初始无任何插件',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('plugin-alice-learn')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-learn'))).value,
+      isTrue,
+      reason: 'learn 开关必须可用（后端 PluginRegistry 已注册并支持 PATCH）',
+    );
+    // 同卡其它插件不受影响
+    expect(
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-trading'))).value,
       isFalse,
     );
   });

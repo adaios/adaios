@@ -352,6 +352,40 @@ class MemoryServiceTest {
     }
 
     @Test
+    void findAllPatterns_longWindow_includesObservationsBeyond30Days() {
+        // 2026-09-16「第一次见面」批：档案页「阿呆对你的了解」用 365 天窗口——
+        // 45 天前的高置信观察必须能被聚合到（默认 30 天窗口会把它整个挡掉，
+        // 用户看到的是「我还不认识你」，其实早观察到了）
+        Memory old = new Memory("mem_old45", "rec_p45", Memory.KIND_PATTERN, "45天前的模式",
+                List.of(new MemoryPattern("45天前的模式", 0.9)), null, List.of("t"), "neutral", false, null,
+                LocalDateTime.now().minusDays(45), null, false, null, null, null);
+        memoryService.persist("default", old);
+
+        assertTrue(memoryService.findAllPatterns("default").isEmpty(),
+                "默认 30 天窗口内没有它（既有口径不变）");
+
+        List<MemoryPattern> longWindow = memoryService.findAllPatterns("default", 365);
+        assertEquals(1, longWindow.size(), "365 天窗口要能看到 45 天前的观察");
+        assertEquals("45天前的模式", longWindow.get(0).content());
+        assertEquals(0.9, longWindow.get(0).confidence(), 1e-9,
+                "返回的 confidence 是观察本身的原始置信度，不是衰减后的分数");
+    }
+
+    @Test
+    void earliestMemoryDate_returnsOldestDate() {
+        memoryService.persist("default", new Memory("mem_d30", "rec_d30", Memory.KIND_PATTERN, "30天前",
+                List.of(), null, List.of("t"), "neutral", false, null,
+                LocalDateTime.now().minusDays(30), null, false, null, null, null));
+        memoryService.persist("default", new Memory("mem_d5", "rec_d5", Memory.KIND_INSIGHT, "5天前",
+                List.of(), null, List.of("t"), "neutral", false, null,
+                LocalDateTime.now().minusDays(5), null, false, null, null, null));
+
+        assertEquals(LocalDate.now().minusDays(30),
+                memoryService.earliestMemoryDate("default").orElseThrow(),
+                "起点取最早一条记忆的日期");
+    }
+
+    @Test
     void cleanup_removesSupersededOver60Days() {
         Memory oldSuperseded = new Memory("mem_old2", "rec_p3", Memory.KIND_INSIGHT, "旧洞察",
                 List.of(), null, List.of("x"), "neutral", false, null,

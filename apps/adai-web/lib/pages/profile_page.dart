@@ -25,6 +25,30 @@ class _ProfilePageState extends State<ProfilePage> {
   final List<_KvRow> _prefRows = [];
   final List<_KvRow> _ruleRows = [];
 
+  /// 「阿呆对你的了解」（2026-09-16「第一次见面」批）：拉失败静默降级，不影响档案页主体。
+  MemoryInsightsResponse? _insights;
+
+  /// 正在确认的观察内容（按钮 busy 态 + 防连点）。
+  String? _confirmingInsight;
+
+  /// 头像预设 id（2026-09-16「第一次见面」批；用户拍板「只做预设，不做上传」）。
+  /// 存在 identity.preferences['avatar']，与既有档案同一条写路径，后端零改动。
+  static const String _avatarKey = 'avatar';
+  String? _avatar;
+
+  /// 预设头像：id → 字形。`none` = 回落到名字首字。
+  static const Map<String, String> _avatarPresets = {
+    'none': '你',
+    'sprout': '🌱',
+    'moon': '🌙',
+    'coffee': '☕',
+    'music': '🎧',
+    'book': '📚',
+    'compass': '🧭',
+    'whale': '🐳',
+    'plant': '🪴',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +71,13 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
         _nameCtrl.text = identity.name;
         _tagsCtrl.text = identity.tags.join(', ');
+        _avatar = identity.preferences[_avatarKey];
         _prefRows
           ..clear()
-          ..addAll(identity.preferences.entries.map((e) => _KvRow(e.key, e.value)));
+          // avatar 有自己的选择器，不进「偏好」键值列表（否则会多出一行 avatar|sprout）
+          ..addAll(identity.preferences.entries
+              .where((e) => e.key != _avatarKey)
+              .map((e) => _KvRow(e.key, e.value)));
         _ruleRows
           ..clear()
           ..addAll(identity.rules.entries.map((e) => _KvRow(e.key, e.value)));
@@ -58,6 +86,53 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+    _loadInsights(); // 不阻塞档案主体渲染（了解区块晚到就地补上）
+  }
+
+  /// 拉「阿呆对你的了解」。失败静默：旧后端没有该端点 / 网络抖动都不该让档案页报错。
+  Future<void> _loadInsights() async {
+    try {
+      final insights = await widget.api.getMemoryInsights();
+      if (!mounted) return;
+      setState(() => _insights = insights);
+    } catch (_) {
+      // 静默降级：不显示该区块，档案页其余功能一字不动
+    }
+  }
+
+  /// 确认一条观察 → 写回 identity.preferences（从此随档案进 prompt）。
+  ///
+  /// 这就是「观察 → 确认 → 记住」的闭环：AI 观察到的东西只有被用户点头，
+  /// 才从「记忆里的猜测」升格成「档案里的共识」。
+  Future<void> _confirmInsight(MemoryInsight ins) async {
+    final identity = _identity;
+    if (identity == null || _confirmingInsight != null) return;
+    setState(() => _confirmingInsight = ins.content);
+    try {
+      final prefs = Map<String, String>.from(identity.preferences)
+        ..[ins.content] = '已确认';
+      final updated = await widget.api.updateIdentity(IdentityRequest(
+        name: identity.name,
+        preferences: prefs,
+        rules: identity.rules,
+        tags: identity.tags,
+      ));
+      if (!mounted) return;
+      setState(() {
+        _identity = updated;
+        // 右侧编辑区的偏好行必须同步，否则下次「保存档案」会用旧快照覆盖回去
+        _prefRows
+          ..clear()
+          ..addAll(updated.preferences.entries
+              .where((e) => e.key != _avatarKey)
+              .map((e) => _KvRow(e.key, e.value)));
+        _confirmingInsight = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _confirmingInsight = null);
+      _showError('没能记下: ${_extractApiError(e)}');
+    }
   }
 
   Future<void> _save() async {
@@ -65,7 +140,12 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final request = IdentityRequest(
         name: _nameCtrl.text.trim(),
-        preferences: {for (final r in _prefRows) if (r.key.text.trim().isNotEmpty) r.key.text.trim(): r.value.text.trim()},
+        preferences: {
+          for (final r in _prefRows)
+            if (r.key.text.trim().isNotEmpty) r.key.text.trim(): r.value.text.trim(),
+          // 头像预设走同一条写路径（'none' = 不写 → 全量覆盖顺带清掉旧选择）
+          if (_avatar != null && _avatar != 'none') _avatarKey: _avatar!,
+        },
         rules: {for (final r in _ruleRows) if (r.key.text.trim().isNotEmpty) r.key.text.trim(): r.value.text.trim()},
         tags: _tagsCtrl.text.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
       );
@@ -131,7 +211,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(width: 300, child: _buildIdentityCard()),
+                      SizedBox(
+                        width: 300,
+                        child: SingleChildScrollView(
+                          child: Column(children: [
+                            _buildIdentityCard(),
+                            _buildInsightsCard(),
+                          ]),
+                        ),
+                      ),
                       const VerticalDivider(width: 1, color: AppColors.darkBorder),
                       Expanded(child: _buildEditArea()),
                     ],
@@ -162,13 +250,15 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             child: Center(
               child: Text(
-                i.name.isEmpty ? '阿呆' : i.name.characters.first,
+                // 2026-09-16「第一次见面」批：① 支持预设头像；② 空名 fallback 由「阿呆」
+                //（AI 自己的名）改「你」——这块是「你的档案」，用 AI 的名当占位会串线
+                _avatarGlyph(i),
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.darkGreen),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          Text(i.name.isEmpty ? '未命名' : i.name,
+          Text(i.name.isEmpty ? '还没告诉我怎么称呼' : i.name,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
           const SizedBox(height: 4),
           const Text('Personal AI OS', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
@@ -200,15 +290,149 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  /// 头像字形：选了预设就用它，否则回落到名字首字（空名 → 「你」）。
+  String _avatarGlyph(IdentityResponse i) {
+    final key = i.preferences[_avatarKey];
+    if (key != null && key != 'none' && _avatarPresets.containsKey(key)) {
+      return _avatarPresets[key]!;
+    }
+    return i.name.isEmpty ? '你' : i.name.characters.first;
+  }
+
+  /// 预设头像可选一格（用户拍板：只做预设，不做上传）。
+  Widget _avatarChip(String key, String glyph) {
+    final selected = (_avatar ?? 'none') == key;
+    return GestureDetector(
+      key: ValueKey('avatar-$key'),
+      onTap: () => setState(() => _avatar = key),
+      child: Tooltip(
+        message: key == 'none' ? '用名字首字' : '用这个头像',
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.darkGreen.withValues(alpha: 0.18)
+                : AppColors.darkSurface2,
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: selected ? AppColors.darkGreen : AppColors.darkBorder),
+          ),
+          child: Center(
+            child: Text(glyph, style: const TextStyle(fontSize: 18)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 「阿呆对你的了解」（2026-09-16「第一次见面」批）。
+  ///
+  /// 这些是 AI 从日常对话里自动沉淀的长期观察（memory 的 patterns / preferences），
+  /// 此前**零出口**（REVIEW P2-认知3）：用户打开「档案」只看得到自己手填的表单，
+  /// 于是觉得「它根本没有更懂我」——其实数据一直在长，只是没人把它端出来。
+  /// 点「✓ 对」= 写回 identity.preferences，从此进 prompt，形成「观察 → 确认 → 记住」闭环。
+  Widget _buildInsightsCard() {
+    final data = _insights;
+    if (data == null) return const SizedBox.shrink(); // 拉不到就不占位（旧后端/网络抖动）
+    // 两类各取 3 条：合并按置信度排序时「行为模式」往往占满前几名，
+    // 偏好一条都露不出来——而用户对「它还知道我什么喜好」同样在意
+    final shown = [
+      ...data.insights.where((i) => i.isPattern).take(3),
+      ...data.insights.where((i) => !i.isPattern).take(3),
+    ];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.psychology_outlined, size: 15, color: AppColors.darkGreen),
+            const SizedBox(width: 6),
+            const Text('阿呆对你的了解',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            data.total == 0
+                ? '我还不认识你。多聊几句，这里会长出我对你的了解。'
+                : '已经留意到 ${data.total} 件事'
+                    '${data.observedSince != null ? ' · 从 ${data.observedSince} 开始' : ''}',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5, height: 1.5),
+          ),
+          if (shown.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(color: AppColors.darkBorder, height: 1),
+            const SizedBox(height: 12),
+            for (final ins in shown) _insightRow(ins),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _insightRow(MemoryInsight ins) {
+    final confirmed = _identity?.preferences.containsKey(ins.content) ?? false;
+    final busy = _confirmingInsight == ins.content;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(ins.content,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey2, height: 1.5)),
+          const SizedBox(height: 4),
+          Row(children: [
+            Text(ins.isPattern ? '行为模式' : '偏好',
+                style: const TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+            const SizedBox(width: 6),
+            Text('${(ins.confidence * 100).round()}%',
+                style: const TextStyle(fontSize: 10, color: AppColors.darkGrey6)),
+            const Spacer(),
+            if (confirmed)
+              const Text('✓ 已记进档案',
+                  style: TextStyle(fontSize: 10, color: AppColors.darkGreen))
+            else
+              GestureDetector(
+                key: ValueKey('confirm-insight-${ins.content}'),
+                onTap: busy ? null : () => _confirmInsight(ins),
+                child: Text(busy ? '记下中…' : '✓ 对',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: busy ? AppColors.darkGrey6 : AppColors.darkGreen)),
+              ),
+          ]),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEditArea() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       children: [
-        _section('姓名', [
+        _section('头像', [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in _avatarPresets.entries) _avatarChip(e.key, e.value),
+            ],
+          ),
+        ]),
+        const SizedBox(height: 16),
+        _section('阿呆怎么称呼你', [
           TextField(
             controller: _nameCtrl,
             style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
-            decoration: _inputDecoration('你的名字'),
+            decoration: _inputDecoration('比如：小明（改完下一句话就生效）'),
           ),
         ]),
         const SizedBox(height: 16),

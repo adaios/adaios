@@ -145,11 +145,32 @@ class _FailSse extends SseClient {
 
 void main() {
   group('Feed 状态机', () {
-    testWidgets('空态：无记录显示引导', (tester) async {
+    testWidgets('空态：无记录显示「第一次见面」欢迎卡 + 三个开场问句', (tester) async {
       final b = _Backend();
       await _pump(tester, b);
-      expect(find.text('还没有记录'), findsOneWidget);
-      expect(find.text('📝 记录心情'), findsOneWidget);
+      // 2026-09-16「第一次见面」批：空态由「还没有记录 + 两个点不出结果的冷词 chip」
+      // 改为阿呆先开口 + 三个能直接发问的开场
+      expect(find.text('第一次见，你先随便问我一句——点下面的也行。'), findsOneWidget);
+      expect(find.text('你能干什么？'), findsOneWidget);
+      expect(find.text('你有什么特别的能力？'), findsOneWidget);
+      expect(find.text('我该怎么用你？'), findsOneWidget);
+      expect(find.text('还没有记录'), findsNothing);
+      expect(find.text('📝 记录心情'), findsNothing);
+    });
+
+    testWidgets('开场问句：点击直接发问（不是预填），欢迎卡让位', (tester) async {
+      final b = _Backend();
+      await _pump(tester, b);
+
+      await tester.tap(find.text('你能干什么？'));
+      await tester.pumpAndSettle();
+
+      // 必须真的发出请求——旧版「🤔 问个问题」只 prefillText('') 聚焦输入框，等于空操作
+      final recordReqs = b.requests.where((r) => r.url.path == '/api/v1/records');
+      expect(recordReqs.isNotEmpty, isTrue, reason: '开场问句必须真的发问');
+      expect(jsonDecode(recordReqs.last.body)['content'], '你能干什么？');
+      expect(find.text('第一次见，你先随便问我一句——点下面的也行。'), findsNothing,
+          reason: '有了第一条记录后欢迎卡应让位');
     });
 
     testWidgets('初始 Feed：记录卡显示内容 + 提问按钮（2026-08-17 第一原则：无记录/领域徽章）', (tester) async {
@@ -455,7 +476,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('待删除记录'), findsNothing);
-      expect(find.text('还没有记录'), findsOneWidget);
+      expect(find.text('第一次见，你先随便问我一句——点下面的也行。'), findsOneWidget);
       expect(b.requests.where((r) => r.method == 'DELETE').length, 1);
     });
 

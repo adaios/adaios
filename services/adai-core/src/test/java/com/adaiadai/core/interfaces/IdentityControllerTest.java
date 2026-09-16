@@ -67,18 +67,45 @@ class IdentityControllerTest {
     }
 
     @Test
-    void updateIdentity_missingName_returns400() {
+    void updateIdentity_emptyName_isAllowed() {
+        // 2026-09-16「第一次见面」批：新用户还没填昵称也能保存档案（此前 400 挡在门外）
         var controller = new IdentityController(repo);
         var request = new IdentityController.IdentityRequest("", Map.of(), Map.of(), List.of("A"));
         ResponseEntity<?> resp = controller.updateIdentity("default", request);
-        assertEquals(400, resp.getStatusCode().value());
+        assertEquals(200, resp.getStatusCode().value());
+        assertEquals("", ((IdentityProfile) resp.getBody()).name());
     }
 
     @Test
-    void updateIdentity_missingTags_returns400() {
+    void updateIdentity_emptyTags_isAllowed() {
+        // 零画像用户没有标签，不该保存失败
         var controller = new IdentityController(repo);
         var request = new IdentityController.IdentityRequest("名字", Map.of(), Map.of(), List.of());
         ResponseEntity<?> resp = controller.updateIdentity("default", request);
-        assertEquals(400, resp.getStatusCode().value());
+        assertEquals(200, resp.getStatusCode().value());
+        assertTrue(((IdentityProfile) resp.getBody()).tags().isEmpty());
+    }
+
+    @Test
+    void updateIdentity_allNull_isAllowed() {
+        // 全空请求（前端新用户首次保存可能只带 name）不 NPE、不 400
+        var controller = new IdentityController(repo);
+        var request = new IdentityController.IdentityRequest(null, null, null, null);
+        ResponseEntity<?> resp = controller.updateIdentity("default", request);
+        assertEquals(200, resp.getStatusCode().value());
+        IdentityProfile saved = (IdentityProfile) resp.getBody();
+        assertEquals("", saved.name());
+        assertTrue(saved.preferences().isEmpty());
+        assertTrue(saved.rules().isEmpty());
+        assertTrue(saved.tags().isEmpty());
+    }
+
+    @Test
+    void updateIdentity_nameIsTrimmed() {
+        var controller = new IdentityController(repo);
+        var request = new IdentityController.IdentityRequest("  小明  ", Map.of(), Map.of(), List.of());
+        ResponseEntity<?> resp = controller.updateIdentity("default", request);
+        assertEquals(200, resp.getStatusCode().value());
+        assertEquals("小明", ((IdentityProfile) resp.getBody()).name());
     }
 }

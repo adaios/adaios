@@ -174,16 +174,19 @@ public class ContextEngine {
 
     private String loadIdentitySummary(String userId) {
         Optional<IdentityProfile> profile = identityRepository.load(userId);
-        return profile.map(p -> """
-                用户身份摘要：
-                - 称呼：%s
-                - 偏好：%s
-                - 协作规则：%s
-                """.formatted(
-                        p.name(),
-                        String.join("; ", p.preferences().values()),
-                        String.join("; ", p.rules().values())
-                )).orElse("用户身份：未配置");
+        return profile.map(p -> {
+            // 2026-09-16「第一次见面」批：新用户还没填昵称（name 为空）时不注入空称呼行——
+            // 既避免 prompt 出现「- 称呼：」这种空壳，也不给模型编造名字的机会。
+            String name = p.name() == null ? "" : p.name().trim();
+            String callLine = name.isEmpty() ? "- 称呼：（还没告诉我，先别称呼，或自然称呼「你」）\n" : "- 称呼：" + name + "\n";
+            String prefs = String.join("; ", p.preferences().values());
+            String rules = String.join("; ", p.rules().values());
+            return """
+                    用户身份摘要：
+                    %s- 偏好：%s
+                    - 协作规则：%s
+                    """.formatted(callLine, prefs, rules);
+        }).orElse("用户身份：未配置");
     }
 
     /**
@@ -546,7 +549,9 @@ public class ContextEngine {
 }
 
 %s
-""".formatted(buildDomainEnum(enabledPlugins), buildDomainRules(enabledPlugins)));
+%s
+""".formatted(buildDomainEnum(enabledPlugins), buildDomainRules(enabledPlugins),
+                    buildCapabilityContext(enabledPlugins)));
         } else {
             prompt.append("""
 
@@ -597,6 +602,40 @@ public class ContextEngine {
             sb.append("- 内容涉及 ").append(String.join("、", PROJECT_KEYWORDS)).append(" → project\n");
         }
         sb.append("- 其他日常、想法、记录、心情、问题 → life\n");
+        return sb.toString();
+    }
+
+    /**
+     * 能力边界（2026-09-16「第一次见面」批）。
+     * <p>
+     * 新用户第一眼问的就是「你能干什么 / 你有什么特别的能力」。此时插件默认全关，
+     * 模型若顺口承诺「我帮你盯持仓 / 我帮你把 B站 视频整理成卡片」，用户点下去只会拿到 403，
+     * 第一印象当场崩掉。这里把「已开启 / 未开启」如实写进 prompt，并约束口径：
+     * 已开启的才允许说「我可以帮你」，未开启的只能如实说「要单独开启」，
+     * 且不得编造清单之外的能力（不吹牛 = 第一原则之外的诚信底线）。
+     */
+    private String buildCapabilityContext(Set<String> enabledPlugins) {
+        List<String> on = new ArrayList<>(List.of(
+                "记录（随手记，文字或图片，自动归档打标签）",
+                "问答（基于你自己的记录、记忆作答）",
+                "记忆（长期记住你的偏好和习惯）",
+                "时间线 / 搜索 / 待办 / 今日简报"));
+        List<String> off = new ArrayList<>();
+        (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING) ? on : off)
+                .add("交易（持仓、复盘、买点）");
+        (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT) ? on : off)
+                .add("项目（项目状态、任务看板）");
+        (enabledPlugins.contains(PluginRegistry.PLUGIN_LEARN) ? on : off)
+                .add("学习（把链接、视频整理成能复习的卡片）");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("能力边界（回答「你能干什么」这类问题时必须严格遵守）：\n");
+        sb.append("- 已经能用的：").append(String.join("、", on)).append("\n");
+        if (!off.isEmpty()) {
+            sb.append("- 还没开、现在用不了的：").append(String.join("、", off)).append("\n");
+            sb.append("- 两类必须分清：能用的才可以说「我可以帮你」；用不了的只能如实说「这个要单独开启」，")
+                    .append("不许说「我现在就能」，也不许编造上面清单之外的能力。\n");
+        }
         return sb.toString();
     }
 }

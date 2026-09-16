@@ -19,6 +19,28 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _loading = true;
   String? _error;
 
+  /// 「阿呆对你的了解」（2026-09-16「第一次见面」批）：拉失败静默降级，不影响档案页主体。
+  MemoryInsightsResponse? _insights;
+
+  /// 正在确认的观察内容（按钮 busy 态 + 防连点）。
+  String? _confirmingInsight;
+
+  /// 头像预设 id（2026-09-16「第一次见面」批；用户拍板「只做预设，不做上传」）。
+  /// 存在 identity.preferences['avatar']，与既有档案同一条写路径，后端零改动。
+  static const String _avatarKey = 'avatar';
+  static const Map<String, String> _avatarPresets = {
+    'none': '你',
+    'sprout': '🌱',
+    'moon': '🌙',
+    'coffee': '☕',
+    'music': '🎧',
+    'book': '📚',
+    'compass': '🧭',
+    'whale': '🐳',
+    'plant': '🪴',
+  };
+  String? _avatar;
+
   // 编辑模式状态
   bool _editing = false;
   late TextEditingController _nameCtrl;
@@ -58,6 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _profile = profile;
         _loading = false;
         _error = null;
+        _avatar = profile.preferences[_avatarKey];
       });
     } catch (e) {
       if (!mounted) return;
@@ -65,6 +88,47 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
         _error = '无法加载个人档案';
       });
+    }
+    _loadInsights(); // 不阻塞档案主体渲染（了解区块晚到就地补上）
+  }
+
+  /// 拉「阿呆对你的了解」。失败静默：旧后端没有该端点 / 网络抖动都不该让档案页报错。
+  Future<void> _loadInsights() async {
+    try {
+      final insights = await widget.api.getMemoryInsights();
+      if (!mounted) return;
+      setState(() => _insights = insights);
+    } catch (_) {
+      // 静默降级：不显示该区块，档案页其余功能一字不动
+    }
+  }
+
+  /// 确认一条观察 → 写回 identity.preferences（从此随档案进 prompt）。
+  ///
+  /// 「观察 → 确认 → 记住」闭环：AI 观察到的东西只有被用户点头，
+  /// 才从「记忆里的猜测」升格成「档案里的共识」。
+  Future<void> _confirmInsight(MemoryInsight ins) async {
+    final profile = _profile;
+    if (profile == null || _confirmingInsight != null) return;
+    setState(() => _confirmingInsight = ins.content);
+    try {
+      final prefs = Map<String, String>.from(profile.preferences)
+        ..[ins.content] = '已确认';
+      final updated = await widget.api.updateIdentity(IdentityRequest(
+        name: profile.name,
+        preferences: prefs,
+        rules: profile.rules,
+        tags: profile.tags,
+      ));
+      if (!mounted) return;
+      setState(() {
+        _profile = updated;
+        _confirmingInsight = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _confirmingInsight = null);
+      _showError('没能记下，请重试');
     }
   }
 
@@ -84,7 +148,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _saveEdit() async {
-    if (_nameCtrl.text.trim().isEmpty) return;
+    // 2026-09-16「第一次见面」批：不再拦截空昵称——新用户可能就是想先不填名字，
+    // 后端 PUT /identity 已放宽 name 非空（此前两边都拦，零画像用户保存不了任何东西）
     setState(() => _saving = true);
 
     final request = IdentityRequest(
@@ -93,6 +158,8 @@ class _ProfilePageState extends State<ProfilePage> {
         'language': _profile?.preferences['language'] ?? '中文',
         'style': _styleCtrl.text.trim().isNotEmpty ? _styleCtrl.text.trim() : '简洁、直接',
         'focus': _focusCtrl.text.trim(),
+        // 头像预设走同一条写路径（'none' = 不写 → 全量覆盖顺带清掉旧选择）
+        if (_avatar != null && _avatar != 'none') _avatarKey: _avatar!,
       },
       rules: {
         'confirmation': _ruleConfirmation ? '交易类操作需确认' : '',
@@ -208,9 +275,29 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 20),
 
+        // 头像（2026-09-16「第一次见面」批：预设，不做上传）
+        Center(
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.darkGreen.withAlpha(38),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.darkGreen.withAlpha(80)),
+            ),
+            child: Center(
+              child: Text(_avatarGlyph(p),
+                  style: const TextStyle(fontSize: 26, color: AppColors.darkGreen)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+
         // 基本信息
         _sectionCard([
-          _infoTile('称呼', p.name),
+          // 2026-09-16「第一次见面」批：label 由「称呼」写清楚成「阿呆怎么称呼你」——
+          // 这是 AI 对你的称呼（档案页不是账号页），空值时如实说「还没告诉我」
+          _infoTile('阿呆怎么称呼你', p.name.isEmpty ? '还没告诉我' : p.name),
           _infoTile('语言', p.preferences['language'] ?? '中文'),
           _infoTile('沟通风格', p.preferences['style'] ?? '—'),
           _infoTile('专注领域', p.preferences['focus'] ?? '—'),
@@ -243,6 +330,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
         ]),
         const SizedBox(height: 12),
+
+        // 阿呆对你的了解（2026-09-16「第一次见面」批）
+        if (_insights != null) _buildInsightsCard(),
+        if (_insights != null) const SizedBox(height: 12),
 
         // 登录设备（RFC 20260914 L2）：看得见「哪些设备登录着」，并能单独撤销一台
         _sectionCard([
@@ -297,18 +388,135 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _sectionCard(List<Widget> children) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface.withAlpha(200),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.darkBorder.withAlpha(100)),
+  /// 头像字形：选了预设就用它，否则回落到名字首字（空名 → 「你」）。
+  String _avatarGlyph(IdentityResponse p) {
+    final key = p.preferences[_avatarKey];
+    if (key != null && key != 'none' && _avatarPresets.containsKey(key)) {
+      return _avatarPresets[key]!;
+    }
+    return p.name.isEmpty ? '你' : p.name.characters.first;
+  }
+
+  /// 预设头像可选一格（用户拍板：只做预设，不做上传）。
+  Widget _avatarChip(String key, String glyph) {
+    final selected = (_avatar ?? 'none') == key;
+    return GestureDetector(
+      key: ValueKey('avatar-$key'),
+      onTap: () => setState(() => _avatar = key),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.darkGreen.withAlpha(46)
+              : AppColors.darkSurface2,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: selected
+                  ? AppColors.darkGreen
+                  : AppColors.darkBorder.withAlpha(150)),
+        ),
+        child: Center(child: Text(glyph, style: const TextStyle(fontSize: 18))),
       ),
+    );
+  }
+
+  /// 「阿呆对你的了解」（2026-09-16「第一次见面」批）。
+  ///
+  /// 这些是 AI 从日常对话里自动沉淀的长期观察（memory 的 patterns / preferences），
+  /// 此前**零出口**（REVIEW P2-认知3）：用户打开「档案」只看得到自己手填的表单，
+  /// 于是觉得「它根本没有更懂我」——其实数据一直在长，只是没人把它端出来。
+  /// 点「✓ 对」= 写回 identity.preferences，从此进 prompt。
+  Widget _buildInsightsCard() {
+    final data = _insights!;
+    // 两类各取 3 条：合并按置信度排序时「行为模式」往往占满前几名，
+    // 偏好一条都露不出来——而用户对「它还知道我什么喜好」同样在意
+    final shown = [
+      ...data.insights.where((i) => i.isPattern).take(3),
+      ...data.insights.where((i) => !i.isPattern).take(3),
+    ];
+    return _sectionCard([
+      const Row(children: [
+        Icon(Icons.psychology_outlined, size: 15, color: AppColors.darkGreen),
+        SizedBox(width: 6),
+        Text('阿呆对你的了解',
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
+      ]),
+      const SizedBox(height: 8),
+      Text(
+        data.total == 0
+            ? '我还不认识你。多聊几句，这里会长出我对你的了解。'
+            : '已经留意到 ${data.total} 件事'
+                '${data.observedSince != null ? ' · 从 ${data.observedSince} 开始' : ''}',
+        style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5, height: 1.5),
+      ),
+      if (shown.isNotEmpty) const SizedBox(height: 12),
+      for (final ins in shown) _insightRow(ins),
+    ]);
+  }
+
+  Widget _insightRow(MemoryInsight ins) {
+    final confirmed = _profile?.preferences.containsKey(ins.content) ?? false;
+    final busy = _confirmingInsight == ins.content;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
+        children: [
+          Text(ins.content,
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.darkGrey1, height: 1.5)),
+          const SizedBox(height: 4),
+          Row(children: [
+            Text(ins.isPattern ? '行为模式' : '偏好',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const SizedBox(width: 6),
+            Text('${(ins.confidence * 100).round()}%',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const Spacer(),
+            if (confirmed)
+              const Text('✓ 已记进档案',
+                  style: TextStyle(fontSize: 11, color: AppColors.darkGreen))
+            else
+              GestureDetector(
+                key: ValueKey('confirm-insight-${ins.content}'),
+                onTap: busy ? null : () => _confirmInsight(ins),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Text(busy ? '记下中…' : '✓ 对',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: busy ? AppColors.darkGrey5 : AppColors.darkGreen)),
+                ),
+              ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard(List<Widget> children) {
+    // 2026-09-16「第一次见面」批顺手修：背景色由 Container 的 decoration 改挂 Material——
+    // 卡内「登录设备」是 ListTile，而 ListTile 的背景与水波纹画在**最近的 Material** 上，
+    // 原写法会被中间这层带背景色的 DecoratedBox 盖住，Flutter 框架据此直接抛断言
+    //（真机大屏把该区块纳入布局时就会打印）。视觉与原来一致，只是水波纹回来了。
+    return Material(
+      color: AppColors.darkSurface.withAlpha(200),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.darkBorder.withAlpha(100)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
       ),
     );
   }
@@ -320,7 +528,7 @@ class _ProfilePageState extends State<ProfilePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 72,
+            width: 100,
             child: Text(label,
                 style: TextStyle(fontSize: 13, color: AppColors.darkGrey5)),
           ),
@@ -390,7 +598,22 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 24),
 
-        _editField('称呼 *', _nameCtrl, hint: '你的称呼'),
+        // 头像（2026-09-16「第一次见面」批：预设，不做上传）
+        Text('头像',
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.darkGrey4)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final e in _avatarPresets.entries) _avatarChip(e.key, e.value),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        // 2026-09-16「第一次见面」批：不再标 *（后端已放宽 name 非空——新用户没填昵称也能保存）
+        _editField('阿呆怎么称呼你', _nameCtrl, hint: '比如：小明（改完下一句话就生效）'),
         const SizedBox(height: 16),
 
         _editField('沟通风格', _styleCtrl, hint: '简洁、直接'),
@@ -566,21 +789,23 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _editSwitch(String label, bool value, ValueChanged<bool> onChanged) {
+    // 2026-09-16「第一次见面」批顺手修：同 _sectionCard——背景改挂 Material，
+    // 否则 SwitchListTile 的背景/水波纹被中间带背景色的 DecoratedBox 盖住（框架抛断言）
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
+      child: Material(
         color: AppColors.darkSurface2.withAlpha(128),
         borderRadius: BorderRadius.circular(10),
-      ),
-      child: SwitchListTile(
-        title: Text(label,
-            style: TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
-        value: value,
-        onChanged: onChanged,
-        activeTrackColor: AppColors.darkGreen.withAlpha(128),
-        activeThumbColor: AppColors.darkGreen,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-        dense: true,
+        child: SwitchListTile(
+          title: Text(label,
+              style: TextStyle(fontSize: 14, color: AppColors.darkGrey1)),
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor: AppColors.darkGreen.withAlpha(128),
+          activeThumbColor: AppColors.darkGreen,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          dense: true,
+        ),
       ),
     );
   }
