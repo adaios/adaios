@@ -62,6 +62,13 @@ public class WeiboFetcher implements LearnSourceFetcher {
     /** 正文长度下限：低于这个值基本是纯图片/纯转发，结构不出东西，宁可人话让用户补。 */
     private static final int MIN_TEXT_CHARS = 20;
 
+    /** 分享短链最多跟几跳（见 {@link #resolveShareLink}）：微博现为一跳 302，留余量但**有限**。 */
+    private static final int MAX_SHARE_HOPS = 3;
+
+    /** 分享落地页短链的路径形态（2026-09-16 实测）：{@code /fx/<16~64 位 hex>.html}。 */
+    private static final Pattern SHARE_LANDING_PATH =
+            Pattern.compile("/fx/[0-9a-f]{16,64}\\.html?", Pattern.CASE_INSENSITIVE);
+
     private static final Pattern MID_IN_PATH = Pattern.compile("/(?:status|detail)/(\\d{8,25})");
     private static final Pattern MID_IN_QUERY = Pattern.compile("(?:^|&)id=(\\d{8,25})");
     private static final Pattern PC_PATH = Pattern.compile("^/(?:u/)?\\d+/([0-9a-zA-Z]{6,12})/?$");
@@ -106,6 +113,15 @@ public class WeiboFetcher implements LearnSourceFetcher {
     @Override
     public LearnSource fetch(String url) {
         String mid = midOf(url);
+        if (mid == null && looksLikeShareShortLink(url)) {
+            // 2026-09-16（REVIEW P1-分享7）：微博 App 分享给第三方的**不是**微博自己那种带 uid/mid 的地址，
+            // 而是分享落地页短链 https://mapp.api.weibo.cn/fx/<hash>.html —— 路径里没有任何 id 信息
+            // （实测 302 → https://m.weibo.cn/status/<id>），必须先跟一次跳转才拿得到可解析的地址。
+            String resolved = resolveShareLink(url);
+            if (resolved != null) {
+                mid = midOf(resolved);
+            }
+        }
         if (mid == null) {
             throw new LearnException("这条微博的链接我认不出来"
                     + "（要形如 weibo.com/<uid>/<id> 或 m.weibo.cn/status/<id> 的地址）");
@@ -191,6 +207,68 @@ public class WeiboFetcher implements LearnSourceFetcher {
             return null;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * 微博分享短链 → 可解析的真实地址（2026-09-16，REVIEW P1-分享7）。
+     *
+     * <p><b>为什么需要它</b>：微博 App 的分享面板交出来的链接是**分享落地页**
+     * {@code https://mapp.api.weibo.cn/fx/<hash>.html}（2026-09-16 实测 302 →
+     * {@code https://m.weibo.cn/status/<id>}）——路径里不含任何 uid/mid，{@link #midOf} 必然认不出。
+     * 这正是用户两次分享都失败的原因。
+     *
+     * <p><b>只跟跳转、不请求落点</b>：用 {@link HopFetch#once}（不自动跟跳转，且**每跳都过出站白名单**）
+     * 拿 {@code Location}，解析出的地址只交给 {@link #midOf} 做正则取 mid，**不再请求它**——
+     * 所以不存在「短链把我带到内网」的通道。
+     *
+     * @return 可交给 {@link #midOf} 的地址；解析不出来返回 {@code null}（调用方照旧给人话失败，<b>不猜</b>）
+     */
+    private String resolveShareLink(String url) {
+        String current = url;
+        for (int hopCount = 0; hopCount < MAX_SHARE_HOPS; hopCount++) {
+            HttpBodies.Fetched fetched;
+            try {
+                fetched = hop.once(current, HEADERS);
+            } catch (Exception e) {
+                log.warn("微博分享短链解析失败 | host={} | {}", hostOf(current), e.getMessage());
+                return null;
+            }
+            String location = fetched.location();
+            if (location == null || location.isBlank()) {
+                return null;
+            }
+            try {
+                current = URI.create(current).resolve(location.strip()).toString();
+            } catch (Exception e) {
+                log.warn("微博分享短链的跳转地址不合法 | host={}", hostOf(current));
+                return null;
+            }
+            if (midOf(current) != null) {
+                log.info("微博分享短链已解析 | {} → {}", hostOf(url), hostOf(current));
+                return current;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 是不是「微博分享短链」形态——**只有它**才值得多花一次网络请求（见 {@link #resolveShareLink}）。
+     *
+     * <p>实测形态（2026-09-16 用户两次分享）：{@code mapp.api.weibo.cn/fx/<32位hex>.html}
+     * （302 → {@code m.weibo.cn/status/<id>}）；另兼容 {@code /sinaurl?u=…} 这类历史上出现过的中转链。
+     *
+     * <p>只按**路径形态**判断、不锁域名：能进到本类的前提已是 {@link #supports} 放行的微博域名，
+     * 而 {@code /fx/<hex>.html} 这种路径在别处几乎不存在；**其余认不出的地址照旧直接人话失败**，
+     * 不为「猜它是不是短链」白付一次网络超时。
+     */
+    private static boolean looksLikeShareShortLink(String url) {
+        try {
+            String path = URI.create(url.strip()).getPath();
+            if (path == null) return false;
+            return path.startsWith("/sinaurl") || SHARE_LANDING_PATH.matcher(path).matches();
+        } catch (Exception e) {
+            return false;
         }
     }
 

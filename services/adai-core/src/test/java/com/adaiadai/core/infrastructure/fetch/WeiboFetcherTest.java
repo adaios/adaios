@@ -160,6 +160,37 @@ class WeiboFetcherTest {
         assertTrue(e.getMessage().contains("认不出来"));
     }
 
+    /**
+     * 2026-09-16（REVIEW P1-分享7）：微博 App 分享给第三方的是**分享落地页短链**
+     * （{@code mapp.api.weibo.cn/fx/<hash>.html}），它 302 到标准 status 地址——
+     * 用户两次分享都失败，就是因为这一跳没跟。
+     */
+    @Test
+    void fetch_shareLandingShortLink_followsRedirectThenFetches() {
+        server.createContext("/fx/f821c7563e3653987fc2e5258eb776f0.html", ex -> {
+            ex.getResponseHeaders().add("Location", "https://m.weibo.cn/status/5343427417869888");
+            ex.sendResponseHeaders(302, -1);
+            ex.close();
+        });
+        showBody = showJson(LONG_ENOUGH, false);
+
+        LearnSource src = fetcher().fetch(base + "/fx/f821c7563e3653987fc2e5258eb776f0.html");
+
+        assertEquals("5343427417869888", src.sourceId(), "短链要跟着 302 拿到真实 mid");
+        assertEquals("id=5343427417869888", lastQuery.get());
+    }
+
+    /** 锁住「为什么必须跟跳转」：短链路径里没有 id，midOf 一定认不出（真实线上形态）。 */
+    @Test
+    void midOf_shareLandingShortLink_isNull_whileItsRedirectTargetParses() {
+        org.junit.jupiter.api.Assertions.assertNull(
+                WeiboFetcher.midOf("https://mapp.api.weibo.cn/fx/f821c7563e3653987fc2e5258eb776f0.html"),
+                "分享落地页路径里没有 id：不跟跳转就必然「认不出来」");
+        assertEquals("5343427417869888",
+                WeiboFetcher.midOf("https://m.weibo.cn/status/5343427417869888"),
+                "302 落点是标准形态、本就能解析——问题只在第一跳");
+    }
+
     @Test
     void parseCreatedAt_weiboFormat() {
         assertEquals("2026-09-13", WeiboFetcher.parseCreatedAt("Sat Sep 13 12:00:00 +0800 2026"));
