@@ -71,6 +71,12 @@ class _LearnBackend {
   /// 非空 → 挪主题请求挂在这里（动作级连点守卫用例：控制回包时机）
   Completer<void>? moveGate;
 
+  /// 产物反馈（RFC 20260917 §五 2b）：收到的 feedback body、回包的 canRepage、重排次数
+  final List<Map<String, dynamic>> feedbackBodies = [];
+  bool canRepageAfterFeedback = false;
+  Map<String, dynamic> feedbackError = const {};
+  int repageCalls = 0;
+
   final List<http.Request> requests = [];
 
   void addCard(
@@ -172,6 +178,21 @@ class _LearnBackend {
       });
     }
     if (p.endsWith('/api/v1/learn/find')) return _json(findHits);
+    // 产物反馈 + 重排（RFC 20260917 §五 2b）
+    if (p.endsWith('/api/v1/learn/cards/feedback') && req.method == 'POST') {
+      if (feedbackError.isNotEmpty) return _json(feedbackError, status: 400);
+      feedbackBodies.add(jsonDecode(req.body) as Map<String, dynamic>);
+      return _json({
+        'status': 'recorded',
+        'message': '记住了，以后我按这个来。',
+        'canRepage': canRepageAfterFeedback,
+      });
+    }
+    if (p.endsWith('/api/v1/learn/cards/repages') && req.method == 'POST') {
+      repageCalls++;
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      return _json({'type': body['type'], 'title': body['title'], 'repaged': true});
+    }
     // 卡片管理动作（2026-09-13 卡片管理动作批）
     if (p.endsWith('/api/v1/learn/cards/topic') && req.method == 'PATCH') {
       final gate = moveGate;
@@ -518,6 +539,39 @@ void main() {
       expect(find.text('关键内容详解'), findsOneWidget, reason: '产品未建模的段也要看得到');
       expect(find.textContaining('Mac 侧整理的详解'), findsOneWidget);
       expect(find.text('复述'), findsOneWidget, reason: '能改的卡保留复述写入口');
+    });
+
+    testWidgets('调教一下：反馈写 feedback 端点；canRepage 时只问、不自动重排（RFC 20260917 §五）',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', 'RAG 与 Agent', created: '2026-09-06', topic: 'harness')
+        ..canRepageAfterFeedback = true;
+      final api = backend.api();
+      await pump(tester, api);
+
+      await tester.tap(find.text('RAG 与 Agent'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('learn-feedback')), findsOneWidget,
+          reason: '可写卡必须有反馈入口（P2-审查4：新端点不能零入口）');
+      await tester.tap(find.byKey(const ValueKey('learn-feedback')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const ValueKey('learn-feedback-input')), '太啰嗦了');
+      await tester.tap(find.byKey(const ValueKey('learn-feedback-submit')));
+      await tester.pumpAndSettle();
+
+      expect(backend.feedbackBodies.length, 1, reason: '必须调 feedback 端点');
+      expect(backend.feedbackBodies.first['type'], 'ai');
+      expect(backend.feedbackBodies.first['title'], 'RAG 与 Agent');
+      expect(backend.feedbackBodies.first['feedback'], '太啰嗦了');
+      expect(find.text('要不要现在按这个重排一版？'), findsOneWidget,
+          reason: '不能自动重排（重排调 LLM 花钱）');
+
+      await tester.tap(find.text('下次再说'));
+      await tester.pumpAndSettle();
+      expect(backend.repageCalls, 0, reason: '用户不点头 → 不得调 repages');
     });
 
     testWidgets('卡片流：有页序列 → 一页一单元渲染，原文默认收起（2026-09-15）', (tester) async {

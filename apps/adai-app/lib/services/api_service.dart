@@ -1048,6 +1048,38 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 产物反馈（RFC 20260917 §五 2b）：POST /learn/cards/feedback → {status,message,canRepage}。
+  /// 把「太啰嗦 / 多举几个例子」沉淀为**长期偏好**，经画像回流作用于**下一次**生成。
+  /// **不烧钱**（只写偏好、不调 LLM）；canRepage=true → 这卡还有 _raw 素材、可按新偏好重排
+  /// （重排才花钱，由用户点头触发 [repageLearnCard]）。
+  /// 400：卡片不存在 / 反馈为空或超长；403：learn 未启用。
+  Future<LearnFeedbackResult> submitLearnFeedback({
+    required String type,
+    required String title,
+    required String feedback,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/feedback'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title, 'feedback': feedback}),
+    );
+    _check(resp);
+    return LearnFeedbackResult.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 重排页序列（2026-09-15 卡片流批；RFC 20260917 补前端入口）：
+  /// POST /learn/cards/repages —— 用 _raw 原始素材补排「一页一单元」卡片流；
+  /// **正文/核心观点/复述一字不动**（只补呈现层）。老卡没素材 → 400 人话。
+  Future<void> repageLearnCard({required String type, required String title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/repages'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title}),
+    );
+    _check(resp);
+  }
+
   /// 删卡（软删除，不真丢）：DELETE /learn/cards?type=&title=（精确标题）→
   /// {deleted,title,learnCardId,cascadedCandidates}。卡文件移入 learn/_trash/（可人工找回），
   /// 主题 README 索引摘行；若该卡曾反哺过交易候选，候选会被级联清理，

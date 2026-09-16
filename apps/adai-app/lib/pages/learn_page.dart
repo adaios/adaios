@@ -898,6 +898,123 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
     }
   }
 
+  /// 产物反馈 + 重排（RFC 20260917 §五 2b；同时补上 repages 的前端入口）。
+  /// 反馈沉淀为**长期偏好**（零费用）→ 下一次生成按这个来；
+  /// 若这卡还有原始素材，可当场重排一版（**要调 LLM，单独确认**，不自动花钱）。
+  Future<void> _feedback() async {
+    if (_actionBusy) return;
+    final ctl = TextEditingController();
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('调教一下',
+            style: TextStyle(fontSize: 16, color: AppColors.darkGrey1)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('说说哪里不满意，我记下来——下次按这个来。',
+                style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('learn-feedback-input'),
+              controller: ctl,
+              autofocus: true,
+              maxLength: 120,
+              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+              decoration: const InputDecoration(
+                hintText: '比如「太啰嗦」「多举几个例子」',
+                hintStyle: TextStyle(color: AppColors.darkGrey6),
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('取消', style: TextStyle(color: AppColors.darkGrey5)),
+          ),
+          TextButton(
+            key: const ValueKey('learn-repage-direct'),
+            onPressed: () => Navigator.pop(ctx, '__repage__'),
+            child: const Text('先重排一版'),
+          ),
+          FilledButton(
+            key: const ValueKey('learn-feedback-submit'),
+            onPressed: () => Navigator.pop(ctx, ctl.text),
+            child: const Text('记住了'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == '__repage__') {
+      await _repageCard();
+      return;
+    }
+    final text = choice.trim();
+    if (text.isEmpty) {
+      _snack('说一句我才能记住');
+      return;
+    }
+    setState(() => _actionBusy = true);
+    LearnFeedbackResult res;
+    try {
+      res = await widget.api.submitLearnFeedback(
+          type: _card.type, title: _card.title, feedback: text);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _actionBusy = false);
+      _snack(_apiError(e));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _actionBusy = false);
+    _snack(res.message.isEmpty ? '记住了' : res.message);
+    if (!res.canRepage) return;
+    // 反馈零费用；重排要调 LLM —— 问一句再花
+    final again = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('要不要现在按这个重排一版？',
+            style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: const Text('会用这张卡留下的原始素材重新排页（要调一次模型）。',
+            style: TextStyle(fontSize: 13, color: AppColors.darkGrey3)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('下次再说'),
+          ),
+          FilledButton(
+            key: const ValueKey('learn-repage-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('重排'),
+          ),
+        ],
+      ),
+    );
+    if (again == true && mounted) await _repageCard();
+  }
+
+  /// 按新偏好重排页序列（要调 LLM，只由用户点头触发）；完成后**就地刷新详情**。
+  Future<void> _repageCard() async {
+    if (!mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await widget.api.repageLearnCard(type: _card.type, title: _card.title);
+      if (!mounted) return;
+      _snack('排好了，看看顺不顺');
+      await _load();
+    } catch (e) {
+      if (mounted) _snack(_apiError(e));
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
   /// 卡片管理动作行（2026-09-13 卡片管理动作批）：只对能改的卡出现。
   Widget _cardActions() {
     final disabled = _actionBusy || _loading;
@@ -914,6 +1031,18 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
           ),
           icon: const Icon(Icons.drive_file_move_outline, size: 16),
           label: const Text('移动到主题', style: TextStyle(fontSize: 13)),
+        ),
+        const SizedBox(width: 10),
+        OutlinedButton.icon(
+          key: const ValueKey('learn-feedback'),
+          onPressed: disabled ? null : _feedback,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.darkGrey3,
+            side: const BorderSide(color: AppColors.darkGrey6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          icon: const Icon(Icons.tune, size: 16),
+          label: const Text('调教一下', style: TextStyle(fontSize: 13)),
         ),
         const SizedBox(width: 10),
         OutlinedButton.icon(

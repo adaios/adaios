@@ -344,6 +344,24 @@ class LearnCardDeletedDto {
   }
 }
 
+/// 产物反馈结果（RFC 20260917 §五 2b）：POST /learn/cards/feedback。
+/// status = recorded（已沉淀为偏好）/ exists（这句已经记住过，不重复沉淀）；
+/// canRepage = 这张卡还有 _raw 素材、可按新偏好重排一版——**后端不自动重排**（重排调 LLM 花钱），
+/// 由前端据此再问用户。
+class LearnFeedbackDto {
+  final String status;
+  final String message;
+  final bool canRepage;
+
+  LearnFeedbackDto({this.status = '', this.message = '', this.canRepage = false});
+
+  factory LearnFeedbackDto.fromJson(Map<String, dynamic> json) => LearnFeedbackDto(
+        status: (json['status'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+        canRepage: (json['canRepage'] as bool?) ?? false,
+      );
+}
+
 /// 表格载荷。
 class LearnPageTable {
   final List<String> headers;

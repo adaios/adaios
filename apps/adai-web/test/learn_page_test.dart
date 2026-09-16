@@ -464,6 +464,86 @@ void main() {
       expect(find.textContaining('RAG 是检索增强，Agent 自主规划'), findsOneWidget);
     });
 
+    testWidgets('调教一下：反馈写入 feedback 端点（RFC 20260917 §五 2b）', (tester) async {
+      Map<String, dynamic>? feedbackBody;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/feedback') && req.method == 'POST') {
+            feedbackBody = jsonDecode(req.body) as Map<String, dynamic>;
+            return _json({
+              'status': 'recorded',
+              'message': '记住了，以后我按这个来。',
+              'canRepage': false,
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.text('调教一下'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+          '太啰嗦了');
+      await tester.tap(find.text('记住了'));
+      await tester.pumpAndSettle();
+
+      expect(feedbackBody, isNotNull, reason: '必须调 feedback 端点');
+      expect(feedbackBody!['type'], 'ai');
+      expect(feedbackBody!['title'], 'RAG 笔记');
+      expect(feedbackBody!['feedback'], '太啰嗦了');
+      expect(find.textContaining('记住了，以后我按这个来'), findsOneWidget);
+    });
+
+    testWidgets('调教一下：canRepage 时只「问」是否重排，用户不点头不烧钱', (tester) async {
+      var repageCalled = false;
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) {
+            return _json({
+              'ai': [_card('ai', 'RAG 笔记')]
+            });
+          }
+          if (p.endsWith('/api/v1/learn/cards/feedback') && req.method == 'POST') {
+            return _json({'status': 'recorded', 'message': '记住了', 'canRepage': true});
+          }
+          if (p.endsWith('/api/v1/learn/cards/repages') && req.method == 'POST') {
+            repageCalled = true;
+            return _json({'type': 'ai', 'title': 'RAG 笔记', 'repaged': true});
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      await tester.tap(find.text('调教一下'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+          '太啰嗦了');
+      await tester.tap(find.text('记住了'));
+      await tester.pumpAndSettle();
+
+      // 反馈本身零费用；重排要调 LLM —— 必须先问
+      expect(find.text('要不要现在按这个重排一版？'), findsOneWidget,
+          reason: '不能自动重排（重排调 LLM 花钱）');
+      await tester.tap(find.text('下次再说'));
+      await tester.pumpAndSettle();
+      expect(repageCalled, isFalse, reason: '用户选「下次再说」→ 不得调 repages');
+    });
+
     testWidgets('trading+tradeRelated 卡显示「反哺候选」，点击调用候选端点', (tester) async {
       var candidateCalled = false;
       final api = ApiService(

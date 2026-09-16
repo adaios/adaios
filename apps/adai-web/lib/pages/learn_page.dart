@@ -899,6 +899,9 @@ class _LearnPageState extends State<LearnPage> {
       buttons.add(_actionChip('标记完成', Icons.check_circle_outline, () => _changeStatus(card, 'done')));
     }
     buttons.add(_actionChip('写复述', Icons.edit_outlined, () => _openRetellDialog(card)));
+    // RFC 20260917 §五 2b + P2-审查4：产物反馈与重排的前端入口（此前两者都只在后端存在）。
+    buttons.add(_actionChip('调教一下', Icons.tune, () => _openFeedbackDialog(card),
+        enabled: !_busy));
     // 卡片管理（2026-09-13）：换主题归档 / 删卡（软删除进回收站）。
     // 只读卡在上面 readOnly 分支已整体挡住，这里不再出现（后端也会 400 拒绝）。
     buttons.add(_actionChip('移动到主题', Icons.drive_file_move_outlined,
@@ -989,6 +992,117 @@ class _LearnPageState extends State<LearnPage> {
     } catch (e) {
       if (!mounted) return;
       _showSnack(extractApiErrorMessage(e)); // P1-learn3
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 产物反馈 + 重排（RFC 20260917 §五 2b；同时补上 repages 的前端入口，
+  /// 解 REVIEW P2-审查4「新端点三端零入口」）：反馈沉淀为长期偏好（**零费用**）→
+  /// 下一次生成自动按这个来；若这卡还有 _raw 素材，可当场重排一版（**要调 LLM，单独确认**）。
+  Future<void> _openFeedbackDialog(LearnCardDto card) async {
+    if (card.readOnly) return; // 只读卡：入口本身不出现，这里再兜一层
+    final controller = TextEditingController();
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('调教一下 · ${card.title}',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('说说哪里不满意，我记下来——下次按这个来。',
+                  style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 120,
+                style: const TextStyle(fontSize: 13, color: AppColors.darkGrey1),
+                decoration: const InputDecoration(
+                  hintText: '比如「太啰嗦」「多举几个例子」',
+                  hintStyle: TextStyle(color: AppColors.darkGrey6),
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'cancel'), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'repage'),
+            child: const Text('先重排一版'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+            child: const Text('记住了'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || choice == 'cancel' || !mounted) return;
+    if (choice == 'repage') {
+      await _repageCard(card);
+      return;
+    }
+    if (choice.isEmpty) {
+      _showSnack('说一句我才能记住');
+      return;
+    }
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final res = await widget.api.submitLearnFeedback(
+          type: card.type, title: card.title, feedback: choice);
+      if (!mounted) return;
+      _showSnack(res.message.isEmpty ? '记住了' : res.message);
+      if (res.canRepage) {
+        // 反馈零费用；重排要调 LLM —— 问一句再花
+        final again = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.darkSurface2,
+            title: const Text('要不要现在按这个重排一版？',
+                style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+            content: const Text('会用这张卡留下的原始素材重新排页（要调一次模型）。',
+                style: TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('下次再说')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.darkGreen),
+                child: const Text('重排'),
+              ),
+            ],
+          ),
+        );
+        if (again == true && mounted) await _repageCard(card);
+      }
+    } catch (e) {
+      if (mounted) _showSnack(extractApiErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 按新偏好重排页序列（要调 LLM，只由用户点头触发）。
+  Future<void> _repageCard(LearnCardDto card) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.repageLearnCard(type: card.type, title: card.title);
+      if (!mounted) return;
+      _showSnack('排好了，看看顺不顺');
+      await _refreshAndOpen(card.type, card.title);
+    } catch (e) {
+      if (mounted) _showSnack(extractApiErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

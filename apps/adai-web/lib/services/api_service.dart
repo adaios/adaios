@@ -1419,8 +1419,7 @@ class ApiService {
   /// → 更新后的 LearnCard（topic 已是新值）。卡片被移到 {type}/{新主题}/NN-标题.md，新主题内续号。
   /// 幂等：新旧主题相同 → 原样返回。400：卡片不存在 / 只读卡 / topic 为空 / type 非法；403：learn 未启用。
   Future<LearnCardDto> moveLearnCardTopic(
-      {required String type, required String title, required String topic}) async {
-    final resp = await _client.patch(
+      {required String type, required String title, required String topic}) async {    final resp = await _client.patch(
       Uri.parse('$baseUrl/api/v1/learn/cards/topic'),
       headers: _headers,
       body: jsonEncode({'type': type, 'title': title, 'topic': topic}),
@@ -1445,6 +1444,35 @@ class ApiService {
     _check(resp);
     return LearnCardDeletedDto.fromJson(
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 产物反馈（RFC 20260917 §五 2b）：POST /learn/cards/feedback → {status, message, canRepage}。
+  /// 把「太啰嗦 / 多举几个例子」沉淀为**长期偏好**，经画像回流作用于**下一次**生成。
+  /// **本调用不烧钱**（只写偏好、不调 LLM）；canRepage=true 表示这张卡还有 _raw 素材、
+  /// 可按新偏好重排一版（重排才花钱，由用户点头触发）。
+  /// 400：卡片不存在 / 反馈为空或超长；403：learn 未启用。
+  Future<LearnFeedbackDto> submitLearnFeedback(
+      {required String type, required String title, required String feedback}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/feedback'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title, 'feedback': feedback}),
+    );
+    _check(resp);
+    return LearnFeedbackDto.fromJson(
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 重排页序列（2026-09-15 卡片流批；RFC 20260917 补前端入口）：
+  /// POST /learn/cards/repages —— 拿这张卡留在 _raw/ 的原始素材补排「一页一单元」卡片流；
+  /// **核心观点/要点/复述与手工编辑一字不动**（只补呈现层）。老卡没素材 → 400 人话。
+  Future<void> repageLearnCard({required String type, required String title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/repages'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'title': title}),
+    );
+    _check(resp);
   }
 
   /// trading 卡片反哺成规则候选（V2 批 3）：POST /learn/cards/candidate。

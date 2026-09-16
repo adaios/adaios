@@ -528,6 +528,23 @@ class LearnCardDeleteResult {
       );
 }
 
+/// 产物反馈结果（RFC 20260917 §五 2b）：POST /learn/cards/feedback。
+/// status = recorded（已沉淀为偏好）/ exists（这句已经记住过，不重复沉淀）；
+/// canRepage = 这卡还有 _raw 素材、可按新偏好重排一版（**后端不自动重排**——重排调 LLM 花钱）。
+class LearnFeedbackResult {
+  final String status;
+  final String message;
+  final bool canRepage;
+
+  LearnFeedbackResult({this.status = '', this.message = '', this.canRepage = false});
+
+  factory LearnFeedbackResult.fromJson(Map<String, dynamic> json) => LearnFeedbackResult(
+        status: (json['status'] as String?) ?? '',
+        message: (json['message'] as String?) ?? '',
+        canRepage: (json['canRepage'] as bool?) ?? false,
+      );
+}
+
 /// learn 类型中文名（列表分组标题、对话流回话共用，单一口径）。
 String learnTypeLabel(String type) => switch (type) {
       'ai' => 'AI / 技术',
