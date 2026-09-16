@@ -287,62 +287,15 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            // 插件行稳定槽位（P2-UI7 2026-08-29）：固定位置显隐——加载完成前渲染等高位
-            // 「加载中…」占位，加载后原地更新，不随插件加载时序插入导致后续行跳位。
-            // 阿呆系统 = project 插件，仅启用项目插件的用户可见
-            _pluginSlot(
-              ready: _pluginsLoaded,
-              enabled: _plugins.contains('project'),
-              icon: Icons.query_stats,
-              title: '阿呆系统',
-              subtitle: 'Kernel · Domain · 数据',
-              accent: AppColors.darkBlue,
-              onTap: () {
-                // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
-                // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
-                Navigator.push(context, PageRouteBuilder(
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                  pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
-                ));
-              },
-            ),
             // 任务 = Kernel 基础服务（待办人人都有），不按插件门控
+            // 2026-09-16 用户拍板：「任务」**算原生能力**（与 adai-web 一致），不要挪进插件组
             _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ProjectTaskPage(api: widget.api),
               ));
             }),
-            _divider(),
-            // 交易 = trading 插件（稳定槽位，同 P2-UI7），仅启用交易插件的用户可见
-            _pluginSlot(
-              ready: _pluginsLoaded,
-              enabled: _plugins.contains('trading'),
-              icon: Icons.show_chart,
-              title: '交易',
-              subtitle: '持仓 · 记录',
-              accent: AppColors.darkOrange,
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => TradingPage(api: widget.api),
-                ));
-              },
-            ),
-            _divider(),
-            // 学习 = learn 插件（RFC 20260829 L2）：最近学习入口（移动端只做最近+单篇，完整资产浏览引导 web）
-            _pluginSlot(
-              ready: _pluginsLoaded,
-              enabled: _plugins.contains('learn'),
-              icon: Icons.auto_stories_outlined,
-              title: '学习',
-              subtitle: '最近学习 · 知识卡片',
-              accent: AppColors.darkGreen,
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => LearnPage(api: widget.api),
-                ));
-              },
-            ),
+            // ── 插件组（2026-09-16 用户拍板：原生在前、插件在后，中间一条轻分节标题）──
+            ..._pluginGroup(),
             _divider(),
             const SizedBox(height: 28),
 
@@ -574,18 +527,105 @@ class _LauncherPageState extends State<LauncherPage>
   }
 
   // 行图标用 Material Icons（CanvasKit Web 无 NotoColorEmoji，emoji 渲染会崩 Picture._cullRect，#12）
-  /// P2-UI7（2026-08-29）：插件行稳定槽位——ready=false 渲染等高位「加载中…」占位（禁点），
-  /// ready=true 且未启用 → 不占位（SizedBox.shrink）；启用 → 真实行。固定槽位顺序保证行不跳位。
-  Widget _pluginSlot({required bool ready, required bool enabled, required IconData icon,
-      required String title, required String subtitle, required Color accent, required VoidCallback onTap}) {
-    if (!ready) {
-      return _buildRow(icon, title, '加载中…', accent, () {}); // 占位：等高位、禁点
-    }
-    if (!enabled) return const SizedBox.shrink();
-    return _buildRow(icon, title, subtitle, accent, onTap);
+  /// 条目 → 插件 key（2026-09-16 用户拍板：背面主页分「原生能力 / 插件」两组）。
+  /// **这张表是插件归属的唯一事实源**——原来三处 `_plugins.contains('project'/'trading'/'learn')`
+  /// 散在调用点，加一个插件就要多改一处、也说不清谁算插件。
+  /// 「任务」刻意不在表里 = 原生能力（Kernel 待办，人人都有；与 adai-web 同归属，别改）。
+  static const Map<String, String> _pluginEntries = {
+    '阿呆系统': 'project',
+    '交易': 'trading',
+    '学习': 'learn',
+  };
+
+  /// 插件组：轻量分节标题 + 三条稳定槽位（project / trading / learn）。
+  /// 一个插件都没启用 → 整组（含标题）不出现，不给用户留一个空壳小节。
+  List<Widget> _pluginGroup() {
+    final anyEnabled =
+        _pluginsLoaded && _plugins.any(_pluginEntries.containsValue);
+    if (_pluginsLoaded && !anyEnabled) return const [];
+    return [
+      _divider(),
+      _pluginSectionHeader(),
+      // 阿呆系统 = project 插件，仅启用项目插件的用户可见
+      _pluginSlot(
+        ready: _pluginsLoaded,
+        icon: Icons.query_stats,
+        title: '阿呆系统',
+        subtitle: 'Kernel · Domain · 数据',
+        accent: AppColors.darkBlue,
+        onTap: () {
+          // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
+          // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
+          Navigator.push(context, PageRouteBuilder(
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
+          ));
+        },
+      ),
+      _divider(),
+      // 交易 = trading 插件（稳定槽位，同 P2-UI7），仅启用交易插件的用户可见
+      _pluginSlot(
+        ready: _pluginsLoaded,
+        icon: Icons.show_chart,
+        title: '交易',
+        subtitle: '持仓 · 记录',
+        accent: AppColors.darkOrange,
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => TradingPage(api: widget.api),
+          ));
+        },
+      ),
+      _divider(),
+      // 学习 = learn 插件（RFC 20260829 L2）：最近学习入口（移动端只做最近+单篇，完整资产浏览引导 web）
+      _pluginSlot(
+        ready: _pluginsLoaded,
+        icon: Icons.auto_stories_outlined,
+        title: '学习',
+        subtitle: '最近学习 · 知识卡片',
+        accent: AppColors.darkGreen,
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => LearnPage(api: widget.api),
+          ));
+        },
+      ),
+    ];
   }
 
-  Widget _buildRow(IconData icon, String title, String preview, Color accentColor, VoidCallback onTap) {
+  /// 轻量分节标题：「插件」（原生能力在上、插件在下；只做一次视觉切分，不抢戏）。
+  Widget _pluginSectionHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 2),
+      child: Row(children: [
+        const Text('插件',
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGrey5)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Container(height: 1, color: AppColors.darkBorder.withValues(alpha: 0.6)),
+        ),
+      ]),
+    );
+  }
+
+  /// P2-UI7（2026-08-29）：插件行稳定槽位——ready=false 渲染等高位「加载中…」占位（禁点），
+  /// ready=true 且未启用 → 不占位（SizedBox.shrink）；启用 → 真实行。固定槽位顺序保证行不跳位。
+  /// 插件 key 从 [_pluginEntries] 查（调用点不再各自硬编码 `_plugins.contains(...)`）。
+  Widget _pluginSlot({required bool ready, required IconData icon,
+      required String title, required String subtitle, required Color accent, required VoidCallback onTap}) {
+    final pluginKey = _pluginEntries[title];
+    if (pluginKey == null) return const SizedBox.shrink(); // 表外的条目不是插件
+    if (!ready) {
+      return _buildRow(icon, title, '加载中…', accent, () {}, isPlugin: true); // 占位：等高位、禁点
+    }
+    if (!_plugins.contains(pluginKey)) return const SizedBox.shrink();
+    return _buildRow(icon, title, subtitle, accent, onTap, isPlugin: true);
+  }
+
+  Widget _buildRow(IconData icon, String title, String preview, Color accentColor, VoidCallback onTap,
+      {bool isPlugin = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
@@ -598,7 +638,29 @@ class _LauncherPageState extends State<LauncherPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
+                  Row(children: [
+                    Flexible(
+                      child: Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.darkGrey1)),
+                    ),
+                    // 「插件」小角标（弱化：灰字灰底，不抢主标题）
+                    if (isPlugin) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        key: ValueKey('plugin-badge-$title'),
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurface2,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.darkBorder),
+                        ),
+                        child: const Text('插件',
+                            style: TextStyle(fontSize: 9, height: 1.3, color: AppColors.darkGrey5)),
+                      ),
+                    ],
+                  ]),
                   const SizedBox(height: 2),
                   Text(preview, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
                 ],

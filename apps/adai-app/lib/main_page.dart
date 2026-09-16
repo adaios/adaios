@@ -1323,15 +1323,30 @@ class _MainPageState extends State<MainPage>
     );
     if (confirm != true || !mounted) return;
 
-    try {
-      await _api.deleteRecord(id);
-      if (!mounted) return;
-      setState(() {
-        _cards.removeWhere((c) => c.id == id);
-      });
-    } catch (e) {
-      if (mounted) _showError('删除失败');
+    // P2-UI12（2026-09-16）：后端把「同一分钟、同一方向」的多笔成交折叠成**一条** Feed 卡，
+    // 被折叠的原始记录 id 全在 `mergedIds` 里（含本卡 id）。必须**逐条删全**——否则只删了
+    // 代表卡，刷新后其余几笔又回来（假删除）。任一条失败如实告知，**不本地移除**（不假装干净）。
+    final card = _cards.where((c) => c.id == id).firstOrNull;
+    final ids = <String>{id, ...?card?.mergedIds}; // Set 去重：mergedIds 已含本卡 id，防重复请求
+    final failed = <String>[];
+    for (final rid in ids) {
+      try {
+        await _api.deleteRecord(rid);
+      } catch (_) {
+        failed.add(rid);
+      }
     }
+    if (!mounted) return;
+    if (failed.isNotEmpty) {
+      final ok = ids.length - failed.length;
+      _showError(ids.length > 1
+          ? '这一串 ${ids.length} 笔里，我删掉了 $ok 笔，还有 ${failed.length} 笔没删掉（多半是网络的事）。刷新后还在的再删一次就行。'
+          : '删除失败');
+      return;
+    }
+    setState(() {
+      _cards.removeWhere((c) => c.id == id);
+    });
   }
 
   /// 标记 action 待办为已完成（PATCH /memory/{id}/done），完成后从 Feed 移除。
@@ -2247,6 +2262,8 @@ extension FeedEntryResponseX on FeedEntryResponse {
       // P1-5（2026-08-23 app 体感修复）：透传后端 updatedAt——原不传 → FeedCardData 默认 now
       // → 底部「最近记录」栏「刚刚」恒显（updatedAt 被丢弃）
       updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
+      // P2-UI12（2026-09-16）：折叠卡代表的原始记录 id（删除要删全，见 _deleteCard）
+      mergedIds: mergedIds,
     );
   }
 

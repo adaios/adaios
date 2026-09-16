@@ -13,6 +13,17 @@ int? _asIntOrNull(dynamic v) => (v == null) ? null : _asInt(v);
 double _asDouble(dynamic v) => (v is num) ? v.toDouble() : (double.tryParse('$v') ?? 0);
 double? _asDoubleOrNull(dynamic v) => (v == null) ? null : _asDouble(v);
 
+/// 日期归零（复习到期 / 本周都按「天」比，带时分秒会把边界算歪）。
+DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// 解析后端日期（`yyyy-MM-dd` 或 ISO datetime）；缺失/非法 → null（防御式，不抛）。
+DateTime? _dateOrNull(dynamic v) {
+  final s = (v is String) ? v.trim() : (v == null ? '' : '$v'.trim());
+  if (s.isEmpty) return null;
+  final d = DateTime.tryParse(s.length >= 10 ? s.substring(0, 10) : s);
+  return d == null ? null : _dateOnly(d);
+}
+
 /// learn 消化任务状态（2026-09-10 提交式喂入配套，2026-09-12 抓取批补 stage/source/cost）：
 /// status = idle（无任务）| pending（排队）| running（消化中）| needs_confirmation（转写要花钱，等用户点头）
 ///        | done（完成，type/title 定位新卡）| failed（失败，message 人话）| cancelled（用户选了先不转写）。
@@ -233,6 +244,9 @@ class LearnCardDto {
   final String retell; // V2 复述段
   final String topic; // 主题目录名（2026-09-12 完整升级批；缺省 = 未归类）
   final bool writable; // false = Mac 侧技能整理的原始卡，只读（改/流转/反哺会被后端拒）
+  // V2 S-learn1（2026-09-07）后端字段，tree 已在返回，前端此前丢掉了：
+  final DateTime? reviewAt; // 进入 review 队列之日（复习提醒计时起点；非 review 卡/老数据 = null）
+  final DateTime? remindedAt; // 最近一次复习提醒推送日（同卡 7 天节流用；可空）
 
   LearnCardDto({
     required this.type,
@@ -252,6 +266,8 @@ class LearnCardDto {
     this.retell = '',
     this.topic = '',
     this.writable = true,
+    this.reviewAt,
+    this.remindedAt,
   });
 
   factory LearnCardDto.fromJson(Map<String, dynamic> json) => LearnCardDto(
@@ -273,6 +289,9 @@ class LearnCardDto {
         // 防御式：老后端/老卡没有这两个字段 → topic ''、writable true（当自己的卡处理）
         topic: (json['topic'] as String?) ?? '',
         writable: (json['writable'] as bool?) ?? true,
+        // 防御式：缺失/非法格式 → null（老后端不返回这两个字段，复习口径里「reviewAt 缺失不计入」）
+        reviewAt: _dateOrNull(json['reviewAt']),
+        remindedAt: _dateOrNull(json['remindedAt']),
       );
 
   static List<String> _list(dynamic v) =>
@@ -537,6 +556,57 @@ class LearnTopicGroup {
   LearnTopicGroup({required this.topic, required this.cards});
 
   String get label => topic.isEmpty ? '未归类' : topic;
+}
+
+/// 学习进度汇总（2026-09-16 用户拍板口径，与「每晚 20:00 复习提醒」同一把尺子）。
+///
+/// **口径写死，不要另发明**：
+/// - 待复习：`status == 'review'` 且 `writable == true` 且 `reviewAt != null` 且 `reviewAt ≤ 今天 − 7 天`
+///   （只读卡不参与复习流转 → 排除；`reviewAt` 缺失 → 不计入，老数据宁可漏不算错）
+/// - 学习中：`status == 'review'` 但不满足上面的到期条件
+/// - 已掌握：`status == 'done'`
+/// - 本周：`created` 落在本周（周一起算）
+/// 全部从**已加载的 tree** 本地统计，不发任何网络请求。
+class LearnProgress {
+  final int due; // 待复习
+  final int learning; // 学习中
+  final int mastered; // 已掌握
+  final int thisWeek; // 本周新增
+
+  const LearnProgress({
+    this.due = 0,
+    this.learning = 0,
+    this.mastered = 0,
+    this.thisWeek = 0,
+  });
+
+  /// 复习到期窗口（天）：进入 review 队列满 7 天 → 该复习了（对齐后端 LearnReviewPushService）。
+  static const int reviewWindowDays = 7;
+
+  factory LearnProgress.of(Iterable<LearnCardDto> cards, {DateTime? now}) {
+    final today = _dateOnly(now ?? DateTime.now());
+    final dueBefore = today.subtract(const Duration(days: reviewWindowDays));
+    final monday = today.subtract(Duration(days: today.weekday - 1)); // DateTime.weekday：周一=1
+    var due = 0, learning = 0, mastered = 0, week = 0;
+    for (final c in cards) {
+      if (c.status == 'review') {
+        final at = c.reviewAt;
+        if (c.writable && at != null && !_dateOnly(at).isAfter(dueBefore)) {
+          due++;
+        } else {
+          learning++;
+        }
+      } else if (c.status == 'done') {
+        mastered++;
+      }
+      final created = _dateOrNull(c.created);
+      if (created != null && !created.isBefore(monday) && !created.isAfter(today)) week++;
+    }
+    return LearnProgress(due: due, learning: learning, mastered: mastered, thisWeek: week);
+  }
+
+  /// 一行汇总人话：「待复习 3 · 学习中 5 · 已掌握 2 · 本周 +1」。
+  String get label => '待复习 $due · 学习中 $learning · 已掌握 $mastered · 本周 +$thisWeek';
 }
 
 /// 卡片列表 → type → topic 二级分组（2026-09-12 完整升级批·最近学习按主题归置）。

@@ -31,7 +31,6 @@
 | InputBar | `lib/widgets/input_bar.dart` | 底部输入栏 |
 | FeedCard | `lib/widgets/feed_card.dart` | 统一卡片容器 |
 | TimelineModal | `lib/widgets/timeline_modal.dart` | 时间线 BottomSheet |
-| LifeQuickEntry | `lib/pages/life_quick_entry.dart` | 生活记录 BottomSheet |
 
 ---
 
@@ -436,14 +435,14 @@
 
 ## 11. 输入栏 InputBar（`lib/widgets/input_bar.dart`）
 
-### 三列布局
+### 单行布局（2026-09-16 更新）
 
 | 位置 | 元素 | 状态 | 行为 | 代码位置 |
 |:-----|:------|:------|:------|:---------|
-| **左按钮** | 🎤 mic_outlined / ⌨ keyboard_outlined | `_isVoice` 切换 | 点按：切换语音/文字模式 | 第 157-172 行 |
-| **左二** | 🌿 emoji | 始终可见 | 点按：弹出 LifeQuickEntry BottomSheet | 第 174-181 行 |
-| **中间** | `TextField` / 语音条 | 视模式而定 | 见下方 | 第 184-189 行 |
-| **右按钮** | ↑ arrow_upward / ⊕ add_rounded | `_hasText` 切换 | 有文字→发送 / 无文字→⊕ 附件菜单 | 第 192-209 行 |
+| **整栏** | `Column`：图片附件预览 + 40px 输入行 | — | 无麦克风、无生活快捷条（2026-09-16 下线；语音为 v2 方向） | `build` 第 435-497 行 |
+| **左** | `TextField`（`_buildText`） | 始终可见 | 输入文字；`onSubmitted` → `_send()` | 第 383-434 行 |
+| **右** | ↑ arrow_upward / ⊕ add_rounded | `_hasPending \|\| _hasText` 切换 | 有图/有字→发送；否则→⊕ 附件菜单 | 第 455-491 行 |
+| **上方** | 内联图片缩略图（横向，每张可移除） | `_pendingImages` 非空时 | 移除单张 / 继续追加（上限 3） | `_buildImagePreview` 第 261-341 行 |
 
 ### 文字模式 `_buildText`
 
@@ -453,55 +452,27 @@
 | 圆角 | 14px |
 | 背景色 | `darkSurface2` |
 | 边框（激活态） | 绿边框 `darkGreen` 0.5px |
-| placeholder（普通） | 每日轮换英文提示 |
+| placeholder（普通） | 每日轮换中文提示（`_placeholders`） |
 | placeholder（激活态） | `ask your question...` 绿字 |
 | 提交 | `onSubmitted` → `_send()` |
 
-### 语音模式 `_buildVoice`
-
-| 状态 | 显示 |
-|:-----|:------|
-| 空闲 | `hold to talk` 灰字 + mic_none |
-| 录音 | `release to send` 绿字 + mic 绿 + 绿边框 |
-
 ### 附件菜单 `_showAttach`
 
-BottomSheet 底部弹出，四个选项（目前都为 `Navigator.pop` 占位）：
+BottomSheet 底部弹出：
 
-| 选项 | 图标 |
-|:-----|:------|
-| image | image_outlined |
-| voice | mic_outlined |
-| file | description_outlined |
-| link | link_outlined |
+| 选项 | 图标 | 行为 |
+|:-----|:-----|:-----|
+| 拍照 | photo_camera_outlined | `_pickCamera`（image_picker camera） |
+| 图片 | image_outlined | `_pickImage`（相册，多选） |
+| 文件 | description_outlined | 占位提示「功能开发中」 |
+| 链接 | link_outlined | 占位提示「功能开发中」 |
 
----
-
-## 12. 生活快速记录 LifeQuickEntry（`lib/pages/life_quick_entry.dart`）
-
-### 类型选择
-
-| 类型 | emoji | 标签 |
-|:-----|:-------|:------|
-| 心情 | 😊 | `mood` |
-| 运动 | 🏃 | `sport` |
-| 饮食 | 🍜 | `diet` |
-| 睡眠 | 😴 | `sleep` |
-
-选中时：绿底圆角边框；未选中：`darkSurface2`。
-
-### 表单
-
-| 元素 | 说明 |
-|:-----|:------|
-| 输入框 | 3 行 maxLines，`TextField` |
-| 使用模板按钮 | 点按：填入对应类型的前缀文字（如"今天心情"） |
-| 取消按钮 | `Navigator.pop` |
-| 记录按钮 | 有内容时绿色，无内容时灰色禁用，点按：`onSend(text)` + pop |
+> 2026-09-16：「生活快捷条」（心情/运动/饮食/睡眠 四个一点即开的模板按钮）与配套弹窗
+> `lib/pages/life_quick_entry.dart` 一并删除——用户拍板不留这一排模板。
 
 ---
 
-## 13. 全局手势
+## 12. 全局手势
 
 | 手势 | 页面 | 行为 |
 |:-----|:------|:------|
@@ -515,7 +486,7 @@ BottomSheet 底部弹出，四个选项（目前都为 `Navigator.pop` 占位）
 
 ---
 
-## 14. 导航路径
+## 13. 导航路径
 
 ```
 RootApp
@@ -537,7 +508,7 @@ RootApp
 
 ---
 
-## 15. 设计 Tokens
+## 14. 设计 Tokens
 
 所有颜色、圆角、尺寸在 `lib/theme/app_colors.dart` 中定义。关键值：
 

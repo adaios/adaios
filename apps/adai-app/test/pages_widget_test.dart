@@ -1859,6 +1859,12 @@ void main() {
     });
 
     testWidgets('adai 全插件用户：显示交易与阿呆系统', (tester) async {
+      // 2026-09-16「原生 / 插件」分组后，插件条目整体下移，会落到 ListView 懒加载的**视口之外**
+      // （Flutter 不构建不可见项 → find 自然找不到）。把视口调高，让这组在同一屏内可见——
+      // 这是布局位移带来的测试适配，不是功能回归。
+      tester.view.physicalSize = const Size(1200, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await pumpLauncher(tester, ['trading', 'project']);
 
       expect(find.text('交易'), findsOneWidget);
@@ -1904,6 +1910,10 @@ void main() {
     });
 
     testWidgets('P2-UI7：插件加载中渲染「加载中…」占位，完成后原地更新不跳位', (tester) async {
+      // 同上：分组后插件组整体下移，需调高视口才能一屏看到全部槽位。
+      tester.view.physicalSize = const Size(1200, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       final b = _Backend();
       b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
       b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
@@ -1916,7 +1926,9 @@ void main() {
       ));
       await tester.pump(); // 插件请求挂起：槽位占位
 
-      expect(find.text('加载中…'), findsNWidgets(2), reason: '阿呆系统+交易两个插件槽位渲染等高位占位');
+      expect(find.text('加载中…'), findsNWidgets(3),
+          reason: '阿呆系统 / 交易 / 学习 三个插件槽位都渲染等高位占位'
+              '（原断言 2 个是受视口限制的偶然值）');
 
       pluginCompleter.complete(_json(['trading', 'project']));
       await tester.pumpAndSettle();

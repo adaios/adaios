@@ -96,13 +96,18 @@ class _LearnPageState extends State<LearnPage> {
   LearnDigestJob? _pendingConfirm;
   bool _confirmBusy = false; // 连点守卫：不点头前只允许一次确认送达
 
+  // 失败也要「进页面就能看到」（2026-09-16，REVIEW P1-分享7）：分享扩展提交后 1 秒就关窗，
+  // 前端原来只在轮询窗口内展示失败 → 用户进学习页什么都看不到（两次分享微博「石沉大海」的根因）。
+  // 进页检查同时接受 failed（后端把失败结果从 60 秒延长到 30 分钟），在这儿给人话 + 出路。
+  LearnDigestJob? _failedJob;
+
   bool _initialOpened = false;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _checkPendingConfirm();
+    _checkDigestOutcome();
   }
 
   @override
@@ -147,11 +152,18 @@ class _LearnPageState extends State<LearnPage> {
 
   /// 确认恢复入口（P2-learn17）：进列表查一次任务态——有待拍板的转写就顶部提示，
   /// 用户不必回想刚才是在哪个入口触发的。查不到静默降级（不打扰人）。
-  Future<void> _checkPendingConfirm() async {
+  ///
+  /// 2026-09-16（REVIEW P1-分享7）：这条路**同时兜住 failed**——从分享扩展/快捷指令进来的整理
+  /// 若失败，用户下次打开学习页必须看到「哪条没整理成、为什么」，不能石沉大海。
+  Future<void> _checkDigestOutcome() async {
     try {
       final job = await widget.api.getLearnDigestStatus();
       if (!mounted) return;
-      if (job.isAwaitingConfirm) setState(() => _pendingConfirm = job);
+      if (job.isAwaitingConfirm) {
+        setState(() => _pendingConfirm = job);
+      } else if (job.isFailed) {
+        setState(() => _failedJob = job);
+      }
     } catch (_) {
       // 静默：查不到就当作没有待确认的事
     }
@@ -269,52 +281,64 @@ class _LearnPageState extends State<LearnPage> {
   }
 
   Widget _buildHeader() {
+    // 进度汇总只吃**已加载的 tree**（不发请求）：加载中/加载失败时没有可信数字，不显示。
+    final cards = _tree?.recentAll ?? const <LearnCardDto>[];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: const Padding(
-            padding: EdgeInsets.only(right: 8),
-            child: Icon(Icons.arrow_back, size: 20, color: AppColors.darkGrey4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Icon(Icons.arrow_back, size: 20, color: AppColors.darkGrey4),
+            ),
           ),
-        ),
-        const Icon(Icons.auto_stories_outlined, size: 20, color: AppColors.darkGrey3),
-        const SizedBox(width: 8),
-        const Text('最近学习',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-        const Spacer(),
-        // 「把分享接到阿呆」：配一次快捷指令，以后在任意 App 分享就能直接进来（2026-09-13 外部入口批）
-        // 热区 ≥44pt（点按目标下限）+ tooltip：原来是 19px 纯图标，既没提示也难点中。
-        Tooltip(
-          message: '把分享接到阿呆',
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => ShareTokenDialog.show(context, widget.api),
-            child: const SizedBox(
-              width: 44,
-              height: 44,
-              child: Center(
-                child: Icon(Icons.ios_share, size: 19, color: AppColors.darkGrey4),
+          const Icon(Icons.auto_stories_outlined, size: 20, color: AppColors.darkGrey3),
+          const SizedBox(width: 8),
+          const Text('最近学习',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const Spacer(),
+          // 「把分享接到阿呆」：配一次快捷指令，以后在任意 App 分享就能直接进来（2026-09-13 外部入口批）
+          // 热区 ≥44pt（点按目标下限）+ tooltip：原来是 19px 纯图标，既没提示也难点中。
+          Tooltip(
+            message: '把分享接到阿呆',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => ShareTokenDialog.show(context, widget.api),
+              child: const SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Icon(Icons.ios_share, size: 19, color: AppColors.darkGrey4),
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 4),
-        GestureDetector(
-          onTap: _openDigest,
-          child: const Icon(Icons.add_circle_outline, size: 22, color: AppColors.darkGreen),
-        ),
-        const SizedBox(width: 18),
-        GestureDetector(
-          onTap: _openReviewSetting,
-          child: const Icon(Icons.notifications_outlined, size: 18, color: AppColors.darkGrey4),
-        ),
-        const SizedBox(width: 14),
-        GestureDetector(
-          onTap: _load,
-          child: const Icon(Icons.refresh, size: 18, color: AppColors.darkGrey4),
-        ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: _openDigest,
+            child: const Icon(Icons.add_circle_outline, size: 22, color: AppColors.darkGreen),
+          ),
+          const SizedBox(width: 18),
+          GestureDetector(
+            onTap: _openReviewSetting,
+            child: const Icon(Icons.notifications_outlined, size: 18, color: AppColors.darkGrey4),
+          ),
+          const SizedBox(width: 14),
+          GestureDetector(
+            onTap: _load,
+            child: const Icon(Icons.refresh, size: 18, color: AppColors.darkGrey4),
+          ),
+        ]),
+        // 学习进度一行汇总（2026-09-16 用户拍板口径）：我学到哪了。
+        // 口径与「每晚 20:00 复习提醒」同一把尺子（见 LearnProgress），空列表不摆一排 0。
+        if (cards.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(LearnProgress.of(cards).label,
+              key: const ValueKey('learn-progress-summary'),
+              style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey5)),
+        ],
       ]),
     );
   }
@@ -417,6 +441,8 @@ class _LearnPageState extends State<LearnPage> {
     final cards = (tree == null ? <LearnCardDto>[] : tree.recentAll);
     return Column(children: [
       if (_pendingConfirm != null) _buildConfirmBanner(_pendingConfirm!),
+      // 没整理成的那条：进页就看到（原来只在轮询窗口里展示 → 进页时早已过期，石沉大海）
+      if (_failedJob != null) _buildFailedBanner(_failedJob!),
       _buildSearchField(),
       Expanded(child: _buildListArea(cards)),
     ]);
@@ -468,6 +494,54 @@ class _LearnPageState extends State<LearnPage> {
             child: const Text('先不转写', style: TextStyle(fontSize: 13.5)),
           ),
         ]),
+      ]),
+    );
+  }
+
+  /// 没整理成的那条的提示条（2026-09-16，REVIEW P1-分享7）：
+  /// 「哪条没整理成、为什么」用后端给的人话（message）说清，再给一条出路；
+  /// 样式沿用上面的「等你拍板」提示条（同底色 + 橙色描边），不另造一套观感。
+  Widget _buildFailedBanner(LearnDigestJob job) {
+    final what = job.source?.title ?? job.title;
+    final reason = job.message.isNotEmpty
+        ? job.message
+        : '这条我没接住（多半是链接失效或者那边不让抓）。素材没留下，你重新发我一次就行。';
+    return Container(
+      key: const ValueKey('learn-failed-banner'),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.error_outline, size: 17, color: AppColors.darkOrange),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              what.isEmpty ? '刚才那条没整理成' : '《$what》没整理成',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1),
+            ),
+          ),
+          GestureDetector(
+            key: const ValueKey('learn-failed-dismiss'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _failedJob = null),
+            child: const SizedBox(
+              width: 32, height: 32,
+              child: Center(child: Icon(Icons.close, size: 15, color: AppColors.darkGrey5)),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Text(reason, style: const TextStyle(fontSize: 13, height: 1.7, color: AppColors.darkGrey2)),
+        const SizedBox(height: 8),
+        const Text('把链接再发我一次就行（在别的 App 里分享给我也一样）。',
+            style: TextStyle(fontSize: 12, height: 1.6, color: AppColors.darkGrey5)),
       ]),
     );
   }
