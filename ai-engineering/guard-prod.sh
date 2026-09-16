@@ -67,6 +67,13 @@ out['services'] = {s: sh('systemctl is-active ' + s).strip() for s in svcs}
 # P2-工程7（2026-09-16）：生产到底在跑哪份代码——deploy.sh 部署时落在 backend/DEPLOYED 的构建来源
 # （backend 目录是 adaios:adaios 750，ubuntu 进不去 → 必须 sudo 读）
 out['deployed'] = sh('sudo cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip()
+# 2026-09-16：三个静态产物各自的时间戳——**发版最容易漏 admin**（本次实测：jar / web / app-web
+# 都发了，admin 还停在 09-08、落后整整 8 天，而没有任何地方看得出来）。摆在这里，谁落后一眼可见。
+out['artifacts'] = sh(
+    "for d in web app-web admin; do "
+    "t=$(date -r /opt/adaios/$d '+%m-%d %H:%M' 2>/dev/null); "
+    "[ -n \"$t\" ] && printf '%s=%s  ' \"$d\" \"$t\"; "
+    "done").strip()
 
 # ── ② 应用日志（当日）──
 jr = sh(f'journalctl -u adai-core --since "{TODAY.isoformat()} 00:00:00" '
@@ -257,6 +264,8 @@ if _dep:
         print(f"    {_f['commitSubject'][:72]}")
 else:
     print("  生产代码 unknown（还没有 backend/DEPLOYED——这是加上部署记录之前的版本）")
+if d.get('artifacts'):
+    print(f"  静态产物 {d['artifacts']}（三处都该与 jar 同一次发版；哪个明显落后就是漏发了）")
 for line in d['error_lines']:
     print(f"  \033[31m✗ {line}\033[0m")
 
