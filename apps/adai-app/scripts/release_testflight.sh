@@ -5,7 +5,8 @@
 # 用法：
 #   sh scripts/release_testflight.sh                  # 构建 + 导出 IPA + 上传
 #   sh scripts/release_testflight.sh --skip-build     # 复用已有 archive，只导出+上传
-#   sh scripts/release_testflight.sh --build-number 5 # 指定构建号（默认读 pubspec.yaml 的 +N）
+#   sh scripts/release_testflight.sh --build-number 5 # 指定构建号（只覆盖本次，不改文件）
+#                                                     # 不指定时：自动 +1 并写回 pubspec.yaml
 #   sh scripts/release_testflight.sh --export-only    # 只导出 IPA 不上传（先自检签名）
 #   sh scripts/release_testflight.sh --status         # 只查最近构建状态（upload 后的 processing 结果）
 #   sh scripts/release_testflight.sh --wait           # 上传后轮询到 Apple 处理出终态再退出
@@ -93,6 +94,22 @@ python3 scripts/asc_signing.py --ensure
 # ── 2. 构建 archive ──
 if [ "$SKIP_BUILD" = "0" ]; then
   echo ""
+  # 2026-09-16：Apple 硬规则「同一版本再次上传必须递增构建号」——没显式给 --build-number 时
+  # **自动 +1 并写回 pubspec.yaml**；否则「一条命令发版」第二次必然被拒（实测：build 2 撞上
+  # Apple 侧已有的 build 5）。写回后请把 pubspec.yaml 的改动随发版一起提交，让仓库反映真实发版号。
+  # 显式传 --build-number 时保持原语义（只覆盖本次构建，不改文件）。
+  if [ -z "$BUILD_NUMBER" ]; then
+    _cur=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+    _ver="${_cur%%+*}"
+    _old="${_cur##*+}"
+    case "$_old" in
+      ''|*[!0-9]*) _old=0 ;;   # 没有 +N、或不是纯数字 → 当 0
+    esac
+    BUILD_NUMBER=$((_old + 1))
+    perl -i -pe "s/^version: .*\$/version: ${_ver}+${BUILD_NUMBER}/" pubspec.yaml
+    echo "  → 构建号自动递增：${_cur} → ${_ver}+${BUILD_NUMBER}（已写回 pubspec.yaml，请随发版提交）"
+  fi
+
   echo "▸ 构建 archive..."
   rm -rf build/ios/archive
   # flutter build ipa 的 export 阶段必然失败（本机 Xcode 未登录账号 → 云签名被拒），
