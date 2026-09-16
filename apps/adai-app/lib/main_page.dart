@@ -1541,14 +1541,21 @@ class _MainPageState extends State<MainPage>
 
   bool _locateAndHighlight(String link) {
     final key = link.contains(':') ? link.split(':').last : link;
+    // 2026-09-17 深审修复（P2-F3）：原先匹配不到就**兜底高亮「最后一条推送卡」**——
+    // 那是「点 A 打开 B」，比不定位更糟，而且与下面那句注释正好相反。
+    // 现在只认**精确命中**：深链带的标的代码出现在某张**推送卡**正文里。
+    // `learn:review` / `trading:today` 这类没有标的的深链一律不猜（key 是英文，中文正文
+    // 本来也匹配不上）——只滚到底，让用户自己看最新那条。
     String? hit;
-    for (final c in _cards.reversed) {
-      if (c.content.contains(key) || (c.pushTitle ?? '').contains(key)) {
-        hit = c.id;
-        break;
+    if (key.isNotEmpty && key != 'review' && key != 'today') {
+      for (final c in _cards.reversed) {
+        if (c.pushTitle == null) continue; // 只看推送卡：普通记录里恰好含这串数字不算
+        if (c.content.contains(key)) {
+          hit = c.id;
+          break;
+        }
       }
     }
-    hit ??= _cards.reversed.where((c) => c.pushTitle != null).map((c) => c.id).firstOrNull;
     if (hit == null) return false;
     setState(() => _highlightCardId = hit);
     _scrollToBottom();

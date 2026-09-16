@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-16
+updated: 2026-09-17
 status: active
-lines: 82
+lines: 83
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260917-learn-representation.md | learn 表征适配与链路打通（门控 B + 偏好回流 + 反馈入口 + 精美导出）| approved |
 | 20260718-context-memory-knowledge-loop.md | Context 闭环 — 记忆回读 + 知识召回 | implemented |
 | 20260720-context-architecture.md | Context 架构重构：三层上下文 + 标签索引 + 记录晋升 | implemented |
 | 20260721-ai-chat-quality.md | AI 对话质量修复：从分析模式到对话模式 | implemented |

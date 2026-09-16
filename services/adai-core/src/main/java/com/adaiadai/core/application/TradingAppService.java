@@ -1497,7 +1497,7 @@ public class TradingAppService {
      */
     public DailyPnlResult computeDailyPnl(String userId, LocalDate date) {
         DailyPnlDetail d = dailyPnlDetail(userId, date);
-        return new DailyPnlResult(d.todayPnl(), d.notes());
+        return new DailyPnlResult(d.todayPnl(), d.notes(), d.effectiveDate());
     }
 
     /**
@@ -1505,7 +1505,18 @@ public class TradingAppService {
      * 共用这一份实现——否则「卡片一个数、日志另一个数」就是下一个同型漂移。
      */
     public record DailyPnlDetail(BigDecimal todayPnl, List<String> notes,
-                                 Map<String, BigDecimal> bySymbol) {}
+                                 Map<String, BigDecimal> bySymbol, LocalDate effectiveDate) {
+        /**
+         * 兼容构造（不关心口径日期的调用方）。
+         * <p>
+         * <b>P1-2（2026-09-17 深审）</b>：{@code effectiveDate} 是「这个数算的是哪一天」的**显式**答案。
+         * 盘前 / 非交易日时它**不等于**查询日期（是上一交易日）——调用方必须先判它再决定
+         * 覆盖 today / 回填 week、month，否则就是把上一交易日的盈亏当今天（周月还会双计）。
+         */
+        public DailyPnlDetail(BigDecimal todayPnl, List<String> notes, Map<String, BigDecimal> bySymbol) {
+            this(todayPnl, notes, bySymbol, null);
+        }
+    }
 
     public DailyPnlDetail dailyPnlDetail(String userId, LocalDate date) {
         BigDecimal pnl = BigDecimal.ZERO;
@@ -1645,7 +1656,8 @@ public class TradingAppService {
         }
         bySymbol.remove(null);
         return new DailyPnlDetail(pnl.setScale(2, java.math.RoundingMode.HALF_UP),
-                List.copyOf(notes), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(bySymbol)));
+                List.copyOf(notes), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(bySymbol)),
+                effectiveDate);
     }
 
     /**
@@ -1703,7 +1715,12 @@ public class TradingAppService {
     }
 
     /** 当日盈亏计算结果（notes：未计入部分的人话说明，非空即非全精确）。 */
-    public record DailyPnlResult(BigDecimal todayPnl, List<String> notes) {}
+    public record DailyPnlResult(BigDecimal todayPnl, List<String> notes, LocalDate effectiveDate) {
+        /** 兼容构造。 */
+        public DailyPnlResult(BigDecimal todayPnl, List<String> notes) {
+            this(todayPnl, notes, null);
+        }
+    }
 
     /**
      * 三官深审 P1-1（2026-09-09）：当日成交流水在 15:05 后落库（截图确认/单笔记录/历史成交导入）
@@ -1738,6 +1755,14 @@ public class TradingAppService {
         if (accountSnapshotRepository.findLatest(userId).isEmpty()) return;
         try {
             DailyPnlResult r = computeDailyPnl(userId, today);
+            // P1-2（2026-09-17 深审修复）：**显式**判「算的是不是今天」。原实现靠闸 2 的 notes 文案前缀
+            // 间接挡住（我的新提示恰好不在豁免名单里），属**巧合**——文案一改就会把上一交易日的
+            // 盈亏写进今天的快照。这里用 effectiveDate 直说。
+            if (r.effectiveDate() != null && !today.equals(r.effectiveDate())) {
+                log.info("当日盈亏未写回（算的是 {} 的当日，不是今天的）| userId={} | today={}",
+                        r.effectiveDate(), userId, today);
+                return;
+            }
             List<String> actionable = r.notes().stream()
                     .filter(n -> !n.startsWith("今日无成交记录"))
                     .toList();

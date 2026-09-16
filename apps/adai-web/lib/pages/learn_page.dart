@@ -961,6 +961,7 @@ class _LearnPageState extends State<LearnPage> {
   // ── V2 操作 ──
 
   Future<void> _changeStatus(LearnCardDto card, String target) async {
+    if (card.readOnly) return; // 兜底：只读卡入口本身不出现（2026-09-17 深审：与其余三处对齐）
     if (_busy) return; // P2-learn10 双击守卫
     setState(() => _busy = true);
     try {
@@ -978,6 +979,7 @@ class _LearnPageState extends State<LearnPage> {
   }
 
   Future<void> _createCandidate(LearnCardDto card) async {
+    if (card.readOnly) return; // 兜底：只读卡入口本身不出现（2026-09-17 深审：与其余三处对齐）
     if (_busy) return;
     setState(() => _busy = true);
     try {

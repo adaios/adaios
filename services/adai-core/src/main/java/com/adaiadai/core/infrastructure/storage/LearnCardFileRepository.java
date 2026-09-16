@@ -730,15 +730,18 @@ public class LearnCardFileRepository implements LearnCardRepository {
     /**
      * 「这张看起来确实是本产品写的」的客观判据（恢复 origin 时用，见 {@link #restoreOrigin}）。
      * <p>
-     * 只看**产品独有**的痕迹：产品 frontmatter 必带的 {@code status:}、卡片流批才有的 {@code ## 卡片页}
-     * 段，或复习机制独有 {@code review_at} / {@code reminded_at}。刻意**不用**「核心观点/关键要点」——
-     * A 形态手工卡也用这两个段名，拿它当判据会把别人的卡也认成自己的。
+     * 只看**产品独有**的痕迹：{@code ## 卡片页} 段（2026-09-15 卡片流批起）或 {@code review_at} /
+     * {@code reminded_at}（复习机制独有）。
+     * <p>
+     * <b>2026-09-17 深审修复（P1）</b>：原先还认 {@code status:}——但 A 形态（Mac 技能）卡模板
+     * **本身就带 status**（`ai-engineering/skills/learn-digest.md`），于是**每一张只读外部卡都满足判据**，
+     * 一句话就能给它盖上 {@code origin: product}，只读保护等于没有。宁可少认（老产品卡若既没页段、
+     * 又没进过复习，就认不回来——那是可接受的代价），也不能错认。
      */
     private static boolean looksLikeProductCard(String content) {
         return content.contains("## 卡片页")
                 || content.contains("review_at:")
-                || content.contains("reminded_at:")
-                || content.contains("\nstatus:");
+                || content.contains("reminded_at:");
     }
 
     @Override

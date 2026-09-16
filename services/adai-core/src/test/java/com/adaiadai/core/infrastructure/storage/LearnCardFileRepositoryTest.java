@@ -1026,8 +1026,11 @@ class LearnCardFileRepositoryTest {
         repository.save("adai", card);
         String path = repository.cardPath("adai", LearnCard.TYPE_TRADING, card.title());
         String original = storage.read("adai", path);
-        // 「别处工具整文件重写」把 origin 行抹掉 → 卡静默退化成只读（P2-learn21 的现场）
-        storage.write("adai", path, original.replaceAll("(?m)^origin:.*\\n?", ""));
+        // 「别处工具整文件重写」把 origin 行抹掉 → 卡静默退化成只读（P2-learn21 的现场）。
+        // 同时补一个「产品独有痕迹」（卡片页段）——2026-09-17 深审收紧判据后，恢复只认
+        // 卡片页段与 review_at/reminded_at（不再认 status：A 形态卡模板也带它）。
+        storage.write("adai", path,
+                original.replaceAll("(?m)^origin:.*\\n?", "") + "\n## 卡片页\n");
 
         assertFalse(repository.find("adai", LearnCard.TYPE_TRADING, card.title()).orElseThrow().writable(),
                 "标记被抹掉后：卡退化成只读");
@@ -1037,6 +1040,32 @@ class LearnCardFileRepositoryTest {
         assertTrue(fixed.writable(), "认回来后恢复可写");
         assertTrue(storage.read("adai", path).contains("origin: product"), "标记真的写回了文件");
         assertTrue(repository.restoreOrigin("adai", LearnCard.TYPE_TRADING, card.title()).writable(), "幂等");
+    }
+
+    @Test
+    void restoreOrigin_refusesForeignCard_evenWhenItCarriesStatus() {
+        // 2026-09-17 深审 P1：A 形态（Mac 技能）卡模板**本身就带 status**
+        //（ai-engineering/skills/learn-digest.md）——判据若认 status，则每一张只读外部卡
+        // 都满足条件，一句话就能盖上 origin: product，只读保护等于没有。
+        storage.write("adai", "learn/ai/未归类/02-带status的外部卡.md", """
+                ---
+                title: 带status的外部卡
+                type: ai
+                topic: 未归类
+                created: 2026-09-11
+                status: new
+                trade_related: false
+                ---
+
+                ## 核心观点
+                别处整理的，模板带 status。
+                """);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.restoreOrigin("adai", LearnCard.TYPE_AI, "带status的外部卡"));
+
+        assertTrue(e.getMessage().contains("看着不是我写的"),
+                "带 status 的外部卡必须被拒（判据不得认 status）：" + e.getMessage());
     }
 
     @Test

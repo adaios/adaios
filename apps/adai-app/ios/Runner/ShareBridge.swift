@@ -108,14 +108,27 @@ enum ShareKeychain {
     }
 
     /// 覆盖写（先删后加，避免 `errSecDuplicateItem`），成功才返回 true。
+    ///
+    /// **2026-09-17 深审修复**：先删后加**不是事务**——`SecItemAdd` 失败时旧值已经被删掉了，
+    /// 而调用方（`migrateLegacyIfNeeded` / `saveToken`）会以为「写成功」而清掉旧容器里的明文，
+    /// 结果**两边都空**（扩展直接不可用）。这里在 add 失败时把旧值**尽力写回**，
+    /// 把「delete 成功、add 失败」这个窗口收掉。
     @discardableResult
     static func write(_ payload: [String: Any]) -> Bool {
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return false }
+        let previous = read()                       // 失败恢复用
         SecItemDelete(baseQuery() as CFDictionary)
         var add = baseQuery()
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+        if SecItemAdd(add as CFDictionary, nil) == errSecSuccess { return true }
+        if let previous, let old = try? JSONSerialization.data(withJSONObject: previous) {
+            var restore = baseQuery()
+            restore[kSecValueData as String] = old
+            restore[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            _ = SecItemAdd(restore as CFDictionary, nil)   // 尽力而为：恢复不了也不谎报成功
+        }
+        return false
     }
 
     @discardableResult
@@ -124,13 +137,16 @@ enum ShareKeychain {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    /// 读**旧位置**（App Groups 容器里的明文）。读到就迁移进 Keychain 并清掉旧键。
-    /// 写不进 Keychain 也照样返回——老装机不至于当场失去功能。
+    /// 读**旧位置**（App Groups 容器里的明文）。读到就迁移进 Keychain。
+    ///
+    /// **2026-09-17 深审修复（两处）**：
+    /// ① 迁移**不再**在这里清旧明文——原先「写成功就清」，但清完若后续覆盖写失败（自动续期那条路），
+    ///    用户会落进「Keychain 空 + 旧容器空」的双空状态。旧明文的清理改由**主 App 下一次成功
+    ///    `saveToken`** 时执行（那条路一定拿得到新明文），迁移本身只做"多一份"而不是"换一份"。
+    /// ② 代价是容器里的旧明文多留一会儿——两害相权：多留一会儿 vs 分享链路直接断。
     static func migrateLegacyIfNeeded() -> [String: Any]? {
         guard let payload = legacyPayload() else { return nil }
-        if write(payload) {
-            clearLegacy()
-        }
+        _ = write(payload)          // 写失败也无妨：legacyPayload 仍会被调用方用上（功能不断）
         return payload
     }
 

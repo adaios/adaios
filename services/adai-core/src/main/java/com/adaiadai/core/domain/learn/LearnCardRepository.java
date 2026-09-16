@@ -134,8 +134,8 @@ public interface LearnCardRepository {
      * 判据是 frontmatter 的 {@code origin: product}，它一旦被别处工具整文件重写抹掉，卡会
      * **静默退化成只读**（看得见、读得全，就是改不动）。本方法把标记认回来。
      * <p>
-     * **不是无条件的「盖章」**：只在这张卡**看起来确实是本产品写的**（正文含 {@code ## 卡片页}，
-     * 或 frontmatter 带产品复习机制独有的 {@code review_at} / {@code reminded_at}）时才认。
+     * **不是无条件的「盖章」**：只在这张卡**看起来确实是本产品写的**（正文含 {@code ## 卡片页}，或 frontmatter 带
+     * {@code review_at} / {@code reminded_at}；**不认 {@code status}**——Mac 技能卡模板本身就带它）时才认。
      * 判据不成立 → 人话拒绝——否则用户一句话就能把别处整理的只读卡「升级」成可写，
      * 等于把只读保护废掉。
      *

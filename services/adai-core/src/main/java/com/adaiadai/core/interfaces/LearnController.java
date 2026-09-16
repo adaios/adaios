@@ -4,8 +4,11 @@ import com.adaiadai.core.application.LearnCandidateAppService;
 import com.adaiadai.core.application.LearnDigestAppService;
 import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.domain.learn.LearnCardPatch;
+import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
 import com.adaiadai.core.kernel.plugin.PluginService;
+import com.adaiadai.core.kernel.record.ContentRecord;
+import com.adaiadai.core.kernel.record.RecordRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -15,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -51,17 +55,21 @@ public class LearnController {
     private final com.adaiadai.core.application.LearnReviewPushService reviewPushService;
     private final com.adaiadai.core.application.LearnTranscriptionService transcriptionService;
     private final PluginService pluginService;
+    /** 门控 B 降级落盘用（RFC 20260917）：无 learn 插件时把分享素材落成普通记录。 */
+    private final RecordRepository recordRepository;
 
     public LearnController(LearnDigestAppService digestService,
                            LearnCandidateAppService candidateService,
                            com.adaiadai.core.application.LearnReviewPushService reviewPushService,
                            com.adaiadai.core.application.LearnTranscriptionService transcriptionService,
-                           PluginService pluginService) {
+                           PluginService pluginService,
+                           RecordRepository recordRepository) {
         this.digestService = digestService;
         this.candidateService = candidateService;
         this.reviewPushService = reviewPushService;
         this.transcriptionService = transcriptionService;
         this.pluginService = pluginService;
+        this.recordRepository = recordRepository;
     }
 
     /**
@@ -87,18 +95,83 @@ public class LearnController {
     }
 
     private ResponseEntity<?> doDigest(String userId, LearnDigestRequest body) {
-        ResponseEntity<?> denied = requireLearnPlugin(userId);
-        if (denied != null) return denied;
+        // 门控 B（RFC 20260917）：**先校验、再判插件**。
+        // 「接收」是基础能力（人人可用、永不失败）；「整理」才是 learn 插件能力（会抓取/转写/调 LLM）。
+        // 此前无插件直接 403 → 新用户分享第一步就断（见 RFC §一 F1）。
         if (body == null || (isBlank(body.url()) && isBlank(body.content()))) {
             return ResponseEntity.badRequest().body(Map.of("error", "请给我一个链接，或者把素材内容粘进来"));
         }
         if (!isBlank(body.type()) && !LearnCard.isValidType(body.type())) {
             return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
         }
+        if (!pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_LEARN)) {
+            return receiveWithoutLearnPlugin(userId, body);
+        }
         LearnDigestAppService.DigestSubmitResult result = digestService.submit(userId,
                 new LearnDigestAppService.DigestRequest(body.url(), body.content(), body.type(),
                         body.platform(), body.author(), body.published()));
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 门控 B 降级（RFC 20260917）：无 learn 插件时**只接收、不整理**。
+     * <p>
+     * 把分享进来的素材落成一条普通记录——**不抓取、不转写、不调 LLM**（零费用），
+     * 保证「分享永不失败」；真正的整理能力仍由 learn 插件门控（不旁路）。
+     *
+     * @return {@code {"status":"recorded","recordId":…,"message":…}}
+     */
+    private ResponseEntity<?> receiveWithoutLearnPlugin(String userId, LearnDigestRequest body) {
+        String id = RecordFileRepository.generateId();
+        ContentRecord record = new ContentRecord(id, "note", "external_import",
+                receiveTitle(body), receiveContent(body), List.of(), LocalDateTime.now());
+        recordRepository.save(userId, record);
+
+        log.info("learn 降级接收（无插件）| userId={} | recordId={} | hasUrl={} | len={}",
+                userId, id, !isBlank(body.url()), body.content() == null ? 0 : body.content().length());
+        return ResponseEntity.ok(Map.of(
+                "status", "recorded",
+                "recordId", id,
+                "message", "已经帮你记下了。开启「学习」后，我可以把它整理成卡片。"));
+    }
+
+    /** 降级接收的标题：优先链接，其次正文首行；统一截断，避免超长标题污染 Feed。 */
+    private String receiveTitle(LearnDigestRequest body) {
+        String raw;
+        if (!isBlank(body.url())) {
+            raw = body.url();
+        } else if (!isBlank(body.content())) {
+            raw = body.content().strip().lines().findFirst().orElse("分享的内容");
+        } else {
+            raw = "分享的内容";
+        }
+        return truncate(raw, 60);
+    }
+
+    /** 降级接收的正文：链接 + 素材 + 来源，保持可读的 Markdown。 */
+    private String receiveContent(LearnDigestRequest body) {
+        StringBuilder sb = new StringBuilder();
+        if (!isBlank(body.url())) {
+            sb.append("链接：").append(body.url().strip());
+        }
+        if (!isBlank(body.content())) {
+            if (sb.length() > 0) sb.append("\n\n");
+            sb.append(body.content().strip());
+        }
+        if (!isBlank(body.platform())) {
+            if (sb.length() > 0) sb.append("\n\n");
+            sb.append("来源平台：").append(body.platform().strip());
+        }
+        if (!isBlank(body.author())) {
+            sb.append("\n作者：").append(body.author().strip());
+        }
+        return sb.toString();
+    }
+
+    private String truncate(String value, int max) {
+        if (value == null) return "";
+        String trimmed = value.strip();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max) + "…";
     }
 
     /**
@@ -245,7 +318,7 @@ public class LearnController {
      * 认回被抹掉的来源标记（REVIEW P2-learn21，2026-09-16）：{@code ?type=&title=} 定位。
      * <p>
      * 只在**看得出来确实是本产品写的**卡上生效（判据见仓储 `restoreOrigin`：正文含 `## 卡片页`
-     * 或 frontmatter 带 `review_at`/`reminded_at`）——别处整理的卡一律人话拒绝，
+     * 或 frontmatter 带 `review_at`/`reminded_at`；**不认 `status`**——那是 Mac 技能卡模板也有的键）——别处整理的卡一律人话拒绝，
      * 避免变成「一句话就能给只读卡盖章」。
      */
     @PostMapping("/cards/restore-origin")

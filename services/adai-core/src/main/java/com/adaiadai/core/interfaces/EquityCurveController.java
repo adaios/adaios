@@ -89,8 +89,13 @@ public class EquityCurveController {
         // dailyPnlDetail 失败则退回纯差分（不阻断，也不编造）。
         java.time.LocalDate today = java.time.LocalDate.now();
         try {
-            BigDecimal realToday = tradingAppService.dailyPnlDetail(userId, today).todayPnl();
-            if (realToday != null && p.today() != null) {
+            TradingAppService.DailyPnlDetail detail = tradingAppService.dailyPnlDetail(userId, today);
+            BigDecimal realToday = detail.todayPnl();
+            // P1-2（2026-09-17 深审修复）：盘前 / 非交易日时 dailyPnlDetail 算的是**上一交易日**——
+            // 那种数既不能覆盖 today，更不能把差额回填进 week/month（会把上一交易日的盈亏
+            // 又加进本周/本月 → 双计）。只有「算的就是今天」才允许覆盖与回填。
+            boolean sameDay = detail.effectiveDate() == null || today.equals(detail.effectiveDate());
+            if (realToday != null && p.today() != null && sameDay) {
                 BigDecimal adjust = realToday.subtract(p.today().pnl());
                 p = new EquityCurveService.PnlPeriods(
                         setPnl(p.today(), realToday),
