@@ -40,6 +40,19 @@ public class FeedAppService {
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM-dd");
 
+    /**
+     * Feed 排序键（2026-09-16，REVIEW P1-前端2）。
+     *
+     * <p><b>为什么必须带次级键</b>：{@code time} 只有 {@code HH:mm}，同一分钟内的多条 entry
+     * 排序键**完全相等**，顺序退化成「谁先被 add」；而 page 0 又是「核心条目 + 附加条目」两段拼接，
+     * 于是**同一次输入产生的 card 与 action/ai_note 会被劈到列表两端**（2026-09-16 生产实测：
+     * card 17:08 在列表中部，同一时刻的 action 17:08 掉到末尾，中间夹着 10:03 的 ai_note）。
+     * 加 {@code id}（含毫秒时间戳）兜底后，同分钟的顺序也有了确定答案。
+     */
+    private static final Comparator<FeedEntry> FEED_ORDER =
+            Comparator.comparing(FeedEntry::time, Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(FeedEntry::id, Comparator.nullsLast(Comparator.naturalOrder()));
+
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
     private final CardFileRepository cardRepository;
@@ -163,7 +176,11 @@ public class FeedAppService {
                     .toList());
         }
 
-        allEntries.sort(Comparator.comparing(e -> e.time));
+        // P2-UI12：同分钟同向成交先折叠，再统一排序（原地替换，不依赖局部变量的可变性）
+        List<FeedEntry> mergedTrades = mergeSameMinuteTrades(allEntries);
+        allEntries.clear();
+        allEntries.addAll(mergedTrades);
+        allEntries.sort(FEED_ORDER);
         // 核心条目（record/card）分页；附加条目（ai_note/action/market）只在最新页返回。
         // totalToday = 核心输入数（前端过滤 aiNote 渲染，若含附加条目 → load more 永不收敛 + 空态误判，REVIEW #61）
         List<FeedEntry> coreEntries = allEntries.stream()
@@ -187,6 +204,10 @@ public class FeedAppService {
             pageEntries = new ArrayList<>(coreEntries.subList(start, end));
             if (queryPage == 0) {
                 pageEntries.addAll(attachEntries); // 附加条目（待办提醒/行情）只在最新页
+                // P1-前端2（2026-09-16）：附加条目必须**并入同一条时间轴**再输出——直接追加会让
+                // 它们整体堆在核心之后（生产实测：10:03 的 ai_note 排到 21:30 的 record 后面），
+                // 用户看到的就是「乱序」。合并后按 FEED_ORDER 重排（同分钟用 id 兜底）。
+                pageEntries.sort(FEED_ORDER);
             }
         }
 
@@ -200,6 +221,68 @@ public class FeedAppService {
     }
 
     // ── 内部方法 ──
+
+    /**
+     * 同分钟同向成交折叠（2026-09-16，REVIEW P2-UI12）。
+     *
+     * <p><b>为什么放在展示层</b>：一次「确认入账 N 笔」会在写侧产生 N 条 ContentRecord（每笔一条），
+     * Feed 逐条成卡 → 同一分钟、同方向出现 N 张几乎一样的卡。用户诉求是「别重复展示」，而
+     * <b>账目真相源（trades / account / positions）与写侧记录都不该动</b>（记忆与复盘上下文都读记录），
+     * 所以在 Feed 组装、分页**之前**折叠。
+     *
+     * <p><b>折叠键 = (date, time, 方向)</b>：同分钟 + 同向才算重复；同分钟的反向成交（买+卖）不合并。
+     * 折叠卡保留全部原始 id（{@code mergedIds}），前端删除时据此逐条删——否则会出现「删了又回来」。
+     */
+    private List<FeedEntry> mergeSameMinuteTrades(List<FeedEntry> entries) {
+        Map<String, List<FeedEntry>> groups = new LinkedHashMap<>();
+        List<FeedEntry> untouched = new ArrayList<>();
+        for (FeedEntry e : entries) {
+            String direction = tradeDirection(e);
+            if (direction == null) {
+                untouched.add(e);
+                continue;
+            }
+            groups.computeIfAbsent(e.date() + "|" + e.time() + "|" + direction, k -> new ArrayList<>())
+                    .add(e);
+        }
+
+        List<FeedEntry> result = new ArrayList<>(untouched);
+        for (List<FeedEntry> group : groups.values()) {
+            if (group.size() == 1) {
+                result.add(group.get(0));
+                continue;
+            }
+            FeedEntry first = group.get(0);
+            String content = group.stream()
+                    .map(FeedEntry::content)
+                    .filter(c -> c != null && !c.isBlank())
+                    .collect(Collectors.joining("\n"));
+            result.add(new FeedEntry(
+                    first.type(), first.id(), first.sourceRecordId(),
+                    tradeDirection(first) + " " + group.size() + " 笔", content, first.tags(),
+                    first.time(), first.intent(), first.summary(), first.turns(), first.domain(),
+                    first.date(), first.mediaPath(), first.updatedAt(),
+                    group.stream().map(FeedEntry::id).toList()));
+        }
+        if (result.size() != entries.size()) {
+            log.info("Feed 同分钟同向成交折叠 | 折叠前={} 条 | 折叠后={} 条", entries.size(), result.size());
+        }
+        return result;
+    }
+
+    /**
+     * 成交记录的「方向」（买入/卖出）；不是交易成交记录返回 {@code null}（不参与折叠）。
+     *
+     * <p>判据刻意保守：只认 {@code type=record && domain=trading} 且标题以「买入/卖出」开头——
+     * 这正是 {@code TradingAppService.writeTradingRecord} 逐笔写出的形态，别的记录一律不碰。
+     */
+    private static String tradeDirection(FeedEntry e) {
+        if (!"record".equals(e.type()) || !"trading".equals(e.domain())) return null;
+        String title = e.title() == null ? "" : e.title();
+        if (title.startsWith("买入")) return "买入";
+        if (title.startsWith("卖出")) return "卖出";
+        return null;
+    }
 
     private Map<String, CardRecord> buildTurnCardMap(List<CardRecord> cards) {
         Map<String, CardRecord> map = new HashMap<>();
@@ -484,8 +567,25 @@ public class FeedAppService {
             String time, String intent, String summary,
             List<TurnDto> turns, String domain,
             String date, String mediaPath,
-            String updatedAt  // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（前端「最近记录」相对时间）
-    ) {}
+            String updatedAt, // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（前端「最近记录」相对时间）
+            List<String> mergedIds // P2-UI12（2026-09-16）：被折叠进本条的原始记录 id（删除时要删全）
+    ) {
+        /**
+         * 未折叠的普通条目（{@code mergedIds} 为空）。
+         *
+         * <p>P2-UI12 只对「同分钟同向成交」折叠，其余构造点不需要关心这个字段——
+         * 用这个便捷构造避免每处都补一个 {@code null}。
+         */
+        public FeedEntry(String type, String id, String sourceRecordId,
+                         String title, String content, List<String> tags,
+                         String time, String intent, String summary,
+                         List<TurnDto> turns, String domain,
+                         String date, String mediaPath,
+                         String updatedAt) {
+            this(type, id, sourceRecordId, title, content, tags, time, intent, summary,
+                    turns, domain, date, mediaPath, updatedAt, null);
+        }
+    }
 
     public record TurnDto(boolean isUser, String text, String time) {}
 }

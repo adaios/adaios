@@ -218,6 +218,100 @@ class FeedAppServiceTest {
     }
 
     @Test
+    void getFeed_pageZero_mergesAttachEntriesIntoSameTimeline_notAppendingTail() {
+        // P1-前端2（2026-09-16 生产实测）：核心（record/card）与附加（ai_note/action/行情/推送）
+        // 原先**分两段拼接**——附加条目整体堆在核心之后，于是 10:03 的 ai_note 会排到 21:30 的
+        // record 后面（生产真实返回就是这样，用户看到的就是「主页卡片乱序」）。
+        // 本用例锁住「附加条目并入同一条时间轴再输出」。
+        ContentRecord evening = new ContentRecord(
+                "rec_evening", "note", "user_input",
+                "晚上的记录", "晚上的记录", List.of(),
+                LocalDateTime.of(2026, 8, 6, 21, 30), "log", "晚上的记录", "life");
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(List.of(evening));
+
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MarketPushRepository push = mock(MarketPushRepository.class);
+        when(push.findByDate(any(), any())).thenReturn(List.of(
+                new MarketPushEvent("push_1", "600519", "贵州茅台", "推送内容", "loss", "14:05", null,
+                        "2999-01-01T00:00:00")));
+
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any()))
+                .thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+
+        FeedAppService service = new FeedAppService(records, memoryService, cardRepository, market, push,
+                pluginService("default", "trading"), pushSettings, TRADING_CLOCK);
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 6), 0, 10);
+        List<String> types = resp.entries().stream().map(FeedAppService.FeedEntry::type).toList();
+
+        assertEquals(List.of("push", "record"), types,
+                "14:05 的附加条目必须按时间排到 21:30 的核心之前，而不是被追加到列表末尾");
+    }
+
+    @Test
+    void getFeed_mergesSameMinuteSameDirectionTrades_andKeepsAllOriginalIds() {
+        // P2-UI12（2026-09-16）：一次「确认入账 N 笔」→ 写侧 N 条记录 → Feed 里 N 张几乎一样的卡。
+        // 展示层按 (date,time,方向) 折叠成一条，并带上全部原始 id（前端据此逐条删，否则「删了又回来」）。
+        // 账目真相源（trades/account/positions）与写侧记录都不动。
+        ContentRecord buy1 = trade("rec_buy1", "买入 京东方A 1000股@4.10", 14, 5);
+        ContentRecord buy2 = trade("rec_buy2", "买入 京东方A 2000股@4.11", 14, 5);
+        ContentRecord sell = trade("rec_sell", "卖出 京东方A 500股@4.20", 14, 5);
+        ContentRecord note = new ContentRecord(
+                "rec_note", "note", "user_input", "普通记录", "普通记录", List.of(),
+                LocalDateTime.of(2026, 8, 6, 14, 5), "log", "普通记录", "life");
+
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(List.of(buy1, buy2, sell, note));
+
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
+        when(pushSettings.findByUser(any()))
+                .thenReturn(com.adaiadai.core.domain.trading.PushSettings.defaults());
+
+        FeedAppService service = new FeedAppService(records, memoryService, cardRepository, market, emptyPush(),
+                pluginService("default", "trading"), pushSettings, TRADING_CLOCK);
+
+        List<FeedAppService.FeedEntry> entries = service
+                .getFeed("default", LocalDate.of(2026, 8, 6), 0, 10).entries();
+        List<String> titles = entries.stream()
+                .filter(e -> "record".equals(e.type()))
+                .map(FeedAppService.FeedEntry::title)
+                .toList();
+
+        assertTrue(titles.contains("买入 2 笔"), "同分钟同向两笔买入要折叠成一条：" + titles);
+        assertTrue(titles.contains("卖出 京东方A 500股@4.20"), "同分钟的反向成交不合并：" + titles);
+        assertTrue(titles.contains("普通记录"), "非成交记录一律不参与折叠：" + titles);
+        assertEquals(1, titles.stream().filter(t -> t.startsWith("买入")).count(), "买入只剩一条：" + titles);
+
+        FeedAppService.FeedEntry merged = entries.stream()
+                .filter(e -> "买入 2 笔".equals(e.title())).findFirst().orElseThrow();
+        assertEquals(List.of("rec_buy1", "rec_buy2"), merged.mergedIds(),
+                "折叠卡必须带全部原始 id（前端删除要删全，否则「删了又回来」）");
+        assertTrue(merged.content().contains("1000股") && merged.content().contains("2000股"),
+                "被折叠的每一笔内容都要保留：" + merged.content());
+    }
+
+    /** 交易成交记录的落库形态（对齐 TradingAppService.writeTradingRecord）。 */
+    private ContentRecord trade(String id, String title, int hour, int minute) {
+        return new ContentRecord(id, "trade", "auto_collect", title, title, List.of(),
+                LocalDateTime.of(2026, 8, 6, hour, minute), "log", title, "trading");
+    }
+
+    @Test
     void getFeed_pushTitle_passthroughOriginalTitle() {
         // B9-1/B9-2（2026-08-23，P1-推送1 根因）：落库透传原标题 → Feed 标题=原标题
         // （前端按标题 switch 的徽章配色 + 「确认并入账」按钮判定依赖它）
