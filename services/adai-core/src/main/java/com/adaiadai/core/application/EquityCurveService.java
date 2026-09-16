@@ -6,7 +6,10 @@ import com.adaiadai.core.domain.trading.CommissionCalculator;
 import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.TradeDirection;
+import com.adaiadai.core.domain.trading.SnapshotAnchor;
+import com.adaiadai.core.domain.trading.SnapshotHolding;
 import com.adaiadai.core.domain.trading.TradeRecord;
+import com.adaiadai.core.domain.trading.TradingAnchorRepository;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.TransferRecord;
 import com.adaiadai.core.domain.trading.TransferRepository;
@@ -58,25 +61,48 @@ public class EquityCurveService {
                               BigDecimal marketValue, BigDecimal invested,
                               BigDecimal netValue, BigDecimal drawdown) {}
 
-    /** 曲线结果：points 按日期升序；stats 附开始/结束/初始投入/最新净投入。 */
+    /**
+     * 交易事件（归日）：现金流 + 数量变化 + 单笔价格/量/方向。
+     * 2026-09-16 增后三项——逐日「当日盈亏」（券商口径）需要按笔还原，只用现金流算不出来。
+     */
+    private record TradeEvent(LocalDate date, String symbol, double cashDelta, int qtyDelta,
+                              double price, int volume, boolean buy) {}
+
+    /**
+     * 曲线结果：points 按日期升序；stats 附开始/结束/初始投入/最新净投入。
+     * <p>
+     * 2026-09-16：新增 {@code dailyPnl}（交易日期 → 当日盈亏，券商口径）——周期盈亏（日/周/月）改用它
+     * **逐日累加**，不再拿总资产做差分（差分会把「曲线本身的估值偏差」当成盈亏：
+     * 实测 2026-09-14 差分口径 −1102.40 vs 券商 App +2225.59，差 3300+，根因是曲线在锚定日
+     * 总资产就偏高 4330）。保留 4 参构造器：既有调用方与测试不必改。
+     */
     public record EquityCurve(List<EquityPoint> points, int skippedDays,
-                              String startDate, String endDate) {}
+                              String startDate, String endDate,
+                              Map<String, BigDecimal> dailyPnl) {
+        public EquityCurve(List<EquityPoint> points, int skippedDays,
+                           String startDate, String endDate) {
+            this(points, skippedDays, startDate, endDate, Map.of());
+        }
+    }
 
     private final TradingHistoryRepository historyRepository;
     private final PositionRepository positionRepository;
     private final TransferRepository transferRepository;
     private final AccountSnapshotRepository accountRepository;
+    private final TradingAnchorRepository anchorRepository;
     private final KlineService klineService;
 
     public EquityCurveService(TradingHistoryRepository historyRepository,
                               PositionRepository positionRepository,
                               TransferRepository transferRepository,
                               AccountSnapshotRepository accountRepository,
+                              TradingAnchorRepository anchorRepository,
                               KlineService klineService) {
         this.historyRepository = historyRepository;
         this.positionRepository = positionRepository;
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
+        this.anchorRepository = anchorRepository;
         this.klineService = klineService;
     }
 
@@ -122,7 +148,7 @@ public class EquityCurveService {
         for (TradeRecord t : trades) symbols.add(t.symbol());
 
         // ── 事件归日（交易现金流 + 数量变化 + 转账净投入）──
-        record TradeEvent(LocalDate date, String symbol, double cashDelta, int qtyDelta) {}
+        // 2026-09-16：TradeEvent 提升为类级 record（逐日盈亏计算要用它的 price/volume/buy）。
         record TransferEvent(LocalDate date, double netDelta) {}
         List<TradeEvent> tradeEvents = trades.stream()
                 .filter(t -> t.entryDate() != null)
@@ -136,7 +162,9 @@ public class EquityCurveService {
                                 t.symbol(), t.price(), t.volume()).doubleValue();
                     }
                     int qtyDelta = t.direction() == TradeDirection.BUY ? t.volume() : -t.volume();
-                    return new TradeEvent(t.entryDate(), t.symbol(), cashDelta, qtyDelta);
+                    return new TradeEvent(t.entryDate(), t.symbol(), cashDelta, qtyDelta,
+                            t.price() != null ? t.price().doubleValue() : 0.0, t.volume(),
+                            t.direction() == TradeDirection.BUY);
                 })
                 .sorted(Comparator.comparing(TradeEvent::date))
                 .toList();
@@ -188,14 +216,40 @@ public class EquityCurveService {
         Map<String, Double> qtyCost = new HashMap<>(baseCost);
         Map<String, Double> lastClose = new HashMap<>();
 
+        // ── 锚定重置（2026-09-15 账实口径修正）──
+        // 券商快照（持仓 replace 导入）是锚定日的**真实持仓**，锚定日及更早的成交已包含在内。
+        // 纯流水回放会在「历史成交只补了买入、卖出没导全」的标的上凭空多出持仓——生产实测
+        // 000776/600487 各多 600/400 股，资金曲线与周期盈亏的市值整体虚高。
+        // 因此日期走到锚定日时，把持仓数量重置为快照基线，之后只叠加锚定日**之后**的流水。
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        LocalDate anchorDate = anchor != null ? anchor.latest() : null;
+        List<SnapshotHolding> anchorHoldings = anchorRepository.holdings(userId);
+        boolean anchorHoldingsKnown = anchorRepository.holdingsRecorded(userId);
+        boolean anchorApplied = false;
+        // 快照基线只有数量、无成本 → 成本取当前持仓（positions）的成本价，缺则用当时收盘/0 兜底。
+        Map<String, Double> anchorCost = new HashMap<>();
+        for (SnapshotHolding h : anchorHoldings) {
+            Position p = holdings.stream().filter(x -> x.symbol().equals(h.symbol())).findFirst().orElse(null);
+            anchorCost.put(h.symbol(),
+                    p != null && p.avgCost() != null ? p.avgCost().doubleValue() : 0.0);
+        }
+
         int ti = 0, ri = 0;
         double peak = Double.MIN_VALUE;
         List<EquityPoint> points = new ArrayList<>();
+        Map<String, BigDecimal> dailyPnl = new LinkedHashMap<>();
+        List<String> pnlNotes = new ArrayList<>();
         int skipped = 0;
         for (LocalDate d : tradingDates) {
+            // 2026-09-16 逐日盈亏：事件处理**前**快照「昨日持仓 / 昨收」，并收集当日全部成交
+            // （昨收必须现在取——下面市值循环会把 lastClose 更新成今收）
+            Map<String, Integer> qtyBefore = new HashMap<>(qty);
+            Map<String, Double> prevClose = new HashMap<>(lastClose);
+            List<TradeEvent> dayEvents = new ArrayList<>();
             // 当日事件（交易 → 转账，先后无交叉）
             while (ti < tradeEvents.size() && !tradeEvents.get(ti).date().isAfter(d)) {
                 TradeEvent e = tradeEvents.get(ti++);
+                dayEvents.add(e);
                 cash += e.cashDelta();
                 int newQty = qty.getOrDefault(e.symbol(), 0) + e.qtyDelta();
                 qty.put(e.symbol(), newQty);
@@ -211,6 +265,19 @@ public class EquityCurveService {
                 investedSoFar += transferEvents.get(ri).netDelta();
                 if (investedSoFar < 0) investedSoFar = 0;
                 ri++;
+            }
+
+            // ── 锚定重置：到达锚定日 → 持仓以券商快照基线为准（丢弃流水回放出的虚假持仓）──
+            if (!anchorApplied && anchorDate != null && anchorHoldingsKnown && !d.isBefore(anchorDate)) {
+                qty.clear();
+                qtyCost.clear();
+                for (SnapshotHolding h : anchorHoldings) {
+                    if (h.quantity() > 0) {
+                        qty.put(h.symbol(), h.quantity());
+                        qtyCost.put(h.symbol(), anchorCost.getOrDefault(h.symbol(), 0.0));
+                    }
+                }
+                anchorApplied = true;
             }
 
             // 当日市值
@@ -236,6 +303,9 @@ public class EquityCurveService {
             }
             if (!anyPrice && qty.isEmpty()) marketValue = 0;
 
+            // 2026-09-16：当日盈亏（券商口径）——周/月由它逐日累加得出，不再对总资产做差分
+            dailyPnl.put(d.toString(), dayPnlOf(d, dayEvents, qtyBefore, prevClose, closes, pnlNotes));
+
             double total = cash + marketValue;
             if (total > peak) peak = total;
             double drawdown = peak > 0 ? (peak - total) / peak : 0;
@@ -248,16 +318,149 @@ public class EquityCurveService {
                     netValue, round4(drawdown)));
         }
         if (points.isEmpty()) skipped = 1;
+        if (!pnlNotes.isEmpty()) {
+            log.warn("资金曲线：部分标的当日盈亏未计入（缺行情/昨收）| userId={} | {}", userId, pnlNotes);
+        }
         log.info("资金曲线生成 | userId={} | 交易日 {} 点（跳过 {}）| 起点 {} | 当前总资产 {}",
                 userId, points.size(), skipped,
                 points.isEmpty() ? "-" : points.get(0).date(), round2(cash + marketValue(points)));
         return new EquityCurve(points, skipped,
                 points.isEmpty() ? "" : points.get(0).date().toString(),
-                points.isEmpty() ? "" : points.get(points.size() - 1).date().toString());
+                points.isEmpty() ? "" : points.get(points.size() - 1).date().toString(),
+                dailyPnl);
     }
 
     private double marketValue(List<EquityPoint> pts) {
         return pts.isEmpty() ? 0 : pts.get(pts.size() - 1).marketValue().doubleValue();
+    }
+
+    /**
+     * 区间盈亏（2026-09-15 用户要求：像券商 App 一样给出每日/每周/每月的盈亏金额与比例）。
+     * <p>
+     * 口径（券商「当日参考盈亏」逐日累加，2026-09-16 修正）：
+     * <ul>
+     *   <li><b>逐日盈亏</b> = 买卖逐笔还原的当日盈亏（卖出净额−昨收×卖量 / 旧仓 今收−昨收 /
+     *       当日买入 今收−含费买入均价），与账户卡「当日盈亏」同源语义</li>
+     *   <li><b>区间盈亏</b> = 区间内逐日盈亏之和（券商 App 的周/月就是这么来的）；
+     *       <b>区间收益率</b> = 区间盈亏 ÷ 区间前一日总资产</li>
+     *   <li>区间起点前没有曲线点（如月初，或锚定日之前不可追溯）→ 比例给 null 且 {@code partial=true}，
+     *       不编造一个看起来精确的百分比</li>
+     * </ul>
+     * <p>
+     * 为什么不再用总资产差分：差分会把「曲线自身的估值偏差」当成盈亏——实测 2026-09-14 差分口径
+     * −1102.40 vs 券商 App 真实 **+2225.59**（差 3300+），根因是曲线在锚定日的总资产就偏高
+     * （券商快照真值 79,231.93 vs 曲线 83,561.93）。改为逐笔口径后同日复算 2225.59，与券商一字不差。
+     */
+    public record PeriodPnl(String key, BigDecimal pnl, BigDecimal pct, BigDecimal base,
+                            LocalDate from, boolean partial) {}
+
+    /** 日/周/月区间盈亏（券商口径的三档展示）。asOf = 曲线最后一个交易日。 */
+    public record PnlPeriods(PeriodPnl today, PeriodPnl week, PeriodPnl month,
+                             String asOf, LocalDate anchorDate, String note) {}
+
+    /** 计算今日 / 本周 / 本月盈亏（金额 + 比例）。 */
+    public PnlPeriods periods(String userId) {
+        EquityCurve curve = build(userId);
+        List<EquityPoint> pts = curve.points();
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        LocalDate anchorDate = anchor != null ? anchor.latest() : null;
+        if (pts.isEmpty()) {
+            return new PnlPeriods(null, null, null, "", anchorDate, "还没有资金或成交记录，算不出盈亏");
+        }
+        // 2026-09-16：区间盈亏 = 逐日「当日盈亏」（券商口径）累加，不再对总资产做差分
+        Map<LocalDate, BigDecimal> dailyPnl = new LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> e : curve.dailyPnl().entrySet()) {
+            dailyPnl.put(LocalDate.parse(e.getKey()), e.getValue());
+        }
+        LocalDate today = LocalDate.now();
+        PeriodPnl t = window(pts, dailyPnl, today, today, anchorDate, "today");
+        PeriodPnl w = window(pts, dailyPnl, today.with(java.time.DayOfWeek.MONDAY), today, anchorDate, "week");
+        PeriodPnl m = window(pts, dailyPnl, today.withDayOfMonth(1), today, anchorDate, "month");
+        log.info("区间盈亏 | userId={} | 日 {} | 周 {} | 月 {} | 锚定日 {}",
+                userId, t.pnl(), w.pnl(), m.pnl(), anchorDate);
+        return new PnlPeriods(t, w, m, pts.get(pts.size() - 1).date().toString(), anchorDate, "");
+    }
+
+    /** 单区间汇总：逐日盈亏按 [from, to] 求和；base = 区间前最后一个曲线点的总资产（算比例用）。 */
+    private PeriodPnl window(List<EquityPoint> pts, Map<LocalDate, BigDecimal> dailyPnl,
+                             LocalDate from, LocalDate to, LocalDate anchorDate, String key) {
+        BigDecimal base = null;
+        for (EquityPoint p : pts) {
+            if (p.date().isBefore(from)) base = p.totalAssets();
+        }
+        BigDecimal pnl = BigDecimal.ZERO;
+        for (Map.Entry<LocalDate, BigDecimal> e : dailyPnl.entrySet()) {
+            if (!e.getKey().isBefore(from) && !e.getKey().isAfter(to)) pnl = pnl.add(e.getValue());
+        }
+        pnl = pnl.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal pct = (base != null && base.signum() > 0)
+                ? pnl.divide(base, 6, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP)
+                : null;
+        boolean partial = base == null || (anchorDate != null && from.isBefore(anchorDate));
+        return new PeriodPnl(key, pnl, pct, base, from, partial);
+    }
+
+    /**
+     * 单日盈亏（券商「当日参考盈亏」口径，2026-09-16）——与 {@code TradingAppService.dailyPnlDetail}
+     * 同源语义，逐日算出后可累加成周/月：
+     * <ul>
+     *   <li>卖出部分 = 卖出净额（已扣费）− 昨收 × 卖量</li>
+     *   <li>旧仓剩余 = (今收 − 昨收) × (昨日持仓 − 卖量)</li>
+     *   <li>当日买入 = (今收 − 含费买入均价) × 买量</li>
+     * </ul>
+     * 缺今收或昨收 → 该标的当日不计入并记 note（不猜、不用 0 冒充）。
+     * <p>
+     * 口径验证（生产 2026-09-14）：云南锗业 +735 + 有研新材 +1510 + 方正科技 −2 − 卖出手续费 17.41
+     * = 2225.59，与券商 App 显示一字不差。
+     */
+    private BigDecimal dayPnlOf(LocalDate d, List<TradeEvent> dayEvents,
+                                Map<String, Integer> qtyBefore, Map<String, Double> prevClose,
+                                Map<String, Map<LocalDate, Double>> closes,
+                                List<String> notes) {
+        double pnl = 0;
+        Set<String> touched = new LinkedHashSet<>(qtyBefore.keySet());
+        for (TradeEvent e : dayEvents) touched.add(e.symbol());
+        for (String sym : touched) {
+            Double cToday = closes.getOrDefault(sym, Map.of()).get(d);
+            if (cToday == null) {
+                // 当日无价（停牌 / 数据源缺该日）→ 该标的当日盈亏记 0，**但必须说出来**：
+                // 静默 0 会让「周/月偏小」看不出来（本批就是踩了这个才发现路径）
+                if (qtyBefore.getOrDefault(sym, 0) > 0 || dayEvents.stream().anyMatch(e -> e.symbol().equals(sym))) {
+                    notes.add(sym + "：当日（" + d + "）缺收盘价，当日盈亏未计入");
+                }
+                continue;
+            }
+            Double cPrev = prevClose.get(sym);
+            double sellNet = 0, buyCost = 0;
+            int sellVol = 0, buyVol = 0;
+            for (TradeEvent e : dayEvents) {
+                if (!e.symbol().equals(sym)) continue;
+                if (e.buy()) { buyVol += e.volume(); buyCost += -e.cashDelta(); }
+                else { sellVol += e.volume(); sellNet += e.cashDelta(); }
+            }
+            if (sellVol > 0) {
+                if (cPrev == null) {
+                    notes.add(sym + "：缺昨收，当日卖出 " + sellVol + " 股的盈亏未计入");
+                } else {
+                    pnl += sellNet - cPrev * sellVol;
+                }
+            }
+            int rest = qtyBefore.getOrDefault(sym, 0) - sellVol;
+            if (rest > 0) {
+                if (cPrev == null) {
+                    notes.add(sym + "：缺昨收，旧仓 " + rest + " 股日浮动未计入");
+                } else {
+                    pnl += (cToday - cPrev) * rest;
+                }
+            }
+            if (buyVol > 0) {
+                // A 股 T+1：当日买入不会当日卖出，故不与上面两段重叠
+                double buyAvg = buyCost / buyVol; // 含费买入均价（cashDelta 已含费）
+                pnl += (cToday - buyAvg) * buyVol;
+            }
+        }
+        return BigDecimal.valueOf(pnl).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal round2(double v) {

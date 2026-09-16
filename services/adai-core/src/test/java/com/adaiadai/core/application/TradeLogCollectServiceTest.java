@@ -78,6 +78,32 @@ class TradeLogCollectServiceTest {
         });
         trading = mock(TradingAppService.class);
         service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
+        // 2026-09-15 防重复入账：Mockito 对 Optional 返回类型默认给 null（不是 empty），
+        // 未显式 stub 的用例会 NPE——此处统一兜底为「没有记过」，各用例可自行覆盖。
+        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(java.util.Optional.empty());
+    }
+
+    @Test
+    void confirm_sameTradeAlreadyRecorded_skippedNotDuplicated() {
+        // 2026-09-15 生产事故：同一张截图反复确认 → 同一笔被记多次。confirm 现在按
+        // 「成交编号优先 / 指纹兜底」判重，命中则跳过并如实回报，不再重复落库。
+        service.collect("default", "我清仓了京东方", "text");
+        assertEquals(1, service.todayCandidates("default").size());
+        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(java.util.Optional.of(new com.adaiadai.core.domain.trading.TradeRecord(
+                        "trade_x", "000725", "京东方", TradeDirection.SELL, new BigDecimal("6.10"),
+                        5000, new BigDecimal("30500.00"), java.time.LocalDate.now(),
+                        java.time.LocalTime.of(10, 0), null, null, null, null, null,
+                        java.time.LocalDateTime.now(), null, null)));
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(0, r.confirmed(), "同笔已记过 → 不重复落库");
+        assertEquals(1, r.duplicated(), "应计入 duplicated");
+        assertEquals(1, r.duplicates().size(), "应给出人话明细");
+        assertTrue(r.duplicates().get(0).contains("已经记过"), "提示应为「已经记过」：" + r.duplicates());
+        assertTrue(service.todayCandidates("default").isEmpty(), "已入账的候选不再保留");
     }
 
     @Test

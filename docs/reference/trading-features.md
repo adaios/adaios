@@ -79,6 +79,7 @@ tags: [trading, plugin, reference]
 | POST | `/trading/transfer` | 银证转账 | IN/OUT → 本金（净投入）+ 现金 + 资产同步 ±，追加流水；转账本身不变盈亏 |
 | GET | `/trading/transfers` | 转账流水 | — |
 | PUT | `/trading/principal` | 设置本金 | 只写 principal 字段（不动现金/资产/市值）；≤0 → 400 |
+| GET | `/trading/pnl-periods` | **日/周/月盈亏（v3.68，2026-09-15）** | 今日/本周/本月盈亏**金额 + 比例**（用户要的「券商 App 那三档」）。口径与资金曲线同源：逐日盈亏 = 当日总资产 − 上一交易日总资产 − 当日净投入（银证转账不是盈亏）；区间收益率 = 区间盈亏 ÷ 区间前一日总资产。`pct` 可为 null（区间起点前无曲线点 / 锚定日之前不可追溯）→ 前端「—」，**绝不编造 0%**；`partial` 标注「只有部分可追溯」 |
 
 ### 4. 自选股 / 买点
 
@@ -116,7 +117,7 @@ tags: [trading, plugin, reference]
 | GET | `/trading/push-settings` | 推送开关（全量） | 8 类型：session/buy-point/stop-loss/near-stop-loss/loss/gain/break-cost/market；缺失默认开 |
 | PUT | `/trading/push-settings/{type}` | 更新推送开关 | 未知类型 400 |
 | GET | `/trading/trade-log` | 当日交易日志候选 | 截图/文字归集结果，**未落库待确认** |
-| POST | `/trading/trade-log/confirm` | 确认交易日志落库 | 当日完整候选逐笔走 recordTrade 并清空；不完整候选跳过（前端引导补全） |
+| POST | `/trading/trade-log/confirm` | 确认交易日志落库 | 当日完整候选逐笔走 recordTrade 并清空；不完整候选跳过（前端引导补全）；**v3.68 防重复入账（2026-09-15 生产事故治本）**：确认前先判「这笔是否已落库」——候选带 `orderId` 时**只认成交编号精确命中**（编号唯一，同价同量的真实分笔不误判）；无 `orderId` 时按**指纹**（同标的+同方向+同价+同量+同成交日）命中 → 跳过且不留候选，计入响应 `duplicated`/`duplicates`。事故原型：同一张成交截图反复提交，确认一次落一笔 → 600536 记成 1000 股（真实 800 股）、现金被扣成 −6093.97 |
 | PUT | `/trading/trade-log/date` | **补写候选成交日期（v3.32，2026-08-27）** | 缺日期候选行补 `tradeTime`（成交日），补全后允许确认落库（缺日期禁落库拦截） |
 | DELETE | `/trading/trade-log` | **丢弃一条保留候选（B6-5，2026-08-23，P1-交易18）** | 逐笔丢弃当日候选（截图误识别/不想要的交易），幂等 |
 | POST | `/trading/screenshots` | **截图入账（2026-08-26，交易闭环第一环）** | multipart 1-3 张成交截图 → VLM 识别 → 当日候选（表格批量解析 parseLooseBatch：已成/已报/申购过滤；跨截图 sameTrade 去重）；不建记录/不落原图/不沉淀记忆（`TradingScreenshotAppService`） |
@@ -178,7 +179,8 @@ tags: [trading, plugin, reference]
 | 规则引擎 | G-3 抽离的确定性判定层：止损 R66（现价<止损位→BREACHED；止损未设→R68 无据可判）、仓位 R81（占比>上限→OVER_WEIGHT，100 万以下适用）、rules.md 条目解析（`**R{n} 标题**` + `> 描述`）；建议引擎/时段推送/行情异动**三方共用同口径**（`TradingRuleEngine`/`DefaultTradingRuleEngine`）。**第三阶段（2026-08-30）按用户规则**：仓位上限/行为标注阈值/清仓 verdict/买点 5 参/打分权重/纪律硬约束区间全部从 `data/{userId}/trading/rules.yaml` 读取（`GET/PUT /trading/rules` 可配），无规则 → 默认值 = adai 现状（P1-5 降级语义定稿） |
 | 持仓占比口径 | R81 分母 = 总资产（持仓市值+现金，现金唯一真源 account.json）——修复单仓+大现金恒发 reduce（P1-交易4） |
 | 手续费模型 | 佣金万 0.854（买卖都收，四舍五入到分，无最低 5 元）/ 印花税万 5（仅卖出去尾）/ 过户费万 0.1（仅沪市 6/9 开头）；BUY 摊薄成本价含费 4 位小数；五笔券商交割实例反推确认（`CommissionCalculator`） |
-| 交易日志自动归集 | 截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（同 symbol+direction）→ 未落库待确认 → 确认后走 recordTrade；拒绝归集 unknown 占位（P1-1 已修） |
+| 交易日志自动归集 | 截图（VLM 识别）/文字（「清仓了XX」宽松解析）→ 当日候选去重（同 symbol+direction）→ 未落库待确认 → 确认后走 recordTrade；拒绝归集 unknown 占位（P1-1 已修）；**v3.68 确认防重复**：同笔（orderId 精确 / 无编号按指纹）已在流水 → 跳过留痕（`duplicated`），不再重复入账 |
+| **区间盈亏口径（v3.68，2026-09-15）** | 日/周/月盈亏 = 逐日总资产差分再剔除银证转账（`EquityCurveService.periods`）；与资金曲线共用同一份回放，不另算一套（防「卡片一个数、列表另一个数」）。**资金曲线锚定重置**：日期走到券商快照锚定日时持仓数量重置为快照基线 `holdings`，之后只叠加锚定日**之后**的流水——修掉「历史成交只补买入、卖出没导全 → 000776/600487 凭空多出持仓、整条曲线市值虚高 3.7 万」 |
 | 成交时间采集（RFC 20260822） | 逐笔流水加 `tradeTime`（成交时刻 HH:mm:ss，可空）：历史成交导入解析通达信「成交时间」列；当日记录缺省落盘时刻时分；旧数据 null 兼容 |
 | 当日复盘聚合（RFC 20260822） | `GET /trading/trades?date=` 返回 `{trades, daily}`：时段分桶（早盘 09:30-11:30 / 午盘 13:00-14:30 / 尾盘 14:30-15:00）+ 买卖笔数金额 + 首末笔时间——纯客观无 AI |
 | K 线数据源 | **TDX 通达信本地（前复权）→ 腾讯主源 → 东财探测兜底（2026-08-30）**：本地 .day 全 A 历史免风控（`TdxFileKlineSource`，`adai.market.tdx-path` 默认 `../../data/market/tdx`，mtime 缓存）+ **前复权换算**（`AdjustmentCalculator` + 东财除权因子表 `data/market/adj/`，口径对齐腾讯 qfq——除权股不再跳空失真，2026-08-30 茅台校验 ≤0.5%）；tdx 无数据自动走网络源；网络源连续失败 3 次熔断 5 分钟（半开探测），按日缓存（`KlineService`） |
@@ -197,7 +199,7 @@ tags: [trading, plugin, reference]
 
 | 区块 | 功能 | 操作 | 端点 |
 |:--|:--|:--|:--|
-| 账户总览 | 8 张 stat 卡（总资产/可用/可取/参考市值/当日盈亏/总盈亏/持仓浮盈/持仓数），金额千分位 + FittedBox 防溢出；红涨绿亏；总盈亏=资产−本金（本金>0） | 进页自动加载；「点击更新」手动刷新 | GET `/trading/account`（券商口径优先，assets>0）；GET `/trading/portfolio` 兜底 |
+| 账户总览 | 8 张 stat 卡（总资产/可用/可取/参考市值/当日盈亏/总盈亏/持仓浮盈/持仓数），金额千分位 + FittedBox 防溢出；红涨绿亏；总盈亏=资产−本金（本金>0）；**日/周/月盈亏条（v3.68，2026-09-15）**：stat 卡下方独立一行「今日 / 本周 / 本月」金额 + 比例（`pct` null → 「—」，不写 0%），本月跨锚定日时右对齐标注可追溯起点 | 进页自动加载；「点击更新」手动刷新 | GET `/trading/account`（券商口径优先，assets>0）；GET `/trading/portfolio` 兜底；GET `/trading/pnl-periods` |
 | 持仓列表 | **15 列 DataTable（代码/名称/数量/成本/现价/市值/盈亏/盈亏%/仓位占比/当日盈亏/今日涨跌幅/止损/买点/角色/操作；列序 6/7/8＝当日口径，v3.66）**，红涨绿亏（当日口径同用 darkRed 正 / darkGreen 负），横向滚动（minWidth 1150→1520）；**顶部一行「仓位 X% · 现金 Y%」总仓位**；当日三列 null 一律「—」（**严禁渲染成 0 / 0.00%**）；`notes` 非空 → 中性橙轻提示「有几笔今天的盈亏还没算全——…」（直接口吻，无引述前缀） | 自动加载；行尾「编辑」→ 弹窗改角色（8 组合）/止损/目标价 → 保存；**行尾「批次」（RFC 20260825）→ 批次明细弹窗**：每批 日期/剩余/成本/现价/盈亏/止损/距止损%/买点/状态（初始底仓/持有中/已清仓-回合盈亏）+ 流水对账不一致警告 | GET `/trading/positions/daily`（当日口径主源，失败静默降级 `/trading/positions`）、PUT `/trading/positions/{symbol}`、GET `/trading/lots` |
 | 记录交易 | Dialog：代码 300ms 防抖查名、买入默认止损 = 价格×0.93（−7%，2026-08-17 设定）、买点 8 类型下拉（B1/B2/B3/SB1/暴力特噗/深水炸弹/单针/其他）、SELL 不填止损/买点 | 页头「记录交易」（先整体刷新再弹窗）→ 提交 | POST `/trading/trades`、GET `/trading/lookup` |
 | 批量导入 | 三种格式自动识别：① 交易 CSV ② 通达信持仓（全量覆盖）③ 通达信历史成交（幂等补流水+对账提示）；支持文件上传留存或粘贴；逐条成功/失败结果（带行号+人话原因） | 页头「批量导入」→ 粘贴/选文件 → 导入 | POST `/trading/imports/save`、`/trading/trades/batch`、`/trading/positions/import?replace=true`、`/trading/trades/import` |
@@ -228,7 +230,7 @@ tags: [trading, plugin, reference]
 
 | 区块 | 功能 | 操作 | 端点 |
 |:--|:--|:--|:--|
-| 账户总览卡 | 总资产/总盈亏（券商口径优先 `assets>0`，失败退回组合快照）；总盈亏=资产−本金（本金>0）；可用/可取/市值/当日盈亏/本金小字指标行；金额 ≥1 万显示「X.X万」 | 进页自动加载；AppBar 刷新按钮 | GET `/trading/account`、GET `/trading/portfolio` |
+| 账户总览卡 | 总资产/总盈亏（券商口径优先 `assets>0`，失败退回组合快照）；总盈亏=资产−本金（本金>0）；可用/可取/市值/当日盈亏/本金小字指标行；金额 ≥1 万显示「X.X万」；**日/周/月盈亏行（v3.68）**：三个区间各自的金额 + 比例（`pct` null → 只给金额，不写 0%），本月跨锚定日时附「本月自券商快照 YYYY-MM-DD 起可追溯」 | 进页自动加载；AppBar 刷新按钮 | GET `/trading/account`、GET `/trading/portfolio`、GET `/trading/pnl-periods` |
 | 今日交易复盘 | **RFC 20260822**：账户卡下方「今日 N 笔 · 买 X 卖 Y · 早盘 n · 午盘 n · 尾盘 n · 首末笔时间」一行（纯客观数字；无成交/失败静默不显示）| 自动加载（随主数据刷新）| GET `/trading/trades?date=` |
 | 复盘横幅 | 有交易活动 → 「今日有交易 · 生成今日复盘？」；生成后变「今日复盘已生成 ✓」+查看；弹窗右下「反哺入库」；右上关闭仅本会话收起；AppBar 另有被动「复盘」图标入口 | 横幅「生成复盘」/AppBar 图标 | GET `/trading/has-activity`、POST `/trading/review`、POST `/trading/reviews/{date}/promote` |
 | 记录区 · 通道 A | 一句话输入（hint：「买了 1000 股京东方 @5.2」）→ parse 回显确认卡（方向徽标+标的，可改数量/价格/方向）；**parse 返回的止损/买点不再回填**（2026-08-18 简化归 web）；matched=false → SnackBar 人话 + 自动展开精确表单（无死路） | 输入 → 「解析」→ 「确认记录」/取消 | POST `/trading/trades/parse`、POST `/trading/trades` |

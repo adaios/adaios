@@ -45,6 +45,8 @@ class _TradingPageState extends State<TradingPage> {
 
   // ── 2026-08-17 对齐 web：账户快照（异步加载不阻塞主数据）──
   AccountSnapshotDto? _account;
+  // 2026-09-15（用户要求）：今日 / 本周 / 本月盈亏金额 + 比例；null = 拉取失败/旧后端 → 整行不显示。
+  PnlPeriodsDto? _pnlPeriods;
   bool _auxLoading = false; // 次级数据加载中（账户快照，不转圈整页）
   int _auxGen = 0; // 代际令牌：_loadAux 防乱序覆盖
 
@@ -384,13 +386,25 @@ class _TradingPageState extends State<TradingPage> {
     _auxLoading = true;
     final gen = ++_auxGen;
     try {
-      final acct = await widget.api.getAccount();
-      if (!mounted || gen != _auxGen) return; // 旧代丢弃
-      setState(() {
-        _account = acct;
-      });
-    } catch (_) {
-      // 次级数据失败静默（账户卡退回组合快照口径）
+      try {
+        final acct = await widget.api.getAccount();
+        if (!mounted || gen != _auxGen) return; // 旧代丢弃
+        setState(() {
+          _account = acct;
+        });
+      } catch (_) {
+        // 次级数据失败静默（账户卡退回组合快照口径）
+      }
+      // 2026-09-15：今日/本周/本月盈亏（增强项，失败静默——旧后端/网络抖动时整行不显示）
+      try {
+        final periods = await widget.api.getPnlPeriods();
+        if (!mounted || gen != _auxGen) return;
+        setState(() {
+          _pnlPeriods = periods;
+        });
+      } catch (_) {
+        // 静默：不拖垮账户卡
+      }
     } finally {
       _auxLoading = false; // 无条件复位（锁只被本请求持有，串行安全）
     }
@@ -541,7 +555,13 @@ class _TradingPageState extends State<TradingPage> {
         _candidates = [];
       });
       if (result.confirmed > 0) {
-        _showSnack('好，${result.confirmed} 笔已经记进账了', AppColors.darkGreen); // P2-UX4：阿呆口吻（B1）
+        // 2026-09-15：重复截图确认的候选已被拦下（不再重复入账）——如实说一声，别让用户以为漏记
+        final tail = result.duplicated > 0
+            ? '，另有 ${result.duplicated} 笔之前已经记过了（没有重复记）'
+            : '';
+        _showSnack('好，${result.confirmed} 笔已经记进账了$tail', AppColors.darkGreen); // P2-UX4：阿呆口吻（B1）
+      } else if (result.duplicated > 0) {
+        _showSnack('这 ${result.duplicated} 笔之前已经记过了，没有重复入账', AppColors.darkGrey4);
       } else if (result.failed > 0) {
         _showSnack('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}', AppColors.darkOrange);
       } else {
@@ -1545,6 +1565,27 @@ class _TradingPageState extends State<TradingPage> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(pnlNote, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           ),
+        // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）：今日 / 本周 / 本月 金额 + 比例。
+        // 比例 null（区间起点前无曲线点 / 锚定日之前不可追溯）→ 只给金额，绝不编造 0%。
+        if (_pnlPeriods != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(spacing: 16, runSpacing: 6, children: [
+              _periodItem('今日', _pnlPeriods!.today),
+              _periodItem('本周', _pnlPeriods!.week),
+              _periodItem('本月', _pnlPeriods!.month),
+            ]),
+          ),
+        // 本月跨过锚定日时：如实说明只从锚定日起可追溯（之前的历史成交导入窗口补不全）
+        if (_pnlPeriods?.month?.partial == true)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+                _pnlPeriods?.anchorDate != null
+                    ? '本月自券商快照 ${_pnlPeriods!.anchorDate} 起可追溯'
+                    : '本月只有部分区间可追溯',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ),
         // D9（2026-08-23 app 体感，P2-UX3）：快照时间戳——收盘 15:05 后无陈旧感知
         if (a?.snapshotDate != null && a!.snapshotDate.isNotEmpty)
           Padding(
@@ -1559,6 +1600,29 @@ class _TradingPageState extends State<TradingPage> {
   Widget _snapshotItem(String label, String value, [Color? color]) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color ?? AppColors.darkGrey3)),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+    ]);
+  }
+
+  /// 2026-09-15：单个区间盈亏（今日/本周/本月）——`+1,234.56 (+1.23%) 今日`。
+  /// 金额或比例缺失一律「—」（pct null 只省比例，不省金额）。
+  Widget _periodItem(String label, PeriodPnlDto? p) {
+    if (p == null || p.pnl == null) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Text('—', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey5)),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ]);
+    }
+    final v = p.pnl!;
+    final color = v >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+    final pct = p.pct == null
+        ? ''
+        : ' (${p.pct! >= 0 ? '+' : ''}${p.pct!.toStringAsFixed(2)}%)';
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('${v >= 0 ? '+' : ''}${_fmtMoney(v)}$pct',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
       const SizedBox(width: 4),
       Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
     ]);
@@ -1729,6 +1793,7 @@ class _TradingPageState extends State<TradingPage> {
           symbol: p.symbol,
           name: p.name,
           lots: resp?.lots ?? const <LotItem>[],
+          fee: resp?.fees[p.symbol],
           error: error,
         ),
       );
@@ -2381,19 +2446,24 @@ class _LotDetailSheet extends StatelessWidget {
   final String symbol;
   final String name;
   final List<LotItem> lots;
+  /// 该标的累计手续费（买入/卖出/合计）；null = 旧后端/未取到
+  final SymbolFee? fee;
   final String? error;
 
   const _LotDetailSheet({
     required this.symbol,
     required this.name,
     required this.lots,
+    this.fee,
     this.error,
   });
 
   @override
   Widget build(BuildContext context) {
     // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
-    final visible = lots.where((l) => l.symbol == symbol).toList();
+    // 2026-09-16 用户拍板：只列**还持有着的**批次——7 月买过又清掉的那批不再显示
+    //（了结回合的完整档案在 web「清仓」Tab；这里只回答「我现在的仓位是怎么来的」）
+    final visible = lots.where((l) => l.symbol == symbol && l.remaining > 0).toList();
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -2440,6 +2510,25 @@ class _LotDetailSheet extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(vertical: 7),
                           child: _LotTile(lot: l),
                         ),
+                      // 2026-09-16：合计行 + 该票累计手续费（卖出含印花税，通常远大于买入）
+                      if (visible.isNotEmpty) ...[
+                        const Divider(height: 22),
+                        Text(
+                          '合计 ${visible.fold<int>(0, (a, l) => a + l.remaining)} 股 · '
+                          '加权成本 ${_lotWeightedCost(visible).toStringAsFixed(4)} · '
+                          '浮动 ${_fmtSigned(visible.fold<double>(0, (a, l) => a + l.pnl))}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: AppColors.darkGrey2),
+                        ),
+                        if (fee != null && fee!.total > 0) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            '这只票累计手续费  买入 ${fee!.buy.toStringAsFixed(2)} · '
+                            '卖出 ${fee!.sell.toStringAsFixed(2)} · 合计 ${fee!.total.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -2450,6 +2539,16 @@ class _LotDetailSheet extends StatelessWidget {
     );
   }
 }
+
+/// 批次加权成本（2026-09-16）：Σ(剩余×成本) ÷ Σ剩余。
+double _lotWeightedCost(List<LotItem> lots) {
+  final total = lots.fold<int>(0, (a, l) => a + l.remaining);
+  if (total <= 0) return 0;
+  return lots.fold<double>(0, (a, l) => a + l.remaining * l.costPrice) / total;
+}
+
+/// 带符号金额（批次合计用）：盈 +1,234.56 / 亏 -1,234.56。
+String _fmtSigned(double v) => '${v >= 0 ? '+' : ''}${_fmtMoney(v)}';
 
 /// 单批次行：日期+状态徽标+盈亏大字 / 剩余·成本·现价 / （破止损警示）。
 class _LotTile extends StatelessWidget {
@@ -2500,6 +2599,9 @@ class _LotTile extends StatelessWidget {
         '剩余 ${lot.remaining}/${lot.volume} · 成本 ${lot.costPrice.toStringAsFixed(2)} · 现价 ${lot.currentPrice.toStringAsFixed(2)}',
         style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
       ),
+      if (lot.buyFee > 0)
+        Text('买入手续费 ${lot.buyFee.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
       if (breach) ...[
         const SizedBox(height: 4),
         Row(mainAxisSize: MainAxisSize.min, children: [

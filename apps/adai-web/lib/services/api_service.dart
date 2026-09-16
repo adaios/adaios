@@ -333,6 +333,19 @@ class ApiService {
     return IdentityResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 「阿呆对你的了解」——聚合记忆里长期沉淀的观察（patterns/preferences）。
+  ///
+  /// 2026-09-16「第一次见面」批：这些数据一直在 memory 里自动生长，
+  /// 此前没有任何出口（用户看到的「档案」只有自己手填的表单）。
+  Future<MemoryInsightsResponse> getMemoryInsights() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/memory/insights'),
+      headers: _headers,
+    );
+    _check(resp);
+    return MemoryInsightsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 获取所有标签统计（自动缓存）。
   Future<TagsResponse> getTags() async {
     if (_tagsCache != null) return _tagsCache!;
@@ -714,6 +727,16 @@ class ApiService {
     final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/account'), headers: _headers);
     _check(resp);
     return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 今日 / 本周 / 本月盈亏（GET /api/v1/trading/pnl-periods，2026-09-15 用户要求）：
+  /// 金额 + 比例；口径与资金曲线同源（逐日总资产差分、剔除银证转账）。
+  /// pct 可能为 null（区间起点前无曲线点 / 锚定日之前不可追溯）——**不渲染成 0%**。
+  /// 增强项：调用方失败必须静默降级，不拖垮账户总览。
+  Future<PnlPeriodsDto> getPnlPeriods() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/pnl-periods'), headers: _headers);
+    _check(resp);
+    return PnlPeriodsDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// RFC 20260817：推送开关（类型 → 是否开启）。
@@ -2223,11 +2246,19 @@ class PortfolioSnapshotResponse {
 class LotsResponse {
   final List<LotItem> lots;
   final List<ReconcileLine> reconcile;
+  /// 2026-09-16：各标的累计手续费（买入/卖出/合计）——批次弹窗展示。
+  /// 卖出含印花税万 5（仅卖出收），费率约为买入 6 倍（用户实测 442 vs 2732）。
+  final Map<String, SymbolFee> fees;
 
-  LotsResponse({required this.lots, required this.reconcile});
+  LotsResponse({required this.lots, required this.reconcile, this.fees = const {}});
 
   factory LotsResponse.fromJson(dynamic json) {
     final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    final feeMap = <String, SymbolFee>{};
+    for (final e in (m['fees'] as List?) ?? const []) {
+      final f = SymbolFee.fromJson(e);
+      if (f.symbol.isNotEmpty) feeMap[f.symbol] = f;
+    }
     return LotsResponse(
       lots: ((m['lots'] as List?) ?? const [])
           .map((e) => LotItem.fromJson(e))
@@ -2235,6 +2266,26 @@ class LotsResponse {
       reconcile: ((m['reconcile'] as List?) ?? const [])
           .map((e) => ReconcileLine.fromJson(e))
           .toList(),
+      fees: feeMap,
+    );
+  }
+}
+
+/// 单标的累计手续费（2026-09-16）：买与卖差别大——卖出多一道印花税（万 5，仅卖出收）。
+class SymbolFee {
+  final String symbol;
+  final double buy;
+  final double sell;
+  final double total;
+  const SymbolFee({this.symbol = '', this.buy = 0, this.sell = 0, this.total = 0});
+
+  factory SymbolFee.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return SymbolFee(
+      symbol: m['symbol'] as String? ?? '',
+      buy: (m['buy'] as num?)?.toDouble() ?? 0,
+      sell: (m['sell'] as num?)?.toDouble() ?? 0,
+      total: (m['total'] as num?)?.toDouble() ?? 0,
     );
   }
 }
@@ -2262,6 +2313,7 @@ class LotItem {
   final bool initial; // 初始底仓批次
   final bool closed; // 已全部卖出（回合）
   final double realizedPnl; // 整批已实现盈亏（closed 时有效）
+  final double buyFee; // 2026-09-16：该批次买入手续费合计（用户要求看到手续费体现）
 
   LotItem({
     required this.lotId,
@@ -2282,6 +2334,7 @@ class LotItem {
     required this.initial,
     required this.closed,
     required this.realizedPnl,
+    this.buyFee = 0,
   });
 
   factory LotItem.fromJson(dynamic json) {
@@ -2454,6 +2507,49 @@ class DailySessionDto {
       name: m['name']?.toString() ?? '',
       range: m['range']?.toString() ?? '',
       count: (m['count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// 单个区间的盈亏（今日 / 本周 / 本月）。
+/// pnl 单位元；pct 为百分数（null = 区间起点前无曲线点 / 锚定日之前不可追溯）；
+/// partial=true 表示该区间只有部分可追溯——UI 如实标注，不假装完整。
+class PeriodPnlDto {
+  final double? pnl;
+  final double? pct;
+  final bool partial;
+  const PeriodPnlDto({this.pnl, this.pct, this.partial = false});
+
+  static PeriodPnlDto? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    return PeriodPnlDto(
+      pnl: (j['pnl'] as num?)?.toDouble(),
+      pct: (j['pct'] as num?)?.toDouble(),
+      partial: j['partial'] == true,
+    );
+  }
+}
+
+/// 日 / 周 / 月盈亏（GET /api/v1/trading/pnl-periods）。
+class PnlPeriodsDto {
+  final PeriodPnlDto? today;
+  final PeriodPnlDto? week;
+  final PeriodPnlDto? month;
+  final String asOf;
+  final String? anchorDate;
+  final String note;
+  const PnlPeriodsDto({this.today, this.week, this.month, this.asOf = '',
+      this.anchorDate, this.note = ''});
+
+  factory PnlPeriodsDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return PnlPeriodsDto(
+      today: PeriodPnlDto.fromJson(m['today']),
+      week: PeriodPnlDto.fromJson(m['week']),
+      month: PeriodPnlDto.fromJson(m['month']),
+      asOf: m['asOf']?.toString() ?? '',
+      anchorDate: m['anchorDate']?.toString(),
+      note: m['note']?.toString() ?? '',
     );
   }
 }
@@ -3300,3 +3396,57 @@ class EquityCurveResponse {
       );
 }
 
+
+/// 「阿呆对你的了解」响应（2026-09-16「第一次见面」批）。
+///
+/// 数据源是 memory 里长期沉淀的 patterns / preferences（后端已按时间衰减 × 置信度排序），
+/// 本模型只做展示层的防御式解析。
+class MemoryInsightsResponse {
+  final int total;
+  final int patternCount;
+  final int preferenceCount;
+
+  /// 最早一条记忆的日期（yyyy-MM-dd）；全新用户为 null。
+  final String? observedSince;
+  final List<MemoryInsight> insights;
+
+  MemoryInsightsResponse({
+    required this.total,
+    required this.patternCount,
+    required this.preferenceCount,
+    required this.observedSince,
+    required this.insights,
+  });
+
+  factory MemoryInsightsResponse.fromJson(Map<String, dynamic> json) =>
+      MemoryInsightsResponse(
+        total: json['total'] as int? ?? 0,
+        patternCount: json['patternCount'] as int? ?? 0,
+        preferenceCount: json['preferenceCount'] as int? ?? 0,
+        observedSince: json['observedSince'] as String?,
+        insights: ((json['insights'] as List?) ?? const [])
+            .map((e) => MemoryInsight.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+/// 一条长期观察。[kind] 为 `pattern`（行为模式）或 `preference`（明确偏好）。
+class MemoryInsight {
+  final String kind;
+  final String content;
+  final double confidence;
+
+  MemoryInsight({
+    required this.kind,
+    required this.content,
+    required this.confidence,
+  });
+
+  bool get isPattern => kind == 'pattern';
+
+  factory MemoryInsight.fromJson(Map<String, dynamic> json) => MemoryInsight(
+        kind: json['kind'] as String? ?? 'pattern',
+        content: json['content'] as String? ?? '',
+        confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      );
+}

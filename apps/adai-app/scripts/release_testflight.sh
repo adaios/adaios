@@ -59,6 +59,16 @@ while [ $# -gt 0 ]; do
 done
 
 # ── 1. 凭据与签名资产 ──
+# 2026-09-15：Issuer ID 落盘自动发现（~/.appstoreconnect/issuer_id）——此前它只在
+# 「首次打通那一次」的会话内存里 export 过，换会话就得重新问一遍用户（同批反馈：
+# 别让人重复交代背景）。Issuer ID 不是密钥（App Store Connect 页面公开可见），
+# 真正敏感的是 private_keys/ 下的 .p8。
+if [ -z "${ASC_ISSUER_ID:-}" ] && [ -f "$HOME/.appstoreconnect/issuer_id" ]; then
+  ASC_ISSUER_ID="$(tr -d '[:space:]' < "$HOME/.appstoreconnect/issuer_id")"
+  export ASC_ISSUER_ID
+  echo "▸ ASC_ISSUER_ID 取自 ~/.appstoreconnect/issuer_id"
+fi
+
 if [ -z "${ASC_ISSUER_ID:-}" ]; then
   cat << 'EOF'
 ❌ 缺 ASC_ISSUER_ID（App Store Connect → Users and Access → Integrations 页面顶部）
@@ -66,7 +76,8 @@ if [ -z "${ASC_ISSUER_ID:-}" ]; then
 一次性准备：
   1. 生成 Team Key（角色 App Manager 即可，**不需要 Admin**），下载 .p8
   2. 放到 ~/.appstoreconnect/private_keys/（文件名保持 AuthKey_<KEYID>.p8）
-  3. export ASC_ISSUER_ID=<Issuer ID>
+  3. 把 Issuer ID 写进 ~/.appstoreconnect/issuer_id（一行即可，脚本会自动读）
+     ——或 export ASC_ISSUER_ID=<Issuer ID>
 EOF
   exit 1
 fi

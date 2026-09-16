@@ -237,12 +237,13 @@ public class TradeLogCollectService {
         LocalDate today = LocalDate.now();
         List<TradeLogCandidate> candidates = todayCandidates(userId);
         if (candidates.isEmpty()) {
-            return new ConfirmResult(0, 0, 0, List.of());
+            return new ConfirmResult(0, 0, 0, 0, List.of(), List.of());
         }
         int done = 0;
         int skipped = 0;
         List<TradeLogCandidate> remaining = new java.util.ArrayList<>();
         List<String> failures = new java.util.ArrayList<>();
+        List<String> duplicated = new java.util.ArrayList<>();
         for (TradeLogCandidate c : candidates) {
             if (!c.complete()) {
                 // RFC 20260817：数量/价格缺失的候选确认时跳过（recordTrade 0 数量会误伤/静默）；
@@ -270,6 +271,22 @@ public class TradeLogCollectService {
                 // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：成交日期以候选携带的 tradeDate 为准
                 // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；文字归集无日期才回退确认当天。
                 java.time.LocalDate entryDate = c.tradeDate() != null ? c.tradeDate() : today;
+                TradeDirection dir = "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY;
+                // 2026-09-15 防重复入账（用户实测「同一张截图试了很多次」）：同笔已在流水里 → 跳过，
+                // 不再重复落库（重复落库会污染持仓与现金，见 TradingAppService#findRecordedTrade）。
+                java.util.Optional<com.adaiadai.core.domain.trading.TradeRecord> dup =
+                        tradingAppService.findRecordedTrade(userId, c.symbol(), dir,
+                                c.price(), c.volume(), entryDate, c.orderId());
+                if (dup.isPresent()) {
+                    String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                    String when = dup.get().entryDate() != null ? dup.get().entryDate().toString()
+                            : String.valueOf(dup.get().timestamp());
+                    duplicated.add(label + ": 这笔之前已经记过了（" + when + " "
+                            + dup.get().volume() + " 股 @ " + dup.get().price() + "），没有重复入账");
+                    log.info("交易日志确认跳过（同笔已落库）| userId={} | {} {} {}股@{} | 已有流水 {}",
+                            userId, dir, c.symbol(), c.volume(), c.price(), dup.get().id());
+                    continue; // 已入账 → 不留候选
+                }
                 // P2-交易36 治本（2026-09-09）：完整候选确认落库走带 orderId/fee 的
                 // recordTradeWithOrderId——候选补填的成交编号/手续费透传流水落盘
                 // （原 recordTrade 无此两参，截图入账/手动确认成交会丢「成交编号/发生金额」）。
@@ -277,7 +294,7 @@ public class TradeLogCollectService {
                         userId,
                         c.symbol(),
                         c.name(),
-                        "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY,
+                        dir,
                         c.price() != null ? c.price() : BigDecimal.ZERO,
                         c.volume() != null ? c.volume() : 0,
                         entryDate,
@@ -300,13 +317,17 @@ public class TradeLogCollectService {
         // 现整体收敛到 repository 锁内原子「读最新 → 合并保留集 → 写回」（saveMerging）：
         // 并发 append 与本写串行化，新候选不再被覆盖。
         tradeLogRepository.saveMerging(userId, today, candidates, remaining);
-        log.info("交易日志确认落库 | userId={} | 成功 {} / 失败 {} / 跳过(不完整) {} / 共 {} 笔 | 保留 {} 笔",
-                userId, done, failures.size(), skipped, candidates.size(), remaining.size());
-        return new ConfirmResult(done, failures.size(), skipped, failures);
+        log.info("交易日志确认落库 | userId={} | 成功 {} / 失败 {} / 跳过(不完整) {} / 同笔已记过 {} / 共 {} 笔 | 保留 {} 笔",
+                userId, done, failures.size(), skipped, duplicated.size(), candidates.size(), remaining.size());
+        return new ConfirmResult(done, failures.size(), skipped, duplicated.size(), failures, duplicated);
     }
 
-    /** 确认结果：成功/失败/跳过笔数 + 失败人话明细（P0-1：失败候选已保留，可再次确认）。 */
-    public record ConfirmResult(int confirmed, int failed, int skipped, List<String> failures) {}
+    /**
+     * 确认结果：成功/失败/跳过笔数 + 失败人话明细（P0-1：失败候选已保留，可再次确认）；
+     * {@code duplicated}/{@code duplicates} = 与已落库流水同笔而被跳过的候选（2026-09-15 防重复入账）。
+     */
+    public record ConfirmResult(int confirmed, int failed, int skipped, int duplicated,
+                                List<String> failures, List<String> duplicates) {}
 
     /** 收盘确认文案：当日候选汇总（供 15:05 推送 / 前端展示）。 */
     public String summarize(List<TradeLogCandidate> candidates) {

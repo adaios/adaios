@@ -68,6 +68,59 @@ class KlineServiceTest {
     }
 
     @Test
+    void tdxStale_mergesNetworkTail() {
+        // 2026-09-16 生产事故回归：tdx 数据包停在 09-04，而原来「有本地数据就整段返回」
+        // → 09-05 起的 K 线凭空消失（资金曲线一路沿用旧价、周期盈亏算成 0、
+        // 买点扫描 dataDate 永远不是当日 → 15:10 推送静默失效）。
+        // 现在：本地补长历史、网络补尾部缺口（重叠按日期去重）。
+        LocalDate stale = LocalDate.now().minusDays(12);
+        LocalDate fresh = LocalDate.now().minusDays(1);
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.klineRange(anyString(), any(), any())).thenReturn(List.of(
+                new Candle(stale, 10, 11, 9, 10.0, 1000),
+                new Candle(stale.plusDays(1), 10, 11, 9, 10.5, 1000)));
+        when(tdx.kline(anyString(), anyInt())).thenReturn(List.of(
+                new Candle(stale, 10, 11, 9, 10.0, 1000)));
+
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.klineRange(anyString(), any(), any())).thenReturn(List.of(
+                new Candle(stale.plusDays(1), 10, 11, 9, 10.5, 1000), // 与本地重叠 → 去重
+                new Candle(fresh, 10, 11, 9, 12.0, 1000)));
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of(
+                new Candle(fresh, 10, 11, 9, 12.0, 1000)));
+
+        KlineService svc = new KlineService("tencent", true, mock(KlineSource.class), tencent, tdx);
+
+        var range = svc.klineRange("600519", stale, LocalDate.now());
+        assertEquals(3, range.size(), "本地 2 根 + 网络补 1 根（重叠去重）：" + range);
+        assertEquals(fresh, range.get(range.size() - 1).date(), "末端应是网络源补的新数据（原来会缺）");
+        assertEquals(12.0, range.get(range.size() - 1).close(), 0.001);
+
+        var recent = svc.kline("600519", 5);
+        assertEquals(fresh, recent.get(recent.size() - 1).date(), "滞后时 kline 也要走网络源");
+    }
+
+    @Test
+    void tdxFresh_noNetworkCall() {
+        // 反向：本地新鲜 → 保持零网络请求（不因修复引入无谓开销）
+        LocalDate fresh = LocalDate.now().minusDays(1);
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.kline(anyString(), anyInt()))
+                .thenReturn(List.of(new Candle(fresh, 10, 11, 9, 10.0, 1000)));
+        when(tdx.klineRange(anyString(), any(), any()))
+                .thenReturn(List.of(new Candle(fresh, 10, 11, 9, 10.0, 1000)));
+        KlineSource tencent = mock(KlineSource.class);
+
+        KlineService svc = new KlineService("tencent", true, mock(KlineSource.class), tencent, tdx);
+        var r = svc.kline("600519", 5);
+        assertEquals(fresh, r.get(0).date());
+        org.mockito.Mockito.verifyNoInteractions(tencent);
+        var rr = svc.klineRange("600519", fresh.minusDays(10), fresh);
+        assertEquals(1, rr.size());
+        org.mockito.Mockito.verifyNoInteractions(tencent);
+    }
+
+    @Test
     void bothEmpty_returnsEmpty() {
         KlineSource tencent = mock(KlineSource.class);
         when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());

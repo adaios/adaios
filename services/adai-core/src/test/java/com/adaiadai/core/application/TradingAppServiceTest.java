@@ -1666,5 +1666,44 @@ void soldUpdatePsychology_marksTrade() {
         AccountSnapshot snap2 = saved.get();
         assertEquals(0, snap2.cash().compareTo(new BigDecimal("44071.93")), "股息不重复记账");
     }
+
+    // ── 2026-09-15 防重复入账：同笔判定（成交编号优先 / 指纹兜底）──
+
+    @Test
+    void findRecordedTrade_orderIdFirstThenFingerprint() {
+        TradeRecord existing = new TradeRecord("t1", "600536", "中国软件", TradeDirection.BUY,
+                new BigDecimal("32.13"), 100, new BigDecimal("3213.00"), LocalDate.of(2026, 9, 15),
+                java.time.LocalTime.of(10, 8, 37), null, null, null, null, null,
+                LocalDateTime.of(2026, 9, 15, 10, 8, 37), "rec_1", null); // 无成交编号
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(existing));
+        TradingAppService svc = service(mock(PositionRepository.class), mock(RecordRepository.class), history);
+
+        // ① 候选无编号 → 指纹命中（同标的/方向/价/量/成交日）
+        assertTrue(svc.findRecordedTrade("u", "600536", TradeDirection.BUY,
+                new BigDecimal("32.13"), 100, LocalDate.of(2026, 9, 15), null).isPresent(),
+                "同指纹应判为已记过（重复截图确认的治本点）");
+        // ② 价格或数量不同 → 不是同一笔
+        assertTrue(svc.findRecordedTrade("u", "600536", TradeDirection.BUY,
+                new BigDecimal("32.14"), 100, LocalDate.of(2026, 9, 15), null).isEmpty());
+        assertTrue(svc.findRecordedTrade("u", "600536", TradeDirection.BUY,
+                new BigDecimal("32.13"), 200, LocalDate.of(2026, 9, 15), null).isEmpty());
+        // ③ 候选带编号 → 只认编号精确命中：同价同量的真实分笔成交不被误判
+        assertTrue(svc.findRecordedTrade("u", "600536", TradeDirection.BUY,
+                new BigDecimal("32.13"), 100, LocalDate.of(2026, 9, 15), "999").isEmpty(),
+                "有编号的候选不做指纹比对，避免误伤真实分笔");
+        assertTrue(svc.findRecordedTrade("u", "600536", TradeDirection.BUY,
+                new BigDecimal("32.13"), 100, LocalDate.of(2026, 9, 15), null).isPresent());
+        // ④ 已有笔带编号、候选编号相同 → 命中
+        TradeRecord withOrder = new TradeRecord("t2", "600206", "有研新材", TradeDirection.BUY,
+                new BigDecimal("46.50"), 100, new BigDecimal("4650.00"), LocalDate.of(2026, 9, 15),
+                java.time.LocalTime.of(9, 41, 37), null, null, null, null, new BigDecimal("0.45"),
+                LocalDateTime.of(2026, 9, 15, 9, 41, 37), "rec_2", "9770475");
+        when(history.findAll("u")).thenReturn(List.of(existing, withOrder));
+        assertTrue(svc.findRecordedTrade("u", "600206", TradeDirection.BUY,
+                new BigDecimal("46.50"), 100, LocalDate.of(2026, 9, 15), "9770475").isPresent());
+        assertTrue(svc.findRecordedTrade("u", "600206", TradeDirection.BUY,
+                new BigDecimal("46.50"), 100, LocalDate.of(2026, 9, 15), "8888888").isEmpty());
+    }
 }
 

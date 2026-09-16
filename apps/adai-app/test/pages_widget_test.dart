@@ -1352,13 +1352,14 @@ void main() {
       expect(find.text('批次明细 · 600000 浦发银行'), findsOneWidget);
       expect(find.text('初始底仓'), findsOneWidget);
       expect(find.text('持有中'), findsNWidgets(2));
-      expect(find.text('已清仓'), findsOneWidget);
+      // 2026-09-16 用户拍板：已清仓批次不再显示（7 月买过又清掉的那批不出现在持仓里）
+      expect(find.text('已清仓'), findsNothing);
       // 盈亏金额 + 盈亏%：开放批次浮动 pnlPct；已清仓回合收益率（前端算）
       expect(find.textContaining('+250'), findsOneWidget);
       expect(find.textContaining('5.00%'), findsOneWidget);
       expect(find.textContaining('-60'), findsOneWidget);
       expect(find.textContaining('-2.78%'), findsOneWidget);
-      expect(find.textContaining('回合 13.33%'), findsOneWidget);
+      expect(find.textContaining('回合 13.33%'), findsNothing, reason: '回合盈亏不再展示');
       // 破止损未走橙色警示（距止损 < 0 且剩余 > 0）
       expect(find.text('破止损未走 · 距止损 -1.90%'), findsOneWidget);
       // 红涨绿亏：盈=红、亏=绿
@@ -1632,6 +1633,36 @@ void main() {
       expect(AccountSnapshotDto.fromJson(null).todayPnlSource, '');
     });
 
+    test('PnlPeriodsDto 解析日/周/月；pct 缺失保持 null（不编造 0%）', () {
+      final p = PnlPeriodsDto.fromJson({
+        'today': {'pnl': -503.9, 'pct': -0.62, 'partial': false},
+        'week': {'pnl': 1234.0, 'pct': null, 'partial': false},
+        'month': {'pnl': 2500.0, 'pct': 3.1, 'partial': true},
+        'asOf': '2026-09-15', 'anchorDate': '2026-09-11', 'note': '',
+      });
+      expect(p.today!.pnl, -503.9);
+      expect(p.today!.pct, -0.62);
+      expect(p.week!.pct, isNull, reason: '比例不可追溯 → null，UI 显示「—」而不是 0%');
+      expect(p.month!.partial, isTrue, reason: '本月跨锚定日 → 标注只有部分可追溯');
+      expect(p.anchorDate, '2026-09-11');
+      final empty = PnlPeriodsDto.fromJson(null);
+      expect(empty.today, isNull, reason: '旧后端/空响应不崩');
+      expect(empty.asOf, '');
+    });
+
+    test('TradeLogConfirmResult 解析 duplicated/duplicates（防重复入账提示）', () {
+      final r = TradeLogConfirmResult.fromJson({
+        'confirmed': 1, 'failed': 0, 'skipped': 0, 'duplicated': 2,
+        'failures': [], 'duplicates': ['中国软件: 这笔之前已经记过了（2026-09-15 100 股 @ 32.13）'],
+      });
+      expect(r.confirmed, 1);
+      expect(r.duplicated, 2);
+      expect(r.duplicates.first, contains('已经记过'));
+      final old = TradeLogConfirmResult.fromJson({'confirmed': 1, 'failures': []});
+      expect(old.duplicated, 0, reason: '旧后端缺字段 → 0');
+      expect(old.duplicates, isEmpty);
+    });
+
     test('TradingScreenshotResult 解析 dropped；缺字段 → 空', () {
       final r = TradingScreenshotResult.fromJson({
         'total': 1, 'processed': 1, 'candidates': [], 'errors': [],
@@ -1745,6 +1776,60 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('阿呆'), findsOneWidget);
       expect(find.textContaining('无法加载个人档案'), findsNothing);
+    });
+
+    testWidgets('预设头像：选了就显示该头像（2026-09-16 预设方案）', (tester) async {
+      final b = _Backend()
+        ..handlers['/api/v1/identity'] = (_) async => _json({
+            'name': '小明',
+            'preferences': {'language': '中文', 'avatar': 'whale'},
+            'rules': {},
+            'tags': [],
+          });
+      await tester.pumpWidget(MaterialApp(home: ProfilePage(api: _apiFor(b))));
+      await tester.pumpAndSettle();
+
+      expect(find.text('🐳'), findsWidgets, reason: '选了预设就显示预设头像');
+      expect(find.text('小'), findsNothing, reason: '不再回落名字首字');
+      expect(find.text('阿呆怎么称呼你'), findsOneWidget);
+      expect(find.text('小明'), findsOneWidget);
+    });
+
+    testWidgets('预设头像：编辑态可选，保存写进 preferences.avatar', (tester) async {
+      // 档案页比默认测试视口高（头像 + 档案 + 标签 + 登录设备 + 编辑表单）——
+      // 放大视口让全部内容一次布局，避免滚动（滚动会撞上既有 ListTile/DecoratedBox 断言的噪音）
+      tester.view.physicalSize = const Size(1080, 2600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final b = _Backend();
+      final puts = <Map<String, dynamic>>[];
+      b.handlers['/api/v1/identity'] = (req) async {
+        if (req.method == 'PUT') {
+          puts.add(jsonDecode(req.body) as Map<String, dynamic>);
+        }
+        return _json({
+          'name': '小明',
+          'preferences': {'language': '中文'},
+          'rules': {},
+          'tags': [],
+        });
+      };
+      await tester.pumpWidget(MaterialApp(home: ProfilePage(api: _apiFor(b))));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('编辑个人档案'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('avatar-moon')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      expect(puts, isNotEmpty, reason: '选头像后保存要真的写回档案');
+      expect((puts.last['preferences'] as Map)['avatar'], 'moon');
     });
   });
 

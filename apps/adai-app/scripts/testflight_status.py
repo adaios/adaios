@@ -48,6 +48,14 @@ def load_token():
     issuer = os.environ.get("ASC_ISSUER_ID", "")
     key_path = os.environ.get("ASC_KEY_PATH", "")
 
+    # 2026-09-15：Issuer ID 落盘自动发现（与 release_testflight.sh 同口径）。
+    # 它只是 App Store Connect 页面上的公开标识、**不是密钥**；落盘后换会话/换 shell
+    # 不必再问一遍用户（此前它只活在「首次打通那一次」的会话内存里）。
+    if not issuer:
+        issuer_file = HOME / ".appstoreconnect" / "issuer_id"
+        if issuer_file.exists():
+            issuer = issuer_file.read_text().strip()
+
     if not key_path:
         found = sorted((HOME / ".appstoreconnect" / "private_keys").glob("AuthKey_*.p8"))
         if len(found) == 1:

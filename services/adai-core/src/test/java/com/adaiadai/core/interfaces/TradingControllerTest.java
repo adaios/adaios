@@ -1785,7 +1785,7 @@ class TradingControllerTest {
                         1000, 1000, new java.math.BigDecimal("10.0"), new java.math.BigDecimal("10.5"),
                         new java.math.BigDecimal("10500.0"), new java.math.BigDecimal("500.0"),
                         new java.math.BigDecimal("5.0"), new java.math.BigDecimal("9.3"),
-                        new java.math.BigDecimal("11.43"), "B1", null, false, false, java.math.BigDecimal.ZERO)));
+                        new java.math.BigDecimal("11.43"), "B1", null, false, false, java.math.BigDecimal.ZERO, new java.math.BigDecimal("1.20"))));
         when(lots.reconcile(eq("adai"))).thenReturn(java.util.List.of());
         MockMvc mvc = buildMvc(trading, lots);
 
@@ -1810,7 +1810,7 @@ class TradingControllerTest {
                         1000, 0, new java.math.BigDecimal("10.0"), new java.math.BigDecimal("10.5"),
                         java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
                         new java.math.BigDecimal("9.3"), null, "B1", null, false, true,
-                        new java.math.BigDecimal("500.0"))));
+                        new java.math.BigDecimal("500.0"), new java.math.BigDecimal("0.80"))));
         when(lots.reconcile(eq("adai"))).thenReturn(java.util.List.of());
         MockMvc mvc = buildMvc(trading, lots);
 

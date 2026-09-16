@@ -61,7 +61,15 @@ public class KlineService {
         if (symbol == null || symbol.isBlank()) return List.of();
         if (tdx != null) {
             List<Candle> local = tdx.kline(symbol, limit);
-            if (!local.isEmpty()) return local;
+            // 2026-09-16：tdx 数据包滞后时**不能直接返回**——生产实测 tdx 停在 09-04，而
+            // 「tdx 有数据就用」让 09-05 起的 K 线全部缺失：资金曲线整段沿用旧价（09-05 后全错）、
+            // 周期盈亏算成 0、买点扫描的 dataDate 永远不是当日（15:10 推送静默失效）。
+            // 本地仍新鲜时保持零网络请求。
+            if (!local.isEmpty()) {
+                java.time.LocalDate last = local.get(local.size() - 1).date();
+                if (!tdxStale(last)) return local;
+                log.warn("tdx 数据滞后（最后一根 {}），改走网络源 | symbol={}", last, symbol);
+            }
         }
         if (circuitOpen()) {
             List<Candle> fb = fallback.kline(symbol, limit);
@@ -90,8 +98,31 @@ public class KlineService {
         if (symbol == null || symbol.isBlank()) return List.of();
         if (tdx != null) {
             List<Candle> local = tdx.klineRange(symbol, from, to);
-            if (!local.isEmpty()) return local;
+            if (!local.isEmpty()) {
+                java.time.LocalDate lastLocal = local.get(local.size() - 1).date();
+                if (!lastLocal.isBefore(to)) return local; // 本地已覆盖到区间末端 → 零网络请求
+                // 2026-09-16：本地滞后 → **缺口用网络源补齐**（tdx 补长历史、网络源补最近），
+                // 而不是「有本地数据就整段用本地」——那会让区间末端的 K 线凭空消失。
+                List<Candle> tail = networkRange(symbol, lastLocal.plusDays(1), to);
+                if (tail.isEmpty()) return local;
+                List<Candle> merged = new java.util.ArrayList<>(local);
+                java.util.Set<java.time.LocalDate> have = new java.util.HashSet<>();
+                for (Candle c : local) have.add(c.date());
+                for (Candle c : tail) if (have.add(c.date())) merged.add(c);
+                merged.sort(java.util.Comparator.comparing(Candle::date));
+                log.info("tdx 数据补齐 | symbol={} | 本地止于 {} | 网络补 {} 根 | 合计 {} 根",
+                        symbol, lastLocal, tail.size(), merged.size());
+                return merged;
+            }
         }
+        return networkRange(symbol, from, to);
+    }
+
+    /**
+     * 网络源按区间拉取（主源 → 兜底，熔断同 kline）。
+     * 2026-09-16：从 {@link #klineRange} 抽出——tdx 滞后补缺口也走这条（含熔断与失败计数）。
+     */
+    private List<Candle> networkRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
         if (circuitOpen()) {
             List<Candle> fb = fallback.klineRange(symbol, from, to);
             return fb != null ? fb : List.of();
@@ -112,6 +143,14 @@ public class KlineService {
         }
         List<Candle> fb = fallback.klineRange(symbol, from, to);
         return fb != null ? fb : List.of();
+    }
+
+    /**
+     * tdx 是否滞后：最后一根距今超过 3 个自然日（覆盖一个周末；长假会多探一次网络源，无害——
+     * 那时网络源同样没有新数据，最多多一次请求）。
+     */
+    private boolean tdxStale(java.time.LocalDate last) {
+        return java.time.temporal.ChronoUnit.DAYS.between(last, java.time.LocalDate.now()) > 3;
     }
 
     private boolean circuitOpen() {

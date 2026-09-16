@@ -545,6 +545,9 @@ public class TradingController {
         }
         return ResponseEntity.ok(Map.of(
                 "lots", lots,
+                // 2026-09-16：各标的累计手续费（买入/卖出/合计）——批次弹窗底部展示。
+                // 卖出含印花税万 5（仅卖出收），所以卖出费率约为买入 6 倍（用户实测 442 vs 2732）。
+                "fees", tradingLotService.symbolFees(userId),
                 "reconcile", tradingLotService.reconcile(userId)));
     }
 
@@ -1170,7 +1173,9 @@ public class TradingController {
                 "confirmed", r.confirmed(),
                 "failed", r.failed(),
                 "skipped", r.skipped(),
-                "failures", r.failures()));
+                "duplicated", r.duplicated(),
+                "failures", r.failures(),
+                "duplicates", r.duplicates()));
     }
 
     /** 交易日志候选补日期（2026-08-27 二修，用户拍板「截图缺日期禁止落库，补充日期后再确认」）：

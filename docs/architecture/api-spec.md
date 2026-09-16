@@ -1613,6 +1613,38 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 { "count": 15 }
 ```
 
+### `GET /api/v1/memory/insights` — 阿呆对你的了解（2026-09-16「第一次见面」批）
+
+把长期沉淀在 memory 里的 patterns / preferences 聚合出来，供「档案」页的「阿呆对你的了解」区块展示。
+这些观察一直由 AI 从日常对话里自动写入（`MemoryService.findAllPatterns/findAllPreferences`，
+带时间衰减 × 置信度排序），此前没有任何前端出口（REVIEW P2-认知3）。
+
+两类合并后再按置信度降序；`observedSince` 为最早一条记忆的日期（没有记忆时为 `null`）。
+
+**Response**
+
+```json
+{
+  "total": 3,
+  "patternCount": 2,
+  "preferenceCount": 1,
+  "observedSince": "2026-07-22",
+  "insights": [
+    { "kind": "pattern", "content": "用户常把科幻概念和现实人物类比推演", "confidence": 0.9 },
+    { "kind": "preference", "content": "对《三体》战略思想有持续兴趣", "confidence": 0.85 },
+    { "kind": "pattern", "content": "习惯在深夜记录想法", "confidence": 0.6 }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `kind` | String | `pattern`（行为模式）/ `preference`（明确偏好）|
+| `confidence` | Number | 0~1 置信度（已含时间衰减）|
+
+> 用户在档案页点「✓ 对」→ 前端把该条写回 `identity.preferences`（值 `"已确认"`），
+> 走既有 `PUT /api/v1/identity`，**不新增写入端点**。
+
 ### `PATCH /api/v1/memory/{id}/done` — 标记行动类记忆为已完成
 
 记忆进化 Phase 3（Reality→Knowledge→Action→Reality 闭环）：将 actionable 记忆标记为已完成（`actionable=false` + 记录完成时间）。完成后不再出现在"待行动事项"与 Feed 待办提醒。

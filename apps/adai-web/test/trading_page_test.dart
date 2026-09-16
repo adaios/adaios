@@ -196,6 +196,23 @@ void main() {
   });
 
   group('交易 DTO 解析（RFC 20260816 新字段）', () {
+    test('PnlPeriodsDto 解析日/周/月；pct 缺失保持 null（不编造 0%）', () {
+      final p = PnlPeriodsDto.fromJson({
+        'today': {'pnl': -503.9, 'pct': -0.62, 'partial': false},
+        'week': {'pnl': 1234.0, 'pct': null, 'partial': false},
+        'month': {'pnl': 2500.0, 'pct': 3.1, 'partial': true},
+        'asOf': '2026-09-15', 'anchorDate': '2026-09-11', 'note': '',
+      });
+      expect(p.today!.pnl, -503.9);
+      expect(p.today!.pct, -0.62);
+      expect(p.week!.pct, isNull, reason: '比例不可追溯 → null，UI 显示「—」而不是 0%');
+      expect(p.month!.partial, isTrue, reason: '本月跨锚定日 → 标注只有部分可追溯');
+      expect(p.anchorDate, '2026-09-11');
+      final empty = PnlPeriodsDto.fromJson(null);
+      expect(empty.today, isNull, reason: '旧后端/空响应不崩');
+      expect(empty.asOf, '');
+    });
+
     test('TradeRecordItem 解析 entryDate/止损/买点/目标价/原因', () {
       final t = TradeRecordItem.fromJson({
         'id': 'trade_1',
@@ -1855,45 +1872,41 @@ void main() {
       // 请求参数：state=all + symbol（一次拿全，含回合/初始底仓）
       expect(lotsQuery!['state'], 'all');
       expect(lotsQuery!['symbol'], '600123');
-      // 状态标注：初始底仓 / 持有中 / 已清仓（3 个回合，含 initial&&closed 的初始底仓被卖完 → 显示已清仓）
+      // 2026-09-16 用户拍板：**只列还持有着的批次**——3 个已清仓回合一律不显示
       expect(find.text('初始底仓'), findsOneWidget);
       expect(find.text('持有中'), findsOneWidget);
-      expect(find.text('已清仓'), findsNWidgets(3));
-      // 回合盈亏（已清仓批次，含初始底仓回合 90.00——状态与盈亏口径一致）
-      expect(find.text('回合 250.00'), findsOneWidget);
-      expect(find.text('回合 -80.00'), findsOneWidget);
-      expect(find.text('回合 90.00'), findsOneWidget);
-      // 剩余/买入量
+      expect(find.text('已清仓'), findsNothing, reason: '已清仓批次不再出现在持仓批次里');
+      expect(find.text('回合 250.00'), findsNothing);
+      expect(find.text('回合 -80.00'), findsNothing);
+      expect(find.text('回合 90.00'), findsNothing);
+      // 剩余/买入量：只剩两个持有中批次
       expect(find.text('100 / 100'), findsOneWidget);
       expect(find.text('100 / 200'), findsOneWidget);
-      expect(find.text('0 / 300'), findsOneWidget);
-      expect(find.text('0 / 500'), findsOneWidget);
-      expect(find.text('0 / 100'), findsOneWidget);
-      // 买点/角色（B3 仅弹窗内；B1 在已清仓批次）
+      expect(find.text('0 / 300'), findsNothing);
+      expect(find.text('0 / 500'), findsNothing);
+      expect(find.text('0 / 100'), findsNothing);
+      // 买点/角色（B3 + 角色在持有中批次；B1 只挂在已清仓批次 → 不再显示）
       expect(find.text('B3'), findsOneWidget);
-      expect(find.text('B1'), findsOneWidget);
+      expect(find.text('B1'), findsNothing);
       expect(find.text('防守·主仓'), findsOneWidget);
-      // 距止损%（正=安全，负=已破）
+      // 距止损%：两个持有中批次同值；已破止损那条属已清仓批次 → 不显示
       expect(find.text('12.63%'), findsNWidgets(2));
-      expect(find.text('-2.10%'), findsOneWidget);
-      // 红涨绿亏：盈利=红、亏损=绿
+      expect(find.text('-2.10%'), findsNothing);
+      // 红涨绿亏：持有中批次盈利=红
       final red = tester.widget<Text>(find.text('110.00'));
       expect(red.style?.color, AppColors.darkRed);
-      final green = tester.widget<Text>(find.text('回合 -80.00'));
-      expect(green.style?.color, AppColors.darkGreen);
       // 盈亏%：开放批次浮动 pnlPct；已清仓回合收益率（realizedPnl / 成本×买入量，前端算）。
       // 限定弹窗内：持仓表本身也有盈亏% 列（pnlPercent 3.16），避免与弹窗批次盈亏% 撞文本
       final inLotsDialog = find.byType(Dialog);
       expect(find.descendant(of: inLotsDialog, matching: find.text('4.40%')), findsOneWidget);
       expect(find.descendant(of: inLotsDialog, matching: find.text('3.16%')), findsOneWidget);
-      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 3.47%')), findsOneWidget); // 250 / (24.0×300)
-      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 -1.60%')), findsOneWidget); // -80 / (10.0×500)
-      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 4.09%')), findsOneWidget); // 90 / (22.0×100)
+      // 已清仓回合的收益率不再显示（2026-09-16：只列还持有着的批次）
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 3.47%')), findsNothing);
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 -1.60%')), findsNothing);
+      expect(find.descendant(of: inLotsDialog, matching: find.text('回合 4.09%')), findsNothing);
       // 百分比颜色同盈亏（红涨绿亏）
       final pctRed = tester.widget<Text>(find.descendant(of: inLotsDialog, matching: find.text('4.40%')));
       expect(pctRed.style?.color, AppColors.darkRed);
-      final pctGreen = tester.widget<Text>(find.descendant(of: inLotsDialog, matching: find.text('回合 -1.60%')));
-      expect(pctGreen.style?.color, AppColors.darkGreen);
       // 对账不一致 → 橙色警告行（以持仓快照为准）；其他股票的对账行被过滤（不串股）
       expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
       expect(find.textContaining('当前持仓 200 ≠ 流水净 100'), findsOneWidget);

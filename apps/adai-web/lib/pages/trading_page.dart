@@ -147,6 +147,8 @@ class _TradingPageState extends State<TradingPage> {
   // 清仓 Tab 横幅展示，引导导入通达信「清仓股」导出补全复盘档案
   List<PendingClearanceDto> _pendingClearances = [];
   AccountSnapshotDto? _account;
+  // 2026-09-15（用户要求）：今日 / 本周 / 本月盈亏（金额 + 比例）；null = 拉取失败/旧后端 → 整行不显示
+  PnlPeriodsDto? _pnlPeriods;
   double? _cash;
   double? _assets;
   String? _lastUpdated; // 顶部「上次更新」时间戳
@@ -259,6 +261,20 @@ class _TradingPageState extends State<TradingPage> {
     _loadDaily();
     // RFC 20260912：账实对账闸门（应有持仓 vs 落地持仓 / 重放缺口）——失败静默降级，不打断加载
     unawaited(_loadIntegrity());
+    // 2026-09-15：今日/本周/本月盈亏（增强项，失败静默——旧后端/网络抖动时整行不显示）
+    unawaited(_loadPnlPeriods());
+  }
+
+  /// 2026-09-15：日 / 周 / 月盈亏（GET /trading/pnl-periods）。
+  /// 与资金曲线同源（逐日总资产差分、剔除银证转账）；失败静默降级（不显示该行，不打断页面）。
+  Future<void> _loadPnlPeriods() async {
+    try {
+      final p = await widget.api.getPnlPeriods();
+      if (!mounted) return;
+      setState(() => _pnlPeriods = p);
+    } catch (_) {
+      // 静默降级：宁可整行不显示，也不编造数字
+    }
   }
 
   /// RFC 20260912 账实一致性闸门（GET /trading/integrity）：
@@ -557,6 +573,7 @@ class _TradingPageState extends State<TradingPage> {
           name: p.name,
           lots: resp?.lots ?? const [],
           reconcile: resp?.reconcile ?? const [],
+          fee: resp?.fees[p.symbol],
           error: err,
         ),
       );
@@ -774,7 +791,8 @@ class _TradingPageState extends State<TradingPage> {
     final a = _account;
     final p = _portfolio;
     final hasAccount = a != null && a.assets > 0;
-    return Row(children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
       _statCard('总资产', hasAccount ? a.assets : (p?.totalValue ?? 0) + (p?.cashBalance ?? 0),
           format: '¥', color: AppColors.darkBlue, big: true),
       const SizedBox(width: 12),
@@ -804,6 +822,58 @@ class _TradingPageState extends State<TradingPage> {
           color: (hasAccount ? a.pnl : 0) >= 0 ? AppColors.darkRed : AppColors.darkGreen),
       const SizedBox(width: 12),
       _statCard('持仓数', (p?.positionCount ?? 0).toDouble(), format: '', color: AppColors.darkGrey2),
+      ]),
+      // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）——独立一行，不让 8 张卡更挤
+      if (_pnlPeriods != null) ...[
+        const SizedBox(height: 12),
+        _buildPeriodRow(),
+      ],
+    ]);
+  }
+
+  /// 今日 / 本周 / 本月盈亏条：金额 + 比例（比例 null → 只给金额，绝不编造 0%）。
+  Widget _buildPeriodRow() {
+    final p = _pnlPeriods;
+    if (p == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Text('盈亏', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+        const SizedBox(width: 18),
+        _periodCell('今日', p.today),
+        const SizedBox(width: 26),
+        _periodCell('本周', p.week),
+        const SizedBox(width: 26),
+        _periodCell('本月', p.month),
+        const Spacer(),
+        if (p.month?.partial == true)
+          Text(p.anchorDate != null ? '本月自券商快照 ${p.anchorDate} 起可追溯' : '本月只有部分区间可追溯',
+              style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+      ]),
+    );
+  }
+
+  Widget _periodCell(String label, PeriodPnlDto? d) {
+    if (d == null || d.pnl == null) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Text('—', style: TextStyle(fontSize: 14, color: AppColors.darkGrey5)),
+        const SizedBox(width: 6),
+        Text(label, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+      ]);
+    }
+    final v = d.pnl!;
+    // #132 红涨绿亏（A股）
+    final color = v >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+    final pct = d.pct == null ? '' : ' (${d.pct! >= 0 ? '+' : ''}${d.pct!.toStringAsFixed(2)}%)';
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('${v >= 0 ? '+' : ''}¥${_thousands(v)}$pct',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+      const SizedBox(width: 6),
+      Text(label, style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
     ]);
   }
 
@@ -3461,12 +3531,21 @@ class _EditPositionDialogState extends State<_EditPositionDialog> {
 /// 批次明细弹窗：一只股票每一笔买入一个批次——买入日期 | 剩余/买入 | 成本 | 现价 | 盈亏(红涨绿亏)
 /// | 止损（可点「改」设/改本批止损，2026-09-04 按批次止损批）| 距止损% | 买点 | 角色 | 状态（初始底仓 / 持有中 / 已清仓-回合盈亏）。
 /// reconcile 对账提示：note 含「≠」= 流水与持仓不一致 → 橙色警告行（以持仓快照为准）。
+/// 批次加权平均成本（2026-09-16）：Σ(剩余×成本) ÷ Σ剩余。
+double _lotWeightedAvgCost(List<LotItem> lots) {
+  final total = lots.fold<int>(0, (a, l) => a + l.remaining);
+  if (total <= 0) return 0;
+  return lots.fold<double>(0, (a, l) => a + l.remaining * l.costPrice) / total;
+}
+
 class _LotsDialog extends StatefulWidget {
   final ApiService api;
   final String symbol;
   final String name;
   final List<LotItem> lots;
   final List<ReconcileLine> reconcile;
+  /// 该标的累计手续费（买入/卖出/合计）；null = 旧后端/未取到（2026-09-16）
+  final SymbolFee? fee;
   final String? error;
 
   const _LotsDialog({
@@ -3475,6 +3554,7 @@ class _LotsDialog extends StatefulWidget {
     required this.name,
     required this.lots,
     required this.reconcile,
+    this.fee,
     this.error,
   });
 
@@ -3600,7 +3680,9 @@ class _LotsDialogState extends State<_LotsDialog> {
   @override
   Widget build(BuildContext context) {
     // 防御：后端已按 symbol 过滤，前端再按 symbol 双保险（旧后端可能忽略参数返回全部）
-    final visible = _lots.where((l) => l.symbol == widget.symbol).toList();
+    // 2026-09-16 用户拍板：只列**还持有着的**批次——已清仓回合不在这里出现
+    //（7 月买过又清掉的那批不再显示；了结回合的完整档案在「清仓」Tab）
+    final visible = _lots.where((l) => l.symbol == widget.symbol && l.remaining > 0).toList();
     return Dialog(
       backgroundColor: AppColors.darkSurface,
       insetPadding: const EdgeInsets.all(24),
@@ -3685,8 +3767,16 @@ class _LotsDialogState extends State<_LotsDialog> {
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
                                 DataCell(Text('${_fmtThousandsInt(l.remaining)} / ${_fmtThousandsInt(l.volume)}',
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
-                                DataCell(Text(l.costPrice.toStringAsFixed(3),
-                                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3))),
+                                DataCell(Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                  Text(l.costPrice.toStringAsFixed(3),
+                                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
+                                  if (l.buyFee > 0)
+                                    Text('含手续费 ${l.buyFee.toStringAsFixed(2)}',
+                                        style: const TextStyle(fontSize: 10, color: AppColors.darkGrey5)),
+                                ])),
                                 DataCell(Text(l.currentPrice.toStringAsFixed(3),
                                     style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1))),
                                 DataCell(Text(l.closed ? '回合 ${_fmtThousands(l.realizedPnl)}' : _fmtThousands(l.pnl),
@@ -3725,6 +3815,25 @@ class _LotsDialogState extends State<_LotsDialog> {
                         ),
                       // 对账提示：只显示当前股票的对账行（后端可能返回全量，按 symbol 过滤防串股）；
                       // note 含「≠」= 流水与持仓不一致（黄色/橙色警告行，以持仓快照为准）
+                      // 2026-09-16：合计 + 该票累计手续费（卖出含印花税万 5，通常远大于买入）
+                      if (visible.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '合计 ${visible.fold<int>(0, (a, l) => a + l.remaining)} 股 · '
+                          '加权成本 ${_lotWeightedAvgCost(visible).toStringAsFixed(3)} · '
+                          '浮动 ${_fmtThousands(visible.fold<double>(0, (a, l) => a + l.pnl))}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: AppColors.darkGrey2),
+                        ),
+                        if (widget.fee != null && widget.fee!.total > 0) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            '这只票累计手续费  买入 ${widget.fee!.buy.toStringAsFixed(2)} · '
+                            '卖出 ${widget.fee!.sell.toStringAsFixed(2)} · 合计 ${widget.fee!.total.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                          ),
+                        ],
+                      ],
                       if (widget.reconcile.any((r) => r.symbol == widget.symbol)) ...[
                         const SizedBox(height: 10),
                         const Text('对账提示（流水净增减 vs 当前持仓，以持仓快照为准）：',

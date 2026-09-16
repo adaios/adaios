@@ -337,6 +337,19 @@ class ApiService {
     return IdentityResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 「阿呆对你的了解」——聚合记忆里长期沉淀的观察（patterns/preferences）。
+  ///
+  /// 2026-09-16「第一次见面」批：这些数据一直在 memory 里自动生长，
+  /// 此前没有任何出口（用户看到的「档案」只有自己手填的表单）。
+  Future<MemoryInsightsResponse> getMemoryInsights() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/memory/insights'),
+      headers: _headers,
+    );
+    _check(resp);
+    return MemoryInsightsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 更新个人档案。
   Future<IdentityResponse> updateIdentity(IdentityRequest request) async {
     final resp = await _client.put(
@@ -440,6 +453,19 @@ class ApiService {
     );
     _check(resp);
     return PositionsDailyResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 今日 / 本周 / 本月盈亏（GET /api/v1/trading/pnl-periods，2026-09-15 用户要求）：
+  /// 金额 + 比例。口径与资金曲线同源（逐日总资产差分、剔除银证转账）。
+  /// [PeriodPnlDto.pct] 可能为 null（区间起点前无曲线点 / 锚定日之前不可追溯）——
+  /// **null 一律显示「—」，不得渲染成 0%**。调用方失败必须静默降级（不拖垮账户卡）。
+  Future<PnlPeriodsDto> getPnlPeriods() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/pnl-periods'),
+      headers: _headers,
+    );
+    _check(resp);
+    return PnlPeriodsDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 查询投资组合快照。
@@ -2079,13 +2105,42 @@ class IntegrityReportDto {
 /// {"lots": [...], "reconcile": [...]}——reconcile 为流水重放 vs 持仓快照对账提示（app 不展示）。
 class LotsResponse {
   final List<LotItem> lots;
+  /// 2026-09-16：各标的累计手续费（买入/卖出/合计）——批次弹窗底部展示。
+  /// 卖出含印花税万 5（仅卖出收），费率约为买入 6 倍（用户实测 442 vs 2732）。
+  final Map<String, SymbolFee> fees;
 
-  LotsResponse({required this.lots});
+  LotsResponse({required this.lots, this.fees = const {}});
 
-  factory LotsResponse.fromJson(Map<String, dynamic> json) => LotsResponse(
-    lots: ((json['lots'] as List?) ?? [])
-        .map((e) => LotItem.fromJson(e as Map<String, dynamic>))
-        .toList(),
+  factory LotsResponse.fromJson(Map<String, dynamic> json) {
+    final feeMap = <String, SymbolFee>{};
+    for (final e in (json['fees'] as List?) ?? const []) {
+      if (e is Map<String, dynamic>) {
+        final f = SymbolFee.fromJson(e);
+        if (f.symbol.isNotEmpty) feeMap[f.symbol] = f;
+      }
+    }
+    return LotsResponse(
+      lots: ((json['lots'] as List?) ?? [])
+          .map((e) => LotItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      fees: feeMap,
+    );
+  }
+}
+
+/// 单标的累计手续费（2026-09-16）：买与卖差别大——卖出多一道印花税（万 5，仅卖出收）。
+class SymbolFee {
+  final String symbol;
+  final double buy;
+  final double sell;
+  final double total;
+  const SymbolFee({this.symbol = '', this.buy = 0, this.sell = 0, this.total = 0});
+
+  factory SymbolFee.fromJson(Map<String, dynamic> json) => SymbolFee(
+    symbol: json['symbol'] as String? ?? '',
+    buy: (json['buy'] as num?)?.toDouble() ?? 0,
+    sell: (json['sell'] as num?)?.toDouble() ?? 0,
+    total: (json['total'] as num?)?.toDouble() ?? 0,
   );
 }
 
@@ -2114,6 +2169,8 @@ class LotItem {
   final bool initial;
   final bool closed;
   final double? realizedPnl;
+  /// 2026-09-16（用户要求「我想看到手续费的体现」）：该批次买入手续费合计。
+  final double buyFee;
 
   LotItem({
     this.lotId = '',
@@ -2134,6 +2191,7 @@ class LotItem {
     this.initial = false,
     this.closed = false,
     this.realizedPnl,
+    this.buyFee = 0,
   });
 
   factory LotItem.fromJson(Map<String, dynamic> json) => LotItem(
@@ -2155,6 +2213,7 @@ class LotItem {
     initial: json['initial'] as bool? ?? false,
     closed: json['closed'] as bool? ?? false,
     realizedPnl: (json['realizedPnl'] as num?)?.toDouble(),
+    buyFee: (json['buyFee'] as num?)?.toDouble() ?? 0,
   );
 }
 
@@ -2395,6 +2454,49 @@ class TaskStatsResponse {
 
 // ── 交易 DTO（对齐 web，2026-08-17）──
 
+/// 单个区间的盈亏（今日 / 本周 / 本月）。
+/// pnl 单位元；pct 为百分数（可为 null：区间起点前没有曲线点，或锚定日之前不可追溯）；
+/// partial=true 表示「这个区间只有部分可追溯」——UI 如实标注，不假装完整。
+class PeriodPnlDto {
+  final double? pnl;
+  final double? pct;
+  final bool partial;
+  const PeriodPnlDto({this.pnl, this.pct, this.partial = false});
+
+  static PeriodPnlDto? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    return PeriodPnlDto(
+      pnl: (j['pnl'] as num?)?.toDouble(),
+      pct: (j['pct'] as num?)?.toDouble(),
+      partial: j['partial'] == true,
+    );
+  }
+}
+
+/// 日 / 周 / 月盈亏（GET /api/v1/trading/pnl-periods）。
+class PnlPeriodsDto {
+  final PeriodPnlDto? today;
+  final PeriodPnlDto? week;
+  final PeriodPnlDto? month;
+  final String asOf;        // 曲线最后一个交易日
+  final String? anchorDate; // 券商快照锚定日（此前不可追溯）
+  final String note;
+  const PnlPeriodsDto({this.today, this.week, this.month, this.asOf = '',
+      this.anchorDate, this.note = ''});
+
+  factory PnlPeriodsDto.fromJson(dynamic j) {
+    final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
+    return PnlPeriodsDto(
+      today: PeriodPnlDto.fromJson(m['today']),
+      week: PeriodPnlDto.fromJson(m['week']),
+      month: PeriodPnlDto.fromJson(m['month']),
+      asOf: m['asOf']?.toString() ?? '',
+      anchorDate: m['anchorDate']?.toString(),
+      note: m['note']?.toString() ?? '',
+    );
+  }
+}
+
 /// 账户总体快照（券商口径：总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）。
 class AccountSnapshotDto {
   final double assets, cash, available, withdrawable, marketValue, pnl, todayPnl;
@@ -2440,16 +2542,22 @@ class AccountSnapshotDto {
 /// B11-4（2026-08-23，P1-交易18）：确认交易日志落库结果（成功/失败/跳过 + 失败人话明细）。
 class TradeLogConfirmResult {
   final int confirmed, failed, skipped;
+  /// 2026-09-15：与已落库流水同笔而被跳过的候选数（截图反复确认不再重复入账）。
+  final int duplicated;
   final List<String> failures;
+  final List<String> duplicates;
 
   TradeLogConfirmResult({required this.confirmed, required this.failed,
-      required this.skipped, required this.failures});
+      required this.skipped, this.duplicated = 0, required this.failures,
+      this.duplicates = const []});
 
   factory TradeLogConfirmResult.fromJson(Map<String, dynamic> json) => TradeLogConfirmResult(
     confirmed: json['confirmed'] as int? ?? 0,
     failed: json['failed'] as int? ?? 0,
     skipped: json['skipped'] as int? ?? 0,
+    duplicated: json['duplicated'] as int? ?? 0,
     failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+    duplicates: (json['duplicates'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
 }
 
@@ -2681,4 +2789,58 @@ class DailySessionDto {
       count: (m['count'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+/// 「阿呆对你的了解」响应（2026-09-16「第一次见面」批）。
+///
+/// 数据源是 memory 里长期沉淀的 patterns / preferences（后端已按时间衰减 × 置信度排序），
+/// 本模型只做展示层的防御式解析。
+class MemoryInsightsResponse {
+  final int total;
+  final int patternCount;
+  final int preferenceCount;
+
+  /// 最早一条记忆的日期（yyyy-MM-dd）；全新用户为 null。
+  final String? observedSince;
+  final List<MemoryInsight> insights;
+
+  MemoryInsightsResponse({
+    required this.total,
+    required this.patternCount,
+    required this.preferenceCount,
+    required this.observedSince,
+    required this.insights,
+  });
+
+  factory MemoryInsightsResponse.fromJson(Map<String, dynamic> json) =>
+      MemoryInsightsResponse(
+        total: json['total'] as int? ?? 0,
+        patternCount: json['patternCount'] as int? ?? 0,
+        preferenceCount: json['preferenceCount'] as int? ?? 0,
+        observedSince: json['observedSince'] as String?,
+        insights: ((json['insights'] as List?) ?? const [])
+            .map((e) => MemoryInsight.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+/// 一条长期观察。[kind] 为 `pattern`（行为模式）或 `preference`（明确偏好）。
+class MemoryInsight {
+  final String kind;
+  final String content;
+  final double confidence;
+
+  MemoryInsight({
+    required this.kind,
+    required this.content,
+    required this.confidence,
+  });
+
+  bool get isPattern => kind == 'pattern';
+
+  factory MemoryInsight.fromJson(Map<String, dynamic> json) => MemoryInsight(
+        kind: json['kind'] as String? ?? 'pattern',
+        content: json['content'] as String? ?? '',
+        confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      );
 }

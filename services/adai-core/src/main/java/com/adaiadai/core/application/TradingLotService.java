@@ -293,13 +293,17 @@ public class TradingLotService {
             }
         }
         List<TradingLotView> views = new ArrayList<>();
+        // 2026-09-16：批次买入手续费（按 symbol + 买入日聚合）——前端每批显示「买入手续费 X.XX」
+        Map<String, Map<LocalDate, BigDecimal>> buyFees = buyFeeBySymbolDate(userId);
         for (Map.Entry<String, List<TradingLot>> e : bySymbol.entrySet()) {
             MarketData md = quotes.get(e.getKey());
             BigDecimal price = md != null ? md.price() : null;
             for (TradingLot lot : e.getValue()) {
                 if ("open".equals(state) && lot.closed()) continue;
                 if ("closed".equals(state) && !lot.closed()) continue;
-                views.add(toView(lot, price, userId));
+                BigDecimal buyFee = buyFees.getOrDefault(e.getKey(), Map.of())
+                        .getOrDefault(lot.buyDate(), BigDecimal.ZERO);
+                views.add(toView(lot, price, userId, buyFee));
             }
         }
         views.sort(Comparator.comparing(TradingLotView::buyDate,
@@ -538,7 +542,54 @@ public class TradingLotService {
         return t.timestamp() != null ? t.timestamp().toLocalDate() : LocalDate.MIN;
     }
 
-    private TradingLotView toView(TradingLot lot, BigDecimal currentPrice, String userId) {
+    /**
+     * 买入手续费按 symbol + 买入日聚合（2026-09-16）——批次视图显示「这批买入花了多少手续费」。
+     * 来源：流水 fee（券商实际）；缺失（手动记录/截图未填）→ 买入含费成本 − 成交金额（模型同口径）。
+     */
+    private Map<String, Map<LocalDate, BigDecimal>> buyFeeBySymbolDate(String userId) {
+        Map<String, Map<LocalDate, BigDecimal>> out = new HashMap<>();
+        for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+            if (t.direction() != TradeDirection.BUY || t.volume() <= 0 || t.price() == null) continue;
+            BigDecimal fee = feeOf(t);
+            if (fee.signum() <= 0) continue;
+            out.computeIfAbsent(t.symbol(), s -> new HashMap<>())
+                    .merge(effectiveDate(t), fee, BigDecimal::add);
+        }
+        return out;
+    }
+
+    /**
+     * 单笔手续费：流水 fee 优先（券商实际发生金额倒推），缺失则按模型算——
+     * 买入 = 含费成本 − 成交金额；卖出 = 成交金额 − 净得（净得含印花税，卖出费率约为买入 6 倍）。
+     */
+    private BigDecimal feeOf(TradeRecord t) {
+        if (t.fee() != null) return t.fee();
+        BigDecimal amount = t.price().multiply(BigDecimal.valueOf(t.volume()));
+        if (t.direction() == TradeDirection.BUY) {
+            return buyTotalCost(t).subtract(amount);
+        }
+        return amount.subtract(CommissionCalculator.sellProceeds(t.symbol(), t.price(), t.volume()));
+    }
+
+    /** 各标的累计手续费（买入 / 卖出 / 合计）——批次弹窗底部「这只票累计手续费」。 */
+    public List<SymbolFees> symbolFees(String userId) {
+        Map<String, BigDecimal[]> acc = new LinkedHashMap<>();
+        for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+            if (t.volume() <= 0 || t.price() == null) continue;
+            BigDecimal fee = feeOf(t);
+            if (fee.signum() <= 0) continue;
+            boolean buy = t.direction() == TradeDirection.BUY;
+            BigDecimal[] a = acc.computeIfAbsent(t.symbol(), s ->
+                    new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            a[buy ? 0 : 1] = a[buy ? 0 : 1].add(fee);
+        }
+        List<SymbolFees> out = new ArrayList<>();
+        acc.forEach((sym, a) -> out.add(new SymbolFees(sym, a[0], a[1], a[0].add(a[1]))));
+        return out;
+    }
+
+    private TradingLotView toView(TradingLot lot, BigDecimal currentPrice, String userId,
+                                  BigDecimal buyFee) {
         BigDecimal price = currentPrice != null && currentPrice.compareTo(BigDecimal.ZERO) > 0
                 ? currentPrice : lot.costPrice();
         BigDecimal marketValue = price.multiply(BigDecimal.valueOf(lot.remaining()));
@@ -561,7 +612,7 @@ public class TradingLotService {
                 lot.lotId(), lot.symbol(), lot.name(), lot.buyDate(),
                 lot.volume(), lot.remaining(), lot.costPrice(), price, marketValue,
                 pnl, pnlPct, stop, stopDist, lot.buyPoint(), lot.role(),
-                lot.initial(), lot.closed(), lot.realizedPnl());
+                lot.initial(), lot.closed(), lot.realizedPnl(), buyFee);
     }
 
     /** 峰值最高价（K 线尽力而为：拉取失败/无数据 → null，调用方跳过）。 */
@@ -644,8 +695,20 @@ public class TradingLotService {
             String role,
             boolean initial,
             boolean closed,
-            BigDecimal realizedPnl
+            BigDecimal realizedPnl,
+            /**
+             * 该批次买入手续费合计（2026-09-16 用户要求「我想看到手续费的体现」）。
+             * 来源：流水 fee（券商实际发生金额倒推）；缺失（手动记录/截图未填）→ 按模型同口径倒推。
+             */
+            BigDecimal buyFee
     ) {}
+
+    /**
+     * 单标的累计手续费（买入 / 卖出 / 合计）——批次弹窗底部「这只票累计手续费」。
+     * 买与卖差别很大：卖出多一道**印花税万 5**（仅卖出收），所以卖出费率约为买入的 6 倍
+     * （用户账户实测：买入累计 442.45 / 卖出累计 2,732.08）。
+     */
+    public record SymbolFees(String symbol, BigDecimal buy, BigDecimal sell, BigDecimal total) {}
 
     /** 行为标注（type 语义：loss-avg-down 亏损加仓 / chase-high 追高 / short-new 短线新开 /
      *  stop-loss-ignored 破止损未走 / giveback 浮盈回吐 / short-overdue 短线超期）。 */

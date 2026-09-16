@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -805,6 +806,48 @@ public class TradingAppService {
                     return true;
                 })
                 .toList();
+    }
+
+    /**
+     * 已落库流水里是否已有这一笔（2026-09-15「截图反复确认 → 重复入账」治本）。
+     * <p>
+     * 生产事故：同一张成交截图反复提交，确认一次就落一笔 → 同一天同一笔被记多次
+     * （2026-09-15 实测 600536 记成 1000 股、真实 800 股，现金被扣成 −6093.97）。
+     * 判定分两条：
+     * <ul>
+     *   <li>{@code orderId} 非空（券商成交编号）→ <b>只认编号精确命中</b>：编号唯一，
+     *       同价同量的两笔真实分笔成交不会被误判；</li>
+     *   <li>{@code orderId} 为空（截图 OCR 常见）→ <b>指纹命中</b>：同标的 + 同方向 + 同价 +
+     *       同量 + 同成交日。</li>
+     * </ul>
+     * 取向：宁可提示「这笔像已经记过了」让用户确认，也不重复入账——重复入账污染的是持仓与
+     * 现金（要人工修数据），少记一笔用户立刻看得到提示、可手动补。
+     *
+     * @return 命中的既有流水（无 → empty）
+     */
+    public Optional<TradeRecord> findRecordedTrade(String userId, String symbol,
+                                                   TradeDirection direction,
+                                                   BigDecimal price, Integer volume,
+                                                   java.time.LocalDate entryDate, String orderId) {
+        if (symbol == null || symbol.isBlank() || price == null || volume == null) {
+            return Optional.empty();
+        }
+        boolean byOrderId = orderId != null && !orderId.isBlank();
+        for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+            if (!symbol.equals(t.symbol())) continue;
+            if (byOrderId) {
+                if (orderId.equals(t.orderId())) return Optional.of(t);
+                continue;
+            }
+            if (t.direction() != direction) continue;
+            if (t.price() == null || t.price().compareTo(price) != 0) continue;
+            if (t.volume() != volume) continue;
+            java.time.LocalDate d = t.entryDate() != null ? t.entryDate()
+                    : (t.timestamp() != null ? t.timestamp().toLocalDate() : null);
+            if (entryDate != null && d != null && !entryDate.equals(d)) continue;
+            return Optional.of(t);
+        }
+        return Optional.empty();
     }
 
     /**
