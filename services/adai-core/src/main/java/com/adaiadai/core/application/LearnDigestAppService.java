@@ -1132,6 +1132,80 @@ public class LearnDigestAppService {
         return card;
     }
 
+    /**
+     * 产物反馈结果（RFC 20260917 §五 2b）。
+     *
+     * @param status    {@code recorded}（已记住）/ {@code exists}（这句已经记住过，不重复沉淀）
+     * @param message   人话回执
+     * @param canRepage 这张卡还有原始素材、可以按新偏好重排一版（**不自动重排——避免误烧钱**）
+     */
+    public record LearnFeedbackResult(String status, String message, boolean canRepage) {}
+
+    /**
+     * 产物反馈 → 沉淀为**长期偏好**（RFC 20260917 §五 2b）。
+     * <p>
+     * 闭环怎么成立的：反馈写成一条 preference 记忆 → 被 `MemoryService.findAllPreferences` 聚合
+     * → 经**画像回流**（同 RFC §四）注入下一次生成的 prompt。所以用户说一句「太啰嗦」，
+     * **下一次**整理出来的卡片就会变——这条链不需要额外机制。
+     * <p>
+     * 三个刻意的取舍：
+     * <ol>
+     *   <li><b>不自动重排</b>：重排要调 LLM（花钱）。只回 {@code canRepage} 由前端问用户，
+     *       用户点了才烧钱——反馈本身**零费用**。</li>
+     *   <li><b>幂等</b>：同一句话不重复沉淀，防偏好被单句刷爆（画像回流只取 Top 5）。</li>
+     *   <li><b>卡片必须存在</b>：不给不存在的卡留反馈（防脏数据）。</li>
+     * </ol>
+     *
+     * @throws LearnException 卡片不存在 / 反馈为空 / 记忆未装配（都给人话）
+     */
+    public LearnFeedbackResult feedback(String userId, String type, String title, String feedback) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在：" + safeLabel(type, title));
+        }
+        if (feedback == null || feedback.isBlank()) {
+            throw new LearnException("说说哪里不对，比如「太啰嗦」「多举例子」");
+        }
+        if (memoryService == null) {
+            throw new LearnException("这台服务器还没接记忆，反馈暂时存不下来");
+        }
+        LearnCard card = repository.find(userId, type, title)
+                .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+        String text = feedback.strip();
+
+        boolean exists;
+        try {
+            List<com.adaiadai.core.kernel.memory.MemoryPreference> prefs =
+                    memoryService.findAllPreferences(userId);
+            exists = prefs != null && prefs.stream()
+                    .anyMatch(p -> p != null && text.equals(p.content()));
+        } catch (Exception e) {
+            // 去重查询失败按「未记录」处理：宁可重复沉淀，不要吞掉用户的反馈
+            log.warn("learn 反馈去重查询失败（按未记录处理）| userId={} | {}", userId, e.getMessage());
+            exists = false;
+        }
+        if (exists) {
+            log.info("learn 产物反馈重复（已记住，跳过）| userId={} | type={} | title={}", userId, type, title);
+            return new LearnFeedbackResult("exists", "这条我已经记住了，不用再说一遍。", canRepage(userId, card));
+        }
+
+        memoryService.persist(userId, com.adaiadai.core.kernel.memory.Memory.fromFeedback(
+                card.type() + ":" + card.title(), text));
+        log.info("learn 产物反馈已沉淀为偏好 | userId={} | type={} | title={} | 反馈 {} 字",
+                userId, type, title, text.length());
+        return new LearnFeedbackResult("recorded", "记住了，以后我按这个来。", canRepage(userId, card));
+    }
+
+    /** 这张卡是否还能按新偏好重排一版（可写 + 有 _raw 素材）；异常一律按「不能」处理。 */
+    private boolean canRepage(String userId, LearnCard card) {
+        if (!card.writable()) return false;
+        try {
+            String material = rawMaterial(userId, card.type(), card.topic());
+            return material != null && !material.isBlank();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** 找最合适的底稿：优先最长的文本素材（转写稿/文章正文），跳过 meta 与图片。 */
     private String rawMaterial(String userId, String type, String topic) {
         String best = null;

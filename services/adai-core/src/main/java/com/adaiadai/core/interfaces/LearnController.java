@@ -392,6 +392,28 @@ public class LearnController {
                 "type", card.type(), "title", card.title(), "repaged", true));
     }
 
+    /**
+     * 产物反馈（RFC 20260917 §五 2b）：把「太啰嗦 / 多举例子」这类评价沉淀为**长期偏好**，
+     * 经画像回流（同 RFC §四）作用于**下一次**卡片生成——这就是反馈闭环。
+     * <p>
+     * body {@code {"type","title","feedback"}}。**本端点不烧钱**：只写一条偏好；
+     * 是否按新偏好重排一版由响应里的 {@code canRepage} 交给前端再问用户（重排才调 LLM）。
+     * 重复的同一句话幂等（status=exists），不重复沉淀。
+     */
+    @PostMapping("/cards/feedback")
+    public ResponseEntity<?> feedback(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @Valid @RequestBody LearnFeedbackRequest body) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        LearnDigestAppService.LearnFeedbackResult result =
+                digestService.feedback(userId, body.type(), body.title(), body.feedback());
+        return ResponseEntity.ok(Map.of(
+                "status", result.status(),
+                "message", result.message(),
+                "canRepage", result.canRepage()));
+    }
+
     /** 资产树：learn 按 type 分组（卡片清单）。 */
     @GetMapping("/tree")
     public ResponseEntity<?> tree(
@@ -572,6 +594,16 @@ public class LearnController {
     public record LearnCardKeyRequest(
             @NotBlank(message = "类型不能为空") String type,
             @NotBlank(message = "卡片标题不能为空") String title) {}
+
+    /**
+     * 产物反馈请求（RFC 20260917 §五 2b）：type/title 定位卡片，feedback 是用户原话
+     * （如「太啰嗦」「多举几个例子」）。长度上限与 {@code Memory} 侧一致（120 字）。
+     */
+    public record LearnFeedbackRequest(
+            @NotBlank(message = "类型不能为空") String type,
+            @NotBlank(message = "卡片标题不能为空") String title,
+            @NotBlank(message = "说说哪里不对，比如「太啰嗦」「多举例子」")
+            @Size(max = 120, message = "反馈太长了，一句话说重点就行") String feedback) {}
 
     /** 改主题请求：type/title 定位卡片，topic 目标主题名。 */
     public record LearnTopicRequest(

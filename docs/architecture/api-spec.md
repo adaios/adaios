@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-17 | v3.73 | **learn 产物反馈 → 长期偏好（RFC `docs/rfc/20260917-learn-representation.md` §五 2b）**——**端点 154→155**：新增 **`POST /api/v1/learn/cards/feedback`**（body `{type,title,feedback}`）：把用户对卡片的评价（「太啰嗦」「多举例子」）**沉淀为一条 preference 记忆**（`Memory.fromFeedback`，置信度 0.9），从而经**画像回流**（v3.72 §四）自动作用于**下一次**卡片生成——反馈闭环不需要额外机制。**本端点不烧钱**：只写偏好、不调 LLM；响应 `canRepage` 告知「这张卡还有 `_raw` 素材、可按新偏好重排一版」，**是否重排由前端再问用户**（重排才花钱）。**幂等**：同一句话不重复沉淀（`status=exists`），防单句刷爆 Top 5 画像。**门控**：属「整理能力」，无 learn 插件仍 **403**（不适用 v3.72 的接收降级——接收免费、整理受控）。后端 1946→**1953**（本批 +7） |
 | 2026-09-17 | v3.72 | **learn 门控 B：接收是基础能力、整理才是插件能力（RFC `docs/rfc/20260917-learn-representation.md`）**——起因：用户「**主要是把链路打通**」+「**学习是插件，可禁用的**」。只读盘点发现 `LearnController` **每个端点**都 `requireLearnPlugin` → 无插件用户分享一条视频**直接 403**，新用户冷启动第一步就断（详见 `docs/review/audits/2026-09-17-wiring-audit.md`）。①**`POST /learn/digest`（含兼容别名 `/learn/cards`）行为变更**：无 learn 插件时**不再 403**，改为「**只接收、不整理**」——素材落成一条普通记录（`type=note`、`source=external_import`，**不抓取、不转写、不调 LLM，零费用**），响应新增 `status=recorded`；**入参校验提前到门控之前**（无插件时 url/content 皆空仍 400，不得静默落一条空记录）。真正的花钱动作（抓取/转写/LLM 卡片化）**仍全部由 learn 插件门控，不旁路**。②**其余 learn 端点 403 不变**：`/digest/status`、`/digest/quota`、`/digest/confirm`、`/digest/image`、卡片读写等照旧。③**卡片生成回灌用户画像**（同 RFC §四）：`digest` 与 `repages` 的 user prompt 新增「我的长期画像」段——取 `MemoryService.findAllPreferences/findAllPatterns` **各前 5 条**（`PROFILE_TOP_N`），并明示「只决定怎么讲、不得复述、不得对用户下判断」；**无画像时该段不出现**（prompt 与改造前逐字一致）；画像读取失败**按无画像继续**、不影响消化主链路；日志只记条数不记内容。④**双端适配**：web 整理弹窗与 app 喂入页识别 `recorded` → **停止轮询**（无插件轮询必 403）并显示人话「已经帮你记下了。开启「学习」后，我可以把它整理成卡片。」。后端 1939→**1946**（本批 +5）全绿 |
 | 2026-09-17 | v3.71 | **深夜第二批：通知深链 + 令牌轮换**（用户「继续，我还没睡」）——**端点 153→154**：①**通知点击深链**（P2-APNs1）：APNs payload 的 **root 级**新增 `adaiDeepLink`（不在 `aps` 里——那是系统保留区），取值由 `PushMessage.deepLink()` 从**已有字段**推导（带 `symbol` → `trading:<symbol>`，`learn-review` → `learn:review`，其余 → `trading:today`），所以**所有推送构造点零改动**、也不会漏传。客户端点击通知后据此定位到「那一条」并高亮 2.5 秒；找不到目标卡片时只刷新 + 滚到底（不假装定位成功）。旧推送 / 旧版 App 没有这个字段 → 行为与修前一致。②**新端点 `POST /api/v1/auth/tokens/{idOrPrefix}/rotate`**（S-凭据1 剩余项）：换一把新钥匙并**立刻作废旧的那把**，一次完成不留空窗（旧的撤不掉就把新的也回滚——两把同时有效比断链更糟）；label/权限继承旧钥匙，有效期重新算 90 天；前缀歧义同撤销口径**拒绝**；找不到 → 404。后端 1935→**1939** 全绿 |
 | 2026-09-16 | v3.70 | **盘前当日盈亏口径 + 图片费用闸 + 来源标记可恢复 + 删号数据语义（晚间批，用户逐项拍板）**——**端点 152→153**：①**`dailyPnlDetail` 以「行情数据所在的交易日」为当日**（P2-交易51）：盘前 / 非交易日时行情接口给的「现价」仍是上一交易日收盘、「昨收」是再前一日收盘——照 `LocalDate.now()` 直接算，等于把**上一交易日的当日盈亏当成今天**（用户实测：09-15 真实 −503.90 被显示成 −180，同一持仓两天两个数）。现在盘前/非交易日自动改用上一交易日，并在 notes 首行标注「今天还没开盘…开盘后会自动换成今天的数」；**明确指定历史日期查询不受影响**。②**图片整理新增轻量日配额**（P2-learn26）：单次最多 3 次 VLM + 1 次 LLM 是花钱动作，而此前唯一限流是「同 user 单任务」→ `POST /learn/digest/image` 加每日张数上限（`adai.learn.image-daily-limit`，默认 30，0=不限），超限 400 人话；账本（`learn/_quota.json` 的 `images` 键，按日分键自动重置）读不出来 → **fail-closed 拒绝整理**。③**读图输出上限可按调用覆盖**（P2-learn25）：`VisualAiClient.ask(req,q,maxTokens)` 新增按次覆盖口子（**default 实现忽略 → 老实现零改动**），learn 图片链用 `adai.learn.image-max-tokens`（默认 4096）——长书页不再被全局 2048 静默截断。④**新端点 `POST /learn/cards/restore-origin`**（P2-learn21，见下）：origin 被抹掉的卡能认回来，判据不成立则人话拒绝。⑤**删号数据语义**（task-log #149）：`DELETE /accounts/{userId}` 默认**只删账号、保留 `data/{userId}/`**，`?purge=true` 才清理并回 `purgedFiles` 计数。⑥**读图提示词上限**与锁屏/配额等口径不变。后端 1926→**1935** 全绿 |
@@ -2275,6 +2276,31 @@ chat 模式（全屏）
 - `403`：learn 插件未启用（**仅 v3.72 之前**；v3.72 起本端点改为降级回 `recorded`，不再 403——其余 learn 端点仍 403）
 
 **流程（服务端）**：判源类型 → 抓元数据 + 字幕/正文（**源必留痕** `_raw/`）→ 有字幕直接结构化；**无字幕 → 报价 + 等确认**（见 `/digest/confirm`）→ 云端转写 → LLM 六段结构化 → 落卡片 → 轮询回 `done`
+
+### `POST /api/v1/learn/cards/feedback` — 产物反馈 → 长期偏好（v3.73）
+
+> RFC `docs/rfc/20260917-learn-representation.md` §五 2b：用户说一句「太啰嗦」，**下一次**整理出来的卡片就会变。
+
+**Body**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:-----|
+| `type` | String | 是 | 卡片类型 ai/trading/other |
+| `title` | String | 是 | 卡片标题（与 type 一起定位卡片） |
+| `feedback` | String | 是 | 用户原话，≤120 字（如「太啰嗦」「多举几个例子」） |
+
+**Response** `200`：
+
+```json
+{ "status": "recorded", "message": "记住了，以后我按这个来。", "canRepage": true }
+```
+
+- `status`：`recorded`（已沉淀为偏好）/ `exists`（这句话已经记住过，不重复沉淀）
+- `canRepage`：这张卡还有 `_raw` 素材 → 可按新偏好重排一版；**本端点不自动重排**（重排调 LLM 花钱），由前端据此再问用户
+- `400`：卡片不存在 / `feedback` 为空或超长（都给人话）
+- `403`：learn 插件未启用（**属「整理能力」，不适用 v3.72 的接收降级**）
+
+**闭环**：本端点写一条 `kind=preference` 记忆 → 被 `MemoryService.findAllPreferences` 聚合 → 经画像回流（v3.72 §四）注入下一次生成的 prompt → **下一次真的变了**。
 
 ### `POST /api/v1/learn/digest/confirm` — 转写费用确认（v3.57）
 

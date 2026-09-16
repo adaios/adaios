@@ -149,6 +149,39 @@ public record Memory(
     }
 
     /**
+     * 用户对产物反馈的偏好置信度（RFC 20260917 §五 2b）。
+     * <p>
+     * 用户**明说**的（「太啰嗦」「多举例子」）比 AI 从记录里推断的更可信，故取高值。
+     */
+    public static final double FEEDBACK_CONFIDENCE = 0.9;
+
+    /** 反馈文本上限：偏好要能进 prompt（画像回流各取 Top 5），过长会挤占 token 预算。 */
+    private static final int FEEDBACK_MAX_LENGTH = 120;
+
+    /**
+     * 从用户对学习产物的反馈创建**偏好记忆**（RFC 20260917 §五 2b）。
+     * <p>
+     * 与其它工厂的区别：{@code recordId} 为 null（反馈不来自记录），{@code cardId} 记来源卡片便于溯源。
+     * 落盘后即可被 {@code MemoryService.findAllPreferences} 聚合，从而经**画像回流**（同 RFC §四）
+     * 作用于下一次卡片生成——**这就是反馈闭环**：用户说一句 → 下次它真的变了。
+     *
+     * @param cardId   来源卡片标识（可空）
+     * @param feedback 用户原话（截断至 {@value #FEEDBACK_MAX_LENGTH} 字）
+     */
+    public static Memory fromFeedback(String cardId, String feedback) {
+        String text = feedback == null ? "" : feedback.strip();
+        if (text.length() > FEEDBACK_MAX_LENGTH) {
+            text = text.substring(0, FEEDBACK_MAX_LENGTH) + "…";
+        }
+        return new Memory(
+                generateId(), null, cardId, KIND_PREFERENCE, text,
+                List.of(), List.of(new MemoryPreference(text, FEEDBACK_CONFIDENCE)),
+                List.of(), "neutral", false, null, LocalDateTime.now(),
+                null, false, null, null, null
+        );
+    }
+
+    /**
      * 从 AI 理解结果推导记忆类型（记忆进化 Phase 1）。
      * <p>
      * 偏好优先（可被修正）、模式其次（行为规律）、洞察兜底（有信息增量），

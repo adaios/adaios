@@ -109,6 +109,48 @@ class LearnControllerTest {
         verify(recordRepository, never()).save(anyString(), any(com.adaiadai.core.kernel.record.ContentRecord.class));
     }
 
+    // ── RFC 20260917 §五 2b：产物反馈端点 ──
+
+    @Test
+    void feedback_returnsRecordedWithCanRepage() throws Exception {
+        when(digestService.feedback(eq("adai"), eq("ai"), eq("某卡"), eq("太啰嗦了")))
+                .thenReturn(new LearnDigestAppService.LearnFeedbackResult(
+                        "recorded", "记住了，以后我按这个来。", true));
+
+        mvc("learn").perform(post("/api/v1/learn/cards/feedback")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"某卡\",\"feedback\":\"太啰嗦了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("recorded"))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.canRepage").value(true));
+    }
+
+    /**
+     * 反馈属于「整理能力」，**不适用门控 B 的接收降级** → 无 learn 插件仍 403。
+     * （与 `/digest` 的区别正是本 RFC 的核心：接收免费，整理受控。）
+     */
+    @Test
+    void feedback_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(post("/api/v1/learn/cards/feedback")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"某卡\",\"feedback\":\"太啰嗦了\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    /** 空反馈 → 400（bean validation 挡在服务层之前，不落空偏好）。 */
+    @Test
+    void feedback_blank_returns400() throws Exception {
+        mvc("learn").perform(post("/api/v1/learn/cards/feedback")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"某卡\",\"feedback\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        verify(digestService, never()).feedback(anyString(), anyString(), anyString(), anyString());
+    }
+
     @Test
     void digest_success_returnsRunning() throws Exception {
         when(digestService.submit(anyString(), any(LearnDigestAppService.DigestRequest.class)))

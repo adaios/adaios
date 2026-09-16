@@ -157,6 +157,73 @@ class LearnDigestAppServiceTest {
         assertFalse(capturePrompt().contains("我的长期画像"));
     }
 
+    // ── RFC 20260917 §五 2b：产物反馈 → 沉淀为偏好（画像回流的输入端）──
+
+    private LearnCard feedbackCard() {
+        return new LearnCard(LearnCard.TYPE_AI, "某张卡", "bilibili", "某UP",
+                "https://b23.tv/x", "2026-05-05", LocalDate.of(2026, 9, 6),
+                LearnCard.STATUS_NEW, false, "", List.of(), "核心观点",
+                List.of("要点"), List.of(), "");
+    }
+
+    /** 反馈写成 preference 记忆——可被 findAllPreferences 聚合，从而经画像回流作用于下一次生成。 */
+    @Test
+    void feedback_persistsPreference() {
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findAllPreferences("adai")).thenReturn(List.of());
+        when(repository.find("adai", LearnCard.TYPE_AI, "某张卡"))
+                .thenReturn(java.util.Optional.of(feedbackCard()));
+
+        LearnDigestAppService.LearnFeedbackResult result = serviceWithProfile(memoryService)
+                .feedback("adai", LearnCard.TYPE_AI, "某张卡", "太啰嗦了");
+
+        assertEquals("recorded", result.status());
+        ArgumentCaptor<com.adaiadai.core.kernel.memory.Memory> captor =
+                ArgumentCaptor.forClass(com.adaiadai.core.kernel.memory.Memory.class);
+        verify(memoryService).persist(eq("adai"), captor.capture());
+        var memory = captor.getValue();
+        assertEquals(com.adaiadai.core.kernel.memory.Memory.KIND_PREFERENCE, memory.kind(),
+                "反馈必须以 preference 沉淀（否则进不了画像回流）");
+        assertEquals(1, memory.preferences().size());
+        assertEquals("太啰嗦了", memory.preferences().get(0).content());
+    }
+
+    /** 幂等：同一句话不重复沉淀（画像回流只取 Top 5，单句刷屏会把真偏好挤掉）。 */
+    @Test
+    void feedback_duplicate_isIdempotent() {
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findAllPreferences("adai"))
+                .thenReturn(List.of(new MemoryPreference("太啰嗦了", 0.9)));
+        when(repository.find("adai", LearnCard.TYPE_AI, "某张卡"))
+                .thenReturn(java.util.Optional.of(feedbackCard()));
+
+        LearnDigestAppService.LearnFeedbackResult result = serviceWithProfile(memoryService)
+                .feedback("adai", LearnCard.TYPE_AI, "某张卡", "太啰嗦了");
+
+        assertEquals("exists", result.status());
+        verify(memoryService, never()).persist(anyString(), any());
+    }
+
+    /** 空反馈 → 人话拒绝，不落一条空偏好。 */
+    @Test
+    void feedback_blank_throwsHumanMessage() {
+        LearnException e = assertThrows(LearnException.class,
+                () -> service.feedback("adai", LearnCard.TYPE_AI, "某张卡", "   "));
+        assertTrue(e.getMessage().contains("太啰嗦"), "应给可照做的引导：" + e.getMessage());
+    }
+
+    /** 卡片不存在 → 拒绝（不给不存在的卡留反馈，防脏数据）。 */
+    @Test
+    void feedback_cardNotFound_throws() {
+        MemoryService memoryService = mock(MemoryService.class);
+        when(repository.find("adai", LearnCard.TYPE_AI, "没有这张"))
+                .thenReturn(java.util.Optional.empty());
+
+        assertThrows(LearnException.class, () -> serviceWithProfile(memoryService)
+                .feedback("adai", LearnCard.TYPE_AI, "没有这张", "太啰嗦了"));
+        verify(memoryService, never()).persist(anyString(), any());
+    }
+
     @Test
     void digest_tradingContent_savesCardWithTradeRelated() {        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
         LearnCard card = service.digest("adai", "视频字幕……回调一半……",
