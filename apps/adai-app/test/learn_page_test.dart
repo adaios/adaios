@@ -84,12 +84,18 @@ class _LearnBackend {
     List<String> questions = const ['存疑点一'],
     String extra = '',
     List<Map<String, dynamic>> pageList = const [],
+    String status = 'new',
+    String? reviewAt,
+    String? remindedAt,
   }) {
     final view = coreView.isEmpty ? '$title 的核心观点' : coreView;
     _byType[type]!.add({
       'type': type, 'title': title, 'platform': 'bilibili', 'author': '某UP',
       'created': created, 'topic': topic, 'writable': writable, 'tags': const ['rag'],
       'coreView': view, 'keyPoints': keyPoints, 'questions': questions,
+      'status': status,
+      // 2026-09-16：复习计时起点与提醒节流字段（tree 后端本来就在返回）
+      'reviewAt': reviewAt, 'remindedAt': remindedAt,
     });
     metas['$type/$title'] = {'topic': topic, 'writable': writable};
     contents['$type/$title'] = _md(title, coreView: view,
