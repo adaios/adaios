@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.67 | 最后更新：2026-09-14**
+**文档版本：v3.69 | 最后更新：2026-09-16**
 
 ---
 
@@ -499,7 +499,9 @@
 
 > feed 只返回今天的数据，历史数据走时间线（`GET /api/v1/timeline`）。
 > 每日摘要单独调用 `GET /api/v1/brief`。
-> **时间基准（updatedAt）**：卡片（`type=card`）的 `time`/`date` 按最后更新时间 `updatedAt`，跨日续接的对话归最后活跃日；`findTodayCards` 按 `updatedAt` 过滤。分页（REVIEW #175）：核心条目（record/card）按时间从新到旧切块，page 0 返回完整 `size` 条最新核心，余数放末页；附加条目（ai_note/action/market/push）只在 page 0 末尾附加。
+> **时间基准（updatedAt）**：卡片（`type=card`）的 `time`/`date` 按最后更新时间 `updatedAt`，跨日续接的对话归最后活跃日；`findTodayCards` 按 `updatedAt` 过滤。分页（REVIEW #175）：核心条目（record/card）按时间从新到旧切块，page 0 返回完整 `size` 条最新核心，余数放末页；附加条目（ai_note/action/market/push）只在 page 0 出现。
+> **排序（v3.69，2026-09-16，REVIEW P1-前端2）**：`time` 只有 `HH:mm`，同分钟多条排序键完全相等 → 统一用 **`time` + `id`（含毫秒）双键升序**；且**附加条目与核心条目合并进同一条时间轴**再输出。原先附加条目是直接追加在末尾的，导致 10:03 的 `ai_note` 排到 21:30 的 `record` 之后——用户看到的就是「主页卡片乱序」。
+> **同分钟同向成交折叠（v3.69，2026-09-16，REVIEW P2-UI12）**：`type=record && domain=trading` 且标题以「买入 / 卖出」开头、且落在**同一分钟、同一方向**的多条，折叠为一条（标题「买入 N 笔」，正文逐笔保留），并带 `mergedIds` 列出被折叠的原始 id。**账目真相源（trades / account / positions）与写侧记录都不动**——这是纯展示层折叠。
 > **插件门控（RFC 20260814）**：`market`（行情条）与 `push`（异动推送）条目仅注入启用 **trading 插件** 的用户；无插件用户 Feed 无行情卡。
 
 | 字段 | 类型 | 说明 |
@@ -509,6 +511,7 @@
 | `date` | String | `MM-dd` 格式，条目所属日期（每张卡片都带日期，前端展示）|
 | `mediaPath` | String? | 媒体记录才有：`type=image`（图片记录原图）与 `type=image_qa`（S-2 展示层聚合：图文事件缩略图取引用首图）——媒体文件相对路径（GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null` |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
+| `mergedIds` | String[]? | v3.69（2026-09-16，P2-UI12）：本条是由哪几条原始记录折叠而来（同分钟同向成交）；未折叠的条目为 `null`。**前端删除时必须逐条删全**，否则刷新后折叠卡会带着剩下的记录回来 |
 | `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
 | `totalToday` | int | **核心输入条数**（record/card，不含 ai_note/action/market/push 附加）；分页终止基准 |
 
@@ -830,9 +833,11 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
   "points": [{"date": "2026-08-03", "totalAssets": 120000.00, "cash": 20300.00,
               "marketValue": 99700.00, "invested": 100000.00,
               "netValue": 1.2000, "drawdown": 0.0000}],
-  "skippedDays": 0, "startDate": "2026-08-03", "endDate": "2026-09-04"
+  "skippedDays": 0, "startDate": "2026-08-03", "endDate": "2026-09-04",
+  "dailyPnl": {"2026-08-03": 1234.56, "2026-08-04": null}
 }
 ```
+- **`dailyPnl`（v3.69，2026-09-16，P2-交易52）**：逐日「当日盈亏」（`yyyy-MM-dd` → 金额），与 `pnl-periods` 的三档**同一份口径**（券商当日参考盈亏：卖出净额 − 昨收×卖量 ＋ 旧仓(今收−昨收) ＋ 当日买入(今收−含费均价)）。**某天缺收盘价时值为 `null`**（后端不猜 0）——app「收益日历」据此显示「—」。⚠️ 前端**不得自行差分推导**（差分会把资金曲线自身的估值偏差当成盈亏，见 `pnl-periods` 的实测说明）。
 - `netValue` = totalAssets / invested（invested = 期初投入缺口 + 转账累计净投入）；invested ≤0 → `netValue: null`（本金未设不给误导值，P2-交易31 同口径）
 - `drawdown` = 历史峰值到当日回落比例（0 = 新高）
 - 无账户快照（从未导入资金/无记录）→ `points: []`（静默降级不抛错）
