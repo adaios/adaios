@@ -269,6 +269,13 @@ public class ApnsPushChannel implements PushChannel {
         }
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("aps", aps);
+        // REVIEW P2-APNs1（2026-09-17）：root 级自定义字段（**不放进 aps**——aps 是系统保留区），
+        // 客户端点击通知后据此定位到「那一条」，而不是停在 Feed 顶部自己找。
+        // 值由 PushMessage.deepLink() 从已有字段推导 → 所有推送构造点零改动。
+        String deepLink = message.deepLink();
+        if (deepLink != null && !deepLink.isBlank()) {
+            root.put("adaiDeepLink", deepLink);
+        }
         return MAPPER.writeValueAsString(root);
     }
 

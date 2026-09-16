@@ -194,6 +194,35 @@ public class AuthController {
     }
 
     /**
+     * 轮换一把外部令牌（会话）：换新的 + 撤旧的，**一次完成不留空窗**（REVIEW S-凭据1，2026-09-17）。
+     * <p>
+     * 为什么不让用户「先撤再签发」：中间有空窗，撤完忘了签发就直接断链（快捷指令那边失效）。
+     * 新旧**不同时有效**——两把同时有效比断链更糟（分不清哪把外泄了）。
+     * 新明文同样**只在这一条响应里出现一次**。
+     */
+    @PostMapping("/tokens/{idOrPrefix}/rotate")
+    public ResponseEntity<?> rotateToken(@PathVariable String idOrPrefix, HttpServletRequest servletRequest) {
+        Optional<Account> account = authService.currentAccount(bearerToken(servletRequest));
+        if (account.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "会话已失效，请重新登录"));
+        }
+        Optional<ApiTokenService.IssuedToken> rotated = apiTokenService.rotate(account.get().userId(), idOrPrefix);
+        if (rotated.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "没找到这把令牌（可能已经撤销过了）"));
+        }
+        ApiTokenService.IssuedToken issued = rotated.get();
+        return ResponseEntity.ok(Map.of(
+                "token", issued.plainToken(),
+                "id", issued.token().tokenHash(),
+                "prefix", issued.token().tokenPrefix(),
+                "label", issued.token().label(),
+                "scopes", issued.token().scopes(),
+                "createdAt", issued.token().createdAt().toString(),
+                "expiresAt", issued.token().expiresAt().toString(),
+                "notice", "换好了：旧的已经立刻失效，这串新令牌只会显示这一次，请现在复制走；有效期重新算 90 天。"));
+    }
+
+    /**
      * 撤销一把外部令牌（会话）：立即失效，不影响登录会话与其它设备。
      * <p>
      * 路径参数接受**令牌 id（哈希，推荐）**或**显示前缀**（兼容旧版 app）；

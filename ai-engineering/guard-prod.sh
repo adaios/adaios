@@ -326,3 +326,27 @@ print(f"  {bar}")
 print(f"  合计 {total} 张" + ("   \033[31m← 连续多日为 0：要么没用，要么入口断了\033[0m" if total == 0 else ""))
 print()
 RENDER_EOF
+
+# ── 到期倒数（REVIEW P2-APNs5，2026-09-17）──────────────────────────────────────
+# 为什么塞进每日巡检：这些日子**只会被忘记**——iOS 描述文件/付费账号到期当天 App 直接
+# 打不开（2026-08-26 已经吃过一次「7 天过期」的亏），而没人会主动去翻文档。
+# 日期真相源：docs/reference/status.md（改期请两处同步）。
+hr "到期倒数（30 天内标红）"
+check_expiry() {
+    local label="$1" date="$2" note="$3" days
+    local target
+    target=$(date -j -f "%Y-%m-%d" "$date" +%s 2>/dev/null || date -d "$date" +%s 2>/dev/null)
+    [ -z "$target" ] && { printf "  · %s（%s）\n" "$label" "$date"; return; }
+    days=$(( (target - $(date +%s)) / 86400 ))
+    if [ "$days" -lt 0 ]; then
+        printf "  \033[31m✗ %s 已过期 %d 天！%s\033[0m\n" "$label" "$(( -days ))" "$note"
+    elif [ "$days" -lt 30 ]; then
+        printf "  \033[31m! %s 还有 %d 天到期 —— %s\033[0m\n" "$label" "$days" "$note"
+    else
+        printf "  · %s 还有 %d 天（%s）\n" "$label" "$days" "$date"
+    fi
+}
+check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App 打不开：提前续费 + 重签（见 docs/deployment/ios-release.md §到期与应急）"
+check_expiry "公安联网备案期限" "2026-09-30" "ICP 后 30 天内必须办完（REVIEW P1-合规1，www.beian.gov.cn）"
+check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
+echo

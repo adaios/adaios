@@ -357,6 +357,9 @@ class _DualWorldShellState extends State<DualWorldShell> {
   /// Feed 刷新信号（MD1）：世界切回 Feed 时递增，MainPage 监听后重载。
   final ValueNotifier<int> _feedRefreshTick = ValueNotifier<int>(0);
 
+  /// 通知点进来的深链（REVIEW P2-APNs1）：交给 MainPage 定位到「那一条」。
+  final ValueNotifier<String?> _pushDeepLink = ValueNotifier<String?>(null);
+
   /// 切世界拖拽的起点 Y（#16：用于排除底部输入框区域）。
   double? _dragStartY;
 
@@ -377,11 +380,15 @@ class _DualWorldShellState extends State<DualWorldShell> {
   Future<void> _initPush() async {
     final status = await PushService.init(
       api: _api,
-      onTap: (_) {
+      onTap: (type, deepLink) {
         // 点通知 → 回到 Feed 世界并刷新：让「点开看到的就是那条消息」成立
         // （通知正文讲止损/收盘小结，落点却在背面 Launcher 会很怪）
         if (!mounted) return;
         setState(() => _showWorldB = false);
+        // REVIEW P2-APNs1：有深链就顺便定位到那一条（MainPage 命中后高亮 2.5 秒）
+        if (deepLink != null && deepLink.isNotEmpty) {
+          _pushDeepLink.value = deepLink;
+        }
         _feedRefreshTick.value++;
       },
     );
@@ -463,6 +470,7 @@ class _DualWorldShellState extends State<DualWorldShell> {
                 onPullUp: _toggleWorld,
                 filterTag: _filterTag,
                 refreshTick: _feedRefreshTick,
+                pushDeepLink: _pushDeepLink,
                 onClearFilter: _clearFilter,
                 onProfileTap: () {
                   Navigator.push(context, MaterialPageRoute(

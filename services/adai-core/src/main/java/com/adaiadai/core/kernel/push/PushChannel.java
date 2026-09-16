@@ -103,5 +103,26 @@ public interface PushChannel {
             return (lockScreenTitle == null || lockScreenTitle.isBlank())
                     ? title : lockScreenTitle;
         }
+
+        /**
+         * 点开通知后要定位到哪儿（REVIEW P2-APNs1，2026-09-17）。
+         * <p>
+         * 由**已有字段推导**，而不是新增字段——这样所有推送构造点零改动，也不会出现
+         * 「某个调用点忘了传」的漏网（漏传的表现正好是修前的样子：点通知回到 Feed 顶部，得自己找）。
+         * <ul>
+         *   <li>带标的（{@code symbol} 非空）→ {@code trading:<symbol>}：客户端据此找那条持仓/行情卡</li>
+         *   <li>学习复习提醒 → {@code learn:review}</li>
+         *   <li>其余（早中尾盘 / 收盘小结 / 交易日志归集确认）→ {@code trading:today}</li>
+         * </ul>
+         * 返回 {@code null} = 只回 Feed 不做定位。
+         */
+        public String deepLink() {
+            if (symbol != null && !symbol.isBlank()) return "trading:" + symbol;
+            if (type == null || type.isBlank()) return null;
+            return switch (type) {
+                case "learn-review" -> "learn:review";
+                default -> "trading:today";
+            };
+        }
     }
 }

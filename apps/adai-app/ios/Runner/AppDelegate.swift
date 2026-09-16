@@ -250,7 +250,12 @@ enum PushBridge {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let content = response.notification.request.content
-        let payload = content.threadIdentifier.isEmpty ? content.title : content.threadIdentifier
+        let type = content.threadIdentifier.isEmpty ? content.title : content.threadIdentifier
+        // REVIEW P2-APNs1（2026-09-17）：把深链一起交给 Dart——<type>|<deepLink>（deepLink 可空）。
+        // 后端在 payload 的 root 级放 adaiDeepLink（aps 之外），这里取出即可。
+        // 编码成字符串而不是字典，是为了让 pendingTap（冷启动补投）那条既有通路零改动。
+        let deep = (content.userInfo["adaiDeepLink"] as? String) ?? ""
+        let payload = deep.isEmpty ? type : "\(type)|\(deep)"
         if pushChannel == nil {
             // 冷启动：通道还没建好，先缓存，等 Dart 首次 getStatus 时补投
             pendingTap = payload

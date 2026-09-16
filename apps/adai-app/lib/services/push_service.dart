@@ -115,7 +115,7 @@ class PushService {
   static bool get supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   static ApiService? _api;
-  static void Function(String type)? _onTap;
+  static void Function(String type, String? deepLink)? _onTap;
   static bool _handlerInstalled = false;
   static PushStatus _status = PushStatus.unavailable;
 
@@ -133,11 +133,12 @@ class PushService {
   /// 启动接入：申请权限（若还没问过）→ 拿 token → 上报后端。
   ///
   /// 调用时机由壳层决定（登录后、拿到带 token 的 [ApiService] 之后）。
-  /// [onTap] 是用户点击通知时的回调，参数为通知类型（`adai-<type>` → 传 `<type>`）。
+  /// [onTap] 是用户点击通知时的回调：参数为通知类型（`adai-<type>` → 传 `<type>`）与
+  /// 深链（形如 `trading:600206`；可能为 null = 只回 Feed 不定位，REVIEW P2-APNs1）。
   /// 返回状态供 UI 决定是否提示「通知没开，去设置里开」。
   static Future<PushStatus> init({
     required ApiService api,
-    void Function(String type)? onTap,
+    void Function(String type, String? deepLink)? onTap,
   }) async {
     _api = api;
     if (onTap != null) _onTap = onTap;
@@ -253,10 +254,17 @@ class PushService {
     _handlerInstalled = true;
   }
 
-  /// 通知类型归一：原生侧给的是 `adai-<type>`，交给 UI 时去掉前缀。
+  /// 通知类型归一 + 深链拆分（REVIEW P2-APNs1，2026-09-17）。
+  ///
+  /// 原生侧编码为 `<type>|<deepLink>`（`deepLink` 可空）：类型去掉 `adai-` 前缀后交给 UI，
+  /// 深链原样透传。旧版本 App / 无深链的推送只给类型，此时 `deepLink` 为 null——
+  /// UI 按「只回 Feed 不定位」处理，不会假装定位成功。
   static void _dispatchTap(String? raw) {
     if (raw == null || raw.isEmpty) return;
-    final type = raw.startsWith('adai-') ? raw.substring('adai-'.length) : raw;
-    _onTap?.call(type);
+    final parts = raw.split('|');
+    final head = parts.first;
+    final type = head.startsWith('adai-') ? head.substring('adai-'.length) : head;
+    final deep = parts.length > 1 ? parts[1].trim() : '';
+    _onTap?.call(type, deep.isEmpty ? null : deep);
   }
 }

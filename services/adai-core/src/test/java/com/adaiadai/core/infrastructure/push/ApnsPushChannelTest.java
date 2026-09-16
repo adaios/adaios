@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -186,6 +187,35 @@ class ApnsPushChannelTest {
         assertEquals(multiLine, aps.get("alert").get("body").asText(), "换行语义应原样保留");
         assertEquals("default", aps.get("sound").asText());
         assertEquals("adai-close-summary", aps.get("thread-id").asText(), "同类推送应归组");
+    }
+
+
+    @Test
+    void payload_carriesDeepLink_forPushTapNavigation() throws Exception {
+        // REVIEW P2-APNs1（2026-09-17）：点通知后要能定位到「那一条」。深链放在 root 级
+        // （不在 aps 里——aps 是系统保留区），带标的的推送按标的定位。
+        FakeApns sandbox = fakeApns(200, "{}");
+        repo.save("adai", device(TOKEN, PushDevice.ENV_SANDBOX));
+
+        channel(keyFile.toString(), KEY_ID, TEAM_ID, "", sandbox.baseUrl(), "http://127.0.0.1:1")
+                .push("adai", new PushChannel.PushMessage("行情提醒", "600206 跌破成本", "push",
+                        "600206", "有研新材", LocalTime.of(10, 30), null, "行情提醒"));
+
+        JsonNode root = MAPPER.readTree(sandbox.requests.get(0).body);
+        assertEquals("trading:600206", root.get("adaiDeepLink").asText(), "带标的推送按标的定位：" + root);
+        assertNull(root.get("aps").get("adaiDeepLink"), "深链必须在 root，不能塞进 aps");
+    }
+
+    @Test
+    void payload_deepLink_fallsBackByType_whenNoSymbol() throws Exception {
+        // 没有标的的推送（收盘小结）→ 落 trading:today；学习复习 → learn:review。
+        // 由已有字段推导，所以所有推送构造点零改动、也不会漏传。
+        assertEquals("trading:today", new PushChannel.PushMessage("收盘小结", "今天三笔", "close-summary",
+                null, null, LocalTime.of(15, 30), null, null).deepLink());
+        assertEquals("learn:review", new PushChannel.PushMessage("学习复习", "3 张卡该复习了", "learn-review",
+                null, null, LocalTime.of(20, 0), null, null).deepLink());
+        assertNull(new PushChannel.PushMessage("无类型", "内容", "  ", null, null, null).deepLink(),
+                "连类型都没有 → 不编深链（客户端只回 Feed）");
     }
 
     @Test

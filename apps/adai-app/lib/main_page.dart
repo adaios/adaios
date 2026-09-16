@@ -32,6 +32,9 @@ class MainPage extends StatefulWidget {
   /// 覆盖 adai-admin 记忆重建后 Feed 陈旧）。
   final ValueListenable<int>? refreshTick;
 
+  /// 通知点进来要定位的深链（REVIEW P2-APNs1）：形如 `trading:600206`；null = 不定位。
+  final ValueListenable<String?>? pushDeepLink;
+
   const MainPage({
     super.key,
     this.onPullUp,
@@ -41,6 +44,7 @@ class MainPage extends StatefulWidget {
     this.userId = 'default',
     this.api,
     this.refreshTick,
+    this.pushDeepLink,
   });
 
   @override
@@ -62,6 +66,9 @@ class _MainPageState extends State<MainPage>
   String? _feedError; // P1-6（2026-08-23 app 体感）：首载失败错误态（不伪装空态，可重试）
   bool _scrollAtTop = true;
   bool _scrollAtBottom = true;
+
+  /// 通知点进来命中的卡片 id（高亮 2.5 秒后自动熄灭）。
+  String? _highlightCardId;
   int _uploadTotal = 0;          // 图片上传进度（阿呆 08-13：逐张反馈不足）
   int _uploadDone = 0;
   bool _uploading = false;       // P3-8 批次锁：并发上传进度条互相覆盖防护（2026-08-17）
@@ -113,6 +120,7 @@ class _MainPageState extends State<MainPage>
     _contentAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic);
     _enterCtrl.forward();
     widget.refreshTick?.addListener(_onRefreshTick);
+    widget.pushDeepLink?.addListener(_onPushDeepLink);
     // RFC 20260913 外部入口批：Siri / 快捷指令 / adai:// 发起的「记一笔」。
     // 绑定本页的 userId（REVIEW P1-入口2）：换账号即清空队列，登出期间到达的入口不会
     // 被下一个登录的账号消费。同账号重复绑定是 no-op。
@@ -125,6 +133,7 @@ class _MainPageState extends State<MainPage>
   @override
   void dispose() {
     widget.refreshTick?.removeListener(_onRefreshTick);
+    widget.pushDeepLink?.removeListener(_onPushDeepLink);
     EntryIntentService.pending.removeListener(_onExternalEntry);
     _learnGen++; // 页面销毁 → 在途整理轮询/确认回包作废
     _scrollController.dispose();
@@ -1515,6 +1524,40 @@ class _MainPageState extends State<MainPage>
     return '网络异常，请重试';
   }
 
+  /// 通知点进来 → 定位到「那一条」（REVIEW P2-APNs1，2026-09-17）。
+  ///
+  /// 深链由后端 `PushMessage.deepLink()` 从已有字段推导（带标的 → `trading:<symbol>`；
+  /// 其余 → `trading:today` / `learn:review`）。找不到目标卡片时**只刷新 + 滚到底**，
+  /// 不假装定位成功——聊天式 Feed 最新在底，滚到底通常就是那条推送本身。
+  void _onPushDeepLink() {
+    final link = widget.pushDeepLink?.value;
+    if (link == null || link.isEmpty) return;
+    if (_locateAndHighlight(link)) return;
+    // 冷启动/卡片还没加载 → 刷新一次再定位
+    _refreshFeed().then((_) {
+      if (mounted) _locateAndHighlight(link);
+    });
+  }
+
+  bool _locateAndHighlight(String link) {
+    final key = link.contains(':') ? link.split(':').last : link;
+    String? hit;
+    for (final c in _cards.reversed) {
+      if (c.content.contains(key) || (c.pushTitle ?? '').contains(key)) {
+        hit = c.id;
+        break;
+      }
+    }
+    hit ??= _cards.reversed.where((c) => c.pushTitle != null).map((c) => c.id).firstOrNull;
+    if (hit == null) return false;
+    setState(() => _highlightCardId = hit);
+    _scrollToBottom();
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && _highlightCardId == hit) setState(() => _highlightCardId = null);
+    });
+    return true;
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) {
@@ -1734,8 +1777,16 @@ class _MainPageState extends State<MainPage>
                     onDomainChanged: (domain) => _changeDomain(card.id, domain),
                     onRetry: card.error != null ? () => _onRetryCard(card.id) : null,
                   );
-            return TweenAnimationBuilder<double>(
-              key: ValueKey('card_${card.id}'),
+            final highlighted = card.id == _highlightCardId;
+            return Container(
+              decoration: highlighted
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.lightGreen, width: 2),
+                    )
+                  : null,
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey('card_${card.id}'),
               tween: Tween(begin: 0.0, end: 1.0),
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeOutCubic,
@@ -1746,7 +1797,8 @@ class _MainPageState extends State<MainPage>
                   child: child,
                 ),
               ),
-              child: child,
+                child: child,
+              ),
             );
           }),
         ],

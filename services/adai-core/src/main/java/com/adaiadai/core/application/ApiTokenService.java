@@ -182,6 +182,52 @@ public class ApiTokenService {
     }
 
     /**
+     * 轮换令牌（REVIEW S-凭据1 剩余项，2026-09-17）：换一把新钥匙并**立刻作废旧的那把**。
+     * <p>
+     * 为什么不做成「先撤旧的、再签发新的」：中间有空窗，而且用户撤完忘了签发就断链
+     * （快捷指令那边直接失效，还得重新配一遍）。这里一次完成，顺序固定为**先发新、再撤旧**；
+     * 万一旧钥匙撤不掉，就把新钥匙也撤掉——**两把同时有效比断链更糟**（分不清哪把外泄了）。
+     * <p>
+     * 前缀参数与撤销同口径：**非唯一命中不接受**（一次换两把是静默误操作）。
+     *
+     * @return 新令牌（明文只此一次）；旧令牌找不到 / 不属于该账号 / 前缀歧义 → 空
+     */
+    public Optional<IssuedToken> rotate(String userId, String idOrPrefix) {
+        if (userId == null || userId.isBlank() || idOrPrefix == null || idOrPrefix.isBlank()) {
+            return Optional.empty();
+        }
+        String needle = idOrPrefix.strip();
+        List<ApiToken> mine = repository.findByUserId(userId);
+        List<ApiToken> matched;
+        if (isFullHash(needle)) {
+            matched = mine.stream().filter(t -> needle.equals(t.tokenHash())).toList();
+        } else {
+            matched = mine.stream().filter(t -> needle.equals(t.tokenPrefix())).toList();
+            if (matched.size() > 1) {
+                log.warn("轮换被拒：前缀 {} 命中 {} 把（请改用完整 id） | userId={}",
+                        needle, matched.size(), userId);
+                return Optional.empty();
+            }
+        }
+        if (matched.size() != 1) {
+            return Optional.empty();
+        }
+        ApiToken old = matched.get(0);
+
+        // 先发新（同 label、同权限）——新钥匙先到手，任何时刻都不悬空
+        IssuedToken fresh = issue(userId, old.label(), List.copyOf(old.scopes()));
+        // 再撤旧；撤不掉 → 连新的也撤掉，绝不留下两把同时有效
+        if (!revoke(userId, old.tokenHash())) {
+            revoke(userId, fresh.token().tokenHash());
+            log.error("轮换失败：旧令牌撤不掉，已回滚新令牌 | userId={} | old={}", userId, old.tokenPrefix());
+            throw new AuthService.AuthException("换钥匙没成功（旧的没撤掉），这次先不动它，稍后再试一次");
+        }
+        log.info("轮换外部令牌 | userId={} | 旧={} | 新={}", userId,
+                old.tokenPrefix(), fresh.token().tokenPrefix());
+        return Optional.of(fresh);
+    }
+
+    /**
      * 撤销一把令牌（限定 userId，防跨账号删除）。
      * <p>
      * <b>P1-令牌1（2026-09-14 晚间批）</b>：优先按**完整哈希**（新前端用 {@code TokenView.id}）撤销；

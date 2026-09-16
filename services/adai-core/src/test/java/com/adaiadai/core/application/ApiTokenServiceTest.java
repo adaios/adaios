@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -425,5 +426,32 @@ class ApiTokenServiceTest {
         public Instant instant() {
             return now;
         }
+    }
+
+    // ── 轮换（REVIEW S-凭据1 剩余项，2026-09-17）──
+
+    @Test
+    void rotate_issuesNew_andRevokesOld_immediately() {
+        var old = service.issue("adai", "快捷指令", List.of("learn:digest"));
+
+        var fresh = service.rotate("adai", old.token().tokenHash()).orElseThrow();
+
+        assertNotEquals(old.plainToken(), fresh.plainToken(), "必须换一把新的");
+        assertTrue(service.validate(old.plainToken()).isEmpty(), "旧钥匙立刻失效（不留两把同时有效）");
+        assertTrue(service.validate(fresh.plainToken()).isPresent(), "新钥匙可用");
+        assertEquals("快捷指令", fresh.token().label(), "label 继承旧钥匙，用户能对上号");
+        assertEquals(old.token().scopes(), fresh.token().scopes(), "权限不变");
+        assertEquals(1, service.list("adai").size(), "账号下只剩一把（旧的没留残影）");
+    }
+
+    @Test
+    void rotate_unknownOrAnotherAccount_isEmpty() {
+        assertTrue(service.rotate("adai", "deadbeefdeadbeef").isEmpty(), "找不到 → 空（Controller 转 404）");
+        assertTrue(service.rotate("adai", "  ").isEmpty(), "空参不炸");
+
+        var mine = service.issue("adai", "我的", List.of("learn:digest"));
+        assertTrue(service.rotate("someone-else", mine.token().tokenHash()).isEmpty(),
+                "跨账号轮换必须失败（限定 owner）");
+        assertTrue(service.validate(mine.plainToken()).isPresent(), "失败的轮换不得动到原钥匙");
     }
 }

@@ -438,10 +438,18 @@ class DailyPnlComputeTest {
                 new BigDecimal("30757.53"), new BigDecimal("30757.53"),
                 new BigDecimal("50696.00"), new BigDecimal("17698.00"), BigDecimal.ZERO,
                 new BigDecimal("130000"), LocalDate.of(2026, 9, 14))));
+        // P2-交易51（2026-09-17）：成交要落在**实现认定的「当日」**上——盘前 / 非交易日时「当日」
+        // 是上一交易日（那时行情接口给的就是上一交易日的收盘价）。测试若写死 LocalDate.now()，
+        // 凌晨跑必红（真实踩到：00:06 全量跑时这条挂了）——那不是实现错，是测试没跟口径。
+        LocalDate effectiveDay = LocalDate.now();
+        if (TradingAppService.quoteIsFromPreviousDay(effectiveDay)) {
+            LocalDate prev = TradingAppService.previousTradingDay(effectiveDay);
+            if (prev != null) effectiveDay = prev;
+        }
         TradingHistoryRepository history = mock(TradingHistoryRepository.class);
         when(history.findAll(anyString())).thenReturn(List.of(
-                trade("002428", TradeDirection.SELL, 100, "90.32", "0.0", LocalDate.now(), null),
-                trade("600206", TradeDirection.SELL, 400, "47.2", "0.0", LocalDate.now(), null)));
+                trade("002428", TradeDirection.SELL, 100, "90.32", "0.0", effectiveDay, null),
+                trade("600206", TradeDirection.SELL, 400, "47.2", "0.0", effectiveDay, null)));
         MarketDataSource market = mock(MarketDataSource.class);
         when(market.quote(any())).thenReturn(Map.of(
                 "002428", md("002428", "90.32", "88.43"),

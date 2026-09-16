@@ -227,7 +227,7 @@ void main() {
   test('onNotificationTap → 回调类型去掉 adai- 前缀', () async {
     installChannel(respond: (m, n) => _status());
     final taps = <String>[];
-    await PushService.init(api: pushRecordingApi(), onTap: taps.add);
+    await PushService.init(api: pushRecordingApi(), onTap: (type, _) => taps.add(type));
 
     await emitFromNative('onNotificationTap', 'adai-close-summary');
 
@@ -237,17 +237,42 @@ void main() {
   test('onNotificationTap 无前缀（原生用标题兜底）→ 原样传递', () async {
     installChannel(respond: (m, n) => _status());
     final taps = <String>[];
-    await PushService.init(api: pushRecordingApi(), onTap: taps.add);
+    await PushService.init(api: pushRecordingApi(), onTap: (type, _) => taps.add(type));
 
     await emitFromNative('onNotificationTap', '收盘小结');
 
     expect(taps, ['收盘小结']);
   });
 
+
+  test('onNotificationTap 带深链（P2-APNs1）→ 类型与深链分开回调', () async {
+    installChannel(respond: (m, n) => _status());
+    final taps = <List<String?>>[];
+    await PushService.init(api: pushRecordingApi(), onTap: (t, d) => taps.add([t, d]));
+
+    await emitFromNative('onNotificationTap', 'adai-close-summary|trading:600206');
+
+    expect(taps, [
+      ['close-summary', 'trading:600206']
+    ], reason: '原生编码 <type>|<deepLink>：类型去前缀、深链原样透传');
+  });
+
+  test('无深链（旧推送 / 旧版 App）→ deepLink 为 null，不假装定位', () async {
+    installChannel(respond: (m, n) => _status());
+    final taps = <List<String?>>[];
+    await PushService.init(api: pushRecordingApi(), onTap: (t, d) => taps.add([t, d]));
+
+    await emitFromNative('onNotificationTap', 'adai-close-summary');
+
+    expect(taps, [
+      ['close-summary', null]
+    ]);
+  });
+
   test('冷启动由通知唤起 → init 时补投 pendingTap', () async {
     installChannel(respond: (m, n) => _status(pendingTap: 'adai-stop-loss'));
     final taps = <String>[];
-    await PushService.init(api: pushRecordingApi(), onTap: taps.add);
+    await PushService.init(api: pushRecordingApi(), onTap: (type, _) => taps.add(type));
 
     expect(taps, ['stop-loss'], reason: '点通知冷启动时原生侧先收到点击、通道还没建好，状态里带回补投');
   });
