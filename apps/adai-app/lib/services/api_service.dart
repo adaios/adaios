@@ -468,6 +468,42 @@ class ApiService {
     return PnlPeriodsDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 银证转账（POST /api/v1/trading/transfer，P2-交易52）：转入/转出会同步更新净投入本金与现金
+  /// （总盈亏 = 资产 − 本金 自动算）。金额必须 > 0 且有限；调用方预检，后端仍会校验。
+  Future<void> recordTransfer({required String type, required double amount, String? note}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/transfer'),
+      headers: _headers,
+      body: jsonEncode({'type': type, 'amount': amount, 'note': note}),
+    );
+    _check(resp);
+  }
+
+  /// 设置本金（PUT /api/v1/trading/principal，P2-交易52）：只写本金（累计净投入），
+  /// **不动现金/持仓**——总盈亏 = 资产 − 本金。body 字段名是 `amount`（对齐后端契约）。
+  Future<void> setPrincipal(double amount) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/principal'),
+      headers: _headers,
+      body: jsonEncode({'amount': amount}),
+    );
+    _check(resp);
+  }
+
+  /// 资金曲线 + **逐日盈亏**（GET /api/v1/trading/equity-curve，P2-交易52）。
+  ///
+  /// [EquityCurveDto.dailyPnl] 就是「券商口径的逐日盈亏」（与日/周/月三档同源回放），
+  /// 收益日历直接用它，**前端不再自己做差分**——否则就是「卡片一个数、日历另一个数」
+  /// （P2-交易50/51 的教训）。某天缺收盘价时后端不猜 0，前端据此显示「—」。
+  Future<EquityCurveDto> getEquityCurve() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/equity-curve'),
+      headers: _headers,
+    );
+    _check(resp);
+    return EquityCurveDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 查询投资组合快照。
   Future<PortfolioSnapshotResponse> getPortfolio() async {
     final resp = await _client.get(
@@ -1517,6 +1553,9 @@ class FeedEntryResponse {
   final List<Map<String, dynamic>>? turns;
   final String domain;
   final String updatedAt; // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（「最近记录」相对时间）
+  // P2-UI12（2026-09-16）：这张卡若是后端把「同一分钟同向成交」折叠出来的，
+  // 这里是被折叠进本条的原始记录 id（含本卡 id）；删除时必须逐条删全，否则刷新后又一笔笔回来。
+  final List<String> mergedIds;
 
   FeedEntryResponse({
     required this.type,
@@ -1533,6 +1572,7 @@ class FeedEntryResponse {
     this.turns,
     this.domain = 'life',
     this.updatedAt = '',
+    this.mergedIds = const [],
   });
 
   factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
@@ -1550,6 +1590,8 @@ class FeedEntryResponse {
     turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
     domain: json['domain'] as String? ?? 'life',
     updatedAt: json['updatedAt'] as String? ?? '',
+    // 老后端/普通条目没有这个字段 → 空（按单条处理）
+    mergedIds: (json['mergedIds'] as List?)?.map((e) => '$e').toList() ?? const [],
   );
 }
 
@@ -2495,6 +2537,57 @@ class PnlPeriodsDto {
       note: m['note']?.toString() ?? '',
     );
   }
+}
+
+/// 资金曲线点（date = 交易日 YYYY-MM-DD；netValue/drawdown 可空）。P2-交易52。
+class EquityCurvePointDto {
+  final String date;
+  final double totalAssets;
+  final double? netValue;
+  final double? drawdown;
+
+  EquityCurvePointDto({
+    required this.date,
+    required this.totalAssets,
+    this.netValue,
+    this.drawdown,
+  });
+
+  factory EquityCurvePointDto.fromJson(Map<String, dynamic> json) => EquityCurvePointDto(
+    date: json['date'] as String? ?? '',
+    totalAssets: (json['totalAssets'] as num?)?.toDouble() ?? 0,
+    netValue: (json['netValue'] as num?)?.toDouble(),
+    drawdown: (json['drawdown'] as num?)?.toDouble(),
+  );
+}
+
+/// 资金曲线响应（P2-交易52）：点序列 + **逐日盈亏**（date → 金额）。
+///
+/// `dailyPnl` 的值是 **nullable** 的：某天缺收盘价时后端如实留空（不猜 0），
+/// 前端必须显示「—」而不是 ¥0.00——否则等于编造一个「当天不赚不亏」。
+class EquityCurveDto {
+  final List<EquityCurvePointDto> points;
+  final Map<String, double?> dailyPnl;
+  final String startDate;
+  final String endDate;
+
+  EquityCurveDto({
+    required this.points,
+    required this.dailyPnl,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  factory EquityCurveDto.fromJson(Map<String, dynamic> json) => EquityCurveDto(
+    points: ((json['points'] as List?) ?? const [])
+        .map((e) => EquityCurvePointDto.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    dailyPnl: ((json['dailyPnl'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry(k as String, (v as num?)?.toDouble()),
+    ),
+    startDate: json['startDate'] as String? ?? '',
+    endDate: json['endDate'] as String? ?? '',
+  );
 }
 
 /// 账户总体快照（券商口径：总资产/可用/可取/市值/当日盈亏/总盈亏=资产-本金）。

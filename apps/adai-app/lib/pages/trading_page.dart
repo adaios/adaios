@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
 import '../widgets/input_bar.dart' show PickedImage;
+import 'profit_calendar_page.dart';
 
 /// TradingPage — 交易插件手机端（模块定位：交易记忆，RFC 20260902，取代 RFC 20260815 建议引擎定位）。
 ///
@@ -48,6 +49,8 @@ class _TradingPageState extends State<TradingPage> {
   // 2026-09-15（用户要求）：今日 / 本周 / 本月盈亏金额 + 比例；null = 拉取失败/旧后端 → 整行不显示。
   PnlPeriodsDto? _pnlPeriods;
   bool _auxLoading = false; // 次级数据加载中（账户快照，不转圈整页）
+  /// P2-交易52：转入/转出提交中——防连点造成**同一笔转账记两次**（命中「检查-再动作竞态」坑族）。
+  bool _transferBusy = false;
   int _auxGen = 0; // 代际令牌：_loadAux 防乱序覆盖
 
   // ── RFC 20260825：逐笔批次（GET /trading/lots，异步加载失败静默）──
@@ -904,6 +907,8 @@ class _TradingPageState extends State<TradingPage> {
                   const SizedBox(height: 10),
                 ],
                 _buildSnapshotCard(),
+                const SizedBox(height: 10),
+                _buildCashSection(),
                 // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，快照下方
                 if (_marketStageLoaded) ...[
                   const SizedBox(height: 10),
@@ -1567,14 +1572,26 @@ class _TradingPageState extends State<TradingPage> {
           ),
         // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）：今日 / 本周 / 本月 金额 + 比例。
         // 比例 null（区间起点前无曲线点 / 锚定日之前不可追溯）→ 只给金额，绝不编造 0%。
+        // P2-交易52（2026-09-16 用户拍板）：这一行点进去就是「收益日历」（券商那种月历）
         if (_pnlPeriods != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Wrap(spacing: 16, runSpacing: 6, children: [
-              _periodItem('今日', _pnlPeriods!.today),
-              _periodItem('本周', _pnlPeriods!.week),
-              _periodItem('本月', _pnlPeriods!.month),
-            ]),
+            child: InkWell(
+              onTap: _openProfitCalendar,
+              borderRadius: BorderRadius.circular(8),
+              child: Row(children: [
+                Expanded(
+                  child: Wrap(spacing: 16, runSpacing: 6, children: [
+                    _periodItem('今日', _pnlPeriods!.today),
+                    _periodItem('本周', _pnlPeriods!.week),
+                    _periodItem('本月', _pnlPeriods!.month),
+                  ]),
+                ),
+                const Icon(Icons.calendar_month_outlined, size: 15, color: AppColors.darkGrey5),
+                const SizedBox(width: 4),
+                const Text('日历', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ]),
+            ),
           ),
         // 本月跨过锚定日时：如实说明只从锚定日起可追溯（之前的历史成交导入窗口补不全）
         if (_pnlPeriods?.month?.partial == true)
@@ -1595,6 +1612,176 @@ class _TradingPageState extends State<TradingPage> {
           ),
       ]),
     );
+  }
+
+  /// 资金区块（P2-交易52，2026-09-16 用户：「web 有资产的子功能，我想让 app 也展示」+
+  /// 「也能转入 / 转出」+「设置本金可以做」）。
+  ///
+  /// 只放手机上顺手的三件事：转入 / 转出 / 设置本金。**「导入资金」刻意不放**——用户明确
+  /// 「导入不做，不方便」（通达信文件导入归电脑端，本文件顶部的取舍注释同口径）。
+  Widget _buildCashSection() {
+    final a = _account;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('资金',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          const Spacer(),
+          Text('现金 ¥${_fmtMoney(a?.cash ?? 0)} · 总资产 ¥${_fmtMoney(a?.assets ?? 0)}',
+              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _transferBusy ? null : () => _openTransferDialog(true),
+              child: const Text('转入', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _transferBusy ? null : () => _openTransferDialog(false),
+              child: const Text('转出', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _transferBusy ? null : _openPrincipalDialog,
+              child: const Text('设置本金', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        const Text('转入 / 转出会更新净投入本金与现金——总盈亏 = 资产 − 本金自动算。',
+            style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ]),
+    );
+  }
+
+  /// 转入 / 转出（P2-交易52）：金额预检与 web 同口径（NaN / Infinity / ≤0 一律拦下），
+  /// 提交期间按钮禁用（防连点把同一笔转账记两次）。
+  Future<void> _openTransferDialog(bool isIn) async {
+    final amount = TextEditingController();
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text(isIn ? '转入（银行卡→证券）' : '转出（证券→银行卡）',
+            style: const TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '金额（元）'),
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: note,
+            decoration: const InputDecoration(labelText: '备注（可选，如：补仓 / 提现）'),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(amount.text.trim());
+              if (v == null || !v.isFinite || v <= 0) {
+                _showSnack('金额得是大于 0 的数', AppColors.darkOrange);
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('提交'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final v = double.tryParse(amount.text.trim());
+    if (v == null || !v.isFinite || v <= 0) return;
+    setState(() => _transferBusy = true);
+    try {
+      await widget.api.recordTransfer(
+        type: isIn ? 'IN' : 'OUT',
+        amount: v,
+        note: note.text.trim().isEmpty ? null : note.text.trim(),
+      );
+      await _refresh();
+      if (mounted) _showSnack('${isIn ? '转入' : '转出'} ¥${_fmtMoney(v)} 记下了', AppColors.darkGreen);
+    } catch (e) {
+      if (mounted) _showSnack('${isIn ? '转入' : '转出'}没记上：${_extractApiError(e)}', AppColors.darkOrange);
+    } finally {
+      if (mounted) setState(() => _transferBusy = false);
+    }
+  }
+
+  /// 设置本金（P2-交易52）：只写本金（累计净投入），不动现金 / 持仓。
+  Future<void> _openPrincipalDialog() async {
+    final amount = TextEditingController(
+        text: (_account != null && _account!.principal > 0) ? _account!.principal.toStringAsFixed(0) : '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: const Text('设置本金（累计净投入）',
+            style: TextStyle(fontSize: 15, color: AppColors.darkGrey1)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            autofocus: true,
+            decoration: const InputDecoration(labelText: '本金（元）'),
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          const Text('总盈亏 = 资产 − 本金。本金是历史累计投入，只写本金字段，不影响现金 / 持仓。',
+              style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(amount.text.trim());
+              if (v == null || !v.isFinite || v <= 0) {
+                _showSnack('本金得是大于 0 的数', AppColors.darkOrange);
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final v = double.tryParse(amount.text.trim());
+    if (v == null || !v.isFinite || v <= 0) return;
+    try {
+      await widget.api.setPrincipal(v);
+      await _refresh();
+      if (mounted) _showSnack('本金已更新', AppColors.darkGreen);
+    } catch (e) {
+      if (mounted) _showSnack('本金没存上：${_extractApiError(e)}', AppColors.darkOrange);
+    }
+  }
+
+  /// 打开收益日历（P2-交易52）：数据与账户卡上的「今日 / 本周 / 本月」同源（同一次回放）。
+  void _openProfitCalendar() {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ProfitCalendarPage(api: widget.api),
+    ));
   }
 
   Widget _snapshotItem(String label, String value, [Color? color]) {
