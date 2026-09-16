@@ -30,7 +30,8 @@ class AccountControllerTest {
 
     private MockMvc mvcWith(AccountRepository repo) {
         return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(),
-                mock(PluginService.class), mock(com.adaiadai.core.application.AuthService.class))).build();
+                mock(PluginService.class), mock(com.adaiadai.core.application.AuthService.class),
+                mock(com.adaiadai.core.kernel.storage.FileStorage.class))).build();
     }
 
     private Account seedAdmin() {
@@ -390,7 +391,8 @@ class AccountControllerTest {
 
     private MockMvc mvcWith(AccountRepository repo, AuthService auth) {
         return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(),
-                mock(PluginService.class), auth)).build();
+                mock(PluginService.class), auth,
+                mock(com.adaiadai.core.kernel.storage.FileStorage.class))).build();
     }
 
     @Test
@@ -552,5 +554,42 @@ class AccountControllerTest {
                         .contentType("application/json")
                         .content("{\"password\":\"newpass123\"}"))
                 .andExpect(status().isOk());
+    }
+
+    // ── task-log #149（2026-09-16 用户拍板）：删号默认保留数据，purge=true 才清 ──
+
+    private MockMvc mvcWith(AccountRepository repo,
+                            com.adaiadai.core.kernel.storage.FileStorage storage) {
+        return MockMvcBuilders.standaloneSetup(new AccountController(repo, new PluginRegistry(),
+                mock(PluginService.class), mock(com.adaiadai.core.application.AuthService.class),
+                storage)).build();
+    }
+
+    @Test
+    void deleteAccount_withoutPurge_keepsUserData() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.delete("bob")).thenReturn(true);
+        var storage = mock(com.adaiadai.core.kernel.storage.FileStorage.class);
+
+        mvcWith(repo, storage).perform(delete("/api/v1/accounts/bob"))
+                .andExpect(status().isNoContent());
+
+        verify(storage, never()).delete(anyString(), anyString());
+    }
+
+    @Test
+    void deleteAccount_withPurge_deletesEveryFileAndReportsCount() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.delete("bob")).thenReturn(true);
+        var storage = mock(com.adaiadai.core.kernel.storage.FileStorage.class);
+        when(storage.listFiles("bob", "")).thenReturn(List.of("records/a.md", "memory/b.json"));
+
+        mvcWith(repo, storage).perform(delete("/api/v1/accounts/bob").param("purge", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purged").value(true))
+                .andExpect(jsonPath("$.purgedFiles").value(2));
+
+        verify(storage).delete("bob", "records/a.md");
+        verify(storage).delete("bob", "memory/b.json");
     }
 }

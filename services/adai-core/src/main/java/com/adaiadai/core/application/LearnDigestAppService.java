@@ -6,6 +6,7 @@ import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnPage;
+import com.adaiadai.core.domain.learn.LearnQuotaRepository;
 import com.adaiadai.core.domain.learn.LearnSource;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -106,6 +107,20 @@ public class LearnDigestAppService {
     private final LearnTranscriptionService transcriptionService;
     private final com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient;
 
+    /**
+     * 读图（图片源）的单次输出上限。
+     * <p>
+     * P2-learn25（2026-09-16）：书页/PPT 要「逐字抄录」，全局默认上限（2048）容易在长页面上截断；
+     * learn 图片链给一个更大的默认值，可用 {@code adai.learn.image-max-tokens} 覆盖。
+     */
+    private final int imageMaxTokens;
+
+    /** 图片整理的**日**张数上限（P2-learn26；0 = 不限制）。 */
+    private final int imageDailyLimit;
+
+    /** 图片整理用量记账（与转写额度同住 learn/_quota.json）；测试装配可为 null。 */
+    private final LearnQuotaRepository quotaRepository;
+
     /** 提交式消化任务态（key=userId）。 */
     private final Map<String, DigestJob> jobs = new ConcurrentHashMap<>();
 
@@ -121,13 +136,21 @@ public class LearnDigestAppService {
                                  @Qualifier("learnSubmitExecutor") Executor learnSubmitExecutor,
                                  LearnFetchService fetchService,
                                  LearnTranscriptionService transcriptionService,
-                                 com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient) {
+                                 com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient,
+                                 LearnQuotaRepository quotaRepository,
+                                 @org.springframework.beans.factory.annotation.Value("${adai.learn.image-max-tokens:4096}")
+                                 int imageMaxTokens,
+                                 @org.springframework.beans.factory.annotation.Value("${adai.learn.image-daily-limit:30}")
+                                 int imageDailyLimit) {
         this.aiClient = aiClient;
         this.repository = repository;
         this.learnSubmitExecutor = learnSubmitExecutor;
         this.fetchService = fetchService;
         this.transcriptionService = transcriptionService;
         this.visualAiClient = visualAiClient;
+        this.quotaRepository = quotaRepository;
+        this.imageMaxTokens = imageMaxTokens;
+        this.imageDailyLimit = imageDailyLimit;
     }
 
     /** 测试/无视觉模型装配（图片源不可用 → submitImages 人话拒绝，其余路径不受影响）。 */
@@ -136,7 +159,18 @@ public class LearnDigestAppService {
                                  Executor learnSubmitExecutor,
                                  LearnFetchService fetchService,
                                  LearnTranscriptionService transcriptionService) {
-        this(aiClient, repository, learnSubmitExecutor, fetchService, transcriptionService, null);
+        this(aiClient, repository, learnSubmitExecutor, fetchService, transcriptionService, null, null, 4096, 30);
+    }
+
+    /** 测试装配（视觉模型在，但不接图片配额账本）：按调用覆盖上限用默认 4096。 */
+    public LearnDigestAppService(AiClient aiClient,
+                                 LearnCardRepository repository,
+                                 Executor learnSubmitExecutor,
+                                 LearnFetchService fetchService,
+                                 LearnTranscriptionService transcriptionService,
+                                 com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient) {
+        this(aiClient, repository, learnSubmitExecutor, fetchService, transcriptionService,
+                visualAiClient, null, 4096, 30);
     }
 
     // ── 提交式消化（2026-09-10 喂入入口批；2026-09-12 抓取批扩展链接路径与阶段态）──
@@ -297,6 +331,24 @@ public class LearnDigestAppService {
         if (typeHint != null && !typeHint.isBlank() && !LearnCard.isValidType(typeHint)) {
             throw new LearnException("类型仅支持 ai/trading/other，请重试");
         }
+        // P2-learn26（2026-09-16）：图片整理是花钱动作（单次最多 3 次 VLM + 1 次 LLM），
+        // 此前唯一限流是「同 user 单任务」——加一道**轻量日配额**：不弹确认、不打断正常使用，
+        // 只把「手指快就能一直烧」这条堵住。读不到账本 → fail-closed（不整理），与转写闸同向。
+        if (quotaRepository != null && imageDailyLimit > 0) {
+            int usedToday;
+            try {
+                usedToday = quotaRepository.imagesOn(userId, LocalDate.now());
+            } catch (Exception e) {
+                log.warn("learn 图片配额读取失败，本次不做图片整理（fail-closed）| userId={} | {}",
+                        userId, e.getMessage());
+                throw new LearnException("今天的图片额度记录读不出来，为防超支我先不整理了；"
+                        + "把图里的文字粘进来我照样能整理");
+            }
+            if (usedToday + images.size() > imageDailyLimit) {
+                throw new LearnException("今天已经整理了 " + usedToday + " 张图（每天最多 " + imageDailyLimit
+                        + " 张，明天再来）；急着用的话，把图里的文字粘进来我照样能整理");
+            }
+        }
         // 先校验全部图片（空/超限/非图 → 400，不占任务位），再抢任务位，最后才留痕：
         // 抢不到任务位（已有消化在跑/执行器满）时不写暂存区，免得留下永远不会归位的孤儿素材
         List<String> rawNames = new ArrayList<>();
@@ -326,6 +378,10 @@ public class LearnDigestAppService {
             // 该用户之后所有喂入都被当「有任务在跑」挡死、状态永远 running，只有重启才能恢复。
             for (int i = 0; i < images.size(); i++) {
                 repository.saveRawBytes(userId, rawNames.get(i), images.get(i).bytes());
+            }
+            // P2-learn26：受理成功才记账（写盘失败 → 落到下面的 catch，回收暂存 + 不整理）
+            if (quotaRepository != null && imageDailyLimit > 0) {
+                quotaRepository.consumeImages(userId, LocalDate.now(), images.size());
             }
             learnSubmitExecutor.execute(() -> runImageJob(userId, current, copy, typeHint, note));
         } catch (RejectedExecutionException e) {
@@ -392,7 +448,8 @@ public class LearnDigestAppService {
                             new com.adaiadai.core.infrastructure.ai.vision.ImageRequest(
                                     java.util.Base64.getEncoder().encodeToString(img.bytes()),
                                     img.contentType(), note),
-                            question);
+                            question,
+                            imageMaxTokens);
                 } catch (Exception e) {
                     log.warn("learn 读图失败 | userId={} | 第 {} 张 | {}", userId, i + 1, e.getMessage());
                     throw new LearnException("第 " + (i + 1) + " 张图我没读出来，原图已留存，稍后再试一次");
@@ -1071,6 +1128,22 @@ public class LearnDigestAppService {
             throw new LearnException("卡片标题不能为空");
         }
         return repository.applyEdit(userId, type, title, patch == null ? new LearnCardPatch(null, null, null, null, null, null, null) : patch);
+    }
+
+    /**
+     * 认回被抹掉的 {@code origin: product} 来源标记（REVIEW P2-learn21，2026-09-16）。
+     * <p>
+     * 只在「看得出来确实是本产品写的」卡上生效（判据在仓储 {@code restoreOrigin}）——
+     * 别处整理的卡一律人话拒绝，避免变成「一句话给只读卡盖章」。
+     */
+    public LearnCard restoreOrigin(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type)) {
+            throw new LearnException("类型仅支持 ai/trading/other，请重试");
+        }
+        if (title == null || title.isBlank()) {
+            throw new LearnException("卡片标题不能为空");
+        }
+        return repository.restoreOrigin(userId, type, title);
     }
 
     /** 资产树：learn 按 type 分组（只含已落盘卡片）。 */

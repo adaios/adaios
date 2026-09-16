@@ -837,7 +837,7 @@ class LearnCardFileRepositoryTest {
                 LocalDate.of(2026, 9, 12), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
                 List.of(), List.of(), "", "奇怪\u0000主题");
 
-        repository.save("adai", card);   // 原先   会让路径解析抛 500
+        repository.save("adai", card);   // 原先主题名里的空字符会让路径解析抛 500
 
         assertTrue(repository.find("adai", LearnCard.TYPE_AI, "控制符卡").isPresent(),
                 "控制符主题不炸路径：" + storage.listFiles("adai", "learn/ai"));
@@ -1016,5 +1016,48 @@ class LearnCardFileRepositoryTest {
         assertTrue(storage.exists("adai", "learn/ai/旧主题/_raw/article-x-text.txt"),
                 "老主题还有卡 → 素材留在原主题（不误搬）");
         assertFalse(storage.exists("adai", "learn/ai/新主题/_raw/article-x-text.txt"));
+    }
+
+    // ── P2-learn21（2026-09-16）：origin 被抹掉后能认回来，但不给别人的卡盖章 ──
+
+    @Test
+    void restoreOrigin_recoversMarkerWhenCardLooksLikeOurs() {
+        LearnCard card = sample(LearnCard.TYPE_TRADING, "来源标记被抹掉的卡", LocalDate.of(2026, 9, 10));
+        repository.save("adai", card);
+        String path = repository.cardPath("adai", LearnCard.TYPE_TRADING, card.title());
+        String original = storage.read("adai", path);
+        // 「别处工具整文件重写」把 origin 行抹掉 → 卡静默退化成只读（P2-learn21 的现场）
+        storage.write("adai", path, original.replaceAll("(?m)^origin:.*\\n?", ""));
+
+        assertFalse(repository.find("adai", LearnCard.TYPE_TRADING, card.title()).orElseThrow().writable(),
+                "标记被抹掉后：卡退化成只读");
+
+        LearnCard fixed = repository.restoreOrigin("adai", LearnCard.TYPE_TRADING, card.title());
+
+        assertTrue(fixed.writable(), "认回来后恢复可写");
+        assertTrue(storage.read("adai", path).contains("origin: product"), "标记真的写回了文件");
+        assertTrue(repository.restoreOrigin("adai", LearnCard.TYPE_TRADING, card.title()).writable(), "幂等");
+    }
+
+    @Test
+    void restoreOrigin_refusesCardThatDoesNotLookLikeOurs() {
+        // 主题目录 + 没有 origin：这才是「Mac 技能整理的原始卡」的真实形态（只读）。
+        // ⚠️ 不能写成老扁平布局 {type}/{date}_{title}.md——那种路径一律算产品卡（V1/V2 兼容）。
+        storage.write("adai", "learn/ai/未归类/01-别人的卡.md", """
+                ---
+                title: 别人的卡
+                type: ai
+                topic: 未归类
+                created: 2026-09-10
+                ---
+
+                ## 核心观点
+                别处整理的。
+                """);
+
+        LearnException e = assertThrows(LearnException.class,
+                () -> repository.restoreOrigin("adai", LearnCard.TYPE_AI, "别人的卡"));
+
+        assertTrue(e.getMessage().contains("看着不是我写的"), "要人话拒绝：" + e.getMessage());
     }
 }

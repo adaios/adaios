@@ -700,6 +700,48 @@ public class LearnCardFileRepository implements LearnCardRepository {
     }
 
     @Override
+    public LearnCard restoreOrigin(String userId, String type, String title) {
+        if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
+            throw new LearnException("卡片不存在");
+        }
+        synchronized (lockFor(userId)) {
+            Located located = locate(userId, type, title)
+                    .orElseThrow(() -> new LearnException("卡片不存在：" + safeLabel(type, title)));
+            if (located.card().writable()) {
+                return located.card();          // 已经是产品卡 → 幂等
+            }
+            String content = fileStorage.read(userId, located.path());
+            if (content == null || content.isBlank()) {
+                throw new LearnException("卡片不存在：" + safeLabel(type, title));
+            }
+            if (!looksLikeProductCard(content)) {
+                throw new LearnException("这张《" + located.card().title()
+                        + "》看着不是我写的（正文里没有我用的段落），我不敢给它盖我的章；"
+                        + "想改的话，我可以照它的内容另存一张能编辑的给你");
+            }
+            String fixed = replaceFrontmatterKey(content, ORIGIN_KEY, ORIGIN_PRODUCT);
+            fileStorage.write(userId, located.path(), fixed);
+            log.info("learn 来源标记已恢复 | userId={} | type={} | title={} | path={}",
+                    userId, type, title, located.path());
+            return decorate(parse(fixed), located.path(), type, fixed);
+        }
+    }
+
+    /**
+     * 「这张看起来确实是本产品写的」的客观判据（恢复 origin 时用，见 {@link #restoreOrigin}）。
+     * <p>
+     * 只看**产品独有**的痕迹：产品 frontmatter 必带的 {@code status:}、卡片流批才有的 {@code ## 卡片页}
+     * 段，或复习机制独有 {@code review_at} / {@code reminded_at}。刻意**不用**「核心观点/关键要点」——
+     * A 形态手工卡也用这两个段名，拿它当判据会把别人的卡也认成自己的。
+     */
+    private static boolean looksLikeProductCard(String content) {
+        return content.contains("## 卡片页")
+                || content.contains("review_at:")
+                || content.contains("reminded_at:")
+                || content.contains("\nstatus:");
+    }
+
+    @Override
     public String deleteCard(String userId, String type, String title) {
         if (!LearnCard.isValidType(type) || title == null || title.isBlank()) {
             throw new LearnException("卡片不存在：" + safeLabel(type, title));

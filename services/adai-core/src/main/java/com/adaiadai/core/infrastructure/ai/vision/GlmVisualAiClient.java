@@ -105,6 +105,11 @@ public class GlmVisualAiClient implements VisualAiClient {
 
     @Override
     public String ask(ImageRequest request, String question) {
+        return ask(request, question, null);
+    }
+
+    @Override
+    public String ask(ImageRequest request, String question, Integer maxTokensOverride) {
         if (apiKey == null || apiKey.isBlank()) {
             log.error("GLM_API_KEY 未配置，无法调用视觉模型");
             throw new RuntimeException("视觉 AI 未配置：缺少 GLM_API_KEY");
@@ -113,7 +118,7 @@ public class GlmVisualAiClient implements VisualAiClient {
             String textPrompt = ASK_PROMPT + "\n用户问题：" + (question == null ? "" : question);
             log.info("[GLM-Vision-Ask] 请求 model={} | question={}",
                     model, truncate(question));
-            String answer = sendAndParse(buildRequestBody(request, textPrompt));
+            String answer = sendAndParse(buildRequestBody(request, textPrompt, maxTokensOverride));
             String cleaned = GlmResponseParser.extractAnswer(answer);
             return (cleaned == null || cleaned.isBlank()) ? "（图片问答未获得有效回复）" : cleaned.strip();
         } catch (Exception e) {
@@ -154,13 +159,30 @@ public class GlmVisualAiClient implements VisualAiClient {
 
     // ── 请求/响应 ──
 
+    /**
+     * 本次调用的输出上限：按调用覆盖优先（P2-learn25），其次全局配置 {@code adai.ai.vision.max-tokens}。
+     *
+     * @param override 调用方给的上限；null 或非正数视为未指定
+     */
+    private int effectiveMaxTokens(Integer override) {
+        return (override != null && override > 0) ? override : maxTokens;
+    }
+
     private String buildRequestBody(ImageRequest request, String textPrompt) throws Exception {
+        return buildRequestBody(request, textPrompt, null);
+    }
+
+    /**
+     * @param maxTokensOverride 本次调用的输出上限（P2-learn25）；null/非正数 = 用全局配置
+     */
+    private String buildRequestBody(ImageRequest request, String textPrompt, Integer maxTokensOverride) throws Exception {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("model", model);
         // P0-1（2026-08-18）：thinking 模型思考过程长，1024 被 think 吃光后 answer 无输出
         // （生产 5/7 张图仅返回 <think> 无 answer）。调到 2048 给 answer 留出空间。
         // 2026-08-27：按模型配置（flash 上限 1024，配置 ADAI_AI_VISION_MAX_TOKENS）。
-        root.put("max_tokens", maxTokens);
+        // 2026-09-16（P2-learn25）：允许调用方按次覆盖——长书页提取不再被全局上限静默截断。
+        root.put("max_tokens", effectiveMaxTokens(maxTokensOverride));
         root.put("temperature", 0.3);
 
         ArrayNode messages = root.putArray("messages");

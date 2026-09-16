@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'api_config.dart';
+
 /// 分享扩展的凭据状态（原生侧 `ShareBridgeHandler.status()` 的 Dart 投影）。
 @immutable
 class ShareExtensionStatus {
@@ -78,6 +80,7 @@ class ShareExtensionService {
     required String token,
     String? id,
     String? expiresAt,
+    String? apiBaseUrl,
   }) async {
     if (!supported || token.trim().isEmpty) return false;
     try {
@@ -85,6 +88,9 @@ class ShareExtensionService {
         'token': token,
         'id': id,
         'expiresAt': expiresAt,
+        // REVIEW P2-分享3：把主 App 当前用的 API 基址一并写进共享容器——扩展据此提交，
+        // 不再硬编码生产域名（否则连局域网后端的调试构建必然 401）。
+        'apiBaseUrl': apiBaseUrl ?? ApiConfig.baseUrl,
       });
       return ok ?? false;
     } catch (_) {

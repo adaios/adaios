@@ -22,12 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -511,7 +513,7 @@ class LearnDigestAppServiceTest {
 
     @Test
     void submitImages_readsImageThenDigests_andPromotesOriginalImage() {
-        when(visualAiClient.ask(any(), any())).thenReturn("第一页：量价关系的三个层次……");
+        when(visualAiClient.ask(any(), any(), any())).thenReturn("第一页：量价关系的三个层次……");
         when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
 
         withVision().submitImages("adai",
@@ -521,7 +523,7 @@ class LearnDigestAppServiceTest {
         verify(repository).saveRawBytes(eq("adai"), argThat(n -> n.startsWith("image-1-") && n.endsWith(".png")),
                 argThat(b -> java.util.Arrays.equals(b, new byte[]{1, 2, 3})));
         verify(visualAiClient).ask(argThat(req -> "image/png".equals(req.contentType())
-                && "书页第 3 页".equals(req.caption())), anyString());
+                && "书页第 3 页".equals(req.caption())), anyString(), any());
         verify(repository).save(eq("adai"), argThat(c -> LearnCard.TYPE_TRADING.equals(c.type())
                 && "量价关系".equals(c.topic())), anyList());
         verify(repository).promoteRaw(eq("adai"), eq(LearnCard.TYPE_TRADING), eq("量价关系"),
@@ -532,7 +534,7 @@ class LearnDigestAppServiceTest {
     void submitImages_note_isPassedIntoTheQuestion_notOnlyCaption() {
         // 对抗审查指出：ImageRequest.caption 会被视觉客户端的 ask 丢弃 → note 实际无效。
         // 修复后 note 并进问题文本，模型才真的看得到用户的补充说明。
-        when(visualAiClient.ask(any(), anyString())).thenReturn("第一页：可转债双低……");
+        when(visualAiClient.ask(any(), anyString(), any())).thenReturn("第一页：可转债双低……");
         when(aiClient.generate(any(), any())).thenReturn(TOPIC_JSON);
 
         withVision().submitImages("adai",
@@ -540,12 +542,12 @@ class LearnDigestAppServiceTest {
                 null, "这是可转债策略讲义第 3 页");
 
         verify(visualAiClient).ask(any(), argThat(q -> q.contains("用户补充说明")
-                && q.contains("可转债策略讲义第 3 页") && q.contains("逐字抄录")));
+                && q.contains("可转债策略讲义第 3 页") && q.contains("逐字抄录")), any());
     }
 
     @Test
     void submitImages_emptyOcrResult_failsVisibleWithoutCard() {
-        when(visualAiClient.ask(any(), any())).thenReturn("   ");
+        when(visualAiClient.ask(any(), any(), any())).thenReturn("   ");
 
         LearnDigestAppService svc = withVision();
         svc.submitImages("adai",
@@ -709,5 +711,39 @@ class LearnDigestAppServiceTest {
     void urlShape_blankInput_saysBodyPath() {
         assertTrue(LearnDigestAppService.urlShape(null).contains("正文路径"));
         assertTrue(LearnDigestAppService.urlShape("   ").contains("正文路径"));
+    }
+
+    // ── P2-learn26（2026-09-16）：图片整理是花钱动作，加一道轻量日配额 ──
+
+    @Test
+    void submitImages_dailyQuotaExceeded_refusedWithoutCallingVisionModel() {
+        var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
+        when(quota.imagesOn(eq("adai"), any())).thenReturn(30);
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
+                fetchService, transcriptionService, visualAiClient, quota, 4096, 30);
+
+        LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                null, null));
+
+        assertTrue(e.getMessage().contains("每天最多 30 张"), "要人话说清上限：" + e.getMessage());
+        verifyNoInteractions(visualAiClient);
+        verify(quota, never()).consumeImages(any(), any(), anyInt());
+    }
+
+    @Test
+    void submitImages_quotaLedgerUnreadable_failsClosedWithHumanMessage() {
+        var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
+        when(quota.imagesOn(eq("adai"), any())).thenThrow(
+                new com.adaiadai.core.infrastructure.storage.StorageException("账本坏了", null));
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
+                fetchService, transcriptionService, visualAiClient, quota, 4096, 30);
+
+        LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                null, null));
+
+        assertTrue(e.getMessage().contains("额度记录读不出来"), e.getMessage());
+        verifyNoInteractions(visualAiClient);
     }
 }

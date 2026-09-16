@@ -1511,8 +1511,22 @@ public class TradingAppService {
         BigDecimal pnl = BigDecimal.ZERO;
         List<String> notes = new ArrayList<>();
         Map<String, BigDecimal> bySymbol = new LinkedHashMap<>();
+        // P2-交易51（2026-09-16）：盘前 / 非交易日时，行情接口给的「现价」仍是**上一交易日收盘**，
+        // 「昨收」是再前一交易日收盘——照 date 直接算，等于把「上一交易日的当日盈亏」当成「今天」
+        // （用户实测：同一持仓两天里给出两个数，09-15 真实 −503.90 被显示成 −180）。
+        // 修法：以**行情数据所在的那个交易日**为「当日」（盘前/非交易日 → 上一交易日），并如实标注。
+        LocalDate resolvedDate = date;
+        if (date != null && quoteIsFromPreviousDay(date)) {
+            LocalDate prev = previousTradingDay(date);
+            if (prev != null) resolvedDate = prev;
+        }
+        final LocalDate effectiveDate = resolvedDate;
+        if (!effectiveDate.equals(date)) {
+            notes.add("今天还没开盘（或今天不是交易日），下面是 " + effectiveDate
+                    + " 的当日盈亏——开盘后它会自动换成今天的数");
+        }
         List<TradeRecord> dayTrades = tradingHistoryRepository.findAll(userId).stream()
-                .filter(t -> date.equals(t.entryDate()))
+                .filter(t -> effectiveDate.equals(t.entryDate()))
                 .toList();
         boolean hasActivity = dayTrades.stream().anyMatch(t -> t.volume() > 0);
         if (!hasActivity) {
@@ -1632,6 +1646,35 @@ public class TradingAppService {
         bySymbol.remove(null);
         return new DailyPnlDetail(pnl.setScale(2, java.math.RoundingMode.HALF_UP),
                 List.copyOf(notes), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(bySymbol)));
+    }
+
+    /**
+     * 行情是否还停在**上一个交易日**（P2-交易51）。
+     * <p>
+     * 只在「问的就是今天」时有意义：非交易日，或交易日但还没到 9:30 开盘——此时行情接口返回的
+     * 「现价 / 昨收」都是上一交易日的口径，按今天算出来的数不是今天的。
+     * <p>
+     * 可测版本：{@link #quoteIsFromPreviousDay(LocalDate, LocalDate, java.time.LocalTime)}。
+     */
+    static boolean quoteIsFromPreviousDay(LocalDate date) {
+        return quoteIsFromPreviousDay(date, LocalDate.now(), java.time.LocalTime.now());
+    }
+
+    static boolean quoteIsFromPreviousDay(LocalDate date, LocalDate today, java.time.LocalTime now) {
+        if (date == null || today == null || !date.equals(today)) return false;
+        if (!TradingSessionPushService.isTradingDayStrict(today)) return true;
+        return now != null && now.isBefore(java.time.LocalTime.of(9, 30));
+    }
+
+    /** 上一个交易日（最多回退 15 天；找不到返回 null）。 */
+    static LocalDate previousTradingDay(LocalDate date) {
+        if (date == null) return null;
+        LocalDate d = date.minusDays(1);
+        for (int i = 0; i < 15; i++) {
+            if (TradingSessionPushService.isTradingDayStrict(d)) return d;
+            d = d.minusDays(1);
+        }
+        return null;
     }
 
     /**

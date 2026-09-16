@@ -357,7 +357,7 @@ public final class TradingImportParser {
     /**
      * 智能分隔（2026-08-25 修复空列吞列）：通达信导出按 tab 分隔且空列保留（如股息行无成交编号）——
      * 行含 tab → split("\t", -1) 保留空列；否则（测试/兼容）按空白分隔。
-     * 原 split("\s+") 会吞连续空白 → 空列错位 → 发生金额列解析到股东代码（A511358384 崩）。
+     * 原 split("\s+") 会吞连续空白 → 空列错位 → 发生金额列解析到股东代码（A000000001 崩）。
      */
     private static String[] splitCells(String line) {
         return line.contains("\t") ? line.split("\t", -1) : line.split("\\s+");

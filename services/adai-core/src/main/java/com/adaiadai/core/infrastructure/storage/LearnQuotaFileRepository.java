@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 
 /**
@@ -28,6 +29,8 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
     private static final Logger log = LoggerFactory.getLogger(LearnQuotaFileRepository.class);
     private static final ObjectMapper MAPPER = StrictJson.strict(new ObjectMapper());
     private static final String QUOTA_PATH = "learn/_quota.json";
+    /** 图片整理按日计数的键（P2-learn26；与转写账期键并列，互不干扰）。 */
+    private static final String IMAGES_KEY = "images";
     private static final int LOCK_STRIPES = 16;
 
     private final Object[] locks = new Object[LOCK_STRIPES];
@@ -82,6 +85,52 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
                     userId, month, seconds, usedSeconds, round4(usedYuan));
             return new LearnQuota(month.toString(), usedSeconds, round4(usedYuan), quotaSeconds);
         }
+    }
+
+    /**
+     * 图片整理按日计数（P2-learn26，2026-09-16）——与转写额度同住 {@code learn/_quota.json}，
+     * 但用独立的 {@code images} 键（按日期分键 → 跨日自动重置，不需要定时任务）：
+     * <pre>{"2026-09": {"usedSeconds": 1710, "usedYuan": 0.1368},
+     *  "images": {"2026-09-16": 3}}</pre>
+     */
+    @Override
+    public int imagesOn(String userId, LocalDate day) {
+        synchronized (lockFor(userId)) {
+            return imagesLocked(readRoot(userId), day);
+        }
+    }
+
+    @Override
+    public int consumeImages(String userId, LocalDate day, int count) {
+        synchronized (lockFor(userId)) {
+            JsonNode root = readRoot(userId);
+            int used = Math.max(0, imagesLocked(root, day) + count);
+
+            ObjectNode next = root != null && root.isObject()
+                    ? (ObjectNode) root.deepCopy()
+                    : MAPPER.createObjectNode();
+            ObjectNode images = next.path(IMAGES_KEY).isObject()
+                    ? (ObjectNode) next.path(IMAGES_KEY)
+                    : MAPPER.createObjectNode();
+            images.put(day.toString(), used);
+            next.set(IMAGES_KEY, images);
+
+            try {
+                fileStorage.write(userId, QUOTA_PATH, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(next));
+            } catch (Exception e) {
+                throw new StorageException("图片整理记账写入失败，已中止本次整理（不产生不可追溯的费用）", e);
+            }
+            log.info("learn 图片整理记账 | userId={} | day={} | +{} 张 | 当日累计 {} 张",
+                    userId, day, count, used);
+            return used;
+        }
+    }
+
+    private static int imagesLocked(JsonNode root, LocalDate day) {
+        if (root == null || !root.isObject()) return 0;
+        JsonNode images = root.path(IMAGES_KEY);
+        if (!images.isObject()) return 0;
+        return Math.max(0, images.path(day.toString()).asInt(0));
     }
 
     private LearnQuota readLocked(String userId, YearMonth month) {

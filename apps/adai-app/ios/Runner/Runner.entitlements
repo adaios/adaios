@@ -34,5 +34,15 @@
 	<array>
 		<string>group.com.adaiadai.adaiApp</string>
 	</array>
+	<!--
+	  keychain-access-groups（REVIEW P2-分享2，2026-09-16）：分享令牌从 App Groups 明文容器
+	  升级为**共享 Keychain** 所需的跨 target 能力。值必须是 `$(AppIdentifierPrefix)<group id>`
+	  的形状，且与 ShareExtension.entitlements 里的那一条**逐字一致**（不一致 → 扩展
+	  errSecMissingEntitlement → 仍然报「没拿到钥匙」）。
+	-->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)group.com.adaiadai.adaiApp</string>
+	</array>
 </dict>
 </plist>

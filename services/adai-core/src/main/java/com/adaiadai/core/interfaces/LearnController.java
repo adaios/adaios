@@ -242,6 +242,30 @@ public class LearnController {
     }
 
     /**
+     * 认回被抹掉的来源标记（REVIEW P2-learn21，2026-09-16）：{@code ?type=&title=} 定位。
+     * <p>
+     * 只在**看得出来确实是本产品写的**卡上生效（判据见仓储 `restoreOrigin`：正文含 `## 卡片页`
+     * 或 frontmatter 带 `review_at`/`reminded_at`）——别处整理的卡一律人话拒绝，
+     * 避免变成「一句话就能给只读卡盖章」。
+     */
+    @PostMapping("/cards/restore-origin")
+    public ResponseEntity<?> restoreOrigin(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam String type,
+            @RequestParam String title) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        if (!LearnCard.isValidType(type)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "type 仅支持 ai/trading/other"));
+        }
+        LearnCard card = digestService.restoreOrigin(userId, type, title);
+        return ResponseEntity.ok(Map.of(
+                "type", card.type(),
+                "title", card.title(),
+                "writable", card.writable()));
+    }
+
+    /**
      * 删卡片（2026-09-13 缺口批）：{@code ?type=&title=} 定位。
      * <p>
      * **软删除**——文件移入 {@code learn/_trash/}（可人工捡回），不真丢内容；只允许删本产品产出的卡

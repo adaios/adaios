@@ -129,6 +129,22 @@ public interface LearnCardRepository {
     String cardPath(String userId, String type, String title);
 
     /**
+     * 恢复被抹掉的 {@code origin: product} 来源标记（REVIEW P2-learn21，2026-09-16）。
+     * <p>
+     * 判据是 frontmatter 的 {@code origin: product}，它一旦被别处工具整文件重写抹掉，卡会
+     * **静默退化成只读**（看得见、读得全，就是改不动）。本方法把标记认回来。
+     * <p>
+     * **不是无条件的「盖章」**：只在这张卡**看起来确实是本产品写的**（正文含 {@code ## 卡片页}，
+     * 或 frontmatter 带产品复习机制独有的 {@code review_at} / {@code reminded_at}）时才认。
+     * 判据不成立 → 人话拒绝——否则用户一句话就能把别处整理的只读卡「升级」成可写，
+     * 等于把只读保护废掉。
+     *
+     * @return 认回后的卡片（已是产品卡 → 幂等返回）
+     * @throws LearnException 卡片不存在 / 判据不成立（不像本产品写的）/ 写失败
+     */
+    LearnCard restoreOrigin(String userId, String type, String title);
+
+    /**
      * 删除卡片（**软删除**：文件移入 {@code learn/_trash/}，不是真删——知识是资产，误删要能捡回来）。
      * <p>
      * 只允许删**本产品产出**的卡（{@code writable}）；别处整理的卡人话拒绝。同时从主题 README

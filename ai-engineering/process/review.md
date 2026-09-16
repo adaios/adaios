@@ -42,7 +42,7 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 
 - **light**：不派官，守护 + `git diff --stat` 快扫，列风险点
 - **deep**：按 diff 触及目录派对应审查官（见下表），每个官并行独立审查；**默认 + 1 名对抗官**（adversarial-reviewer，找茬视角）
-- **full**：8 官全派 + 1 对抗官
+- **full**：8 官全派 + 1 对抗官（共 9 官；`roles/` 另有 3 个外部视角官〔陌生人/社会性/支持台〕，面向身边人 / 新用户场景必跑——见 `roles/`）
 
 | 改动位置 | 派官 |
 |:---------|:-----|

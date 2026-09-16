@@ -32,6 +32,23 @@ public interface VisualAiClient {
     String ask(ImageRequest request, String question);
 
     /**
+     * 就一张图片追问，并**按本次调用**指定输出上限。
+     * <p>
+     * P2-learn25（2026-09-16）：输出上限原先只能全局配（{@code adai.ai.vision.max-tokens}），
+     * 长书页这类「一次要抄很多字」的调用没法单独放宽——截断虽已在提示词里要求显式标注
+     * 「（余下内容未能提取）」，但内容仍是丢的。此处给调用方一个按需放宽的口子。
+     * <p>
+     * 默认实现**忽略**覆盖值（老实现零改动即兼容）；支持能力的实现方（如
+     * {@code GlmVisualAiClient}）按该值覆盖本次请求的 {@code max_tokens}。
+     *
+     * @param maxTokensOverride 本次调用的 max_tokens；{@code null} 或非正数 = 用实现默认/全局配置
+     * @return 自然语言回答（已剥 think/answer 壳）
+     */
+    default String ask(ImageRequest request, String question, Integer maxTokensOverride) {
+        return ask(request, question);
+    }
+
+    /**
      * 就多张图片追问（多图问答，Phase 1 带图 ask）。
      * <p>
      * 多张图片一次发给视觉模型 + 用户问题，返回自然语言回答

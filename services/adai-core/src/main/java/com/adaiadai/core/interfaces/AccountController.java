@@ -62,13 +62,16 @@ public class AccountController {
     private final PluginRegistry pluginRegistry;
     private final PluginService pluginService;
     private final AuthService authService;
+    private final com.adaiadai.core.kernel.storage.FileStorage fileStorage;
 
     public AccountController(AccountRepository accountRepository, PluginRegistry pluginRegistry,
-                             PluginService pluginService, AuthService authService) {
+                             PluginService pluginService, AuthService authService,
+                             com.adaiadai.core.kernel.storage.FileStorage fileStorage) {
         this.accountRepository = accountRepository;
         this.pluginRegistry = pluginRegistry;
         this.pluginService = pluginService;
         this.authService = authService;
+        this.fileStorage = fileStorage;
     }
 
     /** 账号列表（返回全部，前端按 enabled 过滤选号）。#178：passwordHash 不外泄。 */
@@ -211,9 +214,18 @@ public class AccountController {
         return ResponseEntity.ok(AccountView.of(updated));
     }
 
-    /** 删除账号。内置管理员不可删。P1-1：删除前先踢除该账号全部会话。 */
+    /**
+     * 删除账号。内置管理员不可删。P1-1：删除前先踢除该账号全部会话。
+     * <p>
+     * <b>task-log #149（2026-09-16 用户拍板）</b>：{@code data/{userId}/} 是不可逆的个人资产，
+     * 所以**默认只移除账号 + 踢会话，数据留着**；确实要连数据一起清，必须显式 {@code ?purge=true}
+     * （adai-admin 那边还要过一次「输入账号名确认」）。宁可留一份没人用的目录，也不做一次回不去的误删。
+     *
+     * @param purge true = 连同 {@code data/{userId}/} 一起清理（不可逆）
+     */
     @DeleteMapping("/{userId}")
-    public ResponseEntity<?> deleteAccount(@PathVariable String userId) {
+    public ResponseEntity<?> deleteAccount(@PathVariable String userId,
+                                          @RequestParam(name = "purge", defaultValue = "false") boolean purge) {
         if (isSeedAdmin(userId)) {
             return ResponseEntity.badRequest().body(Map.of("error", "内置管理员 " + Account.SEED_ADMIN_ID + " 不可删除"));
         }
@@ -222,7 +234,38 @@ public class AccountController {
         //（踢会话幂等：账号本就无会话或删除失败时无副作用）。
         authService.kickSessions(userId);
         boolean removed = accountRepository.delete(userId);
-        return removed ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+        if (!removed) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!purge) {
+            return ResponseEntity.noContent().build();
+        }
+        int purged = purgeUserData(userId);
+        log.info("账号已删除并清理数据 | userId={} | 清理文件 {} 个", userId, purged);
+        return ResponseEntity.ok(Map.of("deleted", true, "purged", true, "purgedFiles", purged));
+    }
+
+    /**
+     * 递归清理 {@code data/{userId}/} 下的文件（task-log #149 的破坏性那一半，只在显式 purge 时走）。
+     * <p>
+     * 逐个删文件而不是删目录：{@code FileStorage} 只承诺「文件」这一层的删除语义，不猜底层实现
+     * （本机是 LocalFileStorage、将来可能是别的）。**删不掉的如实计数**，不假装清干净。
+     */
+    private int purgeUserData(String userId) {
+        int deleted = 0;
+        try {
+            for (String path : fileStorage.listFiles(userId, "")) {
+                try {
+                    fileStorage.delete(userId, path);
+                    deleted++;
+                } catch (Exception e) {
+                    log.warn("账号数据清理：单个文件删除失败 | userId={} | path={} | {}", userId, path, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("账号数据清理：目录列举失败 | userId={} | {}", userId, e.getMessage());
+        }
+        return deleted;
     }
 
     private boolean isValidRole(String role) {

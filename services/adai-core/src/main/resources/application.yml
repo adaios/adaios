@@ -95,3 +95,13 @@ adai:
       # 两套网关按 token 自带环境选择（侧载=development 签名→sandbox token；TestFlight/上架→production）
       sandbox-host: ${ADAI_PUSH_APNS_SANDBOX_HOST:https://api.sandbox.push.apple.com}
       production-host: ${ADAI_PUSH_APNS_PRODUCTION_HOST:https://api.push.apple.com}
+
+  # ── learn（学习插件）──
+  # 2026-09-16 晚间批：图片源是新的花钱点，两个旋钮显式声明出来（原先只活在 @Value 默认值里，
+  # 运维看不见也不知道能调）。
+  learn:
+    # 读图（书页/PPT/讲义）的**单次**输出上限：长书页要逐字抄录，全局 2048 容易截断（P2-learn25）
+    image-max-tokens: ${ADAI_LEARN_IMAGE_MAX_TOKENS:4096}
+    # 图片整理**每日张数**上限（0 = 不限）。图片是花钱动作（单次最多 3 次 VLM + 1 次 LLM），
+    # 给一道轻量日闸：不弹确认、不打断使用，只堵「手指快就能一直烧」（P2-learn26）
+    image-daily-limit: ${ADAI_LEARN_IMAGE_DAILY_LIMIT:30}

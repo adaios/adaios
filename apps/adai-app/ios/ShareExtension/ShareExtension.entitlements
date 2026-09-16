@@ -12,10 +12,20 @@
 	  ⚠️ App Group 的 id 在两处（本文件与 Runner.entitlements）必须逐字一致，
 	  且必须与 ShareBridge.swift / ShareAuth.swift 里的 suiteName 字面量一致——
 	  拼错的表现是「扩展读不到令牌」，提交时给人话「阿呆还没拿到钥匙」，不崩溃。
+
+	  keychain-access-groups（REVIEW P2-分享2，2026-09-16）：令牌明文已从 App Groups 容器
+	  升级到**共享 Keychain**（不随 iTunes/iCloud 备份走、锁屏不可读）。Keychain 的跨 target
+	  共享**必须**靠这个能力声明，值必须是 `$(AppIdentifierPrefix)<App Group id>` 的形状——
+	  少了它，扩展读 Keychain 会拿到 errSecMissingEntitlement，表现仍是「没拿到钥匙」。
+	  ⚠️ 与 App Group 一样属于「能力」：自动签名下首次构建要去 Apple 侧重签描述文件。
 	-->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.adaiadai.adaiApp</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)group.com.adaiadai.adaiApp</string>
 	</array>
 </dict>
 </plist>

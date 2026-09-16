@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -247,7 +248,7 @@ class DailyPnlComputeTest {
                 人民币: 余额:2278.16  可用:2278.16  可取:2278.16  参考市值:79079.00  资产:81357.16  盈亏:16423.25
                 -------------------------------------------------------------------------------------------------------
                 编号        证券代码        证券名称        证券数量        可卖数量        成本价          当前价          最新市值        今买数量        今卖数量        浮动盈亏        盈亏比例(%)        股东代码
-                1           600206          有研新材        600.00          600.00          46.8091        46.4200        27852.00        0.00            0.00            -233.33         -0.831             A511358384
+                1           600206          有研新材        600.00          600.00          46.8091        46.4200        27852.00        0.00            0.00            -233.33         -0.831             A000000001
                 """;
         service.importCashQuery(USER, cashText);
 
@@ -278,7 +279,7 @@ class DailyPnlComputeTest {
                 人民币: 余额:2278.16  可用:2278.16  可取:2278.16  参考市值:79079.00  资产:81357.16  盈亏:16423.25
                 -------------------------------------------------------------------------------------------------------
                 编号        证券代码        证券名称        证券数量        可卖数量        成本价          当前价          最新市值        今买数量        今卖数量        浮动盈亏        盈亏比例(%)        当日盈亏      股东代码
-                1           600206          有研新材        600.00          600.00          46.8091        46.4200        27852.00        0.00            0.00            -233.33         -0.831            -258.00       A511358384
+                1           600206          有研新材        600.00          600.00          46.8091        46.4200        27852.00        0.00            0.00            -233.33         -0.831            -258.00       A000000001
                 """;
         service.importCashQuery(USER, cashText);
 
@@ -473,5 +474,32 @@ class DailyPnlComputeTest {
 
         assertEquals(null, v.totalPositionRatio(), "总资产为 0 时不得编造 0%");
         assertEquals(null, v.cashRatio());
+    }
+
+    // ── P2-交易51（2026-09-16）：盘前 / 非交易日不得把「上一交易日的当日盈亏」当成今天 ──
+
+    @Test
+    void quoteIsFromPreviousDay_onlyWhenAskingAboutToday() {
+        LocalDate today = LocalDate.of(2026, 9, 16);        // 周三（交易日）
+        assertFalse(TradingAppService.quoteIsFromPreviousDay(today.minusDays(1), today, LocalTime.of(10, 0)),
+                "问的是历史日期 → 与「现在几点」无关，照该日期算");
+        assertTrue(TradingAppService.quoteIsFromPreviousDay(today, today, LocalTime.of(9, 0)),
+                "交易日但开盘前 → 行情还是上一交易日的");
+        assertFalse(TradingAppService.quoteIsFromPreviousDay(today, today, LocalTime.of(9, 30)),
+                "开盘后 → 行情已是今天的");
+    }
+
+    @Test
+    void quoteIsFromPreviousDay_trueOnNonTradingDay() {
+        LocalDate saturday = LocalDate.of(2026, 9, 19);
+        assertTrue(TradingAppService.quoteIsFromPreviousDay(saturday, saturday, LocalTime.of(10, 0)),
+                "非交易日：行情接口给的「现价」是上一交易日收盘");
+    }
+
+    @Test
+    void previousTradingDay_skipsWeekend() {
+        assertEquals(LocalDate.of(2026, 9, 18),
+                TradingAppService.previousTradingDay(LocalDate.of(2026, 9, 21)),
+                "周一的上一个交易日 = 上周五");
     }
 }

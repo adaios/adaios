@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-08-22
+updated: 2026-09-16
 status: active
-lines: 114
+lines: 120
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -99,6 +99,12 @@ bash ai-engineering/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNA
 
 - 提交信息按批次主题（如 `feat:` / `fix:` / `docs:`），含批次要点
 - 一个批次一个提交，不混合无关改动
+- **禁止用 `git add -A` / `git add .` 收尾**（REVIEW P2-工程2；2026-09-13 真发生过一次）：
+  同一仓库可能有**并发会话**，全量暂存会把别人的工作区一并卷进本批提交——当时 9 个文件
+  （含新增测试与脚本）被一个无关的 learn 提交带走，本批的 change-log/部署登记也因此缺失。
+  **收尾一律按路径显式暂存**：`git add <本批真正改动的文件与目录>`；
+  提交前 `git status --porcelain` 复核暂存区里有没有「本批没碰过的路径」，有就先摘出来。
+  这条同时防另一件事：本批自己的新文件被漏掉（漏登记比混装更难发现）。
 
 ## 与 /review 的分工
 

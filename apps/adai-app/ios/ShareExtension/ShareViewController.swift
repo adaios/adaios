@@ -237,8 +237,14 @@ final class ShareViewController: UIViewController {
     }
 
     private static var apiBaseUrl: String? {
-        guard let raw = Bundle.main.object(forInfoDictionaryKey: "AdaiApiBaseUrl") as? String,
-              !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        // REVIEW P2-分享3（2026-09-16）：扩展曾经只认 Info.plist 里硬编码的生产域名，而主 App 走
+        // `--dart-define=API_BASE_URL` —— 任何非生产构建（`flutter run` 连局域网后端）都会变成
+        // 「App 把钥匙签发到 dev、扩展却把链接提交到生产」→ 必然 401。
+        // 现在优先用**主 App 运行时写进共享容器的地址**（同一份真相源），Info.plist 只作兜底。
+        let shared = UserDefaults(suiteName: ShareAuth.appGroupId)?.string(forKey: "adai_api_base_url")
+        let raw: String? = (shared?.isEmpty == false) ? shared
+            : (Bundle.main.object(forInfoDictionaryKey: "AdaiApiBaseUrl") as? String)
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         return trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
     }
