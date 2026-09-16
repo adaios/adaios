@@ -65,7 +65,8 @@ def sh(cmd):
 svcs = ['adai-core', 'adaios-web', 'adaios-admin', 'adaios-app', 'caddy']
 out['services'] = {s: sh('systemctl is-active ' + s).strip() for s in svcs}
 # P2-工程7（2026-09-16）：生产到底在跑哪份代码——deploy.sh 部署时落在 backend/DEPLOYED 的构建来源
-out['deployed'] = sh('cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip()
+# （backend 目录是 adaios:adaios 750，ubuntu 进不去 → 必须 sudo 读）
+out['deployed'] = sh('sudo cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip()
 
 # ── ② 应用日志（当日）──
 jr = sh(f'journalctl -u adai-core --since "{TODAY.isoformat()} 00:00:00" '
