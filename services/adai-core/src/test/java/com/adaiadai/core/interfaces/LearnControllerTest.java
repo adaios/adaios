@@ -481,9 +481,50 @@ class LearnControllerTest {
                         org.hamcrest.Matchers.containsString("title: x"))));
     }
 
+    /** 卡片流（2026-09-15）：全文接口把页序列一并给出；老卡为空数组（前端据此降级）。 */
     @Test
-    void content_invalidType_returns400() throws Exception {
+    void content_exposesPagesArray() throws Exception {
+        when(digestService.content("adai", "ai", "带页的卡"))
+                .thenReturn(new LearnDigestAppService.CardContent("ai", "带页的卡", "harness", true,
+                        "---\ntitle: 带页的卡\n---\n\n## 核心观点\n一句话\n",
+                        "## 核心观点\n一句话\n",
+                        java.util.List.of(new com.adaiadai.core.domain.learn.LearnPage(
+                                com.adaiadai.core.domain.learn.LearnPage.KIND_TABLE, "对照表", "一句话结论",
+                                java.util.List.of(),
+                                new com.adaiadai.core.domain.learn.LearnPage.Table(
+                                        java.util.List.of("列A", "列B"),
+                                        java.util.List.of(java.util.List.of("a", "b"))),
+                                java.util.List.of(), null, null, java.util.List.of()))));
+
         mvc("learn").perform(get("/api/v1/learn/content")
+                        .header("X-User-Id", "adai")
+                        .param("type", "ai")
+                        .param("title", "带页的卡"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pages[0].kind").value("table"))
+                .andExpect(jsonPath("$.pages[0].title").value("对照表"))
+                .andExpect(jsonPath("$.pages[0].table.headers[0]").value("列A"))
+                .andExpect(jsonPath("$.pages[0].table.rows[0][1]").value("b"));
+    }
+
+    /** 老卡（没有页段）→ pages 空数组，不报错（向后兼容的硬要求）。 */
+    @Test
+    void content_legacyCard_pagesEmpty() throws Exception {
+        when(digestService.content("adai", "ai", "老卡"))
+                .thenReturn(new LearnDigestAppService.CardContent("ai", "老卡", "未归类", true,
+                        "---\ntitle: 老卡\n---\n\n## 核心观点\nx\n", "## 核心观点\nx\n"));
+
+        mvc("learn").perform(get("/api/v1/learn/content")
+                        .header("X-User-Id", "adai")
+                        .param("type", "ai")
+                        .param("title", "老卡"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pages").isArray())
+                .andExpect(jsonPath("$.pages").isEmpty());
+    }
+
+    @Test
+    void content_invalidType_returns400() throws Exception {        mvc("learn").perform(get("/api/v1/learn/content")
                         .header("X-User-Id", "adai")
                         .param("type", "hacking")
                         .param("title", "x"))
@@ -590,5 +631,55 @@ class LearnControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"type\":\"ai\",\"title\":\"x\",\"topic\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void repages_returnsRepagedTrue() throws Exception {
+        when(digestService.repages("adai", "ai", "老卡"))
+                .thenReturn(new LearnCard(LearnCard.TYPE_AI, "老卡", "bilibili", "UP", null, null,
+                        LocalDate.of(2026, 9, 13), LearnCard.STATUS_NEW, false, null, List.of(), "观点",
+                        List.of(), List.of(), "", "harness"));
+
+        mvc("learn").perform(post("/api/v1/learn/cards/repages")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"老卡\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repaged").value(true))
+                .andExpect(jsonPath("$.title").value("老卡"));
+    }
+
+    @Test
+    void repages_missingTitle_returns400() throws Exception {
+        mvc("learn").perform(post("/api/v1/learn/cards/repages")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** 业务人话要原样透出（没素材 / 只读卡都走这条），不能变成 500。 */
+    @Test
+    void repages_businessFailure_returns400WithPlainWords() throws Exception {
+        when(digestService.repages("adai", "ai", "老卡"))
+                .thenThrow(new com.adaiadai.core.domain.learn.LearnException(
+                        "这张卡没留下原始素材（learn/_raw/），排不了页——重新整理一次这个来源即可"));
+
+        mvc("learn").perform(post("/api/v1/learn/cards/repages")
+                        .header("X-User-Id", "adai")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"老卡\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("没留下原始素材")));
+    }
+
+    /** learn 插件未启用 → 403（与其余 learn 端点同门控）。 */
+    @Test
+    void repages_pluginDisabled_returns403() throws Exception {
+        mvc().perform(post("/api/v1/learn/cards/repages")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"ai\",\"title\":\"老卡\"}"))
+                .andExpect(status().isForbidden());
     }
 }
