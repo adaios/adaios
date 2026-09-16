@@ -72,7 +72,7 @@ xcrun altool 上传
 
 ```bash
 cd apps/adai-app
-export ASC_ISSUER_ID=<Issuer ID>
+export ASC_ISSUER_ID=fd2b35ca-dcd5-486b-8fd4-643287368357   # Issuer ID（2026-09-16 沉淀；Team 级，所有 Key 共用）
 
 sh scripts/release_testflight.sh                  # 构建 + 导出 + 上传
 sh scripts/release_testflight.sh --skip-build     # 复用已有 archive（省一次构建）

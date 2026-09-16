@@ -145,29 +145,11 @@ for i in 1 2 3 4 5 6; do
     sleep 5
 done
 if [ $READY -eq 1 ]; then
-    echo "  → 服务已运行，重建记忆（/admin/memory/rebuild；REVIEW #178 后需登录 + role=admin）..."
-    # REVIEW #178：X-Admin-Token 退役。如 .env 配了 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD
-    # （系统内已设密码的 admin 账号），登录拿 Bearer 后执行；否则跳过（首次部署先 setup 设密码，
-    # 之后可在 adai-admin 控制台「系统 → 维护」手动重建）。
-    # 2026-09-03 修复：旧 .env（#178 前模板）无这两行 → set -euo pipefail 下 grep 无匹配即退出
-    # （部署已装 jar 却报 FAIL）——加 `|| true` 容错，无配置走「跳过重建」分支正常完成。
-    SMOKE_ACCOUNT=$(grep '^ADAI_SMOKE_ACCOUNT=' /opt/adaios/backend/.env 2>/dev/null | cut -d= -f2 || true)
-    SMOKE_PASSWORD=$(grep '^ADAI_SMOKE_PASSWORD=' /opt/adaios/backend/.env 2>/dev/null | cut -d= -f2 || true)
-    if [ -n "$SMOKE_PASSWORD" ]; then
-        TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-            -H "Content-Type: application/json" \
-            -d "{\"account\":\"${SMOKE_ACCOUNT:-adai}\",\"password\":\"$SMOKE_PASSWORD\"}" \
-            | grep -oE '"token":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
-        if [ -n "$TOKEN" ]; then
-            curl -s -X POST "http://localhost:8080/api/v1/admin/memory/rebuild?userId=${SMOKE_ACCOUNT:-adai}" \
-                -H "Authorization: Bearer $TOKEN" || true
-            echo ""
-        else
-            echo "  → 登录失败（账号密码未设/错误）：跳过自动重建，可后续在控制台手动重建"
-        fi
-    else
-        echo "  → .env 未配 ADAI_SMOKE_PASSWORD：跳过自动重建（首次部署请先 setup 设密码，控制台手动重建）"
-    fi
+    # 2026-09-16（REVIEW P2-工程5）：这一步原先会登录后调 /admin/memory/rebuild，但**产品账号不是
+    # admin**（实测 adai 的 role=user）→ 每次都回 403「仅管理员账号可访问」，而日志里那行 error
+    # 会让人误以为部署出了问题（部署本身没事）。记忆重建本质是**数据治理动作**，归 admin 后台
+    # 「系统 → 维护」手动执行更合适——这里改为**如实说明**，不再假执行。
+    echo "  → 记忆重建不在部署脚本里做（该端点需 role=admin）：请到 adai-admin「系统 → 维护」手动重建"
     echo "✅ 部署完成！验证（需登录态）："
     curl -s -o /dev/null -w "  /auth/me HTTP %{http_code}\n" http://localhost:8080/api/v1/auth/me || true
 else

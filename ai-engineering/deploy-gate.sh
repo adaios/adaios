@@ -85,6 +85,13 @@ FAILED=0
 # REVIEW #178（2026-09-02）：ADAI_ADMIN_TOKEN 退役——smoke 走统一登录，
 # 从 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD 读账号密码（系统内已设密码的账号；
 # 若 smoke 需打 /admin、/accounts 端点则必须是 admin 账号）。（deploy 前手动设置，或跳过登录失败即 FAILED）。
+# 2026-09-16：凭据优先从 services/adai-core/.env 取（该文件已 gitignore，密钥不落 git）。
+# 原先只认环境变量——没人 export 时 smoke 直接 FAIL（2026-09-16 部署实测就是这么卡住的，
+# 当时只能手动登录补跑）。只提取这两行、**不 source 整个 .env**（避免引入无关变量或语法地雷）。
+if [ -z "${ADAI_SMOKE_PASSWORD:-}" ] && [ -f services/adai-core/.env ]; then
+    ADAI_SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-$(grep '^ADAI_SMOKE_ACCOUNT=' services/adai-core/.env | head -1 | cut -d= -f2-)}"
+    ADAI_SMOKE_PASSWORD="$(grep '^ADAI_SMOKE_PASSWORD=' services/adai-core/.env | head -1 | cut -d= -f2-)"
+fi
 SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-adai}"
 SMOKE_PASSWORD="${ADAI_SMOKE_PASSWORD:-}"
 TOKEN=""
