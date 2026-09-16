@@ -1,6 +1,6 @@
 ---
 title: 固定动作清单（每天 / 每周 / 到期）
-description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、guard-prod.sh 与两个 LaunchAgent
+description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
 updated: 2026-09-16
@@ -58,6 +58,7 @@ bash ai-engineering/guard-unfixed.sh             # 未修问题全量（REVIEW +
 工程侧（定时机制，见 §六 现状）：
 - 每日 21:10 → 生产数据备份（`com.adai.adaios-backup`）
 - 每周一 09:00 → 每周审查 W1–W6（`com.adai.adaios-weekly-audit`）
+- 工作日 12:01 → 午间谷时任务壳（`com.adai.adaios-noon-task`）：12:00–14:00 是 DeepSeek **半价窗口**，壳自带峰谷闸门；要跑的东西放 `ai-engineering/noon-task.d/`
 
 ---
 

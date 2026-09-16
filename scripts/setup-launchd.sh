@@ -11,9 +11,10 @@
 # 自检：                bash scripts/setup-launchd.sh --check
 # 卸载：                bash scripts/setup-launchd.sh --uninstall
 #
-# 装了哪两个：
-#   com.adai.adaios-backup        每天 21:10  生产 data/os/.env/jar 快备到 ~/backups
+# 装了哪三个：
+#   com.adai.adaios-backup        每天 21:10    生产 data/os/.env/jar 快备到 ~/backups
 #   com.adai.adaios-weekly-audit  每周一 09:00  weekly-audit.sh W1-W6（防审查休眠）
+#   com.adai.adaios-noon-task     工作日 12:01  noon-task.sh（DeepSeek 午间谷时半价窗口）
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -22,14 +23,19 @@ AGENTS="$HOME/Library/LaunchAgents"
 STATE="${ROOT}/ai-engineering/state"
 BACKUP_LOG="${STATE}/backup.log"
 AUDIT_LOG="${STATE}/weekly-audit.log"
+NOON_LOG="${STATE}/noon-task.log"
 
 BACKUP_LABEL="com.adai.adaios-backup"
 AUDIT_LABEL="com.adai.adaios-weekly-audit"
+NOON_LABEL="com.adai.adaios-noon-task"
 
 uid_num="$(id -u)"
 
 # ── 生成单个 plist ────────────────────────────────────────────
 # 参数: 标签 脚本绝对路径 额外参数(可空) 日志路径 若干 StartCalendarInterval 键值
+#       键值成对给；独立参数 '|' 表示再开一个 <dict>。
+#       StartCalendarInterval 是数组 = OR 关系，且 launchd 不支持 Weekday 范围，
+#       所以「工作日」只能靠 5 个 dict 展开（见 do_install 的 noon-task）。
 write_plist() {
   local label="$1" script="$2" extra="$3" log="$4"; shift 4
   local out="${AGENTS}/${label}.plist"
@@ -59,6 +65,11 @@ PLIST_HEAD
 PLIST_TAIL
   # 剩余参数成对：键 值 键 值 …
   while [ "$#" -gt 0 ]; do
+    if [ "$1" = "|" ]; then
+      printf '\t\t</dict>\n\t\t<dict>\n'
+      shift
+      continue
+    fi
     printf '\t\t\t<key>%s</key>\n\t\t\t<integer>%s</integer>\n' "$1" "$2"
     shift 2
   done
@@ -91,15 +102,25 @@ do_install() {
   echo "── 安装定时任务（LaunchAgent）──"
 
   # 日志文件必须先能创建：launchd 打不开 StandardOutPath 时任务会直接起不来（静默）
-  : > "${BACKUP_LOG}" 2>/dev/null || true
-  : > "${AUDIT_LOG}" 2>/dev/null || true
+  # 但只能在「不存在」时创建 —— 不能写 ': > 文件'：那会把历史日志截断清零。
+  # （2026-09-16 实测踩到：重装一次，backup / weekly-audit 两个历史日志当场变 0 字节。）
+  local _log
+  for _log in "${BACKUP_LOG}" "${AUDIT_LOG}" "${NOON_LOG}"; do
+    [ -e "${_log}" ] || : > "${_log}" 2>/dev/null || true
+  done
 
   write_plist "${BACKUP_LABEL}" "${ROOT}/scripts/backup_prod.sh" "" "${BACKUP_LOG}" \
     Hour 21 Minute 10
   write_plist "${AUDIT_LABEL}" "${ROOT}/ai-engineering/weekly-audit.sh" "--auto" "${AUDIT_LOG}" \
     Weekday 1 Hour 9 Minute 0
+  write_plist "${NOON_LABEL}" "${ROOT}/ai-engineering/noon-task.sh" "" "${NOON_LOG}" \
+    Weekday 1 Hour 12 Minute 1 '|' \
+    Weekday 2 Hour 12 Minute 1 '|' \
+    Weekday 3 Hour 12 Minute 1 '|' \
+    Weekday 4 Hour 12 Minute 1 '|' \
+    Weekday 5 Hour 12 Minute 1
 
-  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}"; do
+  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}" "${NOON_LABEL}"; do
     launchctl bootout "gui/${uid_num}/${label}" 2>/dev/null || true
     if launchctl bootstrap "gui/${uid_num}" "${AGENTS}/${label}.plist" 2>/dev/null; then
       echo "  ✓ 已加载 ${label}"
@@ -112,6 +133,7 @@ do_install() {
   echo "✅ 安装完成（日志在 ai-engineering/state/）"
   echo "   立即验证: bash scripts/setup-launchd.sh --check"
   echo "   手动触发: launchctl kickstart -k gui/${uid_num}/${BACKUP_LABEL}"
+  echo "             launchctl kickstart -k gui/${uid_num}/${NOON_LABEL}"
 }
 
 # ── 自检 ─────────────────────────────────────────────────────
@@ -119,7 +141,7 @@ do_install() {
 do_check() {
   local rc=0
   echo "── 定时任务自检 ──"
-  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}"; do
+  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}" "${NOON_LABEL}"; do
     if launchctl print "gui/${uid_num}/${label}" >/dev/null 2>&1; then
       echo "  ✅ ${label} 已加载"
     else
@@ -171,6 +193,20 @@ do_check() {
     echo "  ⚠️ 每周审查尚无日志（下周一 09:00 首次跑；可 kickstart 立刻验证）"
   fi
 
+  # 午间谷时新鲜度：只在工作日跑，跨周末 3 天属正常 → 阈值给到 5 天
+  # （长假会误报，属已知误差：宁可提示也不要静默失效，这正是 weekly-audit 踩过的坑）
+  if [ -s "${NOON_LOG}" ]; then
+    local nage=$(( ( $(date +%s) - $(stat -f %m "${NOON_LOG}") ) / 86400 ))
+    if [ "${nage}" -le 5 ]; then
+      echo "  ✅ 午间谷时 ${nage} 天前跑过"
+    else
+      echo "  ❌ 午间谷时已 ${nage} 天未跑 → 看 ${NOON_LOG}"
+      rc=1
+    fi
+  else
+    echo "  ⚠️ 午间谷时尚无日志（下个工作日 12:01 首次跑；可 kickstart 立刻验证）"
+  fi
+
   echo ""
   if [ "${rc}" -eq 0 ]; then echo "── 结果: PASS ──"; else echo "── 结果: FAIL ──"; fi
   return "${rc}"
@@ -178,7 +214,7 @@ do_check() {
 
 # ── 卸载 ─────────────────────────────────────────────────────
 do_uninstall() {
-  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}"; do
+  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}" "${NOON_LABEL}"; do
     launchctl bootout "gui/${uid_num}/${label}" 2>/dev/null || true
     rm -f "${AGENTS}/${label}.plist"
     echo "  ✓ 已卸载 ${label}"
