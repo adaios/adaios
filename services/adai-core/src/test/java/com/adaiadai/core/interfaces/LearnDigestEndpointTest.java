@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -44,6 +45,9 @@ class LearnDigestEndpointTest {
     private final LearnReviewPushService reviewPushService = mock(LearnReviewPushService.class);
     private final LearnTranscriptionService transcriptionService = mock(LearnTranscriptionService.class);
     private final PluginService pluginService = mock(PluginService.class);
+    /** 门控 B 降级落盘（RFC 20260917）。 */
+    private final com.adaiadai.core.kernel.record.RecordRepository recordRepository =
+            mock(com.adaiadai.core.kernel.record.RecordRepository.class);
 
     private final ObjectMapper om = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -55,7 +59,7 @@ class LearnDigestEndpointTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService,
-                        reviewPushService, transcriptionService, pluginService))
+                        reviewPushService, transcriptionService, pluginService, recordRepository))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
@@ -112,13 +116,18 @@ class LearnDigestEndpointTest {
                 .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("粘进来")));
     }
 
+    /** 门控 B（RFC 20260917）：无插件时 `/digest` 面同样降级为「接收」，不再 403。 */
     @Test
-    void digest_withoutLearnPlugin_returns403() throws Exception {
+    void digest_withoutLearnPlugin_recordsInsteadOfForbidden() throws Exception {
         mvc().perform(post("/api/v1/learn/digest")
                         .header("X-User-Id", "bob")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"url\":\"https://example.com/a\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("recorded"));
+
+        verify(digestService, never()).submit(anyString(), any(LearnDigestAppService.DigestRequest.class));
+        verify(recordRepository).save(eq("bob"), any(com.adaiadai.core.kernel.record.ContentRecord.class));
     }
 
     @Test

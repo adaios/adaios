@@ -1880,6 +1880,17 @@ class _DigestDialogState extends State<_DigestDialog> {
         );
       }
       if (!mounted) return;
+      // 门控 B（RFC 20260917）：无 learn 插件时后端只「接收」不「整理」——
+      // 素材已落成一条记录，**不能再轮询**（/digest/status 对无插件用户仍 403）。
+      if (status == 'recorded') {
+        setState(() {
+          _submitting = false;
+          _polling = false;
+          _progress = '';
+          _outcome = '已经帮你记下了。开启「学习」后，我可以把它整理成卡片。';
+        });
+        return;
+      }
       setState(() {
         _submitting = false;
         _polling = true;

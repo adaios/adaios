@@ -1625,7 +1625,7 @@ class _DigestInputPageState extends State<_DigestInputPage> {
     });
     final gen = ++_gen;
     try {
-      await widget.api.submitLearnDigest(
+      final status = await widget.api.submitLearnDigest(
         url: link.isEmpty ? null : link,
         content: content.isEmpty ? null : content,
         type: _type,
@@ -1633,6 +1633,20 @@ class _DigestInputPageState extends State<_DigestInputPage> {
         author: _trimOrNull(_authorCtl),
       );
       if (!mounted || gen != _gen) return;
+      // 门控 B（RFC 20260917）：无 learn 插件时后端只「接收」不「整理」——
+      // 素材已落成一条记录，**不能再轮询**（/digest/status 对无插件用户仍 403）。
+      if (status == 'recorded') {
+        setState(() {
+          _submitting = false;
+          _polling = false;
+          _job = null;
+          _progress = '';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已经帮你记下了。开启「学习」后，我可以把它整理成卡片。'),
+        ));
+        return;
+      }
       setState(() {
         _submitting = false;
         _polling = true;

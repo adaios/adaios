@@ -22,7 +22,10 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -46,6 +49,9 @@ class LearnControllerTest {
     private final com.adaiadai.core.application.LearnTranscriptionService transcriptionService =
             mock(com.adaiadai.core.application.LearnTranscriptionService.class);
     private final PluginService pluginService = mock(PluginService.class);
+    /** 门控 B 降级落盘（RFC 20260917）。 */
+    private final com.adaiadai.core.kernel.record.RecordRepository recordRepository =
+            mock(com.adaiadai.core.kernel.record.RecordRepository.class);
     private final ObjectMapper om = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -55,7 +61,7 @@ class LearnControllerTest {
                 java.util.Arrays.asList(plugins).contains(PluginRegistry.PLUGIN_LEARN));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, reviewPushService, transcriptionService, pluginService))
+        return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService, reviewPushService, transcriptionService, pluginService, recordRepository))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
@@ -70,13 +76,37 @@ class LearnControllerTest {
                 List.of("02:31 回调一半=(high+low)/2"), List.of("口径一致？"), "");
     }
 
+    /**
+     * 门控 B（RFC 20260917）：无 learn 插件时**不再 403**——「接收」是基础能力，落成一条普通记录。
+     * <p>
+     * 2026-09-17 前的行为是 403「learn 插件未启用」→ 新用户分享第一步就断（RFC §一 F1）。
+     */
     @Test
-    void digest_withoutLearnPlugin_returns403() throws Exception {
+    void digest_withoutLearnPlugin_recordsInsteadOfForbidden() throws Exception {
         mvc().perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "bob")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"字幕内容\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("recorded"))
+                .andExpect(jsonPath("$.recordId").exists())
+                .andExpect(jsonPath("$.message").exists());
+
+        // V2 验收：接收路径**不得**触发任何消化（不抓取 / 不转写 / 不调 LLM）——零费用
+        verify(digestService, never()).submit(anyString(), any(LearnDigestAppService.DigestRequest.class));
+        // 素材确实落成了一条记录（接收不丢）
+        verify(recordRepository).save(eq("bob"), any(com.adaiadai.core.kernel.record.ContentRecord.class));
+    }
+
+    /** 门控 B：**校验优先于门控**——无插件时参数非法仍 400，不得静默记一条空记录。 */
+    @Test
+    void digest_withoutLearnPlugin_blankContent_stillReturns400() throws Exception {
+        mvc().perform(post("/api/v1/learn/cards")
+                        .header("X-User-Id", "bob")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verify(recordRepository, never()).save(anyString(), any(com.adaiadai.core.kernel.record.ContentRecord.class));
     }
 
     @Test

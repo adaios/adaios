@@ -5,6 +5,9 @@ import com.adaiadai.core.domain.learn.LearnCardRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnPage;
 import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.memory.MemoryPattern;
+import com.adaiadai.core.kernel.memory.MemoryPreference;
+import com.adaiadai.core.kernel.memory.MemoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -73,6 +76,86 @@ class LearnDigestAppServiceTest {
             "key_points":["02:31 回调一半=(high+low)/2","05:47 与 R66 互补"],
             "questions":["它与课程口径一致吗？"],
             "trade_related":true,"trade_note":"与 R66 止损互补"}""";
+
+    // ── RFC 20260917 §四：画像回流（把「你是谁」拼进生成 prompt）──
+
+    /** 带画像的装配（走主构造器：memoryService 落在生产参数位）。 */
+    private LearnDigestAppService serviceWithProfile(MemoryService memoryService) {
+        return new LearnDigestAppService(aiClient, repository, directExecutor, fetchService,
+                transcriptionService, null, null, memoryService, 4096, 30);
+    }
+
+    /** 捕获最近一次交给 LLM 的 user prompt。 */
+    private String capturePrompt() {
+        ArgumentCaptor<com.adaiadai.core.kernel.context.engine.ContextPackage> captor =
+                ArgumentCaptor.forClass(com.adaiadai.core.kernel.context.engine.ContextPackage.class);
+        verify(aiClient).generate(captor.capture(), any());
+        return captor.getValue().prompt();
+    }
+
+    /** V4 正向：有画像时偏好与行为模式都进 prompt。 */
+    @Test
+    void digest_withProfile_injectsPreferencesAndPatterns() {
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findAllPreferences("adai"))
+                .thenReturn(List.of(new MemoryPreference("偏好系统化分析、要技术深度", 0.9)));
+        when(memoryService.findAllPatterns("adai"))
+                .thenReturn(List.of(new MemoryPattern("倾向先建立完整体系再执行", 0.8)));
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        serviceWithProfile(memoryService).digest("adai", "素材正文", null, "bilibili", "某UP", null, null);
+
+        String prompt = capturePrompt();
+        assertTrue(prompt.contains("偏好系统化分析"), "画像偏好应进入生成 prompt");
+        assertTrue(prompt.contains("先建立完整体系"), "行为模式应进入生成 prompt");
+        assertTrue(prompt.contains("我的长期画像"), "应有独立画像段（并明示只决定「怎么讲」）");
+    }
+
+    /** V4 反向：无画像（5 参数测试装配 memoryService=null）时 prompt 不含画像段——行为与改造前一致。 */
+    @Test
+    void digest_withoutProfile_promptHasNoProfileSection() {
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        service.digest("adai", "素材正文", null, "bilibili", "某UP", null, null);
+
+        assertFalse(capturePrompt().contains("我的长期画像"), "无画像时不得出现画像段");
+    }
+
+    /** V5 验收：注入量有上限（Top 5），不随记忆增长而膨胀。 */
+    @Test
+    void digest_profileInjection_cappedAtTopN() {
+        MemoryService memoryService = mock(MemoryService.class);
+        List<MemoryPreference> many = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            many.add(new MemoryPreference("偏好条目" + i, 0.9 - i * 0.01));
+        }
+        when(memoryService.findAllPreferences("adai")).thenReturn(many);
+        when(memoryService.findAllPatterns("adai")).thenReturn(List.of());
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        serviceWithProfile(memoryService).digest("adai", "素材正文", null, null, null, null, null);
+
+        String prompt = capturePrompt();
+        long injected = 0;
+        for (int i = 0; i < 20; i++) {
+            if (prompt.contains("偏好条目" + i)) injected++;
+        }
+        assertEquals(5, injected, "V5：画像注入必须有上限（Top 5）");
+    }
+
+    /** 画像读取失败不得影响消化主链路：按「无画像」继续（fail-visible，不抛、不编造）。 */
+    @Test
+    void digest_profileReadFailure_fallsBackToNoProfile() {
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findAllPreferences("adai")).thenThrow(new RuntimeException("memory 文件坏了"));
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+
+        LearnCard card = serviceWithProfile(memoryService)
+                .digest("adai", "素材正文", null, null, null, null, null);
+
+        assertEquals("回调一半的判定", card.title());
+        assertFalse(capturePrompt().contains("我的长期画像"));
+    }
 
     @Test
     void digest_tradingContent_savesCardWithTradeRelated() {        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
@@ -720,7 +803,7 @@ class LearnDigestAppServiceTest {
         var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
         when(quota.imagesOn(eq("adai"), any())).thenReturn(30);
         LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
-                fetchService, transcriptionService, visualAiClient, quota, 4096, 30);
+                fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
 
         LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai",
                 List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
@@ -737,7 +820,7 @@ class LearnDigestAppServiceTest {
         when(quota.imagesOn(eq("adai"), any())).thenThrow(
                 new com.adaiadai.core.infrastructure.storage.StorageException("账本坏了", null));
         LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
-                fetchService, transcriptionService, visualAiClient, quota, 4096, 30);
+                fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
 
         LearnException e = assertThrows(LearnException.class, () -> svc.submitImages("adai",
                 List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
@@ -745,5 +828,25 @@ class LearnDigestAppServiceTest {
 
         assertTrue(e.getMessage().contains("额度记录读不出来"), e.getMessage());
         verifyNoInteractions(visualAiClient);
+    }
+
+    @Test
+    void submitImages_executorRejected_refundsQuota() {
+        // 2026-09-17 深审 P2：记账在 execute 之前，任务没排上必须退回——
+        // 否则「什么也没得到，当天的图片额度却被耗掉」（接口写了允许负数回退，此前零调用者）。
+        var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
+        when(quota.imagesOn(eq("adai"), any())).thenReturn(0);
+        java.util.concurrent.Executor rejecting = r -> {
+            throw new java.util.concurrent.RejectedExecutionException("队列满");
+        };
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting,
+                fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
+
+        assertThrows(LearnException.class, () -> svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                null, null));
+
+        org.mockito.Mockito.verify(quota).consumeImages(eq("adai"), any(), eq(1));
+        org.mockito.Mockito.verify(quota).consumeImages(eq("adai"), any(), eq(-1));
     }
 }
