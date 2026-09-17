@@ -176,7 +176,14 @@ class _FeedPageState extends State<FeedPage> {
         _currentPage += 1;
         // S-8（2026-08-26 拍板最新在底部）：reverse:true 渲染下，更早页（更旧）必须插数组
         // 头部（视觉顶部），最新保留在数组尾部（视觉底部）——原来追加尾部会压住最新，顺序错乱。
-        _cards = [...moreCards, ..._cards];
+        // P1-前端3（2026-09-17，对齐 adai-app _loadMore 的 P1-4 修复）：合并按 id 去重——
+        // page0 会附带**全部**附加条目（action/market/push），它们撑破分页边界后
+        // 同一 id 可能既在 _cards 里又出现在「更早页」，直接拼接会渲染两份。
+        final existingIds = _cards.map((c) => c.id).toSet();
+        _cards = [
+          ...moreCards.where((c) => !existingIds.contains(c.id)),
+          ..._cards,
+        ];
         // #234：终止判定按已加载核心条目数；页面无更多数据（moreCards 空）同样终止
         _hasMore = moreCards.isNotEmpty && _coreCardCount < _totalToday;
         _loadingMore = false;

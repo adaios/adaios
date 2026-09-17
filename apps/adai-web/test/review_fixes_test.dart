@@ -195,6 +195,55 @@ void main() {
       expect(find.text('记录 7'), findsOneWidget);
       expect(find.text('加载更早'), findsNothing);
     });
+
+    // P1-前端3（2026-09-17，对齐 adai-app P1-前端3）：加载更早合并必须按 id 去重。
+    // page0 会附带**全部**附加条目（action/market/push），它们撑破分页边界后，
+    // 同一 id 可能既已在 _cards、又出现在「更早页」——直接拼接会渲染两份（web 刷新是整表
+    // 替换所以不炸，但「加载更早」这条路径缺去重，是同族隐患）。
+    testWidgets('更早页返回已存在的 id → 合并按 id 去重，不渲染两份', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 2000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final api = ApiService(baseUrl: 'http://test', client: MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/brief') return _json({'content': '今日概览'});
+        if (path == '/api/v1/brief/cached') return _json({'content': '今日概览'});
+        if (path == '/api/v1/feed') {
+          final page = int.parse(request.url.queryParameters['page'] ?? '0');
+          if (page == 0) {
+            return _json({
+              'entries': [
+                _feedEntry('r0', '记录 0'),
+                _feedEntry('r1', '记录 1'),
+                _feedEntry('r2', '记录 2'),
+              ],
+              'totalToday': 4,
+            });
+          }
+          // page1 与 page0 重叠（新增/删除导致分页错位）：r2 是已存在的 id
+          return _json({
+            'entries': [_feedEntry('r2', '记录 2'), _feedEntry('r3', '记录 3')],
+            'totalToday': 4,
+          });
+        }
+        if (path == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
+        if (path == '/api/v1/project/tasks/stats') {
+          return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
+        }
+        return http.Response('not found', 404);
+      }));
+
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: FeedPage(api: api))));
+      await tester.pumpAndSettle();
+      expect(find.text('记录 2'), findsOneWidget);
+
+      await tester.tap(find.text('加载更早'));
+      await tester.pumpAndSettle();
+
+      // 去重：r2 仍只出现一次；更早页里真正的新 id r3 正常加入
+      expect(find.text('记录 2'), findsOneWidget, reason: '同 id 不得因合并渲染两份');
+      expect(find.text('记录 3'), findsOneWidget);
+    });
   });
 
   group('Feed #234 附加条目不计入分页终止', () {
