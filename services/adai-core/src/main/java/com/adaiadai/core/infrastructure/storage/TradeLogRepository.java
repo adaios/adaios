@@ -273,6 +273,58 @@ public class TradeLogRepository {
         }
     }
 
+    /**
+     * 按**行标识**补写候选成交日期（P1-交易54 收尾，2026-09-17）：同标的同方向的多笔候选
+     * （生产实据：当日三笔亨通光电买入各 100 股）只有 id 能定位到其中一条——旧口径
+     * {@link #updateTradeDate} 会把它们**一起补上**同一个日期（用户对其中一条改日期，
+     * 另外两条也被改，而它们可能来自不同的成交日）。
+     */
+    public boolean updateTradeDateById(String userId, LocalDate date, String id, LocalDate tradeDate) {
+        if (id == null || id.isBlank() || tradeDate == null) return false;
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean updated = false;
+            for (int i = 0; i < existing.size(); i++) {
+                TradeLogCandidate c = existing.get(i);
+                if (id.equals(c.id())) {
+                    existing.set(i, new TradeLogCandidate(
+                            c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
+                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
+                    updated = true;
+                }
+            }
+            if (updated) saveUnlocked(userId, date, existing);
+            return updated;
+        }
+    }
+
+    /** 按**行标识**补写候选成交元信息（P1-交易54 收尾）：语义同 {@link #updateMeta}，定位改用 id。 */
+    public boolean updateMetaById(String userId, LocalDate date, String id, String orderId, BigDecimal fee) {
+        if (id == null || id.isBlank()) return false;
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        boolean hasFee = fee != null;
+        if (!hasOrder && !hasFee) return false;
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean updated = false;
+            for (int i = 0; i < existing.size(); i++) {
+                TradeLogCandidate c = existing.get(i);
+                if (id.equals(c.id())) {
+                    existing.set(i, new TradeLogCandidate(
+                            c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
+                            c.tradeDate(), c.source(), c.complete(),
+                            hasOrder ? orderId : c.orderId(),
+                            hasFee ? fee : c.fee(), c.id()));
+                    updated = true;
+                }
+            }
+            if (updated) saveUnlocked(userId, date, existing);
+            return updated;
+        }
+    }
+
     private void saveUnlocked(String userId, LocalDate date, List<TradeLogCandidate> candidates) {
         try {
             var arr = MAPPER.createArrayNode();

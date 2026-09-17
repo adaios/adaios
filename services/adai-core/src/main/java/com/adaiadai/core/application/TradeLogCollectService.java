@@ -192,6 +192,19 @@ public class TradeLogCollectService {
     }
 
     /**
+     * 按**行标识**补写候选成交日期（P1-交易54 收尾，2026-09-17）：前端默认路径。
+     * 同标的同方向的多笔候选（当日三笔亨通光电各 100 股）只有 id 能定位到其中一条；
+     * 旧口径会把它们**一起补上**同一个日期（而那几条可能来自不同的成交日）。
+     */
+    public boolean setTradeDateById(String userId, String id, LocalDate tradeDate) {
+        LocalDate today = LocalDate.now();
+        boolean updated = tradeLogRepository.updateTradeDateById(userId, today, id, tradeDate);
+        log.info("交易日志候选补日期（按 id）| userId={} | id={} → {} | {}", userId, id,
+                tradeDate, updated ? "已更新" : "未命中");
+        return updated;
+    }
+
+    /**
      * 补写候选成交编号/手续费（P2-交易36 治本，2026-09-09）：截图入账/手动确认成交缺
      * orderId/fee——确认前用户在候选上补填（PUT /trade-log/meta），确认落库时随
      * {@link #confirm(String)} 经 recordTradeWithOrderId 透传流水。
@@ -212,6 +225,19 @@ public class TradeLogCollectService {
         log.info("交易日志候选补成交元信息 | userId={} | {} {} | orderId={} fee={} | {}",
                 userId, direction, symbol,
                 hasOrder ? orderId : "（不改）", hasFee ? fee : "（不改）",
+                updated ? "已更新" : "未命中");
+        return updated;
+    }
+
+    /** 按**行标识**补写候选成交元信息（P1-交易54 收尾，2026-09-17）：语义同 {@link #updateMeta}，定位改用 id。 */
+    public boolean updateMetaById(String userId, String id, String orderId, BigDecimal fee) {
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        boolean hasFee = fee != null;
+        if (!hasOrder && !hasFee) return false;
+        boolean updated = tradeLogRepository.updateMetaById(userId, LocalDate.now(), id,
+                hasOrder ? orderId : null, hasFee ? fee : null);
+        log.info("交易日志候选补成交元信息（按 id）| userId={} | id={} | orderId={} fee={} | {}",
+                userId, id, hasOrder ? orderId : "（不改）", hasFee ? fee : "（不改）",
                 updated ? "已更新" : "未命中");
         return updated;
     }

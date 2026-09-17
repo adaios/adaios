@@ -220,4 +220,37 @@ class TradeLogRepositoryTest {
         assertFalse(repo.discardById("default", day, "cand_not_exist"));
         assertEquals(1, repo.findByDate("default", day).size(), "无匹配不得误删");
     }
+
+    @Test
+    void updateTradeDateById_onlyTouchesThatRow() {
+        // P1-交易54 收尾（2026-09-17）：三笔同标的同方向各 100 股——按 id 补日期必须**只补一条**；
+        // 旧口径按 symbol+direction 会把三条一起补上同一个日期（而它们可能来自不同的成交日）。
+        repo.append("default", day, p("600487", "68.270", 100));
+        repo.append("default", day, p("600487", "67.730", 100));
+        repo.append("default", day, p("600487", "67.920", 100));
+        List<TradeLogCandidate> before = repo.findByDate("default", day);
+        String target = before.get(1).id();
+        LocalDate filled = LocalDate.of(2026, 9, 16);
+
+        assertTrue(repo.updateTradeDateById("default", day, target, filled));
+
+        List<TradeLogCandidate> after = repo.findByDate("default", day);
+        assertEquals(1, after.stream().filter(c -> filled.equals(c.tradeDate())).count(),
+                "只有 id 命中的那一条被补上日期（另外两条保持 null）");
+        assertTrue(after.stream().anyMatch(c -> target.equals(c.id()) && filled.equals(c.tradeDate())));
+    }
+
+    @Test
+    void updateMetaById_onlyTouchesThatRow() {
+        repo.append("default", day, p("600487", "68.270", 100));
+        repo.append("default", day, p("600487", "67.730", 100));
+        List<TradeLogCandidate> before = repo.findByDate("default", day);
+        String target = before.get(0).id();
+
+        assertTrue(repo.updateMetaById("default", day, target, "委托号88", new BigDecimal("5.00")));
+
+        List<TradeLogCandidate> after = repo.findByDate("default", day);
+        assertEquals(1, after.stream().filter(c -> "委托号88".equals(c.orderId())).count(),
+                "补成交编号只落到 id 命中的那一条");
+    }
 }

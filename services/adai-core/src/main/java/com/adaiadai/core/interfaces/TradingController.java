@@ -1195,11 +1195,19 @@ public class TradingController {
             @RequestBody java.util.Map<String, String> body) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
+        // P1-交易54 收尾（2026-09-17）：**优先按 id 行级定位**——同标的同方向的多笔候选
+        // （当日三笔亨通光电各 100 股）只有它能区分；symbol+direction 是旧口径（会把那几笔
+        // **一起补上同一日期**），仅为兼容旧客户端保留。
+        String id = body.get("id");
         String symbol = body.get("symbol");
         String direction = body.get("direction");
         String dateStr = body.get("tradeDate");
-        if (symbol == null || symbol.isBlank() || direction == null || dateStr == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "symbol/direction/tradeDate 必填"));
+        boolean byId = id != null && !id.isBlank();
+        if (!byId && (symbol == null || symbol.isBlank() || direction == null || direction.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "id 或 symbol/direction 必填"));
+        }
+        if (dateStr == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "tradeDate 必填"));
         }
         java.time.LocalDate tradeDate;
         try {
@@ -1207,7 +1215,9 @@ public class TradingController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", "tradeDate 格式应为 yyyy-MM-dd"));
         }
-        boolean updated = tradeLogCollectService.setTradeDate(userId, symbol, direction, tradeDate);
+        boolean updated = byId
+                ? tradeLogCollectService.setTradeDateById(userId, id, tradeDate)
+                : tradeLogCollectService.setTradeDate(userId, symbol, direction, tradeDate);
         return updated ? ResponseEntity.ok(Map.of("updated", true))
                 : ResponseEntity.notFound().build();
     }
@@ -1224,10 +1234,13 @@ public class TradingController {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
         if (body == null) return ResponseEntity.badRequest().body(Map.of("error", "请求体为空"));
+        // P1-交易54 收尾（2026-09-17）：优先按 id 行级定位（旧口径会把同代码同方向的多笔一起补）
+        String id = body.get("id") != null ? String.valueOf(body.get("id")) : null;
         String symbol = body.get("symbol") != null ? String.valueOf(body.get("symbol")) : null;
         String direction = body.get("direction") != null ? String.valueOf(body.get("direction")) : null;
-        if (symbol == null || symbol.isBlank() || direction == null || direction.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "symbol/direction 必填"));
+        boolean byId = id != null && !id.isBlank();
+        if (!byId && (symbol == null || symbol.isBlank() || direction == null || direction.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "id 或 symbol/direction 必填"));
         }
         String orderId = body.get("orderId") != null ? String.valueOf(body.get("orderId")) : null;
         BigDecimal fee = null;
@@ -1238,7 +1251,9 @@ public class TradingController {
                 return ResponseEntity.badRequest().body(Map.of("error", "fee 不是有效数字"));
             }
         }
-        boolean updated = tradeLogCollectService.updateMeta(userId, symbol, direction, orderId, fee);
+        boolean updated = byId
+                ? tradeLogCollectService.updateMetaById(userId, id, orderId, fee)
+                : tradeLogCollectService.updateMeta(userId, symbol, direction, orderId, fee);
         return ResponseEntity.ok(Map.of("updated", updated));
     }
 
