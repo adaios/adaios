@@ -3,9 +3,9 @@ title: 功能落地收尾流程（/ship）
 description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-09-16
+updated: 2026-09-17
 status: active
-lines: 120
+lines: 136
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
