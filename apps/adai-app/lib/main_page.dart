@@ -1823,6 +1823,9 @@ class _MainPageState extends State<MainPage>
   Widget _buildEmptyState() {
     // 2026-09-16「第一次见面」批：空态不再是「还没有记录 + 两个点不出结果的冷词」，
     // 而是阿呆先开口 + 三个能**直接发问**的开场（详见 _firstMeetingQuestions 注释）。
+    // 2026-09-17 REVIEW P1-UI14：空 Feed ≠ 新用户。老用户今天恰好没记录也会走到这里，
+    // 原来的「第一次见」+ 自我介绍把他当成了陌生人（真实用户反馈）。
+    // 故空态文案改为**中性**：只陈述「今天还没聊」，不假设「第一次」；不再自我介绍。
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -1861,14 +1864,14 @@ class _MainPageState extends State<MainPage>
                         fontWeight: FontWeight.w600)),
               ]),
               const SizedBox(height: 14),
-              Text('${_greetingNow()}。我是阿呆。',
+              Text('${_greetingNow()}。',
                   style: const TextStyle(
                       fontSize: 16,
                       color: AppColors.darkGrey1,
                       fontWeight: FontWeight.w600,
                       height: 1.4)),
               const SizedBox(height: 6),
-              const Text('第一次见，你先随便问我一句——点下面的也行。',
+              const Text('今天还没听你说点什么，随便问我一句——点下面的也行。',
                   style: TextStyle(
                       fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
               const SizedBox(height: 16),
@@ -1887,6 +1890,9 @@ class _MainPageState extends State<MainPage>
   ///
   /// 刻意只用 Kernel 基础能力（记录 / 问答 / 记忆）——新用户插件默认全关，
   /// 只有这几件事是**真的能立刻跑起来**的；拿没开的能力当招牌就是骗人。
+  ///
+  /// 2026-09-17 P1-UI14：它们是**任何**空 Feed 都能用的能力引导（用户 2026-09-16 拍板保留），
+  /// 不是「新用户专属」——老用户今天没记录也照样能从这里点开一个问题。
   static const List<String> _firstMeetingQuestions = [
     '你能干什么？',
     '你有什么特别的能力？',

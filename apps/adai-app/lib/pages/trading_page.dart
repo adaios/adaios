@@ -580,16 +580,24 @@ class _TradingPageState extends State<TradingPage> {
     }
   }
 
-  /// 丢弃一条候选（识别错误/重复，DELETE /trading/trade-log?symbol=&direction=）。
+  /// 丢弃一条候选（识别错误/重复，DELETE /trading/trade-log?id=）。
+  ///
+  /// P1-交易54（2026-09-17）：**按 `id` 行级定位**。原实现只传 symbol+direction，
+  /// 同标的同方向的多笔候选（生产实据：当日三笔亨通光电买入各 100 股）会**一起被删掉**；
+  /// `symbol` 为空时更是删光该方向全部候选。旧后端不返回 id → 自动退化为旧口径（兼容）。
   Future<void> _discardCandidate(TradeLogCandidateDto c) async {
+    final byId = c.id.isNotEmpty;
     try {
       await widget.api.discardTradeLogCandidate(
-        symbol: c.symbol.isEmpty ? null : c.symbol,
-        direction: c.direction,
+        id: byId ? c.id : null,
+        symbol: byId ? null : (c.symbol.isEmpty ? null : c.symbol),
+        direction: byId ? null : c.direction,
       );
       if (!mounted) return;
       setState(() => _candidates = _candidates
-          .where((x) => !(x.symbol == c.symbol && x.direction == c.direction))
+          .where((x) => byId
+              ? x.id != c.id
+              : !(x.symbol == c.symbol && x.direction == c.direction))
           .toList());
     } catch (e) {
       if (mounted) _showSnack('丢弃失败: ${_extractApiError(e)}', AppColors.darkOrange);

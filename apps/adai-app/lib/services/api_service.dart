@@ -693,11 +693,15 @@ class ApiService {
   }
 
   /// B11-4：丢弃一条保留的交易日志候选（失败/不完整钉子户）。
-  /// DELETE /api/v1/trading/trade-log?symbol=&direction=；404 幂等成功。
-  Future<void> discardTradeLogCandidate({String? symbol, String? direction}) async {
+  /// DELETE /api/v1/trading/trade-log?id=&symbol=&direction=；404 幂等成功。
+  /// P1-交易54（2026-09-17）：**优先用 `id` 行级定位**——同标的同方向的多笔候选
+  /// （当日三笔亨通光电各 100 股）只有它能精确删到一条；`symbol+direction` 是旧口径，
+  /// 会把同代码同方向的多笔一起删掉（symbol 为空更会删光该方向），仅为兼容老后端保留。
+  Future<void> discardTradeLogCandidate({String? id, String? symbol, String? direction}) async {
     try {
       final uri = Uri.parse('$baseUrl/api/v1/trading/trade-log').replace(
         queryParameters: {
+          if (id != null && id.isNotEmpty) 'id': id,
           if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
           if (direction != null && direction.isNotEmpty) 'direction': direction,
         },
@@ -2695,9 +2699,12 @@ class TradeLogCandidateDto {
   final int? volume;
   final String? tradeDate;
   final bool complete;
+  /// P1-交易54（2026-09-17）：候选**行标识**——丢弃按它定位（同标的同方向的多笔只有它能区分）。
+  /// 旧后端不返回该字段 → 空串，此时退化为旧的 symbol+direction 口径（粗粒度，会一起删）。
+  final String id;
 
   TradeLogCandidateDto({required this.symbol, required this.name, required this.direction,
-      this.price, this.volume, this.tradeDate, required this.complete});
+      this.price, this.volume, this.tradeDate, required this.complete, this.id = ''});
 
   factory TradeLogCandidateDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -2709,6 +2716,7 @@ class TradeLogCandidateDto {
       volume: int.tryParse(m['volume']?.toString() ?? ''),
       tradeDate: m['tradeDate']?.toString(),
       complete: m['complete'] as bool? ?? false,
+      id: m['id']?.toString() ?? '',
     );
   }
 }
