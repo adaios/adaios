@@ -313,6 +313,7 @@ v1.0.0（adai-admin + 多账号）：
 
 | # | 任务 | 位置/说明 | 优先级 |
 |:-:|:-----|:---------|:------:|
+| 工程-hook | **`pre-commit` 的 `guard-meta --fix` 与暂存区不一致（2026-09-17 收尾复核发现）**：`--fix` 回写的是**工作区**文件（frontmatter `lines`/`updated`），而本次提交用的是**已暂存**的旧内容 → 每次改 md 提交后，工作区都会留下「frontmatter 漂移」，直接违反 ship.md 的「收工前 `git status` 必须干净」。本次已手工补提交（`bae973e`，`lines 120→136`）。**修法二选一**：① `--fix` 之后把**已在暂存区的** md 文件重新 `git add`（只重新暂存暂存区里已有的路径，绝不把并发会话的工作区改动带进来）；② 把 `--fix` 挪到**暂存之前**（提交前手动跑一次）。倾向 ①（自动、零记忆负担），但需补一条「不误 add 未暂存路径」的反向用例。 | `.githooks/pre-commit` / `guard-meta.sh` | P2 |
 | 08-15 后端×6 | `init()` 迁移新增启动期 findAll+writeAll 依赖（accounts.json 损坏即启动 fail-fast，可接受需知悉）| `AccountFileRepository.java:67-82` | 知悉 |
 | 149 | 多账号细节复核（2026-09-05）：**accounts.json 无锁 → ✅ 已修**（2026-08-17 P1-4：单共享文件跨用户 RMW 改文件级全局锁 FILE_LOCK + 原子写，mergePlugins 账号级锁，见 AccountFileRepository 注释）；**删号不清理数据 → ✅ 已修（2026-09-16 用户拍板「二次确认后清理」）**：`DELETE /accounts/{userId}` 默认**只删账号、保留 `data/{userId}/`**，`?purge=true` 才清理并回 `purgedFiles` 计数（adai-admin 侧还会过一次「输入账号名确认」）；配套测试 2 条；**允许创建 default → ✅ 已修（`RESERVED_USER_IDS` 已禁）**（`default` 是历史遗留测试目录名，真实账号用同名会与测试夹具混淆，建议 createAccount 禁保留字 + 测试）| `AccountFileRepository` / `AccountController` | P2（v1.0.1）|
 | 153 | 数据形态失衡观察：08 月 131/133 条为对话摘要，原始 note <2% | `data/adai/records/2026/08/` | 观察 |
