@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:adai_app/main_page.dart';
 import 'package:adai_app/services/api_service.dart';
 import 'package:adai_app/services/sse_client.dart';
+import 'package:adai_app/widgets/feed_card.dart';
 import 'package:adai_app/widgets/input_bar.dart';
 
 // ────────────────────────────────────────────────────────────────
@@ -127,6 +128,12 @@ Future<_Backend> _pump(WidgetTester tester, _Backend backend, {SseClient? sseCli
   await tester.pumpAndSettle();
   return backend;
 }
+
+/// 当前已构建的 FeedCard 的 id 列表（视图层实际渲染出来的，用于查「同 id 两份」）。
+List<String> _renderedCardIds(WidgetTester tester) => tester
+    .widgetList<FeedCard>(find.byType(FeedCard))
+    .map((w) => w.data.id)
+    .toList();
 
 /// SSE 永远不通（逼 askStream 降级同步端点）。
 class _FailSse extends SseClient {
@@ -634,6 +641,51 @@ void main() {
 
       expect(find.text('重建后的新内容'), findsOneWidget);
       expect(find.text('重建前的内容'), findsNothing);
+    });
+
+    // P1-前端3（2026-09-17 真机复发；与 09-16 P2-UI12 同族）：
+    // 旧 _refreshFeed 按**位置**切旧页（sublist(0, length - _pageSize)）且从不比对 id，
+    // 只在「_cards 恰好是纯核心条目」时成立。但 page0 会附带**全部**附加条目
+    // （action 待办 / market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
+    // _pageSize(=5)，于是那条唯一的卡既落在 older 里、又在 freshCards 里 → 同 id 两份都渲染。
+    // 真机路径：用户清待办 + 收行情推送（附加条目最多）时，推送深链触发 _refreshFeed。
+    testWidgets('P1-前端3：附加条目撑破 pageSize 时刷新合并按 id 去重，同 id 不得两份', (tester) async {
+      // 视口放大，让全部 6~7 张卡都构建出来（ListView 懒构建，默认 600 高看不全）
+      tester.view.physicalSize = const Size(800, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // 1 条核心记录 + 5 条附加条目 → _cards.length(6) > _pageSize(5)，
+      // 且核心卡正好落在旧实现的「更早页」区间 sublist(0, 6-5) = [r-today] 内。
+      List<Map<String, dynamic>> page0() => [
+            _record('r-today', '今天只有这一条记录'),
+            _attached('action', 'a1', '待办一'),
+            _attached('push', 'p1', '行情推送一'),
+            _attached('market', 'm1', '行情快照一'),
+            _attached('action', 'a2', '待办二'),
+            _attached('push', 'p2', '行情推送二'),
+          ];
+      final b = _Backend()
+        ..feedPage0 = page0()
+        ..feedTotalToday = 1;
+      final tick = ValueNotifier<int>(0);
+      final api = ApiService(baseUrl: 'http://test', client: MockClient(b.handle));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: MainPage(api: api, refreshTick: tick)),
+      ));
+      await tester.pumpAndSettle();
+      expect(_renderedCardIds(tester), contains('r-today'));
+
+      // 刷新（行情推送深链 / 下拉 RefreshIndicator 走的是同一条 _refreshFeed）
+      b.feedPage0 = page0();
+      tick.value++;
+      await tester.pumpAndSettle();
+
+      final ids = _renderedCardIds(tester);
+      expect(ids.toSet().length, ids.length,
+          reason: '刷新合并后同 id 不得出现两份（P1-前端3：同一对话被重复展示）');
+      expect(ids.where((id) => id == 'r-today').length, 1);
+      expect(find.text('今天只有这一条记录'), findsOneWidget);
     });
   });
 

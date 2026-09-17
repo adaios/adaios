@@ -949,10 +949,10 @@ void main() {
       };
       await pumpTrading(tester, b);
 
-      // 缺日期候选：警示文案 + 「补日期」按钮（而非 ×）
+      // 缺日期候选：警示文案 + 「补日期」按钮；P0-UI13 后丢弃入口正交并存（两行各一个 ×）
       expect(find.textContaining('缺成交日期'), findsOneWidget);
       expect(find.text('补日期'), findsOneWidget);
-      expect(find.byIcon(Icons.close), findsOneWidget); // 仅京东方有 ×
+      expect(find.byIcon(Icons.close), findsNWidgets(2));
 
       // 确认被拦截：缺日期候选未补前不发 confirm
       await tester.tap(find.text('全部确认入账'));
@@ -1004,6 +1004,36 @@ void main() {
       expect(discarded, isTrue);
       expect(find.text('云南锗业 (002428)'), findsNothing);
       expect(find.text('京东方A (000725)'), findsOneWidget);
+    });
+
+    testWidgets('截图入账 P0-UI13：缺日期候选的 × 丢弃入口与「补日期」并存（可点）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'symbol': '002428', 'name': '云南锗业', 'direction': 'SELL',
+          'price': '93.48', 'volume': 100, 'source': 'image', 'complete': true}, // 无 tradeDate
+      ];
+      var discarded = false;
+      b.handlers['/api/v1/trading/trade-log'] = (req) async {
+        if (req.method == 'DELETE') {
+          discarded = true;
+          candidates = [];
+          return _json({'discarded': true});
+        }
+        return _json(candidates);
+      };
+      await pumpTrading(tester, b);
+
+      // 缺日期行：两个入口同时渲染（此前 else 分支把 × 吞掉，错误行删不掉）
+      expect(find.text('补日期'), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
+
+      // × 真的可点：DELETE 后本地移除该行，不需先补日期
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(discarded, isTrue);
+      expect(find.text('云南锗业 (002428)'), findsNothing);
+      expect(find.text('补日期'), findsNothing);
     });
 
     testWidgets('截图入账：相册选图 → 上传归集 → 候选出现（debugPickImages 注入）', (tester) async {

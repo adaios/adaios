@@ -289,7 +289,14 @@ class _MainPageState extends State<MainPage>
         final older = _cards.length > _pageSize
             ? _cards.sublist(0, _cards.length - _pageSize)
             : <FeedCardData>[];
-        _cards = [...freshCards, ...older];
+        // P1-前端3（2026-09-17 真机复发；与 09-16 P2-UI12 同族）：上面按**位置**切旧页
+        // 只在「_cards 恰好是纯核心条目」时成立。page0 会附带**全部**附加条目
+        // （action 待办 / market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
+        // _pageSize，于是那条唯一的对话卡既落在 older 区间里、又在 freshCards 里
+        // → 同 id 两份都渲染（用户清待办 + 收行情推送、推送深链触发刷新时实测到）。
+        // 修复：拼接前按 id 过滤 older（保留「保留更早页」语义，只去掉与 page0 重复的）。
+        final freshIds = freshCards.map((c) => c.id).toSet();
+        _cards = [...freshCards, ...older.where((c) => !freshIds.contains(c.id))];
         // P0-1：活动卡被刷新挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
         _syncActiveCard(_cards);
       });

@@ -1170,19 +1170,23 @@ class _TradingPageState extends State<TradingPage> {
           GestureDetector(
             onTap: () => _pickCandidateDate(c),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.darkOrange.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(5),
               ),
               child: const Text('补日期', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
             ),
-          )
-        else
-          GestureDetector(
-            onTap: () => _discardCandidate(c),
-            child: const Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
           ),
+        // P0-UI13（2026-09-17）：丢弃与补日期正交——缺日期时两个入口并存。
+        // 截图候选普遍识别不到日期，此前 × 被 else 分支吞掉，用户面对错误行无从删除。
+        GestureDetector(
+          onTap: () => _discardCandidate(c),
+          child: const Padding(
+            padding: EdgeInsets.only(left: 6),
+            child: Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+          ),
+        ),
       ]),
     );
   }
