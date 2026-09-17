@@ -105,24 +105,53 @@ public class LearnQuotaFileRepository implements LearnQuotaRepository {
         synchronized (lockFor(userId)) {
             JsonNode root = readRoot(userId);
             int used = Math.max(0, imagesLocked(root, day) + count);
-
-            ObjectNode next = root != null && root.isObject()
-                    ? (ObjectNode) root.deepCopy()
-                    : MAPPER.createObjectNode();
-            ObjectNode images = next.path(IMAGES_KEY).isObject()
-                    ? (ObjectNode) next.path(IMAGES_KEY)
-                    : MAPPER.createObjectNode();
-            images.put(day.toString(), used);
-            next.set(IMAGES_KEY, images);
-
-            try {
-                fileStorage.write(userId, QUOTA_PATH, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(next));
-            } catch (Exception e) {
-                throw new StorageException("图片整理记账写入失败，已中止本次整理（不产生不可追溯的费用）", e);
-            }
+            writeImagesLocked(userId, root, day, used);
             log.info("learn 图片整理记账 | userId={} | day={} | +{} 张 | 当日累计 {} 张",
                     userId, day, count, used);
             return used;
+        }
+    }
+
+    /**
+     * 原子「检查 + 记账」（P2-审查5，2026-09-17）：读 → 判 → 写全在同一把锁内完成。
+     * <p>
+     * 为什么不能沿用「先 {@link #imagesOn} 再 {@link #consumeImages}」：那是两次独立加锁，
+     * 两个并发请求会在各自锁内都读到「还没超」→ 都通过检查 → 一起写盘 → **日配额超卖**。
+     * 这是既有的「检查-再动作竞态」坑族（pitfalls 七）在配额上的又一次落地。
+     */
+    @Override
+    public LearnQuotaRepository.ImageQuotaResult tryConsumeImages(String userId, LocalDate day,
+                                                                 int count, int limit) {
+        synchronized (lockFor(userId)) {
+            JsonNode root = readRoot(userId);
+            int used = imagesLocked(root, day);
+            if (limit > 0 && used + count > limit) {
+                // 超限：**一个字节都不写**，如实把当时用量带回去做文案
+                return new LearnQuotaRepository.ImageQuotaResult(false, used);
+            }
+            int next = Math.max(0, used + count);
+            writeImagesLocked(userId, root, day, next);
+            log.info("learn 图片整理记账（原子） | userId={} | day={} | +{} 张 | 当日累计 {} 张",
+                    userId, day, count, next);
+            return new LearnQuotaRepository.ImageQuotaResult(true, next);
+        }
+    }
+
+    /** 锁内写账本（调用方必须已持有 {@link #lockFor(String)} 的锁）。 */
+    private void writeImagesLocked(String userId, JsonNode root, LocalDate day, int used) {
+        ObjectNode next = root != null && root.isObject()
+                ? (ObjectNode) root.deepCopy()
+                : MAPPER.createObjectNode();
+        ObjectNode images = next.path(IMAGES_KEY).isObject()
+                ? (ObjectNode) next.path(IMAGES_KEY)
+                : MAPPER.createObjectNode();
+        images.put(day.toString(), used);
+        next.set(IMAGES_KEY, images);
+
+        try {
+            fileStorage.write(userId, QUOTA_PATH, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(next));
+        } catch (Exception e) {
+            throw new StorageException("图片整理记账写入失败，已中止本次整理（不产生不可追溯的费用）", e);
         }
     }
 

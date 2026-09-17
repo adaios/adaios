@@ -3,6 +3,7 @@ package com.adaiadai.core.infrastructure.storage;
 import com.adaiadai.core.domain.learn.LearnQuota;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -123,5 +124,72 @@ class LearnQuotaFileRepositoryTest {
         LearnQuota quota = repository.consume("adai", YearMonth.of(2026, 9), 1, 0.00008000001d);
 
         assertEquals(0.0001d, quota.usedYuan(), 1e-9);
+    }
+
+    // ── P2-审查5（2026-09-17 deep 审 + B2 批修复）：图片日配额的「检查 + 记账」必须原子 ──
+
+    @Test
+    void tryConsumeImages_concurrentRequests_neverOversell() throws Exception {
+        // 旧实现是「imagesOn 读一次 → 稍后 consumeImages 写一次」，两次独立加锁 ——
+        // 并发请求各自读到「还没超」→ 一起写盘 → 日配额超卖。本用例在真并发下钉住原子性。
+        int limit = 5;
+        int threads = 24;
+        LocalDate day = LocalDate.of(2026, 9, 17);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var accepted = new java.util.concurrent.atomic.AtomicInteger();
+        var done = new java.util.concurrent.CountDownLatch(threads);
+        try {
+            for (int i = 0; i < threads; i++) {
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        if (repository.tryConsumeImages("adai", day, 1, limit).accepted()) {
+                            accepted.incrementAndGet();
+                        }
+                    } catch (Exception ignored) {
+                        // 拒掉不算受理（宁可少受理，也不能超卖）
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS), "并发任务应在超时前跑完");
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(limit, accepted.get(), "并发下**恰好**受理 limit 次，一次都不许多");
+        assertEquals(limit, repository.imagesOn("adai", day), "账本记的当日用量也必须正好等于上限");
+    }
+
+    @Test
+    void tryConsumeImages_overLimit_doesNotWriteAtAll() {
+        repository.tryConsumeImages("adai", LocalDate.of(2026, 9, 17), 4, 5);
+
+        var refused = repository.tryConsumeImages("adai", LocalDate.of(2026, 9, 17), 2, 5);
+
+        assertFalse(refused.accepted(), "4 + 2 > 5 → 必须拒");
+        assertEquals(4, refused.used(), "拒绝时把当时用量带回来做文案");
+        assertEquals(4, repository.imagesOn("adai", LocalDate.of(2026, 9, 17)), "被拒的请求一个字节都不该写");
+    }
+
+    @Test
+    void tryConsumeImages_underLimit_accumulates() {
+        repository.tryConsumeImages("adai", LocalDate.of(2026, 9, 17), 2, 5);
+        var second = repository.tryConsumeImages("adai", LocalDate.of(2026, 9, 17), 3, 5);
+
+        assertTrue(second.accepted(), "2 + 3 = 5 正好到上限，应当受理");
+        assertEquals(5, second.used());
+        assertEquals(5, repository.imagesOn("adai", LocalDate.of(2026, 9, 17)));
+    }
+
+    @Test
+    void tryConsumeImages_limitZero_meansUnlimited() {
+        var result = repository.tryConsumeImages("adai", LocalDate.of(2026, 9, 17), 99, 0);
+
+        assertTrue(result.accepted(), "limit<=0 = 不限（与 imageDailyLimit=0 的既有语义一致）");
+        assertEquals(99, repository.imagesOn("adai", LocalDate.of(2026, 9, 17)));
     }
 }

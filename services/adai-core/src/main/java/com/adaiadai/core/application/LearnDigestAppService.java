@@ -339,24 +339,6 @@ public class LearnDigestAppService {
         if (typeHint != null && !typeHint.isBlank() && !LearnCard.isValidType(typeHint)) {
             throw new LearnException("类型仅支持 ai/trading/other，请重试");
         }
-        // P2-learn26（2026-09-16）：图片整理是花钱动作（单次最多 3 次 VLM + 1 次 LLM），
-        // 此前唯一限流是「同 user 单任务」——加一道**轻量日配额**：不弹确认、不打断正常使用，
-        // 只把「手指快就能一直烧」这条堵住。读不到账本 → fail-closed（不整理），与转写闸同向。
-        if (quotaRepository != null && imageDailyLimit > 0) {
-            int usedToday;
-            try {
-                usedToday = quotaRepository.imagesOn(userId, LocalDate.now());
-            } catch (Exception e) {
-                log.warn("learn 图片配额读取失败，本次不做图片整理（fail-closed）| userId={} | {}",
-                        userId, e.getMessage());
-                throw new LearnException("今天的图片额度记录读不出来，为防超支我先不整理了；"
-                        + "把图里的文字粘进来我照样能整理");
-            }
-            if (usedToday + images.size() > imageDailyLimit) {
-                throw new LearnException("今天已经整理了 " + usedToday + " 张图（每天最多 " + imageDailyLimit
-                        + " 张，明天再来）；急着用的话，把图里的文字粘进来我照样能整理");
-            }
-        }
         // 先校验全部图片（空/超限/非图 → 400，不占任务位），再抢任务位，最后才留痕：
         // 抢不到任务位（已有消化在跑/执行器满）时不写暂存区，免得留下永远不会归位的孤儿素材
         List<String> rawNames = new ArrayList<>();
@@ -372,10 +354,33 @@ public class LearnDigestAppService {
                     java.nio.charset.StandardCharsets.ISO_8859_1)) + "." + imageExt(img));
         }
 
+        // P2-learn26（2026-09-16）+ P2-审查5（2026-09-17）：图片整理是花钱动作
+        //（单次最多 3 次 VLM + 1 次 LLM），日配额必须**原子「检查 + 记账」**——此前「先读
+        // imagesOn、稍后再 consumeImages」是两次独立加锁，两个并发请求会各自读到「还没超」
+        // 而一起写盘（超卖）。读不到账本 → fail-closed（不整理），与转写闸同向。
+        // 放在「抢任务位」之前：超限/读不出时不会白占一个任务位。
+        if (quotaRepository != null && imageDailyLimit > 0) {
+            LearnQuotaRepository.ImageQuotaResult quota;
+            try {
+                quota = quotaRepository.tryConsumeImages(userId, LocalDate.now(), images.size(), imageDailyLimit);
+            } catch (Exception e) {
+                log.warn("learn 图片配额读取失败，本次不做图片整理（fail-closed）| userId={} | {}",
+                        userId, e.getMessage());
+                throw new LearnException("今天的图片额度记录读不出来，为防超支我先不整理了；"
+                        + "把图里的文字粘进来我照样能整理");
+            }
+            if (!quota.accepted()) {
+                throw new LearnException("今天已经整理了 " + quota.used() + " 张图（每天最多 " + imageDailyLimit
+                        + " 张，明天再来）；急着用的话，把图里的文字粘进来我照样能整理");
+            }
+        }
+
         DigestJob fresh = new DigestJob();
         DigestJob current = jobs.compute(userId,
                 (key, cur) -> (cur == null || cur.isTerminal()) ? fresh : cur);
         if (current != fresh) {
+            // 额度已记但任务位没抢到 → 立刻退回，否则用户「什么都没得到、当天额度却少了」
+            refundImages(userId, images.size());
             return new DigestSubmitResult(current.isAwaitingConfirm() ? STATUS_NEEDS_CONFIRMATION : STATUS_RUNNING);
         }
         current.pendingRawNames = List.copyOf(rawNames);
@@ -387,10 +392,7 @@ public class LearnDigestAppService {
             for (int i = 0; i < images.size(); i++) {
                 repository.saveRawBytes(userId, rawNames.get(i), images.get(i).bytes());
             }
-            // P2-learn26：受理成功才记账（写盘失败 → 落到下面的 catch，回收暂存 + 不整理）
-            if (quotaRepository != null && imageDailyLimit > 0) {
-                quotaRepository.consumeImages(userId, LocalDate.now(), images.size());
-            }
+            // 额度已在上面原子记账（此处不再记账——写盘若失败会落到下面的 catch 并 refundImages）
             learnSubmitExecutor.execute(() -> runImageJob(userId, current, copy, typeHint, note));
         } catch (RejectedExecutionException e) {
             cleanupStaged(userId, rawNames);   // 任务没跑起来 → 清掉刚写的暂存素材（不留孤儿）

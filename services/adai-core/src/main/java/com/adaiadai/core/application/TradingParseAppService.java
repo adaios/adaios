@@ -294,6 +294,21 @@ public class TradingParseAppService {
                 continue;
             }
             String direction = "买入".equals(m.group(4)) ? "BUY" : "SELL";
+            // P1-交易56（2026-09-17 B2 批）：横排同样做「价格 × 数量 ≈ 成交额」交叉校验——
+            // 列错位 / OCR 漏列时，成交额会被正则当成「数量」捕获（生产实据：成交额 6827 元
+            // 被写成 6827 股），而 complete = symbol && price && volume 会判它合法并污染持仓。
+            // 尾列是数字、且不是时间（HH:mm / HH:mm:ss）时才当成交额用；反推不出正整数就保持原值。
+            // 注：单笔 LLM 路径的 Schema 不含成交额字段，无法做同一校验（已如实登记，待跨层改动）。
+            if (!tail.isEmpty() && TAIL_IS_AMOUNT_PATTERN.matcher(tail).find()
+                    && !V_TIME_PATTERN.matcher(tail).matches()) {
+                BigDecimal amount = parseAmountOrNull(tail);
+                int fixed = reconcileVolume(price, volume, amount);
+                if (fixed != volume) {
+                    log.info("横排表格：数量与成交额对不上，按「成交额÷价格」修正 | {} {} {} 股 → {} 股（价 {} 额 {}）",
+                            symbol != null ? symbol : name, direction, volume, fixed, price, amount);
+                    volume = fixed;
+                }
+            }
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
                     tradeDate, null, null, null, null));
         }
@@ -318,6 +333,52 @@ public class TradingParseAppService {
                     text.length() > 80 ? text.substring(0, 80) : text);
         }
         return new LooseBatchParse(results, dropped);
+    }
+
+    /** 从文本里抠出金额（容忍千分位逗号与「元」等尾缀）；抠不出数字返回 null，不抛。 */
+    private static BigDecimal parseAmountOrNull(String text) {
+        if (text == null || text.isBlank()) return null;
+        Matcher m = Pattern.compile("([\\d,]+(?:\\.\\d+)?)").matcher(text.trim());
+        if (!m.find()) return null;
+        try {
+            return new BigDecimal(m.group(1).replace(",", ""));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 「价格 × 数量 = 成交额」恒等式的反推（P1-交易56）。
+     *
+     * <p>列错位 / OCR 漏列时，成交额会被当成股数落库（生产实据：成交额 6827 元写成
+     * {@code volume=6827}），而 {@code complete = symbol && price && volume} 会判它合法、
+     * 让它污染持仓数量与成本。判据与竖排一致：{@code 成交额 ÷ 价格} 是**正整数**、且与原数量
+     * 超出容差（原值 1% 与 0.5 取大）时，以反推值作为数量（金额列比数量列长、更不易被列错位带走）。
+     *
+     * <p>反推不出正整数时**原样返回**——没把握就不改（宁可少修，不可把真数量改错）。
+     *
+     * @return 修正后的数量；无法判定时返回传入的 {@code volume}
+     */
+    private static int reconcileVolume(BigDecimal price, int volume, BigDecimal amount) {
+        if (price == null || price.signum() <= 0 || amount == null || amount.signum() <= 0) {
+            return volume;
+        }
+        BigDecimal expect = amount.divide(price, 4, java.math.RoundingMode.HALF_UP);
+        if (expect.stripTrailingZeros().scale() > 0) {
+            return volume;
+        }
+        int expected;
+        try {
+            expected = expect.intValueExact();
+        } catch (ArithmeticException e) {
+            return volume;
+        }
+        if (expected <= 0) {
+            return volume;
+        }
+        BigDecimal actual = BigDecimal.valueOf(volume);
+        BigDecimal tolerance = actual.multiply(new BigDecimal("0.01")).max(new BigDecimal("0.5"));
+        return expect.subtract(actual).abs().compareTo(tolerance) > 0 ? expected : volume;
     }
 
     /**
@@ -388,21 +449,11 @@ public class TradingParseAppService {
             }
             if (price.signum() <= 0 || volume <= 0) continue;
             if (amount != null && amount.signum() > 0) {
-                BigDecimal expect = amount.divide(price, 4, java.math.RoundingMode.HALF_UP);
-                BigDecimal actual = BigDecimal.valueOf(volume);
-                BigDecimal tolerance = actual.multiply(new BigDecimal("0.01")).max(new BigDecimal("0.5"));
-                int expected = -1;
-                if (expect.stripTrailingZeros().scale() <= 0) {
-                    try {
-                        expected = expect.intValueExact();
-                    } catch (ArithmeticException ignored) {
-                        expected = -1;
-                    }
-                }
-                if (expected > 0 && expect.subtract(actual).abs().compareTo(tolerance) > 0) {
+                int fixed = reconcileVolume(price, volume, amount);
+                if (fixed != volume) {
                     log.info("竖排表格：数量与成交额对不上，按「成交额÷价格」修正 | {} {} {} 股 → {} 股（价 {} 额 {}）",
-                            symbol != null ? symbol : name, direction, volume, expected, price, amount);
-                    volume = expected;
+                            symbol != null ? symbol : name, direction, volume, fixed, price, amount);
+                    volume = fixed;
                 }
             }
             results.add(new ParseResult(true, symbol, name, direction, price, volume,

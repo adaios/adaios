@@ -39,6 +39,15 @@ public class KlineService {
     private volatile int consecutiveFailures;
     private volatile long circuitOpenUntil;
 
+    /**
+     * 兜底源同样失败的告警冷却（P2-交易58，2026-09-17 B2 批）。
+     * <p>
+     * 熔断期内每个标的都会打一次兜底——若兜底也挂了，逐标的记 ERROR 会重现「日志刷屏」
+     * （P2-交易1 东财被限时 1154 条 WARN 的教训）。故 ERROR 30 分钟最多一条，其余降 WARN。
+     */
+    private volatile long fallbackDownAlertedUntil;
+    private static final long FALLBACK_ALERT_COOLDOWN_MS = 30 * 60_000L;
+
     public KlineService(
             @Value("${adai.market.kline-primary:tencent}") String primaryName,
             @Value("${adai.market.tdx-enabled:true}") boolean tdxEnabled,
@@ -73,7 +82,10 @@ public class KlineService {
         }
         if (circuitOpen()) {
             List<Candle> fb = fallback.kline(symbol, limit);
-            return fb != null ? fb : List.of();
+            if (fb != null && !fb.isEmpty()) return fb;
+            // P2-交易58：原先这里静默返回空——主源熔断 + 兜底也挂 = 双重失效，无人知道
+            alertFallbackAlsoDown("kline", symbol);
+            return List.of();
         }
         List<Candle> candles = primary.kline(symbol, limit);
         if (!candles.isEmpty()) {
@@ -90,7 +102,9 @@ public class KlineService {
                     primaryName, fallbackName, symbol, failures);
         }
         List<Candle> fb = fallback.kline(symbol, limit);
-        return fb != null ? fb : List.of();
+        if (fb != null && !fb.isEmpty()) return fb;
+        alertFallbackAlsoDown("kline", symbol);
+        return List.of();
     }
 
     /** 按日期范围查询（2026-08-30：案例库历史窗口）；TDX 本地 → 主源 → 兜底，熔断同 kline。 */
@@ -104,7 +118,15 @@ public class KlineService {
                 // 2026-09-16：本地滞后 → **缺口用网络源补齐**（tdx 补长历史、网络源补最近），
                 // 而不是「有本地数据就整段用本地」——那会让区间末端的 K 线凭空消失。
                 List<Candle> tail = networkRange(symbol, lastLocal.plusDays(1), to);
-                if (tail.isEmpty()) return local;
+                if (tail.isEmpty()) {
+                    // P2-交易58（2026-09-17 B2 批）：缺口没补上时**如实说**——这里返回的是**滞后**的
+                    // 本地数据（生产实据：tdx 停在 09-04，案例库历史窗口末端整段缺失），
+                    // 而原先静默 return local，调用方无从知道末端缺了多少天。
+                    log.warn("tdx 缺口补齐失败，回退滞后的本地数据 | symbol={} | 本地止于 {} | 目标末端 {} | 缺口 {} 天未补",
+                            symbol, lastLocal, to,
+                            java.time.temporal.ChronoUnit.DAYS.between(lastLocal, to));
+                    return local;
+                }
                 List<Candle> merged = new java.util.ArrayList<>(local);
                 java.util.Set<java.time.LocalDate> have = new java.util.HashSet<>();
                 for (Candle c : local) have.add(c.date());
@@ -125,7 +147,9 @@ public class KlineService {
     private List<Candle> networkRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
         if (circuitOpen()) {
             List<Candle> fb = fallback.klineRange(symbol, from, to);
-            return fb != null ? fb : List.of();
+            if (fb != null && !fb.isEmpty()) return fb;
+            alertFallbackAlsoDown("klineRange " + from + "~" + to, symbol);
+            return List.of();
         }
         List<Candle> candles = primary.klineRange(symbol, from, to);
         if (!candles.isEmpty()) {
@@ -142,7 +166,30 @@ public class KlineService {
                     primaryName, fallbackName, symbol, failures);
         }
         List<Candle> fb = fallback.klineRange(symbol, from, to);
-        return fb != null ? fb : List.of();
+        if (fb != null && !fb.isEmpty()) return fb;
+        alertFallbackAlsoDown("klineRange " + from + "~" + to, symbol);
+        return List.of();
+    }
+
+    /**
+     * 兜底源也拿不到数据时的告警（P2-交易58，2026-09-17 B2 批）。
+     * <p>
+     * 链路是 {@code TDX 本地 → 主源 → 兜底}，而兜底平时零调用、零体检——只在主源熔断时才被
+     * 批量打过去，那恰恰是它最可能也挂的时刻。原实现在这里**完全静默**（直接返回空列表），
+     * 于是「兜底形同虚设」要等用户发现数据缺失才暴露。
+     * <p>
+     * ERROR 带 30 分钟冷却（熔断期内逐标的刷屏会淹没日志），冷却期内的同类降 WARN。
+     */
+    private void alertFallbackAlsoDown(String op, String symbol) {
+        long now = System.currentTimeMillis();
+        if (now < fallbackDownAlertedUntil) {
+            log.warn("{}兜底同样拿不到数据 | op={} | symbol={}", fallbackName, op, symbol);
+            return;
+        }
+        fallbackDownAlertedUntil = now + FALLBACK_ALERT_COOLDOWN_MS;
+        log.error("主源与{}兜底双双失败 | op={} | symbol={} | 行情缺口未补（调用方会拿到空/旧值）"
+                        + "——兜底源可能也已失效，请检查；30 分钟内同类只记这一条",
+                fallbackName, op, symbol);
     }
 
     /**

@@ -76,6 +76,23 @@ public interface FileStorage {
     void delete(String userId, String path);
 
     /**
+     * 删除该用户层下**所有已空的目录**（自底向上；不触碰任何文件）。
+     * <p>
+     * 为什么需要它：{@link #listFiles} 只返回**文件**、{@link #delete} 只承诺**文件**语义 ——
+     * 于是「清理某用户全部数据」会把整棵空目录树留在盘上（2026-09-17 deep 审发现
+     * {@code purgeUserData} 的「删了文件但目录全在」）。用户根目录本身不删。
+     * <p>
+     * 实现可返回 0 表示不支持（默认实现即如此）；调用方**不应**据此判断清理成败——
+     * 成败判据是「文件是否删干净」。
+     *
+     * @param userId 用户 ID
+     * @return 实际删除的空目录数
+     */
+    default int deleteEmptyDirectories(String userId) {
+        return 0;
+    }
+
+    /**
      * 追加内容到文件末尾（文件不存在则创建）。
      * <p>
      * 用于追加型日志（如 {@code ai-logs/**} JSONL）：与 {@link #write} 的覆盖语义不同，

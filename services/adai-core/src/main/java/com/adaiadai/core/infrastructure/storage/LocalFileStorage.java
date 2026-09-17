@@ -15,6 +15,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -137,6 +138,47 @@ public class LocalFileStorage implements FileStorage {
         } catch (IOException e) {
             throw new StorageException("删除文件失败: " + path, e);
         }
+    }
+
+    /**
+     * 删除该用户层下所有**已空的目录**（自底向上），用户根目录本身保留。
+     * <p>
+     * 为什么需要它：{@link #listFiles} 只返回**文件**、{@link #delete} 只删**文件**，于是
+     * 「清空某用户数据」会留下一整棵空目录树（2026-09-17 deep 审：{@code purgeUserData}
+     * 删了文件但 {@code data/{userId}/} 全在）。按**路径深度倒序**遍历，保证子目录先于父目录判定，
+     * 否则父目录会因「还有子目录」被跳过、事后又无人再来删。
+     */
+    @Override
+    public int deleteEmptyDirectories(String userId) {
+        Path userRoot = resolve(userId, "");
+        if (!Files.exists(userRoot) || !Files.isDirectory(userRoot)) {
+            return 0;
+        }
+        int deleted = 0;
+        try (Stream<Path> walk = Files.walk(userRoot)) {
+            List<Path> dirs = walk
+                    .filter(Files::isDirectory)
+                    .filter(p -> !p.equals(userRoot))   // 用户根目录本身不动
+                    .sorted(Comparator.comparingInt((Path p) -> p.getNameCount()).reversed())
+                    .collect(Collectors.toList());
+            for (Path dir : dirs) {
+                try (Stream<Path> children = Files.list(dir)) {
+                    if (children.findAny().isPresent()) {
+                        continue;                        // 还有内容（文件或子目录）→ 不是空目录
+                    }
+                }
+                try {
+                    Files.deleteIfExists(dir);
+                    deleted++;
+                } catch (IOException e) {
+                    // 单个空目录删不掉不阻断其余（如权限/被占用）——如实记 WARN，由调用方汇总
+                    log.warn("空目录删除失败: {}", dir, e);
+                }
+            }
+        } catch (IOException e) {
+            throw new StorageException("清理空目录失败: " + userId, e);
+        }
+        return deleted;
     }
 
     @Override

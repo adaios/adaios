@@ -864,11 +864,14 @@ class LearnDigestAppServiceTest {
     }
 
     // ── P2-learn26（2026-09-16）：图片整理是花钱动作，加一道轻量日配额 ──
+    // ── P2-审查5（2026-09-17）：配额「检查 + 记账」必须原子（同一把锁内），否则并发可超卖 ──
 
     @Test
     void submitImages_dailyQuotaExceeded_refusedWithoutCallingVisionModel() {
         var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
-        when(quota.imagesOn(eq("adai"), any())).thenReturn(30);
+        when(quota.tryConsumeImages(eq("adai"), any(), anyInt(), anyInt()))
+                .thenReturn(new com.adaiadai.core.domain.learn.LearnQuotaRepository
+                        .ImageQuotaResult(false, 30));
         LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
                 fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
 
@@ -878,13 +881,14 @@ class LearnDigestAppServiceTest {
 
         assertTrue(e.getMessage().contains("每天最多 30 张"), "要人话说清上限：" + e.getMessage());
         verifyNoInteractions(visualAiClient);
+        // 超限时**一张都不该记**（原子方法内部保证不写；这里钉住服务层也不再单独记账）
         verify(quota, never()).consumeImages(any(), any(), anyInt());
     }
 
     @Test
     void submitImages_quotaLedgerUnreadable_failsClosedWithHumanMessage() {
         var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
-        when(quota.imagesOn(eq("adai"), any())).thenThrow(
+        when(quota.tryConsumeImages(any(), any(), anyInt(), anyInt())).thenThrow(
                 new com.adaiadai.core.infrastructure.storage.StorageException("账本坏了", null));
         LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, directExecutor,
                 fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
@@ -902,7 +906,9 @@ class LearnDigestAppServiceTest {
         // 2026-09-17 深审 P2：记账在 execute 之前，任务没排上必须退回——
         // 否则「什么也没得到，当天的图片额度却被耗掉」（接口写了允许负数回退，此前零调用者）。
         var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
-        when(quota.imagesOn(eq("adai"), any())).thenReturn(0);
+        when(quota.tryConsumeImages(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new com.adaiadai.core.domain.learn.LearnQuotaRepository
+                        .ImageQuotaResult(true, 1));
         java.util.concurrent.Executor rejecting = r -> {
             throw new java.util.concurrent.RejectedExecutionException("队列满");
         };
@@ -913,7 +919,28 @@ class LearnDigestAppServiceTest {
                 List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
                 null, null));
 
-        org.mockito.Mockito.verify(quota).consumeImages(eq("adai"), any(), eq(1));
         org.mockito.Mockito.verify(quota).consumeImages(eq("adai"), any(), eq(-1));
+    }
+
+    @Test
+    void submitImages_quotaUsesAtomicCheckAndConsume_neverReadsSeparately() {
+        // P2-审查5（2026-09-17）：钉住「不再走 imagesOn 读 + 稍后 consumeImages 写」这两步——
+        // 两步是两次独立加锁，并发请求会各自读到「还没超」而一起写盘（日配额超卖）。
+        var quota = mock(com.adaiadai.core.domain.learn.LearnQuotaRepository.class);
+        when(quota.tryConsumeImages(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new com.adaiadai.core.domain.learn.LearnQuotaRepository
+                        .ImageQuotaResult(true, 1));
+        java.util.concurrent.Executor rejecting = r -> {
+            throw new java.util.concurrent.RejectedExecutionException("队列满");
+        };
+        LearnDigestAppService svc = new LearnDigestAppService(aiClient, repository, rejecting,
+                fetchService, transcriptionService, visualAiClient, quota, null, 4096, 30);
+
+        assertThrows(LearnException.class, () -> svc.submitImages("adai",
+                List.of(new LearnDigestAppService.ImageInput(new byte[]{1, 2, 3}, "image/png", "p1.png")),
+                null, null));
+
+        verify(quota).tryConsumeImages(eq("adai"), any(), eq(1), eq(30));
+        verify(quota, never()).imagesOn(any(), any());
     }
 }

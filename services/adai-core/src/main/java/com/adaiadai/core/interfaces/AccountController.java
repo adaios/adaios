@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -240,33 +241,63 @@ public class AccountController {
         if (!purge) {
             return ResponseEntity.noContent().build();
         }
-        int purged = purgeUserData(userId);
-        log.info("账号已删除并清理数据 | userId={} | 清理文件 {} 个", userId, purged);
-        return ResponseEntity.ok(Map.of("deleted", true, "purged", true, "purgedFiles", purged));
+        PurgeResult result = purgeUserData(userId);
+        log.info("账号已删除并清理数据 | userId={} | 文件 {} 个 | 空目录 {} 个 | 失败 {} 项",
+                userId, result.files(), result.dirs(), result.failures().size());
+        // P2-审查1（2026-09-17 deep 审 + B2 批修复）：失败不再被吞——`purged` 如实反映「是否真清干净」，
+        // 失败清单原样回给调用方（admin 据此提示人工处理，而不是看到 purged:true 以为已经好了）
+        return ResponseEntity.ok(Map.of(
+                "deleted", true,
+                "purged", result.failures().isEmpty(),
+                "purgedFiles", result.files(),
+                "purgedDirs", result.dirs(),
+                "failures", result.failures()));
     }
 
     /**
-     * 递归清理 {@code data/{userId}/} 下的文件（task-log #149 的破坏性那一半，只在显式 purge 时走）。
+     * 递归清理 {@code data/{userId}/} 下的文件与随之变空的目录（task-log #149 的破坏性那一半，
+     * 只在显式 purge 时走）。
      * <p>
      * 逐个删文件而不是删目录：{@code FileStorage} 只承诺「文件」这一层的删除语义，不猜底层实现
-     * （本机是 LocalFileStorage、将来可能是别的）。**删不掉的如实计数**，不假装清干净。
+     * （本机是 LocalFileStorage、将来可能是别的）。**删不掉的如实进 failures**，不假装清干净
+     * ——2026-09-17 deep 审（P2-审查1）：原实现只 `log.warn` 却**无条件**回 `purged:true`，
+     * 且只删文件不删目录（整棵空目录树残留）。
      */
-    private int purgeUserData(String userId) {
+    private PurgeResult purgeUserData(String userId) {
         int deleted = 0;
+        List<String> failures = new ArrayList<>();
         try {
             for (String path : fileStorage.listFiles(userId, "")) {
                 try {
                     fileStorage.delete(userId, path);
                     deleted++;
                 } catch (Exception e) {
+                    failures.add(path + "（" + message(e) + "）");
                     log.warn("账号数据清理：单个文件删除失败 | userId={} | path={} | {}", userId, path, e.getMessage());
                 }
             }
         } catch (Exception e) {
+            failures.add("目录列举失败（" + message(e) + "）");
             log.warn("账号数据清理：目录列举失败 | userId={} | {}", userId, e.getMessage());
         }
-        return deleted;
+        // 文件删完再收空目录（端口默认实现返回 0 = 该实现不支持；异常计入 failures，不静默）
+        int dirs = 0;
+        try {
+            dirs = fileStorage.deleteEmptyDirectories(userId);
+        } catch (Exception e) {
+            failures.add("空目录清理失败（" + message(e) + "）");
+            log.warn("账号数据清理：空目录清理失败 | userId={} | {}", userId, e.getMessage());
+        }
+        return new PurgeResult(deleted, dirs, failures);
     }
+
+    /** 异常可能没有 message（NPE 等）——兜底成类名，避免失败清单里出现 "null"。 */
+    private static String message(Exception e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+    }
+
+    /** purge 结果：文件数 / 空目录数 / 失败清单（failures 非空即「没清干净」，见 P2-审查1）。 */
+    private record PurgeResult(int files, int dirs, List<String> failures) {}
 
     private boolean isValidRole(String role) {
         return Account.ROLE_ADMIN.equals(role) || Account.ROLE_USER.equals(role);

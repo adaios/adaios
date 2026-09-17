@@ -592,4 +592,40 @@ class AccountControllerTest {
         verify(storage).delete("bob", "records/a.md");
         verify(storage).delete("bob", "memory/b.json");
     }
+
+    // ── P2-审查1（2026-09-17 deep 审 + B2 批修复）：失败不再被吞、空目录一并回收 ──
+
+    @Test
+    void deleteAccount_withPurge_reportsFailuresInsteadOfPretendingClean() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.delete("bob")).thenReturn(true);
+        var storage = mock(com.adaiadai.core.kernel.storage.FileStorage.class);
+        when(storage.listFiles("bob", "")).thenReturn(List.of("records/a.md", "records/locked.md"));
+        org.mockito.Mockito.doThrow(new RuntimeException("权限不足"))
+                .when(storage).delete("bob", "records/locked.md");
+
+        mvcWith(repo, storage).perform(delete("/api/v1/accounts/bob").param("purge", "true"))
+                .andExpect(status().isOk())
+                // 关键：删不干净时 purged 必须是 false —— 原实现无条件回 true（假成功）
+                .andExpect(jsonPath("$.purged").value(false))
+                .andExpect(jsonPath("$.purgedFiles").value(1))
+                .andExpect(jsonPath("$.failures[0]",
+                        org.hamcrest.Matchers.containsString("records/locked.md")));
+    }
+
+    @Test
+    void deleteAccount_withPurge_alsoReclaimsEmptiedDirectories() throws Exception {
+        var repo = mock(AccountRepository.class);
+        when(repo.delete("bob")).thenReturn(true);
+        var storage = mock(com.adaiadai.core.kernel.storage.FileStorage.class);
+        when(storage.listFiles("bob", "")).thenReturn(List.of("records/a.md"));
+        when(storage.deleteEmptyDirectories("bob")).thenReturn(3);
+
+        mvcWith(repo, storage).perform(delete("/api/v1/accounts/bob").param("purge", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purged").value(true))
+                .andExpect(jsonPath("$.purgedDirs").value(3));
+
+        verify(storage).deleteEmptyDirectories("bob");
+    }
 }

@@ -38,4 +38,19 @@ public interface LearnQuotaRepository {
      * @param count 本次受理的图片张数（允许负数 = 回退，如受理失败时回收占位）
      */
     int consumeImages(String userId, LocalDate day, int count);
+
+    /**
+     * 原子「检查 + 记账」：在**同一把锁内**读取当日用量、判断、累加，一步完成。
+     * <p>
+     * P2-审查5（2026-09-17 deep 审 + B2 批修复）：此前是「{@link #imagesOn} 读一次 → 稍后
+     * {@link #consumeImages} 写一次」，两次独立加锁 → 两个并发请求可**同时通过**检查，
+     * 日配额被超卖。检查与记账必须原子。
+     *
+     * @param limit 当日张数上限；{@code <=0} 表示不限（直接累加）
+     * @return {@code accepted=false} 表示超限且**未记账**，{@code used} 为当时已用量（供人话文案）
+     */
+    ImageQuotaResult tryConsumeImages(String userId, LocalDate day, int count, int limit);
+
+    /** 图片配额原子记账结果：是否受理 + 当时的当日已用量。 */
+    record ImageQuotaResult(boolean accepted, int used) {}
 }

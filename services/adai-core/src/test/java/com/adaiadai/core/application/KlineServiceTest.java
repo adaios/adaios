@@ -101,6 +101,33 @@ class KlineServiceTest {
     }
 
     @Test
+    void tdxStaleAndNetworkDown_fallsBackToStaleLocalInsteadOfEmpty() {
+        // P2-交易58（2026-09-17 B2 批）：tdx 停在过去、网络源（主源 + 兜底）也拿不到时，
+        // 原实现在这里静默 `return local`，调用方无从知道末端缺了多少天；本次改为**如实记 WARN**
+        // （含缺口天数）后**仍回退**，保证案例库历史窗口拿到尽可能连续的区间而不是空表。
+        LocalDate stale = LocalDate.now().minusDays(12);
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.klineRange(anyString(), any(), any())).thenReturn(List.of(
+                new Candle(stale, 10, 11, 9, 10.0, 1000)));
+        when(tdx.kline(anyString(), anyInt())).thenReturn(List.of(
+                new Candle(stale, 10, 11, 9, 10.0, 1000)));
+
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource eastMoney = mock(KlineSource.class);
+        when(eastMoney.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
+
+        KlineService svc = new KlineService("tencent", true, eastMoney, tencent, tdx);
+
+        var range = svc.klineRange("600519", stale, LocalDate.now());
+
+        assertEquals(1, range.size(), "网络全挂 → 回退滞后的本地数据（而不是空表）：" + range);
+        assertEquals(stale, range.get(0).date());
+    }
+
+    @Test
     void tdxFresh_noNetworkCall() {
         // 反向：本地新鲜 → 保持零网络请求（不因修复引入无谓开销）
         LocalDate fresh = LocalDate.now().minusDays(1);

@@ -240,6 +240,39 @@ class TradingParseAppServiceTest {
         assertTrue(results.isEmpty());
     }
 
+    // ── P1-交易56（2026-09-17 B2 批）：成交额被当成数量 → 交叉校验修正（横排路径）──
+
+    @Test
+    void parseLooseBatch_horizontalRowAmountInVolumeSlot_isCorrectedByAmount() {
+        // 列错位/OCR 漏列时，正则把**成交额**捕获成「数量」（生产实据：成交额 6827 元 → volume 6827）。
+        // 68.270 × 100 = 6827.000，反推是正整数 → 应为 100 股。
+        java.util.List<TradingParseAppService.ParseResult> results =
+                service.parseLooseBatch("u1", "亨通光电 600487 68.270 买入 6827 6827.00");
+
+        assertEquals(1, results.size());
+        assertEquals(100, results.get(0).volume(), "成交额 6827 应被反推成 100 股，而不是当成 6827 股落库");
+    }
+
+    @Test
+    void parseLooseBatch_horizontalRowConsistentAmount_keepsVolume() {
+        // 反向保护：数量与成交额对得上时**不许动**（宁可少修，不能把真数量改错）。
+        java.util.List<TradingParseAppService.ParseResult> results =
+                service.parseLooseBatch("u1", "亨通光电 600487 68.270 买入 100 6827.00");
+
+        assertEquals(1, results.size());
+        assertEquals(100, results.get(0).volume(), "对得上就保持原值");
+    }
+
+    @Test
+    void parseLooseBatch_horizontalRowAmountNotDivisible_keepsVolume() {
+        // 反推不出正整数 → 没把握就不改（避免把真实股数改错）。
+        java.util.List<TradingParseAppService.ParseResult> results =
+                service.parseLooseBatch("u1", "亨通光电 600487 68.270 买入 137 9999.00");
+
+        assertEquals(1, results.size());
+        assertEquals(137, results.get(0).volume(), "反推非整数 → 保持原值");
+    }
+
     // ── P2-交易44（2026-09-14）：被丢掉的行必须可见（原来五处只 log.debug，用户看不到丢行）──
 
     @Test
