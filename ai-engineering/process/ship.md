@@ -105,6 +105,22 @@ bash ai-engineering/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNA
   **收尾一律按路径显式暂存**：`git add <本批真正改动的文件与目录>`；
   提交前 `git status --porcelain` 复核暂存区里有没有「本批没碰过的路径」，有就先摘出来。
   这条同时防另一件事：本批自己的新文件被漏掉（漏登记比混装更难发现）。
+- **这条现在有机械守卫了**（REVIEW P2-审查3，2026-09-17）：`pre-commit` 的**第 0 层「本批范围守卫」**
+  会先看暂存区——**声明了本批范围 → 越界即阻断**（逐个列出越界文件）；**没声明 → 打印暂存区摘要**
+  （按顶层目录分组）不阻断。不硬拦是刻意的：并非每次提交都值得声明，硬拦只会把人逼去 `--no-verify`
+  ——那比没有守卫更糟。用法：
+
+  ```bash
+  # 方式 1：环境变量（单次提交有效，最常用）
+  ADAI_BATCH_PATHS="apps/adai-app,docs/review,services/adai-core" git commit -m "..."
+
+  # 方式 2：仓库根放 .adai-batch（每行一个前缀；适合一批要分多次提交时）
+  printf 'apps/adai-app\ndocs/review\n' > .adai-batch
+  git commit -m "..."
+  rm .adai-batch        # 收尾记得清掉，否则会约束到后面的提交
+  ```
+
+  前缀是**目录或文件路径**（逗号分隔）；写 `apps/adai-app` 即放行 `apps/adai-app/**` 与它自身。
 
 ## 与 /review 的分工
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 提交前自动门禁（四层）：
+# 提交前自动门禁（五层）：
+#   0) 本批范围守卫 —— 暂存区是否越出「本批声明」（防并发会话 git add -A 混装）
 #   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
 #   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
@@ -8,6 +9,54 @@
 cd "$(git rev-parse --show-toplevel)"
 
 CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null)
+
+# 0) 本批范围守卫（REVIEW P2-审查3，2026-09-17）——「收尾禁 git add -A」此前**零机制**：
+#    规范只写在 ship.md 里靠自觉，2026-09-13 实际发生过「另一会话的 -A 把本批 9 个文件卷走」，
+#    2026-09-17 又一次（B1+B2/B5/B4 三批提交时，工作区始终躺着另一会话的 docs/rfc/ 改动）。
+#    这里把它变成机械检查——两种模式：
+#      · **声明了本批范围**（环境变量 ADAI_BATCH_PATHS="apps/adai-app,docs/review"，
+#        或仓库根放一个 .adai-batch 文件每行一个前缀）→ 暂存区里有不匹配任何前缀的文件
+#        = 越界 → **阻断**（这正是「显式列路径」的机械化）；
+#      · **没声明** → 打印暂存区摘要（按顶层目录分组），至少让提交者**看见自己在提交什么**，
+#        **不阻断**。
+#    为什么默认不阻断：并非每次提交都值得声明（单人小改），硬拦只会把人逼去 --no-verify——
+#    那比没有守卫更糟（ship.md 明确不提供绕过路径）。
+STAGED_LIST=$(git diff --cached --name-only HEAD 2>/dev/null)
+if [ -n "$STAGED_LIST" ]; then
+  BATCH_DECL="${ADAI_BATCH_PATHS:-}"
+  if [ -z "$BATCH_DECL" ] && [ -f .adai-batch ]; then
+    BATCH_DECL=$(tr '\n' ',' < .adai-batch)
+  fi
+  if [ -n "$BATCH_DECL" ]; then
+    OUT_OF_SCOPE=""
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      matched=0
+      IFS=',' read -ra PREFIXES <<< "$BATCH_DECL"
+      for p in "${PREFIXES[@]}"; do
+        p_trim=$(printf '%s' "$p" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -z "$p_trim" ] && continue
+        case "$f" in
+          "$p_trim"|"$p_trim"/*) matched=1; break ;;
+        esac
+      done
+      [ "$matched" -eq 0 ] && OUT_OF_SCOPE="${OUT_OF_SCOPE}${f}
+"
+    done <<< "$STAGED_LIST"
+
+    if [ -n "$OUT_OF_SCOPE" ]; then
+      echo "❌ 本批范围守卫：以下文件**不在声明的本批范围内**（疑似另一会话的改动 / 误用 git add -A）："
+      printf '%s' "$OUT_OF_SCOPE" | sed 's/^/    /'
+      echo "   本批声明：ADAI_BATCH_PATHS=$BATCH_DECL"
+      echo "   处理：git reset <越界文件>；若它确实属于本批，就把它加进声明再提交"
+      exit 1
+    fi
+    echo "✅ 本批范围守卫：$(printf '%s\n' "$STAGED_LIST" | wc -l | tr -d ' ') 个文件全部在声明范围内"
+  else
+    echo "── 暂存区（未声明本批范围；设 ADAI_BATCH_PATHS 可开启机械校验）──"
+    printf '%s\n' "$STAGED_LIST" | awk -F/ '{ c[$1]++ } END { for (k in c) printf "    %-24s %d 个\n", k, c[k] }' | sort
+  fi
+fi
 
 # 0) 隐私闸门（B3 原则）——必须在类型触发条件之前：任何变更类型都查，
 #    否则 .txt/.json 等数据文件（非 md/java/dart/sh）会在下方 exit 0 绕过（2026-08-23 对抗审计 P1-A1）
