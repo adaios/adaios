@@ -974,6 +974,39 @@ void main() {
       expect(find.text('2026-08-26'), findsNWidgets(2));
     });
 
+    testWidgets('截图入账 P1-交易54：候选带 id 时补日期按 id 行级定位（不再用 symbol+direction）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'id': 'cand_a', 'symbol': '600487', 'name': '亨通光电', 'direction': 'BUY',
+          'price': '68.27', 'volume': 100, 'source': 'image', 'complete': true}, // 无 tradeDate
+      ];
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
+      String? sentBody;
+      b.handlers['/api/v1/trading/trade-log/date'] = (req) async {
+        sentBody = req.body;
+        candidates = [
+          {'id': 'cand_a', 'symbol': '600487', 'name': '亨通光电', 'direction': 'BUY',
+            'price': '68.27', 'volume': 100, 'tradeDate': '2026-09-16', 'source': 'image', 'complete': true},
+        ];
+        return _json({'updated': true});
+      };
+      await pumpTrading(tester, b);
+
+      await tester.tap(find.text('补日期'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      final body = jsonDecode(sentBody!) as Map<String, dynamic>;
+      expect(body['id'], 'cand_a',
+          reason: 'P1-交易54 收尾：有 id 时必须按 id 定位——同代码同方向的多笔才能各自补日期');
+      expect(body.containsKey('symbol'), isFalse,
+          reason: '有 id 时不再传 symbol（旧口径会把同代码同向的多笔一起补上同一日期）');
+      expect(body.containsKey('direction'), isFalse);
+    });
+
     testWidgets('截图入账：丢弃一条候选（× → DELETE，本地移除）', (tester) async {
       final b = _Backend();
       mockBase(b);

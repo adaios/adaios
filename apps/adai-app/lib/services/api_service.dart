@@ -659,16 +659,21 @@ class ApiService {
   /// 截图归集候选无日期列被 confirm 拒后，前端日期选择 → 补日期 → 再次确认。
   /// @return true=已更新；false=当日无此候选
   Future<bool> setTradeLogDate({
-    required String symbol,
-    required String direction,
+    String? id,
+    String? symbol,
+    String? direction,
     required String tradeDate,
   }) async {
     final resp = await _client.put(
       Uri.parse('$baseUrl/api/v1/trading/trade-log/date'),
       headers: {..._headers, 'content-type': 'application/json'},
       body: jsonEncode({
-        'symbol': symbol,
-        'direction': direction,
+        // P1-交易54 收尾（2026-09-17）：**优先传 id 行级定位**——同代码同方向的多笔候选
+        // （当日三笔亨通光电各 100 股）只有它能各自补日期；symbol/direction 是旧口径，
+        // 会把那几笔一起补上同一日期，仅在旧后端（不返回 id）时使用。
+        if (id != null && id.isNotEmpty) 'id': id,
+        if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
+        if (direction != null && direction.isNotEmpty) 'direction': direction,
         'tradeDate': tradeDate,
       }),
     );

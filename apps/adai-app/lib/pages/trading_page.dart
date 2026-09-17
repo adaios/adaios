@@ -1217,9 +1217,14 @@ class _TradingPageState extends State<TradingPage> {
         '${picked.month.toString().padLeft(2, '0')}-'
         '${picked.day.toString().padLeft(2, '0')}';
     try {
+      // P1-交易54 收尾（2026-09-17）：**优先按 id 行级定位**——同代码同方向的多笔候选
+      // （当日三笔亨通光电各 100 股）只有它能各自补日期；旧后端不返回 id 时退化为
+      // symbol+direction（会把那几笔一起补上同一日期）。
+      final byId = c.id.isNotEmpty;
       final updated = await widget.api.setTradeLogDate(
-        symbol: c.symbol,
-        direction: c.direction,
+        id: byId ? c.id : null,
+        symbol: byId ? null : c.symbol,
+        direction: byId ? null : c.direction,
         tradeDate: dateStr,
       );
       if (!mounted) return;
