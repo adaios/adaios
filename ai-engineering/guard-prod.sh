@@ -313,10 +313,24 @@ if d.get('api') or d.get('web'):
 hr(f"用户之声（{d['date']} 真实对话卡片）")
 if not d['cards']:
     print("  （今天没有新对话卡片）")
+# P2-工程8（2026-09-17）：空态引导 chip 触发的问题**不是用户真实意图**——09-17 那条
+# 「你能干什么？」就是空态引导产生的，却被日报读成用户主动提问（本轮巡检据此误判过一次，
+# 把老用户当成「新用户在试探能力边界」）。这里显式标注，避免信号源被自家产品缺陷污染
+# （P1-UI14 修好后该类记录自然消失）。
+GUIDE_PROMPTS = ('你能干什么？', '你有什么特别的能力？', '我该怎么用你？')
+guided_count = 0
 for c in d['cards']:
-    print(f"  \033[36m{c['time']}\033[0m [{c['user']}] {c['q']}")
+    q = c['q'] or ''
+    is_guided = any(g in q for g in GUIDE_PROMPTS)
+    if is_guided:
+        guided_count += 1
+    print(f"  \033[36m{c['time']}\033[0m [{c['user']}] {q}")
+    if is_guided:
+        print("          \033[33m⚠ 空态引导 chip 触发（非用户主动提问）——不计入「用户之声」\033[0m")
     if c['summary']:
         print(f"          └ {c['summary']}")
+if guided_count:
+    print(f"  \033[33m（今日 {guided_count} 张为空态引导触发、已标注；真实提问 {len(d['cards']) - guided_count} 张）\033[0m")
 
 # 趋势
 hr(f'心跳（近 {len(d["trend"])} 天对话卡片数）')
