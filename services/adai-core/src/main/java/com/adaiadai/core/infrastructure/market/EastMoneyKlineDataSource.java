@@ -85,6 +85,10 @@ public class EastMoneyKlineDataSource implements KlineSource {
             }
             if (candles.isEmpty()) return List.of();
             cache.put(symbol, new KlineCache(LocalDate.now(), candles));
+            // P2-交易57（2026-09-17）：成功路径过去**一行日志都不写**（本类四个日志点全是 warn），
+            // 再叠加上层「当日缓存命中直接返回、连请求都不发」——于是「东财今天成功几次」在
+            // 生产日志里根本答不出来（2026-09-17 每日巡检实证：近 4 天 eastmoney 日志 100% 是 WARN）。
+            log.info("东财 K线成功 | symbol={} | {} 根", symbol, candles.size());
             return candles;
         } catch (Exception e) {
             log.warn("东财 K线失败 | symbol={} | {}", symbol, e.getMessage());
@@ -128,6 +132,7 @@ public class EastMoneyKlineDataSource implements KlineSource {
             }
             if (candles.isEmpty()) return List.of();
             cache.put(symbol, new KlineCache(LocalDate.now(), candles));
+            log.info("东财 K线范围成功 | symbol={} | {}-{} | {} 根", symbol, from, to, candles.size());
             return candles;
         } catch (Exception e) {
             log.warn("东财 K线范围失败 | symbol={} | {}", symbol, e.getMessage());
