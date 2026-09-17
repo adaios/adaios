@@ -376,4 +376,64 @@ class TradingParseAppServiceTest {
         assertTrue(service.parseLooseBatch("u1", null).isEmpty());
     }
 
+    // ── P0-交易53（2026-09-17 生产实测）：VLM 把表格「一行拆成多行」时必须能还原 ──
+
+    /**
+     * 用户 2026-09-17 真实「当日成交」截图——GLM 输出的**竖排**形态（每个单元格独占一行），
+     * 三个单元格之间只剩换行、没有 {@code \h+} 分隔，横排正则 {@code TABLE_TRADE_PATTERN} 0 命中。
+     * 原实现在这种版式下回退单笔解析（Schema 只能装一笔）→ 3 笔只落 1 笔。
+     */
+    private static final String REAL_VERTICAL_DAILY_TRADES_TEXT =
+            "识别交易动作：当日成交\n"
+                    + "开源证券 (****0888)\n"
+                    + "名称/代码\n成交价/买卖\n成交量/额\n成交时间\n"
+                    + "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                    + "亨通光电\n600487\n67.730\n买入\n100\n6773.000\n10:13:10\n"
+                    + "亨通光电\n600487\n67.920\n买入\n100\n6792.000\n10:11:44\n"
+                    + "查看历史成交 >";
+
+    @Test
+    void parseLooseBatch_verticalTable_parsesAllThreeTrades() {
+        java.util.List<TradingParseAppService.ParseResult> results =
+                service.parseLooseBatch("u1", REAL_VERTICAL_DAILY_TRADES_TEXT);
+
+        assertEquals(3, results.size(),
+                "一张 3 笔买入的竖排截图必须还原 3 笔（原实现只落 1 笔——P0-交易53）");
+        for (TradingParseAppService.ParseResult r : results) {
+            assertEquals("600487", r.symbol());
+            assertEquals("亨通光电", r.name());
+            assertEquals("BUY", r.direction());
+            assertEquals(100, r.volume(), "数量列是 100（6827 是成交额，不得当股数）");
+        }
+        assertEquals(new BigDecimal("68.270"), results.get(0).price());
+        assertEquals(new BigDecimal("67.730"), results.get(1).price());
+        assertEquals(new BigDecimal("67.920"), results.get(2).price());
+    }
+
+    @Test
+    void parseLooseBatch_verticalTable_amountMismatch_correctsVolume() {
+        // P1-交易56：数量列被识别成成交额（1000 股 vs 价 68.27 × 1000 = 68270 ≠ 6827）
+        // → 用「成交额 ÷ 价格」反推修正为 100 股，而不是把 6827 当股数落库。
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "亨通光电\n600487\n68.270\n买入\n1000\n6827.000\n13:08:59\n");
+
+        assertEquals(1, results.size());
+        assertEquals(100, results.get(0).volume(), "成交额交叉校验应把 1000 修正为 100");
+    }
+
+    @Test
+    void parseLooseBatch_verticalTable_insufficientFields_noMatch() {
+        // 四要素不全（有名称/代码/价格/方向但没数量）→ 不产出，宁可不认也不猜
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "亨通光电\n600487\n68.270\n买入\n查看历史成交 >");
+        assertTrue(results.isEmpty(), "凑不齐一笔时不得产出成交");
+
+        // 但也不能静默：要如实上报「像是成交但缺数量」（P1-交易55）
+        TradingParseAppService.LooseBatchParse p = service.parseLooseBatchDetailed("u1",
+                "亨通光电\n600487\n68.270\n买入\n查看历史成交 >");
+        assertTrue(p.trades().isEmpty());
+        assertEquals(1, p.dropped().size(), "缺数量的疑似成交行必须上报：" + p.dropped());
+        assertTrue(p.dropped().get(0).reason().contains("数量"), p.dropped().get(0).reason());
+    }
+
 }

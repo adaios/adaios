@@ -554,4 +554,47 @@ class TradeLogCollectServiceTest {
         assertFalse(service.updateMeta("default", "600206", "SELL", null, null), "无可写值返回 false");
         assertEquals(1, service.todayCandidates("default").size());
     }
+
+    // ── P0-交易53（2026-09-17 生产实测）端到端：竖排截图 → 解析 → 归集 → 去重 ──
+
+    /** 真实链路组合（真解析器 + 真仓储 + 真归集），用于锁死「解析修好但被去重吞掉」这类叠加缺陷。 */
+    private TradeLogCollectService realPipeline() {
+        return new TradeLogCollectService(
+                new TradingParseAppService(mock(com.adaiadai.core.kernel.ai.AiClient.class),
+                        new com.fasterxml.jackson.databind.ObjectMapper()),
+                repository, trading, mock(NameToSymbolResolver.class));
+    }
+
+    @Test
+    void collectDetailed_verticalTable_keepsAllThreeSameSymbolTrades() {
+        // 用户 2026-09-17 真实截图：亨通光电 3 笔买入、各 100 股、价格 68.27/67.73/67.92。
+        // 两个缺陷叠加才会只落 1 笔：① 竖排版式下横排正则 0 命中 → 降级单笔解析只出一笔；
+        // ② 去重键不含价格 → 同标的/同方向/同数量的三笔互相吞并。本用例锁死「三笔都要留下」。
+        String text = "识别交易动作：当日成交\n"
+                + "开源证券 (****0888)\n"
+                + "名称/代码\n成交价/买卖\n成交量/额\n成交时间\n"
+                + "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                + "亨通光电\n600487\n67.730\n买入\n100\n6773.000\n10:13:10\n"
+                + "亨通光电\n600487\n67.920\n买入\n100\n6792.000\n10:11:44\n";
+
+        TradeLogCollectService.CollectResult result =
+                realPipeline().collectDetailed("default", text, "image");
+
+        assertEquals(3, result.candidates().size(),
+                "3 笔必须都留下（原实现：竖排 0 命中 + 去重吞并 → 只剩 1 笔）：" + result.candidates());
+        assertEquals(3, result.candidates().stream().map(TradeLogCandidate::price).distinct().count(),
+                "三笔价格各不相同，必须是三条候选");
+    }
+
+    @Test
+    void collectDetailed_sameScreenshotTwice_deduplicates() {
+        // 反向保护：同一张图重复上传（用户重传是常态）必须去重，否则候选每次翻倍。
+        TradeLogCollectService svc = realPipeline();
+        String text = "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n";
+
+        svc.collectDetailed("default", text, "image");
+        TradeLogCollectService.CollectResult second = svc.collectDetailed("default", text, "image");
+
+        assertEquals(1, second.candidates().size(), "同图重传仍是一笔（价格一致 → 同笔）");
+    }
 }

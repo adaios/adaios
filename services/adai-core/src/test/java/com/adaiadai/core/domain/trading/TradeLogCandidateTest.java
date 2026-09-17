@@ -52,4 +52,40 @@ class TradeLogCandidateTest {
     void sameTrade_nullObject_false() {
         assertFalse(c("000725", "BUY", 100).sameTrade(null));
     }
+
+    // ── P0-交易53（2026-09-17 生产实测）：去重必须带价格维度 ──
+
+    private TradeLogCandidate p(String symbol, String dir, Integer volume, String price) {
+        return new TradeLogCandidate(symbol, symbol + "名", dir,
+                price != null ? new BigDecimal(price) : null, volume, null, "image", volume != null);
+    }
+
+    @Test
+    void sameTrade_differentPrice_separate() {
+        // 一张截图 3 笔亨通光电买入、各 100 股，价格 68.27 / 67.73 / 67.92。
+        // 原判定只看 symbol+方向+数量(±10%) → 三笔全被判同笔、只留 1 笔（解析修好也白修）。
+        TradeLogCandidate a = p("600487", "BUY", 100, "68.270");
+        TradeLogCandidate b = p("600487", "BUY", 100, "67.730");
+        TradeLogCandidate d = p("600487", "BUY", 100, "67.920");
+        assertFalse(a.sameTrade(b), "同标的/同方向/同数量、价格不同 → 必须是两笔");
+        assertFalse(a.sameTrade(d));
+        assertFalse(b.sameTrade(d));
+    }
+
+    @Test
+    void sameTrade_samePrice_stillMerges() {
+        // 同一张图重复上传（用户反复重传是常态）：价格一致 → 仍要去重，否则候选每次翻倍。
+        assertTrue(p("600487", "BUY", 100, "68.27").sameTrade(p("600487", "BUY", 100, "68.270")),
+                "同价同量（仅小数位表示不同）→ 同一笔");
+        assertTrue(p("600487", "BUY", 100, "68.27").sameTrade(p("600487", "BUY", 105, "68.27")),
+                "同价且数量 ±10% 内 → 同一笔（OCR 波动）");
+    }
+
+    @Test
+    void sameTrade_nullPrice_fallsBackToVolumeRule() {
+        // 任一方价格缺失（文字归集「清仓了XX」）→ 退回原 symbol+方向+数量 语义，不得因加价格维度而漏去重。
+        assertTrue(p("600487", "BUY", 100, null).sameTrade(p("600487", "BUY", 100, "68.27")),
+                "一方价格缺失 → 按原语义同笔");
+        assertTrue(p("600487", "BUY", 100, null).sameTrade(p("600487", "BUY", 100, null)));
+    }
 }

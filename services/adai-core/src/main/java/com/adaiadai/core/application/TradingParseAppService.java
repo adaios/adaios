@@ -75,6 +75,28 @@ public class TradingParseAppService {
      */
     private static final Pattern TABLE_TRADE_PATTERN = Pattern.compile(
             "([\\u4e00-\\u9fa5A-Za-z]{2,12})\\h+(?:(\\d{6})\\h+)?([\\d.]+)\\h+(买入|卖出)\\h+(\\d+)(?:\\h+([^\\s]+))?");
+
+    // ── 竖排表格（2026-09-17，P0-交易53）──────────────────────────────────────
+    // 生产实据：GLM 把券商表格的**一行拆成 7 行**（每个单元格独占一行）——
+    //     亨通光电 / 600487 / 68.270 / 买入 / 100 / 6827.000 / 13:08:59
+    // 而上面 TABLE_TRADE_PATTERN 要求「名称 代码 价格 买卖 数量」**同处一行**（\h+ 分隔）
+    // → 0 匹配 → 降级单笔解析（Schema 只能装一笔）→ 一张 3 笔成交的截图只落 1 笔。
+    // 这里按「行类型」还原竖排表格：以方向行为锚点，向上取价格/代码/名称，向下取数量/金额/时间。
+    /** 行类型：股票名称（中文/字母开头，2-12 字，可含数字如「TCL科技」）。 */
+    private static final Pattern V_NAME_PATTERN = Pattern.compile("^[\\u4e00-\\u9fa5A-Za-z][\\u4e00-\\u9fa5A-Za-z0-9]{1,11}$");
+    /** 行类型：6 位股票代码。 */
+    private static final Pattern V_CODE_PATTERN = Pattern.compile("^\\d{6}$");
+    /** 行类型：数字（价格 / 成交额）。 */
+    private static final Pattern V_NUM_PATTERN = Pattern.compile("^\\d+(?:\\.\\d+)?$");
+    /** 行类型：纯整数（成交量）。 */
+    private static final Pattern V_INT_PATTERN = Pattern.compile("^\\d+$");
+    /** 行类型：买卖方向（锚点）。 */
+    private static final Pattern V_DIRECTION_PATTERN = Pattern.compile("^(买入|卖出)$");
+    /** 行类型：成交时间 HH:mm / HH:mm:ss。 */
+    private static final Pattern V_TIME_PATTERN = Pattern.compile("^\\d{1,2}:\\d{2}(?::\\d{2})?$");
+    /** 表头行——含这些词的行不是数据（否则「名称/代码」会被当成股票名）。 */
+    private static final Pattern V_HEADER_PATTERN =
+            Pattern.compile("名称|代码|成交价|成交量|成交额|买卖|成交时间|成交日期|成交均价|发生金额|成交数量");
     /** 状态命中「已成/部成/全部成交」才归集（含"成"字）；「已报/已确认/已撤」为未成交或非交易。 */
     private static final Pattern FILLED_STATUS_PATTERN = Pattern.compile("成");
     /** 尾列是数字 = 成交金额（无状态列成交单）；是中文 = 状态词（走「成」字过滤）。 */
@@ -271,14 +293,115 @@ public class TradingParseAppService {
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
                     tradeDate, null, null, null, null));
         }
+        // 2026-09-17（P0-交易53）：横排正则 0 命中 → 尝试竖排表格（VLM 把表格的一行拆成多行）。
+        if (results.isEmpty()) {
+            parseVerticalTable(text, results, dropped);
+        }
         if (!results.isEmpty()) {
             log.info("表格批量解析 | 命中 {} 笔 | 丢弃 {} 行 | 文本前 80 字: {}", results.size(), dropped.size(),
                     text.length() > 80 ? text.substring(0, 80) : text);
         } else if (!dropped.isEmpty()) {
             log.info("表格批量解析 | 命中 0 笔 | 丢弃 {} 行 | 文本前 80 字: {}", dropped.size(),
                     text.length() > 80 ? text.substring(0, 80) : text);
+        } else {
+            // P1-交易55：横排/竖排都没命中也要留痕，便于从生产日志区分「图糊了」与「版式不支持」。
+            log.info("表格批量解析 | 命中 0 笔 | 无丢弃行 | 疑似非交易截图或未支持版式 | 文本前 80 字: {}",
+                    text.length() > 80 ? text.substring(0, 80) : text);
         }
         return new LooseBatchParse(results, dropped);
+    }
+
+    /**
+     * 竖排表格还原（2026-09-17，P0-交易53）：VLM 把「一行多列」输出成「一列一行」时的解析。
+     *
+     * <p>以方向行（买入/卖出）为锚点：向上取「价格（必需）→ 代码（可选）→ 名称（可选）」，
+     * 向下取「数量（必需）→ 成交额（可选）→ 时间（可选）」。四要素（名称或代码 + 价格 + 方向 + 数量）
+     * 不全则**不产出**——没把握时不猜，宁可由上层单笔解析兜底，也不把闲聊文本误判成成交。
+     *
+     * <p>成交额交叉校验（P1-交易56）：`价格 × 数量 = 成交额` 是恒等式。对不上、且
+     * 「成交额 ÷ 价格」是正整数时，以反推值作为数量（金额列比数量列长、更不易被列错位带走），
+     * 避免把成交额当成股数落库。
+     */
+    private void parseVerticalTable(String text, List<ParseResult> results,
+                                    List<TradingImportParser.UnparsedLine> dropped) {
+        List<String> lines = new java.util.ArrayList<>();
+        for (String raw : text.split("\r?\n")) {
+            String s = raw.trim();
+            if (s.isEmpty() || V_HEADER_PATTERN.matcher(s).find()) continue;
+            lines.add(s);
+        }
+        if (lines.size() < 4) return; // 一笔竖排成交至少 4 行（名称/代码 + 价格 + 方向 + 数量）
+        int seq = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            if (!V_DIRECTION_PATTERN.matcher(lines.get(i)).matches()) continue;
+            String direction = "买入".equals(lines.get(i)) ? "BUY" : "SELL";
+            int up = i - 1;
+            BigDecimal price = null;
+            if (up >= 0 && V_NUM_PATTERN.matcher(lines.get(up)).matches()
+                    && !V_CODE_PATTERN.matcher(lines.get(up)).matches()) {
+                price = new BigDecimal(lines.get(up));
+                up--;
+            }
+            String symbol = null;
+            if (up >= 0 && V_CODE_PATTERN.matcher(lines.get(up)).matches()) {
+                symbol = lines.get(up);
+                up--;
+            }
+            String name = null;
+            if (up >= 0 && V_NAME_PATTERN.matcher(lines.get(up)).matches()) {
+                name = lines.get(up);
+            }
+            int down = i + 1;
+            Integer volume = null;
+            if (down < lines.size() && V_INT_PATTERN.matcher(lines.get(down)).matches()) {
+                try {
+                    volume = Integer.parseInt(lines.get(down));
+                    down++;
+                } catch (NumberFormatException ignored) {
+                    volume = null;
+                }
+            }
+            BigDecimal amount = null;
+            if (down < lines.size() && V_NUM_PATTERN.matcher(lines.get(down)).matches()) {
+                amount = new BigDecimal(lines.get(down));
+            }
+            seq++;
+            if (price == null || volume == null || (symbol == null && name == null)) {
+                // P1-交易55：认出了方向却凑不齐一笔 → 如实上报，不静默丢弃。
+                if (price != null && (symbol != null || name != null)) {
+                    int from = Math.max(0, i - 3);
+                    int to = Math.min(lines.size(), i + 4);
+                    dropped.add(new TradingImportParser.UnparsedLine(seq,
+                            String.join(" / ", lines.subList(from, to)),
+                            "像是成交但缺" + (volume == null ? "数量" : "价格") + "（这一笔没有记）"));
+                }
+                continue;
+            }
+            if (price.signum() <= 0 || volume <= 0) continue;
+            if (amount != null && amount.signum() > 0) {
+                BigDecimal expect = amount.divide(price, 4, java.math.RoundingMode.HALF_UP);
+                BigDecimal actual = BigDecimal.valueOf(volume);
+                BigDecimal tolerance = actual.multiply(new BigDecimal("0.01")).max(new BigDecimal("0.5"));
+                int expected = -1;
+                if (expect.stripTrailingZeros().scale() <= 0) {
+                    try {
+                        expected = expect.intValueExact();
+                    } catch (ArithmeticException ignored) {
+                        expected = -1;
+                    }
+                }
+                if (expected > 0 && expect.subtract(actual).abs().compareTo(tolerance) > 0) {
+                    log.info("竖排表格：数量与成交额对不上，按「成交额÷价格」修正 | {} {} {} 股 → {} 股（价 {} 额 {}）",
+                            symbol != null ? symbol : name, direction, volume, expected, price, amount);
+                    volume = expected;
+                }
+            }
+            results.add(new ParseResult(true, symbol, name, direction, price, volume,
+                    null, null, null, null, null));
+        }
+        if (!results.isEmpty()) {
+            log.info("竖排表格解析 | 还原 {} 笔（VLM 一行拆多行的版式）", results.size());
+        }
     }
 
     /** 表格批量解析结果（2026-09-14 P2-交易44）：识别出的交易 + 被丢弃的行（原文 + 原因）。 */

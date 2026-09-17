@@ -59,10 +59,22 @@ public record TradeLogCandidate(
      * 同 symbol + 方向，且 volume 差 ≤ ±10%（相对大者）——`volume/10*10` 固定 10 股桶
      * 过宽吞笔（10 vs 19 同桶）/过窄漏去重（100 vs 110 分开 → confirm 双落库）双缺陷；
      * 任一方 volume 缺失（不完整候选）按 symbol+direction 同笔（去重键语义不变）。
+     *
+     * <p>2026-09-17（P0-交易53）**补价格维度**：原判定只看 symbol+方向+数量，而「同标的、
+     * 同方向、各 100 股」的多笔成交极其常见——生产实测一张截图 3 笔亨通光电买入各 100 股
+     * （价格 68.27 / 67.73 / 67.92）会被吞成 1 笔，解析修好也白修。价格不同 → 判为不同笔；
+     * 同一张图重复上传时价格一致，去重语义不变。
      */
     public boolean sameTrade(TradeLogCandidate other) {
         if (other == null) return false;
         if (!dedupeKey().equals(other.dedupeKey())) return false;
+        // 价格维度：双方都有有效价格且不相等 → 不是同一笔。
+        // 取舍：宁可多留一笔让用户手动丢，也不能静默吞掉真实成交（吞掉是数据丢失，删多只是多点一下）。
+        if (price != null && other.price != null
+                && price.signum() > 0 && other.price.signum() > 0
+                && price.compareTo(other.price) != 0) {
+            return false;
+        }
         if (volume == null || other.volume == null || volume <= 0 || other.volume <= 0) return true;
         int max = Math.max(volume, other.volume);
         long diff = Math.abs((long) volume - other.volume);
