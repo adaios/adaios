@@ -1106,6 +1106,24 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 认回被抹掉的来源标记（REVIEW P2-审查4，2026-09-17 B5 批）：
+  /// `POST /api/v1/learn/cards/restore-origin?type=&title=`。
+  /// <p>
+  /// 只对「本该是本产品写的、`origin` 却被别的工具抹掉」的卡有意义——判据在**后端**
+  /// （正文含 `## 卡片页` 或 frontmatter 带 `review_at`/`reminded_at`），所以前端不做本地
+  /// 猜测：认不回来就把后端的人话原样显示（不给别人的卡盖章）。
+  Future<bool> restoreLearnOrigin({
+    required String type,
+    required String title,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/learn/cards/restore-origin')
+        .replace(queryParameters: {'type': type, 'title': title});
+    final resp = await _client.post(uri, headers: _headers);
+    _check(resp);
+    final body = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return body['writable'] == true;
+  }
+
   /// 图片喂入（2026-09-12 完整升级批）：POST /learn/digest/image（multipart，字段名 files，1~3 张，
   /// 可选 type/note）→ {status}。原图先落 learn/_raw/（源必留痕），后台读图（stage=reading）后
   /// 与链接/素材走同一条消化流水线；提交式——拿到 status 后照旧轮询 [getLearnDigestStatus]。
@@ -1384,6 +1402,21 @@ extension AuthApi on ApiService {
       headers: _headers,
     );
     _check(resp);
+  }
+
+  /// 换一把新钥匙（POST /api/v1/auth/tokens/{idOrPrefix}/rotate，2026-09-17 B5 批）。
+  /// <p>
+  /// 后端语义：**先发新、再撤旧**（旧的撤不掉就把新的回滚）——所以拿到 200 就可以直接用返回的
+  /// 明文替换本地副本，不存在「两把同时有效」的窗口（那比断链更糟：分不清哪把外泄）。
+  /// 返回 `{token, id, prefix, label, scopes, createdAt, expiresAt, notice}`，其中 `token` 是
+  /// **明文且只出现这一次**（后端只存哈希）——调用方必须立刻展示并让用户复制走。
+  Future<Map<String, dynamic>> rotateExternalToken(String idOrPrefix) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/auth/tokens/${Uri.encodeComponent(idOrPrefix)}/rotate'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
   /// 修改本人密码（POST /api/v1/auth/password）→ 返回被踢除的**其他**会话数

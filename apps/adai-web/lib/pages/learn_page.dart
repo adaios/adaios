@@ -891,7 +891,15 @@ class _LearnPageState extends State<LearnPage> {
   /// 详情操作（状态推进 / 写复述 / 反哺候选）——按卡片状态与类型呈现。
   /// 只读卡（writable=false）一律不给写入口：后端也会拒绝，不如这里就说清楚。
   List<Widget> _actionButtons(LearnCardDto card) {
-    if (card.readOnly) return const [];
+    // P2-审查4（2026-09-17 B5 批）：只读卡此前**什么都不给**——可卡本是阿呆写的、只是
+    // `origin` 被别的工具抹掉才退化成只读，用户完全没有出路。这里补「认回」入口
+    // （判据在后端：认不回来就把后端的人话原样显示，不给别人的卡盖章）。
+    if (card.readOnly) {
+      return [
+        _actionChip('这是我整理的，认回来', Icons.lock_open_outlined,
+            () => _restoreOrigin(card), enabled: !_busy),
+      ];
+    }
     final buttons = <Widget>[];
     if (card.status == 'new') {
       buttons.add(_actionChip('去复习', Icons.auto_stories, () => _changeStatus(card, 'review')));
@@ -962,6 +970,30 @@ class _LearnPageState extends State<LearnPage> {
   }
 
   // ── V2 操作 ──
+
+  /// 认回被抹掉的来源标记（P2-审查4，2026-09-17 B5 批）——只读卡唯一的动作。
+  ///
+  /// 认回成功后**整表重载**（`_load()` 会保留当前选中项）：卡从只读变可写，「写复述 / 状态流转 /
+  /// 反哺」等入口随之出现；认不回来就把后端的人话原样显示（`extractApiErrorMessage`）。
+  Future<void> _restoreOrigin(LearnCardDto card) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final ok = await widget.api.restoreLearnOrigin(type: card.type, title: card.title);
+      if (!mounted) return;
+      if (ok) {
+        await _load();
+        if (mounted) _showSnack('认回来了，现在可以编辑这张卡');
+      } else {
+        _showSnack('这个没认成「我整理的」——它大概是别处整理的吧');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(extractApiErrorMessage(e)); // P1-learn3：透出后端人话
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _changeStatus(LearnCardDto card, String target) async {
     if (card.readOnly) return; // 兜底：只读卡入口本身不出现（2026-09-17 深审：与其余三处对齐）

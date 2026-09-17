@@ -243,36 +243,74 @@ class _AccountsPageState extends State<AccountsPage> {
   }
 
   Future<void> _deleteAccount(Account account) async {
+    // 2026-09-17 B5 批（P2-审查1 / P2-审查4）：补上「连数据一起清理」入口——`?purge=true`
+    // 后端早就支持，但三端**零调用**，用户根本点不到（要清数据只能 SSH 删）。
+    // 默认**不勾**（个人数据是不可逆资产，宁可留一份没人用的目录）；勾了必须**照抄账号名**
+    // 才放行——不可逆动作过一道手抄，避免顺手点下去把数据清了。
+    var purge = false;
+    var typed = '';
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
-        title: const Text('删除账号',
-            style: TextStyle(color: AppColors.darkGrey1, fontSize: 16)),
-        content: Text(
-          // P2-5（2026-09-06）：补充明确后果（会话失效/不可撤销）；数据目录清理
-          // 口径后端待拍板（task-log #149），不臆断写「连数据一起删」
-          '确定删除账号「${account.userId}」？\n\n其现有登录会话将立即失效，账号不可再登录；此操作不可撤销。',
-          style: const TextStyle(
-              fontSize: 13, height: 1.5, color: AppColors.darkGrey3),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消',
-                style: TextStyle(color: AppColors.darkGrey5)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除',
-                style: TextStyle(color: AppColors.darkOrange)),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final canDelete = !purge || typed.trim() == account.userId;
+          return AlertDialog(
+            backgroundColor: AppColors.darkSurface,
+            title: const Text('删除账号',
+                style: TextStyle(color: AppColors.darkGrey1, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '确定删除账号「${account.userId}」？\n\n其现有登录会话将立即失效，账号不可再登录；此操作不可撤销。',
+                  style: const TextStyle(
+                      fontSize: 13, height: 1.5, color: AppColors.darkGrey3),
+                ),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  value: purge,
+                  onChanged: (v) => setLocal(() => purge = v ?? false),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('连它的数据一起清理（不可逆）',
+                      style: TextStyle(fontSize: 13, color: AppColors.darkOrange)),
+                  subtitle: const Text('不勾选 = 只删账号、保留它的数据（默认）',
+                      style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+                ),
+                if (purge) ...[
+                  const SizedBox(height: 4),
+                  Text('照抄账号名确认：${account.userId}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    key: const ValueKey('delete-account-confirm-input'),
+                    onChanged: (v) => setLocal(() => typed = v),
+                    style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
+                    decoration: const InputDecoration(hintText: '账号名', isDense: true),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消',
+                    style: TextStyle(color: AppColors.darkGrey5)),
+              ),
+              TextButton(
+                onPressed: canDelete ? () => Navigator.pop(ctx, true) : null,
+                child: const Text('删除',
+                    style: TextStyle(color: AppColors.darkOrange)),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (confirm != true || !mounted) return;
 
-    final error = await _store.delete(account.userId);
+    final error = await _store.delete(account.userId, purge: purge);
     if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -280,9 +318,10 @@ class _AccountsPageState extends State<AccountsPage> {
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      _snack('已删除账号 ${account.userId}', AppColors.darkGreen),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(_snack(
+      purge ? '已删除账号 ${account.userId}，数据也清了' : '已删除账号 ${account.userId}（数据保留）',
+      AppColors.darkGreen,
+    ));
     await _load(silent: true);
   }
 

@@ -1446,6 +1446,23 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 认回被抹掉的来源标记（P2-审查4，2026-09-17 B5 批）：
+  /// `POST /learn/cards/restore-origin?type=&title=` → `{type, title, writable}`。
+  /// 只对「本产品写的、`origin` 被别的工具抹掉」的卡有效（判据在**后端**：正文含 `## 卡片页`
+  /// 或 frontmatter 带 `review_at`/`reminded_at`）；认不回来 400 人话——调用方原样显示，
+  /// **不做本地猜测**（否则等于给别人的卡盖章，只读保护就废了）。
+  Future<bool> restoreLearnOrigin(
+      {required String type, required String title}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/learn/cards/restore-origin')
+          .replace(queryParameters: {'type': type, 'title': title}),
+      headers: _headers,
+    );
+    _check(resp);
+    final body = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return body['writable'] == true;
+  }
+
   /// 产物反馈（RFC 20260917 §五 2b）：POST /learn/cards/feedback → {status, message, canRepage}。
   /// 把「太啰嗦 / 多举几个例子」沉淀为**长期偏好**，经画像回流作用于**下一次**生成。
   /// **本调用不烧钱**（只写偏好、不调 LLM）；canRepage=true 表示这张卡还有 _raw 素材、

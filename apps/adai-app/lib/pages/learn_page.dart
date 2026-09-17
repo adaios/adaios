@@ -814,6 +814,52 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
     ));
   }
 
+  /// 「认回来源标记」按钮（P2-审查4，2026-09-17 B5 批）——**只在只读卡上出现**：
+  /// 可写卡本就有 `origin`，无需认回；只读卡才可能是「被抹掉标记的产品卡」。
+  Widget _restoreOriginButton() {
+    final disabled = _actionBusy || _loading;
+    return OutlinedButton.icon(
+      key: const ValueKey('learn-restore-origin'),
+      onPressed: disabled ? null : _restoreOrigin,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.darkGrey3,
+        side: const BorderSide(color: AppColors.darkGrey6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      icon: const Icon(Icons.lock_open_outlined, size: 16),
+      label: const Text('这是我整理的，认回来', style: TextStyle(fontSize: 13)),
+    );
+  }
+
+  /// 认回被抹掉的来源标记（P2-审查4）。
+  ///
+  /// 场景：卡本来是产品写的，`origin: product` 被别的工具（手工重写 / 技能模板）抹掉 →
+  /// 退化成只读，「编辑 / 复述 / 状态流转」全都消失且提示还是假话。这里调后端认回来
+  /// （判据在服务端：正文含 `## 卡片页` 或 frontmatter 带 `review_at`/`reminded_at`），
+  /// **认不回来就把后端的人话原样显示**——绝不本地猜测盖章（那等于废掉只读保护）。
+  Future<void> _restoreOrigin() async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    final gen = ++_gen;
+    try {
+      final ok = await widget.api.restoreLearnOrigin(type: _card.type, title: _card.title);
+      if (!mounted || gen != _gen) return;
+      if (ok) {
+        await _load(); // 刷新详情：writable 变 true，写入口随之出现
+        if (!mounted || gen != _gen) return;
+        setState(() => _actionBusy = false);
+        _snack('认回来了，现在可以编辑这张卡');
+      } else {
+        setState(() => _actionBusy = false);
+        _snack('这个没认成「我整理的」——它大概是别处整理的吧');
+      }
+    } catch (e) {
+      if (!mounted || gen != _gen) return;
+      setState(() => _actionBusy = false);
+      _snack(_apiError(e));
+    }
+  }
+
   /// 「移动到主题」（只在能改的卡上出现）：填主题 → PATCH → 回列表刷新 + 重新定位打开。
   /// 只读卡不出现这个入口（后端也会拒写，不把人送到墙上撞）。
   Future<void> _moveTopic() async {
@@ -1107,6 +1153,11 @@ class _LearnDetailPageState extends State<_LearnDetailPage> {
                 if (!_writable) ...[
                   const SizedBox(height: 14),
                   _readOnlyNote(),
+                  // P2-审查4（2026-09-17 B5 批）：只读卡的「认回来源标记」入口——
+                  // 卡本是阿呆写的、但 origin 被别的工具抹掉时会退化成只读，这里能认回来。
+                  // 判据在后端：认不回来就显示后端的人话（不给别人的卡盖章）。
+                  const SizedBox(height: 10),
+                  _restoreOriginButton(),
                 ] else ...[
                   // 卡片管理动作（挪主题 / 删卡）：只读卡不出现（后端也拒写）
                   const SizedBox(height: 14),

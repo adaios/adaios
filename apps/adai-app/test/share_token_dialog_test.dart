@@ -32,6 +32,10 @@ class _Backend {
   bool issueWithoutToken = false;
   Duration listDelay = Duration.zero;
   int deleteCalls = 0;
+
+  /// 换一把的调用次数（P2-审查4，2026-09-17 B5 批）。
+  int rotateCalls = 0;
+
   final List<http.Request> requests = [];
 
   static const String plainToken =
@@ -78,6 +82,32 @@ class _Backend {
         'scopes': ['learn:digest'],
         'createdAt': '2026-09-13T10:00:00Z',
         'notice': '这串令牌只会显示这一次，请现在就复制走；丢了就撤销重发一把。',
+      });
+    }
+
+    if (path.endsWith('/rotate') && req.method == 'POST') {
+      rotateCalls++;
+      const newPrefix = 'adai_99998888';
+      tokens = [
+        {
+          'id': _idFor(newPrefix),
+          'prefix': newPrefix,
+          'label': '系统分享与快捷指令',
+          'scopes': ['learn:digest'],
+          'createdAt': '2026-09-17T10:00:00Z',
+          'lastUsedAt': null,
+          'expiresAt': '2026-12-16T10:00:00Z',
+        }
+      ];
+      return _json({
+        'token': plainToken,
+        'id': _idFor(newPrefix),
+        'prefix': newPrefix,
+        'label': '系统分享与快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-17T10:00:00Z',
+        'expiresAt': '2026-12-16T10:00:00Z',
+        'notice': '换好了：旧的已经立刻失效，这串新令牌只会显示这一次，请现在复制走；有效期重新算 90 天。',
       });
     }
 
@@ -279,6 +309,37 @@ void main() {
     final deletes = backend.requests.where((r) => r.method == 'DELETE').toList();
     expect(deletes.single.url.path, endsWith('/api/v1/auth/tokens/adai_deadbeef'));
     expect(find.textContaining('adai_deadbeef'), findsNothing, reason: '撤销后列表要刷新掉');
+  });
+
+  testWidgets('P2-审查4（2026-09-17 B5 批）：点「换一把」→ 发 POST /rotate，新明文照样只显示这一次',
+      (tester) async {
+    // 背景：钥匙 90 天到期，而此前只能「先收回、再签发」（中间有空窗，撤完忘签发就断链）；
+    // 后端 `rotate` 端点存在但**三端零调用**。本用例钉住：入口真的发 POST，且新明文落到眼前
+    // （后端只存哈希，被 spinner 顶掉就是真丢——与签发同一条展示路径）。
+    backend.tokens = [
+      {
+        'id': _Backend._idFor('adai_deadbeef'),
+        'prefix': 'adai_deadbeef',
+        'label': '快捷指令',
+        'scopes': ['learn:digest'],
+        'createdAt': '2026-09-01T10:00:00Z',
+        'lastUsedAt': null,
+        'expiresAt': '2026-09-20T10:00:00Z',
+      }
+    ];
+    await pumpDialog(tester);
+
+    await tapText(tester, '换一把');
+
+    expect(backend.rotateCalls, 1);
+    final posts = backend.requests
+        .where((r) => r.method == 'POST' && r.url.path.endsWith('/rotate'))
+        .toList();
+    expect(posts.single.url.path,
+        endsWith('/api/v1/auth/tokens/${_Backend._idFor('adai_deadbeef')}/rotate'),
+        reason: '优先用 id 轮换（与撤销同一套定位口径）');
+    expect(find.textContaining('adai_0123456789abcdef'), findsOneWidget,
+        reason: '新明文必须落到用户眼前');
   });
 
   testWidgets('⑥ 生成失败 → 透出后端人话，不甩状态码', (tester) async {

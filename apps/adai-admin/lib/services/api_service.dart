@@ -280,9 +280,12 @@ class ApiService {
     return Account.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  /// `DELETE /api/v1/accounts/{userId}` → 204 / 400 / 404。
-  Future<void> deleteAccount(String userId) async {
-    await _send('DELETE', '/api/v1/accounts/$userId');
+  /// `DELETE /api/v1/accounts/{userId}?purge=` → 200 / 204 / 400 / 404。
+  /// `purge=true` 时后端连 `data/{userId}/` 与随之变空的目录一起清理（2026-09-17 B5 批接入，
+  /// 此前端点存在但三端零调用 = 用户点不到，数据只能 SSH 删）。
+  Future<void> deleteAccount(String userId, {bool purge = false}) async {
+    await _send('DELETE', '/api/v1/accounts/$userId',
+        query: purge ? {'purge': 'true'} : null);
   }
 
   // ── 记录（per-user，admin 只读查看）──

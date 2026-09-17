@@ -1384,6 +1384,50 @@ type: ai
       expect(find.text('Mac 整理的原始卡 的核心观点'), findsOneWidget);
     });
 
+    testWidgets('P2-审查4（2026-09-17 B5 批）：只读卡给「认回来源标记」入口，点击真的打到后端',
+        (tester) async {
+      // 背景：只读卡此前 `_actionButtons` 直接 `return const []` —— 卡被别的工具抹掉 origin
+      // 后退化成只读，用户在 web 上完全没有出路（后端 `POST /learn/cards/restore-origin` 零调用）。
+      var restoreCalls = 0;
+      var writable = false;
+      final tree = {
+        'ai': [_card('ai', '别处整理的卡', writable: false, status: 'new', topic: '')],
+      };
+      final api = ApiService(
+        baseUrl: 'http://test',
+        userId: 'adai',
+        client: MockClient((req) async {
+          final p = req.url.path;
+          if (p.endsWith('/api/v1/learn/tree')) return _json(tree);
+          if (p.endsWith('/api/v1/learn/cards')) return _json(const []);
+          if (p.endsWith('/api/v1/learn/cards/restore-origin') && req.method == 'POST') {
+            restoreCalls++;
+            writable = true;
+            return _json({'type': 'ai', 'title': '别处整理的卡', 'writable': true});
+          }
+          if (p.endsWith('/api/v1/learn/content')) {
+            return _json({
+              'type': 'ai', 'title': '别处整理的卡', 'topic': '',
+              'writable': writable,
+              'content': '# 别处整理的卡\n\n## 核心观点\n核心观点\n',
+              'pages': const [],
+            });
+          }
+          return _json({'error': 'not mocked'}, status: 404);
+        }),
+      );
+      await pump(tester, api);
+
+      expect(find.text('这是我整理的，认回来'), findsOneWidget,
+          reason: '只读卡的唯一动作 = 认回来');
+      expect(find.text('写复述'), findsNothing, reason: '认回之前仍不给写入口');
+
+      await tester.tap(find.text('这是我整理的，认回来'));
+      await tester.pumpAndSettle();
+
+      expect(restoreCalls, 1, reason: '点击要真的打到后端');
+    });
+
     testWidgets('writable=true：写入口照旧（回归，行为不变）', (tester) async {
       final api = _api(tree: {
         'ai': [_card('ai', 'RAG 笔记', topic: 'harness')],

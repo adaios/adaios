@@ -214,6 +214,71 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
     }
   }
 
+  /// 「换一把」新钥匙（P2-审查4 / S-凭据1 剩余项，2026-09-17 B5 批）。
+  ///
+  /// 为什么要它：这把钥匙 90 天到期，而此前用户只能「先收回、再签发」——中间有空窗，
+  /// 撤完忘了签发就直接断链（快捷指令那边失效）。后端 `rotate` 是**先发新、再撤旧**
+  /// （旧的撤不掉就把新的也回滚），所以这里只需：把新明文摆到用户眼前 + 搬进共享容器。
+  ///
+  /// ⚠️ 明文走 `_freshPlain` 而不是等 `_load()`（后端只存哈希，被 spinner 顶掉就是真丢）；
+  /// `_busy` 复位同样放在所有 `await` 之后，否则等待期间连点会换两次。
+  Future<void> _rotate(Map<String, dynamic> token) async {
+    if (_busy) return;
+    final id = token['id']?.toString();
+    final prefix = token['prefix']?.toString() ?? '';
+    final target = (id != null && id.isNotEmpty) ? id : prefix;
+    if (target.isEmpty) {
+      setState(() => _hint = '这把钥匙没有可用的编号，先刷新一下列表再换。');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _hint = null;
+    });
+    try {
+      final data = await widget.api.rotateExternalToken(target);
+      if (!mounted) return;
+      final plain = data['token']?.toString();
+      if (plain == null || plain.isEmpty) {
+        // 后端说换了、却没给明文 = 旧的已失效而新的拿不到，必须说清楚让用户重发一把。
+        setState(() {
+          _busy = false;
+          _actionError = '新钥匙换了，但那串明文没拿到；旧的已经失效，你再点一次「发一把」。';
+        });
+        await _load();
+        return;
+      }
+      final freshId = data['id']?.toString();
+      setState(() {
+        _freshPlain = plain;
+        _freshPrefix = data['prefix']?.toString();
+        _freshId = freshId;
+        _freshCopied = false;
+      });
+      // 与签发同一套：明文只在这一次响应里存在，顺手搬进 App Groups 共享容器
+      // （分享扩展是独立进程，读不到 App 存储）。
+      if (ShareExtensionService.supported) {
+        final connected = await ShareExtensionService.saveToken(token: plain, id: freshId);
+        if (!mounted) return;
+        if (!connected) {
+          setState(() => _actionError = '新钥匙拿到了，但系统分享那边没接上。先把上面这串复制走。');
+        }
+        await _loadShareStatus();
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _showHint(data['notice']?.toString() ?? '换好了：旧的已经立刻失效，新钥匙只显示这一次。');
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _actionError = _humanError(e);
+      });
+    }
+  }
+
   /// 撤销之后同步共享容器。**判不准就清**：容器里那把可能正是被撤的，
   /// 留着它只会让用户下次分享时收到一个说不清的 401；宁可让他重新点一次「发一把」，
   /// 也不要留一把可能已经失效的钥匙（fail-safe）。
@@ -676,6 +741,11 @@ class _ShareTokenDialogState extends State<ShareTokenDialog> {
                 ),
               ],
             ),
+          ),
+          TextButton(
+            key: ValueKey('token-rotate-${token['id'] ?? prefix}'),
+            onPressed: _busy ? null : () => _rotate(token),
+            child: const Text('换一把', style: TextStyle(fontSize: 12, color: AppColors.darkBlue)),
           ),
           TextButton(
             onPressed: _busy ? null : () => _revoke(token),

@@ -171,7 +171,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('alice'), findsNothing);
-    expect(find.text('已删除账号 alice'), findsOneWidget);
+    expect(find.text('已删除账号 alice（数据保留）'), findsOneWidget);
+  });
+
+  testWidgets('删号默认不清理数据（2026-09-17 B5 批）', (WidgetTester tester) async {
+    // 背景：`?purge=true` 后端早有，但三端零调用 = 用户点不到（清数据只能 SSH）。
+    // 默认必须**不**清理——个人数据是不可逆资产。
+    final store = FakeAccountStore();
+    await pumpAccounts(tester, store: store);
+
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('连它的数据一起清理'), findsOneWidget);
+    expect(find.byKey(const ValueKey('delete-account-confirm-input')), findsNothing,
+        reason: '没勾清理时不要求抄账号名');
+
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(store.deletePurgeCalls, [false], reason: '默认只删账号、保留数据');
+  });
+
+  testWidgets('勾「连数据一起清理」必须照抄账号名才放行（2026-09-17 B5 批）',
+      (WidgetTester tester) async {
+    final store = FakeAccountStore();
+    await pumpAccounts(tester, store: store);
+
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('连它的数据一起清理'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('delete-account-confirm-input')), findsOneWidget,
+        reason: '勾了清理要给一道「照抄账号名」的确认');
+
+    await tester.enterText(
+        find.byKey(const ValueKey('delete-account-confirm-input')), 'wrong');
+    await tester.pumpAndSettle();
+    final blocked = tester.widget<TextButton>(
+      find.ancestor(of: find.text('删除'), matching: find.byType(TextButton)),
+    );
+    expect(blocked.onPressed, isNull, reason: '账号名没抄对 → 不放行（不可逆动作）');
+
+    await tester.enterText(
+        find.byKey(const ValueKey('delete-account-confirm-input')), 'alice');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(store.deletePurgeCalls, [true], reason: '抄对了才带 purge=true');
   });
 
   testWidgets('P2-R1 双开关快速连点：串行队列保证两个都开（竞态修复）',

@@ -103,9 +103,13 @@ class FakeAccountStore implements AccountStore {
     return null;
   }
 
+  /// 每次 delete 的 purge 取值（2026-09-17 B5 批：回归断言「默认不清理、勾了才传 true」）。
+  final List<bool> deletePurgeCalls = [];
+
   @override
-  Future<String?> delete(String userId) async {
+  Future<String?> delete(String userId, {bool purge = false}) async {
     if (userId == AccountStore.protectedAdminId) return '内置管理员不可删除';
+    deletePurgeCalls.add(purge);
     _accounts.removeWhere((a) => a.userId == userId);
     return null;
   }
@@ -453,5 +457,5 @@ class GatedAccountStore implements AccountStore {
   }
 
   @override
-  Future<String?> delete(String userId) async => null;
+  Future<String?> delete(String userId, {bool purge = false}) async => null;
 }

@@ -77,6 +77,10 @@ class _LearnBackend {
   Map<String, dynamic> feedbackError = const {};
   int repageCalls = 0;
 
+  /// 认回来源标记的调用次数与可注入错误（P2-审查4，2026-09-17 B5 批）。
+  int restoreOriginCalls = 0;
+  String restoreOriginError = '';
+
   final List<http.Request> requests = [];
 
   void addCard(
@@ -193,6 +197,24 @@ class _LearnBackend {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       return _json({'type': body['type'], 'title': body['title'], 'repaged': true});
     }
+    // 认回来源标记（P2-审查4，2026-09-17 B5 批）：只读卡唯一的出路。
+    if (p.endsWith('/api/v1/learn/cards/restore-origin') && req.method == 'POST') {
+      restoreOriginCalls++;
+      final type = req.url.queryParameters['type'] ?? '';
+      final title = req.url.queryParameters['title'] ?? '';
+      if (restoreOriginError.isNotEmpty) {
+        return _json({'error': restoreOriginError}, status: 400);
+      }
+      // 认回成功 = 这张卡变可写（与后端语义一致：只对「看得出来是本产品写的」卡生效）
+      metas['$type/$title'] = {
+        'topic': metas['$type/$title']?['topic'] ?? '',
+        'writable': true,
+      };
+      for (final c in _byType[type] ?? const <Map<String, dynamic>>[]) {
+        if (c['title'] == title) c['writable'] = true;
+      }
+      return _json({'type': type, 'title': title, 'writable': true});
+    }
     // 卡片管理动作（2026-09-13 卡片管理动作批）
     if (p.endsWith('/api/v1/learn/cards/topic') && req.method == 'PATCH') {
       final gate = moveGate;
@@ -266,6 +288,42 @@ void main() {
     ));
     await tester.pumpAndSettle();
   }
+
+  // ── P2-审查4（2026-09-17 B5 批）：零入口端点补 UI 入口 ──
+
+  testWidgets('只读卡给「认回来源标记」入口：点击后调后端并变成可写', (WidgetTester tester) async {
+    // 背景：`POST /learn/cards/restore-origin` 后端早就有，但三端零调用——
+    // 卡被别的工具抹掉 origin 后退化成只读，用户完全没有出路。
+    final backend = _LearnBackend();
+    backend.addCard('ai', '别处整理的卡', writable: false);
+    await pump(tester, backend.api(), initialCard: (type: 'ai', title: '别处整理的卡'));
+
+    expect(find.byKey(const ValueKey('learn-restore-origin')), findsOneWidget,
+        reason: '只读卡要有认回入口');
+    expect(find.byKey(const ValueKey('learn-card-actions')), findsNothing,
+        reason: '只读卡的写入口仍不出现');
+
+    await tester.tap(find.byKey(const ValueKey('learn-restore-origin')));
+    await tester.pumpAndSettle();
+
+    expect(backend.restoreOriginCalls, 1, reason: '点击要真的打到后端');
+    expect(find.byKey(const ValueKey('learn-card-actions')), findsOneWidget,
+        reason: '认回后刷新详情 → writable=true，写入口出现');
+  });
+
+  testWidgets('认不回来的卡：如实显示后端人话，不本地盖章', (WidgetTester tester) async {
+    final backend = _LearnBackend();
+    backend.addCard('ai', '别处整理的卡', writable: false);
+    backend.restoreOriginError = '这张卡看起来不是阿呆整理的，认不了';
+    await pump(tester, backend.api(), initialCard: (type: 'ai', title: '别处整理的卡'));
+
+    await tester.tap(find.byKey(const ValueKey('learn-restore-origin')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('认不了'), findsOneWidget);
+    expect(find.byKey(const ValueKey('learn-card-actions')), findsNothing,
+        reason: '后端拒绝 → 仍是只读（不给别人的卡盖章）');
+  });
 
   group('LearnCardDto JSON parsing', () {
     test('parses full card', () {

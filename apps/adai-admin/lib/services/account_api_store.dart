@@ -27,8 +27,10 @@ abstract class AccountStore {
   Future<String?> resetPassword(String userId, String newPassword);
 
   /// 删除账号。内置管理员不可删除。
+  /// [purge] = true 时**连同数据目录一起清理**（不可逆，2026-09-17 B5 批接入入口）；
+  /// 默认 false = 只删账号、保留 `data/{userId}/`（个人数据是不可逆资产，默认留着）。
   /// 返回 null 表示成功；返回字符串为失败原因。
-  Future<String?> delete(String userId);
+  Future<String?> delete(String userId, {bool purge = false});
 }
 
 /// 账号管理 — 真实后端实现（`/api/v1/accounts`，系统级，无 X-User-Id；需登录 + role=admin，#178）。
@@ -89,9 +91,9 @@ class AccountApiStore implements AccountStore {
   }
 
   @override
-  Future<String?> delete(String userId) async {
+  Future<String?> delete(String userId, {bool purge = false}) async {
     try {
-      await _api.deleteAccount(userId);
+      await _api.deleteAccount(userId, purge: purge);
       return null;
     } on ApiException catch (e) {
       return e.message;
