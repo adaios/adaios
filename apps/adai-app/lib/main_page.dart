@@ -196,7 +196,9 @@ class _MainPageState extends State<MainPage>
       return;
     }
     if (!mounted) return;
-    _onSend(entry.text!);
+    // 外部入口（Siri「记一笔」/ 快捷指令 / adai://record）：落库时打来源标记
+    // （P1-安全1 剩余项，2026-09-17 B4 批）——这些入口本身无凭据，留痕便于回溯。
+    _onSend(entry.text!, source: 'external_entry');
   }
 
   /// digest 动作的一次点击确认（阿呆口吻，不是系统警告）。
@@ -550,7 +552,10 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _onSend(String text) async {
+  /// [source] 只在「外部入口落记录」时传 `external_entry`（P1-安全1 剩余项，2026-09-17 B4 批）：
+  /// 记的是「这条内容是被谁塞进来的」——Siri / 快捷指令 / `adai://record` 这类入口本身无凭据，
+  /// 留一道痕便于回溯（不改变任何展示与消费行为）。
+  void _onSend(String text, {String? source}) async {
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     // 2026-09-12 learn 对话流入口：只有「整理 + 链接」「打开那篇」这类消息才先问 learn——
@@ -567,7 +572,7 @@ class _MainPageState extends State<MainPage>
       return;
     }
     setState(() => _hasActiveChat = false);
-    _createNewCard(text, timeStr, null);
+    _createNewCard(text, timeStr, null, source: source);
   }
 
   /// 对话流 learn 触发词（2026-09-12 完整升级批）：
@@ -1026,7 +1031,7 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  void _createNewCard(String text, String timeStr, String? forcedIntent) async {
+  void _createNewCard(String text, String timeStr, String? forcedIntent, {String? source}) async {
     final cardId = 'card_${DateTime.now().millisecondsSinceEpoch}';
     setState(() => _cards.add(FeedCardData(
       id: cardId, type: FeedCardType.record, time: timeStr, content: text, mode: CardMode.idle, loading: true,
@@ -1041,7 +1046,7 @@ class _MainPageState extends State<MainPage>
     }
 
     try {
-      final resp = await _api.createRecord(text, intent: forcedIntent, cardId: cardId);
+      final resp = await _api.createRecord(text, intent: forcedIntent, cardId: cardId, source: source);
       if (!mounted) return;
       if (IntentType.parse(resp.intent) == IntentType.question) {
         final aiTime = TimeOfDay.now();

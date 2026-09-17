@@ -224,6 +224,9 @@ CN = {
     'TencentMarketDataSource': '行情源(腾讯)取数失败',
     'KlineService': 'K线服务告警（多为上游取数失败的连带）',
     'AuthFilter': '鉴权拦截（多为登录态过期的 401，非攻击）',
+    # S-凭据1（2026-09-17 B4 批）：外部令牌的付费动作闸门——「同一把钥匙换了 IP」或
+    # 「付费动作超频」都只写 WARN（不阻断正常使用），所以必须由日报主动捞出来给人看。
+    'ApiTokenGuard': '⚠ 外部令牌异常使用（同一把钥匙换 IP / 付费动作超频）——到「学习」页看看是不是该收回那把钥匙',
     'EquityCurveService': '资金曲线缺收盘价（该日盈亏未计入）',
     'LlmResponseParser': 'LLM 回复非 JSON → 走降级解析',
     'DeepSeekAiClient': 'DeepSeek 调用异常',

@@ -598,4 +598,34 @@ class RecordControllerTest {
                         .content("{\"domain\":\"unknown\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ── P1-安全1 剩余项（2026-09-17 B4 批）：记录来源标记 ──
+
+    @Test
+    void buildRecord_externalEntrySource_isMarked() {
+        // 外部入口（Siri「记一笔」/ 快捷指令 / adai://record）落库时打标记，
+        // 便于回溯「这条内容是被谁塞进来的」。
+        var req = new RecordController.CreateRecordRequest(
+                "明天九点开会", null, null, null, null, "external_entry");
+
+        assertEquals("external_entry", RecordController.buildRecord(req).source());
+    }
+
+    @Test
+    void buildRecord_unknownSource_fallsBackToUserInput() {
+        // 认不出的标记不报错、不拒收——绝不能因为一个标记把用户的记录挡在外面。
+        var req = new RecordController.CreateRecordRequest(
+                "随手记一句", null, null, null, null, "whatever");
+
+        assertEquals("user_input", RecordController.buildRecord(req).source());
+    }
+
+    @Test
+    void buildRecord_noSource_defaultsToUserInput() {
+        // 存量口径不变：不传 source = user_input（用户手输）。
+        var req = new RecordController.CreateRecordRequest(
+                "手输一条", null, null, null, null, null);
+
+        assertEquals("user_input", RecordController.buildRecord(req).source());
+    }
 }

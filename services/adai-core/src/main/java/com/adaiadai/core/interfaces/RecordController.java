@@ -298,7 +298,7 @@ public class RecordController {
         return new ContentRecord(
                 id,
                 request.type() != null ? request.type() : "note",
-                "user_input",
+                normalizeSource(request.source()),
                 request.content().length() > 50
                         ? request.content().substring(0, 50) + "..."
                         : request.content(),
@@ -308,6 +308,20 @@ public class RecordController {
         );
     }
 
+    /**
+     * 记录来源白名单（P1-安全1 剩余项，2026-09-17 B4 批）。
+     * <p>
+     * 为什么只认这两个：{@code source} 是**给审计用的标记**，不是自由文本——放开任意值等于往
+     * 数据里灌噪音。{@code user_input} = 用户在输入框里打的（缺省，存量记录也是这个）；
+     * {@code external_entry} = 从外部入口进来的（Siri「记一笔」/ 快捷指令 / {@code adai://record}）。
+     * <p>
+     * 认不出的值一律落回 {@code user_input}（不报错）：标记错了不影响记录本身，
+     * 但绝不能因为一个标记把用户的记录拒之门外。
+     */
+    private static String normalizeSource(String source) {
+        return "external_entry".equals(source) ? "external_entry" : "user_input";
+    }
+
     public record CreateRecordRequest(
             @NotBlank(message = "content cannot be empty")
             @Size(min = 1, max = 10000, message = "content length must be 1-10000")
@@ -315,7 +329,8 @@ public class RecordController {
             String type,
             List<String> tags,
             String intent,       // "log" | "question" | null (auto)
-            String cardId        // optional: card ID for active conversation
+            String cardId,       // optional: card ID for active conversation
+            String source        // optional: "external_entry"（Siri/快捷指令）；缺省/未知 = user_input
     ) {}
 
     public record StatemResponse(

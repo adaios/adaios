@@ -57,19 +57,23 @@ public class LearnController {
     private final PluginService pluginService;
     /** 门控 B 降级落盘用（RFC 20260917）：无 learn 插件时把分享素材落成普通记录。 */
     private final RecordRepository recordRepository;
+    /** 外部令牌付费动作闸门（2026-09-17 B4 批，S-凭据1 剩余项：令牌级频控 + 异常使用告警）。 */
+    private final com.adaiadai.core.application.ApiTokenGuard apiTokenGuard;
 
     public LearnController(LearnDigestAppService digestService,
                            LearnCandidateAppService candidateService,
                            com.adaiadai.core.application.LearnReviewPushService reviewPushService,
                            com.adaiadai.core.application.LearnTranscriptionService transcriptionService,
                            PluginService pluginService,
-                           RecordRepository recordRepository) {
+                           RecordRepository recordRepository,
+                           com.adaiadai.core.application.ApiTokenGuard apiTokenGuard) {
         this.digestService = digestService;
         this.candidateService = candidateService;
         this.reviewPushService = reviewPushService;
         this.transcriptionService = transcriptionService;
         this.pluginService = pluginService;
         this.recordRepository = recordRepository;
+        this.apiTokenGuard = apiTokenGuard;
     }
 
     /**
@@ -181,12 +185,17 @@ public class LearnController {
     @PostMapping("/digest/confirm")
     public ResponseEntity<?> confirmTranscription(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestHeader(value = "X-Adai-Token-Id", required = false) String tokenId,
+            jakarta.servlet.http.HttpServletRequest servletRequest,
             @RequestBody LearnConfirmRequest body) {
         ResponseEntity<?> denied = requireLearnPlugin(userId);
         if (denied != null) return denied;
         if (body == null || body.confirm() == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "请告诉我是继续还是取消"));
         }
+        // S-凭据1（2026-09-17 B4 批）：这是**付费**动作，而外部令牌此前对它零频控——
+        // 一把被转发的钥匙最坏能连点刷转写。会话调用（tokenId 为空）不受限。
+        apiTokenGuard.checkPayAction(userId, tokenId, servletRequest.getRemoteAddr());
         return ResponseEntity.ok(digestService.confirm(userId, body.confirm()));
     }
 

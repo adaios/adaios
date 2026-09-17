@@ -59,7 +59,8 @@ class LearnDigestEndpointTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         return MockMvcBuilders.standaloneSetup(new LearnController(digestService, candidateService,
-                        reviewPushService, transcriptionService, pluginService, recordRepository))
+                        reviewPushService, transcriptionService, pluginService, recordRepository,
+                        new com.adaiadai.core.application.ApiTokenGuard()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(om))

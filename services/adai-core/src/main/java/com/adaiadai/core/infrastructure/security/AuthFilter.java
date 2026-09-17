@@ -188,8 +188,11 @@ public class AuthFilter implements Filter {
             writeJson(response, HttpServletResponse.SC_FORBIDDEN, "这把令牌没有访问这里的权限");
             return true;
         }
-        // 外部令牌一律以它所属账号行事：覆盖客户端 X-User-Id（伪造无效，也不允许跨账号）
-        chain.doFilter(new UserIdHeaderRequestWrapper(request, apiToken.userId()), response);
+        // 外部令牌一律以它所属账号行事：覆盖客户端 X-User-Id（伪造无效，也不允许跨账号）。
+        // 同时把令牌标识注入 X-Adai-Token-Id（2026-09-17 B4 批）：付费动作的令牌级频控靠它，
+        // 而这个值由这里注入、客户端无法伪造（会话调用不设该 header，见 UserIdHeaderRequestWrapper）。
+        chain.doFilter(new UserIdHeaderRequestWrapper(request, apiToken.userId(), apiToken.tokenPrefix()),
+                response);
         return true;
     }
 

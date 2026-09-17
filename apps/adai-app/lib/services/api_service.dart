@@ -218,13 +218,17 @@ class ApiService {
   /// 提交记录。
   /// 2026-08-20：聊天（intent=question / cardId 续聊）走 _aiClient——DeepSeek 回答 7~27s，
   /// 15s 默认超时必误杀（聊天报错根因）；纯 log 陈述走常规客户端。
-  Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId}) async {
+  /// [source] 标记「这条记录从哪来」（P1-安全1 剩余项，2026-09-17 B4 批）：外部入口
+  /// （Siri「记一笔」/ 快捷指令 / `adai://record`）传 `external_entry`；不传 = 后端按
+  /// `user_input` 记（存量口径不变，用户拍板 D2「只给非手输入口加，不动存量」）。
+  Future<RecordResponse> createRecord(String content, {String? type, List<String>? tags, String? intent, String? cardId, String? source}) async {
     final body = {
       'content': content,
       if (type != null) 'type': type,
       if (tags != null && tags.isNotEmpty) 'tags': tags,
       if (intent != null) 'intent': intent,
       if (cardId != null) 'cardId': cardId,
+      if (source != null) 'source': source,
     };
     final aiHeavy = intent == 'question' || cardId != null;
     final resp = await (aiHeavy ? _aiClient : _client).post(
