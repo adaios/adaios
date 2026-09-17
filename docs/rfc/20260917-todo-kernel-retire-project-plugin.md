@@ -185,7 +185,7 @@ related:
 | 风险 | 处置 |
 |:-----|:-----|
 | 端点破坏性变更（已装 App 404） | 用户已拍板「可重装」；本次不做兼容壳，api-spec 标注为 breaking |
-| 旧待办数据成为孤儿文件 | **「不迁」的原假设已被生产核对修正**（2026-09-17 只读实测：adai 有 10 条**全部 TODO**、最后写入 09-17 19:32，且都是 R2 从真实记录自动生成）——这批待办**只存在于 Task 表**（旧 R2 建任务时已 `clearActionable`，记忆侧无 actionable），**不迁移 = 升级后从产品里消失**；是否一次性迁入 `data/adai/todos/` 待用户拍板（B8），原文件一律保留 |
+| 旧待办数据成为孤儿文件 | **「不迁」的原假设已被生产核对修正**（2026-09-17 只读实测：adai 有 10 条**全部 TODO**、最后写入 09-17 19:32，且都是 R2 从真实记录自动生成）——这批待办**只存在于 Task 表**（旧 R2 建任务时已 `clearActionable`，记忆侧无 actionable），**不迁移 = 升级后从产品里消失**；**用户已拍板全迁、2026-09-17 23:32 迁移完成**（旧文件一字未动 + 备份 + 以生产文件内容实测解析 PASS）；生产仍跑旧版本期间旧 R2 会继续写旧目录，部署前需再核增量 |
 | `todo-due` 推送打扰 | 进 `PushSettings.ALL_TYPES`（默认开、用户可关），与 `learn-review` 同机制 |
 | 记忆与待办状态不一致 | 单向同步（完成/删除由待办流向记忆），建待办时不再清记忆 |
 | 本次未核生产 `data/` | 待办零写入为本地口径；实施前如需以生产为准，可只读核一次（B8 需用户确认） |
@@ -206,4 +206,4 @@ related:
 
 **§六 验证逐条**：后端 `./gradlew test` 全绿 ✅（含门控移除回归 + R2 单向同步回归）；前端 `flutter analyze` 0 issue + 测试全绿 ✅；端到端以「接口级（`TodoControllerTest`，含无插件账号 family）+ 服务级（`TodoAppServiceTest` 记忆联动）+ 页面级（双端待办页专项测试）」三层覆盖——**未起服务做端到端冒烟**（本批不部署）；反向验证 ✅（Feed 不再产出 `action` 条目：`FeedAppServiceTest.getFeed_pendingActionMemory_doesNotProduceActionEntry`；账号残留 `"project"` 不引发异常：`PluginServiceTest` / `MeControllerTest` 回归）。
 
-**遗留（登记）**：① 端点破坏性变更 → 旧 App 需重装（用户已拍板），api-spec 标注 breaking；② **生产 `data/` 已只读核对（2026-09-17 23:15，用户授权）**：仅 `adai` 有旧 project 数据 = `tasks/2026/08.md` 1 条 + `09.md` 9 条（**10 条全部 TODO**，每条都带 `sourceRecordId`、由 R2 从真实记录自动生成；最后写入 **09-17 19:32**，即用户 19:52 提问前 20 分钟），`alice`/`family`/`adan`/`admin`/`applereview`/`default` 均无，`todos/` 目录尚不存在——**RFC F4 的「2026-08-01 后零写入」是本地口径、不成立于生产**；「原样留存不迁」的后果因此升级为「10 条活待办在升级后从产品里消失」，**是否一次性迁入 `data/adai/todos/` 待用户拍板**（B8）；③ 决策沉淀：`ai-engineering/assets/adr/ADR-006.md`（能力三层定位 core / builtin / optional）。
+**遗留（登记）**：① 端点破坏性变更 → 旧 App 需重装（用户已拍板），api-spec 标注 breaking；② **生产 `data/` 已只读核对（2026-09-17 23:15，用户授权）**：仅 `adai` 有旧 project 数据 = `tasks/2026/08.md` 1 条 + `09.md` 9 条（**10 条全部 TODO**，每条都带 `sourceRecordId`、由 R2 从真实记录自动生成；最后写入 **09-17 19:32**，即用户 19:52 提问前 20 分钟），`alice`/`family`/`adan`/`admin`/`applereview`/`default` 均无，`todos/` 目录尚不存在——**RFC F4 的「2026-08-01 后零写入」是本地口径、不成立于生产**；「原样留存不迁」的后果因此升级为「10 条活待办在升级后从产品里消失」，**用户拍板「全迁 10 条」→ 2026-09-17 23:32 迁移完成**（`todos/2026/{08,09}.md`，TODO → OPEN、保留原 `id`/`sourceRecordId`，旧文件一字未动 + 备份，以生产文件内容喂 `TodoFileRepository` 实测 PASS）；⚠️ 生产仍跑旧版本、旧 R2 仍会写旧目录 → 部署前需再核增量；③ 决策沉淀：`ai-engineering/assets/adr/ADR-006.md`（能力三层定位 core / builtin / optional）。
