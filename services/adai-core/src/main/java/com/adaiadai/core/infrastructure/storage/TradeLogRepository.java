@@ -72,7 +72,10 @@ public class TradeLogRepository {
                         // P2-交易36 治本（2026-09-09）：orderId/fee 可空字段——缺字段 → null
                         // （Jackson NullNode.asText()="null" 由 normalizeNull 归一）；fee 数字文本解析失败 → null
                         normalizeNull(n.path("orderId").asText()),
-                        parseFee(fee)));
+                        parseFee(fee),
+                        // P1-交易54（2026-09-17）：行标识——旧数据没有该字段 → 按内容派生**确定性** id
+                        // （同一文件反复读出的 id 必须一致，否则前端拿着 id 删不掉）
+                        candidateId(n)));
             });
             return list;
         } catch (Exception e) {
@@ -89,6 +92,21 @@ public class TradeLogRepository {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * 读取候选的**行标识**（P1-交易54，2026-09-17）：文件里有 {@code id} 就用它；
+     * 旧数据没有该字段 → 按内容派生一个**确定性** id（同一文件反复读出的结果一致，
+     * 否则前端拿到 id 却删不掉）。代价：同代码+同方向+同价+同量+同日的两条旧候选会得到同一个
+     * 派生 id——但那两条本来就无法区分，且会在下一次落盘时各自获得单调 id。
+     */
+    private static String candidateId(com.fasterxml.jackson.databind.JsonNode n) {
+        String raw = normalizeNull(n.path("id").asText());
+        if (raw != null) return raw;
+        String seed = n.path("symbol").asText("") + "|" + n.path("direction").asText("")
+                + "|" + n.path("price").asText("") + "|" + n.path("volume").asText("")
+                + "|" + n.path("tradeDate").asText("");
+        return "cand_l" + Integer.toHexString(seed.hashCode());
     }
 
     /** Jackson NullNode.asText() 返回 "null" 字符串——统一归 null（空串/字面 "null" 均视为无值）。 */
@@ -112,9 +130,14 @@ public class TradeLogRepository {
     public List<TradeLogCandidate> append(String userId, LocalDate date, TradeLogCandidate candidate) {
         Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
+            // P1-交易54（2026-09-17）：落盘前**发号**——候选必须带行标识，
+            // 删除/补日期/补元信息才能行级定位（此前按「代码+方向」粗粒度，多笔一删全删）。
+            TradeLogCandidate incoming = candidate.id() == null
+                    ? candidate.withId(com.adaiadai.core.kernel.IdGenerator.monotonic("cand_"))
+                    : candidate;
             List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
-            boolean dup = existing.stream().anyMatch(c -> c.sameTrade(candidate));
-            if (!dup) existing.add(candidate);
+            boolean dup = existing.stream().anyMatch(c -> c.sameTrade(incoming));
+            if (!dup) existing.add(incoming);
             save(userId, date, existing);
             return existing;
         }
@@ -160,6 +183,28 @@ public class TradeLogRepository {
     }
 
     /** 丢弃一条候选（B6-5，2026-08-23，P1-交易18）：按 symbol+direction 移除，锁内读-过滤-写回。 */
+    /**
+     * 按**行标识**丢弃一条候选（P1-交易54，2026-09-17 新增）：这是前端的默认路径——
+     * 同标的同方向的多笔候选（生产实据：当日三笔亨通光电买入各 100 股）各不相同，
+     * 只有 id 能精确删到其中一条。
+     */
+    public boolean discardById(String userId, LocalDate date, String id) {
+        if (id == null || id.isBlank()) return false;
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean removed = existing.removeIf(c -> id.equals(c.id()));
+            if (removed) saveUnlocked(userId, date, existing);
+            return removed;
+        }
+    }
+
+    /**
+     * 按 symbol+direction 丢弃（B6-5，2026-08-23，P1-交易18；旧口径，保留兼容）。
+     * <p>⚠️ **粗粒度**：同标的同方向的多笔会被**一起删掉**；{@code symbol} 传 null 更是删光该方向全部候选。
+     * 新代码请用 {@link #discardById}（2026-09-17 起前端已改走 id）。
+     */
+    @Deprecated
     public boolean discard(String userId, LocalDate date, String symbol, String direction) {
         Object lock = lockFor(userId); // C5+P2-交易28：锁收敛 userId + 固定条带（无 map 增长）
         synchronized (lock) {
@@ -188,7 +233,7 @@ public class TradeLogRepository {
                 if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee()));
+                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
                     updated = true;
                 }
             }
@@ -219,7 +264,7 @@ public class TradeLogRepository {
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
                             c.tradeDate(), c.source(), c.complete(),
                             hasOrder ? orderId : c.orderId(),
-                            hasFee ? fee : c.fee()));
+                            hasFee ? fee : c.fee(), c.id()));
                     updated = true;
                 }
             }
@@ -256,6 +301,8 @@ public class TradeLogRepository {
                 } else {
                     n.put("fee", "");
                 }
+                // P1-交易54（2026-09-17）：候选**行标识**（前端删除/补日期按它定位；旧数据无此字段）
+                n.put("id", c.id() != null ? c.id() : "");
             }
             fileStorage.write(userId, DIR + date + ".json", MAPPER.writeValueAsString(arr));
         } catch (Exception e) {

@@ -20,6 +20,10 @@ import java.time.LocalDate;
  * @param orderId   券商成交编号（P2-交易36 治本，2026-09-09：截图入账/手动确认可携带；
  *                  可空——本期截图 OCR 不抽取，由用户确认前补填或确认落库后对流水补填）
  * @param fee       手续费（同上，可空；确认落库透传 recordTradeWithOrderId）
+ * @param id        候选**行标识**（P1-交易54，2026-09-17）：候选此前没有 id，删除/补日期/补元信息
+ *                  只能按「代码 + 方向」粗粒度匹配——同标的同方向的多笔（生产实据：当日三笔
+ *                  亨通光电买入各 100 股）**一删就是全部**，用户「识别错误的行删不掉」的第二层。
+ *                  旧数据/旧调用点可为 null，由 {@code TradeLogRepository.append} 在落盘前补发。
  */
 public record TradeLogCandidate(
         String symbol,
@@ -31,12 +35,28 @@ public record TradeLogCandidate(
         String source,
         boolean complete,
         String orderId,
-        BigDecimal fee
+        BigDecimal fee,
+        String id
 ) {
     /** canonical 构造兜底（与 TradeLogRepository.normalizeNull 同口径）：
-     *  orderId 空白/字面 "null" → null（防脏值污染落库与去重判定）；fee 无空值概念保持原样。 */
+     *  orderId 空白/字面 "null" → null（防脏值污染落库与去重判定）；fee 无空值概念保持原样；
+     *  id 同 orderId 口径（空串/字面 "null" 归 null = 尚未发号）。 */
     public TradeLogCandidate {
         orderId = (orderId == null || orderId.isBlank() || "null".equals(orderId)) ? null : orderId;
+        id = (id == null || id.isBlank() || "null".equals(id)) ? null : id;
+    }
+
+    /** 10 参委派构造（P1-交易54 兼容）：不带 id —— 既有调用点零改动，id 在落盘前补发。 */
+    public TradeLogCandidate(String symbol, String name, String direction, BigDecimal price,
+                             Integer volume, LocalDate tradeDate, String source, boolean complete,
+                             String orderId, BigDecimal fee) {
+        this(symbol, name, direction, price, volume, tradeDate, source, complete, orderId, fee, null);
+    }
+
+    /** 换 id 的副本（落盘前发号 / 读取时给旧数据补号用；其余字段逐字保留）。 */
+    public TradeLogCandidate withId(String newId) {
+        return new TradeLogCandidate(symbol, name, direction, price, volume, tradeDate,
+                source, complete, orderId, fee, newId);
     }
 
     /** 8 参委派构造（历史调用点兼容）：orderId/fee 缺省 null——截图 OCR 抽取上线前候选不携带。 */

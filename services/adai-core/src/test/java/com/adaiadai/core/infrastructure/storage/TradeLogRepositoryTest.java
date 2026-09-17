@@ -159,4 +159,65 @@ class TradeLogRepositoryTest {
         assertEquals(1, result.size(), "handled 全量 → 只留 keep");
         assertEquals("000725", result.get(0).symbol());
     }
+
+    // ── P1-交易54（2026-09-17）：候选行标识 —— 同标的同方向的多笔必须能单独删 ──
+
+    private TradeLogCandidate p(String symbol, String price, int volume) {
+        return new TradeLogCandidate(symbol, symbol + "名", "BUY", new BigDecimal(price), volume,
+                null, "image", true);
+    }
+
+    @Test
+    void append_assignsRowId_whenMissing() {
+        repo.append("default", day, p("600487", "68.270", 100));
+        List<TradeLogCandidate> list = repo.findByDate("default", day);
+        assertEquals(1, list.size());
+        assertTrue(list.get(0).id() != null && !list.get(0).id().isBlank(),
+                "落盘前必须发号——前端要靠它做行级删除");
+    }
+
+    @Test
+    void discardById_removesOnlyThatRow_sameSymbolDirectionSameVolume() {
+        // 用户 2026-09-17 的真实形态：三笔亨通光电买入、各 100 股、价格不同。
+        // 旧口径按 symbol+direction 删 → **一删三条**；按 id 必须只删掉指定那一条。
+        repo.append("default", day, p("600487", "68.270", 100));
+        repo.append("default", day, p("600487", "67.730", 100));
+        repo.append("default", day, p("600487", "67.920", 100));
+        List<TradeLogCandidate> before = repo.findByDate("default", day);
+        assertEquals(3, before.size(), "价格不同 → 三条候选（去重键带价格）");
+
+        String target = before.get(1).id();
+        assertTrue(repo.discardById("default", day, target), "按 id 应能删到");
+
+        List<TradeLogCandidate> after = repo.findByDate("default", day);
+        assertEquals(2, after.size(), "只删掉一条，另两条必须留着");
+        assertTrue(after.stream().noneMatch(x -> target.equals(x.id())));
+        // 注意：价格经 JSON round-trip 后 scale 会变（68.270 → 68.27），断言必须用**数值**比较
+        assertTrue(after.stream().anyMatch(x -> x.price() != null
+                && x.price().compareTo(new BigDecimal("68.270")) == 0), "68.270 那笔必须还在");
+        assertTrue(after.stream().anyMatch(x -> x.price() != null
+                && x.price().compareTo(new BigDecimal("67.920")) == 0), "67.920 那笔必须还在");
+    }
+
+    @Test
+    void legacyCandidateWithoutId_getsStableDerivedId() {
+        // 2026-09-17 之前落盘的候选文件没有 id 字段——读取时必须给出**确定性** id，
+        // 否则前端每次拿到的 id 都不同，删不掉（这正是要根治的问题）。
+        storage.write("default", "trading/trade-log/" + day + ".json",
+                "[{\"symbol\":\"600487\",\"name\":\"亨通光电\",\"direction\":\"BUY\","
+                        + "\"price\":68.27,\"volume\":100,\"source\":\"image\","
+                        + "\"tradeDate\":\"\",\"complete\":true,\"orderId\":\"\",\"fee\":\"\"}]");
+
+        String first = repo.findByDate("default", day).get(0).id();
+        String second = repo.findByDate("default", day).get(0).id();
+        assertTrue(first != null && !first.isBlank(), "旧数据也要有 id");
+        assertEquals(first, second, "旧数据的派生 id 必须稳定（同一文件反复读结果一致）");
+    }
+
+    @Test
+    void discardById_unknownId_returnsFalse_andDeletesNothing() {
+        repo.append("default", day, p("600487", "68.270", 100));
+        assertFalse(repo.discardById("default", day, "cand_not_exist"));
+        assertEquals(1, repo.findByDate("default", day).size(), "无匹配不得误删");
+    }
 }

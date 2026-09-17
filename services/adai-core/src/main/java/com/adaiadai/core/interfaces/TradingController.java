@@ -1145,15 +1145,22 @@ public class TradingController {
     }
 
     /** 交易日志归集（B6-5，2026-08-23，P1-交易18）：丢弃一条保留候选（失败/不完整钉子户）。
-     *  DELETE /api/v1/trading/trade-log?symbol=&direction= → {"discarded":true}；无此候选 404。 */
+     *  DELETE /api/v1/trading/trade-log?id=&symbol=&direction= → {"discarded":true}；无此候选 404。
+     *  <p>P1-交易54（2026-09-17）：**优先按 {@code id} 行级定位**——同标的同方向的多笔候选
+     *  （生产实据：当日三笔亨通光电买入各 100 股）只有 id 能精确删到其中一条；
+     *  {@code symbol+direction} 是旧口径（同代码同方向的多笔会一起删掉、symbol 为空更会删光该方向），
+     *  仅为兼容旧客户端保留。 */
     @DeleteMapping("/trade-log")
     public ResponseEntity<?> discardTradeLogCandidate(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(required = false) String id,
             @RequestParam(required = false) String symbol,
             @RequestParam(required = false) String direction) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        boolean removed = tradeLogCollectService.discard(userId, symbol, direction);
+        boolean removed = (id != null && !id.isBlank())
+                ? tradeLogCollectService.discardById(userId, id)
+                : tradeLogCollectService.discard(userId, symbol, direction);
         return removed ? ResponseEntity.ok(Map.of("discarded", true))
                 : ResponseEntity.notFound().build();
     }

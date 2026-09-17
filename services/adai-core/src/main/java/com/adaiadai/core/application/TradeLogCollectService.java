@@ -227,6 +227,16 @@ public class TradeLogCollectService {
         return tradeLogRepository.discard(userId, today, symbol, direction);
     }
 
+    /**
+     * 按**行标识**丢弃候选（P1-交易54，2026-09-17 新增）：前端的默认路径。
+     * 同标的同方向的多笔候选（生产实据：当日三笔亨通光电买入各 100 股）只有 id 能精确删到一条；
+     * 旧口径 symbol+direction 会把它们**一起删掉**。
+     * @return true=已移除；false=当日无此 id
+     */
+    public boolean discardById(String userId, String id) {
+        return tradeLogRepository.discardById(userId, LocalDate.now(), id);
+    }
+
     /** 用户确认：当日**完整**候选逐笔走 recordTrade 落库。
      *  P0-1（2026-08-23 修复）：落库失败的候选（SELL 超持仓/未持有等）与不完整候选
      *  **回写保留**（不无条件清空），确认过的交易不静默丢失——用户可补全/修正后再次确认。
