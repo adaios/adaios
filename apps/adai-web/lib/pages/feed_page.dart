@@ -1405,6 +1405,9 @@ class _FeedPageState extends State<FeedPage> {
         ),
       );
     }
+    // 2026-09-17 REVIEW P1-UI14：空 Feed ≠ 新用户。原文案「第一次见」+ 自我介绍
+    // 把「今天恰好没记录」的老用户当成了陌生人（真实用户反馈）。改为**中性**：
+    // 只陈述「今天还没聊」，不假设「第一次」；三个开场问句（2026-09-16 用户拍板）原样保留。
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1445,14 +1448,14 @@ class _FeedPageState extends State<FeedPage> {
                           fontWeight: FontWeight.w600)),
                 ]),
                 const SizedBox(height: 14),
-                Text('${_greetingNow()}。我是阿呆。',
+                Text('${_greetingNow()}。',
                     style: const TextStyle(
                         fontSize: 16,
                         color: AppColors.darkGrey1,
                         fontWeight: FontWeight.w600,
                         height: 1.4)),
                 const SizedBox(height: 6),
-                const Text('第一次见，你先随便问我一句——点下面的也行。',
+                const Text('今天还没听你说点什么，随便问我一句——点下面的也行。',
                     style: TextStyle(
                         fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
                 const SizedBox(height: 18),
@@ -1472,6 +1475,9 @@ class _FeedPageState extends State<FeedPage> {
   ///
   /// 刻意只用 Kernel 基础能力（记录 / 问答 / 记忆）——新用户插件默认全关，
   /// 只有这几件事是**真的能立刻跑起来**的；拿没开的能力当招牌就是骗人。
+  ///
+  /// 2026-09-17 P1-UI14：它们是**任何**空 Feed 都能用的能力引导（用户 2026-09-16 拍板保留），
+  /// 不是「新用户专属」——老用户今天没记录也照样能从这里点开一个问题。
   static const List<String> _firstMeetingQuestions = [
     '你能干什么？',
     '你有什么特别的能力？',
