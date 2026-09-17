@@ -331,7 +331,9 @@ RENDER_EOF
 # 为什么塞进每日巡检：这些日子**只会被忘记**——iOS 描述文件/付费账号到期当天 App 直接
 # 打不开（2026-08-26 已经吃过一次「7 天过期」的亏），而没人会主动去翻文档。
 # 日期真相源：docs/reference/status.md（改期请两处同步）。
-hr "到期倒数（30 天内标红）"
+# 注意：hr 是上面 Python 渲染块里的函数，shell 侧不存在（2026-09-17 修复
+# 「line 334: hr: command not found」）；这里用 printf 复刻同一视觉样式。
+printf '\n\033[1m── %s ──\033[0m\n' "到期倒数（30 天内标红）"
 check_expiry() {
     local label="$1" date="$2" note="$3" days
     local target
