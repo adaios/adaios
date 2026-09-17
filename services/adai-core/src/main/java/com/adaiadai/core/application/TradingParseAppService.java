@@ -219,6 +219,9 @@ public class TradingParseAppService {
         List<TradingImportParser.UnparsedLine> dropped = new java.util.ArrayList<>();
         Matcher m = TABLE_TRADE_PATTERN.matcher(text);
         int seq = 0;
+        // P1-交易55（2026-09-17）：记录横排正则**覆盖到的行首偏移**——扫描结束后用它找出
+        // 「像成交却一行都没匹配上」的行（过去这些行彻底静默：既不进候选、也不进 dropped）。
+        java.util.Set<Integer> coveredStarts = new java.util.HashSet<>();
         while (m.find()) {
             // 2026-08-27：成交日期提取——表格行内「日期」列（历史成交截图常带 yyyy-MM-dd）。
             // 从匹配行（行首到行尾）的两侧文本里找日期，不依赖列序：行首（「2026-08-26 名称 代码 …」）
@@ -226,6 +229,7 @@ public class TradingParseAppService {
             int lineStart = Math.max(0, text.lastIndexOf('\n', m.start()) + 1);
             int lineEnd = text.indexOf('\n', m.end());
             if (lineEnd < 0) lineEnd = text.length();
+            coveredStarts.add(lineStart);
             String rowBefore = text.substring(lineStart, m.start());
             String rowAfter = text.substring(m.end(), lineEnd);
             java.time.LocalDate tradeDate = extractTradeDate(rowBefore + " " + rowAfter);
@@ -296,6 +300,11 @@ public class TradingParseAppService {
         // 2026-09-17（P0-交易53）：横排正则 0 命中 → 尝试竖排表格（VLM 把表格的一行拆成多行）。
         if (results.isEmpty()) {
             parseVerticalTable(text, results, dropped);
+        }
+        // P1-交易55（2026-09-17）：横排/竖排都没还原出来 → 把「有买卖字样却没匹配上」的行如实上报。
+        // 竖排已给出更精确的丢弃明细时不重复报（否则同一行会在 dropped 里出现两次）。
+        if (results.isEmpty() && dropped.isEmpty()) {
+            reportUnmatchedRows(text, coveredStarts, dropped, seq);
         }
         if (!results.isEmpty()) {
             log.info("表格批量解析 | 命中 {} 笔 | 丢弃 {} 行 | 文本前 80 字: {}", results.size(), dropped.size(),
@@ -401,6 +410,34 @@ public class TradingParseAppService {
         }
         if (!results.isEmpty()) {
             log.info("竖排表格解析 | 还原 {} 笔（VLM 一行拆多行的版式）", results.size());
+        }
+    }
+
+    /**
+     * P1-交易55（2026-09-17）：把「像成交、却一行都没认出来」的行如实上报。
+     *
+     * <p>过去这些行**彻底静默**——横排正则只遍历匹配到的行，没匹配上的既不进候选也不进
+     * {@code dropped}，用户只看到「没认出来」，无法判断是图糊了、还是解析器不支持这种版式。
+     * 判据刻意保守：只报「未被任何匹配覆盖 **且** 含『买』或『卖』」的行，避免把券商抬头、
+     * 免责声明、按钮文字也算成丢行。
+     */
+    private void reportUnmatchedRows(String text, java.util.Set<Integer> coveredStarts,
+                                     List<TradingImportParser.UnparsedLine> dropped, int seqStart) {
+        String[] lines = text.split("\n", -1);
+        int offset = 0;
+        int seq = seqStart;
+        for (String raw : lines) {
+            if (!coveredStarts.contains(offset)) {
+                String s = raw.trim();
+                // 排除表头行（「成交价/买卖」这种含「买」字但不是成交数据）——否则会把表头误报成丢行
+                if (!s.isEmpty() && !V_HEADER_PATTERN.matcher(s).find()
+                        && (s.contains("买") || s.contains("卖"))) {
+                    seq++;
+                    dropped.add(new TradingImportParser.UnparsedLine(seq, s,
+                            "这行有买卖字样，但代码/价格/数量/方向没凑齐（这一笔没有记）"));
+                }
+            }
+            offset += raw.length() + 1; // 与 lineStart 的 \n 偏移口径一致
         }
     }
 
