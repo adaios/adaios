@@ -411,26 +411,6 @@ void main() {
       expect(ended, true);
     });
 
-    testWidgets('action todo card shows badge and time', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: FeedCard(
-              data: FeedCardData(
-                id: '1', type: FeedCardType.action, time: '14:00',
-                content: 'buy milk',
-              ),
-            ),
-          ),
-        ),
-      ));
-
-      expect(find.text('待办'), findsOneWidget);
-      expect(find.text('14:00'), findsOneWidget);
-      expect(find.text('buy milk'), findsOneWidget);
-      expect(find.text('完成'), findsOneWidget);
-    });
-
     testWidgets('market card colors red/green and shows time', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -501,22 +481,6 @@ void main() {
       expect(find.text('08-03  14:00'), findsOneWidget);
     });
 
-    testWidgets('action todo card shows date + time', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: FeedCard(
-              data: FeedCardData(
-                id: '1', type: FeedCardType.action, time: '09:05', date: '08-03',
-                content: 'buy milk',
-              ),
-            ),
-          ),
-        ),
-      ));
-
-      expect(find.text('08-03  09:05'), findsOneWidget);
-    });
   });
 
   // ─── App Launches ───

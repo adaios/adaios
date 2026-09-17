@@ -24,7 +24,7 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 中文 | 代码/设计名 | 说明 |
 |:----|:-----------|:-----|
 | 桌面壳 | `DesktopShell` / `desktop_shell.dart` | Row = 左导航 200（`nav-rail`）+ VerticalDivider + 主内容区 |
-| 导航项 | `_NavItem` | 8 项：Feed/记忆/时间线/项目/任务/交易/搜索/档案，选中态左侧 3px 绿竖线 |
+| 导航项 | `_NavEntry` | 8 项：Feed/记忆/时间线/待办/交易/学习/搜索/档案（原生 6 + 插件 2），选中态左侧 3px 绿竖线 |
 | 页面保活 | lazy `IndexedStack` | 只实例化已访问页（`_visited` Set），切换后 offstage 保活，Feed 对话态跨页保留 |
 | 页面页头 | `PageHeader` / `page_header.dart` | 标题 + 副标题 + 右侧操作区 |
 
@@ -32,11 +32,10 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 
 | 模块 | 形态 |
 |:-----|:-----|
-| Feed | 主对话流居中限宽 880 + 右上下文栏 300（今日简报/标签云/任务快照）；桌面 FeedCard 时间竖列 + hover，4 态状态机 |
+| Feed | 主对话流居中限宽 880 + 右上下文栏 300（今日简报/标签云）；桌面 FeedCard 时间竖列 + hover，4 态状态机 |
 | 记忆 | master-detail：左日期列表 + 右内容（kind 徽标 / superseded 划线淡化） |
 | 时间线 | 左月历面板（有记录绿点）+ 右当月记录 |
-| 项目 | 概览 stat 卡 + 双列卡片 grid（Kernel/Domain）+ RFC 表格 |
-| 任务 | 看板三列 TODO/DOING/DONE + quick-add |
+| 待办 | 纯清单两态（OPEN / DONE，已完成折叠）+ 可选到期日 + 顶部直接加一条 |
 | 交易 | 快照 stat 卡 + 真 DataTable 持仓（红绿盈亏/数字右对齐）+ 记录交易 Dialog |
 | 搜索 | 顶部全宽搜索栏 + 关键词高亮结果流 |
 | 档案 | 左身份卡 + 右编辑区（偏好/规则键值行） |
@@ -80,8 +79,7 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 个人档案 | `ProfilePage` / `profile_page.dart` | 查看/编辑个人档案、沟通风格、规则开关 |
 | 记忆浏览 | `MemoryPage` / `memory_page.dart` | 按日浏览记忆，标签筛选 |
 | 时间线页 | `TimelinePage` / `timeline_page.dart` | 日历网格 + 当日记录列表（全页，非弹窗） |
-| 项目仪表盘 | `ProjectStatusPage` / `project_status_page.dart` | Kernel 组件状态、Domain OS 进度、RFC 状态、任务统计 |
-| 任务管理 | `ProjectTaskPage` / `project_task_page.dart` | 任务列表 + 创建/编辑/状态推进 |
+| 待办清单 | `TodoPage` / `todo_page.dart` | 纯清单两态（OPEN / DONE，已完成折叠）+ 可选到期日 + 完成/删除 + 顶部直接加一条（RFC 20260917 待办归 Kernel builtin，无插件门控）|
 | 交易管理 | `TradingPage` / `trading_page.dart` | 持仓列表 + 组合概览 + 记录交易表单 |
 | 搜索 | `SearchPage` / `search_page.dart` | 关键词搜索 + 结果高亮 |
 
@@ -222,12 +220,11 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 个人档案 | GET / PUT | `/api/v1/identity` | `IdentityResponse` |
 | 全文搜索 | GET | `/api/v1/search?q=` | `List<SearchResult>` |
 | 标签统计 | GET | `/api/v1/tags` | `TagIndexResponse` |
-| 项目状态 | GET | `/api/v1/project/status` | `ProjectStatusResponse` |
-| 任务列表 | GET | `/api/v1/project/tasks` | `List<TaskResponse>` |
-| 创建任务 | POST | `/api/v1/project/tasks` | `TaskRequest` → `TaskResponse` |
-| 更新任务 | PUT | `/api/v1/project/tasks/{id}` | `TaskRequest` → `TaskResponse` |
-| 删除任务 | DELETE | `/api/v1/project/tasks/{id}` | — |
-| 任务统计 | GET | `/api/v1/project/tasks/stats` | `TaskStatsResponse` |
+| 待办列表 | GET | `/api/v1/todos?status=` | `List<TodoResponse>`（app `TodoItem`）|
+| 创建待办 | POST | `/api/v1/todos` | `TodoResponse`（app `TodoItem`）|
+| 更新待办 | PUT | `/api/v1/todos/{id}` | `TodoResponse`（app `TodoItem`）|
+| 删除待办 | DELETE | `/api/v1/todos/{id}` | — |
+| 待办统计 | GET | `/api/v1/todos/stats` | `TodoStatsResponse`（app `TodoStats`）|
 | 持仓查询 | GET | `/api/v1/trading/positions` | `List<PositionResponse>` |
 | 组合快照 | GET | `/api/v1/trading/portfolio` | `PortfolioSnapshotResponse` |
 | 交易复盘 | GET / POST | `/api/v1/trading/review` | `TradingReviewResponse` |
@@ -239,7 +236,7 @@ AdaiOS 前端分**两个独立产品入口**（两套 UI 各做各的，不互�
 | 图片原图 | GET | `/api/v1/records/media/{id}` | 二进制 |
 | 图片追问 | POST | `/api/v1/records/media/{id}/ask` | `AskResponse`（图片卡 ── 提问 ── 追问）|
 | 多图问答 | POST | `/api/v1/records/media/ask-batch` | `AskBatchResponse`（1-3 张一次提问，P3 补登记 2026-08-17）|
-| 待办完成 | PATCH | `/api/v1/memory/{id}/done` | — |
+| 记忆待办完成 | PATCH | `/api/v1/memory/{id}/done` | —（完成待办时由后端同步调用；建待办不动记忆）|
 | 启用账号 | GET | `/api/v1/accounts/available` | `List<String>`（需登录，仅 userId 最小集，#215；产品端遗留选号，#178）|
 
 ---

@@ -405,16 +405,6 @@ class ApiService {
     return SearchResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
-  /// 获取项目状态。
-  Future<ProjectStatusResponse> getProjectStatus() async {
-    final resp = await _client.get(
-      Uri.parse('$baseUrl/api/v1/project/status'),
-      headers: _headers,
-    );
-    _check(resp);
-    return ProjectStatusResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
-  }
-
   // ── 交易 API ──
 
   /// 查询当前持仓。
@@ -1130,8 +1120,9 @@ class ApiService {
     return list.map((e) => e.toString()).toList();
   }
 
-  /// 当前用户启用插件列表（RFC 20260814 Domain=插件模型；如 ["trading","project"]，
-  /// 新用户为空 → 桌面壳按此显隐插件模块：交易/项目）。基础服务模块不依赖此列表。
+  /// 当前用户启用插件列表（RFC 20260814 Domain=插件模型；RFC 20260917 后只剩
+  /// ["trading","learn"]，project 已下线）。新用户为空 → 桌面壳按此显隐插件模块。
+  /// 基础服务（含待办）不依赖此列表。
   Future<List<String>> getMyPlugins() async {
     final resp = await _client.get(
       Uri.parse('$baseUrl/api/v1/me/plugins'),
@@ -1142,81 +1133,68 @@ class ApiService {
     return list.map((e) => e.toString()).toList();
   }
 
-  // ── 任务 API ──
+  // ── 待办 API（RFC 20260917：Kernel builtin，无插件门控）──
 
-  /// 获取任务列表。
-  Future<List<TaskResponse>> getTasks({String? status, String? tag}) async {
+  /// 获取待办列表（GET /todos?status=OPEN|DONE；status 可选）。
+  Future<List<TodoResponse>> getTodos({String? status}) async {
     final params = <String, String>{};
     if (status != null) params['status'] = status;
-    if (tag != null) params['tag'] = tag;
-    final uri = Uri.parse('$baseUrl/api/v1/project/tasks')
+    final uri = Uri.parse('$baseUrl/api/v1/todos')
         .replace(queryParameters: params.isNotEmpty ? params : null);
     final resp = await _client.get(uri, headers: _headers);
     _check(resp);
     final list = jsonDecode(utf8.decode(resp.bodyBytes)) as List;
-    return list.map((e) => TaskResponse.fromJson(e)).toList();
+    return list.map((e) => TodoResponse.fromJson(e)).toList();
   }
 
-  /// 创建任务。
-  Future<TaskResponse> createTask({
-    required String title,
-    String? description,
-    String? priority,
-    List<String>? tags,
-    String? rfcRef,
-  }) async {
+  /// 新建待办（due 可省略/null 表示无到期日）。
+  Future<TodoResponse> createTodo({required String title, String? due}) async {
     final body = <String, dynamic>{
       'title': title,
-      'description': ?description,
-      'priority': ?priority,
-      'tags': ?tags,
-      'rfcRef': ?rfcRef,
+      'due': ?due,
     };
     final resp = await _client.post(
-      Uri.parse('$baseUrl/api/v1/project/tasks'),
+      Uri.parse('$baseUrl/api/v1/todos'),
       headers: _headers,
       body: jsonEncode(body),
     );
     _check(resp);
-    return TaskResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+    return TodoResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
-  /// 更新任务。
-  Future<TaskResponse> updateTask(String id, {String? title, String? description, String? status, String? priority, List<String>? tags, String? rfcRef}) async {
+  /// 更新待办（null = 保持原值；[due] 传空串 '' 表示清除到期日）。
+  Future<TodoResponse> updateTodo(String id, {String? title, String? status, String? due}) async {
     final body = <String, dynamic>{};
     if (title != null) body['title'] = title;
-    if (description != null) body['description'] = description;
     if (status != null) body['status'] = status;
-    if (priority != null) body['priority'] = priority;
-    if (tags != null) body['tags'] = tags;
-    if (rfcRef != null) body['rfcRef'] = rfcRef;
+    if (due != null) body['due'] = due;
     // #243：走注入的 _client（MockClient 可拦截），不用全局 http.put（widget 测试真实 HTTP 恒 400）
     final resp = await _client.put(
-      Uri.parse('$baseUrl/api/v1/project/tasks/$id'),
+      Uri.parse('$baseUrl/api/v1/todos/$id'),
       headers: _headers,
       body: jsonEncode(body),
     );
     _check(resp);
-    return TaskResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+    return TodoResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
-  /// 删除任务。
-  Future<void> deleteTask(String id) async {
+  /// 删除待办。
+  Future<void> deleteTodo(String id) async {
     final resp = await _client.delete(
-      Uri.parse('$baseUrl/api/v1/project/tasks/$id'),
+      Uri.parse('$baseUrl/api/v1/todos/$id'),
       headers: _headers,
     );
     _check(resp);
   }
 
-  /// 获取任务统计。
-  Future<TaskStatsResponse> getTaskStats() async {
+  /// 待办统计（GET /todos/stats → {total, open, done}）。
+  Future<TodoStatsResponse> getTodoStats() async {
     final resp = await _client.get(
-      Uri.parse('$baseUrl/api/v1/project/tasks/stats'),
+      Uri.parse('$baseUrl/api/v1/todos/stats'),
       headers: _headers,
     );
     _check(resp);
-    return TaskStatsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+    return TodoStatsResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   // ── learn 学习插件（RFC 20260829）──
@@ -1730,7 +1708,7 @@ class FeedEntryType {
   static const String card = 'card';
   static const String aiNote = 'ai_note';
   static const String push = 'push';
-  static const String action = 'action'; // 未完成行动提醒（记忆进化 Phase 3）
+  static const String action = 'action'; // RFC 20260917：待办卡已撤出 Feed；仅用于防御式丢弃历史条目
   static const String market = 'market'; // 大盘行情条（v0.2.0 L5）
 }
 
@@ -2046,59 +2024,6 @@ class SearchResultItem {
     content: json['content'] as String? ?? '',
     tags: (json['tags'] as List?)?.cast<String>() ?? [],
     dateTime: json['dateTime'] as String? ?? '',
-  );
-}
-
-// ── Project Status DTO ──
-
-class ProjectStatusResponse {
-  final String project;
-  final String architecture;
-  final Map<String, String> kernelComponents;
-  final Map<String, String> domainStatus;
-  final List<RfcItemResponse> rfcItems;
-  final int commitCount;
-  // REVIEW #247：Integer 可空——endpoints.txt 资源缺失时后端返回 null，
-  // 前端据此显示「未知」，不与「真 0 个端点」混淆。
-  final int? apiEndpoints;
-
-  ProjectStatusResponse({
-    required this.project,
-    required this.architecture,
-    required this.kernelComponents,
-    required this.domainStatus,
-    required this.rfcItems,
-    required this.commitCount,
-    required this.apiEndpoints,
-  });
-
-  factory ProjectStatusResponse.fromJson(Map<String, dynamic> json) =>
-      ProjectStatusResponse(
-        project: json['project'] as String? ?? '',
-        architecture: json['architecture'] as String? ?? '',
-        kernelComponents:
-            Map<String, String>.from(json['kernelComponents'] as Map? ?? {}),
-        domainStatus:
-            Map<String, String>.from(json['domainStatus'] as Map? ?? {}),
-        rfcItems: (json['rfcItems'] as List?)
-            ?.map((e) => RfcItemResponse.fromJson(e))
-            .toList() ?? [],
-        commitCount: json['commitCount'] as int? ?? 0,
-        apiEndpoints: json['apiEndpoints'] as int?,
-      );
-}
-
-class RfcItemResponse {
-  final String title;
-  final String date;
-  final String status;
-
-  RfcItemResponse({required this.title, required this.date, required this.status});
-
-  factory RfcItemResponse.fromJson(Map<String, dynamic> json) => RfcItemResponse(
-    title: json['title'] as String? ?? '',
-    date: json['date'] as String? ?? '',
-    status: json['status'] as String? ?? '',
   );
 }
 
@@ -3332,65 +3257,66 @@ class PromoteResponse {  final String status;
   );
 }
 
-// ── 任务 DTO ──
+// ── 待办 DTO（RFC 20260917：纯清单两态）──
 
-class TaskResponse {
+/// 待办条目：一句话 +（可选）到期日 + 两态状态。
+class TodoResponse {
   final String id;
   final String title;
-  final String description;
+
+  /// 两态：OPEN / DONE（RFC 20260917；DOING/CANCELLED 已取消）。
   final String status;
-  final String priority;
-  final List<String> tags;
-  final String? rfcRef;
+
+  /// 到期日（YYYY-MM-DD）；null = 无到期日。
+  final String? due;
+
+  /// 来源记录 id（由记录自动进待办的溯源）；手动新建为 null。
+  final String? sourceRecordId;
   final String createdAt;
   final String updatedAt;
 
-  TaskResponse({
+  TodoResponse({
     required this.id,
     required this.title,
-    this.description = '',
     required this.status,
-    this.priority = 'P2',
-    this.tags = const [],
-    this.rfcRef,
+    this.due,
+    this.sourceRecordId,
     required this.createdAt,
     required this.updatedAt,
   });
 
-  factory TaskResponse.fromJson(Map<String, dynamic> json) => TaskResponse(
+  factory TodoResponse.fromJson(Map<String, dynamic> json) => TodoResponse(
     id: json['id'] as String? ?? '',
     title: json['title'] as String? ?? '',
-    description: json['description'] as String? ?? '',
-    status: json['status'] as String? ?? 'TODO',
-    priority: json['priority'] as String? ?? 'P2',
-    tags: (json['tags'] as List?)?.map((e) => e as String).toList() ?? [],
-    rfcRef: json['rfcRef'] as String?,
+    status: json['status'] as String? ?? 'OPEN',
+    due: parseTodoDue(json['due']),
+    sourceRecordId: json['sourceRecordId'] as String?,
     createdAt: json['createdAt'] as String? ?? '',
     updatedAt: json['updatedAt'] as String? ?? '',
   );
+
+  /// 到期日防御式解析：只接受非空字符串（null / 空串 / 非字符串一律视为无到期日）。
+  static String? parseTodoDue(dynamic raw) {
+    if (raw is String) {
+      final s = raw.trim();
+      return s.isEmpty ? null : s;
+    }
+    return null;
+  }
 }
 
-class TaskStatsResponse {
+/// 待办统计（GET /todos/stats → {total, open, done}）。
+class TodoStatsResponse {
   final int total;
-  final int todo;
-  final int doing;
+  final int open;
   final int done;
-  final int cancelled;
 
-  TaskStatsResponse({
-    required this.total,
-    required this.todo,
-    required this.doing,
-    required this.done,
-    required this.cancelled,
-  });
+  TodoStatsResponse({required this.total, required this.open, required this.done});
 
-  factory TaskStatsResponse.fromJson(Map<String, dynamic> json) => TaskStatsResponse(
+  factory TodoStatsResponse.fromJson(Map<String, dynamic> json) => TodoStatsResponse(
     total: json['total'] as int? ?? 0,
-    todo: json['todo'] as int? ?? 0,
-    doing: json['doing'] as int? ?? 0,
+    open: json['open'] as int? ?? 0,
     done: json['done'] as int? ?? 0,
-    cancelled: json['cancelled'] as int? ?? 0,
   );
 }
 

@@ -54,14 +54,16 @@ com.adaiadai.core/
 │   │   ├── IntentRecognizer       意图识别
 │   │   └── engine/                上下文引擎（ContextContributor 插件机制）
 │   ├── memory/                   个人记忆
+│   ├── todo/                     ★ 待办（Kernel builtin，RFC 20260917：两态 + 可选到期日 + 到期推送，无插件门控）
 │   ├── plugin/                   插件注册（RFC 20260814 Domain=插件模型：PluginRegistry 映射 + PluginService 按账号 enabledPlugins）
 │   └── knowledge/                结构化知识（预留）
 │
 ├── domain/                     ★ Domain OS
 │   ├── trading/                  金融交易（TradingContextContributor + MarketContextContributor + 复盘 + 行情载体）
 │   │   └── market/                行情数据载体（MarketDataSource 接口 + TencentMarketDataSource——行情服务跟插件走，归 trading 插件域，2026-08-16 G-1 拨正）
-│   ├── life/                     个人生活（LifeContextContributor + LifeKnowledgeSource）
-│   └── project/                  项目管理（ProjectContextContributor + Task 实体 + TaskRepository）
+│   └── life/                     个人生活（LifeContextContributor + LifeKnowledgeSource）
+│                                 （project 域已随 project 插件撤除，2026-09-17 RFC 20260917；
+│                                  os/project-os/ 知识文件仍保留在仓库，但不再注入用户上下文）
 │
 ├── application/                应用层 — 用例编排
 │   ├── RecordFlowAppService      记录流程
@@ -71,9 +73,9 @@ com.adaiadai.core/
 │   ├── BriefAppService           今日简报
 │   ├── TradingAppService         交易领域用例
 │   ├── MarketAlertService        行情异动主动推送（Phase 2：交易时段轮询 → type=push 入 Feed）
-│   ├── ProjectStatusAppService   项目状态聚合（Git + RFC + Kernel 组件）
-│   ├── ProjectTaskAppService     任务 CRUD 编排
-│   └── RecordToTaskLinker        R2 记录↔任务关联：domain=project 记录自动转任务（方案 B 触发 + 幂等 + 清记忆待办）
+│   ├── TodoAppService            待办 CRUD 编排（两态 + 可选到期日；完成/删除单向同步记忆）
+│   ├── TodoReminderService       待办到期提醒（到期当天 08:00 / 18:00，type=todo-due）
+│   └── RecordToTodoLinker        R2 记录↔待办关联：可执行记录自动转待办（幂等；不再清记忆）
 │
 ├── interfaces/                 入站适配层（Controller）
 └── infrastructure/             出站适配层（实现 kernel/domain 端口，依赖倒置）
@@ -87,8 +89,8 @@ com.adaiadai.core/
 ## 架构原则
 
 1. **分层依赖规则：** `interfaces → application → domain/kernel ← infrastructure`
-2. **Kernel Domain** (identity/record/timeline/context/memory/knowledge) 是所有 Domain OS 共享的系统域
-3. **Domain OS** (trading/life/project) 是挂载其上的业务域，之间不允许直接依赖
+2. **Kernel Domain** (identity/record/timeline/context/memory/knowledge/**todo**) 是所有 Domain OS 共享的系统域
+3. **Domain OS** (trading/life) 是挂载其上的业务域，之间不允许直接依赖（RFC 20260917 三层定位：core 内核 / builtin 内置能力（待办·搜索·时间线·简报）/ optional 可选插件（trading·learn））
 4. **AI 不是业务层，是基础设施** — LLM 调用归 `infrastructure/ai`
 5. **File First** 适用于 `data/` 目录，`services/adai-core/` 本身是 Code Only
 6. **Context Engine 是内核能力** — 所有模块通过 ContextContributor 插件暴露能力
@@ -115,9 +117,9 @@ com.adaiadai.core/
 | GET | `/api/v1/timeline` | 时间线 |
 | GET | `/api/v1/memory` | 记忆查询 |
 | GET / POST | `/api/v1/trading/*` | 交易查询、复盘、知识反哺 |
-| GET | `/api/v1/project/status` | 项目状态（Kernel + Domain OS + RFC + Git） |
-| GET / POST / PUT / DELETE | `/api/v1/project/tasks` | 任务 CRUD |
-| GET | `/api/v1/project/tasks/stats` | 任务统计 |
+| GET / POST | `/api/v1/todos` | 待办列表（status 可选）/ 新建（**无插件门控**，RFC 20260917） |
+| PUT / DELETE | `/api/v1/todos/{id}` | 待办更新（null=保持原值；`due:""`=清除到期日）/ 删除 |
+| GET | `/api/v1/todos/stats` | 待办统计（total / open / done） |
 | GET / PUT | `/api/v1/identity` | 个人档案读写 |
 | GET | `/api/v1/search?q=` | 全文搜索 |
 | GET | `/api/v1/tags` | 标签统计 |
@@ -136,7 +138,7 @@ com.adaiadai.core/
 ## 当前测试状态
 
 - **测试数/端点数唯一事实源：`../../docs/reference/status.md`**（RFC `20260815-docs-governance`，/ship 时更新，本文件不复制数字）
-- 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + 统一鉴权（#179/#178：Bearer 会话 + role=admin 门禁）+ 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔任务 + 插件门控等
+- 测试在 `src/test/java/`，覆盖：全部 Controller 接口测试全覆盖 + 多模态 + 统一鉴权（#179/#178：Bearer 会话 + role=admin 门禁）+ 行情推送 + AI 日志 + 多用户隔离 + R2 记录↔待办 + 待办到期提醒 + 插件门控等
 - **新增功能必须配套测试。**
 
 ## 推送渠道（kernel/push，渠道插件化）

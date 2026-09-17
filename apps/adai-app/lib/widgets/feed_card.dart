@@ -7,7 +7,8 @@ import 'full_image_dialog.dart';
 import 'hoverable.dart';
 
 /// 后端 record.type 映射。
-enum FeedCardType { record, aiNote, push, dateSeparator, action, market }
+/// RFC 20260917：待办卡（'action'）撤出 Feed——待办有自己的页面，Feed 回归纯对话流。
+enum FeedCardType { record, aiNote, push, dateSeparator, market }
 
 /// 后端 intent：log → 记录，question → 提问。
 enum IntentType { log, question;
@@ -51,7 +52,7 @@ class FeedCardData {
   final bool expanded;
   final String domain;  // "life" | "trading" | "project"
   final String? error;  // API 调用失败时的错误信息，非 null 时卡片进入错误态
-  final Future<bool> Function()? onMarkDone; // action 卡"完成"/push 卡"确认并入账"回调（返回是否成功——按钮据此灰态；P2-UX4 2026-08-29）
+  final Future<bool> Function()? onMarkDone; // push 卡"确认并入账"回调（返回是否成功——按钮据此灰态；P2-UX4 2026-08-29）
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒等）
   final VoidCallback? onDismiss; // RFC 20260817：左滑删除单条推送
   final VoidCallback? onPushSettings; // RFC 20260817：右滑进入推送设置
@@ -205,20 +206,11 @@ class FeedCard extends StatelessWidget {
       );
     }
 
-    // Action todo card — 未完成行动提醒（记忆进化 Phase 3）
-    if (data.type == FeedCardType.action) {
-      return _buildSimpleCard(
-        badgeText: '待办',
-        badgeColor: AppColors.darkOrange,
-        showDoneButton: true,
-      );
-    }
     // Market quote card — 大盘行情条（v0.2.0 L5）
     if (data.type == FeedCardType.market) {
       return _buildSimpleCard(
         badgeText: '行情',
         badgeColor: AppColors.darkBlue,
-        showDoneButton: false,
       );
     }
     // RFC 20260817：push 推送卡——类型徽章（早盘/午间/尾盘/买点/预警）+ 结构化内容
@@ -334,8 +326,8 @@ class FeedCard extends StatelessWidget {
     );            // Hoverable
   }
 
-  /// 简单信息卡（待办提醒 / 大盘行情），无对话状态机。
-  Widget _buildSimpleCard({required String badgeText, required Color badgeColor, required bool showDoneButton}) {
+  /// 简单信息卡（大盘行情条），无对话状态机。
+  Widget _buildSimpleCard({required String badgeText, required Color badgeColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
       child: Container(
@@ -361,17 +353,7 @@ class FeedCard extends StatelessWidget {
                 style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             ]),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _buildSimpleContent()),
-                if (showDoneButton) ...[
-                  const SizedBox(width: 8),
-                  // P2-UX4（2026-08-29）：完成按钮——提交中 loading + 禁用、成功灰态兜底
-                  _ActionButton(label: '完成', onTap: data.onMarkDone),
-                ],
-              ],
-            ),
+            _buildSimpleContent(),
           ],
         ),
       ),

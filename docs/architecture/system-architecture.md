@@ -17,7 +17,7 @@ graph TB
         FeedController["FeedController"]
         TimelineController["TimelineController"]
         IntentRecognizer["IntentRecognizer<br/>STATEMENT / QUESTION"]
-        ProjectStatusController["ProjectStatusController<br/>状态 + 任务 CRUD"]
+        TodoController["TodoController<br/>待办清单 CRUD（无插件门控）"]
     end
 
     subgraph Application["用例编排层 — application"]
@@ -25,8 +25,7 @@ graph TB
         BriefAppService["BriefAppService<br/>今日简报"]
         FeedAppService["FeedAppService<br/>Feed 流"]
         TradingAppService["TradingAppService<br/>交易用例"]
-        ProjectTaskService["ProjectTaskAppService<br/>任务管理"]
-        ProjectStatusService["ProjectStatusAppService<br/>项目状态"]
+        TodoAppService["TodoAppService<br/>待办清单"]
     end
 
     subgraph Kernel["内核层 — kernel"]
@@ -37,26 +36,26 @@ graph TB
         TagIndexReader["TagIndexReader<br/>标签索引只读端口 ★"]
         Memory["Memory<br/>长期记忆"]
         Knowledge["Knowledge<br/>结构化知识"]
+        Todo["Todo<br/>待办（Kernel builtin）"]
     end
 
     subgraph Domain["领域层 — domain"]
         TradingContributor["TradingContextContributor<br/>持仓 + 全局摘要"]
         LifeContributor["LifeContextContributor<br/>生活记忆回读"]
-        ProjectContributor["ProjectContextContributor<br/>Git + RFC + 任务摘要"]
     end
 
     subgraph Infra["基础设施层 — infrastructure"]
         FileStorage["FileStorage<br/>文件读写"]
         TagIndex["TagIndexService<br/>标签索引"]
         CardRepo["CardFileRepository<br/>卡片对话"]
-        ProjectFileRepo["ProjectFileRepository<br/>项目任务文件"]
+        TodoFileRepo["TodoFileRepository<br/>待办文件"]
         AiClient["AiClient<br/>LLM 接入"]
         DeepSeekClient["DeepSeekAiClient<br/>双模式:<br/>ANALYSIS(CHAT)"]
     end
 
     subgraph External["外部知识资产"]
         TradingOS["os/trading-engine/<br/>交易知识库"]
-        ProjectOS["os/project-os/<br/>项目管理知识"]
+        ProjectOS["os/project-os/<br/>项目管理知识（已退役·不再注入）"]
     end
 
     %% 连接线
@@ -64,8 +63,7 @@ graph TB
     RecordController --> IntentRecognizer
     IntentRecognizer --> QuestionAppService
     IntentRecognizer --> Record
-    ProjectStatusController --> ProjectTaskService
-    ProjectStatusController --> ProjectStatusService
+    TodoController --> TodoAppService
 
     QuestionAppService --> ContextEngine
     QuestionAppService --> AiClient
@@ -77,7 +75,6 @@ graph TB
     ContextEngine --> Memory
     ContextEngine --> TradingContributor
     ContextEngine --> LifeContributor
-    ContextEngine --> ProjectContributor
 
     AiClient --> DeepSeekClient
     DeepSeekClient -->|ANALYSIS 模式<br/>单段 Prompt, 0.3 temp| DS["DeepSeek API"]
@@ -87,21 +84,20 @@ graph TB
     TradingContributor --> FileStorage
     Record --> FileStorage
     Memory --> FileStorage
-    ProjectTaskService --> ProjectFileRepo
+    TodoAppService --> TodoFileRepo
     FileStorage --> TagIndex
 
     TradingContributor -.->|只读| TradingOS
-    ProjectContributor -.->|只读| ProjectOS
 
     %% 样式
     classDef kernel fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
     classDef domain fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
     classDef infra fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
     class ContextEngine kernel;
-    class ProjectTaskService,ProjectStatusService application;
-    class ProjectStatusController application;
-    class TradingContributor,LifeContributor,ProjectContributor domain;
-    class TagIndex,ProjectFileRepo infra;
+    class TodoAppService application;
+    class TodoController application;
+    class TradingContributor,LifeContributor domain;
+    class TagIndex,TodoFileRepo infra;
     class FileStorage,AiClient,CardRepo,TagIndexReader kernel;
 ```
 
@@ -181,7 +177,6 @@ flowchart TD
 
     LoadDomain --> DomainDetail{"有场景贡献者?"}
     DomainDetail -->|trading| TradingCtx["TradingContextContributor<br/>全量持仓表"]
-    DomainDetail -->|project| ProjectCtx["ProjectContextContributor<br/>Git + RFC + 任务"]
     DomainDetail -->|life| LifeCtx["LifeContextContributor<br/>生活记忆回读"]
     DomainDetail -->|其他| DefaultCtx["DefaultContextContributor<br/>不贡献"]
 
@@ -192,7 +187,6 @@ flowchart TD
     FormatRelated --> Merge["融合所有上下文块"]
     FormatMem --> Merge
     TradingCtx --> Merge
-    ProjectCtx --> Merge
     LifeCtx --> Merge
     FormatGlobal --> Merge
     LoadIdentity --> Merge
@@ -311,7 +305,8 @@ flowchart LR
 |--------|------|
 | trading | 金融交易（含研究、复盘、知识反哺） |
 | life | 个人生活管理（记忆回读、标签模板） |
-| project | 项目管理（状态仪表盘、任务系统、RFC 跟踪） |
+
+> **project 插件已撤（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）**：状态仪表盘 / 任务系统 / RFC 跟踪随插件一起退役；「待办」归 **Kernel builtin**（独立清单页，两态 + 可选到期日 + `todo-due` 到期提醒，无插件门控）。`os/project-os/` 知识文件保留在仓库（File First），但不再注入任何用户上下文。
 
 ## 七、当前阶段
 
@@ -329,11 +324,11 @@ flowchart LR
 - Trading OS 持仓贡献（场景 + 全局）✅
 - 多轮对话支持（ChatMessage + conversationHistory）✅
 - 双模式 AI 调用（ANALYSIS 0.3 temp / CHAT 0.7 temp + 2048 tokens）✅
-- Project OS ContextContributor + KnowledgeSource ✅
+- ~~Project OS ContextContributor + KnowledgeSource~~ ❌（2026-09-17 撤 project 插件：知识文件保留、不再注入）
 - Life OS ContextContributor + KnowledgeSource ✅
-- 任务系统（Task CRUD + File First 存储）✅
+- 待办清单（Todo CRUD + File First 存储，Kernel builtin，两态 + 可选到期日）✅
 - RFC 状态跟踪（11 个 RFC frontmatter 统一 + 前端展示）✅
-- ProjectContextContributor 增强（Git 日志 + RFC 状态 + 任务摘要）✅
+- 待办到期提醒（`todo-due`，到期当天 08:00 / 18:00 各一次）+ 记录可执行自动转待办 ✅
 
 ### 未实现
 
@@ -341,7 +336,7 @@ flowchart LR
 - `data/knowledge/` 目录
 - Life OS 习惯分析/情绪趋势（数据不足）
 - Layer 5 外部信息接入（Market Kernel）
-- Domain OS 从 `os/*/` 读取知识资产（TradingOS 已接入，ProjectOS 待补充）
+- Domain OS 从 `os/*/` 读取知识资产（TradingOS 已接入；ProjectOS 已退役，2026-09-17）
 
 ### 技术约束
 
@@ -360,9 +355,10 @@ flowchart LR
 | 用户身份 | `data/identity/profile.md` | IdentityRepository |
 | 标签索引 | `data/index/tags.json` | TagIndexService |
 | 交易知识 | `os/trading-engine/knowledge/context/` | TradingKnowledgeSource（读取） |
-| 项目管理知识 | `os/project-os/11-context/` | ProjectKnowledgeSource（读取） |
+| 项目管理知识（已退役，不再注入） | `os/project-os/11-context/` | 无（文件保留，File First） |
 | 持仓数据 | `data/trading/positions.md` | PositionFileRepository |
-| 项目任务 | `data/project/tasks/YYYY/MM.md` | ProjectFileRepository |
+| 待办 | `data/todos/YYYY/MM.md` | TodoFileRepository |
+| 旧项目任务（原样留存、不迁不删） | `data/project/tasks/YYYY/MM.md` | 无（孤儿文件） |
 | 复盘笔记 | `data/trading/reviews/` | TradingReviewFileRepository |
 
 ## 九、STATEMENT 与 QUESTION 对比

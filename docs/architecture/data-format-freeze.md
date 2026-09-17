@@ -228,39 +228,41 @@ lastUpdated: 2026-08-07T09:00:00
   "role" : "admin",
   "enabled" : true,
   "createdAt" : "2026-08-02",
-  "plugins" : [ "trading", "project" ]
+  "plugins" : [ "trading" ]
 } ]
 ```
 
 - `createdAt` 为 `LocalDate`，序列化为 **ISO 字符串**（freeze #3：禁用 `WRITE_DATES_AS_TIMESTAMPS`，读取兼容旧 `[年, 月, 日]` 数组）
-- `plugins`（RFC 20260814 Domain=插件模型，v3.18）：启用插件名列表，仅 `trading`/`project`；老账号无该字段 → 空（只有基础服务）；seed admin `admin`（2026-09-04 前为 `adai`）老文件无 plugins → 启动迁移补 `["trading","project"]`（幂等）
+- `plugins`（RFC 20260814 Domain=插件模型，v3.18；RFC 20260917 撤 project）：启用插件名列表，**仅 `trading` / `learn`**（project 插件已撤除）；老账号无该字段 → 空（只有基础服务）；**历史文件里残留的 `"project"` 由 `PluginRegistry.isValid` 自动过滤（不迁移）**；seed admin `admin`（2026-09-04 前为 `adai`）老文件无 plugins → 启动迁移补 `["trading"]`（幂等）
 - 首次启动 seed 管理员 `admin`（2026-09-04 账号矩阵：内置管理员由 adai 迁为 admin，adai 为产品主账号 role=user）
 
-### 2.11 任务 `project/tasks/`
+### 2.11 待办 `todos/`（RFC 20260917，原「任务 `project/tasks/`」已退役）
 
 | 项 | 值 |
 |:--|:--|
-| 路径 | `project/tasks/{yyyy}/{MM}.md`（单月单文件，多条目，保留文件头手写注释）|
+| 路径 | `todos/{yyyy}/{MM}.md`（单月单文件，多条目，保留文件头手写注释）|
 | 格式 | Markdown，每条目一个 frontmatter 块 + body = title |
-| 真相源 | `ProjectFileRepository.formatTaskEntry()` |
+| 真相源 | `TodoFileRepository.formatTodoEntry()`（`kernel/todo/`，Kernel builtin 无插件门控）|
+| 旧路径 | `project/tasks/{yyyy}/{MM}.md` **原样留存、不迁不删**（project 插件已撤，历史文件成为孤儿；adai 10 条全 DONE + alice 1 条测试）|
 
 ```
-# 任务 - 2026-08
+# 待办 - 2026-09
 
 ---
-id: task_20260807_123456
+id: todo_20260917_223000123
 title: ...
-description: ...
-status: DOING              # TODO | DOING | DONE | CANCELLED
-priority: P0
-tags: [后端, 架构]
-rfcRef: 20260725-layer6
-sourceRecordId: rec_20260813_...   # R2（2026-08-13 新增，MINOR 可空）：domain=project 记录自动转任务时关联源记录；旧文件无此行 → 解析 null，向后兼容
-createdAt: 2026-08-07
-updatedAt: 2026-08-07
+status: OPEN              # OPEN | DONE（两态；旧文件里的 DOING / CANCELLED 读作 OPEN）
+due: 2026-09-20           # 可选行（MINOR 可空）：到期日 yyyy-MM-dd；无到期日则整行省略
+sourceRecordId: rec_20260917_...   # 可选行：记录自动转待办（R2）时关联源记录；无则整行省略
+createdAt: 2026-09-17
+updatedAt: 2026-09-17
 ---
 {title}
 ```
+
+- **两态**：`OPEN` / `DONE`（取消即删除，无 `CANCELLED`）；
+- `due` 与 `sourceRecordId` 为**可选行**——旧文件/未设置时无该行 → 解析 `null`，向后兼容；写入时无值也整行省略；
+- 状态单向同步记忆：完成待办 → `markDone(记忆)`；删除待办 → 清记忆 actionable；建待办不动记忆。
 
 ### 2.12 交易复盘 `trading/reviews/`
 
@@ -289,7 +291,7 @@ updatedAt: 2026-08-07
 | `durationMs` | Long | 耗时毫秒（#218 视觉 understand/ask 已测真实耗时）|
 | `userId` | String | 用户 ID |
 | `kind` | String | `understand` / `generate` / `recognizeIntent` / `visual.understand` / `visual.ask` |
-| `scene` | String | 场景（trading/project/life/note/question/brief/conversation/intent/media）|
+| `scene` | String | 场景（trading/life/note/question/brief/conversation/intent/media；`project` 为 2026-09-17 前历史值）|
 | `recordId` / `cardId` | String | 关联记录/卡片 ID（可为 null）|
 | `source` | String | 调用来源（question/log/retry/brief/trading_review/conversation/media/intent）|
 | `model` | String | `deepseek` / `glm` |

@@ -22,7 +22,7 @@
 | M7 | 记忆模块 | [§7](feature-reference.md#7-记忆模块) |
 | M8 | Launcher 导航模块 | [§8](feature-reference.md#8-launcher-导航模块) |
 | M9 | 交易模块 | [§9](feature-reference.md#9-交易模块) |
-| M10 | 项目管理模块 | [§10](feature-reference.md#10-项目管理模块) |
+| M10 | 待办模块（原「项目管理模块」已退役）| [§10](feature-reference.md#10-待办模块kernel-builtin-rfc-20260917) |
 | M11 | 搜索模块 | [§11](feature-reference.md#11-搜索模块) |
 | M12 | 身份资料模块 | [§12](feature-reference.md#12-身份资料模块) |
 | M13 | 标签模块 | [§13](feature-reference.md#13-标签模块) |
@@ -119,16 +119,25 @@
 
 ---
 
-### M10 — 项目管理模块
+### M10 — 待办模块（Kernel builtin；原「项目管理模块」已退役 2026-09-17）
 
-#### MD7：任务详情编辑页（P2）
+#### MD9：待办归 Kernel + 撤 project 插件（P0，✅ 已实施 2026-09-17；未部署）
 
 | 字段 | 值 |
 |:-----|:----|
-| **描述** | 当前任务只能改状态（TODO/DOING/DONE）、没有独立的编辑页面。长按/点击任务卡片应可编辑全部字段 |
-| **现状** | `ProjectTaskPage` 只有列表态 + 新建表单 + 状态点击流转 |
-| **方案** | 点击任务卡片 → 编辑弹窗 / 独立编辑页，支持更新 title/description/priority/tags |
-| **涉及文件** | `project_task_page.dart`, `api_service.dart` |
+| **描述** | ① 待办从 project 插件摘出，归 **Kernel builtin**（人人有、无门控）：纯清单两态（OPEN/DONE）+ 可选到期日 + 到期推送（`todo-due`）、**不再进 Feed**；② **撤 project 插件**（自举看板 + 两端入口 + 知识注入 + admin 开关）；③ 命名与端点硬切：`Task*`→`Todo*`、`domain/project`→`kernel/todo`、`/api/v1/project/tasks*`→`/api/v1/todos*`、`data/{userId}/todos/`（旧 App 不兼容，用户已确认可重装）；④ R2 改单向同步（建待办不清记忆；完成/删除时同步） |
+| **依据** | `docs/rfc/20260917-todo-kernel-retire-project-plugin.md`（approved；§三 能力三层定位 / §五 五步实施顺序） |
+| **现状（实施前）** | 前后端把「任务」判成两种东西（前端=基础能力、后端写端点被 project 插件 403）；R2 把记忆待办搬进没人走的任务表（2026-08-01 后零写入） |
+| **实施结果** | ✅ 五步全部落地（2026-09-17，RFC §五 ⑤ 文档与测试收尾同批完成）。**撤 project 插件**：`domain/project`（Task / TaskStatus / TaskRepository / ProjectContextContributor / package-info）、`ProjectStatusAppService`、`ProjectTaskAppService`、`RecordToTaskLinker`、`ProjectStatusController`、`ProjectFileRepository`、`ProjectKnowledgeSource` 全部删除；**端点 6 删 5 增**（旧 `GET /api/v1/project/status`、`GET\|POST /api/v1/project/tasks`、`PUT\|DELETE /api/v1/project/tasks/{id}`、`GET /api/v1/project/tasks/stats` breaking 无兼容别名；新 `GET\|POST /api/v1/todos`、`PUT\|DELETE /api/v1/todos/{id}`、`GET /api/v1/todos/stats`）。**待办归 Kernel builtin**（无插件门控）：`kernel/todo/` + `application/TodoAppService` + `RecordToTodoLinker`（记录可执行 → 自动建待办，**不再清记忆**）+ `TodoReminderService`（新推送类型 `todo-due`，到期当天 08:00 / 18:00）+ `interfaces/TodoController` + `infrastructure/storage/TodoFileRepository`；存储 `data/{userId}/todos/YYYY/MM.md`（旧 `data/{userId}/project/tasks/` 原样留存、不迁不删）；两态 OPEN / DONE + 可选到期日 `due`；完成/删除单向同步记忆。**前端**：双端待办清单页（`pages/todo_page.dart`，两态 + 可选到期日 + 完成/删除 + 已完成折叠）、Launcher「任务」→「待办」（原生组，副标题「有地方看，会提醒你」）、Feed 去待办卡、推送开关加「待办到期提醒」、通知深链 `todo:today`。**admin**：账号页 `project` 插件开关 + 数据页「任务」页签/相关 DTO/API 删除。**未部署**（本次按用户要求只实施、不部署、不 push） |
+| **涉及文件** | 后端 `kernel/todo/*`、`application/TodoAppService`、`RecordToTodoLinker`、`TodoReminderService`、`interfaces/TodoController`、`infrastructure/storage/TodoFileRepository`、`kernel/plugin/PluginRegistry`（只剩 trading / learn）；前端双端 `pages/todo_page.dart` + admin 账号/数据页 |
+| **注** | 本项落地后 **MD7 作废**（待办不再有"详情编辑页"——纯清单只要一句话 + 到期日）；`os/project-os/` 知识文件保留在仓库（File First），但不再注入任何用户上下文 |
+
+#### MD7：任务详情编辑页（P2）——⛔ 作废（随 MD9）
+
+| 字段 | 值 |
+|:-----|:----|
+| **作废原因** | 待办重构为 Kernel builtin 纯清单（RFC 20260917），不再有优先级/标签/描述等字段，详情编辑页无对象 |
+| **原描述** | ~~当前任务只能改状态（TODO/DOING/DONE）、没有独立的编辑页面；点击任务卡片应可编辑全部字段~~ |
 
 ---
 

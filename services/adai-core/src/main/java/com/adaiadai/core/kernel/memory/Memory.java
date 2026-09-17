@@ -68,6 +68,18 @@ public record Memory(
                 superseded, evolvedTo, doneAt, lastConfirmed);
     }
 
+    /**
+     * 返回关闭/开启行动标记的副本（RFC 20260917）。
+     * <p>
+     * 用途：#备忘 / #想法 排除判断前移到**记忆写入侧**——不含待办意图的记录在记忆里就标
+     * {@code actionable=false}（记忆仍留事实回顾），于是 Feed / 上下文待行动事项 / 待办三处口径一致，
+     * 不再由 RecordToTodoLinker 各判一次。
+     */
+    public Memory withActionable(boolean value) {
+        return new Memory(id, recordId, cardId, kind, summary, patterns, preferences, tags, sentiment,
+                value, suggestion, createdAt, topic, superseded, evolvedTo, doneAt, lastConfirmed);
+    }
+
     public static final String KIND_FACT = "fact";
     public static final String KIND_INSIGHT = "insight";
     public static final String KIND_PREFERENCE = "preference";

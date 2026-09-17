@@ -36,8 +36,8 @@ class AccountFileRepositoryTest {
         assertEquals(Account.SEED_ADMIN_ID, all.get(0).userId());
         assertEquals(Account.ROLE_ADMIN, all.get(0).role());
         assertTrue(all.get(0).enabled());
-        // RFC 20260814：seed admin 默认持有受控插件 trading/project（owner）
-        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT), all.get(0).plugins());
+        // RFC 20260814 / RFC 20260917：seed admin 默认持有受控插件 trading（project 已撤）
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING), all.get(0).plugins());
     }
 
     @Test
@@ -52,13 +52,13 @@ class AccountFileRepositoryTest {
         var repo = repo();
         repo.init();
 
-        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT),
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING),
                 repo.findById(Account.SEED_ADMIN_ID).get().plugins(),
-                "seed admin 老文件无 plugins → 迁移补默认");
+                "seed admin 老文件无 plugins → 迁移补默认（RFC 20260917 撤 project 后只剩 trading）");
 
         // 幂等：再 init 不重复写
         repo.init();
-        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT),
+        assertEquals(List.of(PluginRegistry.PLUGIN_TRADING),
                 repo.findById(Account.SEED_ADMIN_ID).get().plugins());
     }
 

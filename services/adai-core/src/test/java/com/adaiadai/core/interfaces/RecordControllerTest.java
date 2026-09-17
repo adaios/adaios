@@ -1,7 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
-import com.adaiadai.core.application.RecordToTaskLinker;
+import com.adaiadai.core.application.RecordToTodoLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -70,7 +70,7 @@ class RecordControllerTest {
     private RecordFileRepository recordRepository;
     private CardFileRepository cardRepository;
     private MemoryService memoryService;
-    private RecordToTaskLinker recordToTaskLinker;
+    private RecordToTodoLinker recordToTodoLinker;
     private TradeLogCollectService tradeLogCollectService;
 
     /**
@@ -88,11 +88,11 @@ class RecordControllerTest {
         IdentityFileRepository identityRepository = new IdentityFileRepository(fileStorage);
         memoryService = new MemoryService(fileStorage);
         SearchService searchService = new SearchService(recordRepository);
-        // 插件服务：默认授予全插件（保持既有行为；D5 domain 收敛在 gateDomain 单测覆盖）
+        // 插件服务：默认授予 trading（RFC 20260917 撤 project 后唯一受控插件；learn 另有测试）
         AccountRepository accounts = mock(AccountRepository.class);
         when(accounts.findById(any())).thenReturn(Optional.of(
                 new Account("default", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2),
-                        List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT))));
+                        List.of(PluginRegistry.PLUGIN_TRADING))));
         PluginService pluginService = new PluginService(accounts, new PluginRegistry());
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
@@ -112,7 +112,7 @@ class RecordControllerTest {
                 "rec_dec", "decision analysis", List.of("trading"), "raw", "life"
         )).when(questionAppService).answer(any(), any(), any());
 
-        recordToTaskLinker = mock(RecordToTaskLinker.class);
+        recordToTodoLinker = mock(RecordToTodoLinker.class);
         tradeLogCollectService = mock(TradeLogCollectService.class);
         // P2-交易44（2026-09-14）：记录归集改走 collectDetailed（带被丢弃行）；
         // Mockito 对自定义 record 返回类型默认给 null（List 才默认空表），显式兜底为「无丢弃」
@@ -125,7 +125,7 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 memoryService,
-                recordToTaskLinker,
+                recordToTodoLinker,
                 pluginService,
                 tradeLogCollectService
         );
@@ -154,7 +154,7 @@ class RecordControllerTest {
     }
 
     /**
-     * 2026-08-20 生产问题 1：用户说「清仓了云南锗业」→ R2 误转 TODO 任务（生产 5 条脏任务
+     * 2026-08-20 生产问题 1：用户说「清仓了云南锗业」→ R2 误转 TODO 待办（生产 5 条脏待办
      * 「云南锗业清仓止盈/汾酒利欧清仓」，概览持续提醒已清仓股）。修复：交易表述先归集、
      * 命中则跳过 R2 任务转换（交易归集管线是唯一跟踪载体）。
      */
@@ -172,8 +172,8 @@ class RecordControllerTest {
                 .andExpect(jsonPath("$.intent").value("log"));
 
         verify(tradeLogCollectService).collectDetailed(anyString(), eq("今天清仓了云南锗业，全部卖出"), eq("text"));
-        // 交易表述不得转任务
-        verify(recordToTaskLinker, never()).link(anyString(), anyString(), anyString(), any(), anyString(), anyString(), anyBoolean());
+        // 交易表述不得转待办
+        verify(recordToTodoLinker, never()).link(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     }
 
     /**
@@ -191,7 +191,39 @@ class RecordControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.intent").value("log"));
 
-        verify(recordToTaskLinker).link(anyString(), anyString(), anyString(), any(), anyString(), anyString(), anyBoolean());
+        verify(recordToTodoLinker).link(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    }
+
+    /**
+     * RFC 20260917：排除标签（#备忘 / #想法）判断**前移到记忆写入侧**——AI 判 actionable=true，
+     * 含排除标签的记忆在落盘时就标 actionable=false（记忆仍留事实回顾），于是 Feed / 上下文 /
+     * 待办三处口径一致，R2 侧只看 actionable 这一个判据。
+     */
+    @Test
+    void createRecord_excludeTag_memoryIsNotActionable() throws Exception {
+        AiClient actionableClient = new TestAiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                return new AiUnderstanding(
+                        "记得买花", "顺手记一下要买花", null, null,
+                        List.of("备忘"), "neutral", "life", true,
+                        "路过花店时买", "[Test] actionable");
+            }
+        };
+        mockMvc = buildMockMvc(actionableClient);
+
+        String body = mapper.writeValueAsString(Map.of("content", "记得买花 #备忘"));
+        mockMvc.perform(post("/api/v1/records")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        List<Memory> today = memoryService.findByDate("default", LocalDate.now());
+        assertFalse(today.isEmpty(), "记忆应照常沉淀（只是不带行动标记）");
+        assertTrue(today.stream().noneMatch(Memory::actionable),
+                "含 #备忘 的记忆不应标 actionable（排除判断已前移到写入侧）");
+        // 写入侧已把待办意图判为 false → R2 收到 actionable=false（不会建待办）
+        verify(recordToTodoLinker).link(anyString(), anyString(), anyString(), anyString(), eq(false));
     }
 
     @Test
@@ -570,7 +602,7 @@ class RecordControllerTest {
                 repo,
                 mock(CardFileRepository.class),
                 mem,
-                mock(RecordToTaskLinker.class),
+                mock(RecordToTodoLinker.class),
                 pluginService,
                 mock(TradeLogCollectService.class));
         return MockMvcBuilders.standaloneSetup(controller).build();

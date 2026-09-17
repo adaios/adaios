@@ -1,7 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
-import com.adaiadai.core.application.RecordToTaskLinker;
+import com.adaiadai.core.application.RecordToTodoLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -49,7 +49,7 @@ public class RecordController {
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final MemoryService memoryService;
-    private final RecordToTaskLinker recordToTaskLinker;
+    private final RecordToTodoLinker recordToTodoLinker;
     private final PluginService pluginService;
     /** RFC 20260817：交易日志自动归集（文字「清仓了XX」→ 当日候选，待确认）。 */
     private final TradeLogCollectService tradeLogCollectService;
@@ -60,7 +60,7 @@ public class RecordController {
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
-                            RecordToTaskLinker recordToTaskLinker,
+                            RecordToTodoLinker recordToTodoLinker,
                             PluginService pluginService,
                             TradeLogCollectService tradeLogCollectService) {
         this.intentRecognizer = intentRecognizer;
@@ -69,7 +69,7 @@ public class RecordController {
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.memoryService = memoryService;
-        this.recordToTaskLinker = recordToTaskLinker;
+        this.recordToTodoLinker = recordToTodoLinker;
         this.pluginService = pluginService;
         this.tradeLogCollectService = tradeLogCollectService;
     }
@@ -173,12 +173,16 @@ public class RecordController {
         String summary = null;
         String domain = "life";
         AiUnderstanding understanding = null;
+        // RFC 20260917：排除标签（#备忘 / #想法）判断前移到写入侧（单一判据）——
+        // 记忆 actionable 与 R2 是否建待办共用这一个布尔，避免两处口径漂移
+        boolean excludeTodo = false;
 
         try {
             // 走 ContextEngine 获取完整上下文（Identity + 标签索引 + Memory 回读 + 日期/星期）
             understanding = understandingService.composeAndUnderstand(userId, "note", record).understanding();
             tags = understanding.tags();
             summary = understanding.summary();
+            excludeTodo = hasExcludeTodoTag(tags, record.content());
             // D5（RFC 20260814）：AI 判定的 domain 若属未启用插件 → 收敛 life（无插件用户不标交易/项目）
             domain = pluginService.gateDomain(userId, understanding.domain());
         } catch (Exception e) {
@@ -202,6 +206,11 @@ public class RecordController {
         if (understanding != null) {
             try {
                 Memory memory = Memory.fromUnderstanding(record.id(), understanding);
+                // RFC 20260917：排除标签（#备忘 / #想法）判断前移到记忆写入侧——不含待办意图的记录
+                // 在记忆里就标 actionable=false（记忆仍留事实回顾），Feed / 上下文 / 待办三处口径一致。
+                if (excludeTodo) {
+                    memory = memory.withActionable(false);
+                }
                 memoryService.persist(userId, memory);
                 memoryPersisted = true;
                 log.info("Memory persisted for statement | recordId={} | insight=\"{}\" | patterns={} | preferences={}",
@@ -253,12 +262,11 @@ public class RecordController {
             }
         }
         if (!tradeStatement) {
-            // R2：记录自动转待办（通用化，RFC 20260814 D1——任何 domain 的可执行记录都转）。
-            // best-effort：失败不阻塞记录返回。
-            String taskTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
-            recordToTaskLinker.link(userId, record.id(), "log", enriched.tags(),
-                    taskTitle, enriched.content(),
-                    understanding != null && understanding.actionable());
+            // R2：记录自动转待办（通用化——任何 domain 的可执行记录都转，RFC 20260917 起落 kernel/todo）。
+            // best-effort：失败不阻塞记录返回。不满足条件（非 actionable / 无摘要）时 link 返回 null。
+            String todoTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
+            recordToTodoLinker.link(userId, record.id(), "log", todoTitle,
+                    understanding != null && understanding.actionable() && !excludeTodo);
         }
 
         return ResponseEntity.ok(new StatemResponse(
@@ -370,7 +378,7 @@ public class RecordController {
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @PathVariable String id, @RequestBody Map<String, String> body) {
         String domain = body.get("domain");
-        if (domain == null || !List.of("life", "trading", "project").contains(domain)) {
+        if (domain == null || !List.of("life", "trading").contains(domain)) {
             return ResponseEntity.badRequest().build();
         }
         // REVIEW P1-W13（B41）：手动写入口与 AI 判定同口径走 gateDomain——
@@ -379,6 +387,22 @@ public class RecordController {
         log.info("Update domain | id={} | domain={} → {} | userId={}", id, domain, gated, userId);
         recordRepository.updateDomain(userId, id, gated);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 排除标签（手动挡）：含任一即不当作待办（RFC 20260917 前移到记忆写入侧）。 */
+    private static final List<String> EXCLUDE_TODO_TAGS = List.of("备忘", "想法");
+
+    private boolean hasExcludeTodoTag(List<String> tags, String content) {
+        if (tags != null) {
+            for (String tag : tags) {
+                String t = tag == null ? "" : tag.strip();
+                if (EXCLUDE_TODO_TAGS.contains(t)
+                        || (t.startsWith("#") && EXCLUDE_TODO_TAGS.contains(t.substring(1)))) {
+                    return true;
+                }
+            }
+        }
+        return content != null && (content.contains("#备忘") || content.contains("#想法"));
     }
 
     private String truncate(String s, int max) {

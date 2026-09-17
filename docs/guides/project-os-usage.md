@@ -1,5 +1,17 @@
 # Project OS 使用指南
 
+> ## ⚠️ 已退役（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）
+>
+> **本指南描述的 Project OS 产品能力已整体退役**：
+> - **project 插件已撤**——`/api/v1/project/**` 6 个端点（项目状态 + 任务 CRUD + 统计）全部删除（breaking，无兼容别名），双端「项目 / 阿呆系统」入口与 admin 账号页 project 开关一并下线；
+> - **记录不再有 `project` domain**——domain 只余 `life` / `trading`（`project` 一律收敛 `life`）；
+> - **「项目阿呆」问法不再注入项目上下文**——`ProjectContextContributor` / `ProjectKnowledgeSource` 已删除，「项目」关键词不再触发 git / RFC / 任务摘要注入；
+> - **待办改归 Kernel builtin**——双端独立的「待办」清单页（两态 + 可选到期日 + 到期提醒），与本指南描述的任务看板无关。
+>
+> **本文件保留的唯一用途**：作为仓库内 `os/project-os/` 知识目录（**File First，知识文件不删**）的阅读说明——那些文件仍在，但**不再注入任何用户上下文**，也不再对应任何产品端点。
+>
+> 待办能力见 `docs/reference/feature-reference.md` §10；API 契约见 `docs/architecture/api-spec.md` §13。
+
 ## 一句话
 
 **Project OS = 项目管理工具 + AI 项目顾问。**

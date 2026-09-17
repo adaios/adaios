@@ -36,9 +36,6 @@ void main() {
         if (p == '/api/v1/brief') return _json({'content': ''});
         if (p == '/api/v1/brief/cached') return _json({'content': ''});
         if (p == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-        if (p == '/api/v1/project/tasks/stats') {
-          return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-        }
         if (p == '/api/v1/records' && req.method == 'POST') {
           records.add(utf8.decode(req.bodyBytes));
           return _json({

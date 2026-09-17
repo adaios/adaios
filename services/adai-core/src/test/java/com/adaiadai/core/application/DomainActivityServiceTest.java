@@ -31,7 +31,8 @@ class DomainActivityServiceTest {
     void getActivity_emptyRecords_returnsAllDomainsWithZero() {
         DomainActivityService.DomainBriefActivity activity = domainActivityService.getActivity("default");
 
-        assertEquals(3, activity.domains().size());
+        // RFC 20260917：project 插件已撤，记录 domain 只余 life / trading
+        assertEquals(2, activity.domains().size());
         for (var item : activity.domains()) {
             assertEquals(0, item.todayCount());
             assertEquals(0, item.weekCount());

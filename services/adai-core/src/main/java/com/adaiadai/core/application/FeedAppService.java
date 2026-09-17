@@ -45,7 +45,7 @@ public class FeedAppService {
      *
      * <p><b>为什么必须带次级键</b>：{@code time} 只有 {@code HH:mm}，同一分钟内的多条 entry
      * 排序键**完全相等**，顺序退化成「谁先被 add」；而 page 0 又是「核心条目 + 附加条目」两段拼接，
-     * 于是**同一次输入产生的 card 与 action/ai_note 会被劈到列表两端**（2026-09-16 生产实测：
+     * 于是**同一次输入产生的 card 与 ai_note 会被劈到列表两端**（2026-09-16 生产实测：
      * card 17:08 在列表中部，同一时刻的 action 17:08 掉到末尾，中间夹着 10:03 的 ai_note）。
      * 加 {@code id}（含毫秒时间戳）兜底后，同分钟的顺序也有了确定答案。
      */
@@ -148,11 +148,8 @@ public class FeedAppService {
                 allEntries.add(toAiEntry(memory, r));
             }
         }
-
-        // 记忆进化 Phase 3：未完成行动提醒（actionable 记忆）——按记忆创建时间参与排序
-        for (Memory m : memoryService.findPendingActions(userId)) {
-            allEntries.add(toActionEntry(m));
-        }
+        // RFC 20260917：Feed 不再出现待办卡（用户拍板「在 Feed 里不舒服」）——
+        // 待办有自己的地方（清单页），Feed 回归纯对话流。记忆里的 actionable 仍供问答上下文使用。
 
         // 行情相关条目只注入启用 trading 插件的用户（RFC 20260814 T2.6：无 trading 插件 Feed 不出现行情卡）
         if (pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)) {
@@ -181,7 +178,7 @@ public class FeedAppService {
         allEntries.clear();
         allEntries.addAll(mergedTrades);
         allEntries.sort(FEED_ORDER);
-        // 核心条目（record/card）分页；附加条目（ai_note/action/market）只在最新页返回。
+        // 核心条目（record/card）分页；附加条目（ai_note/market/push）只在最新页返回。
         // totalToday = 核心输入数（前端过滤 aiNote 渲染，若含附加条目 → load more 永不收敛 + 空态误判，REVIEW #61）
         List<FeedEntry> coreEntries = allEntries.stream()
                 .filter(e -> "record".equals(e.type()) || "card".equals(e.type()))
@@ -430,19 +427,6 @@ public class FeedAppService {
         if (missing.isEmpty()) return Map.of();
         Map<String, Memory> result = memoryService.findByRecordIds(userId, missing);
         return result != null ? result : Map.of();
-    }
-
-    private FeedEntry toActionEntry(Memory m) {
-        String text = (m.suggestion() != null && !m.suggestion().isBlank())
-                ? m.suggestion() : m.summary();
-        return new FeedEntry(
-                "action", m.id(), m.recordId(),
-                text, text, m.tags(),
-                m.createdAt().toLocalTime().format(TIME_FMT),
-                null, null, null, "life",
-                m.createdAt().format(DATE_FMT), null,
-                m.createdAt().toString() // P1-5
-        );
     }
 
     /**

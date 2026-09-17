@@ -76,7 +76,7 @@ adai:
     # G-4（2026-08-16）：trading-engine 交付层 11-context → knowledge/context（FP-P1 修复，三官审查交叉印证）
     trading-engine-path: ${ADAI_TRADING_KNOWLEDGE_PATH:../../os/trading-engine/knowledge/context}
     life-os-path: ${ADAI_LIFE_KNOWLEDGE_PATH:../../os/life-os/11-context}
-    project-os-path: ${ADAI_PROJECT_KNOWLEDGE_PATH:../../os/project-os/11-context}
+    # RFC 20260917：project-os 知识源已撤（文件保留在 os/project-os/，但不再注入任何用户上下文）
 
   push:
     # ── APNs 渠道（RFC 20260913：付费开发者账号后阿呆 app 直连 APNs，不再借 Bark 转达）──

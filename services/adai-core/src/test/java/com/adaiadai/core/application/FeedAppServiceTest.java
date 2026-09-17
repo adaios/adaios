@@ -79,7 +79,6 @@ class FeedAppServiceTest {
         when(recordRepository.findAll(any())).thenReturn(List.of());
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         // RFC 20260817：推送开关默认全开（findByUser 未 stub 返回 null → NPE）
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
@@ -239,7 +238,6 @@ class FeedAppServiceTest {
 
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
@@ -275,7 +273,6 @@ class FeedAppServiceTest {
         when(market.indices()).thenReturn(Map.of());
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
@@ -364,7 +361,6 @@ class FeedAppServiceTest {
                 .thenReturn(Optional.of("records/2026/08/media/rec_img1.jpg"));
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -390,7 +386,6 @@ class FeedAppServiceTest {
         when(recordRepository.findAll(any())).thenReturn(List.of(text));
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -425,7 +420,6 @@ class FeedAppServiceTest {
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of()); // 同日无记忆
         when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of("rec_cross1", crossDay));
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -455,7 +449,6 @@ class FeedAppServiceTest {
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
         when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -483,7 +476,6 @@ class FeedAppServiceTest {
         when(recordRepository.findAll(any())).thenReturn(List.of());
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of(card));
         MarketDataSource market = mock(MarketDataSource.class);
@@ -514,7 +506,6 @@ class FeedAppServiceTest {
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
         when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -560,7 +551,6 @@ class FeedAppServiceTest {
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
         when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -615,7 +605,6 @@ class FeedAppServiceTest {
         MemoryService memoryService = mock(MemoryService.class);
         when(memoryService.findByDate(any(), any())).thenReturn(List.of());
         when(memoryService.findByRecordIds(any(), any())).thenReturn(Map.of());
-        when(memoryService.findPendingActions(any())).thenReturn(List.of());
         CardFileRepository cardRepository = mock(CardFileRepository.class);
         when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
         MarketDataSource market = mock(MarketDataSource.class);
@@ -676,5 +665,35 @@ class FeedAppServiceTest {
 
         assertTrue(resp.entries().stream().noneMatch(e -> "push".equals(e.type())),
                 "无 learn/trading 插件用户不应看到 push 条目");
+    }
+
+    // ── RFC 20260917：Feed 去掉待办卡（用户拍板「在 Feed 里不舒服」，待办有自己的地方）──
+
+    @Test
+    void getFeed_pendingActionMemory_doesNotProduceActionEntry() {
+        // 记忆里仍有 actionable 待办（供问答上下文使用），但 Feed 不再产出 type=action 条目
+        Memory pending = new Memory("mem_1", "rec_1", "insight", "该给妈打个电话了",
+                List.of(), List.of(), List.of("生活"), "neutral", true, "给妈打个电话",
+                LocalDateTime.of(2026, 8, 6, 9, 0), null, false, null, null, null);
+
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll(any())).thenReturn(List.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        when(memoryService.findPendingActions(any())).thenReturn(List.of(pending));
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        PushSettingsRepository pushSettings = defaultPushSettings();
+
+        FeedAppService service = new FeedAppService(records, memoryService, cardRepository, market,
+                emptyPush(), pluginService("default", "trading"), pushSettings, TRADING_CLOCK);
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 8, 6), 0, 10);
+
+        assertTrue(resp.entries().stream().noneMatch(e -> "action".equals(e.type())),
+                "Feed 不应再出现待办卡");
+        assertTrue(resp.entries().stream().noneMatch(e -> "给妈打个电话".equals(e.content())),
+                "待办内容不得以任何条目形式进 Feed");
     }
 }

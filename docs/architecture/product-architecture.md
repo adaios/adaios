@@ -79,7 +79,7 @@ AdaiOS 的用户体验从下到上分为五层，每一层回答不同的用户�
 |------|------|------|
 | Identity | 你是谁（偏好、规则、标签） | `data/identity/profile.md` |
 | Memory | 你的历史（AI 理解的沉淀） | `data/memory/YYYY/MM.md` |
-| Knowledge | 你的知识体系（Trading/Project/Life 三源注入） | `os/*/11-context/` |
+| Knowledge | 你的知识体系（Trading/Life 两源注入；**Project OS 知识已退役、不再注入**，2026-09-17 RFC 20260917） | `os/*/11-context/` |
 
 **核心能力：** 跨会话、跨模型的身份恢复。新模型接入时，通过 Context Engine 读取 Identity + Memory + Knowledge，快速还原对你的理解。
 
@@ -159,10 +159,10 @@ Layer 3 Identity + Memory + Knowledge 更新
 处理层 ──────── application/（用例编排）
                      ↓ Context Engine
 核心层 ──────── kernel/（Identity / Record / Context / Memory / Knowledge）
-领域层 ──────── domain/（Trading OS / Life OS / Project OS）
-基础设施层 ──── infrastructure/（FileStorage / AI LLM / DB / ProjectFileRepo）
+领域层 ──────── domain/（Trading OS / Life OS；Project OS 已退役 2026-09-17）
+基础设施层 ──── infrastructure/（FileStorage / AI LLM / DB / TodoFileRepository）
                   ↑
-外部 ───────── os/trading-engine/（交易知识），os/project-os/（项目知识）
+外部 ───────── os/trading-engine/（交易知识），os/project-os/（项目知识，已退役·不再注入）
 ```
 
 ## 设计原则
@@ -180,12 +180,12 @@ Layer 3 Identity + Memory + Knowledge 更新
 | 项目 | 启动方式 | 职责 |
 |:-----|:---------|:-----|
 | `os/trading-engine/` | `cd os/trading-engine && claude` | 交易知识工程（已成熟） |
-| `os/project-os/` | `cd os/project-os && claude` | 项目管理知识（自举中） |
+| `os/project-os/` | `cd os/project-os && claude` | 项目管理知识（**已退役，文件保留、不再注入**；2026-09-17 RFC 20260917） |
 
 共同规则：
 - 有自己的 `AGENTS.md`、独立的工作流程和目录规则
 - AdaiOS mono repo 只是存放位置，不干涉内部运作
 - 不依赖 adai-core 任何代码
-- adai-core 通过文件系统单向读取其产出的知识资产（trading 为 `knowledge/context/`，life/project 为 `11-context/`）
+- adai-core 通过文件系统单向读取其产出的知识资产（trading 为 `knowledge/context/`，life 为 `11-context/`；project 知识源已随插件撤除）
 - 从不反向写入：`os/` → `data/`，不反向
 - **Git 统一在根仓库管理，工作焦点各自独立**

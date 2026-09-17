@@ -2844,6 +2844,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     // 此前这里漏了这一项，于是**同一端两个入口给出不同的开关集合**（首页 10 项 / 交易页 9 项），
     // 从交易页进来的纯 learn 用户根本关不掉复习提醒。
     ('learn-review', '学习复习提醒（每日复习到期卡片）'),
+    ('todo-due', '待办到期提醒'), // RFC 20260917：待办到期日当天提醒（默认开、可关）
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),

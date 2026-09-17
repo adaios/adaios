@@ -47,8 +47,6 @@ public class ContextEngine {
 
     private static final List<String> TRADING_KEYWORDS =
             List.of("指标", "K线", "持仓", "走势", "复盘", "买入", "卖出", "仓位", "股票", "大盘", "行情", "买卖");
-    private static final List<String> PROJECT_KEYWORDS =
-            List.of("任务", "进度", "bug", "需求", "RFC", "项目", "待办", "计划", "开发");
 
     private final IdentityRepository identityRepository;
     private final RecordRepository recordRepository;
@@ -164,10 +162,6 @@ public class ContextEngine {
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)
                 && TRADING_KEYWORDS.stream().anyMatch(content::contains)) {
             return "trading";
-        }
-        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)
-                && PROJECT_KEYWORDS.stream().anyMatch(content::contains)) {
-            return "project";
         }
         return "life";
     }
@@ -585,21 +579,17 @@ public class ContextEngine {
     private String buildDomainEnum(Set<String> enabledPlugins) {
         StringBuilder sb = new StringBuilder("life(生活)");
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) sb.append("/trading(交易)");
-        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) sb.append("/project(项目)");
         return sb.toString();
     }
 
     /**
      * D5：domain 判定规则由关键词常量拼接（REVIEW P2-2：单一真相源——
-     * 与 detectDomainScene 的 TRADING_KEYWORDS/PROJECT_KEYWORDS 同源，杜绝确定性路由与 AI 判定矛盾）。
+     * 与 detectDomainScene 的 TRADING_KEYWORDS 同源，杜绝确定性路由与 AI 判定矛盾）。
      */
     private String buildDomainRules(Set<String> enabledPlugins) {
         StringBuilder sb = new StringBuilder("domain判定规则（按优先级，只在本用户启用的插件间判定）：\n");
         if (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING)) {
             sb.append("- 内容涉及 ").append(String.join("、", TRADING_KEYWORDS)).append(" → trading\n");
-        }
-        if (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT)) {
-            sb.append("- 内容涉及 ").append(String.join("、", PROJECT_KEYWORDS)).append(" → project\n");
         }
         sb.append("- 其他日常、想法、记录、心情、问题 → life\n");
         return sb.toString();
@@ -623,8 +613,6 @@ public class ContextEngine {
         List<String> off = new ArrayList<>();
         (enabledPlugins.contains(PluginRegistry.PLUGIN_TRADING) ? on : off)
                 .add("交易（持仓、复盘、买点）");
-        (enabledPlugins.contains(PluginRegistry.PLUGIN_PROJECT) ? on : off)
-                .add("项目（项目状态、任务看板）");
         (enabledPlugins.contains(PluginRegistry.PLUGIN_LEARN) ? on : off)
                 .add("学习（把链接、视频整理成能复习的卡片）");
 

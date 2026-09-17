@@ -15,7 +15,6 @@ import com.adaiadai.core.kernel.context.engine.ContextEngine;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.knowledge.LifeKnowledgeSource;
-import com.adaiadai.core.kernel.knowledge.ProjectKnowledgeSource;
 import com.adaiadai.core.kernel.knowledge.TradingKnowledgeSource;
 import com.adaiadai.core.kernel.memory.MemoryService;
 import com.adaiadai.core.kernel.plugin.PluginRegistry;
@@ -43,9 +42,11 @@ import static org.mockito.Mockito.when;
 
 /**
  * 多用户插件隔离集成测试（RFC 20260814 T2.7）——真实 KnowledgeSource 挂 ContextEngine，
- * 验证：adai（trading/project 插件）注入交易知识，alice（无插件）不注入且 domain 收敛 life。
+ * 验证：adai（trading 插件）注入交易知识，alice（无插件）不注入且 domain 收敛 life。
  * <p>
- * 依赖 monorepo 内真实 os/{trading,project,life}-os/knowledge/context（trading）或 11-context（life/project） 知识文件（test cwd = services/adai-core）。
+ * RFC 20260917 撤 project 插件：project 知识源/场景/枚举已删除，项目词一律落 life。
+ * <p>
+ * 依赖 monorepo 内真实 os/{trading,life}-os 知识文件（trading → knowledge/context，life → 11-context；test cwd = services/adai-core）。
  */
 class PluginIsolationTest {
 
@@ -64,18 +65,17 @@ class PluginIsolationTest {
         when(search.search(any(), anyString())).thenReturn(List.of());
         when(cards.findById(any(), any())).thenReturn(Optional.empty());
 
-        // 真实知识源：trading/project 为插件域，life 为基础服务
+        // 真实知识源：trading 为插件域，life 为基础服务（project 已按 RFC 20260917 撤除）
         // P1-3（2026-08-30 审查）：TradingKnowledgeSource 构造器加 ownerUserId（默认 adai）
         List<KnowledgeSource> sources = List.of(
                 new TradingKnowledgeSource("../../os/trading-engine/knowledge/context",
                         new com.adaiadai.core.infrastructure.storage.InMemoryFileStorage(), "adai"),
-                new ProjectKnowledgeSource("../../os/project-os/11-context"),
                 new LifeKnowledgeSource(memory, "../../os/life-os/11-context"));
 
         AccountRepository accounts = mock(AccountRepository.class);
         when(accounts.findById("adai")).thenReturn(Optional.of(
                 new Account("adai", Account.ROLE_ADMIN, true, LocalDate.of(2026, 8, 2),
-                        List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT))));
+                        List.of(PluginRegistry.PLUGIN_TRADING))));
         when(accounts.findById("alice")).thenReturn(Optional.of(
                 new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2), List.of())));
         PluginService pluginService = new PluginService(accounts, new PluginRegistry());
@@ -116,8 +116,8 @@ class PluginIsolationTest {
 
     @Test
     void d5_domainRules_builtFromKeywordConstants_singleSourceOfTruth() {
-        // REVIEW P2-2：规则由 TRADING_KEYWORDS/PROJECT_KEYWORDS 常量拼接——
-        // 此前硬编码 8 词漏 股票/大盘/行情/买卖/开发，导致确定性路由判 trading 但 prompt 规则无该词。
+        // REVIEW P2-2：规则由 TRADING_KEYWORDS 常量拼接——
+        // 此前硬编码 8 词漏 股票/大盘/行情/买卖，导致确定性路由判 trading 但 prompt 规则无该词。
         ContextEngine engine = engine();
 
         String adaiPrompt = engine.compose("adai", "note", record("今天买入立昂微，持仓 200 股"), null).prompt();
@@ -127,9 +127,10 @@ class PluginIsolationTest {
         assertTrue(adaiPrompt.contains("大盘"), "trading 规则应含关键词「大盘」");
         assertTrue(adaiPrompt.contains("行情"), "trading 规则应含关键词「行情」");
         assertTrue(adaiPrompt.contains("买卖"), "trading 规则应含关键词「买卖」");
-        // project 规则行应含此前漏掉的「开发」
+        // RFC 20260917：PROJECT_KEYWORDS 已随 project 插件删除，project 规则行不复存在
         String projectPrompt = engine.compose("adai", "note", record("开发任务进度如何"), null).prompt();
-        assertTrue(projectPrompt.contains("开发"), "project 规则应含关键词「开发」（单一真相源）");
+        assertFalse(projectPrompt.contains("project(项目)"), "project domain 枚举已删除");
+        assertFalse(projectPrompt.contains("→ project"), "project 判定规则已删除");
     }
 
     @Test
@@ -142,8 +143,9 @@ class PluginIsolationTest {
 
         assertEquals("life(生活)", alicePkg.domainEnum(), "无插件用户 domainEnum 只剩 life（不带引号语义）");
         assertFalse(alicePkg.domainEnum().contains("trading"), "无插件用户 domainEnum 不应含 trading");
-        assertEquals("life(生活)/trading(交易)/project(项目)", adaiPkg.domainEnum(),
-                "adai 持有 trading+project 插件 → 全量枚举");
+        assertEquals("life(生活)/trading(交易)", adaiPkg.domainEnum(),
+                "adai 持有 trading 插件 → life+trading 枚举（project 已撤）");
+        assertFalse(adaiPkg.domainEnum().contains("project"), "RFC 20260917：domainEnum 不应再含 project");
         // REVIEW P1-B1：最终拼接必须单层引号（"domain": "life(生活)"），不得双重引号
         assertTrue(alicePkg.prompt().contains("\"domain\": \"life(生活)\""),
                 "prompt 中 domain 占位应被单层引号包裹");

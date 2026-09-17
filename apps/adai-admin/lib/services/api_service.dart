@@ -429,22 +429,6 @@ class ApiService {
     return PromoteResultDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
   }
 
-  // ── Tasks（per-user，admin 只读查看）──
-
-  /// `GET /api/v1/project/tasks?status=`。
-  Future<List<TaskDto>> getTasks({String? status}) async {
-    final query = <String, String>{'status': ?status};
-    final resp = await _get('/api/v1/project/tasks', headers: userHeaders, query: query);
-    final list = jsonDecode(_body(resp)) as List;
-    return list.map((e) => TaskDto.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  /// `GET /api/v1/project/tasks/stats`。
-  Future<TaskStatsDto> getTaskStats() async {
-    final resp = await _get('/api/v1/project/tasks/stats', headers: userHeaders);
-    return TaskStatsDto.fromJson(jsonDecode(_body(resp)) as Map<String, dynamic>);
-  }
-
   // ── Admin 浏览（系统级，无 X-User-Id）──
 
   /// `GET /api/v1/admin/files?path=` → data/ 目录条目。

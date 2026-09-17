@@ -1,5 +1,7 @@
 # Plugin 模型实施任务拆分
 
+> ⚠️ **历史台账（2026-08-15 批次，仅供追溯）**：RFC `20260917-todo-kernel-retire-project-plugin` 已撤除 project 插件、待办改归 Kernel builtin——文中 `project` 插件、`RecordToTaskLinker`、`/api/v1/project/tasks*`、`data/project/tasks/` 等**均为当时事实，现已不存在**（现行口径以 `docs/architecture/api-spec.md` 与 `docs/rfc/20260917-todo-kernel-retire-project-plugin.md` 为准）。保留全文是为追溯当时的门控全通道落地过程。
+
 > **依据**：`docs/rfc/20260814-domain-plugin-model.md`（5 决策 + 门控全通道 + 两步走）
 > **执行顺序**（adai 定）：① 任务拆分（本文档）→ ② 同步实现（多项目）→ ③ 自测通过 → ④ 前后端连调测试
 > **状态**：第一步 ✅ 已实施 + 自测 + 前后端连调通过（2026-08-15：后端 394 · adai-app 89 · adai-web 44 全绿；alice E2E：知识门控生效无交易知识、非 project 记录自动转待办、DeepSeek 修复后 AI 正常）· **第二步 ✅ 已实施 + 自测通过（2026-08-15：后端 422 · adai-app 92 · adai-web 46 · adai-admin 32 全绿；插件门控全通道落地：Account.plugins + /me/plugins + ContextEngine 知识/贡献者门控 + D5 domain 收敛 + Feed 行情卡门控 + promote 403 + 前端模块显隐 + admin 插件开关；前后端连调待真实账号验证）**

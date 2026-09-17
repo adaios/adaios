@@ -52,8 +52,8 @@ public class DomainActivityService {
         }
 
         List<DomainActivityItem> items = new ArrayList<>();
-        // 确保三个主要 domain 都有条目
-        for (String domain : new String[]{"life", "trading", "project"}) {
+        // 确保主要 domain 都有条目（RFC 20260917：project 插件已撤，不再是记录 domain）
+        for (String domain : new String[]{"life", "trading"}) {
             int todayCount = todayCounts.getOrDefault(domain, 0);
             int weekCount = weekCounts.getOrDefault(domain, 0);
             int prevCount = prevWeekCounts.getOrDefault(domain, 0);

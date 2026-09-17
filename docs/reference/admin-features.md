@@ -65,21 +65,20 @@ tags: [admin, reference]
 |:---|:---|
 | 建号 | 登录名（`[a-zA-Z0-9_-]+`，保留字 `default` 禁建）+ 可选**初始密码**（≥8 位，不设则无法登录，事后可重置）|
 | 启用/禁用 | 账号卡开关（Switch）→ PATCH；禁用后该账号登录被拒；内置 admin 无启用开关（受保护）|
-| 插件开关 | 每账号 trading/project 插件开关 → `PATCH /accounts/{userId}/plugins`（服务端合并语义 add/remove，防并发互覆）；决定该账号 app/web 模块显隐 |
+| 插件开关 | 每账号 **trading / learn** 插件开关 → `PATCH /accounts/{userId}/plugins`（服务端合并语义 add/remove，防并发互覆）；决定该账号 app/web 模块显隐。**RFC 20260917 撤 project 后开关只剩这两个**（历史残留 `"project"` 由后端自动过滤）|
 | 重置密码 | 每账号卡按钮（当前登录账号自身隐藏，引导用顶栏改密）→ 弹窗输入新密码 ≥8 位 → 后端踢除该账号全部会话 |
 | 删除账号 | 确认弹窗「此操作不可撤销」→ 删前踢会话 + 删数据目录；内置 admin 删除被拒 |
 | 角色/状态徽章 | 卡上显示 role（admin/user）、状态（启用/禁用/内置）|
 
 ## 四、数据页（data_page，per-user 治理只读）
 
-> **只读收敛**（2026-08-16 P-role 系列）：记录删除、任务 CRUD、档案编辑、记忆修正已移回用户端，admin 一律只读；全部 tab 带加载失败人话 + 重试。
+> **只读收敛**（2026-08-16 P-role 系列）：记录删除、待办 CRUD、档案编辑、记忆修正已移回用户端，admin 一律只读；全部 tab 带加载失败人话 + 重试。
 
 | Tab | 文件 | 内容 |
 |:---|:---|:---|
 | 记录 | `records_tab.dart` | 所选用户记录列表（只读；无删除）。⚠️ **只看今天**（P3 #163 待修：管理端应覆盖历史，Feed/记录契约只今天会隐性截断）|
 | 记忆 | `memory_tab.dart` | 记忆列表（只读）|
 | 档案 | `identity_tab.dart` | 个人档案查看（只读）|
-| 任务 | `tasks_tab.dart` | 任务列表（只读；CRUD 归用户端）|
 | 持仓 | `positions_tab.dart` | 持仓查看（只读治理；✅ 治理视角正确）|
 | 文件 | `data_tree_tab.dart` | data/ 目录树浏览 + 文件内容预览（治理浏览）|
 
@@ -127,7 +126,6 @@ tags: [admin, reference]
 | GET | `/api/v1/feed` | Feed 预览 |
 | GET | `/api/v1/memory` `/api/v1/memory/dates` | 记忆列表 |
 | GET | `/api/v1/identity` | 档案查看 |
-| GET | `/api/v1/project/tasks` `/api/v1/project/tasks/stats` | 任务列表 |
 | GET | `/api/v1/trading/positions` | 持仓查看 |
 | GET | `/api/v1/trading/has-activity` | 是否有交易活动 |
 | GET | `/api/v1/trading/reviews` | 复盘日期列表 |

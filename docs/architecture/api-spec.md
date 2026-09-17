@@ -116,7 +116,7 @@
 
 响应 200：
 ```json
-{"token": "3ce1...8f", "userId": "adai", "role": "admin", "plugins": ["trading","project"], "expiresAt": "2026-10-01T15:53:54Z", "sessionId": "3ce1a9f2"}
+{"token": "3ce1...8f", "userId": "adai", "role": "admin", "plugins": ["trading"], "expiresAt": "2026-10-01T15:53:54Z", "sessionId": "3ce1a9f2"}
 ```
 - 401：账号或密码错误 / 账号未设密码（提示先 setup）/ 连续 5 次失败限流（15 分钟锁，按 IP+账号）
 - token 明文只在此响应出现一次；落盘 `data/accounts/sessions.json` 仅存 SHA-256 哈希
@@ -265,10 +265,9 @@
 
 按优先级匹配关键词，**只在用户已启用插件间判定**（无对应插件 → 该关键词不判该域）：
 - 指标、K线、持仓、走势、复盘、买入、卖出、仓位、股票、大盘、行情、买卖 → `trading`（需启用 trading 插件）
-- 任务、进度、bug、需求、RFC、项目、待办、计划、开发 → `project`（需启用 project 插件）
 - 日常、想法、记录、心情、问题 → `life`
 
-> 无插件用户一律 `life`（单一 domain）。即使 AI 输出 `trading`/`project`，若该用户未启用对应插件，后端也会收敛为 `life`（`PluginService.gateDomain`）。插件名见 §16 `GET /me/plugins`。
+> 无插件用户一律 `life`（单一 domain）。即使 AI 输出 `trading` 或已撤除的 `project`，若该用户未启用对应插件，后端也会收敛为 `life`（`PluginService.gateDomain` 白名单只放行 `trading` + `life`，`project` 等未知值一律收敛 `life`）。插件名见 §16 `GET /me/plugins`。
 
 ---
 
@@ -327,7 +326,7 @@
 **Response**
 
 - `204 No Content` — 修改成功
-- `400` — domain 非法（仅 `life` / `trading` / `project`）
+- `400` — domain 非法（仅 `life` / `trading`；RFC 20260917 起 `project` 已撤除）
 
 ### `POST /api/v1/admin/records/retry` — 手动触发重补（需登录 + role=admin，REVIEW #178）
 
@@ -536,7 +535,7 @@
 | `mediaPath` | String? | 媒体记录才有：`type=image`（图片记录原图）与 `type=image_qa`（S-2 展示层聚合：图文事件缩略图取引用首图）——媒体文件相对路径（GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null` |
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `mergedIds` | String[]? | v3.69（2026-09-16，P2-UI12）：本条是由哪几条原始记录折叠而来（同分钟同向成交）；未折叠的条目为 `null`。**前端删除时必须逐条删全**，否则刷新后折叠卡会带着剩下的记录回来 |
-| `domain` | String | `life` / `trading` / `project` — AI 按关键词规则判定 |
+| `domain` | String | `life` / `trading` — AI 按关键词规则判定（RFC 20260917 起 `project` 已撤除，未知值收敛 `life`）|
 | `totalToday` | int | **核心输入条数**（record/card，不含 ai_note/action/market/push 附加）；分页终止基准 |
 
 ---
@@ -997,7 +996,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ### `GET /api/v1/trading/push-settings` — 推送开关（RFC 20260817 交易推送体验）
 > 需 trading 插件（403）。
 
-返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true,"close-summary":true,"learn-review":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。`close-summary`（2026-08-29，P2-用户3）= 15:30 收盘小结；`learn-review`（2026-09-07 learn V2 批 4）= 每晚 20:00 学习复习到期卡片汇总提醒。
+返回用户推送类型开关：`{"session":true,"buy-point":true,"stop-loss":true,"near-stop-loss":true,"loss":true,"gain":true,"break-cost":true,"market":true,"close-summary":true,"learn-review":true,"todo-due":true}`（类型 → 是否开启；未配置默认开）。关闭的类型定时任务不再生成、Feed 不再注入（双侧门控）。`close-summary`（2026-08-29，P2-用户3）= 15:30 收盘小结；`learn-review`（2026-09-07 learn V2 批 4）= 每晚 20:00 学习复习到期卡片汇总提醒；`todo-due`（2026-09-17 RFC 20260917）= 待办**到期当天** 08:00 与 18:00 各推一次（`TodoReminderService`），通知深链 `todo:today` 打开待办页。
 
 ### `PUT /api/v1/trading/push-settings/{type}` — 更新推送开关
 > 需 trading 插件（403）。
@@ -1797,46 +1796,83 @@ adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestio
 
 ---
 
-## 13. 项目状态
+## 13. 待办清单（Kernel builtin，RFC 20260917）
 
-### `GET /api/v1/project/status` — 项目状态摘要
+> **定位**：待办是 **Kernel builtin**（内置能力）——人人有、默认开、**无插件门控**（RFC `20260917-todo-kernel-retire-project-plugin.md` §三：core / builtin / optional 三层定位）。
+> **形态**：纯清单两态（`OPEN` / `DONE`）+ 可选到期日（`due`）；未完成在上、已完成折叠；**不进 Feed**（`FeedAppService` 不再产出待办条目，Feed 回归纯对话流）。
+> **收集**：记录里可执行 → 自动进待办（`RecordToTodoLinker`，保留 `sourceRecordId`）+ 清单页手动加。
+> **提醒**：到期当天 **08:00 与 18:00** 各推一次（推送类型 `todo-due`，进 `PushSettings.ALL_TYPES`，默认开、可关）；通知深链 `todo:today` 直接打开待办页。
+> **记忆联动（单向）**：建待办**不动记忆**；完成待办 → `markDone(记忆)` 同步；删除待办 → 清记忆 actionable。`#备忘/#想法` 排除判断前移到记忆写入侧（记忆落盘即 `actionable=false`）。
+>
+> **破坏性变更（breaking，无兼容别名，已装旧 App 需重装）**：原 project 插件的 **6 个端点**已随插件一起删除——`GET /api/v1/project/status`、`GET|POST /api/v1/project/tasks`、`PUT|DELETE /api/v1/project/tasks/{id}`、`GET /api/v1/project/tasks/stats`；新端点一律为 `/api/v1/todos*`（见下）。旧 `data/{userId}/project/` 目录**原样留存、不迁不删**（见 `data-format-freeze.md` §2.11）；`os/project-os/` 知识文件保留在仓库（File First），但**不再注入任何用户上下文**。
 
-返回 AdaiOS 项目的元信息：Kernel 组件、Domain OS 进度、RFC 状态列表等。
-**不调用 AI，纯数据聚合，快速响应。**
+### 待办模型
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `id` | String | 自动生成的唯一 ID，格式 `todo_YYYYMMDD_HHmmssSSS`（毫秒，防同秒覆盖）|
+| `title` | String | 待办标题（必填，空白 → 400 人话）|
+| `status` | String | 两态：`OPEN` / `DONE`（旧文件里的 `DOING` / `CANCELLED` 读作 `OPEN`）|
+| `due` | String? | 到期日 `yyyy-MM-dd`（可选；无 → `null`）|
+| `sourceRecordId` | String? | 源记录 ID（记录自动转待办时关联 `rec_xxx`；手动建 → `null`）|
+| `createdAt` | String | 创建日期 `yyyy-MM-dd` |
+| `updatedAt` | String | 更新日期 `yyyy-MM-dd` |
+
+```json
+{"id":"todo_20260917_223000123","title":"给妈打个电话","status":"OPEN","due":"2026-09-20","sourceRecordId":null,"createdAt":"2026-09-17","updatedAt":"2026-09-17"}
+```
+
+存储：`data/{userId}/todos/YYYY/MM.md`（条目 YAML-ish frontmatter，`due` 与 `sourceRecordId` 为可选行）。
+
+### `GET /api/v1/todos` — 获取待办列表
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `status` | String | 否 | 按状态筛选：`OPEN` / `DONE`（缺省返回全部）|
+
+**Response** — `Todo[]`（新创建的在前）
+
+### `POST /api/v1/todos` — 创建待办
+
+**Request Body**
+
+```json
+{ "title": "给妈打个电话", "due": "2026-09-20" }
+```
+
+`due` 可选（`yyyy-MM-dd`，空/非法 → 400 人话）；`title` 必填。
+
+**Response** — 完整的 `Todo` 对象（200 OK）
+
+### `PUT /api/v1/todos/{id}` — 更新待办
+
+**Request Body**（所有字段可选）
+
+```json
+{ "title": "给妈打个电话", "status": "DONE", "due": "2026-09-20" }
+```
+
+- **`null` = 保持原值**（只传要改的字段）；
+- **`due: ""` = 清除到期日**；
+- `status` 只接受 `OPEN` / `DONE`；`id` 不存在 → 404。
+- 完成待办（`status=DONE`）→ 同步 `markDone(记忆)`；删除待办 → 清记忆 actionable（**单向：待办 → 记忆**）。
+
+**Response** — 更新后的完整 `Todo` 对象（200 OK）
+
+### `DELETE /api/v1/todos/{id}` — 删除待办
+
+取消即删除（无 `CANCELLED` 态）。
+
+**Response** — 204 No Content
+
+### `GET /api/v1/todos/stats` — 待办统计
 
 **Response**
 
 ```json
-{
-  "project": "AdaiOS",
-  "architecture": "modular-monolith",
-  "kernelComponents": {
-    "identity": "done",
-    "record": "done",
-    "timeline": "done",
-    "context": "done",
-    "memory": "done",
-    "knowledge": "done"
-  },
-  "domainStatus": {
-    "trading": "complete",
-    "life": "skeleton",
-    "project": "skeleton"
-  },
-  "rfcItems": [
-    {"title": "Context 闭环", "date": "2026-07-18", "status": "implemented"},
-    {"title": "双主页设计",  "date": "2026-07-22", "status": "implemented"}
-  ],
-  "commitCount": 27,
-  "apiEndpoints": 21
-}
-```
-
-| 字段 | 类型 | 说明 |
-|:-----|:-----|:------|
-| `rfcItems` | RfcItem[] | RFC 状态列表，每项含 title / date / status |
-| `rfcItems[].status` | String | `proposed` / `approved` / `implemented` / `deprecated` / `unknown` |
-| `apiEndpoints` | Integer? | API 端点总数；`null` = endpoints.txt 资源缺失（REVIEW #247，与「真 0 个」区分），前端显示「未知」 |
+{ "total": 10, "open": 4, "done": 6 }
 ```
 
 ---
@@ -1881,112 +1917,17 @@ chat 模式（全屏）
 | 检测交易活动 | `GET /api/v1/trading/has-activity` |
 | 复盘入库候选 | `POST /api/v1/trading/reviews/{date}/promote` |
 | 规则冲突检测 | `GET /api/v1/admin/trading/knowledge/conflicts` |
-| 加载项目状态 | `GET /api/v1/project/status` |
-| 任务列表 | `GET /api/v1/project/tasks` |
-| 创建任务 | `POST /api/v1/project/tasks` |
-| 更新任务 | `PUT /api/v1/project/tasks/{id}` |
-| 删除任务 | `DELETE /api/v1/project/tasks/{id}` |
-| 任务统计 | `GET /api/v1/project/tasks/stats` |
+| 待办列表 | `GET /api/v1/todos`（可选 `?status=OPEN\|DONE`） |
+| 创建待办 | `POST /api/v1/todos` |
+| 更新待办 | `PUT /api/v1/todos/{id}` |
+| 删除待办 | `DELETE /api/v1/todos/{id}` |
+| 待办统计 | `GET /api/v1/todos/stats` |
 | 卡片迁移 | `POST /api/v1/cards/migrate` |
 | 卡片清理 | `POST /api/v1/admin/cards/cleanup` |
 
 ---
 
-## 15. 项目任务
-
-轻量任务系统，File First 存储于 `data/project/tasks/YYYY/MM.md`。
-
-### 任务模型
-
-| 字段 | 类型 | 说明 |
-|:-----|:-----|:------|
-| `id` | String | 自动生成的唯一 ID，格式 `task_YYYYMMDD_HHmmss` |
-| `title` | String | 任务标题（必填） |
-| `description` | String | 任务描述（可选） |
-| `status` | String | `TODO` / `DOING` / `DONE` / `CANCELLED` |
-| `priority` | String | `P0` / `P1` / `P2` / `P3` (默认 P2) |
-| `tags` | String[] | 标签列表（可选） |
-| `rfcRef` | String | 关联 RFC 文件名（可选，如 `20260725-layer6`） |
-| `sourceRecordId` | String | 源记录 ID（R2，可选）：记录自动转任务（D1 通用化：任何可执行记录即转，不限 domain=project）时关联的 `rec_xxx`；前端手动建任务为 null |
-| `createdAt` | String | 创建日期 `yyyy-MM-dd` |
-| `updatedAt` | String | 更新日期 `yyyy-MM-dd` |
-
-### `GET /api/v1/project/tasks` — 获取任务列表
-
-**Query Parameters**
-
-| 参数 | 类型 | 必填 | 说明 |
-|:-----|:-----|:----:|:------|
-| `status` | String | 否 | 按状态筛选：`TODO` / `DOING` / `DONE` / `CANCELLED` |
-| `tag` | String | 否 | 按标签筛选 |
-
-**Response** — `Task[]`
-
-```json
-[
-  {
-    "id": "task_20260726_043000",
-    "title": "接入 A 股行情",
-    "description": "实现东方财富行情接口",
-    "status": "DOING",
-    "priority": "P1",
-    "tags": ["kernel", "market"],
-    "rfcRef": null,
-    "createdAt": "2026-07-26",
-    "updatedAt": "2026-07-26"
-  }
-]
-```
-
-### `POST /api/v1/project/tasks` — 创建任务
-
-**Request Body**
-
-```json
-{
-  "title": "接入 A 股行情",
-  "description": "实现东方财富行情接口",
-  "priority": "P1",
-  "tags": ["kernel", "market"],
-  "rfcRef": null
-}
-```
-
-**Response** — 完整的 `Task` 对象（201 Created）
-
-### `PUT /api/v1/project/tasks/{id}` — 更新任务
-
-**Request Body**（所有字段可选，仅传需要更新的字段）
-
-```json
-{
-  "title": "接入 A 股行情（含缓存）",
-  "status": "DOING",
-  "priority": "P0"
-}
-```
-
-**Response** — 更新后的完整 `Task` 对象（200 OK）
-
-### `DELETE /api/v1/project/tasks/{id}` — 删除任务
-
-**Response** — 204 No Content
-
-### `GET /api/v1/project/tasks/stats` — 任务统计
-
-**Response**
-
-```json
-{
-  "total": 10,
-  "todo": 4,
-  "doing": 2,
-  "done": 3,
-  "cancelled": 1
-}
-```
-
----
+> **编号说明**：原 §15「项目任务」已随 project 插件撤销一并删除（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`），内容并入 §13 待办清单；为保持历史变更记录中「§16 / §17」等编号引用稳定，本节及以后编号不回退。
 
 ## 16. 账号（多账号功能层）
 
@@ -1994,11 +1935,11 @@ chat 模式（全屏）
 >
 > **管理鉴权（REVIEW #178，2026-09-02）**：管理口并入统一登录——本节除 `GET /api/v1/accounts/available`（**仅需登录**，产品端遗留选号）与 `GET /api/v1/me/plugins`（产品端，仅需登录）外，其余端点（账号 CRUD / 插件合并）与 §17 管理端所有端点均要求 `Authorization: Bearer <token>` 且会话账号 **role=admin**（非 admin → 403「仅管理员账号可访问」）；admin 会话保留客户端 `X-User-Id`（控制台跨账号治理浏览）。`X-Admin-Token` 体系已退役删除（`AdminAuthInterceptor` / `adai.security.admin-token` / env `ADAI_ADMIN_TOKEN` / 前端 `ADMIN_TOKEN` 全部移除）。账号响应一律经 AccountView DTO 过滤，**不含 passwordHash**（bcrypt 哈希不下发）。
 >
-> **插件模型（RFC 20260814 + RFC 20260829）**：Account 带 `plugins`（`["trading","project"]`；**2026-09-06 learn 插件 V1 注册第三个插件 `learn`**——`trading`/`project`/`learn` 是 adai 拥有并受控开放的插件（Domain/能力），启用载体 = 账号 plugins 字段；Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）人人都有，不在插件表。seed admin `admin` 默认 `["trading","project"]`（新环境预置兜底）；`adai`（产品主账号）持 `["trading","project"]`；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限、learn 消化端点（403 门控）。
+> **插件模型（RFC 20260814 + RFC 20260829；RFC 20260917 撤 project）**：Account 带 `plugins`（**仅 `trading` / `learn` 两个可选插件**——project 插件已撤除，见 §13；`life`（生活）与待办/搜索/时间线/简报等 Kernel builtin 不在插件表、不可关）。启用载体 = 账号 plugins 字段；**历史文件里的残留 `"project"` 由 `PluginRegistry.isValid` 自动过滤（不迁移）**，admin 再写入 `"project"` → 400。seed admin `admin` 默认 `["trading"]`（新环境预置兜底）；新账号默认空。plugins 决定：知识/行情注入、模块显隐（前端 `GET /me/plugins`）、promote 权限、learn 消化端点（403 门控）。**三层定位**（RFC 20260917 §三）：**core 内核**（记录/问答/记忆/上下文/身份/存储，不可关）· **builtin 内置能力**（待办/搜索/时间线/简报，默认开、用户侧可关）· **optional 可选插件**（trading / learn，默认关）。
 
 ### `GET /api/v1/me/plugins` — 当前用户启用插件（前端模块显隐）
 
-**需登录**（`Authorization: Bearer`，会话账号 = 当前用户）。返回当前用户启用的插件名列表；账号不存在 → 空列表。adai-app / adai-web 据此显隐插件模块（交易页 / 阿呆系统 / 项目仪表盘），基础服务模块不依赖此端点。
+**需登录**（`Authorization: Bearer`，会话账号 = 当前用户）。返回当前用户启用的插件名列表；账号不存在 → 空列表。adai-app / adai-web 据此显隐插件模块（交易页 / 学习页），基础服务模块（含「待办」）不依赖此端点。
 
 **Request Headers**
 
@@ -2007,7 +1948,7 @@ chat 模式（全屏）
 **Response**（`List<String>`）
 
 ```json
-[ "project", "trading" ]
+[ "trading" ]
 ```
 
 - 新用户（无插件）→ `[]`
@@ -2023,14 +1964,14 @@ chat 模式（全屏）
     "role": "admin",
     "enabled": true,
     "createdAt": "2026-08-02",
-    "plugins": ["trading", "project"]
+    "plugins": ["trading"]
   },
   {
     "userId": "adai",
     "role": "user",
     "enabled": true,
     "createdAt": "2026-08-02",
-    "plugins": ["trading", "project"]
+    "plugins": ["trading"]
   }
 ]
 ```
@@ -2058,7 +1999,7 @@ chat 模式（全屏）
 ```
 
 - `role` 可选，默认 `user`（`admin` / `user`）
-- `plugins` 可选，默认 `[]`（新用户只有基础服务）；仅允许 `trading` / `project`，非法 → 400
+- `plugins` 可选，默认 `[]`（新用户只有基础服务）；仅允许 `trading` / `learn`，非法 → 400
 - `password` 可选（**初始密码**，≥8 位，过短 → 400；不传则账号初始无密码——无法登录，可之后由 admin 用 PATCH 重置，REVIEW #178）
 - `400` — userId 已存在 / 格式非法（仅 `[a-zA-Z0-9_-]+`）/ **保留字 `default`（task-log #149：历史遗留测试数据目录名，禁建真实账号）** / role 非法 / plugins 非法 / 初始密码 <8 位
 
@@ -2071,7 +2012,7 @@ chat 模式（全屏）
 ```
 
 - `enabled` / `role` / `plugins` 均可选，缺省保持原值（只改 enabled 不清空 plugins）；**清空插件须显式传空数组 `[]`**（传 null 视为缺省保留，P3 2026-08-17 契约明确）
-- `plugins` 传全量列表（如 `["trading"]`），仅允许 `trading` / `project`，非法 → 400
+- `plugins` 传全量列表（如 `["trading","learn"]`），仅允许 `trading` / `learn`，非法 → 400
 - `password` 可选（**重置密码**，≥8 位，过短 → 400「新密码长度至少 8 位」；REVIEW #178）——重置后踢除该账号**全部**会话（`AuthService.kickSessions`，被重置者需重新登录）；**不携带则保留既有 passwordHash**（修复「只改 enabled/role 即清空密码」bug）
 - **内置管理员 `admin`（2026-09-04 前为 `adai`，已迁移）不可禁用、不可降级**（400）
 - `404` — 账号不存在
@@ -2090,7 +2031,7 @@ chat 模式（全屏）
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:-----|
-| `add` | String[] | 要启用的插件名（`trading`/`project`，可选，默认空）|
+| `add` | String[] | 要启用的插件名（`trading`/`learn`，可选，默认空）|
 | `remove` | String[] | 要停用的插件名（可选，默认空）|
 
 **Response** — `200` 合并后的 `Account`；`400` — 插件名非法 / **内置管理员插件受保护**；`404` — 账号不存在
@@ -2101,7 +2042,7 @@ chat 模式（全屏）
   "role": "user",
   "enabled": true,
   "createdAt": "2026-08-02",
-  "plugins": ["trading", "project"]
+  "plugins": ["trading"]
 }
 ```
 
@@ -2241,7 +2182,7 @@ chat 模式（全屏）
 >
 > **落盘结构（v3.60 起）**：`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + 主题 `_raw/`（**与 Mac 侧 DSH 技能 `learn-digest` 同契约**：手工整理与产品整理共用同一目录，读得到对方的产物）。V1/V2 时代的扁平 `{type}/{yyyy-MM-dd}_{title}.md` **照旧可读可写**（原地不动、不强制迁移）。
 >
-> 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading/project 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
+> 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
 >
 > **L2（2026-09-07）问答注入**：新增 `LearnKnowledgeSource`（kernel 知识源，name=learn → PluginRegistry 映射 learn 插件门控）——ContextEngine 按用户 enabledPlugins 注入最近学习笔记（`## 你最近的学习笔记`，标题+type+核心观点，上限 5 篇；无卡片不注入；损坏文件/_raw 跳过；globalContext 注入 + enrich 空防双份）——你问「上次讲 RAG 那篇说了啥」时阿呆能引用自己消化过的卡片作答（RFC 3.7 ③ 价值呈现）。
 >

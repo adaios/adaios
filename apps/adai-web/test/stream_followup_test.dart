@@ -37,9 +37,6 @@ void main() {
           });
         }
         if (path == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-        if (path == '/api/v1/project/tasks/stats') {
-          return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-        }
         return http.Response('not found', 404);
       }),
       sseClient: _SequentialHoldSse([firstRound, followRound]),

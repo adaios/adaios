@@ -10,8 +10,7 @@ import 'profile_page.dart';
 import 'memory_page.dart';
 import 'timeline_page.dart';
 import 'search_page.dart';
-import 'project_status_page.dart';
-import 'project_task_page.dart';
+import 'todo_page.dart';
 import 'trading_page.dart';
 import 'learn_page.dart';
 
@@ -287,11 +286,11 @@ class _LauncherPageState extends State<LauncherPage>
               ));
             }),
             _divider(),
-            // 任务 = Kernel 基础服务（待办人人都有），不按插件门控
-            // 2026-09-16 用户拍板：「任务」**算原生能力**（与 adai-web 一致），不要挪进插件组
-            _buildRow(Icons.task_alt, '任务', '待办 · 进行中 · 已完成', AppColors.darkGreen, () {
+            // 待办 = Kernel builtin（人人都有，无插件门控）。
+            // RFC 20260917：改名「待办」、形态是纯清单（不再是看板），入口仍属原生。
+            _buildRow(Icons.task_alt, '待办', '有地方看，会提醒你', AppColors.darkGreen, () {
               Navigator.push(context, MaterialPageRoute(
-                builder: (_) => ProjectTaskPage(api: widget.api),
+                builder: (_) => TodoPage(api: widget.api),
               ));
             }),
             // ── 插件组（2026-09-16 用户拍板：原生在前、插件在后，中间一条轻分节标题）──
@@ -528,16 +527,16 @@ class _LauncherPageState extends State<LauncherPage>
 
   // 行图标用 Material Icons（CanvasKit Web 无 NotoColorEmoji，emoji 渲染会崩 Picture._cullRect，#12）
   /// 条目 → 插件 key（2026-09-16 用户拍板：背面主页分「原生能力 / 插件」两组）。
-  /// **这张表是插件归属的唯一事实源**——原来三处 `_plugins.contains('project'/'trading'/'learn')`
+  /// **这张表是插件归属的唯一事实源**——原来三处 `_plugins.contains('trading'/'learn')`
   /// 散在调用点，加一个插件就要多改一处、也说不清谁算插件。
-  /// 「任务」刻意不在表里 = 原生能力（Kernel 待办，人人都有；与 adai-web 同归属，别改）。
+  /// 「待办」刻意不在表里 = 原生能力（Kernel builtin，人人都有；与 adai-web 同归属，别改）。
+  /// RFC 20260917：project 插件整体撤销，「阿呆系统」一行随之删除。
   static const Map<String, String> _pluginEntries = {
-    '阿呆系统': 'project',
     '交易': 'trading',
     '学习': 'learn',
   };
 
-  /// 插件组：轻量分节标题 + 三条稳定槽位（project / trading / learn）。
+  /// 插件组：轻量分节标题 + 两条稳定槽位（trading / learn）。
   /// 一个插件都没启用 → 整组（含标题）不出现，不给用户留一个空壳小节。
   List<Widget> _pluginGroup() {
     final anyEnabled =
@@ -546,24 +545,6 @@ class _LauncherPageState extends State<LauncherPage>
     return [
       _divider(),
       _pluginSectionHeader(),
-      // 阿呆系统 = project 插件，仅启用项目插件的用户可见
-      _pluginSlot(
-        ready: _pluginsLoaded,
-        icon: Icons.query_stats,
-        title: '阿呆系统',
-        subtitle: 'Kernel · Domain · 数据',
-        accent: AppColors.darkBlue,
-        onTap: () {
-          // 无动画跳转：规避 CanvasKit wasm 在路由过渡动画帧 + 页面首帧并发绘制时
-          // PictureRecorder 分配崩溃（v1.0.0 验证发现，点击阿呆系统必现，非项目 bug）
-          Navigator.push(context, PageRouteBuilder(
-            transitionDuration: Duration.zero,
-            reverseTransitionDuration: Duration.zero,
-            pageBuilder: (_, __, ___) => ProjectStatusPage(api: widget.api),
-          ));
-        },
-      ),
-      _divider(),
       // 交易 = trading 插件（稳定槽位，同 P2-UI7），仅启用交易插件的用户可见
       _pluginSlot(
         ready: _pluginsLoaded,

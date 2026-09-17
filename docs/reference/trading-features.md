@@ -36,7 +36,7 @@ tags: [trading, plugin, reference]
 **trading 是 AdaiOS 的插件之一**（RFC 20260814 Domain=插件模型，框架 + 插件形态见 `framework-plus-plugin-model.md`）：
 
 - 插件标识：`trading`（代码 `PluginRegistry.PLUGIN_TRADING`），**代码/API/数据目录命名均不带 plugin 后缀**——`domain/trading`、`/api/v1/trading/*`、`data/{userId}/trading/`、`os/trading-engine/`
-- 启用载体：`Account.plugins`（`data/accounts/accounts.json`），seed 账号 `adai` = `[trading, project]`；新账号默认空（无插件）
+- 启用载体：`Account.plugins`（`data/accounts/accounts.json`），seed 账号 `admin` = `[trading]`；新账号默认空（无插件）。**RFC 20260917 撤 project 后插件只剩 `trading` / `learn`**
 - **门控语义**：除注明外，全部交易端点需 trading 插件（未启用 → 403）；前端交易页/交易入口按 `GET /me/plugins` 显隐；行情推送等定时任务只轮询启用 trading 插件的用户（写读双侧门控）
 - **唯一例外**：`GET /trading/has-activity` 代码未做插件门控（产品路径只读，见 §8 注意点）
 

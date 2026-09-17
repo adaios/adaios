@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-17
 status: active
-lines: 83
+lines: 84
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, rfc]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | 20260917-learn-representation.md | learn 表征适配与链路打通（门控 B + 偏好回流 + 反馈入口 + 精美导出）| approved |
+| 20260917-todo-kernel-retire-project-plugin.md | 待办归 Kernel——撤 project 插件与待办重定位（能力三层 core/builtin/optional；待办纯清单两态 + 到期推送、不进 Feed；端点硬切 `/api/v1/todos*`）| implemented |
 | 20260718-context-memory-knowledge-loop.md | Context 闭环 — 记忆回读 + 知识召回 | implemented |
 | 20260720-context-architecture.md | Context 架构重构：三层上下文 + 标签索引 + 记录晋升 | implemented |
 | 20260721-ai-chat-quality.md | AI 对话质量修复：从分析模式到对话模式 | implemented |

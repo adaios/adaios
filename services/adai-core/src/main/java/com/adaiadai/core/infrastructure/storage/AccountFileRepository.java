@@ -54,9 +54,9 @@ public class AccountFileRepository implements AccountRepository {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
-    /** seed 管理员默认插件（RFC 20260814：owner 拥有受控插件 trading/project）。 */
+    /** seed 管理员默认插件（RFC 20260814：owner 拥有受控插件 trading；project 已按 RFC 20260917 撤除）。 */
     private static final List<String> SEED_OWNER_PLUGINS =
-            List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
+            List.of(PluginRegistry.PLUGIN_TRADING);
 
     @PostConstruct
     public void init() {

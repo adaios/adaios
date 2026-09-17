@@ -1,5 +1,5 @@
 /// 数据管理模块模型（mock 阶段）。
-/// 对应 adai-core Kernel：Record / Memory / Identity / Task / Position。
+/// 对应 adai-core Kernel：Record / Memory / Identity / Position。
 library;
 
 /// 内容记录 — 最小个人事件单元（对应 Kernel Record）。
@@ -90,45 +90,6 @@ class IdentityProfile {
 
   /// 标签。
   List<String> tags;
-}
-
-/// 任务（对应 Kernel Record 的 todo 投影 / Project OS 任务）。
-class TaskItem {
-  TaskItem({
-    required this.id,
-    required this.title,
-    required this.done,
-    required this.priority,
-    required this.createdAt,
-  });
-
-  /// 任务唯一标识。
-  final String id;
-
-  /// 标题。
-  String title;
-
-  /// 完成状态。
-  bool done;
-
-  /// 优先级：high / medium / low。
-  final String priority;
-
-  /// 创建时间。
-  final DateTime createdAt;
-
-  String get statusLabel => done ? '已完成' : '待办';
-
-  String get priorityLabel => switch (priority) {
-        'P0' => 'P0',
-        'P1' => 'P1',
-        'P2' => 'P2',
-        'P3' => 'P3',
-        'high' => '高',
-        'medium' => '中',
-        'low' => '低',
-        _ => priority,
-      };
 }
 
 /// 持仓（对应 trading Position）。

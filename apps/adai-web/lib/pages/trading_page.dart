@@ -5662,6 +5662,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('buy-point', '买点提醒'),
     ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
     ('learn-review', '学习复习提醒（每日复习到期卡片）'), // learn V2 批 4 2026-09-07
+    ('todo-due', '待办到期提醒'), // RFC 20260917：待办到期日当天提醒（默认开、可关）
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),

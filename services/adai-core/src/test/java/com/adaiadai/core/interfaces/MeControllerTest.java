@@ -32,13 +32,13 @@ class MeControllerTest {
     }
 
     @Test
-    void plugins_ownerHasTradingAndProject() throws Exception {
-        mvcFor("adai", List.of(PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT))
+    void plugins_ownerHasTrading_residualProjectFiltered() throws Exception {
+        // RFC 20260917：撤 project 插件——存量账号里残留的 "project" 被过滤，只返回 trading
+        mvcFor("adai", List.of(PluginRegistry.PLUGIN_TRADING, "project"))
                 .perform(get("/api/v1/me/plugins").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0]").value("project"))
-                .andExpect(jsonPath("$[1]").value("trading"));
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0]").value("trading"));
     }
 
     @Test

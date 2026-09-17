@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 /// 卡片类型（桌面端与 adai-app 共享同一状态机模型，值复制不跨工程 import）。
-enum FeedCardType { record, aiNote, push, dateSeparator, action, market }
+/// RFC 20260917：action（待办卡）已撤出 Feed，不再有该类型。
+enum FeedCardType { record, aiNote, push, dateSeparator, market }
 
 /// 后端 intent：log → 记录，question → 提问。
 enum IntentType {
@@ -55,9 +56,11 @@ class FeedCardData {
   final bool loading;
   final IntentType? intent;
   final bool expanded;
-  final String domain; // "life" | "trading" | "project"
+  final String domain; // "life" | "trading"
   final String? error; // API 调用失败时的错误信息，非 null 时卡片进入错误态
-  final VoidCallback? onMarkDone; // action 卡"完成"按钮回调（调 PATCH /memory/{id}/done）
+  /// push 卡「今日操作确认」按钮回调（记录未落库的成交）。
+  /// RFC 20260917：原 action 卡「完成」按钮已随待办卡一起撤出 Feed。
+  final VoidCallback? onMarkDone;
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒/今日操作确认等）
   final VoidCallback? onConfirmTradeLog; // RFC 20260817：「今日操作确认」卡确认按钮
   final VoidCallback? onDismiss; // B10-3（2026-08-23，P1-推送2）：push 卡「忽略」按钮（删除持久化）
@@ -196,13 +199,12 @@ extension FeedEntryResponseX on FeedEntryResponse {
     );
   }
 
-  /// 后端 Feed type → 前端卡片类型（action/market 有专属渲染，其余归 record）。
+  /// 后端 Feed type → 前端卡片类型（market 有专属渲染，其余归 record）。
+  /// RFC 20260917：action（待办）已不再产出，进入 Feed 前即被丢弃（见 FeedPage）。
   FeedCardType _toCardType(String type) {
     switch (type) {
       case FeedEntryType.aiNote:
         return FeedCardType.aiNote;
-      case FeedEntryType.action:
-        return FeedCardType.action;
       case FeedEntryType.market:
         return FeedCardType.market;
       // #162：push 类型不再落默认 record（L5 推送上线时渲染成普通卡）

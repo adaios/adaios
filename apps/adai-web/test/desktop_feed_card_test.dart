@@ -80,12 +80,8 @@ void main() {
     expect(ended, true);
   });
 
-  testWidgets('action 卡渲染待办 + 完成按钮', (tester) async {
-    await pumpCard(tester, FeedCardData(
-      id: 'a1', type: FeedCardType.action, time: '14:00', content: '交房租',
-    ));
-    expect(find.text('待办'), findsOneWidget);
-    expect(find.text('完成'), findsOneWidget);
+  test('FeedCardType 不再含 action（RFC 20260917：待办卡已撤出 Feed）', () {
+    expect(FeedCardType.values.map((e) => e.name).contains('action'), false);
   });
 
   testWidgets('market 卡渲染行情', (tester) async {
@@ -104,9 +100,9 @@ void main() {
     expect(find.text('14:00'), findsOneWidget);
   });
 
-  testWidgets('action 卡显示 date + time', (tester) async {
+  testWidgets('market 卡显示 date + time', (tester) async {
     await pumpCard(tester, FeedCardData(
-      id: 'a1', type: FeedCardType.action, time: '09:05', date: '08-03', content: '交房租',
+      id: 'm1', type: FeedCardType.market, time: '09:05', date: '08-03', content: '上证指数',
     ));
     expect(find.text('08-03  09:05'), findsOneWidget);
   });

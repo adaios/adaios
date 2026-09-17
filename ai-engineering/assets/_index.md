@@ -3,9 +3,9 @@ title: assets 资产层索引
 description: AI 工程资产层目录治理——规范/边界/ADR/已知坑，回答「为什么这么定/别踩什么/边界在哪」
 version: 1
 created: 2026-08-15
-updated: 2026-08-20
+updated: 2026-09-17
 status: active
-lines: 46
+lines: 47
 depends-on: []
 related:
   - ../README.md
@@ -29,6 +29,7 @@ tags: [ai, meta, index, assets]
 | adr/ADR-003.md | Domain=插件模型 | accepted |
 | adr/ADR-004.md | 交易推送开关 + 交易日志归集审核流程 | accepted |
 | adr/ADR-005.md | AI 协作入口标准化：AGENTS.md 统一入口 + 技能包体系（建收守闭环）| accepted |
+| adr/ADR-006.md | 能力三层定位（core / builtin / optional）+ 撤 project 插件、待办归 kernel/todo（RFC 20260917）| accepted |
 | projects/adai-app.md | 项目资产：移动端 | active |
 | projects/adai-core.md | 项目资产：后端核心 | active |
 | projects/adai-web.md | 项目资产：桌面端 | active |

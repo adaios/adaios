@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:adai_app/main_page.dart';
 import 'package:adai_app/services/api_service.dart';
 import 'package:adai_app/services/sse_client.dart';
+import 'package:adai_app/pages/todo_page.dart';
 import 'package:adai_app/widgets/feed_card.dart';
 import 'package:adai_app/widgets/input_bar.dart';
 
@@ -106,7 +107,8 @@ Map<String, dynamic> _imageRecord(String id, String summary) => {
   'domain': 'life', 'mediaPath': 'media/$id.png',
 };
 
-/// 附加条目 JSON（action 待办 / market 行情 / push 推送——仅 page 0 附带，不占分页进度）。
+/// 附加条目 JSON（market 行情 / push 推送——仅 page 0 附带，不占分页进度）。
+/// RFC 20260917 撤掉 Feed 待办卡后，附加条目只剩这两类。
 Map<String, dynamic> _attached(String type, String id, String content) => {
   'type': type, 'id': id, 'title': '', 'content': content,
   'tags': <String>[], 'time': '14:00', 'date': '08-04',
@@ -512,14 +514,14 @@ void main() {
     });
 
     testWidgets('REVIEW #234：附加条目不占分页进度，核心未加载完仍显示「加载更早」', (tester) async {
-      // page 0 带 2 条附加条目（action/market）+ 1 条核心记录；totalToday=3（只计核心）。
+      // page 0 带 2 条附加条目（market/push）+ 1 条核心记录；totalToday=3（只计核心）。
       // 旧逻辑 _cards.length(3) >= totalToday(3) → 误判「无更多」，「加载更早」消失、最旧核心不可达；
       // 修复后按已加载核心数 1 < 3 → 仍显示「加载更早」，追加后按核心数 3 >= 3 隐藏。
       final b = _Backend()
         ..feedPage0 = [
           _record('r1', '今日核心记录'),
-          _attached('action', 'a1', '提醒：完成复盘'),
           _attached('market', 'm1', '上证指数 3456.78 +0.12%'),
+          _attached('push', 'p1', '尾盘建议'),
         ]
         ..feedPage1 = [_record('o2', '昨日2'), _record('o1', '昨日1')]
         ..feedTotalToday = 3;
@@ -651,9 +653,9 @@ void main() {
     // P1-前端3（2026-09-17 真机复发；与 09-16 P2-UI12 同族）：
     // 旧 _refreshFeed 按**位置**切旧页（sublist(0, length - _pageSize)）且从不比对 id，
     // 只在「_cards 恰好是纯核心条目」时成立。但 page0 会附带**全部**附加条目
-    // （action 待办 / market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
+    // （market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
     // _pageSize(=5)，于是那条唯一的卡既落在 older 里、又在 freshCards 里 → 同 id 两份都渲染。
-    // 真机路径：用户清待办 + 收行情推送（附加条目最多）时，推送深链触发 _refreshFeed。
+    // 真机路径：收行情推送（附加条目最多）时，推送深链触发 _refreshFeed。
     testWidgets('P1-前端3：附加条目撑破 pageSize 时刷新合并按 id 去重，同 id 不得两份', (tester) async {
       // 视口放大，让全部 6~7 张卡都构建出来（ListView 懒构建，默认 600 高看不全）
       tester.view.physicalSize = const Size(800, 4000);
@@ -664,11 +666,11 @@ void main() {
       // 且核心卡正好落在旧实现的「更早页」区间 sublist(0, 6-5) = [r-today] 内。
       List<Map<String, dynamic>> page0() => [
             _record('r-today', '今天只有这一条记录'),
-            _attached('action', 'a1', '待办一'),
-            _attached('push', 'p1', '行情推送一'),
             _attached('market', 'm1', '行情快照一'),
-            _attached('action', 'a2', '待办二'),
+            _attached('push', 'p1', '行情推送一'),
+            _attached('market', 'm2', '行情快照二'),
             _attached('push', 'p2', '行情推送二'),
+            _attached('market', 'm3', '行情快照三'),
           ];
       final b = _Backend()
         ..feedPage0 = page0()
@@ -1168,6 +1170,31 @@ void main() {
       // 回答进 SnackBar 的渲染机制已在既有 ask-batch 测试验证（本测试聚焦补跑触发 + 全 id 覆盖，
       // 避免被重试后连续 SnackBar 排队的时序干扰）
     });
+  });
+
+  // ── RFC 20260917：待办到期提醒的深链 `todo:today` ──
+
+  testWidgets('待办到期推送点进来 → 直接打开待办清单，不在 Feed 里猜', (tester) async {
+    final backend = _Backend();
+    backend.handlers['/api/v1/todos'] = (_) => Future.value(_json(<Map<String, dynamic>>[]));
+    final link = ValueNotifier<String?>(null);
+    final api = ApiService(
+      baseUrl: 'http://test',
+      client: MockClient(backend.handle),
+      sseClient: _FailSse(),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: MainPage(api: api, pushDeepLink: link)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TodoPage), findsNothing);
+
+    link.value = 'todo:today';
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TodoPage), findsOneWidget,
+        reason: '待办到期通知应带用户回到待办清单（Feed 已不再出现待办卡）');
   });
 }
 

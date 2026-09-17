@@ -450,7 +450,7 @@ class _ProfilePageState extends State<ProfilePage> {
           TextField(
             controller: _tagsCtrl,
             style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1),
-            decoration: _inputDecoration('如: trading, life, project'),
+            decoration: _inputDecoration('如: trading, life'),
           ),
         ]),
         const SizedBox(height: 20),

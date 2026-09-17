@@ -5,7 +5,7 @@
 >
 > 配套文档：[frontend-reference.md](../../docs/architecture/frontend-reference.md) | [DESIGN.md](DESIGN.md)
 
-**最后更新：2026-07-26**
+**最后更新：2026-09-17**（RFC 20260917：撤 project 插件，项目仪表盘/任务看板 → 待办清单）
 
 ---
 
@@ -15,8 +15,7 @@
 |:-----|:---------|:-----|
 | 主页面（World A） | `lib/main_page.dart` | StatefulWidget |
 | 启动器（World B） | `lib/pages/launcher_page.dart` | StatefulWidget |
-| 项目仪表盘 | `lib/pages/project_status_page.dart` | StatefulWidget |
-| 任务管理 | `lib/pages/project_task_page.dart` | StatefulWidget |
+| 待办 | `lib/pages/todo_page.dart` | StatefulWidget |
 | 交易管理 | `lib/pages/trading_page.dart` | StatefulWidget |
 | 个人档案 | `lib/pages/profile_page.dart` | StatefulWidget |
 | 记忆浏览 | `lib/pages/memory_page.dart` | StatefulWidget |
@@ -102,7 +101,7 @@
 │  👤  关于我                         ›   │  ← 导航列表
 │  🧠  脑瓜子正在装…                  ›   │
 │  📅  时间都去哪了                   ›   │
-│  📊  阿呆系统                       ›   │
+│  ✅  待办                           ›   │
 │  📈  交易                           ›   │
 │                                          │
 │ ────── 标签宇宙 ──────     [列表/图谱]   │  ← 视图切换按钮
@@ -134,7 +133,7 @@
 | 关于我 | 👤 | `ProfilePage` | 第 140-147 行 |
 | 脑瓜子正在装… | 🧠 | `MemoryPage` | 第 149-155 行 |
 | 时间都去哪了 | 📅 | `TimelinePage` | 第 158-164 行 |
-| 阿呆系统 | 📊 | `ProjectStatusPage` | 第 167-171 行 |
+| 待办 | ✅ | `TodoPage` | `todo_page.dart` |
 | 交易 | 📈 | `TradingPage` | 第 173-177 行 |
 
 ### 标签宇宙
@@ -159,110 +158,43 @@
 
 ---
 
-## 4. 项目仪表盘（`project_status_page.dart`）
+## 4. 待办页（`todo_page.dart`）
+
+> RFC 20260917：原「项目仪表盘 / 任务管理」两页随 project 插件撤销；
+> 待办归 Kernel builtin，形态改为纯清单——两态 `OPEN` / `DONE`，可选到期日。
 
 ### 顶栏
 
-| 元素 | 类型 | 行为 | 代码位置 |
-|:-----|:-----|:------|:---------|
-| 返回箭头 | `IconButton(arrow_back)` | `Navigator.pop` | 第 53-56 行 |
-| 标题 | `Text('阿呆系统')` | — | 第 57 行 |
-| 刷新 | `IconButton(refresh)` | 重新加载所有数据 | 第 59-62 行 |
+| 元素 | 类型 | 行为 |
+|:-----|:-----|:------|
+| 返回箭头 | `IconButton(arrow_back)` | `Navigator.pop` |
+| 标题 | `Text('待办')` | — |
 
-### 内容区
+### 顶部添加行
 
-| 区块 | 组件 | 说明 | 代码位置 |
-|:-----|:------|:------|:---------|
-| 系统概览 | `_sectionTitle` + `_card` | 显示 project + architecture | 第 70-75 行 |
-| Kernel 组件 | `_componentGrid` | 6 个组件：绿/橙色状态标记 | 第 76-78 行 |
-| Domain OS | `_domainList` | 3 个 Domain：完整/骨架/未开始 | 第 79-81 行 |
-| 统计数据 | `_card` | Git 提交数、RFC 数、API 端点 | 第 82-87 行 |
-| RFC 状态 | `_buildRfcSection` | 每项含日期 + title + 彩色状态标签 | 第 89 行 |
-| 任务统计 | `_buildTaskSection` | 4 个数字：待办/进行/完成/合计 | 第 91 行 |
-| "管理"按钮 | `GestureDetector` | 导航至 `ProjectTaskPage` | 第 207-225 行 |
+| 元素 | 类型 | 行为 |
+|:-----|:-----|:------|
+| 输入框 | `TextField`（key `todo-input`） | 一句话；回车等同「加上」 |
+| 到期日 | 44pt 热区 + `Icons.event_outlined`（key `todo-due-picker`） | `showDatePicker` 选到期日（可选） |
+| 不设了 | `GestureDetector`（key `todo-due-clear`） | 清掉已选到期日 |
+| 加上 | `ElevatedButton`（key `todo-add`） | `createTodo`；提交中禁用 |
 
-### RFC 状态颜色
+### 清单
 
-| status | 颜色 | 中文标签 | 代码位置 |
-|:-------|:-----|:---------|:---------|
-| `implemented` | `darkGreen` | 完成 | `_rfcStatusColor` |
-| `approved` | `darkBlue` | 已批准 | 同上 |
-| `proposed` | `darkOrange` | 提案 | 同上 |
-| `deprecated` | `darkGrey5` | 废弃 | 同上 |
-
----
-
-## 5. 任务管理（`project_task_page.dart`）
-
-### 顶栏
-
-| 元素 | 类型 | 行为 | 代码位置 |
-|:-----|:-----|:------|:---------|
-| 返回箭头 | `IconButton(arrow_back)` | `Navigator.pop` | 第 144-146 行 |
-| 标题 | `Text('任务')` | — | 第 148 行 |
-| 刷新 | `IconButton(refresh)` | `_loadAll()` | 第 150-152 行 |
-| 添加按钮 | `IconButton(add_rounded)` | 切换 `_showCreate`，显示/隐藏创建表单 | 第 154-156 行 |
-
-### 统计行 `_buildStatsRow`
-
-| 元素 | 说明 |
+| 区块 | 说明 |
 |:-----|:------|
-| 全部 | `_stats.total` |
-| 待办 | `_stats.todo` |
-| 进行 | `_stats.doing` |
-| 完成 | `_stats.done` |
+| 未完成（在上） | 勾选圆圈（`todo-check-{id}`，44pt）→ `updateTodo` 翻转状态；标题；到期日；删除（`todo-delete-{id}`，44pt，确认后 `deleteTodo`） |
+| 已完成（折叠） | 标题「已完成 (n)」（key `todo-done-toggle`，默认收起）；条目加删除线 |
+| 空态 | 「还没有待办。想到什么就写下来，我替你记着。」 |
+| 失败态 | 人话 + 「重试」（key `todo-retry`）；写操作失败走 SnackBar 透出后端 `{"error":"人话"}`，不假装成功 |
 
-### 筛选栏 `_buildFilterRow`
+### 到期日人话（`todoDueLabel`）
 
-横向滚动，圆角矩形按钮：
-
-| 按钮 | 筛选值 | 颜色 |
-|:-----|:-------|:-----|
-| 全部 | `null` | `darkGrey5` |
-| 待办 | `TODO` | `darkOrange` |
-| 进行 | `DOING` | `darkBlue` |
-| 完成 | `DONE` | `darkGreen` |
-| 取消 | `CANCELLED` | `darkGrey5` |
-
-### 创建表单 `_buildCreateForm`
-
-| 字段 | 控件 | 说明 | 代码位置 |
-|:-----|:------|:------|:---------|
-| 标题 | `TextField` | 必填 | 第 260 行 |
-| 描述（可选） | `TextField` maxLines=2 | 可选 | 第 262 行 |
-| 标签（逗号分隔） | `TextField` | 可选 | 第 264 行 |
-| 优先级 | 4 个 `_prioChip` | P0/P1/P2(默认)/P3，椭圆选择 | 第 269-276 行 |
-| 创建任务按钮 | `ElevatedButton` | 提交，标题为空时禁用 | 第 278-290 行 |
-
-### 任务卡片 `_buildTaskCard`
-
-每张卡片包含：
-
-| 元素 | 说明 | 代码位置 |
-|:-----|:------|:---------|
-| 状态标签 | 圆角矩形色块（TODO橙/DOING蓝/DONE绿/CANCELLED灰） | 第 373-381 行 |
-| 优先级标签 | 仅非 P2 时显示，橙色 | 第 383-391 行 |
-| 标题 | `Text` 14px w600 | 第 409 行 |
-| 描述 | `Text` 12px，最多 2 行溢出省略 | 第 410-413 行 |
-| 标签列表 | `Wrap` 灰底小圆块 | 第 414-424 行 |
-| 更多菜单 | `PopupMenuButton(more_horiz)` | 第 393-406 行 |
-
-### 更多菜单项
-
-| 菜单项 | 行为 | 条件 |
-|:-------|:------|:------|
-| 推进 → 进行/完成 | `_updateStatus(id, nextStatus)` | 仅当 nextStatus 非 null（TODO→DOING, DOING→DONE） |
-| 编辑 | `_editTask(task)` | 填充表单字段到创建区 |
-| 删除 | `_deleteTask(id)` | 弹出确认框 |
-
-### 删除确认弹窗
-
-| 元素 | 文本 | 行为 |
-|:-----|:------|:------|
-| 标题 | '删除任务' | — |
-| 内容 | '确定删除？' | — |
-| 取消按钮 | TextButton '取消' | `Navigator.pop(false)` |
-| 删除按钮 | TextButton '删除' | `Navigator.pop(true)` → `deleteTask` |
+| 情况 | 文案 | 颜色 |
+|:-----|:-----|:-----|
+| 今天 / 明天 | 「今天」/「明天」 | `darkGrey5` |
+| 已过期 | 「M月d日 · 已过期」 | `darkOrange` |
+| 其它 | 「M月d日」（跨年带年份） | `darkGrey5` |
 
 ---
 
@@ -495,8 +427,7 @@ RootApp
        │    ├─ 👤 关于我    → ProfilePage
        │    ├─ 🧠 脑瓜子    → MemoryPage
        │    ├─ 📅 时间      → TimelinePage
-       │    ├─ 📊 阿呆系统  → ProjectStatusPage
-       │    │    └─ 📋 管理 → ProjectTaskPage
+       │    ├─ ✅ 待办      → TodoPage
        │    ├─ 📈 交易      → TradingPage
        │    └─ [搜索栏]     → SearchPage
        │

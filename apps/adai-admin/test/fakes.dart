@@ -151,22 +151,6 @@ class FakeDataStore implements DataStore {
         createdAt: DateTime(2026, 7, 30, 12, 0),
       ),
     ];
-    _tasks = [
-      TaskItem(
-        id: 't-01',
-        title: '为 adai-admin 补数据/系统/知识三个模块的页面框架',
-        done: false,
-        priority: 'high',
-        createdAt: DateTime(2026, 8, 1, 9, 0),
-      ),
-      TaskItem(
-        id: 't-04',
-        title: 'Life OS 等数据积累到可用阈值',
-        done: true,
-        priority: 'low',
-        createdAt: DateTime(2026, 7, 20, 11, 0),
-      ),
-    ];
     _positions = [
       Position(
         symbol: '510300',
@@ -197,7 +181,6 @@ class FakeDataStore implements DataStore {
 
   late final List<ContentRecord> _records;
   late final List<MemoryItem> _memories;
-  late final List<TaskItem> _tasks;
   late final List<Position> _positions;
   late final List<TreeNode> _files;
 
@@ -217,9 +200,6 @@ class FakeDataStore implements DataStore {
 
   @override
   Future<IdentityProfile> loadIdentity() async => _identity;
-
-  @override
-  Future<List<TaskItem>> loadTasks() async => List.of(_tasks);
 
   @override
   Future<List<Position>> loadPositions() async => List.of(_positions);

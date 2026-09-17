@@ -85,7 +85,8 @@ void main() {
     expect(find.byKey(const ValueKey('enabled-alice')), findsOneWidget);
     expect(find.byKey(const ValueKey('enabled-bob')), findsOneWidget);
     expect(find.byKey(const ValueKey('plugin-alice-trading')), findsOneWidget);
-    expect(find.byKey(const ValueKey('plugin-alice-project')), findsOneWidget);
+    // 2026-09-17 RFC 20260917：project 插件撤销，开关下线（插件只剩 trading / learn）
+    expect(find.byKey(const ValueKey('plugin-alice-project')), findsNothing);
     // 2026-09-16「第一次见面」批：learn 必须在列（此前前端硬编码漏项 → 学习功能无处可开）
     expect(find.byKey(const ValueKey('plugin-alice-learn')), findsOneWidget);
 
@@ -116,9 +117,9 @@ void main() {
         find.byKey(const ValueKey('plugin-alice-trading')));
     expect(after.value, isTrue, reason: '点开关后 alice 应启用 trading 插件');
 
-    // project 开关不受影响
+    // 同卡 learn 开关不受影响
     expect(
-      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-learn'))).value,
       isFalse,
     );
   });
@@ -226,10 +227,10 @@ void main() {
     final store = GatedAccountStore(gate: gate);
     await pumpAccounts(tester, store: store);
 
-    // 快速连点 alice 的 trading + project 两个开关
+    // 快速连点 alice 的 trading + learn 两个开关
     await tester.tap(find.byKey(const ValueKey('plugin-alice-trading')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('plugin-alice-project')));
+    await tester.tap(find.byKey(const ValueKey('plugin-alice-learn')));
     await tester.pump();
 
     // 串行队列：第一个 merge 已发起（挂起中），第二个仍在队列等待
@@ -241,14 +242,14 @@ void main() {
 
     expect(store.setPluginsCalls.length, 2, reason: '两个 toggle 都应执行');
     expect(store.setPluginsCalls.first, contains('trading'), reason: '第一次 toggle 只 add trading');
-    expect(store.setPluginsCalls.last, contains('project'), reason: '第二次 toggle 只 add project（服务端合并）');
+    expect(store.setPluginsCalls.last, contains('learn'), reason: '第二次 toggle 只 add learn（服务端合并）');
     // UI 最终两个开关都开
     expect(
       tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-trading'))).value,
       isTrue,
     );
     expect(
-      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-project'))).value,
+      tester.widget<Switch>(find.byKey(const ValueKey('plugin-alice-learn'))).value,
       isTrue,
     );
   });

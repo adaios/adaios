@@ -6,12 +6,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:adai_web/desktop_shell.dart';
 import 'package:adai_web/pages/feed_page.dart';
+import 'package:adai_web/pages/learn_page.dart';
 import 'package:adai_web/pages/memory_page.dart';
 import 'package:adai_web/pages/profile_page.dart';
-import 'package:adai_web/pages/project_page.dart';
 import 'package:adai_web/pages/search_page.dart';
-import 'package:adai_web/pages/task_page.dart';
 import 'package:adai_web/pages/timeline_page.dart';
+import 'package:adai_web/pages/todo_page.dart';
 import 'package:adai_web/pages/trading_page.dart';
 import 'package:adai_web/services/api_service.dart';
 
@@ -22,7 +22,8 @@ http.Response _json(Object data, {int status = 200}) => http.Response.bytes(
     );
 
 /// 注入 MockClient 的 ApiService：默认给全插件（8 模块全显），可单独指定插件集测门控。
-ApiService _api({List<String> plugins = const ['trading', 'project']}) {
+/// RFC 20260917：插件只剩 trading / learn（project 已下线）。
+ApiService _api({List<String> plugins = const ['trading', 'learn']}) {
   return ApiService(
     baseUrl: 'http://test',
     userId: 'default',
@@ -54,13 +55,15 @@ void main() {
     await pumpShell(tester);
 
     final navRail = find.byKey(const ValueKey('nav-rail'));
-    for (final label in ['对话流', '记忆', '时间线', '项目', '任务', '交易', '搜索', '档案']) {
+    for (final label in ['对话流', '记忆', '时间线', '待办', '交易', '学习', '搜索', '档案']) {
       expect(
         find.descendant(of: navRail, matching: find.text(label)),
         findsOneWidget,
         reason: '导航项「$label」应存在',
       );
     }
+    expect(find.descendant(of: navRail, matching: find.text('项目')), findsNothing,
+        reason: 'RFC 20260917：项目导航项已下线');
     expect(find.descendant(of: navRail, matching: find.text('@default')), findsOneWidget);
   });
 
@@ -120,13 +123,25 @@ void main() {
     expect(find.byType(TimelinePage), findsOneWidget);
   });
 
-  // ── 插件门控（RFC 20260814 T2.9）──
-
-  testWidgets('无插件用户：隐藏交易/项目，基础服务常驻', (tester) async {
+  testWidgets('待办是基础服务：无插件也常驻，且切到待办页正常渲染', (tester) async {
     await pumpShell(tester, api: _api(plugins: []));
 
     final navRail = find.byKey(const ValueKey('nav-rail'));
-    for (final label in ['对话流', '记忆', '时间线', '任务', '搜索', '档案']) {
+    expect(find.descendant(of: navRail, matching: find.text('待办')), findsOneWidget,
+        reason: 'RFC 20260917：待办归 Kernel builtin，无插件门控');
+
+    await tester.tap(find.descendant(of: navRail, matching: find.text('待办')));
+    await tester.pump();
+    expect(find.byType(TodoPage), findsOneWidget);
+  });
+
+  // ── 插件门控（RFC 20260814 T2.9；RFC 20260917 撤 project）──
+
+  testWidgets('无插件用户：隐藏交易/学习，基础服务常驻', (tester) async {
+    await pumpShell(tester, api: _api(plugins: []));
+
+    final navRail = find.byKey(const ValueKey('nav-rail'));
+    for (final label in ['对话流', '记忆', '时间线', '待办', '搜索', '档案']) {
       expect(
         find.descendant(of: navRail, matching: find.text(label)),
         findsOneWidget,
@@ -135,14 +150,12 @@ void main() {
     }
     expect(find.descendant(of: navRail, matching: find.text('交易')), findsNothing,
         reason: '无 trading 插件 → 隐藏交易');
-    expect(find.descendant(of: navRail, matching: find.text('项目')), findsNothing,
-        reason: '无 project 插件 → 隐藏项目');
     expect(find.descendant(of: navRail, matching: find.text('学习')), findsNothing,
         reason: '无 learn 插件 → 隐藏学习（RFC 20260829）');
   });
 
   testWidgets('learn 插件门控：启用后显示「学习」导航项', (tester) async {
-    await pumpShell(tester, api: _api(plugins: ['trading', 'project', 'learn']));
+    await pumpShell(tester, api: _api(plugins: ['trading', 'learn']));
     final navRail = find.byKey(const ValueKey('nav-rail'));
     expect(find.descendant(of: navRail, matching: find.text('学习')), findsOneWidget,
         reason: '启用 learn 插件 → 显示学习导航');
@@ -168,9 +181,9 @@ void main() {
   });
 
   testWidgets('P1-5 插件加载前已导航：加载后当前页按 label 重解析，不错位跳模块', (tester) async {
-    // 场景：插件接口慢（异步返回）。用户先导航到「任务」（基础服务列表索引 3），
-    // 插件返回后 项目/交易 中部插入（任务后移到索引 4）——当前页必须仍是「任务」，
-    // 而非旧实现按位置索引错位显示成「项目」。
+    // 场景：插件接口慢（异步返回）。用户先导航到「搜索」（基础服务列表索引 4），
+    // 插件返回后 交易/学习 插入（搜索后移到索引 6）——当前页必须仍是「搜索」，
+    // 而非旧实现按位置索引错位显示成别的页。
     final completer = Completer<http.Response>();
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -189,23 +202,21 @@ void main() {
     ));
     await tester.pump();
 
-    // 插件未返回：交易/项目不可见；先导航到「任务」
+    // 插件未返回：交易/学习不可见；先导航到「搜索」
     final navRail = find.byKey(const ValueKey('nav-rail'));
     expect(find.descendant(of: navRail, matching: find.text('交易')), findsNothing);
-    await tester.tap(find.text('任务'));
+    await tester.tap(find.descendant(of: navRail, matching: find.text('搜索')));
     await tester.pump();
-    expect(find.byType(TaskPage), findsOneWidget);
+    expect(find.byType(SearchPage), findsOneWidget);
 
-    // 插件返回：项目/交易插入，当前页必须仍为「任务」（label 解析），不得错位到「项目」
-    completer.complete(_json(['trading', 'project']));
+    // 插件返回：交易/学习插入，当前页必须仍为「搜索」（label 解析），不得错位
+    completer.complete(_json(['trading', 'learn']));
     await tester.pump();
     await tester.pump();
 
     expect(find.descendant(of: navRail, matching: find.text('交易')), findsOneWidget);
-    expect(find.byType(TaskPage), findsOneWidget,
-        reason: 'P1-5：插件插入后当前页按 label 重解析，仍为任务页');
-    expect(find.byType(ProjectPage, skipOffstage: false), findsNothing,
-        reason: 'P1-5：不得错位到项目页');
+    expect(find.byType(SearchPage), findsOneWidget,
+        reason: 'P1-5：插件插入后当前页按 label 重解析，仍为搜索页');
     // 已访问页面保活
     expect(find.byType(FeedPage, skipOffstage: false), findsOneWidget);
   });
@@ -213,16 +224,16 @@ void main() {
   // ── 原生能力 / 插件 分组（2026-09-16 分组批）──
 
   testWidgets('插件条目带「插件」角标，「插件」分节标题把两段分开（原生在前、插件在后）', (tester) async {
-    await pumpShell(tester, api: _api(plugins: ['trading', 'project', 'learn']));
+    await pumpShell(tester, api: _api(plugins: ['trading', 'learn']));
     final navRail = find.byKey(const ValueKey('nav-rail'));
     Finder navText(String label) => find.descendant(of: navRail, matching: find.text(label));
 
-    // 角标：插件条目各一个；基础服务（含刻意算基础服务的「任务」）没有
-    for (final label in ['项目', '交易', '学习']) {
+    // 角标：插件条目各一个；基础服务（含待办）没有
+    for (final label in ['交易', '学习']) {
       expect(find.byKey(ValueKey('nav-plugin-badge-$label')), findsOneWidget,
           reason: '插件「$label」应带「插件」角标');
     }
-    for (final label in ['对话流', '记忆', '时间线', '任务', '搜索', '档案']) {
+    for (final label in ['对话流', '记忆', '时间线', '待办', '搜索', '档案']) {
       expect(find.byKey(ValueKey('nav-plugin-badge-$label')), findsNothing,
           reason: '基础服务「$label」不该带插件角标');
     }
@@ -231,11 +242,11 @@ void main() {
     final header = find.byKey(const ValueKey('nav-section-插件'));
     expect(header, findsOneWidget);
     final headerY = tester.getTopLeft(header).dy;
-    for (final label in ['对话流', '记忆', '时间线', '任务', '搜索', '档案']) {
+    for (final label in ['对话流', '记忆', '时间线', '待办', '搜索', '档案']) {
       expect(tester.getTopLeft(navText(label)).dy, lessThan(headerY),
           reason: '「$label」属原生段 → 排在插件标题之上');
     }
-    for (final label in ['项目', '交易', '学习']) {
+    for (final label in ['交易', '学习']) {
       expect(tester.getTopLeft(navText(label)).dy, greaterThan(headerY),
           reason: '「$label」属插件段 → 排在插件标题之下');
     }
@@ -244,20 +255,20 @@ void main() {
   testWidgets('无插件用户：不显示「插件」分节标题（导航维持原样）', (tester) async {
     await pumpShell(tester, api: _api(plugins: []));
     expect(find.byKey(const ValueKey('nav-section-插件')), findsNothing);
-    expect(find.byKey(const ValueKey('nav-plugin-badge-任务')), findsNothing);
+    expect(find.byKey(const ValueKey('nav-plugin-badge-待办')), findsNothing);
   });
 
   testWidgets('分组后索引不错位：点每一项都打开对应页面，IndexedStack.index 对齐 _items 下标', (tester) async {
-    await pumpShell(tester); // 插件：trading + project → _items 共 8 项
+    await pumpShell(tester); // 插件：trading + learn → _items 共 8 项
     final navRail = find.byKey(const ValueKey('nav-rail'));
     // _items 全序（分组只改渲染顺序，不动 _items 本身）→ 下标即 IndexedStack.index
     final expected = <String, (int, Type)>{
       '对话流': (0, FeedPage),
       '记忆': (1, MemoryPage),
       '时间线': (2, TimelinePage),
-      '项目': (3, ProjectPage),
-      '任务': (4, TaskPage),
-      '交易': (5, TradingPage),
+      '待办': (3, TodoPage),
+      '交易': (4, TradingPage),
+      '学习': (5, LearnPage),
       '搜索': (6, SearchPage),
       '档案': (7, ProfilePage),
     };

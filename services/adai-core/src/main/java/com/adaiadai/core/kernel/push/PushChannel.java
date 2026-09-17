@@ -121,6 +121,7 @@ public interface PushChannel {
             if (type == null || type.isBlank()) return null;
             return switch (type) {
                 case "learn-review" -> "learn:review";
+                case "todo-due" -> "todo:today";
                 default -> "trading:today";
             };
         }

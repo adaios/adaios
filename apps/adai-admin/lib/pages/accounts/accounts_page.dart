@@ -210,7 +210,7 @@ class _AccountsPageState extends State<AccountsPage> {
   /// 串行化后，后一个 toggle 等前一个完成（其 _load 已刷新 _accounts），重取到最新快照。
   Future<void> _toggleQueue = Future.value();
 
-  /// 插件开关（RFC 20260814）：trading/project 勾选 → PATCH 全量 plugins。
+  /// 插件开关（RFC 20260814）：trading/learn 勾选 → 服务端 merge plugins（add/remove）。
   Future<void> _togglePlugin(Account account, String plugin, bool on) {
     // W-P2-3（2026-08-17）：catchError 恢复——非 ApiException 异常（网络等）不会让队列永久 error，
     // 否则后续 toggle 全部拒绝（串行队列单点故障，F4 同类）
@@ -233,7 +233,7 @@ class _AccountsPageState extends State<AccountsPage> {
       return;
     }
     // P2-3（2026-09-06）：成功给明确反馈（保存即生效）——此前静默成功用户不确定是否已存
-    const pluginLabels = {'trading': '交易', 'project': '项目', 'learn': '学习'};
+    const pluginLabels = {'trading': '交易', 'learn': '学习'};
     final label = pluginLabels[plugin] ?? plugin;
     ScaffoldMessenger.of(context).showSnackBar(
       _snack('已${on ? '开启' : '关闭'} ${account.userId} 的「$label」模块',
@@ -720,10 +720,12 @@ class _AccountsPageState extends State<AccountsPage> {
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey6),
           ),
         ]),
-        // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/project/learn
+        // 插件开关（RFC 20260814 Domain=插件模型）：控制该用户启用 trading/learn
+        // 2026-09-17 RFC 20260917：project 插件撤销、开关下线（插件只剩 trading / learn；
+        // 账号里残留的 "project" 无害，后端 PluginRegistry 会过滤，UI 不再提供）
         // 08-15 前端×2（2026-08-17）：内置管理员插件受保护（enabled/删除有保护、插件开关此前无）
         // 2026-09-16「第一次见面」批：补 learn（后端 PluginRegistry 早已注册并支持 PATCH，
-        // 此前 admin 前端硬编码只有 trading/project → learn 无处可勾）；Wrap 防三开关溢出
+        // 此前 admin 前端硬编码只有 trading/project → learn 无处可勾）；Wrap 防溢出
         const SizedBox(height: 10),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -733,7 +735,6 @@ class _AccountsPageState extends State<AccountsPage> {
             const Text('插件',
                 style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
             _pluginSwitch(account, 'trading', '交易'),
-            _pluginSwitch(account, 'project', '项目'),
             _pluginSwitch(account, 'learn', '学习'),
           ],
         ),

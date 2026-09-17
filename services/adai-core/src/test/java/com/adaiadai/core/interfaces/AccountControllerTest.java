@@ -261,10 +261,23 @@ class AccountControllerTest {
 
         mvcWith(repo).perform(patch("/api/v1/accounts/alice")
                         .contentType("application/json")
-                        .content("{\"plugins\":[\"trading\",\"project\"]}"))
+                        .content("{\"plugins\":[\"trading\",\"learn\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.plugins[0]").value("trading"))
-                .andExpect(jsonPath("$.plugins[1]").value("project"));
+                .andExpect(jsonPath("$.plugins[1]").value("learn"));
+    }
+
+    @Test
+    void patchAccount_retiredProjectPlugin_400() throws Exception {
+        // RFC 20260917：project 插件已撤——PATCH 残留 "project" 不再合法，拒绝而非落盘
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", Account.ROLE_USER, true, LocalDate.of(2026, 8, 2))));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice")
+                        .contentType("application/json")
+                        .content("{\"plugins\":[\"project\"]}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -344,14 +357,27 @@ class AccountControllerTest {
         var repo = mock(AccountRepository.class);
         when(repo.findById("alice")).thenReturn(Optional.of(
                 new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("trading"))));
-        when(repo.mergePlugins(eq("alice"), eq(List.of("project")), eq(List.of("trading"))))
-                .thenReturn(new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("project")));
+        when(repo.mergePlugins(eq("alice"), eq(List.of("learn")), eq(List.of("trading"))))
+                .thenReturn(new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("learn")));
 
         mvcWith(repo).perform(patch("/api/v1/accounts/alice/plugins")
                         .contentType("application/json")
-                        .content("{\"add\":[\"project\"],\"remove\":[\"trading\"]}"))
+                        .content("{\"add\":[\"learn\"],\"remove\":[\"trading\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.plugins[0]").value("project"));
+                .andExpect(jsonPath("$.plugins[0]").value("learn"));
+    }
+
+    @Test
+    void mergePlugins_retiredProjectPlugin_400() throws Exception {
+        // RFC 20260917：project 已撤，合并入口同样拒绝残留名
+        var repo = mock(AccountRepository.class);
+        when(repo.findById("alice")).thenReturn(Optional.of(
+                new Account("alice", "user", true, LocalDate.of(2026, 8, 2), List.of("trading"))));
+
+        mvcWith(repo).perform(patch("/api/v1/accounts/alice/plugins")
+                        .contentType("application/json")
+                        .content("{\"add\":[\"project\"]}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

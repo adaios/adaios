@@ -1,8 +1,8 @@
 package com.adaiadai.core.application;
 
-import com.adaiadai.core.domain.project.Task;
-import com.adaiadai.core.domain.project.TaskRepository;
-import com.adaiadai.core.domain.project.TaskStatus;
+import com.adaiadai.core.kernel.todo.Todo;
+import com.adaiadai.core.kernel.todo.TodoRepository;
+import com.adaiadai.core.kernel.todo.TodoStatus;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -36,7 +36,7 @@ public class BriefAppService {
     private final TradingReviewAppService tradingReviewAppService;
     private final DomainActivityService domainActivityService;
     private final TagRecommendationService tagRecommendationService;
-    private final TaskRepository taskRepository;
+    private final TodoRepository todoRepository;
     private final PluginService pluginService;
 
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
@@ -50,7 +50,7 @@ public class BriefAppService {
                            TradingReviewAppService tradingReviewAppService,
                            DomainActivityService domainActivityService,
                            TagRecommendationService tagRecommendationService,
-                           TaskRepository taskRepository,
+                           TodoRepository todoRepository,
                            PluginService pluginService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
@@ -59,7 +59,7 @@ public class BriefAppService {
         this.tradingReviewAppService = tradingReviewAppService;
         this.domainActivityService = domainActivityService;
         this.tagRecommendationService = tagRecommendationService;
-        this.taskRepository = taskRepository;
+        this.todoRepository = todoRepository;
         this.pluginService = pluginService;
     }
 
@@ -302,21 +302,23 @@ public class BriefAppService {
             log.debug("Tag recommendation signal skipped: {}", e.getMessage());
         }
 
-        // ── Task signals（08-14：概览卡主动提示待办，阿呆 10:25 反馈「重要信息不提示我」）──
+        // ── Todo signals（08-14：概览卡主动提示待办，阿呆 10:25 反馈「重要信息不提示我」）──
+        // RFC 20260917：待办归 Kernel builtin（旧 Task 看板已撤），口径 = OPEN 未完成
         try {
-            List<Task> openTasks = taskRepository.findAll(userId).stream()
-                    .filter(t -> t.status() == TaskStatus.TODO || t.status() == TaskStatus.DOING)
+            List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId).stream()
                     .limit(3)
                     .toList();
-            if (!openTasks.isEmpty()) {
-                sb.append("Open tasks (not done, should be surfaced to user):\n");
-                for (Task t : openTasks) {
-                    sb.append("- ").append(t.title()).append(" (").append(t.status()).append(")\n");
+            if (!openTodos.isEmpty()) {
+                sb.append("Open todos (not done, should be surfaced to user):\n");
+                for (Todo t : openTodos) {
+                    sb.append("- ").append(t.title());
+                    if (t.due() != null) sb.append(" (due ").append(t.due()).append(")");
+                    sb.append("\n");
                 }
                 sb.append("\n");
             }
         } catch (Exception e) {
-            log.debug("Task signal skipped: {}", e.getMessage());
+            log.debug("Todo signal skipped: {}", e.getMessage());
         }
 
         sb.append("Rules:\n");

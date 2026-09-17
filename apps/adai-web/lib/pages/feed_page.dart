@@ -48,23 +48,23 @@ class _FeedPageState extends State<FeedPage> {
   bool _hasMore = false;
 
   /// #234：已加载核心条目数（后端 type=record/card 都映射为 FeedCardType.record）。
-  /// _totalToday 只计核心记录，附加条目（action/market/push）不计入分页终止判定。
+  /// _totalToday 只计核心记录，附加条目（market/push）不计入分页终止判定。
+  /// （RFC 20260917：action 待办卡已撤出 Feed。）
   int get _coreCardCount => _cards.where((c) => c.type == FeedCardType.record).length;
 
   /// 右栏是否有内容可看（2026-09-16「第一次见面」批）。
-  /// 新用户三块全空时收起右栏——不让「暂无摘要 / 暂无标签 / 暂无任务」三连空
-  /// 把登录后的第一眼撑得更冷（数据为空 ≠ 要展示三个空壳）。
+  /// 新用户两块全空时收起右栏——不让「暂无摘要 / 暂无标签」两连空
+  /// 把登录后的第一眼撑得更冷（数据为空 ≠ 要展示两个空壳）。
+  /// RFC 20260917：待办快照已撤出右栏（待办有自己的页面）。
   bool get _hasSidebarContent {
     if (_brief.trim().isNotEmpty) return true;
     if ((_tags?.tags ?? const []).isNotEmpty) return true;
-    final stats = _taskStats;
-    return stats != null && stats.total > 0;
+    return false;
   }
 
   // 右上下文栏数据
   TagsResponse? _tags;
-  TaskStatsResponse? _taskStats;
-  bool _loadingSidebar = false; // #242：右栏加载去重守卫（getTaskStats 无缓存每次网络请求）
+  bool _loadingSidebar = false; // #242：右栏加载去重守卫（标签无缓存每次网络请求）
 
   // 对话状态
   String? _activeCardId;
@@ -93,14 +93,13 @@ class _FeedPageState extends State<FeedPage> {
       final feed = await feedFuture;
       if (!mounted) return;
       final newCards = feed.entries
-          .where((e) => e.type != FeedEntryType.aiNote)
+          // RFC 20260917：action（待办卡）不再进 Feed——后端已停止产出，这里再防御式丢弃历史条目
+          .where((e) => e.type != FeedEntryType.aiNote && e.type != FeedEntryType.action)
           .map((e) => e.toFeedData(
             api: widget.api,
-            onMarkDone: e.type == FeedEntryType.action
-                ? () => _markActionDone(e.id)
-                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
-                    ? _confirmTradeLog
-                    : null,
+            onMarkDone: (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                ? _confirmTradeLog
+                : null,
             // B10-3：push 卡「忽略」按钮（删除持久化）
             onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
           ))
@@ -121,7 +120,7 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
       setState(() => _brief = brief);
       if (brief.isEmpty) _fillBriefLater();
-      // #115：右栏（标签云/任务快照）随 Feed 刷新联动更新
+      // #115：右栏（标签云）随 Feed 刷新联动更新（RFC 20260917：待办快照已撤出右栏）
       _loadSidebar();
     } catch (_) {
       if (!mounted) return;
@@ -160,14 +159,12 @@ class _FeedPageState extends State<FeedPage> {
       final feed = await widget.api.getFeed(page: _currentPage + 1, size: _pageSize);
       if (!mounted) return;
       final moreCards = feed.entries
-          .where((e) => e.type != FeedEntryType.aiNote)
+          .where((e) => e.type != FeedEntryType.aiNote && e.type != FeedEntryType.action)
           .map((e) => e.toFeedData(
             api: widget.api,
-            onMarkDone: e.type == FeedEntryType.action
-                ? () => _markActionDone(e.id)
-                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
-                    ? _confirmTradeLog
-                    : null,
+            onMarkDone: (e.type == FeedEntryType.push && e.title == '今日操作确认')
+                ? _confirmTradeLog
+                : null,
             // B10-3：push 卡「忽略」按钮（删除持久化）
             onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
           ))
@@ -177,7 +174,7 @@ class _FeedPageState extends State<FeedPage> {
         // S-8（2026-08-26 拍板最新在底部）：reverse:true 渲染下，更早页（更旧）必须插数组
         // 头部（视觉顶部），最新保留在数组尾部（视觉底部）——原来追加尾部会压住最新，顺序错乱。
         // P1-前端3（2026-09-17，对齐 adai-app _loadMore 的 P1-4 修复）：合并按 id 去重——
-        // page0 会附带**全部**附加条目（action/market/push），它们撑破分页边界后
+        // page0 会附带**全部**附加条目（market/push），它们撑破分页边界后
         // 同一 id 可能既在 _cards 里又出现在「更早页」，直接拼接会渲染两份。
         final existingIds = _cards.map((c) => c.id).toSet();
         _cards = [
@@ -200,12 +197,11 @@ class _FeedPageState extends State<FeedPage> {
     if (_loadingSidebar) return;
     _loadingSidebar = true;
     try {
+      // RFC 20260917：待办快照已撤出右栏，这里只取标签云
       final tags = await widget.api.getTags();
-      final stats = await widget.api.getTaskStats();
       if (!mounted) return;
       setState(() {
         _tags = tags;
-        _taskStats = stats;
       });
     } catch (_) {
       // 右栏加载失败不阻塞主对话流
@@ -744,7 +740,7 @@ class _FeedPageState extends State<FeedPage> {
           ));
         });
       }
-      // #115：新记录落盘 → 右栏标签云/任务快照联动刷新
+      // #115：新记录落盘 → 右栏标签云联动刷新
       _loadSidebar();
       _scrollToBottom();
     } catch (e) {
@@ -1034,7 +1030,7 @@ class _FeedPageState extends State<FeedPage> {
       // 本地计数跟随（#119）：折叠卡在 Feed 里也算 1 条核心条目
       if (_totalToday > 0) _totalToday -= 1;
     });
-    // #115：删除记录 → 标签/任务统计变化，右栏联动刷新
+    // #115：删除记录 → 标签变化，右栏联动刷新
     _loadSidebar();
   }
 
@@ -1124,18 +1120,6 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
       setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
       _scrollToBottom();
-    }
-  }
-
-  Future<void> _markActionDone(String memoryId) async {
-    try {
-      await widget.api.markMemoryDone(memoryId);
-      if (!mounted) return;
-      setState(() => _cards.removeWhere((c) => c.id == memoryId));
-      // #115：待办完成 → 任务快照统计变化，右栏联动刷新
-      _loadSidebar();
-    } catch (_) {
-      if (mounted) _showError('标记完成失败');
     }
   }
 
@@ -1537,8 +1521,6 @@ class _FeedPageState extends State<FeedPage> {
         _buildBriefCard(),
         const SizedBox(height: 16),
         _buildTagCloud(),
-        const SizedBox(height: 16),
-        _buildTaskSnapshot(),
       ],
     );
   }
@@ -1582,22 +1564,6 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
-  Widget _buildTaskSnapshot() {
-    final s = _taskStats;
-    return _sidebarSection(
-      title: '任务快照',
-      child: s == null
-          ? const Text('暂无任务', style: TextStyle(fontSize: 12, color: AppColors.darkGrey5))
-          : Row(children: [
-              _statCell('待做', s.todo, AppColors.darkOrange),
-              const SizedBox(width: 8),
-              _statCell('进行中', s.doing, AppColors.darkBlue),
-              const SizedBox(width: 8),
-              _statCell('已完成', s.done, AppColors.darkGreen),
-            ]),
-    );
-  }
-
   Widget _sidebarSection({required String title, required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1613,22 +1579,6 @@ class _FeedPageState extends State<FeedPage> {
           const SizedBox(height: 8),
           child,
         ],
-      ),
-    );
-  }
-
-  Widget _statCell(String label, int value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(children: [
-          Text('$value', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-        ]),
       ),
     );
   }

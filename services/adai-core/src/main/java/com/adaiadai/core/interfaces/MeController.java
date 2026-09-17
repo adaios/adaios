@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * MeController — 当前用户自身资源（RFC 20260814 插件门控，前端模块显隐用）。
  * <p>
- * GET /api/v1/me/plugins → 当前用户启用插件名列表（adai = [project, trading]，新用户 = []）。
+ * GET /api/v1/me/plugins → 当前用户启用插件名列表（adai = [trading]，新用户 = []）。
  * 不属于 admin/accounts 鉴权范围，产品端任意登录用户可读（值本身是用户自己的启用插件）。
  */
 @RestController

@@ -10,6 +10,7 @@ import 'services/entry_intent_service.dart';
 import 'services/push_service.dart';
 import 'services/models/learn_models.dart';
 import 'pages/learn_page.dart';
+import 'pages/todo_page.dart';
 import 'widgets/feed_card.dart';
 import 'widgets/full_image_dialog.dart';
 import 'widgets/input_bar.dart';
@@ -75,7 +76,7 @@ class _MainPageState extends State<MainPage>
   static const int _pageSize = 5;
 
   /// REVIEW #234：已加载的核心条目数（type=record/card，前端统一映射为 FeedCardType.record）。
-  /// 分页终止口径：`_totalToday` 只计核心，附加条目（action/market/push）仅 page 0 附带，
+  /// 分页终止口径：`_totalToday` 只计核心，附加条目（market/push）仅 page 0 附带，
   /// 不能计入分页进度——否则附加条目多时 page 0 即误判「无更多」，「加载更早」消失。
   int get _loadedCoreCount =>
       _cards.where((c) => c.type == FeedCardType.record).length;
@@ -275,11 +276,9 @@ class _MainPageState extends State<MainPage>
       final freshCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
-            onMarkDone: e.type == FeedEntryType.action
-                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
-                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
-                    ? _confirmTradeLog
-                    : null,
+            onMarkDone: e.type == FeedEntryType.push && e.title == '今日操作确认'
+                ? _confirmTradeLog
+                : null,
             onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
@@ -293,7 +292,7 @@ class _MainPageState extends State<MainPage>
             : <FeedCardData>[];
         // P1-前端3（2026-09-17 真机复发；与 09-16 P2-UI12 同族）：上面按**位置**切旧页
         // 只在「_cards 恰好是纯核心条目」时成立。page0 会附带**全部**附加条目
-        // （action 待办 / market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
+        // （market 行情 / push 推送），今日核心只有 1 条时长度也被撑过
         // _pageSize，于是那条唯一的对话卡既落在 older 区间里、又在 freshCards 里
         // → 同 id 两份都渲染（用户清待办 + 收行情推送、推送深链触发刷新时实测到）。
         // 修复：拼接前按 id 过滤 older（保留「保留更早页」语义，只去掉与 page0 重复的）。
@@ -323,11 +322,9 @@ class _MainPageState extends State<MainPage>
       final allCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
-            onMarkDone: e.type == FeedEntryType.action
-                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
-                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
-                    ? _confirmTradeLog
-                    : null,
+            onMarkDone: e.type == FeedEntryType.push && e.title == '今日操作确认'
+                ? _confirmTradeLog
+                : null,
             onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
@@ -1370,17 +1367,6 @@ class _MainPageState extends State<MainPage>
     });
   }
 
-  /// 标记 action 待办为已完成（PATCH /memory/{id}/done），完成后从 Feed 移除。
-  Future<void> _markActionDone(String memoryId) async {
-    try {
-      await _api.markMemoryDone(memoryId);
-      if (!mounted) return;
-      setState(() => _cards.removeWhere((c) => c.id == memoryId));
-    } catch (e) {
-      if (mounted) _showError('标记完成失败');
-    }
-  }
-
   void _changeDomain(String id, String domain) async {
     setState(() {
       final idx = _cards.indexWhere((c) => c.id == id);
@@ -1539,11 +1525,21 @@ class _MainPageState extends State<MainPage>
   /// 通知点进来 → 定位到「那一条」（REVIEW P2-APNs1，2026-09-17）。
   ///
   /// 深链由后端 `PushMessage.deepLink()` 从已有字段推导（带标的 → `trading:<symbol>`；
-  /// 其余 → `trading:today` / `learn:review`）。找不到目标卡片时**只刷新 + 滚到底**，
+  /// 其余 → `trading:today` / `learn:review` / **`todo:today`**）。找不到目标卡片时**只刷新 + 滚到底**，
   /// 不假装定位成功——聊天式 Feed 最新在底，滚到底通常就是那条推送本身。
+  ///
+  /// RFC 20260917：待办到期提醒有自己的地方（待办清单），点通知**直接打开待办页**，
+  /// 不在 Feed 里猜（Feed 已不再出现待办卡）。
   void _onPushDeepLink() {
     final link = widget.pushDeepLink?.value;
     if (link == null || link.isEmpty) return;
+    if (link.startsWith('todo:')) {
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => TodoPage(api: _api),
+      ));
+      return;
+    }
     if (_locateAndHighlight(link)) return;
     // 冷启动/卡片还没加载 → 刷新一次再定位
     _refreshFeed().then((_) {
@@ -1619,11 +1615,9 @@ class _MainPageState extends State<MainPage>
       final moreCards = feed.entries
           .where((e) => e.type != FeedEntryType.aiNote)
           .map((e) => e.toFeedData(api: _api,
-            onMarkDone: e.type == FeedEntryType.action
-                ? () async { await _markActionDone(e.id); return true; } // P2-UX4：返回成功供按钮灰态
-                : (e.type == FeedEntryType.push && e.title == '今日操作确认')
-                    ? _confirmTradeLog
-                    : null,
+            onMarkDone: e.type == FeedEntryType.push && e.title == '今日操作确认'
+                ? _confirmTradeLog
+                : null,
             onDismiss: e.type == FeedEntryType.push ? () => _dismissPush(e.id) : null,
             onPushSettings: e.type == FeedEntryType.push ? _openPushSettings : null))
           .toList();
@@ -2344,11 +2338,11 @@ extension FeedEntryResponseX on FeedEntryResponse {
     );
   }
 
-  /// 后端 Feed type → 前端卡片类型（v0.2.0：action/market 有专属渲染，其余归 record）。
+  /// 后端 Feed type → 前端卡片类型（RFC 20260917：待办卡 'action' 已撤，
+  /// Feed 回归纯对话流 + 行情条/推送卡）。
   FeedCardType _toCardType(String type) {
     switch (type) {
       case FeedEntryType.aiNote: return FeedCardType.aiNote;
-      case FeedEntryType.action: return FeedCardType.action;
       case FeedEntryType.market: return FeedCardType.market;
       // #162：push 类型不再落默认 record（L5 推送上线时渲染成普通卡）
       case FeedEntryType.push: return FeedCardType.push;
@@ -2379,6 +2373,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('buy-point', '买点提醒'),
     ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
     ('learn-review', '学习复习提醒（每日复习到期卡片）'), // learn V2 批 4 2026-09-07
+    ('todo-due', '待办到期提醒'), // RFC 20260917：待办到期日当天提醒（默认开、可关）
     ('stop-loss', '止损预警'),
     ('near-stop-loss', '接近止损'),
     ('loss', '单日大跌提醒'),

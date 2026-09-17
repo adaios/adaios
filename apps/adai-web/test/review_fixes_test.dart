@@ -45,9 +45,6 @@ MockClient _pagedFeedMock() {
     if (path == '/api/v1/tags') {
       return _json({'tags': [], 'total': 0, 'updatedAt': ''});
     }
-    if (path == '/api/v1/project/tasks/stats') {
-      return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-    }
     return http.Response('not found', 404);
   });
 }
@@ -227,9 +224,6 @@ void main() {
           });
         }
         if (path == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-        if (path == '/api/v1/project/tasks/stats') {
-          return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-        }
         return http.Response('not found', 404);
       }));
 
@@ -247,7 +241,7 @@ void main() {
   });
 
   group('Feed #234 附加条目不计入分页终止', () {
-    testWidgets('page 0 含 action/market 附加条目时「加载更早」仍显示，点击可加载更早核心记录', (tester) async {
+    testWidgets('page 0 含 market 附加条目（+ 残留 action 被丢弃）时「加载更早」仍显示，点击可加载更早核心记录', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 2000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -258,7 +252,8 @@ void main() {
         if (path == '/api/v1/feed') {
           final page = int.parse(request.url.queryParameters['page'] ?? '0');
           if (page == 0) {
-            // 2 个附加条目（action/market，仅 page 0 附加）+ 3 条核心记录；totalToday 只计核心 = 4
+            // 1 个附加条目（market，仅 page 0 附加）+ 3 条核心记录；totalToday 只计核心 = 4
+            // RFC 20260917：action（待办）即便后端残留也应在进 Feed 前丢弃（下面断言「交房租」不渲染）
             return _json({
               'entries': [
                 {'type': 'action', 'id': 'a1', 'title': '交房租', 'content': '交房租', 'tags': <String>[], 'time': '09:00'},
@@ -274,16 +269,17 @@ void main() {
           return _json({'entries': [_feedEntry('r3', '记录 3')], 'totalToday': 4});
         }
         if (path == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-        if (path == '/api/v1/project/tasks/stats') return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
         return http.Response('not found', 404);
       }));
 
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: FeedPage(api: api))));
       await tester.pumpAndSettle();
 
-      // 5 张卡（2 附加 + 3 核心），核心 3 < totalToday 4 → 「加载更早」应显示
-      // （旧逻辑 _cards.length 5 >= 4 误判无更多，最旧核心记录永不可达）
+      // 4 张卡（1 附加 + 3 核心），核心 3 < totalToday 4 → 「加载更早」应显示
+      // （旧逻辑 _cards.length 4 >= 4 误判无更多，最旧核心记录永不可达）
       expect(find.text('记录 2'), findsOneWidget);
+      expect(find.text('上证指数 3200 +0.5%'), findsOneWidget, reason: 'market 附加条目照常渲染');
+      expect(find.text('交房租'), findsNothing, reason: 'RFC 20260917：待办卡不再进 Feed');
       expect(find.text('加载更早'), findsOneWidget);
 
       // 点击 → 追加 page1 核心记录 r3，4 条核心拉齐 → 入口消失

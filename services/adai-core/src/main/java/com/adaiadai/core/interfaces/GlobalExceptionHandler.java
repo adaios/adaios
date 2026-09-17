@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.AuthService.AuthException;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.trading.TradingException;
+import com.adaiadai.core.kernel.todo.TodoException;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -47,6 +48,12 @@ public class GlobalExceptionHandler {
      * 优先取字段错误（@NotBlank/@Positive…），再取类级错误（自定义 BuyFieldsRequired），
      * 两者皆无时给通用提示——不让裸的校验异常堆栈直出。
      */
+    /** 待办业务异常（RFC 20260917：待办归 Kernel builtin）→ 400 + 人话。 */
+    @ExceptionHandler(TodoException.class)
+    public ResponseEntity<Map<String, String>> handleTodoException(TodoException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()

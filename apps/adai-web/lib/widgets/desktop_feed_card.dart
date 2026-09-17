@@ -36,11 +36,9 @@ class DesktopFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (data.type == FeedCardType.action) {
-      return _buildSimpleCard(badgeText: '待办', badgeColor: AppColors.darkOrange, showDoneButton: true);
-    }
+    // RFC 20260917：待办卡（action）已从 Feed 撤除——待办有自己的页面，Feed 回归纯对话流。
     if (data.type == FeedCardType.market) {
-      return _buildSimpleCard(badgeText: '行情', badgeColor: AppColors.darkBlue, showDoneButton: false);
+      return _buildSimpleCard(badgeText: '行情', badgeColor: AppColors.darkBlue);
     }
     // RFC 20260817：push 推送卡——类型徽章 + 结构化内容（web 无滑动，确认按钮在卡内）
     if (data.type == FeedCardType.push) {
@@ -134,7 +132,7 @@ class DesktopFeedCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSimpleCard({required String badgeText, required Color badgeColor, required bool showDoneButton}) {
+  Widget _buildSimpleCard({required String badgeText, required Color badgeColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       child: Container(
@@ -164,21 +162,6 @@ class DesktopFeedCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: _buildSimpleContent()),
-                if (showDoneButton) ...[
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: data.onMarkDone,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkGreen.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text('完成',
-                          style: TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ],
               ],
             ),
           ],
@@ -370,7 +353,8 @@ class DesktopFeedCard extends StatelessWidget {
     );
   }
 
-  static const Map<String, String> _domainEmoji = {'life': '📝', 'trading': '📈', 'project': '📑'};
+  // RFC 20260917：project 域随 project 插件撤除，只剩生活/交易
+  static const Map<String, String> _domainEmoji = {'life': '📝', 'trading': '📈'};
 
   Widget _buildHeader() {
     return Row(
@@ -388,10 +372,10 @@ class DesktopFeedCard extends StatelessWidget {
 
   Widget _buildMoreMenu() {
     final menuItems = <PopupMenuEntry<String>>[
-      ...['life', 'trading', 'project'].map((d) => PopupMenuItem<String>(
+      ...['life', 'trading'].map((d) => PopupMenuItem<String>(
         value: 'domain:$d',
         height: 28,
-        child: Text('${_domainEmoji[d]} ${d == 'life' ? '生活' : d == 'trading' ? '交易' : '项目'}',
+        child: Text('${_domainEmoji[d]} ${d == 'life' ? '生活' : '交易'}',
             style: const TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
       )),
       const PopupMenuDivider(),

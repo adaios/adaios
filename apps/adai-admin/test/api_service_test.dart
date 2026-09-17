@@ -204,34 +204,6 @@ void main() {
     });
   });
 
-  group('任务', () {
-    test('GET /project/tasks 解析 status/priority', () async {
-      final client = MockClient((request) async {
-        expect(request.url.path, '/api/v1/project/tasks');
-        return _json([
-          {
-            'id': 'task_001',
-            'title': '接真实数据',
-            'description': '',
-            'status': 'DONE',
-            'priority': 'P0',
-            'tags': ['admin'],
-            'rfcRef': null,
-            'createdAt': '2026-08-01',
-            'updatedAt': '2026-08-02',
-          },
-        ]);
-      });
-      final api = ApiService(client: client);
-      final task = (await api.getTasks()).single;
-
-      expect(task.id, 'task_001');
-      expect(task.isDone, isTrue);
-      expect(task.priority, 'P0');
-      expect(task.status, 'DONE');
-    });
-  });
-
   group('管理端文件 / 知识', () {
     test('GET /admin/files 解析 isDir/size', () async {
       final client = MockClient((request) async {

@@ -5,7 +5,7 @@ import 'api_service.dart';
 
 /// 数据管理模块存储接口 — 页面依赖抽象，测试注入 Fake。
 ///
-/// 记录 / 记忆 / 档案 / 任务 / 持仓 / data/ 文件树均为 per-user（带 X-User-Id），
+/// 记录 / 记忆 / 档案 / 持仓 / data/ 文件树均为 per-user（带 X-User-Id），
 /// 文件树走系统级 `/api/v1/admin/files`。
 /// 治理收敛（P-role-01~04）：admin 只读查看个人数据，个人数据写归用户端 app/web，
 /// 因此本接口仅保留读方法。
@@ -18,9 +18,6 @@ abstract class DataStore {
 
   /// 加载个人档案。
   Future<IdentityProfile> loadIdentity();
-
-  /// 加载任务列表。
-  Future<List<TaskItem>> loadTasks();
 
   /// 加载持仓。
   Future<List<Position>> loadPositions();
@@ -85,12 +82,6 @@ class DataApiStore implements DataStore {
   }
 
   @override
-  Future<List<TaskItem>> loadTasks() async {
-    final dtos = await _api.getTasks();
-    return dtos.map(_toTask).toList();
-  }
-
-  @override
   Future<List<Position>> loadPositions() async {
     final dtos = await _api.getPositions();
     return dtos
@@ -129,14 +120,6 @@ class DataApiStore implements DataStore {
         preferences: dto.preferences,
         rules: dto.rules.values.toList(),
         tags: dto.tags,
-      );
-
-  TaskItem _toTask(TaskDto dto) => TaskItem(
-        id: dto.id,
-        title: dto.title,
-        done: dto.isDone,
-        priority: dto.priority, // 透传后端 P0-P3（#140）
-        createdAt: DateTime.tryParse(dto.createdAt) ?? DateTime(1970),
       );
 
   TreeNode _fileToNode(AdminFileDto dto) => TreeNode(

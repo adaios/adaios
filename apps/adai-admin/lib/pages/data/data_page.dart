@@ -7,9 +7,8 @@ import 'identity_tab.dart';
 import 'memory_tab.dart';
 import 'positions_tab.dart';
 import 'records_tab.dart';
-import 'tasks_tab.dart';
 
-/// 数据管理主区 — 六个子页签：记录 / 记忆 / 档案 / 任务 / 持仓 / 文件树。
+/// 数据管理主区 — 五个子页签：记录 / 记忆 / 档案 / 持仓 / 文件树。
 /// 真实后端数据（per-user，带 X-User-Id）。
 /// 治理收敛（P-role-01~04）：本模块为只读治理视角，个人数据写归用户端 app/web。
 class DataPage extends StatefulWidget {
@@ -33,7 +32,7 @@ class _DataPageState extends State<DataPage> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: DefaultTabController(
-        length: 6,
+        length: 5,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -43,7 +42,7 @@ class _DataPageState extends State<DataPage> {
                 icon: Icons.storage_outlined,
                 title: '数据管理',
                 subtitle:
-                    '用户「${widget.userId}」· 治理只读视图 · 记录 · 记忆 · 档案 · 任务 · 持仓 · data/ 文件树',
+                    '用户「${widget.userId}」· 治理只读视图 · 记录 · 记忆 · 档案 · 持仓 · data/ 文件树',
               ),
             ),
             const SizedBox(height: 12),
@@ -54,7 +53,6 @@ class _DataPageState extends State<DataPage> {
                   RecordsTab(store: _store),
                   MemoryTab(store: _store),
                   IdentityTab(store: _store),
-                  TasksTab(store: _store),
                   PositionsTab(store: _store),
                   DataTreeTab(store: _store),
                 ],
@@ -81,7 +79,6 @@ class _DataPageState extends State<DataPage> {
         Tab(text: '记录'),
         Tab(text: '记忆'),
         Tab(text: '档案'),
-        Tab(text: '任务'),
         Tab(text: '持仓'),
         Tab(text: '文件'),
       ],

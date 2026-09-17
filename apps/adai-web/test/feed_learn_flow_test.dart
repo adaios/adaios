@@ -24,9 +24,6 @@ MockClient _feedMock(Future<http.Response> Function(http.Request req) learn) {
     if (p == '/api/v1/brief/cached') return _json({'content': '今日概览'});
     if (p == '/api/v1/feed') return _json({'entries': <Object>[], 'totalToday': 0});
     if (p == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-    if (p == '/api/v1/project/tasks/stats') {
-      return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-    }
     return learn(req);
   });
 }

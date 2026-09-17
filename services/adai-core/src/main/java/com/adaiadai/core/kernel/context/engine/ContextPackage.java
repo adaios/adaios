@@ -43,7 +43,7 @@ public record ContextPackage(
 ) {
 
     /** 默认 domain 枚举（全量，**不带引号**——REVIEW P1-B1：消费方各自显式包引号，避免双重引号）。 */
-    private static final String DEFAULT_DOMAIN_ENUM = "life(生活)/trading(交易)/project(项目)";
+    private static final String DEFAULT_DOMAIN_ENUM = "life(生活)/trading(交易)";
 
     public ContextPackage {
         if (conversationHistory == null) conversationHistory = List.of();

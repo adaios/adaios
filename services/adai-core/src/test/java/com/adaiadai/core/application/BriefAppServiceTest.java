@@ -1,6 +1,6 @@
 package com.adaiadai.core.application;
 
-import com.adaiadai.core.domain.project.TaskRepository;
+import com.adaiadai.core.kernel.todo.TodoRepository;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -65,7 +65,7 @@ class BriefAppServiceTest {
                         trading, mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class)),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
-                mock(TaskRepository.class),
+                mock(TodoRepository.class),
                 // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
                 pluginService("trading")
         );

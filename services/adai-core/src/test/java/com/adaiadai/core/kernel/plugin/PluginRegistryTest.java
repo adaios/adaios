@@ -1,6 +1,5 @@
 package com.adaiadai.core.kernel.plugin;
 
-import com.adaiadai.core.domain.project.ProjectContextContributor;
 import com.adaiadai.core.domain.trading.MarketContextContributor;
 import com.adaiadai.core.domain.trading.TradingContextContributor;
 import com.adaiadai.core.kernel.context.engine.ContextContributor;
@@ -24,9 +23,15 @@ class PluginRegistryTest {
     @Test
     void knownPlugins_areValid() {
         assertTrue(registry.isValid(PluginRegistry.PLUGIN_TRADING));
-        assertTrue(registry.isValid(PluginRegistry.PLUGIN_PROJECT));
         assertTrue(registry.isValid(PluginRegistry.PLUGIN_LEARN), "learn 插件（RFC 20260829）已注册");
-        assertEquals(Set.of("trading", "project", "learn"), registry.all());
+        assertEquals(Set.of("trading", "learn"), registry.all());
+    }
+
+    @Test
+    void retiredProject_isNotAValidPlugin() {
+        // RFC 20260917：project 插件已撤——存量账号里的残留 "project" 由 isValid 自动过滤
+        assertFalse(registry.isValid("project"), "撤插件后 project 不再是合法插件名");
+        assertNull(registry.pluginForKnowledge("project"), "project 知识源已随插件撤销");
     }
 
     @Test
@@ -39,17 +44,15 @@ class PluginRegistryTest {
     @Test
     void pluginForKnowledge_mapsByName() {
         assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForKnowledge("trading"));
-        assertEquals(PluginRegistry.PLUGIN_PROJECT, registry.pluginForKnowledge("project"));
         // RFC 20260829 L2：learn 知识源（LearnKnowledgeSource）按 name 映射 learn 插件 → ContextEngine 门控
         assertEquals(PluginRegistry.PLUGIN_LEARN, registry.pluginForKnowledge(PluginRegistry.PLUGIN_LEARN));
         assertNull(registry.pluginForKnowledge("life"), "life 知识源不归插件");
     }
 
     @Test
-    void pluginForContributor_mapsTradingAndProjectDomains() {
+    void pluginForContributor_mapsTradingDomain() {
         assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new MarketContextContributor(null, null, mock(com.adaiadai.core.domain.trading.AccountSnapshotRepository.class))));
         assertEquals(PluginRegistry.PLUGIN_TRADING, registry.pluginForContributor(new TradingContextContributor(null, null, mock(com.adaiadai.core.domain.trading.AccountSnapshotRepository.class))));
-        assertEquals(PluginRegistry.PLUGIN_PROJECT, registry.pluginForContributor(new ProjectContextContributor(null, null)));
 
         // 非插件贡献者（life/默认）不门控
         ContextContributor lifeContributor = new ContextContributor() {

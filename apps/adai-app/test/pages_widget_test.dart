@@ -10,7 +10,6 @@ import 'package:adai_app/pages/memory_page.dart';
 import 'package:adai_app/pages/timeline_page.dart';
 import 'package:adai_app/pages/search_page.dart';
 import 'package:adai_app/pages/trading_page.dart';
-import 'package:adai_app/pages/project_task_page.dart';
 import 'package:adai_app/pages/profile_page.dart';
 import 'package:adai_app/theme/app_colors.dart';
 import 'package:adai_app/widgets/input_bar.dart' show PickedImage; // 截图入账测试注入选图
@@ -506,9 +505,11 @@ void main() {
       expect(tiles.every((t) => t.onChanged == null), isTrue,
           reason: '非 iOS 端开关必须置灰');
 
-      // ③ 与首页那份的 10 项对齐（此前这里漏了 learn-review，两个入口给出的开关集合不同）
-      expect(tiles.length, 10);
+      // ③ 与首页那份的 11 项对齐（此前这里漏了 learn-review，两个入口给出的开关集合不同）
+      expect(tiles.length, 11);
       expect(find.text('学习复习提醒（每日复习到期卡片）'), findsOneWidget);
+      expect(find.text('待办到期提醒'), findsOneWidget,
+          reason: 'RFC 20260917：todo-due 与 learn-review 同机制（默认开、可关）');
     });
 
     testWidgets('数据渲染：快照 + 持仓明细', (tester) async {
@@ -1750,54 +1751,6 @@ void main() {
     });
   });
 
-  group('ProjectTaskPage', () {
-    testWidgets('数据渲染：任务列表 + 统计', (tester) async {
-      final b = _Backend();
-      b.handlers['/api/v1/project/tasks'] = (_) async => _json([
-          {
-            'id': 'task1', 'title': '写周报', 'description': '',
-            'status': 'TODO', 'priority': 'P2', 'tags': [],
-            'createdAt': _todayStr, 'updatedAt': _todayStr,
-          },
-        ]);
-      b.handlers['/api/v1/project/tasks/stats'] = (_) async => _json({
-          'total': 1, 'todo': 1, 'doing': 0, 'done': 0, 'cancelled': 0,
-        });
-      await tester.pumpWidget(MaterialApp(home: ProjectTaskPage(api: _apiFor(b))));
-      await tester.pumpAndSettle();
-
-      expect(find.text('任务'), findsOneWidget);
-      expect(find.text('写周报'), findsOneWidget);
-    });
-
-    testWidgets('错误态：加载失败 + 重试成功', (tester) async {
-      final b = _Backend();
-      var fail = true;
-      b.handlers['/api/v1/project/tasks'] = (_) async => fail
-          ? _json({'error': 'boom'}, status: 500)
-          : _json([
-              {
-                'id': 'task1', 'title': '写周报', 'description': '',
-                'status': 'TODO', 'priority': 'P2', 'tags': [],
-                'createdAt': _todayStr, 'updatedAt': _todayStr,
-              },
-            ]);
-      b.handlers['/api/v1/project/tasks/stats'] = (_) async => fail
-          ? _json({'error': 'boom'}, status: 500)
-          : _json({'total': 1, 'todo': 1, 'doing': 0, 'done': 0, 'cancelled': 0});
-      await tester.pumpWidget(MaterialApp(home: ProjectTaskPage(api: _apiFor(b))));
-      await tester.pumpAndSettle();
-
-      expect(find.text('加载失败，请重试'), findsOneWidget);
-      expect(find.text('重试'), findsOneWidget);
-
-      fail = false;
-      await tester.tap(find.text('重试'));
-      await tester.pumpAndSettle();
-      expect(find.text('写周报'), findsOneWidget);
-    });
-  });
-
   group('ProfilePage', () {
     testWidgets('数据渲染：档案信息 + 关注标签', (tester) async {
       final b = _Backend()
@@ -1910,46 +1863,47 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('无插件用户：隐藏交易/阿呆系统，基础服务常驻', (tester) async {
+    testWidgets('无插件用户：隐藏插件条目，原生能力常驻', (tester) async {
       await pumpLauncher(tester, []);
 
       expect(find.text('交易'), findsNothing, reason: '无 trading 插件 → 隐藏交易入口');
-      expect(find.text('阿呆系统'), findsNothing, reason: '无 project 插件 → 隐藏阿呆系统入口');
-      expect(find.text('任务'), findsOneWidget, reason: '任务=待办=基础服务，人人都有');
+      expect(find.text('学习'), findsNothing, reason: '无 learn 插件 → 隐藏学习入口');
+      // RFC 20260917：旧 project 插件入口整行撤销，不再出现在这里。
+      expect(find.text('待办'), findsOneWidget, reason: '待办=Kernel builtin，人人都有');
       expect(find.text('关于我'), findsOneWidget);
       expect(find.text('脑瓜子正在装...'), findsOneWidget);
       expect(find.text('时间都去哪了'), findsOneWidget);
     });
 
-    testWidgets('adai 全插件用户：显示交易与阿呆系统', (tester) async {
+    testWidgets('adai 全插件用户：显示交易与学习', (tester) async {
       // 2026-09-16「原生 / 插件」分组后，插件条目整体下移，会落到 ListView 懒加载的**视口之外**
       // （Flutter 不构建不可见项 → find 自然找不到）。把视口调高，让这组在同一屏内可见——
       // 这是布局位移带来的测试适配，不是功能回归。
       tester.view.physicalSize = const Size(1200, 3000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
-      await pumpLauncher(tester, ['trading', 'project']);
+      await pumpLauncher(tester, ['trading', 'learn']);
 
       expect(find.text('交易'), findsOneWidget);
-      expect(find.text('阿呆系统'), findsOneWidget);
-      expect(find.text('任务'), findsOneWidget);
+      expect(find.text('学习'), findsOneWidget);
+      expect(find.text('待办'), findsOneWidget);
     });
 
-    testWidgets('只开 project 插件：有阿呆系统无交易', (tester) async {
-      await pumpLauncher(tester, ['project']);
+    testWidgets('只开 learn 插件：有学习无交易', (tester) async {
+      await pumpLauncher(tester, ['learn']);
 
-      expect(find.text('阿呆系统'), findsOneWidget);
+      expect(find.text('学习'), findsOneWidget);
       expect(find.text('交易'), findsNothing);
     });
 
-    testWidgets('只开 trading 插件：有交易无阿呆系统（P2-R2 分支补齐）', (tester) async {
+    testWidgets('只开 trading 插件：有交易无学习（P2-R2 分支补齐）', (tester) async {
       await pumpLauncher(tester, ['trading']);
 
       expect(find.text('交易'), findsOneWidget);
-      expect(find.text('阿呆系统'), findsNothing, reason: '无 project 插件 → 隐藏阿呆系统入口');
+      expect(find.text('学习'), findsNothing, reason: '无 learn 插件 → 隐藏学习入口');
     });
 
-    testWidgets('插件拉取失败（500）：核心数据正常渲染，交易/阿呆系统隐藏（P2-R2 降级分支）',
+    testWidgets('插件拉取失败（500）：核心数据正常渲染，插件条目隐藏（P2-R2 降级分支）',
         (WidgetTester tester) async {
       final b = _Backend();
       b.handlers['/api/v1/identity'] = (_) async => _json({'name': '测试', 'preferences': <String, dynamic>{}});
@@ -1965,7 +1919,7 @@ void main() {
       // P1-6 拆独立 try/catch 后：插件失败不影响核心数据渲染
       expect(find.text('关于我'), findsOneWidget, reason: '核心数据（身份）正常渲染');
       expect(find.text('交易'), findsNothing, reason: '插件失败默认只显基础服务');
-      expect(find.text('阿呆系统'), findsNothing);
+      expect(find.text('学习'), findsNothing);
       // REVIEW S-R1：失败给 SnackBar 反馈 + 重试入口（与 web 对拍）；flush 自动关闭计时器
       expect(find.text('插件加载失败，仅显示基础服务'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
@@ -1989,14 +1943,14 @@ void main() {
       ));
       await tester.pump(); // 插件请求挂起：槽位占位
 
-      expect(find.text('加载中…'), findsNWidgets(3),
-          reason: '阿呆系统 / 交易 / 学习 三个插件槽位都渲染等高位占位'
-              '（原断言 2 个是受视口限制的偶然值）');
+      expect(find.text('加载中…'), findsNWidgets(2),
+          reason: '交易 / 学习 两个插件槽位都渲染等高位占位'
+              '（RFC 20260917 撤 project 后由 3 变 2）');
 
-      pluginCompleter.complete(_json(['trading', 'project']));
+      pluginCompleter.complete(_json(['trading', 'learn']));
       await tester.pumpAndSettle();
       expect(find.text('加载中…'), findsNothing, reason: '加载完成后占位消失');
-      expect(find.text('阿呆系统'), findsOneWidget, reason: 'project 插件行原地出现');
+      expect(find.text('学习'), findsOneWidget, reason: 'learn 插件行原地出现');
       expect(find.text('交易'), findsOneWidget, reason: 'trading 插件行原地出现');
     });
 
@@ -2007,7 +1961,7 @@ void main() {
       b.handlers['/api/v1/tags'] = (_) async => _json({'tags': [], 'total': 0});
       b.handlers['/api/v1/timeline'] = (_) async => _json([]);
       b.handlers['/api/v1/memory/count'] = (_) async => _json({'count': 0});
-      b.handlers['/api/v1/me/plugins'] = (_) async => _json(['trading', 'project']);
+      b.handlers['/api/v1/me/plugins'] = (_) async => _json(['trading', 'learn']);
       b.handlers['/api/v1/search'] = (_) async => _json([]);
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(body: LauncherPage(api: _apiFor(b), onNavigateBack: () => backCalls++)),

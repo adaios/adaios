@@ -87,7 +87,7 @@ tags: [architecture, model, plugin, framework]
 | 现有概念 | 在新模型中的位置 |
 |:---------|:----------------|
 | Kernel（Context/Memory/Knowledge）| **框架底座**——人人平等、常驻 |
-| Domain OS（trading/life/project）| **插件**——受控开放、按用户启用 |
+| Domain OS（trading / learn；**project 已撤，2026-09-17 RFC 20260917**）| **插件**——受控开放、按用户启用；`life` 与待办/搜索/时间线/简报是 **Kernel builtin**（默认开，不作插件门控）|
 | 五层产品架构 | **体验视角**（用户怎么用）；框架+插件是**形态视角**（阿呆是什么）——两者兼容，不互相替代 |
 | trading-engine 引擎化 | **插件作为独立 jar 的雏形**——知识+能力自洽，可独立暴露 |
 | 大模型/AI 集成 | **框架内置分析引擎**（infrastructure 层，非业务层）|

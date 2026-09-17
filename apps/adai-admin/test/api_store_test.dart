@@ -100,29 +100,6 @@ void main() {
       expect(memories.single.superseded, isTrue);
     });
 
-    test('loadTasks 透传后端 P0/DONE → P0/done', () async {
-      final client = MockClient((request) async {
-        expect(request.url.path, '/api/v1/project/tasks');
-        return _json([
-          {
-            'id': 'task_001',
-            'title': '接真实数据',
-            'description': '',
-            'status': 'DONE',
-            'priority': 'P0',
-            'tags': [],
-            'createdAt': '2026-08-01',
-            'updatedAt': '2026-08-02',
-          },
-        ]);
-      });
-      final store = DataApiStore(api: _api(client), userId: 'default');
-      final task = (await store.loadTasks()).single;
-
-      expect(task.done, isTrue);
-      expect(task.priority, 'P0'); // #140：优先级透传后端 P0-P3，不再 high/medium/low 映射
-    });
-
     test('loadPositions 映射 Position', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/api/v1/trading/positions');
@@ -347,7 +324,7 @@ void main() {
       final store = SystemApiStore(api: api, userId: 'default');
 
       final result = await store.importTdxPackage(Uint8List.fromList([1]), 'x.zip',
-          onProgress: (_, __) {});
+          onProgress: (_, _) {});
 
       expect(result.success, isFalse);
       expect(result.message, contains('网络错误'));

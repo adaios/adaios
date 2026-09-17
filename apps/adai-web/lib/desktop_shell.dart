@@ -5,8 +5,7 @@ import 'widgets/hoverable.dart';
 import 'pages/feed_page.dart';
 import 'pages/memory_page.dart';
 import 'pages/timeline_page.dart';
-import 'pages/project_page.dart';
-import 'pages/task_page.dart';
+import 'pages/todo_page.dart';
 import 'pages/trading_page.dart';
 import 'pages/learn_page.dart';
 import 'pages/search_page.dart';
@@ -33,7 +32,8 @@ class DesktopShell extends StatefulWidget {
   State<DesktopShell> createState() => _DesktopShellState();
 }
 
-/// 导航项：plugin 为空 = 基础服务常驻；trading/project/learn = 需启用对应插件才可见（RFC 20260814/20260829）。
+/// 导航项：plugin 为空 = 基础服务常驻（含待办，Kernel builtin）；trading/learn = 需启用对应插件才可见
+/// （RFC 20260814/20260829；RFC 20260917 撤 project 插件）。
 class _NavEntry {
   final String label;
   final IconData icon;
@@ -43,13 +43,13 @@ class _NavEntry {
 }
 
 class _DesktopShellState extends State<DesktopShell> {
-  /// 全量模块表：项目/交易为插件域，其余为 Kernel 基础服务（对话流/记忆/时间线/任务/搜索/档案）。
+  /// 全量模块表：交易/学习为插件域，其余为 Kernel 基础服务（对话流/记忆/时间线/待办/搜索/档案）。
   static final List<_NavEntry> _allEntries = [
     _NavEntry('对话流', Icons.chat_bubble_outline, null, (api) => FeedPage(api: api)),
     _NavEntry('记忆', Icons.psychology_outlined, null, (api) => MemoryPage(api: api)),
     _NavEntry('时间线', Icons.calendar_month_outlined, null, (api) => TimelinePage(api: api)),
-    _NavEntry('项目', Icons.dashboard_outlined, 'project', (api) => ProjectPage(api: api)),
-    _NavEntry('任务', Icons.checklist_outlined, null, (api) => TaskPage(api: api)),
+    // RFC 20260917：待办归 Kernel builtin（plugin 为 null，人人有、默认开、无插件门控）
+    _NavEntry('待办', Icons.checklist_outlined, null, (api) => TodoPage(api: api)),
     _NavEntry('交易', Icons.trending_up, 'trading', (api) => TradingPage(api: api)),
     _NavEntry('学习', Icons.auto_stories_outlined, 'learn', (api) => LearnPage(api: api)),
     _NavEntry('搜索', Icons.search, null, (api) => SearchPage(api: api)),

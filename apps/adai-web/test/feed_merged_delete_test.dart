@@ -69,9 +69,6 @@ void main() {
           });
         }
         if (p == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
-        if (p == '/api/v1/project/tasks/stats') {
-          return _json({'total': 0, 'todo': 0, 'doing': 0, 'done': 0, 'cancelled': 0});
-        }
         if (p.startsWith('/api/v1/records/') && req.method == 'DELETE') {
           final id = p.split('/').last;
           if (failIds.contains(id)) return _json({'error': 'boom'}, status: 500);

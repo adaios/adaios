@@ -74,7 +74,7 @@
       "intent": "log" / "question",
       "summary": "AI摘要",
       "turns": [{"isUser": true, "text": "...", "time": "14:30"}],
-      "domain": "life" / "trading" / "project"
+      "domain": "life" / "trading"
     }
   ],
   "totalToday": 28
@@ -290,7 +290,7 @@ POST /api/v1/records
   "preferences": "（可选）如果这条记录揭示了用户的明确偏好，输出数组，每项包含 content(偏好描述) 和 confidence(0-1置信度)；否则不输出此字段",
   "tags": ["标签1", "标签2", "标签3"],
   "sentiment": "positive 或 negative 或 neutral",
-  "domain": "life(生活)/trading(交易)/project(项目)",
+  "domain": "life(生活)/trading(交易)",
   "actionable": true 或 false,
   "actionSuggestion": "如果需要后续操作，写建议；否则写 null"
 }
@@ -298,7 +298,6 @@ POST /api/v1/records
 
 **domain 判定优先级（AI 输出规则）：**
 - 指标、K线、持仓、走势、复盘、买入、卖出、仓位 → `trading`
-- 任务、进度、bug、需求、RFC、项目、待办、计划 → `project`
 - 日常、想法、记录、心情、问题 → `life`
 
 **模型参数：** `temperature: 0.3`, `max_tokens: 1024`, 分析模式
@@ -313,7 +312,7 @@ System prompt（CHAT 模式，`DeepSeekAiClient.java`）：
   "summary": "3-5个词概括本次问答主题，避免人称代词，像标签一样简洁",
   "tags": ["标签1", "标签2"],
   "sentiment": "positive 或 negative 或 neutral",
-  "domain": "life(生活)/trading(交易)/project(项目)",
+  "domain": "life(生活)/trading(交易)",
   "actionable": true 或 false,
   "actionSuggestion": "需要后续操作写建议，否则写 null"
 }
@@ -462,7 +461,7 @@ System prompt（CHAT 模式，`DeepSeekAiClient.java`）：
 | `loading` | bool | 加载中 |
 | `intent` | IntentType | log / question |
 | `expanded` | bool | 折叠展开 |
-| `domain` | String | life / trading / project |
+| `domain` | String | life / trading |
 | `error` | String? | API 调用失败时的错误信息（非 null 进入错误态） |
 | `updatedAt` | DateTime | 更新时间 |
 
@@ -560,7 +559,6 @@ Trading activity: {hasActivity → "提醒生成复盘"}
 Domain activity (7-day):
 - life: {count}条 {trend}
 - trading: {count}条 {trend}
-- project: {count}条 {trend}
 
 Hot tags: {tags (3天内使用)}
 Cold tags: {tags (14天未用)}
@@ -691,7 +689,7 @@ Strict format:
 
 - World B — 应用导航中心
 - 搜索栏入口
-- 5 个导航入口（关于我、脑瓜子、时间线、阿呆系统、交易）
+- 原生能力组（关于我 / 脑瓜子 / 时间线 / **待办**）+ 插件组（交易 / 学习，按 `GET /me/plugins` 显隐）——RFC 20260917 撤 project 后「阿呆系统」入口删除、「任务」改名「待办」并固定为原生（builtin）
 - 标签宇宙（图谱视图 / 列表视图切换）
 - 统计数据：标签总数、记录总数、记忆总数
 
@@ -817,70 +815,43 @@ Strict format:
 
 ---
 
-## 10. 项目管理模块
+## 10. 待办模块（Kernel builtin，RFC 20260917）
 
-### 10.1 项目状态
+> **三层定位**（RFC `20260917-todo-kernel-retire-project-plugin.md` §三）：**core 内核**（记录/问答/记忆/上下文/身份/存储，不可关）· **builtin 内置能力**（**待办** / 搜索 / 时间线 / 简报，默认开、用户侧可关）· **optional 可选插件**（trading / learn，默认关）。判据一句话：没它别的跑不起来 → core；第一次用就需要 → builtin；只有一部分人需要 → optional。
+>
+> **原「项目管理模块」已退役（2026-09-17）**：project 插件撤销——项目状态仪表盘（`ProjectStatusPage`）、任务看板（`ProjectTaskPage`）、`/api/v1/project/**` 6 个端点、admin 账号页 project 开关全部删除（breaking，无兼容别名）。**待办归 Kernel builtin**（人人有、无插件门控），形态从「看板」改为「纯清单」。`os/project-os/` 知识文件保留在仓库（File First），但不再注入任何用户上下文。
 
-#### 功能描述
+### 功能描述
 
-- 系统概览（项目名、架构模式）
-- 内核组件状态网格（6 个：identity / record / timeline / context / memory / knowledge）
-- Domain OS 状态（trading / life / project）
-- 统计数据（commit 数、RFC 数、API 端点）
-- RFC 状态列表
+- **纯清单两态**：未完成（`OPEN`）在上、已完成（`DONE`）折叠；每条 = 一句话 +（可选）到期日 + 完成 + 删除；顶部直接加一条
+- **到期提醒**：可选到期日（`due`）→ 到期当天 **08:00 与 18:00** 各推一次（推送类型 `todo-due`，进 `PushSettings.ALL_TYPES`，默认开、可关）；通知深链 `todo:today` 打开待办页
+- **收集**：记录里可执行 → 自动进待办（`RecordToTodoLinker`，保留 `sourceRecordId`）+ 清单页手动加
+- **记忆联动（单向）**：建待办**不动记忆**；完成待办 → `markDone(记忆)`；删除待办 → 清记忆 actionable；`#备忘/#想法` 排除判断前移到记忆写入侧
+- **Feed**：不再出现待办卡（Feed 回归纯对话流）
 
-#### 前端文件
-
-| 文件 | 类/方法 | 职责 |
-|:-----|:---------|:------|
-| `pages/project_status_page.dart` | `ProjectStatusPage` | 项目仪表盘 |
-
-#### 对应 API
-
-| API | 前端方法 | 说明 |
-|:----|:---------|:------|
-| `GET /api/v1/project/status` | `getProjectStatus()` | 项目状态 |
-| `GET /api/v1/project/tasks/stats` | `getTaskStats()` | 任务统计 |
-
-#### 后端处理
-
-**ProjectStatusController → ProjectStatusAppService**
-
-- 纯数据聚合，**不调用 AI**
-- 从 git log、RFC frontmatter、文件系统统计聚合
-
-### 10.2 任务管理
-
-#### 功能描述
-
-- 任务 CRUD（创建、编辑、状态流转、删除）
-- 状态过滤（TODO / DOING / DONE / CANCELLED）
-- 优先级（P0-P3）
-- 标签、RFC 引用
-- 统计行
-
-#### 前端文件
+### 前端文件
 
 | 文件 | 类/方法 | 职责 |
 |:-----|:---------|:------|
-| `pages/project_task_page.dart` | `ProjectTaskPage` | 任务管理页面 |
+| `pages/todo_page.dart`（app）/ `pages/todo_page.dart`（web）| `TodoPage` | 待办清单页（两态 + 可选到期日 + 完成/删除 + 已完成折叠）|
 
-#### 对应 API
+### 对应 API
 
 | API | 前端方法 | 说明 |
 |:----|:---------|:------|
-| `GET /api/v1/project/tasks?status=&tag=` | `getTasks()` | 任务列表 |
-| `POST /api/v1/project/tasks` | `createTask()` | 创建 |
-| `PUT /api/v1/project/tasks/{id}` | `updateTask()` | 更新 |
-| `DELETE /api/v1/project/tasks/{id}` | `deleteTask()` | 删除 |
-| `GET /api/v1/project/tasks/stats` | `getTaskStats()` | 统计 |
+| `GET /api/v1/todos?status=` | `getTodos()` | 列表（app `TodoItem` / web `TodoResponse`）|
+| `POST /api/v1/todos` | `createTodo()` | 创建 |
+| `PUT /api/v1/todos/{id}` | `updateTodo()` | 更新（`null` 保持原值；`due:""` 清除到期日）|
+| `DELETE /api/v1/todos/{id}` | `deleteTodo()` | 删除（取消即删除）|
+| `GET /api/v1/todos/stats` | `getTodoStats()` | 统计（total / open / done）|
 
-#### 后端处理
+### 后端处理
 
-**ProjectStatusController → ProjectTaskAppService**
+**TodoController → TodoAppService（`kernel/todo/` + `application/TodoAppService`）**
 
-- File First 存储：`data/project/tasks/YYYY/MM.md`
-- 无 AI 调用
+- File First 存储：`data/{userId}/todos/YYYY/MM.md`（旧 `data/{userId}/project/tasks/` **原样留存、不迁不删**）
+- **无插件门控**（旧 project 插件写端点的三处 403 已随插件退役）
+- 无 AI 调用；`TodoReminderService` 定时（08:00 / 18:00）推 `todo-due`
 
 ---
 
@@ -1044,14 +1015,14 @@ POST /api/v1/records/retry
 
 > 详见 RFC `20260814-domain-plugin-model` + `docs/reference/task-plugin-model.md`。
 
-- **插件定义**：插件 = adai 拥有并受控开放的 Domain/能力（`trading` / `project`；**2026-09-06 注册第三个 `learn`**——RFC 20260829 外部内容学习沉淀，V1 后端流水线已实现，详见 §17）。Kernel 基础服务（记录/问答/记忆/档案/时间线/搜索/待办）不是插件，人人都有。`life` 是基础服务不是插件。
-- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `admin` 预置 = `[trading, project]`（新环境兜底）；产品主账号 `adai` = `[trading, project]`。未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
+- **插件定义**（RFC 20260814；RFC 20260917 三层定位）：插件 = adai 拥有并受控开放的 Domain/能力，**只有 `trading` / `learn` 两个**（project 插件已于 2026-09-17 撤除；`learn` 为 2026-09-06 注册，RFC 20260829 外部内容学习沉淀，详见 §17）。`life` 是基础服务不是插件。**三层定位**：core 内核（记录/问答/记忆/上下文/身份/存储，不可关）· builtin 内置能力（**待办**/搜索/时间线/简报，默认开、用户侧可关）· optional 可选插件（trading/learn，默认关）。
+- **载体**：`Account.plugins`（`data/accounts/accounts.json`），adai-admin 后台控制（账号卡插件开关，W-P2-13 2026-08-17：走**服务端合并语义** `PATCH /accounts/{userId}/plugins` body `{add[], remove[]}`——S-R2 根治全量 PATCH read-modify-write 并发互覆；清空插件须传空数组 `[]`）。新账号默认空 = 只有基础服务；seed `admin` 预置 = `[trading]`（新环境兜底）。**历史文件里的残留 `"project"` 由 `PluginRegistry.isValid` 自动过滤（不迁移）**，admin 再写入 `"project"` → 400；未知插件名过滤，脏数据 `"plugins":[null]` 构造器过滤不 NPE（REVIEW P2-3）。
 - **查询**：`GET /api/v1/me/plugins`（需登录，会话账号 = 当前用户启用插件 → 前端模块显隐）。
 - **门控面**（读写侧对称，REVIEW S-3/S-4）：
   - 读侧：ContextEngine 知识源/贡献者按 `enabledPlugins` 过滤注入；Feed 行情条/异动推送仅 trading 插件用户；promote 反哺仅 trading 插件用户（否则 403）
-  - 写侧：`RecordRetryService` 重补路径 domain 走 `gateDomain`（无插件用户不落盘 trading/project 标注）；`MarketAlertService` 定时轮询仅 trading 插件用户
-  - D5 domain 收敛：AI 判定 domain 属未启用插件 → 收敛 `life`；prompt 的 domain 枚举/判定规则按启用插件生成（单一真相源，关键词与 `detectDomainScene` 常量一致，REVIEW P2-2）；CHAT 模式 system prompt 枚举随 ContextPackage 下发（REVIEW P2-4）
-- **前端显隐**：adai-app World B Launcher（交易/阿呆系统按插件显隐）、adai-web 桌面壳（导航/IndexedStack/页面同一可见列表，按 label 重解析索引防错位，REVIEW P1-5）、adai-admin 账号卡插件开关。
+  - 写侧：`RecordRetryService` 重补路径 domain 走 `gateDomain`（无插件用户不落盘 trading 标注；`project` 已撤除，一律收敛 `life`）；`MarketAlertService` 定时轮询仅 trading 插件用户
+  - D5 domain 收敛：AI 判定 domain 属未启用插件 → 收敛 `life`（白名单只放行 `trading` + `life`；RFC 20260917 起 `project` 等未知值一律收敛 `life`）；prompt 的 domain 枚举/判定规则按启用插件生成（单一真相源，关键词与 `detectDomainScene` 常量一致，REVIEW P2-2）；CHAT 模式 system prompt 枚举随 ContextPackage 下发（REVIEW P2-4）
+- **前端显隐**：adai-app World B Launcher（原生能力 / 插件两组，插件组只有交易/学习，按 `GET /me/plugins` 显隐——「待办」是原生能力不在插件表）、adai-web 桌面壳（导航/IndexedStack/页面同一可见列表，按 label 重解析索引防错位，REVIEW P1-5）、adai-admin 账号卡插件开关（project 开关已删除）。
 - **账号迁移**：老文件无 `plugins` 字段 → 启动补默认（仅 seed adai）；PATCH 显式清空（字段存在）不被迁移推翻（REVIEW P1-4）。
 
 ## 17. learn 学习沉淀模块（RFC 20260829）
@@ -1059,7 +1030,7 @@ POST /api/v1/records/retry
 > **状态：V1 后端流水线（2026-09-06）+ L2 呈现层（2026-09-07）已落地**：LearnKnowledgeSource 问答注入（web 端**资产页**——导航「学习」learn 插件门控 + 目录树 + 单篇全文渲染；app 端「最近学习」入口 + 单篇全文，双端分工对齐 RFC 3.7）。**V2 消化闭环（2026-09-07）已落地**：批 1 复习状态流转 + 编辑（PATCH /cards/status + /cards，retell 复述建模）；批 3 trading 候选联动（反哺候选 + learn_card_id 回链）；批 4 复习提醒推送（每晚 20:00 learn-review）+ **web 资产页 V2 交互接线**（状态徽标 + 去复习/标记完成 + 写复述弹窗 + 反哺候选按钮；app 详情页状态徽标 + 复述段只读呈现）。**learn V2 审查修复批（2026-09-07 learn V2 增量深审，用户拍板）**：流转只允许相邻（new↔review / review→done / done→review，跳变 400）；进入 review 写 `review_at`、提醒按进入队列满 7 天计时 + 同卡 7 天节流（不再按消化日误判、不再每晚 nag）；同 type+title 任意日期同名拒绝 + 残留歧义读侧 400（寻址不再改错卡）；learn_card_id = 源卡真实文件路径；复习提醒开关 learn 页可达（纯 learn 用户可自关，web/app 双端铃铛）；候选管理 UI（web 页头收件箱：列表/删除）；反哺按钮按 trading 插件二次门控。**喂入入口批（2026-09-10，用户拍板「先页面后对话流」）**：`POST /learn/cards` 改**提交式消化**（后台 learnSubmitExecutor 执行 + `GET /learn/digest/status` 轮询 done/failed——对齐复盘 submitReview 先例，杜绝同步 LLM 几十秒超时「看似没反应」；inflight 去重只烧一次 AI）；**web 资产页页头「＋」弹窗喂入 + app「最近学习」页头「＋」喂入页**双端页面入口（粘贴字幕/文章原文 → 让阿呆消化 → 完成后自动定位打开新卡；失败人话可重试；轮询超时提示后台继续、素材留存 `_raw/` 兜底）；空态引导改指页面入口（对话流喂入 = 批 2 待排）。**抓取批（2026-09-12，RFC 20260912 D 形态阶段 1 抓取主干，v3.57）——learn 从「用户自己搞素材」升级为「服务端自己抓」**：这是 B 形态失败的根本原因（把最费力的一步留给了用户），也是 D 与 B 的分水岭。① **链接喂入**：`POST /learn/digest` 支持 `url`——B站视频走「view 元数据 + player/v2 字幕 + playurl 音频线索」，文章走「抓 HTML → 去脚本/样式/导航转正文」，反爬 403 → **Web Archive 快照兜底**，仍失败则人话引导「把正文粘进来」；② **无字幕 → 报价 → 确认 → 转写**：实测多数视频确实没有可获取字幕（首例 BV12LR1B3EUt 字幕列表为空），所以云端转写是**必经路径**：抓到无字幕视频先回「37 分钟，预计约 0.18 元（本月剩余额度 10 小时）」，用户 `POST /learn/digest/confirm` 点头后才真调阿里云百炼 fun-asr；取消则**一分钱不花**；③ **费用可控六条**：字幕优先（有字幕就不转写）／同一素材只转一次（转写稿落 `_raw/`，重整理零费用）／只在你明确发话时花钱（无任何批量后台转写）／月度配额硬闸 + 记账（**默认 108,000 秒/月 = 30 小时**，月初重置，超限拒绝并说明剩余；前 36,000 秒落在云端免费额度内=0 元，超出按 0.288 元/小时）——**这 36,000 秒与云端的免费额度对齐**：百炼的**语音识别模型**有每月 1 日重置、长期有效的 36,000 秒（10 小时）免费额度（2026-09-13 用户控制台核对原文「每月1日额度重置 · 长期有效」），本产品默认的 `paraformer-v2`（0.288 元/小时）就在其中 → **额度内转写实际 0 元**；注意额度**按模型快照绑定**（如 `fun-asr` 0.792 元/小时、`fun-asr-flash-*` 仅支持 ≤5 分钟短音频，额度不通用），超出 10 小时或换模型才按量计费／单次前置报价确认／ASR 走端口（可换更便宜通道）；④ **进度可见**：轮询响应加 `stage`（正在抓取原文/正在转写/正在整理成卡片）；⑤ **源必留痕**：元数据 json、字幕、文章全文、转写稿全部落 `learn/_raw/`（文章会失效、原音频丢了不可重建），也让「同一素材只转一次」天然成立；⑥ **首期不做清单**：YouTube（服务器网络不可达）与公众号/知乎/小红书/X/微博/抖音（反爬与登录墙）**明确告知 + 给替代路径**，不假装能抓、不绕登录墙（B8）；⑦ **出站白名单（2026-09-12 对抗审查 P0-1 修复）**：抓取目标来自用户输入 → 出站前先过策略：拒私有网段/回环/链路本地/云元数据地址与非标准端口，**关自动重定向改逐跳复检**，第三方响应给的地址（字幕/快照）也收敛域名白名单，响应体有上限（正文 4MB/音频 64MB）；⑨ **读侧对齐（2026-09-12）**：learn 目录里有两个写入方——产品卡（扁平 `{type}/{date}_{title}.md`）与 Mac 上 DSH 技能 A 的手工卡（主题子目录 `{type}/{topic}/NN-{slug}.md`，段名带括号后缀）。读侧已容错：段名归一（编号前缀/括号后缀都识别，`## 内容脉络` 不冒充「关键要点」）、问答召回正则放宽（A 的卡不再只剩标题）；**写侧守卫**：产品之外的卡一律只读，四个写入口统一人话拒绝（不会改动别人的原始文件）。**完整契约迁移（topic 归并/编号/README/`_raw/` 层级）已于 2026-09-12 完整升级批落地**（见下条），REVIEW P2-learn12 出表。
 - ⑧ **转写费用按实际时长结算 + 先预留后花钱**（转写失败退回预留，不留「花了钱记不上账」的洞）；账本损坏时拒绝转写（fail-closed）。
 
-- **插件注册**：PluginRegistry 第三个插件 `learn`（`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
+- **插件注册**：PluginRegistry 的 `learn` 插件（RFC 20260917 后与 `trading` 并列，注册表共两个；`Account.plugins` 可含；`GET /me/plugins` 显隐；未启用用户访问 learn 端点 → 403）。
 - **定位**：外部内容（B站视频/YouTube/文章/字幕）→ AI 结构化卡片 → 个人知识资产。**与 A 方向会话技能（learn-digest skill）同源**：技能是 DSH 会话内执行版（独立落盘 `data/adai/learn/`），本插件是阿呆产品内版（按用户落 `data/{userId}/learn/`）；两者格式同构（frontmatter + 渐进式摘要）；**2026-09-12 抓取批把 A 的能力（抓取 → 转写 → 六段结构化 → `_raw/` 留痕）下沉为产品能力**——产物契约不新建第二套，A 技能与产品写入同一份格式（RFC 20260912 §3.3 原则 2）。
 - **喂入（独立端点，2026-09-06 用户拍板）**：`POST /api/v1/learn/cards`——仿截图入账先例，learn 消化是动作不是记录：不建记录、不沉淀记忆、不污染 Feed/时间线。素材留痕 `learn/_raw/`（LLM 失败时素材不丢）。
 - **卡片**：`data/{userId}/learn/{type}/{topic}/NN-{slug}.md`（File First md 即真相源，**2026-09-12 完整升级批起按主题目录归档 → 与 Mac 侧技能同一契约**）——frontmatter（title/type/topic/origin/platform/author/url/published/created/status/trade_related/trade_note/tags）+ 正文四段（核心观点/关键要点/我的疑问/复述）；同主题多源按 NN 续号，主题 `README.md` 自动维护索引（产品只**追加** `## 阿呆整理记录（自动维护）` 段，**不重写**手工 README），原始素材归位到 `{type}/{topic}/_raw/`。老式扁平 `{type}/{yyyy-MM-dd}_{title}.md` **照旧可读可写、不强制迁移**。type=ai/trading/other 是文件分类非 domain 收敛对象；trade_related 仅 trading 内容有意义（防 LLM 幻觉：非 trading 强制 false；V1 只记录不联动规则库，规则候选改动须用户拍板）。
@@ -1097,21 +1068,20 @@ POST /api/v1/records/retry
 | 14 | PUT | `/api/v1/identity` | 更新档案 | ❌ |
 | 15 | GET | `/api/v1/tags` | 标签统计 | ❌ |
 | 16 | GET | `/api/v1/search?q=` | 全文搜索 | ❌ |
-| 17 | GET | `/api/v1/project/status` | 项目状态 | ❌ |
-| 18 | GET | `/api/v1/project/tasks` | 任务列表 | ❌ |
-| 19 | POST | `/api/v1/project/tasks` | 创建任务 | ❌ |
-| 20 | PUT | `/api/v1/project/tasks/{id}` | 更新任务 | ❌ |
-| 21 | DELETE | `/api/v1/project/tasks/{id}` | 删除任务 | ❌ |
-| 22 | GET | `/api/v1/project/tasks/stats` | 任务统计 | ❌ |
-| 23 | GET | `/api/v1/trading/positions` | 持仓 | ❌ |
-| 24 | GET | `/api/v1/trading/portfolio` | 组合快照 | ❌ |
-| 25 | POST | `/api/v1/trading/trades` | 录入交易 | ❌ |
-| 26 | POST | `/api/v1/trading/review` | 生成复盘 | ✅ |
-| 27 | GET | `/api/v1/trading/review` | 查询复盘 | ❌ |
-| 28 | GET | `/api/v1/trading/reviews` | 复盘日期列表 | ❌ |
-| 29 | GET | `/api/v1/trading/has-activity` | 交易活跃检测 | ❌ |
-| 30 | POST | `/api/v1/trading/reviews/{date}/promote` | 知识反哺 | ✅ |
-| 31 | POST | `/api/v1/records/retry` | 手动触发补完（RecordRetryService） | ✅ |
+| 17 | GET | `/api/v1/todos` | 待办列表（Kernel builtin，`?status=OPEN\|DONE`；RFC 20260917） | ❌ |
+| 18 | POST | `/api/v1/todos` | 创建待办（Kernel builtin） | ❌ |
+| 19 | PUT | `/api/v1/todos/{id}` | 更新待办（`null` 保持原值；`due:""` 清除到期日） | ❌ |
+| 20 | DELETE | `/api/v1/todos/{id}` | 删除待办（取消即删除，204） | ❌ |
+| 21 | GET | `/api/v1/todos/stats` | 待办统计（total / open / done） | ❌ |
+| 22 | GET | `/api/v1/trading/positions` | 持仓 | ❌ |
+| 23 | GET | `/api/v1/trading/portfolio` | 组合快照 | ❌ |
+| 24 | POST | `/api/v1/trading/trades` | 录入交易 | ❌ |
+| 25 | POST | `/api/v1/trading/review` | 生成复盘 | ✅ |
+| 26 | GET | `/api/v1/trading/review` | 查询复盘 | ❌ |
+| 27 | GET | `/api/v1/trading/reviews` | 复盘日期列表 | ❌ |
+| 28 | GET | `/api/v1/trading/has-activity` | 交易活跃检测 | ❌ |
+| 29 | POST | `/api/v1/trading/reviews/{date}/promote` | 知识反哺 | ✅ |
+| 30 | POST | `/api/v1/records/retry` | 手动触发补完（RecordRetryService） | ✅ |
 | 31 | GET | `/api/v1/trading/knowledge/conflicts` | 规则矛盾检测 | ✅ |
 | 32 | POST | `/api/v1/cards/migrate` | 卡片迁移 | ❌ |
 | 33 | POST | `/api/v1/cards/cleanup` | 卡片清理 | ❌ |

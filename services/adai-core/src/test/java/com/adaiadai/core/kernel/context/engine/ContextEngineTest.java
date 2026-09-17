@@ -28,11 +28,12 @@ import static org.mockito.Mockito.when;
 
 /**
  * ContextEngine 单元测试。
- * 覆盖：领域场景路由（内容关键词 → trading/project/life），
+ * 覆盖：领域场景路由（内容关键词 → trading/life），
  * 保证交易知识源在交易内容时被触发（回归：之前 scene 恒为 note/question，知识从不注入）。
  * <p>
  * 插件门控（RFC 20260814 第二步）：知识源/贡献者按账号 enabledPlugins 注入；
  * D5 domain 判定只在启用插件间进行——无插件用户含交易词 → 一律 life。
+ * RFC 20260917 撤 project 插件：项目词不再有 project 场景/枚举，一律落 life。
  */
 class ContextEngineTest {
 
@@ -76,8 +77,8 @@ class ContextEngineTest {
         when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
-        // 路由测试默认给全插件（保持"交易词→trading"既有行为）
-        grantPlugins("default", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
+        // 路由测试默认给交易插件（保持"交易词→trading"既有行为；project 已撤）
+        grantPlugins("default", PluginRegistry.PLUGIN_TRADING);
         return new ContextEngine(identity, records, tagIndex, memory, cards,
                 List.of(contributor), List.of(knowledge), search, pluginService());
     }
@@ -113,14 +114,16 @@ class ContextEngineTest {
     }
 
     @Test
-    void projectContent_routesToProjectScene() {
+    void projectContent_judgedAsLife_projectSceneRetired() {
+        // RFC 20260917：project 插件/场景已撤——即使唯一插件用户（trading）含项目词，也一律落 life
         RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();
         RecordingContributor contributor = new RecordingContributor();
         ContextEngine engine = newEngine(knowledge, contributor);
 
         engine.compose("default", "question", record("B 方向 Phase 4 的任务进度怎么样"), null);
 
-        assertEquals("project", knowledge.receivedScene);
+        assertEquals("life", knowledge.receivedScene, "项目词不再路由 project（插件已撤）");
+        assertEquals(false, contributor.enriched, "project 场景贡献者已不存在，不应触发任何插件贡献者");
     }
 
     @Test
@@ -148,7 +151,7 @@ class ContextEngineTest {
             @Override public String enrich(String userId, String scene) { return "## 交易场景知识\n"; }
         };
         grantPlugins("alice"); // 无插件
-        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT);
+        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING);
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
                 List.of(), List.of(tradingKnowledge), search, pluginService());
 
@@ -186,7 +189,7 @@ class ContextEngineTest {
             @Override public String enrich(String userId, String scene) { return ""; }
         };
         grantPlugins("bob"); // 无插件
-        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_PROJECT, PluginRegistry.PLUGIN_LEARN);
+        grantPlugins("adai", PluginRegistry.PLUGIN_TRADING, PluginRegistry.PLUGIN_LEARN);
         when(identity.load(any())).thenReturn(Optional.empty());
         when(records.findAll(any())).thenReturn(List.of());
         when(tagIndex.findRelatedIds(any(), any(), anyInt())).thenReturn(List.of());
@@ -227,7 +230,7 @@ class ContextEngineTest {
 
     @Test
     void tradingOnlyUser_projectContent_judgedAsLife() {
-        // D5：用户只有 trading 插件 → 项目词不判 project（只在自己插件间判定）
+        // RFC 20260917：project 插件已撤——只有 trading 插件的用户，项目词也不判 project
         RecordingKnowledgeSource knowledge = new RecordingKnowledgeSource();
         grantPlugins("bob", PluginRegistry.PLUGIN_TRADING);
         when(identity.load(any())).thenReturn(Optional.empty());
@@ -238,9 +241,11 @@ class ContextEngineTest {
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
                 List.of(), List.of(knowledge), search, pluginService());
 
-        engine.compose("bob", "note", record("项目 B 方向 Phase 4 的任务进度怎么样"), null);
+        String prompt = engine.compose("bob", "note", record("项目 B 方向 Phase 4 的任务进度怎么样"), null).prompt();
 
-        assertEquals("life", knowledge.receivedScene, "无 project 插件 → 项目词不判 project");
+        assertEquals("life", knowledge.receivedScene, "project 插件已撤 → 项目词一律判 life");
+        assertFalse(prompt.contains("project(项目)"), "domain 枚举不应含 project");
+        assertFalse(prompt.contains("→ project"), "domain 判定规则不应含 project");
     }
 
     // ── 2026-09-16「第一次见面」批：新用户第一眼问答 ──

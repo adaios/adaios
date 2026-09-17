@@ -81,7 +81,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | Domain | 状态 | 说明 |
 |:-------|:----:|:-----|
 | **Trading OS** | ✅ | 87 课知识库 → knowledge/context → KnowledgeSource → Context Engine 全链路 |
-| **Project OS** | ✅ | Status API + git 自举 + RFC 索引 + 轻量任务系统（Phase 1-4 全完成）|
+| **Project OS** | ❌ 已退役 | **project 插件已撤（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）**：Status API + git 自举 + RFC 索引 + 轻量任务系统随插件删除（6 个 `/api/v1/project/**` 端点 breaking 下线）；**待办归 Kernel builtin**（独立清单页，两态 + 可选到期日 + `todo-due` 到期提醒）；`os/project-os/` 知识文件保留但不再注入 |
 | **Life OS** | 🏗 等数据 | 骨架就绪（快速记录 + LifeKnowledgeSource）；情绪/习惯/周报待数据积累后触发 |
 
 ### 3.3 记忆系统（Knowledge Evolves）
