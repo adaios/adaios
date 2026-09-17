@@ -194,7 +194,7 @@ related:
 
 ## 九、实施留痕（2026-09-17，主会话实施 + 3 子代理并行）
 
-**状态**：`implemented` + **已部署（2026-09-17 第十次部署 v3.72）**——`deploy-gate.sh` GATE-BEFORE 三门 PASS + GATE-AFTER smoke 9/9；三端静态产物同日原子替换；公网 `/` `/m/` `/admin/` 200 + api 401；真链探针 `GET /todos` **10 条**（迁移数据可见）· 旧端点 404 · `todo-due` 关→恢复 · Feed `action` 条目 0；代码提交 `717f338`（实施）+ `6ac8e3b`（迁移登记）+ `f37acd1`（部署登记），**未 push**；**iOS 构建 8 已上传 TestFlight**（`UPLOAD SUCCEEDED`，Delivery UUID `6f9c0130…`，`pubspec.yaml` → `1.0.0+8`，Apple 侧处理中）。
+**状态**：`implemented` + **已部署（2026-09-17 第十次部署 v3.72）**——`deploy-gate.sh` GATE-BEFORE 三门 PASS + GATE-AFTER smoke 9/9；三端静态产物同日原子替换；公网 `/` `/m/` `/admin/` 200 + api 401；真链探针 `GET /todos` **10 条**（迁移数据可见）· 旧端点 404 · `todo-due` 关→恢复 · Feed `action` 条目 0；代码提交 `717f338`（实施）+ `6ac8e3b`（迁移登记）+ `f37acd1`（部署登记），**未 push**；**iOS 构建 8 已上传 TestFlight**（`UPLOAD SUCCEEDED`，Delivery UUID `6f9c0130…`，`pubspec.yaml` → `1.0.0+8`，Apple 侧已 **VALID**·可测试）。
 
 | 步 | 完成判据 | 结果 |
 |:--:|:---------|:-----|
