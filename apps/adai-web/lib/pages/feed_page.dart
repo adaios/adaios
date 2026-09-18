@@ -37,6 +37,12 @@ class _FeedPageState extends State<FeedPage> {
 
   List<FeedCardData> _cards = [];
   int _totalToday = 0;
+
+  /// 2026-09-18 空态分流：该用户有没有过历史记录（不限当天，由服务端判定）。
+  /// 与 adai-app 同契约——判据放服务端是因为本地标记重装/换设备即丢，
+  /// 而每天凌晨跨日「今天还没记录」正是最容易被误判成新账号的场景。
+  /// 默认 false（新账号口径）：旧后端不返回 hasHistory 时保持改动前行为。
+  bool _hasHistory = false;
   String _brief = '';
   bool _loading = true;
   bool _loadFailed = false; // 2026-08-17 走查：首载失败不能伪装空态（「还没有记录」误导）
@@ -106,6 +112,7 @@ class _FeedPageState extends State<FeedPage> {
           .toList();
       setState(() {
         _totalToday = feed.totalToday;
+        _hasHistory = feed.hasHistory; // 空态分流判据随首屏刷新（服务端口径）
         _currentPage = 0;
         _cards = newCards;
         _loadFailed = false;
@@ -1392,6 +1399,15 @@ class _FeedPageState extends State<FeedPage> {
     // 2026-09-17 REVIEW P1-UI14：空 Feed ≠ 新用户。原文案「第一次见」+ 自我介绍
     // 把「今天恰好没记录」的老用户当成了陌生人（真实用户反馈）。改为**中性**：
     // 只陈述「今天还没聊」，不假设「第一次」；三个开场问句（2026-09-16 用户拍板）原样保留。
+    //
+    // 2026-09-18 空态分流（本批，与 adai-app 同契约同文案）：P1-UI14 只把文案改中立，
+    // 但老用户看到的仍是「你能干什么？」这类第一天上手才会问的引导。Feed 按「当天」切数据，
+    // 老用户每天凌晨跨日打开必然空 Feed → 每天都被当成新账号。
+    // 判据放**服务端**（hasHistory，不限当天）：本地标记重装/换设备即丢，
+    // 恰恰就是本 bug 的场景（换设备后照样被当新人），只有服务端知道「这个人有没有历史」。
+    // 旧后端不返回 hasHistory → 前端降级 false = 新账号口径，即本批之前的行为（不崩、不报错）。
+    // 双端（adai-web / adai-app）文案必须**逐字一致**：同一个人换端打开不该看到两种阿呆。
+    final bool isNewAccount = !_hasHistory;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1439,11 +1455,17 @@ class _FeedPageState extends State<FeedPage> {
                         fontWeight: FontWeight.w600,
                         height: 1.4)),
                 const SizedBox(height: 6),
-                const Text('今天还没听你说点什么，随便问我一句——点下面的也行。',
-                    style: TextStyle(
+                // 新账号：能力引导（三个开场问句是「第一次能干什么」）；老用户：只提醒接着聊，
+                // 不再给上手引导——他早就知道阿呆能干什么。
+                Text(
+                    isNewAccount
+                        ? '今天还没听你说点什么，随便问我一句——点下面的也行。'
+                        : '今天还没听你说点什么。接着上次的聊也行，我记着。',
+                    style: const TextStyle(
                         fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
                 const SizedBox(height: 18),
-                for (final q in _firstMeetingQuestions) _openingQuestion(q),
+                if (isNewAccount)
+                  for (final q in _firstMeetingQuestions) _openingQuestion(q),
                 const SizedBox(height: 6),
                 const Text('也可以直接说点什么，或者丢张图给我。',
                     style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
@@ -1462,6 +1484,11 @@ class _FeedPageState extends State<FeedPage> {
   ///
   /// 2026-09-17 P1-UI14：它们是**任何**空 Feed 都能用的能力引导（用户 2026-09-16 拍板保留），
   /// 不是「新用户专属」——老用户今天没记录也照样能从这里点开一个问题。
+  ///
+  /// 2026-09-18 空态分流（本批，口径收窄）：**仅新账号空态展示**。
+  /// P1-UI14 的前提（「老用户今天没记录也照样想从这问」）被真实场景推翻——
+  /// 老用户跨日打开时看到的就是这三句上手问句，观感是「你把我当新来的」。
+  /// 老用户空态改为「接着上次的聊也行，我记着」，这三句只留给真·新账号（hasHistory=false）。
   static const List<String> _firstMeetingQuestions = [
     '你能干什么？',
     '你有什么特别的能力？',

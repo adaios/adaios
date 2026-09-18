@@ -60,6 +60,10 @@ class _MainPageState extends State<MainPage>
 
   List<FeedCardData> _cards = [];
   int _totalToday = 0;
+  // 2026-09-18 空态分流（REVIEW P1-UI14 后续）：这个用户有没有过历史记录（服务端判，不限当天）。
+  // 只用于空态——`_hasHistory == true` 说明「老用户今天还没聊」，不该再摆新账号的能力引导；
+  // 旧后端不返回该字段时 fromJson 降级 false，即维持既有空态行为。
+  bool _hasHistory = false;
   int _currentPage = 0;
   String _brief = '';
   bool _loading = true;
@@ -284,6 +288,7 @@ class _MainPageState extends State<MainPage>
           .toList();
       setState(() {
         _totalToday = feed.totalToday;
+        _hasHistory = feed.hasHistory; // 空态分流判据（随每次 feed 刷新同步，跨日/重装后都以此为准）
         _feedError = null; // P1-6：刷新成功清错误
         // P1-3（2026-08-23 app 体感修复）：刷新替换 page0（防陈旧，MD1 语义），
         // 保留已加载的更早页（_cards 头部 = 最早页，尾部 = page0）——滚动位置/加载进度不丢
@@ -330,6 +335,7 @@ class _MainPageState extends State<MainPage>
           .toList();
       setState(() {
         _totalToday = feed.totalToday;
+        _hasHistory = feed.hasHistory; // 空态分流判据（首载/重试路径，与 _refresh 同口径）
         _currentPage = 0;
         _cards = allCards;
         _feedError = null; // P1-6：成功清错误
@@ -1825,6 +1831,13 @@ class _MainPageState extends State<MainPage>
     // 2026-09-17 REVIEW P1-UI14：空 Feed ≠ 新用户。老用户今天恰好没记录也会走到这里，
     // 原来的「第一次见」+ 自我介绍把他当成了陌生人（真实用户反馈）。
     // 故空态文案改为**中性**：只陈述「今天还没聊」，不假设「第一次」；不再自我介绍。
+    // 2026-09-18（P1-UI14 后续，本批）：中性还不够——老用户每天凌晨跨日打开 App，
+    // Feed 必然为空，却仍被摆上三个「你能干什么？」的新账号能力引导，体感依旧是被当成新人。
+    // 所以按服务端 `hasHistory` 分流：真·新账号保留能力引导（他确实需要知道阿呆能干什么），
+    // 老用户改成「接着上次聊」——既承认他来过，也不逼他重新自我介绍。
+    // 判据必须放服务端：Feed 按「当天」切数据，本地存不下「他有没有历史」——
+    // 本地标记一重装/换设备就丢，而重装后首次打开正是本 bug 的现场，前端无从分辨。
+    // 旧后端不返回 `hasHistory` → fromJson 降级 false → 走新账号分支（= 既有行为，不崩不报错）。
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -1870,11 +1883,15 @@ class _MainPageState extends State<MainPage>
                       fontWeight: FontWeight.w600,
                       height: 1.4)),
               const SizedBox(height: 6),
-              const Text('今天还没听你说点什么，随便问我一句——点下面的也行。',
-                  style: TextStyle(
+              Text(_hasHistory
+                      ? '今天还没听你说点什么。接着上次的聊也行，我记着。'
+                      : '今天还没听你说点什么，随便问我一句——点下面的也行。',
+                  style: const TextStyle(
                       fontSize: 13, color: AppColors.darkGrey5, height: 1.5)),
               const SizedBox(height: 16),
-              for (final q in _firstMeetingQuestions) _openingQuestion(q),
+              // 能力引导只给真·新账号（老用户不必再被问一遍「你能干什么」；详见上方分流注释）
+              if (!_hasHistory)
+                for (final q in _firstMeetingQuestions) _openingQuestion(q),
               const SizedBox(height: 4),
               const Text('也可以直接说点什么，或者丢张图给我。',
                   style: TextStyle(fontSize: 12, color: AppColors.darkGrey6)),
@@ -1890,8 +1907,12 @@ class _MainPageState extends State<MainPage>
   /// 刻意只用 Kernel 基础能力（记录 / 问答 / 记忆）——新用户插件默认全关，
   /// 只有这几件事是**真的能立刻跑起来**的；拿没开的能力当招牌就是骗人。
   ///
-  /// 2026-09-17 P1-UI14：它们是**任何**空 Feed 都能用的能力引导（用户 2026-09-16 拍板保留），
-  /// 不是「新用户专属」——老用户今天没记录也照样能从这里点开一个问题。
+  /// 2026-09-17 P1-UI14：它们本身是**任何**空 Feed 都能用的能力引导（用户 2026-09-16 拍板保留），
+  /// 不是「新用户专属」；老用户今天没记录也可能想从这里点开一个问题。
+  ///
+  /// 2026-09-18：但「摆出来」与「能用」是两回事——老用户每天跨日看到这三问，就是被当成新人。
+  /// 故**仅新账号空态展示**（`_hasHistory == false`）；老用户空态不渲染，改说「接着上次的聊也行」。
+  /// 问句对应的能力对老用户依然可用，只是不再由阿呆主动摆出来（他早就知道阿呆能干什么）。
   static const List<String> _firstMeetingQuestions = [
     '你能干什么？',
     '你有什么特别的能力？',

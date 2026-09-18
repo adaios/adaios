@@ -1788,11 +1788,19 @@ class FeedResponse {
   final List<FeedEntryResponse> entries;
   final int totalToday;
 
-  FeedResponse({required this.entries, required this.totalToday});
+  /// 2026-09-18 空态分流（对齐 adai-app 同名字段）：这个用户**有没有过历史记录**（不限当天）。
+  /// 判据必须放服务端：本地标记重装/换设备即丢，而「跨日打开 Feed 为空」正是本 bug 的场景
+  /// （老用户每天凌晨都会被本地标记当成新账号）。
+  /// 默认 false = 真·新账号口径：旧后端不返回该字段时降级为当前行为（不崩、不报错）。
+  final bool hasHistory;
+
+  FeedResponse({required this.entries, required this.totalToday, this.hasHistory = false});
 
   factory FeedResponse.fromJson(Map<String, dynamic> json) => FeedResponse(
     entries: (json['entries'] as List).map((e) => FeedEntryResponse.fromJson(e)).toList(),
     totalToday: json['totalToday'] as int? ?? 0,
+    // 旧后端无此字段 → ?? false（降级为新账号口径，即改动前的行为）
+    hasHistory: json['hasHistory'] as bool? ?? false,
   );
 }
 

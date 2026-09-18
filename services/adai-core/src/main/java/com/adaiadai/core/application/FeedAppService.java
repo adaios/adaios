@@ -95,7 +95,12 @@ public class FeedAppService {
         final int querySize = size <= 0 ? 5 : size;
         final int queryPage = Math.max(page, 0);
 
-        List<ContentRecord> allRecords = recordRepository.findAll(userId).stream()
+        // 2026-09-18（REVIEW P1-UI14 复发修复）：空 Feed 必须能区分「真·新账号」与「老用户今天恰好没记录」，
+        // 而判据只能放服务端——前端本地存「我是老用户」的标记一重装/换设备就丢，正是老用户被当新人的那个场景。
+        // findAll 本来就是为筛当天而读的，hasHistory 由它派生，零额外 IO。
+        List<ContentRecord> allUserRecords = recordRepository.findAll(userId);
+        boolean hasHistory = !allUserRecords.isEmpty();
+        List<ContentRecord> allRecords = allUserRecords.stream()
                 .filter(r -> r.createdAt().toLocalDate().equals(queryDate))
                 .toList();
         List<Memory> allMemories = memoryService.findByDate(userId, queryDate);
@@ -208,9 +213,9 @@ public class FeedAppService {
             }
         }
 
-        log.info("Feed 分页 | date={} | 总记录={} | 总条目={} | page={} | size={} | 返回={}条",
-                queryDate, totalToday, allEntries.size(), queryPage, querySize, pageEntries.size());
-        return new FeedResponse(pageEntries, totalToday);
+        log.info("Feed 分页 | date={} | 老用户={} | 总记录={} | 总条目={} | page={} | size={} | 返回={}条",
+                queryDate, hasHistory, totalToday, allEntries.size(), queryPage, querySize, pageEntries.size());
+        return new FeedResponse(pageEntries, totalToday, hasHistory);
     }
 
     public FeedResponse getFeed(String userId, LocalDate date) {
@@ -542,8 +547,17 @@ public class FeedAppService {
 
     // ── DTO ──
 
-    /** Feed 响应（分页版，不含 brief，brief 单独从 /api/v1/brief 获取） */
-    public record FeedResponse(List<FeedEntry> entries, int totalToday) {}
+    /**
+     * Feed 响应（分页版，不含 brief，brief 单独从 /api/v1/brief 获取）。
+     *
+     * @param entries    本页条目
+     * @param totalToday 今日核心条目数（前端分页终止判据）
+     * @param hasHistory 该用户**是否有过任何历史记录**（不限今天）——空 Feed 分流的唯一判据：
+     *                   {@code false} = 真·新账号（空态播能力引导三问）；
+     *                   {@code true} = 老用户今天恰好还没记录（空态改「接着上次的聊也行」）。
+     *                   2026-09-18 新增（REVIEW P1-UI14 复发修复：老用户被当成新用户）。
+     */
+    public record FeedResponse(List<FeedEntry> entries, int totalToday, boolean hasHistory) {}
 
     public record FeedEntry(
             String type, String id, String sourceRecordId,

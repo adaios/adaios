@@ -32,6 +32,11 @@ class _Backend {
   List<Map<String, dynamic>> feedPage0 = [];
   List<Map<String, dynamic>> feedPage1 = [];
   int feedTotalToday = 0;
+  // 2026-09-18 空态分流：这个用户有没有过历史记录（服务端判，不限当天）。
+  bool feedHasHistory = false;
+  /// 是否在 Feed 响应里带 `hasHistory` 字段——false 用来模拟**旧后端**，
+  /// 契约要求前端此时降级为 false（新账号空态），不得崩/报错。
+  bool feedIncludesHasHistory = true;
 
   final List<http.Request> requests = [];
   final Map<String, Future<http.Response> Function(http.Request)> handlers = {};
@@ -44,6 +49,7 @@ class _Backend {
       return Future.value(_json({
         'entries': page == 0 ? feedPage0 : feedPage1,
         'totalToday': feedTotalToday,
+        if (feedIncludesHasHistory) 'hasHistory': feedHasHistory,
       }));
     };
     handlers['/api/v1/records'] = (req) {
@@ -170,6 +176,37 @@ void main() {
       expect(find.text('我该怎么用你？'), findsOneWidget);
       expect(find.text('还没有记录'), findsNothing);
       expect(find.text('📝 记录心情'), findsNothing);
+    });
+
+    testWidgets('空态（老用户 hasHistory:true）：不摆新账号能力引导，改说「接着上次的聊也行」', (tester) async {
+      final b = _Backend()..feedHasHistory = true;
+      await _pump(tester, b);
+
+      // 2026-09-18：老用户（有过历史记录）当天没记录时，Feed 也为空，但不能再被当成新账号。
+      // 三个「你能干什么」是给真·新账号的能力引导，对老用户是噪声 + 冒犯。
+      expect(find.text('你能干什么？'), findsNothing);
+      expect(find.text('你有什么特别的能力？'), findsNothing);
+      expect(find.text('我该怎么用你？'), findsNothing);
+      expect(find.text('今天还没听你说点什么。接着上次的聊也行，我记着。'), findsOneWidget,
+          reason: '老用户空态要承认他来过（「我记着」），并给出延续性动作');
+      expect(find.text('今天还没听你说点什么，随便问我一句——点下面的也行。'), findsNothing,
+          reason: '新账号那句「点下面的也行」指向的正是老用户看不到的三个问句');
+      expect(find.text('也可以直接说点什么，或者丢张图给我。'), findsOneWidget,
+          reason: '底部入口对两种账号都成立，老用户保留');
+      expect(find.textContaining('第一次见'), findsNothing);
+      expect(find.textContaining('新用户'), findsNothing);
+      expect(find.textContaining('我是阿呆'), findsNothing);
+    });
+
+    testWidgets('空态（旧后端响应缺 hasHistory 字段）：降级为新账号空态，能力引导仍在', (tester) async {
+      final b = _Backend()..feedIncludesHasHistory = false;
+      await _pump(tester, b);
+
+      // 契约：旧后端不返回该字段时必须降级为 false，行为与改造前完全一致（不崩、不报错）。
+      expect(find.text('今天还没听你说点什么，随便问我一句——点下面的也行。'), findsOneWidget);
+      expect(find.text('你能干什么？'), findsOneWidget);
+      expect(find.text('你有什么特别的能力？'), findsOneWidget);
+      expect(find.text('我该怎么用你？'), findsOneWidget);
     });
 
     testWidgets('开场问句：点击直接发问（不是预填），欢迎卡让位', (tester) async {

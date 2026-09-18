@@ -24,7 +24,7 @@ class FeedControllerTest {
     void getFeed_returnsOk() throws Exception {
         var feedService = mock(FeedAppService.class);
         when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FeedAppService.FeedResponse(List.of(), 0));
+                .thenReturn(new FeedAppService.FeedResponse(List.of(), 0, false));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
 
@@ -38,7 +38,7 @@ class FeedControllerTest {
     void getFeed_withDateParam() throws Exception {
         var feedService = mock(FeedAppService.class);
         when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FeedAppService.FeedResponse(List.of(), 2));
+                .thenReturn(new FeedAppService.FeedResponse(List.of(), 2, false));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
 
@@ -51,7 +51,7 @@ class FeedControllerTest {
     void getFeed_withPaginationParams() throws Exception {
         var feedService = mock(FeedAppService.class);
         when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
-                .thenReturn(new FeedAppService.FeedResponse(List.of(), 10));
+                .thenReturn(new FeedAppService.FeedResponse(List.of(), 10, false));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
 
@@ -69,7 +69,7 @@ class FeedControllerTest {
                 .thenReturn(new FeedAppService.FeedResponse(
                         List.of(new FeedAppService.FeedEntry("record", "r1", null, "title", "content",
                                 List.of("tag"), "14:30", null, null, null, "life", "08-03", null, null)),
-                        1
+                        1, false
                 ));
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
@@ -78,6 +78,24 @@ class FeedControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries[0].type").value("record"))
                 .andExpect(jsonPath("$.entries[0].content").value("content"));
+    }
+
+    /**
+     * 2026-09-18（REVIEW P1-UI14 复发修复）：空 Feed 的分流判据必须出现在契约里——
+     * 前端据此决定空态播「能力引导三问」（新账号）还是「接着上次的聊」（老用户）。
+     */
+    @Test
+    void getFeed_returnsHasHistory() throws Exception {
+        var feedService = mock(FeedAppService.class);
+        when(feedService.getFeed(any(), any(), anyInt(), anyInt()))
+                .thenReturn(new FeedAppService.FeedResponse(List.of(), 0, true));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new FeedController(feedService)).build();
+
+        mvc.perform(get("/api/v1/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalToday").value(0))
+                .andExpect(jsonPath("$.hasHistory").value(true));
     }
 
     @Test

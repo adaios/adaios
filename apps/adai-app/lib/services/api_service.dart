@@ -1602,12 +1602,23 @@ class FeedEntryType {
 class FeedResponse {
   final List<FeedEntryResponse> entries;
   final int totalToday;
+  // 2026-09-18 空态分流：这个用户**有没有过历史记录**（不限当天，服务端口径）。
+  // 为什么要服务端判：Feed 按「当天」切数据，老用户当天没记录时 entries 也为空，
+  // 前端拿不到任何「他是不是新账号」的本地证据——本地标记一重装/换设备就没了，
+  // 而重装后首次打开恰恰就是本 bug 的现场（老用户被当成陌生人）。
+  // 旧后端不返回该字段 → 降级 false（= 维持既有空态行为，不崩不报错）。
+  final bool hasHistory;
 
-  FeedResponse({required this.entries, required this.totalToday});
+  FeedResponse({
+    required this.entries,
+    required this.totalToday,
+    this.hasHistory = false,
+  });
 
   factory FeedResponse.fromJson(Map<String, dynamic> json) => FeedResponse(
     entries: (json['entries'] as List).map((e) => FeedEntryResponse.fromJson(e)).toList(),
     totalToday: json['totalToday'] as int? ?? 0,
+    hasHistory: json['hasHistory'] as bool? ?? false,
   );
 }
 

@@ -696,4 +696,59 @@ class FeedAppServiceTest {
         assertTrue(resp.entries().stream().noneMatch(e -> "给妈打个电话".equals(e.content())),
                 "待办内容不得以任何条目形式进 Feed");
     }
+
+    // ── 2026-09-18（REVIEW P1-UI14 复发修复）：hasHistory = 空 Feed 分流的老用户判据 ──
+
+    /** 只注入记录仓库的 FeedAppService（其余协作者全空）——hasHistory 由 findAll 派生，别的无关。 */
+    private FeedAppService serviceWithRecords(String userId, RecordRepository recordRepository) {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.indices()).thenReturn(Map.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        return new FeedAppService(recordRepository, memoryService, cardRepository, market,
+                emptyPush(), pluginService(userId), defaultPushSettings(), TRADING_CLOCK);
+    }
+
+    private static ContentRecord noteAt(String id, LocalDate date) {
+        return new ContentRecord(id, "note", "user_input", "标题", "内容", List.of(), date.atTime(10, 0));
+    }
+
+    @Test
+    void hasHistory_true_whenOnlyEarlierDaysHaveRecords() {
+        // 老用户的真实处境：今天（09-04）还没有记录，但 09-01 记过 → Feed 空 ≠ 新用户
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("default")).thenReturn(List.of(noteAt("rec_1", LocalDate.of(2026, 9, 1))));
+
+        FeedAppService.FeedResponse resp = serviceWithRecords("default", records)
+                .getFeed("default", LocalDate.of(2026, 9, 4), 0, 10);
+
+        assertEquals(0, resp.totalToday(), "今天没有核心记录 → 前端走空态");
+        assertTrue(resp.hasHistory(), "但历史上有记录 → 老用户，空态不得播新用户引导");
+    }
+
+    @Test
+    void hasHistory_false_whenUserHasNoRecordAtAll() {
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("default")).thenReturn(List.of());
+
+        FeedAppService.FeedResponse resp = serviceWithRecords("default", records)
+                .getFeed("default", LocalDate.of(2026, 9, 4), 0, 10);
+
+        assertFalse(resp.hasHistory(), "零记录的新账号 → 空态播能力引导三问");
+    }
+
+    @Test
+    void hasHistory_true_whenTodayHasRecords() {
+        // 今天有记录时根本走不到空态；此用例钉住判据不与「当天切分」耦合
+        RecordRepository records = mock(RecordRepository.class);
+        when(records.findAll("default")).thenReturn(List.of(noteAt("rec_1", LocalDate.of(2026, 9, 4))));
+
+        FeedAppService.FeedResponse resp = serviceWithRecords("default", records)
+                .getFeed("default", LocalDate.of(2026, 9, 4), 0, 10);
+
+        assertEquals(1, resp.totalToday());
+        assertTrue(resp.hasHistory());
+    }
 }
