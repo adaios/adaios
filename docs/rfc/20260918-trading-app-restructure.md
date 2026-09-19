@@ -355,4 +355,17 @@ A1（记录与入账链路）──→ A2（结构重排）──→ B（数字�
 
 **仍未修 7 条**：后端 P2-10 锚定日猜基准 · 后端 P2-5 web 未消费 `ledgerOnly`/`tradeTime` · 前端 P2-6 刷新无代际 · 等宽数字与 `FittedBox` · 竖排 `tradeDate` · 派生 id 冲突 · `UI_REFERENCE.md` 未同步。
 
-**阻塞**：`flutter test` 仍被 **Xcode license 未同意**挡住（`xcrun --show-sdk-path` 返回 license 提示 → `objective_c` native assets hook 崩）→ 测试与真机验收都需先 `sudo xcodebuild -license accept`；本轮**未提交、未部署**。
+**阻塞（已解除）**：`flutter test` 曾被 **Xcode license 未同意**挡住（`xcrun --show-sdk-path` 返回 license 提示 → `objective_c` native assets hook 崩）；用户 2026-09-19 晚执行 `sudo xcodebuild -license accept` 后解除。
+
+### 第七轮（2026-09-19 深夜）：测试第一次真正跑起来 + 四处修复
+
+**app 测试首次实跑：红 10 条 → 逐条修完 → `+385: All tests passed!`**（web 同批复跑 `+318: All tests passed!`）。
+
+**红的原因分四类（全是本批引入的，而 `flutter analyze` 一个字都没报）**：
+
+1. **折叠区 tap 落空**（P2-交易48 ×2 / 当日复盘 / 活跃市值）：折叠区在页面底部，`tester.tap` 没先滚入视口 → 展开没生效 → 断言找不到内容。修：tap 前 `ensureVisible`。
+2. **`AlertDialog` + `TextField` 的 intrinsic 高度炸**（A1-4）：实测 `RenderFlex overflowed by 99728 pixels` —— `AlertDialog` 用 `IntrinsicWidth` 包 content，而 `TextField` 的 intrinsic 高度在无界约束下异常。修：每个输入框给明确高度（56）。
+3. **P2-2 的修法把测试跑挂了**（当日候选渲染）：我把「进框前置在途」直接复用了 `_candidatesConfirming`，于是**对话框开着期间按钮一直画转圈** → `pumpAndSettle` 永不结束。修：拆出独立门闩 `_confirmDialogOpen`——开框只禁按钮，提交时才转圈。
+4. **`finally` 里立即 dispose controller**（A1-4，并**污染了后续 3 条无关用例，含 ProfilePage**）：对话框关闭有约 200ms 动画，期间 `TextField` 仍在用已释放的 controller → `ChangeNotifier.debugAssertNotDisposed` + 「deactivated widget's ancestor」。修：延迟 300ms 回收。
+
+**教训（本批最该记住的一条）**：**`flutter analyze` 0 issue ≠ 测试能过**——布局约束、无限动画、生命周期时序这三类问题**只在运行期暴露**；而"测试跑不了就先宣称已适配"是自欺（前端官纸面点出 6 条必红，事实证明还漏了 4 条）。

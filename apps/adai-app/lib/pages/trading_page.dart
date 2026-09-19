@@ -100,6 +100,10 @@ class _TradingPageState extends State<TradingPage> {
   // 此前整卡没有关闭出口，用户「关不掉」（只能逐行点小 × 真删数据）。收起只是本地隐藏，不删候选。
   bool _candidatesCollapsed = false;
   bool _candidatesDiscarding = false; // 「全部忽略」在途守卫（防连点重复删）
+  /// P2-2（2026-09-19）：二次确认框**开着**的门闩——用于禁用按钮、防双击叠框。
+  /// 必须与 `_candidatesConfirming` 区分：后者是**提交在途**（按钮画转圈）；若把「开框」也当在途，
+  /// 对话框开着期间按钮会一直转圈 → `pumpAndSettle` 永不结束（实测测试超时）。
+  bool _confirmDialogOpen = false;
   /// A1-8（2026-09-18）：上一次确认的**逐笔回执**（成功/只记账/已记过/失败原因）——
   /// 原来只有一条 3 秒 SnackBar 且失败只报第一条，用户没法核对"到底哪几笔没进去、为什么"。
   List<String> _lastConfirmReceipt = [];
@@ -574,7 +578,7 @@ class _TradingPageState extends State<TradingPage> {
   /// 全部确认入账：逐笔走 recordTrade 落库 → 清空候选 → 持仓即时刷新 + 复盘横幅触发。
   /// 2026-08-27 二修：截图候选缺成交日期会被后端拒（skipped）——确认前先拦截提示补日期。
   Future<void> _confirmCandidates() async {
-    if (_candidates.isEmpty || _candidatesConfirming) return;
+    if (_candidates.isEmpty || _candidatesConfirming || _confirmDialogOpen) return;
     final missingDateCount = _candidates.where(
         (c) => c.tradeDate == null || c.tradeDate!.isEmpty).length;
     if (missingDateCount > 0) {
@@ -582,10 +586,10 @@ class _TradingPageState extends State<TradingPage> {
           AppColors.darkOrange);
       return;
     }
-    // P2-2（2026-09-19 前端审查）：**进对话框之前就置在途**——原来 `_candidatesConfirming` 直到
-    // 点「确认入账」之后才置位，而按钮在对话框打开期间仍可点：双击会叠两层框、发两次 confirm，
-    // 第二次把回执覆盖成 duplicates，还会弹「这 N 笔之前已经记过了」的假警报。
-    setState(() => _candidatesConfirming = true);
+    // P2-2（2026-09-19 前端审查）：**进对话框之前就挂门闩**——原来按钮在对话框打开期间仍可点，
+    // 双击会叠两层框、发两次 confirm（第二次把回执覆盖成 duplicates，还会弹「已记过」假警报）。
+    // 门闩与「提交在途」分开：开框只禁用按钮，真正提交时才画转圈。
+    setState(() => _confirmDialogOpen = true);
     try {
       // A1-6（2026-09-18）：写操作也要确认——原来「全部忽略」（删）有 AlertDialog，
       // 「全部确认入账」（一次写十几笔）却直接落库，护栏正好装反。
@@ -601,6 +605,10 @@ class _TradingPageState extends State<TradingPage> {
         ),
       );
       if (ok != true || !mounted) return;
+      setState(() {
+        _confirmDialogOpen = false;
+        _candidatesConfirming = true; // 真正提交了，按钮才画转圈
+      });
       final result = await widget.api.confirmTradeLog();
       if (!mounted) return;
       setState(() {
@@ -647,8 +655,11 @@ class _TradingPageState extends State<TradingPage> {
       _showSnack('确认失败: ${_extractApiError(e)}', AppColors.darkOrange);
     } finally {
       // P2-2 兜底复位（覆盖「再看看」取消、中途 unmount、异常等所有路径）
-      if (mounted && _candidatesConfirming) {
-        setState(() => _candidatesConfirming = false);
+      if (mounted && (_confirmDialogOpen || _candidatesConfirming)) {
+        setState(() {
+          _confirmDialogOpen = false;
+          _candidatesConfirming = false;
+        });
       }
     }
   }
@@ -1330,7 +1341,7 @@ class _TradingPageState extends State<TradingPage> {
     final missingDateCount = _candidates
         .where((c) => c.tradeDate == null || c.tradeDate!.isEmpty)
         .length;
-    final canConfirm = !_candidatesConfirming && missingDateCount == 0;
+    final canConfirm = !_candidatesConfirming && !_confirmDialogOpen && missingDateCount == 0;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1605,32 +1616,46 @@ class _TradingPageState extends State<TradingPage> {
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDlg) => AlertDialog(
             title: Text('改这一笔（${c.name.isEmpty ? c.symbol : c.name}）'),
-            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                ChoiceChip(
-                  label: const Text('买入'),
-                  selected: dir == 'BUY',
-                  onSelected: (_) => setDlg(() => dir = 'BUY'),
+            // 2026-09-19：AlertDialog 的 content 会被 `IntrinsicWidth` 包裹，而 `TextField` 的
+            // 内在高度计算在无界约束下会炸（实测 `RenderFlex overflowed by 99728 pixels`）——
+            // 给个确定宽度即可（Flutter 对话框里放输入框的标准修法）。
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  ChoiceChip(
+                    label: const Text('买入'),
+                    selected: dir == 'BUY',
+                    onSelected: (_) => setDlg(() => dir = 'BUY'),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('卖出'),
+                    selected: dir == 'SELL',
+                    onSelected: (_) => setDlg(() => dir = 'SELL'),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                // 2026-09-19：`TextField` 的 intrinsic 高度在 `AlertDialog` 的 IntrinsicWidth 探测下
+                // 会炸（`RenderFlex overflowed by 99728 px`）——每个输入框给明确高度即可定住。
+                SizedBox(
+                  height: 56,
+                  child: TextField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: '成交价'),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('卖出'),
-                  selected: dir == 'SELL',
-                  onSelected: (_) => setDlg(() => dir = 'SELL'),
+                SizedBox(
+                  height: 56,
+                  child: TextField(
+                    controller: volCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '数量（股）'),
+                  ),
                 ),
               ]),
-              const SizedBox(height: 8),
-              TextField(
-                controller: priceCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: '成交价'),
-              ),
-              TextField(
-                controller: volCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '数量（股）'),
-              ),
-            ]),
+            ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
               TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
@@ -1667,9 +1692,14 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (mounted) _showSnack('没改成：${_extractApiError(e)}', AppColors.darkOrange);
     } finally {
-      // P3-3：局部 controller 用完即回收（同文件其余 controller 都在 dispose 回收）
-      priceCtrl.dispose();
-      volCtrl.dispose();
+      // P3-3（2026-09-19）：局部 controller 用完回收——但**不能立即 dispose**：
+      // 对话框关闭有约 200ms 动画，期间 TextField 仍在渲染、会用到已释放的 controller
+      // （实测 `ChangeNotifier.debugAssertNotDisposed` + 「deactivated widget's ancestor」断言，
+      // 并会污染后续用例）。延迟到动画结束再回收。
+      Future.delayed(const Duration(milliseconds: 300), () {
+        priceCtrl.dispose();
+        volCtrl.dispose();
+      });
     }
   }
 

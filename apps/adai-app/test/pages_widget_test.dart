@@ -535,6 +535,9 @@ void main() {
 
       expect(find.text('交易'), findsOneWidget);
       // 2026-09-18（RFC 20260918 A2）：账户/资金/市值收进「资金与配置」折叠区——先展开再断言
+      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('总资产'), findsOneWidget);
@@ -633,6 +636,9 @@ void main() {
 
       // 账户卡：总盈亏 = 资产 - 本金 = -39495.12（亏，绿；app 万单位显示 -3.9万）
       // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
+      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       // 2026-09-19（A2 隐私 + B3 口径）：金额默认打码，揭开后按千分位显示
@@ -658,6 +664,9 @@ void main() {
 
       // 总盈亏「—」+ 未设本金提示（不回落浮盈 1.5万——漏已实现盈亏误导，U32）
       // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
+      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('总盈亏'), findsOneWidget);
@@ -686,6 +695,11 @@ void main() {
         });
       };
       await pumpTrading(tester, b);
+      // 2026-09-19（A2）：当日总结收进「今天的操作」折叠区 —— 先滚入视口再展开
+      await tester.ensureVisible(find.text('今天的操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('今天的操作'));
+      await tester.pumpAndSettle();
 
       // 今日 N 笔 · 买/卖 · 时段分布 · 首末笔时间（纯客观数字）
       expect(find.textContaining('今日 4 笔'), findsOneWidget);
@@ -1075,6 +1089,9 @@ void main() {
       await pumpTrading(tester, b);
 
       // 展开折叠区（首页的金额即使展开也不露）
+      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.textContaining('464,235'), findsNothing, reason: 'A2 隐私：金额默认打码');
@@ -1718,12 +1735,18 @@ void main() {
       await pumpTrading(tester, b);
 
       // 2026-09-18（A2）：活跃市值卡收进「资金与配置」折叠区 —— 先展开
+      // 2026-09-19：折叠区在页面底部，**tap 前必须先滚入视口**（否则 tap 落空、展开不生效）
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('资金与配置'));
       await tester.pumpAndSettle();
       expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关卡标题');
       expect(find.text('空头区间'), findsOneWidget, reason: '用户判定空头 → 显示空头区间');
       expect(find.text('手动判定'), findsOneWidget, reason: '已手动判定副文案');
 
+      // 2026-09-19：展开后按钮仍在视口外 → 先滚入再点
+      await tester.ensureVisible(find.text('多头'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('多头'));
       await tester.pumpAndSettle();
 
@@ -1754,6 +1777,11 @@ void main() {
       mockBase(b);
       mockAccount(b, todayPnl: -1759.0, source: 'broker');
       await pumpTrading(tester, b);
+      // 2026-09-19（A2）：账户快照收进「资金与配置」折叠区 —— 先滚入并展开
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
 
       expect(find.text('券商口径 · ${md(DateTime.now())}'), findsOneWidget);
     });
@@ -1764,6 +1792,11 @@ void main() {
       final y = DateTime.now().subtract(const Duration(days: 1));
       mockAccount(b, todayPnl: -2837.0, source: 'calc', date: ymd(y));
       await pumpTrading(tester, b);
+      // 2026-09-19（A2）：账户快照收进「资金与配置」折叠区 —— 先滚入并展开
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
 
       expect(find.text('系统计算 · ${md(y)}（已过期）'), findsOneWidget);
     });

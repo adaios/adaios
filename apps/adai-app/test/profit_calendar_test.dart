@@ -83,6 +83,9 @@ void main() {
       expect(find.text('收益日历'), findsOneWidget);
       expect(find.text('${now.year} 年 ${now.month} 月'), findsOneWidget);
       // 当月合计：只有 day1 有真值 → +¥1,000.00
+      // P2-8（2026-09-19）：日历页金额**默认打码**——断言金额前先点右上 👁 揭开
+      await tester.tap(find.byIcon(Icons.visibility_off_outlined));
+      await tester.pumpAndSettle();
       expect(find.textContaining('1,000.00'), findsWidgets);
       // 缺值那天在格子里是「—」（不是 ¥0.00）
       expect(find.text('—'), findsWidgets);
