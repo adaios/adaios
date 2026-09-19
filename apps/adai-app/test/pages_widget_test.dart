@@ -396,8 +396,11 @@ void main() {
       final b = _Backend();
       mockDaily(b);
       await pumpTrading(tester, b);
+      // 2026-09-19（A2 隐私）：金额默认打码——本用例断言的正是金额，先揭开
+      await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
 
-      expect(find.text('+756'), findsOneWidget);   // 当日盈亏（金额，券商口径）
+      expect(find.text('+756.00'), findsOneWidget);   // 当日盈亏（券商口径；千分位 + 两位小数）
       expect(find.text('+2.14%'), findsOneWidget); // 今日涨跌幅
       expect(find.text('33.27%'), findsOneWidget); // 该票市值占总资产
       expect(find.text('仓位 62.24% · 现金 37.76%'), findsOneWidget); // 几成仓 + 现金比例
@@ -531,6 +534,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('交易'), findsOneWidget);
+      // 2026-09-18（RFC 20260918 A2）：账户/资金/市值收进「资金与配置」折叠区——先展开再断言
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       expect(find.text('总资产'), findsOneWidget);
       expect(find.text('贵州茅台'), findsOneWidget);
       expect(find.text('持仓明细'), findsOneWidget);
@@ -626,9 +632,15 @@ void main() {
       await pumpTrading(tester, b);
 
       // 账户卡：总盈亏 = 资产 - 本金 = -39495.12（亏，绿；app 万单位显示 -3.9万）
+      // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
+      // 2026-09-19（A2 隐私 + B3 口径）：金额默认打码，揭开后按千分位显示
+      await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
       expect(find.text('总资产'), findsOneWidget);
       expect(find.text('本金'), findsOneWidget);
-      expect(find.textContaining('-3.9万'), findsOneWidget);
+      expect(find.textContaining('-39,495.12'), findsOneWidget);
       // 2026-08-22：自选/清仓区块已移除（管理归 web，能力不删）
       expect(find.text('自选股 · 买点信号'), findsNothing);
       expect(find.text('清仓复盘'), findsNothing);
@@ -645,6 +657,9 @@ void main() {
       await pumpTrading(tester, b);
 
       // 总盈亏「—」+ 未设本金提示（不回落浮盈 1.5万——漏已实现盈亏误导，U32）
+      // 2026-09-18（A2）：账户信息收进折叠区 —— 先展开
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       expect(find.text('总盈亏'), findsOneWidget);
       expect(find.text('—'), findsWidgets);
       expect(find.text('未设本金，设后显示总盈亏'), findsOneWidget);
@@ -914,8 +929,11 @@ void main() {
       expect(find.text('100股 @93.48'), findsOneWidget);
       expect(find.text('2026-08-26'), findsNWidgets(2)); // 2026-08-27：截图日期列透出，确认入账按此日期
 
-      // 全部确认入账 → 清空候选 + 人话反馈
+      // 全部确认入账 → 二次确认（A1-6，2026-09-18：写操作也确认）→ 清空候选 + 人话反馈
       await tester.tap(find.text('全部确认入账'));
+      await tester.pumpAndSettle();
+      expect(find.text('要记这 2 笔？'), findsOneWidget);
+      await tester.tap(find.text('确认入账'));
       await tester.pumpAndSettle();
       expect(find.textContaining('好，2 笔已经记进账了'), findsOneWidget); // P2-UX4：阿呆口吻
       expect(find.textContaining('今日截图候选'), findsNothing);
@@ -955,11 +973,11 @@ void main() {
       expect(find.text('补日期'), findsOneWidget);
       expect(find.byIcon(Icons.close), findsNWidgets(2));
 
-      // 确认被拦截：缺日期候选未补前不发 confirm
-      await tester.tap(find.text('全部确认入账'));
-      await tester.pumpAndSettle();
+      // A1-7（2026-09-18）：缺日期时按钮**直接置灰**并写明原因（原来点了才被 SnackBar 教育）
+      expect(find.text('还有 1 笔缺日期'), findsOneWidget);
+      expect(find.textContaining('没认到成交日期'), findsOneWidget);
       expect(confirmCalled, isFalse);
-      expect(find.textContaining('缺成交日期'), findsNWidgets(2)); // 行内警示 + snack 提示
+      expect(find.textContaining('缺成交日期'), findsOneWidget); // 行内逐笔警示
 
       // 补日期 → 日期选择器弹出（选今天）→ 确定 → 调补日期 API → 候选刷新后警示消失
       await tester.pump(const Duration(seconds: 4)); // 等确认拦截 snack（3s）消失，避免干扰后续断言
@@ -1008,6 +1026,69 @@ void main() {
       expect(body.containsKey('direction'), isFalse);
     });
 
+    testWidgets('截图入账 A1-4：候选行可就地改（价格/数量/方向 → PUT trade-log/meta）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'id': 'cand_1', 'symbol': '000831', 'name': '中国稀土', 'direction': 'BUY',
+          'price': '53.30', 'volume': 200, 'tradeDate': '2026-09-18', 'source': 'image', 'complete': true},
+      ];
+      String? sentBody;
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json(candidates);
+      b.handlers['/api/v1/trading/trade-log/meta'] = (req) async {
+        sentBody = req.body;
+        candidates = [
+          {'id': 'cand_1', 'symbol': '000831', 'name': '中国稀土', 'direction': 'SELL',
+            'price': '53.30', 'volume': 300, 'tradeDate': '2026-09-18', 'source': 'image', 'complete': true},
+        ];
+        return _json({'updated': true});
+      };
+      await pumpTrading(tester, b);
+
+      // 整行可点 → 就地编辑对话框（识别错了不用丢弃重录）
+      await tester.tap(find.text('中国稀土 (000831)'));
+      await tester.pumpAndSettle();
+      expect(find.text('改这一笔（中国稀土）'), findsOneWidget);
+
+      // 数量 200 → 300、方向 买 → 卖，保存
+      await tester.enterText(find.widgetWithText(TextField, '数量（股）'), '300');
+      await tester.tap(find.text('卖出'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      expect(sentBody, isNotNull);
+      final body = jsonDecode(sentBody!) as Map<String, dynamic>;
+      expect(body['id'], 'cand_1', reason: 'A1-4：必须带 id 行级定位');
+      expect(body['volume'], 300);
+      expect(body['direction'], 'SELL');
+    });
+
+    testWidgets('隐私 A2：首页默认态不露金额（只有比例），👁 揭开后才显示', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 464235.18, 'cash': 24101.01, 'available': 24101.01,
+            'withdrawable': 24101.01, 'marketValue': 101213.0, 'pnl': 20015.9,
+            'todayPnl': 1106.0, 'principal': 150000.0, 'snapshotDate': '2026-09-18',
+          });
+      await pumpTrading(tester, b);
+
+      // 展开折叠区（首页的金额即使展开也不露）
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('464,235'), findsNothing, reason: 'A2 隐私：金额默认打码');
+      expect(find.textContaining('24,101.01'), findsNothing, reason: '现金同样打码');
+      expect(find.textContaining('万'), findsNothing, reason: '不再用「万」单位');
+      expect(find.textContaining('••••'), findsWidgets, reason: '打码占位可见');
+
+      // 👁 揭开 → 与 web 同口径的千分位（快照卡「总资产」+ 资金卡「现金…总资产」两处都显示）
+      await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('464,235.18'), findsNWidgets(2), reason: '揭开后千分位 + 两位小数');
+      expect(find.textContaining('万'), findsNothing, reason: '揭开后也不得出现「万」（B3 口径统一）');
+    });
+
     testWidgets('截图入账：丢弃一条候选（× → DELETE，本地移除）', (tester) async {
       final b = _Backend();
       mockBase(b);
@@ -1034,10 +1115,85 @@ void main() {
       // 第一行的 ×（两行各有 ×，取第一个）
       await tester.tap(find.byIcon(Icons.close).first);
       await tester.pumpAndSettle();
+      // A1-5（2026-09-18）：行级删除补二次确认（原来逐个删反而没有确认）
+      expect(find.text('丢弃这一笔？'), findsOneWidget);
+      await tester.tap(find.text('丢弃'));
+      await tester.pumpAndSettle();
 
       expect(discarded, isTrue);
       expect(find.text('云南锗业 (002428)'), findsNothing);
       expect(find.text('京东方A (000725)'), findsOneWidget);
+    });
+
+    testWidgets('截图入账 P0-交易59：候选卡可收起（失败后「关不掉」的出口）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      b.handlers['/api/v1/trading/trade-log'] = (_) async => _json([
+        {'symbol': '000831', 'name': '中国稀土', 'direction': 'SELL',
+          'price': '53.30', 'volume': 200, 'tradeTime': '10:03:44',
+          'tradeDate': '2026-09-18', 'source': 'image', 'complete': true, 'id': 'cand_1'},
+      ]);
+      await pumpTrading(tester, b);
+
+      // 成交时间要显示出来——同价同量分单靠它区分（生产实据：000831 两笔各 200 股 @53.300）
+      expect(find.text('10:03:44'), findsOneWidget);
+
+      // 收起：明细与按钮隐藏，标题仍在（本地隐藏，不删后端候选）
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('中国稀土 (000831)'), findsNothing);
+      expect(find.text('全部确认入账'), findsNothing);
+      expect(find.textContaining('今日截图候选 1 笔'), findsOneWidget,
+          reason: '收起只是隐藏明细，候选没有被删');
+
+      // 展开：回来
+      await tester.tap(find.text('展开'));
+      await tester.pumpAndSettle();
+      expect(find.text('中国稀土 (000831)'), findsOneWidget);
+    });
+
+    testWidgets('截图入账 P0-交易59：全部忽略（二次确认 → 逐条按 id 删）', (tester) async {
+      final b = _Backend();
+      mockBase(b);
+      var candidates = [
+        {'symbol': '000831', 'name': '中国稀土', 'direction': 'SELL',
+          'price': '53.30', 'volume': 200, 'tradeDate': '2026-09-18', 'source': 'image',
+          'complete': true, 'id': 'cand_1'},
+        {'symbol': '000636', 'name': '风华高科', 'direction': 'BUY',
+          'price': '56.27', 'volume': 200, 'tradeDate': '2026-09-18', 'source': 'image',
+          'complete': true, 'id': 'cand_2'},
+      ];
+      final deletedIds = <String>[];
+      b.handlers['/api/v1/trading/trade-log'] = (req) async {
+        if (req.method == 'DELETE') {
+          final id = req.url.queryParameters['id'] ?? '';
+          deletedIds.add(id);
+          candidates = candidates.where((c) => c['id'] != id).toList();
+          return _json({'discarded': true});
+        }
+        return _json(candidates);
+      };
+      await pumpTrading(tester, b);
+      expect(find.textContaining('今日截图候选 2 笔'), findsOneWidget);
+
+      // 取消 → 不删
+      await tester.tap(find.text('全部忽略'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('忽略这 2 笔候选'), findsOneWidget);
+      await tester.tap(find.text('先留着'));
+      await tester.pumpAndSettle();
+      expect(deletedIds, isEmpty, reason: '点了「先留着」就不该删');
+      expect(find.textContaining('今日截图候选 2 笔'), findsOneWidget);
+
+      // 确认 → 两条各删一次（按 id 行级定位，不误伤）
+      await tester.tap(find.text('全部忽略'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('忽略'));
+      await tester.pumpAndSettle();
+
+      expect(deletedIds..sort(), ['cand_1', 'cand_2'], reason: '两条都要删掉');
+      expect(find.textContaining('今日截图候选'), findsNothing);
+      expect(find.textContaining('候选都清掉了'), findsOneWidget);
     });
 
     testWidgets('截图入账 P0-UI13：缺日期候选的 × 丢弃入口与「补日期」并存（可点）', (tester) async {
@@ -1062,8 +1218,10 @@ void main() {
       expect(find.text('补日期'), findsOneWidget);
       expect(find.byIcon(Icons.close), findsOneWidget);
 
-      // × 真的可点：DELETE 后本地移除该行，不需先补日期
+      // × 真的可点：二次确认（A1-5）→ DELETE 后本地移除该行，不需先补日期
       await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('丢弃'));
       await tester.pumpAndSettle();
       expect(discarded, isTrue);
       expect(find.text('云南锗业 (002428)'), findsNothing);
@@ -1233,13 +1391,16 @@ void main() {
         },
       ]);
       await pumpTrading(tester, b);
+      // 2026-09-19（A2 隐私）：持仓行金额默认打码——本用例断言金额，先揭开
+      await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
 
       expect(find.text('京东方A'), findsOneWidget);
       expect(find.text('000725'), findsOneWidget);
-      expect(find.text('+260'), findsOneWidget); // 盈=红大字
+      expect(find.textContaining('+260.00'), findsOneWidget); // 盈=红（千分位口径）
       expect(find.text('+5.0%'), findsOneWidget);
       expect(find.text('贵州茅台'), findsOneWidget);
-      expect(find.text('-1000'), findsOneWidget); // 亏=绿大字
+      expect(find.textContaining('-1,000.00'), findsOneWidget); // 亏=绿（千分位口径）
       expect(find.text('-0.7%'), findsOneWidget);
       expect(find.text('共 2 只'), findsOneWidget);
     });
@@ -1344,8 +1505,10 @@ void main() {
       await pumpTrading(tester, b);
 
       // 持仓卡原样渲染（无批次行、无整页错误态、无重试按钮）
+      await tester.tap(find.text('看金额')); // 2026-09-19（A2 隐私）：金额默认打码
+      await tester.pumpAndSettle();
       expect(find.text('贵州茅台'), findsOneWidget);
-      expect(find.text('+1.0万'), findsOneWidget); // 盈亏大字（万单位）
+      expect(find.textContaining('+10,000.00'), findsOneWidget); // 盈亏（千分位口径）
       expect(find.textContaining('个批次'), findsNothing);
       expect(find.text('重试'), findsNothing);
     });
@@ -1554,6 +1717,9 @@ void main() {
       };
       await pumpTrading(tester, b);
 
+      // 2026-09-18（A2）：活跃市值卡收进「资金与配置」折叠区 —— 先展开
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
       expect(find.text('活跃市值（指南针）'), findsOneWidget, reason: '开关卡标题');
       expect(find.text('空头区间'), findsOneWidget, reason: '用户判定空头 → 显示空头区间');
       expect(find.text('手动判定'), findsOneWidget, reason: '已手动判定副文案');

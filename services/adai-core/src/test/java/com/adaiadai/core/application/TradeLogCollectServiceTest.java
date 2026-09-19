@@ -77,10 +77,14 @@ class TradeLogCollectServiceTest {
             return TradingParseAppService.ParseResult.unmatched();
         });
         trading = mock(TradingAppService.class);
+        // 2026-09-19（P1-4，三官深审）：confirm 现在把「判重 → 锚定分派 → 落账」整段放进
+        // per-user 锁（`candidateLock`）。mock 默认返回 null → `synchronized(null)` 会 NPE，
+        // 这里给一把真锁（单线程用例下等价于无竞争）。
+        when(trading.candidateLock(any())).thenReturn(new Object());
         service = new TradeLogCollectService(parse, repository, trading, mock(NameToSymbolResolver.class));
         // 2026-09-15 防重复入账：Mockito 对 Optional 返回类型默认给 null（不是 empty），
         // 未显式 stub 的用例会 NPE——此处统一兜底为「没有记过」，各用例可自行覆盖。
-        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any()))
+        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(java.util.Optional.empty());
     }
 
@@ -90,7 +94,7 @@ class TradeLogCollectServiceTest {
         // 「成交编号优先 / 指纹兜底」判重，命中则跳过并如实回报，不再重复落库。
         service.collect("default", "我清仓了京东方", "text");
         assertEquals(1, service.todayCandidates("default").size());
-        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any()))
+        when(trading.findRecordedTrade(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(java.util.Optional.of(new com.adaiadai.core.domain.trading.TradeRecord(
                         "trade_x", "000725", "京东方", TradeDirection.SELL, new BigDecimal("6.10"),
                         5000, new BigDecimal("30500.00"), java.time.LocalDate.now(),
@@ -171,6 +175,9 @@ class TradeLogCollectServiceTest {
     void confirm_recordTradeThrows_candidateKeptAndFailureReported() {
         // recordTrade 抛错（如 SELL 超持仓）→ 该候选保留 + 失败明细返回，不静默清空
         TradingAppService trading = mock(TradingAppService.class);
+        // 2026-09-19（P1-4）：confirm 的「判重 → 分派 → 落账」现在整段在 per-user 锁内；
+        // 局部新建的 mock 必须同样给出真锁，否则 synchronized(null) → NPE。
+        when(trading.candidateLock(any())).thenReturn(new Object());
         doThrow(new TradingException("卖出数量超过持仓: 000725（持有 100 股）"))
                 .when(trading).recordTradeWithOrderId(any(), any(), any(), any(), any(), anyInt(),
                 any(), any(), any(), any(), any(), any(), any(), any());
@@ -191,6 +198,9 @@ class TradeLogCollectServiceTest {
     void confirm_mixedResult_successClearedFailureKept() {
         // 混合场景：一笔成功落库清空 + 一笔失败保留
         TradingAppService trading = mock(TradingAppService.class);
+        // 2026-09-19（P1-4）：confirm 的「判重 → 分派 → 落账」现在整段在 per-user 锁内；
+        // 局部新建的 mock 必须同样给出真锁，否则 synchronized(null) → NPE。
+        when(trading.candidateLock(any())).thenReturn(new Object());
         // 京东方（000725/SELL）成功；贵州茅台（600519/SELL）抛错
         doThrow(new TradingException("未持有 600519，无法卖出"))
                 .when(trading).recordTradeWithOrderId(eq("default"), eq("600519"), any(), any(), any(), anyInt(),
@@ -335,6 +345,9 @@ class TradeLogCollectServiceTest {
         // 模拟：confirm 读取候选后、处理过程中，新候选被 collect append（真实并发窗口）——
         // 用 mock recordTrade 在首次调用时动态 append，验证 save 前合并逻辑保留新候选
         TradingAppService trading = mock(TradingAppService.class);
+        // 2026-09-19（P1-4）：confirm 的「判重 → 分派 → 落账」现在整段在 per-user 锁内；
+        // 局部新建的 mock 必须同样给出真锁，否则 synchronized(null) → NPE。
+        when(trading.candidateLock(any())).thenReturn(new Object());
         AtomicInteger calls = new AtomicInteger(0);
         try {
             when(trading.recordTradeWithOrderId(any(), any(), any(), any(), any(), anyInt(),
@@ -596,5 +609,145 @@ class TradeLogCollectServiceTest {
         TradeLogCollectService.CollectResult second = svc.collectDetailed("default", text, "image");
 
         assertEquals(1, second.candidates().size(), "同图重传仍是一笔（价格一致 → 同笔）");
+    }
+
+    // ── 2026-09-18（P0-交易59）：同价同量分单被静默吞并 ──────────────────────────
+
+    @Test
+    void collectDetailed_samePriceSameVolumeSplitOrders_keepsAllSix() {
+        // 用户 2026-09-18 生产截图（开源证券「当日成交」6 笔）——原文照抄自生产记录
+        // records/2026/09/rec_20260918_210957579.md 的【图片文字】段（一词未改）：
+        // 修复前：批内 sameTrade（同代码+同方向+同价+量差 ≤10%）把 000831 的第二笔吞掉
+        // → 5 条候选、实际卖 400 股只记 200 股（少记 10660 元）。
+        String text = "【图片文字】当日成交\n"
+                + "开源证券 (****0888)\n"
+                + "名称/代码 成交价/买卖 成交量/额 成交时间\n"
+                + "广发证券 000776 20.410 买入 100 2041.000 10:10:00\n"
+                + "风华高科 000636 56.670 买入 100 5667.000 10:08:20\n"
+                + "风华高科 000636 56.360 买入 100 5636.000 10:04:25\n"
+                + "中国稀土 000831 53.300 卖出 200 10660.000 10:04:09\n"
+                + "风华高科 000636 56.270 买入 200 11254.000 10:03:55\n"
+                + "中国稀土 000831 53.300 卖出 200 10660.000 10:03:44\n"
+                + "【备注】今日成交\n";
+
+        TradeLogCollectService.CollectResult result =
+                realPipeline().collectDetailed("default", text, "image");
+
+        assertEquals(6, result.candidates().size(),
+                "6 笔成交必须全部成候选（原实现被吞成 5 条）：" + result.candidates());
+        assertEquals(2, result.candidates().stream().filter(c -> "000831".equals(c.symbol())).count(),
+                "000831 两笔卖出都要在（400 股不能只记 200 股）");
+        assertEquals(3, result.candidates().stream().filter(c -> "000636".equals(c.symbol())).count(),
+                "风华高科三笔价格各不同，必须三条");
+        assertEquals(java.time.LocalTime.of(10, 3, 44),
+                result.candidates().stream().filter(c -> java.time.LocalTime.of(10, 3, 44).equals(c.tradeTime()))
+                        .findFirst().orElseThrow().tradeTime(),
+                "成交时间要带进候选（10:03:44 与 10:04:09 才能分得开）");
+    }
+
+    @Test
+    void collectDetailed_samePriceSameVolumeScreenshotTwice_deduplicates() {
+        // 反向保护：同价同量分单保留之后，**同一张图重传**仍不能翻倍（批间按成交时间判同笔）。
+        TradeLogCollectService svc = realPipeline();
+        String text = "中国稀土 000831 53.300 卖出 200 10660.000 10:04:09\n"
+                + "中国稀土 000831 53.300 卖出 200 10660.000 10:03:44\n";
+
+        assertEquals(2, svc.collectDetailed("default", text, "image").candidates().size(), "图内两笔都要在");
+
+        TradeLogCollectService.CollectResult second = svc.collectDetailed("default", text, "image");
+        assertEquals(2, second.candidates().size(), "同图重传仍是两笔（成交时间一致 → 各自判重）");
+    }
+
+    @Test
+    void confirm_coveredByAnchor_ledgerOnlyInsteadOfReject() {
+        // 2026-09-18（P0-交易59）：命中券商快照锚定**不再硬拒**（原实现抛「成交日期已包含在券商
+        // 快照中」，用户当天 6 笔 confirm 连点六次全拒，且锚定日是「≤」判定、只会更晚 → 永远补不回来）。
+        // 现在：只落流水、不动持仓与现金（与历史成交导入 ledgerOnly 同语义）。
+        repository.append("default", java.time.LocalDate.now(), new TradeLogCandidate(
+                "000636", "风华高科", "BUY", new BigDecimal("56.27"), 200,
+                java.time.LocalDate.now(), java.time.LocalTime.of(10, 3, 55), "image", true));
+        assertEquals(1, service.todayCandidates("default").size());
+        when(trading.isCoveredByAnchor(any(), any())).thenReturn(true);
+        when(trading.ledgerOnlyTrade(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.ledgerOnly(), "命中锚定 → 记进流水（只记账不改账）");
+        assertEquals(0, r.failed(), "不再硬拒（失败 0 笔）");
+        assertEquals(0, r.confirmed(), "持仓/现金没动，不计入已入账");
+        assertTrue(service.todayCandidates("default").isEmpty(), "流水已留痕 → 候选不残留");
+        verify(trading).ledgerOnlyTrade(eq("default"), eq("000636"), eq("风华高科"),
+                eq(TradeDirection.BUY), eq(new BigDecimal("56.27")), eq(200),
+                eq(java.time.LocalDate.now()), eq(java.time.LocalTime.of(10, 3, 55)), any(), any());
+    }
+
+    @Test
+    void confirm_coveredByAnchor_ledgerWriteFails_keepsCandidate() {
+        // 兜底写入失败 → 保留候选 + 如实报错（绝不静默吞）
+        repository.append("default", java.time.LocalDate.now(), new TradeLogCandidate(
+                "000636", "风华高科", "BUY", new BigDecimal("56.27"), 200,
+                java.time.LocalDate.now(), java.time.LocalTime.of(10, 3, 55), "image", true));
+        when(trading.isCoveredByAnchor(any(), any())).thenReturn(true);
+        when(trading.ledgerOnlyTrade(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenReturn(false);
+
+        TradeLogCollectService.ConfirmResult r = service.confirm("default");
+
+        assertEquals(1, r.failed(), "写不进去要如实报错");
+        assertEquals(1, service.todayCandidates("default").size(), "候选必须保留，不许静默吞");
+    }
+
+    // ── 2026-09-18（RFC 20260918 A1-4）：候选就地编辑 + 补日期不丢成交时间 ──
+
+    @Test
+    void updateFieldsById_editsPriceVolumeDirectionAndKeepsTradeTime() {
+        // 截图识别错了只能丢弃重录 → 现在可就地改价格/数量/方向（A1-4）
+        List<TradeLogCandidate> saved = repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "BUY", new BigDecimal("53.30"), 200,
+                        null, java.time.LocalTime.of(10, 3, 44), "image", true));
+        String id = saved.get(0).id();
+
+        boolean ok = service.updateFieldsById("default", id,
+                new BigDecimal("53.30"), 300, "SELL", null, null);
+
+        assertTrue(ok, "就地编辑应命中该候选");
+        TradeLogCandidate c = service.todayCandidates("default").get(0);
+        assertEquals(300, c.volume());
+        assertEquals("SELL", c.direction());
+        assertTrue(c.complete(), "改完仍是完整候选");
+        assertEquals(java.time.LocalTime.of(10, 3, 44), c.tradeTime(),
+                "改字段**不得抹掉成交时间**（同价同量分单靠它区分）");
+    }
+
+    @Test
+    void updateFieldsById_incompleteToComplete_recomputesFlag() {
+        // 缺数量的候选（complete=false，确认时会被跳过）→ 补上数量后应可确认
+        List<TradeLogCandidate> saved = repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000636", "风华高科", "BUY", new BigDecimal("56.27"), null,
+                        java.time.LocalDate.now(), null, "image", false));
+        String id = saved.get(0).id();
+        assertFalse(service.todayCandidates("default").get(0).complete());
+
+        assertTrue(service.updateFieldsById("default", id, null, 200, null, null, null));
+
+        assertTrue(service.todayCandidates("default").get(0).complete(),
+                "补全后 complete 必须重算，否则确认时仍被跳过");
+    }
+
+    @Test
+    void updateTradeDateById_keepsTradeTime() {
+        // 回归：2026-09-18 上午引入 tradeTime 时，四处重建候选的 update* 漏传 → 补日期会静默清空成交时间
+        List<TradeLogCandidate> saved = repository.append("default", java.time.LocalDate.now(),
+                new TradeLogCandidate("000831", "中国稀土", "SELL", new BigDecimal("53.30"), 200,
+                        null, java.time.LocalTime.of(10, 4, 9), "image", true));
+        String id = saved.get(0).id();
+
+        assertTrue(repository.updateTradeDateById("default", java.time.LocalDate.now(), id,
+                java.time.LocalDate.of(2026, 9, 18)));
+
+        TradeLogCandidate c = service.todayCandidates("default").get(0);
+        assertEquals(java.time.LocalDate.of(2026, 9, 18), c.tradeDate());
+        assertEquals(java.time.LocalTime.of(10, 4, 9), c.tradeTime(), "补日期不得清掉成交时间");
     }
 }

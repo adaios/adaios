@@ -46,6 +46,7 @@ public class TradingParseAppService {
             BigDecimal price,
             Integer volume,
             java.time.LocalDate tradeDate, // 2026-08-27：截图表格「日期」列提取；无 → null（归集当天）
+            java.time.LocalTime tradeTime, // 2026-09-18：截图表格「成交时间」列提取；无 → null
             BigDecimal stopLossPrice,
             String buyPoint,
             BigDecimal targetPrice,
@@ -53,7 +54,15 @@ public class TradingParseAppService {
     ) {
         /** 未匹配结果（matched=false，其余字段全 null）。 */
         public static ParseResult unmatched() {
-            return new ParseResult(false, null, null, null, null, null, null, null, null, null, null);
+            return new ParseResult(false, null, null, null, null, null, null, null, null, null, null, null);
+        }
+
+        /** 兼容构造（2026-09-18 新增 tradeTime 之前的老调用点）：tradeTime 缺省 null。 */
+        public ParseResult(boolean matched, String symbol, String name, String direction,
+                           BigDecimal price, Integer volume, java.time.LocalDate tradeDate,
+                           BigDecimal stopLossPrice, String buyPoint, BigDecimal targetPrice, String reason) {
+            this(matched, symbol, name, direction, price, volume, tradeDate, null,
+                    stopLossPrice, buyPoint, targetPrice, reason);
         }
     }
 
@@ -233,6 +242,8 @@ public class TradingParseAppService {
             String rowBefore = text.substring(lineStart, m.start());
             String rowAfter = text.substring(m.end(), lineEnd);
             java.time.LocalDate tradeDate = extractTradeDate(rowBefore + " " + rowAfter);
+            // 2026-09-18（P0-交易59）：成交时间同口径提取——同价同量分单的唯一区分维度。
+            java.time.LocalTime tradeTime = extractTradeTime(rowBefore + " " + rowAfter);
             seq++;
             String rawRow = text.substring(lineStart, lineEnd).trim();
 
@@ -310,7 +321,7 @@ public class TradingParseAppService {
                 }
             }
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
-                    tradeDate, null, null, null, null));
+                    tradeDate, tradeTime, null, null, null, null));
         }
         // 2026-09-17（P0-交易53）：横排正则 0 命中 → 尝试竖排表格（VLM 把表格的一行拆成多行）。
         if (results.isEmpty()) {
@@ -434,6 +445,12 @@ public class TradingParseAppService {
             BigDecimal amount = null;
             if (down < lines.size() && V_NUM_PATTERN.matcher(lines.get(down)).matches()) {
                 amount = new BigDecimal(lines.get(down));
+                down++;
+            }
+            // 2026-09-18（P0-交易59）：竖排版式的成交时间（成交额之后一行）——同价同量分单的区分维度
+            java.time.LocalTime tradeTime = null;
+            if (down < lines.size() && V_TIME_PATTERN.matcher(lines.get(down)).matches()) {
+                tradeTime = extractTradeTime(lines.get(down));
             }
             seq++;
             if (price == null || volume == null || (symbol == null && name == null)) {
@@ -457,7 +474,7 @@ public class TradingParseAppService {
                 }
             }
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
-                    null, null, null, null, null));
+                    null, tradeTime, null, null, null, null));
         }
         if (!results.isEmpty()) {
             log.info("竖排表格解析 | 还原 {} 笔（VLM 一行拆多行的版式）", results.size());
@@ -532,6 +549,33 @@ public class TradingParseAppService {
             }
         }
         return null;
+    }
+
+    /** 行内成交时间 HH:mm / HH:mm:ss（前后不能紧跟数字或冒号，避免命中日期/金额片段）。 */
+    private static final Pattern TRADE_TIME_INLINE_PATTERN =
+            Pattern.compile("(?<![0-9:])(\\d{1,2}):(\\d{2})(?::(\\d{2}))?(?![0-9:])");
+
+    /**
+     * 2026-09-18（P0-交易59）：从表格行文本提取**成交时间**（截图表格「成交时间」列）。
+     *
+     * <p>生产实据：同一张截图里「中国稀土 000831 卖出 200 @53.300」出现两笔，时间分别是
+     * 10:03:44 与 10:04:09——同代码、同方向、同价、同量，**只有成交时间能区分**。
+     * 不带时间就会被 {@code sameTrade} 判成同一笔而静默吞掉一笔（用户实际卖出 400 股、
+     * 候选只剩 200 股）。提取不到返回 null（退回旧判定，不阻塞归集）。
+     */
+    private static java.time.LocalTime extractTradeTime(String row) {
+        if (row == null || row.isBlank()) return null;
+        Matcher m = TRADE_TIME_INLINE_PATTERN.matcher(row);
+        if (!m.find()) return null;
+        try {
+            int hour = Integer.parseInt(m.group(1));
+            int minute = Integer.parseInt(m.group(2));
+            int second = m.group(3) != null ? Integer.parseInt(m.group(3)) : 0;
+            if (hour > 23 || minute > 59 || second > 59) return null;
+            return java.time.LocalTime.of(hour, minute, second);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private ParseResult parseLooseResult(String raw) {

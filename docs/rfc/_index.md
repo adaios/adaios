@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-17
+updated: 2026-09-18
 status: active
-lines: 84
+lines: 85
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260918-trading-app-restructure.md | 交易 App 端重排——「记录 → 对账 → 照见」三层与两条铁律（UI/UX 专项审查 24 条的结构性收敛；三套口径以锚定日为界；四批 A1/A2/B/C）| draft |
 | 20260917-learn-representation.md | learn 表征适配与链路打通（门控 B + 偏好回流 + 反馈入口 + 精美导出）| approved |
 | 20260917-todo-kernel-retire-project-plugin.md | 待办归 Kernel——撤 project 插件与待办重定位（能力三层 core/builtin/optional；待办纯清单两态 + 到期推送、不进 Feed；端点硬切 `/api/v1/todos*`）| implemented |
 | 20260718-context-memory-knowledge-loop.md | Context 闭环 — 记忆回读 + 知识召回 | implemented |

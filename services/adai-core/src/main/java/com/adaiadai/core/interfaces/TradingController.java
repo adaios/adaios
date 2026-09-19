@@ -1181,6 +1181,8 @@ public class TradingController {
                 "failed", r.failed(),
                 "skipped", r.skipped(),
                 "duplicated", r.duplicated(),
+                // 2026-09-18（P0-交易59）：命中券商快照锚定 → 只落流水不改账（持仓/现金以快照为准）
+                "ledgerOnly", r.ledgerOnly(),
                 "failures", r.failures(),
                 "duplicates", r.duplicates()));
     }
@@ -1224,9 +1226,14 @@ public class TradingController {
 
     /** 交易日志候选补成交元信息（P2-交易36 治本，2026-09-09）：截图入账/手动确认成交缺
      *  成交编号(orderId)与手续费(fee)——确认前在候选上补填，确认落库时透传流水。
-     *  PUT /api/v1/trading/trade-log/meta，body {"symbol":"600206","direction":"SELL",
-     *  "orderId":"1234567890","fee":5.5}（orderId/fee 均可选，只覆盖非空值）
-     *  → {"updated":true}；无此候选/都无可写值 → {"updated":false}；参数非法 → 400。 */
+     *  **2026-09-18（RFC 20260918 A1-4）**：同一端点兼作**候选就地编辑**——改正识别错的
+     *  价格 / 数量 / 方向 / 成交日期（截图 VLM 对这三样都可能出错，原来只能丢弃重录）。
+     *  PUT /api/v1/trading/trade-log/meta，
+     *  body {"id":"cand_...","price":56.67,"volume":100,"direction":"BUY","tradeDate":"2026-09-18",
+     *        "orderId":"1234567890","fee":5.5}（全部可选，只覆盖非空值）
+     *  → {"updated":true}；无此候选/都无可写值 → {"updated":false}；参数非法 → 400。
+     *  **就地编辑必须带 `id`**（同代码同方向的多笔必须逐条改）；旧客户端传 symbol+direction 时
+     *  只支持元信息补填（orderId/fee），不支持改核心字段。 */
     @PutMapping("/trade-log/meta")
     public ResponseEntity<?> updateTradeLogCandidateMeta(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
@@ -1251,9 +1258,57 @@ public class TradingController {
                 return ResponseEntity.badRequest().body(Map.of("error", "fee 不是有效数字"));
             }
         }
-        boolean updated = byId
-                ? tradeLogCollectService.updateMetaById(userId, id, orderId, fee)
-                : tradeLogCollectService.updateMeta(userId, symbol, direction, orderId, fee);
+        if (!byId) {
+            // P2-1（2026-09-19 后端审查）：旧口径带**核心字段**时必须明确 400——原来这些字段在
+            // 下面才解析，走到这里已被**静默丢弃**；若同时带 orderId/fee 还会回 `updated:true`，
+            // 客户端以为改价成功了（api-spec 早已写明「就地编辑必须带 id，否则 400」）。
+            if (body.get("price") != null || body.get("volume") != null || body.get("tradeDate") != null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "就地编辑请带上 id（同代码同方向的多笔必须逐条改）"));
+            }
+            // 旧口径（symbol+direction）：只补元信息，不做就地编辑（无行级定位，会误改同代码同向的多笔）
+            boolean legacy = tradeLogCollectService.updateMeta(userId, symbol, direction, orderId, fee);
+            return ResponseEntity.ok(Map.of("updated", legacy));
+        }
+        // ── A1-4（2026-09-18）：核心字段就地编辑（按 id 行级定位）──
+        BigDecimal price = null;
+        Integer volume = null;
+        java.time.LocalDate tradeDate = null;
+        try {
+            if (body.get("price") != null) {
+                price = new BigDecimal(String.valueOf(body.get("price")).trim());
+            }
+            if (body.get("volume") != null) {
+                volume = Integer.valueOf(String.valueOf(body.get("volume")).trim());
+            }
+            if (body.get("tradeDate") != null) {
+                String d = String.valueOf(body.get("tradeDate")).trim();
+                if (!d.isEmpty()) tradeDate = java.time.LocalDate.parse(d);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "price/volume/tradeDate 不是有效值"));
+        }
+        // 带 id 时 `direction` 的语义 = **改成这个方向**（定位已由 id 承担）。
+        // P1-5（2026-09-19 对抗审查）：**白名单校验**——不校验的话 "卖出"/"sell"/任意字符串都能存进候选，
+        // 而 confirm 里 `"SELL".equals(...) ? SELL : BUY` 会把它当**买入**入账（方向反转 = 持仓差 2×股数）。
+        String newDirection = null;
+        if (direction != null && !direction.isBlank()) {
+            String d = direction.trim().toUpperCase();
+            if (!"BUY".equals(d) && !"SELL".equals(d)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "direction 只能是 BUY 或 SELL"));
+            }
+            newDirection = d;
+        }
+        boolean hasCore = price != null || volume != null || tradeDate != null || newDirection != null;
+        boolean updated = false;
+        if (hasCore) {
+            updated |= tradeLogCollectService.updateFieldsById(
+                    userId, id, price, volume, newDirection, tradeDate, fee);
+        }
+        boolean hasOrder = orderId != null && !orderId.isBlank();
+        if (hasOrder || (fee != null && !hasCore)) {
+            updated |= tradeLogCollectService.updateMetaById(userId, id, orderId, fee);
+        }
         return ResponseEntity.ok(Map.of("updated", updated));
     }
 

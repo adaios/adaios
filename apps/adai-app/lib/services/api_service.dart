@@ -676,6 +676,33 @@ class ApiService {
     return map['updated'] as bool? ?? false;
   }
 
+  /// 2026-09-18（RFC 20260918 A1-4）：**候选就地编辑**——改正截图识别错的价格 / 数量 / 方向 / 成交日期。
+  ///
+  /// 走 `PUT /api/v1/trading/trade-log/meta`（带 id 行级定位，同代码同方向的多笔必须逐条改）。
+  /// 只传要改的字段；服务端只覆盖非空值并重算 `complete`。
+  Future<bool> updateTradeLogFields({
+    required String id,
+    double? price,
+    int? volume,
+    String? direction,
+    String? tradeDate,
+  }) async {
+    final resp = await _client.put(
+      Uri.parse('$baseUrl/api/v1/trading/trade-log/meta'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'id': id,
+        if (price != null) 'price': price,
+        if (volume != null) 'volume': volume,
+        if (direction != null && direction.isNotEmpty) 'direction': direction,
+        if (tradeDate != null && tradeDate.isNotEmpty) 'tradeDate': tradeDate,
+      }),
+    );
+    _check(resp);
+    final map = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return map['updated'] as bool? ?? false;
+  }
+
   /// B10-2/B11-4（2026-08-23）：删除单条推送（持久化）+ 丢弃保留候选（钉子户）。
   /// DELETE /api/v1/trading/pushes/{id}；404（已删/不存在）静默成功（幂等）。
   Future<void> dismissPush(String pushId) async {
@@ -2668,18 +2695,23 @@ class TradeLogConfirmResult {
   final int confirmed, failed, skipped;
   /// 2026-09-15：与已落库流水同笔而被跳过的候选数（截图反复确认不再重复入账）。
   final int duplicated;
+  /// 2026-09-18（P0-交易59）：命中券商快照锚定 → 只落流水不改账的笔数
+  /// （此前是硬拒「已包含在券商快照中」，用户当天成交永远入不了账）。
+  /// 旧后端不返回该字段 → 0（行为与修复前一致）。
+  final int ledgerOnly;
   final List<String> failures;
   final List<String> duplicates;
 
   TradeLogConfirmResult({required this.confirmed, required this.failed,
-      required this.skipped, this.duplicated = 0, required this.failures,
-      this.duplicates = const []});
+      required this.skipped, this.duplicated = 0, this.ledgerOnly = 0,
+      required this.failures, this.duplicates = const []});
 
   factory TradeLogConfirmResult.fromJson(Map<String, dynamic> json) => TradeLogConfirmResult(
     confirmed: json['confirmed'] as int? ?? 0,
     failed: json['failed'] as int? ?? 0,
     skipped: json['skipped'] as int? ?? 0,
     duplicated: json['duplicated'] as int? ?? 0,
+    ledgerOnly: json['ledgerOnly'] as int? ?? 0,
     failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     duplicates: (json['duplicates'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
@@ -2693,13 +2725,18 @@ class TradeLogCandidateDto {
   final double? price;
   final int? volume;
   final String? tradeDate;
+  /// 2026-09-18（P0-交易59）：截图「成交时间」列（HH:mm:ss）。
+  /// 同代码/同方向/同价/同量的**分单**靠它区分（生产实据：000831 两笔各 200 股 @53.300，
+  /// 10:03:44 与 10:04:09）；旧后端不返回 → null，界面退回不显示。
+  final String? tradeTime;
   final bool complete;
   /// P1-交易54（2026-09-17）：候选**行标识**——丢弃按它定位（同标的同方向的多笔只有它能区分）。
   /// 旧后端不返回该字段 → 空串，此时退化为旧的 symbol+direction 口径（粗粒度，会一起删）。
   final String id;
 
   TradeLogCandidateDto({required this.symbol, required this.name, required this.direction,
-      this.price, this.volume, this.tradeDate, required this.complete, this.id = ''});
+      this.price, this.volume, this.tradeDate, this.tradeTime,
+      required this.complete, this.id = ''});
 
   factory TradeLogCandidateDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -2710,6 +2747,7 @@ class TradeLogCandidateDto {
       price: double.tryParse(m['price']?.toString() ?? ''),
       volume: int.tryParse(m['volume']?.toString() ?? ''),
       tradeDate: m['tradeDate']?.toString(),
+      tradeTime: m['tradeTime']?.toString(),
       complete: m['complete'] as bool? ?? false,
       id: m['id']?.toString() ?? '',
     );

@@ -904,11 +904,16 @@ class ApiService {
   }
 
   /// B11-4（2026-08-23，P1-交易18）：丢弃一条保留的交易日志候选（失败/不完整钉子户）。
-  /// DELETE /api/v1/trading/trade-log?symbol=&direction=；404 幂等成功。
-  Future<void> discardTradeLogCandidate({String? symbol, String? direction}) async {
+  /// DELETE /api/v1/trading/trade-log?id=&symbol=&direction=；404 幂等成功。
+  ///
+  /// C 批（2026-09-19，UI/UX 审查 P3-12「双端口径漂移」）：**补 `id` 行级定位**——app 侧
+  /// 2026-09-17（P1-交易54）起已按 id 删，web 仍是旧的 symbol+direction 口径（同代码同方向的
+  /// 多笔会被**一起删掉**）。web 交易页当前未调用此方法，属潜伏风险，一并补齐。
+  Future<void> discardTradeLogCandidate({String? id, String? symbol, String? direction}) async {
     try {
       final uri = Uri.parse('$baseUrl/api/v1/trading/trade-log').replace(
         queryParameters: {
+          if (id != null && id.isNotEmpty) 'id': id,
           if (symbol != null && symbol.isNotEmpty) 'symbol': symbol,
           if (direction != null && direction.isNotEmpty) 'direction': direction,
         },

@@ -117,11 +117,27 @@ def cards_on(day):
     return found
 
 out['cards'] = cards_on(TODAY)
-trend = []
+
+# 2026-09-18：心跳口径补「真实动作」——图片/文字记录（records/YYYY/MM/rec_<yyyymmdd>_*.md）。
+# 起因：用户当天在 App 里发了截图（截图入账 → 落 record + 图片），但**对话卡片为 0**，
+# 日报显示「今天 0 张」像他没在用。截图入账不建对话卡片，所以卡片数不是活跃度上限。
+def records_on(day):
+    n = 0
+    for u in sorted(d for d in DATA.iterdir() if d.is_dir() and (d / 'records').is_dir()):
+        p = (u / 'records' / f'{day.year:04d}' / f'{day.month:02d}')
+        if not p.is_dir():
+            continue
+        n += len(list(p.glob(f'rec_{day.strftime("%Y%m%d")}_*.md')))
+    return n
+
+trend, trend_acts = [], []
 for i in range(DAYS - 1, -1, -1):
     d = TODAY - datetime.timedelta(days=i)
-    trend.append((d.strftime('%m-%d'), len(cards_on(d))))
+    c = len(cards_on(d))
+    trend.append((d.strftime('%m-%d'), c))
+    trend_acts.append((d.strftime('%m-%d'), c + records_on(d)))
 out['trend'] = trend
+out['trend_acts'] = trend_acts
 
 # ── ④ 公网用量（Caddy 访问日志，2026-09-15 才开）──
 # 4xx/5xx 必须分四类，否则日报天天是假警报（2026-09-16 实测：
@@ -129,8 +145,18 @@ out['trend'] = trend
 SCAN_PAT = ('/.env', '/wp-', '/wp/', '/wordpress', '/backup', '/old/', '/new/',
             '/test.php', '/.git', '/admin.php', '/config', '/xmlrpc', '/sitemap',
             '/robots.txt', '/favicon.ico', '/.ssh', '/phpmyadmin', '/vendor/',
-            '/.aws', '/shell', '/db/', '/.well-known/', '/cgi-bin')
+            '/.aws', '/shell', '/db/', '/.well-known/', '/cgi-bin',
+            # 2026-09-18：**不是本产品的路由命名空间**——探测这些路径的一律是扫描器。
+            # 当日实测：单一 IP 31.56.58.165 用 UA「metabase-cve-2026-72898-detect/1.0
+            # (benign detection probes only)」GET/POST `/api/session/reset_password`
+            # 与 `/api/session/properties`（我们根本没有这两个路由）→ 原分类落到
+            # 「★待关注」，日报每天误报一次（用户问「今日巡检还有其他问题不」的由头）。
+            '/api/session', '/api/v1/session', '/actuator', '/druid', '/solr/',
+            '/jenkins', '/console', '/metabase', '/geoserver', '/nacos')
 PROBE_UA = ('curl', 'python-requests', 'wget', 'go-http', 'httpie', 'postman', 'java/')
+# 2026-09-18：漏洞扫描器/探针的 UA 特征串（它们通常自报家门）——单列一组、**优先于部署探针判定**，
+# 免得「别人的扫描器」被记成「我们自己的部署脚本」（语义要分清）。
+SCANNER_UA = ('nuclei', 'zgrab', 'masscan', 'nikto', 'nmap', 'metabase-cve', 'cve-', '-detect/')
 BENIGN_API = {
     '/api/v1/trading/review': '复盘未生成=404，前端轮询的正常语义',
     '/api/v1/auth/me': '登录态过期=401，重新登录即可',
@@ -143,6 +169,8 @@ def classify(ua, uri, method, kind, status):
     u = (ua or '').lower()
     if uri in BENIGN_API:
         return 'benign'
+    if any(k in u for k in SCANNER_UA):
+        return 'scanner'
     if any(k in u for k in PROBE_UA):
         return 'probe'
     if kind == 'web':
@@ -336,11 +364,15 @@ if guided_count:
     print(f"  \033[33m（今日 {guided_count} 张为空态引导触发、已标注；真实提问 {len(d['cards']) - guided_count} 张）\033[0m")
 
 # 趋势
-hr(f'心跳（近 {len(d["trend"])} 天对话卡片数）')
-bar = ' · '.join(f"{day}:{n}" for day, n in d['trend'])
+hr(f'心跳（近 {len(d["trend"])} 天：对话卡片 / 真实动作）')
+acts = dict(d.get('trend_acts') or [])
+bar = ' · '.join(f"{day}:{n}" + (f"({acts[day]})" if acts.get(day, n) != n else "")
+                 for day, n in d['trend'])
 total = sum(n for _, n in d['trend'])
+acts_total = sum(n for _, n in (d.get('trend_acts') or d['trend']))
 print(f"  {bar}")
-print(f"  合计 {total} 张" + ("   \033[31m← 连续多日为 0：要么没用，要么入口断了\033[0m" if total == 0 else ""))
+print(f"  合计 {total} 张卡片 · {acts_total} 次真实动作（卡片 / 图片记录）"
+      + ("   \033[31m← 连续多日为 0：要么没用，要么入口断了\033[0m" if acts_total == 0 else ""))
 print()
 RENDER_EOF
 

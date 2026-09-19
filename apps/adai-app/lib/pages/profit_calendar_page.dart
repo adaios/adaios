@@ -23,6 +23,10 @@ class ProfitCalendarPage extends StatefulWidget {
 
 class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
   EquityCurveDto? _curve;
+  /// B4（2026-09-18）：本月合计优先用**与账户卡同一份**数据（`GET /trading/pnl-periods`）。
+  /// 缘由：原来这里是**前端**遍历 equity-curve 求和，而账户卡「本月」是**后端**算的
+  /// （UI/UX 审查 P2-10）——同一屏两个入口可能给出两个数（P2-交易50/51 同族教训）。
+  PnlPeriodsDto? _periods;
   String? _error;
   bool _loading = true;
   late DateTime _month;
@@ -42,9 +46,17 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
     });
     try {
       final curve = await widget.api.getEquityCurve();
+      // best-effort：本月口径（与账户卡同源）；失败不影响日历本身（降级为前端累加）
+      PnlPeriodsDto? periods;
+      try {
+        periods = await widget.api.getPnlPeriods();
+      } catch (_) {
+        periods = null;
+      }
       if (!mounted) return;
       setState(() {
         _curve = curve;
+        _periods = periods;
         _loading = false;
       });
     } catch (_) {
@@ -62,8 +74,18 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
 
   bool _inMonth(String date) => date.startsWith(_monthPrefix);
 
-  /// 当月合计：**只累加真实有值的日子**；一天真值都没有 → null（显示「—」而不是 0）。
+  /// 当月合计：**当前月优先用后端口径**（与账户卡 `pnl-periods` 同源，避免"两个数"）；
+  /// 历史月没有后端数据 → 前端按日累加，且只累加真实有值的日子（一天真值都没有 → null = 「—」）。
   double? get _monthTotal {
+    final now = DateTime.now();
+    final backendMonth = _periods?.month;
+    if (_month.year == now.year && _month.month == now.month && backendMonth != null) {
+      // P2-11（2026-09-19 前端审查）：后端 window 的 `pnl` 恒非 null（**无数据时是 0**），
+      // 而 `partial=true` 表示区间起点不可追溯——直接返回会渲染成「+¥0.00」的**伪 0**
+      // （与逐日格子全「—」自相矛盾，D9 同族）。真值缺失时保持 null → 显示「—」。
+      if (backendMonth.partial && (backendMonth.pnl == null || backendMonth.pnl == 0)) return null;
+      return backendMonth.pnl;
+    }
     final curve = _curve;
     if (curve == null) return null;
     double sum = 0;
@@ -76,6 +98,12 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
       any = true;
     }
     return any ? sum : null;
+  }
+
+  /// 本月合计是否来自后端口径（与账户卡同源）——UI 据此给一句口径说明。
+  bool get _monthFromBackend {
+    final now = DateTime.now();
+    return _month.year == now.year && _month.month == now.month && _periods?.month != null;
   }
 
   int get _tradingDays {
@@ -130,6 +158,12 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
     );
   }
 
+  /// 是否已停在当前月（C 批，2026-09-19）：未来月份不再可翻、「点我回本月」据此显隐。
+  bool get _atCurrentMonth {
+    final now = DateTime.now();
+    return _month.year == now.year && _month.month == now.month;
+  }
+
   Widget _monthHeader() {
     return Row(children: [
       IconButton(
@@ -140,18 +174,39 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
       ),
       Expanded(
         child: Center(
-          child: Text('${_month.year} 年 ${_month.month} 月',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          child: InkWell(
+            // C（2026-09-19）：翻远了回不来——点月份直接回本月（时间线页早有「今日」同款入口）
+            onTap: _atCurrentMonth
+                ? null
+                : () {
+                    final n = DateTime.now();
+                    setState(() => _month = DateTime(n.year, n.month));
+                  },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Text(
+                  _atCurrentMonth
+                      ? '${_month.year} 年 ${_month.month} 月'
+                      : '${_month.year} 年 ${_month.month} 月 · 点我回本月',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+            ),
+          ),
         ),
       ),
       IconButton(
-        onPressed: () => _shiftMonth(1),
+        // C（2026-09-19）：不再能翻到未来月份（原来一路点到 2027 全是「—」）
+        onPressed: _atCurrentMonth ? null : () => _shiftMonth(1),
         icon: const Icon(Icons.chevron_right, size: 20),
         tooltip: '下个月',
         color: AppColors.darkGrey3,
       ),
     ]);
   }
+
+  /// P2-8（2026-09-19 前端审查）：**日历页也要默认打码**——它与首页只隔一次点击，旁人同样能扫到屏。
+  /// 规则与交易页一致：**页面级金额打码**，**主动进入的日详情弹窗**显示真实金额。
+  bool _revealed = false;
 
   Widget _monthSummary() {
     final total = _monthTotal;
@@ -165,10 +220,28 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('本月收益', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            Row(children: [
+              Expanded(
+                // B4（2026-09-18）：标出口径——当前月与账户卡同源（后端 `pnl-periods`），历史月按日累加
+                child: Text(_monthFromBackend ? '本月收益（与账户卡同口径）' : '本月收益（按日累加）',
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+              ),
+              // P2-8：金额默认打码，点这里会话内揭开
+              GestureDetector(
+                onTap: () => setState(() => _revealed = !_revealed),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Icon(_revealed ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      size: 15, color: AppColors.darkGrey4),
+                ),
+              ),
+            ]),
             const SizedBox(height: 4),
             Text(
-              total == null ? '—' : '${total >= 0 ? '+' : '-'}¥${_thousands(total.abs())}',
+              total == null
+                  ? '—'
+                  : (_revealed ? '${total >= 0 ? '+' : '-'}¥${_thousands(total.abs())}' : '¥ ••••'),
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: _pnlColor(total)),
             ),
           ]),
@@ -251,9 +324,12 @@ class _ProfitCalendarPageState extends State<ProfitCalendarPage> {
               )),
           const SizedBox(height: 3),
           Text(
-            hasValue ? _shortMoney(pnl) : '—',
+            // P2-8：页面级金额打码（进日详情或点 👁 看真值）；
+            // 顺带把 `TextOverflow.clip` 改成 `ellipsis`——clip 会把金额**静默切掉半个字**
+            // 显示成一个错的数（P2-11 同族，宁可省略不可写错）。
+            hasValue ? (_revealed ? _shortMoney(pnl) : '••') : '—',
             maxLines: 1,
-            overflow: TextOverflow.clip,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _pnlColor(pnl)),
           ),
         ]),

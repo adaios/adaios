@@ -96,6 +96,21 @@ class _TradingPageState extends State<TradingPage> {
   List<TradeLogCandidateDto> _candidates = [];
   bool _shotsUploading = false;       // 截图上传 + VLM 归集中
   bool _candidatesConfirming = false; // 全部确认入账中
+  // 2026-09-18（P0-交易59 交互）：候选卡**可收起**——确认失败/缺日期的候选会被后端保留，
+  // 此前整卡没有关闭出口，用户「关不掉」（只能逐行点小 × 真删数据）。收起只是本地隐藏，不删候选。
+  bool _candidatesCollapsed = false;
+  bool _candidatesDiscarding = false; // 「全部忽略」在途守卫（防连点重复删）
+  /// A1-8（2026-09-18）：上一次确认的**逐笔回执**（成功/只记账/已记过/失败原因）——
+  /// 原来只有一条 3 秒 SnackBar 且失败只报第一条，用户没法核对"到底哪几笔没进去、为什么"。
+  List<String> _lastConfirmReceipt = [];
+
+  // ── 2026-09-18（RFC 20260918 §3.2，用户拍板）：金额私密 + 焦点分配 ──
+  // 用户原话：「注意私密性，核心数据不要在首页显示，金额私密，比例无所谓」。
+  // 首页（含折叠区展开态）默认 `••••`；点 👁 会话内揭开；金额只在「主动进入」的容器
+  // （批次详情 / 转账对话框）无条件显示。比例（涨跌%/盈亏%/仓位%）不受影响。
+  bool _amountsRevealed = false;
+  /// 折叠区开合（资金与配置 / 今天的操作）——次要信息默认收起。
+  final Map<String, bool> _foldOpen = {};
   // P2-交易43（2026-09-14）：上一次截图里「没记」的行（状态不是已成/部成、认不出的行）——
   // 旧实现静默丢，用户以为整张截图都记上了。下一次上传时整体替换。
   List<String> _dropped = [];
@@ -357,12 +372,23 @@ class _TradingPageState extends State<TradingPage> {
     );
   }
 
+  /// 次级描边按钮的统一风格（C 批，2026-09-18）：显式走 AppColors 体系。
+  /// 缘由（UI 审查 P1-5）：三个资金按钮**未指定 style** 时会吃 Material 3 默认 `primary`
+  /// （本项目 `primary = darkGrey1` 近白）→ 变成全页最亮的白底按钮，视觉权重压过「记录/入账」。
+  static final ButtonStyle _outlinedSecondaryStyle = OutlinedButton.styleFrom(
+    foregroundColor: AppColors.darkGrey3,
+    side: const BorderSide(color: AppColors.darkBorder),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  );
+
   Widget _stageChoice(String label, String stage, Color color) {
     final selected = _marketStage == stage;
     return GestureDetector(
       onTap: _marketStageSaving ? null : () => _setMarketStage(stage),
       child: Container(
-        height: 34,
+        // C（2026-09-18）：44pt 下限——这是「手动判定」的核心开关，原来只有 34pt
+        height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? color.withValues(alpha: 0.15) : Colors.transparent,
@@ -476,7 +502,11 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 选图（相册多选，最多 3 张）→ 上传归集。测试注入 debugPickImages 跳过相册。
   Future<void> _pickScreenshots() async {
-    if (_shotsUploading) return;
+    // A1-2（2026-09-18）：原来静默 return → 用户以为「点了没反应」会连点（生产实证 10:34/10:35 连传）。
+    if (_shotsUploading) {
+      _showSnack('还在认这几张截图，稍等一下', AppColors.darkGrey4);
+      return;
+    }
     List<PickedImage> picked;
     try {
       if (widget.debugPickImages != null) {
@@ -519,6 +549,9 @@ class _TradingPageState extends State<TradingPage> {
       setState(() {
         _shotsUploading = false;
         _candidates = result.candidates;
+        // A1-1（2026-09-18 修回归）：新一批候选一律展开——「收起」的语义是「这一批处理完了」，
+        // 不是「以后都别看候选」。原实现漏了这行 → 收起过之后新认出的候选藏在收起态里。
+        _candidatesCollapsed = false;
         // P2-交易43：本次结果整体替换上次的丢弃明细（新结果 → 明细重新展开）
         _dropped = result.dropped;
         _droppedExpanded = true;
@@ -549,24 +582,60 @@ class _TradingPageState extends State<TradingPage> {
           AppColors.darkOrange);
       return;
     }
+    // P2-2（2026-09-19 前端审查）：**进对话框之前就置在途**——原来 `_candidatesConfirming` 直到
+    // 点「确认入账」之后才置位，而按钮在对话框打开期间仍可点：双击会叠两层框、发两次 confirm，
+    // 第二次把回执覆盖成 duplicates，还会弹「这 N 笔之前已经记过了」的假警报。
     setState(() => _candidatesConfirming = true);
     try {
+      // A1-6（2026-09-18）：写操作也要确认——原来「全部忽略」（删）有 AlertDialog，
+      // 「全部确认入账」（一次写十几笔）却直接落库，护栏正好装反。
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('要记这 ${_candidates.length} 笔？'),
+          content: const Text('确认后逐笔入账；落库前还会按「同笔是否已记过」再拦一道。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('再看看')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认入账')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
       final result = await widget.api.confirmTradeLog();
       if (!mounted) return;
       setState(() {
         _candidatesConfirming = false;
         _candidates = [];
+        // A1-8 + P2-9（2026-09-19 前端审查）：**逐笔回执**——原来只有汇总计数，混合场景
+        // （2 笔降级 + 1 笔入账）无法核对是哪几笔；而「只记流水」时**持仓并没有变**，
+        // 一句汇总容易被误读成「账已更新」，所以这里把两种结局分别写清。
+        _lastConfirmReceipt = [
+          if (result.confirmed > 0) '${result.confirmed} 笔记进账了（持仓与现金已更新）',
+          if (result.ledgerOnly > 0) '${result.ledgerOnly} 笔只记了流水 —— 持仓/现金没变，以券商快照为准',
+          ...result.duplicates,
+          ...result.failures,
+        ];
       });
+      // 2026-09-15：重复截图确认的候选已被拦下（不再重复入账）——如实说一声，别让用户以为漏记
+      final dupTail = result.duplicated > 0
+          ? '，另有 ${result.duplicated} 笔之前已经记过了（没有重复记）'
+          : '';
+      // 2026-09-18（P0-交易59）：命中券商快照锚定的笔数——只落流水、持仓/现金以快照为准（不再硬拒）
+      final ledgerTail = result.ledgerOnly > 0
+          ? '，另有 ${result.ledgerOnly} 笔记进流水了（持仓和现金以券商快照为准，没重复算）'
+          : '';
       if (result.confirmed > 0) {
-        // 2026-09-15：重复截图确认的候选已被拦下（不再重复入账）——如实说一声，别让用户以为漏记
-        final tail = result.duplicated > 0
-            ? '，另有 ${result.duplicated} 笔之前已经记过了（没有重复记）'
-            : '';
-        _showSnack('好，${result.confirmed} 笔已经记进账了$tail', AppColors.darkGreen); // P2-UX4：阿呆口吻（B1）
+        _showSnack('好，${result.confirmed} 笔已经记进账了$ledgerTail$dupTail', AppColors.darkGreen); // P2-UX4：阿呆口吻（B1）
+      } else if (result.ledgerOnly > 0) {
+        _showSnack('这 ${result.ledgerOnly} 笔已经记进流水了（持仓和现金以券商快照为准，没重复算）$dupTail',
+            AppColors.darkGreen);
       } else if (result.duplicated > 0) {
         _showSnack('这 ${result.duplicated} 笔之前已经记过了，没有重复入账', AppColors.darkGrey4);
       } else if (result.failed > 0) {
-        _showSnack('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}', AppColors.darkOrange);
+        // 2026-09-18：失败原因不再只报第一条——多条时如实说还有几条（明细在候选行上）
+        final first = result.failures.isNotEmpty ? result.failures.first : '未知原因';
+        final more = result.failures.length > 1 ? '（还有 ${result.failures.length - 1} 条）' : '';
+        _showSnack('有 ${result.failed} 笔没记上：$first$more', AppColors.darkOrange);
       } else {
         _showSnack('今天没有待确认的候选', AppColors.darkGrey4);
       }
@@ -575,8 +644,12 @@ class _TradingPageState extends State<TradingPage> {
       _loadCandidates(); // 失败候选保留（钉子户）→ 重新拉取
     } catch (e) {
       if (!mounted) return;
-      setState(() => _candidatesConfirming = false);
       _showSnack('确认失败: ${_extractApiError(e)}', AppColors.darkOrange);
+    } finally {
+      // P2-2 兜底复位（覆盖「再看看」取消、中途 unmount、异常等所有路径）
+      if (mounted && _candidatesConfirming) {
+        setState(() => _candidatesConfirming = false);
+      }
     }
   }
 
@@ -586,6 +659,23 @@ class _TradingPageState extends State<TradingPage> {
   /// 同标的同方向的多笔候选（生产实据：当日三笔亨通光电买入各 100 股）会**一起被删掉**；
   /// `symbol` 为空时更是删光该方向全部候选。旧后端不返回 id → 自动退化为旧口径（兼容）。
   Future<void> _discardCandidate(TradeLogCandidateDto c) async {
+    // A1-5（2026-09-18）：行级删除也是**真删后端数据**——补 44pt 热区（在 _candidateRow）+
+    // 这里二次确认，与「全部忽略」同口径（原来只有「全部忽略」有确认，逐个删反而没有）。
+    final label = c.name.isEmpty ? c.symbol : c.name;
+    final dirText = c.direction == 'BUY' ? '买入' : '卖出';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('丢弃这一笔？'),
+        content: Text('$label $dirText${c.volume != null ? ' ${c.volume}股' : ''} —— '
+            '丢弃后这条不会入账，要重新发截图才行。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('留着')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('丢弃')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     final byId = c.id.isNotEmpty;
     try {
       await widget.api.discardTradeLogCandidate(
@@ -602,6 +692,46 @@ class _TradingPageState extends State<TradingPage> {
     } catch (e) {
       if (mounted) _showSnack('丢弃失败: ${_extractApiError(e)}', AppColors.darkOrange);
     }
+  }
+
+  /// 2026-09-18（P0-交易59 交互）：忽略全部候选（识别错了 / 今天不打算入账）。
+  /// 逐条按 id 丢弃，任一条失败**如实告知且不假装删干净**（与 web 折叠卡批量删除同口径）。
+  Future<void> _discardAllCandidates() async {
+    if (_candidates.isEmpty || _candidatesDiscarding) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('忽略这 ${_candidates.length} 笔候选？'),
+        content: const Text('忽略后这些记录就没了（不会入账）。截图可以再发一次重新识别。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('先留着')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('忽略')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _candidatesDiscarding = true);
+    final failed = <String>[];
+    for (final c in List<TradeLogCandidateDto>.from(_candidates)) {
+      final byId = c.id.isNotEmpty;
+      try {
+        await widget.api.discardTradeLogCandidate(
+          id: byId ? c.id : null,
+          symbol: byId ? null : (c.symbol.isEmpty ? null : c.symbol),
+          direction: byId ? null : c.direction,
+        );
+      } catch (e) {
+        failed.add(c.symbol.isEmpty ? c.name : c.symbol);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _candidatesDiscarding = false);
+    _loadCandidates();
+    _showSnack(
+        failed.isEmpty
+            ? '好，候选都清掉了'
+            : '有 ${failed.length} 笔没删掉（${failed.join("、")}），再试一次',
+        failed.isEmpty ? AppColors.darkGrey4 : AppColors.darkOrange);
   }
 
   /// 扩展名 → MIME（与 main_page._mimeTypeOf 同口径；HEIC 等真实类型防误标）。
@@ -905,33 +1035,29 @@ class _TradingPageState extends State<TradingPage> {
       ),
       body: _loading ? const Center(child: CircularProgressIndicator())
           : _error != null ? _buildError()
-          : ListView(
+          // C（2026-09-18，UI 审查 P2-9）：补下拉刷新——原来盘中只能点右上角 18px 图标，
+          // 而三个图标挨着，误触「复盘」会启动最长 4 分钟的 AI 任务；日历页早已这么做。
+          : RefreshIndicator(
+              onRefresh: _refresh,
+              color: AppColors.darkGreen,
+              backgroundColor: AppColors.darkSurface2,
+              child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                // RFC 20260912 账实不符闸门（P2-交易39）：drift/gaps 非空才出现，无差异零噪音。
-                // 放最顶——「账对不上」比账户数字本身更需要第一眼看见（数字不可信时先别信数字）。
+                // 2026-09-18（RFC 20260918 §3.2 / A2）：首屏按「焦点 × 频次」重排——
+                // ① 隐私条（金额默认打码）② 焦点 1 每日入账 ③ 焦点 2 持仓 ④ 折叠区（次要）。
+                _buildPrivacyBar(),
+                const SizedBox(height: 10),
+                // P2-5（2026-09-19 前端审查）：「账对不上」**放回最顶**——本批自己的注释写着
+                // 「数字不可信时先别信数字」，却把它排到了候选/回执/丢弃之后（十几笔候选的日子
+                // 会被挤出首屏）。现在它紧跟隐私条、在所有数字之前。
                 if (_integrity != null && _integrity!.hasIssue) ...[
                   _buildIntegrityBanner(_integrity!),
                   const SizedBox(height: 10),
                 ],
-                _buildSnapshotCard(),
-                const SizedBox(height: 10),
-                _buildCashSection(),
-                // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，快照下方
-                if (_marketStageLoaded) ...[
-                  const SizedBox(height: 10),
-                  _buildMarketStageCard(),
-                ],
-                if (_dailySummary != null) ...[
-                  const SizedBox(height: 10),
-                  _buildDailySummary(),
-                ],
-                if (_hasActivity && !_bannerDismissed) ...[
-                  const SizedBox(height: 10),
-                  _buildReviewBanner(),
-                ],
-                const SizedBox(height: 16),
-                _buildQuickRecord(),
+                // ── 焦点 1：每日入账（用户每天第一步；原来埋在 6 张卡之后）──
+                _buildEntrySection(),
                 if (_draft != null) ...[
                   const SizedBox(height: 10),
                   _buildConfirmCard(),
@@ -940,18 +1066,28 @@ class _TradingPageState extends State<TradingPage> {
                   const SizedBox(height: 10),
                   _buildExactForm(),
                 ],
-                // 2026-08-26 截图入账：当日候选（快记区下方，确认即入账，与复盘横幅成闭环）
+                // 上传在途占位卡（A1-2）：看得见在途，不再只是一个 11px 转圈
+                if (_shotsUploading) ...[
+                  const SizedBox(height: 10),
+                  _buildUploadPlaceholder(),
+                ],
+                // 截图候选（A1-3：出结果就地出现在动作下方）
                 if (_candidates.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   _buildCandidatesCard(),
                 ],
-                // P2-交易43（2026-09-14）：这张截图有 N 行没记（橙色可展开，人话明细）——
-                // 与候选卡独立渲染：一行都没认出（candidates 空）时它更要出现
+                // A1-8：上一次确认的逐笔回执（可关闭）
+                if (_lastConfirmReceipt.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildConfirmReceipt(),
+                ],
+                // P2-交易43：这张截图有 N 行没记（橙色可展开，人话明细）
                 if (_dropped.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   _buildDroppedNotice(),
                 ],
                 const SizedBox(height: 16),
+                // ── 焦点 2：持仓（主区，不折叠；点卡看阿呆说）──
                 Row(children: [
                   _sectionTitle(_positions.isEmpty ? '持仓' : '持仓明细'),
                   if (_positions.isNotEmpty) ...[
@@ -961,14 +1097,38 @@ class _TradingPageState extends State<TradingPage> {
                   const Spacer(),
                   _buildManageHint(),
                 ]),
-                // 2026-09-14 当日口径批：总仓位（几成仓）+ 现金比例；算不出（null）整行不显示——
+                // 2026-09-14 当日口径批：总仓位 + 现金比例；算不出（null）整行不显示——
                 // 显示 0% 会被当成「空仓」，比不说更坏。notes 非空 = 有未计入项，如实轻提示。
                 if (_positionsDaily != null) _buildDailyPositionsHeader(_positionsDaily!),
                 const SizedBox(height: 8),
                 _buildPositionCards(),
+                // 复盘：快捷操作待遇（用户拍板「其他可能是一些快捷操作」）
+                if (_hasActivity && !_bannerDismissed) ...[
+                  const SizedBox(height: 10),
+                  _buildReviewBanner(),
+                ],
+                const SizedBox(height: 14),
+                // ── 折叠区（次要：需要时能查到即可，默认收起）──
+                _buildFoldSection(
+                  title: '资金与配置',
+                  summary: _cashFoldSummary(),
+                  children: [
+                    _buildSnapshotCard(),
+                    const SizedBox(height: 10),
+                    _buildCashSection(),
+                    // v3.41（2026-09-04）：活跃市值区间（用户手动判定）
+                    if (_marketStageLoaded) ...[
+                      const SizedBox(height: 10),
+                      _buildMarketStageCard(),
+                    ],
+                  ],
+                ),
+                if (_dailySummary != null)
+                  _buildFoldSection(title: '今天的操作', children: [_buildDailySummary()]),
                 // 2026-08-22：自选股/清仓复盘区块移除——管理归 web（通达信导入/打分/心理标注），
                 // 手机端专注日常记录 + 阿呆建议；买点提醒由 15:10 推送覆盖。
               ],
+              ),
             ),
     );
   }
@@ -979,80 +1139,198 @@ class _TradingPageState extends State<TradingPage> {
 
   // ── 记录区：NL 输入条（默认主入口）──
 
-  Widget _buildQuickRecord() {
+  /// 焦点 1 · **每日入账**（RFC 20260918 §3.2 / A2）——用户拍板的两大主力之一。
+  ///
+  /// 2026-09-18 重排前：「截图入账」是 11px 绿字下划线（≈19pt 高），排在第 7 位、前面压着
+  /// 快照/资金/市值三张卡（≈400pt，iPhone 上已出首屏）——**每天第一步却是全页最小目标**。
+  /// 重排后：截图入账升级为独立按钮（44pt 热区 + 图标 + 底色），与「精确填写」并排；
+  /// NL 输入条对齐首页 `input_bar` 尺寸档（15px / 40pt / 圆角 14），hint 不再用 `darkGrey6`
+  /// （实算对比度 1.87:1，是用户理解"这里能说什么"的唯一引导）。
+  Widget _buildEntrySection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        // 一级动作：截图入账（≥44pt 热区 + 图标 + 底色，不再靠下划线小字）
+        Expanded(
+          child: SizedBox(
+            height: 44,
+            child: Material(
+              color: AppColors.darkGreen.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: _shotsUploading
+                    ? () => _showSnack('还在认这几张截图，稍等一下', AppColors.darkGrey4)
+                    : _pickScreenshots,
+                borderRadius: BorderRadius.circular(10),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _shotsUploading
+                      ? const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
+                      : const Icon(Icons.camera_alt_outlined, size: 17, color: AppColors.darkGreen),
+                  const SizedBox(width: 6),
+                  Text(_shotsUploading ? '在认截图…' : '截图入账',
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 次级：精确填写（同样给足热区，只是视觉更轻）
+        SizedBox(
+          height: 44,
+          child: TextButton(
+            onPressed: () => setState(() => _showForm = !_showForm),
+            style: TextButton.styleFrom(foregroundColor: AppColors.darkGrey4),
+            child: Text(_showForm ? '收起' : '精确填写', style: const TextStyle(fontSize: 12.5)),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      // 说一句（NL 输入）——尺寸对齐首页输入栏，hint 提到 darkGrey4
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         decoration: BoxDecoration(
           color: AppColors.darkSurface2,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(children: [
-          Icon(Icons.chat_bubble_outline, size: 16, color: AppColors.darkGrey5),
+          const Icon(Icons.chat_bubble_outline, size: 16, color: AppColors.darkGrey4),
           const SizedBox(width: 8),
           Expanded(
-            child: TextField(
-              controller: _nlCtrl,
-              style: const TextStyle(fontSize: 13, color: AppColors.darkGrey2),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: '说一句，比如：买了 1000 股京东方 @5.2',
-                hintStyle: TextStyle(fontSize: 12, color: AppColors.darkGrey6),
-                border: InputBorder.none,
+            child: SizedBox(
+              height: 40,
+              child: TextField(
+                controller: _nlCtrl,
+                style: const TextStyle(fontSize: 15, color: AppColors.darkGrey2),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '说一句，比如：买了 1000 股京东方 @5.2',
+                  hintStyle: TextStyle(fontSize: 13, color: AppColors.darkGrey4),
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _parseTrade(),
               ),
-              onSubmitted: (_) => _parseTrade(),
             ),
           ),
           GestureDetector(
             onTap: _parsing ? null : _parseTrade,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.darkGreen.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: _parsing
                   ? const SizedBox(width: 14, height: 14,
                       child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
-                  : const Text('解析', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
+                  : const Text('解析', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.darkGreen)),
             ),
           ),
         ]),
       ),
-      const SizedBox(height: 4),
-      Row(children: [
-        // 2026-08-26 截图入账：用户核心工作流「发截图」的一等入口（拍照/相册 → VLM → 候选）
-        GestureDetector(
-          onTap: _shotsUploading ? null : _pickScreenshots,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(children: [
-              _shotsUploading
-                  ? const SizedBox(width: 11, height: 11,
-                      child: CircularProgressIndicator(strokeWidth: 1.6, color: AppColors.darkGreen))
-                  : Icon(Icons.camera_alt_outlined, size: 13, color: AppColors.darkGreen),
-              const SizedBox(width: 4),
-              Text('截图入账', style: TextStyle(fontSize: 11, color: AppColors.darkGreen,
-                  decoration: TextDecoration.underline, decorationColor: AppColors.darkGreen)),
-            ]),
-          ),
+    ]);
+  }
+
+  // ── 隐私条 / 上传占位卡 / 折叠容器（RFC 20260918 §3.2）──────────────
+
+  /// 首页金额：隐私模式（默认 `••••`，点 👁 后同 `_fmtMoney`）。
+  /// 详情类容器（批次弹窗、转账对话框）**不用**这个入口——它们是无条件显示的真实明细。
+  String _moneyHome(double v) => _amountsRevealed ? _fmtMoneyFull(v) : '••••';
+
+  /// 隐私条：今天 + 金额揭开开关（用户拍板：「金额私密，比例无所谓」）。
+  Widget _buildPrivacyBar() {
+    final now = DateTime.now();
+    final day = '${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return Row(children: [
+      Text('$day · 今天',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey4)),
+      const Spacer(),
+      GestureDetector(
+        onTap: () => setState(() => _amountsRevealed = !_amountsRevealed),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(children: [
+            Icon(_amountsRevealed ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                size: 15, color: AppColors.darkGrey4),
+            const SizedBox(width: 4),
+            Text(_amountsRevealed ? '收起金额' : '看金额',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4)),
+          ]),
         ),
-        const SizedBox(width: 16),
-        GestureDetector(
-          onTap: () => setState(() => _showForm = !_showForm),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Text(_showForm ? '收起精确填写' : '精确填写',
-                style: TextStyle(fontSize: 11, color: AppColors.darkGrey5, decoration: TextDecoration.underline)),
-          ),
+      ),
+    ]);
+  }
+
+  /// 上传在途占位卡（A1-2）：VLM 最坏 90 秒（3 张 × 单图 28s），原实现全程只有一个 11px 转圈
+  /// → 用户判定「点了没反应」会再点一次（生产实证：2026-09-18 10:34 / 10:35 连传两次同一批成交）。
+  Widget _buildUploadPlaceholder() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.35)),
+      ),
+      child: Row(children: [
+        const SizedBox(width: 14, height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text('在认这几张截图，最慢一分半 —— 认完候选直接放这儿',
+              style: TextStyle(fontSize: 12, color: AppColors.darkGrey3)),
         ),
       ]),
+    );
+  }
+
+  /// 折叠容器（A2）：次要信息默认收起，标题行只给摘要（**不含金额**）。
+  Widget _buildFoldSection({required String title, String? summary, required List<Widget> children}) {
+    final open = _foldOpen[title] ?? false;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        onTap: () => setState(() => _foldOpen[title] = !open),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(children: [
+            Icon(open ? Icons.expand_less : Icons.expand_more, size: 17, color: AppColors.darkGrey4),
+            const SizedBox(width: 4),
+            Text(title,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey3)),
+            if (summary != null) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(summary,
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ]),
+        ),
+      ),
+      if (open) ...[
+        const SizedBox(height: 6),
+        ...children,
+      ],
     ]);
+  }
+
+  /// 折叠摘要：只用比例（金额私密口径下仍能一眼看出仓位状态）。
+  String _cashFoldSummary() {
+    final d = _positionsDaily;
+    if (d?.totalPositionRatio != null) {
+      return '仓位 ${d!.totalPositionRatio!.toStringAsFixed(0)}% · 转入 / 转出 / 设置本金 / 活跃市值';
+    }
+    return '转入 / 转出 / 设置本金 / 活跃市值';
   }
 
   // ── 2026-08-26 截图入账：当日候选卡（逐笔可丢弃 + 全部确认入账）──
 
   Widget _buildCandidatesCard() {
+    final missingDateCount = _candidates
+        .where((c) => c.tradeDate == null || c.tradeDate!.isEmpty)
+        .length;
+    final canConfirm = !_candidatesConfirming && missingDateCount == 0;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1068,26 +1346,110 @@ class _TradingPageState extends State<TradingPage> {
             child: Text('今日截图候选 ${_candidates.length} 笔 · 确认后入账',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
           ),
-        ]),
-        const SizedBox(height: 8),
-        ..._candidates.map(_candidateRow),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          height: 36,
-          child: ElevatedButton(
-            onPressed: _candidatesConfirming ? null : _confirmCandidates,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.darkGreen.withValues(alpha: 0.15),
-              foregroundColor: AppColors.darkGreen,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          // 2026-09-18（P0-交易59 交互）：收起/展开——失败/缺日期的候选会被保留（钉子户），
+          // 此前整卡没有关闭出口（用户「关不掉」）。收起=本地隐藏，不删后端候选。
+          GestureDetector(
+            onTap: () => setState(() => _candidatesCollapsed = !_candidatesCollapsed),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Row(children: [
+                Text(_candidatesCollapsed ? '展开' : '收起',
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+                Icon(_candidatesCollapsed ? Icons.expand_more : Icons.expand_less,
+                    size: 16, color: AppColors.darkGrey4),
+              ]),
             ),
-            child: _candidatesConfirming
-                ? const SizedBox(width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
-                : const Text('全部确认入账', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
-        ),
+        ]),
+        if (!_candidatesCollapsed) ...[
+          const SizedBox(height: 8),
+          // A1-3（2026-09-18）：主操作提到**列表之前**——原来跟在候选列表末尾，
+          // 10~15 笔时被推到 1000px 之外（用户确认要一路滚）。
+          Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 40,
+                child: ElevatedButton(
+                  onPressed: canConfirm ? _confirmCandidates : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.darkGreen.withValues(alpha: 0.15),
+                    foregroundColor: AppColors.darkGreen,
+                    disabledBackgroundColor: AppColors.darkSurface,
+                    disabledForegroundColor: AppColors.darkGrey5,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: _candidatesConfirming
+                      ? const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))
+                      : Text(missingDateCount > 0 ? '还有 $missingDateCount 笔缺日期' : '全部确认入账',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // A1-6（2026-09-18）：护栏原来装反了——「全部忽略」（删）有确认、「全部确认入账」（写）
+            // 没有。这里把「全部忽略」从全宽大按钮降级为轻量入口，与主按钮拉开距离。
+            SizedBox(
+              height: 40,
+              child: TextButton(
+                onPressed: _candidatesDiscarding ? null : _discardAllCandidates,
+                style: TextButton.styleFrom(foregroundColor: AppColors.darkGrey4),
+                child: _candidatesDiscarding
+                    ? const SizedBox(width: 12, height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4))
+                    : const Text('全部忽略', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ]),
+          // A1-7：可预知的前置条件直接写在按钮下方（原来点了才被 SnackBar 教育）
+          if (missingDateCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('有 $missingDateCount 笔没认到成交日期 —— 点行尾「补日期」补完就能入账',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+            ),
+          const SizedBox(height: 8),
+          ..._candidates.map(_candidateRow),
+        ],
+      ]),
+    );
+  }
+
+  /// A1-8（2026-09-18）：上一次确认的**逐笔回执**——铁律 1「写账必回执」的落地。
+  /// 每一笔的下场都摆出来（进账 / 只记流水 / 已记过 / 为什么没进去），可手动关掉。
+  Widget _buildConfirmReceipt() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.receipt_long_outlined, size: 15, color: AppColors.darkGrey4),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('上一次确认的逐笔结果（${_lastConfirmReceipt.length} 条）',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey3)),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _lastConfirmReceipt = []),
+            behavior: HitTestBehavior.opaque,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Icon(Icons.close, size: 15, color: AppColors.darkGrey5),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        for (final line in _lastConfirmReceipt)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text('· $line',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey2, height: 1.35)),
+          ),
       ]),
     );
   }
@@ -1135,7 +1497,11 @@ class _TradingPageState extends State<TradingPage> {
     final isBuy = c.direction == 'BUY';
     final dirColor = isBuy ? AppColors.darkRed : AppColors.darkGreen;
     final missingDate = c.tradeDate == null || c.tradeDate!.isEmpty;
-    return Container(
+    return InkWell(
+      // A1-4（2026-09-18）：整行可点 → 就地编辑（价格/数量/方向）。子级的「补日期」「×」优先命中。
+      onTap: () => _editCandidate(c),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -1173,30 +1539,138 @@ class _TradingPageState extends State<TradingPage> {
         if (c.price != null && c.volume != null)
           Text('${c.volume}股 @${_fmtPrice(c.price!)}',
               style: const TextStyle(fontSize: 11.5, color: AppColors.darkGrey4)),
+        // 2026-09-18（P0-交易59）：成交时间——同价同量的分单靠它区分
+        // （生产实据：000831 两笔各 200 股 @53.300，10:03:44 / 10:04:09 不再看着像同一笔）
+        if (c.tradeTime != null && c.tradeTime!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(c.tradeTime!, style: const TextStyle(fontSize: 10.5, color: AppColors.darkGrey5)),
+          ),
         const SizedBox(width: 6),
         if (missingDate)
           GestureDetector(
             onTap: () => _pickCandidateDate(c),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              // C（2026-09-19）：撑大命中区（原 6/3 padding ≈ 45×19pt，是行内唯一的补救入口）
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.darkOrange.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: const Text('补日期', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
             ),
           ),
         // P0-UI13（2026-09-17）：丢弃与补日期正交——缺日期时两个入口并存。
         // 截图候选普遍识别不到日期，此前 × 被 else 分支吞掉，用户面对错误行无从删除。
-        GestureDetector(
-          onTap: () => _discardCandidate(c),
-          child: const Padding(
-            padding: EdgeInsets.only(left: 6),
-            child: Icon(Icons.close, size: 14, color: AppColors.darkGrey5),
+        // A1-5（2026-09-18）：44pt 命中区（原实现是 14px 图标 + 6px padding ≈ 20×14pt，
+        // 单手拇指极易误触，而误触的后果是**直接真删后端候选**）；点击后二次确认。
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            iconSize: 16,
+            tooltip: '丢弃这一笔',
+            onPressed: () => _discardCandidate(c),
+            icon: const Icon(Icons.close, color: AppColors.darkGrey5),
           ),
         ),
       ]),
+      ),
     );
+  }
+
+  /// 2026-09-18（RFC 20260918 A1-4）：**候选就地编辑**——改正识别错的价格 / 数量 / 方向。
+  ///
+  /// 截图入账的价值是省手输，而 VLM 对这三样都可能出错；原来只能「丢弃 → 重新发截图 →
+  /// 重新补日期」。走 `PUT /trading/trade-log/meta`（带 id 行级定位）。
+  Future<void> _editCandidate(TradeLogCandidateDto c) async {
+    if (_candidatesConfirming) return;
+    if (c.id.isEmpty) {
+      _showSnack('这一笔缺少行标识，先丢弃再重发截图', AppColors.darkOrange);
+      return;
+    }
+    // P1-1（2026-09-19 前端审查）：预填保**原始精度**——原来用 `_fmtPrice`（toStringAsFixed(2)），
+    // 转债/ETF 的三位价会被截断；而保存时 price 非空 → 后端「只覆盖非空值」把它写回去，
+    // 等于「只想改数量」却顺手改坏了价格。改为 `_trimZero`（只去尾零、不四舍五入）。
+    final priceCtrl = TextEditingController(text: c.price == null ? '' : _trimZero(c.price!));
+    final volCtrl = TextEditingController(text: c.volume?.toString() ?? '');
+    final origPrice = c.price;
+    final origVolume = c.volume;
+    final origDir = c.direction == 'SELL' ? 'SELL' : 'BUY';
+    var dir = origDir;
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDlg) => AlertDialog(
+            title: Text('改这一笔（${c.name.isEmpty ? c.symbol : c.name}）'),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ChoiceChip(
+                  label: const Text('买入'),
+                  selected: dir == 'BUY',
+                  onSelected: (_) => setDlg(() => dir = 'BUY'),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('卖出'),
+                  selected: dir == 'SELL',
+                  onSelected: (_) => setDlg(() => dir = 'SELL'),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              TextField(
+                controller: priceCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: '成交价'),
+              ),
+              TextField(
+                controller: volCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '数量（股）'),
+              ),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+            ],
+          ),
+        ),
+      );
+      if (saved != true || !mounted) return;
+      final price = double.tryParse(priceCtrl.text.trim());
+      final volume = int.tryParse(volCtrl.text.trim());
+      if (price == null || volume == null || price <= 0 || volume <= 0) {
+        _showSnack('价格和数量都要填成正数', AppColors.darkOrange);
+        return;
+      }
+      // P1-1：**只提交真正改动过的字段**（传 null = 后端保持不变），不再无条件全量覆盖
+      final dirtyPrice = (origPrice == null || (price - origPrice).abs() > 1e-9) ? price : null;
+      final dirtyVolume = volume != origVolume ? volume : null;
+      final dirtyDir = dir != origDir ? dir : null;
+      if (dirtyPrice == null && dirtyVolume == null && dirtyDir == null) {
+        _showSnack('这一笔没改动', AppColors.darkGrey4);
+        return;
+      }
+      final updated = await widget.api.updateTradeLogFields(
+          id: c.id, price: dirtyPrice, volume: dirtyVolume, direction: dirtyDir);
+      if (!mounted) return;
+      // P2-1（前端审查）：不再无视 updated=false——候选可能已在别处被删/被改，
+      // 静默报「改好了」违反「写账必回执」（同页 `_pickCandidateDate` 早就是正确写法）。
+      if (updated) {
+        _showSnack('好，这一笔改好了', AppColors.darkGreen);
+      } else {
+        _showSnack('这笔已经不在候选里了（可能被别处处理过），我刷一下', AppColors.darkOrange);
+      }
+      _loadCandidates();
+    } catch (e) {
+      if (mounted) _showSnack('没改成：${_extractApiError(e)}', AppColors.darkOrange);
+    } finally {
+      // P3-3：局部 controller 用完即回收（同文件其余 controller 都在 dispose 回收）
+      priceCtrl.dispose();
+      volCtrl.dispose();
+    }
   }
 
   /// 2026-08-27 二修：截图候选缺成交日期 → 弹日期选择补写（PUT /trade-log/date）→ 刷新候选。
@@ -1551,13 +2025,18 @@ class _TradingPageState extends State<TradingPage> {
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('总资产', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
-              Text(_fmtMoney(totalAssets),
+              // 2026-09-18 隐私：首页金额默认 `••••`（点 👁 揭开）
+              Text(_moneyHome(totalAssets),
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
             ]),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
-              Text(totalPnl == null ? '—' : '${totalPnl >= 0 ? '+' : ''}${_fmtMoney(totalPnl)}',
+              // P2-3（2026-09-19 前端审查）：账户级金额统一千分位——原来只有总资产走了
+              // `_fmtMoneyFull`，总盈亏/当日盈亏仍是「万」，同卡三种格式（本批注释与 RFC §B3 自相矛盾）
+              Text(totalPnl == null ? '—' : (_amountsRevealed
+                      ? '${totalPnl >= 0 ? '+' : ''}${_fmtMoneyFull(totalPnl)}'
+                      : '••••'),
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
                       color: totalPnl == null ? AppColors.darkGrey5
                           : totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
@@ -1570,15 +2049,17 @@ class _TradingPageState extends State<TradingPage> {
         const SizedBox(height: 10),
         Wrap(spacing: 14, runSpacing: 6, children: [
           // D9（2026-08-23 app 体感，P2-UI2）：无账户快照时显示「—」——原显示伪 0 冒充真实值
-          _snapshotItem('可用', hasAccount ? _fmtMoney(a.available) : '—'),
-          _snapshotItem('可取', hasAccount ? _fmtMoney(a.withdrawable) : '—'),
-          _snapshotItem('市值', hasAccount ? _fmtMoney(a.marketValue) : (s?.totalValue != null ? _fmtMoney(s!.totalValue) : '—')),
+          _snapshotItem('可用', hasAccount ? _moneyHome(a.available) : '—'),
+          _snapshotItem('可取', hasAccount ? _moneyHome(a.withdrawable) : '—'),
+          _snapshotItem('市值', hasAccount ? _moneyHome(a.marketValue) : (s?.totalValue != null ? _moneyHome(s!.totalValue) : '—')),
           _snapshotItem('当日盈亏', hasAccount
-              ? '${a.todayPnl >= 0 ? '+' : ''}${_fmtMoney(a.todayPnl)}'
+              ? (_amountsRevealed
+                  ? '${a.todayPnl >= 0 ? '+' : ''}${_fmtMoneyFull(a.todayPnl)}'
+                  : '••••')
               : '—',
               hasAccount ? (a.todayPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen) : AppColors.darkGrey5),
           if (hasAccount && a.principal > 0)
-            _snapshotItem('本金', _fmtMoney(a.principal)),
+            _snapshotItem('本金', _moneyHome(a.principal)),
         ]),
         // P2-交易48：当日盈亏的来源与日期（小字，11px 下限）——`券商口径 · 09-11` /
         // `系统计算 · 09-14（已过期）`；来源未知/当日盈亏为 0 时整行不渲染
@@ -1650,7 +2131,9 @@ class _TradingPageState extends State<TradingPage> {
           const Text('资金',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
           const Spacer(),
-          Text('现金 ¥${_fmtMoney(a?.cash ?? 0)} · 总资产 ¥${_fmtMoney(a?.assets ?? 0)}',
+          // 2026-09-18（B2 + 隐私）：账户未就绪不再显示「¥0.00」（与同屏快照卡的「—」自相矛盾，
+          // 用户会以为账上没钱）；有值时走隐私打码。
+          Text(a == null ? '—' : '现金 ${_moneyHome(a.cash)} · 总资产 ${_moneyHome(a.assets)}',
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
         ]),
         const SizedBox(height: 10),
@@ -1658,6 +2141,7 @@ class _TradingPageState extends State<TradingPage> {
           Expanded(
             child: OutlinedButton(
               onPressed: _transferBusy ? null : () => _openTransferDialog(true),
+              style: _outlinedSecondaryStyle,
               child: const Text('转入', style: TextStyle(fontSize: 12)),
             ),
           ),
@@ -1665,6 +2149,7 @@ class _TradingPageState extends State<TradingPage> {
           Expanded(
             child: OutlinedButton(
               onPressed: _transferBusy ? null : () => _openTransferDialog(false),
+              style: _outlinedSecondaryStyle,
               child: const Text('转出', style: TextStyle(fontSize: 12)),
             ),
           ),
@@ -1672,6 +2157,7 @@ class _TradingPageState extends State<TradingPage> {
           Expanded(
             child: OutlinedButton(
               onPressed: _transferBusy ? null : _openPrincipalDialog,
+              style: _outlinedSecondaryStyle,
               child: const Text('设置本金', style: TextStyle(fontSize: 12)),
             ),
           ),
@@ -1825,7 +2311,7 @@ class _TradingPageState extends State<TradingPage> {
         ? ''
         : ' (${p.pct! >= 0 ? '+' : ''}${p.pct!.toStringAsFixed(2)}%)';
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Text('${v >= 0 ? '+' : ''}${_fmtMoney(v)}$pct',
+      Text(_amountsRevealed ? '${v >= 0 ? '+' : ''}${_fmtMoneyFull(v)}$pct' : '••••$pct',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
       const SizedBox(width: 4),
       Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
@@ -1836,14 +2322,8 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _buildPositionCards() {
     if (_positions.isEmpty) return _buildEmptyPositions();
-    return Column(
-      children: [
-        ..._positions.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildPositionCard(p),
-            )),
-      ],
-    );
+    // A2（2026-09-18 去卡片化）：数据列表——靠细分隔线分组，不再一票一张圆角卡
+    return Column(children: _positions.map(_buildPositionCard).toList());
   }
 
   /// 2026-09-14 当日口径批：持仓区头部一行——「仓位 62.24% · 现金 37.76%」（几成仓）。
@@ -1862,7 +2342,7 @@ class _TradingPageState extends State<TradingPage> {
       if (ratio != null)
         Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Text(ratioLine, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          child: Text(ratioLine, style: TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
         ),
       if (notes.isNotEmpty)
         Padding(
@@ -1873,53 +2353,57 @@ class _TradingPageState extends State<TradingPage> {
     ]);
   }
 
+  /// 持仓行（A2 数据列表风，2026-09-18 重排）：
+  /// **比例上主位、金额退次位**（用户拍板「金额私密，比例无所谓」）——一行一只，
+  /// 名称/代码 · 盈亏% · 数量成本现价 · 当日三指标 · 批次；分组靠**细分隔线**，不再用圆角卡片。
   Widget _buildPositionCard(PositionItem p) {
     final isGain = p.pnl > 0.01;   // 盈=红
     final isLoss = p.pnl < -0.01;  // 亏=绿
     final pnlColor = isGain
         ? AppColors.darkRed
         : (isLoss ? AppColors.darkGreen : AppColors.darkGrey3);
-    final pnlStr = '${p.pnl >= 0 ? '+' : ''}${_fmtMoney(p.pnl)}';
+    final pnlStr = _amountsRevealed ? '${p.pnl >= 0 ? '+' : ''}${_fmtMoneyFull(p.pnl)}' : '••••';
     // 负/零成本 → pnlPercent 为 null → 「—」；百分比符号翻转时给数字反而误导（2026-09-13 负成本批）
     final pctStr = p.pnlPercent == null
         ? '—'
         : '${p.pnlPercent! >= 0 ? '+' : ''}${p.pnlPercent!.toStringAsFixed(1)}%';
-    return GestureDetector(
+    return InkWell(
       onTap: () => _showAdvice(p),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.darkSurface2,
-          borderRadius: BorderRadius.circular(10),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.darkBorder, width: 0.5)),
         ),
-        child: Column(children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(
-              child: Row(children: [
-                Flexible(
-                  child: Text(p.name.isEmpty ? p.symbol : p.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-                ),
-                const SizedBox(width: 6),
-                Text(p.symbol, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-              ]),
+            Flexible(
+              child: Text(p.name.isEmpty ? p.symbol : p.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
             ),
-            Text(pnlStr, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: pnlColor)),
+            const SizedBox(width: 6),
+            Text(p.symbol, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            const Spacer(),
+            // 比例（无所谓）上主位；金额（私密）退到次位、默认打码
+            Text(pctStr, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: pnlColor)),
+            const SizedBox(width: 8),
+            Text(pnlStr, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: pnlColor)),
           ]),
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(
-              child: Text(
-                '${p.quantity}股 · 成本 ${_fmtPrice(p.avgCost)} · 现价 ${_fmtPrice(p.currentPrice)}'
-                '${p.stopLossPrice != null ? ' · 止损 ${_fmtPrice(p.stopLossPrice!)}' : ' · 未设止损'}',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11,
-                    color: p.stopLossPrice == null ? AppColors.darkOrange : AppColors.darkGrey5),
-              ),
-            ),
-            Text(pctStr, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: pnlColor)),
-          ]),
+          const SizedBox(height: 4),
+          Text(
+            // P2-4（2026-09-19 前端审查）：**数量与成本也打码**——「数量 × 现价 = 市值」，
+            // 明文数量等于把被打码的市值直接送出去（现价是公开信息，真正的隐私是数量与成本价）；
+            // 金额加数被挡住之后，`••••` 才不是只挡住"和"。
+            // 止损价属交易计划、不泄露资产规模，保留。
+            '${_amountsRevealed ? '${p.quantity}股' : '••••股'}'
+            ' · 成本 ${_amountsRevealed ? _fmtPrice(p.avgCost) : '••••'}'
+            ' · 现价 ${_fmtPrice(p.currentPrice)}'
+            '${p.stopLossPrice != null ? ' · 止损 ${_fmtPrice(p.stopLossPrice!)}' : ' · 未设止损'}',
+            overflow: TextOverflow.ellipsis,
+            // B6（2026-09-18）：这行是要逐字核对的成本/止损数字——不再用 darkGrey5（实测 2.58:1）
+            style: TextStyle(fontSize: 11.5,
+                color: p.stopLossPrice == null ? AppColors.darkOrange : AppColors.darkGrey4),
+          ),
           // 2026-09-14 当日口径批：这票三样——当日盈亏（金额）/ 今日涨跌幅 / 仓位比例
           _buildPositionDailyRow(p),
           // RFC 20260825：批次简版（一眼可见；2026-08-28 整行可点 → 批次明细弹窗）
@@ -1940,7 +2424,7 @@ class _TradingPageState extends State<TradingPage> {
     final pnl = d?.todayPnl;
     final chg = d?.dayChangePct;
     final ratio = d?.positionRatio;
-    final pnlStr = pnl == null ? '—' : '${pnl >= 0 ? '+' : ''}${_fmtMoney(pnl)}';
+    final pnlStr = pnl == null ? '—' : (_amountsRevealed ? '${pnl >= 0 ? '+' : ''}${_fmtMoneyFull(pnl)}' : '••••');
     final chgStr = chg == null ? '—' : '${chg >= 0 ? '+' : ''}${chg.toStringAsFixed(2)}%';
     final ratioStr = ratio == null ? '—' : '${ratio.toStringAsFixed(2)}%';
     return Padding(
@@ -1963,7 +2447,9 @@ class _TradingPageState extends State<TradingPage> {
 
   Widget _dailyMetric(String label, String value, Color color) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      // B6（2026-09-18）：标签与数字成对出现，属"要逐字核对"的元信息——
+      // darkGrey5 实测对比度仅 2.58:1（AA 正文需 4.5:1），统一提到 darkGrey4。
+      Text(label, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
       const SizedBox(width: 4),
       Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
     ]);
@@ -2146,9 +2632,15 @@ class _TradingPageState extends State<TradingPage> {
           ),
         ),
         const SizedBox(width: 4),
+        // C（2026-09-18）：44pt 热区——原来 16pt 图标且紧挨「生成复盘」，误触后本会话无法恢复
         GestureDetector(
           onTap: () => setState(() => _bannerDismissed = true),
-          child: Icon(Icons.close, size: 16, color: AppColors.darkGrey5),
+          behavior: HitTestBehavior.opaque,
+          child: const SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(Icons.close, size: 16, color: AppColors.darkGrey5),
+          ),
         ),
       ]),
     );
@@ -2576,7 +3068,31 @@ String _fmtMoney(double v) {
   return v.toStringAsFixed(0);
 }
 
+/// B3（2026-09-18）：**千分位 + 两位小数**——与 web 同口径。
+/// app 原来用「万」（`46.4万`），同一张卡上当日盈亏却显示「+3200」，单位/精度混排无法互相核对；
+/// 用户两端对着看时会怀疑「哪个数对」。账户级与列表金额统一走这里，
+/// `_fmtMoney`（万）只留给日历格等**极窄**场景。
+String _fmtMoneyFull(double v) {
+  final s = v.abs().toStringAsFixed(2);
+  final dot = s.indexOf('.');
+  final intPart = s.substring(0, dot).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+  return '${v < 0 ? '-' : ''}$intPart.${s.substring(dot + 1)}';
+}
+
 String _fmtPrice(double v) => v.toStringAsFixed(2);
+
+/// **保原始精度、只去无意义尾零**（P1-1，2026-09-19 前端审查）：用于就地编辑的**预填**。
+/// `_fmtPrice` 的 `toStringAsFixed(2)` 会把转债/ETF 的三位价截断——用户只想改数量时，
+/// 价格会被顺手写回成截断值（同文件 P2-UX1 早记过同型坑）。
+String _trimZero(double v) {
+  var s = v.toString();
+  if (s.contains('.')) {
+    s = s.replaceAll(RegExp(r'0+$'), '');
+    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+  }
+  return s;
+}
 
 /// P2-UX1（2026-08-29）：NL 解析回显价格——保留后端精度 ≤5 位小数并去尾零，
 /// 与小键盘输入能力一致（原 toStringAsFixed(2) 截断 4 位成本价失真）。
@@ -2752,7 +3268,9 @@ double _lotWeightedCost(List<LotItem> lots) {
 }
 
 /// 带符号金额（批次合计用）：盈 +1,234.56 / 亏 -1,234.56。
-String _fmtSigned(double v) => '${v >= 0 ? '+' : ''}${_fmtMoney(v)}';
+/// 带正负号的金额：P2-3（2026-09-19）起走千分位，与账户卡同口径（原来注释写着 `+1,234.56`、
+/// 实现却是「万」——注释与实现不符）。
+String _fmtSigned(double v) => '${v >= 0 ? '+' : ''}${_fmtMoneyFull(v)}';
 
 /// 单批次行：日期+状态徽标+盈亏大字 / 剩余·成本·现价 / （破止损警示）。
 class _LotTile extends StatelessWidget {
@@ -2764,8 +3282,16 @@ class _LotTile extends StatelessWidget {
   Widget build(BuildContext context) {
     // 已清仓回合：盈亏显示整批已实现盈亏；持有中/初始底仓显示剩余部分浮动盈亏
     final pnl = lot.closed ? lot.realizedPnl : lot.pnl;
-    final pnlValue = pnl ?? 0;
-    final pnlColor = pnlValue >= 0 ? AppColors.darkRed : AppColors.darkGreen;
+    // B1（2026-09-18，REVIEW UI 审查 P2-8）：算不出（null）**不得**渲染成「+0 红色」——
+    // 那是把「不知道」说成「不赚不亏」，与本页反复强调的「宁可不说也不编造」相悖。
+    // 0 值单独判平（不带正负号、不上红绿）。
+    final pnlColor = pnl == null
+        ? AppColors.darkGrey5
+        : pnl > 0
+            ? AppColors.darkRed
+            : pnl < 0
+                ? AppColors.darkGreen
+                : AppColors.darkGrey3;
     final statusText = lot.closed
         ? '已清仓'
         : lot.initial
@@ -2794,7 +3320,7 @@ class _LotTile extends StatelessWidget {
         ),
         const Spacer(),
         Text(
-          '${pnlValue >= 0 ? '+' : ''}${_fmtMoney(pnlValue)}  ${_lotPnlPctText(lot)}',
+          '${pnl == null ? '—' : '${pnl > 0 ? '+' : ''}${_fmtMoneyFull(pnl)}'}  ${_lotPnlPctText(lot)}',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: pnlColor),
         ),
       ]),

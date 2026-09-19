@@ -191,11 +191,11 @@ public class TradingAppService {
 
     /** 记录一次持仓全量 replace 锚定（best-effort：失败告警不阻断已成功的导入，防重暂时失效可被发现）。
      *  2026-09-12：锚定日取**快照自身日期**（文件名日期，前端可传 snapshotDate）——补导几天前的快照文件时，
-     *  不能把锚定日写成「今天」，否则锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。 */
+     *  不能把锚定日写成「今天」，否则锚定日之后、快照之前的真实成交会被误判为「已含在快照内」而丢掉持仓/现金增量。
+     *  2026-09-18（P0-交易59）：再对「盘前导出的当日快照」做一次归一化，见 {@link #normalizeAnchorDate}。 */
     private void recordPositionsReplaceAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updatePositionsReplace(userId,
-                    snapshotDate != null ? snapshotDate : LocalDate.now());
+            anchorRepository.updatePositionsReplace(userId, normalizeAnchorDate(snapshotDate));
         } catch (RuntimeException e) {
             log.error("持仓 replace 已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
@@ -204,11 +204,47 @@ public class TradingAppService {
     /** 记录一次资金股份导入锚定（best-effort，同上；锚定日取快照自身日期，见 recordPositionsReplaceAnchor）。 */
     private void recordCashImportAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updateCashImport(userId,
-                    snapshotDate != null ? snapshotDate : LocalDate.now());
+            anchorRepository.updateCashImport(userId, normalizeAnchorDate(snapshotDate));
         } catch (RuntimeException e) {
             log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
+    }
+
+    /**
+     * 锚定日归一化（2026-09-18，P0-交易59）：**盘前导出的「当日」快照，数据基准是上一交易日**。
+     *
+     * <p>通达信「持仓股 / 资金股份查询」文件名里的日期是**导出日**，文件内容却是最近一个
+     * **已收盘交易日**的状态。用户凌晨（或开盘前）导出时，导出日 = 今天、数据基准 = 上一交易日——
+     * 直接拿导出日当锚定日，等于把「今天」提前锚定：当天盘中的真实成交全被
+     * {@link #coveredByAnchor} 判成「已包含在快照内」而拒绝（生产实据：2026-09-18 凌晨 00:24
+     * 导入持仓快照 → 锚定日 09-18 → 当天 6 笔成交 confirm 六次全拒；且 coveredByAnchor 是
+     * 「≤ 锚定日」，之后每天再导快照锚定日只会更晚，这笔成交**永远补不回来**）。
+     *
+     * <p>规则（只动「快照日期 == 今天」这一种情况，补导历史快照一律按文件日期）：
+     * <ul>
+     *   <li>今天开盘（09:30）前导入 → 数据基准 = 上一交易日</li>
+     *   <li>今天不是交易日（周末/节假日白天导入）→ 数据基准 = 上一交易日</li>
+     *   <li>交易日盘中/盘后导入 → 数据已含当日成交，锚定日保持今天</li>
+     * </ul>
+     */
+    private static LocalDate normalizeAnchorDate(LocalDate snapshotDate) {
+        return normalizeAnchorDate(snapshotDate, LocalDate.now(), LocalTime.now());
+    }
+
+    /** 可测版本（包级可见）：把「今天/现在」参数化，便于单测覆盖盘前与盘后两种分支。 */
+    static LocalDate normalizeAnchorDate(LocalDate snapshotDate, LocalDate today, LocalTime now) {
+        // P1-2（2026-09-19 后端审查）：**null 也要走同一套归一化**——粘贴导入（web 粘贴文本，
+        // 前端拿不到文件名日期）时 snapshotDate 恒为 null，原来这里直接返回 today，于是凌晨/开盘前
+        // 粘贴导入的锚定日 = 今天 → 当天真实成交全部命中覆盖 → 降级为只落流水（持仓/现金不动）
+        // → 持仓整日停在快照状态。正是本批要修的那起生产事故，只在"没有文件名的路径"上原样保留。
+        LocalDate effective = snapshotDate != null ? snapshotDate : today;
+        if (!effective.equals(today)) return effective; // 补导历史快照：按文件日期，不调整
+        boolean beforeOpen = now != null && now.isBefore(LocalTime.of(9, 30));
+        if (beforeOpen || !TradingSessionPushService.isTradingDayStrict(today)) {
+            LocalDate prev = previousTradingDay(today);
+            if (prev != null) return prev;
+        }
+        return effective;
     }
 
     // ── 账实一致性闸门（2026-09-12）：把「口径塌了」变成当天可见 ──
@@ -571,11 +607,18 @@ public class TradingAppService {
      * <p>
      * best-effort：流水写入失败不阻塞交易本身（持仓已落库），只告警——与 writeTradingRecord 同口径。
      */
-    private void appendTradeRecord(String userId, String symbol, String name, TradeDirection direction,
-                                   BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
-                                   BigDecimal stopLossPrice, String buyPoint,
-                                   BigDecimal targetPrice, String reason, String sourceRecordId,
-                                   String orderId, BigDecimal fee) {
+    /**
+     * 追加一条流水。**返回是否真的写进去了**（2026-09-19，对抗审查 P0-2）：
+     * 原实现把异常全 catch、只 `log.warn`、**从不抛**——调用方无从知道失败，于是新写的
+     * `ledgerOnlyTrade` 恒返回 true（写失败也报「已记进流水」并把候选清掉，注释里
+     * 「绝不静默吞」是假的）。交易主链路（持仓已落库）仍 best-effort 忽略返回值；
+     * **降级路径必须消费它**。
+     */
+    private boolean appendTradeRecord(String userId, String symbol, String name, TradeDirection direction,
+                                      BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
+                                      BigDecimal stopLossPrice, String buyPoint,
+                                      BigDecimal targetPrice, String reason, String sourceRecordId,
+                                      String orderId, BigDecimal fee) {
         try {
             TradeRecord trade = TradeRecord.of(
                     IdGenerator.monotonic("trade_"),
@@ -583,8 +626,10 @@ public class TradingAppService {
                     entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason,
                     fee, LocalDateTime.now(), sourceRecordId, orderId);
             tradingHistoryRepository.append(userId, trade);
+            return true;
         } catch (Exception e) {
             log.warn("交易流水写入失败（不影响交易落库）| symbol={} | {}", symbol, e.getMessage());
+            return false;
         }
     }
 
@@ -825,10 +870,29 @@ public class TradingAppService {
      *
      * @return 命中的既有流水（无 → empty）
      */
+    /** 旧签名（无成交时间）：语义不变——双方都无时间概念时按原指纹判同笔。 */
     public Optional<TradeRecord> findRecordedTrade(String userId, String symbol,
                                                    TradeDirection direction,
                                                    BigDecimal price, Integer volume,
                                                    java.time.LocalDate entryDate, String orderId) {
+        return findRecordedTrade(userId, symbol, direction, price, volume, entryDate, null, orderId);
+    }
+
+    /**
+     * 带**成交时间**的判重（2026-09-19，对抗审查 P0-1）。
+     *
+     * <p>本批把成交时间加进候选去重（`sameTrade`）后，**confirm 的判重键却没有它**：
+     * 「同代码 + 同方向 + 同价 + 同量 + 同一天」的分单（生产实据：000831 两笔各 200 股 @53.300，
+     * 10:03:44 / 10:04:09）第 2 笔会命中第 1 笔刚落的流水 → 被判「这笔之前已经记过了」跳过
+     * → **持仓仍然只记 200 股**——症状与修复前完全一致，而用户看到的是一句真话的假象。
+     *
+     * <p>规则：双方都有成交时间且不相等 → **不是同一笔**；任一方无时间 → 退回原指纹。
+     */
+    public Optional<TradeRecord> findRecordedTrade(String userId, String symbol,
+                                                   TradeDirection direction,
+                                                   BigDecimal price, Integer volume,
+                                                   java.time.LocalDate entryDate, LocalTime tradeTime,
+                                                   String orderId) {
         if (symbol == null || symbol.isBlank() || price == null || volume == null) {
             return Optional.empty();
         }
@@ -845,6 +909,8 @@ public class TradingAppService {
             java.time.LocalDate d = t.entryDate() != null ? t.entryDate()
                     : (t.timestamp() != null ? t.timestamp().toLocalDate() : null);
             if (entryDate != null && d != null && !entryDate.equals(d)) continue;
+            // 成交时间维度（P0-1）：同价同量分单的唯一区分维度——不同时刻就是两笔
+            if (tradeTime != null && t.tradeTime() != null && !tradeTime.equals(t.tradeTime())) continue;
             return Optional.of(t);
         }
         return Optional.empty();
@@ -2217,6 +2283,57 @@ public class TradingAppService {
             log.error("回放流水兜底写入失败（该笔未能留痕）| userId={} | {} {} {}股 | {}",
                     userId, r.direction(), r.symbol(), r.volume(), e.getMessage());
         }
+    }
+
+    /**
+     * 只落流水、不动持仓与现金（2026-09-18，P0-交易59）：截图入账候选命中「券商快照锚定日」时的降级路径。
+     *
+     * <p>原实现是**硬拒**——{@code recordTradeInternal} 抛 TradingException「成交日期已包含在券商快照中」，
+     * 用户白天的真实成交被整批挡回（生产实据：2026-09-18 六笔全拒、连点六次确认全拒），而
+     * {@link #coveredByAnchor} 判的是「≤ 锚定日」、锚定日只增不减 → 这笔成交**永远补不回来**。
+     *
+     * <p>降级后：流水照落（只记账不改账）、持仓/现金以券商快照为准——成交永不丢失，也不会与快照双计
+     * （因为不动持仓与现金）。与历史成交导入的 {@link #ledgerOnly} 完全同语义。
+     *
+     * @return true=已落流水；false=写入失败（调用方须保留候选，不得静默吞）
+     */
+    public boolean ledgerOnlyTrade(String userId, String symbol, String name, TradeDirection direction,
+                                   BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
+                                   String orderId, BigDecimal fee) {
+        // P1-3（2026-09-19 对抗审查）：**必须在 per-user 流水锁内写**——历史导入的 ledgerOnly 在
+        // tradeLock 里；本方法原先直调 appendTradeRecord（流水仓储是 read→add→write、无锁），
+        // app 与 web 同时确认会互相覆盖、静默少一笔流水。
+        // P0-2（同批）：消费 appendTradeRecord 的**真实结果**（它现在返回 boolean），
+        // 不再恒返回 true（原来写失败也报「已记进流水」并把候选清掉）。
+        synchronized (tradeLock(userId)) {
+            boolean ok = appendTradeRecord(userId, symbol, name, direction, price, volume, entryDate, tradeTime,
+                    null, null, null, null, null, orderId, fee);
+            if (!ok) {
+                log.error("锚定降级：流水兜底写入失败（该笔未能留痕，候选将保留）| userId={} | {} {} {}股",
+                        userId, direction, symbol, volume);
+            }
+            return ok;
+        }
+    }
+
+    /** 该日期是否已被券商快照锚定覆盖（防重复入账）；2026-09-18（P0-交易59）起 confirm 命中它走降级而非硬拒。 */
+    public boolean isCoveredByAnchor(String userId, LocalDate entryDate) {
+        return coveredByAnchor(userId, entryDate);
+    }
+
+    /**
+     * 候选确认用的 per-user 锁（2026-09-19，对抗审查 P1-4）。
+     *
+     * <p>`confirm` 的「判重 → 锚定分派 → 落账」必须**整体串行**：原实现在锁外先
+     * `findRecordedTrade`（并发时两方都拿到 empty），再调 `recordTradeWithOrderId`（后者才进锁）
+     * → 两个客户端同时点「确认入账」时同一笔能通过两次检查、落两次账（持仓/现金双计，
+     * 正是 pitfalls 里的「检查-再动作竞态」）。
+     *
+     * <p>暴露锁对象而不是包一层方法，是为了保持 `confirm` 既有的分派结构与各分支可见性。
+     * `recordTradeWithOrderId` 内部用的是**同一把**锁 → 可重入，不会自锁。
+     */
+    public Object candidateLock(String userId) {
+        return tradeLock(userId);
     }
 
     /** 补录模式（历史成交导入）：只补流水不重算持仓/现金，返回对账提示。

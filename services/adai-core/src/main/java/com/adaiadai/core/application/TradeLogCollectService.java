@@ -115,15 +115,18 @@ public class TradeLogCollectService {
     }
 
     /**
-     * 批量归集（2026-08-26，截图表格归集）：逐笔 append 到当日候选，
-     * 去重复用 {@link TradeLogRepository#append} 的 sameTrade 语义（同 symbol+方向+volume±10% 同笔）。
+     * 批量归集（2026-08-26，截图表格归集）：整批一次落盘。
+     *
+     * <p>2026-09-18（P0-交易59）：原实现逐笔 {@link TradeLogRepository#append}——同一张截图里的
+     * 多行会被**批内互判同笔**，同代码/同方向/同价/同量的分单被静默吞掉（生产实据：000831
+     * 两笔各 200 股 @53.300 只剩一笔）。改为 {@link TradeLogRepository#appendBatch}：批内互不判重，
+     * 只与批前已有候选去重（重传同一张图仍不翻倍）。
      *
      * @return 该用户当日候选全量
      */
     public List<TradeLogCandidate> collectBatch(String userId, List<TradingParseAppService.ParseResult> parsed,
                                                 String source) {
-        List<TradeLogCandidate> updated = todayCandidates(userId);
-        int collected = 0;
+        List<TradeLogCandidate> pending = new java.util.ArrayList<>();
         for (TradingParseAppService.ParseResult r : parsed) {
             if (r == null || !r.matched() || r.direction() == null) continue;
             boolean hasSymbol = r.symbol() != null && !r.symbol().isBlank();
@@ -139,21 +142,21 @@ public class TradeLogCollectService {
                     hasSymbol = true;
                 }
             }
-            TradeLogCandidate candidate = new TradeLogCandidate(
+            pending.add(new TradeLogCandidate(
                     symbol, r.name(), r.direction(), r.price(), r.volume(),
                     // 2026-08-27：截图表格「日期」列提取（历史成交截图）；当日成交单无日期 → null
                     r.tradeDate(),
+                    // 2026-09-18（P0-交易59）：截图「成交时间」列（同价同量分单的区分维度）
+                    r.tradeTime(),
                     source,
-                    hasSymbol && r.price() != null && r.volume() != null,
-                    // P2-交易36 治本（2026-09-09）：本期截图 OCR 不抽取 orderId/fee → null
-                    //（候选确认前由用户补填 updateMeta，或确认落库后对流水补填）
-                    null, null);
-            updated = tradeLogRepository.append(userId, LocalDate.now(), candidate);
-            collected++;
+                    hasSymbol && r.price() != null && r.volume() != null));
         }
-        if (collected > 0) {
+        List<TradeLogCandidate> updated = pending.isEmpty()
+                ? todayCandidates(userId)
+                : tradeLogRepository.appendBatch(userId, LocalDate.now(), pending);
+        if (!pending.isEmpty()) {
             log.info("交易日志批量归集 | userId={} | 解析 {} 笔 → 归集 {} 笔 | 当日候选 {} 笔",
-                    userId, parsed.size(), collected, updated.size());
+                    userId, parsed.size(), pending.size(), updated.size());
         }
         return updated;
     }
@@ -243,6 +246,23 @@ public class TradeLogCollectService {
     }
 
     /**
+     * 候选就地编辑（2026-09-18，RFC 20260918 A1-4）：按行标识改**价格 / 数量 / 方向 / 成交日期 / 手续费**。
+     *
+     * <p>截图入账的全部价值是省手输，而 VLM 对价格、数量、买卖方向都可能出错——原实现只允许
+     * 「全对」或「丢弃重录」（还要重发截图、重新补日期）。传 null = 该字段保持不变。
+     *
+     * @return true=已更新；false=无此候选 / 没有任何可改字段
+     */
+    public boolean updateFieldsById(String userId, String id, BigDecimal price, Integer volume,
+                                    String direction, LocalDate tradeDate, BigDecimal fee) {
+        boolean updated = tradeLogRepository.updateFieldsById(
+                userId, LocalDate.now(), id, price, volume, direction, tradeDate, fee);
+        log.info("交易日志候选就地编辑 | userId={} | id={} | 价={} 量={} 向={} 日期={} 费={} | {}",
+                userId, id, price, volume, direction, tradeDate, fee, updated ? "已更新" : "未命中");
+        return updated;
+    }
+
+    /**
      * 丢弃一条当日候选（B6-5，2026-08-23，P1-交易18）：
      * 失败/不完整候选保留后可能成为「钉子户」——15:05 推送反复提醒同一笔；
      * 前端提供丢弃入口（标 symbol+direction），用户确认放弃该笔归集。
@@ -277,6 +297,7 @@ public class TradeLogCollectService {
         }
         int done = 0;
         int skipped = 0;
+        int ledgerOnly = 0; // 2026-09-18（P0-交易59）：命中券商快照锚定 → 只落流水不改账的笔数
         List<TradeLogCandidate> remaining = new java.util.ArrayList<>();
         List<String> failures = new java.util.ArrayList<>();
         List<String> duplicated = new java.util.ArrayList<>();
@@ -307,37 +328,78 @@ public class TradeLogCollectService {
                 // 2026-08-27（用户反馈「今日 4 笔其实是昨天」）：成交日期以候选携带的 tradeDate 为准
                 // （截图表格「日期」列提取）——成交日 ≠ 确认日不再记错；文字归集无日期才回退确认当天。
                 java.time.LocalDate entryDate = c.tradeDate() != null ? c.tradeDate() : today;
-                TradeDirection dir = "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY;
-                // 2026-09-15 防重复入账（用户实测「同一张截图试了很多次」）：同笔已在流水里 → 跳过，
-                // 不再重复落库（重复落库会污染持仓与现金，见 TradingAppService#findRecordedTrade）。
-                java.util.Optional<com.adaiadai.core.domain.trading.TradeRecord> dup =
-                        tradingAppService.findRecordedTrade(userId, c.symbol(), dir,
-                                c.price(), c.volume(), entryDate, c.orderId());
-                if (dup.isPresent()) {
-                    String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
-                    String when = dup.get().entryDate() != null ? dup.get().entryDate().toString()
-                            : String.valueOf(dup.get().timestamp());
-                    duplicated.add(label + ": 这笔之前已经记过了（" + when + " "
-                            + dup.get().volume() + " 股 @ " + dup.get().price() + "），没有重复入账");
-                    log.info("交易日志确认跳过（同笔已落库）| userId={} | {} {} {}股@{} | 已有流水 {}",
-                            userId, dir, c.symbol(), c.volume(), c.price(), dup.get().id());
-                    continue; // 已入账 → 不留候选
+                // P1-5（2026-09-19 对抗审查）：未知方向**不静默按 BUY 入账**——旧脏数据或旁路写入
+                // 可能留下非法值（"卖出"/"sell"…），按 BUY 落库会把卖出变成加仓（持仓差 2× 股数）。
+                if (!"BUY".equals(c.direction()) && !"SELL".equals(c.direction())) {
+                    skipped++;
+                    remaining.add(c);
+                    String lbl = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                    failures.add(lbl + ": 买卖方向不合法（" + c.direction() + "），丢弃后重新发一次截图");
+                    log.warn("交易日志确认跳过（方向不合法）| userId={} | {} {} | direction={}",
+                            userId, c.symbol(), c.name(), c.direction());
+                    continue;
                 }
-                // P2-交易36 治本（2026-09-09）：完整候选确认落库走带 orderId/fee 的
-                // recordTradeWithOrderId——候选补填的成交编号/手续费透传流水落盘
-                // （原 recordTrade 无此两参，截图入账/手动确认成交会丢「成交编号/发生金额」）。
-                tradingAppService.recordTradeWithOrderId(
-                        userId,
-                        c.symbol(),
-                        c.name(),
-                        dir,
-                        c.price() != null ? c.price() : BigDecimal.ZERO,
-                        c.volume() != null ? c.volume() : 0,
-                        entryDate,
-                        java.time.LocalTime.now(), // RFC 20260822：日志确认落库带当下成交时刻
-                        null, null, null, null,
-                        c.orderId(), c.fee());
-                done++;
+                TradeDirection dir = "SELL".equals(c.direction()) ? TradeDirection.SELL : TradeDirection.BUY;
+                // 2026-09-19（P0-1 + P1-4，三官深审）：
+                // ① 判重带**成交时间**——候选层已按 tradeTime 区分同价同量分单，这里不带的话
+                //    第 2 笔会命中第 1 笔刚落的流水被判「已记过」跳过（卖 400 股只记 200 股）；
+                // ② 「判重 → 锚定分派 → 落账」**整段收进同一把 per-user 锁**（原实现锁外先查后写，
+                //    并发确认能双落账——pitfalls「检查-再动作竞态」）。锁可重入，内层 recordTradeWithOrderId 安全。
+                synchronized (tradingAppService.candidateLock(userId)) {
+                    java.util.Optional<com.adaiadai.core.domain.trading.TradeRecord> dup =
+                            tradingAppService.findRecordedTrade(userId, c.symbol(), dir,
+                                    c.price(), c.volume(), entryDate, c.tradeTime(), c.orderId());
+                    if (dup.isPresent()) {
+                        String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                        String when = dup.get().entryDate() != null ? dup.get().entryDate().toString()
+                                : String.valueOf(dup.get().timestamp());
+                        duplicated.add(label + ": 这笔之前已经记过了（" + when + " "
+                                + dup.get().volume() + " 股 @ " + dup.get().price() + "），没有重复入账");
+                        log.info("交易日志确认跳过（同笔已落库）| userId={} | {} {} {}股@{} | 已有流水 {}",
+                                userId, dir, c.symbol(), c.volume(), c.price(), dup.get().id());
+                        continue; // 已入账 → 不留候选
+                    }
+                    // 2026-09-18（P0-交易59）：命中「券商快照锚定日」→ **降级为只落流水、不动持仓与现金**，
+                    // 不再硬拒（原实现抛「已包含在券商快照中」，而锚定日是「≤」判定且只增不减
+                    // → 用户当天成交永远补不回来）。
+                    if (tradingAppService.isCoveredByAnchor(userId, entryDate)) {
+                        boolean written = tradingAppService.ledgerOnlyTrade(
+                                userId, c.symbol(), c.name(), dir,
+                                c.price() != null ? c.price() : BigDecimal.ZERO,
+                                c.volume() != null ? c.volume() : 0,
+                                entryDate,
+                                c.tradeTime() != null ? c.tradeTime() : java.time.LocalTime.now(),
+                                c.orderId(), c.fee());
+                        if (written) {
+                            ledgerOnly++;
+                            log.info("交易日志确认降级（命中券商快照锚定：只落流水不改账）| userId={} | {} {} {}股@{} | 成交日 {}",
+                                    userId, dir, c.symbol(), c.volume(), c.price(), entryDate);
+                            continue; // 流水已留痕 → 候选不再保留
+                        }
+                        // 兜底写入失败：保留候选 + 如实报错（绝不静默吞）
+                        String label = c.name() != null && !c.name().isBlank() ? c.name() : c.symbol();
+                        failures.add(label + ": 流水没写进去，先把候选留着，稍后再试");
+                        remaining.add(c);
+                        log.warn("交易日志确认降级失败（流水未留痕，候选保留）| userId={} | {} {} {}股@{}",
+                                userId, dir, c.symbol(), c.volume(), c.price());
+                        continue;
+                    }
+                    // P2-交易36 治本（2026-09-09）：完整候选走带 orderId/fee 的 recordTradeWithOrderId
+                    // （候选补填的成交编号/手续费透传流水落盘）。
+                    tradingAppService.recordTradeWithOrderId(
+                            userId,
+                            c.symbol(),
+                            c.name(),
+                            dir,
+                            c.price() != null ? c.price() : BigDecimal.ZERO,
+                            c.volume() != null ? c.volume() : 0,
+                            entryDate,
+                            // 2026-09-18（P0-交易59）：截图带上来的成交时间优先（同价同量分单要分得开）
+                            c.tradeTime() != null ? c.tradeTime() : java.time.LocalTime.now(),
+                            null, null, null, null,
+                            c.orderId(), c.fee());
+                    done++;
+                }
             } catch (Exception e) {
                 // P0-1：失败候选保留（不丢），记录人话原因供前端展示
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -353,17 +415,27 @@ public class TradeLogCollectService {
         // 现整体收敛到 repository 锁内原子「读最新 → 合并保留集 → 写回」（saveMerging）：
         // 并发 append 与本写串行化，新候选不再被覆盖。
         tradeLogRepository.saveMerging(userId, today, candidates, remaining);
-        log.info("交易日志确认落库 | userId={} | 成功 {} / 失败 {} / 跳过(不完整) {} / 同笔已记过 {} / 共 {} 笔 | 保留 {} 笔",
-                userId, done, failures.size(), skipped, duplicated.size(), candidates.size(), remaining.size());
-        return new ConfirmResult(done, failures.size(), skipped, duplicated.size(), failures, duplicated);
+        log.info("交易日志确认落库 | userId={} | 成功 {} / 降级只记账 {} / 失败 {} / 跳过(不完整) {} / 同笔已记过 {} / 共 {} 笔 | 保留 {} 笔",
+                userId, done, ledgerOnly, failures.size(), skipped, duplicated.size(),
+                candidates.size(), remaining.size());
+        return new ConfirmResult(done, failures.size(), skipped, duplicated.size(), ledgerOnly,
+                failures, duplicated);
     }
 
     /**
      * 确认结果：成功/失败/跳过笔数 + 失败人话明细（P0-1：失败候选已保留，可再次确认）；
-     * {@code duplicated}/{@code duplicates} = 与已落库流水同笔而被跳过的候选（2026-09-15 防重复入账）。
+     * {@code duplicated}/{@code duplicates} = 与已落库流水同笔而被跳过的候选（2026-09-15 防重复入账）；
+     * {@code ledgerOnly} = 命中券商快照锚定、只落流水不改账（持仓/现金以快照为准）的笔数
+     * （2026-09-18，P0-交易59：原为硬拒，用户当天成交永远无法入账）。
      */
-    public record ConfirmResult(int confirmed, int failed, int skipped, int duplicated,
-                                List<String> failures, List<String> duplicates) {}
+    public record ConfirmResult(int confirmed, int failed, int skipped, int duplicated, int ledgerOnly,
+                                List<String> failures, List<String> duplicates) {
+        /** 兼容构造（2026-09-18 新增 ledgerOnly 之前的老口径）：ledgerOnly 缺省 0。 */
+        public ConfirmResult(int confirmed, int failed, int skipped, int duplicated,
+                             List<String> failures, List<String> duplicates) {
+            this(confirmed, failed, skipped, duplicated, 0, failures, duplicates);
+        }
+    }
 
     /** 收盘确认文案：当日候选汇总（供 15:05 推送 / 前端展示）。 */
     public String summarize(List<TradeLogCandidate> candidates) {

@@ -1705,5 +1705,34 @@ void soldUpdatePsychology_marksTrade() {
         assertTrue(svc.findRecordedTrade("u", "600206", TradeDirection.BUY,
                 new BigDecimal("46.50"), 100, LocalDate.of(2026, 9, 15), "8888888").isEmpty());
     }
+
+    @Test
+    void findRecordedTrade_samePriceVolumeButDifferentTime_notSameTrade() {
+        // P0-1（2026-09-19 对抗审查）：**同价同量分单靠成交时间区分**。候选层已按 tradeTime 去重，
+        // 但 confirm 的判重键若不带它，第 2 笔会命中第 1 笔刚落的流水 → 被判「这笔之前已经记过了」
+        // 跳过 → 持仓仍然只记 200 股（生产实据：000831 两笔各 200 股 @53.300，10:03:44 / 10:04:09）。
+        TradeRecord first = new TradeRecord("t1", "000831", "中国稀土", TradeDirection.SELL,
+                new BigDecimal("53.30"), 200, new BigDecimal("10660.00"), LocalDate.of(2026, 9, 18),
+                java.time.LocalTime.of(10, 3, 44), null, null, null, null, null,
+                LocalDateTime.of(2026, 9, 18, 10, 3, 44), null, null);
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(first));
+        TradingAppService svc = service(mock(PositionRepository.class), mock(RecordRepository.class), history);
+
+        // ① 成交时间不同 → **不是同一笔**（否则第二笔被吞 —— 本批头号 bug 的残留面）
+        assertTrue(svc.findRecordedTrade("u", "000831", TradeDirection.SELL,
+                        new BigDecimal("53.30"), 200, LocalDate.of(2026, 9, 18),
+                        java.time.LocalTime.of(10, 4, 9), null).isEmpty(),
+                "同价同量但成交时间不同 → 必须判为两笔，否则卖 400 股只记 200 股");
+        // ② 成交时间相同 → 判同一笔（同一张图重传仍要去重，不翻倍）
+        assertTrue(svc.findRecordedTrade("u", "000831", TradeDirection.SELL,
+                        new BigDecimal("53.30"), 200, LocalDate.of(2026, 9, 18),
+                        java.time.LocalTime.of(10, 3, 44), null).isPresent(),
+                "成交时间相同 → 仍是同一笔");
+        // ③ 任一方无时间 → 退回原指纹（旧调用点 / 文字归集候选无时间）
+        assertTrue(svc.findRecordedTrade("u", "000831", TradeDirection.SELL,
+                        new BigDecimal("53.30"), 200, LocalDate.of(2026, 9, 18), null).isPresent(),
+                "候选无时间 → 退回原指纹（兼容既有行为）");
+    }
 }
 

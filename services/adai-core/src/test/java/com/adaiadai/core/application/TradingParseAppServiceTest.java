@@ -469,4 +469,33 @@ class TradingParseAppServiceTest {
         assertTrue(p.dropped().get(0).reason().contains("数量"), p.dropped().get(0).reason());
     }
 
+    /** 2026-09-18（P0-交易59）：横排表格的「成交时间」列必须被抽出——同价同量分单的唯一区分维度。 */
+    @Test
+    void parseLooseBatch_horizontalTable_extractsTradeTime() {
+        // 生产实据（开源证券当日成交截图）：6 笔里 000831 两笔各 200 股 @53.300，
+        // 只差成交时间（10:03:44 / 10:04:09）——不带时间就会被 sameTrade 判成同一笔吞掉。
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "名称/代码 成交价/买卖 成交量/额 成交时间\n"
+                        + "广发证券 000776 20.410 买入 100 2041.000 10:10:00\n"
+                        + "中国稀土 000831 53.300 卖出 200 10660.000 10:04:09\n"
+                        + "中国稀土 000831 53.300 卖出 200 10660.000 10:03:44\n");
+
+        assertEquals(3, results.size(), "3 行都要解析出来");
+        assertEquals(java.time.LocalTime.of(10, 10, 0), results.get(0).tradeTime());
+        assertEquals(java.time.LocalTime.of(10, 4, 9), results.get(1).tradeTime());
+        assertEquals(java.time.LocalTime.of(10, 3, 44), results.get(2).tradeTime());
+        assertEquals(new BigDecimal("53.300"), results.get(2).price());
+        assertEquals(200, results.get(2).volume());
+    }
+
+    /** 竖排版式（一列一行）同样带出成交时间——成交额之后那一行。 */
+    @Test
+    void parseLooseBatch_verticalTable_extractsTradeTime() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n");
+
+        assertEquals(1, results.size());
+        assertEquals(java.time.LocalTime.of(13, 8, 59), results.get(0).tradeTime());
+    }
+
 }

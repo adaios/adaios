@@ -67,6 +67,8 @@ public class TradeLogRepository {
                         volume == null || volume.isBlank() ? null : Integer.valueOf(volume),
                         // 2026-08-27：tradeDate 可空（文字归集/旧候选无日期）——确认时回退确认当天
                         parseTradeDate(n.path("tradeDate").asText("")),
+                        // 2026-09-18（P0-交易59）：tradeTime 可空（文字归集/旧数据无此字段）→ 退回原判定
+                        parseTradeTime(n.path("tradeTime").asText("")),
                         n.path("source").asText("text"),
                         n.path("complete").asBoolean(false),
                         // P2-交易36 治本（2026-09-09）：orderId/fee 可空字段——缺字段 → null
@@ -124,6 +126,16 @@ public class TradeLogRepository {
         }
     }
 
+    /** 反序列化 tradeTime：空串/缺字段/非法格式 → null（旧数据/文字归集无成交时间）。 */
+    private static java.time.LocalTime parseTradeTime(String v) {
+        if (v == null || v.isBlank()) return null;
+        try {
+            return java.time.LocalTime.parse(v);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** 追加候选（去重：同 symbol+direction 且 volume ±10% 内视为同笔）。
      *  B6-2（2026-08-23，P1-交易12）：去重从 dedupeKey 字符串桶改为 sameTrade 区间判定——
      *  固定 10 股桶过宽吞笔（10 vs 19）/过窄漏去重（100 vs 110 → confirm 双落库）双缺陷。 */
@@ -139,6 +151,38 @@ public class TradeLogRepository {
             boolean dup = existing.stream().anyMatch(c -> c.sameTrade(incoming));
             if (!dup) existing.add(incoming);
             save(userId, date, existing);
+            return existing;
+        }
+    }
+
+    /**
+     * 批量追加候选（2026-09-18，P0-交易59）：**同一批解析结果内部互不判重**，只与「本批开始前
+     * 已存在的候选」去重。
+     *
+     * <p>生产实据：用户卖出 000831 两笔各 200 股、成交价同为 53.300，同一张截图里 OCR 出了两行；
+     * 逐笔 {@link #append} 会让第二笔与**本批第一笔**判成同笔并静默丢弃（实际卖 400 股只记 200 股，
+     * 少记 10660 元）。一张截图是同一时刻的同一张凭证，批次内出现两行 = 券商确实有两笔成交（分单），
+     * 不该由解析层替用户合并——宁可多留一笔让用户手动丢（与 {@code sameTrade} 同一取舍）。
+     *
+     * <p>跨批次去重语义不变：同一张图重复上传时，第二批只与第一批已落盘的候选比对 → 仍能判重。
+     */
+    public List<TradeLogCandidate> appendBatch(String userId, LocalDate date,
+                                               List<TradeLogCandidate> incoming) {
+        if (incoming == null || incoming.isEmpty()) return findByDate(userId, date);
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            // 基准 = 本批开始前的候选快照（批内新加入的不参与比对）
+            List<TradeLogCandidate> baseline = List.copyOf(existing);
+            for (TradeLogCandidate c : incoming) {
+                if (c == null) continue;
+                TradeLogCandidate candidate = c.id() == null
+                        ? c.withId(com.adaiadai.core.kernel.IdGenerator.monotonic("cand_"))
+                        : c;
+                boolean dup = baseline.stream().anyMatch(x -> x.sameTrade(candidate));
+                if (!dup) existing.add(candidate);
+            }
+            saveUnlocked(userId, date, existing);
             return existing;
         }
     }
@@ -233,7 +277,8 @@ public class TradeLogRepository {
                 if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
+                            // 2026-09-18：补日期**不得抹掉成交时间**（tradeTime 纳入候选后，这里漏传会静默清空）
+                            tradeDate, c.tradeTime(), c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
                     updated = true;
                 }
             }
@@ -262,7 +307,7 @@ public class TradeLogRepository {
                 if (symbol.equals(c.symbol()) && direction.equals(c.direction())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            c.tradeDate(), c.source(), c.complete(),
+                            c.tradeDate(), c.tradeTime(), c.source(), c.complete(),
                             hasOrder ? orderId : c.orderId(),
                             hasFee ? fee : c.fee(), c.id()));
                     updated = true;
@@ -290,7 +335,7 @@ public class TradeLogRepository {
                 if (id.equals(c.id())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            tradeDate, c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
+                            tradeDate, c.tradeTime(), c.source(), c.complete(), c.orderId(), c.fee(), c.id()));
                     updated = true;
                 }
             }
@@ -314,11 +359,59 @@ public class TradeLogRepository {
                 if (id.equals(c.id())) {
                     existing.set(i, new TradeLogCandidate(
                             c.symbol(), c.name(), c.direction(), c.price(), c.volume(),
-                            c.tradeDate(), c.source(), c.complete(),
+                            c.tradeDate(), c.tradeTime(), c.source(), c.complete(),
                             hasOrder ? orderId : c.orderId(),
                             hasFee ? fee : c.fee(), c.id()));
                     updated = true;
                 }
+            }
+            if (updated) saveUnlocked(userId, date, existing);
+            return updated;
+        }
+    }
+
+    /**
+     * 按**行标识**就地改候选核心字段（2026-09-18，RFC 20260918 A1-4）：
+     * 价格 / 数量 / 方向 / 成交日期 / 手续费（传 null = 该字段保持不变）。
+     *
+     * <p>为什么需要：截图入账的全部价值是省手输，而 VLM 对价格、数量、买卖方向都可能出错；
+     * 原实现只允许「全对」或「丢弃重录」（丢掉后还得重发截图、重新补日期），
+     * 等于把 AI 的不确定性全部转嫁给用户。
+     *
+     * <p>{@code complete} 随改动**重算**——否则把不完整候选改完整后仍判不完整、确认时会被跳过。
+     * 成交时间（tradeTime）原样保留。
+     *
+     * @return true=已更新；false=无此候选 / 没有任何可改字段
+     */
+    public boolean updateFieldsById(String userId, LocalDate date, String id,
+                                    BigDecimal price, Integer volume, String direction,
+                                    LocalDate tradeDate, BigDecimal fee) {
+        if (id == null || id.isBlank()) return false;
+        boolean hasPrice = price != null && price.signum() > 0;
+        boolean hasVolume = volume != null && volume > 0;
+        boolean hasDir = direction != null && !direction.isBlank();
+        boolean hasDate = tradeDate != null;
+        boolean hasFee = fee != null;
+        if (!hasPrice && !hasVolume && !hasDir && !hasDate && !hasFee) return false;
+        Object lock = lockFor(userId);
+        synchronized (lock) {
+            List<TradeLogCandidate> existing = new ArrayList<>(findByDate(userId, date));
+            boolean updated = false;
+            for (int i = 0; i < existing.size(); i++) {
+                TradeLogCandidate c = existing.get(i);
+                if (!id.equals(c.id())) continue;
+                BigDecimal newPrice = hasPrice ? price : c.price();
+                Integer newVolume = hasVolume ? volume : c.volume();
+                String newDir = hasDir ? direction : c.direction();
+                LocalDate newDate = hasDate ? tradeDate : c.tradeDate();
+                BigDecimal newFee = hasFee ? fee : c.fee();
+                boolean complete = c.symbol() != null && !c.symbol().isBlank()
+                        && newDir != null && newPrice != null && newVolume != null && newVolume > 0;
+                existing.set(i, new TradeLogCandidate(
+                        c.symbol(), c.name(), newDir, newPrice, newVolume,
+                        newDate, c.tradeTime(), c.source(), complete,
+                        c.orderId(), newFee, c.id()));
+                updated = true;
             }
             if (updated) saveUnlocked(userId, date, existing);
             return updated;
@@ -345,6 +438,8 @@ public class TradeLogRepository {
                 }
                 n.put("source", c.source());
                 n.put("tradeDate", c.tradeDate() != null ? c.tradeDate().toString() : "");
+                // 2026-09-18（P0-交易59）：成交时间——空写 ""，读侧归 null（旧数据无此字段亦兼容）
+                n.put("tradeTime", c.tradeTime() != null ? c.tradeTime().toString() : "");
                 n.put("complete", c.complete());
                 // P2-交易36（2026-09-09）：orderId/fee 可空——空写 ""，读侧空串/缺字段归 null
                 n.put("orderId", c.orderId() != null ? c.orderId() : "");
