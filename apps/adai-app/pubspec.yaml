@@ -1,7 +1,7 @@
 name: adai_app
 description: "阿呆阿呆 — Personal Context Platform"
 publish_to: 'none'
-version: 1.0.0+8
+version: 1.0.0+10
 
 environment:
   sdk: ^3.12.2
