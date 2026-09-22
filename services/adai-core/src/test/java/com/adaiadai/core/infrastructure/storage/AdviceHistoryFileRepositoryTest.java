@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -93,5 +95,60 @@ class AdviceHistoryFileRepositoryTest {
         assertTrue(e1.id().startsWith("adv_"), "id 应有 adv_ 前缀");
         assertTrue(e1.id().contains("_123"), "id 应含毫秒段（t1=123ms）");
         assertTrue(!e1.id().equals(e2.id()), "同秒不同毫秒 → id 不得相同");
+    }
+
+    // ── RFC 20260922 A 批 A3：basis（依据快照）/ outcome（结果回填）的落盘往返 ──
+
+    /**
+     * **回归**：实体加了字段、writeAll/toEntry 漏改 → 「内存里有、读回来没有」。
+     * 2026-09-22 自查实锤过一次（basis 第一版就没落盘），所以这条必须钉住。
+     */
+    @Test
+    void roundTrip_basisAndOutcome_survivePersistence() {
+        LocalDate d = LocalDate.of(2026, 9, 5);
+        repo.append("default", new AdviceEntry("adv_1", d, "600584", "长电科技", "clear",
+                "理由", List.of("R66"), false, new BigDecimal("12.5"), "manual-advice",
+                d.atTime(15, 0), "{\"price\":\"12.50\"}", "{\"afterDays\":5,\"pct\":3.2}"));
+
+        AdviceEntry back = repo.findByMonth("default", d).get(0);
+        assertEquals("{\"price\":\"12.50\"}", back.basis(), "basis 必须真的落盘（不是只在内存里）");
+        assertEquals("{\"afterDays\":5,\"pct\":3.2}", back.outcome());
+    }
+
+    /** 缺省（老文件 / 尚未回填）→ 读作 **null**，不返回空串（「没有」与「空」要能区分）。 */
+    @Test
+    void roundTrip_missingBasisAndOutcome_readAsNull() {
+        LocalDate d = LocalDate.of(2026, 9, 5);
+        repo.append("default", entry("adv_1", d, "600584", "clear"));
+
+        AdviceEntry back = repo.findByMonth("default", d).get(0);
+        assertNull(back.basis());
+        assertNull(back.outcome());
+    }
+
+    /** 回填：按 id 就地写（其余条目不动）+ **幂等**（已有 outcome 不覆盖——回填只写一次）。 */
+    @Test
+    void updateOutcome_writesOnce_andDoesNotOverwrite() {
+        LocalDate d = LocalDate.of(2026, 9, 5);
+        repo.append("default", entry("adv_1", d, "600584", "clear"));
+        repo.append("default", entry("adv_2", d, "000725", "hold"));
+
+        assertTrue(repo.updateOutcome("default", d, "adv_1", "{\"first\":true}"));
+        List<AdviceEntry> list = repo.findByMonth("default", d);
+        assertEquals("{\"first\":true}", list.get(0).outcome());
+        assertNull(list.get(1).outcome(), "别的条目不受影响");
+        assertEquals("hold", list.get(1).suggestion(), "原字段原样保留");
+
+        assertTrue(repo.updateOutcome("default", d, "adv_1", "{\"second\":true}"));
+        assertEquals("{\"first\":true}", repo.findByMonth("default", d).get(0).outcome(),
+                "已有结果不得被二次回填覆盖");
+    }
+
+    /** 找不到该条目 → false（调用方按「下次再试」处理，**不静默当成功**）。 */
+    @Test
+    void updateOutcome_unknownId_returnsFalse() {
+        LocalDate d = LocalDate.of(2026, 9, 5);
+        repo.append("default", entry("adv_1", d, "600584", "clear"));
+        assertFalse(repo.updateOutcome("default", d, "nope", "{}"));
     }
 }

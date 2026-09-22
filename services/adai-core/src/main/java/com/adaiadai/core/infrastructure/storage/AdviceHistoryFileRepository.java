@@ -109,7 +109,35 @@ public class AdviceHistoryFileRepository implements AdviceHistoryRepository {
         return result;
     }
 
-    private void writeAll(String userId, LocalDate month, List<AdviceEntry> entries) {
+    @Override
+    public boolean updateOutcome(String userId, LocalDate date, String entryId, String outcomeJson) {
+        if (date == null || entryId == null || entryId.isBlank()) return false;
+        String month = date.format(MONTH_FMT);
+        synchronized (lockFor(userId, month)) {
+            List<AdviceEntry> entries = findByMonth(userId, date);
+            List<AdviceEntry> updated = new ArrayList<>(entries.size());
+            boolean found = false;
+            for (AdviceEntry e : entries) {
+                if (!found && entryId.equals(e.id())) {
+                    found = true;
+                    // 幂等：已有 outcome → 直接成功返回，**不覆盖**（回填只写一次，重复回填不得改写历史）
+                    if (e.outcome() != null && !e.outcome().isBlank()) return true;
+                    updated.add(new AdviceEntry(e.id(), e.date(), e.symbol(), e.name(), e.suggestion(),
+                            e.reason(), e.rules(), e.hardVerdict(), e.positionPercent(), e.source(),
+                            e.createdAt(), e.basis(), outcomeJson));
+                } else {
+                    updated.add(e);
+                }
+            }
+            if (!found) {
+                log.warn("回填建议结果：没找到该条目 | userId={} | id={} | month={}", userId, entryId, month);
+                return false;
+            }
+            return writeAll(userId, date, updated);
+        }
+    }
+
+    private boolean writeAll(String userId, LocalDate month, List<AdviceEntry> entries) {
         try {
             var arr = mapper.createArrayNode();
             for (AdviceEntry e : entries) {
@@ -126,10 +154,16 @@ public class AdviceHistoryFileRepository implements AdviceHistoryRepository {
                 if (e.positionPercent() != null) n.put("positionPercent", e.positionPercent());
                 n.put("source", e.source());
                 if (e.createdAt() != null) n.put("createdAt", e.createdAt().toString());
+                // RFC 20260922 A 批 A3：依据快照 + 结果回填（都可缺——缺就不写，读侧读作 null）。
+                // 2026-09-22 自查：上一批只加了实体字段却漏了这里 → basis 根本落不了盘（writeAll/toEntry 必须成对改）
+                if (e.basis() != null && !e.basis().isBlank()) n.put("basis", e.basis());
+                if (e.outcome() != null && !e.outcome().isBlank()) n.put("outcome", e.outcome());
             }
             fileStorage.write(userId, filePath(month), mapper.writeValueAsString(arr));
+            return true;
         } catch (Exception e) {
             log.error("写入建议留痕失败——建议历史可能丢失 | userId={} | {}", userId, e.getMessage());
+            return false;
         }
     }
 
@@ -146,7 +180,16 @@ public class AdviceHistoryFileRepository implements AdviceHistoryRepository {
                 n.has("positionPercent") && n.path("positionPercent").isNumber()
                         ? n.path("positionPercent").decimalValue() : null,
                 n.path("source").asText(""),
-                parseDateTime(n.path("createdAt").asText("")));
+                parseDateTime(n.path("createdAt").asText("")),
+                // RFC 20260922 A3：basis（依据快照）/ outcome（结果回填）——老文件没有 → null
+                textOrNull(n, "basis"),
+                textOrNull(n, "outcome"));
+    }
+
+    /** 取可选文本字段：缺失/为 null → null（**不返回空串**——「没有」和「空」要能区分）。 */
+    private static String textOrNull(com.fasterxml.jackson.databind.JsonNode n, String field) {
+        var v = n.get(field);
+        return v == null || v.isNull() ? null : v.asText();
     }
 
     private List<String> parseRules(com.fasterxml.jackson.databind.JsonNode node) {

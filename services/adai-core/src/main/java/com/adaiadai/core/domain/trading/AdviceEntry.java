@@ -36,8 +36,38 @@ public record AdviceEntry(
         boolean hardVerdict,
         BigDecimal positionPercent,
         String source,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        /**
+         * 铁证④「可追责」的实体（RFC 20260922 A 批 A3，2026-09-22）：**建议发出当时**的依据快照
+         * （现价 / 持仓占比 / 止损位 / 买点形态 / 建议动作，JSON 字符串）。
+         * <p>
+         * 只记录、**不做对错判决**（对错口径需用户拍板，见 RFC 第十一节 A3）。老文件无此字段 → 读作 null。
+         */
+        String basis,
+        /**
+         * 铁证④「结果回填」（RFC 20260922 A 批 A3，2026-09-22）：建议发出 **N 个交易日之后**的实际结果
+         * ——{@code {"afterDays":5,"priceThen":18.42,"priceAfter":19.10,"pct":3.69,"userActed":"sold|bought|none"}}。
+         * <p>
+         * **只记录事实，不判对错**（"对错"是用户复盘时的事）；未回填 → null。
+         */
+        String outcome
 ) {
+    /** 兼容构造（11 参，旧调用/既有测试零改动）：无依据快照、无回填结果。 */
+    public AdviceEntry(String id, LocalDate date, String symbol, String name, String suggestion,
+                       String reason, List<String> rules, boolean hardVerdict,
+                       BigDecimal positionPercent, String source, LocalDateTime createdAt) {
+        this(id, date, symbol, name, suggestion, reason, rules, hardVerdict,
+                positionPercent, source, createdAt, null, null);
+    }
+
+    /** 兼容构造（12 参，A3 前半批的调用）：有依据快照、尚未回填。 */
+    public AdviceEntry(String id, LocalDate date, String symbol, String name, String suggestion,
+                       String reason, List<String> rules, boolean hardVerdict,
+                       BigDecimal positionPercent, String source, LocalDateTime createdAt, String basis) {
+        this(id, date, symbol, name, suggestion, reason, rules, hardVerdict,
+                positionPercent, source, createdAt, basis, null);
+    }
+
     public AdviceEntry {
         if (symbol == null) symbol = "";
         if (name == null) name = "";
