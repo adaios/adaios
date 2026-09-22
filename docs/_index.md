@@ -3,9 +3,9 @@ title: docs 目录索引
 description: 人类文档区目录治理——职责、子目录/关键文件清单、过期判断
 version: 1
 created: 2026-08-15
-updated: 2026-08-22
+updated: 2026-09-17
 status: active
-lines: 55
+lines: 57
 depends-on: []
 related:
   - ../ai-engineering/_index.md
@@ -14,6 +14,7 @@ related:
   - guides/_index.md
   - ideas/_index.md
   - inbox/_index.md
+  - legal/_index.md
   - reference/_index.md
   - releases/_index.md
   - review/_index.md
@@ -40,6 +41,7 @@ tags: [meta, index]
 | `releases/_index.md` | 发布记录（Release Notes）|
 | `ideas/_index.md` | 想法归档区（未定型但有价值）|
 | `inbox/_index.md` | 待处理/待归档区 |
+| `legal/_index.md` | 法务文档（隐私政策正文，App Store / TestFlight 提交材料）|
 | `guides/_index.md` | 使用指南 |
 | `deployment/_index.md` | 部署文档 |
 

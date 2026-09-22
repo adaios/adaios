@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>隐私政策 — 阿呆阿呆</title>
+<meta name="description" content="阿呆阿呆 iOS App 与 adaiadai.com 的隐私政策：收集什么、怎么用、交给哪些第三方、你的权利。">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1c1e; --muted: #6b6b70;
+    --line: #e5e5ea; --card: #f7f7f9; --accent: #2f7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121214; --fg: #e8e8ea; --muted: #9a9aa0;
+      --line: #2c2c30; --card: #1b1b1f; --accent: #6fcf97;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; line-height: 1.35; margin: 0 0 8px; }
+  h2 {
+    font-size: 18px; margin: 36px 0 12px; padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  p, li { margin: 8px 0; }
+  ul, ol { padding-left: 22px; }
+  .meta { color: var(--muted); font-size: 14px; margin: 0 0 4px; }
+  .lead {
+    background: var(--card); border-radius: 12px;
+    padding: 14px 16px; margin: 20px 0 0; font-size: 15px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  a { color: var(--accent); }
+  code {
+    background: var(--card); border-radius: 5px; padding: 1px 5px;
+    font-size: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  footer {
+    max-width: 720px; margin: 0 auto; padding: 0 20px 48px;
+    color: var(--muted); font-size: 13px; text-align: center;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>隐私政策</h1>
+  <p class="meta">生效日期：2026-09-17</p>
+  <p class="meta">适用产品：阿呆阿呆 iOS App（Bundle ID <code>com.adaiadai.adaiApp</code>）及网站 <code>adaiadai.com</code></p>
+
+  <p class="lead">本产品由王康达（下称“我们”）运营。本政策说明我们收集哪些信息、如何使用、与谁共享，以及你可以怎么管理自己的数据。</p>
+
+  <h2>一、我们收集哪些信息</h2>
+  <ol>
+    <li><strong>账号信息</strong>：你登录使用的账号名，以及密码（以不可逆哈希形式存储——我们无法还原你的明文密码）。</li>
+    <li><strong>你主动提供的内容</strong>：
+      <ul>
+        <li>你输入的文字记录、提问与对话；</li>
+        <li>你主动上传或分享给本 App 的图片；</li>
+        <li>你主动提交的链接或素材（用于整理成学习卡片）。</li>
+      </ul>
+    </li>
+    <li><strong>设备与推送</strong>：为把提醒推送到你的手机，我们保存 Apple 推送服务（APNs）下发的设备令牌。</li>
+    <li><strong>交易数据（仅当你启用「交易」模块）</strong>：你主动导入的持仓、成交与资金记录。</li>
+    <li><strong>服务端日志</strong>：访问时间、请求路径、IP 地址与错误信息，用于安全防护与故障排查。</li>
+  </ol>
+  <p>除上述内容外，我们不收集你的其他个人信息。我们<strong>不收集</strong>定位信息、通讯录，也不收集广告标识符（IDFA）或进行跨 App 追踪。</p>
+
+  <h2>二、信息如何被使用</h2>
+  <ul>
+    <li>向你提供记录、检索、时间线、AI 问答与复盘等核心功能；</li>
+    <li>生成你看到的内容（例如把你的一句话整理成卡片、回答你的问题）；</li>
+    <li>发送你开启的提醒与推送通知；</li>
+    <li>保障服务安全、排查故障与防止滥用。</li>
+  </ul>
+  <p>我们<strong>不会</strong>出售你的个人信息，也<strong>不会</strong>把你的内容用于广告投放。</p>
+
+  <h2>三、会与哪些第三方共享</h2>
+  <p>为提供上述功能，你的部分内容会发送给以下服务商处理，且<strong>仅限完成对应功能所必需的范围</strong>：</p>
+  <table>
+    <thead><tr><th>用途</th><th>服务商</th><th>涉及内容</th></tr></thead>
+    <tbody>
+      <tr><td>AI 理解与生成</td><td>DeepSeek、阿里云（通义 / GLM 视觉理解）</td><td>你输入的文字与图片</td></tr>
+      <tr><td>音视频转写（仅当你提交音视频素材时）</td><td>阿里云 DashScope</td><td>该素材的音频</td></tr>
+      <tr><td>推送通知</td><td>Apple（APNs）</td><td>设备令牌与通知内容</td></tr>
+      <tr><td>行情数据</td><td>腾讯行情公开接口</td><td>股票代码（不含个人身份信息）</td></tr>
+      <tr><td>网页内容读取（仅当你提交链接时）</td><td>对应目标网站</td><td>该公开网页内容</td></tr>
+    </tbody>
+  </table>
+  <p>除上述情形及法律法规要求外，我们不会向其他第三方提供你的个人信息。</p>
+
+  <h2>四、存储与保留</h2>
+  <ul>
+    <li>数据存储于<strong>中国境内</strong>的服务器。</li>
+    <li>只要你的账号存在，我们即保留相应数据，以便你随时访问历史内容。</li>
+    <li>你删除某条内容后，我们会将其从对应存储中移除；你注销账号后，我们会清理该账号下的数据（法律法规另有要求的除外）。</li>
+  </ul>
+
+  <h2>五、你的权利</h2>
+  <ul>
+    <li><strong>查看与更正</strong>：可随时在 App 内查看你的记录与个人档案，并修改档案信息。</li>
+    <li><strong>删除</strong>：可逐条删除你的记录与卡片。</li>
+    <li><strong>注销账号</strong>：可联系我们注销账号；注销后该账号下的数据将被清理。</li>
+    <li><strong>关闭可选功能</strong>：可随时关闭推送等可选功能。</li>
+  </ul>
+
+  <h2>六、儿童</h2>
+  <p>本产品不面向 13 周岁以下儿童，我们不会有意收集其个人信息。</p>
+
+  <h2>七、安全</h2>
+  <p>我们采取密码哈希存储、登录鉴权与服务端访问控制等措施保护你的信息。但请理解，任何互联网传输与存储都无法保证绝对安全。</p>
+
+  <h2>八、政策变更</h2>
+  <p>本政策如有更新，我们会在本页面公布新的生效日期。继续使用本产品，即表示你接受更新后的政策。</p>
+
+  <h2>九、联系我们</h2>
+  <p>如对本政策有任何疑问，请联系：<a href="mailto:rottokaka@gmail.com">rottokaka@gmail.com</a></p>
+</main>
+<footer>
+  <p>阿呆阿呆 · <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener">京ICP备2026056893号</a></p>
+</footer>
+</body>
+</html>
