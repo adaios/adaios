@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
+import '../utils/push_evidence.dart';
 import '../utils/text_cleaner.dart';
 import 'media_thumb_strip.dart';
 import 'hoverable.dart';
@@ -440,8 +441,9 @@ class FeedCard extends StatelessWidget {
               style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           ]),
           const SizedBox(height: 8),
-          Text(data.content,
-            style: const TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45)),
+          // RFC 20260922 C 批 C3：决策推送的正文是「一句话结论 + 逐票四要素」——
+          // 默认只露结论，依据按需展开；没有四要素的推送（行情/操作确认/复习提醒）全文照显。
+          _PushContent(content: data.content),
           // RFC 20260817：今日操作确认卡——底部「确认并入账」按钮（审核后落库）
           // P2-UX4（2026-08-29）：提交中 loading + 禁用、确认成功后灰态「已确认 ✓」本地兜底（防刷新前重复点）
           if (data.pushTitle == '今日操作确认' && data.onMarkDone != null) ...[
@@ -1043,6 +1045,69 @@ class _ActionButtonState extends State<_ActionButton> {
             : Text(widget.label,
                 style: const TextStyle(fontSize: 12, color: AppColors.darkGreen, fontWeight: FontWeight.w600)),
       ),
+    );
+  }
+}
+
+/// RFC 20260922 C 批 C3：推送卡的「一句话 + 可折叠四要素依据」。
+///
+/// - **默认只露结论**（标题 / 账日期 / 逐票结论行）——用户 2026-09-21 要的是「阿呆在决策时点
+///   对我说一句话」，一屏堆满四要素等于又变回报表；
+/// - **依据按需展开**（「看依据（N 只 · 四要素）」）——「尤其给我铁证」的那部分一点就到，
+///   且是**逐字原文**（③ 规则依据来自用户自己的规则库）；
+/// - **没有四要素的推送原样渲染**（行情异动 / 今日操作确认 / 复习提醒 / 旧后端），
+///   行为与改动前完全一致（`splitPushContent` 解析不出来就返回全文）。
+///
+/// 独立 StatefulWidget 而不是把状态挂在 FeedCard 上：FeedCard 是 StatelessWidget，
+/// 折叠状态属于「这一张卡」的局部交互（Key 稳定 → Feed 重建时状态跟着走）。
+class _PushContent extends StatefulWidget {
+  final String content;
+  const _PushContent({required this.content});
+
+  @override
+  State<_PushContent> createState() => _PushContentState();
+}
+
+class _PushContentState extends State<_PushContent> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = splitPushContent(widget.content);
+    const headStyle = TextStyle(fontSize: 14, color: AppColors.darkGrey1, height: 1.45);
+    if (!parts.hasEvidence) {
+      return Text(widget.content, style: headStyle);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(parts.head, style: headStyle),
+        const SizedBox(height: 6),
+        InkWell(
+          key: const ValueKey('push_evidence_toggle'),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Row(children: [
+            Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkBlue),
+            const SizedBox(width: 4),
+            Text(_expanded ? '收起依据' : '看依据（${parts.targetCount} 只 · 四要素）',
+                style: const TextStyle(fontSize: 12, color: AppColors.darkBlue,
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.darkBg.withAlpha(120),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(parts.evidence.join('\n'),
+                style: const TextStyle(fontSize: 13, color: AppColors.darkGrey3, height: 1.5)),
+          ),
+        ],
+      ],
     );
   }
 }
