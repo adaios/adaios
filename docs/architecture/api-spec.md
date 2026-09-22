@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.78 | 最后更新：2026-09-18**
+**文档版本：v3.82 | 最后更新：2026-09-22**
 
 ---
 
@@ -10,6 +10,10 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-22 | v3.82 | **图文一体：一次投递多图（RFC `20260815-media-event-unification` + `20260815-image-chat-interaction`；REVIEW P1-多图1/P1-多图2）**——新增 `POST /records/media/batch`（multipart `files` 1-3 张 + `text` 可空 + 可选 `Idempotency-Key`）：**一次投递 = 一个回合 = 一条主记录 = 一张卡**——N 张图各落一条**薄 image 附件记录**（仅原图索引：不做 VLM、不沉淀记忆、不单独进 Feed），主记录用新增 frontmatter 字段 **`mediaIds`** 引用全部附件（freeze §2.1 MINOR）；视觉侧**一次**多图理解（`VisualAiClient.understandMulti`）：无提问/陈述 → 一段**综合总结**（`type=image`），问句 → **据图作答**（`type=image_qa`，回答在 `answer`）。**幂等**：同 `Idempotency-Key` 的重发/重试直接返回首次结果（`duplicated=true`），**不重跑 AI、不重复落盘**（治 P1-多图2：客户端超时重试曾造成同一张图两份、md5 相同）。Feed 条目新增 **`mediaPaths`**（数组、按上传顺序；`mediaPath` 仍为首图兼容）→ 前端**一卡多图并列**；时间线条目同口径（薄附件不单独成条）。端点 156 → **158**（本批 +1：`/records/media/batch`；同日并发 A3 批 +1：`/trading/evidence/backfill`）|
+| 2026-09-22 | v3.81 | **建议出口带四要素铁证 + 历史统计补「按形态分组」（RFC `20260922-trading-decision-copilot` A 批 A4）**——① `POST /api/v1/trading/advice` 的每条 `advice[]` 新增可选 **`evidence`** 对象（`{history, numbers, ruleTexts, basisId}`，**逐字段可空、补不出不编**）：`history` = 铁证①本人历史统计（**样本 < 5 → null**，调用方须说「样本还不够」）· `numbers` = ②当时的数字（现价 / 持仓占比 / 止损位）· `ruleTexts` = ③规则原文**逐字**（`rules` 里查得到的才进列表）· `basisId` = ④留痕 id（**A3 待填**）。出口**统一补齐**（成功与降级两条路径同一口径），**只读、不改建议本身**。② `GET /trading/evidence/history` 的历史统计**补 `BUY_POINT` 维度**（按买点形态分组）：形态记在**批次**上，用 `symbol+buyDate` join；**join 不上就归「未标形态」，不猜**（宁缺一个维度，不编一个形态）。③ **新增 `POST /trading/evidence/backfill`** —— 铁证④「结果回填」（幂等 · 只记事实不判对错 · 数据不全不写半成品）。端点 156 → **157** |
+| 2026-09-22 | v3.80 | **「四要素铁证」底座上线（RFC `20260922-trading-decision-copilot` A 批）**——新增两个只读端点，把「阿呆凭什么这么说」变成可核对的数据：① `GET /trading/evidence/history`（**铁证① 本人历史操作统计**）：清仓回合按 `HOLD_DAYS`/`PNL_BUCKET`/`VERDICT` 分桶，给次数 / 胜率 / 平均盈亏 / 平均持天；**最小样本门槛 5**（用户 2026-09-22 拍板 D3）——不足的组 `sufficient=false`，全组不足时 `note` 直接说「样本还不够」，**不许拿 1-2 次巧合当规律**；② `GET /trading/evidence/rule/{ruleRef}`（**铁证③ 规则依据原文**）：按编号取 `rules.md` **逐字原文**（`R66`/`r66`/`66` 都认），找不到 → **404，不编造**。端点 154 → **156**（两个都是只读，不写任何用户数据；`/rule/**` 不做插件门控——规则原文属公共知识，运维可直接核对） |
+| 2026-09-22 | v3.79 | **账实自检把「基线自洽的假绿」变成可见（P1-交易61 + P2-10）**——`GET /api/v1/trading/integrity` 响应新增 **`degraded[]`**（`{symbol,name,direction,volume,price,entryDate,inferred,reason}`）：**成交日 == 锚定日** 的流水被 `coveredByAnchor` 判成「已含在券商快照内」→ 只记流水、未进持仓。`drift`/`gaps` 对这种情况**结构上查不出来**——派生持仓与落地持仓**同源于那份快照**，必然相等（生产实据：09-18 导入的快照把锚定日写成 09-18 而非 09-17，当天 6 笔真实成交全部降级 → 持仓少 2 只、多算 400 股，而该端点 09-18~09-20 一直报「账实一致」）。判定依据是**锚定日是否为推断值**：落盘 `snapshot-anchor.json` 新增 `positionsFileDate`/`cashFileDate`（快照**文件里的导出日**，未归一化）——与锚定日不等即说明归一化动过它；`inferred=true` 的行才计入前端横幅（锚定日明确时那些成交确实在快照里，只是事实说明，不制造噪音）。**老锚定没有文件日期** → note 如实说「无法判断锚定日是否被推断」，不假装确定。**P2-10 补**：`snapshotDate` 是**未来日期**（文件名解析错/手改错）→ 按「没有文件日期」归一化，不再把锚定日写进未来（否则之后每笔成交都 ≤ 锚定日 → 全部静默降级，且锚定日只前进不后退、再也退不回来）。端点不变（响应加字段） |
 | 2026-09-18 | v3.78 | **Feed 空态分流判据 `hasHistory`（REVIEW P1-UI14 复发修复）**——`GET /api/v1/feed` 响应新增 **`hasHistory`**（boolean）：该用户**是否有过任何历史记录**（不限当天），由本来就为筛当天而读的 `findAll` 派生，**零额外 IO**，**端点不变**。起因是「空 Feed = 新用户」这个假设：Feed 按天切，老用户当天还没记录（每天凌晨跨天时必现）就会收到 onboarding 口径的能力引导三问——用户原话「我只是今天没有数据，但我不是新用户，竟然也把用来引导用户的场景给了我」。判据必须放服务端：前端本地存「我是老用户」的标记一重装/换设备就丢，**正是本案现场**（用户刚更新 TestFlight 包）。前端据此分流——`false` = 真·新账号（空态播能力引导三问）；`true` = 老用户（空态改「今天还没听你说点什么。接着上次的聊也行，我记着。」，**不再摆三问**）。**旧后端不返回该字段 → 前端按 `false` 降级**（= 改动前行为，不崩不报错）。后端 2015 → **2019**（+4） |
 | 2026-09-17 | v3.77 | **记录来源标记 + 付费动作令牌闸门（B4 凭据收口批）**——① **`POST /records` 新增可选 `source`**（P1-安全1 剩余项）：`external_entry` = Siri / 快捷指令 / `adai://record` 入口；缺省与**认不出的值**一律落回 `user_input`（白名单，**不因标记拒收记录**）。② **`POST /learn/digest/confirm` 新增令牌级频控**（S-凭据1 剩余项）：同一把外部令牌每分钟最多 **5 次**付费动作，超限人话拒绝；同一把钥匙**换来源 IP** 或超频 → WARN（**不阻断**——手机切网络会换 IP，但外泄正是这个形状，必须留痕），由每日巡检日报用人话捞出。**会话调用不受限**（限的是「钥匙被谁拿到」，不是限号主本人）；令牌标识经 `X-Adai-Token-Id` 由鉴权层注入（客户端不可伪造；该 header **非公开契约**，仅供服务端内部使用）。后端 1978 → **1985**（+7） |
 | 2026-09-17 | v3.76 | **`purge` 语义修正 + 横排成交额校验 + 兜底源可见（B1 登记一致性 + B2 巡检遗留收口批）**——①**`DELETE /accounts/{userId}?purge=true` 响应契约变更**（P2-审查1）：`purged` 不再**无条件**为 `true`，而是「是否真清干净」（`failures` 为空才 true）；新增 `purgedDirs`（一并回收的空目录数）与 `failures`（逐项失败原因：删不掉的文件 / 目录列举失败 / 空目录清理失败）。原实现单文件删失败只 `log.warn`、最终仍回 `purged:true`，且**只删文件不删目录**（整棵空目录树残留）。②**横排表格补「价格 × 数量 = 成交额」交叉校验**（P1-交易56 残留）：列错位/OCR 漏列时成交额会被当成数量（生产实据 6827 元 → 6827 股），反推为正整数则修正为真实股数；**单笔 LLM 路径的 Schema 无成交额字段，仍无法校验**（如实登记，待跨层改动）。③**兜底源静默失效可见**（P2-交易58）：主源与兜底双双失败改为记 ERROR（30 分钟冷却防刷屏，冷却期内降 WARN），tdx 缺口补齐失败记 WARN 含缺口天数。④`recordTrade` 写记录补「**仅当日成交**」限定（P2-文档3，与 status v3.52 及实现三方对齐）。后端 1967 → **1978**（+11） |
@@ -442,6 +446,51 @@
 - `400` — 图片为空 / 超过 3 张 / 问题为空 / 问题超过 500 字符 / 图片记录不存在
 - 注：多图问答 `image_qa` 记录 content 格式 `【多图问答】图片记录：a, b … / 问：… / 答：…`（单图追问为 `【图片问答】`）
 
+### `POST /api/v1/records/media/batch` — 一次投递多图（图文一体，v3.82，2026-09-22）
+
+**一次投递（N 张图 + 可选一句话）= 一个回合 = 一条主记录 = Feed 一张卡**（RFC `20260815-media-event-unification` 数据层 + `20260815-image-chat-interaction` 交互；用户 2026-09-22 拍板 **A 方案**：先识别多图组成上下文，无提问给一段综合总结、有提问据图作答，图并列同卡）。
+
+**Request（multipart）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|:----:|------|
+| `files` | File[] | ✅ | 图片文件（1-3 张，单张 ≤5MB，仅 `image/*`）|
+| `text` | String | 否 | 用户随图发的那句话；空 = 纯图 |
+| Header `Idempotency-Key` | String | 否 | **一次投递的唯一键**（前端生成、重试复用）。同键重发命中幂等 → 返回首次结果且 `duplicated=true`，不重跑 AI、不重复落盘 |
+| Header `X-User-Id` | String | 否 | 用户 ID（默认 `default`）|
+
+**落盘（File First）**：N 张原图各落 `records/YYYY/MM/media/{attachmentId}.{ext}` + 一条**薄 image 记录**（`summary=图片附件`，仅作原图索引；不做 VLM、不沉淀记忆、不单独进 Feed）；主记录一条，frontmatter `mediaIds: [id1, id2]` 引用全部附件（freeze §2.1 MINOR 变更）。
+
+**Response 200**
+
+```json
+{
+  "recordId": "rec_20260922_204109985",
+  "mediaIds": ["rec_20260922_204109981", "rec_20260922_204109982"],
+  "type": "image",
+  "intent": "log",
+  "summary": "群里在聊篮球夺冠，还提到你不在所以没打",
+  "answer": null,
+  "tags": ["群聊", "篮球"],
+  "domain": "life",
+  "duplicated": false
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `recordId` | String | 主记录 ID（同时是卡片 ID，追问挂它）|
+| `mediaIds` | String[] | 附件（薄 image 记录）ID，**按上传顺序**；原图走 `GET /records/media/{mediaId}` |
+| `type` | String | `image`（无提问/陈述 → 已给一段综合总结）/ `image_qa`（问句 → 已据图作答）|
+| `intent` | String | `log` / `question`（Controller 用 `IntentRecognizer` 判定，失败降级问号启发式）|
+| `summary` | String | 无提问：一段**综合**总结；有提问：回答摘要 |
+| `answer` | String? | 有提问时的完整回答；无提问为 `null` |
+| `duplicated` | boolean | `true` = 命中 `Idempotency-Key`，本次返回的是**首次**结果（未重复识别、未重复落盘）|
+
+- `400` — 图片为空 / 超过 3 张 / 非图片 / 单张超过 5MB / 问题超过 500 字符
+- AI 失败不丢数据：识别失败降级为「用户备注 / 图片记录」兜底 summary，原图与主记录照常落盘
+- 旧单图端点 `POST /records/media` 保留（旧客户端与逐张链路不受影响）；`GET /records/media/{id}` 与 `ask-batch` 语义不变（薄附件仍是普通 image 记录，原图/追问链路零改动）
+
 ---
 
 ## 2. 对话总结（Conversations）
@@ -536,6 +585,7 @@
 | `time` | String | `HH:mm` 格式（后端已格式化，无小数秒），卡片取首条用户消息时间 |
 | `date` | String | `MM-dd` 格式，条目所属日期（每张卡片都带日期，前端展示）|
 | `mediaPath` | String? | 媒体记录才有：`type=image`（图片记录原图）与 `type=image_qa`（S-2 展示层聚合：图文事件缩略图取引用首图）——媒体文件相对路径（GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null` |
+| `mediaPaths` | String[]? | v3.82（2026-09-22，图文一体）：本条卡片引用的**全部**图（按上传顺序；一次投递多图时长度 > 1）→ 前端**一卡并列**展示。无图为 `null`。`mediaPath` 恒为首图，**旧前端不读新字段也能正常显示首图**（向后兼容）|
 | `turns` | TurnDto[] | 仅 `type=card` 时有值，卡片对话轮次 |
 | `mergedIds` | String[]? | v3.69（2026-09-16，P2-UI12）：本条是由哪几条原始记录折叠而来（同分钟同向成交）；未折叠的条目为 `null`。**前端删除时必须逐条删全**，否则刷新后折叠卡会带着剩下的记录回来 |
 | `domain` | String | `life` / `trading` — AI 按关键词规则判定（RFC 20260917 起 `project` 已撤除，未知值收敛 `life`）|
@@ -764,6 +814,60 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 
 **错误**：锚定 fail-closed 拒绝 → **400** 人话（含两条逃生路径）；`content` 缺失 → 400。
 
+### `GET /api/v1/trading/evidence/history` — 本人历史操作统计（铁证①，v3.80，2026-09-22）
+> 需 trading 插件（403）。
+
+把「你过去 N 次…」做成**可核对的数据**（RFC `20260922-trading-decision-copilot` A 批）：从清仓回合（`sold.json`）按维度分桶，给出次数 / 胜率 / 平均盈亏 / 平均持天。**只读**，不写任何用户数据。
+
+**query**：`dimension`（可选，默认 `HOLD_DAYS`；大小写不敏感）——
+`HOLD_DAYS`（持仓时长：`≤1 天` / `2-3 天` / `4-10 天` / `>10 天`）·
+`PNL_BUCKET`（盈亏区间：`≥+10%` / `+5~10%` / `0~+5%` / `-5~0%` / `<-5%`）·
+`VERDICT`（清仓判定，动态分组；空 verdict 归「未判定」，不伪装成某条规则）。非法值 → **400** 人话。
+
+**Response（200）**：
+```json
+{
+  "dimension": "HOLD_DAYS",
+  "buckets": [
+    {"label":"≤1 天","count":6,"wins":5,"winRate":0.8333,"avgPnlPct":2.12,"avgHoldDays":1.0,"sufficient":true}
+  ],
+  "totalRounds": 6,
+  "anySufficient": true,
+  "note": "按「持仓时长」看你自己的 6 个回合；只报样本 ≥ 5 的组"
+}
+```
+- **`sufficient`（本端点的核心约束）**：该组样本是否 ≥ **5**（用户 2026-09-22 拍板 D3）——**`false` 时调用方不得引用这组数字**
+- `anySufficient=false` → 文案必须转成「样本还不够」（`note` 已给好人话），**不许拿 1-2 次巧合当规律**
+- `note` 含门槛口径，可直接进推送/对话文案
+- 无清仓回合 → `buckets:[]` + `note`「还没有清仓回合记录——等你卖出几笔之后，我才能拿你自己的操作说话」
+
+### `GET /api/v1/trading/evidence/rule/{ruleRef}` — 规则依据原文（铁证③，v3.80，2026-09-22）
+> **不需**插件门控（规则原文属公共知识，运维也可直接核对）。
+
+按规则编号取 `os/trading-engine/knowledge/context/rules.md` 的**逐字原文**——经 `TradingRuleEngine.parseRules` 解析，路径由 `adai.knowledge.trading-engine-path` 决定（与既有建议知识注入**同源同口径**）。用途：建议里引用 `R66` 时，把原文**照抄**给用户核对，不得由 AI 复述成「大概是这个意思」。
+
+**path**：`ruleRef` —— `R66` / `r66` / `66` / `R 66` 都认。
+
+**Response（200）**：`{"number":66,"title":"只输一根K线","detail":"核心理念：…"}`
+
+**错误**：没有这条规则 → **404** `{"error":"没有这条规则的原文（编号 R999）——我不会替你编一条出来"}`；规则文件读不到 → 同样 404（降级为「不给引用」，**绝不编造**）。
+
+### `POST /api/v1/trading/evidence/backfill` — 建议结果回填（铁证④，v3.81，2026-09-22）
+> 需 trading 插件（403）。
+
+把**已到期**（发出满 N 个交易日）的建议补上「后来怎么样了」——写进 `advice-history` 里那条留痕的 `outcome` 字段。**只记录事实，不判对错**：
+
+- `afterDays` = 回看窗口（交易日；配置 `adai.trading.advice-outcome-days`，默认 **5**）
+- `priceThen` / `priceAfter` = 建议日与 **N 个交易日之后**的收盘
+- `pct` = 区间涨跌幅（%）
+- `userActed` = 建议之后用户对这只票**有没有动作**：`traded` / `none` / `unknown`
+  （流水读不到时记 `unknown` ——「不知道」与「没操作」是两件事，**不谎报 none**）
+
+**幂等**：已有 `outcome` 的条目**直接跳过**（结果只写一次，重复回填不改写历史）。
+**宁可留空、不写半成品**：K 线取不到 / 还没走满 N 个交易日 / 分母为 0 → 本次不写，留待下次。
+
+**Response（200）**：`{"written": 2}`（本次真正写入的条数；请求体为空，用户取自 `X-User-Id`）
+
 ### `GET /api/v1/trading/integrity` — 账实一致性自检（对账闸门，v3.61，2026-09-12）
 > 需 trading 插件（403）。
 
@@ -787,6 +891,7 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 - `drift[]`：`snapshotQty`（快照基线，缺则 `null`）/`ledgerDelta`（锚定日之后流水净增减）/`derived`（应有）/`holdings`（落地）/`diff`（落地−应有）/`note`（人话）；`diff=0` 的标的不列出
 - `gaps[]`：重放时**卖超/未持有**的缺口行（与导入响应 `rejected` 是同一件事，可重复核算，不依赖当时返回）——缺口行**既不计入 `derived` 也不计入 `ledgerDelta`**（否则会得出「应有 −800 股」这种荒谬结论），只以 `gaps` 报出等人工核对/重导快照
 - **降级诚实**：锚定缺失 → `anchor.known=false` + `note`「无法判定」+ `drift:[]`；锚定有但基线未记录（`holdingsKnown=false`）→ 同样不误报差异，`note` 指路「重导一次『持仓股』快照即可建立基线」
+- **`degraded[]`（v3.79，2026-09-22，P1-交易61）**：`{symbol,name,direction,volume,price,entryDate,inferred,reason}`——**成交日 == 锚定日** 的流水被按「已含在券商快照内」处理（只记流水、未进持仓）。这类情况 `drift`/`gaps` **结构上查不出来**（两边同源于那份快照，必然相等 = 假绿），所以单独列出：**`inferred=true`** 表示锚定日是**推断**出来的（快照文件日期被归一化——盘前/非交易日导出会退到上一交易日），此时若快照实际基准日不是那一天，这些成交就不会体现在持仓里 → **前端据此出橙色横幅**；`inferred=false`（锚定日 = 文件日期）只是事实说明，**不出横幅**。锚定存在但没记录文件日期（老数据）→ `note` 补一句「无法判断锚定日是否被归一化推断过」
 - 发现不符时后端记 ERROR 日志（含明细前 5 条）；deploy-gate 以「`anchor.known=false` 或 `drift` 非空」为显式告警
 
 ### `GET /api/v1/trading/anchor` — 券商快照锚定状态（v3.61，2026-09-12）
@@ -1225,7 +1330,13 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
       "position_percent": 3.70,
       "suggestion": "reduce",
       "reason": "自然语言理由，必须引用规则号（如 R81）",
-      "rules": ["R81", "R66"]
+      "rules": ["R81", "R66"],
+      "evidence": {
+        "history": "你过去 6 次在「≤1 天」卖出，5 次盈利、平均 +2.1%",
+        "numbers": "现价 5.46 · 持仓占比 3.70% · 止损 5.08",
+        "ruleTexts": ["R66 只输一根K线：止损设在进场K线最低价下方几个价位（或1%），收盘跌破就走。"],
+        "basisId": null
+      }
     }
   ],
   "summary": "持仓总览一句话"
@@ -1233,6 +1344,13 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 ```
 
 > `suggestion` 取值：buy / hold / reduce / clear。`position_percent` 后端按市值占比计算（确定性）。LLM 失败时降级返回基础数据（无建议字段），不抛错。需 trading 插件（403）。空仓返回空 advice。
+>
+> **`evidence`（v3.81，2026-09-22，RFC 20260922 A 批 A4）——四要素铁证**：后端在出口**统一补齐**（成功与降级同一口径、只读、不改建议本身），**每个字段都可为 null——补不出就留空，绝不编造**：
+> - `history` = **① 本人历史操作统计**（清仓回合分桶；**样本 < 5 → null**，此时前端/推送必须说「样本还不够」而不是引用）
+> - `numbers` = **② 当时的数字证据链**（现价 / 持仓占比 / 止损位）
+> - `ruleTexts` = **③ 规则依据原文**（`rules` 里能查到原文的那些，**逐字**来自 `rules.md`；查不到的不进列表）
+> - `basisId` = **④ 留痕 id**（advice-history 里那条，供日后回看追责）——**本批未填，A3 待做**
+> - `evidence` 整体为 `null` = 没有持仓视图（如 LLM 漏票后的纯占位行）
 
 ---
 
@@ -1582,6 +1700,8 @@ LLM 读案例特征画像 + K 线统计 → 结构化「为什么这是完美买
 ```
 
 > `mediaPath`：媒体记录才有——`type=image`（图片记录原图）与 `type=image_qa`（S-2 展示层聚合：图文事件缩略图取引用首图），指向媒体文件相对路径（GET `/api/v1/records/media/{id}` 取文件）；其余类型为 `null`。
+>
+> `mediaPaths`（v3.82，2026-09-22，图文一体）：本条目引用的**全部**图（按上传顺序；一次投递多图时长度 > 1）——前端一卡并列展示；无图为 `null`，`mediaPath` 恒为首图（**旧前端不读新字段也能正常显示首图**）。**被主记录 `mediaIds` 引用的薄图片附件不单独成条**（一次投递 = 一条时间线条目；否则时间线会冒出 N 条「图片附件」这种系统视角条目，违反第一原则）。
 
 ---
 

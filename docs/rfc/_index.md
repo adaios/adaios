@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-18
+updated: 2026-09-22
 status: active
-lines: 85
+lines: 86
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260922-trading-decision-copilot.md | 交易插件目标形态——决策时点的对话式提醒与四要素铁证（日线/早盘买尾盘卖 → 只在早盘与尾盘出现、收盘后复盘；每条意见必须带本人历史统计 + 数字证据 + 规则原文 + 可回溯；账收盘后同步、行情自取）| approved |
 | 20260918-trading-app-restructure.md | 交易 App 端重排——「记录 → 对账 → 照见」三层与两条铁律（UI/UX 专项审查 24 条的结构性收敛；三套口径以锚定日为界；四批 A1/A2/B/C）| draft |
 | 20260917-learn-representation.md | learn 表征适配与链路打通（门控 B + 偏好回流 + 反馈入口 + 精美导出）| approved |
 | 20260917-todo-kernel-retire-project-plugin.md | 待办归 Kernel——撤 project 插件与待办重定位（能力三层 core/builtin/optional；待办纯清单两态 + 到期推送、不进 Feed；端点硬切 `/api/v1/todos*`）| implemented |
@@ -53,8 +54,8 @@ tags: [meta, index, rfc]
 | 20260816-trading-os-engine.md | trading-engine 领域引擎化（从插件到独立可复用的交易引擎）| draft |
 | 20260816-trading-data-model.md | 交易数据模型分层（用户提供 vs 可查询，trading domain 可执行化）| draft |
 | 20260815-ai-engineering-layer.md | AI 工程层——从「文档子目录」到「一等公民」（草案）| draft |
-| 20260815-media-event-unification.md | 图文一体——媒体事件数据层统一（一次输入 = 一条记录） | approved |
-| 20260815-image-chat-interaction.md | 带图交流——发图即对话（交互方案：AI 判定 log/ask 分流，ask 直进对话态） | draft |
+| 20260815-media-event-unification.md | 图文一体——媒体事件数据层统一（一次输入 = 一条记录） | implemented（2026-09-22 提前落地：`mediaIds` + 薄附件 + Feed/Timeline 多图）|
+| 20260815-image-chat-interaction.md | 带图交流——发图即对话（交互方案：AI 判定 log/ask 分流，ask 直进对话态） | approved（2026-09-22 用户拍板 A 方案；§九 实施记录）|
 | 20260816-framework-plus-plugin-model.md | 框架+插件——AdaiOS 形态总纲（决策记录，已提升为正式架构文档 `architecture/framework-plus-plugin-model.md`） | approved |
 | 20260816-trading-agent-plugin-model.md | 交易 Agent 三阶段插件模型（裸问答 → +行情插件 → +规则插件，能力按用户叠加） | approved |
 | 20260816-trading-session-push.md | 交易时段节奏推送——早盘计划/午间跟踪/尾盘建议 + 微信渠道（PushChannel 插件化）| draft |

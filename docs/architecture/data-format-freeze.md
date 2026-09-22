@@ -38,7 +38,13 @@ domain: life
 正文内容（Markdown）
 ```
 
-- 字段：`id` / `type`（note/image/conversation/image_qa…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）/ `intent`（`question`/`log`/空，可空）
+- 字段：`id` / `type`（note/image/conversation/image_qa…）/ `source` / `tags`（`[a, b]` 逗号+空格）/ `createdAt`（ISO `LocalDateTime`）/ `summary`（单行化，可空）/ `domain`（默认 `life`）/ `intent`（`question`/`log`/空，可空）/ `mediaIds`（可选，见下）
+- **`mediaIds` 媒体附件引用**（MINOR，2026-09-22，RFC `20260815-media-event-unification` step-1；用户拍板「一次投递 = 一个回合 = 一张卡」）
+  - 位形：`mediaIds: [rec_attach_a, rec_attach_b]`（同 `tags` 的 `[a, b]` 逗号+空格语法），**按上传顺序**
+  - 语义：本条记录引用的**媒体附件记录 id**（图文一体：一次投递 N 张图 → 1 条主记录 + N 条**薄 image 附件记录**）
+  - **无附件不落该行**（旧格式**字节零变化**）；旧文件缺该字段 → 解析为**空列表**（非 null），读侧无回归
+  - **薄附件记录**（`type=image`、`summary=图片附件`、正文空）：只作原图索引（`GET /records/media/{id}` 与追问链路零改动）；**不做 VLM、不沉淀记忆、不单独进 Feed**（`FeedAppService` 按被引用 id 抑制）；其 `summary` 哨兵使 `RecordRetryService` 判「已处理」，不会被单独重识别
+  - 判 MINOR 的依据：纯**新增可选字段**，无改名/删除；写入只影响新记录；旧读取路径（单图 `{id}.{ext}`、image_qa content 引用）完全保留
 - 正文 = `content`；解析端取首行 <100 字符作 title
 - `intent` **落盘**（REVIEW #144）：question 记录写 `question`，rebuild 借此排除避免重跑烧 AI；log 写 `log`，未处理写空。旧文件无该字段 = 空（向后兼容）。
 - **`image_qa` 问答记录 content 格式**（MINOR，2026-08-14 登记；单图追问 v3.9 已存在，多图带图 ask 同日补充）：
@@ -498,9 +504,9 @@ params:
 | 路径 | `trading/advice-history/{yyyy-MM}.json`（每用户，按月一个数组）|
 | 格式 | JSON 数组，元素 `{"id":"adv_20260905_143050_123","date":"2026-09-05","symbol":"600584","name":"长电科技","suggestion":"clear","reason":"…","rules":["R66"],"hardVerdict":true,"positionPercent":20.0,"source":"manual-advice","createdAt":"2026-09-05T14:50:30.123"}`——`suggestion`：buy/hold/reduce/clear（LLM 降级 null）；`source`：manual-advice（手动建议）/ session-push（定时推送逐票）/ degraded（LLM 降级）|
 | 真相源 | `AdviceHistoryRepository`（domain 端口）→ `AdviceHistoryFileRepository` |
-| 变更 | **MINOR（2026-09-05，RFC 20260905）**：新增——「阿呆当时说 X」留痕，供卖出回查/复盘对照/建议遵守率 |
+| 变更 | **MINOR（2026-09-05，RFC 20260905）**：新增——「阿呆当时说 X」留痕，供卖出回查/复盘对照/建议遵守率 · **MINOR（2026-09-22，RFC 20260922 A 批 A3）**：新增**可选** `basis`（建议发出**当时**的依据快照 JSON：`price` / `positionPercent` / `stopLoss` / `buyPoint` / `suggestion`）——铁证④「可追责」的实体；**老文件无该字段 → 读作 null**（既有数据完全不受影响）；**只记录事实，不含对错判决**（「多久回看、怎么算对」待用户拍板）|
 
-**语义**：每次建议生成出口逐票落盘（建议只记录不执行）。id 由 createdAt 派生含毫秒（同秒防覆盖）；date 归 createdAt 日期（存储层禁 now()）。写入原子 + per-user 条带锁；损坏文件拒写回（保留原文件防覆盖历史）。消费方：`TradingController` GET `/trading/advice-history`、复盘「建议对照」段、画像建议遵守率。
+**语义**：每次建议生成出口逐票落盘（建议只记录不执行）。id 由 createdAt 派生含毫秒（同秒防覆盖）；date 归 createdAt 日期（存储层禁 now()）。写入原子 + per-user 条带锁；损坏文件拒写回（保留原文件防覆盖历史）。消费方：`TradingController` GET `/trading/advice-history`、复盘「建议对照」段、画像建议遵守率。**`basis`（2026-09-22 新增，可缺）**：把「当时是什么情况」原样记下来（价 / 持仓占比 / 止损 / 买点 / 动作），供日后回看「为什么这么说」——**本字段不做对错判断**，也**不参与任何计算**。**`outcome`（2026-09-22 新增，可缺）**：建议发出 **N 个交易日之后**的实际结果（`{afterDays, priceThen, priceAfter, pct, userActed}`）——**只记录事实、不做对错判决**（「对错」是用户复盘时的事）；回填**幂等**（已写不再覆盖），数据不全时**留空**而非写半成品。
 
 ### 2.21 个人画像主观层 `trading/profile.md`（RFC 20260905 A 层，2026-09-05 新增）
 
@@ -512,3 +518,14 @@ params:
 | 变更 | **MINOR（2026-09-05，RFC 20260905）**：新增——画像主观层容器（试点记忆卡情绪回填 + PUT /trading/profile）|
 
 **语义**：只存用户确认过的主观内容（行为签名/情绪），不存系统统计（客观层实时推导防双份数字漂移）。无文件 = 未建画像（AI 注入时全球上下文不声称「了解你」——防幻觉）。消费方：`TradingProfileContributor`（trading/decision 场景注入）、`TradingController` GET/PUT `/trading/profile`、`TradePsychologyService` 情绪回答沉淀。
+
+### 2.22 券商快照锚定 `trading/snapshot-anchor.json`（P2-交易34 治本，2026-09-09 新增；2026-09-22 扩展）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/snapshot-anchor.json`（每用户一个）|
+| 格式 | 单行 JSON：`{positionsReplace, cashImport, positionsFileDate, cashFileDate, recordedAt, holdingsRecorded, holdings:[{symbol,name,quantity}]}` |
+| 真相源 | `TradingAnchorFileRepository`（infrastructure，per-user 条带锁保证读-改-写原子）|
+| 变更 | **MINOR（2026-09-22，P1-交易61）**：新增 `positionsFileDate` / `cashFileDate`（快照**文件里的原始导出日**，未归一化）；老文件缺这两个字段 → 读作 `null`（= 无法判断锚定日是否被推断，对账如实说明，不误报）|
+
+**语义**：锚定 = 「全量覆盖导入」（持仓 replace / 资金股份查询）的元信息，供增量推导（sync 回放 / 手动成交 / 转账补记）判断「该笔是否已含在券商快照内」，防 P2-交易34 类重复入账。`positionsReplace`/`cashImport` 是**归一化后的数据基准日**（盘前 / 非交易日导出会退到上一交易日，见 `TradingAppService.normalizeAnchorDate`），`*FileDate` 是**文件名里的导出日**——两者不等即说明锚定日是**推断**出来的：此时「锚定日当天」的成交可能并不在快照里，`GET /trading/integrity` 的 `degraded[]` 据此把这类「只记了流水、没进持仓」的成交报出来（此前该端点会结构自洽地报「账实一致」= 假绿）。锚定日**只前进不后退**；补导更旧的快照不生效时保留既有 `*FileDate`（不被一份没生效的文件抹掉推断信息）。
