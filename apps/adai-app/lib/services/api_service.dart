@@ -565,6 +565,21 @@ class ApiService {
     return IntegrityReportDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// K 线/行情链路健康度（GET /api/v1/trading/market-data/health，2026-09-23）：
+  /// 把「整段行情取不到数」从服务端日志搬到用户面前（P1-交易62：tdx 滞后 + 腾讯被 WAF 拦 +
+  /// 东财被限 → K 线链路连续失败，而资金曲线/自选信号/案例匹配全建在它上面，用户此前只看到
+  /// 「数据缺了」却不知道在重试）。
+  /// 调用方（交易页）只有 `ok == false` 才显示横幅；本端点失败必须静默——
+  /// 它本身是增强项，不能拖垮持仓主数据（与 [getIntegrity] 同一降级口径）。
+  Future<MarketDataHealthDto> getMarketDataHealth() async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/market-data/health'),
+      headers: _headers,
+    );
+    _check(resp);
+    return MarketDataHealthDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// RFC 20260822：当日交易复盘聚合（纯客观）——GET /trading/trades?date=today → {trades, daily}。
   Future<DailyTradesResponse> getDailyTrades() async {
     final today = DateTime.now();
@@ -3193,4 +3208,69 @@ class MemoryInsight {
         content: json['content'] as String? ?? '',
         confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
       );
+}
+
+/// K 线/行情链路健康度（GET /api/v1/trading/market-data/health，2026-09-23，P1-交易62）。
+///
+/// 只读、纯展示：后端已把「连续失败几次、链路上有哪几家源、最近一次成功/失败是什么时候」
+/// 算好（[note] 是人话文案），app 端**不自己推断行情好坏**——判定口径只能有一处。
+///
+/// 防御式解析的两条取舍（为什么这么写）：
+/// 1. **`ok` 缺失 → 按 `true`（不报警）**：与「未加载/请求失败 → 不显示横幅」同一口径——
+///    「不知道」绝不能渲染成「有问题」（那会制造假警报，用户会来找不存在的毛病）；
+///    也绝不能渲染成「没问题」（所以交易页是「拿不到就零显示」，而不是显示一句「行情正常」）。
+/// 2. 旧后端没有这个端点 → 调用方 404 静默，本 DTO 也要能接受任意残缺 JSON 而不抛异常，
+///    否则一条增强信息足以让整个交易页崩掉。
+class MarketDataHealthDto {
+  /// 行情链路是否正常。[false] 才需要用户看见。
+  final bool ok;
+
+  /// 后端拟好的整句人话（可能为 null：无记录时后端不出文案）。
+  final String? note;
+  final String? lastSuccessAt;
+  final String? lastSuccessSource;
+  final String? lastFailureAt;
+  final int consecutiveFailures;
+  final String? lastFailedSymbol;
+
+  /// 取数链（如 tdx / 腾讯 / 东财 / 新浪），仅用于展开明细；无记录时空列表。
+  final List<String> sources;
+
+  MarketDataHealthDto({
+    this.ok = true,
+    this.note,
+    this.lastSuccessAt,
+    this.lastSuccessSource,
+    this.lastFailureAt,
+    this.consecutiveFailures = 0,
+    this.lastFailedSymbol,
+    this.sources = const [],
+  });
+
+  /// 是否需要给用户看（交易页据此决定渲不渲染横幅，缺信息=不出声）。
+  bool get hasIssue => !ok;
+
+  factory MarketDataHealthDto.fromJson(dynamic json) {
+    // 非 Map（后端返回裸数组/裸字符串等异常形态）→ 当成「拿不到信息」，不抛异常
+    if (json is! Map<String, dynamic>) return MarketDataHealthDto();
+    return MarketDataHealthDto(
+      // 只有明确的 false 才算「行情挂了」：字段缺失/null/类型异常一律不报警
+      ok: json['ok'] != false,
+      note: json['note']?.toString(),
+      lastSuccessAt: json['lastSuccessAt']?.toString(),
+      lastSuccessSource: json['lastSuccessSource']?.toString(),
+      lastFailureAt: json['lastFailureAt']?.toString(),
+      // 不能用 `as num?`：后端某天把次数写成字符串就会在这里抛，整条增强信息变崩溃源。
+      // 类型不符 = 这个数不可信 → 0（宁少说，不编数）
+      consecutiveFailures: json['consecutiveFailures'] is num
+          ? (json['consecutiveFailures'] as num).toInt()
+          : 0,
+      lastFailedSymbol: json['lastFailedSymbol']?.toString(),
+      // sources 元素也逐个 toString：后端某天多塞了非字符串（数字源名）也不该让整页崩
+      sources: ((json['sources'] as List?) ?? const [])
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList(),
+    );
+  }
 }

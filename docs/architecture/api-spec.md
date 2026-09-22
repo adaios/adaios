@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-23 | v3.84 | **行情（K 线）链路韧性——域名可配 + 第三源 + 可用性可见（RFC `20260923-market-data-resilience`；用户「ABD 一起，你做，我休息」）**——① **A 域名可配**：腾讯 K 线域名改由 `adai.market.tencent-kline-bases` 配置（逗号分隔、按序尝试），默认用**备用域名** `proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get`——2026-09-22 实测老域名 `web.ifzq.gtimg.cn` 从生产返回 **501 + 腾讯 WAF 拦截页**（加 UA/Referer 仍 501 = IP 级）；**区间一律本地裁剪**（实测备用域名忽略 `start/end`，传 09-01~09-22 却返回 2025-06-05 起 320 根）——不赌第三方参数语义，`klineRange` 语义不随域名漂移。② **B 加新浪作最后一层兜底**（`SinaKlineDataSource`，`adai.market.sina-kline-enabled` 可关）：取数链变 **tdx → 腾讯 → 东财 → 新浪**（「两个网络源同属被风控对象」，2026-09-22 就是腾讯+东财同时挂）；两处口径差异**如实标注**：该接口不复权（除权日会跳空，故绝不当主源）、volume 单位是股（实现里 /100 对齐「手」）。③ **D 可用性可见**：新增 `GET /trading/market-data/health`（`{ok, note, lastSuccessAt, lastSuccessSource, lastFailureAt, consecutiveFailures, lastFailedSymbol, sources}`，`note` 为可直接展示的人话）+ 双端交易页**只在 `ok=false` 时**出横幅（接口失败静默降级）。端点 159 → **160** |
 | 2026-09-22 | v3.83 | **S-11 B 批：三条推送改成决策时点的对话式提醒（RFC `20260922-trading-decision-copilot` §六 B；用户 2026-09-21 亲述「早盘买、尾盘卖，不太会在中间放飞和止损，需要阿呆提醒我、给我意见，尤其给我铁证」）**——① **B1 早盘（09:15）**：原 15:10 独立「买点提醒」**取消并并入早盘**；正文 = 持仓概览（昨收/数量/成本/止损/择时）+ 自选买点**逐条四要素铁证**（① 本人历史统计〔样本 N≥5，不足直说〕② 数字证据链 ③ 规则逐字原文 ④ 位置），**确定性渲染、不再走 LLM**（四要素必须逐条可指认）；买点段受 `buy-point` 开关门控；② **B2 尾盘（14:50）**：只列触发卖出条件（R66/R81）的持仓，四要素 + **账日期标注**（「按你 09-19 的账」）；③ **B3 收盘复盘**：由「15:30 到点硬发」改为**数据同步完成后触发**——导入持仓/资金/历史成交成功且 ≥15:00 即出复盘，否则 15:30 兜底；未同步则只说「今天的持仓/成交快照我还没看到」且**不落已发标记**（补导后仍能拿到真复盘）；每天至多一条；正文含 记账/账实/只记流水的/复盘/明天，账实判不了时直说判不了；④ **B4 行情失败显式降级**（**收口 P1-交易60**）：双源失败时不发带空洞数字的推送，改「今天行情我没取到，这条我暂时给不了」；逐只缺则在正文点名该只；⑤ **B5 午间（12:00）**：用户拍板保留但改**知会**——只报事实与位置（现价/涨跌/是否到你设的止损位），**不出现任何催促**，无异常不发。新增 `GET /trading/buy-points/scan`（`{hits, unavailable, dataDate}`；`/buy-points` 数组形状不变）；新增 `data/{userId}/trading/sync-state.json`（账同步/复盘已发状态，freeze MINOR）。端点 158 → **159** |
 | 2026-09-22 | v3.82 | **图文一体：一次投递多图（RFC `20260815-media-event-unification` + `20260815-image-chat-interaction`；REVIEW P1-多图1/P1-多图2）**——新增 `POST /records/media/batch`（multipart `files` 1-3 张 + `text` 可空 + 可选 `Idempotency-Key`）：**一次投递 = 一个回合 = 一条主记录 = 一张卡**——N 张图各落一条**薄 image 附件记录**（仅原图索引：不做 VLM、不沉淀记忆、不单独进 Feed），主记录用新增 frontmatter 字段 **`mediaIds`** 引用全部附件（freeze §2.1 MINOR）；视觉侧**一次**多图理解（`VisualAiClient.understandMulti`）：无提问/陈述 → 一段**综合总结**（`type=image`），问句 → **据图作答**（`type=image_qa`，回答在 `answer`）。**幂等**：同 `Idempotency-Key` 的重发/重试直接返回首次结果（`duplicated=true`），**不重跑 AI、不重复落盘**（治 P1-多图2：客户端超时重试曾造成同一张图两份、md5 相同）。Feed 条目新增 **`mediaPaths`**（数组、按上传顺序；`mediaPath` 仍为首图兼容）→ 前端**一卡多图并列**；时间线条目同口径（薄附件不单独成条）。端点 156 → **158**（本批 +1：`/records/media/batch`；同日并发 A3 批 +1：`/trading/evidence/backfill`）|
 | 2026-09-22 | v3.81 | **建议出口带四要素铁证 + 历史统计补「按形态分组」（RFC `20260922-trading-decision-copilot` A 批 A4）**——① `POST /api/v1/trading/advice` 的每条 `advice[]` 新增可选 **`evidence`** 对象（`{history, numbers, ruleTexts, basisId}`，**逐字段可空、补不出不编**）：`history` = 铁证①本人历史统计（**样本 < 5 → null**，调用方须说「样本还不够」）· `numbers` = ②当时的数字（现价 / 持仓占比 / 止损位）· `ruleTexts` = ③规则原文**逐字**（`rules` 里查得到的才进列表）· `basisId` = ④留痕 id（**A3 待填**）。出口**统一补齐**（成功与降级两条路径同一口径），**只读、不改建议本身**。② `GET /trading/evidence/history` 的历史统计**补 `BUY_POINT` 维度**（按买点形态分组）：形态记在**批次**上，用 `symbol+buyDate` join；**join 不上就归「未标形态」，不猜**（宁缺一个维度，不编一个形态）。③ **新增 `POST /trading/evidence/backfill`** —— 铁证④「结果回填」（幂等 · 只记事实不判对错 · 数据不全不写半成品）。端点 156 → **157** |
@@ -868,6 +869,24 @@ web 交易 CSV 批量导入（此前前端一直调此端点但后端未实现 �
 **宁可留空、不写半成品**：K 线取不到 / 还没走满 N 个交易日 / 分母为 0 → 本次不写，留待下次。
 
 **Response（200）**：`{"written": 2}`（本次真正写入的条数；请求体为空，用户取自 `X-User-Id`）
+
+### `GET /api/v1/trading/market-data/health` — 行情（K 线）链路可用性（v3.84，RFC 20260923 D 批，2026-09-23）
+
+把「K 线链路整段拿不到数据」从日志搬到用户面前。**为什么需要**：2026-09-22 深夜生产实测三条来源同时失效（腾讯 K 线域名被 WAF 拦 501 · 东财长期被限 · tdx 数据包滞后），资金曲线/周期盈亏/买点扫描/案例库整段退化，而后端只在日志里知道——用户侧看到的是曲线平了、信号没了，**没有任何提示**（与 P1-交易60 同族：「不知道」没有被渲染成「不知道」）。
+
+**响应**：
+```json
+{"ok":false,
+ "note":"行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——资金曲线、自选信号、案例匹配可能不全，我在自动重试",
+ "lastSuccessAt":"09-22 15:00:00","lastSuccessSource":"tdx",
+ "lastFailureAt":"09-22 23:38:00","consecutiveFailures":12,"lastFailedSymbol":"600487",
+ "sources":["tdx","腾讯","东财","新浪"]}
+```
+- `ok`：最近一次成功不早于最近一次失败。**从没查过时 `ok=true`**（不制造假警报），此时 `note` 为「还没查过行情」。
+- `note`：**可直接展示的人话**（双端交易页横幅直接用它，不在前端重新拼口径）。
+- `lastSuccessSource`：那一根来自哪个源（`tdx` / `腾讯` / `东财` / `新浪`）——**B 批加的新浪是不复权数据**，这一字段让「当前用的是哪个源」可见（口径差异不藏起来）。
+- `sources`：当前启用的取数链（按序；`sina-kline-enabled=false` 时不出现「新浪」）。
+- 双端**只在 `ok=false` 时**出横幅（无异常零显示）；需 trading 插件（403）。
 
 ### `GET /api/v1/trading/integrity` — 账实一致性自检（对账闸门，v3.61，2026-09-12）
 > 需 trading 插件（403）。

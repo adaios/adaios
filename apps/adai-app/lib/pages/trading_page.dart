@@ -131,6 +131,13 @@ class _TradingPageState extends State<TradingPage> {
   IntegrityReportDto? _integrity;
   bool _integrityExpanded = false; // 横幅展开态（默认收起，无差异时整个横幅不渲染）
 
+  // ── 2026-09-23（P1-交易62）：K 线/行情链路健康度（GET /trading/market-data/health）──
+  // 与账实横幅同一口径：null = 未加载/失败 → 零显示；只有 ok == false 才渲染。
+  // 「行情正常」和「拿不到信息」在页面上的表达都是**什么都不显示**——后者绝不写成
+  // 「行情正常」，前者也不该占地方（否则天天挂一条没人看的横幅 = 噪音）。
+  MarketDataHealthDto? _marketHealth;
+  bool _marketHealthExpanded = false;
+
   Timer? _autoRefresh; // 30 分钟自动刷新（对齐 web B3，2026-08-17）
 
   @override
@@ -185,6 +192,7 @@ class _TradingPageState extends State<TradingPage> {
       _loadCandidates(); // 2026-08-26 截图入账：当日候选（异步，失败静默）
       _loadMarketStage(); // v3.41：活跃市值区间（异步，失败静默）
       _loadIntegrity();   // RFC 20260912：账实一致性自检（异步，失败静默）
+      _loadMarketHealth(); // 2026-09-23（P1-交易62）：行情链路健康度（异步，失败静默）
     } catch (e) {
       if (!mounted) return;
       // P1-前端1（2026-08-29 修复，web P1-7 同类在 app 复发）：
@@ -268,6 +276,82 @@ class _TradingPageState extends State<TradingPage> {
     } catch (_) {
       // 静默：见上（失败保持原值，若此前已加载出问题则继续显示——比悄悄消失安全）
     }
+  }
+
+  /// 2026-09-23（P1-交易62）行情链路健康度（GET /trading/market-data/health）。
+  /// 静默降级：旧后端的 404 / 500 / 网络抖动 → 保持 null（既不出横幅也不弹错误）。
+  /// 为什么不做「失败就提示」：它是纯增强信息，且后端本来就在自动重试——
+  /// 把「连端点都取不到」也报给用户，只会让他以为交易数据坏了。
+  Future<void> _loadMarketHealth() async {
+    try {
+      final h = await widget.api.getMarketDataHealth();
+      if (!mounted) return;
+      setState(() => _marketHealth = h);
+    } catch (_) {
+      // 静默：见上（保持原值：若此前已加载出问题则继续显示，比悄悄消失安全）
+    }
+  }
+
+  /// 行情链路降级横幅（橙色，可展开，样式与账实横幅同族）：
+  /// 标题是「我」（阿呆）的一句话，[MarketDataHealthDto.note] 是后端拟好的正文；
+  /// 展开才看取数链 / 最近成功与失败时刻 / 连续失败次数——这些是排查用细节，不该占首屏。
+  /// 只有 `ok == false` 调用方才会渲染（'ok == true' 与「拿不到信息」都是零显示）。
+  Widget _buildMarketHealthBanner(MarketDataHealthDto h) {
+    final note = h.note?.trim() ?? '';
+    final chain = h.sources.join(' → ');
+    // 每行都「有值才出」：字段为 null 时宁可少一行，也不把 null / 空串渲染给用户看
+    final details = <String>[
+      if (chain.isNotEmpty) '取数链：$chain',
+      if (h.lastSuccessAt != null)
+        '最近一次成功：${h.lastSuccessAt}'
+            '${h.lastSuccessSource == null ? '' : '（${h.lastSuccessSource}）'}',
+      if (h.lastFailureAt != null)
+        '最近一次失败：${h.lastFailureAt}'
+            '${h.lastFailedSymbol == null ? '' : ' · ${h.lastFailedSymbol}'}',
+      if (h.consecutiveFailures > 0) '连续失败 ${h.consecutiveFailures} 次',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 有明细才给展开手势：后端没给时刻/源时，「看明细」点开是空的 = 骗一次点击
+        InkWell(
+          onTap: details.isEmpty
+              ? null
+              : () => setState(() => _marketHealthExpanded = !_marketHealthExpanded),
+          child: Row(children: [
+            const Icon(Icons.cloud_off_rounded, size: 16, color: AppColors.darkOrange),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('阿呆最近拿不到行情',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+            ),
+            if (details.isNotEmpty) ...[
+              Text(_marketHealthExpanded ? '收起' : '看明细',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+              Icon(_marketHealthExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16, color: AppColors.darkGrey4),
+            ],
+          ]),
+        ),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(note, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+        ],
+        if (_marketHealthExpanded && details.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          for (final d in details)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(d, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            ),
+        ],
+      ]),
+    );
   }
 
   /// RFC 20260912 账实不符闸门横幅（橙色，可展开）：
@@ -1073,6 +1157,13 @@ class _TradingPageState extends State<TradingPage> {
                 // ① 隐私条（金额默认打码）② 焦点 1 每日入账 ③ 焦点 2 持仓 ④ 折叠区（次要）。
                 _buildPrivacyBar(),
                 const SizedBox(height: 10),
+                // 2026-09-23（P1-交易62）：行情链路降级**排在账实横幅之前**——它是上游：
+                // K 线取不到时，资金曲线/自选信号/案例匹配本来就会缺，先告诉用户
+                // 「数我自己都没拿到」，再说「账对不上」才不会让他白查一场。
+                if (_marketHealth != null && _marketHealth!.hasIssue) ...[
+                  _buildMarketHealthBanner(_marketHealth!),
+                  const SizedBox(height: 10),
+                ],
                 // P2-5（2026-09-19 前端审查）：「账对不上」**放回最顶**——本批自己的注释写着
                 // 「数字不可信时先别信数字」，却把它排到了候选/回执/丢弃之后（十几笔候选的日子
                 // 会被挤出首屏）。现在它紧跟隐私条、在所有数字之前。

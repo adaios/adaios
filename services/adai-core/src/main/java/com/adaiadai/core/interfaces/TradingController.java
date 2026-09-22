@@ -29,6 +29,7 @@ import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
+import com.adaiadai.core.application.KlineService;
 import com.adaiadai.core.application.TradingSessionPushService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
@@ -95,6 +96,8 @@ public class TradingController {
     private final TradePsychologyService psychologyService;
     /** RFC 20260922 B 批 B3：账同步完成 → 触发收盘复盘（不再 15:30 到点硬发一份基于旧账的复盘）。 */
     private final TradingSessionPushService sessionPushService;
+    /** RFC 20260923 D 批：行情（K 线）链路可用性——让「整段拿不到行情」在用户侧可见。 */
+    private final KlineService klineService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -114,6 +117,7 @@ public class TradingController {
                              TradingProfileService profileService,
                              TradePsychologyService psychologyService,
                              TradingSessionPushService sessionPushService,
+                             KlineService klineService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -133,6 +137,7 @@ public class TradingController {
         this.profileService = profileService;
         this.psychologyService = psychologyService;
         this.sessionPushService = sessionPushService;
+        this.klineService = klineService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -457,6 +462,24 @@ public class TradingController {
      * 把口径崩坏变成当天可见的闸门（本次生产事故：三条真源互相矛盾三天，靠用户肉眼发现）。
      * 降级诚实：锚定/基线缺失 → note 说明「无法判定」，不误报差异。
      */
+    /**
+     * 行情（K 线）链路可用性（RFC `20260923` D 批，2026-09-23）。
+     *
+     * <p><b>为什么要有它</b>：2026-09-22 深夜生产实测三条 K 线来源同时失效（腾讯 K 线域名被 WAF 拦 501 ·
+     * 东财长期被限 · tdx 数据包滞后），而后端**只在日志里**知道——用户侧看到的是资金曲线平了、
+     * 自选信号没了、案例匹配不了，**没有任何提示**（与 P1-交易60 同族：「不知道」没有被渲染成「不知道」）。
+     *
+     * <p>双端交易页只在 {@code ok=false} 时出横幅（无异常零显示，不制造噪音）。
+     * 早盘推送那一半已由 B 批收口（买点段取不到行情会如实说）。
+     */
+    @GetMapping("/market-data/health")
+    public ResponseEntity<?> marketDataHealth(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(klineService.health());
+    }
+
     @GetMapping("/integrity")
     public ResponseEntity<?> integrity(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {

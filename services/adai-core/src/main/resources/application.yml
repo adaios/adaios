@@ -51,6 +51,15 @@ adai:
     # 数据目录 = 通达信 vipdoc/ 的 sh/ sz/ 子目录（lday/*.day），生产用 ADAI_TDX_PATH 指定
     tdx-enabled: true
     tdx-path: ${ADAI_TDX_PATH:../../data/market/tdx}
+    # K 线域名（RFC 20260923 A 批，2026-09-23）：逗号分隔、按序尝试。
+    # 2026-09-22 深夜实测：老域名 web.ifzq.gtimg.cn/appstock/app/fqkline/get 从生产返回
+    # 501 + 腾讯 WAF 拦截页（加 UA/Referer 仍 501 = IP 级），而备用域名
+    # proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get 返回有效前复权 K 线
+    # → 默认用备用域名；风控再变时改这个环境变量即可，**不必改代码重新部署**。
+    tencent-kline-bases: ${ADAI_MARKET_TENCENT_KLINE_BASES:https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get}
+    # 新浪 K 线（RFC 20260923 B 批）：K 线链路最后一层兜底（tdx → 腾讯 → 东财 → 新浪）。
+    # 「两个网络源同属被风控对象」——2026-09-22 就是腾讯+东财同时挂；关掉即退回改动前行为。
+    sina-kline-enabled: ${ADAI_SINA_KLINE_ENABLED:true}
     # 除权因子本地缓存目录（前复权用）。2026-09-14 修复：代码读 adai.market.adj-path，但 yml 未声明
     # → .env 里的 ADAI_ADJ_PATH 不生效，静默落回相对默认值 ../../data/market/adj，按
     # WorkingDirectory=/opt/adaios/backend 解析成 /opt/data/...（不可写）→ 生产全部标的「除权因子读取失败」。

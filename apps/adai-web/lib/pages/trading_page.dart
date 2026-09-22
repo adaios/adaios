@@ -166,6 +166,10 @@ class _TradingPageState extends State<TradingPage> {
   // RFC 20260912 账实一致性：对账闸门（GET /trading/integrity）——drift/gaps 非空才显示横幅（无差异零噪音）
   IntegrityReportDto? _integrity;
   bool _integrityExpanded = false;
+  // RFC 20260923 D 批：行情（K 线）链路可用性（GET /trading/market-data/health）——ok=false 才显示横幅
+  // （ok=true 或拿不到信息 = 零显示；三源全挂时用户本来只会看到资金曲线平了，毫无提示）
+  MarketDataHealthDto? _marketHealth;
+  bool _marketHealthExpanded = false;
 
   Timer? _autoRefresh;
 
@@ -261,6 +265,8 @@ class _TradingPageState extends State<TradingPage> {
     _loadDaily();
     // RFC 20260912：账实对账闸门（应有持仓 vs 落地持仓 / 重放缺口）——失败静默降级，不打断加载
     unawaited(_loadIntegrity());
+    // RFC 20260923：行情链路可用性——与对账并行，同样可降级（失败静默、不影响页面其它数据）
+    unawaited(_loadMarketHealth());
     // 2026-09-15：今日/本周/本月盈亏（增强项，失败静默——旧后端/网络抖动时整行不显示）
     unawaited(_loadPnlPeriods());
   }
@@ -287,6 +293,19 @@ class _TradingPageState extends State<TradingPage> {
       setState(() => _integrity = r);
     } catch (_) {
       // 静默降级：对账闸门拿不到不影响看盘（宁可不显示，也不误报差异）
+    }
+  }
+
+  /// RFC 20260923 D 批：行情（K 线）链路可用性（GET /trading/market-data/health）：
+  /// 三源连续全失败 → 顶部可展开橙色横幅（后端 note 直接透出，前端不另造口径）。
+  /// 可降级请求：失败 / 旧后端 404 / 网络抖动 → 静默（不显示横幅、不弹错误、不影响页面其它数据）。
+  Future<void> _loadMarketHealth() async {
+    try {
+      final h = await widget.api.getMarketDataHealth();
+      if (!mounted) return;
+      setState(() => _marketHealth = h);
+    } catch (_) {
+      // 静默降级：拿不到健康信息 ≠ 行情坏了（宁可不显示，也不制造假警报）
     }
   }
 
@@ -714,6 +733,12 @@ class _TradingPageState extends State<TradingPage> {
                       // v3.41（2026-09-04）：活跃市值区间（用户手动判定）——一切的前提，放最顶
                       if (_marketStageLoaded) ...[
                         _buildMarketStageBar(),
+                        const SizedBox(height: 10),
+                      ],
+                      // RFC 20260923：行情链路横幅放对账之上——它是上游根因（行情拿不到 → 曲线/信号/案例
+                      // 都会不全），先让用户看到「为什么今天数据可能不对劲」，再看下面的具体对账差异
+                      if (_marketHealth != null && _marketHealth!.shouldWarn) ...[
+                        _buildMarketHealthBanner(_marketHealth!),
                         const SizedBox(height: 10),
                       ],
                       // RFC 20260912：账实不符闸门（drift/gaps 非空才出现，无差异零噪音）
@@ -1666,6 +1691,61 @@ class _TradingPageState extends State<TradingPage> {
             ),
           ),
         ),
+      ]),
+    );
+  }
+
+  /// RFC 20260923 D 批：行情链路横幅（橙色，可展开）——**只有 ok=false 才由调用方渲染**。
+  /// 标题给一句人话结论，正文直接用后端 note（它已经是人话，前端再翻译一遍只会产生第二套口径）；
+  /// 取数链/时刻/次数收进展开区：用户第一眼要的是「阿呆现在拿不到行情」，复查细节是第二步。
+  Widget _buildMarketHealthBanner(MarketDataHealthDto h) {
+    final details = <String>[
+      if (h.lastSuccessAt != null)
+        '最近成功 ${h.lastSuccessAt}${h.lastSuccessSource != null ? ' · ${h.lastSuccessSource}' : ''}',
+      if (h.lastFailureAt != null) '最近失败 ${h.lastFailureAt}',
+      if (h.consecutiveFailures > 0) '连续失败 ${h.consecutiveFailures} 次',
+      if (h.sources.isNotEmpty) '取数链 ${h.sources.join(' → ')}',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkOrange.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _marketHealthExpanded = !_marketHealthExpanded),
+          child: Row(children: [
+            const Icon(Icons.cloud_off_rounded, size: 16, color: AppColors.darkOrange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('阿呆最近拿不到行情',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkOrange)),
+                // note 可能为空（后端异常返回残缺 JSON）→ 只留标题，绝不显示空行
+                if (h.note.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(h.note, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey3)),
+                ],
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text(_marketHealthExpanded ? '收起' : '看明细',
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey4)),
+            Icon(_marketHealthExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 16, color: AppColors.darkGrey4),
+          ]),
+        ),
+        if (_marketHealthExpanded && details.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          for (final d in details)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(d, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+        ],
       ]),
     );
   }

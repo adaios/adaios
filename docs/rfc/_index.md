@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-22
+updated: 2026-09-23
 status: active
-lines: 86
+lines: 87
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260923-market-data-resilience.md | 行情（K 线）链路韧性——域名可配 + 第三源 + 可用性可见（2026-09-22 三条源同时失效：腾讯 K 线被 WAF 拦 501 / 东财被限 / tdx 滞后；治法 A 域名可配（默认备用域名 + 区间本地裁剪）· B 新浪作最后一层兜底 · D 健康端点 + 双端横幅）| implemented |
 | 20260922-trading-decision-copilot.md | 交易插件目标形态——决策时点的对话式提醒与四要素铁证（日线/早盘买尾盘卖 → 只在早盘与尾盘出现、收盘后复盘；每条意见必须带本人历史统计 + 数字证据 + 规则原文 + 可回溯；账收盘后同步、行情自取）| approved |
 | 20260918-trading-app-restructure.md | 交易 App 端重排——「记录 → 对账 → 照见」三层与两条铁律（UI/UX 专项审查 24 条的结构性收敛；三套口径以锚定日为界；四批 A1/A2/B/C）| draft |
 | 20260917-learn-representation.md | learn 表征适配与链路打通（门控 B + 偏好回流 + 反馈入口 + 精美导出）| approved |

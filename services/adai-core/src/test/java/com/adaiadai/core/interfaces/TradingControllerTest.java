@@ -127,6 +127,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -166,6 +167,39 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 sync,
+                mock(com.adaiadai.core.application.KlineService.class),
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
+    /**
+     * RFC 20260923 D 批：行情可用性端点（`GET /trading/market-data/health`）用例专用——
+     * 把 `KlineService` 暴露成可 stub 的 mock（其余依赖沿用 buildMvc 同款）。
+     */
+    private MockMvc buildMvcWithKline(com.adaiadai.core.application.KlineService kline) {
+        TradingController controller = new TradingController(mock(TradingAppService.class),
+                mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class),
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class),
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                kline,
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -195,6 +229,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -229,6 +264,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -257,6 +293,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -287,6 +324,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -486,6 +524,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1028,6 +1067,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1384,6 +1424,7 @@ class TradingControllerTest {
                  mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                  "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1427,6 +1468,7 @@ class TradingControllerTest {
                  mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                  "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1660,6 +1702,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1691,6 +1734,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1720,6 +1764,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2136,6 +2181,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2242,6 +2288,7 @@ class TradingControllerTest {
                 profile,
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2328,6 +2375,7 @@ class TradingControllerTest {
                 profile,
                 mock(TradePsychologyService.class),
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2360,6 +2408,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2396,6 +2445,7 @@ class TradingControllerTest {
                 mock(TradingProfileService.class),
                 psychology,
                 mock(com.adaiadai.core.application.TradingSessionPushService.class),
+                mock(com.adaiadai.core.application.KlineService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2442,5 +2492,45 @@ class TradingControllerTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ── RFC 20260923 D 批：行情链路可用性可见 ──
+
+    @Test
+    void marketDataHealth_unavailable_reportsHonestly() throws Exception {
+        // 三条源同时挂时，用户侧不该只看到「曲线平了」——这个端点就是那条交代
+        com.adaiadai.core.application.KlineService kline =
+                mock(com.adaiadai.core.application.KlineService.class);
+        when(kline.health()).thenReturn(new com.adaiadai.core.application.KlineService.Health(
+                false,
+                "行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——资金曲线、自选信号、案例匹配可能不全，我在自动重试",
+                "09-22 15:00:00", "tdx", "09-22 23:38:00", 12, "600487",
+                java.util.List.of("tdx", "腾讯", "东财", "新浪")));
+        MockMvc mvc = buildMvcWithKline(kline);
+
+        mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.consecutiveFailures").value(12))
+                .andExpect(jsonPath("$.lastSuccessSource").value("tdx"))
+                .andExpect(jsonPath("$.sources[3]").value("新浪"))
+                .andExpect(jsonPath("$.note").value(containsString("没拿到")));
+    }
+
+    @Test
+    void marketDataHealth_ok_isCalm() throws Exception {
+        com.adaiadai.core.application.KlineService kline =
+                mock(com.adaiadai.core.application.KlineService.class);
+        when(kline.health()).thenReturn(new com.adaiadai.core.application.KlineService.Health(
+                true, "行情正常（最近一次 09-23 00:15:00 · 新浪）",
+                "09-23 00:15:00", "新浪", null, 0, null,
+                java.util.List.of("tdx", "腾讯", "东财", "新浪")));
+        MockMvc mvc = buildMvcWithKline(kline);
+
+        mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.consecutiveFailures").value(0))
+                .andExpect(jsonPath("$.note").value(containsString("行情正常")));
     }
 }

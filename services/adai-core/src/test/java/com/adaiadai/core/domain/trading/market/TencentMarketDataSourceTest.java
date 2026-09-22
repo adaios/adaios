@@ -96,4 +96,23 @@ class TencentMarketDataSourceTest {
         assertTrue(indices.containsKey("sh000001") || indices.containsKey("000001"),
                 "indices 返回键应与请求一致: " + indices.keySet());
     }
+
+
+    // ── RFC 20260923 A 批：K 线域名可配（多域名按序尝试）──
+
+    @Test
+    void parseBases_trimsDedupesAndKeepsOrder() {
+        assertEquals(List.of("https://a", "https://b"),
+                TencentMarketDataSource.parseBases(" https://a , https://b ,https://a "),
+                "去空白、去重、保序");
+        assertEquals(List.of("https://only"), TencentMarketDataSource.parseBases("https://only"));
+    }
+
+    @Test
+    void parseBases_blankOrNull_fallsBackToDefault() {
+        // 不放任成「一个域名都没有」——那会让腾讯源彻底静默失效
+        assertEquals(1, TencentMarketDataSource.parseBases("").size());
+        assertEquals(1, TencentMarketDataSource.parseBases("   ").size());
+        assertEquals(1, TencentMarketDataSource.parseBases(null).size());
+    }
 }

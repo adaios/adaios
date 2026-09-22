@@ -704,6 +704,16 @@ class ApiService {
     return IntegrityReportDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  /// 行情（K 线）链路可用性（GET /api/v1/trading/market-data/health，RFC 20260923 D 批）：
+  /// 三源同时失效时后端只在日志里知道，用户侧看到的是资金曲线平了/自选信号没了/案例匹配不上——
+  /// 把「不知道」渲染成「不知道」。失败由调用方静默降级（旧后端 404 / 网络抖动不该打断页面加载）。
+  Future<MarketDataHealthDto> getMarketDataHealth() async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/market-data/health'), headers: _headers);
+    _check(resp);
+    return MarketDataHealthDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
   /// 锚定状态（GET /api/v1/trading/anchor，2026-09-12）：只读，不写任何数据。
   Future<AnchorStatusDto> getAnchorStatus() async {
     final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/anchor'), headers: _headers);
@@ -3344,6 +3354,56 @@ class DegradedLineDto {
       entryDate: json['entryDate']?.toString(),
       inferred: json['inferred'] == true,
       reason: json['reason']?.toString() ?? '',
+    );
+  }
+}
+
+/// 行情（K 线）链路可用性（GET /trading/market-data/health，RFC 20260923 D 批，2026-09-23）：
+/// [ok]=false 表示「最近一次成功早于最近一次全失败」——三源全挂时后端只写日志，
+/// 用户侧一切照旧（资金曲线平了、自选信号没了都长得像正常），这里把它变成页面上看得见的一句话。
+///
+/// **防御式解析的取舍**：所有字段都可能为 null（后端 record 里确实可空），且旧后端没有这个端点。
+/// `ok` 缺失/非 bool 一律按 true（不报警）——漏报只是少一条提示，误报会让用户以为行情坏了而恐慌，
+/// 后者消耗信任更快；解析绝不抛异常（半个残缺 JSON 不该把交易页拖成错误态）。
+class MarketDataHealthDto {
+  final bool ok;
+  final String note; // 后端已写好的人话说明，直接透出（前端不再自造口径）
+  final String? lastSuccessAt;
+  final String? lastSuccessSource; // tdx / 腾讯 / 东财 / 新浪
+  final String? lastFailureAt; // 「所有源都拿不到」的时刻
+  final int consecutiveFailures; // 连续全失败次数（成功即清零）
+  final String? lastFailedSymbol;
+  final List<String> sources; // 当前启用的取数链（按序）
+
+  MarketDataHealthDto({
+    required this.ok,
+    required this.note,
+    this.lastSuccessAt,
+    this.lastSuccessSource,
+    this.lastFailureAt,
+    this.consecutiveFailures = 0,
+    this.lastFailedSymbol,
+    this.sources = const [],
+  });
+
+  /// 要不要给用户看横幅：**只有明确 ok=false 才报警**（ok=true 或拿不到信息 → 页面零显示）。
+  bool get shouldWarn => !ok;
+
+  factory MarketDataHealthDto.fromJson(dynamic json) {
+    final m = json is Map<String, dynamic> ? json : <String, dynamic>{};
+    // `sources`/`consecutiveFailures` 用 is 判断而非 `as List?`/`as num?`：
+    // 类型错乱（如后端把次数写成字符串）时前者落安全默认，后者会抛——契约要求本 DTO 绝不抛。
+    final rawSources = m['sources'];
+    final rawFailures = m['consecutiveFailures'];
+    return MarketDataHealthDto(
+      ok: m['ok'] != false,
+      note: m['note']?.toString() ?? '',
+      lastSuccessAt: m['lastSuccessAt']?.toString(),
+      lastSuccessSource: m['lastSuccessSource']?.toString(),
+      lastFailureAt: m['lastFailureAt']?.toString(),
+      consecutiveFailures: rawFailures is num ? rawFailures.toInt() : 0,
+      lastFailedSymbol: m['lastFailedSymbol']?.toString(),
+      sources: rawSources is List ? rawSources.map((e) => e.toString()).toList() : const [],
     );
   }
 }

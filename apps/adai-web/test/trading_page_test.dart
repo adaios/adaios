@@ -2973,6 +2973,165 @@ void main() {
     });
   });
 
+  // ── RFC 20260923 D 批：行情（K 线）链路可用性横幅 ──
+  // 后端把「三源连续全失败」只写进日志、双端交易页只在 ok=false 时出横幅（无异常零显示）。
+
+  group('RFC 20260923 行情链路横幅（GET /trading/market-data/health）', () {
+    test('health DTO 正常解析（含 sources 取数链）；ok=true 不报警', () {
+      final h = MarketDataHealthDto.fromJson({
+        'ok': false,
+        'note': '行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——'
+            '资金曲线、自选信号、案例匹配可能不全，我在自动重试',
+        'lastSuccessAt': '09-22 15:00:00',
+        'lastSuccessSource': 'tdx',
+        'lastFailureAt': '09-22 23:38:00',
+        'consecutiveFailures': 12,
+        'lastFailedSymbol': '600487',
+        'sources': ['tdx', '腾讯', '东财', '新浪'],
+      });
+      expect(h.ok, isFalse);
+      expect(h.shouldWarn, isTrue);
+      expect(h.note, contains('连续 12 次'));
+      expect(h.lastSuccessAt, '09-22 15:00:00');
+      expect(h.lastSuccessSource, 'tdx');
+      expect(h.lastFailureAt, '09-22 23:38:00');
+      expect(h.consecutiveFailures, 12);
+      expect(h.lastFailedSymbol, '600487');
+      expect(h.sources, ['tdx', '腾讯', '东财', '新浪']);
+
+      // 行情正常：lastFailureAt 可为 null（后端确实没失败过）——不报警、不显示
+      final fine = MarketDataHealthDto.fromJson({
+        'ok': true, 'note': '行情正常（最近一次 09-22 15:00:00 · tdx）',
+        'lastSuccessAt': '09-22 15:00:00', 'lastSuccessSource': 'tdx',
+        'lastFailureAt': null, 'consecutiveFailures': 0, 'lastFailedSymbol': null,
+        'sources': ['tdx'],
+      });
+      expect(fine.ok, isTrue);
+      expect(fine.shouldWarn, isFalse);
+      expect(fine.lastFailureAt, isNull);
+    });
+
+    test('health DTO 防御式解析：字段缺失 / 非 map / ok 缺失 → 不误报且不抛', () {
+      // 旧后端无此端点 / 响应不是对象：拿不到信息 = 不报警（漏报可接受，误报消耗信任）
+      final empty = MarketDataHealthDto.fromJson(null);
+      expect(empty.ok, isTrue);
+      expect(empty.shouldWarn, isFalse);
+      expect(empty.note, '');
+      expect(empty.consecutiveFailures, 0);
+      expect(empty.sources, isEmpty);
+      expect(empty.lastFailureAt, isNull);
+
+      // ok 字段缺失但其它字段在（半残响应）→ 仍按正常处理
+      final noOk = MarketDataHealthDto.fromJson({'note': '缺 ok', 'sources': <String>[]});
+      expect(noOk.ok, isTrue);
+      expect(noOk.shouldWarn, isFalse);
+
+      // 类型错乱（次数是字符串 / sources 不是数组 / note 是数字）→ 安全默认，绝不抛
+      final weird = MarketDataHealthDto.fromJson({
+        'ok': false, 'consecutiveFailures': 'x', 'sources': 'tdx', 'note': 123,
+      });
+      expect(weird.consecutiveFailures, 0);
+      expect(weird.sources, isEmpty);
+      expect(weird.note, '123');
+      expect(weird.shouldWarn, isTrue, reason: '明确的 ok=false 仍要报警');
+    });
+
+    testWidgets('ok=false → 顶部橙色横幅（人话标题 + 后端 note；展开见取数链/时刻/次数）', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/market-data/health') {
+          return _json({
+            'ok': false,
+            'note': '行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——'
+                '资金曲线、自选信号、案例匹配可能不全，我在自动重试',
+            'lastSuccessAt': '09-22 15:00:00', 'lastSuccessSource': 'tdx',
+            'lastFailureAt': '09-22 23:38:00', 'consecutiveFailures': 12,
+            'lastFailedSymbol': '600487', 'sources': ['tdx', '腾讯', '东财', '新浪'],
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.text('阿呆最近拿不到行情'), findsOneWidget);
+      expect(find.textContaining('行情取数连续 12 次都没拿到'), findsOneWidget);
+      // 未展开 → 细节不显示（第一眼只要「拿不到行情」，复查才看细节，不制造噪音）
+      expect(find.textContaining('取数链'), findsNothing);
+
+      await tester.tap(find.text('看明细'));
+      await tester.pumpAndSettle();
+      expect(find.text('最近成功 09-22 15:00:00 · tdx'), findsOneWidget);
+      expect(find.text('最近失败 09-22 23:38:00'), findsOneWidget);
+      expect(find.text('连续失败 12 次'), findsOneWidget);
+      expect(find.text('取数链 tdx → 腾讯 → 东财 → 新浪'), findsOneWidget);
+    });
+
+    testWidgets('ok=true → 零显示（行情正常不刷存在感），页面正常', (tester) async {
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+        if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+        if (path == '/api/v1/trading/account') return _json(_accountJson());
+        if (path == '/api/v1/trading/watchlist') return _json([]);
+        if (path == '/api/v1/trading/sold') return _json([]);
+        if (path == '/api/v1/trading/buy-points') return _json([]);
+        if (path == '/api/v1/trading/sold/score') return _json([]);
+        if (path == '/api/v1/trading/market-data/health') {
+          return _json({
+            'ok': true, 'note': '行情正常（最近一次 09-22 15:00:00 · tdx）',
+            'lastSuccessAt': '09-22 15:00:00', 'lastSuccessSource': 'tdx',
+            'lastFailureAt': null, 'consecutiveFailures': 0, 'lastFailedSymbol': null,
+            'sources': ['tdx', '腾讯'],
+          });
+        }
+        return http.Response('not found', 404);
+      });
+      final api = ApiService(baseUrl: 'http://test', client: client);
+      await _pumpTrading(tester, api);
+
+      expect(find.text('阿呆最近拿不到行情'), findsNothing);
+      expect(find.textContaining('行情正常'), findsNothing, reason: '正常时不刷存在感');
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+
+    testWidgets('health 404（旧后端）/ 500（网络抖动）→ 静默降级，不弹错误不崩', (tester) async {
+      Future<void> pumpWith(http.Response Function() healthResp) async {
+        final client = MockClient((request) async {
+          final path = request.url.path;
+          if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+          if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+          if (path == '/api/v1/trading/account') return _json(_accountJson());
+          if (path == '/api/v1/trading/watchlist') return _json([]);
+          if (path == '/api/v1/trading/sold') return _json([]);
+          if (path == '/api/v1/trading/buy-points') return _json([]);
+          if (path == '/api/v1/trading/sold/score') return _json([]);
+          if (path == '/api/v1/trading/market-data/health') return healthResp();
+          return http.Response('not found', 404);
+        });
+        await _pumpTrading(tester, ApiService(baseUrl: 'http://test', client: client));
+      }
+
+      await pumpWith(() => http.Response('not found', 404));
+      expect(find.text('阿呆最近拿不到行情'), findsNothing);
+      expect(find.textContaining('加载失败'), findsNothing, reason: '可降级请求失败不整页错误态');
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+
+      // 500 同样静默（不能因为健康端点坏了就影响看盘），页面数据照常
+      await pumpWith(() => http.Response('boom', 500));
+      expect(find.text('阿呆最近拿不到行情'), findsNothing);
+      expect(find.textContaining('加载失败'), findsNothing);
+      expect(find.textContaining('持仓 1 只'), findsOneWidget);
+    });
+  });
+
   group('RFC 20260912 快照导入带 snapshotDate（锚定日 = 快照自身日期）', () {
     test('importPositions 传 snapshotDate（replace=true 并存）', () async {
       Map<String, String>? query;

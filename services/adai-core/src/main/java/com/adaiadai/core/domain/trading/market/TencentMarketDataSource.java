@@ -2,6 +2,8 @@ package com.adaiadai.core.domain.trading.market;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -34,7 +36,25 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final long CACHE_TTL_MS = 60_000; // 60 秒
 
+    /**
+     * K 线域名（RFC 20260923 A 批，2026-09-23）：**逗号分隔、按序尝试**。
+     *
+     * <p>为什么要有这一项：2026-09-22 深夜实测，老域名 {@code web.ifzq.gtimg.cn/appstock/app/fqkline/get}
+     * 从生产服务器返回 **501 + 腾讯 WAF 拦截页**（加 iPhone UA 与 {@code Referer: https://gu.qq.com/}
+     * 仍是 501 → **IP 级拦截**，不是请求头问题），而同机的**实时行情** {@code qt.gtimg.cn} 仍 200、
+     * **备用域名** {@code proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get} 返回**有效前复权 K 线**。
+     *
+     * <p>做成列表而不是「换一行 URL」：这类风控会周期性变化（东财被限就是同类），写死一处就得改代码重新部署。
+     * 现在运维只需在 {@code .env} 里改 {@code ADAI_MARKET_TENCENT_KLINE_BASES} 就能切。
+     * 默认**只配新域名**——不自动重试老域名：同一家的两个域名受同一套风控影响，
+     * 常态下多试一次只换来一次完整超时的延迟（失败路径本来还有新浪/东财兜底）。
+     */
+    private static final String DEFAULT_KLINE_BASES =
+            "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get";
+
     private final HttpClient httpClient;
+    /** K 线域名（按序尝试；解析自 {@code adai.market.tencent-kline-bases}）。 */
+    private final List<String> klineBases;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     // P2-交易3（2026-08-17）：K 线按日缓存（东财被限时兜底不每请求都打腾讯）
     private final Map<String, KlineCache> klineCache = new ConcurrentHashMap<>();
@@ -54,15 +74,35 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
             "sz399006", "sz399006"  // 创业板指
     );
 
-    public TencentMarketDataSource() {
+    @Autowired
+    public TencentMarketDataSource(
+            @Value("${adai.market.tencent-kline-bases:" + DEFAULT_KLINE_BASES + "}") String klineBasesCsv) {
         this(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
-                .build());
+                .build(), klineBasesCsv);
     }
 
+    /** 测试/降级用：不传域名 → 用默认（新域名）。 */
     TencentMarketDataSource(HttpClient httpClient) {
+        this(httpClient, DEFAULT_KLINE_BASES);
+    }
+
+    TencentMarketDataSource(HttpClient httpClient, String klineBasesCsv) {
         this.httpClient = httpClient;
-        log.info("TencentMarketDataSource 初始化 | API={}", String.format(API_URL, "sh000001"));
+        this.klineBases = parseBases(klineBasesCsv);
+        log.info("TencentMarketDataSource 初始化 | API={} | K线域名={}",
+                String.format(API_URL, "sh000001"), klineBases);
+    }
+
+    /** 解析域名列表（去空、去重、保序）；全空 → 回默认域名（**不放任成「一个域名都没有」**）。 */
+    static List<String> parseBases(String csv) {
+        if (csv == null || csv.isBlank()) return List.of(DEFAULT_KLINE_BASES);
+        List<String> bases = new ArrayList<>();
+        for (String part : csv.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty() && !bases.contains(trimmed)) bases.add(trimmed);
+        }
+        return bases.isEmpty() ? List.of(DEFAULT_KLINE_BASES) : List.copyOf(bases);
     }
 
     @Override
@@ -256,7 +296,7 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
         }
     }
 
-    /** K 线兜底（腾讯）：主源东财失败时切换。param=sh600519,day,,,N,qfq → data.sh600519.day/qfqday。 */
+    /** K 线（腾讯）：param=sh600519,day,,,N,qfq → data.sh600519.qfqday；域名可配多个、按序尝试。 */
     @Override
     public List<Candle> kline(String symbol, int limit) {
         if (symbol == null || symbol.isBlank()) return List.of();
@@ -266,8 +306,22 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
             return new ArrayList<>(cached.candles);
         }
         String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
-        String url = String.format("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s%s,day,,,%d,qfq",
-                prefix, symbol, Math.min(Math.max(limit, 10), 320));
+        int n = Math.min(Math.max(limit, 10), 320);
+        List<Candle> candles = List.of();
+        for (String base : klineBases) {
+            candles = fetchKline(base, prefix, symbol, n);
+            if (!candles.isEmpty()) break;
+        }
+        if (candles.size() > limit) candles = candles.subList(candles.size() - limit, candles.size());
+        if (!candles.isEmpty()) {
+            klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+        }
+        return candles;
+    }
+
+    /** 单个域名的最近 N 根（失败/异常 → 空列表，由调用方决定是否试下一个域名）。 */
+    private List<Candle> fetchKline(String base, String prefix, String symbol, int n) {
+        String url = String.format("%s?param=%s%s,day,,,%d,qfq", base, prefix, symbol, n);
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
@@ -287,26 +341,41 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
                             row.get(2).asDouble(), row.get(5).asDouble()));
                 } catch (Exception ignored) {}
             }
-            if (candles.size() > limit) candles = candles.subList(candles.size() - limit, candles.size());
-            if (!candles.isEmpty()) {
-                klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
-            }
             return candles;
         } catch (Exception e) {
-            log.warn("Tencent K线失败: {}", e.getMessage());
+            log.warn("腾讯 K线失败 | base={} | symbol={} | {}", base, symbol, e.getMessage());
             return List.of();
         }
     }
 
-    /** 按日期范围直查（2026-08-30：案例库历史窗口）。param=sh600519,day,start,end,320,qfq。 */
+    /**
+     * 按日期范围直查（案例库历史窗口）。
+     *
+     * <p><b>区间一律本地裁剪</b>（2026-09-23 A 批）：实测备用域名 {@code newfqkline} **忽略** start/end 参数
+     * （传 2026-09-01~09-22 却返回 2025-06-05 起的 320 根）——所以不赌第三方的参数语义：
+     * 拿到什么都在本地按 [from, to] 过滤，哪个域名在服务都得到同一语义（tdx 缺口补齐/案例窗口都依赖它）。
+     */
     @Override
     public List<Candle> klineRange(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
         if (symbol == null || symbol.isBlank() || from == null || to == null || from.isAfter(to)) {
             return List.of();
         }
         String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
-        String url = String.format("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s%s,day,%s,%s,320,qfq",
-                prefix, symbol, from, to);
+        List<Candle> candles = List.of();
+        for (String base : klineBases) {
+            candles = fetchKlineRange(base, prefix, symbol, from, to);
+            if (!candles.isEmpty()) break;
+        }
+        if (!candles.isEmpty()) {
+            klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+        }
+        return candles;
+    }
+
+    /** 单个域名的区间查询（本地按 [from,to] 裁剪；失败 → 空列表）。 */
+    private List<Candle> fetchKlineRange(String base, String prefix, String symbol,
+                                        java.time.LocalDate from, java.time.LocalDate to) {
+        String url = String.format("%s?param=%s%s,day,%s,%s,320,qfq", base, prefix, symbol, from, to);
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
@@ -327,12 +396,9 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
                     if (!c.date().isBefore(from) && !c.date().isAfter(to)) candles.add(c);
                 } catch (Exception ignored) {}
             }
-            if (!candles.isEmpty()) {
-                klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
-            }
             return candles;
         } catch (Exception e) {
-            log.warn("Tencent K线范围查询失败: {}", e.getMessage());
+            log.warn("腾讯 K线范围查询失败 | base={} | symbol={} | {}", base, symbol, e.getMessage());
             return List.of();
         }
     }

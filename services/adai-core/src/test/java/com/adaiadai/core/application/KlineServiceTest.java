@@ -34,7 +34,13 @@ class KlineServiceTest {
 
     /** 便捷构造：tencent 主源（生产默认 2026-08-23 起；TDX 空 = 网络源逻辑）。 */
     private KlineService tencentFirst(KlineSource tencent, KlineSource eastMoney) {
-        return new KlineService("tencent", true, eastMoney, tencent, tdxEmpty());
+        return new KlineService("tencent",
+                true,
+                false,
+                eastMoney,
+                tencent,
+                tdxEmpty(),
+                null);
     }
 
     @Test
@@ -89,7 +95,13 @@ class KlineServiceTest {
         when(tencent.kline(anyString(), anyInt())).thenReturn(List.of(
                 new Candle(fresh, 10, 11, 9, 12.0, 1000)));
 
-        KlineService svc = new KlineService("tencent", true, mock(KlineSource.class), tencent, tdx);
+        KlineService svc = new KlineService("tencent",
+                true,
+                false,
+                mock(KlineSource.class),
+                tencent,
+                tdx,
+                null);
 
         var range = svc.klineRange("600519", stale, LocalDate.now());
         assertEquals(3, range.size(), "本地 2 根 + 网络补 1 根（重叠去重）：" + range);
@@ -119,7 +131,13 @@ class KlineServiceTest {
         when(eastMoney.klineRange(anyString(), any(), any())).thenReturn(List.of());
         when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
 
-        KlineService svc = new KlineService("tencent", true, eastMoney, tencent, tdx);
+        KlineService svc = new KlineService("tencent",
+                true,
+                false,
+                eastMoney,
+                tencent,
+                tdx,
+                null);
 
         var range = svc.klineRange("600519", stale, LocalDate.now());
 
@@ -138,7 +156,13 @@ class KlineServiceTest {
                 .thenReturn(List.of(new Candle(fresh, 10, 11, 9, 10.0, 1000)));
         KlineSource tencent = mock(KlineSource.class);
 
-        KlineService svc = new KlineService("tencent", true, mock(KlineSource.class), tencent, tdx);
+        KlineService svc = new KlineService("tencent",
+                true,
+                false,
+                mock(KlineSource.class),
+                tencent,
+                tdx,
+                null);
         var r = svc.kline("600519", 5);
         assertEquals(fresh, r.get(0).date());
         org.mockito.Mockito.verifyNoInteractions(tencent);
@@ -165,7 +189,13 @@ class KlineServiceTest {
         when(eastMoney.kline(anyString(), anyInt()))
                 .thenReturn(List.of(c(1, 10.5), c(2, 10.8)));
         KlineSource tencent = mock(KlineSource.class);
-        KlineService svc = new KlineService("eastmoney", true, eastMoney, tencent, tdxEmpty());
+        KlineService svc = new KlineService("eastmoney",
+                true,
+                false,
+                eastMoney,
+                tencent,
+                tdxEmpty(),
+                null);
 
         List<Candle> result = svc.kline("600519", 120);
 
@@ -245,5 +275,97 @@ class KlineServiceTest {
         assertTrue(!svc.isCircuitOpen(), "冷却结束后应恢复探测");
         svc.kline("600519", 120);
         org.mockito.Mockito.verify(tencent, org.mockito.Mockito.times(4)).kline(anyString(), anyInt());
+    }
+
+
+    // ── RFC 20260923 B/D 批：最后一层兜底（新浪）+ 行情可用性可见 ──
+
+    /** 带新浪层的完整构造（sinaEnabled=false 即行为退回改动前）。 */
+    private KlineService withSina(KlineSource tencent, KlineSource eastMoney,
+                                  KlineSource sina, boolean sinaEnabled) {
+        return new KlineService("tencent", true, sinaEnabled, eastMoney, tencent, tdxEmpty(), sina);
+    }
+
+    @Test
+    void primaryAndFallbackDown_sinaTakesOver() {
+        // 2026-09-22 生产实况：腾讯被 WAF 拦 + 东财被限 → 新浪顶上（否则整条 K 线链路空）
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource eastMoney = mock(KlineSource.class);
+        when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.kline(eq("600519"), anyInt())).thenReturn(List.of(c(1, 10.5)));
+        KlineService svc = withSina(tencent, eastMoney, sina, true);
+
+        List<Candle> result = svc.kline("600519", 120);
+
+        assertEquals(1, result.size(), "新浪应顶上");
+        assertTrue(svc.health().ok(), "拿到行情 → 可用");
+        assertEquals("新浪", svc.health().lastSuccessSource());
+    }
+
+    @Test
+    void sinaDisabled_behaviourIsAsBefore() {
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource eastMoney = mock(KlineSource.class);
+        when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.kline(anyString(), anyInt())).thenReturn(List.of(c(1, 10.5)));
+        KlineService svc = withSina(tencent, eastMoney, sina, false);
+
+        assertTrue(svc.kline("600519", 120).isEmpty(), "关掉新浪 = 返回空（不是偷偷用它）");
+        org.mockito.Mockito.verify(sina, org.mockito.Mockito.never()).kline(anyString(), anyInt());
+    }
+
+    @Test
+    void health_allSourcesDown_isNotOkAndNamesTheSymbol() {
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource eastMoney = mock(KlineSource.class);
+        when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineService svc = withSina(tencent, eastMoney, sina, true);
+
+        svc.kline("600519", 120);
+        KlineService.Health h = svc.health();
+
+        org.junit.jupiter.api.Assertions.assertFalse(h.ok(), "全拿不到 → 不可用");
+        assertEquals(1, h.consecutiveFailures());
+        assertEquals("600519", h.lastFailedSymbol());
+        assertTrue(h.note().contains("没拿到"), "人话里要说清「没拿到」而不是沉默：" + h.note());
+        assertEquals(List.of("tdx", "腾讯", "东财", "新浪"), h.sources());
+    }
+
+    @Test
+    void health_successAfterFailures_resetsAndReportsSource() {
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource eastMoney = mock(KlineSource.class);
+        when(eastMoney.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineService svc = withSina(tencent, eastMoney, sina, true);
+        svc.kline("600519", 120);
+        assertEquals(1, svc.health().consecutiveFailures());
+
+        // 新浪恢复 → 计数清零、来源如实标
+        when(sina.kline(anyString(), anyInt())).thenReturn(List.of(c(1, 10.5)));
+        svc.kline("600519", 120);
+
+        KlineService.Health h = svc.health();
+        assertTrue(h.ok());
+        assertEquals(0, h.consecutiveFailures(), "成功即清零");
+        assertEquals("新浪", h.lastSuccessSource());
+    }
+
+    @Test
+    void health_neverQueried_isCalmAndSaysSo() {
+        KlineService svc = withSina(mock(KlineSource.class), mock(KlineSource.class),
+                mock(KlineSource.class), true);
+        KlineService.Health h = svc.health();
+        assertTrue(h.ok(), "还没查过 ≠ 不可用（不制造假警报）");
+        assertTrue(h.note().contains("还没查过"), h.note());
     }
 }
