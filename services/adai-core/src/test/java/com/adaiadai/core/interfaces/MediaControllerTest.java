@@ -50,6 +50,8 @@ class MediaControllerTest {
                 "持仓截图", "trading", "浦发银行", List.of("交易")));
         when(glm.ask(any(), any())).thenReturn("这是浦发银行，持仓约 1000 股。");
         when(glm.askMulti(any(), any())).thenReturn("左图是持仓截图，右图是分时走势。");
+        when(glm.understandMulti(any(), any())).thenReturn(new ImageUnderstanding(
+                "两张图：群里在聊篮球夺冠", "photo", "【第1张】小粉拿到了总冠军", List.of("群聊")));
         MediaRecordAppService service = new MediaRecordAppService(
                 glm, new RecordFileRepository(fs), new MemoryService(fs), fs,
                 new CardFileRepository(fs), mock(PluginService.class),
@@ -366,5 +368,86 @@ class MediaControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.answer").value("这是浦发银行，持仓约 1000 股。"))
                 .andExpect(jsonPath("$.imageRecordId").value(ids.get(0)));
+    }
+
+    // ── 图文一体：一次投递多图（POST /media/batch，REVIEW P1-多图1、P1-多图2） ──
+
+    /** batch 端点的 multipart 字段名是 {@code files}（单图端点才是 {@code file}）。 */
+    private static MockMultipartFile batchImage(String name) {
+        return new MockMultipartFile("files", name, "image/png", new byte[]{1, 2, 3});
+    }
+
+    @Test
+    void uploadImages_batch_oneRecordWithAllMediaIds() throws Exception {
+        String resp = mvc.perform(multipart("/api/v1/records/media/batch")
+                        .file(batchImage("a.png")).file(batchImage("b.png"))
+                        .param("text", "今天的球局")
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("image"))
+                .andExpect(jsonPath("$.intent").value("log"))
+                .andExpect(jsonPath("$.mediaIds.length()").value(2))
+                .andExpect(jsonPath("$.duplicated").value(false))
+                .andExpect(jsonPath("$.summary").value("两张图：群里在聊篮球夺冠"))
+                .andReturn().getResponse().getContentAsString();
+
+        // 一次投递 = 1 条主记录 + 2 条薄附件；Feed 侧由 mediaIds 收敛为**一张卡**
+        long mdCount = fs.listFiles("default", "records").stream()
+                .filter(p -> p.endsWith(".md")).count();
+        org.junit.jupiter.api.Assertions.assertEquals(3, mdCount, "2 条附件 + 1 条主记录");
+        String mediaId = new ObjectMapper().readTree(resp).get("mediaIds").get(0).asText();
+        // 附件原图按 id 可访问（预览/追问链路零改动）
+        mvc.perform(get("/api/v1/records/media/" + mediaId).header("X-User-Id", "default"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void uploadImages_sameIdempotencyKey_returnsFirstResultWithoutDuplicate() throws Exception {
+        String first = mvc.perform(multipart("/api/v1/records/media/batch")
+                        .file(batchImage("a.png")).file(batchImage("b.png"))
+                        .header("X-User-Id", "default")
+                        .header("Idempotency-Key", "delivery-abc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.duplicated").value(false))
+                .andReturn().getResponse().getContentAsString();
+        String firstId = new ObjectMapper().readTree(first).get("recordId").asText();
+        long afterFirst = fs.listFiles("default", "records").stream()
+                .filter(p -> p.endsWith(".md")).count();
+
+        // 客户端超时后重试（同 key）→ 命中幂等：返回首次结果、**不重复落盘**（P1-多图2）
+        String second = mvc.perform(multipart("/api/v1/records/media/batch")
+                        .file(batchImage("a.png")).file(batchImage("b.png"))
+                        .header("X-User-Id", "default")
+                        .header("Idempotency-Key", "delivery-abc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.duplicated").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String secondId = new ObjectMapper().readTree(second).get("recordId").asText();
+
+        org.junit.jupiter.api.Assertions.assertEquals(firstId, secondId, "同 key 返回首次 recordId");
+        org.junit.jupiter.api.Assertions.assertEquals(afterFirst,
+                fs.listFiles("default", "records").stream().filter(p -> p.endsWith(".md")).count(),
+                "重试不新增任何记录/文件（md5 相同重复文件的旧现场不再出现）");
+    }
+
+    @Test
+    void uploadImages_question_returnsImageQaAnswer() throws Exception {
+        when(intentRecognizer.recognizeWithAi("这是什么菜？")).thenReturn(IntentRecognizer.Intent.QUESTION);
+
+        mvc.perform(multipart("/api/v1/records/media/batch")
+                        .file(batchImage("a.png"))
+                        .param("text", "这是什么菜？")
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("image_qa"))
+                .andExpect(jsonPath("$.intent").value("question"))
+                .andExpect(jsonPath("$.answer").value("左图是持仓截图，右图是分时走势。"));
+    }
+
+    @Test
+    void uploadImages_emptyFiles_rejected() throws Exception {
+        mvc.perform(multipart("/api/v1/records/media/batch")
+                        .header("X-User-Id", "default"))
+                .andExpect(status().isBadRequest());
     }
 }

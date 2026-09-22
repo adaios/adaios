@@ -376,4 +376,181 @@ class MediaRecordAppServiceTest {
         assertTrue(service.referencedImageIdsOf("default", "rec_unknown").isEmpty(),
                 "未知 id → 空");
     }
+
+    // ── 图文一体：一次投递多图（RFC 20260815-media-event-unification / REVIEW P1-多图1、P1-多图2） ──
+
+    @Test
+    void recordImages_log_oneMainRecordWithMediaIdsAndSingleMemory() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understandMulti(any(), any())).thenReturn(new ImageUnderstanding(
+                "群里在聊篮球夺冠，还提到你不在所以没打", "photo",
+                "【第1张】小粉拿到了总冠军\n【第2张】他不知道的是 你不在 所以没打",
+                List.of("篮球", "群聊")));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.gateDomain(anyString(), any())).thenAnswer(inv -> inv.getArgument(1));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, pluginService, mock(TradeLogCollectService.class));
+
+        MediaRecordAppService.MediaBatchResult result = service.recordImages(
+                "default", List.of(png(), png()), List.of("image/png", "image/png"), "今天的球局", false);
+
+        // 一次投递 = 一条主记录（Feed 因此只出一条卡）
+        assertEquals("image", result.type());
+        assertEquals("log", result.intent());
+        assertEquals(2, result.mediaIds().size());
+        assertFalse(result.duplicated());
+
+        Optional<ContentRecord> main = recordRepository.findById("default", result.recordId());
+        assertTrue(main.isPresent());
+        assertEquals("image", main.get().type());
+        assertEquals(result.mediaIds(), main.get().mediaIds(), "主记录用 mediaIds 引用全部附件");
+        assertTrue(main.get().content().contains("【第1张】"), "正文保留按序合并的 OCR");
+        assertTrue(main.get().content().contains("今天的球局"), "正文保留用户那句话");
+
+        // 附件：薄记录（仅原图索引）——原图仍按 id 可访问（预览/追问链路零改动），且不各自沉淀记忆
+        for (String mediaId : result.mediaIds()) {
+            assertTrue(recordRepository.findById("default", mediaId).isPresent(), "薄附件记录存在: " + mediaId);
+            assertTrue(service.mediaPathFor("default", mediaId).isPresent(), "附件原图可按 id 访问");
+            assertTrue(memoryService.findByRecordId("default", mediaId).isEmpty(),
+                    "附件不单独沉淀记忆（旧路径是 N 张 N 条）");
+        }
+        assertTrue(memoryService.findByRecordId("default", result.recordId()).isPresent(), "记忆收敛为主记录一条");
+    }
+
+    @Test
+    void recordImages_question_persistsImageQaAnswerAndCardTurns() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.askMulti(any(), any())).thenReturn("这是红烧肉，旁边那碗是米饭");
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, mock(PluginService.class), mock(TradeLogCollectService.class));
+
+        MediaRecordAppService.MediaBatchResult result = service.recordImages(
+                "default", List.of(png(), png()), List.of("image/png", "image/png"), "这是什么菜？", true);
+
+        assertEquals("image_qa", result.type());
+        assertEquals("question", result.intent());
+        assertEquals("这是红烧肉，旁边那碗是米饭", result.answer());
+        assertEquals(2, result.mediaIds().size());
+
+        // image_qa 记录引用全部图 id（Feed 聚合与追问路由靠它解析）
+        assertEquals(result.mediaIds(), service.referencedImageIdsOf("default", result.recordId()));
+        // Q/A 已持久化到首图卡（刷新后对话历史不丢）
+        Optional<com.adaiadai.core.kernel.record.CardRecord> card =
+                cardRepository.findById("default", result.mediaIds().get(0));
+        assertTrue(card.isPresent());
+        assertEquals(2, card.get().turns().size(), "用户问 + 阿呆答");
+    }
+
+    @Test
+    void recordImages_multiUnderstandFailure_degradesButKeepsAllImages() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understandMulti(any(), any())).thenThrow(new RuntimeException("GLM 不可用"));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, mock(PluginService.class), mock(TradeLogCollectService.class));
+
+        MediaRecordAppService.MediaBatchResult result = service.recordImages(
+                "default", List.of(png(), png(), png()),
+                List.of("image/png", "image/png", "image/png"), null, false);
+
+        // AI 失败不丢图：3 张原图仍全部落盘、主记录仍在（summary 兜底）
+        assertEquals(3, result.mediaIds().size());
+        for (String mediaId : result.mediaIds()) {
+            assertTrue(service.mediaPathFor("default", mediaId).isPresent());
+        }
+        assertTrue(recordRepository.findById("default", result.recordId()).isPresent());
+        assertEquals("图片记录", result.summary());
+    }
+
+    @Test
+    void recordImages_rejectsTooManyNonImageAndEmpty() {
+        MediaRecordAppService service = new MediaRecordAppService(mock(VisualAiClient.class), recordRepository,
+                memoryService, fs, cardRepository, mock(PluginService.class), mock(TradeLogCollectService.class));
+
+        assertThrows(IllegalArgumentException.class, () -> service.recordImages(
+                "default", List.of(png(), png(), png(), png()),
+                List.of("image/png", "image/png", "image/png", "image/png"), null, false), "超过 3 张要拒绝");
+        assertThrows(IllegalArgumentException.class, () -> service.recordImages(
+                "default", List.of(png()), List.of("application/pdf"), null, false), "非图片要拒绝");
+        assertThrows(IllegalArgumentException.class, () -> service.recordImages(
+                "default", List.of(), List.of(), null, false), "空图要拒绝");
+    }
+
+    @Test
+    void deliveryIdempotency_survivesServiceRecreation() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understandMulti(any(), any())).thenReturn(new ImageUnderstanding("图", "photo", "", List.of()));
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, mock(PluginService.class), mock(TradeLogCollectService.class));
+
+        MediaRecordAppService.MediaBatchResult first = service.recordImages(
+                "default", List.of(png()), List.of("image/png"), null, false);
+        service.rememberDelivery("default", "delivery-key-1", first);
+
+        Optional<MediaRecordAppService.MediaBatchResult> hit = service.findDelivery("default", "delivery-key-1");
+        assertTrue(hit.isPresent());
+        assertEquals(first.recordId(), hit.get().recordId(), "命中返回首次结果（不重跑 AI、不重复落盘）");
+        assertEquals(first.mediaIds(), hit.get().mediaIds());
+        assertTrue(hit.get().asDuplicated().duplicated(), "对外标记 duplicated=true");
+
+        // 幂等索引已落盘 → 服务重建（进程重启）后仍能命中
+        MediaRecordAppService recreated = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, mock(PluginService.class), mock(TradeLogCollectService.class));
+        assertTrue(recreated.findDelivery("default", "delivery-key-1").isPresent(), "重启后幂等仍生效");
+        assertTrue(recreated.findDelivery("default", "another-key").isEmpty());
+        assertTrue(recreated.findDelivery("default", null).isEmpty(), "无 key 不参与幂等");
+    }
+
+    // ── P2-多图3：非交易图不再白跑一次交易表格解析（判据保守，宁可多跑也不漏归集） ──
+
+    @Test
+    void recordImage_nonTradingImage_skipsTradingCollection() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "傍晚的江边", "photo", "起风了 有点凉", List.of("随手拍")));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(anyString(), anyString())).thenReturn(true);
+        TradeLogCollectService trading = mock(TradeLogCollectService.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, pluginService, trading);
+
+        service.recordImage("default", png(), "image/png", null);
+
+        org.mockito.Mockito.verify(trading, org.mockito.Mockito.never())
+                .collectDetailed(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void recordImage_tradingImage_stillCollectsCandidates() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understand(any())).thenReturn(new ImageUnderstanding(
+                "持仓截图", "trading", "浦发银行 600000 1000股", List.of("交易")));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(anyString(), anyString())).thenReturn(true);
+        TradeLogCollectService trading = mock(TradeLogCollectService.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, pluginService, trading);
+
+        service.recordImage("default", png(), "image/png", null);
+
+        // 交易素材照常归集（判据「或」：category=trading 即命中）
+        org.mockito.Mockito.verify(trading).collectDetailed(anyString(), anyString(), eq("image"));
+    }
+
+    @Test
+    void recordImages_nonTradingImages_skipTradingCollection() {
+        VisualAiClient glm = mock(VisualAiClient.class);
+        when(glm.understandMulti(any(), any())).thenReturn(new ImageUnderstanding(
+                "群里在聊篮球夺冠", "photo", "【第1张】小粉拿到了总冠军", List.of("群聊")));
+        PluginService pluginService = mock(PluginService.class);
+        when(pluginService.hasPlugin(anyString(), anyString())).thenReturn(true);
+        TradeLogCollectService trading = mock(TradeLogCollectService.class);
+        MediaRecordAppService service = new MediaRecordAppService(glm, recordRepository, memoryService,
+                fs, cardRepository, pluginService, trading);
+
+        service.recordImages("default", List.of(png(), png()),
+                List.of("image/png", "image/png"), "今天的球局", false);
+
+        org.mockito.Mockito.verify(trading, org.mockito.Mockito.never())
+                .collectDetailed(anyString(), anyString(), anyString());
+    }
 }

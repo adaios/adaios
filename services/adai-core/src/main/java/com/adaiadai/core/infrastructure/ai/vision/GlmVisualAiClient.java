@@ -43,6 +43,21 @@ public class GlmVisualAiClient implements VisualAiClient {
             }
             """;
 
+    /**
+     * 多图一次投递的理解 prompt（图文一体）：把 N 张图当**同一件事**综合理解，
+     * 产出一段口语化综合总结 + 按序合并的 OCR 文本。
+     */
+    private static final String MULTI_PROMPT = """
+            你是阿呆的个人 AI 助手。用户一次发来多张图片（按顺序给出），请把它们当作**同一件事**
+            综合理解，只返回 JSON（不要 markdown 代码块，不要多余文字）：
+            {
+              "summary": "综合这几张图的一段话（2~3 句、口语化、像对朋友复述你看到了什么，不要罗列成标题）",
+              "category": "图片类别：trading(持仓/行情截图) / whiteboard(白板/手写笔记) / invoice(单据/发票) / memo(备忘录/便签) / photo(其他照片)",
+              "extractedText": "按顺序提取每张图片里的文字，每张前标注【第N张】；无文字则返回空字符串",
+              "tags": ["标签1", "标签2"]
+            }
+            """;
+
     /** 图片追问 prompt（L4 图片问答）：自然语言回答，不要求 JSON。 */
     private static final String ASK_PROMPT = """
             你是阿呆的个人 AI 助手。用户就这张图片提问，请直接简洁准确地回答。
@@ -100,6 +115,36 @@ public class GlmVisualAiClient implements VisualAiClient {
         } catch (Exception e) {
             log.error("GLM 视觉理解失败: {}", e.getMessage(), e);
             throw new RuntimeException("视觉理解失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 多图一次理解（图文一体入账路径）：N 张图**一次**发给视觉模型综合理解，
+     * 返回结构化结果（summary = 综合总结、extractedText = 按序合并 OCR）。
+     * <p>
+     * 相比「逐张 understand」：一次调用、天然组成上下文、总耗时从 N×~15s 降到 ~15s（P1-多图2 的串行超时根因之一）。
+     */
+    @Override
+    public ImageUnderstanding understandMulti(List<ImageRequest> requests, String caption) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("图片不能为空");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            log.error("GLM_API_KEY 未配置，无法调用视觉模型");
+            throw new RuntimeException("视觉 AI 未配置：缺少 GLM_API_KEY");
+        }
+        try {
+            String textPrompt = MULTI_PROMPT;
+            if (caption != null && !caption.isBlank()) {
+                textPrompt = textPrompt + "\n用户备注：" + caption;
+            }
+            log.info("[GLM-Vision-Multi] 请求 model={} | images={} | caption={}",
+                    model, requests.size(), caption != null ? caption : "");
+            String answer = sendAndParse(buildMultiRequestBody(requests, textPrompt));
+            return GlmResponseParser.parse(answer);
+        } catch (Exception e) {
+            log.error("GLM 多图理解失败: {}", e.getMessage(), e);
+            throw new RuntimeException("多图理解失败: " + e.getMessage(), e);
         }
     }
 

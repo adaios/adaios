@@ -271,4 +271,47 @@ class RecordFileRepositoryTest {
         repository.deleteById("default","card_12345");
         // 没有异常就是成功
     }
+
+    /**
+     * 图文一体（RFC 20260815-media-event-unification step-1）：mediaIds 读写兼容——
+     * 有附件则落行并往返一致；无附件不落行（旧格式字节零变化）；旧文件缺该字段解析为空列表。
+     */
+    @Test
+    void mediaIds_roundTrip_andLegacyFileWithoutFieldParsesEmpty() {
+        LocalDateTime now = LocalDateTime.of(2026, 9, 22, 20, 0);
+        ContentRecord withMedia = new ContentRecord("rec_20260922_200000001", "image", "user_input",
+                "图文记录", "正文", List.of("群聊"), now, "log", "综合总结", "life",
+                List.of("rec_attach_a", "rec_attach_b"));
+        repository.save("default", withMedia);
+
+        ContentRecord loaded = repository.findById("default", withMedia.id()).orElseThrow();
+        assertEquals(List.of("rec_attach_a", "rec_attach_b"), loaded.mediaIds(), "mediaIds 往返一致");
+        assertTrue(loaded.hasMedia());
+
+        // 无附件：不落 mediaIds 行（旧格式零变化）
+        ContentRecord plain = new ContentRecord("rec_20260922_200000002", "note", "user_input",
+                "笔记", "正文", List.of(), now);
+        repository.save("default", plain);
+        String raw = fileStorage.read("default", "records/2026/09/" + plain.id() + ".md");
+        assertFalse(raw.contains("mediaIds"), "无附件不落 mediaIds 行");
+        assertTrue(repository.findById("default", plain.id()).orElseThrow().mediaIds().isEmpty());
+
+        // 旧文件（手写、无该字段）→ 空列表，不报错、不丢记录
+        fileStorage.write("default", "records/2026/09/rec_20260922_200000003.md", """
+                ---
+                id: rec_20260922_200000003
+                type: image
+                source: user_input
+                tags: []
+                createdAt: 2026-09-22T20:00:00
+                summary: 旧图
+                domain: life
+                intent: log
+                ---
+                旧正文
+                """);
+        ContentRecord legacy = repository.findById("default", "rec_20260922_200000003").orElseThrow();
+        assertEquals(List.of(), legacy.mediaIds(), "旧文件缺 mediaIds → 空列表（向后兼容）");
+        assertFalse(legacy.hasMedia());
+    }
 }

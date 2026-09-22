@@ -126,7 +126,11 @@ public class FeedAppService {
 
         // S-2 展示层聚合（图文一体）：image_qa 引用的 image 记录不单独成条——合并进图文事件
         Set<String> qaReferencedImageIds = collectQaReferencedImages(allRecords);
-        log.debug("带图 ask 聚合 | 引用图 {} 条", qaReferencedImageIds.size());
+        // 图文一体（RFC 20260815-media-event-unification）：被主记录 mediaIds 引用的**薄附件**不单独成条
+        // ——一次投递 = 一张卡，附件只作为该卡的图存在（数据层已是 1 条主记录 + N 条附件）。
+        Set<String> mediaReferencedIds = collectMediaReferencedIds(allRecords);
+        log.debug("带图 ask 聚合 | 引用图 {} 条 | 图文附件 {} 条",
+                qaReferencedImageIds.size(), mediaReferencedIds.size());
 
         // 跨日记忆补齐（REVIEW #148）：重补/升级会把记忆沉淀到处理当天的文件（Memory.createdAt=now），
         // 同日 findByDate 查不到 → ai_note 归属错日/丢失。按记录补一次批量查询。
@@ -146,6 +150,8 @@ public class FeedAppService {
             if ("conversation".equals(r.type()) || "ai_summary".equals(r.source())) continue;
             // S-2：被 image_qa 引用的图片记录聚合进图文事件，不单独成条
             if ("image".equals(r.type()) && qaReferencedImageIds.contains(r.id())) continue;
+            // 图文一体：薄附件（被主记录 mediaIds 引用）不单独成条
+            if (mediaReferencedIds.contains(r.id())) continue;
             allEntries.add(toFeedEntry(userId, r, imageQaCardIds));
             Memory memory = memoriesFor(allMemories, r.id())
                     .orElseGet(() -> crossDayMemories.get(r.id()));
@@ -311,13 +317,37 @@ public class FeedAppService {
         return ids;
     }
 
+    /**
+     * 收集被主记录 {@code mediaIds} 引用的**薄图片附件** id（图文一体：一次投递 = 一条主记录 + N 条附件）。
+     * 这些附件只作为主卡片的图存在，不单独成条。
+     */
+    private Set<String> collectMediaReferencedIds(List<ContentRecord> records) {
+        Set<String> ids = new HashSet<>();
+        for (ContentRecord r : records) {
+            if (r.mediaIds() != null && !r.mediaIds().isEmpty()) {
+                ids.addAll(r.mediaIds());
+            }
+        }
+        return ids;
+    }
+
     private FeedEntry toFeedEntry(String userId, ContentRecord r, Set<String> imageQaCardIds) {
         String intent = "conversation".equals(r.type()) ? "question" : "log";
         String mediaPath = null;
+        List<String> mediaPaths = new ArrayList<>();
         String title = r.title();
         String content = r.content();
         if ("image".equals(r.type())) {
-            mediaPath = recordRepository.findMediaPath(userId, r.id()).orElse(null);
+            // 图文一体（RFC 20260815-media-event-unification）：主记录用 mediaIds 引用 N 张附件，
+            // 自身没有媒体文件（薄附件才是 {attachmentId}.{ext}）；单图旧记录仍按自身 id 找文件。
+            if (r.mediaIds() != null && !r.mediaIds().isEmpty()) {
+                for (String mid : r.mediaIds()) {
+                    recordRepository.findMediaPath(userId, mid).ifPresent(mediaPaths::add);
+                }
+            } else {
+                recordRepository.findMediaPath(userId, r.id()).ifPresent(mediaPaths::add);
+            }
+            mediaPath = mediaPaths.isEmpty() ? null : mediaPaths.get(0);
             // 第一原则：标题=VLM 总结（自然），正文去【备注】等标签（用户自己的话，无第三视角）
             if (r.summary() != null && !r.summary().isBlank()) {
                 title = r.summary();
@@ -327,11 +357,15 @@ public class FeedAppService {
                 content = natural;
             }
         } else if ("image_qa".equals(r.type()) && r.content() != null) {
-            // S-2 图文一体：带图 ask 聚合为图文事件，缩略图取引用首图（原图可点开）
+            // S-2 图文一体：带图 ask 聚合为图文事件；多图投递 → **全部图**都带上（前端一卡多图并列）
             List<String> refIds = ImageQaFormatter.imageRecordIds(r.content());
-            if (!refIds.isEmpty()) {
-                mediaPath = recordRepository.findMediaPath(userId, refIds.get(0)).orElse(null);
+            if (refIds.isEmpty() && r.mediaIds() != null && !r.mediaIds().isEmpty()) {
+                refIds = r.mediaIds();
             }
+            for (String rid : refIds) {
+                recordRepository.findMediaPath(userId, rid).ifPresent(mediaPaths::add);
+            }
+            mediaPath = mediaPaths.isEmpty() ? null : mediaPaths.get(0);
             // 第一原则（无第三视角）：结构化 content 转自然对话——标题=用户问句，
             // 正文=问/答两行（去「问：/答：/图片记录：/【多图问答】」标签），图片由缩略图表达
             String[] natural = ImageQaFormatter.naturalize(r.content());
@@ -366,7 +400,9 @@ public class FeedAppService {
                 r.createdAt().toLocalTime().format(TIME_FMT),
                 intent, r.summary(), turns, r.domain(),
                 r.createdAt().format(DATE_FMT), mediaPath,
-                r.createdAt().toString() // P1-5
+                r.createdAt().toString(), // P1-5
+                mediaPaths.isEmpty() ? null : mediaPaths,
+                null
         );
     }
 
@@ -566,10 +602,11 @@ public class FeedAppService {
             List<TurnDto> turns, String domain,
             String date, String mediaPath,
             String updatedAt, // P1-5（2026-08-23 app 体感）：最后活跃 ISO 时间戳（前端「最近记录」相对时间）
+            List<String> mediaPaths, // 图文一体（2026-09-22）：本条卡片引用的**全部**图（>1 时前端一卡多图并列；null/空 = 无图）
             List<String> mergedIds // P2-UI12（2026-09-16）：被折叠进本条的原始记录 id（删除时要删全）
     ) {
         /**
-         * 未折叠的普通条目（{@code mergedIds} 为空）。
+         * 未折叠的普通条目（{@code mergedIds} 与 {@code mediaPaths} 皆空）。
          *
          * <p>P2-UI12 只对「同分钟同向成交」折叠，其余构造点不需要关心这个字段——
          * 用这个便捷构造避免每处都补一个 {@code null}。
@@ -581,7 +618,18 @@ public class FeedAppService {
                          String date, String mediaPath,
                          String updatedAt) {
             this(type, id, sourceRecordId, title, content, tags, time, intent, summary,
-                    turns, domain, date, mediaPath, updatedAt, null);
+                    turns, domain, date, mediaPath, updatedAt, null, null);
+        }
+
+        /** 折叠条目（同分钟同向成交折叠，带 {@code mergedIds}；无多图）。 */
+        public FeedEntry(String type, String id, String sourceRecordId,
+                         String title, String content, List<String> tags,
+                         String time, String intent, String summary,
+                         List<TurnDto> turns, String domain,
+                         String date, String mediaPath,
+                         String updatedAt, List<String> mergedIds) {
+            this(type, id, sourceRecordId, title, content, tags, time, intent, summary,
+                    turns, domain, date, mediaPath, updatedAt, null, mergedIds);
         }
     }
 

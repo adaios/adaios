@@ -64,9 +64,13 @@ public class TimelineProjection {
         Set<String> chatDropIds = collectChatTurnDropIds(all, cards);
         // 带图 ask：image_qa 引用的 image 记录仅当**同一天**才聚合（P1-B2：跨天传图与追问是两个输入）
         Map<String, LocalDate> qaReferencedImageDates = collectQaReferencedImageDates(all);
+        // 图文一体（RFC 20260815-media-event-unification）：被主记录 mediaIds 引用的薄附件不出现在时间线
+        // ——一次投递 = 一条时间线条目（附件只是这条的图）；否则时间线会多出 N 条「图片附件」（违反第一原则）
+        Set<String> mediaReferencedIds = collectMediaReferencedIds(all);
 
         return all.stream()
                 .filter(r -> !chatDropIds.contains(r.id()))
+                .filter(r -> !mediaReferencedIds.contains(r.id()))
                 .filter(r -> !("image".equals(r.type())
                         && qaReferencedImageDates.containsKey(r.id())
                         && qaReferencedImageDates.get(r.id()).equals(r.createdAt().toLocalDate())))
@@ -164,13 +168,36 @@ public class TimelineProjection {
         return map;
     }
 
+    /**
+     * 收集被主记录 {@code mediaIds} 引用的薄图片附件 id（图文一体）：这些附件只作为主条目的图存在，
+     * 不在时间线里单独成条。
+     */
+    private Set<String> collectMediaReferencedIds(List<ContentRecord> records) {
+        Set<String> ids = new HashSet<>();
+        for (ContentRecord r : records) {
+            if (r.mediaIds() != null && !r.mediaIds().isEmpty()) {
+                ids.addAll(r.mediaIds());
+            }
+        }
+        return ids;
+    }
+
     // ── 条目构建 ──
 
     private TimelineEntry toEntry(String userId, ContentRecord record) {
         String mediaPath = null;
+        java.util.List<String> mediaPaths = new java.util.ArrayList<>();
         String title = record.title();
         if ("image".equals(record.type())) {
-            mediaPath = recordRepository.findMediaPath(userId, record.id()).orElse(null);
+            // 图文一体：主记录用 mediaIds 引用 N 张附件（自身没有媒体文件）；单图旧记录按自身 id 找
+            if (record.mediaIds() != null && !record.mediaIds().isEmpty()) {
+                for (String mid : record.mediaIds()) {
+                    recordRepository.findMediaPath(userId, mid).ifPresent(mediaPaths::add);
+                }
+            } else {
+                recordRepository.findMediaPath(userId, record.id()).ifPresent(mediaPaths::add);
+            }
+            mediaPath = mediaPaths.isEmpty() ? null : mediaPaths.get(0);
             // 第一原则：标题=VLM 总结（自然），无【备注】标签
             if (record.summary() != null && !record.summary().isBlank()) {
                 title = record.summary();
@@ -180,12 +207,20 @@ public class TimelineProjection {
             // （「用户询问当前星期几，AI确认…」），用 AI 生成的简洁标签式 summary（无称代词）
             title = record.summary();
         } else if ("image_qa".equals(record.type()) && record.content() != null) {
-            // 带图 ask 聚合：缩略图取引用首图（一次输入 = 一个图文事件）
-            Matcher m = IMAGE_REF.matcher(record.content());
-            if (m.find()) {
-                String firstId = m.group(1).split(",")[0].strip();
-                mediaPath = recordRepository.findMediaPath(userId, firstId).orElse(null);
+            // 带图 ask 聚合：缩略图取引用图（多图时全部带上）
+            java.util.List<String> refIds = (record.mediaIds() != null && !record.mediaIds().isEmpty())
+                    ? record.mediaIds() : java.util.List.of();
+            if (refIds.isEmpty()) {
+                Matcher m = IMAGE_REF.matcher(record.content());
+                if (m.find()) {
+                    refIds = java.util.Arrays.stream(m.group(1).split(","))
+                            .map(String::strip).filter(s -> !s.isEmpty()).toList();
+                }
             }
+            for (String rid : refIds) {
+                recordRepository.findMediaPath(userId, rid).ifPresent(mediaPaths::add);
+            }
+            mediaPath = mediaPaths.isEmpty() ? null : mediaPaths.get(0);
             // 第一原则（无第三视角）：标题=用户问句（去掉【多图问答】技术标题）
             String[] natural = ImageQaFormatter.naturalize(record.content());
             if (natural != null) {
@@ -198,7 +233,8 @@ public class TimelineProjection {
                 title,
                 record.tags(),
                 record.createdAt(),
-                mediaPath
+                mediaPath,
+                mediaPaths.isEmpty() ? null : mediaPaths
         );
     }
 }

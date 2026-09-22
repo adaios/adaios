@@ -751,4 +751,40 @@ class FeedAppServiceTest {
         assertEquals(1, resp.totalToday());
         assertTrue(resp.hasHistory());
     }
+
+    /**
+     * 图文一体（REVIEW P1-多图1）：一次投递的多图 = **一条** Feed 条目、且**全部图**都在这一条上；
+     * 被主记录 mediaIds 引用的薄附件不单独成条。
+     */
+    @Test
+    void feed_multiImageDelivery_oneCardWithAllImages_andThinAttachmentsHidden() {
+        LocalDateTime base = LocalDateTime.of(2026, 9, 4, 10, 0);
+        ContentRecord attachmentA = new ContentRecord("rec_20260904_100000001", "image", "user_input",
+                "图片附件", "", List.of(), base, "log", "图片附件", "life");
+        ContentRecord attachmentB = new ContentRecord("rec_20260904_100000002", "image", "user_input",
+                "图片附件", "", List.of(), base.plusMinutes(1), "log", "图片附件", "life");
+        ContentRecord main = new ContentRecord("rec_20260904_100000003", "image", "user_input",
+                "群里在聊篮球夺冠", "【图片文字】小粉拿到了总冠军", List.of("群聊"),
+                base.plusMinutes(2), "log", "群里在聊篮球夺冠", "life",
+                List.of(attachmentA.id(), attachmentB.id()));
+
+        String pathA = "records/2026/09/media/" + attachmentA.id() + ".png";
+        String pathB = "records/2026/09/media/" + attachmentB.id() + ".png";
+        RecordRepository repo = mock(RecordRepository.class);
+        when(repo.findAll("default")).thenReturn(List.of(attachmentA, attachmentB, main));
+        when(repo.findMediaPath(any(), any())).thenReturn(Optional.empty()); // 主记录自身没有媒体文件
+        when(repo.findMediaPath(eq("default"), eq(attachmentA.id()))).thenReturn(Optional.of(pathA));
+        when(repo.findMediaPath(eq("default"), eq(attachmentB.id()))).thenReturn(Optional.of(pathB));
+
+        FeedAppService.FeedResponse resp = serviceWithRecords("default", repo)
+                .getFeed("default", LocalDate.of(2026, 9, 4), 0, 10);
+
+        assertEquals(1, resp.entries().size(), "一次投递 = 一张卡（两张薄附件不单独成条）");
+        FeedAppService.FeedEntry entry = resp.entries().get(0);
+        assertEquals(main.id(), entry.id());
+        assertEquals("群里在聊篮球夺冠", entry.title(), "标题取综合总结（自然语言）");
+        assertEquals(2, entry.mediaPaths().size(), "全部图挂在同一条 entry（前端一卡多图并列）");
+        assertEquals(List.of(pathA, pathB), entry.mediaPaths(), "顺序 = 上传顺序");
+        assertEquals(pathA, entry.mediaPath(), "mediaPath 保留为首图（旧前端兼容）");
+    }
 }

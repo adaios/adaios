@@ -182,4 +182,36 @@ class TimelineProjectionTest {
         assertTrue(timeline.stream().anyMatch(e -> e.id().equals("n1")),
                 "普通 log 记录不得被误 drop");
     }
+
+    /**
+     * 图文一体（REVIEW P1-多图1）：一次投递的多图 = **一条**时间线条目、全部图挂在这一条上；
+     * 被 {@code mediaIds} 引用的薄附件不单独成条（否则时间线会冒出 N 条「图片附件」，违反第一原则）。
+     */
+    @Test
+    void fullTimeline_multiImageDelivery_oneEntryWithAllMediaPaths_attachmentsHidden() {
+        LocalDateTime t0 = LocalDateTime.of(2026, 9, 22, 20, 41);
+        ContentRecord attachA = new ContentRecord("rec_a", "image", "user_input", "图片附件", "",
+                List.of(), t0, "log", "图片附件", "life");
+        ContentRecord attachB = new ContentRecord("rec_b", "image", "user_input", "图片附件", "",
+                List.of(), t0.plusSeconds(1), "log", "图片附件", "life");
+        ContentRecord main = new ContentRecord("rec_main", "image", "user_input", "群里在聊篮球夺冠",
+                "【图片文字】小粉拿到了总冠军", List.of("群聊"), t0.plusSeconds(2), "log",
+                "群里在聊篮球夺冠", "life", List.of("rec_a", "rec_b"));
+
+        when(cards.findAll(any())).thenReturn(List.of());
+        when(records.findAll(any())).thenReturn(List.of(attachA, attachB, main));
+        when(records.findMediaPath(any(), eq("rec_a"))).thenReturn(Optional.of("records/2026/09/media/rec_a.png"));
+        when(records.findMediaPath(any(), eq("rec_b"))).thenReturn(Optional.of("records/2026/09/media/rec_b.png"));
+        when(records.findMediaPath(any(), eq("rec_main"))).thenReturn(Optional.empty());
+
+        List<TimelineEntry> timeline = new TimelineProjection(records, cards).fullTimeline("adai");
+
+        assertEquals(1, timeline.size(), "一次投递 = 一条时间线条目（薄附件不单独成条）");
+        TimelineEntry entry = timeline.get(0);
+        assertEquals("rec_main", entry.id());
+        assertEquals("群里在聊篮球夺冠", entry.title(), "标题取综合总结");
+        assertEquals(List.of("records/2026/09/media/rec_a.png", "records/2026/09/media/rec_b.png"),
+                entry.mediaPaths(), "全部图（按上传顺序）");
+        assertEquals("records/2026/09/media/rec_a.png", entry.mediaPath(), "mediaPath 恒为首图（旧前端兼容）");
+    }
 }

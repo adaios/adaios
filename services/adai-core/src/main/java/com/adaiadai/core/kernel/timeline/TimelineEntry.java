@@ -13,7 +13,9 @@ import java.util.List;
  * @param title     标题
  * @param tags      标签
  * @param dateTime  时间戳
- * @param mediaPath 媒体文件相对路径（图片记录才有，前端据此渲染原图）
+ * @param mediaPath 媒体文件相对路径（图片记录才有，前端据此渲染原图；多图时=首图）
+ * @param mediaPaths 本条目引用的**全部**图（图文一体：一次投递多图时长度 &gt; 1，前端并列展示）；
+ *                  无图/旧条目为 {@code null}
  */
 public record TimelineEntry(
         String id,
@@ -21,6 +23,12 @@ public record TimelineEntry(
         String title,
         List<String> tags,
         LocalDateTime dateTime,
-        String mediaPath
+        String mediaPath,
+        List<String> mediaPaths
 ) {
+    /** 兼容旧签名（无 mediaPaths）——单图与非图条目。 */
+    public TimelineEntry(String id, String type, String title, List<String> tags,
+                         LocalDateTime dateTime, String mediaPath) {
+        this(id, type, title, tags, dateTime, mediaPath, null);
+    }
 }

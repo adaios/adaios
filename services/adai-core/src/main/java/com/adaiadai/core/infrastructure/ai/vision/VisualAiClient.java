@@ -20,6 +20,25 @@ public interface VisualAiClient {
     ImageUnderstanding understand(ImageRequest request);
 
     /**
+     * 一次理解**多张**图片（图文一体：一次投递 = 一条记录，RFC 20260815-media-event-unification）。
+     * <p>
+     * 与 {@link #askMulti} 的区别：这里不提问，要的是「把这几张图综合成一段理解 + 结构化字段」，
+     * 供入账路径落一条主记录（summary / category / extractedText / tags）。
+     * <p>
+     * 默认实现只用第一张（老实现零改动即兼容）；GLM 实现走真正的多图一次识别。
+     *
+     * @param requests 多张图片（base64 + content type + 可选备注），至少 1 张
+     * @param caption  用户随图发的那句话（可空）
+     * @return 结构化图片理解（多图综合）
+     */
+    default ImageUnderstanding understandMulti(List<ImageRequest> requests, String caption) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("图片不能为空");
+        }
+        return understand(requests.get(0));
+    }
+
+    /**
      * 就一张图片追问（多模态对话，L4 图片问答）。
      * <p>
      * 把图片重新发给视觉模型 + 用户问题，返回自然语言回答

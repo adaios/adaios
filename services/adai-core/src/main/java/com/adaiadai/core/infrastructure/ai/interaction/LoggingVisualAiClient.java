@@ -54,6 +54,26 @@ public class LoggingVisualAiClient implements VisualAiClient {
     }
 
     @Override
+    public ImageUnderstanding understandMulti(List<ImageRequest> requests, String caption) {
+        AiTraceContext.Trace prev = AiTraceContext.get();
+        long start = System.currentTimeMillis();
+        String prompt = "[多图理解 ×" + (requests != null ? requests.size() : 0) + "] "
+                + (caption == null ? "" : caption);
+        try {
+            ImageUnderstanding r = delegate.understandMulti(requests, caption);
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.understand", "glm", prompt, "ok", null, summarize(r), duration);
+            return r;
+        } catch (RuntimeException e) {
+            long duration = System.currentTimeMillis() - start;
+            logEntry(prev, "visual.understand", "glm", prompt, "error", e.getMessage(), null, duration);
+            throw e;
+        } finally {
+            AiTraceContext.restore(prev);
+        }
+    }
+
+    @Override
     public String ask(ImageRequest request, String question) {
         AiTraceContext.Trace prev = AiTraceContext.get();
         long start = System.currentTimeMillis();

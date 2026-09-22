@@ -198,30 +198,24 @@ public class RecordFileRepository implements RecordRepository {
     }
 
     private String toMarkdown(ContentRecord record) {
-        return """
-                ---
-                id: %s
-                type: %s
-                source: %s
-                tags: [%s]
-                createdAt: %s
-                summary: %s
-                domain: %s
-                intent: %s
-                ---
-                %s
-
-                """.formatted(
-                record.id(),
-                record.type(),
-                record.source(),
-                String.join(", ", record.tags()),
-                record.createdAt().toString(),
-                singleLine(record.summary()),
-                record.domain() != null ? record.domain() : "life",
-                record.intent() != null ? record.intent() : "",
-                record.content()
-        );
+        StringBuilder md = new StringBuilder();
+        md.append("---\n");
+        md.append("id: ").append(record.id()).append('\n');
+        md.append("type: ").append(record.type()).append('\n');
+        md.append("source: ").append(record.source()).append('\n');
+        md.append("tags: [").append(String.join(", ", record.tags())).append("]\n");
+        md.append("createdAt: ").append(record.createdAt()).append('\n');
+        md.append("summary: ").append(singleLine(record.summary())).append('\n');
+        md.append("domain: ").append(record.domain() != null ? record.domain() : "life").append('\n');
+        md.append("intent: ").append(record.intent() != null ? record.intent() : "").append('\n');
+        // 图文一体（RFC 20260815-media-event-unification step-1）：媒体附件引用。
+        // 无附件时**不落行**——旧格式字节零变化，旧文件缺该字段解析为空列表。
+        if (!record.mediaIds().isEmpty()) {
+            md.append("mediaIds: [").append(String.join(", ", record.mediaIds())).append("]\n");
+        }
+        md.append("---\n");
+        md.append(record.content()).append("\n\n");
+        return md.toString();
     }
 
     /**
@@ -265,7 +259,10 @@ public class RecordFileRepository implements RecordRepository {
         // #144：intent 落盘——rebuild 借此区分 question 记录，避免重跑烧 AI
         String intent = fields.getOrDefault("intent", null);
         if (intent != null && intent.isBlank()) intent = null;
-        return new ContentRecord(id, type, source, extractTitle(body, type, id), body, tags, createdAt, intent, summary, domain);
+        // 图文一体（RFC 20260815-media-event-unification step-1）：媒体附件引用。
+        // 旧文件无该字段 → 空列表；单图 image 记录（自身就是媒体）不受影响。
+        List<String> mediaIds = parseList(fields.getOrDefault("mediaIds", ""));
+        return new ContentRecord(id, type, source, extractTitle(body, type, id), body, tags, createdAt, intent, summary, domain, mediaIds);
     }
 
     private Map<String, String> parseFrontmatter(String frontmatter) {
@@ -282,7 +279,15 @@ public class RecordFileRepository implements RecordRepository {
     }
 
     private List<String> parseTags(String tagsStr) {
-        String cleaned = tagsStr.replaceAll("[\\[\\]\"'\\s]", "");
+        return parseList(tagsStr);
+    }
+
+    /**
+     * 解析 {@code [a, b]} 行式列表（同 tags 语法）——tags / mediaIds 共用。
+     * 方括号、引号、空白一律剥除后按逗号切分。
+     */
+    private List<String> parseList(String raw) {
+        String cleaned = raw.replaceAll("[\\[\\]\"'\\s]", "");
         if (cleaned.isBlank()) return List.of();
         return Arrays.stream(cleaned.split(","))
                 .filter(s -> !s.isBlank())

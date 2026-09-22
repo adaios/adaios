@@ -60,6 +60,70 @@ public class MediaController {
     }
 
     /**
+     * **一次投递多图**（图文一体，RFC 20260815-media-event-unification + 20260815-image-chat-interaction）：
+     * N 张图 + 可选一句话 = **一个回合 = 一张卡**。
+     * <p>
+     * multipart：{@code files}（1..3 张）+ {@code text}（可空，用户那句话）；
+     * 可选请求头 {@code Idempotency-Key}——同一次投递的重发/重试命中索引后**直接返回首次结果**
+     * （{@code duplicated=true}），不重跑 AI、不重复落盘（REVIEW P1-多图2）。
+     * <p>
+     * 后端按 {@link IntentRecognizer} 分流（与文本入口、ask-batch 同构）：
+     * 无文字或陈述 → 一次多图识别 + **一段综合总结**（type=image）；
+     * 问句 → **据图作答**（type=image_qa，回答在 answer）。原图访问仍是
+     * {@code GET /records/media/{mediaIds[i]}}，追问沿用既有链路。
+     */
+    @PostMapping("/media/batch")
+    public ResponseEntity<?> uploadImages(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @RequestParam(value = "text", required = false) String text) {
+        try {
+            if (files == null || files.isEmpty()) {
+                throw new IllegalArgumentException("图片不能为空");
+            }
+            // 幂等命中：同一次投递的重发直接复用首次结果（防「客户端超时 → 重试 → 重复落盘」）
+            java.util.Optional<MediaRecordAppService.MediaBatchResult> hit =
+                    mediaRecordAppService.findDelivery(userId, idempotencyKey);
+            if (hit.isPresent()) {
+                log.info("图文投递幂等命中 | key={} | recordId={}", idempotencyKey, hit.get().recordId());
+                return ResponseEntity.ok(hit.get().asDuplicated());
+            }
+
+            List<byte[]> images = new java.util.ArrayList<>(files.size());
+            List<String> contentTypes = new java.util.ArrayList<>(files.size());
+            for (MultipartFile f : files) {
+                images.add(f.getBytes());
+                contentTypes.add(f.getContentType());
+            }
+            boolean asQuestion = text != null && !text.isBlank() && isQuestion(text);
+            MediaRecordAppService.MediaBatchResult result =
+                    mediaRecordAppService.recordImages(userId, images, contentTypes, text, asQuestion);
+            mediaRecordAppService.rememberDelivery(userId, idempotencyKey, result);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("图文投递失败 | userId={} | {}", userId, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "图文记录失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * intent 分流：与 {@link #askBatchImages} / RecordController 同构
+     * （AI 判定，失败降级问号启发式）。
+     */
+    private boolean isQuestion(String text) {
+        try {
+            return intentRecognizer.recognizeWithAi(text) == IntentRecognizer.Intent.QUESTION;
+        } catch (Exception e) {
+            log.warn("图文投递 intent 判定失败，降级问号启发式 | {}", e.getMessage());
+            String q = text.strip();
+            return q.endsWith("？") || q.endsWith("?");
+        }
+    }
+
+    /**
      * 图片追问（L4 图片问答）：就一张已记录的图片提问，返回 VLM 自然语言回答。
      * <p>
      * S-2 聚合卡身份断裂修复：{@code {id}} 为 {@code image_qa} 聚合记录时（带图 ask 聚合后的图文事件，
