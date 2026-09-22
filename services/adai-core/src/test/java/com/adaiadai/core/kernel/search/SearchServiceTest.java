@@ -53,4 +53,24 @@ class SearchServiceTest {
         assertEquals("银色苹果笔记本电脑外观", results.get(0).title(), "image 搜索标题=VLM 总结");
         assertFalse(results.get(0).content().contains("【备注】"), "搜索片段不得含【备注】标签");
     }
+
+    /**
+     * 图文一体（2026-09-22）：薄附件（被主记录 `mediaIds` 引用）**不进搜索结果**——
+     * 它们的 summary 是哨兵「图片附件」（系统视角内容，违反第一原则）。
+     */
+    @Test
+    void search_multiImageAttachments_excluded() {
+        RecordRepository records = mock(RecordRepository.class);
+        ContentRecord attachment = new ContentRecord("rec_attach", "image", "user_input", "图片附件", "",
+                List.of(), LocalDateTime.now(), "log", "图片附件", "life");
+        ContentRecord main = new ContentRecord("rec_main", "image", "user_input", "球局", "球局",
+                List.of(), LocalDateTime.now(), "log", "球局", "life", List.of("rec_attach"));
+        when(records.findAll(any())).thenReturn(List.of(attachment, main));
+
+        SearchService service = new SearchService(records);
+
+        org.junit.jupiter.api.Assertions.assertTrue(service.search("adai", "图片附件").isEmpty(),
+                "薄附件不进搜索结果（summary 是系统视角哨兵）");
+        assertEquals(1, service.search("adai", "球局").size(), "主记录照常可搜");
+    }
 }

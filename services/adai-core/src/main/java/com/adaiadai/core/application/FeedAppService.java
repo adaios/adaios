@@ -319,16 +319,11 @@ public class FeedAppService {
 
     /**
      * 收集被主记录 {@code mediaIds} 引用的**薄图片附件** id（图文一体：一次投递 = 一条主记录 + N 条附件）。
-     * 这些附件只作为主卡片的图存在，不单独成条。
+     * 这些附件只作为主卡片的图存在，不单独成条。实现收敛在
+     * {@code MediaAttachments.referencedIds}（Feed / Timeline / 简报 / 搜索 / ContextEngine 共用）。
      */
     private Set<String> collectMediaReferencedIds(List<ContentRecord> records) {
-        Set<String> ids = new HashSet<>();
-        for (ContentRecord r : records) {
-            if (r.mediaIds() != null && !r.mediaIds().isEmpty()) {
-                ids.addAll(r.mediaIds());
-            }
-        }
-        return ids;
+        return com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(records);
     }
 
     private FeedEntry toFeedEntry(String userId, ContentRecord r, Set<String> imageQaCardIds) {

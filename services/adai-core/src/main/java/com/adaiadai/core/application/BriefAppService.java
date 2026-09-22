@@ -86,10 +86,17 @@ public class BriefAppService {
             return cached;
         }
 
-        List<ContentRecord> todayRecords = recordRepository.findAll(userId).stream()
+        // 图文一体（2026-09-22）：薄附件（被主记录 mediaIds 引用）不进简报——它们只是主记录的图，
+        // 不是独立事件；否则简报会读到 N 条「图片附件」这种系统视角内容（违反第一原则）
+        List<ContentRecord> allForBrief = recordRepository.findAll(userId);
+        java.util.Set<String> attachmentIds =
+                com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(allForBrief);
+        List<ContentRecord> todayRecords = allForBrief.stream()
+                .filter(r -> !attachmentIds.contains(r.id()))
                 .filter(r -> r.createdAt().toLocalDate().equals(LocalDate.now()))
                 .toList();
-        List<ContentRecord> recentRecords = recordRepository.findAll(userId).stream()
+        List<ContentRecord> recentRecords = allForBrief.stream()
+                .filter(r -> !attachmentIds.contains(r.id()))
                 .filter(r -> r.createdAt().toLocalDate().isAfter(LocalDate.now().minusDays(2)))
                 .toList();
         List<Memory> recentMemories = memoryService.recent(userId, 7);

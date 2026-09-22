@@ -40,8 +40,12 @@ public class SearchService {
 
         String q = query.trim().toLowerCase();
         List<ContentRecord> all = recordRepository.findAll(userId);
+        // 图文一体（2026-09-22）：薄附件不进搜索结果——它们的 summary 是哨兵「图片附件」（系统视角）
+        java.util.Set<String> attachmentIds =
+                com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(all);
 
         return all.stream()
+                .filter(r -> !attachmentIds.contains(r.id()))
                 .filter(r -> matches(r, q))
                 .map(r -> new SearchResult(
                         r.id(),

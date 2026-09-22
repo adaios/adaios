@@ -170,16 +170,10 @@ public class TimelineProjection {
 
     /**
      * 收集被主记录 {@code mediaIds} 引用的薄图片附件 id（图文一体）：这些附件只作为主条目的图存在，
-     * 不在时间线里单独成条。
+     * 不在时间线里单独成条。实现收敛在 {@code MediaAttachments.referencedIds}（多处共用）。
      */
     private Set<String> collectMediaReferencedIds(List<ContentRecord> records) {
-        Set<String> ids = new HashSet<>();
-        for (ContentRecord r : records) {
-            if (r.mediaIds() != null && !r.mediaIds().isEmpty()) {
-                ids.addAll(r.mediaIds());
-            }
-        }
-        return ids;
+        return com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(records);
     }
 
     // ── 条目构建 ──

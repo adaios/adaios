@@ -241,7 +241,11 @@ public class ContextEngine {
         if (tags == null || tags.isEmpty()) {
             // 回退：没有标签时取最近记录
             List<ContentRecord> allRecords = recordRepository.findAll(userId);
+            // 图文一体（2026-09-22）：薄附件不进 AI 上下文——否则阿呆会读到 N 条「图片附件」噪音
+            java.util.Set<String> attachmentIds =
+                    com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(allRecords);
             List<ContentRecord> recent = allRecords.stream()
+                    .filter(r -> !attachmentIds.contains(r.id()))
                     .filter(r -> !r.id().equals(currentRecord.id()))
                     .limit(MAX_RELATED_RECORDS)
                     .collect(Collectors.toList());

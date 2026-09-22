@@ -26,7 +26,13 @@ public class DomainActivityService {
      * 计算所有 domain 的活跃度信号。
      */
     public DomainBriefActivity getActivity(String userId) {
-        List<ContentRecord> allRecords = recordRepository.findAll(userId);
+        // 图文一体（2026-09-22）：薄附件不计入领域活跃度——它们只是主记录的图，不是独立事件
+        List<ContentRecord> rawRecords = recordRepository.findAll(userId);
+        java.util.Set<String> attachmentIds =
+                com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(rawRecords);
+        List<ContentRecord> allRecords = rawRecords.stream()
+                .filter(r -> !attachmentIds.contains(r.id()))
+                .toList();
         LocalDate today = LocalDate.now();
         LocalDate weekAgo = today.minusDays(7);
         LocalDate prevWeekEnd = weekAgo;
