@@ -3,9 +3,9 @@ title: docs/ideas 目录索引
 description: ideas 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-19
+updated: 2026-09-22
 status: active
-lines: 35
+lines: 36
 depends-on: []
 related:
   - ../_index.md
@@ -27,6 +27,7 @@ tags: [meta, index, ideas]
 | 20260919-external-briefing-for-ai.md | 现状简报（供外部 AI 讨论发展方向的事实底稿） | active |
 | 20260919-adai-state-snapshot-for-ai.md | 最新状态快照（对外 AI 交接件：是什么/变化/真问题/方向候选） | active |
 | 20260919-ai-2.0-plan-absorption.md | 外部 2.0 规划汲取（采纳/不采纳/待补三空洞，draft） | draft |
+| 20260922-adai-contentflow-postmortem.md | 老项目「积录」考古（能力原型 / 五年对照 / 删除前保留结论） | active |
 
 ## 过期判断
 
