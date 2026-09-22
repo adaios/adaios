@@ -340,7 +340,7 @@ v1.0.0（adai-admin + 多账号）：
 | 2026-09-04 交易-批次止损 | ✅ **已实现（2026-09-04 晚间自主批 II，用户「按推荐来」拍板方案 A；见 change-log）**——覆盖层 `lot-stoploss.json` + derive 合并 + `PUT/DELETE /trading/lots/{lotId}/stop-loss` + web 批次弹窗行内「改」止损；app 不做止损编辑（沿用「去 web」管理惯例）。原始登记：按批次止损编辑闭环——每个买入批次独立设/改止损位且事后可单独调。现状缺口：止损编辑仅持仓级 `PUT /positions/{symbol}`（写 positions.md），非初始批止损锁死买入流水事后改不了 | `TradingLotService` / `TradingController` / web 批次弹窗 | P2（✅ 2026-09-04）|
 | 2026-09-04 交易-资金曲线 | ✅ **已实现（2026-09-04 晚间自主批 IV，用户「按推荐来」拍板方案 A；见 change-log）**——EquityCurveService（现金现值锚定 + 流水/转账事件 + 底仓恒持 + 收盘价）+ `GET /trading/equity-curve` + web 资金 Tab 曲线卡（净值/总资产折线 + 最大回撤）。原始登记：资金/权益曲线图（对标调研 ❌ 无 + P0 必备）；曲线起点由数据自动定（最早流水/转账），invested 口径 = 期初投入缺口 + 转账累计 | `EquityCurveService` / `EquityCurveController` / web 资金 Tab | P2（✅ 2026-09-04）|
 
-| 2026-09-14 合规-公安备案 | **公安联网备案（ICP 备案后 30 天内，最迟 2026-09-30）**：到全国互联网安全管理服务平台（www.beian.gov.cn）提交；通过后把公安备案号挂到网站底部（web/admin 已有 ICP 栏可并列）。同项登记 `REVIEW.md` P1-合规1 + `status.md` 运行环境 | 运营/合规（无代码）；步骤见 `docs/deployment/icp-filing.md` §6 步骤 5 | P1（硬期限） |
+| 2026-09-14 合规-公安备案 | **公安联网备案（ICP 备案后 30 天内，最迟 2026-09-30）**：到全国互联网安全管理服务平台（**beian.mps.gov.cn**，2026-09-21 实测 200）提交；通过后把公安备案号 + 平台给的图标/HTML 代码挂到网站底部（web/admin 已有 ICP 栏可并列，4 处挂载点见清单）。同项登记 `REVIEW.md` P1-合规1 + `status.md` 运行环境 | 运营/合规（无代码）；**逐步清单 `docs/deployment/gongan-filing.md`**（2026-09-21 新增，含材料/六步流程/填写口径/挂载点）+ `icp-filing.md` §6 步骤 5 | P1（**2026-09-21 已提交，审核中**；最迟 2026-09-30） |
 
 ### 已删除（纯记录/已实现，2026-08-15 出表）
 
