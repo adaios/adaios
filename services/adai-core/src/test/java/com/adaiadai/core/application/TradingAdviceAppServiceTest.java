@@ -24,6 +24,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -67,6 +68,7 @@ class TradingAdviceAppServiceTest {
                 TradingAdviceAppServiceTest.defaultRuleRepo(),
                 mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 profileService(),
+                evidenceService(),
                 "../../os/trading-engine/knowledge/context");
     }
 
@@ -78,6 +80,7 @@ class TradingAdviceAppServiceTest {
                 TradingAdviceAppServiceTest.defaultRuleRepo(),
                 mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
                 profileService(),
+                evidenceService(),
                 "../../os/trading-engine/knowledge/context");
     }
 
@@ -86,6 +89,18 @@ class TradingAdviceAppServiceTest {
         TradingProfileService ps = mock(TradingProfileService.class);
         when(ps.profileText(any())).thenReturn("");
         return ps;
+    }
+
+    /**
+     * 铁证服务 mock（RFC 20260922 A4）：默认「查不到规则原文 + 样本不够」——
+     * 即每条建议都**拿不出**证据，不干扰既有断言（不制造假证据）。
+     */
+    private TradingEvidenceService evidenceService() {
+        TradingEvidenceService es = mock(TradingEvidenceService.class);
+        when(es.ruleTextOf(any())).thenReturn(java.util.Optional.empty());
+        when(es.historyStats(any(), any())).thenReturn(new TradingEvidenceService.HistoryStats(
+                TradingEvidenceService.Dimension.HOLD_DAYS, List.of(), 0, false, "样本还不够"));
+        return es;
     }
 
     /** 第三阶段：真实规则仓库 mock，findByUser → 默认配置。 */
@@ -486,6 +501,33 @@ class TradingAdviceAppServiceTest {
         assertEquals("degraded", captor.getValue().source());
     }
 
+    /** A3：留痕带「依据快照」（当时的价 / 占比 / 止损 / 买点 / 动作）——只记录事实，不做对错判决。 */
+    @Test
+    void generateAdvice_recordsBasisSnapshot() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                pos("000725", "京东方A", 1000, "5.20", "5.46")));
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "京东方A", "5.46", "5.0")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("""
+                {"advice": [{"symbol": "000725", "suggestion": "reduce",
+                             "reason": "按 R81 单票仓位纪律", "rules": ["R81"]}], "summary": "…"}
+                """);
+        AdviceHistoryRepository history = mock(AdviceHistoryRepository.class);
+        TradingAdviceAppService svc = service(repo, market, ai, history);
+
+        svc.generateAdvice("default");
+
+        ArgumentCaptor<AdviceEntry> captor = ArgumentCaptor.forClass(AdviceEntry.class);
+        verify(history, org.mockito.Mockito.atLeastOnce()).append(eq("default"), captor.capture());
+        String basis = captor.getValue().basis();
+        assertNotNull(basis, "留痕必须带依据快照（铁证④「可追责」的实体）");
+        assertTrue(basis.contains("5.46"), "快照要记当时的价：" + basis);
+        assertTrue(basis.contains("reduce"), "快照要记当时的动作：" + basis);
+    }
+
     private TradingAdviceAppService service(PositionRepository positions, MarketDataSource market, AiClient ai,
                                             AdviceHistoryRepository history) {
         return new TradingAdviceAppService(positions, market, ai,
@@ -494,6 +536,90 @@ class TradingAdviceAppServiceTest {
                 TradingAdviceAppServiceTest.defaultRuleRepo(),
                 history,
                 profileService(),
+                evidenceService(),
                 "../../os/trading-engine/knowledge/context");
+    }
+
+    // ── A4：四要素铁证（RFC 20260922）──
+
+    /** A4 用：两持仓 + 可注入的铁证服务。 */
+    private TradingAdviceAppService serviceWithTwoPositionsAndEvidence(
+            MarketDataSource market, AiClient ai, TradingEvidenceService evidence) {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(
+                pos("000725", "京东方A", 1000, "5.20", "5.46"),
+                pos("600519", "贵州茅台", 100, "1400.00", "1420.00")
+        ));
+        return new TradingAdviceAppService(repo, market, ai,
+                ruleEngineWithDefaults(),
+                mock(AccountSnapshotRepository.class),
+                TradingAdviceAppServiceTest.defaultRuleRepo(),
+                mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class),
+                profileService(), evidence,
+                "../../os/trading-engine/knowledge/context");
+    }
+
+    /** 出口给每条建议补铁证：①历史统计（样本够才给）+ ②当时数字 + ③规则原文（逐字）。 */
+    @Test
+    void generateAdvice_fillsEvidenceFromHistoryAndRuleTexts() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "京东方A", "5.46", "5.0")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("""
+                {
+                  "advice": [
+                    {"symbol": "000725", "suggestion": "reduce",
+                     "reason": "按 R66 只输一根K线", "rules": ["R66"]}
+                  ],
+                  "summary": "持仓 2 只"
+                }
+                """);
+        TradingEvidenceService evidence = mock(TradingEvidenceService.class);
+        when(evidence.ruleTextOf("R66")).thenReturn(java.util.Optional.of(
+                new TradingEvidenceService.RuleText(66, "只输一根K线",
+                        "止损设在进场K线最低价下方几个价位（或1%），收盘跌破就走。")));
+        when(evidence.historyStats(any(), any())).thenReturn(new TradingEvidenceService.HistoryStats(
+                TradingEvidenceService.Dimension.HOLD_DAYS,
+                List.of(new TradingEvidenceService.HistoryBucket("≤1 天", 6, 5, 5.0 / 6, 2.1, 1.0, true)),
+                6, true, "只报样本 ≥ 5 的组"));
+
+        TradingAdviceAppService svc = serviceWithTwoPositionsAndEvidence(market, ai, evidence);
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        TradingAdviceAppService.AdviceEvidence ev = res.advice().get(0).evidence();
+        assertNotNull(ev, "有持仓视图 → 必须带铁证结构");
+        assertTrue(ev.history().contains("你过去 6 次"), ev.history());
+        assertTrue(ev.ruleTexts().get(0).contains("只输一根K线"), "③规则原文");
+        assertTrue(ev.ruleTexts().get(0).contains("收盘跌破就走"), "③逐字引用（不是复述）");
+        assertTrue(ev.numbers().contains("5.46"), "②当时的现价");
+        assertNull(ev.basisId(), "④留痕 id 属 A3（本批未做）");
+    }
+
+    /** 样本不够 / 没有原文 → 对应要素留 null 或空列表（**宁可不给，也不编**），建议本身照常返回。 */
+    @Test
+    void generateAdvice_evidenceOmitsThinHistoryAndMissingRuleText() {
+        MarketDataSource market = mock(MarketDataSource.class);
+        when(market.quote(any())).thenReturn(Map.of(
+                "000725", quote("000725", "京东方A", "5.46", "5.0")));
+        AiClient ai = mock(AiClient.class);
+        when(ai.generate(any(), any())).thenReturn("""
+                {"advice": [{"symbol": "000725", "suggestion": "hold",
+                             "reason": "观望", "rules": ["R999"]}], "summary": "持仓 2 只"}
+                """);
+        TradingEvidenceService evidence = mock(TradingEvidenceService.class);
+        when(evidence.ruleTextOf(any())).thenReturn(java.util.Optional.empty());
+        when(evidence.historyStats(any(), any())).thenReturn(new TradingEvidenceService.HistoryStats(
+                TradingEvidenceService.Dimension.HOLD_DAYS, List.of(), 2, false, "样本还不够"));
+
+        TradingAdviceAppService svc = serviceWithTwoPositionsAndEvidence(market, ai, evidence);
+        TradingAdviceAppService.TradingAdviceResponse res = svc.generateAdvice("default");
+
+        TradingAdviceAppService.AdviceEvidence ev = res.advice().get(0).evidence();
+        assertNotNull(ev);
+        assertNull(ev.history(), "样本不足 → ①留 null（不拿巧合当规律）");
+        assertTrue(ev.ruleTexts().isEmpty(), "查不到原文 → 空列表（不编一条）");
+        assertTrue(ev.numbers().contains("5.46"), "②数字证据不受影响");
+        assertEquals("hold", res.advice().get(0).suggestion(), "缺证据不影响建议本身");
     }
 }

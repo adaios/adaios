@@ -195,7 +195,9 @@ public class TradingAppService {
      *  2026-09-18（P0-交易59）：再对「盘前导出的当日快照」做一次归一化，见 {@link #normalizeAnchorDate}。 */
     private void recordPositionsReplaceAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updatePositionsReplace(userId, normalizeAnchorDate(snapshotDate));
+            // 2026-09-21（P1-交易61）：同时留**文件原始日期**——归一化后与它不等 = 锚定日是推断出来的，
+            // 对账闸门据此报出「锚定日当天的成交可能不在快照里」（此前只能结构自洽地报「账实一致」= 假绿）。
+            anchorRepository.updatePositionsReplace(userId, normalizeAnchorDate(snapshotDate), snapshotDate);
         } catch (RuntimeException e) {
             log.error("持仓 replace 已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
@@ -204,7 +206,7 @@ public class TradingAppService {
     /** 记录一次资金股份导入锚定（best-effort，同上；锚定日取快照自身日期，见 recordPositionsReplaceAnchor）。 */
     private void recordCashImportAnchor(String userId, LocalDate snapshotDate) {
         try {
-            anchorRepository.updateCashImport(userId, normalizeAnchorDate(snapshotDate));
+            anchorRepository.updateCashImport(userId, normalizeAnchorDate(snapshotDate), snapshotDate);
         } catch (RuntimeException e) {
             log.error("资金股份导入已落库但快照锚定写入失败（P2-34 防重暂时失效）| userId={} | {}", userId, e.getMessage());
         }
@@ -238,6 +240,10 @@ public class TradingAppService {
         // 粘贴导入的锚定日 = 今天 → 当天真实成交全部命中覆盖 → 降级为只落流水（持仓/现金不动）
         // → 持仓整日停在快照状态。正是本批要修的那起生产事故，只在"没有文件名的路径"上原样保留。
         LocalDate effective = snapshotDate != null ? snapshotDate : today;
+        // 2026-09-21（P2-10）：**未来日期不可信**（文件名解析错 / 手改错）——按「没有文件日期」处理。
+        // 否则锚定日被写进未来 → 之后每一笔成交都 ≤ 锚定日 → 全被判「已含在快照内」降级为只落流水
+        // （静默失效；而锚定日只前进不后退，这笔状态再也退不回来）。
+        if (effective.isAfter(today)) effective = today;
         if (!effective.equals(today)) return effective; // 补导历史快照：按文件日期，不调整
         boolean beforeOpen = now != null && now.isBefore(LocalTime.of(9, 30));
         if (beforeOpen || !TradingSessionPushService.isTradingDayStrict(today)) {
@@ -282,7 +288,8 @@ public class TradingAppService {
             names.put(h.symbol(), h.name());
         }
         // 锚定日之后的流水（含被拒绝入账但已落流水的那些）：按 symbol 聚合净增减 + 逐笔缺口
-        List<TradeRecord> after = tradingHistoryRepository.findAll(userId).stream()
+        List<TradeRecord> allTrades = tradingHistoryRepository.findAll(userId);
+        List<TradeRecord> after = allTrades.stream()
                 .filter(t -> t.volume() > 0 && t.entryDate() != null && t.entryDate().isAfter(anchorDate))
                 .sorted(java.util.Comparator.comparing(TradeRecord::entryDate)
                         .thenComparing(t -> t.tradeTime() != null ? t.tradeTime() : LocalTime.MIN))
@@ -325,16 +332,54 @@ public class TradingAppService {
                             + signed(d) + "），落地 " + haveQ + " 股，差 " + signed(diff)
                             + " 股——账实不符，请核对流水/重导券商快照"));
         }
+        // ── 降级流水 / 基线新鲜度（2026-09-21，P1-交易61）────────────────────────────
+        // 成交日 **等于锚定日** 的流水被 coveredByAnchor 判成「已含在券商快照内」→ 只落流水、不动持仓。
+        // 锚定日是文件日期时这样处理是对的（快照=当日收盘后的结果）；但锚定日若是**推断**出来的
+        // （文件日期 X 被归一化成 Y：盘前/非交易日导出、或粘贴导入没有文件日期），这些成交就**可能
+        // 其实不在快照里**——而派生持仓与落地持仓**同源于那份快照**，结构上必然相等 →
+        // 老实现对账只会报「账实一致」（**假绿**，生产实据：2026-09-18 锚定日应为 09-17 却写成 09-18，
+        // 当天 6 笔成交全部降级，持仓少 2 只/多算 400 股，09-18~09-20 该端点一直报「账实一致」）。
+        // 这里把它们单独列出来：不替用户断定对错，只把「基线可能是旧的」这条事实摆到台面上。
+        List<DegradedLine> degraded = new ArrayList<>();
+        boolean anchorInferred = anchor.positionsDateInferred() || anchor.cashDateInferred();
+        String fileDateText = anchor.positionsFileDate() != null ? anchor.positionsFileDate().toString()
+                : (anchor.cashFileDate() != null ? anchor.cashFileDate().toString() : "未记录");
+        for (TradeRecord t : allTrades) {
+            if (t.volume() <= 0 || t.entryDate() == null || !t.entryDate().equals(anchorDate)) continue;
+            degraded.add(new DegradedLine(t.symbol(), t.name(), t.direction(), t.volume(), t.price(),
+                    t.entryDate(), anchorInferred,
+                    anchorInferred
+                            ? "成交日 = 锚定日 " + anchorDate + "，被按「已含在券商快照内」处理（只记流水、未进持仓）；"
+                                    + "但锚定日是由文件日期 " + fileDateText + " 推断的 —— 若这份快照的实际基准日"
+                                    + "不是这一天，本笔不会体现在持仓里，请核对后重导「持仓股」快照"
+                            : "成交日 = 锚定日 " + anchorDate + "，已含在券商快照内（只记流水、未重复计入持仓）"));
+        }
+
         String note = drift.isEmpty() && gaps.isEmpty()
                 ? "账实一致：派生持仓与落地持仓逐标的相符（锚定日 " + anchorDate + "）"
                 : String.format("账实不符：%d 只标的持仓不一致、%d 笔回放缺口（锚定日 %s）——"
                         + "先核对逐笔流水，再决定是否重导券商快照重建口径",
                         drift.size(), gaps.size(), anchorDate);
+        if (!degraded.isEmpty()) {
+            note += anchorInferred
+                    ? String.format("；⚠️ 另有 %d 笔成交只记了流水、没进持仓（成交日 = 锚定日 %s，而锚定日是按导入时刻"
+                            + "从文件日期 %s 推断的）——这份快照若实际不是 %s 的收盘状态，这些成交就不会体现在持仓里，"
+                            + "请核对后重导一次「持仓股」快照", degraded.size(), anchorDate, fileDateText, anchorDate)
+                    : String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）已含在券商快照内，只记流水、未重复计入持仓",
+                            degraded.size(), anchorDate);
+        } else if (anchor.positionsReplace() != null && anchor.positionsFileDate() == null) {
+            // 文件日期未记录（老数据 / 历史导入）：无法判断锚定日是否被推断——如实说明，不假装确定
+            note += "；ℹ️ 这份锚定没有记录快照文件日期，无法判断锚定日是否被归一化推断过";
+        }
         if (!drift.isEmpty() || !gaps.isEmpty()) {
             log.error("账实一致性自检发现不符 | userId={} | 锚定={} | 差异 {} 只 | 缺口 {} 笔 | 明细={}",
                     userId, anchorDate, drift.size(), gaps.size(), drift.stream().limit(5).toList());
         }
-        return new IntegrityReport(status, true, drift, gaps, note);
+        if (!degraded.isEmpty()) {
+            log.warn("账实自检：锚定日 {} 系推断（文件日期 {}），{} 笔当天成交只落流水未进持仓 | userId={}",
+                    anchorDate, fileDateText, degraded.size(), userId);
+        }
+        return new IntegrityReport(status, true, drift, gaps, degraded, note);
     }
 
     /**
@@ -2702,9 +2747,21 @@ public class TradingAppService {
     public record DriftLine(String symbol, String name, Integer snapshotQty, int ledgerDelta,
                             int derived, Integer holdings, int diff, String note) {}
 
-    /** 账实一致性报告（GET /trading/integrity）：锚定状态 + 差异 + 重放缺口。 */
+    /** 「只记了流水、没进持仓」的降级成交（2026-09-21，P1-交易61）：把「锚定日被推断」导致的假绿变成可见。
+     *  {@code inferred=true} 表示锚定日是推断出来的 → 前端按**警告**呈现；false = 已含在快照内的事实说明。 */
+    public record DegradedLine(String symbol, String name, TradeDirection direction, int volume,
+                               BigDecimal price, LocalDate entryDate, boolean inferred, String reason) {}
+
+    /** 账实一致性报告（GET /trading/integrity）：锚定状态 + 差异 + 重放缺口 + 降级流水。 */
     public record IntegrityReport(AnchorStatus anchor, boolean holdingsKnown, List<DriftLine> drift,
-                                  List<RejectedLine> gaps, String note) {}
+                                  List<RejectedLine> gaps, List<DegradedLine> degraded, String note) {
+
+        /** 兼容构造（无降级流水）：旧调用与既有测试零改动。 */
+        public IntegrityReport(AnchorStatus anchor, boolean holdingsKnown, List<DriftLine> drift,
+                               List<RejectedLine> gaps, String note) {
+            this(anchor, holdingsKnown, drift, gaps, List.of(), note);
+        }
+    }
 
     /** 每日操作总结（RFC 20260825 §6，导入/归集后秒出，不耗 AI）：
      *  买卖聚合 + 批次 diff（新增/扣减）+ 行为标注。 */

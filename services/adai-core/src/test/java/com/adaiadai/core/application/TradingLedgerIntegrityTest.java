@@ -431,4 +431,90 @@ class TradingLedgerIntegrityTest {
                 mock(TradingHistoryRepository.class), anchorOf(SnapshotAnchor.empty(), List.of()));
         assertThrows(TradingException.class, () -> service.backfillAnchor(USER, null, null, List.of()));
     }
+
+    // ── ⑦-b 降级流水 / 基线新鲜度（2026-09-21，P1-交易61）──
+    // 锚定日**当天**的成交被 coveredByAnchor 判成「已含在券商快照内」→ 只落流水、不进持仓。
+    // 派生持仓与落地持仓同源于那份快照，结构上必然相等 → 老实现对账只会报「账实一致」（假绿）；
+    // 这里把它们如实列出来：锚定日明确（= 文件日期）时是信息，锚定日系**推断**时是警告。
+
+    /** 锚定日 == 文件日期（未推断）：当天成交如实列出，措辞为信息级、不报警。 */
+    @Test
+    void integrity_listsTradesCoveredByAnchorOnAnchorDay_asInfo() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 18);
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 100, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 100, "46.85", anchorDate,
+                        LocalTime.of(14, 53), "65872510", new BigDecimal("1.79"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, anchorDate, anchorDate, anchorDate),
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+        assertTrue(report.drift().isEmpty());
+        assertEquals(1, report.degraded().size(), report.note());
+        assertTrue(report.degraded().get(0).reason().contains("已含在券商快照内"),
+                report.degraded().get(0).reason());
+        assertTrue(report.note().contains("未重复计入持仓"), report.note());
+        assertFalse(report.note().contains("⚠️"), report.note()); // 非推断 → 不报警
+    }
+
+    /** 锚定日由文件日期**推断**（盘前/非交易日导出被归一化）→ 当天成交必须报警：快照可能不是这一天的。 */
+    @Test
+    void integrity_warnsWhenAnchorDayInferredAndTradesFallOnIt() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 17); // 归一化后的数据基准日
+        LocalDate fileDate = LocalDate.of(2026, 9, 18);   // 文件里的导出日
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 100, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 100, "46.85", anchorDate,
+                        LocalTime.of(14, 53), "65872510", new BigDecimal("1.79"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, null, fileDate, null),
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+        assertEquals(1, report.degraded().size(), report.note());
+        assertTrue(report.degraded().get(0).reason().contains("推断"), report.degraded().get(0).reason());
+        assertTrue(report.note().contains("⚠️"), report.note());
+        assertTrue(report.note().contains(fileDate.toString()), report.note());
+    }
+
+    /** 锚定日当天没有成交 → 不产生降级行（不误报）；锚定日前后有成交也不该被算进来。 */
+    @Test
+    void integrity_noDegradedWhenNoTradeOnAnchorDay() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 18);
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 200, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 100, "46.85", anchorDate.minusDays(2),
+                        LocalTime.of(14, 53), "65872510", new BigDecimal("1.79")),
+                record("600206", TradeDirection.BUY, 100, "47.00", anchorDate.plusDays(1),
+                        LocalTime.of(10, 3), "65872511", new BigDecimal("1.80"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, anchorDate, anchorDate, anchorDate),
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+        assertTrue(report.degraded().isEmpty(), report.note());
+    }
+
+    /** 老数据（锚定存在但没有文件日期）→ 如实说明「无法判断锚定日是否被推断」，不假装确定。 */
+    @Test
+    void integrity_saysUnknownWhenFileDateNotRecorded() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 18);
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 100, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of());
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, anchorDate),
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+        assertTrue(report.note().contains("没有记录快照文件日期"), report.note());
+    }
 }

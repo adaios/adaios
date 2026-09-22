@@ -110,4 +110,36 @@ class TradingAnchorFileRepositoryTest {
         assertEquals(LocalDate.of(2026, 9, 9), repo.find(USER).positionsReplace());
         assertTrue(repo.holdings(USER).isEmpty(), "空列表 = 快照当日无持仓（清仓态），会覆盖旧基线");
     }
+
+    // ── 2026-09-21（P1-交易61）：保留快照**文件原始日期**，让「锚定日是推断的」可判定 ──
+
+    /** 文件写 09-18（导出日）、数据基准归一化为 09-17 → 推断标记必须能读回（对账据此报警，不再假绿）。 */
+    @Test
+    void keepsSnapshotFileDateToDetectInferredAnchor() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 17), LocalDate.of(2026, 9, 18));
+
+        SnapshotAnchor a = repo.find(USER);
+        assertEquals(LocalDate.of(2026, 9, 17), a.positionsReplace());
+        assertEquals(LocalDate.of(2026, 9, 18), a.positionsFileDate());
+        assertTrue(a.positionsDateInferred(), "文件日期 ≠ 锚定日 = 锚定日是推断出来的");
+    }
+
+    /** 锚定日没有前进（补导更旧的快照，本次没生效）→ 保留既有文件日期，不被没生效的文件抹掉推断信息。 */
+    @Test
+    void backdatedSnapshotDoesNotOverwriteExistingFileDate() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 17), LocalDate.of(2026, 9, 18));
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 10));
+
+        SnapshotAnchor a = repo.find(USER);
+        assertEquals(LocalDate.of(2026, 9, 17), a.positionsReplace());
+        assertEquals(LocalDate.of(2026, 9, 18), a.positionsFileDate(), "没生效的补导不得抹掉推断信息");
+        assertTrue(a.positionsDateInferred());
+    }
+
+    /** 旧两参调用（不提供文件日期）→ 不产生推断标记（拿不到证据就不诬告）。 */
+    @Test
+    void legacyTwoArgUpdateHasNoInferredFlag() {
+        repo.updatePositionsReplace(USER, LocalDate.of(2026, 9, 18));
+        assertFalse(repo.find(USER).positionsDateInferred());
+    }
 }

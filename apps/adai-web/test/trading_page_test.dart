@@ -2500,6 +2500,43 @@ void main() {
       expect(clean.hasIssue, isFalse);
     });
 
+    // 2026-09-21（P1-交易61）：锚定日当天的成交被按「已含在快照内」处理 → 只记流水、没进持仓。
+    // 后端新增 degraded（每行带 inferred）：锚定日明确时是事实说明；锚定日**被推断**时才是警告。
+    test('integrity 降级流水：inferred 才计入 hasIssue（锚定日推断 → 要用户核对）', () {
+      final warn = IntegrityReportDto.fromJson({
+        'holdingsKnown': true,
+        'drift': [],
+        'gaps': [],
+        'degraded': [
+          {'symbol': '600206', 'name': '有研新材', 'direction': 'BUY', 'volume': 100,
+           'price': 46.85, 'entryDate': '2026-09-17', 'inferred': true,
+           'reason': '成交日 = 锚定日，而锚定日是由文件日期推断的'},
+        ],
+        'note': '账实一致；⚠️ 另有 1 笔成交只记了流水、没进持仓',
+      });
+      expect(warn.degraded.single.symbol, '600206');
+      expect(warn.degraded.single.inferred, isTrue);
+      expect(warn.hasIssue, isTrue, reason: '锚定日被推断 + 有降级成交 → 必须出横幅');
+
+      // 锚定日明确（非推断）→ 只是事实说明，不制造噪音
+      final info = IntegrityReportDto.fromJson({
+        'holdingsKnown': true, 'drift': [], 'gaps': [],
+        'degraded': [
+          {'symbol': '600206', 'name': '有研新材', 'direction': 'SELL', 'volume': 200,
+           'inferred': false, 'reason': '成交日 = 锚定日，已含在券商快照内'},
+        ],
+        'note': '账实一致',
+      });
+      expect(info.degraded.single.inferred, isFalse);
+      expect(info.hasIssue, isFalse);
+
+      // 旧后端不返回 degraded → 空列表、不崩
+      final legacy = IntegrityReportDto.fromJson(
+          {'holdingsKnown': true, 'drift': [], 'gaps': [], 'note': ''});
+      expect(legacy.degraded, isEmpty);
+      expect(legacy.hasIssue, isFalse);
+    });
+
     test('文件名解析快照日（yyyymmdd / yyyy-MM-dd / 假日期判掉）', () {
       expect(parseSnapshotDateFromFilename('持仓股20260912.txt'), '2026-09-12');
       expect(parseSnapshotDateFromFilename('资金股份查询-2026-09-12.csv'), '2026-09-12');

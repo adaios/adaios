@@ -29,6 +29,24 @@ public interface TradingAnchorRepository {
     void updateCashImport(String userId, LocalDate date);
 
     /**
+     * 记录一次持仓全量 replace 导入，并保留**快照文件里的原始日期**（2026-09-21，P1-交易61）。
+     * <p>
+     * {@code date} 是归一化后的**数据基准日**（盘前/非交易日导出会被退到上一交易日），
+     * {@code fileDate} 是文件名里的导出日。两者不等 = 锚定日是推断出来的 → 对账闸门据此判断
+     * 「锚定日当天的成交是否可能并不在快照内」，把「基线自洽的假绿」变成可见。
+     * <p>
+     * default 实现忽略 fileDate（旧实现 / 测试替身零改动）。
+     */
+    default void updatePositionsReplace(String userId, LocalDate date, LocalDate fileDate) {
+        updatePositionsReplace(userId, date);
+    }
+
+    /** 记录一次资金股份查询导入 + 原始文件日期（语义同 {@link #updatePositionsReplace(String, LocalDate, LocalDate)}）。 */
+    default void updateCashImport(String userId, LocalDate date, LocalDate fileDate) {
+        updateCashImport(userId, date);
+    }
+
+    /**
      * 记录快照当日的逐标的持仓基线（与锚定同文件，2026-09-12 账实一致性批）：
      * 对账闸门用它 + 锚点之后流水净增减推出应有持仓，与落地持仓比对，
      * 差异即「账实不符」（防「口径塌了却没人报警」）。空列表 = 本次快照无持仓（会覆盖旧基线）。

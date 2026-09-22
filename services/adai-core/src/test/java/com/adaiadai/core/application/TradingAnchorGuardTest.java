@@ -174,7 +174,7 @@ class TradingAnchorGuardTest {
         service.importPositions(USER, List.of(new TradingAppService.PositionImportItem(
                 "600000", "浦发银行", 100, new BigDecimal("10.0"), null, null, null, null)), true);
         verify(repo, times(1)).saveAll(anyString(), any());
-        verify(anchor, times(1)).updatePositionsReplace(eq(USER), any(LocalDate.class));
+        verify(anchor, times(1)).updatePositionsReplace(eq(USER), any(LocalDate.class), any());
     }
 
     @Test
@@ -187,7 +187,7 @@ class TradingAnchorGuardTest {
 
         service.importPositions(USER, List.of(new TradingAppService.PositionImportItem(
                 "600000", "浦发银行", 100, new BigDecimal("10.0"), null, null, null, null)), false);
-        verify(anchor, never()).updatePositionsReplace(anyString(), any(LocalDate.class));
+        verify(anchor, never()).updatePositionsReplace(anyString(), any(LocalDate.class), any());
     }
 
     @Test
@@ -205,6 +205,6 @@ class TradingAnchorGuardTest {
                 """;
         TradingAppService.CashImportResult r = service.importCashQuery(USER, cashText);
         assertEquals(0, r.cash().compareTo(new BigDecimal("292.88")));
-        verify(anchor, times(1)).updateCashImport(eq(USER), any(LocalDate.class));
+        verify(anchor, times(1)).updateCashImport(eq(USER), any(LocalDate.class), any());
     }
 }

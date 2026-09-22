@@ -71,4 +71,20 @@ class TradingAnchorDateNormalizeTest {
                 TradingAppService.normalizeAnchorDate(null, FRIDAY, LocalTime.of(16, 0)),
                 "盘后导入的数据已含当日成交，锚今天是对的");
     }
+
+    /**
+     * **未来日期不可信**（文件名解析错 / 手改错）→ 按「没有文件日期」处理（2026-09-21，P2-10）：
+     * 照抄的后果是锚定日被写进未来 → 之后每一笔成交都 ≤ 锚定日 → 全被判「已含在快照内」而
+     * 降级为只落流水（持仓整段不动），且锚定日只前进不后退 → **再也退不回来**（静默失效）。
+     */
+    @Test
+    void futureSnapshotDate_fallsBackToToday() {
+        LocalDate future = FRIDAY.plusDays(30);
+        assertEquals(PREV_TRADING_DAY,
+                TradingAppService.normalizeAnchorDate(future, FRIDAY, LocalTime.of(0, 24)),
+                "未来日期 + 盘前 → 与「没给日期」同一口径（退到上一交易日）");
+        assertEquals(FRIDAY,
+                TradingAppService.normalizeAnchorDate(future, FRIDAY, LocalTime.of(16, 0)),
+                "未来日期 + 盘后 → 今天（绝不能把锚定日写进未来）");
+    }
 }

@@ -111,6 +111,8 @@ public class TradingAdviceAppService {
     private final AdviceHistoryRepository adviceHistoryRepository;
     /** RFC 20260905 A 层：个人画像注入（建议前让阿呆用「你上次…」对照）。 */
     private final TradingProfileService profileService;
+    /** RFC 20260922 A 批（A4）：四要素铁证（①历史统计 / ③规则原文）——只读，补不出就留 null。 */
+    private final TradingEvidenceService evidenceService;
 
     public TradingAdviceAppService(PositionRepository positionRepository,
                                    MarketDataSource marketDataSource,
@@ -120,6 +122,7 @@ public class TradingAdviceAppService {
                                    TradingRuleSettingsRepository settingsRepository,
                                    AdviceHistoryRepository adviceHistoryRepository,
                                    TradingProfileService profileService,
+                                   TradingEvidenceService evidenceService,
                                    @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -129,6 +132,7 @@ public class TradingAdviceAppService {
         this.settingsRepository = settingsRepository;
         this.adviceHistoryRepository = adviceHistoryRepository;
         this.profileService = profileService;
+        this.evidenceService = evidenceService;
         this.rulesPath = Paths.get(knowledgeDir, "rules.md").toAbsolutePath().normalize();
         this.strategyPath = Paths.get(knowledgeDir, "strategy.md").toAbsolutePath().normalize();
     }
@@ -185,6 +189,8 @@ public class TradingAdviceAppService {
             log.warn("持仓建议 LLM 生成失败，降级返回基础数据 | userId={} | {}", userId, e.getMessage());
             response = fallback(views);
         }
+        // RFC 20260922 A 批（A4）：给每条建议补四要素铁证（只读；补不出留 null）
+        response = withEvidence(userId, response, views);
         // RFC 20260905 B①：建议留痕——成功与降级都落盘（降级标记 degraded，诚实留史）
         recordHistory(userId, response, views, response.advice().stream()
                 .noneMatch(i -> i.suggestion() != null) ? "degraded" : "manual-advice");
@@ -209,7 +215,9 @@ public class TradingAdviceAppService {
                 adviceHistoryRepository.append(userId, new AdviceEntry(
                         null, today, item.symbol(), item.name(), item.suggestion(),
                         item.reason(), item.rules(), hard, item.positionPercent(), source,
-                        java.time.LocalDateTime.now()));
+                        java.time.LocalDateTime.now(),
+                        // A3（RFC 20260922）：把「当时是什么情况」落成依据快照——日后回看用，不做对错判决
+                        basisOf(view, item)));
             }
         } catch (Exception e) {
             log.error("建议留痕落盘失败 | userId={} | {}", userId, e.getMessage());
@@ -548,6 +556,96 @@ public class TradingAdviceAppService {
         return v.entryDate() + "（入场第 " + days + " 天）";
     }
 
+    // ── 四要素铁证（RFC 20260922 A 批 A4）──
+
+    /**
+     * 给一条建议补四要素铁证（**只读、绝不改建议本身**）。
+     *
+     * <p>补不出就留 null：调用方（推送 / 前端）据此判断「这条建议拿不拿得出证据」——
+     * 宁可少给一条证据，也不给一条编的（这正是用户要的「铁证」的反面）。
+     */
+    private TradingAdviceItem withEvidence(String userId, TradingAdviceItem item, PositionView view) {
+        if (view == null) return item; // 没有持仓视图 → 谈不出「当时的数字」
+        try {
+            // ③ 规则原文（逐字；找不到的规则不进列表）
+            List<String> ruleTexts = new ArrayList<>();
+            if (item.rules() != null) {
+                for (String ref : item.rules()) {
+                    evidenceService.ruleTextOf(ref).ifPresent(rt -> ruleTexts.add(
+                            "R" + rt.number() + " " + rt.title() + "：" + rt.detail()));
+                }
+            }
+            // ② 数字证据链（当时的现价 / 持仓占比 / 止损位）
+            String numbers = "现价 " + plain(view.currentPrice())
+                    + " · 持仓占比 " + plain(view.positionPercent()) + "%"
+                    + (view.stopLossPrice() != null ? " · 止损 " + plain(view.stopLossPrice()) : "");
+            // ① 本人历史操作统计（**样本不足就是 null**——宁可不给，也不拿巧合当规律）
+            String history = null;
+            try {
+                TradingEvidenceService.HistoryStats stats =
+                        evidenceService.historyStats(userId, TradingEvidenceService.Dimension.HOLD_DAYS);
+                if (stats.anySufficient()) {
+                    history = stats.buckets().stream()
+                            .filter(TradingEvidenceService.HistoryBucket::sufficient)
+                            .findFirst()
+                            .map(b -> String.format("你过去 %d 次在「%s」卖出，%d 次盈利、平均 %+.1f%%",
+                                    b.count(), b.label(), b.wins(), b.avgPnlPct()))
+                            .orElse(null);
+                }
+            } catch (RuntimeException e) {
+                log.warn("铁证①历史统计取数失败（该条不给统计，不编）| userId={} | {}", userId, e.getMessage());
+            }
+            return new TradingAdviceItem(item.symbol(), item.name(), item.positionPercent(),
+                    item.suggestion(), item.reason(), item.rules(),
+                    new AdviceEvidence(history, numbers, ruleTexts, null));
+        } catch (RuntimeException e) {
+            log.warn("铁证补全失败（该条建议不带证据返回）| userId={} | symbol={} | {}",
+                    userId, item.symbol(), e.getMessage());
+            return item;
+        }
+    }
+
+    private static String plain(BigDecimal v) {
+        return v == null ? "—" : v.stripTrailingZeros().toPlainString();
+    }
+
+    /** 批量补铁证（在出口统一做一次：成功路径与降级路径共用同一套口径）。 */
+    private TradingAdviceResponse withEvidence(String userId, TradingAdviceResponse response,
+                                               List<PositionView> views) {
+        List<TradingAdviceItem> enhanced = response.advice().stream()
+                .map(item -> withEvidence(userId, item, findBySymbol(views, item.symbol())))
+                .toList();
+        return new TradingAdviceResponse(enhanced, response.summary());
+    }
+
+    /**
+     * 依据快照（RFC 20260922 A 批 A3）：建议发出**当时**的价 / 持仓占比 / 止损 / 买点 / 动作，
+     * 落进 advice-history 作为铁证④「可追责」的实体。
+     *
+     * <p>只记录事实，**不含"对错"判断**（"多久回看、怎么算对"需用户拍板）；序列化失败 → null
+     * （留痕字段可缺，**不阻断建议**）。
+     */
+    private String basisOf(PositionView view, TradingAdviceItem item) {
+        if (view == null) return null;
+        try {
+            var node = objectMapper.createObjectNode();
+            node.put("price", jsonNum(view.currentPrice()));
+            node.put("positionPercent", jsonNum(view.positionPercent()));
+            node.put("stopLoss", jsonNum(view.stopLossPrice()));
+            node.put("buyPoint", view.buyPoint());
+            node.put("suggestion", item.suggestion());
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.warn("依据快照序列化失败（该条留痕无 basis）| symbol={} | {}", item.symbol(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** JSON 里的数字：缺就是 null（**不要用 "—"**——那是给人看的文案，不是数据）。 */
+    private static String jsonNum(BigDecimal v) {
+        return v == null ? null : v.toPlainString();
+    }
+
     // ── DTO ──
 
     /** 单票建议。position_percent 由后端按持仓市值/总市值计算（确定性），suggestion/reason/rules 来自 LLM。 */
@@ -557,8 +655,25 @@ public class TradingAdviceAppService {
             @JsonProperty("position_percent") BigDecimal positionPercent,
             String suggestion,
             String reason,
-            List<String> rules
-    ) {}
+            List<String> rules,
+            /** 四要素铁证（RFC 20260922 A 批 A4）：后端补齐；null = 没有持仓视图（纯降级占位行）。 */
+            AdviceEvidence evidence
+    ) {
+        /** 兼容构造（6 参，旧调用与既有测试零改动）：无铁证。 */
+        public TradingAdviceItem(String symbol, String name, BigDecimal positionPercent,
+                                 String suggestion, String reason, List<String> rules) {
+            this(symbol, name, positionPercent, suggestion, reason, rules, null);
+        }
+    }
+
+    /**
+     * 四要素铁证（RFC 20260922 A 批 A4）——每个字段都可为 null，**能填多少填多少**：
+     * ① {@code history} 本人历史操作统计（样本 &lt; 5 → null，宁可不给）·
+     * ② {@code numbers} 当时的数字（现价 / 持仓占比 / 止损位）·
+     * ③ {@code ruleTexts} 规则原文**逐字**（找不到的规则不进列表，不编）·
+     * ④ {@code basisId} 留痕 id（advice-history 里那条，供日后回看追责；A3 填）。
+     */
+    public record AdviceEvidence(String history, String numbers, List<String> ruleTexts, String basisId) {}
 
     /** 持仓建议响应：逐票建议 + 持仓总览一句话。 */
     public record TradingAdviceResponse(

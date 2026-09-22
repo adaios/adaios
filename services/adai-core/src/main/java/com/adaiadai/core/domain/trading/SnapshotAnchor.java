@@ -16,12 +16,40 @@ import java.time.LocalDate;
  *
  * @param positionsReplace 最近一次持仓全量 replace 导入日期（从未 replace → null）
  * @param cashImport       最近一次资金股份查询导入日期（从未导入 → null）
+ * @param positionsFileDate 持仓快照**文件里的原始日期**（导出日，未归一化；未记录 → null）。
+ *                         2026-09-21（P1-交易61）：与 {@code positionsReplace} 不等 = 锚定日经过归一化**推断**——
+ *                         归一化只在「快照日期 == 今天」时生效（盘前/非交易日导出退到上一交易日），
+ *                         此时「锚定日当天」的成交可能并不在快照里，必须让对账闸门能识别并报出。
+ * @param cashFileDate      资金股份快照的原始文件日期（语义同 positionsFileDate；未记录 → null）
  */
-public record SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport) {
+public record SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport,
+                             LocalDate positionsFileDate, LocalDate cashFileDate) {
+
+    /** 兼容构造（旧调用 / 老落盘文件没有文件日期信息 = 不可判定是否推断）。 */
+    public SnapshotAnchor(LocalDate positionsReplace, LocalDate cashImport) {
+        this(positionsReplace, cashImport, null, null);
+    }
 
     /** 空锚定（从未做过全量导入）。 */
     public static SnapshotAnchor empty() {
         return new SnapshotAnchor(null, null);
+    }
+
+    /**
+     * 持仓锚定日是否为「推断值」（2026-09-21，P1-交易61）：文件写的日期 ≠ 最终锚定日
+     * → 归一化动过它 → 锚定日当天的成交**可能**不在快照里（不能假定已被覆盖）。
+     * <p>
+     * 文件日期未记录（老落盘文件 / 历史调用）→ false（**不诬告**）：拿不到证据就不报警；
+     * 这一信息由 {@code positionsFileDate == null} 在对账 note 里如实说明。
+     */
+    public boolean positionsDateInferred() {
+        return positionsFileDate != null && positionsReplace != null
+                && !positionsFileDate.equals(positionsReplace);
+    }
+
+    /** 资金股份锚定日是否为推断值（语义同 {@link #positionsDateInferred()}）。 */
+    public boolean cashDateInferred() {
+        return cashFileDate != null && cashImport != null && !cashFileDate.equals(cashImport);
     }
 
     /**

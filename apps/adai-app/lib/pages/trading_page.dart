@@ -277,9 +277,12 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildIntegrityBanner(IntegrityReportDto r) {
     final drift = r.drift;
     final gaps = r.gaps;
+    // 2026-09-21（P1-交易61）：锚定日是**推断**的、且当天有成交只落了流水 → 这些成交可能没进持仓
+    final degradedWarn = r.degraded.where((d) => d.inferred).toList();
     final parts = <String>[
       if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
       if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
+      if (degradedWarn.isNotEmpty) '${degradedWarn.length} 笔成交没进持仓',
     ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -317,6 +320,16 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.only(bottom: 3),
               child: Text('回放缺口 · ${g.display}',
                   style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          // 2026-09-21（P1-交易61）：锚定日系推断 → 这些成交「只在流水里、没进持仓」，必须让用户看见
+          for (final d in degradedWarn)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                  '只记了流水、没进持仓 · ${d.name}(${d.symbol}) '
+                  '${d.direction == 'BUY' ? '买' : '卖'} ${d.volume} 股'
+                  '${d.price != null ? ' @${d.price}' : ''}（${d.entryDate ?? '—'}）',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
             ),
           const SizedBox(height: 2),
           // 手机端只负责「看得见」：导入/校准在电脑端（账户卡与持仓明细也都以券商口径为准）
@@ -2492,10 +2505,19 @@ class _TradingPageState extends State<TradingPage> {
     _lotsDialogOpen = true;
     String? error;
     LotsResponse? resp;
+    // 2026-09-22（P2-交易59 C2）：历次了结回合（买→卖→亏赚）——此前手机上完全看不到，
+    // 只有 web「清仓」Tab 有。取不到不影响批次弹窗（降级为不显示这一区）。
+    List<SoldTradeDto> rounds = const [];
     try {
       resp = await widget.api.getLots(state: 'all', symbol: p.symbol);
     } catch (e) {
       error = _extractApiError(e);
+    }
+    try {
+      final sold = await widget.api.getSold();
+      rounds = sold.sold.where((s) => s.symbol == p.symbol).toList();
+    } catch (_) {
+      // 静默降级：批次明细照常显示
     }
     if (!mounted) {
       _lotsDialogOpen = false;
@@ -2515,10 +2537,63 @@ class _TradingPageState extends State<TradingPage> {
           lots: resp?.lots ?? const <LotItem>[],
           fee: resp?.fees[p.symbol],
           error: error,
+          // 2026-09-22（P2-交易59 C2）：用户拍板「止损要能在 app 改」→ 批次行内直接改
+          onEditStopLoss: _editLotStopLoss,
+          rounds: rounds,
         ),
       );
     } finally {
       _lotsDialogOpen = false; // 弹窗关闭后复位，允许再次打开
+    }
+  }
+
+  /// 批次止损编辑（2026-09-22，P2-交易59 C2）：弹输入框 → `PUT /trading/lots/{id}/stop-loss`
+  /// → 刷新批次简版与明细并回执。
+  /// **用户拍板**：「止损要能在 app 改」——推翻 RFC 20260918 与 2026-09-04 的
+  /// 「app 不做止损编辑、去 web 管」旧约定（当时把「改」整段留给了电脑端）。
+  Future<void> _editLotStopLoss(LotItem lot) async {
+    final controller = TextEditingController(
+        text: lot.stopLossPrice != null ? lot.stopLossPrice!.toStringAsFixed(2) : '');
+    final price = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkSurface2,
+        title: Text('改止损 · ${lot.name}', style: const TextStyle(fontSize: 15)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            hintText: '止损价，如 17.13',
+            helperText: '只改这一批的止损位',
+            helperStyle: TextStyle(fontSize: 11, color: AppColors.darkGrey5),
+          ),
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () {
+              final v = double.tryParse(controller.text.trim());
+              if (v == null || v <= 0) return; // 无效输入不关框（不假装保存成功）
+              Navigator.pop(ctx, v);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    // 延迟回收：对话框有关闭动画，立即 dispose 会撞 ChangeNotifier debugAssertNotDisposed
+    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
+    if (price == null || !mounted) return;
+    try {
+      await widget.api.updateLotStopLoss(lot.lotId, price);
+      if (!mounted) return;
+      _showSnack('改好了：${lot.name} 这一批的止损位 ${price.toStringAsFixed(2)}', AppColors.darkGreen);
+      await _loadLots(); // 简版行同步刷新（「有批次破止损」警示点随新止损变化）
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('没改成：${_extractApiError(e)}', AppColors.darkOrange);
     }
   }
 
@@ -3199,6 +3274,10 @@ class _LotDetailSheet extends StatelessWidget {
   /// 该标的累计手续费（买入/卖出/合计）；null = 旧后端/未取到
   final SymbolFee? fee;
   final String? error;
+  /// 2026-09-22（P2-交易59 C2）：改这一批的止损位（用户拍板「止损要能在 app 改」）
+  final void Function(LotItem lot)? onEditStopLoss;
+  /// 该票的历次了结回合（买→卖→亏赚）；空 = 没有 / 取不到（不显示这一区）
+  final List<SoldTradeDto> rounds;
 
   const _LotDetailSheet({
     required this.symbol,
@@ -3206,6 +3285,8 @@ class _LotDetailSheet extends StatelessWidget {
     required this.lots,
     this.fee,
     this.error,
+    this.onEditStopLoss,
+    this.rounds = const [],
   });
 
   @override
@@ -3258,7 +3339,7 @@ class _LotDetailSheet extends StatelessWidget {
                       for (final l in visible)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 7),
-                          child: _LotTile(lot: l),
+                          child: _LotTile(lot: l, onEditStopLoss: onEditStopLoss),
                         ),
                       // 2026-09-16：合计行 + 该票累计手续费（卖出含印花税，通常远大于买入）
                       if (visible.isNotEmpty) ...[
@@ -3278,6 +3359,39 @@ class _LotDetailSheet extends StatelessWidget {
                             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5),
                           ),
                         ],
+                      ],
+                      // 2026-09-22（P2-交易59 C2）：历次了结回合（买 → 卖 → 亏赚）——
+                      // 此前手机上完全看不到（只有 web「清仓」Tab 有），而用户说的「看某只票的仓」
+                      // 本就包含「这只票我以前做过几次、结果如何」。取不到 → 整区不显示（不摆空壳）。
+                      if (rounds.isNotEmpty) ...[
+                        const Divider(height: 22),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('历次回合（${rounds.length} 次 · 买 → 卖）',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkGrey2)),
+                        ),
+                        const SizedBox(height: 5),
+                        for (final r in rounds)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '${_fmtShortDate(r.buyDate ?? '')} → ${_fmtShortDate(r.sellDate ?? '')}'
+                                ' · ${r.holdDays} 天'
+                                ' · ${r.holdPnlPct > 0 ? '+' : ''}${r.holdPnlPct.toStringAsFixed(2)}%'
+                                '${r.verdict.isNotEmpty ? ' · ${r.verdict}' : ''}',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: r.holdPnlPct > 0
+                                        ? AppColors.darkRed
+                                        : r.holdPnlPct < 0
+                                            ? AppColors.darkGreen
+                                            : AppColors.darkGrey3),
+                              ),
+                            ),
+                          ),
                       ],
                     ],
                   ),
@@ -3305,8 +3419,10 @@ String _fmtSigned(double v) => '${v >= 0 ? '+' : ''}${_fmtMoneyFull(v)}';
 /// 单批次行：日期+状态徽标+盈亏大字 / 剩余·成本·现价 / （破止损警示）。
 class _LotTile extends StatelessWidget {
   final LotItem lot;
+  /// 2026-09-22（P2-交易59 C2）：改这一批的止损位（null = 只读场景，不显示入口）。
+  final void Function(LotItem lot)? onEditStopLoss;
 
-  const _LotTile({required this.lot});
+  const _LotTile({required this.lot, this.onEditStopLoss});
 
   @override
   Widget build(BuildContext context) {
@@ -3362,6 +3478,36 @@ class _LotTile extends StatelessWidget {
       if (lot.buyFee > 0)
         Text('买入手续费 ${lot.buyFee.toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      // 2026-09-22（P2-交易59 C2）：止损位可见 + 行内可改。
+      // 此前手机上**连当前止损位都看不到**（只有"破止损未走"的警示），改止损只能去 web。
+      if (!lot.closed)
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            lot.stopLossPrice != null
+                ? '止损 ${lot.stopLossPrice!.toStringAsFixed(2)}'
+                : '止损未设（默认 −7%）',
+            style: TextStyle(
+                fontSize: 11,
+                color: breach ? AppColors.darkOrange : AppColors.darkGrey5),
+          ),
+          if (onEditStopLoss != null) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => onEditStopLoss!(lot),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.6)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('改',
+                    style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.darkGreen)),
+              ),
+            ),
+          ],
+        ]),
       if (breach) ...[
         const SizedBox(height: 4),
         Row(mainAxisSize: MainAxisSize.min, children: [

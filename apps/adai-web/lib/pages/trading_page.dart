@@ -1676,9 +1676,12 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildIntegrityBanner(IntegrityReportDto r) {
     final drift = r.drift;
     final gaps = r.gaps;
+    // 2026-09-21（P1-交易61）：锚定日是**推断**的、且当天有成交只落了流水 → 这些成交可能没进持仓
+    final degradedWarn = r.degraded.where((d) => d.inferred).toList();
     final parts = <String>[
       if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
       if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
+      if (degradedWarn.isNotEmpty) '${degradedWarn.length} 笔成交没进持仓',
     ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1719,6 +1722,16 @@ class _TradingPageState extends State<TradingPage> {
               padding: const EdgeInsets.only(bottom: 3),
               child: Text('回放缺口 · ${g.display}',
                   style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
+            ),
+          // 2026-09-21（P1-交易61）：锚定日系推断 → 这些成交「只在流水里、没进持仓」，必须让用户看见
+          for (final d in degradedWarn)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                  '只记了流水、没进持仓 · ${d.name}(${d.symbol}) '
+                  '${d.direction == 'BUY' ? '买' : '卖'} ${d.volume} 股'
+                  '${d.price != null ? ' @${d.price}' : ''}（${d.entryDate ?? '—'}）',
+                  style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
             ),
           const SizedBox(height: 2),
           const Text('先导一次「持仓股」或「资金股份查询」快照，我就能重新对上了。',
