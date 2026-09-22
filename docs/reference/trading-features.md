@@ -67,7 +67,7 @@ tags: [trading, plugin, reference]
 | GET | `/trading/positions` | 查询持仓 | 注入实时行情现价（行情失败降级存储价=成本价） |
 | GET | `/trading/positions/daily` | **持仓列表视图（v3.66，2026-09-14）** | 原持仓 + **逐股当日口径**（平行 map `daily{symbol}`）：`todayPnl` 当日盈亏（**券商口径**＝今天真实赚亏）/ `dayChangePct` 今日涨跌幅 %（(现价−昨收)/昨收）/ `positionRatio` 仓位比例 %（该股市值/总资产含现金）；外层 `totalPositionRatio` 总仓位 + `cashRatio` 现金比例 + `notes` 未计入说明。**可空字段前端一律「—」，不得渲染成 0%**。独立端点是为了不破坏 `/positions` 的 `List<Position>` 形状（app/web/admin 三处消费） |
 | GET | `/trading/portfolio` | 投资组合快照 | 持仓（行情注入后）+ 现金（唯一真源 = account.json 的 cash，S5） |
-| POST | `/trading/positions/import` | 持仓初始化导入 | 通达信导出 upsert；`replace=true` 全量覆盖（以文件为准）；**v3.61：`snapshotDate` 可选（快照自身日期 = 文件名日期，兼容 yyyyMMdd）**——`replace=true` 时作为锚定日并记录**持仓基线**（`snapshot-anchor.json` 的 `holdings`，对账闸门 `derived` 的来源）；不传退回导入日；name 行情补全；返回 `missingStopLoss` 提示补设（R68） |
+| POST | `/trading/positions/import` | 持仓初始化导入 | 通达信导出 upsert；`replace=true` 全量覆盖（以文件为准）；**v3.61：`snapshotDate` 可选（快照自身日期 = 文件名日期，兼容 yyyyMMdd）**——`replace=true` 时作为锚定日并记录**持仓基线**（`snapshot-anchor.json` 的 `holdings`，对账闸门 `derived` 的来源）；不传退回导入日；name 行情补全；**v3.85：body 可选 `currentPrice`（券商「持仓股」导出的「现价」列）**——此前该列被整列丢弃、落库拿 `avgCost` 顶替（`positions.md` 的现价永远等于成本价；平时被运行时行情注入盖住，**行情源不可用时显示成「0 盈亏 + 市值退回成本」的假象**）；取舍顺序 **券商现价 > 保留原有存储价 > 成本价兜底**（缺字段绝不写回成本价）；返回 `missingStopLoss` 提示补设（R68） |
 | PUT | `/trading/positions/{symbol}` | 更新持仓元信息 | 只更新非空字段 role/止损位；不存在 404、止损位非数字 400；**targetPrice 无落盘字段（前端目标价编辑无效，P3）** |
 
 ### 3. 账户资金
@@ -231,7 +231,7 @@ tags: [trading, plugin, reference]
 **导入解析规则（前端 `trade_import_parser.dart`）**：
 
 - **交易 CSV**：逗号分隔（兼容中文逗号）、表头行自动跳过、方向归一化（买/BUY/买入→BUY，卖/SELL/卖出→SELL）、价格/数量>0、BUY 必填止损与买点（白名单校验）、错误逐行收集带行号不整批失败
-- **通达信持仓导出**：识别特征「证券代码|代码」+「成本价|成本」；表头列定位（版本差异容忍）；制表符/连续空格分隔；`#` 注释行跳过；代码 6 位；语义 = 当日券商口径快照 → 全量覆盖导入
+- **通达信持仓导出**：识别特征「证券代码|代码」+「成本价|成本」；表头列定位（版本差异容忍）；制表符/连续空格分隔；`#` 注释行跳过；代码 6 位；语义 = 当日券商口径快照 → 全量覆盖导入（**v3.85 起「现价」列如实保留**，不再用成本价顶替）
 - **通达信历史成交**：识别特征首有效行含「成交日期」「证券代码」「买卖标志」「成交编号」；解析在服务端（前端只传 content）
 - **自选/清仓/资金股份查询**：前端不解析，仅传文本给后端
 

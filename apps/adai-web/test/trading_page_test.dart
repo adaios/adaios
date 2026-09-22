@@ -1169,6 +1169,28 @@ void main() {
         expect(r.skipped.single, contains('603113'));
       });
 
+      // ── 券商「现价」列（2026-09-23 P2-交易65：这一列也被整列丢弃过）──
+      // 现场：券商「持仓股」导出带现价（002428 现价 88.43 / 成本 53.765），而前端只读
+      // 代码/名称/数量/成本四列、后端落库又拿 avgCost 顶替 → positions.md 里「现价」全等于成本价。
+      // 平时被实时行情盖住，行情源一挂就会显示成「0 盈亏 + 市值退回成本」的假象。
+      test('券商「现价」列必须带上送；无该列时不带该字段（P2-交易65）', () {
+        final r = parseTdxPositions(realFile);
+        final yunnan = r.rows.firstWhere((e) => e.symbol == '002428');
+        expect(yunnan.avgCost, closeTo(53.765, 0.0001));
+        expect(yunnan.currentPrice, closeTo(88.43, 0.0001),
+            reason: '现价必须与成本分开保留（原实现整列丢弃，落库只能用成本价顶替）');
+        expect(yunnan.toJson()['currentPrice'], closeTo(88.43, 0.0001),
+            reason: '上送请求体里要带现价，后端才知道真实市价');
+
+        // 无「现价」列的旧导出/旧文件 → currentPrice 为 null，且**不带该字段**
+        // （后端看到「缺字段」会保留原有存储价；带 null 会被当成显式清空）
+        final noPrice = parseTdxPositions(
+            '证券代码\t证券名称\t股票余额\t成本价\n600123\t立昂微\t200\t25.30\n');
+        expect(noPrice.rows.single.currentPrice, isNull);
+        expect(noPrice.rows.single.toJson().containsKey('currentPrice'), isFalse,
+            reason: '没有现价就不带该字段——后端据此保留原有存储价，而不是写回成本价');
+      });
+
       // ── 券商「当日盈亏」列（2026-09-13 用户点出：这一列一直没被读）──
       // 现场：账户卡显示 −2837.00（周六重算 + 双计污染持仓的产物），而文件里这一列 Σ = −1759.00
       // 与逐股复算一字不差 —— 权威值一直在用户手上，只是系统从来没解析它。

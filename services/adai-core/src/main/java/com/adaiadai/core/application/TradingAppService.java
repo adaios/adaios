@@ -1118,6 +1118,29 @@ public class TradingAppService {
      *
      * @param brokerTodayPnl 券商「持仓股」导出「当日盈亏」列之和（含 0 股行）。可 null。
      */
+    /**
+     * 持仓导入的「现价」取舍（P2-交易65，2026-09-23）。
+     * <p>
+     * 优先券商导出自带的现价（{@code item.currentPrice()}）；文件没有这一列（旧导出/旧前端）时
+     * <b>保留原有存储价</b>；只有「新持仓且无任何现价来源」才回退成本价。
+     * <p>
+     * <b>为什么不能一律写 avgCost</b>：运行时 {@code getPositions} 会用行情注入覆盖存储价，
+     * 所以平时看不出来；但行情源不可用时（P1-交易62 那种整段失效）代码回退存储价，
+     * 于是持仓页把成本价当真实市价 → 「0 盈亏 + 市值退回成本」的**假象**（2026-08-16 修过的同型病）。
+     *
+     * @param item     导入项（currentPrice 可空）
+     * @param existing 该标的已有存储价（新持仓传 null；可空/可为脏值）
+     */
+    private static BigDecimal resolveCurrentPrice(PositionImportItem item, BigDecimal existing) {
+        if (item.currentPrice() != null && item.currentPrice().signum() > 0) {
+            return item.currentPrice();
+        }
+        if (existing != null && existing.signum() > 0) {
+            return existing;
+        }
+        return item.avgCost();
+    }
+
     public PositionImportResult importPositions(String userId, List<PositionImportItem> items, boolean replace,
                                                 LocalDate snapshotDate, BigDecimal brokerTodayPnl) {
         if (items == null || items.isEmpty()) {
@@ -1166,7 +1189,8 @@ public class TradingAppService {
                     if (current.get(i).symbol().equals(symbol)) {
                         Position p = current.get(i);
                         effectiveStopLoss = item.stopLossPrice() != null || p.stopLossPrice() != null;
-                        current.set(i, new Position(symbol, name, item.quantity(), item.avgCost(), item.avgCost(),
+                        current.set(i, new Position(symbol, name, item.quantity(), item.avgCost(),
+                                resolveCurrentPrice(item, p.currentPrice()),
                                 LocalDateTime.now(),
                                 item.entryDate() != null ? item.entryDate() : p.entryDate(),
                                 item.stopLossPrice() != null ? item.stopLossPrice() : p.stopLossPrice(),
@@ -1177,7 +1201,8 @@ public class TradingAppService {
                     }
                 }
                 if (!found) {
-                    current.add(new Position(symbol, name, item.quantity(), item.avgCost(), item.avgCost(),
+                    current.add(new Position(symbol, name, item.quantity(), item.avgCost(),
+                            resolveCurrentPrice(item, null),
                             LocalDateTime.now(),
                             item.entryDate() != null ? item.entryDate() : LocalDate.now(),
                             item.stopLossPrice(), item.buyPoint(), item.role()));
@@ -1270,6 +1295,14 @@ public class TradingAppService {
     }
 
     /** 持仓导入项（通达信/批量，symbol 必填；name 缺失行情补全；止损/买点可选——缺失提示补设）。 */
+    /**
+     * 持仓导入项。
+     * <p>
+     * 2026-09-23（P2-交易65 修复）：新增 {@code currentPrice}——券商「持仓股」导出带「现价」列
+     * （实测 002428 现价 93.50 / 成本 41.58），而此前入参根本没有这个字段，落库只能拿
+     * {@code avgCost} 顶替 → 存储层的「现价」永远是成本价，行情源一挂就显示成 0 盈亏。
+     * 可空（旧前端 / 无该列的导出）：为 null 时导入侧**保留原有存储价**，绝不写回成本价。
+     */
     public record PositionImportItem(
             String symbol,
             String name,
@@ -1278,8 +1311,16 @@ public class TradingAppService {
             BigDecimal stopLossPrice,
             String buyPoint,
             String role,
-            LocalDate entryDate
-    ) {}
+            LocalDate entryDate,
+            BigDecimal currentPrice
+    ) {
+        /** 兼容构造（2026-09-23 之前的 8 参调用 / 旧前端）：不带券商现价。 */
+        public PositionImportItem(String symbol, String name, int quantity, BigDecimal avgCost,
+                                  BigDecimal stopLossPrice, String buyPoint, String role,
+                                  LocalDate entryDate) {
+            this(symbol, name, quantity, avgCost, stopLossPrice, buyPoint, role, entryDate, null);
+        }
+    }
 
     /** 导入结果：导入数量 + 未设止损列表（R68 提示）。 */
     public record PositionImportResult(int imported, List<String> missingStopLoss) {}

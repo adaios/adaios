@@ -190,19 +190,28 @@ class TdxPositionRow {
   final int quantity;
   final double avgCost;
 
+  /// 券商导出的「现价」（可空：旧导出/无该列）。
+  /// 2026-09-23（P2-交易65）：券商「持仓股」导出**有现价列**（实测 002428 现价 93.50 / 成本 41.58），
+  /// 此前整列被丢弃、落库时拿 `avgCost` 顶替 → 存储层「现价」永远等于成本价；
+  /// 平时被行情注入盖住，一旦行情源不可用就会显示成「0 盈亏 + 市值退回成本」的假象。
+  final double? currentPrice;
+
   TdxPositionRow({
     required this.symbol,
     required this.name,
     required this.quantity,
     required this.avgCost,
+    this.currentPrice,
   });
 
   /// 转 POST /trading/positions/import 请求项。
+  /// [currentPrice] 缺列/取不到数时为 null → **不带该字段**（后端保留原有存储价，不写回成本价）。
   Map<String, dynamic> toJson() => {
         'symbol': symbol,
         'name': name,
         'quantity': quantity,
         'avgCost': avgCost,
+        if (currentPrice != null) 'currentPrice': currentPrice,
       };
 }
 
@@ -292,11 +301,21 @@ TdxParseResult parseTdxPositions(String text) {
           idx['quantity'] ??= c;
         }
         if (h.contains('成本价') || h == '成本') idx['cost'] = c;
+        // 「现价」（2026-09-23 P2-交易65）：券商「持仓股」导出自带现价列，此前整列丢弃。
+        // 兼容别名「最新价」；**不可写成 contains('价')**——那会命中「成本价」。
+        if (h.contains('现价') || h.contains('最新价')) idx['price'] = c;
         // 「当日盈亏」：注意不能写成 contains('盈亏')——那会命中「持仓盈亏」（累计口径，不是当日）
         if (h.contains('当日盈亏')) idx['todayPnl'] = c;
       }
       if (idx.containsKey('symbol') && idx.containsKey('quantity') && idx.containsKey('cost')) {
-        col = [idx['symbol']!, idx['name'] ?? -1, idx['quantity']!, idx['cost']!, idx['todayPnl'] ?? -1];
+        col = [
+          idx['symbol']!,
+          idx['name'] ?? -1,
+          idx['quantity']!,
+          idx['cost']!,
+          idx['todayPnl'] ?? -1,
+          idx['price'] ?? -1,
+        ];
         todayPnlSeen = (idx['todayPnl'] ?? -1) >= 0;
         continue; // 表头本身跳过
       }
@@ -354,7 +373,15 @@ TdxParseResult parseTdxPositions(String text) {
       errors.add('第 ${i + 1} 行 $symbol $name：成本价「${cells[col[3]]}」不是数字');
       continue;
     }
-    rows.add(TdxPositionRow(symbol: symbol, name: name, quantity: quantity, avgCost: cost));
+    // 现价（2026-09-23 P2-交易65）：券商导出带该列时如实带上；缺列/非数字/非正 → null（不上送，
+    // 由后端保留原有存储价）。现价必须 > 0 才有意义（成本价允许为负，现价不允许）。
+    double? currentPrice;
+    if (col[5] >= 0 && col[5] < cells.length) {
+      final p = double.tryParse(cells[col[5]].replaceAll(',', ''));
+      if (p != null && p > 0) currentPrice = p;
+    }
+    rows.add(TdxPositionRow(
+        symbol: symbol, name: name, quantity: quantity, avgCost: cost, currentPrice: currentPrice));
   }
   final double? todayPnl =
       (todayPnlSeen && !todayPnlBroken) ? double.parse(todayPnlSum.toStringAsFixed(2)) : null;
