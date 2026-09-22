@@ -44,7 +44,7 @@ tags: [trading, plugin, reference]
 
 ---
 
-## 一、后端端点总表（TradingController 46 个 + TradingCaseController 4 个 + admin 1 个）
+## 一、后端端点总表（TradingController 46 个 + TradingCaseController 4 个 + **TradingEvidenceController 3 个** + admin 1 个）
 
 > 全部端点要求 `X-User-Id` header（默认 `"default"`）；除注明外均受 trading 插件门控（未启用 → 403）。**TradingController 45 个端点均有实现，无 TODO 占位**（2026-08-17/18 批次补齐了此前 404 的 batch/import/positions/{symbol}；2026-08-25 新增 /lots；2026-08-26 新增 /screenshots；2026-08-27 新增 PUT /trade-log/date；2026-08-30 新增 GET/PUT /rules；2026-09-04 新增 GET/PUT /market-stage；**2026-09-12 账实一致性批新增 GET /integrity + GET /anchor + PUT /anchor**）。**TradingCaseController 4 个（2026-08-30 第四阶段完美买点案例，见 §10）**。
 
@@ -103,7 +103,19 @@ tags: [trading, plugin, reference]
 
 | 方法 | 路径 | 功能 | 说明 |
 |:--|:--|:--|:--|
-| POST | `/trading/advice` | 生成持仓建议 | 读持仓+实时行情+规则文本（抽取 `constraintRuleMin~constraintRuleMax` 区间作决策硬约束——**第三阶段按用户规则，默认 66-95 = adai R66-R95 止损+仓位**）+strategy.md → LLM 逐票建议（buy/hold/reduce/clear，reason/rules 必须引用规则号）；**引擎硬判定覆盖 LLM 输出**（跌破止损位→强制 clear；超仓位且 R81 适用→buy 保守改 reduce）；LLM 失败降级基础数据永不抛错；**解读是输出不是指令** |
+| POST | `/trading/advice` | 生成持仓建议 | 读持仓+实时行情+规则文本（抽取 `constraintRuleMin~constraintRuleMax` 区间作决策硬约束——**第三阶段按用户规则，默认 66-95 = adai R66-R95 止损+仓位**）+strategy.md → LLM 逐票建议（buy/hold/reduce/clear，reason/rules 必须引用规则号）；**引擎硬判定覆盖 LLM 输出**（跌破止损位→强制 clear；超仓位且 R81 适用→buy 保守改 reduce）；LLM 失败降级基础数据永不抛错；**解读是输出不是指令**；**v3.81（2026-09-22）：响应每条建议新增 `evidence`（四要素铁证，见 §6.6）** |
+
+### 6.6 交易决策的铁证（v3.81，2026-09-22，RFC 20260922 A 批，TradingEvidenceController 3 个）
+
+> 「阿呆凭什么这么说」的四要素证据（设计口径见 `../../docs/rfc/20260922-trading-decision-copilot.md`）。只读、或只写自己那条留痕——**不改建议、不动账目**。
+
+| 方法 | 路径 | 功能 | 说明 |
+|:--|:--|:--|:--|
+| GET | `/trading/evidence/history` | **① 本人历史操作统计** | `?dimension=HOLD_DAYS\|PNL_BUCKET\|VERDICT\|BUY_POINT`（默认 `HOLD_DAYS`）；分桶给「次数 / 胜率 / 平均盈亏 / 平均持天」；**样本门槛 5**——不足的组 `sufficient=false`，`anySufficient=false` 时调用方**必须说「样本还不够」**；`BUY_POINT` 的形态记在**批次**上（`symbol+buyDate` join），**对不上归「未标形态」、不猜**；需 trading 插件 |
+| GET | `/trading/evidence/rule/{ruleRef}` | **③ 规则依据原文** | 逐字取自 `os/trading-engine/knowledge/context/rules.md`（`R66`/`r66`/`66` 都认）；找不到 → **404，不替你编一条**；**不做插件门控**（规则原文属公共知识，运维可直接核对）|
+| POST | `/trading/evidence/backfill` | **④ 结果回填（可追责）** | 按 **N 个交易日**（默认 5，`adai.trading.advice-outcome-days` 可配）写回实际走势 `priceThen`/`priceAfter`/`pct` 与用户**有没有操作** `userActed`（`traded`/`none`/`unknown`——流水读不到记 unknown，**不谎报 none**）；**幂等**（已回填不覆盖）· **只记事实、不判对错** · **数据不全不写半成品**；返回 `{"written":N}`；需 trading 插件 |
+
+**配套**：`POST /trading/advice` 的每条 `advice[]` 带 `evidence`（②当时的数字 · ①历史统计 · ③规则原文 · ④留痕 id；**出口统一补齐，补不出留空、绝不编造**）；留痕文件 `trading/advice-history/{yyyy-MM}.json` 新增可选 **`basis`**（依据快照）/ **`outcome`**（回填结果）——见 `../architecture/data-format-freeze.md` §2.20。
 
 ### 7. 复盘 / 推送 / 交易日志
 
