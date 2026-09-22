@@ -126,6 +126,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -140,6 +141,41 @@ class TradingControllerTest {
     private MockMvc buildMvc(TradingAppService tradingAppService) {
         return buildMvc(tradingAppService, mock(TradingReviewAppService.class));
     }
+
+    /**
+     * B3 接线用例专用（RFC 20260922 B 批）：把 `TradingSessionPushService` 暴露成可验证的 mock——
+     * 「账同步完成 → 触发收盘复盘」这条接线必须被钉住（否则导入静默不触发，用户收盘后永远等不到复盘，
+     * 而**没有任何测试会红**）。
+     */
+    private MockMvc buildMvcWithSync(TradingAppService trading,
+                                     com.adaiadai.core.application.TradingSessionPushService sync) {
+        com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository ruleRepo =
+                mock(com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository.class);
+        when(ruleRepo.findByUser(any())).thenReturn(com.adaiadai.core.domain.trading.TradingRuleSettings.defaults());
+        TradingController controller = new TradingController(trading, mock(TradingReviewAppService.class),
+                mock(TradingAdviceAppService.class), mock(TradingParseAppService.class),
+                pluginService("trading"),
+                mock(WatchlistBuyPointService.class), mock(SoldScoreService.class),
+                mock(PushSettingsRepository.class), ruleRepo,
+                mock(TradeLogCollectService.class),
+                mock(com.adaiadai.core.application.TradingScreenshotAppService.class),
+                mock(com.adaiadai.core.infrastructure.storage.MarketPushRepository.class),
+                mock(TradingLotService.class),
+                mock(com.adaiadai.core.infrastructure.market.NameToSymbolResolver.class),
+                mock(TradingMarketStageRepository.class),
+                mock(TradingProfileService.class),
+                mock(TradePsychologyService.class),
+                sync,
+                "../../os/trading-engine/knowledge/context");
+        ObjectMapper om = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(om))
+                .build();
+    }
+
     private MockMvc buildMvc(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
                              TradingScreenshotAppService screenshotAppService,
@@ -158,6 +194,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -191,6 +228,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -218,6 +256,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -247,6 +286,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -445,6 +485,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -986,6 +1027,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper();
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
@@ -1341,6 +1383,7 @@ class TradingControllerTest {
                  mock(TradingMarketStageRepository.class),
                  mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                  "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1383,6 +1426,7 @@ class TradingControllerTest {
                  mock(TradingMarketStageRepository.class),
                  mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                  "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1434,6 +1478,42 @@ class TradingControllerTest {
                 eq(java.time.LocalDate.of(2026, 9, 11)), cap.capture());
         assertEquals(0, new java.math.BigDecimal("-1759.00").compareTo(cap.getValue()),
                 "券商当日盈亏必须原样传到 service（实际 " + cap.getValue() + "）");
+    }
+
+    @Test
+    void importPositions_success_triggersDailyReviewAfterSync() throws Exception {
+        // RFC 20260922 B 批 B3：账同步完成 → 触发收盘复盘（收盘前/后、今天发过没，由推送服务内部判定）
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+                new TradingAppService.PositionImportResult(2, java.util.List.of()));
+        com.adaiadai.core.application.TradingSessionPushService sync =
+                mock(com.adaiadai.core.application.TradingSessionPushService.class);
+        MockMvc mvc = buildMvcWithSync(trading, sync);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"symbol\":\"600519\",\"name\":\"贵州茅台\",\"quantity\":100,\"avgCost\":1400}]"))
+                .andExpect(status().isOk());
+
+        verify(sync, org.mockito.Mockito.times(1)).afterDataSync("default");
+    }
+
+    @Test
+    void importPositions_noRows_doesNotTriggerSync() throws Exception {
+        // 空导入不算「账同步完成」——否则一次什么都没导的操作也会让复盘冒出来
+        TradingAppService trading = mock(TradingAppService.class);
+        when(trading.importPositions(any(), any(), anyBoolean(), any(), any())).thenReturn(
+                new TradingAppService.PositionImportResult(0, java.util.List.of()));
+        com.adaiadai.core.application.TradingSessionPushService sync =
+                mock(com.adaiadai.core.application.TradingSessionPushService.class);
+        MockMvc mvc = buildMvcWithSync(trading, sync);
+
+        mvc.perform(post("/api/v1/trading/positions/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isOk());
+
+        verify(sync, org.mockito.Mockito.never()).afterDataSync(any());
     }
 
     @Test
@@ -1579,6 +1659,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1609,6 +1690,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -1637,6 +1719,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -2052,6 +2135,7 @@ class TradingControllerTest {
                 stageRepo,
                 mock(TradingProfileService.class),
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2157,6 +2241,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 profile,
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2242,6 +2327,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 profile,
                 mock(TradePsychologyService.class),
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2273,6 +2359,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 psychology,
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -2308,6 +2395,7 @@ class TradingControllerTest {
                 mock(TradingMarketStageRepository.class),
                 mock(TradingProfileService.class),
                 psychology,
+                mock(com.adaiadai.core.application.TradingSessionPushService.class),
                 "../../os/trading-engine/knowledge/context");
         ObjectMapper om = new ObjectMapper()
                 .registerModule(new JavaTimeModule())

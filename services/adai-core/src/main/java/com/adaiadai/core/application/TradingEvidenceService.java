@@ -160,21 +160,8 @@ public class TradingEvidenceService {
 
     private static String labelOf(SoldTrade t, Dimension dim, Map<String, String> buyPointOf) {
         return switch (dim) {
-            case HOLD_DAYS -> {
-                int d = t.holdDays();
-                if (d <= 1) yield "≤1 天";
-                if (d <= 3) yield "2-3 天";
-                if (d <= 10) yield "4-10 天";
-                yield ">10 天";
-            }
-            case PNL_BUCKET -> {
-                double p = t.holdPnlPct();
-                if (p >= 10) yield "≥+10%";
-                if (p >= 5) yield "+5~10%";
-                if (p >= 0) yield "0~+5%";
-                if (p >= -5) yield "-5~0%";
-                yield "<-5%";
-            }
+            case HOLD_DAYS -> holdBucket(t.holdDays());
+            case PNL_BUCKET -> pnlBucket(t.holdPnlPct());
             case VERDICT -> {
                 String v = t.verdict();
                 yield (v == null || v.isBlank()) ? "（未判定）" : v;
@@ -185,6 +172,26 @@ public class TradingEvidenceService {
                 yield (bp == null || bp.isBlank()) ? "未标形态" : bp;
             }
         };
+    }
+
+    /**
+     * 盈亏区间分桶（RFC 20260922 B 批：从 {@link #labelOf} 抽出为 public static——尾盘卖点的
+     * 四要素①要按「这笔**现在所处**的区间」去找历史，口径必须与统计侧逐字一致，否则会找错桶）。
+     */
+    public static String pnlBucket(double pnlPct) {
+        if (pnlPct >= 10) return "≥+10%";
+        if (pnlPct >= 5) return "+5~10%";
+        if (pnlPct >= 0) return "0~+5%";
+        if (pnlPct >= -5) return "-5~0%";
+        return "<-5%";
+    }
+
+    /** 持仓时长分桶（口径同 {@link #HOLD_ORDER}；抽出理由同上）。 */
+    public static String holdBucket(int holdDays) {
+        if (holdDays <= 1) return "≤1 天";
+        if (holdDays <= 3) return "2-3 天";
+        if (holdDays <= 10) return "4-10 天";
+        return ">10 天";
     }
 
     /**

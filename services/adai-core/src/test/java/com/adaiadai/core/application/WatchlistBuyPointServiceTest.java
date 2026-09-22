@@ -15,10 +15,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -125,5 +128,52 @@ class WatchlistBuyPointServiceTest {
         svc.scanWatchlist(List.of(
                 new WatchlistItem("000725", "京东方A", "电子", "电子元件", 1, 1, 1, "回调", null)), "adai");
         verify(mockRepo, times(0)).list(anyString());
+    }
+
+    // ── B4（RFC 20260922）：取不到行情 ≠ 没有信号 ──
+
+    @Test
+    void scanDetailed_klineEmpty_reportsUnavailableNotNoSignal() {
+        // KlineService 双源失败 → 空列表；这与「有 K 线但没命中」必须分得开（P1-交易60）
+        when(klineService.kline(anyString(), anyInt())).thenReturn(List.of());
+        WatchlistBuyPointService svc = service(false);
+
+        WatchlistBuyPointService.ScanResult result = svc.scanWatchlistDetailed(List.of(
+                new WatchlistItem("600487", "亨通光电", "通信", "通信设备", 0, 0, 0, "", null)), "adai");
+
+        assertTrue(result.hits().isEmpty());
+        assertEquals(1, result.unavailable().size(), "取不到行情的标的必须单独报出来");
+        assertEquals("600487", result.unavailable().get(0).symbol());
+        assertEquals("亨通光电", result.unavailable().get(0).name());
+        assertNull(result.dataDate());
+    }
+
+    @Test
+    void scanDetailed_partialFailure_separatesUnavailableFromNoSignal() {
+        // 京东方有数据（判定了但没命中）→ 不算 unavailable；茅台取不到 → 算 unavailable
+        when(klineService.kline(eq("000725"), anyInt())).thenReturn(buildCandles());
+        when(klineService.kline(eq("600519"), anyInt())).thenReturn(List.of());
+        WatchlistBuyPointService svc = service(false);
+
+        WatchlistBuyPointService.ScanResult result = svc.scanWatchlistDetailed(List.of(
+                new WatchlistItem("000725", "京东方A", "电子", "电子元件", 1, 1, 1, "回调", null),
+                new WatchlistItem("600519", "贵州茅台", "白酒", "白酒", 0, 0, 0, "", null)), "adai");
+
+        assertEquals(1, result.unavailable().size());
+        assertEquals("600519", result.unavailable().get(0).symbol());
+        assertNotNull(result.dataDate(), "有数据的标的应给出数据日期");
+    }
+
+    @Test
+    void scanDetailed_stableOrder_matchesWatchlist() {
+        // 结果按下标回填：推送里的逐票顺序不该随线程完成先后乱跳
+        when(klineService.kline(anyString(), anyInt())).thenReturn(List.of());
+        WatchlistBuyPointService svc = service(false);
+        WatchlistBuyPointService.ScanResult result = svc.scanWatchlistDetailed(List.of(
+                new WatchlistItem("600487", "亨通光电", "", "", 0, 0, 0, "", null),
+                new WatchlistItem("600206", "有研新材", "", "", 0, 0, 0, "", null)), "adai");
+
+        assertEquals(List.of("600487", "600206"),
+                result.unavailable().stream().map(WatchlistBuyPointService.Unavailable::symbol).toList());
     }
 }

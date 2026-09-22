@@ -29,6 +29,7 @@ import com.adaiadai.core.infrastructure.storage.PushSettingsRepository;
 import com.adaiadai.core.infrastructure.storage.TradingRuleSettingsRepository;
 import com.adaiadai.core.application.TradeLogCollectService;
 import com.adaiadai.core.application.TradingScreenshotAppService;
+import com.adaiadai.core.application.TradingSessionPushService;
 import jakarta.validation.Constraint;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
@@ -92,6 +93,8 @@ public class TradingController {
     private final TradingProfileService profileService;
     /** RFC 20260905 P2：清仓情绪采集（提问生成 + 回答回填）。 */
     private final TradePsychologyService psychologyService;
+    /** RFC 20260922 B 批 B3：账同步完成 → 触发收盘复盘（不再 15:30 到点硬发一份基于旧账的复盘）。 */
+    private final TradingSessionPushService sessionPushService;
 
     public TradingController(TradingAppService tradingAppService,
                              TradingReviewAppService reviewAppService,
@@ -110,6 +113,7 @@ public class TradingController {
                              TradingMarketStageRepository marketStageRepository,
                              TradingProfileService profileService,
                              TradePsychologyService psychologyService,
+                             TradingSessionPushService sessionPushService,
                              @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.tradingAppService = tradingAppService;
         this.reviewAppService = reviewAppService;
@@ -128,6 +132,7 @@ public class TradingController {
         this.marketStageRepository = marketStageRepository;
         this.profileService = profileService;
         this.psychologyService = psychologyService;
+        this.sessionPushService = sessionPushService;
         // knowledgeDir 形如 .../knowledge/context → 99-inbox 在其上两级（os/trading-engine/99-inbox）
         this.inboxDir = Paths.get(knowledgeDir, "../..", "99-inbox").toAbsolutePath().normalize();
     }
@@ -303,6 +308,8 @@ public class TradingController {
         }
         TradingAppService.PositionImportResult result = tradingAppService.importPositions(
                 userId, items != null ? items : List.of(), replace, snapshot, brokerTodayPnl);
+        // RFC 20260922 B 批 B3：账同步完成 → 交给推送服务决定是否出复盘（收盘后立即出 / 收盘前留给 15:30）
+        if (result.imported() > 0) sessionPushService.afterDataSync(userId);
         return ResponseEntity.ok(Map.of(
                 "imported", result.imported(),
                 "missingStopLoss", result.missingStopLoss()));
@@ -405,6 +412,10 @@ public class TradingController {
         TradingAppService.HistoricalTradeImportResult result =
                 tradingAppService.importHistoricalTrades(userId, content != null ? content : "",
                         importMode, dryRun);
+        // RFC 20260922 B 批 B3：历史成交导入也是一次账同步（dryRun 只算计划、不算同步）
+        if (!dryRun && (result.imported() > 0 || result.updated() > 0)) {
+            sessionPushService.afterDataSync(userId);
+        }
         // RFC 20260825：响应扩展 syncMode（sync 同步持仓 | append 只补流水）+ 每日操作总结（客观聚合 + 行为标注）
         java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
         resp.put("imported", result.imported());
@@ -828,6 +839,28 @@ public class TradingController {
         if (denied != null) return denied;
         List<WatchlistItem> watchlist = tradingAppService.watchlistList(userId);
         return ResponseEntity.ok(buyPointService.scanWatchlist(watchlist, userId));
+    }
+
+    /**
+     * 自选买点**完整扫描**（RFC `20260922` B 批 B4，收口 P1-交易60）：
+     * 命中 {@code hits} + **没能判定的标的** {@code unavailable} + 判定所用数据日期 {@code dataDate}。
+     * <p>
+     * 为什么另开端点而不是改 {@code GET /buy-points}：后者的「JSON 数组」形状被 web 与 app 两处消费，
+     * 改形状是 breaking；而对用户的意义是**「今天没机会」与「今天我没取到行情」终于能分开说**
+     * （生产实据 2026-09-18 10:37 双源失败就砸在用户看盘的同一分钟）。
+     */
+    @GetMapping("/buy-points/scan")
+    public ResponseEntity<?> buyPointsScan(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+        ResponseEntity<?> denied = requireTradingPlugin(userId);
+        if (denied != null) return denied;
+        List<WatchlistItem> watchlist = tradingAppService.watchlistList(userId);
+        WatchlistBuyPointService.ScanResult r = buyPointService.scanWatchlistDetailed(watchlist, userId);
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("hits", r.hits());
+        resp.put("unavailable", r.unavailable());
+        resp.put("dataDate", r.dataDate() != null ? r.dataDate() : "");
+        return ResponseEntity.ok(resp);
     }
 
     /** 账户总体快照（资产/可用/可取/参考市值/盈亏/当日盈亏，GET /api/v1/trading/account）。 */
@@ -1369,6 +1402,8 @@ public class TradingController {
                 "snapshotDate");
         TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
                 userId, content != null ? content : "", snapshot);
+        // RFC 20260922 B 批 B3：资金股份快照是一次账同步（同步完成 → 可出复盘）
+        sessionPushService.afterDataSync(userId);
         return ResponseEntity.ok(Map.of(
                 "cash", r.cash(),
                 "assets", r.assets(),

@@ -90,14 +90,38 @@ public class WatchlistBuyPointService {
     public record CaseMatchLite(String caseId, String buyDate, String buyType,
                                 double similarityPercent) {}
 
+    /**
+     * 没能判定的标的（RFC `20260922` B 批 B4 / P1-交易60）。
+     *
+     * <p><b>为什么要把它单独列出来</b>：扫描对每只票「K 线取不到」与「取了但没信号」原先**同样**是
+     * 「不在结果里」——用户在自选页看到空列，无法区分「今天没机会」和「今天我没拿到行情」。
+     * 生产实据（2026-09-18 10:37）双源失败发生在用户看盘的同一分钟；「不知道」绝不能渲染成「没问题」。
+     */
+    public record Unavailable(String symbol, String name) {}
+
+    /**
+     * 一次扫描的完整结果（B4）：命中 {@code hits} + 没能判定的 {@code unavailable} + 数据日期。
+     *
+     * @param dataDate 本次判定所用 K 线的末端日期（各标的取最晚的一根；无数据 → null）
+     */
+    public record ScanResult(List<WatchBuyPoint> hits, List<Unavailable> unavailable, String dataDate) {}
+
     /** 批量判定自选股买点（按用户规则参数；无规则 → 默认建议值）。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, String userId) {
-        return scanWatchlist(watchlist, detectorFor(userId), userId);
+        return scanWatchlistDetailed(watchlist, userId).hits();
     }
 
     /** 批量判定自选股买点（默认参数，测试/降级用）。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist) {
-        return scanWatchlist(watchlist, detectorFor(null), null);
+        return scanWatchlistDetailed(watchlist, null).hits();
+    }
+
+    /**
+     * 完整扫描（B4）：调用的**用户可见路径**（自选页 / 早盘推送）应当用它，以便把
+     * 「这些标的这次没取到行情」如实说出来，而不是静默少几行。
+     */
+    public ScanResult scanWatchlistDetailed(List<WatchlistItem> watchlist, String userId) {
+        return scanWatchlistInternal(watchlist, detectorFor(userId), userId);
     }
 
     /** 按用户规则构造买点判定器（无规则/损坏 → 默认参数）。 */
@@ -109,53 +133,80 @@ public class WatchlistBuyPointService {
                 s.buyVolumeSurge(), s.buyPriorHighDays());
     }
 
+    /** 兼容重载（只取命中）：需要「没能判定的标的」请用 {@link #scanWatchlistDetailed}。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, BuyPointDetector detector) {
-        return scanWatchlist(watchlist, detector, null);
+        return scanWatchlistInternal(watchlist, detector, null).hits();
     }
 
-    /** 批量判定（含二期案例相似度：开关开 → 每只附案例库 Top 3 参考）。 */
+    /** 兼容重载（只取命中）：需要「没能判定的标的」请用 {@link #scanWatchlistDetailed}。 */
     public List<WatchBuyPoint> scanWatchlist(List<WatchlistItem> watchlist, BuyPointDetector detector,
                                              String userId) {
-        List<WatchBuyPoint> hits = new ArrayList<>();
+        return scanWatchlistInternal(watchlist, detector, userId).hits();
+    }
+
+    /**
+     * 批量判定（含二期案例相似度：开关开 → 每只附案例库 Top 3 参考）+ **失败可见**（B4）。
+     * <p>
+     * 结果按自选顺序稳定排列（按下标回填，不按完成先后），以免推送里的逐票顺序每次都不一样。
+     */
+    private ScanResult scanWatchlistInternal(List<WatchlistItem> watchlist, BuyPointDetector detector,
+                                             String userId) {
+        int n = watchlist.size();
+        WatchBuyPoint[] results = new WatchBuyPoint[n];
+        Unavailable[] failed = new Unavailable[n];
+        List<String> dataDates = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<CaseRecord> cases = loadCases(userId == null ? "default" : userId);
-        List<Future<WatchBuyPoint>> futures = new ArrayList<>();
-        for (WatchlistItem item : watchlist) {
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            final WatchlistItem item = watchlist.get(i);
             futures.add(klinePool.submit(() -> {
                 // P2-交易2：按标的异常隔离——单只失败只跳过该只，不中断整批（B54）
                 try {
                     List<Candle> candles = klineService.kline(item.symbol(), 60);
+                    if (candles == null || candles.isEmpty()) {
+                        // B4（2026-09-22，收口 P1-交易60）：KlineService 双源都失败时返回空——
+                        // 这与「有 K 线但没命中」**不是一回事**，必须分别报出去（「不知道 ≠ 没问题」）
+                        failed[idx] = new Unavailable(item.symbol(), item.name());
+                        return;
+                    }
                     BuyPointDetector.BuyPointResult result = detector.detect(candles);
                     List<CaseMatchLite> matches = matchCases(candles, cases);
                     // 信号新鲜度（P1-交易20 P4）：判定所用 K 线最后一根的日期
-                    String dataDate = (candles == null || candles.isEmpty())
-                            ? null : candles.get(candles.size() - 1).date().toString();
+                    String dataDate = candles.get(candles.size() - 1).date().toString();
+                    dataDates.add(dataDate);
                     if (result.hit()) {
-                        return new WatchBuyPoint(item.symbol(), item.name(),
+                        results[idx] = new WatchBuyPoint(item.symbol(), item.name(),
                                 result.buyPoint(), result.score(), result.signals(), matches, dataDate);
-                    }
-                    // 未命中规则但案例相似度高 → 仍返回（带 empty buyPoint），供前端提示「形态接近完美买点」
-                    if (!matches.isEmpty()) {
-                        return new WatchBuyPoint(item.symbol(), item.name(),
+                    } else if (!matches.isEmpty()) {
+                        // 未命中规则但案例相似度高 → 仍返回（带 empty buyPoint），供前端提示「形态接近完美买点」
+                        results[idx] = new WatchBuyPoint(item.symbol(), item.name(),
                                 "case", 0, List.of(), matches, dataDate);
                     }
-                    return null;
                 } catch (Exception e) {
                     log.warn("自选买点判定失败 | symbol={} | {}", item.symbol(), e.getMessage());
-                    return null;
+                    failed[idx] = new Unavailable(item.symbol(), item.name());
                 }
             }));
         }
-        for (Future<WatchBuyPoint> f : futures) {
+        for (Future<?> f : futures) {
             try {
-                WatchBuyPoint hit = f.get(30, TimeUnit.SECONDS);
-                if (hit != null) hits.add(hit);
+                f.get(30, TimeUnit.SECONDS);
             } catch (Exception e) {
                 log.warn("自选买点扫描单只超时 | {}", e.getMessage());
             }
         }
-        log.info("自选买点扫描 | {} 只 → {} 命中（案例匹配 {} 只）", watchlist.size(), hits.size(),
-                hits.stream().filter(h -> !h.caseMatches().isEmpty()).count());
-        return hits;
+        List<WatchBuyPoint> hits = new ArrayList<>();
+        List<Unavailable> unavailable = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            if (results[i] != null) hits.add(results[i]);
+            if (failed[i] != null) unavailable.add(failed[i]);
+        }
+        String dataDate = dataDates.stream().max(java.util.Comparator.naturalOrder()).orElse(null);
+        log.info("自选买点扫描 | {} 只 → {} 命中（案例匹配 {} 只）· {} 只没取到行情 · 数据到 {}",
+                n, hits.size(), hits.stream().filter(h -> !h.caseMatches().isEmpty()).count(),
+                unavailable.size(), dataDate);
+        return new ScanResult(List.copyOf(hits), List.copyOf(unavailable), dataDate);
     }
 
     /**

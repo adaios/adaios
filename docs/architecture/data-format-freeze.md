@@ -529,3 +529,14 @@ params:
 | 变更 | **MINOR（2026-09-22，P1-交易61）**：新增 `positionsFileDate` / `cashFileDate`（快照**文件里的原始导出日**，未归一化）；老文件缺这两个字段 → 读作 `null`（= 无法判断锚定日是否被推断，对账如实说明，不误报）|
 
 **语义**：锚定 = 「全量覆盖导入」（持仓 replace / 资金股份查询）的元信息，供增量推导（sync 回放 / 手动成交 / 转账补记）判断「该笔是否已含在券商快照内」，防 P2-交易34 类重复入账。`positionsReplace`/`cashImport` 是**归一化后的数据基准日**（盘前 / 非交易日导出会退到上一交易日，见 `TradingAppService.normalizeAnchorDate`），`*FileDate` 是**文件名里的导出日**——两者不等即说明锚定日是**推断**出来的：此时「锚定日当天」的成交可能并不在快照里，`GET /trading/integrity` 的 `degraded[]` 据此把这类「只记了流水、没进持仓」的成交报出来（此前该端点会结构自洽地报「账实一致」= 假绿）。锚定日**只前进不后退**；补导更旧的快照不生效时保留既有 `*FileDate`（不被一份没生效的文件抹掉推断信息）。
+
+### 2.23 账同步与复盘状态 `trading/sync-state.json`（RFC 20260922 B 批 B3，2026-09-22 新增）
+
+| 项 | 值 |
+|:--|:--|
+| 路径 | `trading/sync-state.json`（每用户一个）|
+| 格式 | 单行 JSON：`{"lastSyncDate":"2026-09-22","lastSyncAt":"2026-09-22T15:12:03","dailyReviewDate":"2026-09-22"}`（三个字段都可为 `null`）|
+| 真相源 | `TradingSyncStateRepository`（infrastructure，读-改-写串行 + 复用 FileStorage 原子写）|
+| 变更 | **MINOR（2026-09-22，RFC 20260922 B 批）**：新增 |
+
+**语义**：回答两个**时间点事实**（不是账本内容，故不塞进 anchor）——① `lastSyncDate`/`lastSyncAt`：用户今天到底导没导账（持仓 / 资金 / 历史成交任一导入成功即记一次）；② `dailyReviewDate`：今天的收盘复盘推没推过（每天至多一条，防「15:30 兜底 + 随后补导」双发）。消费方：`TradingSessionPushService.afterDataSync`（≥15:00 导入即出复盘）与 `closeSummaryPush`（15:30 兜底：已同步 → 出复盘 / 未同步 → 如实说「还没看到你的账」且**不落标记**，补导后仍能拿到真复盘）。**降级方向（fail-closed）**：文件读不到/损坏 → 一律当「没同步、没发过」（最坏多发一条，绝不把没同步的账当成同步过、进而发一份基于旧账的复盘）；写失败 → 只告警不抛（推送辅助状态不该让用户的导入失败）。与 anchor 的区别：用户完全可能今天导一份**上周**的快照——那天账变了，但锚定日仍是上周。
