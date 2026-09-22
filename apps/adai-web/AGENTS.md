@@ -89,7 +89,7 @@ flutter analyze   # 0 issues
 flutter test      # 见 docs/reference/status.md
 ```
 
-覆盖：DTO JSON 解析、ApiException、缓存参数感知、userId query 解析、桌面壳（导航/懒加载/保活）、桌面 FeedCard 渲染（idle/chatting/ended/回调/action/market，含中文化文案断言）、REVIEW 修复批回归（选号/上传/图片追问 + #234 分页终止口径 + #236 记忆页刷新保位 + #201/#229 溢出/tooltip）、S-1 多图 ask（askBatch 请求契约 imageRecordIds/question + 清标签缓存、AskBatchResponse log 兜底解析）。
+覆盖：DTO JSON 解析、ApiException、缓存参数感知、userId query 解析、桌面壳（导航/懒加载/保活）、桌面 FeedCard 渲染（idle/chatting/ended/回调/action/market，含中文化文案断言）、REVIEW 修复批回归（选号/上传/图片追问 + #234 分页终止口径 + #236 记忆页刷新保位 + #201/#229 溢出/tooltip）、S-1 多图 ask（askBatch 请求契约 imageRecordIds/question + 清标签缓存、AskBatchResponse log 兜底解析）、**图文一体多图一次投递（2026-09-22：`uploadImages` 打 `/records/media/batch` 的 multipart `files`×N + `text` + `Idempotency-Key`（重试复用同一 key 的断言）+ 上传/追问走 120s 长超时客户端（钉住 120/15 常量防回退）+ `mediaPaths` 多图消费与旧单值 `mediaPath` 降级兼容 + 一卡多图并排渲染）**。
 
 ## 桌面壳设计
 

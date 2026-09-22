@@ -77,6 +77,10 @@ class _FeedPageState extends State<FeedPage> {
   bool _hasActiveChat = false;
   int _chatEnterTurnCount = 0;
 
+  // P1-多图1/2（2026-09-22）：一次投递一次请求的批次锁 + 上传进度
+  bool _uploading = false; // 批次锁：上传在途拒绝新投递（人话提示，不静默）
+  int _uploadTotal = 0; // 本批张数（进度提示「阿呆正在看这 N 张图…」）
+
   @override
   void initState() {
     super.initState();
@@ -571,114 +575,140 @@ class _FeedPageState extends State<FeedPage> {
     _scrollToBottom();
   }
 
-  /// 多模态 L4：多图逐张上传（每张一条记录+记忆，caption 共享）。
-  /// REVIEW #255（对齐 #174）：逐张上传进度占位——每张图先插入 loading 占位卡（立即视觉反馈，  /// 不再多图干等），单张完成后原位替换为真实记录卡，失败置 error 可重试。
+  /// P1-多图1/2（2026-09-22 用户拍板）：**一次投递（N 张图 + 可选一句话）= 一个回合 = 一张卡**。
+  /// 全部图一次 multipart 提交（不再逐张串行）→ 后端对全部图做视觉识别、组成上下文后：
+  /// 无提问给一段综合总结（自然回执落卡）；有提问据图作答，并可在这张卡上继续追问。
+  ///
+  /// 幂等：投递时生成一次 `Idempotency-Key`，失败重试复用同一个 key（见 [_retryMediaUpload]）
+  /// → 后端同键返回首次结果、不重复入库，掐断「超时→重试→重复落盘」。
+  /// 批次锁 [_uploading]：在途时拒绝新投递并给人话提示（不静默吞掉）。
   Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
     if (images.isEmpty) return;
-    final timeStr = _now();
-    final placeholderIds = <String>[];
+    if (_uploading) {
+      // 批次锁（对齐 app _sendMedia 的 _uploading 闸门）：在途拒绝新投递，且**不静默**
+      _showSnackBar('上一批图片还在上传，稍等片刻');
+      return;
+    }
     setState(() {
-      for (final image in images) {
-        final pid = 'media_${DateTime.now().microsecondsSinceEpoch}_${placeholderIds.length}';
-        placeholderIds.add(pid);
-        _cards.add(FeedCardData(
-          id: pid, type: FeedCardType.record, time: timeStr,
-          content: caption.isEmpty ? image.name : caption,
-          mode: CardMode.idle, loading: true,
-          // REVIEW F37：保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
-          mediaBytes: image.bytes, mediaName: image.name, mediaExt: image.extension,
-          mediaCaption: caption.isEmpty ? null : caption,
-        ));
-      }
+      _uploading = true;
+      _uploadTotal = images.length; // 上传进度：一次请求 → 显示本批张数（阿呆正在看图）
     });
+    try {
+      await _sendMediaBatch(images, caption);
+    } finally {
+      // 成功/失败都解锁 + 收起进度（对齐 app：失败也隐藏进度条）
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+          _uploadTotal = 0;
+        });
+      }
+    }
+  }
+
+  /// 一次投递的实际流程（抽出来便于 finally 统一解锁批次锁）。
+  Future<void> _sendMediaBatch(List<PickedImage> images, String caption) async {
+    final timeStr = _now();
+    final text = caption.trim();
+    // 幂等键：一次投递只生成一次，重试复用同一个（P1-多图2）
+    final idempotencyKey = 'web_media_${DateTime.now().microsecondsSinceEpoch}';
+    final files = [
+      for (final i in images)
+        MediaUploadFile(bytes: i.bytes, filename: i.name, mimeType: _mimeTypeOf(i.extension)),
+    ];
+    final fallback = text.isNotEmpty ? caption : images.first.name;
+    // 只插 1 张占位卡（多图角标）——不再为每张图各插一张卡（P1-多图1）
+    final pid = 'media_${DateTime.now().microsecondsSinceEpoch}';
+    setState(() => _cards.add(FeedCardData(
+      id: pid, type: FeedCardType.record, time: timeStr,
+      content: fallback, mode: CardMode.idle, loading: true,
+      pendingMediaCount: images.length,
+      pendingMedia: files, idempotencyKey: idempotencyKey,
+      pendingText: text.isEmpty ? null : text,
+      // REVIEW F37：保留原始字节/文件名/共享 caption（旧单图重试路径兼容）
+      mediaBytes: images.first.bytes, mediaName: images.first.name,
+      mediaExt: images.first.extension,
+      mediaCaption: text.isEmpty ? null : text,
+    )));
     _scrollToBottom();
 
-    var ok = 0;
-    final uploadedIds = <String>[]; // S-1 带图 ask：成功上传的 recordId 集合（上传后统一问）
-    final uploadSummaries = <String>[]; // 成功图的 VLM summary（自然回执用，无第三视角）
-    String? firstErr;
-    for (var i = 0; i < images.length; i++) {
-      final image = images[i];
-      try {
-        final resp = await widget.api.uploadImage(
-          bytes: image.bytes,
-          filename: image.name,
-          mimeType: _mimeTypeOf(image.extension),
-          caption: caption.isEmpty ? null : caption,
-        );
-        ok++;
-        if (resp.recordId.isNotEmpty) uploadedIds.add(resp.recordId);
-        if (resp.summary.isNotEmpty) uploadSummaries.add(resp.summary);
-        if (!mounted) return;
-        // 单张完成 → 占位卡原位替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
-        setState(() {
-          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
-          if (idx >= 0) {
-            final fallback = caption.isEmpty ? image.name : caption;
-            _cards[idx] = FeedCardData(
-              id: resp.recordId.isEmpty ? placeholderIds[i] : resp.recordId,
-              type: FeedCardType.record,
-              time: timeStr,
-              // W-P2-5（2026-08-17）：content 保留用户 caption（与 app _buildMediaSuccessCard 对齐），
-              // summary 单独放 AI 理解文本——之前 AI summary 占 content 双源重复
-              content: fallback,
-              summary: resp.summary.isEmpty ? null : resp.summary,
-              tags: resp.tags.isNotEmpty ? resp.tags : null,
-              mode: CardMode.idle,
-              intent: IntentType.log,
-              domain: 'life',
-              mediaUrl: resp.recordId.isEmpty ? null : widget.api.mediaUrl(resp.recordId),
-              mediaHeaders: resp.recordId.isEmpty ? null : widget.api.mediaHeaders,
-            );
-          }
-        });
-        _scrollToBottom();
-      } catch (e) {
-        firstErr ??= _extractApiError(e);
-        if (!mounted) return;
-        // 单张失败 → 占位卡置 error（底部可重试）
-        setState(() {
-          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
-          if (idx >= 0) {
-            _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
-          }
-        });
-      }
-    }
-    if (!mounted) return;
-    if (ok > 0) {
-      // S-1 带图 ask：附了文本 + 有成功图 → 后端按 intent 分流（问句 → VLM 多图回答；陈述 → 纯记录）
-      final question = caption.trim();
-      if (question.isNotEmpty && uploadedIds.isNotEmpty) {
-        String feedback;
-        try {
-          final qa = await widget.api.askBatch(
-              imageRecordIds: uploadedIds, question: question);
-          feedback = qa.intent == 'question' && qa.answer.isNotEmpty
-              ? '💬 ${_truncateForSnack(qa.answer)}'
-              : _naturalMediaReceipt(summaries: uploadSummaries, count: ok);
-        } catch (e) {
-          feedback = '${_naturalMediaReceipt(summaries: uploadSummaries, count: ok)}（问答失败: ${_extractApiError(e)}）';
-        }
-        _showSnackBar(feedback);
-        _totalToday += ok;
-        _loadSidebar();
-        if (!mounted) return;
-        // 刷新 Feed：问句 → 首图卡显示 Q/A 气泡（后端已把 turns 合并到首图卡）
-        await _loadFeed();
-        return;
-      }
-      _showSnackBar(
-        ok == images.length
-            ? _naturalMediaReceipt(summaries: uploadSummaries, count: ok)
-            : '${_naturalMediaReceipt(summaries: uploadSummaries, count: ok)}，${images.length - ok} 张失败',
+    try {
+      final resp = await widget.api.uploadImages(
+        files: files,
+        text: text.isEmpty ? null : text,
+        idempotencyKey: idempotencyKey,
       );
-      // 占位卡已原位替换为真实记录，不再整体 _loadFeed；本地计数 + 右栏联动刷新（#115）
-      _totalToday += ok;
-      _loadSidebar();
-    } else {
-      _showError('图片上传失败: $firstErr');
+      if (!mounted) return;
+      _applyBatchSuccess(pid, resp,
+          caption: caption, fallback: fallback, timeStr: timeStr, count: images.length);
+    } catch (e) {
+      if (!mounted) return;
+      // 整批失败 → 这一张卡置 error 可重试（重试复用同一幂等键，不会重复落盘）
+      setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+      _scrollToBottom();
     }
+  }
+
+  /// 批次成功后把占位卡**原位替换为 1 张记录卡**（多图并列；有提问则直接进入对话态可继续追问）。
+  /// 首投与失败重试共用（P1-多图1/2）。
+  void _applyBatchSuccess(
+    String pid,
+    BatchMediaResponse resp, {
+    required String caption,
+    required String fallback,
+    required String timeStr,
+    required int count,
+  }) {
+    final text = caption.trim();
+    final urls = [for (final id in resp.mediaIds) if (id.isNotEmpty) widget.api.mediaUrl(id)];
+    // 兜底：后端未返回 mediaIds（旧实现/异常）时至少把首图显示出来（单图兼容，不空卡）
+    if (urls.isEmpty && resp.recordId.isNotEmpty) {
+      urls.add(widget.api.mediaUrl(resp.recordId));
+    }
+    final recordId = resp.recordId.isEmpty ? pid : resp.recordId;
+    // 有提问（image_qa）：据图作答 → 问 + 答作为本卡 turns（第一原则：就是我和阿呆的对话）
+    final qaTurns = <ConversationTurn>[];
+    if (resp.isQa) {
+      qaTurns.add(ConversationTurn(isUser: true, text: text, time: timeStr));
+      qaTurns.add(ConversationTurn(isUser: false, text: resp.answer!, time: _now()));
+    }
+    setState(() {
+      _updateCard(pid, (c) => c.copyWith(
+        id: recordId,
+        // W-P2-5：有 caption 保留用户原话（不双源重复）；无 caption 用后端综合总结——
+        // 卡上就是阿呆说的话，不出现文件名这类系统痕迹（第一原则 B1）
+        content: text.isNotEmpty ? caption : (resp.summary.isNotEmpty ? resp.summary : fallback),
+        summary: resp.summary.isEmpty ? null : resp.summary,
+        tags: resp.tags.isNotEmpty ? resp.tags : null,
+        loading: false,
+        clearError: true, // 重试成功后清掉上次的失败提示（防残留 error 行）
+        intent: resp.isQa ? IntentType.question : IntentType.log,
+        domain: resp.domain,
+        mediaUrls: urls,
+        mediaHeaders: urls.isNotEmpty ? widget.api.mediaHeaders : null,
+        mediaRecordIds: resp.mediaIds, // 本回合全部图 id → 追问走 ask-batch
+        pendingMediaCount: 0,
+        pendingMedia: const [], // 成功卡片不再持有原图字节（省内存）
+        turns: qaTurns.isEmpty ? null : qaTurns,
+        mode: resp.isQa ? CardMode.chatting : CardMode.idle,
+      ));
+      if (resp.isQa) {
+        // 有提问 → 这张卡进入对话态（图即上下文），后续追问 append 到本卡
+        _activeCardId = recordId;
+        _hasActiveChat = true;
+        _chatEnterTurnCount = 2;
+        _deactivateOtherCards(recordId);
+      }
+      // 幂等命中（duplicated=true）说明首次其实已落盘 → 本地计数不重复 +1
+      if (!resp.duplicated) _totalToday += 1;
+    });
+    // 无提问 → 后端 summary 作阿呆口语回执（第一原则：不出现系统标签）
+    _showSnackBar(resp.isQa
+        ? '💬 ${_truncateForSnack(resp.answer!)}'
+        : _naturalMediaReceipt(
+            summaries: [if (resp.summary.isNotEmpty) resp.summary], count: count));
+    _loadSidebar();
+    _scrollToBottom();
   }
 
   /// SnackBar 展示文本截断（多图问答回答较长，避免整条撑爆提示条）。
@@ -687,14 +717,15 @@ class _FeedPageState extends State<FeedPage> {
     return '${s.substring(0, max)}…';
   }
 
-  /// 阿呆自然回执（无第三视角，对齐 app _naturalMediaReceipt）：用 VLM summary 拼自然对话句，
-  /// 替代「📷 已记录 N 张」系统文案。单图「看到你{summary}，已记下」；
-  /// 多图「看到你{summary}等 N 张，已记下」；无内容兜底「随手一拍，已记下」。
+  /// 阿呆自然回执（无第三视角，对齐 app _naturalMediaReceipt）：用后端综合总结拼自然对话句，
+  /// 替代「📷 已记录 N 张」系统文案。
+  /// P1-多图9（2026-09-22）：一次投递的 summary 已是**多图综合总结**（一段话），
+  /// 所以多图不再往句子里塞「等 N 张」这种半截话，改成「…，这 N 张都记下了」。
   String _naturalMediaReceipt({required List<String> summaries, String? caption, int count = 1}) {
     final first = summaries.isNotEmpty ? summaries.first.trim() : '';
     final body = first.isNotEmpty ? first : (caption?.trim() ?? '');
-    if (body.isEmpty) return '随手一拍，已记下';
-    return '看到你$body${count > 1 ? '等 $count 张' : ''}，已记下';
+    if (body.isEmpty) return count > 1 ? '这 $count 张我记下了' : '随手一拍，已记下';
+    return count > 1 ? '看到你$body，这 $count 张都记下了' : '看到你$body，已记下';
   }
 
   String _mimeTypeOf(String? ext) {
@@ -785,14 +816,20 @@ class _FeedPageState extends State<FeedPage> {
     _scrollToBottom();
     try {
       if (isImageAsk) {
-        // 图片追问：VLM 看图回答（L4 图片问答），沉淀为 image_qa 记录
-        final resp = await widget.api.askMedia(imageRecordId: cardId, question: text);
+        // P1-多图1（2026-09-22）：多图回合的追问带着**本回合全部图 id** 走 ask-batch
+        // （VLM 综合多图作答），问答落回同一张卡（卡上继续带图对话）。
+        // Feed 刷新回来的卡没有 mediaRecordIds → 回落单图 askMedia：后端对聚合卡 id
+        // 会自动解析出全部引用图（MediaController S-2），不会只答首图。
+        final ids = activeCard.mediaRecordIds;
+        final answer = ids.isNotEmpty
+            ? (await widget.api.askBatch(imageRecordIds: ids, question: text)).answer
+            : (await widget.api.askMedia(imageRecordId: cardId, question: text)).answer;
         if (!mounted) return;
         setState(() {
           _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
-                turns: [...existing, ConversationTurn(isUser: false, text: resp.answer, time: _now())]);
+                turns: [...existing, ConversationTurn(isUser: false, text: answer, time: _now())]);
           });
         });
         // #115/#229：图片追问沉淀 image_qa 带 tags → 右栏标签云联动刷新
@@ -1091,10 +1128,40 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  /// 图片上传失败重试：原位恢复 loading → 用原始字节重走 uploadImage → 替换为真实记录卡。
-  /// REVIEW F37（对齐 adai-app #235）：不把文件名当文本记录重发。
+  /// 图片投递失败重试（P1-多图2）：**复用同一个 Idempotency-Key** 原样重发整批。
+  /// 后端同键返回首次结果（首次其实已成功、只是客户端超时 → 不会重复落盘）；
+  /// 附带文字时后端在这一次请求里一并补跑问答——对齐 app「重试完成后补跑 pending ask」
+  /// 的语义（web 侧由 batch 端点一次完成，不再需要单独的 ask-batch 补跑）。
   Future<void> _retryMediaUpload(FeedCardData card) async {
     final pid = card.id;
+    final files = card.pendingMedia;
+    final key = card.idempotencyKey;
+    if (files != null && files.isNotEmpty && key != null) {
+      if (mounted) {
+        setState(() => _updateCard(pid, (c) => c.copyWith(loading: true, clearError: true)));
+      }
+      try {
+        final resp = await widget.api.uploadImages(
+          files: files,
+          text: card.pendingText,
+          idempotencyKey: key, // 同一 key：超时重试不产生第二条记录
+        );
+        if (!mounted) return;
+        _applyBatchSuccess(pid, resp,
+            caption: card.pendingText ?? card.mediaCaption ?? '',
+            fallback: card.mediaCaption?.isNotEmpty == true
+                ? card.mediaCaption!
+                : (card.mediaName ?? ''),
+            timeStr: card.time,
+            count: files.length);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
+        _scrollToBottom();
+      }
+      return;
+    }
+    // 旧单图占位卡（本次改动前落盘 / 单图兼容路径）：保留原单图重试
     if (mounted) {
       setState(() => _updateCard(pid, (c) => c.copyWith(loading: true, clearError: true)));
     }
@@ -1306,9 +1373,26 @@ class _FeedPageState extends State<FeedPage> {
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGrey4))
                 : _cards.isEmpty ? _buildEmptyState() : _buildFeedList(),
           ),
+          if (_uploadTotal > 0) _buildUploadProgress(),
           _buildInputBar(),
         ]),
       ),
+    );
+  }
+
+  /// 上传进度（P1-多图2）：一次投递 = 一次请求，显示本批张数——
+  /// 阿呆此刻正在对全部图做视觉识别（不是「第 n/m 张」那种逐张口径）。
+  Widget _buildUploadProgress() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+      child: Row(children: [
+        const SizedBox(
+            width: 12, height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen)),
+        const SizedBox(width: 8),
+        Text('阿呆正在看这 $_uploadTotal 张图…',
+            style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
+      ]),
     );
   }
 
@@ -1661,7 +1745,7 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
     _controller.clear();
     setState(() => _pendingImages.clear());
     if (images.isNotEmpty) {
-      // 图 + 文字（可空，caption 共享）一起提交，逐张上传
+      // 图 + 文字（可空，一起作为本回合的 text）一起提交：一次投递一次请求（P1-多图1）
       widget.onSendMedia?.call(images, text);
     } else {
       widget.onSend(text);
@@ -1673,14 +1757,14 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         withData: true,
-        allowMultiple: true, // 多选，逐张上传
+        allowMultiple: true, // 多选，一次投递（1..3 张，见 _onSendMedia）
       );
       if (result == null || result.files.isEmpty) return;
       final picked = result.files
           .where((f) => f.bytes != null)
           .map((f) => PickedImage(f.bytes!, f.name, f.extension))
           .toList();
-      // S-1 带图 ask 图片上限 3（后端 ask-batch 强校验；前端选图即限，多余截断 + 提示）
+      // 一次投递上限 3 张（后端 batch / ask-batch 强校验；前端选图即限，多余截断 + 提示）
       final remaining = 3 - _pendingImages.length;
       if (remaining <= 0) {
         _showSnackBar('最多 3 张图片');

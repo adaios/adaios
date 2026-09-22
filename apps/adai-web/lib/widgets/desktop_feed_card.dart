@@ -104,7 +104,8 @@ class DesktopFeedCard extends StatelessWidget {
                       _buildHeader(),
                       const SizedBox(height: 6),
                       // RFC 20260817（图片对话流）：图片卡图置顶（图即上下文），turns 跟随滚动
-                      if (data.mediaUrl != null) ...[
+                      // P1-多图1：一次投递的多张图并列在这一张卡里（占位卡也走这里）
+                      if (_mediaTotal > 0) ...[
                         _buildMediaThumb(context),
                         const SizedBox(height: 8),
                       ],
@@ -289,46 +290,115 @@ class DesktopFeedCard extends StatelessWidget {
     return TextSpan(children: children);
   }
 
-  /// 图片记录缩略图（批2 原图可见）——点击弹全图。
+  /// 本卡图片总数：真图优先；上传在途的占位卡用 [FeedCardData.pendingMediaCount]。
+  int get _mediaTotal =>
+      data.mediaUrls.isNotEmpty ? data.mediaUrls.length : data.pendingMediaCount;
+
+  /// 图片记录缩略图组（P1-多图1，2026-09-22）——**一次投递的多张图并列在同一张卡内**：
+  /// 横滑排列（每张可点击看全图），多于一张时带「共 N 张」角标；
+  /// 上传在途（占位卡）时并列 N 个占位缩略图（不再为每张图各插一张卡）。
   Widget _buildMediaThumb(BuildContext context) {
-    final url = data.mediaUrl;
-    if (url == null) return const SizedBox.shrink();
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        onTap: () => _showFullImage(context),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            url,
-            headers: data.mediaHeaders,
-            width: 120,
-            height: 90,
-            cacheWidth: 240, // W-P2-4（2026-08-17）：缩略图 2x 降采样解码
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
-              width: 120, height: 90,
-              color: AppColors.darkSurface2,
-              child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
-            ),
-            loadingBuilder: (_, child, progress) => progress == null
-                ? child
-                : Container(
-                    width: 120, height: 90,
-                    color: AppColors.darkSurface2,
-                    child: const Center(child: SizedBox(width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
-                  ),
+    if (data.mediaUrls.isEmpty) {
+      return data.pendingMediaCount > 0
+          ? _buildPendingThumbs(data.pendingMediaCount)
+          : const SizedBox.shrink();
+    }
+    final urls = data.mediaUrls;
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < urls.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                _mediaThumb(context, urls[i]),
+              ],
+            ],
           ),
+        ),
+        if (urls.length > 1) Positioned(right: 0, bottom: 6, child: _countBadge(urls.length)),
+      ],
+    );
+  }
+
+  /// 单张缩略图（点击弹全图）。
+  Widget _mediaThumb(BuildContext context, String url) {
+    return GestureDetector(
+      onTap: () => _showFullImage(context, url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          headers: data.mediaHeaders,
+          width: 120,
+          height: 90,
+          cacheWidth: 240, // W-P2-4（2026-08-17）：缩略图 2x 降采样解码
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _thumbPlaceholder(),
+          loadingBuilder: (_, child, progress) => progress == null
+              ? child
+              : Container(
+                  width: 120, height: 90,
+                  color: AppColors.darkSurface2,
+                  child: const Center(child: SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
+                ),
         ),
       ),
     );
   }
 
+  Widget _thumbPlaceholder() => Container(
+        width: 120,
+        height: 90,
+        color: AppColors.darkSurface2,
+        child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
+      );
+
+  /// 上传在途占位缩略图：按张数并列（视觉上就是「这几张一起进去了」）。
+  /// 与真实图一样放进横向滚动容器——窄窗口（桌面端窗口可缩放）下不溢出。
+  Widget _buildPendingThumbs(int count) {
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < count; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Container(
+                  width: 120, height: 90,
+                  decoration: BoxDecoration(
+                    color: AppColors.darkSurface2,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.image_outlined, size: 20, color: AppColors.darkGrey5),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (count > 1) Positioned(right: 0, bottom: 6, child: _countBadge(count)),
+      ],
+    );
+  }
+
+  /// 「共 N 张」角标（多图回合的轻量提示，非系统标签——只是张数）。
+  Widget _countBadge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.darkBg.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text('共 $count 张',
+          style: const TextStyle(fontSize: 10, color: AppColors.darkGrey3)),
+    );
+  }
+
   /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
-  void _showFullImage(BuildContext context) {
-    final url = data.mediaUrl;
-    if (url == null) return;
+  void _showFullImage(BuildContext context, String url) {
     showDialog(
       context: context,
       builder: (_) => Dialog(

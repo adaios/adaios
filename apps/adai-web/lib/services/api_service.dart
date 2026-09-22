@@ -45,16 +45,25 @@ class ApiService {
   /// SSE 流式客户端（ask-stream 专用，见 [askStream]）。
   final SseClient _sse;
 
+  /// 普通请求超时（非 AI 端点）。
+  static const Duration defaultTimeout = Duration(seconds: 15);
+
+  /// AI 端点超时：DeepSeek 聊天/追问/总结/VLM 看图实测 7~28s，最坏 ~120s
+  /// （2026-08-26 后端 45s×2+0.6s，2026-08-27 app 生产实测 GLM 单图最坏 28s）。
+  static const Duration aiTimeout = Duration(seconds: 120);
+
   // 内存缓存：跨页面切换不丢；timeline/memory 按参数 key 区分（参数感知）
   TagsResponse? _tagsCache;
   final Map<String, List<TimelineEntryResponse>> _timelineCache = {};
   final Map<String, List<MemoryEntryResponse>> _memoryCache = {};
 
   ApiService({String? baseUrl, this.userId = 'default', this.token, this.onUnauthorized,
-      http.Client? client, SseClient? sseClient})
+      http.Client? client, http.Client? aiClient, SseClient? sseClient})
       : baseUrl = baseUrl ?? ApiConfig.baseUrl,
-        _client = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 15)),
-        _aiClient = client ?? _TimeoutClient(http.Client(), const Duration(seconds: 120)),
+        _client = client ?? _TimeoutClient(http.Client(), defaultTimeout),
+        // P1-多图2（2026-09-22）：与 app 对齐——AI 类端点（含 VLM 看图）单独走长超时客户端。
+        // aiClient 可单独注入（测试用）：不传时沿用 client（老测试注入单个 MockClient 的行为不变）。
+        _aiClient = aiClient ?? client ?? _TimeoutClient(http.Client(), aiTimeout),
         _sse = sseClient ?? SseClient(httpClient: client);
 
   /// 获取今日 Brief（摘要），独立接口。
@@ -212,6 +221,10 @@ class ApiService {
   }
 
   /// 上传图片记录（多模态 L4）：multipart → VLM 理解 → 记录 + 记忆沉淀。
+  ///
+  /// P1-多图2（2026-09-22，对齐 app 2026-08-27 同款修复）：VLM 看图最坏 28s+，
+  /// 原来走 15s 的 `_client` → 客户端先超时、服务端还在跑，用户重试即重复落盘
+  /// （web 与 app 的超时口径必须一致，否则同一个后端在两端表现不同）。
   Future<MediaRecordResponse> uploadImage({
     required List<int> bytes,
     required String filename,
@@ -227,7 +240,7 @@ class ApiService {
         filename: filename,
         contentType: MediaType('image', mimeType.split('/').last),
       ));
-    final streamed = await _client.send(req);
+    final streamed = await _aiClient.send(req);
     final resp = await http.Response.fromStream(streamed);
     _check(resp);
     // 上传后缓存失效（Feed/Timeline/Memory 都会有新图片记录）
@@ -235,6 +248,42 @@ class ApiService {
     _timelineCache.clear();
     _memoryCache.clear();
     return MediaRecordResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
+  }
+
+  /// 一次投递一次请求（P1-多图1/2）：multipart 多文件 `files`（1..3 张）+ 可选 `text`
+  /// + 可选 `Idempotency-Key`（同键重发返回首次结果且 duplicated=true，不重复入库）。
+  /// 后端对全部图做视觉识别、组成上下文：无提问 → `type=image`（summary 为综合总结）；
+  /// 有提问 → `type=image_qa`（answer 有值）。AI 失败仍 200（summary 兜底）。
+  ///
+  /// 幂等键由调用方生成并在重试时**复用同一个 key**（见 FeedPage._retryMediaUpload），
+  /// 这是「超时→重试→重复落盘」闭环的最后一环。
+  Future<BatchMediaResponse> uploadImages({
+    required List<MediaUploadFile> files,
+    String? text,
+    String? idempotencyKey,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/v1/records/media/batch'))
+      ..headers.addAll(mediaHeaders)
+      ..fields['text'] = text ?? '';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      req.headers['Idempotency-Key'] = idempotencyKey;
+    }
+    for (final f in files) {
+      req.files.add(http.MultipartFile.fromBytes(
+        'files', // 契约字段名（复数，与旧单图 file 区分）
+        f.bytes,
+        filename: f.filename,
+        contentType: MediaType('image', f.mimeType.split('/').last),
+      ));
+    }
+    final streamed = await _aiClient.send(req);
+    final resp = await http.Response.fromStream(streamed);
+    _check(resp);
+    // 一次投递落 1 条记录（+ N 张图资产）→ Feed/Timeline/Memory/Tags 全部失效
+    _tagsCache = null;
+    _timelineCache.clear();
+    _memoryCache.clear();
+    return BatchMediaResponse.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
   /// 图片追问（L4 图片问答）：就一张图片提问，返回 VLM 自然语言回答。
@@ -1543,6 +1592,32 @@ class ApiService {
   /// 图片记录原图 URL（供 Image.network 渲染缩略图/点击看原图）。
   String mediaUrl(String recordId) => '$baseUrl/api/v1/records/media/$recordId';
 
+  /// mediaPath（`records/yyyy/MM/media/{recordId}.{ext}`）→ 记录 id。
+  /// 后端 FeedEntry 的 mediaPaths 给的是存储相对路径，文件名即记录 id
+  /// （`RecordFileRepository.mediaPath`），前端据此拼每张图的原图 URL。
+  static String? recordIdOfMediaPath(String? mediaPath) {
+    if (mediaPath == null || mediaPath.isEmpty) return null;
+    final name = mediaPath.split('/').last;
+    final dot = name.indexOf('.');
+    final id = dot > 0 ? name.substring(0, dot) : name;
+    return id.startsWith('rec_') ? id : null;
+  }
+
+  /// 一次投递的多张图路径 → 原图 URL 列表（按投递顺序）。
+  /// 单图/历史条目（路径格式不符但 `mediaPath` 在）时回退 [fallbackRecordId]——
+  /// 旧口径 `mediaUrl(entry.id)` 一字不变地保留，防后端路径格式变化导致图挂掉。
+  List<String> mediaUrlsForPaths(List<String> paths, {String? fallbackRecordId}) {
+    final urls = <String>[];
+    for (final p in paths) {
+      final id = recordIdOfMediaPath(p);
+      if (id != null) urls.add(mediaUrl(id));
+    }
+    if (urls.isEmpty && fallbackRecordId != null && fallbackRecordId.isNotEmpty) {
+      return [mediaUrl(fallbackRecordId)];
+    }
+    return urls;
+  }
+
   /// 媒体请求鉴权头（Image.network 需要显式传入）。
   Map<String, String> get mediaHeaders => {
     'X-User-Id': userId,
@@ -1789,6 +1864,61 @@ class AskBatchResponse {
       );
 }
 
+/// 一次投递里的一张图（[ApiService.uploadImages] 入参；由 UI 层 PickedImage 转换）。
+class MediaUploadFile {
+  final List<int> bytes;
+  final String filename;
+  final String mimeType; // image/png、image/jpeg…
+
+  const MediaUploadFile({required this.bytes, required this.filename, required this.mimeType});
+}
+
+/// 一次投递的批量响应（POST /records/media/batch）。
+///
+/// [type] `image` = 无提问（[summary] 为多图综合总结）；`image_qa` = 有提问（[answer] 有值）。
+/// [duplicated] true = 幂等键命中（本次未重复入库，返回首次结果）。
+class BatchMediaResponse {
+  final String recordId;
+  final List<String> mediaIds;
+  final String type;
+  final String intent;
+  final String summary;
+  final String? answer;
+  final List<String> tags;
+  final String domain;
+  final bool duplicated;
+
+  BatchMediaResponse({
+    required this.recordId,
+    required this.mediaIds,
+    required this.type,
+    required this.intent,
+    required this.summary,
+    this.answer,
+    required this.tags,
+    required this.domain,
+    required this.duplicated,
+  });
+
+  /// 本回合是否带提问（后端据图作答，answer 非空）。
+  bool get isQa => type == 'image_qa' && (answer?.isNotEmpty ?? false);
+
+  factory BatchMediaResponse.fromJson(Map<String, dynamic> json) => BatchMediaResponse(
+        recordId: json['recordId'] as String? ?? '',
+        // 防御式：mediaIds 缺失/脏数据兜底为空列表（旧后端未实现时前端不崩）
+        mediaIds: json['mediaIds'] is List
+            ? (json['mediaIds'] as List).map((e) => e.toString()).toList()
+            : const [],
+        type: json['type'] as String? ?? 'image',
+        intent: json['intent'] as String? ?? 'log',
+        summary: json['summary'] as String? ?? '',
+        answer: json['answer'] as String?,
+        tags: (json['tags'] as List?)?.cast<String>() ?? [],
+        domain: json['domain'] as String? ?? 'life',
+        duplicated: json['duplicated'] as bool? ?? false,
+      );
+}
+
 class FeedResponse {
   final List<FeedEntryResponse> entries;
   final int totalToday;
@@ -1819,6 +1949,9 @@ class FeedEntryResponse {
   final String time;
   final String date; // MM-dd，每张卡片都带（批2 每卡日期）
   final String? mediaPath; // 图片记录才有（批2 原图可见）
+  /// P1-多图1（2026-09-22）：一次投递的多张图（按投递顺序）。
+  /// 后端新契约；旧后端/无该字段时由 [mediaPath] 降级为单元素列表（单值兼容）。
+  final List<String> mediaPaths;
   final String? intent;
   final String? summary;
   final List<Map<String, dynamic>>? turns;
@@ -1838,6 +1971,7 @@ class FeedEntryResponse {
     required this.time,
     this.date = '',
     this.mediaPath,
+    this.mediaPaths = const [],
     this.intent,
     this.summary,
     this.turns,
@@ -1846,26 +1980,36 @@ class FeedEntryResponse {
     this.mergedIds = const [],
   });
 
-  factory FeedEntryResponse.fromJson(Map<String, dynamic> json) => FeedEntryResponse(
-    type: json['type'] as String? ?? '',
-    id: json['id'] as String,
-    sourceRecordId: json['sourceRecordId'] as String?,
-    title: json['title'] as String? ?? '',
-    content: json['content'] as String,
-    tags: (json['tags'] as List?)?.cast<String>() ?? [],
-    time: json['time'] as String? ?? json['timeString'] as String? ?? '',
-    date: json['date'] as String? ?? '',
-    mediaPath: json['mediaPath'] as String?,
-    intent: json['intent'] as String?,
-    summary: json['summary'] as String?,
-    turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
-    domain: json['domain'] as String? ?? 'life',
-    updatedAt: json['updatedAt'] as String? ?? '',
-    // 防御式：null / 不是 List / 脏元素都兜住（非 List → 空；元素统一转字符串）
-    mergedIds: json['mergedIds'] is List
-        ? (json['mergedIds'] as List).map((e) => e.toString()).toList()
-        : const [],
-  );
+  factory FeedEntryResponse.fromJson(Map<String, dynamic> json) {
+    // P1-多图1：mediaPaths（数组，按顺序）优先；旧后端只有单值 mediaPath → 降级单元素列表
+    final rawPaths = json['mediaPaths'] is List
+        ? (json['mediaPaths'] as List).map((e) => e.toString()).toList()
+        : const <String>[];
+    final singlePath = json['mediaPath'] as String?;
+    return FeedEntryResponse(
+      type: json['type'] as String? ?? '',
+      id: json['id'] as String,
+      sourceRecordId: json['sourceRecordId'] as String?,
+      title: json['title'] as String? ?? '',
+      content: json['content'] as String,
+      tags: (json['tags'] as List?)?.cast<String>() ?? [],
+      time: json['time'] as String? ?? json['timeString'] as String? ?? '',
+      date: json['date'] as String? ?? '',
+      mediaPath: singlePath,
+      mediaPaths: rawPaths.isNotEmpty
+          ? rawPaths
+          : (singlePath != null && singlePath.isNotEmpty ? [singlePath] : const []),
+      intent: json['intent'] as String?,
+      summary: json['summary'] as String?,
+      turns: (json['turns'] as List?)?.cast<Map<String, dynamic>>(),
+      domain: json['domain'] as String? ?? 'life',
+      updatedAt: json['updatedAt'] as String? ?? '',
+      // 防御式：null / 不是 List / 脏元素都兜住（非 List → 空；元素统一转字符串）
+      mergedIds: json['mergedIds'] is List
+          ? (json['mergedIds'] as List).map((e) => e.toString()).toList()
+          : const [],
+    );
+  }
 }
 
 class RecordResponse {
@@ -3115,13 +3259,15 @@ class DriftLineDto {
   }
 }
 
-/// 账实一致性报告（GET /trading/integrity，2026-09-12）：锚定状态 + 差异 + 重放缺口。
+/// 账实一致性报告（GET /trading/integrity，2026-09-12）：锚定状态 + 差异 + 重放缺口 + 降级流水。
 /// 降级诚实：锚定/基线缺失 → [note] 说明「无法判定」，drift/gaps 为空（不误报）。
 class IntegrityReportDto {
   final AnchorStatusDto? anchor;
   final bool holdingsKnown;
   final List<DriftLineDto> drift;
   final List<RejectedLineDto> gaps; // 重放缺口（卖超/未持有）——与导入 rejected 同一件事
+  /// 降级流水（2026-09-21，P1-交易61）：成交日 == 锚定日 → 只记流水、没进持仓。
+  final List<DegradedLineDto> degraded;
   final String note;
 
   IntegrityReportDto({
@@ -3129,11 +3275,15 @@ class IntegrityReportDto {
     required this.holdingsKnown,
     required this.drift,
     required this.gaps,
+    this.degraded = const [],
     required this.note,
   });
 
   /// 有需要用户看的东西吗（无差异 → 页面不显示任何横幅，不制造噪音）。
-  bool get hasIssue => drift.isNotEmpty || gaps.isNotEmpty;
+  /// 降级流水只在**锚定日是推断的**（inferred）时才算问题——锚定日明确时那些成交确实在快照里，
+  /// 属于事实说明，天天挂横幅就是噪音。
+  bool get hasIssue =>
+      drift.isNotEmpty || gaps.isNotEmpty || degraded.any((d) => d.inferred);
 
   factory IntegrityReportDto.fromJson(dynamic json) {
     if (json is! Map<String, dynamic>) {
@@ -3148,7 +3298,52 @@ class IntegrityReportDto {
       gaps: ((json['gaps'] as List?) ?? const [])
           .map((e) => RejectedLineDto.fromJson(e))
           .toList(),
+      degraded: ((json['degraded'] as List?) ?? const [])
+          .map((e) => DegradedLineDto.fromJson(e))
+          .toList(),
       note: json['note']?.toString() ?? '',
+    );
+  }
+}
+
+/// 降级成交流水（2026-09-21，P1-交易61）：成交日 == 锚定日，被按「已含在券商快照内」处理
+/// （只记流水、未进持仓）。[inferred]=true 表示锚定日是按导入时刻**推断**的 →
+/// 若快照实际基准日不是那天，这笔就不会体现在持仓里（对账据此把「假绿」变成可见）。
+class DegradedLineDto {
+  final String symbol;
+  final String name;
+  final String direction;
+  final int volume;
+  final double? price;
+  final String? entryDate;
+  final bool inferred;
+  final String reason;
+
+  DegradedLineDto({
+    required this.symbol,
+    required this.name,
+    required this.direction,
+    required this.volume,
+    this.price,
+    this.entryDate,
+    required this.inferred,
+    required this.reason,
+  });
+
+  factory DegradedLineDto.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return DegradedLineDto(
+          symbol: '', name: '', direction: '', volume: 0, inferred: false, reason: '');
+    }
+    return DegradedLineDto(
+      symbol: json['symbol']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      direction: json['direction']?.toString() ?? '',
+      volume: (json['volume'] as num?)?.toInt() ?? 0,
+      price: (json['price'] as num?)?.toDouble(),
+      entryDate: json['entryDate']?.toString(),
+      inferred: json['inferred'] == true,
+      reason: json['reason']?.toString() ?? '',
     );
   }
 }

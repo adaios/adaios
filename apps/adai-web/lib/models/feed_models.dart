@@ -64,7 +64,21 @@ class FeedCardData {
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒/今日操作确认等）
   final VoidCallback? onConfirmTradeLog; // RFC 20260817：「今日操作确认」卡确认按钮
   final VoidCallback? onDismiss; // B10-3（2026-08-23，P1-推送2）：push 卡「忽略」按钮（删除持久化）
-  final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
+  final String? mediaUrl; // 图片记录原图 URL；= mediaUrls 首图（单值兼容旧调用点）
+  /// P1-多图1（2026-09-22）：一次投递的全部图（按投递顺序），卡片内并列/横滑渲染。
+  final List<String> mediaUrls;
+  /// P1-多图：本回合全部图片记录 id（多图追问走 POST /records/media/ask-batch）。
+  /// 仅本次投递生成的卡片有值；Feed 刷新回来的卡为空 → 追问回落单图 askMedia
+  /// （后端对聚合卡 id 自动解析全部引用图，见 MediaController S-2）。
+  final List<String> mediaRecordIds;
+  /// 本回合图片张数（占位卡用：上传在途时显示「共 N 张」角标）。
+  final int pendingMediaCount;
+  /// 占位卡保留的原始投递内容（P1-多图2：批量失败重试时原样重发，复用同一个幂等键）。
+  final List<MediaUploadFile>? pendingMedia;
+  /// 一次投递的幂等键：投递时生成一次，重试复用同一个 key（后端同键返回首次结果，不重复入库）。
+  final String? idempotencyKey;
+  /// 本回合附带的文字（可空；重试时原样重发，后端据此判定 summary / ask）。
+  final String? pendingText;
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
   // REVIEW F37（全维度走查 P1-W1）：图片占位卡保留原始字节，失败重试重走 uploadImage（防降级为文本记录）
   final List<int>? mediaBytes;
@@ -95,7 +109,13 @@ class FeedCardData {
     this.pushTitle,
     this.onConfirmTradeLog,
     this.onDismiss,
-    this.mediaUrl,
+    String? mediaUrl,
+    List<String>? mediaUrls,
+    this.mediaRecordIds = const [],
+    this.pendingMediaCount = 0,
+    this.pendingMedia,
+    this.idempotencyKey,
+    this.pendingText,
     this.mediaHeaders,
     this.mediaBytes,
     this.mediaName,
@@ -103,7 +123,14 @@ class FeedCardData {
     this.mediaCaption,
     DateTime? updatedAt,
     this.mergedIds = const [],
-  }) : updatedAt = updatedAt ?? DateTime.now();
+  })  // 单值 mediaUrl 与多值 mediaUrls 互为兜底：调用方给哪个都能渲染（旧调用点零改动）
+      : mediaUrl = (mediaUrl != null && mediaUrl.isNotEmpty)
+            ? mediaUrl
+            : ((mediaUrls != null && mediaUrls.isNotEmpty) ? mediaUrls.first : null),
+        mediaUrls = (mediaUrls != null && mediaUrls.isNotEmpty)
+            ? mediaUrls
+            : ((mediaUrl != null && mediaUrl.isNotEmpty) ? [mediaUrl] : const []),
+        updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
     String? id,
@@ -122,6 +149,12 @@ class FeedCardData {
     String? error,
     bool clearError = false,
     String? mediaUrl,
+    List<String>? mediaUrls,
+    List<String>? mediaRecordIds,
+    int? pendingMediaCount,
+    List<MediaUploadFile>? pendingMedia,
+    String? idempotencyKey,
+    String? pendingText,
     Map<String, String>? mediaHeaders,
     List<int>? mediaBytes,
     String? mediaName,
@@ -148,7 +181,14 @@ class FeedCardData {
       pushTitle: pushTitle ?? pushTitle,
       onConfirmTradeLog: onConfirmTradeLog ?? onConfirmTradeLog,
       onDismiss: onDismiss ?? onDismiss,
-      mediaUrl: mediaUrl ?? this.mediaUrl,
+      // mediaUrls 显式传入时以它为准（mediaUrl 传 null 让构造器从列表取首图，防首图陈旧）
+      mediaUrl: mediaUrls != null ? null : (mediaUrl ?? this.mediaUrl),
+      mediaUrls: mediaUrls ?? this.mediaUrls,
+      mediaRecordIds: mediaRecordIds ?? this.mediaRecordIds,
+      pendingMediaCount: pendingMediaCount ?? this.pendingMediaCount,
+      pendingMedia: pendingMedia ?? this.pendingMedia,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
+      pendingText: pendingText ?? this.pendingText,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
       mediaBytes: mediaBytes ?? this.mediaBytes,
       mediaName: mediaName ?? this.mediaName,
@@ -190,8 +230,10 @@ extension FeedEntryResponseX on FeedEntryResponse {
           : null,
       // B10-3（2026-08-23，P1-推送2）：push 卡「忽略」按钮（删除持久化）
       onDismiss: _toCardType(type) == FeedCardType.push ? onDismiss : null,
-      mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
-      mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
+      // P1-多图1（2026-09-22）：一次投递的多张图并列渲染——消费后端 mediaPaths（按顺序），
+      // 旧单值 mediaPath 由 DTO 降级成单元素列表（单值兼容）；拿不到记录 id 时回退 entry.id 单图。
+      mediaUrls: api.mediaUrlsForPaths(mediaPaths, fallbackRecordId: mediaPaths.isNotEmpty ? id : null),
+      mediaHeaders: mediaPaths.isNotEmpty ? api.mediaHeaders : null,
       // P1-5（2026-08-23 app 体感）：透传后端 updatedAt（原默认 now → 「刚刚」恒显）
       updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
       // P2-UI12：折叠卡代表的原始记录 id（删除要删全，见 FeedPage._deleteCard）
