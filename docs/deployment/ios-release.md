@@ -5,7 +5,7 @@ version: 1
 created: 2026-09-15
 updated: 2026-09-15
 status: active
-lines: 120
+lines: 171
 depends-on:
   - ../reference/status.md
 related:
@@ -94,6 +94,8 @@ python3 scripts/asc_signing.py --ensure   # 幂等：缺则建、有则复用、
 `dist.key`（私钥）、`cert.pem`、`profiles.json`（bundleId → profile 名映射）。
 
 ## 4. 上传之后
+
+> 只给自己/团队用（**内部测试**）看本节即可；**要把构建发给外部的人使用（外部测试，首次需过 Beta 审核）** → 见 `testflight-external-testing.md`。
 
 1. App Store Connect → **TestFlight** 等构建从「正在处理」变为可测试（**5~30 分钟**）
 2. **Internal Testing** 里把自己（Apple ID）加成测试员 —— 内部测试**不需要 Apple 审核**
