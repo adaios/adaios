@@ -100,9 +100,10 @@ class TradingDecisionNarratorTest {
 
         assertTrue(block.isPresent());
         String text = block.get().text();
-        assertTrue(text.contains("亨通光电（600487） 现价 18.42"), text);
+        assertTrue(text.contains("亨通光电（600487） 昨收 18.42（数据到 2026-09-19）"),
+                "早盘 09:15 未开盘，价格口径是昨收且必须带数据日期，实际: " + text);
         assertTrue(text.contains("① 你的历史：你过去 6 次在「B1」买入，4 次盈利、平均 +2.8%、平均持 2 天"), text);
-        assertTrue(text.contains("② 证据：现价 18.42 · 缩量到 0.6 倍 · KDJ.J=11 拐头向上"), text);
+        assertTrue(text.contains("② 证据：缩量到 0.6 倍 · KDJ.J=11 拐头向上 · 你的参数：KDJ.J < 13 · 缩量 < 0.7 倍"), text);
         assertTrue(text.contains("③ 规则：《B1三段条件》R33 原文「连续下跌"), "规则原文必须逐字，实际: " + text);
         assertTrue(text.contains("④ 位置：按你自己的止损习惯（4 次亏损了结、平均 -4.5%），这只见位约 17.59"), text);
         assertEquals(List.of("R33"), block.get().ruleRefs());

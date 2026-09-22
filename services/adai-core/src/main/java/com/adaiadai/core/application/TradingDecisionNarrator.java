@@ -28,7 +28,7 @@ import java.util.Optional;
  *   <tr><th>#</th><th>要素</th><th>本类怎么给</th></tr>
  *   <tr><td>①</td><td>本人历史操作统计</td><td>{@link TradingEvidenceService#historyStats} 按形态 / 盈亏区间分桶；
  *       <b>样本 &lt; 5 就直说「样本还不够」</b>，绝不拿一两次巧合当规律</td></tr>
- *   <tr><td>②</td><td>具体数字证据链</td><td>现价 / 命中信号（量比、KDJ）/ 用户自己的规则参数阈值</td></tr>
+ *   <tr><td>②</td><td>具体数字证据链</td><td>最新收盘价（**带口径与数据日期**——买点块在 09:15，写「昨收」不写「现价」）/ 命中信号（量比、KDJ）/ 用户自己的规则参数阈值</td></tr>
  *   <tr><td>③</td><td>规则依据原文</td><td>{@link TradingEvidenceService#ruleTextOf} **逐字**引用；
  *       取不到原文 → 这一条**不发**（宁可不给，也不复述成「大概是这个意思」）</td></tr>
  *   <tr><td>④</td><td>可回溯可追责</td><td>推送正文给**位置**（成本 / 止损 / 上次了结习惯位）；留痕实体由
@@ -100,10 +100,14 @@ public class TradingDecisionNarrator {
         }
         BigDecimal price = quote.price();
         StringBuilder sb = new StringBuilder();
-        sb.append("· ").append(hit.name()).append("（").append(hit.symbol()).append("） 现价 ")
-                .append(fmt(price)).append("\n");
+        // 口径（早盘 09:15 未开盘，行情接口给的是**上一交易日收盘**）：写「昨收」而不是「现价」——
+        // 与持仓段同一口径；再加数据日期，盘后复用也不会含糊（RFC 20260918「展示必标口径」铁律）。
+        sb.append("· ").append(hit.name()).append("（").append(hit.symbol()).append("） 昨收 ")
+                .append(fmt(price));
+        if (hit.dataDate() != null) sb.append("（数据到 ").append(hit.dataDate()).append("）");
+        sb.append("\n");
         sb.append("  ① 你的历史：").append(buyHistoryLine(userId, hit.buyPoint())).append("\n");
-        sb.append("  ② 证据：").append(buyNumbersLine(userId, hit, price)).append("\n");
+        sb.append("  ② 证据：").append(buyNumbersLine(userId, hit)).append("\n");
         sb.append("  ③ 规则：").append(ruleLine(rule.get())).append("\n");
         sb.append("  ④ 位置：").append(stopHabitLine(userId, price));
         return Optional.of(new Block(sb.toString(), List.of("R" + ruleNo)));
@@ -132,10 +136,12 @@ public class TradingDecisionNarrator {
         }
     }
 
-    /** ② 现价 + 引擎给出的命中信号 + 用户自己的参数阈值（都是可当场核对的数字）。 */
-    private String buyNumbersLine(String userId, WatchlistBuyPointService.WatchBuyPoint hit, BigDecimal price) {
+    /**
+     * ② 引擎给出的命中信号 + 用户自己的参数阈值（都是可当场核对的数字）。
+     * 价格写在标题行（带口径与数据日期），这里不重复——② 是「证据链」，不是把数字堆第二遍。
+     */
+    private String buyNumbersLine(String userId, WatchlistBuyPointService.WatchBuyPoint hit) {
         List<String> parts = new ArrayList<>();
-        parts.add("现价 " + fmt(price));
         if (hit.signals() != null) parts.addAll(hit.signals());
         try {
             TradingRuleSettings s = settingsRepository.findByUser(userId);
@@ -148,7 +154,6 @@ public class TradingDecisionNarrator {
         } catch (RuntimeException e) {
             log.warn("买点四要素②规则参数读取失败（省略该段）| userId={} | {}", userId, e.getMessage());
         }
-        if (hit.dataDate() != null) parts.add("数据到 " + hit.dataDate());
         return String.join(" · ", parts);
     }
 
