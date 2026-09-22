@@ -393,6 +393,8 @@ audits/2026-09-05-cognition-layer-review.md → **P1×5 + 💥×6 + docs×6 全�
 > **FP-P2a~i 已出表**（2026-08-16 P2 清尾批，见已修复区）：输出侧校验 / R81 100万前提 / 测试补断言 / gap frontmatter / docs/README 登记 / 三阶段 RFC 滚动 / gap 指向 / 脚本相对路径 + CLAUDE.md 收录 / 编号对拍。**P2 表当前清零（P2-交易4/P2-交易20 均已出表，见已修复区）**。
 > 历史观察项已迁移 task-log。
 
+| P2-交易62 | **`integrity` 降级流水在「锚定日无文件日期」时把「不可判定」说成「确定」——文案与设计承诺不一致（2026-09-22 第十二次部署后线上探针发现）**：`GET /trading/integrity` 的 `degraded[]` 每行带 `inferred`，前端只在 `inferred=true` 时出橙色横幅；而 `inferred` 由「锚定日 ≠ 快照文件日期」判定，**老锚定没有 `positionsFileDate` 字段**（本批留痕上线前写入的锚定）→ `SnapshotAnchor.positionsDateInferred()` 返回 false（**刻意不诬告**）。问题出在 note 文案分支：`TradingAppService.integrity` 里「文件日期未记录 → 如实说明『无法判断锚定日是否被归一化推断过』」这条**只在 `degraded` 为空时才走**（`else if`）——一旦有降级流水，note 就落到 `inferred=false` 那条**确定语气**文案「已含在券商快照内，只记流水、未重复计入持仓」。**线上实据（2026-09-22 部署后探针）**：`degraded` **6 条**（成交日 = 锚定日 2026-09-18），note 报「ℹ️ 另有 6 笔成交…已含在券商快照内」；而锚定日 2026-09-18 实为**归一化推断值**（用户 09-20 22:56 重导「持仓股20260920」，周日 → 退到上一交易日 09-18），只是那次重导发生在带 `positionsFileDate` 的代码上线**之前**，字段没落下。**本例结论碰巧正确**（重导的快照确实已含那 6 笔），但机制上属于「拿不到证据却断言确定」，与代码注释「文件日期未记录 → false（不诬告）；这一信息由 `positionsFileDate == null` 在对账 note 里如实说明」的承诺相抵。**建议**：`degraded` 非空时也补一句文件日期缺失的如实说明（例如「另有 N 笔成交…；该锚定未记录快照文件日期，无法判断锚定日是否被推断」），或把 note 两种语气按「可判定 / 不可判定」重排，不让 `inferred=false` 冒充确定 | `TradingAppService.integrity`（note 拼接的 if/else if 分支）· `SnapshotAnchor.positionsDateInferred/cashDateInferred` · 双端 `integrity` 橙色横幅判定 | 登记待排期（**未改代码**，遵守「审查只报告不直接修」）；与 **P1-交易61** 同族（锚定日推断），修 P1-交易61 剩余项时顺手处理 |
+
 ## 🔴 P0 / P3
 
 - **P0-交易A ✅ 已修（2026-08-23 B6-1）**：`MarketPushRepository.append` 损坏防护升级为结构校验（数组且元素含 id 才放行，`[123]`/`{"a":1}` 不覆盖历史）+ MarketPushRepositoryTest ×3；原审查登记见 `audits/2026-08-23-reviewer-isolation-demo.md`

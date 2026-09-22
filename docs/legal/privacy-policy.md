@@ -15,11 +15,17 @@ tags: [legal, privacy, ios]
 # 隐私政策
 
 > **状态：已发布（2026-09-21）** —— 公开地址 **https://adaiadai.com/privacy**
-> （页面源文件 `apps/adai-app/web/privacy.html`，由 Caddy `handle /privacy` 路由到静态页；
-> 已同步填进 App Store Connect 的 TestFlight 测试信息与 App Store 上架资料）。
-> **改动流程**：改本文件的正文 → 同步改 `apps/adai-app/web/privacy.html` → 上传到
-> 生产 `/opt/adaios/web/privacy.html`（下次 Flutter web 构建也会自动带上）→
-> 改「生效日期」并重新验证公网 200。
+> （页面**两份源文件必须保持一致**：`apps/adai-web/web/privacy.html` 供**桌面 web 构建**
+> （→ 生产 `/opt/adaios/web/`）· `apps/adai-app/web/privacy.html` 供移动端构建；
+> 由 Caddy `handle /privacy` 路由到静态页；已同步填进 App Store Connect 的 TestFlight
+> 测试信息与 App Store 上架资料）。
+> **改动流程**：改本文件的正文 → **同步改上面两份 `privacy.html`** → 重新构建并上传到
+> 生产 `/opt/adaios/web/privacy.html`（源文件已在构建目录内，带 `rm -rf` 的整目录替换也**不会**丢）
+> → 改「生效日期」并重新验证公网 200。
+> ⚠️ **2026-09-22 踩坑记录**：此前只有 `apps/adai-app/web/` 一份源，而 web 部署是
+> `rm -rf /opt/adaios/web` 整目录替换 → 第十二次部署时该页会被抹成 404（TestFlight 外测
+> 正依赖的隐私政策 URL 直接断）；本次部署前手工补进产物避过，随后补
+> `apps/adai-web/web/privacy.html` 根治（源文件进构建目录）。
 
 **生效日期**：2026-09-17
 **适用产品**：阿呆阿呆 iOS App（Bundle ID `com.adaiadai.adaiApp`）及网站 `adaiadai.com`
