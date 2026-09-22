@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import 'media_thumb_strip.dart';
 
 /// Timeline modal — calendar-style header with date selection.
 /// Fetches data from API instead of Mock.
@@ -193,24 +194,14 @@ class _TimelineModalState extends State<TimelineModal> {
               children: [
                 Text('$time  ${e.title}',
                     style: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.darkGrey1)),
-                if (e.mediaPath != null) ...[
+                if (_mediaIdsOf(e).isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: () => _showFullImage(e.id),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        widget.api.mediaUrl(e.id),
-                        headers: widget.api.mediaHeaders,
-                        width: 72, height: 72,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 72, height: 72,
-                          color: AppColors.darkSurface2,
-                          child: const Icon(Icons.broken_image_outlined, size: 18, color: AppColors.darkGrey5),
-                        ),
-                      ),
-                    ),
+                  // 2026-09-22 多图批：一个回合的全部图并列（弹窗内用 72px 缩略图），
+                  // 点击任一图弹全图（MediaThumbStrip 内置公共全图 Dialog）
+                  MediaThumbStrip(
+                    urls: _mediaIdsOf(e).map(widget.api.mediaUrl).toList(),
+                    headers: widget.api.mediaHeaders,
+                    size: 72,
                   ),
                 ],
               ],
@@ -221,31 +212,12 @@ class _TimelineModalState extends State<TimelineModal> {
     );
   }
 
-  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
-  void _showFullImage(String id) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(20),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              widget.api.mediaUrl(id),
-              headers: widget.api.mediaHeaders,
-              fit: BoxFit.contain,
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : const Center(child: CircularProgressIndicator()),
-              errorBuilder: (_, _, _) => const Center(
-                  child: Icon(Icons.broken_image_outlined, size: 48, color: Colors.white38)),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// 本条的媒体记录 id 列表（2026-09-22 多图批）：`mediaPaths` 是本回合全部原图
+  /// （存储相对路径 / 或已是 id），旧后端只有单值 `mediaPath` → 解析层已回退成 1 条。
+  List<String> _mediaIdsOf(TimelineEntryResponse e) => e.mediaPaths
+      .map((p) => mediaRecordIdOf(p, fallbackId: e.id))
+      .where((x) => x.isNotEmpty)
+      .toList();
 
   Widget _buildCalendarGrid(bool isCurrentMonth, DateTime today) {
     final cells = <Widget>[];

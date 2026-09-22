@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../widgets/media_thumb_strip.dart';
 
 /// 时间线页 — 日历月视图 + 日记录列表。
 class TimelinePage extends StatefulWidget {
@@ -120,69 +121,12 @@ class _TimelinePageState extends State<TimelinePage> {
     return wd - 1;
   }
 
-  /// 点击缩略图 → 全图 Dialog（点任意处关闭，批2 原图可见）。
-  /// REVIEW #199：全图加载补 errorBuilder/loadingBuilder——后端 404 或慢加载时
-  /// 显示占位（broken image + 失败文案 / 居中 spinner），而非空白 Dialog。
-  void _showFullImage(String id) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(20),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              widget.api.mediaUrl(id),
-              headers: widget.api.mediaHeaders,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => Container(
-                constraints: const BoxConstraints(maxWidth: 300),
-                padding: const EdgeInsets.all(28),
-                color: AppColors.darkSurface2,
-                child: const Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.broken_image_outlined,
-                      size: 36,
-                      color: AppColors.darkGrey5,
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      '图片加载失败',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.darkGrey4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              loadingBuilder: (_, child, progress) => progress == null
-                  ? child
-                  : Container(
-                      width: 140,
-                      height: 140,
-                      color: AppColors.darkSurface2,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.darkGreen,
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// 本条的媒体记录 id 列表（2026-09-22 多图批）：`mediaPaths` 是本回合全部原图
+  /// （存储相对路径 / 或已是 id），旧后端只有单值 `mediaPath` → 解析层已回退成 1 条。
+  List<String> _mediaIdsOf(TimelineEntryResponse e) => e.mediaPaths
+      .map((p) => mediaRecordIdOf(p, fallbackId: e.id))
+      .where((x) => x.isNotEmpty)
+      .toList();
 
   void _prevMonth() {
     setState(() {
@@ -453,30 +397,13 @@ class _TimelinePageState extends State<TimelinePage> {
                   e.title,
                   style: TextStyle(fontSize: 14, color: AppColors.darkGrey1),
                 ),
-                if (e.mediaPath != null) ...[
+                if (_mediaIdsOf(e).isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () => _showFullImage(e.id),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        widget.api.mediaUrl(e.id),
-                        headers: widget.api.mediaHeaders,
-                        width: 96,
-                        height: 96,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 96,
-                          height: 96,
-                          color: AppColors.darkSurface2,
-                          child: const Icon(
-                            Icons.broken_image_outlined,
-                            size: 20,
-                            color: AppColors.darkGrey5,
-                          ),
-                        ),
-                      ),
-                    ),
+                  // 2026-09-22 多图批：一个回合的全部图并列（多图横滑 + 「共 N 张」角标），
+                  // 点击任一图弹全图（MediaThumbStrip 内置公共全图 Dialog）
+                  MediaThumbStrip(
+                    urls: _mediaIdsOf(e).map(widget.api.mediaUrl).toList(),
+                    headers: widget.api.mediaHeaders,
                   ),
                 ],
                 if (e.tags.isNotEmpty) ...[

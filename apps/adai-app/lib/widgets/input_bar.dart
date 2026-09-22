@@ -24,8 +24,10 @@ class InputBar extends StatefulWidget {
   final bool hasActiveChat; // true when chatting with AI
   final VoidCallback? onAskActivated; // called when ask mode starts typing
   final ValueChanged<PickedImage>? onImage; // 多模态：单图立即上传（兼容旧调用）
-  final void Function(List<PickedImage> images, String caption)?
-  onSendMedia; // 多图 + 可选文字一起提交，逐张上传
+  /// 多图 + 可选文字一起提交（一次投递一次请求）。
+  /// **返回是否受理**：false（如上传批次锁拒绝）时输入栏**不清空**——修「静默丢图」
+  /// （2026-09-22：原实现先 `_pendingImages.clear()` 再回调，被拒时图片已消失且没上传）。
+  final bool Function(List<PickedImage> images, String caption)? onSendMedia;
 
   const InputBar({
     super.key,
@@ -95,23 +97,33 @@ class InputBarState extends State<InputBar> {
     final text = _textCtrl.text.trim();
     final images = List<PickedImage>.of(_pendingImages);
     if (images.isEmpty && text.isEmpty) return;
-    _textCtrl.clear();
-    setState(() => _pendingImages.clear());
-    // 发送后收起键盘（阿呆 08-13 反馈）：记录/提问发出后不再霸屏遮挡 Feed。
-    _focusNode.unfocus();
     if (images.isNotEmpty) {
-      // 图 + 文字（可空，caption 共享）一起提交，逐张上传
-      if (widget.onSendMedia != null) {
-        widget.onSendMedia!(images, text);
+      // 图 + 文字（可空，caption 共享）一次投递。
+      // 2026-09-22 修「静默丢图」：清空时机移到**确认受理之后**——上传批次锁拒绝时
+      // 回调返回 false，输入栏（含待发送缩略图与文字）原样保留，用户可直接重发。
+      final onSendMedia = widget.onSendMedia;
+      if (onSendMedia != null) {
+        if (!onSendMedia(images, text)) return;
+        _clearAfterSend();
         return;
       }
       // 无 onSendMedia 时回退：逐张交给单图上传回调
+      _clearAfterSend();
       for (final img in images) {
         widget.onImage?.call(img);
       }
       return;
     }
+    _clearAfterSend();
     widget.onSend(text);
+  }
+
+  /// 发送已被受理后的清空（收起键盘 + 清文字 + 清待发送图片）。
+  void _clearAfterSend() {
+    _textCtrl.clear();
+    setState(() => _pendingImages.clear());
+    // 发送后收起键盘（阿呆 08-13 反馈）：记录/提问发出后不再霸屏遮挡 Feed。
+    _focusNode.unfocus();
   }
 
   /// REVIEW #257 测试钩子：测试注入待发送图片（等价用户选图挂到输入栏），

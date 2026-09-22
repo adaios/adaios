@@ -74,7 +74,10 @@ void main() {
         home: Scaffold(
           body: InputBar(
             onSend: (_) {},
-            onSendMedia: (imgs, _) => sent = imgs,
+            onSendMedia: (imgs, _) {
+              sent = imgs;
+              return true; // 受理
+            },
           ),
         ),
       ));
@@ -89,10 +92,40 @@ void main() {
       await tester.pump();
       expect(find.text('3/3'), findsOneWidget, reason: '数量上限 3，预览条角标封顶 3/3');
 
-      // 发送 → 只带 3 张（上限截断生效）
+      // 发送 → 只带 3 张（上限截断生效），受理后输入栏清空
       await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
       await tester.pump();
       expect(sent!.length, 3, reason: '发送最多 3 张');
+      expect(find.text('3/3'), findsNothing, reason: '受理后清空待发送图片');
+    });
+
+    testWidgets('2026-09-22 修「静默丢图」：onSendMedia 返回 false（批次锁拒绝）时输入栏不清空',
+        (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: InputBar(
+            onSend: (_) {},
+            // 模拟 MainPage 批次锁：一律拒绝受理
+            onSendMedia: (imgs, _) {
+              calls++;
+              return false;
+            },
+          ),
+        ),
+      ));
+
+      final state = tester.state<InputBarState>(find.byType(InputBar));
+      state.debugInjectImages([PickedImage([1], 'a.jpg', 'jpg')]);
+      await tester.pump();
+      expect(find.text('1/3'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+
+      expect(calls, 1, reason: '回调被调用过（确实尝试发送）');
+      expect(find.text('1/3'), findsOneWidget,
+          reason: '被拒时待发送图片必须原样保留——修复前先 clear 再回调，图片已消失且未上传');
     });
   });
 }

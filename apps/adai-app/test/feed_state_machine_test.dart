@@ -10,6 +10,7 @@ import 'package:adai_app/services/sse_client.dart';
 import 'package:adai_app/pages/todo_page.dart';
 import 'package:adai_app/widgets/feed_card.dart';
 import 'package:adai_app/widgets/input_bar.dart';
+import 'package:adai_app/widgets/media_thumb_strip.dart';
 
 // ────────────────────────────────────────────────────────────────
 // Feed 状态机 widget 测试（#117）
@@ -111,6 +112,40 @@ Map<String, dynamic> _imageRecord(String id, String summary) => {
   'tags': <String>[], 'time': '14:00', 'date': '08-04',
   'intent': 'log', 'summary': summary, 'turns': null,
   'domain': 'life', 'mediaPath': 'media/$id.png',
+};
+
+/// 多图回合卡条目 JSON（2026-09-22 多图批：`mediaPaths` = 本回合全部原图）。
+Map<String, dynamic> _multiImageRecord(String id, List<String> mediaIds, String summary) => {
+  'type': 'record', 'id': id, 'title': '', 'content': summary,
+  'tags': <String>[], 'time': '14:00', 'date': '08-04',
+  'intent': 'log', 'summary': summary, 'turns': null,
+  'domain': 'life',
+  'mediaPath': 'records/2026/09/media/${mediaIds.first}.jpg',
+  'mediaPaths': mediaIds.map((m) => 'records/2026/09/media/$m.jpg').toList(),
+};
+
+/// 新契约（2026-09-22 多图批）：`POST /records/media/batch` 响应 JSON。
+/// 一次投递 = 一条主记录（recordId = 卡片 id）+ 按顺序的附件记录 id（mediaIds）。
+Map<String, dynamic> _batchResp({
+  String recordId = 'rec_media_001',
+  List<String>? mediaIds,
+  String type = 'image',
+  String intent = 'log',
+  String summary = '图片内容理解',
+  String? answer,
+  List<String> tags = const ['图片'],
+  String domain = 'life',
+  bool duplicated = false,
+}) => {
+  'recordId': recordId,
+  'mediaIds': mediaIds ?? [recordId],
+  'type': type,
+  'intent': intent,
+  'summary': summary,
+  'answer': answer,
+  'tags': tags,
+  'domain': domain,
+  'duplicated': duplicated,
 };
 
 /// 附加条目 JSON（market 行情 / push 推送——仅 page 0 附带，不占分页进度）。
@@ -738,24 +773,22 @@ void main() {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      // 首次 /records/media 失败，重试成功
+      // 首次 /records/media/batch 失败，重试成功（2026-09-22：一次投递一次请求）
       var mediaCalls = 0;
       final mediaRequests = <http.Request>[];
-      b.handlers['/api/v1/records/media'] = (req) {
+      b.handlers['/api/v1/records/media/batch'] = (req) {
         mediaCalls++;
         mediaRequests.add(req);
         if (mediaCalls == 1) {
           return Future.value(http.Response('{"error":"模拟超时"}', 500,
               headers: {'content-type': 'application/json'}));
         }
-        // 上传成功 → Feed 里出现该媒体记录（重试后 _loadFeed 能读到）
+        // 投递成功 → Feed 里出现该媒体记录（重试后 _loadFeed 能读到）
         b.feedPage0 = [_record('rec_media_001', '我的截图',
             summary: '图片内容理解', mediaPath: 'records/2026/08/media/x.png')];
         b.feedTotalToday = 1;
-        return Future.value(_json({
-          'recordId': 'rec_media_001', 'intent': 'log',
-          'summary': '图片内容理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/x.png',
-        }));
+        return Future.value(_json(_batchResp(
+            recordId: 'rec_media_001', summary: '图片内容理解')));
       };
       await _pump(tester, b);
 
@@ -781,6 +814,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(mediaCalls, 2);
+      // 2026-09-22 幂等：重试必须复用**同一个** Idempotency-Key（后端据此识别同一次投递，不重复落盘）
+      expect(mediaRequests.length, 2);
+      expect(mediaRequests[0].headers['Idempotency-Key'], isNotEmpty);
+      expect(mediaRequests[1].headers['Idempotency-Key'],
+          mediaRequests[0].headers['Idempotency-Key'],
+          reason: '重试复用同一幂等键——生成新键会让后端当成第二次投递、重复落盘');
       // 成功卡替换占位卡，显示 AI 理解文本，不再显示重试
       expect(find.text('图片内容理解'), findsOneWidget);
       expect(find.text('重试'), findsNothing);
@@ -790,14 +829,12 @@ void main() {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) {
+      b.handlers['/api/v1/records/media/batch'] = (req) {
         b.feedPage0 = [_record('rec_media_002', '我的截图',
             summary: 'AI 图片理解', mediaPath: 'records/2026/08/media/y.png')];
         b.feedTotalToday = 1;
-        return Future.value(_json({
-          'recordId': 'rec_media_002', 'intent': 'log',
-          'summary': 'AI 图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/y.png',
-        }));
+        return Future.value(_json(_batchResp(
+            recordId: 'rec_media_002', summary: 'AI 图片理解')));
       };
       await _pump(tester, b);
 
@@ -811,28 +848,117 @@ void main() {
       await tester.pumpAndSettle();
 
       // caption「我的截图」保留为记录内容（卡 content 或成功 SnackBar 至少一处）；
-      // AI 理解文本作为 summary 展示且只渲染一次（#245 核心：content 与 summary 不同源，不重复）
+      // AI 理解文本作为 summary 展示且只渲染一次（#245 核心：content 与 summary 不同源，不重复）。
+      // 用 descendant 限定在卡内：2026-09-22 起自然回执直接用后端 summary，SnackBar 也含同一句，
+      // 不把「回执」算成「卡内重复」。
       expect(find.textContaining('我的截图', findRichText: true), findsWidgets);
-      expect(find.textContaining('AI 图片理解', findRichText: true), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(FeedCard),
+            matching: find.textContaining('AI 图片理解', findRichText: true)),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('RFC 20260815 发图带问句：ask-batch 返回 question → 直进对话态（不刷新 Feed）', (tester) async {
+    testWidgets('2026-09-22 一次投递 3 张：一个 batch 请求 + 一张卡 + 卡内并列 3 图（共 3 张）',
+        (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) {
-        return Future.value(_json({
-          'recordId': 'rec_media_ask', 'intent': 'log',
-          'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/ask.png',
-        }));
+      final gate = Completer<http.Response>();
+      final batchReqs = <http.Request>[];
+      b.handlers['/api/v1/records/media/batch'] = (req) {
+        batchReqs.add(req);
+        // 投递成功后的 Feed（一次投递 = 一条主记录，mediaPaths 带全部 3 图）
+        b.feedPage0 = [
+          _multiImageRecord('rec_triple', ['rec_a', 'rec_b', 'rec_c'], '三张图都在：江边、猫、晚饭')
+        ];
+        b.feedTotalToday = 1;
+        return gate.future;
       };
+      await _pump(tester, b);
+
+      final inputState = tester.state<InputBarState>(find.byType(InputBar));
+      inputState.debugInjectImages([
+        PickedImage([1], 'a.jpg', 'jpg'),
+        PickedImage([2], 'b.jpg', 'jpg'),
+        PickedImage([3], 'c.jpg', 'jpg'),
+      ]);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pump();
+
+      // 投递中：**1 张**占位卡（本地预览全部 3 图 + 「共 3 张」角标），不是 3 张占位卡
+      expect(find.byType(FeedCard), findsOneWidget);
+      expect(find.text('共 3 张'), findsOneWidget);
+      expect(find.text('📤 上传中 3 张…'), findsOneWidget);
+
+      gate.complete(_json(_batchResp(
+        recordId: 'rec_triple',
+        mediaIds: ['rec_a', 'rec_b', 'rec_c'],
+        summary: '三张图都在：江边、猫、晚饭',
+      )));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      // 只发一个请求：multipart 里 3 个 files 字段（一次投递一次请求，而非 3 次单图请求）
+      expect(batchReqs.length, 1, reason: '一次投递 = 一次请求');
+      final body = utf8.decode(batchReqs.first.bodyBytes);
+      expect('name="files"'.allMatches(body).length, 3,
+          reason: '3 张图挂在同一个 multipart 的 files 字段里');
+      // 完成后仍是一张卡：卡内 3 图并列（MediaThumbStrip）+ 「共 3 张」
+      expect(find.byType(FeedCard), findsOneWidget, reason: '一次投递 = 一张卡（旧实现 3 张卡）');
+      expect(find.byType(MediaThumbStrip), findsOneWidget);
+      expect(find.text('共 3 张'), findsOneWidget);
+    });
+
+    testWidgets('2026-09-22 Feed 多图回合卡（mediaPaths 3 条）→ 追问走 ask-batch 且带全部图 id',
+        (tester) async {
+      final b = _Backend()
+        ..feedPage0 = [
+          _multiImageRecord('rec_triple', ['rec_a', 'rec_b', 'rec_c'], '三张图：江边、猫、晚饭')
+        ]
+        ..feedTotalToday = 1;
+      List<dynamic>? askIds;
       b.handlers['/api/v1/records/media/ask-batch'] = (req) {
-        final body = jsonDecode(req.body);
+        askIds = jsonDecode(req.body)['imageRecordIds'];
         return Future.value(_json({
-          'intent': 'question', 'answer': '左图是持仓，右图是走势。',
-          'recordId': 'qa1', 'imageRecordIds': body['imageRecordIds'],
+          'intent': 'question', 'answer': '三张分别是江边、猫和晚饭。',
+          'recordId': 'qa2', 'imageRecordIds': askIds,
         }));
       };
+      await _pump(tester, b);
+
+      // mediaPaths 消费点：卡内并列 3 图（不再是只有首图）
+      expect(find.byType(MediaThumbStrip), findsOneWidget);
+      expect(find.text('共 3 张'), findsOneWidget);
+
+      await tester.tap(find.text('提问'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '这三张分别是什么？');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(askIds, ['rec_a', 'rec_b', 'rec_c'],
+          reason: '多图回合追问必须带全部图 id（只带首图会让阿呆「少看几张」）');
+      expect(find.textContaining('三张分别是江边、猫和晚饭。', findRichText: true), findsOneWidget);
+      // 不走单图 ask 端点
+      expect(b.requests.where((r) => r.url.path.endsWith('/ask')).length, 0);
+    });
+
+    testWidgets('2026-09-22 一次投递带提问：batch 返回 question → 直进对话态（不再二段式 ask-batch）',
+        (tester) async {
+      final b = _Backend()
+        ..feedPage0 = []
+        ..feedTotalToday = 0;
+      // 一次投递一次请求：后端在同一个响应里给判定 + 回答（旧实现是「先逐张传、再 ask-batch」两段）
+      b.handlers['/api/v1/records/media/batch'] = (req) => Future.value(_json(_batchResp(
+            recordId: 'rec_media_ask',
+            mediaIds: ['rec_media_ask'],
+            type: 'image_qa', intent: 'question',
+            summary: '两张图',
+            answer: '左图是持仓，右图是走势。',
+          )));
       await _pump(tester, b);
       final feedCallsBefore = b.requests.where((r) => r.url.path == '/api/v1/feed').length;
 
@@ -845,32 +971,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      // ask-batch 已调用且携带图片 id 与问题原文
-      final askReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch');
-      expect(askReqs.length, 1);
-      final body = jsonDecode(askReqs.first.body);
-      expect(body['imageRecordIds'], ['rec_media_ask']);
-      expect(body['question'], '这两张图分别是什么？');
+      // 只发一个 batch 请求（问句随 multipart text 字段走）；不再有二次 ask-batch 调用
+      final batchReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/batch');
+      expect(batchReqs.length, 1);
+      expect(utf8.decode(batchReqs.first.bodyBytes), contains('这两张图分别是什么？'));
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 0,
+          reason: '2026-09-22 新契约：判定与回答都在 batch 响应里，不再补跑 ask-batch');
 
-      // P0 核心：不再只是 SnackBar——直进对话态（对话 badge + 问句/回答气泡 + 结束对话）
+      // P0 核心：直进对话态（对话 badge + 问句/回答气泡 + 结束对话）
       expect(find.text('结束对话'), findsOneWidget);
       expect(find.text('对话'), findsOneWidget); // 对话 badge
       expect(find.text('这两张图分别是什么？'), findsOneWidget); // 用户问句气泡
       expect(find.textContaining('左图是持仓，右图是走势。', findRichText: true), findsOneWidget); // 阿呆回答气泡
       expect(find.textContaining('💬', findRichText: true), findsNothing); // 不再 SnackBar 截断回答
 
-      // 不刷新 Feed（宿主卡身份稳定：本地首图卡 id=真实图片记录 id，S-2 聚合 id 漂移前端先避开）
+      // 不刷新 Feed（宿主卡 = 本次投递主记录 id，避免聚合后 id 漂移）
       expect(b.requests.where((r) => r.url.path == '/api/v1/feed').length, feedCallsBefore);
     });
 
-    testWidgets('RFC 20260815 发图带问句：判定中「🔍 阿呆正在看图…」状态条 → 返回后直进对话态', (tester) async {
+    testWidgets('2026-09-22 一次投递：「📤 上传中…」→（超阈值）「🔍 阿呆正在看图…」→ 返回后直进对话态',
+        (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      final uploadGate = Completer<http.Response>();
-      final askGate = Completer<http.Response>();
-      b.handlers['/api/v1/records/media'] = (req) => uploadGate.future;
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) => askGate.future;
+      final batchGate = Completer<http.Response>();
+      b.handlers['/api/v1/records/media/batch'] = (req) => batchGate.future;
       await _pump(tester, b);
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
@@ -880,26 +1005,21 @@ void main() {
       await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
       await tester.pump();
 
-      // 上传中：占位卡本地预览（内存图，非空白/文件名）+ 上传进度 n/m
+      // 投递中：占位卡本地预览（内存图，非空白/文件名）+ 上传反馈（单图 → 「📤 上传中…」）
       expect(find.byType(Image), findsOneWidget);
-      expect(find.text('📤 上传中 0/1'), findsOneWidget);
+      expect(find.text('📤 上传中…'), findsOneWidget);
 
-      // 上传完成 → 判定中状态条（上传进度条槽位复用，「🔍 阿呆正在看图…」）
+      // 超过阈值（3 秒）→ 切成判定条「🔍 阿呆正在看图…」（同一槽位二态）
       // 注：判定条为不定进度动画，此阶段只用显式 pump，不用 pumpAndSettle
-      uploadGate.complete(_json({
-        'recordId': 'rec_media_judge', 'intent': 'log',
-        'summary': '一张截图', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/judge.png',
-      }));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(seconds: 3));
       expect(find.text('🔍 阿呆正在看图…'), findsOneWidget);
-      expect(find.text('📤 上传中 0/1'), findsNothing);
+      expect(find.text('📤 上传中…'), findsNothing);
 
-      // ask-batch 返回 question → 直进对话态（判定条消失，回答成为气泡）
-      askGate.complete(_json({
-        'intent': 'question', 'answer': '这是一张截图。',
-        'recordId': 'qa', 'imageRecordIds': ['rec_media_judge'],
-      }));
+      // batch 返回 question → 直进对话态（判定条消失，回答成为气泡）
+      batchGate.complete(_json(_batchResp(
+        recordId: 'rec_media_judge', mediaIds: ['rec_media_judge'],
+        type: 'image_qa', intent: 'question', summary: '一张截图', answer: '这是一张截图。',
+      )));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
@@ -909,18 +1029,16 @@ void main() {
       expect(find.textContaining('这是一张截图。', findRichText: true), findsOneWidget);
     });
 
-    testWidgets('RFC 20260815 发图纯图（无 caption）：log 落卡 + 阿呆自然回执（VLM summary，无系统文案）', (tester) async {
+    testWidgets('2026-09-22 一次投递纯图（无 caption）：log 落卡 + 阿呆自然回执用后端综合总结', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) {
+      b.handlers['/api/v1/records/media/batch'] = (req) {
         b.feedPage0 = [_record('rec_media_pure', 'IMG_P.jpg',
             summary: '傍晚的江边 🌇', mediaPath: 'records/2026/08/media/pure.png')];
         b.feedTotalToday = 1;
-        return Future.value(_json({
-          'recordId': 'rec_media_pure', 'intent': 'log',
-          'summary': '傍晚的江边 🌇', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/pure.png',
-        }));
+        return Future.value(_json(_batchResp(
+            recordId: 'rec_media_pure', summary: '傍晚的江边 🌇')));
       };
       await _pump(tester, b);
 
@@ -932,27 +1050,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      // 纯图无文字 → 不触发 ask-batch（拍下即记录，直接 log）
+      // 纯图无文字 → 一次 batch 请求（拍下即记录，直接 log）；不再二段式 ask-batch
+      expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/batch').length, 1);
       expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 0);
-      // 阿呆自然回执：VLM summary 拼「看到你…，已记下」（无第三视角，非「已记录 N 张」系统文案）
-      expect(find.textContaining('看到你傍晚的江边 🌇，已记下', findRichText: true), findsOneWidget);
+      // 自然回执：直接用后端 summary（一段综合总结），不出现「已记录 N 张」系统文案
+      expect(find.textContaining('傍晚的江边 🌇', findRichText: true), findsWidgets);
       expect(find.textContaining('已记录', findRichText: true), findsNothing);
       // log 落卡：刷新后记录卡可见（summary 行）
       expect(find.text('傍晚的江边 🌇'), findsWidgets);
     });
 
-    testWidgets('RFC 20260815 附图 + 陈述文本：ask-batch 返回 log → 自然回执落卡，无回答气泡', (tester) async {
+    testWidgets('2026-09-22 一次投递附图 + 陈述文本：batch 返回 log → 自然回执落卡，无回答气泡', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
-        'recordId': 'rec_media_log', 'intent': 'log',
-        'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/log.png',
-      }));
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json({
-        'intent': 'log', 'answer': '',
-        'recordId': '', 'imageRecordIds': ['rec_media_log'],
-      }));
+      b.handlers['/api/v1/records/media/batch'] = (req) => Future.value(_json(_batchResp(
+        recordId: 'rec_media_log', summary: '图片理解',
+      )));
       await _pump(tester, b);
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
@@ -964,23 +1078,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      // ask-batch 调用但返回 log → 阿呆自然回执「看到你…，已记下」，不直进对话态、无 💬 回答
-      expect(b.requests.where((r) => r.url.path == '/api/v1/records/media/ask-batch').length, 1);
+      // 用户那句话随 multipart 的 text 字段一次发出（后端据此判定 intent）
+      final batchReqs = b.requests.where((r) => r.url.path == '/api/v1/records/media/batch');
+      expect(batchReqs.length, 1);
+      expect(utf8.decode(batchReqs.first.bodyBytes), contains('这是今天的持仓截图'));
+
+      // batch 返回 log → 阿呆自然回执（用后端 summary），不直进对话态、无 💬 回答
       expect(find.text('结束对话'), findsNothing, reason: 'log 不进入对话态');
       expect(find.textContaining('💬', findRichText: true), findsNothing);
-      expect(find.textContaining('看到你图片理解，已记下', findRichText: true), findsOneWidget);
+      expect(find.textContaining('图片理解', findRichText: true), findsWidgets);
     });
 
-    testWidgets('RFC 20260815 ask-batch 失败：判定条复位 + 阿呆提示，卡片保持记录卡形态，不崩', (tester) async {
+    testWidgets('2026-09-22 一次投递失败：判定条复位 + 占位卡转 error 可重试，不崩', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
-        'recordId': 'rec_media_fail', 'intent': 'log',
-        'summary': '图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/fail.png',
-      }));
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) =>
-          Future.value(_json({'error': 'AI 超时'}, status: 500));
+      b.handlers['/api/v1/records/media/batch'] =
+          (req) => Future.value(_json({'error': 'AI 超时'}, status: 500));
       await _pump(tester, b);
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
@@ -993,24 +1107,23 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      // 判定条复位（不再「正在看图」），不进对话态；阿呆自然提示（B10）
+      // 判定条复位（不再「正在看图」），不进对话态；占位卡转 error（可重试，图片不丢）
       expect(find.text('🔍 阿呆正在看图…'), findsNothing);
       expect(find.text('结束对话'), findsNothing);
-      expect(find.textContaining('阿呆没看懂这张图，再试一次？', findRichText: true), findsOneWidget);
+      expect(find.text('重试'), findsWidgets);
     });
 
     testWidgets('RFC 20260815 发图带问句 → 对话态连续追问（askMedia）→ 结束沉淀为带图总结卡', (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      b.handlers['/api/v1/records/media'] = (req) => Future.value(_json({
-        'recordId': 'rec_media_chat', 'intent': 'log',
-        'summary': '一张 K 线图', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/chat.png',
-      }));
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json({
-        'intent': 'question', 'answer': '这是一张 K 线图，近期震荡。',
-        'recordId': 'qa1', 'imageRecordIds': ['rec_media_chat'],
-      }));
+      // 2026-09-22 一次投递：判定 + 首答都在 batch 响应里（单图回合 → 首题由后端直接作答）
+      b.handlers['/api/v1/records/media/batch'] = (req) => Future.value(_json(_batchResp(
+        recordId: 'rec_media_chat', mediaIds: ['rec_media_chat'],
+        type: 'image_qa', intent: 'question', summary: '一张 K 线图',
+        answer: '这是一张 K 线图，近期震荡。',
+      )));
+      // 单图回合的后续追问仍走单图 askMedia（多图回合才走 ask-batch，见多图用例）
       b.handlers['/api/v1/records/media/rec_media_chat/ask'] = (_) => Future.value(_json({
         'recordId': 'qa2', 'answer': '压力位在 3500 附近。', 'imageRecordId': 'rec_media_chat',
       }));
@@ -1052,31 +1165,30 @@ void main() {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
-      // media 接口挂起（不返回），让上传处于进行中
+      // media 接口挂起（不返回），让投递处于进行中
       final mediaGate = Completer<http.Response>();
-      b.handlers['/api/v1/records/media'] = (_) => mediaGate.future;
+      b.handlers['/api/v1/records/media/batch'] = (_) => mediaGate.future;
       await _pump(tester, b);
 
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
-      // 第一批：注入并发送（上传挂起）
+      // 第一批：注入并发送（投递挂起）
       inputState.debugInjectImages([PickedImage([1, 2, 3], 'IMG_1.jpg', 'jpg')]);
       await tester.pump();
       await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // 上传中：第二次发送应被批次锁拒绝，提示等待
+      // 投递中：第二次发送应被批次锁拒绝，提示等待；且**输入栏保留图片**（2026-09-22 修静默丢图）
       inputState.debugInjectImages([PickedImage([4, 5, 6], 'IMG_2.jpg', 'jpg')]);
       await tester.pump();
       await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.textContaining('上一批图片还在上传'), findsOneWidget);
+      expect(find.text('1/3'), findsOneWidget,
+          reason: '被拒时输入栏不清空——修复前先 clear 再回调，图片消失且未上传（静默丢图）');
 
-      // 放行第一批 → 上传完成，进度条隐藏
-      mediaGate.complete(_json({
-        'recordId': 'rec_media_1', 'intent': 'log',
-        'summary': '第一张', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/1.png',
-      }));
+      // 放行第一批 → 投递完成，进度条隐藏
+      mediaGate.complete(_json(_batchResp(recordId: 'rec_media_1', summary: '第一张')));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
       expect(find.textContaining('上传中'), findsNothing);
@@ -1088,17 +1200,13 @@ void main() {
       final b = _Backend()
         ..feedPage0 = [_record('r1', '今天买了立昂微')]
         ..feedTotalToday = 1;
-      b.handlers['/api/v1/records/media'] = (req) {
+      b.handlers['/api/v1/records/media/batch'] = (req) {
         b.feedPage0 = [_record('rec_media_exit', '我的截图',
             summary: 'AI 图片理解', mediaPath: 'records/2026/08/media/exit.png')];
         b.feedTotalToday = 1;
-        return Future.value(_json({
-          'recordId': 'rec_media_exit', 'intent': 'log',
-          'summary': 'AI 图片理解', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/exit.png',
-        }));
+        return Future.value(_json(_batchResp(
+            recordId: 'rec_media_exit', summary: 'AI 图片理解')));
       };
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) => Future.value(_json(
-          {'intent': 'log', 'answer': '', 'recordId': '', 'imageRecordIds': []}));
       await _pump(tester, b);
 
       // 进入对话态（chatting）
@@ -1118,7 +1226,11 @@ void main() {
 
       // P1-1：对话视图已退出（无「结束对话」按钮），回到普通 Feed；图片已记录
       expect(find.text('结束对话'), findsNothing);
-      expect(find.text('AI 图片理解'), findsOneWidget);
+      // 用 descendant 限定在卡内（自然回执 SnackBar 也含同一句 summary）
+      expect(
+        find.descendant(of: find.byType(FeedCard), matching: find.text('AI 图片理解')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('P0-1：对话态 refreshTick 刷新挤出活动卡 → 静默退出对话，不崩溃', (tester) async {
@@ -1148,37 +1260,32 @@ void main() {
       expect(find.text('新记录把对话挤出'), findsOneWidget);
     });
 
-    testWidgets('P1-2：部分上传失败 → 重试全部成功后补跑 ask-batch（问句不静默丢失）', (tester) async {
+    testWidgets('2026-09-22 一次投递失败 → 重试复用同一 Idempotency-Key → 成功后按 batch 判定分流',
+        (tester) async {
       final b = _Backend()
         ..feedPage0 = []
         ..feedTotalToday = 0;
       var mediaCalls = 0;
-      b.handlers['/api/v1/records/media'] = (req) {
+      final batchReqs = <http.Request>[];
+      // 语义变更（2026-09-22 多图批）：一次投递要么整批成功、要么整批失败——不再存在
+      // 「第 1 张成功、第 2 张失败」的部分失败（那正是逐张串行上传的旧形态，也是重复落盘的来源）。
+      // 因此本用例锁的是「失败 → 重试 → 同一幂等键 → 成功后按判定分流」，替代旧的 pending 补跑断言。
+      b.handlers['/api/v1/records/media/batch'] = (req) {
         mediaCalls++;
-        if (mediaCalls == 2) {
+        batchReqs.add(req);
+        if (mediaCalls == 1) {
           return Future.value(http.Response('{"error":"模拟超时"}', 500,
               headers: {'content-type': 'application/json'}));
         }
-        final id = mediaCalls == 1 ? 'rec_A' : 'rec_B';
-        return Future.value(_json({
-          'recordId': id, 'intent': 'log',
-          'summary': '图片 $id', 'tags': ['图片'], 'mediaPath': 'records/2026/08/media/$id.png',
-        }));
-      };
-      var askBatchCalls = 0;
-      List<dynamic>? askBatchIds;
-      b.handlers['/api/v1/records/media/ask-batch'] = (req) {
-        askBatchCalls++;
-        final body = jsonDecode(req.body);
-        askBatchIds = body['imageRecordIds'];
-        return Future.value(_json({
-          'intent': 'question', 'answer': '两张图已看懂。',
-          'recordId': 'qa', 'imageRecordIds': askBatchIds,
-        }));
+        return Future.value(_json(_batchResp(
+          recordId: 'rec_qa', mediaIds: ['rec_A', 'rec_B'],
+          type: 'image_qa', intent: 'question', summary: '两张图',
+          answer: '两张图已看懂。',
+        )));
       };
       await _pump(tester, b);
 
-      // 发 2 张图 + 问句：第一张成功、第二张失败
+      // 发 2 张图 + 问句：整批失败
       final inputState = tester.state<InputBarState>(find.byType(InputBar));
       inputState.debugInjectImages([
         PickedImage([1, 2, 3], 'IMG_C1.jpg', 'jpg'),
@@ -1191,21 +1298,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      // 部分失败：第二张占位卡 error，ask-batch 尚未补跑（问句 pending 保留）
-      expect(mediaCalls, 2);
-      expect(askBatchCalls, 0, reason: '还有失败卡未重试，问句应等全部完成后一并补跑');
+      expect(mediaCalls, 1, reason: '一次投递只发一个 batch 请求（旧实现逐张 = 2 个请求）');
+      expect(find.text('重试'), findsWidgets);
 
-      // 重试第二张成功 → 无剩余失败卡 → ask-batch 补跑且携带全部图片 id
+      // 重试 → 复用同一幂等键 → 整批成功
       await tester.tap(find.text('重试').first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();
 
-      expect(mediaCalls, 3);
-      expect(askBatchCalls, 1, reason: '重试完成后问句补跑，不静默丢失');
-      expect(askBatchIds, ['rec_A', 'rec_B']);
-      // 回答进 SnackBar 的渲染机制已在既有 ask-batch 测试验证（本测试聚焦补跑触发 + 全 id 覆盖，
-      // 避免被重试后连续 SnackBar 排队的时序干扰）
+      expect(mediaCalls, 2);
+      expect(batchReqs[1].headers['Idempotency-Key'], batchReqs[0].headers['Idempotency-Key'],
+          reason: '重试复用同一幂等键 → 后端识别同一次投递，不重复落盘');
+      // 成功后按后端判定分流：question → 直进对话态（多图回合宿主卡 = 主记录 id）
+      expect(find.text('结束对话'), findsOneWidget);
+      expect(find.textContaining('两张图已看懂。', findRichText: true), findsOneWidget);
     });
   });
 

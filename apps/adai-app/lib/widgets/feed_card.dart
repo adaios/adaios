@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme/app_colors.dart';
 import '../utils/text_cleaner.dart';
-import 'full_image_dialog.dart';
+import 'media_thumb_strip.dart';
 import 'hoverable.dart';
 
 /// 后端 record.type 映射。
@@ -56,16 +56,29 @@ class FeedCardData {
   final String? pushTitle; // RFC 20260817：push 卡类型标题（早盘计划/买点提醒等）
   final VoidCallback? onDismiss; // RFC 20260817：左滑删除单条推送
   final VoidCallback? onPushSettings; // RFC 20260817：右滑进入推送设置
-  final String? mediaUrl; // 图片记录原图 URL（批2 原图可见）
+  final String? mediaUrl; // 图片记录原图 URL（批2 原图可见；多图时 = 首图，兼容旧字段）
   final Map<String, String>? mediaHeaders; // 媒体请求鉴权头
-  // REVIEW #235：上传占位卡保留原始图片字节/文件名/扩展名/共享 caption——
-  // 失败重试重走 uploadImage 原路径（原实现把文件名当文本记录重发，字节永不重传）。
+  // 2026-09-22 多图批：一次投递（N 张图 + 可选一句话）= 一个回合 = 一张卡。
+  // mediaUrls 承载本回合**全部**原图（按上传顺序）；mediaUrl 保留为「= 首图」的兼容字段。
+  final List<String> mediaUrls;
+  // 本回合全部图片的记录 id（原图 GET /records/media/{id}）：多图卡追问必须带全部图
+  // （走 POST /records/media/ask-batch），只带首图会让阿呆「少看几张」。
+  final List<String> mediaRecordIds;
+  // 上传占位卡保留原始图片字节/文件名/扩展名/共享 caption——
+  // 失败重试重走上传原路径（原实现把文件名当文本记录重发，字节永不重传）。
   // RFC 20260815：占位卡用 mediaBytes 内存图做本地预览（Image.memory 需要 Uint8List，
   // 复用 PickedImage.bytesU8 的缓存实例，避免每次 build 新建字节导致解码缓存 miss 闪烁）。
   final Uint8List? mediaBytes;
   final String? mediaName;
   final String? mediaExt;
   final String? mediaCaption;
+  // 2026-09-22 多图批：占位卡的多图本地预览字节 + 每张原始文件名/扩展名（失败重试一次重传全部）。
+  final List<Uint8List> mediaBytesList;
+  final List<String> mediaNames;
+  final List<String> mediaExts;
+  // 一次投递的幂等键（Idempotency-Key）：投递时生成一次，**失败重试复用同一个**——
+  // 后端据此识别「同一次投递」不重复落盘（生产已实测同 md5 重复文件）。
+  final String? idempotencyKey;
   final DateTime updatedAt;
   // P2-UI12（2026-09-16）：这张卡若是后端把「同一分钟同向成交」折叠出来的，
   // 这里是被折叠进本条的原始记录 id（含本卡 id）；删除时必须逐条删全，
@@ -79,7 +92,10 @@ class FeedCardData {
     this.domain = 'life', this.error, this.onMarkDone,
     this.pushTitle, this.onDismiss, this.onPushSettings,
     this.mediaUrl, this.mediaHeaders,
+    this.mediaUrls = const [], this.mediaRecordIds = const [],
     this.mediaBytes, this.mediaName, this.mediaExt, this.mediaCaption,
+    this.mediaBytesList = const [], this.mediaNames = const [], this.mediaExts = const [],
+    this.idempotencyKey,
     DateTime? updatedAt,
     this.mergedIds = const [],
   }) : updatedAt = updatedAt ?? DateTime.now();
@@ -91,7 +107,10 @@ class FeedCardData {
     String? domain, String? error, bool clearError = false,
     String? pushTitle, VoidCallback? onDismiss, VoidCallback? onPushSettings,
     String? mediaUrl, Map<String, String>? mediaHeaders,
+    List<String>? mediaUrls, List<String>? mediaRecordIds,
     Uint8List? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
+    List<Uint8List>? mediaBytesList, List<String>? mediaNames, List<String>? mediaExts,
+    String? idempotencyKey,
     DateTime? updatedAt, List<String>? mergedIds,
   }) {
     return FeedCardData(
@@ -107,14 +126,31 @@ class FeedCardData {
       onPushSettings: onPushSettings ?? this.onPushSettings,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaHeaders: mediaHeaders ?? this.mediaHeaders,
+      mediaUrls: mediaUrls ?? this.mediaUrls,
+      mediaRecordIds: mediaRecordIds ?? this.mediaRecordIds,
       mediaBytes: mediaBytes ?? this.mediaBytes,
       mediaName: mediaName ?? this.mediaName,
       mediaExt: mediaExt ?? this.mediaExt,
       mediaCaption: mediaCaption ?? this.mediaCaption,
+      mediaBytesList: mediaBytesList ?? this.mediaBytesList,
+      mediaNames: mediaNames ?? this.mediaNames,
+      mediaExts: mediaExts ?? this.mediaExts,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
       updatedAt: updatedAt ?? DateTime.now(),
       mergedIds: mergedIds ?? this.mergedIds,
     );
   }
+
+  /// 本回合全部原图 URL（多图字段优先，回退旧的单图字段 → 旧卡/单图卡语义不变）。
+  List<String> get allMediaUrls =>
+      mediaUrls.isNotEmpty ? mediaUrls : (mediaUrl != null ? [mediaUrl!] : const []);
+
+  /// 本回合全部本地预览字节（多图字段优先，回退旧的单图字段）。
+  List<Uint8List> get allMediaBytes =>
+      mediaBytesList.isNotEmpty ? mediaBytesList : (mediaBytes != null ? [mediaBytes!] : const []);
+
+  /// 本卡是否带图（任一来源非空）——图片卡判定统一走这里。
+  bool get hasMedia => allMediaUrls.isNotEmpty || allMediaBytes.isNotEmpty;
 }
 
 // ── Three-dot loading widget ──
@@ -273,8 +309,14 @@ class FeedCard extends StatelessWidget {
                           const SizedBox(height: 6),
                           // RFC 20260817（图片对话流）：图片卡（mediaUrl/mediaBytes 非空）图置顶——
                           // 图即上下文，与聊天态一致；有 turns 时气泡跟随图片滚动（刷新后不丢失对话流形态）
-                          if (data.mediaUrl != null || data.mediaBytes != null) ...[
-                            _buildMediaThumb(context),
+                          if (data.hasMedia) ...[
+                            // 2026-09-22 多图批：一个回合的全部图在同一张卡内并列
+                            // （96px 缩略图横滑 + 「共 N 张」角标，点击任一图弹全图）
+                            MediaThumbStrip(
+                              urls: data.allMediaUrls,
+                              bytesList: data.allMediaBytes,
+                              headers: data.mediaHeaders,
+                            ),
                             const SizedBox(height: 8),
                           ],
                           if (!_hasTurns) _buildBody(),
@@ -489,69 +531,6 @@ class FeedCard extends StatelessWidget {
     }
     if (children.isNotEmpty && children.last.text == '  ·  ') children.removeLast();
     return TextSpan(children: children);
-  }
-
-  /// 图片缩略图（批2 原图可见；RFC 20260815 占位卡本地预览）——点击弹全图。
-  Widget _buildMediaThumb(BuildContext context) {
-    // 上传占位卡（mediaUrl 未就绪）：mediaBytes 内存图本地预览。
-    // 复用 input_bar 的降采样模式（cacheWidth + gaplessPlayback），占位卡显示用户选的图而非空白；
-    // 原图尚未落盘 → 不提供弹全图（成功后由 mediaUrl 分支接管）。
-    final bytes = data.mediaBytes;
-    if (bytes != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.memory(
-          bytes,
-          width: 96,
-          height: 96,
-          fit: BoxFit.cover,
-          cacheWidth: 288, // 降采样解码（96px @3x，Web 大图解码慢/易失败，与 input_bar 同模式）
-          gaplessPlayback: true, // 解码期间保留旧帧，进度刷新 rebuild 不闪烁
-          errorBuilder: (_, _, _) => Container(
-            width: 96, height: 96,
-            color: AppColors.darkSurface2,
-            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
-          ),
-        ),
-      );
-    }
-    final url = data.mediaUrl;
-    if (url == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () => _showFullImage(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          url,
-          headers: data.mediaHeaders,
-          width: 96,
-          height: 96,
-          cacheWidth: 192, // W-P2-4（2026-08-17）：96px 缩略图按 2x 降采样解码，避免全分辨率解码耗内存
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            width: 96, height: 96,
-            color: AppColors.darkSurface2,
-            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
-          ),
-          loadingBuilder: (_, child, progress) => progress == null
-              ? child
-              : Container(
-                  width: 96, height: 96,
-                  color: AppColors.darkSurface2,
-                  child: const Center(child: SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
-                ),
-        ),
-      ),
-    );
-  }
-
-  /// 点击缩略图 → 全图 Dialog（点任意处关闭）。
-  /// REVIEW #244：复用公共全图 Dialog（带 errorBuilder，404 显示占位）。
-  void _showFullImage(BuildContext context) {
-    final url = data.mediaUrl;
-    if (url == null) return;
-    showFullImageDialog(context, url: url, headers: data.mediaHeaders);
   }
 
   Widget _buildHeader() {

@@ -1613,6 +1613,57 @@ void main() {
       expect(green.style?.color, AppColors.darkGreen);
     });
 
+    // 2026-09-22（P2-交易59 C2）：用户拍板「止损要能在 app 改」——此前手机上只能看到
+    // 「破止损未走」的警示，**连当前止损位都看不到**，改止损只能去 web。
+    testWidgets('批次弹窗内改止损：显示当前止损位 + 保存发出 PUT（P2-交易59 C2）', (tester) async {
+      final b = _Backend();
+      mockBase(b, positions: [
+        {
+          'symbol': '600000', 'name': '浦发银行', 'quantity': 500,
+          'avgCost': 10.2, 'currentPrice': 10.5,
+          'marketValue': 5250.0, 'pnl': 150.0, 'pnlPercent': 2.9,
+        },
+      ]);
+      b.handlers['/api/v1/trading/lots'] = (_) async => _json({
+            'lots': [
+              {
+                'lotId': '600000_2026-07-20_A', 'symbol': '600000', 'name': '浦发银行',
+                'buyDate': '2026-07-20', 'volume': 500, 'remaining': 500,
+                'costPrice': 10.2, 'currentPrice': 10.5, 'marketValue': 5250.0,
+                'pnl': 150.0, 'pnlPct': 2.94, 'stopLossPrice': 9.77,
+                'stopLossDistancePct': 7.5, 'buyPoint': null, 'role': null,
+                'initial': false, 'closed': false, 'realizedPnl': null,
+              },
+            ],
+            'reconcile': <Object>[],
+          });
+      // 历次回合取不到（未 mock）→ 静默降级，不影响批次弹窗
+      String? putPath;
+      String? putBody;
+      b.handlers['/api/v1/trading/lots/600000_2026-07-20_A/stop-loss'] = (req) async {
+        putPath = req.url.path;
+        putBody = req.body;
+        return _json({});
+      };
+      await pumpTrading(tester, b);
+
+      expect(find.textContaining('1 个批次'), findsOneWidget);
+      await tester.tap(find.textContaining('1 个批次'));
+      await tester.pumpAndSettle();
+
+      // 当前止损位在批次行里可见（此前手机上看不到这个数）
+      expect(find.textContaining('止损 9.77'), findsOneWidget);
+      // 点「改」→ 输入新价 → 保存 → 发 PUT
+      await tester.tap(find.text('改'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '9.50');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      expect(putPath, '/api/v1/trading/lots/600000_2026-07-20_A/stop-loss');
+      expect(putBody, contains('9.5'));
+    });
+
     testWidgets('批次明细接口失败 → 弹窗内人话错误，不打断页面', (tester) async {
       final b = _Backend();
       mockBase(b, positions: [

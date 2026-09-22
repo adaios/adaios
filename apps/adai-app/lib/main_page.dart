@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data' show Uint8List;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -12,8 +13,8 @@ import 'services/models/learn_models.dart';
 import 'pages/learn_page.dart';
 import 'pages/todo_page.dart';
 import 'widgets/feed_card.dart';
-import 'widgets/full_image_dialog.dart';
 import 'widgets/input_bar.dart';
+import 'widgets/media_thumb_strip.dart';
 import 'widgets/timeline_modal.dart';
 import 'utils/text_cleaner.dart';
 
@@ -74,8 +75,7 @@ class _MainPageState extends State<MainPage>
 
   /// 通知点进来命中的卡片 id（高亮 2.5 秒后自动熄灭）。
   String? _highlightCardId;
-  int _uploadTotal = 0;          // 图片上传进度（阿呆 08-13：逐张反馈不足）
-  int _uploadDone = 0;
+  int _uploadTotal = 0;          // 本批投递张数（一次投递 N 张；与判定条共用渲染槽位）
   bool _uploading = false;       // P3-8 批次锁：并发上传进度条互相覆盖防护（2026-08-17）
   static const int _pageSize = 5;
 
@@ -89,16 +89,13 @@ class _MainPageState extends State<MainPage>
   bool _hasActiveChat = false;
   int _chatEnterTurnCount = 0;
 
-  // P1-2：pending 的带图 ask——上传部分失败/重试后仍补跑，不静默丢问句。
-  // _pendingAskRecordIds 收集已成功上传的图片记录 id，_pendingAskQuestion 为问句文本。
-  List<String>? _pendingAskRecordIds;
-  String? _pendingAskQuestion;
-
-  // RFC 20260815 发图即对话：
-  // _mediaJudging —— 判定中瞬时布尔（阿呆看图判定 log/ask），与 _uploadTotal 共用渲染槽位，不进 CardMode；
-  // _uploadSummaries —— 本批上传成功图片的 VLM summary，供阿呆自然回执「看到你…，已记下」拼装（无第三视角）。
+  // RFC 20260815 发图即对话 + 2026-09-22 多图批：
+  // _mediaJudging —— 投递进行中超过阈值后切「🔍 阿呆正在看图…」。一次请求（batch）内部
+  //   先传图后识别，客户端拿不到分区进度，故用耗时阈值近似；与 _uploadTotal 共用渲染槽位，不进 CardMode。
   bool _mediaJudging = false;
-  List<String> _uploadSummaries = [];
+
+  /// 一次投递幂等键的自增序号（同微秒连续两次投递也不撞键）。
+  int _idempotencySeq = 0;
 
   // ── 2026-09-12 learn 对话流入口（完整升级批）──
   /// learn 插件启用态：懒查一次并缓存（对话流识别的前置门控）。查不到 = 不接管，原路径照走。
@@ -405,7 +402,7 @@ class _MainPageState extends State<MainPage>
 
     // 图片追问（L4 图片问答）：图即上下文，点提问后等用户输入问题，
     // 不走文本 _doAskRequest（那个会把图片摘要文本当问题发给文本 LLM）。
-    if (card.mediaUrl != null) {
+    if (card.hasMedia) {
       final hasTurns = card.turns != null && card.turns!.isNotEmpty;
       setState(() {
         // #220：与文本分支/adai-web 对齐——先置 idle 其他卡，避免两张 active 样式卡并存
@@ -870,25 +867,32 @@ class _MainPageState extends State<MainPage>
     ));
   }
 
-  /// 多模态 L4：多图 + 可选文字 → 逐张上传（caption 共享）→ 刷新 Feed + 轻提示。
-  /// REVIEW #174：逐张上传进度反馈——每张图先插入 loading 占位卡（立即视觉反馈，
-  /// 不再多图干等只盯接口），单张完成后原位替换为真实记录卡，失败置 error 可重试。
-  Future<void> _onSendMedia(List<PickedImage> images, String caption) async {
-    if (images.isEmpty) return;
+  /// 一次投递幂等键：**投递时生成一次，失败重试复用同一个**——后端据此识别同一次投递，
+  /// 不重复落盘（2026-09-22 生产实测：逐张重试造成 md5 相同的重复文件）。
+  String _newIdempotencyKey() =>
+      'media_${DateTime.now().microsecondsSinceEpoch}_${_idempotencySeq++}';
+
+  /// 多模态 L4（2026-09-22 多图批）：N 张图 + 可选一句话 = **一次投递一次请求** =
+  /// **一个回合一张卡**（此前逐张 POST 会落 N 条记录 / N 张卡，多图串行还容易超时）。
+  ///
+  /// 返回**是否受理**：false（批次锁拒绝）时输入栏原样保留，图片不丢（见 input_bar._send）。
+  bool _onSendMedia(List<PickedImage> images, String caption) {
+    if (images.isEmpty) return false;
     // P3-8（2026-08-17）：并发上传进度条互相覆盖——批次锁，上传期间拒绝新批次
     if (_uploading) {
       _showSnackBar('上一批图片还在上传，稍等片刻');
-      return;
+      return false;
     }
     _uploading = true;
-    try {
-      await _sendMediaInner(images, caption);
-    } finally {
-      _uploading = false;
-    }
+    unawaited(_sendMediaInner(images, caption).whenComplete(() => _uploading = false));
+    return true;
   }
 
-  Future<void> _sendMediaInner(List<PickedImage> images, String caption) async {
+  /// 一次投递主体：插 **1 张**占位卡（本地预览本回合全部图 + 「共 N 张」角标）→
+  /// `POST /records/media/batch`（N 张 + text + Idempotency-Key）→ 原位替换为 **1 张**记录卡。
+  /// 后端按文本判定 intent：有提问 → 进对话态（据图作答）；无提问 → 阿呆自然回执（综合总结）。
+  Future<void> _sendMediaInner(List<PickedImage> images, String caption,
+      {String? idempotencyKey, String? placeholderId}) async {
     // P1-1：对话态发媒体 → 先静默退出对话视图（waiting 卡复位 idle，chatting 保留 turns 不触发总结——
     // 发图片是独立动作）。修复前对话态残留 + _loadFeed 挤出活动卡 → 错乱视图/activeCard! 崩溃。
     if (_activeCardId != null) {
@@ -900,114 +904,125 @@ class _MainPageState extends State<MainPage>
             mode: c.mode == CardMode.waiting ? CardMode.idle : c.mode));
       });
     }
-    // P1-2：注册 pending 带图 ask（caption 非空才有问句）——上传可能部分失败，
-    // 重试完成后统一补跑（见 _flushPendingAsk / _retryMediaUpload）。
-    if (caption.trim().isNotEmpty) {
-      _pendingAskRecordIds = [];
-      _pendingAskQuestion = caption.trim();
-    }
-    _uploadSummaries = []; // RFC 20260815：本批自然回执的 VLM summary 收集
-    setState(() {
-      _uploadTotal = images.length; // 上传进度：输入栏上方显示 n/m（阿呆 08-13 反馈）
-      _uploadDone = 0;
-    });
+    final key = idempotencyKey ?? _newIdempotencyKey();
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final placeholderIds = <String>[];
+    final pid = placeholderId ?? 'media_${DateTime.now().microsecondsSinceEpoch}';
+    final fallback = caption.isEmpty ? images.first.name : caption;
     setState(() {
-      for (final image in images) {
-        final pid = 'media_${DateTime.now().microsecondsSinceEpoch}_${placeholderIds.length}';
-        placeholderIds.add(pid);
-        _cards.add(FeedCardData(
-          id: pid, type: FeedCardType.record, time: timeStr,
-          content: caption.isEmpty ? image.name : caption,
-          mode: CardMode.idle, loading: true,
-          // REVIEW #235：占位卡保留原始图片字节/文件名/扩展名/共享 caption——
-          // 失败重试时重走 uploadImage 原路径，不再把文件名当文本记录重发。
-          // RFC 20260815：mediaBytes 用 PickedImage 缓存的 Uint8List（Image.memory 本地预览）。
-          mediaBytes: image.bytesU8, mediaName: image.name, mediaExt: image.extension, mediaCaption: caption,
-        ));
+      _uploadTotal = images.length;
+      _mediaJudging = false;
+      final card = FeedCardData(
+        id: pid, type: FeedCardType.record, time: timeStr,
+        content: fallback,
+        mode: CardMode.idle, loading: true,
+        // 占位卡保留本回合全部图片字节/文件名/扩展名/共享 caption——失败重试一次重传全部；
+        // 本地预览直接显示全部图（不再是一张占位卡一张图）。
+        mediaBytes: images.first.bytesU8, mediaName: images.first.name,
+        mediaExt: images.first.extension, mediaCaption: caption,
+        mediaBytesList: images.map((i) => i.bytesU8).toList(),
+        mediaNames: images.map((i) => i.name).toList(),
+        mediaExts: images.map((i) => i.extension ?? '').toList(),
+        idempotencyKey: key,
+      );
+      final idx = _cards.indexWhere((c) => c.id == pid);
+      if (idx >= 0) {
+        _cards[idx] = card; // 重试：原位恢复 loading
+      } else {
+        _cards.add(card);
       }
     });
     _scrollToBottom();
 
-    int ok = 0;
-    // Phase 1 带图 ask 的图片 id 由 _pendingAskRecordIds 统一收集（含重试补跑，见 _flushPendingAsk）
+    // 一次请求内部先传图、后识别：超过阈值（图通常已传完）把状态条切到「🔍 阿呆正在看图…」。
+    // 两种反馈都保留——多图 VLM 识别可达数十秒，无反馈会被用户当成卡死。
+    final judgingTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _mediaJudging = true);
+    });
     try {
-      for (var i = 0; i < images.length; i++) {
-        final image = images[i];
-        final resp = await _api.uploadImage(
-          bytes: image.bytes,
-          filename: image.name,
-          mimeType: _mimeTypeOf(image.extension),
-          caption: caption,
-        );
-        ok++;
-        // REVIEW P1-W7（U13）：切 World（MainPage dispose）不中断剩余上传——图片继续传完，
-        // UI 更新由 mounted 守卫跳过（防 dispose 后 setState 崩溃）；占位卡随 State 销毁。
-        if (mounted) {
-          setState(() => _uploadDone = ok); // 逐张进度（阿呆 08-13）
-          // 单张完成 → 占位卡替换为真实记录卡（mediaUrl 指向原图，L4 可追问）
-          // REVIEW #245：content 保留用户 caption 作为记录内容，summary 单独放 AI 理解文本
-          final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
-          if (idx >= 0) {
-            _cards[idx] = _buildMediaSuccessCard(
-              id: placeholderIds[i], resp: resp, time: timeStr,
-              fallback: caption.isEmpty ? image.name : caption,
-            );
-          }
+      final resp = await _api.uploadImages(
+        files: [
+          for (final image in images)
+            MediaUploadFile(
+              bytes: image.bytes,
+              filename: image.name,
+              mimeType: _mimeTypeOf(image.extension),
+            ),
+        ],
+        text: caption,
+        idempotencyKey: key,
+      );
+      judgingTimer.cancel();
+      if (!mounted) return;
+      setState(() {
+        _uploadTotal = 0; // 完成 → 隐藏进度/判定条
+        _mediaJudging = false;
+      });
+      final hostId = resp.recordId.isEmpty ? pid : resp.recordId;
+      setState(() {
+        final idx = _cards.indexWhere((c) => c.id == pid);
+        if (idx >= 0) {
+          _cards[idx] = _buildMediaSuccessCard(
+            id: pid, resp: resp, time: timeStr, fallback: fallback,
+            // 附件 id 缺失（异常响应）时保留本地字节，图仍然看得见
+            localBytes: resp.mediaIds.isEmpty ? images.map((i) => i.bytesU8).toList() : null,
+          );
         }
-        // P1-2：成功图 id 进 pending（问句补跑时一并覆盖）
-        if (resp.recordId.isNotEmpty && _pendingAskRecordIds != null) {
-          _pendingAskRecordIds!.add(resp.recordId);
-        }
-        // RFC 20260815：收集 VLM summary（自然回执「看到你…，已记下」用）
-        if (resp.summary.isNotEmpty) {
-          _uploadSummaries.add(resp.summary);
-        }
-      }
-      // REVIEW #246：成功反馈挂根 ScaffoldMessenger，MainPage 被 dispose（切 World B）也能弹。
-      if (mounted) setState(() { _uploadTotal = 0; _uploadDone = 0; }); // 完成 → 隐藏进度条
-
-      // RFC 20260815 发图即对话：caption 非空且全部成功 → 判定中 → ask-batch 分流
-      // （前端不判、后端判；intent=question → _enterImageChat 直进对话态，intent=log → 自然回执落卡）。
-      // 部分失败路径 pending 留给重试完成后补跑，见 _retryMediaUpload。
-      if (_pendingAskQuestion != null && (_pendingAskRecordIds?.isNotEmpty ?? false)) {
-        await _flushPendingAsk();
+      });
+      // 有提问 → 直进对话态（宿主卡 = 主记录 id，图区 = mediaIds 全部图，可继续带图追问）
+      final answer = resp.answer?.trim() ?? '';
+      if (resp.isQuestion && answer.isNotEmpty) {
+        _enterImageChat(cardId: hostId, turns: [
+          ConversationTurn(isUser: true, text: caption.trim(), time: timeStr),
+          ConversationTurn(isUser: false, text: answer, time: timeStr),
+        ]);
         return;
       }
-
-      // 纯图（caption 空）→ log 落卡：阿呆自然回执（VLM summary 拼「看到你…，已记下」，
-      // 无第三视角，替代「📷 已记录 N 张图片」系统文案）
-      _showSnackBar(_naturalMediaReceipt(summaries: _uploadSummaries, count: ok));
-      _uploadSummaries = [];
-      if (!mounted) return;
+      // 无提问 → 阿呆自然回执：直接用后端 summary（一段综合总结），不拼系统腔文案
+      _showSnackBar(_mediaReceipt(resp.summary, fallback));
       await _loadFeed();
     } catch (e) {
       // REVIEW #246：失败反馈挂根 ScaffoldMessenger，不静默丢；
       // 占位卡置 error（可重试）需 MainPage 存活才更新（被 dispose 时占位卡已随 State 销毁）。
       if (mounted) {
         setState(() {
-          _uploadTotal = 0; // 失败也隐藏进度条
-          _uploadDone = 0;
-          for (var i = ok; i < placeholderIds.length; i++) {
-            final idx = _cards.indexWhere((c) => c.id == placeholderIds[i]);
-            if (idx >= 0) _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
+          _uploadTotal = 0;
+          _mediaJudging = false;
+          final idx = _cards.indexWhere((c) => c.id == pid);
+          if (idx >= 0) {
+            _cards[idx] = _cards[idx].copyWith(loading: false, error: _extractApiError(e));
           }
         });
       }
-      _showSnackBar('图片上传失败: ${_extractApiError(e)}');
+      _showSnackBar('图片这次没传成: ${_extractApiError(e)}');
+    } finally {
+      judgingTimer.cancel();
     }
   }
 
-  /// 图片上传成功后的真实记录卡（#235/#245 共用：占位卡替换 / 失败重试替换）。
-  /// content 保留用户 caption（fallback）作为记录内容，summary 单独放 AI 理解文本，不同源重复渲染。
+  /// 阿呆的口语回执（无第三视角）：后端综合总结即回执正文；缺失时才退回本地兜底
+  /// （「随手一拍，已记下」）——不出现「📷 已记录 N 张图片」这类系统标签。
+  String _mediaReceipt(String summary, String fallback) {
+    final s = summary.trim();
+    if (s.isNotEmpty) return s;
+    return _naturalMediaReceipt(summaries: const [], caption: fallback);
+  }
+
+  /// 一次投递成功后的真实记录卡（占位卡原位替换 / 失败重试替换共用）。
+  /// content 保留用户 caption（fallback）作为记录内容，summary 单独放阿呆综合总结，不同源不重复渲染。
+  /// 多图：mediaUrls / mediaRecordIds 承载本回合**全部**图（卡内并列 + 追问带全部图）。
   FeedCardData _buildMediaSuccessCard({
     required String id,
-    required MediaRecordResponse resp,
+    required MediaBatchResponse resp,
     required String time,
     required String fallback,
+    List<Uint8List>? localBytes,
   }) {
+    // 附件 id 优先用 mediaIds；异常响应（缺 mediaIds）时退化为主记录 id 单图。
+    final ids = resp.mediaIds.isNotEmpty
+        ? resp.mediaIds
+        : (resp.recordId.isNotEmpty ? [resp.recordId] : const <String>[]);
+    final urls = ids.map((mid) => _api.mediaUrl(mid)).toList();
     return FeedCardData(
       id: resp.recordId.isEmpty ? id : resp.recordId,
       type: FeedCardType.record,
@@ -1016,10 +1031,13 @@ class _MainPageState extends State<MainPage>
       summary: resp.summary.isEmpty ? null : resp.summary,
       tags: resp.tags.isNotEmpty ? resp.tags : null,
       mode: CardMode.idle,
-      intent: IntentType.log,
-      domain: 'life',
-      mediaUrl: resp.recordId.isEmpty ? null : _api.mediaUrl(resp.recordId),
-      mediaHeaders: resp.recordId.isEmpty ? null : _api.mediaHeaders,
+      intent: IntentType.parse(resp.intent),
+      domain: resp.domain.isEmpty ? 'life' : resp.domain,
+      mediaUrl: urls.isNotEmpty ? urls.first : null,
+      mediaUrls: urls,
+      mediaRecordIds: ids,
+      mediaHeaders: urls.isNotEmpty ? _api.mediaHeaders : null,
+      mediaBytesList: urls.isEmpty ? (localBytes ?? const []) : const [],
     );
   }
 
@@ -1078,15 +1096,16 @@ class _MainPageState extends State<MainPage>
   }
 
   /// 重试发送失败的新卡片：
-  /// - 图片占位卡（REVIEW #235）：保留原始字节重走 uploadImage 原路径，不把文件名当文本重发；
+  /// - 带图占位卡（2026-09-22 多图批）：保留本回合原始字节重走 `POST /records/media/batch`，
+  ///   并**复用同一 Idempotency-Key**（不把文件名当文本重发，也不会重复落盘）；
   /// - 文本卡（REVIEW P1-W2）：复用原 cardId 重新 POST（后端按 cardId 幂等去重，对齐 web）——
   ///   不再删旧建新（半失败场景：服务端已落库、响应超时 → 新建 cardId 会重复入账）。
   Future<void> _onRetryCard(String cardId) async {
     final idx = _cards.indexWhere((c) => c.id == cardId);
     if (idx < 0) return;
     final card = _cards[idx];
-    if (card.mediaBytes != null && card.mediaName != null) {
-      _retryMediaUpload(card);
+    if (card.allMediaBytes.isNotEmpty) {
+      await _retryMediaUpload(card);
       return;
     }
     setState(() => _updateCard(cardId, (c) => c.copyWith(loading: true, clearError: true)));
@@ -1107,109 +1126,49 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  /// 图片上传失败重试：原位恢复 loading → 用原始字节重走 uploadImage → 替换为真实记录卡。
-  /// REVIEW #235：占位卡创建时已保留 mediaBytes/mediaName/mediaExt/mediaCaption。
+  /// 一次投递失败重试：用**同一 Idempotency-Key** 重发本回合全部图（走 `_sendMediaInner`，
+  /// 占位卡原位恢复 loading）。复用同一个 key 是防重复落盘的关键——后端据此识别「同一次
+  /// 投递」并返回首次结果（`duplicated=true`），而不是再落一份相同的图。
   Future<void> _retryMediaUpload(FeedCardData card) async {
-    final pid = card.id;
-    if (mounted) {
-      setState(() => _updateCard(pid, (c) => c.copyWith(loading: true, clearError: true)));
+    final bytesList = card.allMediaBytes;
+    final names = card.mediaNames.isNotEmpty
+        ? card.mediaNames
+        : (card.mediaName != null ? [card.mediaName!] : const <String>[]);
+    final exts = card.mediaExts.isNotEmpty
+        ? card.mediaExts
+        : (card.mediaExt != null ? [card.mediaExt!] : const <String>[]);
+    final images = <PickedImage>[
+      for (var i = 0; i < bytesList.length; i++)
+        PickedImage(
+          bytesList[i],
+          i < names.length ? names[i] : 'image_$i.jpg',
+          i < exts.length ? exts[i] : 'jpg',
+        ),
+    ];
+    if (_uploading) {
+      _showSnackBar('上一批图片还在上传，稍等片刻');
+      return;
     }
+    _uploading = true;
     try {
-      final resp = await _api.uploadImage(
-        bytes: card.mediaBytes!,
-        filename: card.mediaName!,
-        mimeType: _mimeTypeOf(card.mediaExt),
-        caption: card.mediaCaption,
+      await _sendMediaInner(
+        images,
+        card.mediaCaption ?? '',
+        // 老卡（契约前创建）没有 key 才生成新的；正常重试一律复用
+        idempotencyKey: card.idempotencyKey ?? _newIdempotencyKey(),
+        placeholderId: card.id,
       );
-      if (mounted) {
-        setState(() {
-          final idx = _cards.indexWhere((c) => c.id == pid);
-          if (idx >= 0) {
-            _cards[idx] = _buildMediaSuccessCard(
-              id: pid, resp: resp, time: card.time,
-              fallback: (card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : card.mediaName!,
-            );
-          }
-        });
-      }
-      // P1-2：重试成功 → 图片 id 并入 pending 问句（去重），全部失败媒体卡清完后补跑 ask
-      if (resp.recordId.isNotEmpty && _pendingAskQuestion != null) {
-        _pendingAskRecordIds ??= [];
-        if (!_pendingAskRecordIds!.contains(resp.recordId)) {
-          _pendingAskRecordIds!.add(resp.recordId);
-        }
-      }
-      // RFC 20260815：收集 summary（pending 问句补跑的自然回执用）
-      if (resp.summary.isNotEmpty) {
-        _uploadSummaries.add(resp.summary);
-      }
-      // REVIEW #246：反馈挂根 ScaffoldMessenger，MainPage 被 dispose 也能弹。
-      // RFC 20260815：无第三视角——重试成功也走阿呆自然回执；
-      // 有 pending 问句时交给补跑统一反馈（避免「重新记录」+ 回执连弹两条）。
-      if (_pendingAskQuestion == null) {
-        _showSnackBar(_naturalMediaReceipt(summaries: [resp.summary], count: 1));
-      }
-      if (!mounted) return;
-      // P1-2：还有失败媒体卡未重试 → 等最后一并补跑；全部完成 → 立即补跑问句
-      final hasRemainingErrorMedia = _cards.any((c) => c.mediaBytes != null && c.error != null);
-      if (_pendingAskQuestion != null && !hasRemainingErrorMedia) {
-        await _flushPendingAsk();
-        return;
-      }
-      await _loadFeed();
-    } catch (e) {
-      if (mounted) {
-        setState(() => _updateCard(pid, (c) => c.copyWith(loading: false, error: _extractApiError(e))));
-      }
-      _showSnackBar('图片上传失败: ${_extractApiError(e)}');
+    } finally {
+      _uploading = false;
     }
   }
 
-  /// RFC 20260815 发图即对话：带图 ask 补跑 + intent 分流（前端不判、后端判）。
-  /// 问句 + 图片 id 存在 _pendingAsk*，执行后清空（一次性）。
-  /// - intent=question → [_enterImageChat] 直进对话态（**不刷新 Feed**，避免 S-2 聚合 id 漂移）；
-  /// - intent=log → 阿呆自然回执 + `_loadFeed()` 落卡；
-  /// - 判定/回答期间 [_mediaJudging] 状态条「🔍 阿呆正在看图…」（上传进度条槽位复用）。
-  /// best-effort：失败只提示不静默丢——图片本身已逐张落盘，问句可后续在首图卡手动追问。
-  Future<AskBatchResponse?> _flushPendingAsk() async {
-    final ids = _pendingAskRecordIds;
-    final question = _pendingAskQuestion;
-    _pendingAskRecordIds = null;
-    _pendingAskQuestion = null;
-    if (ids == null || question == null || ids.isEmpty) return null;
-    final summaries = List<String>.of(_uploadSummaries);
-    _uploadSummaries = [];
-    if (mounted) setState(() => _mediaJudging = true);
-    try {
-      final qa = await _api.askBatch(imageRecordIds: ids, question: question);
-      if (!mounted) return qa;
-      setState(() => _mediaJudging = false);
-      if (qa.intent == 'question' && qa.answer.isNotEmpty) {
-        // ask 直进对话态：本地首图卡手拼 turns=[用户问句, 阿呆回答]，图即上下文（#208）
-        final now = TimeOfDay.now();
-        final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-        _enterImageChat(cardId: ids.first, turns: [
-          ConversationTurn(isUser: true, text: question, time: timeStr),
-          ConversationTurn(isUser: false, text: qa.answer, time: timeStr),
-        ]);
-      } else {
-        // log 落卡：阿呆自然回执（无第三视角，不用「已记录 N 张图片」系统文案）
-        _showSnackBar(_naturalMediaReceipt(summaries: summaries, count: ids.length));
-        await _loadFeed();
-      }
-      return qa;
-    } catch (e) {
-      if (mounted) setState(() => _mediaJudging = false);
-      _showSnackBar('阿呆没看懂这张图，再试一次？');
-      return null;
-    }
-  }
-
-  /// RFC 20260815：ask-batch 返回 question → 用**本地首图卡**直进对话态。
-  /// 手拼 turns=[问句, 阿呆回答]、mode=chatting、mediaUrl 保留（图即上下文，_buildActiveLayout 顶部缩略图）。
-  /// 关键：**不刷新 Feed**——刷新后 S-2 聚合会把首图卡聚合成 image_qa 条目、id 漂移（后端修复中，
-  /// B1/B2），本地卡身份（id=真实图片记录 id，askMedia 可解析原图）保持稳定。
-  /// 对话中追问走现有 [_appendToActiveCard] → askMedia；结束走 [_closeChat] → endConversation。
+  /// 2026-09-22 多图批：投递判定为提问 → 用**本次投递的主记录卡**直进对话态。
+  /// 宿主卡 id = `recordId`，图区 = `mediaIds` 全部图（多图并列）。
+  /// 手拼 turns=[问句, 阿呆回答]、mode=chatting、mediaUrls 保留（图即上下文，_buildActiveLayout 顶部图区）。
+  /// 关键：**不刷新 Feed**——刷新后聚合会把卡换成 image_qa 条目、id 漂移；
+  /// 本地卡身份（id=主记录 id）+ mediaRecordIds 保持稳定（追问能带上全部图）。
+  /// 对话中追问走 [_appendToActiveCard]（多图 ask-batch / 单图 askMedia）；结束走 [_closeChat]。
   void _enterImageChat({required String cardId, required List<ConversationTurn> turns}) {
     final idx = _cards.indexWhere((c) => c.id == cardId);
     if (idx < 0) return; // 宿主卡已被刷新/删除 → 放弃进对话态（防 activeCard! 空值崩溃）
@@ -1243,7 +1202,7 @@ class _MainPageState extends State<MainPage>
     final activeIdx = _cards.indexWhere((c) => c.id == cardId);
     if (activeIdx < 0) return;
     final activeCard = _cards[activeIdx];
-    final isImageAsk = activeCard.mediaUrl != null;
+    final isImageAsk = activeCard.hasMedia;
 
     setState(() {
       _updateCard(cardId, (c) {
@@ -1261,8 +1220,24 @@ class _MainPageState extends State<MainPage>
     _scrollToBottom();
     try {
       if (isImageAsk) {
-        // 图片追问：VLM 看图回答（L4 图片问答），沉淀为 image_qa 记录
-        final resp = await _api.askMedia(imageRecordId: cardId, question: text);
+        // 图片追问（L4）：一个回合的图即上下文。**多图必须带全部图**——只带首图会让阿呆
+        // 「少看几张」（2026-09-22 多图批：多图走 ask-batch，单图沿用 askMedia）。
+        // 从 Feed 刷新来的老卡没有 mediaRecordIds → 由 mediaPaths 归一出的原图 URL 反推 id。
+        final ids = activeCard.mediaRecordIds.isNotEmpty
+            ? activeCard.mediaRecordIds
+            : activeCard.allMediaUrls
+                .map((u) => mediaRecordIdOf(u, fallbackId: cardId))
+                .where((e) => e.isNotEmpty)
+                .toList();
+        final String answer;
+        if (ids.length > 1) {
+          final qa = await _api.askBatch(imageRecordIds: ids, question: text);
+          answer = qa.answer;
+        } else {
+          final resp = await _api.askMedia(
+            imageRecordId: ids.isNotEmpty ? ids.first : cardId, question: text);
+          answer = resp.answer;
+        }
         if (!mounted) return;
         final aiTime = TimeOfDay.now();
         final aiTimeStr = '${aiTime.hour.toString().padLeft(2, '0')}:${aiTime.minute.toString().padLeft(2, '0')}';
@@ -1270,7 +1245,7 @@ class _MainPageState extends State<MainPage>
           _updateCard(cardId, (c) {
             final existing = c.turns ?? [];
             return c.copyWith(mode: CardMode.chatting, loading: false, intent: IntentType.question,
-              turns: [...existing, ConversationTurn(isUser: false, text: resp.answer, time: aiTimeStr)]);
+              turns: [...existing, ConversationTurn(isUser: false, text: answer, time: aiTimeStr)]);
           });
         });
         _scrollToBottom();
@@ -1697,24 +1672,28 @@ class _MainPageState extends State<MainPage>
           if (_scrollAtBottom && _cards.isNotEmpty) _buildLastRecordBar(),
           // #16：输入框不再挂「上滑切世界」手势——打字上滑会误触切走 World，
           // MainPage 重建导致输入草稿丢失。切世界改由 Feed 区/壳层手势（带起点排除）负责。
-          // 图片上传进度 / 判定中（RFC 20260815）：同一槽位二态——
-          // 「📤 上传中 n/m」→「🔍 阿呆正在看图…」（_mediaJudging 瞬时布尔，不进 CardMode）
+          // 一次投递反馈（2026-09-22 多图批）：同一槽位二态——
+          // 「📤 上传中 N 张…」→（超过阈值）「🔍 阿呆正在看图…」（_mediaJudging 不进 CardMode）。
+          // 一次请求内部先传图后识别，客户端拿不到逐张进度 → 进度条用**不定进度**，不假装知道第几张。
           if (_uploadTotal > 0 || _mediaJudging)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
               child: Row(
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: LinearProgressIndicator(
-                      value: _mediaJudging ? null : _uploadDone / _uploadTotal,
+                      value: null,
                       backgroundColor: AppColors.darkSurface2,
                       color: AppColors.darkGreen,
                       minHeight: 4,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(_mediaJudging ? '🔍 阿呆正在看图…' : '📤 上传中 $_uploadDone/$_uploadTotal',
+                  Text(
+                      _mediaJudging
+                          ? '🔍 阿呆正在看图…'
+                          : (_uploadTotal > 1 ? '📤 上传中 $_uploadTotal 张…' : '📤 上传中…'),
                       style: const TextStyle(fontSize: 12, color: AppColors.darkGrey4)),
                 ],
               ),
@@ -2139,12 +2118,11 @@ class _MainPageState extends State<MainPage>
                 children: [
                   // #208：图片追问对话态下原图持续可见——图即上下文，用户追问时能看着图问。
                   // 修复前 _buildActiveLayout 只渲染气泡，移动端进追问后缩略图消失（桌面端常驻无此问题）。
-                  if (activeCard.mediaUrl != null)
+                  // 2026-09-22 多图批：一次投递的全部图都在这里并列（不只首图）。
+                  if (activeCard.hasMedia)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Center(
-                        child: _buildActiveMediaThumb(activeCard),
-                      ),
+                      child: _buildActiveMediaThumb(activeCard),
                     ),
                   if (activeCard.loading)
                     Padding(
@@ -2196,46 +2174,14 @@ class _MainPageState extends State<MainPage>
   }
 
 
-  /// 图片追问对话态缩略图（#208）——图即上下文，追问时原图持续可见；点击弹全图。
-  /// 与 feed_card 的 _buildMediaThumb 同模式（96px 缩略图 + 全图 Dialog）。
+  /// 图片追问对话态图区（#208 / 2026-09-22 多图批）——图即上下文，追问时**本回合全部图**
+  /// 持续可见（多图并列 + 「共 N 张」角标）；点击任一图弹全图（MediaThumbStrip 内置）。
   Widget _buildActiveMediaThumb(FeedCardData card) {
-    final url = card.mediaUrl;
-    if (url == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () => _showActiveFullImage(card),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          url,
-          headers: card.mediaHeaders,
-          width: 96,
-          height: 96,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            width: 96, height: 96,
-            color: AppColors.darkSurface2,
-            child: const Icon(Icons.broken_image_outlined, size: 20, color: AppColors.darkGrey5),
-          ),
-          loadingBuilder: (_, child, progress) => progress == null
-              ? child
-              : Container(
-                  width: 96, height: 96,
-                  color: AppColors.darkSurface2,
-                  child: const Center(child: SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.darkGreen))),
-                ),
-        ),
-      ),
+    return MediaThumbStrip(
+      urls: card.allMediaUrls,
+      bytesList: card.allMediaBytes,
+      headers: card.mediaHeaders,
     );
-  }
-
-  /// 点击 active 缩略图 → 全图 Dialog（点任意处关闭）。
-  /// REVIEW #244：复用公共全图 Dialog——Image.network 带 errorBuilder/loadingBuilder，
-  /// 图片 404 显示友好占位而非空白 Dialog。
-  void _showActiveFullImage(FeedCardData card) {
-    final url = card.mediaUrl;
-    if (url == null) return;
-    showFullImageDialog(context, url: url, headers: card.mediaHeaders);
   }
 
   Widget _buildChatBubble(String text, bool isUser, String time) {
@@ -2341,6 +2287,13 @@ extension FeedEntryResponseX on FeedEntryResponse {
         time: t['time'] as String? ?? '',
       )).toList();
     }
+    // 2026-09-22 多图批：mediaPaths = 本回合**全部**原图（按顺序），卡内并列展示。
+    // 元素是存储相对路径（records/yyyy/MM/media/{id}.{ext}）→ 统一归一到原图 id
+    // （GET /records/media/{id}）；旧后端只有单值 mediaPath 时同样成立。
+    final mediaIds = mediaPaths
+        .map((p) => mediaRecordIdOf(p, fallbackId: id))
+        .where((e) => e.isNotEmpty)
+        .toList();
     return FeedCardData(
       id: id, type: _toCardType(type), time: time, date: date, content: content,
       tags: tags.isNotEmpty ? tags : null, mode: CardMode.idle, intent: IntentType.parse(intent),
@@ -2349,8 +2302,10 @@ extension FeedEntryResponseX on FeedEntryResponse {
       pushTitle: _toCardType(type) == FeedCardType.push ? title : null,
       onDismiss: _toCardType(type) == FeedCardType.push ? onDismiss : null,
       onPushSettings: _toCardType(type) == FeedCardType.push ? onPushSettings : null,
-      mediaUrl: mediaPath != null ? api.mediaUrl(id) : null,
-      mediaHeaders: mediaPath != null ? api.mediaHeaders : null,
+      mediaUrl: mediaIds.isNotEmpty ? api.mediaUrl(mediaIds.first) : null,
+      mediaUrls: mediaIds.map(api.mediaUrl).toList(),
+      mediaRecordIds: mediaIds,
+      mediaHeaders: mediaIds.isNotEmpty ? api.mediaHeaders : null,
       // P1-5（2026-08-23 app 体感修复）：透传后端 updatedAt——原不传 → FeedCardData 默认 now
       // → 底部「最近记录」栏「刚刚」恒显（updatedAt 被丢弃）
       updatedAt: updatedAt.isNotEmpty ? DateTime.tryParse(updatedAt) : null,
