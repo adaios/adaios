@@ -3,9 +3,9 @@ title: 前端代码审查检查清单
 description: frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
 version: 1
 created: 2026-08-15
-updated: 2026-09-07
+updated: 2026-09-23
 status: active
-lines: 107
+lines: 108
 depends-on: []
 related: [../roles/frontend-reviewer.md]
 tags: [review, checklist, frontend]
@@ -105,3 +105,4 @@ tags: [review, checklist, frontend]
 | F62 | learn 类写操作（流转/复述/反哺）须 await 前设动作级 in-flight 守卫并禁按钮（防双击双提交/双 pop），成功提示前 clearSnackBars | web learn 写入口双击双 PATCH+双 snack（learn V2 审 P2-learn10，2026-09-07）|
 | F63 | 卡片树就地刷新须按稳定标识（type+title）判定当前选中才回写 _selectedIndex，且树级 _load 需代际/串行防旧快照覆盖新流转结果 | web learn _replaceCard 选中漂移 + _load 竞态（learn V2 审 P2-learn9，2026-09-07）|
 | F64 | 新端点配套契约测试：断言 HTTP method + query 定位参数、状态流转分支（review→done）、400 失败分支（含后端 error 人话透出断言）、DTO fromJson 单测 | ff7451f 新增测试只覆盖成功渲染路径（learn V2 审 frontend，2026-09-07）|
+| F65 | **跨进程异步入口**（分享扩展 / 快捷指令 / 后台任务）的**成功**必须有可抵达的回执——入口自己报「已收到」不算终态：① 结果的保留时长必须 ≥ 用户走到查看页的时间（60 秒这类「够前端轮询用」的值对**人**远远不够）；② 查看页要把「**是哪一条**」指名道姓说出来（卡片标题由 AI 起，用户认不出来）；③ 说过的回执不要重复念（本次运行内记已读）。**与 F55 的分工**：F55 管「点了按钮要有反馈」，本条管「**入口已经关掉之后，谁来告诉他结果**」 | 微博分享两次都说「没反应」，而后端两次都成功（P1-分享8，2026-09-23）|
