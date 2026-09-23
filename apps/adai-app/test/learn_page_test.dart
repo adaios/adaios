@@ -44,6 +44,9 @@ class _LearnBackend {
   ];
   int statusCalls = 0;
 
+  /// 「整理进度」清单（GET /learn/digest/jobs，2026-09-23 分享追踪批）。
+  List<Map<String, dynamic>> digestTasks = const [];
+
   Map<String, dynamic> quota = const {
     'month': '2026-09', 'usedSeconds': 1800, 'usedYuan': 0.14, 'quotaSeconds': 36000,
     'remainSeconds': 34200, 'yuanPerHour': 0.29, 'asrAvailable': true,
@@ -255,6 +258,9 @@ class _LearnBackend {
       final i = statusCalls < statusSeq.length ? statusCalls : statusSeq.length - 1;
       statusCalls++;
       return _json(statusSeq[i]);
+    }
+    if (p.endsWith('/api/v1/learn/digest/jobs')) {
+      return _json({'tasks': digestTasks});
     }
     if (p.endsWith('/api/v1/learn/digest/quota')) {
       if (quotaFails) return _json({'error': 'boom'}, status: 500);
@@ -1544,6 +1550,62 @@ void main() {
 
       expect(find.byKey(const ValueKey('learn-done-banner')), findsNothing);
       expect(find.byKey(const ValueKey('learn-failed-banner')), findsNothing);
+    });
+
+    // ── 2026-09-23 分享追踪批：「我分享过什么、分别什么情况、成了没有」──
+
+    testWidgets('㉖ 整理进度：进页就看得到「我分享过什么、成了没有」', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('other', '央行2025Q4货币政策报告要点')
+        ..digestTasks = [
+          {
+            'id': 'dtask_1', 'url': 'https://mp.weixin.qq.com/s/jsOBc6WCH',
+            'sourceTitle': '央行报告', 'platform': 'mp.weixin.qq.com',
+            'status': 'done', 'type': 'other', 'title': '央行2025Q4货币政策报告要点',
+            'topic': '中国货币政策', 'submittedAt': '2026-09-23T23:06:05',
+            'settledAt': '2026-09-23T23:06:24',
+          },
+          {
+            'id': 'dtask_2', 'url': 'https://mp.weixin.qq.com/s/other',
+            'status': 'running', 'stage': 'fetching', 'submittedAt': '2026-09-23T23:10:00',
+          },
+          {
+            'id': 'dtask_3', 'url': 'https://example.com/x', 'status': 'failed',
+            'message': '这个链接我读不出来', 'submittedAt': '2026-09-23T23:12:00',
+            'settledAt': '2026-09-23T23:12:05',
+          },
+        ];
+      await pump(tester, backend.api());
+
+      expect(find.byKey(const ValueKey('learn-digest-progress')), findsOneWidget);
+      expect(find.textContaining('央行2025Q4货币政策报告要点'), findsWidgets, reason: '完成的那条要说出是哪一篇');
+      expect(find.textContaining('正在读'), findsOneWidget, reason: '进行中的那条也要在');
+      expect(find.textContaining('这个链接我读不出来'), findsOneWidget, reason: '失败如实说，不静默');
+    });
+
+    testWidgets('㉗ 整理进度：点「读好了」那条直达卡片全文', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('other', '央行2025Q4货币政策报告要点')
+        ..digestTasks = [
+          {
+            'id': 'dtask_1', 'url': 'https://mp.weixin.qq.com/s/jsOBc6WCH',
+            'status': 'done', 'type': 'other', 'title': '央行2025Q4货币政策报告要点',
+            'submittedAt': '2026-09-23T23:06:05', 'settledAt': '2026-09-23T23:06:24',
+          },
+        ];
+      await pump(tester, backend.api());
+
+      await tester.tap(find.byKey(const ValueKey('learn-digest-task-dtask_1')));
+      await tester.pumpAndSettle();
+
+      expect(backend.requestsTo('/api/v1/learn/content').length, 1, reason: '点开是那张卡的全文');
+    });
+
+    testWidgets('㉘ 整理进度：没有任何记录时整块不出现（不摆空壳）', (tester) async {
+      final backend = _LearnBackend()..addCard('ai', 'RAG 笔记');
+      await pump(tester, backend.api());
+
+      expect(find.byKey(const ValueKey('learn-digest-progress')), findsNothing);
     });
   });
 }

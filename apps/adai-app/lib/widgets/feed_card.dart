@@ -9,7 +9,7 @@ import 'hoverable.dart';
 
 /// 后端 record.type 映射。
 /// RFC 20260917：待办卡（'action'）撤出 Feed——待办有自己的页面，Feed 回归纯对话流。
-enum FeedCardType { record, aiNote, push, dateSeparator, market }
+enum FeedCardType { record, aiNote, push, dateSeparator, market, digest }
 
 /// 后端 intent：log → 记录，question → 提问。
 enum IntentType { log, question;
@@ -253,6 +253,21 @@ class FeedCard extends StatelessWidget {
     // RFC 20260817：push 推送卡——类型徽章（早盘/午间/尾盘/买点/预警）+ 结构化内容
     if (data.type == FeedCardType.push) {
       return _buildPushCard();
+    }
+    // 2026-09-23 分享追踪批：「交给阿呆的东西」在 Feed 里的回话——正在读 / 读好了《…》/ 没读成。
+    // 复用简单卡（与行情条同形）：徽章说状态，正文说「是哪一篇、结果如何」。
+    if (data.type == FeedCardType.digest) {
+      final tags = data.tags ?? const <String>[];
+      final badge = tags.length > 1 ? tags[1] : '整理';
+      return _buildSimpleCard(
+        badgeText: badge,
+        badgeColor: switch (badge) {
+          '已读好' => AppColors.darkGreen,
+          '正在读' => AppColors.darkBlue,
+          '没读成' || '等你拍板' => AppColors.darkOrange,
+          _ => AppColors.darkGrey4,
+        },
+      );
     }
 
     // Normal / expanded rendering (unchanged from current)

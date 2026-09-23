@@ -28,6 +28,7 @@ import java.util.Map;
  * 端点：
  * POST /api/v1/learn/digest        喂入链接/素材 → 服务端抓取（+转写）→ AI 卡片化 → 落 data/{userId}/learn/
  * GET  /api/v1/learn/digest/status 消化任务状态（阶段 + 费用预估）
+ * GET  /api/v1/learn/digest/jobs   整理任务清单（我分享过哪些、分别什么情况；2026-09-23 追踪批）
  * POST /api/v1/learn/digest/confirm 转写费用确认（无字幕视频花钱前经用户点头）
  * GET  /api/v1/learn/digest/quota  本月转写用量与剩余额度
  * POST /api/v1/learn/cards         （兼容别名，同 /digest；2026-09-10 先例保留）
@@ -215,6 +216,24 @@ public class LearnController {
         ResponseEntity<?> denied = requireLearnPlugin(userId);
         if (denied != null) return denied;
         return ResponseEntity.ok(digestService.digestJobStatus(userId));
+    }
+
+    /**
+     * 整理任务清单（2026-09-23 分享追踪批）：「我分享过哪些、分别什么情况、成了没有」。
+     *
+     * <p>与 {@code /digest/status} 的分工：那个是**现在这一个**的执行态（内存、会过期），
+     * 这个是**落盘的账**（进行中 + 最近完成/失败/取消，重启不丢、失败也留痕）。App 学习页的
+     * 「整理进度」区与 Feed 里的「你把这篇丢给我了 → 读好了《…》」都读它——同一份真相源，两处呈现。
+     *
+     * @param limit 最多返回几条（默认 20；≤0 时用实现默认）
+     */
+    @GetMapping("/digest/jobs")
+    public ResponseEntity<?> digestJobs(
+            @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        ResponseEntity<?> denied = requireLearnPlugin(userId);
+        if (denied != null) return denied;
+        return ResponseEntity.ok(Map.of("tasks", digestService.tasks(userId, limit)));
     }
 
     /** 卡片列表（?type=ai/trading/other 筛选；缺省全部）。 */

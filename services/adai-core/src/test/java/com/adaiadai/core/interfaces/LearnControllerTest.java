@@ -225,6 +225,29 @@ class LearnControllerTest {
     }
 
     @Test
+    void digestJobs_withoutLearnPlugin_returns403() throws Exception {
+        mvc().perform(get("/api/v1/learn/digest/jobs").header("X-User-Id", "bob"))
+                .andExpect(status().isForbidden());
+    }
+
+    /** 「我分享过哪些、分别什么情况、成了没有」——2026-09-23 分享追踪批（学习页清单与 Feed 回话同源）。 */
+    @Test
+    void digestJobs_returnsTaskListWithWhatAndOutcome() throws Exception {
+        when(digestService.tasks("adai", 20)).thenReturn(List.of(
+                new com.adaiadai.core.domain.learn.LearnDigestTask(
+                        "dtask_1", "https://mp.weixin.qq.com/s/jsOBc6WCH", "央行报告", "mp.weixin.qq.com",
+                        "done", null, null, "other", "央行2025Q4货币政策报告要点", "中国货币政策",
+                        "2026-09-23T23:06:05", "2026-09-23T23:06:24")));
+
+        mvc("learn").perform(get("/api/v1/learn/digest/jobs").header("X-User-Id", "adai"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tasks.length()").value(1))
+                .andExpect(jsonPath("$.tasks[0].status").value("done"))
+                .andExpect(jsonPath("$.tasks[0].url").value("https://mp.weixin.qq.com/s/jsOBc6WCH"))
+                .andExpect(jsonPath("$.tasks[0].title").value("央行2025Q4货币政策报告要点"));
+    }
+
+    @Test
     void digest_invalidType_returns400() throws Exception {
         mvc("learn").perform(post("/api/v1/learn/cards")
                         .header("X-User-Id", "adai")

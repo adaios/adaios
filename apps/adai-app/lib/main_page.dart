@@ -2322,6 +2322,8 @@ extension FeedEntryResponseX on FeedEntryResponse {
       case FeedEntryType.market: return FeedCardType.market;
       // #162：push 类型不再落默认 record（L5 推送上线时渲染成普通卡）
       case FeedEntryType.push: return FeedCardType.push;
+      // 2026-09-23 分享追踪批：交给阿呆的东西（正在读/读好/没读成）
+      case FeedEntryType.digest: return FeedCardType.digest;
       default: return FeedCardType.record;
     }
   }

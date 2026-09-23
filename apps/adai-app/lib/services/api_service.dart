@@ -1077,6 +1077,26 @@ class ApiService {
         jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 「我分享了什么、分别什么情况、成了没有」（GET /learn/digest/jobs，2026-09-23 分享追踪批）。
+  ///
+  /// 与 [getLearnDigestStatus] 的分工：那个是**现在这一个**的执行态（内存、会过期），这个是
+  /// **落盘的账**（进行中 + 最近完成/失败/取消，重启不丢）。学习页「整理进度」区与 Feed 的
+  /// digest 条目读的是同一份。
+  Future<List<LearnDigestTaskDto>> getLearnDigestJobs({int limit = 20}) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/learn/digest/jobs?limit=$limit'),
+      headers: _headers,
+    );
+    _check(resp);
+    final json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final tasks = json['tasks'];
+    return tasks is List
+        ? tasks
+            .map((e) => LearnDigestTaskDto.fromJson(e as Map<String, dynamic>))
+            .toList()
+        : <LearnDigestTaskDto>[];
+  }
+
   /// 资产树：learn 卡片按 type 分组（GET /learn/tree）。
   Future<LearnTreeResponse> getLearnTree() async {
     final resp = await _client.get(
@@ -1762,6 +1782,9 @@ class FeedEntryType {
   static const String aiNote = 'ai_note';
   static const String push = 'push';
   static const String market = 'market'; // 大盘行情条（v0.2.0 L5）
+  /// 「交给阿呆的东西」在 Feed 里的回话（2026-09-23 分享追踪批）：
+  /// 正在读 / 读好了《…》 / 没读成——分享扩展那一秒之后，用户在这里看到结局。
+  static const String digest = 'digest';
   // RFC 20260917：待办卡（旧 'action'）撤出 Feed——待办有自己的页面，Feed 回归纯对话流。
 }
 

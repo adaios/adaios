@@ -4,6 +4,8 @@ import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.domain.learn.LearnCardPages;
 import com.adaiadai.core.domain.learn.LearnCardPatch;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
+import com.adaiadai.core.domain.learn.LearnDigestTask;
+import com.adaiadai.core.domain.learn.LearnDigestTaskRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnPage;
 import com.adaiadai.core.domain.learn.LearnQuotaRepository;
@@ -127,6 +129,14 @@ public class LearnDigestAppService {
      */
     private final com.adaiadai.core.kernel.memory.MemoryService memoryService;
 
+    /**
+     * 「整理任务」追踪记录（2026-09-23 分享追踪批）。
+     *
+     * <p>内存 job 答「现在这一个跑到哪了」，它答「我今天分享过哪些、分别什么情况」——
+     * 落盘、可查、重启不丢。**测试装配为 NOOP**（不记也不抛）。
+     */
+    private final LearnDigestTaskRepository digestTaskRepository;
+
     /** 提交式消化任务态（key=userId）。 */
     private final Map<String, DigestJob> jobs = new ConcurrentHashMap<>();
 
@@ -145,6 +155,7 @@ public class LearnDigestAppService {
                                  com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient,
                                  LearnQuotaRepository quotaRepository,
                                  com.adaiadai.core.kernel.memory.MemoryService memoryService,
+                                 LearnDigestTaskRepository digestTaskRepository,
                                  @org.springframework.beans.factory.annotation.Value("${adai.learn.image-max-tokens:4096}")
                                  int imageMaxTokens,
                                  @org.springframework.beans.factory.annotation.Value("${adai.learn.image-daily-limit:30}")
@@ -157,8 +168,29 @@ public class LearnDigestAppService {
         this.visualAiClient = visualAiClient;
         this.quotaRepository = quotaRepository;
         this.memoryService = memoryService;
+        this.digestTaskRepository = digestTaskRepository == null
+                ? LearnDigestTaskRepository.NOOP : digestTaskRepository;
         this.imageMaxTokens = imageMaxTokens;
         this.imageDailyLimit = imageDailyLimit;
+    }
+
+    /**
+     * 兼容装配（2026-09-23 分享追踪批之前的老签名）：不接任务追踪 → 用
+     * {@link LearnDigestTaskRepository#NOOP}，行为与引入追踪前**逐字一致**（既有构造点零改动）。
+     */
+    public LearnDigestAppService(AiClient aiClient,
+                                 LearnCardRepository repository,
+                                 Executor learnSubmitExecutor,
+                                 LearnFetchService fetchService,
+                                 LearnTranscriptionService transcriptionService,
+                                 com.adaiadai.core.infrastructure.ai.vision.VisualAiClient visualAiClient,
+                                 LearnQuotaRepository quotaRepository,
+                                 com.adaiadai.core.kernel.memory.MemoryService memoryService,
+                                 int imageMaxTokens,
+                                 int imageDailyLimit) {
+        this(aiClient, repository, learnSubmitExecutor, fetchService, transcriptionService,
+                visualAiClient, quotaRepository, memoryService, LearnDigestTaskRepository.NOOP,
+                imageMaxTokens, imageDailyLimit);
     }
 
     /** 测试/无视觉模型装配（图片源不可用 → submitImages 人话拒绝，其余路径不受影响）。 */
@@ -267,6 +299,12 @@ public class LearnDigestAppService {
         // 两端同时提交会各建一个 job 各跑一遍 → 重复抓取 + 重复烧 AI（确认路径下还会重复花钱）。
         // ConcurrentHashMap.compute 对同一 key 原子：抢占失败方直接复用当前任务，不再入队。
         DigestJob fresh = new DigestJob();
+        // 追踪账的钥匙在**提交时一次写定**（2026-09-23 分享追踪批）：内存 job 过期之后，
+        // 用户还要能在学习页 / Feed 看到「这条我提交过、后来怎么样了」。
+        fresh.taskId = com.adaiadai.core.kernel.IdGenerator.monotonic("dtask_");
+        fresh.submittedAt = nowIso();
+        fresh.submittedUrl = input.fetchUrl() != null ? input.fetchUrl()
+                : (input.sourceUrl() == null ? "" : input.sourceUrl());
         DigestJob current = jobs.compute(userId,
                 (key, cur) -> (cur == null || cur.isTerminal()) ? fresh : cur);
         if (current != fresh) {
@@ -278,9 +316,12 @@ public class LearnDigestAppService {
         // 「结果在哪」时会**再分享一次**（2026-09-23 实测：微博同一条连分享两次）；原逻辑对第二次
         // 会**再抓一遍、再烧一次 AI**，落出第二张内容重复的卡（实测 02/03 同源两卡）。
         // 去重命中不建任务、不抓取、不调模型，直接以 done 回执已有卡片。
+        // 受理即入账：「我分享了什么」从这一刻起可查，不必等到有结果（2026-09-23 分享追踪批）
+        syncTask(userId, current);
         LearnCard already = findExistingCard(userId, input);
         if (already != null) {
             current.done(already.type(), already.title(), already.topic());
+            syncTask(userId, current);
             log.info("learn 这条已经整理过，不再重复消化 | userId={} | 卡片={}", userId, already.title());
             return new DigestSubmitResult(STATUS_DONE);
         }
@@ -288,6 +329,9 @@ public class LearnDigestAppService {
             learnSubmitExecutor.execute(() -> runJob(userId, current, input));
         } catch (RejectedExecutionException e) {
             jobs.remove(userId, current);
+            // 队列满也是这条的结局：如实入账（否则用户分享过、账上却查不到）
+            current.fail("消化任务繁忙，请稍后重试");
+            syncTask(userId, current);
             throw new LearnException("消化任务繁忙，请稍后重试");
         }
         return new DigestSubmitResult(STATUS_PENDING);
@@ -438,6 +482,11 @@ public class LearnDigestAppService {
         }
 
         DigestJob fresh = new DigestJob();
+        // 图片路径同链接路径一样入账（2026-09-23 分享追踪批）：「我整理过几张图」也要查得到
+        fresh.taskId = com.adaiadai.core.kernel.IdGenerator.monotonic("dtask_");
+        fresh.submittedAt = nowIso();
+        fresh.submittedUrl = "";
+        fresh.submittedImageCount = images.size();
         DigestJob current = jobs.compute(userId,
                 (key, cur) -> (cur == null || cur.isTerminal()) ? fresh : cur);
         if (current != fresh) {
@@ -446,6 +495,7 @@ public class LearnDigestAppService {
             return new DigestSubmitResult(current.isAwaitingConfirm() ? STATUS_NEEDS_CONFIRMATION : STATUS_RUNNING);
         }
         current.pendingRawNames = List.copyOf(rawNames);
+        syncTask(userId, current);
         List<ImageInput> copy = List.copyOf(images);
         try {
             // 对抗审查 P1-B（2026-09-12）修复：占位成功后**任何**失败都必须回收 job——
@@ -608,8 +658,10 @@ public class LearnDigestAppService {
         }
         if (!confirm) {
             log.info("learn 转写被用户取消（元数据已留存，未产生费用）| userId={}", userId);
+            syncTask(userId, job); // 取消也是一个结局：账上留「你说先不读，我放着呢」
             return job.statusView();
         }
+        syncTask(userId, job); // 点头了：从「等你拍板」回到「正在读」
         LearnSource source = job.pendingSource;
         ResolvedInput pendingInput = job.pendingInput;
         String typeHint = job.pendingTypeHint;
@@ -623,9 +675,11 @@ public class LearnDigestAppService {
                 } catch (LearnException e) {
                     log.warn("learn 转写后消化失败 | userId={} | {}", userId, e.getMessage());
                     job.fail(e.getMessage());
+                    syncTask(userId, job);
                 } catch (Exception e) {
                     log.error("learn 转写后消化异常 | userId={}", userId, e);
                     job.fail("AI 消化失败，原始素材已留存，可稍后重试");
+                    syncTask(userId, job);
                 }
             });
         } catch (RejectedExecutionException e) {
@@ -652,6 +706,68 @@ public class LearnDigestAppService {
         return job.statusView();
     }
 
+    // ── 追踪账（2026-09-23 分享追踪批） ──
+
+    /**
+     * 「我分享过哪些、分别什么情况」——追踪清单（{@code GET /learn/digest/jobs}）。
+     *
+     * <p>与 {@link #digestJobStatus} 的分工：那个答「**现在这一个**跑到哪了」（内存态、会过期），
+     * 这个答「**我提交过什么、结局如何**」（落盘账、重启不丢、失败也留痕）。前端两处都用它：
+     * App 学习页的「整理进度」区、以及 Feed 里那几句「你把这篇丢给我了 → 读好了《…》」。
+     */
+    public List<LearnDigestTask> tasks(String userId, int limit) {
+        return digestTaskRepository.findRecent(userId, limit);
+    }
+
+    /**
+     * 把内存 job 的当前状态同步进追踪账（提交 / 抓到源 / 等确认 / 完成 / 失败 / 取消各调一次）。
+     *
+     * <p><b>为什么是「整体覆盖」而不是「增量打点」</b>：状态推进点分散在流水线各处（含转写回调、
+     * 执行器拒绝等异常路径），逐个手写字段既容易漏、又容易让两处记录打架；这里统一从 job 的当前
+     * 快照生成整条记录，任何一条路径只要最后调一次就一致。
+     *
+     * <p>**绝不影响主流程**：仓储本身 fail-open，这里再包一层——连「构造记录对象」的意外都不该
+     * 把用户这次整理判成失败（卡片可能已经落盘了，谎报失败比没有追踪更糟）。
+     */
+    private void syncTask(String userId, DigestJob job) {
+        if (job == null || job.taskId == null) return;
+        try {
+            // 抓取成功前后：source 可能还在 pendingSource（等转写确认时）
+            LearnSource src = job.source != null ? job.source : job.pendingSource;
+            String sourceTitle = src != null ? src.title() : null;
+            String platform = src != null ? displayPlatform(src) : null;
+            // 图片路径没有「源标题」，但用户仍要认得出自己交了什么（否则清单里只有一条无名的记录）
+            if (src == null && job.submittedImageCount > 0) {
+                sourceTitle = job.submittedImageCount + " 张图";
+                platform = "image";
+            }
+            digestTaskRepository.save(userId, new LearnDigestTask(
+                    job.taskId,
+                    job.submittedUrl == null ? "" : job.submittedUrl,
+                    sourceTitle,
+                    platform,
+                    job.status,
+                    job.stage,
+                    job.message,
+                    job.type,
+                    job.title,
+                    job.topic,
+                    job.submittedAt,
+                    job.isTerminal() ? nowIso() : null));
+        } catch (Exception e) {
+            log.warn("learn 整理任务记录同步失败（不影响整理本身）| userId={} | id={} | {}",
+                    userId, job.taskId, e.getMessage());
+        }
+    }
+
+    /** 墙钟（ISO、秒精度）。时钟只在 application 层取——storage 层取 now() 是守护 G2 禁止的。 */
+    static String nowIso() {
+        return java.time.LocalDateTime.now().format(ISO_SECONDS);
+    }
+
+    private static final java.time.format.DateTimeFormatter ISO_SECONDS =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+
     // ── 流水线 ──
 
     private void runJob(String userId, DigestJob job, ResolvedInput input) {
@@ -664,9 +780,11 @@ public class LearnDigestAppService {
         } catch (LearnException e) {
             log.warn("learn 后台消化失败 | userId={} | 输入形态={} | {}", userId, urlShape(input.fetchUrl()), e.getMessage());
             job.fail(e.getMessage());
+            syncTask(userId, job);
         } catch (Exception e) {
             log.error("learn 后台消化异常 | userId={} | 输入形态={}", userId, urlShape(input.fetchUrl()), e);
             job.fail("AI 消化失败，原始素材已留存（learn/_raw/），可稍后重试");
+            syncTask(userId, job);
         }
     }
 
@@ -713,6 +831,8 @@ public class LearnDigestAppService {
         job.source = source;
         job.pendingTypeHint = input.type();
         job.pendingInput = input;
+        // 抓到什么了，账上立刻可见（用户能看到「正在读的是哪一篇」，而不是只有一个链接）
+        syncTask(userId, job);
 
         if (source.hasText()) {
             finishJob(userId, job, source.text(), input.type(), source, input, job.pendingRawNames);
@@ -743,6 +863,7 @@ public class LearnDigestAppService {
                     + "），下月 1 日重置；抓到的元数据我已留存");
         }
         job.awaitConfirm(estimate, quoteMessage(estimate, transcriptionService));
+        syncTask(userId, job); // 「等你点头」也要入账：否则用户在清单里看不到这条卡在哪一步
         log.info("learn 等待转写确认 | userId={} | {} | 约 {} 分钟 | 预计 {} 元",
                 userId, source.title(), Math.round(estimate.durationSeconds() / 60.0), estimate.estimatedYuan());
     }
@@ -768,6 +889,7 @@ public class LearnDigestAppService {
         LearnCard card = digest(userId, text, typeHint, platform, author, url, published);
         promoteRawAssets(userId, card, source, pastedRaw, extraRawNames);
         job.done(card.type(), card.title(), card.topic());
+        syncTask(userId, job); // 结账：这条从「正在读」变成「读好了《…》」
     }
 
     /**
@@ -880,6 +1002,17 @@ public class LearnDigestAppService {
     /** 单用户消化任务态（内存态，重启丢失 → 轮询回 idle）。 */
     private static final class DigestJob {
         private volatile String status = STATUS_RUNNING;
+        /**
+         * 追踪记录 id / 提交信息（2026-09-23 分享追踪批）。
+         *
+         * <p>内存 job 是会过期的执行态；落盘那条账（{@code learn/_digest-tasks.json}）靠这个 id 对上号。
+         * 提交时一次写定，之后每次状态推进都用它覆盖同一条记录。
+         */
+        private volatile String taskId;
+        private volatile String submittedUrl;
+        private volatile String submittedAt;
+        /** 图片路径：本次提交几张图（0 = 链接/素材路径）——清单里要能说清「你交的是什么」。 */
+        private volatile int submittedImageCount;
         private volatile String stage;
         private volatile String type;
         private volatile String title;

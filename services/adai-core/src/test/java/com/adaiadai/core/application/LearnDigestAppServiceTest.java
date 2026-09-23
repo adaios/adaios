@@ -2,6 +2,8 @@ package com.adaiadai.core.application;
 
 import com.adaiadai.core.domain.learn.LearnCard;
 import com.adaiadai.core.domain.learn.LearnCardRepository;
+import com.adaiadai.core.domain.learn.LearnDigestTask;
+import com.adaiadai.core.domain.learn.LearnDigestTaskRepository;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.learn.LearnPage;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -21,6 +23,7 @@ import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -630,6 +634,95 @@ class LearnDigestAppServiceTest {
         assertEquals("https://a.com/b", LearnDigestAppService.normalizeUrl("  https://a.com/b/  "));
         assertNull(LearnDigestAppService.normalizeUrl("   "));
         assertNull(LearnDigestAppService.normalizeUrl(null));
+    }
+
+    // ── 2026-09-23 分享追踪批：「我分享过什么、成了没有」要落成账（学习页清单 + Feed 回话都读它）──
+
+    private final LearnDigestTaskRepository taskRepository = mock(LearnDigestTaskRepository.class);
+
+    /** 带追踪账的装配（走 11 参主构造：digestTaskRepository 落在它自己的参数位）。 */
+    private LearnDigestAppService serviceWithTasks(Executor executor) {
+        return new LearnDigestAppService(aiClient, repository, executor, fetchService, transcriptionService,
+                null, null, null, taskRepository, 4096, 30);
+    }
+
+    private LearnDigestTask lastRecordedTask() {
+        ArgumentCaptor<LearnDigestTask> captor = ArgumentCaptor.forClass(LearnDigestTask.class);
+        verify(taskRepository, atLeastOnce()).save(eq("adai"), captor.capture());
+        return captor.getValue();
+    }
+
+    /** 受理即入账：「我分享了什么」在还没结果时就能查到（这一步正是用户抱怨看不到的窗口）。 */
+    @Test
+    void submit_recordsTaskAsRunningWithUrl() {
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+        s.submit("adai", new LearnDigestAppService.DigestRequest(
+                "https://mp.weixin.qq.com/s/jsOBc6WCH", null, null, null, null, null));
+
+        LearnDigestTask t = lastRecordedTask();
+        assertEquals("running", t.status());
+        assertEquals("https://mp.weixin.qq.com/s/jsOBc6WCH", t.url(), "清单里要认得出「我分享的是哪一篇」");
+        assertNotNull(t.id(), "账要有钥匙（内存 job 过期后靠它对上号）");
+        assertNotNull(t.submittedAt());
+        assertTrue(t.inProgress());
+    }
+
+    @Test
+    void done_recordsTaskWithCardTitleAndSettledAt() {
+        when(aiClient.generate(any(), any())).thenReturn(TRADING_JSON);
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        s.submit("adai", "字幕内容", null, null, null, null, null);
+
+        LearnDigestTask t = lastRecordedTask();
+        assertEquals("done", t.status());
+        assertEquals("回调一半的判定", t.title(), "「哪一条读好了」必须指名道姓");
+        assertEquals("trading", t.type());
+        assertNotNull(t.settledAt());
+        assertTrue(t.settled());
+    }
+
+    @Test
+    void failure_recordsTaskWithHumanReason() {
+        when(aiClient.generate(any(), any())).thenThrow(new RuntimeException("llm down"));
+        LearnDigestAppService s = serviceWithTasks(directExecutor);
+
+        s.submit("adai", "字幕内容", null, null, null, null, null);
+
+        LearnDigestTask t = lastRecordedTask();
+        assertEquals("failed", t.status());
+        assertNotNull(t.message(), "失败原因要留在账上（事后还能看到「哪条没成、为什么」）");
+        assertNotNull(t.settledAt());
+    }
+
+    /** 去重命中也是一条有结局的账（且只烧了零次模型）。 */
+    @Test
+    void duplicateLink_recordsDoneWithoutSecondAiCall() {
+        String link = "https://mapp.api.weibo.cn/fx/670488fd1c2f0e18b93434bb8aaed54e.html";
+        when(repository.tree("adai")).thenReturn(Map.of("ai", List.of(cardWithUrl(link))));
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+
+        assertEquals(LearnDigestAppService.STATUS_DONE, s.submit("adai",
+                new LearnDigestAppService.DigestRequest(link, null, null, null, null, null)).status());
+
+        LearnDigestTask t = lastRecordedTask();
+        assertEquals("done", t.status());
+        assertEquals("AI 让 React Native 类中间层被判死刑", t.title());
+        verifyNoInteractions(aiClient);
+    }
+
+    /**
+     * 抢占任务位失败（已有任务在跑）**不写账**——那条根本没被受理，写进去就是假账：
+     * 用户会看到「我分享了两条」，而其中一条从来不会有人处理。
+     */
+    @Test
+    void inflightSecondSubmit_doesNotRecordFakeTask() {
+        LearnDigestAppService s = serviceWithTasks(capturingExecutor);
+
+        s.submit("adai", "第一条素材", null, null, null, null, null);
+        s.submit("adai", "第二条素材", null, null, null, null, null);   // 被拒
+
+        verify(taskRepository, times(1)).save(eq("adai"), any(LearnDigestTask.class));
     }
 
     @Test

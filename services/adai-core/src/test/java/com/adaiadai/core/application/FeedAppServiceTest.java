@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -92,6 +93,75 @@ class FeedAppServiceTest {
         MarketPushRepository push = mock(MarketPushRepository.class);
         when(push.findByDate(any(), any())).thenReturn(List.of());
         return push;
+    }
+
+    // ── 2026-09-23 分享追踪批：Feed 里给「交给阿呆的东西」一句回话 ──
+
+    /** 带追踪账的装配（9 参主构造：digestTaskRepository 落在它自己的参数位）。 */
+    private FeedAppService serviceWithDigestTasks(List<com.adaiadai.core.domain.learn.LearnDigestTask> tasks,
+                                                  String... plugins) {
+        RecordRepository recordRepository = mock(RecordRepository.class);
+        when(recordRepository.findAll(any())).thenReturn(List.of());
+        MemoryService memoryService = mock(MemoryService.class);
+        when(memoryService.findByDate(any(), any())).thenReturn(List.of());
+        CardFileRepository cardRepository = mock(CardFileRepository.class);
+        when(cardRepository.findTodayCards(any(), any())).thenReturn(List.of());
+        com.adaiadai.core.domain.learn.LearnDigestTaskRepository taskRepository =
+                mock(com.adaiadai.core.domain.learn.LearnDigestTaskRepository.class);
+        when(taskRepository.findRecent(any(), anyInt())).thenReturn(tasks);
+        return new FeedAppService(recordRepository, memoryService, cardRepository,
+                mock(MarketDataSource.class), emptyPush(), pluginService("default", plugins),
+                defaultPushSettings(), taskRepository, TRADING_CLOCK);
+    }
+
+    private static com.adaiadai.core.domain.learn.LearnDigestTask digestTask(
+            String id, String status, String sourceTitle, String cardTitle) {
+        return new com.adaiadai.core.domain.learn.LearnDigestTask(
+                id, "https://mp.weixin.qq.com/s/jsOBc6WCH", sourceTitle, "mp.weixin.qq.com",
+                status, null, null, "other", cardTitle, "中国货币政策",
+                "2026-09-23T23:06:05", "done".equals(status) ? "2026-09-23T23:06:24" : null);
+    }
+
+    /** 分享进来的东西在 Feed 里必须有回话——正是用户说「我还没办法追踪呀」的那个缺口。 */
+    @Test
+    void digestTasks_showUpInFeedAsConversation() {
+        FeedAppService service = serviceWithDigestTasks(List.of(
+                digestTask("dtask_1", "done", "央行报告", "央行2025Q4货币政策报告要点"),
+                digestTask("dtask_2", "running", null, null),
+                digestTask("dtask_3", "failed", null, null)), "learn");
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 9, 23), 0, 20);
+        List<FeedAppService.FeedEntry> digest = resp.entries().stream().filter(e -> "digest".equals(e.type())).toList();
+
+        assertEquals(3, digest.size(), "进行中/完成/失败三条都要露面");
+        assertTrue(digest.stream().anyMatch(e -> e.title().contains("读好了")
+                        && e.content().contains("央行2025Q4货币政策报告要点")),
+                "完成的那条要指名道姓说出卡片标题");
+        assertTrue(digest.stream().anyMatch(e -> e.title().contains("我正在读")),
+                "进行中的那条要让人知道它在读");
+        assertTrue(digest.stream().anyMatch(e -> e.title().contains("没读成")), "失败也要说");
+    }
+
+    /** Feed 是按天看的：不是今天的任务不该漏进今天的流。 */
+    @Test
+    void digestTasks_fromOtherDays_doNotLeakIntoTodaysFeed() {
+        FeedAppService service = serviceWithDigestTasks(List.of(
+                digestTask("dtask_old", "done", "昨天的报告", "昨天的卡")), "learn");
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 9, 22), 0, 20);
+
+        assertTrue(resp.entries().stream().noneMatch(e -> "digest".equals(e.type())));
+    }
+
+    /** 没有 learn 插件 → 不注入（与 push 条目同口径：不是这个域的东西不往 Feed 塞）。 */
+    @Test
+    void digestTasks_requireLearnPlugin() {
+        FeedAppService service = serviceWithDigestTasks(List.of(
+                digestTask("dtask_1", "done", "央行报告", "央行2025Q4货币政策报告要点")));
+
+        FeedAppService.FeedResponse resp = service.getFeed("default", LocalDate.of(2026, 9, 23), 0, 20);
+
+        assertTrue(resp.entries().stream().noneMatch(e -> "digest".equals(e.type())));
     }
 
     @Test

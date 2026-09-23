@@ -1,5 +1,7 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.domain.learn.LearnDigestTask;
+import com.adaiadai.core.domain.learn.LearnDigestTaskRepository;
 import com.adaiadai.core.domain.trading.MarketPushEvent;
 import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.MarketPushRepository;
@@ -63,7 +65,18 @@ public class FeedAppService {
     private final PushSettingsRepository pushSettingsRepository;
     /** 行情条窗口判定时钟（可注入固定时钟测试；生产由 Spring 注入系统默认时区时钟）。 */
     private final Clock clock;
+    /**
+     * 「交给阿呆的东西」追踪账（2026-09-23 分享追踪批）。
+     *
+     * <p>把「我分享进来 / 喂进来的内容」在 Feed 里变成几句对话：正在读 → 读好了《…》/ 没读成。
+     * 与 App 学习页的「整理进度」区**同一份真相源**（{@code learn/_digest-tasks.json}）。
+     */
+    private final LearnDigestTaskRepository digestTaskRepository;
 
+    /**
+     * 生产装配（2026-09-23 分享追踪批起带追踪账）。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public FeedAppService(RecordRepository recordRepository,
                           MemoryService memoryService,
                           CardFileRepository cardRepository,
@@ -71,6 +84,7 @@ public class FeedAppService {
                           MarketPushRepository pushRepository,
                           PluginService pluginService,
                           PushSettingsRepository pushSettingsRepository,
+                          com.adaiadai.core.domain.learn.LearnDigestTaskRepository digestTaskRepository,
                           Clock clock) {
         this.recordRepository = recordRepository;
         this.memoryService = memoryService;
@@ -79,7 +93,26 @@ public class FeedAppService {
         this.pushRepository = pushRepository;
         this.pluginService = pluginService;
         this.pushSettingsRepository = pushSettingsRepository;
+        this.digestTaskRepository = digestTaskRepository == null
+                ? com.adaiadai.core.domain.learn.LearnDigestTaskRepository.NOOP : digestTaskRepository;
         this.clock = clock;
+    }
+
+    /**
+     * 兼容装配（2026-09-23 之前的签名）：不接追踪账 → 用空实现，Feed 内容与引入追踪前**逐字一致**
+     * （既有测试与构造点零改动）。
+     */
+    public FeedAppService(RecordRepository recordRepository,
+                          MemoryService memoryService,
+                          CardFileRepository cardRepository,
+                          MarketDataSource marketDataSource,
+                          MarketPushRepository pushRepository,
+                          PluginService pluginService,
+                          PushSettingsRepository pushSettingsRepository,
+                          Clock clock) {
+        this(recordRepository, memoryService, cardRepository, marketDataSource, pushRepository,
+                pluginService, pushSettingsRepository,
+                com.adaiadai.core.domain.learn.LearnDigestTaskRepository.NOOP, clock);
     }
 
     /**
@@ -182,6 +215,12 @@ public class FeedAppService {
             allEntries.addAll(buildPushEntries(userId, queryDate, hasTradingPlugin, hasLearnPlugin).stream()
                     .filter(e -> pushSettings.isEnabled(e.type()))
                     .toList());
+        }
+        // 「交给阿呆的东西」对话条目（2026-09-23 分享追踪批）：分享进来 / 喂进来的内容，在 Feed 里
+        // 就有回话——正在读 → 读好了《…》／没读成。用户不必去学习页找，也不必猜「我发的东西去哪了」。
+        // 需 learn 插件；**不受推送开关门控**（这是用户自己提交的追踪，不是系统提醒，没有「关掉」语义）。
+        if (hasLearnPlugin) {
+            allEntries.addAll(buildDigestEntries(userId, queryDate));
         }
 
         // P2-UI12：同分钟同向成交先折叠，再统一排序（原地替换，不依赖局部变量的可变性）
@@ -520,6 +559,88 @@ public class FeedAppService {
         DayOfWeek dow = d.getDayOfWeek();
         return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY
                 && !TradingSessionPushService.HOLIDAYS.contains(d);
+    }
+
+    /** Feed 里最多回放几条「交给阿呆的东西」（清单本身在学习页，Feed 只做当天回话）。 */
+    private static final int DIGEST_FEED_LIMIT = 20;
+
+    /**
+     * 「交给阿呆的东西」在 Feed 里的几句回话（2026-09-23 分享追踪批）。
+     *
+     * <p><b>为什么放在 Feed</b>：分享扩展提交完 1 秒就关窗、主 App 全程不被拉起——用户回到阿呆时，
+     * 唯一自然的落点就是他天天看的这条流。原先这里什么都不留，于是「我分享了什么、成了没有」
+     * 只能去学习页翻（2026-09-23 用户实测：「我还没办法追踪呀」）。
+     *
+     * <p><b>为什么读落盘账而不是内存 job</b>：Feed 是全天可回看的（换设备、重启、晚上再打开），
+     * 而内存 job 几分钟就清了；同一份账（{@code learn/_digest-tasks.json}）也正是 App 学习页
+     * 「整理进度」区的数据源——**两处呈现、一个真相源**。
+     *
+     * <p>文案是第一原则的写法：**阿呆在跟你说话**（「你把这篇丢给我了」「读好了《…》」），
+     * 没有「任务 / 状态 / 队列」这类系统视角的词。
+     */
+    private List<FeedEntry> buildDigestEntries(String userId, LocalDate date) {
+        String day = date.toString();
+        List<FeedEntry> out = new ArrayList<>();
+        for (LearnDigestTask t : digestTaskRepository.findRecent(userId, DIGEST_FEED_LIMIT)) {
+            if (t.submittedAt() == null || !t.submittedAt().startsWith(day)) continue;
+            out.add(toDigestEntry(t, day));
+        }
+        return out;
+    }
+
+    private FeedEntry toDigestEntry(LearnDigestTask t, String day) {
+        String time = t.submittedAt() != null && t.submittedAt().length() >= 16
+                ? t.submittedAt().substring(11, 16) : "";
+        String what = digestWhat(t);
+        String title;
+        String content;
+        String badge;
+        switch (t.status() == null ? "" : t.status()) {
+            case "done" -> {
+                title = "读好了";
+                content = "《" + (t.title() == null || t.title().isBlank() ? what : t.title()) + "》";
+                badge = "已读好";
+            }
+            case "failed" -> {
+                title = "这篇我没读成";
+                content = t.message() == null || t.message().isBlank()
+                        ? "素材没留下，你重新发我一次就行" : t.message();
+                badge = "没读成";
+            }
+            case "cancelled" -> {
+                title = "你说先不读";
+                content = "素材我留着了，回头想读说一声";
+                badge = "先不读";
+            }
+            case "needs_confirmation" -> {
+                title = "这篇要转写才读得了";
+                content = t.message() == null || t.message().isBlank() ? "要我接着读吗？" : t.message();
+                badge = "等你拍板";
+            }
+            default -> {
+                boolean fetched = t.sourceTitle() != null && !t.sourceTitle().isBlank();
+                title = fetched ? "我在读《" + t.sourceTitle() + "》" : "你给我的这篇，我正在读";
+                content = fetched ? "读明白了我告诉你" : what + "——先把原文抓下来";
+                badge = "正在读";
+            }
+        }
+        return new FeedEntry(
+                "digest", t.id(), null,
+                title, content, List.of("学习", badge),
+                time, null, null, null,
+                "learn", day, null,
+                t.settledAt() != null ? t.settledAt() : t.submittedAt());
+    }
+
+    /** 这条「交给阿呆的东西」是什么（要让用户认得出自己发了什么）：来源标题 > 链接域名 > 图片张数。 */
+    private static String digestWhat(LearnDigestTask t) {
+        if (t.sourceTitle() != null && !t.sourceTitle().isBlank()) return "《" + t.sourceTitle() + "》";
+        if (t.url() != null && !t.url().isBlank()) {
+            String host = LearnFetchService.hostOf(t.url());
+            return host == null ? "你发来的链接" : host + " 上的一篇";
+        }
+        if ("image".equals(t.platform())) return "你发来的图";
+        return "你发来的内容";
     }
 
     /**

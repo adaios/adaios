@@ -112,6 +112,12 @@ class _LearnPageState extends State<LearnPage> {
   /// 免得「刚在弹窗里看过新卡」回到列表又被告知一次。
   final Set<String> _digestAcked = <String>{};
 
+  /// 「我分享了什么、成了没有」——整理进度清单（2026-09-23 分享追踪批）。
+  ///
+  /// 数据源是同一条落盘的账（`GET /learn/digest/jobs`），Feed 里的 digest 条目也读它。
+  /// `_doneJob` 只管「刚刚完成」的即时回执，这里管**全景**（进行中 + 最近几条结局）。
+  List<LearnDigestTaskDto> _digestTasks = const [];
+
   bool _initialOpened = false;
 
   @override
@@ -182,6 +188,21 @@ class _LearnPageState extends State<LearnPage> {
       }
     } catch (_) {
       // 静默：查不到就当作没有待确认的事
+    }
+    await _loadDigestTasks();
+  }
+
+  /// 整理进度清单（2026-09-23 分享追踪批）：「我分享过哪些、分别什么情况、成了没有」。
+  ///
+  /// 用户原话：「我还没办法追踪呀……我看不到任何追踪信息，比如我分享了什么到阿呆，目前分别是
+  /// 什么情况了，是否完成了呢」。查询失败**静默降级**——追踪看不见，不该连学习页一起坏掉。
+  Future<void> _loadDigestTasks() async {
+    try {
+      final tasks = await widget.api.getLearnDigestJobs();
+      if (!mounted) return;
+      setState(() => _digestTasks = tasks);
+    } catch (_) {
+      // 静默：本次不显示进度区，主流程照常
     }
   }
 
@@ -482,6 +503,8 @@ class _LearnPageState extends State<LearnPage> {
       if (_failedJob != null) _buildFailedBanner(_failedJob!),
       // 整理好的那条：分享扩展那一秒的「交出去了」之外，这是唯一一句「我读完了」的回话
       if (_doneJob != null) _buildDoneBanner(_doneJob!),
+      // 「我分享过什么、成了没有」全景（2026-09-23 追踪批）：进行中的全部 + 最近几条结局
+      if (_digestTasks.isNotEmpty) _buildDigestProgress(),
       _buildSearchField(),
       Expanded(child: _buildListArea(cards)),
     ]);
@@ -635,6 +658,89 @@ class _LearnPageState extends State<LearnPage> {
         ),
       ]),
     );
+  }
+
+  /// 整理进度清单（2026-09-23 分享追踪批）：「我这边在忙的事」。
+  ///
+  /// 只摆需要你知道的：**进行中的全部** + 最近 3 条已有结局的（再多就是历史，卡片列表本身就是结果）。
+  /// 「读好了」的那条可点开直达卡片——用户问的「是否完成了」在这里有答案，且点一下就到。
+  Widget _buildDigestProgress() {
+    final running = _digestTasks.where((t) => t.inProgress).toList();
+    final settled = _digestTasks.where((t) => !t.inProgress).take(3).toList();
+    final shown = [...running, ...settled];
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('learn-digest-progress'),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkBorder.withValues(alpha: 0.6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.auto_awesome_motion_outlined, size: 15, color: AppColors.darkGrey4),
+          const SizedBox(width: 6),
+          Text(running.isEmpty ? '我这边刚忙完的事' : '我这边正忙着的事',
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkGrey3)),
+        ]),
+        const SizedBox(height: 4),
+        ...shown.map(_buildDigestTaskRow),
+      ]),
+    );
+  }
+
+  Widget _buildDigestTaskRow(LearnDigestTaskDto t) {
+    final color = switch (t.status) {
+      'done' => AppColors.darkGreen,
+      'running' => AppColors.darkBlue,
+      'needs_confirmation' || 'failed' => AppColors.darkOrange,
+      _ => AppColors.darkGrey4,
+    };
+    final icon = switch (t.status) {
+      'done' => Icons.check_circle_outline,
+      'failed' => Icons.error_outline,
+      'needs_confirmation' => Icons.record_voice_over_outlined,
+      'cancelled' => Icons.pause_circle_outline,
+      _ => Icons.hourglass_empty,
+    };
+    return GestureDetector(
+      key: ValueKey('learn-digest-task-${t.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: t.isDone ? () => _openTaskCard(t) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 15, color: color)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t.clock.isEmpty ? t.statusText : '${t.statusText} · ${t.clock}',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: color)),
+              const SizedBox(height: 2),
+              Text(t.detailText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, height: 1.5, color: AppColors.darkGrey2)),
+            ]),
+          ),
+          if (t.isDone)
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.chevron_right, size: 16, color: AppColors.darkGreen),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  /// 点清单里「读好了」的那条 → 打开卡片（列表里找不到也照开：全文走 /learn/content）。
+  Future<void> _openTaskCard(LearnDigestTaskDto t) async {
+    final found = _tree?.recentAll
+        .where((c) => c.type == t.type && c.title == t.title)
+        .firstOrNull;
+    await _openCard(found ?? LearnCardDto(type: t.type, title: t.title, created: ''));
   }
 
   Widget _buildSearchField() {
