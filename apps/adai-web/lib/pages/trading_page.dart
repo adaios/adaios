@@ -1947,6 +1947,13 @@ class _TradingPageState extends State<TradingPage> {
           ),
         ]),
       ],
+      // P2-交易66（2026-09-23）：本金置信度——手填本金 + 历史出入金零记录时，说明这行总盈亏的基准。
+      // 中性灰（是说明不是告警），文案同样由后端给。
+      if ((_account?.principalNote ?? '').isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(_account!.principalNote,
+            style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      ],
     ]);
   }
 

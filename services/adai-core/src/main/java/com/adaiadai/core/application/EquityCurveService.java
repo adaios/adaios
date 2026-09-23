@@ -222,7 +222,14 @@ public class EquityCurveService {
         // 000776/600487 各多 600/400 股，资金曲线与周期盈亏的市值整体虚高。
         // 因此日期走到锚定日时，把持仓数量重置为快照基线，之后只叠加锚定日**之后**的流水。
         SnapshotAnchor anchor = anchorRepository.find(userId);
-        LocalDate anchorDate = anchor != null ? anchor.latest() : null;
+        // P2-交易70（2026-09-23）：持仓重置必须用**持仓快照的基准日**（positionsReplace），
+        // 不能用 latest()——后者会对 cashImport 取最大值，于是「今天刚导的资金股份查询」会把
+        // 持仓锚定日一起往后拽，持仓重置被推迟、锚定日到今天的这一段退回「底仓 + 流水回放」。
+        // 生产实据：2026-09-23 用户只导了资金（cashImport=09-23，positionsReplace 仍 09-18），
+        // 曲线 09-21/09-22 的持仓市值被回放成 125,925 / 125,364（真实 09-22 只有 105,488，虚高约 2 万），
+        // 并让周期盈亏的百分比分母（base）跟着虚高（金额不受影响——它逐日累加）。
+        // 「账的日期」与「现金/持仓的日期」本就是三件事，混用一个日期就会出这种错（见 P2-交易69）。
+        LocalDate anchorDate = anchor != null ? anchor.positionsReplace() : null;
         List<SnapshotHolding> anchorHoldings = anchorRepository.holdings(userId);
         boolean anchorHoldingsKnown = anchorRepository.holdingsRecorded(userId);
         boolean anchorApplied = false;
@@ -363,7 +370,9 @@ public class EquityCurveService {
         EquityCurve curve = build(userId);
         List<EquityPoint> pts = curve.points();
         SnapshotAnchor anchor = anchorRepository.find(userId);
-        LocalDate anchorDate = anchor != null ? anchor.latest() : null;
+        // P2-交易70：与曲线持仓重置同口径——可信起点 = **持仓快照基准日**（不是 latest()）。
+        // 用 latest() 会把区间起点判得比实际更靠后，于是「本周」被无谓标成 partial（数据其实可信）。
+        LocalDate anchorDate = anchor != null ? anchor.positionsReplace() : null;
         if (pts.isEmpty()) {
             return new PnlPeriods(null, null, null, "", anchorDate, "还没有资金或成交记录，算不出盈亏");
         }

@@ -209,6 +209,56 @@ class EquityCurveServiceTest {
         }
     }
 
+    /**
+     * P2-交易70（2026-09-23）：**只导了资金、没导持仓**时，持仓重置必须仍按 {@code positionsReplace}。
+     * <p>
+     * 根因：原实现用 {@code anchor.latest()}（对持仓日与资金日取最大值）→ 刚导入的「资金股份查询」
+     * 会把**持仓**锚定日一起往后拽，使 positionsReplace 到那天这一段退回「底仓 + 流水回放」而虚高。
+     * 生产实据：2026-09-23 用户只导资金（cashImport=09-23、positionsReplace 仍 09-18），曲线
+     * 09-21/09-22 的持仓市值被回放成 125,925 / 125,364（真实 09-22 仅 105,488，虚高约 2 万），
+     * 周期盈亏的百分比分母（base）跟着虚高（金额不受影响，它逐日累加）。
+     * <p>
+     * 判据（不依赖绝对值、修复前必红）：**把 cashImport 推到更晚，两条曲线必须一模一样**。
+     */
+    @Test
+    void positionsReset_ignoresLaterCashImport() {
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(
+                buy("600000", 500, "10.0", D1),    // 真实持仓（快照已含）
+                buy("000776", 1000, "10.0", D1))); // **幽灵**：只买没卖、positions 与快照都没有它
+        //     ↑ 幽灵是复现的关键：纯回放会一直带着它，只有走到「持仓锚定日」才会被快照基线清掉。
+        //       若锚定日被 latest() 往后拽，则锚定日到今天这一段仍带幽灵 → 市值虚高（生产 09-19~09-22 即如此）。
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll("u")).thenReturn(List.of(
+                new Position("600000", "名", 500, new BigDecimal("10"),
+                        new BigDecimal("10"), null, null, null, null, null, null)));
+
+        TradingAnchorRepository sameDay = anchorWith(new SnapshotAnchor(D1, D1), "600000", 500);
+        TradingAnchorRepository laterCash = anchorWith(
+                new SnapshotAnchor(D1, D1.plusDays(3)), "600000", 500);
+
+        var a = service(history, positions, mock(TransferRepository.class),
+                account(0, 5000), sameDay, kline(10, 10, 10, 10)).build("u");
+        var b = service(history, positions, mock(TransferRepository.class),
+                account(0, 5000), laterCash, kline(10, 10, 10, 10)).build("u");
+
+        assertEquals(a.points().size(), b.points().size());
+        for (int i = 0; i < a.points().size(); i++) {
+            assertEquals(0, a.points().get(i).marketValue().compareTo(b.points().get(i).marketValue()),
+                    "cashImport 不该影响持仓重置（第 " + i + " 点）："
+                            + a.points().get(i) + " vs " + b.points().get(i));
+        }
+    }
+
+    /** 构造带持仓基线的锚定仓储（与 {@link #noAnchor()} 相对）。 */
+    private TradingAnchorRepository anchorWith(SnapshotAnchor anchor, String symbol, int qty) {
+        TradingAnchorRepository a = mock(TradingAnchorRepository.class);
+        when(a.find("u")).thenReturn(anchor);
+        when(a.holdings("u")).thenReturn(List.of(new SnapshotHolding(symbol, "名", qty)));
+        when(a.holdingsRecorded("u")).thenReturn(true);
+        return a;
+    }
+
     @Test
     void periods_todayPnlFromAssetDelta() {
         // 今日盈亏 = 今日总资产 − 昨日总资产（无转账）；10 → 11 → 12，1000 股

@@ -2714,11 +2714,14 @@ class AccountSnapshotDto {
   final String cashDate;
   // 现金健康度人话（负现金 / 无券商来源 / 过期），'' = 无需提示——**文案由后端给**，前端只渲染。
   final String cashNote;
+  // P2-交易66（2026-09-23）：本金置信度说明（手填本金 + 历史出入金零记录时的一句话），'' = 不提示。
+  final String principalNote;
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
       required this.todayPnl, required this.principal, required this.snapshotDate,
-      this.todayPnlSource = '', this.cashDate = '', this.cashNote = ''});
+      this.todayPnlSource = '', this.cashDate = '', this.cashNote = '',
+      this.principalNote = ''});
 
   /// 账户总盈亏 = 总资产 - 本金（本金 > 0 时有效）。
   /// P2-交易31（2026-08-29，U32）：本金未设（principal=0）→ null——不给误导数值
@@ -2743,6 +2746,7 @@ class AccountSnapshotDto {
       // P2-交易69：旧后端缺这两个字段 → ''（不提示、不崩）
       cashDate: m['cashDate']?.toString() ?? '',
       cashNote: m['cashNote']?.toString() ?? '',
+      principalNote: m['principalNote']?.toString() ?? '',
     );
   }
 }

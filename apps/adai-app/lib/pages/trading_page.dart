@@ -2217,6 +2217,14 @@ class _TradingPageState extends State<TradingPage> {
               ),
             ]),
           ),
+        // P2-交易66（2026-09-23）：本金置信度——手填本金 + 历史出入金零记录时，说明这行总盈亏的基准。
+        // 中性灰（是说明不是告警），文案同样由后端给。
+        if (hasAccount && a.principalNote.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(a.principalNote,
+                style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          ),
         // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）：今日 / 本周 / 本月 金额 + 比例。
         // 比例 null（区间起点前无曲线点 / 锚定日之前不可追溯）→ 只给金额，绝不编造 0%。
         // P2-交易52（2026-09-16 用户拍板）：这一行点进去就是「收益日历」（券商那种月历）

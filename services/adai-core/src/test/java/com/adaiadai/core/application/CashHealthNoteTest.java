@@ -81,5 +81,21 @@ class CashHealthNoteTest {
         assertTrue(m.containsKey("cashNote"), m.keySet().toString());
         assertEquals("2026-09-23", m.get("cashDate"));
         assertNull(m.get("cashNote"), "当天导入的现金不该提示");
+        assertTrue(m.containsKey("principalNote"), m.keySet().toString());
+    }
+
+    /** 本金说明（P2-交易66，2026-09-23）：手填本金 + 历史出入金零记录 → 如实说清置信度。 */
+    @Test
+    void principalNote_flagsManualPrincipalWithoutHistory() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        String note = TradingAppService.principalNote(new BigDecimal("150000"),
+                LocalDate.of(2026, 9, 7), today); // 最早转账才 16 天前 → 更早的出入金基本没记
+
+        assertNotNull(note, "历史出入金没记时必须说明");
+        assertTrue(note.contains("补记"), "要给出补记路径，实际: " + note);
+        assertNull(TradingAppService.principalNote(BigDecimal.ZERO, null, today),
+                "未设本金 → 不提示（已有「设本金」引导）");
+        assertNull(TradingAppService.principalNote(new BigDecimal("150000"),
+                LocalDate.of(2025, 4, 1), today), "转账覆盖够久 → 不打扰");
     }
 }

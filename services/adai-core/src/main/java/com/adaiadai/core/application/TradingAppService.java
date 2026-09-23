@@ -2043,7 +2043,20 @@ public class TradingAppService {
         } catch (RuntimeException e) {
             log.warn("账户视图：读锚定失败，现金日期按未知处理 | userId={} | {}", userId, e.getMessage());
         }
-        return accountViewOf(s, cashDate, LocalDate.now());
+        // P2-交易66（2026-09-23）：本金置信度——`principal` 是「手填值 + 已记录转账」推出来的，
+        // 而 transfers.json 里只有 2026-09 三笔（2025-04 建仓以来的出入金零记录）→ 所以
+        // 「总盈亏 = 资产 − 本金」不是账本能自证的数，如实标一句并给出补记路径。
+        LocalDate earliestTransfer = null;
+        try {
+            earliestTransfer = transferRepository.findAll(userId).stream()
+                    .map(TransferRecord::date).filter(java.util.Objects::nonNull)
+                    .min(LocalDate::compareTo).orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("账户视图：读转账失败，本金说明按最保守处理 | userId={} | {}", userId, e.getMessage());
+        }
+        LocalDate today = LocalDate.now();
+        return accountViewOf(s, cashDate, today,
+                principalNote(s.principal(), earliestTransfer, today));
     }
 
     /**
@@ -2052,7 +2065,13 @@ public class TradingAppService {
      * 手工列字段是为了**不动 AccountSnapshot 的 schema**（它有 19+ 处构造点），代价是可能漏字段
      * —— 故本方法由 `CashHealthNoteTest` 断言「快照的每个字段都在」+「两个新字段都在」。
      */
+    /** 兼容重载（调用方不想给本金说明时用；principalNote 落 null = 不提示）。 */
     static Map<String, Object> accountViewOf(AccountSnapshot s, LocalDate cashDate, LocalDate today) {
+        return accountViewOf(s, cashDate, today, null);
+    }
+
+    static Map<String, Object> accountViewOf(AccountSnapshot s, LocalDate cashDate, LocalDate today,
+                                             String principalNote) {
         Map<String, Object> m = new java.util.LinkedHashMap<>();
         m.put("assets", s.assets());
         m.put("cash", s.cash());
@@ -2066,6 +2085,7 @@ public class TradingAppService {
         m.put("todayPnlSource", s.todayPnlSource());
         m.put("cashDate", cashDate != null ? cashDate.toString() : "");
         m.put("cashNote", cashHealthNote(s.cash(), cashDate, today));
+        m.put("principalNote", principalNote);
         return m;
     }
 
@@ -2084,6 +2104,30 @@ public class TradingAppService {
             return "现金还是 " + cashDate + " 的券商余额（" + days + " 天前），导一次「资金股份查询」对一下账。";
         }
         return null;
+    }
+
+    /**
+     * 本金覆盖阈值（天）：转账记录最早一条若晚于「今天 − 180 天」，说明更早的出入金基本没记
+     * （P2-交易66）——那就该如实说明「总盈亏是按你报的本金算出来的」。
+     */
+    static final long PRINCIPAL_TRAILING_DAYS = 180;
+
+    /**
+     * 本金置信度说明（P2-交易66，2026-09-23）。
+     * <p>
+     * 起因：用户导入资金快照后算出真实总盈亏 **−43,819.14**（106,180.86 − 150,000），但 `principal`
+     * 是他**手填**的、`transfers.json` 只有 2026-09 三笔——2025-04 建仓以来的出入金**零记录**。
+     * 也就是说这个 −4.38 万不是账本推出来的，而是「按你报的 15 万算出来的」：若历史另有转入/转出，
+     * 真值同步变化。本条如实说清，并给出补记路径（资金页的转入/转出）。
+     * <p>
+     * null = 不必提示：未设本金（已有「设本金」引导）或转账记录覆盖得够久。
+     */
+    static String principalNote(BigDecimal principal, LocalDate earliestTransfer, LocalDate today) {
+        if (principal == null || principal.signum() <= 0) return null;
+        if (earliestTransfer != null
+                && earliestTransfer.isBefore(today.minusDays(PRINCIPAL_TRAILING_DAYS))) return null;
+        return "本金是按你填的数 + 已记录的转入转出算的；更早的出入金如果没记，总盈亏的基准会跟着偏"
+                + "——可以在「资金」里补记。";
     }
 
     /**
