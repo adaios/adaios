@@ -100,6 +100,24 @@ else
 fi
 FILE_COUNT="$(printf '%s\n' "$CHANGED" | grep -c .)"
 
+# ── 版本号写回不算「发布信号」（2026-09-24 机制首次实战自证时发现）──
+# iOS 发布脚本会把 apps/adai-app/pubspec.yaml 的 version 写回 1.0.0+N —— 若把它当改动，
+# 就会出现「刚发完构建 11，立刻又提示要发构建 12」的死循环（而照做只会再 +1、再写回）。
+# 仅当该文件除 version 行以外还有别的改动（如依赖）时，才算 App 端真改动。
+VER_ONLY=0
+if printf '%s\n' "$CHANGED" | grep -qx 'apps/adai-app/pubspec.yaml'; then
+    if [ "$BASE_KIND" != "commit" ]; then
+        VER_ONLY=1
+    elif ! git diff "${BASE_SHA}..HEAD" -- apps/adai-app/pubspec.yaml 2>/dev/null \
+            | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]version:' | grep -q .; then
+        VER_ONLY=1
+    fi
+fi
+SIGNAL_CHANGED="$CHANGED"
+if [ "$VER_ONLY" = "1" ]; then
+    SIGNAL_CHANGED="$(printf '%s\n' "$CHANGED" | grep -vx 'apps/adai-app/pubspec.yaml')"
+fi
+
 # ── ③ 逐端统计（映射规则来自 lib/release-units.sh，不在这里重写）──
 U_NAMES=()
 U_FILES=()
@@ -109,7 +127,7 @@ UNITS_TSV=""
 idx=0
 for u in "${RU_ALL_UNITS[@]}"; do
     prefix="$(ru_path_prefix "$u")"
-    n="$(printf '%s\n' "$CHANGED" | awk -v p="${prefix}/" 'index($0,p)==1{c++} END{print c+0}')"
+    n="$(printf '%s\n' "$SIGNAL_CHANGED" | awk -v p="${prefix}/" 'index($0,p)==1{c++} END{print c+0}')"
     tot="0"
     subs=""
     if [ "$n" -gt 0 ]; then
@@ -134,7 +152,7 @@ UNIT_PREFIXES=""
 for u in "${RU_ALL_UNITS[@]}"; do
     UNIT_PREFIXES="${UNIT_PREFIXES}$(ru_path_prefix "$u")/ "
 done
-OTHER_FILES="$(printf '%s\n' "$CHANGED" | awk -v ps="$UNIT_PREFIXES" '
+OTHER_FILES="$(printf '%s\n' "$SIGNAL_CHANGED" | awk -v ps="$UNIT_PREFIXES" '
     BEGIN { n = split(ps, arr, " ") }
     { for (k = 1; k <= n; k++) if (index($0, arr[k]) == 1) next }
     NF { c++ }
@@ -244,6 +262,9 @@ for u in "${RU_ALL_UNITS[@]}"; do
     fi
     idx=$((idx + 1))
 done
+if [ "$VER_ONLY" = "1" ]; then
+    printf '  \033[2m· apps/adai-app/pubspec.yaml 仅构建号写回（不算发布信号）\033[0m\n'
+fi
 if [ "$OTHER_FILES" -gt 0 ]; then
     printf '  \033[2m· 其他 %s 个文件（文档 / 工程规范 / 知识资产）——不影响发布\033[0m\n' "$OTHER_FILES"
 fi
