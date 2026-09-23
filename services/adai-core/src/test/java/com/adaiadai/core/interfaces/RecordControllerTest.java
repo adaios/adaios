@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
+import com.adaiadai.core.application.RecordToRhythmLinker;
 import com.adaiadai.core.application.RecordToTodoLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.application.TradeLogCollectService;
@@ -125,6 +126,7 @@ class RecordControllerTest {
                 recordRepository,
                 cardRepository,
                 memoryService,
+                mock(RecordToRhythmLinker.class),
                 recordToTodoLinker,
                 pluginService,
                 tradeLogCollectService
@@ -602,6 +604,7 @@ class RecordControllerTest {
                 repo,
                 mock(CardFileRepository.class),
                 mem,
+                mock(RecordToRhythmLinker.class),
                 mock(RecordToTodoLinker.class),
                 pluginService,
                 mock(TradeLogCollectService.class));

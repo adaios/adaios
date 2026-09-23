@@ -3,6 +3,10 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.kernel.todo.Todo;
 import com.adaiadai.core.kernel.todo.TodoRepository;
 import com.adaiadai.core.kernel.todo.TodoStatus;
+import com.adaiadai.core.kernel.rhythm.Rhythm;
+import com.adaiadai.core.kernel.rhythm.RhythmDetector;
+import com.adaiadai.core.kernel.rhythm.RhythmRepository;
+import com.adaiadai.core.kernel.rhythm.RhythmStatus;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
 import com.adaiadai.core.kernel.ai.AiClient;
 import com.adaiadai.core.kernel.ai.AiUnderstanding;
@@ -33,25 +37,13 @@ public class BriefAppService {
     private static final int MAX_BRIEF_TODOS = 3;
 
     /**
-     * 周期性表述识别（RFC 20260923 A 批·闸 2）。
+     * 简报注入的节律条数硬上限（RFC 20260923 B 批·闸 1）。
      * <p>
-     * 「周期习惯」不是待办——它没有终点，催它等于每天复读。2026-09-23 用户反馈的生产实据：
-     * 一句「今天周四 固定发版日 在加班」被转成 OPEN 待办后，概览卡天天提醒他。
-     * A 批先用本判据把这**一类**条目挡在提醒段之外（数据不动、待办页照常可见）；
-     * B 批上线 rhythm 通道后，改由 RRULE 命中日决定是否作背景注入。
-     * <p>
-     * 判据刻意保守：必须出现明确的重复词（每周/每月/每天/例会/定期…）或「周X + 固定」组合。
-     * 反例（**不得命中**）："周四要交周报"（一次性任务）、"给妈打个电话"、"整理上周复盘"。
+     * B 批起节律有了自己的形态（{@code kernel/rhythm}），注入规则比待办更严：
+     * <b>只在 RRULE 命中当天注入，且只作背景</b>（"知道即可，不要提醒、不要问要不要做"）。
+     * 判据单一真相源是 {@link RhythmDetector}（A 批此处曾有一份私有副本，B 批收敛）。
      */
-    private static final java.util.regex.Pattern RHYTHM_LIKE = java.util.regex.Pattern.compile(
-            "每周|每星期|每月|每天|每日|每季度|每年|例行|定期"
-                    + "|(周|星期|礼拜)[一二三四五六日天]\\s*固定"
-                    + "|固定\\s*(的)?\\s*(周|星期|礼拜|每周|发版|例会|值班)");
-
-    /** 是否周期性习惯表述（= 不该被当待办催）。包级可见：供单测直接覆盖判据正反例。 */
-    static boolean isRhythmLike(String title) {
-        return title != null && RHYTHM_LIKE.matcher(title).find();
-    }
+    private static final int MAX_BRIEF_RHYTHMS = 3;
 
     private final IdentityRepository identityRepository;
     private final RecordRepository recordRepository;
@@ -61,6 +53,7 @@ public class BriefAppService {
     private final DomainActivityService domainActivityService;
     private final TagRecommendationService tagRecommendationService;
     private final TodoRepository todoRepository;
+    private final RhythmRepository rhythmRepository;
     private final PluginService pluginService;
 
     // 多用户预留：Brief 缓存按 userId 隔离（2026-08-02）
@@ -75,6 +68,7 @@ public class BriefAppService {
                            DomainActivityService domainActivityService,
                            TagRecommendationService tagRecommendationService,
                            TodoRepository todoRepository,
+                           RhythmRepository rhythmRepository,
                            PluginService pluginService) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
@@ -84,6 +78,7 @@ public class BriefAppService {
         this.domainActivityService = domainActivityService;
         this.tagRecommendationService = tagRecommendationService;
         this.todoRepository = todoRepository;
+        this.rhythmRepository = rhythmRepository;
         this.pluginService = pluginService;
     }
 
@@ -344,7 +339,7 @@ public class BriefAppService {
         try {
             List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId);
             List<Todo> remindable = openTodos.stream()
-                    .filter(t -> !isRhythmLike(t.title()))
+                    .filter(t -> !RhythmDetector.isRhythmLike(t.title()))
                     .limit(MAX_BRIEF_TODOS)
                     .toList();
             if (!remindable.isEmpty()) {
@@ -363,6 +358,26 @@ public class BriefAppService {
             }
         } catch (Exception e) {
             log.debug("Todo signal skipped: {}", e.getMessage());
+        }
+
+        // ── Rhythm signals（RFC 20260923 B 批·闸 1：只在命中日注入，且只作背景）──
+        // 「周期习惯」不是待办：它只在命中当天才有意义，而且系统该「知道」而不是「催」——
+        // 用户原话「我可能需要加班，也可能这周四就不需要了」。命中判定由 RRULE + 有效期给出，
+        // 不命中就**根本不注入**（不是注入了再叫模型别说）。
+        try {
+            List<Rhythm> todayRhythms = rhythmRepository.findAll(RhythmStatus.ACTIVE, userId).stream()
+                    .filter(r -> r.occursOn(today))
+                    .limit(MAX_BRIEF_RHYTHMS)
+                    .toList();
+            if (!todayRhythms.isEmpty()) {
+                sb.append("Today's rhythms (BACKGROUND ONLY — do NOT remind, do NOT ask whether it will happen):\n");
+                for (Rhythm r : todayRhythms) {
+                    sb.append("- ").append(r.title()).append("\n");
+                }
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            log.debug("Rhythm signal skipped: {}", e.getMessage());
         }
 
         sb.append("Rules:\n");

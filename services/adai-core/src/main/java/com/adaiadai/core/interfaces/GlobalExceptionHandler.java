@@ -3,6 +3,7 @@ package com.adaiadai.core.interfaces;
 import com.adaiadai.core.application.AuthService.AuthException;
 import com.adaiadai.core.domain.learn.LearnException;
 import com.adaiadai.core.domain.trading.TradingException;
+import com.adaiadai.core.kernel.rhythm.RhythmException;
 import com.adaiadai.core.kernel.todo.TodoException;
 import com.adaiadai.core.infrastructure.storage.StorageException;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +49,12 @@ public class GlobalExceptionHandler {
      * 优先取字段错误（@NotBlank/@Positive…），再取类级错误（自定义 BuyFieldsRequired），
      * 两者皆无时给通用提示——不让裸的校验异常堆栈直出。
      */
+    /** 节律业务异常（RFC 20260923 B 批）→ 400 + 人话（周期规则非法/条目不存在）。 */
+    @ExceptionHandler(RhythmException.class)
+    public ResponseEntity<Map<String, String>> handleRhythmException(RhythmException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
     /** 待办业务异常（RFC 20260917：待办归 Kernel builtin）→ 400 + 人话。 */
     @ExceptionHandler(TodoException.class)
     public ResponseEntity<Map<String, String>> handleTodoException(TodoException e) {

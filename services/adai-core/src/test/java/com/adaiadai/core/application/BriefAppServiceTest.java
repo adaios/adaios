@@ -3,6 +3,10 @@ package com.adaiadai.core.application;
 import com.adaiadai.core.kernel.todo.Todo;
 import com.adaiadai.core.kernel.todo.TodoRepository;
 import com.adaiadai.core.kernel.todo.TodoStatus;
+import com.adaiadai.core.kernel.rhythm.Rhythm;
+import com.adaiadai.core.kernel.rhythm.RhythmDetector;
+import com.adaiadai.core.kernel.rhythm.RhythmRepository;
+import com.adaiadai.core.kernel.rhythm.RhythmStatus;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.ai.AiClient;
@@ -40,6 +44,7 @@ class BriefAppServiceTest {
     private BriefAppService briefAppService;
     private AiClient aiClient;
     private TodoRepository todoRepository;
+    private RhythmRepository rhythmRepository;
     /** RFC 20260923：记录最后一次交给 AI 的 prompt，用于断言注入闸门。 */
     private RecordingAiClient recordingAi;
 
@@ -55,6 +60,9 @@ class BriefAppServiceTest {
         // RFC 20260923 A 批：待办注入闸门测试需要可控的 OPEN 待办；默认空清单（不影响既有用例）
         todoRepository = mock(TodoRepository.class);
         when(todoRepository.findAll(any(), any())).thenReturn(List.of());
+        // RFC 20260923 B 批：节律注入闸（命中日）需要可控节律；默认空清单（不影响既有用例）
+        rhythmRepository = mock(RhythmRepository.class);
+        when(rhythmRepository.findAll(any(), any())).thenReturn(List.of());
         recordingAi = new RecordingAiClient(new TestAiClient());
         aiClient = recordingAi;
         briefAppService = buildService(tagIndexService);
@@ -77,6 +85,7 @@ class BriefAppServiceTest {
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
                 todoRepository,
+                rhythmRepository,
                 // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
                 pluginService("trading")
         );
@@ -204,18 +213,18 @@ class BriefAppServiceTest {
     @Test
     void isRhythmLike_distinguishesRhythmFromOneOffTasks() {
         // 周期习惯 → 命中（不该被当待办催）
-        assertTrue(BriefAppService.isRhythmLike("周四固定发版加班"), "生产实据原句必须命中");
-        assertTrue(BriefAppService.isRhythmLike("每周四发版"));
-        assertTrue(BriefAppService.isRhythmLike("每周给妈打个电话"));
-        assertTrue(BriefAppService.isRhythmLike("每天跑步半小时"));
-        assertTrue(BriefAppService.isRhythmLike("每月 1 号交房租"));
-        assertTrue(BriefAppService.isRhythmLike("周三固定例会"));
+        assertTrue(RhythmDetector.isRhythmLike("周四固定发版加班"), "生产实据原句必须命中");
+        assertTrue(RhythmDetector.isRhythmLike("每周四发版"));
+        assertTrue(RhythmDetector.isRhythmLike("每周给妈打个电话"));
+        assertTrue(RhythmDetector.isRhythmLike("每天跑步半小时"));
+        assertTrue(RhythmDetector.isRhythmLike("每月 1 号交房租"));
+        assertTrue(RhythmDetector.isRhythmLike("周三固定例会"));
         // 一次性任务 → 不得命中（否则真待办会被静默吞掉）
-        assertFalse(BriefAppService.isRhythmLike("周四要交周报"), "含「周四」但非周期，不得误伤");
-        assertFalse(BriefAppService.isRhythmLike("给妈打个电话"));
-        assertFalse(BriefAppService.isRhythmLike("整理上周复盘"));
-        assertFalse(BriefAppService.isRhythmLike("准备周会材料"));
-        assertFalse(BriefAppService.isRhythmLike(null));
+        assertFalse(RhythmDetector.isRhythmLike("周四要交周报"), "含「周四」但非周期，不得误伤");
+        assertFalse(RhythmDetector.isRhythmLike("给妈打个电话"));
+        assertFalse(RhythmDetector.isRhythmLike("整理上周复盘"));
+        assertFalse(RhythmDetector.isRhythmLike("准备周会材料"));
+        assertFalse(RhythmDetector.isRhythmLike(null));
     }
 
     @Test
@@ -249,6 +258,42 @@ class BriefAppServiceTest {
 
         assertFalse(recordingAi.lastPrompt.contains("Open todos (not done"),
                 "全是节律时提醒段整体缺席——沉默是默认项（宁可少说）");
+    }
+
+    // ── RFC 20260923 B 批：闸 1（命中日）——节律只在命中当天作背景注入 ──
+
+    @Test
+    void buildBriefPrompt_rhythmInjectedOnlyOnMatchingDay() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        // 命中今天的节律：生效日 = 今天 + 每周（省略 BYDAY → 生效日那天的星期几）
+        Rhythm hit = new Rhythm("rhy_hit", "周四固定发版加班", "FREQ=WEEKLY", RhythmStatus.ACTIVE,
+                null, today, null, today, today);
+        // 不命中：只在「今天之外的另一天」命中
+        java.time.DayOfWeek other = today.getDayOfWeek().plus(1);
+        Rhythm miss = new Rhythm("rhy_miss", "别的时间的习惯",
+                "FREQ=WEEKLY;BYDAY=" + other.name().substring(0, 2), RhythmStatus.ACTIVE,
+                null, today, null, today, today);
+        when(rhythmRepository.findAll(RhythmStatus.ACTIVE, "default")).thenReturn(List.of(hit, miss));
+
+        briefAppService.generateBrief("default");
+
+        String prompt = recordingAi.lastPrompt;
+        assertTrue(prompt.contains("周四固定发版加班"), "命中日应作为背景注入");
+        assertFalse(prompt.contains("别的时间的习惯"), "非命中日不得注入（闸 1：从源头不进，不是注入了再叫模型别说）");
+        assertTrue(prompt.contains("BACKGROUND ONLY"), "节律段必须带「只作背景、不要提醒」口径");
+    }
+
+    @Test
+    void buildBriefPrompt_nonActiveRhythmNotInjected() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        // 模拟仓储把 PAUSED 条目也返回了：状态关卡必须在模型层再挡一次（occursOn）
+        Rhythm paused = new Rhythm("rhy_paused", "每天跑步", "FREQ=DAILY", RhythmStatus.PAUSED,
+                null, today, null, today, today);
+        when(rhythmRepository.findAll(RhythmStatus.ACTIVE, "default")).thenReturn(List.of(paused));
+
+        briefAppService.generateBrief("default");
+
+        assertFalse(recordingAi.lastPrompt.contains("每天跑步"), "暂停的节律不得注入");
     }
 
     /** 记录最后一次 prompt 的 AiClient 装饰器（其余行为委托 TestAiClient）。 */

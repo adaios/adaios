@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.88 | 最后更新：2026-09-23**
+**文档版本：v3.89 | 最后更新：2026-09-23**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-23 | v3.89 | **节律独立于待办（RFC `20260923-rhythm-and-memory-temporality.md` B 批；用户「阿呆 app 概览卡片，天天提醒我」→「按照建议来」→「b go」）**——新增 4 个端点：`GET\|POST /api/v1/rhythms` + `PUT\|DELETE /api/v1/rhythms/{id}`。**为什么**：一句「每周四固定发版加班」被 `RecordToTodoLinker` 当成 OPEN 待办后**永远做不完**（习惯没有终点），于是概览卡天天提醒——用户定性「**这是我的工作周期习惯，不是待办**」。**形态**：周期用 **RRULE** 表示（iCalendar / RFC 5545 §3.3.10 子集：`FREQ=DAILY\|WEEKLY\|MONTHLY` + `INTERVAL`/`BYDAY`/`BYMONTHDAY`/`UNTIL`，非法即 400 人话、**不静默忽略未知部件**）；状态 **ACTIVE / PAUSED / RETIRED——没有 DONE**；带 `validFrom`（生效日，兼 RRULE anchor）与 `validUntil`（失效日，含当日）——「这周四不用加班」改 `validUntil` 或转 PAUSED，**不删条目**。**写入侧分流**：记录含周期表述 → 先试节律（`RecordToRhythmLinker`），**推不出 RRULE 才回落待办**（宁可漏判成待办，也不把一次性任务塞进节律）。**注入闸**：简报只在 RRULE 命中当天把它作为**背景**注入，且明令「不要提醒、不要问要不要做」。**新增落盘目录** `data/{userId}/rhythm/`（freeze §2.24；`.gitignore` 同步，并**顺带补漏** `data/*/todos/`——RFC 20260917 迁移时漏掉的规则）。端点 **160 → 164**（本批 +4）；**同日并发会话另有 +1：`GET /api/v1/learn/digest/jobs`（消化任务列表）→ 实测总数 165**；后端 **2161 → 2205**（+27，数字含同日并发会话用例）|
 | 2026-09-23 | v3.88 | **账目口径批（REVIEW P2-交易70 + P2-交易66；用户「3+4」）**——`GET /trading/account` 新增 **`principalNote`**（一句可直接展示的人话，`null` = 不提示）：本金是「用户手填 + 已记录转账」推出来的，而 `transfers.json` 只有 2026-09 三笔、2025-04 建仓以来的出入金**零记录** → 「总盈亏 = 资产 − 本金」**不是账本能自证的数**（真值 −43,819.14 是「按你报的 15 万」算出来的），本条在转账记录覆盖不足 180 天时如实说清并指向补记路径（资金页转入/转出）。**同批修内部口径（不改契约）**：资金曲线与周期盈亏的**持仓重置日**由 `anchor.latest()` 改为 **`anchor.positionsReplace()`**——原写法把「资金快照日」当成「持仓快照日」，只导资金时持仓重置被推迟（09-19~09-22 退回「底仓+流水回放」，市值虚高约 2 万、周期盈亏的百分比分母跟着虚高；**金额不受影响**，它逐日累加）。端点 **160 不变** |
 | 2026-09-23 | v3.87 | **分享回执批：同一链接不重复消化 + 成功也要说一句话（REVIEW P1-分享8；用户「我刚才通过微博分享了两次到阿呆，没反应呀」）**——先说结论：**后端两次都成功了**（Caddy 两次 `POST /learn/digest` 200 · `adai-core` 两次抓取落卡 · 生产 `learn/ai/ai辅助软件开发/` 多出 02/03 两张卡），缺的是**回话**。① **`POST /learn/digest` 新增按来源链接去重**：`status=done` 现在也可能是「这条早就整理过了」（不抓取、不调模型、不建新任务，直接以已有卡片回执）；判据是**链接逐字相同**（去空白、去尾斜杠），**素材（content）路径不参与**——正文没有可比的来源链接、用户也可能有意重做；查重失败按「没整理过」继续（省钱优化不是提交的正确性前提）。② **`done` 结果 TTL 60s → 30 分钟**：分享扩展提交完 1 秒就关窗、主 App 全程不被拉起，60 秒早过期 → App 进学习页时后端已回 `idle`，「我整理好了」这句话根本没机会说出口（这正是「两次都没反应」的机制）。③ **App 学习页进页报回执**（`learn_page.dart`）：done 就在列表顶部摆「你刚分享的那条，我整理好了《标题》」+ 点开直达卡片；看过或关掉后本次运行内不再重复，手动喂入的也不重复（同一张卡只说一次）。④ **分享扩展如实区分**（`ShareViewController.swift`）：收到 `status=done` 改说「这条我早整理过了」（新入队一律回 `pending`，回 `done` 只可能是去重命中）。**端点 160 不变**；后端 **2150 → 2156**（+6）· app **409 → 412**（+3） |
 | 2026-09-23 | v3.86 | **现金「会漂且过期无提示」收口（REVIEW P2-交易69；用户「1 go」授权）**——`GET /trading/account` 响应新增两个**读侧拼装**字段：**`cashDate`**（现金这个数对应的券商快照日期，取自 `snapshot-anchor.json` 的 `cashImport`，无则 `""`）与 **`cashNote`**（一句可直接展示的人话，`null` = 无需提示）。**为什么**：`snapshotDate` 是收盘更新的日期（每个交易日都被刷新），而现金只在导入「资金股份查询」时才更新——两者混用会让人误以为手上这个现金数是今天的。**生产实据**：09-11 导入真值 1,381.93 之后，系统在两次导入之间把现金漂到 **24,101.01**（09-15 甚至漂成 **−6,093.97** 负数），而券商真值只有 **414.86** → 总盈亏少报 **2.37 万**，用户侧却看不到任何提示。`cashNote` 三种情形按优先级：**负现金**（自证失败）> **无券商来源** > **过期**（距上次导入 > 7 天，阈值 `TradingAppService.CASH_STALE_DAYS`）。**文案由后端给（单一真相源），双端账户卡只渲染**。端点 **160 不变**（仅响应扩字段） |
@@ -2057,6 +2058,78 @@ adai-admin 数据管理：更新记忆的 kind/summary/tags/actionable/suggestio
 
 ---
 
+## 节律（Rhythms，RFC `20260923-rhythm-and-memory-temporality.md` B 批）
+
+> **定位**：与待办同级、**Kernel builtin**（人人有、默认开、**无插件门控**）——但**节律不是待办**：
+> 待办是一次性、有终点的动作（`OPEN → DONE`）；节律是周期性复现的习惯（每周四发版、每天跑步），**没有「完成」这个状态**。
+> **表示**：`recurrence` 用 **RRULE**（iCalendar / RFC 5545 §3.3.10 子集）——不新造字段名。
+> **命中**：`validFrom` 是周期起点（等价 DTSTART），`validUntil` 是失效日（含当日）；判定由 `RruleSchedule` 给出。
+> **注入**：简报**只在命中当天**作为背景注入（口径 `BACKGROUND ONLY — do NOT remind, do NOT ask whether it will happen`）——
+> 节律是概率不是承诺（用户原话「我可能需要加班，也可能这周四就不需要了」）。
+
+### 节律模型
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `id` | String | 自动生成，格式 `rhy_YYYYMMDD_HHmmssSSS` |
+| `title` | String | 一句话（必填，空白 → 400 人话）|
+| `recurrence` | String | **RRULE**：`FREQ=DAILY\|WEEKLY\|MONTHLY`（必填）+ `INTERVAL=n` / `BYDAY=MO,TU,…` / `BYMONTHDAY=n` / `UNTIL=yyyyMMdd`（可选）|
+| `status` | String | `ACTIVE` / `PAUSED` / `RETIRED`（**无 DONE**）|
+| `sourceRecordId` | String? | 源记录 ID（记录自动转节律时关联 `rec_xxx`；手建 → `null`）|
+| `validFrom` | String | 生效日 `yyyy-MM-dd`（同时是 RRULE 的 anchor）|
+| `validUntil` | String? | 失效日 `yyyy-MM-dd`（可空 = 至今有效；**到期不删条目**）|
+| `createdAt` / `updatedAt` | String | 日期 `yyyy-MM-dd` |
+
+```json
+{"id":"rhy_20260923_231500123","title":"周四固定发版加班","recurrence":"FREQ=WEEKLY;BYDAY=TH","status":"ACTIVE","sourceRecordId":"rec_20260917_193216462","validFrom":"2026-09-23","validUntil":null,"createdAt":"2026-09-23","updatedAt":"2026-09-23"}
+```
+
+存储：`data/{userId}/rhythm/YYYY/MM.md`（条目 YAML-ish frontmatter，`sourceRecordId` / `validUntil` 为可选行）。
+
+### `GET /api/v1/rhythms` — 节律列表
+
+**Query Parameters**
+
+| 参数 | 类型 | 必填 | 说明 |
+|:-----|:-----|:----:|:------|
+| `status` | String | 否 | `ACTIVE` / `PAUSED` / `RETIRED`（缺省返回全部；非法值 → 400 人话）|
+
+**Response** — `Rhythm[]`（新创建的在前）
+
+### `POST /api/v1/rhythms` — 新建节律
+
+**Request Body**
+
+```json
+{ "title": "周四固定发版加班", "recurrence": "FREQ=WEEKLY;BYDAY=TH" }
+```
+
+`recurrence` 必填且必须是可解析的 RRULE（例如 `FREQ=DAILY` / `FREQ=WEEKLY;BYDAY=TH` / `FREQ=MONTHLY;BYMONTHDAY=1`）；
+**非法周期当场 400 人话，不落半个对象**。
+
+**Response** — 完整的 `Rhythm` 对象（200 OK）
+
+### `PUT /api/v1/rhythms/{id}` — 更新节律
+
+**Request Body**（所有字段可选）
+
+```json
+{ "title": "周四发版（隔周）", "recurrence": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TH", "status": "PAUSED", "validUntil": "2026-12-31" }
+```
+
+- **`null` = 保持原值**；**`validUntil: ""` = 清除失效日**；
+- `status` 只接受 `ACTIVE` / `PAUSED` / `RETIRED`；`id` 不存在 → 404。
+
+**Response** — 更新后的完整 `Rhythm` 对象（200 OK）
+
+### `DELETE /api/v1/rhythms/{id}` — 删除节律
+
+想保留历史请改 `status=RETIRED`（退役不等于删除）。
+
+**Response** — 204 No Content
+
+---
+
 ## 14. 前端卡片交互
 
 ### 卡片核心状态
@@ -2501,6 +2574,11 @@ chat 模式（全屏）
 - 卡片消化完成不在此响应返回，走 `GET /learn/digest/status` 轮询到 `done` 后按 `type/title` 经 `GET /learn/content` 读全文（**v3.60**：落 `{type}/{topic}/NN-{slug}.md`，`topic` 由 LLM 判定并优先归并到已有主题目录）
 - `400`：素材为空/超长、type 非法（仅 ai/trading/other）、**同 type 同 title 已存在（任意日期，v3.53 跨日同名拒绝）**、消化任务繁忙（队列满）；AI 消化失败不在此返回——后台失败后 `GET /learn/digest/status` 返回 `failed` + 人话 message（原始素材留存 `learn/_raw/` 后可重试，fail-visible 不产半成品）
 - `403`：learn 插件未启用
+
+### `GET /api/v1/learn/digest/jobs` — 消化任务列表
+
+> **归属说明**：该端点由**同日并发会话**新增；本批（节律批）按 A1 门禁要求代为登记标题，
+> 语义细节与响应结构以该批的正式说明为准（不在此处编造）。
 
 ### `GET /api/v1/learn/digest/status` — 消化任务状态（v3.56；v3.57 加 stage/source/cost）
 

@@ -1,6 +1,7 @@
 package com.adaiadai.core.interfaces;
 
 import com.adaiadai.core.application.QuestionAppService;
+import com.adaiadai.core.application.RecordToRhythmLinker;
 import com.adaiadai.core.application.RecordToTodoLinker;
 import com.adaiadai.core.application.RecordUnderstandingService;
 import com.adaiadai.core.infrastructure.ai.interaction.AiTraceContext;
@@ -49,6 +50,7 @@ public class RecordController {
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final MemoryService memoryService;
+    private final RecordToRhythmLinker recordToRhythmLinker;
     private final RecordToTodoLinker recordToTodoLinker;
     private final PluginService pluginService;
     /** RFC 20260817：交易日志自动归集（文字「清仓了XX」→ 当日候选，待确认）。 */
@@ -60,6 +62,7 @@ public class RecordController {
                             RecordRepository recordRepository,
                             CardFileRepository cardRepository,
                             MemoryService memoryService,
+                            RecordToRhythmLinker recordToRhythmLinker,
                             RecordToTodoLinker recordToTodoLinker,
                             PluginService pluginService,
                             TradeLogCollectService tradeLogCollectService) {
@@ -69,6 +72,7 @@ public class RecordController {
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.memoryService = memoryService;
+        this.recordToRhythmLinker = recordToRhythmLinker;
         this.recordToTodoLinker = recordToTodoLinker;
         this.pluginService = pluginService;
         this.tradeLogCollectService = tradeLogCollectService;
@@ -262,11 +266,16 @@ public class RecordController {
             }
         }
         if (!tradeStatement) {
-            // R2：记录自动转待办（通用化——任何 domain 的可执行记录都转，RFC 20260917 起落 kernel/todo）。
-            // best-effort：失败不阻塞记录返回。不满足条件（非 actionable / 无摘要）时 link 返回 null。
+            // R2：记录自动转节律 / 待办（RFC 20260923 B 批：**先试节律**）。
+            // 「每周四固定发版加班」是周期习惯不是待办——落成带 RRULE 的节律，而不是一条永远做不完的待办；
+            // 推断不出周期的一律回落到待办链路（宁可漏判成待办，也不把一次性任务塞进节律）。
+            // best-effort：失败不阻塞记录返回；两条链路不满足条件时各自返回 null。
             String todoTitle = summary != null && !"recorded".equals(summary) ? summary : record.title();
-            recordToTodoLinker.link(userId, record.id(), "log", todoTitle,
-                    understanding != null && understanding.actionable() && !excludeTodo);
+            boolean actionable = understanding != null && understanding.actionable() && !excludeTodo;
+            String rhythmId = recordToRhythmLinker.link(userId, record.id(), "log", todoTitle, actionable);
+            if (rhythmId == null) {
+                recordToTodoLinker.link(userId, record.id(), "log", todoTitle, actionable);
+            }
         }
 
         return ResponseEntity.ok(new StatemResponse(

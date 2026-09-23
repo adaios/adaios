@@ -247,3 +247,23 @@ A 批的替代手段是「整类挡下」：宁可少说，不猜（对齐 §三
 
 **T4 顺延至 B 批**：ⓐ 的后半段（转节律）依赖 B 批的 rhythm 通道，前半段（标完成）在注入侧已挡下后并非必要。
 两次动生产数据不如一次做完，故 A 批**不动任何 `data/`**——那条待办在待办页照常可见、可手动处理。
+
+### B 批（2026-09-23 落地，**未部署、未 push**）
+
+| 项 | 落地内容 | 位置 |
+|:---|:---------|:-----|
+| D1 节律条目 | 新领域 `kernel/rhythm/`：`Rhythm`（模型）· `RhythmStatus`（active/paused/retired，**无 DONE**）· `RhythmRepository`（端口） | `kernel/rhythm/` |
+| D1 周期表示 | `RruleSchedule`：RRULE 子集解析 + 命中判定（`INTERVAL` / `BYDAY` / `BYMONTHDAY` / `UNTIL`；**未知部件拒绝**，不静默忽略；`BYMONTHDAY=31` 遇小月**跳过**） | `kernel/rhythm/RruleSchedule.java` |
+| D5 判据收敛 | `RhythmDetector`：`isRhythmLike`（注入侧）+ `detectRrule`（写入侧，**推不出返回 null**）——A 批散在 `BriefAppService` 的私有副本收敛为单一真相源 | `kernel/rhythm/RhythmDetector.java` |
+| D1 存储 | `RhythmFileRepository`：`data/{userId}/rhythm/YYYY/MM.md`（File First；未知 status 保守读作 PAUSED；RRULE 脏数据按不命中） | `infrastructure/storage/` |
+| D1 端点 | `RhythmController`：`GET\|POST /api/v1/rhythms` + `PUT\|DELETE /api/v1/rhythms/{id}`（**无插件门控**，与待办同级 builtin） | `interfaces/RhythmController.java` |
+| D5 写入侧分流 | `RecordToRhythmLinker` + `RecordController` 接线：**先试节律，再试待办** | `application/` · `interfaces/RecordController.java` |
+| D3 闸 1 | 简报注入节律段：**只在 RRULE 命中当天**注入，口径 `BACKGROUND ONLY — do NOT remind, do NOT ask whether it will happen`（上限 `MAX_BRIEF_RHYTHMS=3`） | `BriefAppService.java` |
+| 异常映射 | `RhythmException` → 400 人话（周期非法 / 条目不存在） | `GlobalExceptionHandler.java` |
+| 测试 | RRULE 9（含小月跳过 / UNTIL 含当日 / 非法规则 8 例）· 判据 3 · 文件仓 6（含可选行缺失与未知状态）· 分流 7（含幂等与「周四要交周报」不误转）· 简报闸 1 新增 2 | `RruleScheduleTest` 等 4 个新文件 + `BriefAppServiceTest` |
+| B3 边界 | `.gitignore` 补 `data/*/rhythm/`；**顺带补漏 `data/*/todos/`**（RFC 20260917 迁移时漏掉） | `.gitignore` |
+
+**已知边界（如实登记）**：`detectRrule` 只支持 **每天 / 每周 / 每月** 三种频率——「每季度 / 每年 / 定期 / 例行」
+能通过 `isRhythmLike`（注入侧不催），但**推不出 RRULE → 不转节律**，回落为待办。宁可漏判成待办，也不猜一个假周期。
+
+**未做**：C 批（D2 记忆 bi-temporal、D4 询问式变更）与 **T4 旧数据处置**。
