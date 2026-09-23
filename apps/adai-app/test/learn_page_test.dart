@@ -1496,5 +1496,54 @@ void main() {
       expect(find.textContaining('403'), findsNothing, reason: '不甩状态码');
       expect(find.textContaining('接口'), findsNothing, reason: 'B1：不出现系统口径');
     });
+
+    // ── 2026-09-23 分享回执批：成功也要说一句话 ──
+    // 用户实测「微博分享了两次到阿呆，没反应」，而后端两次都成功落了卡；缺口是成功路径零反馈。
+
+    testWidgets('㉓ 有刚整理好的结果 → 进页就报「你刚分享的那条，我整理好了」，点开直达卡片',
+        (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', 'AI 让 React Native 类中间层被判死刑')
+        ..statusSeq = [
+          {
+            'status': 'done', 'type': 'ai', 'topic': 'ai辅助软件开发',
+            'title': 'AI 让 React Native 类中间层被判死刑',
+          },
+        ];
+      await pump(tester, backend.api());
+
+      expect(find.byKey(const ValueKey('learn-done-banner')), findsOneWidget);
+      expect(find.text('你刚分享的那条，我整理好了'), findsOneWidget);
+      expect(find.textContaining('AI 让 React Native 类中间层被判死刑'), findsWidgets,
+          reason: '要指名道姓说是哪一条（卡片标题由 AI 起，用户认不出来）');
+
+      await tester.tap(find.byKey(const ValueKey('learn-done-open')));
+      await tester.pumpAndSettle();
+      expect(backend.requestsTo('/api/v1/learn/content').length, 1, reason: '点开是那张卡的全文');
+      expect(find.byKey(const ValueKey('learn-done-banner')), findsNothing, reason: '看过就收起');
+    });
+
+    testWidgets('㉔ 分享回执：关掉就收起（同一次整理不重复念叨）', (tester) async {
+      final backend = _LearnBackend()
+        ..addCard('ai', 'RAG 笔记')
+        ..statusSeq = [
+          {'status': 'done', 'type': 'ai', 'title': 'RAG 笔记', 'topic': ''},
+        ];
+      await pump(tester, backend.api());
+      expect(find.byKey(const ValueKey('learn-done-banner')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('learn-done-dismiss')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('learn-done-banner')), findsNothing);
+    });
+
+    testWidgets('㉕ 没有刚整理好的结果（idle）→ 一条成功回执都不出现（不制造假动静）',
+        (tester) async {
+      final backend = _LearnBackend()..addCard('ai', 'RAG 笔记');
+      await pump(tester, backend.api());
+
+      expect(find.byKey(const ValueKey('learn-done-banner')), findsNothing);
+      expect(find.byKey(const ValueKey('learn-failed-banner')), findsNothing);
+    });
   });
 }

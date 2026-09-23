@@ -226,6 +226,13 @@ final class ShareViewController: UIViewController {
             setFailure("我正在读上一条，这条没排上——等它读完，再分享一次。")
             return
         }
+        if state == "done" {
+            // 2026-09-23 分享回执批：**新入队的一律回 `pending`**，回 `done` 只可能是后端认出了
+            // 「这个链接已经整理过」（按来源链接去重命中，不抓取也不烧模型）。如实说清楚，
+            // 别让用户以为又出了一张新卡、回头在学习页翻半天。
+            setDuplicate()
+            return
+        }
         setSuccess()
     }
 
@@ -307,6 +314,24 @@ final class ShareViewController: UIViewController {
         symbolLabel.text = "✅"
         titleLabel.text = "交出去了"
         detailLabel.text = "结果去「学习」页看（成没成都写在那）"
+        closeButton.isHidden = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            self?.finish()
+        }
+    }
+
+    /// 「这条我早整理过了」（2026-09-23 分享回执批）。
+    ///
+    /// 触发条件只有一个：后端按来源链接去重命中。2026-09-23 实测微博同一条被连分享两次——第一次
+    /// 用户看不到结果（扩展 1 秒就关、主 App 不被拉起），于是又分享一次；后端两次都当新内容处理，
+    /// 落出两张同源卡。现在第二次不再重复消化，这里如实告诉用户「已经在库里了」。
+    private func setDuplicate() {
+        spinner.stopAnimating()
+        spinner.isHidden = true
+        symbolLabel.isHidden = false
+        symbolLabel.text = "📚"
+        titleLabel.text = "这条我早整理过了"
+        detailLabel.text = "没重复整理，去「学习」页就能翻到它"
         closeButton.isHidden = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
             self?.finish()

@@ -101,6 +101,17 @@ class _LearnPageState extends State<LearnPage> {
   // 进页检查同时接受 failed（后端把失败结果从 60 秒延长到 30 分钟），在这儿给人话 + 出路。
   LearnDigestJob? _failedJob;
 
+  /// 「你刚分享的那条，我整理好了」的成功回执（2026-09-23 分享回执批）。
+  ///
+  /// 分享扩展提交后只显示约 1 秒「交出去了」、主 App 全程不被拉起，而后端 done 结果原先只留 60 秒
+  /// （2026-09-23 起改 30 分钟）——用户走到学习页时早已过期，于是**除了列表里多出一张卡什么都没发生**。
+  /// 2026-09-23 用户实测「微博分享了两次到阿呆，没反应」，而后端两次都成功落卡：缺的就是这一句回话。
+  LearnDigestJob? _doneJob;
+
+  /// 这次运行里已经打过招呼的卡（type|title）：点开/关掉后不再重复提示；手动喂入的也会先记上，
+  /// 免得「刚在弹窗里看过新卡」回到列表又被告知一次。
+  final Set<String> _digestAcked = <String>{};
+
   bool _initialOpened = false;
 
   @override
@@ -155,6 +166,9 @@ class _LearnPageState extends State<LearnPage> {
   ///
   /// 2026-09-16（REVIEW P1-分享7）：这条路**同时兜住 failed**——从分享扩展/快捷指令进来的整理
   /// 若失败，用户下次打开学习页必须看到「哪条没整理成、为什么」，不能石沉大海。
+  ///
+  /// 2026-09-23（分享回执批）：**done 也要说话**——失败会喊、成功一声不吭，用户就只能看到「分享了
+  /// 两次，阿呆没反应」（后端其实两次都成功了）。done 结果在后端保留 30 分钟，进页就把那条摆出来。
   Future<void> _checkDigestOutcome() async {
     try {
       final job = await widget.api.getLearnDigestStatus();
@@ -163,10 +177,31 @@ class _LearnPageState extends State<LearnPage> {
         setState(() => _pendingConfirm = job);
       } else if (job.isFailed) {
         setState(() => _failedJob = job);
+      } else if (job.isDone && job.title.isNotEmpty && !_digestAcked.contains(_cardKey(job.type, job.title))) {
+        setState(() => _doneJob = job);
       }
     } catch (_) {
       // 静默：查不到就当作没有待确认的事
     }
+  }
+
+  /// 回执去重键（同 type 同标题 = 同一张卡）。
+  static String _cardKey(String type, String title) => '$type|$title';
+
+  /// 这条回执已经打过招呼了：关掉提示条或点开卡片都算（本次运行内不再重复提示）。
+  void _ackDoneJob() {
+    final job = _doneJob;
+    if (job != null) _digestAcked.add(_cardKey(job.type, job.title));
+    setState(() => _doneJob = null);
+  }
+
+  /// 点回执条上的那条 → 直接打开它（列表里找不到也照开：全文走 /learn/content，不依赖列表）。
+  Future<void> _openDoneCard(LearnDigestJob job) async {
+    _ackDoneJob();
+    final found = _tree?.recentAll
+        .where((c) => c.type == job.type && c.title == job.title)
+        .firstOrNull;
+    await _openCard(found ?? LearnCardDto(type: job.type, title: job.title, created: ''));
   }
 
   /// 「继续转写 / 先不转写」（带连点守卫：不点头前的重复点击不再送达）。
@@ -353,6 +388,8 @@ class _LearnPageState extends State<LearnPage> {
       ),
     );
     if (result == null || !mounted) return;
+    // 刚在这个流程里看过新卡 → 记上，回列表不再弹「你刚分享的那条整理好了」（同一次整理只说一次）
+    _digestAcked.add(_cardKey(result.type, result.title));
     _snack('已沉淀学习卡片《${result.title}》');
     await _load();
     if (!mounted || _tree == null) return;
@@ -443,6 +480,8 @@ class _LearnPageState extends State<LearnPage> {
       if (_pendingConfirm != null) _buildConfirmBanner(_pendingConfirm!),
       // 没整理成的那条：进页就看到（原来只在轮询窗口里展示 → 进页时早已过期，石沉大海）
       if (_failedJob != null) _buildFailedBanner(_failedJob!),
+      // 整理好的那条：分享扩展那一秒的「交出去了」之外，这是唯一一句「我读完了」的回话
+      if (_doneJob != null) _buildDoneBanner(_doneJob!),
       _buildSearchField(),
       Expanded(child: _buildListArea(cards)),
     ]);
@@ -542,6 +581,58 @@ class _LearnPageState extends State<LearnPage> {
         const SizedBox(height: 8),
         const Text('把链接再发我一次就行（在别的 App 里分享给我也一样）。',
             style: TextStyle(fontSize: 12, height: 1.6, color: AppColors.darkGrey5)),
+      ]),
+    );
+  }
+
+  /// 「你刚分享的那条，我整理好了」的成功回执条（2026-09-23 分享回执批）。
+  /// 与失败条同构（同底色/同圆角/同样可关），只是换成绿色系说话——原先的口径是「失败才说话，
+  /// 成功一声不吭」，而分享路径上**成功恰恰是用户唯一想知道的**。点标题直接打开那张卡。
+  Widget _buildDoneBanner(LearnDigestJob job) {
+    return Container(
+      key: const ValueKey('learn-done-banner'),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.darkSurface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkGreen.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.check_circle_outline, size: 17, color: AppColors.darkGreen),
+          const SizedBox(width: 7),
+          const Expanded(
+            child: Text('你刚分享的那条，我整理好了',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
+          ),
+          GestureDetector(
+            key: const ValueKey('learn-done-dismiss'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _ackDoneJob,
+            child: const SizedBox(
+              width: 32, height: 32,
+              child: Center(child: Icon(Icons.close, size: 15, color: AppColors.darkGrey5)),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        GestureDetector(
+          key: const ValueKey('learn-done-open'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openDoneCard(job),
+          child: Row(children: [
+            Expanded(
+              child: Text('《${job.title}》',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13.5, height: 1.5, color: AppColors.darkGrey2)),
+            ),
+            const SizedBox(width: 6),
+            const Text('看看', style: TextStyle(fontSize: 12.5, color: AppColors.darkGreen)),
+            const Icon(Icons.chevron_right, size: 16, color: AppColors.darkGreen),
+          ]),
+        ),
       ]),
     );
   }

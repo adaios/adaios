@@ -199,8 +199,22 @@ public class LearnDigestAppService {
     /** 图片源阶段（2026-09-12）：正在读图（视觉模型提取文字与图意）。 */
     public static final String STAGE_READING = "reading";
 
-    /** done/failed/cancelled 结果保留时长：前端轮询消费后即不再查询，超时惰性清理防 jobs 泄漏。 */
+    /** cancelled 等「无需回执」结果保留时长：前端轮询消费后即不再查询，超时惰性清理防 jobs 泄漏。 */
     private static final long RESULT_TTL_MS = 60_000;
+
+    /**
+     * 成功结果的保留时长（2026-09-23 分享回执批）。
+     *
+     * <p><b>为什么 done 也不能只活 60 秒</b>：2026-09-16 那次的结论是「done 有卡片兜底，60 秒够」——
+     * 2026-09-23 实测证伪了它。<b>分享扩展提交完 1 秒就关窗、主 App 全程不被拉起</b>，用户唯一的
+     * 知情途径是「事后自己进学习页」；而 60 秒早过期 → {@code digestJobStatus} 回 idle → App
+     * 什么都提示不了，用户看到的就是「分享了两次，阿呆没反应」（实际后端两次都成功了）。
+     * 给失败同档的 30 分钟，让「刚整理好的那条」有机会被说出来。
+     *
+     * <p>代价可接受：jobs 是单槽内存态，新提交会顶掉终态旧任务（{@code submit} 的 compute），
+     * 不会累积；30 分钟窗口内 App 进页读到 done 只是**多一条可点的回执**，不影响任何写路径。
+     */
+    private static final long DONE_TTL_MS = 30 * 60_000L;
 
     /**
      * 失败结果的保留时长（2026-09-16，REVIEW P1-分享7）。
@@ -259,6 +273,17 @@ public class LearnDigestAppService {
             // 已有任务在跑 → running；等确认期间再次提交 → 如实回待确认（不吞掉用户的选择）
             return new DigestSubmitResult(current.isAwaitingConfirm() ? STATUS_NEEDS_CONFIRMATION : STATUS_RUNNING);
         }
+        // 同一个链接**已经整理过** → 直接把那张卡当回执（2026-09-23 分享回执批）。
+        // 为什么必须去重：分享扩展提交后只显示 1 秒就关闭、主 App 全程不被拉起，用户看不到
+        // 「结果在哪」时会**再分享一次**（2026-09-23 实测：微博同一条连分享两次）；原逻辑对第二次
+        // 会**再抓一遍、再烧一次 AI**，落出第二张内容重复的卡（实测 02/03 同源两卡）。
+        // 去重命中不建任务、不抓取、不调模型，直接以 done 回执已有卡片。
+        LearnCard already = findExistingCard(userId, input);
+        if (already != null) {
+            current.done(already.type(), already.title(), already.topic());
+            log.info("learn 这条已经整理过，不再重复消化 | userId={} | 卡片={}", userId, already.title());
+            return new DigestSubmitResult(STATUS_DONE);
+        }
         try {
             learnSubmitExecutor.execute(() -> runJob(userId, current, input));
         } catch (RejectedExecutionException e) {
@@ -297,6 +322,43 @@ public class LearnDigestAppService {
         }
         return new ResolvedInput(fetchUrl, material, url, request.type(),
                 request.platform(), request.author(), request.published());
+    }
+
+    /**
+     * 这个链接在我的卡片里是不是已经整理过了（2026-09-23 分享回执批）。
+     *
+     * <p><b>判据只认「来源链接完全相同」</b>（去空白、去尾部斜杠后逐字比对）：分享面板里
+     * 反复点同一条内容给出的就是同一个 URL，这条能精确覆盖「同一条分享了两次」这个真实场景，
+     * 且**不会误伤**用户有意重新整理的其它内容。
+     *
+     * <p><b>刻意不做的</b>：不靠「抓取后的 mid/标题」判重——那要求先抓一次（白付一次网络与解析，
+     * 视频还会先付转写），去重的意义就没了；也不做 query 参数剔除/短链解跳转（同一内容的不同
+     * 分享形态仍可能各落一张卡，属已知边界，见 REVIEW）。
+     *
+     * <p><b>失败按「没整理过」继续</b>：查重是省钱优化，不是提交的正确性前提——读卡片失败
+     * 不能反过来把用户正常的一次整理拦掉，所以这里 catch 住只记 WARN。
+     */
+    private LearnCard findExistingCard(String userId, ResolvedInput input) {
+        String target = normalizeUrl(input.fetchUrl() != null ? input.fetchUrl() : input.sourceUrl());
+        if (target == null) return null;
+        try {
+            for (List<LearnCard> cards : repository.tree(userId).values()) {
+                for (LearnCard card : cards) {
+                    if (target.equals(normalizeUrl(card.url()))) return card;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("learn 查重失败（按没整理过继续）| userId={} | {}", userId, e.getMessage());
+        }
+        return null;
+    }
+
+    /** 链接归一：去空白 + 去尾部斜杠（同一链接在分享面板里可能带/不带尾斜杠）。取不到 → null。 */
+    static String normalizeUrl(String raw) {
+        if (raw == null) return null;
+        String s = raw.strip();
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        return s.isEmpty() ? null : s;
     }
 
     // ── 图片源（2026-09-12 完整升级批：书页/PPT/截图 → 忠实提取 → 同一条消化流水线）──
@@ -580,6 +642,7 @@ public class LearnDigestAppService {
         if (!job.isRunning()) {
             long ttl = job.isAwaitingConfirm() ? CONFIRM_TTL_MS
                     : job.isFailed() ? FAILED_TTL_MS   // P1-分享7：失败没有卡片兜底，60 秒太短
+                    : job.isDone() ? DONE_TTL_MS       // 2026-09-23 分享回执批：分享路径靠它报「整理好了」
                     : RESULT_TTL_MS;
             if (job.elapsedSinceSettled() > ttl) {
                 jobs.remove(userId, job);
@@ -843,6 +906,11 @@ public class LearnDigestAppService {
         /** 失败态——P1-分享7：判定该用 {@link #FAILED_TTL_MS} 而不是 done 的 60 秒。 */
         boolean isFailed() {
             return STATUS_FAILED.equals(status);
+        }
+
+        /** 成功态——2026-09-23 分享回执批：判定该用 {@link #DONE_TTL_MS}（分享路径靠它说「整理好了」）。 */
+        boolean isDone() {
+            return STATUS_DONE.equals(status);
         }
 
         /** 终态（done/failed/cancelled）：可被新提交替换；非终态（running/needs_confirmation）在跑/待回话。 */

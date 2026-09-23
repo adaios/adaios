@@ -15,11 +15,13 @@ import org.mockito.ArgumentCaptor;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -539,6 +541,95 @@ class LearnDigestAppServiceTest {
         assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
         verify(aiClient, times(1)).generate(any(), any());
         verify(repository, times(1)).save(eq("adai"), any(LearnCard.class), anyList());
+    }
+
+    // ── 2026-09-23 分享回执批：同一链接不重复消化 ──
+    // 背景：分享扩展提交后 1 秒就关窗、主 App 全程不被拉起，用户看不到「结果在哪」时会再分享一次
+    // （2026-09-23 实测微博同一条连分享两次，落出 02/03 两张同源卡）。去重命中不抓取、不烧 AI。
+
+    /** 已整理过的卡片（url 用微博分享短链的真实形态）。 */
+    private static LearnCard cardWithUrl(String url) {
+        return new LearnCard("ai", "AI 让 React Native 类中间层被判死刑", "weibo", "ruanyf", url,
+                "2026-09-18", LocalDate.of(2026, 9, 23), "new", false, null, List.of(),
+                "核心观点", List.of("要点"), List.of("疑问"), null, null, null, "ai辅助软件开发", true);
+    }
+
+    @Test
+    void submit_sameLinkTwice_secondReturnsDoneWithoutSecondAiCall() {
+        String link = "https://mapp.api.weibo.cn/fx/670488fd1c2f0e18b93434bb8aaed54e.html";
+        when(repository.tree("adai")).thenReturn(Map.of("ai", List.of(cardWithUrl(link))));
+
+        LearnDigestAppService.DigestSubmitResult result = service.submit("adai",
+                new LearnDigestAppService.DigestRequest(link, null, null, null, null, null));
+
+        assertEquals(LearnDigestAppService.STATUS_DONE, result.status(), "已整理过 → 直接回 done，不再排第二个任务");
+        assertEquals(0, submitted.size(), "去重命中不得入队——既不抓取也不烧 AI");
+        verifyNoInteractions(aiClient);
+
+        // 关键：回执要带得出「哪一条整理好了」——App 学习页的 done 提示条就吃 title/topic
+        LearnDigestAppService.DigestJobStatus job = service.digestJobStatus("adai");
+        assertEquals(LearnDigestAppService.STATUS_DONE, job.status());
+        assertEquals("AI 让 React Native 类中间层被判死刑", job.title());
+        assertEquals("ai辅助软件开发", job.topic());
+    }
+
+    @Test
+    void submit_sameLinkWithTrailingSlash_stillMatches() {
+        when(repository.tree("adai")).thenReturn(Map.of("ai",
+                List.of(cardWithUrl("https://example.com/post/1"))));
+
+        LearnDigestAppService.DigestSubmitResult result = service.submit("adai",
+                new LearnDigestAppService.DigestRequest("https://example.com/post/1///", null, null, null, null, null));
+
+        assertEquals(LearnDigestAppService.STATUS_DONE, result.status());
+        assertEquals(0, submitted.size());
+    }
+
+    @Test
+    void submit_newLink_isNotTreatedAsDuplicate() {
+        when(repository.tree("adai")).thenReturn(Map.of("ai",
+                List.of(cardWithUrl("https://example.com/other"))));
+
+        LearnDigestAppService.DigestSubmitResult result = service.submit("adai",
+                new LearnDigestAppService.DigestRequest("https://example.com/new", null, null, null, null, null));
+
+        assertEquals(LearnDigestAppService.STATUS_PENDING, result.status());
+        assertEquals(1, submitted.size(), "没整理过的链接照常入队");
+    }
+
+    /**
+     * 素材路径（粘贴正文）**不参与去重**：正文没有可比的来源链接，而用户确实可能有意把同一段
+     * 文本重整理一遍（换个类型/补充来源）。去重只认链接，避免把「有意重做」误判成「重复分享」。
+     */
+    @Test
+    void submit_pastedMaterial_isNeverTreatedAsDuplicate() {
+        when(repository.tree("adai")).thenReturn(Map.of("ai",
+                List.of(cardWithUrl("https://example.com/post/1"))));
+
+        LearnDigestAppService.DigestSubmitResult result =
+                service.submit("adai", "同一段正文再整理一次", null, null, null, null, null);
+
+        assertEquals(LearnDigestAppService.STATUS_PENDING, result.status());
+        assertEquals(1, submitted.size());
+    }
+
+    /** 查重是省钱优化、不是提交的正确性前提：读卡片失败不能反过来把用户这次整理拦掉。 */
+    @Test
+    void submit_dedupLookupFailure_stillAcceptsNormally() {
+        when(repository.tree("adai")).thenThrow(new RuntimeException("storage down"));
+
+        LearnDigestAppService.DigestSubmitResult result = service.submit("adai",
+                new LearnDigestAppService.DigestRequest("https://example.com/new", null, null, null, null, null));
+
+        assertEquals(LearnDigestAppService.STATUS_PENDING, result.status());
+        assertEquals(1, submitted.size());
+    }
+
+    @Test
+    void normalizeUrl_stripsWhitespaceAndTrailingSlashes() {
+        assertEquals("https://a.com/b", LearnDigestAppService.normalizeUrl("  https://a.com/b/  "));
+        assertNull(LearnDigestAppService.normalizeUrl("   "));
+        assertNull(LearnDigestAppService.normalizeUrl(null));
     }
 
     @Test

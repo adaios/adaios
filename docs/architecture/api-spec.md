@@ -2,7 +2,7 @@
 
 > 前后端接口契约。前端 Flutter、后端 Spring Boot，所有 API 返回 JSON。
 
-**文档版本：v3.86 | 最后更新：2026-09-23**
+**文档版本：v3.87 | 最后更新：2026-09-23**
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 日期 | 版本 | 变更 |
 |:----|:----|:------|
+| 2026-09-23 | v3.87 | **分享回执批：同一链接不重复消化 + 成功也要说一句话（REVIEW P1-分享8；用户「我刚才通过微博分享了两次到阿呆，没反应呀」）**——先说结论：**后端两次都成功了**（Caddy 两次 `POST /learn/digest` 200 · `adai-core` 两次抓取落卡 · 生产 `learn/ai/ai辅助软件开发/` 多出 02/03 两张卡），缺的是**回话**。① **`POST /learn/digest` 新增按来源链接去重**：`status=done` 现在也可能是「这条早就整理过了」（不抓取、不调模型、不建新任务，直接以已有卡片回执）；判据是**链接逐字相同**（去空白、去尾斜杠），**素材（content）路径不参与**——正文没有可比的来源链接、用户也可能有意重做；查重失败按「没整理过」继续（省钱优化不是提交的正确性前提）。② **`done` 结果 TTL 60s → 30 分钟**：分享扩展提交完 1 秒就关窗、主 App 全程不被拉起，60 秒早过期 → App 进学习页时后端已回 `idle`，「我整理好了」这句话根本没机会说出口（这正是「两次都没反应」的机制）。③ **App 学习页进页报回执**（`learn_page.dart`）：done 就在列表顶部摆「你刚分享的那条，我整理好了《标题》」+ 点开直达卡片；看过或关掉后本次运行内不再重复，手动喂入的也不重复（同一张卡只说一次）。④ **分享扩展如实区分**（`ShareViewController.swift`）：收到 `status=done` 改说「这条我早整理过了」（新入队一律回 `pending`，回 `done` 只可能是去重命中）。**端点 160 不变**；后端 **2150 → 2156**（+6）· app **409 → 412**（+3） |
 | 2026-09-23 | v3.86 | **现金「会漂且过期无提示」收口（REVIEW P2-交易69；用户「1 go」授权）**——`GET /trading/account` 响应新增两个**读侧拼装**字段：**`cashDate`**（现金这个数对应的券商快照日期，取自 `snapshot-anchor.json` 的 `cashImport`，无则 `""`）与 **`cashNote`**（一句可直接展示的人话，`null` = 无需提示）。**为什么**：`snapshotDate` 是收盘更新的日期（每个交易日都被刷新），而现金只在导入「资金股份查询」时才更新——两者混用会让人误以为手上这个现金数是今天的。**生产实据**：09-11 导入真值 1,381.93 之后，系统在两次导入之间把现金漂到 **24,101.01**（09-15 甚至漂成 **−6,093.97** 负数），而券商真值只有 **414.86** → 总盈亏少报 **2.37 万**，用户侧却看不到任何提示。`cashNote` 三种情形按优先级：**负现金**（自证失败）> **无券商来源** > **过期**（距上次导入 > 7 天，阈值 `TradingAppService.CASH_STALE_DAYS`）。**文案由后端给（单一真相源），双端账户卡只渲染**。端点 **160 不变**（仅响应扩字段） |
 | 2026-09-23 | v3.85 | **持仓导入保留券商「现价」（REVIEW P2-交易65 修复；用户「你看看目前生产交易的资金，持仓市值对么」）**——`POST /trading/positions/import` 的 body 新增可选 **`currentPrice`**（券商「持仓股」导出的「现价」列）。此前该列被**整列丢弃**（后端 `PositionImportItem` 无此字段、web `TdxPositionRow` 只读 代码/名称/数量/成本 四列），落库时拿 `avgCost` 顶替 → 生产 `positions.md` 5 只票的「现价」**全部等于成本价**（实测 002428 成本 41.58 / 券商现价 93.50）。平时被运行时行情注入盖住，**行情源不可用时会显示成「0 盈亏 + 市值退回成本 84,678.70」的假象**（真值 105,488.00；与 P1-交易62 的 K 线链路整段失效同类风险，亦与 2026-08-16 修过的同型病同源）。语义：**仅在 > 0 时采用**；缺字段/非正 → **保留原有存储价**（绝不写回成本价）；只有「新持仓且无任何现价来源」才回退 `avgCost`。**端点 160→160**（无增删，仅 body 扩展可选字段）；后端 **2138**（+4 `PositionCurrentPriceImportTest`）· web **342**（+1，解析「现价」列并上送） |
 | 2026-09-23 | v3.84 | **行情（K 线）链路韧性——域名可配 + 第三源 + 可用性可见（RFC `20260923-market-data-resilience`；用户「ABD 一起，你做，我休息」）**——① **A 域名可配**：腾讯 K 线域名改由 `adai.market.tencent-kline-bases` 配置（逗号分隔、按序尝试），默认用**备用域名** `proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get`——2026-09-22 实测老域名 `web.ifzq.gtimg.cn` 从生产返回 **501 + 腾讯 WAF 拦截页**（加 UA/Referer 仍 501 = IP 级）；**区间一律本地裁剪**（实测备用域名忽略 `start/end`，传 09-01~09-22 却返回 2025-06-05 起 320 根）——不赌第三方参数语义，`klineRange` 语义不随域名漂移。② **B 加新浪作最后一层兜底**（`SinaKlineDataSource`，`adai.market.sina-kline-enabled` 可关）：取数链变 **tdx → 腾讯 → 东财 → 新浪**（「两个网络源同属被风控对象」，2026-09-22 就是腾讯+东财同时挂）；两处口径差异**如实标注**：该接口不复权（除权日会跳空，故绝不当主源）、volume 单位是股（实现里 /100 对齐「手」）。③ **D 可用性可见**：新增 `GET /trading/market-data/health`（`{ok, note, lastSuccessAt, lastSuccessSource, lastFailureAt, consecutiveFailures, lastFailedSymbol, sources}`，`note` 为可直接展示的人话）+ 双端交易页**只在 `ok=false` 时**出横幅（接口失败静默降级）。端点 159 → **160** |
@@ -2398,7 +2399,7 @@ chat 模式（全屏）
 { "status": "pending" }
 ```
 
-- `status`：`pending`（受理，后台执行）/ `running`（同 user 已有任务在跑——含等确认期间再次提交，会如实回 `needs_confirmation`，不覆盖待确认任务）/ `needs_confirmation`（**需用户确认转写费用**，见下）/ `recorded`（**v3.72：无 learn 插件**——只接收不整理，素材已落成一条记录，含 `recordId` 与 `message`）
+- `status`：`pending`（受理，后台执行）/ `running`（同 user 已有任务在跑——含等确认期间再次提交，会如实回 `needs_confirmation`，不覆盖待确认任务）/ `needs_confirmation`（**需用户确认转写费用**，见下）/ `recorded`（**v3.72：无 learn 插件**——只接收不整理，素材已落成一条记录，含 `recordId` 与 `message`）/ **`done`（v3.87：这个链接早就整理过了**——2026-09-23 分享回执批：按来源链接（去空白、去尾斜杠后逐字比对）在已有卡片里命中同一 URL → **不抓取、不调模型、不建新任务**，直接以那张已有卡片回执。分享扩展据此改说「这条我早整理过了」，App 学习页据此报「你刚分享的那条，我整理好了」。**素材（`content`）路径不参与去重**——正文没有可比的来源链接，用户可能有意重做一遍）
 - `400`：`url` 与 `content` 都为空、type 非法、执行器队列满（「消化任务繁忙」）；**平台不支持**也走 400 + 人话（「YouTube 从这台服务器连不上…把字幕或正文粘进来更稳」）
 - 抓取/转写/结构化的进行与结果一律走 `GET /learn/digest/status` 轮询
 - `403`：learn 插件未启用（**仅 v3.72 之前**；v3.72 起本端点改为降级回 `recorded`，不再 403——其余 learn 端点仍 403）
@@ -2504,9 +2505,9 @@ chat 模式（全屏）
 
 | 字段 | 类型 | 说明 |
 |:-----|:-----|:-----|
-| `status` | String | `idle`（无任务/结果已过期清理）/ `pending` / `running` / `needs_confirmation`（**v3.57**：需确认转写费用）/ `done` / `failed` / `cancelled`（**v3.57**：用户取消转写） |
-| `type` | String? | 仅 `done`：新卡 type（ai/trading/other） |
-| `title` | String? | 仅 `done`：新卡标题（供 `GET /learn/card` 打开） |
+| `status` | String | `idle`（无任务/结果已过期清理）/ `pending` / `running` / `needs_confirmation`（**v3.57**：需确认转写费用）/ `done` / `failed` / `cancelled`（**v3.57**：用户取消转写）。**v3.87**：`done` 有两种来源——① 后台真的刚整理完；② **提交时命中去重**（这条链接早就整理过，直接以已有卡片回执）。两者对客户端是同一件事：「这张卡好了，去看它」 |
+| `type` | String? | 仅 `done`：卡片 type（ai/trading/other） |
+| `title` | String? | 仅 `done`：卡片标题（供 `GET /learn/content` 打开；**v3.87** 起 App 学习页也用它报「你刚分享的那条，我整理好了」） |
 | `message` | String? | 人话：`failed` 原因 / `needs_confirmation` 报价文案 / `cancelled` 说明；进行中为 null |
 | `stage` | String? | **v3.57**：进行中阶段 `fetching`（抓取原文）/ `transcribing`（云端转写，分钟级）/ `structuring`（整理成卡片）；**v3.60 新增 `reading`（正在读图，图片源）**；任务结束后清空 |
 | `source` | Object? | **v3.57**：抓到的源信息 `{platform,title,author,durationSeconds}`（抓取成功后即可回显，让用户看到阿呆在抓什么） |
@@ -2526,7 +2527,7 @@ chat 模式（全屏）
             "monthUsedSeconds": 0, "quotaSeconds": 36000, "remainSeconds": 36000 } }
 ```
 
-- 任务态为**内存态**（按 userId 单任务）：`done`/`failed`/`cancelled` 结果保留 60s 惰性清理回 `idle`；`needs_confirmation` 保留 **30 分钟**（用户可能过一会儿才点确认）；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
+- 任务态为**内存态**（按 userId 单任务）：`cancelled` 结果保留 60s 惰性清理回 `idle`；`done` 与 `failed` 保留 **30 分钟**（**v3.87 变更**：done 原为 60s——分享扩展提交完 1 秒就关窗、主 App 全程不被拉起，60 秒早过期，用户进学习页时后端已回 `idle`，「我整理好了」这句话就没机会说出口，2026-09-23 实测表现为「分享了两次，阿呆没反应」）；`needs_confirmation` 保留 **30 分钟**（用户可能过一会儿才点确认）；后端重启丢失 → 回 `idle`（已落盘卡片不受影响，刷新列表可见）
 - `403`：learn 插件未启用
 
 ### `DELETE /api/v1/learn/cards` — 删卡片（软删除，v3.61）
