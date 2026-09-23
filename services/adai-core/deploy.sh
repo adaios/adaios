@@ -34,6 +34,10 @@ DEPLOY_META="$(mktemp)"
     echo "dirtyFiles=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
     echo "jar=$(basename "$JAR")"
     echo "jarSha256=$(shasum -a 256 "$JAR" 2>/dev/null | awk '{print $1}')"
+    # P2-工程9（2026-09-23）：本次发版「应当更新哪些静态端」——由 deploy-gate 按改动路径算出后经
+    # 环境变量传入（默认只声明 backend）。每日巡检据此区分「本批未含该端」（不判落后）与
+    # 「该端真落后」（报漏发），治的是「admin 长期无改动却天天报红、app-web 真落后反被淹没」。
+    echo "artifacts=${ADAI_RELEASE_ARTIFACTS:-backend}"
 } > "$DEPLOY_META"
 scp "$DEPLOY_META" "ubuntu@${SERVER}:/tmp/adai-core.DEPLOYED"
 rm -f "$DEPLOY_META"

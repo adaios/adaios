@@ -69,10 +69,16 @@ out['services'] = {s: sh('systemctl is-active ' + s).strip() for s in svcs}
 out['deployed'] = sh('sudo cat /opt/adaios/backend/DEPLOYED 2>/dev/null').strip()
 # 2026-09-16：三个静态产物各自的时间戳——**发版最容易漏 admin**（本次实测：jar / web / app-web
 # 都发了，admin 还停在 09-08、落后整整 8 天，而没有任何地方看得出来）。摆在这里，谁落后一眼可见。
+# P2-工程9（2026-09-23）：**只看时间戳会骗人**——admin 自 09-17 起就没改过，产物当然停在 09-17，
+# 却每次报红（告警疲劳）；而 09-23 app 侧明明改了（`4c303b9` 行情横幅），app-web 却没重建、
+# 真落后 6 天，反倒淹在噪音里。故改为「按发版清单核对」：deploy-gate 部署时把 `artifacts=` 写进
+# 生产 DEPLOYED，这里只对「本批应当更新」的端判落后，其余如实标「本批未含」。
+# 采集格式：name|显示时间|epoch（epoch 用于与部署时刻比对）。
 out['artifacts'] = sh(
     "for d in web app-web admin; do "
     "t=$(date -r /opt/adaios/$d '+%m-%d %H:%M' 2>/dev/null); "
-    "[ -n \"$t\" ] && printf '%s=%s  ' \"$d\" \"$t\"; "
+    "e=$(date -r /opt/adaios/$d '+%s' 2>/dev/null); "
+    "[ -n \"$t\" ] && printf '%s|%s|%s\\n' \"$d\" \"$t\" \"$e\"; "
     "done").strip()
 
 # ── ② 应用日志（当日）──
@@ -244,7 +250,7 @@ if [ "$JSON_ONLY" = "1" ]; then
 fi
 
 ADAI_PROD_RAW="$RAW" python3 - <<'RENDER_EOF'
-import json, os
+import json, os, datetime
 
 d = json.loads(os.environ['ADAI_PROD_RAW'])
 CN = {
@@ -296,7 +302,42 @@ if _dep:
 else:
     print("  生产代码 unknown（还没有 backend/DEPLOYED——这是加上部署记录之前的版本）")
 if d.get('artifacts'):
-    print(f"  静态产物 {d['artifacts']}（三处都该与 jar 同一次发版；哪个明显落后就是漏发了）")
+    # P2-工程9（2026-09-23）：按**发版清单**核对（清单来自 DEPLOYED 的 artifacts= 行，
+    # 由 deploy-gate 部署前按「上次部署 commit → HEAD」的改动路径算出）：
+    #   清单内的端 → 产物时间必须不早于部署时刻（容忍 2 小时构建差），否则 = 漏发嫌疑；
+    #   清单外的端 → 本批没含它的改动，**不判落后**（旧版一律报红，admin 白挨了一个月）。
+    _expect = set((_f.get('artifacts') or 'backend').split(',')) if _dep else {'backend'}
+    try:
+        _dep_epoch = int(datetime.datetime.strptime(
+            _f.get('deployedAt', ''), '%Y-%m-%dT%H:%M:%SZ').replace(
+            tzinfo=datetime.timezone.utc).timestamp())
+    except Exception:
+        _dep_epoch = 0
+    _parts, _late = [], []
+    for _row in d['artifacts'].splitlines():
+        _c = _row.split('|')
+        if len(_c) < 3:
+            continue
+        _n, _disp = _c[0], _c[1]
+        try:
+            _ep = int(_c[2] or 0)
+        except ValueError:
+            _ep = 0
+        if _n in _expect:
+            if _dep_epoch and _ep and _ep >= _dep_epoch - 7200:
+                _parts.append(f"\033[32m{_n}={_disp}\033[0m")
+            else:
+                _parts.append(f"\033[31m{_n}={_disp} ← 应为本次发版更新却落后\033[0m")
+                _late.append(_n)
+        else:
+            _parts.append(f"{_n}={_disp}\033[2m(本批未含)\033[0m")
+    print("  静态产物 " + "  ".join(_parts))
+    if _late:
+        print(f"  \033[31m✗ 漏发嫌疑：{', '.join(_late)}"
+              f"——发版清单声明本次应更新它，产物时间却早于部署时刻\033[0m")
+    else:
+        print(f"    （本批发版清单：{','.join(sorted(_expect))}；"
+              f"未列入的端本批无改动，不判落后）")
 for line in d['error_lines']:
     print(f"  \033[31m✗ {line}\033[0m")
 

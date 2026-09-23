@@ -61,6 +61,27 @@ if [ ! -f "$JAR_ABS" ]; then
     exit 1
 fi
 echo "▸ 部署 jar：$JAR_ABS"
+
+# ── 发版清单（P2-工程9，2026-09-23）──
+# 每次部署都算一遍「本次应当更新哪些静态端」，随 DEPLOYED 落到生产，供每日巡检逐个核对。
+# 判据 = 生产 DEPLOYED 里上次部署的 commit → 本地 HEAD 之间被改动的路径。
+# 起因：巡检只比时间戳，分不清「本批没含这一端」与「这一端真的落后」——admin 自 09-17 起无改动、
+# 产物停在 09-17 却天天报红（告警疲劳）；而 09-23 app 侧改了（行情横幅）app-web 没重建、
+# 真落后 6 天，反倒被淹没。
+# 已冻结端不参与推导：app-web —— 2026-09-23 用户拍板「手机端只认 iOS 原生 App」，
+# /m/ 已在 Caddy 侧改为指路页，改动 apps/adai-app/ 不再推出 app-web。
+LAST_SHA=$(ssh "ubuntu@${SERVER}" "sudo grep '^commit=' /opt/adaios/backend/DEPLOYED 2>/dev/null | cut -d= -f2" 2>/dev/null | tr -d '\r\n')
+TOUCHED="backend"
+if [ -n "$LAST_SHA" ] && git cat-file -e "${LAST_SHA}^{commit}" 2>/dev/null; then
+    CHANGED="$(git diff --name-only "$LAST_SHA"..HEAD 2>/dev/null)"
+    echo "$CHANGED" | grep -q '^apps/adai-web/'   && TOUCHED="$TOUCHED,web"
+    echo "$CHANGED" | grep -q '^apps/adai-admin/' && TOUCHED="$TOUCHED,admin"
+    echo "▸ 发版清单：artifacts=${TOUCHED}（据 ${LAST_SHA:0:7}..HEAD 的改动路径）"
+else
+    echo "▸ 发版清单：拿不到上次部署 commit（${LAST_SHA:-空}）→ 保守只声明 backend"
+fi
+export ADAI_RELEASE_ARTIFACTS="$TOUCHED"
+
 (cd services/adai-core && ./deploy.sh "$SERVER" "$JAR_ABS")
 DEPLOY_OK=$?
 if [ $DEPLOY_OK -ne 0 ]; then
