@@ -3,9 +3,9 @@ title: AI 工程层
 description: AdaiOS 的 AI 工程层入口——资产（规范/边界/ADR/坑）+ 工作流（讨论→方案→开发→审核→验收）+ 状态（动态真相）；代码工程是结果集，AI 工程是驱动层
 version: 3
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-09-24
 status: active
-lines: 61
+lines: 62
 depends-on:
   - frontmatter-spec.md
 related:
@@ -42,6 +42,7 @@ tags: [ai, meta, engineering]
 | `guard-meta.sh` | 元治理自检：frontmatter 图谱/lines/孤儿，`--fix` 回写 |
 | `guard-unfixed.sh` | **未修复问题总清单**：聚合 REVIEW.md + task-log + audits 游离项 + 状态对账矛盾，一条命令拿全（2026-08-23 建）|
 | `guard-tools.sh` | **工具接入自检**：T1-T7 检测「跨工具互通 + harness 自身健壮性」是否真到位（hook/快照/技能/注册/入口/shell 变量花括号/定时任务真跑过），机制替人记得；`--shell-lint` 单跑 T6 供 pre-commit 调用（2026-08-23 建，2026-09-14 加 T6、T7）|
+| `guard-release.sh` | **发版体检**（发布前随时问）：一条命令答「现在欠着什么没发」——生产当前 commit/上批清单 + 逐端判定（后端 · Web 桌面端 · 管理后台 · iOS App）+ 下一步命令；`--json` 供二次处理。与 `deploy-gate.sh`（发布时算清单）/`guard-prod.sh`（发布后核对）共用路径映射 `lib/release-units.sh`（2026-09-24 建）|
 | `assets/` | 资产层：ADR 决策索引 / 已知坑 / 边界 / 规范 |
 | `workflow/` | 工作流层：discuss/design/develop 前置段（review/audit/ship 在 process/）|
 | `state/` | 状态层：完成度 / 测试数 / 未修项（指针化）|

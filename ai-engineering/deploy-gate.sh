@@ -10,8 +10,12 @@
 # ─────────────────────────────────────────────────────────────
 set -u
 
-cd "$(dirname "$0")/.."
+# 2026-09-24：先固定脚本自身目录再 cd（原先 cd 后用 dirname "$0"，从别处用相对路径调用会解析错），
+# 并载入「路径 → 发布单元」的唯一真相源（与 guard-release.sh / guard-prod.sh 共用）。
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}/.."
 ROOT="$(pwd)"
+. "${SCRIPT_DIR}/lib/release-units.sh"
 SERVER="${1:-}"
 JAR="${2:-}"
 
@@ -68,16 +72,16 @@ echo "▸ 部署 jar：$JAR_ABS"
 # 起因：巡检只比时间戳，分不清「本批没含这一端」与「这一端真的落后」——admin 自 09-17 起无改动、
 # 产物停在 09-17 却天天报红（告警疲劳）；而 09-23 app 侧改了（行情横幅）app-web 没重建、
 # 真落后 6 天，反倒被淹没。
-# 已冻结端不参与推导：app-web —— 2026-09-23 用户拍板「手机端只认 iOS 原生 App」，
-# /m/ 已在 Caddy 侧改为指路页，改动 apps/adai-app/ 不再推出 app-web。
+# 2026-09-24：路径映射抽到 ai-engineering/lib/release-units.sh（唯一真相源）——原先这里只认
+# web/admin、iOS 端无处可加；发布前想知道「现在欠什么」请直接跑 `bash ai-engineering/guard-release.sh`。
+# app-web 已冻结（2026-09-23 用户拍板「手机端只认 iOS 原生 App」，/m/ 在 Caddy 侧改为指路页），
+# 故改 apps/adai-app/ 推出的是 iOS 包（走 TestFlight），不再推 app-web。
 LAST_SHA=$(ssh "ubuntu@${SERVER}" "sudo grep '^commit=' /opt/adaios/backend/DEPLOYED 2>/dev/null | cut -d= -f2" 2>/dev/null | tr -d '\r\n')
-TOUCHED="backend"
 if [ -n "$LAST_SHA" ] && git cat-file -e "${LAST_SHA}^{commit}" 2>/dev/null; then
-    CHANGED="$(git diff --name-only "$LAST_SHA"..HEAD 2>/dev/null)"
-    echo "$CHANGED" | grep -q '^apps/adai-web/'   && TOUCHED="$TOUCHED,web"
-    echo "$CHANGED" | grep -q '^apps/adai-admin/' && TOUCHED="$TOUCHED,admin"
-    echo "▸ 发版清单：artifacts=${TOUCHED}（据 ${LAST_SHA:0:7}..HEAD 的改动路径）"
+    TOUCHED="$(git diff --name-only "$LAST_SHA"..HEAD 2>/dev/null | ru_deploy_artifacts_from_paths)"
+    echo "▸ 发版清单：artifacts=${TOUCHED}（据 ${LAST_SHA:0:7}..HEAD 的改动路径；映射规则 ai-engineering/lib/release-units.sh）"
 else
+    TOUCHED="backend"
     echo "▸ 发版清单：拿不到上次部署 commit（${LAST_SHA:-空}）→ 保守只声明 backend"
 fi
 export ADAI_RELEASE_ARTIFACTS="$TOUCHED"
