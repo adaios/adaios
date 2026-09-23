@@ -245,6 +245,21 @@ void main() {
       expect(a.totalPnl, closeTo(-39495.12, 0.01));
     });
 
+    test('AccountSnapshotDto 解析 cashDate/cashNote；缺字段安全兜底（P2-交易69）', () {
+      final a = AccountSnapshotDto.fromJson({
+        'assets': 106180.86, 'cash': 414.86, 'cashDate': '2026-09-23',
+        'cashNote': '现金还是 2026-09-11 的券商余额（12 天前），导一次「资金股份查询」对一下账。',
+      });
+      expect(a.cashDate, '2026-09-23');
+      expect(a.cashNote, contains('资金股份查询'));
+      // 旧后端缺这两个字段 → ''（不提示、不崩）
+      final b = AccountSnapshotDto.fromJson({'assets': 1.0});
+      expect(b.cashDate, '');
+      expect(b.cashNote, '');
+      expect(AccountSnapshotDto.fromJson({'cashNote': 123}).cashNote, '123',
+          reason: '类型不符转字符串，不崩');
+    });
+
     test('AccountSnapshotDto empty defaults totalPnl null（本金未设不给误导数值，P2-交易31）', () {
       final a = AccountSnapshotDto.fromJson({});
       expect(a.assets, 0);

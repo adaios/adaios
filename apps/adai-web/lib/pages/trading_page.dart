@@ -1934,6 +1934,19 @@ class _TradingPageState extends State<TradingPage> {
       const SizedBox(height: 6),
       const Text('现金余额是 R81 仓位判定的分母（总资产=持仓+现金）——资金查询导入后占比判定更准',
           style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+      // P2-交易69（2026-09-23）：现金「会漂且过期无提示」——负现金（自证失败）/ 无券商来源 / 过期时
+      // 由后端给一句人话，这里只负责显示。文案不在前端拼（单一真相源），空 = 不打扰。
+      if ((_account?.cashNote ?? '').isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(_account!.cashNote,
+                style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+          ),
+        ]),
+      ],
     ]);
   }
 

@@ -2856,11 +2856,16 @@ class AccountSnapshotDto {
   // calc=系统按当日成交流水精算 / '' = 未知或旧后端缺字段）。UI 据此标注口径与日期；
   // 未知一律不标（宁可不说，也不编造）。
   final String todayPnlSource;
+  // P2-交易69（2026-09-23）：现金这个数对应的**券商快照日期**（≠ snapshotDate）。
+  // snapshotDate 是收盘更新的日期（每个交易日都被刷新），而现金只在导入「资金股份查询」时才更新。
+  final String cashDate;
+  // 现金健康度人话（负现金 / 无券商来源 / 过期），'' = 无需提示——文案由后端给，前端只渲染。
+  final String cashNote;
 
   AccountSnapshotDto({required this.assets, required this.cash, required this.available,
       required this.withdrawable, required this.marketValue, required this.pnl,
       required this.todayPnl, required this.principal, this.snapshotDate = '',
-      this.todayPnlSource = ''});
+      this.todayPnlSource = '', this.cashDate = '', this.cashNote = ''});
 
   factory AccountSnapshotDto.fromJson(dynamic j) {
     final m = j is Map<String, dynamic> ? j : <String, dynamic>{};
@@ -2876,6 +2881,9 @@ class AccountSnapshotDto {
       snapshotDate: m['snapshotDate']?.toString() ?? '',
       // 宽松：非字符串（数字/bool/对象）也安全转字符串；null/缺字段 → ''（不标来源）
       todayPnlSource: m['todayPnlSource']?.toString() ?? '',
+      // P2-交易69：旧后端缺这两个字段 → ''（不提示、不崩）
+      cashDate: m['cashDate']?.toString() ?? '',
+      cashNote: m['cashNote']?.toString() ?? '',
     );
   }
 

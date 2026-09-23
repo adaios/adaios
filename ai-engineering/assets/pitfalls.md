@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-09-23
 status: active
-lines: 199
+lines: 205
 depends-on:
   - ../checklists/guard.md
 related:
@@ -193,6 +193,12 @@ tags: [ai, assets, pitfalls]
 | **构建产物夹带另一个并发会话的未提交改动** | 本地 jar 部署上去后，生产行为与「本批改动」对不上；更坏的形态是**别人写到一半的代码被带上生产** | gradle 从**工作区**编译，而工作区同时有另一个会话未提交的改动（本项目支持同日多会话并行）；`git status` 能看出，但**构建命令不会提醒** | 用 **`git worktree add /tmp/xxx HEAD --detach`** 在干净 HEAD 上构建（隔离并发改动），再拿那份 jar 部署；部署后删除 worktree | ✅ 已用（2026-09-23） | 多会话同时开在同一仓库；部署前 `git status` 有**不属于本批**的改动；只验证「bundle 存在」而不验证「bundle 内容是本批的」 |
 | **`gradlew bootJar -q \| tail` 掩盖「jar 没重新产出」** | 部署日志全绿（GATE-BEFORE PASS + smoke 全过），但**新端点 404**——查下去发现部署的是**上一版 jar** | `-q` 抑制正常输出、`\| tail -N` 截掉前面（含 up-to-date/错误提示），而后面 `ls -la *.jar` 只看「文件存在」不看**时间戳**；exit code 还因为 `ls` 成功而是 0 | 部署前**校验 jar 的 mtime 与内容**：`unzip -l <jar> \| grep <本批新增类>`（本批新增 `SinaKlineDataSource`，第一次部署前 grep 到 **0** 才发现） | ✅ 已修（2026-09-23） | 改了后端但「端点/接口没生效」，而部署与 smoke 全绿；用 `-q`/管道 tail 看构建结果；只判断产物存在不判断内容是新的 |
 | **`git add` 之后再编辑同一文件 → 提交的是索引里的旧版本** | 门禁报「status.md 声明 401，实测 408」——可明明刚刚把 401 改成过 408；提交后工作区仍显示该文件「已修改」 | `git add` 把**当时**的内容写进索引；之后的编辑只改工作区。`git commit` 提交的是**索引**（旧版），改动留在工作区（表现为「提交了却还是 M」） | 改完**重新 `git add`**；提交前用 `git diff --cached` 复核「要提交的到底是什么」；**先改文件、后 add、再 commit** 是唯一安全顺序 | ✅ 已修（2026-09-23） | 提交后 `git status` 里同一个文件仍显示 ` M`；门禁报「声明值 ≠ 实测值」而你确信改过；`git add` 与编辑交错进行 |
+
+## 二十一、前端测试环境（flutter test 的隐式依赖解析，2026-09-23 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **`flutter test` 先做隐式 pub 解析，握手失败就一条测试都不跑** | 在 `apps/adai-app` 跑 `flutter test` 卡在 `Resolving dependencies... / Downloading packages... / Connection terminated during handshake / Failed to update packages.`——**测试一条都没执行**；而同一行的 `flutter analyze` 是 PASS，脚本里 `flutter analyze \| tail && flutter test` 这种写法还会把失败**吞掉**（管道让退出码变成 `tail` 的 0） | `flutter test` 默认先做一次 `pub get`（即使 `.dart_tool/package_config.json` 已存在），网络/代理抖动即中止；`pub get --offline` 只能救 `pub get` 自己，救不了 test 触发的隐式解析 | `flutter pub get --offline` → **`flutter test --no-pub`**（跳过隐式解析，直接用本地缓存）；脚本里避免 `cmd \| tail && next`（吞退出码），要判 `${PIPESTATUS[0]}` 或分步执行 | ✅ 已用（2026-09-23，app 408→409 实测） | 日志出现 `Resolving dependencies` / `Failed to update packages`；「测试全绿」其实一条没跑；两个 flutter 命令**并行**（先报 `Waiting for another flutter command to release the startup lock`，随后依赖解析失败） |
 
 ---
 

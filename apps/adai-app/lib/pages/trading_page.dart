@@ -2202,6 +2202,21 @@ class _TradingPageState extends State<TradingPage> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(pnlNote, style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
           ),
+        // P2-交易69（2026-09-23）：现金「会漂且过期无提示」——负现金（自证失败）/ 无券商来源 / 过期时
+        // 由后端给一句人话，这里只渲染（文案不在前端拼，空 = 不打扰）。生产实据：09-11 导入真值
+        // 1,381.93 之后一路漂到 24,101.01，而券商真值只有 414.86 → 总盈亏少报 2.37 万。
+        if (hasAccount && a.cashNote.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.darkOrange),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(a.cashNote,
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkOrange)),
+              ),
+            ]),
+          ),
         // 2026-09-15（用户要求「券商 App 那样的日/周/月盈亏」）：今日 / 本周 / 本月 金额 + 比例。
         // 比例 null（区间起点前无曲线点 / 锚定日之前不可追溯）→ 只给金额，绝不编造 0%。
         // P2-交易52（2026-09-16 用户拍板）：这一行点进去就是「收益日历」（券商那种月历）

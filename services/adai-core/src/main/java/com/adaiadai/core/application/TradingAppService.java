@@ -2020,6 +2020,72 @@ public class TradingAppService {
                         BigDecimal.ZERO, null));
     }
 
+    /** 现金新鲜度阈值（天）：距上次「资金股份查询」导入超过它 → 账户卡提示对账（P2-交易69）。 */
+    static final long CASH_STALE_DAYS = 7;
+
+    /**
+     * 账户视图（P2-交易69，2026-09-23）：在 {@link AccountSnapshot} 的字段之外，补两个**读侧拼装**的字段：
+     * <ul>
+     *   <li>{@code cashDate}——现金这个数对应的**券商快照日期**（{@link SnapshotAnchor#cashImport()}）。
+     *       它与 {@code snapshotDate}（收盘更新的日期、每个交易日都会被刷新）**不是一回事**：现金只在导入
+     *       「资金股份查询」时才更新，两者混用一个日期会让人误以为手上这个现金数是今天的。</li>
+     *   <li>{@code cashNote}——现金健康度的一句人话（负现金 / 无券商来源 / 过期），null = 不必提示。</li>
+     * </ul>
+     * 起因是生产实据：09-11 导入真值 1,381.93 之后，系统在两次导入之间把现金漂成 **−6,093.97**
+     * （09-15，负数）与 **24,101.01**（09-23），而券商真值只有 **414.86**——虚高 23,686.15、
+     * 总盈亏少报 2.37 万，而用户侧**看不到任何提示**（REVIEW P2-交易64/69）。
+     */
+    public Map<String, Object> accountView(String userId) {
+        AccountSnapshot s = accountSnapshot(userId);
+        LocalDate cashDate = null;
+        try {
+            cashDate = anchorRepository.find(userId).cashImport();
+        } catch (RuntimeException e) {
+            log.warn("账户视图：读锚定失败，现金日期按未知处理 | userId={} | {}", userId, e.getMessage());
+        }
+        return accountViewOf(s, cashDate, LocalDate.now());
+    }
+
+    /**
+     * 纯函数版账户视图（可单测）：把快照 + 现金日期拼成对外的账户视图。
+     * <p>
+     * 手工列字段是为了**不动 AccountSnapshot 的 schema**（它有 19+ 处构造点），代价是可能漏字段
+     * —— 故本方法由 `CashHealthNoteTest` 断言「快照的每个字段都在」+「两个新字段都在」。
+     */
+    static Map<String, Object> accountViewOf(AccountSnapshot s, LocalDate cashDate, LocalDate today) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("assets", s.assets());
+        m.put("cash", s.cash());
+        m.put("available", s.available());
+        m.put("withdrawable", s.withdrawable());
+        m.put("marketValue", s.marketValue());
+        m.put("pnl", s.pnl());
+        m.put("todayPnl", s.todayPnl());
+        m.put("principal", s.principal());
+        m.put("snapshotDate", s.snapshotDate());
+        m.put("todayPnlSource", s.todayPnlSource());
+        m.put("cashDate", cashDate != null ? cashDate.toString() : "");
+        m.put("cashNote", cashHealthNote(s.cash(), cashDate, today));
+        return m;
+    }
+
+    /** 现金健康度人话（null = 不用提示）。优先级：负现金 > 无券商来源 > 过期（P2-交易69）。 */
+    static String cashHealthNote(BigDecimal cash, LocalDate cashDate, LocalDate today) {
+        if (cash != null && cash.signum() < 0) {
+            // 负现金是「自证失败」的硬信号：真实账户不可能有负的可用资金（生产 09-15 出现过 −6,093.97）
+            return "可用资金是负数（" + cash.stripTrailingZeros().toPlainString()
+                    + "）——这个数不对，导一次「资金股份查询」就能对齐。";
+        }
+        if (cashDate == null) {
+            return "这个现金数还没有券商来源，导一次「资金股份查询」就能对齐。";
+        }
+        long days = java.time.temporal.ChronoUnit.DAYS.between(cashDate, today);
+        if (days > CASH_STALE_DAYS) {
+            return "现金还是 " + cashDate + " 的券商余额（" + days + " 天前），导一次「资金股份查询」对一下账。";
+        }
+        return null;
+    }
+
     /**
      * 设置本金（累计净投入，2026-08-18 确认批次）。
      * <p>

@@ -1881,10 +1881,22 @@ class TradingControllerTest {
                 new java.math.BigDecimal("110212.00"), new java.math.BigDecimal("15235.55"),
                 java.math.BigDecimal.ZERO, new java.math.BigDecimal("150000"),
                 java.time.LocalDate.of(2026, 8, 16)));
+        // P2-交易69（2026-09-23）：端点改走 accountView——快照字段之外多两个读侧字段：
+        // cashDate（现金这个数的券商日期）与 cashNote（负现金/过期/无来源的人话提示）
+        java.util.Map<String, Object> view = new java.util.LinkedHashMap<>();
+        view.put("assets", new java.math.BigDecimal("110504.88"));
+        view.put("cash", new java.math.BigDecimal("292.88"));
+        view.put("principal", new java.math.BigDecimal("150000"));
+        view.put("cashDate", "2026-09-23");
+        view.put("cashNote", "可用资金是负数（-6093.97）——这个数不对，导一次「资金股份查询」就能对齐。");
+        when(trading.accountView(any())).thenReturn(view);
         MockMvc mvc = buildMvc(trading);
+
         mvc.perform(get("/api/v1/trading/account").header("X-User-Id", "adai"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.principal").value(150000));
+                .andExpect(jsonPath("$.principal").value(150000))
+                .andExpect(jsonPath("$.cashDate").value("2026-09-23"))
+                .andExpect(jsonPath("$.cashNote").isNotEmpty());
     }
 
     @Test

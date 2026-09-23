@@ -1947,6 +1947,20 @@ void main() {
       expect(AccountSnapshotDto.fromJson(null).todayPnlSource, '');
     });
 
+    test('AccountSnapshotDto 解析 cashDate/cashNote；缺字段/类型不符安全兜底（P2-交易69）', () {
+      final a = AccountSnapshotDto.fromJson({
+        'assets': 106180.86, 'cash': -6093.97, 'cashDate': '2026-09-23',
+        'cashNote': '可用资金是负数（-6093.97）——这个数不对，导一次「资金股份查询」就能对齐。',
+      });
+      expect(a.cashDate, '2026-09-23');
+      expect(a.cashNote, contains('负数'));
+      expect(AccountSnapshotDto.fromJson({'assets': 1.0}).cashNote, '',
+          reason: '旧后端缺字段 → 空（不提示）');
+      expect(AccountSnapshotDto.fromJson({'cashNote': 123}).cashNote, '123',
+          reason: '类型不符转字符串，不崩');
+      expect(AccountSnapshotDto.fromJson(null).cashDate, '');
+    });
+
     test('PnlPeriodsDto 解析日/周/月；pct 缺失保持 null（不编造 0%）', () {
       final p = PnlPeriodsDto.fromJson({
         'today': {'pnl': -503.9, 'pct': -0.62, 'partial': false},

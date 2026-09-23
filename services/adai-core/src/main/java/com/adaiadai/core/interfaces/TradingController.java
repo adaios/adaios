@@ -892,7 +892,10 @@ public class TradingController {
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        return ResponseEntity.ok(tradingAppService.accountSnapshot(userId));
+        // P2-交易69（2026-09-23）：改走 accountView——在快照字段之外补 cashDate（现金这个数的券商日期）
+        // 与 cashNote（负现金/过期/无来源的人话提示）。起因：现金在两次「资金股份查询」之间会漂，
+        // 而用户侧看不到「这个数是什么时候的」，生产上曾虚高 23,686.15（总盈亏少报 2.37 万）。
+        return ResponseEntity.ok(tradingAppService.accountView(userId));
     }
 
     /**

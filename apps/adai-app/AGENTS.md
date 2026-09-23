@@ -25,7 +25,7 @@ flutter run -d chrome
 # 构建 Web（⚠️ 必须走本脚本：内置 CanvasKit + 字体本地化补丁 + 硬校验）
 sh scripts/build_web.sh                                   # 本地预览（base-href=/）
 sh scripts/build_web.sh https://api.adaiadai.com          # 桌面形态（根路径部署）
-sh scripts/build_web.sh https://api.adaiadai.com /m/      # PWA（手机装主屏，见下）
+sh scripts/build_web.sh https://api.adaiadai.com /m/      # 子路径构建（/m/ 入口已停用，见下）
 
 # 本地预览（构建 + 起 python http.server:8081）
 sh scripts/serve_web.sh https://api.adaiadai.com /m/
@@ -46,9 +46,11 @@ flutter test
 ```
 
 > ⚠️ **裸 `flutter build web` 不可用于部署**：漏打补丁 → CanvasKit 从 gstatic 拉（被墙）白屏、中文全框。
-> ⚠️ **PWA（2026-09-13 起）**：手机端入口 = 本项目的 web 构建部署在 `https://adaiadai.com/m/`，
-> iPhone Safari「添加到主屏幕」后全屏独立运行——用来绕开免费 Apple ID 签名 7 天过期（REVIEW P2-用户1）。
-> 构建必须带 `/m/` 作为 base-href（字体补丁路径跟着走）；部署见 `docs/deployment/backend-deployment.md` §8.1。
+> ⚠️ **手机端网页入口已于 2026-09-23 停用**（用户拍板：手机端只认 iOS 原生 App / TestFlight）。
+> 本项目的 web 构建曾部署在 `https://adaiadai.com/m/` 供 iPhone Safari「添加到主屏幕」使用，
+> 但它自 2026-09-17 起未再重建、落后 6 天（REVIEW P2-工程9）→ 生产 Caddy 已改为**指路页**，
+> `app-web` 也不再随发版更新（发版清单已排除）。**改 `lib/` 只为 iOS 原生包服务**；
+> 若确需子路径构建（`/m/` base-href）用于本地排查，命令见上，但不要再把它当手机端入口。
 > ⚠️ **平台分支只在 build 时暴露**：`flutter test` 跑 VM（走 `sse_client_io` / `user_store_io`），
 > **覆盖不到 web 实现**——改条件导出（`if (dart.library.js_interop)`）后必须真的 `build web` 一次
 > （2026-09-13 因此炸过：web 侧缺构造参数，test 全绿而 build 直接编译失败，见 pitfalls「条件导出的两份实现 API 面不一致」）。
@@ -62,7 +64,7 @@ lib/
 ├── services/
 │   ├── api_config.dart          # API 配置（后端地址）
 │   ├── api_service.dart         # HTTP 客户端（REST API 调用）
-│   ├── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；Web/PWA/Android 降级不碰原生通道
+│   ├── push_service.dart        # 推送接入（RFC 20260913）：仅 iOS 原生，登录后申请通知权限 → 上报 APNs deviceToken → 后端 ApnsPushChannel 直连 APNs；非 iOS 平台（Web / Android）降级不碰原生通道
 │   └── entry_intent_service.dart # 外部入口（RFC 20260913）：接 Siri「记一笔」/ 快捷指令 / adai:// → **按动作（record/digest）分派**；record 有内容直接落成记录、空内容只预填，digest 直达 learn 整理；同样仅 iOS 原生
 ├── theme/
 │   ├── app_colors.dart          # 调色板
