@@ -553,7 +553,9 @@ AI Understanding:
 
 {ifep: no today records → "Keep it simple."}
 
-{Pattern/habit injection prompt}
+（RFC `20260923-rhythm-and-memory-temporality` A 批：原「发现习惯就自然提及」注入**已删除**）
+
+Open todos: {OPEN 待办 ≤3 条；**周期性习惯不注入**（`isRhythmLike` 分流：每周/每月/每天/例会/定期 或 周X＋固定）}
 
 Trading activity: {hasActivity → "提醒生成复盘"}
 
@@ -570,6 +572,9 @@ Strict format:
 3. Chinese, max 3 lines
 4. Each line max 30 chars
 5. No JSON output, plain text only
+6. Use actual emoji characters (NOT \uXXXX escape codes)
+7. Only if the "Open todos" section above is non-empty, mention 1-2 of them
+8. Never invent reminders; do NOT bring up habits, routines or recurring events as things to do
 ```
 
 **模型参数：** `temperature: 0.7`, 纯文本模式（非 JSON）

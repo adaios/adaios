@@ -29,6 +29,30 @@ public class BriefAppService {
 
     private static final Logger log = LoggerFactory.getLogger(BriefAppService.class);
 
+    /** 简报注入的待办条数硬上限（RFC 20260923 A 批·闸 3）。 */
+    private static final int MAX_BRIEF_TODOS = 3;
+
+    /**
+     * 周期性表述识别（RFC 20260923 A 批·闸 2）。
+     * <p>
+     * 「周期习惯」不是待办——它没有终点，催它等于每天复读。2026-09-23 用户反馈的生产实据：
+     * 一句「今天周四 固定发版日 在加班」被转成 OPEN 待办后，概览卡天天提醒他。
+     * A 批先用本判据把这**一类**条目挡在提醒段之外（数据不动、待办页照常可见）；
+     * B 批上线 rhythm 通道后，改由 RRULE 命中日决定是否作背景注入。
+     * <p>
+     * 判据刻意保守：必须出现明确的重复词（每周/每月/每天/例会/定期…）或「周X + 固定」组合。
+     * 反例（**不得命中**）："周四要交周报"（一次性任务）、"给妈打个电话"、"整理上周复盘"。
+     */
+    private static final java.util.regex.Pattern RHYTHM_LIKE = java.util.regex.Pattern.compile(
+            "每周|每星期|每月|每天|每日|每季度|每年|例行|定期"
+                    + "|(周|星期|礼拜)[一二三四五六日天]\\s*固定"
+                    + "|固定\\s*(的)?\\s*(周|星期|礼拜|每周|发版|例会|值班)");
+
+    /** 是否周期性习惯表述（= 不该被当待办催）。包级可见：供单测直接覆盖判据正反例。 */
+    static boolean isRhythmLike(String title) {
+        return title != null && RHYTHM_LIKE.matcher(title).find();
+    }
+
     private final IdentityRepository identityRepository;
     private final RecordRepository recordRepository;
     private final MemoryService memoryService;
@@ -99,7 +123,9 @@ public class BriefAppService {
                 .filter(r -> !attachmentIds.contains(r.id()))
                 .filter(r -> r.createdAt().toLocalDate().isAfter(LocalDate.now().minusDays(2)))
                 .toList();
-        List<Memory> recentMemories = memoryService.recent(userId, 7);
+        // RFC 20260923 A 批：统一走 recentActive（过滤 superseded）——原来用 recent()，
+        // 已被取代/作废的记忆照样注入，是「天天提醒」的第二条通路（与 ContextEngine 口径对齐）。
+        List<Memory> recentMemories = memoryService.recentActive(userId, 7);
         // 2026-09-16「第一次见面」批：name 现在允许为空（新用户还没填昵称）。
         // 分开两用——给 AI 的空值兜底成 "the user"，给用户看的问候语则在空时整段省掉称呼，
         // 避免拼出「☀️  早上好！」这种双空格或把英文塞进中文问候。
@@ -245,10 +271,9 @@ public class BriefAppService {
             sb.append("Do NOT suggest the user just did something today.\n\n");
         }
 
-        // Habit injection from memories
-        if (!memories.isEmpty()) {
-            sb.append("If you notice a pattern or habit from the user's history (e.g. they exercise on certain days, they often talk about certain topics), mention it naturally.\n\n");
-        }
+        // RFC 20260923 A 批：删除原「发现习惯就自然提及」指令——
+        // 它是「天天提醒」最直接的正面成因（要求模型把习惯说出来，而节律又被当成了待办）。
+        // 记忆继续注入作背景，但不再主动要求模型点名习惯。
 
         // G-2（2026-08-16）：交易活动信号只注入 trading 插件用户——无插件用户不查交易、简报不出现交易提示
         boolean hasTrades = pluginService.hasPlugin(userId, PluginRegistry.PLUGIN_TRADING)
@@ -311,18 +336,30 @@ public class BriefAppService {
 
         // ── Todo signals（08-14：概览卡主动提示待办，阿呆 10:25 反馈「重要信息不提示我」）──
         // RFC 20260917：待办归 Kernel builtin（旧 Task 看板已撤），口径 = OPEN 未完成
+        // RFC 20260923 A 批·闸 2/闸 3：
+        //   ① 周期性习惯（"周四固定发版加班"）**不进提醒段**——节律是概率不是承诺（用户：
+        //      「我可能需要加班，也可能这周四就不需要了」），催它＝每天复读；
+        //   ② 条数硬上限显式化（原来裸写 limit(3)）。
+        // 被挡下的条目**数据不动**（待办页照常可见）；B 批建 rhythm 通道后按 RRULE 命中日作背景注入。
         try {
-            List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId).stream()
-                    .limit(3)
+            List<Todo> openTodos = todoRepository.findAll(TodoStatus.OPEN, userId);
+            List<Todo> remindable = openTodos.stream()
+                    .filter(t -> !isRhythmLike(t.title()))
+                    .limit(MAX_BRIEF_TODOS)
                     .toList();
-            if (!openTodos.isEmpty()) {
+            if (!remindable.isEmpty()) {
                 sb.append("Open todos (not done, should be surfaced to user):\n");
-                for (Todo t : openTodos) {
+                for (Todo t : remindable) {
                     sb.append("- ").append(t.title());
                     if (t.due() != null) sb.append(" (due ").append(t.due()).append(")");
                     sb.append("\n");
                 }
                 sb.append("\n");
+            }
+            int heldBack = openTodos.size() - remindable.size();
+            if (heldBack > 0) {
+                log.debug("Brief 待办注入闸门：{}/{} 条未注入（周期习惯优先挡下 + 超上限） | userId={}",
+                        heldBack, openTodos.size(), userId);
             }
         } catch (Exception e) {
             log.debug("Todo signal skipped: {}", e.getMessage());
@@ -335,7 +372,10 @@ public class BriefAppService {
         sb.append("4. Max 30 chars per line, 4 lines total: line 1 = greeting (concise overview), lines 2-4 = max 3 content items\n");
         sb.append("5. No JSON output\n");
         sb.append("6. Use actual emoji characters (NOT \\uXXXX escape codes)\n");
-        sb.append("7. If there are open tasks, proactively remind 1-2 most important ones (e.g. \"你还有 N 件待办\")\n");
+        // RFC 20260923 A 批·闸 2：提醒口径收紧——只提醒列在上面的待办；
+        // 并明令禁止把习惯/惯例/周期性事件当"要做的事"提出来（那是催，不是提醒）。
+        sb.append("7. Only if the \"Open todos\" section above is non-empty, mention 1-2 of them.\n");
+        sb.append("8. Never invent reminders. Do NOT bring up habits, routines or recurring events (e.g. \"you usually work late on Thursdays\") as things to do or to prepare for.\n");
 
         return sb.toString();
     }

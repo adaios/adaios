@@ -1,9 +1,13 @@
 package com.adaiadai.core.application;
 
+import com.adaiadai.core.kernel.todo.Todo;
 import com.adaiadai.core.kernel.todo.TodoRepository;
+import com.adaiadai.core.kernel.todo.TodoStatus;
 import com.adaiadai.core.domain.trading.AccountSnapshotRepository;
 import com.adaiadai.core.infrastructure.ai.llm.TestAiClient;
 import com.adaiadai.core.kernel.ai.AiClient;
+import com.adaiadai.core.kernel.ai.AiUnderstanding;
+import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.infrastructure.storage.InMemoryFileStorage;
 import com.adaiadai.core.infrastructure.storage.RecordFileRepository;
 import com.adaiadai.core.infrastructure.storage.IdentityFileRepository;
@@ -35,6 +39,9 @@ class BriefAppServiceTest {
     private IdentityFileRepository identityRepository;
     private BriefAppService briefAppService;
     private AiClient aiClient;
+    private TodoRepository todoRepository;
+    /** RFC 20260923：记录最后一次交给 AI 的 prompt，用于断言注入闸门。 */
+    private RecordingAiClient recordingAi;
 
     @BeforeEach
     void setUp() {
@@ -45,7 +52,11 @@ class BriefAppServiceTest {
         identityRepository = new IdentityFileRepository(fileStorage);
         MemoryService memoryService = new MemoryService(fileStorage);
         TradingReviewFileRepository reviewRepo = new TradingReviewFileRepository(fileStorage);
-        aiClient = new TestAiClient();
+        // RFC 20260923 A 批：待办注入闸门测试需要可控的 OPEN 待办；默认空清单（不影响既有用例）
+        todoRepository = mock(TodoRepository.class);
+        when(todoRepository.findAll(any(), any())).thenReturn(List.of());
+        recordingAi = new RecordingAiClient(new TestAiClient());
+        aiClient = recordingAi;
         briefAppService = buildService(tagIndexService);
     }
 
@@ -65,7 +76,7 @@ class BriefAppServiceTest {
                         trading, mock(com.adaiadai.core.domain.trading.AdviceHistoryRepository.class)),
                 new DomainActivityService(recordRepository),
                 new TagRecommendationService(tagIndexService),
-                mock(TodoRepository.class),
+                todoRepository,
                 // G-2：PluginService（trading 插件开启——简报交易活动信号测试用）
                 pluginService("trading")
         );
@@ -186,5 +197,83 @@ class BriefAppServiceTest {
         assertEquals("🌇", BriefAppService.emojiForHour(17));
         assertEquals("✨", BriefAppService.emojiForHour(18));
         assertEquals("✨", BriefAppService.emojiForHour(23));
+    }
+
+    // ── RFC 20260923 A 批：周期习惯不是待办（概览卡天天提醒的止血闸门）──
+
+    @Test
+    void isRhythmLike_distinguishesRhythmFromOneOffTasks() {
+        // 周期习惯 → 命中（不该被当待办催）
+        assertTrue(BriefAppService.isRhythmLike("周四固定发版加班"), "生产实据原句必须命中");
+        assertTrue(BriefAppService.isRhythmLike("每周四发版"));
+        assertTrue(BriefAppService.isRhythmLike("每周给妈打个电话"));
+        assertTrue(BriefAppService.isRhythmLike("每天跑步半小时"));
+        assertTrue(BriefAppService.isRhythmLike("每月 1 号交房租"));
+        assertTrue(BriefAppService.isRhythmLike("周三固定例会"));
+        // 一次性任务 → 不得命中（否则真待办会被静默吞掉）
+        assertFalse(BriefAppService.isRhythmLike("周四要交周报"), "含「周四」但非周期，不得误伤");
+        assertFalse(BriefAppService.isRhythmLike("给妈打个电话"));
+        assertFalse(BriefAppService.isRhythmLike("整理上周复盘"));
+        assertFalse(BriefAppService.isRhythmLike("准备周会材料"));
+        assertFalse(BriefAppService.isRhythmLike(null));
+    }
+
+    @Test
+    void buildBriefPrompt_rhythmTodoHeldBack_fromRemindSection() {
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of(
+                new Todo("todo_rhythm", "周四固定发版加班", TodoStatus.OPEN, null,
+                        java.time.LocalDate.now(), java.time.LocalDate.now()),
+                new Todo("todo_task", "周四要交周报", TodoStatus.OPEN, null,
+                        java.time.LocalDate.now(), java.time.LocalDate.now())));
+
+        briefAppService.generateBrief("default");
+
+        String prompt = recordingAi.lastPrompt;
+        assertNotNull(prompt, "应捕获到简报 prompt");
+        assertFalse(prompt.contains("周四固定发版加班"),
+                "周期性习惯不得进入提醒段（闸 2）");
+        assertTrue(prompt.contains("周四要交周报"),
+                "同批的一次性任务仍应正常注入——闸门只挡节律，不吞真待办");
+        // 正面成因（原「发现习惯就自然提及」指令）已删除，且新增禁止编造提醒的规则 8
+        assertFalse(prompt.contains("mention it naturally"), "习惯注入指令应已删除");
+        assertTrue(prompt.contains("Never invent reminders"), "规则 8 应存在");
+    }
+
+    @Test
+    void buildBriefPrompt_allRhythmTodos_sectionAbsent() {
+        when(todoRepository.findAll(TodoStatus.OPEN, "default")).thenReturn(List.of(
+                new Todo("todo_rhythm", "每天跑步半小时", TodoStatus.OPEN, null,
+                        java.time.LocalDate.now(), java.time.LocalDate.now())));
+
+        briefAppService.generateBrief("default");
+
+        assertFalse(recordingAi.lastPrompt.contains("Open todos (not done"),
+                "全是节律时提醒段整体缺席——沉默是默认项（宁可少说）");
+    }
+
+    /** 记录最后一次 prompt 的 AiClient 装饰器（其余行为委托 TestAiClient）。 */
+    private static final class RecordingAiClient implements AiClient {
+        private final AiClient delegate;
+        String lastPrompt;
+
+        RecordingAiClient(AiClient delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public AiUnderstanding understand(ContextPackage contextPackage) {
+            this.lastPrompt = contextPackage.prompt();
+            return delegate.understand(contextPackage);
+        }
+
+        @Override
+        public String generate(ContextPackage contextPackage, String systemPrompt) {
+            return delegate.generate(contextPackage, systemPrompt);
+        }
+
+        @Override
+        public String recognizeIntent(String content) {
+            return delegate.recognizeIntent(content);
+        }
     }
 }
