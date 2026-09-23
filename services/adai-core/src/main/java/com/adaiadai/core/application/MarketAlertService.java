@@ -59,6 +59,13 @@ public class MarketAlertService {
      * 返回的是**上一交易日**收盘数据——生产实锤（2026-08-27 09:00）：推「今日跌 -3.11%」实为前日
      * 跌幅；且 signature=symbol:date:type 被旧数据烧掉当日名额，盘中真触发同类型异动反而不再推。
      * 首轮改 10:00（开盘 30 分钟后，行情确定是当日数据）一并根治措辞与去重两个问题。
+     * <p>
+     * <b>唯一真相源</b>（P1-交易63，2026-09-23 生产实锤）：本常量即生效口径，`application.yml` 里
+     * <b>不再配置</b> `adai.market.alert.poll-cron`——因为 2026-08-30 那次只改了这里、yml 仍留着旧值
+     * `9-11,13-15`，而配置值优先于 `@Scheduled` 的默认值 → 首轮 10:00 的修复**空转近一个月**，
+     * 09:00/09:30 继续用上一交易日收盘价判异动、并把它当「现价」推给用户（09-23 09:00 实据）。
+     * 临时调整走环境变量 `ADAI_MARKET_ALERT_POLL_CRON`；若有人把这个键加回 yml，
+     * {@code MarketAlertCronConfigTest} 会红。
      */
     static final String CRON_POLL = "0 */30 10-11,13-15 * * MON-FRI";
 

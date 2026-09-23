@@ -517,4 +517,32 @@ class TradingLedgerIntegrityTest {
         TradingAppService.IntegrityReport report = service.integrity(USER);
         assertTrue(report.note().contains("没有记录快照文件日期"), report.note());
     }
+
+    /**
+     * P2-交易62（2026-09-23 修）：**降级流水非空 + 锚定无文件日期（老数据）**这一组合，
+     * 原文案落进 `inferred=false` 的**确定语气**「已含在券商快照内」——而机制上「文件日期没记录」
+     * 只代表**不可判定**（`positionsDateInferred()` 刻意返回 false，不诬告），并不等于「确定没被推断过」。
+     * 现在：能判定 → 原语气；不可判定 → 明说不可判定。
+     */
+    @Test
+    void integrity_degradedWithUnknownFileDate_saysUnknownInsteadOfAsserting() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 18);
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 100, "46.0")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 100, "46.85", anchorDate,
+                        LocalTime.of(14, 53), "65872510", new BigDecimal("1.79"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, null, null, null), // 有锚定、无文件日期（老锚定）
+                List.of(new SnapshotHolding("600206", "有研新材", 100))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+
+        assertEquals(1, report.degraded().size(), report.note());
+        assertTrue(report.note().contains("无法判断锚定日是否被归一化推断过"),
+                "无文件日期时不得用确定语气，实际: " + report.note());
+        assertFalse(report.note().contains("已含在券商快照内，只记流水、未重复计入持仓"),
+                "不可判定不得冒充确定，实际: " + report.note());
+    }
 }

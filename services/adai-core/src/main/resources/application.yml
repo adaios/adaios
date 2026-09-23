@@ -65,12 +65,16 @@ adai:
     # WorkingDirectory=/opt/adaios/backend 解析成 /opt/data/...（不可写）→ 生产全部标的「除权因子读取失败」。
     adj-path: ${ADAI_ADJ_PATH:../../data/market/adj}
     # Phase 2 行情异动主动推送（MarketAlertService）：交易时段轮询持仓，命中阈值写推送事件入 Feed。
-    # cron 默认工作日 9-11/13-15 点每 30 分钟；阈值单位=百分比。
+    # ⚠️ 轮询 cron **不在本文件配置**（阈值单位=百分比）：唯一真相源是代码常量
+    # `MarketAlertService.CRON_POLL`（工作日 10-11 / 13-15 点每 30 分钟，首轮 10:00）。
+    # 历史教训（P1-交易63，2026-09-23 生产实锤）：2026-08-30 把首轮从 09:00 改到 10:00 时只改了代码
+    # 默认值，这里仍留着旧值 `9-11,13-15` —— 而配置值优先于 `@Scheduled` 的默认值，于是那次修复空转，
+    # 直到 09-23 09:00 又推出一条「有研新材 现价 49.95」（实为前一日收盘价）才被发现。
+    # 临时调整请用环境变量（别在本文件加回来）：ADAI_MARKET_ALERT_POLL_CRON="0 */30 10-11,13-15 * * MON-FRI"
     alert:
       loss-threshold: 3.0     # 单日跌幅 ≥3% → 止损预警
       gain-threshold: 5.0     # 单日涨幅 ≥5% → 放飞提示
       break-cost-enabled: true # 现价跌破成本线 → 风控提醒
-      poll-cron: 0 */30 9-11,13-15 * * MON-FRI
   ai:
     provider: deepseek  # 唯一实现，API Key 在 .env 中配置
     model: deepseek-v4-pro      # 旗舰推理模型（复盘等深度场景，2026-08-26 模型分层 S-10）

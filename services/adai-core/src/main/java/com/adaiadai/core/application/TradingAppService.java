@@ -360,14 +360,25 @@ public class TradingAppService {
                 : String.format("账实不符：%d 只标的持仓不一致、%d 笔回放缺口（锚定日 %s）——"
                         + "先核对逐笔流水，再决定是否重导券商快照重建口径",
                         drift.size(), gaps.size(), anchorDate);
+        // P2-交易62（2026-09-23 修）：文件日期未记录时 `positionsDateInferred()` 刻意返回 false（不诬告），
+        // 但那**不等于**「确定没被推断过」——原实现只在 degraded 为空时才说这句「无法判断」，一旦有降级
+        // 流水就落到 `inferred=false` 的**确定语气**（「已含在券商快照内」）＝拿不到证据却断言确定。
+        // 现在把「能判定」与「不可判定」分开，两种情形各有各的话。
+        boolean fileDateUnknown = anchor.positionsReplace() != null && anchor.positionsFileDate() == null;
         if (!degraded.isEmpty()) {
-            note += anchorInferred
-                    ? String.format("；⚠️ 另有 %d 笔成交只记了流水、没进持仓（成交日 = 锚定日 %s，而锚定日是按导入时刻"
-                            + "从文件日期 %s 推断的）——这份快照若实际不是 %s 的收盘状态，这些成交就不会体现在持仓里，"
-                            + "请核对后重导一次「持仓股」快照", degraded.size(), anchorDate, fileDateText, anchorDate)
-                    : String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）已含在券商快照内，只记流水、未重复计入持仓",
-                            degraded.size(), anchorDate);
-        } else if (anchor.positionsReplace() != null && anchor.positionsFileDate() == null) {
+            if (anchorInferred) {
+                note += String.format("；⚠️ 另有 %d 笔成交只记了流水、没进持仓（成交日 = 锚定日 %s，而锚定日是按导入时刻"
+                        + "从文件日期 %s 推断的）——这份快照若实际不是 %s 的收盘状态，这些成交就不会体现在持仓里，"
+                        + "请核对后重导一次「持仓股」快照", degraded.size(), anchorDate, fileDateText, anchorDate);
+            } else if (fileDateUnknown) {
+                note += String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）只记了流水、未进持仓；但这份锚定没有"
+                        + "记录快照文件日期，无法判断锚定日是否被归一化推断过 —— 若这份快照的实际基准日不是 %s，"
+                        + "这些成交就不会体现在持仓里，请核对后决定是否重导", degraded.size(), anchorDate, anchorDate);
+            } else {
+                note += String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）已含在券商快照内，只记流水、未重复计入持仓",
+                        degraded.size(), anchorDate);
+            }
+        } else if (fileDateUnknown) {
             // 文件日期未记录（老数据 / 历史导入）：无法判断锚定日是否被推断——如实说明，不假装确定
             note += "；ℹ️ 这份锚定没有记录快照文件日期，无法判断锚定日是否被归一化推断过";
         }

@@ -230,6 +230,38 @@ class TradingSessionPushServiceTest {
         assertFalse(content.contains("昨收"), "不得拿空洞数字充数，实际: " + content);
     }
 
+    /**
+     * P2-交易68（2026-09-23）：09:15 是盘前（集合竞价 09:15 才开始），行情源此刻返回的「现价」就是昨收
+     * → `changePercent` 恒 0.00%；原文案渲染成 `昨收 94.74（0%）`，于是每天早盘固定出现 5 个 0%，
+     * 用户当场质疑「都是 0%？」。改为**非零才带涨跌幅**。
+     */
+    @Test
+    void morningPlan_zeroChangePercent_omitsThePercentInsteadOfShowingZero() {
+        Rig rig = new Rig();
+        rig.quotes = Map.of(
+                "000725", quote("000725", "5.46", "0.0"),
+                "600519", quote("600519", "1420.00", "0.00"));
+        TradingSessionPushService svc = rig.build();
+
+        svc.morningPlan();
+
+        String content = capture(rig.channel).content();
+        assertTrue(content.contains("昨收 5.46"), "昨收本身仍要给，实际: " + content);
+        assertFalse(content.contains("%）"), "盘前恒 0 的今日涨跌幅不该出现（既无信息又像行情坏了），实际: " + content);
+    }
+
+    /** 反向：真的是盘中数据（changePercent 非 0）时，涨跌幅照旧要显示——别把有用信息一起砍掉。 */
+    @Test
+    void morningPlan_nonZeroChangePercent_stillShowsPercent() {
+        Rig rig = new Rig();
+        TradingSessionPushService svc = rig.build();
+
+        svc.morningPlan();
+
+        assertTrue(capture(rig.channel).content().contains("（+1.2%）"),
+                "盘中涨跌幅必须保留，实际: " + capture(rig.channel).content());
+    }
+
     @Test
     void morningPlan_buyPointHit_rendersFourElements() {
         Rig rig = new Rig();
@@ -475,6 +507,49 @@ class TradingSessionPushServiceTest {
         assertTrue(content.contains("我还没看到"), "未同步不得硬出一份复盘，实际: " + content);
         // 不落标记：用户补导之后仍要能拿到真正的复盘（D4「可晚于 15:30」）
         verify(rig.syncState, never()).markDailyReview(any(), any());
+    }
+
+    /**
+     * P2-交易67（2026-09-23）：**没导快照、但系统已经把账算出来了**（15:05 收盘更新写 `snapshotDate=今天`）
+     * ——这时不该再回「快照我还没看到」。无交易日用户没有成交、也就没有理由去导快照，
+     * 原行为让他结构上永远收不到复盘（用户 09-23 原话「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」）。
+     */
+    @Test
+    void closeSummary_notSyncedButSelfCalculatedAccount_stillReviewsWithSourceNote() {
+        Rig rig = new Rig(); // syncState 默认空 → 今天没同步
+        LocalDate today = LocalDate.now();
+        rig.account = new AccountSnapshot(new BigDecimal("129867.01"), new BigDecimal("24101.01"),
+                new BigDecimal("24101.01"), new BigDecimal("24101.01"),
+                new BigDecimal("105766.00"), new BigDecimal("21087.30"),
+                new BigDecimal("278.00"), new BigDecimal("150000"), today,
+                AccountSnapshot.SOURCE_CALC);
+        TradingSessionPushService svc = rig.build();
+
+        svc.closeSummaryPush();
+
+        String content = capture(rig.channel).content();
+        assertTrue(content.contains("📋 收盘复盘"), "有自算账就该照常复盘，实际: " + content);
+        assertTrue(content.contains("今天没等到你的成交导入"), "必须标注数据来源，实际: " + content);
+        assertFalse(content.contains("我还没看到"), "不得再自称没数据，实际: " + content);
+        // 仍不落标记（与「未同步」同口径）：他随后补导快照，还要能拿到含成交的那一版
+        verify(rig.syncState, never()).markDailyReview(any(), any());
+    }
+
+    /** 反向：账的日期不是今天（旧快照）→ 不得拿旧账冒充今天，仍按「还没看到」如实说。 */
+    @Test
+    void closeSummary_staleAccountStillSaysNotSeen() {
+        Rig rig = new Rig();
+        rig.account = new AccountSnapshot(new BigDecimal("100000"), new BigDecimal("10000"),
+                new BigDecimal("10000"), new BigDecimal("10000"),
+                new BigDecimal("90000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("150000"), LocalDate.now().minusDays(3),
+                AccountSnapshot.SOURCE_CALC);
+        TradingSessionPushService svc = rig.build();
+
+        svc.closeSummaryPush();
+
+        assertTrue(capture(rig.channel).content().contains("我还没看到"),
+                "旧日期的账不能冒充今天");
     }
 
     @Test

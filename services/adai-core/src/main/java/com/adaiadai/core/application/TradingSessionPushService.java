@@ -103,6 +103,15 @@ public class TradingSessionPushService {
      *  之前的导入只记状态，留给 15:30 兜底（那时账最新，避免「先导持仓就发一条、成交随后才导」的残缺复盘）。 */
     static final LocalTime REVIEW_TRIGGER_FROM = LocalTime.of(15, 0);
 
+    /**
+     * P2-交易67（2026-09-23）：**没导快照、但有系统自算账**时，复盘正文末尾的口径标注。
+     * <p>
+     * 有它，用户才知道「这份复盘的数据从哪来」；没它，就成了拿自算数冒充券商对账结果。
+     * 措辞保持阿呆口吻（不用「系统」「口径」这类视角词）。
+     */
+    static final String SELF_CALC_NOTE =
+            "\n（今天没等到你的成交导入——持仓和盈亏是我按行情自己算的，导一次快照我会更准。）";
+
     private final PositionRepository positionRepository;
     private final MarketDataSource marketDataSource;
     private final AccountRepository accountRepository;
@@ -301,8 +310,15 @@ public class TradingSessionPushService {
                     sb.append("· ").append(p.name()).append("：这只的行情我没取到，今天给不了数字\n");
                     continue;
                 }
+                // P2-交易68（2026-09-23）：09:15 是**盘前**（集合竞价 09:15 才开始），行情源此刻返回的
+                // 「现价」就是昨收 → changePercent 必然 0.00%；原样渲染会让每天早盘固定出现 5 个
+                // 「（0%）」，既无信息量、又像行情坏了（用户 09-23 当场质疑「都是 0%？」）。
+                // 改为「非零才带涨跌幅」：盘前文案干净，盘后重跑仍有信息（真平盘时省掉也不损失什么）。
+                java.math.BigDecimal pct = md.changePercent();
+                String pctText = pct != null && pct.compareTo(java.math.BigDecimal.ZERO) != 0
+                        ? "（" + signed(pct) + "%）" : "";
                 sb.append("· ").append(p.name()).append(" 昨收 ").append(fmt(md.price()))
-                        .append("（").append(signed(md.changePercent())).append("%）")
+                        .append(pctText)
                         .append(" · 数量 ").append(p.quantity())
                         .append(" · 成本 ").append(fmt(p.avgCost()))
                         .append(" · 止损 ").append(p.effectiveStopLoss() != null
@@ -591,16 +607,46 @@ public class TradingSessionPushService {
             return;
         }
         if (!state.syncedOn(today)) {
-            pushToAll(userId, "收盘复盘",
-                    "今天的持仓/成交快照我还没看到，导一下我再给你复盘。",
-                    "close-summary", null, null,
-                    "今天的账我还没看到。打开阿呆看看怎么导。");
-            log.info("收盘复盘：今天还没同步，如实说 | userId={}", userId);
+            // P2-交易67（2026-09-23）：把「用户今天没导快照」与「今天根本没有账」分开。
+            // 15:05 的收盘账户更新会用行情把账算出来（snapshotDate=今天、todayPnlSource=calc），
+            // 那**是有账的**——原实现一律回「快照我还没看到，导一下」，把「系统已自算」说成「没数据」；
+            // 而当天没成交的用户根本没有理由去导快照 → 结构上永远收不到复盘
+            //（用户 2026-09-23 16:32 原话：「那我今天没有买卖 怎么告诉你呢 你还在等我的数据」）。
+            if (!hasSelfCalculatedAccount(userId, today)) {
+                pushToAll(userId, "收盘复盘",
+                        "今天的持仓/成交快照我还没看到，导一下我再给你复盘。",
+                        "close-summary", null, null,
+                        "今天的账我还没看到。打开阿呆看看怎么导。");
+                log.info("收盘复盘：今天既没同步、也没有自算账，如实说 | userId={}", userId);
+                return;
+            }
+            // 有自算账 → 照常复盘，但正文末尾必须标注数据来源。
+            // 刻意**不落「已推」标记**（与原文一致）：他随后补导快照时，仍要能拿到那条含成交的复盘。
+            pushToAll(userId, "收盘复盘", buildDailyReview(userId, today) + SELF_CALC_NOTE,
+                    "close-summary", null, null, lockDailyReview(userId, today));
+            log.info("收盘复盘：今天没导快照，但有系统自算账 → 照常复盘并标注来源 | userId={}", userId);
             return;
         }
         String content = buildDailyReview(userId, today);
         pushToAll(userId, "收盘复盘", content, "close-summary", null, null, lockDailyReview(userId, today));
         syncStateRepository.markDailyReview(userId, today);
+    }
+
+    /**
+     * P2-交易67：今天有没有「系统自己算出来的账」——15:05 收盘账户更新会写 {@code snapshotDate=今天}
+     * （{@code todayPnlSource=calc}），**即使一整天没有任何导入**。
+     * <p>
+     * 读失败 / 无快照一律按 false：宁可说「还没看到账」，也不拿旧日期的账冒充今天。
+     */
+    private boolean hasSelfCalculatedAccount(String userId, LocalDate today) {
+        try {
+            return accountSnapshotRepository.findLatest(userId)
+                    .map(s -> today.equals(s.snapshotDate()))
+                    .orElse(false);
+        } catch (RuntimeException e) {
+            log.warn("收盘复盘：读账户快照失败，按「没有账」处理 | userId={} | {}", userId, e.getMessage());
+            return false;
+        }
     }
 
     /**
