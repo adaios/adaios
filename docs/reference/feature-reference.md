@@ -862,6 +862,25 @@ Strict format:
 
 ---
 
+## 10b. 节律模块（Kernel builtin，RFC 20260923 B 批）
+
+**定位**：与待办同级的内置能力，**但节律不是待办**——待办是一次性、有终点的动作（`OPEN`/`DONE`）；节律是周期性复现的习惯（每周四发版、每天跑步），**没有「完成」这个状态**（用户 2026-09-23 原话：「这是我的工作周期习惯，不是待办」）。
+
+**表示**：`recurrence` 用 **RRULE**（iCalendar / RFC 5545 子集）——`FREQ=DAILY|WEEKLY|MONTHLY`（必填）+ `INTERVAL` / `BYDAY` / `BYMONTHDAY` / `UNTIL`（可选）；非法周期当场 400 人话，**未知部件拒绝而非静默忽略**（静默忽略会造出「看起来对、其实不是你说的那个周期」）。
+
+**状态**：`ACTIVE` / `PAUSED` / `RETIRED`（**刻意无 DONE**）；带 `validFrom`（生效日，兼 RRULE 的 anchor）与 `validUntil`（失效日，含当日）——「这周四不用加班」改 `validUntil` 或转 `PAUSED`，**不删条目**（历史保留）。
+
+**存储**：`data/{userId}/rhythm/YYYY/MM.md`（File First；条目格式与兼容性见 `data-format-freeze.md` §2.24）。
+
+**入口**：
+- **记录自动分流**：可执行记录里含周期表述 → **先试节律**（`RecordToRhythmLinker`），推不出 RRULE 才回落待办；
+- **端点**：`GET|POST /api/v1/rhythms` + `PUT|DELETE /api/v1/rhythms/{id}`（**无插件门控**）；
+- App / Web **暂无独立入口**（RFC §七 T3 拍板：暂不给入口，命中时在概览卡作为背景出现）。
+
+**在概览卡的形态**：**只在 RRULE 命中当天**注入，且口径写明「背景，不要提醒、不要问要不要做」（`BriefAppService` 闸 1）——节律是概率不是承诺。
+
+**已知边界**：`detectRrule` 只覆盖 每天 / 每周 / 每月——「每季度 / 每年 / 定期 / 例行」能通过周期性判据（因此不会被当待办天天催），但**不转节律**，回落为待办。
+
 ## 11. 搜索模块
 
 ### 功能描述
