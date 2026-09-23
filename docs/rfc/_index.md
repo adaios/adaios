@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-23
+updated: 2026-09-24
 status: active
-lines: 88
+lines: 89
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260924-trading-app-form.md | 交易 App 端形态重做——「一句判断 + 一行持仓」与截图入账三条主线（触发＝用户 2026-09-24「我对 app 端的交易插件还是不满意」+ Shopify 回归原生引出的「app 与 web 是两个角度」；七问收敛焦点＝无主心骨/主线不顺/太常规；首屏四层形态 + 截图入账三卡点解法 + 不做边界 + 三批实施）| draft |
 | 20260923-rhythm-and-memory-temporality.md | 节律与记忆时效——「每周四发版」不是待办（概览卡天天提醒的根因与治法：节律独立为 Kernel 一等条目（RRULE）+ 记忆 bi-temporal 有效期 + 简报注入三闸 + 变更走「问一句」；触发＝用户 2026-09-23「阿呆 app 概览卡片天天提醒我」）| draft |
 | 20260923-market-data-resilience.md | 行情（K 线）链路韧性——域名可配 + 第三源 + 可用性可见（2026-09-22 三条源同时失效：腾讯 K 线被 WAF 拦 501 / 东财被限 / tdx 滞后；治法 A 域名可配（默认备用域名 + 区间本地裁剪）· B 新浪作最后一层兜底 · D 健康端点 + 双端横幅）| implemented |
 | 20260922-trading-decision-copilot.md | 交易插件目标形态——决策时点的对话式提醒与四要素铁证（日线/早盘买尾盘卖 → 只在早盘与尾盘出现、收盘后复盘；每条意见必须带本人历史统计 + 数字证据 + 规则原文 + 可回溯；账收盘后同步、行情自取）| approved |
