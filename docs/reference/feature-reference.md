@@ -1156,7 +1156,7 @@ POST /api/v1/records/retry
 - `ios/Runner/Runner.entitlements`：`aps-environment=development`（沙箱，对应 development 签名；上架时 Xcode 自动改写为 production）。
 - `Runner.xcodeproj`：Runner target **三个构建配置**（Debug/Release/Profile）都挂 `CODE_SIGN_ENTITLEMENTS`。
 - `AppDelegate.swift`：`UNUserNotificationCenter` delegate（复用 FlutterAppDelegate 既有的协议遵循，方法加 `override`）；注册远程通知；token/失败/点击三个回调经 MethodChannel `adai/push` 交给 Dart；**前台也弹横幅**；点击通知 → Dart 切回 Feed 并刷新。
-- `PushService`（Dart）：仅 iOS 原生生效（`supported` 守卫），Web/PWA/Android 降级为 unavailable；登录后 init（申请权限 → 取 token → 上报）；登出注销本机设备；权限被拒时给「去开启」引导。
+- `PushService`（Dart）：仅 iOS 原生生效（`supported` 守卫），非 iOS 平台（Web / Android）降级为 unavailable；登录后 init（申请权限 → 取 token → 上报）；登出注销本机设备；权限被拒时给「去开启」引导。
 
 ### 验证方法（配完 .p8 后）
 
