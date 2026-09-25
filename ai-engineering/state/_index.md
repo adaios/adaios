@@ -3,9 +3,9 @@ title: state 状态层索引
 description: AI 工程状态层目录治理——完成度/测试数/未修项动态真相（指针化，物理文件在 docs/；聚合问答用 guard-* 命令现算）
 version: 2
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-09-26
 status: active
-lines: 70
+lines: 71
 depends-on: []
 related:
   - ../README.md
@@ -27,6 +27,7 @@ tags: [ai, meta, index, state]
 | 产品蓝图 | `docs/architecture/product-roadmap.md` | 路线变更时 |
 | 待办（P2/P3）| `docs/reference/task-log.md` | 走查后迁移 |
 | 成本日志 | `state/cost-log.jsonl` | guard-cost --record |
+| 协作默契游标 | `state/cadence.json`（gitignore，本机状态）| cadence.sh / guard-prod.sh 每次跑完自动写 |
 
 ## 聚合问答命令（现算不复制，2026-08-23 补齐「三问」）
 

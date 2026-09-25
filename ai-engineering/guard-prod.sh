@@ -442,3 +442,16 @@ check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App �
 # 2026-09-24：公安联网备案已通过（京公网安备11011402057309号）且底部挂载已部署 → 本倒数项撤下（不再倒计时）
 check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
 echo
+
+# ── 游标记账（2026-09-26「默契」机制，见 process/cadence.md）──────────────────
+# 无论谁跑（人直接跑，或 cadence.sh daily 调度）都记下「已巡检到哪天」，
+# 于是下次「每日巡检」能自动接着走，而不是永远重复同一个窗口。
+#   · 只前进不后退（cadence_advance_day），补看历史不会把游标拖回去
+#   · 带 --date 的补看**不记账**（补看 ≠ 覆盖今天），游标由 cadence.sh 统一推进
+#   · 全程失败静默：巡检是主角，记账是附注，不能因为记账拖垮巡检
+if [ "$JSON_ONLY" != "1" ] && [ -z "$ONLY_DATE" ]; then
+    if source "$(dirname "$0")/lib/cadence-lib.sh" 2>/dev/null; then
+        cadence_set inspection.last_at "$(date '+%Y-%m-%dT%H:%M:%S%z')" 2>/dev/null || true
+        cadence_advance_day inspection.covered_through "$(date +%F)" 2>/dev/null || true
+    fi
+fi

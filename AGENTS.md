@@ -3,9 +3,9 @@ title: AdaiOS AI 协作入口
 description: 任何 AI 工具打开本项目的统一入口——项目定位、协作规则、审查体系导航（工具无关）
 version: 1
 created: 2026-08-15
-updated: 2026-09-24
+updated: 2026-09-26
 status: active
-lines: 73
+lines: 76
 depends-on:
   - ai-engineering/README.md
 related:
@@ -34,7 +34,9 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 5. **File First**：`os/` 与 `data/` 知识以文件为准，数据库为查询存在；`data/` 隐私受 gitignore 保护，不提交
 6. **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）
 7. **讨论与实施分离**（2026-08-16 确立，2026-08-18 明确范围）：讨论方向/方案/数据口径时**只聊不动手**——用户明确说「开工 / 做 / 改」后才改**代码与 `data/` 数据资产**；未指示前不写代码。**本规则只约束代码/数据修改**；AI 工程建设层面文档（`ai-engineering/` 协作规范与流程、AGENTS.md 等）属工程自身持续维护，可直接修订。违背此条即越界（已发生一次：账户总盈亏口径讨论中擅自改代码）
-8. **触发词「每日巡检」（2026-09-16 用户确立：「以后我说每日巡检，你触发就好」）**：用户说出「**每日巡检**」四个字，AI **立即执行** `bash ai-engineering/guard-prod.sh`，并把结果**用人话讲给他听**——只讲三条：**① 用户之声**（他最近真问了什么、在骂什么）· **② 有没有新异常**（新类目的告警 / ERROR / 服务非 active）· **③ 心跳趋势**（他还在不在用）。**不堆原始日志**（扫描器噪音与老朋友的东财 Kline 已由脚本自动折叠）；巡检中发现的**产品反馈 / 新缺陷 → 提议登记，不擅自改代码**（受规则 7 约束）。用户**不必自己敲命令**——「每日巡检」就是他触发这条每日流程的唯一入口
+8. **触发词「每日巡检」（2026-09-16 用户确立：「以后我说每日巡检，你触发就好」）**：用户说出「**每日巡检**」四个字，AI **立即执行** `bash ai-engineering/cadence.sh daily`——它从**上次巡检覆盖到的日期**自动补看到今天（游标 `ai-engineering/state/cadence.json`，机制见 `ai-engineering/process/cadence.md`），不再永远重复同一个窗口；然后把结果**用人话讲给他听**——只讲三条：**① 用户之声**（他最近真问了什么、在骂什么）· **② 有没有新异常**（新类目的告警 / ERROR / 服务非 active）· **③ 心跳趋势**（他还在不在用）。**不堆原始日志**（扫描器噪音与老朋友的东财 Kline 已由脚本自动折叠）；巡检中发现的**产品反馈 / 新缺陷 → 提议登记，不擅自改代码**（受规则 7 约束）。用户**不必自己敲命令**——「每日巡检」就是他触发这条每日流程的唯一入口
+9. **触发词「收工」（2026-09-26 用户确立：「收尾/收工，提交 diff」）**：用户说「**收工**」（或「收尾」），AI 执行 `bash ai-engineering/cadence.sh ship`——一条命令出**本批 diff**（自上次收工基线以来已提交的 commit + 工作区未提交的清单与统计）、刷开工快照、成本入账，并把收工基线推到当前 commit。**不自动 `git commit`、不自动 push**：仓库可能有并发会话（`process/ship.md §7` 的真实事故），提交须按**显式路径** + `ADAI_BATCH_PATHS` 范围守卫，部署仍走 `deploy-gate.sh` + 用户确认
+10. **触发词「每周」「待办」（2026-09-26 确立）**：「**每周**」→ `bash ai-engineering/cadence.sh weekly`（每周审查 W1–W6 + 本周人肉清单 + 到期红线）；「**待办**」→ `bash ai-engineering/cadence.sh todo`（REVIEW 未修项一眼看全）。**开工第一眼**（或想确认当前节奏）跑 `bash ai-engineering/cadence.sh`（无参数 = 状态总览：上次巡检/上次收工/上次周审 + 欠账提醒）。四条默契的总表与游标机制见 `ai-engineering/process/cadence.md`
 
 ## 审查体系（ai-engineering/）
 
@@ -56,6 +58,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 沉淀检查 | `ai-engineering/guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `ai-engineering/deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）；同时把「本次应更新哪几端」写进生产 `DEPLOYED` |
 | **发版体检（发布前随时问）** | `ai-engineering/guard-release.sh` | **发布前**一条命令答「现在欠着什么没发」：生产当前 commit/上批清单/待 push 数 + **逐端判定**（后端 · Web 桌面端 · 管理后台 · **iOS App**）要发还是不用发 + 下一步命令（jar+deploy-gate / flutter build web+tar / TestFlight 构建号 N→N+1）；`--json` 可喂 AI。路径映射唯一真相源 `ai-engineering/lib/release-units.sh`（deploy-gate 共用）|
+| **协作默契（节奏总入口）** | `ai-engineering/cadence.sh` + `process/cadence.md` | **四条默契的唯一入口**（规则 8–10）：每日巡检（自动从上次覆盖日补看到今天）/ 收工（本批 diff + 刷快照 + 成本入账）/ 每周 / 待办；游标 `state/cadence.json`。无参数 = 状态总览（上次巡检·收工·周审 + 欠账）|
 | **生产日报（每日）** | `ai-engineering/guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
 | 每周审查 | `ai-engineering/weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|
 | 成本监控 | `ai-engineering/guard-cost.sh` | 读 DSH 会话按天/会话算钱；收工前 `--record`，开工看 `guard-context.sh` C6.5 |

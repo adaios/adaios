@@ -25,14 +25,20 @@ tags: [guide, routine, ops]
 
 ## 怎么用
 
-**日常只需要一句话：对 AI 说「每日巡检」**（触发协议见 `AGENTS.md` 规则 8）——AI 跑第一条命令并用人话讲结果，你不用敲任何东西。
-需要自己查时，四条命令都能直接跑：
+**日常只需要一句话**——「每日巡检 / 收工 / 每周 / 待办」四个词，AI 自动跑对应动作（触发协议见 `AGENTS.md` 规则 8–10，机制见 `ai-engineering/process/cadence.md`）。**默契的核心是「接着上次走」**：AI 记得上次巡检覆盖到哪天、上次收工是哪个 commit，你不用交代。
 
 ```bash
-bash ai-engineering/guard-prod.sh                 # 生产日报：生产日志 + 真实对话卡片（每日第一眼）
-bash ai-engineering/guard-context.sh            # 开工自动跑：状态/未修项/待办/C0 使用心跳
-python3 scripts/check_deadlines.py               # 到期红线（≤30 天告警，≤7 天紧急）
-bash ai-engineering/guard-unfixed.sh             # 未修问题全量（REVIEW + task-log + audits）
+bash ai-engineering/cadence.sh          # 节奏总览：上次巡检/收工/周审 + 欠账（秒回，开工第一眼）
+bash ai-engineering/cadence.sh daily    # 每日巡检：自动从上次覆盖日补看到今天，讲人话三条
+bash ai-engineering/cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账（不自动提交/部署）
+bash ai-engineering/cadence.sh weekly   # 每周：W1–W6 审查 + 本周人肉清单 + 到期红线
+bash ai-engineering/cadence.sh todo     # 待办：REVIEW 未修项一眼看全
+
+# 单件工具（动作本体，需要深挖时用）：
+bash ai-engineering/guard-prod.sh       # 只跑今天 + 近 7 天趋势（不带增量）
+bash ai-engineering/guard-context.sh    # 开工自动跑：状态/未修项/待办/C0 使用心跳
+python3 scripts/check_deadlines.py      # 到期红线（≤30 天告警，≤7 天紧急）
+bash ai-engineering/guard-unfixed.sh    # 未修问题全量（REVIEW + task-log + audits）
 ```
 
 ---
@@ -67,11 +73,11 @@ bash ai-engineering/guard-unfixed.sh             # 未修问题全量（REVIEW +
 ### 0. 先看一眼生产日报（每天，1 分钟；2026-09-16 起固定）
 
 > **你不用敲命令**——对 AI 说「**每日巡检**」四个字即可（触发协议见 `AGENTS.md` 规则 8）：
-> AI 会跑下面这条命令，然后只用人话讲三件事：**用户之声 / 有没有新异常 / 心跳趋势**。
+> AI 跑 `cadence.sh daily`——**自动从上次巡检覆盖日补看到今天**（不再重复同一窗口），然后只用人话讲三件事：**用户之声 / 有没有新异常 / 心跳趋势**。
 > 想自己看时再手动跑：
 
 ```bash
-bash ai-engineering/guard-prod.sh
+bash ai-engineering/cadence.sh daily
 ```
 
 一条命令同时给两侧真相，**别看数字，看内容**：

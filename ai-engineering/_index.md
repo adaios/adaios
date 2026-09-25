@@ -3,9 +3,9 @@ title: ai-engineering 目录索引
 description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-16
+updated: 2026-09-26
 status: active
-lines: 81
+lines: 84
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -40,6 +40,7 @@ tags: [ai, meta, index]
 | process/audit.md | 全维度走查流程 | active |
 | process/review.md | 增量深审流程 | active |
 | process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
+| process/cadence.md | **协作默契总表**（每日巡检 / 收工 / 每周 / 待办四条节奏 + 游标机制 + 触发协议 + 边界）| active |
 | guard-meta.sh | 元治理自检（frontmatter 图谱/lines/孤儿/正文路径，`--fix` 回写）| active |
 | guard-roadmap.sh | 规划状态对拍（roadmap 体检 + 漂移检查）| active |
 | guard-unfixed.sh | 未修复问题总清单（REVIEW/task-log/audits 四源聚合 + 对账）| active |
@@ -49,6 +50,8 @@ tags: [ai, meta, index]
 | guard-context.sh | 任务上下文注入（开工前清单，进攻侧）| active |
 | guard-sediment.sh | 沉淀检查（坑/ADR/出表/登记，进攻侧②③）| active |
 | guard-cost.sh | 成本监控（读 DSH 会话日志按天/会话算钱，防守侧）| active |
+| cadence.sh | **协作默契执行器**（每日巡检 / 收工 / 每周 / 待办 的唯一入口；游标 `state/cadence.json`，总表见 `process/cadence.md`）| active |
+| lib/cadence-lib.sh | 游标库——「上次到哪」的唯一存储（读写 / 只前进 / 日期算术；cadence.sh 与 guard-prod.sh 共用）| active |
 | guard-prod.sh | **生产日报**（生产日志 + 真实对话卡片；4xx/5xx 自动分「扫描器/探针/设计语义/待关注」，每日流程第一眼）| active |
 | deploy-gate.sh | 部署门禁+smoke（触发侧，最硬闸门）| active |
 | weekly-audit.sh | 每周审查（cron，防休眠）| active |
