@@ -60,6 +60,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 备案图标（公安联网备案平台下载的「备案图标.png」，2026-09-24）
+  assets:
+    - assets/images/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

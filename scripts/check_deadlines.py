@@ -29,13 +29,6 @@ CRIT_DAYS = 7
 # ── 已登记到期项（date 为到期当天）──────────────────────────────────
 DEADLINES = [
     dict(
-        date="2026-09-30",
-        title="公安联网备案（ICP 备案后 30 天内）",
-        impact="逾期可能被要求整改 / 影响站点合规",
-        action="见 docs/deployment/icp-filing.md §6（beian.mps.gov.cn 提交）；通过后把公安备案号挂站点底部",
-        ref="REVIEW P1-合规1",
-    ),
-    dict(
         date="2027-01-30",
         title="域名 adaiadai.com 到期（DNSPod）",
         impact="域名失效 → web / API / PWA / iOS App 全部不可达",

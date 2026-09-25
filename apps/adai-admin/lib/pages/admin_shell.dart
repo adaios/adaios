@@ -8,7 +8,7 @@ import '../services/data_api_store.dart';
 import '../services/knowledge_api_store.dart';
 import '../services/system_api_store.dart';
 import '../theme/app_colors.dart';
-import '../utils/open_url.dart';
+import '../widgets/filing_bar.dart';
 import 'accounts/accounts_page.dart';
 import 'data/data_page.dart';
 import 'knowledge/knowledge_page.dart';
@@ -390,32 +390,11 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 
-  /// 底部备案号栏（管局强制要求：网站底部悬挂 ICP 备案号并链接到 beian.miit.gov.cn）。
+  /// 底部备案栏（法定要求：网站底部悬挂备案号并链接到官方查询页）。
+  /// 2026-09-24 公安联网备案通过 → ICP + 公安两套编号并列（见 [FilingBar]）。
   Widget _buildIcpBar() {
     // P3-23（2026-09-06）：底部安全区——移动浏览器 Home 指示条不与 26px 条重叠
-    return SafeArea(top: false, child: Container(
-      height: 26,
-      decoration: const BoxDecoration(
-        color: AppColors.darkSurface,
-        border: Border(top: BorderSide(color: AppColors.darkBorder, width: 1)),
-      ),
-      child: Center(
-        child: InkWell(
-          onTap: () => openUrl('https://beian.miit.gov.cn'),
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              '京ICP备2026056893号',
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors.darkGrey5,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ),
-      ),
-    ));
+    return const SafeArea(top: false, child: FilingBar());
   }
 }
 

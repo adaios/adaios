@@ -24,7 +24,7 @@ tags: [meta, index, deployment]
 | ios-release.md | iOS 发布（TestFlight）：绕开云签名的分发签名方案 + 一条命令发版 | active |
 | testflight-external-testing.md | TestFlight 外部测试：邀请外人使用流程 + Beta 审核备注模板 + 测试员须知 | active |
 | icp-filing.md | 域名备案（ICP）资料整理与填报指引（adaiadai.com） | active |
-| gongan-filing.md | 公安联网备案办理清单：材料 / 六步流程 / 通过后挂载点（法定截止 2026-09-30） | active |
+| gongan-filing.md | 公安联网备案办理清单：材料 / 六步流程 / 通过后挂载点（**✅ 2026-09-24 已通过并挂载**；原法定截止 2026-09-30） | active |
 
 ## 过期判断
 

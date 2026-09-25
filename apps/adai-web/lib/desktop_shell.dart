@@ -10,7 +10,7 @@ import 'pages/trading_page.dart';
 import 'pages/learn_page.dart';
 import 'pages/search_page.dart';
 import 'pages/profile_page.dart';
-import 'utils/open_url.dart';
+import 'widgets/filing_bar.dart';
 
 /// 桌面壳 — 两栏（左导航 + 主内容区），参考元宝电脑端。
 ///
@@ -205,32 +205,9 @@ class _DesktopShellState extends State<DesktopShell> {
     ));
   }
 
-  /// 底部备案号栏（管局强制要求：网站底部悬挂 ICP 备案号并链接到 beian.miit.gov.cn）。
-  Widget _buildIcpBar() {
-    return Container(
-      height: 26,
-      decoration: const BoxDecoration(
-        color: AppColors.darkSurface,
-        border: Border(top: BorderSide(color: AppColors.darkBorder, width: 1)),
-      ),
-      child: Center(
-        child: InkWell(
-          onTap: () => openUrl('https://beian.miit.gov.cn'),
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              '京ICP备2026056893号',
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors.darkGrey5,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// 底部备案栏（法定要求：网站底部悬挂备案号并链接到官方查询页）。
+  /// 2026-09-24 公安联网备案通过 → 工信部 ICP + 公安部备案两套编号并列（见 [FilingBar]）。
+  Widget _buildIcpBar() => const FilingBar();
 
   Widget _buildNavRail() {
     return Container(

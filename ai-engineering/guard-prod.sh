@@ -439,6 +439,6 @@ check_expiry() {
     fi
 }
 check_expiry "iOS 描述文件 / 付费账号" "2027-09-13" "到期当天 App 打不开：提前续费 + 重签（见 docs/deployment/ios-release.md §到期与应急）"
-check_expiry "公安联网备案期限" "2026-09-30" "ICP 后 30 天内必须办完（REVIEW P1-合规1，www.beian.gov.cn）"
+# 2026-09-24：公安联网备案已通过（京公网安备11011402057309号）且底部挂载已部署 → 本倒数项撤下（不再倒计时）
 check_expiry "域名 adaiadai.com" "2027-01-30" "DNSPod 续费"
 echo

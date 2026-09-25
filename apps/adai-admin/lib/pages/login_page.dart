@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_exception.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
+import '../widgets/filing_bar.dart';
 
 /// 登录页 — RFC 20260901-auth-login / REVIEW #178（admin 并入统一登录）。
 ///
@@ -247,10 +248,8 @@ class _LoginPageState extends State<LoginPage> {
                     child: Text(_showSetup ? '返回登录' : '首次使用？设置密码',
                         style: const TextStyle(fontSize: 13, color: AppColors.darkGrey4)),
                   ),
-                const SizedBox(height: 40),
-                const Text('京ICP备2026056893号',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 10, color: AppColors.darkGrey5, letterSpacing: 0.5)),
+                const SizedBox(height: 32),
+                const FilingLinks(),
               ],
             ),
           ),
