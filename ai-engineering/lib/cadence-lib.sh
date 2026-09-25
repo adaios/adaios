@@ -54,6 +54,12 @@ try:
     d = json.loads(path.read_text(encoding='utf-8'))
 except Exception:
     d = {}
+if isinstance(val, str):
+    # 防御（2026-09-26 收工实测踩到）：调用方可能用 `head -c` 之类的**按字节**截断，
+    # 把多字节中文字符切成两半 → argv 里出现孤立代理对（surrogateescape 产物），
+    # 直接写 UTF-8 会抛 UnicodeEncodeError。先还原原始字节、再按 UTF-8 容错解码，
+    # 坏字节替换为 U+FFFD —— 记账绝不因脏字节中断。
+    val = val.encode('utf-8', 'surrogateescape').decode('utf-8', 'replace')
 if isinstance(val, str) and val.isdigit():
     v = int(val)
 elif val == 'true':
@@ -72,7 +78,7 @@ for k in ks[:-1]:
 cur[ks[-1]] = v
 path.parent.mkdir(parents=True, exist_ok=True)
 tmp = path.with_name(path.name + '.tmp')
-tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', errors='replace')
 os.replace(tmp, path)
 PY
 }

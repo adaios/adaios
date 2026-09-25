@@ -206,7 +206,7 @@ cmd_ship() {
 
     cadence_set ship.last_at "$(date '+%Y-%m-%dT%H:%M:%S%z')"
     cadence_set ship.head "$head"
-    cadence_set ship.subject "$(git log -1 --pretty=%s 2>/dev/null | head -c 120)"
+    cadence_set ship.subject "$(git log -1 --pretty=%s 2>/dev/null | cut -c1-120)"
     hr "游标"
     printf '  ✅ 收工基线 → %s\n' "$head"
 }

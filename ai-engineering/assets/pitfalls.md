@@ -3,9 +3,9 @@ title: 已知坑归集（Pitfalls）
 description: 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 checklists 活文档
 version: 1
 created: 2026-08-15
-updated: 2026-09-23
+updated: 2026-09-26
 status: active
-lines: 207
+lines: 213
 depends-on:
   - ../checklists/guard.md
 related:
@@ -201,6 +201,12 @@ tags: [ai, assets, pitfalls]
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **`flutter test` 先做隐式 pub 解析，握手失败就一条测试都不跑** | 在 `apps/adai-app` 跑 `flutter test` 卡在 `Resolving dependencies... / Downloading packages... / Connection terminated during handshake / Failed to update packages.`——**测试一条都没执行**；而同一行的 `flutter analyze` 是 PASS，脚本里 `flutter analyze \| tail && flutter test` 这种写法还会把失败**吞掉**（管道让退出码变成 `tail` 的 0） | `flutter test` 默认先做一次 `pub get`（即使 `.dart_tool/package_config.json` 已存在），网络/代理抖动即中止；`pub get --offline` 只能救 `pub get` 自己，救不了 test 触发的隐式解析 | `flutter pub get --offline` → **`flutter test --no-pub`**（跳过隐式解析，直接用本地缓存）；脚本里避免 `cmd \| tail && next`（吞退出码），要判 `${PIPESTATUS[0]}` 或分步执行 | ✅ 已用（2026-09-23，app 408→409 实测） | 日志出现 `Resolving dependencies` / `Failed to update packages`；「测试全绿」其实一条没跑；两个 flutter 命令**并行**（先报 `Waiting for another flutter command to release the startup lock`，随后依赖解析失败） |
+
+## 二十二、AI 工程脚本的文本处理（字节 vs 字符，2026-09-26 新增）
+
+| 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
+|:---|:-----|:-----|:-----|:----:|:---------|
+| **`head -c N` 按字节截断中文 → 写文件抛 `UnicodeEncodeError: surrogates not allowed`** | `cadence.sh ship` 收尾时快照与成本入账**都成功**，末尾却抛 UnicodeEncodeError；`ship.subject` **静默没写成**（`cadence.json` 少一个键，再无其他报错——不留意就永远发现不了） | `git log --pretty=%s \| head -c 120` 是**按字节**截断，而中文 3 字节/字，切在字符中间 → 该值成为**非法 UTF-8**；bash 把它传进 python 的 `sys.argv` 时按 `surrogateescape` 解码为**孤立代理对**，再 `write_text(encoding='utf-8')` 就被 Python 拒绝（代理对不可编码） | 两层修：① 截断改用**字符**语义（`cut -c1-120`）；② 写入口 `cadence_set` 先 `val.encode('utf-8','surrogateescape').decode('utf-8','replace')`，且 `write_text(..., errors='replace')`——**记账绝不因脏字节中断** | ✅ 已修（2026-09-26；回归：120 字节坏串写入成功、JSON 有效、值 65 字符） | 脚本里出现 `head -c` / `cut -b` 去处理**可能含中文**的文本；症状总是「前面都成功、最后写 JSON 时抛 surrogates not allowed」；提交标题（中文）一长就复现，短则不出现 |
 
 ---
 
