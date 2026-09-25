@@ -201,6 +201,10 @@ public class CardFileRepository implements CardRepository {
         if (card.summary() != null && !card.summary().isBlank()) {
             sb.append("summary: ").append(card.summary()).append("\n");
         }
+        // REVIEW P1-对话1：落盘 conversation 记录 id 作幂等键（旧卡缺该键 → 解析为 null，兼容）
+        if (card.conversationRecordId() != null && !card.conversationRecordId().isBlank()) {
+            sb.append("conversationRecordId: ").append(card.conversationRecordId()).append("\n");
+        }
         sb.append("---\n\n");
 
         for (Turn turn : card.turns()) {
@@ -237,11 +241,16 @@ public class CardFileRepository implements CardRepository {
         // #206：createdAt 缺失/损坏 = 数据损坏卡，跳过不进内存（避免 null 参与排序/日期过滤）
         if (createdAt == null) return null;
         String summary = fields.getOrDefault("summary", null);
+        // REVIEW P1-对话1：幂等键（旧卡/未结束卡缺该键 → null）
+        String conversationRecordId = fields.getOrDefault("conversationRecordId", null);
+        if (conversationRecordId != null && conversationRecordId.isBlank()) {
+            conversationRecordId = null;
+        }
 
         // Parse turns from body
         List<Turn> turns = parseTurns(body);
 
-        return new CardRecord(id, type, status, tags, turns, summary, createdAt, updatedAt);
+        return new CardRecord(id, type, status, tags, turns, summary, createdAt, updatedAt, conversationRecordId);
     }
 
     /**

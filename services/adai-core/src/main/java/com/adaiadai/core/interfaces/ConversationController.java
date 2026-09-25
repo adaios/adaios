@@ -32,10 +32,14 @@ public class ConversationController {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationController.class);
 
+    /** 条带锁数量：固定 32 条，避免按 cardId 无界累积（同交易锁收敛口径，2026-09-09 批）。 */
+    private static final int CARD_LOCK_STRIPES = 32;
+
     private final AiClient aiClient;
     private final RecordRepository recordRepository;
     private final CardFileRepository cardRepository;
     private final MemoryService memoryService;
+    private final Object[] cardLocks = new Object[CARD_LOCK_STRIPES];
 
     public ConversationController(AiClient aiClient, RecordRepository recordRepository,
                                   CardFileRepository cardRepository,
@@ -44,12 +48,44 @@ public class ConversationController {
         this.recordRepository = recordRepository;
         this.cardRepository = cardRepository;
         this.memoryService = memoryService;
+        for (int i = 0; i < CARD_LOCK_STRIPES; i++) {
+            cardLocks[i] = new Object();
+        }
     }
 
     @PostMapping("/end")
     public ResponseEntity<EndConversationResponse> endConversation(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
             @RequestBody EndConversationRequest request) {
+
+        // REVIEW P1-对话1：同卡幂等——cardId 非空时，把「幂等判定 + AI 总结 + 落盘 + 卡片回写」
+        // 整段收进按 (userId|cardId) 的条带锁。超时重发 / 双端并发再次 end 只会落一条 conversation，
+        // 且不会重复调用 AI（检查-再动作竞态，pitfalls「并发花钱」）。
+        if (request.cardId() == null || request.cardId().isBlank()) {
+            return doEnd(userId, request);
+        }
+        synchronized (lockFor(userId, request.cardId())) {
+            Optional<CardRecord> existing = cardRepository.findById(userId, request.cardId());
+            if (existing.isPresent() && existing.get().conversationRecordId() != null) {
+                String recordId = existing.get().conversationRecordId();
+                log.info("Conversation end 幂等命中（同卡已落盘，不重复记录） | userId={} | cardId={} | recordId={}",
+                        userId, request.cardId(), recordId);
+                List<String> tags = recordRepository.findById(userId, recordId)
+                        .map(ContentRecord::tags)
+                        .orElse(existing.get().tags());
+                String summary = existing.get().summary() != null ? existing.get().summary() : "";
+                return ResponseEntity.ok(new EndConversationResponse(recordId, summary, tags));
+            }
+            return doEnd(userId, request);
+        }
+    }
+
+    /** 条带锁：同一 (userId|cardId) 恒落同一把锁（固定 32 条，无界累积风险为零）。 */
+    private Object lockFor(String userId, String cardId) {
+        return cardLocks[Math.floorMod((userId + "|" + cardId).hashCode(), CARD_LOCK_STRIPES)];
+    }
+
+    private ResponseEntity<EndConversationResponse> doEnd(String userId, EndConversationRequest request) {
 
         log.info("Conversation end | userId={} | turns={} | cardId={}",
                 userId, request.turns().size(), request.cardId());
@@ -118,15 +154,16 @@ public class ConversationController {
         );
         recordRepository.save(userId, record);
 
-        // Update card file with summary and ended status
+        // Update card file with summary + ended status + 幂等键（P1-对话1：同卡再次 end 直接返回该记录）
         if (request.cardId() != null) {
             Optional<CardRecord> existing = cardRepository.findById(userId, request.cardId());
             if (existing.isPresent()) {
                 CardRecord updated = existing.get()
                         .withStatus("ended")
-                        .withSummary(summaryText);
+                        .withSummary(summaryText)
+                        .withConversationRecordId(id);
                 cardRepository.save(userId, updated);
-                log.info("Card updated | cardId={} | status=ended", request.cardId());
+                log.info("Card updated | cardId={} | status=ended | conversationRecordId={}", request.cardId(), id);
             }
         }
 

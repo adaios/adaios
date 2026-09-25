@@ -93,9 +93,20 @@ if echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-re
 fi
 
 # 2) 结构对齐（frontmatter 图谱/lines/孤儿/正文路径）——任何 md 变更都跑
+#    task-log「工程-hook」（2026-09-26 夜间批）修正：原实现先 `--fix`（回写的是**工作区**）
+#    再跑检查——而提交内容取自**暂存区**。若被 fix 的文件已暂存旧内容，这次回写对本次提交
+#    完全无效：钩子报绿、提交进去的却还是旧 lines（下次检查原样再报）。改成：
+#    **先检暂存内容的漂移 → 不一致就阻断并给两步指引**，不替用户动暂存区
+#    （仓库有并发会话，自动 git add 会把别人的改动卷进本批——2026-09-13 真实事故）。
 if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
-  bash ai-engineering/guard-meta.sh --fix >/dev/null 2>&1   # 幂等回写 lines
-  bash ai-engineering/guard-meta.sh || { echo "❌ frontmatter 结构未对齐，提交已阻止。修复指引：跑 bash ai-engineering/guard-meta.sh --fix 回写 lines，人工处理 M1 断链/M3 孤儿。"; exit 1; }
+  if ! bash ai-engineering/guard-meta.sh >/dev/null 2>&1; then
+    bash ai-engineering/guard-meta.sh --fix >/dev/null 2>&1   # 幂等回写工作区 lines
+    echo "❌ frontmatter 结构未对齐，提交已阻止。已自动跑 guard-meta --fix 回写工作区。"
+    echo "   注意：提交内容取自**暂存区**——请把本批涉及的 md 文件重新显式 git add 后再提交"
+    echo "   （不自动 add 是为了不把并发会话的改动卷进本批，见 ai-engineering/process/ship.md §7）。"
+    echo "   剩余人工项：M1 图谱断链 / M3 孤儿文档（--fix 不处理这两类）。"
+    exit 1
+  fi
 fi
 
 # 3) 防 P0 复发（G1-G7）——代码变更时跑

@@ -33,16 +33,19 @@ class ConversationControllerTest {
 
     private MockMvc mockMvc;
     private ObjectMapper mapper;
+    private RecordFileRepository recordRepository;
+    private CardFileRepository cardRepository;
+    private MemoryService memoryService;
 
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
         InMemoryFileStorage fileStorage = new InMemoryFileStorage();
         TagIndexService tagIndexService = new TagIndexService(fileStorage);
-        RecordFileRepository recordRepository = new RecordFileRepository(fileStorage);
+        recordRepository = new RecordFileRepository(fileStorage);
         recordRepository.setTagIndexService(tagIndexService);
-        CardFileRepository cardRepository = new CardFileRepository(fileStorage);
-        MemoryService memoryService = new MemoryService(fileStorage);
+        cardRepository = new CardFileRepository(fileStorage);
+        memoryService = new MemoryService(fileStorage);
         ConversationController controller = new ConversationController(
                 new TestAiClient(), recordRepository, cardRepository, memoryService
         );
@@ -222,5 +225,114 @@ class ConversationControllerTest {
         var card = cardRepo.findById("default", "card_test_ai_fail");
         assertTrue(card.isPresent());
         assertEquals("ended", card.get().status());
+    }
+
+    // ── REVIEW P1-对话1：同卡幂等（超时重发 / 双端并发只落一条 conversation）──
+
+    @Test
+    void endConversation_sameCardIdTwice_returnsSameRecordAndKeepsOneRecord() throws Exception {
+        saveActiveCard("card_idem_1");
+        String body = mapper.writeValueAsString(Map.of(
+                "turns", List.of("第一句", "回一句"),
+                "cardId", "card_idem_1"
+        ));
+
+        String first = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String second = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        String firstId = mapper.readTree(first).get("recordId").asText();
+        String secondId = mapper.readTree(second).get("recordId").asText();
+        assertEquals(firstId, secondId, "同卡重复 end 必须返回同一条记录（幂等），而不是新落一条");
+        assertEquals(1, recordRepository.findAll("default").size(), "同卡只允许一条 conversation 记录");
+        assertEquals(firstId, cardRepository.findById("default", "card_idem_1").orElseThrow().conversationRecordId(),
+                "卡片须记下幂等键（跨请求/重启后仍幂等）");
+    }
+
+    @Test
+    void endConversation_differentCards_eachPersisted() throws Exception {
+        saveActiveCard("card_a_1");
+        saveActiveCard("card_b_1");
+
+        mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("turns", List.of("甲"), "cardId", "card_a_1"))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("turns", List.of("乙"), "cardId", "card_b_1"))))
+                .andExpect(status().isOk());
+
+        assertEquals(2, recordRepository.findAll("default").size(), "不同卡各自落一条（幂等不得误伤）");
+    }
+
+    @Test
+    void endConversation_noCardId_stillPersistsEveryCall() throws Exception {
+        String body = mapper.writeValueAsString(Map.of("turns", List.of("没有卡片上下文的记录")));
+        mockMvc.perform(post("/api/v1/conversations/end")
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/conversations/end")
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+
+        assertEquals(2, recordRepository.findAll("default").size(), "无 cardId 时保持原语义（每次都落）");
+    }
+
+    @Test
+    void endConversation_concurrentSameCard_persistsOnceAndCallsAiOnce() throws Exception {
+        saveActiveCard("card_race_1");
+
+        java.util.concurrent.atomic.AtomicInteger aiCalls = new java.util.concurrent.atomic.AtomicInteger();
+        TestAiClient delegate = new TestAiClient();
+        AiClient countingClient = new AiClient() {
+            @Override
+            public AiUnderstanding understand(ContextPackage contextPackage) {
+                aiCalls.incrementAndGet();
+                return delegate.understand(contextPackage);
+            }
+
+            @Override
+            public String generate(ContextPackage contextPackage, String systemPrompt) {
+                return delegate.generate(contextPackage, systemPrompt);
+            }
+
+            @Override
+            public String recognizeIntent(String content) {
+                return delegate.recognizeIntent(content);
+            }
+        };
+        ConversationController controller = new ConversationController(
+                countingClient, recordRepository, cardRepository, memoryService);
+
+        var request = new ConversationController.EndConversationRequest(List.of("甲", "乙"), "card_race_1");
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        Runnable task = () -> {
+            try {
+                start.await();
+                controller.endConversation("default", request);
+            } catch (Exception ignored) {
+                // 断言在 join 之后统一做
+            }
+        };
+        Thread t1 = new Thread(task);
+        Thread t2 = new Thread(task);
+        t1.start();
+        t2.start();
+        start.countDown();
+        t1.join();
+        t2.join();
+
+        assertEquals(1, recordRepository.findAll("default").size(), "并发同卡只落一条记录");
+        assertEquals(1, aiCalls.get(), "并发同卡只调用一次 AI（不重复花钱）");
+    }
+
+    private void saveActiveCard(String cardId) {
+        cardRepository.save("default", new CardRecord(
+                cardId, "conversation", "active",
+                List.of(), List.of(), null,
+                java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
+        ));
     }
 }

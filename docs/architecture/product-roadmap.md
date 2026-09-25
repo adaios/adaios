@@ -5,7 +5,7 @@
 > 路线驱动开发——**所有任务从这里拆分，所有目标对照这里确认**。
 > 常驻文档，随版本演进滚动更新（旧版本规划保留在「版本历史」）。
 >
-> 文档版本：v1.3 | 最后更新：2026-08-23（S-5 对拍：选号状态修正）
+> 文档版本：v1.4 | 最后更新：2026-09-26（S-W1：§3.2 补录已 approved 且已实现的 Domain=插件模型）
 > 关联：[VISION.md](../VISION.md)（为什么）｜[product-architecture.md](product-architecture.md)（是什么）
 >
 > ⚠️ **2026-08-15 用户决策：先治理流程（文档治理 RFC `20260815-docs-governance` 已 approved），v1.0.0 发布顺延**——功能开发暂停优先级，路线本身不变。
@@ -83,6 +83,7 @@ SemVer（规则见 `docs/rfc/20260801-release-versioning.md`）：`MAJOR.MINOR.P
 | **Trading OS** | ✅ | 87 课知识库 → knowledge/context → KnowledgeSource → Context Engine 全链路 |
 | **Project OS** | ❌ 已退役 | **project 插件已撤（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）**：Status API + git 自举 + RFC 索引 + 轻量任务系统随插件删除（6 个 `/api/v1/project/**` 端点 breaking 下线）；**待办归 Kernel builtin**（独立清单页，两态 + 可选到期日 + `todo-due` 到期提醒）；`os/project-os/` 知识文件保留但不再注入 |
 | **Life OS** | 🏗 等数据 | 骨架就绪（快速记录 + LifeKnowledgeSource）；情绪/习惯/周报待数据积累后触发 |
+| **插件模型（Domain = 插件）** | ✅ | **RFC `20260814-domain-as-plugin` approved + 已实现**（2026-09-26 补录，来源：全维度走查 S-W1「已 approved 的方向在蓝图不可见」）：`PluginRegistry`（Domain ↔ 插件映射）+ `PluginService` 按账号 `enabledPlugins` 门控；三层定位 = **core 内核**（Record/Context/Memory，永远在）/ **builtin 内置能力**（待办·搜索·时间线·简报，无门控）/ **optional 可选插件**（**trading**·**learn**，可按账号关）；`ContextContributor` 是插件的上下文接入点；`GET /api/v1/me/plugins` 供前端做模块显隐；门控为**写读双侧**（不只看前端隐藏：受控端点无插件返回 403） |
 
 ### 3.3 记忆系统（Knowledge Evolves）
 

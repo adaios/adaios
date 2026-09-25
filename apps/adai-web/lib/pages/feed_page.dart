@@ -227,7 +227,9 @@ class _FeedPageState extends State<FeedPage> {
     final timeStr = _now();
     // learn 对话流入口（2026-09-12 完整升级批）：只有 learn 插件启用时才接管；
     // 两类消息各走各的，其余一字不变地走原来的记录/问答流程。
-    if (widget.learnEnabled) {
+    // REVIEW P1-前端4：learn 拦截需「不在对话中」前置（对齐 adai-app main_page.dart:564）——
+    // 否则对话里说到「打开那篇 / 看看上次…」会被 learn 抢走并在对话中途清卡。
+    if (widget.learnEnabled && _activeCardId == null) {
       if (_looksLikeLearnDigest(text)) {
         _startLearnDigest(text, timeStr);
         return;
@@ -1242,12 +1244,18 @@ class _FeedPageState extends State<FeedPage> {
     if (idx >= 0) _cards[idx] = updater(_cards[idx]);
   }
 
-  /// F29（对齐 adai-app P0-1）：卡片列表重建后校验活动卡仍在列表中——被刷新挤出时
-  /// 静默退出对话态，防输入栏 hasActiveChat 状态与 Feed 实际内容错乱。
+  /// F29（对齐 adai-app P0-1）：卡片列表重建后校验活动卡仍在列表中——被刷新挤出时退出
+  /// 对话态，防输入栏 hasActiveChat 状态与 Feed 实际内容错乱。
+  /// REVIEW P1-前端4（B 方案：会话规则不动、只让状态可见）：退出对话态**不再静默**——
+  /// 下一条会开成新的一段，用户必须当场知道（此前 web 端全无提示，用户以为还在对话里）。
   void _syncActiveCard(List<FeedCardData> cards) {
     if (_activeCardId != null && !cards.any((c) => c.id == _activeCardId)) {
       _activeCardId = null;
       _hasActiveChat = false;
+      // 该分支通常发生在 setState 回调内 → 提示放到帧后，避免 build 期间弹 SnackBar
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showSnackBar('刚才那段对话已经翻出当前列表了，再发就是新的一段');
+      });
     }
   }
 
@@ -1732,6 +1740,16 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
   }
 
   @override
+  void didUpdateWidget(covariant _DesktopInputBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // REVIEW P1-前端4（B 方案）：进入对话态自动聚焦——与 adai-app input_bar.dart:81-84 对齐，
+    // 「我正在跟阿呆对话」在桌面上看得见、手也直接落到位。
+    if (widget.hasActiveChat && !oldWidget.hasActiveChat && !_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
@@ -1866,7 +1884,11 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
       decoration: BoxDecoration(
         color: AppColors.darkSurface2,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.darkBorder),
+        // REVIEW P1-前端4：对话态边框转绿（对齐 adai-app input_bar.dart:507-509）
+        border: Border.all(
+          color: widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkBorder,
+          width: widget.hasActiveChat ? 1.2 : 1,
+        ),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_pendingImages.isNotEmpty) _buildImagePreview(),
@@ -1882,7 +1904,11 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
                 hintText: _pendingImages.isNotEmpty
                     ? '添加说明（可空）…'
                     : (widget.hasActiveChat ? '继续对话…' : '记录或提问…'),
-                hintStyle: const TextStyle(fontSize: 13, color: AppColors.darkGrey5),
+                // REVIEW P1-前端4：对话态 hint 转绿（对齐 adai-app input_bar.dart:518-525）
+                hintStyle: TextStyle(
+                  fontSize: 13,
+                  color: widget.hasActiveChat ? AppColors.darkGreen : AppColors.darkGrey5,
+                ),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
