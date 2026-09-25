@@ -32,6 +32,8 @@ bash ai-engineering/cadence.sh          # 节奏总览：上次巡检/收工/周
 bash ai-engineering/cadence.sh daily    # 每日巡检：自动从上次覆盖日补看到今天，讲人话三条
 bash ai-engineering/cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账（不自动提交/部署）
 bash ai-engineering/cadence.sh weekly   # 每周：W1–W6 审查 + 本周人肉清单 + 到期红线
+bash ai-engineering/cadence.sh release  # 发布判定：欠着什么没发、要发哪几端（只判定，不部署）
+bash ai-engineering/cadence.sh check    # 交付门禁一键：meta / align / tools / 防复发
 bash ai-engineering/cadence.sh todo     # 待办：REVIEW 未修项一眼看全
 
 # 单件工具（动作本体，需要深挖时用）：

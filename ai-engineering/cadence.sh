@@ -2,23 +2,27 @@
 # ─────────────────────────────────────────────────────────────
 # 协作默契执行器（cadence）— 2026-09-26 用户「我们需要某种默契」落地
 #
-# 一句话：把「每日巡检 / 收工 / 每周 / 待办」四件事，从**靠人记**变成
+# 一句话：把「每日巡检 / 收工 / 每周 / 待办 / 发布」五件事，从**靠人记**变成
 #         **有游标、能接着上次走、AI 自己读得到**。
 #
 # 为什么不是又一个脚本（此前已有 guard-prod / weekly-audit / ship）：
 #   那些是**动作**，缺的是**记忆**——上次巡检看到哪天、上次收工是哪个 commit。
-#   本脚本 = 游标（lib/cadence-lib.sh）+ 四件事的调度，把散落的动作串成节奏。
+#   本脚本 = 游标（lib/cadence-lib.sh）+ 五件事的调度，把散落的动作串成节奏。
 #   动作本体不变，本脚本只负责「从上次到现在」+「做完记账」。
 #
 # 用法:
 #   bash ai-engineering/cadence.sh                 # 默契状态总览（开工第一眼，秒回）
 #   bash ai-engineering/cadence.sh daily           # 每日巡检：自动补看「上次巡检 → 今天」
 #   bash ai-engineering/cadence.sh ship            # 收工：本批 diff + 刷快照 + 成本入账
-#   bash ai-engineering/cadence.sh weekly          # 每周：跑每周审查 + 本周待办
-#   bash ai-engineering/cadence.sh todo            # 当前待办（task-log 进行中）
-#   bash ai-engineering/cadence.sh mark <key> [日] # 手工补记游标（key: inspection|ship|weekly）
+#   bash ai-engineering/cadence.sh release [--json]# 发版判定：现在欠着什么没发（只读，不部署）
+#   bash ai-engineering/cadence.sh check           # 交付门禁一键（meta/align/tools/防复发）
+#   bash ai-engineering/cadence.sh weekly          # 每周：跑每周审查 + 本周人肉清单
+#   bash ai-engineering/cadence.sh todo            # 当前待办（REVIEW 未修项）
+#   bash ai-engineering/cadence.sh cost [--record] # 成本：按天/会话算钱（--record 入账）
+#   bash ai-engineering/cadence.sh mark <key> [日] # 手工补记游标（inspection|ship|weekly|release）
 #
-# 触发协议（用户说的话 → 跑什么）见 ai-engineering/process/cadence.md 与 AGENTS.md 规则 8/9/10。
+# 边界：**不自动部署、不自动 push**——发布只做判定，执行须用户点头（AGENTS.md 规则 11）。
+# 触发协议（用户说的话 → 跑什么）见 ai-engineering/process/cadence.md 与 AGENTS.md 规则 8–11。
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -52,7 +56,7 @@ cmd_status() {
     local today; today="$(date +%F)"
     printf '%s═══ 协作默契状态（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
 
-    local insp insp_at insp_days ship_at ship_head wk_at wk_week wk_txt
+    local insp insp_at insp_days ship_at ship_head wk_at wk_week wk_txt rel_at rel_need rel_prod
     insp="$(cadence_get inspection.covered_through)"
     insp_at="$(cadence_get inspection.last_at)"
     insp_days="$(cadence_days_since "$insp")"
@@ -60,6 +64,9 @@ cmd_status() {
     ship_head="$(cadence_get ship.head)"
     wk_at="$(cadence_get weekly.last_at)"
     wk_week="$(cadence_get weekly.week)"
+    rel_at="$(cadence_get release.last_at)"
+    rel_need="$(cadence_get release.need)"
+    rel_prod="$(cadence_get release.prod_commit)"
 
     printf '  %-10s %s\n' "每日巡检" \
         "$([ -n "$insp" ] && echo "已覆盖到 ${insp}（${insp_days} 天前）· 累计 $(cadence_get inspection.runs 0) 次" || echo "${YEL}未建立游标${RST}")"
@@ -73,6 +80,11 @@ cmd_status() {
         wk_txt="${YEL}未建立游标${RST}"
     fi
     printf '  %-10s %s\n' "每周审查" "$wk_txt"
+    if [ -n "$rel_at" ]; then
+        printf '  %-10s %s\n' "发版体检" "上次 ${rel_at:0:16} · 生产 ${rel_prod:-?} · 欠发 ${rel_need:-?}"
+    else
+        printf '  %-10s %s\n' "发版体检" "${YEL}未做过 → bash ai-engineering/cadence.sh release${RST}"
+    fi
 
     # 欠账（这才是「默契」要防的东西：别让任何一条静默过期）
     local owe=0
@@ -84,8 +96,26 @@ cmd_status() {
     fi
     [ "$owe" = 0 ] && printf '  %s✅ 今日已巡检，无欠账%s\n' "$GRN" "$RST"
 
+    hr "到期红线（30 天内告警）"
+    python3 scripts/check_deadlines.py --one-line 2>/dev/null | sed 's/^/  /' \
+        || printf '  %s（取不到 → python3 scripts/check_deadlines.py）%s\n' "$DIM" "$RST"
+
+    hr "自动任务（LaunchAgent）"
+    local pair name logf age
+    for pair in "每日备份:ai-engineering/state/backup.log" \
+                "每周审查:ai-engineering/state/weekly-audit.log" \
+                "午间谷时:ai-engineering/state/noon-task.log"; do
+        name="${pair%%:*}"; logf="${pair#*:}"
+        if [ -f "$logf" ]; then
+            age=$(( ( $(date +%s) - $(stat -f %m "$logf" 2>/dev/null || echo 0) ) / 86400 ))
+            printf '  %-8s %s 天前（%s）\n' "$name" "$age" "$(stat -f '%Sm' -t '%m-%d %H:%M' "$logf" 2>/dev/null)"
+        else
+            printf '  %-8s %s\n' "$name" "${YEL}无日志${RST}"
+        fi
+    done
+
     hr "当前待办"
-    printf '  %s（task-log 进行中 + REVIEW P1，跑 %sbash ai-engineering/cadence.sh todo%s 看全）\n' "$DIM" "$CYN" "$RST"
+    printf '  %s（REVIEW 未修项，跑 %sbash ai-engineering/cadence.sh todo%s 看全）\n' "$DIM" "$CYN" "$RST"
 }
 
 # ── daily：每日巡检（增量：上次巡检 → 今天）────────────────────────────
@@ -181,6 +211,100 @@ cmd_ship() {
     printf '  ✅ 收工基线 → %s\n' "$head"
 }
 
+# ── release：发版判定（只读；**不部署**）──────────────────────────────
+# 用户 2026-09-26：「不主动部署，通过部署动作一键触发，确定是否更新发布」。
+# 本命令只回答「现在欠着什么没发 + 要发哪几端」；真正部署仍走 deploy-gate.sh（最硬闸门）
+# 且必须用户点头（AGENTS.md 规则 11 / 边界 B8）。判定与部署的分工详见 guard-release.sh 头注。
+cmd_release() {
+    if [ "${1:-}" = "--json" ]; then
+        bash ai-engineering/guard-release.sh --json
+        return $?
+    fi
+    printf '%s═══ 发版体检（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
+    local raw
+    raw="$(bash ai-engineering/guard-release.sh --json 2>/dev/null)"
+    if [ -z "$raw" ]; then
+        printf '  %s✗ 取不到发版数据（SSH 到生产不通？）→ 手工跑 bash ai-engineering/guard-release.sh%s\n' "$RED" "$RST"
+        return 1
+    fi
+    RAW="$raw" python3 - <<'PY'
+import datetime, json, os
+d = json.loads(os.environ["RAW"])
+prod = d.get("prod") or {}
+head = d.get("head") or {}
+bl = d.get("baseline") or {}
+need = d.get("needRelease") or []
+app = d.get("appBuildNumber") or {}
+
+def bj(ts):
+    try:
+        t = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+        return t.astimezone(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return ts or "?"
+
+print("  生产   " + (prod.get("commit") or "?")[:8] + " · 部署 " + bj(prod.get("deployedAt"))
+      + "（北京）· 上批 " + (prod.get("artifacts") or "?"))
+print("  本地   " + str(head.get("short", "?")) + " · 未推送 " + str(head.get("unpushed", 0)) + " 个 commit")
+print("  基线   " + str(bl.get("label", "?")) + "（" + str(bl.get("commits", 0))
+      + " 提交 / " + str(bl.get("files", 0)) + " 文件）")
+print()
+print("  逐端判定：")
+for u in d.get("units") or []:
+    flag = "要发" if u.get("needRelease") else "不用发"
+    tail = ""
+    if u.get("unit") == "ios":
+        tail = " · 构建号 " + str(app.get("current", "?")) + " → " + str(app.get("next", "?"))
+    print("    " + str(u.get("label", "?")) + "  " + flag + "（" + str(u.get("files", 0))
+          + " 文件 / " + str(u.get("commits", 0)) + " 提交）" + tail)
+print()
+if need:
+    print("  ⚠ 欠着没发：" + ",".join(need))
+    print("    下一步命令（逐端）：bash ai-engineering/guard-release.sh")
+else:
+    print("  ✅ 没有欠着没发的（生产已含全部改动）")
+PY
+    # 记账：只记事实（体检时间 / 结论 / 生产 commit），不替代生产 DEPLOYED 这个真相源
+    cadence_set release.last_at "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+    cadence_set release.need "$(printf '%s' "$raw" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin).get("needRelease") or []) or "none")')"
+    cadence_set release.prod_commit "$(printf '%s' "$raw" | python3 -c 'import json,sys; print(((json.load(sys.stdin).get("prod") or {}).get("commit") or "?")[:8])')"
+    hr "边界"
+    printf '  %s本命令只判定、不部署。要发 → deploy-gate.sh（门禁 + smoke）+ 你点头（规则 11）%s\n' "$DIM" "$RST"
+}
+
+# ── check：交付门禁一键（ship.md §4/§5 三件套 + 防复发）────────────────
+# 为什么收进默契：这几条**每次交付都要跑**，散在文档里就靠人记；且 pre-commit 只是兜底，
+# ship.md 明确要求「交付前主动跑，不依赖 hook 兜底」——一句话跑完最省事。
+cmd_check() {
+    printf '%s═══ 交付门禁（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
+    local fail=0 pair name script last mark
+    for pair in "结构门禁（frontmatter 图谱 / lines / 孤儿）:ai-engineering/guard-meta.sh" \
+                "内容对齐（端点↔api-spec / 测试数↔status）:ai-engineering/guard-align.sh" \
+                "工具接入（快照 / 技能 / 入口 / shell lint）:ai-engineering/guard-tools.sh" \
+                "防复发 G1–G7:docs/review/guard.sh"; do
+        name="${pair%%:*}"; script="${pair#*:}"
+        last="$(bash "$script" 2>&1 | tail -1)"
+        case "$last" in
+            *PASS*|*"0 HIT"*|*"0 失败"*) mark="${GRN}✅${RST}" ;;
+            *) mark="${RED}✗${RST}"; fail=1 ;;
+        esac
+        printf '  %s %s\n        %s\n' "$mark" "$name" "$last"
+    done
+    echo
+    if [ "$fail" = 0 ]; then
+        printf '  %s✅ 全部门禁通过——可以提交 / 部署%s\n' "$GRN" "$RST"
+    else
+        printf '  %s✗ 有门禁未过：修完再提交 / 部署（禁止带 FAIL 提交）%s\n' "$RED" "$RST"
+    fi
+    return "$fail"
+}
+
+# ── cost：成本（委托 guard-cost.sh，不重复实现）────────────────────────
+cmd_cost() {
+    printf '%s═══ 成本（%s）═══%s\n\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
+    bash ai-engineering/guard-cost.sh "$@"
+}
+
 # ── weekly：每周（跑审查 + 本周清单）──────────────────────────────────
 cmd_weekly() {
     printf '%s═══ 每周（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
@@ -216,7 +340,8 @@ cmd_mark() {
         inspection) cadence_advance_day inspection.covered_through "${val:-$(date +%F)}" ;;
         shipment|ship) cadence_set ship.head "${val:-$(git rev-parse --short HEAD)}" ;;
         weekly) cadence_set weekly.week "${val:-$(date '+%G-W%V')}" ;;
-        *) printf '用法: cadence.sh mark <inspection|ship|weekly> [值]\n' >&2; exit 2 ;;
+        release) cadence_set release.prod_commit "${val:-$(git rev-parse --short HEAD)}" ;;
+        *) printf '用法: cadence.sh mark <inspection|ship|weekly|release> [值]\n' >&2; exit 2 ;;
     esac
     hr "游标"
     cadence_json
@@ -228,7 +353,10 @@ case "$CMD" in
     ship)     cmd_ship "$@" ;;
     weekly)   cmd_weekly "$@" ;;
     todo)     cmd_todo "$@" ;;
+    release)  cmd_release "$@" ;;
+    check)    cmd_check "$@" ;;
+    cost)     cmd_cost "$@" ;;
     mark)     cmd_mark "$@" ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-    *) printf '未知命令: %s（可选 status|daily|ship|weekly|todo|mark）\n' "$CMD" >&2; exit 2 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    *) printf '未知命令: %s（可选 status|daily|ship|release|check|weekly|todo|cost|mark）\n' "$CMD" >&2; exit 2 ;;
 esac
