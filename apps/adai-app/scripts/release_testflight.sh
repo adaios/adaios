@@ -216,5 +216,10 @@ fi
 cat << 'EOF'
 
 ✅ 上传动作已完成。构建 90 天过期；再次上传必须递增构建号（--build-number N）。
-   （TestFlight 的测试组与测试员是一次性配置，之后发版不用再动。）
+
+⚠️ 上传 ≠ 对外可见：还差两步，否则外部测试员看不到这个新构建。
+   ① python3 scripts/testflight_external.py --assign-build    # 每个新构建都要入组
+   ② python3 scripts/testflight_external.py --submit-review   # 外测需重走 Beta App Review（24~48h）
+   （测试组与测试员本身是一次性配置；但「构建入组」不是——2026-09-28 就是因为漏了 ①，
+     构建 11 过审一周、外测员仍只看到构建 10，详见 REVIEW P2-文档4。）
 EOF
