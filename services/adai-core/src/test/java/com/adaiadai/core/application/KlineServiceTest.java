@@ -353,4 +353,41 @@ class KlineServiceTest {
         assertTrue(h.ok(), "还没查过 ≠ 不可用（不制造假警报）");
         assertTrue(h.note().contains("还没查过"), h.note());
     }
+
+    @Test
+    void tdxStaleLogging_isOncePerDate_evenWhenDatesAlternate() {
+        // REVIEW P2-交易74 回归：去重键曾是**单个** volatile 变量，而生产上不同标的的 tdx 末尾日期
+        // 有多个在轮转（实测 09-24 与 09-18 并存）→ 交替覆盖 → 每次都判成「新日期」又记一条
+        // （乒乓效应：3 次自选扫描实测 39 条）。改成集合 + 原子 add 后，每个滞后日期只应记一条
+        // （本用例两个日期交替调用 4 次 → 期望 2 条；旧实现会是 4 条）。
+        LocalDate staleA = LocalDate.now().minusDays(12);
+        LocalDate staleB = LocalDate.now().minusDays(20);
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.kline(anyString(), anyInt()))
+                .thenReturn(List.of(new Candle(staleA, 10, 11, 9, 10.0, 1000)))
+                .thenReturn(List.of(new Candle(staleB, 10, 11, 9, 10.0, 1000)))
+                .thenReturn(List.of(new Candle(staleA, 10, 11, 9, 10.0, 1000)))
+                .thenReturn(List.of(new Candle(staleB, 10, 11, 9, 10.0, 1000)));
+        when(tdx.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of(c(1, 12.0)));
+        KlineService svc = new KlineService(true, true, tencent, tdx, mock(KlineSource.class));
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            for (int i = 0; i < 4; i++) svc.kline("600519", 5);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        long staleLogs = appender.list.stream()
+                .filter(e -> e.getFormattedMessage().contains("tdx 数据滞后"))
+                .count();
+        assertEquals(2, staleLogs, "两个滞后日期交替出现，各只应记一条（乒乓效应回归）：实际 " + staleLogs);
+    }
 }

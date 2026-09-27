@@ -81,8 +81,15 @@ public class KlineService {
 
     /** tdx 最近一次取到的「最后一根」日期（新鲜度可见；RFC 20260928 批 2 第 6 条）。 */
     private volatile LocalDate tdxLastDate;
-    /** 已就哪个滞后日期告过警——同一日期只记一次，替代周节奏下逐标的刷屏。 */
-    private volatile LocalDate tdxStaleLoggedFor;
+    /**
+     * 已告过警的滞后日期集合（2026-09-28 修正：原为单个 volatile 变量）。
+     * <p>
+     * 为什么必须是集合：生产上不同标的的 tdx 末尾日期**有多个在轮转**（实测 2026-09-24 与
+     * 2026-09-18 两批并存），单值去重键会被交替覆盖 → 每次都判成「新日期」又记一条
+     * （乒乓效应：3 次自选扫描实测 39 条）。集合 + 原子 add 才是真正的「同一滞后日期只记一次」，
+     * 顺带根治 16 线程并发重复（REVIEW P2-交易74）。
+     */
+    private final Set<LocalDate> tdxStaleLogged = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * 兜底源同样失败的告警冷却（P2-交易58，2026-09-17 B2 批）。
@@ -359,8 +366,7 @@ public class KlineService {
      * 并发下（买点扫描 16 线程）可能多记一两条，可接受——不值得为此加锁。
      */
     private void logTdxStaleOnce(LocalDate last, String symbol) {
-        if (last.equals(tdxStaleLoggedFor)) return;
-        tdxStaleLoggedFor = last;
+        if (!tdxStaleLogged.add(last)) return;   // add() 原子：同一日期已告过即返回（并发下也只一条）
         log.info("tdx 数据滞后（最后一根 {}），改走网络源 | 首次触发 symbol={}；导一次数据包即恢复",
                 last, symbol);
     }
