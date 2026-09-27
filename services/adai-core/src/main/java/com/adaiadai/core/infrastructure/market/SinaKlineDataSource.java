@@ -86,7 +86,11 @@ public class SinaKlineDataSource implements KlineSource {
                     .uri(URI.create(url)).timeout(TIMEOUT).GET().build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             List<Candle> candles = parse(response.body());
-            if (candles.isEmpty()) return List.of();
+            if (candles.isEmpty()) {
+                log.warn("新浪 K线空 | symbol={}", symbol);
+                return List.of();
+            }
+            log.info("新浪 K线成功 | symbol={} | {} 根 | 不复权口径", symbol, candles.size());
             cache.put(symbol, new KlineCache(LocalDate.now(), new ArrayList<>(candles)));
             if (candles.size() > n) candles = candles.subList(candles.size() - n, candles.size());
             return candles;

@@ -6,7 +6,9 @@ import java.util.List;
 /**
  * KlineSource — K 线数据源接口（2026-08-16：盯盘买点/完美图匹配的原料）。
  * <p>
- * 主源东方财富（EastMoneyKlineDataSource），兜底腾讯（TencentMarketDataSource.kline）。
+ * 链路（RFC 20260928 批 2）：tdx 本地（{@code TdxFileKlineSource}）→ 主源腾讯
+ * （{@code TencentMarketDataSource.kline}，域名列表按序尝试）→ 兜底新浪（{@code SinaKlineDataSource}）。
+ * 东财 K 线源已于 2026-09-28 移出链路（长期不可达）。
  * 安全约定：网络异常返回空列表而非抛异常。
  */
 public interface KlineSource {
@@ -24,8 +26,8 @@ public interface KlineSource {
      * 按日期范围查询日 K 线（2026-08-30：完美买点案例库——标注历史日期案例需取
      * 「前 60 + 后 30」窗口，最近 N 根语义覆盖不了任意历史日期）。
      * <p>
-     * 默认实现：拉最近 320 根（约 1.3 年）后按日期过滤截取——覆盖距今 ≤320 交易日的
-     * 案例；腾讯/东财实现覆写为数据源日期参数直查（更早历史也可取）。
+     * 默认实现（新浪走这条）：拉最近 320 根（约 1.3 年）后按日期过滤截取——覆盖距今 ≤320 交易日的
+     * 案例；腾讯覆写为数据源日期参数直查（更早历史也可取，且在本地按 [from,to] 裁剪）。
      * 安全约定：异常返回空列表。
      *
      * @param symbol 6 位股票代码

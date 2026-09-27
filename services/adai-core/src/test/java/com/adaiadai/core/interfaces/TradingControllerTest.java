@@ -2510,14 +2510,14 @@ class TradingControllerTest {
 
     @Test
     void marketDataHealth_unavailable_reportsHonestly() throws Exception {
-        // 三条源同时挂时，用户侧不该只看到「曲线平了」——这个端点就是那条交代
+        // 主源与兜底同时挂时，用户侧不该只看到「曲线平了」——这个端点就是那条交代
         com.adaiadai.core.application.KlineService kline =
                 mock(com.adaiadai.core.application.KlineService.class);
         when(kline.health()).thenReturn(new com.adaiadai.core.application.KlineService.Health(
                 false,
                 "行情取数连续 12 次都没拿到（最近一次失败 09-22 23:38:00 · 600487）——资金曲线、自选信号、案例匹配可能不全，我在自动重试",
                 "09-22 15:00:00", "tdx", "09-22 23:38:00", 12, "600487",
-                java.util.List.of("tdx", "腾讯", "东财", "新浪")));
+                java.util.List.of("tdx", "腾讯", "新浪"), "2026-09-04"));
         MockMvc mvc = buildMvcWithKline(kline);
 
         mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
@@ -2525,7 +2525,8 @@ class TradingControllerTest {
                 .andExpect(jsonPath("$.ok").value(false))
                 .andExpect(jsonPath("$.consecutiveFailures").value(12))
                 .andExpect(jsonPath("$.lastSuccessSource").value("tdx"))
-                .andExpect(jsonPath("$.sources[3]").value("新浪"))
+                .andExpect(jsonPath("$.sources[2]").value("新浪"))
+                .andExpect(jsonPath("$.tdxLastDate").value("2026-09-04"))
                 .andExpect(jsonPath("$.note").value(containsString("没拿到")));
     }
 
@@ -2536,7 +2537,7 @@ class TradingControllerTest {
         when(kline.health()).thenReturn(new com.adaiadai.core.application.KlineService.Health(
                 true, "行情正常（最近一次 09-23 00:15:00 · 新浪）",
                 "09-23 00:15:00", "新浪", null, 0, null,
-                java.util.List.of("tdx", "腾讯", "东财", "新浪")));
+                java.util.List.of("tdx", "腾讯", "新浪"), null));
         MockMvc mvc = buildMvcWithKline(kline);
 
         mvc.perform(get("/api/v1/trading/market-data/health").header("X-User-Id", "adai"))
