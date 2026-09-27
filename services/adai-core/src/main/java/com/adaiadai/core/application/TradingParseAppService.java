@@ -406,10 +406,34 @@ public class TradingParseAppService {
     private void parseVerticalTable(String text, List<ParseResult> results,
                                     List<TradingImportParser.UnparsedLine> dropped) {
         List<String> lines = new java.util.ArrayList<>();
+        // 与 lines 平行：该数据行位置「最近一次出现的日期行」+**该日期是否已被更早的成交用掉**。
+        // 日期行本身不进 lines（否则会打断「数量 → 成交额 → 时间」的向下取链）。
+        List<java.time.LocalDate> lineDates = new java.util.ArrayList<>();
+        List<Boolean> lineDateUsed = new java.util.ArrayList<>();
+        java.time.LocalDate cursorDate = null;
+        boolean cursorUsed = false;             // 当前日期行是否已被某笔成交消费
+        boolean sawDirection = false;
+        boolean dateAfterFirstTrade = false;    // 首个日期行排在首个成交之后 → 列序可能是「日期在笔尾」
+        boolean firstDateSeen = false;
         for (String raw : text.split("\r?\n")) {
             String s = raw.trim();
             if (s.isEmpty() || V_HEADER_PATTERN.matcher(s).find()) continue;
+            java.time.LocalDate dateLine = extractTradeDate(s);
+            if (dateLine != null) {
+                if (!firstDateSeen) {
+                    firstDateSeen = true;
+                    dateAfterFirstTrade = sawDirection; // 日期在成交之后 → 整批不可信（列序可能是笔尾）
+                }
+                cursorDate = dateLine;
+                cursorUsed = false;                 // 新日期行：尚未被任何成交用掉
+                continue; // 日期行：只推游标，不占数据行位
+            }
+            boolean isDirection = V_DIRECTION_PATTERN.matcher(s).matches();
+            if (isDirection) sawDirection = true;
             lines.add(s);
+            lineDates.add(cursorDate);
+            lineDateUsed.add(cursorUsed);
+            if (isDirection) cursorUsed = true;     // 这一笔用掉了当前日期
         }
         if (lines.size() < 4) return; // 一笔竖排成交至少 4 行（名称/代码 + 价格 + 方向 + 数量）
         int seq = 0;
@@ -452,6 +476,18 @@ public class TradingParseAppService {
             if (down < lines.size() && V_TIME_PATTERN.matcher(lines.get(down)).matches()) {
                 tradeTime = extractTradeTime(lines.get(down));
             }
+            // 2026-09-26（09-19 深审遗留，P0-交易59 的对称半边）：竖排版式的**成交日期**——
+            // 横排早已抽取，竖排一直缺，于是竖排截图的候选永远「缺成交日期」，而 v3.32 二修起
+            // 截图候选**无日期禁止落库** → 用户必须逐行手点「补日期」。日期行在预处理阶段已被
+            // 摘出（不打断向下取链），此处取其**最近一次出现的日期**；没有日期行 → null
+            // （**不猜、不拿整段第一个日期充数**）。
+            // 对抗复核 P1-2（2026-09-26 收紧为**逐笔**判据）：日期只在「**本笔专属**」时认——
+            //   ① 该数据行之前出现过日期行，且 ② 这个日期行**尚未被更早的成交用掉**（否则就是
+            //      「顶部导出日期」被后续每一笔继承 → 错日期静默进账本），且 ③ 整批不是「日期在笔尾」形态。
+            // 三条都不成立 → null（v3.32 起「无日期禁止落库」会拦下，用户手点补日期；比错日期进账本便宜）。
+            java.time.LocalDate tradeDate =
+                    (!dateAfterFirstTrade && lineDates.get(i) != null && !lineDateUsed.get(i))
+                            ? lineDates.get(i) : null;
             seq++;
             if (price == null || volume == null || (symbol == null && name == null)) {
                 // P1-交易55：认出了方向却凑不齐一笔 → 如实上报，不静默丢弃。
@@ -474,7 +510,7 @@ public class TradingParseAppService {
                 }
             }
             results.add(new ParseResult(true, symbol, name, direction, price, volume,
-                    null, tradeTime, null, null, null, null));
+                    tradeDate, tradeTime, null, null, null, null));
         }
         if (!results.isEmpty()) {
             log.info("竖排表格解析 | 还原 {} 笔（VLM 一行拆多行的版式）", results.size());

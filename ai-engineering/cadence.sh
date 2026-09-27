@@ -200,7 +200,23 @@ cmd_ship() {
         printf '  %s范围守卫：ADAI_BATCH_PATHS="<本批路径>" git commit -m "..."%s\n' "$DIM" "$RST"
     fi
 
-    hr "③ 收尾两步（AGENTS.md 规则 0b，强制）"
+    # ── 审查判定（工具层 D7；2026-09-26 用户拍板「按建议实施」）────────────────
+    # 收工**必须**先判这一条：本批 diff 含代码文件且触及并发/数据/契约/用户可见行为 → 派独立增量深审
+    # （按改动目录派官 + 对抗官）；纯文档/样式 → light（guard-meta + guard-align + 守护快扫）。
+    # 结论必须落盘（REVIEW / change-log）——**不许只留在对话里**（2026-09-26 教训：一夜 8 批自测自记，
+    # 用户不追问就没有任何独立审查）；有 P0/P1 → 先修再提交。
+    local batch_head code_files
+    batch_head="${last:-HEAD}"
+    code_files="$(git diff --name-only "$batch_head" 2>/dev/null | grep -cE '\.(java|kt|dart|ts|tsx|js|py|sh)$' || true)"
+    hr "③ 审查判定（D7：收工前必判）"
+    if [ "${code_files:-0}" -gt 0 ]; then
+        printf '  %s⚠ 本批含 %s 个代码文件 → 派独立增量深审（按改动目录派官 + 对抗官）%s\n' "$YEL" "$code_files" "$RST"
+        printf '  %s  结论落 REVIEW / change-log；P0/P1 先修再提交%s\n' "$DIM" "$RST"
+    else
+        printf '  %s本批无代码文件 → light：guard-meta + guard-align + 守护快扫%s\n' "$DIM" "$RST"
+    fi
+
+    hr "④ 收尾两步（AGENTS.md 规则 0b，强制）"
     bash ai-engineering/guard-context.sh --write-local | tail -2 || true
     bash ai-engineering/guard-cost.sh --record | tail -6 || true
 

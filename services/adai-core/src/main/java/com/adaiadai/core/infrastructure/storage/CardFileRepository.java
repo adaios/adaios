@@ -199,11 +199,18 @@ public class CardFileRepository implements CardRepository {
         sb.append("createdAt: ").append(card.createdAt().toString()).append("\n");
         sb.append("updatedAt: ").append(card.updatedAt().toString()).append("\n");
         if (card.summary() != null && !card.summary().isBlank()) {
-            sb.append("summary: ").append(card.summary()).append("\n");
+            // 后端审查 P3：summary 必须**单行化**——AI 失败降级时它可能是多行对话原文，
+            // 直接写进 frontmatter 会污染解析（幂等键紧跟在它后面，隐患被放大）
+            sb.append("summary: ").append(singleLine(card.summary())).append("\n");
         }
         // REVIEW P1-对话1：落盘 conversation 记录 id 作幂等键（旧卡缺该键 → 解析为 null，兼容）
         if (card.conversationRecordId() != null && !card.conversationRecordId().isBlank()) {
             sb.append("conversationRecordId: ").append(card.conversationRecordId()).append("\n");
+        }
+        // 对抗审查 P1-A（2026-09-26）：幂等键必须配**内容指纹**——否则「在已结束的卡上继续聊再结束」
+        // 会被误判成重试，拿回旧总结且新轮次不落记录/记忆
+        if (card.conversationTurnsHash() != null) {
+            sb.append("conversationTurnsHash: ").append(card.conversationTurnsHash()).append("\n");
         }
         sb.append("---\n\n");
 
@@ -246,11 +253,22 @@ public class CardFileRepository implements CardRepository {
         if (conversationRecordId != null && conversationRecordId.isBlank()) {
             conversationRecordId = null;
         }
+        // 对抗审查 P1-A：幂等键的内容指纹（旧卡/手工改过的行缺失或非法 → null，走「新落一条」的安全方向）
+        Integer conversationTurnsHash = null;
+        String hashRaw = fields.get("conversationTurnsHash");
+        if (hashRaw != null && !hashRaw.isBlank()) {
+            try {
+                conversationTurnsHash = Integer.valueOf(hashRaw.trim());
+            } catch (NumberFormatException e) {
+                log.warn("conversationTurnsHash 非法，按缺失处理 | cardId={} | raw={}", id, hashRaw);
+            }
+        }
 
         // Parse turns from body
         List<Turn> turns = parseTurns(body);
 
-        return new CardRecord(id, type, status, tags, turns, summary, createdAt, updatedAt, conversationRecordId);
+        return new CardRecord(id, type, status, tags, turns, summary, createdAt, updatedAt,
+                conversationRecordId, conversationTurnsHash);
     }
 
     /**

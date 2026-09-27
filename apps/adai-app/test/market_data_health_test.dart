@@ -217,5 +217,37 @@ void main() {
       expect(find.text('阿呆最近拿不到行情'), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    // ── 2026-09-26（09-19 深审未修项）：账户卡 22px 粗体大数无收缩能力 → 8 位数溢出 ──
+
+    testWidgets('账户/资金卡大数金额不溢出（FittedBox scaleDown 收缩）', (tester) async {
+      final b = _Backend();
+      _mockBase(b);
+      b.handlers['/api/v1/trading/account'] = (_) async => _json({
+            'assets': 1234567890.12, 'cash': 123456789.01, 'available': 123456789.01,
+            'withdrawable': 123456789.01, 'marketValue': 1111111101.11,
+            'pnl': 1234567890.12, 'todayPnl': 1234567.89, 'principal': 1500000000.0,
+          });
+      // iPhone 竖屏宽度（390pt）：22px 粗体 + 千分位在这里最容易顶破 Row。
+      // 用十位数极端值——不是为了「真实账户会有这么大」，而是为了证明收缩真的生效
+      // （改前这类值必抛 RenderFlex overflow）。
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await pumpTrading(tester, b);
+      // 金额默认 `••••`（隐私）→ 点「看金额」揭开真值；账户卡在折叠区（A2 重排后默认收起）→ 展开
+      await tester.tap(find.text('看金额'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('资金与配置'));
+      await tester.tap(find.text('资金与配置'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('收起金额'), findsOneWidget,
+          reason: '前置：金额已揭开（否则测到的是 `••••`，测不出溢出）');
+      expect(find.textContaining(RegExp(r'\d(,\d{3}){3,}')), findsWidgets,
+          reason: '前置：确实渲染了十位级大数（千分位）');
+      expect(tester.takeException(), isNull,
+          reason: '大数不得把账户/资金卡顶成 RenderFlex overflow（改前会抛 overflow）');
+    });
   });
 }

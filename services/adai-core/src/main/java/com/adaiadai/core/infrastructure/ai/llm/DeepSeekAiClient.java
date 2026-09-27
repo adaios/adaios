@@ -46,6 +46,24 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
     private static final int MAX_ATTEMPTS = 2;    // DeepSeek 偶发返回空内容/超时，重试 1 次（生产 08-14 反馈 brief 降级 2 行）
     private static final long RETRY_DELAY_MS = 600;
 
+    /**
+     * 意图分类的 system（2026-09-26，task-log「202 剩余」）：此前 {@code recognizeIntent} 走
+     * {@link #buildSimpleBody(String, int, double)} 的**默认 system**——那是「分析一条个人记录、
+     * 输出 JSON（summary/insight/patterns）」的分析指令，与「只判 ask / log」的分类任务语义相悖
+     * （模型可能回一段 JSON，而调用方只做 {@code result.contains("ask")} → 意图识别失准）。
+     */
+    static final String INTENT_SYSTEM = """
+            你是意图分类器。判断用户这句话是在向助手提问（ask），还是在陈述一件要记下来的事（log）。
+            只回答一个词：ask 或 log。不要输出 JSON、不要解释、不要标点。""".strip();
+
+    /**
+     * 生成正文的默认 system（同批）：{@code generate(ctx, null)} 此前落到分析指令（要求输出 JSON），
+     * 与「生成正文」语义矛盾。调用方给了自定义 system 时以调用方为准。
+     */
+    static final String GENERATE_DEFAULT_SYSTEM = """
+            你是阿呆的个人 AI 助手。用中文自然地写出用户要的正文；不要输出 JSON、
+            不要写解释性的元信息（如「以下是…」「JSON 如下」）。""".strip();
+
     private final HttpClient httpClient;
     private final String apiKey;
     private final String apiUrl;
@@ -135,7 +153,9 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
         try {
             // 生成语义：自定义 system 引导正文格式，无 JSON 摘要指令；0.7 temp + 2048 tokens 适合结构化正文
             // generate 输出正文非 JSON，不开 json_mode
-            String body = buildSimpleBody(contextPackage.prompt(), 8192, 0.7, systemPrompt, false);
+            String body = buildSimpleBody(contextPackage.prompt(), 8192, 0.7,
+                    (systemPrompt != null && !systemPrompt.isBlank()) ? systemPrompt : GENERATE_DEFAULT_SYSTEM,
+                    false);
             String content = sendAndParse(body, TIMEOUT);
             log.info("[DeepSeek] generate 响应 | model={} | 长度={}", modelFor(), content.length());
             return content;
@@ -231,7 +251,7 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
                     结果：""".formatted(content);
             // v4-pro 推理模型：50 tokens 会被思维链吃满→content 空（08-14 连调实锤）→ 提到 512
             // 意图识别返回裸词 ask/log（非 JSON），不开 json_mode（json_object 会强制输出 JSON 结构破坏裸词）
-            String body = buildSimpleBody(prompt, 512, 0.3);
+            String body = buildSimpleBody(prompt, 512, 0.3, INTENT_SYSTEM, false);
             String result = sendAndParse(body, Duration.ofSeconds(15)).strip().toLowerCase();
             if (result.contains("ask")) return "ask";
             return "log";

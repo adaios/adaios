@@ -19,9 +19,20 @@ import 'services/biometric_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // RFC 20260901-auth-login：启动加载持久化会话（token + 上次账号），无 token → 登录页
-  final token = await UserStore.loadToken();
-  final savedUserId = await UserStore.loadUserId();
+  // RFC 20260901-auth-login：启动加载持久化会话（token + 上次账号），无 token → 登录页。
+  // task-log「229 剩余」（2026-09-26）：两次**串行** await 会让首帧多等一倍——两者都是本地存储读、
+  // 互不依赖，改为**并发**（`Future.wait`），首帧提前。
+  // 后端/前端审查 P3：并发时若只 await 外层，先抛的那个 future 会变成**未处理异步错误**——
+  // 这里整体 try 住，任一读取失败都按「未登录」处理（不阻断启动，首屏回到登录页）。
+  String? token;
+  String? savedUserId;
+  try {
+    final session = await Future.wait<Object?>([UserStore.loadToken(), UserStore.loadUserId()]);
+    token = session[0] as String?;
+    savedUserId = session[1] as String?;
+  } catch (_) {
+    // 本地存储不可用：保持 null（等价于未登录）
+  }
   runApp(RootApp(
     userId: savedUserId ?? 'default',
     initialToken: token,

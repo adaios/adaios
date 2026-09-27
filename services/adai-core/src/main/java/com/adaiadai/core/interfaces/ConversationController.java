@@ -66,7 +66,13 @@ public class ConversationController {
         }
         synchronized (lockFor(userId, request.cardId())) {
             Optional<CardRecord> existing = cardRepository.findById(userId, request.cardId());
-            if (existing.isPresent() && existing.get().conversationRecordId() != null) {
+            // 对抗审查 P1-A（2026-09-26）：命中幂等键**必须同时比对内容指纹**——「在已结束的卡上
+            // 继续聊几轮再点结束」不是重试：只比 recordId 会返回上一次的总结，且新轮次既不落
+            // record 也不进记忆（用户会说「我刚说的你没记住」）。指纹不一致 → 正常走 doEnd 新落一条。
+            Integer currentHash = request.turns().hashCode();
+            if (existing.isPresent()
+                    && existing.get().conversationRecordId() != null
+                    && sameContentAsRecorded(existing.get(), request.turns(), currentHash)) {
                 String recordId = existing.get().conversationRecordId();
                 log.info("Conversation end 幂等命中（同卡已落盘，不重复记录） | userId={} | cardId={} | recordId={}",
                         userId, request.cardId(), recordId);
@@ -83,6 +89,36 @@ public class ConversationController {
     /** 条带锁：同一 (userId|cardId) 恒落同一把锁（固定 32 条，无界累积风险为零）。 */
     private Object lockFor(String userId, String cardId) {
         return cardLocks[Math.floorMod((userId + "|" + cardId).hashCode(), CARD_LOCK_STRIPES)];
+    }
+
+    /**
+     * 本次请求与卡片上记录的「那一段对话」是不是同一段（对抗复核 P2-3 / P2-4，2026-09-26）。
+     * <p>
+     * 优先级：① 卡片有指纹（`conversationTurnsHash`）→ 比指纹；② **缺指纹**（旧卡，或被
+     * `CardMigrationService` / `RecordRetryService` 重写时抹掉键的卡）→ 退化为**比对卡片 turns 的
+     * 文本序列**（等价指纹、无需持久化）；③ 两者都比不出来 → 才算「内容变了」。
+     * <p>
+     * 为什么缺指纹时不直接新落（原注释把方向写反了）：`Integer.equals(null)` 恒 false → 无指纹的卡
+     * **永不命中幂等** → 重试会重复落盘 + 重复调 AI + 重复写记忆。对**幂等/花钱**而言，「宁可复用」
+     * 才是安全方向（代价只是可能少生成一次新总结）。
+     */
+    private static boolean sameContentAsRecorded(CardRecord card, List<String> requestTurns, Integer requestHash) {
+        Integer cardHash = card.conversationTurnsHash();
+        if (cardHash != null) return cardHash.equals(requestHash);
+        List<CardRecord.Turn> cardTurns = card.turns();
+        if (cardTurns == null || cardTurns.isEmpty()) return false; // 空 turns（占位/预建卡）→ 不比，走新落
+        return sameTurnsText(cardTurns, requestTurns);
+    }
+
+    /** 卡片 turns 与本次请求 turns 的文本序列是否一致（缺指纹时的等价判据）。 */
+    private static boolean sameTurnsText(List<CardRecord.Turn> cardTurns, List<String> requestTurns) {
+        if (cardTurns == null || requestTurns == null || cardTurns.size() != requestTurns.size()) return false;
+        for (int i = 0; i < cardTurns.size(); i++) {
+            String a = cardTurns.get(i).text() == null ? "" : cardTurns.get(i).text().strip();
+            String b = requestTurns.get(i) == null ? "" : requestTurns.get(i).strip();
+            if (!a.equals(b)) return false;
+        }
+        return true;
     }
 
     private ResponseEntity<EndConversationResponse> doEnd(String userId, EndConversationRequest request) {
@@ -156,12 +192,23 @@ public class ConversationController {
 
         // Update card file with summary + ended status + 幂等键（P1-对话1：同卡再次 end 直接返回该记录）
         if (request.cardId() != null) {
-            Optional<CardRecord> existing = cardRepository.findById(userId, request.cardId());
-            if (existing.isPresent()) {
-                CardRecord updated = existing.get()
+            // 后端审查 P1-2（2026-09-26）：写回前**重新读一次**卡片——append 侧（用户继续发消息走
+            // QuestionAppService / MediaRecordAppService 的 findById→withTurn→save）没有与本锁互斥，
+            // 若拿「AI 调用之前」读到的旧 turns 写回，会静默覆盖这几轮发言（丢轮次）。以最新 turns
+            // 为基底，只改状态 / 摘要 / 幂等键。
+            Optional<CardRecord> latest = cardRepository.findById(userId, request.cardId());
+            if (latest.isPresent()) {
+                // 对抗复核 P2-4：卡片 turns 为空（占位卡 / 预建卡）→ 以**本次请求**为准写指纹；
+                // 非空且与请求一致 → 写；非空但不一致（并发 append 落在两次读之间）→ **不写**——
+                // 宁可下次重落，也不留 turns(N+k)+hash(N)（那会让 k 轮永远进不了记录/记忆）
+                List<CardRecord.Turn> latestTurns = latest.get().turns();
+                boolean turnsAligned = latestTurns == null || latestTurns.isEmpty()
+                        || sameTurnsText(latestTurns, request.turns());
+                Integer hashToPersist = turnsAligned ? request.turns().hashCode() : null;
+                CardRecord updated = latest.get()
                         .withStatus("ended")
                         .withSummary(summaryText)
-                        .withConversationRecordId(id);
+                        .withConversation(id, hashToPersist);
                 cardRepository.save(userId, updated);
                 log.info("Card updated | cardId={} | status=ended | conversationRecordId={}", request.cardId(), id);
             }

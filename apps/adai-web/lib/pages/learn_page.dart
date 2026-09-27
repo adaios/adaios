@@ -6,6 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../services/api_service.dart';
 import '../services/models/learn_models.dart';
 import '../theme/app_colors.dart';
+import '../utils/image_downscale.dart';
 import '../widgets/page_header.dart';
 
 /// learn 资产页（RFC 20260829 L2 呈现·桌面端）。
@@ -1886,6 +1887,9 @@ class _DigestDialogState extends State<_DigestDialog> {
   final _platformCtl = TextEditingController();
   final _authorCtl = TextEditingController();
   final List<LearnImageInput> _images = [];    // 选图整理（1~3 张，与链接/素材互斥）
+  /// 选图在途守卫（对抗复核 P2-1）：降采样逐张 await 可达数秒，期间连点 [+] 会按同一快照
+  /// 各算一次 remaining → `_images` 突破 3 张自限（后端 400）。feed 页已有同款守卫。
+  bool _pickingImages = false;
   String? _type; // null = 让阿呆自动判定
   bool _submitting = false;
   bool _polling = false;
@@ -1953,6 +1957,8 @@ class _DigestDialogState extends State<_DigestDialog> {
 
   /// 选图整理（1~3 张）：书页/PPT/讲义/截图，阿呆读图后照同一条流水线消化成卡。
   Future<void> _pickImages() async {
+    if (_pickingImages) return; // P2-1：在途守卫，防降采样期间连点导致超过 3 张自限
+    _pickingImages = true;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -1960,14 +1966,20 @@ class _DigestDialogState extends State<_DigestDialog> {
         allowMultiple: true,
       );
       if (result == null || result.files.isEmpty) return;
-      final picked = result.files
-          .where((f) => f.bytes != null)
-          .map((f) => LearnImageInput(
-                bytes: f.bytes!,
-                filename: f.name,
-                mimeType: _imageMimeType(f.extension),
-              ))
-          .toList();
+      // REVIEW W-P3-9（2026-09-26）：书页/PPT 原图整份字节进内存再上传 → 上传前降采样
+      // （小图零重编码原样返回；压缩失败也原样返回，不阻断选图）
+      // 前端审查 P1-1：重编码后字节已是 PNG → filename 与 mimeType 必须同步（否则盘上类型与内容不符）
+      final picked = <LearnImageInput>[];
+      for (final f in result.files) {
+        if (f.bytes == null) continue;
+        final out = await ImageDownscale.run(f.bytes!);
+        final isPng = out.mime == ImageDownscale.pngMime;
+        picked.add(LearnImageInput(
+          bytes: out.bytes,
+          filename: isPng ? ImageDownscale.asPngName(f.name) : f.name,
+          mimeType: isPng ? ImageDownscale.pngMime : _imageMimeType(f.extension),
+        ));
+      }
       if (picked.isEmpty) return;
       if (!mounted) return;
       final remaining = _maxImages - _images.length;
@@ -1982,6 +1994,8 @@ class _DigestDialogState extends State<_DigestDialog> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = '图片没选上，再来一次？');
+    } finally {
+      _pickingImages = false; // P2-1：无论成败都复位，否则选图入口会永久失效
     }
   }
 

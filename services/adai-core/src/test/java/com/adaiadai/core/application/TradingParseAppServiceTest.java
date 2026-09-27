@@ -498,4 +498,93 @@ class TradingParseAppServiceTest {
         assertEquals(java.time.LocalTime.of(13, 8, 59), results.get(0).tradeTime());
     }
 
+    /**
+     * 2026-09-26（09-19 深审遗留，P0-交易59 的对称半边）：竖排同样要带出**成交日期**。
+     * v3.32 二修起「截图候选无成交日期 → 禁止落库」，而竖排一直不抽日期 → 这类截图每笔都要
+     * 用户手点「补日期」。日期行出现在方向行**之前**（券商明细常见列序），且**不得打断**
+     * 「数量 → 成交额 → 时间」的向下取链。
+     */
+    @Test
+    void parseLooseBatch_verticalTable_extractsTradeDate() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "2026-09-17\n亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n");
+
+        assertEquals(1, results.size(), "日期行不得打断一笔的字段链（否则数量取不到、整笔不产出）");
+        assertEquals(java.time.LocalDate.of(2026, 9, 17), results.get(0).tradeDate());
+        assertEquals(100, results.get(0).volume());
+        assertEquals(new BigDecimal("68.270"), results.get(0).price());
+        assertEquals(java.time.LocalTime.of(13, 8, 59), results.get(0).tradeTime());
+    }
+
+    /** 多日明细：日期变更点之后的成交归新日期（绝不拿整段第一个日期充数）。 */
+    @Test
+    void parseLooseBatch_verticalTable_multipleDates_followDateChangePoint() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "2026-09-17\n亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                        + "2026-09-18\n亨通光电\n600487\n67.730\n买入\n200\n13546.000\n10:13:10\n");
+
+        assertEquals(2, results.size());
+        assertEquals(java.time.LocalDate.of(2026, 9, 17), results.get(0).tradeDate());
+        assertEquals(java.time.LocalDate.of(2026, 9, 18), results.get(1).tradeDate());
+    }
+
+    /** 没有日期行 → 保持 null（不猜：历史成交截图可能跨多日，猜错比缺更糟）。 */
+    @Test
+    void parseLooseBatch_verticalTable_noDateLine_keepsNull() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n");
+
+        assertEquals(1, results.size());
+        assertNull(results.get(0).tradeDate());
+    }
+
+    /** 对抗复核 P1-2（2026-09-26）：**每笔各自带日期行**（券商历史成交的常见版式）→ 两笔都认。 */
+    @Test
+    void parseLooseBatch_verticalTable_eachTradeHasOwnDate_allRecognized() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "2026-09-17\n"
+                        + "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                        + "2026-09-18\n"
+                        + "中天科技\n600522\n20.410\n买入\n200\n4082.000\n10:10:00\n");
+
+        assertEquals(2, results.size());
+        assertEquals(java.time.LocalDate.of(2026, 9, 17), results.get(0).tradeDate());
+        assertEquals(java.time.LocalDate.of(2026, 9, 18), results.get(1).tradeDate());
+    }
+
+    /**
+     * 对抗复核 P1-2 的**核心反例**：只有一个「顶部导出日期」时，它绝不能被后续每一笔继承——
+     * 否则 B 日成交会被写进账本成 A 日（静默、对账时才发现）。判据：日期行只属于**紧随其后的第一笔**。
+     */
+    @Test
+    void parseLooseBatch_verticalTable_topExportDate_doesNotLeakToLaterTrades() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "2026-09-17\n"
+                        + "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                        + "中天科技\n600522\n20.410\n买入\n200\n4082.000\n10:10:00\n");
+
+        assertEquals(2, results.size());
+        assertEquals(java.time.LocalDate.of(2026, 9, 17), results.get(0).tradeDate(),
+                "第一笔紧邻该日期行 → 认");
+        assertNull(results.get(1).tradeDate(),
+                "该日期行已被第一笔用掉 → 第二笔保持 null（宁可让用户手补，也不把 A 日写成 B 日的账）");
+    }
+
+    /**
+     * 日期行排在成交**之后**（「日期在笔尾」列序）→ 整批不认日期。
+     * 对抗复核 P3-2：这条用例必须带**第二笔**才是真锁——否则日期行之后没有成交，删掉闸它照样绿。
+     */
+    @Test
+    void parseLooseBatch_verticalTable_dateAfterTrade_isNotUsed() {
+        java.util.List<TradingParseAppService.ParseResult> results = service.parseLooseBatch("u1",
+                "亨通光电\n600487\n68.270\n买入\n100\n6827.000\n13:08:59\n"
+                        + "2026-09-17\n"
+                        + "中天科技\n600522\n20.410\n买入\n200\n4082.000\n10:10:00\n");
+
+        assertEquals(2, results.size());
+        assertNull(results.get(0).tradeDate(), "首笔之前没有日期行 → null");
+        assertNull(results.get(1).tradeDate(),
+                "日期行排在成交之后（列序可能是笔尾）→ 整批不可信，保持 null（删掉该闸这条会红）");
+    }
+
 }

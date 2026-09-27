@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../theme/app_colors.dart';
+import '../utils/image_downscale.dart';
 import '../services/api_service.dart';
 import '../services/models/tag_models.dart';
 import '../services/models/learn_models.dart';
@@ -618,7 +619,9 @@ class _FeedPageState extends State<FeedPage> {
       for (final i in images)
         MediaUploadFile(bytes: i.bytes, filename: i.name, mimeType: _mimeTypeOf(i.extension)),
     ];
-    final fallback = text.isNotEmpty ? caption : images.first.name;
+    // 前端审查 P2-2（2026-09-26，与 app 同款）：文件名**只留内部**（mediaName 字段），
+    // 不进用户可见正文——占位卡/回执此前会把 `IMG_1234.jpg` 当「用户说的话」（违背 B1）
+    final fallback = text.isNotEmpty ? caption : '随手一拍，已记下';
     // 只插 1 张占位卡（多图角标）——不再为每张图各插一张卡（P1-多图1）
     final pid = 'media_${DateTime.now().microsecondsSinceEpoch}';
     setState(() => _cards.add(FeedCardData(
@@ -1151,9 +1154,9 @@ class _FeedPageState extends State<FeedPage> {
         if (!mounted) return;
         _applyBatchSuccess(pid, resp,
             caption: card.pendingText ?? card.mediaCaption ?? '',
-            fallback: card.mediaCaption?.isNotEmpty == true
-                ? card.mediaCaption!
-                : (card.mediaName ?? ''),
+            // 对抗复核 P1-1：重试路径**同样**不能拿文件名兜底——否则弱网重试成功且 summary 为空时，
+            // `IMG_1234.jpg` 会被渲染成 15px 用户正文 + 头部 chip（B1 红线，且与本批 app 侧不一致）
+            fallback: (card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : '随手一拍，已记下',
             timeStr: card.time,
             count: files.length);
       } catch (e) {
@@ -1177,8 +1180,9 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
       setState(() {
         _updateCard(pid, (c) => c.copyWith(
+          // 对抗复核 P1-1：旧单图路径同样不得回退到文件名（系统痕迹不进用户正文，B1）
           content: resp.summary.isEmpty
-              ? (card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : card.mediaName!
+              ? ((card.mediaCaption?.isNotEmpty ?? false) ? card.mediaCaption! : '随手一拍，已记下')
               : resp.summary,
           summary: resp.summary.isEmpty ? null : resp.summary,
           tags: resp.tags.isNotEmpty ? resp.tags : null,
@@ -1204,8 +1208,24 @@ class _FeedPageState extends State<FeedPage> {
     try {
       final result = await widget.api.confirmTradeLog();
       if (!mounted) return;
+      // 2026-09-26（09-19 深审 P2-5）：对齐 app 口径——「只记流水」「之前记过」都必须说出来。
+      // 此前 web 只认 confirmed/failed，命中锚定（ledgerOnly>0 且 confirmed=0）时会落进
+      // 「今天没有待确认的交易」这句假话里，用户读到的就是「点了确认、什么都没发生」。
+      final dupTail = result.duplicated > 0 ? '，另有 ${result.duplicated} 笔之前已经记过了（没有重复记）' : '';
+      final ledgerTail = result.ledgerOnly > 0
+          ? '，另有 ${result.ledgerOnly} 笔记进流水了（持仓和现金以券商快照为准，没重复算）'
+          : '';
+      // 前端审查 P2-1（2026-09-26）：失败必须**并列**说明——此前 failed 排在最后，只要前面任一分支
+      // 命中（如「之前记过了」）它就永不进入，混合结局（2 笔已记过 + 1 笔失败）会把失败**静默吞掉**。
+      final failTail = result.failed > 0
+          ? '；另有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}'
+          : '';
       if (result.confirmed > 0) {
-        _showSnackBar('好，${result.confirmed} 笔已经记进账了'); // P2-UX4：阿呆口吻（B1）
+        _showSnackBar('好，${result.confirmed} 笔已经记进账了$ledgerTail$dupTail$failTail'); // P2-UX4：阿呆口吻（B1）
+      } else if (result.ledgerOnly > 0) {
+        _showSnackBar('这 ${result.ledgerOnly} 笔已经记进流水了（持仓和现金以券商快照为准，没重复算）$dupTail$failTail');
+      } else if (result.duplicated > 0) {
+        _showSnackBar('这 ${result.duplicated} 笔之前已经记过了，没有重复入账$failTail');
       } else if (result.failed > 0) {
         _showSnackBar('有 ${result.failed} 笔没记上：${result.failures.isNotEmpty ? result.failures.first : '未知原因'}');
       } else {
@@ -1731,6 +1751,9 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final List<PickedImage> _pendingImages = []; // 输入栏内联附件：选图后待发送，非立即上传
+  /// 选图在途守卫（前端审查 P2-3，2026-09-26）：降采样要逐张 await（3 张大图可达数秒），
+  /// 期间再点 [+] 会按同一快照各算一次 remaining → 挂进 6 张、突破前端 3 张自限（后端 400）。
+  bool _pickingImage = false;
 
   /// 从外部预设输入框文本并聚焦（空态快速开始 chips，#159）。
   void prefillText(String text) {
@@ -1771,6 +1794,8 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
   }
 
   Future<void> _pickImage() async {
+    if (_pickingImage) return; // P2-3：在途守卫，防降采样期间连点导致超限
+    _pickingImage = true;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -1778,10 +1803,20 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
         allowMultiple: true, // 多选，一次投递（1..3 张，见 _onSendMedia）
       );
       if (result == null || result.files.isEmpty) return;
-      final picked = result.files
-          .where((f) => f.bytes != null)
-          .map((f) => PickedImage(f.bytes!, f.name, f.extension))
-          .toList();
+      // REVIEW W-P3-9（2026-09-26）：上传前降采样——原图整份字节进内存再上传，多图/弱网时又慢又危险。
+      // 小图原样返回（零重编码），压缩失败也原样返回（不阻断选图）。
+      // 前端审查 P1-1：重编码后字节类型已变成 PNG → **文件名与扩展名必须同步**，否则后端按声明的
+      // jpeg 落盘成 .jpg（错误扩展名永久留在盘上），并把 `data:image/jpeg;base64,<PNG>` 交给视觉模型。
+      final picked = <PickedImage>[];
+      for (final f in result.files) {
+        if (f.bytes == null) continue;
+        final out = await ImageDownscale.run(f.bytes!);
+        if (!mounted) return; // P2-3：降采样期间页面可能已销毁（登出/切号）
+        final isPng = out.mime == ImageDownscale.pngMime;
+        picked.add(PickedImage(out.bytes,
+            isPng ? ImageDownscale.asPngName(f.name) : f.name, isPng ? 'png' : f.extension));
+      }
+      if (!mounted) return;
       // 一次投递上限 3 张（后端 batch / ask-batch 强校验；前端选图即限，多余截断 + 提示）
       final remaining = 3 - _pendingImages.length;
       if (remaining <= 0) {
@@ -1798,6 +1833,8 @@ class _DesktopInputBarState extends State<_DesktopInputBar> {
     } catch (e) {
       if (!mounted) return;
       _showSnackBar('图片选择失败: $e');
+    } finally {
+      _pickingImage = false;
     }
   }
 

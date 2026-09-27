@@ -77,9 +77,11 @@ public class LlmResponseParser {
             if (root.has("summary") && !root.get("summary").isNull()
                     && !root.get("summary").asText().isBlank()
                     && !"无摘要".equals(root.get("summary").asText())) {
-                summary = decodeUnicodeEscapes(root.get("summary").asText());
+                // 对抗审查 P1-B（2026-09-26）：summary 与正文**共用同一出口剥离**——此前只剥正文，
+                // 「JSON 如下？」这类后台提示一旦落进 summary 就是**持久脏数据**（进卡片与记忆）
+                summary = stripBackendArtifacts(decodeUnicodeEscapes(root.get("summary").asText()));
             } else {
-                summary = extractTextBeforeJson(rawResponse, jsonStr);
+                summary = stripBackendArtifacts(extractTextBeforeJson(rawResponse, jsonStr));
             }
 
             String domain = decodeUnicodeEscapes(getTextOrDefault(root, "domain", "life"));
@@ -194,19 +196,137 @@ public class LlmResponseParser {
     public static String extractNaturalText(String rawResponse) {
         if (rawResponse == null || rawResponse.isBlank()) return rawResponse;
         String jsonStr = extractJson(rawResponse);
-        if (jsonStr == null) return rawResponse.strip();
+        if (jsonStr == null) return stripBackendArtifacts(rawResponse.strip());
         int idx = rawResponse.indexOf(jsonStr);
         if (idx <= 0) return ""; // 整段 JSON（含代码块围栏内），无自然语言
         String before = rawResponse.substring(0, idx)
                 // 剥离 markdown 代码块围栏开标记（```json / ```），它属于元数据而非对话内容
                 .replaceFirst("```(?:json)?\\s*$", "")
                 .strip();
-        return before.length() > 4000 ? before.substring(0, 4000) + "…" : before;
+        String truncated = before.length() > 4000 ? before.substring(0, 4000) + "…" : before;
+        // 出口单一剥离（REVIEW P1-对话2）：JSON 块**之外**漏出的后台提示整行（如「JSON 如下？」）也在此剥掉
+        return stripBackendArtifacts(truncated);
+    }
+
+    /** 出口自检的命中行长度上限：整行 ≤ 这么多字才可能是漏出的后台提示（长段落视为用户内容，不碰）。 */
+    static final int ARTIFACT_LINE_MAX = 60;
+
+    /**
+     * 后台/归档语义特征（REVIEW P1-对话2 + P0-1 同族）：出现在**短整行**里即判定为漏出的后台提示。
+     * <p>
+     * 只收高置信度的「指令原文片段」——它们在正常对话里几乎不会成句出现，误伤面极小。
+     */
+    static final List<String> BACKEND_ARTIFACT_MARKERS = List.of(
+            "JSON 如下", "JSON如下", "json 如下", "Json 如下",
+            "以下是 JSON", "以下是JSON",
+            // 对抗复核 P3-5：prompt 原文用的是「**回答**结束后」（ContextEngine:539），此前只收「回复结束后」
+            // → 模型复述 prompt 原句时漏剥
+            "回答结束后", "回复结束后", "另起一行输出", "不要包裹 markdown", "不要包裹markdown",
+            "<think>", "</think>"
+    );
+
+    /**
+     * 出口自检（REVIEW P1-对话2，2026-09-26 夜间批）：剥掉**后台 / 归档语义漏进用户可见正文**的行。
+     * <p>
+     * 为什么需要：聊天 prompt 要求模型「回答结束后另起一行输出 JSON」，模型偶尔把这句**指令本身
+     * 说出来**（生产实据：用户在「选股审美背离」那场对话里读到正文末尾挂着「JSON 如下？」）——
+     * 它不是 JSON 块，{@link #extractJson} 与剥离 JSON 尾巴的路径都认不出，于是原样进了卡片与
+     * 前端，违背第一原则 B1「不出现第三视角」。同族：P0-1 的 {@code <think>} 壳泄漏——
+     * 本方法即两者的**共同出口**（不再按形态各补一处）。
+     * <p>
+     * 口径（保守：宁可漏剥，不误伤用户内容）：
+     * <ul>
+     *   <li>只丢**整行**，且该行去空白后 ≤ {@link #ARTIFACT_LINE_MAX} 字——长段落里出现这些词
+     *       多半是在讨论它们，不动；</li>
+     *   <li>命中 {@link #BACKEND_ARTIFACT_MARKERS} 任一特征即丢该行，其余行原样保留；</li>
+     *   <li>命中时 WARN 留痕（含被丢的行），**不静默**——日报/排查能捞出来；</li>
+     *   <li>全被剥光时返回空串，由调用方回退 summary（绝不把后台提示当正文留下）。</li>
+     * </ul>
+     */
+    static String stripBackendArtifacts(String text) {
+        if (text == null || text.isBlank()) return text;
+        if (!containsBackendMarker(text)) return text;
+
+        StringBuilder kept = new StringBuilder(text.length());
+        List<String> dropped = new ArrayList<>();
+        for (String line : text.split("\n", -1)) {
+            String trimmed = line.strip();
+            if (isBackendArtifactLine(trimmed)) {
+                dropped.add(trimmed);
+                continue;
+            }
+            // 对抗复核 P2-2：同一行里「…不搭。JSON 如下？」这种**行尾粘连**——整行判据会因 residue
+            // 过长而放过它，提示就留在正文里。这里按**行尾子串**再剥一刀（只在「头是完整句尾」且
+            // 「尾段近似就是提示」时才动手，避免误伤用户复述这句话）。
+            String cleaned = stripTrailingArtifact(trimmed);
+            if (!cleaned.equals(trimmed)) {
+                if (!cleaned.isEmpty()) kept.append(cleaned).append('\n');
+                dropped.add(trimmed.substring(cleaned.length()).strip());
+                continue;
+            }
+            kept.append(line).append('\n');
+        }
+        if (dropped.isEmpty()) return text;
+
+        log.warn("AI 正文剥掉后台提示行 {} 条（出口自检，REVIEW P1-对话2） | dropped={}", dropped.size(), dropped);
+        return kept.toString().strip();
+    }
+
+    private static boolean containsBackendMarker(String s) {
+        for (String marker : BACKEND_ARTIFACT_MARKERS) {
+            if (s.contains(marker)) return true;
+        }
+        return false;
+    }
+
+    /** 残留字数上限（见 {@link #isBackendArtifactLine}）。 */
+    static final int ARTIFACT_RESIDUE_MAX = 4;
+
+    /**
+     * 判据（对抗审查 P2-F **收紧**，2026-09-26）：**整行近似就是那句提示**才删——去掉所有特征词
+     * 与标点空白后剩不下几个字（≤ {@link #ARTIFACT_RESIDUE_MAX}）才算。
+     * <p>
+     * 为什么收紧：用户 2026-09-23 **恰恰就在讨论这句话**——阿呆回一句「你说的 JSON 如下？我看下」
+     * 会被原判据（≤60 字 + contains）整行删掉；现在它剩「你说的我看下」（6 字）> 4 → 保留。
+     */
+    private static boolean isBackendArtifactLine(String trimmed) {
+        if (trimmed.isEmpty() || trimmed.codePointCount(0, trimmed.length()) > ARTIFACT_LINE_MAX) return false;
+        if (!containsBackendMarker(trimmed)) return false;
+        String residue = trimmed;
+        for (String marker : BACKEND_ARTIFACT_MARKERS) {
+            residue = residue.replace(marker, "");
+        }
+        residue = residue.replaceAll("[\\s，。：:；;、,.!?？!\"'`*#>\\[\\]()（）\\-—]", "");
+        return residue.codePointCount(0, residue.length()) <= ARTIFACT_RESIDUE_MAX;
+    }
+
+    /**
+     * 行尾粘连剥离（对抗复核 P2-2，2026-09-26）：`正文…不搭。JSON 如下？` → 剥成 `正文…不搭。`。
+     * <p>
+     * 只在两个条件同时成立时动手：① 提示片段**之前**的最后一字是完整句尾（`。！？.!?`）；
+     * ② 从该提示片段起到行尾的尾段**近似就是提示**（复用 {@link #isBackendArtifactLine} 的判据）。
+     * 这样「你说的 JSON 如下？我看下」这类**用户复述**（提示在行首，或尾段不是提示）不会被误剥。
+     */
+    private static String stripTrailingArtifact(String line) {
+        if (line.isEmpty() || line.codePointCount(0, line.length()) > ARTIFACT_LINE_MAX * 3) return line;
+        int earliest = -1;
+        for (String marker : BACKEND_ARTIFACT_MARKERS) {
+            int idx = line.indexOf(marker);
+            if (idx >= 0 && (earliest < 0 || idx < earliest)) earliest = idx;
+        }
+        if (earliest <= 0) return line;                       // 行首就是提示 → 交给整行判据
+        if (!isBackendArtifactLine(line.substring(earliest))) return line;
+        String head = line.substring(0, earliest).stripTrailing();
+        if (head.isEmpty()) return "";
+        char last = head.charAt(head.length() - 1);
+        if ("。！？.!?".indexOf(last) < 0) return line;        // 头不是完整句尾 → 不碰（防误伤复述）
+        return head;
     }
 
     private static AiUnderstanding parseAsPlainText(String text) {
         // 非 JSON 回复：截取前 200 字符作为摘要，并解码 \\uXXXX 转义序列
-        String decoded = decodeUnicodeEscapes(text);
+        // 对抗审查 P1-B：summary 出口同样过剥离（否则提示会作为持久脏数据落进卡片与记忆）
+        String decoded = stripBackendArtifacts(decodeUnicodeEscapes(text));
         String summary = decoded.length() > 200 ? decoded.substring(0, 200) + "…" : decoded;
         return new AiUnderstanding(
                 summary.strip(),

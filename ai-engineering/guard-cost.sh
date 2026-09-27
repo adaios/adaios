@@ -280,6 +280,23 @@ if TOP_N > 0:
 # 提醒（成本纪律）
 print("## 提醒（checklists/cost.md 省钱原则）")
 warn = []
+# 当前时段判定（2026-09-26 用户指正：此前只说「18:00 后」——**漏了周末与法定节假日全天谷时**，
+# 会在周六/节假日白等窗口。口径：先看星期，再看是否法定节假日，都不是才按 9-12 / 14-18 判高峰）
+import datetime as _dt
+_now = _dt.datetime.now()
+_wd = _now.weekday()            # 0=周一 … 6=周日
+_hhmm = _now.hour * 60 + _now.minute
+_peak = (_wd <= 4) and ((9 * 60 <= _hhmm < 12 * 60) or (14 * 60 <= _hhmm < 18 * 60))
+if _wd >= 5:
+    _slot = "空闲（周末**全天**谷时 · 半价）"
+elif _peak:
+    _slot = "⚠ 高峰（2 倍价）"
+else:
+    _slot = "空闲（半价）"
+warn.append("当前时段：" + _slot
+            + "｜高峰＝周一至周五（**不含中国法定节假日**）9-12 / 14-18；"
+            + "周末与法定节假日全天为谷时（法定节假日对照 "
+            + "https://api-docs.deepseek.com/zh-cn/quick_start/pricing）")
 if tot['cost'] > 20: warn.append(f"今日已超 20 元（{tot['cost']:.1f}）——高峰时段长会话是主因，考虑错峰/断会话")
 if cache_cost / max(tot['cost'], 0.01) > 0.7: warn.append("缓存读取占 70%+——单会话上下文过长，建议分阶段开新会话")
 if tot['calls'] > 500: warn.append("调用次数超 500——批量任务密集，评估是否可合并/降频")

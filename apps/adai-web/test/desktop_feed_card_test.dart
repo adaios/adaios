@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:adai_web/models/feed_models.dart';
 import 'package:adai_web/widgets/desktop_feed_card.dart';
+import 'package:adai_web/theme/app_colors.dart';
 
 void main() {
   Future<void> pumpCard(WidgetTester tester, FeedCardData data, {VoidCallback? onAsk, VoidCallback? onEnd}) {
@@ -90,6 +91,27 @@ void main() {
     ));
     expect(find.text('行情'), findsOneWidget);
     expect(find.text('上证指数 3200 +0.5%'), findsOneWidget);
+  });
+
+  testWidgets('market 卡「-0.00%」判平（灰）——不得按跌判绿（对抗复核 P3-1 补锁）', (tester) async {
+    await pumpCard(tester, FeedCardData(
+      id: 'm2', type: FeedCardType.market, time: '15:00', content: '上证指数 3200 -0.00%',
+    ));
+
+    Color? pctColor;
+    void visit(InlineSpan span) {
+      if (span is TextSpan) {
+        if (span.text != null && span.text!.contains('-0.00%')) pctColor = span.style?.color;
+        for (final child in span.children ?? []) {
+          visit(child);
+        }
+      }
+    }
+    for (final rt in tester.widgetList<RichText>(find.byType(RichText))) {
+      visit(rt.text);
+    }
+    expect(pctColor, AppColors.darkGrey5,
+        reason: '负零是四舍五入出来的平盘；web 此前与 app 相反（判绿）——这条把两端一致锁住');
   });
 
   testWidgets('普通卡时间竖列显示 date + time', (tester) async {

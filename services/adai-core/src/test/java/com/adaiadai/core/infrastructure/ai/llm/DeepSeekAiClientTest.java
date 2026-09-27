@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -163,6 +164,58 @@ class DeepSeekAiClientTest {
             assertThrows(RuntimeException.class, () -> c.streamGenerate(
                     ContextPackage.simple("trading", null, "t", "问题", List.of(), "问题"),
                     null, s -> { }), "HTTP 非 200 应抛异常（调用方降级非流式）");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    // ── 2026-09-26（task-log「202 剩余」）：意图 / 生成不得回落到「分析记录 → 输出 JSON」的默认 system ──
+
+    /** 本地 stub：捕获请求体，返回一段普通 content（非流式）。 */
+    private static com.sun.net.httpserver.HttpServer captureServer(
+            java.util.concurrent.atomic.AtomicReference<String> captured, String content) throws Exception {
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] resp = ("{\"choices\":[{\"message\":{\"content\":\"" + content
+                    + "\"},\"finish_reason\":\"stop\"}]}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (var os = exchange.getResponseBody()) { os.write(resp); }
+        });
+        server.start();
+        return server;
+    }
+
+    @Test
+    void recognizeIntent_usesClassifierSystem_notAnalysisInstruction() throws Exception {
+        var captured = new java.util.concurrent.atomic.AtomicReference<String>();
+        var server = captureServer(captured, "ask");
+        try {
+            DeepSeekAiClient c = new DeepSeekAiClient("sk-test",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "pro", "flash");
+            assertEquals("ask", c.recognizeIntent("明天天气怎么样？"));
+            String body = captured.get();
+            assertTrue(body.contains("意图分类器"), "意图识别必须带分类 system：" + body);
+            assertFalse(body.contains("patterns"), "不得回落到「分析记录输出 JSON」默认 system：" + body);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void generate_withoutCustomSystem_usesGenerationSystem_notAnalysisInstruction() throws Exception {
+        var captured = new java.util.concurrent.atomic.AtomicReference<String>();
+        var server = captureServer(captured, "一段正文");
+        try {
+            DeepSeekAiClient c = new DeepSeekAiClient("sk-test",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "pro", "flash");
+            assertEquals("一段正文", c.generate(
+                    ContextPackage.simple("trading", null, "t", "写一段复盘", List.of(), "写一段复盘"), null));
+            String body = captured.get();
+            assertTrue(body.contains("自然地写出"), "generate(null) 必须用生成语义 system：" + body);
+            assertFalse(body.contains("patterns"), "不得回落到分析指令（要求输出 JSON）：" + body);
         } finally {
             server.stop(0);
         }

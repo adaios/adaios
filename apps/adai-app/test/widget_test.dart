@@ -189,6 +189,53 @@ void main() {
       expect(find.text('提问'), findsOneWidget);
     });
 
+    testWidgets('折叠渐隐色与卡片底色一致（229 剩余：半透明卡不得出现更暗色带）', (tester) async {
+      // 超长浏览态卡（idle、>200 字符）→ 进入折叠态并渲染底部渐隐
+      final longTurns = [ConversationTurn(isUser: true, text: 'x' * 260, time: '14:00')];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: 'long', turns: longTurns, mode: CardMode.idle,
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      final fade = tester
+          .widgetList<Container>(find.byType(Container))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .map((d) => d.gradient)
+          .whereType<LinearGradient>()
+          .firstWhere((g) => g.colors.first == Colors.transparent);
+
+      expect(fade.colors.last, AppColors.darkSurface.withAlpha(200),
+          reason: '渐隐末色必须等于卡片底色（写死不透的 darkSurface 会在半透明浏览态卡上留一条更暗的色带）');
+    });
+
+    testWidgets('正文为空（纯图片卡）不渲染空正文与空 chip（229 剩余：B1 不留系统痕迹）', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.record, time: '14:00',
+                content: '', mediaUrls: const ['http://test/a.png'],
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      // 空 content 不再渲染那行 15px 正文（此前无 caption 的图片卡会显示**文件名**——系统痕迹）
+      expect(find.text(''), findsNothing, reason: '空正文不应产生 Text 节点');
+      expect(find.text('14:00'), findsWidgets, reason: '卡片本身照常渲染');
+    });
+
     testWidgets('chatting card shows end and turns', (tester) async {
       final turns = [
         ConversationTurn(isUser: true, text: 'weather?', time: '14:00'),
@@ -444,6 +491,37 @@ void main() {
       }
       expect(hasRed, isTrue);
       expect(hasGreen, isTrue);
+    });
+
+    testWidgets('行情卡「-0.00%」判平（灰）——不得按跌判绿（08-19 审查 17 项遗留）', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: FeedCard(
+              data: FeedCardData(
+                id: '1', type: FeedCardType.market, time: '14:00',
+                content: '上证指数 3000.00 -0.00%',
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      Color? pctColor;
+      void visit(InlineSpan span) {
+        if (span is TextSpan) {
+          if (span.text != null && span.text!.contains('-0.00%')) pctColor = span.style?.color;
+          for (final child in span.children ?? []) {
+            visit(child);
+          }
+        }
+      }
+      for (final rt in tester.widgetList<RichText>(find.byType(RichText))) {
+        visit(rt.text);
+      }
+
+      expect(pctColor, AppColors.darkGrey5,
+          reason: '负零是四舍五入出来的平盘，判绿会把「平」误报成「跌」（改前 startsWith("-") 先命中即绿）');
     });
 
     testWidgets('waiting card loading shows spinner (not only idle)', (tester) async {

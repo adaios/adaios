@@ -5,7 +5,7 @@ version: 1
 created: 2026-09-26
 updated: 2026-09-26
 status: active
-lines: 129
+lines: 144
 depends-on:
   - ../cadence.sh
   - ../guard-prod.sh
@@ -85,6 +85,21 @@ tags: [ai, process, cadence]
 | 不自动 push / 部署 | 原则 B8「外向动作默认不做」。**发布只判定、不执行**：`release` 说清「欠着什么、发哪几端」，真正部署走 `deploy-gate.sh`（门禁 + smoke）且须用户点头（规则 11）|
 | 不因记账拖垮主角 | 游标写失败只静默跳过，不改巡检退出码 |
 | 不重复造轮子 | 动作本体仍是 `guard-prod.sh` / `weekly-audit.sh` / `guard-context.sh` / `guard-cost.sh`；本机制只加「从上次到现在」+「做完记账」 |
+
+### 收工与审查（工具层 D7 的项目层落地，2026-09-26 用户拍板「按建议实施」）
+
+工具层 `DEVELOPMENT-WORKFLOW.md` 的 **D7** 定义「收工前必判审查」，项目层负责**怎么派、结论去哪**：
+
+| 本批 diff | 审查档位 | 结论去哪 |
+|:--|:--|:--|
+| 含**代码文件**（`*.java` / `*.dart` / `*.ts` / `*.py` / `*.sh` …）**且**触及**并发 / 数据 / 契约 / 用户可见行为** | **deep**：按改动目录派对应官 + **对抗官**（`process/review.md` §3），**只读、不改码** | `docs/review/REVIEW.md` 新增「独立审查」条目 + `docs/reference/change-log.md` 本批行内写审查说明 |
+| 纯文档 / 样式 / 配置 | **light**：`guard-meta` + `guard-align` + 守护快扫（`cadence.sh check`） | change-log 一句话即可 |
+| 任意本批 | **P0/P1 先修再提交**；当场修不动的如实登记 REVIEW（写给用户拍板） | REVIEW 未修区 |
+
+- **机械提示**：`cadence.sh ship` 会数本批 diff 里的代码文件数并提示派审（第 ③ 段）——不靠自觉。
+- **为什么必须机械**：2026-09-26 一夜 8 批全是「自己写、自己测、自己登记」，用户不追问就没有**任何**独立审查；补审时 4 官当场查出 **P1×4，且 4 条全长在「自己声称已修」的项上**。
+- **发布前另有硬闸**：`deploy-gate.sh` 强制 review + guard（项目既有），工具层只承认「发布门禁含审查」。
+- **纪律（工具层同款）**：审查结论**不许只留在对话里**——只留在对话里 = 没审。
 
 ## 五、与既有资产的关系（谁负责什么）
 

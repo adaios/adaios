@@ -1743,15 +1743,23 @@ class ApiException implements Exception {
 /// B11-4（2026-08-23，P1-交易18）：确认交易日志落库结果（成功/失败/跳过 + 失败人话明细）。
 class TradeLogConfirmResult {
   final int confirmed, failed, skipped;
+  /// 2026-09-26（09-19 深审 P2-5，web 侧补消费）：`ledgerOnly` = 命中券商快照锚定、
+  /// **只落流水不改账**的笔数（持仓/现金以快照为准）；`duplicated` = 之前已经记过的笔数。
+  /// 两者都必须在回执里说清——否则用户会看到「点了确认、一笔都没入账、而且没有解释」，
+  /// 那正是本条登记时的原话（app 侧早已消费，web 一直没解析）。
+  final int ledgerOnly, duplicated;
   final List<String> failures;
 
   TradeLogConfirmResult({required this.confirmed, required this.failed,
-      required this.skipped, required this.failures});
+      required this.skipped, required this.failures,
+      this.ledgerOnly = 0, this.duplicated = 0});
 
   factory TradeLogConfirmResult.fromJson(Map<String, dynamic> json) => TradeLogConfirmResult(
     confirmed: json['confirmed'] as int? ?? 0,
     failed: json['failed'] as int? ?? 0,
     skipped: json['skipped'] as int? ?? 0,
+    ledgerOnly: json['ledgerOnly'] as int? ?? 0,
+    duplicated: json['duplicated'] as int? ?? 0,
     failures: (json['failures'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
 }

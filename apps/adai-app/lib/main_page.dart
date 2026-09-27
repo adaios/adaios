@@ -908,7 +908,9 @@ class _MainPageState extends State<MainPage>
     final now = TimeOfDay.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     final pid = placeholderId ?? 'media_${DateTime.now().microsecondsSinceEpoch}';
-    final fallback = caption.isEmpty ? images.first.name : caption;
+    // 前端/对抗审查 P2-2（2026-09-26）：文件名**只留内部**（重试/回执兜底用），绝不进用户可见正文。
+    // 占位卡（上传中/失败，可能几十秒）此前把 `IMG_1234.jpg` 当「用户说的话」摆出来 —— 违背第一原则 B1。
+    final fallback = caption.isEmpty ? '随手一拍，已记下' : caption;
     setState(() {
       _uploadTotal = images.length;
       _mediaJudging = false;
@@ -963,7 +965,7 @@ class _MainPageState extends State<MainPage>
         final idx = _cards.indexWhere((c) => c.id == pid);
         if (idx >= 0) {
           _cards[idx] = _buildMediaSuccessCard(
-            id: pid, resp: resp, time: timeStr, fallback: fallback,
+            id: pid, resp: resp, time: timeStr, caption: caption,
             // 附件 id 缺失（异常响应）时保留本地字节，图仍然看得见
             localBytes: resp.mediaIds.isEmpty ? images.map((i) => i.bytesU8).toList() : null,
           );
@@ -1009,13 +1011,14 @@ class _MainPageState extends State<MainPage>
   }
 
   /// 一次投递成功后的真实记录卡（占位卡原位替换 / 失败重试替换共用）。
-  /// content 保留用户 caption（fallback）作为记录内容，summary 单独放阿呆综合总结，不同源不重复渲染。
+  /// content 只保留**用户自己写的 caption**（没写就是空——不再拿文件名顶替，那会把系统痕迹
+  /// 渲染成「用户说的话」，第一原则 B1 / task-log「229 剩余」）；summary 单独放阿呆综合总结。
   /// 多图：mediaUrls / mediaRecordIds 承载本回合**全部**图（卡内并列 + 追问带全部图）。
   FeedCardData _buildMediaSuccessCard({
     required String id,
     required MediaBatchResponse resp,
     required String time,
-    required String fallback,
+    required String caption,
     List<Uint8List>? localBytes,
   }) {
     // 附件 id 优先用 mediaIds；异常响应（缺 mediaIds）时退化为主记录 id 单图。
@@ -1027,7 +1030,7 @@ class _MainPageState extends State<MainPage>
       id: resp.recordId.isEmpty ? id : resp.recordId,
       type: FeedCardType.record,
       time: time,
-      content: fallback,
+      content: caption.trim(),
       summary: resp.summary.isEmpty ? null : resp.summary,
       tags: resp.tags.isNotEmpty ? resp.tags : null,
       mode: CardMode.idle,

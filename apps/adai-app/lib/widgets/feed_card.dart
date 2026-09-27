@@ -212,6 +212,12 @@ class FeedCard extends StatelessWidget {
   bool get _isChatting => data.mode == CardMode.chatting;
   bool get _isActive => _isWaiting || _isChatting;
   bool get _isEnded => data.mode == CardMode.ended;
+
+  /// 卡片底色（与下方 Container(color:) 同一判据）。**折叠渐隐必须与它一致**——
+  /// 浏览态卡片是半透明底（`darkSurface.withAlpha(200)`），渐隐若写死不透的 `darkSurface`，
+  /// 折叠卡底部会出现一条比卡面更暗的色带（REVIEW「229 剩余」里的「折叠渐隐遮罩色不一致」）。
+  Color get _cardSurface =>
+      _isActive || _isEnded ? AppColors.darkSurface : AppColors.darkSurface.withAlpha(200);
   bool get _hasTurns => data.turns != null && data.turns!.isNotEmpty;
   // log: intent is 'log'; or no turns and no intent (feed-loaded records)
   bool get _isLogStyle => !_isActive && !_isEnded
@@ -225,16 +231,20 @@ class FeedCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurface2,
-                borderRadius: BorderRadius.circular(6),
+            // 正文为空（纯图片卡、用户没写字）→ 不渲染这个 chip：否则会留一个空胶囊，
+            // 或把文件名之类系统痕迹当正文显示（第一原则 B1，task-log「229 剩余」）
+            if (data.content.trim().isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurface2,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(data.content,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
               ),
-              child: Text(data.content,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkGrey5)),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 8),
+            ],
             Expanded(
               child: Container(height: 1, color: AppColors.darkBorder.withAlpha(80)),
             ),
@@ -307,9 +317,7 @@ class FeedCard extends StatelessWidget {
                 )
               : BorderRadius.circular(15),
           child: Container(
-            color: _isActive || _isEnded
-                ? AppColors.darkSurface
-                : AppColors.darkSurface.withAlpha(200),
+            color: _cardSurface,
             child: Stack(
               children: [
                 Column(
@@ -534,10 +542,13 @@ class FeedCard extends StatelessWidget {
         final pct = pctMatch.group(1)!;
         final value = double.tryParse(pct);
         final Color color;
-        if (pct.startsWith('-')) {
-          color = AppColors.darkGreen; // 跌 → 绿
-        } else if (value == null || value == 0) {
+        // 2026-09-26（08-19 UI/UX 审查 17 项遗留）：「**-0.00%**」是四舍五入出来的**平盘**，
+        // 不能按「跌」判绿——原实现 `startsWith('-')` 在前，`value == 0` 分支永远到不了。
+        // 先判零值，再判正负。
+        if (value == null || value == 0) {
           color = AppColors.darkGrey5; // 平 → 灰
+        } else if (pct.startsWith('-') || value < 0) {
+          color = AppColors.darkGreen; // 跌 → 绿
         } else {
           color = AppColors.darkRed; // 涨 → 红
         }
@@ -653,6 +664,9 @@ class FeedCard extends StatelessWidget {
   }
 
   Widget _buildBody() {
+    // 正文为空（纯图片卡、用户没写字）→ 不渲染空行：图片 + 阿呆的总结已经说明一切，
+    // 更不该把**文件名**之类系统痕迹摆成「用户说的话」（第一原则 B1，task-log「229 剩余」）
+    if (data.content.trim().isEmpty) return const SizedBox.shrink();
     return Text(data.content, style: TextStyle(fontSize: 15, height: 1.6, color: AppColors.darkGrey1));
   }
 
@@ -690,7 +704,7 @@ class FeedCard extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, AppColors.darkSurface],
+                            colors: [Colors.transparent, _cardSurface],
                           ),
                         ),
                       ),

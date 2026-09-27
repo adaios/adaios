@@ -296,4 +296,79 @@ class LlmResponseParserTest {
                 "无围栏时原样返回");
         assertNull(LlmResponseParser.stripCodeFences(null));
     }
+
+    // ── REVIEW P1-对话2：后台/归档提示漏进用户正文 → 出口自检剥离（与 P0-1 think 壳同一出口） ──
+
+    @Test
+    void extractNaturalText_stripsLeakedBackendHintLine() {
+        String leaked = "这只票的审美确实和你不搭。\n\nJSON 如下？";
+        assertEquals("这只票的审美确实和你不搭。", LlmResponseParser.extractNaturalText(leaked),
+                "「JSON 如下？」是后台归档指令被模型复述出来的，不得进用户可见正文（第一原则 B1）");
+    }
+
+    @Test
+    void extractNaturalText_stripsBackendHintBeforeJsonBlock() {
+        String response = "好，我记下了。\nJSON 如下\n{\"summary\":\"摘要\",\"tags\":[\"标签\"]}";
+        assertEquals("好，我记下了。", LlmResponseParser.extractNaturalText(response),
+                "JSON 块之前的提示行同样剥掉（JSON 尾巴剥离 + 出口自检两层）");
+    }
+
+    @Test
+    void extractNaturalText_keepsLongParagraphMentioningMarkers() {
+        String longLine = "你说的那个 JSON 如下 的问题我看了，它其实是模型把后台归档指令复述出来的结果，"
+                + "我会在出口处把它剥掉，不影响你正常读对话内容。";
+        assertTrue(longLine.length() > LlmResponseParser.ARTIFACT_LINE_MAX);
+        assertEquals(longLine, LlmResponseParser.extractNaturalText(longLine),
+                "长段落里出现特征词视为正常内容，不误删（保守口径：宁可漏剥不误伤）");
+    }
+
+    @Test
+    void extractNaturalText_noMarker_unchanged() {
+        String normal = "第一行\n第二行";
+        assertEquals(normal, LlmResponseParser.extractNaturalText(normal), "无特征词时原样返回");
+    }
+
+    @Test
+    void extractNaturalText_stripsThinkShellLine() {
+        String withThink = "想一下…\n</think>\n答案在这里";
+        assertEquals("想一下…\n答案在这里", LlmResponseParser.extractNaturalText(withThink),
+                "P0-1 同族：think 壳残留行与后台提示共用同一出口");
+    }
+
+    @Test
+    void extractNaturalText_allLinesAreBackendHints_returnsEmpty() {
+        assertEquals("", LlmResponseParser.extractNaturalText("回复结束后\n另起一行输出 JSON"),
+                "整段都是后台提示时返回空串，由调用方回退 summary（绝不把提示当正文留下）");
+    }
+
+    /** 对抗审查 P2-F：用户**正在讨论**这句话时不得被整行误删（判据收紧为「整行近似就是提示」）。 */
+    @Test
+    void extractNaturalText_keepsUserQuotingTheHint() {
+        String quoted = "你说的 JSON 如下？我看下";
+        assertEquals(quoted, LlmResponseParser.extractNaturalText(quoted));
+    }
+
+    /** 对抗复核 P2-2：**同行粘连**（正文 + 提示）要剥掉提示、保留正文；用户复述仍不误伤。 */
+    @Test
+    void extractNaturalText_stripsInlineTrailingHint() {
+        assertEquals("这只票的审美确实和你不搭。",
+                LlmResponseParser.extractNaturalText("这只票的审美确实和你不搭。JSON 如下？"));
+        // 复述：提示在行首（无法确认是漏出）→ 整行保留
+        assertEquals("你说的 JSON 如下？我看下",
+                LlmResponseParser.extractNaturalText("你说的 JSON 如下？我看下"));
+        // 头不是完整句尾 → 不碰（宁漏剥不误伤）
+        assertEquals("关于JSON 如下这个问题",
+                LlmResponseParser.extractNaturalText("关于JSON 如下这个问题"));
+    }
+
+    /** 对抗审查 P1-B：summary 出口与正文共用剥离——否则提示会作为**持久脏数据**落进卡片与记忆。 */
+    @Test
+    void parse_summaryIsAlsoStripped() {
+        String response = "正文一句话\nJSON 如下？\n{\"summary\":\"JSON 如下？\",\"tags\":[]}";
+        var understanding = LlmResponseParser.parse(response);
+        String summary = understanding.summary() == null ? "" : understanding.summary();
+        org.junit.jupiter.api.Assertions.assertFalse(summary.contains("JSON 如下"),
+                "summary 里的后台提示必须被剥掉，实际=" + summary);
+        assertEquals("正文一句话", LlmResponseParser.extractNaturalText(response));
+    }
 }

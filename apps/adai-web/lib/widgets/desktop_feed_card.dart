@@ -46,6 +46,9 @@ class DesktopFeedCard extends StatelessWidget {
     }
 
     return Hoverable(
+      // P3-4（前端审查 2026-09-26）：整卡可 hover 高亮，但**正文/时间/标签本身不可点**——
+      // 默认手型会误导（「点了没反应」）；可点的是卡内具体元素，它们自己带 InkWell
+      cursor: MouseCursor.defer,
       builder: (context, isHovered) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
         child: Container(
@@ -274,10 +277,12 @@ class DesktopFeedCard extends StatelessWidget {
         final pct = pctMatch.group(1)!;
         final value = double.tryParse(pct);
         final Color color;
-        if (pct.startsWith('-')) {
-          color = AppColors.darkGreen; // 跌 → 绿
-        } else if (value == null || value == 0) {
+        // 前端审查 P2-4（2026-09-26）：与 app 端对齐——「**-0.00%**」是四舍五入的**平盘**，
+        // 不能按跌判绿（原 `startsWith('-')` 在前，零值分支永远到不了 → 同一读数两端颜色相反）
+        if (value == null || value == 0) {
           color = AppColors.darkGrey5; // 平 → 灰
+        } else if (pct.startsWith('-') || value < 0) {
+          color = AppColors.darkGreen; // 跌 → 绿
         } else {
           color = AppColors.darkRed; // 涨 → 红
         }

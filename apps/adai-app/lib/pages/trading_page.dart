@@ -94,6 +94,9 @@ class _TradingPageState extends State<TradingPage> {
 
   // ── 2026-08-26 截图入账（交易闭环第一环）：当日候选 + 确认/丢弃 ──
   List<TradeLogCandidateDto> _candidates = [];
+  /// 代际令牌（09-19 深审 P2-6）：候选刷新防乱序——旧响应不得覆盖新状态，
+  /// 尤其是「全部忽略 / 逐条丢弃 / 确认入账」之后，先前在途的刷新不得把候选摆回来。
+  int _candidatesGen = 0;
   bool _shotsUploading = false;       // 截图上传 + VLM 归集中
   bool _candidatesConfirming = false; // 全部确认入账中
   // 2026-09-18（P0-交易59 交互）：候选卡**可收起**——确认失败/缺日期的候选会被后端保留，
@@ -224,9 +227,11 @@ class _TradingPageState extends State<TradingPage> {
 
   /// 2026-08-26 截图入账：当日交易日志候选（GET /trading/trade-log，异步失败静默）。
   Future<void> _loadCandidates() async {
+    final gen = ++_candidatesGen; // 本次加载的代际（09-19 深审 P2-6）
     try {
       final list = await widget.api.getTradeLogCandidates();
-      if (!mounted) return;
+      // 旧代响应丢弃：否则「全部忽略」之后，先前在途的刷新会把候选又摆回来（用户以为没删掉）
+      if (!mounted || gen != _candidatesGen) return;
       setState(() => _candidates = list);
     } catch (_) {
       // 静默：候选是增强项，失败不影响持仓主数据（确认后失败候选保留由 _confirmCandidates 兜底）
@@ -649,6 +654,9 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       setState(() {
         _shotsUploading = false;
+        // P3-3（前端审查 2026-09-26）：截图上传返回的候选也是「新状态」——作废在途的 GET 响应，
+        // 否则极窄窗口（GET 比整轮 VLM 还慢）下旧响应会把刚识别出的候选覆盖回旧快照
+        _candidatesGen++;
         _candidates = result.candidates;
         // A1-1（2026-09-18 修回归）：新一批候选一律展开——「收起」的语义是「这一批处理完了」，
         // 不是「以后都别看候选」。原实现漏了这行 → 收起过之后新认出的候选藏在收起态里。
@@ -710,6 +718,7 @@ class _TradingPageState extends State<TradingPage> {
       if (!mounted) return;
       setState(() {
         _candidatesConfirming = false;
+        _candidatesGen++; // 作废在途刷新：确认清空后，旧响应不得再把候选摆回来（P2-6）
         _candidates = [];
         // A1-8 + P2-9（2026-09-19 前端审查）：**逐笔回执**——原来只有汇总计数，混合场景
         // （2 笔降级 + 1 笔入账）无法核对是哪几笔；而「只记流水」时**持仓并没有变**，
@@ -792,6 +801,7 @@ class _TradingPageState extends State<TradingPage> {
         direction: byId ? null : c.direction,
       );
       if (!mounted) return;
+      _candidatesGen++; // 作废在途刷新：丢掉的这条不得被旧响应带回来（P2-6）
       setState(() => _candidates = _candidates
           .where((x) => byId
               ? x.id != c.id
@@ -2156,28 +2166,40 @@ class _TradingPageState extends State<TradingPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('总资产', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            // 2026-09-26（09-19 深审未修项）：22px 粗体大数在 Row 里无收缩能力——账户到 8 位数
+            // （或长亏损数）会 RenderFlex overflow 把布局顶坏。FittedBox(scaleDown) 只在放不下时缩字，
+            // 常规宽度渲染不变；Flexible 兜住 Row 本身（web 侧同款口径）。
+            Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('总资产', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
               // 2026-09-18 隐私：首页金额默认 `••••`（点 👁 揭开）
-              Text(_moneyHome(totalAssets),
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
-            ]),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(_moneyHome(totalAssets),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.darkGrey1)),
+              ),
+            ])),
+            const SizedBox(width: 8),
+            Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Text('总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
               const SizedBox(height: 2),
               // P2-3（2026-09-19 前端审查）：账户级金额统一千分位——原来只有总资产走了
               // `_fmtMoneyFull`，总盈亏/当日盈亏仍是「万」，同卡三种格式（本批注释与 RFC §B3 自相矛盾）
-              Text(totalPnl == null ? '—' : (_amountsRevealed
-                      ? '${totalPnl >= 0 ? '+' : ''}${_fmtMoneyFull(totalPnl)}'
-                      : '••••'),
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
-                      color: totalPnl == null ? AppColors.darkGrey5
-                          : totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(totalPnl == null ? '—' : (_amountsRevealed
+                        ? '${totalPnl >= 0 ? '+' : ''}${_fmtMoneyFull(totalPnl)}'
+                        : '••••'),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700,
+                        color: totalPnl == null ? AppColors.darkGrey5
+                            : totalPnl >= 0 ? AppColors.darkRed : AppColors.darkGreen)),
+              ),
               // P2-交易31（2026-08-29，U32）：本金未设提示——总盈亏口径自解释
               if (hasAccount && a.principal <= 0)
-                Text('未设本金，设后显示总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
-            ]),
+                const Text('未设本金，设后显示总盈亏', style: TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+            ])),
           ],
         ),
         const SizedBox(height: 10),
@@ -2287,11 +2309,22 @@ class _TradingPageState extends State<TradingPage> {
         Row(children: [
           const Text('资金',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkGrey1)),
-          const Spacer(),
-          // 2026-09-18（B2 + 隐私）：账户未就绪不再显示「¥0.00」（与同屏快照卡的「—」自相矛盾，
-          // 用户会以为账上没钱）；有值时走隐私打码。
-          Text(a == null ? '—' : '现金 ${_moneyHome(a.cash)} · 总资产 ${_moneyHome(a.assets)}',
-              style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+          const SizedBox(width: 8),
+          // 2026-09-26（09-19 深审未修项「等宽数字与 FittedBox 未落地」）：右侧这行小字里塞了
+          // 两个金额，大数（十位级）时把 Row 顶破 157px（本批溢出回归实测）。改为占满剩余宽度
+          // 右对齐 + 放不下时缩字——常规宽度渲染不变。
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                    a == null ? '—' : '现金 ${_moneyHome(a.cash)} · 总资产 ${_moneyHome(a.assets)}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.darkGrey5)),
+              ),
+            ),
+          ),
         ]),
         const SizedBox(height: 10),
         Row(children: [

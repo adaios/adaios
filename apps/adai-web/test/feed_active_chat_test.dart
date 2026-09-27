@@ -120,6 +120,54 @@ void main() {
     follow.gate.complete();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('推送卡「确认并入账」命中快照锚定（只记流水）也必须有回执（09-19 深审 P2-5）', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final api = ApiService(
+      baseUrl: 'http://test',
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path == '/api/v1/brief' || path == '/api/v1/brief/cached') {
+          return _json({'content': '今日概览'});
+        }
+        if (path == '/api/v1/feed') {
+          return _json({
+            'entries': [
+              {
+                'type': 'push',
+                'id': 'p1',
+                'title': '今日操作确认',
+                'content': '📋 今日操作汇总\n· 京东方A 卖出 5300 股',
+                'tags': <String>[],
+                'time': '15:15',
+              }
+            ],
+            'totalToday': 1,
+          });
+        }
+        if (path == '/api/v1/tags') return _json({'tags': [], 'total': 0, 'updatedAt': ''});
+        if (path == '/api/v1/trading/trade-log/confirm') {
+          // 命中券商快照锚定：只落流水、不改账（confirmed=0 是正常结局，不是「没有待确认」）
+          return _json({
+            'confirmed': 0, 'failed': 0, 'skipped': 0,
+            'ledgerOnly': 2, 'duplicated': 0, 'failures': <String>[],
+          });
+        }
+        return http.Response('not found', 404);
+      }),
+    );
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: FeedPage(api: api))));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('确认并入账'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已经记进流水了'), findsOneWidget,
+        reason: '只记流水时 web 必须说清楚——改前 ledgerOnly 未解析，落进「今天没有待确认的交易」这句假话');
+    expect(find.textContaining('没有待确认的交易'), findsNothing);
+  });
 }
 
 http.Response _json(Map<String, dynamic> body) => http.Response(

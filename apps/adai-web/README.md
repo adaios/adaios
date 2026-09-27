@@ -1,17 +1,28 @@
-# adai_web
+# adai-web — AdaiOS 桌面端（Flutter Web）
 
-A new Flutter project.
+AdaiOS 的**桌面端产品入口**（参考元宝电脑端：左侧常驻导航 + 主内容区）。与 `apps/adai-app`（移动端）
+**各做各的 UI**，只共享 API 契约与状态机模型（值复制，不跨工程 import）。
 
-## Getting Started
+- **定位与边界**：`AGENTS.md`（本目录）
+- **功能与界面参考**：`../../docs/architecture/frontend-reference.md`
+- **API 契约（唯一真相源）**：`../../docs/architecture/api-spec.md`
 
-This project is a starting point for a Flutter application.
+## 构建与运行
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+# 构建 + 本地服务（:8082，含 CanvasKit + 字体本地补丁）
+sh scripts/serve_web.sh
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+# 分析 / 测试
+flutter analyze
+flutter test
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+> ⚠️ **不要用裸 `flutter build web` 部署**：漏补丁会让 CanvasKit 从 gstatic 拉取（被墙）→ 白屏、
+> 中文全框；必须走 `scripts/serve_web.sh`。字体与补丁细节见本目录 `AGENTS.md`。
+> 后端需先起：`cd ../../services/adai-core && ./gradlew bootRun`（:8080）。
+
+## 发布
+
+桌面端产物随后端批次一起部署（发版判定见 `../../ai-engineering/guard-release.sh`：改
+`apps/adai-web/**` 会推出 web 端）。**AI 不主动部署**——判定后须人点头才走 `deploy-gate.sh`。

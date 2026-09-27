@@ -224,14 +224,14 @@ class ConversationControllerTest {
         // card 仍标记为 ended（即使 AI 失败，用户点了结束就该结束）
         var card = cardRepo.findById("default", "card_test_ai_fail");
         assertTrue(card.isPresent());
-        assertEquals("ended", card.get().status());
+        assertEquals("ended", card.get().status(), "actual=" + card.get());
     }
 
     // ── REVIEW P1-对话1：同卡幂等（超时重发 / 双端并发只落一条 conversation）──
 
     @Test
     void endConversation_sameCardIdTwice_returnsSameRecordAndKeepsOneRecord() throws Exception {
-        saveActiveCard("card_idem_1");
+        saveActiveCard("card_idem_1", List.of("第一句", "回一句"));
         String body = mapper.writeValueAsString(Map.of(
                 "turns", List.of("第一句", "回一句"),
                 "cardId", "card_idem_1"
@@ -252,10 +252,39 @@ class ConversationControllerTest {
                 "卡片须记下幂等键（跨请求/重启后仍幂等）");
     }
 
+    /**
+     * 对抗审查 P1-A（2026-09-26）：**内容变了就不是重试**——用户在已结束的卡上继续聊几轮再点
+     * 结束，必须新落一条（含新 summary 与记忆），不得拿回上一次的结论。
+     */
+    @Test
+    void endConversation_sameCardWithNewTurns_persistsFreshRecord() throws Exception {
+        saveActiveCard("card_evolve_1", List.of("第一句", "回一句"));
+        String first = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "turns", List.of("第一句", "回一句"), "cardId", "card_evolve_1"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String firstId = mapper.readTree(first).get("recordId").asText();
+
+        String second = mockMvc.perform(post("/api/v1/conversations/end")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of(
+                                "turns", List.of("第一句", "回一句", "又聊两句", "再回一句"),
+                                "cardId", "card_evolve_1"))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String secondId = mapper.readTree(second).get("recordId").asText();
+
+        assertNotEquals(firstId, secondId, "同卡但对话内容变了 → 必须新落一条（改前会复用旧结论）");
+        assertEquals(2, recordRepository.findAll("default").size(), "两段对话各留一条记录（新轮次也要进记忆/时间线）");
+        assertEquals(secondId,
+                cardRepository.findById("default", "card_evolve_1").orElseThrow().conversationRecordId(),
+                "幂等键要指向**最新**那条，后续同内容重试才复用");
+    }
+
     @Test
     void endConversation_differentCards_eachPersisted() throws Exception {
-        saveActiveCard("card_a_1");
-        saveActiveCard("card_b_1");
+        saveActiveCard("card_a_1", List.of("甲"));
+        saveActiveCard("card_b_1", List.of("乙"));
 
         mockMvc.perform(post("/api/v1/conversations/end")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -282,7 +311,7 @@ class ConversationControllerTest {
 
     @Test
     void endConversation_concurrentSameCard_persistsOnceAndCallsAiOnce() throws Exception {
-        saveActiveCard("card_race_1");
+        saveActiveCard("card_race_1", List.of("甲", "乙"));
 
         java.util.concurrent.atomic.AtomicInteger aiCalls = new java.util.concurrent.atomic.AtomicInteger();
         TestAiClient delegate = new TestAiClient();
@@ -328,10 +357,18 @@ class ConversationControllerTest {
         assertEquals(1, aiCalls.get(), "并发同卡只调用一次 AI（不重复花钱）");
     }
 
-    private void saveActiveCard(String cardId) {
+    /**
+     * 预建一张 active 卡；[turns] 写入轮次——**缺指纹时的等价判据（sameTurnsText）要拿它比对**，
+     * 所以必须带上与用例请求一致的 turns（空 turns 的卡会被判「不比」→ 走新落一条）。
+     */
+    private void saveActiveCard(String cardId, List<String> turns) {
+        List<CardRecord.Turn> turnList = new java.util.ArrayList<>();
+        for (int i = 0; i < turns.size(); i++) {
+            turnList.add(new CardRecord.Turn(i % 2 == 0, turns.get(i), "14:00"));
+        }
         cardRepository.save("default", new CardRecord(
                 cardId, "conversation", "active",
-                List.of(), List.of(), null,
+                List.of(), turnList, null,
                 java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
         ));
     }
