@@ -218,8 +218,14 @@ cat << 'EOF'
 ✅ 上传动作已完成。构建 90 天过期；再次上传必须递增构建号（--build-number N）。
 
 ⚠️ 上传 ≠ 对外可见：还差两步，否则外部测试员看不到这个新构建。
-   ① python3 scripts/testflight_external.py --assign-build    # 每个新构建都要入组
-   ② python3 scripts/testflight_external.py --submit-review   # 外测需重走 Beta App Review（24~48h）
-   （测试组与测试员本身是一次性配置；但「构建入组」不是——2026-09-28 就是因为漏了 ①，
-     构建 11 过审一周、外测员仍只看到构建 10，详见 REVIEW P2-文档4。）
+   ⚠️ **先别急着跑下面两条**——刚上传的构建通常还在 Apple 侧 PROCESSING（实测约 3 分钟），
+      而这两条都作用于「**最新 VALID 构建**」：此刻直接跑会作用在**上一个**构建上，
+      还打印绿色的「已在组内（无需重复分配）」——看着像做了，其实没做
+      （这正是 2026-09-28「构建 11 过审一周、外测员只看到 10」的事故形态，见 REVIEW P2-文档4）。
+   ✅ 正确顺序：
+      ① 先确认新构建号已 VALID：python3 scripts/testflight_status.py
+         —— 输出列表里**必须出现你刚上传的那个构建号**，再往下做
+      ② python3 scripts/testflight_external.py --assign-build    # 每个新构建都要入组
+      ③ python3 scripts/testflight_external.py --submit-review   # 外测需重走 Beta App Review（24~48h）
+   （测试组与测试员本身是一次性配置；但「构建入组」不是。）
 EOF

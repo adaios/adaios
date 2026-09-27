@@ -390,4 +390,42 @@ class KlineServiceTest {
                 .count();
         assertEquals(2, staleLogs, "两个滞后日期交替出现，各只应记一条（乒乓效应回归）：实际 " + staleLogs);
     }
+
+    @Test
+    void tdxGapWarning_isOncePerStaleDate() {
+        // 同型封堵回归（2026-09-28 独立审查 P3-6 → 升 P2）：klineRange 的「tdx 缺口补齐失败」原为
+        // **逐标的、每次调用**都记 —— 生产近 7 天 1192 条（172 只标的），而「本地止于」只有 4 种日期。
+        // 按日期去重后，同一「本地止于」只应记一条（本用例连调 5 次 → 期望 1 条）。
+        LocalDate stale = LocalDate.now().minusDays(20);
+        KlineSource tdx = mock(KlineSource.class);
+        when(tdx.klineRange(anyString(), any(), any()))
+                .thenReturn(List.of(new Candle(stale, 10, 11, 9, 10.0, 1000)));
+        when(tdx.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource tencent = mock(KlineSource.class);
+        when(tencent.klineRange(anyString(), any(), any())).thenReturn(List.of()); // 缺口补不上
+        when(tencent.kline(anyString(), anyInt())).thenReturn(List.of());
+        KlineSource sina = mock(KlineSource.class);
+        when(sina.klineRange(anyString(), any(), any())).thenReturn(List.of());
+        KlineService svc = new KlineService(true, true, tencent, tdx, sina);
+
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(KlineService.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            for (int i = 0; i < 5; i++) {
+                assertEquals(1, svc.klineRange("600519", stale.minusDays(30), LocalDate.now()).size(),
+                        "网络补不上 → 回退滞后的本地数据（不是空表）");
+            }
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        long gapLogs = appender.list.stream()
+                .filter(e -> e.getFormattedMessage().contains("tdx 缺口补齐失败"))
+                .count();
+        assertEquals(1, gapLogs, "同一「本地止于」日期只应记一条（同型封堵回归）：实际 " + gapLogs);
+    }
 }

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * KlineService — K 线查询（2026-09-28：链路收敛为 {@code tdx → 腾讯（双域名）→ 新浪}，东财出链路）。
@@ -68,7 +69,7 @@ public class KlineService {
     private static final String PRIMARY_NAME = "腾讯";
     private static final String FALLBACK_NAME = "新浪";
 
-    /** 熔断状态（volatile 多线程读；买点扫描并发 16 线程）。 */
+    /** 熔断状态（volatile 多线程读；买点扫描 8 线程 / 清仓打分 16 线程）。 */
     private volatile int consecutiveFailures;
     private volatile long circuitOpenUntil;
 
@@ -87,9 +88,16 @@ public class KlineService {
      * 为什么必须是集合：生产上不同标的的 tdx 末尾日期**有多个在轮转**（实测 2026-09-24 与
      * 2026-09-18 两批并存），单值去重键会被交替覆盖 → 每次都判成「新日期」又记一条
      * （乒乓效应：3 次自选扫描实测 39 条）。集合 + 原子 add 才是真正的「同一滞后日期只记一次」，
-     * 顺带根治 16 线程并发重复（REVIEW P2-交易74）。
+     * 顺带根治多线程并发重复（买点扫描 8 / 清仓打分 16）（REVIEW P2-交易74）。
      */
-    private final Set<LocalDate> tdxStaleLogged = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<LocalDate> tdxStaleLogged = ConcurrentHashMap.newKeySet();
+    /**
+     * 已就哪一天（本地止于）告过「缺口补齐失败」——同型封堵（2026-09-28）。
+     * <p>
+     * 与 {@link #tdxStaleLogged} 分开：两条路径语义不同（那条是「改走网络源」，这条是「网络也没补上、回退滞后数据」），
+     * 不该互相吞掉。生产定量：该告警近 7 天 **1192 条 / 172 只标的**，而「本地止于」只有 4 种日期 → 按日期去重后 4 条。
+     */
+    private final Set<LocalDate> tdxGapLogged = ConcurrentHashMap.newKeySet();
 
     /**
      * 兜底源同样失败的告警冷却（P2-交易58，2026-09-17 B2 批）。
@@ -189,8 +197,7 @@ public class KlineService {
                     // P2-交易58（2026-09-17 B2 批）：缺口没补上时**如实说**——这里返回的是**滞后**的
                     // 本地数据（生产实据：tdx 停在 09-04，案例库历史窗口末端整段缺失），
                     // 而原先静默 return local，调用方无从知道末端缺了多少天。
-                    log.warn("tdx 缺口补齐失败，回退滞后的本地数据 | symbol={} | 本地止于 {} | 目标末端 {} | 缺口 {} 天未补",
-                            symbol, lastLocal, to, ChronoUnit.DAYS.between(lastLocal, to));
+                    logTdxGapOnce(lastLocal, symbol, to);
                     return local;
                 }
                 List<Candle> merged = new ArrayList<>(local);
@@ -357,13 +364,28 @@ public class KlineService {
     }
 
     /**
+     * tdx「缺口补齐失败」的告警也按「本地止于日期」去重（2026-09-28，同型封堵；REVIEW P2-交易75）。
+     * <p>
+     * 原实现**逐标的、每次调用**都记：生产近 7 天 **1192 条**（172 只标的），而「本地止于」只有
+     * 4 种日期（`09-04` / `09-18` / `09-24` / `09-14`）→ 按日期去重后应为 **4 条**（降 99.7%）。
+     * 与 {@link #logTdxStaleOnce} 各自独立：那条讲「改走网络源」，这条讲「网络也没补上、回退滞后数据」，不互相吞。
+     */
+    private void logTdxGapOnce(LocalDate lastLocal, String symbol, LocalDate to) {
+        if (!tdxGapLogged.add(lastLocal)) return;   // 同一「本地止于」只记一次（并发下 add 原子）
+        log.warn("tdx 缺口补齐失败，回退滞后的本地数据 | symbol={} | 本地止于 {} | 目标末端 {} | 缺口 {} 天未补"
+                        + "（同一日期只记这一条，其余标的的同类缺口不再逐条刷）",
+                symbol, lastLocal, to, ChronoUnit.DAYS.between(lastLocal, to));
+    }
+
+    /**
      * tdx 数据滞后只按「最后一根日期」记一次 INFO（RFC 20260928 批 2 第 4 条）。
      * <p>
      * 为什么改：用户实际**一周导入一次**数据包，滞后是预期常态——原实现每个标的、每次取数都记一条 WARN，
      * 生产每天 1300～2100 条，把真正该看的信号淹了。同一滞后日期只记一次即可（日期变化 = 又导了一次包），
      * 「当前本地停在哪天」长期由 {@link Health#tdxLastDate()} 回答。
      * <p>
-     * 并发下（买点扫描 16 线程）可能多记一两条，可接受——不值得为此加锁。
+     * 并发下（买点扫描 8 线程 / 清仓打分 16 线程）**也只会记一条**——`add()` 是原子的；独立审查实测：16 线程、两个滞后日期各 8 线程
+     * → 集合实现恰好 **2 条**，而旧的单值实现同场景为 **12 / 10 / 11 条**（2026-09-28）。
      */
     private void logTdxStaleOnce(LocalDate last, String symbol) {
         if (!tdxStaleLogged.add(last)) return;   // add() 原子：同一日期已告过即返回（并发下也只一条）
