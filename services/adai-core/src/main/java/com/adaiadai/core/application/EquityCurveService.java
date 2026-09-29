@@ -183,11 +183,73 @@ public class EquityCurveService {
         for (TransferEvent e : transferEvents) if (e.date().isBefore(minDate)) minDate = e.date();
         LocalDate maxDate = LocalDate.now();
 
+        // 锚定信息提前读取（2026-09-29 审查 P1-1）：下面的取数区间需要它来识别「快照注入的持仓」。
+        // 与下方「锚定重置」块读的是同一份数据（无副作用），只是把时机提前；重置逻辑本身不变。
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        LocalDate anchorDate = anchor != null ? anchor.positionsReplace() : null;
+        List<SnapshotHolding> anchorHoldings = anchorRepository.holdings(userId);
+
         // ── 收盘价（K 线直查区间；缺失沿用前收，再缺成本价兜底）──
+        // 2026-09-29：**只为每只标的的「实际存续区间」取数**。原先一律查 [minDate, maxDate]，
+        // 于是早已清仓的标的每天也要各补一根最新 K 线——生产实测 2026-09-29：用户一次操作
+        // 触发 172 次串行网络请求 ≈ 44 秒，而其中 167 只是已清仓标的（`sold.json` 172 只），
+        // 它们的最新价格**永远不会被读到**：下方当日市值只遍历「当日实际持仓」qty（qty<=0 直接
+        // continue），且当日事件先处理、市值后计算。⚠️ 但「连卖出当天的收盘价都用不到」这个说法
+        // **是错的**（2026-09-29 对抗审查证伪）：`dayPnlOf` 在 cToday==null 时会 `continue`，把
+        // 「卖出净额 − 昨收×卖量」一并丢掉 → 卖出当天**必须有今收**。本批之所以无碍，是因为 `to`
+        // 特意取到末次成交日、把卖出当天包进了区间（见下方 toEnd），而不是"用不到"。
+        // 已清仓（纯流水）→ [首次成交, 末次成交]（多落在本地数据包覆盖内，通常零网络请求）；
+        // 仍持仓 / 无成交记录 / **被底仓或锚定快照注入** → [起点, maxDate]（见下，注入者不裁区间）。
+        // ⚠️ 不变量（2026-09-29 审查 P1-1 订正，原文「凡 qty>0 的日期都落在区间内」**是错的**）：
+        // qty 有三个来源——成交流水、`baseQty` 底仓（期初恒持）、锚定快照重建，后两者的存续起点
+        // **早于首个成交日**。只认成交流水会把这段持有期切掉，真实收盘价退化为「沿用前收 → 成本价
+        // 兜底」，总资产/净值/回撤/周月盈亏静默改变（实测 2026-09-05 快照：底仓 600601 被切 86 个
+        // 工作日、每日高估 ≈9.3% 总资产）。故：被注入过的标的，起点放开到 minDate / 锚定日，
+        // 末端一律到 maxDate（注入来源本身不可靠：流水可能缺卖出 → 末次成交后仍可能是幽灵持仓）。
+        Map<String, LocalDate[]> held = new HashMap<>();
+        // 流水净额（买入 +、卖出 −）：判断「末次成交之后是否仍该有持仓」（幽灵持仓风险）。
+        // 用全部成交（不过滤 entryDate），与 baseQty 同源、更保守。
+        Map<String, Integer> netQty = new HashMap<>();
+        for (TradeRecord t : trades) {
+            netQty.merge(t.symbol(),
+                    t.direction() == TradeDirection.BUY ? t.volume() : -t.volume(), Integer::sum);
+            if (t.entryDate() == null) continue;
+            LocalDate[] r = held.get(t.symbol());
+            if (r == null) {
+                held.put(t.symbol(), new LocalDate[]{t.entryDate(), t.entryDate()});
+                continue;
+            }
+            if (t.entryDate().isBefore(r[0])) r[0] = t.entryDate();
+            if (t.entryDate().isAfter(r[1])) r[1] = t.entryDate();
+        }
         Map<String, Map<LocalDate, Double>> closes = new HashMap<>();
         for (String symbol : symbols) {
+            LocalDate[] r = held.get(symbol);
+            // 审查 P1-1：qty 有三个来源——成交流水、`baseQty` 底仓（期初恒持）、锚定快照重建；
+            // 后两者的存续起点**早于首个成交日**，只认 r[0] 会把这段持有期切掉。
+            boolean baseHeld = baseQty.containsKey(symbol);
+            boolean inAnchor = anchorHoldings.stream()
+                    .anyMatch(h -> h.symbol().equals(symbol) && h.quantity() > 0);
+            LocalDate from = r != null ? r[0] : minDate;
+            if (baseHeld) {
+                from = minDate;                                  // 底仓自曲线起点起持有
+            } else if (inAnchor && anchorDate != null && anchorDate.isBefore(from)) {
+                from = anchorDate;                               // 锚定日按快照重建的持仓
+            }
+            // 末端：仍持仓 / 无成交记录 / 被注入过 / **按流水仍该有持仓（幽灵风险）** → 一律查到 maxDate。
+            // 幽灵风险（2026-09-29 对抗审查）：`PositionFileRepository.findAll` 读空/失败会**静默返回
+            // 空列表**，而"卖出没导全"是生产现实（见 P2-交易70）——此时该标的在末次成交日之后 qty 仍
+            // >0，若把 to 裁到末次成交日，末端市值会退化为成本价甚至 0（实测曲线末端 −2,868 元）。
+            // 判据刻意用**流水净额**、而不是"holdings 是否为空"：净额 > 0 表示按流水它现在仍该持有，
+            // 必须查到最后；净额 ≤ 0 的标的确实不该持仓，裁掉才安全——否则「用户清仓时 positions 恰好
+            // 为空」会被整体回落成旧口径，本批优化全数失效（这是首版修法的自伤，已由测试当场抓住）。
+            boolean toEnd = currentQty.getOrDefault(symbol, 0) > 0
+                    || r == null || baseHeld || inAnchor
+                    || netQty.getOrDefault(symbol, 0) > 0;
+            LocalDate to = toEnd ? maxDate : r[1];
+            if (to.isBefore(from)) to = from;
             try {
-                List<Candle> cs = klineService.klineRange(symbol, minDate, maxDate);
+                List<Candle> cs = klineService.klineRange(symbol, from, to);
                 Map<LocalDate, Double> byDate = new TreeMap<>();
                 for (Candle c : cs) byDate.put(c.date(), c.close());
                 closes.put(symbol, byDate);
@@ -202,6 +264,18 @@ public class EquityCurveService {
         for (Map<LocalDate, Double> m : closes.values()) tradingDates.addAll(m.keySet());
         for (TradeEvent e : tradeEvents) tradingDates.add(e.date());
         for (TransferEvent e : transferEvents) tradingDates.add(e.date());
+        // 2026-09-29（审查 P2-1）：改前那 167 只清仓标的「一律查到 today」顺带充当了**交易日历锚**；
+        // 区间收敛后若末端无人提供（全清仓、或持仓标的停牌/缺 K），曲线终点会停在上一次有价的日期——
+        // 「最新总资产」与周/月盈亏的 asOf 基准随之停摆（实测全清仓会退到 09-18，丢 7 个工作日，
+        // 而账户快照已是 09-29）。这里显式把 [最后已知日期+1, maxDate] 的**交易日**补进来：
+        // 无价点沿用前收（正是原设计意图），纯现金日也就此得到点位（曲线不再跳空）。
+        // 非交易日不入（周末/节假日由 isTradingDayStrict 判，与推送侧同一份日历）。
+        if (!tradingDates.isEmpty()) {
+            LocalDate cursor = tradingDates.stream().max(LocalDate::compareTo).orElseThrow();
+            for (LocalDate d = cursor.plusDays(1); !d.isAfter(maxDate); d = d.plusDays(1)) {
+                if (TradingSessionPushService.isTradingDayStrict(d)) tradingDates.add(d);
+            }
+        }
 
         // ── 状态推进：现金反向锚定起点；数量从底仓起正向回放 ──
         double totalCashDelta = 0;
@@ -221,7 +295,6 @@ public class EquityCurveService {
         // 纯流水回放会在「历史成交只补了买入、卖出没导全」的标的上凭空多出持仓——生产实测
         // 000776/600487 各多 600/400 股，资金曲线与周期盈亏的市值整体虚高。
         // 因此日期走到锚定日时，把持仓数量重置为快照基线，之后只叠加锚定日**之后**的流水。
-        SnapshotAnchor anchor = anchorRepository.find(userId);
         // P2-交易70（2026-09-23）：持仓重置必须用**持仓快照的基准日**（positionsReplace），
         // 不能用 latest()——后者会对 cashImport 取最大值，于是「今天刚导的资金股份查询」会把
         // 持仓锚定日一起往后拽，持仓重置被推迟、锚定日到今天的这一段退回「底仓 + 流水回放」。
@@ -229,8 +302,8 @@ public class EquityCurveService {
         // 曲线 09-21/09-22 的持仓市值被回放成 125,925 / 125,364（真实 09-22 只有 105,488，虚高约 2 万），
         // 并让周期盈亏的百分比分母（base）跟着虚高（金额不受影响——它逐日累加）。
         // 「账的日期」与「现金/持仓的日期」本就是三件事，混用一个日期就会出这种错（见 P2-交易69）。
-        LocalDate anchorDate = anchor != null ? anchor.positionsReplace() : null;
-        List<SnapshotHolding> anchorHoldings = anchorRepository.holdings(userId);
+        // 注：anchor / anchorDate / anchorHoldings 三者在**上方「取数区间」之前**已读取（审查 P1-1
+        // 判断「快照注入的持仓」需要它们），此处不再重复读；重置逻辑本身一字未改。
         boolean anchorHoldingsKnown = anchorRepository.holdingsRecorded(userId);
         boolean anchorApplied = false;
         // 快照基线只有数量、无成本 → 成本取当前持仓（positions）的成本价，缺则用当时收盘/0 兜底。

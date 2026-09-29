@@ -308,13 +308,26 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
         String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
         int n = Math.min(Math.max(limit, 10), 320);
         List<Candle> candles = List.of();
+        String hitBase = null;
         for (String base : klineBases) {
             candles = fetchKline(base, prefix, symbol, n);
-            if (!candles.isEmpty()) break;
+            if (!candles.isEmpty()) {
+                hitBase = base;
+                break;
+            }
         }
         if (candles.size() > limit) candles = candles.subList(candles.size() - limit, candles.size());
         if (!candles.isEmpty()) {
             klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+            // REVIEW P2-交易57 同族（2026-09-29）：成功路径原先一行日志都不写，东财退出链路后腾讯
+            // 已是唯一网络主源，「主源是否在干活」答不出来。但**不能逐标的记成功**——审查 P3-1 实测：
+            // tdx 缺口路径本就逐标的记一条同义 INFO（2063 行/日），再加一条＝翻倍，与 09-28 那轮
+            // 降噪取向相反。故只记「**备用域名顶上**」：主域名正常时静默，主域名挂了才留痕——
+            // 双域名下这才是真正要观测的信号。
+            if (hitBase != null && !klineBases.isEmpty() && !hitBase.equals(klineBases.get(0))) {
+                log.info("腾讯 K线成功（备用域名顶上）| symbol={} | {} 根 | base={}",
+                        symbol, candles.size(), hitBase);
+            }
         }
         return candles;
     }
@@ -362,12 +375,21 @@ public class TencentMarketDataSource implements MarketDataSource, KlineSource {
         }
         String prefix = symbol.startsWith("6") || symbol.startsWith("9") ? "sh" : "sz";
         List<Candle> candles = List.of();
+        String hitBase = null;
         for (String base : klineBases) {
             candles = fetchKlineRange(base, prefix, symbol, from, to);
-            if (!candles.isEmpty()) break;
+            if (!candles.isEmpty()) {
+                hitBase = base;
+                break;
+            }
         }
         if (!candles.isEmpty()) {
             klineCache.put(symbol, new KlineCache(java.time.LocalDate.now(), new ArrayList<>(candles)));
+            // 同 kline()：区间查询也只记「备用域名顶上」（审查 P3-1 降噪口径一致）
+            if (hitBase != null && !klineBases.isEmpty() && !hitBase.equals(klineBases.get(0))) {
+                log.info("腾讯 K线范围成功（备用域名顶上）| symbol={} | {}~{} | {} 根 | base={}",
+                        symbol, from, to, candles.size(), hitBase);
+            }
         }
         return candles;
     }

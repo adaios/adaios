@@ -22,6 +22,11 @@
 #   - 登录前匿名请求不带 X-User-Id，无法区分用户
 #   - GET /trading/review 的 404 是**设计语义**（复盘未生成=404，前端轮询用），
 #     已在输出里标注为「正常」，不算故障
+#   - **告警段的数字是「刷了多少条」，不是「出了几件事」**（2026-09-29 起）：WARN 按
+#     消息模板归一化后，单模板 ≥100 条判为**复读**折叠成一行，并给出「真正待看」的条数。
+#     实据：09-27 的「K线服务告警 2158」里 2123 条是同一句「tdx 数据滞后（最后一根
+#     09-04），改走网络源 | symbol=X」——本地行情包过期这一个事实被按标的逐个播报，
+#     而当天真正要看的「主源与兜底双双失败」只有 9 条，不做折叠就会被淹没。
 #
 # 依赖: ssh 免密到生产（ubuntu@ + ~/.ssh/id_ed25519）、生产侧免密 sudo
 # ─────────────────────────────────────────────────────────────
@@ -85,16 +90,39 @@ out['artifacts'] = sh(
 jr = sh(f'journalctl -u adai-core --since "{TODAY.isoformat()} 00:00:00" '
         f'--until "{TODAY.isoformat()} 23:59:59" --no-pager')
 err_lines, warn = [], collections.Counter()
+# 2026-09-29：告警模板归一化——**「刷了多少条」不等于「出了几件事」**。
+# 实测 09-27 日报里的「K线服务告警 2158」，其中 2123 条是同一句
+# 「tdx 数据滞后（最后一根 09-04），改走网络源 | symbol=X」（本地行情包过期这一件事
+# 被按标的逐个播报），而当天真正要看的「主源与兜底双双失败」只有 9 条——被复读淹没。
+# 故除按 logger 计数外，再按「归一化后的消息模板」计数，供渲染端折叠复读。
+tpl = collections.defaultdict(collections.Counter)
+
+def norm_tpl(msg):
+    """把一条日志压成可比较的模板：日期/代码/数字换成占位符，保留字段名与短枚举值。"""
+    s = re.sub(r'\d{4}-\d{2}-\d{2}', 'DATE', msg)
+
+    def _kv(m):
+        k, v = m.group(1), m.group(2)
+        # symbol=512690 / 超长 token → 抹掉值；op=kline / op=klineRange 这类短枚举保留（有信息量）
+        return f'{k}=X' if (len(v) > 20 or any(c.isdigit() for c in v)) else f'{k}={v}'
+
+    s = re.sub(r'([A-Za-z_][A-Za-z0-9_]*)=([^\s|]+)', _kv, s)
+    s = re.sub(r'\d+', 'N', s)
+    return re.sub(r'\s+', ' ', s).strip()[:110]
+
 for line in jr.splitlines():
     if re.search(r'\sERROR\s', line):
         err_lines.append(line.strip()[-260:])
-    m = re.search(r'WARN\s+\d+\s+---\s+(?:\[[^\]]*\]\s+)+(\S+)\s+:', line)
+    m = re.search(r'WARN\s+\d+\s+---\s+(?:\[[^\]]*\]\s+)+(\S+)\s*:\s*(.*)', line)
     if m:
-        warn[m.group(1).rsplit('.', 1)[-1]] += 1
+        lgr = m.group(1).rsplit('.', 1)[-1]
+        warn[lgr] += 1
+        tpl[lgr][norm_tpl(m.group(2))] += 1
 out['error_lines'] = err_lines[:10]
 out['error_total'] = len(err_lines)
 out['warn'] = warn.most_common(14)
 out['warn_total'] = sum(warn.values())
+out['warn_tpl'] = {k: tpl[k].most_common(6) for k, _ in out['warn']}
 
 # ── ③ 对话卡片（用户之声 = 本日报的核心）──
 def cards_on(day):
@@ -342,10 +370,45 @@ for line in d['error_lines']:
     print(f"  \033[31m✗ {line}\033[0m")
 
 # 告警人话
+# 2026-09-29：加模板归一化折叠——日报只该回答「今天出了几件事」，而不是「日志刷了多少条」。
+# 单模板 ≥ REPEAT_MIN 条判为**复读**（同一事实被按标的/按次重复），折叠成一行暗色摘要，
+# 并把类目总数拆成「复读 N 条 + 其余 M 条」；类目总数 ≥ DETAIL_MIN 且无复读时展开 top3 模板
+# 帮定位（低量类目仍保持一行，避免日报被模板清单撑长）。
+REPEAT_MIN, DETAIL_MIN = 100, 30
 if d['warn']:
     hr('告警（人话 + 计数）')
+    tp = d.get('warn_tpl') or {}
+    rep = sum(c for k, _ in d['warn'] for _, c in (tp.get(k) or []) if c >= REPEAT_MIN)
+    if rep:
+        print(f"  \033[2m（{d['warn_total']} 条里有 {rep} 条属同一事实的复读，"
+              f"真正待看约 {d['warn_total'] - rep} 条）\033[0m")
     for k, n in d['warn']:
         print(f"  {n:>6}  {CN.get(k, k)}")
+        items = tp.get(k) or []
+        if not items:
+            continue
+        big = [(t, c) for t, c in items if c >= REPEAT_MIN][:2]
+        if big:
+            bn = sum(c for _, c in big)
+            for t, c in big:
+                print(f"         \033[2m⤷ 复读 {c} 条（同一件事，已折叠）：{t}\033[0m")
+            rn = n - bn
+            if rn > 0:
+                skip = {t for t, _ in big}
+                rest = [(x, y) for x, y in items if x not in skip][:3]
+                more = ' · '.join(f'{x} ×{y}' for x, y in rest)
+                # 归一化只取了 top6：还有没列出来的模板时补省略号，
+                # 免得「列了三种」被误读成「只有三种」（措辞已写「主要是」，此处补全语义）
+                if sum(c for _, c in rest) < rn:
+                    more += ' …'
+                print(f"         ⤷ 其余 {rn} 条，主要是：{more}" if more
+                      else f"         ⤷ 其余 {rn} 条（模板未在前 6 名内）")
+        elif n >= DETAIL_MIN:
+            shown = ' · '.join(f'{x} ×{y}' for x, y in items[:3])
+            # 同上：只展示了前 3 个 / 长尾未列出时补省略号
+            if len(items) > 3 or sum(c for _, c in items) < n:
+                shown += ' …'
+            print("         ⤷ " + shown)
 
 # 用量（4xx/5xx 必须分类，否则天天假警报）
 CLS_CN = {'scanner': '扫描器/爬虫', 'probe': '部署探针/脚本', 'benign': '设计语义', 'user': '★待关注'}

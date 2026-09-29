@@ -27,7 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** EquityCurveService — 资金曲线聚合测试（2026-09-04 决策方案 A）。 */
@@ -86,6 +89,33 @@ class EquityCurveServiceTest {
             d = d.plusDays(1);
         }
         when(k.klineRange(anyString(), any(), any())).thenReturn(cs);
+        return k;
+    }
+
+    /**
+     * 按 [from, to] **真裁剪**的 K 线桩（2026-09-29 审查 P3-3）。
+     *
+     * <p>上面那两个桩（{@link #kline} / {@link #klineFrom}）**忽略区间参数**、对任何参数都返回整段，
+     * 所以「取数区间被裁小」这类回归在测试层完全看不见（只有用真实数据差分复现才暴露——审查官与
+     * 对抗官各自用真实 tdx 数据回放才发现底仓被切）。凡是验证「区间/口径」的用例，一律用这个桩。
+     */
+    private KlineService klineClipped(java.util.Map<String, java.util.Map<LocalDate, Double>> prices) {
+        KlineService k = mock(KlineService.class);
+        when(k.klineRange(anyString(), any(), any())).thenAnswer(inv -> {
+            String symbol = inv.getArgument(0);
+            LocalDate from = inv.getArgument(1);
+            LocalDate to = inv.getArgument(2);
+            List<Candle> out = new java.util.ArrayList<>();
+            java.util.Map<LocalDate, Double> all =
+                    new java.util.TreeMap<>(prices.getOrDefault(symbol, java.util.Map.of()));
+            for (java.util.Map.Entry<LocalDate, Double> e : all.entrySet()) {
+                if (!e.getKey().isBefore(from) && !e.getKey().isAfter(to)) {
+                    double c = e.getValue();
+                    out.add(new Candle(e.getKey(), c - 0.2, c + 0.3, c - 0.4, c, 1000));
+                }
+            }
+            return out;
+        });
         return k;
     }
 
@@ -285,6 +315,104 @@ class EquityCurveServiceTest {
         assertTrue(periods.month().pnl().abs().compareTo(periods.today().pnl().abs()) >= 0,
                 "本月应至少包含今日");
         assertEquals(today.toString(), periods.asOf());
+    }
+
+    @Test
+    void closedPosition_isQueriedOnlyUpToItsLastTrade() {
+        // 2026-09-29 修复回归：**已清仓标的不得为「最新一根」付网络请求**——非持有期它的收盘价
+        // 永远读不到（当日市值只遍历 qty，qty<=0 直接 continue）。生产实据：用户一次操作
+        // 172 次串行网络请求 ≈44 秒，其中 167 只是已清仓标的（sold.json 172 只）。
+        // 反向验证：把取数区间改回 [minDate, maxDate] → 本用例 FAILED。
+        LocalDate d1 = LocalDate.of(2026, 8, 3);
+        LocalDate d2 = LocalDate.of(2026, 8, 5);
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(
+                buy("600000", 1000, "10.0", d1),
+                new TradeRecord("t_sell", "600000", "600000名", TradeDirection.SELL,
+                        new BigDecimal("12"), 1000, new BigDecimal("12000.00"), d2,
+                        LocalTime.of(10, 0), null, null, null, null, null,
+                        LocalDateTime.of(d2, LocalTime.of(10, 0)), null, null)));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll("u")).thenReturn(List.of()); // 已清仓
+        KlineService kline = mock(KlineService.class);
+        when(kline.klineRange(anyString(), any(), any())).thenReturn(List.of());
+
+        service(history, positions, mock(TransferRepository.class), account(12000, 10000), kline).build("u");
+
+        verify(kline).klineRange("600000", d1, d2);
+        verify(kline, never()).klineRange(eq("600000"), any(), eq(LocalDate.now()));
+    }
+
+    @Test
+    void openPosition_isQueriedThroughToday() {
+        // 仍持仓的标的必须取到「今天」——它的最新收盘价每天都参与市值。
+        LocalDate d1 = LocalDate.of(2026, 8, 3);
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(buy("600000", 1000, "10.0", d1)));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll("u")).thenReturn(List.of(
+                new Position("600000", "名", 1000, new BigDecimal("10"),
+                        new BigDecimal("10"), null, null, null, null, null, null)));
+        KlineService kline = mock(KlineService.class);
+        when(kline.klineRange(anyString(), any(), any())).thenReturn(List.of());
+
+        service(history, positions, mock(TransferRepository.class), account(0, 10000), kline).build("u");
+
+        verify(kline).klineRange("600000", d1, LocalDate.now());
+    }
+
+    @Test
+    void baseHolding_isQueriedFromCurveStart_notFromFirstTrade() {
+        // 审查 P1-1 回归（2026-09-29 后端审查官 + 对抗官双判 BLOCK）：底仓 = `positions` 数量减去
+        // 成交流水净额，是「流水解释不了的那部分」，代码注释明说它**作为期初恒持注入**——
+        // 存续起点**早于首个成交日**。只按首成交日取数会把底仓期切掉，真实收盘价退化为成本价兜底
+        // （真实数据实测：底仓 600601 被切 86 个工作日、每日高估 ≈9.3% 总资产，且曲线峰值抬高 →
+        // 回撤跟着错）。反向验证：把 from 改回 `r[0]` → 本用例 FAILED。
+        LocalDate d1 = LocalDate.of(2026, 8, 3);   // 曲线起点（另一只票的首笔成交）
+        LocalDate d2 = LocalDate.of(2026, 8, 20);  // 600601 的首笔成交（晚于起点）
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(
+                buy("600000", 1000, "10.0", d1),
+                buy("600601", 1000, "30.0", d2)));
+        PositionRepository positions = mock(PositionRepository.class);
+        // 600601 持仓 2000 股、流水只解释 1000 → 底仓 1000 股（期初恒持）；
+        // 成本价 10 与真实价 20 差一倍：区间若被裁，市值会从 20000 掉到 10000
+        when(positions.findAll("u")).thenReturn(List.of(
+                new Position("600601", "名", 2000, new BigDecimal("10"),
+                        new BigDecimal("20"), null, null, null, null, null, null)));
+        KlineService kline = klineClipped(java.util.Map.of(
+                "600000", java.util.Map.of(d1, 10.0),
+                "600601", java.util.Map.of(d1, 20.0, d2, 30.0)));
+
+        var curve = service(history, positions, mock(TransferRepository.class), account(0, 40000), kline)
+                .build("u");
+
+        // ① 取数区间必须从曲线起点 d1 开始（而不是 600601 自己的首成交日 d2）
+        verify(kline).klineRange("600601", d1, LocalDate.now());
+        // ② 数值：d1 当日市值 = 600000(1000×10) + 600601 底仓(1000×20) —— 被裁则退成本价 → 20000
+        EquityCurveService.EquityPoint atD1 = curve.points().stream()
+                .filter(p -> p.date().equals(d1)).findFirst().orElseThrow();
+        assertEquals(0, atD1.marketValue().compareTo(new BigDecimal("30000.00")),
+                "底仓期必须用真实收盘价（1000×20=20000），被裁会退化成成本价 10 → 少 10000：" + atD1.marketValue());
+    }
+
+    @Test
+    void ghostPosition_netBuyPositive_isQueriedThroughToday() {
+        // 对抗审查（2026-09-29）：`PositionFileRepository.findAll` 读空/失败**静默返回空列表**，
+        // 而"卖出没导全"是生产现实（P2-交易70）→ 该标的在末次成交日之后 qty 仍 >0（幽灵持仓）。
+        // 若把 to 裁到末次成交日，末端市值退化为成本价甚至 0（实测曲线末端 −2,868 元）。
+        // 判据刻意用**流水净额 > 0**，而不是"holdings 是否为空"——后者会让「用户清仓」（positions
+        // 恰好为空是常态）整体回落成旧口径、本批优化全数失效（首版修法的自伤，即由本批测试抓住）。
+        LocalDate d1 = LocalDate.of(2026, 8, 3);
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll("u")).thenReturn(List.of(buy("600000", 1000, "10.0", d1)));
+        PositionRepository positions = mock(PositionRepository.class);
+        when(positions.findAll("u")).thenReturn(List.of()); // 读不到 / 为空
+        KlineService kline = klineClipped(java.util.Map.of("600000", java.util.Map.of(d1, 10.0)));
+
+        service(history, positions, mock(TransferRepository.class), account(0, 10000), kline).build("u");
+
+        verify(kline).klineRange("600000", d1, LocalDate.now());
     }
 
     @Test
