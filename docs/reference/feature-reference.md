@@ -158,6 +158,11 @@ Feed 流本身**不调用 AI**。简报的 AI 调用见 [简报模块](#5-简报
 - 疑问句（question）→ 激活对话模式
 - 支持指定 intent（`log` / `question`）
 - 支持 `cardId` 续接已有对话
+- **对话模式的上下文装配**（RFC `20260929-conversation-context-engineering` 批 1，2026-09-30）：
+  **按轮次分档**（≤3 轮只注入 身份/契约 + 对话前文 + 核心偏好，不注入相关记录 / 检索 / 未命中领域的知识）、
+  **单条 system + 动态参考垫在最后一条 user**、token 计量与 DeepSeek `usage`（缓存命中）落日志。
+  由 `adai.context.assembly-mode` 控制——**默认 `legacy`（与批 1 之前逐字一致）**，切 `v1` 启用新口径，
+  改回即回滚（`@Value` 启动期读取，需重启）。设计见 `docs/rfc/20260929-context-engineering-batch1-design.md`。
 
 ### 前端文件
 
