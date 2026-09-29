@@ -96,14 +96,20 @@ def fetch_builds(token, limit=3):
 def show(data):
     if not data:
         print("  还没有任何构建（Apple 仍在处理，或从未上传成功）")
-        return None
+        return None, None
     for b in data:
         a = b["attributes"]
         state = a.get("processingState")
-        print(f"  · 版本 {a.get('version')}  {state} —— {STATE_HUMAN.get(state, state)}")
+        expired = a.get("expired")
+        # 2026-09-29：processingState=VALID ≠ 可用。Apple 会把构建整体作废（expired=true），
+        # 此时 TestFlight 里**仍能看到**该构建、却点更新下不动——只看 processingState 会误报
+        # 「✅ 可测试」把人骗过去（实测教训：REVIEW P1-发布1 / docs/deployment/testflight-beta-contract-missing.md）。
+        human = "❌ 已被 Apple 作废（不可安装）" if expired is True else STATE_HUMAN.get(state, state)
+        print(f"  · 版本 {a.get('version')}  {state} —— {human}")
         print(f"      上传 {a.get('uploadedDate')}  过期 {str(a.get('expirationDate'))[:10]}"
-              f"  出口合规={a.get('usesNonExemptEncryption')}")
-    return data[0]["attributes"].get("processingState")
+              f"  expired={expired}  出口合规={a.get('usesNonExemptEncryption')}")
+    latest = data[0]["attributes"]
+    return latest.get("processingState"), latest.get("expired")
 
 
 def main():
@@ -117,7 +123,11 @@ def main():
     app_id, data = fetch_builds(token, args.limit)
 
     print(f"=== TestFlight 构建（app {app_id}）===")
-    state = show(data)
+    state, expired = show(data)
+
+    if expired is True:
+        print("\n❌ 最新构建已被 Apple 作废（expired=true）——TestFlight 里可能仍可见，但无法下载安装")
+        return 1
 
     if not args.wait or state != "PROCESSING":
         return 0 if state == "VALID" else (0 if state is None else 1)
@@ -133,7 +143,10 @@ def main():
             break
 
     print()
-    show(data)
+    state, expired = show(data)
+    if expired is True:
+        print("\n❌ 最新构建已被 Apple 作废（expired=true）——不可安装，别当成发版成功")
+        return 1
     if state == "VALID":
         print("\n✅ 构建可用：打开 TestFlight App，或去 App Store Connect 分配给测试组")
         return 0
