@@ -5,7 +5,7 @@ version: 1
 created: 2026-09-29
 updated: 2026-09-29
 status: active
-lines: 220
+lines: 257
 depends-on:
   - ios-release.md
   - testflight-external-testing.md
@@ -33,6 +33,20 @@ tags: [deployment, ios, testflight, incident]
 | 审核联系信息 | Kangda Wang / rottokaka@gmail.com / `applereview`（demoRequired=true） | 信息齐备，不是缺料 |
 
 **结论**：截至 09-29 复核，**问题仍在，Apple 侧未自行恢复**——必须主动联系支持。
+
+### 1.5 🆕 构建 13 实测（2026-09-29，已上传并复现）
+
+用户拍板「试试么」后做的完整实测。结论：**外测死路被钉死；且合同缺失连内测也堵**。
+
+| 环节 | 实测值 |
+|:--|:--|
+| 上传 | `UPLOAD SUCCEEDED` · Delivery UUID **`f6cde1d3-1981-4b6e-8c6d-ca7f4546e407`** · 23,778,657 B · 40.8 秒（09:46:41 完成）|
+| Apple 处理 | 09:47:30 出现 → **09:49:03 `VALID`**（约 2.5 分钟）|
+| 有效期 | **`expired=false`** · `expirationDate=2026-12-27` —— **新构建没有被作废**（旧 12 个仍全废）|
+| 送审 | **仍 HTTP 422 `BETA_CONTRACT_MISSING`**（新错误 id `27d1f2a0-b444-4fb5-9e42-391cb4f5b7ac`）|
+| **iPhone 端实测（用户本人）** | **TestFlight 里能看到「1.0.0 (13)」，但点「更新」无法下载** ⚠️ |
+
+**判读**：① **内测同样被堵**——构建可见、VALID、未过期，但**客户端下载被阻断**，不是只有外测受影响；② 社区「重传无用」在本机得到实证；③ **构建 13 不是白传**：它未被作废，Apple 一修复合同即可直接使用，无需再构建再传。
 
 ## 2. 今天就能做的三步
 
@@ -91,12 +105,16 @@ Observed (2026-09-29)
 - build 12's betaAppReviewSubmission shows betaReviewState = APPROVED while submittedDate = null.
 - Beta groups ("阿呆内测" internal, "阿呆外测" external) and betaAppReviewDetail (contact, demo account)
   are all still in place.
+- we then uploaded a NEW build (build 13, Delivery UUID f6cde1d3-1981-4b6e-8c6d-ca7f4546e407) as a test:
+  it processed to VALID with a normal expiry (expired = false, expirationDate 2026-12-27), yet
+    * Beta App Review submission still returns exactly the same 422, and
+    * on the device, TestFlight lists "1.0.0 (13)" but tapping Update fails to download.
 
 What we already verified on our side
 - Our automation only performs: build, export, altool upload, status query, assign-build, submit-review.
   It contains no action that expires or removes builds.
-- Re-uploading a new build does not help (community-confirmed: it becomes VALID but is not installable,
-  and submission still returns 422) — so we have deliberately stopped incrementing build numbers.
+- Re-uploading is now empirically confirmed useless (build 13 above): visible in TestFlight, VALID,
+  not expired — yet not downloadable and still 422. Please do not suggest another re-upload.
 
 Request
 1. Please repair/regenerate the Beta License Agreement for this app so TestFlight works again.
@@ -132,10 +150,13 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
 4. 查询 betaLicenseAgreement 返回 agreementText = null。
 5. 构建 12 的审核记录出现 betaReviewState=APPROVED 但 submittedDate=null 的不一致。
 6. 内测组「阿呆内测」、外测组「阿呆外测」、审核联系信息与测试账号均完好。
+7. 事故后我方实测新传了构建 13（Delivery UUID f6cde1d3-1981-4b6e-8c6d-ca7f4546e407）：
+   它能处理为 VALID、expired=false（到期 2026-12-27），但送审仍返回完全相同的 422；
+   并且在 iPhone 的 TestFlight 里**能看到「1.0.0 (13)」但点「更新」无法下载**。
 
 我方已排除
 - 我方脚本只做：构建、导出、altool 上传、状态查询、分配测试组、提交审核；不含任何「移除/置过期构建」动作。
-- 重新上传构建无用（社区实证：能变 VALID 但装不上、送审仍 422），故我方已停止递增构建号。
+- 重新上传已实测无用（构建 13：可见、VALID、未过期，但下不动、送审仍 422）——请不要再建议重传。
 
 请求
 1. 请在后台修复/重建该 App 的 Beta 合同，使 TestFlight 恢复可用；
@@ -147,7 +168,7 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
 
 ### 3.3 电话话术（30 秒版）
 
-> 「你好，我是开发者，Team ID `4G3D37YKSB`，App 叫阿呆阿呆（Apple ID 6812370456）。9 月 28 日凌晨，我全部的 12 个 TestFlight 构建在同一秒被置为过期，现在内测外测都装不了，提交审核返回 422，错误是 `Beta contract is missing for the app`。我这边脚本和构建产物都没问题，构建状态都是 VALID。社区里同类问题都是后台修复的，能不能帮我转一下 TestFlight 相关的支持，或者帮我开一个工单？」
+> 「你好，我是开发者，Team ID `4G3D37YKSB`，App 叫阿呆阿呆（Apple ID 6812370456）。9 月 28 日凌晨，我全部的 12 个 TestFlight 构建在同一秒被置为过期，现在内测外测都装不了，提交审核返回 422，错误是 `Beta contract is missing for the app`。**我今天还专门重传了一个新构建 13，TestFlight 里能看到，但点更新下不动，送审还是一样 422**——所以不是我们构建或上传的问题。我这边脚本和构建产物都没问题，构建状态都是 VALID、新构建也没过期。社区里同类问题都是后台修复的，能不能帮我转一下 TestFlight 相关的支持，或者帮我开一个工单？」
 
 ## 4. 证据
 
@@ -188,19 +209,35 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
 | 测试组 / 审核信息 | 组与联系人信息完好（见 4.2） |
 | 时间相关性 | 作废时刻与任何一次我方部署/上传都不对应（构建 1 上传于 09-15，构建 12 上传于 09-27，同一秒一起过期） |
 
+### 4.4 构建 13 实测原始证据（2026-09-29）
+
+| 环节 | 证据 |
+|:--|:--|
+| Delivery UUID | `f6cde1d3-1981-4b6e-8c6d-ca7f4546e407`（23,778,657 B / 40.8 秒）|
+| 上传完成 | 2026-09-29 **09:46:41**（北京）|
+| 终态 | 09:49:03 `VALID` · **`expired=false`** · `expirationDate=2026-12-27T17:47:30-08:00` |
+| 送审探针 | `POST /v1/betaAppReviewSubmissions` → **HTTP 422** `ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING`（id `27d1f2a0-b444-4fb5-9e42-391cb4f5b7ac`）|
+| 客户端 | iPhone TestFlight **可见「1.0.0 (13)」，点「更新」无法下载**（用户 2026-09-29 实测）|
+
+> **这组数据是工单的核心弹药**：新构建**不再被作废**，却**依然不可下载、不可送审** → 一次性排除了「构建产物 / 构建号 / 上传方式 / 测试组配置」的全部可能，把根因唯一地指向 Apple 侧的 Beta 合同。
+
 ## 5. 本机复核方法（只读）
 
 ```bash
-# 官方脚本（⚠️ 当前环境跑不起来：本机 python3 3.9.6 与 homebrew python3.13 均未装 PyJWT）
-cd apps/adai-app && python3 scripts/testflight_status.py
+# 官方脚本（需临时 shim，见下方待办 1）
+cd apps/adai-app && PYTHONPATH=/tmp/jwtshim python3 scripts/testflight_status.py
 
 # 2026-09-29 实际使用的零安装探针（临时文件，不入库）：
-#   /tmp/asc_probe.py —— 用系统 python3 user site 里已有的 Cryptodome 直签 ES256 JWT，
-#   GET 上述端点；输出留档 /tmp/asc-probe-20260929.txt
+#   /tmp/asc_probe.py        —— 只读复核（构建列表 / betaLicenseAgreement / 测试组 / 审核信息）
+#   /tmp/asc_submit_probe.py —— 送审探针（对最新构建 POST 一次，判合同是否恢复）
+#   /tmp/asc_v13_watch.py    —— 盯构建 13 终态 + 自动送审
+#   均用 Cryptodome 直签 ES256 JWT；★ Apple 要求 exp-iat ≤ 1200 秒（写 1800 会直接 401）
 python3 /tmp/asc_probe.py
 ```
 
-> ⚠️ **副产品待办**：`testflight_status.py` 依赖 `PyJWT`，本机两个解释器都没装 → **脚本当前不可用**（本次靠临时探针取证）。要么装 `pyjwt`，要么把脚本的 JWT 签名换成零依赖实现（Cryptodome 或 `openssl`）。**未修**（不属本次处置范围）。
+> ⚠️ **两个脚本缺陷（均未修，2026-09-29 实测暴露）**：
+> 1. **缺依赖 → 整条发布链跑不起来**：`asc_signing.py` / `testflight_external.py` / `testflight_status.py` **三个都 `import jwt`**，而本机 `python3`(3.9.6) 与 `python3.13` 都**没装 PyJWT**。本次用 `/tmp/jwtshim/jwt.py`（Cryptodome 直签 ES256）临时注入 `PYTHONPATH` 打通，**仓库脚本一字未改**。正式修法：装 `pyjwt`，或把 JWT 签名改为零依赖实现（Cryptodome / `openssl`）。
+> 2. **误报「可测试」（更危险）**：`testflight_status.py` 只看 `processingState`、**不看 `expired`** → 对已被集体作废的构建仍打印「✅ 可测试 —— 去 TestFlight 就能装了」（2026-09-29 实测两次误导）。应读 `expired`，为 true 时输出「❌ 已被 Apple 作废」并置退出码 1。
 
 ## 6. 修复后的动作（Apple 回复或恢复后）
 
