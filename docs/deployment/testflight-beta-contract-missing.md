@@ -5,7 +5,7 @@ version: 1
 created: 2026-09-29
 updated: 2026-09-29
 status: active
-lines: 257
+lines: 278
 depends-on:
   - ios-release.md
   - testflight-external-testing.md
@@ -47,6 +47,18 @@ tags: [deployment, ios, testflight, incident]
 | **iPhone 端实测（用户本人）** | **TestFlight 里能看到「1.0.0 (13)」，但点「更新」无法下载** ⚠️ |
 
 **判读**：① **内测同样被堵**——构建可见、VALID、未过期，但**客户端下载被阻断**，不是只有外测受影响；② 社区「重传无用」在本机得到实证；③ **构建 13 不是白传**：它未被作废，Apple 一修复合同即可直接使用，无需再构建再传。
+
+### 1.6 账号级合规排查（2026-09-29 傍晚，用户操作 + 实测）
+
+怀疑根因在账号级监管/协议状态后做的专项排查：
+
+| 排查项 | 结果 |
+|:--|:--|
+| 欧盟《数字服务法》(DSA) 合规 | ✅ **已完成**——用户在 App Store Connect **Business（商务）页**操作，界面提示「**你目前已完成所有监管要求**」|
+| 账号协议状态 | ✅ **全部有效**（用户核对 Business 页：无待接受、无过期）|
+| 触发重建动作 | 已试且均 HTTP 200：`testflight_external.py --fill`（重提 TestFlight 测试信息 + 隐私政策 URL + 构建 13 的 What to Test）· `--assign-build`（**构建 13 已成功加入外测组「阿呆外测」**）→ **合同仍 null、送审仍 422**（id `52306c1b-…`）|
+
+**结论**：**账号级监管与协议层已完全干净**，Beta 合同依然未重建 → **自助路径全部穷尽**（协议 / DSA / 重传 / 触发动作四类都试过），唯一出路是 **Apple 后台修复**。
 
 ## 2. 今天就能做的三步
 
@@ -109,6 +121,11 @@ Observed (2026-09-29)
   it processed to VALID with a normal expiry (expired = false, expirationDate 2026-12-27), yet
     * Beta App Review submission still returns exactly the same 422, and
     * on the device, TestFlight lists "1.0.0 (13)" but tapping Update fails to download.
+- our account's regulatory and agreement side is now fully clean: the EU Digital Services Act (DSA)
+  compliance has just been completed (App Store Connect -> Business: "you have met all regulatory
+  requirements"), and all agreements show as active. The problem persists unchanged.
+- we also re-submitted the TestFlight test information and assigned build 13 to the external group
+  (both HTTP 200) — the Beta contract is still missing and submission still returns 422.
 
 What we already verified on our side
 - Our automation only performs: build, export, altool upload, status query, assign-build, submit-review.
@@ -153,6 +170,10 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
 7. 事故后我方实测新传了构建 13（Delivery UUID f6cde1d3-1981-4b6e-8c6d-ca7f4546e407）：
    它能处理为 VALID、expired=false（到期 2026-12-27），但送审仍返回完全相同的 422；
    并且在 iPhone 的 TestFlight 里**能看到「1.0.0 (13)」但点「更新」无法下载**。
+8. 我方账号的监管与协议侧**已完全合规**：刚完成欧盟《数字服务法》(DSA) 合规
+   （App Store Connect → 商务页，界面提示「你目前已完成所有监管要求」），且所有协议均显示有效；
+   另外重新提交了 TestFlight 测试信息、并把构建 13 加入外部测试组（均返回 200）。
+   **在上述状态下问题依旧**（合同仍缺失、送审仍 422）。
 
 我方已排除
 - 我方脚本只做：构建、导出、altool 上传、状态查询、分配测试组、提交审核；不含任何「移除/置过期构建」动作。
