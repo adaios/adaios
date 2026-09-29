@@ -220,4 +220,90 @@ class DeepSeekAiClientTest {
             server.stop(0);
         }
     }
+
+    // ── RFC 20260929 批 1 ④：v1 单条 system + 动态参考垫底（legacy 多条 system 不变） ──
+
+    @Test
+    void chatRequest_v1_hasSingleSystem_andDynamicRefsOnLastUser() throws Exception {
+        ContextPackage ctx = new ContextPackage("question", "身份摘要", "标题", "当前问题", List.of(),
+                List.of("", "## 相关历史记录\n- [2026-09-01 10:00] (note) 旧事",
+                        "## AI 对你的近期理解\n- 偏好：日线级别"),
+                "prompt", java.time.LocalDateTime.now(),
+                List.of(new ContextPackage.ChatMessage("user", "第一轮"),
+                        new ContextPackage.ChatMessage("assistant", "回答一"),
+                        new ContextPackage.ChatMessage("user", "当前问题")),
+                "life(生活)", "稳定前缀\n当前日期：2026-09-29");
+
+        var messages = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(client.buildChatRequestBody(ctx)).path("messages");
+
+        assertEquals(4, messages.size(), "1 条 system + 3 条对话历史");
+        int systemCount = 0;
+        for (int i = 0; i < messages.size(); i++) {
+            if ("system".equals(messages.get(i).path("role").asText())) systemCount++;
+        }
+        assertEquals(1, systemCount, "v1 只能有一条 system（兼容性 + 缓存前缀稳定）");
+
+        String sys = messages.get(0).path("content").asText();
+        assertTrue(sys.contains("稳定前缀"));
+        assertFalse(sys.contains("相关历史记录"), "动态参考不得进 system（否则前缀每轮都变）");
+
+        String last = messages.get(3).path("content").asText();
+        assertTrue(last.contains("本次参考"), "动态参考应垫在当前问句之前");
+        assertTrue(last.contains("相关历史记录"));
+        assertTrue(last.contains("当前问题"), "当前问句必须保留在最后");
+        assertEquals("user", messages.get(3).path("role").asText());
+    }
+
+    @Test
+    void chatRequest_legacy_keepsMultipleSystems() throws Exception {
+        ContextPackage ctx = new ContextPackage("question", "身份摘要", "标题", "当前问题", List.of(),
+                List.of("## 当前会话对话历史\n- 用户：第一轮", "", ""),
+                "处理一条新记录。\n\n身份摘要\n当前日期：2026-09-29\n场景：question\n\n当前记录：\n---\n内容\n---\n",
+                java.time.LocalDateTime.now(),
+                List.of(new ContextPackage.ChatMessage("user", "第一轮"),
+                        new ContextPackage.ChatMessage("user", "当前问题")),
+                "life(生活)");
+
+        var messages = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(client.buildChatRequestBody(ctx)).path("messages");
+
+        int systemCount = 0;
+        for (int i = 0; i < messages.size(); i++) {
+            if ("system".equals(messages.get(i).path("role").asText())) systemCount++;
+        }
+        assertTrue(systemCount >= 2, "legacy 仍是多条 system（角色 + 背景 + 上下文），回滚目标");
+        assertEquals("第一轮", messages.get(systemCount).path("content").asText(),
+                "legacy 的历史原样追加，不带「本次参考」");
+    }
+
+
+    @Test
+    void v1_systemMessageIdenticalAcrossTurns_prefixIsCacheable() throws Exception {
+        // 客户端侧：system 只由 stableSystem + 输出契约组成，**不随历史变化**（动态参考垫在最后一条 user）。
+        // ⚠️ 对抗审查 P2-4：本用例两侧传入**同一个** stableSystem，因此它只证明「客户端不把历史塞进 system」；
+        // **引擎产出**的 stableSystem 跨轮稳定性由
+        // ContextAssemblyV1Test.stableSystem_fromEngine_isIdenticalAcrossTurns 覆盖。
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String sys3 = firstSystem(mapper, chatPkg(3));
+        String sys5 = firstSystem(mapper, chatPkg(5));
+        assertEquals(sys3, sys5, "v1：system 不随轮次变化（前缀可缓存）");
+    }
+
+    /** 造一次 CHAT 装配：轮次不同、动态参考也不同（模拟真实每轮变化），但稳定前缀相同。 */
+    private ContextPackage chatPkg(int turns) {
+        java.util.List<ContextPackage.ChatMessage> hist = new java.util.ArrayList<>();
+        for (int i = 0; i < turns; i++) {
+            hist.add(new ContextPackage.ChatMessage(i % 2 == 0 ? "user" : "assistant", "第" + (i + 1) + "轮"));
+        }
+        return new ContextPackage("question", "身份摘要", "标题", "当前问题", List.of(),
+                List.of("", "## 相关历史记录\n- 旧事" + turns, "## AI 对你的近期理解\n- 偏好" + turns),
+                "prompt", java.time.LocalDateTime.now(), hist, "life(生活)", "稳定前缀S\n当前日期：2026-09-29");
+    }
+
+    private String firstSystem(com.fasterxml.jackson.databind.ObjectMapper mapper, ContextPackage ctx) throws Exception {
+        return mapper.readTree(client.buildChatRequestBody(ctx))
+                .path("messages").get(0).path("content").asText();
+    }
+
 }

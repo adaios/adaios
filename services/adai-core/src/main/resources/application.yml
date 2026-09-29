@@ -38,6 +38,23 @@ adai:
   # 「.env 里配了名字相近的变量，却静默落到相对默认值」（本次 adj-path 事故的形态）。
   # 生产：ADAI_OS_BASE_PATH=/opt/adaios/os
   os-base-path: ${ADAI_OS_BASE_PATH:../../os}
+  # 上下文装配（RFC 20260929 批 1，2026-09-29）：对话模式的注入口径。
+  # 背景（生产实测 30 条对话模式样本）：prompt 均长 10699 字符，其中 L4 知识源 46.0%（P90 87%）、
+  # L2 记忆 34.9%、相关历史 12.6%，而**用户当前那句话只占 4.3%** → 前文被背景淹没（「像没看前文」）。
+  # 灰度：assembly-mode 默认 legacy（**行为与批 1 之前逐字相同**）；切 v1 启用新口径。
+  # 回滚 = 改回 legacy + 重启（@Value 为启动期读取）。同一份代码两种行为，可随时对比。
+  context:
+    assembly-mode: ${ADAI_CONTEXT_ASSEMBLY_MODE:legacy}
+    tier:
+      # ≤ short 轮 → 短档：只注入 身份/契约 + 对话前文 + 核心偏好；不注入相关记录/检索/未命中领域的知识
+      short-max-turns: ${ADAI_CONTEXT_SHORT_MAX_TURNS:3}
+      # ≤ mid 轮 → 中档：加完整近期记忆，仍不检索；之上为长档（才允许检索）
+      mid-max-turns: ${ADAI_CONTEXT_MID_MAX_TURNS:9}
+    # 短档的「极少核心」：取未被取代的 kind=preference 记忆最新 N 条（0 = 关闭该注入）
+    core-memory-max: ${ADAI_CONTEXT_CORE_MEMORY_MAX:2}
+    core-memory-max-tokens: ${ADAI_CONTEXT_CORE_MEMORY_MAX_TOKENS:200}
+    # 无标签时回退注入的相关记录条数（v1 默认 2；legacy 恒为 20，此键不生效）
+    fallback-recent-max: ${ADAI_CONTEXT_FALLBACK_RECENT_MAX:2}
   security:
     # CORS 来源白名单（逗号分隔 origin pattern）。默认 localhost/127.0.0.1 任意端口；
     # 生产前端若在服务器上，追加其域名（.env 配 ADAI_ALLOWED_ORIGIN_PATTERNS）。

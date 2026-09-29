@@ -1,6 +1,7 @@
 package com.adaiadai.core.kernel.context.engine;
 
 import com.adaiadai.core.kernel.context.engine.ContextPackage.ChatMessage;
+import com.adaiadai.core.kernel.context.policy.ContextAssemblyPolicy;
 import com.adaiadai.core.kernel.search.SearchResult;
 import com.adaiadai.core.kernel.search.SearchService;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
@@ -45,6 +46,9 @@ public class ContextEngine {
     private static final int MAX_RELATED_RECORDS = 20;
     private static final int MEMORY_DAYS = 7;
 
+    /** 短档「极少核心」记忆的回看窗口（天）——独立于 {@link #MEMORY_DAYS}，因为它只取偏好类。 */
+    private static final int CORE_MEMORY_LOOKBACK_DAYS = 30;
+
     private static final List<String> TRADING_KEYWORDS =
             List.of("指标", "K线", "持仓", "走势", "复盘", "买入", "卖出", "仓位", "股票", "大盘", "行情", "买卖");
 
@@ -60,6 +64,12 @@ public class ContextEngine {
     /** 插件门控（RFC 20260814 第二步）：按账号 enabledPlugins 过滤知识源/贡献者 + D5 domain 判定。 */
     private final PluginService pluginService;
 
+    /**
+     * 装配策略（RFC 20260929 批 1）：分档、配额与灰度开关。
+     * 关闭分档时行为与批 1 之前**逐字一致**（legacy）。
+     */
+    private final ContextAssemblyPolicy policy;
+
     public ContextEngine(IdentityRepository identityRepository,
                          RecordRepository recordRepository,
                          TagIndexReader tagIndexReader,
@@ -68,7 +78,8 @@ public class ContextEngine {
                          List<ContextContributor> contributors,
                          List<KnowledgeSource> knowledgeSources,
                          SearchService searchService,
-                         PluginService pluginService) {
+                         PluginService pluginService,
+                         ContextAssemblyPolicy policy) {
         this.identityRepository = identityRepository;
         this.recordRepository = recordRepository;
         this.tagIndexReader = tagIndexReader;
@@ -78,6 +89,7 @@ public class ContextEngine {
         this.knowledgeSources = knowledgeSources;
         this.searchService = searchService;
         this.pluginService = pluginService;
+        this.policy = policy;
     }
 
     /**
@@ -104,43 +116,153 @@ public class ContextEngine {
     public ContextPackage compose(String userId, String scene, ContentRecord record, String cardId) {
         // RFC 20260814 第二步：按账号 enabledPlugins 门控知识/贡献者注入 + D5 domain 判定
         Set<String> enabledPlugins = pluginService.enabledPlugins(userId);
-        String identityRef = loadIdentitySummary(userId);
-        String cardContext = loadCardContext(userId, cardId);
-        String relatedRecords = loadRelatedRecords(userId, record);
-        String searchResults = loadSearchResults(userId, record);
-        String memorySummary = loadMemorySummary(userId);
-        // 领域场景按记录内容推导（trading/project/life），只在启用插件间判定（D5）
-        String domainScene = detectDomainScene(record, enabledPlugins);
-        String knowledgeContext = loadKnowledgeContext(userId, domainScene, enabledPlugins);
-        String domainContext = enrichFromContributors(userId, domainScene, identityRef, record, enabledPlugins);
-        String globalContext = loadGlobalContext(userId, enabledPlugins);
 
-        // CHAT 模式：构建多轮对话历史
+        // RFC 20260929 批 1 ①：**一次读卡**。原先 loadCardContext 与 buildConversationHistory
+        // 各调一次 cardRepository.findById，而它的实现是 findAll 全量遍历 + 逐个解析卡片文件
+        // （CardFileRepository:77-137）——单次对话把整个卡片目录解析 2~3 遍（REVIEW #19 的已知待办）。
+        CardRecord card = cardId != null ? cardRepository.findById(userId, cardId).orElse(null) : null;
+        List<CardRecord.Turn> turns = (card != null && card.turns() != null) ? card.turns() : List.of();
+
+        // 批 1 ②：按轮次分档（关闭分档时恒为 LONG = 现状全量）。
+        // ⚠️ 对抗审查 P1-2：**无卡片场景必须视为 LONG**——随手记（STATEMENT）/ 重补 / 复盘走的是
+        // 三参 compose（cardId=null）→ turns=0 → 会被误判成短档，把相关历史与近期记忆一起砍掉；
+        // 更要命的是 `loadMemorySummary` 不再被调用 → `touchActive`（记忆进化 Phase 4 的回读确认，
+        // 即 `lastConfirmed` 的累积）对新记录**彻底停止**。无卡就没有「对话前文」，分档本就无意义。
+        ContextAssemblyPolicy.Tier tier = (cardId == null)
+                ? ContextAssemblyPolicy.Tier.LONG
+                : policy.tierFor(turns.size());
+
+        String identityRef = loadIdentitySummary(userId);
+
+        // 批 1 ③：CHAT 模式的前文由 messages（conversationHistory）承载，**prompt 里不再重复一份**
+        // ——同一段对话以「原始轮次」与「摘要文本」两种形式并存会让模型无法判断哪份权威（context clash）。
+        // legacy 保持原样（cardContext 仍进 prompt），便于灰度对比。
+        String cardContext = policy.tieringEnabled() ? "" : loadCardContext(card);
         List<ChatMessage> chatHistory = "question".equals(scene) && cardId != null
-                ? buildConversationHistory(userId, cardId)
+                ? toChatMessages(turns)
                 : List.of();
+
+        // 批 1 ②：L3 相关历史/检索——短档整层不注入；中档不检索（仅长档允许 L3）
+        String relatedRecords = tier == ContextAssemblyPolicy.Tier.SHORT
+                ? ""
+                : loadRelatedRecords(userId, record);
+        String searchResults = tier == ContextAssemblyPolicy.Tier.LONG
+                ? loadSearchResults(userId, record)
+                : "";
+
+        // 批 1 ①/D1：L2 记忆——短档只给「极少核心」（偏好类，≤ 配额）；中/长档给完整近期记忆
+        String memorySummary = tier == ContextAssemblyPolicy.Tier.SHORT
+                ? loadCoreMemory(userId)
+                : loadMemorySummary(userId);
+
+        // 领域场景按记录内容推导（trading/life），只在启用插件间判定（D5）
+        String domainScene = detectDomainScene(record, enabledPlugins);
+        boolean tradingHit = "trading".equals(domainScene);
+
+        // 批 1 ④：L4 领域知识**只在命中该领域时**注入——生产实测（2026-09-29）生活/学习话题
+        // 也背着 512 字符「交易哲学」+ 501 字符「交易系统状态」，知识源整体占 prompt 的 46%（P90 87%）。
+        // 只收紧 trading（证据最充分）；learn 保持原行为——不擅自扩大范围。
+        boolean injectTrading = !policy.tieringEnabled() || tradingHit;
+        String knowledgeContext = loadKnowledgeContext(userId, domainScene, enabledPlugins, injectTrading);
+        String domainContext = enrichFromContributors(userId, domainScene, identityRef, record, enabledPlugins);
+        String globalContext = loadGlobalContext(userId, enabledPlugins, injectTrading);
 
         // ANALYSIS 模式：仍然使用合成 Prompt
         String prompt = buildPrompt(scene, identityRef, record,
                 cardContext, relatedRecords, searchResults, memorySummary,
                 knowledgeContext, domainContext, globalContext, enabledPlugins);
 
-        log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 标签关联={}条 | 搜索={}条 | 预估 tokens={}",
+        // 批 1 ⑤：分层用量可观测——此前只有「标签关联/搜索」两个计数，且 token 估算漏算
+        // history 与 relatedRefs（F5）。有了分段字数，才知道「这次到底注入了什么、各占多少」。
+        int l0 = identityRef.length();
+        int l1 = chatHistory.stream().mapToInt(m -> m.content() == null ? 0 : m.content().length()).sum();
+        int l2 = memorySummary.length();
+        int l3 = relatedRecords.length() + searchResults.length();
+        int l4 = knowledgeContext.length() + domainContext.length() + globalContext.length();
+        int cur = record.content() == null ? 0 : record.content().length();
+
+        // 注入合计（字符）：v1 下 prompt **不再是发送内容**（CHAT 走 messages），因此不再打印
+        // `prompt.length()/2` 冒充 token 估计——对抗审查 P2-1 指出它会把「根本没发送的 prompt」算进去，
+        // 与本类真正分段对不上。要精确 token 看 DeepSeek 返回的 usage（本批已解析并落日志）。
+        int injectedChars = l0 + l1 + l2 + l3 + l4 + cur;
+
+        log.info("ContextPackage 组装完成 | scene={} | record={} | 模式={} | 档位={} | 轮次={} "
+                        + "| 分段字数 L0={} L1={} L2={} L3={} L4={} 当前记录={} | 注入合计={}字符 "
+                        + "| 标签关联={}条 | 搜索={}条",
                 scene, record.id(),
                 chatHistory.isEmpty() ? "ANALYSIS" : "CHAT(" + chatHistory.size() + "轮)",
+                tier, turns.size(),
+                l0, l1, l2, l3, l4, cur, injectedChars,
                 relatedRecords.isBlank() ? 0 : relatedRecords.split("\n").length,
-                searchResults.isBlank() ? 0 : searchResults.split("\n").length,
-                (prompt.length() / 2));
+                searchResults.isBlank() ? 0 : searchResults.split("\n").length);
+
+        // 批 1 ④：稳定前缀（v1）——CHAT 模式用作**唯一一条 system**；变化内容（记忆/相关记录/检索/领域知识）
+        // 由消费方拼到最后一条 user 消息，于是「system + 对话历史」构成逐轮稳定的可缓存前缀。
+        String stableSystem = policy.tieringEnabled()
+                ? buildStableSystem(identityRef, enabledPlugins)
+                : null;
+
+        // ⚠️ 对抗审查 P1-1（真缺陷）：v1 **不再走 `buildContextFromPrompt`**（那是 legacy「从 prompt 里
+        // 截取上下文塞进 system」的做法），所以检索结果、知识源、领域/全局上下文必须**显式随包下发**——
+        // 否则就是「算完即丢」：对话里交易哲学 / 学习卡 / 生活知识 **0 注入**，新加的 L4 门控也白做
+        // （只白算了 prompt 字符串，还会留在 ai-log 里造成「阿呆看到了交易知识」的假象）。
+        // legacy 仍是三元素（由 `buildBackground` 消费），逐字不变。
+        List<String> relatedRefs = policy.tieringEnabled()
+                ? List.of(cardContext, relatedRecords, memorySummary, searchResults,
+                           joinSections(knowledgeContext, domainContext, globalContext))
+                : List.of(cardContext, relatedRecords, memorySummary);
 
         return new ContextPackage(
                 scene, identityRef,
                 record.title(), record.content(), record.tags(),
-                List.of(cardContext, relatedRecords, memorySummary),
+                relatedRefs,
                 prompt,
                 LocalDateTime.now(),
                 chatHistory,
                 // REVIEW P2-4：插件收敛后的 domain 枚举随包下发，CHAT 模式 system prompt 不再硬编码全量
-                buildDomainEnum(enabledPlugins));
+                buildDomainEnum(enabledPlugins),
+                stableSystem);
+    }
+
+    /** 按序拼接若干上下文块（空块跳过）——v1 的动态参考用；legacy 不经过它。 */
+    private static String joinSections(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p == null || p.isBlank()) continue;
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(p.strip());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 稳定前缀（批 1 ④）：CHAT 模式下的**唯一一条 system** 内容——只放"逐轮不变"的部分。
+     * <p>
+     * 与 {@link #buildPrompt} 的区别：prompt 是**一次性合成长文**（含当前记录、相关历史、记忆、检索，
+     * 给 ANALYSIS 模式用），而这里只取其中稳定的骨架；变化的部分（记忆/相关记录/检索）由
+     * {@code DeepSeekAiClient} 拼到最后一条 user 消息里。
+     * <p>
+     * 为什么必须拆：现状把每轮都变的内容放进第 ②③ 条 system，而 system 排在 messages 最前面
+     * → 前缀第二段就变了，DeepSeek 的「缓存前缀单元」从那里起全部失效；且**多条 system 的兼容性
+     * 各家不一**（Gemini 只取最后一条、Qwen/Mistral 直接报错）。
+     * <p>
+     * 日期是这里唯一"每天变一次"的内容（天级变化可接受；**不得**放进秒级时间戳或随机 id）。
+     */
+    private String buildStableSystem(String identityRef, Set<String> enabledPlugins) {
+        String todayInfo = "%s %s".formatted(
+                LocalDate.now().toString(),
+                LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINESE)
+        );
+        return """
+                处理一条新记录。
+
+                %s
+                当前日期：%s
+                场景：question
+
+                %s
+                %s""".formatted(identityRef, todayInfo,
+                buildCapabilityContext(enabledPlugins), buildDomainRules(enabledPlugins));
     }
 
     // ── 内部方法 ──
@@ -184,16 +306,17 @@ public class ContextEngine {
     }
 
     /**
-     * 加载当前卡片对话上下文（全部轮次）。
+     * 加载当前卡片对话上下文（全部轮次）——**legacy 口径**：把前文以文本块放进 prompt。
+     * <p>
+     * 批 1 起 {@code v1} 模式不再调用它：前文改由 messages（conversationHistory）承载，
+     * 避免同一段对话以「原始轮次 + 摘要文本」两种形式并存（context clash）。
+     * 入参改为**已读到的卡片**——调用方一次读卡（见 {@code compose}），不再各自 findById。
      */
-    private String loadCardContext(String userId, String cardId) {
-        if (cardId == null) return "";
+    private String loadCardContext(CardRecord card) {
+        if (card == null) return "";
 
-        Optional<CardRecord> card = cardRepository.findById(userId, cardId);
-        if (card.isEmpty()) return "";
-
-        List<CardRecord.Turn> turns = card.get().turns();
-        if (turns.isEmpty()) return "";
+        List<CardRecord.Turn> turns = card.turns();
+        if (turns == null || turns.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder("## 当前会话对话历史\n\n");
         for (CardRecord.Turn turn : turns) {
@@ -202,24 +325,18 @@ public class ContextEngine {
                     .append(prefix).append("：").append(turn.text()).append("\n");
         }
 
-        log.info("卡片上下文已加载 | cardId={} | turns={}", cardId, turns.size());
+        log.info("卡片上下文已加载 | cardId={} | turns={}", card.id(), turns.size());
         return sb.toString();
     }
 
     /**
-     * 构建多轮对话消息列表（供 DeepSeekAiClient chat 模式使用）。
+     * 把卡片轮次转成多轮对话消息（供 DeepSeekAiClient chat 模式使用）。
      * <p>
-     * 将 Card 文件中的对话轮次转换为 {role, content} 结构。
-     * isUser=true → "user", isUser=false → "assistant"
+     * isUser=true → "user"，isUser=false → "assistant"。入参为**已读到的 turns**
+     * （调用方一次读卡，见 {@code compose}——批 1 起不再各自 findById 全量扫卡片目录）。
      */
-    private List<ChatMessage> buildConversationHistory(String userId, String cardId) {
-        if (cardId == null) return List.of();
-
-        Optional<CardRecord> card = cardRepository.findById(userId, cardId);
-        if (card.isEmpty()) return List.of();
-
-        List<CardRecord.Turn> turns = card.get().turns();
-        if (turns.isEmpty()) return List.of();
+    private List<ChatMessage> toChatMessages(List<CardRecord.Turn> turns) {
+        if (turns == null || turns.isEmpty()) return List.of();
 
         List<ChatMessage> messages = new ArrayList<>();
         for (CardRecord.Turn turn : turns) {
@@ -227,7 +344,7 @@ public class ContextEngine {
             messages.add(new ChatMessage(role, turn.text()));
         }
 
-        log.info("对话历史已构建 | cardId={} | messages={}", cardId, messages.size());
+        log.info("对话历史已构建 | messages={}", messages.size());
         return messages;
     }
 
@@ -244,10 +361,13 @@ public class ContextEngine {
             // 图文一体（2026-09-22）：薄附件不进 AI 上下文——否则阿呆会读到 N 条「图片附件」噪音
             java.util.Set<String> attachmentIds =
                     com.adaiadai.core.kernel.record.MediaAttachments.referencedIds(allRecords);
+            // 批 1 ②：「最近 N 条」≠「相关 N 条」——生产实测 72%（108/151）的对话模式请求走的
+            // 就是这个回退分支、且**满额注入 20 条**无关记录摘要（F2）。批 1 先收到 policy 配额
+            // （v1 默认 2 条）；真正的相关性打分/两臂召回属批 2。
             List<ContentRecord> recent = allRecords.stream()
                     .filter(r -> !attachmentIds.contains(r.id()))
                     .filter(r -> !r.id().equals(currentRecord.id()))
-                    .limit(MAX_RELATED_RECORDS)
+                    .limit(policy.fallbackRecentMax())
                     .collect(Collectors.toList());
             if (recent.isEmpty()) return "";
 
@@ -385,6 +505,56 @@ public class ContextEngine {
     }
 
     /**
+     * 短档「极少核心」记忆（D1 拍板：短对话仍保留身份 + 高置信偏好，≤ 配额）。
+     * <p>
+     * 为什么不干脆不注入：用户多次强调「你要记住我」，而 identityRef 里的偏好是**手填的**；
+     * preference 类记忆是阿呆自己观察到的偏好，短对话给 2 条能保住「它记得我」的体感。
+     * <p>
+     * 对抗审查 P2-3 修正两处：
+     * <ul>
+     *   <li><b>成本</b>：原用 {@code findByKind}（只扫近 30 天，但**逐日**调 {@code findByDate} 30 次）
+     *       比中档的 {@code recentActive(7)} <b>更贵</b>，与「短档省开销」的初衷相反 →
+     *       改用 {@code recentActive(30)} 一次取、再按 kind 过滤（与中档同一条取数路径）；</li>
+     *   <li><b>语义</b>：既然是近 30 天窗口，文案就不能叫「长期偏好」→ 改「近期偏好」（名副其实）。
+     *       V3 实测：25 条 preference 里混有「卖出后小幅回补」这类**会过期的操作事实**，
+     *       所以每条带日期，并写明「若与你刚说的不一致，以你刚说的为准」。</li>
+     * </ul>
+     */
+    private String loadCoreMemory(String userId) {
+        int limit = policy.coreMemoryMax();
+        if (limit <= 0) return "";
+
+        List<Memory> prefs = memoryService.recentActive(userId, CORE_MEMORY_LOOKBACK_DAYS).stream()
+                .filter(m -> "preference".equals(m.kind()))
+                .filter(m -> m.createdAt() != null)
+                .filter(m -> m.summary() != null && !m.summary().isBlank())
+                .sorted(Comparator.comparing(Memory::createdAt).reversed())
+                .limit(limit)
+                .collect(Collectors.toList());
+        if (prefs.isEmpty()) {
+            log.info("核心记忆：近 {} 天内没有可用偏好", CORE_MEMORY_LOOKBACK_DAYS);
+            return "";
+        }
+
+        StringBuilder body = new StringBuilder();
+        int budget = policy.coreMemoryMaxTokens() * 2;   // 与 estimateTokens 同口径：1 token ≈ 2 字符
+        for (Memory m : prefs) {
+            String line = "- " + m.createdAt().toLocalDate() + " "
+                    + m.summary().replace("\n", " ").replace("\r", " ") + "\n";
+            if (body.length() + line.length() > budget) break;
+            body.append(line);
+        }
+        // 对抗审查 P3-2：预算被第一条就撑爆时，宁可不注入，也不要只留一个光秃秃的标题
+        if (body.isEmpty()) {
+            log.info("核心记忆：配额 {} 字符装不下任何一条，跳过注入", budget);
+            return "";
+        }
+        log.info("核心记忆已加载 | 条数={} | 字数={}", prefs.size(), body.length());
+        return "## 我对你的近期偏好（近 " + CORE_MEMORY_LOOKBACK_DAYS
+                + " 天记下的；若与你刚说的不一致，以你刚说的为准）\n\n" + body;
+    }
+
+    /**
      * 收集场景特定贡献 + 所有全局上下文。
      */
     private String enrichFromContributors(String userId, String scene, String identityRef,
@@ -412,13 +582,21 @@ public class ContextEngine {
      * 调用每个 {@link KnowledgeSource} 的 globalContext() + enrich(scene)。
      * 位置在 memory 和 domain context 之间。
      */
-    private String loadKnowledgeContext(String userId, String scene, Set<String> enabledPlugins) {
+    private String loadKnowledgeContext(String userId, String scene, Set<String> enabledPlugins,
+                                        boolean injectTrading) {
         StringBuilder sb = new StringBuilder();
         for (KnowledgeSource source : knowledgeSources) {
-            // 插件知识源（trading/project）只注入启用该插件的用户（RFC 20260814 第二步门控）
+            // 插件知识源（trading/learn）只注入启用该插件的用户（RFC 20260814 第二步门控）
             String plugin = pluginService.pluginForKnowledge(source.name());
             if (plugin != null && !enabledPlugins.contains(plugin)) {
                 log.debug("Knowledge 跳过（插件未启用）: {} | userId={}", source.name(), userId);
+                continue;
+            }
+            // 批 1 ④：v1 下**交易知识只在本次内容命中交易时注入**——生产实测生活/学习话题也背着
+            // 512 字符「交易哲学」+ 501 字符「交易系统状态」，知识源整体占 prompt 46%（P90 87%）。
+            // 只收紧 trading（证据最充分）；learn 保持原行为，不擅自扩大范围。
+            if (!injectTrading && PluginRegistry.PLUGIN_TRADING.equals(plugin)) {
+                log.debug("Knowledge 跳过（本次未命中交易领域）: {} | userId={}", source.name(), userId);
                 continue;
             }
             try {
@@ -452,11 +630,19 @@ public class ContextEngine {
     /**
      * 加载所有 Domain OS 的全局上下文（GlobalContext）。
      */
-    private String loadGlobalContext(String userId, Set<String> enabledPlugins) {
+    private String loadGlobalContext(String userId, Set<String> enabledPlugins, boolean injectTrading) {
         StringBuilder sb = new StringBuilder();
         for (ContextContributor contributor : contributors) {
             if (contributor.isDefault()) continue;
             if (!contributorAllowed(userId, contributor, enabledPlugins)) continue;
+            // 批 1 ④：v1 下交易域贡献者的全局上下文（如「交易系统状态」）同样只在命中交易时注入。
+            // 生活话题不再无故背上 501 字符的交易状态（F5 分块实测）。
+            if (!injectTrading
+                    && PluginRegistry.PLUGIN_TRADING.equals(pluginService.pluginForContributor(contributor))) {
+                log.debug("全局上下文跳过（本次未命中交易领域）: {} | userId={}",
+                        contributor.getClass().getSimpleName(), userId);
+                continue;
+            }
             try {
                 String globalCtx = contributor.globalContext(userId);
                 if (globalCtx != null && !globalCtx.isBlank()) {

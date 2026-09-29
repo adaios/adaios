@@ -1365,13 +1365,22 @@ class _MainPageState extends State<MainPage>
     }
   }
 
-  /// P0-1：卡片列表重建后校验活动卡仍在列表中——被新记录挤出 page0 时静默退出对话态，
+  /// P0-1：卡片列表重建后校验活动卡仍在列表中——被新记录挤出 page0 时退出对话态，
   /// 防止 build 里 `_buildActiveLayout(activeCard!)` 空值断言崩溃。
   /// 语义：对话现场若被刷新冲掉，不再强留"看是对话、实是普通卡"的错乱视图。
+  ///
+  /// RFC 20260929 批 1（R1，2026-09-30）：**退出时如实告知**——此前这一支是**静默**的
+  /// （web 端已于 2026-09-26 批补上提示，app 端漏了），于是用户「说着说着，下一句就变成新的一条」，
+  /// 从用户视角就是「对话模式丢了上下文」。生产实据：带 cardId 的请求 66 条里 **31 条（47%）**
+  /// 被后端判成 STATEMENT、不进对话、阿呆不回应（REVIEW P2-对话3）。
+  /// 提示放到帧后——本方法常在 setState 回调内被调用，直接弹会在 build 期间触发。
   void _syncActiveCard(List<FeedCardData> cards) {
     if (_activeCardId != null && !cards.any((c) => c.id == _activeCardId)) {
       _activeCardId = null;
       _hasActiveChat = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showSnackBar('刚才那段对话已经翻出当前列表了，再发就是新的一段');
+      });
     }
   }
 

@@ -191,6 +191,13 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
             String requestBody = buildChatRequestBody(contextPackage);
             var node = MAPPER.readTree(requestBody);
             ((com.fasterxml.jackson.databind.node.ObjectNode) node).put("stream", true);
+            // RFC 20260929 批 1 ⑤：显式索取 usage。DeepSeek 官方口径：不设置时 `[DONE]` 前最后一块
+            // 也会带 usage；设置 include_usage 后所有块都带该字段（非最后一块为 null）。此处显式声明，
+            // 是为了把 prompt_cache_hit_tokens / prompt_cache_miss_tokens 落进日志——此前**零解析**，
+            // 「真实输入 token」与「缓存命中」在生产上完全不可见（F7）。
+            var streamOptions = MAPPER.createObjectNode();
+            streamOptions.put("include_usage", true);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) node).set("stream_options", streamOptions);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(apiUrl))
                     .header("Content-Type", "application/json")
@@ -206,6 +213,7 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
                 throw new RuntimeException("AI 流式调用失败 status=" + response.statusCode() + " " + err);
             }
             StringBuilder full = new StringBuilder();
+            int[] usage = {-1, -1, -1, -1};   // prompt / cacheHit / cacheMiss / completion
             try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -213,11 +221,20 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
                     String data = line.substring(5).strip();
                     if (data.isEmpty() || "[DONE]".equals(data)) continue;
                     try {
-                        var delta = MAPPER.readTree(data).path("choices").path(0).path("delta").path("content");
+                        var chunkNode = MAPPER.readTree(data);
+                        var delta = chunkNode.path("choices").path(0).path("delta").path("content");
                         if (delta.isTextual()) {
                             String chunk = delta.asText();
                             full.append(chunk);
                             sink.accept(chunk);
+                        }
+                        // 批 1 ⑤：最后一块的 usage（include_usage 下其余块为 null）
+                        var u = chunkNode.path("usage");
+                        if (!u.isMissingNode() && !u.isNull()) {
+                            usage[0] = u.path("prompt_tokens").asInt(-1);
+                            usage[1] = u.path("prompt_cache_hit_tokens").asInt(-1);
+                            usage[2] = u.path("prompt_cache_miss_tokens").asInt(-1);
+                            usage[3] = u.path("completion_tokens").asInt(-1);
                         }
                     } catch (Exception ignored) {
                         // 跳过非 JSON 的 data 行（SSE 注释/心跳等）
@@ -227,6 +244,10 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
             String result = full.toString();
             if (result.isBlank()) throw new RuntimeException("AI 流式返回空内容");
             log.info("[DeepSeek] 流式响应 | model={} | 长度={}", modelFor(), result.length());
+            if (usage[0] >= 0) {
+                log.info("[DeepSeek] usage | 模式=STREAM | prompt={} (缓存命中={} 未命中={}) | completion={}",
+                        usage[0], usage[1], usage[2], usage[3]);
+            }
             return result;
         } catch (RuntimeException e) {
             throw e;
@@ -278,6 +299,8 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
                         .build();
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 String raw = parseChatCompletion(response.body());
+                // 批 1 ⑤：真实 token 用量（含缓存命中）——此前零解析，生产上看不到输入花了多少
+                logUsage(response.body());
                 log.info("[DeepSeek] 响应 received | status={} | 长度={}", response.statusCode(), raw.length());
                 return raw;
             } catch (Exception e) {
@@ -317,74 +340,169 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
     }
 
     /**
-     * CHAT 模式（QUESTION 场景）：
-     * 多轮 messages（system + 对话历史），0.7 temperature，2048 tokens。
+     * CHAT 模式（QUESTION 场景）：多轮 messages，0.7 temperature。
      * <p>
-     * System message 包含身份摘要、日期、相关记录、记忆回读等背景信息。
-     * 对话历史已经是完整的 user/assistant 轮次（包含当前用户输入），
-     * 直接使用，不再额外追加 recordContent。
+     * 两种装配（RFC 20260929 批 1 ④ 引入分叉，由 {@link ContextPackage#stableSystem()} 是否为 null 判定）：
+     * <ul>
+     *   <li><b>v1</b>（{@code stableSystem != null}）：**唯一一条 system** = 稳定前缀 + 输出契约；
+     *       对话历史居中；**每轮变化的参考（记忆/相关记录/检索）拼到最后一条 user**——
+     *       于是前缀逐轮稳定（DeepSeek「缓存前缀单元」可命中），也规避多条 system 的兼容性差异
+     *       （Gemini 只取最后一条、Qwen/Mistral 直接报错）。</li>
+     *   <li><b>legacy</b>（null）：3 条 system（角色 / 背景 / 上下文）+ 历史——与批 1 之前逐字一致，
+     *       保留用于灰度对比与回滚。</li>
+     * </ul>
+     * 对话历史已由调用方 append 本轮用户输入（{@code ensureCardWithUserTurn}），故末条即当前问句。
+     * <p>
+     * 包级可见：供 {@code DeepSeekAiClientTest} 直接断言 messages 结构（system 条数与动态内容位置），
+     * 与 {@link #parseChatCompletion} 同一惯例。
      */
-    private String buildChatRequestBody(ContextPackage ctx) throws Exception {
+    String buildChatRequestBody(ContextPackage ctx) throws Exception {
         var root = MAPPER.createObjectNode();
         root.put("model", modelFor());
         root.put("max_tokens", 8192);
         root.put("temperature", 0.7);
 
         var messages = MAPPER.createArrayNode();
-
-        // System prompt：身份 + 风格 + domain 标注（REVIEW P2-4：枚举按插件收敛，随 ContextPackage 下发）
-        var systemMsg = MAPPER.createObjectNode();
-        systemMsg.put("role", "system");
-        systemMsg.put("content", "你是阿呆的个人 AI 助手。用中文回复，语气温暖。回复结束后在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n"
-            + "{\n"
-            + "  \"summary\": \"3-5个词概括本次问答主题，避免人称代词，像标签一样简洁\",\n"
-            + "  \"tags\": [\"标签1\", \"标签2\"],\n"
-            + "  \"sentiment\": \"positive 或 negative 或 neutral\",\n"
-            + "  \"domain\": \"" + ctx.domainEnum() + "\",\n"
-            + "  \"actionable\": true 或 false,\n"
-            + "  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n"
-            + "}\n"
-            + "不要使用 emoji 和 unicode 转义码。");
-        messages.add(systemMsg);
-
-        // 背景知识：作为单独的 system 消息（model 在 system prompt 之后读取，
-        // 但不会把背景知识当成"自己要说的内容"）
-        String background = buildBackground(ctx);
-        if (background != null) {
-            var bgMsg = MAPPER.createObjectNode();
-            bgMsg.put("role", "system");
-            bgMsg.put("content", background);
-            messages.add(bgMsg);
-        }
-
-        // 组装上下文（全局领域、知识源、记忆等）：从 prompt 中提取不包含当前记录的上下文部分
-        String context = buildContextFromPrompt(ctx);
-        if (context != null) {
-            var ctxMsg = MAPPER.createObjectNode();
-            ctxMsg.put("role", "system");
-            ctxMsg.put("content", context);
-            messages.add(ctxMsg);
-        }
-
-        // 对话历史：完整的 user/assistant 轮次
         List<ChatMessage> history = ctx.conversationHistory();
-        if (history.isEmpty()) {
-            log.warn("chat 模式但没有历史记录，回退到普通 prompt");
-            var fallbackMsg = MAPPER.createObjectNode();
-            fallbackMsg.put("role", "user");
-            fallbackMsg.put("content", ctx.recordContent());
-            messages.add(fallbackMsg);
+
+        if (ctx.stableSystem() != null) {
+            // ── v1 装配（批 1 ④）──
+            String systemContent = ctx.stableSystem() + "\n\n" + chatOutputContract(ctx.domainEnum());
+            var systemMsg = MAPPER.createObjectNode();
+            systemMsg.put("role", "system");
+            systemMsg.put("content", systemContent);
+            messages.add(systemMsg);
+
+            String dynamicRefs = buildDynamicRefs(ctx);
+            appendHistoryWithDynamicTail(messages, history, dynamicRefs, ctx.recordContent());
+
+            // V5（REVIEW P2-对话2）：把**实际装配摘要**落日志。ai-log 记的是 `ctx.prompt()`，
+            // 而 v1 下 prompt 并不是发送内容（检索/知识改由 relatedRefs 下发）——
+            // 只看 ai-log 会得出「阿呆看到了交易知识」的假象，排查必须能对上真正发出的结构。
+            log.info("[DeepSeek] v1 装配 | system=1条({}字符) | 历史={}条 | 动态参考={}字符 | 当前问句已并入末条 user",
+                    systemContent.length(), history.size(), dynamicRefs.length());
         } else {
-            for (ChatMessage msg : history) {
-                var histMsg = MAPPER.createObjectNode();
-                histMsg.put("role", msg.role());
-                histMsg.put("content", msg.content());
-                messages.add(histMsg);
+            // ── legacy 装配（批 1 之前的行为，逐字保留）──
+            var systemMsg = MAPPER.createObjectNode();
+            systemMsg.put("role", "system");
+            systemMsg.put("content",
+                    "你是阿呆的个人 AI 助手。用中文回复，语气温暖。" + chatOutputContract(ctx.domainEnum()));
+            messages.add(systemMsg);
+
+            // 背景知识：作为单独的 system 消息（model 在 system prompt 之后读取，
+            // 但不会把背景知识当成"自己要说的内容"）
+            String background = buildBackground(ctx);
+            if (background != null) {
+                var bgMsg = MAPPER.createObjectNode();
+                bgMsg.put("role", "system");
+                bgMsg.put("content", background);
+                messages.add(bgMsg);
+            }
+
+            // 组装上下文（全局领域、知识源、记忆等）：从 prompt 中提取不包含当前记录的上下文部分
+            String context = buildContextFromPrompt(ctx);
+            if (context != null) {
+                var ctxMsg = MAPPER.createObjectNode();
+                ctxMsg.put("role", "system");
+                ctxMsg.put("content", context);
+                messages.add(ctxMsg);
+            }
+
+            if (history.isEmpty()) {
+                log.warn("chat 模式但没有历史记录，回退到普通 prompt");
+                var fallbackMsg = MAPPER.createObjectNode();
+                fallbackMsg.put("role", "user");
+                fallbackMsg.put("content", ctx.recordContent());
+                messages.add(fallbackMsg);
+            } else {
+                for (ChatMessage msg : history) {
+                    var histMsg = MAPPER.createObjectNode();
+                    histMsg.put("role", msg.role());
+                    histMsg.put("content", msg.content());
+                    messages.add(histMsg);
+                }
             }
         }
 
         root.set("messages", messages);
         return MAPPER.writeValueAsString(root);
+    }
+
+    /** CHAT 模式的输出契约（JSON 回执指令）——v1 与 legacy 共用同一段文本，避免两处漂移。 */
+    private static String chatOutputContract(String domainEnum) {
+        return "回复结束后在末尾另起一行输出 JSON（不要包裹 markdown 代码块）：\n"
+            + "{\n"
+            + "  \"summary\": \"3-5个词概括本次问答主题，避免人称代词，像标签一样简洁\",\n"
+            + "  \"tags\": [\"标签1\", \"标签2\"],\n"
+            + "  \"sentiment\": \"positive 或 negative 或 neutral\",\n"
+            + "  \"domain\": \"" + domainEnum + "\",\n"
+            + "  \"actionable\": true 或 false,\n"
+            + "  \"actionSuggestion\": \"需要后续操作写建议，否则写 null\"\n"
+            + "}\n"
+            + "不要使用 emoji 和 unicode 转义码。";
+    }
+
+    /** v1 的动态参考（记忆 + 相关历史 + 检索）：relatedRefs 中非空的部分（v1 下不含对话历史文本）。 */
+    private String buildDynamicRefs(ContextPackage ctx) {
+        if (ctx.relatedRefs() == null || ctx.relatedRefs().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String ref : ctx.relatedRefs()) {
+            if (ref == null || ref.isBlank()) continue;
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(ref.strip());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * v1 的 messages 组装：历史照旧，**动态参考拼到最后一条 user（当前问句）之前**。
+     * <p>
+     * 排在最后是有意的——它是每轮都变的内容，放前面会破坏缓存前缀；同时明确标注
+     * 「与问题冲突时以问题为准」，把「背景 vs 当前」的优先级说清。
+     */
+    private void appendHistoryWithDynamicTail(com.fasterxml.jackson.databind.node.ArrayNode messages,
+                                              List<ChatMessage> history,
+                                              String dynamicRefs, String recordContent) {
+        if (history.isEmpty()) {
+            log.warn("chat 模式但没有历史记录，回退到普通 prompt");
+            var fallbackMsg = MAPPER.createObjectNode();
+            fallbackMsg.put("role", "user");
+            fallbackMsg.put("content", dynamicRefs.isBlank() ? recordContent
+                    : dynamicRefs + "\n\n" + recordContent);
+            messages.add(fallbackMsg);
+            return;
+        }
+
+        int lastIdx = history.size() - 1;
+        for (int i = 0; i < lastIdx; i++) {
+            var histMsg = MAPPER.createObjectNode();
+            histMsg.put("role", history.get(i).role());
+            histMsg.put("content", history.get(i).content());
+            messages.add(histMsg);
+        }
+
+        ChatMessage last = history.get(lastIdx);
+        if (!"user".equals(last.role())) {
+            // 兜底：末条不是用户输入（异常装配）→ 原样保留，参考另起一条 user
+            var lastMsg = MAPPER.createObjectNode();
+            lastMsg.put("role", last.role());
+            lastMsg.put("content", last.content());
+            messages.add(lastMsg);
+            if (!dynamicRefs.isBlank()) {
+                var refMsg = MAPPER.createObjectNode();
+                refMsg.put("role", "user");
+                refMsg.put("content", "（本次参考）\n" + dynamicRefs);
+                messages.add(refMsg);
+            }
+            return;
+        }
+
+        var userMsg = MAPPER.createObjectNode();
+        userMsg.put("role", "user");
+        userMsg.put("content", dynamicRefs.isBlank() ? last.content()
+                : "（本次参考，供你判断用；与下面的问题冲突时以问题为准）\n" + dynamicRefs
+                  + "\n\n" + last.content());
+        messages.add(userMsg);
     }
 
     /**
@@ -507,5 +625,31 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
         }
 
         return content;
+    }
+
+    /**
+     * 解析并记录 token 用量（RFC 20260929 批 1 ⑤）。
+     * <p>
+     * 此前**完全没有解析 usage** —— 所以「真实输入 token」与「上下文缓存命中」在生产上不可见（F7）。
+     * DeepSeek 的 usage：{@code prompt_tokens}（= hit + miss）、{@code prompt_cache_hit_tokens}、
+     * {@code prompt_cache_miss_tokens}、{@code completion_tokens}、{@code total_tokens}。
+     * 缓存命中与未命中的**价差约 50 倍**（flash 命中 0.04 元/百万 vs 未命中 2 元/百万），
+     * 这也是「顺序摆对（稳定前缀在前）」的直接收益指标。
+     * <p>
+     * 解析失败只记 debug——**绝不让观测逻辑影响主流程**。
+     */
+    private void logUsage(String responseBody) {
+        try {
+            var usage = MAPPER.readTree(responseBody).path("usage");
+            if (usage.isMissingNode() || usage.isNull()) return;
+            log.info("[DeepSeek] usage | 模式=SYNC | prompt={} (缓存命中={} 未命中={}) | completion={} | total={}",
+                    usage.path("prompt_tokens").asInt(-1),
+                    usage.path("prompt_cache_hit_tokens").asInt(-1),
+                    usage.path("prompt_cache_miss_tokens").asInt(-1),
+                    usage.path("completion_tokens").asInt(-1),
+                    usage.path("total_tokens").asInt(-1));
+        } catch (Exception e) {
+            log.debug("usage 解析跳过: {}", e.getMessage());
+        }
     }
 }

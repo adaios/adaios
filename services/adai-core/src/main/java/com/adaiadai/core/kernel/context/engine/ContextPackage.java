@@ -28,6 +28,9 @@ import java.util.List;
  * @param assembledAt         组装时间
  * @param conversationHistory 多轮对话历史（QUESTION 场景，Statement 场景为空）
  * @param domainEnum          插件收敛后的 domain 枚举文本（如 "life(生活)/trading(交易)"；无插件用户只剩 life）
+ * @param stableSystem        **稳定前缀**（RFC 20260929 批 1 ④）：v1 装配下供 CHAT 模式用作**唯一一条 system**
+ *                            消息（角色契约 + 身份 + 能力边界 + domain 规则），逐轮不变以便缓存命中；
+ *                            legacy 为 {@code null}（消费方回落到原有 3 条 system 的组装方式）
  */
 public record ContextPackage(
         String scene,
@@ -39,7 +42,8 @@ public record ContextPackage(
         String prompt,
         LocalDateTime assembledAt,
         List<ChatMessage> conversationHistory,
-        String domainEnum
+        String domainEnum,
+        String stableSystem
 ) {
 
     /** 默认 domain 枚举（全量，**不带引号**——REVIEW P1-B1：消费方各自显式包引号，避免双重引号）。 */
@@ -47,16 +51,27 @@ public record ContextPackage(
 
     public ContextPackage {
         if (conversationHistory == null) conversationHistory = List.of();
+        // 对抗审查 P3-1：`relatedRefs` 也要护住——`estimateTokens` 会遍历它（旧实现不遍历，故无此风险）
+        if (relatedRefs == null) relatedRefs = List.of();
         if (domainEnum == null || domainEnum.isBlank()) domainEnum = DEFAULT_DOMAIN_ENUM;
     }
 
-    /** 旧签名兼容（无 domainEnum → 默认全量枚举，行为不变）。 */
+    /** 旧签名兼容（无 stableSystem → 按 legacy 组装，行为不变）。 */
+    public ContextPackage(String scene, String identityRef,
+                          String recordTitle, String recordContent, List<String> recordTags,
+                          List<String> relatedRefs, String prompt, LocalDateTime assembledAt,
+                          List<ChatMessage> conversationHistory, String domainEnum) {
+        this(scene, identityRef, recordTitle, recordContent, recordTags,
+                relatedRefs, prompt, assembledAt, conversationHistory, domainEnum, null);
+    }
+
+    /** 更旧签名兼容（无 domainEnum → 默认全量枚举，行为不变）。 */
     public ContextPackage(String scene, String identityRef,
                           String recordTitle, String recordContent, List<String> recordTags,
                           List<String> relatedRefs, String prompt, LocalDateTime assembledAt,
                           List<ChatMessage> conversationHistory) {
         this(scene, identityRef, recordTitle, recordContent, recordTags,
-                relatedRefs, prompt, assembledAt, conversationHistory, null);
+                relatedRefs, prompt, assembledAt, conversationHistory, null, null);
     }
 
     /**
@@ -75,12 +90,23 @@ public record ContextPackage(
 
     /**
      * 返回上下文包的 Token 预估量（粗略：1 token ≈ 2 中文字符）。
+     * <p>
+     * RFC 20260929 批 1 ⑤ 修正：此前只算 {@code identityRef + recordContent + prompt}，
+     * **漏掉了 {@code conversationHistory}（CHAT 模式的主体）与 {@code relatedRefs}（注入的历史/记忆块）**
+     * ——生产日志里那行「预估 tokens」因此长期是失真值（实测 prompt 均长 10699 字符，而日志报 3268）。
+     * <p>
+     * 口径：把实际会发给模型的内容都计入（含 legacy 与 v1 两种装配的并集），
+     * 因此是**上界估计**而非精确值；精确值以服务端返回的 {@code usage} 为准（批 1 ⑤ 已解析留痕）。
      */
     public int estimateTokens() {
-        int total = (identityRef != null ? identityRef.length() : 0)
-                + (recordContent != null ? recordContent.length() : 0)
-                + (prompt != null ? prompt.length() : 0);
+        int total = len(identityRef) + len(recordContent) + len(prompt) + len(stableSystem);
+        for (String ref : relatedRefs) total += len(ref);
+        for (ChatMessage msg : conversationHistory) total += len(msg.content());
         return total / 2;
+    }
+
+    private static int len(String s) {
+        return s == null ? 0 : s.length();
     }
 
     /**

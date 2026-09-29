@@ -4,6 +4,7 @@ import com.adaiadai.core.infrastructure.storage.CardFileRepository;
 import com.adaiadai.core.infrastructure.storage.TagIndexService;
 import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
+import com.adaiadai.core.kernel.context.policy.ContextAssemblyPolicy;
 import com.adaiadai.core.kernel.identity.IdentityProfile;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
@@ -80,7 +81,7 @@ class ContextEngineTest {
         // 路由测试默认给交易插件（保持"交易词→trading"既有行为；project 已撤）
         grantPlugins("default", PluginRegistry.PLUGIN_TRADING);
         return new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(contributor), List.of(knowledge), search, pluginService());
+                List.of(contributor), List.of(knowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
     }
 
     private ContentRecord record(String content) {
@@ -153,7 +154,7 @@ class ContextEngineTest {
         grantPlugins("alice"); // 无插件
         grantPlugins("adai", PluginRegistry.PLUGIN_TRADING);
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(tradingKnowledge), search, pluginService());
+                List.of(), List.of(tradingKnowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String nonOwnerCtx = engine.compose("alice", "note", record("今天买了立昂微，持仓 200 股"), null).prompt();
         assertFalse(nonOwnerCtx.contains("交易系统知识"), "无 trading 插件用户不应注入交易知识");
@@ -173,7 +174,7 @@ class ContextEngineTest {
         };
         grantPlugins("alice");
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(lifeKnowledge), search, pluginService());
+                List.of(), List.of(lifeKnowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String ctx = engine.compose("alice", "note", record("今天去公园散步了"), null).prompt();
         assertTrue(ctx.contains("生活系统"), "life 知识非门控，任何用户可注入");
@@ -196,7 +197,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(learnKnowledge), search, pluginService());
+                List.of(), List.of(learnKnowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String nonLearnCtx = engine.compose("bob", "note", record("想学习点新东西"), null).prompt();
         assertFalse(nonLearnCtx.contains("最近的学习笔记"), "无 learn 插件用户不注入学习笔记");
@@ -217,7 +218,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(contributor), List.of(knowledge), search, pluginService());
+                List.of(contributor), List.of(knowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String prompt = engine.compose("alice", "note", record("今天买了立昂微，持仓 200 股"), null).prompt();
 
@@ -239,7 +240,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(knowledge), search, pluginService());
+                List.of(), List.of(knowledge), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String prompt = engine.compose("bob", "note", record("项目 B 方向 Phase 4 的任务进度怎么样"), null).prompt();
 
@@ -261,7 +262,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(), search, pluginService());
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String prompt = engine.compose("newbie", "question", record("你能干什么？"), null).prompt();
 
@@ -282,7 +283,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(), search, pluginService());
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String prompt = engine.compose("learner", "question", record("你能干什么？"), null).prompt();
 
@@ -306,7 +307,7 @@ class ContextEngineTest {
         when(memory.recent(any(), anyInt())).thenReturn(List.of());
         when(search.search(any(), anyString())).thenReturn(List.of());
         ContextEngine engine = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), List.of(), search, pluginService());
+                List.of(), List.of(), search, pluginService(), ContextAssemblyPolicy.legacy());
 
         String prompt = engine.compose("newbie", "question", record("你好"), null).prompt();
 

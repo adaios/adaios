@@ -12,6 +12,7 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.engine.ContextContributor;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
+import com.adaiadai.core.kernel.context.policy.ContextAssemblyPolicy;
 import com.adaiadai.core.kernel.identity.IdentityRepository;
 import com.adaiadai.core.kernel.knowledge.KnowledgeSource;
 import com.adaiadai.core.kernel.knowledge.LifeKnowledgeSource;
@@ -81,7 +82,7 @@ class PluginIsolationTest {
         PluginService pluginService = new PluginService(accounts, new PluginRegistry());
 
         return new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(), sources, search, pluginService);
+                List.of(), sources, search, pluginService, ContextAssemblyPolicy.legacy());
     }
 
     private ContentRecord record(String content) {
@@ -194,7 +195,7 @@ class PluginIsolationTest {
         ContextContributor marketContributor = new MarketContextContributor(market, positions,
                 mock(AccountSnapshotRepository.class));
         ContextEngine engineWithMarket = new ContextEngine(identity, records, tagIndex, memory, cards,
-                List.of(marketContributor), List.of(), search, pluginService);
+                List.of(marketContributor), List.of(), search, pluginService, ContextAssemblyPolicy.legacy());
 
         String adaiPrompt = engineWithMarket.compose("adai", "question", record("今天大盘怎么样"), null).prompt();
         String alicePrompt = engineWithMarket.compose("alice", "question", record("今天大盘怎么样"), null).prompt();

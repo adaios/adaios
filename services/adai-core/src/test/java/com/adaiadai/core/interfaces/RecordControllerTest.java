@@ -17,6 +17,7 @@ import com.adaiadai.core.kernel.account.Account;
 import com.adaiadai.core.kernel.account.AccountRepository;
 import com.adaiadai.core.kernel.context.IntentRecognizer;
 import com.adaiadai.core.kernel.context.engine.ContextEngine;
+import com.adaiadai.core.kernel.context.policy.ContextAssemblyPolicy;
 import com.adaiadai.core.kernel.context.engine.ContextPackage;
 import com.adaiadai.core.kernel.memory.Memory;
 import com.adaiadai.core.kernel.memory.MemoryService;
@@ -97,7 +98,7 @@ class RecordControllerTest {
         PluginService pluginService = new PluginService(accounts, new PluginRegistry());
         ContextEngine contextEngine = new ContextEngine(
                 identityRepository, recordRepository, tagIndexService,
-                memoryService, cardRepository, List.of(), List.of(), searchService, pluginService
+                memoryService, cardRepository, List.of(), List.of(), searchService, pluginService, ContextAssemblyPolicy.legacy()
         );
         RecordUnderstandingService understandingService = new RecordUnderstandingService(contextEngine, aiClient);
 

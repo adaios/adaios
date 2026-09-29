@@ -69,6 +69,20 @@ class ContextPackageTest {
     }
 
     @Test
+    void estimateTokens_includesHistoryAndRelatedRefs() {
+        // RFC 20260929 批 1 ⑤：旧口径漏算 conversationHistory（CHAT 模式主体）与 relatedRefs
+        // （注入的历史/记忆块）——生产实测 prompt 均长 10699 字符而日志只报 3268，即此因。
+        ContextPackage ctx = new ContextPackage("question", "身份", "标题", "内容", List.of(),
+                List.of("", "相关历史块"),
+                "提示词", java.time.LocalDateTime.now(),
+                List.of(new ContextPackage.ChatMessage("user", "你好"),
+                        new ContextPackage.ChatMessage("assistant", "你好呀")),
+                "life(生活)", "稳定前缀");
+        int expected = ("身份" + "内容" + "提示词" + "稳定前缀" + "相关历史块" + "你好" + "你好呀").length() / 2;
+        assertEquals(expected, ctx.estimateTokens());
+    }
+
+    @Test
     void estimateTokens_chineseOnly() {
         ContextPackage ctx = ContextPackage.simple(
                 "note", "我",

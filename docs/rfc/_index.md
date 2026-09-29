@@ -3,7 +3,7 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-28
+updated: 2026-09-29
 status: active
 lines: 90
 depends-on: []
@@ -20,9 +20,11 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20260929-conversation-context-engineering.md | 对话模式的上下文工程——从「平铺拼接」到分层装配（触发＝用户 2026-09-29「对话模式会丢失上下文」自查后的定性「目前没有采用什么优秀的实践」；量化＝30 天内 151 次对话模式中 **72% 注入的是「最近 20 条无关记录」**、**93.4% 的检索空转**、**60% 的对话 ≤5 轮**；三路调研对标（上下文工程 / 记忆架构 / 检索与评测）；治法＝**按轮次分档**（≤3 轮只注入身份+前文）+ 两臂召回 + 指纹去重 + token 预算 + 单条 system 与顺序重排 + 上下文回放，落点是项目预留但空置的 `context/prompt·policy·token` 三包）| draft |
+| 20260929-context-engineering-batch1-design.md | **批 1 实施设计（文件级）**——把主方案的「少注入」五项精确到文件与行：按轮次分档 · 收掉「最近 20 条」· 去重复注入 · 单条 system 与顺序 · 真实 token 计量；含影响面（**10 处 `new ContextEngine(...)` 测试调用点**、`estimateTokens` 2 例断言）、新增 `adai.context.*` 配置（默认 `legacy` 可灰度可回滚）、测试计划、以及**动代码前必须先验的 DeepSeek `usage` 解析**（现为零解析）。拍板＝D1 保留极少核心 / D2 只对新记忆生效 / D3 先出实施设计）| draft |
 | 20260928-market-source-consolidation.md | 行情渠道收敛与稳定——删东财 K 线源 + 腾讯双域名 + 新浪升兜底（触发＝用户 2026-09-28「几个行情渠道，有稳定的吗」；逐源实测＝腾讯 quote 200 / 腾讯 K 线 200 / 新浪 200 / 东财 push2his 000 / tdx 止于 09-04 → 名义四层只有一层在干活；治法＝批 1 腾讯第二域名（配置级）· 批 2 删东财出链路 + 新浪升兜底 + 可观测性 + tdx 周节奏降噪 · 批 3 tdx 数据包周导入）| approved |
 | 20260924-trading-app-form.md | 交易 App 端形态重做——「一句判断 + 一行持仓」与截图入账三条主线（触发＝用户 2026-09-24「我对 app 端的交易插件还是不满意」+ Shopify 回归原生引出的「app 与 web 是两个角度」；七问收敛焦点＝无主心骨/主线不顺/太常规；首屏四层形态 + 截图入账三卡点解法 + 不做边界 + 三批实施）| draft |
-| 20260923-rhythm-and-memory-temporality.md | 节律与记忆时效——「每周四发版」不是待办（概览卡天天提醒的根因与治法：节律独立为 Kernel 一等条目（RRULE）+ 记忆 bi-temporal 有效期 + 简报注入三闸 + 变更走「问一句」；触发＝用户 2026-09-23「阿呆 app 概览卡片天天提醒我」）| draft |
+| 20260923-rhythm-and-memory-temporality.md | 节律与记忆时效——「每周四发版」不是待办（概览卡天天提醒的根因与治法：节律独立为 Kernel 一等条目（RRULE）+ 记忆 bi-temporal 有效期 + 简报注入三闸 + 变更走「问一句」；触发＝用户 2026-09-23「阿呆 app 概览卡片天天提醒我」）| approved |
 | 20260923-market-data-resilience.md | 行情（K 线）链路韧性——域名可配 + 第三源 + 可用性可见（2026-09-22 三条源同时失效：腾讯 K 线被 WAF 拦 501 / 东财被限 / tdx 滞后；治法 A 域名可配（默认备用域名 + 区间本地裁剪）· B 新浪作最后一层兜底 · D 健康端点 + 双端横幅）| implemented |
 | 20260922-trading-decision-copilot.md | 交易插件目标形态——决策时点的对话式提醒与四要素铁证（日线/早盘买尾盘卖 → 只在早盘与尾盘出现、收盘后复盘；每条意见必须带本人历史统计 + 数字证据 + 规则原文 + 可回溯；账收盘后同步、行情自取）| approved |
 | 20260918-trading-app-restructure.md | 交易 App 端重排——「记录 → 对账 → 照见」三层与两条铁律（UI/UX 专项审查 24 条的结构性收敛；三套口径以锚定日为界；四批 A1/A2/B/C）| draft |
