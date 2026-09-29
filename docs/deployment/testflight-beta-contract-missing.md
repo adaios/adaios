@@ -5,7 +5,7 @@ version: 1
 created: 2026-09-29
 updated: 2026-09-29
 status: active
-lines: 282
+lines: 298
 depends-on:
   - ios-release.md
   - testflight-external-testing.md
@@ -63,6 +63,16 @@ tags: [deployment, ios, testflight, incident]
 | 触发重建动作 | 已试且均 HTTP 200：`testflight_external.py --fill`（重提 TestFlight 测试信息 + 隐私政策 URL + 构建 13 的 What to Test）· `--assign-build`（**构建 13 已成功加入外测组「阿呆外测」**）→ **合同仍 null、送审仍 422**（id `52306c1b-…`）|
 
 **结论**：**账号级监管与协议层已完全干净**，Beta 合同依然未重建 → **自助路径全部穷尽**（协议 / DSA / 重传 / 触发动作四类都试过），唯一出路是 **Apple 后台修复**。
+
+### 1.7 📮 工单已提交（2026-09-30 00:40，用户本人操作）
+
+| 项 | 内容 |
+|:--|:--|
+| **Case ID** | **`102980309269`** ← 追踪 / 催单 / 对照的唯一锚点 |
+| 渠道 | `developer.apple.com/contact` → 邮件表单（App Store Connect → TestFlight 类目；深夜无电话选项）|
+| 提交内容 | §3.1 英文正文（含 12 构建同一秒作废 + 构建 13/14 实测 + DSA 合规与触发动作均无效）+ 附件 |
+| 表单字段 | 应用 Apple ID `6812370456` · 版本版号 `1.0.0 (14)` · 问题时间 `2026-09-29 23:34 UTC+8` |
+| 后续 | Apple 首次回复通常 **24~48h**；**下一个工作日 9:30 后打电话报 Case ID 催单**；修复后按 **§6** 动作清单收尾 |
 
 ## 2. 今天就能做的三步
 
@@ -130,12 +140,15 @@ Observed (2026-09-29)
   requirements"), and all agreements show as active. The problem persists unchanged.
 - we also re-submitted the TestFlight test information and assigned build 13 to the external group
   (both HTTP 200) — the Beta contract is still missing and submission still returns 422.
+- we uploaded yet another build (build 14, Delivery UUID 932bf0d1-2f2e-44cd-aee0-be9955d2db92):
+  it is VALID with expired = false (expirationDate 2026-12-28), yet submission still returns 422.
+  Builds 13 and 14 are both assigned to the external group and waiting.
 
 What we already verified on our side
 - Our automation only performs: build, export, altool upload, status query, assign-build, submit-review.
   It contains no action that expires or removes builds.
-- Re-uploading is now empirically confirmed useless (build 13 above): visible in TestFlight, VALID,
-  not expired — yet not downloadable and still 422. Please do not suggest another re-upload.
+- Re-uploading is now empirically confirmed useless (builds 13 and 14 above): visible in TestFlight,
+  VALID, not expired — yet not downloadable and still 422. Please do not suggest another re-upload.
 
 Request
 1. Please repair/regenerate the Beta License Agreement for this app so TestFlight works again.
@@ -178,6 +191,9 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
    （App Store Connect → 商务页，界面提示「你目前已完成所有监管要求」），且所有协议均显示有效；
    另外重新提交了 TestFlight 测试信息、并把构建 13 加入外部测试组（均返回 200）。
    **在上述状态下问题依旧**（合同仍缺失、送审仍 422）。
+9. 我方又上传了构建 14（Delivery UUID 932bf0d1-2f2e-44cd-aee0-be9955d2db92）：
+   同样 VALID、expired=false（到期 2026-12-28），送审仍返回同样的 422；
+   构建 **13、14 均已加入外部测试组待命**。请不要再建议重传新构建。
 
 我方已排除
 - 我方脚本只做：构建、导出、altool 上传、状态查询、分配测试组、提交审核；不含任何「移除/置过期构建」动作。
