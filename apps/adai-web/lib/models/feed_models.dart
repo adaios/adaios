@@ -89,6 +89,11 @@ class FeedCardData {
   // P2-UI12（2026-09-16）：这张卡若是后端把「同一分钟同向成交」折叠出来的，
   // 这里是被折叠进本条的原始记录 id（含本卡 id）；删除时必须逐条删全，否则刷新后又一笔笔回来。
   final List<String> mergedIds;
+  // D4（2026-09-30 用户拍板「说出来」）：这一条是**刚提交**、且被判定为「记录」的输入——
+  // 卡片给一句如实回执，消除「我说了话它不吭声」的静默（带卡片的请求 47% 判 log、无任何回应）。
+  // 生命周期（对抗审查 P2-1 校正口径）：为 true 后会保留，直到本卡被点「提问」转成对话
+  // （渲染条件 `!_hasTurns`）或 Feed 刷新（web 整表替换 → 天然清空）。
+  final bool justRecorded;
 
   FeedCardData({
     required this.id,
@@ -123,6 +128,7 @@ class FeedCardData {
     this.mediaCaption,
     DateTime? updatedAt,
     this.mergedIds = const [],
+    this.justRecorded = false,
   })  // 单值 mediaUrl 与多值 mediaUrls 互为兜底：调用方给哪个都能渲染（旧调用点零改动）
       : mediaUrl = (mediaUrl != null && mediaUrl.isNotEmpty)
             ? mediaUrl
@@ -162,6 +168,7 @@ class FeedCardData {
     String? mediaCaption,
     DateTime? updatedAt,
     List<String>? mergedIds,
+    bool? justRecorded,
   }) {
     return FeedCardData(
       id: id ?? this.id,
@@ -196,6 +203,7 @@ class FeedCardData {
       mediaCaption: mediaCaption ?? this.mediaCaption,
       updatedAt: updatedAt ?? DateTime.now(),
       mergedIds: mergedIds ?? this.mergedIds,
+      justRecorded: justRecorded ?? this.justRecorded,
     );
   }
 }

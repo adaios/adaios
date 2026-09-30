@@ -299,7 +299,14 @@ class _MainPageState extends State<MainPage>
         // → 同 id 两份都渲染（用户清待办 + 收行情推送、推送深链触发刷新时实测到）。
         // 修复：拼接前按 id 过滤 older（保留「保留更早页」语义，只去掉与 page0 重复的）。
         final freshIds = freshCards.map((c) => c.id).toSet();
-        _cards = [...freshCards, ...older.where((c) => !freshIds.contains(c.id))];
+        // D4 回执的生命周期（对抗审查 P2-1）：`justRecorded` 只在「刚提交那一刻」有意义，
+        // 刷新后必须消失。但本方法**保留 older 段**（不在 page0 的卡），其标记会一直残留，
+        // 与 web（整表替换、天然清空）行为不一致 → 这里在合并时统一清掉。
+        _cards = [
+          ...freshCards,
+          ...older.where((c) => !freshIds.contains(c.id))
+              .map((c) => c.justRecorded ? c.copyWith(justRecorded: false) : c),
+        ];
         // P0-1：活动卡被刷新挤出 page0 → 静默退出对话态（防 activeCard! 空值崩溃）
         _syncActiveCard(_cards);
       });
@@ -1086,7 +1093,9 @@ class _MainPageState extends State<MainPage>
         });
       } else {
         setState(() {
-          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain));
+          // D4「说出来」（2026-09-30 用户拍板）：判成「记录」时给如实回执（`justRecorded`），
+          // 卡片底部显示「记下了 · 想接着说就点「提问」」——不再让用户面对「我说了话它不吭声」的静默。
+          _updateCard(cardId, (c) => c.copyWith(summary: resp.summary ?? 'recorded', tags: resp.tags, loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain, justRecorded: true));
         });
       }
     } catch (e) {

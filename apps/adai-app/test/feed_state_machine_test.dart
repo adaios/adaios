@@ -287,6 +287,23 @@ void main() {
       expect(jsonDecode(recordReqs.first.body)['intent'], isNull);
     });
 
+    testWidgets('D4 接线：提交一句被判「记录」→ 卡片立刻给如实回执（防 log 分支忘置标记）', (tester) async {
+      // 对抗审查 P2-2：本批**真正的新接线**是 `_createNewCard` 的 log 分支置 `justRecorded`。
+      // 组件级测试（recorded_receipt_test）直接造 FeedCardData，**防不住"忘置"**——
+      // 本用例走真实提交路径，把那条接线钉死。
+      final b = _Backend()
+        ..feedPage0 = [_record('r1', '第一条')]
+        ..feedTotalToday = 1;
+      await _pump(tester, b);
+
+      await tester.enterText(find.byType(TextField), '今天很开心帮我记一下');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.text('记下了 · 想接着说就点「提问」'), findsOneWidget,
+          reason: '判成记录时必须出声（D4：不再让用户「说了话它不吭声」）');
+    });
+
     testWidgets('ask 流程：waiting（正在思考…）→ chatting 显示 AI 回复', (tester) async {
       final b = _Backend()
         ..feedPage0 = [_record('r1', '今天买了立昂微')]

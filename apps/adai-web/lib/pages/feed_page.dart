@@ -780,6 +780,8 @@ class _FeedPageState extends State<FeedPage> {
           _updateCard(cardId, (c) => c.copyWith(
             summary: resp.summary ?? '已记录', tags: resp.tags,
             loading: false, mode: CardMode.idle, intent: IntentType.log, domain: resp.domain,
+            // D4「说出来」：给如实回执（卡片底部一行小字），不再静默
+            justRecorded: true,
           ));
         });
       }

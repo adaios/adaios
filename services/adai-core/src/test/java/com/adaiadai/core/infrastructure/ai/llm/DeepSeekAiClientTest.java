@@ -306,4 +306,35 @@ class DeepSeekAiClientTest {
                 .path("messages").get(0).path("content").asText();
     }
 
+    // ── D4 路由口径（2026-09-30 用户拍板：A「说出来」＋ 宁可它多说一句） ──
+
+    @Test
+    void intentJudge_leansAsk_whenAmbiguous() {
+        // 反向可验证：本批之前没有任何「信号不足怎么办」的指引——这正是那 47% 被判 log 的成因。
+        assertTrue(DeepSeekAiClient.INTENT_SYSTEM_LEAN_ASK.contains("信号不足"),
+                "倾向版 system 要给出兜底（信号不足 → ask）");
+        // 审查 Q1：只写倾向不写 log 正例，模型会把明确记录也判 ask（费用与体感双升）→ 必须钉住正例
+        assertTrue(DeepSeekAiClient.INTENT_SYSTEM_LEAN_ASK.contains("今天天气不错"),
+                "倾向版 system 必须带 log 正例（防倾向过度）");
+        assertTrue(DeepSeekAiClient.INTENT_SYSTEM_LEAN_ASK.contains("帮我记一下"),
+                "并要区分「带记录指令」与「没带指令的情绪短句」");
+
+        String user = DeepSeekAiClient.intentPromptLeanAsk("今天很开心");
+        assertTrue(user.contains("信号不足") || user.contains("拿不准"), "user prompt 也要给兜底");
+        assertTrue(user.contains("今天很开心"), "输入原样带入");
+    }
+
+    @Test
+    void leanAskPrompt_isSeparateFromLegacy_mediaKeepsOldWording() {
+        // 对抗审查 P1-1：倾向**只能**作用于文本入口，媒体入口（MediaController）继续走旧口径。
+        // 本用例是那条隔离的守门人——谁把倾向塞进旧常量，它就红
+        //（媒体链路一旦被波及：>500 字配文会从「可作 log 落盘」变成 400，图已落盘、记录未建）。
+        assertFalse(DeepSeekAiClient.INTENT_SYSTEM.contains("信号不足"),
+                "旧 system（媒体入口用）不得含倾向");
+        assertFalse(DeepSeekAiClient.intentPrompt("随便一句话").contains("信号不足"),
+                "旧 user prompt 同样不得含倾向");
+        // 旧口径仍照常带回输入
+        assertTrue(DeepSeekAiClient.intentPrompt("随便一句话").contains("随便一句话"));
+    }
+
 }

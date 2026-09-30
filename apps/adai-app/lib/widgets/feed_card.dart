@@ -85,6 +85,13 @@ class FeedCardData {
   // 这里是被折叠进本条的原始记录 id（含本卡 id）；删除时必须逐条删全，
   // 否则只删代表卡 → 刷新后其余几笔又回来（假删除）。空 = 普通单条卡。
   final List<String> mergedIds;
+  // D4（2026-09-30 用户拍板「说出来」）：这一条是**刚提交**、且被判定为「记录」的输入——
+  // 卡片给一句如实回执，消除「我说了话它不吭声」的静默
+  // （生产实据：带卡片的请求 47% 判 log、不进对话、无任何回应 → 用户体感「对话模式丢了上下文」）。
+  // 生命周期（对抗审查 P2-1 校正口径）：为 true 后**会一直保留**，直到 ① 本卡被点「提问」
+  // 转成对话（渲染条件 `!_hasTurns` 兜住）、或 ② Feed 刷新——app 在 `_refreshFeed` 合并时统一清除，
+  // web 是整表替换天然清空。**不是**「只在刚提交那一帧」。
+  final bool justRecorded;
 
   FeedCardData({
     required this.id, required this.type, required this.time, required this.content,
@@ -99,6 +106,7 @@ class FeedCardData {
     this.idempotencyKey,
     DateTime? updatedAt,
     this.mergedIds = const [],
+    this.justRecorded = false,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
   FeedCardData copyWith({
@@ -112,7 +120,7 @@ class FeedCardData {
     Uint8List? mediaBytes, String? mediaName, String? mediaExt, String? mediaCaption,
     List<Uint8List>? mediaBytesList, List<String>? mediaNames, List<String>? mediaExts,
     String? idempotencyKey,
-    DateTime? updatedAt, List<String>? mergedIds,
+    DateTime? updatedAt, List<String>? mergedIds, bool? justRecorded,
   }) {
     return FeedCardData(
       id: id ?? this.id, type: type ?? this.type, time: time ?? this.time,
@@ -139,6 +147,7 @@ class FeedCardData {
       idempotencyKey: idempotencyKey ?? this.idempotencyKey,
       updatedAt: updatedAt ?? DateTime.now(),
       mergedIds: mergedIds ?? this.mergedIds,
+      justRecorded: justRecorded ?? this.justRecorded,
     );
   }
 
@@ -351,6 +360,14 @@ class FeedCard extends StatelessWidget {
                           if (data.summary != null && !_isActive && !_isEnded) ...[
                             const SizedBox(height: 6),
                             _buildCleanSummary(),
+                          ],
+                          // D4「说出来」（2026-09-30 用户拍板）：刚提交、被判为「记录」的输入
+                          // 给一句如实回执——不再让用户面对「我说了话，它一个字都不回」的静默。
+                          // 注意 `!_hasTurns`：本卡一旦被点「提问」转成对话，回执必须消失——
+                          // copyWith 不传 justRecorded 会保留它（自查发现），只靠标记会残留。
+                          if (data.justRecorded && !_hasTurns) ...[
+                            const SizedBox(height: 4),
+                            _buildRecordedReceipt(),
                           ],
                           if (data.summary != null && _isEnded) ...[
                             const SizedBox(height: 6),
@@ -855,6 +872,18 @@ class FeedCard extends StatelessWidget {
   Widget _buildCleanSummary() {
     return Text(data.summary!,
       style: TextStyle(fontSize: 12, color: AppColors.darkGrey4, height: 1.4));
+  }
+
+  /// D4「说出来」（2026-09-30 用户拍板）：被判成「记录」时的如实回执。
+  /// <p>
+  /// 为什么要有它：生产实测带卡片的请求 **47%** 被判 log → 不进对话、阿呆一个字都不回，
+  /// 用户体感就是「对话模式丢了上下文」（他甚至以为自己在聊天，实际被记成了待办）。
+  /// 形态选择：**卡片内一行浅灰小字**（而非 SnackBar）——静默的根因是「事后回想不确定它收到没」，
+  /// 3 秒就消失的提示治不了这个；且本行只在**刚提交那一刻**出现（`justRecorded`），
+  /// Feed 刷新后由服务端数据重建即消失，不会在翻历史卡时打扰。
+  Widget _buildRecordedReceipt() {
+    return Text('记下了 · 想接着说就点「提问」',
+      style: TextStyle(fontSize: 11, color: AppColors.darkGrey4, height: 1.3));
   }
 
   Widget _buildTags() {

@@ -57,6 +57,30 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
             只回答一个词：ask 或 log。不要输出 JSON、不要解释、不要标点。""".strip();
 
     /**
+     * 「偏向需要回复」版的分类器 system（D4，2026-09-30 用户拍板「宁可它多说一句」）。
+     * <p>
+     * ⚠️ **只配 {@link #recognizeIntentLeanAsk}（文本入口）使用**——媒体入口走 {@link #recognizeIntent}
+     * 与上面的旧口径（对抗审查 P1-1：倾向会改变图片资产形态、并让超长配文从 log 变 400）。
+     * <p>
+     * 措辞要点（回应审查 Q1「放大点」）：① ask 侧给**可列举的信号**（提问/求助/征求看法/想接话），
+     * 不写成「任何意味」；② 兜底保留「信号不足 → ask」，但**给 log 正例**把「明确记录」的窄口撑开
+     * （否则模型会把日常记录也判 ask，费用与体感双升）；③ 例子里刻意包含一句**没有记录指令的情绪短句**
+     * （判 ask）与一句**带记录指令的同类**（判 log），把边界钉在「有没有让我记/答的索取」上。
+     */
+    static final String INTENT_SYSTEM_LEAN_ASK = """
+            你是意图分类器。判断用户这句话是在向助手提问（ask），还是在陈述一件要记下来的事（log）。
+            判据（宁可选 ask，但别把明确的记录也判成 ask）：
+            - 有索取 → ask：提问、求助、征求看法、要我评价/建议，或明显想让我接话；
+            - 无索取 → log：第一人称、已发生、只是记下来（含明确的记录指令）。
+            - 信号不足、看不出意图 → ask。
+            参考例：
+            - 「今天天气不错」「中午吃了碗面」 → log（明确的日常记录，无索取）
+            - 「今天很开心帮我记一下」 → log（带明确的记录指令）
+            - 「今天很开心」 → ask（无记录指令、信号不足）
+            - 「我听了两只股票」 → ask（像是想接着说下去）
+            只回答一个词：ask 或 log。不要输出 JSON、不要解释、不要标点。""".strip();
+
+    /**
      * 生成正文的默认 system（同批）：{@code generate(ctx, null)} 此前落到分析指令（要求输出 JSON），
      * 与「生成正文」语义矛盾。调用方给了自定义 system 时以调用方为准。
      */
@@ -259,26 +283,67 @@ public class DeepSeekAiClient implements AiClient, com.adaiadai.core.kernel.ai.S
 
     @Override
     public String recognizeIntent(String content) {
+        return classifyIntent(content, false);
+    }
+
+    /**
+     * D4（2026-09-30 用户拍板「宁可它多说一句」）：**文本入口专用**的偏向版。
+     * 媒体入口不调用它——见 {@link AiClient#recognizeIntentLeanAsk} 的说明。
+     */
+    @Override
+    public String recognizeIntentLeanAsk(String content) {
+        return classifyIntent(content, true);
+    }
+
+    private String classifyIntent(String content, boolean leanAsk) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new RuntimeException("AI 未配置：缺少 API Key");
         }
         try {
-            String prompt = """
-                    判断以下用户输入是否需要 AI 回复。
-                    需要回复（提问、命令、要求等） → 返回 ask
-                    不需要回复（纯记录、日记、随想） → 返回 log
-                    只需返回一个词：ask 或 log。
-                    输入：%s
-                    结果：""".formatted(content);
+            String prompt = leanAsk ? intentPromptLeanAsk(content) : intentPrompt(content);
+            String system = leanAsk ? INTENT_SYSTEM_LEAN_ASK : INTENT_SYSTEM;
             // v4-pro 推理模型：50 tokens 会被思维链吃满→content 空（08-14 连调实锤）→ 提到 512
             // 意图识别返回裸词 ask/log（非 JSON），不开 json_mode（json_object 会强制输出 JSON 结构破坏裸词）
-            String body = buildSimpleBody(prompt, 512, 0.3, INTENT_SYSTEM, false);
+            String body = buildSimpleBody(prompt, 512, leanAsk ? 0.1 : 0.3, system, false);
             String result = sendAndParse(body, Duration.ofSeconds(15)).strip().toLowerCase();
             if (result.contains("ask")) return "ask";
             return "log";
         } catch (Exception e) {
             throw new RuntimeException("AI 意图识别失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 意图分类的 user prompt（包级可见：供 {@code DeepSeekAiClientTest} 直接断言判据倾向，
+     * 与 {@link #INTENT_SYSTEM} 一起钉住 D4「宁可它多说一句」的口径）。
+     * <p>
+     * 2026-09-30（用户拍板 D4 = A「说出来」＋ 宁可多说一句）：把「模棱两可」显式划到 ask 一侧。
+     * 动因——带卡片的请求里 **47%** 被判 log，用户「说了话，它一个字都不回」，
+     * 体感就是「对话模式丢了上下文」（REVIEW P2-对话3）。
+     */
+    static String intentPrompt(String content) {
+        return """
+                判断以下用户输入是否需要 AI 回复。
+                需要回复（提问、命令、要求等） → 返回 ask
+                不需要回复（纯记录、日记、随想） → 返回 log
+                只需返回一个词：ask 或 log。
+                输入：%s
+                结果：""".formatted(content);
+    }
+
+    /**
+     * 「偏向需要回复」版的 user prompt——**只配 {@link #recognizeIntentLeanAsk}（文本入口）**。
+     * 与 {@link #INTENT_SYSTEM_LEAN_ASK} 一起构成 D4 口径；媒体入口仍走 {@link #intentPrompt}。
+     */
+    static String intentPromptLeanAsk(String content) {
+        return """
+                判断以下用户输入是否需要 AI 回复。
+                有索取（提问、求助、征求看法、想让我接话） → 返回 ask
+                无索取、只是记下来（含「帮我记一下」这类记录指令） → 返回 log
+                信号不足、拿不准 → 返回 ask。
+                只需返回一个词：ask 或 log。
+                输入：%s
+                结果：""".formatted(content);
     }
 
     /**

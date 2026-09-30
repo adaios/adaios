@@ -41,4 +41,18 @@ public interface AiClient {
      * @return log / question / decision
      */
     String recognizeIntent(String content);
+
+    /**
+     * 与 {@link #recognizeIntent} 相同，但**判据偏向「需要回复」**（D4「宁可它多说一句」，2026-09-30 用户拍板）。
+     * <p>
+     * ⚠️ **只给文本入口用**（{@code RecordController}）：它的代价是「可能多答一句」；
+     * **媒体入口（{@code MediaController}）必须继续用旧口径**——那里判成「需要回复」会改变资产形态
+     * （{@code type=image_qa} + 直接进对话 + 多一次 VLM），且超过 {@code MAX_QUESTION_LENGTH} 的配文
+     * 会从「可作 log 落盘」变成 400（图已落盘、记录未建）。对抗审查 P1-1 实测确认该波及。
+     * <p>
+     * 默认委托 {@link #recognizeIntent}——只有需要的实现才覆写，测试桩与其它实现零改动。
+     */
+    default String recognizeIntentLeanAsk(String content) {
+        return recognizeIntent(content);
+    }
 }

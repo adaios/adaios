@@ -119,6 +119,15 @@ class DesktopFeedCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         _buildSummaryBanner(),
                       ],
+                      // D4「说出来」（2026-09-30 用户拍板）：判成「记录」时给一行如实回执，
+                      // 不再让用户面对「我说了话，它一个字都不回」的静默（对齐 adai-app feed_card）。
+                      // 注意 !_hasTurns：本卡一旦被点「提问」转成对话，回执必须消失
+                      // （copyWith 不传 justRecorded 会保留它，只靠标记会残留）。
+                      if (data.justRecorded && !_hasTurns) ...[
+                        const SizedBox(height: 4),
+                        Text('记下了 · 想接着说就点「提问」',
+                          style: TextStyle(fontSize: 11, color: AppColors.darkGrey4, height: 1.3)),
+                      ],
                       if (data.tags != null && data.tags!.isNotEmpty && !_isActive) ...[
                         const SizedBox(height: 6),
                         _buildTags(),

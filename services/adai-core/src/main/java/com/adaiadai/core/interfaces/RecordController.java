@@ -166,7 +166,10 @@ public class RecordController {
         // 2. AI-based — throws on failure, never silently returns STATEMENT
         // R1 AI 交互日志：意图识别无 record，挂 userId + source 让日志正确落 data/{userId}/ai-logs
         AiTraceContext.set(userId, null, null, "intent");
-        return intentRecognizer.recognizeWithAi(record.content());
+        // D4（2026-09-30 用户拍板）：**文本入口**用偏向「需要回复」的判据——宁可多答一句，
+        // 也不要让用户「说了话它不吭声」（带卡片的请求 47% 曾被判 log 无回应）。
+        // 媒体入口（MediaController）**刻意不用**：那里的倾向会改变图片资产形态（审查 P1-1）。
+        return intentRecognizer.recognizeWithAi(record.content(), true);
     }
 
     /**
