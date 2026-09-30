@@ -157,14 +157,20 @@ class TradingSessionPushServiceTest {
             TradingEvidenceService evidence =
                     new TradingEvidenceService(soldRepo, mock(TradingLotService.class), engine, knowledgeDir);
             TradingDecisionNarrator narrator = new TradingDecisionNarrator(evidence, soldRepo, ruleRepo);
-            return new TradingSessionPushService(posRepo, market, accounts, plugin, engine,
+            TradingSessionPushService svc = spy(new TradingSessionPushService(posRepo, market, accounts, plugin, engine,
                     List.of(channel), acc, buyPoint, watchlist, pushSettings,
                     mock(TradeLogCollectService.class), trading, stageRepo, adviceRepo,
-                    narrator, syncState, soldRepo, evidence, knowledgeDir);
+                    narrator, syncState, soldRepo, evidence, knowledgeDir));
+            // P2-工程11（2026-10-01）：把「今天是否交易日」固定为 true，与真实日历解耦。
+            // 原先测试吃真实 LocalDate.now() → 每逢周末 / 法定节假日（如 10-01 国庆）全量必红 24 条
+            // （实测 2251 tests / 24 failed，连跑 3 轮完全一致）。非交易日的早退语义另有专门用例
+            // nonTradingDay_allEntrypointsSkipPushes 反向兜住——不是"不测了"，是"两个分支都测"。
+            doReturn(true).when(svc).isTradingDayToday();
+            return svc;
         }
 
         TradingSessionPushService buildSpy(LocalTime now) {
-            TradingSessionPushService svc = spy(build());
+            TradingSessionPushService svc = build(); // 已是 spy（含闸门固定为交易日）
             doReturn(now).when(svc).nowTime();
             return svc;
         }
@@ -620,6 +626,28 @@ class TradingSessionPushServiceTest {
 
         verify(rig.syncState, times(1)).recordSync(eq("adai"), eq(today), any());
         assertEquals("收盘复盘", capture(rig.channel).title());
+    }
+
+    /**
+     * P2-工程11（2026-10-01）：非交易日（周末 / 法定节假日）——**5 个定时入口一律不推**。
+     * <p>
+     * 此前没有专门用例覆盖这个分支，它只被"测试恰好跑在非交易日"间接命中（于是把 24 条测试
+     * 变成红色噪音）。现在闸门可覆写：本用例显式 fixed=false 兜住早退语义，
+     * 其余用例 fixed=true 覆盖交易日行为——**两个分支都被测到**，且与真实日历无关。
+     */
+    @Test
+    void nonTradingDay_allEntrypointsSkipPushes() {
+        Rig rig = new Rig();
+        TradingSessionPushService svc = rig.build();
+        doReturn(false).when(svc).isTradingDayToday(); // 模拟周末 / 国庆等休市日
+
+        svc.morningPlan();
+        svc.middayTracking();
+        svc.closeAdvice();
+        svc.closeSummaryPush();
+        svc.closeAccountUpdate();
+
+        verify(rig.channel, never()).push(any(), any());
     }
 
     @Test

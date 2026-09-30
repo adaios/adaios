@@ -34,8 +34,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -323,8 +325,11 @@ class MarketAlertServiceTest {
         PluginService pluginService = mock(PluginService.class);
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
 
-        new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+        MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
+        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则周末 / 法定节假日全量必红）
+        doReturn(true).when(svc).isTradingDayToday();
+        svc.poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("default"), any());
@@ -359,8 +364,11 @@ class MarketAlertServiceTest {
         when(pluginService.hasPlugin(eq("adai"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(true);
         when(pluginService.hasPlugin(eq("alice"), eq(PluginRegistry.PLUGIN_TRADING))).thenReturn(false);
 
-        new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
-                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0).poll();
+        MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
+                pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
+        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则周末 / 法定节假日全量必红）
+        doReturn(true).when(svc).isTradingDayToday();
+        svc.poll();
 
         verify(push, times(1)).push(eq("adai"), any());
         verify(push, never()).push(eq("alice"), any());

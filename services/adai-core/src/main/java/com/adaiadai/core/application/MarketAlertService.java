@@ -117,6 +117,16 @@ public class MarketAlertService {
     }
 
     /**
+     * 「今天」是否交易日（行情轮询闸门）—— 与 {@link TradingSessionPushService#isTradingDayToday()}
+     * 同一惯例：抽成包级可见方法，测试用 spy 固定为交易日，免得周末 / 法定节假日全量测试必红
+     * （REVIEW P2-工程11，2026-10-01）。默认实现与原先内联的
+     * `TradingSessionPushService.isTradingDay(LocalDate.now())` **逐字等价**，生产行为零变化。
+     */
+    boolean isTradingDayToday() {
+        return TradingSessionPushService.isTradingDay(java.time.LocalDate.now());
+    }
+
+    /**
      * 定时轮询：遍历启用账号中**启用了 trading 插件**的用户逐用户检测（REVIEW S-4：写侧与 Feed 读侧
      * 门控对称——无插件用户磁盘不累积看不见的 push 残留、不做无谓行情轮询）。
      * 交易时段 cron 可通过 {@code adai.market.alert.poll-cron} 配置。
@@ -127,7 +137,7 @@ public class MarketAlertService {
         // TradingSessionPushService，本服务漏了：节假日撞工作日时行情静止，
         // break-cost/stop-loss 类只比「价格 vs 阈值」→ 拿上一交易日收盘价每天重推一次
         // （signature 按日去重挡不住跨日）。周末由 cron MON-FRI 排除，此处只挡节假日。
-        if (!TradingSessionPushService.isTradingDay(java.time.LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         Set<String> userIds = new LinkedHashSet<>();
         accountRepository.findAll().stream()
                 .filter(Account::enabled)

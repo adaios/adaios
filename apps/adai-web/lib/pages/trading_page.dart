@@ -2614,6 +2614,7 @@ class _TradingPageState extends State<TradingPage> {
     Map<String, dynamic>? result;
     var loading = false;
     String? error;
+    var typedSymbol = ''; // P2-交易71：区分「打了代码没点下拉」与「完全没填」
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -2631,7 +2632,14 @@ class _TradingPageState extends State<TradingPage> {
                   child: _SymbolSearchField(
                     api: widget.api,
                     hint: '标的（代码/名称/拼音首字母）',
-                    onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+                    onSymbolSelected: (symbol, _) {
+                      symbolCtrl.text = symbol;
+                      if (error != null) setDlg(() => error = null);
+                    },
+                    onTextChanged: (text) {
+                      typedSymbol = text;
+                      if (error != null) setDlg(() => error = null);
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2731,7 +2739,14 @@ class _TradingPageState extends State<TradingPage> {
                   ? null
                   : () async {
                       final symbol = symbolCtrl.text.trim();
-                      if (symbol.isEmpty) return;
+                      // P2-交易71：原先这里直接 return——点了「匹配」毫无反应；
+                      // 文案还写着「输入任意 6 位代码」，与实际「必须点下拉候选」相矛盾。
+                      if (symbol.isEmpty) {
+                        setDlg(() => error = typedSymbol.trim().isEmpty
+                            ? '请输入标的'
+                            : '请从下拉列表里选择标的（只输入代码不算）');
+                        return;
+                      }
                       setDlg(() {
                         loading = true;
                         error = null;
@@ -2849,7 +2864,11 @@ class _TradingPageState extends State<TradingPage> {
                   ? null
                   : () async {
                       final text = ctrl.text.trim();
-                      if (text.isEmpty) return;
+                      if (text.isEmpty) {
+                        // 2026-10-01（P2-交易71 同族）：原先直接 return，点了「导入」毫无反应
+                        setDlg(() => error = '先粘贴要导入的案例文本');
+                        return;
+                      }
                       setDlg(() {
                         loading = true;
                         error = null;
@@ -2887,6 +2906,11 @@ class _TradingPageState extends State<TradingPage> {
     final typeCtrl = TextEditingController(text: 'B1');
     final descCtrl = TextEditingController();
     var type = 'B1'; // 下拉选择（B1/B2/失败案例/其他）
+    // 2026-10-01 P2-交易71：必填校验移进弹窗内（原先「标注」按钮无条件 pop，再由外层校验——
+    // 用户只打了代码没点下拉时弹窗已关闭、填好的日期与理由全丢，只剩一句「代码和日期必填」，
+    // 体感等同「已提交」（2026-09-23 23:34 用户实测以为标注成功了，生产侧无任何 POST）。
+    String? formError;
+    var typedSymbol = '';
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -2902,7 +2926,15 @@ class _TradingPageState extends State<TradingPage> {
               _SymbolSearchField(
                 api: widget.api,
                 hint: '标的（代码/名称/拼音首字母，如 000831 / 中国稀土 / zgxt）',
-                onSymbolSelected: (symbol, _) => symbolCtrl.text = symbol,
+                onSymbolSelected: (symbol, _) {
+                  symbolCtrl.text = symbol;
+                  if (formError != null) setDlg(() => formError = null);
+                },
+                onTextChanged: (text) {
+                  typedSymbol = text;
+                  // 用户重新输入即撤掉旧错误，不拿过期提示挡新动作
+                  if (formError != null) setDlg(() => formError = null);
+                },
               ),
               const SizedBox(height: 8),
               TextField(controller: dateCtrl, decoration: _caseInput('买点日期（yyyy-MM-dd，如 2026-08-03）')),
@@ -2932,6 +2964,11 @@ class _TradingPageState extends State<TradingPage> {
                   decoration: _caseInput(type == 'FAILED'
                       ? '失败原因（可选，如：破位不收回 / 追高被套）'
                       : '为什么完美（可选，如：回踩 60 日线 + 地量）')),
+              if (formError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(formError!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+                ),
             ]),
           ),
           actions: [
@@ -2942,6 +2979,19 @@ class _TradingPageState extends State<TradingPage> {
             TextButton(
               onPressed: () {
                 // 同步下拉值到 typeCtrl（非「其他」时 typeCtrl 已在 onChanged 设置）
+                final symbol = symbolCtrl.text.trim();
+                final date = dateCtrl.text.trim();
+                // P2-交易71：校验不过就留在弹窗里报错——输入不丢、弹窗不关
+                if (symbol.isEmpty) {
+                  setDlg(() => formError = typedSymbol.trim().isEmpty
+                      ? '代码和日期必填'
+                      : '请从下拉列表里选择标的（只输入代码不算）');
+                  return;
+                }
+                if (date.isEmpty) {
+                  setDlg(() => formError = '买点日期必填（yyyy-MM-dd，如 2026-08-03）');
+                  return;
+                }
                 Navigator.pop(ctx, true);
               },
               child: const Text('标注', style: TextStyle(fontSize: 13, color: AppColors.darkGreen)),
@@ -3174,6 +3224,9 @@ class _TradingPageState extends State<TradingPage> {
     // 2026-09-12：所选文件名的日期（通达信导出名带日期）→ 当锚定日传给后端（优先于导入日）；
     // 粘贴路径取不到 → null（不传该字段，后端退回导入日）
     String? snapshotDate;
+    // 2026-10-01（P2-交易71 同族清扫）：空内容点「导入」原先直接 return——弹窗不关、也没有任何提示，
+    // 用户点了以为没生效（与标注/匹配弹窗同一形态）。改为弹窗内如实说明。
+    String? formError;
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -3214,13 +3267,21 @@ class _TradingPageState extends State<TradingPage> {
                 maxLines: 7, minLines: 4,
                 style: const TextStyle(fontSize: 12, color: AppColors.darkGrey1),
               ),
+              if (formError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(formError!, style: const TextStyle(fontSize: 11, color: AppColors.darkRed)),
+                ),
             ]),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
             FilledButton(
               onPressed: () async {
-                if (controller.text.trim().isEmpty) return;
+                if (controller.text.trim().isEmpty) {
+                  setDlg(() => formError = '先粘贴内容，或选择通达信导出的文件');
+                  return;
+                }
                 Navigator.pop(ctx);
                 // 2026-08-17（P1-交易5）：导入失败必须反馈——后端解析失败会 400 + 人话消息，这里透出
                 try {
@@ -3993,11 +4054,17 @@ class _SymbolSearchField extends StatefulWidget {
   const _SymbolSearchField({
     required this.api,
     required this.onSymbolSelected,
+    this.onTextChanged,
     this.hint = '标的代码（如 000725）',
   });
 
   final ApiService api;
   final void Function(String symbol, String name) onSymbolSelected;
+
+  /// 输入框文本变化（2026-10-01 P2-交易71）。
+  /// 外层据此区分「打了代码但没点下拉」与「什么都没填」——前者才是用户真正踩的坑
+  /// （只输入代码不会让外层拿到 symbol），提示要能照做，不能笼统说「代码和日期必填」。
+  final void Function(String text)? onTextChanged;
   final String hint;
 
   @override
@@ -4020,6 +4087,7 @@ class _SymbolSearchFieldState extends State<_SymbolSearchField> {
   }
 
   void _onChanged(String text) {
+    widget.onTextChanged?.call(text); // P2-交易71：把原始输入告知外层校验
     _debounce?.cancel();
     _seq++;
     final mySeq = _seq;
@@ -4045,6 +4113,7 @@ class _SymbolSearchFieldState extends State<_SymbolSearchField> {
     _ctrl.text = symbol;
     _ctrl.selection = TextSelection.collapsed(offset: symbol.length);
     setState(() => _candidates = const []);
+    widget.onTextChanged?.call(symbol); // P2-交易71：选中即视为已修正输入
     widget.onSymbolSelected(symbol, name);
   }
 

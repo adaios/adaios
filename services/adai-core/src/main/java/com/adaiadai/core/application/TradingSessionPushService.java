@@ -262,6 +262,23 @@ public class TradingSessionPushService {
         return !HOLIDAYS.contains(date);
     }
 
+    /**
+     * 「今天」是否交易日 —— **6 个定时推送入口的统一闸门**。
+     * <p>
+     * 抽成包级可见方法只为**可测**：测试用 spy 把它固定为交易日，
+     * 免得每逢周末 / 法定节假日全量测试必红——2026-10-01（国庆）实测
+     * `./gradlew test --rerun-tasks --no-build-cache` **连跑 3 轮，每轮完全一致
+     * 2251 tests / 24 failed / 3 skipped**（REVIEW **P2-工程11**），
+     * 根因就是测试吃真实日历、而服务在非交易日**正确地**早退。
+     * <p>
+     * 默认实现与原先 6 处内联的 `isTradingDay(LocalDate.now())` **逐字等价**，
+     * **生产行为零变化**；非交易日的早退语义由新增用例
+     * `nonTradingDay_allEntrypointsSkipPushes` 反向兜住（此前无专门用例）。
+     */
+    boolean isTradingDayToday() {
+        return isTradingDay(LocalDate.now());
+    }
+
     /** 上一交易日（早盘买点的新鲜度基准：09:15 时最近一根已收盘 K 线就该是它）。 */
     static LocalDate previousTradingDay(LocalDate today) {
         LocalDate d = today.minusDays(1);
@@ -280,7 +297,7 @@ public class TradingSessionPushService {
      */
     @Scheduled(cron = "${adai.trading.session.morning-cron:" + CRON_MORNING + "}")
     public void morningPlan() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             SessionData data = loadData(userId);
             // B4（P1-交易60）：持仓行情整体取不到 → 正文里的数字就没一个是可信的，整条显式降级
@@ -418,7 +435,7 @@ public class TradingSessionPushService {
      */
     @Scheduled(cron = "${adai.trading.session.midday-cron:" + CRON_MIDDAY + "}")
     public void middayTracking() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             SessionData data = loadData(userId);
             if (data.positions().isEmpty()) return;
@@ -478,7 +495,7 @@ public class TradingSessionPushService {
     @Scheduled(cron = "${adai.trading.session.close-cron:" + CRON_CLOSE + "}")
     public void closeAdvice() {
         // P2-1（2026-08-17 走查）：同文件多个定时任务都有 isTradingDay，唯独它漏——节假日照常推尾盘
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             SessionData data = loadData(userId);
             if (data.positions().isEmpty()) return; // 空仓 → 没有「要不要卖」的问题
@@ -560,7 +577,7 @@ public class TradingSessionPushService {
      */
     @Scheduled(cron = "${adai.trading.session.close-summary-cron:" + CRON_CLOSE_SUMMARY + "}")
     public void closeSummaryPush() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         LocalDate today = LocalDate.now();
         forEachTradingUser(userId -> pushDailyReview(userId, today));
     }
@@ -829,7 +846,7 @@ public class TradingSessionPushService {
      *  次日收盘自愈，无原子跨文件手段（详见 trading-features §8 跨文件窗口注意点）。 */
     @Scheduled(cron = "${adai.trading.session.close-update-cron:0 5 15 * * MON-FRI}")
     public void closeAccountUpdate() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             List<Position> positions = positionRepository.findAll(userId);
             if (positions.isEmpty()) return;
@@ -958,7 +975,7 @@ public class TradingSessionPushService {
      *  用户确认后由交易模块落库；无候选静默跳过。 */
     @Scheduled(cron = "${adai.trading.session.trade-log-confirm-cron:0 15 15 * * MON-FRI}")
     public void tradeLogConfirm() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             var candidates = tradeLogCollectService.todayCandidates(userId);
             if (candidates.isEmpty()) return;

@@ -48,35 +48,37 @@ Map<String, dynamic> _accountJson() => {
   'marketValue': 110212.00, 'pnl': 15235.55, 'todayPnl': 0.0, 'snapshotDate': '2026-08-16',
 };
 
-MockClient _tradingMock() {
-  return MockClient((request) async {
-    final path = request.url.path;
-    if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
-    if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
-    if (path == '/api/v1/trading/account') return _json(_accountJson());
-    if (path == '/api/v1/trading/watchlist') return _json([]);
-    if (path == '/api/v1/trading/sold') return _json([]);
-    if (path == '/api/v1/trading/buy-points') return _json([]);
-    if (path == '/api/v1/trading/sold/score') return _json([]);
+/// 基础交易页 mock handler：portfolio + positions + 空 trades/reviews。
+/// 抽成独立函数，便于测试在其上「再加几条路由」（P2-交易71 需额外 mock cases/search）。
+Future<http.Response> _tradingHandler(http.Request request) async {
+  final path = request.url.path;
+  if (path == '/api/v1/trading/portfolio') return _json(_portfolioJson);
+  if (path == '/api/v1/trading/positions') return _json([_positionJson()]);
+  if (path == '/api/v1/trading/account') return _json(_accountJson());
+  if (path == '/api/v1/trading/watchlist') return _json([]);
+  if (path == '/api/v1/trading/sold') return _json([]);
+  if (path == '/api/v1/trading/buy-points') return _json([]);
+  if (path == '/api/v1/trading/sold/score') return _json([]);
 
-    if (path == '/api/v1/trading/equity-curve') {
-      return _json({
-        'points': [
-          {'date': '2026-08-03', 'totalAssets': 95000.0, 'cash': 20000.0, 'marketValue': 75000.0, 'invested': 100000.0, 'netValue': 0.95, 'drawdown': 0.05},
-          {'date': '2026-08-04', 'totalAssets': 108000.0, 'cash': 8000.0, 'marketValue': 100000.0, 'invested': 100000.0, 'netValue': 1.08, 'drawdown': 0.0},
-          {'date': '2026-08-05', 'totalAssets': 112000.0, 'cash': 5000.0, 'marketValue': 107000.0, 'invested': 100000.0, 'netValue': 1.12, 'drawdown': 0.0},
-        ],
-        'skippedDays': 0,
-        'startDate': '2026-08-03',
-        'endDate': '2026-08-05',
-      });
-    }
+  if (path == '/api/v1/trading/equity-curve') {
+    return _json({
+      'points': [
+        {'date': '2026-08-03', 'totalAssets': 95000.0, 'cash': 20000.0, 'marketValue': 75000.0, 'invested': 100000.0, 'netValue': 0.95, 'drawdown': 0.05},
+        {'date': '2026-08-04', 'totalAssets': 108000.0, 'cash': 8000.0, 'marketValue': 100000.0, 'invested': 100000.0, 'netValue': 1.08, 'drawdown': 0.0},
+        {'date': '2026-08-05', 'totalAssets': 112000.0, 'cash': 5000.0, 'marketValue': 107000.0, 'invested': 100000.0, 'netValue': 1.12, 'drawdown': 0.0},
+      ],
+      'skippedDays': 0,
+      'startDate': '2026-08-03',
+      'endDate': '2026-08-05',
+    });
+  }
 
-    if (path == '/api/v1/trading/trades') return _json([]);
-    if (path == '/api/v1/trading/reviews') return _json([]);
-    return http.Response('not found', 404);
-  });
+  if (path == '/api/v1/trading/trades') return _json([]);
+  if (path == '/api/v1/trading/reviews') return _json([]);
+  return http.Response('not found', 404);
 }
+
+MockClient _tradingMock() => MockClient(_tradingHandler);
 
 /// 挂载交易页（宽视口，12 列 DataTable 全可见）。
 Future<void> _pumpTrading(WidgetTester tester, ApiService api) async {
@@ -2200,6 +2202,175 @@ void main() {
     await tester.pumpAndSettle();
     expect(getRequests, contains('/api/v1/trading/cases'),
         reason: 'initState 应请求案例列表');
+  });
+
+  testWidgets('P2-交易71：标注弹窗只打字不点下拉 → 弹窗内明说原因、不发 POST、输入不丢', (tester) async {
+    var postCalled = false;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'POST') {
+        postCalled = true;
+        return _json(caseJson());
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      return _tradingHandler(request); // 基础数据：保证页面正常态、TabBar 渲染
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标注案例'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget, reason: '应先打开标注弹窗');
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    // 第 0 个 = 标的搜索框（只打字，不点下拉候选）；第 1 个 = 买点日期
+    await tester.enterText(fields.at(0), '688656');
+    await tester.pump(const Duration(milliseconds: 400)); // 越过 300ms 防抖
+    await tester.enterText(fields.at(1), '2026-09-17');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '标注')));
+    await tester.pumpAndSettle();
+
+    expect(postCalled, isFalse,
+        reason: '没点下拉候选就不该发 POST（2026-09-23 生产实证：连 CORS preflight 都没有）');
+    expect(find.text('请从下拉列表里选择标的（只输入代码不算）'), findsOneWidget,
+        reason: '提示要能照做，不能只丢一句「代码和日期必填」让人猜');
+    expect(find.byType(AlertDialog), findsOneWidget, reason: '校验失败应留在弹窗内——不关窗、不丢已填内容');
+    expect(find.text('2026-09-17'), findsOneWidget, reason: '已填的买点日期应保留');
+  });
+
+  testWidgets('P2-交易71：标注弹窗点选下拉候选后照常提交（原链路不回归）', (tester) async {
+    var postBody = '';
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'POST') {
+        postBody = request.body;
+        return _json(caseJson());
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        return _json([
+          {'symbol': '000831', 'name': '中国稀土'},
+        ]);
+      }
+      return _tradingHandler(request); // 基础数据：保证页面正常态、TabBar 渲染
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标注案例'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    await tester.enterText(fields.at(0), '中国稀土');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('000831')); // 点候选 → 外层才拿到 symbol
+    await tester.pumpAndSettle();
+    await tester.enterText(fields.at(1), '2026-09-17');
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '标注')));
+    await tester.pumpAndSettle();
+
+    expect(postBody, contains('000831'), reason: '点选候选后应带 symbol 提交');
+    expect(postBody, contains('2026-09-17'), reason: '应带 buyDate 提交');
+  });
+
+  testWidgets('P2-交易71：匹配弹窗只打字不点下拉 → 弹窗内红字报错（原先点了毫无反应）', (tester) async {
+    var matchCalled = false;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      if (request.url.path == '/api/v1/trading/cases/match') {
+        matchCalled = true;
+        return _json({'matches': <Map<String, dynamic>>[]});
+      }
+      if (request.url.path == '/api/v1/trading/search') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      return _tradingHandler(request); // 基础数据：保证页面正常态、TabBar 渲染
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('匹配买点'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget, reason: '应先打开匹配弹窗');
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    await tester.enterText(fields.at(0), '688656');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '匹配')));
+    await tester.pumpAndSettle();
+
+    expect(matchCalled, isFalse, reason: '没点下拉候选不该真的发起匹配');
+    expect(find.text('请从下拉列表里选择标的（只输入代码不算）'), findsOneWidget,
+        reason: '原先这里直接 return，点「匹配」毫无反应');
+  });
+
+  testWidgets('P2-交易71 同族：导入弹窗空内容点「导入」→ 弹窗内提示、不关窗', (tester) async {
+    final api = ApiService(baseUrl: 'http://test', client: _tradingMock());
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('导入持仓'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget, reason: '应先打开导入弹窗');
+
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(FilledButton, '导入')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('先粘贴内容，或选择通达信导出的文件'), findsOneWidget,
+        reason: '空内容要如实说明（原先直接 return，点了毫无反应）');
+    expect(find.byType(AlertDialog), findsOneWidget, reason: '校验失败不该关窗');
+  });
+
+  testWidgets('P2-交易71 同族：案例批量导入空内容 → 弹窗内提示（原先点了毫无反应）', (tester) async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/v1/trading/cases' && request.method == 'GET') {
+        return _json(<Map<String, dynamic>>[]);
+      }
+      return _tradingHandler(request);
+    });
+    final api = ApiService(baseUrl: 'http://test', client: client);
+    await _pumpTrading(tester, api);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('案例'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量导入'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget, reason: '应先打开批量导入弹窗');
+    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '导入')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('先粘贴要导入的案例文本'), findsOneWidget,
+        reason: '空内容要如实说明（原先直接 return，点了毫无反应）');
+    expect(find.byType(AlertDialog), findsOneWidget, reason: '校验失败不该关窗');
   });
 
   testWidgets('案例 Tab：标注调用 POST /trading/cases（契约：symbol/buyDate/buyType）', (tester) async {
