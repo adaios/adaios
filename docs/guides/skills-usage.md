@@ -3,9 +3,9 @@ title: 技能使用指南（Skills Usage Guide）
 description: 人看的技能使用说明——AdaiOS 技能体系是什么、11 个技能各何时用、怎么触发、怎么维护
 version: 1
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-10-01
 status: active
-lines: 100
+lines: 101
 depends-on: []
 related:
   - ../../ai-engineering/assets/skills-spec.md

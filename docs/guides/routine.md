@@ -3,9 +3,9 @@ title: 固定动作清单（每天 / 每周 / 到期）
 description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
-updated: 2026-09-16
+updated: 2026-10-01
 status: active
-lines: 174
+lines: 190
 depends-on:
   - ../../docs/reference/trading-features.md
 related:

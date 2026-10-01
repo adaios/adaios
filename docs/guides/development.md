@@ -3,9 +3,9 @@ title: 开发指南（Development Guide）
 description: 全局构建/测试/运行/部署命令与开发环境说明——原根 CLAUDE.md 迁移承接，工具无关
 version: 1
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-10-01
 status: active
-lines: 46
+lines: 57
 depends-on: []
 related:
   - ../VISION.md
@@ -15,7 +15,7 @@ tags: [guide, dev]
 
 # 开发指南
 
-> 承接原根 `CLAUDE.md` 的构建命令（2026-08-19 根 CLAUDE.md 删除、子项目统一改名为 AGENTS.md）。子项目内部命令以各子项目 `AGENTS.md` 为准（就近原则）。
+> 承接原根 CLAUDE.md 的构建命令（2026-08-19 根 CLAUDE.md 已删除、子项目统一改名为 AGENTS.md）。子项目内部命令以各子项目 `AGENTS.md` 为准（就近原则）。
 
 ## 后端（services/adai-core/）
 

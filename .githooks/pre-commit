@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# 提交前自动门禁（五层）：
+# 提交前自动门禁（六层）：
 #   0) 本批范围守卫 —— 暂存区是否越出「本批声明」（防并发会话 git add -A 混装）
+#   0b) 隐私闸门 + 密钥扫描 —— **任何变更类型都查**（必须先于下方类型触发条件：.txt/.json/.env
+#       这类非 md/java/dart/sh 文件否则会 exit 0 绕过；密钥进 git 历史不可逆）
 #   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
 #   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
@@ -8,7 +10,13 @@
 # 由 git core.hooksPath 启用（scripts/setup-hooks.sh 配置，随 clone 重建）。
 cd "$(git rev-parse --show-toplevel)"
 
-CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null)
+# 暂存区清单。⚠️ unborn HEAD（git init 后首次提交）下 `--name-only HEAD` 会 rc=128 → 变量为空
+# → 0/0b 层静默跳过（2026-10-01 对抗审查实测：含 sk- 的 .env 能直接入库成功）。故失败即退回不带 ref 的写法。
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null || true)
+else
+  CHANGED=$(git diff --cached --name-only 2>/dev/null || true)
+fi
 
 # 0) 本批范围守卫（REVIEW P2-审查3，2026-09-17）——「收尾禁 git add -A」此前**零机制**：
 #    规范只写在 ship.md 里靠自觉，2026-09-13 实际发生过「另一会话的 -A 把本批 9 个文件卷走」，
@@ -21,7 +29,7 @@ CHANGED=$(git diff --cached --name-only HEAD 2>/dev/null)
 #        **不阻断**。
 #    为什么默认不阻断：并非每次提交都值得声明（单人小改），硬拦只会把人逼去 --no-verify——
 #    那比没有守卫更糟（ship.md 明确不提供绕过路径）。
-STAGED_LIST=$(git diff --cached --name-only HEAD 2>/dev/null)
+STAGED_LIST="${CHANGED}"
 if [ -n "$STAGED_LIST" ]; then
   BATCH_DECL="${ADAI_BATCH_PATHS:-}"
   if [ -z "$BATCH_DECL" ] && [ -f .adai-batch ]; then
@@ -77,6 +85,24 @@ if [ -n "$PRIVACY_VIOLATIONS" ]; then
   echo "$PRIVACY_VIOLATIONS" | sed 's/^/    /'
   echo "   修复：git reset <文件>（数据只留本地），确认 .gitignore 覆盖新子目录（git check-ignore 验证）"
   exit 1
+fi
+
+# 0b) 密钥扫描（2026-10-01 加）——与隐私闸门同处入口层：**必须同样先于类型触发条件**。
+#     这是本项目唯一「出事不可逆」的口子：`.gitignore` 只防**将来**、不查**过去**；密钥一旦
+#     进了历史，删文件也没用（要改历史 + 换密钥）。执行器 scripts/scan-secrets.py 只扫暂存区
+#     **新增行**：高置信形态（sk- / 私钥块 / AKIA / ghp_ …）与敏感文件名（.env / *.p8 / *.jks /
+#     id_rsa）硬拦，通用「API_KEY=长值」只 WARN——误报会把人逼去 --no-verify，那比没有守卫更糟
+#     （ship.md 同款取舍）。⚠️ 位置教训：放在类型触发条件之后时，.txt/.json/.env 会在下方
+#     `exit 0` 绕过——隐私闸门 2026-08-23 已踩过同一个坑（见上一段注释）。
+if [ -n "${STAGED_LIST}" ]; then
+  # 扫描器缺失时**跳过而非锁死**：本批恰好是「改钩子 + 新增脚本」，若只 add 钩子不带脚本，
+  # fail-closed 会把整个仓库的提交能力锁死（2026-10-01 对抗审查 P1-3）。对照 guard-feature 同款防御。
+  if [ ! -f scripts/scan-secrets.py ]; then
+    echo "⚠️  密钥扫描器缺失（scripts/scan-secrets.py）——本层跳过。"
+    echo "   修复：确认它随本批一起提交，或 git checkout -- scripts/scan-secrets.py"
+  else
+    python3 scripts/scan-secrets.py || { echo "❌ 密钥扫描未通过，提交已阻止（见上）。处置：git restore --staged <file>；确需提交就说明它为何不是密钥；若已推送过，必须换密钥。"; exit 1; }
+  fi
 fi
 
 # 触发条件：任何 .md / .java / .dart / .sh / .bash 变更，或 .githooks/ 自身变更
@@ -153,4 +179,4 @@ if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
 fi
 
 bash ai-engineering/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
-echo "✅ 文档对齐 + 结构 + 防复发 + shell 健壮性检查通过"
+echo "✅ 文档对齐 + 结构 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"

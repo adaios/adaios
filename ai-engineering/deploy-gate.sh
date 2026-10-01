@@ -193,3 +193,31 @@ if [ $FAILED -eq 1 ]; then
     exit 1
 fi
 echo "✅ 部署后 smoke 全部通过——部署完成且验证 OK"
+
+# ── 发布锚点提示（2026-10-01 加：补上真相链最后一环「发布 → tag」）──
+# 背景：生产已部署十余次而仓库长期只有 1 个 tag（v1.0.0）——「生产跑的是哪一版、源码在哪」
+# 此前只能靠生产 DEPLOYED 文件反推 commit。tag 是**本地动作**；推送是外向动作，由人决定（B8）。
+# 2026-10-01 对抗审查补正：锚点必须打在**构建这个 jar 的 commit** 上——手册 §八 的干净构建用法
+# 是「在 detached worktree 里构建」，此时主仓库 HEAD 可能不是它。故部署后重读生产 DEPLOYED
+# 与本地 HEAD 对照，不一致就显式警告（否则这段提示本身会把真相链锚错点）。
+RELEASE_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+RELEASE_DATE=$(date +%Y-%m-%d)
+DIRTY_N=$(git status --porcelain | wc -l | tr -d ' ')
+DEPLOYED_SHA=$(ssh "ubuntu@${SERVER}" "sudo grep '^commit=' /opt/adaios/backend/DEPLOYED 2>/dev/null | cut -d= -f2" 2>/dev/null | tr -d '\r\n')
+echo ""
+echo "▸ 发布锚点（真相链：发布 → tag）"
+echo "  主仓库 HEAD：${RELEASE_SHA}（${RELEASE_DATE}）"
+if [ -n "${DEPLOYED_SHA}" ] && [ "${DEPLOYED_SHA:0:7}" != "${RELEASE_SHA}" ]; then
+    echo "  生产 DEPLOYED：${DEPLOYED_SHA:0:7} ← **与本地 HEAD 不一致**"
+    echo "  ⚠️  这个 jar 不是从当前 HEAD 构建的（例如从 detached worktree 构建）——"
+    echo "     tag 要打在实际构建它的那个 commit 上，否则锚点会锚错。"
+elif [ -n "${DEPLOYED_SHA}" ]; then
+    echo "  生产 DEPLOYED：${DEPLOYED_SHA:0:7}（与本地 HEAD 一致 ✓）"
+fi
+if [ "${DIRTY_N}" -gt 0 ]; then
+    echo "  ⚠️  工作区仍有 ${DIRTY_N} 个未提交改动——tag 只锚定 commit，不含这些内容"
+fi
+echo "  建议现在打个锚点（本地动作；推送由你决定）："
+echo "      git tag -a \"v<版本号>\" -m \"部署 v<版本号> · ${RELEASE_DATE} · ${RELEASE_SHA}\""
+echo "      git push origin \"v<版本号>\"     # 外向动作，需你确认（边界 B8）"
+echo "  版本号以 docs/reference/status.md「生产当前版本」为准（如 v3.93）"

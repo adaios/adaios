@@ -1,3 +1,18 @@
+---
+title: Project OS 使用指南（已退役）
+description: ⚠️ 已退役（2026-09-17 RFC 20260917-todo-kernel-retire-project-plugin）——project 插件与「项目阿呆」上下文注入已整体撤除；本文件仅保留为仓库内 os/project-os/ 知识目录的阅读说明（知识文件仍在，但不再注入任何用户上下文）
+version: 1
+created: 2026-07-30
+updated: 2026-10-01
+status: superseded
+lines: 262
+depends-on: []
+related:
+  - ./_index.md
+  - ../../os/project-os/
+tags: [guide, project-os]
+---
+
 # Project OS 使用指南
 
 > ## ⚠️ 已退役（2026-09-17 RFC `20260917-todo-kernel-retire-project-plugin.md`）

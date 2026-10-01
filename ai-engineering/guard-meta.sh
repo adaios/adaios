@@ -30,6 +30,10 @@ AI = ROOT / 'ai-engineering'
 # 强制范围（frontmatter-spec §四）：AGENTS.md + docs/_index.md + 各目录 _index.md + ai-engineering/**
 files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
 files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录治理）
+# 2026-10-01 补：guides 正文此前**不在覆盖内**（只查了 docs/guides/_index.md）——后果是
+# 「guard-meta PASS」对正文是假绿：qoder 手册声明 lines:550 而实际早已 553，长期无人发现。
+# 范围刻意只放到 guides（那是一份份独立正文）；docs/ 其余区仍是渐进档，要扩需先跑一轮全量 --fix。
+files += sorted((DOCS/'guides').glob('*.md'))
 files += sorted((AI/'roles').glob('*.md'))
 files += sorted((AI/'skills').glob('*.md'))        # 建设/流程技能包
 files += sorted((AI/'process').glob('*.md'))

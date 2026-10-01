@@ -3,12 +3,13 @@ title: Qoder CN 并行工作流实验手册（worktree 多任务）
 description: 把「一条分支 = 一次只能干一件事」改成「多条任务线并行、人只在卡住处出场」的实操手册——Qoder CN CLI 环境配置、内网网络受限四档降级、手机/Web 远程看板（需许可）与 Hook+系统通知的纯本地看板（零云端）、IDEA 协同、验证清单、坑与回滚；跨项目通用，非 AdaiOS 功能模块
 version: 1
 created: 2026-09-17
-updated: 2026-09-17
+updated: 2026-10-01
 status: active
-lines: 550
+lines: 553
 depends-on: []
 related:
   - ./_index.md
+  - ./worktree-workflow.md
 tags: [guide, workflow, ai-tooling]
 ---
 
@@ -20,6 +21,8 @@ tags: [guide, workflow, ai-tooling]
 > **由来（2026-09-17 讨论）**：用户的工作模式是**任务按分支绑定**，因此「一个工作目录 = 并发度 1」，
 > 多开会话也只能在同一分支允许的范围内活动。真正的瓶颈不是 AI 慢，而是**必须等它算完才能动弹**。
 > 期望状态：人从「执行者」变成「卡住时的决策者」。
+>
+> **本项目（AdaiOS）专属的那部分另见**：[worktree-workflow.md](./worktree-workflow.md)——本项目建出来的 worktree 是个**空壳**（`data/`、服务端 `.env`、`ai-engineering/state/` 都在版本库外，缺了不报错只静默出错），起线后要先跑 `scripts/worktree-prep.sh` 补外挂；那里还有 DSH 沙箱边界、8080 端口与构建锁、提交纪律与干净构建用法。
 
 ## 一、先明确要解决什么（和不解决什么）
 
