@@ -3,9 +3,9 @@ title: 开发执行流程（develop）
 description: 工作流开发段——直改代码的入口/出口/沉淀触发；量级匹配见 design.md
 version: 1
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-10-01
 status: active
-lines: 62
+lines: 66
 depends-on:
   - discuss.md
   - design.md
@@ -36,6 +36,9 @@ bash ai-engineering/guard-context.sh <主题词>        # 按主题过滤（trad
 3. **先扫坑**：`../assets/pitfalls.md`（复发信号——症状 vs 当前改动）
 4. **读规范**：`../assets/conventions.md`（代码/文档/协作规范）
 5. 方案类改动：已过 `design.md`（RFC 或量级匹配）
+6. **判据前置（2026-10-01，RFC 20261001 §3.3 批 3）**：动工前先加载**你自己改动类型对应的那份清单**，把清单逐条当作**编写约束**（审查时它才变成检查项）。映射表见 `../process/review.md` §3「按模式派官」——**写作与审查共用同一张表、同一份清单，此处不复制**（防第二真相源）。
+   - **对抗闭环只在三处高风险点跑**（架构选型 / 数据口径 / 契约变更）：`作者 → 对抗官 → 作者`，**≤2 轮**，第 3 轮升给人拍板；其余按量级匹配直接改。
+   - **硬前置（外部信号）**：派官前必须拿得出测试输出 / 契约 diff / 运行日志 / 失败复现；**没有外部信号就不派**——同 prompt 换个角色名只会换来点头（依据：无外部反馈时 LLM 自我纠错无效甚至更差，见 RFC 20261001 §1.4）。
 
 ## 执行
 
@@ -50,7 +53,8 @@ bash ai-engineering/guard-context.sh <主题词>        # 按主题过滤（trad
    - 本批踩坑/发现根因 → 提请入 checklists + pitfalls
    - 本批产生新想法 → 提请入 ideas/ 或 RFC
 2. 无新增决策/坑 → 显式标注「无新增沉淀」，防漏
-3. 进入 `../process/ship.md`（收尾门禁）
+3. **功能主轴**（RFC 20261001）：本批动到的功能 → 更新 `../../docs/features/_index.md` 里那一行（状态 / 出处 / 欠着）；**该功能还没有意图卡就补一张**（≤12 行，只写意图、禁写实现细节——`docs/features/kernel.md` 有样板）。跑偏了 pre-commit 的 `guard-feature.sh` 会拦。
+4. 进入 `../process/ship.md`（收尾门禁）
 
 ## 与前后段衔接
 

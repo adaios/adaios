@@ -3,9 +3,9 @@ title: 文档契约审查检查清单
 description: docs-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
 version: 1
 created: 2026-08-15
-updated: 2026-09-07
+updated: 2026-10-01
 status: active
-lines: 107
+lines: 108
 depends-on: []
 related: [../roles/docs-reviewer.md]
 tags: [review, checklist, docs]
@@ -105,3 +105,4 @@ tags: [review, checklist, docs]
 | D61 | PushSettings 类型增量跨文档全同步：新增推送类型必须同步 api-spec / feature-reference 开关清单 / REVIEW 登记，一处漏即红灯 | learn-review 入 ALL_TYPES 但 feature-ref 8 类型清单未更（learn V2 审 P2-docs6，2026-09-07）|
 | D62 | 端点计数与实现对拍：guard-align 只抓「端点↔api-spec 存在性」，抓不到段落幽灵/漏记——新增 Controller 路由后核对 change-log/status 的端点增量数 | GET /learn/card 漏计 116 vs 117（learn V2 审 P2-docs2，2026-09-07）|
 | D63 | 提醒/推送触发条件口径逐字对拍：变更行/注释/正文的触发语义（如「满 7 天」= created 还是 reviewAt）必须一致并随实现修正 | learn 复习提醒 created vs review 口径漂移（learn V2 审 S-learn1，2026-09-07）|
+| D64 | **功能主轴同步（RFC 20261001 批 3）**：本批动到的功能 → `docs/features/_index.md` 那一行（状态/需求出处/实现出处/欠着）必须同步；被碰到的功能**还没有意图卡就补一张**（≤12 行、只写意图，禁写实现细节）。**机器守卫 `guard-feature.sh` 只查「已写的有没有写跑偏」，查不出「该写没写」——这一条靠审查官判** | 新机制（2026-10-01）；守卫盲区如实标注|

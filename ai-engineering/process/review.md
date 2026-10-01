@@ -3,9 +3,9 @@ title: 增量深审流程
 description: /review 的通用版——按改动范围派对应审查官，滚动更新 REVIEW.md
 version: 2
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-10-01
 status: active
-lines: 143
+lines: 146
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -52,6 +52,9 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | os/**、data/** | knowledge-reviewer |
 | ai/**、ai-engineering/** | context-reviewer |
 | 跨多目录 | 多官并行 |
+
+> **同一张表也是「编写前」的清单**（RFC 20261001 §3.3，批 3）：动工时先按上表找到自己改动类型对应的那份 checklist，把清单逐条当**编写约束**用（审查时它才变成检查项）；本表不复制清单内容（防第二真相源）。
+> **对抗官只在三处高风险点附加**（架构选型 / 数据口径 / 契约变更），**≤2 轮**，第 3 轮升给人拍板；**硬前置**——派官前必须拿得出外部信号（测试输出 / 契约 diff / 运行日志 / 失败复现），**没有外部信号不派官**（同 prompt 换角色名只会换来点头）。
 
 > **模型分层（成本纪律 2026-08-18）**：deep 派官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。`--full` 已默认不跑，见 `audit.md` 成本纪律。
 

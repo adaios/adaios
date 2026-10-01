@@ -3,9 +3,9 @@ title: docs/rfc 目录索引
 description: 决策记录区目录治理——RFC 清单 + 状态（draft/approved/implemented），过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-29
+updated: 2026-10-01
 status: active
-lines: 90
+lines: 93
 depends-on: []
 related:
   - ../_index.md
@@ -20,6 +20,7 @@ tags: [meta, index, rfc]
 
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
+| 20261001-feature-index-and-authoring-gate.md | 功能索引层与编写侧判据前置——把「功能」升格为唯一主轴（触发＝用户 2026-10-01「补需求/设计文档 + 每过程配角色 + 从文档树看每个功能」；盘点＝已有八成（RFC 六维立了 43 天采用率 **1/64**、RFC status **9 种写法**、`feature-reference.md` 1377 行**无 frontmatter 属图谱盲区**、12 审查官 : 3 建设技能）；治法＝**唯一新增物是功能索引层**（索引行全项目一张、**不做内容副本**）+ `guard-feature.sh` 状态对拍 + checklist 编写/审查双用；**角色不按过程铺开**，对抗只在架构选型/数据口径/契约变更三处、≤2 轮且必须有外部信号；**D2 已拍板降本版**＝索引行全覆盖 + 按需生长的 ≤12 行意图卡（每插件一份文件、卡内禁写实现细节），D1/D3/D4/D5 按推荐待确认）| draft |
 | 20260929-conversation-context-engineering.md | 对话模式的上下文工程——从「平铺拼接」到分层装配（触发＝用户 2026-09-29「对话模式会丢失上下文」自查后的定性「目前没有采用什么优秀的实践」；量化＝30 天内 151 次对话模式中 **72% 注入的是「最近 20 条无关记录」**、**93.4% 的检索空转**、**60% 的对话 ≤5 轮**；三路调研对标（上下文工程 / 记忆架构 / 检索与评测）；治法＝**按轮次分档**（≤3 轮只注入身份+前文）+ 两臂召回 + 指纹去重 + token 预算 + 单条 system 与顺序重排 + 上下文回放，落点是项目预留但空置的 `context/prompt·policy·token` 三包）| draft |
 | 20260929-context-engineering-batch1-design.md | **批 1 实施设计（文件级）**——把主方案的「少注入」五项精确到文件与行：按轮次分档 · 收掉「最近 20 条」· 去重复注入 · 单条 system 与顺序 · 真实 token 计量；含影响面（**10 处 `new ContextEngine(...)` 测试调用点**、`estimateTokens` 2 例断言）、新增 `adai.context.*` 配置（默认 `legacy` 可灰度可回滚）、测试计划、以及**动代码前必须先验的 DeepSeek `usage` 解析**（现为零解析）。拍板＝D1 保留极少核心 / D2 只对新记忆生效 / D3 先出实施设计）| draft |
 | 20260928-market-source-consolidation.md | 行情渠道收敛与稳定——删东财 K 线源 + 腾讯双域名 + 新浪升兜底（触发＝用户 2026-09-28「几个行情渠道，有稳定的吗」；逐源实测＝腾讯 quote 200 / 腾讯 K 线 200 / 新浪 200 / 东财 push2his 000 / tdx 止于 09-04 → 名义四层只有一层在干活；治法＝批 1 腾讯第二域名（配置级）· 批 2 删东财出链路 + 新浪升兜底 + 可观测性 + tdx 周节奏降噪 · 批 3 tdx 数据包周导入）| approved |

@@ -174,6 +174,23 @@ if status.exists():
                 break
 out.append("")
 
+# C1.4 功能主轴（RFC 20261001 批 1，2026-10-01 新增）
+# 约定：docs/features/_index.md = 全项目功能清单（一个功能一行），开工先靠它定位「这功能是什么、到哪一步、欠什么」；
+#       被碰到的功能在 docs/features/<插件>.md 里有意图卡（按需生长，只写意图）。
+feature_idx = ROOT/'docs/features/_index.md'
+if feature_idx.exists():
+    ftext = feature_idx.read_text(encoding='utf-8', errors='ignore')
+    frows = [l for l in ftext.splitlines() if re.match(r'^\|\s*`[\w.\-]+`\s*\|', l)]
+    fdir = ROOT/'docs/features'
+    fcards = len([p for p in fdir.glob('*.md') if p.name != '_index.md']) if fdir.exists() else 0
+    fline = f"- 全项目 **{len(frows)} 个功能**一行一个 → `docs/features/_index.md`（ID/插件/状态/需求出处/实现出处/欠着）"
+    if fcards:
+        fline += f"；已生长意图卡 **{fcards}** 份（只写意图，卡内禁写实现细节）"
+    if not (TOPIC and TOPIC not in fline):
+        out.append("## C1.4 功能主轴（Feature Index）")
+        out.append(fline)
+        out.append("")
+
 # C1.5 主题手册导航（深度文档直读索引，2026-08-22 新增）
 # 约定：docs/reference/*-features.md = 各主题功能手册（trading-features.md 等），
 #       新主题手册放入即自动纳入本导航；TOPIC 过滤时只留相关主题。

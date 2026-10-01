@@ -109,6 +109,25 @@ if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
   fi
 fi
 
+# 2b) 功能索引对齐（guard-feature，RFC 20261001 批 2）——「功能主轴」是否真实
+#     索引行字段/链接/状态枚举、卡内有没有被抄进实现细节、卡有没有超长、卡文件是否孤儿；
+#     任何 md 变更都可能动到索引 / 卡 / RFC status，故与结构检查同触发条件
+#     防御（对抗审查 A3，2026-10-01）：脚本或索引目录尚未落地时**跳过**，不阻断——
+#     「环境未就绪」不等于「索引坏了」（否则部分克隆 / 只改了别的 md 的提交会被 127 拦死）
+if [ -f ai-engineering/guard-feature.sh ] && [ -f docs/features/_index.md ] && echo "$CHANGED" | grep -qE '\.md$'; then
+  FEAT_OUT=$(bash ai-engineering/guard-feature.sh 2>&1); FEAT_RC=$?
+  if [ "$FEAT_RC" -ne 0 ]; then
+    if echo "$FEAT_OUT" | grep -q 'FEATURE-GUARD:'; then
+      echo "$FEAT_OUT"
+      echo "❌ 功能索引未对齐，提交已阻止（见上）。修复指引：改 docs/features/_index.md 或对应插件的意图卡（规格见 RFC 20261001 §3.1）。"
+    else
+      echo "❌ 功能索引**守卫脚本自身出错**（不是索引的问题，需排查 guard-feature.sh）："
+      echo "$FEAT_OUT" | tail -5 | sed 's/^/    /'
+    fi
+    exit 1
+  fi
+fi
+
 # 3) 防 P0 复发（G1-G7）——代码变更时跑
 # 2026-08-23 P2-A3 修正：不再吞输出——PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
 if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then

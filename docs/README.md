@@ -32,6 +32,7 @@
 | [routine.md](guides/routine.md) | ⏰ **固定动作清单（每天/每周/到期）**：哪些已自动、哪些要你亲自做、到期红线（2026-09-14）|
 | [skills-usage.md](guides/skills-usage.md) | 🧩 技能使用指南：11 个技能何时用、怎么触发、怎么维护（给人看）|
 | [project-os-usage.md](guides/project-os-usage.md) | 📌 Project OS 使用指南：输入框问"项目阿呆"、任务管理、场景示例 |
+| [features/_index.md](features/_index.md) | 🧭 **功能主轴**——全项目功能一行一个（ID/插件/状态/需求出处/实现出处/欠着）+ 按需生长的意图卡（方案：RFC 20261001）|
 | [trading-features.md](reference/trading-features.md) | 📈 交易模块（trading 插件）功能手册：端点总表/定时任务/Web·App 双端功能/知识底座/已知缺陷 |
 | [admin-features.md](reference/admin-features.md) | 🛠 adai-admin 管理后台功能手册：定位边界/登录会话/四区页面清单/端点总表/已知缺陷 |
 

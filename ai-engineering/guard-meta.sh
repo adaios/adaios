@@ -41,6 +41,10 @@ files += sorted((AI/'workflow').glob('*.md'))    # 工作流层
 files += sorted((AI/'state').glob('*.md'))       # 状态层
 files += sorted((DOCS/'review/audits').glob('*.md'))  # 走查存档（带 frontmatter）
 files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
+# 2026-10-01 补（对抗审查 B4）：功能主轴与守卫反例测试区此前不在覆盖内——
+# 「guard-meta PASS」因此是覆盖盲区造成的假绿（kernel.md 的 lines 漂移无人管）
+files += sorted((DOCS/'features').rglob('*.md'))      # 功能索引 + 意图卡（含子目录）
+files += sorted((AI/'tests').glob('*.md'))            # 守卫反例回归区索引
 files = [f for f in files if f.exists()]
 
 def parse_fm(path):

@@ -3,9 +3,9 @@ title: state 状态层索引
 description: AI 工程状态层目录治理——完成度/测试数/未修项动态真相（指针化，物理文件在 docs/；聚合问答用 guard-* 命令现算）
 version: 2
 created: 2026-08-15
-updated: 2026-09-26
+updated: 2026-10-01
 status: active
-lines: 71
+lines: 72
 depends-on: []
 related:
   - ../README.md
@@ -47,6 +47,7 @@ tags: [ai, meta, index, state]
 |:-----|:---------|
 | `guard-meta.sh` | frontmatter 图谱/断链/lines/孤儿 |
 | `guard-align.sh` | 端点契约 ↔ api-spec（git pre-commit）|
+| `guard-feature.sh` | 功能索引 `docs/features/` 一行一卡是否真实（字段/链接/状态/欠着编号/卡内无实现细节）（git pre-commit）|
 | `guard-unfixed.sh` ④ | 已修复区 vs 表状态矛盾 |
 | `guard-roadmap.sh` | 规划 ↔ 实现证据漂移 |
 | `guard-cost.sh` | 成本超阈值告警 |
