@@ -266,14 +266,21 @@ public class TradingSessionPushService {
      * 「今天」是否交易日 —— **6 个定时推送入口的统一闸门**。
      * <p>
      * 抽成包级可见方法只为**可测**：测试用 spy 把它固定为交易日，
-     * 免得每逢周末 / 法定节假日全量测试必红——2026-10-01（国庆）实测
+     * 免得每逢**法定节假日**全量测试必红——2026-10-01（国庆）实测
      * `./gradlew test --rerun-tasks --no-build-cache` **连跑 3 轮，每轮完全一致
      * 2251 tests / 24 failed / 3 skipped**（REVIEW **P2-工程11**），
      * 根因就是测试吃真实日历、而服务在非交易日**正确地**早退。
      * <p>
+     * ⚠️ 口径别混：**只有法定节假日会红，周末不会**——本方法走 {@link #isTradingDay(LocalDate)}
+     * （只查节假日表、刻意不判周末，周末由 cron `MON-FRI` 排除）。周末会红的是 `afterDataSync`
+     * 那条走 {@link #isTradingDayStrict(LocalDate)} 的路径——两条闸门语义不同
+     * （2026-10-01 独立对抗深审 P3-6 纠正）。
+     * <p>
      * 默认实现与原先 6 处内联的 `isTradingDay(LocalDate.now())` **逐字等价**，
      * **生产行为零变化**；非交易日的早退语义由新增用例
-     * `nonTradingDay_allEntrypointsSkipPushes` 反向兜住（此前无专门用例）。
+     * `nonTradingDay_allEntrypointsSkipPushes` 反向兜住，**默认实现本身**由
+     * `isTradingDayToday_defaultImplementation_followsCalendar` 直调兜住
+     * （2026-10-01 深审 P2-1：此前该类唯一构造点永远 spy+stub，真实方法体零覆盖）。
      */
     boolean isTradingDayToday() {
         return isTradingDay(LocalDate.now());

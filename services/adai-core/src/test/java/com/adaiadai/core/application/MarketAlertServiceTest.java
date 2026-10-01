@@ -327,7 +327,8 @@ class MarketAlertServiceTest {
 
         MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
-        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则周末 / 法定节假日全量必红）
+        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则**法定节假日**全量必红；
+        // 周末不会——闸门走 isTradingDay，只查节假日表、不判周末）
         doReturn(true).when(svc).isTradingDayToday();
         svc.poll();
 
@@ -366,7 +367,8 @@ class MarketAlertServiceTest {
 
         MarketAlertService svc = spy(new MarketAlertService(market, positions, accounts, snapshot, java.util.List.of(push),
                 pluginService, new com.adaiadai.core.domain.trading.engine.DefaultTradingRuleEngine(defaultRuleRepo()), defaultPushSettings(), mock(TradingLotService.class), 3.0, 5.0, true, 2.0));
-        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则周末 / 法定节假日全量必红）
+        // P2-工程11（2026-10-01）：固定为交易日，与真实日历解耦（否则**法定节假日**全量必红；
+        // 周末不会——闸门走 isTradingDay，只查节假日表、不判周末）
         doReturn(true).when(svc).isTradingDayToday();
         svc.poll();
 

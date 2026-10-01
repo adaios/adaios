@@ -45,8 +45,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -162,7 +165,9 @@ class TradingSessionPushServiceTest {
                     mock(TradeLogCollectService.class), trading, stageRepo, adviceRepo,
                     narrator, syncState, soldRepo, evidence, knowledgeDir));
             // P2-工程11（2026-10-01）：把「今天是否交易日」固定为 true，与真实日历解耦。
-            // 原先测试吃真实 LocalDate.now() → 每逢周末 / 法定节假日（如 10-01 国庆）全量必红 24 条
+            // 原先测试吃真实 LocalDate.now() → 每逢法定节假日（如 10-01 国庆）全量必红 24 条
+            // ⚠️ 只有**节假日**会红，周末不会——闸门走 isTradingDay（只查节假日表、不判周末，
+            //    周末由 cron MON-FRI 排除）；周末会红的是 afterDataSync 那条走 strict 的路径。
             // （实测 2251 tests / 24 failed，连跑 3 轮完全一致）。非交易日的早退语义另有专门用例
             // nonTradingDay_allEntrypointsSkipPushes 反向兜住——不是"不测了"，是"两个分支都测"。
             doReturn(true).when(svc).isTradingDayToday();
@@ -648,6 +653,38 @@ class TradingSessionPushServiceTest {
         svc.closeAccountUpdate();
 
         verify(rig.channel, never()).push(any(), any());
+    }
+
+    /**
+     * P2-工程11 深审 P2-1 补丁（2026-10-01）：**默认实现必须真的被执行到**。
+     * <p>
+     * 此前该类唯一构造点（Rig）永远 spy + `doReturn(true)`、新用例又固定 false，
+     * 于是 {@code isTradingDayToday()} 的真实方法体**一次都不执行**——把它变异成
+     * {@code return true;}（＝节假日照推，正是 2026-08-17 / 08-30 修过的事故形态）测试仍全绿 63/0。
+     * 本用例用 {@code doCallRealMethod} 还原真身，并以**固定日期**锚定两个分支
+     * （法定节假日 → 非交易日；普通工作日 → 交易日），**与真实「今天」无关**，
+     * 所以在任何日期跑都不会失去鉴别力。
+     */
+    @Test
+    void isTradingDayToday_defaultImplementation_followsCalendar() {
+        Rig rig = new Rig();
+        TradingSessionPushService svc = rig.build();
+        doCallRealMethod().when(svc).isTradingDayToday(); // 还原真实实现（Rig 默认 stub 成 true）
+
+        // 日期先在 mockStatic 之外算好——否则 thenReturn 的实参会在 stubbing 进行中被一起拦下，
+        // 报 UnfinishedStubbingException（2026-10-01 实测踩到；已进 pitfalls 候选）
+        LocalDate holiday = LocalDate.of(2026, 10, 1);    // 2026 国庆
+        LocalDate tradingDay = LocalDate.of(2026, 9, 30); // 周三，非节假日
+        // ① 法定节假日 → 必须判为非交易日：恒 true 的变异在此被抓住
+        try (var mocked = mockStatic(LocalDate.class, CALLS_REAL_METHODS)) {
+            mocked.when(LocalDate::now).thenReturn(holiday);
+            assertFalse(svc.isTradingDayToday(), "法定节假日必须判为非交易日（恒 true 变异在此被抓住）");
+        }
+        // ② 非节假日 → 必须放行：恒 false 的变异在此被抓住
+        try (var mocked = mockStatic(LocalDate.class, CALLS_REAL_METHODS)) {
+            mocked.when(LocalDate::now).thenReturn(tradingDay);
+            assertTrue(svc.isTradingDayToday(), "非节假日必须放行（恒 false 变异在此被抓住）");
+        }
     }
 
     @Test

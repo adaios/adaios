@@ -118,8 +118,9 @@ public class MarketAlertService {
 
     /**
      * 「今天」是否交易日（行情轮询闸门）—— 与 {@link TradingSessionPushService#isTradingDayToday()}
-     * 同一惯例：抽成包级可见方法，测试用 spy 固定为交易日，免得周末 / 法定节假日全量测试必红
-     * （REVIEW P2-工程11，2026-10-01）。默认实现与原先内联的
+     * 同一惯例：抽成包级可见方法，测试用 spy 固定为交易日，免得每逢**法定节假日**全量测试必红
+     * （本方法同样只看节假日表、不判周末——周末由 cron `MON-FRI` 排除；
+     * REVIEW P2-工程11，2026-10-01）。默认实现与原先内联的
      * `TradingSessionPushService.isTradingDay(LocalDate.now())` **逐字等价**，生产行为零变化。
      */
     boolean isTradingDayToday() {
