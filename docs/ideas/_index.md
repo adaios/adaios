@@ -3,9 +3,9 @@ title: docs/ideas 目录索引
 description: ideas 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-22
+updated: 2026-10-03
 status: active
-lines: 37
+lines: 38
 depends-on: []
 related:
   - ../_index.md
@@ -29,6 +29,7 @@ tags: [meta, index, ideas]
 | 20260919-ai-2.0-plan-absorption.md | 外部 2.0 规划汲取（采纳/不采纳/待补三空洞，draft） | draft |
 | 20260922-adai-contentflow-postmortem.md | 老项目「积录」考古（能力原型 / 五年对照 / 删除前保留结论） | active |
 | 20260922-jilu-docs-salvage.md | 积录文档库拾遗（代码之外的那一半：未实现清单 / 产品立场 / 工程规范 / 凭据风险） | active |
+| 20261003-ai-asset-usage-ledger.md | AI 资产台账与加载路径体检（使用/陈旧/断链三维度；实测结论：真病灶是幽灵资产而非冷资产，未立项） | draft |
 
 ## 过期判断
 
