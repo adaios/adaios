@@ -88,7 +88,7 @@
 | [20260816-trading-data-intelligence.md](rfc/20260816-trading-data-intelligence.md) | 2026-08-16 | 交易数据智能——自选股买点提示 + 清仓复盘闭环 + 打分系统（K线为核）|
 | [20260822-memory-plugin-isolation.md](rfc/20260822-memory-plugin-isolation.md) | 2026-08-22 | Memory 与插件隔离——记忆属于框架不按插件隔离；补 domain 标记留过滤基础 |
 
-> 早期决策 `20260726-next-phase-direction.md` 已随 research 目录整合移除（2026-08-15，见 change-log）；早期设计保留 `docs/inbox/20260722-ai-context-design.md`
+> 早期决策 `20260726-next-phase-direction.md` 已随 research 目录整合移除（2026-08-15，见 change-log）；早期设计保留 `docs/archive/ai-context/20260722-ai-context-design.md`
 
 ## 💡 想法归档
 

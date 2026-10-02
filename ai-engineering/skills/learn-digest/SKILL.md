@@ -8,12 +8,12 @@ updated: 2026-09-16
 status: active
 lines: 107
 depends-on:
-  - ../assets/skills-spec.md
+  - ../../assets/skills-spec.md
 related:
-  - ../guard-cost.sh
-  - ../assets/boundaries.md
-  - ../assets/pitfalls.md
-  - ../../docs/rfc/20260829-learn-plugin.md
+  - ../../guard-cost.sh
+  - ../../assets/boundaries.md
+  - ../../assets/pitfalls.md
+  - ../../../docs/rfc/20260829-learn-plugin.md
 tags: [skill, build, learn, digest]
 ---
 

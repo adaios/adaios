@@ -18,6 +18,11 @@ target/
 .dsh/
 .claude/
 .agents/
+.qoder/
+.codex/
+# 预留：根 skills/ 出口（OpenClaw 等工具的项目级目录）—— **必须锚定仓库根**：
+# 写成 `skills/` 会连真相源 `ai-engineering/skills/` 一起忽略（见 pitfalls 二十三）
+/skills/
 .obsidian/
 *.iml
 *.iws

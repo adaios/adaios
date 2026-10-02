@@ -34,8 +34,10 @@ files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录�
 # 「guard-meta PASS」对正文是假绿：qoder 手册声明 lines:550 而实际早已 553，长期无人发现。
 # 范围刻意只放到 guides（那是一份份独立正文）；docs/ 其余区仍是渐进档，要扩需先跑一轮全量 --fix。
 files += sorted((DOCS/'guides').glob('*.md'))
-files += sorted((AI/'roles').glob('*.md'))
-files += sorted((AI/'skills').glob('*.md'))        # 建设/流程技能包
+# 技能包两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md（RFC 20261003 批 1 起）。
+# 只收 SKILL.md，**不收**技能目录内的 references/*.md —— 那些不是技能包、无 10 字段契约，会被 REQUIRED 误判。
+files += sorted((AI/'roles').glob('*.md')) + sorted((AI/'roles').glob('*/SKILL.md'))
+files += sorted((AI/'skills').glob('*.md')) + sorted((AI/'skills').glob('*/SKILL.md'))  # 建设/流程技能包
 files += sorted((AI/'process').glob('*.md'))
 files += sorted((AI/'checklists').glob('*.md'))
 files += sorted((AI/'assets').glob('*.md'))      # 资产层
@@ -50,6 +52,8 @@ files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
 files += sorted((DOCS/'features').rglob('*.md'))      # 功能索引 + 意图卡（含子目录）
 files += sorted((AI/'tests').glob('*.md'))            # 守卫反例回归区索引
 files = [f for f in files if f.exists()]
+files = list(dict.fromkeys(files))   # 去重：同一文件会被多个 glob 命中（如 docs/*/_index.md 与各区专属 glob）
+                                     # —— list 累加会让「N files」虚高（2026-10-03 实测虚高 3）；判据本身等价（同一文件查两遍）
 
 def parse_fm(path):
     t = path.read_text(encoding='utf-8')
@@ -98,8 +102,10 @@ for f in files:
         if str(meta.get('lines')) != str(actual):
             fails.append(f'M2 {rel}: lines 声明 {meta.get("lines")} != 实际 {actual}')
     # M1 edges
-    for key in ('depends-on','related'):
-        for ref in (meta.get(key) or []):
+    for key in ('depends-on','related','supersededBy'):
+        val = meta.get(key) or []
+        refs = val if isinstance(val, list) else [val]   # supersededBy 是**单值字符串**；depends-on/related 是列表
+        for ref in refs:
             if not isinstance(ref, str) or not ref.strip(): continue
             refp = ref.split('#')[0].strip()
             if not refp: continue
@@ -145,8 +151,10 @@ referenced = set()
 for f in files:
     meta = parse_fm(f)
     if not meta: continue
-    for key in ('depends-on','related'):
-        for ref in (meta.get(key) or []):
+    for key in ('depends-on','related','supersededBy'):
+        val = meta.get(key) or []
+        refs = val if isinstance(val, list) else [val]   # supersededBy 是**单值字符串**；depends-on/related 是列表
+        for ref in refs:
             if not isinstance(ref, str) or not ref.strip(): continue
             refp = ref.split('#')[0].strip()
             if not refp: continue

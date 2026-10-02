@@ -46,7 +46,7 @@ bash ai-engineering/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 | frontend-reviewer | 代码 | 状态管理、生命周期、契约、测试 |
 | docs-reviewer | 契约 | 文档-代码一致、断链、数字漂移 |
 | knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
-| context-reviewer | Context | ai/context/ 模板与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
+| context-reviewer | Context | AGENTS.md 加载结构与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
 | adversarial-reviewer | 对抗 | 哪里会炸 / 用户哪里会骂 / 边界哪里漏——假设一定有问题，找最危险的点（2026-08-23 元审核 P1-3 补入，与 deep review 默认 +1 口径统一）|
 
 > **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。对抗官 1 官 Flash，与其他官并行，几乎不增加耗时。

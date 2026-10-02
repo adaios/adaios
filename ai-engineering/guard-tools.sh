@@ -66,19 +66,21 @@ fi
 echo ""
 echo "T3 仓库内技能包（SKILL.md）"
 MISSING=0; N_ROLES=0; N_SKILLS=0
-for f in "$ROOT"/ai-engineering/roles/*.md; do
+# 两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md（RFC 20261003 批 1 起）。
+# 目录布局下 name 必须等于**父目录名**（官方硬约束），扁平布局下等于文件名 stem。
+for f in "$ROOT"/ai-engineering/roles/*.md "$ROOT"/ai-engineering/roles/*/SKILL.md; do
   [ -f "$f" ] || continue
   N_ROLES=$((N_ROLES+1))
-  base="$(basename "$f" .md)"
+  case "$f" in */SKILL.md) base="$(basename "$(dirname "$f")")";; *) base="$(basename "$f" .md)";; esac
   if ! grep -q "^name: $base$" "$f"; then
     echo "  ❌ $f: 缺 name: ${base}（skills-spec 必填）"
     MISSING=$((MISSING+1))
   fi
 done
-for f in "$ROOT"/ai-engineering/skills/*.md; do
+for f in "$ROOT"/ai-engineering/skills/*.md "$ROOT"/ai-engineering/skills/*/SKILL.md; do
   [ -f "$f" ] || continue
   N_SKILLS=$((N_SKILLS+1))
-  base="$(basename "$f" .md)"
+  case "$f" in */SKILL.md) base="$(basename "$(dirname "$f")")";; *) base="$(basename "$f" .md)";; esac
   if ! grep -q "^name: $base$" "$f"; then
     echo "  ❌ $f: 缺 name: ${base}（skills-spec 必填）"
     MISSING=$((MISSING+1))
@@ -94,7 +96,7 @@ fi
 echo ""
 echo "T4 工具侧技能注册"
 REG=0
-for d in "$ROOT/.dsh/skills" "$HOME/.dsh/skills" "$ROOT/.claude/skills" "$HOME/.claude/skills" "$ROOT/.agents/skills" "$HOME/.agents/skills"; do
+for d in "$ROOT/.dsh/skills" "$HOME/.dsh/skills" "$ROOT/.claude/skills" "$HOME/.claude/skills" "$ROOT/.agents/skills" "$HOME/.agents/skills" "$ROOT/.qoder/skills" "$HOME/.qoder/skills" "$ROOT/skills"; do  # 末项＝预留（OpenClaw 等用根 skills/ 的工具）
   [ -d "$d" ] || continue
   for f in "$d"/*; do
     [ -e "$f" ] || [ -L "$f" ] || continue

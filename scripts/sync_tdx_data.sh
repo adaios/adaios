@@ -61,4 +61,4 @@ done
 
 COUNT=$(find "$TDX_DIR" -name "*.day" | wc -l | tr -d ' ')
 echo "=== 同步完成：新增/覆盖 $MOVED 个 .day，当前共 $COUNT 个 ==="
-echo "提示：复权因子按日 TTL 自动刷新；抽查可用 python3 ai-engineering/09-scripts/verify-tdx-data.py"
+echo "提示：复权因子按日 TTL 自动刷新；抽查可用 python3 scripts/verify-tdx-data.py"

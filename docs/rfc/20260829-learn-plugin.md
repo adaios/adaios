@@ -2,7 +2,7 @@
 title: learn 插件——外部内容学习沉淀（视频/文章 → 个人知识卡片 → 三通道呈现）
 date: 2026-08-29
 status: superseded
-supersededBy: ../../ai-engineering/skills/learn-digest.md
+supersededBy: ../../ai-engineering/skills/learn-digest/SKILL.md
 decided-by: adai（2026-09-06：§四 六项决策点全按建议默认拍板；C 方向同日搁置；同日开工 V1 后端流水线——独立端点喂入（仿截图入账先例）+ 卡片化落盘 + 列表/树端点，测试先行 +30 全绿；2026-09-07 开工 L2 呈现层——LearnKnowledgeSource 问答注入 + web 资产页 + app 最近学习，三端测试全绿；详见 change-log；**2026-09-12：拍板下架 B 形态（产品内插件整体撤销，需求回归 A 形态会话技能 learn-digest，读层一并砍）**——理由与待执行清单见 §九）
 ---
 

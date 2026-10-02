@@ -3,9 +3,9 @@ title: docs 目录索引
 description: 人类文档区目录治理——职责、子目录/关键文件清单、过期判断
 version: 1
 created: 2026-08-15
-updated: 2026-10-01
+updated: 2026-10-03
 status: active
-lines: 59
+lines: 60
 depends-on: []
 related:
   - ../ai-engineering/_index.md
@@ -38,6 +38,7 @@ tags: [meta, index]
 | `architecture/_index.md` | 架构文档（roadmap 唯一蓝图 / product-architecture / api-spec / data-format-freeze / system-architecture / frontend-reference / memory-os-design / memory-frameworks-borrow）|
 | `reference/_index.md` | 状态与历史（status.md 数字真相源 / change-log.md 批次 / feature-reference 功能真相源 / task-log 待办 / task-plugin-model）|
 | `review/_index.md` | 审核（REVIEW.md 未修项滚动区 + audits/ 走查存档）|
+| `archive/_index.md` | 归档区（已退役文档，保留历史痕迹，不参与现行决策）|
 | `rfc/_index.md` | 决策记录（RFC，status: draft/approved/implemented）|
 | `features/_index.md` | ★ **功能主轴**（一功能一行：ID/插件/状态/需求出处/实现出处/欠着；意图卡按需生长在同目录插件文件，方案见 RFC 20261001）|
 | `releases/_index.md` | 发布记录（Release Notes）|

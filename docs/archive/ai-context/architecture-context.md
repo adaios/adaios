@@ -1,3 +1,20 @@
+---
+title: 架构级上下文（Architecture Context）—— 已退役
+description: 早期架构上下文：包树、分层依赖、两类 Domain、Context Engine、技术决策与选型。2026-10-03 退役——包树已由 services/adai-core/AGENTS.md 承担，Context Engine 与依赖规则已由 ARCHITECTURE.md / docs/architecture/system-architecture.md 等 50+ 文件承担。
+version: 1
+created: 2026-08-16
+updated: 2026-10-03
+status: superseded
+lines: 144
+depends-on: []
+related:
+  - ../../../AGENTS.md
+  - ../../../ARCHITECTURE.md
+tags: [ai, context, superseded]
+---
+
+> ⛔ **已退役（2026-10-03）**：本文属早期「项目级 AI 上下文」设计（`ai/context/`），**内容已被现有体系覆盖**——项目定位与规则见 `AGENTS.md`、架构红线见 `ARCHITECTURE.md`、状态快照见 `AGENTS.local.md`（由 `guard-context.sh --write-local` 自动生成）。本文宣称的「会话启动自动加载」**从未有实现**（`{{占位符}}` 从未被填充）。**保留仅作历史痕迹，请勿据此执行。**
+
 # Architecture Context
 
 > 架构级上下文，描述 AdaiOS v0.2 的系统架构、模块边界与关键设计决策。

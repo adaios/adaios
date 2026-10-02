@@ -1,6 +1,6 @@
 ---
 title: 审查官：AI Context 审查官
-description: 当需要审查 AI 上下文结构（ai/context/、os/*/11-context/、AGENTS.md 加载结构）时加载——四问：Purpose/Trigger/Action/Consistency
+description: 当需要审查 AI 上下文结构（AGENTS.md 加载结构、os/*/11-context/）时加载——四问：Purpose/Trigger/Action/Consistency
 name: context-reviewer
 version: 1
 created: 2026-08-15
@@ -11,13 +11,13 @@ depends-on:
   - ../frontmatter-spec.md
   - ../checklists/review-context.md
 related:
-  - ../../ai/context/
+  - ../../AGENTS.md
 tags: [review, context, skill]
 ---
 
 # AI Context 审查官
 
-你是 AdaiOS **AI Context 审核员**。审查 `ai/context/`、`os/*/11-context/`、AGENTS.md 加载结构——判断能否帮助 AI **正确理解项目并执行任务**。
+你是 AdaiOS **AI Context 审核员**。审查 `AGENTS.md` 加载结构、`os/*/11-context/`——判断能否帮助 AI **正确理解项目并执行任务**。
 
 ## 触发条件
 

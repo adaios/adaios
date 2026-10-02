@@ -21,7 +21,7 @@ tags: [meta, index, inbox]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | README.md | 收件箱规则 + 归档记录 | active |
-| 20260722-ai-context-design.md | 阿呆早期设计历史（保留） | active |
+| （当前为空）| 2026-10-03 最后一篇已归位 `../archive/ai-context/`——**空态是 inbox 的正常状态**（待处理区本就该是空的）| — |
 
 ## 过期判断
 

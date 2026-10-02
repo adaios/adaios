@@ -3,9 +3,9 @@ title: assets 资产层索引
 description: AI 工程资产层目录治理——规范/边界/ADR/已知坑，回答「为什么这么定/别踩什么/边界在哪」
 version: 1
 created: 2026-08-15
-updated: 2026-09-17
+updated: 2026-10-03
 status: active
-lines: 47
+lines: 48
 depends-on: []
 related:
   - ../README.md
@@ -22,6 +22,7 @@ tags: [ai, meta, index, assets]
 |:-----|:-----|:----:|
 | conventions.md | 代码/文档/协作规范归集（单一事实源）| active |
 | skills-spec.md | 技能包规范（审查官/流程封装为 SKILL.md，name + frontmatter 融合）| active |
+| ai-context-layer-spec.md | **项目级 AI 上下文中间层规范**（资产放哪 / 怎么被工具发现 / 新增工具四步 / 反模式）| active |
 | boundaries.md | 边界声明（原则级 + 功能级「不做什么」）| active |
 | pitfalls.md | 已知坑归集（按域分组，复发信号）| active |
 | adr/ADR-001.md | AI 工程层为一等公民 | accepted |
