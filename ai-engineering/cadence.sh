@@ -196,8 +196,9 @@ cmd_ship() {
         printf '  %s✅ 工作区干净%s\n' "$GRN" "$RST"
     else
         printf '%s\n' "$dirty" | head -30
-        printf '\n  %s提交纪律（ship.md §7）：按路径显式 git add，禁止 git add -A%s\n' "$YEL" "$RST"
+        printf '\n  %s收工默认含提交（2026-10-03 起，规则 9）：按路径显式 git add，禁止 git add -A%s\n' "$YEL" "$RST"
         printf '  %s范围守卫：ADAI_BATCH_PATHS="<本批路径>" git commit -m "..."%s\n' "$DIM" "$RST"
+        printf '  %s（收工止步于提交：push 与部署仍须用户点头，原则 B8）%s\n' "$DIM" "$RST"
     fi
 
     # ── 审查判定（工具层 D7；2026-09-26 用户拍板「按建议实施」）────────────────

@@ -1,11 +1,11 @@
 ---
 title: 功能落地收尾流程（/ship）
-description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交；与 /review 配套
+description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交（**2026-10-03 起：「收工」默认含提交这一步**）；与 /review 配套
 version: 1
 created: 2026-08-15
-updated: 2026-09-17
+updated: 2026-10-03
 status: active
-lines: 136
+lines: 138
 depends-on:
   - ../frontmatter-spec.md
   - ../guard-meta.sh
@@ -96,6 +96,8 @@ bash ai-engineering/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNA
 - 若当日成本超阈值/调用超 500 次 → 按 `checklists/cost.md` 省钱原则复盘，结论入批次说明
 
 ### 7. 规范提交
+
+> **2026-10-03 起：本节是「收工」的默认最后一步**——用户说「收工」即包含提交（不再需要单独说一次）；`cadence.sh ship` 本身仍只出 diff/快照/审查判定，**提交由 AI 在审查判定之后执行**（因为「有 P0/P1 → 先修再提交」这层判断只有审查完才知道）。**仍不 push、不部署**（B8）。
 
 - 提交信息按批次主题（如 `feat:` / `fix:` / `docs:`），含批次要点
 - 一个批次一个提交，不混合无关改动

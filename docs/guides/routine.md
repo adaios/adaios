@@ -3,7 +3,7 @@ title: 固定动作清单（每天 / 每周 / 到期）
 description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
-updated: 2026-10-01
+updated: 2026-10-03
 status: active
 lines: 190
 depends-on:
@@ -30,7 +30,7 @@ tags: [guide, routine, ops]
 ```bash
 bash ai-engineering/cadence.sh          # 节奏总览：上次巡检/收工/周审 + 欠账（秒回，开工第一眼）
 bash ai-engineering/cadence.sh daily    # 每日巡检：自动从上次覆盖日补看到今天，讲人话三条
-bash ai-engineering/cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账（不自动提交/部署）
+bash ai-engineering/cadence.sh ship     # 收工：本批 diff + 刷开工快照 + 成本入账 + 审查判定 + 提交本批（不 push/部署）
 bash ai-engineering/cadence.sh weekly   # 每周：W1–W6 审查 + 本周人肉清单 + 到期红线
 bash ai-engineering/cadence.sh release  # 发布判定：欠着什么没发、要发哪几端（只判定，不部署）
 bash ai-engineering/cadence.sh check    # 交付门禁一键：meta / align / tools / 防复发
