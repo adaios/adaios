@@ -199,4 +199,4 @@ if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
 fi
 
 bash ai-engineering/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
-echo "✅ 文档对齐 + 结构 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"
+echo "✅ 文档对齐 + 结构 + 功能索引 + 技能包质量 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"
