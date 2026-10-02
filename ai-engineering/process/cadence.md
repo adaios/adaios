@@ -43,7 +43,7 @@ tags: [ai, process, cadence]
 | 默契 | 用户说 | AI 自动做 | 游标键 | 产物 |
 |:--|:--|:--|:--|:--|
 | **每日巡检** | 「每日巡检」 | `cadence.sh daily`——从上次巡检**补看到今天**，逐日跑生产日报 | `inspection.covered_through` | 人话三条：用户之声 / 新异常 / 心跳趋势（规则 8） |
-| **收工** | 「收工」「收尾」 | `cadence.sh ship`——本批 diff + 刷开工快照 + 成本入账 + 审查判定 + **提交本批**（2026-10-03 起默认含提交） | `ship.head` | diff 摘要 + **提交结果（commit 号）**；不 push / 不部署 |
+| **收工** | 「收工」「收尾」 | `cadence.sh ship`——本批 diff + 刷开工快照 + 成本入账 + 审查判定 + **提交本批**（2026-10-03 起默认含提交）→ 提交后 `cadence.sh mark ship` 把基线补推到新 commit | `ship.head` | diff 摘要 + **提交结果（commit 号）**；不 push / 不部署 |
 | **发布** | 「发布」「发版」「要不要发」 | `cadence.sh release`——**只判定**：欠着什么没发、要发哪几端（后端 / Web / 管理后台 / iOS） | `release.need` | 逐端判定 + 生产↔本地 commit 对照 + 未推送数（**不部署**，规则 11） |
 | **每周** | 「每周」「本周」 | `cadence.sh weekly`——跑每周审查 W1–W6 + 本周人肉清单 | `weekly.week` | 审查结论 + 到期红线（周一 09:00 另有 LaunchAgent 自动跑） |
 | **待办** | 「待办」「当前待办」 | `cadence.sh todo`——REVIEW 未修项（战略/P1/P2） | —（无状态） | 当前欠着什么，一眼看全 |

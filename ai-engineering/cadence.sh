@@ -226,6 +226,10 @@ cmd_ship() {
     cadence_set ship.subject "$(git log -1 --pretty=%s 2>/dev/null | cut -c1-120)"
     hr "游标"
     printf '  ✅ 收工基线 → %s\n' "$head"
+    # 2026-10-03：收工默认含提交（规则 9）——基线必须落在**提交之后**的 commit 上，否则
+    # 下次收工会把本批已提交的内容再算一遍（同一批显示两遍）。本命令自身跑在提交之前，
+    # 故此处只提示；提交完补一句即对齐（不自动做：提交由 AI 在审查判定之后执行）。
+    printf '  %s↳ 本批提交后补推基线：bash ai-engineering/cadence.sh mark ship%s\n' "$DIM" "$RST"
 }
 
 # ── release：发版判定（只读；**不部署**）──────────────────────────────
