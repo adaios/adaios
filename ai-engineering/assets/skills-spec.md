@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-19
 updated: 2026-10-03
 status: active
-lines: 72
+lines: 85
 depends-on:
   - ../frontmatter-spec.md
 related:
@@ -68,5 +68,18 @@ tags: [review, backend, skill]
 2. **怎么建**：按本规范写 SKILL.md（五段 + name）→ 登记 `ai-engineering/_index.md` → `bash ai-engineering/guard-meta.sh` PASS
 3. **分类标记**：frontmatter `tags` 加 `skill`；审查官加 `review`、建设/流程加 `build`，便于检索/统计
 
+## 六、与官方规范的偏离（必须留痕）
+
+本规范以 **Agent Skills 开放标准**（`agentskills.io/specification`）为格式基线，但有**四条有意偏离**——`guard-skills.sh` 的 **S7** 会检查本节是否存在（偏离**必须留痕**，防遗忘）：
+
+| # | 偏离 | 官方要求 | 我们怎么做 | 理由 |
+|:--|:--|:--|:--|:--|
+| 1 | **真相源位置** | 技能放在客户端约定目录（`.claude/skills/` 等） | 真相源在 **`ai-engineering/`**，靠软链出口到各工具目录 | 单一真相源（一份喂多工具，见 `ai-context-layer-spec.md` §二）|
+| 2 | **审查官保持扁平** | 技能用 `<name>/SKILL.md` 目录布局 | `roles/<name>.md` **扁平**，**不进技能出口** | 审查官的"出口"是**生成的 subagent 定义**（Qoder md+YAML / Codex TOML，格式不同必须生成）；目录化零收益、44 处引用成本 |
+| 3 | **过渡期部分技能仍扁平** | 同上 | `new-api` / `new-domain` / `ship` 暂留 `<name>.md` | 按需迁移——不为形式一致付全量迁移成本（`ai-context-layer-spec.md` §八 反模式 5）|
+| 4 | **不做哈希锁定（S8）** | 生态中有 `skills-lock.json`（Vercel CLI） | **不做** | 本项目单人 + git 已覆盖版本控制；哈希锁是给"无版本管理的技能市场"用的 |
+| 5 | **`触发条件` 的等价标题** | 段落名为「触发条件」 | 三个外部视角官用 **`为什么需要你`**（`guard-skills` S5 视其为等价） | 对陌生人官/社会性官/支持台官，这一问比"何时触发"更有力——**表达优先于形式对称** |
+
 ---
+
 **追加方式**：新发现技能化质量问题 → 补入本规范。

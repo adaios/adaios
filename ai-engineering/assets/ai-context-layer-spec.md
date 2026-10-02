@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 142
+lines: 143
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -123,7 +123,8 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | 出口是指回本仓库的软链 | **硬** | `guard-tools` T4（按真身判定）|
 | 技能目录名 == `name`；两种布局都覆盖 | **硬** | `guard-tools` T3 |
 | 真相源 frontmatter 契约 / lines / 图谱 | **硬** | `guard-meta` |
-| 提交前门禁（隐私/密钥/对齐/shell） | **硬** | `.githooks/pre-commit`（六层）|
+| 技能包符合官方规范（name / description / 五段 / 偏离在案） | **硬** | `guard-skills`（S3/S4/S5/S7）|
+| 提交前门禁（隐私 / 密钥 / 对齐 / 结构 / 功能索引 / 技能 / 防复发 / shell） | **硬** | `.githooks/pre-commit`（多层，数字不写死）|
 | 只注册"用户直触发"技能 | 软 | 纪律（写在本文与脚本注释）|
 | 不复制到工具目录 | 软 | 纪律（T4 覆盖不到副本）|
 | 新工具走四步流程 | 软 | 纪律 |

@@ -5,6 +5,8 @@
 #       这类非 md/java/dart/sh 文件否则会 exit 0 绕过；密钥进 git 历史不可逆）
 #   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
 #   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
+#   2b) guard-feature —— 功能索引对齐（RFC 20261001 批 2）
+#   2c) guard-skills  —— 技能包质量（官方 Agent Skills 规范：name / description / 五段 / 偏离在案）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
 #   4) T6 shell-lint —— shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下 unbound）
 # 由 git core.hooksPath 启用（scripts/setup-hooks.sh 配置，随 clone 重建）。
@@ -149,6 +151,24 @@ if [ -f ai-engineering/guard-feature.sh ] && [ -f docs/features/_index.md ] && e
     else
       echo "❌ 功能索引**守卫脚本自身出错**（不是索引的问题，需排查 guard-feature.sh）："
       echo "$FEAT_OUT" | tail -5 | sed 's/^/    /'
+    fi
+    exit 1
+  fi
+fi
+
+# 2c) 技能包质量（guard-skills，RFC 20261003-skill-conformance）—— 官方规范硬约束是否满足
+#     S3 name 字符集/长度/与目录名一致 · S4 description 长度 · S5 五段结构 · S7 偏离在案
+#     （S8 哈希锁**刻意不做**：单人 + git 已覆盖版本控制，判定见该 RFC §四）
+#     触发条件同 2b（技能 / 审查官 / 规范都是 md）；防御同 2b：脚本未落地时跳过，不阻断
+if [ -f ai-engineering/guard-skills.sh ] && echo "$CHANGED" | grep -qE '\.md$'; then
+  SKILL_OUT=$(bash ai-engineering/guard-skills.sh 2>&1); SKILL_RC=$?
+  if [ "$SKILL_RC" -ne 0 ]; then
+    if echo "$SKILL_OUT" | grep -q 'SKILL-GUARD:'; then
+      echo "$SKILL_OUT"
+      echo "❌ 技能包不合官方规范，提交已阻止（见上）。修复指引：改 name/description/五段结构；结构性偏离须写进 ai-engineering/assets/skills-spec.md 第六节。"
+    else
+      echo "❌ 技能包守卫**脚本自身出错**（不是技能的问题，需排查 guard-skills.sh）："
+      echo "$SKILL_OUT" | tail -5 | sed 's/^/    /'
     fi
     exit 1
   fi

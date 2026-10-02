@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-03
 status: active
-lines: 87
+lines: 88
 depends-on: []
 related: [frontmatter-spec.md]
 tags: [ai, meta, index]
@@ -42,6 +42,7 @@ tags: [ai, meta, index]
 | process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
 | process/cadence.md | **协作默契总表**（每日巡检 / 收工 / 每周 / 待办四条节奏 + 游标机制 + 触发协议 + 边界）| active |
 | guard-meta.sh | 元治理自检（frontmatter 图谱/lines/孤儿/正文路径，`--fix` 回写）| active |
+| guard-skills.sh | **技能包质量校验**（官方 Agent Skills 规范：S3 name 字符集/长度/与目录名一致 · S4 description 长度 · S5 五段结构 · S7 偏离在案）| active |
 | guard-roadmap.sh | 规划状态对拍（roadmap 体检 + 漂移检查）| active |
 | guard-unfixed.sh | 未修复问题总清单（REVIEW/task-log/audits 四源聚合 + 对账）| active |
 | guard-tools.sh | 工具接入自检（T1 hook/T2 快照/T3 技能/T4 注册/T5 入口/T6 shell 变量花括号，跨工具互通可验证；`--shell-lint` 供 pre-commit）| active |
