@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 139
+lines: 141
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -53,8 +53,8 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | 背景契约 | `AGENTS.md` + 6 个子项目 `AGENTS.md` + `ARCHITECTURE.md` | 单文件 | **工具原生读**（无需出口）|
 | **开工快照** | `ai-engineering/state/`（游标/成本账）+ `guard-context.sh` 的输出 | 脚本生成 | **跨工具靠「跑脚本」**：`AGENTS.md` 规则 0 要求任何 AI 开工先跑 `guard-context.sh`；DSH 另把它写进 `AGENTS.local.md` **自动注入**（＝DSH 专属缓存，**Qoder / Codex / Claude Code 都不读这个文件名**）|
 | 技能 | `ai-engineering/skills/<name>/SKILL.md` | 官方目录布局 | 软链到出口（§四）|
-| 审查官 | `ai-engineering/roles/<name>/SKILL.md` | 官方目录布局 | **默认不出出口**（流程内触发，见 §六）|
-| 子代理 | 规划中（尚无真相源） | — | 待定（见 §十）|
+| 审查官 | `ai-engineering/roles/<name>.md`（**扁平**） | — | **不进技能出口**（流程内触发，见 §六）；其「出口」是下行生成的 subagent 定义 |
+| 子代理 | 同上（审查官 `.md` 即 subagent 的真相源） | — | **生成**到 `.qoder/agents/<name>.md`（md+YAML）· `.codex/agents/<name>.toml`（**TOML**）——**格式不同故不能软链**；生成时**重写相对路径**（`../assets/x`→`ai-engineering/assets/x`）+ **只读强制**（Qoder `tools: Read, Grep, Glob` · Codex `sandbox_mode="read-only"`）|
 | 脚本与门禁 | `ai-engineering/*.sh` · `scripts/` · `.githooks/` | — | 工具无关；靠契约文档导航 |
 | 知识库（被读写） | `docs/`（rfc / features / review / reference / guides…） | — | 同上 |
 
@@ -81,6 +81,7 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 1. **查官方文档确认项目级路径**——**不猜**。文档滞后于实现是常态（Qoder 插件文档未提 skills，实测支持），所以第 4 步必做。
 2. **加进 `scripts/link-skills.sh` 的 `TARGETS`**（技能出口）。
 3. **加进 `ai-engineering/guard-tools.sh` T4 的扫描清单**——否则新出口**无人检查**（T4 按软链真身判定，不认名字）。
+   - **子代理出口同理**：加进 `scripts/sync-agents.sh` 的 `TARGETS`（并按该工具的 subagent 格式加一种生成分支）。
 4. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）** → 清理探针。
 
 > 探针一律**本地忽略**（`.git/info/exclude` 或 `.gitignore`），验证完即删。
@@ -97,6 +98,7 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | 场景 | 动作 |
 |:--|:--|
 | 改技能内容 | **只改真相源**；出口是软链，自动生效 |
+| 改审查官内容 | 跑 `bash scripts/sync-agents.sh` **重新生成** subagent 定义；自检 `--check`（生成物不进 git）|
 | 换机 / 新 clone | `bash scripts/link-skills.sh`（+ `setup-hooks.sh`）；自检 `--check` |
 | 自检一致性 | `bash scripts/link-skills.sh --check` · `bash ai-engineering/guard-tools.sh`（T4）|
 | 新增/删除出口 | 改 `TARGETS` → 跑脚本 → 更新 §四 表 |
