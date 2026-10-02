@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 141
+lines: 142
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -90,7 +90,8 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 
 - **技能格式**：按 `skills-spec.md`（五段结构 + frontmatter 十字段）。
 - **布局**：`<name>/SKILL.md`，**目录名 == frontmatter `name`**（官方硬约束，也是命令名来源）。
-- **只注册"用户直触发"的技能**到出口——流程内触发的资产（如 12 个审查官）**不进 catalog**：它们常驻上下文要花钱，还可能被误触发（成本纪律，见 `checklists/cost.md`）。
+- **技能出口**：只注册"用户直触发"的技能——其余技能常驻 catalog 要花钱，还可能被误触发（成本纪律，见 `checklists/cost.md`）。
+- **subagent 出口**：审查官**全量注册**（12/12，2026-10-03 起）——实测 12 个 `description` 合计 **≈1.3k token**，远低于 Claude Code 官方 **15k token** 告警线。这条线是硬约束：接近时**优先缩短 description**，不要砍审查官。
 - **产出物不进真相源**（生成的卡片/报告/缓存归 `data/` 或 `state/`）。
 
 ## 七、维护规则

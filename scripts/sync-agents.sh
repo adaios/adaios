@@ -15,9 +15,10 @@
 #   它们**不进技能出口**（流程内触发，见 process/review.md），其"出口"是本脚本生成的定义；
 #   而目录化要用 3 个审查官换 44 处引用修复（2026-10-03 尽调实测）——零收益。
 #
-# 为什么只注册少数几个：
-#   每个 subagent 的 description 都**常驻上下文**（Claude Code 官方有 15k token 预算告警），
-#   而审查官默认是流程内触发，故只把**值得独立上下文派出**的少数几个注册到工具出口。
+# 注册范围（2026-10-03 由 3 个扩到全部 12 个）：
+#   唯一的成本是**每个 subagent 的 description 常驻上下文**——实测 12 个合计约 1.2k 字
+#   （≈2k token），远低于 Claude Code 官方 15k token 的告警线（那条预算正是为 description 设的）。
+#   ⚠️ 新增审查官时盯住这条线：接近预算时优先**缩短 description**，而不是砍审查官。
 #
 # 生成时做两件事（不止复制正文）：
 #   ① **路径重写**：正文里的 `../assets/x.md` → `ai-engineering/assets/x.md`
@@ -32,7 +33,11 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
 # ── 注册清单：新增「值得独立派出」的审查官时把名字加进来（= roles/ 下的文件名 stem）──
-REGISTER=(adversarial-reviewer stranger-reviewer backend-reviewer)
+REGISTER=(
+  adversarial-reviewer stranger-reviewer backend-reviewer
+  context-reviewer docs-reviewer frontend-reviewer knowledge-reviewer
+  product-arch social-reviewer support-reviewer ui-reviewer ux-reviewer
+)
 
 # ── 目标工具 subagent 目录（相对仓库根；格式由脚本按目录名分派）──
 TARGETS=(".qoder/agents" ".codex/agents")
