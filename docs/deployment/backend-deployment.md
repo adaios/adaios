@@ -235,7 +235,7 @@ cd services/adai-core
 | 防意外扣费（建议在阿里云控制台做）| 百炼控制台 → 免费额度页 → 为目标 ASR 模型开启**免费额度用完即停**（额度耗尽返回 403 `AllocationQuota.FreeTierOnly`，不再按量扣费）| 不开则额度用尽后**自动按量付费**（2026-09-06 那笔 fun-asr 费用就是这种情况）|
 | **单实例部署（硬约束）** | **必须单实例/单进程**：learn 的消化任务态（`jobs`）是**进程内 Map**、转写配额靠 **JVM 内** per-user 条带锁做的读-改-写原子 | **多实例/同机多进程会超卖**：同一素材可能被转写两次（重复花钱）、月度额度可能被突破（REVIEW P2-learn18）。将来要横向扩容，必须先把任务态与账本移出进程（或引入分布式锁）|
 
-> learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `learn-digest` 同契约**——备份/迁移只需拷 `data/`（`backup_prod.sh` 已覆盖）。
+> learn 的产物是文件（`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + `_raw/`），**与 Mac 侧 DSH 技能 `data-learn-writer` 同契约**——备份/迁移只需拷 `data/`（`backup_prod.sh` 已覆盖）。
 
 ## 7. 多账号数据迁移（v1.0.0）
 

@@ -95,9 +95,9 @@ tags: [ai, spec, naming]
 
 | 历史名 | **体系名** | 备注 |
 |:--|:--|:--|
-| `new-api` | **`code-api-writer`** | 与 `code-api-reviewer` 成对 |
-| `new-domain` | **`code-domain-writer`** | 与 `code-domain-reviewer` 成对 |
-| `learn-digest` | **`data-learn-writer`** | 消化外部内容 |
+| `code-api-writer` | **`code-api-writer`** | 与 `code-api-reviewer` 成对 |
+| `code-domain-writer` | **`code-domain-writer`** | 与 `code-domain-reviewer` 成对 |
+| `data-learn-writer` | **`data-learn-writer`** | 消化外部内容 |
 | `ship` | **`task-ship`** | 收尾命令 |
 
 ### 6.3 `guards/`（11 个）

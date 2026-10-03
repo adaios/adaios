@@ -81,7 +81,7 @@ if not AG.is_dir():
     sys.exit(1)
 
 # 扫「有 _index.md 的目录」（不限层级）—— 这样 workspace/tasks/ 这类**二级受管目录**也能查到；
-# 没有 _index.md 的目录（assets/adr/、skills/learn-digest/）由父目录清单的 rglob 覆盖，不单独受管。
+# 没有 _index.md 的目录（assets/adr/、skills/data-learn-writer/）由父目录清单的 rglob 覆盖，不单独受管。
 SUBS = sorted(str(d.relative_to(AG)) for d in AG.rglob("*") if d.is_dir() and (d / "_index.md").exists())
 
 # ── S1 + S2 ──

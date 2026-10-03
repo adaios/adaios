@@ -1,7 +1,7 @@
 ---
 title: 建设技能：/ship 收尾闭环
 description: 当开发批次完成需要收尾（/ship）时加载——五件套完成标准→契约同步→登记→门禁→规范提交
-name: ship
+name: task-ship
 version: 1
 created: 2026-08-20
 updated: 2026-08-20

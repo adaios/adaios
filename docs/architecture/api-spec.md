@@ -2471,7 +2471,7 @@ chat 模式（全屏）
 
 > **learn 插件 V1（2026-09-06 用户拍板开工）**：外部内容（视频字幕/文章/链接原文）喂入 → AI 结构化卡片（RFC 3.4 渐进式摘要四段）→ File First 落 `data/{userId}/learn/` → 列表/资产树查询。V1 为**独立端点喂入**（2026-09-06 用户拍板：仿截图入账先例，learn 消化是动作不是记录——不建记录、不沉淀记忆、不污染 Feed/时间线；**不经 POST /records 主链路**）。资产页浏览（目录树+全文渲染）与 LearnKnowledgeSource 问答注入为 L2。
 >
-> **落盘结构（v3.60 起）**：`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + 主题 `_raw/`（**与 Mac 侧 DSH 技能 `learn-digest` 同契约**：手工整理与产品整理共用同一目录，读得到对方的产物）。V1/V2 时代的扁平 `{type}/{yyyy-MM-dd}_{title}.md` **照旧可读可写**（原地不动、不强制迁移）。
+> **落盘结构（v3.60 起）**：`data/{userId}/learn/{type}/{topic}/NN-{slug}.md` + 主题 `README.md` + 主题 `_raw/`（**与 Mac 侧 DSH 技能 `data-learn-writer` 同契约**：手工整理与产品整理共用同一目录，读得到对方的产物）。V1/V2 时代的扁平 `{type}/{yyyy-MM-dd}_{title}.md` **照旧可读可写**（原地不动、不强制迁移）。
 >
 > 全部端点需 learn 插件（未启用 403「learn 插件未启用」）；X-User-Id 隔离 `data/{userId}/learn/`。type（ai/trading/other）是**卡片文件分类，非插件 domain 收敛对象**——learn 不进 life/trading 收敛（D5 不受影响）；trade_related 仅 type=trading 内容有意义（V1 只记录不联动规则库，防语义漂移走用户审核闸）。
 >

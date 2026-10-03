@@ -1,7 +1,7 @@
 ---
 title: 建设技能：新增 Domain
 description: 当需要新增 Domain OS / 重大架构能力时加载——RFC+六维 → 插件模型 → 数据流设计 → 分层落地 → 验收闭环
-name: new-domain
+name: code-domain-writer
 version: 1
 created: 2026-08-20
 updated: 2026-08-20

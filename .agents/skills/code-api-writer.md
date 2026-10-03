@@ -1,7 +1,7 @@
 ---
 title: 建设技能：新建/修改 API
 description: 当需要新增/修改 API 端点时加载——从代码到契约同步的完整闭环（api-spec/status/测试/插件门控）
-name: new-api
+name: code-api-writer
 version: 1
 created: 2026-08-20
 updated: 2026-08-20

@@ -264,7 +264,7 @@ flowchart TD
 
     subgraph P3["③ 编码（AI 自主）"]
         direction TB
-        CA["代码产作者<br/>（skills/new-api · new-domain 引导）"]
+        CA["代码产作者<br/>（skills/code-api-writer · code-domain-writer 引导）"]
         TS["测试：单元 / 集成"]
         CV["代码审核者（8 客观官 + 对抗官）"]
         CA --> TS --> CV
@@ -318,7 +318,7 @@ flowchart LR
 | 环节 | 现状（2026-10-03）|
 |:--|:--|
 | **审核者** | ✅ 现成——12 个审查官（8 客观 + 对抗 + 3 外部视角）就在 `.agents/roles/` |
-| **产作者（编码）** | ✅ 现成——`skills/new-api` / `new-domain` 已是建设技能 |
+| **产作者（编码）** | ✅ 现成——`skills/code-api-writer` / `code-domain-writer` 已是建设技能 |
 | **产作者（设计）** | ❌ **缺**——没有「设计作者」角色（待定：主 agent 兼任，还是建 subagent）|
 | **多轮交叉的流程** | ❌ 缺——本节即其定义，待落成 `.agents/process/review-driven.md` |
 | **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `cadence ship`）|

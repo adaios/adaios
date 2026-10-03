@@ -35,8 +35,8 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 | 发现 | 数据 | 含义 |
 |:--|:--|:--|
 | **审查官大面积幽灵** | `.agents/roles/` 12 个，**11 个 0 次读取**（仅 `ai-adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
-| **技能调用 = 0** | 近 5 天 `skill` 工具调用 **0 次** | `skills/learn-digest/SKILL.md` 有软链出口（DSH 已注册、本会话可见），一次没用 |
-| **出口断链** | `new-api.md` / `new-domain.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 learn-digest** | 工具**根本看不见**这三个，等于不存在（guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
+| **技能调用 = 0** | 近 5 天 `skill` 工具调用 **0 次** | `skills/data-learn-writer/SKILL.md` 有软链出口（DSH 已注册、本会话可见），一次没用 |
+| **出口断链** | `code-api-writer.md` / `code-domain-writer.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 data-learn-writer** | 工具**根本看不见**这三个，等于不存在（guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
 | **冷资产占比** | `ai-engineering/**` 63 个 md，**47 个（75%）从未被读**；仓库 `.md` 957 个，近 5 天读过 47 个（5%） | 需分类解读，见 §三 |
 | **陈旧度暂无分辨力** | git 最后写入：≤7 天 18 个 · 8-30 天 14 个 · 31-60 天 32 个 · **>60 天 0 个**，最久 49 天 | 项目本身才 49 天——此维度现在做出来只会全绿 |
 | **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `docs/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/ai-cost-checklist.md` |

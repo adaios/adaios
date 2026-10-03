@@ -27,8 +27,8 @@ tags: [guide, skills]
 
 | 技能 | 什么时候用（人话）| 你会得到 |
 |:--|:--|:--|
-| `new-api` | 说"加个接口 / 改个端点" | 代码 + 测试 + api-spec/status 同步 + 门禁全过，不会漏同步 |
-| `new-domain` | 想加一个新功能域 / 大能力 | RFC（含六维需求）+ 插件模型 + 数据流设计 + 落地闭环 |
+| `code-api-writer` | 说"加个接口 / 改个端点" | 代码 + 测试 + api-spec/status 同步 + 门禁全过，不会漏同步 |
+| `code-domain-writer` | 想加一个新功能域 / 大能力 | RFC（含六维需求）+ 插件模型 + 数据流设计 + 落地闭环 |
 | `ship` | 说"收尾 / ship" | 五件套核对 + 契约同步 + 登记 + 门禁 + 规范提交 |
 
 ### 审查技能（防守侧：做完东西后，AI 帮你检查）
@@ -49,13 +49,13 @@ tags: [guide, skills]
 
 ### 方式一：直接说需求，AI 自动匹配（推荐）
 
-- "帮我加一个查询持仓的接口" → AI 自动加载 `new-api` 技能
+- "帮我加一个查询持仓的接口" → AI 自动加载 `code-api-writer` 技能
 - "这个功能做完了，收尾吧" → AI 自动走 `ship` 流程
 - "帮我看看这次后端改动" → AI 自动派 `code-backend-reviewer`
 
 ### 方式二：显式点名
 
-- "用 new-api 技能做"
+- "用 code-api-writer 技能做"
 - "加载 ship 技能"
 - "派 docs-contract-reviewer 审查这个改动"
 
@@ -68,7 +68,7 @@ tags: [guide, skills]
 
 你说：**"帮我加一个 `GET /api/v1/trading/positions` 接口"**
 
-AI 加载 `new-api` 技能后会按 8 步走：
+AI 加载 `code-api-writer` 技能后会按 8 步走：
 1. 确认归属 trading 域 → 2. 写 Controller/Service（分层合规）→ 3. 检查插件门控 → 4. 配套测试 → 5. 同步 api-spec（升版+变更记录）→ 6. 更新 status.md 端点数 → 7. 跑 guard-align / guard-meta → 8. 登记 feature-reference
 
 ——不会出现"接口能用了但文档没同步"（P2-交易18 的教训）。
@@ -84,7 +84,7 @@ AI 加载 `new-api` 技能后会按 8 步走：
 
 - 技能文件在项目内（`.agents/roles/<name>/SKILL.md` + `.agents/skills/<name>/SKILL.md`），随 Git 走，**换机/换工具零迁移**
 - 工具侧靠**软链**发现（不是让工具去指 `ai-engineering/`）：`bash .agents/scripts/link-skills.sh` 把「用户直触发」技能软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
-- **只注册直触发技能**（当前仅 `learn-digest`）；12 个审查官走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/ai-cost-checklist.md`）
+- **只注册直触发技能**（当前仅 `data-learn-writer`）；12 个审查官走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/ai-cost-checklist.md`）
 - 项目内不用改任何东西（AGENTS.md「工具接入」原则）
 
 ## 七、FAQ

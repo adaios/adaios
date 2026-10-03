@@ -1,7 +1,7 @@
 ---
 title: 学习消化技能：外部内容 → learn 知识卡片（视频/文章整理 + 概念追踪）
 description: 当用户要求整理外部内容（B站视频/YouTube/文章/字幕/图片）为学习文档时加载——抓取→转写/取文→结构化整理→落盘 data/adai/learn/ + 时效性追踪（与 app/web「学习」页同契约）
-name: learn-digest
+name: data-learn-writer
 version: 1
 created: 2026-09-06
 updated: 2026-09-16

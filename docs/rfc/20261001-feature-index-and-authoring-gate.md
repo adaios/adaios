@@ -33,7 +33,7 @@ related:
 | 采用什么技术 | `docs/architecture/` 18 篇（system/product/插件设计/数据冻结） | 有，但按主题散落，不挂功能 |
 | 每个插件是什么 | `trading-features.md`（347 行）· `admin-features.md`（149 行），均含「已知缺陷」节 | 已成型，可直接复用 |
 | 每功能一份文档 | `feature-reference.md`（自称「功能真相源」，19 条） | **只有「实现」维度**（文件/API/prompt），无需求、无选型理由、无状态、无验收；**1377 行单文件**；**无 frontmatter** → 在 `guard-meta` 强制范围外，属图谱盲区 |
-| 编写角色 | `.agents/skills/`：new-api / new-domain / ship / learn-digest | **12 审查官 : 3 建设技能**，严重不对称 |
+| 编写角色 | `.agents/skills/`：code-api-writer / code-domain-writer / ship / data-learn-writer | **12 审查官 : 3 建设技能**，严重不对称 |
 | 审核 + 对抗 | `roles/` 12 官 + `checklists/` 13 份 + 对抗官 + **上下文隔离**（每官只喂本域 diff，不喂他人发现） | 已属行业上游，是本项目最成熟的一环 |
 | 文档树 | `_index.md` 体系 + frontmatter 图谱 + `guard-meta.sh` | 有，但按**目录**组织，不按功能 |
 

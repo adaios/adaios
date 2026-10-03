@@ -32,7 +32,7 @@ cd "$(dirname "$0")/../.."
 ROOT="$(pwd)"
 
 # ── 注册清单：新增直触发技能时把名字加进来（= .agents/skills/ 下的目录名）──
-REGISTER=(learn-digest)
+REGISTER=(data-learn-writer)
 
 # ── 目标工具 skills 目录（相对仓库根；新增工具在此加一行）──
 #    DSH              → .dsh/skills、.agents/skills（两者实测均生效）

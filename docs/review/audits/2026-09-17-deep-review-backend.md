@@ -72,7 +72,7 @@ tags: [review, backend, audit]
   ```
 - **证据（2）同类修复的正解就在同文件**（`:161-171`）：
   > `hasProductOrigin`：**对抗审查 P1-A（2026-09-12）修复：只在前言块里找**——原先扫全文，外部卡正文/代码块里只要出现一行 `origin: product` …就会被误判成「产品卡」进而被产品改写。正文一概不算。
-- **证据（3）A 形态卡模板确含 status**：`.agents/skills/learn-digest.md:79`
+- **证据（3）A 形态卡模板确含 status**：`.agents/skills/data-learn-writer.md:79`
   > **frontmatter**：learn 卡片模板（title/type/source/created/**status**/trade_related/tags）
   同文件 24 行进一步明确：「**产品卡带 `origin: product` 标记（用于区分可写性）**」——区分键是 origin，不是 status。
 - **证据（4）文档把错判据写成「产品独有键」**：`docs/architecture/api-spec.md`（v3.70 restore-origin 段）
