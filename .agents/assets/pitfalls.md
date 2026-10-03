@@ -5,7 +5,7 @@ version: 1
 created: 2026-08-15
 updated: 2026-10-03
 status: active
-lines: 225
+lines: 230
 depends-on:
   - ../checklists/guard.md
 related:
@@ -210,7 +210,7 @@ tags: [ai, assets, pitfalls]
 |:---|:-----|:-----|:-----|:----:|:---------|
 | **`head -c N` 按字节截断中文 → 写文件抛 `UnicodeEncodeError: surrogates not allowed`** | `cadence.sh ship` 收尾时快照与成本入账**都成功**，末尾却抛 UnicodeEncodeError；`ship.subject` **静默没写成**（`cadence.json` 少一个键，再无其他报错——不留意就永远发现不了） | `git log --pretty=%s \| head -c 120` 是**按字节**截断，而中文 3 字节/字，切在字符中间 → 该值成为**非法 UTF-8**；bash 把它传进 python 的 `sys.argv` 时按 `surrogateescape` 解码为**孤立代理对**，再 `write_text(encoding='utf-8')` 就被 Python 拒绝（代理对不可编码） | 两层修：① 截断改用**字符**语义（`cut -c1-120`）；② 写入口 `cadence_set` 先 `val.encode('utf-8','surrogateescape').decode('utf-8','replace')`，且 `write_text(..., errors='replace')`——**记账绝不因脏字节中断** | ✅ 已修（2026-09-26；回归：120 字节坏串写入成功、JSON 有效、值 65 字符） | 脚本里出现 `head -c` / `cut -b` 去处理**可能含中文**的文本；症状总是「前面都成功、最后写 JSON 时抛 surrogates not allowed」；提交标题（中文）一长就复现，短则不出现 |
 
-## 二十三、守卫与迁移的静默失效（2026-10-03 新增，技能目录化批 RFC 20261003）
+## 二十三、守卫与迁移的静默失效（2026-10-03 新增：技能目录化批 + `.agents/` 大迁移）
 
 | 坑 | 症状 | 根因 | 修复 | 状态 | 复发信号 |
 |:---|:-----|:-----|:-----|:----:|:---------|
@@ -218,7 +218,12 @@ tags: [ai, assets, pitfalls]
 | **守卫用 `glob('*.md')` 收集待检文件 → 目录化后静默漏检（假绿）** | `guard-meta` 报 **PASS**，但新布局的 `SKILL.md` **根本没被检查**（frontmatter/lines/断链全不查）；唯一线索是文件数**从 175 掉到 174**（旧文件消失、新文件未纳入） | `Path.glob('*.md')` **不递归**，`skills/learn-digest/SKILL.md` 不在匹配集内；守卫「少查一个文件」不会报错，只会更绿 | 收集逻辑两种布局都覆盖：`glob('*.md') + glob('*/SKILL.md')`——**只收 SKILL.md**，不收技能目录内 `references/*.md`（那些无 10 字段契约，会被 REQUIRED 误判） | ✅ 已修（2026-10-03；修后 PASS 175 files） | 任何「按目录 glob 收集待检文件」的守卫；**移动/新增文件的层级**之后；症状总是「门禁全绿但新文件从来没被检查过」 |
 | **shell 计数检查的 glob 漏掉新布局 → 计数静默偏低** | `guard-tools` T3 报「15 个技能包（roles/ 12 + skills/ **3**）」而实际是 16（skills/ 4）；数字错了但**不报错** | 同样是不递归 glob；且 `name` 校验取「文件名 stem」，目录布局下应改用**父目录名**（官方硬约束） | glob 补 `*/SKILL.md`；`name` 取值改 `case`：SKILL.md 取父目录名、其余取文件名 stem | ✅ 已修（2026-10-03；修后 16 个） | 移动技能文件后计数变了；**计数类输出没有断言**（偏低也照样 PASS） |
 | **把单值字符串字段纳入「按列表处理」的检查 → 值被逐字符迭代** | 给守卫新增 `supersededBy` 检查后，报出 **`supersededBy 断链 r` / `断链 s` / `断链 t`** 这种逐字符的诡异输出 | `depends-on`/`related` 是 YAML **列表**，而 `supersededBy` 是**单值字符串**；`for ref in (meta.get(key) or [])` 对字符串迭代＝逐字符 | 取值后先归一化：`refs = val if isinstance(val, list) else [val]`（M1/M3 两处同修） | ✅ 已修（2026-10-03） | 给检查器**新增字段**时没确认它是列表还是标量；报错里出现**单个字母/字符** |
-| **提「新建机制」方案前没盘点已有机制 → 白做一版方案** | 为「工具看不到项目层技能」写了一版从零建中间层的 RFC；随后发现 `.agents/scripts/link-skills.sh` + `.gitignore` 三目录忽略 + `guard-tools` **T4** 早已存在并在运行（只是只注册 1 技能 / 1 工具） | 直接按行业标准外推缺口，没先 `ls scripts/`、读 `.gitignore` 注释、跑一遍 `guard-tools.sh`——这三处正是本项目的「已有家底」入口 | 提案前固定动作：`ls scripts/` + 读 `.gitignore` + `bash .agents/guards/guard-tools.sh`（T1–T7 会把已有工具链全列出来） | ✅ 已用（2026-10-03） | 准备新增脚本/目录约定时；方案里出现「从零建立」字样；用户反问「这个不是已经有了吗」 |
+| **提「新建机制」方案前没盘点已有机制 → 白做一版方案** | 为「工具看不到项目层技能」写了一版从零建中间层的 RFC；随后发现 `.agents/scripts/link-skills.sh` + `.gitignore` 三目录忽略 + `guard-tools` **T4** 早已存在并在运行（只是只注册 1 技能 / 1 工具） | 直接按行业标准外推缺口，没先 `ls .agents/scripts/`、读 `.gitignore` 注释、跑一遍 `guard-tools.sh`——这三处正是本项目的「已有家底」入口 | 提案前固定动作：`ls .agents/scripts/` + 读 `.gitignore` + `bash .agents/guards/guard-tools.sh`（T1–T7 会把已有工具链全列出来） | ✅ 已用（2026-10-03） | 准备新增脚本/目录约定时；方案里出现「从零建立」字样；用户反问「这个不是已经有了吗」 |
+| **gitignore 不支持行尾注释 → 规则静默失效** | 新加的忽略规则**看似生效、实则什么都没匹配**（`git check-ignore` 返回未忽略）：写成 `.agents/skills/  # 临时注释`，直到逐项验证才发现不生效 | gitignore 把**整行**（含 `#` 与中文）当作**模式字符串**；注释必须**独立成行** | 注释单独一行、模式行不带任何尾随内容；改完**逐项 `git check-ignore -v` 验证** | ✅ 已修（2026-10-03，B0 实测抓到） | 新增/修改的忽略规则验证不通过却看不出原因；模式行里出现空格、`#` 或中文 |
+| **脚本的 `cd "$(dirname "$0")/.."` 是隐式位置假设** | 18 个守卫/执行器搬进 `.agents/guards/` 后，`ROOT` 指向 `.agents/` 而非仓库根 → 所有基于 `ROOT` 的路径检查**静默错位**（可能 false PASS） | 脚本用「我在仓库根**下一层**」这个位置假设推导 ROOT——**位置一变假设即废**，且没有任何断言保护 | 统一改 `cd "$(dirname "$0")/../.."`；更稳的是 `cd "$(git rev-parse --show-toplevel)"` | ✅ 已修（18 个脚本） | 脚本目录层级变动后未重验；脚本报 PASS 但手工走一遍明显不对 |
+| **无扩展名文件被「按后缀过滤」的替换脚本跳过** | 批量替换后 `pre-commit` 里仍有 8 处旧路径 → 提交时它去调已不存在的 `ai-engineering/guard-align.sh`，**连续两次提交被拦**才暴露 | 替换脚本用 `f.suffix in exts` 过滤文件类型，`pre-commit` / `.gitignore` / `.gitattributes` 这类**无后缀关键文件被静默跳过** | 替换脚本对**无后缀文件白名单**（或先全量扫、再按类型跳过）；改完对**关键文件单独 grep** | ✅ 已修 | 迁移后提交被门禁拦、**报错指向「旧路径不存在」**——先怀疑「漏了无后缀文件」 |
+| **生成器内部的路径重写规则也要跟着搬** | `sync-agents.sh` 仍把 roles 里的 `../assets/x.md` 重写为 `ai-engineering/assets/x.md`（旧前缀）→ **24 个 subagent 定义路径全错**，而 `--check` 报 **PASS** | 自检是「生成物 vs 真相源」的**对拍**——两边由**同一个错误规则**产出，所以**天然自洽**，错误被完美掩盖 | 搬家时把**生成器内部的路径规则**当成「引用」一并替换（不能只改文档引用）；改完**抽查生成物内容**而非只看自检 | ✅ 已修（抽查 `.agents/assets/pitfalls.md` ✅） | 生成物自检 PASS 但**内容里的路径指向已迁移的旧位置**；自检只比「两边一致」不比「是否正确」 |
+| **相对路径断链要「按目标真实位置重算」而非人工逐个改** | 搬家后门禁报 **20 处 M1 断链**（`../guard-meta.sh` 这类 frontmatter 引用），成批出现 | 相对路径的**基准目录变了**（文件与新目标不在原来的层级关系上） | 写脚本：解析断链 → 按 **basename** 找目标真实位置 → **重算相对路径**；一次修完 12 处 | ✅ 已修 | 门禁 M1 断链**成批出现**且同一模式；人工逐个改到一半发现漏 |
 
 ---
 
