@@ -74,10 +74,10 @@ xcrun altool 上传
 cd apps/adai-app
 export ASC_ISSUER_ID=fd2b35ca-dcd5-486b-8fd4-643287368357   # Issuer ID（2026-09-16 沉淀；Team 级，所有 Key 共用）
 
-sh scripts/release_testflight.sh                  # 构建 + 导出 + 上传
-sh scripts/release_testflight.sh --skip-build     # 复用已有 archive（省一次构建）
-sh scripts/release_testflight.sh --build-number 5 # 递增构建号（同一版本重复上传会被拒）
-sh scripts/release_testflight.sh --export-only    # 只导出不上传（先自检签名）
+sh .agents/scripts/release_testflight.sh                  # 构建 + 导出 + 上传
+sh .agents/scripts/release_testflight.sh --skip-build     # 复用已有 archive（省一次构建）
+sh .agents/scripts/release_testflight.sh --build-number 5 # 递增构建号（同一版本重复上传会被拒）
+sh .agents/scripts/release_testflight.sh --export-only    # 只导出不上传（先自检签名）
 ```
 
 脚本做四件事：① `asc_signing.py --ensure` 幂等准备签名资产 → ② 构建 archive →
@@ -86,8 +86,8 @@ sh scripts/release_testflight.sh --export-only    # 只导出不上传（先自�
 **签名资产管理**（平时不用单独跑）：
 
 ```bash
-python3 scripts/asc_signing.py --check    # 只读：看证书/描述文件/本地身份现状
-python3 scripts/asc_signing.py --ensure   # 幂等：缺则建、有则复用、重复则清理
+python3 .agents/scripts/asc_signing.py --check    # 只读：看证书/描述文件/本地身份现状
+python3 .agents/scripts/asc_signing.py --ensure   # 幂等：缺则建、有则复用、重复则清理
 ```
 
 产物集中在 `~/.appstoreconnect/dist/`（权限 700，**在仓库外，永不入 git**）：
@@ -105,9 +105,9 @@ python3 scripts/asc_signing.py --ensure   # 幂等：缺则建、有则复用、
 命令行查状态（无需开浏览器；`release_testflight.sh` 上传后也会自动跑一次）：
 
 ```bash
-python3 scripts/testflight_status.py          # 查最近 3 个构建
-python3 scripts/testflight_status.py --wait   # 轮询到终态（默认最多 30 分钟；CI 可用退出码判据）
-sh scripts/release_testflight.sh --status     # 等价入口
+python3 .agents/scripts/testflight_status.py          # 查最近 3 个构建
+python3 .agents/scripts/testflight_status.py --wait   # 轮询到终态（默认最多 30 分钟；CI 可用退出码判据）
+sh .agents/scripts/release_testflight.sh --status     # 等价入口
 ```
 
 ## 4.1 首次开通实测记录（2026-09-15，从零到装进手机）

@@ -222,9 +222,9 @@ related:
 
 | # | 门禁 | 落地物 | 判定 |
 |---|---|---|---|
-| 1 | **「已修」新标准** | `ai-engineering/process/ship.md` + `ai-engineering/assets/conventions.md` 收尾口径 | 「已修」= **存量回填 + 运行时自检 + 失败可见** 三者齐备；只有代码改动 → 记「代码已改，未验收」 |
-| 2 | **部署后自检** | `ai-engineering/deploy-gate.sh` 增一步：部署后调 `GET /api/v1/trading/integrity` | `anchor.known=false` **或** `drift` 非空 → **显式告警输出**（不许只打日志静默通过） |
-| 3 | **坑位登记** | `ai-engineering/assets/pitfalls.md` 增条目「**隐性 fail-open 防重机制**」 | 复发信号：**机制读不到状态就降级继续**，且**没有自检/告警** |
+| 1 | **「已修」新标准** | `.agents/process/ship.md` + `.agents/assets/conventions.md` 收尾口径 | 「已修」= **存量回填 + 运行时自检 + 失败可见** 三者齐备；只有代码改动 → 记「代码已改，未验收」 |
+| 2 | **部署后自检** | `.agents/scripts/deploy-gate.sh` 增一步：部署后调 `GET /api/v1/trading/integrity` | `anchor.known=false` **或** `drift` 非空 → **显式告警输出**（不许只打日志静默通过） |
+| 3 | **坑位登记** | `.agents/assets/pitfalls.md` 增条目「**隐性 fail-open 防重机制**」 | 复发信号：**机制读不到状态就降级继续**，且**没有自检/告警** |
 | 4 | **REVIEW 更正** | `docs/review/REVIEW.md`：P2-交易34 由「已修」改为「**复发（2026-09-12）**」+ 根因三层结构；并登记本次新增未修项（存量数据修正、负持仓清理等） | 条目含根因一句话 + 指向本 RFC |
 | 5 | **文档补章** | `docs/reference/trading-features.md` 增「**三条真源与锚点语义**」章节 + `docs/architecture/api-spec.md` 登记三个端点 | 写清锚点定义、`snapshot-anchor.json` 字段、`mode`/`dryRun`/`rejected`/自检端点与运维动作 |
 | 6 | **测试先行** | §九 回归矩阵 R1~R12 | 全部先写测试到红，再改实现到绿；golden 夹具**必须合成** |

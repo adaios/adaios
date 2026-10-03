@@ -22,7 +22,7 @@ tags: [guide, workflow, ai-tooling]
 > 多开会话也只能在同一分支允许的范围内活动。真正的瓶颈不是 AI 慢，而是**必须等它算完才能动弹**。
 > 期望状态：人从「执行者」变成「卡住时的决策者」。
 >
-> **本项目（AdaiOS）专属的那部分另见**：[worktree-workflow.md](./worktree-workflow.md)——本项目建出来的 worktree 是个**空壳**（`data/`、服务端 `.env`、`ai-engineering/state/` 都在版本库外，缺了不报错只静默出错），起线后要先跑 `scripts/worktree-prep.sh` 补外挂；那里还有 DSH 沙箱边界、8080 端口与构建锁、提交纪律与干净构建用法。
+> **本项目（AdaiOS）专属的那部分另见**：[worktree-workflow.md](./worktree-workflow.md)——本项目建出来的 worktree 是个**空壳**（`data/`、服务端 `.env`、`.agents/state/` 都在版本库外，缺了不报错只静默出错），起线后要先跑 `.agents/scripts/worktree-prep.sh` 补外挂；那里还有 DSH 沙箱边界、8080 端口与构建锁、提交纪律与干净构建用法。
 
 ## 一、先明确要解决什么（和不解决什么）
 

@@ -17,9 +17,9 @@ related:
   - ../review/REVIEW.md
   - ../review/audits/2026-10-01-feature-index-adversarial.md
   - ../rfc/20261001-feature-index-and-authoring-gate.md
-  - ../../ai-engineering/guard-meta.sh
-  - ../../ai-engineering/guard-feature.sh
-  - ../../ai-engineering/tests/_index.md
+  - ../../.agents/guards/guard-meta.sh
+  - ../../.agents/guards/guard-feature.sh
+  - ../../.agents/tests/_index.md
 tags: [meta, index, feature, 功能主轴]
 ---
 
@@ -37,7 +37,7 @@ tags: [meta, index, feature, 功能主轴]
 
 ## 二、功能清单
 
-**列说明**：`需求出处` = RFC 文件链接；无 RFC 的直接改动批次写明批次（记 `change-log.md`）；标 ⚠️ 的表示出处本身有问题。`实现出处` = `feature-reference.md` 章节或专项功能手册。`欠着` = `REVIEW.md` 编号（跑 `bash ai-engineering/guard-unfixed.sh` 可复算当前未修项）。
+**列说明**：`需求出处` = RFC 文件链接；无 RFC 的直接改动批次写明批次（记 `change-log.md`）；标 ⚠️ 的表示出处本身有问题。`实现出处` = `feature-reference.md` 章节或专项功能手册。`欠着` = `REVIEW.md` 编号（跑 `bash .agents/guards/guard-unfixed.sh` 可复算当前未修项）。
 
 ### Kernel（内核，无插件门控）
 

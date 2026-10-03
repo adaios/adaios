@@ -7,7 +7,7 @@ updated: 2026-09-07
 status: active
 lines: 99
 depends-on:
-  - ../../../ai-engineering/frontmatter-spec.md
+  - ../../../.agents/frontmatter-spec.md
 related:
   - ../REVIEW.md
 tags: [ai, review, learn]

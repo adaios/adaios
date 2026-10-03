@@ -14,20 +14,18 @@ target/
 # ── IDE / AI 工具本地目录 ──
 .idea/
 # 工具侧目录整目录忽略：技能注册是「本机状态」而非仓库资产，真相源在 ai-engineering/
-# 换机 / 新 clone 后重建：bash scripts/link-skills.sh（验证：bash ai-engineering/guard-tools.sh 的 T4）
+# 换机 / 新 clone 后重建：bash .agents/scripts/link-skills.sh（验证：bash .agents/guards/guard-tools.sh 的 T4）
 .dsh/
 .claude/
 # ── .agents/ —— AI 上下文工程容器（2026-10-03 起）──
 # 真相源（skills / roles / assets / process / guards / scripts / rfc / review / features / ledger …）**必须入库**；
 # 只忽略「本机状态」与「出口」两类。⚠️ 规则必须**带前缀锚定**——写成 `skills/` 会连真相源一起忽略（pitfalls 二十三 记过这个坑）。
 .agents/state/
-# 临时：B2 把技能真相源搬入 .agents/skills/ 后，**删除下一行**
-# （注意：gitignore 不支持行尾注释——`模式  # 注释` 会把注释当成模式的一部分）
-.agents/skills/
+# 注意：gitignore 不支持行尾注释（`模式  # 注释` 会把注释当成模式的一部分）
 .qoder/
 .codex/
 # 预留：根 skills/ 出口（OpenClaw 等工具的项目级目录）—— **必须锚定仓库根**：
-# 写成 `skills/` 会连真相源 `ai-engineering/skills/` 一起忽略（见 pitfalls 二十三）
+# 写成 `skills/` 会连真相源 `.agents/skills/` 一起忽略（见 pitfalls 二十三）
 /skills/
 .obsidian/
 *.iml
@@ -133,16 +131,16 @@ services/adai-core/data/
 *.dSYM
 
 # ── 成本日志（运行时数据，个人花费隐私，不入库）──
-ai-engineering/state/cost-log.jsonl
+.agents/state/cost-log.jsonl
 
 # ── AI 上下文快照（机器生成不入库；由 guard-context.sh --write-local 生成，随时可再生）──
 AGENTS.local.md
 
 # ── Gradle 用户缓存（沙箱环境 GRADLE_USER_HOME 落到工作区，构建产物不入库）──
 .gradle-home/
-ai-engineering/state/cost-cache.json
+.agents/state/cost-cache.json
 # ── 产品使用心跳缓存（运行时数据，由 guard-context.sh C0 生成）──
-ai-engineering/state/usage-cache.json
+.agents/state/usage-cache.json
 # ── 协作默契游标（本机状态：上次巡检到哪天/上次收工基线；由 cadence.sh 维护，机器相关不入库）──
-ai-engineering/state/cadence.json
+.agents/state/cadence.json
 .pub-cache-home/

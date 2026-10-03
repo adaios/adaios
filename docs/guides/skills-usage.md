@@ -8,14 +8,14 @@ status: active
 lines: 102
 depends-on: []
 related:
-  - ../../ai-engineering/assets/skills-spec.md
+  - ../../.agents/assets/skills-spec.md
   - ../README.md
 tags: [guide, skills]
 ---
 
 # 技能使用指南
 
-> 给**人**看的说明。AI 执行细节见 `ai-engineering/assets/skills-spec.md`（规范）和各技能文件本身。
+> 给**人**看的说明。AI 执行细节见 `.agents/assets/skills-spec.md`（规范）和各技能文件本身。
 
 ## 一、技能是什么（一句话）
 
@@ -76,14 +76,14 @@ AI 加载 `new-api` 技能后会按 8 步走：
 ## 五、技能怎么维护
 
 - **新增技能的条件**：同一件工作**重复 ≥2 次** → 值得封装（例：你发现"每周都要做 X"）
-- **怎么写**：按 `ai-engineering/assets/skills-spec.md`（五段结构 + name 字段），建设类放 `ai-engineering/skills/<name>/SKILL.md`、审查类放 `ai-engineering/roles/<name>/SKILL.md`（**目录名必须等于 frontmatter `name`**），登记 `ai-engineering/_index.md`
+- **怎么写**：按 `.agents/assets/skills-spec.md`（五段结构 + name 字段），建设类放 `.agents/skills/<name>/SKILL.md`、审查类放 `.agents/roles/<name>/SKILL.md`（**目录名必须等于 frontmatter `name`**），登记 `.agents/_index.md`
 - **技能会长大**：每次用技能踩到新坑，往该技能「约束与规则」补一行——技能质量 = 你项目真实经验的沉淀
 - **两边都别偏废**：建设技能保证产出完整（上游），审查技能检查遗漏（下游），互补
 
 ## 六、工具侧配置（一次性）
 
-- 技能文件在项目内（`ai-engineering/roles/<name>/SKILL.md` + `ai-engineering/skills/<name>/SKILL.md`），随 Git 走，**换机/换工具零迁移**
-- 工具侧靠**软链**发现（不是让工具去指 `ai-engineering/`）：`bash scripts/link-skills.sh` 把「用户直触发」技能软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
+- 技能文件在项目内（`.agents/roles/<name>/SKILL.md` + `.agents/skills/<name>/SKILL.md`），随 Git 走，**换机/换工具零迁移**
+- 工具侧靠**软链**发现（不是让工具去指 `ai-engineering/`）：`bash .agents/scripts/link-skills.sh` 把「用户直触发」技能软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
 - **只注册直触发技能**（当前仅 `learn-digest`）；12 个审查官走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/cost.md`）
 - 项目内不用改任何东西（AGENTS.md「工具接入」原则）
 

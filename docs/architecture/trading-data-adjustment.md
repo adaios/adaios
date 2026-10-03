@@ -95,7 +95,7 @@ TdxFileKlineSource.kline/klineRange → 前复权结果（与腾讯 qfq 同口�
 ### 4.3 拉取与更新
 
 - **懒加载**：标注/匹配/详情用到某票时，本地无因子 → 拉一次 → 缓存；有 → 用缓存（TTL 或按日校验）
-- **全 A 预热**：后置（可选脚本 `09-scripts/sync-adj-factors.sh` 或后端工具类全量拉取）
+- **全 A 预热**：后置（可选脚本 `09-.agents/scripts/sync-adj-factors.sh` 或后端工具类全量拉取）
 - **更新**：因子表随除权事件变化（分红季），本地缓存按日 TTL 失效重拉
 
 ## 五、前复权换算算法（标准）

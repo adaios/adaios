@@ -8,9 +8,9 @@ status: active
 lines: 254
 depends-on: []
 related:
-  - ../../../ai-engineering/roles/stranger-reviewer.md
-  - ../../../ai-engineering/roles/social-reviewer.md
-  - ../../../ai-engineering/roles/support-reviewer.md
+  - ../../../.agents/roles/stranger-reviewer.md
+  - ../../../.agents/roles/social-reviewer.md
+  - ../../../.agents/roles/support-reviewer.md
 tags: [review, external, audit]
 ---
 
@@ -208,7 +208,7 @@ app 端 `'反哺入库失败: …'`、`'解析失败: …'`、`'补日期失败:
 1. **先生成正式 keystore 并离线备份**（丢失不可找回——这是不可逆的一步，先做）
 2. `android/key.properties`（**不进 git**）+ `build.gradle` release 改读它
 3. `.gitignore` 加 `*.jks` / `key.properties`（B3 隐私边界）
-4. 补 `scripts/build_apk.sh`（对齐 `build_web.sh`：内置 API 地址 `--dart-define` + 产物校验）
+4. 补 `.agents/scripts/build_apk.sh`（对齐 `build_web.sh`：内置 API 地址 `--dart-define` + 产物校验）
 5. 首次装机验证：安装 → 打开 → 登录 → 记一条 → 重启后数据还在
 6. 后续更新：同一 keystore 签名覆盖安装（不卸载）
 
@@ -218,7 +218,7 @@ app 端 `'反哺入库失败: …'`、`'解析失败: …'`、`'补日期失败:
 
 | 决策 | 落地内容 | 验证 |
 |:--|:--|:--|
-| **D6-A 侧载** | 生成正式 keystore `apps/adai-app/android/adaios-release.jks`（别名 `adaios`、RSA 2048、10000 天）+ `key.properties`（不进 git）；`build.gradle` 的 release 改读它（**缺配置则构建失败，绝不回退 debug 签名**）；`.gitignore` 补 `*.jks` / `*.keystore`（此前只 ignore 了 `key.properties`）；新增 `scripts/build_apk.sh`（前置校验 + 验签对拍 + sha256）| `./gradlew signingReport` → **Variant: release → Store: `adaios-release.jks` / Alias: `adaios`**（不再是 `AndroidDebugKey`）|
+| **D6-A 侧载** | 生成正式 keystore `apps/adai-app/android/adaios-release.jks`（别名 `adaios`、RSA 2048、10000 天）+ `key.properties`（不进 git）；`build.gradle` 的 release 改读它（**缺配置则构建失败，绝不回退 debug 签名**）；`.gitignore` 补 `*.jks` / `*.keystore`（此前只 ignore 了 `key.properties`）；新增 `.agents/scripts/build_apk.sh`（前置校验 + 验签对拍 + sha256）| `./gradlew signingReport` → **Variant: release → Store: `adaios-release.jks` / Alias: `adaios`**（不再是 `AndroidDebugKey`）|
 | **D1-A 锁屏脱敏** | `PushMessage` 加 `lockScreenContent` + `notificationContent()`（空白回落 → 老构造点行为不变）；APNs / Bark / 微信三渠道改用它，**站内 Feed 仍用完整正文**；收盘小结改为**一次遍历产出两版**：完整版逐只列持仓名 + 现价，锁屏版只报「N 笔成交 / M 只破止损 / 账实有出入」+「打开阿呆看详情」| 后端测试 **+4**（锁屏不含任何持仓名与现价 / 两版必须不同字 / 回落语义 / APNs payload 用精简版）|
 | **D2-A 明确告知** | 三处推送设置对话框统一：非 iOS 端**开关置灰 + 说明**（「这台收不到通知——阿呆现在只能推到 iPhone…」），并加 `AlertDialog(scrollable: true)` 防小屏溢出；用上了此前**零使用**的 `PushService.supported` | app widget 测试 **+1**（说明存在 + 开关全置灰 + 10 项集合）；两端 `flutter test` 全绿（app **270** / web **255**）|
 
@@ -251,4 +251,4 @@ app 端 `'反哺入库失败: …'`、`'解析失败: …'`、`'补日期失败:
 
 **审查官**：stranger-reviewer / social-reviewer / support-reviewer（首跑）
 **本轮性质**：前半为审查（只报告，未动产品代码，遵守 B7）；后半经用户拍板 D1/D2/D6 后落地，改动见 §八
-**配套新增**：`ai-engineering/roles/{stranger,social,support}-reviewer.md` + `ai-engineering/checklists/review-{stranger,social,support}.md`
+**配套新增**：`.agents/roles/{stranger,social,support}-reviewer.md` + `.agents/checklists/review-{stranger,social,support}.md`

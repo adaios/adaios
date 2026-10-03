@@ -9,10 +9,10 @@ lines: 95
 depends-on: []
 related:
   - ../rfc/20261003-project-level-ai-context-layer.md
-  - ../../ai-engineering/assets/ai-context-layer-spec.md
-  - ../../ai-engineering/guard-meta.sh
-  - ../../ai-engineering/guard-tools.sh
-  - ../../ai-engineering/guard-cost.sh
+  - ../../.agents/assets/ai-context-layer-spec.md
+  - ../../.agents/guards/guard-meta.sh
+  - ../../.agents/guards/guard-tools.sh
+  - ../../.agents/guards/guard-cost.sh
 tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 ---
 
@@ -34,12 +34,12 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 | 发现 | 数据 | 含义 |
 |:--|:--|:--|
-| **审查官大面积幽灵** | `ai-engineering/roles/` 12 个，**11 个 0 次读取**（仅 `adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
+| **审查官大面积幽灵** | `.agents/roles/` 12 个，**11 个 0 次读取**（仅 `adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
 | **技能调用 = 0** | 近 5 天 `skill` 工具调用 **0 次** | `skills/learn-digest/SKILL.md` 有软链出口（DSH 已注册、本会话可见），一次没用 |
 | **出口断链** | `new-api.md` / `new-domain.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 learn-digest** | 工具**根本看不见**这三个，等于不存在（guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
 | **冷资产占比** | `ai-engineering/**` 63 个 md，**47 个（75%）从未被读**；仓库 `.md` 957 个，近 5 天读过 47 个（5%） | 需分类解读，见 §三 |
 | **陈旧度暂无分辨力** | git 最后写入：≤7 天 18 个 · 8-30 天 14 个 · 31-60 天 32 个 · **>60 天 0 个**，最久 49 天 | 项目本身才 49 天——此维度现在做出来只会全绿 |
-| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `docs/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `ai-engineering/checklists/cost.md` |
+| **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `docs/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/cost.md` |
 
 ## 三、关键判断
 
@@ -68,7 +68,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 不是「使用次数排行榜」，而是**资产台账 + 加载路径体检**，按价值排序：
 
 1. **加载路径体检**（零日常开销）：每个资产分类（技能 / 审查官 / 规范 / ADR / 流程）× 期望加载路径 × 实际是否通。**当场可查** §二 的两笔：3 个技能无出口、11 个审查官无运行时加载路径。
-2. **每周使用简报**：挂 `ai-engineering/cadence.sh weekly`，**只报异常、不报排行榜**。
+2. **每周使用简报**：挂 `.agents/scripts/cadence.sh weekly`，**只报异常、不报排行榜**。
 3. **陈旧度**：等有 90 天+ 历史再设阈值，否则纯属白做。
 
 ## 五、若日后实施，必须守的两条
@@ -89,7 +89,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 #    筛 type == "tool/call"，读 data.name 与 data.arguments.file_path / .argument.name(skill)
 ls -t ~/.dsh/sessions/--Users-adai-Projects-adaios--/*/session.v4.jsonl.zstd | head -40
 # 2) 写入陈旧度（git 权威，跨工具可见）
-git log -1 --format=%cs -- ai-engineering/assets/boundaries.md
+git log -1 --format=%cs -- .agents/assets/boundaries.md
 ```
 
 > 抽样口径提醒：以上为**近 5 天 34 个会话**的样本，非全量 439 会话；`skill` 调用为 0 是此窗口内的事实，不等于历史从未调用。

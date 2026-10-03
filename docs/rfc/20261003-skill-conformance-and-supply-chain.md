@@ -6,10 +6,10 @@ status: draft
 decided-by: —（待拍板：用户 2026-10-03「补」= 出方案，方案落地须另行点头）
 tags: [ai-engineering, skills, 供应链, 门禁, 审查, RFC]
 related:
-  - ../../ai-engineering/assets/skills-spec.md
-  - ../../ai-engineering/guard-meta.sh
-  - ../../ai-engineering/guard-feature.sh
-  - ../../ai-engineering/process/ship.md
+  - ../../.agents/assets/skills-spec.md
+  - ../../.agents/guards/guard-meta.sh
+  - ../../.agents/guards/guard-feature.sh
+  - ../../.agents/process/ship.md
   - ../reference/status.md
   - ../review/REVIEW.md
 ---
@@ -34,14 +34,14 @@ related:
 
 | 项 | 现状 | 与官方规范的差距 |
 |:--|:--|:--|
-| 技能位置 | `ai-engineering/roles/*.md`（12）+ `ai-engineering/skills/*.md`（4） | **扁平文件**，非 `<name>/SKILL.md` 目录布局 |
+| 技能位置 | `.agents/roles/*.md`（12）+ `.agents/skills/*.md`（4） | **扁平文件**，非 `<name>/SKILL.md` 目录布局 |
 | `name` 字段 | 已有，= 文件名 stem（如 `backend-reviewer`） | 字符集/长度/连字符约束**无任何检查** |
 | `description` | 已有，写触发语义 | 长度上限 1024 **无检查** |
 | 五段结构 | 已在 `assets/skills-spec.md` 定义（触发/步骤/约束/输出/参考） | **无机器判据**，靠人自觉 |
 | frontmatter 10 字段 | guard-meta 必查 ✅ | 已覆盖 |
 | 内容完整性 | 无 | **无哈希、无锁定**，改动不可见 |
 | 依赖锁定 | Flutter 两端 `pubspec.lock` 自带 content-hash | 后端依赖无清单快照 |
-| 门禁基座 | `.githooks/pre-commit` 六层 + `scripts/scan-secrets.py`（Python 执行器 + bash 守卫的先例） | 可复用该模式 |
+| 门禁基座 | `.githooks/pre-commit` 六层 + `.agents/scripts/scan-secrets.py`（Python 执行器 + bash 守卫的先例） | 可复用该模式 |
 
 ## 三、方案 A：技能包规范校准
 
@@ -95,7 +95,7 @@ related:
 | 未来引入第三方技能时上游投毒 | 当前为零，将来为正 | B3 准入流程（留口） |
 | Flutter / Maven 依赖供应链 | 常规 | B2 清单快照 |
 
-### 4.2 B1 技能内容哈希清单 `ai-engineering/state/skills-lock.json`
+### 4.2 B1 技能内容哈希清单 `.agents/state/skills-lock.json`
 
 ```json
 {
@@ -109,7 +109,7 @@ related:
 }
 ```
 
-- **生成/重签**：`bash ai-engineering/guard-skills.sh --lock`
+- **生成/重签**：`bash .agents/guards/guard-skills.sh --lock`
 - **默认模式**：逐项对拍 → 不一致 = FAIL，输出「哪个技能被改」的清单
 - **变更协议**：修改技能内容必须显式重签 → **技能改动在 diff 里必然可见**（lock 文件一起变）
 - **防绕过**：哈希覆盖**全文件**字节（不是只哈希 frontmatter）；`lines` 与 `guard-meta` 的 lines 双向对拍，避免"只改正文不重签"
@@ -164,4 +164,4 @@ related:
 
 ---
 
-**追加方式**：本 RFC 落地后，新发现的技能化质量问题补入 `ai-engineering/assets/skills-spec.md`；本文件状态由 `draft` → `approved` 须经用户点头。
+**追加方式**：本 RFC 落地后，新发现的技能化质量问题补入 `.agents/assets/skills-spec.md`；本文件状态由 `draft` → `approved` 须经用户点头。

@@ -15,7 +15,7 @@ tags: [review, backend, audit]
 
 # 后端深度审查报告：晚间批 + 深夜第二批
 
-> 审查官：`ai-engineering/roles/backend-reviewer.md`（只报告不修改，B7）
+> 审查官：`.agents/roles/backend-reviewer.md`（只报告不修改，B7）
 > 审查方式：读 diff + 读实现上下文 + 跑测试 + 跑守护脚本；每条结论带位置与证据
 
 ## 一、范围与基线
@@ -33,9 +33,9 @@ tags: [review, backend, audit]
 | 检查 | 命令 | 结果 |
 |:---|:---|:---|
 | 相关测试 | `./gradlew test --tests "*DailyPnlComputeTest*" …`（7 类） | **BUILD SUCCESSFUL**：DailyPnlCompute 18 · LearnDigestAppService 51 · LearnCardFileRepository 68 · AccountController 39 · ApiTokenService 27 · ApnsPushChannel 28 · TradingAppService 65 —— **296 用例 0 失败 0 错误 0 跳过** |
-| 工具链守护 | `bash ai-engineering/guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
-| 契约对齐 | `bash ai-engineering/guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
-| 元数据治理 | `bash ai-engineering/guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
+| 工具链守护 | `bash .agents/guards/guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
+| 契约对齐 | `bash .agents/guards/guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
+| 元数据治理 | `bash .agents/guards/guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
 | 分层依赖（C7） | 人工核对 diff 全部 import | 无新增违规；`AccountController` 直接用 `kernel.storage.FileStorage` 端口（kernel 为共享内核，不构成 infrastructure 反向依赖） |
 
 ## 三、结论
@@ -72,7 +72,7 @@ tags: [review, backend, audit]
   ```
 - **证据（2）同类修复的正解就在同文件**（`:161-171`）：
   > `hasProductOrigin`：**对抗审查 P1-A（2026-09-12）修复：只在前言块里找**——原先扫全文，外部卡正文/代码块里只要出现一行 `origin: product` …就会被误判成「产品卡」进而被产品改写。正文一概不算。
-- **证据（3）A 形态卡模板确含 status**：`ai-engineering/skills/learn-digest.md:79`
+- **证据（3）A 形态卡模板确含 status**：`.agents/skills/learn-digest.md:79`
   > **frontmatter**：learn 卡片模板（title/type/source/created/**status**/trade_related/tags）
   同文件 24 行进一步明确：「**产品卡带 `origin: product` 标记（用于区分可写性）**」——区分键是 origin，不是 status。
 - **证据（4）文档把错判据写成「产品独有键」**：`docs/architecture/api-spec.md`（v3.70 restore-origin 段）
@@ -244,9 +244,9 @@ tags: [review, backend, audit]
 
 ## 附录 A：范围外 commit `bc6656b`（午间谷时任务壳 + LaunchAgent）单独标注
 
-- 该 commit 属**另一会话**的 AI 工程工具链改动（`ai-engineering/noon-task.sh` 新增、`guard-prod.sh`、`scripts/setup-launchd.sh`、`docs/guides/routine.md`、`guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
-  1. **时区偏移只告警不阻断**：`ai-engineering/noon-task.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
-  2. `scripts/setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
+- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/noon-task.sh` 新增、`guard-prod.sh`、`.agents/scripts/setup-launchd.sh`、`docs/guides/routine.md`、`guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
+  1. **时区偏移只告警不阻断**：`.agents/scripts/noon-task.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
+  2. `.agents/scripts/setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
 - 守护脚本对本 commit 覆盖良好：`guard-tools.sh` T6（`$VAR` 紧跟非 ASCII）PASS、T7 显示 `com.adai.adaios-noon-task` 已加载且「午间谷时 0 天前跑过」。
 
 ---

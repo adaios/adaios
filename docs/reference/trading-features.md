@@ -280,7 +280,7 @@ tags: [trading, plugin, reference]
 
 ## 七、交易知识底座（os/trading-engine）
 
-- **消费入口（第三阶段 D1 定稿）**：**用户私有优先**——`data/{userId}/trading/knowledge.md`（知识注入唯一消费；无则仅 owner/adai 回落 os/）；os/ 五文件是 adai 规则包的**源材料**（`09-scripts/sync-adai-rulepack.sh` 合并同步到 `data/adai/trading/knowledge.md`）
+- **消费入口（第三阶段 D1 定稿）**：**用户私有优先**——`data/{userId}/trading/knowledge.md`（知识注入唯一消费；无则仅 owner/adai 回落 os/）；os/ 五文件是 adai 规则包的**源材料**（`09-.agents/scripts/sync-adai-rulepack.sh` 合并同步到 `data/adai/trading/knowledge.md`）
 - `knowledge/context/` 五文件（identity/current/strategy/rules/mistakes）——adai 课程沉淀（87 课）交付层；rules.md 收录 **R1-R120**（择时 R1-R20/选股 R21-R32/买入 R33-R50/应对 R51-R65/止损 R66-R80/仓位 R81-R95/纪律 R96-R120）
 - `engine/rules-api.md` + Java `TradingRuleEngine`——语言无关规格 + 实现，判定口径一致（止损 R66 现价口径、R81 仓位分母=总资产含现金）
 - `engine/buy-point-rules.md`——B1/B2/B3/SB1 买点判定规格（C2 草稿，待用户确认口径）
@@ -300,7 +300,7 @@ tags: [trading, plugin, reference]
 10. **推送/流水写入均为 best-effort**：失败只告警不阻塞交易落库；流水文件损坏单月跳过；account.json 写失败已升 error 告警（B3-4）
 11. **双锁体系（C6，2026-08-23 注释如实化）**：account.json 写路径叠加 application `tradeLock`（业务 RMW）+ repository per-user 锁（文件原子写）——均为**单实例内**进程锁（多实例同写 data/ 即失效，当前单实例）；跨文件一致性（positions/account/流水）无原子手段，收盘更新与交易并发窗口为已知取舍
 12. **推送链路（2026-08-23 修复）**：推送标题契约断裂（P1-推送1）/删除持久化（P1-推送2）/app 设置入口（P1-推送3）均已修——MarketPushEvent 透传 title、`DELETE /trading/pushes/{id}`、app 交易页铃铛；徽章/确认按钮双端回归
-13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**——2026-09-04 起 admin「系统 → 维护」页签可上传通达信 .zip 数据包（MD17：`POST /admin/market/tdx-import`，校验 + 原子解压，替代手工 scp）；`scripts/sync_tdx_data.sh` 保留作命令行途径（趋势 = 降频/半自动而非产品端加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
+13. **数据职责分层（RFC 20260902 §六，2026-09-02 用户拍板）**：个人业务数据（历史成交/持仓/自选/清仓/资金）导入归**用户自己**（web 产品端）；全 A 日线行情包（tdx .day）是**全局公共资产**（`data/market/`，userId 层之外），导入归 **admin/运维侧**——2026-09-04 起 admin「系统 → 维护」页签可上传通达信 .zip 数据包（MD17：`POST /admin/market/tdx-import`，校验 + 原子解压，替代手工 scp）；`.agents/scripts/sync_tdx_data.sh` 保留作命令行途径（趋势 = 降频/半自动而非产品端加按钮）。**产品红线：app/web 永不出现行情数据导入**——个人记录 App 不该让用户理解 K 线数据源；行情成本不随用户数线性涨（一份 tdx + 网络源兜底，随用户涨的只有 LLM 调用）。
 14. **三条真源与锚点语义（RFC 20260912，2026-09-12 账实一致性批，本手册的口径基线）**：交易账本有三条真源，**必须分清谁是谁**——
     - **① 券商快照（锚点）**：持仓 `replace=true` 导入 / 资金股份查询导入落地的是**券商当下的真实状态**（已含此前全部成交与转账的结果），对应 `data/{userId}/trading/snapshot-anchor.json` `{positionsReplace, cashImport, recordedAt, holdingsRecorded, holdings[]}`（`holdingsRecorded=true` 表示基线**已记录**——与「记录为空」区分：未记录 → 对账报「无法判定」，空基线 → 合法的真空仓）——它同时是**锚定日**（`anchorDate` = 两日期较晚者）与**持仓基线**（`holdings`，`replace` 时记录；更新锚定日**保留**基线）。锚定日一律取**快照自身日期**（通达信文件名日期，`snapshotDate` 参数；不传退回导入日）——补导几天前的快照不能把锚定日写成今天。
     - **② 逐笔流水（File First，唯一成交真相源）**：`trading/trades/{yyyy-MM}.json`，所有成交无论是否参与回放都先落流水；手动记录 / 截图确认 / 历史成交导入 / 回放共用**同一套幂等判定**（orderId + 指纹双键，合并回填不新增行）。

@@ -97,7 +97,7 @@ com.adaiadai.core/
 
 ## 代码约定
 
-> 代码/文档/协作规范**唯一真相源**：`ai-engineering/assets/conventions.md`（本处只留指针）。
+> 代码/文档/协作规范**唯一真相源**：`.agents/assets/conventions.md`（本处只留指针）。
 
 - Java 17 / 注入 / 日志 / 异常 → 见 conventions.md C1-C8
 - **测试（adai-core 特有）**：Controller 层用 `@WebMvcTest` + MockBean，Service 层用纯单元测试

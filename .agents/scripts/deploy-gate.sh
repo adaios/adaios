@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# 部署门禁 + 部署后验证（触发侧：部署前强制 review，部署后自动 smoke）
+#
+# 用法:  bash .agents/scripts/deploy-gate.sh <服务器IP> <JAR路径>
+# 说明:  包装 services/adai-core/deploy.sh：
+#         GATE-BEFORE  部署前：guard 全量 + 增量 review（不过关拒绝部署）
+#         GATE-AFTER   部署后：自动 smoke（核心端点验证）
+# 设计:  部署是用户确认的动作（最不可绕过）→ 这是最硬的一道闸门
+# ─────────────────────────────────────────────────────────────
+set -u
+
+# 2026-09-24：先固定脚本自身目录再 cd（原先 cd 后用 dirname "$0"，从别处用相对路径调用会解析错），
+# 并载入「路径 → 发布单元」的唯一真相源（与 guard-release.sh / guard-prod.sh 共用）。
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+ROOT="$(pwd)"
+. "${SCRIPT_DIR}/lib/release-units.sh"
+SERVER="${1:-}"
+JAR="${2:-}"
+
+if [ -z "$SERVER" ] || [ -z "$JAR" ]; then
+    echo "用法: bash .agents/scripts/deploy-gate.sh <服务器IP> <JAR路径>"
+    exit 1
+fi
+
+echo "═══ 部署门禁（触发侧·最硬闸门）═══"
+
+# ── GATE-BEFORE：部署前检查（不过关拒绝部署）──
+echo ""
+echo "▸ GATE-BEFORE 1/3 结构门禁（guard-meta）..."
+bash .agents/guards/guard-meta.sh || { echo "❌ 结构门禁 FAIL——修复 frontmatter 后重试（禁止带 FAIL 部署）"; exit 1; }
+
+echo "▸ GATE-BEFORE 2/3 内容对齐（guard-align）..."
+bash .agents/guards/guard-align.sh || { echo "❌ 内容对齐 FAIL——同步 api-spec/status 后重试"; exit 1; }
+
+echo "▸ GATE-BEFORE 3/3 防复发（guard.sh G1-G7）..."
+# 2026-08-29 P2-A3 残留修复（对齐 .githooks/pre-commit 同款）：不再吞输出——
+# PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
+GUARD_OUT=$(bash docs/review/guard.sh 2>&1); GUARD_RC=$?
+if [ "$GUARD_RC" -ne 0 ]; then
+  if echo "$GUARD_OUT" | grep -qiE 'HIT'; then
+    echo "❌ 守护检查有 HIT（防 P0 复发），请确认非复发后修复："
+    echo "$GUARD_OUT" | grep -iE 'HIT|PASS' | sed 's/^/    /'
+    exit 1
+  else
+    echo "❌ 守护脚本自身出错（非 HIT，需排查 guard.sh）："
+    echo "$GUARD_OUT" | sed 's/^/    /'
+    exit 1
+  fi
+fi
+
+echo ""
+echo "▸ GATE-BEFORE 增量 review 提示："
+echo "  部署前建议跑一次增量深审（有未修项会在这暴露）："
+echo "    bash .agents/process/review.md  ← 流程文档（派官执行）"
+echo "  未修项真相源：docs/review/REVIEW.md"
+echo ""
+echo "✅ 部署前检查全部通过，开始部署..."
+
+# ── 执行部署（jar 转绝对路径，deploy.sh 内部 cd 到 adai-core 也能解析）──
+JAR_ABS="$(cd "$(dirname "$JAR")" 2>/dev/null && pwd)/$(basename "$JAR")"
+if [ ! -f "$JAR_ABS" ]; then
+    echo "❌ jar 不存在：$JAR_ABS"
+    exit 1
+fi
+echo "▸ 部署 jar：$JAR_ABS"
+
+# ── 发版清单（P2-工程9，2026-09-23）──
+# 每次部署都算一遍「本次应当更新哪些静态端」，随 DEPLOYED 落到生产，供每日巡检逐个核对。
+# 判据 = 生产 DEPLOYED 里上次部署的 commit → 本地 HEAD 之间被改动的路径。
+# 起因：巡检只比时间戳，分不清「本批没含这一端」与「这一端真的落后」——admin 自 09-17 起无改动、
+# 产物停在 09-17 却天天报红（告警疲劳）；而 09-23 app 侧改了（行情横幅）app-web 没重建、
+# 真落后 6 天，反倒被淹没。
+# 2026-09-24：路径映射抽到 .agents/lib/release-units.sh（唯一真相源）——原先这里只认
+# web/admin、iOS 端无处可加；发布前想知道「现在欠什么」请直接跑 `bash .agents/guards/guard-release.sh`。
+# app-web 已冻结（2026-09-23 用户拍板「手机端只认 iOS 原生 App」，/m/ 在 Caddy 侧改为指路页），
+# 故改 apps/adai-app/ 推出的是 iOS 包（走 TestFlight），不再推 app-web。
+LAST_SHA=$(ssh "ubuntu@${SERVER}" "sudo grep '^commit=' /opt/adaios/backend/DEPLOYED 2>/dev/null | cut -d= -f2" 2>/dev/null | tr -d '\r\n')
+if [ -n "$LAST_SHA" ] && git cat-file -e "${LAST_SHA}^{commit}" 2>/dev/null; then
+    TOUCHED="$(git diff --name-only "$LAST_SHA"..HEAD 2>/dev/null | ru_deploy_artifacts_from_paths)"
+    echo "▸ 发版清单：artifacts=${TOUCHED}（据 ${LAST_SHA:0:7}..HEAD 的改动路径；映射规则 .agents/lib/release-units.sh）"
+else
+    TOUCHED="backend"
+    echo "▸ 发版清单：拿不到上次部署 commit（${LAST_SHA:-空}）→ 保守只声明 backend"
+fi
+export ADAI_RELEASE_ARTIFACTS="$TOUCHED"
+
+(cd services/adai-core && ./deploy.sh "$SERVER" "$JAR_ABS")
+DEPLOY_OK=$?
+if [ $DEPLOY_OK -ne 0 ]; then
+    echo "❌ 部署失败（deploy.sh exit ${DEPLOY_OK}）"
+    exit 1
+fi
+
+# ── GATE-AFTER：部署后自动 smoke ──
+echo ""
+echo "▸ GATE-AFTER 部署后验证（smoke）..."
+sleep 10
+# 2026-09-15 端口收敛：生产 8080/8082/8083/8084 已绑回环（不再对公网明文开放），
+# smoke 改走真实生产入口（Caddy + HTTPS），顺带把反代链路也验证在内。
+# 本机默认挂 HTTP_PROXY（127.0.0.1:1087）会拦裸 IP 请求，故先把生产域名排除在代理外。
+export no_proxy="api.adaiadai.com,${no_proxy:-}"
+export NO_PROXY="$no_proxy"
+BASE="${ADAI_GATE_BASE_URL:-https://api.adaiadai.com}"
+FAILED=0
+
+# RFC 20260901-auth-login（根治 #179）：smoke 必须先登录拿 token，
+# 不再用零鉴权 X-User-Id 裸打（REVIEW P1-A4：原 smoke 用零鉴权漏洞验证部署）。
+# REVIEW #178（2026-09-02）：ADAI_ADMIN_TOKEN 退役——smoke 走统一登录，
+# 从 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD 读账号密码（系统内已设密码的账号；
+# 若 smoke 需打 /admin、/accounts 端点则必须是 admin 账号）。（deploy 前手动设置，或跳过登录失败即 FAILED）。
+# 2026-09-16：凭据优先从 services/adai-core/.env 取（该文件已 gitignore，密钥不落 git）。
+# 原先只认环境变量——没人 export 时 smoke 直接 FAIL（2026-09-16 部署实测就是这么卡住的，
+# 当时只能手动登录补跑）。只提取这两行、**不 source 整个 .env**（避免引入无关变量或语法地雷）。
+if [ -z "${ADAI_SMOKE_PASSWORD:-}" ] && [ -f services/adai-core/.env ]; then
+    ADAI_SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-$(grep '^ADAI_SMOKE_ACCOUNT=' services/adai-core/.env | head -1 | cut -d= -f2-)}"
+    ADAI_SMOKE_PASSWORD="$(grep '^ADAI_SMOKE_PASSWORD=' services/adai-core/.env | head -1 | cut -d= -f2-)"
+fi
+SMOKE_ACCOUNT="${ADAI_SMOKE_ACCOUNT:-adai}"
+SMOKE_PASSWORD="${ADAI_SMOKE_PASSWORD:-}"
+TOKEN=""
+if [ -n "$SMOKE_PASSWORD" ]; then
+    TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"account\":\"$SMOKE_ACCOUNT\",\"password\":\"$SMOKE_PASSWORD\"}" 2>/dev/null \
+        | grep -oE '"token":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+fi
+if [ -z "$TOKEN" ]; then
+    echo "❌ smoke 前置失败：无法获取登录 token（需设置 ADAI_SMOKE_ACCOUNT/ADAI_SMOKE_PASSWORD）"
+    exit 1
+fi
+
+check() {
+    local desc="$1" method="$2" path="$3" expect="$4"
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$BASE$path" \
+        -H "Authorization: Bearer $TOKEN" 2>/dev/null)
+    if [ "$code" = "$expect" ]; then
+        echo "  ✅ $desc → $code"
+    else
+        echo "  ❌ $desc → ${code}（期望 ${expect}）"
+        FAILED=1
+    fi
+}
+
+check "feed 核心链路"   GET  "/api/v1/feed"                  200
+check "记忆查询"        GET  "/api/v1/memory?date=2026-08-16" 200
+check "交易建议引擎"    POST "/api/v1/trading/advice"         200
+check "一句话解析"      POST "/api/v1/trading/trades/parse"   200
+check "时间线"          GET  "/api/v1/timeline"               200
+check "标签统计"        GET  "/api/v1/tags"                   200
+
+# ── GATE-AFTER 领域自检：防重型机制（2026-09-12 账实一致性批）──
+# 教训：锚定防重（P2-交易34）代码上线了，但生产 snapshot-anchor.json 根本不存在 →
+# 机制静默 fail-open，导入把已含在快照里的成交重放一遍（现金被推到 −2.67 万），三天后靠人肉眼发现。
+# 因此凡「防重型机制」上线，部署后必须自检**它在线上真的在工作**（存在性 + 口径可见），
+# 不能只看接口 200。任一 probe 失败 → 与 smoke 同样计失败（部署不算成功）。
+probe() {
+    local desc="$1" method="$2" path="$3" body="$4" needle="$5"
+    local out
+    if [ -n "$body" ]; then
+        out=$(curl -s -X "$method" "$BASE$path" -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" -d "$body" 2>/dev/null)
+    else
+        out=$(curl -s -X "$method" "$BASE$path" -H "Authorization: Bearer $TOKEN" 2>/dev/null)
+    fi
+    if echo "$out" | grep -qE "$needle"; then
+        echo "  ✅ $desc → 自检通过"
+    else
+        echo "  ❌ $desc → 自检失败（期望响应含 ${needle}）"
+        echo "     实际：$(echo "$out" | head -c 300)"
+        FAILED=1
+    fi
+}
+
+# 1) 账实一致性口径上线（新端点存在 + 契约字段在）
+probe "账实一致性自检端点"   GET "/api/v1/trading/integrity" "" '"holdingsKnown"'
+# 2) 锚定状态可查（GET /trading/anchor 是锚定机制的可见性出口）
+probe "券商快照锚定状态端点" GET "/api/v1/trading/anchor"     "" '"known"'
+# 3) 历史成交导入契约（rejected/anchor 字段在场，且锚定缺失时是 fail-closed 而非静默重放）
+probe "导入 fail-visible 契约" POST "/api/v1/trading/trades/import" '{"content":""}' 'rejected|anchor|无法识别'
+
+# 提示（不判失败）：锚定缺失先提示用户动作，而不是自动改账
+ANCHOR_JSON=$(curl -s "$BASE/api/v1/trading/anchor" -H "Authorization: Bearer $TOKEN" 2>/dev/null)
+if echo "$ANCHOR_JSON" | grep -q '"known":false'; then
+    echo "  ⚠️  券商快照锚定缺失（known=false）：需要改账的历史成交导入会被拒绝——请先在交易页导一次"
+    echo "     「持仓股 / 资金股份查询」快照建立锚定（或显式用「仅补流水」模式）"
+fi
+
+if [ $FAILED -eq 1 ]; then
+    echo "❌ 部署后 smoke 有失败项——请检查后端日志"
+    exit 1
+fi
+echo "✅ 部署后 smoke 全部通过——部署完成且验证 OK"
+
+# ── 发布锚点提示（2026-10-01 加：补上真相链最后一环「发布 → tag」）──
+# 背景：生产已部署十余次而仓库长期只有 1 个 tag（v1.0.0）——「生产跑的是哪一版、源码在哪」
+# 此前只能靠生产 DEPLOYED 文件反推 commit。tag 是**本地动作**；推送是外向动作，由人决定（B8）。
+# 2026-10-01 对抗审查补正：锚点必须打在**构建这个 jar 的 commit** 上——手册 §八 的干净构建用法
+# 是「在 detached worktree 里构建」，此时主仓库 HEAD 可能不是它。故部署后重读生产 DEPLOYED
+# 与本地 HEAD 对照，不一致就显式警告（否则这段提示本身会把真相链锚错点）。
+RELEASE_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+RELEASE_DATE=$(date +%Y-%m-%d)
+DIRTY_N=$(git status --porcelain | wc -l | tr -d ' ')
+DEPLOYED_SHA=$(ssh "ubuntu@${SERVER}" "sudo grep '^commit=' /opt/adaios/backend/DEPLOYED 2>/dev/null | cut -d= -f2" 2>/dev/null | tr -d '\r\n')
+echo ""
+echo "▸ 发布锚点（真相链：发布 → tag）"
+echo "  主仓库 HEAD：${RELEASE_SHA}（${RELEASE_DATE}）"
+if [ -n "${DEPLOYED_SHA}" ] && [ "${DEPLOYED_SHA:0:7}" != "${RELEASE_SHA}" ]; then
+    echo "  生产 DEPLOYED：${DEPLOYED_SHA:0:7} ← **与本地 HEAD 不一致**"
+    echo "  ⚠️  这个 jar 不是从当前 HEAD 构建的（例如从 detached worktree 构建）——"
+    echo "     tag 要打在实际构建它的那个 commit 上，否则锚点会锚错。"
+elif [ -n "${DEPLOYED_SHA}" ]; then
+    echo "  生产 DEPLOYED：${DEPLOYED_SHA:0:7}（与本地 HEAD 一致 ✓）"
+fi
+if [ "${DIRTY_N}" -gt 0 ]; then
+    echo "  ⚠️  工作区仍有 ${DIRTY_N} 个未提交改动——tag 只锚定 commit，不含这些内容"
+fi
+echo "  建议现在打个锚点（本地动作；推送由你决定）："
+echo "      git tag -a \"v<版本号>\" -m \"部署 v<版本号> · ${RELEASE_DATE} · ${RELEASE_SHA}\""
+echo "      git push origin \"v<版本号>\"     # 外向动作，需你确认（边界 B8）"
+echo "  版本号以 docs/reference/status.md「生产当前版本」为准（如 v3.93）"

@@ -13,7 +13,7 @@ related:
   - ./worktree-workflow.md
   - ./qoder-parallel-workflow.md
   - ./development.md
-  - ../../ai-engineering/process/ship.md
+  - ../../.agents/process/ship.md
 tags: [guide, git, workflow, release]
 ---
 
@@ -98,9 +98,9 @@ tags: [guide, git, workflow, release]
 
 ```bash
 # 1) 只判定（不部署）：欠什么、要发哪几端
-bash ai-engineering/cadence.sh release
+bash .agents/scripts/cadence.sh release
 # 2) 你点头后 —— 门禁 + 部署 + smoke
-bash ai-engineering/deploy-gate.sh
+bash .agents/scripts/deploy-gate.sh
 # 3) 部署成功后 —— 打 tag 并推送
 git tag -a v3.95 -m "第二十一次部署：<一句话>"
 git push origin v3.95
@@ -128,9 +128,9 @@ git push origin v3.95
 开发（main 或 worktree 分支）
   ↓ 提交：显式路径 + ADAI_BATCH_PATHS + pre-commit 多层门禁
   ↓ 推送：随收工一并同意              ← 本规范新增的默认动作（此前常积压）
-收工：bash ai-engineering/cadence.sh ship   （diff + 快照 + 成本入账 + 提交）
-发布：bash ai-engineering/cadence.sh release （只判定）→ 你点头
-      → bash ai-engineering/deploy-gate.sh  （门禁 + 部署 + smoke）
+收工：bash .agents/scripts/cadence.sh ship   （diff + 快照 + 成本入账 + 提交）
+发布：bash .agents/scripts/cadence.sh release （只判定）→ 你点头
+      → bash .agents/scripts/deploy-gate.sh  （门禁 + 部署 + smoke）
   ↓ 部署成功
 打 tag + GitHub Release（tag ＝ 生产那个 commit）
 ```

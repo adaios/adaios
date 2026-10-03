@@ -9,8 +9,8 @@ lines: 324
 depends-on: []
 related:
   - ../REVIEW.md
-  - ../../../ai-engineering/roles/adversarial-reviewer.md
-  - ../../../ai-engineering/assets/pitfalls.md
+  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/assets/pitfalls.md
 tags: [review, adversarial, audit]
 ---
 
@@ -18,7 +18,7 @@ tags: [review, adversarial, audit]
 
 > **性质**：只读对抗审查（B7）。**未改任何代码/文档**，本文件是唯一新增文件。
 > **范围**：`git diff d060841..HEAD` = 51 文件 / 3 提交（`3dadfd9` 晚间批 · `42dc0b5` 深夜第二批 · `bc6656b` 午间谷时任务壳〔他会话〕）。
-> **方法**：先读角色卡 `ai-engineering/roles/adversarial-reviewer.md` → `assets/pitfalls.md`（复发信号表）→ `assets/boundaries.md` → `AGENTS.md`；再按「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三向攻击，**能写出触发条件的排在前面**。
+> **方法**：先读角色卡 `.agents/roles/adversarial-reviewer.md` → `assets/pitfalls.md`（复发信号表）→ `assets/boundaries.md` → `AGENTS.md`；再按「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三向攻击，**能写出触发条件的排在前面**。
 > **基线**：`docs/reference/status.md` 快照（后端 1939 / app 359 / web 302 / 端点 154）。
 > **⚠️ 阅读约定**：本文只报告，不代表已批准修复；每条附可复核命令或文件:行。
 
@@ -168,14 +168,14 @@ tags: [review, adversarial, audit]
 ### P1-4　「禁 `git add -A`」到现在仍是零机制
 
 **证据**
-- `ai-engineering/process/ship.md` 只加了一段**说明文字**（「收尾一律按路径显式暂存」+「提交前 `git status --porcelain` 复核」，并明写依靠**人工复核**）。
+- `.agents/process/ship.md` 只加了一段**说明文字**（「收尾一律按路径显式暂存」+「提交前 `git status --porcelain` 复核」，并明写依靠**人工复核**）。
 - 仓库实际生效的门禁是 `.githooks/pre-commit`（`core.hooksPath=.githooks`）：它查隐私（data/ 前缀、gitignore 复核）→ guard-align → guard-meta → guard.sh → shell-lint（`guard-tools.sh --shell-lint`）→ guard-sediment（软提示）。**没有任何一层**检查「暂存区是否含本批声明之外的路径」，也没有「干净工作区」检查。
 - 该条目在 `REVIEW.md` 里原状态是「⚠️ 待用户拍板是否写进 ship 流程为硬规则」；本批把**文档**写了，**拍板与机制都还是没有**。
 
 **后果**：下一次并发会话（本仓已知会发生，pitfalls 十「同仓库并发会话收尾」登记过真实事故）复现的概率不变——只是这次规范里多了一句话，而失效环节恰恰是「人记得照做」。
 
 **建议下一步验证动作**
-- 反证：`grep -rn "add -A\|ship-scope\|暂存" .githooks/ ai-engineering/guard-tools.sh` → 预期 0 命中机制代码。
+- 反证：`grep -rn "add -A\|ship-scope\|暂存" .githooks/ .agents/guards/guard-tools.sh` → 预期 0 命中机制代码。
 - 机制方向（成本很低）：提交信息里声明 `本批路径：a/ b/`（或写 `.git/ship-scope`），pre-commit 用 `git diff --cached --name-only` 对照声明前缀，越界就拒（或 `⚠️` + 要求确认）。这是本仓既有风格（guard.sh G8/G9 都是这种「枚举 + 反例验证」的机械守卫）。
 
 ---

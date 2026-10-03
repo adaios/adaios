@@ -7,10 +7,10 @@ updated: 2026-08-24
 status: active
 lines: 83
 depends-on:
-  - ../../../ai-engineering/process/review.md
+  - ../../../.agents/process/review.md
 related:
   - ../../review/REVIEW.md
-  - ../../../ai-engineering/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/adversarial-reviewer.md
 tags: [review, audit, ai-governance, design]
 ---
 

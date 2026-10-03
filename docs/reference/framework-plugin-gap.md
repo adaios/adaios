@@ -42,7 +42,7 @@ tags: [reference, plugin, framework, gap]
 | G-1 | **行情服务跟插件走** | ✅ 已拨正 | `kernel/market` → `domain/trading/market/`（git mv 保留历史），消费侧本就全门控 | 低 ✅ |
 | G-2 | **插件隔离补漏** | ✅ 已补漏 | 交易**读端点**（positions/portfolio/trades/review/reviews）补 `requireTradingPlugin(403)`（has-activity 保留产品路径）；`BriefAppService` 交易活动信号只注入 trading 插件用户 | 低 ✅ |
 | G-3 | **交易插件 jar 化（能力抽离）** | ✅ 已抽离 | 新建 `domain/trading/engine/`：`TradingRuleEngine` 接口（evaluateStopLoss R66 / evaluatePosition R81 / matchRules）+ `DefaultTradingRuleEngine`；`TradingAdviceAppService` 改调用，硬判定信号进 prompt；规格真相源 `os/trading-engine/engine/rules-api.md` | 中 ✅ |
-| G-4 | **知识层内聚** | ✅ 已内聚 | `11-context/` → `knowledge/context/`（git mv）；中间层 01-10 **文档化归档**（不物理搬移——物理搬移会破坏 Step 1-5 流水线，违反 os/ 独立性）；`09-scripts/update-current.sh` 半自动刷新 current.md（择时停更修复）；Java/文档全引用同步 | 低 ✅ |
+| G-4 | **知识层内聚** | ✅ 已内聚 | `11-context/` → `knowledge/context/`（git mv）；中间层 01-10 **文档化归档**（不物理搬移——物理搬移会破坏 Step 1-5 流水线，违反 os/ 独立性）；`09-.agents/scripts/update-current.sh` 半自动刷新 current.md（择时停更修复）；Java/文档全引用同步 | 低 ✅ |
 | G-5 | **Agent 独立形态** | ✅ 样板就绪 | `os/trading-engine/engine/`（能力层规格）+ `output/agent-skill.md`（Skill 包，Coze/Dify 可导入）+ `output/mcp-server.md`（MCP 资源/工具映射，FastMCP 指引）——新增不动现有 | 低 ✅ |
 | G-6 | **多用户组合验证** | ✅ 测试就绪 | 补：无插件用户交易读/写端点 403（5 读+4 写）、`marketContext_gatedByTradingPlugin`（行情注入按插件门控）、既有知识注入/D5/Feed 门控测试全绿 | 低 ✅ |
 

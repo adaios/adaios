@@ -12,7 +12,7 @@ related:
   - ./git-workflow.md
   - ./worktree-workflow.md
   - ./development.md
-  - ../../ai-engineering/assets/ai-context-layer-spec.md
+  - ../../.agents/assets/ai-context-layer-spec.md
 tags: [guide, git, workflow, ai-tooling, context]
 ---
 
@@ -28,9 +28,9 @@ tags: [guide, git, workflow, ai-tooling, context]
 
 | 层 | 资产 | 位置 |
 |:--|:--|:--|
-| **工具层**（机制）| 技能 | `ai-engineering/skills/<name>/SKILL.md` |
-| | 审查官（subagent 源）| `ai-engineering/roles/<name>.md` |
-| | 守卫 / 执行器 | `ai-engineering/guard-*.sh` · `cadence.sh` · `scripts/*.sh` |
+| **工具层**（机制）| 技能 | `.agents/skills/<name>/SKILL.md` |
+| | 审查官（subagent 源）| `.agents/roles/<name>.md` |
+| | 守卫 / 执行器 | `.agents/guards/guard-*.sh` · `cadence.sh` · `scripts/*.sh` |
 | | 契约与规范 | `frontmatter-spec.md` · `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` |
 | **业务层**（内容）| 约定 / 边界 / 坑 | `assets/conventions.md` · `boundaries.md` · `pitfalls.md` |
 | | 决策 | `assets/adr/*.md` · `docs/rfc/*.md` |
@@ -45,8 +45,8 @@ tags: [guide, git, workflow, ai-tooling, context]
 
 | 项 | 为什么不在 git | 怎么重建 |
 |:--|:--|:--|
-| **出口**（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*`）| 软链 / 生成物，机器相关 | `bash scripts/worktree-prep.sh`（内含 `link-skills.sh` + `sync-agents.sh`）|
-| **`ai-engineering/state/`**（游标 / 成本账 / 心跳缓存）| 本机账本，**必须全局唯一** | `worktree-prep.sh` **恒 link 主仓库** |
+| **出口**（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*`）| 软链 / 生成物，机器相关 | `bash .agents/scripts/worktree-prep.sh`（内含 `link-skills.sh` + `sync-agents.sh`）|
+| **`.agents/state/`**（游标 / 成本账 / 心跳缓存）| 本机账本，**必须全局唯一** | `worktree-prep.sh` **恒 link 主仓库** |
 | **`AGENTS.local.md`**（开工快照）| 本机缓存，机器生成 | 同上恒 link；主仓库可 `guard-context.sh --write-local` 刷新 |
 
 ### 1.3 统一流程：一次改动怎么走、怎么传给别的分支
@@ -82,33 +82,33 @@ main ─────────────────────────
 
 ```bash
 git worktree add ../adaios-<任务> -b feat/<任务> main
-cd ../adaios-<任务> && bash scripts/worktree-prep.sh
-bash scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 缺失
+cd ../adaios-<任务> && bash .agents/scripts/worktree-prep.sh
+bash .agents/scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 缺失
 ```
 
 之后**在该目录开会话**——技能与审查官**跟着这条分支走**（出口指向本 worktree 的真相源）。
 
 ## 三、在分支上建 AI 资产（四类，各有硬约束）
 
-### 3.1 新技能（`ai-engineering/skills/<name>/SKILL.md`）
+### 3.1 新技能（`.agents/skills/<name>/SKILL.md`）
 
 - **必须目录布局**（`<name>/SKILL.md`）——官方 Agent Skills 规范；`guard-skills` 的 S3 会查 `name` 等于**父目录名**
 - **五段结构**：触发条件 / 执行步骤 / 约束与规则 / 输出要求 / 参考资料（S5）
 - `description` 1–1024（S4）
-- **注册**：若属"**用户直触发**"→ 把 `<name>` 加进 `scripts/link-skills.sh` 的 `REGISTER`，跑该脚本
+- **注册**：若属"**用户直触发**"→ 把 `<name>` 加进 `.agents/scripts/link-skills.sh` 的 `REGISTER`，跑该脚本
 - ⚠️ **成本纪律**：**只注册直触发**的技能——其余常驻 catalog 要花钱，还可能被误触发
 
-### 3.2 新审查官（`ai-engineering/roles/<name>.md`）
+### 3.2 新审查官（`.agents/roles/<name>.md`）
 
 - **保持扁平**，**刻意不目录化**（理由：不进技能出口；目录化要付 44 处引用的代价而零收益——见 `ai-context-layer-spec.md` §三）
 - 五段结构（同技能）
-- **要能在工具里派** → 把 `<name>` 加进 `scripts/sync-agents.sh` 的 `REGISTER`，跑该脚本
+- **要能在工具里派** → 把 `<name>` 加进 `.agents/scripts/sync-agents.sh` 的 `REGISTER`，跑该脚本
 - ⚠️ **预算线（2026-10-03 修正参照系）**：真正卡人的是 **skill listing 预算 ≈ context window 的 1%**（Agent Skills 官方），**溢出会丢弃部分 description ⇒ 越多触发越不准**。此前按 Claude Code 的 15k 告警线判断，是**用错了参照系**（见 `ai-context-layer-spec.md` §十一）。**新增审查官前先问：它会不会被真的调用？**（2026-10-03 实测：11/12 零读取）
 
-### 3.3 新规范 / 资产（`ai-engineering/assets/*`）
+### 3.3 新规范 / 资产（`.agents/assets/*`）
 
 - frontmatter **10 字段**（`guard-meta` 查）
-- **登记进 `ai-engineering/_index.md`**（否则报 **M3 孤儿**）
+- **登记进 `.agents/_index.md`**（否则报 **M3 孤儿**）
 - 文档内引用用**相对本文件**的路径（`guard-meta` **M1** 查断链）
 
 ### 3.4 接一个新工具
@@ -120,10 +120,10 @@ bash scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 缺失
 
 | 文件 | 冲突形态 | 怎么合 |
 |:--|:--|:--|
-| **`scripts/link-skills.sh` 的 `REGISTER`** | ⚠️ **两条线各加技能名** | **取并集**（顺序无关，别二选一）|
-| **`scripts/sync-agents.sh` 的 `REGISTER`** | 同上（审查官名）| **取并集** |
-| `ai-engineering/_index.md` | 各加行 | 手工合 |
-| `ai-engineering/assets/*`（规范）| 同文件不同段落 | 先合一条，另一条 rebase 后调整 |
+| **`.agents/scripts/link-skills.sh` 的 `REGISTER`** | ⚠️ **两条线各加技能名** | **取并集**（顺序无关，别二选一）|
+| **`.agents/scripts/sync-agents.sh` 的 `REGISTER`** | 同上（审查官名）| **取并集** |
+| `.agents/_index.md` | 各加行 | 手工合 |
+| `.agents/assets/*`（规范）| 同文件不同段落 | 先合一条，另一条 rebase 后调整 |
 | `.gitignore`（出口忽略规则）| 各加规则 | 手工合（注意**锚定根** `/skills/` 那类坑，见 pitfalls 二十三）|
 | `AGENTS.md` 审查体系表 | 各加行 | 手工合 |
 | `change-log` / `REVIEW` / `status` / 两个 `_index` | 共享账本 | 见 `git-workflow.md` §五（顺序合并 + 门禁兜底）|
@@ -137,21 +137,21 @@ bash scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 缺失
 3. **不在分支上跑巡检 / 收工 / 发布**——同上（`daily`/`weekly`/`release` 会警告）
 4. **不把 `data/` 内容带进分支**（边界 B3；隐私闸门会挡）
 5. **不绕范围守卫**（`git add -A`）——分支有独立 index，但纪律不变
-6. **不动 `ai-engineering/state/`**——那是本机账本（游标与成本账）
+6. **不动 `.agents/state/`**——那是本机账本（游标与成本账）
 
 ## 六、自检顺序（分支上）
 
 ```bash
 # 开工
-bash scripts/worktree-prep.sh --check           # 外挂 + 出口：24 项齐备
-bash ai-engineering/guard-context.sh            # 上下文基线（可加 --topic 过滤）
+bash .agents/scripts/worktree-prep.sh --check           # 外挂 + 出口：24 项齐备
+bash .agents/guards/guard-context.sh            # 上下文基线（可加 --topic 过滤）
 # 改了 AI 资产之后
-bash ai-engineering/guard-skills.sh             # 技能包合规（S3/S4/S5/S7）
-bash scripts/link-skills.sh --check             # 技能出口齐不齐
-bash scripts/sync-agents.sh --check             # 子代理生成物新不新
-bash ai-engineering/guard-tools.sh              # 工具接入自检（含 T4 出口真身）
+bash .agents/guards/guard-skills.sh             # 技能包合规（S3/S4/S5/S7）
+bash .agents/scripts/link-skills.sh --check             # 技能出口齐不齐
+bash .agents/scripts/sync-agents.sh --check             # 子代理生成物新不新
+bash .agents/guards/guard-tools.sh              # 工具接入自检（含 T4 出口真身）
 # 提交前（pre-commit 会自动跑大部分）
-bash ai-engineering/cadence.sh check            # 交付门禁一键
+bash .agents/scripts/cadence.sh check            # 交付门禁一键
 ```
 
 **收工回主仓库**跑 `cadence.sh ship`——**分支上只能提交，不能收工**（守卫会拒）。
@@ -162,10 +162,10 @@ bash ai-engineering/cadence.sh check            # 交付门禁一键
 
 ```bash
 cd <主仓库>
-bash scripts/link-skills.sh           # 新技能进 4 个出口
-bash scripts/sync-agents.sh           # 新审查官进 subagent 定义
-bash ai-engineering/guard-tools.sh    # T4 验证出口真身（会抓出过期出口）
-bash ai-engineering/cadence.sh check  # 全门禁
+bash .agents/scripts/link-skills.sh           # 新技能进 4 个出口
+bash .agents/scripts/sync-agents.sh           # 新审查官进 subagent 定义
+bash .agents/guards/guard-tools.sh    # T4 验证出口真身（会抓出过期出口）
+bash .agents/scripts/cadence.sh check  # 全门禁
 ```
 
 **这是最容易漏的一步**——真相源合了，工具里却看不到新资产（"我明明加了技能，怎么没有？"）。

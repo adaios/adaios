@@ -7,7 +7,7 @@ updated: 2026-08-20
 status: active
 lines: 135
 depends-on:
-  - ../../../ai-engineering/process/audit.md
+  - ../../../.agents/process/audit.md
 related:
   - ../../review/REVIEW.md
   - ../../reference/task-log.md

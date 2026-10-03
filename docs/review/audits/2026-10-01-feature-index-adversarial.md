@@ -10,15 +10,15 @@ depends-on: []
 related:
   - ../REVIEW.md
   - ../../features/_index.md
-  - ../../../ai-engineering/roles/adversarial-reviewer.md
-  - ../../../ai-engineering/guard-feature.sh
+  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/guards/guard-feature.sh
 tags: [review, adversarial, audit, feature-index]
 ---
 
 # 对抗审查：功能索引层 + guard-feature 守卫（2026-10-01）
 
 > **性质**：只读对抗审查（B7）。**未改仓库任何文件**，夹具全部在 `/tmp/ffx`。
-> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`docs/features/_index.md` · `kernel.md` · `ai-engineering/guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
+> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`docs/features/_index.md` · `kernel.md` · `.agents/guards/guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
 > **外部信号（试点要求）**：审查官**自行运行**正例、自造 23 个夹具跑 `--root` 反例、独立复算 37 条链接、抽查 5 行出处真实性、实测守卫耗时——不是纸上审查。
 > **冻结快照**：`guard-feature.sh` md5 `4636c806…`（169 行）· `_index.md` `956a24fc…` · `kernel.md` `3a399354…` · RFC `bf970d6b…` · `pre-commit` `53ee3307…`（审查期间作者仍在改这些文件，属并发写，见 C8）。
 
@@ -40,7 +40,7 @@ tags: [review, adversarial, audit, feature-index]
 | B1 | P2 | **F6 子串匹配假绿**：REVIEW 只有 `P2-测试11`，索引写 `P2-测试1` → PASS | ✅ **已修**：改词边界正则 `re.escape(i)+(?![0-9A-Za-z])`；回归样本进 `tests/guard-feature-fixture.py` |
 | B2 | P2 | **F5 对新 RFC 两处静默跳过**：删掉 `date:` 字段、或 description 把 `date:` 顶到 900 字符之后 → 逃过 status 枚举 | ✅ **已修**：frontmatter 改按「第二个 `---`」解析（不用字符窗口）；**缺 date 一律按新文件强制**（先核实：存量 65 篇 RFC 全部有 date，故无误伤） |
 | B3 | P2 | **F2 把带锚点的合法链接误报死链**，而 RFC §3.1 恰好要求锚点链接 | ✅ **已修**：先剥 `#anchor` 再判文件存在 |
-| B4 | P2 | **卡文件不在 guard-meta 覆盖内** → 批 1 的「guard-meta PASS」是覆盖盲区假绿（`kernel.md` lines 声明 30 / 实际 27 无人管）| ✅ **已修**：`guard-meta.sh` 补 `docs/features`（rglob）+ `ai-engineering/tests` 两个 glob——**修完立刻 FAIL 3 条**（lines 2 处 + 孤儿 1 处），全部处置 |
+| B4 | P2 | **卡文件不在 guard-meta 覆盖内** → 批 1 的「guard-meta PASS」是覆盖盲区假绿（`kernel.md` lines 声明 30 / 实际 27 无人管）| ✅ **已修**：`guard-meta.sh` 补 `docs/features`（rglob）+ `.agents/tests` 两个 glob——**修完立刻 FAIL 3 条**（lines 2 处 + 孤儿 1 处），全部处置 |
 | B5 | P2 | **子目录卡文件全部漏检**（`FEAT.glob` 非递归）| ✅ **已修**：索引与卡扫描改 `rglob` |
 | B6 | P2 | **§七.5 验收条款与本仓实际相反**：「抽查 5 个 bug 修复提交零新增文档负担」，实测近 12 提交 10 个含 md | ✅ **已修**：RFC §七 第 5 条改口径为「**不新增索引行 / 卡**」，而非「无 md 变更」 |
 | C1 | P3 | 「6 处引用」数字不准（实为 **6 个文件 / 12 处**）| ✅ **已修**：索引两处 + RFC §十 全部改「6 个文件 / 12 处」 |

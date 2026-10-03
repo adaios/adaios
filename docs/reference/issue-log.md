@@ -1,6 +1,6 @@
 # 问题修复文档（Issue Log）
 
-> ⚠️ **已归档（2026-08-23）**：本文件不再作为问题跟踪真相源——07 月底~08 月中问题已全部进 REVIEW/task-log 滚动区，此处内容为历史存档（只读，不新增）。未修项真相源 = `docs/review/REVIEW.md`（战略/P0-P2）+ `docs/reference/task-log.md`（P3/可排期）；聚合查询 `bash ai-engineering/guard-unfixed.sh`。违反 SSOT（P2-2，状态层审查 2026-08-23）。
+> ⚠️ **已归档（2026-08-23）**：本文件不再作为问题跟踪真相源——07 月底~08 月中问题已全部进 REVIEW/task-log 滚动区，此处内容为历史存档（只读，不新增）。未修项真相源 = `docs/review/REVIEW.md`（战略/P0-P2）+ `docs/reference/task-log.md`（P3/可排期）；聚合查询 `bash .agents/guards/guard-unfixed.sh`。违反 SSOT（P2-2，状态层审查 2026-08-23）。
 >
 > **定位（历史）：** 按功能模块组织的问题跟踪。对照 `feature-reference.md` 使用。
 > **格式：** 每个问题标注所属模块、现象、根因（区分本质类型）、修复方案、当前状态。

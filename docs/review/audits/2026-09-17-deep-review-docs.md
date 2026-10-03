@@ -15,7 +15,7 @@ tags: [review, docs, audit, api-spec, honesty]
 
 # 文档契约深审：晚间批 + 深夜第二批
 
-> 角色：docs-reviewer（`ai-engineering/roles/docs-reviewer.md`）· 性质：**只读审查**（B7，未改任何代码/文档）
+> 角色：docs-reviewer（`.agents/roles/docs-reviewer.md`）· 性质：**只读审查**（B7，未改任何代码/文档）
 > 范围：`git diff d060841..HEAD` 的**文档类改动**，主目标 `3dadfd9`（晚间批）与 `42dc0b5`（深夜第二批）。
 > `bc6656b`（另一会话）不在范围内，发现的问题单列于 §四。
 
@@ -25,7 +25,7 @@ tags: [review, docs, audit, api-spec, honesty]
 |:---|:---|
 | 基线 | `d060841`（2026-09-16，「把本批 8 项标为已修」） |
 | 审查对象 | `3dadfd9`（晚间批）+ `42dc0b5`（深夜第二批）的文档改动 |
-| 文件清单 | `docs/architecture/api-spec.md` · `docs/reference/{status,change-log,task-log}.md` · `docs/review/REVIEW.md` · `docs/releases/v1.0.0.md` · `ai-engineering/process/{audit,review,ship}.md` · `ai-engineering/guard-prod.sh` |
+| 文件清单 | `docs/architecture/api-spec.md` · `docs/reference/{status,change-log,task-log}.md` · `docs/review/REVIEW.md` · `docs/releases/v1.0.0.md` · `.agents/process/{audit,review,ship}.md` · `.agents/guards/guard-prod.sh` |
 | 自动化门禁复核 | `guard-align.sh` **PASS**（A1 154 端点全登记；A2 后端 1939 / app 359 / admin 69 / web 302）· `guard-meta.sh` 审查开始时 **PASS**（143 文件）—— 均为独立重跑，非引用批次声明。⚠️ 三段报告落盘后 guard-meta 变 **3 FAIL**（M3 孤儿），见 P2-6 |
 | 代码真相源对拍 | `LearnController` / `LearnCardFileRepository` / `AuthController` / `ApiTokenService` / `AccountController` / `TradingAppService` / `ApnsPushChannel` / `LocalFileStorage` / `GlobalExceptionHandler` 直接读源码 |
 
@@ -127,7 +127,7 @@ tags: [review, docs, audit, api-spec, honesty]
 ### P2-6 · 同日三份审查报告未登记 → `guard-meta` M3「孤儿」实测 FAIL（本轮审查自身引入，**非**两个 commit 造成）
 
 - **位置**：`docs/review/_index.md`（audits 清单表，:24 起）；涉及本文件与同日同轮其它审查报告（`docs/review/audits/2026-09-17-deep-review-*.md`——文件名随各会话产出变动，本次两次实测分别出现 backend/adversarial 与 adversarial/frontend）
-- **证据**：审查开始时 `bash ai-engineering/guard-meta.sh` → `PASS (143 files)`；三段报告落盘后重跑 → **`META-GUARD: 3 FAIL`**，三条均为 `M3 …: 孤儿（无引用且不在 _index 清单）`（含本文件）。
+- **证据**：审查开始时 `bash .agents/guards/guard-meta.sh` → `PASS (143 files)`；三段报告落盘后重跑 → **`META-GUARD: 3 FAIL`**，三条均为 `M3 …: 孤儿（无引用且不在 _index 清单）`（含本文件）。
 - **影响**：commit 信息里「guard-meta PASS」是当时的真话，但**当前工作树过不了门禁**；若照现状收尾，`/ship` 的 guard-meta 闸会拦下（或更糟：有人为了过闸而把报告删掉）。
 - **建议**：收尾时把三段报告按 `_index.md` 既有格式登记一行（含一句话结论 + status），再跑一次 guard-meta。（按约束本轮**未**代为登记，只报告。）
 
@@ -140,7 +140,7 @@ tags: [review, docs, audit, api-spec, honesty]
 | P3-3 | `docs/review/REVIEW.md:1-8` | frontmatter 停在 `updated: 2026-09-16`、`last-review: 2026-09-14`、`baseline/mode` 仍是 09-14 批次，但文件已新增 `2026-09-17` 行 | frontmatter-spec §二：`updated` 由 /ship 回写；guard-meta 范围不含 REVIEW.md，无门禁 |
 | P3-4 | `docs/releases/v1.0.0.md:15` | 「未修 **20 条**」不可复现 | 基线 `d060841:REVIEW.md` 未修区「无 ✅ 行」= 25（战略 2 + P1 4 + P2 19）；剔掉自述「复核不成立/误报」的 P1-交易15/16 = 23；+P0/P3 区两条 bullet = 25。20 这个数没写出统计口径。建议改「未修项见 `REVIEW.md`」或写明规则（**待验证**：可能作者另有口径） |
 | P3-5 | `docs/architecture/api-spec.md` · `docs/reference/{status,change-log,task-log}.md` · `docs/releases/v1.0.0.md` | 本次均被编辑，但仍**无 frontmatter** | frontmatter-spec §四「渐进：存量 `docs/**` 文档下次编辑时顺手补」→ 本批正是「下次编辑」；guard-meta 范围不含这五个文件（D44/D52 已登记的盲区），故无提示。建议至少给这五个文件补最小 frontmatter |
-| P3-6 | `ai-engineering/guard-prod.sh:349` | 把「iOS 描述文件 / 付费账号」合成一条硬编码 `2027-09-13` | 两者到期机制不同（描述文件由 Xcode 重签、账号按购买周年续费），合并成一条后任一变化都会给出错误倒数。建议拆两行或注明「以较早者为准 + 来源」。**待验证**：实际两个日期是否真同为 2027-09-13 |
+| P3-6 | `.agents/guards/guard-prod.sh:349` | 把「iOS 描述文件 / 付费账号」合成一条硬编码 `2027-09-13` | 两者到期机制不同（描述文件由 Xcode 重签、账号按购买周年续费），合并成一条后任一变化都会给出错误倒数。建议拆两行或注明「以较早者为准 + 来源」。**待验证**：实际两个日期是否真同为 2027-09-13 |
 | P3-7 | `docs/architecture/api-spec.md:591` | `/trading/positions/daily` 的 `notes` 字段说明仍只写「未计入项的人话说明」，未登记 v3.70 新增的第二种语义 | 实现（`TradingAppService.java:1521-1524`）会在盘前/非交易日把「今天还没开盘…下面是 X 的当日盈亏」写进 `notes` 首行——同一字段两种含义，消费端（app 用它决定是否显示橙色「有几笔我没算进去」）会误判 |
 
 ## 四、范围外单列（`bc6656b` 会话产物，只标注不改）

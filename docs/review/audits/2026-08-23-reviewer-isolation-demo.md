@@ -7,10 +7,10 @@ updated: 2026-08-23
 status: active
 lines: 76
 depends-on:
-  - ../../../ai-engineering/process/review.md
+  - ../../../.agents/process/review.md
 related:
   - ../../review/REVIEW.md
-  - ../../../ai-engineering/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/adversarial-reviewer.md
 tags: [review, audit, adversarial, isolation]
 ---
 

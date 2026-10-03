@@ -12,9 +12,9 @@ related:
   - ../reference/status.md
   - ../review/REVIEW.md
   - ../architecture/product-roadmap.md
-  - ../../ai-engineering/workflow/design.md
-  - ../../ai-engineering/process/review.md
-  - ../../ai-engineering/method/pipeline.md
+  - ../../.agents/workflow/design.md
+  - ../../.agents/process/review.md
+  - ../../.agents/method/pipeline.md
 ---
 
 # 功能索引层与编写侧判据前置——把「功能」升格为唯一主轴
@@ -33,7 +33,7 @@ related:
 | 采用什么技术 | `docs/architecture/` 18 篇（system/product/插件设计/数据冻结） | 有，但按主题散落，不挂功能 |
 | 每个插件是什么 | `trading-features.md`（347 行）· `admin-features.md`（149 行），均含「已知缺陷」节 | 已成型，可直接复用 |
 | 每功能一份文档 | `feature-reference.md`（自称「功能真相源」，19 条） | **只有「实现」维度**（文件/API/prompt），无需求、无选型理由、无状态、无验收；**1377 行单文件**；**无 frontmatter** → 在 `guard-meta` 强制范围外，属图谱盲区 |
-| 编写角色 | `ai-engineering/skills/`：new-api / new-domain / ship / learn-digest | **12 审查官 : 3 建设技能**，严重不对称 |
+| 编写角色 | `.agents/skills/`：new-api / new-domain / ship / learn-digest | **12 审查官 : 3 建设技能**，严重不对称 |
 | 审核 + 对抗 | `roles/` 12 官 + `checklists/` 13 份 + 对抗官 + **上下文隔离**（每官只喂本域 diff，不喂他人发现） | 已属行业上游，是本项目最成熟的一环 |
 | 文档树 | `_index.md` 体系 + frontmatter 图谱 + `guard-meta.sh` | 有，但按**目录**组织，不按功能 |
 
@@ -96,7 +96,7 @@ related:
 - **单卡 ≤12 行**，只 4 项：**干什么用 / 不做什么 / 选型理由（有取舍才写）/ 验收标准**。「为什么做」链接 RFC，「欠着什么」看索引行。
 - **硬约束**：卡内禁写实现细节（字段名 / 方法名 / 端点 / 请求响应）——写了脚本红灯。理由：实现细节高频变化，抄进卡里必烂。
 
-### 3.2 状态机 + 机器对拍（`ai-engineering/guard-feature.sh`）
+### 3.2 状态机 + 机器对拍（`.agents/guards/guard-feature.sh`）
 
 - 新脚本（与 `guard-meta.sh` 同构：bash + inline python3），挂 **pre-commit**。
 - 检查项：① 索引行字段齐（F1）② 所有链接可达（F2）③ 端点真存在（F3）④ `状态` 与证据一致（有 RFC 无代码 → ≤`designed`；有端点无 RFC → 告警）（F4）⑤ RFC `status` 枚举合法（F5，**新文件强制，存量渐进**）⑥ 索引无孤儿（代码里有模块/端点但索引无行）（F6）⑦ 卡内无实现细节（F7：字段名 / 方法名 / 端点 / 请求响应）⑧ 单卡 ≤12 行（F8）。
@@ -142,7 +142,7 @@ related:
 ## 七、验收标准（可测量 / 可 grep）
 
 1. `docs/features/_index.md` 存在，且每行含 `ID | 状态 | 需求出处` 三列非空。
-2. `bash ai-engineering/guard-feature.sh` 退出码 0；索引中任意一行的链接被删后退出码 ≠ 0。
+2. `bash .agents/guards/guard-feature.sh` 退出码 0；索引中任意一行的链接被删后退出码 ≠ 0。
 3. 索引表覆盖全部现有功能（≥19 行）；样板意图卡 1 张，≤12 行且**无实现细节**；卡文件 ≤6 份。
 4. 本 RFC 自身满足六维（下方六节齐备，可 grep `### 目标与约束` … `### 安全约束`）。
 5. 抽查近 5 个「bug 修复」类提交：**不新增索引行 / 卡**（口径修正 2026-10-01：原写「零新增文档负担（无 md 变更）」与实际相反——近 12 个提交 **10 个含 md**，本层不该、也做不到「不许动 md」）。
@@ -157,12 +157,12 @@ related:
 
 ### 架构与边界
 
-- 落点：`docs/features/`（新增）· `ai-engineering/guard-feature.sh`（新增）· `ai-engineering/checklists/`（复用，不重写）· `ai-engineering/skills/`（补一段）。
+- 落点：`docs/features/`（新增）· `.agents/guards/guard-feature.sh`（新增）· `.agents/checklists/`（复用，不重写）· `.agents/skills/`（补一段）。
 - **不动**：`services/**`、`apps/**`、`os/**`、`data/**`；不改 `feature-reference.md` 正文（仅后续自然退化）；不动既有 RFC 正文。
 
 ### 技术规范
 
-- Markdown + YAML frontmatter（遵循 `ai-engineering/frontmatter-spec.md` D1 契约）。
+- Markdown + YAML frontmatter（遵循 `.agents/frontmatter-spec.md` D1 契约）。
 - 脚本与 `guard-meta.sh` 同构：bash 包装 + inline python3，只读检查、失败非零退出。
 - 命名遵循 conventions 的 D2 目录治理：`docs/features/_index.md` + 每目录 `_index`。
 
@@ -203,8 +203,8 @@ related:
 | 批 | 落地 | 证据 |
 |:--|:--|:--|
 | 批 1 | `docs/features/_index.md`（**37 功能**·5 域）· `docs/features/kernel.md`（第 1 张意图卡 `record`）· `docs/_index.md` 登记 | 链接自检 **37 条 0 死链**；`guard-meta` PASS |
-| 批 2 | `ai-engineering/guard-feature.sh`（F0–F10）· `ai-engineering/tests/guard-feature-fixture.py`（反例回归）· `.githooks/pre-commit` 新增「2b」· `AGENTS.md` + `ai-engineering/_index.md` + `guard-meta.sh` 覆盖 登记 | **反例测试 18 条 FAIL 全触发**（含 4 处假绿 + 1 处误报的回归样本）+ F0 + 存量跳过；端到端跑通 hook（退出码 0）；`guard-feature` 正例 PASS |
-| 批 3 | `ai-engineering/workflow/develop.md` 新增「判据前置」入口条与功能主轴出口条；对抗官试点（外部信号＝脚本正反例输出）| 见 `docs/review/audits/` 审查记录 |
+| 批 2 | `.agents/guards/guard-feature.sh`（F0–F10）· `.agents/tests/guard-feature-fixture.py`（反例回归）· `.githooks/pre-commit` 新增「2b」· `AGENTS.md` + `.agents/_index.md` + `guard-meta.sh` 覆盖 登记 | **反例测试 18 条 FAIL 全触发**（含 4 处假绿 + 1 处误报的回归样本）+ F0 + 存量跳过；端到端跑通 hook（退出码 0）；`guard-feature` 正例 PASS |
+| 批 3 | `.agents/workflow/develop.md` 新增「判据前置」入口条与功能主轴出口条；对抗官试点（外部信号＝脚本正反例输出）| 见 `docs/review/audits/` 审查记录 |
 
 ### 与方案的偏差（如实）
 

@@ -6,10 +6,10 @@ created: 2026-08-23
 updated: 2026-08-23
 status: active
 depends-on:
-  - ../../../ai-engineering/process/audit.md
+  - ../../../.agents/process/audit.md
 related:
   - ../REVIEW.md
-  - ../../../ai-engineering/README.md
+  - ../../../.agents/README.md
 tags: [review, audit, ai-engineering, meta]
 ---
 

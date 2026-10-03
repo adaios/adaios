@@ -8,7 +8,7 @@ depends-on:
   - ../architecture/api-spec.md
   - feature-reference.md
   - status.md
-  - ../../ai-engineering/assets/projects/adai-admin.md
+  - ../../.agents/assets/projects/adai-admin.md
 related:
   - feature-reference.md
   - trading-features.md
@@ -20,7 +20,7 @@ tags: [admin, reference]
 # adai-admin 管理后台功能手册
 
 > **定位：** AdaiOS「管理后台」（`adai-admin`，Flutter Web，深色主题）的完整功能参考——纯系统治理端，非个人使用端（个人用 app/web）。
-> **用途：** 问题定位、新功能开发、重构与审查时的基准对照（代码实测口径，页面/功能以本文件为准；模块职责与边界以 `ai-engineering/assets/projects/adai-admin.md` 为准）。
+> **用途：** 问题定位、新功能开发、重构与审查时的基准对照（代码实测口径，页面/功能以本文件为准；模块职责与边界以 `.agents/assets/projects/adai-admin.md` 为准）。
 > **真相源：** 端点契约以 `docs/architecture/api-spec.md` 为准；本手册以 `apps/adai-admin/lib/` 实测为准。生产访问：`https://adaiadai.com/admin/`。
 
 ## 〇、模块定位与边界
@@ -144,6 +144,6 @@ tags: [admin, reference]
 
 ## 九、变更规则
 
-- 新增治理功能 → 更新本手册 + `docs/reference/feature-reference.md`（§15）+ `ai-engineering/assets/projects/adai-admin.md` 资产卡 + `_index.md`。
+- 新增治理功能 → 更新本手册 + `docs/reference/feature-reference.md`（§15）+ `.agents/assets/projects/adai-admin.md` 资产卡 + `_index.md`。
 - **任何个人内容编辑入口新增前先问「这该在 app/web 还是 admin」**（边界原则，见 §〇）。
 - 部署：admin 前端重建走 `serve_web.sh`（`--base-href=/admin/` + API_BASE_URL）+ tar 原子替换 `/opt/adaios/admin`（详见 `docs/deployment/backend-deployment.md`）。

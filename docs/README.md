@@ -101,7 +101,7 @@
 | 文档 | 说明 |
 |:-----|:------|
 | [REVIEW.md](review/REVIEW.md) | 📌 审核全量状态报告（常驻，`/review` 更新）。未修复项滚动保留 |
-| [checklists/](ai-engineering/checklists/) | 检查点清单（活文档）：guard 守护 + 8 官各自清单（`ai-engineering/checklists/`）|
+| [checklists/](.agents/checklists/) | 检查点清单（活文档）：guard 守护 + 8 官各自清单（`.agents/checklists/`）|
 
 ## 🐛 问题跟踪
 

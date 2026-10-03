@@ -376,7 +376,7 @@ ENTITY_UNPROCESSABLE.BETA_CONTRACT_MISSING，内测与外测均无法安装。�
 
 ```bash
 # 官方脚本（需临时 shim，见下方待办 1）
-cd apps/adai-app && PYTHONPATH=/tmp/jwtshim python3 scripts/testflight_status.py
+cd apps/adai-app && PYTHONPATH=/tmp/jwtshim python3 .agents/scripts/testflight_status.py
 
 # 2026-09-29 实际使用的零安装探针（临时文件，不入库）：
 #   /tmp/asc_probe.py        —— 只读复核（构建列表 / betaLicenseAgreement / 测试组 / 审核信息）
@@ -397,7 +397,7 @@ python3 /tmp/asc_probe.py
 
 1. **先复核**：确认 `agreementText != null`（合同已重建）——**不要只看到 `expired=false` 就开始动手**（§1.8：`expired=false` 只是暂态）；
 2. **优先用现成构建**：构建 **14** 已在外测组、`expired=false`（到期 2026-12-28；**2026-10-01 15:14 复核时仍有效**）→ 直接 `testflight_external.py --assign-build` + `--submit-review`，**不必再传**（构建 13 已于 09-30 00:41 被作废）；
-3. 仅当构建 14 也被作废时才重新构建上传：`cd apps/adai-app && sh scripts/release_testflight.sh --build-number 15`（构建号必须递增）→ `--status` 等 VALID → `--assign-build`（外测组）+ `--submit-review`；
+3. 仅当构建 14 也被作废时才重新构建上传：`cd apps/adai-app && sh .agents/scripts/release_testflight.sh --build-number 15`（构建号必须递增）→ `--status` 等 VALID → `--assign-build`（外测组）+ `--submit-review`；
 4. **登记闭环**：把 `REVIEW.md` **P1-发布1** 标记为已修（附日期与 Apple 侧凭据），同步 `status.md` TestFlight 段；
 5. 社区反复强调：**在 Apple 修好前不要靠反复递增构建号「刷可见」**——白费构建号且仍装不上。
 

@@ -24,5 +24,5 @@ flutter test
 
 ## 发布
 
-桌面端产物随后端批次一起部署（发版判定见 `../../ai-engineering/guard-release.sh`：改
+桌面端产物随后端批次一起部署（发版判定见 `../../.agents/guards/guard-release.sh`：改
 `apps/adai-web/**` 会推出 web 端）。**AI 不主动部署**——判定后须人点头才走 `deploy-gate.sh`。

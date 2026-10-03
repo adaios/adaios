@@ -8,7 +8,7 @@ status: draft
 
 > **实施记录（2026-08-16，G-3/G-4/G-5 落地，见 `docs/reference/framework-plugin-gap.md`）**：
 > - **Phase 2 能力抽离 ✅**：`engine/` 规则接口已实现——Java 侧 `services/adai-core/.../domain/trading/engine/`（`TradingRuleEngine` + `DefaultTradingRuleEngine`：evaluateStopLoss R66 / evaluatePosition R81 / matchRules），规格真相源 `os/trading-engine/engine/rules-api.md`；`TradingAdviceAppService` 已改调用，硬判定信号进 prompt。
-> - **Phase A 知识层内聚 ✅**：`11-context/` → `knowledge/context/`（git mv 保留历史），Java/文档全引用同步；中间层 01-10 文档化归档（物理保留，防破坏 Step 1-5 流水线）；`09-scripts/update-current.sh` 半自动刷新 current.md（择时停更修复）。
+> - **Phase A 知识层内聚 ✅**：`11-context/` → `knowledge/context/`（git mv 保留历史），Java/文档全引用同步；中间层 01-10 文档化归档（物理保留，防破坏 Step 1-5 流水线）；`09-.agents/scripts/update-current.sh` 半自动刷新 current.md（择时停更修复）。
 > - **Phase 3 形态输出（样板就绪）**：`os/trading-engine/output/agent-skill.md`（Skill 包，Coze/Dify 可导入）+ `output/mcp-server.md`（MCP 资源/工具映射，FastMCP 指引）——实际部署待后续。
 > - 验收：后端 551 测试全绿，guard-meta/align PASS。
 
@@ -119,7 +119,7 @@ engine/rules 接口设计（第一版）：
 3. `engine/` 规则接口可独立调用（不吃阿呆内部状态）
 4. 阿呆插件模式不变（建议引擎仍工作，533+ tests 全绿）
 5. 独立形态（REST）能返回规则匹配/止损判定，且不持有个人数据
-6. 方法论沉淀：领域引擎模式（规则+内容+输出分离）入 `ai-engineering/method/`
+6. 方法论沉淀：领域引擎模式（规则+内容+输出分离）入 `.agents/method/`
 
 ## 八、不做（本 RFC 范围外）
 

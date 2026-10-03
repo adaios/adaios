@@ -13,14 +13,14 @@ related:
   - ../guides/branch-development.md
   - ../guides/git-workflow.md
   - ../guides/worktree-workflow.md
-  - ../../ai-engineering/assets/ai-context-layer-spec.md
+  - ../../.agents/assets/ai-context-layer-spec.md
 tags: [architecture, ai, context, ai-tooling, plan]
 ---
 
 # AdaiOS AI 上下文工程体系（方案稿）
 
 > **状态**：方案稿（`status: draft`），待拍板。
-> **与另三份的分工**：**本文是总览**（体系全貌、目录定位、流程与工作流）· `ai-engineering/assets/ai-context-layer-spec.md` 是**机制细节**（出口、契约、反模式）· `docs/guides/git-workflow.md` 是**版本控制操作**（分支/提交/合并/推送/发布）· `docs/guides/branch-development.md` 是**分支上的操作流程**（怎么改、怎么传给别人、合并后做什么）。
+> **与另三份的分工**：**本文是总览**（体系全貌、目录定位、流程与工作流）· `.agents/assets/ai-context-layer-spec.md` 是**机制细节**（出口、契约、反模式）· `docs/guides/git-workflow.md` 是**版本控制操作**（分支/提交/合并/推送/发布）· `docs/guides/branch-development.md` 是**分支上的操作流程**（怎么改、怎么传给别人、合并后做什么）。
 
 ## 一、体系全景
 
@@ -60,7 +60,7 @@ flowchart TB
 
 ## 二、资产清单（按层组织）
 
-> **位置说明**：资产**分布在 9 个一级位置**（`ai-engineering/` · `docs/` · `scripts/` · `.githooks/` · 5 个出口目录），这些位置由**工具约定 + 历史**决定、**不宜搬动**——实测移动任一处要修 **40–60 个文件**引用（`docs/reference` 59 · `scripts/` 58 · `docs/architecture` 50 · `docs/rfc` 44 · `ai-engineering/assets` 25）。
+> **位置说明**：资产**分布在 9 个一级位置**（`ai-engineering/` · `docs/` · `scripts/` · `.githooks/` · 5 个出口目录），这些位置由**工具约定 + 历史**决定、**不宜搬动**——实测移动任一处要修 **40–60 个文件**引用（`docs/reference` 59 · `scripts/` 58 · `docs/architecture` 50 · `docs/rfc` 44 · `.agents/assets` 25）。
 > 故本表**按层组织、每行标出所在位置**：让结构可读，而不是按目录罗列。
 
 ### L0 入口（轻量，禁详细规则）
@@ -78,14 +78,14 @@ flowchart TB
 
 | 资产 | 位置 | 保真 |
 |:--|:--|:--|
-| 工程约定（C1–C8…）| `ai-engineering/assets/conventions.md` | `guard-meta` |
-| 原则边界（B1–B9）| `ai-engineering/assets/boundaries.md` | `guard-meta` |
-| 已知坑 + 复发信号（**23 章**）| `ai-engineering/assets/pitfalls.md` | `guard-meta` |
-| 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `ai-engineering/assets/adr/*.md` | `guard-meta`（图谱）|
+| 工程约定（C1–C8…）| `.agents/assets/conventions.md` | `guard-meta` |
+| 原则边界（B1–B9）| `.agents/assets/boundaries.md` | `guard-meta` |
+| 已知坑 + 复发信号（**23 章**）| `.agents/assets/pitfalls.md` | `guard-meta` |
+| 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/assets/adr/*.md` | `guard-meta`（图谱）|
 | 方案决策 RFC（**70 份**，含未采纳的备选与理由）| `docs/rfc/*.md` | `guard-feature`（status 枚举）|
 | 业务方向（**唯一蓝图**）| `docs/VISION.md` · `docs/architecture/product-roadmap.md` | `guard-roadmap` |
 
-> ⚠️ **L2 现在分在两家**（`ai-engineering/assets/` 放"约束"，`docs/rfc/` 放"决策"）——这是**历史形成的**（工程侧 vs 文档侧各自演化）。语义上二者都是"决策类"，但**合并代价 44 处引用**，故暂不动；本表按层呈现，正是为了让这个分家**可见**而不是被目录结构掩盖。
+> ⚠️ **L2 现在分在两家**（`.agents/assets/` 放"约束"，`docs/rfc/` 放"决策"）——这是**历史形成的**（工程侧 vs 文档侧各自演化）。语义上二者都是"决策类"，但**合并代价 44 处引用**，故暂不动；本表按层呈现，正是为了让这个分家**可见**而不是被目录结构掩盖。
 
 ### L3 事实层（事实类：关于代码的事实，**不是代码本身**）
 
@@ -102,13 +102,13 @@ flowchart TB
 
 | 资产 | 位置 | 规模 / 保真 |
 |:--|:--|:--|
-| 技能（目录布局 `<name>/SKILL.md`）| `ai-engineering/skills/` | `guard-skills` S3/S4/S5/S7 |
-| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `ai-engineering/roles/` | `guard-skills` + `sync-agents` |
+| 技能（目录布局 `<name>/SKILL.md`）| `.agents/skills/` | `guard-skills` S3/S4/S5/S7 |
+| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `guard-skills` + `sync-agents` |
 | 守卫与执行器 | `ai-engineering/*.sh` | **16 个**；shell-lint + 自检 |
-| 流程定义 | `ai-engineering/process/*.md` | **4 份**（audit / review / ship / cadence）|
-| 检查清单 | `ai-engineering/checklists/*.md` | **14 份** |
-| 契约 | `ai-engineering/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `guard-meta` / `guard-skills` |
-| 注册与环境脚本 | `scripts/*.sh` · `ai-engineering/lib/*.sh` | shell-lint |
+| 流程定义 | `.agents/process/*.md` | **4 份**（audit / review / ship / cadence）|
+| 检查清单 | `.agents/checklists/*.md` | **14 份** |
+| 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `guard-meta` / `guard-skills` |
+| 注册与环境脚本 | `scripts/*.sh` · `.agents/lib/*.sh` | shell-lint |
 | 提交门禁 | `.githooks/pre-commit` | 自身即守卫（多层）|
 
 ### 账本
@@ -123,7 +123,7 @@ flowchart TB
 
 | 项 | 位置 | 重建方式 |
 |:--|:--|:--|
-| 协作游标 · 成本账 · 心跳缓存 | `ai-engineering/state/*` | `worktree-prep.sh` **恒 link 主仓库**（全局唯一一本）|
+| 协作游标 · 成本账 · 心跳缓存 | `.agents/state/*` | `worktree-prep.sh` **恒 link 主仓库**（全局唯一一本）|
 | 开工快照 | `AGENTS.local.md` | 同上 |
 | **6 个工具出口** | `.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*` | `worktree-prep.sh` = `link-skills` + `sync-agents` |
 
@@ -173,9 +173,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash scripts/worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
-    B --> C["③ 本分支注册<br/>bash scripts/link-skills.sh（新技能）<br/>bash scripts/sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
-    C --> D["④ 自测<br/>bash ai-engineering/cadence.sh check<br/>（AI 资产另跑 guard-skills / --check）"]
+    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash .agents/scripts/worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
+    B --> C["③ 本分支注册<br/>bash .agents/scripts/link-skills.sh（新技能）<br/>bash .agents/scripts/sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
+    C --> D["④ 自测<br/>bash .agents/scripts/cadence.sh check<br/>（AI 资产另跑 guard-skills / --check）"]
     D --> E["⑤ 提交<br/>显式路径 + ADAI_BATCH_PATHS（pre-commit 多层门禁）<br/>账本类改动写进 L1，不碰全局账本"]
 ```
 
@@ -203,8 +203,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["① bash ai-engineering/cadence.sh release<br/>只判定：欠什么 / 发哪几端"] --> B["② 用户点头（B8：外向动作须人确认）"]
-    B --> C["③ bash ai-engineering/deploy-gate.sh<br/>门禁 + 部署 + smoke"]
+    A["① bash .agents/scripts/cadence.sh release<br/>只判定：欠什么 / 发哪几端"] --> B["② 用户点头（B8：外向动作须人确认）"]
+    B --> C["③ bash .agents/scripts/deploy-gate.sh<br/>门禁 + 部署 + smoke"]
     C --> D["④ 部署成功后打 tag<br/>git tag -a v3.x &lt;生产实际部署的那个 commit&gt;"]
     D --> E["⑤ GitHub Release（用 docs/releases/ 的内容）"]
     E --> F["★ tag ＝ 生产实际部署的 commit（唯一对齐点）"]
@@ -260,7 +260,7 @@ flowchart TD
 | 4 | **事实对拍**（`guard-align`：端点↔api-spec · 测试数↔status）| ✅ | L3 |
 | 5 | **技能包合规**（`guard-skills` S3/S4/S5/S7）| ✅ | 工具层 |
 | 6 | **工具接入自检**（`guard-tools` T1–T7，含出口真身）| ✅ | 出口 |
-| 7 | **反例回归**（`ai-engineering/tests/`：守卫必须能被反例触发）| ✅ | 守卫自身 |
+| 7 | **反例回归**（`.agents/tests/`：守卫必须能被反例触发）| ✅ | 守卫自身 |
 | 8 | **知识回流需人确认**（AI 提示，禁自动写入 L2）| ❌ **待建** | L2 |
 | 9 | **防膨胀红线**（单文件 >300 行提示拆 / >500 必拆；同知识点 ≥2 次合并；「已废弃」超 3 月归档）| ❌ **待建** | 全体 |
 | 10 | **按需加载路由**（模块↔关键词表 + 惰性加载）| ❌ **待建** | L2/L3 |

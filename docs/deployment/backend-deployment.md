@@ -225,7 +225,7 @@ cd services/adai-core
 > **跑部署门禁的 smoke**：`deploy-gate.sh` 的 GATE-AFTER 从**本机环境变量**读 `ADAI_SMOKE_ACCOUNT` / `ADAI_SMOKE_PASSWORD`（不是服务器 `.env`）。**2026-09-15 起 smoke 走真实生产入口 `https://api.adaiadai.com`**（生产 8080 已绑回环，不再有 IP:8080 可打；顺带把 Caddy + HTTPS 链路也验在内），脚本内已自行 `export no_proxy=api.adaiadai.com` 绕开本机代理。完整可用的跑法：
 > ```bash
 > export ADAI_SMOKE_ACCOUNT=adai ADAI_SMOKE_PASSWORD=…
-> bash ai-engineering/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
+> bash .agents/scripts/deploy-gate.sh 82.156.111.146 services/adai-core/build/libs/adai-core-0.0.1-SNAPSHOT.jar
 > ```
 > （`ADAI_GATE_BASE_URL` 可覆盖 BASE，用于打预发/其他环境。历史跑法 `no_proxy=82.156.111.146` 打 `IP:8080` 已随端口收敛失效。）
 | 月度转写配额 | `adai.learn.asr.month-quota-seconds`（**默认 `108000` = 30 小时**，用户 2026-09-13 拍板：前 10 小时走云端免费额度=0 元，超出部分按 0.288 元/小时，最坏 ≈5.76 元/月；想完全不花钱就调回 `36000`）| 用满即拒绝并说明剩余额度，不会静默花钱 |
@@ -323,9 +323,9 @@ iPhone Safari「添加到主屏幕」后以独立 App 形式全屏运行。**目
 ```bash
 # ① 本地构建（脚本内置 base-href + CanvasKit 补丁 + 字体本地化补丁 + 三条硬校验）
 cd apps/adai-app
-sh scripts/build_web.sh https://api.adaiadai.com /m/
+sh .agents/scripts/build_web.sh https://api.adaiadai.com /m/
 #   ⚠️ 必须传 /m/ 作为 BASE_HREF：字体补丁路径会跟着子路径走（漏了 → 中文全框）
-#   ⚠️ 构建与补丁逻辑在 scripts/build_web.sh（serve_web.sh 只负责本地起服务，不再重复实现）
+#   ⚠️ 构建与补丁逻辑在 .agents/scripts/build_web.sh（serve_web.sh 只负责本地起服务，不再重复实现）
 #   ⚠️ 校验会 FAIL 的三种情况：补丁未注入 / 补丁缺 base-href 前缀 / 字体文件不在产物内
 
 # ② 上传（原子替换，admin 同款 tar 管道）

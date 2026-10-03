@@ -11,7 +11,7 @@ depends-on:
 related:
   - ./api-spec.md
   - ../reference/change-log.md
-  - ../../ai-engineering/checklists/cost.md
+  - ../../.agents/checklists/cost.md
 tags: [architecture, ai, performance, design]
 ---
 

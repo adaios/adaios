@@ -27,5 +27,5 @@ tags: [meta, index, archive]
 
 ## 过期判断
 
-- 本区文档**永久归档**，退役依据见 `docs/reference/change-log.md` 的 2026-10-03 条目与 `ai-engineering/assets/ai-context-layer-spec.md` §十。
+- 本区文档**永久归档**，退役依据见 `docs/reference/change-log.md` 的 2026-10-03 条目与 `.agents/assets/ai-context-layer-spec.md` §十。
 - 归档**不删文件**（保留决策痕迹）；若要彻底清除，走一次显式提交并在此注明。
