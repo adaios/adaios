@@ -109,7 +109,7 @@ do_install() {
     [ -e "${_log}" ] || : > "${_log}" 2>/dev/null || true
   done
 
-  write_plist "${BACKUP_LABEL}" "${ROOT}/scripts/backup_prod.sh" "" "${BACKUP_LOG}" \
+  write_plist "${BACKUP_LABEL}" "${ROOT}/.agents/scripts/backup_prod.sh" "" "${BACKUP_LOG}" \
     Hour 21 Minute 10
   write_plist "${AUDIT_LABEL}" "${ROOT}/.agents/scripts/weekly-audit.sh" "--auto" "${AUDIT_LOG}" \
     Weekday 1 Hour 9 Minute 0
@@ -206,6 +206,32 @@ do_check() {
   else
     echo "  ⚠️ 午间谷时尚无日志（下个工作日 12:01 首次跑；可 kickstart 立刻验证）"
   fi
+
+  # ── 脚本路径存在性（2026-10-03 补）──
+  # 此前只查「launchctl 已加载 + 日志时间」：迁移（ai-engineering/ → .agents/）后
+  # plist 里的脚本路径全断了，本检查**照样报 PASS**——与 pitfalls 二十三
+  # 「守卫与迁移的静默失效」同类（查的是"加载状态"，不是"能不能真跑起来"）。
+  for label in "${BACKUP_LABEL}" "${AUDIT_LABEL}" "${NOON_LABEL}"; do
+    _plist="${AGENTS}/${label}.plist"
+    [ -f "${_plist}" ] || continue
+    _missing="$(python3 - "${_plist}" <<'PYX'
+import plistlib, os, sys
+try:
+    d = plistlib.load(open(sys.argv[1], 'rb'))
+except Exception:
+    sys.exit(0)
+for a in (d.get('ProgramArguments') or []):
+    if str(a).endswith(('.sh', '.py')) and not os.path.exists(a):
+        print(a)
+PYX
+)"
+    if [ -n "${_missing}" ]; then
+      echo "  ❌ ${label}: 脚本路径不存在 → ${_missing}"
+      rc=1
+    else
+      echo "  ✅ ${label}: 脚本路径存在"
+    fi
+  done
 
   echo ""
   if [ "${rc}" -eq 0 ]; then echo "── 结果: PASS ──"; else echo "── 结果: FAIL ──"; fi
