@@ -13,7 +13,7 @@ tags: [meta, directory]
 
 # process/ 目录契约
 
-**职责**：具体动作的流程定义——**天天用**：审查（audit/review）· 收尾（ship）· 节奏（cadence）
+**职责**：具体动作的流程定义——审查（audit/review）· **审核驱动主链（review-driven：需求→设计→编码）** · 收尾（ship）· 节奏（cadence）
 
 ## 职责边界
 - **放**：可执行的流程：触发条件 → 步骤 → 门禁节点 → 产出
