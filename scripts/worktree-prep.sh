@@ -4,7 +4,7 @@
 #
 # 为什么需要：
 #   `git worktree add` 给出的是**干净检出**：git 跟踪的都有，git 之外的家当全没有。
-#   本项目有三样关键家当在版本库外，缺了**不报错，只静默出错**：
+#   本项目有**四样**关键家当在版本库外，缺了**不报错，只静默出错**：
 #     · data/                   337M 个人数据（git 只跟踪 data/adai/identity/profile.sample.md 一个文件）
 #                               → 后端 adai.data.base-path 默认 ../../data 正好指向这个空壳
 #     · services/adai-core/.env 6 个密钥（DEEPSEEK_API_KEY / GLM_API_KEY / ADAI_ADMIN_TOKEN /
@@ -12,6 +12,10 @@
 #                               → spring 配的是 optional:file:.env，读不到即静默降级
 #     · ai-engineering/state/   巡检游标 / 成本账 / 心跳缓存
 #                               → 各 worktree 一份独立账本，分叉后记账与巡检失真
+#     · 工具出口（技能 4 个 + 子代理 2 组）
+#                               → **刻意不 link 主仓库**，改为在 worktree 里**各自注册**：
+#                                 link-skills.sh 用相对软链、sync-agents.sh 生成 ⇒
+#                                 指向**本 worktree 的真相源** ⇒ **随分支**（A 分支加的技能不会漏进 B 分支）
 #
 # 用法（在**新建的 worktree 目录里**执行；在主仓库执行会被拒绝）：
 #   bash scripts/worktree-prep.sh --check      # 只检查外挂是否齐备（0 = 齐，1 = 有缺）
@@ -29,9 +33,11 @@
 #   ③ `--force` 遇到符号链接只 `rm -f` 删链接本身，绝不 `rm -rf`。
 #   ④ 每次落盘检查返回码：失败即报错并以非 0 退出（防「半份拷贝被当完成」，磁盘满是常见形态）。
 #
-# 两条纪律（也写在手册里，别绕）：
-#   1. **state / AGENTS.local.md / 技能注册恒 link**——账本与快照必须唯一，复制一份等于劈成两半
-#   2. **要跑会写数据的实验，先 --copy**——默认 link 模式下的写入会直接落到 337M 真实数据上
+# 三条纪律（也写在手册里，别绕）：
+#   1. **state / AGENTS.local.md 恒 link**——账本与快照必须唯一，复制一份等于劈成两半
+#   2. **工具出口改为「各自注册」**（本脚本落盘时自动跑 link-skills + sync-agents）——
+#      **绝不 link 主仓库的出口**：那样技能指向主仓库的 ai-engineering/，**不随分支**
+#   3. **要跑会写数据的实验，先 --copy**——默认 link 模式下的写入会直接落到 337M 真实数据上
 #
 # 相关：docs/guides/worktree-workflow.md（完整手册：目录方案 / 端口 / 提交纪律 / 验证清单）
 # ─────────────────────────────────────────────────────────────
@@ -44,7 +50,7 @@ worktree 外挂补齐（AdaiOS）——补 data / .env（服务端）/ state 三
 用法（在 worktree 目录里跑）：
   bash scripts/worktree-prep.sh --check      # 只检查（退出码 0 = 齐备，1 = 有缺）
   bash scripts/worktree-prep.sh --dry-run    # 打印计划，不落盘
-  bash scripts/worktree-prep.sh              # link（默认，共享真实数据）
+  bash scripts/worktree-prep.sh              # link（默认，共享真实数据）+ 注册工具出口
   bash scripts/worktree-prep.sh --copy       # copy（要写数据的实验用）
   bash scripts/worktree-prep.sh --force      # 已存在也重建
 完整说明见 docs/guides/worktree-workflow.md
@@ -136,8 +142,9 @@ targets() {
   done
   # 4) 开工快照：**恒 link**（主仓库刷新后立刻可见；复制会隔夜过期）
   [ -s "${MAIN}/AGENTS.local.md" ] && emit "link" "${MAIN}/AGENTS.local.md" "AGENTS.local.md"
-  # 5) 工具侧技能注册（gitignore 的本机状态）：**恒 link**，否则 worktree 内开会话没技能
-  [ -e "${MAIN}/.dsh/skills" ] && emit "link" "${MAIN}/.dsh/skills" ".dsh/skills"
+  # 5) 工具出口**刻意不在这里** —— 由本脚本在落盘阶段「各自注册」（见文件尾部）：
+  #    技能 4 个出口走 link-skills.sh（相对软链）· 子代理 12×2 走 sync-agents.sh（生成）。
+  #    为什么不 link 主仓库的 .dsh/skills：那样技能指向主仓库的 ai-engineering/，**不随分支**。
   return 0
 }
 
@@ -159,6 +166,29 @@ if [ "${CHECK}" -eq 1 ]; then
       MISSING=$((MISSING + 1))
     fi
   done < <(targets)
+
+  # 工具出口：判据交给两个脚本自己（各自注册；脚本未落地时跳过，不误报）
+  echo
+  echo "── 工具出口（各自注册，随分支）──"
+  if [ -f scripts/link-skills.sh ]; then
+    if bash scripts/link-skills.sh --check >/dev/null 2>&1; then
+      printf '  ✅ %-40s %s\n' "技能出口（4 个）" "link-skills.sh --check 通过"
+      OK=$((OK + 1))
+    else
+      printf '  ❌ %-40s %s\n' "技能出口（4 个）" "不齐 → bash scripts/link-skills.sh"
+      MISSING=$((MISSING + 1))
+    fi
+  fi
+  if [ -f scripts/sync-agents.sh ]; then
+    if bash scripts/sync-agents.sh --check >/dev/null 2>&1; then
+      printf '  ✅ %-40s %s\n' "子代理出口（12×2）" "sync-agents.sh --check 通过"
+      OK=$((OK + 1))
+    else
+      printf '  ❌ %-40s %s\n' "子代理出口（12×2）" "不齐 → bash scripts/sync-agents.sh"
+      MISSING=$((MISSING + 1))
+    fi
+  fi
+
   printf '\n结果：%d 项齐备 · %d 项缺失\n' "${OK}" "${MISSING}"
   if [ "${OK}" -eq 0 ] && [ "${MISSING}" -eq 0 ]; then
     # 判据必须是「主仓库有没有这三样外挂」，而不是「清单空不空」——清单为空也可能是
@@ -263,8 +293,17 @@ done < <(targets)
 
 if [ "${DRY}" -eq 1 ]; then
   printf '\n计划：%d 项待补 · %d 项跳过\n' "${PLANNED}" "${SKIPPED}"
+  echo "（dry-run：不落盘，也不注册工具出口）"
 else
   printf '\n完成：链接 %d · 复制 %d · 跳过 %d\n' "${LINKED}" "${COPIED}" "${SKIPPED}"
+  # ── 工具出口各自注册（指向**本 worktree** 的真相源 ⇒ 随分支）──
+  #    两个脚本都幂等，重复跑无副作用；缺脚本时跳过（部分 clone 友好）。
+  if [ -f scripts/link-skills.sh ] || [ -f scripts/sync-agents.sh ]; then
+    echo
+    echo "── 工具出口各自注册（随分支）──"
+    [ -f scripts/link-skills.sh ] && bash scripts/link-skills.sh 2>&1 | sed 's/^/  /'
+    [ -f scripts/sync-agents.sh ] && bash scripts/sync-agents.sh 2>&1 | sed 's/^/  /'
+  fi
 fi
 if [ "${FAILED}" -gt 0 ]; then
   printf '❌ %d 项落盘失败（见上）——**不要**当作已补齐：先解决权限/磁盘问题再重跑，\n' "${FAILED}"

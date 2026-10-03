@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-01
 updated: 2026-10-03
 status: active
-lines: 137
+lines: 142
 depends-on: []
 related:
   - ./development.md
@@ -37,6 +37,9 @@ tags: [guide, workflow, ai-tooling]
 | `data/` | 337M；git 只跟踪 `data/adai/identity/profile.sample.md` 一个文件 | 后端 `adai.data.base-path` 默认 `../../data` 正好指向这个空壳 → 记忆/交易/行情全空，**且不报错**（market 314M 行情尤其明显） |
 | `services/adai-core/.env` | 6 个密钥（DEEPSEEK_API_KEY / GLM_API_KEY / ADAI_ADMIN_TOKEN / ADAI_PUSH_WECHAT_SENDKEY / ADAI_SMOKE_ACCOUNT / ADAI_SMOKE_PASSWORD） | spring 配的是 `optional:file:.env` → 读不到即静默降级（AI、推送、smoke 全受影响） |
 | `ai-engineering/state/` | 巡检游标 `cadence.json`、成本账 `cost-log.jsonl`、心跳缓存、各定时任务日志 | 每个 worktree 一份独立账本 → 巡检游标分叉、成本记错本、发布判定失真 |
+| **工具出口** | 技能 4 个（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills`）＋ 子代理 2 组（`.qoder/agents/*.md` · `.codex/agents/*.toml`）；都是 gitignore 的本机状态 | 新 worktree 里 AI 工具**看不见技能与审查官**——DSH 没技能、Qoder/Codex 连 12 个审查官都没有；**且不报错**（工具只是「没有可用技能」）|
+
+**出口跟另三样不同：它不 link 主仓库，而是「各自注册」。** `worktree-prep.sh` 会自动跑 `scripts/link-skills.sh`（**相对软链**）＋ `scripts/sync-agents.sh`（**生成**），两者都指向 **本 worktree 的真相源** ⇒ **技能与审查官随分支走**。若图省事 link 主仓库的出口，你在 `feat/a` 加的技能会**漏进** `feat/b`——分支隔离在 AI 上下文层直接失效。
 
 **一条命令补齐**（在 worktree 目录里跑）：
 
@@ -79,8 +82,9 @@ bash scripts/worktree-prep.sh --check
 
 ## 四、两条硬纪律
 
-1. **state / AGENTS.local.md / 技能注册恒 link**（脚本已固化，不可选）。账本与开工快照必须唯一——复制一份等于把成本账与巡检游标劈成两半。同时：**巡检 / 收工 / 发布 / 每周只在主仓库跑**（launchd 的备份 / noon-task / weekly-audit 三个定时任务的 WorkingDirectory 也钉在主仓库，正本在那儿）。
-2. **要写数据就先 `--copy`**。`data/` 是真实个人资产（边界 B3），link 模式下的实验写入没有隔离。
+1. **state / AGENTS.local.md 恒 link**（脚本已固化，不可选）。账本与开工快照必须唯一——复制一份等于把成本账与巡检游标劈成两半。同时：**巡检 / 收工 / 发布 / 每周只在主仓库跑**（launchd 的备份 / noon-task / weekly-audit 三个定时任务的 WorkingDirectory 也钉在主仓库，正本在那儿）。
+2. **工具出口「各自注册」，绝不 link 主仓库**（`worktree-prep.sh` 落盘时自动跑 `link-skills.sh` + `sync-agents.sh`）。技能与审查官是**项目资产、应随分支走**——link 主仓库会让 `feat/a` 的技能漏进 `feat/b`。
+3. **要写数据就先 `--copy`**。`data/` 是真实个人资产（边界 B3），link 模式下的实验写入没有隔离。
 
 ## 五、目录方案与沙箱边界（DSH 特有）
 
@@ -122,6 +126,7 @@ cd /tmp/adaios-build/services/adai-core && ./gradlew bootJar
 - [x] 在主仓库执行被拒绝（退出码 2），不会自己链自己
 - [x] 危险状态（worktree 里 `data` 已是整目录符号链接）下 `--force` 被拒绝（退出码 3），主仓库数据完好（2026-10-01 P0 修复后回归）
 - [x] 补齐后 `data/` 是真实目录、只有子项是链接（顶层不建整目录链接）
+- [x] **工具出口各自注册**：空壳 `--check` 报 24 项缺失（含出口 2 项）→ 补齐后 **24 项齐备 · 0 缺失**，6 个出口全建（2026-10-03 探针实测）
 - [ ] 你的第一次实跑：worktree 内 `./gradlew test` 全绿 + bootRun 日志里的 data 路径指向真实数据
 - [ ] worktree 内 `bash ai-engineering/cadence.sh`（无参数）读到与主仓库**同一份**游标
 

@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 143
+lines: 159
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -104,6 +104,22 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | 自检一致性 | `bash scripts/link-skills.sh --check` · `bash ai-engineering/guard-tools.sh`（T4）|
 | 新增/删除出口 | 改 `TARGETS` → 跑脚本 → 更新 §四 表 |
 | 有意的偏离 | **必须留痕**（写进本规范 + `pitfalls.md`）|
+
+### 多 worktree / 多分支下的行为（2026-10-03 补）
+
+**真相源随分支走；出口是本机状态、每个 worktree 各自一套。**
+
+| 资产 | 在 worktree 里怎么来 | 随分支？ |
+|:--|:--|:--:|
+| `AGENTS.md` ×7 · `ARCHITECTURE.md` · `ai-engineering/**`（技能 / 审查官 / 规范） | git 检出 | ✅ |
+| **技能出口 ×4** | `bash scripts/link-skills.sh`（**相对软链** → 指向本 worktree） | ✅ |
+| **子代理出口 ×2** | `bash scripts/sync-agents.sh`（**生成**） | ✅ |
+| `data/` · `services/adai-core/.env` | `scripts/worktree-prep.sh`（link 或 `--copy`） | — |
+| **`ai-engineering/state/` · `AGENTS.local.md`** | **恒 link 主仓库**——账本与开工快照**必须唯一** | ❌（有意）|
+
+**一条命令补齐**：`bash scripts/worktree-prep.sh`（自动含出口注册与 `--check`）。
+
+**铁律**：**绝不 link 主仓库的出口**——那会让 `feat/a` 的技能漏进 `feat/b`，分支隔离在 AI 上下文层失效。
 
 ## 八、反模式（禁止）
 
