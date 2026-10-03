@@ -1,11 +1,11 @@
 ---
 title: AdaiOS 分支开发规范（AI 上下文工程视角）
-description: 开一条分支开发时，AI 上下文工程目录怎么建、怎么改、什么不能动——三层归属（真相源随分支 / 出口各自注册 / state 与快照全局唯一）、建四类资产的硬约束、分支上的冲突面（含 REGISTER 数组这种 AI 上下文特有的）、禁令、自检顺序、合并后必须重建出口。与 git-workflow.md（版本控制操作）和 ai-context-layer-spec.md（资产布局机制）分工。
+description: AI 上下文资产全景（工具层 / 业务层 / 代码都是文件、都走 git；唯一不入库的是出口、state、快照三样本机状态）+ 统一流程（加 skill 也开分支 → 本分支注册即用 → 合并 main → 其他分支 merge main 后重跑出口）+ 建四类资产的硬约束 + 冲突面（含 REGISTER 取并集）+ 禁令 + 自检顺序 + 合并后必须重建出口。与 git-workflow.md（版本控制操作）和 ai-context-layer-spec.md（资产布局机制）分工。
 version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 131
+lines: 180
 depends-on:
   - ../reference/change-log.md
 related:
@@ -20,14 +20,63 @@ tags: [guide, git, workflow, ai-tooling, context]
 
 > **三份文档的分工**：`git-workflow.md` 管**版本控制操作**（分支 / 提交 / 合并 / 推送 / 发布）· `ai-context-layer-spec.md` 管**资产布局与出口机制**（结构性）· **本文件**管「**在一条分支上开发时，AI 上下文工程目录怎么建、怎么改、什么不能动**」（流程性）。
 
-## 一、三层归属：什么随分支、什么全局唯一
+## 一、AI 上下文资产全景与统一流程
 
-| 层 | 内容 | 随分支？ | 谁写 |
-|:--|:--|:--:|:--|
-| **真相源** | `AGENTS.md` ×7 · `ARCHITECTURE.md` · `ai-engineering/**` · `docs/**` | ✅ | 各分支可改（共享账本按 `git-workflow.md` §五合）|
-| **出口**（本机状态，**不进 git**）| `.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*` | ✅ **各自注册** | **只由脚本生成**——手改必被覆盖 |
-| **全局唯一**（link 主仓库）| `ai-engineering/state/` · `AGENTS.local.md` | ❌ | **只在主仓库写**（`ship`/`mark` 已被守卫拒绝）|
-| 工具私有 | `.idea/` · `.obsidian/` | — | 项目不碰 |
+### 1.1 资产全景：都是文件，都在 git
+
+**本项目所有 AI 上下文资产都是文件**，因此**都能像代码一样用 git 管理**——开分支、提交、合并、回滚。
+
+| 层 | 资产 | 位置 |
+|:--|:--|:--|
+| **工具层**（机制）| 技能 | `ai-engineering/skills/<name>/SKILL.md` |
+| | 审查官（subagent 源）| `ai-engineering/roles/<name>.md` |
+| | 守卫 / 执行器 | `ai-engineering/guard-*.sh` · `cadence.sh` · `scripts/*.sh` |
+| | 契约与规范 | `frontmatter-spec.md` · `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` |
+| **业务层**（内容）| 约定 / 边界 / 坑 | `assets/conventions.md` · `boundaries.md` · `pitfalls.md` |
+| | 决策 | `assets/adr/*.md` · `docs/rfc/*.md` |
+| | 业务方向 | `docs/VISION.md` · `docs/architecture/product-roadmap.md` |
+| | 领域知识（wiki）| `os/*/11-context/*.md` |
+| | 账本 / 索引 | `docs/reference/change-log.md` · `docs/review/REVIEW.md` · `reference/status.md` · 各 `_index.md` |
+| **代码** | 业务代码 | `services/` · `apps/` · `os/` |
+
+**⇒ 既然都是文件，就**不需要**为"AI 上下文"发明特殊流程**——**加一个 skill、加一条坑、改一条守卫，和改一行 Java 是同一种操作**：开分支 → 改 → 提交 → 合并。
+
+### 1.2 唯一不是 git 的三样（本机状态，靠脚本重建）
+
+| 项 | 为什么不在 git | 怎么重建 |
+|:--|:--|:--|
+| **出口**（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*`）| 软链 / 生成物，机器相关 | `bash scripts/worktree-prep.sh`（内含 `link-skills.sh` + `sync-agents.sh`）|
+| **`ai-engineering/state/`**（游标 / 成本账 / 心跳缓存）| 本机账本，**必须全局唯一** | `worktree-prep.sh` **恒 link 主仓库** |
+| **`AGENTS.local.md`**（开工快照）| 本机缓存，机器生成 | 同上恒 link；主仓库可 `guard-context.sh --write-local` 刷新 |
+
+### 1.3 统一流程：一次改动怎么走、怎么传给别的分支
+
+```
+main ────────────────────────────────────────────────────────►  （唯一汇合点）
+  │
+  │ ① 开分支（AI 上下文改动与其他改动没有区别）
+  ├──► feat/add-skill-x
+  │        ② 改文件（真相源）+ 在本分支注册出口 → 本分支内立即可用
+  │        ③ 自测（见 §六）+ 显式路径提交
+  │        ④ 合并回 main（squash 或 merge，见 git-workflow.md §五）
+  │
+  ├──► feat/trading   ⑤ git merge main  →  ⑥ 重跑 worktree-prep.sh  →  拿到新 skill
+  └──► feat/learn     ⑤ git merge main  →  ⑥ 重跑 worktree-prep.sh  →  拿到新 skill
+```
+
+**三个关键点**：
+
+1. **"给别的分支用" = 别的分支 `git merge main`**——**标准 git，不是特殊机制**。**不存在"实时共享"**：传播靠合并，**也就是一条命令**。
+2. **⑤ 之后必须 ⑥**：**出口不在 git 里**——真相源合过来了，出口还是旧的（工具里看不见新 skill / 新审查官）。**这是全流程最容易漏的一步**（§七 详述）。
+3. **不需要"出口指向主仓库"这类机制**：各分支**各自注册**（指向自己的真相源），传播交给 `merge`。好处是**分支隔离彻底、没有任何隐式共享**——你在 `feat/a` 试坏一个 skill，不会污染 `feat/b`。
+
+**按改动规模选路（都是 git 操作，没有第四种）**：
+
+| 规模 | 做法 |
+|:--|:--|
+| 小改（一条坑、一个错字）| **直接在 main 提交** |
+| 中改（加一个 skill / 一条规范）| **开分支**（也可直接 main，取决于你是否要隔离与留痕）|
+| 大改（改守卫机制 / 换布局）| **开分支 + 隔离 + 合并前跑全门禁** |
 
 ## 二、开一条线（三条命令）
 
@@ -54,7 +103,7 @@ bash scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 缺失
 - **保持扁平**，**刻意不目录化**（理由：不进技能出口；目录化要付 44 处引用的代价而零收益——见 `ai-context-layer-spec.md` §三）
 - 五段结构（同技能）
 - **要能在工具里派** → 把 `<name>` 加进 `scripts/sync-agents.sh` 的 `REGISTER`，跑该脚本
-- ⚠️ **预算线**：12 个审查官的 `description` 合计 **≈1.3k token**（Claude Code 官方告警线 **15k**）。新增时**接近这条线就缩短 description，不要砍审查官**
+- ⚠️ **预算线（2026-10-03 修正参照系）**：真正卡人的是 **skill listing 预算 ≈ context window 的 1%**（Agent Skills 官方），**溢出会丢弃部分 description ⇒ 越多触发越不准**。此前按 Claude Code 的 15k 告警线判断，是**用错了参照系**（见 `ai-context-layer-spec.md` §十一）。**新增审查官前先问：它会不会被真的调用？**（2026-10-03 实测：11/12 零读取）
 
 ### 3.3 新规范 / 资产（`ai-engineering/assets/*`）
 

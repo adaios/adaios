@@ -119,7 +119,7 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 
 **一条命令补齐**：`bash scripts/worktree-prep.sh`（自动含出口注册与 `--check`）。
 
-**在分支上建资产的操作规程**（新技能 / 审查官怎么加、冲突面、**合并后重建出口**）见 `docs/guides/branch-development.md`。
+**分支开发下的全流程**（资产全景 · **加 skill 也开分支** · 改完怎么传给其他分支 · **合并后重建出口**）见 `docs/guides/branch-development.md`。
 
 **铁律**：**绝不 link 主仓库的出口**——那会让 `feat/a` 的技能漏进 `feat/b`，分支隔离在 AI 上下文层失效。
 
