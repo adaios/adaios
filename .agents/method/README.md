@@ -3,9 +3,9 @@ title: AI 工程流水线（method/README）
 description: 方法论放回仓库——AI 工程切入点图谱：流程机制替人记得（流程约定 > 内容编写）；新项目 = 搭一条流水线
 version: 1
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-10-03
 status: active
-lines: 60
+lines: 89
 depends-on:
   - ../README.md
 related:

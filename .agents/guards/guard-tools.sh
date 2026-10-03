@@ -69,6 +69,7 @@ MISSING=0; N_ROLES=0; N_SKILLS=0
 # 两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md（RFC 20261003 批 1 起）。
 # 目录布局下 name 必须等于**父目录名**（官方硬约束），扁平布局下等于文件名 stem。
 for f in "$ROOT"/.agents/roles/*.md "$ROOT"/.agents/roles/*/SKILL.md; do
+  case "$(basename "$f")" in _index.md|_directory.md) continue;; esac   # 目录两件套不是技能包（2026-10-03）
   [ -f "$f" ] || continue
   N_ROLES=$((N_ROLES+1))
   case "$f" in */SKILL.md) base="$(basename "$(dirname "$f")")";; *) base="$(basename "$f" .md)";; esac
@@ -78,6 +79,7 @@ for f in "$ROOT"/.agents/roles/*.md "$ROOT"/.agents/roles/*/SKILL.md; do
   fi
 done
 for f in "$ROOT"/.agents/skills/*.md "$ROOT"/.agents/skills/*/SKILL.md; do
+  case "$(basename "$f")" in _index.md|_directory.md) continue;; esac   # 目录两件套不是技能包（2026-10-03）
   [ -f "$f" ] || continue
   N_SKILLS=$((N_SKILLS+1))
   case "$f" in */SKILL.md) base="$(basename "$(dirname "$f")")";; *) base="$(basename "$f" .md)";; esac

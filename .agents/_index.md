@@ -1,88 +1,48 @@
 ---
-title: ai-engineering 目录索引
-description: AI 工程层目录治理——职责、文件清单、过期判断（文件自理机制）
+title: .agents/ 目录索引
+description: AI 上下文工程容器的顶层索引——12 个子目录 + 顶层文件的清单；根契约见 ./_directory.md
 version: 1
-created: 2026-08-15
+created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 88
+lines: 48
 depends-on: []
-related: [frontmatter-spec.md]
-tags: [ai, meta, index]
+related: [./_directory.md]
+tags: [meta, index, ai]
 ---
 
-# ai-engineering 目录索引
+# .agents/ 目录索引
 
-**职责**：AdaiOS AI 工程层（工具无关）——资产 + 工作流 + 状态三层。新增 AI 工程类文档放此区。
+**职责**：AdaiOS AI 上下文工程容器（工具中立）——**真相源进 git**，出口与本机状态不入库。
 
-## 文件清单
+> 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-| 文件 | 职责 | 状态 |
-|:-----|:-----|:----:|
-| README.md | 入口：定位 + 接入指南 | active |
-| frontmatter-spec.md | 文档元数据契约 | active |
-| roles/product-arch.md | 产品架构师（全局/原则）| active |
-| roles/ux-reviewer.md | 交互体验师（流程/异常）| active |
-| roles/ui-reviewer.md | 界面设计师（视觉/触达）| active |
-| roles/backend-reviewer.md | 后端代码官 | active |
-| roles/frontend-reviewer.md | 前端代码官 | active |
-| roles/docs-reviewer.md | 文档契约官 | active |
-| roles/knowledge-reviewer.md | 知识数据官 | active |
-| roles/context-reviewer.md | AI Context 审查官 | active |
-| roles/adversarial-reviewer.md | 对抗找茬官（deep 默认附加，找炸点/骂点/边界漏）| active |
-| roles/stranger-reviewer.md | **陌生人官**（外部视角）：首次使用者——入门口可达/开号/空世界首屏，禁读源码 | active |
-| roles/social-reviewer.md | **社会性官**（外部视角）：递手机/被邀请者——通知暴露面/门槛/退出口，产出决策表 | active |
-| roles/support-reviewer.md | **支持台官**（外部视角）：预演「他一定会问的」——答不上来的即缺陷 | active |
-| skills/new-api.md | 建设技能：新建/修改 API（代码→契约→测试→门控闭环）| active |
-| skills/new-domain.md | 建设技能：新增 Domain（RFC+六维→插件→数据流→落地）| active |
-| skills/ship.md | 建设技能：/ship 收尾闭环（五件套→契约→登记→门禁→提交）| active |
-| skills/learn-digest/SKILL.md | 建设技能：外部内容消化（视频/文章 → learn 知识卡片 + 概念追踪）**（官方目录布局，RFC 20261003 批 1）** | active |
-| process/audit.md | 全维度走查流程 | active |
-| process/review.md | 增量深审流程 | active |
-| process/ship.md | 收尾闭环流程（guard-meta + guard-align 门禁）| active |
-| process/cadence.md | **协作默契总表**（每日巡检 / 收工 / 每周 / 待办四条节奏 + 游标机制 + 触发协议 + 边界）| active |
-| guard-meta.sh | 元治理自检（frontmatter 图谱/lines/孤儿/正文路径，`--fix` 回写）| active |
-| guard-skills.sh | **技能包质量校验**（官方 Agent Skills 规范：S3 name 字符集/长度/与目录名一致 · S4 description 长度 · S5 五段结构 · S7 偏离在案）| active |
-| guard-roadmap.sh | 规划状态对拍（roadmap 体检 + 漂移检查）| active |
-| guard-unfixed.sh | 未修复问题总清单（REVIEW/task-log/audits 四源聚合 + 对账）| active |
-| guard-tools.sh | 工具接入自检（T1 hook/T2 快照/T3 技能/T4 注册/T5 入口/T6 shell 变量花括号，跨工具互通可验证；`--shell-lint` 供 pre-commit）| active |
-| guard-align.sh | 文档自动对齐（端点/测试数，pre-commit 触发）| active |
-| guard-feature.sh | **功能索引自检**（索引行字段/链接/状态枚举、欠着编号存在、卡内无实现细节、卡 ≤12 行、卡文件非孤儿；pre-commit 触发）| active |
-| tests/_index.md | **守卫反例回归区**——用坏样本证明守卫真会抓（防「看起来在查、其实查不到」的假绿）| active |
-| method/_index.md | 方法论层（切入点图谱/流水线/脚手架）| active |
-| guard-context.sh | 任务上下文注入（开工前清单，进攻侧）| active |
-| guard-sediment.sh | 沉淀检查（坑/ADR/出表/登记，进攻侧②③）| active |
-| guard-cost.sh | 成本监控（读 DSH 会话日志按天/会话算钱，防守侧）| active |
-| cadence.sh | **协作默契执行器**（每日巡检 / 收工 / 每周 / 待办 的唯一入口；游标 `state/cadence.json`，总表见 `process/cadence.md`）| active |
-| lib/cadence-lib.sh | 游标库——「上次到哪」的唯一存储（读写 / 只前进 / 日期算术；cadence.sh 与 guard-prod.sh 共用）| active |
-| guard-prod.sh | **生产日报**（生产日志 + 真实对话卡片；4xx/5xx 自动分「扫描器/探针/设计语义/待关注」，每日流程第一眼）| active |
-| deploy-gate.sh | 部署门禁+smoke（触发侧，最硬闸门）| active |
-| weekly-audit.sh | 每周审查（cron，防休眠）| active |
-| checklists/review-ux.md | 交互检查清单 | active |
-| checklists/review-ui.md | 界面检查清单 | active |
-| checklists/review-product.md | 产品架构检查清单 | active |
-| checklists/review-context.md | AI Context 检查清单 | active |
-| checklists/review-backend.md | 后端代码检查清单 | active |
-| checklists/review-frontend.md | 前端代码检查清单 | active |
-| checklists/review-docs.md | 文档契约检查清单 | active |
-| checklists/review-knowledge.md | 知识数据检查清单 | active |
-| checklists/review-stranger.md | **陌生人首次使用**检查清单（入口可达/空世界/五问/术语）| active |
-| checklists/review-social.md | **社会性（递出去那一刻）**检查清单（暴露面/门槛/退出）| active |
-| checklists/review-support.md | **支持台（他一定会问）**检查清单（20 问 + 归属判定）| active |
-| checklists/review-perf.md | 加载性能专项（阶段 A→F 快查）| active |
-| checklists/guard.md | 守护检查清单（G1-G7）| active |
-| checklists/cost.md | 成本纪律（烧钱动作清单 + 省钱原则 + 盯账）| active |
-| assets/_index.md | 资产层索引（规范/边界/ADR/坑）| active |
-| assets/skills-spec.md | 技能包规范（SKILL.md 融合规则：name + 10 字段、五段结构、新增流程）| active |
-| assets/ai-context-layer-spec.md | **项目级 AI 上下文中间层规范**（真相源布局 · 多工具出口 · 新增工具四步 · 维护与反模式）| active |
-| workflow/_index.md | 工作流层索引（讨论→方案→开发→审核→验收）| active |
-| state/_index.md | 状态层索引（指针化真相源）| active |
-| assets/adr/ADR-001.md | AI 工程层为一等公民 | accepted |
-| assets/adr/ADR-002.md | 单一事实源 | accepted |
-| assets/adr/ADR-003.md | Domain=插件模型 | accepted |
+## 子目录（12）
+
+| 目录 | 职责 | 索引 | 契约 |
+|:--|:--|:--:|:--:|
+| `assets/` | AI 工程静态知识——规范（怎么做）· 边界（不做什么）· ADR（为什么这么定）· 已知坑（别踩什么） | [→](./assets/_index.md) | [→](./assets/_directory.md) |
+| `checklists/` | 逐条可执行的核对清单——**人与审查官共用**（8 客观官 + 1 对抗官 + 3 外部视角官 + 守护/成本） | [→](./checklists/_index.md) | [→](./checklists/_directory.md) |
+| `guards/` | 守卫与自检脚本——**机制层**：把规范变成机器能拦的门 | [→](./guards/_index.md) | [→](./guards/_directory.md) |
+| `lib/` | 被复用的 shell 库——**不含业务判断**，只提供稳定能力 | [→](./lib/_index.md) | [→](./lib/_directory.md) |
+| `method/` | **元方法层**——怎么从零搭一套 AI 工程（给新项目用，不是日常流程） | [→](./method/_index.md) | [→](./method/_directory.md) |
+| `process/` | 具体动作的流程定义——**天天用**：审查（audit/review）· 收尾（ship）· 节奏（cadence） | [→](./process/_index.md) | [→](./process/_directory.md) |
+| `roles/` | 审查官定义——**subagent 的真相源**（8 客观官 + 1 对抗官 + 3 外部视角官） | [→](./roles/_index.md) | [→](./roles/_directory.md) |
+| `scripts/` | 环境与注册脚本——**换机或新工作区**时要跑的那些（不是门禁） | [→](./scripts/_index.md) | [→](./scripts/_directory.md) |
+| `skills/` | 建设与流程技能——**加载即执行**的工作流封装（工具的 skill 出口直连这里） | [→](./skills/_index.md) | [→](./skills/_directory.md) |
+| `state/` | **本机状态**（不入 git）——协作节奏的游标与账本 | [→](./state/_index.md) | [→](./state/_directory.md) |
+| `tests/` | **守卫反例回归区**——用坏样本证明守卫真的会抓（防「看起来在查、其实查不到」的假绿） | [→](./tests/_index.md) | [→](./tests/_directory.md) |
+| `workflow/` | **单任务生命周期**——讨论 → 方案 → 开发 → 审核 → 验收 的六节点闭环 | [→](./workflow/_index.md) | [→](./workflow/_directory.md) |
+
+## 顶层文件
+
+| 文件 | 职责 |
+|:--|:--|
+| `README.md` | AdaiOS 的 AI 工程层入口——资产（规范/边界/ADR/坑）+ 工作流（讨论→方案→开发→审核→验收）+… |
+| `frontmatter-spec.md` | AdaiOS 全项目文档 YAML frontmatter 契约——字段定义、维护职责、图谱与治理机制 |
 
 ## 过期判断
 
 - `status != active` → 候选清理
-- `updated` 超 3 个月未动且无人引用 → 候选归档
-- 新增角色/流程：补本索引 + frontmatter
+- **清单须与实际一致**（`guard-structure` S1–S3 校验）
+- 新增子目录 → **必须同时有 `_index.md` 与 `_directory.md`**

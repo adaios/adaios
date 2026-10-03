@@ -3,9 +3,9 @@ title: 切入点详解（pipeline）
 description: AI 工程流水线每个切入点的职责/脚本/触发/拦截——从 adaios 实践提炼，可复制到新项目
 version: 1
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-10-03
 status: active
-lines: 60
+lines: 118
 depends-on:
   - README.md
 related:

@@ -51,6 +51,10 @@ files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
 # 「guard-meta PASS」因此是覆盖盲区造成的假绿（kernel.md 的 lines 漂移无人管）
 files += sorted((DOCS/'features').rglob('*.md'))      # 功能索引 + 意图卡（含子目录）
 files += sorted((AI/'tests').glob('*.md'))            # 守卫反例回归区索引
+files += sorted((AI/'guards').glob('*.md'))           # 守卫 + 目录两件套
+files += sorted((AI/'lib').glob('*.md'))              # 库 + 两件套
+files += sorted((AI/'method').glob('*.md'))           # 元方法层
+files += sorted((AI/'scripts').glob('*.md'))          # 环境脚本 + 两件套
 files = [f for f in files if f.exists()]
 files = list(dict.fromkeys(files))   # 去重：同一文件会被多个 glob 命中（如 docs/*/_index.md 与各区专属 glob）
                                      # —— list 累加会让「N files」虚高（2026-10-03 实测虚高 3）；判据本身等价（同一文件查两遍）
@@ -161,10 +165,11 @@ for f in files:
             t = (f.parent / refp).resolve()
             if t.exists(): referenced.add(str(t))
 # _index.md 文件清单（| path | 职责 | 状态 |）也算引用（全部子目录索引）
-for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md'] + sorted((AI/'assets').glob('_index.md')) + sorted((AI/'workflow').glob('_index.md')) + sorted((AI/'state').glob('_index.md')):
+for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md'] + sorted(AI.glob('*/_index.md')):
+    # 2026-10-03：收**所有**子目录索引（原先硬编码 assets/workflow/state 三个；目录两件套落地后每个子目录都有 _index.md）
     if not idx.exists(): continue
     for line in idx.read_text(encoding='utf-8').splitlines():
-        m = re.match(r'^\|\s*([\w./-]+\.md)\s*\|', line)
+        m = re.match(r'^\|\s*`?([\w./-]+\.md)`?\s*\|', line)   # 兼容反引号包裹的文件名（2026-10-03 目录两件套落地）
         if m:
             t = (idx.parent / m.group(1)).resolve()
             if t.exists(): referenced.add(str(t))
@@ -191,7 +196,8 @@ for f in files:
             if not target.exists():
                 fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
     # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md；CLAUDE.md 2026-08-19 已删，正则保留防残留）
-    for m in re.finditer(r'`((?:docs|\.agents|AGENTS|CLAUDE)[\w./-]*(?:\.md|\.sh|/))`', text):
+    for m in re.finditer(r'`((?:docs/|\.agents/|AGENTS\.md|AGENTS\.local\.md|CLAUDE\.md)[\w./-]*(?:\.md|\.sh|/))`', text):
+        # 2026-10-03：docs → docs/，避免把文件名 `docs-reviewer.md` 误判为仓库路径
         ref = m.group(1).rstrip('/')
         if ref.endswith('/'): continue  # 目录引用跳过
         if ref in ('ai-engineering-method', 'ai-context-research'): continue  # 仓库外兄弟目录（同级）

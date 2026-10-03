@@ -1,31 +1,34 @@
 ---
-title: method 方法论层索引
-description: AI 工程方法论目录治理——切入点图谱/流水线/脚手架（放回仓库，随实践迭代）
+title: method/ 目录索引
+description: method/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
-created: 2026-08-16
-updated: 2026-08-16
+created: 2026-10-03
+updated: 2026-10-03
 status: active
-lines: 24
+lines: 34
 depends-on: []
-related:
-  - ../README.md
-tags: [ai, meta, index, method]
+related: [./_directory.md]
+tags: [meta, index]
 ---
 
-# method 方法论层索引
+# method/ 目录索引
 
-**职责**：跨项目可复制的「如何建 AI 工程」方法论——切入点图谱、流水线、脚手架。放回仓库随 adaios 实践迭代（一边研究一边实践一边输出）。
+**职责**：**元方法层**——怎么从零搭一套 AI 工程（给新项目用，不是日常流程）
 
-## 文件清单
+> 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
+
+## 文件清单（5 项）
 
 | 文件 | 职责 | 状态 |
-|:-----|:-----|:----:|
-| README.md | 切入点图谱 + 三层模型 + 新项目范式 | active |
-| pipeline.md | 各切入点职责（pre-commit/post-commit/pre-push/部署/定时）| active |
-| scaffold.md | 新项目脚手架设计（init-ai-engineering.sh）| active |
-| research-notes/ | 实践研究笔记（待建）| draft |
+|:--|:--|:--:|
+| `README.md` | 方法论放回仓库——AI 工程切入点图谱：流程机制替人记得（流程约定 > 内容编写）；新项目 = 搭一条流水线 | active |
+| `pipeline-sequence.mmd` | — | active |
+| `pipeline.md` | AI 工程流水线每个切入点的职责/脚本/触发/拦截——从 adaios 实践提炼，可复制到新项目 | active |
+| `pipeline.mmd` | — | active |
+| `scaffold.md` | init-ai-engineering.sh 设计——新项目一条命令搭好 AI 工程流水线（hooks + gu… | active |
 
-## 变更规则
+## 过期判断
 
-- 改流水线（hooks/guard/部署）→ 顺手更新本层对应文档（方法论随实践迭代）
-- 研究验证成方法论 → 移入本层；通用研究 → ai-context-research/（仓库外）
+- `status != active` → 候选清理
+- `updated` 超 3 个月未动且无人引用 → 候选归档
+- **清单必须与实际文件一致**（`guard-structure` S2 双向校验；新增文件后跑 `guard-structure.sh --fix`）

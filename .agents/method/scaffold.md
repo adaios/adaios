@@ -3,9 +3,9 @@ title: 新项目脚手架（scaffold）
 description: init-ai-engineering.sh 设计——新项目一条命令搭好 AI 工程流水线（hooks + guard + 流程文件 + CI 模板）
 version: 1
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-10-03
 status: active
-lines: 45
+lines: 79
 depends-on:
   - README.md
   - pipeline.md

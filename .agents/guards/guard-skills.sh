@@ -44,7 +44,7 @@ def collect():
         d = AI / base
         if not d.is_dir(): continue
         out += sorted(d.glob('*.md')) + sorted(d.glob('*/SKILL.md'))
-    return [f for f in out if f.exists()]
+    return [f for f in out if f.exists() and f.name not in ('_index.md', '_directory.md')]   # 目录两件套不是技能包（2026-10-03）
 
 for f in collect():
     rel = f.relative_to(ROOT)

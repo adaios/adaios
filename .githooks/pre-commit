@@ -7,6 +7,7 @@
 #   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
 #   2b) guard-feature —— 功能索引对齐（RFC 20261001 批 2）
 #   2c) guard-skills  —— 技能包质量（官方 Agent Skills 规范：name / description / 五段 / 偏离在案）
+#   2d) guard-structure —— 目录级自洽（两件套齐备 · 清单⇄实际 · 契约依赖与守卫引用有效）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
 #   4) T6 shell-lint —— shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下 unbound）
 # 由 git core.hooksPath 启用（.agents/scripts/setup-hooks.sh 配置，随 clone 重建）。
@@ -174,6 +175,23 @@ if [ -f .agents/guards/guard-skills.sh ] && echo "$CHANGED" | grep -qE '\.md$'; 
   fi
 fi
 
+# 2d) 目录级自洽（guard-structure，2026-10-03 目录两件套落地）—— 契约与清单是否与**事实**一致
+#     S1 每个子目录有 _index.md + _directory.md · S2 清单⇄实际（双向）· S3 契约依赖存在 · S4 契约提到的守卫存在
+#     触发：md 变更或 .agents/ 下任何改动；防御同 2c：脚本未落地则跳过，不阻断
+if [ -f .agents/guards/guard-structure.sh ] && echo "$CHANGED" | grep -qE '\.md$|^\.agents/'; then
+  STR_OUT=$(bash .agents/guards/guard-structure.sh 2>&1); STR_RC=$?
+  if [ "$STR_RC" -ne 0 ]; then
+    if echo "$STR_OUT" | grep -q 'STRUCTURE-GUARD:'; then
+      echo "$STR_OUT"
+      echo "❌ 目录级不自洽，提交已阻止（见上）。修复指引：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4 需手工）。"
+    else
+      echo "❌ 结构守卫**脚本自身出错**（不是目录的问题，需排查 guard-structure.sh）："
+      echo "$STR_OUT" | tail -5 | sed 's/^/    /'
+    fi
+    exit 1
+  fi
+fi
+
 # 3) 防 P0 复发（G1-G7）——代码变更时跑
 # 2026-08-23 P2-A3 修正：不再吞输出——PASS 静默、HIT 显示摘要、脚本自坏（exit≠0 且无 HIT）单独报错可区分
 if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
@@ -199,4 +217,4 @@ if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
 fi
 
 bash .agents/guards/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
-echo "✅ 文档对齐 + 结构 + 功能索引 + 技能包质量 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"
+echo "✅ 文档对齐 + 结构 + 功能索引 + 技能包质量 + 目录自洽 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"
