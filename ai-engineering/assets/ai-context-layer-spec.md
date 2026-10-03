@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 159
+lines: 161
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -118,6 +118,8 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | **`ai-engineering/state/` · `AGENTS.local.md`** | **恒 link 主仓库**——账本与开工快照**必须唯一** | ❌（有意）|
 
 **一条命令补齐**：`bash scripts/worktree-prep.sh`（自动含出口注册与 `--check`）。
+
+**在分支上建资产的操作规程**（新技能 / 审查官怎么加、冲突面、**合并后重建出口**）见 `docs/guides/branch-development.md`。
 
 **铁律**：**绝不 link 主仓库的出口**——那会让 `feat/a` 的技能漏进 `feat/b`，分支隔离在 AI 上下文层失效。
 

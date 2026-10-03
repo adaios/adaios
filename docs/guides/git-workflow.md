@@ -5,10 +5,11 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 145
+lines: 146
 depends-on:
   - ../reference/change-log.md
 related:
+  - ./branch-development.md
   - ./worktree-workflow.md
   - ./qoder-parallel-workflow.md
   - ./development.md

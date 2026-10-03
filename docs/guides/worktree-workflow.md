@@ -5,12 +5,13 @@ version: 1
 created: 2026-10-01
 updated: 2026-10-03
 status: active
-lines: 142
+lines: 143
 depends-on: []
 related:
   - ./development.md
   - ./qoder-parallel-workflow.md
   - ./git-workflow.md
+  - ./branch-development.md
 tags: [guide, workflow, ai-tooling]
 ---
 
