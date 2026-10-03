@@ -31,7 +31,7 @@ flowchart TB
         A2["AGENTS.local.md（本机快照，不入 git）"]
     end
     subgraph L1["L1 任务层 ｜ 当前分支 / 当前任务"]
-        B1["docs/inbox/branch-notes/&lt;分支&gt;.md<br/>做什么 · 进度 · 风险"]
+        B1[".agents/workspace/tasks/&lt;分支&gt;.md<br/>做什么 · 进度 · 风险 · 待归档"]
     end
     subgraph L2["L2 约束层（决策类）｜ 应该怎么做 / 不能做什么"]
         C1["约定 conventions · 边界 boundaries · 坑 pitfalls"]
@@ -69,9 +69,9 @@ flowchart TB
 | 统一入口（**7 份**：根 + `services/adai-core` + `apps/adai-{app,web}` + `os/{life-os,project-os,trading-engine}`）| `AGENTS.md` ×7 | ✅ | `guard-meta`（lines / 断链）|
 | 本机开工快照 | `AGENTS.local.md` | ❌ | `guard-context.sh --write-local`（**恒 link 主仓库**）|
 
-### L1 任务层（当前分支 / 任务）—— 待建
+### L1 任务层（当前分支 / 任务）
 
-**分支本地账本**：`docs/inbox/branch-notes/<分支>.md`（随分支 ✅）——做什么 · 进度 · 风险 · **待归档的账本条目**；合并时搬进 change-log / REVIEW / `_index`，然后删除本文件。
+**分支本地账本**：`.agents/workspace/tasks/<分支>.md`（随分支 ✅）——做什么 · 进度 · 风险 · **待归档的账本条目**；合并时搬进 change-log / REVIEW / `_index`，然后删除本文件。目录契约见 `.agents/workspace/tasks/_directory.md`。
 
 ### L2 约束层（决策类：应该怎么做 / 不能做什么）
 
@@ -145,7 +145,7 @@ flowchart TB
 ```mermaid
 flowchart LR
     L0["L0 入口<br/>AGENTS.md ×7 + 快照"]
-    L1["L1 任务<br/>branch-notes"]
+    L1["L1 任务<br/>workspace/tasks"]
     L2["L2 约束（决策类）<br/>约定 · 边界 · 坑 · 决策 · 方向"]
     L3["L3 事实（事实类）<br/>架构 · 接口 · 状态 · 领域 wiki"]
     TL["工具层<br/>技能 · 审查官 · 守卫 · 契约"]
@@ -283,11 +283,10 @@ flowchart TD
 
 ## 九、落地缺口（现状 → 目标）
 
-**已落地**（2026-10-03）：AI 资产收进 `.agents/` 容器 · **目录两件套**（13 组）+ `guard-structure` · 出口 4→3 · 5 处旧守卫适配修复。
+**已落地**（2026-10-03）：AI 资产收进 `.agents/` 容器 · **目录两件套**（13 组）+ `guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（`.agents/workspace/tasks/`）。
 
 | 仍未做 | 目标 | 代价 |
 |:--|:--|:--|
-| **L1 任务层缺失** | 建 `branch-notes` 模板 + 合并时归档 | 小 |
 | **知识回流无确认** | AI 输出「待沉淀清单」→ 人确认才写 | 小（写进 AGENTS.md）|
 | **红线未进守卫 / 无路由 / 无成本度量** | 红线已写入 §七 9 但未实现；`_directory.md` 的「触发关系」是路由雏形；成本度量需统计调用频率 | 中 |
 | **资产体量** | 64 个 ai-eng md 已确认**无碎片、无孤岛**（最大 230 行）——**该裁的是"没被读的"，不是"多的"** | 中 |

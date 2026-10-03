@@ -55,6 +55,7 @@ files += sorted((AI/'guards').glob('*.md'))           # 守卫 + 目录两件套
 files += sorted((AI/'lib').glob('*.md'))              # 库 + 两件套
 files += sorted((AI/'method').glob('*.md'))           # 元方法层
 files += sorted((AI/'scripts').glob('*.md'))          # 环境脚本 + 两件套
+files += sorted((AI/'workspace').rglob('*.md'))      # 任务账本（L1，可二级）
 files = [f for f in files if f.exists()]
 files = list(dict.fromkeys(files))   # 去重：同一文件会被多个 glob 命中（如 docs/*/_index.md 与各区专属 glob）
                                      # —— list 累加会让「N files」虚高（2026-10-03 实测虚高 3）；判据本身等价（同一文件查两遍）
@@ -165,7 +166,8 @@ for f in files:
             t = (f.parent / refp).resolve()
             if t.exists(): referenced.add(str(t))
 # _index.md 文件清单（| path | 职责 | 状态 |）也算引用（全部子目录索引）
-for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md'] + sorted(AI.glob('*/_index.md')):
+# rglob：两件套落地后索引可在任意层级（如 workspace/tasks/）
+for idx in [DOCS/'_index.md'] + sorted(DOCS.glob('*/_index.md')) + [AI/'_index.md'] + sorted(AI.rglob('_index.md')):
     # 2026-10-03：收**所有**子目录索引（原先硬编码 assets/workflow/state 三个；目录两件套落地后每个子目录都有 _index.md）
     if not idx.exists(): continue
     for line in idx.read_text(encoding='utf-8').splitlines():
