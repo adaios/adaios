@@ -17,7 +17,13 @@ target/
 # 换机 / 新 clone 后重建：bash scripts/link-skills.sh（验证：bash ai-engineering/guard-tools.sh 的 T4）
 .dsh/
 .claude/
-.agents/
+# ── .agents/ —— AI 上下文工程容器（2026-10-03 起）──
+# 真相源（skills / roles / assets / process / guards / scripts / rfc / review / features / ledger …）**必须入库**；
+# 只忽略「本机状态」与「出口」两类。⚠️ 规则必须**带前缀锚定**——写成 `skills/` 会连真相源一起忽略（pitfalls 二十三 记过这个坑）。
+.agents/state/
+# 临时：B2 把技能真相源搬入 .agents/skills/ 后，**删除下一行**
+# （注意：gitignore 不支持行尾注释——`模式  # 注释` 会把注释当成模式的一部分）
+.agents/skills/
 .qoder/
 .codex/
 # 预留：根 skills/ 出口（OpenClaw 等工具的项目级目录）—— **必须锚定仓库根**：
