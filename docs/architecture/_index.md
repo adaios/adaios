@@ -3,9 +3,9 @@ title: docs/architecture 目录索引
 description: architecture 文档区目录治理——职责、文件清单、过期判断（文件自理机制）
 version: 1
 created: 2026-08-15
-updated: 2026-09-05
+updated: 2026-10-03
 status: active
-lines: 43
+lines: 44
 depends-on: []
 related:
   - ../_index.md
@@ -21,6 +21,7 @@ tags: [meta, index, architecture]
 | 文件 | 职责 | 状态 |
 |:-----|:-----|:----:|
 | product-roadmap.md | 🚩 产品路线唯一蓝图（路线驱动开发） | active |
+| ai-context-engineering.md | **AI 上下文工程体系（方案稿 · draft）**——分层模型（L0 入口 / L1 任务 / L2 约束 / L3 事实 ＋ 横跨工具层）· 目录与文件全量定位 · 层间关系与单一权威来源 · **五张流程图**（开工 / 改动 / 合并与传播 / 发布 / 知识回流）· 触发词工作流 · 个人与团队两种配置 · 防腐机制 11 条 · 判断依据（方法论 + 企业实践 + 实证数据）· 落地缺口 | draft |
 | product-architecture.md | 五层产品架构 | active |
 | framework-plus-plugin-model.md | ★ 形态总纲——一个框架 + 各种插件（框架装「你是谁」，插件装「你能做什么」）| active |
 | system-architecture.md | 系统架构细节 | active |
