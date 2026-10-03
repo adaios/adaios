@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-03
 status: active
-lines: 161
+lines: 185
 depends-on:
   - skills-spec.md
   - ../frontmatter-spec.md
@@ -159,3 +159,27 @@ L3 工具私有 各工具自己的配置，项目不代管      ← .idea/ 等
 | 2026-10-03 | `ai/context/` 退役 | 早期空壳设计（占位符从未填充），内容已被本清单的资产承担 |
 
 **变更方式**：新增工具 / 新出口 / 新资产类别 → 改本文对应表 + 走 §五 四步 + `guard-meta` PASS；本文件状态 `active`，重大调整升 `version`。
+
+## 十一、证据（2026-10-03 补 · 行业实证）
+
+**这一节约束「要不要再加上下文」的所有决定**——因为直觉与实证方向相反。
+
+| 结论 | 证据 | 强度 |
+|:--|:--|:--|
+| **「写更多上下文文件」不提升正确率** | ETH Zurich《Evaluating AGENTS.md》（[arXiv 2602.11988](https://ar5iv.labs.arxiv.org/html/2602.11988)，AGENTbench：5,694 PR → 138 实例 / 12 仓库 / 4 组 agent×模型）：**LLM 生成的上下文 −0.5% ~ −2%**；开发者手写 **+4%**；但**成本 +19% ~ +23%** | 实证 |
+| **独立复现同样中性** | [arXiv 2607.27250](https://ar5iv.labs.arxiv.org/html/2607.27250v1)（288 次有效运行 / 2 agent / 17 任务 / 3 仓库 / gold test）：正确率**无显著差异**（界定在 <10pp / <15pp）；**失败原因是 implementation skill（功能设计与接线），不是缺仓库知识** | 实证 |
+| **上下文文件可能是「冗余文档」** | 同上：把仓库里所有 `.md` / 示例 / `docs/` **删掉**后，LLM 生成的上下文文件**反而平均 +2.7%**，并超过开发者手写版 | 实证（机制发现）|
+| **有证据的是「过程」，不是「正确率」** | 同上：`selective` 策略显著降低 cache-creation token（p=0.012）；写明「全量测试要跑 >20 分钟」的仓库，盲目跑全量的次数 **3.67 → 1.67**、墙钟 −24%（探索性）| 实证（探索性）|
+| **正面：AI 直连内部数据是放大器** | DORA（[AI-accessible internal data](https://dora.dev/capabilities/ai-accessible-internal-data/)）：是**个人效能与代码质量的统计显著乘数** | 实证（权威）|
+| **但代价是实的** | DORA 2025（[Balancing AI tensions](https://dora.dev/insights/balancing-ai-tensions/)）：90% 用 AI · >80% 自认提效 · **30% 几乎不信任 AI 生成的代码**；更高采纳同时关联**吞吐↑ + 不稳定性↑**；负面主题＝**验证税 / 幻觉 / 技能退化 / 制造债务** | 实证 |
+| **「提升 X%」的宣称基本不可信** | METR（[2026-02 更新](https://metr.org/blog/2026-02-24-uplift-update/)）**自我宣布 RCT 设计已被选择偏差破坏**（30–50% 开发者不提交「没有 AI 就不想做」的任务）| 实证（负面）|
+| **skill 有硬规模上限** | Agent Skills 官方（[spec](https://agentskills.io/specification)）：skill listing **每轮进上下文**，预算 **≈ context window 的 1%**，溢出时**丢弃部分 description** ⇒ **skill 越多，触发越不准** | 官方文档 |
+
+**⇒ 三条操作判据**：
+
+1. **默认不加**——新增上下文资产（技能 / 规范 / 文档 / 审查官）之前先问：「这算 **过程改善** 还是 **知识补齐**？」只有前者有实证支持。
+2. **按路径 / 按需加载**——四家工具（AGENTS.md 嵌套 · Claude Code `.claude/rules` + `paths:` · Copilot `*.instructions.md` + `applyTo` · Cursor `globs`）**独立收敛到「作用域化 + 按需」**；**全量注入是负收益**（+20% 成本、正确率不升）。
+3. **可度量才保留**——每个技能 / 审查官都应能回答「**context 成本多少 · 被调用几次**」（Claude Code `/skill-doctor` 的做法：报告成本与调用频率，标出「从未被调用」）；**从未被调用过的应撤出 catalog**，而不是继续加。
+
+**本项目实测对照（2026-10-03）**：一次 AI 资产台账体检的结果是「**11/12 审查官零读取 · skill 调用 0 次**」——与上述证据方向一致。**所以后续对上下文资产的动作，默认应是「裁」或「按需加载」，不是「再加一层」。**
+
