@@ -61,40 +61,79 @@ flowchart TB
 - **决策**会变、有立场、记「为什么」；**事实**相对稳定、可验证、随代码同步。混在一起是**文档腐烂的根源**——AI 分不清「这是约束还是现状」，要么盲从过时事实，要么无视有效约束。
 - 二者**不是静态二分**，而是**同一知识的两态**：决策被接受后成为约束/事实；事实会因新决策而失效。所以每份文档都带 `status`（`draft` → `active` → `superseded`），靠生命周期管理，而非靠目录分区。
 
-## 二、目录与文件定位（全量）
+## 二、资产清单（按层组织）
 
-| 路径 | 层 | 职责 | 随分支 | 谁写 / 怎么保真 |
-|:--|:--:|:--|:--:|:--|
-| `AGENTS.md` + 6 个子目录版本（共 **7** 个）| **L0** | 任何工具的统一入口：项目一句话 · 协作规则 0–11 · 审查体系导航 | ✅ | 人/AI；`guard-meta`（lines/断链）|
-| `AGENTS.local.md` | **L0** | 本机开工快照（状态/未修项/边界/坑/规范/待办/成本）| ❌ | `guard-context.sh --write-local`；**恒 link 主仓库** |
-| `docs/inbox/branch-notes/<分支>.md` | **L1** | 分支本地账本：做什么 · 进度 · 风险 · **待归档的账本条目**（合并时搬进 change-log / REVIEW / `_index`，然后删除本文件）| ✅ | 分支内 AI/人（**待建**）|
-| `ai-engineering/assets/conventions.md` | **L2** | 代码与工程约定（C1–C8…）| ✅ | `guard-meta` |
-| `ai-engineering/assets/boundaries.md` | **L2** | 原则级边界 B1–B9 | ✅ | 同上 |
-| `ai-engineering/assets/pitfalls.md` | **L2** | 已知坑 + **复发信号**（现 23 章）| ✅ | 同上 |
-| `ai-engineering/assets/adr/*.md` | **L2** | 架构决策记录（**append-only**：改动写新记录 + superseded 链，不回头改已接受的）| ✅ | `guard-meta`（图谱）|
-| `docs/rfc/*.md` | **L2** | 方案决策（含未采纳的备选与理由）| ✅ | `guard-feature`（status 枚举）|
-| `docs/VISION.md` · `docs/architecture/product-roadmap.md` | **L2** | 业务方向（**唯一蓝图**）| ✅ | `guard-roadmap` |
-| `ARCHITECTURE.md` | **L3** | 技术栈 · 五层架构 · 分层依赖 · 红线 | ✅ | `guard-meta` |
-| **`docs/architecture/api-spec.md`** | **L3** | 接口事实（端点表）| ✅ | **`guard-align` A1 与源码 `@Mapping` 逐一对拍** |
-| `docs/reference/status.md` | **L3** | 测试数 · 端点数 · 运行环境 · 发布态 | ✅ | **`guard-align` A2 与实测对拍** |
-| `os/*/11-context/*.md`（现 `life-os` / `project-os`）| **L3** | 领域知识 wiki | ✅ | 人/AI |
-| **`ai-engineering/skills/<name>/SKILL.md`** | 工具 | 技能（把流程封装成「加载即执行」）| ✅ | `guard-skills`（S3/S4/S5/S7）|
-| **`ai-engineering/roles/<name>.md`** | 工具 | 审查官（**扁平**，即 subagent 的真相源）| ✅ | `guard-skills` + `sync-agents` |
-| `ai-engineering/*.sh`（**16 个**：11 守卫 + `cadence` / `deploy-gate` / `noon-task` / `weekly-audit` 等执行器）| 工具 | 守卫与执行器 | ✅ | shell-lint + 自检 |
-| `ai-engineering/process/*.md`（**4** 份：audit / review / ship / cadence）| 工具 | 流程定义 | ✅ | `guard-meta` |
-| `ai-engineering/checklists/*.md`（**14** 份）| 工具 | 逐条可执行清单（人也用）| ✅ | `guard-meta` |
-| `ai-engineering/frontmatter-spec.md`（**顶层**）| 工具 | **元数据契约**（图谱/治理/归档）| ✅ | `guard-meta` |
-| `ai-engineering/assets/skills-spec.md` | 工具 | **技能包契约**（五段 + 偏离在案）| ✅ | `guard-skills` |
-| `ai-engineering/assets/ai-context-layer-spec.md` | 工具 | **中间层契约**（出口 / 布局 / 反模式 / 证据）| ✅ | `guard-meta` |
-| `ai-engineering/lib/*.sh` · `scripts/*.sh` | 工具 | 注册与环境（`link-skills` · `sync-agents` · `worktree-prep`…）| ✅ | shell-lint |
-| `.githooks/pre-commit` | 工具 | **多层门禁**（范围守卫 → 隐私 → 密钥 → 对齐 → 结构 → 功能索引 → 技能包 → 防复发 → shell）| ✅ | 自身即守卫 |
-| `docs/reference/change-log.md` · `docs/review/REVIEW.md` · 各 `_index.md` | 账本 | 批次历史 · 未修项 · 目录索引 | ✅ | `guard-sediment` · `guard-unfixed` · `guard-meta` |
-| `ai-engineering/state/*`（游标 / 成本账 / 日志）| **本机** | 协作节奏的账本 | ❌ | **恒 link 主仓库**（全局唯一一本）|
-| 6 个出口目录 | **出口** | 让各家工具「看得见」技能与子代理 | ❌ | `worktree-prep.sh` = `link-skills` + `sync-agents` |
+> **位置说明**：这些资产**分布在 9 个一级位置**：`ai-engineering/` · `docs/` · `scripts/` · `.githooks/` · 5 个工具出口目录（`.dsh/` `.agents/` `.claude/` `.qoder/` `.codex/`）。
+> **位置由「工具约定」与「历史」共同决定，不宜搬动**——实测移动任一处要修 **40–60 个文件**的引用（`docs/reference` 59 · `scripts/` 58 · `docs/architecture` 50 · `docs/rfc` 44 · `ai-engineering/assets` 25）。
+> 所以本表**按层组织、每行标出所在位置**——让结构可读，而不是按目录罗列。
 
-> **本表只列 AI 上下文资产。**
-> **代码本体**（`services/` · `apps/` · `os/` 的实现文件）**不在其中**——它是**被上下文描述、被 AI 读取的对象**，不是上下文本身。
-> 上下文与代码的关系靠「**事实对拍**」维持（§七 4）：`api-spec` 对源码的 `@Mapping`、`status.md` 对实测数——**文档与代码不一致时，是文档错还是代码错，由门禁逼你回答**。
+### L0 入口（轻量，禁详细规则）
+
+| 资产 | 位置 | 随分支 | 保真 |
+|:--|:--|:--:|:--|
+| 统一入口（**7 份**：根 + `services/adai-core` + `apps/adai-{app,web}` + `os/{life-os,project-os,trading-engine}`）| `AGENTS.md` ×7 | ✅ | `guard-meta`（lines / 断链）|
+| 本机开工快照 | `AGENTS.local.md` | ❌ | `guard-context.sh --write-local`（**恒 link 主仓库**）|
+
+### L1 任务层（当前分支 / 任务）—— 待建
+
+| 资产 | 位置 | 随分支 | 说明 |
+|:--|:--|:--:|:--|
+| 分支本地账本 | `docs/inbox/branch-notes/<分支>.md` | ✅ | 做什么 · 进度 · 风险 · **待归档的账本条目**（合并时搬进 change-log / REVIEW / `_index`，然后删除本文件）|
+
+### L2 约束层（决策类：应该怎么做 / 不能做什么）
+
+| 资产 | 位置 | 保真 |
+|:--|:--|:--|
+| 工程约定（C1–C8…）| `ai-engineering/assets/conventions.md` | `guard-meta` |
+| 原则边界（B1–B9）| `ai-engineering/assets/boundaries.md` | `guard-meta` |
+| 已知坑 + 复发信号（**23 章**）| `ai-engineering/assets/pitfalls.md` | `guard-meta` |
+| 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `ai-engineering/assets/adr/*.md` | `guard-meta`（图谱）|
+| 方案决策 RFC（**70 份**，含未采纳的备选与理由）| `docs/rfc/*.md` | `guard-feature`（status 枚举）|
+| 业务方向（**唯一蓝图**）| `docs/VISION.md` · `docs/architecture/product-roadmap.md` | `guard-roadmap` |
+
+> ⚠️ **L2 现在分在两家**（`ai-engineering/assets/` 放"约束"，`docs/rfc/` 放"决策"）——这是**历史形成的**（工程侧 vs 文档侧各自演化）。语义上二者都是"决策类"，但**合并代价 44 处引用**，故暂不动；本表按层呈现，正是为了让这个分家**可见**而不是被目录结构掩盖。
+
+### L3 事实层（事实类：关于代码的事实，**不是代码本身**）
+
+| 资产 | 位置 | 保真 |
+|:--|:--|:--|
+| 架构事实（技术栈 · 五层 · 红线）| `ARCHITECTURE.md` | `guard-meta` |
+| 接口事实（端点表）| `docs/architecture/api-spec.md` | **`guard-align` A1：与源码 `@Mapping` 逐一对拍** |
+| 状态事实（测试数 · 端点 · 环境 · 发布态）| `docs/reference/status.md` | **`guard-align` A2：与实测对拍** |
+| 设计文档（**19 份**：五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `docs/architecture/*.md` | `guard-meta` |
+| 参考手册（**12 份**：功能手册 / 特性参考 / 任务表…）| `docs/reference/*.md` | `guard-meta` |
+| 领域 wiki | `os/*/11-context/*.md`（现 life-os / project-os）| 人/AI |
+
+### 工具层（机制：横跨以上各层）
+
+| 资产 | 位置 | 规模 / 保真 |
+|:--|:--|:--|
+| 技能（目录布局 `<name>/SKILL.md`）| `ai-engineering/skills/` | `guard-skills` S3/S4/S5/S7 |
+| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `ai-engineering/roles/` | `guard-skills` + `sync-agents` |
+| 守卫与执行器 | `ai-engineering/*.sh` | **16 个**；shell-lint + 自检 |
+| 流程定义 | `ai-engineering/process/*.md` | **4 份**（audit / review / ship / cadence）|
+| 检查清单 | `ai-engineering/checklists/*.md` | **14 份** |
+| 契约 | `ai-engineering/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `guard-meta` / `guard-skills` |
+| 注册与环境脚本 | `scripts/*.sh` · `ai-engineering/lib/*.sh` | shell-lint |
+| 提交门禁 | `.githooks/pre-commit` | 自身即守卫（多层）|
+
+### 账本
+
+| 资产 | 位置 | 保真 |
+|:--|:--|:--|
+| 批次历史 | `docs/reference/change-log.md` | `guard-sediment` |
+| 未修项 | `docs/review/REVIEW.md` | `guard-unfixed` |
+| 目录索引 | 各 `_index.md` | `guard-meta`（孤儿检查）|
+
+### 本机状态（**不入 git**，脚本重建）
+
+| 项 | 位置 | 重建方式 |
+|:--|:--|:--|
+| 协作游标 · 成本账 · 心跳缓存 | `ai-engineering/state/*` | `worktree-prep.sh` **恒 link 主仓库**（全局唯一一本）|
+| 开工快照 | `AGENTS.local.md` | 同上 |
+| **6 个工具出口** | `.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*` | `worktree-prep.sh` = `link-skills` + `sync-agents` |
+
+> **代码本体不在本清单内**——`services/` · `apps/` · `os/` 的实现文件是**被上下文描述、被 AI 读取的对象**，不是上下文本身。两者的关系靠「**事实对拍**」维持（上表 L3 的 `api-spec` / `status`）——**文档与代码不一致时，是文档错还是代码错，由门禁逼你回答**。
 
 ## 三、关系：谁依赖谁
 
