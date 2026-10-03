@@ -11,7 +11,7 @@ related:
   - AGENTS.md
   - docs/architecture/product-architecture.md
   - docs/architecture/system-architecture.md
-  - ai-engineering/assets/boundaries.md
+  - .agents/assets/boundaries.md
 tags: [ai, architecture, governance]
 ---
 
@@ -68,4 +68,4 @@ Human → Record/File → Kernel (Context + Memory + Knowledge) → Domain OS �
 8. **审查只报告不直接修**（除 P0 数据丢失可与用户确认后修）
 9. **外向动作默认不做**：部署/推送/外发网络请求须人确认
 
-> 原则级边界完整版（B1-B9）见 `ai-engineering/assets/boundaries.md`。
+> 原则级边界完整版（B1-B9）见 `.agents/assets/boundaries.md`。
