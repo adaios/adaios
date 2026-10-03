@@ -5,7 +5,7 @@ version: 1
 created: 2026-10-03
 updated: 2026-10-04
 status: active
-lines: 148
+lines: 186
 depends-on:
   - ./skills-spec.md
 related:
@@ -71,68 +71,106 @@ tags: [ai, spec, naming]
 
 **⇒ 一句话**：**域分段学 agency-agents，字符约束学官方规范，命令命名学 Claude Code。**
 
-## 六、映射表（历史名 → 体系名）—— B 方案全域改名依据
+## 六、映射表（历史名 → 体系名）—— **已按 B 方案全域执行（2026-10-03）**
 
-### 6.1 `roles/`（13 个）
+> 本节是**执行结果**，不是计划。四批共改名 **62 个文件、替换约 1343 处引用**。
 
-| 历史名 | **体系名** | 引用数 |
-|:--|:--|--:|
-| `code-backend-reviewer` | **`code-backend-reviewer`** | 29 |
-| `code-frontend-reviewer` | **`code-frontend-reviewer`** | 17 |
-| `docs-product-reviewer` | **`docs-product-reviewer`** | 28 |
-| `docs-contract-reviewer` | **`docs-contract-reviewer`** | — |
-| `ux-interaction-reviewer` | **`ux-interaction-reviewer`** | — |
-| `ux-visual-reviewer` | **`ux-visual-reviewer`** | — |
-| `ux-stranger-reviewer` | **`ux-stranger-reviewer`** | — |
-| `ux-social-reviewer` | **`ux-social-reviewer`** | — |
-| `ux-support-reviewer` | **`ux-support-reviewer`** | — |
-| `data-knowledge-reviewer` | **`data-knowledge-reviewer`** | — |
-| `ai-context-reviewer` | **`ai-context-reviewer`** | 14 |
-| `ai-adversarial-reviewer` | **`ai-adversarial-reviewer`** | — |
-| `docs-design-writer` | **`docs-design-writer`** | 5 |
+### 6.1 `roles/`（13）
 
-### 6.2 `skills/`（4 个）
+| 历史名 | 体系名 |
+|:--|:--|
+| `backend-reviewer` | `code-backend-reviewer` |
+| `frontend-reviewer` | `code-frontend-reviewer` |
+| `product-arch` | `docs-product-reviewer` |
+| `docs-reviewer` | `docs-contract-reviewer` |
+| `ux-reviewer` | `ux-interaction-reviewer` |
+| `ui-reviewer` | `ux-visual-reviewer` |
+| `stranger-reviewer` | `ux-stranger-reviewer` |
+| `social-reviewer` | `ux-social-reviewer` |
+| `support-reviewer` | `ux-support-reviewer` |
+| `knowledge-reviewer` | `data-knowledge-reviewer` |
+| `context-reviewer` | `ai-context-reviewer` |
+| `adversarial-reviewer` | `ai-adversarial-reviewer` |
+| `design-author` | `docs-design-writer` |
 
-| 历史名 | **体系名** | 备注 |
+### 6.2 `checklists/`（14，与角色一一对应）
+
+| 历史名 | 体系名 |
+|:--|:--|
+| `review-backend` | `code-backend-reviewer` |
+| `review-frontend` | `code-frontend-reviewer` |
+| `review-product` | `docs-product-reviewer` |
+| `review-docs` | `docs-contract-reviewer` |
+| `review-ux` | `ux-interaction-reviewer` |
+| `review-ui` | `ux-visual-reviewer` |
+| `review-stranger` | `ux-stranger-reviewer` |
+| `review-social` | `ux-social-reviewer` |
+| `review-support` | `ux-support-reviewer` |
+| `review-knowledge` | `data-knowledge-reviewer` |
+| `review-context` | `ai-context-reviewer` |
+| `review-perf` | `code-perf-reviewer` |
+| `guard` | `ai-guard-checklist` |
+| `cost` | `ai-cost-checklist` |
+
+### 6.3 `skills/`（4）
+
+| 历史名 | 体系名 | 形态 |
 |:--|:--|:--|
-| `code-api-writer` | **`code-api-writer`** | 与 `code-api-reviewer` 成对 |
-| `code-domain-writer` | **`code-domain-writer`** | 与 `code-domain-reviewer` 成对 |
-| `data-learn-writer` | **`data-learn-writer`** | 消化外部内容 |
-| `ship` | **`task-ship`** | 收尾命令 |
+| `learn-digest/` | `data-learn-writer/` | 目录（官方布局，有工具出口） |
+| `new-api.md` | `code-api-writer.md` | 扁平（按需加载） |
+| `new-domain.md` | `code-domain-writer.md` | 扁平（按需加载） |
+| `ship.md` | `task-ship.md` | 扁平（按需加载） |
 
-### 6.3 `guards/`（11 个）
+### 6.4 `guards/`（13，含原先漏计的两个）
 
-| 历史名 | **体系名** |
+| 历史名 | 体系名 |
 |:--|:--|
-| `ai-guard-meta.sh` | **`ai-guard-meta.sh`** |
-| `ai-guard-structure.sh` | **`ai-guard-structure.sh`** |
-| `ai-guard-skills.sh` | **`ai-guard-skills.sh`** |
-| `ai-guard-tools.sh` | **`ai-guard-tools.sh`** |
-| `ai-guard-align.sh` | **`ai-guard-align.sh`** |
-| `ai-guard-feature.sh` | **`ai-guard-feature.sh`** |
-| `ai-guard-context.sh` | **`ai-guard-context.sh`** |
-| `ai-guard-sediment.sh` | **`ai-guard-sediment.sh`** |
-| `ai-guard-cost.sh` | **`ai-guard-cost.sh`** |
-| `ai-guard-release.sh` | **`ai-guard-release.sh`** |
-| `ai-guard-prod.sh` | **`ai-guard-prod.sh`** |
+| `meta.sh` | `ai-guard-meta.sh` |
+| `structure.sh` | `ai-guard-structure.sh` |
+| `skills.sh` | `ai-guard-skills.sh` |
+| `tools.sh` | `ai-guard-tools.sh` |
+| `align.sh` | `ai-guard-align.sh` |
+| `feature.sh` | `ai-guard-feature.sh` |
+| `context.sh` | `ai-guard-context.sh` |
+| `sediment.sh` | `ai-guard-sediment.sh` |
+| `cost.sh` | `ai-guard-cost.sh` |
+| `release.sh` | `ai-guard-release.sh` |
+| `prod.sh` | `ai-guard-prod.sh` |
+| `roadmap.sh` | `ai-guard-roadmap.sh` |
+| `unfixed.sh` | `ai-guard-unfixed.sh` |
 
-### 6.4 `scripts/`（19 个）
+### 6.5 `scripts/`（18）
 
-| 历史名 | **体系名** |
+| 历史名 | 体系名 |
 |:--|:--|
-| `ai-setup-hooks.sh` | **`ai-setup-hooks.sh`** |
-| `ai-setup-launchd.sh` | **`ai-setup-launchd.sh`** |
-| `ai-link-skills.sh` | **`ai-link-skills.sh`** |
-| `ai-sync-agents.sh` | **`ai-sync-agents.sh`** |
-| `ai-worktree-prep.sh` | **`ai-worktree-prep.sh`** |
-| `task-cadence.sh` | **`task-cadence.sh`** |
-| `code-deploy-gate.sh` | **`code-deploy-gate.sh`** |
-| `task-weekly-audit.sh` | **`task-weekly-audit.sh`** |
-| `task-noon.sh` | **`task-noon.sh`** |
-| `code-backup-prod.sh` | **`code-backup-prod.sh`** |
-| 其余（数据同步 / 扫描器等）| 按 `<域>-<动作>-<对象>` 逐个定 |
+| `cadence.sh` | `task-cadence.sh` |
+| `noon-task.sh` | `task-noon.sh` |
+| `weekly-audit.sh` | `task-weekly-audit.sh` |
+| `check_deadlines.py` | `task-check-deadlines.py` |
+| `setup-hooks.sh` | `ai-setup-hooks.sh` |
+| `setup-launchd.sh` | `ai-setup-launchd.sh` |
+| `link-skills.sh` | `ai-link-skills.sh` |
+| `sync-agents.sh` | `ai-sync-agents.sh` |
+| `worktree-prep.sh` | `ai-worktree-prep.sh` |
+| `lint-shell-vars.py` | `ai-lint-shell-vars.py` |
+| `scan-secrets.py` | `ai-scan-secrets.py` |
+| `deploy-gate.sh` | `code-deploy-gate.sh` |
+| `backup_prod.sh` | `code-backup-prod.sh` |
+| `migrate-data-to-user-layer.sh` | `data-migrate-user-layer.sh` |
+| `sync_tdx_data.sh` | `data-sync-tdx.sh` |
+| `prewarm-adj-factors.py` | `data-prewarm-adj-factors.py` |
+| `sync-stock-names.py` | `data-sync-stock-names.py` |
+| `verify-tdx-data.py` | `data-verify-tdx.py` |
 
-> **说明**：`scripts/` 里有些是**项目专属**（数据同步、生产备份），改名时要**逐个判断归哪个域**；本表只定原则与已明确的项。
+### 6.6 **明确不在改名范围**（保持原名）
+
+| 位置 | 说明 |
+|:--|:--|
+| `process/*.md`（`audit` `review` `ship` `cadence` `review-driven`）| **流程文档名**是动作语义，加域前缀反而绕（且 `task-ship` 已被技能占用）|
+| `state/*.json` / `*.log` | **本机状态文件名**（`cadence.json` 等）——不是脚本、不该带域前缀 |
+| `lib/cadence-lib.sh` | 库文件；等出现第二个库时再统一 |
+| `workspace/{tasks,requirements,designs}/` 内文件 | 由流程命名（`<分支名>.md` · `<需求id>.md` · `design-v<N>-<日期>.md`）|
+| 根 `AGENTS.md` / `ARCHITECTURE.md` / `README.md` | 工具与人类约定，**动不得** |
 
 ## 七、落地步骤（B 方案）
 

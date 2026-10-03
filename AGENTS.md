@@ -47,12 +47,12 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 全维度走查 | `.agents/process/audit.md` | 8 客观官 + 1 对抗官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `.agents/process/review.md` | 按改动派对应审查官 |
 | 收尾闭环 | `.agents/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta 门禁→提交 |
-| 审查角色（技能包） | `.agents/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 客观官 + 对抗找茬官（deep 默认附加），封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
-| **外部视角审查** | `.agents/roles/`（stranger / social / support）| **面向身边人 / 新用户前必跑**：陌生人官（首次使用，**禁读源码**）+ 社会性官（递出去那一刻）+ 支持台官（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
+| 审查角色（技能包） | `.agents/roles/` | `docs-product-reviewer` / `ux-interaction-reviewer` / `ux-visual-reviewer` / `code-backend-reviewer` / `code-frontend-reviewer` / `docs-contract-reviewer` / `data-knowledge-reviewer` / `ai-context-reviewer` 8 客观官 + `ai-adversarial-reviewer` 对抗找茬官（deep 默认附加），封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
+| **外部视角审查** | `.agents/roles/`（`ux-stranger-reviewer` / `ux-social-reviewer` / `ux-support-reviewer`）| **面向身边人 / 新用户前必跑**：**陌生人官**（首次使用，**禁读源码**）+ **社会性官**（递出去那一刻）+ **支持台官**（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
 | 建设技能 | `.agents/skills/<name>/SKILL.md` | code-api-writer / code-domain-writer / task-ship / data-learn-writer 四技能：建设与收尾流程封装为 SKILL.md，加载即执行（官方目录布局；工具侧靠 `.agents/scripts/ai-link-skills.sh` 软链出口） |
 | 技能包规范 | `.agents/assets/skills-spec.md` | SKILL.md 技能包标准：name + frontmatter 10 字段融合、五段结构、新增流程 |
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
-| 检查清单 | `.agents/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官清单 + guard 守护 |
+| 检查清单 | `.agents/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官清单 + `ai-guard-checklist` |
 | 元数据规范 | `.agents/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
 | 元治理自检 | `.agents/guards/ai-guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
 | **技能包质量** | `.agents/guards/ai-guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
