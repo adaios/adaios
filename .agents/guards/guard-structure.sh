@@ -126,6 +126,8 @@ for name in SUBS:
 
     # S3：反引号里的相对路径（../xxx、./xxx）
     for ref in sorted(set(re.findall(r"`(\.\.?/[^`\s]+?)`", t))):
+        if "<" in ref or ">" in ref:
+            continue          # 模板占位符（如 <需求id>）是命名规范、不是真实路径（2026-10-03）
         ref_clean = ref.rstrip("/")
         target = (dirf.parent / ref_clean).resolve()
         if not target.exists():

@@ -322,7 +322,7 @@ flowchart LR
 | **产作者（设计）** | ❌ **缺**——没有「设计作者」角色（待定：主 agent 兼任，还是建 subagent）|
 | **多轮交叉的流程** | ❌ 缺——本节即其定义，待落成 `.agents/process/review-driven.md` |
 | **门禁 / 收工 / 归档** | ✅ 全部现成（`pre-commit` 11 层 + `cadence ship`）|
-| **在制品目录** | ⚠️ 仅 `workspace/tasks/` 已建；`requirements/` `designs/` 待建 |
+| **在制品目录** | ✅ `workspace/` 三目录齐备——`tasks/`（分支账本）· `requirements/`（需求稿）· `designs/`（设计与审核的多轮记录，**一需求一目录**、轮次命名带日期，含两个模板）|
 
 ## 五、工作流：触发词 → 动作
 
