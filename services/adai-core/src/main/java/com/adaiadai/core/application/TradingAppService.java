@@ -386,7 +386,20 @@ public class TradingAppService {
         // 当天 6 笔成交全部降级，持仓少 2 只/多算 400 股，09-18~09-20 该端点一直报「账实一致」）。
         // 这里把它们单独列出来：不替用户断定对错，只把「基线可能是旧的」这条事实摆到台面上。
         List<DegradedLine> degraded = new ArrayList<>();
-        boolean anchorInferred = anchor.positionsDateInferred() || anchor.cashDateInferred();
+        // 归一化「**有据**」判据（2026-10-03，用户反馈「不应该提示」）：
+        //   文件日期当天**休市**（周末 / 法定节假日）→ 数据基准日取「上一交易日」是**确定的**（不是猜的）。
+        // 生产实据：10-01 国庆休市日导出 → 归一化到 09-30 → 当天 3 笔成交被提示「没进持仓、请重导」，
+        // 而那份快照的 600206 = 800 股正好含当天买的 200 股——**数据本来就是对的**，提示纯属噪音
+        // （用户原话：「我导入就是为了修正数据；我没导入，你不知道我是否操作了」）。
+        // 反之若文件日期**是交易日**却被归一化（2026-09-18 真事故：应为 09-17 却写成 09-18，当天 6 笔
+        // 全降级、持仓少 2 只）→ 归一化**没有依据** → 必须继续报警（drift 在该场景会假绿，这条是唯一旁路）。
+        LocalDate evidenceDate = anchor.positionsFileDate() != null
+                ? anchor.positionsFileDate() : anchor.cashFileDate();
+        boolean normalizedWithEvidence = evidenceDate != null && anchorDate != null
+                && !TradingSessionPushService.isTradingDayStrict(evidenceDate);
+        // 只有「无据的归一化」才算可疑推断 → 前端据此决定要不要出横幅
+        boolean anchorInferred = (anchor.positionsDateInferred() || anchor.cashDateInferred())
+                && !normalizedWithEvidence;
         String fileDateText = anchor.positionsFileDate() != null ? anchor.positionsFileDate().toString()
                 : (anchor.cashFileDate() != null ? anchor.cashFileDate().toString() : "未记录");
         for (TradeRecord t : allTrades) {
@@ -395,8 +408,9 @@ public class TradingAppService {
                     t.entryDate(), anchorInferred,
                     anchorInferred
                             ? "成交日 = 锚定日 " + anchorDate + "，被按「已含在券商快照内」处理（只记流水、未进持仓）；"
-                                    + "但锚定日是由文件日期 " + fileDateText + " 推断的 —— 若这份快照的实际基准日"
-                                    + "不是这一天，本笔不会体现在持仓里，请核对后重导「持仓股」快照"
+                                    + "但锚定日是从文件日期 " + fileDateText + " 推断（归一化）来的，而那天本身是交易日"
+                                    + " —— 若这份快照的实际基准日不是 " + anchorDate + "，本笔就不会在持仓里，"
+                                    + "请核对后重导「持仓股」快照"
                             : "成交日 = 锚定日 " + anchorDate + "，已含在券商快照内（只记流水、未重复计入持仓）"));
         }
 
@@ -414,31 +428,31 @@ public class TradingAppService {
         // 但那**不等于**「确定没被推断过」——原实现只在 degraded 为空时才说这句「无法判断」，一旦有降级
         // 流水就落到 `inferred=false` 的**确定语气**（「已含在券商快照内」）＝拿不到证据却断言确定。
         // 现在把「能判定」与「不可判定」分开，两种情形各有各的话。
-        boolean fileDateUnknown = anchor.positionsReplace() != null && anchor.positionsFileDate() == null;
-        if (!degraded.isEmpty()) {
-            if (anchorInferred) {
-                note += String.format("；⚠️ 另有 %d 笔成交只记了流水、没进持仓（成交日 = 锚定日 %s，而锚定日是按导入时刻"
-                        + "从文件日期 %s 推断的）——这份快照若实际不是 %s 的收盘状态，这些成交就不会体现在持仓里，"
-                        + "请核对后重导一次「持仓股」快照", degraded.size(), anchorDate, fileDateText, anchorDate);
-            } else if (fileDateUnknown) {
-                note += String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）只记了流水、未进持仓；但这份锚定没有"
-                        + "记录快照文件日期，无法判断锚定日是否被归一化推断过 —— 若这份快照的实际基准日不是 %s，"
-                        + "这些成交就不会体现在持仓里，请核对后决定是否重导", degraded.size(), anchorDate, anchorDate);
-            } else {
-                note += String.format("；ℹ️ 另有 %d 笔成交（成交日 = 锚定日 %s）已含在券商快照内，只记流水、未重复计入持仓",
-                        degraded.size(), anchorDate);
-            }
-        } else if (fileDateUnknown) {
-            // 文件日期未记录（老数据 / 历史导入）：无法判断锚定日是否被推断——如实说明，不假装确定
-            note += "；ℹ️ 这份锚定没有记录快照文件日期，无法判断锚定日是否被归一化推断过";
+        // 2026-10-03（用户反馈「不应该提示」）：**锚定日内的成交不进持仓是正常语义，不提示**。
+        //
+        // 用户导入快照的目的就是**修正数据**——快照即真相（File First）；成交明细只是过程记录，
+        // 在锚定日内不重复计入持仓是**设计使然**。「锚定日是按文件日期归一化的」是系统的实现细节，
+        // 不该被翻译成「请核对后重导一次」推给用户。
+        // 生产实据（2026-10-03）：10-01 国庆休市日导出 → 锚定日归一化为 09-30 → 当天 3 笔成交被判降级，
+        // 横幅提示「3 笔成交没进持仓，请先导一次快照」，而那份快照的 600206 = **800 股**正好含当天买的
+        // 200 股——数据本来就是对的，提示纯属噪音（用户原话：「我导入就是为了修正数据，我没导入，
+        // 你不知道我是否操作了」）。
+        //
+        // 现在：**有据的归一化完全静默**（快照即真相，不打扰用户）；**无据的归一化照旧报警**（那可能是推错）。
+        if (!degraded.isEmpty() && anchorInferred) {
+            note += String.format("；⚠️ 另有 %d 笔成交只记了流水、没进持仓（成交日 = 锚定日 %s，而锚定日是按文件日期"
+                    + " %s 归一化来的，但那一天本身是交易日）——这份快照若实际不是 %s 的收盘状态，"
+                    + "这些成交就不会体现在持仓里，请核对后重导一次「持仓股」快照",
+                    degraded.size(), anchorDate, fileDateText, anchorDate);
         }
         if (!drift.isEmpty() || !gaps.isEmpty()) {
             log.error("账实一致性自检发现不符 | userId={} | 锚定={} | 差异 {} 只 | 缺口 {} 笔 | 明细={}",
                     userId, anchorDate, drift.size(), gaps.size(), drift.stream().limit(5).toList());
         }
         if (!degraded.isEmpty()) {
-            log.warn("账实自检：锚定日 {} 系推断（文件日期 {}），{} 笔当天成交只落流水未进持仓 | userId={}",
-                    anchorDate, fileDateText, degraded.size(), userId);
+            // 正常语义，不是异常 → debug（原先 warn，会在生产日志里制造假警报）
+            log.debug("账实自检：{} 笔成交日 = 锚定日 {}（文件日期 {}）→ 只落流水、未重复计入持仓 | userId={}",
+                    degraded.size(), anchorDate, fileDateText, userId);
         }
         // RFC 20261003 C2 + P2（独立审查 2026-10-03）：现金侧对账——旧版 integrity **只管持仓不管现金**
         // （生产实据：09-22 本项报「账实一致」的同时，现金实际错了 23,686.15，见存量盘点清单 E）。

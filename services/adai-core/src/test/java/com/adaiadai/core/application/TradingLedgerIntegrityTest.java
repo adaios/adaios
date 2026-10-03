@@ -456,8 +456,10 @@ class TradingLedgerIntegrityTest {
         assertEquals(1, report.degraded().size(), report.note());
         assertTrue(report.degraded().get(0).reason().contains("已含在券商快照内"),
                 report.degraded().get(0).reason());
-        assertTrue(report.note().contains("未重复计入持仓"), report.note());
-        assertFalse(report.note().contains("⚠️"), report.note()); // 非推断 → 不报警
+        // 2026-10-03（用户反馈「不应该提示」）：未归一化（锚定日 == 文件日期 = 交易日本身）→ **note 静默**。
+        // 成交日 = 锚定日 ⇒ 已含在快照内是本来的语义，不该在 note 里反复念叨（degraded 数据仍在，供明细用）。
+        assertFalse(report.note().contains("未重复计入持仓"), report.note());
+        assertFalse(report.note().contains("⚠️"), report.note());
     }
 
     /** 锚定日由文件日期**推断**（盘前/非交易日导出被归一化）→ 当天成交必须报警：快照可能不是这一天的。 */
@@ -480,6 +482,38 @@ class TradingLedgerIntegrityTest {
         assertTrue(report.degraded().get(0).reason().contains("推断"), report.degraded().get(0).reason());
         assertTrue(report.note().contains("⚠️"), report.note());
         assertTrue(report.note().contains(fileDate.toString()), report.note());
+    }
+
+    /**
+     * 2026-10-03（用户反馈「**不应该提示**——我 10-01 导入就是为了修正数据」）：
+     * **休市日导出的归一化是「有据」的**（文件日期当天休市 → 基准日取上一交易日，由节假日表可自证）
+     * → 当天成交「只落流水、未重复计入持仓」是**正常语义** → **完全静默**（不 ⚠️、不念叨、不要人重导）。
+     *
+     * <p>生产实据：2026-10-01 国庆休市日导出 → 锚定日归一化为 09-30 → 当天 3 笔成交被判降级，
+     * web 横幅提示「3 笔成交没进持仓 / 先导一次快照我就能重新对上了」——而那份快照的
+     * 600206 = **800 股**正好含当天买的 200 股，**数据本来就是对的**。
+     */
+    @Test
+    void integrity_holidayExportNormalization_isSilent() {
+        LocalDate anchorDate = LocalDate.of(2026, 9, 30); // 归一化后的基准日（周三 · 交易日）
+        LocalDate fileDate = LocalDate.of(2026, 10, 1);   // 文件导出日（国庆休市）
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of(pos("600206", 800, "46.05")));
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(anyString())).thenReturn(List.of(
+                record("600206", TradeDirection.BUY, 200, "48.25", anchorDate,
+                        LocalTime.of(14, 53), "20000768677", new BigDecimal("5.0"))));
+        TradingAppService service = service(repo, history, anchorOf(
+                new SnapshotAnchor(anchorDate, anchorDate, fileDate, fileDate),
+                List.of(new SnapshotHolding("600206", "有研新材", 800))));
+
+        TradingAppService.IntegrityReport report = service.integrity(USER);
+
+        assertEquals(1, report.degraded().size(), report.note());
+        assertFalse(report.degraded().get(0).inferred(), "休市日归一化有据 → 不算「可疑推断」");
+        assertFalse(report.note().contains("⚠️"), "不该报警，实际: " + report.note());
+        assertFalse(report.note().contains("重导"), "不该要人重导，实际: " + report.note());
+        assertFalse(report.note().contains("没进持仓"), "不该提这茬，实际: " + report.note());
     }
 
     /** 锚定日当天没有成交 → 不产生降级行（不误报）；锚定日前后有成交也不该被算进来。 */
@@ -515,7 +549,10 @@ class TradingLedgerIntegrityTest {
                 List.of(new SnapshotHolding("600206", "有研新材", 100))));
 
         TradingAppService.IntegrityReport report = service.integrity(USER);
-        assertTrue(report.note().contains("没有记录快照文件日期"), report.note());
+        // 2026-10-03（用户反馈「不应该提示」）：文件日期缺失（老锚定）→ **静默**。
+        // 用户导入快照就是修正数据（快照即真相）；「锚定日是怎么来的」是实现细节，不该变成用户的待办。
+        assertFalse(report.note().contains("没有记录快照文件日期"), report.note());
+        assertFalse(report.note().contains("⚠️"), report.note());
     }
 
     /**
@@ -540,9 +577,10 @@ class TradingLedgerIntegrityTest {
         TradingAppService.IntegrityReport report = service.integrity(USER);
 
         assertEquals(1, report.degraded().size(), report.note());
-        assertTrue(report.note().contains("无法判断锚定日是否被归一化推断过"),
-                "无文件日期时不得用确定语气，实际: " + report.note());
-        assertFalse(report.note().contains("已含在券商快照内，只记流水、未重复计入持仓"),
-                "不可判定不得冒充确定，实际: " + report.note());
+        // 2026-10-03（用户反馈）：不可判定（无文件日期）→ 不再提示。
+        // 判据变了但仍守住底线：**不得冒充确定语气**（既不说「已含在快照内」，也不 ⚠️ 报警）。
+        assertFalse(report.note().contains("无法判断锚定日是否被归一化推断过"), report.note());
+        assertFalse(report.note().contains("已含在券商快照内，只记流水、未重复计入持仓"), report.note());
+        assertFalse(report.note().contains("⚠️"), report.note());
     }
 }

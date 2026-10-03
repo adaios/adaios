@@ -2075,13 +2075,17 @@ class _TradingPageState extends State<TradingPage> {
   Widget _buildIntegrityBanner(IntegrityReportDto r) {
     final drift = r.drift;
     final gaps = r.gaps;
-    // 2026-09-21（P1-交易61）：锚定日是**推断**的、且当天有成交只落了流水 → 这些成交可能没进持仓
+    // 2026-10-03（用户反馈「不应该提示」）：**只有「无据的归一化」才报警**——
+    // 后端已把 `inferred` 收窄为「文件日期本身是交易日、却被归一化到别的日子」（真可能是推错，
+    // 且该场景 drift 会假绿，这条是唯一旁路，见 P1-交易61）；而**休市日导出**（如 10-01 → 09-30）
+    // 归一化有据 → `inferred=false` → 这里不再触发横幅（用户导入快照就是修正数据，快照即真相）。
     final degradedWarn = r.degraded.where((d) => d.inferred).toList();
     final parts = <String>[
       if (drift.isNotEmpty) '${drift.length} 只标的持仓不一致',
       if (gaps.isNotEmpty) '${gaps.length} 笔回放缺口',
       if (degradedWarn.isNotEmpty) '${degradedWarn.length} 笔成交没进持仓',
     ];
+    if (parts.isEmpty) return const SizedBox.shrink(); // 无差异 → 不渲染（绝不制造噪音）
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -2122,7 +2126,7 @@ class _TradingPageState extends State<TradingPage> {
               child: Text('回放缺口 · ${g.display}',
                   style: const TextStyle(fontSize: 11, color: AppColors.darkGrey2)),
             ),
-          // 2026-09-21（P1-交易61）：锚定日系推断 → 这些成交「只在流水里、没进持仓」，必须让用户看见
+          // 锚定日归一化**没有依据**（文件日期是交易日却被归一化）→ 快照基准日可能不是这天，必须让人看见
           for (final d in degradedWarn)
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
