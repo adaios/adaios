@@ -82,7 +82,7 @@ name = fm_val("name") or pathlib.Path(src).stem
 desc = fm_val("description")
 
 # ── 路径重写：roles/ 到项目根是 ../../、到 ai-engineering/ 是 ../ ──
-body = body.replace("../../", "").replace("../", "ai-engineering/")
+body = body.replace("../../", "").replace("../", ".agents/")
 body = body.strip() + "\n"
 
 if ext == "toml":
