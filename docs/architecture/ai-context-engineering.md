@@ -60,8 +60,7 @@ flowchart TB
 
 ## 二、资产清单（按层组织）
 
-> **位置说明**：资产**分布在 9 个一级位置**（`ai-engineering/` · `docs/` · `scripts/` · `.githooks/` · 5 个出口目录），这些位置由**工具约定 + 历史**决定、**不宜搬动**——实测移动任一处要修 **40–60 个文件**引用（`docs/reference` 59 · `scripts/` 58 · `docs/architecture` 50 · `docs/rfc` 44 · `.agents/assets` 25）。
-> 故本表**按层组织、每行标出所在位置**：让结构可读，而不是按目录罗列。
+> **位置说明**（2026-10-03 更新）：AI 协作资产**已收进单一容器 `.agents/`**（根 + 12 子目录，每个都有 `_index.md` + `_directory.md`）——此前散在 9 个一级位置的局面已结束。留在容器外的只有三类：**`docs/`**（人也常读的产品文档）· **`.githooks/`**（git 约定）· **工具出口目录**（`.dsh/` `.claude/` `.qoder/` `.codex/`，本机状态、不入库）。
 
 ### L0 入口（轻量，禁详细规则）
 
@@ -104,12 +103,24 @@ flowchart TB
 |:--|:--|:--|
 | 技能（目录布局 `<name>/SKILL.md`）| `.agents/skills/` | `guard-skills` S3/S4/S5/S7 |
 | 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `guard-skills` + `sync-agents` |
-| 守卫与执行器 | `ai-engineering/*.sh` | **16 个**；shell-lint + 自检 |
+| 守卫与执行器 | `.agents/guards/*.sh`（11）· `.agents/scripts/*.sh` | shell-lint + 自检 |
 | 流程定义 | `.agents/process/*.md` | **4 份**（audit / review / ship / cadence）|
 | 检查清单 | `.agents/checklists/*.md` | **14 份** |
 | 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `guard-meta` / `guard-skills` |
 | 注册与环境脚本 | `scripts/*.sh` · `.agents/lib/*.sh` | shell-lint |
 | 提交门禁 | `.githooks/pre-commit` | 自身即守卫（多层）|
+
+### 目录元数据：两件套（2026-10-03 新增）
+
+**每个目录**（含 `.agents/` 根）维护两个文件，与**文件级 frontmatter** 构成三级规范：
+
+| 层级 | 文件 | 回答什么 |
+|:--|:--|:--|
+| **目录清单** | `_index.md` | **有什么**——清单从实际文件生成 ⇒ 与事实天然一致 |
+| **目录契约** | `_directory.md` | **规则是什么**——职责边界 / 依赖 / 触发 / 约束 / 守卫 / 维护 |
+| **文件元数据** | 各文件 frontmatter | **这一个的约束与边**——10 字段 + `depends-on` / `related` |
+
+⇒ 三级都**可机器校验**（`guard-structure` S1–S4 + `guard-meta` M1–M4）。
 
 ### 账本
 
@@ -150,8 +161,7 @@ flowchart LR
 **三条关系铁律**：
 
 1. **单一权威来源**——同一知识**只在一处详述**、别处**只引用**；靠**机器检测**维持（`guard-meta` 断链/孤儿 · `guard-align` 事实对拍），**不靠纪律**。
-2. **引用单向、不设环**——`depends-on` / `related` 构成有向图；跨域交叉用「软引用」（提名字、不建强依赖）。
-3. **下沉单向**——L0 → L1 → L2 → L3 **只按需下沉、不许反向**（入口一膨胀，每次会话都替所有任务付税）。
+2. **引用单向不设环**（`depends-on`/`related` 成有向图，跨域用软引用）· **下沉单向**（L0→L3 只按需下沉、不许反向——入口一膨胀，每次会话都替所有任务付税）。
 
 ## 四、流程图
 
@@ -210,15 +220,9 @@ flowchart TD
     E --> F["★ tag ＝ 生产实际部署的 commit（唯一对齐点）"]
 ```
 
-### 4.5 一次知识回流（对话 → L2）
+### 4.5 一次知识回流（对话 → L2）—— **待建**
 
-```mermaid
-flowchart TD
-    A["对话中出现信号<br/>坑点 · 规范 · 决策 · 边界 · 依赖"] --> B["AI 标记「待沉淀」并在会话结束输出提醒清单"]
-    B --> C["★ 禁止自动写入——必须用户确认后才落进 L2"]
-    C --> D["落盘（走 4.2 的提交路径）"]
-    D --> E["防止「AI 把未验证的假设写进项目知识」"]
-```
+**信号**（坑点 / 规范 / 决策 / 边界 / 依赖）→ AI 标记「待沉淀」并在会话结束输出清单 → **★ 禁止自动写入，必须用户确认** → 落盘（走 §4.2 的提交路径）。**尚未实现**（见 §七 8）——它防的是「AI 把未验证的假设写进项目知识」。
 
 ## 五、工作流：触发词 → 动作
 
@@ -228,8 +232,7 @@ flowchart TD
 | **每日巡检** | `cadence.sh daily`（从上次覆盖日补看到今天）→ 只讲「用户之声 / 新异常 / 心跳趋势」| ✅ |
 | **收工** | `cadence.sh ship`（diff + 快照 + 成本入账）→ **显式路径提交** → `cadence.sh mark ship` | ✅ |
 | **发布 / 发版** | `cadence.sh release`（**只判定，不部署**）| ✅ |
-| **每周** | `cadence.sh weekly`（W1–W6 + 到期红线）| ✅ |
-| **待办** /（无参数）**状态总览** | `cadence.sh todo`（REVIEW 未修项）· `cadence.sh`（巡检/收工/周审/发版 + 欠账 + 到期红线）| ✅ |
+| **每周** / **待办** /（无参数）**总览** | `cadence.sh weekly`（W1–W6 + 到期红线）· `todo`（REVIEW 未修项）· 无参数=状态总览（节奏 + 欠账 + 红线）| ✅ |
 | **加一个 skill / 审查官** | 走 §4.2 分支流程 | ✅ 机制已备 |
 | **接一个新工具** | `ai-context-layer-spec.md` §五 四步 | ✅ |
 | **沉淀** | AI 主动提示「待沉淀清单」→ 人确认 → 写 L2（§4.5）| ❌ **待建** |
@@ -241,8 +244,7 @@ flowchart TD
 | 维度 | **个人**（当前）| **团队**（扩展配置）|
 |:--|:--|:--|
 | 分支 | `main` + 短命分支（worktree 并行）| + **保护分支** + PR + **required review** |
-| 共享 | 各自注册出口 + `merge main` | 同 + **CODEOWNERS**（哪块归谁）|
-| 知识回流 | AI 提示 + 你确认 | 同 + **PR review** 再一道 |
+| 共享 / 知识回流 | 各自注册出口 + `merge main`；AI 提示 → 你确认后才写 | 同 + **CODEOWNERS**（哪块归谁）+ **PR review** 再一道 |
 | **强制层** | `pre-commit` 门禁（本机，**可绕过**）| + CI + **managed settings / 组织级指令**（**管理员不可绕过**）|
 | 责任 | 你自己 | **owner 制**（每块有负责团队）|
 | 加载 | L0–L3 按需 | 同 + **路由表按模块分发** |
@@ -254,8 +256,7 @@ flowchart TD
 
 | # | 机制 | 现状 | 覆盖 |
 |:--:|:--|:--:|:--|
-| 1 | **范围守卫**（显式路径 + `ADAI_BATCH_PATHS`）| ✅ | 防并发会话互卷 |
-| 2 | **多层 pre-commit 门禁**（隐私/密钥/对齐/结构/功能索引/技能包/防复发/shell）| ✅ | 提交即拦 |
+| 1 | **范围守卫 + 多层 pre-commit 门禁**（显式路径 `ADAI_BATCH_PATHS`；隐私/密钥/对齐/结构/功能索引/技能包/目录自洽/防复发/shell）| ✅ | 防并发互卷 · 提交即拦 |
 | 3 | **元数据图谱自检**（`guard-meta`：断链 / lines / 孤儿 / 正文路径）| ✅ | L2/L3 + 工具层 |
 | 4 | **事实对拍**（`guard-align`：端点↔api-spec · 测试数↔status）| ✅ | L3 |
 | 5 | **技能包合规**（`guard-skills` S3/S4/S5/S7）| ✅ | 工具层 |
@@ -265,6 +266,7 @@ flowchart TD
 | 9 | **防膨胀红线**（单文件 >300 行提示拆 / >500 必拆；同知识点 ≥2 次合并；「已废弃」超 3 月归档）| ❌ **待建** | 全体 |
 | 10 | **按需加载路由**（模块↔关键词表 + 惰性加载）| ❌ **待建** | L2/L3 |
 | 11 | **上下文成本度量**（每个 skill 的 context 成本 × 调用频率；从未调用的撤出 catalog）| ❌ **待建** | 工具层 |
+| 12 | **目录级自洽**（`guard-structure`：S1 两件套齐备 · S2 清单⇄实际双向 · S3 契约依赖存在 · S4 契约提到的守卫存在；`--fix` 刷清单）| ✅ | 目录级 |
 
 ## 八、判断依据（为什么这么定）
 
@@ -274,23 +276,22 @@ flowchart TD
 | **一切是文件、都走 git**（含工具层）| 用户 2026-10-03 的主张 | §4.2 / 4.3 · 工具层定位 |
 | **上下文文件不提升正确率，但 +20% 成本**；「删掉 .md 后反而 +2.7%」；失败在 implementation skill | [ETH Zurich arXiv 2602.11988](https://ar5iv.labs.arxiv.org/html/2602.11988) · [arXiv 2607.27250](https://ar5iv.labs.arxiv.org/html/2607.27250v1) | **§七 9/10/11** |
 | **skill listing 预算 ≈ context window 的 1%**，溢出丢弃 description ⇒ 越多越不准 | [Agent Skills 规范](https://agentskills.io/specification) | §七 11 · 出口只注册直触发 |
-| **按路径/目录作用域化**（四家工具独立收敛）| AGENTS.md / Claude Code / Copilot / Cursor 官方文档 | §一 入口分层 · §七 10 |
-| **上下文不是硬约束**——强制要走 hook / managed settings / sandbox | Anthropic · Cursor · DORA | §六 团队态 · §七 2 |
+| **按路径/目录作用域化**（四家工具独立收敛）· **上下文不是硬约束**（强制须走 hook / managed settings / sandbox）| AGENTS.md / Claude Code / Copilot / Cursor 官方文档 · Anthropic · DORA | §一 入口分层 · §六 团队态 · §七 2/10 |
 | **AI 直连内部数据是放大器**；更高采纳＝吞吐↑ + 不稳定↑ | [DORA 2025](https://dora.dev/insights/balancing-ai-tensions/) | §三 单一来源（便于被 AI 直读）|
 | **知识资产像代码管理**（版本 + 评审 + owner + 追加式变更）| DDC 论文 §5.4 · docs-as-code · ADR · Changesets | §4.2 / 4.3 · §六 |
 | **「提升 X%」类宣称要看测量设计** | METR（自我宣布 RCT 失效）| 本文不写「提升多少」的承诺 |
 
 ## 九、落地缺口（现状 → 目标）
 
-| 缺口 | 目标 | 代价 |
+**已落地**（2026-10-03）：AI 资产收进 `.agents/` 容器 · **目录两件套**（13 组）+ `guard-structure` · 出口 4→3 · 5 处旧守卫适配修复。
+
+| 仍未做 | 目标 | 代价 |
 |:--|:--|:--|
-| **L1 任务层缺失** | 建 `branch-notes` 模板 + 合并时归档 | 小（模板 + 规范 + 查残留）|
+| **L1 任务层缺失** | 建 `branch-notes` 模板 + 合并时归档 | 小 |
 | **知识回流无确认** | AI 输出「待沉淀清单」→ 人确认才写 | 小（写进 AGENTS.md）|
-| **防膨胀无红线** | `guard-meta` 加「行数 / 重复 / 过时」提示 | 小（守卫加一维）|
-| **无按需加载路由** | 模块↔关键词表（从 `docs/features/_index.md` 与 AGENTS.md 分层自然长出）| 中 |
-| **上下文成本无度量** | 统计每个 skill / 审查官的调用频率与 context 开销 | 中（需埋点或日志分析）|
-| **出口一致性靠「记得重跑」** | `guard-tools` T4 已能查真身；再加一条「出口过期」提示 | 小 |
-| **AI 上下文资产已偏重**（179 docs / 64 ai-eng md / 规范 ~190 行）| 按 §七 9 的红线做一轮**裁**（不是再加）| 中 |
+| **防膨胀红线未进守卫** | 红线已写入本文件 §七 9，但 `guard-meta` 尚未实现 | 小（加一维）|
+| **无按需加载路由 / 无成本度量** | `_directory.md` 的「触发关系」是路由雏形；成本度量需统计每个 skill 与审查官的调用频率 | 中 |
+| **资产体量** | 64 个 ai-eng md 已确认**无碎片、无孤岛**（最大 230 行）——**该裁的是"没被读的"，不是"多的"** | 中 |
 
 ---
 
