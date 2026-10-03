@@ -36,6 +36,37 @@ hr() { printf '\n%s── %s ──%s\n' "$BOLD" "$1" "$RST"; }
 
 CMD="${1:-status}"; shift 2>/dev/null || true
 
+# ── worktree 守卫（2026-10-03）─────────────────────────────────
+# 为什么只拦 ship / mark：这两个会**按当前 HEAD 写收工基线**，而 ai-engineering/state/
+#   在 worktree 里是 **link 主仓库的** → 在此跑会把主仓库的基线推到**本分支的 HEAD**
+#   （全局游标错乱，且 AGENTS.md 规则 9「收工默认含提交」让 AI 极易误踩）。
+# 其余子命令（status/daily/weekly/release/todo/cost/check）读写的是全局状态或当前工作区，
+#   在 worktree 里跑结果与主仓库一致，故只**提示**、不阻断。
+COMMON_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+MAIN_ROOT=""
+[ -n "${COMMON_DIR}" ] && MAIN_ROOT="$(dirname "${COMMON_DIR}")"
+if [ -n "${MAIN_ROOT}" ] && [ "${ROOT}" != "${MAIN_ROOT}" ]; then
+  case "${CMD}" in
+    ship|mark)
+      {
+        echo "❌ 当前在 worktree，不是主仓库——「${CMD}」被拒绝。"
+        echo "   worktree：${ROOT}"
+        echo "   主仓库：${MAIN_ROOT}"
+        echo "   原因：ai-engineering/state/ 在 worktree 里是 link 主仓库的，而 ${CMD} 会**按当前 HEAD**"
+        echo "         写收工基线 → 会把主仓库的基线推到本分支的 HEAD（全局游标错乱）。"
+        echo "   处置：回主仓库跑 —— cd ${MAIN_ROOT} && bash ai-engineering/cadence.sh ${CMD}"
+        echo "   若只想看本分支差异：git log / git status / git diff（无需 cadence）。"
+      } >&2
+      exit 2
+      ;;
+    daily|weekly|release)
+      echo "⚠️  当前在 worktree（${ROOT}）——「${CMD}」是全局操作（读写主仓库的 state/），" >&2
+      echo "   结果与在主仓库跑一致；按约定这些只在主仓库跑（见 docs/guides/worktree-workflow.md §四）。" >&2
+      ;;
+  esac
+fi
+# ─────────────────────────────────────────────────────────────
+
 # ── 工具：某日期区间 (last, today] 的每一天 ──────────────────────────────
 days_between() {  # <last> <today>  → 每行一个日期（不含 last，含 today）
     python3 - "$1" "$2" <<'PY'

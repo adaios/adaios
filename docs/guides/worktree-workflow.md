@@ -82,7 +82,7 @@ bash scripts/worktree-prep.sh --check
 
 ## 四、两条硬纪律
 
-1. **state / AGENTS.local.md 恒 link**（脚本已固化，不可选）。账本与开工快照必须唯一——复制一份等于把成本账与巡检游标劈成两半。同时：**巡检 / 收工 / 发布 / 每周只在主仓库跑**（launchd 的备份 / noon-task / weekly-audit 三个定时任务的 WorkingDirectory 也钉在主仓库，正本在那儿）。
+1. **state / AGENTS.local.md 恒 link**（脚本已固化，不可选）。账本与开工快照必须唯一——复制一份等于把成本账与巡检游标劈成两半。同时：**巡检 / 收工 / 发布 / 每周只在主仓库跑**（launchd 的备份 / noon-task / weekly-audit 三个定时任务的 WorkingDirectory 也钉在主仓库，正本在那儿）。**已机制化（2026-10-03）**：`cadence.sh` 的 **`ship` / `mark`** 在 worktree 里会**直接拒绝**（rc=2，附原因与处置）；`daily` / `weekly` / `release` 只给警告（它们是全局操作，结果与主仓库一致）。
 2. **工具出口「各自注册」，绝不 link 主仓库**（`worktree-prep.sh` 落盘时自动跑 `link-skills.sh` + `sync-agents.sh`）。技能与审查官是**项目资产、应随分支走**——link 主仓库会让 `feat/a` 的技能漏进 `feat/b`。
 3. **要写数据就先 `--copy`**。`data/` 是真实个人资产（边界 B3），link 模式下的实验写入没有隔离。
 
