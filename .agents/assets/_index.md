@@ -3,9 +3,9 @@ title: assets/ 目录索引
 description: assets/ 的文件清单与过期判断；目录的职责边界与依赖契约见 ./_directory.md
 version: 1
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 status: active
-lines: 42
+lines: 43
 depends-on: []
 related: [./_directory.md]
 tags: [meta, index]
@@ -15,7 +15,7 @@ tags: [meta, index]
 
 > 本文件只列**有什么**；**规则与依赖**见 [`_directory.md`](./_directory.md)。
 
-## 文件清单（15 项）
+## 文件清单（16 项）
 
 | 文件 | 职责 | 状态 |
 |:--|:--|:--:|
@@ -28,6 +28,7 @@ tags: [meta, index]
 | `ai-context-layer-spec.md` | AdaiOS 项目级 AI 上下文的中间层规范——定义 AI 资产**放在哪**（真相源）、**怎么被各工具发现… | active |
 | `boundaries.md` | AdaiOS「不做什么」的集中声明——原则级（不可违反）与功能级（当前不做）；任何新功能先查边界再定方案 | active |
 | `conventions.md` | 代码/文档/协作三组规范集中声明——从原根 CLAUDE.md（2026-08-19 删除）与 AI 工程层归集… | active |
+| `naming-spec.md` | skill / subagent / 脚本的统一命名体系——六个域 + 封闭角色词表 + 硬规则；含本项目的历史… | active |
 | `pitfalls.md` | 跨 checklists 归集的「踩过的坑」索引——症状/根因/修复/复发信号，按域分组；完整逐条在 check… | active |
 | `projects/adai-admin.md` | 从管理员使用角度，具体到每个页面每个功能地描述 adai-admin——四区模块/每个 tab 能做什么/职责边… | active |
 | `projects/adai-app.md` | 从用户使用角度，具体到每个小功能地描述 adai-app——两个主页/切换方式/每页模块功能/交互细节 | active |
