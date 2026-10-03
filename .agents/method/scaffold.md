@@ -10,8 +10,8 @@ depends-on:
   - README.md
   - pipeline.md
 related:
-  - ../guards/guard-meta.sh
-  - ../guards/guard-align.sh
+  - ../guards/ai-guard-meta.sh
+  - ../guards/ai-guard-align.sh
 tags: [ai, method, scaffold]
 ---
 
@@ -27,8 +27,8 @@ init-ai-engineering.sh <项目名>
 ├── ai-engineering/           ← 三层结构（模板）
 │   ├── README.md              定位 + 切入点图谱
 │   ├── frontmatter-spec.md    元数据契约
-│   ├── guard-meta.sh          结构门禁（模板，自动适配项目）
-│   ├── guard-align.sh         内容对齐（模板，自动适配项目）
+│   ├── ai-guard-meta.sh          结构门禁（模板，自动适配项目）
+│   ├── ai-guard-align.sh         内容对齐（模板，自动适配项目）
 │   ├── assets/                规范/边界/ADR/坑（空模板）
 │   ├── workflow/              discuss→design→develop（模板）
 │   ├── process/               ship→review→audit（模板）
@@ -67,7 +67,7 @@ init-ai-engineering.sh <项目名>
 ## 脚手架验收
 
 ```
-1. 跑完脚本 → ai-engineering/ 完整（guard-meta 对模板 PASS）
+1. 跑完脚本 → ai-engineering/ 完整（ai-guard-meta 对模板 PASS）
 2. setup-hooks → 提交时四层自动跑
 3. 首个功能批次 → 走通 discuss→ship→guard 全链
 4. 人只在三处介入：方案确认 / 审核内容 / 部署决策

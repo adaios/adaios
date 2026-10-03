@@ -66,8 +66,8 @@ flowchart TB
 
 | 资产 | 位置 | 随分支 | 保真 |
 |:--|:--|:--:|:--|
-| 统一入口（**7 份**：根 + `services/adai-core` + `apps/adai-{app,web}` + `os/{life-os,project-os,trading-engine}`）| `AGENTS.md` ×7 | ✅ | `guard-meta`（lines / 断链）|
-| 本机开工快照 | `AGENTS.local.md` | ❌ | `guard-context.sh --write-local`（**恒 link 主仓库**）|
+| 统一入口（**7 份**：根 + `services/adai-core` + `apps/adai-{app,web}` + `os/{life-os,project-os,trading-engine}`）| `AGENTS.md` ×7 | ✅ | `ai-guard-meta`（lines / 断链）|
+| 本机开工快照 | `AGENTS.local.md` | ❌ | `ai-guard-context.sh --write-local`（**恒 link 主仓库**）|
 
 ### L1 任务层（当前分支 / 任务）
 
@@ -77,12 +77,12 @@ flowchart TB
 
 | 资产 | 位置 | 保真 |
 |:--|:--|:--|
-| 工程约定（C1–C8…）| `.agents/assets/conventions.md` | `guard-meta` |
-| 原则边界（B1–B9）| `.agents/assets/boundaries.md` | `guard-meta` |
-| 已知坑 + 复发信号（**23 章**）| `.agents/assets/pitfalls.md` | `guard-meta` |
-| 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/assets/adr/*.md` | `guard-meta`（图谱）|
-| 方案决策 RFC（**70 份**，含未采纳的备选与理由）| `docs/rfc/*.md` | `guard-feature`（status 枚举）|
-| 业务方向（**唯一蓝图**）| `docs/VISION.md` · `docs/architecture/product-roadmap.md` | `guard-roadmap` |
+| 工程约定（C1–C8…）| `.agents/assets/conventions.md` | `ai-guard-meta` |
+| 原则边界（B1–B9）| `.agents/assets/boundaries.md` | `ai-guard-meta` |
+| 已知坑 + 复发信号（**23 章**）| `.agents/assets/pitfalls.md` | `ai-guard-meta` |
+| 架构决策 ADR（**append-only**：改动写新记录 + superseded 链）| `.agents/assets/adr/*.md` | `ai-guard-meta`（图谱）|
+| 方案决策 RFC（**70 份**，含未采纳的备选与理由）| `docs/rfc/*.md` | `ai-guard-feature`（status 枚举）|
+| 业务方向（**唯一蓝图**）| `docs/VISION.md` · `docs/architecture/product-roadmap.md` | `ai-guard-roadmap` |
 
 > ⚠️ **L2 现在分在两家**（`.agents/assets/` 放"约束"，`docs/rfc/` 放"决策"）——这是**历史形成的**（工程侧 vs 文档侧各自演化）。语义上二者都是"决策类"，但**合并代价 44 处引用**，故暂不动；本表按层呈现，正是为了让这个分家**可见**而不是被目录结构掩盖。
 
@@ -90,23 +90,23 @@ flowchart TB
 
 | 资产 | 位置 | 保真 |
 |:--|:--|:--|
-| 架构事实（技术栈 · 五层 · 红线）| `ARCHITECTURE.md` | `guard-meta` |
-| 接口事实（端点表）| `docs/architecture/api-spec.md` | **`guard-align` A1：与源码 `@Mapping` 逐一对拍** |
-| 状态事实（测试数 · 端点 · 环境 · 发布态）| `docs/reference/status.md` | **`guard-align` A2：与实测对拍** |
-| 设计文档（**19 份**：五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `docs/architecture/*.md` | `guard-meta` |
-| 参考手册（**12 份**：功能手册 / 特性参考 / 任务表…）| `docs/reference/*.md` | `guard-meta` |
+| 架构事实（技术栈 · 五层 · 红线）| `ARCHITECTURE.md` | `ai-guard-meta` |
+| 接口事实（端点表）| `docs/architecture/api-spec.md` | **`ai-guard-align` A1：与源码 `@Mapping` 逐一对拍** |
+| 状态事实（测试数 · 端点 · 环境 · 发布态）| `docs/reference/status.md` | **`ai-guard-align` A2：与实测对拍** |
+| 设计文档（**19 份**：五层架构 / 插件模型 / 记忆设计 / 交易设计…）| `docs/architecture/*.md` | `ai-guard-meta` |
+| 参考手册（**12 份**：功能手册 / 特性参考 / 任务表…）| `docs/reference/*.md` | `ai-guard-meta` |
 | 领域 wiki | `os/*/11-context/*.md`（现 life-os / project-os）| 人/AI |
 
 ### 工具层（机制：横跨以上各层）
 
 | 资产 | 位置 | 规模 / 保真 |
 |:--|:--|:--|
-| 技能（目录布局 `<name>/SKILL.md`）| `.agents/skills/` | `guard-skills` S3/S4/S5/S7 |
-| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `guard-skills` + `sync-agents` |
+| 技能（目录布局 `<name>/SKILL.md`）| `.agents/skills/` | `ai-guard-skills` S3/S4/S5/S7 |
+| 审查官（**扁平** `<name>.md`＝ subagent 真相源）| `.agents/roles/` | `ai-guard-skills` + `sync-agents` |
 | 守卫与执行器 | `.agents/guards/*.sh`（11）· `.agents/scripts/*.sh` | shell-lint + 自检 |
 | 流程定义 | `.agents/process/*.md` | **4 份**（audit / review / ship / cadence）|
 | 检查清单 | `.agents/checklists/*.md` | **14 份** |
-| 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `guard-meta` / `guard-skills` |
+| 契约 | `.agents/frontmatter-spec.md`（**顶层**）· `assets/skills-spec.md` · `assets/ai-context-layer-spec.md` | `ai-guard-meta` / `ai-guard-skills` |
 | 注册与环境脚本 | `scripts/*.sh` · `.agents/lib/*.sh` | shell-lint |
 | 提交门禁 | `.githooks/pre-commit` | 自身即守卫（多层）|
 
@@ -120,15 +120,15 @@ flowchart TB
 | **目录契约** | `_directory.md` | **规则是什么**——职责边界 / 依赖 / 触发 / 约束 / 守卫 / 维护 |
 | **文件元数据** | 各文件 frontmatter | **这一个的约束与边**——10 字段 + `depends-on` / `related` |
 
-⇒ 三级都**可机器校验**（`guard-structure` + `guard-meta`；**检查项清单以守卫脚本为准**，此处不复制——防漂移）。
+⇒ 三级都**可机器校验**（`ai-guard-structure` + `ai-guard-meta`；**检查项清单以守卫脚本为准**，此处不复制——防漂移）。
 
 ### 账本
 
 | 资产 | 位置 | 保真 |
 |:--|:--|:--|
-| 批次历史 | `docs/reference/change-log.md` | `guard-sediment` |
-| 未修项 | `docs/review/REVIEW.md` | `guard-unfixed` |
-| 目录索引 | 各 `_index.md` | `guard-meta`（孤儿检查）|
+| 批次历史 | `docs/reference/change-log.md` | `ai-guard-sediment` |
+| 未修项 | `docs/review/REVIEW.md` | `ai-guard-unfixed` |
+| 目录索引 | 各 `_index.md` | `ai-guard-meta`（孤儿检查）|
 
 ### 本机状态（**不入 git**，脚本重建）
 
@@ -160,7 +160,7 @@ flowchart LR
 
 **三条关系铁律**：
 
-1. **单一权威来源**——同一知识**只在一处详述**、别处**只引用**；靠**机器检测**维持（`guard-meta` 断链/孤儿 · `guard-align` 事实对拍），**不靠纪律**。
+1. **单一权威来源**——同一知识**只在一处详述**、别处**只引用**；靠**机器检测**维持（`ai-guard-meta` 断链/孤儿 · `ai-guard-align` 事实对拍），**不靠纪律**。
 2. **引用单向不设环**（`depends-on`/`related` 成有向图，跨域用软引用）· **下沉单向**（L0→L3 只按需下沉、不许反向——入口一膨胀，每次会话都替所有任务付税）。
 
 ## 四、流程图
@@ -171,7 +171,7 @@ flowchart LR
 flowchart TD
     S["用户打开工具、开会话"] --> A["① 工具自动注入 AGENTS.md（L0，目录树就近的那份）"]
     A --> B["② 工具自动注入 AGENTS.local.md（L0 快照）"]
-    B --> C["③ AI 按规则 0 执行 guard-context.sh<br/>产出：状态 · 未修项 · 边界 · 坑 · 规范 · 待办 · 成本"]
+    B --> C["③ AI 按规则 0 执行 ai-guard-context.sh<br/>产出：状态 · 未修项 · 边界 · 坑 · 规范 · 待办 · 成本"]
     C --> D{"在分支上？"}
     D -->|是| E["读 L1：docs/inbox/branch-notes/&lt;分支&gt;.md"]
     D -->|否| F["按任务需要按需加载 L2 / L3"]
@@ -185,7 +185,7 @@ flowchart TD
 flowchart TD
     A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash .agents/scripts/worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
     B --> C["③ 本分支注册<br/>bash .agents/scripts/link-skills.sh（新技能）<br/>bash .agents/scripts/sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
-    C --> D["④ 自测<br/>bash .agents/scripts/cadence.sh check<br/>（AI 资产另跑 guard-skills / --check）"]
+    C --> D["④ 自测<br/>bash .agents/scripts/cadence.sh check<br/>（AI 资产另跑 ai-guard-skills / --check）"]
     D --> E["⑤ 提交<br/>显式路径 + ADAI_BATCH_PATHS（pre-commit 多层门禁）<br/>账本类改动写进 L1，不碰全局账本"]
 ```
 
@@ -328,7 +328,7 @@ flowchart LR
 
 | 触发 | 动作 | 现状 |
 |:--|:--|:--:|
-| **开工**（自动，无需交代）| 注入 L0 + `guard-context.sh` + 读 L1 | ✅ |
+| **开工**（自动，无需交代）| 注入 L0 + `ai-guard-context.sh` + 读 L1 | ✅ |
 | **每日巡检** | `cadence.sh daily`（从上次覆盖日补看到今天）→ 只讲「用户之声 / 新异常 / 心跳趋势」| ✅ |
 | **收工** | `cadence.sh ship`（diff + 快照 + 成本入账）→ **显式路径提交** → `cadence.sh mark ship` | ✅ |
 | **发布 / 发版** | `cadence.sh release`（**只判定，不部署**）| ✅ |
@@ -357,16 +357,16 @@ flowchart LR
 | # | 机制 | 现状 | 覆盖 |
 |:--:|:--|:--:|:--|
 | 1 | **范围守卫 + 多层 pre-commit 门禁**（显式路径 `ADAI_BATCH_PATHS`；隐私/密钥/对齐/结构/功能索引/技能包/目录自洽/防复发/shell）| ✅ | 防并发互卷 · 提交即拦 |
-| 3 | **元数据图谱自检**（`guard-meta`：断链 / lines / 孤儿 / 正文路径）| ✅ | L2/L3 + 工具层 |
-| 4 | **事实对拍**（`guard-align`：端点↔api-spec · 测试数↔status）| ✅ | L3 |
-| 5 | **技能包合规**（`guard-skills` S3/S4/S5/S7）| ✅ | 工具层 |
-| 6 | **工具接入自检**（`guard-tools` T1–T7，含出口真身）| ✅ | 出口 |
+| 3 | **元数据图谱自检**（`ai-guard-meta`：断链 / lines / 孤儿 / 正文路径）| ✅ | L2/L3 + 工具层 |
+| 4 | **事实对拍**（`ai-guard-align`：端点↔api-spec · 测试数↔status）| ✅ | L3 |
+| 5 | **技能包合规**（`ai-guard-skills` S3/S4/S5/S7）| ✅ | 工具层 |
+| 6 | **工具接入自检**（`ai-guard-tools` T1–T7，含出口真身）| ✅ | 出口 |
 | 7 | **反例回归**（`.agents/tests/`：守卫必须能被反例触发）| ✅ | 守卫自身 |
 | 8 | **知识回流需人确认**（AI 提示，禁自动写入 L2）| ❌ **待建** | L2 |
 | 9 | **防膨胀红线**（单文件 >300 行提示拆 / >500 必拆；同知识点 ≥2 次合并；「已废弃」超 3 月归档）| ❌ **待建** | 全体 |
 | 10 | **按需加载路由**（模块↔关键词表 + 惰性加载）| ❌ **待建** | L2/L3 |
 | 11 | **上下文成本度量**（每个 skill 的 context 成本 × 调用频率；从未调用的撤出 catalog）| ❌ **待建** | 工具层 |
-| 12 | **目录级自洽**（`guard-structure`：两件套齐备 · 清单⇄实际双向 · 契约依赖存在 · 守卫引用有效 · **两件套不重复**；`--fix` 刷清单）| ✅ | 目录级 |
+| 12 | **目录级自洽**（`ai-guard-structure`：两件套齐备 · 清单⇄实际双向 · 契约依赖存在 · 守卫引用有效 · **两件套不重复**；`--fix` 刷清单）| ✅ | 目录级 |
 
 ## 八、判断依据（为什么这么定）
 
@@ -383,7 +383,7 @@ flowchart LR
 
 ## 九、落地缺口（现状 → 目标）
 
-**已落地**（2026-10-03）：AI 资产收进 `.agents/` 容器 · **目录两件套**（13 组）+ `guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（`.agents/workspace/tasks/`）。
+**已落地**（2026-10-03）：AI 资产收进 `.agents/` 容器 · **目录两件套**（13 组）+ `ai-guard-structure` · 出口 4→3 · 旧守卫适配修复 · **L1 任务层**（`.agents/workspace/tasks/`）。
 
 | 仍未做 | 目标 | 代价 |
 |:--|:--|:--|

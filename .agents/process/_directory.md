@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-meta` · 流程引用的守卫须存在
+- `ai-guard-meta` · 流程引用的守卫须存在
 
 ## 维护动作
 

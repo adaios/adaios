@@ -93,7 +93,7 @@ tags: [review, checklist, backend]
 | B45 | 硬判定/硬约束信号必须配**输出侧校验**：引擎 verdict 与 LLM 输出 suggestion 冲突要覆盖或告警（prompt 指令是软的）| BREACHED 但 LLM 输出 hold 透出（G-3 审查 P2，2026-08-16）|
 | B46 | 新增占比类指标必须核对**分母口径**（总资产 vs 总持仓市值）——R81 硬信号分母不含现金即此模式 | R81 占比恒 100% 错发 reduce（G-3 审查 P1，2026-08-16）|
 | B47 | 新功能**测试同批**：服务层业务逻辑 + 端点测试与功能同一批完成，不后置（解析/upsert/状态保留/写回关键分支必测）| 自选/清仓/资金业务逻辑后置补测（2026-08-16 反思）|
-| B48 | 交付前主动跑三件套门禁（guard-meta/align/guard.sh），不依赖 pre-commit 兜底；gradle 绿 ≠ 项目绿 | 部署后才补 feature-reference/guard 正则（2026-08-16 反思）|
+| B48 | 交付前主动跑三件套门禁（ai-guard-meta/align/guard.sh），不依赖 pre-commit 兜底；gradle 绿 ≠ 项目绿 | 部署后才补 feature-reference/guard 正则（2026-08-16 反思）|
 | B49 | 禁硬编码路径：知识/数据路径必须经 @Value/yml 注入（grep `os/trading-engine` 硬编码相对路径必须全部配置驱动）| CURRENT_MD 硬编码 ../../os/...（交易 A-E 审查 P1，2026-08-17，3487b00 只修一半）|
 | B50 | R81 占比分母=持仓市值+现金（总资产口径）；positionPercent 等新占比计算必须核对分母 | positionPercent 分母不含现金误发减仓（交易 A-E 审查 P1，2026-08-17）|
 | B51 | 导入解析失败禁止落零：CASH_HEAD 等解析未命中时不得用零值覆盖已有数据（失败返回错误，不静默写盘）| importCashQuery 解析失败覆盖 account.json（交易 A-E 审查 P1，2026-08-17）|

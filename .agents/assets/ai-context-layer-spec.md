@@ -12,7 +12,7 @@ depends-on:
 related:
   - ../../AGENTS.md
   - ../../.agents/scripts/link-skills.sh
-  - ../guards/guard-tools.sh
+  - ../guards/ai-guard-tools.sh
   - ../../docs/rfc/20261003-project-level-ai-context-layer.md
 tags: [ai, meta, governance, context-layer]
 ---
@@ -53,7 +53,7 @@ tags: [ai, meta, governance, context-layer]
 | 类别 | 位置 | 布局 | 怎么被工具看见 |
 |:--|:--|:--|:--|
 | 背景契约 | `AGENTS.md` + 6 个子项目 `AGENTS.md` + `ARCHITECTURE.md` | 单文件 | **工具原生读**（无需出口）|
-| **开工快照** | `.agents/state/`（游标/成本账）+ `guard-context.sh` 的输出 | 脚本生成 | **跨工具靠「跑脚本」**：`AGENTS.md` 规则 0 要求任何 AI 开工先跑 `guard-context.sh`；DSH 另把它写进 `AGENTS.local.md` **自动注入**（＝DSH 专属缓存，**Qoder / Codex / Claude Code 都不读这个文件名**）|
+| **开工快照** | `.agents/state/`（游标/成本账）+ `ai-guard-context.sh` 的输出 | 脚本生成 | **跨工具靠「跑脚本」**：`AGENTS.md` 规则 0 要求任何 AI 开工先跑 `ai-guard-context.sh`；DSH 另把它写进 `AGENTS.local.md` **自动注入**（＝DSH 专属缓存，**Qoder / Codex / Claude Code 都不读这个文件名**）|
 | 技能 | `.agents/skills/<name>/SKILL.md` | 官方目录布局 | 软链到出口（§四）|
 | 审查官 | `.agents/roles/<name>.md`（**扁平**） | — | **不进技能出口**（流程内触发，见 §六）；其「出口」是下行生成的 subagent 定义 |
 | 子代理 | 同上（审查官 `.md` 即 subagent 的真相源） | — | **生成**到 `.qoder/agents/<name>.md`（md+YAML）· `.codex/agents/<name>.toml`（**TOML**）——**格式不同故不能软链**；生成时**重写相对路径**（`../assets/x`→`.agents/assets/x`）+ **只读强制**（Qoder `tools: Read, Grep, Glob` · Codex `sandbox_mode="read-only"`）|
@@ -74,7 +74,7 @@ tags: [ai, meta, governance, context-layer]
 
 1. **没有任何单一目录能被所有工具读到**——Claude Code 官方明确不读 `.agents/`；DSH 不读根 `skills/`；Qoder 只认 `.qoder/skills/`。**押注"中立目录"这条路不存在。**
 2. **主流收敛到官方目录布局 `<name>/SKILL.md`**（Claude Code / Qoder 只认它，DSH 两种都认）⇒ 技能真相源必须用目录布局。
-3. **`.agents/` 是出口位，不能当真相源**——它是**被多家工具扫描**的目录（Codex / Cursor / Gemini CLI / Copilot / OpenCode 等）。把 `ai-engineering/` 改名搬进去会同时踩四个雷：① **语义不符**（`.agents/` 在行业语义里是「技能/子代理容器」，而我们那 12 个子目录是整个工程体系）；② **真相源会被工具当出口直接扫**——`skills/`、`process/`、`checklists/` 全被当技能读，**真相源/出口分层当场崩掉**；③ **gitignore 冲突**（`.agents/` 被忽略、真相源必须进 git）；④ **`guard-tools` T4 判据失效**（它检查的是「`.agents/skills` 里的软链是否指向本仓库 `ai-engineering/`」）。
+3. **`.agents/` 是出口位，不能当真相源**——它是**被多家工具扫描**的目录（Codex / Cursor / Gemini CLI / Copilot / OpenCode 等）。把 `ai-engineering/` 改名搬进去会同时踩四个雷：① **语义不符**（`.agents/` 在行业语义里是「技能/子代理容器」，而我们那 12 个子目录是整个工程体系）；② **真相源会被工具当出口直接扫**——`skills/`、`process/`、`checklists/` 全被当技能读，**真相源/出口分层当场崩掉**；③ **gitignore 冲突**（`.agents/` 被忽略、真相源必须进 git）；④ **`ai-guard-tools` T4 判据失效**（它检查的是「`.agents/skills` 里的软链是否指向本仓库 `ai-engineering/`」）。
 
 **当前净出口 3 个**：`.dsh/skills` · `.agents/skills`（喂 DSH + Codex + Cursor/Gemini CLI/Copilot/OpenCode 等公约数阵营）· `.qoder/skills`。
 
@@ -82,7 +82,7 @@ tags: [ai, meta, governance, context-layer]
 
 1. **查官方文档确认项目级路径**——**不猜**。文档滞后于实现是常态（Qoder 插件文档未提 skills，实测支持），所以第 4 步必做。
 2. **加进 `.agents/scripts/link-skills.sh` 的 `TARGETS`**（技能出口）。
-3. **加进 `.agents/guards/guard-tools.sh` T4 的扫描清单**——否则新出口**无人检查**（T4 按软链真身判定，不认名字）。
+3. **加进 `.agents/guards/ai-guard-tools.sh` T4 的扫描清单**——否则新出口**无人检查**（T4 按软链真身判定，不认名字）。
    - **子代理出口同理**：加进 `.agents/scripts/sync-agents.sh` 的 `TARGETS`（并按该工具的 subagent 格式加一种生成分支）。
 4. **放探针实测**：技能 + 子代理各一个最小探针 → 目标工具里验证 → **结果写回 §四（含日期）** → 清理探针。
 
@@ -103,7 +103,7 @@ tags: [ai, meta, governance, context-layer]
 | 改技能内容 | **只改真相源**；出口是软链，自动生效 |
 | 改审查官内容 | 跑 `bash .agents/scripts/sync-agents.sh` **重新生成** subagent 定义；自检 `--check`（生成物不进 git）|
 | 换机 / 新 clone | `bash .agents/scripts/link-skills.sh`（+ `setup-hooks.sh`）；自检 `--check` |
-| 自检一致性 | `bash .agents/scripts/link-skills.sh --check` · `bash .agents/guards/guard-tools.sh`（T4）|
+| 自检一致性 | `bash .agents/scripts/link-skills.sh --check` · `bash .agents/guards/ai-guard-tools.sh`（T4）|
 | 新增/删除出口 | 改 `TARGETS` → 跑脚本 → 更新 §四 表 |
 | 有意的偏离 | **必须留痕**（写进本规范 + `pitfalls.md`）|
 
@@ -140,10 +140,10 @@ tags: [ai, meta, governance, context-layer]
 
 | 规则 | 强度 | 谁在保障 |
 |:--|:--:|:--|
-| 出口是指回本仓库的软链 | **硬** | `guard-tools` T4（按真身判定）|
-| 技能目录名 == `name`；两种布局都覆盖 | **硬** | `guard-tools` T3 |
-| 真相源 frontmatter 契约 / lines / 图谱 | **硬** | `guard-meta` |
-| 技能包符合官方规范（name / description / 五段 / 偏离在案） | **硬** | `guard-skills`（S3/S4/S5/S7）|
+| 出口是指回本仓库的软链 | **硬** | `ai-guard-tools` T4（按真身判定）|
+| 技能目录名 == `name`；两种布局都覆盖 | **硬** | `ai-guard-tools` T3 |
+| 真相源 frontmatter 契约 / lines / 图谱 | **硬** | `ai-guard-meta` |
+| 技能包符合官方规范（name / description / 五段 / 偏离在案） | **硬** | `ai-guard-skills`（S3/S4/S5/S7）|
 | 提交前门禁（隐私 / 密钥 / 对齐 / 结构 / 功能索引 / 技能 / 防复发 / shell） | **硬** | `.githooks/pre-commit`（多层，数字不写死）|
 | 只注册"用户直触发"技能 | 软 | 纪律（写在本文与脚本注释）|
 | 不复制到工具目录 | 软 | 纪律（T4 覆盖不到副本）|
@@ -160,7 +160,7 @@ tags: [ai, meta, governance, context-layer]
 | 2026-10-03 | Codex 两探针 | `.agents/skills` ✅（与 DSH 共用，**零新增出口**）· 跟随软链 ✅ · `.codex/agents/*.toml` ✅ |
 | 2026-10-03 | `ai/context/` 退役 | 早期空壳设计（占位符从未填充），内容已被本清单的资产承担 |
 
-**变更方式**：新增工具 / 新出口 / 新资产类别 → 改本文对应表 + 走 §五 四步 + `guard-meta` PASS；本文件状态 `active`，重大调整升 `version`。
+**变更方式**：新增工具 / 新出口 / 新资产类别 → 改本文对应表 + 走 §五 四步 + `ai-guard-meta` PASS；本文件状态 `active`，重大调整升 `version`。
 
 ## 十一、证据（2026-10-03 补 · 行业实证）
 

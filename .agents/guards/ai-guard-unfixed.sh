@@ -2,9 +2,9 @@
 # ─────────────────────────────────────────────────────────────
 # 未修复问题总清单（聚合 4 个维护点）— 用户问「还有哪些未修」一条命令拿全
 #
-# 用法:  bash .agents/guards/guard-unfixed.sh            # 全量总清单
-#        bash .agents/guards/guard-unfixed.sh <主题词>    # 按主题过滤（如 trading / ui / 鉴权）
-#        bash .agents/guards/guard-unfixed.sh --drift     # 只看游离+矛盾（不展示已归口明细）
+# 用法:  bash .agents/guards/ai-guard-unfixed.sh            # 全量总清单
+#        bash .agents/guards/ai-guard-unfixed.sh <主题词>    # 按主题过滤（如 trading / ui / 鉴权）
+#        bash .agents/guards/ai-guard-unfixed.sh --drift     # 只看游离+矛盾（不展示已归口明细）
 #
 # 聚合来源（REVIEW.md 是唯一真相源，其余为补充与对账）:
 #   ① docs/review/REVIEW.md        战略 + P0/P1/P2 未修复（表内状态列非已修的）
@@ -240,7 +240,7 @@ if DRIFT_ONLY:
     out.append(f"> 来源聚合：REVIEW.md（{len(review_ids)} 条未修/搁置/复核）· audits（游离 {len(drift)}）· 对账矛盾（{len(conflicts)}）\n")
 else:
     out.append(f"# 未修复问题总清单（机器聚合 {today}）")
-    out.append(f"> 命令：`bash .agents/guards/guard-unfixed.sh` · REVIEW.md 是唯一真相源，task-log/audits 为补充与对账；已修复区声明与表状态冲突的在 ④。\n")
+    out.append(f"> 命令：`bash .agents/guards/ai-guard-unfixed.sh` · REVIEW.md 是唯一真相源，task-log/audits 为补充与对账；已修复区声明与表状态冲突的在 ④。\n")
 
 secs = {}
 for s, cid, txt, st in review_unfixed:
@@ -295,9 +295,9 @@ total = len(review_unfixed)
 snap = ROOT / 'AGENTS.local.md'
 stale = []
 if snap.exists() and REVIEW.exists() and snap.stat().st_mtime < REVIEW.stat().st_mtime:
-    stale.append("AGENTS.local.md 快照早于 REVIEW.md——跑 `bash .agents/guards/guard-context.sh --write-local` 刷新")
+    stale.append("AGENTS.local.md 快照早于 REVIEW.md——跑 `bash .agents/guards/ai-guard-context.sh --write-local` 刷新")
 if snap.exists() and TASKLOG.exists() and snap.stat().st_mtime < TASKLOG.stat().st_mtime:
-    stale.append("AGENTS.local.md 快照早于 task-log.md——跑 `bash .agents/guards/guard-context.sh --write-local` 刷新")
+    stale.append("AGENTS.local.md 快照早于 task-log.md——跑 `bash .agents/guards/ai-guard-context.sh --write-local` 刷新")
 
 out.append("## 统计")
 if stale:

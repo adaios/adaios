@@ -2,8 +2,8 @@
 # ─────────────────────────────────────────────────────────────
 # 元治理守护检查 — ai-engineering/ + AGENTS.md 的 frontmatter 契约自检
 #
-# 用法:  bash .agents/guards/guard-meta.sh       # 检查
-#        bash .agents/guards/guard-meta.sh --fix # 检查 + 回写 lines 字段（D34 校准）
+# 用法:  bash .agents/guards/ai-guard-meta.sh       # 检查
+#        bash .agents/guards/ai-guard-meta.sh --fix # 检查 + 回写 lines 字段（D34 校准）
 # 说明:  脚本内部自动 cd 到仓库根，免疫 cwd 漂移；
 #        检查三件事（对应 D30/D34/M2）：
 #          M1 图谱边：depends-on/related 相对路径必须解析到存在的文件
@@ -31,7 +31,7 @@ AI = ROOT / '.agents'
 files = [ROOT/'AGENTS.md', DOCS/'_index.md', AI/'_index.md', AI/'README.md', AI/'frontmatter-spec.md']
 files += sorted(DOCS.glob('*/_index.md'))        # 各子目录索引（目录治理）
 # 2026-10-01 补：guides 正文此前**不在覆盖内**（只查了 docs/guides/_index.md）——后果是
-# 「guard-meta PASS」对正文是假绿：qoder 手册声明 lines:550 而实际早已 553，长期无人发现。
+# 「ai-guard-meta PASS」对正文是假绿：qoder 手册声明 lines:550 而实际早已 553，长期无人发现。
 # 范围刻意只放到 guides（那是一份份独立正文）；docs/ 其余区仍是渐进档，要扩需先跑一轮全量 --fix。
 files += sorted((DOCS/'guides').glob('*.md'))
 # 技能包两种布局都覆盖：扁平 <name>.md（旧）与官方目录 <name>/SKILL.md（RFC 20261003 批 1 起）。
@@ -48,7 +48,7 @@ files += sorted((AI/'state').glob('*.md'))       # 状态层
 files += sorted((DOCS/'review/audits').glob('*.md'))  # 走查存档（带 frontmatter）
 files += sorted((DOCS/'rfc').glob('*.md'))            # RFC（带 frontmatter）
 # 2026-10-01 补（对抗审查 B4）：功能主轴与守卫反例测试区此前不在覆盖内——
-# 「guard-meta PASS」因此是覆盖盲区造成的假绿（kernel.md 的 lines 漂移无人管）
+# 「ai-guard-meta PASS」因此是覆盖盲区造成的假绿（kernel.md 的 lines 漂移无人管）
 files += sorted((DOCS/'features').rglob('*.md'))      # 功能索引 + 意图卡（含子目录）
 files += sorted((AI/'tests').glob('*.md'))            # 守卫反例回归区索引
 files += sorted((AI/'guards').glob('*.md'))           # 守卫 + 目录两件套

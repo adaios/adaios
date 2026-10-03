@@ -25,4 +25,4 @@ tags: [meta, index]
 
 - `status != active` → 候选清理
 - `updated` 超 3 个月未动且无人引用 → 候选归档
-- **清单必须与实际文件一致**（`guard-structure` S2 双向校验；新增文件后跑 `guard-structure.sh --fix`）
+- **清单必须与实际文件一致**（`ai-guard-structure` S2 双向校验；新增文件后跑 `ai-guard-structure.sh --fix`）

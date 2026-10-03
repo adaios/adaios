@@ -11,7 +11,7 @@ flowchart TB
 
 ```mermaid
 subgraph OFFENSE["🚀 进攻侧（任务前 · 自动注入）"]
-    O1["① 任务上下文注入<br/>guard-context.sh"]
+    O1["① 任务上下文注入<br/>ai-guard-context.sh"]
     O2["C1 当前状态"]
     O3["C2 未修项 REVIEW"]
     O4["C3 原则级边界"]
@@ -28,13 +28,13 @@ subgraph DEFENSE["🛡 防守侧（提交时 · 秒级拦截）"]
     direction TB
     P1["③ 提交门禁<br/>pre-commit hook"]
     P2["隐私闸门<br/>data/ 禁止提交"]
-    P3["内容对齐<br/>guard-align A1-A4<br/>端点↔api-spec 测试数↔status"]
-    P4["结构门禁<br/>guard-meta M1-M4<br/>frontmatter/图谱/lines"]
+    P3["内容对齐<br/>ai-guard-align A1-A4<br/>端点↔api-spec 测试数↔status"]
+    P4["结构门禁<br/>ai-guard-meta M1-M4<br/>frontmatter/图谱/lines"]
     P5["防 P0 复发<br/>guard.sh G1-G7"]
 end
 
 subgraph SEDIMENT["📦 沉淀检查（进攻侧②③）"]
-    S1["④ 沉淀检查<br/>guard-sediment.sh"]
+    S1["④ 沉淀检查<br/>ai-guard-sediment.sh"]
     S2["S1 坑/ADR 提示"]
     S3["S2 REVIEW 出表检查"]
     S4["S3 change-log 登记<br/>(FAIL 硬拦)"]
@@ -42,7 +42,7 @@ end
 
 subgraph DEPLOY["🚢 部署门禁（触发侧 · 最硬闸门）"]
     G1["⑥ deploy-gate.sh"]
-    G2["GATE-BEFORE<br/>guard-meta + align + guard.sh<br/>不过关 → 拒绝部署"]
+    G2["GATE-BEFORE<br/>ai-guard-meta + align + guard.sh<br/>不过关 → 拒绝部署"]
     G3["GATE-AFTER<br/>自动 smoke 六端点<br/>feed/advice/parse/..."]
 end
 
@@ -63,7 +63,7 @@ subgraph BASE["🧱 支撑层（所有环节共用）"]
     B1["资产层 assets/<br/>规范/边界/坑/ADR"]
     B2["状态层 state/<br/>status/REVIEW/change-log<br/>单一事实源"]
     B3["方法论 method/<br/>切入点图谱/脚手架<br/>随实践迭代"]
-    B4["guard-meta.sh<br/>结构门禁 --fix 回写"]
+    B4["ai-guard-meta.sh<br/>结构门禁 --fix 回写"]
 end
 
 %% 主流程

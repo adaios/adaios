@@ -7,9 +7,9 @@ updated: 2026-09-26
 status: active
 lines: 124
 depends-on:
-  - ../guards/guard-cost.sh
+  - ../guards/ai-guard-cost.sh
 related:
-  - ../guards/guard-context.sh
+  - ../guards/ai-guard-context.sh
   - ../frontmatter-spec.md
 tags: [ai, cost, guard]
 ---
@@ -20,13 +20,13 @@ tags: [ai, cost, guard]
 
 ## 零、先看账（每次开工前跑）
 
-> **2026-08-18 起无需手动**：AGENTS.md 规则 0 已指示 AI 开工时自动执行 `guard-context.sh`（内含 C6.5 今日成本），用户零操作。以下命令保留给手动/深查场景：
+> **2026-08-18 起无需手动**：AGENTS.md 规则 0 已指示 AI 开工时自动执行 `ai-guard-context.sh`（内含 C6.5 今日成本），用户零操作。以下命令保留给手动/深查场景：
 
 ```bash
-bash .agents/guards/guard-cost.sh            # 今天花了多少
-bash .agents/guards/guard-cost.sh --top 10   # 今天哪些会话最烧钱
-bash .agents/guards/guard-cost.sh --log      # 历史记录
-bash .agents/guards/guard-cost.sh --record   # 收工时把今日记入成本日志
+bash .agents/guards/ai-guard-cost.sh            # 今天花了多少
+bash .agents/guards/ai-guard-cost.sh --top 10   # 今天哪些会话最烧钱
+bash .agents/guards/ai-guard-cost.sh --log      # 历史记录
+bash .agents/guards/ai-guard-cost.sh --record   # 收工时把今日记入成本日志
 ```
 
 - 阈值提醒（脚本内置）：单日 >20 元 / 缓存占比 >70% / 调用 >500 次 → 自动喊停。
@@ -38,7 +38,7 @@ bash .agents/guards/guard-cost.sh --record   # 收工时把今日记入成本日
 > ⚠️ **2026-09-26 修正（用户当场指正）**：本行此前只写「9:00-12:00、14:00-18:00」，**漏掉「周一至周五」与「不含法定节假日」两个限定** → 会在**周末 / 法定节假日**被误判成高峰、白等窗口（用户原话：「你的错峰时间不够精准，今天周六，而且是节假日」）。
 > **判断口径（三步）**：① 看星期——**周六 / 周日 → 全天空闲**；② 看是否**中国法定节假日**（是 → 全天空闲；调休放假安排以官方为准）；③ 两者都不是，才按 9-12 / 14-18 判高峰。
 > **官方依据**：<https://api-docs.deepseek.com/zh-cn/quick_start/pricing> ——原文「其余时段，包括**周末及中国法定节假日全天**均为空闲时段」。
-> **机械判定**：`guard-cost.sh` 的提醒首行会直接告诉你**当前时段**（按星期判；法定节假日提示对照官方页）。
+> **机械判定**：`ai-guard-cost.sh` 的提醒首行会直接告诉你**当前时段**（按星期判；法定节假日提示对照官方页）。
 
 | 模型 | 时段 | 输入(未命中) | 缓存命中 | 输出 |
 |:-----|:-----|:----:|:----:|:----:|
@@ -103,10 +103,10 @@ bash .agents/guards/guard-cost.sh --record   # 收工时把今日记入成本日
 | C3 | **控输出** | max_tokens 按场景最小够用？ |
 | C4 | **降频** | 这个调用真的需要每次触发吗？缓存够长吗？|
 | C5 | **用对模型** | 轻活用 Flash、重活用 Pro？ |
-| C6 | **盯账** | 收工前 `guard-cost.sh --record` 了吗（2026-08-22 起与 `--write-local` 并列**强制**，AGENTS.md 规则 0b）？今天超 20 元了吗？|
+| C6 | **盯账** | 收工前 `ai-guard-cost.sh --record` 了吗（2026-08-22 起与 `--write-local` 并列**强制**，AGENTS.md 规则 0b）？今天超 20 元了吗？|
 | C7 | **控注入** | `AGENTS.local.md` 快照 ≤8KB 吗？（每轮会话都注入，膨胀 = 每轮固定开销）|
 
-> **上下文快照预算**（2026-08-20）：`AGENTS.local.md` 由 `guard-context.sh --write-local` 收尾生成，DSH/Claude 等工具**每个新会话自动注入**，之后每轮调用都随历史重发（缓存命中计费）。预算 ≤8KB ≈ 2500 tokens/轮 ≈ 0.0003 元/轮（日均 2000 轮约 0.5 元）；脚本超限会打印 ⚠️ 报警，需精简源文件（status/REVIEW/task-log 等）后重新生成。
+> **上下文快照预算**（2026-08-20）：`AGENTS.local.md` 由 `ai-guard-context.sh --write-local` 收尾生成，DSH/Claude 等工具**每个新会话自动注入**，之后每轮调用都随历史重发（缓存命中计费）。预算 ≤8KB ≈ 2500 tokens/轮 ≈ 0.0003 元/轮（日均 2000 轮约 0.5 元）；脚本超限会打印 ⚠️ 报警，需精简源文件（status/REVIEW/task-log 等）后重新生成。
 
 ## 四、工程侧配置检查点
 
@@ -118,7 +118,7 @@ bash .agents/guards/guard-cost.sh --record   # 收工时把今日记入成本日
 
 ## 五、成本日志（每日一行）
 
-`.agents/state/cost-log.jsonl`，由 `guard-cost.sh --record` 写入：
+`.agents/state/cost-log.jsonl`，由 `ai-guard-cost.sh --record` 写入：
 ```json
 {"date":"2026-08-17","calls":2497,"cost":76.06,"cache_cost":64.34,"in_cost":5.24,"out_cost":6.49,"input_m":3.0,"cache_m":822.9,"output_m":1.1}
 ```

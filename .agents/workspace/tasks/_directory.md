@@ -39,14 +39,14 @@ tags: [meta, directory]
 - **一分支一文件**（文件名 = 分支名，kebab-case）——不同分支文件名不同 ⇒ **零冲突**
 - **分支上只改自己这一份**，**禁止**直接改全局账本（那正是要避免的冲突源）
 - **合并后必须归档并删除**：`main` 上残留任务账本 = 未收尾
-- frontmatter **10 字段**（`guard-meta` 查）
+- frontmatter **10 字段**（`ai-guard-meta` 查）
 
 ## 守卫（谁保证这里不腐烂）
-- `guard-structure`：两件套齐备 · 清单⇄实际 · 契约依赖 · 守卫引用 · 两件套不重复
-- `guard-meta`：frontmatter / lines / 断链
+- `ai-guard-structure`：两件套齐备 · 清单⇄实际 · 契约依赖 · 守卫引用 · 两件套不重复
+- `ai-guard-meta`：frontmatter / lines / 断链
 - 归档检查：`cadence.sh ship` 提示 `main` 上残留的账本（见 `.agents/process/ship.md`）
 
 ## 维护动作
 1. 开分支 → `cp _template.md <分支名>.md`（填「目标」）
 2. 开发中 → 更新「进度」「风险」「待归档」
-3. 合并 → 按「待归档」搬进 4 个去向 → `rm <分支名>.md` → 跑 `guard-structure.sh --fix` 刷清单
+3. 合并 → 按「待归档」搬进 4 个去向 → `rm <分支名>.md` → 跑 `ai-guard-structure.sh --fix` 刷清单

@@ -5,7 +5,7 @@
 # 一句话：把「每日巡检 / 收工 / 每周 / 待办 / 发布」五件事，从**靠人记**变成
 #         **有游标、能接着上次走、AI 自己读得到**。
 #
-# 为什么不是又一个脚本（此前已有 guard-prod / weekly-audit / ship）：
+# 为什么不是又一个脚本（此前已有 ai-guard-prod / weekly-audit / ship）：
 #   那些是**动作**，缺的是**记忆**——上次巡检看到哪天、上次收工是哪个 commit。
 #   本脚本 = 游标（lib/cadence-lib.sh）+ 五件事的调度，把散落的动作串成节奏。
 #   动作本体不变，本脚本只负责「从上次到现在」+「做完记账」。
@@ -178,7 +178,7 @@ cmd_daily() {
     n=${#days[@]}
     if [ "$n" -gt "$max_days" ]; then
         gap=$(( n - max_days ))
-        printf '  %s▸ 欠 %s 天超过上限 %s：只巡最近 %s 天，中间 %s 天未看（补看：guard-prod.sh --date <日>）%s\n\n' \
+        printf '  %s▸ 欠 %s 天超过上限 %s：只巡最近 %s 天，中间 %s 天未看（补看：ai-guard-prod.sh --date <日>）%s\n\n' \
             "$YEL" "$n" "$max_days" "$max_days" "$gap" "$RST"
         local trimmed=() i
         for (( i = n - max_days; i < n; i++ )); do trimmed+=( "${days[$i]}" ); done
@@ -187,10 +187,10 @@ cmd_daily() {
 
     for d in "${days[@]}"; do
         if [ "$d" = "$today" ]; then
-            bash .agents/guards/guard-prod.sh
+            bash .agents/guards/ai-guard-prod.sh
         else
             printf '\n%s════════ 补看 %s ════════%s\n' "$BOLD" "$d" "$RST"
-            bash .agents/guards/guard-prod.sh --date "$d"
+            bash .agents/guards/ai-guard-prod.sh --date "$d"
         fi
     done
 
@@ -234,7 +234,7 @@ cmd_ship() {
 
     # ── 审查判定（工具层 D7；2026-09-26 用户拍板「按建议实施」）────────────────
     # 收工**必须**先判这一条：本批 diff 含代码文件且触及并发/数据/契约/用户可见行为 → 派独立增量深审
-    # （按改动目录派官 + 对抗官）；纯文档/样式 → light（guard-meta + guard-align + 守护快扫）。
+    # （按改动目录派官 + 对抗官）；纯文档/样式 → light（ai-guard-meta + ai-guard-align + 守护快扫）。
     # 结论必须落盘（REVIEW / change-log）——**不许只留在对话里**（2026-09-26 教训：一夜 8 批自测自记，
     # 用户不追问就没有任何独立审查）；有 P0/P1 → 先修再提交。
     local batch_head code_files
@@ -245,12 +245,12 @@ cmd_ship() {
         printf '  %s⚠ 本批含 %s 个代码文件 → 派独立增量深审（按改动目录派官 + 对抗官）%s\n' "$YEL" "$code_files" "$RST"
         printf '  %s  结论落 REVIEW / change-log；P0/P1 先修再提交%s\n' "$DIM" "$RST"
     else
-        printf '  %s本批无代码文件 → light：guard-meta + guard-align + 守护快扫%s\n' "$DIM" "$RST"
+        printf '  %s本批无代码文件 → light：ai-guard-meta + ai-guard-align + 守护快扫%s\n' "$DIM" "$RST"
     fi
 
     hr "④ 收尾两步（AGENTS.md 规则 0b，强制）"
-    bash .agents/guards/guard-context.sh --write-local | tail -2 || true
-    bash .agents/guards/guard-cost.sh --record | tail -6 || true
+    bash .agents/guards/ai-guard-context.sh --write-local | tail -2 || true
+    bash .agents/guards/ai-guard-cost.sh --record | tail -6 || true
 
     cadence_set ship.last_at "$(date '+%Y-%m-%dT%H:%M:%S%z')"
     cadence_set ship.head "$head"
@@ -266,17 +266,17 @@ cmd_ship() {
 # ── release：发版判定（只读；**不部署**）──────────────────────────────
 # 用户 2026-09-26：「不主动部署，通过部署动作一键触发，确定是否更新发布」。
 # 本命令只回答「现在欠着什么没发 + 要发哪几端」；真正部署仍走 deploy-gate.sh（最硬闸门）
-# 且必须用户点头（AGENTS.md 规则 11 / 边界 B8）。判定与部署的分工详见 guard-release.sh 头注。
+# 且必须用户点头（AGENTS.md 规则 11 / 边界 B8）。判定与部署的分工详见 ai-guard-release.sh 头注。
 cmd_release() {
     if [ "${1:-}" = "--json" ]; then
-        bash .agents/guards/guard-release.sh --json
+        bash .agents/guards/ai-guard-release.sh --json
         return $?
     fi
     printf '%s═══ 发版体检（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
     local raw
-    raw="$(bash .agents/guards/guard-release.sh --json 2>/dev/null)"
+    raw="$(bash .agents/guards/ai-guard-release.sh --json 2>/dev/null)"
     if [ -z "$raw" ]; then
-        printf '  %s✗ 取不到发版数据（SSH 到生产不通？）→ 手工跑 bash .agents/guards/guard-release.sh%s\n' "$RED" "$RST"
+        printf '  %s✗ 取不到发版数据（SSH 到生产不通？）→ 手工跑 bash .agents/guards/ai-guard-release.sh%s\n' "$RED" "$RST"
         return 1
     fi
     RAW="$raw" python3 - <<'PY'
@@ -312,7 +312,7 @@ for u in d.get("units") or []:
 print()
 if need:
     print("  ⚠ 欠着没发：" + ",".join(need))
-    print("    下一步命令（逐端）：bash .agents/guards/guard-release.sh")
+    print("    下一步命令（逐端）：bash .agents/guards/ai-guard-release.sh")
 else:
     print("  ✅ 没有欠着没发的（生产已含全部改动）")
 PY
@@ -330,9 +330,9 @@ PY
 cmd_check() {
     printf '%s═══ 交付门禁（%s）═══%s\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
     local fail=0 pair name script last mark
-    for pair in "结构门禁（frontmatter 图谱 / lines / 孤儿）:.agents/guards/guard-meta.sh" \
-                "内容对齐（端点↔api-spec / 测试数↔status）:.agents/guards/guard-align.sh" \
-                "工具接入（快照 / 技能 / 入口 / shell lint）:.agents/guards/guard-tools.sh" \
+    for pair in "结构门禁（frontmatter 图谱 / lines / 孤儿）:.agents/guards/ai-guard-meta.sh" \
+                "内容对齐（端点↔api-spec / 测试数↔status）:.agents/guards/ai-guard-align.sh" \
+                "工具接入（快照 / 技能 / 入口 / shell lint）:.agents/guards/ai-guard-tools.sh" \
                 "防复发 G1–G7:docs/review/guard.sh"; do
         name="${pair%%:*}"; script="${pair#*:}"
         last="$(bash "$script" 2>&1 | tail -1)"
@@ -351,10 +351,10 @@ cmd_check() {
     return "$fail"
 }
 
-# ── cost：成本（委托 guard-cost.sh，不重复实现）────────────────────────
+# ── cost：成本（委托 ai-guard-cost.sh，不重复实现）────────────────────────
 cmd_cost() {
     printf '%s═══ 成本（%s）═══%s\n\n' "$BOLD" "$(date '+%F %H:%M')" "$RST"
-    bash .agents/guards/guard-cost.sh "$@"
+    bash .agents/guards/ai-guard-cost.sh "$@"
 }
 
 # ── weekly：每周（跑审查 + 本周清单）──────────────────────────────────
@@ -366,17 +366,17 @@ cmd_weekly() {
     hr "本周你还要亲自做的（routine.md §三）"
     printf '  · TDX 盘后行情包同步（admin「系统 → 维护」上传 .zip）\n'
     printf '  · 盘一次账：交易页账实自检 + 资金快照\n'
-    printf '  · 未修项过一遍：bash .agents/guards/guard-unfixed.sh\n'
+    printf '  · 未修项过一遍：bash .agents/guards/ai-guard-unfixed.sh\n'
     printf '  · 到期红线：python3 .agents/scripts/check_deadlines.py\n'
 }
 
 # ── todo：当前待办 ─────────────────────────────────────────────────────
-# 源取 guard-context.sh 的 C2 段（REVIEW 未修项，已统一格式化且带条数上限）。
+# 源取 ai-guard-context.sh 的 C2 段（REVIEW 未修项，已统一格式化且带条数上限）。
 # 不自己解析 REVIEW.md：那是历史流水文档（条目嵌在引用块里），另写一套解析＝造第二个真相源。
 cmd_todo() {
     printf '%s═══ 当前待办（%s）═══%s\n' "$BOLD" "$(date +%F)" "$RST"
-    printf '  %s源：REVIEW.md 未修项 · 全量看 %sbash .agents/guards/guard-unfixed.sh%s\n\n' "$DIM" "$CYN" "$RST"
-    bash .agents/guards/guard-context.sh 2>/dev/null \
+    printf '  %s源：REVIEW.md 未修项 · 全量看 %sbash .agents/guards/ai-guard-unfixed.sh%s\n\n' "$DIM" "$CYN" "$RST"
+    bash .agents/guards/ai-guard-context.sh 2>/dev/null \
         | awk '/^## C2 未修项/{f=1;next} /^## C[0-9]/{f=0} f' \
         | grep -v '^$' | cut -c1-150 | head -16
     local insp; insp="$(cadence_get inspection.covered_through)"

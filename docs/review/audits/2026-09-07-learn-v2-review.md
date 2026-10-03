@@ -20,7 +20,7 @@ tags: [ai, review, learn]
 - **范围**：`d3b8f4a^..ff7451f`（learn V2 消化闭环 4 commit：批1 复习流转/编辑 d3b8f4a → 批3 trading 候选联动 0bcebfe → 批4 复习提醒推送 66b4baf → 前端接线 ff7451f），31 文件 +2389/−95
 - **模式**：deep（review.md）· 四官隔离并行（材料按域裁剪、官间互不可见）+ 主会话独立核实
 - **派官**：code-backend-reviewer / code-frontend-reviewer / docs-contract-reviewer / ai-adversarial-reviewer ×4 独立子代理
-- **守护**：G1-G7 7 PASS / 0 HIT · META PASS · guard-align PASS（122 端点）
+- **守护**：G1-G7 7 PASS / 0 HIT · META PASS · ai-guard-align PASS（122 端点）
 - **主会话核实**：learn 测试类 failures=0（LearnControllerTest 21 / CandidateAppService 22 / ReviewPush 8 / LearnCardFileRepo 29 等，1292 全绿对齐）；B3 隐私（candidates/ 落 `data/*/trading/` 已 ignore）✅
 
 ## 结论

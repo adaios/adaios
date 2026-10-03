@@ -26,9 +26,9 @@ tags: [review, audit, ai-engineering]
 
 ## 一、核心结论
 
-AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/state）+ 8 官 9 清单 + process 三件套 + guard-meta 全部真实落地且自检 PASS。但**建成当日即暴露两类自伤**：
+AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/state）+ 8 官 9 清单 + process 三件套 + ai-guard-meta 全部真实落地且自检 PASS。但**建成当日即暴露两类自伤**：
 
-1. **物理迁移清理未闭环**（6 官 ⭐⭐⭐⭐⭐⭐）：docs/ai→ai-engineering 迁移只移动了文件，未做 D10 旧路径清零——13-16 处 docs/ai 活引用残留，其中 ship/audit/review 的门禁命令 `bash docs/ai/guard-meta.sh` 按文档执行必失败（exit 127）。**元治理门禁实际处于失效状态**，而 guard-meta M1 只校验 frontmatter 边、不查正文路径，所以一直 PASS（盲区）。
+1. **物理迁移清理未闭环**（6 官 ⭐⭐⭐⭐⭐⭐）：docs/ai→ai-engineering 迁移只移动了文件，未做 D10 旧路径清零——13-16 处 docs/ai 活引用残留，其中 ship/audit/review 的门禁命令 `bash docs/ai/ai-guard-meta.sh` 按文档执行必失败（exit 127）。**元治理门禁实际处于失效状态**，而 ai-guard-meta M1 只校验 frontmatter 边、不查正文路径，所以一直 PASS（盲区）。
 2. **闭环承诺名实不符**（3 官 ⭐⭐⭐）：「六段闭环」只具名 5 段，develop 段无定义文件、验收段无核验程序；RFC 验收标准 #1-#5 无人核验；ADR 首批 3/5-10 条。
 
 ---
@@ -38,7 +38,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 | # | 主题 | 命中官 | 优先级 |
 |:-:|:-----|:-------|:------:|
 | C1 | **docs/ai 迁移残留未清零**（process 门禁命令断链：ship.md:46-47/audit.md:30/review.md:34,38 + frontmatter-spec §四/§六 + _index.md 标题 + docs-contract-reviewer）| 6 官 | 战略/P1 |
-| C2 | **guard-meta 只校验 frontmatter 边，正文路径引用无机器防线**（M1 盲区）——迁移残留因此全绿 PASS | 6 官 | 战略/P1 |
+| C2 | **ai-guard-meta 只校验 frontmatter 边，正文路径引用无机器防线**（M1 盲区）——迁移残留因此全绿 PASS | 6 官 | 战略/P1 |
 | C3 | **ship.md 契约同步指向不存在的 `docs/architecture/feature-reference.md`**（实际在 docs/reference/）| 3 官 | P1 |
 | C4 | **六段闭环名实不符**：develop 无文件、验收无程序、「六段」只具名 5 段 | 3 官 | 战略/P2 |
 | C5 | **ADR 覆盖不足**：首批 3/5-10 条，28 篇 RFC 历史决策大多无索引 | 3 官 | P2 |
@@ -72,7 +72,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 | # | 问题 | ⭐ |
 |:-:|:-----|:--:|
 | S-A1 | **迁移清理未闭环**：docs/ai 旧路径残留 13-16 处，ship 门禁命令按文档执行失败 | ⭐⭐ |
-| S-A2 | **guard-meta M1 盲区**：不校验正文路径引用，迁移残留/正文断链永久 PASS | ⭐⭐ |
+| S-A2 | **ai-guard-meta M1 盲区**：不校验正文路径引用，迁移残留/正文断链永久 PASS | ⭐⭐ |
 | S-A3 | **六段闭环名实不符**：develop 无文件、验收无核验程序、「六段」只具名 5 段 | ⭐ |
 | S-A4 | **接入路由缺资产上下文**：动工前不查边界/坑/现状，B1-B7 全靠碰运气加载 | ⭐ |
 | S-A5 | **pitfalls 状态失真**：活问题与已修复历史混排、无触发点 | ⭐ |
@@ -83,7 +83,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 
 | # | 问题 | 位置 | ⭐ |
 |:-:|:-----|:-----|:--:|
-| P1-A1 | ship.md 门禁命令 `bash docs/ai/guard-meta.sh` 断链 | ship.md:46-47 | ⭐⭐⭐ |
+| P1-A1 | ship.md 门禁命令 `bash docs/ai/ai-guard-meta.sh` 断链 | ship.md:46-47 | ⭐⭐⭐ |
 | P1-A2 | audit/review 守护命令同断链 | audit.md:30 / review.md:34,38 | ⭐⭐⭐ |
 | P1-A3 | frontmatter-spec §四/§六 强制范围仍写 docs/ai/** | frontmatter-spec.md:49,59 | ⭐⭐ |
 | P1-A4 | ship.md 契约同步指向不存在的 feature-reference.md | ship.md:35 | ⭐⭐⭐ |
@@ -100,7 +100,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 
 ## 七、P2 / P3
 
-- **P2（26 项）**：workflow/process 边界未定义、ADR 3/5-10、state 层空壳、RFC 索引 draft 漂移、六段计数矛盾、README 接入 step2 找「开发」文档扑空、ideas 登记双源、RFC §4.1 结构 vs 实现偏差、G 系列位置无说明、REVIEW 计数矛盾、task-log 状态列、外部目录只读边界、第一原则承载集中、guard-meta 范围外文档（audits/rfc）静默漂移、RFC frontmatter 规范未文档化、method 引用无只读声明、ADR 无边链接、ai-context-reviewer C7 只覆盖 ai-context-research 未覆盖 method、guard-meta.sh 不在 _index 清单、ADR 模板未物化、RFC 索引词汇混用、feature-reference 路径、change-log 步骤缺失等。
+- **P2（26 项）**：workflow/process 边界未定义、ADR 3/5-10、state 层空壳、RFC 索引 draft 漂移、六段计数矛盾、README 接入 step2 找「开发」文档扑空、ideas 登记双源、RFC §4.1 结构 vs 实现偏差、G 系列位置无说明、REVIEW 计数矛盾、task-log 状态列、外部目录只读边界、第一原则承载集中、ai-guard-meta 范围外文档（audits/rfc）静默漂移、RFC frontmatter 规范未文档化、method 引用无只读声明、ADR 无边链接、ai-context-reviewer C7 只覆盖 ai-context-research 未覆盖 method、ai-guard-meta.sh 不在 _index 清单、ADR 模板未物化、RFC 索引词汇混用、feature-reference 路径、change-log 步骤缺失等。
 - **P3（24 项）**：AGENTS.md 7 名称 8 官、state 指针表假保证、task-log 无状态列、README 目录表 workflow 行歧义、conventions description 残留 docs/ai、docs-contract-reviewer D 编号错引、RFC 验收偏差未回写、六段图物理路径未标注、README 三层表未含 process、method 目录 stub、ideas/README 双源等。
 
 > P2/P3 完整逐条见各官结果（本次走查存档内联，后续迁移 task-log）。

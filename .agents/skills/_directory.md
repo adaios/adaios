@@ -41,7 +41,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-skills`（S3/S4/S5/S7）· `link-skills.sh --check`
+- `ai-guard-skills`（S3/S4/S5/S7）· `link-skills.sh --check`
 
 ## 维护动作
 

@@ -56,7 +56,7 @@ tags: [ai, spec, naming]
 
 1. **全小写 kebab-case**，匹配 `^[a-z0-9]+(-[a-z0-9]+)*$`
 2. **≤32 字符**（官方上限 64，我们内部收紧）
-3. **`name` 与目录名 / 文件名严格一致**（官方硬约束；`guard-skills` S3 已在校验）
+3. **`name` 与目录名 / 文件名严格一致**（官方硬约束；`ai-guard-skills` S3 已在校验）
 4. **域前缀必选**（六选一），不允许裸名（历史名见第六节映射表）
 5. **角色词只能取自第三节的封闭词表**
 6. **`writer` / `reviewer` 成对**；新增一方时同时规划另一方
@@ -104,17 +104,17 @@ tags: [ai, spec, naming]
 
 | 历史名 | **体系名** |
 |:--|:--|
-| `guard-meta.sh` | **`ai-guard-meta.sh`** |
-| `guard-structure.sh` | **`ai-guard-structure.sh`** |
-| `guard-skills.sh` | **`ai-guard-skills.sh`** |
-| `guard-tools.sh` | **`ai-guard-tools.sh`** |
-| `guard-align.sh` | **`ai-guard-align.sh`** |
-| `guard-feature.sh` | **`ai-guard-feature.sh`** |
-| `guard-context.sh` | **`ai-guard-context.sh`** |
-| `guard-sediment.sh` | **`ai-guard-sediment.sh`** |
-| `guard-cost.sh` | **`ai-guard-cost.sh`** |
-| `guard-release.sh` | **`ai-guard-release.sh`** |
-| `guard-prod.sh` | **`ai-guard-prod.sh`** |
+| `ai-guard-meta.sh` | **`ai-guard-meta.sh`** |
+| `ai-guard-structure.sh` | **`ai-guard-structure.sh`** |
+| `ai-guard-skills.sh` | **`ai-guard-skills.sh`** |
+| `ai-guard-tools.sh` | **`ai-guard-tools.sh`** |
+| `ai-guard-align.sh` | **`ai-guard-align.sh`** |
+| `ai-guard-feature.sh` | **`ai-guard-feature.sh`** |
+| `ai-guard-context.sh` | **`ai-guard-context.sh`** |
+| `ai-guard-sediment.sh` | **`ai-guard-sediment.sh`** |
+| `ai-guard-cost.sh` | **`ai-guard-cost.sh`** |
+| `ai-guard-release.sh` | **`ai-guard-release.sh`** |
+| `ai-guard-prod.sh` | **`ai-guard-prod.sh`** |
 
 ### 6.4 `scripts/`（19 个）
 
@@ -141,8 +141,8 @@ tags: [ai, spec, naming]
 3. **`skills/` 改名**（4 个 + `link-skills.sh` 的 `REGISTER` + 出口软链）
 4. **`guards/` 改名**（11 个 + `pre-commit` 的调用 + 所有流程文档引用）
 5. **`scripts/` 改名**（逐个判断 + launchd plist 重装）
-6. **每步验证**：`guard-meta` / `guard-structure` / `guard-skills` / `guard-tools` 全绿 + **反例可用**
+6. **每步验证**：`ai-guard-meta` / `ai-guard-structure` / `ai-guard-skills` / `ai-guard-tools` 全绿 + **反例可用**
 7. **收尾**：`docs/architecture/ai-context-engineering.md` 等文档同步；`AGENTS.md` 审查体系表更新
 
-> **纪律**：**一步一提交、一步一验证**；每步都跑 `guard-structure.sh --fix` 刷清单。
+> **纪律**：**一步一提交、一步一验证**；每步都跑 `ai-guard-structure.sh --fix` 刷清单。
 > **风险控制**：改名是纯机械替换 + `git mv`，**由守卫兜底**（断链 / 孤儿 / 清单不一致都会被拦）。

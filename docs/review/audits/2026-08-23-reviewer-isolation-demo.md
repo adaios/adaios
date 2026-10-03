@@ -59,7 +59,7 @@ tags: [review, audit, adversarial, isolation]
 
 1. closeAccountUpdate 跨文件残余窗口：positions/quotes 在 update() 锁外读取 → 并发时新现金+旧市值
 2. confirm 读取锁外：todayCandidates 先读、save(remaining) 后写，确认期间新 append 候选仍被覆盖（B5-4 注释未完全成立）
-3. api-spec 契约漂移：§612 confirm「清空当日候选」、§607 去重口径未含数量桶（**guard-align 门禁会拦**）
+3. api-spec 契约漂移：§612 confirm「清空当日候选」、§607 去重口径未含数量桶（**ai-guard-align 门禁会拦**）
 4. append 写失败 log.warn 与账目落盘 error 级别不一致
 5. locks map 无清理 + X-User-Id 任意值（#179 零鉴权）→ map 无限增长
 6. save/append「同一把锁」仅注释声明，需确认同一锁 map/key

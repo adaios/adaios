@@ -243,4 +243,4 @@ LLM 只在需要成句时才碰；**取不到数据就说取不到，不编**（
 ---
 
 > **文档治理**：新增本件已在 `_index.md` 登记。改动落地后须同步 `trading-features.md`、`status.md`（app 测试数）、
-> `change-log.md`，并按 `/ship` 闭环（guard-meta / guard-align / 三端测试）。
+> `change-log.md`，并按 `/ship` 闭环（ai-guard-meta / ai-guard-align / 三端测试）。

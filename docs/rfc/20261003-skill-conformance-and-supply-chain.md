@@ -1,14 +1,14 @@
 ---
 title: 技能包合规校准与 AI 供应链锁定——补上行业调研报告 §9/§12 指出的两个空白
-description: 2026-10-03 行业调研（AGENTS.md / Agent Skills / MCP 现状）结论：技能包有两处真空白——① 16 个技能包未按 Agent Skills 官方规范校验（name 约束无检查、五段结构无机器判据）；② 技能与依赖无版本锁定与篡改可见性。本 RFC 定：技能包走「对齐可对齐项 + 明确记录两条结构性偏离」（不做目录迁移），新增 `guard-skills.sh`（S1–S8）与 `skills-lock.json` 内容哈希清单，并把「技能改动必须重签」变成提交前门禁；依赖层只做清单快照，不引入联网 SCA；第三方技能准入留作未来批次。
+description: 2026-10-03 行业调研（AGENTS.md / Agent Skills / MCP 现状）结论：技能包有两处真空白——① 16 个技能包未按 Agent Skills 官方规范校验（name 约束无检查、五段结构无机器判据）；② 技能与依赖无版本锁定与篡改可见性。本 RFC 定：技能包走「对齐可对齐项 + 明确记录两条结构性偏离」（不做目录迁移），新增 `ai-guard-skills.sh`（S1–S8）与 `skills-lock.json` 内容哈希清单，并把「技能改动必须重签」变成提交前门禁；依赖层只做清单快照，不引入联网 SCA；第三方技能准入留作未来批次。
 date: 2026-10-03
 status: draft
 decided-by: —（待拍板：用户 2026-10-03「补」= 出方案，方案落地须另行点头）
 tags: [ai-engineering, skills, 供应链, 门禁, 审查, RFC]
 related:
   - ../../.agents/assets/skills-spec.md
-  - ../../.agents/guards/guard-meta.sh
-  - ../../.agents/guards/guard-feature.sh
+  - ../../.agents/guards/ai-guard-meta.sh
+  - ../../.agents/guards/ai-guard-feature.sh
   - ../../.agents/process/ship.md
   - ../reference/status.md
   - ../review/REVIEW.md
@@ -28,7 +28,7 @@ related:
 2. **官方规范有机器可校验的硬约束**：`name` ≤64 字符、仅小写字母/数字/连字符、不得首尾或连续连字符、必须等于父目录名；`description` 1–1024；`SKILL.md` 为必需文件名；官方还有校验器 `skills-ref validate`。
 3. **技能供应链攻击已从论文变成事故**（2026 年 1–2 月 1,200+ 恶意技能进入主流技能市场、出现首个 agent CVE；42,447 个技能扫描中 26.1% 至少含一个漏洞）。同时 MCP 与 SKILL.md **都不声明能力边界**——协议层不会告诉你一个"搜索文件"的技能是否在读环境变量。
 
-本项目当前无第三方技能，所以第 3 条的现实形态不是"上游投毒"，而是**自研技能被静默改动**（并发会话、自动 `--fix`、误操作）。这正是 `guard-meta` 不覆盖的一层。
+本项目当前无第三方技能，所以第 3 条的现实形态不是"上游投毒"，而是**自研技能被静默改动**（并发会话、自动 `--fix`、误操作）。这正是 `ai-guard-meta` 不覆盖的一层。
 
 ## 二、现状盘点（先看状态再动手）
 
@@ -38,7 +38,7 @@ related:
 | `name` 字段 | 已有，= 文件名 stem（如 `code-backend-reviewer`） | 字符集/长度/连字符约束**无任何检查** |
 | `description` | 已有，写触发语义 | 长度上限 1024 **无检查** |
 | 五段结构 | 已在 `assets/skills-spec.md` 定义（触发/步骤/约束/输出/参考） | **无机器判据**，靠人自觉 |
-| frontmatter 10 字段 | guard-meta 必查 ✅ | 已覆盖 |
+| frontmatter 10 字段 | ai-guard-meta 必查 ✅ | 已覆盖 |
 | 内容完整性 | 无 | **无哈希、无锁定**，改动不可见 |
 | 依赖锁定 | Flutter 两端 `pubspec.lock` 自带 content-hash | 后端依赖无清单快照 |
 | 门禁基座 | `.githooks/pre-commit` 六层 + `.agents/scripts/scan-secrets.py`（Python 执行器 + bash 守卫的先例） | 可复用该模式 |
@@ -60,13 +60,13 @@ related:
 
 | 选项 | 做法 | 成本与风险 | 判定 |
 |:--|:--|:--|:--|
-| **A 全量目录迁移** | 16 个文件改为 `roles/<name>/SKILL.md` | **高**：16 处路径全变 → `depends-on`/`related` 图谱断链、`_index.md` 清单、guard-meta 断链检查、pre-commit 触发条件、审查官调用路径全部要动；且违反 `skills-spec §四`「留在治理体系内」的既定决策 | ❌ 不做 |
-| **B 对齐可对齐项 + 显式记录偏离** | 保持扁平；新增 `guard-skills.sh` 校验可对齐项；两条偏离写进 `skills-spec` 并注明理由 | 低 | ✅ **本批** |
+| **A 全量目录迁移** | 16 个文件改为 `roles/<name>/SKILL.md` | **高**：16 处路径全变 → `depends-on`/`related` 图谱断链、`_index.md` 清单、ai-guard-meta 断链检查、pre-commit 触发条件、审查官调用路径全部要动；且违反 `skills-spec §四`「留在治理体系内」的既定决策 | ❌ 不做 |
+| **B 对齐可对齐项 + 显式记录偏离** | 保持扁平；新增 `ai-guard-skills.sh` 校验可对齐项；两条偏离写进 `skills-spec` 并注明理由 | 低 | ✅ **本批** |
 | **C 扁平真相源 + 导出合规产物** | 由脚本生成 `dist/skills/<name>/SKILL.md`（仅供外部工具加载与 `skills-ref validate`） | 中 | ⏳ 需要时再做 |
 
 **选 B 的核心理由**：本项目技能的实际消费方是项目内配置读取（DSH / Claude / Qoder 均按项目内路径加载），**没有任何外部工具直接扫描 `ai-engineering/` 布局**。为不存在的外部消费者付一次全量迁移成本，是拿真风险换形式合规。C 选项保留了口子：真有外部消费者时导出产物即可，真相源仍是一份。
 
-### 3.3 `guard-skills.sh` 检查项
+### 3.3 `ai-guard-skills.sh` 检查项
 
 | 编号 | 检查 | 判据 |
 |:--|:--|:--|
@@ -91,7 +91,7 @@ related:
 
 | 威胁 | 现实性 | 本批对策 |
 |:--|:--|:--|
-| 自研技能被静默改动（并发会话 / 自动修复 / 误操作） | **高**（已有 `guard-meta --fix` 自动回写工作区的先例） | B1 内容哈希锁定 |
+| 自研技能被静默改动（并发会话 / 自动修复 / 误操作） | **高**（已有 `ai-guard-meta --fix` 自动回写工作区的先例） | B1 内容哈希锁定 |
 | 未来引入第三方技能时上游投毒 | 当前为零，将来为正 | B3 准入流程（留口） |
 | Flutter / Maven 依赖供应链 | 常规 | B2 清单快照 |
 
@@ -109,10 +109,10 @@ related:
 }
 ```
 
-- **生成/重签**：`bash .agents/guards/guard-skills.sh --lock`
+- **生成/重签**：`bash .agents/guards/ai-guard-skills.sh --lock`
 - **默认模式**：逐项对拍 → 不一致 = FAIL，输出「哪个技能被改」的清单
 - **变更协议**：修改技能内容必须显式重签 → **技能改动在 diff 里必然可见**（lock 文件一起变）
-- **防绕过**：哈希覆盖**全文件**字节（不是只哈希 frontmatter）；`lines` 与 `guard-meta` 的 lines 双向对拍，避免"只改正文不重签"
+- **防绕过**：哈希覆盖**全文件**字节（不是只哈希 frontmatter）；`lines` 与 `ai-guard-meta` 的 lines 双向对拍，避免"只改正文不重签"
 
 > 定位说明：这不是"防恶意"（本机威胁模型里没有对手），是**把不可见的改动变成可见事件**——技能是执行指令，改动应当像改代码一样留在 diff 里。
 
@@ -130,7 +130,7 @@ related:
 
 | 批 | 内容 | 类型 |
 |:--|:--|:--|
-| **批 1** | `guard-skills.sh`（S1–S7）+ 反例测试 | 新增脚本 |
+| **批 1** | `ai-guard-skills.sh`（S1–S7）+ 反例测试 | 新增脚本 |
 | **批 2** | `skills-lock.json` + S8 对拍 + pre-commit 挂一层 | 新增 |
 | **批 3** | `skills-spec.md` 更新：对齐官方规范 v1、写入两条结构性偏离（引用本 RFC） | 文档 |
 | 批 4（可选） | 依赖清单快照（B2） | 新增 |
@@ -140,8 +140,8 @@ related:
 
 ## 六、验收标准
 
-1. **反例必须真触发**（沿用 guard-feature 的教训：测试中曾抓出"卡计数恒 0"的假绿）：逐条构造反例——`name` 超 64 / 含大写 / 含连续连字符、`description` 超长、缺五段之一、`tags` 缺 `skill`、枚举为空、偏离段落被删、技能文件被改而 lock 未重签。
-2. **不回归**：`guard-meta` / `guard-align` / `guard-feature` / `guard-tools --shell-lint` 全部仍 PASS。
+1. **反例必须真触发**（沿用 ai-guard-feature 的教训：测试中曾抓出"卡计数恒 0"的假绿）：逐条构造反例——`name` 超 64 / 含大写 / 含连续连字符、`description` 超长、缺五段之一、`tags` 缺 `skill`、枚举为空、偏离段落被删、技能文件被改而 lock 未重签。
+2. **不回归**：`ai-guard-meta` / `ai-guard-align` / `ai-guard-feature` / `ai-guard-tools --shell-lint` 全部仍 PASS。
 3. **零内容改动**：16 个现有技能包的正文与 frontmatter **一个字节不改**（本批只加校验）。
 4. **钩子可降级**：脚本缺失时跳过而非锁死（沿用 pre-commit §0b 与 §2b 的既有防御，避免"改钩子却不带脚本"把提交能力锁死）。
 5. **假绿三态明确**：枚举为空 / 脚本缺失 / lock 文件缺失，各自行为写进注释与输出。

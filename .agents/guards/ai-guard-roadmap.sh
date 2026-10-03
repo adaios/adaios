@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────
 # 规划状态对拍（roadmap 体检）— 回答「未来规划如何 / 规划是否可信」
 #
-# 用法:  bash .agents/guards/guard-roadmap.sh          # 规划简报 + 漂移检查
+# 用法:  bash .agents/guards/ai-guard-roadmap.sh          # 规划简报 + 漂移检查
 #
 # 背景:  2026-08-23 状态层审查（P1-2）——roadmap 自称「最高优先级文档」，
 #        但条目状态（待做/顺延/已实现）零对拍检测，S-5 已实锤漂移
@@ -25,7 +25,7 @@ TASKLOG = ROOT / 'docs/reference/task-log.md'
 
 today = datetime.date.today()
 out = []
-out.append(f"# 规划状态对拍（guard-roadmap · {today.isoformat()}）")
+out.append(f"# 规划状态对拍（ai-guard-roadmap · {today.isoformat()}）")
 out.append("> 真相源：product-roadmap.md（蓝图）+ status.md（实现证据）；本命令只检查不修改。\n")
 
 if not ROADMAP.exists():

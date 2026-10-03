@@ -29,7 +29,7 @@ r"""shell 脚本健壮性 lint：`$VAR` 紧跟非 ASCII 字节。
     python3 .agents/scripts/lint-shell-vars.py                 # 扫全部 git 跟踪的 shell 脚本
     python3 .agents/scripts/lint-shell-vars.py a.sh b.sh       # 只扫指定文件
 
-退出码：0 = 干净；1 = 有命中。由 `.agents/guards/guard-tools.sh` T6 与 git pre-commit 调用。
+退出码：0 = 干净；1 = 有命中。由 `.agents/guards/ai-guard-tools.sh` T6 与 git pre-commit 调用。
 """
 
 import re

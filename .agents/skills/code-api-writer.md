@@ -32,7 +32,7 @@ tags: [skill, build, api]
 4. **测试配套**：Controller 层 `@WebMvcTest` + MockBean；关键分支（解析/upsert/状态保留/写回）必须测；边界用例（跨天/歧义/脏数据）
 5. **同步 api-spec**：`docs/architecture/api-spec.md` 升版 + 变更记录行（D48 教训：15 端点无版本行）
 6. **同步 status.md**：`docs/reference/status.md` 端点数更新（唯一真相源）
-7. **对齐验证**：`bash ai-engineering/guard-align.sh`（A1 端点对拍）+ `bash ai-engineering/guard-meta.sh` PASS
+7. **对齐验证**：`bash ai-engineering/ai-guard-align.sh`（A1 端点对拍）+ `bash ai-engineering/ai-guard-meta.sh` PASS
 8. **功能登记**：新功能 → `docs/reference/feature-reference.md` 补章节（D26 教训：只同步 api-spec 不算完整闭环）
 
 ## 约束与规则
@@ -44,7 +44,7 @@ tags: [skill, build, api]
 
 ## 输出要求
 
-- 测试通过 + guard-meta PASS + guard-align 对齐
+- 测试通过 + ai-guard-meta PASS + ai-guard-align 对齐
 - 契约同步齐全：功能代码 / 测试 / api-spec（升版有变更记录）/ status.md（端点数）/ feature-reference
 - 上述缺一不算完成（ship 五件套）
 

@@ -3,11 +3,11 @@
 #   0) 本批范围守卫 —— 暂存区是否越出「本批声明」（防并发会话 git add -A 混装）
 #   0b) 隐私闸门 + 密钥扫描 —— **任何变更类型都查**（必须先于下方类型触发条件：.txt/.json/.env
 #       这类非 md/java/dart/sh 文件否则会 exit 0 绕过；密钥进 git 历史不可逆）
-#   1) guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
-#   2) guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
-#   2b) guard-feature —— 功能索引对齐（RFC 20261001 批 2）
-#   2c) guard-skills  —— 技能包质量（官方 Agent Skills 规范：name / description / 五段 / 偏离在案）
-#   2d) guard-structure —— 目录级自洽（两件套齐备 · 清单⇄实际 · 契约依赖与守卫引用有效）
+#   1) ai-guard-align —— 代码↔文档内容对齐（A1 端点 / A2 测试数）
+#   2) ai-guard-meta  —— frontmatter 结构（M1 断链 / M2 lines / M3 孤儿 / M4 正文路径）
+#   2b) ai-guard-feature —— 功能索引对齐（RFC 20261001 批 2）
+#   2c) ai-guard-skills  —— 技能包质量（官方 Agent Skills 规范：name / description / 五段 / 偏离在案）
+#   2d) ai-guard-structure —— 目录级自洽（两件套齐备 · 清单⇄实际 · 契约依赖与守卫引用有效）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
 #   4) T6 shell-lint —— shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下 unbound）
 # 由 git core.hooksPath 启用（.agents/scripts/setup-hooks.sh 配置，随 clone 重建）。
@@ -99,7 +99,7 @@ fi
 #     `exit 0` 绕过——隐私闸门 2026-08-23 已踩过同一个坑（见上一段注释）。
 if [ -n "${STAGED_LIST}" ]; then
   # 扫描器缺失时**跳过而非锁死**：本批恰好是「改钩子 + 新增脚本」，若只 add 钩子不带脚本，
-  # fail-closed 会把整个仓库的提交能力锁死（2026-10-01 对抗审查 P1-3）。对照 guard-feature 同款防御。
+  # fail-closed 会把整个仓库的提交能力锁死（2026-10-01 对抗审查 P1-3）。对照 ai-guard-feature 同款防御。
   if [ ! -f .agents/scripts/scan-secrets.py ]; then
     echo "⚠️  密钥扫描器缺失（.agents/scripts/scan-secrets.py）——本层跳过。"
     echo "   修复：确认它随本批一起提交，或 git checkout -- .agents/scripts/scan-secrets.py"
@@ -118,7 +118,7 @@ echo "── pre-commit: 文档对齐 + 结构 + 防复发 + shell 健壮性 + �
 
 # 1) 内容对齐（端点/测试数）——仅代码/契约相关变更时跑
 if echo "$CHANGED" | grep -qE '\.(java|dart)$|status\.md|api-spec\.md|feature-reference\.md'; then
-  bash .agents/guards/guard-align.sh || { echo "❌ 文档内容未对齐，提交已阻止（见上）。修复指引：同步 api-spec.md / status.md。"; exit 1; }
+  bash .agents/guards/ai-guard-align.sh || { echo "❌ 文档内容未对齐，提交已阻止（见上）。修复指引：同步 api-spec.md / status.md。"; exit 1; }
 fi
 
 # 2) 结构对齐（frontmatter 图谱/lines/孤儿/正文路径）——任何 md 变更都跑
@@ -128,9 +128,9 @@ fi
 #    **先检暂存内容的漂移 → 不一致就阻断并给两步指引**，不替用户动暂存区
 #    （仓库有并发会话，自动 git add 会把别人的改动卷进本批——2026-09-13 真实事故）。
 if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
-  if ! bash .agents/guards/guard-meta.sh >/dev/null 2>&1; then
-    bash .agents/guards/guard-meta.sh --fix >/dev/null 2>&1   # 幂等回写工作区 lines
-    echo "❌ frontmatter 结构未对齐，提交已阻止。已自动跑 guard-meta --fix 回写工作区。"
+  if ! bash .agents/guards/ai-guard-meta.sh >/dev/null 2>&1; then
+    bash .agents/guards/ai-guard-meta.sh --fix >/dev/null 2>&1   # 幂等回写工作区 lines
+    echo "❌ frontmatter 结构未对齐，提交已阻止。已自动跑 ai-guard-meta --fix 回写工作区。"
     echo "   注意：提交内容取自**暂存区**——请把本批涉及的 md 文件重新显式 git add 后再提交"
     echo "   （不自动 add 是为了不把并发会话的改动卷进本批，见 .agents/process/ship.md §7）。"
     echo "   剩余人工项：M1 图谱断链 / M3 孤儿文档（--fix 不处理这两类）。"
@@ -138,54 +138,54 @@ if echo "$CHANGED" | grep -qE '\.(md|java|dart)$'; then
   fi
 fi
 
-# 2b) 功能索引对齐（guard-feature，RFC 20261001 批 2）——「功能主轴」是否真实
+# 2b) 功能索引对齐（ai-guard-feature，RFC 20261001 批 2）——「功能主轴」是否真实
 #     索引行字段/链接/状态枚举、卡内有没有被抄进实现细节、卡有没有超长、卡文件是否孤儿；
 #     任何 md 变更都可能动到索引 / 卡 / RFC status，故与结构检查同触发条件
 #     防御（对抗审查 A3，2026-10-01）：脚本或索引目录尚未落地时**跳过**，不阻断——
 #     「环境未就绪」不等于「索引坏了」（否则部分克隆 / 只改了别的 md 的提交会被 127 拦死）
-if [ -f .agents/guards/guard-feature.sh ] && [ -f docs/features/_index.md ] && echo "$CHANGED" | grep -qE '\.md$'; then
-  FEAT_OUT=$(bash .agents/guards/guard-feature.sh 2>&1); FEAT_RC=$?
+if [ -f .agents/guards/ai-guard-feature.sh ] && [ -f docs/features/_index.md ] && echo "$CHANGED" | grep -qE '\.md$'; then
+  FEAT_OUT=$(bash .agents/guards/ai-guard-feature.sh 2>&1); FEAT_RC=$?
   if [ "$FEAT_RC" -ne 0 ]; then
     if echo "$FEAT_OUT" | grep -q 'FEATURE-GUARD:'; then
       echo "$FEAT_OUT"
       echo "❌ 功能索引未对齐，提交已阻止（见上）。修复指引：改 docs/features/_index.md 或对应插件的意图卡（规格见 RFC 20261001 §3.1）。"
     else
-      echo "❌ 功能索引**守卫脚本自身出错**（不是索引的问题，需排查 guard-feature.sh）："
+      echo "❌ 功能索引**守卫脚本自身出错**（不是索引的问题，需排查 ai-guard-feature.sh）："
       echo "$FEAT_OUT" | tail -5 | sed 's/^/    /'
     fi
     exit 1
   fi
 fi
 
-# 2c) 技能包质量（guard-skills，RFC 20261003-skill-conformance）—— 官方规范硬约束是否满足
+# 2c) 技能包质量（ai-guard-skills，RFC 20261003-skill-conformance）—— 官方规范硬约束是否满足
 #     S3 name 字符集/长度/与目录名一致 · S4 description 长度 · S5 五段结构 · S7 偏离在案
 #     （S8 哈希锁**刻意不做**：单人 + git 已覆盖版本控制，判定见该 RFC §四）
 #     触发条件同 2b（技能 / 审查官 / 规范都是 md）；防御同 2b：脚本未落地时跳过，不阻断
-if [ -f .agents/guards/guard-skills.sh ] && echo "$CHANGED" | grep -qE '\.md$'; then
-  SKILL_OUT=$(bash .agents/guards/guard-skills.sh 2>&1); SKILL_RC=$?
+if [ -f .agents/guards/ai-guard-skills.sh ] && echo "$CHANGED" | grep -qE '\.md$'; then
+  SKILL_OUT=$(bash .agents/guards/ai-guard-skills.sh 2>&1); SKILL_RC=$?
   if [ "$SKILL_RC" -ne 0 ]; then
     if echo "$SKILL_OUT" | grep -q 'SKILL-GUARD:'; then
       echo "$SKILL_OUT"
       echo "❌ 技能包不合官方规范，提交已阻止（见上）。修复指引：改 name/description/五段结构；结构性偏离须写进 .agents/assets/skills-spec.md 第六节。"
     else
-      echo "❌ 技能包守卫**脚本自身出错**（不是技能的问题，需排查 guard-skills.sh）："
+      echo "❌ 技能包守卫**脚本自身出错**（不是技能的问题，需排查 ai-guard-skills.sh）："
       echo "$SKILL_OUT" | tail -5 | sed 's/^/    /'
     fi
     exit 1
   fi
 fi
 
-# 2d) 目录级自洽（guard-structure，2026-10-03 目录两件套落地）—— 契约与清单是否与**事实**一致
+# 2d) 目录级自洽（ai-guard-structure，2026-10-03 目录两件套落地）—— 契约与清单是否与**事实**一致
 #     S1 每个子目录有 _index.md + _directory.md · S2 清单⇄实际（双向）· S3 契约依赖存在 · S4 契约提到的守卫存在
 #     触发：md 变更或 .agents/ 下任何改动；防御同 2c：脚本未落地则跳过，不阻断
-if [ -f .agents/guards/guard-structure.sh ] && echo "$CHANGED" | grep -qE '\.md$|^\.agents/'; then
-  STR_OUT=$(bash .agents/guards/guard-structure.sh 2>&1); STR_RC=$?
+if [ -f .agents/guards/ai-guard-structure.sh ] && echo "$CHANGED" | grep -qE '\.md$|^\.agents/'; then
+  STR_OUT=$(bash .agents/guards/ai-guard-structure.sh 2>&1); STR_RC=$?
   if [ "$STR_RC" -ne 0 ]; then
     if echo "$STR_OUT" | grep -q 'STRUCTURE-GUARD:'; then
       echo "$STR_OUT"
-      echo "❌ 目录级不自洽，提交已阻止（见上）。修复指引：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）。"
+      echo "❌ 目录级不自洽，提交已阻止（见上）。修复指引：bash .agents/guards/ai-guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）。"
     else
-      echo "❌ 结构守卫**脚本自身出错**（不是目录的问题，需排查 guard-structure.sh）："
+      echo "❌ 结构守卫**脚本自身出错**（不是目录的问题，需排查 ai-guard-structure.sh）："
       echo "$STR_OUT" | tail -5 | sed 's/^/    /'
     fi
     exit 1
@@ -213,8 +213,8 @@ fi
 #    根因与复发信号见 .agents/assets/pitfalls.md 十五；执行器 .agents/scripts/lint-shell-vars.py
 #    仅 shell 变更时跑（执行器自身扫描全部 git 跟踪的 shell 脚本，27 个，很快）
 if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
-  bash .agents/guards/guard-tools.sh --shell-lint || { echo "❌ shell 脚本健壮性检查未通过，提交已阻止。修复指引：把 \$VAR 写成 \${VAR}——凡中文文案里嵌 shell 变量，一律加花括号。"; exit 1; }
+  bash .agents/guards/ai-guard-tools.sh --shell-lint || { echo "❌ shell 脚本健壮性检查未通过，提交已阻止。修复指引：把 \$VAR 写成 \${VAR}——凡中文文案里嵌 shell 变量，一律加花括号。"; exit 1; }
 fi
 
-bash .agents/guards/guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
+bash .agents/guards/ai-guard-sediment.sh >/dev/null 2>&1 || true   # 软提示：沉淀/出表/登记检查（不硬拦）
 echo "✅ 文档对齐 + 结构 + 功能索引 + 技能包质量 + 目录自洽 + 防复发 + shell 健壮性检查通过（隐私闸门 + 密钥扫描在入口层，见上方输出）"

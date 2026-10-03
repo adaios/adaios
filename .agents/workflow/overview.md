@@ -26,7 +26,7 @@ tags: [ai, meta, workflow, overview]
 ```mermaid
 flowchart LR
     DOC["文档 / 契约<br/>api-spec · freeze · feature-reference"] -- 约束 --> CODE["代码 / 实现"]
-    CODE -- "验证对齐<br/>guard-align 机器对拍" --> DOC
+    CODE -- "验证对齐<br/>ai-guard-align 机器对拍" --> DOC
     CODE -- 有问题 --> REVIEW["REVIEW.md<br/>未修项记录"]
     AUDIT["审核<br/>8 审查官 · 人"] -- 约束 --> DOC
     AUDIT -- 约束 --> CODE
@@ -51,22 +51,22 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    T1["开工"] --> G1["guard-context<br/>上下文基线 / 成本提醒"]
+    T1["开工"] --> G1["ai-guard-context<br/>上下文基线 / 成本提醒"]
     G1 --> T2["开发"]
     T2 --> T3["提交 pre-commit"]
-    T3 --> G2["guard-align<br/>代码↔文档对拍 · 自动拦截"]
+    T3 --> G2["ai-guard-align<br/>代码↔文档对拍 · 自动拦截"]
     G2 --> T4["收尾"]
-    T4 --> G3["guard-meta --fix<br/>元治理 · lines 校准"]
-    G3 --> G4["guard-sediment<br/>沉淀 / 出表 / 登记检查"]
+    T4 --> G3["ai-guard-meta --fix<br/>元治理 · lines 校准"]
+    G3 --> G4["ai-guard-sediment<br/>沉淀 / 出表 / 登记检查"]
     G4 --> T5["部署"]
     T5 --> G5["deploy-gate<br/>最硬闸门 + smoke"]
-    G1 -. 收工 .-> G6["guard-cost --record<br/>成本入账"]
+    G1 -. 收工 .-> G6["ai-guard-cost --record<br/>成本入账"]
 ```
 
 ## 四、日常四问（人只需记这些）
 
 1. **做之前**：契约文档写了吗？（先文档后代码）
-2. **做之后**：测试 + guard-align 对拍过了吗？（验证对齐）
+2. **做之后**：测试 + ai-guard-align 对拍过了吗？（验证对齐）
 3. **发现问题**：记 REVIEW 了吗？（记录）
 4. **该审了**：派官审了吗？（审核约束）
 

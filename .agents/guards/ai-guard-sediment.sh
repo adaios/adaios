@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────
 # 沉淀检查器（进攻侧 ②③）— 提交前检查"该沉淀的有没有沉淀"
 #
-# 用法:  bash .agents/guards/guard-sediment.sh [--check] [--fix-hint]
+# 用法:  bash .agents/guards/ai-guard-sediment.sh [--check] [--fix-hint]
 # 说明:  ship 时跑，检查三件事（软提示，不硬拦截——沉淀是内容判断）：
 #         S1 变更提示：本批改了哪些代码文件 → 提示确认是否该入 pitfalls/ADR
 #         S2 出表检查：REVIEW 未修项是否本批处理了但没标 ✅

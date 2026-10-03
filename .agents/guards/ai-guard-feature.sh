@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 功能索引守护检查（guard-feature）—— docs/features/ 功能主轴自检
+# 功能索引守护检查（ai-guard-feature）—— docs/features/ 功能主轴自检
 #
-# 用法:  bash .agents/guards/guard-feature.sh
-#        bash .agents/guards/guard-feature.sh --root /tmp/fixture   # 测试夹具（默认仓库根）
+# 用法:  bash .agents/guards/ai-guard-feature.sh
+#        bash .agents/guards/ai-guard-feature.sh --root /tmp/fixture   # 测试夹具（默认仓库根）
 # 背景:  RFC 20261001 §3.2——功能索引层「一行一卡」是否真实：字段齐、链接可达、
 #        状态合法、卡内没被抄进实现细节、卡没超长、卡文件已登记。
 # 退出码: 0 = PASS；1 = FAIL

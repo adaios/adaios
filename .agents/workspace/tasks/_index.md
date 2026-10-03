@@ -25,4 +25,4 @@ tags: [meta, index]
 
 - **分支合并后对应账本必须归档并删除**（`main` 上残留 = 未收尾）
 - `status != active` → 候选清理
-- **清单须与实际一致**（`guard-structure` S2 双向校验；跑 `bash .agents/guards/guard-structure.sh --fix` 刷新）
+- **清单须与实际一致**（`ai-guard-structure` S2 双向校验；跑 `bash .agents/guards/ai-guard-structure.sh --fix` 刷新）

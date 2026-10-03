@@ -140,7 +140,7 @@ LearnDigestAppService.digest(userId, …)
 | V4 | 有偏好时 prompt 含偏好文本；**无偏好时 prompt 与改造前逐字一致** | 单测对比 prompt 字符串 |
 | V5 | 偏好注入有 **Top N 上限**，不随记忆增长而无限膨胀 | 单测：造 20 条偏好 → 只注入 N 条 |
 | V6 | 反馈可写入并被 `findAllPreferences` 读到 | 单测 |
-| V7 | 全量测试零失败；`guard-meta` PASS | `./gradlew test` + guard |
+| V7 | 全量测试零失败；`ai-guard-meta` PASS | `./gradlew test` + guard |
 
 ---
 

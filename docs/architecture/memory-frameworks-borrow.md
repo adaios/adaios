@@ -92,7 +92,7 @@ tags: [memory, research, architecture]
 ### 6.3 claude-mem（getzep/claude-mem 等）
 
 - **核心做法**：「**压缩 → 落盘 → 注入**」三段式——会话中自动捕获，用 AI 把冗长对话压缩成结构化记忆（省 token 关键机制），下次会话开始时把相关记忆重新注入；宣称注入开销仅 ~50 tokens/提示词。
-- **可借鉴**：会话结束自动压缩落盘、开工自动注入的闭环——与本项目 `guard-context.sh --write-local` 模式同构；注入「压缩摘要 + 相关片段」而非全文，控制每轮 token 预算。
+- **可借鉴**：会话结束自动压缩落盘、开工自动注入的闭环——与本项目 `ai-guard-context.sh --write-local` 模式同构；注入「压缩摘要 + 相关片段」而非全文，控制每轮 token 预算。
 
 ### 6.4 OpenMemory（mem0 本地 MCP 版）
 

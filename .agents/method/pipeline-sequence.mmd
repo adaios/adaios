@@ -6,10 +6,10 @@ sequenceDiagram
     autonumber
     actor User as 👤 人（指方向/审核/决策）
     participant AI as 🤖 AI（生产内容/执行流程）
-    participant CTX as 📥 guard-context<br/>(任务上下文)
+    participant CTX as 📥 ai-guard-context<br/>(任务上下文)
     participant CODE as 💻 代码工程<br/>(services/apps/os)
     participant HOOK as 🛡 pre-commit<br/>(四层门禁)
-    participant SED as 📦 guard-sediment<br/>(沉淀检查)
+    participant SED as 📦 ai-guard-sediment<br/>(沉淀检查)
     participant GATE as 🚢 deploy-gate<br/>(部署门禁+smoke)
     participant WEEK as 📅 weekly-audit<br/>(每周审查)
     participant STATE as 📊 状态层<br/>(status/REVIEW/change-log)
@@ -49,7 +49,7 @@ sequenceDiagram
     %% ⑤ 部署门禁（触发侧·最硬）
     AI->>GATE: 部署请求（用户确认）
     User-->>AI: ✅ 确认部署
-    GATE->>GATE: GATE-BEFORE（guard-meta + align + guard.sh）
+    GATE->>GATE: GATE-BEFORE（ai-guard-meta + align + guard.sh）
     alt 三关不过
         GATE-->>AI: ❌ 拒绝部署
     else 三关通过

@@ -33,7 +33,7 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 派官审查时 | `../process/review.md` 派官表 | 对应 `review-<官>.md` |
 | 收尾自检 | `../process/ship.md` | `guard.md`（G1–G7） |
-| 成本判断 | `guard-cost.sh` 提示 | `cost.md` |
+| 成本判断 | `ai-guard-cost.sh` 提示 | `cost.md` |
 
 ## 约束
 
@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-meta`：frontmatter / lines / 引用
+- `ai-guard-meta`：frontmatter / lines / 引用
 
 ## 维护动作
 

@@ -2,8 +2,8 @@
 # ─────────────────────────────────────────────────────────────
 # 工具接入自检（防守侧）— 检测「AI 上下文工程体系」在各工具侧是否真的被加载
 #
-# 用法:  bash .agents/guards/guard-tools.sh             # 全量自检（T1-T7）
-#        bash .agents/guards/guard-tools.sh --shell-lint # 只跑 T6（pre-commit 调用，快）
+# 用法:  bash .agents/guards/ai-guard-tools.sh             # 全量自检（T1-T7）
+#        bash .agents/guards/ai-guard-tools.sh --shell-lint # 只跑 T6（pre-commit 调用，快）
 # 说明:  体系的「跨工具互通」不是文档承诺，是可验证状态（2026-08-23 对抗审计 P1-4 修复）。
 #        自检 7 项，缺什么报什么 + 附修复命令；不写死工具清单到文档（映射表会过时，
 #        机制替人记得——运行即知当前工具接入状态）。
@@ -34,7 +34,7 @@ if [ "${1:-}" = "--shell-lint" ]; then
   exit 0
 fi
 
-echo "── 工具接入自检（guard-tools.sh）──"
+echo "── 工具接入自检（ai-guard-tools.sh）──"
 
 # T1: git hooksPath（S-A1：换机门禁缺席）
 echo ""
@@ -56,10 +56,10 @@ if [ -f "$LOCAL" ]; then
   if [ "$AGE" -le 1 ]; then
     ok "快照新鲜（$AGE 天前）"
   else
-    warn "快照已 $AGE 天（真相源变了会失真）→ bash .agents/guards/guard-context.sh --write-local"
+    warn "快照已 $AGE 天（真相源变了会失真）→ bash .agents/guards/ai-guard-context.sh --write-local"
   fi
 else
-  warn "快照缺失 → bash .agents/guards/guard-context.sh --write-local 生成"
+  warn "快照缺失 → bash .agents/guards/ai-guard-context.sh --write-local 生成"
 fi
 
 # T3: 仓库内技能齐备（name 字段=文件名；计数动态，新增角色不再需要改文案）

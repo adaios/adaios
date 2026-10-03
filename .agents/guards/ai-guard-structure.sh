@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 目录级自洽守卫（guard-structure）—— 补 guard-meta（文件级）之外的那一半
+# 目录级自洽守卫（ai-guard-structure）—— 补 ai-guard-meta（文件级）之外的那一半
 #
 # 查什么（S1–S4）：
 #   S1 每个子目录都有 _index.md 与 _directory.md（目录两件套齐备）
@@ -8,16 +8,16 @@
 #   S3 _directory.md 里声明的依赖路径真实存在
 #   S4 _directory.md 里提到的守卫真实存在
 #
-# 与 guard-meta 的分工：
-#   guard-meta      管**文件级**（frontmatter / lines / 断链 / 孤儿 / 正文路径）
-#   guard-structure 管**目录级**（契约与清单是否与**事实**一致）—— 本脚本
+# 与 ai-guard-meta 的分工：
+#   ai-guard-meta      管**文件级**（frontmatter / lines / 断链 / 孤儿 / 正文路径）
+#   ai-guard-structure 管**目录级**（契约与清单是否与**事实**一致）—— 本脚本
 #
 # 为什么需要：目录级失真不会报错——`.agents/_index.md` 曾长期写着旧标题与旧路径，
 #   门禁全绿（M3 只查"文件名在不在清单里"，不管路径）。见 pitfalls 二十三。
 #
 # 用法：
-#   bash .agents/guards/guard-structure.sh          # 只检查
-#   bash .agents/guards/guard-structure.sh --fix    # 重刷各 _index.md 的清单段（从实际文件生成）
+#   bash .agents/guards/ai-guard-structure.sh          # 只检查
+#   bash .agents/guards/ai-guard-structure.sh --fix    # 重刷各 _index.md 的清单段（从实际文件生成）
 # ─────────────────────────────────────────────────────────────
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -134,9 +134,9 @@ for name in SUBS:
             fails.append("S3 %s/_directory.md: 依赖路径不存在 → %s" % (name, ref))
 
     # S4：提到的守卫是否存在
-    for g in sorted(set(re.findall(r"(guard-[a-z0-9-]+\.sh)", t))):
+    for g in sorted(set(re.findall(r"((?:ai-)?guard-[a-z0-9-]+\.sh)", t))):
         if not (AG / "guards" / g).exists():
-            fails.append("S4 %s/_directory.md: 提到 %s 但它不在 guards/" % (name, g))
+            fails.append("S4 %s/_directory.md: 提到 %s 但它不在 guards/（漏了 ai- 前缀？）" % (name, g))
 
 # ── S5：两件套之间不得有整行重复（铁律 1「单一权威来源」的机器校验）──
 # 为什么需要：_index.md 与 _directory.md 若由同一脚本、从同一份数据生成，极易把同一句话
@@ -178,7 +178,7 @@ if fails:
     for x in fails:
         print("   ❌ " + x)
     print()
-    print("   修复：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）")
+    print("   修复：bash .agents/guards/ai-guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）")
     sys.exit(1)
 
 print("STRUCTURE-GUARD: PASS (%d 个子目录 · 两件套齐备 · 清单⇄实际一致 · 依赖与守卫引用有效 · 两件套不重复)" % len(SUBS))

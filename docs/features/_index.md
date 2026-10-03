@@ -17,8 +17,8 @@ related:
   - ../review/REVIEW.md
   - ../review/audits/2026-10-01-feature-index-adversarial.md
   - ../rfc/20261001-feature-index-and-authoring-gate.md
-  - ../../.agents/guards/guard-meta.sh
-  - ../../.agents/guards/guard-feature.sh
+  - ../../.agents/guards/ai-guard-meta.sh
+  - ../../.agents/guards/ai-guard-feature.sh
   - ../../.agents/tests/_index.md
 tags: [meta, index, feature, 功能主轴]
 ---
@@ -27,7 +27,7 @@ tags: [meta, index, feature, 功能主轴]
 
 > **职责**：AdaiOS 唯一的功能主轴——回答「一共有哪些功能、各自到哪一步、需求出自哪、实现在哪、还欠着什么」。
 > **设计**：方案见 [RFC 20261001](../rfc/20261001-feature-index-and-authoring-gate.md)。本层**只放一行 + 链接，不做内容副本**：需求和设计在 `rfc/`、架构在 `architecture/`、实现明细在 `feature-reference.md`、缺陷在 `REVIEW.md`。
-> **维护（如实降格，2026-10-01 对抗审查 A2）**：**状态列仍然由人填**——`guard-feature.sh` 只做「枚举合法 + 一条关键词粗对拍（shipped 不得配『待建/未做』）」，**不是**「状态与证据一致」的真对拍（那需要每行带可机器验证的证据字段，尚未做）。**需求出处只做存在性校验，不做相关性校验**（「链接可达但内容无关」机器抓不到，靠审查官抽检——本表已有 2 行被抽检出填错并修正）。意图卡按需生长（见下）。
+> **维护（如实降格，2026-10-01 对抗审查 A2）**：**状态列仍然由人填**——`ai-guard-feature.sh` 只做「枚举合法 + 一条关键词粗对拍（shipped 不得配『待建/未做』）」，**不是**「状态与证据一致」的真对拍（那需要每行带可机器验证的证据字段，尚未做）。**需求出处只做存在性校验，不做相关性校验**（「链接可达但内容无关」机器抓不到，靠审查官抽检——本表已有 2 行被抽检出填错并修正）。意图卡按需生长（见下）。
 
 ## 一、状态枚举（唯一写法）
 
@@ -37,7 +37,7 @@ tags: [meta, index, feature, 功能主轴]
 
 ## 二、功能清单
 
-**列说明**：`需求出处` = RFC 文件链接；无 RFC 的直接改动批次写明批次（记 `change-log.md`）；标 ⚠️ 的表示出处本身有问题。`实现出处` = `feature-reference.md` 章节或专项功能手册。`欠着` = `REVIEW.md` 编号（跑 `bash .agents/guards/guard-unfixed.sh` 可复算当前未修项）。
+**列说明**：`需求出处` = RFC 文件链接；无 RFC 的直接改动批次写明批次（记 `change-log.md`）；标 ⚠️ 的表示出处本身有问题。`实现出处` = `feature-reference.md` 章节或专项功能手册。`欠着` = `REVIEW.md` 编号（跑 `bash .agents/guards/ai-guard-unfixed.sh` 可复算当前未修项）。
 
 ### Kernel（内核，无插件门控）
 
@@ -124,6 +124,6 @@ tags: [meta, index, feature, 功能主轴]
 
 ## 四、待办（本层自身）
 
-- [x] **批 2**（2026-10-01 完成）：新增守卫脚本 `guard-feature.sh`（F0 表非空防假绿 / F1 字段齐 / F2 链接可达（剥锚点）/ F3 ⚠️需写缺因 / F4 状态枚举 + 关键词粗对拍 / F5 新 RFC status 枚举（缺 date 也强制）/ F6 欠着编号存在（词边界）/ F7 卡内无实现细节 / F8 卡 ≤12 行 / F9 卡文件以链接登记 / F10 防「格式写歪 → 检查静默失效」）+ 已挂 pre-commit「2b」（带未就绪防御）；**反例回归 `tests/guard-feature-fixture.py` 18 条 FAIL 全触发**。⚠️ **与方案的偏差见 RFC §十**（F3/F6 改写、F4 降格、A3 防御等 9 条）。
+- [x] **批 2**（2026-10-01 完成）：新增守卫脚本 `ai-guard-feature.sh`（F0 表非空防假绿 / F1 字段齐 / F2 链接可达（剥锚点）/ F3 ⚠️需写缺因 / F4 状态枚举 + 关键词粗对拍 / F5 新 RFC status 枚举（缺 date 也强制）/ F6 欠着编号存在（词边界）/ F7 卡内无实现细节 / F8 卡 ≤12 行 / F9 卡文件以链接登记 / F10 防「格式写歪 → 检查静默失效」）+ 已挂 pre-commit「2b」（带未就绪防御）；**反例回归 `tests/guard-feature-fixture.py` 18 条 FAIL 全触发**。⚠️ **与方案的偏差见 RFC §十**（F3/F6 改写、F4 降格、A3 防御等 9 条）。
 - [x] **批 3**（2026-10-01 完成）：编写侧判据前置（`workflow/develop.md` 入口条：清单编写/审查双用 + 对抗闭环限三处 ≤2 轮 + 无外部信号不派官）+ **对抗官独立审查 1 轮**（P1×3 / P2×6 / P3×8，逐条处置见 `docs/review/audits/2026-10-01-feature-index-adversarial.md`）。
 - [x] **幽灵引用已处置（2026-10-01）**：`push` / `entry` 的需求出处在本表如实标「无 RFC 文件」；**现行文档已加注**——`docs/architecture/api-spec.md` §19 与 `docs/reference/feature-reference.md` §18/§19 的标题注明「该编号无实体文件，2026-10-01 核实」；**历史记录（change-log / status / REVIEW / deployment）按原样保留**（历史如实，不篡改）。**遗留**：若要补一份真正的决策记录（凭 change-log + 实现倒推），仍需用户拍板——**AI 不编造历史**。

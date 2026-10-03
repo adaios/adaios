@@ -69,7 +69,7 @@ tags: [guide, skills]
 你说：**"帮我加一个 `GET /api/v1/trading/positions` 接口"**
 
 AI 加载 `code-api-writer` 技能后会按 8 步走：
-1. 确认归属 trading 域 → 2. 写 Controller/Service（分层合规）→ 3. 检查插件门控 → 4. 配套测试 → 5. 同步 api-spec（升版+变更记录）→ 6. 更新 status.md 端点数 → 7. 跑 guard-align / guard-meta → 8. 登记 feature-reference
+1. 确认归属 trading 域 → 2. 写 Controller/Service（分层合规）→ 3. 检查插件门控 → 4. 配套测试 → 5. 同步 api-spec（升版+变更记录）→ 6. 更新 status.md 端点数 → 7. 跑 ai-guard-align / ai-guard-meta → 8. 登记 feature-reference
 
 ——不会出现"接口能用了但文档没同步"（P2-交易18 的教训）。
 

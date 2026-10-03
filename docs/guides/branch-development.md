@@ -47,7 +47,7 @@ tags: [guide, git, workflow, ai-tooling, context]
 |:--|:--|:--|
 | **出口**（`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills` · `.qoder/agents/*` · `.codex/agents/*`）| 软链 / 生成物，机器相关 | `bash .agents/scripts/worktree-prep.sh`（内含 `link-skills.sh` + `sync-agents.sh`）|
 | **`.agents/state/`**（游标 / 成本账 / 心跳缓存）| 本机账本，**必须全局唯一** | `worktree-prep.sh` **恒 link 主仓库** |
-| **`AGENTS.local.md`**（开工快照）| 本机缓存，机器生成 | 同上恒 link；主仓库可 `guard-context.sh --write-local` 刷新 |
+| **`AGENTS.local.md`**（开工快照）| 本机缓存，机器生成 | 同上恒 link；主仓库可 `ai-guard-context.sh --write-local` 刷新 |
 
 ### 1.3 统一流程：一次改动怎么走、怎么传给别的分支
 
@@ -92,7 +92,7 @@ bash .agents/scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 �
 
 ### 3.1 新技能（`.agents/skills/<name>/SKILL.md`）
 
-- **必须目录布局**（`<name>/SKILL.md`）——官方 Agent Skills 规范；`guard-skills` 的 S3 会查 `name` 等于**父目录名**
+- **必须目录布局**（`<name>/SKILL.md`）——官方 Agent Skills 规范；`ai-guard-skills` 的 S3 会查 `name` 等于**父目录名**
 - **五段结构**：触发条件 / 执行步骤 / 约束与规则 / 输出要求 / 参考资料（S5）
 - `description` 1–1024（S4）
 - **注册**：若属"**用户直触发**"→ 把 `<name>` 加进 `.agents/scripts/link-skills.sh` 的 `REGISTER`，跑该脚本
@@ -107,13 +107,13 @@ bash .agents/scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 �
 
 ### 3.3 新规范 / 资产（`.agents/assets/*`）
 
-- frontmatter **10 字段**（`guard-meta` 查）
+- frontmatter **10 字段**（`ai-guard-meta` 查）
 - **登记进 `.agents/_index.md`**（否则报 **M3 孤儿**）
-- 文档内引用用**相对本文件**的路径（`guard-meta` **M1** 查断链）
+- 文档内引用用**相对本文件**的路径（`ai-guard-meta` **M1** 查断链）
 
 ### 3.4 接一个新工具
 
-按 `ai-context-layer-spec.md` **§五 四步**：① 确认真相源已有内容 → ② 建出口（软链或生成）→ ③ 注册 → ④ **加进 `guard-tools.sh` T4 的扫描清单**（否则新出口无人检查）。
+按 `ai-context-layer-spec.md` **§五 四步**：① 确认真相源已有内容 → ② 建出口（软链或生成）→ ③ 注册 → ④ **加进 `ai-guard-tools.sh` T4 的扫描清单**（否则新出口无人检查）。
 **子代理出口同理**：加进 `sync-agents.sh` 的 `TARGETS` + 一种格式分支。
 
 ## 四、分支上的冲突面（★ 含 AI 上下文特有的一类）
@@ -144,12 +144,12 @@ bash .agents/scripts/worktree-prep.sh --check      # 应报 24 项齐备 · 0 �
 ```bash
 # 开工
 bash .agents/scripts/worktree-prep.sh --check           # 外挂 + 出口：24 项齐备
-bash .agents/guards/guard-context.sh            # 上下文基线（可加 --topic 过滤）
+bash .agents/guards/ai-guard-context.sh            # 上下文基线（可加 --topic 过滤）
 # 改了 AI 资产之后
-bash .agents/guards/guard-skills.sh             # 技能包合规（S3/S4/S5/S7）
+bash .agents/guards/ai-guard-skills.sh             # 技能包合规（S3/S4/S5/S7）
 bash .agents/scripts/link-skills.sh --check             # 技能出口齐不齐
 bash .agents/scripts/sync-agents.sh --check             # 子代理生成物新不新
-bash .agents/guards/guard-tools.sh              # 工具接入自检（含 T4 出口真身）
+bash .agents/guards/ai-guard-tools.sh              # 工具接入自检（含 T4 出口真身）
 # 提交前（pre-commit 会自动跑大部分）
 bash .agents/scripts/cadence.sh check            # 交付门禁一键
 ```
@@ -164,7 +164,7 @@ bash .agents/scripts/cadence.sh check            # 交付门禁一键
 cd <主仓库>
 bash .agents/scripts/link-skills.sh           # 新技能进 4 个出口
 bash .agents/scripts/sync-agents.sh           # 新审查官进 subagent 定义
-bash .agents/guards/guard-tools.sh    # T4 验证出口真身（会抓出过期出口）
+bash .agents/guards/ai-guard-tools.sh    # T4 验证出口真身（会抓出过期出口）
 bash .agents/scripts/cadence.sh check  # 全门禁
 ```
 

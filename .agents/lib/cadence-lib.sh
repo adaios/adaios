@@ -15,7 +15,7 @@
 #     "weekly":     {"last_at": "...", "week": "2026-W39"}
 #   }
 #
-# 用法（被 cadence.sh / guard-prod.sh source）:
+# 用法（被 cadence.sh / ai-guard-prod.sh source）:
 #   source .agents/lib/cadence-lib.sh
 #   cadence_get inspection.covered_through          # 取值（无则空）
 #   cadence_set inspection.covered_through 2026-09-26

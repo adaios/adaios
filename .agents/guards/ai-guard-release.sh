@@ -3,21 +3,21 @@
 # 发版体检（发布前随时问一句：现在欠着什么没发）
 #
 # 用法:
-#   bash .agents/guards/guard-release.sh          # 人话三段
-#   bash .agents/guards/guard-release.sh --json   # 原始 JSON（喂 AI / 二次处理）
+#   bash .agents/guards/ai-guard-release.sh          # 人话三段
+#   bash .agents/guards/ai-guard-release.sh --json   # 原始 JSON（喂 AI / 二次处理）
 #
 # 为什么有这个脚本（2026-09-24 用户「接下来需要你判定前后端是否发布，
 # 我建议整理个机制，知道哪些需要生产发布」）:
 #   2026-09-23 的发版清单（REVIEW P2-工程9）只在**部署那一刻**算一次、写进生产 DEPLOYED，
-#   事后由 guard-prod 巡检核对——于是「现在欠着什么没发」在部署之前根本答不出来：
+#   事后由 ai-guard-prod 巡检核对——于是「现在欠着什么没发」在部署之前根本答不出来：
 #   要么先跑一次部署，要么去几百行巡检输出里翻红字。
 #   而且那份清单只有 backend/web/admin，**iOS 包完全不在机制内**（app 改了要出新
 #   TestFlight 构建，只写在 status.md 散文里）。
 #
 # 与既有机制的分工（共用同一份路径映射 .agents/lib/release-units.sh）:
-#   guard-release  发布前：现在欠什么（本脚本，**只读**，不碰生产）
+#   ai-guard-release  发布前：现在欠什么（本脚本，**只读**，不碰生产）
 #   deploy-gate    发布时：算 artifacts 落 DEPLOYED + 门禁 + smoke
-#   guard-prod     发布后：巡检核对「声明要发的端，产物是否真的更新了」
+#   ai-guard-prod     发布后：巡检核对「声明要发的端，产物是否真的更新了」
 #
 # 判定基线：生产 DEPLOYED 里的 commit（本地查不到该 commit 时退回「部署时刻」，
 # 两者都拿不到才保守按全部文件判定——宁可多报一端，不静默漏发）。

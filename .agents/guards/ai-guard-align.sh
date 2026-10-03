@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────
 # 文档自动对齐守护 — 代码 ↔ 文档内容一致性检查
 #
-# 用法:  bash .agents/guards/guard-align.sh [--fix-msg]
+# 用法:  bash .agents/guards/ai-guard-align.sh [--fix-msg]
 # 说明:  提交/部署前自动对齐（配合 .githooks/pre-commit 自动触发，或 /ship 手动跑）：
 #         A1 端点对齐：源码 @Mapping ↔ api-spec.md 端点标题逐一对拍（硬 FAIL）
 #         A2 测试数对齐：实测 @Test 数 ↔ status.md 声明（硬 FAIL）

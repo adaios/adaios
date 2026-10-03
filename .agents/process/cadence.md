@@ -8,7 +8,7 @@ status: active
 lines: 144
 depends-on:
   - ../scripts/cadence.sh
-  - ../guards/guard-prod.sh
+  - ../guards/ai-guard-prod.sh
 related:
   - ./ship.md
   - ./review.md
@@ -53,7 +53,7 @@ tags: [ai, process, cadence]
 | 命令 | 用途 |
 |:--|:--|
 | `cadence.sh`（无参数） | **状态总览**：上次巡检 / 收工 / 发版体检 / 周审 + **欠账** + 到期红线 + 自动任务健康（秒回） |
-| `cadence.sh check` | **交付门禁一键**：guard-meta + guard-align + guard-tools + guard.sh（G1–G7 防复发） |
+| `cadence.sh check` | **交付门禁一键**：ai-guard-meta + ai-guard-align + ai-guard-tools + guard.sh（G1–G7 防复发） |
 | `cadence.sh cost [--record]` | 成本：按天 / 会话算钱（`--record` 入账——收工已自动做） |
 
 ## 三、游标：让「上次到现在」成立
@@ -69,13 +69,13 @@ tags: [ai, process, cadence]
 }
 ```
 
-三条设计约束（都在 `lib/cadence-lib.sh` 里，被 `cadence.sh` 与 `guard-prod.sh` 共用）：
+三条设计约束（都在 `lib/cadence-lib.sh` 里，被 `cadence.sh` 与 `ai-guard-prod.sh` 共用）：
 
 1. **只前进不后退**——`cadence_advance_day` 比较后写入；补看历史某天（`--date`）不会把游标拖回去
 2. **补看不记账**——带 `--date` 的巡检只补历史，游标由 `cadence.sh daily` 统一推进到今天
 3. **记账失败静默**——巡检/收工是主角，记账是附注；`source` 失败或写入出错绝不拖垮主角
 
-**谁在写**：`guard-prod.sh` 尾部（无论谁跑都记账）+ `cadence.sh` 收尾。**谁在读**：`cadence.sh status/daily`。
+**谁在写**：`ai-guard-prod.sh` 尾部（无论谁跑都记账）+ `cadence.sh` 收尾。**谁在读**：`cadence.sh status/daily`。
 
 ## 四、边界：默契**不**包含的事
 
@@ -84,7 +84,7 @@ tags: [ai, process, cadence]
 | 提交**默认做、但仍受范围守卫** | **2026-10-03 起「收工」默认含提交**（用户拍板「提交，且以后收工默认连提交」）——执行者是 AI，且在**审查判定之后**（有 P0/P1 先修再提交）。**严禁 `git add -A`**：仓库可能有**并发会话**（REVIEW P2-工程2 真实事故），一律按 `ship.md §7` 显式路径 + `ADAI_BATCH_PATHS` 范围守卫 |
 | 不自动 push / 部署 | 原则 B8「外向动作默认不做」。**发布只判定、不执行**：`release` 说清「欠着什么、发哪几端」，真正部署走 `deploy-gate.sh`（门禁 + smoke）且须用户点头（规则 11）|
 | 不因记账拖垮主角 | 游标写失败只静默跳过，不改巡检退出码 |
-| 不重复造轮子 | 动作本体仍是 `guard-prod.sh` / `weekly-audit.sh` / `guard-context.sh` / `guard-cost.sh`；本机制只加「从上次到现在」+「做完记账」 |
+| 不重复造轮子 | 动作本体仍是 `ai-guard-prod.sh` / `weekly-audit.sh` / `ai-guard-context.sh` / `ai-guard-cost.sh`；本机制只加「从上次到现在」+「做完记账」 |
 
 ### 收工与审查（工具层 D7 的项目层落地，2026-09-26 用户拍板「按建议实施」）
 
@@ -93,7 +93,7 @@ tags: [ai, process, cadence]
 | 本批 diff | 审查档位 | 结论去哪 |
 |:--|:--|:--|
 | 含**代码文件**（`*.java` / `*.dart` / `*.ts` / `*.py` / `*.sh` …）**且**触及**并发 / 数据 / 契约 / 用户可见行为** | **deep**：按改动目录派对应官 + **对抗官**（`process/review.md` §3），**只读、不改码** | `docs/review/REVIEW.md` 新增「独立审查」条目 + `docs/reference/change-log.md` 本批行内写审查说明 |
-| 纯文档 / 样式 / 配置 | **light**：`guard-meta` + `guard-align` + 守护快扫（`cadence.sh check`） | change-log 一句话即可 |
+| 纯文档 / 样式 / 配置 | **light**：`ai-guard-meta` + `ai-guard-align` + 守护快扫（`cadence.sh check`） | change-log 一句话即可 |
 | 任意本批 | **P0/P1 先修再提交**；当场修不动的如实登记 REVIEW（写给用户拍板） | REVIEW 未修区 |
 
 - **机械提示**：`cadence.sh ship` 会数本批 diff 里的代码文件数并提示派审（第 ③ 段）——不靠自觉。
@@ -105,13 +105,13 @@ tags: [ai, process, cadence]
 
 ```
 cadence.sh          ← 调度 + 游标（唯一入口）
-├── guard-prod.sh      生产日报（动作本体不变，尾部加记账）
-├── guard-release.sh   发版判定（只读；release 子命令用它）
+├── ai-guard-prod.sh      生产日报（动作本体不变，尾部加记账）
+├── ai-guard-release.sh   发版判定（只读；release 子命令用它）
 ├── deploy-gate.sh     部署门禁 + smoke（★ 不自动跑，须用户点头，规则 11）
 ├── weekly-audit.sh    每周审查 W1–W6（动作本体不变）
-├── guard-context.sh   开工上下文 / --write-local 刷快照
-├── guard-cost.sh      成本入账 --record
-├── guard-meta / align / tools + guard.sh   交付门禁（check 子命令串起来）
+├── ai-guard-context.sh   开工上下文 / --write-local 刷快照
+├── ai-guard-cost.sh      成本入账 --record
+├── ai-guard-meta / align / tools + guard.sh   交付门禁（check 子命令串起来）
 └── state/cadence.json 游标（gitignore）
 ```
 
@@ -126,9 +126,9 @@ cadence.sh          ← 调度 + 游标（唯一入口）
 | 候选（工作流侧） | 原先靠什么 | 处置 |
 |:--|:--|:--|
 | 交付门禁（meta / align / tools / 防复发） | 手敲四条命令，散在 `ship.md` | ✅ **已收**：`cadence.sh check` |
-| 成本查看 | `guard-cost.sh`，只在收工记账 | ✅ **已收**：`cadence.sh cost`（收工仍自动入账） |
+| 成本查看 | `ai-guard-cost.sh`，只在收工记账 | ✅ **已收**：`cadence.sh cost`（收工仍自动入账） |
 | 到期红线（30 天） | 只在巡检尾部出现 | ✅ **已收**：进 `status`，开工第一眼可见 |
-| 定时任务健康（备份 / 周审 / 午间） | 要专门跑 `guard-tools.sh` 才看得到 | ✅ **已收**：进 `status`（**静默失效最危险**——备份停了没人知道） |
+| 定时任务健康（备份 / 周审 / 午间） | 要专门跑 `ai-guard-tools.sh` 才看得到 | ✅ **已收**：进 `status`（**静默失效最危险**——备份停了没人知道） |
 | 用户之声 → 需求登记 | 巡检时 AI 提议 | ⏸ **未收**：要语义判断，脚本做不了——仍由 AI 在巡检里提，不让脚本冒充 |
 | 生产备份 | LaunchAgent 每日 21:10 自动 | ✅ 已在 `status` 显示（只监管，不需触发） |
 
@@ -139,6 +139,6 @@ cadence.sh          ← 调度 + 游标（唯一入口）
 
 1. **定触发词**：用户说什么词触发（写进 `AGENTS.md` 规则段）
 2. **加子命令**：在 `cadence.sh` 里加 `cmd_xxx` + `case` 分支；若需记忆，**先在 `cadence-lib.sh` 定游标键**
-3. **登记**：本文件总表加一行 + `../_index.md` 若有新文件 + 跑 `bash .agents/guards/guard-meta.sh`
+3. **登记**：本文件总表加一行 + `../_index.md` 若有新文件 + 跑 `bash .agents/guards/ai-guard-meta.sh`
 
 > 反模式：为一件**每次都要人重新交代**的事写脚本——那是工具，不是默契。默契的判据是「**用户少说一句话**」。

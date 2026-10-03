@@ -39,8 +39,8 @@ tags: [ai, method, pipeline]
 | 层 | 脚本 | 拦什么 | 触发 |
 |:---|:-----|:-------|:-----|
 | 0 隐私 | inline | data/ 真实数据禁止提交（B3）| 任何 data/ 变更 |
-| 1 内容对齐 | guard-align A1-A4 | 端点↔api-spec / 测试数↔status / 端点数↔endpoints.txt | 代码/契约文档 |
-| 2 结构 | guard-meta M1-M4 | frontmatter 断链/lines/孤儿/正文路径 | 任何 md/java/dart |
+| 1 内容对齐 | ai-guard-align A1-A4 | 端点↔api-spec / 测试数↔status / 端点数↔endpoints.txt | 代码/契约文档 |
+| 2 结构 | ai-guard-meta M1-M4 | frontmatter 断链/lines/孤儿/正文路径 | 任何 md/java/dart |
 | 3 防复发 | guard.sh G1-G7 | P0 数据安全（catch 删除/now() 推路径）| 代码变更 |
 
 ```
@@ -99,13 +99,13 @@ cron 每周 → 自动 audit（8 官/3 视角）+ 检查点沉淀 + 失真扫描
 
 | 切入点 | 脚本 | 产出 | adaios 状态 |
 |:-------|:-----|:-----|:-----------|
-| **pre-task 上下文注入** | guard-context.sh | C1 状态 / C2 未修项 / C3 边界 / C4 坑 / C5 规范 / C6 待办（可按主题过滤）| ✅ 已做 |
-| **沉淀检查** | guard-sediment.sh | S1 坑/ADR 提示 + S2 REVIEW 出表检查 + S3 change-log 登记（FAIL）| ✅ 已做 |
+| **pre-task 上下文注入** | ai-guard-context.sh | C1 状态 / C2 未修项 / C3 边界 / C4 坑 / C5 规范 / C6 待办（可按主题过滤）| ✅ 已做 |
+| **沉淀检查** | ai-guard-sediment.sh | S1 坑/ADR 提示 + S2 REVIEW 出表检查 + S3 change-log 登记（FAIL）| ✅ 已做 |
 | 自动出表 | （ship 步骤）| 修复完成 → ship 时 S2 提示标 ✅ 出表 | ✅ 已做（软提示）|
 
 ```
 开工前（进攻）                    提交时（防守）
-guard-context.sh  → 上下文清单      pre-commit 四层 → 拦截错误
+ai-guard-context.sh  → 上下文清单      pre-commit 四层 → 拦截错误
   C1 状态 C2 未修项 C3 边界          隐私/对齐/结构/防复发
   C4 坑 C5 规范 C6 待办
 ```

@@ -351,7 +351,7 @@ A1（记录与入账链路）──→ A2（结构重排）──→ B（数字�
 1. **P1-4 用「暴露 per-user 锁」而不是包一层方法**：先写了一版 `applyCandidateTrade`（锁内判重 + 分派落账），它让**~14 个既有 confirm 用例的 mock 点全部失效**（要重写测试）；改成 `candidateLock(userId)`（返回锁对象，`confirm` 自己 `synchronized` 包住「判重 → 锚定分派 → 落账」）后，既真修掉竞态，**测试 mock 面零改动**（只在 `setUp` 与三处局部 mock 补一行 stub）。**教训：改结构之前先估「测试的 mock 契约面」有多大**——这次先撞了一次墙（11 个用例红）才知道。
 2. **前端 P2-4 的隐私口径**本应交用户拍板，但用户说「继续修」——按**最彻底口径**落地：**数量与成本打码，现价与止损保留**。理由写进代码注释：现价是公开信息，真正泄露资产规模的是「数量 × 现价」里的**数量**；止损价属交易计划。若用户想改口径，只需回退这一处。
 
-**验证**：后端 **2034 用例全绿**（0 失败 / 0 错误 / 2 跳过）· app `flutter analyze` **0 issue** · `guard-align` / `guard-meta` PASS。
+**验证**：后端 **2034 用例全绿**（0 失败 / 0 错误 / 2 跳过）· app `flutter analyze` **0 issue** · `ai-guard-align` / `ai-guard-meta` PASS。
 
 **仍未修 7 条**：后端 P2-10 锚定日猜基准 · 后端 P2-5 web 未消费 `ledgerOnly`/`tradeTime` · 前端 P2-6 刷新无代际 · 等宽数字与 `FittedBox` · 竖排 `tradeDate` · 派生 id 冲突 · `UI_REFERENCE.md` 未同步。
 

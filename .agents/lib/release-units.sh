@@ -4,7 +4,7 @@
 #
 # 为什么单抽成一个文件（2026-09-24 用户「接下来需要你判定前后端是否发布，
 # 我建议整理个机制，知道哪些需要生产发布」）：
-#   这条映射原先散在三处——deploy-gate.sh 算 artifacts、guard-prod.sh 读 artifacts 判落后、
+#   这条映射原先散在三处——deploy-gate.sh 算 artifacts、ai-guard-prod.sh 读 artifacts 判落后、
 #   deploy.sh 注释里说明。要加 iOS 端时无处可加，于是出现「app 改了 7 个文件，
 #   却不在任何发布清单里，只能靠人记」。
 #   现在统一从这里取；将来新增发布单元（如 Android 包）只改本文件。
@@ -67,7 +67,7 @@ ru_units_from_paths() {
 
 # stdin=改动路径 → stdout=服务器端清单（逗号分隔，供 DEPLOYED 的 artifacts= 用）
 # `backend` 恒在清单内：部署动作本身就是替换后端 jar（哪怕本批没改后端代码，
-# 生产的 jar 时刻也已经动了）——这与 guard-release 的「后端要不要发」判定不是一回事。
+# 生产的 jar 时刻也已经动了）——这与 ai-guard-release 的「后端要不要发」判定不是一回事。
 # 不含 app：iOS 包走 TestFlight、不落生产目录，巡检不该拿它判「产物落后」。
 ru_deploy_artifacts_from_paths() {
     local units u out="backend"

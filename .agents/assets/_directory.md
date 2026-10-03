@@ -25,13 +25,13 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 依赖 | `./adr/` | 边界与规范多由 ADR 定调 |
 | 被依赖 | `../roles/` `../checklists/` | 审查官与清单引用这里的规范作判据 |
-| 工具 | `../guards/guard-meta.sh` | 校验 frontmatter 图谱 |
+| 工具 | `../guards/ai-guard-meta.sh` | 校验 frontmatter 图谱 |
 
 ## 触发关系
 
 | 时机 | 谁触发 | 读 / 执行什么 |
 |:--|:--|:--|
-| 写代码前 | `guard-context.sh`（开工自举） | `conventions.md` · `boundaries.md` |
+| 写代码前 | `ai-guard-context.sh`（开工自举） | `conventions.md` · `boundaries.md` |
 | 踩坑后 | AI 主动提示 → **人确认** | `pitfalls.md`（禁止自动写入） |
 | 做技术决策时 | `workflow/design.md` | `adr/`（先查有没有定过） |
 
@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-meta`：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径
+- `ai-guard-meta`：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径
 
 ## 维护动作
 

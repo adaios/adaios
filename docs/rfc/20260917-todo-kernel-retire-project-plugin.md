@@ -19,7 +19,7 @@ related:
 # 待办归 Kernel——撤 project 插件与待办重定位
 
 > **触发来源**：2026-09-17 19:52 生产端真实提问——「**目前任务模块的作用是干嘛的　还有插件项目的作用**」
-> （该条已被 `guard-prod.sh` 的「用户之声」从空态引导 chip 中区分出来，见 `../reference/change-log.md:8`）。
+> （该条已被 `ai-guard-prod.sh` 的「用户之声」从空态引导 chip 中区分出来，见 `../reference/change-log.md:8`）。
 > 用户随后在会话中提出四轮追问，核心是「**任务和项目插件，这两项的必要性**」。
 >
 > **五条拍板（2026-09-17）**：① **撤掉 project 插件**；② 待办留下，叫「**待办**」（不叫任务），归 **Kernel builtin**；
@@ -161,7 +161,7 @@ related:
 | **②** | **改名与搬家**（§4.4 全表）：`Task*` → `Todo*`、`domain/project` → `kernel/todo`、端点 `/api/v1/todos*`、存储 `data/{userId}/todos/`、状态两态 | 全仓 `project/tasks` / `Task` 残留 = 0（历史文档除外） |
 | **③** | **清单页 + 到期 + 推送**：双端页面重做（纯清单、两态）；`due` 字段（存储格式加可选行，向后兼容）；`TodoReminderService` + `todo-due` 进 PushSettings 与开关页 | 双端可增删改完成、可设到期；到期收到推送 |
 | **④** | **撤 project 插件**（§4.2） | 两端入口消失；无 project 插件相关端点/类/开关；`./gradlew test` 全绿 |
-| **⑤** | **文档与测试收尾**：api-spec / feature-reference §10 / roadmap / status.md / task-log M10；后端测试随改名重写；**补双端待办页专项测试**（当前为零） | guard-meta PASS + 三端测试全绿 + /ship 流程 |
+| **⑤** | **文档与测试收尾**：api-spec / feature-reference §10 / roadmap / status.md / task-log M10；后端测试随改名重写；**补双端待办页专项测试**（当前为零） | ai-guard-meta PASS + 三端测试全绿 + /ship 流程 |
 
 ---
 
@@ -202,7 +202,7 @@ related:
 | ② | 全仓 `project/tasks` / `Task` 残留 = 0（历史文档除外） | ✅ `PLUGIN_PROJECT` 全仓 0 处 · 旧类全删 · 新 `/api/v1/todos` + `data/{userId}/todos/YYYY/MM.md` + 两态 + 可选到期日（`TodoFileRepositoryTest`） |
 | ③ | 双端可增删改完成、可设到期；到期收到推送 | ✅ app `todo_page.dart` + web `todo_page.dart`（专项测试 15 + 8 例，此前为零）；`TodoReminderService` 到期当天 08:00 / 18:00、类型 `todo-due`（默认开、可关、锁屏只报件数）、深链 `todo:today` 直达待办页（`TodoReminderServiceTest`） |
 | ④ | 两端入口消失；无 project 相关端点/类/开关；`./gradlew test` 全绿 | ✅ 6 端点删除、`domain/project` 整包 + 5 个类删除、admin 插件开关/数据页签下线；后端 **2015**（0 失败 / 2 跳过，`--rerun-tasks --no-build-cache` 真跑） |
-| ⑤ | guard-meta PASS + 三端测试全绿 + /ship 流程 | ✅ guard.sh **10 PASS / 0 HIT / 1 NOTE** · 三端 `flutter analyze` 0 issue（app **379** / web **317** / admin **69** 全绿）· guard-meta / guard-align / guard-sediment / change-log 见同批收尾 |
+| ⑤ | ai-guard-meta PASS + 三端测试全绿 + /ship 流程 | ✅ guard.sh **10 PASS / 0 HIT / 1 NOTE** · 三端 `flutter analyze` 0 issue（app **379** / web **317** / admin **69** 全绿）· ai-guard-meta / ai-guard-align / ai-guard-sediment / change-log 见同批收尾 |
 
 **§六 验证逐条**：后端 `./gradlew test` 全绿 ✅（含门控移除回归 + R2 单向同步回归）；前端 `flutter analyze` 0 issue + 测试全绿 ✅；端到端以「接口级（`TodoControllerTest`，含无插件账号 family）+ 服务级（`TodoAppServiceTest` 记忆联动）+ 页面级（双端待办页专项测试）」三层覆盖——**未起服务做端到端冒烟**（本批不部署）；反向验证 ✅（Feed 不再产出 `action` 条目：`FeedAppServiceTest.getFeed_pendingActionMemory_doesNotProduceActionEntry`；账号残留 `"project"` 不引发异常：`PluginServiceTest` / `MeControllerTest` 回归）。
 

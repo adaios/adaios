@@ -43,11 +43,11 @@ tags: [meta, directory]
 - **收敛判据**：审核报「**无 P0/P1**」；**取舍类问题强制升级给人**，AI 不自行拍板
 
 ## 守卫（谁保证这里不腐烂）
-- `guard-structure`：本目录两件套 + 清单⇄实际（递归覆盖各 `<需求id>/`）
-- `guard-meta`：各设计稿与审核稿的 frontmatter / lines / 断链
+- `ai-guard-structure`：本目录两件套 + 清单⇄实际（递归覆盖各 `<需求id>/`）
+- `ai-guard-meta`：各设计稿与审核稿的 frontmatter / lines / 断链
 
 ## 维护动作
 1. 需求定稿 → 建 `<需求id>/` → `cp _template-design.md <需求id>/design-v1-<YYYYMMDD>.md`
 2. 审核 → `cp _template-review.md <需求id>/review-v1-<YYYYMMDD>.md`
 3. 收敛 → 出 `design-final.md` → 归档 `docs/architecture/` + ADR → `rm -r <需求id>/`
-4. 跑 `guard-structure.sh --fix` 刷清单
+4. 跑 `ai-guard-structure.sh --fix` 刷清单

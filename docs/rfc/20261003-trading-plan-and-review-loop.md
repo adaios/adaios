@@ -241,7 +241,7 @@ related:
 | `rules.yaml` | 新增复盘阈值（`reviewPeakMinPct: 3` · `reviewTrapMinPct: 1` · 止损基准沿用 `defaultStopLossRatio`） | 只增键 → 旧读端不受影响；freeze MINOR |
 | `trading/sold.json` | 新增轮次粒度（或独立 `rounds.json` 投影，不落盘） | 建议**不落盘轮次**（流水投影可重算） |
 | `POST /trading/trades/parse` | 复用并扩展「计划」语义槽位 | 只增不改 |
-| 新增端点（写/读计划、对账） | 若新增，须同步 `status.md` 与 `api-spec.md`（guard-align 会校验） | — |
+| 新增端点（写/读计划、对账） | 若新增，须同步 `status.md` 与 `api-spec.md`（ai-guard-align 会校验） | — |
 
 ---
 

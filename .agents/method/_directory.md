@@ -40,7 +40,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-meta`
+- `ai-guard-meta`
 
 ## 维护动作
 

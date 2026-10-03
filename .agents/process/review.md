@@ -32,11 +32,11 @@ git log --oneline -20          # 找上次审查 commit 作为基线（REVIEW.md
 
 ```bash
 bash docs/review/guard.sh        # G1-G7 代码级守护
-bash .agents/guards/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
+bash .agents/guards/ai-guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
 - G1-G7 有 HIT 即记录为问题（复发信号）。清单见 `.agents/checklists/ai-guard-checklist.md`。
-- guard-meta 有 FAIL 时先 `bash .agents/guards/guard-meta.sh --fix` 回写 lines，再人工处理断链/孤儿（D34 回写门禁）。
+- ai-guard-meta 有 FAIL 时先 `bash .agents/guards/ai-guard-meta.sh --fix` 回写 lines，再人工处理断链/孤儿（D34 回写门禁）。
 
 ## 3. 按模式派官
 
@@ -135,7 +135,7 @@ bash .agents/guards/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 - 未修项逐条核对（本次已修 → 移已修复区；未修 → 保留）
 - 新问题追加对应优先级区；更新头部（日期/基线/模式）
 - 已修复区只留最近 10 条
-- **归口强制（2026-08-23，防游离双轨）**：审查报告落盘（`docs/review/audits/`）**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`；③跑 `bash .agents/guards/guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（表状态与已修复区一致，出表项必须回填 `✅`）——未归口不许收工
+- **归口强制（2026-08-23，防游离双轨）**：审查报告落盘（`docs/review/audits/`）**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`；③跑 `bash .agents/guards/ai-guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（表状态与已修复区一致，出表项必须回填 `✅`）——未归口不许收工
 
 ## 6. 沉淀检查点
 

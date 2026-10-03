@@ -197,7 +197,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 
 #### 质量门槛
 - 后端测试配套：卡片生成 / 分叉判定 / 按用户读取（无文件不注入）/ LLM 失败降级，全绿
-- guard-meta PASS + guard-align PASS；feature-reference 登记 learn 章节；三端显隐对拍（`/me/plugins`）
+- ai-guard-meta PASS + ai-guard-align PASS；feature-reference 登记 learn 章节；三端显隐对拍（`/me/plugins`）
 
 #### 边界条件
 - 无字幕纯链接 → 提示用户补素材（learn 只做结构化，不做抓取）
@@ -233,7 +233,7 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 | 交易规则语义漂移（P1-交易9 血泪）| 交易候选必须过用户审核闸 + 融合校准后才进 knowledge/context（promote 机制延伸）|
 | 卡片杂乱/膨胀 | type 分类 + status 复习状态 + 全文搜索 |
 | 素材/卡片隐私泄漏 | `data/` gitignore + 按用户路径（B3）；LearnKnowledgeSource fallback 收窄（无文件不注入，对齐 P1-3）|
-| 路径配置断链 | 仿 trading 配置注入 + guard-align/pre-commit 检查 |
+| 路径配置断链 | 仿 trading 配置注入 + ai-guard-align/pre-commit 检查 |
 | 资产页浏览能力下沉破坏 admin | 复用不搬移：admin 端点保持，用户端新增只读端点（或共用服务层）|
 | 备份遗漏 | learn 目录纳入 backup_prod.sh（验收项）|
 
@@ -241,13 +241,13 @@ Java 17 + Spring Boot，遵循 conventions.md C1-C8（分层依赖 C7：interfac
 
 | 阶段 | 内容 | 验收 |
 |:-----|:-----|:-----|
-| **V1（learn 插件 MVP）** | ① 插件注册 + 门控（PluginRegistry + Account.plugins + 三端显隐）；② `POST /records` domain=learn 分流 → 卡片生成 → `data/{userId}/learn/`；③ `GET /learn/cards` 列表/单篇 + `GET /learn/tree` 资产树；④ web「资产」页（目录树 + 全文渲染）+ app「最近学习」入口；⑤ `LearnKnowledgeSource` 问答注入（按用户，无文件不注入）；⑥ `trade_related` 标记（V1 仅记录）；⑦ backup_prod.sh 纳入 learn | 后端测试全绿 + guard-meta PASS + 生产实测：喂一篇真实字幕 → 卡片落盘 → 资产页可见 → 问答可召回 |
+| **V1（learn 插件 MVP）** | ① 插件注册 + 门控（PluginRegistry + Account.plugins + 三端显隐）；② `POST /records` domain=learn 分流 → 卡片生成 → `data/{userId}/learn/`；③ `GET /learn/cards` 列表/单篇 + `GET /learn/tree` 资产树；④ web「资产」页（目录树 + 全文渲染）+ app「最近学习」入口；⑤ `LearnKnowledgeSource` 问答注入（按用户，无文件不注入）；⑥ `trade_related` 标记（V1 仅记录）；⑦ backup_prod.sh 纳入 learn | 后端测试全绿 + ai-guard-meta PASS + 生产实测：喂一篇真实字幕 → 卡片落盘 → 资产页可见 → 问答可召回 |
 | **V2（消化闭环）** | 复习提醒（status 流转 new→review→done + 推送）；trading 候选→promote 联动（candidates/ + 审核闸 + 融合）；卡片编辑（对话流让阿呆改）；多用户测试补全 | 复习推送生效；交易视频反哺规则库走通全链路；多用户隔离测试 |
 
 ## 七、验收标准（可测量）
 
 1. 后端测试新增 ≥ 12 条（卡片生成 / 分叉判定 / 按用户读取 / 降级 / 资产树），全绿
-2. `guard-meta.sh` PASS + `guard-align.sh` PASS
+2. `ai-guard-meta.sh` PASS + `ai-guard-align.sh` PASS
 3. feature-reference 登记 learn 章节（端点表 + 插件清单）
 4. 三端显隐对拍：app/web 按 `/me/plugins` 显示「学习/资产」入口，未启用用户不显示
 5. 生产实测（adai 账号）：喂一篇 B 站交易视频字幕 → 卡片落 `data/adai/learn/trading/` → web 资产页目录树可见 + 全文渲染 → 问答「上次讲回调那篇说了啥」能召回

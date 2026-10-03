@@ -24,7 +24,7 @@
 #   全量注册会常驻会话上下文，并可能在你随口改一行代码时自动派 8+1 官全量走查
 #   ——那是全项目最贵的 AI 流程（见 checklists/ai-cost-checklist.md / process/audit.md 成本纪律）。
 #
-# 验证：bash .agents/guards/guard-tools.sh（T4 按软链真身判定，不认名字）
+# 验证：bash .agents/guards/ai-guard-tools.sh（T4 按软链真身判定，不认名字）
 # 规范：布局 / 出口 / 新增工具的完整规则见 .agents/assets/ai-context-layer-spec.md
 # ─────────────────────────────────────────────────────────────
 set -u
@@ -107,6 +107,6 @@ fi
 
 if [ "$CHECK" -eq 0 ]; then
   echo ""
-  echo "✅ 技能注册完成（验证: bash .agents/guards/guard-tools.sh）"
+  echo "✅ 技能注册完成（验证: bash .agents/guards/ai-guard-tools.sh）"
 fi
 exit 0

@@ -191,7 +191,7 @@ NL parse 扩展：「买了 X 股 Y @价，止损 Z，B1」→ 结构化含 stop
 5. 复盘含"计划 vs 实际"对错判定（reason/止损 锚点）
 6. NL「买了 X 股 Y @价，止损 Z，B1」正确结构化
 7. 旧 positions.md 无新列 → 解析兜底不报错
-8. guard-meta/align PASS + 全部测试通过
+8. ai-guard-meta/align PASS + 全部测试通过
 
 ## 八、不做（本版范围外）
 

@@ -158,7 +158,7 @@ TdxFileKlineSource.kline/klineRange → 前复权结果（与腾讯 qfq 同口�
 | 4 | ✅ `TdxFileKlineSource` 集成换算（读取即前复权）| infrastructure/market |
 | 5 | ✅ 茅台 34 根 vs 腾讯 qfq 全部 ≤0.5% 偏差 | 本地实测 |
 | 6 | 文档同步（api-spec 无新端点 / status / change-log / trading-features §三 数据源行）| docs |
-| 7 | guard-meta/align + 提交 | — |
+| 7 | ai-guard-meta/align + 提交 | — |
 
 ## 九、风险与已知限制
 

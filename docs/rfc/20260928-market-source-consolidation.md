@@ -85,7 +85,7 @@ ADAI_MARKET_TENCENT_KLINE_BASES=https://proxy.finance.qq.com/ifzqgtimg/appstock/
 3. **东财出链路**：代码与测试中不再引用 `EastMoneyKlineDataSource`；`health().sources` 为 `[tdx, 腾讯, 新浪]`。
 4. **不误删东财**：`AdjFactorRepository`（除权因子）与 `NameToSymbolResolver`（名称解析）保持原样且测试全绿。
 5. **兜底可观测**：新浪取数成功/失败在日志中可见。
-6. 三端 `analyze` 0 issue、后端测试全绿、`guard-meta` / `guard-align` PASS。
+6. 三端 `analyze` 0 issue、后端测试全绿、`ai-guard-meta` / `ai-guard-align` PASS。
 
 ## 五、决议记录
 

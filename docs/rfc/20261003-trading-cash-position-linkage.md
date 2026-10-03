@@ -206,7 +206,7 @@ R1–R4 是**机制层**根因。再往上一层，有一对更根本的错配�
 | `trading/account.json` | 不改 schema；对账差额落到流水而非新字段 | 兼容 |
 | 新增 `trading/cash-adjustments`（或复用 `trades/` 的专门 `direction`） | 待定（D3） | 新增文件需 gitignore 与 freeze 同步 |
 | API | `POST /trading/imports/cash` 增 `dryRun`/`reconcile`；`/trades`、`/trades/batch` 增幂等键 | 只增不改 → 旧调用方不受影响 |
-| 端点计数 | 若新增端点，需同步 `docs/reference/status.md` 与 `api-spec.md`（guard-align 会校验） | — |
+| 端点计数 | 若新增端点，需同步 `docs/reference/status.md` 与 `api-spec.md`（ai-guard-align 会校验） | — |
 
 ---
 

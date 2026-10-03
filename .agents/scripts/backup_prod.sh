@@ -77,7 +77,7 @@ LOCAL_MD5="$(md5 -q "$BACKUP_DIR/adaios-prod-$STAMP.tar.gz")"
 if [ "$REMOTE_MD5" != "$LOCAL_MD5" ]; then
   echo "!! checksum 不一致（本地 ${LOCAL_MD5} ≠ 服务器 ${REMOTE_MD5}），备份中止"
   # 关键：删掉这次的不完整副本。否则「失败的备份」会以「一份新鲜备份」的样子躺在
-  # ~/backups 里，新鲜度自检（setup-launchd.sh --check / guard-tools T7）反而报绿灯——
+  # ~/backups 里，新鲜度自检（setup-launchd.sh --check / ai-guard-tools T7）反而报绿灯——
   # 那是比「没备份」更危险的假信号（2026-09-14 实测踩到）。
   rm -rf "$BACKUP_DIR"
   echo "   已移除不完整副本: ${BACKUP_DIR}"

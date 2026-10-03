@@ -1,6 +1,6 @@
 ---
 title: 功能落地收尾流程（/ship）
-description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交（**2026-10-03 起：「收工」默认含提交这一步**）；与 /review 配套
+description: 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（ai-guard-meta）→ 规范提交（**2026-10-03 起：「收工」默认含提交这一步**）；与 /review 配套
 version: 1
 created: 2026-08-15
 updated: 2026-10-03
@@ -8,7 +8,7 @@ status: active
 lines: 138
 depends-on:
   - ../frontmatter-spec.md
-  - ../guards/guard-meta.sh
+  - ../guards/ai-guard-meta.sh
 related:
   - review.md
   - audit.md
@@ -27,7 +27,7 @@ tags: [ai, process, ship]
 1. **功能代码** —— 改完只算"进行中"，不算完成
 2. **测试同批** —— 服务层业务逻辑 + 端点测试与功能同批写（不后置）；解析/upsert/状态保留/写回等**关键分支必须测**
 3. **契约同步** —— 新端点 → api-spec；新功能 → feature-reference；data 格式 → freeze
-4. **门禁主动跑** —— 交付前主动跑三件套（guard-meta + guard-align + guard.sh），**不依赖 pre-commit 兜底**；`gradle test 绿 ≠ 项目绿`（guard-align 的 A1/A2/A4 对拍、guard.sh 的 G1-G7 防复发是 gradle 覆盖不到的）
+4. **门禁主动跑** —— 交付前主动跑三件套（ai-guard-meta + ai-guard-align + guard.sh），**不依赖 pre-commit 兜底**；`gradle test 绿 ≠ 项目绿`（ai-guard-align 的 A1/A2/A4 对拍、guard.sh 的 G1-G7 防复发是 gradle 覆盖不到的）
 5. **写代码前对照检查清单** —— 存储层 → 查 G2（不取 now()）；新端点 → 查 B43（api-spec/配置）；文档/目录迁移 → 查 D38（全库 grep）；新格式/正则 → 查 B44/K38（口径对拍）
 
 **反模式（已踩，勿重演）**：功能跑通 + 部署成功 = 完成；测试后置；gradle 绿 = 安全；不翻检查清单凭感觉写。
@@ -61,7 +61,7 @@ tags: [ai, process, ship]
   2. **有被否决的备选**——当时纠结过别的方案，未来的人可能再提？
   3. **影响未来方向**——新功能/新会话必须知道这个背景才能做对？
 - 本批踩坑/取舍 → 入 checklists + `assets/pitfalls.md`（沉淀过滤器见 `workflow/discuss.md`）
-- **沉淀检查**（进攻侧②③，软提示）：`bash .agents/guards/guard-sediment.sh`
+- **沉淀检查**（进攻侧②③，软提示）：`bash .agents/guards/ai-guard-sediment.sh`
   - S1 变更提示：本批代码文件 → 确认入 pitfalls/ADR（无则标注「无新增沉淀」）
   - S2 出表检查：REVIEW 未修项本批处理了 → 标 ✅ 出表
   - S3 登记检查：change-log 已登记本批（FAIL 级，未登记则补）
@@ -69,15 +69,15 @@ tags: [ai, process, ship]
 ### 5. 元治理校验（提交前门禁）
 
 ```bash
-bash .agents/guards/guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
-bash .agents/guards/guard-meta.sh          # frontmatter 结构：必须 PASS
-bash .agents/guards/guard-align.sh         # 代码↔文档内容对齐：必须 PASS（A1 端点/A2 测试数）
+bash .agents/guards/ai-guard-meta.sh --fix    # 回写 lines（D34）+ 重新校验
+bash .agents/guards/ai-guard-meta.sh          # frontmatter 结构：必须 PASS
+bash .agents/guards/ai-guard-align.sh         # 代码↔文档内容对齐：必须 PASS（A1 端点/A2 测试数）
 ```
 
 - `--fix` 自动回写 frontmatter `lines`（按 wc -l 校准）与 `updated`（今日日期）
-- guard-meta 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径 → **人工处理后**，禁止带 FAIL 提交
-- guard-align FAIL 的项：A1 端点未登记 api-spec / A2 测试数漂移 status.md → 先同步文档再提交
-- **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 guard-align，FAIL 阻止提交——**无需人工提醒**
+- ai-guard-meta 仍 FAIL 的项：M1 断链 / M2 lines / M3 孤儿 / M4 正文路径 → **人工处理后**，禁止带 FAIL 提交
+- ai-guard-align FAIL 的项：A1 端点未登记 api-spec / A2 测试数漂移 status.md → 先同步文档再提交
+- **git pre-commit hook 自动触发**（`.githooks/pre-commit`，`core.hooksPath` 已配置）：任何代码/测试/契约文档变更，提交时自动跑 ai-guard-align，FAIL 阻止提交——**无需人工提醒**
 - 校验范围：AGENTS.md + docs/_index.md + 全部 docs/*/_index.md + .agents/**（frontmatter-spec §四 强制区）
 
 ### 6. 部署（触发侧：deploy-gate 门禁 + smoke）
@@ -86,13 +86,13 @@ bash .agents/guards/guard-align.sh         # 代码↔文档内容对齐：必�
 bash .agents/scripts/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SNAPSHOT.jar
 ```
 
-- 部署前自动强制：guard-meta + guard-align + guard.sh（不过关拒绝部署）
+- 部署前自动强制：ai-guard-meta + ai-guard-align + guard.sh（不过关拒绝部署）
 - 部署后自动 smoke：feed/memory/advice/parse/timeline/tags 六端点验证
 - 部署是用户确认的动作 → 最不可绕过的一道闸门
 
 ### 6.5 成本登记（会话收工，2026-08-22 补）
 
-- **收工必跑**：`bash .agents/guards/guard-cost.sh --record`（今日成本入账 cost-log.jsonl），与 `guard-context.sh --write-local` 并列强制（AGENTS.md 规则 0b）
+- **收工必跑**：`bash .agents/guards/ai-guard-cost.sh --record`（今日成本入账 cost-log.jsonl），与 `ai-guard-context.sh --write-local` 并列强制（AGENTS.md 规则 0b）
 - 若当日成本超阈值/调用超 500 次 → 按 `checklists/ai-cost-checklist.md` 省钱原则复盘，结论入批次说明
 
 ### 7. 规范提交
@@ -130,7 +130,7 @@ bash .agents/scripts/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SN
 |:--|:---------------|:--------|
 | 时机 | 开发收尾 | 提交后/定期 |
 | 目的 | 产出完整（上游）| 检查遗漏（下游）|
-| 校验 | guard-meta 门禁 | 按 diff 派官 + 守护检查 |
+| 校验 | ai-guard-meta 门禁 | 按 diff 派官 + 守护检查 |
 | 输出 | 规范提交 | REVIEW.md 滚动更新 |
 
 ## 追加方式

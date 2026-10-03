@@ -1,5 +1,5 @@
 ---
-title: 对抗审查：功能索引层 + guard-feature 守卫（2026-10-01）
+title: 对抗审查：功能索引层 + ai-guard-feature 守卫（2026-10-01）
 description: 对 RFC 20261001 批 1+2 产出的独立对抗审查（只读、夹具全在 /tmp）——P0 无；P1×3（索引真实性不达标 / F4 承诺未实现 / pre-commit 会拦死 md 提交）+ P2×6（4 处结构性假绿 + 1 处误报 + 1 处验收口径反了）+ P3×8；本文含逐条处置
 version: 1
 created: 2026-10-01
@@ -11,22 +11,22 @@ related:
   - ../REVIEW.md
   - ../../features/_index.md
   - ../../../.agents/roles/ai-adversarial-reviewer.md
-  - ../../../.agents/guards/guard-feature.sh
+  - ../../../.agents/guards/ai-guard-feature.sh
 tags: [review, adversarial, audit, feature-index]
 ---
 
-# 对抗审查：功能索引层 + guard-feature 守卫（2026-10-01）
+# 对抗审查：功能索引层 + ai-guard-feature 守卫（2026-10-01）
 
 > **性质**：只读对抗审查（B7）。**未改仓库任何文件**，夹具全部在 `/tmp/ffx`。
-> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`docs/features/_index.md` · `kernel.md` · `.agents/guards/guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
+> **范围**：RFC `20261001-feature-index-and-authoring-gate` 批 1 + 批 2 的产出——`docs/features/_index.md` · `kernel.md` · `.agents/guards/ai-guard-feature.sh` · `.githooks/pre-commit` 的「2b」挂点 · 四处登记。
 > **外部信号（试点要求）**：审查官**自行运行**正例、自造 23 个夹具跑 `--root` 反例、独立复算 37 条链接、抽查 5 行出处真实性、实测守卫耗时——不是纸上审查。
-> **冻结快照**：`guard-feature.sh` md5 `4636c806…`（169 行）· `_index.md` `956a24fc…` · `kernel.md` `3a399354…` · RFC `bf970d6b…` · `pre-commit` `53ee3307…`（审查期间作者仍在改这些文件，属并发写，见 C8）。
+> **冻结快照**：`ai-guard-feature.sh` md5 `4636c806…`（169 行）· `_index.md` `956a24fc…` · `kernel.md` `3a399354…` · RFC `bf970d6b…` · `pre-commit` `53ee3307…`（审查期间作者仍在改这些文件，属并发写，见 C8）。
 
 ## 一、结论
 
 **P0 无**（纯 docs + 只读脚本 + hook，无写入路径、无数据/安全面）。
 
-一句话：**方向对、机制真在跑、自带反例测试是诚实的；但「索引层可信」与「状态机器对拍」两条核心主张，在审查时刻都不成立**——5 行抽查 3 行有错（2 处当时未修），守卫有 4 处结构性假绿 + 1 处误报，批 1 的「guard-meta PASS」是**覆盖盲区造成的假绿**。
+一句话：**方向对、机制真在跑、自带反例测试是诚实的；但「索引层可信」与「状态机器对拍」两条核心主张，在审查时刻都不成立**——5 行抽查 3 行有错（2 处当时未修），守卫有 4 处结构性假绿 + 1 处误报，批 1 的「ai-guard-meta PASS」是**覆盖盲区造成的假绿**。
 
 自查发现的、与审查官独立命中的重叠部分（cross-confirmed）：切卡正则假绿（自查已修）· `trade.cognition` 状态与事实不符（自查已修）· F4 只有粗对拍（双方同判）。
 
@@ -40,7 +40,7 @@ tags: [review, adversarial, audit, feature-index]
 | B1 | P2 | **F6 子串匹配假绿**：REVIEW 只有 `P2-测试11`，索引写 `P2-测试1` → PASS | ✅ **已修**：改词边界正则 `re.escape(i)+(?![0-9A-Za-z])`；回归样本进 `tests/guard-feature-fixture.py` |
 | B2 | P2 | **F5 对新 RFC 两处静默跳过**：删掉 `date:` 字段、或 description 把 `date:` 顶到 900 字符之后 → 逃过 status 枚举 | ✅ **已修**：frontmatter 改按「第二个 `---`」解析（不用字符窗口）；**缺 date 一律按新文件强制**（先核实：存量 65 篇 RFC 全部有 date，故无误伤） |
 | B3 | P2 | **F2 把带锚点的合法链接误报死链**，而 RFC §3.1 恰好要求锚点链接 | ✅ **已修**：先剥 `#anchor` 再判文件存在 |
-| B4 | P2 | **卡文件不在 guard-meta 覆盖内** → 批 1 的「guard-meta PASS」是覆盖盲区假绿（`kernel.md` lines 声明 30 / 实际 27 无人管）| ✅ **已修**：`guard-meta.sh` 补 `docs/features`（rglob）+ `.agents/tests` 两个 glob——**修完立刻 FAIL 3 条**（lines 2 处 + 孤儿 1 处），全部处置 |
+| B4 | P2 | **卡文件不在 ai-guard-meta 覆盖内** → 批 1 的「ai-guard-meta PASS」是覆盖盲区假绿（`kernel.md` lines 声明 30 / 实际 27 无人管）| ✅ **已修**：`ai-guard-meta.sh` 补 `docs/features`（rglob）+ `.agents/tests` 两个 glob——**修完立刻 FAIL 3 条**（lines 2 处 + 孤儿 1 处），全部处置 |
 | B5 | P2 | **子目录卡文件全部漏检**（`FEAT.glob` 非递归）| ✅ **已修**：索引与卡扫描改 `rglob` |
 | B6 | P2 | **§七.5 验收条款与本仓实际相反**：「抽查 5 个 bug 修复提交零新增文档负担」，实测近 12 提交 10 个含 md | ✅ **已修**：RFC §七 第 5 条改口径为「**不新增索引行 / 卡**」，而非「无 md 变更」 |
 | C1 | P3 | 「6 处引用」数字不准（实为 **6 个文件 / 12 处**）| ✅ **已修**：索引两处 + RFC §十 全部改「6 个文件 / 12 处」 |
@@ -62,7 +62,7 @@ tags: [review, adversarial, audit, feature-index]
 
 ## 四、审查官对漂移的判断（原话，作为本层的外部制约）
 
-> 现在这层是「**带链接检查器的手写注册表**」，不是状态机——F4 的证据对拍没做、覆盖数无人校验、卡文件还逃出 guard-meta。按需生长只会让它以和人写文档相同的速度腐烂。唯一的真防腐是把它挂进 `guard-context.sh C1.4`（每次开工报数），方向对，但只报「37」这个数字、不报「哪几行变了」，发现不了状态漂移。**建议二选一：把 F4 做成每行带可机器验证证据的真对拍；或在索引头部如实降格为「人工索引 + 链接检查」，别同时宣称「状态由机器对拍」。**
+> 现在这层是「**带链接检查器的手写注册表**」，不是状态机——F4 的证据对拍没做、覆盖数无人校验、卡文件还逃出 ai-guard-meta。按需生长只会让它以和人写文档相同的速度腐烂。唯一的真防腐是把它挂进 `ai-guard-context.sh C1.4`（每次开工报数），方向对，但只报「37」这个数字、不报「哪几行变了」，发现不了状态漂移。**建议二选一：把 F4 做成每行带可机器验证证据的真对拍；或在索引头部如实降格为「人工索引 + 链接检查」，别同时宣称「状态由机器对拍」。**
 
 **采纳后者**：本次如实降格（见 `_index.md` 头部），并把「真对拍」作为后续项（需要每行带证据字段，属独立批次）。
 

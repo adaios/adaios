@@ -25,8 +25,8 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 
 ## AI 协作规则（必读）
 
-0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/guards/guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
-0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/guards/guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/guards/guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
+0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/guards/ai-guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
+0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/guards/ai-guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/guards/ai-guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
 1. **必读文档**：先读 `docs/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `.agents/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口
@@ -46,7 +46,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | **审核驱动主链** | `.agents/process/review-driven.md` | **需求 → 设计 → 编码**：文档先行 + **双角色真对打**（编写者 / 审核者各为独立 subagent）多轮交叉；定了需求文稿后人只在 **4 个点**介入（需求定稿 · 设计取舍 · 验收 · 发布）；**≤3 轮不收敛强制升级给人**；在制品在 `.agents/workspace/` |
 | 全维度走查 | `.agents/process/audit.md` | 8 客观官 + 1 对抗官独立并行全量走查 + 交叉印证 |
 | 增量深审 | `.agents/process/review.md` | 按改动派对应审查官 |
-| 收尾闭环 | `.agents/process/ship.md` | /ship：测试→契约→登记→guard-meta 门禁→提交 |
+| 收尾闭环 | `.agents/process/ship.md` | /ship：测试→契约→登记→ai-guard-meta 门禁→提交 |
 | 审查角色（技能包） | `.agents/roles/` | 产品架构/交互/界面/后端/前端/文档/知识数据/Context 8 客观官 + 对抗找茬官（deep 默认附加），封装为 SKILL.md 技能包（触发/步骤/约束/输出/参考 五段）|
 | **外部视角审查** | `.agents/roles/`（stranger / social / support）| **面向身边人 / 新用户前必跑**：陌生人官（首次使用，**禁读源码**）+ 社会性官（递出去那一刻）+ 支持台官（他一定会问的问题）——补内部 8 官「读代码 → 结构上永远知道按钮在哪」的盲区 |
 | 建设技能 | `.agents/skills/<name>/SKILL.md` | code-api-writer / code-domain-writer / task-ship / data-learn-writer 四技能：建设与收尾流程封装为 SKILL.md，加载即执行（官方目录布局；工具侧靠 `.agents/scripts/link-skills.sh` 软链出口） |
@@ -54,18 +54,18 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | 架构红线 | `ARCHITECTURE.md` | 技术栈/五层架构/分层依赖/数据流/红线清单，AI 进项目直读 |
 | 检查清单 | `.agents/checklists/` | 逐条可执行（人也能用）：8 客观官 + 1 对抗官 + 3 外部视角官清单 + guard 守护 |
 | 元数据规范 | `.agents/frontmatter-spec.md` | 文档 frontmatter 契约（图谱/治理/归档）|
-| 元治理自检 | `.agents/guards/guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
-| **技能包质量** | `.agents/guards/guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
-| 文档自动对齐 | `.agents/guards/guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
-| **功能索引自检** | `.agents/guards/guard-feature.sh` | **功能主轴**（`docs/features/`）是否真实：索引行字段/链接/状态枚举 · 欠着编号存在 · 卡内无实现细节 · 卡 ≤12 行 · 卡文件非孤儿（git pre-commit 自动触发）；规格见 RFC 20261001 |
-| 任务上下文 | `.agents/guards/guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
-| 沉淀检查 | `.agents/guards/guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
+| 元治理自检 | `.agents/guards/ai-guard-meta.sh` | 一条命令：frontmatter 图谱断链/lines 漂移/孤儿（`--fix` 回写）|
+| **技能包质量** | `.agents/guards/ai-guard-skills.sh` | 官方 Agent Skills 规范硬约束：S3 `name` 字符集/长度/与目录名一致 · S4 `description` 长度 · S5 五段结构 · S7 偏离在案（git pre-commit 自动触发）|
+| 文档自动对齐 | `.agents/guards/ai-guard-align.sh` | 代码↔文档内容对齐：端点↔api-spec / 测试数↔status.md（git pre-commit 自动触发）|
+| **功能索引自检** | `.agents/guards/ai-guard-feature.sh` | **功能主轴**（`docs/features/`）是否真实：索引行字段/链接/状态枚举 · 欠着编号存在 · 卡内无实现细节 · 卡 ≤12 行 · 卡文件非孤儿（git pre-commit 自动触发）；规格见 RFC 20261001 |
+| 任务上下文 | `.agents/guards/ai-guard-context.sh` | 开工前生成上下文清单（状态/未修项/边界/坑/规范/待办，可按主题过滤）；`--write-local` 收尾刷 AGENTS.local.md 快照（DSH 自动注入）|
+| 沉淀检查 | `.agents/guards/ai-guard-sediment.sh` | ship 时检查沉淀/出表/登记（S1 坑/ADR、S2 REVIEW 出表、S3 change-log）|
 | 部署门禁 | `.agents/scripts/deploy-gate.sh` | 部署前强制 review+guard，部署后自动 smoke（最硬闸门）；同时把「本次应更新哪几端」写进生产 `DEPLOYED` |
-| **发版体检（发布前随时问）** | `.agents/guards/guard-release.sh` | **发布前**一条命令答「现在欠着什么没发」：生产当前 commit/上批清单/待 push 数 + **逐端判定**（后端 · Web 桌面端 · 管理后台 · **iOS App**）要发还是不用发 + 下一步命令（jar+deploy-gate / flutter build web+tar / TestFlight 构建号 N→N+1）；`--json` 可喂 AI。路径映射唯一真相源 `.agents/lib/release-units.sh`（deploy-gate 共用）|
+| **发版体检（发布前随时问）** | `.agents/guards/ai-guard-release.sh` | **发布前**一条命令答「现在欠着什么没发」：生产当前 commit/上批清单/待 push 数 + **逐端判定**（后端 · Web 桌面端 · 管理后台 · **iOS App**）要发还是不用发 + 下一步命令（jar+deploy-gate / flutter build web+tar / TestFlight 构建号 N→N+1）；`--json` 可喂 AI。路径映射唯一真相源 `.agents/lib/release-units.sh`（deploy-gate 共用）|
 | **协作默契（节奏总入口）** | `.agents/scripts/cadence.sh` + `process/cadence.md` | **五条默契的唯一入口**（规则 8–11）：每日巡检（从上次覆盖日补看到今天）/ 收工（本批 diff + 刷快照 + 成本入账）/ **发布（只判定、不部署）** / 每周 / 待办；游标 `.agents/state/cadence.json`。无参数 = 状态总览（巡检·收工·发版·周审 + 欠账 + 到期红线 + 定时任务健康）；另 `check`（交付门禁一键）/ `cost`（成本）|
-| **生产日报（每日）** | `.agents/guards/guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
+| **生产日报（每日）** | `.agents/guards/ai-guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
 | 每周审查 | `.agents/scripts/weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|
-| 成本监控 | `.agents/guards/guard-cost.sh` | 读 DSH 会话按天/会话算钱；收工前 `--record`，开工看 `guard-context.sh` C6.5 |
+| 成本监控 | `.agents/guards/ai-guard-cost.sh` | 读 DSH 会话按天/会话算钱；收工前 `--record`，开工看 `ai-guard-context.sh` C6.5 |
 | 成本纪律 | `.agents/checklists/ai-cost-checklist.md` | 烧钱动作清单 + 省钱原则（错峰/断会话/控输出/降频/用对模型/盯账）|
 
 ## 状态真相源

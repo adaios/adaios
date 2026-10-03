@@ -139,8 +139,8 @@ preferences: [{"content":"对《三体》战略思想及其现实应用有持续
 | adai-app `flutter analyze` / `flutter test` | **0 issues** / **359 passed**（+3：开场问句直发 1 + 预设头像 2；另改写空态 2 条） |
 | adai-web `flutter analyze` / `flutter test` | **0 issues** / **286 passed**（+6：了解区块 4 + 预设头像 2） |
 | adai-core `./gradlew test` | **全量 BUILD SUCCESSFUL**（Identity · ContextEngine · Memory 全绿；本批 +10） |
-| `guard-align.sh` | **PASS**（152 端点全部登记在 api-spec · 四端测试数对齐） |
-| `guard-meta.sh` | **PASS**（142 文件 frontmatter 图谱/行数/孤儿全绿） |
+| `ai-guard-align.sh` | **PASS**（152 端点全部登记在 api-spec · 四端测试数对齐） |
+| `ai-guard-meta.sh` | **PASS**（142 文件 frontmatter 图谱/行数/孤儿全绿） |
 | 部署 | **未部署**（用户授权范围：只做代码；B8 外向动作需另行确认） |
 | git | **未提交、未 push**（避免多会话批次混装，C4 已知坑） |
 

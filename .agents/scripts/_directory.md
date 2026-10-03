@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `shell-lint` · `guard-tools`（T1/T2/T7）· `setup-launchd.sh --check`
+- `shell-lint` · `ai-guard-tools`（T1/T2/T7）· `setup-launchd.sh --check`
 
 ## 维护动作
 

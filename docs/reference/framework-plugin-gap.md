@@ -63,7 +63,7 @@ Step 4  G-6 ✅ 组合验证测试（行情门控 + 读端点 403，全绿）
         收敛：VISION/product-architecture 增量加「形态总纲」（不重写五层）
 ```
 
-**每步验证**：`./gradlew test` 全绿 + `guard-meta.sh` PASS + pre-commit 四层拦截自动把关（本批全部通过）。
+**每步验证**：`./gradlew test` 全绿 + `ai-guard-meta.sh` PASS + pre-commit 四层拦截自动把关（本批全部通过）。
 
 ## 四、验证结果（G-6 组合矩阵，测试化）
 

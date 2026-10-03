@@ -44,5 +44,5 @@ tags: [meta, index, ai]
 ## 过期判断
 
 - `status != active` → 候选清理
-- **清单须与实际一致**（`guard-structure` S1–S3 校验）
+- **清单须与实际一致**（`ai-guard-structure` S1–S3 校验）
 - 新增子目录 → **必须同时有 `_index.md` 与 `_directory.md`**

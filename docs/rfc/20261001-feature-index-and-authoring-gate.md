@@ -32,10 +32,10 @@ related:
 | 每个功能需求是什么 | RFC 七段骨架 + **需求六维**（`workflow/design.md`，2026-08-19 立） | 64 篇 RFC 中**只有 1 篇真写了六维**（含「架构与边界」「质量门槛」关键词者各 1 篇）|
 | 采用什么技术 | `docs/architecture/` 18 篇（system/product/插件设计/数据冻结） | 有，但按主题散落，不挂功能 |
 | 每个插件是什么 | `trading-features.md`（347 行）· `admin-features.md`（149 行），均含「已知缺陷」节 | 已成型，可直接复用 |
-| 每功能一份文档 | `feature-reference.md`（自称「功能真相源」，19 条） | **只有「实现」维度**（文件/API/prompt），无需求、无选型理由、无状态、无验收；**1377 行单文件**；**无 frontmatter** → 在 `guard-meta` 强制范围外，属图谱盲区 |
+| 每功能一份文档 | `feature-reference.md`（自称「功能真相源」，19 条） | **只有「实现」维度**（文件/API/prompt），无需求、无选型理由、无状态、无验收；**1377 行单文件**；**无 frontmatter** → 在 `ai-guard-meta` 强制范围外，属图谱盲区 |
 | 编写角色 | `.agents/skills/`：code-api-writer / code-domain-writer / ship / data-learn-writer | **12 审查官 : 3 建设技能**，严重不对称 |
 | 审核 + 对抗 | `roles/` 12 官 + `checklists/` 13 份 + 对抗官 + **上下文隔离**（每官只喂本域 diff，不喂他人发现） | 已属行业上游，是本项目最成熟的一环 |
-| 文档树 | `_index.md` 体系 + frontmatter 图谱 + `guard-meta.sh` | 有，但按**目录**组织，不按功能 |
+| 文档树 | `_index.md` 体系 + frontmatter 图谱 + `ai-guard-meta.sh` | 有，但按**目录**组织，不按功能 |
 
 ### 1.2 五根轴，缺一根主轴
 
@@ -47,7 +47,7 @@ related:
 
 `docs/rfc/*.md` 的 `status` 实测有 **9 种以上写法**：`implemented`(23) · `approved`(19) · `draft`(14) · `superseded`(3) · `revised`(1) · `new` · `completed` · `active` · `accepted`，另有带注释与全角括号的变体。
 
-`guard-roadmap.sh` 只对拍规划文档（roadmap ↔ status.md），**没有任何守卫对拍功能级状态**。结论：手写状态必漂移（`method/pipeline.md` 原则 1「机制 > 内容」在此未被贯彻）。
+`ai-guard-roadmap.sh` 只对拍规划文档（roadmap ↔ status.md），**没有任何守卫对拍功能级状态**。结论：手写状态必漂移（`method/pipeline.md` 原则 1「机制 > 内容」在此未被贯彻）。
 
 ### 1.4 对外部实践的取舍（2026-10-01 调研，来源见文末）
 
@@ -85,7 +85,7 @@ related:
 | `需求出处` | 链接到 RFC | ✅ 链接可达 |
 | `设计出处` | 链接到 architecture | ✅ |
 | `实现基准` | 链接到 feature-reference 锚点 | ✅ 锚点存在 |
-| `接口` | 端点清单（或 `—`）| ✅ 端点真存在（复用 `guard-align` 能力）|
+| `接口` | 端点清单（或 `—`）| ✅ 端点真存在（复用 `ai-guard-align` 能力）|
 | `验收标准` | 1–3 条可 grep 的判据 | ⚠️ 人工 |
 | `未修项` | REVIEW 编号 | ✅ 编号存在 |
 
@@ -96,9 +96,9 @@ related:
 - **单卡 ≤12 行**，只 4 项：**干什么用 / 不做什么 / 选型理由（有取舍才写）/ 验收标准**。「为什么做」链接 RFC，「欠着什么」看索引行。
 - **硬约束**：卡内禁写实现细节（字段名 / 方法名 / 端点 / 请求响应）——写了脚本红灯。理由：实现细节高频变化，抄进卡里必烂。
 
-### 3.2 状态机 + 机器对拍（`.agents/guards/guard-feature.sh`）
+### 3.2 状态机 + 机器对拍（`.agents/guards/ai-guard-feature.sh`）
 
-- 新脚本（与 `guard-meta.sh` 同构：bash + inline python3），挂 **pre-commit**。
+- 新脚本（与 `ai-guard-meta.sh` 同构：bash + inline python3），挂 **pre-commit**。
 - 检查项：① 索引行字段齐（F1）② 所有链接可达（F2）③ 端点真存在（F3）④ `状态` 与证据一致（有 RFC 无代码 → ≤`designed`；有端点无 RFC → 告警）（F4）⑤ RFC `status` 枚举合法（F5，**新文件强制，存量渐进**）⑥ 索引无孤儿（代码里有模块/端点但索引无行）（F6）⑦ 卡内无实现细节（F7：字段名 / 方法名 / 端点 / 请求响应）⑧ 单卡 ≤12 行（F8）。
 - **不做**：不回填 64 篇存量 RFC 的六维与 status（一次性迁移成本高、收益低）。
 
@@ -127,7 +127,7 @@ related:
 | 大锤砸核桃（小改动套全流程）| 量级匹配表 + 「按需生长」门槛；验收标准里含「小改动零新增文档负担」的抽样检查 |
 | 卡内被抄入实现细节 → 变第二真相源 | 脚本红灯（F7）；卡模板固定 4 项，实现一律链接 |
 | 对抗沦为形式（critic 点头）| 硬前置：无外部信号不派官；≤2 轮熔断 |
-| 成本上升（token 15×） | 只在三处高风险跑；批量错峰；`guard-cost.sh --record` 入账 |
+| 成本上升（token 15×） | 只在三处高风险跑；批量错峰；`ai-guard-cost.sh --record` 入账 |
 | 索引与 feature-reference 双维护 | feature-reference 退化为「实现明细」，索引只放链接与验收；同一事实不写两遍 |
 | 并发会话冲突（仓库曾发生）| 本 RFC 只新增文件 + 追加 `_index.md` 一行，不改既有正文 |
 
@@ -135,14 +135,14 @@ related:
 
 | 批 | 内容 | 产物 | 验收 |
 |:--|:--|:--|:--|
-| **批 1**（零代码，约 1 小时） | 建索引表（脚本从 RFC / feature-reference / 代码生成 ≥19 行初稿）+ 建插件卡文件骨架（≤6 份）+ 给 1 个**正在动**的功能写第一张卡作样板 | `docs/features/_index.md` + `docs/features/<插件>.md` 骨架 | `guard-meta.sh` PASS；索引覆盖全部现有功能；样板卡 ≤12 行且无实现细节 |
-| **批 2** | `guard-feature.sh`（F1–F6）+ 挂 pre-commit | 脚本 + hook | 故意造一条坏行 → 红灯；正常索引 → 绿灯 |
+| **批 1**（零代码，约 1 小时） | 建索引表（脚本从 RFC / feature-reference / 代码生成 ≥19 行初稿）+ 建插件卡文件骨架（≤6 份）+ 给 1 个**正在动**的功能写第一张卡作样板 | `docs/features/_index.md` + `docs/features/<插件>.md` 骨架 | `ai-guard-meta.sh` PASS；索引覆盖全部现有功能；样板卡 ≤12 行且无实现细节 |
+| **批 2** | `ai-guard-feature.sh`（F1–F6）+ 挂 pre-commit | 脚本 + hook | 故意造一条坏行 → 红灯；正常索引 → 绿灯 |
 | **批 3** | 判据前置（checklist 双用）+ 对抗闭环试点一次真实决策 | `skills/` 补一段「编写前加载清单」；一次真实对抗记录 | 试点决策有外部信号附证；轮次 ≤2 |
 
 ## 七、验收标准（可测量 / 可 grep）
 
 1. `docs/features/_index.md` 存在，且每行含 `ID | 状态 | 需求出处` 三列非空。
-2. `bash .agents/guards/guard-feature.sh` 退出码 0；索引中任意一行的链接被删后退出码 ≠ 0。
+2. `bash .agents/guards/ai-guard-feature.sh` 退出码 0；索引中任意一行的链接被删后退出码 ≠ 0。
 3. 索引表覆盖全部现有功能（≥19 行）；样板意图卡 1 张，≤12 行且**无实现细节**；卡文件 ≤6 份。
 4. 本 RFC 自身满足六维（下方六节齐备，可 grep `### 目标与约束` … `### 安全约束`）。
 5. 抽查近 5 个「bug 修复」类提交：**不新增索引行 / 卡**（口径修正 2026-10-01：原写「零新增文档负担（无 md 变更）」与实际相反——近 12 个提交 **10 个含 md**，本层不该、也做不到「不许动 md」）。
@@ -157,19 +157,19 @@ related:
 
 ### 架构与边界
 
-- 落点：`docs/features/`（新增）· `.agents/guards/guard-feature.sh`（新增）· `.agents/checklists/`（复用，不重写）· `.agents/skills/`（补一段）。
+- 落点：`docs/features/`（新增）· `.agents/guards/ai-guard-feature.sh`（新增）· `.agents/checklists/`（复用，不重写）· `.agents/skills/`（补一段）。
 - **不动**：`services/**`、`apps/**`、`os/**`、`data/**`；不改 `feature-reference.md` 正文（仅后续自然退化）；不动既有 RFC 正文。
 
 ### 技术规范
 
 - Markdown + YAML frontmatter（遵循 `.agents/frontmatter-spec.md` D1 契约）。
-- 脚本与 `guard-meta.sh` 同构：bash 包装 + inline python3，只读检查、失败非零退出。
+- 脚本与 `ai-guard-meta.sh` 同构：bash 包装 + inline python3，只读检查、失败非零退出。
 - 命名遵循 conventions 的 D2 目录治理：`docs/features/_index.md` + 每目录 `_index`。
 
 ### 质量门槛
 
-- 批 1：`guard-meta.sh --fix` PASS、索引链接全可达、样板卡无实现细节。
-- 批 2：`guard-feature.sh` 正例绿 / 反例红（双向验证，不接受只测正例）。
+- 批 1：`ai-guard-meta.sh --fix` PASS、索引链接全可达、样板卡无实现细节。
+- 批 2：`ai-guard-feature.sh` 正例绿 / 反例红（双向验证，不接受只测正例）。
 - 批 3：试点决策产出物含外部信号（测试输出或契约 diff 或日志片段）。
 
 ### 边界条件
@@ -202,18 +202,18 @@ related:
 
 | 批 | 落地 | 证据 |
 |:--|:--|:--|
-| 批 1 | `docs/features/_index.md`（**37 功能**·5 域）· `docs/features/kernel.md`（第 1 张意图卡 `record`）· `docs/_index.md` 登记 | 链接自检 **37 条 0 死链**；`guard-meta` PASS |
-| 批 2 | `.agents/guards/guard-feature.sh`（F0–F10）· `.agents/tests/guard-feature-fixture.py`（反例回归）· `.githooks/pre-commit` 新增「2b」· `AGENTS.md` + `.agents/_index.md` + `guard-meta.sh` 覆盖 登记 | **反例测试 18 条 FAIL 全触发**（含 4 处假绿 + 1 处误报的回归样本）+ F0 + 存量跳过；端到端跑通 hook（退出码 0）；`guard-feature` 正例 PASS |
+| 批 1 | `docs/features/_index.md`（**37 功能**·5 域）· `docs/features/kernel.md`（第 1 张意图卡 `record`）· `docs/_index.md` 登记 | 链接自检 **37 条 0 死链**；`ai-guard-meta` PASS |
+| 批 2 | `.agents/guards/ai-guard-feature.sh`（F0–F10）· `.agents/tests/guard-feature-fixture.py`（反例回归）· `.githooks/pre-commit` 新增「2b」· `AGENTS.md` + `.agents/_index.md` + `ai-guard-meta.sh` 覆盖 登记 | **反例测试 18 条 FAIL 全触发**（含 4 处假绿 + 1 处误报的回归样本）+ F0 + 存量跳过；端到端跑通 hook（退出码 0）；`ai-guard-feature` 正例 PASS |
 | 批 3 | `.agents/workflow/develop.md` 新增「判据前置」入口条与功能主轴出口条；对抗官试点（外部信号＝脚本正反例输出）| 见 `docs/review/audits/` 审查记录 |
 
 ### 与方案的偏差（如实）
 
-1. **F3 被改写**：原承诺「端点真存在」，实现为「⚠️ 行必须写明缺因」——索引行没有端点列，端点存在性由 `guard-align.sh`（A1）负责，两处重复没有价值。**若日后索引加端点列，F3 应恢复为端点校验**。
+1. **F3 被改写**：原承诺「端点真存在」，实现为「⚠️ 行必须写明缺因」——索引行没有端点列，端点存在性由 `ai-guard-align.sh`（A1）负责，两处重复没有价值。**若日后索引加端点列，F3 应恢复为端点校验**。
 2. **F6 被改写**：原承诺「索引无孤儿」，实现为「『欠着』编号必须在 REVIEW 里存在」。真正的孤儿检测（代码里有、索引里没有）需要代码侧清单，硬做会误报；**取实现得了且当天就有价值的那一半**（编号悬空是真实风险）。
 3. **批 1 只建了 1 个卡文件**（方案写「≤6 份骨架」）：其余 4 个域按「按需生长」等真要动它时再建，预建空文件无价值。
 4. **D5 未执行全量迁移**：存量 64 篇 RFC 的 status 未回填（符合方案），F5 只对新文件（`date >= 2026-10-01`）强制。
 5. **F4 事后补强（自查实证）**：首版 F4 只校验状态枚举，**没有**「状态与证据一致」。抽查索引真实性时当场抓到两处自己填错——`trade.cognition` 标 `shipped` 而手册明写「认知层**待建**」、`share-ext` 的实现章节号填错（在 §19 内、不在 §17）。已补 **F4 粗对拍**（`shipped` 不得配「待建 / 未做 / 无专章 / 待生长」）并修正两行；反例测试同步加一条（现 **17 条 FAIL** 全触发）。**这条是「索引必须机器对拍、不能靠人填」的最直接实证**。
-6. **索引消费口也补了两处**（防「没人看 → 腐烂」）：`guard-context.sh` 开工清单新增 **C1.4 功能主轴**（每次开工自动报「全项目 N 个功能 + 卡数」）、`docs/README.md` 功能手册区加索引入口。**新层必须挂在既有消费口上，否则必然成为死文档**。
+6. **索引消费口也补了两处**（防「没人看 → 腐烂」）：`ai-guard-context.sh` 开工清单新增 **C1.4 功能主轴**（每次开工自动报「全项目 N 个功能 + 卡数」）、`docs/README.md` 功能手册区加索引入口。**新层必须挂在既有消费口上，否则必然成为死文档**。
 7. **F4 原承诺未实现（2026-10-01 对抗审查 A2，如实降格）**：§3.2 原写「状态与证据一致：有 RFC 无代码 → ≤`designed`；有端点无 RFC → 告警」——**未实现**。现状＝状态枚举 + 一条关键词粗对拍（`shipped` 不得配「待建/未做」），**状态列仍由人填**。已在 `docs/features/_index.md` 头部**如实降格**（不再宣称「状态由机器对拍」）；真对拍（每行带可机器验证的证据字段）列为后续独立批次。**需求出处同理**：只做存在性校验，不做相关性校验。
 8. **pre-commit 挂点加了防御（2026-10-01 对抗审查 A3）**：守卫脚本或索引目录未落地时**跳过而非阻断**——否则部分克隆 / 只改了别的 md 的提交会被 `bash <缺失文件>`（=127）拦死；同时区分「索引 FAIL」与「守卫脚本自身出错」。**代价**：脚本、索引、卡与 hook 必须**同一次提交落地**（已写进完成报告）。
 9. **对抗审查闭环（批 3 试点，1 轮）**：独立对抗官只读审查（夹具 23 个自建、外部信号齐全），抓出 **P1×3 + P2×6 + P3×8**，其中 **4 处结构性假绿 + 1 处误报**已全部修复并**固化为回归样本**（`tests/guard-feature-fixture.py` 现 18 条 FAIL 全触发）；报告与逐条处置见 `docs/review/audits/2026-10-01-feature-index-adversarial.md`。**交叉印证**：审查官独立命中的两处（切卡假绿、认知层状态填错）与作者自查重合。

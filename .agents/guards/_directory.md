@@ -33,7 +33,7 @@ tags: [meta, directory]
 |:--|:--|:--|
 | 提交时 | `.githooks/pre-commit` | align / meta / feature / skills / tools / sediment |
 | 收工时 | `cadence.sh ship` | meta（--fix 回写） |
-| 开工时 | AGENTS.md 规则 0 | `guard-context.sh` |
+| 开工时 | AGENTS.md 规则 0 | `ai-guard-context.sh` |
 
 ## 约束
 
@@ -43,7 +43,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- 自身：`shell-lint`（$VAR 花括号）· `guard-tools` T1–T7
+- 自身：`shell-lint`（$VAR 花括号）· `ai-guard-tools` T1–T7
 
 ## 维护动作
 

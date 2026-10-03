@@ -3,12 +3,12 @@
 # 成本监控（防守侧）— 读 DSH 会话日志，按天/月算 DeepSeek 实际消费
 #
 # 用法:
-#   bash .agents/guards/guard-cost.sh                # 今天
-#   bash .agents/guards/guard-cost.sh --day 2026-08-17
-#   bash .agents/guards/guard-cost.sh --month 2026-08
-#   bash .agents/guards/guard-cost.sh --top 10        # 今日 Top 会话
-#   bash .agents/guards/guard-cost.sh --record        # 今日结果追加成本日志（增量记账）
-#   bash .agents/guards/guard-cost.sh --log           # 查看历史成本日志（按日聚合）
+#   bash .agents/guards/ai-guard-cost.sh                # 今天
+#   bash .agents/guards/ai-guard-cost.sh --day 2026-08-17
+#   bash .agents/guards/ai-guard-cost.sh --month 2026-08
+#   bash .agents/guards/ai-guard-cost.sh --top 10        # 今日 Top 会话
+#   bash .agents/guards/ai-guard-cost.sh --record        # 今日结果追加成本日志（增量记账）
+#   bash .agents/guards/ai-guard-cost.sh --log           # 查看历史成本日志（按日聚合）
 #
 # 说明:
 #   数据源 = ~/.dsh/sessions/**/session.jsonl.zstd（DSH 每次模型调用落一条 usage）

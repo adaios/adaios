@@ -32,7 +32,7 @@ tags: [skill, build, domain]
 4. **数据流设计**（红线 4）：Record 文件格式 → Timeline 投影 → Context 组合 → Memory 沉淀，先设计再写码；File First（os/ 知识资产 + data/ 路径）
 5. **分层落地**：domain/ 实现 + application 编排 + infrastructure 适配；Domain 间禁止直接依赖（B6，跨域经 application）
 6. **Context 暴露**：通过 ContextContributor 插件机制暴露能力（Context Always），不直接暴露数据库
-7. **验收闭环**：测试配套 + guard-meta PASS + feature-reference 登记 + 文档索引 + 插件显隐三端对拍
+7. **验收闭环**：测试配套 + ai-guard-meta PASS + feature-reference 登记 + 文档索引 + 插件显隐三端对拍
 
 ## 约束与规则
 
@@ -44,7 +44,7 @@ tags: [skill, build, domain]
 ## 输出要求
 
 - RFC approved（含六维逐条回答）+ 插件门控全通道 + 数据流设计先于代码
-- 测试 + guard-meta PASS + feature-reference/文档索引登记
+- 测试 + ai-guard-meta PASS + feature-reference/文档索引登记
 
 ## 参考资料
 

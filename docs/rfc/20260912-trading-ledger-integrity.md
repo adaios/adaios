@@ -322,7 +322,7 @@ related:
 
 ### 9.3 工程收口
 
-后端全量测试全绿（含 R1~R12）；`guard-meta` / `guard-align` PASS；文档登记（api-spec 三端点 + trading-features 三条真源章 + REVIEW 更正 + pitfalls 新条目 + change-log）；deploy-gate 自检 PASS。
+后端全量测试全绿（含 R1~R12）；`ai-guard-meta` / `ai-guard-align` PASS；文档登记（api-spec 三端点 + trading-features 三条真源章 + REVIEW 更正 + pitfalls 新条目 + change-log）；deploy-gate 自检 PASS。
 
 ## 十、落地记录
 
@@ -338,5 +338,5 @@ related:
   - ②**`SnapshotAnchor` 未新增「文件是否存在」布尔**，而是用 `known()`（两日期皆空即未知）+ 独立字段 `holdingsRecorded`（落盘 JSON 里的键，响应侧暴露为 `holdingsKnown`）区分「基线**未记录**」与「记录为**空**」——前者对账报「无法判定」，后者是合法基线（券商口径下真空仓）。
 - **推送**：15:30 收盘小结增一行账实自检（有 `drift`/`gaps` 才推；无差异不推、失败静默降级）。
 - **文档**：`api-spec.md` v3.61（import 小节重写 + 三新端点 + `snapshotDate`）、`trading-features.md` §八 14（三条真源与锚点语义）+ §九（锚定缺失史闭合与残留）、`feature-reference.md` §9、`status.md`（后端 1631 / 端点 137）、`change-log.md` 本批一行。
-- **回归口径**：§九 9.1 生产场景回放（合成夹具）+ R1~R12 全绿；后端全量 **1590 → 1634**（0 失败）；guard-meta / guard-align 双 PASS。
+- **回归口径**：§九 9.1 生产场景回放（合成夹具）+ R1~R12 全绿；后端全量 **1590 → 1634**（0 失败）；ai-guard-meta / ai-guard-align 双 PASS。
 - **未做/残留**：T7 双端接线（web/app 展示 `rejected` 与 `integrity` 提示）；生产存量数据修复走显式动作（§六 不做项）；多实例跨进程锁（既有未修项，与 §五 红线自查一致）。

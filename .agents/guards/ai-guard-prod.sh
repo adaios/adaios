@@ -3,10 +3,10 @@
 # 生产日报（每日流程）— 生产日志 + 真实对话卡片，一条命令看全
 #
 # 用法:
-#   bash .agents/guards/guard-prod.sh              # 今天 + 近 7 天趋势
-#   bash .agents/guards/guard-prod.sh --days 14    # 趋势窗口拉长
-#   bash .agents/guards/guard-prod.sh --date 2026-09-16   # 补看某天
-#   bash .agents/guards/guard-prod.sh --json       # 只出原始 JSON（喂给 AI / 二次处理）
+#   bash .agents/guards/ai-guard-prod.sh              # 今天 + 近 7 天趋势
+#   bash .agents/guards/ai-guard-prod.sh --days 14    # 趋势窗口拉长
+#   bash .agents/guards/ai-guard-prod.sh --date 2026-09-16   # 补看某天
+#   bash .agents/guards/ai-guard-prod.sh --json       # 只出原始 JSON（喂给 AI / 二次处理）
 #
 # 为什么有这个脚本（2026-09-16 用户「看看生产日志，看看生产对话卡片，
 # 其实这个可以固定为每日流程」）:

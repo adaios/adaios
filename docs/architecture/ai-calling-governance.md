@@ -119,7 +119,7 @@ tags: [architecture, ai, performance, design]
 - **kernel/ai**：`AiClient` 端口保持 `understand/generate/recognizeIntent`；流式能力新增 `StreamingAiClient`（或 `understandStream`），端口仍在 kernel、实现在 infra（不违 REVIEW #22）。
 - **interfaces**：新增 `POST /api/v1/records/ask-stream`（独立端点，语义清晰，旧同步端点不动、兼容在网客户端）。
 - **配置**：`adai.ai.chat-model` / `adai.ai.analysis-model`（`vision-model` 已有）。
-- **契约**：`api-spec.md` 补流式端点 + SSE 事件格式（guard-align 门禁随批通过）。
+- **契约**：`api-spec.md` 补流式端点 + SSE 事件格式（ai-guard-align 门禁随批通过）。
 - **前端**：app 加 `sse_client` 依赖（三端统一）；web（React 桌面壳）二期接。
 
 ## 七、决策点（实施前拍板）

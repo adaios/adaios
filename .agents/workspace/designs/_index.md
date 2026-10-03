@@ -28,4 +28,4 @@ tags: [meta, index]
 
 - **收敛归档后整个 `<需求id>/` 删除**（`design-final.md` 搬进 `docs/architecture/` + ADR）
 - `status != active` → 候选清理
-- **清单须与实际一致**（`guard-structure` S2；跑 `bash .agents/guards/guard-structure.sh --fix` 刷新）
+- **清单须与实际一致**（`ai-guard-structure` S2；跑 `bash .agents/guards/ai-guard-structure.sh --fix` 刷新）

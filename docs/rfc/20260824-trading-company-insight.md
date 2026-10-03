@@ -144,7 +144,7 @@ implementation: 未实施（draft，待审查后开工）
 | 9 | 文档 | `api-spec.md` / `trading-features.md` / `feature-reference.md` §9 / `change-log.md` / `data-format-freeze.md` / `rfc/_index.md` | 端点契约、功能清单、新数据文件登记同步 |
 
 **顺序**：后端数据源 + 判定引擎 + 端点 + 测试 → 建议引擎注入 → web 前端入口 → 文档同步。
-**门禁**：`./gradlew test` 全绿、`flutter analyze` 0 issues、`flutter test` 全绿；数据文件变更按 MINOR 登记 `data-format-freeze.md`；api-spec 同步防 guard-align 拦截。
+**门禁**：`./gradlew test` 全绿、`flutter analyze` 0 issues、`flutter test` 全绿；数据文件变更按 MINOR 登记 `data-format-freeze.md`；api-spec 同步防 ai-guard-align 拦截。
 
 ---
 

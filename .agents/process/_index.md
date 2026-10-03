@@ -23,10 +23,10 @@ tags: [meta, index]
 | `cadence.md` | 用户与 AI 之间的固定节奏——每日巡检 / 收工 / 发布 / 每周 / 待办，各自「上次到哪、这次做什么、做… | active |
 | `review-driven.md` | 审核驱动主链（需求 → 设计 → 编码）——文档先行 + 双角色真对打、多轮交叉；定义谁派谁、几轮收敛、何时升级… | active |
 | `review.md` | /review 的通用版——按改动范围派对应审查官，滚动更新 REVIEW.md | active |
-| `ship.md` | 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（guard-meta）→ 规范提交（**202… | active |
+| `ship.md` | 开发收尾闭环——测试 → 契约同步 → 文档登记 → 元治理校验（ai-guard-meta）→ 规范提交（**202… | active |
 
 ## 过期判断
 
 - `status != active` → 候选清理
 - `updated` 超 3 个月未动且无人引用 → 候选归档
-- **清单必须与实际文件一致**（`guard-structure` S2 双向校验；新增文件后跑 `guard-structure.sh --fix`）
+- **清单必须与实际文件一致**（`ai-guard-structure` S2 双向校验；新增文件后跑 `ai-guard-structure.sh --fix`）

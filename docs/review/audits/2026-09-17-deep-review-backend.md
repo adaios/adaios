@@ -33,9 +33,9 @@ tags: [review, backend, audit]
 | 检查 | 命令 | 结果 |
 |:---|:---|:---|
 | 相关测试 | `./gradlew test --tests "*DailyPnlComputeTest*" …`（7 类） | **BUILD SUCCESSFUL**：DailyPnlCompute 18 · LearnDigestAppService 51 · LearnCardFileRepository 68 · AccountController 39 · ApiTokenService 27 · ApnsPushChannel 28 · TradingAppService 65 —— **296 用例 0 失败 0 错误 0 跳过** |
-| 工具链守护 | `bash .agents/guards/guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
-| 契约对齐 | `bash .agents/guards/guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
-| 元数据治理 | `bash .agents/guards/guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
+| 工具链守护 | `bash .agents/guards/ai-guard-tools.sh` | 6 通过 / 1 警告 / 0 失败（警告＝每周审查尚无日志，与本批无关） |
+| 契约对齐 | `bash .agents/guards/ai-guard-align.sh` | **PASS**：154 端点全部在 api-spec.md；测试数 1939/359/69/302 一致 |
+| 元数据治理 | `bash .agents/guards/ai-guard-meta.sh` | **PASS**（143 files，edges/lines/orphans 均 ok） |
 | 分层依赖（C7） | 人工核对 diff 全部 import | 无新增违规；`AccountController` 直接用 `kernel.storage.FileStorage` 端口（kernel 为共享内核，不构成 infrastructure 反向依赖） |
 
 ## 三、结论
@@ -229,7 +229,7 @@ tags: [review, backend, audit]
 | restoreOrigin 门控 | `LearnController.restoreOrigin` 先 `requireLearnPlugin` + type 白名单校验 | **有门控** |
 | 深链 target 正确性 | 枚举全部推送构造点的 type/symbol（见 P3-1 证据） | **现存类型无错目标**；风险在未来类型（P3-1） |
 | 深链是否污染 aps | `ApnsPushChannel:269-278` root 级 `adaiDeepLink` + 测试 `payload_carriesDeepLink_forPushTapNavigation`（断言 `aps.adaiDeepLink` 为 null） | **正确** |
-| 新端点契约登记 | `guard-align.sh` A1：154 端点全在 api-spec | **通过**；`status.md` 有一处重复拼接文本（见下） |
+| 新端点契约登记 | `ai-guard-align.sh` A1：154 端点全在 api-spec | **通过**；`status.md` 有一处重复拼接文本（见下） |
 | 测试与守护 | 见第二节 | **全绿**；三件套 PASS |
 
 补充（文档瑕疵，非代码问题）：`docs/reference/status.md` 端点行出现重复拼接 `**+1（2026-09-16 晚间批）**+1（2026-09-16 晚间批）：POST /learn/cards/restore-origin`，且 09-17 的 commit 被标为「09-16 晚间批」（时间标注与 commit 日期不一致）。
@@ -244,10 +244,10 @@ tags: [review, backend, audit]
 
 ## 附录 A：范围外 commit `bc6656b`（午间谷时任务壳 + LaunchAgent）单独标注
 
-- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/noon-task.sh` 新增、`guard-prod.sh`、`.agents/scripts/setup-launchd.sh`、`docs/guides/routine.md`、`guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
+- 该 commit 属**另一会话**的 AI 工程工具链改动（`.agents/scripts/noon-task.sh` 新增、`ai-guard-prod.sh`、`.agents/scripts/setup-launchd.sh`、`docs/guides/routine.md`、`ai-guard-tools.sh` T7 已认它）。本轮不评判其设计，仅记两条观察：
   1. **时区偏移只告警不阻断**：`.agents/scripts/noon-task.sh:44-47` 检测到本机 `%z ≠ +0800` 时只打印 `⚠️ 本机时区偏移…峰谷判定不可信`，随后**照常执行**。若本机时区被改，闸门会按本机钟放行高峰时段（2 倍价计费）。建议非 +0800 时 fail-closed（需 `--force` 才继续）。
   2. `.agents/scripts/setup-launchd.sh` 修掉了「重装即把历史日志截断清零」的真实事故（改为仅在文件不存在时创建）——这条是有价值的修复，已记入 `pitfalls.md` 的候选（未确认是否已沉淀）。
-- 守护脚本对本 commit 覆盖良好：`guard-tools.sh` T6（`$VAR` 紧跟非 ASCII）PASS、T7 显示 `com.adai.adaios-noon-task` 已加载且「午间谷时 0 天前跑过」。
+- 守护脚本对本 commit 覆盖良好：`ai-guard-tools.sh` T6（`$VAR` 紧跟非 ASCII）PASS、T7 显示 `com.adai.adaios-noon-task` 已加载且「午间谷时 0 天前跑过」。
 
 ---
 **报告性质**：只报告不修改（B7）；所有结论可由上列「位置 + 证据」复核。

@@ -169,13 +169,13 @@ tags: [review, adversarial, audit]
 
 **证据**
 - `.agents/process/ship.md` 只加了一段**说明文字**（「收尾一律按路径显式暂存」+「提交前 `git status --porcelain` 复核」，并明写依靠**人工复核**）。
-- 仓库实际生效的门禁是 `.githooks/pre-commit`（`core.hooksPath=.githooks`）：它查隐私（data/ 前缀、gitignore 复核）→ guard-align → guard-meta → guard.sh → shell-lint（`guard-tools.sh --shell-lint`）→ guard-sediment（软提示）。**没有任何一层**检查「暂存区是否含本批声明之外的路径」，也没有「干净工作区」检查。
+- 仓库实际生效的门禁是 `.githooks/pre-commit`（`core.hooksPath=.githooks`）：它查隐私（data/ 前缀、gitignore 复核）→ ai-guard-align → ai-guard-meta → guard.sh → shell-lint（`ai-guard-tools.sh --shell-lint`）→ ai-guard-sediment（软提示）。**没有任何一层**检查「暂存区是否含本批声明之外的路径」，也没有「干净工作区」检查。
 - 该条目在 `REVIEW.md` 里原状态是「⚠️ 待用户拍板是否写进 ship 流程为硬规则」；本批把**文档**写了，**拍板与机制都还是没有**。
 
 **后果**：下一次并发会话（本仓已知会发生，pitfalls 十「同仓库并发会话收尾」登记过真实事故）复现的概率不变——只是这次规范里多了一句话，而失效环节恰恰是「人记得照做」。
 
 **建议下一步验证动作**
-- 反证：`grep -rn "add -A\|ship-scope\|暂存" .githooks/ .agents/guards/guard-tools.sh` → 预期 0 命中机制代码。
+- 反证：`grep -rn "add -A\|ship-scope\|暂存" .githooks/ .agents/guards/ai-guard-tools.sh` → 预期 0 命中机制代码。
 - 机制方向（成本很低）：提交信息里声明 `本批路径：a/ b/`（或写 `.git/ship-scope`），pre-commit 用 `git diff --cached --name-only` 对照声明前缀，越界就拒（或 `⚠️` + 要求确认）。这是本仓既有风格（guard.sh G8/G9 都是这种「枚举 + 反例验证」的机械守卫）。
 
 ---
@@ -312,7 +312,7 @@ tags: [review, adversarial, audit]
 2. **`purge` 与正在运行的任务**：删号后后台 learn/AI 任务若仍持有 userId，会往已删目录继续写（`FileStorage.write` 会重建父目录）→ 「purge 之后又冒出文件」。未实测，但 `purgeUserData` 的注释承认逐文件删除、`LocalFileStorage.write` 会 `createDirectories`，路径成立。
 3. **`refreshTodayPnl` 的调用时机全集**：本报告只核了 5 处调用点；`RecordFlowAppService` / 截图确认链路里是否还有别的重算入口没读。
 4. **`consumeImages` 的账本合并写**：`LearnQuotaFileRepository.consumeImages` 用 `next.path(IMAGES_KEY)` 后 `(ObjectNode) next.path(IMAGES_KEY)`——**同一对象既做判据又做写入目标**（`next.path()` 返回的是 `next` 里的同一引用还是缺失节点副本，取决于 Jackson 行为）。若返回副本，`images.put(...)` 改的是副本、`next.set(...)` 有兜住；但读-改-写里「月份键」与「images 键」共用同一把锁的正确性值得单独走一遍（尤其与转写 `consume` 交叉时）。未实测。
-5. **`guard-prod.sh` 到期倒数的时间基准**：`date -j -f "%Y-%m-%d"`（macOS）与 `date -d` 的回落写法在非 UTC 环境取的是**本地时区的 00:00**；到期日按北京时区算差一天无实质影响，但 `days < 30` 的边界（正好 30 天）与 `-lt` 的取舍未在文档写死，属口径未登记。
+5. **`ai-guard-prod.sh` 到期倒数的时间基准**：`date -j -f "%Y-%m-%d"`（macOS）与 `date -d` 的回落写法在非 UTC 环境取的是**本地时区的 00:00**；到期日按北京时区算差一天无实质影响，但 `days < 30` 的边界（正好 30 天）与 `-lt` 的取舍未在文档写死，属口径未登记。
 
 ---
 

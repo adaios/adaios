@@ -25,8 +25,8 @@ tags: [ai, workflow, develop]
 **第 0 步：生成任务上下文清单（进攻侧核心，不用人提醒）**
 
 ```bash
-bash .agents/guards/guard-context.sh                 # 全量上下文
-bash .agents/guards/guard-context.sh <主题词>        # 按主题过滤（trading/memory/…）
+bash .agents/guards/ai-guard-context.sh                 # 全量上下文
+bash .agents/guards/ai-guard-context.sh <主题词>        # 按主题过滤（trading/memory/…）
 ```
 
 自动汇总：C1 当前状态 / C2 未修项（REVIEW）/ C3 原则级边界 / C4 已知坑 / C5 规范 / C6 待办——**开工前读这份清单，而不是翻 6 个文件**。
@@ -53,7 +53,7 @@ bash .agents/guards/guard-context.sh <主题词>        # 按主题过滤（trad
    - 本批踩坑/发现根因 → 提请入 checklists + pitfalls
    - 本批产生新想法 → 提请入 ideas/ 或 RFC
 2. 无新增决策/坑 → 显式标注「无新增沉淀」，防漏
-3. **功能主轴**（RFC 20261001）：本批动到的功能 → 更新 `../../docs/features/_index.md` 里那一行（状态 / 出处 / 欠着）；**该功能还没有意图卡就补一张**（≤12 行，只写意图、禁写实现细节——`docs/features/kernel.md` 有样板）。跑偏了 pre-commit 的 `guard-feature.sh` 会拦。
+3. **功能主轴**（RFC 20261001）：本批动到的功能 → 更新 `../../docs/features/_index.md` 里那一行（状态 / 出处 / 欠着）；**该功能还没有意图卡就补一张**（≤12 行，只写意图、禁写实现细节——`docs/features/kernel.md` 有样板）。跑偏了 pre-commit 的 `ai-guard-feature.sh` 会拦。
 4. 进入 `../process/ship.md`（收尾门禁）
 
 ## 与前后段衔接

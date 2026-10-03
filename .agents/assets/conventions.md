@@ -46,7 +46,7 @@ tags: [ai, assets, conventions]
 |:-:|:-----|:-----|
 | W1 | 入口统一 | `POST /api/v1/records` 是唯一输入入口 |
 | W2 | 工作焦点分离 | 在哪个子目录工作只看哪个领域（子项目独立 AGENTS.md，分层就近原则）|
-| W3 | 批次收尾 | `/ship`：测试→契约→登记→guard-meta 门禁→提交（见 `process/ship.md`）|
+| W3 | 批次收尾 | `/ship`：测试→契约→登记→ai-guard-meta 门禁→提交（见 `process/ship.md`）|
 | W4 | 决策沉淀 | 方案通过 → 决策入 `assets/adr/`；踩坑修复 → 入 `checklists/` + `assets/pitfalls.md` |
 | W5 | 提交规范 | 按批次主题（feat:/fix:/docs:），一提交一主题，不混合 |
 | W6 | 讨论与实施分离 | **只约束代码与 `data/` 数据修改**：讨论方向/方案/口径时不动代码，用户明确「开工/做/改」后才改；AI 工程文档（`ai-engineering/`、AGENTS.md）可直接修订（2026-08-16 确立，2026-08-18 明确范围）|

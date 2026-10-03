@@ -10,9 +10,9 @@ depends-on: []
 related:
   - ../rfc/20261003-project-level-ai-context-layer.md
   - ../../.agents/assets/ai-context-layer-spec.md
-  - ../../.agents/guards/guard-meta.sh
-  - ../../.agents/guards/guard-tools.sh
-  - ../../.agents/guards/guard-cost.sh
+  - ../../.agents/guards/ai-guard-meta.sh
+  - ../../.agents/guards/ai-guard-tools.sh
+  - ../../.agents/guards/ai-guard-cost.sh
 tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 ---
 
@@ -36,7 +36,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 |:--|:--|:--|
 | **审查官大面积幽灵** | `.agents/roles/` 12 个，**11 个 0 次读取**（仅 `ai-adversarial-reviewer.md` 2 次）；同期却派了 **27 次**审查类 subagent | 审查在跑，但**角色文件没被加载**——靠提示词复述；12 官属「图纸完备、运行时缺席」 |
 | **技能调用 = 0** | 近 5 天 `skill` 工具调用 **0 次** | `skills/data-learn-writer/SKILL.md` 有软链出口（DSH 已注册、本会话可见），一次没用 |
-| **出口断链** | `code-api-writer.md` / `code-domain-writer.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 data-learn-writer** | 工具**根本看不见**这三个，等于不存在（guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
+| **出口断链** | `code-api-writer.md` / `code-domain-writer.md` / `ship.md` 为扁平布局，`.dsh/skills` 与 `.agents/skills` **只有 data-learn-writer** | 工具**根本看不见**这三个，等于不存在（ai-guard-tools T4 只验了「软链是否指回本体系」，未验「应有的技能是否都有出口」） |
 | **冷资产占比** | `ai-engineering/**` 63 个 md，**47 个（75%）从未被读**；仓库 `.md` 957 个，近 5 天读过 47 个（5%） | 需分类解读，见 §三 |
 | **陈旧度暂无分辨力** | git 最后写入：≤7 天 18 个 · 8-30 天 14 个 · 31-60 天 32 个 · **>60 天 0 个**，最久 49 天 | 项目本身才 49 天——此维度现在做出来只会全绿 |
 | **成本不是理由（实测修正）** | 读取**已高度分页**（多为 `limit=1~20` 行小窗口）；即使全量读 `docs/reference/status.md` 一次仅 53.5k tokens ≈ **0.08 元** | 别为省钱做这件事（动机错位）；真正的成本大头是长会话的缓存命中输入，见 `.agents/checklists/ai-cost-checklist.md` |
@@ -45,7 +45,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 ### 3.1 现有守卫查不出幽灵资产（结构性假绿）
 
-`guard-meta.sh` 的 M1/M3/M4（frontmatter 边、孤儿、正文路径引用）与 `guard-tools.sh` T3/T4（出口软链）**判据全是静态的**——「这个文件在体系里有没有位置」。幽灵资产在这套判据下**完全健康**：有 frontmatter、有边、不是孤儿、还挂在 `_index.md` 里。所以不是漏检某条，而是**整类判据缺失**。
+`ai-guard-meta.sh` 的 M1/M3/M4（frontmatter 边、孤儿、正文路径引用）与 `ai-guard-tools.sh` T3/T4（出口软链）**判据全是静态的**——「这个文件在体系里有没有位置」。幽灵资产在这套判据下**完全健康**：有 frontmatter、有边、不是孤儿、还挂在 `_index.md` 里。所以不是漏检某条，而是**整类判据缺失**。
 
 ### 3.2 三个维度必须分开定性（这是成败分水岭）
 
@@ -57,7 +57,7 @@ tags: [ideas, ai-engineering, 资产治理, 使用统计, 幽灵资产]
 
 ### 3.3 冷 ≠ 该删（纯计数必然误报）
 
-`assets/boundaries.md`、`assets/conventions.md` 读 0 次是**正常的**——它们通过开工快照 `guard-context.sh` 的**摘要注入**被消费，路径不是 `read` 整篇。同理 ADR、历史存档本就不该按冷热判死活。**电脑管家那类噪音（"这批 app 没用到，要不要卸"）正是这个模式的翻版。**
+`assets/boundaries.md`、`assets/conventions.md` 读 0 次是**正常的**——它们通过开工快照 `ai-guard-context.sh` 的**摘要注入**被消费，路径不是 `read` 整篇。同理 ADR、历史存档本就不该按冷热判死活。**电脑管家那类噪音（"这批 app 没用到，要不要卸"）正是这个模式的翻版。**
 
 ### 3.4 反直觉的一笔：热而肥
 

@@ -578,7 +578,7 @@ Step 6  R5 打分 + R6 建议引擎 + R7 知识注入改按用户（含反哺目
 Step 7  降级行为全链路验证（无规则用户 = 纯客观）
 Step 8  adai 规则包生成（os/trading-engine 源材料 → YAML 规则 + manifest zip）+ 回归（adai 行为不变）
 Step 9  规则页 UI（web 编辑/导入/导出）+ 测试
-Step 10 /ship 收尾（guard-meta/align + change-log + status 更新 + api-spec/freeze/feature-reference 同步）
+Step 10 /ship 收尾（ai-guard-meta/align + change-log + status 更新 + api-spec/freeze/feature-reference 同步）
 ```
 
 ### 10.2 测试要点

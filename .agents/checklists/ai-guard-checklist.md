@@ -43,7 +43,7 @@ tags: [review, checklist, guard]
 | # | 检查方法 | 上次发现 |
 |:-:|:---------|:---------|
 | G7 | `grep -rn "contextEngine.compose\|engine.compose" services/adai-core/src/main/java/application` — 确认 scene 实际传入 Contributor 的 `supports()`，而非死参数（允许固定字面量如 retry 的 `compose("note", record)`，但须存在传变量的调用）| `"trading"` scene 从未传入 → 知识注入全失效（战略缺口，已修）|
-| M4 | `bash .agents/guards/guard-meta.sh`（M4 项）— 扫描强制区文档正文中的仓库内路径引用 + bash 命令路径，断言目标存在（防 docs/ai 类迁移残留复发）| docs/ai→ai-engineering 迁移 16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
+| M4 | `bash .agents/guards/ai-guard-meta.sh`（M4 项）— 扫描强制区文档正文中的仓库内路径引用 + bash 命令路径，断言目标存在（防 docs/ai 类迁移残留复发）| docs/ai→ai-engineering 迁移 16 处残留（自伤自查 6 官 ⭐，2026-08-15）|
 
 ## 推送 / 配置 / 入口契约（G8-G10，2026-09-14 批次追加）
 

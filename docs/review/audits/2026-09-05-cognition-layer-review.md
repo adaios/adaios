@@ -47,4 +47,4 @@ reviewers: code-backend-reviewer / docs-contract-reviewer / ai-adversarial-revie
 
 ## 测试增量
 
-1181 → **1187**（+6：排序 +1 / id 毫秒 +1 / push 留痕 +1 / contributor 重构 net +1 / profile 样本门槛 +2）。守卫 G1-G7 7 PASS / 0 HIT；guard-align/meta PASS。
+1181 → **1187**（+6：排序 +1 / id 毫秒 +1 / push 留痕 +1 / contributor 重构 net +1 / profile 样本门槛 +2）。守卫 G1-G7 7 PASS / 0 HIT；ai-guard-align/meta PASS。

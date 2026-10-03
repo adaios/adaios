@@ -14,7 +14,7 @@ revised: 2026-08-15（决策点定稿；补 CLAUDE.md→README.md 人向命名�
 
 ## 〇、一句话定位
 
-**代码工程是结果集，AI 工程是驱动层。** 本 RFC 把阿呆已有的零散成果（AGENTS.md / docs/ai/ / guard-meta）提升为一个有传统、可继承、可校验的工程层。
+**代码工程是结果集，AI 工程是驱动层。** 本 RFC 把阿呆已有的零散成果（AGENTS.md / docs/ai/ / ai-guard-meta）提升为一个有传统、可继承、可校验的工程层。
 
 ## 一、背景：为什么需要
 
@@ -24,8 +24,8 @@ revised: 2026-08-15（决策点定稿；补 CLAUDE.md→README.md 人向命名�
 |:-----|:-----|:-----|
 | 入口 | `AGENTS.md` + `docs/ai/README.md` | ✅ 已工具无关化 |
 | 审查体系 | 8 官 roles + audit/review 流程 + 9 个 checklists | ✅ 完整 |
-| 收尾闭环 | `process/ship.md`（guard-meta 门禁）| ✅ 已接入 |
-| 元治理 | `guard-meta.sh`（图谱/lines/孤儿 + `--fix`）| ✅ 完整 |
+| 收尾闭环 | `process/ship.md`（ai-guard-meta 门禁）| ✅ 已接入 |
+| 元治理 | `ai-guard-meta.sh`（图谱/lines/孤儿 + `--fix`）| ✅ 完整 |
 | 目录治理 | 全 docs/ 子目录 `_index.md` | ✅ 完整 |
 | **决策记录** | RFC 有 27 篇，但**无 ADR 归集**；RFC 历史决策散落各处，无「为什么这么定」的索引 | ⚠️ **缺** |
 | **已知坑** | 坑散在 checklists「上次发现」列 + REVIEW 历史 + change-log | ⚠️ **缺独立成体系** |
@@ -69,7 +69,7 @@ revised: 2026-08-15（决策点定稿；补 CLAUDE.md→README.md 人向命名�
 
 ```
 ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级）
-  _index.md                目录治理（沿用 guard-meta）
+  _index.md                目录治理（沿用 ai-guard-meta）
   README.md                AI 工程入口（承接 AGENTS.md 指向）
   assets/
     adr/                   决策记录索引（ADR-001 起，链接 RFC/会话）
@@ -92,8 +92,8 @@ ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级�
 ### 4.2 迁移原则：指针化，不搬内容
 
 - 现有 docs/ai/ 内容**物理不动**，`ai-engineering/` 作为**统一入口层**，内部用指针指向现有文件
-- 避免 3 天前的教训：文档搬迁 → 断链 → guard-meta 报错（D10/D30）
-- 或者：一次性物理迁移 + guard-meta 范围更新（二选一，见 §六决策点）
+- 避免 3 天前的教训：文档搬迁 → 断链 → ai-guard-meta 报错（D10/D30）
+- 或者：一次性物理迁移 + ai-guard-meta 范围更新（二选一，见 §六决策点）
 
 ### 4.3 补齐资产（本次新增）
 
@@ -110,7 +110,7 @@ ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级�
 讨论 discuss → 方案 design（RFC）→ 开发 develop → 审核 review/audit → 验收 ship
    │              │                                        │
    ▼              ▼                                        ▼
- ideas/ 登记   决策入 ADR（验收时）                      guard-meta 门禁
+ ideas/ 登记   决策入 ADR（验收时）                      ai-guard-meta 门禁
 ```
 
 - **discuss.md**：讨论登记过滤器（什么值得沉淀/什么是一次性对话；想法入 `docs/ideas/`）
@@ -131,7 +131,7 @@ ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级�
 
 | 批 | 内容 | 验收 |
 |:---|:-----|:-----|
-| 批 1 | 建 `ai-engineering/` 骨架 + 入口 + `_index.md` + guard-meta 范围扩展 | guard-meta PASS（含新目录）|
+| 批 1 | 建 `ai-engineering/` 骨架 + 入口 + `_index.md` + ai-guard-meta 范围扩展 | ai-guard-meta PASS（含新目录）|
 | 批 2 | 归集 `pitfalls.md`（从 checklists 提取）+ `boundaries.md` + `conventions.md` | 内容完整、无断链 |
 | 批 3 | 建 `adr/` 首批（从 RFC 提炼 5-10 条）+ 登记规则 | ADR-001… 存在，RFC 可反查 |
 | 批 4 | 补 `discuss.md` + `design.md`，工作流闭环；决策过滤器生效 | 新讨论按流程登记 |
@@ -144,7 +144,7 @@ ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级�
 | # | 决策 | 结论 |
 |:-:|:-----|:-----|
 | 1 | 形态 | 仓库内 `ai-engineering/` 顶层目录（一等公民）|
-| 2 | 迁移方式 | **物理迁移**（docs/ai/ → ai-engineering/，guard-meta 范围更新，单一事实源）|
+| 2 | 迁移方式 | **物理迁移**（docs/ai/ → ai-engineering/，ai-guard-meta 范围更新，单一事实源）|
 | 3 | ADR 与 RFC 关系 | ADR = RFC 的**决策索引**（ADR 链接 RFC，不重复内容）|
 | 4 | 跨项目方法论 | **同步立**——阿呆既是想法实现，也是 AI 开发体系研究实践场；目标可落地、可复制 |
 | 5 | 沉淀过滤器 | **由 AI 主动发现**（开发/审核中识别值得沉淀的决策与坑，提请入 ADR/pitfalls，人确认）|
@@ -155,14 +155,14 @@ ai-engineering/            ← 新顶层目录（与 services/ apps/ os/ 平级�
 
 | 风险 | 对策 |
 |:-----|:-----|
-| AI 工程资产膨胀 → 自身成维护负担 | 沉淀过滤器 + guard-meta 校验 + `_index.md` 过期判断 |
-| 物理迁移断链 | 迁移当批即跑 guard-meta（M1 断链检测兜底）|
+| AI 工程资产膨胀 → 自身成维护负担 | 沉淀过滤器 + ai-guard-meta 校验 + `_index.md` 过期判断 |
+| 物理迁移断链 | 迁移当批即跑 ai-guard-meta（M1 断链检测兜底）|
 | 双读者问题（人/AI）| 保持 AGENTS.md（AI）/CLAUDE.md（人）分离，不合并 |
 | 资产与代码漂移 | pitfalls/conventions 由 ship 门禁强制「修复即沉淀」|
 
 ## 八、验收标准（总）
 
-1. `ai-engineering/` 存在且 guard-meta 覆盖，PASS
+1. `ai-engineering/` 存在且 ai-guard-meta 覆盖，PASS
 2. 工作流六段（讨论→方案→开发→审核→验收）都有定义文件，无空段
 3. `pitfalls.md` 覆盖 checklists 全部「上次发现」；`adr/` 首批 5-10 条
 4. 跨项目方法论边界明确（哪些可跨/哪些不跨）

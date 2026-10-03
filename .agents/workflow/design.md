@@ -38,7 +38,7 @@ tags: [ai, workflow, design]
 | 1. 目标与约束 | Why & What NOT | "实现持仓编辑，但不要动历史记录格式" |
 | 2. 架构与边界 | Where & How | "在 trading 域实现，不改数据库结构" |
 | 3. 技术规范 | With What | "Java 17 + Spring Boot，遵循 conventions.md C1-C8" |
-| 4. 质量门槛 | Done Means What | "配套测试覆盖新增分支，guard-meta PASS" |
+| 4. 质量门槛 | Done Means What | "配套测试覆盖新增分支，ai-guard-meta PASS" |
 | 5. 边界条件 | Edge Cases | "并发编辑、空仓、跨日、脏数据" |
 | 6. 安全约束 | Safety | "data/ 隐私不落盘，插件门控不旁路" |
 

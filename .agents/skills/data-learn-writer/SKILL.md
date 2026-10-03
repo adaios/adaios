@@ -10,7 +10,7 @@ lines: 107
 depends-on:
   - ../../assets/skills-spec.md
 related:
-  - ../../guards/guard-cost.sh
+  - ../../guards/ai-guard-cost.sh
   - ../../assets/boundaries.md
   - ../../assets/pitfalls.md
   - ../../../docs/rfc/20260829-learn-plugin.md
@@ -79,7 +79,7 @@ tags: [skill, build, learn, digest]
    - **frontmatter**：learn 卡片模板（title/type/source/created/status/trade_related/tags）——**每篇各记自身 `source`**（platform/author/url/published）。
    - **README 如实记来源**：哪些源是用户给的、哪些是顺着内容检索或引用的，必须写清——**不得把用户补充的文章写成「视频引用的原文」**（首例即犯此错，见参考资料「已知失真」）。
 8. **隐私门禁**：确认新落盘目录被 `.gitignore` 覆盖（`data/*/learn/`）——`git check-ignore` 验证，缺失则补规则（B3 红线）。
-9. **费用/成本记录**：云端转写或外发产生费用的，收尾跑 `bash ai-engineering/guard-cost.sh --record` 备注（若涉及会话成本纪律）。
+9. **费用/成本记录**：云端转写或外发产生费用的，收尾跑 `bash ai-engineering/ai-guard-cost.sh --record` 备注（若涉及会话成本纪律）。
 
 ## 约束与规则
 
@@ -104,4 +104,4 @@ tags: [skill, build, learn, digest]
 - 首次实践成果样例：`data/adai/learn/ai/harness-engineering/`（9 文档 + 素材，2026-09-06）——**含两处已知失真，新主题勿沿用**：① README 写「视频引用的 7 篇原文」，实测转写稿中 LangChain/Hashimoto/Fowler 等 5 篇命中 0 次（系用户补充或检索所得，来源未记清）；② README 声称 `_raw/` 含「7 篇原文文本」，实际 `_raw/` 仅视频 meta + 转写稿 2 个文件
 - 技能规范：`.agents/assets/skills-spec.md`；frontmatter：`.agents/frontmatter-spec.md`
 - 红线边界：`.agents/assets/boundaries.md`（B1/B3/B8）；坑：`.agents/assets/pitfalls.md`
-- 成本纪律：`.agents/checklists/ai-cost-checklist.md` + `guard-cost.sh`
+- 成本纪律：`.agents/checklists/ai-cost-checklist.md` + `ai-guard-cost.sh`

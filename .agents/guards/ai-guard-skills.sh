@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-# 技能包质量校验（S3 / S4 / S5 / S7）—— 补 guard-tools T3 之外的部分
+# 技能包质量校验（S3 / S4 / S5 / S7）—— 补 ai-guard-tools T3 之外的部分
 #
 # 与其它守卫的分工（避免重复判据）：
-#   guard-tools T3 技能枚举 + name 字段齐备 + 两种布局  → S1 / S2 / S9
-#   guard-meta     frontmatter 契约 / lines / 图谱      → 对技能同样适用
-#   guard-skills   官方规范的**格式硬约束** + 结构完整性  → S3 / S4 / S5 / S7（本脚本）
+#   ai-guard-tools T3 技能枚举 + name 字段齐备 + 两种布局  → S1 / S2 / S9
+#   ai-guard-meta     frontmatter 契约 / lines / 图谱      → 对技能同样适用
+#   ai-guard-skills   官方规范的**格式硬约束** + 结构完整性  → S3 / S4 / S5 / S7（本脚本）
 #
 # 官方依据：Agent Skills 规范（agentskills.io/specification）
 #   name        ≤64；仅小写字母/数字/连字符；不得首尾连字符或连续连字符；须等于父目录名

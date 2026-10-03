@@ -13,7 +13,7 @@ related:
 tags: [ai, context, superseded]
 ---
 
-> ⛔ **已退役（2026-10-03）**：本文属早期「项目级 AI 上下文」设计（`ai/context/`），**内容已被现有体系覆盖**——项目定位与规则见 `AGENTS.md`、架构红线见 `ARCHITECTURE.md`、状态快照见 `AGENTS.local.md`（由 `guard-context.sh --write-local` 自动生成）。本文宣称的「会话启动自动加载」**从未有实现**（`{{占位符}}` 从未被填充）。**保留仅作历史痕迹，请勿据此执行。**
+> ⛔ **已退役（2026-10-03）**：本文属早期「项目级 AI 上下文」设计（`ai/context/`），**内容已被现有体系覆盖**——项目定位与规则见 `AGENTS.md`、架构红线见 `ARCHITECTURE.md`、状态快照见 `AGENTS.local.md`（由 `ai-guard-context.sh --write-local` 自动生成）。本文宣称的「会话启动自动加载」**从未有实现**（`{{占位符}}` 从未被填充）。**保留仅作历史痕迹，请勿据此执行。**
 
 # Project Context
 

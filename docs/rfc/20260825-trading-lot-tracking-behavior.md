@@ -163,7 +163,7 @@ implementation: 2026-08-25 已实施——后端批次推导（TradingLot/Tradin
 6. 行为标注六类判定正确（测试覆盖）
 7. 推送带 expiresAt：行情类当天收盘、汇总类次日消失；过期不展示/被清理
 8. 回合总账：批次清仓自动汇总
-9. guard-meta/align PASS + 全部测试通过
+9. ai-guard-meta/align PASS + 全部测试通过
 
 ## 十三、不做（本版范围外）
 

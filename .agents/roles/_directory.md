@@ -42,7 +42,7 @@ tags: [meta, directory]
 
 ## 守卫（谁保证这里不腐烂）
 
-- `guard-skills`（S3 name / S4 description / S5 五段 / S7 偏离）· `guard-meta`
+- `ai-guard-skills`（S3 name / S4 description / S5 五段 / S7 偏离）· `ai-guard-meta`
 
 ## 维护动作
 

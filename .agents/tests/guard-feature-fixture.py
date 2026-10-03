@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""guard-feature.sh 的反例回归测试（双向验证：正例 PASS 之外，证明每个检查项真会抓）。
+"""ai-guard-feature.sh 的反例回归测试（双向验证：正例 PASS 之外，证明每个检查项真会抓）。
 
 用法:  python3 .agents/tests/guard-feature-fixture.py
 退出码: 0 = 全部检查项按预期触发；1 = 有检查项「看起来在查、其实查不到」
@@ -90,7 +90,7 @@ w('empty/docs/features/_index.md', '# 啥也没有\n\n没有功能行。\n')
 
 
 def run(root):
-    r = subprocess.run(['bash', str(REPO / '.agents/guards/guard-feature.sh'), '--root', str(root)],
+    r = subprocess.run(['bash', str(REPO / '.agents/guards/ai-guard-feature.sh'), '--root', str(root)],
                        capture_output=True, text=True)
     return r.returncode, (r.stdout + r.stderr).strip()
 

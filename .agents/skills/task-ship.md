@@ -9,10 +9,10 @@ status: active
 lines: 51
 depends-on:
   - ../process/ship.md
-  - ../guards/guard-meta.sh
+  - ../guards/ai-guard-meta.sh
 related:
   - ../process/review.md
-  - ../guards/guard-align.sh
+  - ../guards/ai-guard-align.sh
 tags: [skill, build, ship]
 ---
 
@@ -30,8 +30,8 @@ tags: [skill, build, ship]
 2. **测试**：`cd services/adai-core && ./gradlew test`；更新 `docs/reference/status.md` 测试数（唯一真相源）
 3. **契约同步**：新增/修改 API → `api-spec.md`（版本+变更记录）；data 格式变更 → `freeze`；新功能 → `feature-reference.md`
 4. **文档登记**：对应目录 `_index.md` 文件清单；子项目 AGENTS.md 批次状态；`docs/reference/change-log.md` 顶部追加（日期 | 批次 | 摘要 | 测试数变化）
-5. **决策沉淀**：RFC 验收标准逐条 PASS/FAIL 留痕；ADR 三问全中才建（否则 change-log 写「为什么这么定」）；踩坑入 checklists + pitfalls；`bash ai-engineering/guard-sediment.sh`
-6. **门禁**：`guard-meta.sh --fix` + `guard-meta.sh` + `guard-align.sh` 全 PASS（禁止带 FAIL 提交；pre-commit hook 自动兜底）
+5. **决策沉淀**：RFC 验收标准逐条 PASS/FAIL 留痕；ADR 三问全中才建（否则 change-log 写「为什么这么定」）；踩坑入 checklists + pitfalls；`bash ai-engineering/ai-guard-sediment.sh`
+6. **门禁**：`ai-guard-meta.sh --fix` + `ai-guard-meta.sh` + `ai-guard-align.sh` 全 PASS（禁止带 FAIL 提交；pre-commit hook 自动兜底）
 7. **规范提交**：一提交一主题（feat:/fix:/docs:），不混合无关改动
 
 ## 约束与规则
@@ -47,5 +47,5 @@ tags: [skill, build, ship]
 ## 参考资料
 
 - 权威流程：`../process/ship.md`
-- 元治理：`../guard-meta.sh`；对齐：`../guard-align.sh`
-- 沉淀：`../guard-sediment.sh`；部署门禁：`../deploy-gate.sh`；审查：`../process/review.md`
+- 元治理：`../ai-guard-meta.sh`；对齐：`../ai-guard-align.sh`
+- 沉淀：`../ai-guard-sediment.sh`；部署门禁：`../deploy-gate.sh`；审查：`../process/review.md`

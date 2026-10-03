@@ -30,7 +30,7 @@ tags: [ai, process]
 
 ```bash
 bash docs/review/guard.sh        # G1-G7 代码级守护
-bash .agents/guards/guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
+bash .agents/guards/ai-guard-meta.sh       # 元治理：frontmatter 图谱/lines/孤儿（D30/D34）
 ```
 
 ## 3. 8 客观官 + 1 对抗官独立并行（roles/ 共 12 个定义，另 3 个外部视角官按场景必跑）
@@ -57,7 +57,7 @@ bash .agents/guards/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 - **交叉印证**：同一问题被 ≥2 官命中 → 标注 ⭐（多视角确认 = 优先级高）
 - **输出控字（成本纪律 2026-08-18）**：每条问题 ≤3 行（位置/一句问题/一句建议），仅 P0/战略级展开，P1-P3 列表直出（输出是 9-27 元/M 最贵通道）
 - 报告落盘 `docs/review/audits/YYYY-MM-DD-<主题>.md`（带 frontmatter，登记 docs/review/_index.md）
-- **归口强制（2026-08-23，防游离双轨）**：报告落盘**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`（豁免历史报告不再报游离）；③跑 `bash .agents/guards/guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（有游离 = 归口没做完，不许收工）（2026-08-23 P2-1 修正：原「汇总进 REVIEW.md 走查区」与现行 audits/ 落盘机制冲突，统一为现行机制）
+- **归口强制（2026-08-23，防游离双轨）**：报告落盘**必须**同时——①未修项逐条进 REVIEW.md 对应优先级表（含 `⏸ 已搁置`/`⚠️ 复核` 标注）；②已在 REVIEW 登记的报告在顶部 `<!-- unfixed-gate -->` 补一行 `报告名 → 归口编号`（豁免历史报告不再报游离）；③跑 `bash .agents/guards/ai-guard-unfixed.sh` 验证 ③ 游离 = 0 且 ④ 对账矛盾归零（有游离 = 归口没做完，不许收工）（2026-08-23 P2-1 修正：原「汇总进 REVIEW.md 走查区」与现行 audits/ 落盘机制冲突，统一为现行机制）
 
 ## 5. 沉淀检查点 + 记录成本
 

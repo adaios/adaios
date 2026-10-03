@@ -1,6 +1,6 @@
 ---
 title: 项目级 AI 上下文中间层——扩展现有机制（实测校准版）
-description: 目标（用户 2026-10-03）＝一个中间层：项目级 AI 上下文（AGENTS.md / skill / subagent / 脚本）在项目层，不与工具深度绑定，而 Qoder / Codex / Claude Code / DSH 都能读。★本版两处重大修正：① **机制项目里早已存在**——`.agents/scripts/link-skills.sh` + `.gitignore` 三目录忽略 + `guard-tools.sh` T4 检查已在运行，只是只注册 1 个技能（data-learn-writer）、只覆盖 1 个工具（DSH），故本 RFC 从「新建中间层」改为「扩展既有机制」；② **DSH 技能发现当场实测**（三探针，2026-10-03）：`.dsh/skills/` ✅（扁平与目录两种布局都认）、`.agents/skills/` ✅、**工作区根 `skills/` ❌ 不生效**（原 F7 推测被证伪，且技能清单是**热更新**的，无需重开会话）；③ **Qoder 实测**（JetBrains 插件）：项目级技能目录是 **`.qoder/skills/`**（**非**项目根 `skills/`）、**跟随软链**、`.qoder/agents/` 子代理亦识别；④ **Codex 实测**：技能目录＝`.agents/skills/`（**与 DSH 共用 ⇒ 零新增出口**）、**跟随软链**、`.codex/agents/<name>.toml` 子代理可用。
+description: 目标（用户 2026-10-03）＝一个中间层：项目级 AI 上下文（AGENTS.md / skill / subagent / 脚本）在项目层，不与工具深度绑定，而 Qoder / Codex / Claude Code / DSH 都能读。★本版两处重大修正：① **机制项目里早已存在**——`.agents/scripts/link-skills.sh` + `.gitignore` 三目录忽略 + `ai-guard-tools.sh` T4 检查已在运行，只是只注册 1 个技能（data-learn-writer）、只覆盖 1 个工具（DSH），故本 RFC 从「新建中间层」改为「扩展既有机制」；② **DSH 技能发现当场实测**（三探针，2026-10-03）：`.dsh/skills/` ✅（扁平与目录两种布局都认）、`.agents/skills/` ✅、**工作区根 `skills/` ❌ 不生效**（原 F7 推测被证伪，且技能清单是**热更新**的，无需重开会话）；③ **Qoder 实测**（JetBrains 插件）：项目级技能目录是 **`.qoder/skills/`**（**非**项目根 `skills/`）、**跟随软链**、`.qoder/agents/` 子代理亦识别；④ **Codex 实测**：技能目录＝`.agents/skills/`（**与 DSH 共用 ⇒ 零新增出口**）、**跟随软链**、`.codex/agents/<name>.toml` 子代理可用。
 date: 2026-10-03
 status: draft
 decided-by: —（待拍板：用户 2026-10-03「按照下一步走」→「放」＝授权放探针实测；探针已清理，方案落地须另行点头）
@@ -9,7 +9,7 @@ related:
   - 20261003-skill-conformance-and-supply-chain.md
   - ../../AGENTS.md
   - ../../.agents/scripts/link-skills.sh
-  - ../../.agents/guards/guard-tools.sh
+  - ../../.agents/guards/ai-guard-tools.sh
   - ../../.agents/assets/skills-spec.md
   - ../reference/status.md
 ---
@@ -32,8 +32,8 @@ related:
 |:--|:--|:--|
 | `.agents/scripts/link-skills.sh` | 把 `.agents/skills/<name>.md` **相对软链**到工具目录；`--check` 只检不写 | `TARGETS=(".dsh/skills")`、`REGISTER=(data-learn-writer)` ⇒ **1 工具 / 1 技能** |
 | `.gitignore`（第 14–21 行） | 整目录忽略 `.dsh/` `.claude/` `.agents/` | 注释已写明"技能注册是本机状态而非仓库资产，真相源在 `ai-engineering/`" |
-| `guard-tools.sh` **T4** | 扫描 `$ROOT` 与 `$HOME` 下的 `.dsh/skills`、`.claude/skills`、`.agents/skills`，**按软链真身是否指向本仓库 `ai-engineering/` 判定** | 6 个位置已覆盖，不写死工具名 |
-| `guard-tools.sh` T5 | 工具侧上下文注入：若 `.claude/settings.json` 存在，检查是否显式引用 `AGENTS.md` | 已有 |
+| `ai-guard-tools.sh` **T4** | 扫描 `$ROOT` 与 `$HOME` 下的 `.dsh/skills`、`.claude/skills`、`.agents/skills`，**按软链真身是否指向本仓库 `ai-engineering/` 判定** | 6 个位置已覆盖，不写死工具名 |
+| `ai-guard-tools.sh` T5 | 工具侧上下文注入：若 `.claude/settings.json` 存在，检查是否显式引用 `AGENTS.md` | 已有 |
 
 **现有设计里有一条重要的成本纪律**（`link-skills.sh` 注释原文）：16 个技能包中**只有"用户一句话就能直触发"的才进工具 catalog**；12 个审查官是**流程内触发**（`process/review.md` 按下表派发），全量注册会常驻会话上下文，并可能"在你随口改一行代码时自动派 8+1 官全量走查"——那是全项目最贵的 AI 流程。
 
@@ -126,7 +126,7 @@ related:
 ### 5.3 门禁
 
 - **T4 已覆盖**多工具多位置的真身判定，无需改判据；扩出口后自动纳入检查。
-- **新增布局校验**（并入 RFC 20261003-skill-conformance 的 `guard-skills.sh`）：技能必须是 `<name>/SKILL.md`；**目录名 == frontmatter `name`**；目录内无游离文件。
+- **新增布局校验**（并入 RFC 20261003-skill-conformance 的 `ai-guard-skills.sh`）：技能必须是 `<name>/SKILL.md`；**目录名 == frontmatter `name`**；目录内无游离文件。
 - **防第二真相源**：出口必须是**软链**且指向本仓库；发现副本 → FAIL（T4 的真身判定已天然覆盖这一点）。
 
 ## 六、迁移（分批，先做 1 个验证闭环）
@@ -143,8 +143,8 @@ related:
 
 ## 七、验收（热更新 ⇒ 当场可验）
 
-1. `bash .agents/scripts/link-skills.sh --check` 全绿；`guard-tools.sh` 的 T4 把新出口全部识别为指向本仓库。
-2. `guard-meta` / `guard-feature` / `guard-skills` PASS，反例逐条触发。
+1. `bash .agents/scripts/link-skills.sh --check` 全绿；`ai-guard-tools.sh` 的 T4 把新出口全部识别为指向本仓库。
+2. `ai-guard-meta` / `ai-guard-feature` / `ai-guard-skills` PASS，反例逐条触发。
 3. **当场验证 DSH**：批 1 落地后，`data-learn-writer` 应仍在技能清单里（布局变了但发现机制不变）；**无需重开会话**。
 4. **Claude Code 实测**：`.claude/skills/<name>` 目录软链能否被识别（官方承诺，仍建议实跑一次）。
 5. 零内容改动：技能正文与 frontmatter 字段值一个字节不改（只改位置）。
@@ -177,16 +177,16 @@ related:
 | 技能迁移 | `.agents/skills/data-learn-writer.md` → **`data-learn-writer/SKILL.md`**（`git mv`，官方目录布局；frontmatter 相对路径 +1 层） |
 | 出口 | `.agents/scripts/link-skills.sh` 的 `TARGETS` **1 → 4**：`.dsh/skills` · `.agents/skills` · `.claude/skills` · `.qoder/skills`（Qoder CLI/IDE/JetBrains 插件）；自动清理上一代扁平软链 + 目标非软链时拒绝覆盖 |
 | `.gitignore` | 新增**锚定根** `/skills/`（关键：写成 `skills/` 会连真相源 `.agents/skills/` 一起忽略） |
-| 守卫修复 | `guard-meta` 收集 glob 不递归 → 新布局**完全漏检（假绿）**（已修）· `guard-tools` T3 同因（已修，16 个）· `guard-meta` M1/M3 新增 `supersededBy` 且**归一化标量值**（已修） |
+| 守卫修复 | `ai-guard-meta` 收集 glob 不递归 → 新布局**完全漏检（假绿）**（已修）· `ai-guard-tools` T3 同因（已修，16 个）· `ai-guard-meta` M1/M3 新增 `supersededBy` 且**归一化标量值**（已修） |
 | 死链 | `docs/rfc/20260829-learn-plugin.md` 的 `supersededBy` 就地修正（迁移造成） |
 | 文档跟随 | `assets/skills-spec.md` · `guides/skills-usage.md` · `guides/development.md` · `AGENTS.md` |
-| 验证 | `link-skills.sh --check` 全绿 · `guard-meta` **PASS**（175 files）· `guard-feature` **PASS** · `guard-tools` **10 通过 / 0 警告 / 0 失败**（T3 **16 个** · T4 **4 出口**）· T6 shell-lint PASS · **DSH 技能清单当场验证**（迁移瞬间消失、重建软链后恢复） |
+| 验证 | `link-skills.sh --check` 全绿 · `ai-guard-meta` **PASS**（175 files）· `ai-guard-feature` **PASS** · `ai-guard-tools` **10 通过 / 0 警告 / 0 失败**（T3 **16 个** · T4 **4 出口**）· T6 shell-lint PASS · **DSH 技能清单当场验证**（迁移瞬间消失、重建软链后恢复） |
 | 沉淀 | `assets/pitfalls.md` 第二十三章（5 条）· `docs/reference/change-log.md` 顶部本批 |
 
 ### 未做（留给后续批）
 
 - `roles/` 12 个审查官**仍扁平**（批 3；且按成本纪律**不注册**到工具出口）。
-- `guard-skills.sh`（布局合规校验）属 RFC 20261003-skill-conformance，未建。
+- `ai-guard-skills.sh`（布局合规校验）属 RFC 20261003-skill-conformance，未建。
 - Gemini CLI / GitHub Copilot 的技能目录**待核**（**Codex 已实测 ✅**；路径写错比留空危害更大）。
 
 ---

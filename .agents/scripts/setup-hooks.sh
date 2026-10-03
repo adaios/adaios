@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────────
 # 启用 git hooks（core.hooksPath → .githooks/）+ 恢复仓库级 git 设置
 # 换机器 clone 后执行一次：bash .agents/scripts/setup-hooks.sh
-# 作用：pre-commit 自动跑 本批范围守卫 + 隐私/密钥闸门 + guard-align + guard-meta + guard.sh + shell-lint
+# 作用：pre-commit 自动跑 本批范围守卫 + 隐私/密钥闸门 + ai-guard-align + ai-guard-meta + guard.sh + shell-lint
 #
 # 为什么顺手设 git config：下面三条是**仓库级**设置（写在 .git/config 里）——
 # .git 本身不入库，所以换机 / 重新 clone 后会丢。2026-10-01 落地多分支工作方式时加的：

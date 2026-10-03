@@ -2,9 +2,9 @@
 # ─────────────────────────────────────────────────────────────
 # 任务前上下文注入（进攻侧核心）— 生成"开工前必读清单"
 #
-# 用法:  bash .agents/guards/guard-context.sh            # 全部上下文
-#        bash .agents/guards/guard-context.sh <主题词>    # 按主题过滤
-#        bash .agents/guards/guard-context.sh --write-local  # 收尾：写 AGENTS.local.md 快照（DSH 等新会话自动注入）
+# 用法:  bash .agents/guards/ai-guard-context.sh            # 全部上下文
+#        bash .agents/guards/ai-guard-context.sh <主题词>    # 按主题过滤
+#        bash .agents/guards/ai-guard-context.sh --write-local  # 收尾：写 AGENTS.local.md 快照（DSH 等新会话自动注入）
 # 说明:  每次开工前跑一次，自动汇总 AI 该知道的上下文，不用人提醒：
 #         C0 产品心跳（用户是否还在用 — 最高优先级信号，2026-09-13 新增）
 #         C1 当前状态（state/_index 指针 → status/REVIEW/task-log）
@@ -60,8 +60,8 @@ def head_file(p, n=15, title=None):
 out = []
 if WRITE_LOCAL:
     out.append("# AI 开工上下文快照（机器生成，勿手改）")
-    out.append(f"> 生成：{__import__('datetime').date.today()} · `guard-context.sh --write-local` · 新会话自动注入；真相源 `docs/`，改源后重跑（gitignore，不入库）。")
-    out.append("> 当日成本不在此（隔日失真），开工现跑 `guard-context.sh`。\n")
+    out.append(f"> 生成：{__import__('datetime').date.today()} · `ai-guard-context.sh --write-local` · 新会话自动注入；真相源 `docs/`，改源后重跑（gitignore，不入库）。")
+    out.append("> 当日成本不在此（隔日失真），开工现跑 `ai-guard-context.sh`。\n")
 else:
     out.append(f"# AI 任务上下文清单{('（主题：' + TOPIC + '）') if TOPIC else ''}")
     out.append(f"> 生成时间：{__import__('datetime').date.today()} · 开工前读此清单，不用人提醒\n")
@@ -120,12 +120,12 @@ try:
         if WRITE_LOCAL:
             # 快照 = 每轮注入固定开销，C0 压到 2 行（见 checklists/ai-cost-checklist.md C7）
             out.append(f"> 最后记录 **{_last}**（{_days} 天前）· 今日 {_p.get('TODAY','?')} · 近 7 天 {_p.get('N7','?')} · 交易最近 {_p.get('TRADING','?')}{_fresh}")
-            out.append("> 每日流程：用户说「**每日巡检**」→ 跑 `bash .agents/guards/guard-prod.sh`，只用人话讲「用户之声 / 有没有新异常 / 心跳趋势」（AGENTS.md 规则 8）")
+            out.append("> 每日流程：用户说「**每日巡检**」→ 跑 `bash .agents/guards/ai-guard-prod.sh`，只用人话讲「用户之声 / 有没有新异常 / 心跳趋势」（AGENTS.md 规则 8）")
         else:
             out.append(f"> 最后一条记录：**{_last}**（{_days} 天前）· 今日 **{_p.get('TODAY','?')}** 条 · 近 7 天 **{_p.get('N7','?')}** 条 · 近 14 天 **{_p.get('N14','?')}** 条{_fresh}")
             out.append(f"> 交易模块最近写入：{_p.get('TRADING','?')}")
             if _p.get('TODAY', '0') not in ('0', '?', ''):
-                out.append("> 📣 今日有新的真实使用 — 先跑 `bash .agents/guards/guard-prod.sh`：看用户在问什么（用户之声）+ 生产日志有没有新异常")
+                out.append("> 📣 今日有新的真实使用 — 先跑 `bash .agents/guards/ai-guard-prod.sh`：看用户在问什么（用户之声）+ 生产日志有没有新异常")
         _spend = 0.0
         _log = AI/'state/cost-log.jsonl'
         if _log.exists():
@@ -300,15 +300,15 @@ out.append("")
 # C6.5 成本纪律（每次开工提醒：今天烧了多少 + 省钱原则）
 out.append("## C6.5 成本纪律（省钱原则见 checklists/ai-cost-checklist.md）")
 if WRITE_LOCAL:
-    out.append("> （快照不含当日成本：隔日失真；开工时现跑 `guard-context.sh` 获取）")
+    out.append("> （快照不含当日成本：隔日失真；开工时现跑 `ai-guard-context.sh` 获取）")
 else:
     try:
         import subprocess as _sp
-        _cost = _sp.run(['bash', str(AI/'guard-cost.sh'), '--day',
+        _cost = _sp.run(['bash', str(AI/'ai-guard-cost.sh'), '--day',
                          __import__('datetime').date.today().isoformat()],
                         capture_output=True, text=True, timeout=25)
         _lines = [l for l in _cost.stdout.splitlines() if l.startswith('>')]
-        out.append('\n'.join('> ' + l[2:].strip() for l in _lines[:4]) if _lines else '> （guard-cost 未输出，跳过）')
+        out.append('\n'.join('> ' + l[2:].strip() for l in _lines[:4]) if _lines else '> （ai-guard-cost 未输出，跳过）')
         for l in _cost.stdout.splitlines():
             if l.startswith('- 今日已超') or l.startswith('- 缓存读取占') or l.startswith('- 调用次数超'):
                 out.append('> ⚠️ ' + l.lstrip('- '))
@@ -323,7 +323,7 @@ else:
                     if l.startswith('## ') or l.startswith('| C') or l.startswith('### S'):
                         out.append('> ' + l.strip())
     except Exception as _e:
-        out.append(f'> （guard-cost 调用失败: {_e}）')
+        out.append(f'> （ai-guard-cost 调用失败: {_e}）')
 out.append("")
 
 # C6 待办（task-log 当前任务区）
@@ -369,11 +369,11 @@ if WRITE_LOCAL:
     target = ROOT / 'AGENTS.local.md'
     target.write_text(body + '\n', encoding='utf-8')
     size = len(body.encode('utf-8'))
-    print(f'[guard-context] 快照已写入 AGENTS.local.md（{size} 字节 / {body.count(chr(10)) + 1} 行）')
+    print(f'[ai-guard-context] 快照已写入 AGENTS.local.md（{size} 字节 / {body.count(chr(10)) + 1} 行）')
     if size > BUDGET:
-        print(f'[guard-context] ⚠️ 仍超 {BUDGET} 字节预算（各段已裁到最小），请精简源文件')
+        print(f'[ai-guard-context] ⚠️ 仍超 {BUDGET} 字节预算（各段已裁到最小），请精简源文件')
     elif before > BUDGET:
-        print(f'[guard-context] 已按段优先级自动裁剪 {before} → {size} 字节（预算 {BUDGET}）；源文件建议同步精简')
+        print(f'[ai-guard-context] 已按段优先级自动裁剪 {before} → {size} 字节（预算 {BUDGET}）；源文件建议同步精简')
 else:
     print(body)
 PYEOF

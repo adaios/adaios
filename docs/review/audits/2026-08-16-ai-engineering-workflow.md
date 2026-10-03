@@ -15,7 +15,7 @@ tags: [review, audit, ai-engineering]
 # AI 工程工作流自伤自查（第二轮，2026-08-16）
 
 > 三视角独立并行：流程逻辑（FL-01~10）+ 失真风险（DF-01~07）+ 审核缺失（GC-01~12），交叉印证。
-> 结论：**机器强制覆盖率 2/12 → 修复后 5/12**（guard-align + guard-meta + guard.sh + 隐私闸门 全进 pre-commit）。
+> 结论：**机器强制覆盖率 2/12 → 修复后 5/12**（ai-guard-align + ai-guard-meta + guard.sh + 隐私闸门 全进 pre-commit）。
 
 ## 一、核心发现（交叉印证）
 
@@ -28,13 +28,13 @@ tags: [review, audit, ai-engineering]
 | REVIEW 已修/未修矛盾 | 审核 | ✅ 已修（P2 清理）|
 | 检查点建议未并入（K32-35/C-P1-5）| 审核 | ✅ 已修（补 K32-35 + C8-12 + 修正声明）|
 | data 隐私无闸门（B3）| 失真 | ✅ 已修（pre-commit 隐私闸门）|
-| projects/** 不在 guard-meta 范围 | 失真+审核 | ✅ 已修（83 文件 PASS）|
+| projects/** 不在 ai-guard-meta 范围 | 失真+审核 | ✅ 已修（83 文件 PASS）|
 
 ## 二、本轮修复清单（提交 a74fd46 + f896005 + 215fd37）
 
-1. pre-commit 三层门禁：guard-align（内容）+ guard-meta（结构）+ guard.sh（G1-G7 防复发）
+1. pre-commit 三层门禁：ai-guard-align（内容）+ ai-guard-meta（结构）+ guard.sh（G1-G7 防复发）
 2. pre-commit 隐私闸门：data/ 真实数据禁止提交（B3 落地，实测拦截）
-3. guard-meta 纳入 projects/**（4 卡 lines 校准 + depends-on 修复）
+3. ai-guard-meta 纳入 projects/**（4 卡 lines 校准 + depends-on 修复）
 4. REVIEW P2 清理（已修项出表）
 5. 检查点沉淀：K32-K35 + C8-C12
 6. setup-hooks.sh（换机 clone 一条命令启用 hooks）

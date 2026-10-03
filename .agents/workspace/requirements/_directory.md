@@ -39,13 +39,13 @@ tags: [meta, directory]
 - **需求只能由人定稿**——AI 不得自行宣布「需求已定」（这是人的介入点 ①）
 - **一份需求一个文件**，`<需求id>` 与 RFC / feature 编号一致
 - **定稿后必须归档**：`workspace/` 只留在制品，不留已定稿的
-- frontmatter **10 字段**（`guard-meta` 查）
+- frontmatter **10 字段**（`ai-guard-meta` 查）
 
 ## 守卫（谁保证这里不腐烂）
-- `guard-structure`：两件套齐备 · 清单⇄实际 · 契约依赖 · 守卫引用 · 两件套不重复
-- `guard-meta`：frontmatter / lines / 断链
+- `ai-guard-structure`：两件套齐备 · 清单⇄实际 · 契约依赖 · 守卫引用 · 两件套不重复
+- `ai-guard-meta`：frontmatter / lines / 断链
 
 ## 维护动作
 1. 有新需求 → `cp _template.md <需求id>.md`
 2. 讨论中更新；**只有人**能把它标成定稿
-3. 定稿 → 归档 `docs/rfc/` 或 `docs/features/` → `rm <需求id>.md` → 跑 `guard-structure.sh --fix`
+3. 定稿 → 归档 `docs/rfc/` 或 `docs/features/` → `rm <需求id>.md` → 跑 `ai-guard-structure.sh --fix`

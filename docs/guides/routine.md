@@ -1,6 +1,6 @@
 ---
 title: 固定动作清单（每天 / 每周 / 到期）
-description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、guard-prod.sh 与三个 LaunchAgent
+description: AdaiOS 的周期性人肉工作总清单——哪些系统已自动（只需看）、哪些必须你亲自做（生产日报/盘后导入/备份/审查）、哪些是到期红线；配套 check_deadlines.py、ai-guard-prod.sh 与三个 LaunchAgent
 version: 1
 created: 2026-09-14
 updated: 2026-10-03
@@ -37,10 +37,10 @@ bash .agents/scripts/cadence.sh check    # 交付门禁一键：meta / align / t
 bash .agents/scripts/cadence.sh todo     # 待办：REVIEW 未修项一眼看全
 
 # 单件工具（动作本体，需要深挖时用）：
-bash .agents/guards/guard-prod.sh       # 只跑今天 + 近 7 天趋势（不带增量）
-bash .agents/guards/guard-context.sh    # 开工自动跑：状态/未修项/待办/C0 使用心跳
+bash .agents/guards/ai-guard-prod.sh       # 只跑今天 + 近 7 天趋势（不带增量）
+bash .agents/guards/ai-guard-context.sh    # 开工自动跑：状态/未修项/待办/C0 使用心跳
 python3 .agents/scripts/check_deadlines.py      # 到期红线（≤30 天告警，≤7 天紧急）
-bash .agents/guards/guard-unfixed.sh    # 未修问题全量（REVIEW + task-log + audits）
+bash .agents/guards/ai-guard-unfixed.sh    # 未修问题全量（REVIEW + task-log + audits）
 ```
 
 ---
@@ -95,7 +95,7 @@ bash .agents/scripts/cadence.sh daily
 > **为什么单独立这一条**：2026-09-16 首次跑通，当天 6 张卡里 4 张是产品缺陷反馈
 > （卡片乱序 / 交易重复展示 / 输入框表情包多余 / 背面菜单对新用户过载），
 > 而 09-11~09-15 连续 5 天 0 张卡——**「有人在用」和「他在骂什么」，只有这里看得见**。
-> AI 侧的等价入口：`guard-context.sh` 的 C0 心跳发现今日有新记录时会主动提示跑本命令。
+> AI 侧的等价入口：`ai-guard-context.sh` 的 C0 心跳发现今日有新记录时会主动提示跑本命令。
 
 ### 1~3. 三份通达信导出（顺序不能换）
 
@@ -125,10 +125,10 @@ bash .agents/scripts/cadence.sh daily
 |:--|:--|:--|
 | 看每周审查结论 | 看 `.agents/state/weekly-audit.log` 尾部 | W1–W5 是「防审查休眠」，FAIL 才是重点 |
 | TDX 盘后行情包同步 | admin「系统 → 维护」上传 .zip，或 `.agents/scripts/sync_tdx_data.sh <包>` | 本地 .day 决定前复权与买点特征精度；周级全量即可 |
-| 未修项过一遍 | `bash .agents/guards/guard-unfixed.sh` | REVIEW 有 30+ 条，没有人替你判断优先级 |
+| 未修项过一遍 | `bash .agents/guards/ai-guard-unfixed.sh` | REVIEW 有 30+ 条，没有人替你判断优先级 |
 | 盘一次账 | 交易页看账实自检 + 资金快照 | 期末对不上，越晚越难回溯 |
 
-**AI 侧的每周/每次收工（你不用记）**：`guard-context.sh --write-local`（刷开工快照）+ `guard-cost.sh --record`（成本入账）。
+**AI 侧的每周/每次收工（你不用记）**：`ai-guard-context.sh --write-local`（刷开工快照）+ `ai-guard-cost.sh --record`（成本入账）。
 
 ---
 
@@ -164,7 +164,7 @@ python3 .agents/scripts/check_deadlines.py --ics          # 生成日历文件�
 | 事项 | 周期 | 现状 |
 |:--|:--|:--|
 | learn 转写额度（10 小时/月） | 月初自动重置 | ✅ 自动，`GET /learn/digest/quota` 可查 |
-| DeepSeek 成本 | 每日记录 | ✅ `guard-cost.sh --record`，`cost-log.jsonl` 一日多行 |
+| DeepSeek 成本 | 每日记录 | ✅ `ai-guard-cost.sh --record`，`cost-log.jsonl` 一日多行 |
 | 本地备份清理 | 按需 | 脚本**刻意不自动删**旧备份（只提示），>30 份时人工清理 `~/backups/adaios-prod/` |
 
 ---

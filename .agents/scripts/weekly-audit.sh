@@ -5,8 +5,8 @@
 # 用法:  bash .agents/scripts/weekly-audit.sh [--auto]
 # 说明:  每周自动执行：
 #         W1 守护检查（G1-G7 防 P0 复发）
-#         W2 结构门禁（guard-meta）+ 内容对齐（guard-align）
-#         W3 沉淀检查（guard-sediment——change-log 是否连续）
+#         W2 结构门禁（ai-guard-meta）+ 内容对齐（ai-guard-align）
+#         W3 沉淀检查（ai-guard-sediment——change-log 是否连续）
 #         W4 失真扫描（端点数/测试数三方对拍报告）
 #         W5 未修项报告（REVIEW 战略/P1 清单）
 #         W6 到期红线（公安备案/域名/Apple 账号；见 .agents/scripts/check_deadlines.py）
@@ -34,15 +34,15 @@ echo "   $G1"
 
 # W2 结构 + 内容
 echo "▸ W2 结构门禁..."
-META=$(bash .agents/guards/guard-meta.sh 2>&1 | tail -1)
+META=$(bash .agents/guards/ai-guard-meta.sh 2>&1 | tail -1)
 echo "   $META"
 echo "▸ W2 内容对齐..."
-ALIGN=$(bash .agents/guards/guard-align.sh 2>&1 | tail -1)
+ALIGN=$(bash .agents/guards/ai-guard-align.sh 2>&1 | tail -1)
 echo "   $ALIGN"
 
 # W3 沉淀检查
 echo "▸ W3 沉淀检查（change-log 连续性）..."
-SED=$(bash .agents/guards/guard-sediment.sh 2>&1 | tail -1)
+SED=$(bash .agents/guards/ai-guard-sediment.sh 2>&1 | tail -1)
 echo "   $SED"
 
 # W4 失真扫描：端点数三方对拍
@@ -57,7 +57,7 @@ fi
 
 # W5 未修项报告
 echo "▸ W5 未修项（REVIEW 战略/P1）..."
-bash .agents/guards/guard-context.sh 2>&1 | sed -n '/## C2/,/## C3/p' | grep "^- " | head -8 || echo "   （无未修项）"
+bash .agents/guards/ai-guard-context.sh 2>&1 | sed -n '/## C2/,/## C3/p' | grep "^- " | head -8 || echo "   （无未修项）"
 
 # W6 到期红线（2026-09-14 加：盘点发现到期型事项只写在文档里，文档不会主动叫人）
 echo "▸ W6 到期红线..."
