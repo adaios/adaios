@@ -134,6 +134,35 @@ for name in SUBS:
         if not (AG / "guards" / g).exists():
             fails.append("S4 %s/_directory.md: 提到 %s 但它不在 guards/" % (name, g))
 
+# ── S5：两件套之间不得有整行重复（铁律 1「单一权威来源」的机器校验）──
+# 为什么需要：_index.md 与 _directory.md 若由同一脚本、从同一份数据生成，极易把同一句话
+# 写进两处 —— 2026-10-03 自审实测 **12/12 目录**的「职责」行一字不差重复，即"体系违反自己的铁律"。
+# 只比**正文的长行**（≥15 字符），排除 frontmatter 字段与表格/引用/标题/列表等结构性行——
+# 那些本来就两边都有，不是"同一知识的两处详述"。
+def body_dup_set(f):
+    txt = f.read_text(encoding="utf-8")
+    m = re.match(r"^---\n.*?\n---\n(.*)$", txt, re.S)
+    body = m.group(1) if m else txt
+    out = set()
+    for line in body.splitlines():
+        s = line.strip()
+        if len(s) < 15:
+            continue
+        if s.startswith(("|", ">", "#", "```", "- ", "* ")):
+            continue
+        out.add(s)
+    return out
+
+
+for name in SUBS:
+    idx, dirf = AG / name / "_index.md", AG / name / "_directory.md"
+    if not (idx.exists() and dirf.exists()):
+        continue
+    dup = body_dup_set(idx) & body_dup_set(dirf)
+    if dup:
+        fails.append("S5 %s/: 两件套有 %d 行整行重复（同一知识应只在一处详述）如「%s」"
+                     % (name, len(dup), sorted(dup)[0][:44]))
+
 if FIX and fixed:
     print("STRUCTURE-GUARD: 已重刷 %d 个 _index.md 清单" % len(fixed))
     for x in fixed:
@@ -145,8 +174,8 @@ if fails:
     for x in fails:
         print("   ❌ " + x)
     print()
-    print("   修复：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4 需手工）")
+    print("   修复：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）")
     sys.exit(1)
 
-print("STRUCTURE-GUARD: PASS (%d 个子目录 · 两件套齐备 · 清单⇄实际一致 · 依赖与守卫引用有效)" % len(SUBS))
+print("STRUCTURE-GUARD: PASS (%d 个子目录 · 两件套齐备 · 清单⇄实际一致 · 依赖与守卫引用有效 · 两件套不重复)" % len(SUBS))
 PYEOF

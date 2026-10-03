@@ -183,7 +183,7 @@ if [ -f .agents/guards/guard-structure.sh ] && echo "$CHANGED" | grep -qE '\.md$
   if [ "$STR_RC" -ne 0 ]; then
     if echo "$STR_OUT" | grep -q 'STRUCTURE-GUARD:'; then
       echo "$STR_OUT"
-      echo "❌ 目录级不自洽，提交已阻止（见上）。修复指引：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4 需手工）。"
+      echo "❌ 目录级不自洽，提交已阻止（见上）。修复指引：bash .agents/guards/guard-structure.sh --fix（S2 可自动；S1/S3/S4/S5 需手工）。"
     else
       echo "❌ 结构守卫**脚本自身出错**（不是目录的问题，需排查 guard-structure.sh）："
       echo "$STR_OUT" | tail -5 | sed 's/^/    /'
