@@ -10,7 +10,7 @@
 #   2d) ai-guard-structure —— 目录级自洽（两件套齐备 · 清单⇄实际 · 契约依赖与守卫引用有效）
 #   3) guard.sh    —— 防 P0 复发（G1-G7）
 #   4) T6 shell-lint —— shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下 unbound）
-# 由 git core.hooksPath 启用（.agents/scripts/setup-hooks.sh 配置，随 clone 重建）。
+# 由 git core.hooksPath 启用（.agents/scripts/ai-setup-hooks.sh 配置，随 clone 重建）。
 cd "$(git rev-parse --show-toplevel)"
 
 # 暂存区清单。⚠️ unborn HEAD（git init 后首次提交）下 `--name-only HEAD` 会 rc=128 → 变量为空
@@ -92,7 +92,7 @@ fi
 
 # 0b) 密钥扫描（2026-10-01 加）——与隐私闸门同处入口层：**必须同样先于类型触发条件**。
 #     这是本项目唯一「出事不可逆」的口子：`.gitignore` 只防**将来**、不查**过去**；密钥一旦
-#     进了历史，删文件也没用（要改历史 + 换密钥）。执行器 .agents/scripts/scan-secrets.py 只扫暂存区
+#     进了历史，删文件也没用（要改历史 + 换密钥）。执行器 .agents/scripts/ai-scan-secrets.py 只扫暂存区
 #     **新增行**：高置信形态（sk- / 私钥块 / AKIA / ghp_ …）与敏感文件名（.env / *.p8 / *.jks /
 #     id_rsa）硬拦，通用「API_KEY=长值」只 WARN——误报会把人逼去 --no-verify，那比没有守卫更糟
 #     （ship.md 同款取舍）。⚠️ 位置教训：放在类型触发条件之后时，.txt/.json/.env 会在下方
@@ -100,11 +100,11 @@ fi
 if [ -n "${STAGED_LIST}" ]; then
   # 扫描器缺失时**跳过而非锁死**：本批恰好是「改钩子 + 新增脚本」，若只 add 钩子不带脚本，
   # fail-closed 会把整个仓库的提交能力锁死（2026-10-01 对抗审查 P1-3）。对照 ai-guard-feature 同款防御。
-  if [ ! -f .agents/scripts/scan-secrets.py ]; then
-    echo "⚠️  密钥扫描器缺失（.agents/scripts/scan-secrets.py）——本层跳过。"
-    echo "   修复：确认它随本批一起提交，或 git checkout -- .agents/scripts/scan-secrets.py"
+  if [ ! -f .agents/scripts/ai-scan-secrets.py ]; then
+    echo "⚠️  密钥扫描器缺失（.agents/scripts/ai-scan-secrets.py）——本层跳过。"
+    echo "   修复：确认它随本批一起提交，或 git checkout -- .agents/scripts/ai-scan-secrets.py"
   else
-    python3 .agents/scripts/scan-secrets.py || { echo "❌ 密钥扫描未通过，提交已阻止（见上）。处置：git restore --staged <file>；确需提交就说明它为何不是密钥；若已推送过，必须换密钥。"; exit 1; }
+    python3 .agents/scripts/ai-scan-secrets.py || { echo "❌ 密钥扫描未通过，提交已阻止（见上）。处置：git restore --staged <file>；确需提交就说明它为何不是密钥；若已推送过，必须换密钥。"; exit 1; }
   fi
 fi
 
@@ -210,7 +210,7 @@ if echo "$CHANGED" | grep -qE '\.(java|dart)$'; then
 fi
 
 # 4) shell 脚本健壮性（$VAR 紧跟非 ASCII → 非 UTF-8 locale 下字节被并进变量名，set -u 中止）
-#    根因与复发信号见 .agents/assets/pitfalls.md 十五；执行器 .agents/scripts/lint-shell-vars.py
+#    根因与复发信号见 .agents/assets/pitfalls.md 十五；执行器 .agents/scripts/ai-lint-shell-vars.py
 #    仅 shell 变更时跑（执行器自身扫描全部 git 跟踪的 shell 脚本，27 个，很快）
 if echo "$CHANGED" | grep -qE '\.(sh|bash)$|^\.githooks/'; then
   bash .agents/guards/ai-guard-tools.sh --shell-lint || { echo "❌ shell 脚本健壮性检查未通过，提交已阻止。修复指引：把 \$VAR 写成 \${VAR}——凡中文文案里嵌 shell 变量，一律加花括号。"; exit 1; }
