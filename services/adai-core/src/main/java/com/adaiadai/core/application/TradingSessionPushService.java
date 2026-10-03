@@ -140,6 +140,8 @@ public class TradingSessionPushService {
     private final SoldTradeRepository soldTradeRepository;
     /** RFC 20260922 B 批 B1：①「该形态的历史统计」取数（与 narrator 同一口径）。 */
     private final TradingEvidenceService evidenceService;
+    /** RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：次日操作计划——早盘念计划 / 晚间提醒写。 */
+    private final TradingPlanService tradingPlanService;
     /** 择时状态来源：knowledge/context/current.md（G-4 后路径，配置驱动——生产 /opt/adaios/os/... 由 .env 注入）。 */
     private final Path currentMd;
 
@@ -161,6 +163,7 @@ public class TradingSessionPushService {
                                      TradingSyncStateRepository syncStateRepository,
                                      SoldTradeRepository soldTradeRepository,
                                      TradingEvidenceService evidenceService,
+                                     TradingPlanService tradingPlanService,
                                      @Value("${adai.knowledge.trading-engine-path:../../os/trading-engine/knowledge/context}") String knowledgeDir) {
         this.positionRepository = positionRepository;
         this.marketDataSource = marketDataSource;
@@ -180,6 +183,7 @@ public class TradingSessionPushService {
         this.syncStateRepository = syncStateRepository;
         this.soldTradeRepository = soldTradeRepository;
         this.evidenceService = evidenceService;
+        this.tradingPlanService = tradingPlanService;
         this.currentMd = Paths.get(knowledgeDir, "current.md").toAbsolutePath().normalize();
         log.info("时段推送：择时状态来源 current.md = {}", currentMd);
     }
@@ -320,8 +324,74 @@ public class TradingSessionPushService {
         });
     }
 
+    /**
+     * 早盘计划段（RFC 20261003-trading-plan-and-review-loop §三，2026-10-03）：**引用用户昨晚写的原话**。
+     * <p>没写计划 / 读失败 → 返回 null（正文保持干净，「提醒写计划」由 20:30 那条负责，避免一天唠叨两次）。
+     */
+    private String planSection(String userId) {
+        try {
+            var plan = tradingPlanService.find(userId, LocalDate.now());
+            if (plan.isEmpty() || plan.get().items().isEmpty()) return null;
+            StringBuilder sb = new StringBuilder("你昨晚定的：\n");
+            for (var it : plan.get().items()) {
+                sb.append("· ").append(it.text()).append("\n");
+            }
+            if (plan.get().note() != null && !plan.get().note().isBlank()) {
+                sb.append("（你自己写的约束：").append(plan.get().note()).append("）\n");
+            }
+            return sb.toString();
+        } catch (RuntimeException e) {
+            log.warn("早盘读操作计划失败（跳过计划段）| userId={} | {}", userId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 次日操作计划提醒的默认 cron（20:30，工作日）。 */
+    static final String CRON_PLAN_REMINDER = "0 30 20 * * MON-FRI";
+
+    /**
+     * 20:30 提醒写「下一个交易日」的计划——**已写则不打扰**（用户 2026-10-03 拍板「提醒我写」）。
+     * <p>用户原话：「我必须像开公司一样认真对待每一笔投资，像打仗规划好子弹」——这条推送的全部作用
+     * 就是把这句话每天兑现一次；系统**不代写、不建议**，只提醒。
+     */
+    @Scheduled(cron = "${adai.trading.session.plan-reminder-cron:" + CRON_PLAN_REMINDER + "}")
+    public void planReminder() {
+        // ⚠️ P1（2026-10-03 增量深审）：原先**漏了交易日闸门**（同文件其它定时任务都有）→ 节假日照推；
+        // 而且文案写「明天」、落点其实是 nextTradingDay（周五晚 = 下周一）→ 口径误导。
+        if (!isTradingDayToday()) return;
+        forEachTradingUser(userId -> {
+            LocalDate next = nextTradingDay(LocalDate.now());
+            try {
+                if (tradingPlanService.find(userId, next).isPresent()) return;   // 已写 → 不打扰
+            } catch (RuntimeException e) {
+                log.warn("读次日计划失败，本次跳过提醒 | userId={} | {}", userId, e.getMessage());
+                return;
+            }
+            String dayLabel = next.format(java.time.format.DateTimeFormatter.ofPattern("M月d日"))
+                    + "（" + WEEKDAY_CN[next.getDayOfWeek().getValue() - 1] + "）";
+            // ⚠️ P1：独立推送类型 "plan"（原为 "session"）——否则用户关掉盘中推送时，写计划提醒会**静默消失**。
+            pushToAll(userId, "下个交易日的计划",
+                    dayLabel + " 的作战计划还没写。花两分钟定一下？\n哪怕只写一句「不动」也算数。",
+                    "plan", null, null, dayLabel + " 的作战计划还没写。");
+        });
+    }
+
+    private static final String[] WEEKDAY_CN = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+
+    /** 下一交易日（跳过周末与休市日；最多向后找 10 天）。 */
+    static LocalDate nextTradingDay(LocalDate from) {
+        LocalDate d = from.plusDays(1);
+        for (int i = 0; i < 10 && !isTradingDayStrict(d); i++) d = d.plusDays(1);
+        return d;
+    }
+
     private String buildMorningContent(String userId, SessionData data) {
         StringBuilder sb = new StringBuilder("📋 早盘计划\n");
+        // RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：**先念你昨晚定的计划**——
+        // 这是「你承诺、系统守」的入口（此前早盘文案全部是系统算出的持仓概览，近似建议）。
+        // 只引用用户原话（PlanItem.text），不改写成判断句；没写计划时这里**不唠叨**（晚间那条负责提醒）。
+        String planSection = planSection(userId);
+        if (planSection != null) sb.append(planSection);
         if (data.positions().isEmpty()) {
             sb.append("今天还没有持仓，空仓也是一种策略——等待好的买点，不着急。\n");
         } else {
@@ -505,7 +575,14 @@ public class TradingSessionPushService {
         if (!isTradingDayToday()) return; // P2-工程11：闸门抽成可覆写方法，测试固定为交易日
         forEachTradingUser(userId -> {
             SessionData data = loadData(userId);
-            if (data.positions().isEmpty()) return; // 空仓 → 没有「要不要卖」的问题
+            if (data.positions().isEmpty()) {
+                // 空仓 → 没有「要不要卖」的问题；但**今天的计划可能还在**（比如「今天买 XX」）→ 只发计划进度
+                String progress = planProgressSection(userId);
+                if (progress != null) {
+                    pushToAll(userId, "计划进度", progress, "session", null, null, "今天的计划进度。");
+                }
+                return;
+            }
             if (!quotesUsable(data)) {
                 pushToAll(userId, "尾盘卖点", MARKET_UNAVAILABLE_BODY, "session", null, null,
                         MARKET_UNAVAILABLE_LOCK);
@@ -517,6 +594,39 @@ public class TradingSessionPushService {
             pushToAll(userId, "尾盘卖点", content, "session", null, null,
                     "尾盘看过了。有几只要留意的，打开阿呆看看。");
         });
+    }
+
+    /**
+     * 14:50 计划进度（RFC 20261003-trading-plan-and-review-loop §三，2026-10-03）：
+     * 「计划 N 条 / 已做 K 条 / 哪条条件到了 / ⚠️ 计划外操作」——**只报事实**，不评对错。
+     * 返回 null = 今天没写计划（或写了但都是「不动」）→ 不占正文。
+     */
+    private String planProgressSection(String userId) {
+        try {
+            var r = tradingPlanService.review(userId, java.time.LocalDate.now());
+            if (!r.hasPlan() || r.items().isEmpty()) return null;
+            StringBuilder sb = new StringBuilder("今天的计划：\n");
+            int total = 0;
+            int executed = 0;
+            for (var it : r.items()) {
+                if (!"BUY".equals(it.action()) && !"SELL".equals(it.action())) continue;
+                total++;
+                boolean done = Boolean.TRUE.equals(it.executed());
+                if (done) executed++;
+                sb.append("· ").append(it.text());
+                if (Boolean.TRUE.equals(it.triggered())) sb.append("（条件到了）");
+                sb.append(done ? " ✅做了" : "").append("\n");
+            }
+            if (total == 0) return null;
+            sb.append("共 ").append(total).append(" 条，做了 ").append(executed).append(" 条。");
+            if (!r.unplanned().isEmpty()) {
+                sb.append("\n⚠️ 计划外：").append(String.join("、", r.unplanned()));
+            }
+            return sb.toString();
+        } catch (RuntimeException e) {
+            log.warn("尾盘读计划进度失败（跳过该段）| userId={} | {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     /** 尾盘正文；返回 null = 今天没有任何一只触发卖出条件（不制造噪音）。 */
@@ -562,7 +672,8 @@ public class TradingSessionPushService {
                         p.symbol(), suggestionKey, userId);
             }
         }
-        if (blocks.isEmpty()) return null;
+        String plan = planProgressSection(userId);
+        if (blocks.isEmpty()) return plan;   // 没有卖点：有计划进度就只发它，否则不发（不制造噪音）
         StringBuilder sb = new StringBuilder("📉 尾盘卖点\n");
         sb.append("按你 ").append(accountDayLabel(data)).append(" 的账（持仓 ")
                 .append(data.positions().size()).append(" 只，")
@@ -571,7 +682,10 @@ public class TradingSessionPushService {
         if (held > blocks.size()) {
             sb.append("另外 ").append(held - blocks.size()).append(" 只没有触发你的卖出条件，按计划拿着。");
         }
-        return sb.toString().strip();
+        // RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：**先念你今天的计划进度**，
+        // 再是系统按规则算出来的尾盘卖点（前者是你自己定的，后者是规则的提示）。
+        String body = sb.toString().strip();
+        return plan != null ? plan + "\n\n" + body : body;
     }
 
     // ── B3 · 收盘复盘（数据同步之后）──────────────────────────────────────

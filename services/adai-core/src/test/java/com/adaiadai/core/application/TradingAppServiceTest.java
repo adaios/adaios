@@ -4,6 +4,8 @@ import com.adaiadai.core.domain.trading.Position;
 import com.adaiadai.core.domain.trading.PositionRepository;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
+import com.adaiadai.core.domain.trading.SnapshotAnchor;
+import com.adaiadai.core.domain.trading.TradingAnchorRepository;
 import com.adaiadai.core.domain.trading.TradingException;
 import com.adaiadai.core.domain.trading.TradingHistoryRepository;
 import com.adaiadai.core.domain.trading.SoldTrade;
@@ -35,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -70,6 +73,20 @@ class TradingAppServiceTest {
         return r;
     }
 
+    /**
+     * C7（2026-10-03）：**已知锚定**的锚定仓储——模拟「已导过快照的真实账号」。
+     * 锚定未知时的 fail-closed 行为另有专门用例覆盖（见 requireAnchorKnownForLedgerChange）。
+     */
+    static TradingAnchorRepository knownAnchorRepo() {
+        TradingAnchorRepository a = mock(TradingAnchorRepository.class);
+        // 用**很久以前**的锚定日：C7 放行（known=true），且所有成交都晚于它 → **不触发防重**，
+        // 与历史测试基线（无锚定防重）行为一致。
+        when(a.find(any())).thenReturn(
+                new SnapshotAnchor(LocalDate.of(1970, 1, 1), LocalDate.of(1970, 1, 1)));
+        when(a.holdingsRecorded(any())).thenReturn(true);
+        return a;
+    }
+
     private TradingAppService service(PositionRepository repo, RecordRepository records,
                                       TradingHistoryRepository history) {
         TradingRuleSettingsRepository ruleRepo = mock(TradingRuleSettingsRepository.class);
@@ -78,7 +95,7 @@ class TradingAppServiceTest {
                 mock(WatchlistRepository.class), mock(SoldTradeRepository.class),
                 mock(AccountSnapshotRepository.class), mock(TransferRepository.class),
                 mock(MarketDataSource.class), mock(TradingLotService.class),
-                ruleRepo);
+                ruleRepo, knownAnchorRepo());
     }
 
     /**
@@ -95,6 +112,97 @@ class TradingAppServiceTest {
             return next;
         });
         return acc;
+    }
+
+    // ── RFC 20261003（2026-10-03）：资金↔持仓强关联批 ──
+
+    /**
+     * C3（D2 拍板 A 档）：A 股 T+1——卖出回款**当日只进「可用」，不动「可取」**。
+     * 旧实现 available 与 withdrawable 加同一个 delta → 当天卖出的钱当天就能转出，与现实不符
+     * （用户症结：「只有卖出股票后，才有现金，才能转出」——「可取」才是那道门槛）。
+     */
+    @Test
+    void sell_addsToAvailableOnly_notWithdrawable() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(pos("600000", 1000)));
+        AtomicReference<AccountSnapshot> saved = new AtomicReference<>();
+        AccountSnapshotRepository accounts = capturingAccountRepo(saved);
+        when(accounts.findLatest(any())).thenReturn(Optional.of(new AccountSnapshot(
+                new BigDecimal("20000"), new BigDecimal("10000"), new BigDecimal("10000"),
+                new BigDecimal("10000"), new BigDecimal("10000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("150000"), LocalDate.of(2026, 10, 2))));
+        TradingAppService service = new TradingAppService(repo, mock(RecordRepository.class),
+                mock(TradingHistoryRepository.class), mock(WatchlistRepository.class),
+                mock(SoldTradeRepository.class), accounts, mock(TransferRepository.class),
+                mock(MarketDataSource.class), mock(TradingLotService.class), defaultRuleRepo());
+
+        service.recordTrade("default", "600000", "浦发银行", TradeDirection.SELL,
+                new BigDecimal("10.00"), 1000, null, null, null, null, null, null);
+
+        AccountSnapshot after = saved.get();
+        assertNotNull(after, "卖出必须更新账户快照");
+        assertTrue(after.available().compareTo(new BigDecimal("10000")) > 0,
+                "可用应增加，实际: " + after.available());
+        assertEquals(0, after.withdrawable().compareTo(new BigDecimal("10000")),
+                "T+1：可取当日不变，实际: " + after.withdrawable());
+    }
+
+    /**
+     * C6：同一 {@code Idempotency-Key} 在窗口内只落一笔——治「网络重试 / 连点提交」造成的双计。
+     * 事故原型（2026-09-15）：同一张成交截图反复提交，600536 记成 1000 股、现金被扣成 −6,093.97。
+     */
+    @Test
+    void idempotencyKey_sameKey_recordsOnce() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of());
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        service.recordTradeIdempotent("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-1");
+        service.recordTradeIdempotent("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-1");
+
+        verify(history, times(1)).append(any(), any());
+    }
+
+    /** C6 对照：不同 key（或没给 key）不互相抑制——正常两笔照落。 */
+    @Test
+    void idempotencyKey_differentKeys_recordsBoth() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of());
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        service.recordTradeIdempotent("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-1");
+        service.recordTradeIdempotent("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-2");
+
+        verify(history, times(2)).append(any(), any());
+    }
+
+    /**
+     * P1（独立审查 2026-10-03 修复）：**被拒绝的请求不得占用幂等窗口**。
+     * 原实现「先登记后校验」——卖出未持有抛异常却把 key 占满 10 分钟，
+     * 同 key 重试被静默吞掉（返回持仓、账也没记）。
+     */
+    @Test
+    void idempotencyKey_rejectedRequest_doesNotOccupyWindow() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of());          // 无持仓 → SELL 必被拒
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        TradingAppService service = service(repo, mock(RecordRepository.class), history);
+
+        assertThrows(TradingException.class, () -> service.recordTradeIdempotent(
+                "default", "600000", "浦发银行", TradeDirection.SELL,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-x"));
+
+        // 同一 key 改为合法买入 → 必须能落库（窗口未被那次失败占用）
+        service.recordTradeIdempotent("default", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, null, null, null, null, null, null, "key-x");
+
+        verify(history, times(1)).append(any(), any());
     }
 
     // ── 基础业务规则（REVIEW #147）──
@@ -1734,5 +1842,116 @@ void soldUpdatePsychology_marksTrade() {
                         new BigDecimal("53.30"), 200, LocalDate.of(2026, 9, 18), null).isPresent(),
                 "候选无时间 → 退回原指纹（兼容既有行为）");
     }
-}
 
+    /**
+     * RFC 20261003 C4（2026-10-03）：资金快照**对账**（只读不落盘）——先看见差额，再决定覆盖。
+     * 关键语义：**只记账未动现金**的行（`cashApplied=false`）不参与系统现金推算，但必须单列可见。
+     */
+    @Test
+    void reconcileCash_reportsDiff_andSeparatesLedgerOnlyRows() {
+        LocalDate d = LocalDate.of(2026, 10, 8);
+        TradeRecord buy = TradeRecord.of("t1", "600000", "浦发银行", TradeDirection.BUY,
+                new BigDecimal("10.00"), 100, d, null, null, null, null, null, BigDecimal.ZERO,
+                LocalDateTime.now(), null, "oid-1");                       // -1000
+        TradeRecord sell = TradeRecord.of("t2", "600000", "浦发银行", TradeDirection.SELL,
+                new BigDecimal("12.00"), 100, d, null, null, null, null, null, BigDecimal.ZERO,
+                LocalDateTime.now(), null, "oid-2");                      // +1200
+        TradeRecord ledgerOnly = TradeRecord.ledgerOnly("t3", "600000", "浦发银行",
+                TradeDirection.SELL, new BigDecimal("80.00"), 100, d, null, null, null, null, "oid-3",
+                "历史成交补录（append 模式）：只记账不改账");                  // 未动现金，不得计入
+
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(List.of(buy, sell, ledgerOnly));
+        AccountSnapshotRepository accounts = mock(AccountSnapshotRepository.class);
+        when(accounts.findLatest(any())).thenReturn(Optional.of(new AccountSnapshot(
+                new BigDecimal("1500"), new BigDecimal("500"), new BigDecimal("500"),
+                new BigDecimal("500"), new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("150000"), d)));
+        TradingAppService service = new TradingAppService(
+                mock(PositionRepository.class), mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), accounts,
+                mock(TransferRepository.class), mock(MarketDataSource.class),
+                mock(TradingLotService.class), defaultRuleRepo());
+
+        // 券商文件现金 900（不是 (500-1000+1200)=700，说明还有 200 系统解释不了）
+        TradingAppService.CashReconcile rec = service.reconcileCash("default",
+                "人民币: 余额:900.00  可用:900.00  可取:900.00  参考市值:1000.00  资产:1900.00  盈亏:0.00", d);
+
+        assertEquals(0, rec.brokerCash().compareTo(new BigDecimal("900")));
+        assertEquals(0, rec.systemCash().compareTo(new BigDecimal("500")));
+        assertEquals(0, rec.diff().compareTo(new BigDecimal("400")), "差额 = 券商 − 系统，实际: " + rec.diff());
+        assertEquals(1, rec.ledgerOnlyCount(), "只记账行必须单列");
+        assertTrue(rec.since().stream().anyMatch(k -> "买入".equals(k.kind())), "应含买入汇总");
+        assertTrue(rec.since().stream().anyMatch(k -> "卖出".equals(k.kind())), "应含卖出汇总");
+        assertFalse(rec.since().stream().anyMatch(k -> "只记账".equals(k.kind())),
+                "只记账行**不得**混进现金事件汇总");
+        assertTrue(rec.note().contains("差"), rec.note());
+    }
+
+    /** C4 边界：差额为 0 时如实说「不会改变现金」（不制造焦虑）。 */
+    @Test
+    void reconcileCash_zeroDiff_saysNothingChanges() {
+        LocalDate d = LocalDate.of(2026, 10, 8);
+        TradingHistoryRepository history = mock(TradingHistoryRepository.class);
+        when(history.findAll(any())).thenReturn(List.of());
+        AccountSnapshotRepository accounts = mock(AccountSnapshotRepository.class);
+        when(accounts.findLatest(any())).thenReturn(Optional.of(new AccountSnapshot(
+                new BigDecimal("1500"), new BigDecimal("900"), new BigDecimal("900"),
+                new BigDecimal("900"), new BigDecimal("600"), BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("150000"), d)));
+        TradingAppService service = new TradingAppService(
+                mock(PositionRepository.class), mock(RecordRepository.class), history,
+                mock(WatchlistRepository.class), mock(SoldTradeRepository.class), accounts,
+                mock(TransferRepository.class), mock(MarketDataSource.class),
+                mock(TradingLotService.class), defaultRuleRepo());
+
+        TradingAppService.CashReconcile rec = service.reconcileCash("default",
+                "人民币: 余额:900.00  可用:900.00  可取:900.00  参考市值:600.00  资产:1500.00  盈亏:0.00", d);
+
+        assertEquals(0, rec.diff().compareTo(BigDecimal.ZERO));
+        assertTrue(rec.note().contains("一致"), rec.note());
+    }
+
+    /**
+     * RFC 20261003 C4「持仓同理」（2026-10-03）：持仓快照**对账**（只读）——逐只摆出「文件 vs 系统」差多少、
+     * replace 会怎么改（新增 / 移除 / 改数量），人看过再决定覆盖。
+     */
+    @Test
+    void reconcilePositions_reportsPerSymbolDiffs() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(pos("600000", 900), pos("000001", 100)));
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+
+        TradingAppService.PositionsReconcile rec = service.reconcilePositions("default", List.of(
+                new TradingAppService.PositionImportItem("600000", "浦发银行", 800,
+                        new BigDecimal("10.0"), null, null, null, null, null),
+                new TradingAppService.PositionImportItem("600519", "贵州茅台", 100,
+                        new BigDecimal("1400.0"), null, null, null, null, null)));
+
+        assertEquals(2, rec.fileCount());
+        assertEquals(2, rec.systemCount());
+        assertEquals(3, rec.diffs().size(), "600000 数量不一致 / 000001 文件没有 / 600519 系统没有");
+        var d600000 = rec.diffs().stream().filter(d -> d.symbol().equals("600000")).findFirst().orElseThrow();
+        assertEquals(-100, d600000.diff(), "文件 800 − 系统 900 = −100");
+        assertTrue(rec.diffs().stream().anyMatch(d -> d.symbol().equals("000001") && d.fileQty() == 0),
+                "文件里没有 → replace 会移除");
+        assertTrue(rec.diffs().stream().anyMatch(d -> d.symbol().equals("600519") && d.systemQty() == 0),
+                "系统里没有 → replace 会新增");
+        assertTrue(rec.note().contains("3 只不一致"), rec.note());
+    }
+
+    /** C4 持仓对账边界：逐只相符时如实说「replace 不会改变持仓」（不制造焦虑）。 */
+    @Test
+    void reconcilePositions_allMatch_saysNoChange() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(any())).thenReturn(List.of(pos("600000", 800)));
+        TradingAppService service = service(repo, mock(RecordRepository.class));
+
+        TradingAppService.PositionsReconcile rec = service.reconcilePositions("default", List.of(
+                new TradingAppService.PositionImportItem("600000", "浦发银行", 800,
+                        new BigDecimal("10.0"), null, null, null, null, null)));
+
+        assertTrue(rec.diffs().isEmpty());
+        assertTrue(rec.note().contains("不会改变持仓"), rec.note());
+    }
+}

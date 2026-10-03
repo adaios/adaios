@@ -98,7 +98,8 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
                 trades.set(i, new TradeRecord(
                         t.id(), t.symbol(), t.name(), t.direction(), t.price(), t.volume(), t.amount(),
                         t.entryDate(), tradeTime, t.stopLossPrice(), t.buyPoint(), t.targetPrice(),
-                        t.reason(), t.fee(), t.timestamp(), t.sourceRecordId(), t.orderId()));
+                        t.reason(), t.fee(), t.timestamp(), t.sourceRecordId(), t.orderId(),
+                        t.cashApplied(), t.ledgerOnlyReason()));   // RFC 20261003 C5：重建不得丢掉现金标记
                 updated = true;
                 break;
             }
@@ -137,7 +138,8 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
                             t.reason(),
                             hasFee ? fee : t.fee(),
                             t.timestamp(), t.sourceRecordId(),
-                            hasOrder ? orderId : t.orderId()));
+                            hasOrder ? orderId : t.orderId(),
+                            t.cashApplied(), t.ledgerOnlyReason()));   // RFC 20261003 C5：重建不得丢掉现金标记
                     updated = true;
                     break;
                 }
@@ -190,7 +192,8 @@ public class TradingHistoryFileRepository implements TradingHistoryRepository {
                         t.entryDate(), needTime ? tradeTime : t.tradeTime(),
                         t.stopLossPrice(), t.buyPoint(), t.targetPrice(), t.reason(),
                         needFee ? fee : t.fee(), t.timestamp(), t.sourceRecordId(),
-                        needOrder ? orderId : t.orderId()));
+                        needOrder ? orderId : t.orderId(),
+                        t.cashApplied(), t.ledgerOnlyReason()));   // RFC 20261003 C5：重建不得丢掉现金标记
                 updated = true;
                 break;
             }

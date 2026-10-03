@@ -11,6 +11,7 @@ import com.adaiadai.core.domain.trading.SoldTradeRepository;
 import com.adaiadai.core.domain.trading.TradeDirection;
 import com.adaiadai.core.domain.trading.TradeRecord;
 import com.adaiadai.core.domain.trading.TradingMarketStage;
+import com.adaiadai.core.domain.trading.TradingPlan;
 import com.adaiadai.core.domain.trading.TradingRuleSettings;
 import com.adaiadai.core.domain.trading.TradingSyncState;
 import com.adaiadai.core.domain.trading.WatchlistItem;
@@ -116,6 +117,7 @@ class TradingSessionPushServiceTest {
         TradingAppService trading = mock(TradingAppService.class);
         PushSettingsRepository pushSettings = mock(PushSettingsRepository.class);
         WatchlistBuyPointService buyPoint = mock(WatchlistBuyPointService.class);
+        TradingPlanService planService = mock(TradingPlanService.class);
         WatchlistRepository watchlist = mock(WatchlistRepository.class);
         TradingSyncStateRepository syncState = mock(TradingSyncStateRepository.class);
         SoldTradeRepository soldRepo = mock(SoldTradeRepository.class);
@@ -163,7 +165,7 @@ class TradingSessionPushServiceTest {
             TradingSessionPushService svc = spy(new TradingSessionPushService(posRepo, market, accounts, plugin, engine,
                     List.of(channel), acc, buyPoint, watchlist, pushSettings,
                     mock(TradeLogCollectService.class), trading, stageRepo, adviceRepo,
-                    narrator, syncState, soldRepo, evidence, knowledgeDir));
+                    narrator, syncState, soldRepo, evidence, planService, knowledgeDir));
             // P2-工程11（2026-10-01）：把「今天是否交易日」固定为 true，与真实日历解耦。
             // 原先测试吃真实 LocalDate.now() → 每逢法定节假日（如 10-01 国庆）全量必红 24 条
             // ⚠️ 只有**节假日**会红，周末不会——闸门走 isTradingDay（只查节假日表、不判周末，
@@ -179,6 +181,117 @@ class TradingSessionPushServiceTest {
             doReturn(now).when(svc).nowTime();
             return svc;
         }
+    }
+
+    /**
+     * RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：早盘**先念你昨晚定的计划**——
+     * 引用用户原话、不改写成判断句（这是「你承诺、系统守」的入口）。
+     */
+    @Test
+    void morningPlan_includesUserPlanVerbatim() {
+        Rig rig = new Rig();
+        when(rig.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.of(
+                new TradingPlan(LocalDate.now(), List.of(new TradingPlan.PlanItem(
+                        "p1", "SELL", "600519", "贵州茅台", "跌破 1400", "LT",
+                        new BigDecimal("1400"), null, "600519 跌破 1400 清仓", false)),
+                        "", java.time.LocalDateTime.now())));
+        TradingSessionPushService svc = rig.build();
+
+        svc.morningPlan();
+
+        String content = capture(rig.channel).content();
+        assertTrue(content.contains("你昨晚定的"), "早盘应先念用户自己的计划，实际: " + content);
+        assertTrue(content.contains("600519 跌破 1400 清仓"), "必须引用原话，实际: " + content);
+    }
+
+    /** 没写计划时早盘**不唠叨**——提醒写计划由 20:30 那条负责（避免一天两次打扰）。 */
+    @Test
+    void morningPlan_withoutPlan_doesNotNag() {
+        Rig rig = new Rig();
+        when(rig.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.empty());
+        TradingSessionPushService svc = rig.build();
+
+        svc.morningPlan();
+
+        assertFalse(capture(rig.channel).content().contains("你昨晚定的"));
+    }
+
+    /** 20:30 提醒写「下一个交易日」的计划（用户拍板「提醒我写」）；**已写则不打扰**。 */
+    @Test
+    void planReminder_missingPlan_nudges_butSkipsWhenWritten() {
+        Rig rig = new Rig();
+        when(rig.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.empty());
+        TradingSessionPushService svc = rig.build();
+        // P1（2026-10-03 增量深审）：planReminder 现在有**交易日闸门**——测试固定为交易日
+        // （否则周六/节假日跑测试就会红；真实当天是不是交易日由闸门自己判）。
+        doReturn(true).when(svc).isTradingDayToday();
+        svc.planReminder();
+        String body = capture(rig.channel).content();
+        assertTrue(body.contains("作战计划还没写"), "没写就该提醒一次，实际: " + body);
+        // ⚠️ P1-3：文案必须写**具体哪一天**（周五晚的「下个交易日」是周一，不能再含糊说「明天」）
+        assertTrue(body.contains("月") && body.contains("（周"), "必须写明日期与星期，实际: " + body);
+
+        Rig rig2 = new Rig();
+        when(rig2.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.of(
+                new TradingPlan(LocalDate.now(), List.of(), "", java.time.LocalDateTime.now())));
+        TradingSessionPushService svc2 = rig2.build();
+        doReturn(true).when(svc2).isTradingDayToday();
+        svc2.planReminder();
+        org.mockito.Mockito.verify(rig2.channel, org.mockito.Mockito.never()).push(any(), any());
+    }
+
+    /** P1-3（2026-10-03 增量深审）：**非交易日不提醒**（原先漏了闸门 → 节假日照推）。 */
+    @Test
+    void planReminder_nonTradingDay_doesNotPush() {
+        Rig rig = new Rig();
+        when(rig.planService.find(any(), any(LocalDate.class))).thenReturn(Optional.empty());
+        TradingSessionPushService svc = rig.build();
+        doReturn(false).when(svc).isTradingDayToday();
+
+        svc.planReminder();
+
+        org.mockito.Mockito.verify(rig.channel, org.mockito.Mockito.never()).push(any(), any());
+    }
+
+    /**
+     * RFC 20261003-trading-plan-and-review-loop §三（2026-10-03）：14:50 尾盘**先念今天的计划进度**
+     * （引用原话 + 条件到没到 + 做没做 + ⚠️ 计划外），再是系统按规则算的卖点。
+     */
+    @Test
+    void closeAdvice_includesPlanProgressFirst() {
+        Rig rig = new Rig();
+        when(rig.planService.review(any(), any(LocalDate.class))).thenReturn(
+                new TradingPlanService.PlanReview(LocalDate.now(), true,
+                        List.of(new TradingPlanService.ItemReview("600519", "贵州茅台", "SELL",
+                                "跌破 1400", "600519 跌破 1400 清仓", true, true, "当日 高 1420 / 低 1390")),
+                        List.of("000831 中国稀土 BUY 200股"), 1, 1));
+        TradingSessionPushService svc = rig.build();
+
+        svc.closeAdvice();
+
+        String content = capture(rig.channel).content();
+        assertTrue(content.contains("今天的计划"), "尾盘应先念计划进度，实际: " + content);
+        assertTrue(content.contains("600519 跌破 1400 清仓"), "必须引用用户原话");
+        assertTrue(content.contains("计划外"), "计划外成交必须报出来（R96 的正面检查）");
+    }
+
+    /** 空仓但有今日计划 → 仍然发一条「计划进度」（空仓≠没事做）。 */
+    @Test
+    void closeAdvice_emptyPositions_butPlanExists_stillPushesProgress() {
+        Rig rig = new Rig();
+        rig.positions = List.of();
+        when(rig.planService.review(any(), any(LocalDate.class))).thenReturn(
+                new TradingPlanService.PlanReview(LocalDate.now(), true,
+                        List.of(new TradingPlanService.ItemReview("000776", "广发证券", "BUY",
+                                "回到 19.5", "000776 回到 19.5 以下买 500 股", false, false, null)),
+                        List.of(), 0, 0));
+        TradingSessionPushService svc = rig.build();
+
+        svc.closeAdvice();
+
+        PushChannel.PushMessage m = capture(rig.channel);
+        assertEquals("计划进度", m.title());
+        assertTrue(m.content().contains("000776 回到 19.5 以下买 500 股"), m.content());
     }
 
     private static PushChannel.PushMessage capture(PushChannel channel) {

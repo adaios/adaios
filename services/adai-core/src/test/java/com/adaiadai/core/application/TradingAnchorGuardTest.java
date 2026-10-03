@@ -114,14 +114,37 @@ class TradingAnchorGuardTest {
                 list.size() == 1 && list.get(0).quantity() == 200));
     }
 
+    /**
+     * RFC 20261003 C7（2026-10-03）：锚定读不到 + 账上已有持仓 → **拒绝改账**。
+     * <p>这条**推翻了**原来的 fail-open 行为（那时照常改账）——与 2026-09-12 事故同型：
+     * 生产当时根本没有 snapshot-anchor.json → 防重整条失效 → 一次导入重放已含在快照里的成交，
+     * 现金被推到 −26,666.85。现在改为 fail-closed 并指路（先导快照 / 用「仅补流水」）。
+     */
     @Test
-    void recordTrade_noAnchor_legacyBehaviorAllowed() {
+    void recordTrade_noAnchor_failClosed_notSilentDoubleCount() {
         PositionRepository repo = mock(PositionRepository.class);
         when(repo.findAll(anyString())).thenReturn(List.of(pos("600000", 100)));
         TradingAppService service = service(repo, mock(AccountSnapshotRepository.class),
                 mock(TransferRepository.class), anchorRepo());
 
-        service.recordTrade(USER, "600000", "浦发银行", TradeDirection.SELL,
+        assertThrows(TradingException.class, () ->
+                service.recordTrade(USER, "600000", "浦发银行", TradeDirection.SELL,
+                        new BigDecimal("10.5"), 100, LocalDate.of(2026, 9, 1), null,
+                        null, null, null, null));
+        verify(repo, never()).saveAll(anyString(), any());
+    }
+
+    /** C7 边界：**全新账号**（无持仓、无账户快照）锚定未知时仍放行——否则新用户无法从零开始记。 */
+    @Test
+    void recordTrade_noAnchor_brandNewAccount_allowed() {
+        PositionRepository repo = mock(PositionRepository.class);
+        when(repo.findAll(anyString())).thenReturn(List.of());
+        AccountSnapshotRepository accounts = mock(AccountSnapshotRepository.class);
+        when(accounts.findLatest(anyString())).thenReturn(java.util.Optional.empty());
+        TradingAppService service = service(repo, accounts,
+                mock(TransferRepository.class), anchorRepo());
+
+        service.recordTrade(USER, "600000", "浦发银行", TradeDirection.BUY,
                 new BigDecimal("10.5"), 100, LocalDate.of(2026, 9, 1), null,
                 null, null, null, null);
         verify(repo, times(1)).saveAll(anyString(), any());

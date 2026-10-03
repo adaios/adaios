@@ -42,6 +42,17 @@ public class TradingAppService {
     /** 交易记录去重窗口：同一标题的记录在窗口内视为重试，不重复写入（防重试重复进时间线/复盘提醒）。 */
     private static final Duration RECORD_DEDUP_WINDOW = Duration.ofMinutes(5);
 
+    /** 幂等窗口（RFC 20261003 C6，2026-10-03）：同一 {@code Idempotency-Key} 在窗口内只落一笔。
+     *  10 分钟足够覆盖「网络重试 / 连点提交 / 客户端超时重发」；**进程内**（重启即清）——
+     *  持久化幂等属「对账自证」批（C5），本轮刻意不引入新落盘文件。 */
+    private static final Duration IDEMPOTENCY_WINDOW = Duration.ofMinutes(10);
+
+    /** 幂等登记表上限（防无界增长；超限时按窗口机会式清理）。 */
+    private static final int IDEMPOTENCY_MAX_ENTRIES = 512;
+
+    /** 幂等登记：{@code userId|idempotencyKey → 首次落库时间}。只增不持久化（见 {@link #IDEMPOTENCY_WINDOW}）。 */
+    private final java.util.Map<String, LocalDateTime> idempotencyLog = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** P2-交易37（2026-09-09 晚间自主批）：每用户读写锁固定 16 条带——
      *  原 ConcurrentHashMap computeIfAbsent 按 userId 无界增长（同族 P3：userTradeLocks 无界累积），
      *  收敛为固定条带（个人系统并发度低，条带串行可接受；同 TradeLogRepository/P2-交易28 模式）。 */
@@ -67,6 +78,8 @@ public class TradingAppService {
     private final TradingRuleSettingsRepository tradingRuleSettingsRepository;
     /** RFC 20260909 批 1：清仓股流水自动收录（可空=未接线，触发/查询判空跳过）。 */
     private final ClearanceDetector clearanceDetector;
+    /** RFC 20261003 C4（2026-10-03）：对账调整落账（可空=未接线，落账判空跳过）。 */
+    private final CashAdjustmentRepository cashAdjustmentRepository;
 
     /** Spring 主构造（含锚定仓储——P2-交易34 防重；清仓推导——RFC 20260909 批 1）。 */
     @org.springframework.beans.factory.annotation.Autowired
@@ -81,7 +94,8 @@ public class TradingAppService {
                              TradingLotService tradingLotService,
                              TradingRuleSettingsRepository tradingRuleSettingsRepository,
                              TradingAnchorRepository anchorRepository,
-                             ClearanceDetector clearanceDetector) {
+                             ClearanceDetector clearanceDetector,
+                             CashAdjustmentRepository cashAdjustmentRepository) {
         this.positionRepository = positionRepository;
         this.recordRepository = recordRepository;
         this.tradingHistoryRepository = tradingHistoryRepository;
@@ -94,6 +108,7 @@ public class TradingAppService {
         this.tradingLotService = tradingLotService;
         this.tradingRuleSettingsRepository = tradingRuleSettingsRepository;
         this.clearanceDetector = clearanceDetector;
+        this.cashAdjustmentRepository = cashAdjustmentRepository;
     }
 
     /** 兼容构造（11 参，无清仓推导——测试/旧调用兼容，行为等同历史版本）。 */
@@ -110,7 +125,28 @@ public class TradingAppService {
                              TradingAnchorRepository anchorRepository) {
         this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
                 soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
-                tradingLotService, tradingRuleSettingsRepository, anchorRepository, null);
+                tradingLotService, tradingRuleSettingsRepository, anchorRepository, null, null);
+    }
+
+    /**
+     * 无对账调整仓储构造（测试/旧调用兼容，2026-10-03）：差额**不落账**（判空跳过），
+     * 其余行为与主构造一致。加它是为了让既有 12 参调用点零改动。
+     */
+    public TradingAppService(PositionRepository positionRepository,
+                             RecordRepository recordRepository,
+                             TradingHistoryRepository tradingHistoryRepository,
+                             WatchlistRepository watchlistRepository,
+                             SoldTradeRepository soldTradeRepository,
+                             AccountSnapshotRepository accountSnapshotRepository,
+                             TransferRepository transferRepository,
+                             MarketDataSource marketDataSource,
+                             TradingLotService tradingLotService,
+                             TradingRuleSettingsRepository tradingRuleSettingsRepository,
+                             TradingAnchorRepository anchorRepository,
+                             ClearanceDetector clearanceDetector) {
+        this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
+                soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
+                tradingLotService, tradingRuleSettingsRepository, anchorRepository, clearanceDetector, null);
     }
 
     /** 无锚定仓储/清仓推导构造（测试/旧调用兼容：不做 P2-交易34 防重，行为等同历史版本）。 */
@@ -126,14 +162,23 @@ public class TradingAppService {
                              TradingRuleSettingsRepository tradingRuleSettingsRepository) {
         this(positionRepository, recordRepository, tradingHistoryRepository, watchlistRepository,
                 soldTradeRepository, accountSnapshotRepository, transferRepository, marketDataSource,
-                tradingLotService, tradingRuleSettingsRepository, noopAnchorRepository(), null);
+                tradingLotService, tradingRuleSettingsRepository, noopAnchorRepository(), null, null);
     }
 
+    /**
+     * 兼容构造用的锚定仓储（测试与旧调用，**仅此二者**——生产走主构造注入的真实仓储）。
+     *
+     * <p>它返回一个**很久以前的锚定日**（1970-01-01）而不是「空锚定」，这样：
+     * ① C7 的 fail-closed 闸门放行（兼容构造的语义是「不做锚定防重」，不该被 C7 拦死）；
+     * ② `coveredByAnchor` 恒为 false（所有成交都晚于 1970）——防重仍然**不生效**，与历史行为一致。
+     *
+     * <p>真实环境的「锚定读不到」由 {@code TradingAnchorFileRepository} 返回 empty 表达，C7 照常拦。
+     */
     private static TradingAnchorRepository noopAnchorRepository() {
         return new TradingAnchorRepository() {
             @Override
             public SnapshotAnchor find(String userId) {
-                return SnapshotAnchor.empty();
+                return new SnapshotAnchor(java.time.LocalDate.of(1970, 1, 1), java.time.LocalDate.of(1970, 1, 1));
             }
 
             @Override
@@ -355,11 +400,16 @@ public class TradingAppService {
                             : "成交日 = 锚定日 " + anchorDate + "，已含在券商快照内（只记流水、未重复计入持仓）"));
         }
 
-        String note = drift.isEmpty() && gaps.isEmpty()
+        // P2（独立审查 2026-10-03 修复）：现金侧检查必须在「账实一致」措辞定稿**之前**算出来——
+        // 原实现先写「账实一致」再追加 ⚠️ 现金为负，同一句话自相矛盾。
+        String cashAlert = cashAlertOf(accountSnapshot(userId));
+        String note = drift.isEmpty() && gaps.isEmpty() && cashAlert == null
                 ? "账实一致：派生持仓与落地持仓逐标的相符（锚定日 " + anchorDate + "）"
-                : String.format("账实不符：%d 只标的持仓不一致、%d 笔回放缺口（锚定日 %s）——"
-                        + "先核对逐笔流水，再决定是否重导券商快照重建口径",
-                        drift.size(), gaps.size(), anchorDate);
+                : drift.isEmpty() && gaps.isEmpty()
+                        ? "持仓账实一致（锚定日 " + anchorDate + "），但现金侧有异常——见下"
+                        : String.format("账实不符：%d 只标的持仓不一致、%d 笔回放缺口（锚定日 %s）——"
+                                + "先核对逐笔流水，再决定是否重导券商快照重建口径",
+                                drift.size(), gaps.size(), anchorDate);
         // P2-交易62（2026-09-23 修）：文件日期未记录时 `positionsDateInferred()` 刻意返回 false（不诬告），
         // 但那**不等于**「确定没被推断过」——原实现只在 degraded 为空时才说这句「无法判断」，一旦有降级
         // 流水就落到 `inferred=false` 的**确定语气**（「已含在券商快照内」）＝拿不到证据却断言确定。
@@ -390,6 +440,10 @@ public class TradingAppService {
             log.warn("账实自检：锚定日 {} 系推断（文件日期 {}），{} 笔当天成交只落流水未进持仓 | userId={}",
                     anchorDate, fileDateText, degraded.size(), userId);
         }
+        // RFC 20261003 C2 + P2（独立审查 2026-10-03）：现金侧对账——旧版 integrity **只管持仓不管现金**
+        // （生产实据：09-22 本项报「账实一致」的同时，现金实际错了 23,686.15，见存量盘点清单 E）。
+        // 按用户拍板 D1：**警告不拦**，但必须看得见。
+        if (cashAlert != null) note += "；" + cashAlert;
         return new IntegrityReport(status, true, drift, gaps, degraded, note);
     }
 
@@ -469,7 +523,28 @@ public class TradingAppService {
                                       BigDecimal stopLossPrice, String buyPoint,
                                       BigDecimal targetPrice, String reason) {
         return recordTradeInternal(userId, symbol, name, direction, price, volume,
-                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, null, null);
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, null, null, null);
+    }
+
+    /**
+     * 带幂等键的交易记录（RFC 20261003 C6，2026-10-03）：{@code POST /trading/trades} 支持
+     * {@code Idempotency-Key} 请求头——同一 key 在 {@link #IDEMPOTENCY_WINDOW} 内只落一笔。
+     * <p>
+     * <b>覆盖范围（独立审查 2026-10-03 纠正）</b>：只覆盖「手动 / 一句话记录」路径；截图确认
+     * （{@code /trade-log/confirm}，防重由 2026-09-15 的指纹判定承担）与批量（{@code /trades/batch}，
+     * 尚无幂等键）**不走本方法**。幂等命中返回当前持仓（调用方语义与「已记录」一致，不报错）——
+     * 且**只在成功落库之后才登记**（被拒绝的请求不占窗口，见 {@code recordTradeInternal}）。
+     */
+    public List<Position> recordTradeIdempotent(String userId, String symbol, String name,
+                                                TradeDirection direction,
+                                                BigDecimal price, int volume,
+                                                LocalDate entryDate, LocalTime tradeTime,
+                                                BigDecimal stopLossPrice, String buyPoint,
+                                                BigDecimal targetPrice, String reason,
+                                                String idempotencyKey) {
+        return recordTradeInternal(userId, symbol, name, direction, price, volume,
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, null, null,
+                idempotencyKey);
     }
 
     /**
@@ -485,7 +560,7 @@ public class TradingAppService {
                                                  BigDecimal targetPrice, String reason,
                                                  String orderId, BigDecimal fee) {
         return recordTradeInternal(userId, symbol, name, direction, price, volume,
-                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, orderId, fee);
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, orderId, fee, null);
     }
 
     private List<Position> recordTradeInternal(String userId, String symbol, String name,
@@ -494,9 +569,24 @@ public class TradingAppService {
                                                LocalDate entryDate, LocalTime tradeTime,
                                                BigDecimal stopLossPrice, String buyPoint,
                                                BigDecimal targetPrice, String reason,
-                                               String orderId, BigDecimal fee) {
+                                               String orderId, BigDecimal fee, String idempotencyKey) {
         // #147：读-改-写加每用户锁，防并发交易互相覆盖丢持仓
         synchronized (tradeLock(userId)) {
+            // RFC 20261003 C6（2026-10-03）：幂等键——同一 Idempotency-Key 在窗口内只落一笔。
+            // 覆盖「网络重试 / 连点提交」两类重复（生产 09-15 事故原型：同一张截图反复提交 →
+            // 600536 记成 1000 股、现金被扣成 −6,093.97）。窗口内重复 → 直接返回当前持仓、不报错。
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                String ikey = userId + "|" + idempotencyKey;
+                LocalDateTime seen = idempotencyLog.get(ikey);
+                if (seen != null && seen.isAfter(LocalDateTime.now().minus(IDEMPOTENCY_WINDOW))) {
+                    log.info("幂等命中——同一 Idempotency-Key 已在窗口内落库，跳过重复记录 | userId={} | key={}",
+                            userId, idempotencyKey);
+                    return positionRepository.findAll(userId);
+                }
+                // P1（独立审查 2026-10-03 修复）：**登记移到成功落库之后**（见方法末尾）——
+                // 原实现在业务校验（锚定覆盖 / 卖超 / 未持有）**之前**就占用了窗口，
+                // 被拒绝的请求会让同 key 重试在 10 分钟内被静默吞掉（返回持仓却不报错、账也没记）。
+            }
             // RFC 20260815：name 可空（web 标注"可选"），缺名时以 symbol 兜底（简单方案：symbol 即名）
             String effectiveName = (name == null || name.isBlank()) ? symbol : name;
             // RFC 20260816：入场日期缺省今天（用户可补录）
@@ -509,6 +599,8 @@ public class TradingAppService {
             // P2-交易34 治本（2026-09-09）：成交日期 ≤ 券商快照锚定日 = 该笔已包含在快照内
             // （持仓数量/成本与现金均已是券商口径），手动/确认再录入会双计持仓与现金 → 拒绝 + 指路。
             // 正确姿势：白天先记/先导成交，收盘后最后做 replace+资金股份锚定；或锚定后导历史成交（只补流水）。
+            // C7（2026-10-03）：锚定读不到就先拦住（全新账号放行，见闸门注释）
+            requireAnchorKnownForLedgerChange(userId, "记录成交");
             if (coveredByAnchor(userId, effectiveEntryDate)) {
                 throw new TradingException(String.format(
                         "成交日期 %s 已包含在 %s 的券商快照中（持仓/现金已按快照校准）——重复录入会双计账目；"
@@ -568,6 +660,14 @@ public class TradingAppService {
             BigDecimal tradeValueDelta = direction == TradeDirection.BUY
                     ? price.multiply(BigDecimal.valueOf(volume))
                     : price.multiply(BigDecimal.valueOf(volume)).negate();
+            // RFC 20261003 C3（D2 拍板 A 档，2026-10-03）：T+1 可用/可取分离——
+            // 卖出回款**当日计入「可用」、不计入「可取」**（A 股 T+1：当天卖出所得可继续买，但须次一交易日才能转出）；
+            // 买入时资金被占用，可用与可取同时减少。
+            // 现实对照：券商「资金股份查询」首行的「可用 / 可取」本就是两个数，本处让两次快照导入之间的
+            // 中间态也符合 T+1。A 档**不做每日自动结转**，故「可取」会停在最近一次快照值，由每次转出校验兜住。
+            BigDecimal availableDelta = tradeCashDelta;
+            BigDecimal withdrawableDelta = direction == TradeDirection.BUY
+                    ? tradeCashDelta : BigDecimal.ZERO;
             try {
                 accountSnapshotRepository.update(userId, current -> current.map(c -> {
                     BigDecimal newCash = c.cash().add(tradeCashDelta);
@@ -575,8 +675,8 @@ public class TradingAppService {
                     return new AccountSnapshot(
                             newCash.add(newMarketValue), // 总资产 = 现金 + 市值（只差手续费）
                             newCash,
-                            c.available().add(tradeCashDelta),
-                            c.withdrawable().add(tradeCashDelta),
+                            c.available().add(availableDelta),
+                            c.withdrawable().add(withdrawableDelta),
                             newMarketValue, c.pnl(), c.todayPnl(),
                             c.principal(), c.snapshotDate(), c.todayPnlSource());
                 }).orElse(null)); // P0-2：无快照（首次交易未导入资金）不初始化，保持既有语义
@@ -609,6 +709,16 @@ public class TradingAppService {
 
             // RFC 20260909 批 1：卖光 symbol → 清仓推导（flow 自动收录 / pending 提示），best-effort
             runClearanceSync(userId, clearedSymbols);
+
+            // P1（独立审查 2026-10-03 修复）：幂等键在**业务校验全部通过、账已落库之后**才登记——
+            // 保证被拒绝的请求（锚定覆盖 / 卖超 / 未持有）不占用窗口，同 key 可重试。
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                LocalDateTime now = LocalDateTime.now();
+                idempotencyLog.put(userId + "|" + idempotencyKey, now);
+                if (idempotencyLog.size() > IDEMPOTENCY_MAX_ENTRIES) {
+                    idempotencyLog.entrySet().removeIf(e -> e.getValue().isBefore(now.minus(IDEMPOTENCY_WINDOW)));
+                }
+            }
 
             return currentPositions;
         }
@@ -1251,7 +1361,9 @@ public class TradingAppService {
             // 2026-09-13：券商「持仓股」导出的「当日盈亏」列（权威口径）落到账户卡——
             // 此前这一列从未被读（前端不解析、后端无入参），账户卡的当日盈亏只能靠系统自算。
             applyBrokerTodayPnl(userId, brokerTodayPnl, snapshotDate);
-            log.info("持仓初始化导入 | userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
+            // RFC 20261003 C1（2026-10-03，单侧动作显式化）：持仓快照是**只改持仓侧**的动作，
+            // **不动现金**——显式声明，让「单侧」可审计（现金侧由「资金股份查询」导入负责）。
+            log.info("持仓初始化导入 | side=POSITIONS_ONLY（只改持仓，不动现金）| userId={} | 导入 {} 只 | 未设止损 {} 只 | replace={} | 落盘 {} 只",
                     userId, imported, missingStopLoss.size(), replace, current.size());
             return new PositionImportResult(imported, missingStopLoss);
         }
@@ -1591,6 +1703,10 @@ public class TradingAppService {
         // 原 save 在 tradeLock 外 → 与 recordTrade/转账/收盘更新并发互相覆盖
         // B6-4（2026-08-23，P1-交易11）：写失败上抛（不再静默）——资金导入是用户主动修正账目的动作，
         // 必须让用户知道没生效（controller → 400 人话）
+        // RFC 20261003 C4 + D3（2026-10-03）：**对账差额落账**——覆盖之前先记下旧现金，
+        // 覆盖之后把「券商 − 系统」这条差额写成一条调整，使
+        //   系统现金 = 上次快照值 + Σ(已计入的流水与转账) + Σ(调整)
+        // 恒成立且可查（原实现静默覆盖：差额被抹掉、不留痕 → 只能反复导全量）。
         accountSnapshotRepository.update(userId, cur -> new AccountSnapshot(
                 q.assets(), q.cash(), q.available(), q.withdrawable(),
                 q.marketValue(), q.pnl(),
@@ -1602,6 +1718,9 @@ public class TradingAppService {
                 todayPnlFromFile ? AccountSnapshot.SOURCE_BROKER
                         : cur.map(AccountSnapshot::todayPnlSource).orElse(null)));
         synchronized (tradeLock(userId)) {
+            // ⚠️ P2-9（2026-10-03 增量深审）：差额基准必须在**同一把流水锁内**读取——原先在锁外读
+            // cashBeforeImport，两端同时导同一份文件会各记一条虚增调整，恒等式被破坏（pitfalls「检查-再动作」同型）。
+            BigDecimal cashBeforeImport = accountSnapshot(userId).cash();
             // 1. cashBalance 更新
             java.math.BigDecimal cash = q.cash();
             List<Position> positions = new ArrayList<>(positionRepository.findAll(userId));
@@ -1630,11 +1749,212 @@ public class TradingAppService {
             // S5（2026-08-17）：现金唯一真源 = account.json（上方已保存）——不再写 positions.md cashBalance
             // P2-交易34 治本：资金股份导入 = 现金/资产锚定日（此后 ≤ 本日的转账补记/成交回放需防重）。
             recordCashImportAnchor(userId, snapshotDate);
-            log.info("资金查询导入 | userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
+            // C4：差额落账（|差| ≤ 0.005 视为一致，不记——避免每天一条 0 元调整刷屏）
+            if (cashAdjustmentRepository != null && cashBeforeImport != null && q.cash() != null) {
+                BigDecimal adj = q.cash().subtract(cashBeforeImport);
+                if (adj.abs().compareTo(new BigDecimal("0.005")) > 0) {
+                    try {
+                        cashAdjustmentRepository.append(userId, new CashAdjustment(
+                                IdGenerator.monotonic("adj_"), effectiveDate, adj,
+                                "资金快照对账差额（系统解释不了的部分：未记录股息/利息、费用口径差或未知）",
+                                "覆盖前系统现金 " + cashBeforeImport.stripTrailingZeros().toPlainString()
+                                        + " → 券商 " + q.cash().stripTrailingZeros().toPlainString(),
+                                LocalDateTime.now()));
+                        log.info("对账差额已落账 | userId={} | {} | 系统 {} → 券商 {}", userId,
+                                adj.stripTrailingZeros().toPlainString(),
+                                cashBeforeImport.stripTrailingZeros().toPlainString(),
+                                q.cash().stripTrailingZeros().toPlainString());
+                    } catch (RuntimeException e) {
+                        // 落账失败不阻断导入（钱已经按券商值对齐了）——但必须告警，不得静默
+                        log.error("对账差额落账失败（账已按券商值覆盖，但差额无痕迹）| userId={} | {}",
+                                userId, e.getMessage());
+                    }
+                }
+            }
+            // RFC 20261003 C1（2026-10-03，单侧动作显式化）：资金快照是**只改现金侧**的动作
+            // （外加持仓成本价），**不动持仓数量**——在日志里显式声明，让「单侧」成为可审计的事实，
+            // 而不是靠读代码才知道。持仓侧由「持仓股」导入负责（见 importPositions 的 POSITIONS_ONLY）。
+            log.info("资金查询导入 | side=CASH_ONLY（只改现金侧与成本，不动持仓数量）| userId={} | 现金={} 资产={} | 成本更新 {} 只 | 当日盈亏列={}",
                     userId, cash, q.assets(), updated, todayPnlFromFile);
             return new CashImportResult(cash, q.assets(), updated, q.unparsedRows().size());
         }
     }
+
+    // ── C4 对账式导入（RFC 20261003-trading-cash-position-linkage §三 C4，2026-10-03）──
+
+    /**
+     * 资金快照**对账**（只读，不落盘）：把「券商现金」与「系统推算现金」摆在一起、把差额与期间事件摊开，
+     * 让人**先看见差在哪、再决定要不要覆盖**（用户 2026-10-03「减少全量导入」的正面解法）。
+     *
+     * <p><b>为什么需要</b>：原 {@link #importCashQuery} 是**静默覆盖**——差额被抹掉、不留痕，于是只能反复
+     * 导全量。生产实据（存量盘点清单 E）：两次导入之间系统现金漂到 **−37,226.29 / +24,101.01**，
+     * 而券商真值全程 ≤ 2,278.16。
+     *
+     * <p><b>口径</b>：系统现金 = 当前 `account.json` 的 cash（它本身 = 上次快照值 + 此后已计入的流水与转账）；
+     * 差额 = 券商现金 − 系统现金 = **系统解释不了的那部分**（未记录的股息/利息/费用差/未知）。
+     * 期间明细按类型汇总，其中「只记账未动现金」的行（{@code cashApplied=false}）**单列**——它们本就不在
+     * 系统现金里，也不该在，但必须让人看得见（这正是 C5 流水自证带来的能力）。
+     */
+    public CashReconcile reconcileCash(String userId, String content, LocalDate snapshotDate) {
+        TradingImportParser.CashQuery q = TradingImportParser.parseCash(content);
+        if (!q.headerMatched()) {
+            throw new TradingException("无法识别资金股份查询格式——请确认首行是「余额:… 可用:… 可取:…"
+                    + " 参考市值:… 资产:… 盈亏:…」，且是通达信资金股份导出");
+        }
+        if (!q.headerUnparsed().isEmpty()) {
+            throw new TradingException("资金文件首行的「" + String.join("、", q.headerUnparsed())
+                    + "」没能读成数字——为避免拿半份数据说话，本次对账已取消");
+        }
+        AccountSnapshot cur = accountSnapshot(userId);
+        LocalDate anchor = anchorRepository.find(userId).cashImport();
+        LocalDate effectiveDate = snapshotDate != null ? snapshotDate : LocalDate.now();
+
+        java.util.Map<String, BigDecimal> sums = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        int ledgerOnlyCount = 0;
+        BigDecimal ledgerOnlyAmount = BigDecimal.ZERO;
+        for (TradeRecord t : tradingHistoryRepository.findAll(userId)) {
+            if (t.entryDate() == null) continue;
+            // 锚定日**当天及之前**的成交已含在上次快照里 → 不再重复计入推算
+            if (anchor != null && !t.entryDate().isAfter(anchor)) continue;
+            if (t.entryDate().isAfter(effectiveDate)) continue;
+            if (Boolean.FALSE.equals(t.cashApplied())) {
+                // 只落流水、不动现金（回放兜底 / 锚定降级 / append 补录）——单列，不参与现金推算
+                ledgerOnlyCount++;
+                ledgerOnlyAmount = ledgerOnlyAmount.add(t.amount() != null ? t.amount() : BigDecimal.ZERO);
+                continue;
+            }
+            BigDecimal amount = t.amount() != null ? t.amount() : BigDecimal.ZERO;
+            BigDecimal fee = t.fee() != null ? t.fee() : BigDecimal.ZERO;
+            String kind;
+            BigDecimal delta;
+            if (t.volume() == 0) {
+                kind = "股息/红利税";
+                delta = t.direction() == TradeDirection.BUY ? amount : amount.negate();
+            } else if (t.direction() == TradeDirection.BUY) {
+                kind = "买入";
+                delta = amount.add(fee).negate();
+            } else {
+                kind = "卖出";
+                delta = amount.subtract(fee);
+            }
+            sums.merge(kind, delta, BigDecimal::add);
+            counts.merge(kind, 1, Integer::sum);
+        }
+        for (TransferRecord tr : transferRepository.findAll(userId)) {
+            if (tr.date() == null) continue;
+            if (anchor != null && !tr.date().isAfter(anchor)) continue;
+            if (tr.date().isAfter(effectiveDate)) continue;
+            String kind = tr.isIn() ? "转入" : "转出";
+            sums.merge(kind, tr.isIn() ? tr.amount() : tr.amount().negate(), BigDecimal::add);
+            counts.merge(kind, 1, Integer::sum);
+        }
+        List<KindSum> since = new ArrayList<>();
+        for (java.util.Map.Entry<String, BigDecimal> e : sums.entrySet()) {
+            since.add(new KindSum(e.getKey(), counts.getOrDefault(e.getKey(), 0), e.getValue()));
+        }
+
+        BigDecimal brokerCash = q.cash() != null ? q.cash() : BigDecimal.ZERO;
+        BigDecimal systemCash = cur.cash() != null ? cur.cash() : BigDecimal.ZERO;
+        BigDecimal diff = brokerCash.subtract(systemCash);
+        BigDecimal adjTotal = BigDecimal.ZERO;
+        int adjCount = 0;
+        if (cashAdjustmentRepository != null) {
+            try {
+                var all = cashAdjustmentRepository.findAll(userId);
+                adjCount = all.size();
+                for (CashAdjustment a : all) {
+                    if (a.amount() != null) adjTotal = adjTotal.add(a.amount());
+                }
+            } catch (RuntimeException e) {
+                log.warn("读对账调整失败（报告里按 0 处理）| userId={} | {}", userId, e.getMessage());
+            }
+        }
+        StringBuilder note = new StringBuilder();
+        if (diff.signum() == 0) {
+            note.append("券商现金与系统推算一致（差额 0）——这次导入不会改变现金。");
+        } else {
+            note.append("券商现金 ").append(brokerCash.stripTrailingZeros().toPlainString())
+                    .append("、系统推算 ").append(systemCash.stripTrailingZeros().toPlainString())
+                    .append("，差 ").append(diff.stripTrailingZeros().toPlainString())
+                    .append("——这部分我解释不了（未记录的股息/利息、费用口径差或未知）；覆盖后它就消失了。");
+        }
+        if (adjCount > 0) {
+            note.append(" 历史上已落账 ").append(adjCount).append(" 次对账调整，累计 ")
+                    .append(adjTotal.stripTrailingZeros().toPlainString()).append("。");
+        }
+        if (ledgerOnlyCount > 0) {
+            note.append(" 另有 ").append(ledgerOnlyCount).append(" 笔只记账未动现金（合计 ")
+                    .append(ledgerOnlyAmount.stripTrailingZeros().toPlainString())
+                    .append("），它们本就不在系统现金里。");
+        }
+        return new CashReconcile(brokerCash, systemCash, diff, anchor,
+                ledgerOnlyCount, ledgerOnlyAmount, adjTotal, adjCount, since, note.toString());
+    }
+
+    // ── C4 延伸：持仓快照对账（RFC C4「持仓同理」，2026-10-03）──
+
+    /**
+     * 持仓快照**对账**（只读，不落盘）：对比「本次文件里的持仓」与「系统当前落地持仓」，
+     * 把差异**逐只**摆出来——先看见「哪只、差多少、replace 会怎么改」，再决定要不要覆盖。
+     *
+     * <p>与资金侧的差别：持仓的「系统值」就是 `positions.md`（持仓的唯一真源），
+     * 所以这里不做流水重放（那是 {@code GET /trading/integrity} 的事），只做**文件 vs 落地**的直比。
+     */
+    public PositionsReconcile reconcilePositions(String userId, List<PositionImportItem> items) {
+        java.util.Map<String, Integer> fileQty = new java.util.LinkedHashMap<>();
+        java.util.Map<String, String> names = new java.util.LinkedHashMap<>();
+        if (items != null) {
+            for (PositionImportItem it : items) {
+                if (it.symbol() == null || it.symbol().isBlank()) continue;
+                fileQty.merge(it.symbol(), it.quantity(), Integer::sum);
+                if (it.name() != null && !it.name().isBlank()) names.put(it.symbol(), it.name());
+            }
+        }
+        java.util.Map<String, Integer> sysQty = currentQuantities(userId);
+        java.util.Set<String> all = new java.util.LinkedHashSet<>();
+        all.addAll(fileQty.keySet());
+        all.addAll(sysQty.keySet());
+        List<QtyDiff> diffs = new ArrayList<>();
+        for (String sym : all) {
+            int f = fileQty.getOrDefault(sym, 0);
+            int c = sysQty.getOrDefault(sym, 0);
+            if (f == c) continue;
+            String why = f == 0 ? "文件里没有这只（replace 会移除）"
+                    : c == 0 ? "系统里没有这只（replace 会新增）"
+                    : "数量不一致（replace 会以文件为准）";
+            diffs.add(new QtyDiff(sym, names.getOrDefault(sym, sym), f, c, f - c, why));
+        }
+        String note = diffs.isEmpty()
+                ? "文件与系统持仓逐只相符（文件 " + fileQty.size() + " 只）——这次 replace 不会改变持仓。"
+                : "有 " + diffs.size() + " 只不一致：replace 会以文件为准改掉它们（差额见 diff）。";
+        return new PositionsReconcile(fileQty.size(), sysQty.size(), diffs, note);
+    }
+
+    /** 持仓快照对账报告（**只读**）。 */
+    public record PositionsReconcile(int fileCount, int systemCount, List<QtyDiff> diffs, String note) {}
+
+    /** 单只数量差异（文件 − 系统）。 */
+    public record QtyDiff(String symbol, String name, int fileQty, int systemQty, int diff, String why) {}
+
+    /**
+     * 是否已有账户快照（P1-6，2026-10-03 增量深审）：**没有快照时 `accountSnapshot` 的「可取」是占位 0**，
+     * 拿它做「可取够不够」的判断会给出纯误导的告警——调用方先用本方法确认有没有真值。
+     */
+    public boolean hasAccountSnapshot(String userId) {
+        return accountSnapshotRepository.findLatest(userId).isPresent();
+    }
+
+    /** 资金快照对账报告（**只读**，不改任何账）。 */
+    public record CashReconcile(
+            BigDecimal brokerCash, BigDecimal systemCash, BigDecimal diff,
+            LocalDate cashAnchorDate, int ledgerOnlyCount, BigDecimal ledgerOnlyAmount,
+            // RFC 20261003 C4：历史对账调整累计（让「差额去哪了」可回看）
+            BigDecimal adjustmentTotal, int adjustmentCount,
+            List<KindSum> since, String note) {}
+
+    /** 自上次现金锚定日以来的事件汇总（类型 · 笔数 · 净额）。 */
+    public record KindSum(String kind, int count, BigDecimal amount) {}
 
     // ── 当日盈亏精确计算（口径①，2026-09-09 用户拍板）──
 
@@ -1971,16 +2291,21 @@ public class TradingAppService {
         // 快照内（2026-09-09 实测：21:23 锚定余额 2278.16 后又补记当天提现 15000 → 现金被双扣成 −12721.84），
         // 补记会重复扣现金——拒绝并指路：纯净投入修正走「设置本金」，现金以券商快照为准。
         LocalDate transferDate = date != null ? date : LocalDate.now();
-        LocalDate cashAnchor = anchorRepository.find(userId).cashImport();
-        if (cashAnchor != null && !transferDate.isAfter(cashAnchor)) {
-            throw new TradingException(String.format(
-                    "转账日期 %s 已包含在 %s 的资金股份快照中（快照余额已含这笔现金变动）——补记会重复扣现金；"
-                            + "如仅需修正净投入本金，请用「设置本金」；现金请以券商资金快照为准（转账应在快照导入前记录）",
-                    transferDate, cashAnchor));
-        }
         TransferRecord record = new TransferRecord(IdGenerator.monotonic("transfer_"),
                 type, amount, transferDate, note);
         synchronized (tradeLock(userId)) {
+            // ⚠️ P2-13（2026-10-03 增量深审）：C7 闸门与锚定日校验原先在**锁外**——检查通过后、写入前
+            // 若有快照导入推进了锚定日，这笔转账仍会落账 → 与快照双计（窄窗口，与 recordTradeInternal 同型）。
+            // 现在与写账动作同锁：检查-再动作之间不再有窗口。
+            requireAnchorKnownForLedgerChange(userId, "记录转账");
+            SnapshotAnchor curAnchor = anchorRepository.find(userId);
+            LocalDate cashAnchor = curAnchor != null ? curAnchor.cashImport() : null;
+            if (cashAnchor != null && !transferDate.isAfter(cashAnchor)) {
+                throw new TradingException(String.format(
+                        "转账日期 %s 已包含在 %s 的资金股份快照中（快照余额已含这笔现金变动）——补记会重复扣现金；"
+                                + "如仅需修正净投入本金，请用「设置本金」；现金请以券商资金快照为准（转账应在快照导入前记录）",
+                        transferDate, cashAnchor));
+            }
             // P0-2（2026-08-23）：account.json 写统一走 update（per-user 锁原子 RMW）
             AccountSnapshot updated = accountSnapshotRepository.update(userId, cur -> {
                 AccountSnapshot current = cur.orElse(new AccountSnapshot(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -2084,17 +2409,49 @@ public class TradingAppService {
         m.put("snapshotDate", s.snapshotDate());
         m.put("todayPnlSource", s.todayPnlSource());
         m.put("cashDate", cashDate != null ? cashDate.toString() : "");
-        m.put("cashNote", cashHealthNote(s.cash(), cashDate, today));
+        m.put("cashNote", cashHealthNote(s.cash(), s.withdrawable(), cashDate, today));
         m.put("principalNote", principalNote);
         return m;
     }
 
     /** 现金健康度人话（null = 不用提示）。优先级：负现金 > 无券商来源 > 过期（P2-交易69）。 */
     static String cashHealthNote(BigDecimal cash, LocalDate cashDate, LocalDate today) {
+        return cashHealthNote(cash, null, cashDate, today);
+    }
+
+    /** 现金侧异常人话（null = 无异常）。P2（独立审查 2026-10-03）：抽出来供 integrity 的 note 在**定稿前**使用。 */
+    static String cashAlertOf(AccountSnapshot acct) {
+        if (acct == null) return null;
+        StringBuilder sb = new StringBuilder();
+        if (acct.cash() != null && acct.cash().signum() < 0) {
+            sb.append("⚠️ 现金为负（").append(acct.cash().stripTrailingZeros().toPlainString())
+                    .append("）——现实中券商不可能出现，导一次「资金股份查询」对齐");
+        }
+        if (acct.withdrawable() != null && acct.withdrawable().signum() < 0) {
+            if (sb.length() > 0) sb.append("；");
+            sb.append("⚠️ 可取为负（").append(acct.withdrawable().stripTrailingZeros().toPlainString())
+                    .append("）——已转出的多于可取（当日卖出所得要次一交易日才能取）");
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * 现金健康度人话（4 参版，RFC 20261003 C3，2026-10-03）：在「可用」之外补「可取」维度。
+     * <p>
+     * 为什么需要：A 股 T+1——**当日卖出所得可继续买（可用）但要次一交易日才能转出（可取）**。
+     * 旧版只看 cash，于是「可取已经不够/为负」时账户卡不提示（用户 2026-10-03 提的症结：
+     * 「只有卖出股票后，才有现金，才能转出」）。优先级：可用为负 > 可取为负 > 无券商来源 > 过期。
+     */
+    static String cashHealthNote(BigDecimal cash, BigDecimal withdrawable, LocalDate cashDate, LocalDate today) {
         if (cash != null && cash.signum() < 0) {
             // 负现金是「自证失败」的硬信号：真实账户不可能有负的可用资金（生产 09-15 出现过 −6,093.97）
             return "可用资金是负数（" + cash.stripTrailingZeros().toPlainString()
                     + "）——这个数不对，导一次「资金股份查询」就能对齐。";
+        }
+        if (withdrawable != null && withdrawable.signum() < 0) {
+            return "可取资金是负数（" + withdrawable.stripTrailingZeros().toPlainString()
+                    + "）——已经转出的多于可取（当日卖出的钱要次一交易日才能取）；"
+                    + "导一次「资金股份查询」就能对齐。";
         }
         if (cashDate == null) {
             return "这个现金数还没有券商来源，导一次「资金股份查询」就能对齐。";
@@ -2357,9 +2714,34 @@ public class TradingAppService {
 
     /** 系统是否已有账目状态（持仓非空或账户快照存在）——fail-closed 判定用：
      *  全新用户（无持仓/无账户）从零回放不会双计，允许；已有状态才禁止盲回放。 */
+    /**
+     * C7 闸门（RFC 20261003 §三 C7，2026-10-03）：**锚定 fail-closed**。
+     *
+     * <p>锚定读不到（`snapshot-anchor.json` 缺失/损坏）时，系统**无法判断**哪些成交已包含在券商口径内——
+     * 此时改账会静默双计（与 2026-09-12 事故同型：锚定文件不在 → 近日成交全走 replay → 现金被算成
+     * −26,666.85）。原实现只在「历史成交回放」这一条路径 fail-closed，手动记录/批量/转账/截图确认
+     * 仍然是 fail-open（照常改账）。
+     *
+     * <p>判据：**锚定未知 + 账上已有持仓或资金快照** → 拒绝并指路；**全新账号**（还没导过快照）放行，
+     * 否则新用户无法从零开始记录。
+     */
+    private void requireAnchorKnownForLedgerChange(String userId, String action) {
+        SnapshotAnchor anchor = anchorRepository.find(userId);
+        if (AnchorStatus.of(anchor, anchorRepository.holdingsRecorded(userId)).known()) return;
+        if (!hasExistingAccountState(userId)) return;   // 全新账号：还没有账目可比对，允许从零记
+        throw new TradingException(action + "会改动持仓与现金，但券商快照锚定读不到"
+                + "（trading/snapshot-anchor.json 缺失或损坏）——此时没法判断哪些成交已经包含在券商口径里，"
+                + "继续记账可能把同一笔算两次。请先导一次「持仓股」或「资金股份查询」建立锚定；"
+                + "如果只是想补逐笔流水（不动账），用「历史成交导入 · 仅补流水」");
+    }
+
     private boolean hasExistingAccountState(String userId) {
         if (!positionRepository.findAll(userId).isEmpty()) return true;
-        return accountSnapshotRepository.findLatest(userId).isPresent();
+        if (accountSnapshotRepository.findLatest(userId).isPresent()) return true;
+        // ⚠️ P2-8（2026-10-03 增量深审）：只看「持仓 + 账户快照」会把**清仓后且从未导过资金**的老账号
+        // 判成「全新」——锚定一旦读不到就放行改账，静默双计。有流水或有转账 = 账上已有账目，同样不算全新。
+        if (!tradingHistoryRepository.findAll(userId).isEmpty()) return true;
+        return !transferRepository.findAll(userId).isEmpty();
     }
 
     /** 回放行能否归属到持仓：返回 null = 可回放（并在模拟态上扣减）；非 null = 无法归属的原因。 */
@@ -2484,8 +2866,9 @@ public class TradingAppService {
     /** 只落流水、不动持仓与现金（2026-09-12：真实成交永不因系统状态不准而消失）。 */
     private void ledgerOnly(String userId, TradingImportParser.HistoricalTradeRow r) {
         try {
-            appendTradeRecord(userId, r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
-                    r.entryDate(), r.tradeTime(), null, null, null, null, null, r.orderId(), r.fee());
+            appendLedgerOnlyRecord(userId, r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
+                    r.entryDate(), r.tradeTime(), r.orderId(), r.fee(),
+                    "历史成交回放无法归属持仓：只记账不改账");
         } catch (RuntimeException e) {
             log.error("回放流水兜底写入失败（该笔未能留痕）| userId={} | {} {} {}股 | {}",
                     userId, r.direction(), r.symbol(), r.volume(), e.getMessage());
@@ -2513,13 +2896,32 @@ public class TradingAppService {
         // P0-2（同批）：消费 appendTradeRecord 的**真实结果**（它现在返回 boolean），
         // 不再恒返回 true（原来写失败也报「已记进流水」并把候选清掉）。
         synchronized (tradeLock(userId)) {
-            boolean ok = appendTradeRecord(userId, symbol, name, direction, price, volume, entryDate, tradeTime,
-                    null, null, null, null, null, orderId, fee);
+            boolean ok = appendLedgerOnlyRecord(userId, symbol, name, direction, price, volume, entryDate,
+                    tradeTime, orderId, fee, "截图候选命中券商快照锚定日：只记账不改账");
             if (!ok) {
                 log.error("锚定降级：流水兜底写入失败（该笔未能留痕，候选将保留）| userId={} | {} {} {}股",
                         userId, direction, symbol, volume);
             }
             return ok;
+        }
+    }
+
+    /**
+     * **只落流水、不动现金**的降级写入（RFC 20261003 C5，2026-10-03）：标记 {@code cashApplied=false}
+     * 与原因，「这笔动过钱没有」从此可查询（此前降级行与正常流水在文件里完全无法区分）。
+     */
+    private boolean appendLedgerOnlyRecord(String userId, String symbol, String name, TradeDirection direction,
+                                           BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
+                                           String orderId, BigDecimal fee, String ledgerOnlyReason) {
+        try {
+            TradeRecord trade = TradeRecord.ledgerOnly(
+                    IdGenerator.monotonic("trade_"), symbol, name, direction, price, volume,
+                    entryDate, tradeTime, null, fee, null, orderId, ledgerOnlyReason);
+            tradingHistoryRepository.append(userId, trade);
+            return true;
+        } catch (Exception e) {
+            log.warn("降级流水写入失败（不影响主流程）| symbol={} | {}", symbol, e.getMessage());
+            return false;
         }
     }
 
@@ -2556,8 +2958,16 @@ public class TradingAppService {
             for (TradingImportParser.HistoricalTradeRow r : rows) {
                 if (r.volume() <= 0) {
                     // 2026-08-25 方案 A：股息类资金事件记账（入账 +现金 / 红利税 −现金，不进持仓/批次）
+                    // ⚠️ P1（2026-10-03 增量深审，**既有缺陷**）：append 补录路径原先**无条件**加现金，
+                    // 而 importSync 路径有 coveredByAnchor 保护 → 锚定日内的股息会被二次计入。
+                    // 现在两条路径同口径：**锚定覆盖到的日期只落流水、不动现金**（股息也照此）。
                     if (TradingImportParser.isDividendEvent(r)) {
-                        applyDividendCash(userId, r);
+                        if (r.entryDate() != null && coveredByAnchor(userId, r.entryDate())) {
+                            log.info("股息行落在锚定日内，只落流水不改现金 | userId={} | {} | {}",
+                                    userId, r.symbol(), r.entryDate());
+                        } else {
+                            applyDividendCash(userId, r);
+                        }
                     } else {
                         nonTrades++;
                     }
@@ -2569,11 +2979,13 @@ public class TradingAppService {
                     updated += mergeInto(userId, index, r);
                     continue;
                 }
-                TradeRecord trade = TradeRecord.of(
+                // RFC 20261003 C5（2026-10-03）：补录行**只记账不改账**（不动持仓与现金）→ 必须带
+                // cashApplied=false 与原因，否则事后无法区分（存量盘点清单 A 的根因）。
+                TradeRecord trade = TradeRecord.ledgerOnly(
                         IdGenerator.monotonic("trade_"),
                         r.symbol(), r.name(), r.direction(), r.price(), r.volume(),
-                        r.entryDate(), r.tradeTime(), null, null, null, null, r.fee(),
-                        LocalDateTime.now(), null, r.orderId());
+                        r.entryDate(), r.tradeTime(), null, r.fee(), null, r.orderId(),
+                        "历史成交补录（append 模式）：只记账不改账");
                 toAdd.add(trade);
                 index.addRecord(trade);
                 imported++;
@@ -2714,20 +3126,25 @@ public class TradingAppService {
                     return;
                 }
                 // 现金 ± 发生金额（只动现金/资产，不动本金/持仓）
+                // RFC 20261003 C3（A 档）：股息/红利税属非交易性资金变动，与「卖出回款」同规则——
+                // 先只进「可用」池，「可取」待券商快照刷新（A 股 T+1 语义）。
                 accountSnapshotRepository.update(userId, cur -> cur.map(c -> new AccountSnapshot(
                         c.assets().add(occurred),
                         c.cash().add(occurred),
                         c.available().add(occurred),
-                        c.withdrawable().add(occurred),
+                        c.withdrawable(),
                         c.marketValue(), c.pnl(), c.todayPnl(), c.principal(), c.snapshotDate(),
                         c.todayPnlSource()))
                         .orElse(null)); // 无账户快照（未导入资金）不初始化，保持既有语义
                 // 落流水可回溯：direction = 入账 BUY / 税 SELL，volume 0，amount = 发生金额绝对值，reason = 源文件备注
                 TradeDirection dir = occurred.signum() > 0 ? TradeDirection.BUY : TradeDirection.SELL;
+                // RFC 20261003 C5：股息/红利税**确实动了现金** → 显式标记 true（原来是兼容构造的 null =
+                // 未标记；对账重放时会把「真的动过钱」当成「不知道」，让现金对账无法自洽）。
                 TradeRecord tr = new TradeRecord(
                         IdGenerator.monotonic("trade_"), r.symbol(), r.name(), dir,
                         BigDecimal.ZERO, 0, occurred.abs(), r.entryDate(), r.tradeTime(),
-                        null, null, null, r.remark(), null, LocalDateTime.now(), null, null);
+                        null, null, null, r.remark(), null, LocalDateTime.now(), null, null,
+                        true, null);
                 tradingHistoryRepository.append(userId, tr);
             }
         } catch (RuntimeException e) {

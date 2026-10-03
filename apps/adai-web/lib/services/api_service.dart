@@ -650,6 +650,16 @@ class ApiService {
   /// 「已含在快照口径内」而丢掉增量（见 RFC 20260912-trading-ledger-integrity）。
   /// [todayPnl]（2026-09-13）= 券商「持仓股」导出「当日盈亏」列之和（[TdxParseResult.todayPnl]）——
   /// **券商权威口径**，后端只在与账户快照同一天时写入；缺列/不可靠时传 null（保留账户旧值）。
+  /// 持仓快照**对账**（POST /api/v1/trading/positions/import?dryRun=true，RFC 20261003 C4「持仓同理」）：
+  /// **只读不落盘**——逐只摆出「文件 vs 系统」差多少、replace 会怎么改（新增/移除/改数量）。
+  Future<Map<String, dynamic>> reconcilePositions(List<Map<String, dynamic>> items) async {
+    final uri = Uri.parse('$baseUrl/api/v1/trading/positions/import')
+        .replace(queryParameters: {'dryRun': 'true'});
+    final resp = await _client.post(uri, headers: _headers, body: jsonEncode(items));
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   Future<PositionImportResult> importPositions(List<Map<String, dynamic>> items,
       {bool replace = false, String? snapshotDate, double? todayPnl}) async {
     final params = <String, String>{
@@ -769,6 +779,56 @@ class ApiService {
       headers: _headers,
       body: jsonEncode({'amount': amount}));
     _check(resp);
+  }
+
+  // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop，2026-10-03）──
+  // 定位：系统只「记你的话 · 到点提醒 · 收盘对账」，**不生成计划、不给建议**。
+
+  /// 有操作计划的日期（GET /api/v1/trading/plans）→ 倒序字符串列表。
+  Future<List<String>> getPlanDates() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/plans'), headers: _headers);
+    _check(resp);
+    final m = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (m['dates'] as List? ?? const []).map((e) => e.toString()).toList();
+  }
+
+  /// 读某天的计划；**没写返回 null**（后端 404 人话——不返回空壳假计划）。
+  Future<Map<String, dynamic>?> getPlan(String date) async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/plans/$date'), headers: _headers);
+    if (resp.statusCode == 404) return null;
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 写某天的计划（一句话一行；覆盖写）。空计划后端 400 人话。
+  Future<Map<String, dynamic>> savePlan(String date, List<String> lines, String note) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date'),
+      headers: _headers,
+      body: jsonEncode({'lines': lines, 'note': note}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 收盘对账（计划 vs 实际 + ⚠️ 计划外成交）——**只陈述事实**。
+  Future<Map<String, dynamic>> reviewPlan(String date) async {
+    final resp = await _client.get(
+        Uri.parse('$baseUrl/api/v1/trading/plans/$date/review'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 「一轮完整交易」× 规则检查（GET /api/v1/trading/rounds，2026-10-03）——只陈述事实、不作建议。
+  Future<Map<String, dynamic>> getRounds({String? symbol, int limit = 50}) async {
+    final q = (symbol != null && symbol.isNotEmpty)
+        ? '?symbol=$symbol&limit=$limit'
+        : '?limit=$limit';
+    final resp =
+        await _client.get(Uri.parse('$baseUrl/api/v1/trading/rounds$q'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
   /// 账户总体快照（GET /api/v1/trading/account：资产/可用/可取/参考市值/当日盈亏/盈亏）。
@@ -1065,6 +1125,22 @@ class ApiService {
     _check(resp);
     final data = jsonDecode(utf8.decode(resp.bodyBytes));
     return (data as List).map((e) => SoldScoreDto.fromJson(e)).toList();
+  }
+
+  /// 资金快照**对账**（POST /api/v1/trading/imports/cash + dryRun，RFC 20261003 C4）：
+  /// **只读不落盘**——返回 {brokerCash, systemCash, diff, since[], ledgerOnlyCount, note}，
+  /// 让人先看见「券商现金 vs 系统推算」差多少、差在哪，再决定要不要覆盖。
+  Future<Map<String, dynamic>> reconcileCash(String content, {String? snapshotDate}) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/imports/cash'),
+      headers: _headers,
+      body: jsonEncode(<String, dynamic>{
+        'content': content,
+        'dryRun': 'true',
+        if (snapshotDate != null && snapshotDate.isNotEmpty) 'snapshotDate': snapshotDate,
+      }));
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
 
   /// 资金股份查询导入（POST /api/v1/trading/imports/cash：现金 + 精确成本）。

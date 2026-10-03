@@ -52,7 +52,12 @@ public record TradingRuleSettings(
         double scoreBuyWeight,
         double scoreExecWeight,
         int constraintRuleMin,
-        int constraintRuleMax) {
+        int constraintRuleMax,
+        // RFC 20261003 §5.5（2026-10-03）：复盘阈值——「曾赚过」的峰值浮盈下限 %（R55 盈转亏判定用，
+        // 默认 3：盘中擦一下不算赚过）；此前只有实时提示用的 givebackPeakPct(20)，没有复盘用阈值。
+        double reviewPeakMinPct,
+        // RFC 20261003 §5.5：复盘阈值——「被套」的浮亏下限 %（R69/R90 被套加仓判定用，默认 1）。
+        double reviewTrapMinPct) {
 
     /** 默认配置 = 原硬编码参数（adai 规则体系经确认的默认值，2026-08-17 P2-6 / RFC 20260825）。 */
     public static TradingRuleSettings defaults() {
@@ -72,7 +77,25 @@ public record TradingRuleSettings(
                 0.5,
                 0.5,
                 66,
-                95);
+                95,
+                3.0,
+                1.0);
+    }
+
+    /**
+     * 兼容构造（16 参，2026-10-03 之前的调用点与测试）：复盘阈值取默认（3% / 1%）——旧调用零改动
+     * （与 {@code AccountSnapshot} 9 参兼容构造同模式）。
+     */
+    public TradingRuleSettings(BigDecimal positionLimitPercent, BigDecimal defaultStopLossRatio,
+                               BigDecimal givebackPeakPct, BigDecimal givebackRatioPct,
+                               int shortOverdueDays, double soldStopLossPct, int soldShortHoldDays,
+                               double buyPullbackPct, double buyShrinkRatio, double buyKdjLow,
+                               double buyVolumeSurge, int buyPriorHighDays, double scoreBuyWeight,
+                               double scoreExecWeight, int constraintRuleMin, int constraintRuleMax) {
+        this(positionLimitPercent, defaultStopLossRatio, givebackPeakPct, givebackRatioPct,
+                shortOverdueDays, soldStopLossPct, soldShortHoldDays, buyPullbackPct, buyShrinkRatio,
+                buyKdjLow, buyVolumeSurge, buyPriorHighDays, scoreBuyWeight, scoreExecWeight,
+                constraintRuleMin, constraintRuleMax, 3.0, 1.0);
     }
 
     public TradingRuleSettings {
@@ -142,6 +165,14 @@ public record TradingRuleSettings(
         if (constraintInvalid) {
             constraintRuleMin = DEFAULT_CONSTRAINT_MIN;
             constraintRuleMax = DEFAULT_CONSTRAINT_MAX;
+        }
+        // RFC 20261003（2026-10-03）：复盘阈值——非法/负数回落默认。
+        // 实测敏感性：R55 命中数在阈值 2% 时 94 轮、3% 时 65 轮（差 29 轮），故必须可配而不是写死。
+        if (!Double.isFinite(reviewPeakMinPct) || reviewPeakMinPct < 0 || reviewPeakMinPct > 100) {
+            reviewPeakMinPct = 3.0;
+        }
+        if (!Double.isFinite(reviewTrapMinPct) || reviewTrapMinPct < 0 || reviewTrapMinPct > 100) {
+            reviewTrapMinPct = 1.0;
         }
     }
 

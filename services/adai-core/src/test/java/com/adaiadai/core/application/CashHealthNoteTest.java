@@ -38,6 +38,25 @@ class CashHealthNoteTest {
         assertTrue(note.contains("资金股份查询"), "要给下一步动作，实际: " + note);
     }
 
+    /** RFC 20261003 C3（2026-10-03，D2 拍板 A 档）：A 股 T+1——「可取」为负（转出超过可取）必须看得见。
+     *  旧版只看 cash：可取已经穿仓也一声不响（用户症结「只有卖出后才有现金才能转出」，可取才是那个门槛）。 */
+    @Test
+    void negativeWithdrawable_isCalledOut() {
+        String note = TradingAppService.cashHealthNote(new BigDecimal("5000"), new BigDecimal("-1200"),
+                LocalDate.of(2026, 10, 3), LocalDate.of(2026, 10, 3));
+
+        assertNotNull(note, "可取为负必须提示");
+        assertTrue(note.contains("可取资金是负数"), note);
+        assertTrue(note.contains("次一交易日"), "要说清原因（T+1），实际: " + note);
+    }
+
+    /** 可用与可取都正常 → 不打扰（null = 不提示）。 */
+    @Test
+    void healthyCash_noNote() {
+        assertNull(TradingAppService.cashHealthNote(new BigDecimal("1804.78"), new BigDecimal("1804.78"),
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 3)));
+    }
+
     /** 从没导过资金查询（无券商来源）→ 说明这个数没有出处。 */
     @Test
     void noCashDate_saysNoBrokerSource() {

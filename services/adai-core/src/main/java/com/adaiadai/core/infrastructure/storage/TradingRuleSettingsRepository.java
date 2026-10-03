@@ -121,6 +121,9 @@ public class TradingRuleSettingsRepository implements TradingRuleSettingsPort {
                 params.put("scoreExecWeight", settings.scoreExecWeight());
                 params.put("constraintRuleMin", settings.constraintRuleMin());
                 params.put("constraintRuleMax", settings.constraintRuleMax());
+                // RFC 20261003 §5.5（2026-10-03）：复盘阈值随规则包落盘（rules.yaml）
+                params.put("reviewPeakMinPct", settings.reviewPeakMinPct());
+                params.put("reviewTrapMinPct", settings.reviewTrapMinPct());
                 // dump（保留根级未知键；注释无法程序化保留——文档注明手写注释会被归一化，与 positions.md 同策略）
                 String yamlText = new Yaml().dump(root);
                 fileStorage.write(userId, RULES_PATH, yamlText);
@@ -155,6 +158,9 @@ public class TradingRuleSettingsRepository implements TradingRuleSettingsPort {
         Double scoreExec = asDouble(params.get("scoreExecWeight"));
         Integer constraintMin = asInt(params.get("constraintRuleMin"));
         Integer constraintMax = asInt(params.get("constraintRuleMax"));
+        // RFC 20261003 §5.5（2026-10-03）：复盘阈值（缺失 → -1 触发 compact constructor 回落默认）
+        Double reviewPeak = asDouble(params.get("reviewPeakMinPct"));
+        Double reviewTrap = asDouble(params.get("reviewTrapMinPct"));
         return new TradingRuleSettings(
                 positionLimit,
                 stopLossRatio,
@@ -171,7 +177,9 @@ public class TradingRuleSettingsRepository implements TradingRuleSettingsPort {
                 scoreBuy != null ? scoreBuy : -1,
                 scoreExec != null ? scoreExec : -1,
                 constraintMin != null ? constraintMin : -1,
-                constraintMax != null ? constraintMax : -1);
+                constraintMax != null ? constraintMax : -1,
+                reviewPeak != null ? reviewPeak : -1,
+                reviewTrap != null ? reviewTrap : -1);
     }
 
     private BigDecimal asBigDecimal(Object o) {

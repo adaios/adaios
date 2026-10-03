@@ -508,8 +508,9 @@ void main() {
       expect(tiles.every((t) => t.onChanged == null), isTrue,
           reason: '非 iOS 端开关必须置灰');
 
-      // ③ 与首页那份的 11 项对齐（此前这里漏了 learn-review，两个入口给出的开关集合不同）
-      expect(tiles.length, 11);
+      // ③ 与首页那份的 12 项对齐（此前这里漏了 learn-review，两个入口给出的开关集合不同；
+      //    2026-10-03 RFC 20261003 §三：新增 plan=次日计划提醒——两端映射表必须同步加，否则又是「两个入口不一样」）
+      expect(tiles.length, 12);
       expect(find.text('学习复习提醒（每日复习到期卡片）'), findsOneWidget);
       expect(find.text('待办到期提醒'), findsOneWidget,
           reason: 'RFC 20260917：todo-due 与 learn-review 同机制（默认开、可关）');

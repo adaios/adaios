@@ -1,0 +1,246 @@
+package com.adaiadai.core.application;
+
+import com.adaiadai.core.domain.trading.TradeRecord;
+import com.adaiadai.core.domain.trading.TradingHistoryRepository;
+import com.adaiadai.core.domain.trading.TradingPlan;
+import com.adaiadai.core.domain.trading.TradingPlanRepository;
+import com.adaiadai.core.domain.trading.market.Candle;
+import com.adaiadai.core.kernel.IdGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * TradingPlanService — 次日操作计划的「写 · 守 · 对账」
+ * （RFC 20261003-trading-plan-and-review-loop §二~四，2026-10-03；用户授权「全做」）。
+ *
+ * <p><b>定位</b>：把这个模块从「系统提醒你」（早盘计划由系统按持仓/买点算出来，近似建议）
+ * 反转为「**你承诺、系统守**」——系统只做三件事：**记你的话 · 到点提醒 · 收盘对账**。
+ * 因此这里的文案一律**引用用户的原话**（{@code PlanItem.text}），系统不改写、不评价、不预测。
+ *
+ * <p><b>一句话写</b>：复用交易解析的既有心智（自然语言 → 结构化），但**不接 LLM**——
+ * 计划是纪律承诺，解析错了比解析慢更糟；这里用确定性正则，解析不出就**不猜**（condOp 留空、
+ * 由用户改精确表单）。
+ */
+@Service
+public class TradingPlanService {
+
+    private static final Logger log = LoggerFactory.getLogger(TradingPlanService.class);
+
+    /** 标的需要 6 位代码（名称→代码的解析留给前端选择，避免这里猜错）。 */
+    private static final Pattern SYMBOL = Pattern.compile("(\\d{6})");
+    /** 条件价格：跟在条件词后面的数字。 */
+    private static final Pattern COND_PRICE = Pattern.compile(
+            "(?:跌破|低于|以下|回到|回踩|涨到|到|高于|以上|突破|上破|破)\\s*(\\d+(?:\\.\\d+)?)");
+    /** 数量（股 / 手）。 */
+    private static final Pattern QTY = Pattern.compile("(\\d+)\\s*(?:股|手)");
+
+    private final TradingPlanRepository planRepository;
+    private final TradingHistoryRepository tradingHistoryRepository;
+    private final KlineService klineService;
+
+    public TradingPlanService(TradingPlanRepository planRepository,
+                              TradingHistoryRepository tradingHistoryRepository,
+                              KlineService klineService) {
+        this.planRepository = planRepository;
+        this.tradingHistoryRepository = tradingHistoryRepository;
+        this.klineService = klineService;
+    }
+
+    // ── 读 ──
+
+    public Optional<TradingPlan> find(String userId, LocalDate date) {
+        return planRepository.find(userId, date);
+    }
+
+    public List<LocalDate> dates(String userId) {
+        return planRepository.dates(userId);
+    }
+
+    // ── 写（一句话 / 结构化都走这里）──
+
+    /** 用一组「一句话」建立某天的计划（覆盖写）。{@code note} 是用户的自我约束。 */
+    public TradingPlan saveFromLines(String userId, LocalDate date, List<String> lines, String note) {
+        List<TradingPlan.PlanItem> items = new ArrayList<>();
+        if (lines != null) {
+            for (String raw : lines) {
+                if (raw == null || raw.isBlank()) continue;
+                items.add(parseItem(raw));
+            }
+        }
+        TradingPlan plan = new TradingPlan(date, items, note != null ? note : "", LocalDateTime.now());
+        planRepository.save(userId, plan);
+        log.info("操作计划已落盘 | userId={} | date={} | 条目 {} 条", userId, date, items.size());
+        return plan;
+    }
+
+    /**
+     * 一句话 → 计划条目。**解析不出就不猜**：标的取不到 6 位代码时 symbol 留空（由用户补），
+     * 条件词缺失时 condOp 留空（= 无条件，开盘即做）。
+     */
+    public TradingPlan.PlanItem parseItem(String raw) {
+        String text = raw.trim();
+        String symbol = first(SYMBOL, text);
+        String action = detectAction(text);
+        String condition = "";
+        String condOp = "";
+        BigDecimal condPrice = null;
+
+        Matcher m = COND_PRICE.matcher(text);
+        if (m.find()) {
+            condPrice = new BigDecimal(m.group(1));
+            String word = m.group().replaceAll("\\s*\\d+(?:\\.\\d+)?$", "").trim();
+            condition = word + " " + m.group(1);
+            condOp = isDownside(word, text) ? "LT" : "GE";
+        }
+        Integer qty = null;
+        Matcher q = QTY.matcher(text);
+        if (q.find()) {
+            int n = Integer.parseInt(q.group(1));
+            qty = q.group().contains("手") ? n * 100 : n;
+        }
+        return new TradingPlan.PlanItem(IdGenerator.monotonic("plan_"), action, symbol, "", condition,
+                condOp, condPrice, qty, text, false);
+    }
+
+    /** 方向识别（买 / 卖 / 明确不动 / **没听懂**）——先判「不动」，再判卖，最后判买。
+     *  注意单字「买 / 卖」也要认（用户原话常是「…以下买 500 股」「…清仓卖」）。
+     *  <p>P1-7（独立审查 2026-10-03 修复）：**解析不出方向时返回 {@code UNKNOWN}，不再回落 HOLD**——
+     *  原来「没听懂」被当成用户明确写的「明天不动」，review 里静默不参与判定（用户永远不知道这条没被理解）。 */
+    static String detectAction(String text) {
+        if (text.contains("不动") || text.contains("空仓") || text.contains("不操作")) return "HOLD";
+        // P3（独立审查 2026-10-03 修复）：否定词优先——「不加仓 / 不卖出 / 别买」不是买入或卖出计划
+        if (text.matches(".*(不加仓|不补仓|不买|别买|不卖|别卖|不减仓).*")) return "HOLD";
+        if (text.matches(".*(卖出|卖了|卖|清仓|清掉|减仓|减半|止盈|止损|走了|拍掉|离场).*")) return "SELL";
+        if (text.matches(".*(买入|买了|买|建仓|加仓|补仓|进场|低吸).*")) return "BUY";
+        return "UNKNOWN";
+    }
+
+    private static boolean isDownside(String word, String text) {
+        // P1-6（独立审查 2026-10-03 修复）：加「跌到 / 跌至 / 回落到 / 回调到」——
+        // 原来只认「跌破/低于/以下/回到/回踩/破」，于是「跌到 5.5 我买」被误判为**上方**条件（触发反转）。
+        if (word.contains("跌破") || word.contains("跌到") || word.contains("跌至")
+                || word.contains("低于") || word.contains("以下") || word.contains("回落到")
+                || word.contains("回调到") || word.contains("回到") || word.contains("回踩")
+                || word.contains("破")) {
+            return true;
+        }
+        if (word.contains("涨到") || word.contains("升至") || word.contains("高于")
+                || word.contains("以上") || word.contains("突破") || word.contains("上破")) {
+            return false;
+        }
+        // 兜底：只剩一个「到」——看它前面紧邻的动词定方向（有「跌/落/下/回调」→ 下方；有「涨/升/上」→ 上方）
+        boolean down = text.matches(".*(跌|落|下|回调|回踩|破).{0,3}到.*");
+        boolean up = text.matches(".*(涨|升|上|突破).{0,3}到.*");
+        return down && !up;
+    }
+
+    private static String first(Pattern p, String s) {
+        Matcher m = p.matcher(s);
+        return m.find() ? m.group(1) : "";
+    }
+
+    // ── 收盘对账（只陈述事实）──
+
+    /**
+     * 计划 vs 实际：每条计划是否**触发**（当日行情是否触及条件）、是否**执行**（当日流水里有同标的同方向），
+     * 以及当日**计划外的成交**（R96 四不原则的正面检查）。
+     */
+    public PlanReview review(String userId, LocalDate date) {
+        Optional<TradingPlan> opt = planRepository.find(userId, date);
+        List<TradeRecord> dayTrades = tradingHistoryRepository.findAll(userId).stream()
+                .filter(t -> date.equals(t.entryDate()) && t.volume() > 0)
+                .toList();
+        List<ItemReview> items = new ArrayList<>();
+        Set<String> plannedSymbols = new LinkedHashSet<>();
+        int triggeredCount = 0;
+        int executedCount = 0;
+        if (opt.isPresent()) {
+            for (TradingPlan.PlanItem it : opt.get().items()) {
+                if (!it.symbol().isBlank()) plannedSymbols.add(it.symbol());
+                if (!it.tradable()) {
+                    // HOLD = 用户明确写的「不动」（合法计划）；UNKNOWN = **系统没听懂方向**——
+                    // P1-7（独立审查 2026-10-03）：两者不再混为一谈，后者在 evidence 里如实说清。
+                    items.add(new ItemReview(it.symbol(), it.name(), it.action(), it.condition(),
+                            it.text(), null, null,
+                            "UNKNOWN".equals(it.action()) ? "没听懂方向——请改写这一条" : null));
+                    continue;
+                }
+                Boolean triggered = null;
+                String evidence = null;
+                if (!it.condOp().isBlank() && it.condPrice() != null && !it.symbol().isBlank()) {
+                    Candle c = todayCandle(it.symbol(), date);
+                    if (c != null) {
+                        boolean hit = "LT".equals(it.condOp())
+                                ? BigDecimal.valueOf(c.low()).compareTo(it.condPrice()) <= 0
+                                : BigDecimal.valueOf(c.high()).compareTo(it.condPrice()) >= 0;
+                        triggered = hit;
+                        evidence = "当日 高 " + trim(c.high()) + " / 低 " + trim(c.low());
+                        if (hit) triggeredCount++;
+                    }
+                }
+                boolean executed = dayTrades.stream().anyMatch(t ->
+                        t.symbol().equals(it.symbol()) && t.direction().name().equals(it.action()));
+                if (executed) executedCount++;
+                items.add(new ItemReview(it.symbol(), it.name(), it.action(), it.condition(),
+                        it.text(), triggered, executed, evidence));
+            }
+        }
+        // 计划外成交：P2（独立审查 2026-10-03 修复）——不再只按 symbol 判：
+        // ① 标的根本不在计划里 → 报；② 标的在计划里但**方向做反了** → 也要报（原来被算作「计划内」静默放过）。
+        Set<String> plannedDir = new LinkedHashSet<>();
+        if (opt.isPresent()) {
+            for (TradingPlan.PlanItem it : opt.get().items()) {
+                if (it.tradable() && !it.symbol().isBlank()) plannedDir.add(it.symbol() + "|" + it.action());
+            }
+        }
+        List<String> unplanned = new ArrayList<>();
+        for (TradeRecord t : dayTrades) {
+            if (plannedDir.contains(t.symbol() + "|" + t.direction().name())) continue;
+            boolean symbolPlanned = plannedSymbols.contains(t.symbol());
+            unplanned.add(t.symbol() + " " + t.name() + " " + t.direction() + " " + t.volume() + "股"
+                    + (symbolPlanned ? "（方向与计划相反）" : ""));
+        }
+        return new PlanReview(date, opt.isPresent(), items, unplanned, triggeredCount, executedCount);
+    }
+
+    private Candle todayCandle(String symbol, LocalDate date) {
+        try {
+            List<Candle> cs = klineService.klineRange(symbol, date, date);
+            return cs.isEmpty() ? null : cs.get(0);
+        } catch (RuntimeException e) {
+            log.warn("对账取日线失败（触发判定降级为 null）| symbol={} | {}", symbol, e.getMessage());
+            return null;
+        }
+    }
+
+    private static BigDecimal trim(double v) {
+        return BigDecimal.valueOf(v).stripTrailingZeros();
+    }
+
+    // ── 视图对象 ──
+
+    /** 收盘对账结果：**只陈述事实**，不含判断与建议。 */
+    public record PlanReview(LocalDate date, boolean hasPlan, List<ItemReview> items,
+                             List<String> unplanned, int triggeredCount, int executedCount) {}
+
+    /**
+     * 一条计划的对账。
+     *
+     * @param triggered 条件是否被当日行情触及（null = 无法判定：无条件 / 无行情 / 无标的）
+     * @param executed  当日是否有同标的同方向的成交（null = HOLD 类不适用）
+     */
+    public record ItemReview(String symbol, String name, String action, String condition,
+                             String text, Boolean triggered, Boolean executed, String evidence) {}
+}

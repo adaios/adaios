@@ -36,6 +36,25 @@ class TradingPage extends StatefulWidget {
 
 class _TradingPageState extends State<TradingPage> {
   List<PositionItem> _positions = [];
+  // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop §二~四，2026-10-03）──
+  // 定位：系统只「记你的话 · 到点提醒 · 收盘对账」——**不生成计划、不给建议**。
+  final TextEditingController _planLinesCtrl = TextEditingController();
+  final TextEditingController _planNoteCtrl = TextEditingController();
+  DateTime _planDate = _defaultPlanDate();
+
+  /// 下个交易日的**默认值**（P1-2，2026-10-03 增量深审）：周五晚进来默认写「周六」，
+  /// 而后端提醒与早盘都用 `nextTradingDay`（周五 → 周一）→ 写的日子与读的日子对不上、提醒白推。
+  /// 这里只跳周末（节假日仍由用户自己改日期），覆盖绝大多数场景。
+  static DateTime _defaultPlanDate() {
+    var d = DateTime.now().add(const Duration(days: 1));
+    while (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) {
+      d = d.add(const Duration(days: 1));
+    }
+    return d;
+  }
+  Map<String, dynamic>? _planView; // null = 这天还没写（后端 404，不编造空壳）
+  bool _planLoading = false;
+  String? _planMsg;
   PortfolioSnapshotResponse? _snapshot;
   bool _loading = true;
   String? _error;
@@ -147,6 +166,7 @@ class _TradingPageState extends State<TradingPage> {
   void initState() {
     super.initState();
     _loadAll();
+    _loadPlan();
     // 跟随交易节奏：每 30 分钟自动刷新盈亏/行情（手机上看不到旧数据）
     _autoRefresh = Timer.periodic(const Duration(minutes: 30), (_) {
       if (mounted) _refresh();
@@ -163,6 +183,8 @@ class _TradingPageState extends State<TradingPage> {
     _priceCtrl.dispose();
     _volumeCtrl.dispose();
     _stopLossCtrl.dispose();
+    _planLinesCtrl.dispose();
+    _planNoteCtrl.dispose();
     super.dispose();
   }
 
@@ -301,6 +323,283 @@ class _TradingPageState extends State<TradingPage> {
   /// 标题是「我」（阿呆）的一句话，[MarketDataHealthDto.note] 是后端拟好的正文；
   /// 展开才看取数链 / 最近成功与失败时刻 / 连续失败次数——这些是排查用细节，不该占首屏。
   /// 只有 `ok == false` 调用方才会渲染（'ok == true' 与「拿不到信息」都是零显示）。
+  // ── 次日操作计划（§二~四）：前晚写 → 当日守 → 收盘对账。系统不生成计划、不给建议。 ──
+
+  String get _planDateStr =>
+      '${_planDate.year.toString().padLeft(4, '0')}-${_planDate.month.toString().padLeft(2, '0')}-${_planDate.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadPlan() async {
+    setState(() => _planLoading = true);
+    try {
+      final v = await widget.api.getPlan(_planDateStr);
+      if (!mounted) return;
+      setState(() {
+        _planView = v;
+        _planLoading = false;
+        _planMsg = null;
+        if (v != null) {
+          _planLinesCtrl.text = ((v['items'] as List?) ?? const [])
+              .map((e) => (e as Map)['text']?.toString() ?? '')
+              .where((t) => t.isNotEmpty)
+              .join('\n');
+          _planNoteCtrl.text = v['note']?.toString() ?? '';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _planLoading = false;
+        _planMsg = '读取失败：$e';
+      });
+    }
+  }
+
+  Future<void> _savePlan() async {
+    final lines = _planLinesCtrl.text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) {
+      setState(() => _planMsg = '计划不能是空的——写一句就行；不打算动手就写「明天不动」。');
+      return;
+    }
+    setState(() => _planLoading = true);
+    try {
+      await widget.api.savePlan(_planDateStr, lines, _planNoteCtrl.text.trim());
+      await _loadPlan();
+      if (mounted) setState(() => _planMsg = '已记下 $_planDateStr 的计划。');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _planLoading = false;
+        _planMsg = '保存失败：$e';
+      });
+    }
+  }
+
+  Future<void> _openPlanReview() async {
+    try {
+      final r = await widget.api.reviewPlan(_planDateStr);
+      if (!mounted) return;
+      final items = (r['items'] as List?) ?? const [];
+      final unplanned = (r['unplanned'] as List?) ?? const [];
+      // P3-14（2026-10-03 增量深审）：嵌套引号会让守卫 G6 的括号计数错位——先取局部变量。
+      final trigCount = r['triggeredCount'];
+      final execCount = r['executedCount'];
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.darkSurface,
+          title: Text('$_planDateStr 对账', style: const TextStyle(fontSize: 15)),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (items.isEmpty)
+                  const Text('这天没有写计划。', style: TextStyle(fontSize: 13)),
+                for (final it in items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(_planItemLine(it),
+                        style: const TextStyle(fontSize: 12.5, height: 1.5)),
+                  ),
+                if (unplanned.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  const Text('⚠️ 计划外操作',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  for (final u in unplanned)
+                    Text('· $u', style: const TextStyle(fontSize: 12.5)),
+                ],
+                const SizedBox(height: 10),
+                Text('触发 $trigCount 条 · 执行 $execCount 条',
+                    style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _planMsg = '对账失败：$e');
+    }
+  }
+
+  /// 轮次复盘（RFC 20261003-trading-plan-and-review-loop §五，2026-10-03）：
+  /// 「一轮完整交易」的识别（持仓归零 + 同日买卖合并）× 你自己的规则命中——**只列事实，不作评价**。
+  Future<void> _openRoundsReview() async {
+    try {
+      final r = await widget.api.getRounds(limit: 20);
+      if (!mounted) return;
+      final rounds = (r['rounds'] as List?) ?? const [];
+      final roundTotal = r['total'];
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.darkSurface,
+          title: Text('最近 ${rounds.length} 轮（共 $roundTotal 轮）',
+              style: const TextStyle(fontSize: 15)),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('一轮 = 从建仓到卖光（同一天「卖光又买回」算同一轮）。只列事实。',
+                    style: TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+                const SizedBox(height: 10),
+                for (final x in rounds)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_roundHead(x),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_roundBody(x),
+                          style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+                      for (final h in ((x['hits'] as List?) ?? const []))
+                        Text(_hitLine(h),
+                            style: const TextStyle(fontSize: 12, color: AppColors.darkRed)),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _planMsg = '轮次复盘失败：$e');
+    }
+  }
+
+  /// 字段先取局部变量——避免字符串插值里的嵌套引号打断守卫 G6 的括号计数。
+  String _roundHead(dynamic x) {
+    final m = x as Map;
+    final open = m['open'] == true;
+    final symbol = m['symbol'];
+    final name = m['name'];
+    final start = m['start'];
+    final endRaw = m['end'];
+    final pnlRaw = m['pnlPct'];
+    final end = open ? '持仓中' : '$endRaw';
+    final pnl = open ? '' : '　$pnlRaw%';
+    return '$symbol $name　$start → $end$pnl';
+  }
+
+  String _roundBody(dynamic x) {
+    final m = x as Map;
+    final days = m['tradeDays'];
+    final buys = m['buyCount'];
+    final sells = m['sellCount'];
+    final peak = m['peakPct'] ?? '—';
+    final trough = m['troughPct'] ?? '—';
+    final trapped = (m['addOnTrappedCount'] as num?)?.toInt() ?? 0;
+    return '　$days 个交易日 · 买 $buys 卖 $sells　峰值 $peak%　最低 $trough%'
+        '${trapped > 0 ? '　被套加仓 $trapped 次' : ''}';
+  }
+
+  String _hitLine(dynamic h) {
+    final m = h as Map;
+    final rule = m['rule'];
+    final text = m['text'];
+    final data = m['data'];
+    return '　· 命中 $rule：$text（$data）';
+  }
+
+  String _yn(Object? v) => v == true ? '是' : (v == false ? '否' : '—');
+
+  /// 计划条目原话 / 对账一行——**先取到局部变量**，避免在字符串插值里写 `it['text']`
+  /// 这种嵌套引号：守卫 G6 的括号计数用 `'[^']*'` 去引号，嵌套引号会让它错位（2026-10-03 实测）。
+  String _planItemText(dynamic it) => (it as Map)['text']?.toString() ?? '';
+
+  String _planItemLine(dynamic it) {
+    final m = it as Map;
+    final ev = m['evidence']?.toString();
+    final trig = _yn(m['triggered']);
+    final exec = _yn(m['executed']);
+    return '· ${_planItemText(it)}\n  触发：$trig　执行：$exec'
+        '${ev == null ? '' : '（$ev）'}';
+  }
+
+  /// 计划区：一句话写 → 看已记下的 → 收盘对账（含 ⚠️ 计划外操作）。
+  Widget _buildPlanSection() {
+    final items = ((_planView?['items'] as List?) ?? const []);
+    final note = _planView?['note']?.toString() ?? '';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        TextButton.icon(
+          onPressed: _planLoading
+              ? null
+              : () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: _planDate,
+                    firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                    lastDate: DateTime.now().add(const Duration(days: 30)),
+                  );
+                  // ⚠️ await showDatePicker 之后组件可能已被销毁 → setState 前必须有 mounted 守卫
+                  // （2026-10-03 提交前被守卫 G6 拦下：这是本批新写的回调，不是误报）。
+                  if (d != null && mounted) {
+                    setState(() => _planDate = d);
+                    await _loadPlan();
+                  }
+                },
+          icon: const Icon(Icons.event, size: 16),
+          label: Text(_planDateStr, style: const TextStyle(fontSize: 13)),
+        ),
+        const Spacer(),
+        TextButton(onPressed: _planLoading ? null : _openPlanReview, child: const Text('收盘对账')),
+        TextButton(onPressed: _planLoading ? null : _openRoundsReview, child: const Text('轮次复盘')),
+      ]),
+      const Text(
+        '一句话一行，写清「买/卖什么、什么条件」——不打算动手就写「明天不动」。',
+        style: TextStyle(fontSize: 12, color: AppColors.darkGrey5),
+      ),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _planLinesCtrl,
+        maxLines: 4,
+        style: const TextStyle(fontSize: 13),
+        decoration: const InputDecoration(
+          hintText: '600519 跌破 1400 清仓\n000776 回到 19.5 以下买 500 股',
+          isDense: true,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _planNoteCtrl,
+        style: const TextStyle(fontSize: 13),
+        decoration: const InputDecoration(
+          hintText: '自我约束（可空）：只做计划内的票',
+          isDense: true,
+        ),
+      ),
+      const SizedBox(height: 10),
+      Row(children: [
+        FilledButton(onPressed: _planLoading ? null : _savePlan, child: const Text('保存计划')),
+        const SizedBox(width: 10),
+        if (_planMsg != null)
+          Expanded(
+              child: Text(_planMsg!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5))),
+      ]),
+      const SizedBox(height: 12),
+      Text(_planView == null ? '这天还没有写计划。' : '已记下 ${items.length} 条：',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      for (final it in items)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('· ${_planItemText(it)}', style: const TextStyle(fontSize: 12.5)),
+        ),
+      if (note.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('（你自己写的约束：$note）',
+              style: const TextStyle(fontSize: 12, color: AppColors.darkGrey5)),
+        ),
+    ]);
+  }
+
   Widget _buildMarketHealthBanner(MarketDataHealthDto h) {
     final note = h.note?.trim() ?? '';
     final chain = h.sources.join(' → ');
@@ -1250,6 +1549,8 @@ class _TradingPageState extends State<TradingPage> {
                 ),
                 if (_dailySummary != null)
                   _buildFoldSection(title: '今天的操作', children: [_buildDailySummary()]),
+                // RFC 20261003-trading-plan-and-review-loop §二~四：前晚写 → 当日守 → 收盘对账
+                _buildFoldSection(title: '明天的计划', children: [_buildPlanSection()]),
                 // 2026-08-22：自选股/清仓复盘区块移除——管理归 web（通达信导入/打分/心理标注），
                 // 手机端专注日常记录 + 阿呆建议；买点提醒由 15:10 推送覆盖。
               ],
@@ -2907,7 +3208,7 @@ class _TradingPageState extends State<TradingPage> {
       try {
         final jsonStr = str.split(': ').skip(1).join(': ');
         final decoded = jsonDecode(jsonStr);
-        if (decoded is Map && decoded['error'] != null) return '${decoded['error']}';
+        if (decoded is Map && decoded['error'] != null) return '${decoded["error"]}';
       } catch (_) {}
       final codeMatch = RegExp(r'(\d{3})').firstMatch(str);
       return '请求失败 (${codeMatch?.group(1) ?? '?'})';
@@ -3689,6 +3990,7 @@ class _PushSettingsDialogState extends State<_PushSettingsDialog> {
     ('session', '时段节奏（早盘/午间/尾盘/收盘确认）'),
     ('buy-point', '买点提醒'),
     ('close-summary', '收盘小结（当日成交+破止损+待确认）'), // P2-用户3 2026-08-29
+    ('plan', '次日计划提醒（20:30 提醒写下个交易日的计划）'), // RFC 20261003 §三 2026-10-03
     // D2（2026-09-13 首轮外部视角审查）：与首页右滑那份 `_PushSettingsDialog` 对齐——
     // 此前这里漏了这一项，于是**同一端两个入口给出不同的开关集合**（首页 10 项 / 交易页 9 项），
     // 从交易页进来的纯 learn 用户根本关不掉复习提醒。

@@ -37,6 +37,15 @@ class TradingClearanceTriggerTest {
     private static final String USER = "default";
 
     /** 真实文件仓储装配（锚定 + 清仓推导均启用，等价生产 Spring 接线）。 */
+    /** C7（2026-10-03）：已知锚定——否则 fail-closed 闸门会拦住改账（测试基线模拟已导过快照的账号）。 */
+    private static com.adaiadai.core.domain.trading.TradingAnchorRepository knownAnchor() {
+        var a = org.mockito.Mockito.mock(com.adaiadai.core.domain.trading.TradingAnchorRepository.class);
+        org.mockito.Mockito.when(a.find(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.adaiadai.core.domain.trading.SnapshotAnchor(
+                        java.time.LocalDate.of(1970, 1, 1), java.time.LocalDate.of(1970, 1, 1)));
+        return a;
+    }
+
     private TradingAppService realService(InMemoryFileStorage fs) {
         PositionFileRepository positions = new PositionFileRepository(fs);
         TradingHistoryFileRepository history = new TradingHistoryFileRepository(fs);
@@ -49,7 +58,7 @@ class TradingClearanceTriggerTest {
                 mock(AccountSnapshotRepository.class), mock(com.adaiadai.core.domain.trading.TransferRepository.class),
                 mock(com.adaiadai.core.domain.trading.market.MarketDataSource.class),
                 mock(TradingLotService.class), rules,
-                new TradingAnchorFileRepository(fs), detector);
+                knownAnchor(), detector);
     }
 
     @Test

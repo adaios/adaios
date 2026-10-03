@@ -269,4 +269,51 @@ class TradingHistoryFileRepositoryTest {
                 "无可写新值返回 0");
         assertNull(repository.findAll("default").get(0).orderId(), "原记录不变");
     }
+
+    /**
+     * RFC 20261003 C5（2026-10-03，流水自证）：**只落流水、不动现金**的降级行带 `cashApplied=false`
+     * 与原因，写入 → 读回**保留**；正常记录行是 true；**回填成交时间不得抹掉标记**。
+     */
+    @Test
+    void ledgerOnlyMarker_survivesRoundTripAndBackfill() {
+        LocalDate d = LocalDate.of(2026, 10, 8);
+        TradeRecord normal = trade("trade_1", "600000", "2026-10-08", "10.5", 100, null, null);
+        TradeRecord ledgerOnly = TradeRecord.ledgerOnly("trade_2", "600000", "名称600000",
+                TradeDirection.SELL, new BigDecimal("10.0"), 100, d, null, null,
+                new BigDecimal("0.5"), null, "oid-2", "历史成交补录（append 模式）：只记账不改账");
+
+        repository.append("default", normal);
+        repository.append("default", ledgerOnly);
+
+        List<TradeRecord> all = repository.findAll("default");
+        assertEquals(2, all.size());
+        TradeRecord gotNormal = all.stream().filter(t -> t.id().equals("trade_1")).findFirst().orElseThrow();
+        TradeRecord gotLedger = all.stream().filter(t -> t.id().equals("trade_2")).findFirst().orElseThrow();
+        assertEquals(Boolean.TRUE, gotNormal.cashApplied(), "正常记录 = 现金已计入");
+        assertEquals(Boolean.FALSE, gotLedger.cashApplied(), "降级行 = 未计入现金");
+        assertTrue(gotLedger.ledgerOnlyReason().contains("只记账不改账"), gotLedger.ledgerOnlyReason());
+
+        repository.backfillTradeTime("default", "trade_2", d, java.time.LocalTime.of(10, 30));
+
+        TradeRecord after = repository.findAll("default").stream()
+                .filter(t -> t.id().equals("trade_2")).findFirst().orElseThrow();
+        assertEquals(Boolean.FALSE, after.cashApplied(), "回填不得抹掉现金标记");
+        assertEquals(gotLedger.ledgerOnlyReason(), after.ledgerOnlyReason(), "回填不得抹掉原因");
+    }
+
+    /** 存量流水文件（2026-10-03 之前落盘，无 `cashApplied` 键）→ 读出 **null = 未标记**（不得假定已计入）。 */
+    @Test
+    void legacyFileWithoutMarker_readsAsNull() {
+        fileStorage.write("default", "trading/trades/2026-10.json",
+                "[{\"id\":\"old_1\",\"symbol\":\"600000\",\"name\":\"名\",\"direction\":\"BUY\","
+                + "\"price\":10.0,\"volume\":100,\"amount\":1000.0,\"entryDate\":\"2026-10-08\","
+                + "\"tradeTime\":null,\"stopLossPrice\":null,\"buyPoint\":null,\"targetPrice\":null,"
+                + "\"reason\":null,\"fee\":null,\"timestamp\":\"2026-10-08T09:30:00\","
+                + "\"sourceRecordId\":null,\"orderId\":null}]");
+
+        List<TradeRecord> all = repository.findAll("default");
+
+        assertEquals(1, all.size());
+        assertNull(all.get(0).cashApplied(), "存量数据未标记 → null");
+    }
 }

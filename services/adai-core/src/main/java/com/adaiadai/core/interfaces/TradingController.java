@@ -184,16 +184,29 @@ public class TradingController {
     @PostMapping("/trades")
     public ResponseEntity<?> recordTrade(
             @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody TradeRequest request) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
-        List<Position> updated = tradingAppService.recordTrade(
-                userId, request.symbol(), request.name(),
-                request.direction(), request.price(), request.volume(),
-                request.entryDate(), request.tradeTime(),
-                request.stopLossPrice(), request.buyPoint(),
-                request.targetPrice(), request.reason()
-        );
+        // RFC 20261003 C6（2026-10-03）：可选 Idempotency-Key——同一 key 在 10 分钟窗口内只落一笔。
+        // **覆盖范围（独立审查 2026-10-03 纠正，勿夸大）**：本端点只覆盖「手动 / 一句话记录」这条路径的
+        // 重复提交；**截图确认（`/trade-log/confirm`）与批量（`/trades/batch`）不走这里**——
+        // 前者的防重由 2026-09-15 的指纹判定承担（治本），后者**目前没有幂等键**（已登记遗留）。
+        // 未带 key 时走原路径，行为与既有版本完全一致（向后兼容，既有测试与调用方零改动）。
+        boolean hasIdemKey = idempotencyKey != null && !idempotencyKey.isBlank();
+        List<Position> updated = hasIdemKey
+                ? tradingAppService.recordTradeIdempotent(
+                        userId, request.symbol(), request.name(),
+                        request.direction(), request.price(), request.volume(),
+                        request.entryDate(), request.tradeTime(),
+                        request.stopLossPrice(), request.buyPoint(),
+                        request.targetPrice(), request.reason(), idempotencyKey)
+                : tradingAppService.recordTrade(
+                        userId, request.symbol(), request.name(),
+                        request.direction(), request.price(), request.volume(),
+                        request.entryDate(), request.tradeTime(),
+                        request.stopLossPrice(), request.buyPoint(),
+                        request.targetPrice(), request.reason());
         // 三官深审 P1-1（2026-09-09）：当日成交落库后触发当日盈亏随流水重算（best-effort）
         tradingAppService.refreshTodayPnl(userId);
         return ResponseEntity.ok(updated);
@@ -295,9 +308,32 @@ public class TradingController {
             @RequestParam(defaultValue = "false") boolean replace,
             @RequestParam(required = false) String snapshotDate,
             @RequestParam(required = false) String todayPnl,
+            @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestBody(required = false) List<TradingAppService.PositionImportItem> items) {
         ResponseEntity<?> denied = requireTradingPlugin(userId);
         if (denied != null) return denied;
+        // RFC 20261003 C4「持仓同理」（2026-10-03）：dryRun=true → **只对账、不落盘**——
+        // 先看「文件 vs 系统」逐只差多少、replace 会怎么改，人看过再决定覆盖。
+        if (dryRun) {
+            TradingAppService.PositionsReconcile rec = tradingAppService.reconcilePositions(
+                    userId, items != null ? items : List.of());
+            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("dryRun", true);
+            out.put("fileCount", rec.fileCount());
+            out.put("systemCount", rec.systemCount());
+            out.put("diffs", rec.diffs().stream().map(d -> {
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("symbol", d.symbol());
+                m.put("name", d.name());
+                m.put("fileQty", d.fileQty());
+                m.put("systemQty", d.systemQty());
+                m.put("diff", d.diff());
+                m.put("why", d.why());
+                return m;
+            }).toList());
+            out.put("note", rec.note());
+            return ResponseEntity.ok(out);
+        }
         // 2026-09-12：锚定日 = 快照自身日期（通达信「持仓股」文件名里的日期）——补导几天前的文件时
         // 不能把锚定日写成今天，否则锚定日之后、快照之前的成交会被误判为「已含在快照内」而丢掉增量
         java.time.LocalDate snapshot = parseOptionalDate(snapshotDate, "snapshotDate");
@@ -836,13 +872,31 @@ public class TradingController {
                 return ResponseEntity.badRequest().body(Map.of("error", "日期格式应为 yyyy-MM-dd"));
             }
         }
+        // RFC 20261003 C2/C3（用户 2026-10-03 拍板 D1：**警告 + 引导，不硬拒**）：转出前看「可取」够不够。
+        // 账面「现金」与「可取」不是一回事——A 股 T+1：当日卖出所得可继续买、但要次一交易日才能转出。
+        // 这里**只警告不改行为**（硬拒会挡住补录历史等真实习惯），并把差额与原因讲清楚。
+        String warning = null;
+        if ("OUT".equals(type)) {
+            // ⚠️ P1（2026-10-03 增量深审）：没有资金快照时 accountSnapshot 的 withdrawable 是**占位 0**，
+            // 于是「任何金额的转出」都会被告知「可取只有 0」——纯误导。现在：没有快照就不比、不警告。
+            BigDecimal withdrawable = tradingAppService.accountSnapshot(userId).withdrawable();
+            boolean hasSnapshot = tradingAppService.hasAccountSnapshot(userId);
+            if (hasSnapshot && withdrawable.compareTo(amount) < 0) {
+                warning = "可取资金只有 " + withdrawable.stripTrailingZeros().toPlainString()
+                        + "，这次要转出 " + amount.stripTrailingZeros().toPlainString()
+                        + "——现实中券商不会放行（当日卖出的钱要次一交易日才能取）。已按你说的记上了；"
+                        + "导一次「资金股份查询」就能把可取对齐。";
+            }
+        }
         TransferRecord record = tradingAppService.recordTransfer(
                 userId, type, amount, date, body.get("note"));
-        return ResponseEntity.ok(Map.of(
-                "id", record.id(),
-                "type", record.type(),
-                "amount", record.amount(),
-                "date", record.date().toString()));
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("id", record.id());
+        resp.put("type", record.type());
+        resp.put("amount", record.amount());
+        resp.put("date", record.date().toString());
+        if (warning != null) resp.put("warning", warning);
+        return ResponseEntity.ok(resp);
     }
 
     /** 转账流水（GET /api/v1/trading/transfers）。 */
@@ -967,6 +1021,9 @@ public class TradingController {
         params.put("scoreExecWeight", String.valueOf(s.scoreExecWeight()));
         params.put("constraintRuleMin", String.valueOf(s.constraintRuleMin()));
         params.put("constraintRuleMax", String.valueOf(s.constraintRuleMax()));
+        // RFC 20261003 §5.5（2026-10-03）：复盘阈值（R55「曾赚过」/ R69「被套」）
+        params.put("reviewPeakMinPct", String.valueOf(s.reviewPeakMinPct()));
+        params.put("reviewTrapMinPct", String.valueOf(s.reviewTrapMinPct()));
         return ResponseEntity.ok(Map.of(
                 "exists", ruleSettingsRepository.exists(userId),
                 "params", params));
@@ -1035,7 +1092,12 @@ public class TradingController {
                 num(params.get("constraintRuleMin")) != null
                         ? num(params.get("constraintRuleMin")).intValue() : current.constraintRuleMin(),
                 num(params.get("constraintRuleMax")) != null
-                        ? num(params.get("constraintRuleMax")).intValue() : current.constraintRuleMax());
+                        ? num(params.get("constraintRuleMax")).intValue() : current.constraintRuleMax(),
+                // RFC 20261003 §5.5（2026-10-03）：复盘阈值（未传则保持现值）
+                num(params.get("reviewPeakMinPct")) != null
+                        ? num(params.get("reviewPeakMinPct")).doubleValue() : current.reviewPeakMinPct(),
+                num(params.get("reviewTrapMinPct")) != null
+                        ? num(params.get("reviewTrapMinPct")).doubleValue() : current.reviewTrapMinPct());
         // P0-1（2026-08-30 审查）：写盘失败抛 StorageException → GlobalExceptionHandler 500（不再静默 updated=true）
         ruleSettingsRepository.save(userId, updated);
         return ResponseEntity.ok(Map.of("updated", true));
@@ -1426,6 +1488,31 @@ public class TradingController {
         // 2026-09-12：账户快照日期/现金锚定日 = 快照自身日期（前端从文件名取，如 20260909）
         java.time.LocalDate snapshot = parseOptionalDate(body != null ? body.get("snapshotDate") : null,
                 "snapshotDate");
+        // RFC 20261003 C4（2026-10-03）：dryRun=true → **只对账、不落盘**——先把「券商现金 vs 系统推算」
+        // 与差额摆出来，人看过再决定要不要覆盖（治「静默覆盖 → 只能反复导全量」）。
+        if (body != null && "true".equalsIgnoreCase(String.valueOf(body.get("dryRun")))) {
+            TradingAppService.CashReconcile rec = tradingAppService.reconcileCash(
+                    userId, content != null ? content : "", snapshot);
+            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("dryRun", true);
+            out.put("brokerCash", rec.brokerCash());
+            out.put("systemCash", rec.systemCash());
+            out.put("diff", rec.diff());
+            out.put("cashAnchorDate", rec.cashAnchorDate() != null ? rec.cashAnchorDate().toString() : "");
+            out.put("ledgerOnlyCount", rec.ledgerOnlyCount());
+            out.put("ledgerOnlyAmount", rec.ledgerOnlyAmount());
+            out.put("adjustmentTotal", rec.adjustmentTotal());
+            out.put("adjustmentCount", rec.adjustmentCount());
+            out.put("since", rec.since().stream().map(k -> {
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("kind", k.kind());
+                m.put("count", k.count());
+                m.put("amount", k.amount());
+                return m;
+            }).toList());
+            out.put("note", rec.note());
+            return ResponseEntity.ok(out);
+        }
         TradingAppService.CashImportResult r = tradingAppService.importCashQuery(
                 userId, content != null ? content : "", snapshot);
         // RFC 20260922 B 批 B3：资金股份快照是一次账同步（同步完成 → 可出复盘）

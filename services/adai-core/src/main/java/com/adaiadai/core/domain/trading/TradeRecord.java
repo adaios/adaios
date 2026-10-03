@@ -54,8 +54,26 @@ public record TradeRecord(
         BigDecimal fee,
         LocalDateTime timestamp,
         String sourceRecordId,
-        String orderId
+        String orderId,
+        // RFC 20261003 C5（2026-10-03，流水自证）：本次流水**是否已计入现金**。
+        // false = 只落流水、不动现金的降级路径（ledgerOnly / ledgerOnlyTrade / importAppend 补录）；
+        // true = 正常记录路径；**null = 存量数据**（2026-10-03 之前落盘、未标记）——
+        // 读取方不得把 null 当作「已计入」或「未计入」。存量盘点报告里现金对不上的根因之一，
+        // 正是「事后无法区分这笔到底动没动钱」。
+        Boolean cashApplied,
+        // 只落流水时的原因（cashApplied=false 时填；其余为 null）。
+        String ledgerOnlyReason
 ) {
+
+    /** 兼容构造（17 参，2026-10-03 之前的调用点）：现金标记为 null = 未标记（存量语义），旧调用零改动。 */
+    public TradeRecord(String id, String symbol, String name, TradeDirection direction,
+                       BigDecimal price, int volume, BigDecimal amount, LocalDate entryDate,
+                       LocalTime tradeTime, BigDecimal stopLossPrice, String buyPoint,
+                       BigDecimal targetPrice, String reason, BigDecimal fee, LocalDateTime timestamp,
+                       String sourceRecordId, String orderId) {
+        this(id, symbol, name, direction, price, volume, amount, entryDate, tradeTime, stopLossPrice,
+                buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId, null, null);
+    }
 
     /**
      * 构造逐笔流水：amount 由 price × volume 派生。
@@ -69,6 +87,25 @@ public record TradeRecord(
         return new TradeRecord(
                 id, symbol, name, direction, price, volume,
                 price.multiply(BigDecimal.valueOf(volume)),
-                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId);
+                entryDate, tradeTime, stopLossPrice, buyPoint, targetPrice, reason, fee, timestamp, sourceRecordId, orderId,
+                true, null);   // RFC 20261003 C5：正常记录路径 = 现金已计入
+    }
+
+    /**
+     * **只落流水、不动现金**的降级流水（RFC 20261003 C5，2026-10-03）。
+     *
+     * <p>三条路径用它：历史成交回放兜底（{@code ledgerOnly}）、截图候选命中锚定日的降级
+     * （{@code ledgerOnlyTrade}）、历史成交补录（{@code importAppend}）。此前这三条与正常流水
+     * **在文件里完全无法区分**，于是「现金能否从流水重放」无从谈起——生产实测：1721 笔流水里
+     * 混着无委托号无费用的降级行，按流水重放现金会虚高 24,904 元（存量盘点清单 A）。
+     */
+    public static TradeRecord ledgerOnly(String id, String symbol, String name, TradeDirection direction,
+                                         BigDecimal price, int volume, LocalDate entryDate, LocalTime tradeTime,
+                                         String reason, BigDecimal fee, String sourceRecordId, String orderId,
+                                         String ledgerOnlyReason) {
+        return new TradeRecord(id, symbol, name, direction, price, volume,
+                price.multiply(BigDecimal.valueOf(volume)), entryDate, tradeTime,
+                null, null, null, reason, fee, LocalDateTime.now(), sourceRecordId, orderId,
+                false, ledgerOnlyReason);
     }
 }

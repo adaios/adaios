@@ -552,6 +552,58 @@ class ApiService {
     return AccountSnapshotDto.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
   }
 
+  // ── 次日操作计划（RFC 20261003-trading-plan-and-review-loop，2026-10-03）──
+  // 定位：系统只「记你的话 · 到点提醒 · 收盘对账」——**不生成计划、不给建议**。
+
+  /// 有操作计划的日期（GET /api/v1/trading/plans）→ 倒序字符串列表。
+  Future<List<String>> getPlanDates() async {
+    final resp = await _client.get(Uri.parse('$baseUrl/api/v1/trading/plans'), headers: _headers);
+    _check(resp);
+    final m = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    return (m['dates'] as List? ?? const []).map((e) => e.toString()).toList();
+  }
+
+  /// 读某天的计划；**没写返回 null**（后端 404 人话——不返回空壳假计划）。
+  Future<Map<String, dynamic>?> getPlan(String date) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date'),
+      headers: _headers,
+    );
+    if (resp.statusCode == 404) return null;
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 写某天的计划（一句话一行；覆盖写）。
+  Future<Map<String, dynamic>> savePlan(String date, List<String> lines, String note) async {
+    final resp = await _client.post(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date'),
+      headers: _headers,
+      body: jsonEncode({'lines': lines, 'note': note}),
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 收盘对账（计划 vs 实际 + ⚠️ 计划外成交）——**只陈述事实**。
+  Future<Map<String, dynamic>> reviewPlan(String date) async {
+    final resp = await _client.get(
+      Uri.parse('$baseUrl/api/v1/trading/plans/$date/review'),
+      headers: _headers,
+    );
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// 「一轮完整交易」× 规则检查（GET /api/v1/trading/rounds，2026-10-03）——只陈述事实、不作建议。
+  Future<Map<String, dynamic>> getRounds({String? symbol, int limit = 50}) async {
+    final q = (symbol != null && symbol.isNotEmpty) ? '?symbol=$symbol&limit=$limit' : '?limit=$limit';
+    final resp =
+        await _client.get(Uri.parse('$baseUrl/api/v1/trading/rounds$q'), headers: _headers);
+    _check(resp);
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
   /// RFC 20260912 账实一致性自检（GET /api/v1/trading/integrity，P2-交易39 手机端补课）：
   /// 锚定状态 + drift（应有持仓 ≠ 落地持仓）+ gaps（重放缺口）。
   /// 降级诚实：锚定/基线缺失 → [IntegrityReportDto.note] 说明「无法判定」，drift/gaps 空（不误报差异）。
