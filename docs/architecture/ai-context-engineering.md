@@ -38,8 +38,8 @@ flowchart TB
         C2["决策 adr/ · rfc/"]
         C3["方向 VISION · product-roadmap"]
     end
-    subgraph L3["L3 事实层（事实类）｜ 事实是什么"]
-        D1["代码 · ARCHITECTURE.md"]
+    subgraph L3["L3 事实层（事实类）｜ 事实是什么（关于代码的事实，不是代码本身）"]
+        D1["ARCHITECTURE.md（技术栈 · 五层 · 红线）"]
         D2["docs/architecture/api-spec.md · docs/reference/status.md"]
         D3["领域 wiki os/*/11-context/"]
     end
@@ -78,7 +78,6 @@ flowchart TB
 | **`docs/architecture/api-spec.md`** | **L3** | 接口事实（端点表）| ✅ | **`guard-align` A1 与源码 `@Mapping` 逐一对拍** |
 | `docs/reference/status.md` | **L3** | 测试数 · 端点数 · 运行环境 · 发布态 | ✅ | **`guard-align` A2 与实测对拍** |
 | `os/*/11-context/*.md`（现 `life-os` / `project-os`）| **L3** | 领域知识 wiki | ✅ | 人/AI |
-| `services/` · `apps/` · `os/` | **L3** | 代码本体 | ✅ | 编译器 + 测试 |
 | **`ai-engineering/skills/<name>/SKILL.md`** | 工具 | 技能（把流程封装成「加载即执行」）| ✅ | `guard-skills`（S3/S4/S5/S7）|
 | **`ai-engineering/roles/<name>.md`** | 工具 | 审查官（**扁平**，即 subagent 的真相源）| ✅ | `guard-skills` + `sync-agents` |
 | `ai-engineering/*.sh`（**16 个**：11 守卫 + `cadence` / `deploy-gate` / `noon-task` / `weekly-audit` 等执行器）| 工具 | 守卫与执行器 | ✅ | shell-lint + 自检 |
@@ -93,6 +92,10 @@ flowchart TB
 | `ai-engineering/state/*`（游标 / 成本账 / 日志）| **本机** | 协作节奏的账本 | ❌ | **恒 link 主仓库**（全局唯一一本）|
 | 6 个出口目录 | **出口** | 让各家工具「看得见」技能与子代理 | ❌ | `worktree-prep.sh` = `link-skills` + `sync-agents` |
 
+> **本表只列 AI 上下文资产。**
+> **代码本体**（`services/` · `apps/` · `os/` 的实现文件）**不在其中**——它是**被上下文描述、被 AI 读取的对象**，不是上下文本身。
+> 上下文与代码的关系靠「**事实对拍**」维持（§七 4）：`api-spec` 对源码的 `@Mapping`、`status.md` 对实测数——**文档与代码不一致时，是文档错还是代码错，由门禁逼你回答**。
+
 ## 三、关系：谁依赖谁
 
 ```mermaid
@@ -100,7 +103,7 @@ flowchart LR
     L0["L0 入口<br/>AGENTS.md ×7 + 快照"]
     L1["L1 任务<br/>branch-notes"]
     L2["L2 约束（决策类）<br/>约定 · 边界 · 坑 · 决策 · 方向"]
-    L3["L3 事实（事实类）<br/>代码 · 架构 · 接口 · 状态 · wiki"]
+    L3["L3 事实（事实类）<br/>架构 · 接口 · 状态 · 领域 wiki"]
     TL["工具层<br/>技能 · 审查官 · 守卫 · 契约"]
     EX["6 个工具出口<br/>（本机，不入 git）"]
     L0 -->|下沉| L1
@@ -137,7 +140,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash scripts/worktree-prep.sh"] --> B["② 改文件<br/>代码（L3）· 规范/坑/决策（L2）· 技能/审查官（工具层）"]
+    A["① 开分支<br/>git worktree add ../adaios-&lt;任务&gt; -b feat/&lt;任务&gt; main<br/>cd 进去 && bash scripts/worktree-prep.sh"] --> B["② 改文件<br/>上下文资产（L2 规范/坑/决策 · L3 事实文档 · 工具层技能/审查官）<br/>——若同时改了业务代码，L3 事实文档要跟着更新"]
     B --> C["③ 本分支注册<br/>bash scripts/link-skills.sh（新技能）<br/>bash scripts/sync-agents.sh（新审查官）<br/>⇒ 本分支内立即可用"]
     C --> D["④ 自测<br/>bash ai-engineering/cadence.sh check<br/>（AI 资产另跑 guard-skills / --check）"]
     D --> E["⑤ 提交<br/>显式路径 + ADAI_BATCH_PATHS（pre-commit 多层门禁）<br/>账本类改动写进 L1，不碰全局账本"]
