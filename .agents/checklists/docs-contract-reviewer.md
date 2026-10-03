@@ -1,13 +1,13 @@
 ---
 title: 文档契约审查检查清单
-description: docs-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
+description: docs-contract-reviewer 逐条检查项（人也能用）——契约真相源/RFC 决策漂移/文档资产健康
 version: 1
 created: 2026-08-15
 updated: 2026-10-01
 status: active
 lines: 108
 depends-on: []
-related: [../roles/docs-reviewer.md]
+related: [../roles/docs-contract-reviewer.md]
 tags: [review, checklist, docs]
 ---
 
@@ -42,7 +42,7 @@ tags: [review, checklist, docs]
 | D6 | `docs/` 下是否有孤儿/过期/重复文档；`docs/reference/issue-log.md` 是否持续更新 | issue-log 唯一在 reference/（P2 #38）|
 | D7 | `data/identity/profile.sample.md` 等 git 追踪的 sample 与真实文件格式是否一致（隐私文件不进 git）| 缺 identity/trading 目录（P2，已修）|
 | D8 | **skill/agent 自身可执行性**：SKILL.md/agent 引用的 bash 命令、grep 路径必须在仓库实测可执行，不 silent-fail | ship SKILL grep 路径不存在 → api-spec 同步跳过（P1 #34）|
-| D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 review-docs 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
+| D9 | **审核体系自审**：diff 触及 `.claude/**` 时，deep 必须派 docs-contract-reviewer 复核 skill/agent 的路径、清单引用、路由表覆盖一致性 | 路由表缺 `.claude/**` 无角色覆盖（战略 #33）|
 | D10 | 文件合并/移动/删除后，grep 全库对旧路径的引用（排除 inbox/历史），确保无断链、无重复 | 2026-08-02 文档精简：inbox 归位 17 文件 + frontend-reference 合并 + data-flow 并入 system-arch；曾现 ai-native 双份/AI_CONTEXT 孤儿 |
 | D11 | 新增子项目 AGENTS.md 的运行参数（端口/构建命令）与 `apps/adai-web/scripts/serve_web.sh` 跨文档对齐 | adai-web AGENTS.md `:8081` vs serve 脚本 `:8082`（P3，待修）|
 | D12 | api-spec Response 示例字段名直接对照后端 record/@JsonGetter 序列化名 + 前端 DTO fromJson 读取 key，三方对拍 | adai-web `positionCount` 后端无此字段 + portfolio 示例 `totalMarketValue` 失真（P1，待修）|
@@ -63,7 +63,7 @@ tags: [review, checklist, docs]
 
 ---
 **追加方式**：新发现文档类问题 → 追加一行，注明日期。
-| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 AGENTS.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | review-context.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
+| D27 | 目录/文件移出仓库（到同级外部目录）后，grep 旧路径范围必须覆盖 `.claude/agents/*`、`.claude/skills/*`、子项目 AGENTS.md——D10 只描述 docs/ 内有盲区；合并/改名文件也要同步 | ai-context-reviewer.md 引用已移出 research/ 路径（P1-D1，2026-08-15）|
 | D28 | RFC frontmatter 转 approved（含 decided-by）后，正文「等你拍板/待确认」等未决策措辞必须同步清理，否则后续会话误读为未决策 | media-event-unification §七决策点遗留（P2-D2，2026-08-15）|
 | D29 | 子项目 AGENTS.md 目录树瘦身/拼接后核对排版：目录重复出现（apps/ ×2）、表格头与正文段落粘连同行 | 原根文档曾 apps 重复 + 131 行表格头粘连（P3，2026-08-15）|
 

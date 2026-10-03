@@ -1,6 +1,6 @@
 ---
 title: 审查报告：adai-admin 管理后台 UI/UX 专项审查（2026-09-06）
-description: ui-reviewer + ux-reviewer 双官对 adai-admin（管理后台）首次专项 UI/UX 审查——布局/视觉/交互问题清单 + P1 实测复核结论
+description: ux-visual-reviewer + ux-interaction-reviewer 双官对 adai-admin（管理后台）首次专项 UI/UX 审查——布局/视觉/交互问题清单 + P1 实测复核结论
 version: 1
 created: 2026-09-06
 status: active
@@ -15,15 +15,15 @@ tags: [review, audit, admin, ui, ux]
 
 # 审查报告：adai-admin 管理后台 UI/UX 专项审查（2026-09-06）
 
-> **背景**：用户提出管理后台「布局上一般般」，此前从未对 adai-admin 做过布局/视觉/交互专项审查（历史全维度走查只顺带查过功能性问题）。本次派 ui-reviewer + ux-reviewer 双官并行审查，仅报告不修改。范围：`apps/adai-admin/lib/` 全量，对照三端 theme 与 api-spec 契约。
+> **背景**：用户提出管理后台「布局上一般般」，此前从未对 adai-admin 做过布局/视觉/交互专项审查（历史全维度走查只顺带查过功能性问题）。本次派 ux-visual-reviewer + ux-interaction-reviewer 双官并行审查，仅报告不修改。范围：`apps/adai-admin/lib/` 全量，对照三端 theme 与 api-spec 契约。
 > **复核**：P1 结论均经主会话对代码实测/代码阅读复核（2026-09-06），见 §四。
 
 ## 一、严重度统计
 
 | 审查官 | P1 | P2 | P3 | 说明 |
 |:---|:---:|:---:|:---:|:---|
-| ui-reviewer（布局/视觉）| 2（1 条复核为误报）| 12 | 21+ | 骨架成熟、token 化不彻底、灰阶对比度系统欠账 |
-| ux-reviewer（交互/流程）| 3 | 13 | 9 | 写/破坏性操作保护口径不齐、长任务无进度、per-user 作用域表达不透明 |
+| ux-visual-reviewer（布局/视觉）| 2（1 条复核为误报）| 12 | 21+ | 骨架成熟、token 化不彻底、灰阶对比度系统欠账 |
+| ux-interaction-reviewer（交互/流程）| 3 | 13 | 9 | 写/破坏性操作保护口径不齐、长任务无进度、per-user 作用域表达不透明 |
 
 ## 二、P1（高优先，复核后成立 4 条 / 排除 1 条）
 

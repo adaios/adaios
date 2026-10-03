@@ -8,9 +8,9 @@ status: active
 lines: 254
 depends-on: []
 related:
-  - ../../../.agents/roles/stranger-reviewer.md
-  - ../../../.agents/roles/social-reviewer.md
-  - ../../../.agents/roles/support-reviewer.md
+  - ../../../.agents/roles/ux-stranger-reviewer.md
+  - ../../../.agents/roles/ux-social-reviewer.md
+  - ../../../.agents/roles/ux-support-reviewer.md
 tags: [review, external, audit]
 ---
 
@@ -249,6 +249,6 @@ app 端 `'反哺入库失败: …'`、`'解析失败: …'`、`'补日期失败:
 
 ---
 
-**审查官**：stranger-reviewer / social-reviewer / support-reviewer（首跑）
+**审查官**：ux-stranger-reviewer / ux-social-reviewer / ux-support-reviewer（首跑）
 **本轮性质**：前半为审查（只报告，未动产品代码，遵守 B7）；后半经用户拍板 D1/D2/D6 后落地，改动见 §八
 **配套新增**：`.agents/roles/{stranger,social,support}-reviewer.md` + `.agents/checklists/review-{stranger,social,support}.md`

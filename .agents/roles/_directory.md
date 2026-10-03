@@ -38,7 +38,7 @@ tags: [meta, directory]
 
 - **保持扁平 `<name>.md`，刻意不目录化**（不进技能出口；目录化要付 44 处引用代价而零收益，见 `../assets/ai-context-layer-spec.md` §三）
 - **五段结构**：触发条件 / 执行步骤 / 约束与规则 / 输出要求 / 参考资料
-- 命名以 `-reviewer` 结尾（`product-arch` 为历史例外）
+- 命名以 `-reviewer` 结尾（`docs-product-reviewer` 为历史例外）
 
 ## 守卫（谁保证这里不腐烂）
 

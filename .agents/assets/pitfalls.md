@@ -7,12 +7,12 @@ updated: 2026-10-04
 status: active
 lines: 232
 depends-on:
-  - ../checklists/guard.md
+  - ../checklists/ai-guard-checklist.md
 related:
-  - ../checklists/review-backend.md
-  - ../checklists/review-frontend.md
-  - ../checklists/review-docs.md
-  - ../checklists/review-knowledge.md
+  - ../checklists/code-backend-reviewer.md
+  - ../checklists/code-frontend-reviewer.md
+  - ../checklists/docs-contract-reviewer.md
+  - ../checklists/data-knowledge-reviewer.md
 tags: [ai, assets, pitfalls]
 ---
 

@@ -93,7 +93,7 @@ bash .agents/scripts/deploy-gate.sh 82.156.111.146 build/libs/adai-core-0.0.1-SN
 ### 6.5 成本登记（会话收工，2026-08-22 补）
 
 - **收工必跑**：`bash .agents/guards/guard-cost.sh --record`（今日成本入账 cost-log.jsonl），与 `guard-context.sh --write-local` 并列强制（AGENTS.md 规则 0b）
-- 若当日成本超阈值/调用超 500 次 → 按 `checklists/cost.md` 省钱原则复盘，结论入批次说明
+- 若当日成本超阈值/调用超 500 次 → 按 `checklists/ai-cost-checklist.md` 省钱原则复盘，结论入批次说明
 
 ### 7. 规范提交
 

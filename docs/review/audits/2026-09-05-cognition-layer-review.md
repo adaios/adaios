@@ -3,7 +3,7 @@ title: 交易⑤认知层批三官深审（RFC 20260905，用户「需要审核�
 date: 2026-09-05
 type: review
 scope: services/adai-core + docs（认知层落地批 18 文件 + 文档登记）
-reviewers: backend-reviewer / docs-reviewer / adversarial-reviewer（三官隔离并行）
+reviewers: code-backend-reviewer / docs-contract-reviewer / ai-adversarial-reviewer（三官隔离并行）
 ---
 
 # 交易⑤认知层批 · 三官深审报告

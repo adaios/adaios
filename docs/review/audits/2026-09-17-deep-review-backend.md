@@ -1,6 +1,6 @@
 ---
 title: 后端深度审查报告：晚间批 + 深夜第二批（d060841..HEAD）
-description: backend-reviewer 对 3dadfd9 / 42dc0b5 两个 commit 的后端改动逐条核证——盘前当日盈亏口径、令牌轮换回滚、删号 purge、图片日配额、restoreOrigin 判据、推送深链
+description: code-backend-reviewer 对 3dadfd9 / 42dc0b5 两个 commit 的后端改动逐条核证——盘前当日盈亏口径、令牌轮换回滚、删号 purge、图片日配额、restoreOrigin 判据、推送深链
 version: 1
 created: 2026-09-17
 updated: 2026-09-17
@@ -15,7 +15,7 @@ tags: [review, backend, audit]
 
 # 后端深度审查报告：晚间批 + 深夜第二批
 
-> 审查官：`.agents/roles/backend-reviewer.md`（只报告不修改，B7）
+> 审查官：`.agents/roles/code-backend-reviewer.md`（只报告不修改，B7）
 > 审查方式：读 diff + 读实现上下文 + 跑测试 + 跑守护脚本；每条结论带位置与证据
 
 ## 一、范围与基线

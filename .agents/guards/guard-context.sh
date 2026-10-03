@@ -36,7 +36,7 @@ TOPIC = sys.argv[2] if len(sys.argv) > 2 else ''
 WRITE_LOCAL = len(sys.argv) > 3 and sys.argv[3] == '1'
 AI = ROOT / '.agents'
 
-# 快照 = 每轮会话都注入的固定开销，必须控体积（见 checklists/cost.md C7）。
+# 快照 = 每轮会话都注入的固定开销，必须控体积（见 checklists/ai-cost-checklist.md C7）。
 # 2026-09-14：C1 段此前**没有任何条数上限**，单段涨到 3.6KB/25 行，是快照突破 8KB 的唯一大头
 # （C2/C4/C5/C6 都有上限，只有 C1 漏了）。现补 LIM_C1 + 收紧各段上限，并在末尾加**总量兜底**
 # ——无论源文件怎么膨胀，快照都会被裁回预算内，不再依赖"有人记得看那行警告"。
@@ -118,7 +118,7 @@ try:
                 pass
         _fresh = '' if not _age else f'（{_age//60} 分钟前缓存，非实时）'
         if WRITE_LOCAL:
-            # 快照 = 每轮注入固定开销，C0 压到 2 行（见 checklists/cost.md C7）
+            # 快照 = 每轮注入固定开销，C0 压到 2 行（见 checklists/ai-cost-checklist.md C7）
             out.append(f"> 最后记录 **{_last}**（{_days} 天前）· 今日 {_p.get('TODAY','?')} · 近 7 天 {_p.get('N7','?')} · 交易最近 {_p.get('TRADING','?')}{_fresh}")
             out.append("> 每日流程：用户说「**每日巡检**」→ 跑 `bash .agents/guards/guard-prod.sh`，只用人话讲「用户之声 / 有没有新异常 / 心跳趋势」（AGENTS.md 规则 8）")
         else:
@@ -298,7 +298,7 @@ if c.exists():
 out.append("")
 
 # C6.5 成本纪律（每次开工提醒：今天烧了多少 + 省钱原则）
-out.append("## C6.5 成本纪律（省钱原则见 checklists/cost.md）")
+out.append("## C6.5 成本纪律（省钱原则见 checklists/ai-cost-checklist.md）")
 if WRITE_LOCAL:
     out.append("> （快照不含当日成本：隔日失真；开工时现跑 `guard-context.sh` 获取）")
 else:
@@ -313,7 +313,7 @@ else:
             if l.startswith('- 今日已超') or l.startswith('- 缓存读取占') or l.startswith('- 调用次数超'):
                 out.append('> ⚠️ ' + l.lstrip('- '))
         if TOPIC and ('cost' in TOPIC or '成本' in TOPIC or '省钱' in TOPIC):
-            c = AI/'checklists/cost.md'
+            c = AI/'checklists/ai-cost-checklist.md'
             if c.exists():
                 body = c.read_text(encoding='utf-8').splitlines()
                 start = 0

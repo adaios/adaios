@@ -1,6 +1,6 @@
 ---
 title: 前端深度审查报告：晚间批 + 深夜第二批（d060841..HEAD）
-description: frontend-reviewer 对 3dadfd9 / 42dc0b5 前端改动的逐条核证——iOS 分享凭据 Keychain 迁移与老装机路径、扩展基址同源、通知点击深链定位；含 P2-learn23「前端只读卡写入口」证伪
+description: code-frontend-reviewer 对 3dadfd9 / 42dc0b5 前端改动的逐条核证——iOS 分享凭据 Keychain 迁移与老装机路径、扩展基址同源、通知点击深链定位；含 P2-learn23「前端只读卡写入口」证伪
 version: 1
 created: 2026-09-17
 updated: 2026-09-17
@@ -16,7 +16,7 @@ tags: [review, frontend, audit]
 
 # 前端深度审查报告：晚间批 + 深夜第二批
 
-> 审查官：`.agents/roles/frontend-reviewer.md`（只报告不修改，B7）
+> 审查官：`.agents/roles/code-frontend-reviewer.md`（只报告不修改，B7）
 > 审查方式：读 diff → 读实现上下文 → **跑 analyze/test（app + web）** → 读产物里的 `embedded.mobileprovision` 实证跨 target 契约；每条结论带位置 + 证据
 > 审查对象是**已提交状态**（HEAD = `42dc0b5`），工作区仅 `docs/` 有他人未提交改动，不影响本次结论
 

@@ -35,7 +35,7 @@ related:
 | 项 | 现状 | 与官方规范的差距 |
 |:--|:--|:--|
 | 技能位置 | `.agents/roles/*.md`（12）+ `.agents/skills/*.md`（4） | **扁平文件**，非 `<name>/SKILL.md` 目录布局 |
-| `name` 字段 | 已有，= 文件名 stem（如 `backend-reviewer`） | 字符集/长度/连字符约束**无任何检查** |
+| `name` 字段 | 已有，= 文件名 stem（如 `code-backend-reviewer`） | 字符集/长度/连字符约束**无任何检查** |
 | `description` | 已有，写触发语义 | 长度上限 1024 **无检查** |
 | 五段结构 | 已在 `assets/skills-spec.md` 定义（触发/步骤/约束/输出/参考） | **无机器判据**，靠人自觉 |
 | frontmatter 10 字段 | guard-meta 必查 ✅ | 已覆盖 |
@@ -102,7 +102,7 @@ related:
   "generated": "2026-10-03",
   "algorithm": "sha256",
   "skills": [
-    {"name": "backend-reviewer", "path": "roles/backend-reviewer.md",
+    {"name": "code-backend-reviewer", "path": "roles/code-backend-reviewer.md",
      "sha256": "<64 hex>", "lines": 49, "tags": ["review", "backend", "skill"]}
   ],
   "external": []

@@ -1,7 +1,7 @@
 ---
 title: 审查官：知识数据官
 description: 当需要审查 os/ 知识资产与 data/ 数据健康时加载——跨层闭环、隐私面、数据格式契约
-name: knowledge-reviewer
+name: data-knowledge-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-15
@@ -9,7 +9,7 @@ status: active
 lines: 47
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-knowledge.md
+  - ../checklists/data-knowledge-reviewer.md
 related: []
 tags: [review, knowledge, skill]
 ---
@@ -34,14 +34,14 @@ tags: [review, knowledge, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修（data/ 是唯一真相源，操作前先备份）
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-knowledge.md`，走查时逐条执行
+- 检查清单见 `../checklists/data-knowledge-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
-同 backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
+同 code-backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-knowledge.md`
+- 检查清单：`../checklists/data-knowledge-reviewer.md`
 - 边界：`../assets/boundaries.md`
 - 已知坑：`../assets/pitfalls.md`

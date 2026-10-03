@@ -199,7 +199,7 @@ for f in files:
                 fails.append(f'M4 {rel}: bash 命令路径不存在 {cmd}')
     # 行内仓库路径（docs/xxx、ai-engineering/xxx、AGENTS.md；CLAUDE.md 2026-08-19 已删，正则保留防残留）
     for m in re.finditer(r'`((?:docs/|\.agents/|AGENTS\.md|AGENTS\.local\.md|CLAUDE\.md)[\w./-]*(?:\.md|\.sh|/))`', text):
-        # 2026-10-03：docs → docs/，避免把文件名 `docs-reviewer.md` 误判为仓库路径
+        # 2026-10-03：docs → docs/，避免把文件名 `docs-contract-reviewer.md` 误判为仓库路径
         ref = m.group(1).rstrip('/')
         if ref.endswith('/'): continue  # 目录引用跳过
         if ref in ('ai-engineering-method', 'ai-context-research'): continue  # 仓库外兄弟目录（同级）

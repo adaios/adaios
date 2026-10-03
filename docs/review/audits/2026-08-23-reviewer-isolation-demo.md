@@ -1,6 +1,6 @@
 ---
 title: 隔离审查演示报告 2026-08-23（交易归集批，对抗官首次实战）
-description: 首次按新规范执行——上下文隔离（材料按角色裁剪 + 官间不互通）+ 对抗找茬官（adversarial-reviewer）实战验证：backend 客观官 + 对抗官 2 独立子代理并行审查交易归集批，主会话核实交叉命中
+description: 首次按新规范执行——上下文隔离（材料按角色裁剪 + 官间不互通）+ 对抗找茬官（ai-adversarial-reviewer）实战验证：backend 客观官 + 对抗官 2 独立子代理并行审查交易归集批，主会话核实交叉命中
 version: 1
 created: 2026-08-23
 updated: 2026-08-23
@@ -10,14 +10,14 @@ depends-on:
   - ../../../.agents/process/review.md
 related:
   - ../../review/REVIEW.md
-  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/ai-adversarial-reviewer.md
 tags: [review, audit, adversarial, isolation]
 ---
 
 # 隔离审查演示报告 2026-08-23（交易归集批）
 
 > 起因：验证新审查规范（`process/review.md` 2026-08-23：上下文隔离三步 + 对抗官）的实际效果，拿当前工作树未提交「交易归集批」（32 文件）实测。
-> 方式：**backend-reviewer**（只喂 `git diff -- services/adai-core/` + api-spec trading 节 + review-backend 清单）+ **adversarial-reviewer**（全量 diff + pitfalls + review-ux 清单）——2 独立子代理、互不可见、各自只读指定材料；主会话对交叉命中逐条代码级核实。
+> 方式：**code-backend-reviewer**（只喂 `git diff -- services/adai-core/` + api-spec trading 节 + code-backend-reviewer 清单）+ **ai-adversarial-reviewer**（全量 diff + pitfalls + ux-interaction-reviewer 清单）——2 独立子代理、互不可见、各自只读指定材料；主会话对交叉命中逐条代码级核实。
 > 守护：未跑（纯 diff 读审，非全量走查）。
 > 结果：**P0×2 + 战略×2 + P1×9 + P2×10（合并去重后）**。交叉命中 4 处（⭐⭐，两官独立证据）。审查只报告未改代码（B7）。
 

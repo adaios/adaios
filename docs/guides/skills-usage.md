@@ -35,15 +35,15 @@ tags: [guide, skills]
 
 | 技能 | 什么时候用 | 检查什么 |
 |:--|:--|:--|
-| `product-arch` | 大改动后 | 功能归属、五层架构、路线对齐、第一原则 |
-| `ux-reviewer` | 交互/流程改动后 | 操作路径、异常流、反馈完整性、跨端一致 |
-| `ui-reviewer` | 页面改动后 | 布局触达、视觉层级、三端一致、深色模式 |
-| `backend-reviewer` | 后端改动后 | 数据安全（P0）、分层、健壮性、测试覆盖 |
-| `frontend-reviewer` | 前端改动后 | 状态管理、生命周期、DTO 契约、跨端对拍 |
-| `docs-reviewer` | 文档/契约改动后 | api-spec 一致性、断链、数字漂移、frontmatter |
-| `knowledge-reviewer` | 知识/数据改动后 | os/ 与 data/ 健康、隐私面、格式契约 |
-| `context-reviewer` | 上下文/AI 模板改动后 | Purpose/Trigger/Action/Consistency 四问 |
-| `adversarial-reviewer` | 任何改动后（deep 默认附加）| 对抗找茬：哪里会炸 / 用户哪里会骂 / 边界哪里漏 |
+| `docs-product-reviewer` | 大改动后 | 功能归属、五层架构、路线对齐、第一原则 |
+| `ux-interaction-reviewer` | 交互/流程改动后 | 操作路径、异常流、反馈完整性、跨端一致 |
+| `ux-visual-reviewer` | 页面改动后 | 布局触达、视觉层级、三端一致、深色模式 |
+| `code-backend-reviewer` | 后端改动后 | 数据安全（P0）、分层、健壮性、测试覆盖 |
+| `code-frontend-reviewer` | 前端改动后 | 状态管理、生命周期、DTO 契约、跨端对拍 |
+| `docs-contract-reviewer` | 文档/契约改动后 | api-spec 一致性、断链、数字漂移、frontmatter |
+| `data-knowledge-reviewer` | 知识/数据改动后 | os/ 与 data/ 健康、隐私面、格式契约 |
+| `ai-context-reviewer` | 上下文/AI 模板改动后 | Purpose/Trigger/Action/Consistency 四问 |
+| `ai-adversarial-reviewer` | 任何改动后（deep 默认附加）| 对抗找茬：哪里会炸 / 用户哪里会骂 / 边界哪里漏 |
 
 ## 三、怎么用（三种方式）
 
@@ -51,13 +51,13 @@ tags: [guide, skills]
 
 - "帮我加一个查询持仓的接口" → AI 自动加载 `new-api` 技能
 - "这个功能做完了，收尾吧" → AI 自动走 `ship` 流程
-- "帮我看看这次后端改动" → AI 自动派 `backend-reviewer`
+- "帮我看看这次后端改动" → AI 自动派 `code-backend-reviewer`
 
 ### 方式二：显式点名
 
 - "用 new-api 技能做"
 - "加载 ship 技能"
-- "派 docs-reviewer 审查这个改动"
+- "派 docs-contract-reviewer 审查这个改动"
 
 ### 方式三：走标准流程
 
@@ -84,7 +84,7 @@ AI 加载 `new-api` 技能后会按 8 步走：
 
 - 技能文件在项目内（`.agents/roles/<name>/SKILL.md` + `.agents/skills/<name>/SKILL.md`），随 Git 走，**换机/换工具零迁移**
 - 工具侧靠**软链**发现（不是让工具去指 `ai-engineering/`）：`bash .agents/scripts/link-skills.sh` 把「用户直触发」技能软链到 `.dsh/skills`、`.agents/skills`、`.claude/skills`、`.qoder/skills`（**Qoder 的项目级技能目录是 `.qoder/skills/`，不是项目根 `skills/`**——2026-10-03 官方 CLI + IDE 文档确认）四个出口——出口被 `.gitignore` 忽略（注册是本机状态）
-- **只注册直触发技能**（当前仅 `learn-digest`）；12 个审查官走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/cost.md`）
+- **只注册直触发技能**（当前仅 `learn-digest`）；12 个审查官走流程内触发，**不注册**（避免常驻上下文，成本纪律见 `checklists/ai-cost-checklist.md`）
 - 项目内不用改任何东西（AGENTS.md「工具接入」原则）
 
 ## 七、FAQ

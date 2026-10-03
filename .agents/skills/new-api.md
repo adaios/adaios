@@ -9,7 +9,7 @@ status: active
 lines: 55
 depends-on:
   - ../assets/conventions.md
-  - ../checklists/review-backend.md
+  - ../checklists/code-backend-reviewer.md
 related:
   - ../../docs/architecture/api-spec.md
   - ../process/ship.md
@@ -50,6 +50,6 @@ tags: [skill, build, api]
 
 ## 参考资料
 
-- 后端检查清单：`../checklists/review-backend.md`
+- 后端检查清单：`../checklists/code-backend-reviewer.md`
 - 契约：`../../docs/architecture/api-spec.md`
 - 规范：`../assets/conventions.md`；边界：`../assets/boundaries.md`；已知坑：`../assets/pitfalls.md`

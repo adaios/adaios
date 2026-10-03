@@ -1,7 +1,7 @@
 ---
 title: 审查官：文档契约官
 description: 当需要审查文档一致性/断链/数字漂移/frontmatter 合规时加载——api-spec、REVIEW、AGENTS.md 对拍
-name: docs-reviewer
+name: docs-contract-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-15
@@ -9,7 +9,7 @@ status: active
 lines: 48
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-docs.md
+  - ../checklists/docs-contract-reviewer.md
 related: []
 tags: [review, docs, skill]
 ---
@@ -35,14 +35,14 @@ tags: [review, docs, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-docs.md`，走查时逐条执行
+- 检查清单见 `../checklists/docs-contract-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
-同 backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
+同 code-backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-docs.md`
+- 检查清单：`../checklists/docs-contract-reviewer.md`
 - 元数据规范：`../frontmatter-spec.md`
 - 已知坑：`../assets/pitfalls.md`

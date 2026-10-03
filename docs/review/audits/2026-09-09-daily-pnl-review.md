@@ -10,7 +10,7 @@ related:
 
 # 当日盈亏精确计算三官深审（2026-09-09）
 
-范围：`git diff ec9031a..HEAD`（commit `991c874` 当日盈亏精确计算 + `2227797` 晚间批）。三官隔离并行：backend-reviewer / frontend-reviewer / adversarial-reviewer（材料按域裁剪、互不可见）。守护：guard.sh 7 PASS / 0 HIT；guard-meta/align PASS。
+范围：`git diff ec9031a..HEAD`（commit `991c874` 当日盈亏精确计算 + `2227797` 晚间批）。三官隔离并行：code-backend-reviewer / code-frontend-reviewer / ai-adversarial-reviewer（材料按域裁剪、互不可见）。守护：guard.sh 7 PASS / 0 HIT；guard-meta/align PASS。
 
 ## 结论
 

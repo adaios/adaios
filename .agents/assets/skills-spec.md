@@ -43,13 +43,13 @@ SKILL 开放标准要求 `name` + `description`；AdaiOS frontmatter 契约要�
 - **新增 `name`**：小写 kebab-case，与文件名一致（SKILL 标准必填）
 - **`description` 写触发语义**：「当需要 XX 时加载」+ 解决什么问题（人/AI 双读者，符合方法论 Purpose/Trigger）
 
-示例（`.agents/roles/backend-reviewer.md`）：
+示例（`.agents/roles/code-backend-reviewer.md`）：
 
 ```yaml
 ---
 title: 审查官：后端代码官
 description: 当需要对 services/adai-core/ 后端代码做审查时加载——分层、数据安全、AI 集成健壮性、测试覆盖
-name: backend-reviewer
+name: code-backend-reviewer
 ...
 tags: [review, backend, skill]
 ---

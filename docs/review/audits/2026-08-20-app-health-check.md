@@ -17,7 +17,7 @@ tags: [review, audit, app]
 # app 全面体检走查报告 2026-08-20
 
 > 起因：用户反馈「排序有问题 / 两个主页来回切换，尤其 World B 切回主页很容易点到搜索 / 看看能不能输入框上滑、搜索框下滑翻页」——明确要求全面体检并出最新报告。
-> 方式：ui-reviewer + ux-reviewer + frontend-reviewer + product-arch ×4 官独立并行全量走查 apps/adai-app + 主会话代码级独立核实 + 交叉印证 ⭐。
+> 方式：ux-visual-reviewer + ux-interaction-reviewer + code-frontend-reviewer + docs-product-reviewer ×4 官独立并行全量走查 apps/adai-app + 主会话代码级独立核实 + 交叉印证 ⭐。
 > 范围：apps/adai-app/lib/** 全部（26 文件）+ services/adai-core FeedAppService 分页契约 + 对照 adai-web 双端一致性。
 > 守护：G1-G7 7 PASS / 0 HIT + META-GUARD PASS（99 文件）。
 > 结果：**P0 无。战略×5 + P1×17 + P2/P3×24（合并去重后）**。审查只报告未改代码（B7）。
@@ -28,7 +28,7 @@ tags: [review, audit, app]
 
 ### ①「排序有问题」——部分属实：实现无 bug，但有 4 处实锤缺陷 + 1 处产品口径问题
 
-**产品口径**（product-arch，独立核实）：Feed「最新在底部、更早在顶部」的聊天式倒序与 DESIGN.md 图例（07:00→21:01 自上而下）**完全一致**，非实现 bug；用户体感「乱」= 日记式顺读（DESIGN 默认）与信息流式「新在上」（用户预期）的认知错位。是否改为新在上属 DESIGN 修订，需用户拍板（走 RFC/讨论）。
+**产品口径**（docs-product-reviewer，独立核实）：Feed「最新在底部、更早在顶部」的聊天式倒序与 DESIGN.md 图例（07:00→21:01 自上而下）**完全一致**，非实现 bug；用户体感「乱」= 日记式顺读（DESIGN 默认）与信息流式「新在上」（用户预期）的认知错位。是否改为新在上属 DESIGN 修订，需用户拍板（走 RFC/讨论）。
 
 **实锤缺陷**（ux/frontend 双官 ⭐）：
 

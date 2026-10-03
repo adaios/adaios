@@ -18,7 +18,7 @@
 #     未变文件跳过解压，聚合从缓存计算）——会话历史膨胀后不再全量解压，25s 超时不再静默降级。
 #   记账（2026-08-23 P1-A2 修复）: --record 为增量记账——读该日最后一条 recorded_at，
 #     只统计其后新调用，--log 按日求和 = 当日真实消费（v1 追加全量会翻倍，已弃）。
-#   背景: 2026-08-17 涨价第一天 DSH 单日 77 元 → 立此脚本盯账（详见 checklists/cost.md）
+#   背景: 2026-08-17 涨价第一天 DSH 单日 77 元 → 立此脚本盯账（详见 checklists/ai-cost-checklist.md）
 # ─────────────────────────────────────────────────────────────
 set -u
 
@@ -278,7 +278,7 @@ if TOP_N > 0:
     print()
 
 # 提醒（成本纪律）
-print("## 提醒（checklists/cost.md 省钱原则）")
+print("## 提醒（checklists/ai-cost-checklist.md 省钱原则）")
 warn = []
 # 当前时段判定（2026-09-26 用户指正：此前只说「18:00 后」——**漏了周末与法定节假日全天谷时**，
 # 会在周六/节假日白等窗口。口径：先看星期，再看是否法定节假日，都不是才按 9-12 / 14-18 判高峰）
@@ -300,7 +300,7 @@ warn.append("当前时段：" + _slot
 if tot['cost'] > 20: warn.append(f"今日已超 20 元（{tot['cost']:.1f}）——高峰时段长会话是主因，考虑错峰/断会话")
 if cache_cost / max(tot['cost'], 0.01) > 0.7: warn.append("缓存读取占 70%+——单会话上下文过长，建议分阶段开新会话")
 if tot['calls'] > 500: warn.append("调用次数超 500——批量任务密集，评估是否可合并/降频")
-print('\n'.join(f"- {w}" for w in warn) if warn else "- 当前在健康区间（详见 checklists/cost.md）")
+print('\n'.join(f"- {w}" for w in warn) if warn else "- 当前在健康区间（详见 checklists/ai-cost-checklist.md）")
 
 # 记录（增量式，2026-08-23 P1-A2/P1-A3 修复 v2：只统计上次 recorded_at 后的新调用）
 if RECORD:

@@ -37,7 +37,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 
 | # | 主题 | 命中官 | 优先级 |
 |:-:|:-----|:-------|:------:|
-| C1 | **docs/ai 迁移残留未清零**（process 门禁命令断链：ship.md:46-47/audit.md:30/review.md:34,38 + frontmatter-spec §四/§六 + _index.md 标题 + docs-reviewer）| 6 官 | 战略/P1 |
+| C1 | **docs/ai 迁移残留未清零**（process 门禁命令断链：ship.md:46-47/audit.md:30/review.md:34,38 + frontmatter-spec §四/§六 + _index.md 标题 + docs-contract-reviewer）| 6 官 | 战略/P1 |
 | C2 | **guard-meta 只校验 frontmatter 边，正文路径引用无机器防线**（M1 盲区）——迁移残留因此全绿 PASS | 6 官 | 战略/P1 |
 | C3 | **ship.md 契约同步指向不存在的 `docs/architecture/feature-reference.md`**（实际在 docs/reference/）| 3 官 | P1 |
 | C4 | **六段闭环名实不符**：develop 无文件、验收无程序、「六段」只具名 5 段 | 3 官 | 战略/P2 |
@@ -90,7 +90,7 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 | P1-A5 | conventions.md 声称单一事实源但 CLAUDE.md 全文副本 | conventions.md:18 | ⭐ |
 | P1-A6 | docs/README.md:90 链接 ai/checklists/ 断链（文字却写对）| docs/README.md:90 | ⭐ |
 | P1-A7 | review.md 派官表 `ai/**、docs/ai/**` 残留 | review.md:52 | ⭐ |
-| P1-A8 | docs-reviewer 强制范围仍 docs/ai/**（D 引用编号错引 D28）| docs-reviewer.md:24 | ⭐ |
+| P1-A8 | docs-contract-reviewer 强制范围仍 docs/ai/**（D 引用编号错引 D28）| docs-contract-reviewer.md:24 | ⭐ |
 | P1-A9 | REVIEW.md P1-W16 未修/已修状态矛盾（13 项仍列未修）| REVIEW.md:101-120 | — |
 | P1-A10 | pitfalls 无状态列，B14/F10/F11 活问题与已修历史混排 | pitfalls.md:30 | ⭐ |
 | P1-A11 | B3 边界来源张冠李戴（#127 实为鉴权非隐私）| boundaries.md | — |
@@ -100,8 +100,8 @@ AI 工程层**方向正确、骨架已成**：三层结构（assets/workflow/sta
 
 ## 七、P2 / P3
 
-- **P2（26 项）**：workflow/process 边界未定义、ADR 3/5-10、state 层空壳、RFC 索引 draft 漂移、六段计数矛盾、README 接入 step2 找「开发」文档扑空、ideas 登记双源、RFC §4.1 结构 vs 实现偏差、G 系列位置无说明、REVIEW 计数矛盾、task-log 状态列、外部目录只读边界、第一原则承载集中、guard-meta 范围外文档（audits/rfc）静默漂移、RFC frontmatter 规范未文档化、method 引用无只读声明、ADR 无边链接、review-context C7 只覆盖 ai-context-research 未覆盖 method、guard-meta.sh 不在 _index 清单、ADR 模板未物化、RFC 索引词汇混用、feature-reference 路径、change-log 步骤缺失等。
-- **P3（24 项）**：AGENTS.md 7 名称 8 官、state 指针表假保证、task-log 无状态列、README 目录表 workflow 行歧义、conventions description 残留 docs/ai、docs-reviewer D 编号错引、RFC 验收偏差未回写、六段图物理路径未标注、README 三层表未含 process、method 目录 stub、ideas/README 双源等。
+- **P2（26 项）**：workflow/process 边界未定义、ADR 3/5-10、state 层空壳、RFC 索引 draft 漂移、六段计数矛盾、README 接入 step2 找「开发」文档扑空、ideas 登记双源、RFC §4.1 结构 vs 实现偏差、G 系列位置无说明、REVIEW 计数矛盾、task-log 状态列、外部目录只读边界、第一原则承载集中、guard-meta 范围外文档（audits/rfc）静默漂移、RFC frontmatter 规范未文档化、method 引用无只读声明、ADR 无边链接、ai-context-reviewer C7 只覆盖 ai-context-research 未覆盖 method、guard-meta.sh 不在 _index 清单、ADR 模板未物化、RFC 索引词汇混用、feature-reference 路径、change-log 步骤缺失等。
+- **P3（24 项）**：AGENTS.md 7 名称 8 官、state 指针表假保证、task-log 无状态列、README 目录表 workflow 行歧义、conventions description 残留 docs/ai、docs-contract-reviewer D 编号错引、RFC 验收偏差未回写、六段图物理路径未标注、README 三层表未含 process、method 目录 stub、ideas/README 双源等。
 
 > P2/P3 完整逐条见各官结果（本次走查存档内联，后续迁移 task-log）。
 

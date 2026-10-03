@@ -1,7 +1,7 @@
 ---
 title: 审查官：后端代码官
 description: 当需要对 services/adai-core/ 后端代码做审查时加载——分层、数据安全、AI 集成健壮性、测试覆盖
-name: backend-reviewer
+name: code-backend-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-19
@@ -9,7 +9,7 @@ status: active
 lines: 49
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-backend.md
+  - ../checklists/code-backend-reviewer.md
 related: []
 tags: [review, backend, skill]
 ---
@@ -35,7 +35,7 @@ tags: [review, backend, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置（文件:行号）
-- 检查清单见 `../checklists/review-backend.md`，走查时逐条执行
+- 检查清单见 `../checklists/code-backend-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
@@ -43,7 +43,7 @@ P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-backend.md`
+- 检查清单：`../checklists/code-backend-reviewer.md`
 - 规范：`../assets/conventions.md`
 - 边界：`../assets/boundaries.md`
 - 已知坑：`../assets/pitfalls.md`

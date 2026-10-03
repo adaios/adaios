@@ -1,13 +1,13 @@
 ---
 title: 界面审查检查清单
-description: ui-reviewer 逐条检查项（人也能用）——触达/层级/间距/三端/深色/空态
+description: ux-visual-reviewer 逐条检查项（人也能用）——触达/层级/间距/三端/深色/空态
 version: 1
 created: 2026-08-15
 updated: 2026-09-17
 status: active
 lines: 48
 depends-on: []
-related: [../roles/ui-reviewer.md]
+related: [../roles/ux-visual-reviewer.md]
 tags: [review, checklist, ui]
 ---
 

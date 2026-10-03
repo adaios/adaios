@@ -30,26 +30,26 @@ status: implemented
 
 | 角色 | Agent 文件 | 审什么 | 初始检查点来源 |
 |:-----|:----------|:-------|:--------------|
-| **文档审核** | `review-docs` | RFC、api-spec、CLAUDE.md、docs/ 的一致性；文档-代码契约 | 上次审查维度 8（文档-代码一致性）|
-| **后端审核** | `review-backend` | Java 分层依赖、数据安全（ID 唯一性/文件路径/正则健壮性）、AI 集成 | 上次审查维度 1/2/3/4/5 + 发现项 |
-| **前端审核** | `review-frontend` | 状态管理、生命周期 mounted、DTO 契约、主题/死代码 | 上次审查维度 6/7 + 发现项 |
-| **产品/UI 审核** | `review-product` | 视觉一致性、交互完整性、产品表达（文案/定位/术语）| 前端术语对照 + 布局参考文档 |
-| **知识/数据审核** | `review-knowledge` | os/ 知识资产消费链路、data/ 数据健康与隐私、跨层闭环 | 上次审查"架构知识"第 3 路（K1-K11）|
+| **文档审核** | `docs-contract-reviewer` | RFC、api-spec、CLAUDE.md、docs/ 的一致性；文档-代码契约 | 上次审查维度 8（文档-代码一致性）|
+| **后端审核** | `code-backend-reviewer` | Java 分层依赖、数据安全（ID 唯一性/文件路径/正则健壮性）、AI 集成 | 上次审查维度 1/2/3/4/5 + 发现项 |
+| **前端审核** | `code-frontend-reviewer` | 状态管理、生命周期 mounted、DTO 契约、主题/死代码 | 上次审查维度 6/7 + 发现项 |
+| **产品/UI 审核** | `docs-product-reviewer` | 视觉一致性、交互完整性、产品表达（文案/定位/术语）| 前端术语对照 + 布局参考文档 |
+| **知识/数据审核** | `data-knowledge-reviewer` | os/ 知识资产消费链路、data/ 数据健康与隐私、跨层闭环 | 上次审查"架构知识"第 3 路（K1-K11）|
 
 ## 四、文件结构
 
 ```
 .claude/skills/review/SKILL.md          ← /review 触发：范围选择 → 派角色 → 汇总 → 滚动状态 → 写报告
-.claude/agents/review-docs.md           ← 角色：文档编写审核
-.claude/agents/review-backend.md        ← 角色：后端 Java 代码审核
-.claude/agents/review-frontend.md       ← 角色：前端 Flutter 代码审核
-.claude/agents/review-product.md        ← 角色：UI 设计 + 产品表达审核
-.claude/agents/review-knowledge.md      ← 角色：知识资产 + 数据资产审核
-docs/ai/checklists/review-docs.md   ← 检查点清单（活文档，每次审核可追加）
-docs/ai/checklists/review-backend.md
-docs/ai/checklists/review-frontend.md
-docs/ai/checklists/review-product.md
-docs/ai/checklists/review-knowledge.md
+.claude/agents/docs-contract-reviewer.md           ← 角色：文档编写审核
+.claude/agents/code-backend-reviewer.md        ← 角色：后端 Java 代码审核
+.claude/agents/code-frontend-reviewer.md       ← 角色：前端 Flutter 代码审核
+.claude/agents/docs-product-reviewer.md        ← 角色：UI 设计 + 产品表达审核
+.claude/agents/data-knowledge-reviewer.md      ← 角色：知识资产 + 数据资产审核
+docs/ai/checklists/docs-contract-reviewer.md   ← 检查点清单（活文档，每次审核可追加）
+docs/ai/checklists/code-backend-reviewer.md
+docs/ai/checklists/code-frontend-reviewer.md
+docs/ai/checklists/docs-product-reviewer.md
+docs/ai/checklists/data-knowledge-reviewer.md
 docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增量，报告不新建）
 ```
 
@@ -76,11 +76,11 @@ docs/review/REVIEW.md                  ← 常驻全量状态报告（扫描增�
 
 每个清单用**"检查方法 + 上次发现"**格式，便于 Agent 快速执行，也便于持续追加：
 
-- `review-docs`：api-spec ↔ Controller ↔ 前端调用三方对齐；CLAUDE.md 架构图与代码一致；RFC 是否有遗留方向
-- `review-backend`：`generateId()` 是否含毫秒；`filePath()` 是否从实体字段推导而非 `now()`；DOTALL 正则是否 `[^\n]*` 而非 `.+`；缓存键是否同规范；scene 路由是否真正触发 Contributor
-- `review-frontend`：`setState` 前 `mounted` 守卫；fromJson 期望键 vs 后端序列化；死代码/主题残留；URL 编码
-- `review-product`：页面视觉一致性（主题/间距/字体）；交互是否有 stub 占位；产品文案与 `frontend-reference.md` 术语一致
-- `review-knowledge`：os/ 每个知识资产是否被 KnowledgeSource 消费；data/ 目录健康与隐私红线；文件格式 ↔ Repository 解析一致；闭环（反哺/记忆）有无真实产物
+- `docs-contract-reviewer`：api-spec ↔ Controller ↔ 前端调用三方对齐；CLAUDE.md 架构图与代码一致；RFC 是否有遗留方向
+- `code-backend-reviewer`：`generateId()` 是否含毫秒；`filePath()` 是否从实体字段推导而非 `now()`；DOTALL 正则是否 `[^\n]*` 而非 `.+`；缓存键是否同规范；scene 路由是否真正触发 Contributor
+- `code-frontend-reviewer`：`setState` 前 `mounted` 守卫；fromJson 期望键 vs 后端序列化；死代码/主题残留；URL 编码
+- `docs-product-reviewer`：页面视觉一致性（主题/间距/字体）；交互是否有 stub 占位；产品文案与 `frontend-reference.md` 术语一致
+- `data-knowledge-reviewer`：os/ 每个知识资产是否被 KnowledgeSource 消费；data/ 目录健康与隐私红线；文件格式 ↔ Repository 解析一致；闭环（反哺/记忆）有无真实产物
 
 ## 七、如何"不断更新优化"
 

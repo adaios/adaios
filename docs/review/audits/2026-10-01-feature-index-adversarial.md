@@ -10,7 +10,7 @@ depends-on: []
 related:
   - ../REVIEW.md
   - ../../features/_index.md
-  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/ai-adversarial-reviewer.md
   - ../../../.agents/guards/guard-feature.sh
 tags: [review, adversarial, audit, feature-index]
 ---

@@ -1,6 +1,6 @@
 ---
 title: 元审核：AI 上下文建设工程体系（ai-engineering/ 全量 + 对抗官复核）
-description: 主审核（客观）+ adversarial-reviewer（独立子代理，上下文隔离）交叉印证——12 条发现裁定 + 8 条独立炸点 + 5 实验实证；修复批 072dcee 落地后归口
+description: 主审核（客观）+ ai-adversarial-reviewer（独立子代理，上下文隔离）交叉印证——12 条发现裁定 + 8 条独立炸点 + 5 实验实证；修复批 072dcee 落地后归口
 version: 1
 created: 2026-08-23
 updated: 2026-08-23
@@ -16,7 +16,7 @@ tags: [review, audit, ai-engineering, meta]
 # 元审核：AI 上下文建设工程体系（2026-08-23）
 
 > **对象**：ai-engineering/ 全量 + AGENTS.md + AGENTS.local.md + .claude/ 接入 + .githooks/pre-commit。
-> **方法**：主审核（客观全量读审 + 行业标准对照）→ adversarial-reviewer 独立子代理复核（上下文隔离，零主会话污染）→ 5 项实证实验（/tmp 干净 clone，工作区零污染）。
+> **方法**：主审核（客观全量读审 + 行业标准对照）→ ai-adversarial-reviewer 独立子代理复核（上下文隔离，零主会话污染）→ 5 项实证实验（/tmp 干净 clone，工作区零污染）。
 > **行业基准**：AGENTS.md 最佳实践 / Anthropic Agent Skills 开放标准 / Harness Engineering / Context Engineering 四问。
 > **结论**：体系成熟度显著高于一般项目；**1 战略盲区 + 3 战略炸点 + 8 P1 + 7 P2/P3**；无 P0。修复批 `072dcee` 已落地。
 
@@ -25,7 +25,7 @@ tags: [review, audit, ai-engineering, meta]
 | # | 主审核发现 | 对抗官裁定 | 状态 |
 |:-:|:----------|:----------|:----:|
 | S1 | guard 脚本族脱离元治理（guard-meta 只扫 .md）| **证实且更狠**：guard-unfixed/roadmap 未入库但流程强制引用 | ✅ 已修（入库+登记）|
-| P1-1 | _index.md 登记缺失（3 脚本 + review-perf）| 证实；M3 正则只匹配 .md，登记机制对脚本结构性失明 | ✅ 已修（补登记）|
+| P1-1 | _index.md 登记缺失（3 脚本 + code-perf-reviewer）| 证实；M3 正则只匹配 .md，登记机制对脚本结构性失明 | ✅ 已修（补登记）|
 | P1-2 | README「8 审查官」滞后（实 9）| 证实；命中「数字散落漂移」复发信号 | ✅ 已修（改 8 客观+1 对抗）|
 | P1-3 | audit.md 未纳入对抗官 | 证实；**最贵流程缺最狠视角**，full 定义两套口径打架 | ⚠️ 待修（audit 官表 +1）|
 | P1-4 | 跨工具互通零兑现（12 SKILL.md 无工具注册）| 证实（纸面承诺）| ✅ 已修（guard-tools.sh 自检）|
@@ -66,7 +66,7 @@ tags: [review, audit, ai-engineering, meta]
 ## 四、已落地修复批（commit `072dcee`）
 
 1. guard-meta M4 白名单 AGENTS.local.md（gitignore 快照非漂移）
-2. guard-unfixed.sh / guard-roadmap.sh / guard-tools.sh 入库 + _index.md 补登记（guard-meta/review-perf 一并）
+2. guard-unfixed.sh / guard-roadmap.sh / guard-tools.sh 入库 + _index.md 补登记（guard-meta/code-perf-reviewer 一并）
 3. pre-commit 隐私闸门前移（堵类型绕过）+ 新增文件 gitignore 复核（堵 -f 强加）+ 删 --no-verify 提示
 4. guard-cost --record 覆盖式改追加 + recorded_at + LOG 按日聚合
 5. 新增 guard-tools.sh 接入自检（T1 hook / T2 快照 / T3 技能 / T4 注册 / T5 入口）——替代静态映射表（用户否决），机制替人记得

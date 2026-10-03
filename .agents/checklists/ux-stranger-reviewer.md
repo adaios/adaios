@@ -1,13 +1,13 @@
 ---
 title: 陌生人首次使用检查清单
-description: stranger-reviewer 逐条检查项（人也能用）——三端入口可达/开号/空世界首屏/第一件事/五问/术语/三端同源
+description: ux-stranger-reviewer 逐条检查项（人也能用）——三端入口可达/开号/空世界首屏/第一件事/五问/术语/三端同源
 version: 2
 created: 2026-09-13
 updated: 2026-09-13
 status: active
 lines: 63
 depends-on: []
-related: [../roles/stranger-reviewer.md]
+related: [../roles/ux-stranger-reviewer.md]
 tags: [review, checklist, external]
 ---
 

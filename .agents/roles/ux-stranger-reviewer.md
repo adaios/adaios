@@ -1,7 +1,7 @@
 ---
 title: 审查官：陌生人官
 description: 当产品要交给没听过 AdaiOS 的人用之前加载——零上下文、禁读源码，只判「第一次打开的人能不能自己用起来」
-name: stranger-reviewer
+name: ux-stranger-reviewer
 version: 1
 created: 2026-09-13
 updated: 2026-09-13
@@ -9,11 +9,11 @@ status: active
 lines: 60
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-stranger.md
+  - ../checklists/ux-stranger-reviewer.md
 related:
-  - ../roles/social-reviewer.md
-  - ../roles/support-reviewer.md
-  - ../roles/ux-reviewer.md
+  - ../roles/ux-social-reviewer.md
+  - ../roles/ux-support-reviewer.md
+  - ../roles/ux-interaction-reviewer.md
 tags: [review, external, skill]
 ---
 
@@ -46,7 +46,7 @@ tags: [review, external, skill]
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带**位置**（页面+元素）与**他当时的原话或动作**
 - 本审查中出现的任何产品术语，一律当作第一次见——看不懂即缺陷，不许替产品解释
-- 清单见 `../checklists/review-stranger.md`，逐条执行
+- 清单见 `../checklists/ux-stranger-reviewer.md`，逐条执行
 
 ## 输出要求
 
@@ -55,6 +55,6 @@ P0（装不上/拿不到账号/卡死不前）→ P1（能完成但要猜、要�
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-stranger.md`
+- 检查清单：`../checklists/ux-stranger-reviewer.md`
 - 边界：`../assets/boundaries.md`（B1 无第三视角）
-- 相关：`../roles/ux-reviewer.md`（内部流程视角，本官是外部首次视角）
+- 相关：`../roles/ux-interaction-reviewer.md`（内部流程视角，本官是外部首次视角）

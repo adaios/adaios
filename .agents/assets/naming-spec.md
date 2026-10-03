@@ -17,7 +17,7 @@ tags: [ai, spec, naming]
 
 # AI 资产命名规范
 
-> **为什么要有这个名字规范**：名字是**最便宜的文档**。`code-backend-reviewer` 一眼告诉你「**域=代码 · 对象=后端 · 角色=审查**」；`design-author` 什么都没说。命名一乱，`ls` 出来就是一堆看不出关系的东西。
+> **为什么要有这个名字规范**：名字是**最便宜的文档**。`code-backend-reviewer` 一眼告诉你「**域=代码 · 对象=后端 · 角色=审查**」；`docs-design-writer` 什么都没说。命名一乱，`ls` 出来就是一堆看不出关系的东西。
 
 ## 一、总式
 
@@ -77,19 +77,19 @@ tags: [ai, spec, naming]
 
 | 历史名 | **体系名** | 引用数 |
 |:--|:--|--:|
-| `backend-reviewer` | **`code-backend-reviewer`** | 29 |
-| `frontend-reviewer` | **`code-frontend-reviewer`** | 17 |
-| `product-arch` | **`docs-product-reviewer`** | 28 |
-| `docs-reviewer` | **`docs-contract-reviewer`** | — |
-| `ux-reviewer` | **`ux-interaction-reviewer`** | — |
-| `ui-reviewer` | **`ux-visual-reviewer`** | — |
-| `stranger-reviewer` | **`ux-stranger-reviewer`** | — |
-| `social-reviewer` | **`ux-social-reviewer`** | — |
-| `support-reviewer` | **`ux-support-reviewer`** | — |
-| `knowledge-reviewer` | **`data-knowledge-reviewer`** | — |
-| `context-reviewer` | **`ai-context-reviewer`** | 14 |
-| `adversarial-reviewer` | **`ai-adversarial-reviewer`** | — |
-| `design-author` | **`docs-design-writer`** | 5 |
+| `code-backend-reviewer` | **`code-backend-reviewer`** | 29 |
+| `code-frontend-reviewer` | **`code-frontend-reviewer`** | 17 |
+| `docs-product-reviewer` | **`docs-product-reviewer`** | 28 |
+| `docs-contract-reviewer` | **`docs-contract-reviewer`** | — |
+| `ux-interaction-reviewer` | **`ux-interaction-reviewer`** | — |
+| `ux-visual-reviewer` | **`ux-visual-reviewer`** | — |
+| `ux-stranger-reviewer` | **`ux-stranger-reviewer`** | — |
+| `ux-social-reviewer` | **`ux-social-reviewer`** | — |
+| `ux-support-reviewer` | **`ux-support-reviewer`** | — |
+| `data-knowledge-reviewer` | **`data-knowledge-reviewer`** | — |
+| `ai-context-reviewer` | **`ai-context-reviewer`** | 14 |
+| `ai-adversarial-reviewer` | **`ai-adversarial-reviewer`** | — |
+| `docs-design-writer` | **`docs-design-writer`** | 5 |
 
 ### 6.2 `skills/`（4 个）
 

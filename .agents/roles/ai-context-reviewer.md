@@ -1,7 +1,7 @@
 ---
 title: 审查官：AI Context 审查官
 description: 当需要审查 AI 上下文结构（AGENTS.md 加载结构、os/*/11-context/）时加载——四问：Purpose/Trigger/Action/Consistency
-name: context-reviewer
+name: ai-context-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-19
@@ -9,7 +9,7 @@ status: active
 lines: 47
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-context.md
+  - ../checklists/ai-context-reviewer.md
 related:
   - ../../AGENTS.md
 tags: [review, context, skill]
@@ -34,14 +34,14 @@ tags: [review, context, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-context.md`，走查时逐条执行
+- 检查清单见 `../checklists/ai-context-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
-同 backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
+同 code-backend-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单（位置=文件:行号）。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-context.md`
+- 检查清单：`../checklists/ai-context-reviewer.md`
 - 方法论：`../../../ai-context-research/项目级 AI 上下文体系方法论.md`（仓库外同级目录——只读参考）
-- 原始框架：`../../../ai-context-research/context-reviewer.md`（仓库外同级目录——只读参考）
+- 原始框架：`../../../ai-context-research/ai-context-reviewer.md`（仓库外同级目录——只读参考）

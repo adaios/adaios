@@ -104,4 +104,4 @@ tags: [skill, build, learn, digest]
 - 首次实践成果样例：`data/adai/learn/ai/harness-engineering/`（9 文档 + 素材，2026-09-06）——**含两处已知失真，新主题勿沿用**：① README 写「视频引用的 7 篇原文」，实测转写稿中 LangChain/Hashimoto/Fowler 等 5 篇命中 0 次（系用户补充或检索所得，来源未记清）；② README 声称 `_raw/` 含「7 篇原文文本」，实际 `_raw/` 仅视频 meta + 转写稿 2 个文件
 - 技能规范：`.agents/assets/skills-spec.md`；frontmatter：`.agents/frontmatter-spec.md`
 - 红线边界：`.agents/assets/boundaries.md`（B1/B3/B8）；坑：`.agents/assets/pitfalls.md`
-- 成本纪律：`.agents/checklists/cost.md` + `guard-cost.sh`
+- 成本纪律：`.agents/checklists/ai-cost-checklist.md` + `guard-cost.sh`

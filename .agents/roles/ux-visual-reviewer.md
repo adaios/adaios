@@ -1,7 +1,7 @@
 ---
 title: 审查官：界面设计师
 description: 当需要审查页面布局/触达/视觉层级/三端一致/深色模式/空态加载态时加载——误触风险、可读性
-name: ui-reviewer
+name: ux-visual-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-15
@@ -9,9 +9,9 @@ status: active
 lines: 51
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-ui.md
+  - ../checklists/ux-visual-reviewer.md
 related:
-  - ../roles/ux-reviewer.md
+  - ../roles/ux-interaction-reviewer.md
   - ../../docs/architecture/frontend-reference.md
 tags: [review, ui, skill]
 ---
@@ -38,14 +38,14 @@ tags: [review, ui, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-ui.md`，走查时逐条执行
+- 检查清单见 `../checklists/ux-visual-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
-同 product-arch：P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。
+同 docs-product-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-ui.md`
+- 检查清单：`../checklists/ux-visual-reviewer.md`
 - 前端参考：`../../docs/architecture/frontend-reference.md`
 - 边界：`../assets/boundaries.md`

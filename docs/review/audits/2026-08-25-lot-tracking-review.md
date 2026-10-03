@@ -7,7 +7,7 @@ status: active
 # 2026-08-25 批次跟踪批审查（deep 四官隔离并行）
 
 **范围**：工作树（RFC 20260825 逐笔批次跟踪与行为纠偏——后端批次推导/LIFO/行为标注/导入双模式/推送 TTL + web 批次弹窗/导入总结 + app 持仓卡批次简版 + 文档）。
-**模式**：deep，backend-reviewer / frontend-reviewer / docs-reviewer / adversarial-reviewer ×4 隔离并行（材料按角色裁剪、官间不互通、主会话汇总去重）。守护 G1-G7 7 PASS / 0 HIT + META PASS。
+**模式**：deep，code-backend-reviewer / code-frontend-reviewer / docs-contract-reviewer / ai-adversarial-reviewer ×4 隔离并行（材料按角色裁剪、官间不互通、主会话汇总去重）。守护 G1-G7 7 PASS / 0 HIT + META PASS。
 
 ## 发现与处置
 

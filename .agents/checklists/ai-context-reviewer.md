@@ -1,6 +1,6 @@
 ---
 title: AI Context 审查检查清单
-description: context-reviewer 逐条检查项（人也能用）——Purpose/Trigger/Action/Consistency 四问
+description: ai-context-reviewer 逐条检查项（人也能用）——Purpose/Trigger/Action/Consistency 四问
 version: 1
 created: 2026-08-15
 updated: 2026-08-16
@@ -8,13 +8,13 @@ status: active
 lines: 36
 depends-on: []
 related:
-  - ../roles/context-reviewer.md
+  - ../roles/ai-context-reviewer.md
 tags: [review, checklist, context]
 ---
 
 # AI Context 审查检查清单（Context）
 
-> 对应 context-reviewer 四问：判断 `AGENTS.md` 加载结构、`os/*/11-context/`能否帮助 AI **正确理解项目并执行任务**。
+> 对应 ai-context-reviewer 四问：判断 `AGENTS.md` 加载结构、`os/*/11-context/`能否帮助 AI **正确理解项目并执行任务**。
 
 | # | 检查项 | 判定 |
 |:-:|:-------|:----:|

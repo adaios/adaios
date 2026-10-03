@@ -13,7 +13,7 @@ related:
   - ../deployment/icp-filing.md
   - ../reference/status.md
   - ../review/REVIEW.md
-  - ../../.agents/checklists/cost.md
+  - ../../.agents/checklists/ai-cost-checklist.md
 tags: [guide, routine, ops]
 ---
 
@@ -186,5 +186,5 @@ python3 .agents/scripts/check_deadlines.py --ics          # 生成日历文件�
 
 - 交易模块完整功能与定时任务：`../reference/trading-features.md`
 - ICP / 公安备案步骤：`../deployment/icp-filing.md`
-- 成本纪律：`../../.agents/checklists/cost.md`
+- 成本纪律：`../../.agents/checklists/ai-cost-checklist.md`
 - 收尾流程：`../../.agents/process/ship.md`

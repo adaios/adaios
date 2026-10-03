@@ -11,7 +11,7 @@ depends-on:
 related:
   - review.md
   - ship.md
-  - ../roles/design-author.md
+  - ../roles/docs-design-writer.md
   - ../../docs/architecture/ai-context-engineering.md
 tags: [ai, process]
 ---
@@ -31,8 +31,8 @@ tags: [ai, process]
 
 | 角色 | 真相源 | 产出（每轮一份）| 派法 |
 |:--|:--|:--|:--|
-| **设计文档编写者** | `roles/design-author.md` | `designs/<id>/design-v<N>-<YYYYMMDD>.md` | 每轮派一次 |
-| **设计文档审核者** | `roles/` 里对应审查官（按需求性质选：`product-arch` / `backend-reviewer` / `ux-reviewer` / `context-reviewer`…）| `designs/<id>/review-v<N>-<YYYYMMDD>.md` | 每轮派一次 |
+| **设计文档编写者** | `roles/docs-design-writer.md` | `designs/<id>/design-v<N>-<YYYYMMDD>.md` | 每轮派一次 |
+| **设计文档审核者** | `roles/` 里对应审查官（按需求性质选：`docs-product-reviewer` / `code-backend-reviewer` / `ux-interaction-reviewer` / `ai-context-reviewer`…）| `designs/<id>/review-v<N>-<YYYYMMDD>.md` | 每轮派一次 |
 
 **轮次循环**：
 

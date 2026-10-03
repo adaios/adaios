@@ -1,13 +1,13 @@
 ---
 title: 支持台（他一定会问）检查清单
-description: support-reviewer 逐条检查项（人也能用）——五类必问问题 + 归属判定，答不上来的即缺陷
+description: ux-support-reviewer 逐条检查项（人也能用）——五类必问问题 + 归属判定，答不上来的即缺陷
 version: 1
 created: 2026-09-13
 updated: 2026-09-13
 status: active
 lines: 60
 depends-on: []
-related: [../roles/support-reviewer.md]
+related: [../roles/ux-support-reviewer.md]
 tags: [review, checklist, external]
 ---
 

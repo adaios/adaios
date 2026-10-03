@@ -1,7 +1,7 @@
 ---
 title: 审查官：社会性官
 description: 当产品要从「自己用」变成「给身边人用」时加载——查递手机/被邀请者视角的隐私外露、人情成本、退出口
-name: social-reviewer
+name: ux-social-reviewer
 version: 1
 created: 2026-09-13
 updated: 2026-09-13
@@ -9,10 +9,10 @@ status: active
 lines: 67
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-social.md
+  - ../checklists/ux-social-reviewer.md
 related:
-  - ../roles/stranger-reviewer.md
-  - ../roles/support-reviewer.md
+  - ../roles/ux-stranger-reviewer.md
+  - ../roles/ux-support-reviewer.md
   - ../../docs/architecture/product-roadmap.md
 tags: [review, external, skill]
 ---
@@ -52,7 +52,7 @@ tags: [review, external, skill]
 - **只报告不直接修**（B7）
 - 输出中文；每条给出**受体**（谁看到/谁付出）+ **场景**（什么时候发生）
 - 不得把社会性问题写成技术问题（例：不是「推送正文太长」，是「锁屏会露出你持仓哪只票」）
-- 清单见 `../checklists/review-social.md`，逐条执行
+- 清单见 `../checklists/ux-social-reviewer.md`，逐条执行
 
 ## 输出要求
 
@@ -62,6 +62,6 @@ tags: [review, external, skill]
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-social.md`
+- 检查清单：`../checklists/ux-social-reviewer.md`
 - 边界：`../assets/boundaries.md`（B3 数据隐私不泄）
-- 相关：`../roles/stranger-reviewer.md`
+- 相关：`../roles/ux-stranger-reviewer.md`

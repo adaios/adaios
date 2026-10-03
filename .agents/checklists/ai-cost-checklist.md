@@ -80,7 +80,7 @@ bash .agents/guards/guard-cost.sh --record   # 收工时把今日记入成本日
 ### S6 用 V4-Pro 跑轻活
 - 意图识别、brief、简单问答用 Pro（输出 27 元/M）和用 Flash（9 元/M）差 3 倍。
 - ✅ 改：非对话/非深度推理场景评估切 `deepseek-v4-flash`。
-- **审查官模型分层（2026-08-18）**：8 审查官/增量深审默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍，详见 `process/audit.md` §3 / `process/review.md` §3。
+- **审查官模型分层（2026-08-18）**：8 审查官/增量深审默认 Flash；仅深审场景（docs-product-reviewer 全局视角、大重构）可切 Pro——差价 3 倍，详见 `process/audit.md` §3 / `process/review.md` §3。
 
 ### S7 审查报告控字（输出是最贵通道）
 - 输出高峰 Pro 27 元/M，审查官长篇论证 = 把钱花在过程而非结论。

@@ -1,7 +1,7 @@
 ---
 title: 设计文档编写者
 description: 审核驱动主链的产作者（与设计文档审核者真对打）——读需求定稿与上一轮审核结论，产出设计文档：本轮回应 / 设计 / 取舍 / 未决 / 自评风险；每轮一份、不覆盖历史，直至收敛
-name: design-author
+name: docs-design-writer
 version: 1
 created: 2026-10-03
 updated: 2026-10-04
@@ -10,12 +10,12 @@ lines: 60
 depends-on:
   - ../workspace/designs/_directory.md
 related:
-  - ./context-reviewer.md
+  - ./ai-context-reviewer.md
   - ../workspace/designs/_template-design.md
 tags: [ai, role, design]
 ---
 
-# 设计文档编写者（design-author）
+# 设计文档编写者（docs-design-writer）
 
 ## 触发条件
 
@@ -57,4 +57,4 @@ tags: [ai, role, design]
 - `../workspace/designs/_directory.md` —— 目录契约：轮次命名 / 收敛判据 / 一需求一目录
 - `../workspace/designs/_template-review.md` —— 对家的产出形态（知道会被怎么挑）
 - `docs/architecture/ai-context-engineering.md` §4.6 —— 主链全图与两条判据
-- `./context-reviewer.md` —— 同类五段结构参考
+- `./ai-context-reviewer.md` —— 同类五段结构参考

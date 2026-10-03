@@ -1,13 +1,13 @@
 ---
 title: 社会性（递出去那一刻）检查清单
-description: social-reviewer 逐条检查项（人也能用）——通知暴露面/递手机/付出门槛/人情/退出口/体面
+description: ux-social-reviewer 逐条检查项（人也能用）——通知暴露面/递手机/付出门槛/人情/退出口/体面
 version: 1
 created: 2026-09-13
 updated: 2026-09-13
 status: active
 lines: 49
 depends-on: []
-related: [../roles/social-reviewer.md]
+related: [../roles/ux-social-reviewer.md]
 tags: [review, checklist, external]
 ---
 

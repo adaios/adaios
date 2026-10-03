@@ -1,13 +1,13 @@
 ---
 title: 前端代码审查检查清单
-description: frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
+description: code-frontend-reviewer 逐条检查项（人也能用）——DTO 契约/生命周期/状态管理/测试
 version: 1
 created: 2026-08-15
 updated: 2026-09-23
 status: active
 lines: 108
 depends-on: []
-related: [../roles/frontend-reviewer.md]
+related: [../roles/code-frontend-reviewer.md]
 tags: [review, checklist, frontend]
 ---
 

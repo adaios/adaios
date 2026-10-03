@@ -34,10 +34,10 @@ ROOT="$(pwd)"
 
 # ── 注册清单：新增「值得独立派出」的审查官时把名字加进来（= roles/ 下的文件名 stem）──
 REGISTER=(
-  adversarial-reviewer stranger-reviewer backend-reviewer
-  context-reviewer docs-reviewer frontend-reviewer knowledge-reviewer
-  product-arch social-reviewer support-reviewer ui-reviewer ux-reviewer
-  design-author   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
+  ai-adversarial-reviewer ux-stranger-reviewer code-backend-reviewer
+  ai-context-reviewer docs-contract-reviewer code-frontend-reviewer data-knowledge-reviewer
+  docs-product-reviewer ux-social-reviewer ux-support-reviewer ux-visual-reviewer ux-interaction-reviewer
+  docs-design-writer   # 审核驱动主链的产作者（与设计文档审核者真对打，2026-10-03）
 )
 
 # ── 目标工具 subagent 目录（相对仓库根；格式由脚本按目录名分派）──

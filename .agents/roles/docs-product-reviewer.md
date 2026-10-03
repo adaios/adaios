@@ -1,7 +1,7 @@
 ---
 title: 审查官：产品架构师
 description: 当需要从产品全局审视改动/功能归属/路线对齐时加载——五层架构符合度、数据流完整、Roadmap 对齐、第一原则
-name: product-arch
+name: docs-product-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-15
@@ -9,10 +9,10 @@ status: active
 lines: 52
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-product.md
+  - ../checklists/docs-product-reviewer.md
 related:
-  - ../roles/ux-reviewer.md
-  - ../roles/ui-reviewer.md
+  - ../roles/ux-interaction-reviewer.md
+  - ../roles/ux-visual-reviewer.md
   - ../../docs/architecture/product-architecture.md
 tags: [review, product, skill]
 ---
@@ -38,7 +38,7 @@ tags: [review, product, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-product.md`，走查时逐条执行
+- 检查清单见 `../checklists/docs-product-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
@@ -46,7 +46,7 @@ P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建�
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-product.md`
+- 检查清单：`../checklists/docs-product-reviewer.md`
 - 产品架构：`../../docs/architecture/product-architecture.md`
 - 蓝图：`../../docs/architecture/product-roadmap.md`
 - 边界：`../assets/boundaries.md`

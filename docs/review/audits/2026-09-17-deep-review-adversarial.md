@@ -9,7 +9,7 @@ lines: 324
 depends-on: []
 related:
   - ../REVIEW.md
-  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/ai-adversarial-reviewer.md
   - ../../../.agents/assets/pitfalls.md
 tags: [review, adversarial, audit]
 ---
@@ -18,7 +18,7 @@ tags: [review, adversarial, audit]
 
 > **性质**：只读对抗审查（B7）。**未改任何代码/文档**，本文件是唯一新增文件。
 > **范围**：`git diff d060841..HEAD` = 51 文件 / 3 提交（`3dadfd9` 晚间批 · `42dc0b5` 深夜第二批 · `bc6656b` 午间谷时任务壳〔他会话〕）。
-> **方法**：先读角色卡 `.agents/roles/adversarial-reviewer.md` → `assets/pitfalls.md`（复发信号表）→ `assets/boundaries.md` → `AGENTS.md`；再按「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三向攻击，**能写出触发条件的排在前面**。
+> **方法**：先读角色卡 `.agents/roles/ai-adversarial-reviewer.md` → `assets/pitfalls.md`（复发信号表）→ `assets/boundaries.md` → `AGENTS.md`；再按「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三向攻击，**能写出触发条件的排在前面**。
 > **基线**：`docs/reference/status.md` 快照（后端 1939 / app 359 / web 302 / 端点 154）。
 > **⚠️ 阅读约定**：本文只报告，不代表已批准修复；每条附可复核命令或文件:行。
 

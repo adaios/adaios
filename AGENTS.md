@@ -26,7 +26,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 ## AI 协作规则（必读）
 
 0. **开工自举（必做，零人工）**：任何 AI 开始工作前**自动执行** `bash .agents/guards/guard-context.sh`，以其输出（状态/未修项/边界/坑/规范/待办/成本提醒）为上下文基线——用户不需要手动跑脚本、不需要回忆任何事（2026-08-18 用户确立）
-0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/checklists/cost.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/guards/guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/guards/guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
+0b. **跨会话记忆（自动）**：DSH/Claude 等工具会话开始时**自动注入**项目根 `AGENTS.local.md`——上次收尾的状态快照（机器生成勿手改；真相源是 `docs/` 源文件；体积预算见 .agents/checklists/ai-cost-checklist.md C7）。**收尾时强制两步，缺一不可**：① `bash .agents/guards/guard-context.sh --write-local`（刷 AGENTS.local.md 快照）② `bash .agents/guards/guard-cost.sh --record`（今日成本入账）——下次开工自动带上，用户零操作（2026-08-20 确立，2026-08-22 补 cost 强制）
 1. **必读文档**：先读 `docs/VISION.md`（理念）→ `ARCHITECTURE.md`（架构红线）→ `docs/architecture/product-roadmap.md`（唯一蓝图）→ `.agents/README.md`（本会话协作标准）
 2. **工作焦点分离**：子项目有独立 AGENTS.md（分层应用、就近原则——`services/adai-core`、`apps/*`、`os/*`）；在哪个目录工作只看哪个领域
 3. **入口统一，后台分流**：`POST /api/v1/records` 是唯一输入入口
@@ -66,7 +66,7 @@ AdaiOS 是一套 **Personal AI Operating System**：以 Kernel（Context + Memor
 | **生产日报（每日）** | `.agents/guards/guard-prod.sh` | 用户说「**每日巡检**」即触发（规则 8）。**生产日志 + 真实对话卡片**一条命令看全：服务/ERROR/告警人话/公网用量（4xx·5xx 自动分「扫描器/探针/设计语义/★待关注」）/用户之声/心跳；C0 心跳发现今日有新记录也会提示跑它 |
 | 每周审查 | `.agents/scripts/weekly-audit.sh` | cron 每周自动审查（守护/结构/对齐/失真/未修项，防休眠）|
 | 成本监控 | `.agents/guards/guard-cost.sh` | 读 DSH 会话按天/会话算钱；收工前 `--record`，开工看 `guard-context.sh` C6.5 |
-| 成本纪律 | `.agents/checklists/cost.md` | 烧钱动作清单 + 省钱原则（错峰/断会话/控输出/降频/用对模型/盯账）|
+| 成本纪律 | `.agents/checklists/ai-cost-checklist.md` | 烧钱动作清单 + 省钱原则（错峰/断会话/控输出/降频/用对模型/盯账）|
 
 ## 状态真相源
 

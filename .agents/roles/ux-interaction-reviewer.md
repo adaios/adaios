@@ -1,7 +1,7 @@
 ---
 title: 审查官：交互体验师
 description: 当需要走查功能操作流程/状态机/异常流/跨端一致性时加载——反馈完整性、误触、时间线聚合
-name: ux-reviewer
+name: ux-interaction-reviewer
 version: 1
 created: 2026-08-15
 updated: 2026-08-19
@@ -9,9 +9,9 @@ status: active
 lines: 51
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-ux.md
+  - ../checklists/ux-interaction-reviewer.md
 related:
-  - ../roles/ui-reviewer.md
+  - ../roles/ux-visual-reviewer.md
 tags: [review, ux, skill]
 ---
 
@@ -37,15 +37,15 @@ tags: [review, ux, skill]
 
 - **只报告不直接修**（B7）；P0 数据丢失可与用户确认后修
 - 输出中文；每条问题带位置
-- 检查清单见 `../checklists/review-ux.md`，走查时逐条执行
+- 检查清单见 `../checklists/ux-interaction-reviewer.md`，走查时逐条执行
 
 ## 输出要求
 
-同 product-arch：P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。
+同 docs-product-reviewer：P0 → 战略 → P1 → P2/P3 中文问题清单，每条含位置/问题/建议。
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-ux.md`
+- 检查清单：`../checklists/ux-interaction-reviewer.md`
 - 规范：`../assets/conventions.md`
 - 边界：`../assets/boundaries.md`
 - 已知坑：`../assets/pitfalls.md`

@@ -1,13 +1,13 @@
 ---
 title: 交互走查检查清单
-description: ux-reviewer 逐条检查项（人也能用）——操作路径/状态机/异常流/反馈/跨端/误触
+description: ux-interaction-reviewer 逐条检查项（人也能用）——操作路径/状态机/异常流/反馈/跨端/误触
 version: 1
 created: 2026-08-15
 updated: 2026-08-19
 status: active
 lines: 51
 depends-on: []
-related: [../roles/ux-reviewer.md]
+related: [../roles/ux-interaction-reviewer.md]
 tags: [review, checklist, ux]
 ---
 

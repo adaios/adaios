@@ -39,17 +39,17 @@ bash .agents/guards/guard-meta.sh       # 元治理：frontmatter 图谱/lines/�
 
 | 官 | 视角 | 重点 |
 |:---|:-----|:-----|
-| product-arch | 全局 | 五层架构、数据流、Roadmap、原则符合度（第一原则）、功能归属 |
-| ux-reviewer | 流程 | 操作路径、状态机、异常流、反馈完整性、跨端一致、误触 |
-| ui-reviewer | 视觉 | 布局触达、视觉层级、间距、三端一致、深色模式、空态/加载态 |
-| backend-reviewer | 代码 | 分层、数据安全、健壮性、测试 |
-| frontend-reviewer | 代码 | 状态管理、生命周期、契约、测试 |
-| docs-reviewer | 契约 | 文档-代码一致、断链、数字漂移 |
-| knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
-| context-reviewer | Context | AGENTS.md 加载结构与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
-| adversarial-reviewer | 对抗 | 哪里会炸 / 用户哪里会骂 / 边界哪里漏——假设一定有问题，找最危险的点（2026-08-23 元审核 P1-3 补入，与 deep review 默认 +1 口径统一）|
+| docs-product-reviewer | 全局 | 五层架构、数据流、Roadmap、原则符合度（第一原则）、功能归属 |
+| ux-interaction-reviewer | 流程 | 操作路径、状态机、异常流、反馈完整性、跨端一致、误触 |
+| ux-visual-reviewer | 视觉 | 布局触达、视觉层级、间距、三端一致、深色模式、空态/加载态 |
+| code-backend-reviewer | 代码 | 分层、数据安全、健壮性、测试 |
+| code-frontend-reviewer | 代码 | 状态管理、生命周期、契约、测试 |
+| docs-contract-reviewer | 契约 | 文档-代码一致、断链、数字漂移 |
+| data-knowledge-reviewer | 资产 | os/ 知识、data/ 数据健康、跨层闭环 |
+| ai-context-reviewer | Context | AGENTS.md 加载结构与 os/*/11-context/ 的 Purpose/Trigger/Action/Consistency |
+| ai-adversarial-reviewer | 对抗 | 哪里会炸 / 用户哪里会骂 / 边界哪里漏——假设一定有问题，找最危险的点（2026-08-23 元审核 P1-3 补入，与 deep review 默认 +1 口径统一）|
 
-> **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（product-arch 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/cost.md` S6）。对抗官 1 官 Flash，与其他官并行，几乎不增加耗时。
+> **模型分层（成本纪律 2026-08-18）**：各官默认 Flash；仅深审场景（docs-product-reviewer 全局视角、大重构）可切 Pro——差价 3 倍（见 `checklists/ai-cost-checklist.md` S6）。对抗官 1 官 Flash，与其他官并行，几乎不增加耗时。
 
 ## 4. 汇总与交叉印证
 

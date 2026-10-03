@@ -10,8 +10,8 @@ depends-on: []
 related:
   - ../REVIEW.md
   - ../../../.agents/process/review.md
-  - ../../../.agents/roles/backend-reviewer.md
-  - ../../../.agents/roles/adversarial-reviewer.md
+  - ../../../.agents/roles/code-backend-reviewer.md
+  - ../../../.agents/roles/ai-adversarial-reviewer.md
 tags: [review, audit, pre-deploy, security]
 ---
 

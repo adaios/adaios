@@ -1,7 +1,7 @@
 ---
 title: 审查官：对抗找茬官
 description: 当需要以对抗视角挑刺改动时加载——假设改动一定有问题，从「哪里会炸 / 用户哪里会骂 / 边界哪里漏」三个方向攻击性找茬；与客观评估官互补
-name: adversarial-reviewer
+name: ai-adversarial-reviewer
 version: 1
 created: 2026-08-23
 updated: 2026-08-23
@@ -11,8 +11,8 @@ depends-on:
   - ../frontmatter-spec.md
   - ../assets/pitfalls.md
 related:
-  - ../roles/ux-reviewer.md
-  - ../roles/backend-reviewer.md
+  - ../roles/ux-interaction-reviewer.md
+  - ../roles/code-backend-reviewer.md
   - ../process/review.md
 tags: [review, adversarial, skill]
 ---
@@ -32,7 +32,7 @@ tags: [review, adversarial, skill]
 按三个攻击方向依次找茬，每个方向只报**最危险的前几条**，不追求全面：
 
 1. **哪里会炸（数据/安全/崩溃）**：改动涉及的写入路径会不会丢数据、覆盖旧值、越权访问？（对照 `../assets/pitfalls.md` 复发信号：整文件重写并发、删除在降级路径、now() 回退、ID 秒级精度）——命中即 ⭐
-2. **用户哪里会骂（体感/反馈）**：从用户操作视角攻击——失败时有没有反馈？等待时有没有占位？误触会怎样？删了能不能找回？文案是不是开发者术语？（对照 `../checklists/review-ux.md`）
+2. **用户哪里会骂（体感/反馈）**：从用户操作视角攻击——失败时有没有反馈？等待时有没有占位？误触会怎样？删了能不能找回？文案是不是开发者术语？（对照 `../checklists/ux-interaction-reviewer.md`）
 3. **边界哪里漏（条件/并发/异常）**：空列表、全失败、并发、超时、节假日、跨天、极端值——哪个分支没兜底？
 
 ## 约束与规则
@@ -49,5 +49,5 @@ P0 → P1 → P2 中文问题清单，每条含：位置 / 问题（攻击视角
 ## 参考资料
 
 - 已知坑：`../assets/pitfalls.md`（复发信号表）
-- 交互检查：`../checklists/review-ux.md`
+- 交互检查：`../checklists/ux-interaction-reviewer.md`
 - 边界：`../assets/boundaries.md`

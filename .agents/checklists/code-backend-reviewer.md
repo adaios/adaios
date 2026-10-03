@@ -1,13 +1,13 @@
 ---
 title: 后端代码审查检查清单
-description: backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
+description: code-backend-reviewer 逐条检查项（人也能用）——数据流水线/存储健壮性/分层/AI 集成/测试
 version: 1
 created: 2026-08-15
 updated: 2026-09-17
 status: active
 lines: 123
 depends-on: []
-related: [../roles/backend-reviewer.md]
+related: [../roles/code-backend-reviewer.md]
 tags: [review, checklist, backend]
 ---
 

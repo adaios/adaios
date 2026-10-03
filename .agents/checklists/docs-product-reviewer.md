@@ -1,6 +1,6 @@
 ---
 title: 产品架构审查检查清单
-description: product-arch 逐条检查项（人也能用）——五层架构/数据流/Roadmap/原则/功能归属/叙事
+description: docs-product-reviewer 逐条检查项（人也能用）——五层架构/数据流/Roadmap/原则/功能归属/叙事
 version: 1
 created: 2026-08-15
 updated: 2026-08-17
@@ -8,15 +8,15 @@ status: active
 lines: 48
 depends-on: []
 related:
-  - ../roles/product-arch.md
-  - review-ui.md
-  - review-ux.md
+  - ../roles/docs-product-reviewer.md
+  - ux-visual-reviewer.md
+  - ux-interaction-reviewer.md
 tags: [review, checklist, product]
 ---
 
 # 产品架构审查检查清单（Product）
 
-> 承接旧 review-product 清单的产品定位项（P8/P9/P11/P22），UI/UX 项已拆分至 `review-ui.md` / `review-ux.md`。
+> 承接旧 docs-product-reviewer 清单的产品定位项（P8/P9/P11/P22），UI/UX 项已拆分至 `ux-visual-reviewer.md` / `ux-interaction-reviewer.md`。
 
 ## 主检查表
 
@@ -33,7 +33,7 @@ tags: [review, checklist, product]
 
 | # | 检查项 | 上次发现 |
 |:-:|:-------|:---------|
-| P8 | 新页面/功能与五层产品架构（`product-architecture.md`）定位一致，不偏离 | —（旧 review-product P8）|
+| P8 | 新页面/功能与五层产品架构（`product-architecture.md`）定位一致，不偏离 | —（旧 docs-product-reviewer P8）|
 | P9 | 项目状态页/任务看板等数据展示是「个人 OS」风格（状态/进展叙事）而非表格堆砌 | 方向进展图硬编码（P3，已修）|
 | P11 | 主入口功能对位：桌面重绘不丢移动端核心交互（分页/删除确认/复盘/反哺入口）| adai-web Feed 无分页 + 交易无复盘 + 删除无确认（战略/P1，待修）|
 | P22 | 「图即上下文」类功能进入对话态后原图持续可见；追问/追加类交互必须有后端持久化载体（card 文件或记录），「刷新即失」与个人 OS 资产理念冲突 | 图片追问仅前端内存、刷新丢失（P1 #209，2026-08-12）|

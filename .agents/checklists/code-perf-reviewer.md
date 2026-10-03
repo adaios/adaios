@@ -8,8 +8,8 @@ status: active
 lines: 71
 depends-on: []
 related:
-  - ../roles/frontend-reviewer.md
-  - review-frontend.md
+  - ../roles/code-frontend-reviewer.md
+  - code-frontend-reviewer.md
 tags: [review, checklist, frontend, perf]
 ---
 
@@ -17,7 +17,7 @@ tags: [review, checklist, frontend, perf]
 
 > 用途：三端（adai-app / adai-web / adai-admin）「加载慢 / 转圈久」时的**轻量快查**，不是 8 官全量走查。
 > **时间盒 15 分钟**：按阶段从上到下查，超时即停，只报最影响体感的 ≤10 条。
-> **输出格式**：每条 ≤3 行（位置 / 一句问题 / 一句建议），按阶段标注「卡首屏 / 卡内容 / 卡交互」；疑似后端慢 → 一句转派 backend-reviewer，不深挖。
+> **输出格式**：每条 ≤3 行（位置 / 一句问题 / 一句建议），按阶段标注「卡首屏 / 卡内容 / 卡交互」；疑似后端慢 → 一句转派 code-backend-reviewer，不深挖。
 > **触发**：`/perf <端名>`（AI）；人用 = 逐条核对下表。
 
 ## 阶段 A 启动 → 首帧
@@ -64,7 +64,7 @@ tags: [review, checklist, frontend, perf]
 
 | # | 检查方法 |
 |:-:|:---------|
-| F1 | 接口响应本身慢（快照计算、K 线扫描未缓存）→ 一句转派 backend-reviewer，专项不深挖 |
+| F1 | 接口响应本身慢（快照计算、K 线扫描未缓存）→ 一句转派 code-backend-reviewer，专项不深挖 |
 
 ---
 

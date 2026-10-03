@@ -1,7 +1,7 @@
 ---
 title: 审查官：支持台官
 description: 当产品要交给人用之前加载——预演「他一定会问你的问题」，把每条答不上来的问题变成一条待修缺陷
-name: support-reviewer
+name: ux-support-reviewer
 version: 1
 created: 2026-09-13
 updated: 2026-09-13
@@ -9,10 +9,10 @@ status: active
 lines: 68
 depends-on:
   - ../frontmatter-spec.md
-  - ../checklists/review-support.md
+  - ../checklists/ux-support-reviewer.md
 related:
-  - ../roles/stranger-reviewer.md
-  - ../roles/social-reviewer.md
+  - ../roles/ux-stranger-reviewer.md
+  - ../roles/ux-social-reviewer.md
 tags: [review, external, skill]
 ---
 
@@ -55,7 +55,7 @@ tags: [review, external, skill]
 - **只报告不直接修**（B7）
 - 输出中文；每条问题必须配**归属判定**与**答案所在位置**（或"无处可答"）
 - 不许把「我可以解释」当作 PASS——解释成本本身就是缺陷等级
-- 清单见 `../checklists/review-support.md`，逐条执行
+- 清单见 `../checklists/ux-support-reviewer.md`，逐条执行
 
 ## 输出要求
 
@@ -64,5 +64,5 @@ tags: [review, external, skill]
 
 ## 参考资料
 
-- 检查清单：`../checklists/review-support.md`
-- 相关：`../roles/stranger-reviewer.md`（同一盲区的真人版）
+- 检查清单：`../checklists/ux-support-reviewer.md`
+- 相关：`../roles/ux-stranger-reviewer.md`（同一盲区的真人版）
